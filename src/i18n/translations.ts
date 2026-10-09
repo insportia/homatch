@@ -15642,6 +15642,12 @@ const en = {
   dsx_walk_fidelity_note: 'This tour does not yet fully match your selected design — some pieces or finishes are approximations. Create a new tour to rebuild it from the design.',
   dsx_photo3d_secondary: 'Or step into the design picture',
   dsx_walk_failed_geometry: 'The floor plan of this home could not be reconstructed reliably from its pictures: some rooms are missing or misshapen. We did not build a tour that would show the wrong home.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_more: 'More',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_quality: 'We could not furnish this home convincingly enough to walk through it — the furniture would block the way or stand where no one would put it. We did not publish a tour that would show it badly.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31198,6 +31204,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_walk_fidelity_note: 'ეს ტური ჯერ სრულად არ ემთხვევა არჩეულ დიზაინს — ზოგი ნივთი ან მასალა მიახლოებითია. შექმენით ახალი ტური, რომ დიზაინიდან თავიდან აიგოს.',
   dsx_photo3d_secondary: 'ან შედით დიზაინის სურათში',
   dsx_walk_failed_geometry: 'ფოტოებიდან ამ ბინის გეგმის სანდოდ აღდგენა ვერ მოხერხდა: ზოგი ოთახი აკლია ან არასწორი ფორმისაა. ტური, რომელიც სხვა ბინას აჩვენებდა, არ შევქმენით.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_more: 'მეტი',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_quality: 'ამ ბინის დამაჯერებლად მოწყობა ვერ მოხერხდა — ავეჯი გზას გადაკეტავდა ან იქ იდგებოდა, სადაც არავინ დადგამდა. ცუდად ნაჩვენები ტური არ გამოვაქვეყნეთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46745,6 +46757,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_walk_fidelity_note: 'Эта прогулка пока не полностью соответствует выбранному дизайну — часть предметов или отделки приблизительна. Создайте новую прогулку, чтобы пересобрать её по дизайну.',
   dsx_photo3d_secondary: 'Или войдите в изображение дизайна',
   dsx_walk_failed_geometry: 'Не удалось надёжно восстановить планировку этого дома по изображениям: некоторые комнаты отсутствуют или искажены. Мы не стали строить прогулку, которая показала бы другой дом.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_more: 'Ещё',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_quality: 'Не удалось убедительно обставить этот дом для прогулки — мебель перекрыла бы проход или стояла бы там, где её никто не поставит. Мы не стали публиковать прогулку, которая показала бы его плохо.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -62290,6 +62308,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_walk_fidelity_note: 'Bu tur henüz seçtiğiniz tasarımla tam olarak eşleşmiyor — bazı parçalar veya yüzeyler yaklaşık. Tasarımdan yeniden oluşturmak için yeni bir tur oluşturun.',
   dsx_photo3d_secondary: 'Ya da tasarım görseline adım atın',
   dsx_walk_failed_geometry: 'Bu evin kat planı görsellerinden güvenilir şekilde yeniden oluşturulamadı: bazı odalar eksik veya biçimi bozuk. Yanlış evi gösterecek bir gezinti oluşturmadık.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_more: 'Daha fazla',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_quality: 'Bu evi içinde gezilecek kadar inandırıcı biçimde döşeyemedik — mobilyalar yolu kapatacak ya da kimsenin koymayacağı yerlerde duracaktı. Evi kötü gösterecek bir gezinti yayımlamadık.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -77835,6 +77859,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_walk_fidelity_note: 'هذه الجولة لا تطابق تصميمك المختار بالكامل بعد — بعض القطع أو التشطيبات تقريبية. أنشئ جولة جديدة لإعادة بنائها من التصميم.',
   dsx_photo3d_secondary: 'أو ادخل إلى صورة التصميم',
   dsx_walk_failed_geometry: 'تعذّرت إعادة بناء مخطط هذا المنزل بشكل موثوق من صوره: بعض الغرف مفقودة أو مشوّهة. لم ننشئ جولة قد تعرض منزلًا مختلفًا.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_more: 'المزيد',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_quality: 'لم نتمكن من تأثيث هذا المنزل بشكل مقنع يكفي للتجول فيه — كان الأثاث سيسد الطريق أو يقف حيث لا يضعه أحد. لم ننشر جولة قد تعرضه بشكل سيئ.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -93380,6 +93410,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_walk_fidelity_note: 'הסיור הזה עדיין לא תואם במלואו את העיצוב שבחרתם — חלק מהפריטים או מהגימורים משוערים. צרו סיור חדש כדי לבנות אותו מחדש מהעיצוב.',
   dsx_photo3d_secondary: 'או היכנסו לתמונת העיצוב',
   dsx_walk_failed_geometry: 'לא ניתן היה לשחזר באופן אמין את תוכנית הדירה מהתמונות: חלק מהחדרים חסרים או מעוותים. לא יצרנו סיור שהיה מציג בית אחר.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_more: 'עוד',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_quality: 'לא הצלחנו לרהט את הבית הזה באופן משכנע מספיק כדי לסייר בו — הרהיטים היו חוסמים את הדרך או עומדים במקום שאיש לא היה מציב אותם. לא פרסמנו סיור שהיה מציג אותו רע.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

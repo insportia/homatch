@@ -16,7 +16,7 @@
 // shots drive the walkthrough's entry, its room-to-room tour, and later a
 // cinematic path (a sequence of shots along the room graph).
 
-import { COMFORT_RADIUS_M, EYE_HEIGHT_M, isFree, nearestFree, type WalkModel } from './navigation.ts';
+import { COMFORT_RADIUS_M, EYE_HEIGHT_M, distanceToObb, isFree, nearestFree, type WalkModel } from './navigation.ts';
 import { pointInPolygon, roomContaining, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
 
 export interface CameraShot {
@@ -49,6 +49,15 @@ const FRAME_DEPTH_M = 4;
 const FRAMED_WEIGHT = 1.2;
 const FRAMED_CAP_M2 = 4;
 const MAX_HFOV = 92;
+/**
+ * Where a visitor stands to see a room: in open floor, at least this far from any standing piece (never wedged
+ * behind a sofa's back or against a wardrobe), whenever the room has such a spot.
+ */
+export const STANCE_CLEAR_M = 0.6;
+/** Open-floor spots are also looked for on a grid this fine (m), not only at the room's corners and edges. */
+const STANCE_GRID_M = 0.4;
+/** A standing piece this near in front of the eye (m) hides the room behind it: such a view is marked down. */
+const FOREGROUND_M = 1.3;
 
 /** Which rooms each door joins, found by stepping through the opening on both sides. */
 export function roomGraph(space: SpaceModel): RoomGraph {
@@ -186,6 +195,15 @@ function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: 
     }
   }
 
+  // Open floor anywhere in the room (a room's corners and edges can all be furnished).
+  const xs = poly.map((p) => p.x); const ys = poly.map((p) => p.y);
+  for (let x = Math.min(...xs) + STANCE_GRID_M / 2; x < Math.max(...xs); x += STANCE_GRID_M) {
+    for (let y = Math.min(...ys) + STANCE_GRID_M / 2; y < Math.max(...ys); y += STANCE_GRID_M) {
+      if (pointInPolygon({ x, y }, poly)) candidates.push({ x, y });
+    }
+  }
+  const clearOfPieces = (p: Point) => walk.furniture.reduce((m, o) => Math.min(m, distanceToObb(p, o)), Infinity);
+
   // What the room is about: the standing pieces in it (their centres and footprints), as the walk sees them.
   const pieces = walk.furniture.filter((o) => pointInPolygon({ x: o.cx, y: o.cy }, poly)).map((o) => ({ at: { x: o.cx, y: o.cy }, area: 4 * o.hw * o.hd }));
   const pieceArea = pieces.reduce((s0, p) => s0 + p.area, 0);
@@ -195,6 +213,7 @@ function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: 
   for (const raw of candidates) {
     const at = isFree(walk, raw) ? raw : nearestFree(walk, raw, 0.4);
     if (!at || roomContaining(space, at) !== room.id) continue;
+    if (strict && clearOfPieces(at) < STANCE_CLEAR_M) continue;
     // Look across the room (toward its centre) or at what the room is about (its furnished focus), each pulled
     // toward a window in view; whichever frames more of the room's design wins below.
     for (const towards of focus ? [c, focus] : [c]) {
@@ -225,7 +244,13 @@ function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: 
     const half = (hfov * Math.PI) / 360;
     const framed = pieces.filter((p) => Math.abs(wrap(angleOf(at, p.at) - look)) < half && Math.hypot(p.at.x - at.x, p.at.y - at.y) > 0.8 && clearSight(walk, at, p.at))
       .reduce((s0, p) => s0 + p.area / (1 + Math.hypot(p.at.x - at.x, p.at.y - at.y) / 4), 0);
-    const score = Math.min(seen, FRAME_DEPTH_M) + inView.length * 1.5 + Math.min(FRAMED_CAP_M2, framed) * FRAMED_WEIGHT - Math.max(0, hfov - 80) * 0.05;
+    // A piece right in front of the eye (a sofa's back, a wardrobe's side) is a wall of furniture, not a view.
+    const blocked = walk.furniture.some((o) => {
+      const d = Math.hypot(o.cx - at.x, o.cy - at.y);
+      return distanceToObb(at, o) < FOREGROUND_M && d > 1e-6 && Math.abs(wrap(angleOf(at, { x: o.cx, y: o.cy }) - look)) < half * 0.8;
+    });
+    const score = Math.min(seen, FRAME_DEPTH_M) + inView.length * 1.5 + Math.min(FRAMED_CAP_M2, framed) * FRAMED_WEIGHT - Math.max(0, hfov - 80) * 0.05
+      - (blocked ? 2.5 : 0);
     if (!best || score > best.score + 1e-9) best = { score, at, target, hfov };
     }
   }

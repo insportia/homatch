@@ -1019,6 +1019,8 @@ function Editor({
   return (
     <div className="flex h-[100dvh] flex-col bg-[#0C1119] text-white">
       {/* ── Toolbar ──────────────────────────────────────────────── */}
+      {/* A tour (opened from its link) is the home alone: the editor's tools are not shown while walking it. */}
+      {startWalkthrough && walking ? null : (
       <header className="flex h-14 shrink-0 items-center gap-1.5 border-b border-white/10 px-2 sm:gap-2 sm:px-3">
         <Link to={homeHref ?? '/design-studio'} aria-label={t(homeHref ? 'sf_your_home' : 'ds_back_to_projects')} className={TOOL_BUTTON} data-testid="workspace-back">
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
@@ -1106,6 +1108,7 @@ function Editor({
           </button>
         </div>
       </header>
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* ── Left: mode rail + library panel ─────────────────────── */}

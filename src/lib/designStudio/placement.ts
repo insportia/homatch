@@ -386,10 +386,28 @@ export const blocks = (issues: PlacementIssue[]) => issues.some((i) => i.severit
  * against the longest wall faces first, centred then stepping outwards,
  * facing into the room; or the room's centre for free-standing pieces.
  */
+/** A plant, a planter or a decorative floor piece: it belongs in a corner, out of the way. */
+function isCornerDecor(asset: Pick<CatalogAsset, 'category' | 'subcategory'>): boolean {
+  return asset.category === 'DECOR' || /PLANT/.test(asset.subcategory ?? '');
+}
+
 export function candidatePositions(ctx: PlacementContext, asset: CatalogAsset, room: SpaceRoom): Array<{ at: Point; rotation: number }> {
   const out: Array<{ at: Point; rotation: number }> = [];
   const centre = room.centroid;
 
+  // A plant or a decorative piece stands in a corner of the room (never in the middle of the floor, where people
+  // walk): each corner pulled in by the piece's own size.
+  if (asset.anchor === 'FREE' && isCornerDecor(asset)) {
+    const poly = room.polygon;
+    const inset = Math.max(asset.widthM, asset.depthM) / 2 + 0.12;
+    for (const p of poly) {
+      const d = Math.hypot(centre.x - p.x, centre.y - p.y) || 1;
+      const k = Math.min(inset * Math.SQRT2, d * 0.45) / d;
+      out.push({ at: { x: p.x + (centre.x - p.x) * k, y: p.y + (centre.y - p.y) * k }, rotation: 0 });
+    }
+    // No corner free: no plant (a plant in the middle of the floor is in someone's way, not a design).
+    return out;
+  }
   if (asset.anchor === 'CENTRE' || asset.anchor === 'FREE') {
     for (const [dx, dy] of [[0, 0], [0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8]]) {
       for (const rotation of [0, Math.PI / 2]) out.push({ at: { x: centre.x + dx, y: centre.y + dy }, rotation });

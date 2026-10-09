@@ -25,7 +25,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, Footprints, Keyboard, Map as MapIcon, Maximize, Moon, Mouse, Pause, Play, RotateCcw, Settings2, Sparkles, Sun, Sunset, X,
+  ArrowLeft, Footprints, Keyboard, Map as MapIcon, Maximize, MoreHorizontal, Moon, Mouse, Pause, Play, RotateCcw, Settings2, Sparkles, Sun, Sunset, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AimHint, SceneController, TimeOfDayEnv, WalkPose } from '@/components/designStudio/canvas/SceneController';
@@ -159,11 +159,12 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
   const { space, walkModel } = props;
   const plan = useMemo(() => (space && walkModel ? planTour(space, walkModel, c?.camera.aspect ?? 16 / 9) : null), [space, walkModel, c]);
   const names = useMemo(() => new Map(rooms.map((r) => [r.id, r.name] as const)), [rooms]);
-  const shownRooms = plan && plan.reachable.size ? rooms.filter((r) => plan.reachable.has(r.id)) : rooms;
   const doors = useMemo(() => (plan ? doorPointsFrom(plan, room) : []), [plan, room]);
   const history = useRef<WalkPose[]>([]);
   const [canBack, setCanBack] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  // The secondary actions, folded into one menu so the walk keeps the screen.
+  const [more, setMore] = useState(false);
   const [doorHint, setDoorHint] = useState<'WAIT' | 'SHOW' | 'DONE'>('WAIT');
   // Where the visitor stood before a move: Back walks them there again.
   const remember = () => {
@@ -208,64 +209,71 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
     <>
       {/* ── Top: where you are, and the few things you might want ── */}
       <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-col items-stretch gap-2">
-        <div className="pointer-events-auto mx-auto flex w-full max-w-4xl items-center gap-1.5 rounded-xl bg-[#0C1119]/90 px-3 py-2 text-white shadow-lg ring-1 ring-white/10 backdrop-blur sm:gap-2">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-2xl items-center gap-1.5 rounded-xl bg-[#0C1119]/80 px-3 py-1.5 text-white shadow-lg ring-1 ring-white/10 backdrop-blur sm:gap-2">
           <Footprints className="h-4 w-4 shrink-0 text-[hsl(38_92%_62%)]" aria-hidden="true" />
           <p className="min-w-0 flex-1 truncate text-[14px]" aria-live="polite">
-            <span className="font-semibold">{tr('ds_walk_title')}</span>
-            {roomName ? <span className="text-white/75"> · {roomName}</span> : null}
+            <span className="sr-only">{tr('ds_walk_title')} · </span>
+            <span className="font-semibold">{roomName || tr('ds_walk_title')}</span>
           </p>
-          {props.onTour ? (
-            <button type="button" onClick={props.onTour} aria-pressed={!!props.touring} className={quiet} aria-label={props.touring ? tr('ds_walk_tour_pause') : tr('ds_walk_tour_play')}>
-              {props.touring ? <Pause className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />}
-              <span className="hidden lg:inline">{props.touring ? tr('ds_walk_tour_pause') : tr('ds_walk_tour_play')}</span>
-            </button>
-          ) : null}
-          <button type="button" onClick={() => { c?.releasePointer(); setSheet('LIVE'); }} className={quiet} aria-label={tr('ds_live_title')} data-testid="walk-live">
-            <Sparkles className="h-3.5 w-3.5 text-[hsl(38_92%_62%)]" aria-hidden="true" />
-            <span className="hidden md:inline">{tr('ds_live_title')}</span>
-          </button>
-          <button type="button" onClick={() => { c?.releasePointer(); setSheet('TIME'); }} className={quiet} aria-label={tr('ds_env_title')} data-testid="walk-time">
-            {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: 'h-3.5 w-3.5', 'aria-hidden': true })}
-          </button>
-          {plan ? (
-            <button type="button" onClick={back} disabled={!canBack} className={cn(quiet, 'disabled:opacity-40')} aria-label={tr('ds_walk_back')} data-testid="walk-back">
-              <ArrowLeft className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
-              <span className="hidden xl:inline">{tr('ds_walk_back')}</span>
-            </button>
-          ) : null}
           {plan && space ? (
-            <button type="button" onClick={() => { c?.releasePointer(); setPlanOpen((v) => !v); }} aria-pressed={planOpen} className={quiet} aria-label={tr('ds_walk_plan')} data-testid="walk-plan-open">
+            <button type="button" onClick={() => { c?.releasePointer(); setMore(false); setPlanOpen((v) => !v); }} aria-pressed={planOpen} className={quiet} aria-label={tr('ds_walk_plan')} data-testid="walk-plan-open">
               <MapIcon className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden xl:inline">{tr('ds_walk_plan')}</span>
+              <span className="hidden sm:inline">{tr('ds_walk_plan')}</span>
             </button>
           ) : null}
-          <button type="button" onClick={reset} className={quiet} aria-label={tr('ds_walk_reset')} data-testid="walk-entrance">
-            <RotateCcw className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
-          </button>
-          <button type="button" onClick={() => { c?.releasePointer(); setSheet('CONTROLS'); }} className={quiet} aria-label={tr('ds_ctrl_help')} data-testid="walk-controls">
-            <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-          {props.onFullscreen ? (
-            <button type="button" onClick={props.onFullscreen} className={quiet} aria-label={tr('ds_walk_fullscreen')}>
-              <Maximize className="h-3.5 w-3.5" aria-hidden="true" />
+          <div className="relative">
+            <button type="button" onClick={() => { c?.releasePointer(); setMore((v) => !v); }} aria-expanded={more} aria-haspopup="true" className={quiet} aria-label={tr('ds_walk_more')} data-testid="walk-more">
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
             </button>
-          ) : null}
-          {props.actions}
+            {more ? (
+              <div role="group" aria-label={tr('ds_walk_more')} data-testid="walk-more-menu"
+                onClick={(e) => { if ((e.target as HTMLElement).closest('button')) setMore(false); }}
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setMore(false); } }}
+                className="absolute end-0 top-10 z-30 flex w-60 flex-col gap-0.5 rounded-xl bg-[#0C1119]/95 p-1.5 shadow-xl ring-1 ring-white/10 backdrop-blur [&>button]:w-full [&>button]:justify-start [&>button]:ring-0 [&_span.hidden]:!inline [&_span.sr-only]:!hidden">
+                {props.onTour ? (
+                  <button type="button" onClick={props.onTour} aria-pressed={!!props.touring} className={quiet}>
+                    {props.touring ? <Pause className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />}
+                    <span>{props.touring ? tr('ds_walk_tour_pause') : tr('ds_walk_tour_play')}</span>
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => { c?.releasePointer(); setSheet('LIVE'); }} className={quiet} data-testid="walk-live">
+                  <Sparkles className="h-3.5 w-3.5 text-[hsl(38_92%_62%)]" aria-hidden="true" />
+                  <span>{tr('ds_live_title')}</span>
+                </button>
+                <button type="button" onClick={() => { c?.releasePointer(); setSheet('TIME'); }} className={quiet} data-testid="walk-time">
+                  {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: 'h-3.5 w-3.5', 'aria-hidden': true })}
+                  <span>{tr('ds_env_title')}</span>
+                </button>
+                {plan ? (
+                  <button type="button" onClick={back} disabled={!canBack} className={cn(quiet, 'disabled:opacity-40')} data-testid="walk-back">
+                    <ArrowLeft className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
+                    <span>{tr('ds_walk_back')}</span>
+                  </button>
+                ) : null}
+                <button type="button" onClick={reset} className={quiet} data-testid="walk-entrance">
+                  <RotateCcw className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
+                  <span>{tr('ds_walk_reset')}</span>
+                </button>
+                <button type="button" onClick={() => { c?.releasePointer(); setSheet('CONTROLS'); }} className={quiet} data-testid="walk-controls">
+                  <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{tr('ds_ctrl_help')}</span>
+                </button>
+                {props.onFullscreen ? (
+                  <button type="button" onClick={props.onFullscreen} className={quiet}>
+                    <Maximize className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{tr('ds_walk_fullscreen')}</span>
+                  </button>
+                ) : null}
+                {props.actions}
+              </div>
+            ) : null}
+          </div>
           <button type="button" onClick={props.onExit} className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-2.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90', ring)}>
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">{props.exitLabel}</span>
             <span className="sr-only sm:hidden">{props.exitLabel}</span>
           </button>
         </div>
-        <nav aria-label={tr('ds_walk_rooms')} className="pointer-events-auto mx-auto flex max-w-full gap-1.5 overflow-x-auto pb-1">
-          {shownRooms.map((r) => (
-            <button key={r.id} type="button" onClick={() => goRoom(r.id)} aria-current={r.id === room ? 'location' : undefined}
-              className={cn('h-8 shrink-0 rounded-full px-3 text-[13px] font-medium shadow-sm ring-1', ring,
-                r.id === room ? 'bg-[#0C1119] text-white ring-[#0C1119]' : 'bg-white/90 text-[#0C1119] ring-black/10 hover:bg-white')}>
-              {r.name}
-            </button>
-          ))}
-        </nav>
       </div>
 
       {/* ── The real doorways of this room, named after where they lead ── */}

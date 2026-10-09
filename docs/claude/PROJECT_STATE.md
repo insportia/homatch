@@ -1091,6 +1091,37 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   recoverable without inventing geometry. Next step needs the owner: one bounded second WALK_SPACE reading
   (first reading $0.0189; estimate ≈ $0.02, cap $0.20).
 
+### Design Studio tour: what the customer walked, fixed at the causes (same branch, 2026-10-09) — NOT deployed
+
+- Diagnosed on the owner's real tour c57a03b9 (project ab2df04c, walk version 23798a66, plan reused, $0.0062 paid:
+  RunPod $0.0037 + QA $0.0025), replayed locally in the harness browser on its exact data (scratch only).
+- Causes (code): gold `Box3Helper` aim box + hover outline (`SceneController` setAim/setHover) drawn while walking;
+  each frame advanced at most 50 ms of walk (`stepWalk`) so a slow GPU (HIGH tier: GTAO + MSAA + shadows) walked in
+  slow motion — the logic itself reaches all 9 rooms and every doorway at speed; balcony doors started CLOSED at
+  runtime though the build plans every door open; `roomShot` started the visitor 0.36 m behind the sofa; evening
+  design lighting on arrival; editor header + walk bar + room chips + hint over the view; placement judged piece by
+  piece (sofa faced away from the TV, coffee table and an armchair dropped, the other pushed against the TV), the
+  ring fallback stood wardrobes free in a room, beds/sofa 0.45–0.85 m off their walls, plants on the centre of the
+  floor, and a room-by-room order let a nightstand win a way over the next room's wardrobe.
+- Fixes: no helper geometry in walk; real-time walking in ≤ 50 ms steps (cap 250 ms) + automatic lightening
+  (fx → shadows → pixel ratio) when frames exceed 40 ms; balcony doors open on entry; arrival in open floor
+  (≥ 0.6 m from pieces, foreground penalty); daylight on arrival; one bar (room · Plan · More · Exit), tour hides the
+  editor header; `walkthrough/seatingGroup.ts` (sofa → TV on the faced wall → table → armchairs, proven walkable,
+  chairs given up first); walkway check as each non-essential piece stands (`closesWalk`), global importance order,
+  wall pieces always wall-backed, plants only in corners; `walkthrough/plausibility.ts` → server gate NOT_PLAUSIBLE;
+  `walkthrough/planFidelity.ts` (BLOCK: opening past its wall, doorway crossed by a wall → GEOMETRY_UNRELIABLE;
+  WARN: enclosed stair, weak-ink wall, dimension mismatch — reported, never "fixed").
+- This plan's ambiguities (WARN, need the original drawing to settle): stair S1 walled on every side while wall I7
+  between it and the living room has 39% ink (likely open stair); I3 40%, I4 31%; porch written 10'×8' vs measured
+  1.52 m deep (37.5%).
+- Furniture assets (no purchase made): production has 47 active assets — 40 `dev/*` procedural placeholders, 7
+  LICENSED GLB (sofa, armchair, coffee table, plant, cabinet, vase, ceiling lamp). Every piece of this tour rendered
+  procedurally; the RunPod pass made 8 pieces and attached 0 (design-bound pieces are never swapped). Plan: (1) let
+  the matcher use the 7 licensed GLBs where category and size fit; (2) add CC0 models (licence recorded per asset)
+  for beds, wardrobes, dining sets, bathroom fixtures and appliances, Draco/meshopt + KTX2, ≤ 1–2 MB per asset;
+  (3) stop paying for the per-tour GPU pass until its output is attached, or attach it to bound pieces. Any paid
+  library needs the owner's approval first.
+
 ### Find Buyers lifecycle truth + UX consolidation (2026-10-04, after the owner's first live test)
 
 - Production case: campaign ee2f0b74 / job 693e6d75 finished 220 ms after creation with 0 queue jobs and

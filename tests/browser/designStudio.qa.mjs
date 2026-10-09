@@ -444,6 +444,17 @@ export async function startServer() {
 /* The walkthrough's first-time controls are dismissed in every context except the ones that test them. */
 const SEEN_TUTORIAL = () => { window.localStorage.setItem('hm_walk_tutorial_v1_desktop', 'hidden'); window.localStorage.setItem('hm_walk_tutorial_v1_touch', 'hidden'); };
 
+/* The walk's secondary actions live in its More menu: opened first when the action is not on screen. */
+export async function walkAction(page, id) {
+  if (!(await page.getByTestId(id).isVisible())) await page.getByTestId('walk-more').click();
+  await page.getByTestId(id).click();
+}
+/* A room, chosen from the walk's plan (the room switcher). */
+export async function walkToRoomNamed(page, name) {
+  if (!(await page.getByTestId('walk-plan').isVisible().catch(() => false))) await page.getByTestId('walk-plan-open').click();
+  await page.getByTestId('walk-plan').getByRole('button', { name: `Go to ${name}` }).click();
+}
+
 export async function openContext(browser, { width, height, lang, tutorial = false, touch = false, motion = 'reduce' }) {
   const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, hasTouch: touch, isMobile: touch });
   await ctx.addInitScript(([k, s, l]) => {
@@ -957,7 +968,7 @@ async function checkpoint11(browser) {
 
   // Live Here: relax on the balcony — walked there, the balcony door opened, a chair outside.
   await scene(page, (c) => c.walkTo({ position: { x: 3.1, y: 5.9 }, target: { x: 3.1, y: 3 }, fov: 60 }));
-  await page.getByTestId('walk-live').click();
+  await walkAction(page, 'walk-live');
   const list = page.getByTestId('live-list');
   await list.waitFor();
   const offered = await list.locator('[data-experience]').evaluateAll((els) => els.map((e) => e.getAttribute('data-experience')));
@@ -983,7 +994,7 @@ async function checkpoint11(browser) {
   await page.waitForTimeout(800);
 
   // Time of day: night, the room lights come on.
-  await page.getByTestId('walk-time').click();
+  await walkAction(page, 'walk-time');
   await page.getByRole('dialog', { name: 'Time of day' }).locator('[data-env="NIGHT"]').click();
   await page.waitForTimeout(500);
   const lit = Object.entries(await states()).filter(([k]) => k.startsWith('light:'));
@@ -1003,7 +1014,7 @@ async function checkpoint11(browser) {
   check('menu: Resume captures the mouse again for looking', (await player()).locked === true);
   await scene(page, (c) => c.releasePointer());
   await page.waitForTimeout(200);
-  await page.getByTestId('walk-controls').click();
+  await walkAction(page, 'walk-controls');
   check('controls: the key shapes can be opened again', await page.getByTestId('tutorial-desktop').isVisible());
   await page.getByTestId('tutorial-ok').click();
 
@@ -1110,7 +1121,7 @@ async function checkpoint11(browser) {
   check('visitor: a home rebuilt from pictures says so, never "drawn from a floor plan"',
     cover.includes('rebuilt from pictures') && !cover.includes('floor plan'), cover.slice(0, 300));
   await vp.getByRole('button', { name: 'Enter walkthrough' }).click();
-  await vp.getByTestId('walk-hint').or(vp.getByTestId('walk-live')).first().waitFor({ timeout: 20000 });
+  await vp.getByTestId('walk-hint').or(vp.getByTestId('walk-more')).first().waitFor({ timeout: 20000 });
   await scene(vp, (c, k) => c.debugAim(k), `obj:${fridge.instanceId}:door`);
   await vp.getByTestId('walk-hint').getByRole('button', { name: 'Open' }).click();
   await vp.waitForTimeout(300);
@@ -1394,7 +1405,7 @@ async function checkpoint8(browser) {
   await status.waitFor({ timeout: 10000 });
   check('walk: enters at the entrance, in the hall', (await where())?.includes('Hall'), await where());
   check('walk: the canvas is the whole workspace (panels step aside)', !(await page.getByRole('complementary', { name: 'Inspector' }).isVisible()));
-  check('walk: the rooms are offered in the order a visitor meets them', (await page.getByRole('navigation', { name: 'Go to a room' }).getByRole('button').first().textContent()) === 'Hall');
+  check('walk: one quiet bar — no row of room chips over the view', (await page.getByRole('navigation', { name: 'Go to a room' }).count()) === 0);
   await page.screenshot({ path: path.join(OUT, 'cp8-entry-1440-en.png') });
 
   // Walk forward into the apartment for a while: never outside a room.
@@ -1404,7 +1415,7 @@ async function checkpoint8(browser) {
   await page.waitForTimeout(200);
   check('walk: after walking, still inside the apartment', /Walkthrough · \S/.test((await where()) ?? ''), await where());
 
-  await page.getByRole('navigation', { name: 'Go to a room' }).getByRole('button', { name: 'Living room' }).click();
+  await walkToRoomNamed(page, 'Living room');
   await page.waitForTimeout(400);
   check('walk: a room from the tour takes you there', (await where())?.includes('Living room'), await where());
   await page.screenshot({ path: path.join(OUT, 'cp8-living-1440-en.png') });
@@ -1894,13 +1905,15 @@ async function checkpoint8Share(browser) {
   const whereV = () => v.locator('p[aria-live="polite"]').filter({ hasText: 'Walkthrough' }).textContent();
   await v.getByRole('button', { name: 'Overview' }).waitFor();
   check('visitor: enters at the entrance', (await whereV())?.includes('Hall'), await whereV());
+  await v.getByTestId('walk-more').click();
   await v.getByRole('button', { name: 'Guided tour' }).click();
   // Until the tour has walked on (a software-rendered test browser may draw only a few frames a second).
   for (let i = 0; i < 240 && ((await whereV()) ?? '').includes('Hall'); i += 1) await v.waitForTimeout(250);
   const toured = await whereV();
   check('visitor: the guided tour moves through the rooms', !!toured && !toured.includes('Hall'), toured);
+  await v.getByTestId('walk-more').click();
   await v.getByRole('button', { name: 'Pause tour' }).click();
-  await v.getByRole('navigation', { name: 'Go to a room' }).getByRole('button', { name: 'Living room' }).click();
+  await walkToRoomNamed(v, 'Living room');
   // Chosen rooms are WALKED to along a real route, not cut to.
   for (let i = 0; i < 40 && !(await whereV())?.includes('Living room'); i += 1) await v.waitForTimeout(250);
   check('visitor: room navigation (walked there)', (await whereV())?.includes('Living room'));
@@ -2729,15 +2742,15 @@ const tFace = (page, doorId) => tScene(page, (c, id) => {
 
 /**
  * Samples of the visitor's position while a door transition runs: every frame until the route has started and
- * ended (at most `ms`). `sim` is the walk's own clock (each frame counts at most 50 ms, as the controller steps it),
- * so the duration is what a person sees on a device drawing ≥ 20 frames a second, whatever this machine manages.
+ * ended (at most `ms`). `sim` is the walk's own clock (each frame counts at most 250 ms: the controller walks real
+ * time up to that, in 50 ms steps), so the duration is what a person sees, whatever this machine manages.
  */
 const tTrack = (page, ms) => page.evaluate((m) => new Promise((resolve) => {
   const out = []; const t0 = performance.now(); let last = t0; let sim = 0; let started = false;
   const step = () => {
     const now = performance.now();
     const routing = window.__dsScene.routing;
-    if (routing) { if (started) sim += Math.min(50, now - last); started = true; }
+    if (routing) { if (started) sim += Math.min(250, now - last); started = true; }
     last = now;
     const s = window.__dsScene.playerState();
     if (s) out.push({ t: now - t0, sim, x: s.pos.x, y: s.pos.y, routing });
@@ -2754,7 +2767,7 @@ async function tourDesktop(browser) {
   const page = await ctx.newPage();
   await wire(page, store, errors);
   await page.goto(`${BASE}/design-studio/${project.id}/walkthrough`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('walk-entrance').waitFor({ timeout: 30000 });
+  await page.getByTestId('walk-more').waitFor({ timeout: 30000 });
   await page.waitForTimeout(600);
 
   // ── Inside, at the entrance, at eye level, under a ceiling.
@@ -2786,10 +2799,11 @@ async function tourDesktop(browser) {
   const moving = path1.filter((s) => s.routing);
   const doorAt = await tScene(page, (c) => c.walk.model.space.doors.find((x) => x.id === 'd-entry-corr'));
   const nearest = Math.min(...path1.map((s) => Math.hypot(s.x - doorAt.centre.x, s.y - doorAt.centre.y)));
-  const maxStep = Math.max(...path1.slice(1).map((s, i) => Math.hypot(s.x - path1[i].x, s.y - path1[i].y)));
+  // Never a teleport: no frame moves the visitor faster than a brisk walk (a slow frame moves further, at that pace).
+  const maxSpeed = Math.max(...path1.slice(1).map((s, i) => Math.hypot(s.x - path1[i].x, s.y - path1[i].y) / (Math.max(16, Math.min(250, s.t - path1[i].t)) / 1000)));
   const took = path1.length ? path1.at(-1).sim : 0;
   check('door: walked through the doorway itself (passes its opening)', nearest < doorAt.widthM / 2, nearest.toFixed(2));
-  check('door: a smooth walk, never a teleport (no frame jumps more than 15 cm)', maxStep < 0.15, maxStep.toFixed(3));
+  check('door: a smooth walk, never a teleport (never faster than 2.5 m/s between frames)', maxSpeed < 2.5, maxSpeed.toFixed(2));
   check(`door: about a second (${Math.round(took)} ms)`, took > 400 && took < 2200, String(took));
   check('door: arrived in the corridor', await tArrive(page, 'Corridor'), await tWhere(page));
   const inCorr = await page.getByTestId('walk-door').evaluateAll((els) => els.map((e) => e.dataset.room).sort());
@@ -2808,7 +2822,7 @@ async function tourDesktop(browser) {
   await page.screenshot({ path: path.join(OUT, 'tour-03-kitchen-1440-en.png') });
 
   // ── Back: walked back the way we came.
-  await page.getByTestId('walk-back').click();
+  await walkAction(page, 'walk-back');
   check('back: returns to the living room', await tArrive(page, 'Living room'), await tWhere(page));
 
   // ── The plan: secondary, and any reachable room one tap away.
@@ -2821,14 +2835,15 @@ async function tourDesktop(browser) {
   check('plan: closes after choosing', (await page.getByTestId('walk-plan').count()) === 0);
 
   // ── Room chips and the entrance, always there.
-  check('rooms: the chips list only reachable rooms (all eight here)', (await page.getByRole('navigation', { name: 'Go to a room' }).getByRole('button').count()) === 8);
-  await page.getByTestId('walk-entrance').click();
+  check('rooms: no chips row; the plan is the room switcher', (await page.getByRole('navigation', { name: 'Go to a room' }).count()) === 0);
+  await walkAction(page, 'walk-entrance');
   check('entrance: back at the entrance', await tArrive(page, 'Hall'), await tWhere(page));
 
   // ── The entrance, pressed in the middle of a doorway walk: a cut that ends the walk (never carried on from there).
   await tFace(page, 'd-entry-corr');
   await page.waitForTimeout(300);
-  // Both presses in one go, so the walk is certainly still under way when the entrance is pressed.
+  // Both presses in one go, so the walk is certainly still under way when the entrance is pressed (its More menu open).
+  await page.getByTestId('walk-more').click();
   const midWalk = await page.evaluate(() => {
     document.querySelector('[data-testid="walk-door"][data-room="r-corr"]').click();
     const walking = window.__dsScene.routing;
@@ -2856,7 +2871,7 @@ async function tourDesktop(browser) {
   check('interaction: nothing pops up while walking or hovering', (await page.getByTestId('walk-hint').count()) === 0);
 
   // ── Share the walkthrough from the walk: copy, open as a visitor, revoke, expire.
-  await page.getByTestId('walk-share').click();
+  await walkAction(page, 'walk-share');
   const dialog = page.getByRole('dialog', { name: 'Share this design' });
   await dialog.waitFor();
   check('share: the dialog opens on Walkthrough', (await dialog.getByRole('radio', { name: /Walkthrough/ }).getAttribute('aria-checked')) === 'true');
@@ -2878,7 +2893,7 @@ async function tourDesktop(browser) {
   const v = await anon.newPage();
   await wire(v, store, errors);
   await v.goto(url, { waitUntil: 'domcontentloaded' });
-  await v.getByTestId('walk-entrance').waitFor({ timeout: 30000 });
+  await v.getByTestId('walk-more').waitFor({ timeout: 30000 });
   await v.waitForTimeout(600);
   check('visitor: the link opens INSIDE the home, at the entrance', (await tWhere(v))?.includes('Hall'), await tWhere(v));
   check('visitor: eye level, ceilings on', await tScene(v, (c) => c.ceilingsShown === true && Math.abs(c.camera.position.y - 1.6) < 0.05));
@@ -2918,7 +2933,7 @@ async function tourReducedMotion(browser) {
   const page = await ctx.newPage();
   await wire(page, store, errors);
   await page.goto(`${BASE}/design-studio/${project.id}/walkthrough`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('walk-entrance').waitFor({ timeout: 30000 });
+  await page.getByTestId('walk-more').waitFor({ timeout: 30000 });
   await tFace(page, 'd-entry-corr');
   await page.waitForTimeout(150);
   await page.locator('[data-testid="walk-door"][data-room="r-corr"]').click();
@@ -2935,7 +2950,7 @@ async function tourPhone(browser, lang) {
   const page = await ctx.newPage();
   await wire(page, store, errors);
   await page.goto(`${BASE}/design-studio/${project.id}/walkthrough`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('walk-entrance').waitFor({ timeout: 30000 });
+  await page.getByTestId('walk-more').waitFor({ timeout: 30000 });
   await page.waitForTimeout(600);
   const tag = `phone 390 ${lang}`;
   check(`${tag}: starts at the entrance, eye level`, await tScene(page, (c) => { const p = c.playerState(); return c.walk.room === 'r-entry' && p.eye === 1.6; }));
@@ -2959,6 +2974,7 @@ async function tourPhone(browser, lang) {
   await page.locator('[data-testid="walk-plan-room"][data-room="r-kitchen"]').tap();
   for (let t = 0; t < 600 && (await tScene(page, (c) => c.walk.room)) !== 'r-kitchen'; t += 1) await page.waitForTimeout(100);
   check(`${tag}: plan → kitchen`, (await tScene(page, (c) => c.walk.room)) === 'r-kitchen');
+  await page.getByTestId('walk-more').tap();
   await page.getByTestId('walk-back').tap();
   for (let t = 0; t < 600 && (await tScene(page, (c) => c.walk.room)) !== 'r-corr'; t += 1) await page.waitForTimeout(100);
   check(`${tag}: back → corridor`, (await tScene(page, (c) => c.walk.room)) === 'r-corr');

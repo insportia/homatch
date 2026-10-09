@@ -64,6 +64,7 @@ import { inferredSpace, mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/li
 import { repairReading } from '../../../src/lib/designStudio/walkthrough/readingRepair.ts';
 import { carryPoint, furnishingFromReading, readFurnishing, renderTraceBrief, sceneTransform, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
 import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
+import { planFidelity, type PlanFinding } from '../../../src/lib/designStudio/walkthrough/planFidelity.ts';
 import { dressBuilt, planFromFurnishing, RENDER_WALK_RADIUS_M } from '../../../src/lib/designStudio/walkthrough/renderPlan.ts';
 import { renderGate } from '../../../src/lib/designStudio/walkthrough/renderGate.ts';
 import { NEUTRAL_LIGHTING } from '../../../src/lib/designStudio/walkthrough/renderLighting.ts';
@@ -758,7 +759,7 @@ interface Loaded { version: Row; space: SpaceModel; source: Row }
 async function loadDesign(admin: Row, row: Row): Promise<Loaded | null> {
   const { data: version } = await admin.from('ds_versions').select('id, project_id, user_id, source_id, state, design_dna, job_id, revision, style_tags').eq('id', row.design_version_id).maybeSingle();
   if (!version) return null;
-  const { data: source } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
+  const { data: source } = await admin.from('ds_spatial_sources').select('id, kind, floorplan_id, canonical, provenance').eq('id', version.source_id).maybeSingle();
   const scene = source?.canonical?.scene;
   if (!scene?.floors?.length || !Array.isArray(scene.walls)) return null;
   return { version, source, space: buildSpaceModel(scene) };
@@ -769,6 +770,23 @@ async function loadDesign(admin: Row, row: Row): Promise<Loaded | null> {
  * before the check existed — made now from what it holds (its floors, its reading's pieces, the photo reading of the
  * customer's picture). Null for a measured plan (it is the drawing, not a reading of pictures).
  */
+/**
+ * A measured plan's 3D against the plan's own reading (planFidelity.ts): openings past their wall or crossed by
+ * another wall stop the tour; enclosed flights, walls the ink barely supports and written dimensions that disagree
+ * are reported as ambiguities (never "fixed"). Null for a space read from pictures (geometryOf judges those).
+ */
+async function planFidelityOf(admin: Row, design: Loaded): Promise<PlanFinding[] | null> {
+  const src = design.source;
+  if (!src || src.kind !== 'FLOORPLAN_SCENE' || src.provenance?.inferred === true) return null;
+  const { data: plan } = src.floorplan_id
+    ? await admin.from('ds_floorplans').select('wallInk:interpretation->fusion->evidence->wallInk, checks:interpretation->understanding->constraints->checks').eq('id', src.floorplan_id).maybeSingle()
+    : { data: null };
+  return planFidelity(src.canonical.scene, {
+    wallInk: plan?.wallInk && typeof plan.wallInk === 'object' ? plan.wallInk : null,
+    dimensionChecks: Array.isArray(plan?.checks) ? plan.checks.filter((c: Row) => typeof c?.elementId === 'string' && typeof c?.residualPct === 'number' && /^R/.test(c.elementId)) : null,
+  });
+}
+
 async function geometryOf(admin: Row, design: Loaded): Promise<GeometryCheck | null> {
   const prov = design.source?.provenance;
   if (prov?.inferred !== true) return null;
@@ -868,6 +886,15 @@ async function plan(admin: Row, row: Row): Promise<void> {
     await fail(admin, row, 'GEOMETRY_UNRELIABLE', {
       timings: { ...row.timings, geometryCheck: geometry, lastFindings: [...new Set(geometry.issues.filter((x) => x.blocking).map((x) => x.code))] },
       plan_report: { final: { geometry } },
+    });
+    return;
+  }
+  // A measured plan: the 3D may not contradict the drawing (a doorway crossed by a wall, an opening past its wall).
+  const planCheck = await planFidelityOf(admin, design);
+  if (planCheck?.some((f) => f.severity === 'BLOCK')) {
+    await fail(admin, row, 'GEOMETRY_UNRELIABLE', {
+      timings: { ...row.timings, lastFindings: [...new Set(planCheck.filter((f) => f.severity === 'BLOCK').map((f) => f.code))] },
+      plan_report: { final: { planFidelity: planCheck } },
     });
     return;
   }
@@ -1034,7 +1061,10 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // READY only when it is the design too: every room has what makes it that room (a bed, the sofa, the kitchen),
   // and most of what the design shows stands in it (designGraph.ts READY_MIN_RECALL); else it fails, honestly.
   const unfaithful = promotion && (built.report.gate?.missingEssential?.length || (promotion.metrics?.importantRecall ?? 1) < READY_MIN_RECALL);
-  const failing = fidelity ? fidelity.code : built.report.gate && !built.report.gate.ok ? 'NOT_WALKABLE' : unfaithful ? 'NOT_FAITHFUL' : null;
+  // And only when a person would believe it (plausibility.ts): no wall piece standing free, a sofa that faces its
+  // television, an arrival in open floor. A tour that fails is not published; its findings are kept (final.build.gate).
+  const implausible = built.report.gate?.implausible?.length ? 'NOT_PLAUSIBLE' : null;
+  const failing = fidelity ? fidelity.code : built.report.gate && !built.report.gate.ok ? 'NOT_WALKABLE' : unfaithful ? 'NOT_FAITHFUL' : implausible;
   const referenceReport = validated.reference ? {
     mode: 'REFERENCE_LOCKED', view: validated.reference.view, roomId: validated.reference.roomId, visibleRoomIds: validated.reference.visibleRoomIds,
     camera: validated.reference.camera, cameraNote: validated.reference.cameraNote, facts: validated.reference.facts, fidelity,
@@ -1075,6 +1105,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
     build: built.report, dropped: validated.dropped, filled: validated.filled, approximations: validated.approximations, omitted: validated.omitted,
     rooms: validated.rooms.length, model: reused ? null : MODEL, offer: offered.offer, planMs: Date.now() - started, reusedFrom,
     reference: referenceReport, ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}),
+    // The plan's own ambiguities, reported with the tour (planFidelity.ts): what the drawing may say differently.
+    planFidelity: planCheck,
     // The selected design as built: its graph (for audit), what was read, the promotion verdict, and the pieces it
     // binds (the factory never swaps them for generic models).
     designGraph: graph ? {

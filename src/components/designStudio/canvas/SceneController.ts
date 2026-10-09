@@ -195,6 +195,12 @@ export interface CameraSnapshot {
 
 interface PickData { pick: PickTarget }
 
+/** Walking: the longest real time one frame may advance (s), and the step it is walked in (s). */
+const WALK_MAX_FRAME_S = 0.25;
+const WALK_STEP_S = 0.05;
+/** A walk drawn slower than this per frame (median, ms) is lightened (see watchWalkFrames). */
+const WALK_SLOW_FRAME_MS = 40;
+
 const TONE = {
   background: 0xdfe3e8,
   ground: 0xd3d8df,
@@ -249,6 +255,8 @@ export class SceneController {
   private surfaceMaterials = new Map<string, THREE.MeshStandardMaterial>();
   private ceilingMeshes: THREE.Mesh[] = [];
   private wallBodies: THREE.Mesh[] = [];
+  /** The drawn edge lines of the wall slabs: a plan's look for the overview, hidden while walking (an interior has no ink). */
+  private wallEdges: THREE.LineSegments[] = [];
   /** Everything drawn for one wall, so the cutaway can hide it as a unit. */
   private partMeshes = new Map<string, THREE.Mesh[]>();
   private partMaterials = new Map<string, PartMaterial[]>();
@@ -382,10 +390,33 @@ export class SceneController {
       moving = true;
     }
     this.updateCutaway();
-    this.draw();
+    this.draw(this.walk && this.walkLighter > 0 ? false : undefined);
+    if (this.walk && moving) this.watchWalkFrames(now);
     for (const fn of this.listeners) fn();
     if (moving) this.requestRender();
   };
+
+  /**
+   * How much lighter the walk draws than the device's tier (0 = as the tier says): a device that cannot keep
+   * walking smooth (frames slower than WALK_SLOW_FRAME_MS) drops the finishing pass, then shadows, then the
+   * extra pixel density, one step at a time, for the rest of the walk. Never heavier again while walking.
+   */
+  private walkLighter = 0;
+  private walkFrames: number[] = [];
+  private lastWalkFrame = 0;
+  private watchWalkFrames(now: number) {
+    const gap = this.lastWalkFrame ? now - this.lastWalkFrame : 0;
+    this.lastWalkFrame = now;
+    if (gap <= 0 || gap > 1000) return; // a pause (tab hidden, a dialog) says nothing about the device
+    this.walkFrames.push(gap);
+    if (this.walkFrames.length < 24) return;
+    const sorted = [...this.walkFrames].sort((a, b) => a - b);
+    this.walkFrames = [];
+    if (sorted[sorted.length >> 1] <= WALK_SLOW_FRAME_MS || this.walkLighter >= 3) return;
+    this.walkLighter += 1;
+    if (this.walkLighter >= 2) this.sun.castShadow = false;
+    if (this.walkLighter >= 3 && this.renderer.getPixelRatio() > 1) { this.renderer.setPixelRatio(1); this.resize(); }
+  }
 
   /**
    * THE CUTAWAY. A wall standing between the camera and what it looks at is
@@ -561,6 +592,7 @@ export class SceneController {
     this.surfaceMaterials.clear();
     this.ceilingMeshes = [];
     this.wallBodies = [];
+    this.wallEdges = [];
     this.wallParts.clear();
     this.cutawayKey = '';
     this.space = space;
@@ -683,7 +715,9 @@ export class SceneController {
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box, 30), edgeMat);
         edges.position.copy(mesh.position);
         edges.rotation.copy(mesh.rotation);
+        edges.visible = !this.walk;
         this.spaceGroup.add(edges);
+        this.wallEdges.push(edges);
       }
 
       for (const seg of wall.segments) {
@@ -1005,7 +1039,8 @@ export class SceneController {
 
   setHover(target: PickTarget | null) {
     this.dropOutline(this.hoverOutline);
-    this.hoverOutline = this.outlineFor(target, TONE.hover);
+    // Walking is not editing: nothing is outlined under the pointer (an outline drew through walls, too).
+    this.hoverOutline = this.walk ? null : this.outlineFor(target, TONE.hover);
     if (this.hoverOutline) this.overlayGroup.add(this.hoverOutline);
     this.requestRender();
   }
@@ -2005,12 +2040,8 @@ export class SceneController {
     this.aimQuiet = quiet;
     this.aimed = t && this.hintFor(t) ? t : null;
     if (this.aimBox) { this.overlayGroup.remove(this.aimBox); this.aimBox.geometry.dispose(); (this.aimBox.material as THREE.Material).dispose(); this.aimBox = null; }
-    if (this.aimed) {
-      this.aimBox = new THREE.Box3Helper(new THREE.Box3().setFromObject(this.aimed.node), new THREE.Color(TONE.select));
-      (this.aimBox.material as THREE.LineBasicMaterial).transparent = true;
-      (this.aimBox.material as THREE.LineBasicMaterial).opacity = 0.55;
-      this.overlayGroup.add(this.aimBox);
-    }
+    // No box is drawn round what is aimed at: the crosshair turns gold and the hint names it. A wireframe cube
+    // in a walked home reads as a bug, not a cue (and its bounds included the contact shadow, so it was too big).
     this.renderer.domElement.style.cursor = this.aimed ? 'pointer' : (this.walk ? 'crosshair' : '');
     // Quiet (a touch visitor merely walking near it): the highlight only — no card, no buttons, no action.
     this.onAimChange?.(quiet ? null : this.hintFor(this.aimed));
@@ -2674,8 +2705,21 @@ export class SceneController {
     this.camera.updateProjectionMatrix();
     this.onAimChange = on.onAim;
     this.lastPointer = null;
-    // Doors start as the design shows them: closed doors block from the first step.
+    // Doors start as the design shows them: closed doors block from the first step. A balcony door is the
+    // exception: a tour is planned (and checked) with every doorway open, so it opens as the visitor arrives —
+    // a closed glass door must never be what keeps someone off the balcony.
     for (const e of this.living.all()) if (e.doorId) setDoorClosed(model, e.doorId, !!e.machine.states.get(e.target ?? e.state)?.blocks);
+    for (const e of this.living.all()) {
+      if (e.doorId && e.machine.role === 'BALCONY_DOOR' && model.closedDoors.has(e.doorId)) this.living.act(e.key, 'OPEN');
+    }
+    for (const edges of this.wallEdges) edges.visible = false;
+    // A tour opens in daylight: an evening design read as a dim, muddy interior on arrival. The design's own time
+    // is one tap away (Time of day), and leaving the walk restores it.
+    const designed = this.designLighting?.timeOfDay;
+    if (!this.envOverride && (designed === 'EVENING' || designed === 'NIGHT')) this.setEnvironment('DAY', false);
+    this.walkLighter = 0;
+    this.walkFrames = [];
+    this.lastWalkFrame = 0;
     this.followDaylight(this.environment);
     this.renderer.domElement.style.cursor = 'crosshair';
     this.updateHandle();
@@ -2724,6 +2768,13 @@ export class SceneController {
     this.onLockChange = undefined;
     this.onPostureChange = undefined;
     if (this.envOverride) this.setEnvironment(null, false);
+    for (const edges of this.wallEdges) edges.visible = true;
+    if (this.walkLighter) {
+      this.walkLighter = 0;
+      this.sun.castShadow = this.quality.shadows;
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.maxPixelRatio));
+      this.resize();
+    }
     this.renderer.domElement.style.cursor = '';
     this.restore(w.saved, false);
   }
@@ -3085,8 +3136,22 @@ export class SceneController {
   /** One frame of walking. Returns true while the body is moving or input is active (keep drawing). */
   private stepWalk(now: number): boolean {
     const w = this.walk!;
-    const dt = Math.min(0.05, Math.max(0, (now - w.last) / 1000));
+    // The real time since the last frame (up to a quarter second), walked in steps of at most 50 ms: a device that
+    // draws few frames a second still walks at a person's pace, and no step is long enough to pass through a wall.
+    let left = Math.min(WALK_MAX_FRAME_S, Math.max(0, (now - w.last) / 1000));
     w.last = now;
+    let busy = false;
+    for (;;) {
+      const dt = Math.min(WALK_STEP_S, left);
+      left -= dt;
+      const more = this.stepWalkOnce(now, dt);
+      busy = busy || more;
+      if (!more || left <= 1e-4 || !this.walk || this.walk.glide) return busy;
+    }
+  }
+
+  private stepWalkOnce(now: number, dt: number): boolean {
+    const w = this.walk!;
     if (w.glide) {
       const g = w.glide;
       const t = g.duration <= 0 ? 1 : Math.min(1, (now - g.start) / g.duration);

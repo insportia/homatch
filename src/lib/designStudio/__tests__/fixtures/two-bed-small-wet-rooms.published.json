@@ -1,0 +1,401 @@
+{
+ "note": "The furniture of the tour published from this plan before the plausibility gate (positions only).",
+ "objects": [
+  {
+   "instanceId": "p1",
+   "assetId": "dev/bed-double",
+   "roomId": "R2",
+   "position": {
+    "x": 1.079,
+    "y": 0,
+    "z": 11.463
+   },
+   "rotationY": 3.141593,
+   "shape": {
+    "form": "UPHOLSTERED",
+    "depthM": 2.05,
+    "widthM": 1.6,
+    "heightM": 1.25,
+    "secondary": "#88817e"
+   }
+  },
+  {
+   "instanceId": "p2",
+   "assetId": "dev/wardrobe-3",
+   "roomId": "R2",
+   "position": {
+    "x": 1.111,
+    "y": 0,
+    "z": 9.023
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": "BUILT_IN",
+    "depthM": 0.6,
+    "widthM": 1.8,
+    "heightM": 2.5,
+    "secondary": "#a9824b"
+   }
+  },
+  {
+   "instanceId": "p5",
+   "assetId": "dev/rug-large",
+   "roomId": "R2",
+   "position": {
+    "x": 1.322,
+    "y": 0,
+    "z": 11.563
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": "BORDERED",
+    "depthM": 1.7,
+    "widthM": 2.4,
+    "heightM": 0.01,
+    "secondary": "#afb3bd"
+   }
+  },
+  {
+   "instanceId": "p6",
+   "assetId": "dev/bed-double",
+   "roomId": "R3",
+   "position": {
+    "x": 5.073,
+    "y": 0,
+    "z": 11.473
+   },
+   "rotationY": 3.141593,
+   "shape": {
+    "form": "UPHOLSTERED",
+    "depthM": 2.05,
+    "widthM": 1.6,
+    "heightM": 1.25,
+    "secondary": "#7d756f"
+   }
+  },
+  {
+   "instanceId": "p7",
+   "assetId": "dev/wardrobe-3",
+   "roomId": "R3",
+   "position": {
+    "x": 3.563,
+    "y": 0,
+    "z": 10.837
+   },
+   "rotationY": -1.570796,
+   "shape": {
+    "form": "BUILT_IN",
+    "depthM": 0.6,
+    "widthM": 1.8,
+    "heightM": 2.5,
+    "secondary": "#a9824b"
+   }
+  },
+  {
+   "instanceId": "p8",
+   "assetId": "dev/plant-large",
+   "roomId": "R3",
+   "position": {
+    "x": 4.614,
+    "y": 0,
+    "z": 10.031
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": null,
+    "depthM": 0.55,
+    "widthM": 0.55,
+    "heightM": 1.3,
+    "secondary": "#a9785d"
+   }
+  },
+  {
+   "instanceId": "p9",
+   "assetId": "dev/rug-large",
+   "roomId": "R3",
+   "position": {
+    "x": 4.733,
+    "y": 0,
+    "z": 11.463
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": "BORDERED",
+    "depthM": 1.7,
+    "widthM": 2.4,
+    "heightM": 0.01,
+    "secondary": "#9a989b"
+   }
+  },
+  {
+   "instanceId": "p10",
+   "assetId": "dev/vanity",
+   "roomId": "R4",
+   "position": {
+    "x": 0.561,
+    "y": 0,
+    "z": 8.319
+   },
+   "rotationY": -3.141593,
+   "shape": {
+    "form": "FLUTED",
+    "depthM": 0.48,
+    "widthM": 0.8,
+    "heightM": 0.85,
+    "secondary": "#c9b79e"
+   }
+  },
+  {
+   "instanceId": "p11",
+   "assetId": "dev/toilet",
+   "roomId": "R6",
+   "position": {
+    "x": 1.571,
+    "y": 0,
+    "z": 6.432
+   },
+   "rotationY": 4.712389,
+   "shape": {
+    "form": null,
+    "depthM": 0.583,
+    "widthM": 0.357,
+    "heightM": 0.752,
+    "secondary": "#413528"
+   }
+  },
+  {
+   "instanceId": "p12",
+   "assetId": "dev/sofa-3",
+   "roomId": "R7",
+   "position": {
+    "x": 4.485,
+    "y": 0,
+    "z": 7.245
+   },
+   "rotationY": 3.141593,
+   "shape": {
+    "form": null,
+    "depthM": 0.95,
+    "widthM": 2.2,
+    "heightM": 0.82,
+    "secondary": "#99918a"
+   }
+  },
+  {
+   "instanceId": "p13",
+   "assetId": "dev/tv-unit",
+   "roomId": "R7",
+   "position": {
+    "x": 5.686,
+    "y": 0,
+    "z": 5.846
+   },
+   "rotationY": 1.570796,
+   "shape": {
+    "form": "TV_WALL",
+    "depthM": 0.45,
+    "widthM": 1.8,
+    "heightM": 2.42,
+    "secondary": "#654c37"
+   }
+  },
+  {
+   "instanceId": "p15",
+   "assetId": "dev/armchair",
+   "roomId": "R7",
+   "position": {
+    "x": 5.025,
+    "y": 0,
+    "z": 6.02
+   },
+   "rotationY": 1.570796,
+   "shape": {
+    "form": "CLUB",
+    "depthM": 0.85,
+    "widthM": 0.85,
+    "heightM": 0.85,
+    "secondary": "#897d73"
+   }
+  },
+  {
+   "instanceId": "p17",
+   "assetId": "dev/plant-large",
+   "roomId": "R7",
+   "position": {
+    "x": 3.33,
+    "y": 0,
+    "z": 4.763
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": null,
+    "depthM": 0.55,
+    "widthM": 0.55,
+    "heightM": 1.3,
+    "secondary": "#78787b"
+   }
+  },
+  {
+   "instanceId": "p18",
+   "assetId": "dev/rug-large",
+   "roomId": "R7",
+   "position": {
+    "x": 4.356,
+    "y": 0,
+    "z": 5.946
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": "BORDERED",
+    "depthM": 1.7,
+    "widthM": 2.4,
+    "heightM": 0.01,
+    "secondary": "#72665a"
+   }
+  },
+  {
+   "instanceId": "p19",
+   "assetId": "dev/kitchen-run",
+   "roomId": "R8",
+   "position": {
+    "x": 0.459,
+    "y": 0,
+    "z": 2.083
+   },
+   "rotationY": 4.712389,
+   "shape": {
+    "form": "SHAKER",
+    "depthM": 0.62,
+    "widthM": 2.4,
+    "heightM": 2.3,
+    "secondary": "#c9b79e"
+   }
+  },
+  {
+   "instanceId": "p20",
+   "assetId": "dev/kitchen-run",
+   "roomId": "R8",
+   "position": {
+    "x": 2.5,
+    "y": 0,
+    "z": 1.382
+   },
+   "rotationY": 1.570796,
+   "shape": {
+    "form": "SHAKER",
+    "depthM": 0.62,
+    "widthM": 2.4,
+    "heightM": 2.3,
+    "secondary": "#c9b79e"
+   }
+  },
+  {
+   "instanceId": "p21",
+   "assetId": "dev/dining-table-4",
+   "roomId": "R8",
+   "position": {
+    "x": 1.472,
+    "y": 0,
+    "z": 1.158
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": null,
+    "depthM": 0.85,
+    "widthM": 1.4,
+    "heightM": 0.75,
+    "secondary": "#271f14"
+   }
+  },
+  {
+   "instanceId": "p22",
+   "assetId": "dev/dining-chair",
+   "roomId": "R8",
+   "position": {
+    "x": 1.249,
+    "y": 0,
+    "z": 1.723
+   },
+   "rotationY": 3.141593,
+   "shape": {
+    "form": null,
+    "depthM": 0.5,
+    "widthM": 0.45,
+    "heightM": 0.85,
+    "secondary": "#3b2f28"
+   }
+  },
+  {
+   "instanceId": "p23",
+   "assetId": "dev/dining-chair",
+   "roomId": "R8",
+   "position": {
+    "x": 1.949,
+    "y": 0,
+    "z": 1.723
+   },
+   "rotationY": 3.141593,
+   "shape": {
+    "form": null,
+    "depthM": 0.5,
+    "widthM": 0.45,
+    "heightM": 0.85,
+    "secondary": "#6b5e53"
+   }
+  },
+  {
+   "instanceId": "p24",
+   "assetId": "dev/dining-chair",
+   "roomId": "R8",
+   "position": {
+    "x": 1.249,
+    "y": 0,
+    "z": 0.363
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": null,
+    "depthM": 0.5,
+    "widthM": 0.45,
+    "heightM": 0.85,
+    "secondary": "#443730"
+   }
+  },
+  {
+   "instanceId": "p25",
+   "assetId": "dev/armchair",
+   "roomId": "R9",
+   "position": {
+    "x": 4.46,
+    "y": 0,
+    "z": 1.608
+   },
+   "rotationY": 1.570796,
+   "shape": {
+    "form": "CLUB",
+    "depthM": 0.85,
+    "widthM": 0.85,
+    "heightM": 0.85,
+    "secondary": "#7e7267"
+   }
+  },
+  {
+   "instanceId": "p27",
+   "assetId": "dev/side-table",
+   "roomId": "R9",
+   "position": {
+    "x": 3.66,
+    "y": 0,
+    "z": 1.608
+   },
+   "rotationY": 0,
+   "shape": {
+    "form": null,
+    "depthM": 0.45,
+    "widthM": 0.45,
+    "heightM": 0.55,
+    "secondary": "#7f7670"
+   }
+  }
+ ]
+}

@@ -190,7 +190,9 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
       ) : walk.state === 'FAILED' || walk.state === 'CANCELLED' ? (
         <div className="mt-4" role="alert" data-testid="walk-failed">
           <p className="text-[15px] font-semibold">{t('dsx_walk_failed')}</p>
-          <p className="mt-1 text-[14px] text-[#5B6472]" data-testid="walk-failed-reason">{t(walk.error === 'GEOMETRY_UNRELIABLE' ? 'dsx_walk_failed_geometry' : walk.retryable ? 'dsx_walk_failed_retry' : 'dsx_walk_failed_final')}</p>
+          <p className="mt-1 text-[14px] text-[#5B6472]" data-testid="walk-failed-reason">{t(walk.error === 'GEOMETRY_UNRELIABLE' ? 'dsx_walk_failed_geometry'
+            : walk.error === 'NOT_PLAUSIBLE' || walk.error === 'NOT_WALKABLE' || walk.error === 'NOT_FAITHFUL' ? 'dsx_walk_failed_quality'
+            : walk.retryable ? 'dsx_walk_failed_retry' : 'dsx_walk_failed_final')}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {walk.error === 'GEOMETRY_UNRELIABLE' ? null : walk.retryable ? (
               <button type="button" onClick={() => { void priced(retry); }} disabled={asking} className={DARK} data-testid="walk-retry"><RotateCcw className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_retry')}</button>

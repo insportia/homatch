@@ -372,9 +372,9 @@ test('a WC or wash room too small to have floor clear of its door is still reach
   const space = buildSpaceModel(scene);
   assert.deepEqual([...reachableRooms(space, buildWalkModel(space, [], new Map()))].sort(), ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']);
   const src = fs.readFileSync(new URL('../walkthrough/build.ts', import.meta.url), 'utf8');
-  // The last word: the piece on the way of a cut-off room is moved anywhere clean in its room (its lock released),
-  // and removed only when it fits nowhere — a picture's piece included.
-  assert.match(src, /for \(const pose of cleanPoses\(space, assets, others, home, victim\.asset, 8\)\)/);
-  assert.match(src, /victim\.lock = undefined;/);
-  assert.match(src, /if \(!moved\) drop\(victim, 'DOOR_CLEARED'\);/);
+  // The last word: the smallest push first, then a move anywhere clean in the room (its lock released), then a
+  // removal — and never a removal that opens nothing.
+  assert.match(src, /if \(pushAside\(way, better, FINAL_PUSH_WALKS\)\) continue;/);
+  assert.match(src, /p\.box = box; p\.lock = undefined; relocated \+= 1;/);
+  assert.match(src, /if \(!best \|\| best\.n <= now\) break;/);
 });

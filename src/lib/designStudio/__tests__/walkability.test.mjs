@@ -142,7 +142,7 @@ test('planning rules: one coherent solution per room, a rank for what gives way,
   // with one, the fidelity gate (which puts NOT_WALKABLE first) does; a failure ends in a replan or fail(), and
   // the version is only saved after it.
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(route, /const failing = fidelity \? fidelity\.code : built\.report\.gate && !built\.report\.gate\.ok \? 'NOT_WALKABLE' : null;/);
+  assert.match(route, /const failing = fidelity \? fidelity\.code : built\.report\.gate && !built\.report\.gate\.ok \? 'NOT_WALKABLE' : unfaithful \? 'NOT_FAITHFUL' : null;/);
   const gateAt = route.indexOf('const failing = fidelity');
   const failAt = route.indexOf('await fail(admin, row, failing', gateAt);
   const saveAt = route.indexOf("const walkId = await uuidFrom(`ds-walk:${row.id}:version`)", gateAt);

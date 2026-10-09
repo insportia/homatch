@@ -50,7 +50,24 @@ export interface WalkModel {
 }
 
 /** The solid parts of every wall, and every piece in the way. */
+// A space's walls, doorways and flights never change while it is walked: built once per space, shared by every
+// model of it (so their bucket index and the static free-space answers below are built once too).
+const fixedOf = new WeakMap<SpaceModel, { walls: Obb[]; doorways: Map<string, Obb>; stairs: Point[][] }>();
+
 export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], assets: Map<string, CatalogAsset>): WalkModel {
+  let fixed = fixedOf.get(space);
+  if (!fixed) { fixed = fixedParts(space); fixedOf.set(space, fixed); }
+  const furniture: Obb[] = [];
+  for (const o of objects) {
+    const own = assets.get(o.assetId);
+    const a = own ? shapedAsset(own, o) : undefined;
+    if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M || softPiece(a)) continue;
+    furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
+  }
+  return { space, walls: fixed.walls, furniture, doors: space.doors.map((d) => d.centre), stairs: fixed.stairs, doorways: new Map(fixed.doorways), closedDoors: new Set(), radius: BODY_RADIUS_M };
+}
+
+function fixedParts(space: SpaceModel): { walls: Obb[]; doorways: Map<string, Obb>; stairs: Point[][] } {
   const walls: Obb[] = [];
   const doorways = new Map<string, Obb>();
   for (const wall of space.walls) {
@@ -88,16 +105,8 @@ export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], ass
     }
   }
 
-  const furniture: Obb[] = [];
-  for (const o of objects) {
-    const own = assets.get(o.assetId);
-    const a = own ? shapedAsset(own, o) : undefined;
-    if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M || softPiece(a)) continue;
-    furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
-  }
-
   const stairs = (space.stairs ?? []).map((st) => st.polygon).filter((p) => p.length >= 3);
-  return { space, walls, furniture, doors: space.doors.map((d) => d.centre), stairs, doorways, closedDoors: new Set(), radius: BODY_RADIUS_M };
+  return { walls, doorways, stairs };
 }
 
 /**
@@ -194,11 +203,27 @@ function blockedBy(list: Obb[], p: Point, radius: number): boolean {
   return false;
 }
 
+// The space's own answer at a point (in the space, clear of walls and flights) for a radius: it never changes while
+// the space is walked, so each grid point is measured once per radius, however many furniture trials ask it.
+const staticFree = new WeakMap<Obb[], Map<number, Map<number, boolean>>>();
+const pointKey = (p: Point) => Math.round(p.x * 1000) * 4194304 + Math.round(p.y * 1000);
+function clearOfSpace(model: WalkModel, p: Point): boolean {
+  let byRadius = staticFree.get(model.walls);
+  if (!byRadius) { byRadius = new Map(); staticFree.set(model.walls, byRadius); }
+  let cache = byRadius.get(model.radius);
+  if (!cache) { cache = new Map(); byRadius.set(model.radius, cache); }
+  const k = pointKey(p);
+  const known = cache.get(k);
+  if (known !== undefined) return known;
+  let ok = inSpace(model, p) && !blockedBy(model.walls, p, model.radius);
+  if (ok) for (const s of model.stairs ?? []) if (distanceToPolygon(p, s) < model.radius) { ok = false; break; }
+  cache.set(k, ok);
+  return ok;
+}
+
 export function isFree(model: WalkModel, p: Point): boolean {
-  if (!inSpace(model, p)) return false;
-  if (blockedBy(model.walls, p, model.radius)) return false;
+  if (!clearOfSpace(model, p)) return false;
   if (blockedBy(model.furniture, p, model.radius)) return false;
-  for (const s of model.stairs ?? []) if (distanceToPolygon(p, s) < model.radius) return false;
   for (const id of model.closedDoors) {
     const leaf = model.doorways.get(id);
     if (leaf && distanceToObb(p, leaf) < model.radius) return false;

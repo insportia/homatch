@@ -299,11 +299,16 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       const options: Array<NonNullable<ReturnType<typeof findPose>> & { scale?: number; relocated?: boolean }> = isLocked(item)
         ? lockedOptions(space, assets, working.objects, room, own, item, 8, !!input.anchorsAsSeen)
         : [findPose(space, assets, working.objects, room, asset, item)].filter((x): x is NonNullable<ReturnType<typeof findPose>> => !!x);
-      // The room's essential piece that cannot stand where it was seen stands at the room's best free place
-      // instead (doors and passages kept clear by the same search), never left out while its room has space.
-      if (isLocked(item) && isEssential(own)) {
-        const free = findPose(space, assets, working.objects, room, asset, { ...item, pose: null, lock: null });
-        if (free) options.push({ ...free, relocated: true });
+      // A picture's piece that cannot stand where it was seen stands at the room's best free place instead (doors
+      // and passages kept clear by the same search): the room keeps what the picture shows while it has space.
+      if (isLocked(item)) {
+        // At its own size, else a little smaller (a 0.8 m shower tray where a 0.9 m one does not fit), never less
+        // than FALLBACK_SCALES allows.
+        for (const k of FALLBACK_SCALES) {
+          const sized = shapedAsset(own, { shape: itemShape(own, item, (item.scale || 1) * k) });
+          const free = findPose(space, assets, working.objects, room, sized, { ...item, pose: null, lock: null });
+          if (free) { options.push({ ...free, relocated: true, ...(k !== 1 ? { scale: (item.scale || 1) * k } : {}) }); break; }
+        }
       }
       if (!options.length) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
       let found: (typeof options)[number] | null = null;
@@ -325,7 +330,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       n += 1;
       entry.instanceId = object.instanceId;
       entry.outcome = item.pose ? (found.kept && !found.relocated ? 'PLANNED' : 'CORRECTED') : 'PLACED';
-      entry.reason = found.relocated ? 'ESSENTIAL_RELOCATED' : found.kept || !item.pose ? null : found.why;
+      entry.reason = found.relocated ? (isEssential(own) ? 'ESSENTIAL_RELOCATED' : 'RELOCATED_IN_ROOM') : found.kept || !item.pose ? null : found.why;
       entry.movedM = found.movedM;
       entry.warnings = found.verdict === 'TIGHT' ? ['TIGHT_ACCESS'] : [];
       const lock = isLocked(item) && item.lock && item.pose && !found.relocated
@@ -490,8 +495,10 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
    * clears it (never through a wall, never into another piece, the way it faces kept); only when no push does,
    * it is made a little smaller where it stands. Each step must clear part of the way and lose no room.
    */
-  const pushAside = (route: Point[], fixes: (objects: ObjectInstance[]) => boolean): boolean => {
+  const pushAside = (route: Point[], fixes: (objects: ObjectInstance[]) => boolean, budget = Infinity): boolean => {
     if (!route.length) return false;
+    // How many trial walks this call may take (each walks the home).
+    let walks = 0;
     const m = comfortModel(working.objects);
     // Only what furniture blocks (a way squeezed past a wall's end stays as the wall leaves it).
     const bare = comfortModel([]);
@@ -508,7 +515,8 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       if (!table) return [p];
       return [table, ...standing().filter((x) => x !== table && isSeat(x.asset) && tableOf(x) === table)];
     };
-    for (const { p, q } of pieces.slice(0, 6)) {
+    // Every piece is pushed before any is made smaller (a sofa slid 5 cm beats an armchair shrunk).
+    for (const resizing of [false, true]) for (const { p, q } of pieces.slice(0, 6)) {
       const room = rooms.get(p.roomId);
       if (!room) continue;
       for (const group of p.lock ? [[p], setOf(p)] : [[p]]) {
@@ -544,6 +552,16 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
             if (seenIssues(space, evaluateInWorld(world, asset, at, obj!.rotationY), asset, at, obj!.rotationY).length) return null;
             moved.push({ ...obj!, position: { x: r3(at.x), y: 0, z: r3(at.y) }, ...(shape ? { shape } : {}) });
           }
+          // A push that frees none of the blocked points this piece narrowed cannot be the fix: no walk is needed.
+          const leadMoved = moved.find((o) => o.instanceId === lead.instanceId);
+          const leadAsset = leadMoved ? shapedAsset(leadOwn!, leadMoved) : null;
+          if (leadMoved && leadAsset) {
+            const box = footprint(leadAsset, { x: leadMoved.position.x, y: leadMoved.position.z }, leadMoved.rotationY);
+            const narrowed = blocked.filter((b) => distanceToObb(b, p.box) < walkRadius + 0.02);
+            if (narrowed.length && narrowed.every((b) => distanceToObb(b, box) < walkRadius + 0.02)) return null;
+          }
+          if (walks >= budget) return null;
+          walks += 1;
           return fixes([...others, ...moved]) ? moved : null;
         };
         const accept = (moved: ObjectInstance[], k: number | null) => {
@@ -563,11 +581,14 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
           relocated += 1;
           return true;
         };
-        for (const step of PUSH_STEPS_M) {
-          for (const d of dirs) {
-            const moved = tryMove({ x: d.x * step, y: d.y * step }, null);
-            if (moved) return accept(moved, null);
+        if (!resizing) {
+          for (const step of PUSH_STEPS_M) {
+            for (const d of dirs) {
+              const moved = tryMove({ x: d.x * step, y: d.y * step }, null);
+              if (moved) return accept(moved, null);
+            }
           }
+          continue;
         }
         if (group.length > 1) continue;
         for (const k of RESIZE_STEPS.filter((x) => x < already - 1e-6)) {
@@ -662,15 +683,22 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
   }
 
-  // ── The guarantee, for any plan and any picture: furniture never wins over a door. A room the bare plan reaches
-  //    that is still cut off, or a trap still there, has the piece standing on its way moved anywhere clean in its
-  //    room off that way — a picture's locked piece included — and only when it fits nowhere, removed. Sanitary
-  //    fittings and the kitchen (fixed to their walls) stay; the room's essential piece is the last to give way.
-  for (let guard = 0; guard < 12 && start; guard += 1) {
+  // ── The guarantee, for any plan and any picture: furniture never wins over a door. While a room the bare plan
+  //    reaches is cut off (or a trap remains), the piece whose move reopens it is moved — anywhere clean in its own
+  //    room, a picture's locked piece included — the fewest and least important first. Only when no single move
+  //    reopens it is a piece removed: a non-essential one whose removal does, else the least important near the way.
+  //    Sanitary fittings and the kitchen (fixed to their walls) stay; a room's essential piece is the last to go.
+  const repairedNow = (p: typeof placedOrder[number], reason: string) => {
+    if (p.report.outcome === 'PLANNED') p.report.outcome = 'CORRECTED';
+    p.report.reason = reason;
+    if (!report.circulation.repaired.includes(p.roomId)) report.circulation.repaired.push(p.roomId);
+  };
+  for (let guard = 0; guard < 10 && start; guard += 1) {
     const lost = lostRooms(working.objects);
     const traps = lost.length ? [] : trapsOf(working.objects);
     if (!lost.length && !traps.length) break;
-    const where = lost[0] ?? traps[0].roomId;
+    // The nearest cut-off room first: a room reached through another cut-off room opens with it.
+    const where = lost.length ? [...lost].sort((a, b) => doorHops(space, start, a) - doorHops(space, start, b) || (a < b ? -1 : 1))[0] : traps[0].roomId;
     const room = space.rooms.find((r) => r.id === where);
     let way: Point[] = traps[0]?.cells ?? [];
     if (lost.length && room) {
@@ -679,34 +707,75 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       way = [...(route ? routePoints([start, ...route]) : []), ...doorSides(space).map((d) => d.p).filter((q) => pointInPolygon(q, room.polygon))];
     }
     if (!way.length) break;
-    const victim = standing().filter((p) => p.rank < 5)
+    // Asked about the cut-off room alone (one flood each); a room the change loses is found on the next round.
+    const better = (objects: ObjectInstance[]) => lost.length
+      ? !lostRooms(objects, where).length
+      : trapsOf(objects, where).reduce((a, x) => a + x.areaM2, 0) < traps.reduce((a, x) => a + (x.roomId === where ? x.areaM2 : 0), 0) - 0.05 && !lostRooms(objects).length;
+    // The pieces near the way: least important first, essentials last, then nearest.
+    const near = standing().filter((p) => p.rank < 5)
       .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
-      .filter((e) => e.d < walkRadius + 0.05)
-      .sort((a, b) => Number(a.p.essential) - Number(b.p.essential) || a.d - b.d || a.p.rank - b.p.rank)[0]?.p;
-    if (!victim) break;
-    const obj = objectOf(victim);
-    const home = rooms.get(victim.roomId);
-    let moved = false;
-    if (obj && home) {
-      const others = working.objects.filter((o) => o.instanceId !== victim.instanceId);
-      for (const pose of cleanPoses(space, assets, others, home, victim.asset, 8)) {
-        const box = footprint(victim.asset, pose.at, pose.rotation);
-        if (way.some((q) => distanceToObb(q, box) < walkRadius + 0.05)) continue;
+      .filter((e) => e.d < walkRadius + 0.35)
+      .sort((a, b) => Number(a.p.essential) - Number(b.p.essential) || a.p.rank - b.p.rank || a.d - b.d).map((e) => e.p).slice(0, 8);
+    if (!near.length) break;
+    // 1. The smallest push of what narrows the way (a sofa slid 5 cm off the walk beats a sofa elsewhere).
+    if (pushAside(way, better, FINAL_PUSH_WALKS)) continue;
+    // 2. One piece moved (the nearest acceptable pose in its room) that reopens the way.
+    let done = false;
+    for (const p of near) {
+      const obj = objectOf(p); const home = rooms.get(p.roomId);
+      if (!obj || !home) continue;
+      const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+      const poses = cleanPoses(space, assets, others, home, p.asset, 12)
+        .sort((a, b) => Math.hypot(a.at.x - obj.position.x, a.at.y - obj.position.z) - Math.hypot(b.at.x - obj.position.x, b.at.y - obj.position.z));
+      for (const pose of poses) {
+        // Still standing on the way: cannot be the fix (no walk is needed to know).
+        const at = footprint(p.asset, pose.at, pose.rotation);
+        if (way.some((q) => distanceToObb(q, at) < walkRadius)) continue;
         const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
-        const trial = [...others, next];
-        if (lostRooms(trial).length > lost.length) continue;
-        working = { ...working, objects: working.objects.map((o) => (o.instanceId === victim.instanceId ? next : o)) };
-        victim.report.movedM = r3((victim.report.movedM ?? 0) + Math.hypot(box.cx - victim.box.cx, box.cy - victim.box.cy));
-        victim.box = box;
-        victim.lock = undefined;
-        if (victim.report.outcome === 'PLANNED') victim.report.outcome = 'CORRECTED';
-        victim.report.reason = 'DOOR_CLEARED';
-        relocated += 1;
-        moved = true;
-        break;
+        if (!better([...others, next])) continue;
+        working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
+        const box = footprint(p.asset, pose.at, pose.rotation);
+        p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(box.cx - p.box.cx, box.cy - p.box.cy));
+        p.box = box; p.lock = undefined; relocated += 1;
+        repairedNow(p, 'DOOR_CLEARED');
+        done = true; break;
       }
+      if (done) break;
     }
-    if (!moved) drop(victim, 'DOOR_CLEARED');
+    if (done) continue;
+    // 3. One non-essential piece removed that reopens it.
+    const removable = near.filter((p) => !p.essential);
+    const alone = removable.find((p) => better(working.objects.filter((o) => o.instanceId !== p.instanceId)));
+    if (alone) { drop(alone, 'DOOR_CLEARED'); repairedNow(alone, 'DOOR_CLEARED'); continue; }
+    // 4. One non-essential piece removed together with the smallest push of what is left (an armchair in the way
+    //    and the sofa slid a few centimetres, rather than the coffee table and both armchairs).
+    let paired = false;
+    // The three pieces standing nearest the way (bounded: each trial walks the home).
+    const nearest = [...removable].sort((a, b) => Math.min(...way.map((q) => distanceToObb(q, a.box))) - Math.min(...way.map((q) => distanceToObb(q, b.box)))).slice(0, 3);
+    for (const p of nearest) {
+      const before = working;
+      const outcome = p.report.outcome;
+      working = { ...working, objects: working.objects.filter((o) => o.instanceId !== p.instanceId) };
+      p.report.outcome = 'DROPPED';
+      if (pushAside(way, better, FINAL_PUSH_WALKS)) {
+        p.report.reason = 'DOOR_CLEARED'; p.report.instanceId = null;
+        if (!report.circulation.repaired.includes(p.roomId)) report.circulation.repaired.push(p.roomId);
+        paired = true; break;
+      }
+      p.report.outcome = outcome;
+      working = before;
+    }
+    if (paired) continue;
+    // 5. Nothing smaller does: of the pieces nearest the way, the one whose removal opens the most floor to the walk
+    //    goes (ties: the least important), and the search goes on.
+    //    A piece whose removal opens nothing is never removed: then the room stays cut off and the gate says so.
+    const opened = (objects: ObjectInstance[]) => walkableFrom(comfortModel(objects), start).size;
+    const now = opened(working.objects);
+    const best = nearest.map((p) => ({ p, n: opened(working.objects.filter((o) => o.instanceId !== p.instanceId)) }))
+      .sort((a, b) => b.n - a.n || a.p.rank - b.p.rank)[0];
+    if (!best || best.n <= now) break;
+    const victim = best.p;
+    drop(victim, 'DOOR_CLEARED');
     if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
   }
 
@@ -877,6 +946,10 @@ const PUSH_STEPS_M = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6];
 const RESIZE_STEPS = [0.92, 0.85];
 /** The body a too-tight way is looked for with (the gaps furniture leaves that a move could widen). */
 const SQUEEZE_RADIUS_M = 0.1;
+/** A picture's piece with no place where it was seen is placed elsewhere in its room at these sizes, in turn. */
+const FALLBACK_SCALES = [1, 0.9, 0.85];
+/** Trial walks one push of the final door pass may take (the plan step has one edge invocation's CPU). */
+const FINAL_PUSH_WALKS = 20;
 /** How far a picture's piece may be moved, last, to open a required route (recorded as CIRCULATION_MOVED). */
 const WIDE_SHIFT_M = 1.0;
 
@@ -1097,7 +1170,7 @@ export function reachableRooms(space: SpaceModel, model: WalkModel, opts: { star
  * corner rule the route finder walks (so a room check is a lookup, not a search). A point counts as reached when
  * a reached cell is within one cell of it, as a route's goal does.
  */
-function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Point) => boolean {
+function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): ((p: Point) => boolean) & { size: number } {
   const G = 0.15;
   // Cells by number (i, j within ±2^15 cells: 4.9 km): no strings in the hot loop.
   const K = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
@@ -1112,6 +1185,11 @@ function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Poi
     return v;
   };
   const seen = new Set<number>([K(0, 0)]);
+  const reached = (p: Point) => {
+    const ci = Math.round((p.x - start.x) / G); const cj = Math.round((p.y - start.y) / G);
+    for (let di = -1; di <= 1; di += 1) for (let dj = -1; dj <= 1; dj += 1) if (seen.has(K(ci + di, cj + dj))) return true;
+    return false;
+  };
   try {
     const qi: number[] = [0]; const qj: number[] = [0];
     for (let q = 0; q < qi.length && seen.size < maxCells; q += 1) {
@@ -1130,11 +1208,7 @@ function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Poi
   } finally {
     model.closedDoors = closed;
   }
-  return (p: Point) => {
-    const ci = Math.round((p.x - start.x) / G); const cj = Math.round((p.y - start.y) / G);
-    for (let di = -1; di <= 1; di += 1) for (let dj = -1; dj <= 1; dj += 1) if (seen.has(K(ci + di, cj + dj))) return true;
-    return false;
-  };
+  return Object.assign(reached, { size: seen.size });
 }
 
 /** Up to eight free spots inside the room at least 0.6 m from its door sides, spread from its centre outwards. */

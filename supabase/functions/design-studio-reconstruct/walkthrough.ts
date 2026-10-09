@@ -77,7 +77,7 @@ import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/
 import { buildCanonical } from '../../../src/lib/designStudio/scale.ts';
 import { compileSceneSpec } from '../../../src/lib/designStudio/hybrid/compileSpec.ts';
 import { buildWalkthrough, roomSketches } from '../../../src/lib/designStudio/walkthrough/build.ts';
-import { applyGraphLook, buildDesignGraph, fidelityOf, graphToBuildPlan, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
+import { applyGraphLook, buildDesignGraph, fidelityOf, graphToBuildPlan, READY_MIN_RECALL, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
 import { loadDesignEvidence } from './designEvidence.ts';
 import { anchorLock, feedbackOf, homeOrigin, referenceCameraPose, referenceFidelity, visualVerdict, type FidelityReport } from '../../../src/lib/designStudio/walkthrough/fidelity.ts';
 import { buildWalkModel, isFree, nearestFree } from '../../../src/lib/designStudio/navigation.ts';
@@ -1031,7 +1031,10 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const fidelity: FidelityReport | null = validated.reference && !graph
     ? referenceFidelity({ space, plan: validated, build: built.report, objects: built.state.objects, assets, aspect: provenance?.aspect ?? null })
     : null;
-  const failing = fidelity ? fidelity.code : built.report.gate && !built.report.gate.ok ? 'NOT_WALKABLE' : null;
+  // READY only when it is the design too: every room has what makes it that room (a bed, the sofa, the kitchen),
+  // and most of what the design shows stands in it (designGraph.ts READY_MIN_RECALL); else it fails, honestly.
+  const unfaithful = promotion && (built.report.gate?.missingEssential?.length || (promotion.metrics?.importantRecall ?? 1) < READY_MIN_RECALL);
+  const failing = fidelity ? fidelity.code : built.report.gate && !built.report.gate.ok ? 'NOT_WALKABLE' : unfaithful ? 'NOT_FAITHFUL' : null;
   const referenceReport = validated.reference ? {
     mode: 'REFERENCE_LOCKED', view: validated.reference.view, roomId: validated.reference.roomId, visibleRoomIds: validated.reference.visibleRoomIds,
     camera: validated.reference.camera, cameraNote: validated.reference.cameraNote, facts: validated.reference.facts, fidelity,

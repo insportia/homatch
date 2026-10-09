@@ -158,7 +158,7 @@ export interface PlacementWorld {
   walls: Array<{ id: string; box: SolidBox }>;
   doors: Array<{ id: string; box: SolidBox }>;
   /** Each flight's footprint and the approach in front of its start (both kept free). */
-  stairs: Array<{ id: string; box: SolidBox; approach: SolidBox }>;
+  stairs: Array<{ id: string; box: SolidBox; approach: SolidBox | null }>;
   objects: Array<{ id: string; box: SolidBox; asset: CatalogAsset; flat: boolean; object: ObjectInstance }>;
 }
 
@@ -178,7 +178,7 @@ export function placementWorld(ctx: PlacementContext, room: SpaceRoom): Placemen
   });
   const doors: PlacementWorld['doors'] = [];
   for (const d of ctx.space.doors) {
-    const zone = doorKeepOut(ctx.space, d.id);
+    const zone = doorKeepOut(ctx.space, d.id, room);
     if (zone) doors.push({ id: d.id, box: solidBox(zone) });
   }
   const objects: PlacementWorld['objects'] = [];
@@ -191,9 +191,13 @@ export function placementWorld(ctx: PlacementContext, room: SpaceRoom): Placemen
       box: solidBox(footprint(asset, { x: o.position.x, y: o.position.z }, o.rotationY)),
     });
   }
-  const stairs = (ctx.space.stairs ?? []).map((st) => ({
-    id: st.id, box: solidBox(stairObb(st)), approach: solidBox(stairApproach(st)),
-  }));
+  // A flight's approach is the floor in front of its first step — never across the wall that step stands against
+  // (then it is the next room's floor, and nobody climbs through a wall).
+  const stairs = (ctx.space.stairs ?? []).map((st) => {
+    const near = solidBox(stairApproach(st, 0.15));
+    const walled = walls.some((w) => solidOverlap(w.box, near));
+    return { id: st.id, box: solidBox(stairObb(st)), approach: walled ? null : solidBox(stairApproach(st)) };
+  });
   return { room, walls, doors, stairs, objects };
 }
 
@@ -238,7 +242,7 @@ export function hitsStairs(world: PlacementWorld, box: SolidBox, approach: boole
   }
   if (approach) {
     for (const st of world.stairs) {
-      if (solidOverlap(box, st.approach)) return { code: 'BLOCKS_STAIRS', severity: 'BLOCK', relatedId: st.id };
+      if (st.approach && solidOverlap(box, st.approach)) return { code: 'BLOCKS_STAIRS', severity: 'BLOCK', relatedId: st.id };
     }
   }
   return null;
@@ -269,13 +273,31 @@ export function zoneClear(world: PlacementWorld, zone: SolidBox, instanceId?: st
   return true;
 }
 
-/** The zone in front of a door that must stay passable, on both sides of the wall. */
-export function doorKeepOut(space: SpaceModel, doorId: string): Obb | null {
+/** How deep the floor kept clear in front of a door is: 0.9 m, less in a room too shallow for it (a WC, a wash
+ *  room), where it is what the room leaves after the deepest fitting, never under DOOR_KEEP_OUT_MIN_M. */
+export const DOOR_KEEP_OUT_M = 0.9;
+export const DOOR_KEEP_OUT_MIN_M = 0.45;
+const FITTING_DEPTH_M = 0.65;
+
+/**
+ * The zone in front of a door that must stay passable, on both sides of the wall. Seen from `room` (the room a piece
+ * is placed in), its depth is what that room can give: a 1.2 m deep WC keeps the step through its door clear, not
+ * the whole room.
+ */
+export function doorKeepOut(space: SpaceModel, doorId: string, room?: SpaceRoom): Obb | null {
   const door = space.doors.find((d) => d.id === doorId);
   const wall = door ? space.walls.find((w) => w.id === door.wallId) : null;
   if (!door || !wall) return null;
   const f = wallFrame(wall.mesh);
-  return { cx: door.centre.x, cy: door.centre.y, hw: door.widthM / 2 + 0.1, hd: 0.9, angle: f.angle };
+  let hd = DOOR_KEEP_OUT_M;
+  if (room) {
+    // The room's depth across the door's wall (its extent along the wall's normal).
+    const n = { x: -Math.sin(f.angle), y: Math.cos(f.angle) };
+    const along = room.polygon.map((p) => p.x * n.x + p.y * n.y);
+    const extent = Math.max(...along) - Math.min(...along);
+    hd = Math.max(DOOR_KEEP_OUT_MIN_M, Math.min(DOOR_KEEP_OUT_M, extent - FITTING_DEPTH_M));
+  }
+  return { cx: door.centre.x, cy: door.centre.y, hw: door.widthM / 2 + 0.1, hd, angle: f.angle };
 }
 
 export function roomOf(space: SpaceModel, roomId: string | null): SpaceRoom | null {

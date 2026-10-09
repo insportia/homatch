@@ -585,6 +585,13 @@ export interface Promotion { promoted: boolean; reasons: string[]; metrics: Fide
 /** The rules a walkthrough must meet before it is presented as the selected design. */
 export const PROMOTION_RULES = { minImportantRecall: 0.8, maxGenericRatio: 0.2, minMaterialCoverage: 0.8, minRegionConsumption: 0.8 } as const;
 
+/**
+ * The least share of the design's important pieces a walkthrough must stand to be published at all (READY). Lower
+ * than promotion's own bar (a promoted walkthrough is the design; a READY one is at least most of it, every room
+ * with its essential piece, walkable). What the real room cannot hold beside a walkway is honestly left out.
+ */
+export const READY_MIN_RECALL = 0.7;
+
 export function fidelityOf(graph: SpatialDesignGraph, state: DesignState, report: BuildReport, walkable: boolean): Promotion {
   const objs = graph.rooms.flatMap((r) => r.objects);
   const important = objs.filter((o) => o.importance !== 'MINOR');

@@ -3935,6 +3935,14 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     _marketplaceLedger: prior._marketplaceLedger ?? (prior._verifyMarket ? { state: prior._verifyMarket.state } : null),
     _tasExecution: prior._tasExecution ?? null,
     officialVisuals: prior.officialVisuals ?? null,
+    // Developer Advertising (last research stage, run before this write):
+    // the customer view feeds verify-synthesis's evidence package and report
+    // section; the internal state holds the run's input, live schema, price
+    // and cost marker, and is what the 24 h cache looks up. Both were being
+    // dropped here (job c80f7237: the stage ran and billed, the report had
+    // no advertising section). _developerAds is stripped from customer output.
+    developerAds: prior.developerAds ?? null,
+    _developerAds: prior._developerAds ?? null,
     stage: 'COMPLETE',
     searchedAt: now(),
   };

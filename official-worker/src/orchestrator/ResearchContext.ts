@@ -53,6 +53,39 @@ export interface ResearchJob {
   tasExecution?: { implementation: string; fallbackFrom: string | null; durationMs: number } | null;
   /** Automatic CAPTCHA policy for this job (forwarded by research-agent from Admin). */
   captchaPolicy?: import('../captcha/captchaService.js').CaptchaPolicy;
+  /** Fine-grained phase inside the current step (e.g. SOLVING_ATTEMPT_1), set by stepHeartbeat(). */
+  phase?: string | null;
+}
+
+/**
+ * stepHeartbeat() — progress INSIDE one long step (production job c80f7237,
+ * 2026-10-09: an rstax step ran ~320 s while `updatedAt` only advanced after
+ * the whole step, so research-agent's progress signature looked frozen).
+ *
+ * The returned callback is handed to a worker, which calls it at each GENUINE
+ * phase transition (navigated, Search #1, solving attempt n, Search #2) —
+ * never on a timer, so a hung step still stops moving and the watchdogs still
+ * see the stall. It rewrites only `phase`, `stage` (the step's own stage plus
+ * `:PHASE`) and `updatedAt`, and becomes a no-op once the job is no longer
+ * RUNNING or the stalled-job watchdog has abandoned it. Never throws.
+ */
+export function stepHeartbeat(
+  job: Pick<ResearchJob, 'status' | 'stage' | 'updatedAt' | 'phase' | '_abandoned'>,
+  clock: () => string = () => new Date().toISOString()
+): (phase: string) => void {
+  const base = String(job.stage || '').split(':')[0];
+  return (phase: string) => {
+    try {
+      if (job._abandoned || job.status !== 'RUNNING') return;
+      const p = String(phase || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 40);
+      if (!p) return;
+      job.phase = p;
+      job.stage = base ? `${base}:${p}` : p;
+      job.updatedAt = clock();
+    } catch {
+      /* a heartbeat must never break the step it reports on */
+    }
+  };
 }
 
 /**

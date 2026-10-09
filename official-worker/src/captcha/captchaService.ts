@@ -55,7 +55,8 @@ export function parseCaptchaPolicy(raw: unknown): CaptchaPolicy {
 
 export type CaptchaOutcome =
   | 'ACCEPTED' // solved AND the official source accepted it
-  | 'REJECTED' // solved, but the source refused the token
+  | 'REJECTED' // solved, but the source refused the token (its warning re-rendered after the post-solve search)
+  | 'NO_CHANGE' // solved, but the source showed no fresh response to the post-solve search (stale screen) — NOT a rejection
   | 'TIMEOUT'
   | 'UNSOLVABLE'
   | 'PROVIDER_ERROR'
@@ -278,6 +279,20 @@ export class CaptchaService {
       else await this.solver.badReport(solved.solveId);
     } catch {
       /* reporting is best effort */
+    }
+  }
+
+  /**
+   * The source neither accepted nor refused the token: the post-solve search
+   * produced no fresh render at all (stale screen). That is no evidence about
+   * the token, so 2Captcha gets no bad report and the solve stays billed
+   * (estimated cost recorded). Never throws.
+   */
+  reportNoChange(req: Pick<SolveRequest, 'provider' | 'jobId'>, solved: { solveId: string; latencyMs: number }): void {
+    try {
+      this.record({ provider: req.provider, jobId: req.jobId, outcome: 'NO_CHANGE', latencyMs: solved.latencyMs, estCostUsd: this.costUsd() });
+    } catch {
+      /* ledger is best effort */
     }
   }
 

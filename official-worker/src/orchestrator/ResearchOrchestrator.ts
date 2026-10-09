@@ -20,7 +20,7 @@ import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
 import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js';
 import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
 import { runGenericWorkflow } from '../workflows/generic/GenericWorkflow.js';
-import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, shouldSkipDuplicateExecution, dedupeProposedSteps, executionIdentity, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
+import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, stepHeartbeat, shouldSkipDuplicateExecution, dedupeProposedSteps, executionIdentity, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
 import { looksLikeCompanyId } from '../entities/EntityValidation.js';
 import { challenge, captchaNetworkBlocked } from '../browser/BrowserSession.js';
 import { buildHistoricalComparison } from '../documents/HistoricalComparison.js';
@@ -483,7 +483,11 @@ export class ResearchOrchestrator {
         if (result) result.tasImplementation = { implementation: 'LEGACY', fallbackFrom: tasFallbackFrom };
       } else if (key === 'TAS_MAP') result = await runTasMapWorker(page, query, ledger, entities);
       else if (key === 'enreg') result = await runEnregWorkflow(page, forEntity || { name: query, idCode: /^[0-9-]{6,}$/.test(String(query || '').trim()) ? query : null }, entities);
-      else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities, { captcha: this.captchaContext(job) });
+      // rstax can run for minutes (Search #1, up to two paid solves, Search
+      // #2): its phase transitions move job.updatedAt/stage so the worker's
+      // own stall watchdog and research-agent's progress signature see the
+      // work as it happens, not only once the whole step returns.
+      else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities, { captcha: this.captchaContext(job), onProgress: stepHeartbeat(job, now) });
       else if (key === 'debtor') result = await runDebtorWorker(page, forEntity, entities);
       else result = await runGenericWorkflow(page, key, NAPR_META, query);
 
@@ -553,6 +557,7 @@ export class ResearchOrchestrator {
           continue;
         }
         job.stage = step.type === 'entity' ? `CHECKING_${step.source.toUpperCase()}_ENTITY_${step.idCode}` : `CHECKING_${step.key.toUpperCase()}`;
+        job.phase = null;
         const { result, keep } = await this.runStep(jobBrowser, job, step);
         // The watchdog may have finalized this job while the step was in
         // flight (its rejection is what returned us here). Never write back.

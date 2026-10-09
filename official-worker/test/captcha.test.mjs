@@ -228,7 +228,43 @@ async function loadRsWorker() {
   return tsImport('../src/workflows/financial/RsTaxpayerWorker.ts', import.meta.url);
 }
 
-async function withRsPage(fn) {
+// Stand-in for a registry page that validates in JS through the widget API
+// (grecaptcha.getResponse()) and its render() callback — NOT the textarea.
+// The fake widget answers '' like the real one does when nobody clicked it.
+const RS_PAGE_API = (sitekey) => `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  <input id="tin"><button id="btnSearch1" type="button">ძიება</button>
+  <div class="g-recaptcha" data-sitekey="${sitekey}"></div>
+  <textarea name="g-recaptcha-response" style="display:none"></textarea>
+  <div id="out"></div>
+  <script>
+    let cbToken = null;
+    window.grecaptcha = { getResponse: () => '', render: () => 0, reset() {} };
+    window.___grecaptcha_cfg = { clients: { 0: { Xy: { Ab: { sitekey: '${sitekey}', callback: function onRsVerified(t) { cbToken = t; } } } } } };
+    document.getElementById('btnSearch1').onclick = function rsSearch() {
+      const t = grecaptcha.getResponse();
+      const tin = document.getElementById('tin').value;
+      document.getElementById('out').innerText = t === 'GOOD' && cbToken === 'GOOD'
+        ? 'საიდენტიფიკაციო კოდი: ' + tin + '\\nდასახელება: შპს ტესტი\\nსტატუსი: აქტიური'
+        : 'გთხოვთ მონიშნოთ უსაფრთხოების ღილაკი';
+    };
+  </script></body></html>`;
+
+// Stand-in for a stale screen: Search #1 shows the warning, later clicks
+// change nothing at all (no fresh render).
+const RS_PAGE_STALE = (sitekey) => `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  <input id="tin"><button id="btnSearch1" type="button">ძიება</button>
+  <div class="g-recaptcha" data-sitekey="${sitekey}"></div>
+  <textarea name="g-recaptcha-response" style="display:none"></textarea>
+  <div id="out"></div>
+  <script>
+    let clicks = 0;
+    document.getElementById('btnSearch1').onclick = () => {
+      if (++clicks > 1) return;
+      document.getElementById('out').innerText = 'გთხოვთ მონიშნოთ უსაფრთხოების ღილაკი';
+    };
+  </script></body></html>`;
+
+async function withRsPage(fn, body = RS_PAGE(SITEKEY)) {
   let chromium;
   try {
     ({ chromium } = await import('playwright'));
@@ -242,7 +278,7 @@ async function withRsPage(fn) {
   if (!browser) return 'skip';
   try {
     const page = await browser.newPage();
-    await page.route('https://www.rs.ge/**', (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: RS_PAGE(SITEKEY) }));
+    await page.route('https://www.rs.ge/**', (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body }));
     await page.route(/google\.com|gstatic\.com/, (route) => route.abort());
     return await fn(page);
   } finally {
@@ -250,27 +286,86 @@ async function withRsPage(fn) {
   }
 }
 
-test('RS.ge: CAPTCHA solved, token accepted by the page, taxpayer parsed, good report', { timeout: 90_000 }, async (t) => {
+test('RS.ge: CAPTCHA solved, token accepted by the page, taxpayer parsed, good report; heartbeat at every phase', { timeout: 90_000 }, async (t) => {
   const { runRsTaxpayerWorker } = await loadRsWorker();
   const s = fakeSolver(['GOOD']);
-  const outcome = await withRsPage(async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: service(s), policy: ON, jobId: 'rs-ok' } }));
+  const phases = [];
+  const outcome = await withRsPage(async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: service(s), policy: ON, jobId: 'rs-ok' }, onProgress: (p) => phases.push(p) }));
   if (outcome === 'skip') return t.skip('Chromium unavailable');
   assert.equal(outcome.status, 'SEARCH_CONFIRMED');
   assert.equal(outcome.taxpayerData.taxpayerName, 'შპს ტესტი');
   assert.equal(outcome.captchaResolution[0].outcome, 'ACCEPTED');
   assert.deepEqual(s.calls.good, ['solve-1']);
   assert.equal(s.calls.recaptcha[0].googlekey, SITEKEY);
+  assert.deepEqual(phases, ['NAVIGATED', 'SEARCH1', 'SOLVING_ATTEMPT_1', 'SEARCH2_ATTEMPT_1']);
 });
 
-test('RS.ge: rejected tokens → bounded retries → human fallback, never an endless loop', { timeout: 120_000 }, async (t) => {
+test('RS.ge: a page validating via grecaptcha.getResponse() + its render() callback receives the token', { timeout: 90_000 }, async (t) => {
+  const { runRsTaxpayerWorker } = await loadRsWorker();
+  const s = fakeSolver(['GOOD']);
+  const outcome = await withRsPage(
+    async (page) => {
+      const r = await runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: service(s), policy: ON, jobId: 'rs-api' } });
+      return { r, viaApi: await page.evaluate(() => grecaptcha.getResponse()) };
+    },
+    RS_PAGE_API(SITEKEY),
+  );
+  if (outcome === 'skip') return t.skip('Chromium unavailable');
+  assert.equal(outcome.r.status, 'SEARCH_CONFIRMED');
+  assert.equal(outcome.r.captchaResolution[0].outcome, 'ACCEPTED');
+  assert.equal(outcome.viaApi, 'GOOD');
+  assert.equal(s.calls.recaptcha.length, 1);
+  assert.deepEqual(s.calls.good, ['solve-1']);
+  assert.ok(!JSON.stringify(outcome.r).includes('"GOOD"'));
+});
+
+test('RS.ge: warning re-rendered after the post-solve search → REJECTED, bad report, NO second paid solve', { timeout: 120_000 }, async (t) => {
   const { runRsTaxpayerWorker } = await loadRsWorker();
   const s = fakeSolver(['BAD']);
-  const outcome = await withRsPage(async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: service(s), policy: ON, jobId: 'rs-bad' } }));
+  const svc = service(s);
+  const outcome = await withRsPage(async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: svc, policy: ON, jobId: 'rs-bad' }, postSolveWaitMs: 3000 }));
   if (outcome === 'skip') return t.skip('Chromium unavailable');
   assert.equal(outcome.status, 'WAITING_HUMAN');
-  assert.equal(s.calls.recaptcha.length, 2);
-  assert.deepEqual(s.calls.bad, ['solve-1', 'solve-2']);
-  assert.equal(outcome.captchaResolution[0].attempts, 2);
+  assert.equal(outcome.captchaResolution[0].outcome, 'REJECTED');
+  // A fresh token through the same integration would be refused the same way.
+  assert.equal(s.calls.recaptcha.length, 1);
+  assert.deepEqual(s.calls.bad, ['solve-1']);
+  assert.equal(outcome.captchaResolution[0].attempts, 1);
+  assert.deepEqual(svc.ledgerFor('rs-bad').map((e) => e.outcome), ['REJECTED']);
+});
+
+test('RS.ge: no fresh render after the post-solve search → NO_CHANGE (never REJECTED), retried within the cap', { timeout: 120_000 }, async (t) => {
+  const { runRsTaxpayerWorker } = await loadRsWorker();
+  const s = fakeSolver(['GOOD']);
+  const svc = service(s);
+  const phases = [];
+  const outcome = await withRsPage(
+    async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: svc, policy: ON, jobId: 'rs-stale' }, postSolveWaitMs: 2500, onProgress: (p) => phases.push(p) }),
+    RS_PAGE_STALE(SITEKEY),
+  );
+  if (outcome === 'skip') return t.skip('Chromium unavailable');
+  assert.equal(outcome.status, 'WAITING_HUMAN');
+  assert.equal(outcome.captchaResolution[0].outcome, 'NO_CHANGE');
+  assert.equal(s.calls.recaptcha.length, 2); // retry allowed after NO_CHANGE, bounded by maxAttemptsPerProvider
+  assert.deepEqual(s.calls.bad, []); // a stale screen is no evidence against the token
+  assert.deepEqual(svc.ledgerFor('rs-stale').map((e) => e.outcome), ['NO_CHANGE', 'NO_CHANGE']);
+  assert.deepEqual(phases, ['NAVIGATED', 'SEARCH1', 'SOLVING_ATTEMPT_1', 'SEARCH2_ATTEMPT_1', 'SOLVING_ATTEMPT_2', 'SEARCH2_ATTEMPT_2']);
+});
+
+test('RS.ge: read-only page diagnostic names the search handler and reCAPTCHA config, bounded, no token', { timeout: 60_000 }, async (t) => {
+  const { collectRsDiagnostic } = await loadRsWorker();
+  const d = await withRsPage(async (page) => {
+    await page.goto('https://www.rs.ge/TaxpayersRegistry', { waitUntil: 'domcontentloaded' });
+    return collectRsDiagnostic(page);
+  }, RS_PAGE_API(SITEKEY));
+  if (d === 'skip') return t.skip('Chromium unavailable');
+  assert.equal(d.btnFound, true);
+  assert.match(d.btnOnclickProp, /grecaptcha\.getResponse/);
+  assert.equal(d.recaptcha.sitekeyAttrPresent, true);
+  assert.equal(d.recaptcha.grecaptchaPresent, true);
+  assert.equal(d.recaptcha.enterprise, false);
+  assert.deepEqual(d.recaptcha.callbackPaths, ['clients.0.Xy.Ab.callback=fn:onRsVerified']);
+  assert.ok(JSON.stringify(d).length < 4096);
 });
 
 // ── isolation: one provider's CAPTCHA never blocks the others ──

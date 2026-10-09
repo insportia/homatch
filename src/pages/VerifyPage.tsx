@@ -444,8 +444,11 @@ function MarketRangeCard({m}:{m?:MarketRangeInput|null}){const{t}=useLanguage();
 // LegalStatusMatrixCard (mandate item 16): 6 independently evidenced
 // categories, each already resolved server-side to one of 4 states with a
 // localized label/note — never one broad "clean" conclusion.
-const legalStatusBadgeClass=(s:LegalStatusValue)=>({CONFIRMED_POSITIVE:'border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90',CONFIRMED_ATTENTION:'border-transparent bg-destructive text-destructive-foreground',NOT_CONFIRMED:'border-slate-300 bg-slate-50 text-slate-700',HUMAN_VERIFICATION_REQUIRED:'border-amber-300 bg-amber-50 text-amber-800'}[s]);
-function LegalStatusMatrixCard({ls}:{ls?:LegalStatusMatrix|null}){const{t}=useLanguage();if(!ls)return null;const rows=Object.values(ls).filter(Boolean);if(!rows.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t('verify_legal_status_title')}</CardTitle></CardHeader><CardContent className="space-y-2">{/*
+const legalStatusBadgeClass=(s:LegalStatusValue)=>({CONFIRMED_POSITIVE:'border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90',CONFIRMED_ATTENTION:'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',NOT_CONFIRMED:'border-slate-300 bg-slate-50 text-slate-700',HUMAN_VERIFICATION_REQUIRED:'border-amber-300 bg-amber-50 text-amber-800'}[s]);
+// Only what was established is shown (owner, 2026-10-09): a row that says a
+// source "could not confirm" tells the buyer nothing about the property and
+// read as an alarm ("permit not found" on a finished building).
+function LegalStatusMatrixCard({ls}:{ls?:LegalStatusMatrix|null}){const{t}=useLanguage();if(!ls)return null;const rows=Object.values(ls).filter((r)=>r&&(r.status==='CONFIRMED_POSITIVE'||r.status==='CONFIRMED_ATTENTION'));if(!rows.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t('verify_legal_status_title')}</CardTitle></CardHeader><CardContent className="space-y-2">{/*
     THE ONE-CHARACTER COLUMNS, AND WHY THIS ROW PRODUCED THEM.
 
     This was `flex items-start justify-between gap-2` with the label carrying
@@ -721,12 +724,20 @@ if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setCaptcha(nu
    evidence view renders and the customer can retry. */
 const SYNTHESIS_FETCH_TIMEOUT_MS=45000;
 /* THE ONE COMPLETION PREDICATE (src/verify/completion.ts). Everything the customer reads about whether this run has finished derives from here, so the page and the global job indicator can no longer disagree about it. */const customerState=verifyCustomerState({jobStatus:jobMeta?.status,stage:jobMeta?.stage,hasReport:!!report,synthesis,synthesisLoading,synthesisSettled,awaitingSignIn});const loadSynthesis=async(id:string)=>{setSynthesisLoading(true);setSynthesisSettled(false);try{
-const res=await Promise.race([
-  supabase.functions.invoke('verify-synthesis',{body:{jobId:id}}),
-  new Promise<never>((_,rej)=>setTimeout(()=>rej(new Error('synthesis timed out')),SYNTHESIS_FETCH_TIMEOUT_MS)),
-]);
-const{data,error}=res as{data:unknown;error:unknown};
-if(error||(data as any)?.error||!data)throw new Error('synthesis unavailable');
+/* The server is already writing this report (research-agent started it the
+   moment research finished): wait for that one instead of starting a second
+   build. Bounded — after ~3 minutes the page asks for it directly. */
+let data:unknown=null,error:unknown=null;
+for(let attempt=0;attempt<45;attempt++){
+  const res=await Promise.race([
+    supabase.functions.invoke('verify-synthesis',{body:{jobId:id}}),
+    new Promise<never>((_,rej)=>setTimeout(()=>rej(new Error('synthesis timed out')),SYNTHESIS_FETCH_TIMEOUT_MS)),
+  ]);
+  ({data,error}=res as{data:unknown;error:unknown});
+  if(!(data as any)?.pending)break;
+  await new Promise((r)=>setTimeout(r,Math.min(8000,Math.max(2000,Number((data as any)?.retryAfterMs)||4000))));
+}
+if(error||(data as any)?.error||!data||(data as any)?.pending)throw new Error('synthesis unavailable');
 setSynthesis(data as VerifySynthesis)}
 catch(e){console.error('[Verify] synthesis unavailable:',e);setSynthesis(null)}
 finally{setSynthesisLoading(false);setSynthesisSettled(true)}};

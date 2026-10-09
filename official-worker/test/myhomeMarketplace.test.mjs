@@ -243,3 +243,17 @@ test('public hydration preserves repeated attribute filters rather than dropping
   applied['attrs[feature][]']=['106'];
   assert.throws(()=>parsePublicPage(html(),url),/does not confirm/);
 });
+
+test('district names resolve with or without a "district"/„რაიონი“ suffix', async () => {
+  const { resolveLocation, districtKey } = await import('../.tstest-build/marketplace/myhome/api.js');
+  assert.equal(districtKey('ვაკის რაიონი'), districtKey('ვაკე'));
+  assert.equal(districtKey('Vake district'), districtKey('Vake'));
+  const dict = { data: [{ id: 1, display_name: 'Tbilisi', districts: [
+    { id: 3, display_name: 'Vake', translations: { ka: { display_name: 'ვაკე' } }, urbans: [] },
+    { id: 6, display_name: 'Old Tbilisi', urbans: [{ id: 65, display_name: 'Krtsanisi' }] },
+  ] }] };
+  assert.equal(resolveLocation({ city: 'Tbilisi', district: 'ვაკის რაიონი' }, dict).districtId, 3);
+  assert.equal(resolveLocation({ city: 'Tbilisi', district: 'Vake district' }, dict).districtId, 3);
+  const k = resolveLocation({ city: 'თბილისი', district: 'კრწანისი' }, dict);
+  assert.equal(k.urbanId, 65);
+});

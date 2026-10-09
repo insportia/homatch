@@ -16005,8 +16005,8 @@ const en = {
   vbi_ads_none_note: 'A search with no results does not prove the developer does not advertise — ads may run under another page name or on other channels.',
   bc_fresh_extract_label: 'Ask for a fresh extract on the signing day',
   bc_fresh_extract_detail: 'HOMATCH read the extract dated {{date}}. A same-day extract confirms nothing was registered after it.',
-  bc_unit_mortgage_label: 'Agree how the apartment’s mortgage is released',
-  bc_unit_mortgage_detail: 'The extract of {{date}} shows a {{creditor}} mortgage on this apartment, registered {{registered}}. Put in the contract how it is released at closing — usually from the purchase price, through the bank.',
+  bc_unit_mortgage_label: 'The bank’s mortgage is released at purchase',
+  bc_unit_mortgage_detail: 'The extract of {{date}} shows a {{creditor}} mortgage registered {{registered}} — the bank that finances the project. As is standard for new-build apartments, the bank releases it on its own application once the apartment is bought and paid for; the contract simply names this step.',
   bc_seller_owner_label: 'Confirm the seller is the registered owner',
   bc_seller_owner_detail: 'The extract of {{date}} lists a private individual as owner since {{since}}. Check the seller’s ID against the extract, or a valid power of attorney.',
   bc_commissioning_label: 'Ask for the commissioning decision',
@@ -16020,6 +16020,13 @@ const en = {
   vbi_glance_restrictions_none: 'None registered',
   vbi_glance_developer: 'Developer',
   vbi_glance_as_of: 'per the extract of {{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_fin_vat: 'VAT: {{value}}',
+  vbi_fin_tax_registered: 'Registered with the Revenue Service on {{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  verify_ox_rx_total: 'Materials reviewed',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31939,8 +31946,8 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vbi_ads_none_note: 'ძიების უშედეგობა არ ამტკიცებს, რომ დეველოპერი არ რეკლამირდება — რეკლამა შეიძლება სხვა გვერდის სახელით ან სხვა არხებზე გადიოდეს.',
   bc_fresh_extract_label: 'ხელმოწერის დღეს ახალი ამონაწერი მოითხოვეთ',
   bc_fresh_extract_detail: 'HOMATCH-მა {{date}}-ის ამონაწერი წაიკითხა. ხელმოწერის დღის ამონაწერი დაადასტურებს, რომ მას შემდეგ არაფერი დარეგისტრირებულა.',
-  bc_unit_mortgage_label: 'შეთანხმდით, როგორ მოიხსნება ბინის იპოთეკა',
-  bc_unit_mortgage_detail: '{{date}}-ის ამონაწერში ამ ბინაზე იპოთეკა ფიქსირდება (კრედიტორი: {{creditor}}, რეგისტრირებულია {{registered}}). ხელშეკრულებაში ჩაწერეთ, როგორ მოიხსნება ის გარიგებისას — როგორც წესი, ნასყიდობის თანხიდან, ბანკის მეშვეობით.',
+  bc_unit_mortgage_label: 'ბანკის იპოთეკა შეძენისას მოიხსნება',
+  bc_unit_mortgage_detail: '{{date}}-ის ამონაწერში ფიქსირდება {{creditor}}-ის იპოთეკა (რეგისტრირებულია {{registered}}) — ბანკისა, რომელიც პროექტს აფინანსებს. ახალაშენებულ ბინებზე ეს ჩვეულებრივი პრაქტიკაა: ბინის შეძენისა და გადახდის შემდეგ ბანკი იპოთეკას საკუთარი განაცხადით ხსნის, ხელშეკრულებაში კი ეს ნაბიჯი უბრალოდ იწერება.',
   bc_seller_owner_label: 'დარწმუნდით, რომ გამყიდველი რეგისტრირებული მესაკუთრეა',
   bc_seller_owner_detail: '{{date}}-ის ამონაწერის მიხედვით, მესაკუთრე {{since}}-დან ფიზიკური პირია. გამყიდველის პირადობის მოწმობა შეადარეთ ამონაწერს, ან მოითხოვეთ მოქმედი მინდობილობა.',
   bc_commissioning_label: 'მოითხოვეთ ექსპლუატაციაში მიღების გადაწყვეტილება',
@@ -31954,6 +31961,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vbi_glance_restrictions_none: 'არცერთი არ არის რეგისტრირებული',
   vbi_glance_developer: 'დეველოპერი',
   vbi_glance_as_of: '{{date}}-ის ამონაწერის მიხედვით',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_fin_vat: 'დღგ: {{value}}',
+  vbi_fin_tax_registered: 'შემოსავლების სამსახურში რეგისტრირებულია {{date}}-დან',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  verify_ox_rx_total: 'შესწავლილი მასალა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -47864,8 +47878,8 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vbi_ads_none_note: 'Отсутствие результатов не доказывает, что застройщик не рекламируется — реклама может идти под другим названием страницы или в других каналах.',
   bc_fresh_extract_label: 'В день подписания запросите свежую выписку',
   bc_fresh_extract_detail: 'HOMATCH прочитал выписку от {{date}}. Выписка в день сделки подтвердит, что после неё ничего не зарегистрировано.',
-  bc_unit_mortgage_label: 'Договоритесь, как будет снята ипотека с квартиры',
-  bc_unit_mortgage_detail: 'В выписке от {{date}} на квартиру зарегистрирована ипотека {{creditor}} (с {{registered}}). Пропишите в договоре, как она будет снята при сделке — обычно из суммы покупки, через банк.',
+  bc_unit_mortgage_label: 'Ипотека банка снимается при покупке',
+  bc_unit_mortgage_detail: 'В выписке от {{date}} зарегистрирована ипотека {{creditor}} (с {{registered}}) — банка, финансирующего проект. Как обычно для новостроек, банк снимает её по своему заявлению после покупки и оплаты квартиры; в договоре этот шаг просто указывается.',
   bc_seller_owner_label: 'Убедитесь, что продавец — зарегистрированный собственник',
   bc_seller_owner_detail: 'По выписке от {{date}} собственник с {{since}} — физическое лицо. Сверьте удостоверение продавца с выпиской или проверьте действующую доверенность.',
   bc_commissioning_label: 'Запросите решение о вводе в эксплуатацию',
@@ -47879,6 +47893,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vbi_glance_restrictions_none: 'Ничего не зарегистрировано',
   vbi_glance_developer: 'Застройщик',
   vbi_glance_as_of: 'по выписке от {{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_fin_vat: 'НДС: {{value}}',
+  vbi_fin_tax_registered: 'Зарегистрирован в налоговой службе с {{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  verify_ox_rx_total: 'Изучено материалов',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -63787,8 +63808,8 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vbi_ads_none_note: 'Sonuç çıkmaması müteahhidin reklam vermediğini kanıtlamaz — reklamlar başka bir sayfa adıyla veya başka kanallarda yayınlanıyor olabilir.',
   bc_fresh_extract_label: 'İmza günü yeni bir tapu kaydı isteyin',
   bc_fresh_extract_detail: 'HOMATCH {{date}} tarihli kaydı okudu. Aynı gün alınacak kayıt, sonrasında hiçbir şeyin tescil edilmediğini doğrular.',
-  bc_unit_mortgage_label: 'Dairedeki ipoteğin nasıl kaldırılacağında anlaşın',
-  bc_unit_mortgage_detail: '{{date}} tarihli kayıtta bu dairede {{registered}} tarihinde tescil edilmiş bir {{creditor}} ipoteği görünüyor. Devirde nasıl kaldırılacağını sözleşmeye yazın — genellikle satış bedelinden, banka aracılığıyla.',
+  bc_unit_mortgage_label: 'Bankanın ipoteği satın alımda kaldırılır',
+  bc_unit_mortgage_detail: '{{date}} tarihli kayıtta, projeyi finanse eden {{creditor}} lehine {{registered}} tarihinde tescil edilmiş bir ipotek görünüyor. Yeni konutlarda olağan olduğu üzere banka, daire satın alınıp ödendiğinde ipoteği kendi başvurusuyla kaldırır; sözleşmede bu adım belirtilir.',
   bc_seller_owner_label: 'Satıcının kayıtlı malik olduğunu doğrulayın',
   bc_seller_owner_detail: '{{date}} tarihli kayda göre {{since}} tarihinden beri malik bir gerçek kişidir. Satıcının kimliğini kayıtla karşılaştırın veya geçerli bir vekâletname isteyin.',
   bc_commissioning_label: 'İskân kararını isteyin',
@@ -63802,6 +63823,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vbi_glance_restrictions_none: 'Hiçbiri kayıtlı değil',
   vbi_glance_developer: 'Müteahhit',
   vbi_glance_as_of: '{{date}} tarihli kayda göre',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_fin_vat: 'KDV: {{value}}',
+  vbi_fin_tax_registered: '{{date}} tarihinden beri Gelir İdaresi’ne kayıtlı',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  verify_ox_rx_total: 'İncelenen belge',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -79710,8 +79738,8 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vbi_ads_none_note: 'عدم وجود نتائج لا يثبت أن المطوّر لا يعلن — فقد تُعرض الإعلانات باسم صفحة آخر أو عبر قنوات أخرى.',
   bc_fresh_extract_label: 'اطلب مستخرجًا جديدًا يوم التوقيع',
   bc_fresh_extract_detail: 'قرأت HOMATCH المستخرج المؤرخ {{date}}. مستخرج يوم التوقيع يؤكد أنه لم يُسجَّل شيء بعده.',
-  bc_unit_mortgage_label: 'اتفق على كيفية فكّ رهن الشقة',
-  bc_unit_mortgage_detail: 'يُظهر مستخرج {{date}} رهنًا لصالح {{creditor}} على هذه الشقة، مسجّلًا في {{registered}}. اذكر في العقد كيفية فكّه عند الإتمام — عادةً من ثمن الشراء عبر البنك.',
+  bc_unit_mortgage_label: 'يُفكّ رهن البنك عند الشراء',
+  bc_unit_mortgage_detail: 'يُظهر مستخرج {{date}} رهنًا لصالح {{creditor}} مسجّلًا في {{registered}} — البنك الذي يموّل المشروع. وكما هو معتاد في الشقق الجديدة، يفكّ البنك الرهن بطلب منه بعد شراء الشقة وسداد ثمنها، ويُذكر هذا الإجراء في العقد.',
   bc_seller_owner_label: 'تأكد أن البائع هو المالك المسجّل',
   bc_seller_owner_detail: 'وفق مستخرج {{date}}، المالك منذ {{since}} شخص طبيعي. طابق هوية البائع مع المستخرج، أو اطلب توكيلًا ساريًا.',
   bc_commissioning_label: 'اطلب قرار الإشغال',
@@ -79725,6 +79753,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vbi_glance_restrictions_none: 'لا شيء مسجّل',
   vbi_glance_developer: 'المطوّر',
   vbi_glance_as_of: 'وفق مستخرج {{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_fin_vat: 'ضريبة القيمة المضافة: {{value}}',
+  vbi_fin_tax_registered: 'مسجّل لدى مصلحة الإيرادات منذ {{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  verify_ox_rx_total: 'المواد التي تمت مراجعتها',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -95633,8 +95668,8 @@ const he: Partial<Record<TranslationKey, string>> = {
   vbi_ads_none_note: 'היעדר תוצאות אינו מוכיח שהיזם אינו מפרסם — ייתכן שהפרסום רץ תחת שם עמוד אחר או בערוצים אחרים.',
   bc_fresh_extract_label: 'בקשו נסח חדש ביום החתימה',
   bc_fresh_extract_detail: 'HOMATCH קראה את הנסח מ־{{date}}. נסח מיום החתימה יאשר שלא נרשם דבר מאז.',
-  bc_unit_mortgage_label: 'סכמו כיצד תוסר המשכנתה מהדירה',
-  bc_unit_mortgage_detail: 'הנסח מ־{{date}} מראה משכנתה של {{creditor}} על הדירה, שנרשמה ב־{{registered}}. קבעו בחוזה כיצד תוסר בעת העסקה — בדרך כלל מתוך מחיר הרכישה, דרך הבנק.',
+  bc_unit_mortgage_label: 'משכנתת הבנק מוסרת ברכישה',
+  bc_unit_mortgage_detail: 'הנסח מ־{{date}} מראה משכנתה לטובת {{creditor}} שנרשמה ב־{{registered}} — הבנק שמממן את הפרויקט. כמקובל בדירות חדשות, הבנק מסיר אותה לפי בקשתו לאחר רכישת הדירה ותשלומה; החוזה פשוט מציין שלב זה.',
   bc_seller_owner_label: 'ודאו שהמוכר הוא הבעלים הרשום',
   bc_seller_owner_detail: 'לפי הנסח מ־{{date}}, הבעלים מאז {{since}} הוא אדם פרטי. השוו את תעודת הזהות של המוכר לנסח, או בקשו ייפוי כוח בתוקף.',
   bc_commissioning_label: 'בקשו את החלטת האכלוס',
@@ -95648,6 +95683,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   vbi_glance_restrictions_none: 'לא רשום דבר',
   vbi_glance_developer: 'היזם',
   vbi_glance_as_of: 'לפי הנסח מ־{{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_fin_vat: 'מע״מ: {{value}}',
+  vbi_fin_tax_registered: 'רשום ברשות המסים מאז {{date}}',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  verify_ox_rx_total: 'חומרים שנבדקו',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

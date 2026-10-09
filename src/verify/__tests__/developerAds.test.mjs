@@ -31,7 +31,7 @@ test('identity: developer brand and project from Verify evidence; legal forms st
   const id = resolveDeveloperIdentity(RESULT);
   assert.equal(id.basis, 'REGISTRY_CONFIRMED');
   assert.equal(id.legalId, '404000000');
-  assert.deepEqual(id.searchTerms, ['Archi', 'Archi Vake']);
+  assert.deepEqual(id.searchTerms, ['Archi', 'Archi Vake', 'არქი ვაკე', 'არქი']);
   assert.equal(nameKey('შპს "არქი"'), 'არქი');
   assert.deepEqual(resolveDeveloperIdentity({}).searchTerms, []);
   assert.equal(resolveDeveloperIdentity({}).basis, 'NONE');
@@ -39,8 +39,9 @@ test('identity: developer brand and project from Verify evidence; legal forms st
 
 test('input uses only fields the live schema declares; no search field → not run', () => {
   const id = resolveDeveloperIdentity(RESULT);
-  assert.deepEqual(buildActorInput(['searchTerms', 'searchCountries', 'maxItems', 'adActiveStatus'], id, POLICY), { searchTerms: ['Archi', 'Archi Vake'], searchCountries: ['GE'], maxItems: 50 });
-  assert.deepEqual(buildActorInput(['searchTerms'], id, POLICY), { searchTerms: ['Archi', 'Archi Vake'] });
+  const terms = ['Archi', 'Archi Vake', 'არქი ვაკე', 'არქი'];
+  assert.deepEqual(buildActorInput(['searchTerms', 'searchCountries', 'maxItems', 'adActiveStatus'], id, POLICY), { searchTerms: terms, searchCountries: ['GE'], maxItems: 50 });
+  assert.deepEqual(buildActorInput(['searchTerms'], id, POLICY), { searchTerms: terms });
   assert.equal(buildActorInput(['startUrls', 'maxItems'], id, POLICY), null, 'unsupported capability');
   assert.equal(buildActorInput(['searchTerms'], resolveDeveloperIdentity({}), POLICY), null, 'no identity');
 });
@@ -223,4 +224,16 @@ test('a financial lookup is claimed before the worker is started (job c80f7237 s
   assert.match(fn, /if \(!claimed\?\.length\) return null;/, 'a tick that loses the claim starts nothing');
   assert.match(fn, /\.eq\('updated_at', claimedAt\)/, 'a failed start hands the row back');
   assert.match(agent, /stallLimitsFor\(prior\._financialEntityRequestedFor\?\.source\)/, 'the stall limit is per source');
+});
+
+test('the consumer brand is searched first: Villion, not the legal entity or the long marketed name', () => {
+  // Production job e02d4f16 searched ["Millenio","Villion Krtsanisi Homes"] and
+  // got an empty dataset while Villion was advertising.
+  const id = resolveDeveloperIdentity({
+    projectProfile: { name: 'Villion Krtsanisi Homes', aliases: ['Villion', 'ვილიონი', 'Villion Krtsanisi 6'], developer: 'Millenio Group', website: 'https://villion.ge/about/' },
+    companyProfile: { name: 'შპს „მილენიო გრუპი“', idCode: '404670272', sourceBasis: 'REGISTRY_CONFIRMED' },
+  });
+  assert.deepEqual(id.searchTerms.slice(0, 2), ['Villion', 'ვილიონი']);
+  assert.ok(id.searchTerms.includes('Millenio'), 'the developer brand is still searched');
+  assert.equal(id.searchTerms.length, 4);
 });

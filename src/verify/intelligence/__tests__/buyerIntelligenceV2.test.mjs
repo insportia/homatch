@@ -500,11 +500,9 @@ test('there is no "could not confirm" block in the primary report', () => {
    * The original objection was that our pipeline's gaps opened the
    * customer's report; it was never that a buyer should not be told.
    */
-  assert.ok(src.includes('<UnconfirmedCard'), 'the gaps must be stated somewhere');
-  assert.ok(
-    src.indexOf('<UnconfirmedCard') > src.indexOf('<KeyFindings'),
-    'the gaps must not be the introduction'
-  );
+  // Owner, 2026-10-09: what was not established is not written at all —
+  // "რაზეც არ გვაქვს უბრალოდ არ ვწერთ". Supersedes mandate 10.
+  assert.ok(!src.includes('<UnconfirmedCard'), 'gaps are not listed to the customer');
   assert.ok(!src.includes('verify_ir_unconfirmed_title'), 'the old headline block is still gone');
 });
 

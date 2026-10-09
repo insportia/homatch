@@ -123,6 +123,36 @@ const DELIVER_TOKEN_JS = String.raw`(tok) => {
   return r;
 }`;
 
+/**
+ * Search through the page's own button, past reCAPTCHA's challenge overlay.
+ *
+ * Search #1 makes RS.ge open reCAPTCHA's image challenge: a full-screen
+ * transparent backdrop plus the bframe iframe, attached to <body>. It stays
+ * open after a token is delivered, so a pointer click on #btnSearch1
+ * lands on the backdrop — Playwright waited its 30 s action timeout and the
+ * Enter fallback did nothing (RS has no form). Production job e02d4f16:
+ * two solved tokens, zero DOM mutations, waitedMs 51 s = 30 + 1 + 20.
+ * The overlay is hidden (it is RS's own pending challenge, now answered)
+ * and the button's own handler runs through a DOM click.
+ */
+const SUBMIT_SEARCH_JS = String.raw`() => {
+  var doc = globalThis.document, hidden = 0;
+  var frames = doc.querySelectorAll('iframe[src*="recaptcha"][src*="bframe"], iframe[title*="challenge"]');
+  for (var i = 0; i < frames.length; i++) {
+    var c = frames[i];
+    while (c.parentElement && c.parentElement !== doc.body) c = c.parentElement;
+    if (c !== doc.body) { c.style.visibility = 'hidden'; c.style.display = 'none'; hidden++; }
+  }
+  var b = doc.querySelector('#btnSearch1');
+  if (!b) return { clicked: false, overlaysHidden: hidden };
+  b.click();
+  return { clicked: true, overlaysHidden: hidden };
+}`;
+
+async function submitSearchInPage(page: Page): Promise<{ clicked: boolean; overlaysHidden: number }> {
+  return (page as any).evaluate(`(${SUBMIT_SEARCH_JS})()`).catch(() => ({ clicked: false, overlaysHidden: 0 }));
+}
+
 async function deliverRecaptchaToken(page: Page, token: string): Promise<RsTokenDelivery> {
   const empty: RsTokenDelivery = { textareas: 0, grecaptchaPresent: false, getResponseOverridden: false, callbacksInvoked: 0, callbackErrors: 0, verified: false, verifiedVia: null };
   return (page as any).evaluate(`(${DELIVER_TOKEN_JS})(${JSON.stringify(token)})`).catch(() => empty);
@@ -479,10 +509,26 @@ export async function runRsTaxpayerWorker(
       }
       Promise.resolve(d.dismiss?.()).catch(() => {});
     };
+    // What Search #2 actually asked the server, and what came back: path and
+    // status only — never a query string, token, TIN or body.
+    const net: Array<{ path: string; status: number; type: string }> = [];
+    const onResponse = (r: any) => {
+      try {
+        const req = r.request?.();
+        const kind = String(req?.resourceType?.() || '');
+        if (kind !== 'xhr' && kind !== 'fetch' && kind !== 'document') return;
+        const u = new URL(String(r.url?.() || ''));
+        if (!/(^|\.)rs\.ge$/i.test(u.hostname) || net.length >= 12) return;
+        net.push({ path: u.pathname.slice(0, 80), status: Number(r.status?.()) || 0, type: kind });
+      } catch {
+        /* unreadable response */
+      }
+    };
     if (postSolve) {
       progress(opts, `SEARCH2_ATTEMPT_${opts._attempt!.n}`);
       await armFreshRenderWatch(page);
       (page as any).on?.('dialog', onDialog);
+      (page as any).on?.('response', onResponse);
     } else progress(opts, opts.skipGoto ? 'SEARCH2_HUMAN' : 'SEARCH1');
 
     // Exact source-owned submit control. On the initial pass this is Search
@@ -491,13 +537,20 @@ export async function runRsTaxpayerWorker(
     const clickedAt = Date.now();
     const btn = (page as any).locator('#btnSearch1').first();
     let submitted = false;
-    try {
-      if (await btn.isVisible()) {
-        await btn.click();
-        submitted = true;
+    if (postSolve) {
+      // After a solve the challenge overlay is still over the page.
+      const r = await submitSearchInPage(page);
+      logRs('search2_submitted', { jobId: opts.captcha!.jobId.slice(0, 8), attempt: opts._attempt!.n, ...r });
+      submitted = r.clicked;
+    } else {
+      try {
+        if (await btn.isVisible()) {
+          await btn.click({ timeout: 8000 });
+          submitted = true;
+        }
+      } catch {
+        submitted = (await submitSearchInPage(page)).clicked;
       }
-    } catch {
-      /* fall through to Enter fallback */
     }
     if (!submitted) {
       try {
@@ -530,6 +583,8 @@ export async function runRsTaxpayerWorker(
       }
       fresh = await readFreshRenderWatch(page);
       (page as any).off?.('dialog', onDialog);
+      (page as any).off?.('response', onResponse);
+      logRs('search2_network', { jobId: opts.captcha!.jobId.slice(0, 8), attempt: opts._attempt!.n, requests: net });
     } else sig = await waitForResultSignal((page as any).mainFrame(), before, idCode);
     const solved = await rsCaptchaSolved(page);
 

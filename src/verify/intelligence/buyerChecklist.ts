@@ -162,15 +162,9 @@ export function buildBuyerChecklist(input: ChecklistInput): ChecklistItem[] {
     });
   }
 
-  /* Commissioning, when the register itself still says "under construction". */
-  if (reg?.latest?.buildingsUnderConstruction) {
-    out.push({
-      key: 'COMMISSIONING_ACT',
-      labelKey: 'bc_commissioning_label',
-      detailKey: 'bc_commissioning_detail',
-      params: { date: asOf },
-    });
-  }
+  /* No commissioning task (owner, 2026-10-09): a finished building the
+     register still lists as „მშენებარე“ is the normal registration lag, not
+     something the buyer should be sent to chase. */
 
   /* ---- who the money goes to ---- */
 

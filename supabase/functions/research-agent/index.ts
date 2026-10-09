@@ -1560,7 +1560,10 @@ function searchBudgetFor(j: any, s: Stage): string {
     if (stage === 'market') {
       const mp = j?.result_json?._reusePlan?.marketPlan;
       if (mp && typeof mp.searchBudget === 'number') {
-        if (!mp.refresh && mp.searchBudget === 0) {
+        // No listing reached this job (lane failed or off): a snapshot band
+        // is not a substitute for comparables the buyer can read.
+        const haveComparables = Array.isArray(j?.result_json?._marketComparables) && j.result_json._marketComparables.length > 0;
+        if (!mp.refresh && mp.searchBudget === 0 && haveComparables) {
           return [
             '',
             'SEARCH BUDGET: none needed for this step.',
@@ -1574,8 +1577,8 @@ function searchBudgetFor(j: any, s: Stage): string {
         return searchBudgetInstruction({
           stage: 'market',
           level: 'TARGETED',
-          searchBudget: mp.searchBudget,
-          reason: String(mp.summary ?? ''),
+          searchBudget: haveComparables ? mp.searchBudget : Math.max(4, Number(mp.searchBudget) || 0),
+          reason: haveComparables ? String(mp.summary ?? '') : 'no comparable listings reached this verification yet; find current ones',
         } as any);
       }
     }
@@ -1719,10 +1722,17 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
      * portal blocked — this is empty and the stage behaves exactly as it
      * always did. The fallback is the previous behaviour, not a gap.
      */
-    const laneBrief = p._marketComparables && p._marketLane
+    // Comparables can arrive without a lane summary (the portal lane threw
+    // after the MyHome/SS.ge listings were folded in): brief them anyway.
+    const laneComparables = Array.isArray(p._marketComparables) ? p._marketComparables : [];
+    const laneBrief = laneComparables.length || (p._marketComparables && p._marketLane)
       ? marketLaneBrief({
-          comparables: p._marketComparables,
-          summary: p._marketLane,
+          comparables: laneComparables,
+          summary: p._marketLane || {
+            advertisements: laneComparables.length, uniqueProperties: laneComparables.length, crossPosted: 0, uncertainDuplicates: 0,
+            independentSourceCount: new Set(laneComparables.map((c: any) => c?.source ?? c?.sourceFamily ?? c?.url?.split('/')[2])).size,
+            portals: [], widened: false,
+          },
           conflicts: p._marketConflicts || [],
         } as any) + '\n\n'
       : '';
@@ -1893,7 +1903,7 @@ async function captchaPolicyFor(sb: any): Promise<{ enabled: boolean; providers:
     enabled: o.enabled !== false,
     providers: { mygov: o.providers?.mygov !== false, rstax: o.providers?.rstax !== false },
     maxAttemptsPerProvider: n(o.maxAttemptsPerProvider, 1, 3, 2),
-    maxSolvesPerJob: n(o.maxSolvesPerJob, 1, 6, 3),
+    maxSolvesPerJob: n(o.maxSolvesPerJob, 1, 24, 12),
   };
 }
 

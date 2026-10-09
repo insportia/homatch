@@ -109,3 +109,15 @@ test('read path adds the recovered sections without touching a report that alrea
   assert.equal(kept.marketContext, undefined);
   assert.equal(kept.developerAds.outcome, 'CACHED');
 });
+
+test('finance: a successful RS.ge search is CHECKED from taxpayerData — the worker never returns documents', () => {
+  const rs = { source: 'rstax', status: 'SEARCH_CONFIRMED', forEntity: { idCode: DEV }, documents: [], retrievedAt: '2026-10-09T20:04:07.509Z',
+    taxpayerData: { identificationCode: DEV, taxpayerName: 'შპს მილენიო გრუპი', status: 'აქტიური', vatStatus: 'დღგ-ს გადამხდელი', registrationDate: '28/03/2023', legalForm: null, address: null, otherPublicFields: {} } };
+  const withRs = { ...RESULT, browserOfficial: { results: [...BROWSER.results.filter((r) => r.source !== 'rstax'), rs] } };
+  const f = companyFinanceFrom(withRs, buildCompanyIntelligence(withRs));
+  assert.equal(f.taxStatus.state, 'CHECKED');
+  assert.equal(f.taxStatus.checkedOn, '2026-10-09');
+  assert.equal(f.taxStatus.status, 'აქტიური');
+  assert.equal(f.taxStatus.vatStatus, 'დღგ-ს გადამხდელი');
+  assert.equal(f.taxStatus.registeredOn, '2023-03-28');
+});

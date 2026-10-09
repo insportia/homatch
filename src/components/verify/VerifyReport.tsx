@@ -66,13 +66,12 @@ import {
   type OfficialHistoryClientView,
 } from './OfficialIntelligence';
 import { readable } from '@/verify/readableText';
-import { buyerOpening, unconfirmedItems } from '@/verify/intelligence/buyerSummary';
+import { buyerOpening } from '@/verify/intelligence/buyerSummary';
 import { stripInternalTerms, marketShape, TIER_LABEL_KEY } from '@/verify/intelligence/marketNarrative';
 import { scrubCoverageLanguage } from '@/verify/intelligence/coverageGap';
 import { severitySignals, weighVerdict } from '@/verify/intelligence/severity';
 import { CompanyIntelligenceCard, type CompanyProfileLike } from './CompanyIntelligenceCard';
 import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
-import { UnconfirmedCard } from './UnconfirmedCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
@@ -411,13 +410,6 @@ export function VerifyReport({
     highlights: r.summary?.highlights ?? [],
   }));
 
-  const openQuestions = unconfirmedItems({
-    market: synthesis.market as never,
-    snapshot: synthesis.snapshot as never,
-    rights: rights as never,
-    utilities,
-  });
-
   /* The sections this report actually has, for the jump links. */
   const nav = [
     { id: 'vbi-summary', labelKey: 'vbi_nav_summary', on: true },
@@ -591,9 +583,9 @@ export function VerifyReport({
           verified" reads as the question it actually is. */}
       <UtilitiesCard utilities={utilities} />
 
-      {/* ── 10. WHAT REMAINS UNCONFIRMED ───────────────────────────────
-          Where the missing price and area live now. */}
-      <UnconfirmedCard items={openQuestions} />
+      {/* ── 10. WHAT REMAINS UNCONFIRMED — removed (owner, 2026-10-09):
+          what the run did not establish is simply not written. A list of
+          gaps read as alarm and said nothing about the property. */}
 
       {/* ── 11. WHAT THIS MEANS FOR THE BUYER ──────────────────────────
           The model's closing sentence, and then the three questions a reader
@@ -602,7 +594,7 @@ export function VerifyReport({
       <BuyerBottomLine
         finalView={clean(r.finalView)}
         highlights={r.summary?.highlights ?? []}
-        openQuestions={openQuestions}
+        openQuestions={[]}
         clean={clean}
       />
 

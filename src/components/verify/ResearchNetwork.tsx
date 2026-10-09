@@ -23,7 +23,8 @@
 //     ResearchStream carries every node's name and state.
 
 import React from 'react';
-import type { NetworkState } from '@/verify/researchNetwork';
+import type { NetworkState, NetworkNode } from '@/verify/researchNetwork';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
   FEEL,
   PALETTE,
@@ -34,6 +35,8 @@ import {
   particleBudget,
   step,
   tintRgb,
+  ringPercent,
+  ringPosition,
   type Formation,
   type Particle,
 } from '@/verify/motion/intelligenceField';
@@ -79,9 +82,57 @@ interface Engine {
   t: number;
   frameMs: number;
   thin: boolean;
+  /** Eased 0…1 presence of the formation-specific layers (ribbons, bridges). */
+  wave: number;
+  lanes: number;
+  bridge: number;
+}
+
+/*
+ * A house, drawn in strokes — the property at the centre of the research.
+ * `s` is the half-width of the mark.
+ */
+function drawHouse(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number, alpha: number) {
+  const [r, g, b] = PALETTE.gold;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  // Body, roof and chimney as one outline; door as a second.
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.78, cy - s * 0.1);
+  ctx.lineTo(cx - s * 0.78, cy + s * 0.82);
+  ctx.lineTo(cx + s * 0.78, cy + s * 0.82);
+  ctx.lineTo(cx + s * 0.78, cy - s * 0.1);
+  ctx.moveTo(cx - s * 1.02, cy + s * 0.08);
+  ctx.lineTo(cx, cy - s * 0.92);
+  ctx.lineTo(cx + s * 1.02, cy + s * 0.08);
+  ctx.moveTo(cx + s * 0.48, cy - s * 0.46);
+  ctx.lineTo(cx + s * 0.48, cy - s * 0.78);
+  ctx.lineTo(cx + s * 0.66, cy - s * 0.78);
+  ctx.lineTo(cx + s * 0.66, cy - s * 0.28);
+  ctx.fillStyle = `rgba(11,16,24,${0.85 * alpha})`;
+  ctx.strokeStyle = `rgba(${r},${g},${b},${0.95 * alpha})`;
+  ctx.lineWidth = Math.max(1.4, s * 0.09);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.2, cy + s * 0.82);
+  ctx.lineTo(cx - s * 0.2, cy + s * 0.3);
+  ctx.lineTo(cx + s * 0.2, cy + s * 0.3);
+  ctx.lineTo(cx + s * 0.2, cy + s * 0.82);
+  ctx.lineWidth = Math.max(1, s * 0.07);
+  ctx.stroke();
+  // A lit window: the home is occupied by evidence.
+  ctx.fillStyle = `rgba(${PALETTE.ivory[0]},${PALETTE.ivory[1]},${PALETTE.ivory[2]},${0.75 * alpha})`;
+  ctx.fillRect(cx - s * 0.6, cy + s * 0.05, s * 0.26, s * 0.22);
+  ctx.restore();
 }
 
 function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
+  const { t } = useLanguage();
+  const ring = React.useMemo(() => network.nodes.filter((n) => n.key !== 'complete'), [network.nodes]);
+  const activeNode = ring.find((n) => n.state === 'ACTIVE') ?? null;
+  const ringRef = React.useRef<NetworkNode[]>(ring);
+  ringRef.current = ring;
   const host = React.useRef<HTMLDivElement>(null);
   const canvas = React.useRef<HTMLCanvasElement>(null);
   const formation = formationFor(network);
@@ -89,9 +140,10 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
   formationRef.current = formation;
   // Reduced motion redraws on a formation change; the loop reads the ref.
   const redraw = React.useRef<() => void>(() => {});
+  const ringSignature = ring.map((n) => `${n.key}:${n.state}`).join('|');
   React.useEffect(() => {
     redraw.current();
-  }, [formation]);
+  }, [formation, ringSignature]);
 
   React.useEffect(() => {
     const el = canvas.current;
@@ -121,6 +173,9 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
       t: 0,
       frameMs: 16,
       thin: false,
+      wave: formationRef.current === 'WAVE' ? 1 : 0,
+      lanes: formationRef.current === 'STREAMS' ? 1 : 0,
+      bridge: formationRef.current === 'WEAVE' ? 1 : 0,
     };
 
     const resize = () => {
@@ -179,6 +234,62 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
         ctx.fill();
       }
 
+      // Ribbons — the shape of public research (three waves) and of the market
+      // (five comparative lanes), drawn as soft continuous curves through
+      // the motes of each band, so the formation reads as flow, not dots.
+      const ribbon = (bands: number, weight: number, rgb: readonly [number, number, number]) => {
+        if (weight < 0.02) return;
+        const groups: Particle[][] = Array.from({ length: bands }, () => []);
+        for (const p of ps) if (p.fam === 'MOTE') groups[p.slot % bands].push(p);
+        ctx.lineWidth = 1.1;
+        groups.forEach((g, bi) => {
+          if (g.length < 3) return;
+          const pts = g.map((p) => toPx(p.x, p.y, p.z)).sort((a, b) => a[0] - b[0]);
+          const shimmer = 0.6 + 0.4 * Math.sin(eng.t * 0.7 + bi * 1.3);
+          ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(0.16 * weight * shimmer * glow).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length - 1; i++) {
+            // Through midpoints: a smooth curve that never kinks at a mote.
+            const mx = (pts[i][0] + pts[i + 1][0]) / 2;
+            const my = (pts[i][1] + pts[i + 1][1]) / 2;
+            ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
+          }
+          ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+          ctx.stroke();
+        });
+      };
+      ribbon(3, eng.wave, PALETTE.ivory);
+      ribbon(5, eng.lanes, PALETTE.gold);
+
+      // Bridges — reconciliation: two bodies of evidence joined by arcs that
+      // breathe and carry a travelling spark across.
+      if (eng.bridge > 0.02) {
+        const left = toPx(-aspect * 0.48, 0, 1);
+        const right = toPx(aspect * 0.48, 0, 1);
+        for (let i = 0; i < 4; i++) {
+          const lift = (i - 1.5) * unit * 0.16 + Math.sin(eng.t * 0.5 + i) * unit * 0.03;
+          const cx = (left[0] + right[0]) / 2;
+          const cy = h / 2 + lift * 1.6;
+          ctx.strokeStyle = `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},${(0.14 * eng.bridge * glow).toFixed(3)})`;
+          ctx.lineWidth = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(left[0], left[1] + lift * 0.4);
+          ctx.quadraticCurveTo(cx, cy, right[0], right[1] + lift * 0.4);
+          ctx.stroke();
+          // The spark: a point travelling the arc, alternating direction.
+          const s = (eng.t * 0.18 + i * 0.27) % 1;
+          const u = i % 2 ? 1 - s : s;
+          const q = 1 - u;
+          const sx = q * q * left[0] + 2 * q * u * cx + u * u * right[0];
+          const sy = q * q * (left[1] + lift * 0.4) + 2 * q * u * cy + u * u * (right[1] + lift * 0.4);
+          const g = 7;
+          ctx.globalAlpha = 0.7 * eng.bridge * Math.sin(Math.PI * u) * glow;
+          ctx.drawImage(sprites[1], sx - g, sy - g, g * 2, g * 2);
+          ctx.globalAlpha = 1;
+        }
+      }
+
       // Links — curved, pulsing, dissolving with distance.
       const linkers = ps.filter((p) => p.fam === 'MOTE' || p.fam === 'ANCHOR');
       if (!eng.thin || frame % 2 === 0) {
@@ -223,16 +334,23 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
         for (const p of ps) {
           if (p.fam !== 'CARRIER' || p.t <= 0 || p.t >= 1) continue;
           const fade = Math.sin(Math.PI * p.t);
-          for (let k = 5; k >= 0; k--) {
-            const s = Math.max(0, p.t - k * 0.022);
+          // A continuous streak that tapers and fades behind the head.
+          ctx.lineCap = 'round';
+          let prev = toPx(...carrierPoint(p, easeInOut(Math.max(0, p.t - 0.12))), 0.9);
+          for (let k = 11; k >= 0; k--) {
+            const s = Math.max(0, p.t - k * 0.01);
             const [cx, cy] = carrierPoint(p, easeInOut(s));
-            const [x, y] = toPx(cx, cy, 0.9);
-            const a = (1 - k / 6) * 0.55 * fade * glow;
-            ctx.fillStyle = `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},${a.toFixed(3)})`;
+            const cur = toPx(cx, cy, 0.9);
+            const a = (1 - k / 12) * 0.5 * fade * glow;
+            ctx.strokeStyle = `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},${a.toFixed(3)})`;
+            ctx.lineWidth = Math.max(0.3, p.size * 1.1 * (1 - k / 12));
             ctx.beginPath();
-            ctx.arc(x, y, Math.max(0.4, p.size * (1 - k / 7)), 0, Math.PI * 2);
-            ctx.fill();
+            ctx.moveTo(prev[0], prev[1]);
+            ctx.lineTo(cur[0], cur[1]);
+            ctx.stroke();
+            prev = cur;
           }
+          ctx.lineCap = 'butt';
           const [hx, hy] = toPx(p.x, p.y, 0.9);
           const g = 14 * fade;
           ctx.globalAlpha = 0.8 * fade * glow;
@@ -245,7 +363,8 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
       for (const p of linkers) {
         const [x, y] = toPx(p.x, p.y, p.z);
         const breathe = 0.85 + 0.15 * Math.sin(eng.t * 0.8 * p.speed + p.phase);
-        const a = p.alpha * glow * breathe;
+        // The theme ring is the structure now; the ambient anchors step back.
+        const a = p.alpha * glow * breathe * (p.fam === 'ANCHOR' ? 0.55 : 1);
         const halo = (p.fam === 'ANCHOR' ? 9 : 5.5) * p.size * p.z;
         ctx.globalAlpha = Math.min(1, a * (p.fam === 'ANCHOR' ? 0.9 : 0.6));
         ctx.drawImage(sprites[p.tint], x - halo, y - halo, halo * 2, halo * 2);
@@ -257,22 +376,108 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
         ctx.fill();
       }
 
-      // The property — a warm core that breathes; quicker while the report is written.
+      // THE THEMES AND THEIR THREADS INTO THE HOUSE.
+      // Each research theme sits on the ring; its thread to the house shows
+      // its REAL state: idle threads are barely there, finished ones hold a
+      // steady gold, the active one flows. Nothing here is a measurement.
+      const nodes = ringRef.current;
+      const n = nodes.length;
+      const houseR = unit * 0.15;
+      const cxH = w / 2;
+      const cyH = h / 2;
+      nodes.forEach((node, i) => {
+        const [fx, fy] = ringPosition(i, n, aspect);
+        const [nx, ny] = toPx(fx, fy, 1);
+        const dx = cxH - nx;
+        const dy = cyH - ny;
+        const d = Math.hypot(dx, dy) || 1;
+        const ex = cxH - (dx / d) * houseR;
+        const ey = cyH - (dy / d) * houseR;
+        const bend = d * 0.12 * (i % 2 ? 1 : -1) * (1 + 0.15 * Math.sin(eng.t * 0.4 + i));
+        const qx = (nx + ex) / 2 - (dy / d) * bend;
+        const qy = (ny + ey) / 2 + (dx / d) * bend;
+        const st = node.state;
+        const active = st === 'ACTIVE';
+        const rgb = st === 'UNAVAILABLE' ? PALETTE.steel : st === 'IDLE' ? PALETTE.ivory : PALETTE.gold;
+        const alpha = active ? 0.42 : st === 'DONE' ? 0.24 : st === 'PARTIAL' ? 0.2 : st === 'UNAVAILABLE' ? 0.12 : 0.07;
+        ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(alpha * Math.min(1.1, glow + 0.2)).toFixed(3)})`;
+        ctx.lineWidth = active ? 1.4 : 1;
+        if (active) {
+          ctx.setLineDash([2, 7]);
+          ctx.lineDashOffset = -eng.t * 18;
+        } else if (st === 'PARTIAL' || st === 'UNAVAILABLE') {
+          ctx.setLineDash([3, 5]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(nx, ny);
+        ctx.quadraticCurveTo(qx, qy, ex, ey);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (active) {
+          // Two sparks travelling the thread into the house.
+          for (let k = 0; k < 2; k++) {
+            const u = (eng.t * 0.32 + k * 0.5) % 1;
+            const q = 1 - u;
+            const sx = q * q * nx + 2 * q * u * qx + u * u * ex;
+            const sy = q * q * ny + 2 * q * u * qy + u * u * ey;
+            const g = 9;
+            ctx.globalAlpha = 0.85 * Math.sin(Math.PI * u);
+            ctx.drawImage(sprites[1], sx - g, sy - g, g * 2, g * 2);
+            ctx.globalAlpha = 1;
+          }
+        }
+      });
+
+      // The house — the property, breathing quicker while the report is written.
       const pace = eng.formation === 'CONVERGE' ? 1.6 : eng.formation === 'REST' ? 0.4 : 0.8;
       const pulse = 0.5 + 0.5 * Math.sin(eng.t * pace);
-      const core = unit * (0.13 + 0.025 * pulse);
-      ctx.globalAlpha = (0.55 + 0.25 * pulse) * Math.min(1.2, glow);
-      ctx.drawImage(sprites[1], w / 2 - core * 2.2, h / 2 - core * 2.2, core * 4.4, core * 4.4);
+      const haloR = houseR * (1.9 + 0.25 * pulse);
+      ctx.globalAlpha = (0.5 + 0.25 * pulse) * Math.min(1.2, glow);
+      ctx.drawImage(sprites[1], cxH - haloR, cyH - haloR, haloR * 2, haloR * 2);
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},${(0.25 + 0.2 * pulse) * glow})`;
+      ctx.strokeStyle = `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},${((0.18 + 0.14 * pulse) * glow).toFixed(3)})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(w / 2, h / 2, unit * 0.075, 0, Math.PI * 2);
+      ctx.arc(cxH, cyH, houseR, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = `rgba(${PALETTE.ivory[0]},${PALETTE.ivory[1]},${PALETTE.ivory[2]},${0.85 * Math.min(1, glow + 0.2)})`;
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, 2.6, 0, Math.PI * 2);
-      ctx.fill();
+      drawHouse(ctx, cxH, cyH + houseR * 0.04, houseR * 0.52, Math.min(1, glow + 0.25));
+
+      // The theme nodes themselves, on top of their threads.
+      nodes.forEach((node, i) => {
+        const [fx, fy] = ringPosition(i, n, aspect);
+        const [x, y] = toPx(fx, fy, 1);
+        const st = node.state;
+        if (st === 'ACTIVE') {
+          const g = 16 + 5 * Math.sin(eng.t * 2.2);
+          ctx.globalAlpha = 0.75;
+          ctx.drawImage(sprites[1], x - g, y - g, g * 2, g * 2);
+          ctx.globalAlpha = 1;
+        }
+        const r = st === 'ACTIVE' ? 5 : 4;
+        const [gr, gg, gb] = PALETTE.gold;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        if (st === 'DONE' || st === 'ACTIVE') {
+          ctx.fillStyle = `rgba(${gr},${gg},${gb},0.95)`;
+          ctx.fill();
+        } else if (st === 'PARTIAL') {
+          ctx.fillStyle = PALETTE.ground;
+          ctx.fill();
+          ctx.strokeStyle = `rgba(${gr},${gg},${gb},0.85)`;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, y, r, Math.PI / 2, (Math.PI * 3) / 2);
+          ctx.fillStyle = `rgba(${gr},${gg},${gb},0.85)`;
+          ctx.fill();
+        } else {
+          const rgb = st === 'UNAVAILABLE' ? PALETTE.steel : PALETTE.ivory;
+          ctx.fillStyle = PALETTE.ground;
+          ctx.fill();
+          ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${st === 'UNAVAILABLE' ? 0.55 : 0.32})`;
+          ctx.stroke();
+        }
+      });
     };
 
     const tick = (now: number) => {
@@ -294,8 +499,13 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
       const k = 1 - Math.exp(-dt / 0.5);
       eng.glow += (FEEL[f].glow - eng.glow) * k;
       eng.links += (FEEL[f].links - eng.links) * k;
+      eng.wave += ((f === 'WAVE' ? 1 : 0) - eng.wave) * k;
+      eng.lanes += ((f === 'STREAMS' ? 1 : 0) - eng.lanes) * k;
+      eng.bridge += ((f === 'WEAVE' ? 1 : 0) - eng.bridge) * k;
       eng.t += dt;
-      step(eng.particles, f, eng.t, dt, aspect, eng.counts);
+      const nodesNow = ringRef.current;
+      const ai = nodesNow.findIndex((x) => x.state === 'ACTIVE');
+      step(eng.particles, f, eng.t, dt, aspect, eng.counts, ai >= 0 ? ringPosition(ai, nodesNow.length, aspect) : null);
       draw();
       raf = requestAnimationFrame(tick);
     };
@@ -316,6 +526,9 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
       eng.formation = formationRef.current;
       eng.glow = FEEL[eng.formation].glow;
       eng.links = FEEL[eng.formation].links;
+      eng.wave = eng.formation === 'WAVE' ? 1 : 0;
+      eng.lanes = eng.formation === 'STREAMS' ? 1 : 0;
+      eng.bridge = eng.formation === 'WEAVE' ? 1 : 0;
       for (let i = 0; i < 120; i++) step(eng.particles, eng.formation, eng.t + i / 30, 1 / 30, aspect, eng.counts);
       draw();
     };
@@ -354,9 +567,56 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
       aria-hidden="true"
       data-formation={formation}
       className="relative w-full overflow-hidden rounded-xl ring-1 ring-white/5"
-      style={{ height: 'clamp(200px, 42vw, 300px)', background: PALETTE.ground }}
+      style={{ height: 'clamp(250px, 46vw, 360px)', background: PALETTE.ground }}
     >
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" />
+      {/* The theme labels, placed at the same points the canvas draws the
+          nodes. On a phone only the active theme is named (the legend below
+          lists every one); from sm up, all of them. */}
+      {ring.map((node, i) => {
+        const pos = ringPercent(i, ring.length);
+        const side = Math.abs(pos.cos) > 0.35 ? (pos.cos > 0 ? 'end' : 'start') : pos.sin < 0 ? 'top' : 'bottom';
+        const transform =
+          side === 'end'
+            ? 'translate(12px, -50%)'
+            : side === 'start'
+              ? 'translate(calc(-100% - 12px), -50%)'
+              : side === 'top'
+                ? 'translate(-50%, calc(-100% - 10px))'
+                : 'translate(-50%, 10px)';
+        const active = node.state === 'ACTIVE';
+        // Explicit colours: ivory at the opacity its state earns, gold when active.
+        const color = active
+          ? 'rgb(240,196,110)'
+          : node.state === 'DONE'
+            ? 'rgba(236,230,216,0.82)'
+            : node.state === 'IDLE'
+              ? 'rgba(236,230,216,0.42)'
+              : 'rgba(236,230,216,0.62)';
+        return (
+          <span
+            key={node.key}
+            dir="auto"
+            className={`hidden sm:block pointer-events-none absolute max-w-[9.5rem] text-[11px] leading-tight transition-colors duration-700 motion-reduce:transition-none ${
+              active ? 'font-semibold' : ''
+            } ${side === 'start' ? 'text-end' : side === 'end' ? 'text-start' : 'text-center'}`}
+            style={{ left: `${pos.left}%`, top: `${pos.top}%`, transform, color }}
+          >
+            {t(node.labelKey)}
+          </span>
+        );
+      })}
+      {/* On a phone the ring is too tight for every name: the theme being
+          researched now is captioned under the house instead. */}
+      {activeNode ? (
+        <span
+          dir="auto"
+          className="sm:hidden pointer-events-none absolute inset-x-4 bottom-3 text-center text-xs font-semibold leading-tight"
+          style={{ color: 'rgb(240,196,110)' }}
+        >
+          {t(activeNode.labelKey)}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -371,5 +631,7 @@ export const ResearchNetwork = React.memo(
   (a, b) =>
     a.network.activeKey === b.network.activeKey &&
     a.network.terminal === b.network.terminal &&
-    a.network.settled === b.network.settled,
+    a.network.settled === b.network.settled &&
+    a.network.nodes.length === b.network.nodes.length &&
+    a.network.nodes.every((n, i) => n.key === b.network.nodes[i].key && n.state === b.network.nodes[i].state),
 );

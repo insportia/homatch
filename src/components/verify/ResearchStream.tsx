@@ -35,7 +35,7 @@ import React, { Suspense, lazy } from 'react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { elapsedMs, formatElapsed, phaseFor } from '@/verify/progress';
-import { messagesFor, PHASE_TAG, extractLiveFacts } from '@/verify/researchNarrative';
+import { messagesFor, extractLiveFacts } from '@/verify/researchNarrative';
 import { networkState, type LiveCounters, type NetworkSection } from '@/verify/researchNetwork';
 import { ResearchNetwork } from '@/components/verify/ResearchNetwork';
 
@@ -218,10 +218,9 @@ export function ResearchStream({
           >
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(38_92%_54%)]" aria-hidden="true" />
             <span className="min-w-0">
+              {/* Plain customer language only: the decorative "PROPERTY_IDENTITY ::
+                  RESOLVING" tag read like a system code and is no longer shown. */}
               <span className="block text-sm break-words">{t(k)}</span>
-              <span aria-hidden="true" className="block text-2xs font-semibold uppercase tracking-wider text-[hsl(var(--gold-ink))]/80 break-words">
-                {PHASE_TAG[phase]}
-              </span>
             </span>
           </li>
         ))}

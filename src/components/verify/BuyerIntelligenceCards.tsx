@@ -318,10 +318,12 @@ export function ReportNav({ items }: { items: Array<{ id: string; labelKey: stri
 /* ───────────────────────── Executive glance ───────────────────────── */
 
 type Tone = 'confirmed' | 'attention' | 'risk' | 'quiet';
+// `!`: the report's blanket `.verify-report [class*='border-border']` rule
+// (index.css, specificity 0,2,0) otherwise repaints the accent edge neutral.
 const TILE_TONE: Record<Tone, string> = {
-  confirmed: 'border-s-emerald-600/70',
-  attention: 'border-s-[hsl(var(--gold-border))]',
-  risk: 'border-s-destructive/70',
+  confirmed: '!border-s-emerald-600/70',
+  attention: '!border-s-[hsl(var(--gold-border))]',
+  risk: '!border-s-destructive/70',
   quiet: 'border-s-border',
 };
 
@@ -403,7 +405,7 @@ export function ExecutiveGlance({
       </h2>
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {tiles.map((tile) => (
-          <li key={tile.key} className="min-w-0">
+          <li key={tile.key} className="min-w-0 sm:[&:last-child:nth-child(odd)]:col-span-2">
             <a
               href={tile.href}
               className={`block h-full min-w-0 rounded-xl border border-border border-s-[3px] ${TILE_TONE[tile.tone]} bg-card px-4 py-3 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none`}

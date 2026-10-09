@@ -280,7 +280,16 @@ export function carrierPoint(p: Particle, s: number): [number, number] {
  * One physics step. dt in seconds (clamped by the caller). Mutates particles.
  * Returns nothing; the renderer reads positions.
  */
-export function step(ps: Particle[], f: Formation, t: number, dt: number, aspect: number, counts: { motes: number; anchors: number }): void {
+export function step(
+  ps: Particle[],
+  f: Formation,
+  t: number,
+  dt: number,
+  aspect: number,
+  counts: { motes: number; anchors: number },
+  /** Where evidence is coming from right now: the active research theme. */
+  source?: [number, number] | null,
+): void {
   const feel = FEEL[f];
   for (const p of ps) {
     if (p.fam === 'CARRIER') {
@@ -293,7 +302,9 @@ export function step(ps: Particle[], f: Formation, t: number, dt: number, aspect
         p.t = 0;
         // A new arrival from somewhere else on the edge (deterministic walk).
         const u = (p.phase / (Math.PI * 2) + p.slot * 0.137 + t * 0.013) % 1;
-        p.from = edgePoint(u, aspect);
+        // From the theme being researched, when there is one: evidence
+        // visibly travels from that topic into the property.
+        p.from = source ? [source[0] + Math.cos(u * 6.283) * 0.05, source[1] + Math.sin(u * 6.283) * 0.05] : edgePoint(u, aspect);
         p.bend = Math.sin(p.phase + t) * 0.7;
       }
       const [x, y] = carrierPoint(p, easeInOut(p.t));
@@ -342,3 +353,32 @@ export const PALETTE = {
 
 export const tintRgb = (tint: 0 | 1 | 2): readonly [number, number, number] =>
   tint === 1 ? PALETTE.gold : tint === 2 ? PALETTE.steel : PALETTE.ivory;
+
+/*
+ * THE THEME RING — the research topics around the house.
+ *
+ * Positions in field units (x scaled by aspect), clockwise from the top, and
+ * the same as CSS percentages of the canvas box, so canvas lines and HTML
+ * labels meet exactly at any size: left% = 50 + cos·RX·46, top% = 50 + sin·RY·46.
+ */
+export const RING_RX = 0.62;
+export const RING_RY = 0.72;
+const FIELD_SCALE = 0.46;
+
+export function ringAngle(i: number, n: number): number {
+  return -Math.PI / 2 + (i / Math.max(1, n)) * Math.PI * 2;
+}
+
+/** A theme's position in field units. */
+export function ringPosition(i: number, n: number, aspect: number): [number, number] {
+  const a = ringAngle(i, n);
+  return [(Math.cos(a) * RING_RX * aspect) / 1, Math.sin(a) * RING_RY];
+}
+
+/** The same position as percentages of the canvas box (for HTML labels). */
+export function ringPercent(i: number, n: number): { left: number; top: number; cos: number; sin: number } {
+  const a = ringAngle(i, n);
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  return { left: 50 + cos * RING_RX * FIELD_SCALE * 100, top: 50 + sin * RING_RY * FIELD_SCALE * 100, cos, sin };
+}

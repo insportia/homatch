@@ -10,6 +10,7 @@ import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import {
   assessFinancialEntityWait, beginWait, unavailableEntityResult,
   type WatchdogState,
+  stallLimitsFor,
 } from '../_shared/verifyWatchdog.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import { notify } from '../_shared/notify.ts';
@@ -2648,13 +2649,49 @@ function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'
 // reconciliation-stage trigger. Persisted once per chain run so each
 // individual source's CAPTCHA pause/resume doesn't need to re-derive it.
 async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
-  const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  /*
+   * CLAIM BEFORE STARTING THE WORKER.
+   *
+   * The status/resume path and the background driver can both advance the
+   * same row. Both used to call the worker first and write second, so job
+   * c80f7237 started TWO rstax worker jobs 6 ms apart (6570a2ad and an
+   * orphan, d367ab14) — two paid CAPTCHA solves each, one browser never
+   * released. The row now moves to FINANCIAL_ENTITY_WAITING only if it is
+   * still the row this tick read; a tick that loses the claim starts nothing.
+   */
   const p = j.result_json || {};
+  p._financialEntityRequestedFor = { source, name, idCode };
+  p._financialReturnStage = returnStage;
+  let claimedAt: string | null = null;
+  if (j.updated_at) {
+    // The claim carries the remaining queue and return stage, so even a tick
+    // that dies right after it leaves a row the next tick can continue.
+    claimedAt = now();
+    const { data: claimed, error: claimError } = await sb
+      .from('research_jobs')
+      .update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, updated_at: claimedAt })
+      .eq('id', j.id)
+      .eq('updated_at', j.updated_at)
+      .select('id');
+    if (claimError) throw claimError;
+    if (!claimed?.length) return null;
+  }
+  let r: any;
+  try {
+    r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  } catch (e) {
+    // Nothing started: hand the row back exactly as it was, so the caller's
+    // retry handling sees the same stage it always did.
+    if (claimedAt) {
+      await sb.from('research_jobs')
+        .update({ status: j.status, stage: j.stage, result_json: j.result_json, updated_at: now() })
+        .eq('id', j.id).eq('updated_at', claimedAt);
+    }
+    throw e;
+  }
   // The watchdog's clock starts with the job, not with the first poll: a
   // worker that never reports anything at all must still time out.
   p._worker = { jobId: r.data.jobId, wait: beginWait(Date.now()) };
-  p._financialEntityRequestedFor = { source, name, idCode };
-  p._financialReturnStage = returnStage;
   return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
 }
 // processFinancialQueue() (v28, NEW): drives `_financialQueue` (initialized
@@ -2705,6 +2742,7 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
      */
     const assessment = assessFinancialEntityWait(
       prior._worker?.wait as WatchdogState | undefined, w, Date.now(),
+      stallLimitsFor(prior._financialEntityRequestedFor?.source),
     );
     if (!assessment.giveUp) {
       // Persist the clock so the next tick can tell movement from stillness.

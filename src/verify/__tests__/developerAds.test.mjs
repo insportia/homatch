@@ -213,3 +213,14 @@ test('the finished report keeps the advertising stage (job c80f7237: billed, the
   assert.match(agent, /delete r\[k\];/);
   assert.match(agent, /'_developerAds'\]\) delete r\[k\]/);
 });
+
+test('a financial lookup is claimed before the worker is started (job c80f7237 started rstax twice)', () => {
+  const agent = code('supabase/functions/research-agent/index.ts');
+  const fn = agent.slice(agent.indexOf('async function startFinancialEntity('), agent.indexOf('async function processFinancialQueue('));
+  const claim = fn.indexOf(".eq('updated_at', j.updated_at)");
+  const call = fn.indexOf('await wf(FINANCIAL_ENDPOINT[source]');
+  assert.ok(claim > 0 && call > claim, 'the conditional claim precedes the worker call');
+  assert.match(fn, /if \(!claimed\?\.length\) return null;/, 'a tick that loses the claim starts nothing');
+  assert.match(fn, /\.eq\('updated_at', claimedAt\)/, 'a failed start hands the row back');
+  assert.match(agent, /stallLimitsFor\(prior\._financialEntityRequestedFor\?\.source\)/, 'the stall limit is per source');
+});

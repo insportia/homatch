@@ -81,7 +81,7 @@ update public.find_buyers_actor_registry
        health = 'DISABLED',
        last_error = 'QUARANTINED: requires an authenticated LinkedIn session (input.cookies); not supported',
        updated_at = now()
- where actor_key = 'LINKEDIN_GROUPS' and enabled;
+ where actor_key = 'LINKEDIN_GROUPS';
 
 /* Comments are now fetched only under listings comparable to the property
    (same transaction), so the similarity gate moves from 70/85 to 55/75. An

@@ -77,3 +77,20 @@ export async function revealNativeContact(kind: NativeKind, id: string): Promise
     reason: value.reason === 'NOT_SHARED' || value.reason === 'NO_NUMBER' ? value.reason : null,
   };
 }
+
+/**
+ * An opaque per-person key for each of the caller's native rows (never a user id), so
+ * a member with both a MATCH and a RELATIONSHIP is one card and one count. Best-effort:
+ * an empty map makes every row its own card, which under-merges rather than hides.
+ */
+export async function listNativeMatchCounterparts(propertyId?: string | null): Promise<Map<string, string>> {
+  const { data, error } = await supabase.rpc('my_native_match_counterparts', {
+    p_property_id: propertyId ?? null,
+  });
+  if (error) throw error;
+  const keys = new Map<string, string>();
+  for (const row of (data ?? []) as Array<{ kind: string; id: string; counterpart_key: string }>) {
+    keys.set(`${row.kind}:${row.id}`, row.counterpart_key);
+  }
+  return keys;
+}

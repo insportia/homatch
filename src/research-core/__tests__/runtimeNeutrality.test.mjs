@@ -234,6 +234,11 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/atomic-unlock/index.ts',
     'supabase/functions/classify-signals-v2/index.ts',
     'src/matching/currentDemand.ts',
+    /* HOMATCH Internal Matches: the owner's profile view scores a member (and the admin
+       DEMO buyer) through the worker's own native-pair mapping. Components import this
+       seam, never the core. */
+    'src/matching/internalMatch.ts',
+    'src/matching/__tests__/internalMatch.test.mjs',
     'supabase/functions/_shared/fx.ts',
     'supabase/functions/_shared/__tests__/campaignMoney.test.mjs',
     // The Verify market lane and the seed it is built from.

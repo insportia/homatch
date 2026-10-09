@@ -50,7 +50,16 @@ import {
   type StrengthMap,
   type SupplySide,
 } from '../../../src/research-core/match/compatibility.ts';
-import { nativeSupplyRole, supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
+import { supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
+import {
+  demandSideFromIntentProfile,
+  NATIVE_MIN_AGREEMENTS,
+  strengthFromCriteria,
+  supplySideFromProperty,
+  type IntentProfileShape,
+  type PropertyFactsShape,
+  type PropertyShape,
+} from '../../../src/research-core/match/native-pair.ts';
 import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
 import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
@@ -89,7 +98,7 @@ const MAX_DEMAND = 25;
  * every Tbilisi enquiry with every Tbilisi listing, which is the failure mode that
  * makes a match list worthless.
  */
-const MIN_AGREEMENTS = 3;
+const MIN_AGREEMENTS = NATIVE_MIN_AGREEMENTS;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -281,43 +290,10 @@ Deno.serve(async (req: Request) => {
        */
       const activeSubscription = subscriptions.find((sub) => sub.is_active === true);
       const criteria = (activeSubscription?.search_criteria ?? {}) as Record<string, unknown>;
-      const planStrength = (): StrengthMap | null => {
-        /* A confirmed Search Plan stores each constraint as { value, strength }. */
-        const map: Record<string, string> = {};
-        const pick = (field: string, dimension: string) => {
-          const entry = criteria[field] as { strength?: string } | null | undefined;
-          if (entry && typeof entry === 'object' && entry.strength && entry.strength !== 'UNKNOWN') {
-            map[dimension] = entry.strength;
-          }
-        };
-        pick('city', 'CITY'); pick('districts', 'DISTRICT'); pick('propertyTypes', 'PROPERTY_TYPE');
-        pick('budget', 'PRICE'); pick('bedrooms', 'BEDROOMS'); pick('areaSqm', 'AREA');
-        return Object.keys(map).length ? map as StrengthMap : null;
-      };
-      const statedStrength = (criteria.strength && typeof criteria.strength === 'object')
-        ? criteria.strength as StrengthMap
-        : planStrength();
-      const strength: StrengthMap = statedStrength && Object.keys(statedStrength).length
-        ? { DISTRICT: 'PREFERRED', ...statedStrength }
-        : { DISTRICT: 'PREFERRED' };
-
-      const demand: DemandSide = {
-        intentType: (demandRow.intent_type as string | null) ?? null,
-        transactionType: (demandRow.transaction_type as string | null) ?? null,
-        city: (demandRow.city as string | null) ?? null,
-        district: (demandRow.district as string | null) ?? null,
-        propertyTypes: (demandRow.property_types as string[] | null) ?? null,
-        budgetMin: demandRow.budget_min as number | null,
-        budgetMax: demandRow.budget_max as number | null,
-        currency: (demandRow.currency as string | null) ?? null,
-        areaMin: demandRow.area_min as number | null,
-        areaMax: demandRow.area_max as number | null,
-        bedroomsMin: demandRow.bedrooms_min as number | null,
-        bedroomsMax: demandRow.bedrooms_max as number | null,
-        roomsMin: (demandRow.rooms_min as number | null) ?? null,
-        roomsMax: (demandRow.rooms_max as number | null) ?? null,
-        strength,
-      };
+      /* The mapping is shared (research-core/match/native-pair.ts) so the owner's
+         profile view explains a pair with exactly the inputs this worker scored. */
+      const strength: StrengthMap = strengthFromCriteria(criteria);
+      const demand: DemandSide = demandSideFromIntentProfile(demandRow as IntentProfileShape, strength);
 
       /*
        * CANDIDATE SUPPLY, narrowed cheaply and imprecisely in SQL and decided precisely
@@ -579,25 +555,10 @@ Deno.serve(async (req: Request) => {
            * says which, so only one of the two amounts is ever populated — putting the
            * figure in both would let a rental match a buyer's budget.
            */
-          const transaction = String(propertyRow.transaction_type ?? '').toUpperCase();
-          const amount = (propertyFacts?.total_price as number | null) ?? null;
-          const amountCurrency = (propertyFacts?.currency as string | null) ?? null;
-          const nativeSupply: SupplySide = {
-            /* Who listed it and what they offer -- see nativeSupplyRole. A rental
-               listed by its owner is LANDLORD supply, so a tenant can match it. */
-            role: nativeSupplyRole(transaction, (propertyRow.listed_by_role as string | null) ?? null),
-            transaction: transaction || null,
-            city: (propertyFacts?.city as string | null) ?? null,
-            district: (propertyFacts?.district as string | null) ?? null,
-            propertyType: (propertyRow.property_type as string | null) ?? null,
-            saleAmount: transaction === 'RENT' ? null : amount,
-            saleCurrency: transaction === 'RENT' ? null : amountCurrency,
-            rentAmount: transaction === 'RENT' ? amount : null,
-            rentCurrency: transaction === 'RENT' ? amountCurrency : null,
-            areaSqm: (propertyFacts?.area as number | null) ?? null,
-            bedrooms: (propertyFacts?.bedrooms as number | null) ?? null,
-            rooms: (propertyFacts?.rooms as number | null) ?? null,
-          };
+          const nativeSupply: SupplySide = supplySideFromProperty(
+            propertyRow as PropertyShape,
+            propertyFacts as PropertyFactsShape | null | undefined,
+          );
 
           const assessment = assessMatch(demand, nativeSupply, { minAgreements: MIN_AGREEMENTS });
           if (assessment.compatibility !== 'COMPATIBLE') continue;

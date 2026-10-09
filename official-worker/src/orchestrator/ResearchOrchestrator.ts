@@ -5,12 +5,15 @@
 // EntityQueue for one job, and handles the WAITING_HUMAN pause/resume/skip
 // lifecycle (mandate Section 10) generically across all four sources
 // instead of ad hoc per-source resume logic.
+import { captchaService, parseCaptchaPolicy, type CaptchaPolicy, type CaptchaContext } from '../captcha/captchaService.js';
 import { launchJobBrowser, jobContext, closeJobBrowser, logBrowserLifecycle, type JobBrowser } from '../browser/LocalBrowserRuntime.js';
 import { randomUUID } from 'node:crypto';
 import { EvidenceLedger } from '../evidence/EvidenceLedger.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
 import { runTasMapWorker } from '../workflows/tasmap/TasMapWorker.js';
 import { runTasWorkflow } from '../workflows/tas/TasWorkflow.js';
+import { runTasApiStep } from '../workflows/tas/api/TasApiStep.js';
+import { DEFAULT_TAS_CONFIG, recordTasFallback, recordTasRun, shouldFallBack, type TasImplementationConfig } from '../workflows/tas/implementation.js';
 import { runMyGovWorkflow } from '../workflows/mygov/MyGovWorkflow.js';
 import { runMyGovApiStep } from '../workflows/mygov/MyGovApiWorkflow.js';
 import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
@@ -283,9 +286,9 @@ export class ResearchOrchestrator {
     return step.type === 'entity' ? step.source : step.key;
   }
 
-  start(query: string, mode: 'cadastral' | 'property'): ResearchJob {
+  start(query: string, mode: 'cadastral' | 'property', tasConfig: TasImplementationConfig = DEFAULT_TAS_CONFIG, captchaPolicy: CaptchaPolicy = parseCaptchaPolicy(null)): ResearchJob {
     const id = randomUUID();
-    const job: ResearchJob = { id, query, mode, status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], createdAt: now(), updatedAt: now() };
+    const job: ResearchJob = { id, query, mode, status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], createdAt: now(), updatedAt: now(), tasConfig, captchaPolicy };
     this.jobs.set(id, job);
     this.run(job).catch((e) => {
       job.status = 'FAILED';
@@ -321,7 +324,7 @@ export class ResearchOrchestrator {
    * exposes a name search (see RsTaxpayerWorker.ts/DebtorWorker.ts) — a
    * caller with only a name and no idCode should not call this for those
    * two sources at all. */
-  startEntity(name: string, idCode: string | null, source: 'enreg' | 'rstax' | 'debtor' = 'enreg'): ResearchJob {
+  startEntity(name: string, idCode: string | null, source: 'enreg' | 'rstax' | 'debtor' = 'enreg', captchaPolicy: CaptchaPolicy = parseCaptchaPolicy(null)): ResearchJob {
     const id = randomUUID();
     // Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8: this used
     // to fall back to `idCode || name` for 'enreg', which copied the
@@ -341,7 +344,7 @@ export class ResearchOrchestrator {
     // RsTaxpayerWorker/DebtorWorker, never a name typed into a TIN input.
     const stepIdCode = looksLikeCompanyId(idCode) ? (idCode as string) : null;
     const step: StepDescriptor = { type: 'entity', source, idCode: stepIdCode, name };
-    const job: ResearchJob = { id, query: stepIdCode || name, mode: 'cadastral', status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], steps: [step], createdAt: now(), updatedAt: now() };
+    const job: ResearchJob = { id, query: stepIdCode || name, mode: 'cadastral', status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], steps: [step], createdAt: now(), updatedAt: now(), captchaPolicy };
     this.jobs.set(id, job);
     this.run(job).catch((e) => {
       job.status = 'FAILED';
@@ -400,6 +403,11 @@ export class ResearchOrchestrator {
    * BrowserlessRecovery.ts — so each source can recover once from its own
    * separate session expiration, while still never looping.
    */
+  /** The shared CAPTCHA service, scoped to this job and its policy. */
+  private captchaContext(job: ResearchJob): CaptchaContext {
+    return { service: captchaService, policy: job.captchaPolicy ?? parseCaptchaPolicy(null), jobId: job.id };
+  }
+
   private async runStep(jobBrowser: JobBrowser, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean }> {
     const ledger = this.ledgerFor(job.id);
     const entities = this.entitiesFor(job.id);
@@ -407,7 +415,24 @@ export class ResearchOrchestrator {
     const query = step.type === 'entity' ? step.idCode || step.name : job.query;
     const forEntity = step.type === 'entity' ? { name: step.name, idCode: step.idCode } : null;
 
-    if (key === 'mygov') return runMyGovApiStep(query, entities);
+    if (key === 'mygov') return runMyGovApiStep(query, entities, { captcha: this.captchaContext(job) });
+
+    // TAS API_FIRST runs before any browser page is allocated. Its failure is
+    // never the customer's: the configured fallback (LEGACY) runs below in the
+    // same step. A successful API run never touches Chromium.
+    let tasFallbackFrom: string | null = null;
+    if (key === 'tas') {
+      const cfg = job.tasConfig ?? DEFAULT_TAS_CONFIG;
+      if (cfg.active === 'API_FIRST') {
+        const api = await runTasApiStep(query, entities);
+        if (!shouldFallBack(api.result) || cfg.fallback !== 'LEGACY') {
+          job.tasExecution = { implementation: 'API_FIRST', fallbackFrom: null, durationMs: api.durationMs };
+          return { result: api.result, keep: false };
+        }
+        recordTasFallback('API_FIRST');
+        tasFallbackFrom = 'API_FIRST';
+      }
+    }
 
     const ctx = jobContext(jobBrowser);
     let page: any;
@@ -450,10 +475,15 @@ export class ResearchOrchestrator {
 
     try {
       let result: any;
-      if (key === 'tas') result = await runTasWorkflow(page, query, job.mode, entities);
-      else if (key === 'TAS_MAP') result = await runTasMapWorker(page, query, ledger, entities);
+      if (key === 'tas') {
+        const t0 = Date.now();
+        result = await runTasWorkflow(page, query, job.mode, entities);
+        recordTasRun('LEGACY', result?.status !== 'FAILED', Date.now() - t0, result?.error ?? null);
+        job.tasExecution = { implementation: 'LEGACY', fallbackFrom: tasFallbackFrom, durationMs: Date.now() - t0 };
+        if (result) result.tasImplementation = { implementation: 'LEGACY', fallbackFrom: tasFallbackFrom };
+      } else if (key === 'TAS_MAP') result = await runTasMapWorker(page, query, ledger, entities);
       else if (key === 'enreg') result = await runEnregWorkflow(page, forEntity || { name: query, idCode: /^[0-9-]{6,}$/.test(String(query || '').trim()) ? query : null }, entities);
-      else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities);
+      else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities, { captcha: this.captchaContext(job) });
       else if (key === 'debtor') result = await runDebtorWorker(page, forEntity, entities);
       else result = await runGenericWorkflow(page, key, NAPR_META, query);
 

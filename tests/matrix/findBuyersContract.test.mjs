@@ -33,7 +33,20 @@ const MIGRATION = read('supabase/migrations/20261014100000_find_buyers_social_in
 test('Verify is untouched: no Verify file reaches Find Buyers, and Find Buyers reaches no Verify code', () => {
   const verify = [...walk('src/verify'), ...walk('src/components/verify'), ...walk('supabase/functions/research-agent'), ...walk('supabase/functions/verify-synthesis')]
     .filter((f) => /\.(ts|tsx|mjs)$/.test(f));
-  for (const f of verify) assert.doesNotMatch(read(f), /findBuyers|find_buyers|memo23|APIFY_MEMO23/, `${f} must not know Find Buyers`);
+  /*
+   * One seam, by owner decision (2026-10-09): Verify's Developer Advertising
+   * stage shares the memo23 Apify client — run, poll, cost and the APIFY
+   * switch — and nothing else. research-agent imports exactly that file;
+   * no Verify file reaches a Find Buyers campaign, planner, table or ledger.
+   * Naming a memo23 Actor is allowed; knowing Find Buyers is not.
+   */
+  const SEAM = "from '../_shared/findBuyers/memo23Client.ts';";
+  const AGENT = join('supabase', 'functions', 'research-agent', 'index.ts');
+  assert.equal(read(AGENT).split(SEAM).length - 1, 1, 'research-agent imports the shared memo23 client exactly once');
+  for (const f of verify) {
+    const src = f === AGENT ? read(f).replace(SEAM, '') : read(f);
+    assert.doesNotMatch(src, /findBuyers|find_buyers|FindBuyers/, `${f} must not know Find Buyers`);
+  }
   for (const f of [...walk('src/research-core/findBuyers'), ...walk('supabase/functions/_shared/findBuyers'), ...walk('src/components/findBuyers')]) {
     assert.doesNotMatch(read(f), /from ['"][^'"]*(\/verify\/|research-agent|verify-synthesis)/, `${f} must not import Verify`);
   }
@@ -78,16 +91,21 @@ test('comments are bought only for comparable parent posts, and stored comments 
   assert.match(PIPELINE, /classification_status: 'FILTERED_OUT'/, 'never PENDING: the demand classifier does not re-pay for these');
 });
 
-test('Telegram order: native first by default; paid memo23 Telegram first only by the owner setting, native then the fallback', () => {
+test('Telegram: COMBINED by default (owner 2026-10-08) — free reader + paid memo23 on the channels it does not cover; NATIVE_FIRST / PAID_FIRST only by setting', () => {
   assert.match(DRIVER, /job\.provider === 'TELEGRAM' && \(finalStatus === 'FAILED' \|\| finalStatus === 'CANCELLED'\)/);
   assert.match(DRIVER, /const NATIVE_PROVIDERS = \['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'\]/);
   const pref = read('src/research-core/findBuyers/telegramPreference.ts');
-  /* Default is NATIVE_FIRST: only an explicit PAID_FIRST switches the order. */
-  assert.match(pref, /return v === 'PAID_FIRST' \? 'PAID_FIRST' : 'NATIVE_FIRST';/);
+  /* Default is COMBINED; NATIVE_FIRST and PAID_FIRST only when the setting says so. */
+  assert.match(pref, /if \(v === 'PAID_FIRST'\) return 'PAID_FIRST';\s*if \(v === 'NATIVE_FIRST'\) return 'NATIVE_FIRST';\s*return 'COMBINED';/);
   assert.match(pref, /return pref === 'PAID_FIRST' \|\| !nativeTelegramActive;/);
-  /* The planner only plans paid Telegram through that rule, and only on known channels (never a guessed seed). */
+  /* Paid never reads a channel the free reader covers. */
+  assert.match(pref, /&& !nativeCovers\(c\)/);
+  /* The planner only plans paid Telegram at launch through that rule, and only on known channels (never a guessed seed). */
   assert.match(read('src/research-core/findBuyers/campaignPlan.ts'), /if \(planPaidTelegram\(input\.telegramPreference \?\? 'NATIVE_FIRST', input\.nativeTelegramActive\)\) \{\s*pushKnown\('TELEGRAM_CHANNEL', 'TELEGRAM'/);
-  /* The free reader is skipped only when paid Telegram jobs were actually queued; community discovery stays. */
+  /* COMBINED adds the uncovered channels when Phase 1's Telegram search has an outcome (Find Buyers only). */
+  assert.match(DRIVER, /job\.provider === 'TELEGRAM_SOURCES' && job\.metadata\?\.direction === 'DEMAND'[\s\S]{0,160}queueCombinedTelegram\(db, job\.matching_job_id\)/);
+  assert.match(CAMPAIGN, /if \(settings\.telegramPreference !== 'COMBINED' \|\| !settings\.socialEnabled \|\| !settings\.apifyEnabled\) return 0;/);
+  /* The free reader is skipped only under PAID_FIRST when paid Telegram jobs were actually queued; community discovery stays. */
   const mc = read('supabase/functions/match-campaign/index.ts');
   assert.match(mc, /const skipNativeReader = findBuyers\.telegramPreference === 'PAID_FIRST' && paidTelegramQueued > 0;/);
   assert.match(mc, /plan: skipNativeReader \? withoutNativeTelegramReader\(plan\) : plan,/);

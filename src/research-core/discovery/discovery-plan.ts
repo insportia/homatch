@@ -31,6 +31,7 @@
 
 import type { PlanDraft, SearchPlan } from './search-plan.ts';
 import { sourceQueriesFor } from './telegram-sources.ts';
+import { campaignSourceQueries } from './sourceNetwork.ts';
 
 export type DiscoveryDirection = 'SUPPLY' | 'DEMAND';
 
@@ -151,6 +152,10 @@ export function compileDemandPlan(input: {
   };
   switches: CompileSwitches;
   limits: CompileLimits;
+  /** Shifts the discovery phrases so consecutive campaigns search different ones. */
+  rotation?: number;
+  /** The owner's explicit language choice: discovery searches only these. */
+  targetLanguages?: readonly string[] | null;
 }): DiscoveryPlan {
   const market = upper(input.market) || 'GE';
   const tx = String(input.property.transactionType || '').toLowerCase();
@@ -184,7 +189,11 @@ export function compileDemandPlan(input: {
     tranches: trancheList('DEMAND', input.switches, false),
     portalAdapters: [],
     workerRoutedAdapters: [],
-    queryVariants: input.switches.telegram ? sourceQueriesFor(market, languages) : [],
+    /* Every site language, the property's own city and deal (sourceNetwork.ts),
+       not the campaign's display languages: buyers from abroad search in theirs. */
+    queryVariants: input.switches.telegram
+      ? campaignSourceQueries({ city: input.property.city, transaction, rotation: input.rotation ?? 0, languages: input.targetLanguages ?? null }).map(({ language, query }) => ({ language, query }))
+      : [],
     budget: { maxCredits: input.limits.maxCredits },
     stopping: {
       targetResults: Math.max(1, input.limits.targetResults),
@@ -272,7 +281,8 @@ export function plannedSourceJobs(plan: DiscoveryPlan, runKey: string): PlannedS
     jobs.push({
       provider: 'TELEGRAM', tranche: 1, executor: 'EDGE', platform: 'TELEGRAM', language: 'multi',
       queryKind: 'CAMPAIGN_SYNC', priority: 70, dedupeKey: `${runKey}:TELEGRAM`,
-      metadata: { ...base },
+      /* The read keeps to communities of this property's city (or country-wide). */
+      metadata: plan.direction === 'DEMAND' ? { ...base, city: plan.subject.city } : { ...base },
     });
   }
   if (has('FORUM')) {
@@ -295,10 +305,18 @@ export function plannedSourceJobs(plan: DiscoveryPlan, runKey: string): PlannedS
   }
   if (has('TELEGRAM_SOURCES') && plan.queryVariants.length) {
     jobs.push({
+      /* Find Buyers: SOURCE DISCOVERY FIRST — it outranks the community read
+         (70), so the communities it finds, audits and reads are part of this
+         campaign. Find Property keeps discovery after its reads. */
       provider: 'TELEGRAM_SOURCES', tranche: 2, executor: 'EDGE', platform: 'TELEGRAM',
-      language: plan.languages.join(',') || 'multi', queryKind: 'SOURCE_DISCOVERY', priority: 60,
+      language: [...new Set(plan.queryVariants.map((q) => q.language))].join(',') || 'multi', queryKind: 'SOURCE_DISCOVERY', priority: plan.direction === 'DEMAND' ? 80 : 60,
       dedupeKey: `${runKey}:TELEGRAM_SOURCES`,
-      metadata: { ...base, languages: plan.languages, queries: plan.queryVariants.map((q) => q.query) },
+      metadata: {
+        ...base, languages: [...new Set(plan.queryVariants.map((q) => q.language))],
+        queries: plan.queryVariants.map((q) => q.query),
+        queryLanguages: plan.queryVariants.map((q) => q.language),
+        ...(plan.direction === 'DEMAND' ? { city: plan.subject.city, transaction: plan.subject.transaction } : {}),
+      },
     });
   }
   return jobs;

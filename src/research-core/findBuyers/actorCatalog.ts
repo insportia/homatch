@@ -61,7 +61,7 @@ export const ACTOR_PROFILES: Readonly<Record<string, ActorProfile>> = {
   VK_POSTS_COMMENTS: { cls: 'ENRICHMENT', produces: 'DEMAND_POSTS', needsSeed: true, seededBy: null,
     why: 'Walls of known VK communities (Russian-speaking demand), filtered by keyword and date.' },
   TELEGRAM_CHANNEL: { cls: 'UNSUITABLE', produces: 'CHANNEL_MESSAGES', needsSeed: true, seededBy: null,
-    why: 'Fallback only: the native HOMATCH Telegram reader reads public channels at no provider cost.' },
+    why: 'Not planned by the generic planner: queued only for Telegram channels the free native reader does not cover (COMBINED, after Phase 1), never on a channel the free reader reads.' },
 };
 
 export function classifyActor(actorKey: string): ActorProfile {

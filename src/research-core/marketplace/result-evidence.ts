@@ -4,8 +4,8 @@ import type { MarketplaceSearchRequest } from './worker-contract.ts';
 import { descriptionSignals, type DescriptionSignal } from './description-signals.ts';
 import { listingActivity, type ListingActivity } from './freshness.ts';
 
-export type ResultSection = 'BEST' | 'FRESH' | 'VALUE' | 'CLOSE' | 'VERIFY' | 'UPGRADE';
-export const RESULT_SECTIONS: readonly ResultSection[] = ['BEST', 'FRESH', 'VALUE', 'CLOSE', 'VERIFY', 'UPGRADE'];
+export type ResultSection = 'BEST' | 'FRESH' | 'VALUE' | 'CLOSE' | 'VERIFY' | 'UPGRADE' | 'DUPLICATES';
+export const RESULT_SECTIONS: readonly ResultSection[] = ['BEST', 'CLOSE', 'UPGRADE', 'DUPLICATES', 'FRESH', 'VALUE', 'VERIFY'];
 export type WarningCode = 'POSSIBLE_DUPLICATE' | 'PRICE_CONFLICT' | 'INFORMATION_CONFLICT' | 'COPIED_DESCRIPTION' | 'MULTI_PROPERTY_CONTACT' | 'DATE_UNRELIABLE';
 export interface ResultEvidence {
   section: ResultSection;
@@ -24,7 +24,7 @@ export function resultEvidence(rep: NormalizedListing, members: NormalizedListin
   const activity = listingActivity(rep.publishedAt, rep.updatedAt, now);
   const preferences: ResultEvidence['preferences'] = { confirmed: [], mentioned: [], unconfirmed: [], contradicted: [] };
   for (const preference of [...new Set([...req.mustHave, ...req.niceToHave])]) {
-    const structured = preference === 'PARKING' ? facts.parking : preference === 'FURNISHED' ? facts.furnished : facts.amenities.includes(preference) ? true : null;
+    const structured = preference === 'PARKING' ? facts.parking : preference === 'FURNISHED' ? facts.furnished : preference === 'ELEVATOR' ? facts.elevator ?? null : facts.amenities.includes(preference) ? true : null;
     const signal = signals.find((s) => s.code === preference);
     if (structured === true) preferences.confirmed.push(preference);
     else if (structured === false || signal?.polarity === 'NEGATED') preferences.contradicted.push(preference);

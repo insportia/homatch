@@ -2,6 +2,9 @@ import { processSearch, publicView } from '../../../src/research-core/marketplac
 import type { CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import type { ExternalListingCandidate, MarketplaceSearchRequest } from '../../../src/research-core/marketplace/worker-contract.ts';
 import { readAll, loadConverter } from './marketplaceSearch.ts';
+import { PROPERTY_ENTITY_VERSION } from '../../../src/research-core/marketplace/property-entity.ts';
+
+export const hasCurrentIdentity = (p: CustomerProperty | null | undefined) => !!p?.intelligence && p.identity?.version === PROPERTY_ENTITY_VERSION;
 type Db = any;
 
 /** Old saved searches acquire the new deterministic evidence from their own stored raw data.
@@ -9,7 +12,7 @@ type Db = any;
 export async function resultCatalogue(db: Db, search: Record<string, unknown>): Promise<CustomerProperty[]> {
   const rows = await readAll<{ view: CustomerProperty }>((from, to) => db.from('discovery_marketplace_properties')
     .select('view').eq('search_id', search.id).order('property_key').range(from, to));
-  if (rows.every((row) => row.view.intelligence)) return rows.map((row) => row.view);
+  if (rows.length && rows.every((row) => hasCurrentIdentity(row.view))) return rows.map((row) => row.view);
   const raw = await readAll<{ raw: ExternalListingCandidate }>((from, to) => db.from('discovery_marketplace_listings')
     .select('raw').eq('search_id', search.id).order('id').range(from, to));
   if (!raw.length) return rows.map((row) => row.view);

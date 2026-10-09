@@ -15,6 +15,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { type CampaignSearchLanguage, isCampaignSearchLanguage } from '@/campaign/searchLanguages';
+
+/** Find Buyers' six search languages, in the order the chips show them. */
+const FIND_BUYERS_LANGUAGES: CampaignSearchLanguage[] = ['ka', 'ru', 'en', 'ar', 'he', 'tr'];
 import { SearchBudgetOffer } from '@/components/billing/SearchBudgetOffer';
 import {
   DEFAULT_SEARCH_LANGUAGES,
@@ -59,9 +62,16 @@ export function CampaignLaunchPanel({
      catalogue and shown before launch — never a silent extra spend. */
   const [discoverBrokers, setDiscoverBrokers] = useState(false);
   const [brokerPricing, setBrokerPricing] = useState<BrokerDiscoveryPricing | null>(null);
-  /* FIND BUYERS / FIND TENANTS searches all six languages, always, and has a
-     $10 minimum expressed in wallet credits (server-authoritative). */
+  /* FIND BUYERS / FIND TENANTS searches all six languages by default, and has
+     a $10 minimum expressed in wallet credits (server-authoritative). The
+     owner may narrow it to the audiences they want — then every paid search
+     and the community discovery run only in those languages. */
   const findBuyers = productCode === 'FIND_CLIENTS';
+  const [fbLanguages, setFbLanguages] = useState<CampaignSearchLanguage[]>([...FIND_BUYERS_LANGUAGES]);
+  const toggleFbLanguage = (l: CampaignSearchLanguage) => setFbLanguages((cur) => (
+    cur.includes(l) ? (cur.length > 1 ? cur.filter((x) => x !== l) : cur) : FIND_BUYERS_LANGUAGES.filter((x) => x === l || cur.includes(x))
+  ));
+  const fbAll = fbLanguages.length === FIND_BUYERS_LANGUAGES.length;
   const [fbConfig, setFbConfig] = useState<FindBuyersConfig | null>(null);
   useEffect(() => {
     if (!findBuyers) return;
@@ -89,6 +99,10 @@ export function CampaignLaunchPanel({
       .then((next) => {
         if (!alive) return;
         setState(next);
+        if (next.mode === 'EXPLICIT' && next.selected.length) {
+          const chosen = FIND_BUYERS_LANGUAGES.filter((l) => next.selected.includes(l));
+          if (chosen.length) setFbLanguages(chosen);
+        }
         if (next.mode) {
           setLanguages({
             mode: next.mode,
@@ -120,10 +134,18 @@ export function CampaignLaunchPanel({
               <p className="mt-1 text-sm leading-relaxed text-[hsl(218_40%_86%)]">{t('fbx_supporting')}</p>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5" aria-label={t('fbx_languages_note')}>
-            {['ka', 'ru', 'en', 'ar', 'he', 'tr'].map((l) => (
-              <span key={l} className={cn('rounded-lg px-2 py-0.5 text-2xs font-bold uppercase', GOLD_FILL, 'text-[hsl(218_52%_11%)]')}>{l}</span>
-            ))}
+          <p className="mt-3 text-2xs text-[hsl(218_40%_86%)]" id="fbx-lang-hint">{t(fbAll ? 'fbx_languages_choose' : 'fbx_languages_only', { list: fbLanguages.map((l) => l.toUpperCase()).join(', ') })}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5" role="group" aria-label={t('fbx_languages_note')} aria-describedby="fbx-lang-hint" data-testid="fbx-language-chips">
+            {FIND_BUYERS_LANGUAGES.map((l) => {
+              const on = fbLanguages.includes(l);
+              return (
+                <button key={l} type="button" aria-pressed={on} onClick={() => toggleFbLanguage(l)} data-testid={`fbx-lang-${l}`}
+                  className={cn('min-h-8 min-w-10 rounded-lg px-2 py-0.5 text-2xs font-bold uppercase transition-colors',
+                    on ? cn(GOLD_FILL, 'text-[hsl(218_52%_11%)]') : 'bg-white/5 text-[hsl(218_30%_70%)] ring-1 ring-inset ring-white/20 line-through')}>
+                  {l}
+                </button>
+              );
+            })}
             <span className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-0.5 text-2xs font-semibold text-[hsl(40_94%_72%)] ring-1 ring-inset ring-white/15">
               <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden="true" />{t('fbx_fresh_badge')}
             </span>
@@ -190,7 +212,7 @@ export function CampaignLaunchPanel({
          * count the offer is built from.
          */
         expectedUnits={1}
-        onRun={(authorized) => onRun(authorized, findBuyers ? { mode: 'ALL', selected: [] } : {
+        onRun={(authorized) => onRun(authorized, findBuyers ? (fbAll ? { mode: 'ALL', selected: [] } : { mode: 'EXPLICIT', selected: [...fbLanguages] }) : {
           mode: languages.mode,
           // Under AUTO and ALL the ticks are irrelevant and the server
           // ignores them; sending them anyway keeps the payload the same

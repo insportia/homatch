@@ -13,7 +13,9 @@ export type HttpRecord = {url:string;status:number|null;error?:string};
 export class AcquisitionError extends Error {
   status:number|null;
   url:string;
-  constructor(url:string,status:number|null,message:string) {super(`${url}: ${message}`);this.url=url;this.status=status;}
+  // Ingress bounds error messages to 300 characters. Keep the diagnostic first
+  // so a long search URL cannot erase the HTTP/network failure itself.
+  constructor(url:string,status:number|null,message:string) {super(`${message}; URL: ${url}`);this.url=url;this.status=status;}
 }
 export async function publicJson(url:string,locale='ka',fetcher:typeof fetch=fetch) {
   let response:Response;

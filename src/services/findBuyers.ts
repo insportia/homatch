@@ -153,6 +153,33 @@ export async function getFindBuyersCenter(days: number): Promise<FindBuyersCente
   return (data ?? null) as FindBuyersCenter | null;
 }
 
+/** The source network (admin_find_buyers_source_network): discovered ≠ verified ≠ active ≠ read. */
+export interface SourceNetwork {
+  since: string;
+  platforms: Array<{ platform: string; discovered: number; verified: number; active: number; read: number; inactive: number; blocked: number;
+    newInWindow: number; itemsRead: number; commentsRead: number; demandSignals: number; lastRead: string | null }>;
+  directory: Array<{ platform: string; listed: number }>;
+  telegram: Array<{ handle: string; name: string | null; lifecycle: string; readability: string; enabled: boolean; relevance: number | null;
+    lastMessageAt: string | null; auditReason: string | null; discoveredQuery: string | null; itemsRead: number; demandFound: number;
+    lastSuccessAt: string | null; lastError: string | null; createdAt: string }>;
+  campaigns: Array<{ jobId: string; at: string; status: string; communitiesFound: number; newlyRegistered: number; audited: number | null;
+    verified: number | null; activated: number | null; readNow: number | null; languages: string[] | null; city: string | null; error: string | null }>;
+  /** Each recent campaign's Phase 1 (discovery) and Phase 2 (extraction). */
+  phases?: Array<{ jobId: string; at: string; finalizedAt: string | null; stopReason: string | null; budgetMicros: number;
+    phase1DeadlineAt: string | null; discoveryCapMicros: number | null; budgetRationale: string | null;
+    planned: { phase1?: number; phase2SourceDependent?: number; phase2IndependentSearch?: number } | null;
+    phase1Queue: Record<string, number> | null; phase2Queue: Record<string, number> | null;
+    phase1SpendMicros: number; phase2SpendMicros: number; runs: Record<string, number> | null }>;
+  memo23Discovered: number;
+  autoEnable: unknown;
+}
+
+export async function getSourceNetwork(days: number): Promise<SourceNetwork | null> {
+  const { data, error } = await supabase.rpc('admin_find_buyers_source_network', { p_days: days });
+  if (error) throw new Error(error.message);
+  return (data ?? null) as SourceNetwork | null;
+}
+
 export async function updateActor(actorKey: string, patch: Record<string, unknown>) {
   const { data, error } = await supabase.rpc('admin_find_buyers_actor_update', { p_actor_key: actorKey, p_patch: patch });
   if (error) throw new Error(error.message);

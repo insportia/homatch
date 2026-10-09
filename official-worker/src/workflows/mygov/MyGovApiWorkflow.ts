@@ -4,7 +4,9 @@ import {Buffer} from 'node:buffer';
 const bufferFromBytes=Buffer.from as unknown as (bytes:Uint8Array)=>Buffer;
 const parseSourcePdf=(bytes:Buffer)=>createRequire(import.meta.url)('pdf-parse/lib/pdf-parse.js')(bytes);
 import {createHash} from 'node:crypto';
-import {search,selectRecord,type DocumentReference} from './service176/napr.js';
+import {search,selectRecord,resumeRecord,type DocumentReference,type CaptchaRequired} from './service176/napr.js';
+import type {CaptchaContext,CaptchaResolution} from '../../captcha/captchaService.js';
+import {discoverSiteKey,NO_CHALLENGE} from '../../captcha/detect.js';
 import {downloadDocument} from './service176/napr-documents.js';
 import type {NaprOptions} from './service176/napr-api.js';
 import {newDocumentShell,markComplete} from '../../documents/DocumentTypes.js';
@@ -14,10 +16,36 @@ const SOURCE_URL='https://www.my.gov.ge/ka-ge/services/5/service/176';
 function newMyGovApiResult(query:string):LegacySourceResult {
  return {source:'mygov',sourceName:'Official Government Sources',sourceClass:'OFFICIAL_GOVERNMENT',sourceUrl:SOURCE_URL,startUrl:SOURCE_URL,finalUrl:'https://naprweb.reestri.gov.ge/_dea/#/search',frameUrls:[],adapter:'service176-public-api',searchControlUsed:'cadcode',queryEntered:typeof query==='string'?query.trim():null,submitAction:'POST /api/search',retrievalMethod:'PUBLIC_API',searched:false,resultContext:null,resultConfirmed:false,noResultConfirmed:false,resultValidated:false,status:'FAILED',traversal:null,retrievedAt:new Date().toISOString(),documents:[],discoveredEntities:[],error:null};
 }
-export type MyGovApiOptions=NaprOptions&{budgetMs?:number;parsePdf?:(bytes:Buffer)=>Promise<{text:string;numpages:number;info?:any}>};
+export type MyGovApiOptions=NaprOptions&{budgetMs?:number;parsePdf?:(bytes:Buffer)=>Promise<{text:string;numpages:number;info?:any}>;captcha?:CaptchaContext};
+/*
+ * A record gated by NAPR's reCAPTCHA (status 10/15) is continued with a token
+ * from the shared CAPTCHA service, through the source's own continuation
+ * (resumeRecord). The source opening the record is the only proof of
+ * acceptance; anything else is reported as rejected. Returns null when the
+ * record stays gated — it then remains a non-blocking continuation exactly as
+ * before, and the rest of the run continues.
+ */
+async function resolveNaprCaptcha(gated:CaptchaRequired,cap:CaptchaContext|undefined,fetcher:typeof fetch,http:NaprOptions,log:CaptchaResolution[]){
+ if(!cap)return null;
+ const res:CaptchaResolution={challengeDetected:true,type:null,attempts:0,outcome:'HUMAN_FALLBACK',latencyMs:0};log.push(res);
+ const blocked=cap.service.gate(cap.policy,'mygov',cap.jobId);if(blocked){res.outcome=blocked;return null;}
+ const pageUrl=gated.continuationContext.browserUrl;
+ let found=NO_CHALLENGE;try{found=await discoverSiteKey(pageUrl,fetcher,process.env.NAPR_RECAPTCHA_SITEKEY??null);}catch{/* discovery failed: no spend */}
+ res.type=found.type;
+ if(!found.present||!found.siteKey){res.outcome='SITEKEY_NOT_FOUND';return null;}
+ if(!found.supported){res.outcome='UNSUPPORTED';return null;}
+ for(let i=0;i<cap.policy.maxAttemptsPerProvider;i++){
+   const solved=await cap.service.solveRecaptchaV2({provider:'mygov',jobId:cap.jobId,pageUrl,siteKey:found.siteKey,invisible:found.type==='RECAPTCHA_V2_INVISIBLE',enterprise:found.type==='RECAPTCHA_ENTERPRISE'},cap.policy);
+   res.attempts++;res.latencyMs+=solved.latencyMs;
+   if(!solved.ok){res.outcome=solved.outcome;if(solved.outcome!=='TIMEOUT'&&solved.outcome!=='UNSOLVABLE')return null;continue;}
+   try{const record=await resumeRecord(gated,solved.token,http);await cap.service.reportAcceptance({provider:'mygov',jobId:cap.jobId},solved,true);res.outcome='ACCEPTED';return record;}
+   catch{await cap.service.reportAcceptance({provider:'mygov',jobId:cap.jobId},solved,false);res.outcome='REJECTED';}
+ }
+ return null;
+}
 export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,options:MyGovApiOptions={}):Promise<LegacySourceResult>{
  const base=newMyGovApiResult(query);
- const budget=options.budgetMs??45000;if(!Number.isFinite(budget)||budget<=0)throw new Error('Invalid My.gov provider budget');
+ const budget=options.budgetMs??(options.captcha?.policy.enabled?180000:45000);const captchaLog:CaptchaResolution[]=[];if(!Number.isFinite(budget)||budget<=0)throw new Error('Invalid My.gov provider budget');
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),budget);const requests:any[]=[];const continuations:any[]=[];const references:DocumentReference[]=[];const records:any[]=[];const failures:any[]=[];
  const transport:typeof fetch=async(input,init)=>{
    if(controller.signal.aborted)throw new Error('Provider deadline');
@@ -36,8 +64,13 @@ export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,opt
    for(const application of result.records){
      if(controller.signal.aborted)throw new Error('Provider deadline');
      try{
-       const opened=await selectRecord(result,application.appID,http);if(controller.signal.aborted)throw new Error('Provider deadline');
-       if(opened.state==='CAPTCHA_REQUIRED'){continuations.push(opened);continue;}
+       const selected=await selectRecord(result,application.appID,http);if(controller.signal.aborted)throw new Error('Provider deadline');
+       let opened:any=selected;
+       if(selected.state==='CAPTCHA_REQUIRED'){
+         const resumed=await resolveNaprCaptcha(selected,options.captcha,transport,http,captchaLog);if(controller.signal.aborted)throw new Error('Provider deadline');
+         if(!resumed){continuations.push(selected);continue;}
+         opened=resumed;
+       }
        // Every boundary must agree: search appID/registration, record APP_ID,
        // exact cadastral code and every returned source document association.
        if(opened.info.CADCODE!==result.cadastralCode||opened.info.REG_NUMBER!==application.regNumber)throw new Error('Source record identity mismatch');
@@ -59,7 +92,7 @@ export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,opt
    const gated=continuations.length>0;const completeDocs=base.documents.filter(doc=>doc.complete);
    base.status=gated?'BLOCKED':failures.length?'SUBMITTED_UNCONFIRMED':completeDocs.length?'SEARCH_CONFIRMED':'SUBMITTED_UNCONFIRMED';
    base.captcha=gated;base.blocked=gated;base.authRequired=false;base.resultConfirmed=!gated&&!failures.length&&completeDocs.length>0;base.resultValidated=base.resultConfirmed;
-   base.error=gated?'CAPTCHA_REQUIRED: legitimate human record continuation is unavailable in this automatic run':failures.length?'Service 176 acquisition incomplete':!completeDocs.length?'No readable official document acquired':null;
+   base.error=gated?`CAPTCHA_REQUIRED: ${captchaLog.length?`automatic verification ${captchaLog[captchaLog.length-1].outcome}`:'legitimate human record continuation is unavailable in this automatic run'}`:failures.length?'Service 176 acquisition incomplete':!completeDocs.length?'No readable official document acquired':null;
    base.resultContext=base.resultConfirmed?completeDocs.map(doc=>doc.rawText).join('\n\n'):null;
  };
  try{
@@ -68,6 +101,7 @@ export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,opt
  }catch(error){base.status=controller.signal.aborted?'TIMEOUT':'FAILED';base.resultConfirmed=false;base.resultValidated=false;base.error=controller.signal.aborted?'Service 176 provider deadline exceeded':error instanceof Error?error.message:'Service 176 acquisition failed';}
  finally{clearTimeout(timer);}
  const completeDocs=base.documents.filter(doc=>doc.complete);
+ (base as any).captchaResolution=captchaLog;
  base.documentLinks=references;base.documentsDiscovered=references.length;base.documentsExtracted=completeDocs.length;
  if(base.traversal)base.traversal={...base.traversal,providerState:continuations.length?'CAPTCHA_REQUIRED':base.status,nonBlocking:true};
  base.workflowResult={source:'mygov',state:continuations.length?'CAPTCHA_REQUIRED':base.status,completed:base.status==='SEARCH_CONFIRMED'||base.noResultConfirmed,skipped:false,discoveredItems:(base.traversal as any)?.search?.records?.length??null,visitedItems:records.length,discoveredDocuments:references.length,readDocuments:completeDocs.length,unvisitedRelevantItems:continuations.length+failures.filter(item=>!item.url).length,evidenceIds:[],trace:requests};

@@ -9,7 +9,7 @@
 //   * complete request → confirmation → start → real stages → results
 //   * incomplete request asks only what is missing, one question at a time
 //   * same flat on three sources: one card, price difference, exact links
-//   * worth considering (+3.5%) with measured advantages; Deep Search unavailable
+//   * worth considering (+5.3%) with measured advantages; Deep Search unavailable
 //   * Investment / Mortgage handoffs, comparison, Snake while searching
 //   * refresh while searching resumes the search; partial and empty states
 //   * 1440px and 390px in six locales (RTL for ar/he): no horizontal overflow
@@ -119,6 +119,41 @@ test('V2: card gallery, durable dossier, scoped paid chat, insufficient credits 
   await shot(page, 'v2-desktop-results');
 });
 
+test('Advisor: confirmed original listings are explorable; optional floor requirements survive refresh and submission', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', width: 390 });
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  const duplicates = page.locator('[data-confirmed-duplicates]').first();
+  await duplicates.locator('summary').click();
+  assert.doesNotMatch(await duplicates.locator('summary').textContent(), /\{n\}/);
+  assert.ok(await duplicates.locator('a[target="_blank"]').count() >= 2);
+  await duplicates.getByText('Lowest price', { exact: false }).waitFor({ state: 'visible' });
+  await page.waitForURL((url) => url.searchParams.get('revision') === state.revision);
+  assert.equal(await duplicates.getAttribute('open'), '', 'recording the result revision preserves an opened disclosure');
+  assert.equal(state.requests.filter((r) => r.action === 'browse').length, 1, 'initial revision bookkeeping does not refetch and remount the cards');
+  await shot(page, 'advisor-mobile-confirmed-duplicates');
+  await page.goto(`${BASE}/find-property/new`);
+  await page.locator('textarea').fill(F.COMPLETE_TEXT);
+  await page.locator('form button[type="submit"]').click();
+  await page.getByText('Floor & building preferences · optional', { exact: true }).click();
+  await page.getByLabel('Elevator required', { exact: true }).check();
+  await page.getByLabel('Minimum floor', { exact: true }).fill('2');
+  await page.getByLabel('Maximum floor', { exact: true }).fill('8');
+  await page.getByLabel('Maximum building age · years', { exact: true }).fill('25');
+  await page.reload();
+  await page.getByText('Floor & building preferences · optional', { exact: true }).click();
+  assert.ok(await page.getByLabel('Elevator required', { exact: true }).isChecked());
+  assert.equal(await page.getByLabel('Minimum floor', { exact: true }).inputValue(), '2');
+  assert.equal(await page.getByLabel('Maximum floor', { exact: true }).inputValue(), '8');
+  await shot(page, 'advisor-mobile-advanced-preferences');
+  await page.getByRole('button', { name: 'Start search', exact: true }).click();
+  await page.waitForFunction(() => !!document.querySelector('[data-property-key]'));
+  const started = state.requests.find((r) => r.action === 'start');
+  assert.deepEqual(started.brief.floorRange, { min: 2, max: 8 });
+  assert.equal(started.brief.maxBuildingAge, 25);
+  assert.ok(started.brief.mustHave.includes('ELEVATOR'));
+  assert.ok(await overflow(page) <= 1);
+});
+
 test('V2 mobile: workspace, touch gallery and property AI composer at 375px and Arabic RTL at 393px', opts, async (t) => {
   for (const [width, lang] of [[375, 'en'], [393, 'ar']]) {
     const { page, close } = await boot(t, { lang, width, height: 844 });
@@ -135,7 +170,7 @@ test('V2 mobile: workspace, touch gallery and property AI composer at 375px and 
     const before = await card.locator('[aria-live="polite"]').textContent();
     const searchUrl = page.url();
     const propertyKey = await card.getAttribute('data-property-key');
-    const currentGallery = () => page.locator(`[data-property-key=${JSON.stringify(propertyKey)}]`).getByRole('group');
+    const currentGallery = () => page.locator(`[data-property-key=${JSON.stringify(propertyKey)}]`).locator('[role="group"][aria-label]');
     await currentGallery().waitFor({ state: 'visible' });
     await currentGallery().locator('button').first().click({ trial: true });
     const gallery = currentGallery();
@@ -411,12 +446,12 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
   await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
-  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'ღირს განხილვა', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
-    '$6,000', 'რატომ ღირს განხილვა', 'გინდა უფრო ფართოდ მოვძებნოთ?']) {
+  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'გონივრული გაუმჯობესება · +5–10%', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
+    '$9,000', 'რატომ ღირს განხილვა', 'გინდა უფრო ფართოდ მოვძებნოთ?']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
   assert.ok(!results.includes('$188,000'), 'nothing above the 10% ceiling is shown');
-  assert.ok((await page.locator('section[aria-labelledby="mps-g-UPGRADE"]').textContent()).includes('+3.5%'), 'upgrade shows both measured over-budget amount and percentage');
+  assert.ok((await page.locator('section[aria-labelledby="mps-g-UPGRADE"]').textContent()).includes('+5.3%'), 'upgrade shows both measured over-budget amount and percentage');
   await shot(page, 'ka-1440-results');
 
   /* The three-source flat: one card, one property sheet, three exact links. */
@@ -643,6 +678,14 @@ test('catalogue changes require explicit refresh; request failures retry without
   await page.getByLabel('Sort', { exact: true }).selectOption('PRICE');
   await page.getByRole('button', { name: 'Try again', exact: true }).waitFor();
   assert.equal(await page.locator('#mps-empty').count(), 0);
+  state.browseFailure = false;
+  await page.goBack();
+  await page.locator('[data-property-key]').first().waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('fp_sort'), 'FRESHEST', 'Back restores the successful cached query after a failed filter');
+  assert.equal(await page.getByRole('button', { name: 'Try again', exact: true }).count(), 0, 'a later failed query does not poison a cached result');
+  state.browseFailure = true;
+  await page.getByLabel('Sort', { exact: true }).selectOption('PRICE');
+  await page.getByRole('button', { name: 'Try again', exact: true }).waitFor();
   state.browseFailure = false;
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await page.locator('[data-property-key]').first().waitFor();

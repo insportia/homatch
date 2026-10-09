@@ -119,6 +119,10 @@ export interface NormalReport {
   nextSteps: { step: string; why: string; cites: string[] }[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
+  /* The official-history blocks (2026-10). Optional: older reports have none. */
+  currentStatus?: { statement: string; items: { label: string; value: string; date: string }[] };
+  propertyStory?: { chapters: { key: string; title: string; period: string; body: string; visualIds: string[] }[] };
+  visualCaptions?: { visualId: string; caption: string; explanation: string }[];
 }
 
 /**
@@ -145,6 +149,14 @@ export interface NormalVerifyResult {
   mode: 'MODEL' | 'DETERMINISTIC';
   propertyType: string;
   empty: boolean;
+  /** Official TAS visuals as signed URLs (verify-synthesis mints them). */
+  officialVisuals?: Record<string, unknown>[];
+  /** Research transparency counts. */
+  research?: Record<string, unknown> | null;
+  /** Deterministic official history (status, milestones, value changes). */
+  officialHistory?: Record<string, unknown> | null;
+  /** Developer advertising view (marketing signal), completed stage only. */
+  developerAds?: Record<string, unknown> | null;
 }
 
 export type PayloadVersion = 'V1' | 'V2' | 'V3' | 'NONE' | 'ERROR';
@@ -437,6 +449,29 @@ function siblingsOf(o: Record<string, unknown>): Omit<NormalVerifyResult, 'repor
     incompleteSources: asStrings(o.incompleteSources),
     mode: asString(o.mode) === 'MODEL' ? 'MODEL' : 'DETERMINISTIC',
     propertyType: asString(o.propertyType),
+    officialVisuals: asArray(o.officialVisuals).map(asObject).filter((v) => asString(v.id) && asString(v.url)),
+    research: Object.keys(asObject(o.research)).length ? asObject(o.research) : null,
+    officialHistory: Object.keys(asObject(o.officialHistory)).length ? asObject(o.officialHistory) : null,
+    developerAds: Array.isArray(asObject(o.developerAds).advertisers) ? asObject(o.developerAds) : null,
+  };
+}
+
+/** The official-history blocks, kept only where they carry text. */
+function officialBlocks(r: Record<string, unknown>): Pick<NormalReport, 'currentStatus' | 'propertyStory' | 'visualCaptions'> {
+  const cs = asObject(r.currentStatus);
+  const items = asArray(cs.items).map(asObject)
+    .map((i) => ({ label: asString(i.label), value: asString(i.value), date: asString(i.date) }))
+    .filter((i) => i.label && i.value);
+  const chapters = asArray(asObject(r.propertyStory).chapters).map(asObject)
+    .map((c) => ({ key: asString(c.key), title: asString(c.title), period: asString(c.period), body: asString(c.body), visualIds: asStrings(c.visualIds) }))
+    .filter((c) => c.key && c.body);
+  const captions = asArray(r.visualCaptions).map(asObject)
+    .map((v) => ({ visualId: asString(v.visualId), caption: asString(v.caption), explanation: asString(v.explanation) }))
+    .filter((v) => v.visualId && v.caption);
+  return {
+    ...(asString(cs.statement) || items.length ? { currentStatus: { statement: asString(cs.statement), items } } : {}),
+    ...(chapters.length ? { propertyStory: { chapters } } : {}),
+    ...(captions.length ? { visualCaptions: captions } : {}),
   };
 }
 
@@ -515,6 +550,7 @@ function fromV3(o: Record<string, unknown>): NormalVerifyResult {
             recommend: asBool(asObject(r.contractUpload).recommend),
             text: asString(asObject(r.contractUpload).text),
           },
+          ...officialBlocks(r),
         })
       : null,
     empty: asBool(o.empty) || !hasContent,

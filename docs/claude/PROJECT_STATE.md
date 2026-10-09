@@ -1,9 +1,62 @@
 # PROJECT STATE
 
-last_updated: 2026-10-04
+last_updated: 2026-10-08
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Verify upgrade (branch `claude/dazzling-cray-34t9ur`, 2026-10-08) — IN PROGRESS, NOT DEPLOYED
+
+- Release model: ONE coordinated release of TAS API-first + NAPR/MyGov Service176 + RS.ge,
+  only after explicit owner approval. Nothing here is deployed, applied or activated.
+- TAS API_FIRST (`official-worker/src/workflows/tas/api/`): DWR serializer + full object-graph
+  parser, client, workflow, attachments/visuals, LEGACY fallback, `/health/tas`, `/tas/test`.
+  Search/detail bodies aligned byte-for-byte to the owner's live-verified tas-worker notes;
+  `DownloadServlet` and motion-id exposure are NOT verified. No live run from this repo
+  (sandbox egress blocks tas.ge). See `CONTRACT.md` there. Default stays LEGACY.
+- Owner's tas-worker archive: README/TASK/package.json/pdf-reader only — NO implementation,
+  tests, captured replies or diagnostics.
+- NAPR/MyGov (Codex) and RS.ge native (Codex): DEFERRED / BLOCKED — code not on GitHub and
+  no archive received. Only merged Service176 (PR #119) exists. Do not rebuild.
+- Developer Advertising Intelligence (2026-10-09): last research stage in research-agent at
+  SYNTHESIS_READY (`advanceDeveloperAds`). It uses the shared memo23 client (unchanged;
+  the APIFY switch via `_shared/providerSwitch.ts`). Setting `verify_developer_ads`, seeded ON.
+  Cost rows: `APIFY_MEMO23`/`DEVELOPER_ADS_VERIFY`. Report section: `DeveloperAdvertising.tsx`.
+  Admin card: free Actor-input check. Actor schema NOT verified (sandbox blocks apify.com);
+  a live free definition read gates every paid run. No paid run made.
+- Market: MyHome.ge + SS.ge via worker `/verify/market` (existing adapters), folded into the
+  market lane (`src/verify/marketplaceComparables.ts`); gated by
+  `admin_settings.verify_marketplace_market_enabled` (seeded false).
+- Intelligence: `src/verify/intelligence/tasIntelligence.ts` (facts/supersession/conflicts/
+  timeline/participants/story/digest), separate TAS evidence budget (45) beside the tier-1 60,
+  report blocks currentStatus/propertyStory/visualCaptions, URL-in-prose rejection,
+  repeated-sentence removal. verify-synthesis now keeps its token usage (`_usage`).
+- Decision layer (worker `tas/api/decisions.ts`): each motion response's operative outcome
+  (CANCELLED > SUSPENDED > REFUSED > DEFICIENCY > INTERMEDIATE > COMMISSIONED > DEADLINE_EXTENDED
+  > AMENDMENT_APPROVED > PERMIT_ISSUED > APPROVED; else INFORMATIONAL/UNDETERMINED), number,
+  issue date, valid-until. Phrasings are Georgian form wording, NOT live-verified on real PDFs.
+- Processing ledger (`ProcessingLedger`): discovered/processed/deferred/skipped/failed + incomplete
+  reasons (SEARCH_TOTAL_MISMATCH, DETAIL_FAILURES, ATTACHMENTS_DEFERRED_BY_BUDGET, RUN_DEADLINE…).
+- Official status by AUTHORITY, not recency (`deriveOfficialStatus`): a refusal never revokes a
+  permit; cancellation/suspension outrank; `conclusive=false` with caveats when processing was
+  incomplete or a later decision is undetermined. Story = 5–10 milestones, negatives always kept.
+  Visuals carry versionStatus CURRENT_APPROVED / HISTORICAL_APPROVED / UNDETERMINED.
+- Prompt: TAS raw text is replaced by a deterministic digest (`officialPromptContext.ts`, 9k
+  budget) appended after the Service176 evidence; customer view `officialHistoryView` carries no
+  internal ids or private names.
+- Adversarial review (2026-10-08) fixed: decision negation/conditionals/conflicts, DWR
+  prototype keys, search-deadline → FAILED (LEGACY fallback), streaming byte limit, EMPTY
+  responses not cached, unmapped values not persisted, fail-closed caveats (unreadable later
+  response, missing ledger, blocks on opposite footing), status prose withheld when not
+  conclusive, in-progress jobs no longer expose tasApi / visual paths / internal ledgers.
+- Release plan, acceptance, rollback: `docs/verify/RELEASE-PLAN.md`. Codex seams (no rebuild):
+  `docs/verify/CODEX-INTEGRATION.md` — note RS.ge (`rstax`) does not run automatically today.
+- Migration renamed to `20261022090000_…` (main's #126 took 20261021090000).
+- Security: the owner's recovered PowerShell history (line 8) contains an apparent 32-hex API
+  credential — recommend rotation via the provider + secret store; value never copied anywhere.
+- Migration `20261023090000_verify_official_visuals_and_switches.sql` NOT applied: private
+  bucket `verify-official-visuals`, settings `verify_tas_implementation` (LEGACY),
+  `verify_marketplace_market_enabled` (false).
 
 ## Production pointers
 
@@ -287,6 +340,72 @@ Pending OWNER APPROVAL after deploy (production writes, not done):
 - Telegram preference PAID_FIRST (paid TELEGRAM_CHANNEL $0.25/1k + $0.001
   start; probe 30, ≤6 channels, ≤$2/search cap).
 - No paid live test until the owner runs it.
+
+## Find Buyers Phase 2 — source discovery first (branch claude/nifty-hopper-snzn2d, 2026-10-08) — PR open, NOT merged/deployed
+
+PR #126 merged + deployed (4ffb1c1); migration 20261021090000 applied by the owner
+(ledger 20261008184642); registry writes done by the owner (Threads ON, Quora OFF,
+4 input contracts stamped). Telegram stays NATIVE_FIRST.
+
+Production diagnosis (read-only, 2026-10-08):
+- Telegram community_targets 41: 5 REACHABLE+enabled (1 is Batumi, 2 never yielded
+  items), 6 AUDITED but OFF (all Batumi; `telegram_source_auto_enable=false`),
+  10 LOW_SIGNAL, 20 DISCOVERED never audited (mostly Tbilisi; audits ran 6/run).
+- Campaign discovery ran only the first 6 of 15 fixed phrases = ka+ru only;
+  en/tr/ar/he never searched; phrases ignored the property (Batumi for Tbilisi).
+- Read (priority 70) ran before discovery (60): found communities never read
+  in the same campaign; the read took any enabled community (Batumi included).
+- `stoppedBy` from community-sync was String()-ed → rate limits read as success.
+- Historical searches: 9 pre-Oct jobs had no queue at all; 693e6d75/7517daa6
+  social SKIPPED (SOCIAL_DISABLED); 123bd287 social FAILED (.catch crash, fixed
+  in #126). No search ever ran a memo23 Actor; 0 leads; 0 matches.
+- Photo refresh (property c5c1a6a4, MyHome 25805378): source page no longer
+  shows the listing; import-property still paid ZenRows+ScrapingBee (both in
+  provider_disabled_list) ~75 s; LISTING_NOT_AVAILABLE is not an
+  import_error_code value → UPDATE failed → 3 refresh rows stuck PROCESSING.
+  The stored tnet.ge photo is hot-linked (never mirrored).
+
+Changed (this branch): sourceNetwork.ts (six-language, property-aware,
+rotating discovery queries; city fit), discovery-plan (DEMAND: discovery first,
+city on jobs, explicit languages), community-sync (city-scoped read; campaign
+audit of own-city backlog; same-call read of newly activated communities;
+100 s budget), campaignSources (stoppedBy kind), owner language choice at
+launch (CampaignLaunchPanel chips → EXPLICIT → social planner + discovery),
+admin Source network tab + migration 20261022090000 (admin RPC, read-only),
+import-property honours provider_disabled_list + enum-safe error writes,
+MediaRefresh shows why. Find Property (SUPPLY) behaviour unchanged.
+
+Owner approvals pending: merge + deploy; apply 20261022090000; set
+`telegram_source_auto_enable=true` (else verified communities wait for an
+operator); optional one-time audit run of the 20 DISCOVERED communities.
+Not done: mirroring imported photos into storage (they die with the source).
+
+## Find Buyers — two-phase engine + COMBINED Telegram (same branch/PR #129, 2026-10-08) — NOT merged/deployed
+
+- Phase 1 (discovery: TELEGRAM_SOURCES + memo23 FB_GROUP_SEARCH / LINKEDIN_GROUPS)
+  is time-boxed: a third of the campaign window, 3..10 min (default 10). Its
+  deadline, the expected native discovery, the planned counts (Phase 1 /
+  Phase 2 A source-dependent / B independent search) and a discovery spend
+  ceiling planned from registry prices (campaignPhases.planDiscoveryBudget, no
+  fixed share) are stored in find_buyers_campaigns.query_plan.phases BEFORE
+  any job is queued.
+- Gate: executor (paid runs) and driver (native Telegram read, DEMAND only)
+  WAIT (no attempt consumed) while Phase 1 is open; proceed when Phase 1 is
+  DONE (partial failures kept) or TIMED_OUT. Polls of started runs never
+  held. Campaigns without stored phases are never held.
+- Phase 1 ceiling enforced before reservation (PHASE1_BUDGET); the campaign
+  hard cap stays atomic in find_buyers_reserve_actor_run (unchanged).
+- Telegram COMBINED (owner 2026-10-08, default when the setting is unset):
+  free reader reads enabled communities; when Phase 1's Telegram search ends,
+  memo23 TELEGRAM_CHANNEL is queued for up to 8 city-fit channels the free
+  reader does not cover (audited-but-off first, then not-yet-audited), never a
+  channel already queued. NATIVE_FIRST / PAID_FIRST still selectable by setting.
+  Paid runs only in funded campaigns, through the same reservation/caps.
+- Admin → Source network: per-campaign phases (queue states, ceiling,
+  rationale, spend per phase, runs per Actor) — in migration 20261022090000.
+- Not built: recurring cycles for an active funded campaign (each launch is
+  one cycle today); cross-platform person-level lead dedupe beyond existing
+  fingerprints.
 
 ## Deferred / known-open (do not "fix" casually)
 

@@ -23,6 +23,12 @@ warns when a diff enters this domain.
   FIND TENANTS run as provider `APIFY_MEMO23` (registry, verified pricing,
   per-campaign provider ceiling = `find_buyers_provider_share_bps` of the
   customer budget, integer-microdollar ledger `find_buyers_cost_ledger`).
+  Second exception (owner, 2026-10-09): Verify's Developer Advertising stage
+  runs one memo23 Ad Library Actor per job (`verify_developer_ads`, Admin
+  switch; per-run provider ceiling maxChargeUsd $0.50, 50 items, 180 s; 24 h cache). Its COGS is a
+  `cost_events` row `provider=APIFY_MEMO23`, `operation_type=DEVELOPER_ADS_VERIFY`
+  (ACTUAL / ESTIMATED / UNPRICED — never a silent 0), inside the Verify
+  job's existing price; it never touches the Find Buyers ledger or budget.
 - **Find Buyers minimum** is `find_buyers_min_usd` ($10) converted through
   `credits_per_usd` (100 credits at 10/$). It is not a second credit rate.
 

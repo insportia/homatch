@@ -13,6 +13,7 @@ import type { CurrencyConverter } from '../normalize/currency.ts';
 import { comparePlaces, resolvePlace } from '../normalize/place.ts';
 import { safeWebUrl } from '../discovery/source-link.ts';
 import { listingActivity } from './freshness.ts';
+import { descriptionSignals } from './description-signals.ts';
 import { publicContactsIn, phoneKey } from '../discovery/public-contacts.ts';
 import type { ExternalListingCandidate, MarketplaceSearchRequest } from './worker-contract.ts';
 import {
@@ -61,6 +62,7 @@ export interface NormalizedListing {
   renovationStatus: RenovationStatus | null;
   constructionYear: number | null;
   furnished: boolean | null;
+  elevator?: boolean | null;
   parking: boolean | null;
   amenities: string[];
   images: string[];
@@ -157,6 +159,8 @@ export function normalizeCandidate(
     renovationStatus: c.renovationStatus,
     constructionYear: c.constructionYear,
     furnished: c.furnished,
+    elevator: amenityCodes(c.amenities).includes('ELEVATOR') ? true
+      : amenityCodes(c.amenities).includes('NO_ELEVATOR') || descriptionSignals(c.description).some((s) => s.code === 'ELEVATOR' && s.polarity === 'NEGATED') ? false : null,
     parking: c.parking ?? (amenityCodes(c.amenities).includes('PARKING') ? true : null),
     amenities: amenityCodes(c.amenities),
     images: c.images.map(safeWebUrl).filter((u): u is string => !!u),

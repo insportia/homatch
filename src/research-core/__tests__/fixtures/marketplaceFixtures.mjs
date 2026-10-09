@@ -48,12 +48,17 @@ export function listing(over = {}) {
 }
 
 /** The same flat on three sources: owner $162k, agency $165k, broker $181k. */
+export const CONFIRMED_IDENTITY = {
+  address: '12 Example Street, unit 7',
+  description: 'This particular apartment has a distinctive curved living room facing the courtyard, a separate kitchen with two windows, an enclosed western balcony and original fitted cupboards beside the entrance hall. The original photos show those same fixtures and room arrangement.',
+  images: [1, 2, 3].map((n) => `https://img.example/confirmed-unit-7/${n}.jpg`),
+};
 export const SAME_PROPERTY_THREE_SOURCES = [
-  listing({ source: 'source-a', sourceListingId: 'a-162', price: 162000, areaSqm: 92, floor: 7,
+  listing({ ...CONFIRMED_IDENTITY, source: 'source-a', sourceListingId: 'a-162', price: 162000, areaSqm: 92, floor: 7,
     seller: { name: 'ნინო', publicPhone: '+995 599 11 22 33', declaredType: 'OWNER', sourceListingCount: 1 } }),
-  listing({ source: 'source-b', sourceListingId: 'b-165', price: 165000, areaSqm: 91.5, floor: 7, observedAt: minutesAgo(8),
+  listing({ ...CONFIRMED_IDENTITY, source: 'source-b', sourceListingId: 'b-165', price: 165000, areaSqm: 92, floor: 7, observedAt: minutesAgo(8),
     seller: { name: 'Vake Realty', declaredType: 'AGENCY' } }),
-  listing({ source: 'source-c', sourceListingId: 'c-181', price: 181000, areaSqm: 92, floor: 7, observedAt: minutesAgo(12),
+  listing({ ...CONFIRMED_IDENTITY, source: 'source-c', sourceListingId: 'c-181', price: 181000, areaSqm: 92, floor: 7, observedAt: minutesAgo(12),
     seller: { name: 'Giorgi', publicPhone: '+995 577 00 00 01', declaredType: 'BROKER' } }),
 ];
 
@@ -78,7 +83,7 @@ export const OTHER_LISTINGS = [
   /* partial: no area, no floor, no building status */
   listing({ source: 'source-c', sourceListingId: 'c-partial', price: 155000, areaSqm: null, floor: null, buildingStatus: null, renovationStatus: null, images: [] }),
   /* slightly above the $170k maximum (+3.5%) with real advantages over in-budget options */
-  listing({ source: 'source-a', sourceListingId: 'a-upgrade', price: 176000, areaSqm: 108, floor: 8, parking: true,
+  listing({ source: 'source-a', sourceListingId: 'a-upgrade', price: 179000, areaSqm: 108, floor: 8, parking: true,
     amenities: ['balcony'], seller: { publicPhone: '+995 593 33 33 33', declaredType: 'OWNER', sourceListingCount: 1 } }),
   /* above the 10% ceiling: never eligible */
   listing({ source: 'source-c', sourceListingId: 'c-too-high', price: 188000, areaSqm: 109, floor: 11, parking: true }),
@@ -113,6 +118,9 @@ export function largeFixture(n = 1000) {
     const area = 60 + (flat % 70);
     const base = 90000 + (flat * 997) % 120000;
     out.push(listing({
+      ...CONFIRMED_IDENTITY,
+      address: `${flat + 1} Example Street, unit ${flat + 1}`,
+      images: [1, 2, 3].map((n) => `https://img.example/flat-${flat}/${n}.jpg`),
       source: `source-${'abcdef'[i % 6]}`,
       sourceListingId: `L${i}`,
       price: Math.round(base * (1 + (rnd() - 0.5) * 0.06)),

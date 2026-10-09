@@ -26,7 +26,7 @@ import { listingActivity } from './freshness.ts';
 import { resultEvidence, type ResultEvidence } from './result-evidence.ts';
 import { descriptionFingerprint } from './description-signals.ts';
 
-export const PIPELINE_VERSION = 'marketplace-pipeline-2';
+export const PIPELINE_VERSION = 'marketplace-pipeline-3';
 
 export type ResultGroup = 'BEST' | 'OWNER' | 'UPGRADE' | 'MORE';
 export const RESULT_GROUPS: readonly ResultGroup[] = ['BEST', 'OWNER', 'UPGRADE', 'MORE'];
@@ -38,9 +38,10 @@ export const OWNER_MIN_CONFIDENCE = 0.65;
 
 export type ReasonCode =
   | 'DISTRICT_MATCH' | 'OWNER_LIKELY' | 'RENOVATED' | 'NEW_BUILD' | 'HAS_PARKING'
-  | 'LOWEST_ACROSS_SOURCES' | 'GOOD_VALUE_VS_SIMILAR' | 'VERIFIED_RECENTLY';
+  | 'LOWEST_ACROSS_SOURCES' | 'GOOD_VALUE_VS_SIMILAR' | 'VERIFIED_RECENTLY' | 'BEDROOM_MATCH' | 'FLOOR_MATCH' | 'ELEVATOR_CONFIRMED';
 
 export interface ListingView {
+  images?: string[];
   listingId: string;
   sourceListingId?: string;
   address?: string | null;
@@ -62,6 +63,7 @@ export interface ListingView {
 }
 
 export interface ResultProperty {
+  identity?: { status: 'CONFIRMED_DUPLICATE' | 'INSUFFICIENT_EVIDENCE'; evidence: string[]; version: string };
   key: string;
   group: ResultGroup;
   rank: number;
@@ -160,6 +162,9 @@ function mergeFacts(members: NormalizedListing[], now: Date): { facts: PropertyF
       renovationStatus: first('renovationStatus') as string | null,
       parking: members.some((m) => m.parking === true) ? true : members.every((m) => m.parking === false) ? false : null,
       furnished: first('furnished') as boolean | null,
+      constructionYear: first('constructionYear') as number | null,
+      elevator: members.some((m) => m.elevator === true) ? true
+        : members.every((m) => m.elevator === false) ? false : null,
       amenities,
     },
   };
@@ -298,6 +303,9 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   const emit = (rows: typeof ranked, group: ResultGroup) => rows.forEach(({ w, r }, i) => {
     const reasons: ResultProperty['reasons'] = [];
     if (districtFit(w.facts.district, req.districts) === 'MATCH') reasons.push({ code: 'DISTRICT_MATCH' });
+    if (req.bedrooms && w.facts.bedrooms != null && !w.filter.unverified.includes('BEDROOMS')) reasons.push({ code: 'BEDROOM_MATCH' });
+    if ((req.floorRange || req.floorPreferences?.length) && w.facts.floor != null && !w.filter.unverified.some((code) => code.startsWith('FLOOR_'))) reasons.push({ code: 'FLOOR_MATCH' });
+    if (w.facts.elevator === true && req.mustHave.includes('ELEVATOR')) reasons.push({ code: 'ELEVATOR_CONFIRMED' });
     if (isOwnerClass(w.seller.classification) && w.seller.confidence >= OWNER_MIN_CONFIDENCE) reasons.push({ code: 'OWNER_LIKELY' });
     if (w.facts.renovationStatus === 'RENOVATED') reasons.push({ code: 'RENOVATED' });
     if (w.facts.buildingStatus === 'NEW_BUILD') reasons.push({ code: 'NEW_BUILD' });
@@ -308,6 +316,8 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     const u = upgradeOf.get(w.key);
     const prices = new Map((w.discrepancy?.prices ?? []).map((p) => [p.listingId, p]));
     properties.push({
+      identity: { status: w.members.length > 1 ? 'CONFIRMED_DUPLICATE' : 'INSUFFICIENT_EVIDENCE',
+        evidence: w.cluster.evidence.filter((e) => e.startsWith('corroborated') || e.startsWith('same source') || e === 'same canonical url'), version: 'marketplace-property-entity-2' },
       key: w.key,
       group,
       rank: i + 1,
@@ -324,6 +334,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       listings: [...w.members].sort((a, b) => Number(b.id === w.rep.id) - Number(a.id === w.rep.id)
         || (a.priceUsd ?? Infinity) - (b.priceUsd ?? Infinity) || a.id.localeCompare(b.id)).map((m) => ({
         listingId: m.id,
+        images: m.images.slice(0, 3),
         sourceListingId: m.sourceListingId,
         address: m.address,
         source: m.source,
@@ -347,7 +358,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       })),
       priceDiscrepancy: w.discrepancy,
       vsComparable: r.vsComparable,
-      reasons: reasons.slice(0, 6),
+      reasons: reasons.slice(0, 12),
       unverified: w.filter.unverified,
       upgrade: u ? { ...u.gain, band: u.band } : null,
       internal: {
@@ -371,10 +382,9 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   let bestCount = 0;
   for (const p of overall) {
     const intel = p.intelligence!;
-    intel.section = p.group === 'UPGRADE' ? 'UPGRADE' : intel.verificationNeeded ? 'VERIFY'
-      : intel.strong && bestCount < BEST_LIMIT ? 'BEST'
-        : intel.strong && intel.activity.ageDays !== null && intel.activity.ageDays <= 2 ? 'FRESH'
-          : p.vsComparable !== null && p.vsComparable <= -0.07 ? 'VALUE' : 'CLOSE';
+    intel.section = p.group === 'UPGRADE' ? 'UPGRADE'
+      : p.identity?.status === 'CONFIRMED_DUPLICATE' ? 'DUPLICATES'
+        : intel.strong && bestCount < BEST_LIMIT ? 'BEST' : 'CLOSE';
     if (intel.section === 'BEST') bestCount += 1;
   }
 

@@ -158,6 +158,8 @@ export async function executeSourceJob(
         verified: Array.isArray(data?.audits) ? data.audits.filter((a: { qualifies?: boolean }) => a.qualifies).length : 0,
         activated: Number(data?.activated ?? 0),
         readNow: Number(data?.readNow ?? 0),
+        /* Channels the free reader read for this campaign: the paid Actor skips them. */
+        readTargets: Array.isArray(data?.readTargets) ? data.readTargets.map(String).slice(0, 50) : [],
         messagesRead: Number(data?.messagesRead ?? 0),
         timeBudgetReached: data?.timeBudgetReached === true,
       });

@@ -13,8 +13,10 @@
 import { SEARCH_LANGUAGES, type SearchLanguage } from './languages.ts';
 import { placeNamesFor } from './places.ts';
 import type { PropertyDna } from './propertyDna.ts';
+import type { BuyerStrategy } from './buyerStrategy.ts';
 
-export const QUERY_PLAN_VERSION = 'fb-qp-1';
+/* fb-qp-2: property-specific strategy queries; cached generic phrasings of fb-qp-1 are not reused. */
+export const QUERY_PLAN_VERSION = 'fb-qp-2';
 
 export type QueryKind = 'community' | 'demand' | 'hashtag';
 export type QueryFamily =
@@ -170,7 +172,12 @@ export function queryHash(q: string): string {
   return h.toString(16).padStart(8, '0');
 }
 
-export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLanguage[] = SEARCH_LANGUAGES): QueryPlan {
+/**
+ * With a buyer strategy, demand queries are the strategy's property-specific
+ * phrasings (explicit purchase/rent intent + place + specs + budget) instead
+ * of the generic templates; community and hashtag queries are unchanged.
+ */
+export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLanguage[] = SEARCH_LANGUAGES, strategy?: BuyerStrategy | null): QueryPlan {
   const out: PlannedQuery[] = [];
   const seen = new Set<string>();
   const counts = new Map<string, number>();
@@ -195,7 +202,9 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
     const place = districtNames.length ? (lang === 'ka' ? districtNames[districtNames.length - 1] : districtNames[0]) : city;
     const params = { city, place, type: t.typeWord(dna.propertyType), beds: t.beds(dna.bedrooms, dna.rooms) };
     for (const c of t.community) add(lang, 'community', 'COMMUNITY', c({ ...params, city: cityNames[0] }));
-    for (const [family, f] of dna.transaction === 'RENT' ? t.rent : t.sale) add(lang, 'demand', family, f(params));
+    const own = strategy && strategy.transaction === dna.transaction ? strategy.queries.filter((q) => q.language === lang) : [];
+    for (const q of own) add(lang, 'demand', q.persona === 'INVESTOR' ? 'INVESTMENT' : q.persona === 'RELOCATING' ? 'RELOCATING' : dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', q.query);
+    if (!own.length) for (const [family, f] of dna.transaction === 'RENT' ? t.rent : t.sale) add(lang, 'demand', family, f(params));
     add(lang, 'hashtag', 'HASHTAG', t.hashtag({ cityLatin, city: cityNames[0] }));
   }
   return { version: QUERY_PLAN_VERSION, dnaKey: dna.dnaKey, languages: [...languages], queries: out };

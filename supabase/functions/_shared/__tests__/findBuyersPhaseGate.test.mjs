@@ -139,3 +139,23 @@ test('the native Telegram read (Find Buyers only) is held by the same gate, with
   assert.match(fn.slice(gate, exec), /phase2MayStart\(p1\.state\)/);
   assert.match(fn.slice(gate, exec), /finish_discovery_source_job_wait/, 'a wait, not a retry: no attempt is consumed');
 });
+
+test('circuit breaker: an Actor that failed/came back empty twice in this campaign is cancelled before any reservation or provider request', async () => {
+  requests.length = 0;
+  const failed = { actor_key: 'TIKTOK', status: 'FAILED', items_fetched: 0, cost_booked_at: past(), created_at: past() };
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: past() }, queue: [], runs: [failed, { ...failed, status: 'SUCCEEDED' }] });
+  const r = await executeSocialJob(db, job('TIKTOK_SEARCH', 'TIKTOK'));
+  assert.equal(r.outcome, 'CANCELLED');
+  assert.equal(r.error, 'ACTOR_UNPRODUCTIVE_IN_CAMPAIGN');
+  assert.deepEqual(rpcs, [], 'nothing reserved');
+  assert.equal(requests.length, 0, 'nothing sent to Apify');
+});
+
+test('circuit breaker: one productive run keeps the Actor going', async () => {
+  const ok = { actor_key: 'TIKTOK', status: 'SUCCEEDED', items_fetched: 15, useful_results: 1, cost_booked_at: past(), created_at: past() };
+  const bad = { actor_key: 'TIKTOK', status: 'FAILED', items_fetched: 0, cost_booked_at: past(), created_at: past() };
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: past() }, queue: [], runs: [bad, ok] });
+  const r = await executeSocialJob(db, job('TIKTOK_SEARCH', 'TIKTOK'));
+  assert.notEqual(r.error, 'ACTOR_UNPRODUCTIVE_IN_CAMPAIGN');
+  assert.ok(rpcs.includes('find_buyers_reserve_actor_run'));
+});

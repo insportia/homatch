@@ -11,6 +11,8 @@
 import { buildPropertyDna, type PropertyDna } from '../../../../src/research-core/findBuyers/propertyDna.ts';
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
+import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
+import { classifyDemand } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
@@ -100,11 +102,15 @@ const MODEL_QUERY_SCHEMA = {
 } as const;
 
 /** Cached per DNA key: the same flat is never planned (or paid for) twice. */
-async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, priceBookRaw: unknown): Promise<QueryPlan> {
-  const base = buildQueryPlan(dna);
+async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, priceBookRaw: unknown, strategy: BuyerStrategy | null = null): Promise<QueryPlan> {
+  const base = buildQueryPlan(dna, SEARCH_LANGUAGES, strategy);
+  /* A model phrasing is kept only when it reads as explicit demand of the
+     campaign's own side (a generic "looking for a flat" pulls rentals/jobs). */
+  const wanted = dna.transaction === 'RENT' ? 'RENT_SEEKER' : 'BUY_SEEKER';
+  const onSide = (rows: Array<{ language?: unknown; query?: unknown }>) => rows.filter((r) => classifyDemand(String(r?.query ?? '')).role === wanted);
   const { data: cached } = await db.from('find_buyers_query_cache')
     .select('queries').eq('dna_key', dna.dnaKey).eq('plan_version', QUERY_PLAN_VERSION).maybeSingle();
-  if (cached?.queries) return mergeModelQueries(base, cached.queries as any[]);
+  if (cached?.queries) return mergeModelQueries(base, onSide(cached.queries as any[]));
   const book = parsePriceBook(priceBookRaw);
   const ask = {
     transaction: dna.transaction, propertyType: dna.propertyType, city: dna.city, district: dna.district,
@@ -112,7 +118,7 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
     existing: base.queries.filter((q) => q.kind === 'demand').map((q) => `${q.language}: ${q.query}`),
   };
   const res = await openAiJson<{ queries: Array<{ language: string; query: string }> }>(book,
-    'You write short social-media search phrases that real people in Georgia use when they WANT to buy or rent a property like this one. Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording, include the city or district name as people write it. No hashtags, no quotes.',
+    `You write short social-media search phrases that real people in Georgia write when they personally WANT TO ${dna.transaction === 'RENT' ? 'RENT' : 'BUY'} a property like this one. Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording, with an explicit ${dna.transaction === 'RENT' ? 'renting' : 'purchase'} verb and the district or city as people write it. Never a bare "looking for" phrase. No hashtags, no quotes.`,
     ask, MODEL_QUERY_SCHEMA, { maxTokens: 700 });
   await recordAiCost(db, { key: `ai:queries:${matchingJobId}`, matchingJobId, kind: 'AI', operation: 'QUERY_PLAN', result: res, metadata: { dnaKey: dna.dnaKey } })
     .catch(() => undefined);
@@ -130,7 +136,34 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
   } catch (error) {
     console.warn('find_buyers_query_cache upsert threw', error instanceof Error ? error.message : String(error));
   }
-  return mergeModelQueries(base, proposed);
+  return mergeModelQueries(base, onSide(proposed));
+}
+
+/** The property's market segment when the segmentation layer has evidence; never guessed. */
+async function marketSegment(db: any, propertyId: string): Promise<{ segment: Segment; confidence: number | null } | null> {
+  try {
+    const { data, error } = await db.from('property_market_segments').select('segment,confidence').eq('property_id', propertyId).maybeSingle();
+    if (error || !data?.segment) return null;
+    return { segment: data.segment as Segment, confidence: data.confidence == null ? null : Number(data.confidence) };
+  } catch { return null; }
+}
+
+/** Each Actor's real record over the last 90 days (finished paid runs, qualified leads). */
+async function actorHistory(db: any): Promise<Record<string, { bookedRuns: number; qualified: number }>> {
+  const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+  const { data } = await db.from('find_buyers_actor_runs').select('actor_key,qualified_leads,cost_booked_at,status').gte('created_at', since).limit(5000);
+  const out: Record<string, { bookedRuns: number; qualified: number }> = {};
+  for (const r of (data ?? []) as any[]) {
+    if (!r.cost_booked_at || r.status === 'RELEASED') continue;
+    const h = (out[r.actor_key] ??= { bookedRuns: 0, qualified: 0 });
+    h.bookedRuns += 1; h.qualified += Number(r.qualified_leads || 0);
+  }
+  return out;
+}
+
+async function queryStats(db: any): Promise<QueryStat[]> {
+  const { data } = await db.from('find_buyers_query_stats').select('query,language,runs,items,qualified,spend_micros').limit(2000);
+  return ((data ?? []) as any[]).map((r) => ({ query: String(r.query ?? ''), language: String(r.language ?? ''), runs: Number(r.runs || 0), items: Number(r.items || 0), qualified: Number(r.qualified || 0), spendMicros: Number(r.spend_micros || 0) }));
 }
 
 async function knownSources(db: any, city: string | null): Promise<KnownSource[]> {
@@ -259,10 +292,17 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const actors = await enabledActorMap(db, settings.pricingMaxAgeDays);
   if (!Object.keys(actors).length) return { queued: 0, dna, reason: 'NO_ACTOR_READY', economics: econ };
 
-  const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook);
-  await db.from('find_buyers_campaigns').update({ query_plan: plan }).eq('matching_job_id', input.matchingJobId);
+  /* The property-specific strategy first: segment (only with evidence),
+     budget band, places, personas, explicit-intent queries, budget depth.
+     Bounded learning re-orders/retires queries by their real yield. */
+  const segment = await marketSegment(db, input.propertyId);
+  const strategy0 = buildBuyerStrategy({ dna, segment, providerBudgetMicros: econ.providerBudgetMicros, targetLanguages: input.targetLanguages ?? null });
+  const strategy: BuyerStrategy = { ...strategy0, queries: prioritizeQueries(strategy0.queries, await queryStats(db)) };
+  const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook, strategy);
+  await db.from('find_buyers_campaigns').update({ query_plan: plan, strategy }).eq('matching_job_id', input.matchingJobId);
   const sources = await knownSources(db, dna.city);
-  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null });
+  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null,
+    depth: strategy.depth, actorHistory: await actorHistory(db) });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
   /* TWO PHASES (campaignPhases.ts): Phase 1's time box and its spend ceiling,
      planned from this campaign's own probes and the registry's prices. */
@@ -449,11 +489,19 @@ export async function queueTelegramFallback(db: any, matchingJobId: string) {
 }
 
 /** Channels a campaign already has a paid Telegram job for (any reason): never queued twice. */
+/** Channels this campaign already covers: paid reads queued, and channels the
+    free reader read for it (TELEGRAM_SOURCES outcome) — never paid for twice. */
 async function queuedTelegramTargets(db: any, matchingJobId: string): Promise<Set<string>> {
-  const { data } = await db.from('discovery_query_queue').select('metadata')
-    .eq('matching_job_id', matchingJobId).eq('provider', 'APIFY_MEMO23');
-  return new Set(((data ?? []) as any[]).filter((r) => r.metadata?.stage === 'TELEGRAM_CHANNEL')
-    .map((r) => String(r.metadata?.targetUrl ?? '').toLowerCase()).filter(Boolean));
+  const { data } = await db.from('discovery_query_queue').select('provider,metadata')
+    .eq('matching_job_id', matchingJobId);
+  const out = new Set<string>();
+  for (const r of (data ?? []) as any[]) {
+    if (r.provider === 'APIFY_MEMO23' && r.metadata?.stage === 'TELEGRAM_CHANNEL' && r.metadata?.targetUrl) out.add(String(r.metadata.targetUrl).toLowerCase());
+    if (r.provider === 'TELEGRAM_SOURCES') {
+      for (const t of (r.metadata?.last_outcome?.readTargets ?? []) as string[]) out.add(`https://t.me/${t}`.toLowerCase());
+    }
+  }
+  return out;
 }
 
 /* Paid channel reads one COMBINED search may add (each still reserved against the caps). */

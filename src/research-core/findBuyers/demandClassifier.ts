@@ -115,12 +115,19 @@ const SEEK = L([
   `${B}(arıyorum|arıyoruz|almak istiyorum|kiralamak istiyorum|lazım)`, 'أبحث', 'ابحث', 'نبحث', 'أريد', 'اريد', 'محتاج', 'مطلوب',
   'מחפש', 'מחפשת', 'מחפשים', 'רוצה לקנות', 'רוצה לשכור', 'צריך', 'צריכה',
 ]);
+/** First-person purchase/rent phrases that outrank an adjective like "satılık daire". */
+const STRONG_SEEK = L([
+  `${B}(want to buy|looking to buy|we want to buy|i want to buy|looking to rent|want to rent)`, 'хочу купить', 'хотим купить', 'куплю', 'сниму', 'хочу снять',
+  'ვიყიდი', 'შევიძენ', 'ვყიდულობ', 'ვიქირავებ', 'almak istiyorum', 'satın almak istiyorum', 'kiralamak istiyorum', 'أريد شراء', 'أريد استئجار', 'רוצה לקנות', 'רוצה לשכור',
+]);
+/** A stated budget is a seeker's word; a seller states a price. */
+const BUDGET_WORD = L([`${B}budget`, 'бюджет', 'ბიუჯეტ', 'bütçe', 'ميزانية', 'תקציב']);
 const THIRD_PERSON_SEEK = L([`for (those|anyone|people) (who are )?looking`, 'для тех, кто ищ', 'для тех кто ищ', 'ვისაც ეძებ', 'arayanlar için', 'لمن يبحث', 'למי שמחפש']);
 
 const BUY = L([
   `${B}(buy|buying|purchase|purchasing|to own|invest in)`, 'куплю', 'купить', 'покупк', 'покупа', 'приобрест', 'приобрет',
   'ვიყიდი', 'ვიყიდო', 'ყიდვ', 'შევიძენ', 'შეძენ', 'შესაძენ', 'ვყიდულობ', 'საყიდ', 'გასაყიდად',
-  `${B}(satın al|almak istiyorum|alıcı|alacağım)`, 'شراء', 'أشتري', 'اشتري', 'للشراء', 'לקנות', 'קונה', 'רכישה', 'לרכישה',
+  `${B}(satın al|almak istiyorum|alıcı|alacağım)`, 'شراء', 'أشتري', 'اشتري', 'نشتري', 'للشراء', 'לקנות', 'קונה', 'קונים', 'קניית', 'לקנייה', 'רכישה', 'לרכישה',
   /* paying for it over time is a purchase, not a rent */
   'ипотек', 'рассрочк', 'იპოთეკ', 'განვადებ', 'ეტაპობრივი გადახდ', `${B}(mortgage|installments?)`, 'taksit', 'تقسيط', 'משכנתא',
 ]);
@@ -292,8 +299,14 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   let direction: 'SEEK' | 'OFFER' | null = null;
   if (seekIdx >= 0 && (offerIdx < 0 || seekIdx < offerIdx)) { direction = 'SEEK'; evidence.push('first_person_seeking'); }
   else if (offerIdx >= 0) { direction = 'OFFER'; evidence.push(saleIdx === offerIdx ? 'sale_offer_marker' : 'rent_offer_marker'); }
+  if (direction === 'OFFER' && STRONG_SEEK.test(s) && !LISTING_CUES.test(s)) { direction = 'SEEK'; evidence.push('first_person_purchase_phrase'); }
   /* "if you have one for sale, message me" is a seeker asking sellers. */
   if (direction === 'OFFER' && /(თუ გაქვთ|если у вас есть|if you have|eğer varsa|إذا كان لديك|אם יש לכם)/iu.test(s)) { direction = 'SEEK'; evidence.push('asks_sellers'); }
+  if (!direction && (BUY.test(s) || /(снять|to rent|kiralamak|استئجار|לשכור)/iu.test(s) || BUDGET_WORD.test(s)) && !LISTING_CUES.test(s)) {
+    /* "купить квартиру …", "buy apartment …", "שراء شقة": an explicit purchase/rent
+       verb or a stated budget, with no listing cues, is someone who wants one. */
+    direction = 'SEEK'; evidence.push('intent_verb_or_budget');
+  }
   if (!direction) {
     /* No verb either way: a price + spec line + contact/hashtags is a listing. */
     const listing = (budget != null && (rooms != null || bedrooms != null || areaSqm != null || districts.length > 0)) && (LISTING_CUES.test(s) || /\+?\d[\d\s-]{7,}\d/.test(s) || s.length < 160);

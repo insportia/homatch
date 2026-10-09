@@ -28,7 +28,7 @@ test('every Actor the plan can stage is in the catalog; seeded Actors name a rea
 });
 
 test('group discovery that yields no post text is never primary on its own; native Telegram duplicate is unsuitable', () => {
-  assert.equal(classifyActor('LINKEDIN_GROUPS').cls, 'ENRICHMENT');
+  assert.equal(classifyActor('LINKEDIN_GROUPS').cls, 'UNSUITABLE', 'needs login cookies HOMATCH does not hold');
   assert.equal(classifyActor('TELEGRAM_CHANNEL').cls, 'UNSUITABLE');
   for (const k of ['FB_COMMENTS', 'IG_COMMENTS', 'YOUTUBE_COMMENTS']) assert.equal(classifyActor(k).cls, 'ENRICHMENT');
 });

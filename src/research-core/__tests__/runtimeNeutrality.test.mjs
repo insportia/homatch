@@ -214,6 +214,12 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
     'supabase/functions/_shared/findBuyers/translate.ts',
+    /* Admin re-qualification of a finished campaign's stored leads: the same
+       pure qualification the pipeline uses (research-core/findBuyers/requalify),
+       no provider call. */
+    'supabase/functions/_shared/findBuyers/admin.ts',
+    'supabase/functions/_shared/__tests__/findBuyersPipelineQualification.test.mjs',
+    'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
     /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */
     'supabase/functions/_shared/findBuyers/readiness.ts',
     /*

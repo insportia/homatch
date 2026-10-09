@@ -150,26 +150,51 @@ Deno.serve(async (req: Request) => {
       .select('id,signal_id,intent_type,transaction_type,city,district,property_types,'
         + 'bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,'
         + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,'
-        + 'signal:raw_signals!signal_id(id,classification_status,platform),'
-        /*
-         * WHOSE DEMAND THIS IS, where it is anybody's.
-         *
-         * intent_profiles has no user column — it holds a requirement, not a person —
-         * and the account is on the subscription that watches it. That is the canonical
-         * join and it is the only thing that makes a native match have two identities;
-         * an external demand read off a forum simply has no row here, which is the
-         * honest answer rather than a gap.
-         */
-        + `subscriptions:active_search_subscriptions${nativeOnly ? '!inner' : ''}!intent_id(user_id,is_active,side,search_criteria)`)
+        + 'signal:raw_signals!signal_id(id,classification_status,platform)')
       .not('city', 'is', null)
       .order('created_at', { ascending: false })
       .limit(limit * 4);
     if (onlySignal) demandQuery = demandQuery.eq('signal_id', onlySignal);
     if (onlyProfiles.length) demandQuery = demandQuery.in('id', onlyProfiles);
-    if (nativeOnly) demandQuery = demandQuery.eq('subscriptions.is_active', true);
 
-    const { data: demandRows, error: demandError } = await demandQuery;
+    const { data: profileRows, error: demandError } = await demandQuery;
     if (demandError) throw demandError;
+
+    /*
+     * WHOSE DEMAND THIS IS, where it is anybody's.
+     *
+     * intent_profiles has no user column — it holds a requirement, not a person —
+     * and the account is on the subscription that watches it
+     * (active_search_subscriptions.intent_id). That column carries NO foreign key,
+     * so PostgREST cannot embed it: the former
+     * PostgREST embed of the subscriptions through intent_id failed every
+     * tick with PGRST200 ("could not find a relationship"), which the catch below
+     * rendered as `{"error":"[object Object]"}` — HTTP 500 every 15 minutes and no
+     * supply_matches written since 2026-09-27. The subscriptions are read in a
+     * second query and attached here, under the same `subscriptions` name the rest
+     * of this function already consumes. An external demand read off a forum
+     * simply has no subscription, which is the honest answer rather than a gap.
+     */
+    const profileIds = (profileRows ?? []).map((row: Record<string, unknown>) => String(row.id));
+    const subscriptionsByIntent = new Map<string, Array<Record<string, unknown>>>();
+    if (profileIds.length) {
+      const { data: subscriptionRows, error: subscriptionError } = await db
+        .from('active_search_subscriptions')
+        .select('intent_id,user_id,is_active,side,search_criteria')
+        .in('intent_id', profileIds);
+      if (subscriptionError) throw subscriptionError;
+      for (const sub of (subscriptionRows ?? []) as Array<Record<string, unknown>>) {
+        const key = String(sub.intent_id);
+        const list = subscriptionsByIntent.get(key) ?? [];
+        list.push(sub);
+        subscriptionsByIntent.set(key, list);
+      }
+    }
+    const demandRows = (profileRows ?? [])
+      .map((row: Record<string, unknown>) => ({ ...row, subscriptions: subscriptionsByIntent.get(String(row.id)) ?? [] }))
+      /* A network-only run is about people with an ACTIVE subscription and nobody else. */
+      .filter((row: { subscriptions: Array<Record<string, unknown>> }) =>
+        !nativeOnly || row.subscriptions.some((sub) => sub.is_active === true));
 
     const eligible = (demandRows ?? []).filter((row: Record<string, unknown>) => {
       /*
@@ -720,6 +745,19 @@ Deno.serve(async (req: Request) => {
       elapsedMs: Date.now() - started,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    /* A PostgrestError is a plain object, not an Error: String() of it is
+       "[object Object]", which hid the real failure for days. */
+    return json({ error: describeError(error) }, 500);
   }
 });
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const e = error as { code?: unknown; message?: unknown; details?: unknown };
+    const parts = [e.code, e.message, e.details].filter((x) => typeof x === 'string' && x);
+    if (parts.length) return parts.join(': ');
+    try { return JSON.stringify(error); } catch { /* fall through */ }
+  }
+  return String(error);
+}

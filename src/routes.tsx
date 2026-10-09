@@ -191,6 +191,8 @@ const AdminLiveChatReportsPage = lazyRoute(() => import('./pages/admin/AdminLive
 const AdminHomePage = lazyRoute(() => import('./pages/admin/AdminHomePage'));
 const AdminIntelligencePage = lazyRoute(() => import('./pages/admin/AdminIntelligencePage'));
 const AdminSupplyMatchesPage = lazyRoute(() => import('./pages/admin/AdminSupplyMatchesPage'));
+const AdminBuyerIntelligencePage = lazyRoute(() => import('./pages/admin/AdminBuyerIntelligencePage'));
+const AdminMarketSegmentationPage = lazyRoute(() => import('./pages/admin/AdminMarketSegmentationPage'));
 const AdminNotificationsPage = lazyRoute(() => import('./pages/admin/AdminNotificationsPage'));
 const AdminAnnouncementsPage = lazyRoute(() => import('./pages/admin/AdminAnnouncementsPage'));
 const AdminAuditLogPage = lazyRoute(() => import('./pages/admin/AdminAuditLogPage'));
@@ -591,6 +593,11 @@ export const routes: RouteConfig[] = [
      SQL function that checks is_admin() itself; adminOnly and AdminLayout
      are the screen's manners, not its authorisation. */
   { name: 'Admin Supply Matches', path: '/admin/supply-matches',   element: adminWrap(<AdminSupplyMatchesPage />), adminOnly: true },
+  /* Buyer intelligence: one derived summary per HOMATCH person from what they
+     explicitly asked for; market segmentation: PREMIUM/MIDDLE/ECONOMY against
+     the local asking-price distribution, with preview-before-apply rules. */
+  { name: 'Admin Buyer Intelligence', path: '/admin/buyer-intelligence', element: adminWrap(<AdminBuyerIntelligencePage />), adminOnly: true },
+  { name: 'Admin Market Segmentation', path: '/admin/market-segmentation', element: adminWrap(<AdminMarketSegmentationPage />), adminOnly: true },
   { name: 'Admin Intelligence', path: '/admin/intelligence',       element: adminWrap(<AdminIntelligencePage />), adminOnly: true },
   { name: 'Admin Notifications', path: '/admin/notifications',     element: adminWrap(<AdminNotificationsPage />), adminOnly: true },
   { name: 'Admin Announcements', path: '/admin/announcements',     element: adminWrap(<AdminAnnouncementsPage />), adminOnly: true },

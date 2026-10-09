@@ -4714,6 +4714,21 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
        * find it. Never shown to a customer; stripped at the boundary with the
        * rest of _reusePlan. */
       brief: snapshotBrief(decided),
+      /* The figures as STRUCTURE, so a reused snapshot reaches the report's
+       * market section instead of only the model's brief (c80f7237 lost its
+       * market section this way). Aggregates only — no listing data. */
+      snapshot: decided.snapshot && !decided.refresh
+        ? {
+            scope_type: decided.snapshot.scope_type,
+            currency: decided.snapshot.currency,
+            median_price_per_sqm: decided.snapshot.median_price_per_sqm,
+            lower_price_per_sqm: decided.snapshot.lower_price_per_sqm,
+            upper_price_per_sqm: decided.snapshot.upper_price_per_sqm,
+            usable_comparable_count: decided.snapshot.usable_comparable_count,
+            confidence: decided.snapshot.confidence,
+            last_refreshed_at: decided.snapshot.last_refreshed_at,
+          }
+        : null,
     };
   } catch (e) {
     console.error('research-agent: market plan threw', e instanceof Error ? e.message : String(e));
@@ -5086,7 +5101,7 @@ async function learnFromVerification(db: any, jobId: string, report: any): Promi
      * Names and a representation mode are what a buyer needs; the numbers are
      * not their business and are certainly not shared intelligence.
      */
-    const control = extractControlStructure((report as any)?.browserOfficial);
+    const control = extractControlStructure((report as any)?.browserOfficial, (report as any)?.companyProfile?.idCode ?? null);
     const forHarvest = (control.directors.length || control.representation)
       ? {
           ...report,
@@ -5324,8 +5339,12 @@ function sanitizeForCustomer(job: any): any {
   // The control structure is read from the UNSANITIZED evidence, which only
   // exists on this side, and merged in as names plus a representation mode.
   // Done on read, so the reports already in the database gain it too.
-  const control = extractControlStructure((job.result_json as any)?.browserOfficial);
-  if (control.directors.length || control.representation) {
+  // Only the developer's own extract, by its identification code — never the
+  // pledge creditor's (c80f7237 showed the bank's director as the developer's).
+  // When the registry overlay already supplied the directors, they stand.
+  const control = extractControlStructure((job.result_json as any)?.browserOfficial, r.companyProfile?.idCode ?? null);
+  const overlaid = Array.isArray(r.companyProfile?.registryFields) && r.companyProfile.registryFields.includes('directors');
+  if (!overlaid && (control.directors.length || control.representation)) {
     const existing = Array.isArray(r.companyProfile?.directors) ? r.companyProfile.directors : [];
     const merged = [...existing];
     for (const d of control.directors.map((x) => sanitizeCustomerString(x)).filter(Boolean)) {

@@ -131,7 +131,18 @@ export function DeveloperAdvertising({
         ) : null}
 
         {total === 0 ? (
-          <p className="text-sm leading-6 break-words">{t('verify_ads_none', { country: isolate(countryName(view.country, lang)) })}</p>
+          /* A search that returned nothing is reported as exactly that: what
+             was searched, where, when — and that it is not proof the
+             developer does not advertise. */
+          <div className="space-y-1.5">
+            <p className="text-sm leading-6 break-words">{t('verify_ads_none', { country: isolate(countryName(view.country, lang)) })}</p>
+            {view.searchedFor?.length ? (
+              <p className="text-xs leading-5 text-muted-foreground break-words">
+                {t('vbi_ads_searched_for', { terms: view.searchedFor.slice(0, 3).map((s) => `„${s}“`).join(', ') })}
+              </p>
+            ) : null}
+            <p className="text-xs leading-5 text-muted-foreground break-words">{t('vbi_ads_none_note')}</p>
+          </div>
         ) : (
           <>
             <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">

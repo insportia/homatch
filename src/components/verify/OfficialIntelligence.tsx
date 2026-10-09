@@ -103,6 +103,9 @@ const safeVisualUrl = (u: unknown): string | null =>
 const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> = ({ h }) => {
   const { t } = useLanguage();
   const state = KNOWN_STATES.includes(h.state) ? h.state : 'NOT_ESTABLISHED';
+  // "We could not establish a status" is not a finding about the property.
+  // The dated items below carry what IS known; no headline about our process.
+  if (state === 'NOT_ESTABLISHED') return null;
   // A permit whose own validity date has passed is not "in force" — say so in the headline.
   const expired = state === 'PERMITTED' && h.caveats?.includes('VALIDITY_PASSED');
   // "Provisional: not every document could be read" is only true when a caveat other than an expired date applies.
@@ -121,7 +124,7 @@ const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> =
           day(h.validUntil) ? t('verify_ox_valid_until_date', { date: isolate(day(h.validUntil)!) }) : null,
         ].filter(Boolean).join(' · ')}
       </p>
-      {!h.conclusive && unreadCaveats.length ? <p className="text-xs leading-5 text-amber-700 dark:text-amber-400 break-words">{t('verify_ox_not_conclusive')}</p> : null}
+      {!h.conclusive && unreadCaveats.length ? <p className="text-xs leading-5 text-muted-foreground break-words">{t('verify_ox_not_conclusive')}</p> : null}
       {!h.conclusive && h.caveats?.length ? (
         <ul className="list-disc ps-4 space-y-0.5 text-xs leading-5 text-muted-foreground">
           {h.caveats.filter((c) => KNOWN_CAVEATS.has(c)).map((c) => <li key={c} className="break-words">{t(`verify_ox_caveat_${c.toLowerCase()}`)}</li>)}
@@ -261,7 +264,7 @@ const EvolutionList: React.FC<{ items: OfficialHistoryClientView['evolution']; c
             {': '}
             <span className="tabular-nums">{clean(e.from)}</span>
             <span aria-hidden="true"> → </span>
-            <span className="sr-only">{t('verify_ox_changed_to')}</span>
+            <span className="sr-only"> {t('verify_ox_changed_to')} </span>
             <span className="tabular-nums font-medium">{clean(e.to)}</span>
             {day(e.toDate) ? <span className="text-2xs text-muted-foreground"> · <Ltr>{day(e.toDate)}</Ltr></span> : null}
           </li>
@@ -374,7 +377,21 @@ export const PropertyStoryBlock: React.FC<{
 const PROVIDERS = ['tas', 'mygov', 'enreg', 'debtor', 'rstax', 'myhome', 'ssge'];
 const LIMITED_STATES = ['PARTIAL', 'CAPTCHA_REQUIRED', 'CAPTCHA_FAILED', 'SOURCE_CHANGED', 'TEMPORARILY_UNAVAILABLE', 'TIMEOUT', 'FAILED', 'NOT_VERIFIED'];
 
-export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | null }> = ({ coverage }) => {
+/*
+ * CUSTOMER WORDING FOR A SOURCE THAT DID NOT FINISH.
+ *
+ * Every unfinished state — a timeout, a verification step, a source that
+ * changed — means the same thing to a buyer: this point is still to be
+ * confirmed, and it says nothing about the property. One calm label, never
+ * the mechanism. PARTIAL is different: part of it WAS read.
+ */
+const providerLabelKey = (state: string): string => (state === 'PARTIAL' ? 'verify_ox_pstate_partial' : 'vbi_followup');
+
+export const ResearchTransparency: React.FC<{
+  coverage?: ResearchCoverageView | null;
+  /** The unit's register coverage, which replaces the registry's raw state. */
+  register?: { found: number; read: number } | null;
+}> = ({ coverage, register }) => {
   const { t } = useLanguage();
   if (!coverage) return null;
   const chips: Array<{ label: string; value: string }> = [];
@@ -391,7 +408,11 @@ export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | 
   add('verify_ox_rx_selected', coverage.officialEvidenceSelectedForSynthesis);
   add('verify_ox_rx_milestones_shown', coverage.officialMilestonesShown);
   add('verify_ox_rx_listings', coverage.marketListingsAnalyzed);
-  const limits = (coverage.providers ?? []).filter((p) => PROVIDERS.includes(p.provider) && LIMITED_STATES.includes(p.state));
+  // The registry is described by what was read from it, when anything was.
+  const registerRead = !!register && register.read > 0;
+  const limits = (coverage.providers ?? []).filter(
+    (p) => PROVIDERS.includes(p.provider) && LIMITED_STATES.includes(p.state) && !(p.provider === 'mygov' && registerRead),
+  );
   const official = !!coverage.officialCasesReviewed;
   const market = !!coverage.marketListingsAnalyzed;
   if (!official && !market && !chips.length && !limits.length) return null;
@@ -413,6 +434,11 @@ export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | 
           ))}
         </dl>
       ) : null}
+      {registerRead ? (
+        <p className="text-xs leading-5 text-muted-foreground break-words">
+          {t('vbi_rx_registry', { found: String(register!.found), read: String(register!.read) })}
+        </p>
+      ) : null}
       {limits.length ? (
         <div className="space-y-1.5 border-t border-border pt-3">
           <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_rx_limits_title')}</p>
@@ -420,7 +446,7 @@ export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | 
             {limits.map((p) => (
               <li key={p.provider} className="flex flex-wrap gap-x-1.5 text-xs leading-5 break-words">
                 <span className="font-medium">{t(`verify_ox_prov_${p.provider}`)}:</span>
-                <span className="text-muted-foreground">{t(`verify_ox_pstate_${p.state.toLowerCase()}`)}</span>
+                <span className="text-muted-foreground">{t(providerLabelKey(p.state))}</span>
               </li>
             ))}
           </ul>

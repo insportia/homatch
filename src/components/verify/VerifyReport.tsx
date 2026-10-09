@@ -76,6 +76,10 @@ import { UnconfirmedCard } from './UnconfirmedCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
+import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav } from './BuyerIntelligenceCards';
+import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
+import type { CompanyFinanceView, MarketContextView } from '@/verify/intelligence/reportGaps';
+import { splitCitations, hasDistance } from '@/verify/citations';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
 export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
@@ -221,6 +225,12 @@ export interface VerifySynthesis {
   officialHistory?: OfficialHistoryClientView | null;
   /** Developer advertising (Meta Ad Library), a marketing signal only. */
   developerAds?: DeveloperAdsView | null;
+  /** The unit's own NAPR extract, parsed (see propertyRegister.ts). */
+  propertyRegister?: PropertyRegister | null;
+  /** The developer's financial position from what was actually checked. */
+  companyFinance?: CompanyFinanceView | null;
+  /** A reused market snapshot, when the run gathered no comparables of its own. */
+  marketContext?: MarketContextView | null;
 }
 
 /**
@@ -288,7 +298,7 @@ const stripEvidenceIds = (text: string): string =>
  */
 const clean = (s: unknown): string =>
   scrubCoverageLanguage(
-    stripInternalTerms(stripEvidenceIds(readable(typeof s === 'string' ? s : '')))
+    stripInternalTerms(stripEvidenceIds(readable(splitCitations(typeof s === 'string' ? s : '').text)))
   );
 
 const paragraphs = (text: string): string[] =>
@@ -408,9 +418,29 @@ export function VerifyReport({
     utilities,
   });
 
+  /* The sections this report actually has, for the jump links. */
+  const nav = [
+    { id: 'vbi-summary', labelKey: 'vbi_nav_summary', on: true },
+    { id: 'vbi-register', labelKey: 'vbi_nav_register', on: !!synthesis.propertyRegister?.latest },
+    { id: 'vbi-company', labelKey: 'vbi_nav_company', on: !!(company && (company.name || company.idCode)) },
+    { id: 'vbi-finance', labelKey: 'vbi_nav_finance', on: !!synthesis.companyFinance },
+    { id: 'vbi-market', labelKey: 'vbi_nav_market', on: !!synthesis.marketContext || sections.some((x) => x.key === 'MARKET') },
+    { id: 'verify-story', labelKey: 'vbi_nav_history', on: !!(r.propertyStory?.chapters?.length || synthesis.officialHistory?.milestones?.length) },
+    { id: 'developer-advertising', labelKey: 'vbi_nav_ads', on: !!synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome) },
+    { id: 'vbi-checklist', labelKey: 'vbi_nav_checklist', on: !!synthesis.checklist?.length },
+  ].filter((n) => n.on);
+
   return (
     <article className="mx-auto max-w-[68ch] space-y-8">
-      <SummaryHero summary={r.summary} weighed={weighed} />
+      <ReportNav items={nav} />
+      <div id="vbi-summary" className="scroll-mt-24">
+        <SummaryHero summary={r.summary} weighed={weighed} />
+      </div>
+
+      {/* A. WHAT THE PROPERTY'S OWN REGISTER SAYS — owner, mortgages, liens,
+          as of the extract HOMATCH read. The most authoritative block in the
+          report, so it comes straight after the verdict. */}
+      <PropertyRegisterCard register={synthesis.propertyRegister} />
 
       {/* B. THE LATEST CONFIRMED OFFICIAL POSITION — the present tense, once. */}
       <CurrentStatusBlock status={r.currentStatus} history={synthesis.officialHistory} clean={clean} />
@@ -420,6 +450,18 @@ export function VerifyReport({
       {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
 
       {findings.length ? <KeyFindings findings={findings} /> : null}
+
+      {/* WHO IS SELLING / BUILDING IT, AND THEIR FINANCIAL POSITION — the
+          register-grade company card, then what was checked about its money. */}
+      <div id="vbi-company" className="scroll-mt-24">
+        <CompanyIntelligenceCard company={company} rights={rights} />
+      </div>
+      <CompanyFinanceCard finance={synthesis.companyFinance} />
+
+      {/* MARKET — a range HOMATCH already held, when this run gathered no
+          comparables of its own (the full market section renders instead
+          when it did). */}
+      {!synthesis.market ? <MarketContextCard market={synthesis.marketContext} /> : null}
 
       {/* C + D. THE PROPERTY STORY, with the official TAS visuals beside the
           chapter they explain (original → latest where both exist). */}
@@ -537,12 +579,8 @@ export function VerifyReport({
         </section>
       ) : null}
 
-      {/* ── 6. WHO IS SELLING IT ────────────────────────────────────────
-          Registry-grade and visually distinct, because it is the most
-          trustworthy thing the run produces. It also holds the one
-          distinction this report must never blur: a pledge against the
-          COMPANY is not a mortgage on the FLAT. */}
-      <CompanyIntelligenceCard company={company} rights={rights} />
+      {/* The company card moved up, beside the developer's finances: it is
+          registry-grade and belongs with who the buyer is dealing with. */}
 
       {/* ── 8. UTILITIES ───────────────────────────────────────────────
           Rendered even when the run established nothing, because a missing
@@ -577,11 +615,13 @@ export function VerifyReport({
         * that demonstrably held the evidence. They are computed in the
         * bundle now and merely rendered here.
         */}
-      <BuyerChecklist items={synthesis.checklist ?? []} />
+      <div id="vbi-checklist" className="scroll-mt-24">
+        <BuyerChecklist items={synthesis.checklist ?? []} />
+      </div>
       <EvidenceSources groups={buyerFacingGroups(synthesis.evidenceGroups ?? [])} />
 
       {/* H. RESEARCH TRANSPARENCY — what was reviewed, never a link list. */}
-      <ResearchTransparency coverage={synthesis.research} />
+      <ResearchTransparency coverage={synthesis.research} register={synthesis.propertyRegister?.coverage ?? null} />
 
       {r.contractUpload?.recommend !== false ? (
         <section className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">
@@ -895,6 +935,26 @@ const PLACE_ORDER = [
  * a finding about this property, and is labelled that way rather than being
  * mixed into the evidenced places above it.
  */
+/*
+ * What a source said about reaching a place — its words, attributed, and a
+ * figure marked approximate. "70 მ და 1 წუთი ფეხით" came from a listing site;
+ * there is no geocoder here, so it is never shown as HOMATCH's measurement.
+ */
+const PlaceNote: React.FC<{ note: string }> = ({ note }) => {
+  const { t } = useLanguage();
+  const { text, sources } = splitCitations(note);
+  const said = clean(text);
+  if (!said) return null;
+  const from = sources[0]?.host;
+  return (
+    <span className="text-muted-foreground">
+      {' — '}
+      {hasDistance(said) ? t(from ? 'vbi_place_approx_from' : 'vbi_place_approx', { note: said, source: from ?? '' }) : said}
+      {!hasDistance(said) && from ? <span className="ms-1 text-2xs">({t('vbi_source', { source: from })})</span> : null}
+    </span>
+  );
+};
+
 const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
   const { t } = useLanguage();
 
@@ -931,9 +991,7 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
             <li key={`${p.category}-${i}`} className="border-s-2 border-border ps-4 space-y-0.5">
               <p className="text-[15px] leading-6 break-words">
                 <span className="font-medium">{clean(p.name)}</span>
-                {p.note ? (
-                  <span className="text-muted-foreground"> — {clean(p.note)}</span>
-                ) : null}
+                {p.note ? <PlaceNote note={p.note} /> : null}
               </p>
               <p className="text-xs leading-5 text-muted-foreground break-words">{t(p.whyKey)}</p>
             </li>

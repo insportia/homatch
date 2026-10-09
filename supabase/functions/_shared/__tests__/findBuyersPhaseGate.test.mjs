@@ -62,8 +62,8 @@ function fakeDb({ phases, queue = [], runs = [], reserve = { ok: false, reason: 
 const job = (stage, actorKey, extra = {}) => ({ id: `q-${stage}`, matching_job_id: 'job1', language: 'ka', metadata: { stage, actorKey, query: 'ბინა ვაკეში', size: 15, ...extra } });
 const phase1Open = [{ provider: 'TELEGRAM_SOURCES', status: 'PROCESSING', metadata: {} }, { provider: 'APIFY_MEMO23', status: 'PENDING', metadata: { stage: 'FB_GROUP_SEARCH' } }];
 
-test('Phase 2 (independent search and source-dependent) waits while Phase 1 is open — no reservation, no provider request', async () => {
-  for (const j of [job('TIKTOK_SEARCH', 'TIKTOK'), job('FB_GROUP_POSTS', 'FB_GROUP_POSTS', { targetUrl: 'https://www.facebook.com/groups/x/', query: null })]) {
+test('a source-dependent Phase 2 run (reads the discovered pool) waits while Phase 1 is open — no reservation, no provider request', async () => {
+  for (const j of [job('FB_GROUP_POSTS', 'FB_GROUP_POSTS', { targetUrl: 'https://www.facebook.com/groups/x/', query: null })]) {
     requests.length = 0;
     const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future() }, queue: phase1Open });
     const r = await executeSocialJob(db, j);
@@ -84,9 +84,16 @@ test('Phase 2 proceeds to the reservation once Phase 1 is done (partially failed
   assert.deepEqual(timedOut.rpcs, ['find_buyers_reserve_actor_run'], 'an unanswered provider cannot stall Phase 2');
 });
 
-test('the planned-but-not-yet-queued Telegram discovery holds Phase 2 too', async () => {
-  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future(), expectedProviders: ['TELEGRAM_SOURCES'] }, queue: [] });
+test('an independent search (TikTok) does not wait for unrelated discovery: it goes to the reservation at once', async () => {
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future() }, queue: phase1Open });
   const r = await executeSocialJob(db, job('TIKTOK_SEARCH', 'TIKTOK'));
+  assert.notEqual(r.metadata?.lastWait, 'PHASE1_DISCOVERY');
+  assert.ok(rpcs.includes('find_buyers_reserve_actor_run'), 'reserved under the same atomic caps');
+});
+
+test('the planned-but-not-yet-queued Telegram discovery holds the source-dependent reads', async () => {
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future(), expectedProviders: ['TELEGRAM_SOURCES'] }, queue: [] });
+  const r = await executeSocialJob(db, job('TELEGRAM_CHANNEL', 'TELEGRAM_CHANNEL', { targetUrl: 'https://t.me/tbilisi_flats', query: null }));
   assert.equal(r.outcome, 'WAIT');
   assert.deepEqual(rpcs, []);
 });

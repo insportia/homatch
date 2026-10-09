@@ -26,6 +26,10 @@ import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuy
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
 import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-core/findBuyers/freshness.ts';
 import { dateProvenance, emptyDispositions, freshnessBucket, hardGate, publicIntent, type DispositionCounts } from '../../../../src/research-core/findBuyers/demandTaxonomy.ts';
+import { classifyDemand, classifyComment, boundModelReading, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
+import { qualify, legacyIntentClass, QUALIFICATION_VERSION, type Qualification } from '../../../../src/research-core/findBuyers/qualify.ts';
+import { duplicateKey } from '../../../../src/research-core/findBuyers/requalify.ts';
+import { sourceRelevance } from '../../../../src/research-core/findBuyers/sourceRelevance.ts';
 import { openAiJson, recordAiCost, type PriceBook } from './openai.ts';
 
 export interface CampaignRow {
@@ -43,6 +47,8 @@ export interface ParentContext {
   signalId: string | null;
   similarity: number;
   stance: 'OFFER' | 'REQUEST' | null;
+  /** What the parent post is (a sale listing, a rental request …). */
+  role?: DemandRole | null;
   excerpt: string | null;
   facts: TextFacts | null;
   ageDays: number | null;
@@ -85,6 +91,10 @@ export interface PipelineResult {
   useful: number;
   qualified: number;
   strong: number;
+  /** Genuine seekers kept as Weak matches (a soft mismatch or unknowns). */
+  weak: number;
+  /** Rejected candidates by explicit reason (JOB_SEARCH, WRONG_TRANSACTION …). */
+  rejected: Record<string, number>;
   duplicates: number;
   reused: number;
   /** Older than 30 days, undated or badly dated: dropped before persistence. */
@@ -103,7 +113,7 @@ const ageDaysOf = (iso: string | null, now: number) => (iso ? Math.max(0, (now -
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n - 1)}…` : s) : null);
 
 export async function processItems(ctx: PipelineCtx, items: NormalizedItem[]): Promise<PipelineResult> {
-  const out: PipelineResult = { items: items.length, useful: 0, qualified: 0, strong: 0, duplicates: 0, reused: 0, staleDropped: 0, groupsFound: 0, followUps: [], aiCalls: 0, dispositions: emptyDispositions(), candidates: 0 };
+  const out: PipelineResult = { items: items.length, useful: 0, qualified: 0, strong: 0, weak: 0, rejected: {}, duplicates: 0, reused: 0, staleDropped: 0, groupsFound: 0, followUps: [], aiCalls: 0, dispositions: emptyDispositions(), candidates: 0 };
   if (!items.length) return out;
   const groups = items.filter((i) => i.kind === 'GROUP');
   if (groups.length) await processGroups(ctx, groups, out);
@@ -117,17 +127,15 @@ export async function processItems(ctx: PipelineCtx, items: NormalizedItem[]): P
 async function processGroups(ctx: PipelineCtx, groups: NormalizedItem[], out: PipelineResult) {
   const { db, campaign } = ctx;
   const network = STAGE_NETWORK[ctx.stage];
+  /* Relevance from the group's own name/description: job boards, off-topic
+     and (for a SALE search) rental-only groups are never paid for. */
   const scored = groups
     .filter((g) => g.group && g.group.isPublic !== false && g.group.url)
     .map((g) => {
-      const text = g.text;
-      const city = mentionsPlace(text, 'city', campaign.dna.city);
-      const terms = REAL_ESTATE_TERMS.test(text);
-      const members = g.group?.members ?? 0;
-      const score = (city ? 0.5 : cityMentioned(text) ? 0 : 0.15) + (terms ? 0.4 : 0) + Math.min(0.1, members / 200_000);
-      return { g, score, city };
+      const rel = sourceRelevance(g.text, campaign.dna, g.group?.members ?? 0);
+      return { g, score: rel.score, rel };
     })
-    .filter((x) => x.score >= 0.45)
+    .filter((x) => x.rel.readable)
     .sort((a, b) => b.score - a.score);
   out.groupsFound = scored.length;
   out.useful += scored.length;
@@ -151,6 +159,7 @@ async function processGroups(ctx: PipelineCtx, groups: NormalizedItem[], out: Pi
       /* Discovery registers; it never switches a source on for other collectors. */
       active: false,
       quality_score: Math.round(score * 100) / 10,
+      relevance: { score, reasons: scored.find((x) => x.g === g)?.rel.reasons ?? [], dnaKey: campaign.dna.dnaKey, transaction: campaign.transaction },
       /* No last_checked_at here: discovering a group is not reading it; its
          first read must cover the full 30-day window. */
     };
@@ -188,6 +197,9 @@ interface Assessed {
   commentsDecision: string | null;
   fingerprint: string;
   why: WhyMatched;
+  reading: DemandReading;
+  qualification: Qualification | null;
+  dupKeys: string[];
 }
 
 async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: PipelineResult) {
@@ -284,47 +296,52 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       ? scoreSimilarity(campaign.dna, parent.facts, { ageDays: parent.ageDays, fxToUsd: ctx.fx })
       : scoreSimilarity(campaign.dna, facts, { ageDays, fxToUsd: ctx.fx });
     const similarity = item.kind === 'COMMENT' ? (parent?.similarity ?? simResult.score) : simResult.score;
-    if (item.kind === 'POST') {
-      postCtx.set(item.externalId, {
-        externalId: item.externalId, url: item.url, signalId, similarity, stance: facts.stance,
-        excerpt: clip(item.text, 300), facts, ageDays, publishedAt: item.publishedAt,
-      });
-    }
     const ictx: IntentContext = {
       campaign: campaign.transaction,
       kind: item.kind === 'COMMENT' ? 'COMMENT' : network === 'TELEGRAM' ? 'MESSAGE' : 'POST',
       parentSimilarity: item.kind === 'COMMENT' ? similarity : null,
       parentStance: parent?.stance ?? null,
     };
-    const cacheKey = `${fingerprint}:${campaign.transaction}:${ictx.kind}:${ictx.parentSimilarity == null ? 'x' : Math.floor(ictx.parentSimilarity / 10)}:${ictx.parentStance ?? 'x'}`;
-    let verdict: IntentVerdict | null = null;
-    /* A post that offers a property is not demand; only its comments may be. */
-    if (item.kind === 'POST' && facts.stance === 'OFFER') verdict = { intentClass: 'SELLER', score: 3, method: 'RULE', rule: 'post_offers_property', needsModel: false };
-    else {
-      const cached = prior?.intent_json?.m23cache?.[cacheKey];
-      if (cached?.intentClass) verdict = { intentClass: cached.intentClass, score: cached.score, method: cached.method, rule: 'reused_verdict', needsModel: false };
-      else verdict = classifyByRules(item.text, ictx);
+    const cacheKey = `v2:${fingerprint}:${campaign.transaction}:${ictx.kind}:${ictx.parentSimilarity == null ? 'x' : Math.floor(ictx.parentSimilarity / 10)}:${parent?.role ?? ictx.parentStance ?? 'x'}`;
+    /* Who is speaking and what they want — deterministic first. A model
+       resolution stored for the same words/context is reused (never re-paid). */
+    let reading = item.kind === 'COMMENT'
+      ? classifyComment(item.text, parent ? { role: parent.role ?? (parent.stance === 'OFFER' ? (campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER') : null), similarity } : null)
+      : classifyDemand(item.text, { kind: ictx.kind });
+    const cached = prior?.intent_json?.m23cache?.[cacheKey];
+    if (reading.needsModel && cached?.role) reading = boundModelReading(reading, { role: cached.role, transaction: cached.transaction });
+    if (item.kind === 'POST') {
+      postCtx.set(item.externalId, {
+        externalId: item.externalId, url: item.url, signalId, similarity, stance: facts.stance, role: reading.role,
+        excerpt: clip(item.text, 300), facts, ageDays, publishedAt: item.publishedAt,
+      });
     }
+    const verdict: IntentVerdict | null = null;
+    /* Comments are worth paying for only under a listing comparable to the
+       owner's property (buyers ask there); never under someone's request.
+       An unknown comment count is not zero (the Actor may not report it). */
     let commentsDecision: string | null = null;
-    if (item.kind === 'POST' && facts.stance !== 'REQUEST' && ['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH', 'REDDIT_SEARCH'].includes(ctx.stage)) {
+    const listingRole = campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER';
+    if (item.kind === 'POST' && reading.role === listingRole && ['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH', 'REDDIT_SEARCH'].includes(ctx.stage)) {
       commentsDecision = decideComments(similarity, { commentCount: item.engagement.comments, ageDays, sourceYield: ctx.sourceYield }, ctx.gate);
-    }
-    const why = buildWhy(item.kind === 'COMMENT' ? (REQUESTISH(verdict) ? 'COMMENT_REQUEST' : 'COMMENT_ON_SIMILAR') : 'REQUEST_POST',
+    } else if (item.kind === 'POST') commentsDecision = reading.role === 'BUY_SEEKER' || reading.role === 'RENT_SEEKER' ? 'SKIP_REQUEST' : 'SKIP_NOT_A_LISTING';
+    const why = buildWhy(item.kind === 'COMMENT' ? (reading.evidence.includes('interest_under_listing') ? 'COMMENT_ON_SIMILAR' : 'COMMENT_REQUEST') : 'REQUEST_POST',
       item.kind === 'COMMENT' && parent?.facts ? parent.facts : facts, simResult, item.kind === 'COMMENT' ? parent?.ageDays ?? null : ageDays);
-    assessed.push({ item, signalId, facts, similarity, simResult, ageDays, language: detectLanguage(item.text), parent, ctx: ictx, verdict, cacheKey, commentsDecision, fingerprint, why });
+    assessed.push({ item, signalId, facts, similarity, simResult, ageDays, language: detectLanguage(item.text), parent, ctx: ictx, verdict, cacheKey, commentsDecision, fingerprint, why,
+      reading, qualification: null, dupKeys: duplicateKey({ text: item.text, author: item.author.id ?? item.author.url ?? item.author.name, url: item.url }) });
   }
 
   /* The model only for ambiguous text — one batched, schema-bound call per 30,
      at most 3 calls per claim (the rest stay UNCERTAIN: never a lead). */
-  const ambiguous = assessed.filter((a) => a.verdict?.needsModel && a.item.text.length >= 3).slice(0, 90);
+  const ambiguous = assessed.filter((a) => a.reading.needsModel && a.reading.realEstate && a.item.text.length >= 3).slice(0, 90);
   for (let i = 0; i < ambiguous.length; i += 30) {
     const batch = ambiguous.slice(i, i + 30);
-    const res = await openAiJson<{ items: Array<{ id: string; intent_class: string }> }>(ctx.book, INTENT_SYSTEM_PROMPT, {
+    const res = await openAiJson<{ items: Array<{ id: string; role: string; transaction: string }> }>(ctx.book, DEMAND_SYSTEM_PROMPT, {
       items: batch.map((a, k) => ({
-        id: String(k), campaign: campaign.transaction, kind: a.ctx.kind, text: clip(a.item.text, 500),
+        id: String(k), kind: a.ctx.kind, text: clip(a.item.text, 500),
         parent_excerpt: a.parent?.excerpt ?? null, parent_similarity: a.ctx.parentSimilarity,
       })),
-    }, INTENT_MODEL_SCHEMA, { maxTokens: 120 + batch.length * 60 });
+    }, DEMAND_MODEL_SCHEMA, { maxTokens: 120 + batch.length * 60 });
     out.aiCalls++;
     await recordAiCost(db, {
       key: `ai:intent:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}:${i}`, matchingJobId: campaign.matching_job_id, kind: 'AI', operation: 'INTENT',
@@ -333,9 +350,25 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     const byId = new Map((res.data?.items ?? []).map((x) => [String(x.id), x]));
     batch.forEach((a, k) => {
       const m = byId.get(String(k));
-      if (m) a.verdict = boundModelVerdict(m.intent_class, a.ctx);
-      else if (a.verdict) a.verdict = { ...a.verdict, needsModel: false, method: a.verdict.method === 'UNDECIDED' ? 'UNDECIDED' : a.verdict.method };
+      a.reading = boundModelReading(a.reading, m ? { role: m.role, transaction: m.transaction } : null);
     });
+  }
+
+  /* Qualification: one explicit decision per candidate. The same words from
+     the same author, or the same post URL, count once per campaign. */
+  const { data: priorLeads } = await db.from('find_buyers_leads').select('qualification').eq('matching_job_id', campaign.matching_job_id).limit(2000);
+  const seenKeys = new Set<string>(((priorLeads ?? []) as any[]).flatMap((r) => (Array.isArray(r.qualification?.dupKeys) ? r.qualification.dupKeys : [])));
+  for (const a of assessed) {
+    const duplicate = a.dupKeys.some((k) => seenKeys.has(k));
+    a.qualification = qualify(a.reading, campaign.dna, { ageDays: a.ageDays, duplicate, fx: ctx.fx });
+    if (a.qualification.category !== 'REJECTED') a.dupKeys.forEach((k) => seenKeys.add(k));
+    const counterpart = campaign.transaction === 'RENT' ? 'TENANT' : 'BUYER';
+    const intentClass = legacyIntentClass(a.qualification, counterpart) as IntentVerdict['intentClass'];
+    a.verdict = {
+      intentClass, score: a.qualification.components.intent, needsModel: false,
+      method: a.reading.evidence.includes('model_resolved') ? 'MODEL' : a.reading.role === 'UNCLEAR' ? 'UNDECIDED' : 'RULE',
+      rule: a.reading.evidence[0] ?? null,
+    };
   }
 
   /* Persist assessments and verdict caches. */
@@ -351,31 +384,42 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     intent_method: a.verdict ? `${a.verdict.method}${a.verdict.rule ? `:${a.verdict.rule}` : ''}` : 'NONE',
     comments_decision: a.commentsDecision,
     language: a.language,
+    role: a.reading.role,
+    transaction: a.reading.transaction,
+    match_category: a.qualification?.category ?? null,
+    rejection_reasons: a.qualification?.reasons ?? [],
+    budget_fit: a.qualification?.budgetFit ?? null,
+    location_fit: a.qualification?.locationFit ?? null,
+    requirements_fit: a.qualification?.requirementsFit ?? null,
+    qualification: a.qualification ? { ...a.qualification, evidence: a.reading.evidence, confidence: a.reading.confidence } : null,
+    qualification_version: QUALIFICATION_VERSION,
   }));
   if (assessRows.length) {
     await db.from('find_buyers_assessments').upsert(assessRows, { onConflict: 'matching_job_id,signal_id', ignoreDuplicates: true });
   }
   for (const a of assessed) {
     if (!a.verdict || a.verdict.method === 'UNDECIDED') continue;
-    const qualifying = QUALIFYING.has(a.verdict.intentClass);
+    const qualifying = a.qualification != null && a.qualification.category !== 'REJECTED';
     const prior = knownMap.get(extId(a.item))?.intent_json ?? {};
     await db.from('raw_signals').update({
       classification_status: qualifying ? 'CLASSIFIED' : 'FILTERED_OUT',
       intent_type: a.verdict.intentClass,
-      research_direction: qualifying ? 'DEMAND' : a.facts.stance === 'OFFER' ? 'SUPPLY' : 'UNKNOWN',
+      research_direction: a.reading.role === 'BUY_SEEKER' || a.reading.role === 'RENT_SEEKER' ? 'DEMAND'
+        : a.reading.role === 'SALE_OFFER' || a.reading.role === 'RENT_OFFER' ? 'SUPPLY' : 'UNKNOWN',
       intent_json: {
         ...prior,
         /* Market side from the text's own transaction (never the campaign's), and date provenance. */
-        publicIntent: publicIntent(a.verdict.intentClass, a.facts.transaction),
+        publicIntent: publicIntent(a.verdict.intentClass, a.reading.transaction === 'BUY' ? 'SALE' : a.reading.transaction === 'RENT' ? 'RENT' : null),
+        demand: { role: a.reading.role, transaction: a.reading.transaction, version: QUALIFICATION_VERSION },
         ...(() => { const d = dateProvenance(a.item.publishedAt, a.parent?.publishedAt ?? null);
           return { dateSource: d.dateSource, dateConfidence: d.dateConfidence, freshness: freshnessBucket(d.evidenceAt, now) }; })(),
-        m23cache: { ...(prior?.m23cache ?? {}), [a.cacheKey]: { intentClass: a.verdict.intentClass, score: a.verdict.score, method: a.verdict.method } },
+        m23cache: { ...(prior?.m23cache ?? {}), [a.cacheKey]: { role: a.reading.role, transaction: a.reading.transaction, method: a.verdict.method } },
       },
     }).eq('id', a.signalId);
   }
 
   /* Usefulness: comparable content or qualifying intent. */
-  out.useful += assessed.filter((a) => a.similarity >= ctx.gate.skipBelow || (a.verdict && QUALIFYING.has(a.verdict.intentClass))).length;
+  out.useful += assessed.filter((a) => a.qualification?.category === 'STRONG' || a.qualification?.category === 'POTENTIAL' || (a.commentsDecision ?? '').startsWith('FETCH')).length;
 
   /* Comments follow-ups for comparable posts, reusing stored comments first. */
   const commentsStage: Stage | null = ctx.stage === 'FB_GROUP_POSTS' ? 'FB_COMMENTS' : ctx.stage === 'IG_PROFILE_POSTS' ? 'IG_COMMENTS'
@@ -396,17 +440,31 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   /* Leads. Hard gates first (undecided, supply/agent/discussion, the other
      transaction), then ranking; every assessed candidate gets one disposition. */
   for (const a of assessed) {
-    const gate = hardGate({ campaign: campaign.transaction, intentClass: a.verdict?.intentClass, method: a.verdict?.method, statedTransaction: a.facts.transaction });
-    if (gate) { out.dispositions[gate]++; continue; }
+    const q = a.qualification!;
+    if (q.category === 'REJECTED') {
+      for (const r of q.reasons) out.rejected[r] = (out.rejected[r] ?? 0) + 1;
+      out.dispositions[dispositionOf(q)]++;
+      continue;
+    }
     const res = await upsertLead(ctx, a);
-    if (res === 'QUALIFIED') { out.qualified++; out.dispositions.QUALIFIED++; }
-    else if (res === 'STRONG') { out.qualified++; out.strong++; out.dispositions.QUALIFIED++; }
+    if (res === 'STRONG') { out.qualified++; out.strong++; out.dispositions.QUALIFIED++; }
+    else if (res === 'QUALIFIED') { out.qualified++; out.dispositions.QUALIFIED++; }
+    else if (res === 'WEAK') { out.weak++; out.dispositions.BELOW_THRESHOLD++; }
     else if (res === 'DUPLICATE') { out.duplicates++; out.dispositions.DUPLICATE++; }
     else out.dispositions.BELOW_THRESHOLD++;
   }
 }
 
-const REQUESTISH = (v: IntentVerdict | null) => v?.rule === 'explicit_request';
+/** The one disposition a rejected candidate counts under (funnel totals). */
+function dispositionOf(q: Qualification): keyof DispositionCounts {
+  if (q.reasons.includes('DUPLICATE')) return 'DUPLICATE';
+  if (q.reasons.includes('STALE')) return 'STALE';
+  if (q.reasons.includes('UNDATED')) return 'UNDATED';
+  if (q.reasons.includes('WRONG_TRANSACTION')) return 'WRONG_TRANSACTION';
+  if (q.reasons.includes('UNCLEAR_INTENT')) return 'UNDECIDED';
+  if (q.reasons.includes('BUDGET_INCOMPATIBLE') || q.reasons.includes('OTHER_CITY') || q.reasons.includes('PROPERTY_TYPE_MISMATCH') || q.reasons.includes('NON_RESIDENTIAL')) return 'BELOW_THRESHOLD';
+  return 'WRONG_INTENT';
+}
 
 /** PostgREST puts .in() lists in the URL: read them 60 at a time. */
 async function inChunks(values: string[], query: (part: string[]) => PromiseLike<{ data: unknown; error: unknown }>): Promise<any[]> {
@@ -450,7 +508,10 @@ async function reuseStoredComments(ctx: PipelineCtx, parent: ParentContext, out:
   return true;
 }
 
-async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 'STRONG' | 'BELOW' | 'DUPLICATE'> {
+const CATEGORY_RANK: Record<string, number> = { STRONG: 3, POTENTIAL: 2, WEAK: 1, REJECTED: 0 };
+const STRENGTH_OF: Record<string, 'STRONG' | 'GOOD' | 'POSSIBLE'> = { STRONG: 'STRONG', POTENTIAL: 'GOOD', WEAK: 'POSSIBLE' };
+
+async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 'STRONG' | 'WEAK' | 'BELOW' | 'DUPLICATE'> {
   const { db, campaign } = ctx;
   const network = STAGE_NETWORK[ctx.stage];
   const key = personKey(network, a.item.author, a.item.externalId);
@@ -490,22 +551,32 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
     language: a.language, publishedAt: a.item.publishedAt ?? (a.item.kind === 'COMMENT' ? a.parent?.publishedAt ?? null : null),
     explanation: JSON.stringify(a.why),
   };
-  const { data: existing } = await db.from('find_buyers_leads').select('id,evidence').eq('matching_job_id', campaign.matching_job_id).eq('person_id', person.id).maybeSingle();
+  const { data: existing } = await db.from('find_buyers_leads').select('id,evidence,match_category,qualification,overall_score').eq('matching_job_id', campaign.matching_job_id).eq('person_id', person.id).maybeSingle();
   const prior: LeadSignal[] = Array.isArray(existing?.evidence) ? existing.evidence : [];
   if (prior.some((e) => e.signalId === signal.signalId)) return 'DUPLICATE';
-  const scored = scoreLead([...prior, signal]);
-  if (!scored || !scored.qualified) return 'BELOW';
-  const best = scored.best;
+  const q = a.qualification!;
+  /* A person's lead carries their strongest qualified signal; a later weaker
+     signal adds evidence, never downgrades the category. */
+  const keepPrior = existing && CATEGORY_RANK[existing.match_category ?? 'WEAK'] > CATEGORY_RANK[q.category];
+  const scored = scoreLead([...prior, { ...signal, intentClass: campaign.transaction === 'RENT' ? 'TENANT_HIGH' : 'BUYER_HIGH' }]);
+  if (!scored) return 'BELOW';
+  const best = keepPrior ? (prior[0] ?? signal) : signal;
   const bestWhy = (() => { try { return JSON.parse(best.explanation); } catch { return null; } })();
+  const category = keepPrior ? existing!.match_category : q.category;
+  const qual = keepPrior ? existing!.qualification : { ...q, dupKeys: a.dupKeys, evidence: a.reading.evidence, confidence: a.reading.confidence };
   const row = {
     matching_job_id: campaign.matching_job_id, campaign_id: campaign.campaign_id, property_id: campaign.property_id,
     user_id: campaign.user_id, person_id: person.id,
     author_name: clip(a.item.author.name, 200), author_profile_url: a.item.author.url, counterpart: campaign.transaction === 'RENT' ? 'TENANT' : 'BUYER',
-    source: best.source, intent_class: best.intentClass, overall_score: scored.overall, strength: scored.strength,
+    source: best.source, intent_class: a.verdict!.intentClass, overall_score: keepPrior ? existing!.overall_score : q.score, strength: STRENGTH_OF[category] ?? 'POSSIBLE',
     similarity: best.similarity, intent_score: best.intentScore,
-    score_components: { ...scored.components, why: bestWhy },
+    score_components: { ...(keepPrior ? {} : q.components), why: bestWhy },
+    role: keepPrior ? qual.role : q.role, transaction: keepPrior ? qual.transaction : q.transaction, match_category: category,
+    rejection_reasons: [], budget_fit: keepPrior ? qual.budgetFit : q.budgetFit, location_fit: keepPrior ? qual.locationFit : q.locationFit,
+    requirements_fit: keepPrior ? qual.requirementsFit : q.requirementsFit,
+    qualification: { ...qual, dupKeys: [...new Set([...(qual?.dupKeys ?? []), ...a.dupKeys])] }, qualification_version: QUALIFICATION_VERSION,
     explanation: whySentence(bestWhy), best_signal_id: best.signalId, parent_signal_id: best.parentSignalId,
-    evidence: scored.signals, signal_count: scored.signals.length, signal_at: best.publishedAt,
+    evidence: keepPrior ? [...prior, signal] : [signal, ...prior], signal_count: prior.length + 1, signal_at: best.publishedAt,
     seen_before: seenBefore, language: best.language, updated_at: nowIso,
   };
   if (existing) await db.from('find_buyers_leads').update(row).eq('id', existing.id);
@@ -514,9 +585,25 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
     if (error) return String(error.code) === '23505' ? 'DUPLICATE' : 'BELOW';
     await db.from('find_buyers_persons').update({ campaigns_seen: Number(person.campaigns_seen || 0) + 1 }).eq('id', person.id);
   }
+  await recordFirstResult(ctx, category);
   /* A new signal on an existing lead strengthens it but is not a new lead. */
   if (existing) return 'DUPLICATE';
-  return scored.strength === 'STRONG' ? 'STRONG' : 'QUALIFIED';
+  return category === 'STRONG' ? 'STRONG' : category === 'POTENTIAL' ? 'QUALIFIED' : 'WEAK';
+}
+
+/** Time to first visible result / first qualified lead, measured once each. */
+async function recordFirstResult(ctx: PipelineCtx, category: string) {
+  const { db, campaign } = ctx;
+  const at = new Date(ctx.now ?? Date.now()).toISOString();
+  const { data } = await db.from('find_buyers_campaigns').select('metrics').eq('matching_job_id', campaign.matching_job_id).maybeSingle();
+  const m = (data?.metrics ?? {}) as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...m };
+  if (!m.firstVisibleAt) next.firstVisibleAt = at;
+  if (!m.firstQualifiedAt && (category === 'STRONG' || category === 'POTENTIAL')) next.firstQualifiedAt = at;
+  if (!m.firstStrongAt && category === 'STRONG') next.firstStrongAt = at;
+  if (Object.keys(next).length !== Object.keys(m).length) {
+    await db.from('find_buyers_campaigns').update({ metrics: next }).eq('matching_job_id', campaign.matching_job_id);
+  }
 }
 
 /** English, admin-facing; customers get the localized rendering of `why`. */

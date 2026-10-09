@@ -108,7 +108,10 @@ export function scoreSimilarity(
 }
 
 export interface CommentGateConfig { skipBelow: number; eligibleFrom: number }
-export const DEFAULT_COMMENT_GATE: CommentGateConfig = { skipBelow: 70, eligibleFrom: 85 };
+/* Comments are only considered under listings comparable to the property
+   (see the pipeline), so the gate can sit lower than when every post was a
+   candidate: in VILLION no listing scored above 74 and none was examined. */
+export const DEFAULT_COMMENT_GATE: CommentGateConfig = { skipBelow: 55, eligibleFrom: 75 };
 
 export type CommentDecision = 'SKIP_LOW_SIMILARITY' | 'SKIP_NO_COMMENTS' | 'SKIP_WEAK_SIGNALS' | 'FETCH' | 'FETCH_JUSTIFIED';
 

@@ -58,7 +58,7 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     minUsd: Math.max(1, num(m.get('find_buyers_min_usd'), 10)),
     providerShareBps: Math.max(0, Math.min(9000, num(m.get('find_buyers_provider_share_bps'), 5000))),
     pricingMaxAgeDays: num(m.get('find_buyers_pricing_max_age_days'), 30),
-    commentGate: { skipBelow: num(gate.skipBelow, 70), eligibleFrom: num(gate.eligibleFrom, 85) },
+    commentGate: { skipBelow: num(gate.skipBelow, 55), eligibleFrom: num(gate.eligibleFrom, 75) },
     sampling: m.get('find_buyers_sampling') ?? null,
     priceBook: m.get('find_buyers_openai_price_book') ?? null,
   };

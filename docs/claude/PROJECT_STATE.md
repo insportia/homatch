@@ -380,6 +380,39 @@ Owner approvals pending: merge + deploy; apply 20261022090000; set
 operator); optional one-time audit run of the 20 DISCOVERED communities.
 Not done: mirroring imported photos into storage (they die with the source).
 
+## Find Buyers intelligence overhaul + Internal Matches + segmentation (branch claude/nifty-hopper-snzn2d, 2026-10-09) — NOT merged/deployed
+
+Baseline: the first paid production campaign (VILLION, job 70b0d32b, HOMATCH 244486,
+2026-10-09): $2.4646 actual, 958 items, 412 analysed, 37 "qualified" leads of which 4
+were genuine purchase requests and 0 compatible with price + place.
+- Classification (research-core/findBuyers/demandClassifier.ts, qualify.ts): roles
+  BUY/RENT seeker, SALE/RENT offer, AGENT, SERVICE, JOB, IRRELEVANT, UNCLEAR; Strong /
+  Potential / Weak / Rejected with explicit reasons; Unknown ≠ Compatible. The 37
+  production leads are regression fixtures (src/research-core/__tests__/fixtures/
+  villionCampaignLeads.json): 37 shown → 2 (1 Potential, 1 Weak), 0 Strong.
+- Root causes fixed: seeker verb ≠ real-estate demand; rent vs buy; "for sale"
+  listings; empty comments[] read as 0 comments (comments never examined);
+  "Tbilisi" matched Lisi; job/rental-only groups paid for; empty Actor results
+  retried; independent searches waited for discovery; reposts not deduped.
+- Orchestration: per-campaign Actor circuit breaker (2 failed/empty runs);
+  LinkedIn group search quarantined (needs login cookies); only source-dependent
+  reads wait for Phase 1; campaign-scoped free Telegram reads of verified
+  communities, paid Actor skips them.
+- Strategy (buyerStrategy.ts): segment (property_market_segments, only with
+  evidence), budget band, district + micro-areas + nearby, personas, explicit-
+  intent queries; depth by budget; bounded query learning.
+- Re-qualification: discovery-queue-worker mode admin_requalify {matchingJobId,
+  apply} — dry run by default; apply keeps rows/evidence/previous verdict.
+- Workstreams merged: market segmentation + Buyer intelligence admin (migrations
+  20261024100000/110000; fixes supply-matching HTTP 500 — missing FK embed),
+  Internal Matches + one DEMO buyer (20261024120000; admin/testers only), campaign
+  report + Research Notes + admin Intelligence tab (20261024130000).
+- Owed on release (owner approval): merge; migrations 20261024090000 → 100000 →
+  110000 → 120000 → 130000; edge deploys (match-campaign, discovery-queue-worker,
+  community-sync, supply-matching, find-property-plan, ingest-live-chat,
+  send-message, viewing-request + any the plan lists); frontend; then
+  admin_requalify dry run → apply for job 70b0d32b; first segmentation apply.
+
 ## Find Buyers — two-phase engine + COMBINED Telegram (same branch/PR #129, 2026-10-08) — NOT merged/deployed
 
 - Phase 1 (discovery: TELEGRAM_SOURCES + memo23 FB_GROUP_SEARCH / LINKEDIN_GROUPS)

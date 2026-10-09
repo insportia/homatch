@@ -657,7 +657,7 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
           <span
             key={node.key}
             dir="auto"
-            className={`hidden sm:block pointer-events-none absolute max-w-[10rem] rounded-md px-1.5 py-0.5 text-[11.5px] leading-snug tracking-[0.01em] transition-colors duration-700 motion-reduce:transition-none ${
+            className={`hidden sm:block pointer-events-none absolute max-w-[10rem] rounded-md px-1.5 py-0.5 text-2xs leading-snug tracking-[0.01em] transition-colors duration-700 motion-reduce:transition-none ${
               active ? 'font-semibold' : ''
             } ${side === 'start' ? 'text-end' : side === 'end' ? 'text-start' : 'text-center'}`}
             style={{

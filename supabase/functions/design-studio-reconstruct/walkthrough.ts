@@ -95,6 +95,9 @@ const CORS = {
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** How often a background scene plan is asked for its answer, and how long it is waited for. */
+const PLAN_RESPONSE_POLL_MS = 10_000;
+const PLAN_RESPONSE_MAX_MS = 12 * 60_000;
 const MODEL = Deno.env.get('OPENAI_DS_WALK_MODEL') || Deno.env.get('OPENAI_DS_DESIGN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 /** The model that compares the factory's reference-view render with the picture. */
 const QA_MODEL = Deno.env.get('OPENAI_DS_QA_MODEL') || MODEL;
@@ -931,11 +934,13 @@ async function plan(admin: Row, row: Row): Promise<void> {
     else if (plan0?.rooms) reuseRefused = 'DIFFERENT_PICTURE';
   }
   if (!reused && planKey && !replan) {
-    // The same picture, the same specification, the same geometry, already reconstructed and READY: reused.
-    const { data: same } = await admin.from('ds_walkthroughs').select('id, scene_plan').eq('project_id', row.project_id).eq('state', 'READY')
-      .eq('timings->>planKey', planKey).neq('id', row.id).order('created_at', { ascending: false }).limit(1);
-    const hit = same?.[0];
-    if (hit?.scene_plan?.rooms && hit.scene_plan.reference) { reused = keepRooms(hit.scene_plan); reusedFrom = hit.id; }
+    // The same picture, the same specification, the same geometry, already planned: reused — the plan of a READY
+    // walkthrough, or the paid plan a failed one kept (it failed after planning; the builder may since be fixed).
+    const { data: same } = await admin.from('ds_walkthroughs').select('id, state, scene_plan, plan_report').eq('project_id', row.project_id).in('state', ['READY', 'FAILED'])
+      .eq('timings->>planKey', planKey).neq('id', row.id).order('created_at', { ascending: false }).limit(3);
+    const hit = (same ?? []).map((w: Row) => ({ id: w.id, plan: w.state === 'READY' ? w.scene_plan : w.plan_report?.final?.scenePlan ?? null }))
+      .find((x: Row) => x.plan?.rooms && x.plan.reference);
+    if (hit) { reused = keepRooms(hit.plan); reusedFrom = hit.id; }
   }
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!reused && !apiKey) { await release(admin, row, { error: 'PLAN_UNAVAILABLE', next_check_at: iso(Date.now() + 60_000) }); return; }
@@ -943,24 +948,47 @@ async function plan(admin: Row, row: Row): Promise<void> {
     imageDataUrl: reference.dataUrl, view, home, aspect: reference.provenance.aspect, sceneMap: reference.sceneMap,
     feedback: Array.isArray(replan?.feedback) ? replan.feedback.filter((f: unknown): f is string => typeof f === 'string') : null,
   } : null;
-  if (!reused) try {
+  // The plan is asked for in OpenAI's background queue and collected on a later step: a reasoning call of two
+  // minutes never races the edge runtime's wall clock, and a paid answer is never lost with a killed invocation.
+  // Waiting for it is not a plan attempt; a model that refuses background mode is asked as before.
+  const pending = row.timings?.planResponse as { id?: string; at?: string } | undefined;
+  if (!reused && pending?.id) {
+    const got = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(pending.id)}`, { headers: { Authorization: `Bearer ${apiKey}` } })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const waiting = !got || got.status === 'queued' || got.status === 'in_progress';
+    if (waiting && Date.now() - Date.parse(pending.at ?? '') < PLAN_RESPONSE_MAX_MS) {
+      await release(admin, row, { plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS) });
+      return;
+    }
+    payload = got?.status === 'completed' ? got : null;
+  } else if (!reused) try {
     const body = refInput ? referenceSceneRequest(MODEL, input, refInput) : sceneRequest(MODEL, input);
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    const ask = (extra: Row) => fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...extra }),
     });
-    payload = r.ok ? await r.json() : null;
+    const queued = await ask({ background: true, store: true });
+    const made = queued.ok ? await queued.json() : null;
+    if (made?.id && (made.status === 'queued' || made.status === 'in_progress')) {
+      await release(admin, row, { timings: { ...row.timings, planResponse: { id: made.id, at: iso(Date.now()) } }, next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS) });
+      return;
+    }
+    if (made) payload = made.status === 'completed' ? made : null;
+    else if (queued.status === 400) { const r = await ask({}); payload = r.ok ? await r.json() : null; }
   } catch { payload = null; }
   const text = payload ? textOf(payload) : '';
   let raw: unknown = null;
   try { raw = text ? JSON.parse(text) : null; } catch { raw = null; }
   const validated: ValidatedScenePlan | null = reused ?? (raw ? validateScenePlan(raw, input, refInput ? { reference: { view: refInput.view, home } } : {}) : null);
   const step = refInput ? (replan ? 'walkthrough_reference_replan' : 'walkthrough_reference_plan') : 'walkthrough_scene_plan';
-  const aiCost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: MODEL, startedAt: started }, payload, { step, walkthrough: row.id }) : null;
+  // Asked in the background: its time runs from when it was asked.
+  const askedAt = pending?.at && !reused ? Date.parse(pending.at) || started : started;
+  const aiCost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: MODEL, startedAt: askedAt }, payload, { step, walkthrough: row.id, ...(pending?.id ? { background: true } : {}) }) : null;
   const costLine = reused
     ? { kind: 'OPENAI_SCENE_PLAN', model: null, usd: 0, basis: 'REUSED', reusedFrom, tokens: null, ms: 0, attempt: row.plan_attempts }
-    : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - started, attempt: row.plan_attempts, step };
+    : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - askedAt, attempt: row.plan_attempts, step };
   const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload || reused ? [costLine] : [])];
-  const timings = { ...row.timings, ...(provenance ? { reference: provenance, planKey } : {}) };
+  const { planResponse: _answered, ...earlier } = (row.timings ?? {}) as Row;
+  const timings = { ...earlier, ...(provenance ? { reference: provenance, planKey } : {}) };
   if (!validated || !validated.rooms.length) {
     await release(admin, row, { error: payload ? 'PLAN_INVALID' : 'PLAN_UNAVAILABLE', cost, timings, next_check_at: iso(Date.now() + 15_000) });
     return;
@@ -1010,7 +1038,9 @@ async function plan(admin: Row, row: Row): Promise<void> {
     replans: replan ? Number(replan.attempt) || 1 : 0, reusedFrom, reuseRefused, sceneMapElements: reference?.sceneMap.length ?? 0, buildMs,
   } : { mode: 'SPECIFICATION', reusedFrom, reuseRefused, buildMs };
   if (failing) {
-    const summary = { build: { counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated }, reference: referenceReport, dropped: validated.dropped };
+    // The paid plan is kept with the failure: the same picture is never planned (and paid for) twice, and the
+    // build can be reproduced exactly.
+    const summary = { build: { counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated }, reference: referenceReport, dropped: validated.dropped, scenePlan: validated };
     // One replan, told exactly what failed (codes and numbers made here), in its own invocation; then the failure stands.
     if (fidelity && !replan && row.plan_attempts < MAX_PLAN_ATTEMPTS) {
       await release(admin, row, {

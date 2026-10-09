@@ -150,3 +150,18 @@ test('a pixel trace that makes a square room a diamond is a mistrace: the reader
     assert.match(code(f), /if \(rightAngleShare\(ring as Point2\[\]\) < 0\.75 && rightAngleShare\(kept\.polygon\) >= 0\.75\) return kept;/, f);
   }
 });
+
+test('the paid scene plan is asked in the background, collected later, kept on failure and reused for the same picture', () => {
+  const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
+  // Asked once in OpenAI's background queue; its id is kept; the answer is collected on a later step.
+  assert.match(route, /const queued = await ask\(\{ background: true, store: true \}\);/);
+  assert.match(route, /planResponse: \{ id: made\.id, at: iso\(Date\.now\(\)\) \}/);
+  assert.match(route, /fetch\(`https:\/\/api\.openai\.com\/v1\/responses\/\$\{encodeURIComponent\(pending\.id\)\}`/);
+  // Waiting for it is not an attempt, and it is waited for a bounded time.
+  assert.match(route, /plan_attempts: Math\.max\(0, row\.plan_attempts - 1\)/);
+  assert.match(route, /const PLAN_RESPONSE_MAX_MS = 12 \* 60_000;/);
+  // A failure keeps the paid plan; the same picture reuses it (READY's plan, or the failed one's).
+  assert.match(route, /dropped: validated\.dropped, scenePlan: validated \};/);
+  assert.match(route, /\.in\('state', \['READY', 'FAILED'\]\)/);
+  assert.match(route, /w\.state === 'READY' \? w\.scene_plan : w\.plan_report\?\.final\?\.scenePlan \?\? null/);
+});

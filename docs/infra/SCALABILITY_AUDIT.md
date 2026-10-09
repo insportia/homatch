@@ -434,3 +434,172 @@ Alert or roll back on any of:
 - **CI on #136 (run 248, before #135):**
   - Browser: `findPropertyMarketplace.test.mjs:122` timed out. #137 passes that suite on current main, so a rerun on the merged head is expected to pass.
   - Worker: `myhomeMarketplace.test.mjs` "MarketplaceSearchRequest drift" is **red on main itself since #135**. Reproduced locally on clean `origin/main` 04e0cd94 (28 pass, 1 fail). The fix (syncing `official-worker/src/marketplace/contract.ts`) belongs to the Find Property workstream and touches Railway worker code, so it is **not ported** into this infrastructure PR.
+
+---
+
+## 12. Recovery, data protection and gated execution plan (2026-10-09, 11:40 UTC)
+
+Owner-supplied dashboard facts are treated as **VERIFIED**: Free plan, `t4g.nano`, CPU ≈ 90%, memory ≈ 74% of 0.5 GB, Disk IO ≈ 28%, disk 0.62 of 2 GB, data 333.5 MB, WAL 128 MB, no replicas.
+
+### 12.1 Diagnosis (evidence class in brackets)
+
+- **CPU ≈ 90% is not explained by SQL execution [VERIFIED negative].** pg_stat_statements records 11.64 h of execution over 42 days, about 1–2% of one core on average. Realtime's `list_changes` poll is the largest single item at 6.6 h total.
+- **Ranked hypotheses for the CPU [UNVERIFIED]:**
+  1. I/O wait while the disk is throttled. This fits the 05:38 onset and the cron startup timeouts. **Owner check:** Dashboard → CPU chart, the *iowait* component.
+  2. Work pgss cannot see on a 0.5 GB box: the Realtime walsender doing logical decoding, `postgres_exporter`, pgbouncer, autovacuum.
+  3. Memory pressure: `shared_buffers` is 280 MB of 512 MB, which leaves little OS page cache.
+- **Temp writes, about 11.4 GB/day [VERIFIED]**, from untracked `pg_stat_statements` reads spilling at `work_mem` 2184 kB [mechanism VERIFIED + reproduced locally]. The reader is Supabase's `postgres_exporter` [STRONG HYPOTHESIS: not proven until `log_temp_files`].
+- **cron history:** 179 MB, never purged [VERIFIED].
+- **Free-plan limits already hit [VERIFIED]:**
+  - 100 Edge Functions (the #72 402);
+  - 150 s function wall clock;
+  - no accessible backups.
+- **Errors, last 24 h [VERIFIED]:**
+  - API: 5xx 6 of 234k; 4xx 0.7%.
+  - Functions: 5xx 85 of 36.6k, **all `supply-matching`**, the embed bug PR #137 fixes. Not infrastructure.
+- **Load right now [VERIFIED 11:34 UTC]:**
+  - 0 running Verify, matching, Design Studio or background jobs;
+  - discovery queue drained (DONE/CANCELLED/FAILED only);
+  - 29 connections of 60, 2 active;
+  - 0 waiting locks, 0 queries over 10 s.
+
+### 12.2 Data inventory and what protects it [VERIFIED counts, 11:34 UTC]
+
+| Data | Lives in | Count / size | Covered by a Supabase DB backup? |
+|---|---|---|---|
+| Auth users, identities | Postgres `auth` | 5 auth / 12 profile rows | Yes (Pro daily backup). Custom-role passwords are not stored. |
+| Properties, facts, matches | Postgres | 1 property, 74 matches | Yes |
+| Verify jobs and reports | Postgres | 92 research_jobs (69 complete) | Yes |
+| Find Buyers campaigns, assessments, cost ledger | Postgres | 4 / 412 / 221 | Yes |
+| Design Studio projects, walkthroughs | Postgres metadata | 21 / 12 | Metadata yes |
+| **Files (photos, documents, renders, 3D assets)** | **Cloudflare R2** (`homatch-storage`) via `public.storage_objects` (11,604 index rows) | — | **No.** R2 is outside Supabase and untouched by any step here. Separate protection (R2 versioning or a copy) would need its own approval. |
+| Supabase Storage objects | Supabase Storage | 29 objects | **No** (Supabase docs: backups hold only metadata) |
+| Wallets, ledger, reservations, payments | Postgres | 12 accounts, balance sum **99,804.72** = ledger sum 99,804.72 (114 rows); reservations 29 SETTLED / 1 RELEASED; 2 payments | Yes |
+| Provider cost ledger | Postgres | 1,327 cost_events ($35.59) | Yes |
+| Admin settings, cron jobs, migrations ledger | Postgres | 181 / 15 / 459 | Yes |
+| Vault secrets | Postgres (encrypted) | 3 | In the backup, restorable into the *same* project |
+| Edge Function secrets, Auth provider configuration | Supabase project configuration | — | **No** (not in the database) |
+| Railway and Vercel environment variables, RunPod, Meta, OpenAI state | External | — | **No**; unaffected by any step here |
+
+None of the proposed steps touches R2, project secrets, Railway or Vercel. The only step that deletes rows is A2, and it touches only `cron.job_run_details`.
+
+### 12.3 Backups [VERIFIED from Supabase docs and plan]
+
+- **Today (Free plan):** no daily backups available to restore. **There is no recovery path today except a logical dump you make yourself.**
+- **Pro plan:**
+  - daily physical backups, 7 days retained;
+  - restore is **in place** from Dashboard → Database → Backups; the project is unavailable during the restore, for a time that grows with size (~0.6 GB disk, so expected minutes, not hours);
+  - no new project is required.
+- **PITR:** a Pro add-on, about $100/month for 7 days, needs ≥ Small. **Not recommended now**, because nothing justifies the cost yet.
+- **Logical backup:** `supabase db dump` (roles, schema, data; three files) from a machine with the DB password. It reads the whole ~333 MB database once, which adds read IO to a throttled disk. Run it at a quiet time, or after the compute step. It cannot run from this sandbox (egress to the database is blocked).
+- **Restore testing:** testing a restore safely means restoring into a *new* project, which CLAUDE.md forbids without your approval. **Not proposed.** Integrity is checked by restoring the dump into a local Postgres instead (no cloud resources).
+
+### 12.4 Compute options [VERIFIED prices; IO limits to confirm on the Compute page]
+
+| Option | RAM / CPU | Fixes | Does not fix | Monthly (Pro $25 incl. $10 compute credit) |
+|---|---|---|---|---|
+| Stay Free / Nano | 0.5 GB, shared | — | Everything; and no backups | $0 |
+| Pro + Nano (billed as Micro) | same | **Backups**, 500 functions, 400 s | CPU and RAM pressure | **$25** |
+| Pro + Micro | 1 GB, 2-core ARM shared | 2× RAM, higher IO baseline | Shared CPU; pgss spill may persist | **$25** ($10 compute fully credited) |
+| **Pro + Small (recommended)** | 2 GB, 2-core ARM shared | 4× RAM (page cache for WAL, Realtime and temp), higher IO baseline; PITR-eligible | Still shared CPU; Supabase's `work_mem` for Small must be read after resize, so a pgss spill may persist without A1 | **$30** ($25 + $15 − $10) |
+| Pro + Medium | 4 GB, shared | Headroom for real launch traffic | — | $75 |
+
+Plus disk over 8 GB (none; 0.62 GB used) and any applicable VAT on the Supabase invoice (not visible here; check the billing page).
+
+- **Every compute change:** a restart of under 2 minutes, reversible by resizing back (another restart).
+- **Medium is justified** only when *measured* CPU or memory on Small stays above 70% during real user traffic.
+- **10k–50k DAU (§4) is a model, not a measurement.** Claiming that capacity needs a staging load test with mocked providers (a separate approval).
+
+### 12.5 Disk IO: temporary relief versus permanent fix
+
+| Measure | Kind | Expected effect | Risk |
+|---|---|---|---|
+| A1 reset pgss (after the in-DB snapshot) | Temporary (about 3 weeks until entries regrow) | Temp writes ≈ 0 if the hypothesis holds (stop rule §11.3) | **MEDIUM**: irreversible loss of query-performance history (no customer data) |
+| Compute ≥ Small | Permanent capacity | More cache; higher IO baseline; may or may not end the spill | **MEDIUM**: restart |
+| A4 `track_utility = off` | Permanent; slows regrowth | Separate review | LOW–MEDIUM |
+| A2 cron retention | Permanent | Stops 11 MB/day growth and frees cache | **MEDIUM**: irreversible delete of technical history; recoverable only from a backup |
+| Selective `work_mem` | — | **Not recommended.** It is superuser-only, and the reader is a platform role. Raising it globally on 0.5 GB with 60 connections risks out-of-memory. | — |
+
+### 12.6 Cron inventory (no job disabled; changes need the owners)
+
+| Job | Schedule | Purpose (owner) | Runs/day | Typical / max | Idle most of the time? | Proposal |
+|---|---|---|---|---|---|---|
+| homatch-jobs-worker | 30 s | background_jobs (documents, tasks) — platform | 2,880 | 66 ms / 13 s | Yes (0 live now) | Fire only when a pending row exists (an `exists()` guard in the cron command) |
+| homatch-verify-driver | 30 s | Verify backstop driver — Verify | 2,880 | 70 ms / 15 s | Yes (0 live) | Same guard on live research_jobs |
+| homatch-discovery-driver | 1 min | Find Buyers / Find Property discovery — Discovery | 1,440 | 115 ms / 34 s | Yes (queue drained) | Guard on QUEUED rows |
+| homatch-meta-ads-status-sync | 1 min | Meta Ads status — Meta Ads | 1,440 | 92 ms | When no live campaign | Guard on live campaigns |
+| homatch-native-intent | 1 min | ingest-live-chat → native demand — Discovery | 1,440 | 75 ms | Depends on chat volume | Keep |
+| homatch-ds-walkthrough-reconciler | 1 min | RunPod job reconciliation — Design Studio | 1,440 | 92 ms | Yes (0 RUNNING) | Guard on RUNNING walkthroughs |
+| homatch-classify-signals | 5 min | classify-signals-v2 — Discovery | 288 | 238 ms | — | Keep |
+| homatch-revalidate-evidence | 5 min | Verify evidence revalidation — Verify | 288 | 236 ms | — | Keep |
+| homatch-worker-quarter-hour | 15 min | continuous-matching-worker — Matching | 96 | 441 ms | — | Keep |
+| homatch-supply-matching | 15 min | supply-matching — Discovery (currently 5xx; #137 fixes) | 96 | 469 ms | — | Keep |
+| homatch-telegram-sync | 15 min | community-sync (Telegram) — Discovery | 96 | 321 ms | — | Keep |
+| homatch-meta-ads-maintenance | 15 min | Meta Ads maintenance — Meta Ads | 96 | 476 ms | — | Keep |
+| homatch-forum-discovery | hourly :17 | demand-discovery (forums) — Discovery | 24 | 376 ms | — | Keep |
+| homatch-broker-directory-expiry | hourly :07 | SQL sweep — Broker | 24 | 169 ms | — | Keep |
+| homatch-property-freshness | hourly :23 | SQL sweep — Owner Workspace | 24 | 126 ms | — | Keep |
+
+**Cost of each run:**
+- a pg_cron history row, written twice;
+- a pg_net request row plus a response row;
+- one Edge Function invocation.
+
+The six "guard" candidates are about 11,500 of the about 12,400 daily runs. A guarded command keeps the job and its schedule and only skips the HTTP call when there is no work, so with no work it costs one cheap indexed `exists()`.
+
+**Risk: MEDIUM.** A wrong guard silently stalls a feature. Each guard needs its owning workstream's review and a regression check; none is in this PR.
+
+Overlap risk is already handled: each driver claims with leases or SKIP LOCKED, and the measured max durations (≤ 34 s, the stall events) are below every interval except the 30 s jobs during stalls. Their claims are idempotent.
+
+### 12.7 Realtime
+
+- **Published:** 16 tables. **Live subscriptions now:** 4 (`notifications` ×2, `background_jobs` ×2).
+- **Frontend dependents (code):**
+  - notifications: NotificationsPage, useNotificationCount;
+  - messages, conversations: ChatPage;
+  - live_chat_messages, live_chat_reactions: LiveChatPage, unfiltered;
+  - outreach_campaigns / outreach_sends: Email/SMS campaign pages;
+  - comm inbox and calls;
+  - meta_leads: LeadsCenter;
+  - matching_job_events, external_discovery_events: MatchingJobProgress.
+- **Proposal:** none in this release. Trimming the publication or moving progress to Broadcast is **HIGH risk** to live screens and needs each owner's sign-off.
+
+### 12.8 Migration compatibility (#136 vs #137 vs #109)
+
+- **#136's migration is now `20261025090000`;** #137 owns `20261024090000`…`130000`.
+- **The collision was real for the tooling, not for the production ledger.** The MCP/`apply_migration` path records the apply-time version. But the Supabase CLI (`db push`, `migration list`) keys by filename version, so two files sharing `20261024090000` would have broken it.
+- **#109 (Design Studio)** has no migration.
+- **Merges:** #136 merges cleanly with main and with #137.
+- **CI on #136's merged head (run 255):** plan, static, unit and **browser pass**. Only "Railway worker tests" fail: `myhomeMarketplace.test.mjs` "MarketplaceSearchRequest drift", **red on main since #135** (reproduced on clean `origin/main`). Owner: Find Property (official-worker contract copy). Not ported here.
+
+### 12.9 Gated execution order
+
+| Gate | Step | Risk | Downtime | Rollback | Verify |
+|---|---|---|---|---|---|
+| 1 | Read-only diagnosis (done) | — | — | — | — |
+| 2 | **G2.1** Upgrade organization Free → Pro | LOW: no data change, no restart; billing commitment $25/month | none | Downgrade the plan (backups and 500-function limit lost again) | Plan shows Pro |
+| 2 | **G2.2** Wait for the first daily backup to appear (Dashboard → Database → Backups) | LOW | none | — | A backup row with a timestamp |
+| 2 | **G2.3** (optional) Logical `db dump` by the owner, at a quiet time | MEDIUM: one full read on a throttled disk | none | — | Restores into a local Postgres; row counts match 12.2 |
+| 3 | **G3** Compute Nano → **Small** at a quiet minute (not :00/:15/:30/:45; nothing is in flight today) | MEDIUM: restart | **< 2 min**: API and functions error, cron runs in the window fail once, Realtime reconnects | Resize back (restart) | 12.10 checklist |
+| 4 | **G4.1** Apply A2 cron retention | MEDIUM: irreversible delete of technical history, recoverable from G2.2's backup | none | Unschedule and drop the function | §11.3 criteria |
+| 4 | **G4.2** A1.1 in-DB pgss snapshot, then A1.2 reset (separately approved) | MEDIUM: irreversible loss of statistics history | none | — | Temp rate < 50 MB/h within 2 h, else stop |
+| 4 | **G4.3** (optional) A5 `log_temp_files` 24 h | LOW (feasibility unknown) | none | Set back | Proves or refutes the exporter hypothesis |
+| 5 | Verification (12.10) after each gate | — | — | — | — |
+
+Not in this plan, each needing separate review: cron guards (12.6), A4, Realtime changes, PITR, read replicas, Medium or larger.
+
+**Incident response for G3:** if the project is not healthy 10 minutes after the resize (API 5xx > 1%, auth failing, cron failing), open a Supabase support ticket and resize back. No data is at risk from a compute change; the disk is untouched.
+
+### 12.10 Post-change verification checklist (low impact, no paid providers)
+
+- **Auth:** an existing user signs in, and `auth.users` = 5.
+- **Data:** row counts from 12.2 are unchanged (properties 1, matches 74, research_jobs 92, ds_projects 21, find_buyers_campaigns 4, storage_objects 11,604).
+- **Billing:** the credit_accounts balance sum still equals the credit_ledger sum (99,804.72 unless a legitimate transaction happened), and the reservation counts are explained.
+- **Features:** Find Property loads, a Verify report opens, a Design Studio project opens, the Find Buyers campaign page loads. All read-only; no new paid run.
+- **Health:**
+  - API 5xx is not above baseline (6 in 24 h);
+  - function 5xx only the known supply-matching ones;
+  - cron `job startup timeout` = 0 for 24 h;
+  - CPU < 70% and memory < 70% on the dashboard;
+  - after G4.2, temp < 50 MB/h;
+  - no queue backlog (no QUEUED rows older than 15 min).

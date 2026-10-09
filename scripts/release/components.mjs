@@ -237,6 +237,9 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],
+  // Database housekeeping no application code calls (cron history retention):
+  // service_role only; proven by tests/sql/perf/run-db-bench.sh, not by any suite.
+  [/^public\.purge_cron_history$/, 'TOOLING'],
 ];
 
 /* Translation keys by prefix: a translation change reaches the component

@@ -8,6 +8,9 @@
  * Order is en, ka, ru, tr, ar, he — LANGS in lib/i18nSplice.mjs.
  */
 export const MARKETPLACE_SEARCH_STRINGS = {
+  mps_reason_BEDROOM_MATCH: ['Matches your bedroom requirement','შეესაბამება საძინებლების მოთხოვნას','Соответствует требованию по спальням','Yatak odası ihtiyacınıza uygun','يطابق عدد غرف النوم المطلوب','תואם לדרישת חדרי השינה'],
+  mps_reason_FLOOR_MATCH: ['Matches your floor preferences','შეესაბამება სართულის მოთხოვნას','Соответствует пожеланиям по этажу','Kat tercihlerinize uygun','يطابق تفضيلات الطابق','תואם להעדפות הקומה'],
+  mps_reason_ELEVATOR_CONFIRMED: ['Elevator listed by the source','წყაროში მითითებულია ლიფტი','В источнике указан лифт','Kaynakta asansör belirtilmiş','المصعد مذكور في المصدر','מעלית מצוינת במקור'],
   /* ── Mode selection (APPROVED ka) ── */
   mps_marketplace_title: ['Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search'],
   mps_marketplace_badge: ['Free', 'უფასო', 'Бесплатно', 'Ücretsiz', 'مجاني', 'חינם'],

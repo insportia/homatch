@@ -18,7 +18,7 @@
 // in cost_events and the search's telemetry (Admin only).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
+import { hasCurrentIdentity, resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
 import { ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
 import {
   SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft,
@@ -288,7 +288,7 @@ Deno.serve(async (req: Request) => {
       if (detailError) throw detailError;
       const stored = (detailRows ?? []).map((row) => row.view as CustomerProperty);
       // Older capped catalogues are rebuilt read-only by the existing adapter.
-      const details = stored.length === keys.length && stored.every((p) => p.intelligence)
+      const details = stored.length === keys.length && stored.every(hasCurrentIdentity)
         ? stored : (await resultCatalogue(db, search)).filter((p) => keys.includes(p.key));
       const byKey = new Map(details
         .filter((p) => isCurrentResult(p)).map((p) => [p.key, p]));

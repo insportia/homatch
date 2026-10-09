@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -199,6 +199,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       {!route.propertyKey ? <div className="pt-4 sm:pt-6">
         <PageHero compact title={t('plan_page_title')} subtitle={view === 'MODE' ? null : t('mps_hero_subtitle')} />
       </div> : null}
+      {!route.propertyKey && view !== 'MODE' && view !== 'ERROR' ? <Link to="/find-property" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-foreground/15 bg-card px-4 text-sm font-semibold shadow-sm transition hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpw_history')}</Link> : null}
 
       {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl bg-muted/60" aria-busy="true" />}
       {view === 'MODE' && <SearchDashboard t={t} />}
@@ -246,7 +247,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
         onViewResults={() => { setPlaying(false); setView('RESULTS'); }} />
       {route.propertyKey && !open && !propertyError && view !== 'ERROR' ? <div aria-busy="true" className="h-64 animate-pulse rounded-xl bg-muted/60" /> : null}
       {route.propertyKey && propertyError ? <div role="alert" className="space-y-3"><p>{t('fpw_property_unavailable')}</p><button type="button" onClick={() => setPropertyRetry((value) => value + 1)} className="min-h-11 rounded-xl border border-border px-4">{t('fpw_retry')}</button></div> : null}
-      {route.propertyKey && search ? <Link to={`/find-property/search/${search.id}${location.search}`} className="inline-flex min-h-11 items-center text-sm">{t('fpw_back_results')}</Link> : null}
+      {route.propertyKey && search ? <Link to={`/find-property/search/${search.id}${location.search}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-foreground/15 bg-card px-4 text-sm font-semibold shadow-sm transition hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpw_back_results')}</Link> : null}
       <PropertyIntelligence t={t} p={open} open={!!open} onOpenChange={(o) => { if (!o) setOpen(null); }} isRTL={isRTL} fullPage={!!route.propertyKey}
         propertyType={search?.brief.propertyType?.value ?? null}
         budgetMaxUsd={search?.brief.price?.value.max ?? null}

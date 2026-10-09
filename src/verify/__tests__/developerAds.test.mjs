@@ -203,3 +203,13 @@ test('a street address is never searched as a project name (production shape: Kr
   }
   assert.deepEqual(resolveDeveloperIdentity({ projectProfile: { name: 'Kipshidze 22', address: '22 Kipshidze Street, Vake, Tbilisi' } }).projectNames, []);
 });
+
+test('the finished report keeps the advertising stage (job c80f7237: billed, then dropped by finish())', () => {
+  const agent = code('supabase/functions/research-agent/index.ts');
+  const fin = agent.slice(agent.indexOf('async function finish('), agent.indexOf("const finished = await sb.from('research_jobs').update({ status: 'COMPLETE'"));
+  assert.match(fin, /developerAds: prior\.developerAds \?\? null,/, 'customer view carried into the final result_json');
+  assert.match(fin, /_developerAds: prior\._developerAds \?\? null,/, 'internal state (input, schema, price, cache key) carried too');
+  // ...and still never reaches a customer payload.
+  assert.match(agent, /delete r\[k\];/);
+  assert.match(agent, /'_developerAds'\]\) delete r\[k\]/);
+});

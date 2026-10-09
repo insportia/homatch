@@ -59,7 +59,6 @@ export interface Gain {
 }
 
 const RENOVATION_RANK: Record<string, number> = { RENOVATED: 4, GREEN_FRAME: 3, WHITE_FRAME: 2, BLACK_FRAME: 1, NEEDS_RENOVATION: 0 };
-const BUILDING_RANK: Record<string, number> = { NEW_BUILD: 2, UNDER_CONSTRUCTION: 1, OLD_BUILD: 0 };
 const FRESH_RANK: Record<FreshnessState, number> = { VERIFIED: 2, RECENT: 1, STALE: 0 };
 
 const diff = (a: number | null, b: number | null) => (a !== null && b !== null ? a - b : null);
@@ -85,15 +84,13 @@ export function whatYouGain(
   if (roomDiff !== null && roomDiff > 0 && !(bedDiff !== null && bedDiff > 0)) adv.push({ code: 'EXTRA_ROOM', delta: roomDiff, major: false });
   if (c.renovationStatus && b.renovationStatus && (RENOVATION_RANK[c.renovationStatus] ?? -1) > (RENOVATION_RANK[b.renovationStatus] ?? -1)) {
     adv.push({ code: 'BETTER_RENOVATION', delta: null, major: c.renovationStatus === 'RENOVATED' });
-  } else if (c.renovationStatus === 'RENOVATED' && !b.renovationStatus) {
-    adv.push({ code: 'BETTER_RENOVATION', delta: null, major: false });
   }
-  if (c.buildingStatus && b.buildingStatus && (BUILDING_RANK[c.buildingStatus] ?? -1) > (BUILDING_RANK[b.buildingStatus] ?? -1)) {
+  if (c.constructionYear != null && b.constructionYear != null && c.constructionYear > b.constructionYear && c.buildingStatus !== 'UNDER_CONSTRUCTION') {
     adv.push({ code: 'NEWER_BUILDING', delta: null, major: false });
   }
-  if (c.parking === true && b.parking !== true) adv.push({ code: 'PARKING', delta: null, major: false });
+  if (c.parking === true && b.parking === false) adv.push({ code: 'PARKING', delta: null, major: false });
   for (const [code, amenity] of [['BALCONY', 'BALCONY'], ['TERRACE', 'TERRACE'], ['ELEVATOR', 'ELEVATOR']] as const) {
-    if (c.amenities.includes(amenity) && !b.amenities.includes(amenity)) adv.push({ code, delta: null, major: false });
+    if (c.amenities.includes(amenity) && b.amenities.includes(`NO_${amenity}`)) adv.push({ code, delta: null, major: false });
   }
   const cd = districtFit(c.district, context.districts);
   const bd = districtFit(b.district, context.districts);
@@ -123,7 +120,8 @@ export function whatYouGain(
 /** Real value: a major advantage, or at least two advantages, and no disqualifying disadvantage. */
 export function isMeaningful(g: Gain): boolean {
   if (g.disadvantages.some((d) => d === 'WORSE_LOCATION' || d === 'STALE' || d === 'FEWER_BEDROOMS' || d === 'LESS_AREA')) return false;
-  return g.advantages.some((a) => a.major) || g.advantages.length >= 2;
+  const improvements = g.advantages.filter((a) => a.code !== 'OWNER_LISTING' && a.code !== 'FRESHER');
+  return improvements.some((a) => a.major) || improvements.length >= 2;
 }
 
 export interface UpgradeRecommendation {
@@ -141,11 +139,14 @@ export function selectUpgrades(
   candidates: readonly UpgradeCandidateInput[],
   context: { maxUsd: number; districts: readonly string[] },
 ): UpgradeRecommendation[] {
-  const inBudget = candidates.filter((c) => c.band === 'IN_BUDGET' && c.fits).sort((a, b) => b.score - a.score);
+  const inBudget = candidates.filter((c) => c.band === 'IN_BUDGET' && c.fits).sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
   if (!inBudget.length) return [];
   const baseline = inBudget[0];
   const pool = candidates
-    .filter((c) => (c.band === 'UPGRADE_PREFERRED' || c.band === 'UPGRADE_EXTENDED') && c.fits && c.criteriaScore >= baseline.criteriaScore - 0.05)
+    .filter((c) => (c.band === 'UPGRADE_PREFERRED' || c.band === 'UPGRADE_EXTENDED')
+      && c.facts.priceUsd !== null && c.facts.priceUsd * 100 >= context.maxUsd * 105
+      && c.facts.priceUsd * 100 <= context.maxUsd * 110
+      && c.fits && c.criteriaScore >= baseline.criteriaScore - 0.05)
     .map((c) => ({ c, gain: whatYouGain(baseline, c, context) }))
     .filter((x) => isMeaningful(x.gain))
     .sort((x, y) => (x.c.band === y.c.band ? 0 : x.c.band === 'UPGRADE_PREFERRED' ? -1 : 1)

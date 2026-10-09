@@ -62,6 +62,8 @@ export interface SearchIntelligenceBrief {
   furnished: BriefField<boolean> | null;
   parking: BriefField<boolean> | null;
   floorPreferences: FloorPreference[];
+  floorRange?: NumericRange | null;
+  maxBuildingAge?: number | null;
   mustHave: Amenity[];
   niceToHave: Amenity[];
   exclusions: Amenity[];
@@ -369,6 +371,7 @@ export function normalizeSearchLocations(brief: SearchIntelligenceBrief): Search
  * ------------------------------------------------------------------ */
 
 export type BriefEdit =
+  | { field: 'advanced'; value: { floorPreferences: FloorPreference[]; floorRange: NumericRange | null; maxBuildingAge: number | null; elevatorRequired: boolean } }
   | { field: 'transactionType'; value: MarketplaceTransaction | null }
   | { field: 'propertyType'; value: MarketplacePropertyType | null }
   | { field: 'city'; value: string | null }
@@ -390,6 +393,16 @@ export function applyEdit(brief: SearchIntelligenceBrief, edit: BriefEdit): Sear
     (next as unknown as Record<string, unknown>)[k] = v === null ? null : { value: v, status: 'CONFIRMED' };
   };
   switch (edit.field) {
+    case 'advanced': {
+      next.floorPreferences = listOf(edit.value.floorPreferences, asFloorPreference, 5);
+      const r = edit.value.floorRange;
+      next.floorRange = r && (r.min != null || r.max != null) && (r.min == null || Number.isInteger(r.min) && r.min >= -5 && r.min <= 200)
+        && (r.max == null || Number.isInteger(r.max) && r.max >= -5 && r.max <= 200)
+        && (r.min == null || r.max == null || r.min <= r.max) ? { ...r } : null;
+      next.maxBuildingAge = Number.isInteger(edit.value.maxBuildingAge) && edit.value.maxBuildingAge! >= 0 && edit.value.maxBuildingAge! <= 300 ? edit.value.maxBuildingAge : null;
+      next.mustHave = [...brief.mustHave.filter((a) => a !== 'ELEVATOR'), ...(edit.value.elevatorRequired ? ['ELEVATOR' as const] : [])];
+      return next;
+    }
     case 'confirm': {
       const current = brief[edit.target] as BriefField<unknown> | null;
       if (current) (next as unknown as Record<string, unknown>)[edit.target] = { ...current, status: 'CONFIRMED' };
@@ -468,6 +481,12 @@ export function sanitizeBrief(raw: unknown): SearchIntelligenceBrief {
   brief.furnished = field(raw.furnished, (v) => (typeof v === 'boolean' ? v : null));
   brief.parking = field(raw.parking, (v) => (typeof v === 'boolean' ? v : null));
   brief.floorPreferences = listOf(raw.floorPreferences, asFloorPreference, 5);
+  const boundedInteger = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : null;
+  const advanced = applyEdit(brief, { field: 'advanced', value: { floorPreferences: brief.floorPreferences,
+    floorRange: isRecord(raw.floorRange) ? { min: boundedInteger(raw.floorRange.min, -5, 200), max: boundedInteger(raw.floorRange.max, -5, 200) } : null,
+    maxBuildingAge: boundedInteger(raw.maxBuildingAge, 0, 300), elevatorRequired: false } });
+  brief.floorRange = advanced.floorRange;
+  brief.maxBuildingAge = advanced.maxBuildingAge;
   brief.mustHave = listOf(raw.mustHave, asAmenity);
   brief.niceToHave = listOf(raw.niceToHave, asAmenity);
   brief.exclusions = listOf(raw.exclusions, asAmenity);

@@ -21,6 +21,9 @@ const BRAND = read('src/components/findBuyers/brand.tsx');
 const PANEL = read('src/components/findBuyers/LiveSearchModule.tsx');
 const RESULTS = read('src/components/findBuyers/FindBuyersResults.tsx');
 const SERVICE = read('src/services/findBuyers.ts');
+const REPORT = read('src/components/findBuyers/CampaignReport.tsx');
+const NOTES = read('src/components/findBuyers/ResearchNotes.tsx');
+const REPORT_VM = read('src/findBuyers/campaignReport.ts');
 const PIPELINE = read('supabase/functions/_shared/findBuyers/pipeline.ts');
 const EXECUTOR = read('supabase/functions/_shared/findBuyers/executor.ts');
 const CAMPAIGN = read('supabase/functions/_shared/findBuyers/campaign.ts');
@@ -53,7 +56,7 @@ test('Verify is untouched: no Verify file reaches Find Buyers, and Find Buyers r
 });
 
 test('customer screens never show provider internals, costs or secrets', () => {
-  for (const [name, src] of [['card', CARD], ['panel', PANEL], ['results', RESULTS]]) {
+  for (const [name, src] of [['card', CARD], ['panel', PANEL], ['results', RESULTS], ['report', REPORT], ['notes', NOTES], ['report view-model', REPORT_VM]]) {
     assert.doesNotMatch(src, /actor_?id|actorKey|memo23|apify|_micros|costUsd|APIFY_API_TOKEN/i, `${name} leaks internals`);
   }
   assert.doesNotMatch(SERVICE.slice(0, SERVICE.indexOf('/* ── admin')), /provider_budget_micros|customer_value_micros/, 'owner reads exclude economics');
@@ -243,4 +246,24 @@ test('one active search per property: the job row is claimed before any credit i
   assert.match(mc.slice(claim, reserve), /if \(!claim\.ok\) \{[\s\S]*alreadyRunning: true[\s\S]*\}/, 'the loser returns before reserving');
   assert.match(mc, /if \(!grant\.ok\) \{\s*\/\*[^*]*\*\/\s*await abandonClaim\(db, jobId\);/, 'a refused reservation gives the claim back');
   assert.doesNotMatch(mc, /from\('matching_jobs'\)\.insert/, 'no second, unguarded job insert');
+});
+
+test('the campaign report: owner-authorized, records-only, no provider money for the owner, legacy never qualified', () => {
+  const sql = read('supabase/migrations/20261024130000_find_buyers_campaign_report.sql');
+  const body = sql.slice(sql.indexOf('-- REPORT BODY BEGIN'), sql.indexOf('-- REPORT BODY END'));
+  assert.match(sql, /c\.user_id = public\.auth_user_id\(\)[\s\S]{0,200}p\.user_id = public\.auth_user_id\(\)[\s\S]{0,120}raise exception 'FORBIDDEN'/, 'owner or admin only');
+  assert.match(sql, /revoke all on function public\.find_buyers_campaign_report\(uuid\) from public, anon;/);
+  assert.match(sql, /revoke all on function public\.admin_find_buyers_intelligence\(integer\) from public, anon;/);
+  assert.match(sql, /if not public\.is_admin\(\) then raise exception 'FORBIDDEN'; end if;/);
+  /* the owner sees a share of the research budget; micros only inside the admin-only economics block */
+  const ownerKeys = body.replace(/'economics', case when public\.is_admin\(\)[\s\S]*?end\n/, '');
+  assert.doesNotMatch(ownerKeys, /'[a-zA-Z]*Micros'/, 'no micros key reaches the owner');
+  /* legacy (no category) is counted apart and never as STRONG/POTENTIAL */
+  assert.match(body, /count\(\*\) from l where l\.cur and l\.cat is null\) as uncategorised/);
+  assert.match(body, /l\.cat in \('STRONG', 'POTENTIAL'\)/);
+  assert.doesNotMatch(body, /coalesce\(l\.cat, 'POTENTIAL'\)|coalesce\(l\.cat, 'STRONG'\)/, 'a missing category is never promoted');
+  /* the screen claims no full coverage and words only known codes */
+  assert.match(REPORT, /fbr_scope_disclaimer/);
+  assert.match(REPORT_VM, /default: return null;/);
+  assert.match(read('src/services/findBuyers.ts'), /rpc\('find_buyers_campaign_report', \{ p_job_id: jobId \}\)/);
 });

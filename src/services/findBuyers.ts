@@ -2,6 +2,7 @@
 // RLS-scoped) and the one action (translate), plus the admin control center.
 // No provider name, Actor id, cost or token ever reaches the customer screens.
 import { supabase } from '@/db/supabase';
+import { parseReport, type CampaignReport } from '@/findBuyers/campaignReport';
 
 export interface FindBuyersConfig { minUsd: number; creditsPerUsd: number; minCredits: number; languages: string[] }
 
@@ -63,6 +64,10 @@ export interface PotentialLead {
   created_at: string;
   author_name: string | null;
   author_profile_url: string | null;
+  /** Qualification (20261024090000); absent on a legacy lead, never assumed. */
+  match_category?: 'STRONG' | 'POTENTIAL' | 'WEAK' | null;
+  budget_fit?: string | null;
+  location_fit?: string | null;
 }
 
 /** Current leads (30-day rule at read time) for one property, strongest first (RLS: the owner's own rows only). */
@@ -180,6 +185,30 @@ export async function getSourceNetwork(days: number): Promise<SourceNetwork | nu
   return (data ?? null) as SourceNetwork | null;
 }
 
+/** Cross-campaign intelligence (admin_find_buyers_intelligence): what works, what costs, what is noise. */
+export interface FindBuyersIntelligence {
+  since: string;
+  campaigns: number;
+  queries: Array<{ operation: string; query: string; language: string | null; runs: number; failed: number; costMicros: number; items: number; qualified: number; strong: number }>;
+  actors: Array<{ actorKey: string; runs: number; succeeded: number; failed: number; empty: number; costMicros: number; items: number; qualified: number; costPerQualifiedMicros: number | null }>;
+  falsePositives: { leads: number; requalified: number; rejectedAfterRequalification: number; rate: number | null };
+  categories: Record<string, number>;
+  rejectionReasons: Record<string, number>;
+  signalRejectionReasons: Record<string, number>;
+  sourceQuality: Array<{ platform: string | null; community: string | null; leads: number; qualified: number; rejected: number; uncategorised: number; costMicros: number; items: number; qualifiedPerDollar: number | null }>;
+  timing: Array<{ jobId: string; createdAt: string; finalizedAt: string | null; phase1EndedAt: string | null; firstExtractionAt: string | null;
+    firstLeadAt: string | null; firstQualifiedAt: string | null; phase1Seconds: number | null; durationSeconds: number }>;
+  comments: { commentsAssessed: number; postsAssessed: number; decisions: Record<string, number> };
+  telegram: { freeJobs: number; freeMessages: number; freeTargets: number; paidRuns: number; paidItems: number; paidChannels: number; paidCostMicros: number; communitiesDiscovered: number };
+  bottlenecks: { waits: Record<string, number>; cancelled: Record<string, number>; queueStates: Record<string, number>; phase1AvgSeconds: number | null };
+}
+
+export async function getFindBuyersIntelligence(days: number): Promise<FindBuyersIntelligence | null> {
+  const { data, error } = await supabase.rpc('admin_find_buyers_intelligence', { p_days: days });
+  if (error) throw new Error(error.message);
+  return (data ?? null) as FindBuyersIntelligence | null;
+}
+
 export async function updateActor(actorKey: string, patch: Record<string, unknown>) {
   const { data, error } = await supabase.rpc('admin_find_buyers_actor_update', { p_actor_key: actorKey, p_patch: patch });
   if (error) throw new Error(error.message);
@@ -283,20 +312,38 @@ export async function getCampaignStatus(propertyId: string): Promise<CampaignSta
   };
 }
 
+const LEAD_COLUMNS = 'id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url';
+const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit';
+
 /** One page of leads, strongest first, stable order (server-side range). */
 export async function getPropertyLeadsPage(propertyId: string, page: number, pageSize: number): Promise<{ rows: PotentialLead[]; total: number }> {
   const from = Math.max(0, page - 1) * pageSize;
-  const { data, error, count } = await supabase
+  const read = (columns: string) => supabase
     .from('find_buyers_current_leads')
-    .select('id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url', { count: 'exact' })
+    .select(columns, { count: 'exact' })
     .eq('property_id', propertyId)
     .order('overall_score', { ascending: false })
     .order('created_at', { ascending: false })
     .order('id', { ascending: true })
     .range(from, from + pageSize - 1);
+  /* Qualification columns first; a database without them (before the
+     qualification migration) still answers with the legacy columns. */
+  let { data, error, count } = await read(`${LEAD_COLUMNS},${QUALIFICATION_COLUMNS}`);
+  if (error) ({ data, error, count } = await read(LEAD_COLUMNS));
   if (error) return { rows: [], total: 0 };
   return {
     rows: ((data ?? []) as unknown as PotentialLead[]).map((l) => ({ ...l, evidence: Array.isArray(l.evidence) ? l.evidence : [] })),
     total: Number(count ?? 0),
   };
+}
+
+/* ── the campaign report (find_buyers_campaign_report) ─────────────────── */
+
+export type { CampaignReport } from '@/findBuyers/campaignReport';
+
+/** The owner's report of one campaign: numbers and Research NOTE codes from its records. */
+export async function getCampaignReport(jobId: string): Promise<CampaignReport | null> {
+  const { data, error } = await supabase.rpc('find_buyers_campaign_report', { p_job_id: jobId });
+  if (error || !data) return null;
+  return parseReport(data);
 }

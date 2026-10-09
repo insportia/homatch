@@ -288,8 +288,8 @@ test('admin Find Buyers control center: every tab renders at 1440px and 390px (e
       await page.waitForSelector('[data-testid="find-buyers-center"] [role="tab"]', { timeout: 30000 });
       const tabs = page.locator('[data-testid="find-buyers-center"] [role="tab"]');
       const n = await tabs.count();
-      /* overview, actors, campaigns, source network (2026-10-08), sources, languages, ledger */
-      if (n !== 7) failures.push(`${lang} ${width}: ${n} tabs`);
+      /* overview, actors, campaigns, source network (2026-10-08), sources, languages, ledger, intelligence (2026-10-24) */
+      if (n !== 8) failures.push(`${lang} ${width}: ${n} tabs`);
       for (let i = 0; i < n; i += 1) {
         await tabs.nth(i).click();
         await page.waitForTimeout(150);

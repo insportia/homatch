@@ -323,7 +323,7 @@ test('Find Buyers source network: discovered, verified, active and read stay apa
     const center = page.locator('[data-testid="find-buyers-center"]');
     await center.waitFor({ timeout: 20000 });
     const tabs = center.locator('[role="tab"]');
-    assert.equal(await tabs.count(), 7, `${lang}: seven tabs`);
+    assert.equal(await tabs.count(), 8, `${lang}: eight tabs (Intelligence added 2026-10-24)`);
     await tabs.nth(3).click();
     await page.waitForSelector('[data-testid="fbx-source-network"]', { timeout: 20000 });
     assert.equal(calls.network, 1, `${lang}: the network loads on demand, once`);

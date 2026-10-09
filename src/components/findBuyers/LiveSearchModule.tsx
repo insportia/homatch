@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { GOLD_FILL, GOLD_TEXT, NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
 import { DiscoverySnake } from '@/components/findBuyers/DiscoverySnake';
+import { CampaignReport } from '@/components/findBuyers/CampaignReport';
 import { SearchDna, type DnaFacts } from '@/components/findBuyers/SearchDna';
 import { campaignView, currentState, executionState, networkNodes, searchScope } from '@/findBuyers/campaignView';
 import type { CampaignStatus } from '@/services/findBuyers';
@@ -204,6 +205,11 @@ export function LiveSearchModule({
           <span className="sr-only">{propertyLabel}</span>
         </div>
       </div>
+
+      {/* ── the search report: live and partial while running, final after ── */}
+      {c?.jobId && (live || c.executed) && (
+        <CampaignReport jobId={c.jobId} live={live} refreshKey={c.lastActivityAt ?? c.state} />
+      )}
     </section>
   );
 }

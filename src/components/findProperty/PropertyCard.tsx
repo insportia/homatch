@@ -2,6 +2,8 @@ import { AlertTriangle, ArrowRight, BedDouble, Check, DoorOpen, MapPin, Ruler, S
 import type { PropertyView } from '@/services/marketplaceSearch';
 import { currentActivity, listingAgeText, num, pct, type T, usd } from './format';
 import { PropertyGallery } from './PropertyGallery';
+import { DuplicateListings } from './DuplicateListings';
+import { safeExternalUrl } from '@/lib/safeExternalUrl';
 
 export const SELLER_KEY: Record<string, string> = {
   VERIFIED_OWNER: 'fpw_seller_owner', LIKELY_OWNER: 'fpw_seller_likely_owner', AGENCY: 'fpw_seller_broker_agency',
@@ -22,6 +24,14 @@ export function advantageText(a: { code: string; delta: number | null }, t: T) {
   return t(`mps_adv_${a.code}`, { n: a.delta !== null ? Math.abs(a.delta) : 0 });
 }
 
+export function missingRequirements(codes: string[], t: T): string {
+  const labels: Record<string, string> = { AREA: 'mps_fact_area', ROOMS: 'mps_fact_rooms', BEDROOMS: 'mps_fact_bedrooms',
+    BATHROOMS: 'mps_fact_bathrooms', FLOOR_NOT_FIRST: 'fpa_NOT_FIRST', FLOOR_NOT_LAST: 'fpa_NOT_LAST', FLOOR_RANGE: 'mps_fact_floor',
+    BUILDING_AGE: 'fpa_building_age', BUILDING_STATUS: 'mps_fact_building', DISTRICT: 'mps_filter_district',
+    PARKING: 'mps_fact_parking', FURNISHED: 'mps_amenity_FURNISHED' };
+  return [...new Set(codes.map((code) => t(labels[code] ?? (code.startsWith('REQUIRED_') ? `mps_amenity_${code.slice(9)}` : 'mps_not_stated'))))].join(' · ');
+}
+
 export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, budgetMaxUsd }: {
   p: PropertyView; t: T; onOpen: () => void; compareSelected: boolean; onToggleCompare: () => void;
   budgetMaxUsd?: number | null;
@@ -30,8 +40,10 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
   const place = [f.district, f.city].filter(Boolean).join(', ');
   const upgrade = p.group === 'UPGRADE' ? p.upgrade : null;
   const intel = p.intelligence;
+  const original = safeExternalUrl(p.listings.find((l) => l.listingId === intel?.primaryListingId)?.exactUrl ?? p.listings[0]?.exactUrl);
+  const elevator = f.elevator ?? (f.amenities.includes('ELEVATOR') ? true : f.amenities.includes('NO_ELEVATOR') ? false : null);
   return (
-    <article data-property-key={p.key} className="hm-discovery-panel group flex min-w-0 flex-col overflow-hidden">
+    <article data-property-key={p.key} className="hm-discovery-panel group flex min-w-0 flex-col overflow-hidden border-foreground/15 shadow-sm transition-shadow hover:shadow-md">
       <PropertyGallery images={p.images} t={t} onOpen={onOpen} />
       <div className="flex flex-1 flex-col gap-2.5 p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -50,6 +62,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
           {f.bedrooms !== null ? <li className="inline-flex items-center gap-1.5"><BedDouble className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{t('mps_bedrooms_n', { n: f.bedrooms })}</li> : null}
         </ul>
         {f.floor != null ? <p className="text-xs text-muted-foreground">{f.totalFloors ? t('mps_floor_of', { n: f.floor, total: f.totalFloors }) : `${t('mps_fact_floor')}: ${f.floor}`}</p> : null}
+        <p className="text-xs text-foreground/80">{t(elevator === true ? 'fpa_elevator_yes' : elevator === false ? 'fpa_elevator_no' : 'fpa_elevator_unknown')}{f.renovationStatus ? ` · ${t(`mps_rn_${f.renovationStatus}`)}` : ''}</p>
         <div className="flex flex-wrap gap-2 text-xs">
           {p.seller.classification !== 'UNKNOWN' ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 font-medium text-foreground/85">
@@ -61,6 +74,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
         </div>
         <button type="button" onClick={onOpen} className="min-h-11 text-start text-xs text-muted-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring">{t('mps_sources_n', { n: p.sourceCount })} · {t('fpw_listing_count', { n: p.listings.length })}</button>
         {p.priceDiscrepancy?.significant ? <p className="text-xs text-muted-foreground">{t('mps_price_diff_badge')}</p> : null}
+        <DuplicateListings p={p} t={t} />
 
         {upgrade ? (
           <div className="space-y-2 rounded-xl bg-[hsl(var(--gold)/0.06)] p-3.5">
@@ -84,7 +98,8 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
         ) : null}
         {intel && intel.preferences.unconfirmed.length + intel.preferences.mentioned.length + intel.preferences.contradicted.length > 0 ? <p className="text-xs leading-relaxed text-muted-foreground">{t('fpr_compromise', { n: intel.preferences.unconfirmed.length + intel.preferences.mentioned.length + intel.preferences.contradicted.length })}</p> : null}
         {intel?.warnings.length ? <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[hsl(var(--gold-ink))]"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t(`fpr_warning_${intel.warnings[0]}`)}</p> : null}
-        {p.unverified.length > 0 ? <p className="text-xs leading-relaxed text-muted-foreground">{t('fpr_required_unknown', { n: p.unverified.length })}</p> : null}
+        {p.unverified.length > 0 ? <p className="text-xs leading-relaxed text-muted-foreground">{t('mps_not_stated')}: {missingRequirements(p.unverified, t)}</p> : null}
+        {f.floor != null && f.totalFloors != null && f.floor === f.totalFloors ? <p className="text-xs leading-relaxed text-muted-foreground">{t('fpa_top_floor_note')}</p> : null}
         <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
           <button type="button" onClick={onOpen}
             className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-[#0C1119] px-5 text-sm font-semibold text-white transition hover:bg-[#151d2a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">
@@ -95,6 +110,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
             {compareSelected ? <Check className="me-1 h-4 w-4" aria-hidden="true" /> : null}{t('mps_compare')}
           </button>
         </div>
+        {original ? <a href={original} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center justify-center text-xs font-medium text-muted-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring">{t('mps_open_original')}</a> : null}
       </div>
     </article>
   );

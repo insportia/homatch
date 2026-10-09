@@ -86,7 +86,8 @@ test('explicit negative mandatory amenities exclude; unconfirmed mandatory facts
   assert.equal(views([noParking], { ...F.FIXTURE_REQUEST, niceToHave: ['PARKING'] }).length, 1);
   const unknown = views([F.listing()], { ...F.FIXTURE_REQUEST, mustHave: ['PARKING'] })[0];
   assert.ok(unknown.unverified.includes('REQUIRED_PARKING'));
-  assert.equal(unknown.intelligence.section, 'VERIFY');
+  assert.equal(unknown.intelligence.section, 'CLOSE');
+  assert.equal(unknown.intelligence.strong, false, 'unknown mandatory facts cannot become a best match');
 });
 test('developer project mention does not classify the publisher as a developer', () => {
   const l = normalizeCandidate(F.listing({ description: 'Built by developer Archi. My apartment for sale.', seller: {} }), { now });
@@ -100,15 +101,15 @@ test('negative agency and ownership language does not become a publisher claim',
   assert.equal(unclear.seller.classification, 'UNKNOWN');
 });
 test('same-site duplicate merges require shared property media; different apartments stay separate', () => {
-  const images = ['https://img.example/property/1.jpg', 'https://img.example/property/2.jpg'];
-  const a = normalizeCandidate(F.listing({ sourceListingId: 'a', images }), { now });
-  const b = normalizeCandidate(F.listing({ sourceListingId: 'b', images }), { now });
+  const images = F.CONFIRMED_IDENTITY.images;
+  const a = normalizeCandidate(F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'a', images }), { now });
+  const b = normalizeCandidate(F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'b', images }), { now });
   assert.equal(classifyPair(a, b).tier, 'LIKELY_SAME_PROPERTY');
   assert.equal(classifyPair(a, { ...b, floor: a.floor + 1 }).tier, 'DISTINCT_PROPERTY');
   assert.equal(classifyPair(a, { ...b, images: [images[0]] }).tier, 'POSSIBLE_SAME_PROPERTY');
 });
 test('one primary is freshest, stable, complete; old duplicates cannot lower its price', () => {
-  const common = { images: ['https://img.example/property/1.jpg', 'https://img.example/property/2.jpg'] };
+  const common = F.CONFIRMED_IDENTITY;
   const list = [F.listing({ ...common, sourceListingId: 'a', publishedAt: date(5) }), F.listing({ ...common, sourceListingId: 'b', publishedAt: date(1) }), F.listing({ ...common, sourceListingId: 'old', price: 130000, publishedAt: date(31) })];
   const output = process(list);
   assert.equal(output.properties.length, 1);
@@ -131,7 +132,7 @@ test('freshness breaks otherwise comparable ranking ties and explanations disclo
 test('structured/text contradiction is a neutral warning and never creates a fraud claim', () => {
   const p = views([F.listing({ parking: false, description: 'Private parking included.' })])[0];
   assert.ok(p.intelligence.warnings.includes('INFORMATION_CONFLICT'));
-  assert.equal(p.intelligence.section, 'VERIFY');
+  assert.equal(p.intelligence.section, 'CLOSE');
   assert.doesNotMatch(JSON.stringify(p), /fraud|scam/i);
 });
 test('800 properties: all 67 numbered pages deterministic, bounded and without duplicate keys', () => {

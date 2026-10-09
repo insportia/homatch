@@ -8,6 +8,7 @@ import type {
   BuildingChoice, MarketplacePropertyType, MarketplaceTransaction, RenovationChoice,
 } from '@/research-core/marketplace/taxonomy';
 import { type T, criteriaChips, rangeText, requirementLabel } from './format';
+import { AdvancedPropertyPreferences } from './AdvancedPropertyPreferences';
 
 const TRANSACTIONS: MarketplaceTransaction[] = ['BUY', 'MONTHLY_RENT', 'DAILY_RENT'];
 const TYPES: MarketplacePropertyType[] = ['APARTMENT', 'HOUSE', 'PENTHOUSE', 'LAND', 'COMMERCIAL', 'OFFICE'];
@@ -62,7 +63,7 @@ export function BuilderIntro({ t, text, onText, onSubmit, busy }: {
             </button>
           </form>
         </div>
-        <aside className="space-y-4 border-t border-border bg-[hsl(var(--gold)/0.04)] p-6 sm:p-8 lg:border-s lg:border-t-0">
+        <aside className="space-y-4 border-t border-white/10 bg-[#0C1119] p-6 sm:p-8 lg:border-s lg:border-t-0 [&_p]:text-white/80">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mps_intro_example_label')}</p>
             <button
@@ -371,6 +372,7 @@ export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset }:
         </div>
       ) : null}
       <UnderstoodPanel t={t} brief={brief} readiness={readiness} editing={editing} onEdit={(k) => { setEditing(k); setReviewing(false); }} />
+      <AdvancedPropertyPreferences brief={brief} onAdvanced={(value) => edit({ field: 'advanced', value: { ...value, floorRange: value.floorRange ?? null } })} onOlderBuildings={(acceptable) => edit({ field: 'buildingStatuses', value: acceptable ? ['ANY'] : ['NEW_BUILD', 'UNDER_CONSTRUCTION'] })} t={t} />
       {showConfirm ? (
         <ConfirmCard t={t} brief={brief} onStart={onStart} starting={starting}
           onChange={() => setReviewing(true)} onAddCondition={() => setEditing('renovation')} />

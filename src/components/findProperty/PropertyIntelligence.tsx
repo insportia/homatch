@@ -7,8 +7,9 @@ import { investmentHandoff, mortgageHandoff } from '@/research-core/marketplace/
 import type { ResultProperty } from '@/research-core/marketplace/pipeline';
 import type { PropertyView } from '@/services/marketplaceSearch';
 import { checkedAgo, currentActivity, listingActivity, listingAgeText, num, pct, type T, usd } from './format';
-import { advantageText, reasonText, SELLER_KEY, sellerLabel } from './PropertyCard';
+import { advantageText, missingRequirements, reasonText, SELLER_KEY, sellerLabel } from './PropertyCard';
 import { PropertyGallery } from './PropertyGallery';
+import { DuplicateListings } from './DuplicateListings';
 
 function IntelligenceFrame({ children, fullPage, open, onOpenChange, isRTL }: { children: React.ReactNode; fullPage: boolean; open: boolean; onOpenChange: (o: boolean) => void; isRTL: boolean }) {
   if (fullPage) return <article data-property-dossier className="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card">{children}</article>;
@@ -70,10 +71,12 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
               ) : null;
             })}
           </dl>
+          <p className="text-sm text-muted-foreground">{t(f.elevator === true || f.amenities.includes('ELEVATOR') ? 'fpa_elevator_yes' : f.elevator === false || f.amenities.includes('NO_ELEVATOR') ? 'fpa_elevator_no' : 'fpa_elevator_unknown')}</p>
+          <DuplicateListings p={p} t={t} />
 
           {p.intelligence ? <section className="space-y-2">
             <h3 className="font-display text-lg font-semibold">{t('fpr_evidence_title')}</h3>
-            {p.unverified.length > 0 ? <p className="text-sm text-muted-foreground">{t('fpr_required_unknown', { n: p.unverified.length })}</p> : null}
+            {p.unverified.length > 0 ? <p className="text-sm text-muted-foreground">{t('mps_not_stated')}: {missingRequirements(p.unverified, t)}</p> : null}
             <p className="text-sm text-muted-foreground">{t(p.seller.reasonCodes.some((c) => c.startsWith('DECLARED_')) ? 'fpr_seller_source' : p.seller.reasonCodes.includes('CONTACT_ON_MANY_PROPERTIES') ? 'fpr_seller_contact' : p.seller.classification === 'LIKELY_OWNER' ? 'fpr_seller_owner' : 'fpr_seller_unclear')}</p>
             {p.intelligence.warnings.map((code) => <p key={code} className="text-sm text-muted-foreground">{t(`fpr_warning_${code}`)}</p>)}
             {p.intelligence.signals.map((signal) => <div key={signal.code} className="rounded-xl border border-border p-3"><p className="text-sm font-medium">{t(signal.polarity === 'NEGATED' ? 'fpr_description_negates' : 'fpr_description_mentions', { feature: t(`fpr_signal_${signal.code}`) })}</p><q dir="auto" className="mt-1 block break-words text-sm text-muted-foreground">{signal.evidence}</q></div>)}

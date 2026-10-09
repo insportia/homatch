@@ -48,3 +48,9 @@ test('a PostgrestError is never rendered as [object Object]', () => {
   assert.match(SRC, /function describeError\(error: unknown\): string/);
   assert.doesNotMatch(SRC, /error instanceof Error \? error\.message : String\(error\) \}, 500/);
 });
+
+test('native demand projection recognises its own subscriptions without the FK-less embed', () => {
+  const NATIVE = readFileSync(path.join(root, 'supabase/functions/_shared/nativeDemand.ts'), 'utf8');
+  assert.doesNotMatch(NATIVE, /intent_profiles!intent_id/);
+  assert.match(NATIVE, /\.from\('intent_profiles'\)\.select\('id,transaction_type,classifier_version'\)\.in\('id', intentIds\)/);
+});

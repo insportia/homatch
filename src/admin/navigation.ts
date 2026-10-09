@@ -30,7 +30,7 @@
 // it must still WORK.
 
 import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Boxes,Brain,Building2, CreditCard,Gauge, Globe, Handshake, HardDrive, HeartPulse, 
-  LayoutDashboard, Mail, Megaphone, ScrollText,
+  Layers, LayoutDashboard, Mail, Megaphone, ScrollText,
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Puzzle, Radio, 
   Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, Store, 
@@ -114,6 +114,16 @@ export const ADMIN_GROUPS: AdminGroup[] = [
            demand). Structure only — never message text. */
         path: '/admin/intelligence', labelKey: 'admin_cc_nav_intelligence', icon: Brain,
         keywords: ['intelligence', 'intent', 'signal', 'demand', 'requirement', 'firmness', 'native'],
+      },
+      {
+        /* One summary per HOMATCH buyer or tenant, from explicit requirements only. */
+        path: '/admin/buyer-intelligence', labelKey: 'admin_nav_buyer_intelligence', icon: UserSearch,
+        keywords: ['buyer', 'tenant', 'demand', 'budget', 'intent level', 'saved search', 'eligible'],
+      },
+      {
+        /* PREMIUM / MIDDLE / ECONOMY against the local market, rules with preview and audit. */
+        path: '/admin/market-segmentation', labelKey: 'admin_nav_market_segmentation', icon: Layers,
+        keywords: ['segment', 'premium', 'economy', 'middle', 'price per sqm', 'comparables', 'percentile'],
       },
       {
         /* The older paid-unlock `matches` table, kept and labelled as such. */

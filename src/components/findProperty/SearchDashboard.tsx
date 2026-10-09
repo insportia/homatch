@@ -25,7 +25,7 @@ export function SearchDashboard({ t }: { t: T }) {
     setParams(updated);
   };
   return <section className="space-y-5" aria-label={t('fpw_history')}>
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#0C1119] p-5 text-white shadow-sm sm:p-7">
       <h2 className="font-display text-xl font-semibold">{t('fpw_history')}</h2>
       <Link to="/find-property/new" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[hsl(var(--gold))] px-5 font-semibold text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Plus className="h-5 w-5" aria-hidden="true" />{t('mps_new_search')}
@@ -36,7 +36,7 @@ export function SearchDashboard({ t }: { t: T }) {
       <p>{t('mps_error_generic')}</p><button type="button" onClick={() => setRetry((v) => v + 1)} className="min-h-11 rounded-lg border border-border px-4">{t('fpw_retry')}</button>
     </div> : !result ? <div className="h-40 animate-pulse rounded-xl bg-muted/60" aria-busy="true" /> : result.items.length === 0 ? <p className="rounded-xl border border-border p-6 text-muted-foreground">{t('fpw_history_empty')}</p> :
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {result.items.map((item) => <article key={item.id} className="flex min-w-0 flex-col gap-4 rounded-2xl border border-border bg-card p-5">
+        {result.items.map((item) => <article key={item.id} className="flex min-w-0 flex-col gap-4 rounded-2xl border border-foreground/15 bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
           <h3 dir="auto" className="font-display text-lg font-semibold">{[...(item.brief.districts?.value ?? []), item.brief.city?.value].filter(Boolean).join(' · ') || t('plan_page_title')}</h3>
           <p className="text-sm leading-relaxed text-muted-foreground">{criteriaChips(item.brief, t).filter((c) => c.key !== 'location').map((c) => c.label).join(' · ')}</p>
           <div className="space-y-1 text-sm">

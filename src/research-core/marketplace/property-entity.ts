@@ -20,7 +20,9 @@ import { type ResolvableObservation, resolve } from '../discovery/entity-resolut
 import type { NormalizedListing } from './normalize.ts';
 import { descriptionFingerprint } from './description-signals.ts';
 
-export const PROPERTY_ENTITY_VERSION = 'marketplace-property-entity-1';
+export const PROPERTY_ENTITY_VERSION = 'marketplace-property-entity-2';
+
+export type PropertyIdentity = 'CONFIRMED_DUPLICATE' | 'POSSIBLE_DUPLICATE' | 'DISTINCT_PROPERTY' | 'INSUFFICIENT_EVIDENCE';
 
 export type PropertyMatchTier = 'EXACT_DUPLICATE' | 'LIKELY_SAME_PROPERTY' | 'POSSIBLE_SAME_PROPERTY' | 'DISTINCT_PROPERTY';
 
@@ -31,6 +33,13 @@ export interface PairDecision {
   confidence: number;
   evidence: string[];
   conflict: string | null;
+}
+
+/** Customer identity vocabulary; legacy tiers remain compatible with stored diagnostics. */
+export function identityOf(pair: PairDecision): PropertyIdentity {
+  if (pair.tier === 'EXACT_DUPLICATE' || pair.tier === 'LIKELY_SAME_PROPERTY') return 'CONFIRMED_DUPLICATE';
+  if (pair.tier === 'POSSIBLE_SAME_PROPERTY') return 'POSSIBLE_DUPLICATE';
+  return pair.conflict ? 'DISTINCT_PROPERTY' : 'INSUFFICIENT_EVIDENCE';
 }
 
 /** Above this cross-source price spread a likely match is only POSSIBLE: too different to merge unseen. */
@@ -89,6 +98,9 @@ export function classifyPair(x: NormalizedListing, y: NormalizedListing): PairDe
   if (x.floor !== null && y.floor !== null && x.floor !== y.floor) {
     return { ...base, tier: 'DISTINCT_PROPERTY', confidence: 0.75, evidence, conflict: 'floor' };
   }
+  if (x.totalFloors !== null && y.totalFloors !== null && x.totalFloors !== y.totalFloors) {
+    return { ...base, tier: 'DISTINCT_PROPERTY', confidence: 0.9, evidence, conflict: 'building floors' };
+  }
 
   const extra: string[] = [];
   const area = areaAgrees(x.areaSqm, y.areaSqm);
@@ -107,10 +119,26 @@ export function classifyPair(x: NormalizedListing, y: NormalizedListing): PairDe
   }
   if (x.geo && y.geo && metres(x.geo, y.geo) <= GEO_METRES && area) extra.push('same coordinates');
 
-  let tier: PropertyMatchTier;
-  if (d.verdict === 'LIKELY_SAME_ENTITY' || extra.length) tier = 'LIKELY_SAME_PROPERTY';
-  else if (d.verdict === 'RELATED') tier = 'POSSIBLE_SAME_PROPERTY';
-  else tier = 'DISTINCT_PROPERTY';
+  // Common dimensions, broker contacts and building pins identify a market segment,
+  // not a unit. Even matching photographs need independent, specific corroboration.
+  const address = (s: string | null) => (s ?? '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  const ax = address(x.address), ay = address(y.address);
+  const unit = (s: string | null) => (s ?? '').normalize('NFKC').toLowerCase()
+    .match(/(?:unit|apartment|apt\.?|flat|ბინა|квартира|кв\.?|daire|شقة|דירה)\s*[:#№-]?\s*(\d+[\p{L}]?)/u)?.[1] ?? null;
+  const ux = unit(x.address), uy = unit(y.address);
+  if (ux && uy && ux !== uy) return { ...base, tier: 'DISTINCT_PROPERTY', confidence: 1, evidence, conflict: 'unit identifier' };
+  const specificAddress = ax.length >= 6 && /\d/.test(ax) && ax === ay;
+  const exactConfiguration = x.areaSqm !== null && x.areaSqm === y.areaSqm
+    && x.floor !== null && x.floor === y.floor
+    && x.totalFloors !== null && x.totalFloors === y.totalFloors
+    && x.rooms !== null && x.rooms === y.rooms
+    && x.bedrooms !== null && x.bedrooms === y.bedrooms;
+  const sharedHashes = [...new Set(x.imageHashes.filter((h) => y.imageHashes.includes(h)))];
+  const photoSet = sharedImages.length >= 3 || sharedHashes.length >= 3;
+  const corroborated = photoSet && exactConfiguration && locationAgrees && specificAddress && !!ux && ux === uy && copied;
+  let tier: PropertyMatchTier = corroborated ? 'LIKELY_SAME_PROPERTY'
+    : extra.length > 0 ? 'POSSIBLE_SAME_PROPERTY' : 'DISTINCT_PROPERTY';
+  if (corroborated) extra.push('corroborated photo set, specific address, description and unit configuration');
 
   if (tier === 'LIKELY_SAME_PROPERTY' && x.priceUsd && y.priceUsd) {
     const spread = Math.abs(x.priceUsd - y.priceUsd) / Math.max(x.priceUsd, y.priceUsd);
@@ -219,7 +247,7 @@ export function resolveProperties(listings: readonly NormalizedListing[]): Resol
     for (const m of members.get(ra)!) {
       for (const n of members.get(rb)!) {
         const cross = decide(byId.get(m)!, byId.get(n)!);
-        if (cross.tier === 'DISTINCT_PROPERTY' && cross.conflict) { veto = `${cross.a}~${cross.b}: ${cross.conflict}`; break; }
+        if (identityOf(cross) !== 'CONFIRMED_DUPLICATE') { veto = `${cross.a}~${cross.b}: ${cross.conflict ?? 'insufficient identity evidence'}`; break; }
       }
       if (veto) break;
     }

@@ -25,6 +25,7 @@ import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 // _shared/providerSwitch.ts, exactly as Find Buyers reads it.
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
+import { pgSafe, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
@@ -1831,6 +1832,12 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
   } catch {
     /* non-JSON worker response — z stays {} */
   }
+  // Worker text (extracted documents above all) may hold characters Postgres
+  // cannot store: one NUL in a NAPR record froze job c80f7237 for an hour.
+  // Made storable here, at the one place worker data enters this function.
+  const stats: PgSafeStats = { nul: 0, surrogates: 0 };
+  z = pgSafe(z, stats);
+  if (stats.nul || stats.surrogates) console.warn(`research-agent: worker ${path} returned ${stats.nul} NUL / ${stats.surrogates} lone-surrogate character(s); removed before storage`);
   if (!r.ok && r.status !== 409 && r.status !== 404) throw new Error(`worker ${r.status}: ${t.slice(0, 400)}`);
   return { code: r.status, data: z };
 }
@@ -2310,6 +2317,20 @@ async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
   return true;
 }
 
+/*
+ * Every transition out of BROWSER_WAITING goes through here.
+ *
+ * supabase-js returns { error } instead of throwing, and the transitions
+ * below used to return it unread. That is what held job c80f7237 in
+ * BROWSER_WAITING for an hour: its finished official result could not be
+ * stored (a NUL in a NAPR document), nothing advanced, and the driver
+ * reclaimed it every tick. Now the write is checked, and if the full payload
+ * still cannot be stored the job moves on with each source's outcome kept,
+ * its extracted payload dropped and the reason recorded, so the report is
+ * produced and says which official detail is missing.
+ */
+const persistOfficialTransition = (sb: any, j: any, patch: Record<string, any>) => persistOfficialTransitionWith(sb, j, patch);
+
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
@@ -2340,9 +2361,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       (x: any) => x.url
     );
 
-    return sb
-      .from('research_jobs')
-      .update({
+    return persistOfficialTransition(sb, j, {
         status: 'CREATED',
         stage: 'OFFICIAL_READY',
         result_json: p,
@@ -2355,15 +2374,14 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
           retriable: false,
         },
         updated_at: now(),
-      })
-      .eq('id', j.id);
+      });
   }
   if (w.status !== 'COMPLETE') {
     const startedAt = Date.parse(j.result_json?._worker?.startedAt || '');
     const workerAgeMs = Number.isFinite(startedAt)
       ? Date.now() - startedAt
       : 0;
-    const MAX_BROWSER_WAIT_MS = 12 * 60 * 1000;
+    const MAX_BROWSER_WAIT_MS = OFFICIAL_BROWSER_DEADLINE_MS;
 
     if (startedAt && workerAgeMs > MAX_BROWSER_WAIT_MS) {
       const p = j.result_json || {};
@@ -2382,9 +2400,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
         (x: any) => x.url
       );
 
-      return sb
-        .from('research_jobs')
-        .update({
+      return persistOfficialTransition(sb, j, {
           status: 'CREATED',
           stage: 'OFFICIAL_READY',
           result_json: p,
@@ -2397,8 +2413,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
             retriable: false,
           },
           updated_at: now(),
-        })
-        .eq('id', j.id);
+        });
     }
 
     // v31 (state-consistency fix): this used to `return` here with NO write
@@ -2433,7 +2448,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // have just filled it in and this branch is the one that repeats.
     return sb.from('research_jobs').update({
       result_json: j.result_json,
-      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total },
+      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null },
       updated_at: now(),
     }).eq('id', j.id);
   }
@@ -2452,10 +2467,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   // Admin diagnostics: which TAS implementation actually produced the result.
   if (w.tasExecution) p._tasExecution = w.tasExecution;
   await collectOfficialVisuals(sb, w, p);
-  return sb
-    .from('research_jobs')
-    .update({ status: 'CREATED', stage: 'OFFICIAL_READY', result_json: p, evidence_bundle: dedupe([...(j.evidence_bundle || []), ...bev(w)], (x) => x.url), captcha: {}, progress: { phase: 'official_browser_complete', percent: 44, provider: 'playwright' }, updated_at: now() })
-    .eq('id', j.id);
+  return persistOfficialTransition(sb, j, { status: 'CREATED', stage: 'OFFICIAL_READY', result_json: p, evidence_bundle: dedupe([...(j.evidence_bundle || []), ...bev(w)], (x) => x.url), captcha: {}, progress: { phase: 'official_browser_complete', percent: 44, provider: 'playwright' }, updated_at: now() });
 }
 
 // pickFinancialCandidate() / startFinancialEntity() / pollFinancialEntity() /
@@ -3923,6 +3935,14 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     _marketplaceLedger: prior._marketplaceLedger ?? (prior._verifyMarket ? { state: prior._verifyMarket.state } : null),
     _tasExecution: prior._tasExecution ?? null,
     officialVisuals: prior.officialVisuals ?? null,
+    // Developer Advertising (last research stage, run before this write):
+    // the customer view feeds verify-synthesis's evidence package and report
+    // section; the internal state holds the run's input, live schema, price
+    // and cost marker, and is what the 24 h cache looks up. Both were being
+    // dropped here (job c80f7237: the stage ran and billed, the report had
+    // no advertising section). _developerAds is stripped from customer output.
+    developerAds: prior.developerAds ?? null,
+    _developerAds: prior._developerAds ?? null,
     stage: 'COMPLETE',
     searchedAt: now(),
   };
@@ -4095,7 +4115,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     const browserTransportExpired =
       j.stage === 'BROWSER_WAITING' &&
       browserStartedAt &&
-      browserAgeMs > 12 * 60 * 1000 &&
+      browserAgeMs > OFFICIAL_BROWSER_DEADLINE_MS &&
       (legacyRetryable || transientBrowserSession);
 
     if (browserTransportExpired) {
@@ -5509,6 +5529,10 @@ async function driveJob(sb: any, key: string, model: string, id: string): Promis
       // is done and re-ticking would be wrong, not merely wasteful.
       if (!j || j.cancelled_at || !DRIVE_LIVE_STATUSES.includes(j.status)) return;
       await advance(sb, key, model, j, jobLanguage(j));
+      // A step that wrote nothing on a long-silent official stage is a stall,
+      // whatever caused it: move on with what is stored instead of reclaiming
+      // the same job every tick.
+      if (await recoverStalledOfficial(sb, j)) return;
       if (i + 1 < DRIVE_TICKS_PER_JOB) await new Promise((r) => setTimeout(r, DRIVE_TICK_SPACING_MS));
     }
   } catch (e) {
@@ -5519,6 +5543,20 @@ async function driveJob(sb: any, key: string, model: string, id: string): Promis
     await releaseJob(sb, id);
   }
 }
+
+/*
+ * THE LAST LINE AGAINST AN ENDLESS BROWSER_WAITING.
+ *
+ * Called after a driver step. If the row is still the one that step read
+ * (updated_at unchanged), the stage is BROWSER_WAITING, the official stage is
+ * past its total deadline and the row has been silent for OFFICIAL_STALL_MS,
+ * the job proceeds to OFFICIAL_READY with whatever official results are
+ * already stored, marked unavailable. The update is conditional on that same
+ * updated_at, so a step that did make progress meanwhile (a client poll, the
+ * worker's result finally stored) always wins. Nothing is re-run, nothing is
+ * charged, no stored evidence is removed; the report discloses the gap.
+ */
+const recoverStalledOfficial = (sb: any, before: any) => recoverStalledOfficialWith(sb, before, now());
 
 /* SYNTHESIS IS PART OF THE PIPELINE, NOT PART OF THE PAGE.
  *

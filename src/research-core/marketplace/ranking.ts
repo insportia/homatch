@@ -34,6 +34,8 @@ export interface PropertyFacts {
   parking: boolean | null;
   furnished: boolean | null;
   amenities: string[];
+  constructionYear?: number | null;
+  elevator?: boolean | null;
 }
 
 export type BudgetBand = 'BELOW_MIN' | 'IN_BUDGET' | 'UPGRADE_PREFERRED' | 'UPGRADE_EXTENDED' | 'ABOVE_CEILING' | 'UNKNOWN';
@@ -89,6 +91,12 @@ export function hardFilter(f: PropertyFacts, req: MarketplaceSearchRequest): Har
   check('ROOMS', inRange(f.rooms, req.rooms));
   check('BEDROOMS', inRange(f.bedrooms, req.bedrooms));
   check('BATHROOMS', inRange(f.bathrooms, req.bathrooms));
+  check('FLOOR_RANGE', inRange(f.floor, req.floorRange ?? null));
+  if (req.maxBuildingAge != null) {
+    const year = req.requestedAt ? new Date(req.requestedAt).getUTCFullYear() : NaN;
+    check('BUILDING_AGE', f.constructionYear == null || !Number.isFinite(year) || f.constructionYear > year ? 'UNKNOWN'
+      : year - f.constructionYear > req.maxBuildingAge ? 'OUT' : 'IN');
+  }
   for (const preference of req.floorPreferences ?? []) {
     if (preference === 'NOT_FIRST') check('FLOOR_NOT_FIRST', f.floor === null ? 'UNKNOWN' : f.floor === 1 ? 'OUT' : 'IN');
     if (preference === 'NOT_LAST') check('FLOOR_NOT_LAST', f.floor === null || f.totalFloors === null ? 'UNKNOWN' : f.floor === f.totalFloors ? 'OUT' : 'IN');
@@ -108,7 +116,9 @@ export function hardFilter(f: PropertyFacts, req: MarketplaceSearchRequest): Har
   if (req.furnished !== null && f.furnished !== null && req.furnished !== f.furnished) violations.push('FURNISHED');
   if (req.furnished !== null && f.furnished === null) unverified.push('FURNISHED');
   for (const must of req.mustHave) {
-    const known = must === 'PARKING' ? f.parking : must === 'FURNISHED' ? f.furnished : f.amenities.includes(must) ? true : null;
+    const known = must === 'PARKING' ? f.parking : must === 'FURNISHED' ? f.furnished
+      : must === 'ELEVATOR' ? f.elevator ?? (f.amenities.includes('ELEVATOR') ? true : f.amenities.includes('NO_ELEVATOR') ? false : null)
+        : f.amenities.includes(must) ? true : null;
     if (known === false) violations.push(`REQUIRED_${must}`);
     if (known === null) unverified.push(`REQUIRED_${must}`);
   }

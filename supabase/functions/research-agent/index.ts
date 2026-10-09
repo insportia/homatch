@@ -5269,7 +5269,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_developerAds', '_stageTimes']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,

@@ -182,7 +182,9 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
       // Links — curved, pulsing, dissolving with distance.
       const linkers = ps.filter((p) => p.fam === 'MOTE' || p.fam === 'ANCHOR');
       if (!eng.thin || frame % 2 === 0) {
-        const maxD = unit * 0.34 * eng.links;
+        // Reach grows a little on wide fields, where neighbours sit further apart
+        // horizontally; on phone-shaped fields (aspect ≈ 1.6) it is unchanged.
+        const maxD = unit * 0.34 * eng.links * Math.min(1.5, Math.max(1, Math.sqrt(aspect / 1.6)));
         const used = new Map<Particle, number>();
         ctx.lineWidth = 0.7;
         for (let i = 0; i < linkers.length; i++) {
@@ -244,14 +246,14 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
         const [x, y] = toPx(p.x, p.y, p.z);
         const breathe = 0.85 + 0.15 * Math.sin(eng.t * 0.8 * p.speed + p.phase);
         const a = p.alpha * glow * breathe;
-        const halo = (p.fam === 'ANCHOR' ? 9 : 4.5) * p.size * p.z;
-        ctx.globalAlpha = Math.min(1, a * (p.fam === 'ANCHOR' ? 0.9 : 0.5));
+        const halo = (p.fam === 'ANCHOR' ? 9 : 5.5) * p.size * p.z;
+        ctx.globalAlpha = Math.min(1, a * (p.fam === 'ANCHOR' ? 0.9 : 0.6));
         ctx.drawImage(sprites[p.tint], x - halo, y - halo, halo * 2, halo * 2);
         ctx.globalAlpha = 1;
         const [r, g, b] = tintRgb(p.tint);
         ctx.fillStyle = `rgba(${r},${g},${b},${Math.min(1, a).toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(x, y, p.size * p.z * (p.fam === 'ANCHOR' ? 0.9 : 0.75), 0, Math.PI * 2);
+        ctx.arc(x, y, p.size * p.z * 0.9, 0, Math.PI * 2);
         ctx.fill();
       }
 

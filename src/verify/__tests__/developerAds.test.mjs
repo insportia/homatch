@@ -190,3 +190,16 @@ test('the stage obeys the same APIFY switch as Find Buyers, through the shared r
   assert.match(agent, /import \{ providerDisabledByAdmin \} from '\.\.\/_shared\/providerSwitch\.ts';/);
   assert.equal((agent.match(/providerDisabledByAdmin\(await adminSettingJson\(sb, 'provider_disabled_list'\), 'APIFY'\)/g) || []).length, 2, 'the stage and its admin card both check the switch');
 });
+
+test('a street address is never searched as a project name (production shape: Kristian Stiven Street, 18)', () => {
+  const id = resolveDeveloperIdentity({
+    projectProfile: { name: 'Kristian Stiven Street, 18', aliases: ['18 Kristian Stiven Street, Digomi, Tbilisi', 'ქრისტიან სტივენის ქუჩა 18'], developer: 'შპს „ჯეო სითი დიღომი“', address: '18 Kristian Stiven Street, Digomi, Tbilisi' },
+    companyProfile: { name: 'შპს „ჯეო სითი დიღომი“', sourceBasis: 'REGISTRY_CONFIRMED' },
+  });
+  assert.deepEqual(id.searchTerms, ['ჯეო სითი დიღომი']);
+  assert.deepEqual(id.projectNames, []);
+  for (const keep of ['Archi Isani 2', 'Tbilisi Towers 2', 'm2 at Mtatsminda', 'Royal Vake']) {
+    assert.deepEqual(resolveDeveloperIdentity({ projectProfile: { name: keep, address: '22 Kipshidze Street, Vake, Tbilisi' } }).projectNames, [keep], keep);
+  }
+  assert.deepEqual(resolveDeveloperIdentity({ projectProfile: { name: 'Kipshidze 22', address: '22 Kipshidze Street, Vake, Tbilisi' } }).projectNames, []);
+});

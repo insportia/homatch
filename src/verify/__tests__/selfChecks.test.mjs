@@ -31,10 +31,11 @@ test('every check answers all six of the buyer questions', () => {
   for (const part of ['title', 'help', 'expect', 'attention']) {
     assert.ok(new RegExp(`${part}:`).test(map), `no check states "${part}"`);
   }
-  // Where to open it and what to type in are the other two, and they are the
-  // fields the data already carries.
+  // What to type in is carried as a value to copy. The portal itself is
+  // NAMED by the copy, never linked: the 2026-10 owner mandate removed every
+  // NAPR/MyGov/RS.ge URL from the customer report ("summary, not links").
   const card = src.slice(src.indexOf('const SelfChecks'));
-  assert.ok(/href=\{c\.url\}/.test(card), 'the official portal link is gone');
+  assert.ok(!/href=\{c\.url\}/.test(card), 'a portal link is back in the customer report');
   assert.ok(/\{c\.copyValue\}/.test(card), 'the value to paste is gone');
 });
 

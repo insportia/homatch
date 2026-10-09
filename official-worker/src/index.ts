@@ -5,9 +5,17 @@
 // and research-agent (Supabase) do not break. What changed is everything
 // BEHIND these endpoints — see orchestrator/, workflows/, evidence/,
 // entities/, documents/, state/.
+import { captchaService, parseCaptchaPolicy } from './captcha/captchaService.js';
 import express from 'express';
+import { parseTasConfig, tasHealth } from './workflows/tas/implementation.js';
+import { runTasApiStep, tasApiOptionsFromEnv } from './workflows/tas/api/TasApiStep.js';
+import { getCachedVisual, TAS_API_VERSION } from './workflows/tas/api/TasApiWorkflow.js';
+import { isCadastralCode } from './workflows/tas/cadastral.js';
 import { startMyHomeRuntime } from './marketplace/MyHomeRuntime.js';
 import { startSsgeRuntime } from './marketplace/ssge/runtime.mjs';
+import { acquireMyHome } from './marketplace/myhome/adapter.js';
+import { acquireSsge } from './marketplace/ssge/acquire.mjs';
+import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey } from './verify/VerifyMarketRuntime.js';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
@@ -167,8 +175,83 @@ app.post('/research', auth, (req: any, res: any) => {
   const mode = req.body?.mode === 'property' ? 'property' : 'cadastral';
   const query = mode === 'cadastral' ? String(req.body?.query || '').trim().replace(/\s/g, '') : String(req.body?.query || '').trim();
   if (!query) return res.status(400).json({ error: 'query required' });
-  const job = orchestrator.start(query, mode);
+  const job = orchestrator.start(query, mode, parseTasConfig(req.body?.tasImplementation), parseCaptchaPolicy(req.body?.captchaPolicy));
+  res.status(202).json({ accepted: true, jobId: job.id, status: job.status, tasImplementation: job.tasConfig });
+});
+
+// TAS implementation health (Admin diagnostics). Counters only — never a
+// document, a URL with a session, or a credential.
+// CAPTCHA service health: configured (variable NAME only, never the value),
+// kill switch, caps, breaker and recent outcomes. ?balance=1 asks 2Captcha for
+// the account balance — a free read, no solve.
+app.get('/health/captcha', auth, async (req: any, res: any) => {
+  const status = captchaService.status();
+  const balance = req.query?.balance === '1' ? await captchaService.balance() : undefined;
+  res.json({ ...status, ...(balance !== undefined ? { balanceUsd: balance } : {}), checkedAt: new Date().toISOString() });
+});
+
+app.get('/health/tas', auth, (_req: any, res: any) => {
+  res.json({ implementations: tasHealth(), version: TAS_API_VERSION, checkedAt: new Date().toISOString() });
+});
+
+// Admin TEST control for TAS API_FIRST: one bounded, read-only run against
+// the public DWR application for a cadastral code, returning accounting and
+// reconciliation only (no document text). It proves the live contract before
+// an administrator activates API_FIRST; it never changes the active setting.
+app.post('/tas/test', auth, async (req: any, res: any) => {
+  const query = String(req.body?.query || '').trim().replace(/\s/g, '');
+  if (!isCadastralCode(query)) return res.status(400).json({ error: 'cadastral code required' });
+  const budgetMs = Math.min(Math.max(Number(req.body?.budgetMs) || 120000, 10000), 300000);
+  const { result, durationMs } = await runTasApiStep(query, undefined, { ...tasApiOptionsFromEnv(), budgetMs, maxAttachmentDownloads: Number(req.body?.maxAttachmentDownloads) || 40 });
+  const api = (result as any).tasApi ?? null;
+  res.json({
+    ok: result.status !== 'FAILED',
+    status: result.status,
+    error: result.error ?? null,
+    durationMs,
+    searchCadastralCode: api?.searchCadastralCode ?? null,
+    attempts: api?.attempts ?? [],
+    reconciliation: api?.reconciliation ?? null,
+    accounting: api?.accounting ?? null,
+    http: api?.http ?? null,
+    visuals: (api?.visuals ?? []).map((v: any) => ({ role: v.role, kind: v.kind, date: v.date, width: v.width, height: v.height, extraction: v.extraction })),
+  });
+});
+
+// Verify Market Research: a bounded comparable sample from the existing
+// MyHome.ge and SS.ge acquisition adapters (no user-scoped tables, no AI).
+// VERIFY_MARKET_ENABLED=false switches the route off without a deploy of
+// research-agent; research-agent's own admin setting gates the caller side.
+const verifyMarket = new VerifyMarketRuntime({
+  acquireMyHome: (request, options) => acquireMyHome(request, options as any),
+  acquireSsge: (request, options) => acquireSsge(request, options as any),
+  maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 80,
+  sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 150000,
+});
+app.post('/verify/market', auth, (req: any, res: any) => {
+  if (process.env.VERIFY_MARKET_ENABLED === 'false') return res.status(503).json({ error: 'verify market disabled' });
+  const profile = parseVerifyMarketProfile(req.body?.profile);
+  if (!profile) return res.status(400).json({ error: 'profile.city required' });
+  const requested: SourceKey[] = Array.isArray(req.body?.sources) ? req.body.sources.filter((s: any) => s === 'MYHOME' || s === 'SSGE') : ['MYHOME', 'SSGE'];
+  const job = verifyMarket.start(profile, requested);
   res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
+});
+app.get('/verify/market/:id', auth, (req: any, res: any) => {
+  const j = verifyMarket.get(String(req.params.id));
+  return j ? res.json(j) : res.status(404).json({ error: 'not found' });
+});
+
+// Official TAS visuals chosen during a job, held in a bounded in-process
+// cache until research-agent copies them into private storage. By content
+// hash only; nothing else is addressable here.
+app.get('/research/visual/:sha', auth, (req: any, res: any) => {
+  const sha = String(req.params.sha || '');
+  if (!/^[a-f0-9]{64}$/.test(sha)) return res.status(400).json({ error: 'bad id' });
+  const v = getCachedVisual(sha);
+  if (!v) return res.status(404).json({ error: 'not cached' });
+  res.setHeader('Content-Type', v.mime);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(200).send(Buffer.from(v.bytes as any));
 });
 
 app.get('/research/:id', auth, (req: any, res: any) => {
@@ -207,7 +290,7 @@ app.post('/research/rstax-entity', auth, (req: any, res: any) => {
   const name = String(req.body?.name || '').trim();
   const idCode = req.body?.idCode ? String(req.body.idCode).trim() : null;
   if (!idCode) return res.status(400).json({ error: 'idCode required — RS Taxpayers Registry has no name-search field' });
-  const job = orchestrator.startEntity(name || idCode, idCode, 'rstax');
+  const job = orchestrator.startEntity(name || idCode, idCode, 'rstax', parseCaptchaPolicy(req.body?.captchaPolicy));
   res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
 });
 

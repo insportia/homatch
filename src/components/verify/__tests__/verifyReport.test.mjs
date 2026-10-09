@@ -52,6 +52,21 @@ test('no card invents a conclusion of its own', () => {
     // pledge — a model that writes no citations must not be able to erase
     // the customer's view of evidence Homatch demonstrably holds.
     'evidenceGroups', 'checklist',
+    // 2026-10 Verify upgrade. `officialVisuals` are official TAS attachments
+    // delivered as signed URLs and `research` is a block of review COUNTS;
+    // both are produced deterministically by verify-synthesis and reach no
+    // conclusion of their own. The story and current status the report
+    // renders live inside `report`, under the same grounding gate as before.
+    'officialVisuals', 'research',
+    // Same standing: the deterministic official history (decided status,
+    // milestones, value changes) computed in tasIntelligence.ts.
+    'officialHistory',
+    // Developer Advertising Intelligence (owner, 2026-10-09): the summarized
+    // Ad Library view built deterministically in src/verify/developerAds.ts.
+    // It is rendered as counts and examples, labelled a marketing claim, and
+    // reaches no conclusion; the only prose about it is report.advertisingAssessment,
+    // under guardAdvertising.
+    'developerAds',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);

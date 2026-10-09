@@ -53,7 +53,9 @@ const touchScreen = () => {
 interface Ui { score: number; alive: boolean; paused: boolean; started: boolean; won: boolean }
 const uiOf = (g: SnakeState): Ui => ({ score: g.score, alive: g.alive, paused: g.paused, started: g.started, won: g.won });
 
-export default function SnakeGame({ status, stageLabel, onView, onClose }: {
+export default function SnakeGame({ status, stageLabel, onView, onClose, statusLines }: {
+  /** Optional host wording for the status bar; Design Studio passes none. */
+  statusLines?: { working?: string; ready?: string; failed?: string };
   status: WatchedStatus;
   /** The work's real stage, in the customer's words. */
   stageLabel: string;
@@ -264,13 +266,20 @@ export default function SnakeGame({ status, stageLabel, onView, onClose }: {
     </button>
   );
 
-  const statusLine = status === 'READY' ? t('dsx_sn_ready') : status === 'FAILED' ? t('dsx_rec_title') : t('dsx_sn_job', { stage: stageLabel });
+  // A host other than Design Studio (e.g. Verify) supplies its own wording;
+  // without it the Design Studio lines are unchanged.
+  const statusLine = status === 'READY'
+    ? (statusLines?.ready ?? t('dsx_sn_ready'))
+    : status === 'FAILED'
+      ? (statusLines?.failed ?? t('dsx_rec_title'))
+      : (statusLines?.working ?? t('dsx_sn_job', { stage: stageLabel }));
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overscroll-none bg-[#0C1119] text-white" role="dialog" aria-modal="true" aria-label={t('dsx_sn_play')} data-testid="snake-game" data-status={status}>
       <div className="mx-auto flex w-full max-w-[560px] flex-1 flex-col px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className={cn('flex min-h-11 items-center gap-2 rounded-full transition-colors', status === 'READY' && 'bg-[hsl(38_92%_56%)]/10 ps-3 ring-1 ring-[hsl(38_92%_56%)]/45')} data-testid="snake-bar">
-          <p className={cn('min-w-0 flex-1 truncate text-[13px] font-medium', status === 'FAILED' ? 'text-[hsl(0_80%_80%)]' : status === 'READY' ? 'font-semibold text-white' : 'text-white/70')} role="status" aria-live="polite" data-testid="snake-job">
+        <div className={cn('flex min-h-11 items-center gap-2 rounded-2xl transition-colors', status === 'READY' && 'bg-[hsl(38_92%_56%)]/10 ps-3 ring-1 ring-[hsl(38_92%_56%)]/45')} data-testid="snake-bar">
+          {/* Wraps instead of truncating: a long translated status must stay readable on a phone. */}
+          <p className={cn('min-w-0 flex-1 break-words py-1 text-[13px] font-medium leading-snug', status === 'FAILED' ? 'text-[hsl(0_80%_80%)]' : status === 'READY' ? 'font-semibold text-white' : 'text-white/70')} role="status" aria-live="polite" data-testid="snake-job">
             {status === 'PROCESSING' ? <span className="me-2 inline-block h-2 w-2 rounded-full bg-[hsl(38_92%_56%)] align-middle motion-safe:animate-pulse" aria-hidden="true" /> : null}
             {statusLine}
           </p>

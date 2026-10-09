@@ -1,9 +1,62 @@
 # PROJECT STATE
 
-last_updated: 2026-10-04
+last_updated: 2026-10-08
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Verify upgrade (branch `claude/dazzling-cray-34t9ur`, 2026-10-08) — IN PROGRESS, NOT DEPLOYED
+
+- Release model: ONE coordinated release of TAS API-first + NAPR/MyGov Service176 + RS.ge,
+  only after explicit owner approval. Nothing here is deployed, applied or activated.
+- TAS API_FIRST (`official-worker/src/workflows/tas/api/`): DWR serializer + full object-graph
+  parser, client, workflow, attachments/visuals, LEGACY fallback, `/health/tas`, `/tas/test`.
+  Search/detail bodies aligned byte-for-byte to the owner's live-verified tas-worker notes;
+  `DownloadServlet` and motion-id exposure are NOT verified. No live run from this repo
+  (sandbox egress blocks tas.ge). See `CONTRACT.md` there. Default stays LEGACY.
+- Owner's tas-worker archive: README/TASK/package.json/pdf-reader only — NO implementation,
+  tests, captured replies or diagnostics.
+- NAPR/MyGov (Codex) and RS.ge native (Codex): DEFERRED / BLOCKED — code not on GitHub and
+  no archive received. Only merged Service176 (PR #119) exists. Do not rebuild.
+- Developer Advertising Intelligence (2026-10-09): last research stage in research-agent at
+  SYNTHESIS_READY (`advanceDeveloperAds`). It uses the shared memo23 client (unchanged;
+  the APIFY switch via `_shared/providerSwitch.ts`). Setting `verify_developer_ads`, seeded ON.
+  Cost rows: `APIFY_MEMO23`/`DEVELOPER_ADS_VERIFY`. Report section: `DeveloperAdvertising.tsx`.
+  Admin card: free Actor-input check. Actor schema NOT verified (sandbox blocks apify.com);
+  a live free definition read gates every paid run. No paid run made.
+- Market: MyHome.ge + SS.ge via worker `/verify/market` (existing adapters), folded into the
+  market lane (`src/verify/marketplaceComparables.ts`); gated by
+  `admin_settings.verify_marketplace_market_enabled` (seeded false).
+- Intelligence: `src/verify/intelligence/tasIntelligence.ts` (facts/supersession/conflicts/
+  timeline/participants/story/digest), separate TAS evidence budget (45) beside the tier-1 60,
+  report blocks currentStatus/propertyStory/visualCaptions, URL-in-prose rejection,
+  repeated-sentence removal. verify-synthesis now keeps its token usage (`_usage`).
+- Decision layer (worker `tas/api/decisions.ts`): each motion response's operative outcome
+  (CANCELLED > SUSPENDED > REFUSED > DEFICIENCY > INTERMEDIATE > COMMISSIONED > DEADLINE_EXTENDED
+  > AMENDMENT_APPROVED > PERMIT_ISSUED > APPROVED; else INFORMATIONAL/UNDETERMINED), number,
+  issue date, valid-until. Phrasings are Georgian form wording, NOT live-verified on real PDFs.
+- Processing ledger (`ProcessingLedger`): discovered/processed/deferred/skipped/failed + incomplete
+  reasons (SEARCH_TOTAL_MISMATCH, DETAIL_FAILURES, ATTACHMENTS_DEFERRED_BY_BUDGET, RUN_DEADLINE…).
+- Official status by AUTHORITY, not recency (`deriveOfficialStatus`): a refusal never revokes a
+  permit; cancellation/suspension outrank; `conclusive=false` with caveats when processing was
+  incomplete or a later decision is undetermined. Story = 5–10 milestones, negatives always kept.
+  Visuals carry versionStatus CURRENT_APPROVED / HISTORICAL_APPROVED / UNDETERMINED.
+- Prompt: TAS raw text is replaced by a deterministic digest (`officialPromptContext.ts`, 9k
+  budget) appended after the Service176 evidence; customer view `officialHistoryView` carries no
+  internal ids or private names.
+- Adversarial review (2026-10-08) fixed: decision negation/conditionals/conflicts, DWR
+  prototype keys, search-deadline → FAILED (LEGACY fallback), streaming byte limit, EMPTY
+  responses not cached, unmapped values not persisted, fail-closed caveats (unreadable later
+  response, missing ledger, blocks on opposite footing), status prose withheld when not
+  conclusive, in-progress jobs no longer expose tasApi / visual paths / internal ledgers.
+- Release plan, acceptance, rollback: `docs/verify/RELEASE-PLAN.md`. Codex seams (no rebuild):
+  `docs/verify/CODEX-INTEGRATION.md` — note RS.ge (`rstax`) does not run automatically today.
+- Migration renamed to `20261022090000_…` (main's #126 took 20261021090000).
+- Security: the owner's recovered PowerShell history (line 8) contains an apparent 32-hex API
+  credential — recommend rotation via the provider + secret store; value never copied anywhere.
+- Migration `20261023090000_verify_official_visuals_and_switches.sql` NOT applied: private
+  bucket `verify-official-visuals`, settings `verify_tas_implementation` (LEGACY),
+  `verify_marketplace_market_enabled` (false).
 
 ## Production pointers
 

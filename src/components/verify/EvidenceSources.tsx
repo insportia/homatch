@@ -25,7 +25,7 @@
  * our notes about our own pipeline; a customer reading them learns nothing
  * except that we shipped them. See evidenceGroups.ts.
  */
-import { ChevronRight, ExternalLink, ShieldCheck, ClipboardList } from 'lucide-react';
+import { ChevronRight, ShieldCheck, ClipboardList } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection } from './ui';
 import {
@@ -92,17 +92,8 @@ export function EvidenceSources({ groups }: { groups: EvidenceGroup[] }) {
                     ) : null}
                     {row.source ? <span className="min-w-0 break-words">{row.source}</span> : null}
                     {row.date ? <span className="shrink-0 tabular-nums">{row.date}</span> : null}
-                    {row.url ? (
-                      <a
-                        href={row.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex min-w-0 items-center gap-1 text-[hsl(var(--gold-ink))] underline underline-offset-2"
-                      >
-                        <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        <span className="min-w-0 break-words">{t('verify_ir_selfcheck_open')}</span>
-                      </a>
-                    ) : null}
+                    {/* No source links: the report explains what was found;
+                        provenance stays in the internal evidence. */}
                   </div>
                   {/* A disagreement between sources is never merged away. */}
                   {row.conflict ? (
@@ -152,23 +143,12 @@ export function BuyerChecklist({ items }: { items: ChecklistItem[] }) {
                 {t(item.detailKey)}
               </p>
               {/* The value they need in hand, and the place to use it. */}
-              {item.value || item.url ? (
+              {item.value ? (
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   {item.value ? (
                     <code className="min-w-0 break-all rounded bg-muted px-2 py-1 text-2xs tabular-nums">
                       {item.value}
                     </code>
-                  ) : null}
-                  {item.url ? (
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex min-h-11 min-w-0 items-center gap-1.5 text-sm text-[hsl(var(--gold-ink))] underline underline-offset-2"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      <span className="min-w-0 break-words">{t('verify_ir_selfcheck_open')}</span>
-                    </a>
                   ) : null}
                 </div>
               ) : null}

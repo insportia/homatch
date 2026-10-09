@@ -76,7 +76,7 @@ import { UnconfirmedCard } from './UnconfirmedCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
-import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav } from './BuyerIntelligenceCards';
+import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav, ExecutiveGlance } from './BuyerIntelligenceCards';
 import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
 import type { CompanyFinanceView, MarketContextView } from '@/verify/intelligence/reportGaps';
 import { splitCitations, hasDistance } from '@/verify/citations';
@@ -437,6 +437,9 @@ export function VerifyReport({
         <SummaryHero summary={r.summary} weighed={weighed} />
       </div>
 
+      {/* The decision in four facts, each linked to the section behind it. */}
+      <ExecutiveGlance register={synthesis.propertyRegister} finance={synthesis.companyFinance} market={synthesis.market ? null : synthesis.marketContext} />
+
       {/* A. WHAT THE PROPERTY'S OWN REGISTER SAYS — owner, mortgages, liens,
           as of the extract HOMATCH read. The most authoritative block in the
           report, so it comes straight after the verdict. */}
@@ -796,7 +799,7 @@ const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ me
         <span className="block text-2xs uppercase tracking-wide text-muted-foreground break-words">
           {clean(m.label)}
         </span>
-        <span className="block text-sm font-semibold tabular-nums break-words">{clean(m.value)}</span>
+        <span className="block text-sm font-semibold tabular-nums break-words" dir="auto">{clean(m.value)}</span>
       </div>
     ))}
   </div>
@@ -898,7 +901,8 @@ const Snapshot: React.FC<{ s: PropertySnapshot }> = ({ s }) => {
         {rows.map(([k, v]) => (
           <div key={k} className="min-w-0">
             <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{t(k)}</dt>
-            <dd className="text-sm break-words">{readable(v as string)}</dd>
+            {/* dir="auto": a Georgian value ("83.20 კვ.მ.") keeps its own order inside an RTL page. */}
+            <dd className="text-sm break-words" dir="auto">{readable(v as string)}</dd>
           </div>
         ))}
       </dl>

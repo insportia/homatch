@@ -16012,6 +16012,14 @@ const en = {
   bc_commissioning_label: 'Ask for the commissioning decision',
   bc_commissioning_detail: 'On {{date}} the register still listed the buildings as under construction. The commissioning decision confirms the building is complete in law, not only on site.',
   bc_payment_owner_detail: 'Pay only to an account in the registered owner’s name, ideally through the bank that releases the mortgage.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_glance_title: 'At a glance',
+  vbi_glance_owner: 'Owner',
+  vbi_glance_restrictions: 'Seizure, tax lien, debtor registry',
+  vbi_glance_restrictions_none: 'None registered',
+  vbi_glance_developer: 'Developer',
+  vbi_glance_as_of: 'per the extract of {{date}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31938,6 +31946,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
   bc_commissioning_label: 'მოითხოვეთ ექსპლუატაციაში მიღების გადაწყვეტილება',
   bc_commissioning_detail: '{{date}}-ს რეესტრში შენობები ჯერ კიდევ მშენებარედ ფიქსირდებოდა. ექსპლუატაციაში მიღების გადაწყვეტილება ადასტურებს, რომ შენობა დასრულებულია სამართლებრივადაც და არა მხოლოდ ფიზიკურად.',
   bc_payment_owner_detail: 'თანხა გადარიცხეთ მხოლოდ რეგისტრირებული მესაკუთრის სახელზე გახსნილ ანგარიშზე — სასურველია, იმ ბანკის მეშვეობით, რომელიც იპოთეკას ხსნის.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_glance_title: 'მოკლედ',
+  vbi_glance_owner: 'მესაკუთრე',
+  vbi_glance_restrictions: 'ყადაღა, საგადასახადო გირავნობა, მოვალეთა რეესტრი',
+  vbi_glance_restrictions_none: 'არცერთი არ არის რეგისტრირებული',
+  vbi_glance_developer: 'დეველოპერი',
+  vbi_glance_as_of: '{{date}}-ის ამონაწერის მიხედვით',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -47855,6 +47871,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
   bc_commissioning_label: 'Запросите решение о вводе в эксплуатацию',
   bc_commissioning_detail: 'На {{date}} здания в реестре всё ещё значились строящимися. Решение о вводе подтверждает завершение юридически, а не только на площадке.',
   bc_payment_owner_detail: 'Переводите деньги только на счёт на имя зарегистрированного собственника — лучше через банк, который снимает ипотеку.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_glance_title: 'Коротко',
+  vbi_glance_owner: 'Собственник',
+  vbi_glance_restrictions: 'Арест, налоговый залог, реестр должников',
+  vbi_glance_restrictions_none: 'Ничего не зарегистрировано',
+  vbi_glance_developer: 'Застройщик',
+  vbi_glance_as_of: 'по выписке от {{date}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -63770,6 +63794,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
   bc_commissioning_label: 'İskân kararını isteyin',
   bc_commissioning_detail: '{{date}} tarihinde sicil binaları hâlâ inşaat hâlinde gösteriyordu. İskân kararı binanın yalnızca sahada değil, hukuken de tamamlandığını doğrular.',
   bc_payment_owner_detail: 'Ödemeyi yalnızca kayıtlı malik adına açılmış hesaba yapın — tercihen ipoteği kaldıran banka aracılığıyla.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_glance_title: 'Bir bakışta',
+  vbi_glance_owner: 'Malik',
+  vbi_glance_restrictions: 'Haciz, vergi rehni, borçlular sicili',
+  vbi_glance_restrictions_none: 'Hiçbiri kayıtlı değil',
+  vbi_glance_developer: 'Müteahhit',
+  vbi_glance_as_of: '{{date}} tarihli kayda göre',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -79685,6 +79717,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
   bc_commissioning_label: 'اطلب قرار الإشغال',
   bc_commissioning_detail: 'في {{date}} كان السجل لا يزال يدرج المباني قيد الإنشاء. قرار الإشغال يؤكد اكتمال المبنى قانونيًا لا ميدانيًا فقط.',
   bc_payment_owner_detail: 'ادفع فقط إلى حساب باسم المالك المسجّل — ويُفضَّل عبر البنك الذي يفكّ الرهن.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_glance_title: 'نظرة سريعة',
+  vbi_glance_owner: 'المالك',
+  vbi_glance_restrictions: 'الحجز والرهن الضريبي وسجل المدينين',
+  vbi_glance_restrictions_none: 'لا شيء مسجّل',
+  vbi_glance_developer: 'المطوّر',
+  vbi_glance_as_of: 'وفق مستخرج {{date}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -95600,6 +95640,14 @@ const he: Partial<Record<TranslationKey, string>> = {
   bc_commissioning_label: 'בקשו את החלטת האכלוס',
   bc_commissioning_detail: 'ב־{{date}} המרשם עדיין רשם את המבנים כבבנייה. החלטת האכלוס מאשרת שהבניין הושלם מבחינה משפטית ולא רק בשטח.',
   bc_payment_owner_detail: 'שלמו רק לחשבון על שם הבעלים הרשום — רצוי דרך הבנק שמסיר את המשכנתה.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_glance_title: 'במבט מהיר',
+  vbi_glance_owner: 'בעלים',
+  vbi_glance_restrictions: 'עיקול, שעבוד מס, מרשם החייבים',
+  vbi_glance_restrictions_none: 'לא רשום דבר',
+  vbi_glance_developer: 'היזם',
+  vbi_glance_as_of: 'לפי הנסח מ־{{date}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

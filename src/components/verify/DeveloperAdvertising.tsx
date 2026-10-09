@@ -31,7 +31,11 @@ export interface AdvertisingAssessmentView {
 
 /** First-strong isolates keep a date or name in reading order inside RTL text. */
 const isolate = (s: string): string => `⁦${s}⁩`;
-const day = (s: string | null | undefined): string | null => (s && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null);
+/** dd.mm.yyyy — the date style the rest of the report uses, in every locale. */
+const day = (s: string | null | undefined): string | null => {
+  const m = s ? /^(\d{4})-(\d{2})-(\d{2})/.exec(s) : null;
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : null;
+};
 
 const PLATFORM_NAME: Record<string, string> = {
   FACEBOOK: 'Facebook',
@@ -49,7 +53,18 @@ const PLATFORM_NAME: Record<string, string> = {
 const platformName = (p: string) => PLATFORM_NAME[p.toUpperCase()] ?? p;
 
 /** The country's name in the reader's language (GE → Georgia / საქართველო); the code if the runtime cannot name it. */
+/*
+ * The countries this stage actually searches, named in every UI language.
+ * Intl.DisplayNames falls back to English on runtimes without Georgian data,
+ * which put "(Georgia)" inside a Georgian sentence.
+ */
+const COUNTRY_NAMES: Record<string, Record<string, string>> = {
+  GE: { ka: 'საქართველო', en: 'Georgia', ru: 'Грузия', tr: 'Gürcistan', ar: 'جورجيا', he: 'גאורגיה' },
+};
+
 function countryName(code: string, lang: string): string {
+  const known = COUNTRY_NAMES[code.toUpperCase()]?.[lang];
+  if (known) return known;
   try {
     return new Intl.DisplayNames([lang], { type: 'region' }).of(code) ?? code;
   } catch {

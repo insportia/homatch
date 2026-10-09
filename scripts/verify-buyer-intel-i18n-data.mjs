@@ -163,6 +163,13 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
     'אלה מחירים מבוקשים ולא מחירי מכירה. מחיר הדירה הזו לא היה בידינו, ולכן היא לא מוצבת בטווח — כשתדעו אותו, השוו כאן.',
   ],
 
+  /* ── executive glance ── */
+  vbi_glance_title: ['At a glance', 'მოკლედ', 'Коротко', 'Bir bakışta', 'نظرة سريعة', 'במבט מהיר'],
+  vbi_glance_owner: ['Owner', 'მესაკუთრე', 'Собственник', 'Malik', 'المالك', 'בעלים'],
+  vbi_glance_restrictions: ['Seizure, tax lien, debtor registry', 'ყადაღა, საგადასახადო გირავნობა, მოვალეთა რეესტრი', 'Арест, налоговый залог, реестр должников', 'Haciz, vergi rehni, borçlular sicili', 'الحجز والرهن الضريبي وسجل المدينين', 'עיקול, שעבוד מס, מרשם החייבים'],
+  vbi_glance_restrictions_none: ['None registered', 'არცერთი არ არის რეგისტრირებული', 'Ничего не зарегистрировано', 'Hiçbiri kayıtlı değil', 'لا شيء مسجّل', 'לא רשום דבר'],
+  vbi_glance_developer: ['Developer', 'დეველოპერი', 'Застройщик', 'Müteahhit', 'المطوّر', 'היזם'],
+  vbi_glance_as_of: ['per the extract of {{date}}', '{{date}}-ის ამონაწერის მიხედვით', 'по выписке от {{date}}', '{{date}} tarihli kayda göre', 'وفق مستخرج {{date}}', 'לפי הנסח מ־{{date}}'],
   /* ── navigation ── */
   vbi_nav_label: ['In this report', 'ამ ანგარიშში', 'В этом отчёте', 'Bu raporda', 'في هذا التقرير', 'בדוח זה'],
   vbi_nav_summary: ['Summary', 'შეჯამება', 'Итог', 'Özet', 'الملخص', 'סיכום'],

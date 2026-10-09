@@ -314,3 +314,107 @@ export function ReportNav({ items }: { items: Array<{ id: string; labelKey: stri
     </nav>
   );
 }
+
+/* ───────────────────────── Executive glance ───────────────────────── */
+
+type Tone = 'confirmed' | 'attention' | 'risk' | 'quiet';
+const TILE_TONE: Record<Tone, string> = {
+  confirmed: 'border-s-emerald-600/70',
+  attention: 'border-s-[hsl(var(--gold-border))]',
+  risk: 'border-s-destructive/70',
+  quiet: 'border-s-border',
+};
+
+/*
+ * THE DECISION IN FOUR FACTS.
+ *
+ * Directly under the verdict: who owns it, what is registered against it,
+ * how the developer stands, and where the market is — each a deterministic
+ * fact with a link to the section that explains it. Strong colour only for
+ * what a document actually states; an unchecked point stays neutral.
+ */
+export function ExecutiveGlance({
+  register,
+  finance,
+  market,
+}: {
+  register?: PropertyRegister | null;
+  finance?: CompanyFinanceView | null;
+  market?: MarketContextView | null;
+}) {
+  const { t, lang } = useLanguage();
+  const tiles: Array<{ key: string; label: string; value: string; note?: string; tone: Tone; href: string }> = [];
+  const latest = register?.latest;
+  if (latest) {
+    const asOf = dmy(latest.issuedAt);
+    const owners = latest.owners ?? [];
+    const privateOwner = owners.length > 0 && owners.every((o) => o.kind === 'PERSON');
+    if (owners.length) {
+      tiles.push({
+        key: 'owner',
+        label: t('vbi_glance_owner'),
+        value: privateOwner ? t('vbi_reg_owner_person') : owners.map((o) => o.name).filter(Boolean).join(', '),
+        note: dmy(latest.ownershipRegisteredOn) ? t('vbi_reg_owner_since', { date: iso(dmy(latest.ownershipRegisteredOn)!) }) : undefined,
+        tone: 'quiet',
+        href: '#vbi-register',
+      });
+    }
+    const m = register!.currentMortgages;
+    tiles.push({
+      key: 'mortgage',
+      label: t('vbi_reg_mortgage'),
+      value: m.length ? t('vbi_reg_mortgage_pill', { count: String(m.length) }) : t('vbi_reg_not_registered'),
+      note: m.length ? creditorName(m[0].creditor) : asOf ? t('vbi_glance_as_of', { date: iso(asOf) }) : undefined,
+      tone: m.length ? 'attention' : 'confirmed',
+      href: '#vbi-register',
+    });
+    const states = [latest.taxLien, latest.seizure, latest.debtorRegistry];
+    if (states.some((s) => s === 'REGISTERED')) {
+      tiles.push({ key: 'restrictions', label: t('vbi_glance_restrictions'), value: t('vbi_reg_registered'), tone: 'risk', href: '#vbi-register' });
+    } else if (states.every((s) => s === 'NONE')) {
+      tiles.push({ key: 'restrictions', label: t('vbi_glance_restrictions'), value: t('vbi_glance_restrictions_none'), tone: 'confirmed', href: '#vbi-register' });
+    }
+  }
+  if (finance?.debtorRegistry) {
+    tiles.push({
+      key: 'developer',
+      label: t('vbi_glance_developer'),
+      value: t(finance.debtorRegistry.state === 'NO_ENTRY' ? 'vbi_fin_debtor_none' : 'vbi_fin_debtor_listed'),
+      note: finance.taxStatus.state === 'NOT_CHECKED' ? `${t('vbi_fin_tax')}: ${t('vbi_followup')}` : undefined,
+      tone: finance.debtorRegistry.state === 'NO_ENTRY' ? 'confirmed' : 'risk',
+      href: '#vbi-finance',
+    });
+  }
+  if (market && market.medianPerSqm > 0) {
+    tiles.push({
+      key: 'market',
+      label: t('vbi_mkt_median'),
+      value: `${money(market.medianPerSqm, lang)} ${market.currency}/m²`,
+      note: t('vbi_mkt_subtitle', { count: String(market.listings) }),
+      tone: 'quiet',
+      href: '#vbi-market',
+    });
+  }
+  if (tiles.length < 2) return null;
+  return (
+    <section aria-labelledby="vbi-glance" className="space-y-3">
+      <h2 id="vbi-glance" className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
+        {t('vbi_glance_title')}
+      </h2>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {tiles.map((tile) => (
+          <li key={tile.key} className="min-w-0">
+            <a
+              href={tile.href}
+              className={`block h-full min-w-0 rounded-xl border border-border border-s-[3px] ${TILE_TONE[tile.tone]} bg-card px-4 py-3 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none`}
+            >
+              <span className="block text-2xs uppercase tracking-wide text-muted-foreground break-words">{tile.label}</span>
+              <span className="mt-1 block text-sm font-semibold text-foreground break-words" dir="auto">{tile.value}</span>
+              {tile.note ? <span className="mt-0.5 block text-xs text-muted-foreground break-words" dir="auto">{tile.note}</span> : null}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

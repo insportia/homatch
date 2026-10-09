@@ -372,7 +372,7 @@ export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset }:
         </div>
       ) : null}
       <UnderstoodPanel t={t} brief={brief} readiness={readiness} editing={editing} onEdit={(k) => { setEditing(k); setReviewing(false); }} />
-      <AdvancedPropertyPreferences brief={brief} onBrief={onBrief} t={t} />
+      <AdvancedPropertyPreferences brief={brief} onAdvanced={(value) => edit({ field: 'advanced', value: { ...value, floorRange: value.floorRange ?? null } })} onOlderBuildings={(acceptable) => edit({ field: 'buildingStatuses', value: acceptable ? ['ANY'] : ['NEW_BUILD', 'UNDER_CONSTRUCTION'] })} t={t} />
       {showConfirm ? (
         <ConfirmCard t={t} brief={brief} onStart={onStart} starting={starting}
           onChange={() => setReviewing(true)} onAddCondition={() => setEditing('renovation')} />

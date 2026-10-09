@@ -26,7 +26,8 @@ export async function verifyActor(db: any, actorKey: string) {
          previous failed verification (DEGRADED/FAILED) is cleared to UNKNOWN. */
       ...(['DEGRADED', 'FAILED'].includes(actor.health) ? { health: 'UNKNOWN' } : {}),
       last_verified_at: verifiedAt,
-      last_error: priced ? null : 'pricing not stated by Apify; set it manually and mark verified',
+      /* A quarantine note (health DISABLED) survives re-verification. */
+      ...(actor.health === 'DISABLED' ? {} : { last_error: priced ? null : 'pricing not stated by Apify; set it manually and mark verified' }),
       updated_at: verifiedAt,
     }).eq('actor_key', actorKey);
     return { success: true, actorKey, pricing: { model: def.pricing.model, pricePer1kMicros: def.pricing.pricePer1kMicros, startFeeMicros: def.pricing.startFeeMicros }, schemaProperties: def.schemaProperties, priced };

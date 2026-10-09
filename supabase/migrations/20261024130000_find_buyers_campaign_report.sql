@@ -33,7 +33,8 @@ declare
 begin
   /* The property owner (campaign or property row) or an admin; anything else —
      including a job that does not exist — is FORBIDDEN (no existence leak). */
-  if not (public.is_admin() or exists (
+  if not (coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', current_setting('request.jwt.claim.role', true), '') = 'service_role'
+          or public.is_admin() or exists (
         select 1 from public.find_buyers_campaigns c
          where c.matching_job_id = p_job_id
            and (c.user_id = public.auth_user_id()

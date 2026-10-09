@@ -249,8 +249,10 @@ create policy property_market_segments_read on public.property_market_segments
     or exists (select 1 from public.properties p
                 where p.id = property_market_segments.property_id and p.user_id = public.auth_user_id()));
 
+/* Read-only to signed-in users (RLS decides which rows); every write goes
+   through the security-definer functions below. */
 revoke all on public.market_place_aliases, public.market_segment_rules,
-              public.market_segment_rule_audit, public.property_market_segments from anon;
+              public.market_segment_rule_audit, public.property_market_segments from anon, authenticated;
 grant select on public.market_place_aliases, public.market_segment_rules,
                 public.market_segment_rule_audit, public.property_market_segments to authenticated;
 
@@ -466,6 +468,13 @@ begin
   end if;
   v_rule := public.market_segment_active_rule();
   if v_rule.id is null then raise exception 'NO_ACTIVE_RULE'; end if;
+  /* An owner's refresh scans every comparable: a fresh row (same rule, under
+     10 minutes old) is returned as is. Admin and the service always recompute. */
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_admin() then
+    select * into v_row from public.property_market_segments
+     where property_id = p_property_id and computed_at > now() - interval '10 minutes';
+    if found then return to_jsonb(v_row); end if;
+  end if;
   perform public.market_segment_store(v_rule, array[p_property_id]);
   select * into v_row from public.property_market_segments where property_id = p_property_id;
   return to_jsonb(v_row);

@@ -315,7 +315,9 @@ test('live search module: server state, real source nodes only, real counts, the
   assert.match(main, /Searching — first results are in/);
   assert.match(main, /sources working/);
   assert.match(main, /signals checked/);
-  assert.match(main, /Saved results/, 'stored results are their own section');
+  /* Stored results are their own sections: HOMATCH members and external leads, never merged. */
+  assert.match(main, /HOMATCH Matches/, 'internal matches are their own section');
+  assert.match(main, /External Leads/, 'external leads are their own section');
   const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
   assert.equal(net, 'Live search network. Sources: FACEBOOK, VK, REDDIT', 'only sources the campaign queued');
   assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);

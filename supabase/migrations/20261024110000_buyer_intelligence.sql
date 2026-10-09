@@ -161,7 +161,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
          case when g.act = 'TRANSACTION_INTENT' then 'EXPLICIT_INTENT'
               when (select count(distinct g2.property_id) from public.intent_signals g2
                      where g2.actor_user_id = g.actor_user_id and g2.side = 'PROPERTY_INTEREST'
-                       and g2.polarity = 'POSITIVE' and g2.superseded_by is null and g2.withdrawn_at is null) >= 2
+                       and g2.polarity = 'POSITIVE' and g2.explicit and g2.superseded_by is null and g2.withdrawn_at is null) >= 2
                 then 'REPEATED_INTEREST'
               else 'EXPLORATORY' end,
          case when public.market_transaction_key(p.transaction_type::text) = 'RENT' then 'TENANT' else 'BUYER' end,
@@ -177,6 +177,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
     left join lateral (select pf.country_code, pf.city, pf.district, pf.neighborhood from public.property_facts pf
                         where pf.property_id = p.id order by pf.updated_at desc nulls last limit 1) fx on true
    where g.side = 'PROPERTY_INTEREST' and g.polarity = 'POSITIVE' and g.attribution = 'SELF'
+     and g.explicit /* what the person did/said, never an inference (telemetry ≠ intent) */
      and g.superseded_by is null and g.withdrawn_at is null and g.actor_user_id is not null
 $$;
 revoke all on function public.buyer_intelligence_sources() from public, anon, authenticated;

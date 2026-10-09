@@ -78,6 +78,7 @@ alter table public.source_registry add column if not exists relevance jsonb;
    someone's personal cookies. Its history stays. */
 update public.find_buyers_actor_registry
    set enabled = false,
+       emergency_disabled = true,
        health = 'DISABLED',
        last_error = 'QUARANTINED: requires an authenticated LinkedIn session (input.cookies); not supported',
        updated_at = now()

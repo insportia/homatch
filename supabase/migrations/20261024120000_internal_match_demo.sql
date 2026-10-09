@@ -52,7 +52,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select coalesce(public.is_admin(), false)
       or exists (
@@ -198,7 +198,7 @@ returns jsonb
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_me    uuid := public.current_homatch_user_id();
@@ -249,7 +249,7 @@ create or replace function public.demo_open_conversation(p_demo_buyer_id uuid, p
 returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_me    uuid := public.current_homatch_user_id();
@@ -282,7 +282,7 @@ returns public.demo_conversations
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_conv public.demo_conversations;
@@ -308,7 +308,7 @@ create or replace function public.demo_reply_template(p_index integer, p_lang te
 returns text
 language sql
 immutable
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select (case coalesce(p_lang, 'en')
     when 'ka' then array[
@@ -356,7 +356,7 @@ create or replace function public.demo_send_message(p_conversation_id uuid, p_bo
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_conv  public.demo_conversations;
@@ -396,7 +396,7 @@ returns jsonb
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_conv public.demo_conversations;
@@ -421,7 +421,7 @@ create or replace function public.demo_unlock_contact(p_conversation_id uuid)
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_conv public.demo_conversations;
@@ -451,20 +451,22 @@ grant execute on function public.demo_unlock_contact(uuid) to authenticated;
 create or replace function public.my_native_match_counterparts(p_property_id uuid default null)
 returns table (kind text, id uuid, counterpart_key text)
 language sql
-stable
+volatile
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
-  with me as (select public.current_homatch_user_id() as uid)
+  /* A per-call random salt: the key de-duplicates one person within this
+     result only and can never be matched against a known user id. */
+  with me as materialized (select public.current_homatch_user_id() as uid, gen_random_uuid()::text as salt)
   select 'MATCH'::text, m.id,
-         md5(m.property_id::text || ':' || (case when m.supply_user_id = me.uid then m.demand_user_id else m.supply_user_id end)::text)
+         md5(me.salt || ':' || m.property_id::text || ':' || (case when m.supply_user_id = me.uid then m.demand_user_id else m.supply_user_id end)::text)
     from public.supply_matches m cross join me
    where m.source_kind = 'INTERNAL_HOMATCH'
      and me.uid in (m.supply_user_id, m.demand_user_id)
      and (p_property_id is null or m.property_id = p_property_id)
   union all
   select 'RELATIONSHIP'::text, r.id,
-         md5(r.property_id::text || ':' || (case when r.supply_user_id = me.uid then r.demand_user_id else r.supply_user_id end)::text)
+         md5(me.salt || ':' || r.property_id::text || ':' || (case when r.supply_user_id = me.uid then r.demand_user_id else r.supply_user_id end)::text)
     from public.native_property_relationships r cross join me
    where me.uid in (r.supply_user_id, r.demand_user_id)
      and (p_property_id is null or r.property_id = p_property_id)

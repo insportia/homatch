@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { CITY_NAMES, DISTRICT_NAMES, normKey } from '@/research-core/findBuyers/places';
+import { CITY_NAMES, DISTRICT_NAMES, normKey } from '@/admin/places';
 
 type Names = Partial<Record<string, string[]>>;
 

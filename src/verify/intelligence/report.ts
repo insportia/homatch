@@ -161,8 +161,32 @@ export interface VisualCaption {
   cites: string[];
 }
 
+/** Developer Advertising Intelligence — the model's assessment of the ad evidence. */
+export interface AdvertisingAssessment {
+  statement: string;
+  points: string[];
+  cites: string[];
+}
+
+/*
+ * Advertising is a marketing signal. A sentence that turns it into proof of
+ * financial strength, sales, construction progress, legality or trust — or
+ * that reads "no ads found" as "inactive" — is removed, whatever the model wrote.
+ */
+const AD_OVERREACH = /(ფინანსურ\S*\s+(?:სიძლიერ|სტაბილურ|მდგრად)|სანდო|გაყიდვებ\S*\s+(?:წარმატ|კარგ)|financial(?:ly)?\s+(?:strong|stable|healthy|strength)|trustworth|reliable\s+developer|sales\s+are\s+(?:strong|good)|финансово\s+(?:устойчив|стабил)|надёжн|надежн|არააქტიურ|inactive|неактивн)/iu;
+
+export function guardAdvertising(a: AdvertisingAssessment | undefined): AdvertisingAssessment | undefined {
+  if (!a) return undefined;
+  const sentences = a.statement.split(/(?<=[.!?։])\s+/).filter((x) => x.trim() && !AD_OVERREACH.test(x));
+  const points = a.points.filter((x) => !AD_OVERREACH.test(x));
+  const statement = sentences.join(' ').trim();
+  return statement || points.length ? { statement, points, cites: a.cites } : undefined;
+}
+
 export interface BuyerIntelligenceReport {
   summary: BuyerSummary;
+  /** Developer Advertising Intelligence assessment (only when the stage produced evidence). */
+  advertisingAssessment?: AdvertisingAssessment;
   /** The latest confirmed official position (present tense). */
   currentStatus?: CurrentStatus;
   /** The documented history, oldest first (past tense). */
@@ -348,10 +372,16 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     .map((v) => ({ visualId: asString(v.visualId), caption: asString(v.caption), explanation: asString(v.explanation), cites: asCites(v.cites) }))
     .slice(0, 6);
 
+  const ad = (p.advertisingAssessment ?? null) as Record<string, unknown> | null;
+  const advertisingAssessment: AdvertisingAssessment | undefined = ad && (asString(ad.statement) || asArray(ad.points).length)
+    ? { statement: asString(ad.statement), points: asArray(ad.points).map(asString).filter(Boolean).slice(0, 4), cites: asCites(ad.cites) }
+    : undefined;
+
   return {
     ...(currentStatus ? { currentStatus } : {}),
     ...(chapters.length ? { propertyStory: { chapters } } : {}),
     ...(visualCaptions.length ? { visualCaptions } : {}),
+    ...(advertisingAssessment ? { advertisingAssessment } : {}),
     summary: { label, statement: asString(sm.statement), highlights },
     keyFindings,
     sections: orderSections(sections),
@@ -402,6 +432,8 @@ function customerProse(c: Partial<BuyerIntelligenceReport>): string {
     ...(c.currentStatus?.items ?? []).flatMap((i) => [i.label, i.value]),
     ...(c.propertyStory?.chapters ?? []).flatMap((ch) => [ch.title, ch.body]),
     ...(c.visualCaptions ?? []).flatMap((v) => [v.caption, v.explanation]),
+    c.advertisingAssessment?.statement ?? '',
+    ...(c.advertisingAssessment?.points ?? []),
     c.finalView ?? '',
     c.contractUpload?.text ?? '',
   ].join('\n');
@@ -460,6 +492,7 @@ export function validateReport(
     if (!ch.cites.length && ch.body.length > 240) problems.push(`story chapter ${ch.key} makes substantial claims with no citation`);
   }
   for (const v of candidate.visualCaptions ?? []) checkCites(v.cites, 'visualCaptions');
+  if (candidate.advertisingAssessment) checkCites(candidate.advertisingAssessment.cites, 'advertisingAssessment');
 
   const prose = customerProse(candidate);
 
@@ -741,6 +774,7 @@ export function finalizeReport(
     ...(parsed.currentStatus?.items ?? []).flatMap((i) => i.cites),
     ...(parsed.propertyStory?.chapters ?? []).flatMap((c) => c.cites),
     ...(parsed.visualCaptions ?? []).flatMap((v) => v.cites),
+    ...(parsed.advertisingAssessment?.cites ?? []),
     ...(parsed.summary?.highlights ?? []).flatMap((h) => h.cites),
     ...(parsed.keyFindings ?? []).flatMap((f) => f.cites),
     ...(parsed.sections ?? []).flatMap((s) => s.cites),
@@ -760,8 +794,11 @@ export function finalizeReport(
   const currentStatus = withholdUnprovenStatement(pkg, parsed.currentStatus ?? fallback.currentStatus);
   const propertyStory = story?.chapters.length ? story : fallback.propertyStory;
   const visualCaptions = captions.length ? captions : fallback.visualCaptions;
+  // Only when the advertising stage actually produced evidence, and never beyond what it can show.
+  const advertisingAssessment = pkg?.developerAds ? guardAdvertising(parsed.advertisingAssessment) : undefined;
 
   return removeRepeatedSentences(stripFalseScarcity(applyFactOwnership({
+    ...(advertisingAssessment ? { advertisingAssessment } : {}),
     ...(currentStatus ? { currentStatus } : {}),
     ...(propertyStory ? { propertyStory } : {}),
     ...(visualCaptions ? { visualCaptions } : {}),

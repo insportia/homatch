@@ -146,6 +146,8 @@ export interface EvidencePackage {
   tas?: import('./tasIntelligence.ts').TasIntelligence;
   /** TAS fact/event id → evidence id, for citations. */
   tasCite?: Record<string, string>;
+  /** Developer Advertising Intelligence (Meta Ad Library), when the stage ran. */
+  developerAds?: import('../developerAds.ts').DeveloperAdsView;
 }
 
 /* ------------------------------------------------------------------ *
@@ -613,6 +615,39 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
         }
       : null;
 
+  /* ---- developer advertising: a marketing signal, never official evidence ---- */
+
+  const ads = obj(r.developerAds);
+  const adsView = Array.isArray(ads.advertisers) && typeof ads.outcome === 'string' ? (ads as unknown as import('../developerAds.ts').DeveloperAdsView) : null;
+  if (adsView && (adsView.outcome === 'COMPLETE' || adsView.outcome === 'CACHED')) {
+    const names = adsView.advertisers.map((a) => a.pageName).filter(Boolean).join(', ');
+    add({
+      tier: 4,
+      category: 'DEVELOPER',
+      claim: adsView.activeCount || adsView.historicalCount
+        ? `Meta-ს სარეკლამო ბიბლიოთეკაში (${adsView.verifiedAt?.slice(0, 10) ?? ''}) დეველოპერის/პროექტის გვერდიდან ჩანს ${adsView.activeCount} აქტიური და ${adsView.historicalCount} ადრინდელი რეკლამა${names ? ` (${names})` : ''}.`
+        : `Meta-ს სარეკლამო ბიბლიოთეკაში (${adsView.verifiedAt?.slice(0, 10) ?? ''}) დეველოპერის/პროექტის სახელით რეკლამა ვერ მოიძებნა — ეს არ ნიშნავს, რომ დეველოპერი არ არის აქტიური.`,
+      provenance: 'SOCIAL_SIGNAL',
+      certainty: 'OBSERVED',
+      source: 'Meta Ad Library',
+      ...(adsView.verifiedAt ? { date: adsView.verifiedAt.slice(0, 10) } : {}),
+    });
+    for (const e of adsView.examples) {
+      const text = [e.title, e.text].filter(Boolean).join(' — ').slice(0, 220);
+      if (!text) continue;
+      add({
+        tier: 4,
+        category: 'DEVELOPER',
+        claim: `${e.active ? 'აქტიური' : e.active === false ? 'ადრინდელი' : ''} რეკლამა${e.pageName ? ` (${e.pageName})` : ''}${e.startDate ? `, ${e.startDate}-დან` : ''}: «${text}»`.trim(),
+        provenance: 'DEVELOPER_STATEMENT',
+        certainty: 'CLAIMED',
+        source: 'Meta Ad Library',
+        ...(e.startDate ? { date: e.startDate } : {}),
+        ...(e.active === false ? { historical: true } : {}),
+      });
+    }
+  }
+
   /* ---- budget ---- */
 
   const kept: EvidenceItem[] = [];
@@ -648,6 +683,7 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
     tierCounts: { 1: used[1] + tasUsed, 2: used[2], 3: used[3], 4: used[4], 5: used[5] } as Record<Tier, number>,
     truncated,
     ...(tas.available ? { tas, tasCite } : {}),
+    ...(adsView ? { developerAds: adsView } : {}),
   };
 }
 

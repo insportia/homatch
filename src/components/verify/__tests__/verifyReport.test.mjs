@@ -61,6 +61,12 @@ test('no card invents a conclusion of its own', () => {
     // Same standing: the deterministic official history (decided status,
     // milestones, value changes) computed in tasIntelligence.ts.
     'officialHistory',
+    // Developer Advertising Intelligence (owner, 2026-10-09): the summarized
+    // Ad Library view built deterministically in src/verify/developerAds.ts.
+    // It is rendered as counts and examples, labelled a marketing claim, and
+    // reaches no conclusion; the only prose about it is report.advertisingAssessment,
+    // under guardAdvertising.
+    'developerAds',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);

@@ -12,7 +12,7 @@ import { buildPropertyDna, type PropertyDna } from '../../../../src/research-cor
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
-import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
+import { abortRun, apifyDisabledByAdmin, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 import { parseTelegramPreference, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
 
@@ -37,11 +37,8 @@ const SETTING_KEYS = [
 ];
 
 /** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
-export function apifyDisabledByAdmin(list: unknown): boolean {
-  let v = list;
-  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return false; } }
-  return Array.isArray(v) && v.some((p) => String(p).toUpperCase() === 'APIFY');
-}
+// Lives in the shared client (one switch for every memo23 caller); re-exported for existing callers.
+export { apifyDisabledByAdmin };
 
 const val = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
 

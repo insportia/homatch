@@ -18,6 +18,12 @@ MATTERS right now, verify against the live systems, not this file)
   tests, captured replies or diagnostics.
 - NAPR/MyGov (Codex) and RS.ge native (Codex): DEFERRED / BLOCKED — code not on GitHub and
   no archive received. Only merged Service176 (PR #119) exists. Do not rebuild.
+- Developer Advertising Intelligence (2026-10-09): last research stage in research-agent at
+  SYNTHESIS_READY (`advanceDeveloperAds`). It uses the shared memo23 client (one seam;
+  APIFY switch moved into it). Its own setting is `verify_developer_ads`, seeded OFF.
+  Cost rows: `APIFY_MEMO23`/`DEVELOPER_ADS_VERIFY`. Report section: `DeveloperAdvertising.tsx`.
+  Admin card: free Actor-input check. Actor schema NOT verified (sandbox blocks apify.com);
+  a live free definition read gates every paid run. No paid run made.
 - Market: MyHome.ge + SS.ge via worker `/verify/market` (existing adapters), folded into the
   market lane (`src/verify/marketplaceComparables.ts`); gated by
   `admin_settings.verify_marketplace_market_enabled` (seeded false).

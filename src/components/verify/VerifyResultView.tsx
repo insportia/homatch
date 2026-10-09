@@ -66,6 +66,7 @@ export function toVerifySynthesis(r: NormalVerifyResult): VerifySynthesis {
     officialVisuals: (r.officialVisuals ?? []) as unknown as VerifySynthesis['officialVisuals'],
     research: (r.research ?? undefined) as unknown as VerifySynthesis['research'],
     officialHistory: (r.officialHistory ?? null) as unknown as VerifySynthesis['officialHistory'],
+    developerAds: (r.developerAds ?? null) as unknown as VerifySynthesis['developerAds'],
   };
 }
 

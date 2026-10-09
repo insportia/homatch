@@ -29,6 +29,7 @@
 // of evidence may never be written as evidence of absence, and output that
 // fails is discarded for a deterministic report.
 
+import { adsPromptDigest } from '../developerAds.ts';
 import { assetClassSectionNote, sectionsForAssetClass } from './sectionRelevance.ts';
 import type { EvidencePackage } from './evidencePackage.ts';
 import { evidenceRichness } from './evidencePackage.ts';
@@ -336,6 +337,7 @@ export function buildIntelligencePrompt(
     '                                     "title": "<Georgian heading>", "period": "<e.g. 2016–2018 or empty>",',
     '                                     "body": "<Georgian narrative>", "visualIds": ["<officialVisuals id>"], "cites": ["e.."] } ] },',
     '  "visualCaptions": [ { "visualId": "<officialVisuals id>", "caption": "<few words>", "explanation": "<one sentence>", "cites": ["e.."] } ],',
+    '  "advertisingAssessment": { "statement": "<2-4 Georgian sentences>", "points": ["<one short observation>"], "cites": ["e.."] },',
     '  "attentionPoints": [ { "point": "<what>", "why": "<why it matters to this buyer>", "cites": ["e.."] } ],',
   '  "nextSteps": [ { "step": "<the ACTION, phrased as something to do>",',
   '                   "why": "<what it settles, in one clause>", "cites": ["e.."] } ],',
@@ -355,6 +357,13 @@ export function buildIntelligencePrompt(
     'currentStatus, propertyStory and visualCaptions: omit entirely when officialHistory is absent.',
     'currentStatus.items: 3-6 of the most decision-relevant current official facts, each with its date.',
     'propertyStory: 3-7 chapters, oldest first, 60-160 Georgian words each. visualIds only from officialVisuals.',
+    'advertisingAssessment: ONLY when developerAdvertising is present; omit it otherwise. Say whether the',
+    'developer shows observable advertising now, whether THIS project is promoted, on which platforms, what',
+    'the messaging emphasises (price, payment terms, location, amenities, investment, completion), whether it is',
+    'concentrated or diversified, and whether any advertised claim differs from the verified project facts.',
+    'Advertising is a MARKETING SIGNAL ONLY: never evidence of financial strength, construction progress, legal',
+    'compliance, sales or trustworthiness. No ads found NEVER means the developer is inactive. Never state spend,',
+    'impressions, reach or sales unless developerAdvertising lists them. points: 0-4 items. Cite the ad evidence.',
     ...(classNote ? ['', classNote] : []),
     '',
     'There is NO "buyerActions" field and there is no pre-purchase checklist. nextSteps is NOT it:',
@@ -414,6 +423,8 @@ export function buildIntelligencePrompt(
        * count of what was archived — a cut is never presented as an absence.
        * Ids in [brackets] are the evidence ids to cite.
        */
+      // Developer Advertising Intelligence: a compact deterministic digest, never raw ad dumps.
+      developerAdvertising: pkg.developerAds ? adsPromptDigest(pkg.developerAds) : undefined,
       officialHistory: pkg.tas?.available
         ? tasDigest(pkg.tas, (id) => pkg.tasCite?.[id] ?? null).text
         : undefined,

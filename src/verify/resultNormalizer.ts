@@ -155,6 +155,8 @@ export interface NormalVerifyResult {
   research?: Record<string, unknown> | null;
   /** Deterministic official history (status, milestones, value changes). */
   officialHistory?: Record<string, unknown> | null;
+  /** Developer advertising view (marketing signal), completed stage only. */
+  developerAds?: Record<string, unknown> | null;
 }
 
 export type PayloadVersion = 'V1' | 'V2' | 'V3' | 'NONE' | 'ERROR';
@@ -450,6 +452,7 @@ function siblingsOf(o: Record<string, unknown>): Omit<NormalVerifyResult, 'repor
     officialVisuals: asArray(o.officialVisuals).map(asObject).filter((v) => asString(v.id) && asString(v.url)),
     research: Object.keys(asObject(o.research)).length ? asObject(o.research) : null,
     officialHistory: Object.keys(asObject(o.officialHistory)).length ? asObject(o.officialHistory) : null,
+    developerAds: Array.isArray(asObject(o.developerAds).advertisers) ? asObject(o.developerAds) : null,
   };
 }
 

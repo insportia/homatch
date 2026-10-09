@@ -18,6 +18,11 @@ import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/in
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
+// Developer Advertising Intelligence: the shared memo23 Apify client (the one
+// seam Verify shares, incl. the APIFY switch) with Verify's OWN orchestration,
+// setting, budget and cost rows — no Find Buyers campaign, reservation or ledger.
+import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, apifyDisabledByAdmin, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
+import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
@@ -1886,6 +1891,169 @@ async function captchaPolicyFor(sb: any): Promise<{ enabled: boolean; providers:
 async function financialQueueFor(sb: any): Promise<string[]> {
   const policy = await captchaPolicyFor(sb);
   return policy.enabled && policy.providers.rstax ? ['enreg', 'rstax', 'debtor'] : ['enreg', 'debtor'];
+}
+
+/*
+ * DEVELOPER ADVERTISING INTELLIGENCE — Verify's LAST research worker.
+ *
+ * Runs once per job at SYNTHESIS_READY: after identity, official, public and
+ * market research (and the reconciliation-driven registry checks) settled, and
+ * before the final synthesis that writes the report. Non-blocking by design:
+ * every exit path — disabled, Apify switched off, no identity, unsupported
+ * Actor schema, run failure, timeout — marks the stage done and the report
+ * proceeds. Returns true only while a started run is still within its window.
+ *
+ * Spend: the paid Actor runs only when admin_settings.verify_developer_ads is
+ * enabled (owner approval), APIFY is not in provider_disabled_list, the Actor's
+ * LIVE input schema (a free definition read) declares searchTerms, and no
+ * cached result for the same search exists inside the freshness window. Every
+ * run is capped by maxItems and maxTotalChargeUsd; its cost is recorded in
+ * cost_events (provider APIFY, DEVELOPER_ADS_VERIFY) with an honest pricing
+ * state — unknown is UNPRICED, never zero-as-real.
+ */
+async function developerAdsPolicyFor(sb: any) {
+  return parseDeveloperAdsPolicy(await adminSettingJson(sb, 'verify_developer_ads'));
+}
+
+async function finishDeveloperAds(p: any, outcome: AdsOutcome, extra: Record<string, unknown> = {}, items: unknown[] = [], identity?: any, policy?: any): Promise<false> {
+  const id = identity ?? resolveDeveloperIdentity(p);
+  const pol = policy ?? parseDeveloperAdsPolicy(null);
+  const normalized = normalizeAds(items);
+  const verifiedAt = outcome === 'COMPLETE' || outcome === 'CACHED' ? String(extra.verifiedAt ?? now()) : null;
+  p.developerAds = summarizeAds({ outcome, verifiedAt, policy: pol, identity: id, normalized, result: p });
+  p._developerAds = {
+    ...(p._developerAds || {}),
+    ...extra,
+    state: outcome,
+    done: true,
+    finishedAt: now(),
+    // Normalized ads kept for the freshness cache; raw dataset items are not stored.
+    ads: normalized.ads.slice(0, 60),
+    unmappedKeys: normalized.unmappedKeys,
+    unparsed: normalized.unparsed,
+  };
+  return false;
+}
+
+async function advanceDeveloperAds(sb: any, j: any): Promise<boolean> {
+  const p = j.result_json || (j.result_json = {});
+  const st = p._developerAds;
+  if (st?.done) return false;
+  try {
+    if (!st) {
+      const policy = await developerAdsPolicyFor(sb);
+      const identity = resolveDeveloperIdentity(p, policy.maxTerms);
+      if (!policy.enabled) return finishDeveloperAds(p, 'DISABLED', {}, [], identity, policy);
+      if (apifyDisabledByAdmin(await adminSettingJson(sb, 'provider_disabled_list'))) return finishDeveloperAds(p, 'PROVIDER_OFF', {}, [], identity, policy);
+      if (!apifyConfigured()) return finishDeveloperAds(p, 'NOT_CONFIGURED', {}, [], identity, policy);
+      if (!identity.searchTerms.length) return finishDeveloperAds(p, 'NO_IDENTITY', {}, [], identity, policy);
+      const cacheKey = adsCacheKey(policy, identity);
+      // The same search inside the freshness window is reused, never paid twice.
+      const { data: cached } = await sb
+        .from('research_jobs')
+        .select('id,result_json->_developerAds')
+        .eq('result_json->_developerAds->>cacheKey', cacheKey)
+        .eq('result_json->_developerAds->>state', 'COMPLETE')
+        .gt('updated_at', new Date(Date.now() - policy.cacheHours * 3_600_000).toISOString())
+        .neq('id', j.id)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      const hit = cached?.[0]?._developerAds;
+      if (hit && Array.isArray(hit.ads)) {
+        // Cached ads are already normalized: re-summarize them for THIS job's identity.
+        const view = summarizeAds({ outcome: 'CACHED', verifiedAt: hit.finishedAt ?? null, policy, identity, normalized: { ads: hit.ads, duplicates: 0 }, result: p });
+        p.developerAds = view;
+        p._developerAds = { state: 'CACHED', done: true, cacheKey, cachedFrom: cached[0].id, finishedAt: now(), ads: hit.ads };
+        return false;
+      }
+      // Exactly one paid run per job: claim the stage atomically before spending.
+      // A concurrent advance (client poll vs background driver) loses the claim and waits.
+      const claim = { state: 'STARTING', done: false, cacheKey, claimedAt: now() };
+      const { data: claimed } = await sb
+        .from('research_jobs')
+        .update({ result_json: { ...p, _developerAds: claim }, updated_at: now() })
+        .eq('id', j.id)
+        .is('result_json->_developerAds', null)
+        .select('id');
+      if (!claimed?.length) return true;
+      p._developerAds = claim;
+      // Free read of the Actor's LIVE definition: only declared input fields are sent.
+      const def = await apifyActorDefinition(policy.actorId);
+      const input = buildActorInput(def.schemaProperties, identity, policy);
+      if (!input) return finishDeveloperAds(p, 'UNSUPPORTED', { cacheKey, schemaProperties: def.schemaProperties.slice(0, 60), pricing: { model: def.pricing.model, pricePer1kMicros: def.pricing.pricePer1kMicros, startFeeMicros: def.pricing.startFeeMicros } }, [], identity, policy);
+      const run = await apifyStartRun(policy.actorId, input, { maxItems: policy.maxItems, maxTotalChargeUsd: policy.maxChargeUsd, timeoutSeconds: policy.timeoutSeconds });
+      p._developerAds = {
+        state: 'RUNNING', done: false, cacheKey, runId: run.runId, datasetId: run.datasetId, startedAt: now(),
+        actorId: policy.actorId, input, schemaProperties: def.schemaProperties.slice(0, 60),
+        pricing: { model: def.pricing.model, pricePer1kMicros: def.pricing.pricePer1kMicros, startFeeMicros: def.pricing.startFeeMicros },
+        policy: { maxItems: policy.maxItems, maxChargeUsd: policy.maxChargeUsd, timeoutSeconds: policy.timeoutSeconds, country: policy.country, maxTerms: policy.maxTerms },
+      };
+      return true;
+    }
+    if (st.state === 'STARTING') {
+      // Another invocation holds the claim. If it died before starting a run, give up after 90 s.
+      if (Date.now() - Date.parse(st.claimedAt ?? 0) > 90_000) return finishDeveloperAds(p, 'FAILED', { error: 'start claim expired' });
+      return true;
+    }
+    // RUNNING: poll once per tick, bounded by the run's own timeout plus a grace window.
+    const policy = { ...parseDeveloperAdsPolicy(null), ...(st.policy || {}), enabled: true };
+    const identity = resolveDeveloperIdentity(p, policy.maxTerms);
+    const run = await apifyGetRun(st.runId);
+    const status = String(run?.status ?? '');
+    if (!APIFY_TERMINAL.has(status)) {
+      if (Date.now() - Date.parse(st.startedAt) > (policy.timeoutSeconds + 60) * 1000) {
+        await apifyAbortRun(st.runId);
+        // Items produced before the abort are billed: count them so the cost is priced, not unknown.
+        const partial = st.datasetId ? await apifyDatasetItems(st.datasetId, policy.maxItems).catch(() => null) : null;
+        await recordDeveloperAdsCost(sb, j, run, partial ? partial.items.length : null);
+        return finishDeveloperAds(p, 'TIMEOUT', {}, [], identity, policy);
+      }
+      return true;
+    }
+    const { items } = st.datasetId ? await apifyDatasetItems(st.datasetId, policy.maxItems) : { items: [] as unknown[] };
+    await recordDeveloperAdsCost(sb, j, run, items.length);
+    return finishDeveloperAds(p, status === 'SUCCEEDED' ? 'COMPLETE' : items.length ? 'COMPLETE' : 'FAILED', { runStatus: status, verifiedAt: now() }, items, identity, policy);
+  } catch (e) {
+    const reason = String((e as any)?.message || e).slice(0, 160);
+    console.error(`research-agent: developer ads stage for ${j.id} failed (non-blocking)`, reason);
+    const cur = p._developerAds;
+    if (cur?.state === 'RUNNING' && cur.runId) {
+      // A transient poll error inside the run's own window is retried next tick.
+      const limit = (Number(cur.policy?.timeoutSeconds) || 120) + 60;
+      if (Date.now() - Date.parse(cur.startedAt) <= limit * 1000) return true;
+      // Past it: stop the paid run and record its cost (UNPRICED when unknown — never silently zero).
+      await apifyAbortRun(cur.runId).catch(() => {});
+      await recordDeveloperAdsCost(sb, j, await apifyGetRun(cur.runId).catch(() => null), null);
+    }
+    return finishDeveloperAds(p, 'FAILED', { error: reason });
+  }
+}
+
+async function recordDeveloperAdsCost(db: any, job: any, run: any, billedItems: number | null): Promise<void> {
+  try {
+    const cost = apifyRunCost(run, billedItems);
+    const usd = cost.micros == null ? 0 : cost.micros / 1_000_000;
+    const pricing_state = cost.basis === 'PROVIDER_REPORTED' ? 'ACTUAL' : cost.basis === 'RUN_PRICE_X_BILLED_UNITS' ? 'ESTIMATED' : 'UNPRICED';
+    const p = job.result_json?._developerAds || {};
+    if (p.costRecorded) return;
+    const { error } = await db.from('cost_events').insert([{
+      // The same provider identity as Find Buyers' memo23 runs; the operation type keeps Verify's spend separate.
+      provider: 'APIFY_MEMO23',
+      // Deliberately NOT VERIFY_*: recordVerificationCost writes the OpenAI rows once per job and skips when a VERIFY_ row exists.
+      operation_type: 'DEVELOPER_ADS_VERIFY',
+      source: `actor=${p.actorId ?? 'memo23~facebook-ads-library-scraper-ppe'};basis=${cost.basis};items=${billedItems ?? 'unknown'}`,
+      units: billedItems ?? 0,
+      cost_usd: usd,
+      pricing_state,
+      success: true,
+      cache_hit: false,
+      job_id: job.id,
+    }]);
+    if (!error) job.result_json._developerAds = { ...p, costRecorded: true, costUsd: usd, costBasis: cost.basis };
+    else console.error(`research-agent: could not record developer ads cost for ${job.id}: ${error.message ?? error}`);
+  } catch (e) {
+    console.error('research-agent: developer ads cost recording failed', String((e as any)?.message || e).slice(0, 160));
+  }
 }
 
 async function startBrowser(sb: any, j: any): Promise<any> {
@@ -3877,7 +4045,17 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       prior._financialReturnStage = 'SYNTHESIS_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
-    if (j.status === 'CREATED' && j.stage === 'SYNTHESIS_READY') return await launch(sb, k, m, j, 'SYNTHESIS', l);
+    if (j.status === 'CREATED' && j.stage === 'SYNTHESIS_READY') {
+      // The LAST research worker: developer advertising, then the report.
+      // Non-blocking — any failure or timeout lets synthesis proceed.
+      const before = JSON.stringify(j.result_json?._developerAds ?? null);
+      const waiting = await advanceDeveloperAds(sb, j);
+      if (JSON.stringify(j.result_json?._developerAds ?? null) !== before) {
+        await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
+      }
+      if (waiting) return;
+      return await launch(sb, k, m, j, 'SYNTHESIS', l);
+    }
     const a = String(j.stage || '').match(/^(IDENTITY|OFFICIAL_COLLECTION|PUBLIC_RESEARCH|MARKET|SYNTHESIS)_WAITING$/);
     if (!a || !j.response_id) return;
     // OpenAI Responses API statuses: queued/in_progress (poll again — falls
@@ -5048,7 +5226,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_developerAds']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -5176,6 +5354,7 @@ function sanitizeForCustomer(job: any): any {
   delete r._verifyMarket;
   delete r._tasExecution;
   delete r._unattendedVerificationSkips;
+  delete r._developerAds;
   delete r._officialVisualsError;
   // Storage paths of official visuals: the customer receives signed URLs
   // from verify-synthesis only, never a path into the bucket.
@@ -5825,7 +6004,7 @@ Deno.serve(async (req) => {
      * admin_settings.verify_tas_implementation through admin_set_setting,
      * selecting between implementations already deployed in the worker.
      */
-    if (b?.action === 'tas-admin-health' || b?.action === 'tas-admin-test' || b?.action === 'verify-admin-diagnostics' || b?.action === 'captcha-admin-health') {
+    if (b?.action === 'tas-admin-health' || b?.action === 'tas-admin-test' || b?.action === 'verify-admin-diagnostics' || b?.action === 'captcha-admin-health' || b?.action === 'developer-ads-admin-health') {
       if (!user) return json({ error: 'forbidden' }, 403);
       const { data: me } = await sb.from('users').select('id,is_admin').eq('auth_id', user.id).maybeSingle();
       if (!me?.is_admin) return json({ error: 'forbidden' }, 403);
@@ -5843,6 +6022,47 @@ Deno.serve(async (req) => {
           worker = { unavailable: true, error: String((e as any)?.message || e).slice(0, 160) };
         }
         return json({ policy, worker });
+      }
+
+      // Developer Advertising Intelligence (Verify's own memo23 stage): policy,
+      // provider switches, recent stage outcomes and — on request — the FREE
+      // Actor definition read (input fields + pricing). Never runs the Actor.
+      if (b.action === 'developer-ads-admin-health') {
+        const policy = await developerAdsPolicyFor(sb);
+        const providerOff = apifyDisabledByAdmin(await adminSettingJson(sb, 'provider_disabled_list'));
+        const configured = apifyConfigured();
+        let schema: any = null;
+        if (b.checkSchema) {
+          if (!configured) schema = { error: 'NOT_CONFIGURED' };
+          else {
+            try {
+              const def = await apifyActorDefinition(policy.actorId);
+              const probe = buildActorInput(def.schemaProperties, { developerNames: ['probe'], legalName: null, projectNames: [], searchTerms: ['probe'], basis: 'NONE' } as any, policy);
+              schema = {
+                title: def.title,
+                fields: def.schemaProperties.slice(0, 60),
+                supported: !!probe,
+                inputFieldsUsed: probe ? Object.keys(probe) : [],
+                pricing: { model: def.pricing.model, pricePer1kUsd: def.pricing.pricePer1kMicros == null ? null : def.pricing.pricePer1kMicros / 1_000_000, startFeeUsd: def.pricing.startFeeMicros / 1_000_000 },
+              };
+            } catch (e) {
+              schema = { error: String((e as any)?.message || e).slice(0, 160) };
+            }
+          }
+        }
+        const { data: rows } = await sb
+          .from('research_jobs')
+          .select('id,created_at,result_json->_developerAds')
+          .not('result_json->_developerAds', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(15);
+        const recent = (rows ?? []).map((r: any) => ({
+          id: r.id,
+          at: r.created_at,
+          state: r._developerAds?.state ?? null,
+          costUsd: typeof r._developerAds?.costUsd === 'number' ? r._developerAds.costUsd : null,
+        }));
+        return json({ policy, providerOff, configured, schema, recent });
       }
 
       if (b.action === 'tas-admin-health') {

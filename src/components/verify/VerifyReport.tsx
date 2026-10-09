@@ -73,6 +73,8 @@ import { severitySignals, weighVerdict } from '@/verify/intelligence/severity';
 import { CompanyIntelligenceCard, type CompanyProfileLike } from './CompanyIntelligenceCard';
 import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
 import { UnconfirmedCard } from './UnconfirmedCard';
+import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
+import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -143,6 +145,8 @@ export interface KeyFinding {
 }
 
 export interface BuyerIntelligence {
+  /** What the developer's advertising suggests — guarded against official claims. */
+  advertisingAssessment?: AdvertisingAssessmentView;
   summary: { label: OverallLabel; statement: string; highlights: SummaryHighlight[] };
   /** Latest confirmed official position (present tense). */
   currentStatus?: CurrentStatusView;
@@ -215,6 +219,8 @@ export interface VerifySynthesis {
   research?: ResearchCoverageView;
   /** Deterministic official history: status, milestones, value changes. */
   officialHistory?: OfficialHistoryClientView | null;
+  /** Developer advertising (Meta Ad Library), a marketing signal only. */
+  developerAds?: DeveloperAdsView | null;
 }
 
 /**
@@ -474,6 +480,11 @@ export function VerifyReport({
           ) : null}
         </section>
       ) : null}
+
+      {/* DEVELOPER ADVERTISING — the last research stage, after the evidence
+          and before what to act on: what the developer claims, labelled as a
+          claim. Absent unless the stage completed. */}
+      <DeveloperAdvertising view={synthesis.developerAds} assessment={r.advertisingAssessment} />
 
       {r.attentionPoints?.length ? (
         <section className="space-y-3">

@@ -33,7 +33,20 @@ const MIGRATION = read('supabase/migrations/20261014100000_find_buyers_social_in
 test('Verify is untouched: no Verify file reaches Find Buyers, and Find Buyers reaches no Verify code', () => {
   const verify = [...walk('src/verify'), ...walk('src/components/verify'), ...walk('supabase/functions/research-agent'), ...walk('supabase/functions/verify-synthesis')]
     .filter((f) => /\.(ts|tsx|mjs)$/.test(f));
-  for (const f of verify) assert.doesNotMatch(read(f), /findBuyers|find_buyers|memo23|APIFY_MEMO23/, `${f} must not know Find Buyers`);
+  /*
+   * One seam, by owner decision (2026-10-09): Verify's Developer Advertising
+   * stage shares the memo23 Apify client — run, poll, cost and the APIFY
+   * switch — and nothing else. research-agent imports exactly that file;
+   * no Verify file reaches a Find Buyers campaign, planner, table or ledger.
+   * Naming a memo23 Actor is allowed; knowing Find Buyers is not.
+   */
+  const SEAM = "from '../_shared/findBuyers/memo23Client.ts';";
+  const AGENT = join('supabase', 'functions', 'research-agent', 'index.ts');
+  assert.equal(read(AGENT).split(SEAM).length - 1, 1, 'research-agent imports the shared memo23 client exactly once');
+  for (const f of verify) {
+    const src = f === AGENT ? read(f).replace(SEAM, '') : read(f);
+    assert.doesNotMatch(src, /findBuyers|find_buyers|FindBuyers/, `${f} must not know Find Buyers`);
+  }
   for (const f of [...walk('src/research-core/findBuyers'), ...walk('supabase/functions/_shared/findBuyers'), ...walk('src/components/findBuyers')]) {
     assert.doesNotMatch(read(f), /from ['"][^'"]*(\/verify\/|research-agent|verify-synthesis)/, `${f} must not import Verify`);
   }

@@ -56,6 +56,53 @@ mobile shard). Deploy targets: frontend · Railway `homatch-official-worker`
   - Requires the key in the Railway worker environment, which the owner
     reports as already set.
 
+## 1c. Developer Advertising Intelligence (last research stage)
+
+- **Where it runs.** research-agent, at `SYNTHESIS_READY`, before the report
+  is written (`advanceDeveloperAds`). It does not need the worker.
+  - It is non-blocking: every failure becomes an outcome and synthesis
+    proceeds.
+  - Outcomes: DISABLED, PROVIDER_OFF, NOT_CONFIGURED, NO_IDENTITY,
+    UNSUPPORTED, TIMEOUT, FAILED.
+- **One shared Apify client.** The stage uses
+  `_shared/findBuyers/memo23Client.ts`; Verify keeps its own orchestration.
+  - Setting `verify_developer_ads`, **seeded `enabled:false`**.
+  - Caps: 2 search terms, 30 items, $0.05 per run, 120 s, 24 h cache.
+  - The APIFY switch in `provider_disabled_list` also stops it.
+  - Cost goes to `cost_events` with `APIFY_MEMO23` / `DEVELOPER_ADS_VERIFY`.
+  - Exactly one paid run per job: the stage is claimed atomically, and on
+    timeout the run is aborted and its partial items billed.
+- **Actor:** `memo23~facebook-ads-library-scraper-ppe`.
+  - **Schema NOT verified from the development sandbox.** apify.com and
+    api.apify.com are blocked by egress, and the token exists only in
+    Supabase secrets.
+  - So nothing is assumed. Before each paid run, the stage reads the
+    Actor's live input schema through the free `GET /acts/{id}`
+    (`actorDefinition`). It sends only declared fields (`searchTerms`
+    required; `searchCountries` and `maxItems` when declared). It ends
+    UNSUPPORTED, without spending, when `searchTerms` is missing.
+  - The output mapping (`ad_archive_id`, `page_name`, `is_active`,
+    `snapshot.*`) is tolerant. Unmapped keys are recorded for diagnostics.
+- **Customer report.** A "Developer advertising" section
+  (`DeveloperAdvertising.tsx`), shown only when the stage completed.
+  - Content: counts, platforms, themes, at most 3 examples, and verified
+    profiles.
+  - Links: only Meta Ad Library pages and OFFICIAL https profiles. A
+    POSSIBLE profile is named and never linked; ad landing pages are never
+    shown.
+  - The AI assessment passes `guardAdvertising`, so no financial-strength,
+    trust or "inactive" claims get through.
+- **Admin.** Providers → Verify official sources → Developer advertising:
+  enable switch, limits, the free "Verify Actor input" check, and recent
+  stage outcomes with their cost.
+- **Acceptance (owner-approved, after deploy):**
+  1. Run the free Actor-input check. It must report `searchTerms` as
+     supported, along with the price per 1k.
+  2. Enable the stage and run one Verify on a known developer project
+     (cost ≤ $0.05).
+  3. Compare the advertisers and ads with the public Ad Library.
+  4. Disable again if wrong (immediate, no deploy).
+
 ## 2. Migration and deployment order
 
 All steps are reversible; each waits for the previous step's proof.
@@ -66,7 +113,8 @@ All steps are reversible; each waits for the previous step's proof.
    (before deploy; additive): private bucket `verify-official-visuals`
    (no `storage.objects` policy), settings `verify_tas_implementation =
    {"active":"LEGACY","fallback":null}`, `verify_marketplace_market_enabled
-   = false`. Applied through `run_migrations` or the reviewed MCP apply after
+   = false`, `verify_captcha_auto_solve` (enabled), `verify_developer_ads`
+   (`enabled:false`). Applied through `run_migrations` or the reviewed MCP apply after
    merge. Proof: present in the production ledger; bucket `public = false`;
    both settings at their seeded values.
 2. **Railway** `homatch-official-worker` (`3e7f132b-…`, canonical service
@@ -123,6 +171,7 @@ Each paid step needs the owner's explicit go.
 |---|---|---|
 | API_FIRST wrong or failing | Admin → **ROLLBACK** (sets LEGACY; audited) | immediate, no deploy |
 | Market comparables wrong | Admin marketplace switch → off | immediate |
+| Developer advertising wrong or costly | Admin → Developer advertising switch → off (or the APIFY provider switch) | immediate |
 | Report / UI defect | Vercel: promote the previous production deployment | minutes |
 | Edge defect | redeploy the previous `refs/deployed/edge` artifact for the two functions | minutes |
 | Worker defect | Railway: redeploy the previous deployment of the canonical service | minutes |

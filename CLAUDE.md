@@ -52,6 +52,12 @@ An index is never proof of production state.
   `_shared/findBuyers/memo23Client.ts`; Admin → Providers' APIFY switch
   (`provider_disabled_list`) stops every memo23 run. Generic Apify execution
   stays deleted; Actors stay governed by their registry lifecycle.
+  Second scope (owner, 2026-10-09): Verify's Developer Advertising stage may
+  run ONE memo23 Ad Library Actor through the same client
+  (`advanceDeveloperAds` in research-agent), with its own setting
+  `verify_developer_ads` (seeded off), budget and `DEVELOPER_ADS_VERIFY` cost
+  rows — separate from Find Buyers orchestration, and stopped by the same
+  APIFY switch. No other Verify use of Apify.
 - **Railway**: the only worker is `homatch-official-worker`
   (`3e7f132b-d0be-4804-9bc0-0b6ad368ad15`). Never `-v2`, never create
   another. Railway deploys only when `official-worker/` changed —

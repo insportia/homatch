@@ -659,6 +659,9 @@ serve(async (req) => {
       // conclusiveness), the 5–10 milestones, value changes, and the funnel
       // from discovered records to what is shown. Case/decision numbers only.
       officialHistory: pkg.tas ? officialHistoryView(pkg.tas) : null,
+      // Developer advertising (marketing signal): only a completed stage reaches
+      // the customer; the view carries no run ids or costs by construction.
+      developerAds: pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,
       // Bucket paths (internal); forCustomer() turns them into signed URLs.
       officialVisuals: Array.isArray(job.result_json?.officialVisuals)
         ? job.result_json.officialVisuals.filter((v: any) => (pkg.tas?.visuals ?? []).some((t) => t.id === v?.id))

@@ -11,6 +11,9 @@
 //
 // Callers: _shared/findBuyers/executor.ts (runs), the admin verify action and
 // provider-health-check (accountCheck: one free account read, never a run).
+// Second scope (owner, 2026-10-09): research-agent's Verify Developer
+// Advertising stage (its own setting, budget and cost rows) — the one place
+// Verify reaches this shared layer.
 
 const API = 'https://api.apify.com/v2';
 
@@ -28,6 +31,13 @@ function token(): string {
   const t = Deno.env.get('APIFY_API_TOKEN') ?? '';
   if (!t) throw new Memo23Error('APIFY_NOT_CONFIGURED', 503, false);
   return t;
+}
+
+/** Admin → Providers' APIFY switch (provider_disabled_list) stops every memo23 run, Find Buyers and Verify alike. */
+export function apifyDisabledByAdmin(list: unknown): boolean {
+  let v = list;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return false; } }
+  return Array.isArray(v) && v.some((p) => String(p).toUpperCase() === 'APIFY');
 }
 
 /** Is the provider credential present? (Readiness only; the token itself never leaves this file.) */

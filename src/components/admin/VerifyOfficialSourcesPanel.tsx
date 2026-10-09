@@ -62,6 +62,9 @@ export function VerifyOfficialSourcesPanel() {
   /** CAPTCHA service state from the worker + the Admin policy. Never holds a key. */
   const [captcha, setCaptcha] = useState<{ policy: any; worker: any } | null>(null);
   const [captchaBalance, setCaptchaBalance] = useState<number | null | undefined>(undefined);
+  /** Developer Advertising Intelligence: policy, switches, recent stages; schema only on request (free). */
+  const [ads, setAds] = useState<any>(null);
+  const [adsChecking, setAdsChecking] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +76,7 @@ export function VerifyOfficialSourcesPanel() {
         invokeAdmin('captcha-admin-health').catch(() => null),
       ]);
       setCaptcha(cap ?? null);
+      setAds(await invokeAdmin('developer-ads-admin-health').catch(() => null));
       if (h?.setting) setSetting(h.setting);
       if (h?.worker?.implementations) {
         setHealth(h.worker.implementations);
@@ -128,6 +132,25 @@ export function VerifyOfficialSourcesPanel() {
       toast.success(t('adm_vos_saved'));
     } catch (e: any) {
       toast.error(e?.message ?? String(e));
+    }
+  };
+  const saveAdsPolicy = async (next: any, reason: string) => {
+    try {
+      await updateAdminSetting('verify_developer_ads', next, reason);
+      setAds((a: any) => (a ? { ...a, policy: next } : a));
+      toast.success(t('adm_vos_saved'));
+    } catch (e: any) {
+      toast.error(e?.message ?? String(e));
+    }
+  };
+  const checkAdsSchema = async () => {
+    setAdsChecking(true);
+    try {
+      setAds(await invokeAdmin('developer-ads-admin-health', { checkSchema: true }));
+    } catch (e: any) {
+      toast.error(e?.message ?? String(e));
+    } finally {
+      setAdsChecking(false);
     }
   };
   const checkBalance = async () => {
@@ -335,6 +358,54 @@ export function VerifyOfficialSourcesPanel() {
             </p>
           </div>
         </section>
+
+        {/* ── Developer advertising (Verify's own memo23 stage; separate from Find Buyers) ── */}
+        {ads?.policy ? (
+          <section className="rounded-lg border border-border p-3 text-xs space-y-2">
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span>
+                <span className="font-semibold">{t('adm_vos_ads_title')}</span>
+                <span className="block text-xs text-muted-foreground">{t('adm_vos_ads_desc')}</span>
+              </span>
+              <span className="flex items-center gap-2 shrink-0">
+                <Switch
+                  checked={ads.policy.enabled === true}
+                  onCheckedChange={(on) => void saveAdsPolicy({ ...ads.policy, enabled: on }, `Verify developer advertising ${on ? 'on' : 'off'}`)}
+                  aria-label={t('adm_vos_ads_enabled')}
+                />
+                <span className="text-xs">{t('adm_vos_ads_enabled')}</span>
+              </span>
+            </label>
+            {ads.providerOff ? <p className="text-amber-600">{t('adm_vos_ads_provider_off')}</p> : null}
+            {ads.configured === false ? <p className="text-amber-600">{t('adm_vos_ads_not_configured')}</p> : null}
+            <p className="text-muted-foreground break-words">
+              <span className="font-mono">{ads.policy.actorId}</span> · {t('adm_vos_ads_limits')}: {ads.policy.country} · {ads.policy.maxTerms} × {ads.policy.maxItems} · ≤ ${Number(ads.policy.maxChargeUsd).toFixed(2)} · {ads.policy.timeoutSeconds}s · {ads.policy.cacheHours}h
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" disabled={adsChecking} onClick={() => void checkAdsSchema()}>
+                <FlaskConical className="h-3.5 w-3.5 me-1" aria-hidden="true" />
+                {t('adm_vos_ads_check_schema')}
+              </Button>
+              {ads.schema?.error ? <span className="text-amber-600 break-words">{String(ads.schema.error)}</span> : null}
+            </div>
+            {ads.schema && !ads.schema.error ? (
+              ads.schema.supported ? (
+                <p className="break-words">
+                  {t('adm_vos_ads_supported')}: <span className="font-mono">{(ads.schema.inputFieldsUsed ?? []).join(', ')}</span>
+                  {ads.schema.pricing?.pricePer1kUsd != null ? ` · $${Number(ads.schema.pricing.pricePer1kUsd).toFixed(2)} / 1k` : ` · ${ads.schema.pricing?.model ?? ''}`}
+                </p>
+              ) : (
+                <p className="text-amber-600">{t('adm_vos_ads_unsupported')}</p>
+              )
+            ) : null}
+            {Array.isArray(ads.recent) && ads.recent.length ? (
+              <p className="text-muted-foreground break-words">
+                {t('adm_vos_ads_recent')}: {Object.entries(ads.recent.reduce((acc: Record<string, number>, r: any) => ({ ...acc, [r.state ?? '?']: (acc[r.state ?? '?'] ?? 0) + 1 }), {})).map(([k, n]) => `${k} ${n}`).join(' · ')}
+                {' · $'}{ads.recent.reduce((n: number, r: any) => n + (typeof r.costUsd === 'number' ? r.costUsd : 0), 0).toFixed(3)}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         {/* ── Market research ── */}
         <section className="space-y-2">

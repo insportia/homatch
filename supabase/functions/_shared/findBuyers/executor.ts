@@ -13,12 +13,13 @@ import { provesOutputContract } from '../../../../src/research-core/findBuyers/a
 import { decideArm, armPriority, parseSampling, type ArmStats } from '../../../../src/research-core/findBuyers/allocator.ts';
 import { queryHash } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { sinceFloor } from '../../../../src/research-core/findBuyers/freshness.ts';
+import { DISCOVERY_STAGES, phase2MayStart, phaseOfStage, probeEstimateMicros } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 /* Stages whose Actor accepts a date floor: never ask for content older than 30 days. */
 const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
 import { abortRun, datasetItems, getRun, Memo23Error, runCost, startRun, TERMINAL_RUN_STATES, scrub } from './memo23Client.ts';
 import { processItems, type CampaignRow, type ParentContext, type FollowUp } from './pipeline.ts';
-import { campaignStats, insertQueueRows, loadFindBuyersSettings, socialJobRow, type FindBuyersSettings } from './campaign.ts';
+import { campaignStats, discoveryCommittedMicros, insertQueueRows, loadFindBuyersSettings, loadPhase1, socialJobRow, type FindBuyersSettings } from './campaign.ts';
 import { parsePriceBook } from './openai.ts';
 
 export interface SocialOutcome {
@@ -40,7 +41,7 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
   const stage = meta.stage as Stage;
   if (!stage || !STAGE_OUTPUT[stage]) return out({ outcome: 'FAILED', error: 'BAD_JOB: unknown stage' });
   const { data: campaign } = await db.from('find_buyers_campaigns')
-    .select('matching_job_id,campaign_id,property_id,user_id,transaction,dna,provider_budget_micros,finalized_at')
+    .select('matching_job_id,campaign_id,property_id,user_id,transaction,dna,provider_budget_micros,finalized_at,query_plan')
     .eq('matching_job_id', job.matching_job_id).maybeSingle();
   if (!campaign || campaign.finalized_at) return out({ outcome: 'CANCELLED', error: 'CAMPAIGN_FINALIZED' });
   const settings = await loadFindBuyersSettings(db);
@@ -48,6 +49,25 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
   /* Apify switched off on Admin → Providers: no new memo23 run starts. */
   if (!settings.apifyEnabled) return out({ outcome: 'CANCELLED', error: 'APIFY_DISABLED_BY_ADMIN' });
   if (!settings.socialEnabled) return out({ outcome: 'CANCELLED', error: 'SOCIAL_DISABLED' });
+  const phases = (campaign.query_plan?.phases ?? null) as { phase1DeadlineAt?: string; budget?: { discoveryCapMicros?: number } } | null;
+  if (phaseOfStage(stage) === 'PHASE2_EXTRACTION') {
+    /* TWO PHASES: no Phase 2 run starts while Phase 1 is still discovering
+       inside its time box, so what it finds is in the pool Phase 2 reads.
+       WAIT does not consume an attempt; polls of started runs are never held. */
+    const p1 = await loadPhase1(db, job.matching_job_id, phases);
+    if (!phase2MayStart(p1.state)) {
+      return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { lastWait: 'PHASE1_DISCOVERY', phase1Open: p1.open, phase1DeadlineAt: p1.deadlineAt } });
+    }
+  } else if (phases?.budget && typeof phases.budget.discoveryCapMicros === 'number') {
+    /* Phase 1's own ceiling (planned from this campaign's prices). The
+       campaign-wide hard cap stays atomic in find_buyers_reserve_actor_run. */
+    const actor = await actorRow(db, String(meta.actorKey));
+    const estimate = actor ? probeEstimateMicros({ startFeeMicros: actor.start_fee_micros, pricePer1kMicros: actor.price_per_1k_micros }, Number(meta.size ?? actor.probe_size)) : 0;
+    const committed = await discoveryCommittedMicros(db, job.matching_job_id, [...DISCOVERY_STAGES]);
+    if (committed + estimate > phases.budget.discoveryCapMicros) {
+      return out({ outcome: 'CANCELLED', error: 'PHASE1_BUDGET', metadata: { committedMicros: committed, estimateMicros: estimate, discoveryCapMicros: phases.budget.discoveryCapMicros } });
+    }
+  }
   return start(db, job, campaign, settings);
 }
 

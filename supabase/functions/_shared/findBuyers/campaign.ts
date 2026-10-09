@@ -14,7 +14,9 @@ import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../.
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
-import { parseTelegramPreference, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
+import { paidTelegramChannels, parseTelegramPreference, type TelegramCommunity, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
+import { providerDisabledByAdmin } from '../providerSwitch.ts';
+import { phase1State, phase1TimeoutMinutes, phase2Category, phaseOfStage, planDiscoveryBudget, probeEstimateMicros, type Phase1State } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 export interface FindBuyersSettings {
   /** find_buyers_social_enabled AND the Apify provider enabled on Admin → Providers. */
@@ -38,9 +40,7 @@ const SETTING_KEYS = [
 
 /** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
 export function apifyDisabledByAdmin(list: unknown): boolean {
-  let v = list;
-  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return false; } }
-  return Array.isArray(v) && v.some((p) => String(p).toUpperCase() === 'APIFY');
+  return providerDisabledByAdmin(list, 'APIFY');
 }
 
 const val = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
@@ -204,13 +204,14 @@ function hashKey(s: string) {
 
 export async function enabledActorMap(db: any, maxAgeDays: number) {
   const { data } = await db.from('find_buyers_actor_registry')
-    .select('actor_key,probe_size,priority,enabled,emergency_disabled,health,pricing_verified_at,pricing_model,price_per_1k_micros');
-  const out: Record<string, { probeSize: number; priority: number }> = {};
+    .select('actor_key,probe_size,priority,enabled,emergency_disabled,health,pricing_verified_at,pricing_model,price_per_1k_micros,start_fee_micros');
+  const out: Record<string, { probeSize: number; priority: number; startFeeMicros: number; pricePer1kMicros: number }> = {};
   const cutoff = Date.now() - maxAgeDays * 86_400_000;
   for (const a of (data ?? []) as any[]) {
     if (!a.enabled || a.emergency_disabled || a.health === 'DISABLED') continue;
     if (!a.pricing_verified_at || Date.parse(a.pricing_verified_at) < cutoff || a.pricing_model === 'UNKNOWN' || a.price_per_1k_micros == null) continue;
-    out[a.actor_key] = { probeSize: Number(a.probe_size) || 20, priority: Number(a.priority) || 50 };
+    out[a.actor_key] = { probeSize: Number(a.probe_size) || 20, priority: Number(a.priority) || 50,
+      startFeeMicros: Number(a.start_fee_micros ?? 0), pricePer1kMicros: Number(a.price_per_1k_micros) };
   }
   return out;
 }
@@ -225,6 +226,12 @@ export interface StartSocialInput {
   facts: Record<string, any> | null;
   planId: string | null;
   nativeTelegramActive: boolean;
+  /** The owner's explicit language choice at launch; null = all six. */
+  targetLanguages?: string[] | null;
+  /** The campaign window (minutes): Phase 1 gets a bounded share of it. */
+  campaignWindowMinutes?: number;
+  /** The native Telegram community search is part of this campaign's Phase 1. */
+  telegramDiscoveryPlanned?: boolean;
 }
 
 export async function startSocialCampaign(db: any, input: StartSocialInput, settings: FindBuyersSettings) {
@@ -244,7 +251,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
     matching_job_id: input.matchingJobId, campaign_id: input.campaignId, property_id: input.propertyId,
     user_id: input.userId, transaction: dna.transaction, credits_committed: input.credits, credits_per_usd: rate,
     customer_value_micros: econ.customerValueMicros, provider_budget_micros: econ.providerBudgetMicros,
-    languages: [...SEARCH_LANGUAGES], dna,
+    languages: input.targetLanguages?.length ? SEARCH_LANGUAGES.filter((l) => input.targetLanguages!.includes(l)) : [...SEARCH_LANGUAGES], dna,
   }, { onConflict: 'matching_job_id', ignoreDuplicates: true });
   if (error) throw error;
 
@@ -255,8 +262,29 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook);
   await db.from('find_buyers_campaigns').update({ query_plan: plan }).eq('matching_job_id', input.matchingJobId);
   const sources = await knownSources(db, dna.city);
-  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference });
+  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
+  /* TWO PHASES (campaignPhases.ts): Phase 1's time box and its spend ceiling,
+     planned from this campaign's own probes and the registry's prices. */
+  const estimate = (j: { actorKey: string; size: number }) => probeEstimateMicros(actors[j.actorKey] ?? {}, j.size);
+  const budget = planDiscoveryBudget({
+    providerBudgetMicros: econ.providerBudgetMicros,
+    discoveryEstimatesMicros: jobs.filter((j) => phaseOfStage(j.stage) === 'PHASE1_DISCOVERY').map(estimate),
+    extractionEstimatesMicros: jobs.filter((j) => phaseOfStage(j.stage) === 'PHASE2_EXTRACTION').map(estimate),
+  });
+  const timeoutMinutes = phase1TimeoutMinutes(input.campaignWindowMinutes ?? 30);
+  const phases = {
+    phase1TimeoutMinutes: timeoutMinutes,
+    phase1DeadlineAt: new Date(Date.now() + timeoutMinutes * 60_000).toISOString(),
+    expectedProviders: input.telegramDiscoveryPlanned ? ['TELEGRAM_SOURCES'] : [],
+    budget,
+    planned: {
+      phase1: jobs.filter((j) => phaseOfStage(j.stage) === 'PHASE1_DISCOVERY').length,
+      phase2SourceDependent: jobs.filter((j) => phaseOfStage(j.stage) === 'PHASE2_EXTRACTION' && phase2Category(j.stage) === 'SOURCE_DEPENDENT').length,
+      phase2IndependentSearch: jobs.filter((j) => phaseOfStage(j.stage) === 'PHASE2_EXTRACTION' && phase2Category(j.stage) === 'INDEPENDENT_SEARCH').length,
+    },
+  };
+  await db.from('find_buyers_campaigns').update({ query_plan: { ...plan, phases } }).eq('matching_job_id', input.matchingJobId);
   const rows = jobs.map((j) => socialJobRow(j, { matchingJobId: input.matchingJobId, propertyId: input.propertyId, planId: input.planId, tranche: 0, step: 0 }));
   const queued = await insertQueueRows(db, rows);
   return {
@@ -265,6 +293,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
     /* Paid Telegram jobs queued: when > 0 under PAID_FIRST, the free reader is skipped (fallback). */
     paidTelegramQueued: jobs.filter((j) => j.stage === 'TELEGRAM_CHANNEL').length,
     languages: [...new Set(jobs.map((j) => j.language))],
+    phases,
   };
 }
 
@@ -408,11 +437,94 @@ export async function queueTelegramFallback(db: any, matchingJobId: string) {
   if (!actors.TELEGRAM_CHANNEL) return 0;
   const { data: camp } = await db.from('find_buyers_campaigns').select('property_id,dna,finalized_at').eq('matching_job_id', matchingJobId).maybeSingle();
   if (!camp || camp.finalized_at) return 0;
-  const sources = (await knownSources(db, (camp.dna as PropertyDna)?.city ?? null)).filter((s) => s.platform === 'TELEGRAM');
+  const already = await queuedTelegramTargets(db, matchingJobId);
+  const sources = (await knownSources(db, (camp.dna as PropertyDna)?.city ?? null))
+    .filter((s) => s.platform === 'TELEGRAM' && !already.has(String(s.url).toLowerCase()));
   const jobs: PlannedSocialJob[] = sources.slice(0, 3).map((s) => ({
     stage: 'TELEGRAM_CHANNEL', actorKey: 'TELEGRAM_CHANNEL', language: (s.languages[0] as any) ?? 'multi', query: null,
     targetUrl: s.url, sourceId: s.id, size: actors.TELEGRAM_CHANNEL.probeSize, arm: `TELEGRAM_CHANNEL:${s.id}`,
     priority: actors.TELEGRAM_CHANNEL.priority, reason: 'native_telegram_unavailable',
   }));
   return insertQueueRows(db, jobs.map((j) => socialJobRow(j, { matchingJobId, propertyId: camp.property_id, planId: null, tranche: 1, step: 0 })));
+}
+
+/** Channels a campaign already has a paid Telegram job for (any reason): never queued twice. */
+async function queuedTelegramTargets(db: any, matchingJobId: string): Promise<Set<string>> {
+  const { data } = await db.from('discovery_query_queue').select('metadata')
+    .eq('matching_job_id', matchingJobId).eq('provider', 'APIFY_MEMO23');
+  return new Set(((data ?? []) as any[]).filter((r) => r.metadata?.stage === 'TELEGRAM_CHANNEL')
+    .map((r) => String(r.metadata?.targetUrl ?? '').toLowerCase()).filter(Boolean));
+}
+
+/* Paid channel reads one COMBINED search may add (each still reserved against the caps). */
+const COMBINED_PAID_CHANNELS = 8;
+
+/**
+ * COMBINED Telegram (telegramPreference.ts), run when the campaign's Phase 1
+ * Telegram search has finished: the memo23 Telegram Actor is queued for the
+ * channels the free reader does not cover — including the ones Phase 1 just
+ * found — for this campaign's city. Phase 2 jobs; the shared community
+ * registry is the one both paths read from. Returns the number queued.
+ */
+export async function queueCombinedTelegram(db: any, matchingJobId: string): Promise<number> {
+  const settings = await loadFindBuyersSettings(db);
+  if (settings.telegramPreference !== 'COMBINED' || !settings.socialEnabled || !settings.apifyEnabled) return 0;
+  const actors = await enabledActorMap(db, settings.pricingMaxAgeDays);
+  if (!actors.TELEGRAM_CHANNEL) return 0;
+  const { data: camp } = await db.from('find_buyers_campaigns').select('property_id,dna,finalized_at,languages').eq('matching_job_id', matchingJobId).maybeSingle();
+  if (!camp || camp.finalized_at) return 0;
+  const { data: rows } = await db.from('community_targets')
+    .select('id,external_id,name,lifecycle,readability,discovery_enabled,last_error_code,relevance_score,source_registry_id,languages,metadata')
+    .eq('platform', 'TELEGRAM').limit(500);
+  const chosen = paidTelegramChannels((rows ?? []) as TelegramCommunity[], (camp.dna as PropertyDna)?.city ?? null, COMBINED_PAID_CHANNELS);
+  const already = await queuedTelegramTargets(db, matchingJobId);
+  /* The owner's language choice: a channel in another language is not read (unknown language stays). */
+  const langs = new Set(((camp.languages ?? []) as string[]).map((l) => l.toLowerCase()));
+  const jobs: PlannedSocialJob[] = chosen
+    .filter((c) => !already.has(`https://t.me/${c.external_id}`.toLowerCase()))
+    .filter((c) => !c.languages?.length || !langs.size || c.languages.some((l) => langs.has(l.toLowerCase())))
+    .map((c) => ({
+      stage: 'TELEGRAM_CHANNEL', actorKey: 'TELEGRAM_CHANNEL', language: 'multi', query: null,
+      targetUrl: `https://t.me/${c.external_id}`, sourceId: c.source_registry_id ?? null, size: actors.TELEGRAM_CHANNEL.probeSize,
+      arm: `TELEGRAM_CHANNEL:${c.external_id}`, priority: actors.TELEGRAM_CHANNEL.priority, reason: 'combined_not_covered_by_free_reader',
+    }));
+  if (!jobs.length) return 0;
+  return insertQueueRows(db, jobs.map((j) => socialJobRow(j, { matchingJobId, propertyId: camp.property_id, planId: null, tranche: 1, step: 0 })));
+}
+
+/* ── TWO PHASES: the gate and the discovery spend, read from the database (decisions: campaignPhases.ts).
+   Used by the memo23 executor (paid runs) and the queue driver (the native Telegram read). ── */
+
+/** Phase 1 jobs of one campaign run, with the deadline stored at planning time. */
+export async function loadPhase1(db: any, matchingJobId: string, phases?: { phase1DeadlineAt?: string | null; expectedProviders?: string[] } | null): Promise<{ state: Phase1State; open: number; finished: number; deadlineAt: string | null }> {
+  let deadlineAt = phases?.phase1DeadlineAt ?? null;
+  let expected: string[] = Array.isArray(phases?.expectedProviders) ? phases!.expectedProviders! : [];
+  if (phases === undefined) {
+    const { data: camp } = await db.from('find_buyers_campaigns').select('query_plan').eq('matching_job_id', matchingJobId).maybeSingle();
+    deadlineAt = camp?.query_plan?.phases?.phase1DeadlineAt ?? null;
+    expected = Array.isArray(camp?.query_plan?.phases?.expectedProviders) ? camp.query_plan.phases.expectedProviders : [];
+  }
+  const { data: rows, error } = await db.from('discovery_query_queue')
+    .select('provider,status,metadata')
+    .eq('matching_job_id', matchingJobId)
+    .in('provider', ['TELEGRAM_SOURCES', 'APIFY_MEMO23']);
+  /* A failed read never holds Phase 2 back: the gate opens rather than stalls. */
+  if (error) return { state: 'NONE', open: 0, finished: 0, deadlineAt };
+  const jobs = ((rows ?? []) as any[]).map((r) => ({ provider: r.provider, stage: r.metadata?.stage ?? null, status: r.status }));
+  /* No stored deadline (a campaign planned before phases existed): no gate. */
+  const deadlineMs = deadlineAt ? Date.parse(deadlineAt) : 0;
+  return { ...phase1State(jobs, Date.now(), Number.isFinite(deadlineMs) ? deadlineMs : 0, deadlineAt ? expected : []), deadlineAt };
+}
+
+/** What this campaign's discovery-stage runs have committed (held + booked), like the reservation counts it. */
+export async function discoveryCommittedMicros(db: any, matchingJobId: string, stages: readonly string[]): Promise<number> {
+  const { data } = await db.from('find_buyers_actor_runs')
+    .select('status,reserved_micros,actual_micros')
+    .eq('matching_job_id', matchingJobId)
+    .in('operation', [...stages]);
+  return ((data ?? []) as any[]).reduce((sum, r) => {
+    if (['RESERVED', 'STARTING', 'RUNNING'].includes(r.status)) return sum + Number(r.reserved_micros ?? 0);
+    if (r.status === 'RELEASED') return sum;
+    return sum + Number(r.actual_micros ?? r.reserved_micros ?? 0);
+  }, 0);
 }

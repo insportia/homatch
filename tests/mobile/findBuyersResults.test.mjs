@@ -288,7 +288,8 @@ test('admin Find Buyers control center: every tab renders at 1440px and 390px (e
       await page.waitForSelector('[data-testid="find-buyers-center"] [role="tab"]', { timeout: 30000 });
       const tabs = page.locator('[data-testid="find-buyers-center"] [role="tab"]');
       const n = await tabs.count();
-      if (n !== 6) failures.push(`${lang} ${width}: ${n} tabs`);
+      /* overview, actors, campaigns, source network (2026-10-08), sources, languages, ledger */
+      if (n !== 7) failures.push(`${lang} ${width}: ${n} tabs`);
       for (let i = 0; i < n; i += 1) {
         await tabs.nth(i).click();
         await page.waitForTimeout(150);
@@ -476,7 +477,8 @@ test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; RE
   await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
   const main = await page.textContent('main');
   assert.match(main, /Telegram\s*Completed · 2 signals checked · 31 new communities found · 0 qualified matches/);
-  assert.doesNotMatch(main, /33/, 'raw items and communities are never summed into one number');
+  /* Clock times (the dated history line, e.g. "6:33 PM") are not counts. */
+  assert.doesNotMatch(main.replace(/\d{1,2}:\d{2}/g, ''), /33/, 'raw items and communities are never summed into one number');
   assert.match(main, /Ready to search/, 'the current state is READY, not the last outcome');
   assert.match(main, /Last search \(.+\): Search finished — no new active demand/, 'the last outcome is a dated history line');
   const states = await page.$$eval('svg[role="img"] g[data-state]', (gs) => gs.map((g) => [g.querySelector('text')?.textContent, g.getAttribute('data-state'), !!g.querySelector('[class*="-run"], [class*="-breathe"]')]));

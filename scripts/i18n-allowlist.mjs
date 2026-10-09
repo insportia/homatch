@@ -11,6 +11,8 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Find Buyers admin source network: "Platform" is the Turkish word too.
+  'fbx_net_platform',
   // Find Property: Marketplace Search, Deep Search and Snake are product names, the same
   // in every language; "Villa", "m²" and "/ m²" are written identically in Turkish.
   'mps_marketplace_title',

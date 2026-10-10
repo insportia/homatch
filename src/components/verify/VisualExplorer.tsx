@@ -48,10 +48,10 @@ const BADGE_TONE: Record<CatalogVisual['badge'], string> = {
   MATERIAL: 'bg-slate-100 text-slate-800 ring-slate-500/25',
 };
 
-const Badge: React.FC<{ v: CatalogVisual; className?: string }> = ({ v, className }) => {
+const Badge: React.FC<{ v: CatalogVisual; className?: string; wrap?: boolean }> = ({ v, className, wrap }) => {
   const { t } = useLanguage();
   return (
-    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-2xs font-semibold ring-1 ${BADGE_TONE[v.badge]} ${className ?? ''}`}>
+    <span className={`inline-flex max-w-full items-center ${wrap ? "whitespace-normal text-start" : "whitespace-nowrap"} rounded-full px-2.5 py-1 text-2xs font-semibold ring-1 ${BADGE_TONE[v.badge]} ${className ?? ''}`}>
       {t(BADGE_KEY[v.badge])}
     </span>
   );
@@ -315,7 +315,7 @@ const Lightbox: React.FC<{
       <div className="flex items-center gap-2 px-3 py-2 sm:px-5 sm:py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge v={v} />
+            <Badge v={v} wrap />
             {version ? <span className="text-2xs font-medium text-[hsl(38_92%_66%)]">{version}</span> : null}
             {v.otherBuilding && v.block ? <span className="text-2xs font-semibold text-white">{t('vrx_visual_other_building', { block: v.block })}</span> : null}
             {items.length > 1 ? (
@@ -499,8 +499,8 @@ export const VisualExplorer: React.FC<{
               className={`h-full w-full ${active.technical ? 'bg-white object-contain' : 'object-cover'} motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]`}
             />
             <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
-            <span className="absolute start-3 top-3 flex flex-wrap items-center gap-2">
-              <Badge v={active} className="shadow-sm" />
+            <span className="absolute start-3 end-3 top-3 flex flex-wrap items-center gap-2">
+              <Badge v={active} className="shadow-sm" wrap />
               {version ? (
                 <span className="rounded-full bg-[hsl(222_47%_11%/0.85)] px-2.5 py-1 text-2xs font-medium text-[hsl(38_92%_66%)] ring-1 ring-[hsl(38_92%_54%/0.40)]">{version}</span>
               ) : null}

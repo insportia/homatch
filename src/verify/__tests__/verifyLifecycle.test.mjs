@@ -421,9 +421,11 @@ test('only an explicit action cancels, and it is not a failure', () => {
 
 test('the page offers an explicit stop, behind a confirmation', () => {
   const page = code('src/pages/VerifyPage.tsx');
-  assert.ok(/action:'cancel'/.test(page.replace(/\s/g, '')), 'the page cannot cancel a run');
+  // Stop is a pause: resumable, charges only work already done (server: action 'pause').
+  assert.ok(/action:'pause'/.test(page.replace(/\s/g, '')), 'the page cannot stop a run');
   assert.ok(page.includes('AlertDialog'), 'stopping is not confirmed');
-  assert.ok(page.includes('verify_stop_confirm_title'), 'there is no confirmation copy');
+  assert.ok(page.includes('verify_pause_confirm_title'), 'there is no confirmation copy');
+  assert.ok(/action:'continue'/.test(page.replace(/\s/g, '')), 'a stopped run cannot be resumed');
   const stream = code('src/components/verify/ResearchStream.tsx');
   assert.ok(stream.includes('verify_stop_research'), 'the stop control is not offered during a run');
 });

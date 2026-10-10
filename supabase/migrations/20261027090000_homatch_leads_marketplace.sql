@@ -246,6 +246,16 @@ create table if not exists public.internal_lead_seen (
 alter table public.internal_lead_seen enable row level security;
 revoke all on public.internal_lead_seen from anon, authenticated;
 
+/* Leads an owner saved to come back to (free; anonymous until unlocked). */
+create table if not exists public.internal_lead_saved (
+  account_user_id uuid not null references public.users(id) on delete cascade,
+  match_id        uuid not null,
+  created_at      timestamptz not null default now(),
+  primary key (account_user_id, match_id)
+);
+alter table public.internal_lead_saved enable row level security;
+revoke all on public.internal_lead_saved from anon, authenticated;
+
 /* ════════════════════════════════════════════════════════════════════════
  * 4 · the CRM a seller keeps for unlocked leads
  * ════════════════════════════════════════════════════════════════════════ */
@@ -386,7 +396,8 @@ begin
            case when r.match_score >= 0.8 then 'STRONG' when r.match_score >= 0.5 then 'POTENTIAL' else 'WEAK' end as band,
            (u.id is not null) as unlocked,
            u.id as unlock_id,
-           c.status as crm_status,
+           c.status as crm_status, c.id as crm_entry_id,
+           exists (select 1 from public.internal_lead_saved sv where sv.account_user_id = v_me and sv.match_id = r.match_id) as saved,
            (c.status is not null and c.status <> 'UNLOCKED') as contacted,
            ((v_seen is null and r.matched_at > now() - interval '7 days') or (v_seen is not null and r.matched_at > v_seen)) as fresh,
            prefs.share_phone_on_unlock, prefs.share_email_on_unlock,
@@ -409,6 +420,7 @@ begin
              when 'FRESH' then b.fresh
              when 'UNLOCKED' then b.unlocked
              when 'CONTACTED' then b.contacted
+             when 'SAVED' then b.saved
              else true end
   ), page as (
     select f.*, row_number() over (order by
@@ -438,7 +450,8 @@ begin
         'PREMIUM', count(*) filter (where segment = 'PREMIUM'),
         'FRESH', count(*) filter (where fresh),
         'UNLOCKED', count(*) filter (where unlocked),
-        'CONTACTED', count(*) filter (where contacted)) from base),
+        'CONTACTED', count(*) filter (where contacted),
+        'SAVED', count(*) filter (where saved)) from base),
     'prices', public.internal_lead_prices(),
     'lastSeenAt', v_seen,
     'items', coalesce((select jsonb_agg(jsonb_build_object(
@@ -450,6 +463,8 @@ begin
         'unlocked', p.unlocked,
         'contacted', p.contacted,
         'crmStatus', p.crm_status,
+        'crmEntryId', p.crm_entry_id,
+        'saved', p.saved,
         'fresh', p.fresh,
         'transaction', p.tx,
         'intentType', p.intent_type,
@@ -484,6 +499,25 @@ begin
 end $$;
 revoke all on function public.internal_leads_feed(uuid, text, text, integer, integer) from public, anon;
 grant execute on function public.internal_leads_feed(uuid, text, text, integer, integer) to authenticated;
+
+create or replace function public.internal_lead_toggle_saved(p_match_id uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_me uuid := public.current_homatch_user_id();
+begin
+  if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
+  if not exists (select 1 from public.supply_matches m where m.id = p_match_id and m.supply_user_id = v_me
+                   and m.source_kind = 'INTERNAL_HOMATCH') then
+    raise exception 'not found' using errcode = '42501';
+  end if;
+  if exists (select 1 from public.internal_lead_saved where account_user_id = v_me and match_id = p_match_id) then
+    delete from public.internal_lead_saved where account_user_id = v_me and match_id = p_match_id;
+    return false;
+  end if;
+  insert into public.internal_lead_saved (account_user_id, match_id) values (v_me, p_match_id);
+  return true;
+end $$;
+revoke all on function public.internal_lead_toggle_saved(uuid) from public, anon;
+grant execute on function public.internal_lead_toggle_saved(uuid) to authenticated;
 
 create or replace function public.internal_leads_mark_seen(p_property_id uuid)
 returns timestamptz language plpgsql security definer set search_path = public as $$

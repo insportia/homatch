@@ -187,6 +187,17 @@ begin
   assert array_length(public.native_match_claim_properties(10), 1) = 2, 'claimed';
   assert (select count(*) from public.native_match_property_queue) = 0, 'and removed from the queue';
 
+  /* ── saved leads ─────────────────────────────────────────────────── */
+  perform set_config('app.role', 'authenticated', true);
+  perform set_config('app.uid', '10000000-0000-0000-0000-0000000000a1', true);
+  assert public.internal_lead_toggle_saved('00000000-0000-0000-0000-0000000000d1') = true, 'saved';
+  v := public.internal_leads_feed('00000000-0000-0000-0000-0000000000f1', 'SAVED');
+  assert (v->>'total')::int = 1 and (v->'items'->0->>'saved')::boolean, 'saved filter';
+  assert public.internal_lead_toggle_saved('00000000-0000-0000-0000-0000000000d1') = false, 'unsaved';
+  perform set_config('app.uid', '10000000-0000-0000-0000-0000000000a2', true);
+  begin perform public.internal_lead_toggle_saved('00000000-0000-0000-0000-0000000000d1'); assert false, 'foreign save';
+  exception when insufficient_privilege then null; end;
+
   /* ── seen watermark ───────────────────────────────────────────────── */
   perform set_config('app.role', 'authenticated', true);
   perform set_config('app.uid', '10000000-0000-0000-0000-0000000000a1', true);

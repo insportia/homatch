@@ -702,7 +702,7 @@ Deno.serve(async (req: Request) => {
                  aggregate row keeps the FIRST event's title and the other eight are
                  invisible — which is worse than nine interruptions, because the
                  customer does not know there is anything else to look at. */
-              groupTitle: 'New Matching Buyers Found',
+              groupTitle: 'New Matching Buyers Found ({n})',
               metadata: {
                 kind: 'NATIVE_MATCH_SUPPLY',
                 property_id: propertyRow.id,

@@ -19,6 +19,7 @@ import { type CampaignSearchLanguage, isCampaignSearchLanguage } from '@/campaig
 /** Find Buyers' six search languages, in the order the chips show them. */
 const FIND_BUYERS_LANGUAGES: CampaignSearchLanguage[] = ['ka', 'ru', 'en', 'ar', 'he', 'tr'];
 import { SearchBudgetOffer } from '@/components/billing/SearchBudgetOffer';
+import { ResearchBudgetSelector } from '@/components/findBuyers/ResearchBudgetSelector';
 import {
   DEFAULT_SEARCH_LANGUAGES,
   SearchLanguagePicker,
@@ -28,9 +29,9 @@ import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
 import { getFindBuyersConfig, type FindBuyersConfig } from '@/services/findBuyers';
-import { CalendarCheck2, Radar, Wallet } from 'lucide-react';
+import { CalendarCheck2, Radar } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
+import { GOLD_FILL, NAVY_BAND } from '@/components/findBuyers/brand';
 import {
   type CampaignLanguageState,
   type CampaignSearchLanguageChoice,
@@ -79,7 +80,7 @@ export function CampaignLaunchPanel({
     getFindBuyersConfig().then((c) => { if (alive) setFbConfig(c); }).catch(() => {});
     return () => { alive = false; };
   }, [findBuyers]);
-  const tenant = counterpart === 'TENANT';
+  void counterpart; // the approved Research copy reads the same for buyers and tenants
   useEffect(() => {
     let alive = true;
     brokerDiscoveryPricing().then((p) => { if (alive) setBrokerPricing(p); }).catch(() => {});
@@ -186,41 +187,36 @@ export function CampaignLaunchPanel({
       <Separator />
 
       {findBuyers ? (
-        <div className="min-w-0 space-y-1.5 rounded-2xl bg-[linear-gradient(135deg,hsl(43_100%_96%),hsl(40_100%_92%))] p-3.5 ring-1 ring-inset ring-[hsl(40_80%_78%)]">
-          <p className="flex items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)]">
-            <Wallet className="h-4 w-4 text-[hsl(34_90%_36%)]" aria-hidden="true" />{t('fbx_budget_heading')}
-          </p>
-          {fbConfig ? (
-            <p className={cn('inline-block max-w-full rounded-full px-2.5 py-0.5 text-2xs font-bold [overflow-wrap:anywhere]', NAVY_BAND, GOLD_TEXT)} dir="auto">
-              {t('fbx_budget_minimum', { credits: fbConfig.minCredits.toLocaleString(), usd: String(fbConfig.minUsd) })}
-            </p>
-          ) : null}
-          <p className="text-2xs leading-relaxed text-[hsl(218_28%_32%)]">{t('fbx_budget_helper')}</p>
-        </div>
-      ) : null}
-
-      <SearchBudgetOffer
-        minCredits={findBuyers ? fbConfig?.minCredits : undefined}
-        ctaLabel={findBuyers ? t(tenant ? 'fbx_start_tenants' : 'fbx_start_buyers') : undefined}
-        productCode={productCode}
-        /*
-         * What the budget is being asked to cover. Not the number of
-         * languages: a Tbilisi expat group carries Russian and English at
-         * once and is read once, so quoting six languages at six times one
-         * would overprice the exact configuration this feature exists to
-         * encourage. The server does the real estimate; this is the unit
-         * count the offer is built from.
-         */
-        expectedUnits={1}
-        onRun={(authorized) => onRun(authorized, findBuyers ? (fbAll ? { mode: 'ALL', selected: [] } : { mode: 'EXPLICIT', selected: [...fbLanguages] }) : {
-          mode: languages.mode,
-          // Under AUTO and ALL the ticks are irrelevant and the server
-          // ignores them; sending them anyway keeps the payload the same
-          // shape in every mode.
-          selected: languages.selected,
-        }, discoverBrokers)}
-        running={running}
-      />
+        /* FIND BUYERS: the Research budget in credits — 100 / 500 / 1,000 / 1,500 /
+           2,000 or custom (≥ the server's minimum). The TOTAL is authorised as a
+           ceiling; the campaign is charged for actual usage only. */
+        <ResearchBudgetSelector
+          minCredits={fbConfig?.minCredits}
+          running={running}
+          onRun={(total) => onRun(total, fbAll ? { mode: 'ALL', selected: [] } : { mode: 'EXPLICIT', selected: [...fbLanguages] }, discoverBrokers)}
+        />
+      ) : (
+        <SearchBudgetOffer
+          productCode={productCode}
+          /*
+           * What the budget is being asked to cover. Not the number of
+           * languages: a Tbilisi expat group carries Russian and English at
+           * once and is read once, so quoting six languages at six times one
+           * would overprice the exact configuration this feature exists to
+           * encourage. The server does the real estimate; this is the unit
+           * count the offer is built from.
+           */
+          expectedUnits={1}
+          onRun={(authorized) => onRun(authorized, {
+            mode: languages.mode,
+            // Under AUTO and ALL the ticks are irrelevant and the server
+            // ignores them; sending them anyway keeps the payload the same
+            // shape in every mode.
+            selected: languages.selected,
+          }, discoverBrokers)}
+          running={running}
+        />
+      )}
     </div>
   );
 }

@@ -10,10 +10,10 @@ if ! psql -h "$dir" -p "$port" -U postgres -tAc 'select 1' >/dev/null 2>&1; then
   sleep 2
 fi
 P="psql -h $dir -p $port -U postgres -v ON_ERROR_STOP=1 -q"
-$P -c "drop database if exists hmleads" -c "create database hmleads"
-$P -d hmleads -f "$here/homatch_leads_fixture.sql"
+$P -c "drop database if exists hmleads_${PGDB_SUFFIX:-main}" -c "create database hmleads_${PGDB_SUFFIX:-main}"
+$P -d hmleads_${PGDB_SUFFIX:-main} -f "$here/homatch_leads_fixture.sql"
 M="$root/supabase/migrations/20261027090000_homatch_leads_marketplace.sql"
-$P -d hmleads -1 -f "$M"
-$P -d hmleads -1 -f "$M"
-$P -d hmleads -f "$here/homatch_leads.sql"
+$P -d hmleads_${PGDB_SUFFIX:-main} -1 -f "$M"
+$P -d hmleads_${PGDB_SUFFIX:-main} -1 -f "$M"
+$P -d hmleads_${PGDB_SUFFIX:-main} -f "$here/homatch_leads.sql"
 echo "homatch_leads: all checks passed"

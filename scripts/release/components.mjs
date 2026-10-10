@@ -36,7 +36,7 @@ export const SUITE_CATALOGUE = {
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
   'mobile:mortgage': { title: 'Mobile — mortgage', files: ['tests/mobile/mortgageConsultant.test.mjs', 'tests/mobile/mortgageHuman.test.mjs'] },
   'mobile:expats': { title: 'Mobile — For Expats', files: ['tests/mobile/expatsReadable.test.mjs'] },
-  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs'] },
+  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/homatchLeads.test.mjs'] },
   'mobile:broker': { title: 'Mobile — broker lifecycle', files: ['tests/mobile/brokerLifecycle.test.mjs'] },
   'mobile:tasks': { title: 'Mobile — tasks and contracts', files: ['tests/mobile/tasksAndContracts.test.mjs'] },
   developer: { title: 'Developer acceptance', script: 'test:developer', files: ['tests/browser/developerAcceptance.test.mjs'] },
@@ -144,7 +144,7 @@ export const COMPONENTS = {
     suites: ['studio:editor', 'studio:content', 'mobile:routes', 'a11y'],
   },
   DISCOVERY: {
-    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|findBuyers|matching|research-core)\//, /^src\/services\/findBuyers\.ts$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
+    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|homatchLeads)\.ts$/, /^src\/pages\/property\/HomatchLeadsPage\.tsx$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
     suites: ['mobile:discovery', 'mobile:routes'],
   },
   PWA_PUSH: {
@@ -167,7 +167,7 @@ export const COMPONENTS = {
   // Customer product surfaces without a dedicated suite of their own: the
   // route sweeps, the shell and the tasks suite are what render them.
   PRODUCT: {
-    paths: [/^src\/(pages|components|lib|services|campaign|dealroom|documents|import|investment|jobs|property|surfaces)\//],
+    paths: [/^src\/(pages|components|lib|services|campaign|chat|crm|dealroom|documents|emailStudio|import|investment|jobs|property|surfaces)\//],
     suites: ['mobile:routes', 'mobile:shell', 'mobile:tasks'],
   },
   // Edge functions whose consumers reach them only over HTTP and that no
@@ -239,6 +239,11 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],
   // HOMATCH Internal Matches: the admin/tester DEMO buyer (demo_* tables and RPCs) and the per-person key.
   [/^public\.(demo_|internal_match_demo_|my_native_match_counterparts$)/, 'DISCOVERY'],
+  // HOMATCH Leads: the internal marketplace (feed, unlock entitlements, segment rules,
+  // saved/seen, the property matching queue) and its admin views.
+  [/^public\.(internal_lead|lead_contact_prefs_of$|lead_contact_preferences|my_lead_contact_preferences$|set_my_lead_contact_preferences$|native_match_|admin_internal_lead|open_native_conversation$)/, 'DISCOVERY'],
+  // The seller's CRM for unlocked leads.
+  [/^public\.(lead_crm_|crm_)/, 'PRODUCT'],
 ];
 
 /* Translation keys by prefix: a translation change reaches the component
@@ -259,4 +264,6 @@ export const I18N_KEY_OWNERS = [
   [/^fbx_/, 'DISCOVERY'],
   [/^fbl_/, 'DISCOVERY'],
   [/^im_/, 'DISCOVERY'],
+  [/^(hl|rb)_/, 'DISCOVERY'],
+  [/^crm_/, 'PRODUCT'],
 ];

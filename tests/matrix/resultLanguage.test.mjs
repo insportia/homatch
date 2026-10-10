@@ -61,6 +61,14 @@ const LOCK = {
  */
 const NOT_RESULT_ACCESS = {
   comm_locked: 'a WhatsApp template becomes read-only once Meta approves it; it is not a result',
+  hl_description: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  hl_intro_closing: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  hl_filter_unlocked: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  hl_cta_unlock_standard: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  hl_cta_unlock_premium: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  hl_cta_bulk: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  crm_empty: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  crm_status_UNLOCKED: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
 };
 
 test('no customer string uses lock or unlock language', () => {

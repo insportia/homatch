@@ -18,6 +18,7 @@ import {
 import {
   Empty, ErrorNote, FilterBar, IdChip, KV, PageHeader, Pager, SelectFilter, TextFilter, UserLine, When, useQueryState,
 } from '@/components/admin/control/AdminKit';
+import { InternalLeadsAdminPanel } from '@/components/admin/InternalLeadsAdminPanel';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -130,6 +131,8 @@ export default function AdminBuyerIntelligencePage() {
       <p className="text-xs text-muted-foreground">{t('admin_bi_privacy_note')}</p>
 
       {stats && <StatsPanel stats={stats} />}
+
+      <InternalLeadsAdminPanel />
 
       <FilterBar
         busy={loading}

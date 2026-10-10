@@ -223,6 +223,9 @@ export const GLOBAL_EDGE_PRIMITIVE = /^supabase\/functions\/_shared\/(auth|cors|
 export const DB_OBJECT_OWNERS = [
   [/^(auth\.|storage\.objects$|storage\.buckets$|public\.(users|user_roles|profiles|is_admin|has_role|is_staff|current_user_[a-z_]+|handle_new_user)$)/, 'GLOBAL'],
   [/^public\.(ds_|design_studio)/, 'DESIGN_STUDIO'],
+  // Database housekeeping no application code calls (cron history retention):
+  // service_role only; proven by tests/sql/perf/run-db-bench.sh, not by any suite.
+  [/^public\.purge_cron_history$/, 'TOOLING'],
   [/^public\.(storage_)/, 'STORAGE'],
   [/^public\.(meta_)/, 'META_ADS'],
   [/^public\.(site_|app_content|studio_)/, 'SITE_STUDIO'],

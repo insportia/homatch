@@ -438,10 +438,10 @@ Not done: mirroring imported photos into storage (they die with the source).
 Built on top of PR #137 (claude/nifty-hopper-snzn2d), so it merges after #137. Nothing applied or deployed.
 
 - Migrations (append-only, release order):
-  - 20261027090000 homatch_leads_marketplace: internal leads feed and unlocks (Standard 2.5 / Premium 6 credits, wallet reserve→settle, one entitlement per account per member), consent prefs, Premium rules, CRM, property matching queue (cron every 2 minutes), follow-up cron. `open_native_conversation` now needs an unlock on the owner side of a MATCH.
-  - 20261027100000 property_conversations: message kinds (photo, voice, property card), translations cache, private `dm-media` bucket. Drops `msg_insert` and revokes direct insert/update/delete on `messages`; every send goes through send-message.
-  - 20261027110000 email_studio: `email_studio_*` tables and RPCs. `email_studio_sending_enabled` defaults to false.
-  - 20261027120000 find_buyers_research_budget: credit presets 100–2000 (minimum 100); an extension reserves only the difference.
+  - 20261028090000 homatch_leads_marketplace: internal leads feed and unlocks (Standard 2.5 / Premium 6 credits, wallet reserve→settle, one entitlement per account per member), consent prefs, Premium rules, CRM, property matching queue (cron every 2 minutes), follow-up cron. `open_native_conversation` now needs an unlock on the owner side of a MATCH.
+  - 20261028100000 property_conversations: message kinds (photo, voice, property card), translations cache, private `dm-media` bucket. Drops `msg_insert` and revokes direct insert/update/delete on `messages`; every send goes through send-message.
+  - 20261028110000 email_studio: `email_studio_*` tables and RPCs. `email_studio_sending_enabled` defaults to false.
+  - 20261028120000 find_buyers_research_budget: credit presets 100–2000 (minimum 100); an extension reserves only the difference.
 - Edge functions (no new ones):
   - atomic-unlock: `kind=internal_leads`
   - supply-matching: property mode and queue drain

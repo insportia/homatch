@@ -1,7 +1,7 @@
 /*
  * LEADS CRM — the owner's relationships with contacts they unlocked.
  *
- * Every call is a SECURITY DEFINER function (migration 20261027090000) that resolves the
+ * Every call is a SECURITY DEFINER function (migration 20261028090000) that resolves the
  * caller from their own session and only ever returns the caller's own entries. Nothing
  * here carries a phone number or an email address: the list and the detail are built
  * without them, and the browser never asks for one.

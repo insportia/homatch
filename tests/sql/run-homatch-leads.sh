@@ -12,7 +12,7 @@ fi
 P="psql -h $dir -p $port -U postgres -v ON_ERROR_STOP=1 -q"
 $P -c "drop database if exists hmleads_${PGDB_SUFFIX:-main}" -c "create database hmleads_${PGDB_SUFFIX:-main}"
 $P -d hmleads_${PGDB_SUFFIX:-main} -f "$here/homatch_leads_fixture.sql"
-M="$root/supabase/migrations/20261027090000_homatch_leads_marketplace.sql"
+M="$root/supabase/migrations/20261028090000_homatch_leads_marketplace.sql"
 $P -d hmleads_${PGDB_SUFFIX:-main} -1 -f "$M"
 $P -d hmleads_${PGDB_SUFFIX:-main} -1 -f "$M"
 $P -d hmleads_${PGDB_SUFFIX:-main} -f "$here/homatch_leads.sql"

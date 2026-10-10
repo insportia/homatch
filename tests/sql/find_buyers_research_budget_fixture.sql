@@ -1,4 +1,4 @@
--- Extra objects for 20261027120000_find_buyers_research_budget.sql, on top of
+-- Extra objects for 20261028120000_find_buyers_research_budget.sql, on top of
 -- homatch_leads_fixture.sql (users, wallet, admin_settings).
 create table public.find_buyers_campaigns (
   matching_job_id uuid primary key, campaign_id uuid, property_id uuid, user_id uuid, credits_committed integer,

@@ -1,4 +1,4 @@
--- Extra production objects 20261027110000_email_studio.sql reads, layered on top of
+-- Extra production objects 20261028110000_email_studio.sql reads, layered on top of
 -- homatch_leads_fixture.sql + the HOMATCH Leads migration (columns as in production).
 -- Run: tests/sql/run-email-studio.sh
 alter table public.admin_settings add column if not exists description text;

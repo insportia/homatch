@@ -1,4 +1,4 @@
--- Behavioural checks for 20261027100000_property_conversations.sql.
+-- Behavioural checks for 20261028100000_property_conversations.sql.
 \set ON_ERROR_STOP on
 set app.role = 'authenticated';
 

@@ -11,7 +11,7 @@
 --    reservation first, then each extension in order, every unused credit released.
 --
 -- External research only. Internal HOMATCH Leads unlocks are a separate product
--- (20261027090000) and never touch these reservations. Append-only; applies twice.
+-- (20261028090000) and never touch these reservations. Append-only; applies twice.
 
 insert into public.admin_settings (key, value)
 values ('search_budget_presets_find_clients', '[100, 500, 1000, 1500, 2000]'::jsonb),

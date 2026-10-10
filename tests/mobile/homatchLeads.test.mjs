@@ -1,7 +1,7 @@
 // HOMATCH LEADS — "Your Matching Buyers", in a real browser.
 //
 // Harness build; the feed, quote, unlock and contact calls answered by fixtures shaped
-// exactly like the SQL functions (20261027090000_homatch_leads_marketplace.sql):
+// exactly like the SQL functions (20261028090000_homatch_leads_marketplace.sql):
 //
 //   * the approved copy (eyebrow, headline, description, sales section, filters, CTAs);
 //   * a Standard and a Premium card, segment and score side by side, no identity before

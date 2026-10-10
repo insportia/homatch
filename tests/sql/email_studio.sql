@@ -1,4 +1,4 @@
--- Behavioural checks for 20261027110000_email_studio.sql.
+-- Behavioural checks for 20261028110000_email_studio.sql.
 \set ON_ERROR_STOP on
 set app.role = 'authenticated';
 

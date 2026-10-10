@@ -1,4 +1,4 @@
--- Fixture for 20261027100000_property_conversations.sql. Loaded AFTER
+-- Fixture for 20261028100000_property_conversations.sql. Loaded AFTER
 -- homatch_leads_fixture.sql (and the Leads migration is applied before ours), so the
 -- CRM triggers on messages are the real ones and run during these checks.
 --

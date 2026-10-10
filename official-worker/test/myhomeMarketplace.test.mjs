@@ -138,7 +138,7 @@ test('authentic retained search observation alone normalizes into existing ingre
   assert.equal(c.retrievalMetadata.detailVerifiedAt,null);assert.ok(c.updatedAt.startsWith('2026-10-06'));
   const output=processSearch({request:historicalRequest,candidates:[{candidate:c}],now:new Date('2026-10-09T08:00:00Z')});
   assert.equal(output.properties.length,1);assert.equal(output.properties[0].listings[0].sourceListingId,c.sourceListingId);
-  assert.equal(output.properties[0].images.length,15);
+  assert.deepEqual(output.properties[0].images,c.images.slice(0,12), 'canonical summaries retain the existing 12-photo cap and original URLs');
 });
 
 test('public Next fixtures confirm exact filters, pagination and detail identity', () => {

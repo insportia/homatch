@@ -75,7 +75,7 @@ import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
-import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav, ExecutiveGlance, ProjectTeamCard, ResearchScaleBanner } from './BuyerIntelligenceCards';
+import { PropertyRegisterCard, CompanyFinanceCard, ReportNav, ExecutiveGlance, ProjectTeamCard, ResearchScaleBanner } from './BuyerIntelligenceCards';
 import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
 import { splitCitations, hasDistance } from '@/verify/citations';
@@ -437,7 +437,8 @@ export function VerifyReport({
         adsSeen={synthesis.developerAds ? (synthesis.developerAds.activeCount ?? 0) + (synthesis.developerAds.historicalCount ?? 0) : null}
         sources={(synthesis.evidenceGroups ?? []).reduce((n: number, g: any) => n + (Array.isArray(g?.items) ? g.items.length : 0), 0) || null}
       />
-      <ExecutiveGlance register={synthesis.propertyRegister} finance={synthesis.companyFinance} market={synthesis.market ? null : synthesis.marketContext} />
+      {/* Owner, 2026-10-10: no market numbers on cards — the MARKET section explains prices in words. */}
+      <ExecutiveGlance register={synthesis.propertyRegister} finance={synthesis.companyFinance} market={null} />
 
       {/* A. WHAT THE PROPERTY'S OWN REGISTER SAYS — owner, mortgages, liens,
           as of the extract HOMATCH read. The most authoritative block in the
@@ -466,7 +467,6 @@ export function VerifyReport({
       {/* MARKET — a range HOMATCH already held, when this run gathered no
           comparables of its own (the full market section renders instead
           when it did). */}
-      {!synthesis.market ? <MarketContextCard market={synthesis.marketContext} /> : null}
 
       {/* C + D. THE PROPERTY STORY, with the official TAS visuals beside the
           chapter they explain (original → latest where both exist). */}
@@ -496,7 +496,7 @@ export function VerifyReport({
           {/* No listings table or price bar (owner, 2026-10-10): the market is
               explained in friendly words, not shown as rows of numbers. */}
           {s.key === 'PEOPLE' && people.length ? (
-            <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
+            <CompanyGraph people={people} owner={synthesis.snapshot?.developer} />
           ) : null}
           {/* Under whichever of the two location sections the model actually
               wrote, so the evidenced places sit with the prose about them. */}
@@ -520,7 +520,7 @@ export function VerifyReport({
             <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             {t('verify_ir_people_title')}
           </h2>
-          <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
+          <CompanyGraph people={people} owner={synthesis.snapshot?.developer} />
           {synthesis.people?.representationNote ? (
             <p className="text-sm leading-6 text-muted-foreground break-words">
               {readable(synthesis.people.representationNote)}
@@ -826,7 +826,9 @@ const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ me
  */
 const CompanyGraph: React.FC<{ people: PersonBlock[]; owner?: string }> = ({ people, owner }) => {
   const { t } = useLanguage();
-  const entity = owner || people.find((p) => p.entity)?.entity;
+  // The tree is the COMPANY the people belong to (the developer). The flat's
+  // owner may be a private person who has nothing to do with these directors.
+  const entity = people.find((p) => p.entity)?.entity || owner;
   const current = people.filter((p) => !p.historical);
   const historical = people.filter((p) => p.historical);
 

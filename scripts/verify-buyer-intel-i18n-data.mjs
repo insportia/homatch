@@ -181,6 +181,14 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
   vbi_team_role_developer: ['Developer', 'დეველოპერი', 'Девелопер', 'Geliştirici', 'المطوّر', 'יזם'],
   vbi_team_role_other: ['Project participant', 'პროექტის მონაწილე', 'Участник проекта', 'Proje katılımcısı', 'مشارك في المشروع', 'משתתף בפרויקט'],
   vbi_scale_title: ['What HOMATCH studied for this report', 'რა შეისწავლა HOMATCH-მა ამ რეპორტისთვის', 'Что HOMATCH изучил для этого отчёта', 'HOMATCH bu rapor için neleri inceledi', 'ما درسته HOMATCH لهذا التقرير', 'מה HOMATCH בדקה עבור הדוח הזה'],
+  vbi_scale_headline_pages: [
+    '{{pages}} pages of official documents read, {{count}} records and sources checked — the whole history, read for you',
+    '{{pages}} გვერდი ოფიციალური დოკუმენტი წავიკითხეთ და {{count}} ჩანაწერი და წყარო შევამოწმეთ — მთელი ისტორია, თქვენთვის წაკითხული',
+    'Прочитано {{pages}} страниц официальных документов, проверено {{count}} записей и источников — вся история, прочитанная для вас',
+    '{{pages}} sayfa resmi belge okundu, {{count}} kayıt ve kaynak kontrol edildi — tüm geçmiş, sizin için okundu',
+    'قرأنا {{pages}} صفحة من الوثائق الرسمية وفحصنا {{count}} سجلًا ومصدرًا — التاريخ كاملًا، مقروءًا من أجلك',
+    'קראנו {{pages}} עמודים של מסמכים רשמיים ובדקנו {{count}} רשומות ומקורות — כל ההיסטוריה, נקראה עבורכם',
+  ],
   vbi_scale_headline: [
     '{{count}} official records, documents and sources — the whole history, read for you',
     '{{count}} ოფიციალური ჩანაწერი, დოკუმენტი და წყარო — მთელი ისტორია, თქვენთვის წაკითხული',
@@ -310,6 +318,14 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
     '{{date}} tarihli kayda göre {{since}} tarihinden beri malik bir gerçek kişidir. Satıcının kimliğini kayıtla karşılaştırın veya geçerli bir vekâletname isteyin.',
     'وفق مستخرج {{date}}، المالك منذ {{since}} شخص طبيعي. طابق هوية البائع مع المستخرج، أو اطلب توكيلًا ساريًا.',
     'לפי הנסח מ־{{date}}, הבעלים מאז {{since}} הוא אדם פרטי. השוו את תעודת הזהות של המוכר לנסח, או בקשו ייפוי כוח בתוקף.',
+  ],
+  bc_seller_owner_named_detail: [
+    'The extract of {{date}} names {{name}} as the owner since {{since}}. Check the seller’s ID against that name, or a valid power of attorney.',
+    '{{date}}-ის ამონაწერის მიხედვით, მესაკუთრე {{since}}-დან არის {{name}}. გამყიდველის პირადობის მოწმობა შეადარეთ ამ სახელს, ან მოითხოვეთ მოქმედი მინდობილობა.',
+    'По выписке от {{date}} собственник с {{since}} — {{name}}. Сверьте удостоверение продавца с этим именем или проверьте действующую доверенность.',
+    '{{date}} tarihli kayda göre {{since}} tarihinden beri malik {{name}}. Satıcının kimliğini bu adla karşılaştırın veya geçerli bir vekâletname isteyin.',
+    'وفق مستخرج {{date}}، المالك منذ {{since}} هو {{name}}. طابق هوية البائع مع هذا الاسم، أو اطلب توكيلًا ساريًا.',
+    'לפי הנסח מ־{{date}}, הבעלים מאז {{since}} הוא {{name}}. השוו את תעודת הזהות של המוכר לשם זה, או בקשו ייפוי כוח בתוקף.',
   ],
   bc_commissioning_label: ['Ask for the commissioning decision', 'მოითხოვეთ ექსპლუატაციაში მიღების გადაწყვეტილება', 'Запросите решение о вводе в эксплуатацию', 'İskân kararını isteyin', 'اطلب قرار الإشغال', 'בקשו את החלטת האכלוס'],
   bc_commissioning_detail: [

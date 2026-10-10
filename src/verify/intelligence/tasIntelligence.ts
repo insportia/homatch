@@ -205,6 +205,8 @@ export interface TasCoverage {
   officialResponses: number;
   attachmentsAccounted: number;
   attachmentsRead: number;
+  /** Pages of the attachments actually read (the worker's own page counts). */
+  pagesRead?: number;
   scanOnly: number;
   unsupportedFormats: number;
   notProcessed: number;
@@ -706,6 +708,8 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     officialResponses: Number(obj(acc.responses).PDF || 0) + Number(obj(acc.responses).HTML || 0),
     attachmentsAccounted: Number(acc.attachments) || 0,
     attachmentsRead: Number(outcomes.READ_TEXT || 0) + Number(outcomes.LOW_TEXT || 0),
+    pagesRead: arr<any>(api?.cases).reduce((n, c) => n + arr<any>(c?.attachments).reduce((m, a) =>
+      m + ((a?.outcome === 'READ_TEXT' || a?.outcome === 'LOW_TEXT') && Number(a?.pages) > 0 ? Number(a.pages) : 0), 0), 0),
     scanOnly: Number(outcomes.SCAN_OR_IMAGE_ONLY || 0),
     unsupportedFormats: Number(outcomes.UNSUPPORTED_FORMAT || 0),
     notProcessed: Number(outcomes.NOT_PROCESSED_BUDGET || 0) + Number(outcomes.DOWNLOAD_FAILED || 0) + Number(outcomes.FAILED || 0),

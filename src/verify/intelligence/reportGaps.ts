@@ -307,6 +307,32 @@ export function projectTeamFrom(result: unknown, officialTeam: Array<{ name: str
   }
   if (typeof project.architect === 'string') add(project.architect, 'ARCHITECT', 'PUBLIC');
   for (const c of Array.isArray(project.contractors) ? project.contractors : []) add(c, 'CONTRACTOR', 'PUBLIC');
+  /*
+   * Public research names more professionals than the profile does — the
+   * architect's studio, engineers, builders, and suppliers or partners
+   * mentioned for another purpose (owner, 2026-10-10: "people mentioned for
+   * other purposes count too"). Entries look like "GBS — supplies ceramic
+   * tiles"; the part before the dash is the name, the rest says why.
+   */
+  const pub = obj(r.publicResearch);
+  const named = (v: unknown): { name: string; why: string | null } | null => {
+    if (typeof v !== 'string') return null;
+    const [head, ...rest] = v.split(/\s+[—–-]\s+/);
+    const name = head.replace(/\s+/g, ' ').trim();
+    if (name.length < 2 || name.length > 80) return null;
+    // "Millennio Group-ისთვის 1,500 მ² ფილის მიწოდება." → "1,500 მ² ფილის მიწოდება"
+    const why = rest.join(' — ').replace(/^[^,.;]{1,40}?-ისთვის\s+/u, '').replace(/[.;\s]+$/, '').trim();
+    return { name, why: why || null };
+  };
+  const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : typeof v === 'string' ? [v] : []);
+  for (const v of [...list(pub.architect), ...list(pub.architectStudio)]) { const n = named(v); if (n) add(n.name, 'ARCHITECT', 'PUBLIC'); }
+  for (const v of [...list(pub.contractors), ...list(pub.constructionCompanies)]) { const n = named(v); if (n) add(n.name, 'CONTRACTOR', 'PUBLIC'); }
+  for (const v of list(pub.engineers)) { const n = named(v); if (n) add(n.name, n.why ? teamRoleOf(n.why) : 'STRUCTURAL_ENGINEER', 'PUBLIC', n.why); }
+  for (const v of [...list(pub.suppliers), ...list(pub.partners)]) {
+    const n = named(v);
+    // A supplier is named for what it supplies, never promoted to a design role.
+    if (n?.why) add(n.name, 'OTHER', 'PUBLIC', n.why);
+  }
   // The developer is shown in its own sections; here only the professionals.
   return [...out.values()].filter((m) => !(m.roles.length === 1 && m.roles[0] === 'DEVELOPER')).slice(0, 24);
 }

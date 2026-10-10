@@ -139,8 +139,13 @@ export function buildBuyerChecklist(input: ChecklistInput): ChecklistItem[] {
     out.push({
       key: 'SELLER_IS_OWNER',
       labelKey: 'bc_seller_owner_label',
-      detailKey: 'bc_seller_owner_detail',
-      params: { date: asOf, since: dmy(reg.latest!.ownershipRegisteredOn) },
+      // Owner, 2026-10-10: name the owner exactly as the extract does.
+      ...((): { detailKey: string; params: Record<string, string> } => {
+        const names = owners.map((o) => o.name).filter((n): n is string => !!n);
+        return names.length
+          ? { detailKey: 'bc_seller_owner_named_detail', params: { date: asOf, since: dmy(reg.latest!.ownershipRegisteredOn), name: names.join(', ') } }
+          : { detailKey: 'bc_seller_owner_detail', params: { date: asOf, since: dmy(reg.latest!.ownershipRegisteredOn) } };
+      })(),
     });
   }
 

@@ -473,7 +473,7 @@ export function ResearchScaleBanner({
   adsSeen,
   sources,
 }: {
-  coverage?: { officialCasesReviewed?: number; officialAttachmentsRead?: number; officialStepsReviewed?: number; marketListingsAnalyzed?: number } | null;
+  coverage?: { officialPagesRead?: number; officialCasesReviewed?: number; officialAttachmentsRead?: number; officialStepsReviewed?: number; marketListingsAnalyzed?: number } | null;
   register?: { documents?: number; found?: number } | null;
   adsSeen?: number | null;
   sources?: number | null;
@@ -492,10 +492,12 @@ export function ResearchScaleBanner({
   add('vbi_scale_sources', sources);
   const total = items.reduce((a, b) => a + b.n, 0);
   if (total < 1 || items.length < 2) return null;
+  // Pages are a different unit — told in the headline, never added to the count.
+  const pages = coverage?.officialPagesRead && coverage.officialPagesRead > 0 ? coverage.officialPagesRead : 0;
   return (
     <section aria-label={t('vbi_scale_title')} className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/40 p-5 space-y-3">
       <p className="text-2xs uppercase tracking-wider text-[hsl(var(--gold-ink))]">{t('vbi_scale_title')}</p>
-      <p className="text-lg font-semibold leading-snug break-words">{t('vbi_scale_headline', { count: iso(String(total)) })}</p>
+      <p className="text-lg font-semibold leading-snug break-words">{pages ? t('vbi_scale_headline_pages', { pages: iso(String(pages)), count: iso(String(total)) }) : t('vbi_scale_headline', { count: iso(String(total)) })}</p>
       <dl className="flex flex-wrap gap-2">
         {items.map((i) => (
           <div key={i.key} className="min-w-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs">

@@ -474,6 +474,42 @@ export class ResearchOrchestrator {
     return { service: captchaService, policy: job.captchaPolicy ?? parseCaptchaPolicy(null), jobId: job.id };
   }
 
+  /*
+   * QUEUE PATH — one source for one durable task, outside any job run loop.
+   *
+   * The task carries everything the source needs; nothing is kept here after
+   * it returns (no jobs-map entry, ledgers and entity queues are dropped), so
+   * a replica can run thousands of tasks without growing. HTTP sources get no
+   * browser at all. A human-verification pause cannot be held open by the
+   * queue: its page is closed and the caller records the source as needing a
+   * human, exactly as the driver's unattended-skip does today.
+   */
+  async executeSource(
+    jobBrowser: JobBrowser | null,
+    task: { id: string; query: string; mode: 'cadastral' | 'property'; step: StepDescriptor; tasConfig?: TasImplementationConfig; captchaPolicy?: CaptchaPolicy },
+  ): Promise<{ result: any; keep: boolean }> {
+    const job: ResearchJob = {
+      id: task.id, query: task.query, mode: task.mode, status: 'RUNNING', stage: 'QUEUE_TASK', sourceIndex: 0, results: [],
+      createdAt: now(), updatedAt: now(), tasConfig: task.tasConfig ?? DEFAULT_TAS_CONFIG, captchaPolicy: task.captchaPolicy ?? parseCaptchaPolicy(null),
+    };
+    const browser = jobBrowser ?? (new Proxy({}, { get() { throw new Error('HTTP_SOURCE_USED_BROWSER'); } }) as unknown as JobBrowser);
+    try {
+      const out = await this.runStep(browser, job, task.step);
+      if (out.keep) {
+        const session = this.sessions.get(job.id);
+        if (session) {
+          await session.page?.close?.().catch(() => {});
+          this.sessions.delete(job.id);
+        }
+      }
+      return out;
+    } finally {
+      this.ledgers.delete(job.id);
+      this.entityQueues.delete(job.id);
+      captchaService.forgetJob(job.id);
+    }
+  }
+
   private async runStep(jobBrowser: JobBrowser, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean }> {
     const ledger = this.ledgerFor(job.id);
     const entities = this.entitiesFor(job.id);

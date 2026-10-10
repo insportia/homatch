@@ -311,6 +311,14 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
     'وفق مستخرج {{date}}، المالك منذ {{since}} شخص طبيعي. طابق هوية البائع مع المستخرج، أو اطلب توكيلًا ساريًا.',
     'לפי הנסח מ־{{date}}, הבעלים מאז {{since}} הוא אדם פרטי. השוו את תעודת הזהות של המוכר לנסח, או בקשו ייפוי כוח בתוקף.',
   ],
+  bc_seller_owner_named_detail: [
+    'The extract of {{date}} names {{name}} as the owner since {{since}}. Check the seller’s ID against that name, or a valid power of attorney.',
+    '{{date}}-ის ამონაწერის მიხედვით, მესაკუთრე {{since}}-დან არის {{name}}. გამყიდველის პირადობის მოწმობა შეადარეთ ამ სახელს, ან მოითხოვეთ მოქმედი მინდობილობა.',
+    'По выписке от {{date}} собственник с {{since}} — {{name}}. Сверьте удостоверение продавца с этим именем или проверьте действующую доверенность.',
+    '{{date}} tarihli kayda göre {{since}} tarihinden beri malik {{name}}. Satıcının kimliğini bu adla karşılaştırın veya geçerli bir vekâletname isteyin.',
+    'وفق مستخرج {{date}}، المالك منذ {{since}} هو {{name}}. طابق هوية البائع مع هذا الاسم، أو اطلب توكيلًا ساريًا.',
+    'לפי הנסח מ־{{date}}, הבעלים מאז {{since}} הוא {{name}}. השוו את תעודת הזהות של המוכר לשם זה, או בקשו ייפוי כוח בתוקף.',
+  ],
   bc_commissioning_label: ['Ask for the commissioning decision', 'მოითხოვეთ ექსპლუატაციაში მიღების გადაწყვეტილება', 'Запросите решение о вводе в эксплуатацию', 'İskân kararını isteyin', 'اطلب قرار الإشغال', 'בקשו את החלטת האכלוס'],
   bc_commissioning_detail: [
     'On {{date}} the register still listed the buildings as under construction. The commissioning decision confirms the building is complete in law, not only on site.',

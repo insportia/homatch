@@ -16072,6 +16072,9 @@ const en = {
   vbi_mkt_col_sqm: 'Per m²',
   vbi_mkt_rooms: 'rooms',
   vbi_mkt_list_note: 'Asking prices from current listings (MyHome.ge, SS.ge and other portals) — what sellers ask, not what buyers paid.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  bc_seller_owner_named_detail: 'The extract of {{date}} names {{name}} as the owner since {{since}}. Check the seller’s ID against that name, or a valid power of attorney.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32058,6 +32061,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vbi_mkt_col_sqm: 'კვ.მ-ზე',
   vbi_mkt_rooms: 'ოთახი',
   vbi_mkt_list_note: 'მოთხოვნილი ფასები მიმდინარე განცხადებებიდან (MyHome.ge, SS.ge და სხვა პორტალები) — რას ითხოვენ გამყიდველები და არა რა გადაიხადეს მყიდველებმა.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  bc_seller_owner_named_detail: '{{date}}-ის ამონაწერის მიხედვით, მესაკუთრე {{since}}-დან არის {{name}}. გამყიდველის პირადობის მოწმობა შეადარეთ ამ სახელს, ან მოითხოვეთ მოქმედი მინდობილობა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48035,6 +48041,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vbi_mkt_col_sqm: 'За м²',
   vbi_mkt_rooms: 'комн.',
   vbi_mkt_list_note: 'Цены предложений из актуальных объявлений (MyHome.ge, SS.ge и другие порталы) — сколько просят продавцы, а не сколько заплатили покупатели.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  bc_seller_owner_named_detail: 'По выписке от {{date}} собственник с {{since}} — {{name}}. Сверьте удостоверение продавца с этим именем или проверьте действующую доверенность.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64010,6 +64019,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vbi_mkt_col_sqm: 'm² başına',
   vbi_mkt_rooms: 'oda',
   vbi_mkt_list_note: 'Güncel ilanlardaki istenen fiyatlar (MyHome.ge, SS.ge ve diğer portallar) — alıcıların ödediği değil, satıcıların istediği.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  bc_seller_owner_named_detail: '{{date}} tarihli kayda göre {{since}} tarihinden beri malik {{name}}. Satıcının kimliğini bu adla karşılaştırın veya geçerli bir vekâletname isteyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -79985,6 +79997,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vbi_mkt_col_sqm: 'للمتر المربع',
   vbi_mkt_rooms: 'غرف',
   vbi_mkt_list_note: 'أسعار مطلوبة من إعلانات حالية (MyHome.ge وSS.ge وبوابات أخرى) — ما يطلبه البائعون لا ما دفعه المشترون.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  bc_seller_owner_named_detail: 'وفق مستخرج {{date}}، المالك منذ {{since}} هو {{name}}. طابق هوية البائع مع هذا الاسم، أو اطلب توكيلًا ساريًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -95960,6 +95975,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   vbi_mkt_col_sqm: 'למ״ר',
   vbi_mkt_rooms: 'חדרים',
   vbi_mkt_list_note: 'מחירים מבוקשים ממודעות עדכניות (MyHome.ge, SS.ge ופורטלים נוספים) — מה שהמוכרים מבקשים, לא מה שהקונים שילמו.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  bc_seller_owner_named_detail: 'לפי הנסח מ־{{date}}, הבעלים מאז {{since}} הוא {{name}}. השוו את תעודת הזהות של המוכר לשם זה, או בקשו ייפוי כוח בתוקף.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

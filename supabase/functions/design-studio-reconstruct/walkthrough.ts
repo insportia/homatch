@@ -950,24 +950,37 @@ async function plan(admin: Row, row: Row): Promise<void> {
   let payload: Row = null;
   let reused: ValidatedScenePlan | null = null;
   let reusedFrom: string | null = null;
+  // The design graph the reused plan was built with (a READY walkthrough keeps it): the same picture, the same plan,
+  // the same graph — never rebuilt from the picture's pixels again (that load can fail, and then the walk silently
+  // fell back to the plan-only path, which is not the design).
+  let reusedGraph: SpatialDesignGraph | null = null;
+  const graphOf = (report: Row): SpatialDesignGraph | null => {
+    const g = report?.designGraph?.graph;
+    return g && Array.isArray(g.rooms) && String(g.source?.renderId ?? '') === String(row.render_id ?? '') ? g as SpatialDesignGraph : null;
+  };
   let reuseRefused: string | null = null;
   const keepRooms = (plan0: ValidatedScenePlan) => { const ids = new Set(space.rooms.map((r) => r.id)); return { ...plan0, rooms: plan0.rooms.filter((r) => ids.has(r.roomId)) }; };
   if (typeof row.timings?.reusePlanFrom === 'string') {
     // The plan an earlier walkthrough of this design made: the same rooms, the same choices, no new model call —
     // only for the same picture (or, both without one, the same specification). Every pose is placed again below.
-    const { data: w } = await admin.from('ds_walkthroughs').select('scene_plan, project_id, timings').eq('id', row.timings.reusePlanFrom).maybeSingle();
+    const { data: w } = await admin.from('ds_walkthroughs').select('scene_plan, project_id, timings, state, graph:plan_report->designGraph->graph').eq('id', row.timings.reusePlanFrom).maybeSingle();
     const plan0 = w?.project_id === row.project_id ? w?.scene_plan as ValidatedScenePlan | null : null;
-    if (plan0?.rooms && (w?.timings?.reference?.referenceImageSha256 ?? null) === (provenance?.referenceImageSha256 ?? null)) { reused = keepRooms(plan0); reusedFrom = row.timings.reusePlanFrom; }
+    if (plan0?.rooms && (w?.timings?.reference?.referenceImageSha256 ?? null) === (provenance?.referenceImageSha256 ?? null)) {
+      reused = keepRooms(plan0); reusedFrom = row.timings.reusePlanFrom;
+      reusedGraph = w?.state === 'READY' ? graphOf({ designGraph: { graph: w?.graph } }) : null;
+    }
     else if (plan0?.rooms) reuseRefused = 'DIFFERENT_PICTURE';
   }
   if (!reused && planKey && !replan) {
     // The same picture, the same specification, the same geometry, already planned: reused — the plan of a READY
     // walkthrough, or the paid plan a failed one kept (it failed after planning; the builder may since be fixed).
     const { data: same } = await admin.from('ds_walkthroughs').select('id, state, scene_plan, plan_report').eq('project_id', row.project_id).in('state', ['READY', 'FAILED'])
-      .eq('timings->>planKey', planKey).neq('id', row.id).order('created_at', { ascending: false }).limit(3);
-    const hit = (same ?? []).map((w: Row) => ({ id: w.id, plan: w.state === 'READY' ? w.scene_plan : w.plan_report?.final?.scenePlan ?? null }))
-      .find((x: Row) => x.plan?.rooms && x.plan.reference);
-    if (hit) { reused = keepRooms(hit.plan); reusedFrom = hit.id; }
+      .eq('timings->>planKey', planKey).neq('id', row.id).order('created_at', { ascending: false }).limit(6);
+    const hit = (same ?? []).map((w: Row) => ({ id: w.id, plan: w.state === 'READY' ? w.scene_plan : w.plan_report?.final?.scenePlan ?? null, graph: w.state === 'READY' ? graphOf(w.plan_report) : null }))
+      .filter((x: Row) => x.plan?.rooms && x.plan.reference)
+      // A READY walkthrough with its graph first: its plan was proven buildable as the design, a failed one's was not.
+      .sort((p: Row, q: Row) => Number(!!q.graph) - Number(!!p.graph))[0];
+    if (hit) { reused = keepRooms(hit.plan); reusedFrom = hit.id; reusedGraph = hit.graph; }
   }
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!reused && !apiKey) { await release(admin, row, { error: 'PLAN_UNAVAILABLE', next_check_at: iso(Date.now() + 60_000) }); return; }
@@ -1031,13 +1044,19 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // THE SELECTED DESIGN AS A GRAPH (walkthrough/designGraph.ts): the render's scene map, legend and measured
   // pixels, the specification's words and the plan's poses. With it, the walkthrough is built from what the render
   // shows — nothing invented, every piece in its design form and colours; without it (no render evidence), the plan.
-  const evidence = reference ? await loadDesignEvidence(admin, row, space, version.source_id, reference.bytes).catch(() => null) : null;
-  const graph: SpatialDesignGraph | null = evidence && evidence.sourceRooms.length && evidence.sceneMap.some((e) => e.kind === 'OBJECT')
+  // A reused plan brings its graph (above); otherwise the graph is built from the picture's evidence. A failed load
+  // is recorded (plan_report.designGraphError), never swallowed: the plan-only fallback is not the design.
+  let evidenceError: string | null = null;
+  const evidence = reference && !(reusedGraph && reused)
+    ? await loadDesignEvidence(admin, row, space, version.source_id, reference.bytes).catch((e) => { evidenceError = String((e as Error)?.message ?? e).slice(0, 300); return null; })
+    : null;
+  const graph: SpatialDesignGraph | null = reusedGraph && reused ? reusedGraph : evidence && evidence.sourceRooms.length && evidence.sceneMap.some((e) => e.kind === 'OBJECT')
     ? buildDesignGraph({
       space, spec, sceneMap: evidence.sceneMap, legend: evidence.legend, sourceRooms: evidence.sourceRooms, scenePlan: validated, appearance: evidence.appearance,
       source: { renderId: String(row.render_id), sceneMapJobId: provenance?.sceneMapJobId ?? null, specJobId: row.spec_job_id ?? null },
     })
     : null;
+  const designGraphError = reference && !graph ? evidenceError ?? (evidence ? 'NO_ROOMS_OR_OBJECTS' : 'NO_EVIDENCE') : null;
   const graphPlan = graph ? { ...graphToBuildPlan(graph, space, cat.materials, assets), styleCode: preferences.style } : null;
   const built = buildWalkthrough({
     space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`,
@@ -1073,7 +1092,10 @@ async function plan(admin: Row, row: Row): Promise<void> {
   if (failing) {
     // The paid plan is kept with the failure: the same picture is never planned (and paid for) twice, and the
     // build can be reproduced exactly.
-    const summary = { build: { counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated }, reference: referenceReport, dropped: validated.dropped, scenePlan: validated };
+    const summary = {
+      build: { counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated }, reference: referenceReport, dropped: validated.dropped, scenePlan: validated,
+      designGraph: graph ? { reusedFrom: reusedGraph && reused ? reusedFrom : null, promotion } : { error: designGraphError },
+    };
     // One replan, told exactly what failed (codes and numbers made here), in its own invocation; then the failure stands.
     if (fidelity && !replan && row.plan_attempts < MAX_PLAN_ATTEMPTS) {
       await release(admin, row, {
@@ -1107,10 +1129,11 @@ async function plan(admin: Row, row: Row): Promise<void> {
     reference: referenceReport, ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}),
     // The plan's own ambiguities, reported with the tour (planFidelity.ts): what the drawing may say differently.
     planFidelity: planCheck,
+    ...(designGraphError ? { designGraphError } : {}),
     // The selected design as built: its graph (for audit), what was read, the promotion verdict, and the pieces it
     // binds (the factory never swaps them for generic models).
     designGraph: graph ? {
-      version: graph.version, source: graph.source, roomMap: graph.roomMap, evidence: evidence?.report ?? null, promotion,
+      version: graph.version, source: graph.source, roomMap: graph.roomMap, evidence: evidence?.report ?? null, promotion, reusedFrom: reusedGraph && reused ? reusedFrom : null,
       bound: built.report.items.filter((i) => i.refKey && i.instanceId).map((i) => i.instanceId), graph,
     } : (reference ? { version: null, promotion: { promoted: false, reasons: ['NO_DESIGN_GRAPH'], metrics: null }, evidence: evidence?.report ?? null } : null),
   };

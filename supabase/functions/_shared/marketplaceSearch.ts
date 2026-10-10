@@ -222,6 +222,7 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
     : { data: [] };
   const attemptsOf = new Map<string, number>((workerRows ?? []).map((w: { worker_id: string; max_attempts: number }) => [w.worker_id, Number(w.max_attempts) || 3] as [string, number]));
   await reapRuns(db, (runRows ?? []) as Array<Record<string, unknown>>, (id) => attemptsOf.get(id) ?? 3, now);
+  await serveCachedListings(db, searchId, search.request as MarketplaceSearchRequest, (runRows ?? []) as Array<Record<string, unknown>>, now);
   const runs: WorkerRunState[] = (runRows ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunStatus, deadlineAt: r.deadline_at as string, returnedCount: Number(r.returned_count) || 0,
   }));
@@ -298,4 +299,55 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
     updated_at: now.toISOString(),
   }).eq('id', searchId).neq('status', 'CANCELLED');
   return { status: derived.status, properties: properties.length, strongMatches };
+}
+
+/** Sources whose runs fall back to previously collected listings when fresh
+ * acquisition is unavailable. SS.ge keeps its existing behaviour. */
+export const CACHE_FALLBACK: Record<string, string> = { 'myhome-agent': 'myhome-ge' };
+export const CACHE_WINDOW_MS = 14 * 24 * 3600_000;
+const CACHE_SCAN_ROWS = 3000;
+
+/**
+ * MyHome unavailable (cooling down, refused, failed, timed out) or only partly
+ * read: add the previously collected listings of the same source that this
+ * search's own pipeline accepts. Each keeps its ORIGINAL observedAt, so
+ * freshness (VERIFIED / RECENT / STALE) and "last checked" stay true, and is
+ * marked observationLevel CACHED. Fresh rows are never overwritten
+ * (ignoreDuplicates on the search/source/listing key); the run's status and
+ * returned_count are not changed, so a cached answer is never reported as a
+ * fresh refresh. Runs once per run: a run that already holds cached rows is
+ * skipped.
+ */
+export async function serveCachedListings(db: Db, searchId: string, request: MarketplaceSearchRequest,
+  runRows: Array<Record<string, unknown>>, now = new Date()): Promise<number> {
+  let served = 0;
+  for (const run of runRows) {
+    const sourceKey = CACHE_FALLBACK[String(run.worker_id)];
+    if (!sourceKey || !['BLOCKED', 'FAILED', 'TIMED_OUT', 'PARTIAL'].includes(String(run.status))) continue;
+    const { data: already } = await db.from('discovery_marketplace_listings').select('id')
+      .eq('worker_run_id', run.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED').limit(1);
+    if ((already ?? []).length) continue;
+    const { data: rows } = await db.from('discovery_marketplace_listings')
+      .select('source_listing_id,exact_url,raw,observed_at').eq('source_key', sourceKey).neq('search_id', searchId)
+      .gte('observed_at', new Date(now.getTime() - CACHE_WINDOW_MS).toISOString())
+      .order('observed_at', { ascending: false }).limit(CACHE_SCAN_ROWS);
+    const latest = new Map<string, { source_listing_id: string; exact_url: string; raw: ExternalListingCandidate; observed_at: string }>();
+    for (const r of rows ?? []) if (!latest.has(r.source_listing_id)) latest.set(r.source_listing_id, r);
+    const pool = [...latest.values()].filter((r) => r.raw?.transactionType === request.transactionType && r.raw?.propertyType === request.propertyType);
+    if (!pool.length) continue;
+    // The search's own pipeline decides what matches; nothing is re-implemented here.
+    const accepted = new Set(processSearch({ request, candidates: pool.map((r) => ({ workerId: String(run.worker_id), candidate: r.raw })), converter: await loadConverter(db), now })
+      .properties.flatMap((p) => p.listings.map((l) => l.listingId)));
+    const cached = pool.filter((r) => accepted.has(`${r.raw.source}:${r.raw.sourceListingId}`)).map((r) => ({
+      search_id: searchId, worker_run_id: run.id, source_key: sourceKey, source_listing_id: r.source_listing_id, exact_url: r.exact_url,
+      observed_at: r.observed_at, updated_at: now.toISOString(),
+      raw: { ...r.raw, retrievalMetadata: { ...(r.raw.retrievalMetadata ?? {}), observationLevel: 'CACHED', cachedAt: now.toISOString() } },
+    }));
+    for (const batch of chunk(cached, 500)) {
+      const { error } = await db.from('discovery_marketplace_listings').upsert(batch, { onConflict: 'search_id,source_key,source_listing_id', ignoreDuplicates: true });
+      if (error) throw new Error(error.message);
+    }
+    served += cached.length;
+  }
+  return served;
 }

@@ -31,6 +31,7 @@ import {
   isTerminalSearch, progressOf, stagesOf, type SearchStatus, type WorkerRunState,
 } from '../../../src/research-core/marketplace/lifecycle.ts';
 import { compareProperties } from '../../../src/research-core/marketplace/comparison.ts';
+import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../../../src/research-core/marketplace/provider-access.ts';
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
@@ -56,7 +57,7 @@ type Db = any;
 /** The customer-safe summary of a search: no cost, no internals, no worker errors. */
 async function summary(db: Db, search: Record<string, unknown>) {
   const { data: runs } = await db.from('discovery_marketplace_worker_runs')
-    .select('worker_id,status,deadline_at,returned_count').eq('search_id', search.id);
+    .select('id,worker_id,status,deadline_at,returned_count').eq('search_id', search.id);
   const states: WorkerRunState[] = (runs ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunState['status'], deadlineAt: String(r.deadline_at), returnedCount: Number(r.returned_count) || 0,
   }));
@@ -66,6 +67,20 @@ async function summary(db: Db, search: Record<string, unknown>) {
   for (const p of catalogue) counts[p.group] += 1;
   const stats = (search.stats ?? {}) as Record<string, number>;
   const status = search.status as SearchStatus;
+  /* Per source: fresh, partly refreshed, previously collected (cached),
+     unavailable, or still refreshing — from real run state and stored rows. */
+  const sources = await Promise.all((runs ?? []).map(async (r: Record<string, unknown>) => {
+    const { count: cachedCount } = await db.from('discovery_marketplace_listings').select('id', { count: 'exact', head: true })
+      .eq('worker_run_id', r.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED');
+    const state = sourceFreshness({ status: String(r.status), freshCount: Number(r.returned_count) || 0, cachedCount: cachedCount ?? 0 });
+    let retryAt: string | null = null;
+    if (state === 'CACHED' || state === 'UNAVAILABLE' || state === 'PARTIAL') {
+      const { data: w } = await db.from('discovery_marketplace_workers').select('health').eq('worker_id', r.worker_id).maybeSingle();
+      retryAt = decideProviderAccess(readProviderAccess(w?.health), new Date(), false).retryAt;
+    }
+    return { source: String(r.worker_id) === 'myhome-agent' ? 'MyHome' : String(r.worker_id) === 'ssge-agent' ? 'SS.ge' : 'OTHER',
+      state, freshListings: Number(r.returned_count) || 0, cachedListings: cachedCount ?? 0, retryAt };
+  }));
   return {
     id: search.id,
     status,
@@ -91,6 +106,7 @@ async function summary(db: Db, search: Record<string, unknown>) {
     totalProperties: Object.values(counts).reduce((a, b) => a + b, 0),
     /* Partial: some sources could not be checked. Which ones, and why, is Admin's business. */
     partial: status === 'PARTIAL_COMPLETE',
+    sources,
     unavailable: status === 'FAILED' ? (search.failure_reason === 'NO_ELIGIBLE_WORKERS' ? 'NO_SOURCES' : 'FAILED') : null,
   };
 }

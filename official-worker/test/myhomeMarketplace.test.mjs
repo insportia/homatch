@@ -6,6 +6,7 @@ import { buildQueries, candidateFromMyHome } from '../.tstest-build/marketplace/
 import { parsePagination, AcquisitionError } from '../.tstest-build/marketplace/myhome/api.js';
 import { publicSearchUrl, parsePublicPage, publicPage } from '../.tstest-build/marketplace/myhome/public-page.js';
 import { startMyHomeRuntime } from '../.tstest-build/marketplace/MyHomeRuntime.js';
+import { MyHomeEngine } from '../.tstest-build/marketplace/myhome/engine.js';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { processSearch } from '../../src/research-core/marketplace/pipeline.ts';
 import { sanitizeBrief, emptyBrief } from '../../src/research-core/marketplace/brief.ts';
@@ -68,9 +69,9 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
   return { pages,reports,details,fetcher,run: (overrides={},options={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r),...options}) };
 }
 
-test('search-first acquisition never opens details by default and preserves all pages', async () => {
+test('search-first acquisition never opens details by default and preserves all budgeted pages', async () => {
   const s = simulated({detailFailure:403});
-  const result = await s.run();
+  const result = await s.run({}, { maxPages: 50 });
   assert.equal(result.status,'COMPLETE'); assert.equal(result.delivered,139);
   assert.deepEqual(s.details,[]); assert.deepEqual(s.pages,[1,2,3,4,5,6]);
   const candidate = s.reports.find(r=>r.listings.length).listings[0];
@@ -238,14 +239,23 @@ test('detail dictionary shape, coordinates and source URL survive mapping',()=>{
   assert.equal(c.latitude,41.67);assert.equal(c.district,'კრწანისი');assert.equal(c.renovationStatus,'WHITE_FRAME');assert.equal(c.updatedAt,'2026-10-06T12:48:54.000Z');assert.equal(c.images.length,1);
 });
 test('production processes all six pages, all 139 unique IDs and progressive batches',async()=>{
-  const s=simulated({duplicate:true});const result=await s.run();
+  const s=simulated({duplicate:true});const result=await s.run({},{maxPages:50});
   assert.deepEqual(s.pages,[1,2,3,4,5,6]);assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,139);
   assert.equal(s.reports.filter(r=>r.status==='RESULTS_RECEIVED').length,6);assert.equal(new Set(s.reports.flatMap(r=>r.listings.map(l=>l.sourceListingId))).size,139);
   assert.equal(s.reports.at(-1).status,'COMPLETE');assert.equal(s.reports.at(-1).listings.length,0);
 });
-test('production can traverse 50 pages without an arbitrary small cap',async()=>{const s=simulated({lastPage:50,total:1200});const result=await s.run();assert.equal(result.delivered,1200);assert.equal(s.pages.length,50);});
+test('an explicit page budget can traverse 50 pages',async()=>{const s=simulated({lastPage:50,total:1200});const result=await s.run({},{maxPages:50});assert.equal(result.delivered,1200);assert.equal(s.pages.length,50);});
+test('owner page cap: by default only the first 3 result pages are requested and the full count is still reported',async()=>{
+  const s=simulated();const result=await s.run();
+  assert.deepEqual(s.pages,[1,2,3]);assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,72);
+  const last=s.reports.at(-1);assert.equal(last.discoveredCount,139);assert.equal(last.queryApplied.pageCap,3);assert.equal(last.queryApplied.pagesCapped,true);
+});
+test('pages are paced: a fixed pause precedes every page after the first',async()=>{
+  const s=simulated();const started=Date.now();await s.run({},{pageIntervalMs:40});
+  assert.ok(Date.now()-started>=80,'two pauses before pages 2 and 3');assert.deepEqual(s.pages,[1,2,3]);
+});
 test('a live record with no canonical URL does not truncate pagination or invent a URL',async()=>{
-  const s=simulated({missingUrlId:38});const result=await s.run();
+  const s=simulated({missingUrlId:38});const result=await s.run({},{maxPages:50});
   assert.deepEqual(s.pages,[1,2,3,4,5,6]);assert.equal(result.delivered,138);assert.equal(result.status,'PARTIAL');
   assert.equal(s.reports.at(-1).errors[0].code,'SOURCE_URL_UNAVAILABLE');assert.match(s.reports.at(-1).errors[0].message,/38/);
   assert.ok(s.reports.flatMap(r=>r.listings).every(l=>l.sourceListingId!=='38' && !l.exactUrl.includes('null')));
@@ -263,14 +273,14 @@ test('restart resumes only an acknowledged page for the exact same source querie
   assert.equal(persisted.requests[0].length, 80, 'exercise the production ingress sanitizer');
   assert.match(persisted.queryFingerprint, /^[a-f0-9]{64}$/);
   const resumed = simulated();
-  const result = await resumed.run({}, { checkpoint: { queryApplied: persisted, returnedCount: 24 } });
+  const result = await resumed.run({}, { maxPages: 50, checkpoint: { queryApplied: persisted, returnedCount: 24 } });
   assert.deepEqual(resumed.pages, [2,3,4,5,6]);
   assert.equal(result.delivered, 139); assert.equal(result.status, 'COMPLETE');
   const changed = simulated();
-  await changed.run({}, { checkpoint: { queryApplied: { ...persisted, queryFingerprint: '0'.repeat(64) }, returnedCount: 24 } });
+  await changed.run({}, { maxPages: 50, checkpoint: { queryApplied: { ...persisted, queryFingerprint: '0'.repeat(64) }, returnedCount: 24 } });
   assert.deepEqual(changed.pages, [1,2,3,4,5,6], 'changed dictionaries/criteria never reuse a stale cursor');
   const legacy = simulated();
-  await legacy.run({}, { checkpoint: { queryApplied: { ...persisted, queryFingerprint: undefined }, returnedCount: 24 } });
+  await legacy.run({}, { maxPages: 50, checkpoint: { queryApplied: { ...persisted, queryFingerprint: undefined }, returnedCount: 24 } });
   assert.deepEqual(legacy.pages, [1,2,3,4,5,6], 'truncated legacy URLs cannot prove query identity');
 });
 
@@ -379,7 +389,7 @@ test('district names resolve with or without a "district"/„რაიონი�
   assert.equal(k.urbanId, 65);
 });
 
-for (const transport of ['http', 'crawlee']) test(`runtime ${transport} honors durable access restriction without contacting MyHome and closes only its own run`, async () => {
+for (const transport of ['http', 'crawlee']) test(`runtime ${transport} honors a durable cooldown without contacting MyHome and closes only its own run`, async () => {
   let sourceRequests = 0, completed = false, claimed = false;
   const reports = [];
   const fetcher = async (input, init) => {
@@ -405,8 +415,72 @@ for (const transport of ['http', 'crawlee']) test(`runtime ${transport} honors d
     assert.equal(sourceRequests, 0);
     assert.equal(reports.length, 1);
     assert.equal(reports[0].status, 'BLOCKED');
-    assert.equal(reports[0].errors[0].code, 'ACCESS_DENIED');
-    assert.equal(runtime.status().engine.access, 'ACCESS_RESTRICTED');
+    assert.equal(reports[0].errors[0].code, 'PROVIDER_COOLDOWN');
+    assert.equal(reports[0].retryable, false);
     assert.equal(runtime.status().pageTransport, transport === 'crawlee' ? 'CRAWLEE' : 'HTTP');
+  } finally { runtime.shutdown(); }
+});
+
+/* ── Provider recovery: protection without a customer-facing shutdown ── */
+const accessStore = (mode, { failDecide = false } = {}) => {
+  const calls = { restrict: [], recovered: 0 };
+  return { calls, decide: async () => { if (failDecide) throw new Error('Marketplace ingest HTTP 500'); return { mode, retryAt: mode === 'CACHE_ONLY' ? '2026-10-10T21:00:00.000Z' : null }; },
+    restrict: async (e) => { calls.restrict.push(e); }, recovered: async () => { calls.recovered++; } };
+};
+const counted = (s) => { let n = 0; const fetcher = async (i, init) => { n++; return s.fetcher(i, init); }; return { fetcher, count: () => n }; };
+
+test('cooldown: the run is answered without a single source request and is never a fresh success', async () => {
+  const s = simulated(), c = counted(s), st = accessStore('CACHE_ONLY'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { fetcher: c.fetcher, engine });
+  assert.equal(c.count(), 0); assert.equal(result.status, 'BLOCKED');
+  const last = s.reports.at(-1);
+  assert.equal(last.errors[0].code, 'PROVIDER_COOLDOWN'); assert.match(last.errors[0].message, /2026-10-10T21:00:00/);
+  assert.equal(last.retryable, false); assert.equal(last.returnedCount, 0);
+});
+
+test('ingress 500 while reading access state: transient, retryable, MyHome not contacted, no cooldown', async () => {
+  const s = simulated(), c = counted(s), st = accessStore('LIVE', { failDecide: true }), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { fetcher: c.fetcher, engine });
+  assert.equal(c.count(), 0); assert.equal(result.status, 'FAILED');
+  assert.equal(s.reports.at(-1).errors[0].code, 'ACCESS_STATE_UNAVAILABLE'); assert.equal(s.reports.at(-1).retryable, true);
+  assert.equal(st.calls.restrict.length, 0);
+});
+
+test('probe after cooldown: the first page read reopens MyHome exactly once', async () => {
+  const s = simulated(), st = accessStore('PROBE'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { engine });
+  assert.equal(result.status, 'COMPLETE'); assert.equal(st.calls.recovered, 1); assert.equal(st.calls.restrict.length, 0);
+  assert.equal(s.reports.at(-1).queryApplied.accessMode, 'PROBE');
+});
+
+test('probe refused again: one request, cooldown recorded, no recovery, nothing retried', async () => {
+  const s = simulated({ failPage: 1 }), st = accessStore('PROBE'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { engine });
+  assert.equal(result.status, 'BLOCKED'); assert.deepEqual(s.pages, [1]);
+  assert.equal(st.calls.recovered, 0); assert.equal(st.calls.restrict.length, 1);
+  assert.equal(s.reports.at(-1).errors[0].code, 'ACCESS_DENIED');
+});
+
+test('a refusal mid-run keeps the pages already read and cools down', async () => {
+  const s = simulated({ failPage: 3 }), st = accessStore('LIVE'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { engine });
+  assert.equal(result.status, 'PARTIAL'); assert.equal(result.delivered, 48); assert.deepEqual(s.pages, [1, 2, 3]);
+  assert.equal(st.calls.restrict.length, 1);
+});
+
+test('runtime claims one MyHome run at a time; further searches wait in the durable queue', async () => {
+  const limits = [];
+  const fetcher = async (input, init) => {
+    if (!String(input).includes('/functions/v1/')) throw Error('no source contact expected');
+    const body = JSON.parse(init.body);
+    if (body.action === 'source-health') return Response.json({ accessRestricted: true, mode: 'CACHE_ONLY', retryAt: null });
+    if (body.action === 'claim') { limits.push(body.limit); return Response.json({ runs: [] }); }
+    return Response.json({});
+  };
+  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true' }, fetcher);
+  try {
+    for (let i = 0; i < 100 && !limits.length; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(limits.slice(0, 1), [1]);
+    assert.equal(runtime.status().connectivity.skipped, 'CACHE_ONLY', 'startup check skipped, probe not spent');
   } finally { runtime.shutdown(); }
 });

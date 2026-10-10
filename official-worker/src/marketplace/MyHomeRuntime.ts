@@ -10,6 +10,11 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
   const token = env.MYHOME_WORKER_TOKEN ?? '', baseUrl = env.SUPABASE_URL ?? '';
   const enabled = env.MYHOME_MARKETPLACE_ENABLED === 'true';
   const enrichDetails = env.MYHOME_DETAIL_ENRICHMENT_ENABLED === 'true';
+  // Owner decision: the first 3 result pages are enough; fixed pause between pages.
+  const maxPages = Math.max(1, Math.trunc(Number(env.MYHOME_MAX_PAGES)) || 3);
+  const pageIntervalMs = Math.max(0, Math.trunc(Number(env.MYHOME_PAGE_INTERVAL_MS ?? 5000)) || 0);
+  // One MyHome run at a time: further searches wait in the durable queue.
+  const MAX_ACTIVE = 1;
   const crawleePages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'crawlee';
   const browserPages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'browser' || crawleePages;
   const createReader = () => crawleePages ? createCrawleeBrowserReader() : browserPages ? createPublicBrowserReader() : null;
@@ -34,7 +39,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     heartbeat.unref();
     try {
       log('claimed', { runId: job.runId, attempt: job.attempt });
-      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, enrichDetails, checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
+      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, enrichDetails, maxPages, pageIntervalMs, checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
         report: async report => {
           const accepted = await ingest({ action: 'report', runId: job.runId, result: report });
           if ((accepted.rejected?.length ?? 0) > 0 || accepted.accepted !== report.listings.length) throw new Error('Marketplace ingest rejected acquisition records');
@@ -51,12 +56,15 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
   async function loop() {
     if (!configured) return;
     myHomeEngine.configure({
-      restricted: async () => {
-        const health = await ingest({ action: 'source-health' });
+      decide: async (purpose) => {
+        const health = await ingest({ action: 'source-health', purpose });
+        if (['LIVE', 'PROBE', 'CACHE_ONLY'].includes(health.mode)) return { mode: health.mode, retryAt: typeof health.retryAt === 'string' ? health.retryAt : null };
+        // Ingress deployed before this contract answers only the boolean.
         if (typeof health.accessRestricted !== 'boolean') throw new Error('Invalid MyHome health contract');
-        return health.accessRestricted;
+        return { mode: health.accessRestricted ? 'CACHE_ONLY' : 'LIVE', retryAt: null };
       },
-      restrict: async () => { await ingest({ action: 'restrict-access' }); },
+      restrict: async (evidence) => { await ingest({ action: 'restrict-access', evidence }); },
+      recovered: async () => { await ingest({ action: 'access-ok' }); },
     });
     if (!enabled) return;
     // Startup smoke checks execute from the actual production container. They
@@ -64,8 +72,10 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     const reader = createReader();
     const pageFetcher = reader?.fetcher ?? fetcher;
     try {
-      await myHomeEngine.ready();
-      await myHomeEngine.guard(async () => {
+      // The startup check never spends the single post-cooldown probe.
+      const access = await myHomeEngine.ready('startup');
+      if (access.mode !== 'LIVE') { smoke = { skipped: access.mode, retryAt: access.retryAt, checkedAt: new Date().toISOString() }; log('connectivity_skipped', smoke); }
+      else await myHomeEngine.guard(async () => {
       const locations = await publicJson(endpoints.locations, 'en', fetcher);
       const filters = await publicJson(endpoints.filters, 'ka', fetcher);
       const query = '?cities=1&currency_id=2&deal_types=1&real_estate_types=1&price_to=200000&area_from=70&area_types=1&page=1';
@@ -85,8 +95,8 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     finally { await reader?.close(); }
     while (!controller.signal.aborted) {
       try {
-        if (active < 2) {
-          const result = await ingest({ action: 'claim', limit: 2 - active, leaseSeconds: 120 });
+        if (active < MAX_ACTIVE) {
+          const result = await ingest({ action: 'claim', limit: MAX_ACTIVE - active, leaseSeconds: 120 });
           lastClaimAt = new Date().toISOString(); lastError = null;
           for (const job of result.runs ?? []) void run(job);
         }

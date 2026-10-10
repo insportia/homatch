@@ -52,6 +52,9 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     <div ref={heading} className="scroll-mt-24 space-y-3 rounded-2xl border border-white/10 bg-[#0C1119] p-5 text-white shadow-sm sm:p-7 [&_.text-muted-foreground]:text-white/75" aria-live="polite">
       {data ? <><p className="font-display text-xl font-semibold sm:text-2xl" data-testid="mps-total">{t('mps_total_found', { n: data.totalCurrent })}</p><p className="text-sm text-muted-foreground">{t('fpa_summary', { strong: data.summary.strong, close: data.summary.close, verify: data.summary.verification })}</p><p className="max-w-[80ch] text-xs leading-relaxed text-muted-foreground">{t('fpr_freshness_policy')}{data.summary.unknownDates ? ` ${t('fpr_unknown_dates', { n: data.summary.unknownDates })}` : ''}</p></> : null}
       {!search.terminal ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('mps_progressive_body')}</p> : null}
+      {search.sources?.length ? <ul className="space-y-1 text-xs text-muted-foreground" data-testid="mps-sources">{search.sources.map((s, i) => (
+        <li key={`${s.source}-${i}`} data-state={s.state}>{t(`mps_source_${s.state}`, { source: s.source })}{s.retryAt && s.state !== 'FRESH' && s.state !== 'REFRESHING' ? ` · ${t('mps_source_retry', { time: new Date(s.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}` : ''}</li>
+      ))}</ul> : null}
       {search.partial ? <div role="status" className="space-y-1"><p className="text-sm font-medium">{t('mps_partial_title')}</p><p className="text-sm text-muted-foreground">{t('mps_partial_body')}</p></div> : null}
     </div>
     {data ? <ResultFiltersPanel t={t} filters={filters} facets={data.facets} onChange={update} onReset={reset} /> : null}

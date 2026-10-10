@@ -17622,6 +17622,14 @@ const en = {
   ds_ctrl_dbl_to_release: 'Double-click (or Esc) to get the mouse pointer back',
   ds_ctrl_dbl_click: 'Double-click',
   ds_ctrl_dbl_toggle: 'Mouse look on / off',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: refreshing now',
+  mps_source_FRESH: '{{source}}: fresh listings',
+  mps_source_PARTIAL: '{{source}}: partly refreshed — the rest are previously collected listings',
+  mps_source_CACHED: '{{source}}: temporarily unavailable — showing previously collected listings with their last-checked time',
+  mps_source_UNAVAILABLE: '{{source}}: temporarily unavailable — no previously collected listings match',
+  mps_source_retry: 'Next refresh attempt after {{time}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35158,6 +35166,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'ორჯერ სწრაფად დააწკაპუნეთ (ან Esc) — მაუსის ისრის დაბრუნება',
   ds_ctrl_dbl_click: 'ორჯერ დაწკაპუნება',
   ds_ctrl_dbl_toggle: 'მაუსით მიმოხედვა: ჩართვა / გამორთვა',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: მიმდინარეობს განახლება',
+  mps_source_FRESH: '{{source}}: ახალი განცხადებები',
+  mps_source_PARTIAL: '{{source}}: ნაწილობრივ განახლდა — დანარჩენი ადრე შეგროვებული განცხადებებია',
+  mps_source_CACHED: '{{source}}: დროებით მიუწვდომელია — ნაჩვენებია ადრე შეგროვებული განცხადებები ბოლო შემოწმების დროით',
+  mps_source_UNAVAILABLE: '{{source}}: დროებით მიუწვდომელია — ადრე შეგროვებული შესაბამისი განცხადებები არ მოიძებნა',
+  mps_source_retry: 'შემდეგი განახლების მცდელობა: {{time}}-ის შემდეგ',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52685,6 +52701,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'Дважды щёлкните (или Esc), чтобы вернуть указатель мыши',
   ds_ctrl_dbl_click: 'Двойной щелчок',
   ds_ctrl_dbl_toggle: 'Обзор мышью: вкл. / выкл.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: идёт обновление',
+  mps_source_FRESH: '{{source}}: свежие объявления',
+  mps_source_PARTIAL: '{{source}}: обновлено частично — остальные объявления собраны ранее',
+  mps_source_CACHED: '{{source}}: временно недоступен — показаны ранее собранные объявления с временем последней проверки',
+  mps_source_UNAVAILABLE: '{{source}}: временно недоступен — подходящих ранее собранных объявлений нет',
+  mps_source_retry: 'Следующая попытка обновления после {{time}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70210,6 +70234,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'Fare imlecini geri almak için çift tıklayın (veya Esc)',
   ds_ctrl_dbl_click: 'Çift tıklama',
   ds_ctrl_dbl_toggle: 'Fareyle bakış: aç / kapat',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: güncelleniyor',
+  mps_source_FRESH: '{{source}}: güncel ilanlar',
+  mps_source_PARTIAL: '{{source}}: kısmen güncellendi — kalanlar daha önce toplanan ilanlar',
+  mps_source_CACHED: '{{source}}: geçici olarak kullanılamıyor — daha önce toplanan ilanlar son kontrol zamanlarıyla gösteriliyor',
+  mps_source_UNAVAILABLE: '{{source}}: geçici olarak kullanılamıyor — eşleşen daha önce toplanmış ilan yok',
+  mps_source_retry: 'Sonraki güncelleme denemesi: {{time}} sonrası',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87735,6 +87767,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'انقر نقرًا مزدوجًا (أو Esc) لاستعادة مؤشر الفأرة',
   ds_ctrl_dbl_click: 'نقر مزدوج',
   ds_ctrl_dbl_toggle: 'النظر بالفأرة: تشغيل / إيقاف',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: جارٍ التحديث',
+  mps_source_FRESH: '{{source}}: إعلانات حديثة',
+  mps_source_PARTIAL: '{{source}}: تم التحديث جزئيًا — الباقي إعلانات جُمعت سابقًا',
+  mps_source_CACHED: '{{source}}: غير متاح مؤقتًا — تُعرض إعلانات جُمعت سابقًا مع وقت آخر فحص لها',
+  mps_source_UNAVAILABLE: '{{source}}: غير متاح مؤقتًا — لا توجد إعلانات مطابقة جُمعت سابقًا',
+  mps_source_retry: 'محاولة التحديث التالية بعد {{time}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105260,6 +105300,14 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'לחצו פעמיים (או Esc) כדי להחזיר את סמן העכבר',
   ds_ctrl_dbl_click: 'לחיצה כפולה',
   ds_ctrl_dbl_toggle: 'מבט בעכבר: הפעלה / כיבוי',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: מתעדכן כעת',
+  mps_source_FRESH: '{{source}}: מודעות עדכניות',
+  mps_source_PARTIAL: '{{source}}: עודכן חלקית — השאר מודעות שנאספו קודם',
+  mps_source_CACHED: '{{source}}: לא זמין זמנית — מוצגות מודעות שנאספו קודם עם זמן הבדיקה האחרון',
+  mps_source_UNAVAILABLE: '{{source}}: לא זמין זמנית — אין מודעות תואמות שנאספו קודם',
+  mps_source_retry: 'ניסיון הרענון הבא אחרי {{time}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

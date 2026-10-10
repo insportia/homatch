@@ -28,7 +28,9 @@ import {
 } from '../../../src/research-core/marketplace/worker-contract.ts';
 import { DEFAULT_LEASE_SECONDS, leaseUntil, retryDecision } from '../../../src/research-core/marketplace/dispatch.ts';
 import { loadMarketplaceSwitches, processAndStore, reapRuns } from '../_shared/marketplaceSearch.ts';
-import { myHomeRestricted } from '../_shared/myHomeAccess.ts';
+import {
+  decideProviderAccess, readProviderAccess, recordRecovery, recordRestriction, type ProviderAccess,
+} from '../../../src/research-core/marketplace/provider-access.ts';
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -76,22 +78,41 @@ Deno.serve(async (req: Request) => {
   const action = String(body.action ?? '');
 
   try {
-    // Scoped to this authenticated worker; there is no worker clearance action.
-    if (workerId === 'myhome-agent' && (action === 'source-health' || action === 'restrict-access')) {
-      if (action === 'restrict-access') {
-        const { error } = await db.from('discovery_marketplace_workers').update({
-          health: { ...(worker.health ?? {}), status: 'DOWN', accessRestricted: true, checkedAt: new Date().toISOString() },
+    /* MyHome access state: a bounded cooldown after a real refusal, then one
+       probe, never a permanent shutdown and never a manual clearance. Writes
+       are compare-and-set on access.version so two runs cannot both take the
+       single post-cooldown probe. `accessRestricted` stays in every answer for
+       workers deployed before this contract. */
+    if (workerId === 'myhome-agent' && ['source-health', 'restrict-access', 'access-ok'].includes(action)) {
+      const now = new Date();
+      const current = readProviderAccess(worker.health);
+      const { accessRestricted: _legacyFlag, accessClearedAt: _legacyClear, ...health } = (worker.health ?? {}) as Record<string, unknown>;
+      const write = async (next: ProviderAccess) => {
+        let q = db.from('discovery_marketplace_workers').update({
+          health: { ...health, status: next.state === 'AVAILABLE' ? 'HEALTHY' : 'DEGRADED', checkedAt: now.toISOString(), access: next },
         }).eq('worker_id', workerId);
+        q = (worker.health as Record<string, unknown> | null)?.access
+          ? q.eq('health->access->>version', String(current.version)) : q.is('health->access', null);
+        const { data, error } = await q.select('worker_id');
         if (error) throw error;
-        return json({ accessRestricted: true });
+        return (data ?? []).length > 0;
+      };
+      if (action === 'restrict-access') {
+        const next = recordRestriction(current, now, String(body.evidence ?? 'HTTP 401/403 or challenge'));
+        // A concurrent writer already moved the state; one refusal is enough either way.
+        await write(next);
+        return json({ accessRestricted: true, mode: 'CACHE_ONLY', retryAt: next.cooldownUntil });
       }
-      // jsonb containment takes JSON text: postgrest-js serializes an array
-      // argument as a Postgres array literal (cs.{[object Object]}) and fails.
-      const { data, error } = await db.from('discovery_marketplace_worker_runs')
-        .select('created_at,errors').eq('worker_id', workerId).contains('errors', '[{"code":"ACCESS_DENIED"}]')
-        .order('created_at', { ascending: false }).limit(1).maybeSingle();
-      if (error) throw error;
-      return json({ accessRestricted: myHomeRestricted(worker.health, data) });
+      if (action === 'access-ok') {
+        const next = recordRecovery(current, now);
+        if (next !== current) await write(next);
+        return json({ accessRestricted: false, mode: 'LIVE', retryAt: null });
+      }
+      const decision = decideProviderAccess(current, now, body.purpose !== 'startup');
+      if (decision.next && !(await write(decision.next))) {
+        return json({ accessRestricted: true, mode: 'CACHE_ONLY', retryAt: null });
+      }
+      return json({ accessRestricted: decision.mode === 'CACHE_ONLY', mode: decision.mode, retryAt: decision.retryAt });
     }
     const leaseSeconds = Math.max(15, Math.min(900, Math.trunc(Number(body.leaseSeconds)) || DEFAULT_LEASE_SECONDS));
     const maxAttempts = Number(worker.max_attempts) || 3;

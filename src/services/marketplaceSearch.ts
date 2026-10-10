@@ -39,6 +39,8 @@ export interface SearchSummary {
   /** Every valid matching property across all groups (exact database count). */
   totalProperties: number;
   partial: boolean;
+  /** Per source: fresh, partly refreshed, previously collected, unavailable or still refreshing. */
+  sources?: Array<{ source: string; state: 'REFRESHING' | 'FRESH' | 'PARTIAL' | 'CACHED' | 'UNAVAILABLE'; freshListings: number; cachedListings: number; retryAt: string | null }>;
   unavailable: 'NO_SOURCES' | 'FAILED' | null;
 }
 

@@ -332,7 +332,7 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
   };
 }
 
-async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false } = {}) {
+async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -372,6 +372,7 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       if (body.action === 'understand') {
         const raw = /80/.test(body.text) ? F.COMPLETE_MODEL_OUTPUT : F.INCOMPLETE_MODEL_OUTPUT;
         const brief = briefFromModel(raw, body.text);
+        if (noLocation) { brief.city = null; brief.districts = null; }
         return r.fulfill(json({ understood: true, brief, readiness: evaluateReadiness(brief) }));
       }
       if (body.action === 'start') {
@@ -555,6 +556,25 @@ test('en, 1440: incomplete request asks only what is missing, one question at a 
   await page.getByRole('button', { name: "Doesn't matter" }).click();
   await page.locator('#mps-ready').waitFor();
   assert.ok((await page.textContent('main')).includes('Everything is ready ✨'));
+});
+
+test('location step: choosing a city and a district advances to the next question (city was erased by the districts edit)', opts, async (t) => {
+  const { page } = await boot(t, { lang: 'en', noLocation: true });
+  await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
+  await page.locator('a[href="/find-property/new"]').waitFor({ timeout: 30000 });
+  await page.locator('a[href="/find-property/new"]').click();
+  await page.locator('textarea').fill(F.INCOMPLETE_TEXT);
+  await page.locator('form button[type="submit"]').click();
+  await page.getByRole('heading', { name: 'What are you looking for?' }).waitFor({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const where = page.getByRole('heading', { name: 'Where are you looking?' });
+  await where.waitFor();
+  await page.getByRole('button', { name: 'თბილისი', exact: true }).click();
+  await page.getByLabel('Districts, separated by commas').fill('Vazisubani');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('heading', { name: 'What price range should we search in?' }).waitFor({ timeout: 5000 });
+  assert.equal(await where.count(), 0, 'the location question is not asked again');
+  assert.ok((await page.textContent('main')).includes('Vazisubani'), 'the chosen district is kept');
 });
 
 test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the search goes on and is never duplicated', opts, async (t) => {

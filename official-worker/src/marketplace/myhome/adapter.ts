@@ -11,6 +11,10 @@ export class MyHomeFailure extends Error { constructor(public code: string, mess
 export type AdapterOptions = { fetcher?: typeof fetch; pageFetcher?: typeof fetch; browserMs?: () => number; deadlineAt: string; signal?: AbortSignal; engine?: MyHomeEngine;
   pageTransport?: 'PUBLIC_NEXT_DATA_BROWSER' | 'PUBLIC_NEXT_DATA_CRAWLEE';
   enrichDetails?: boolean;
+  /** Owner decision: the first result pages are enough. Default 3; pages beyond are never requested. */
+  maxPages?: number;
+  /** Pause before each further result page (ordinary pacing, fixed, no jitter). */
+  pageIntervalMs?: number;
   checkpoint?: { queryApplied?: Record<string, unknown>; returnedCount?: number };
   report: (result: MarketplaceWorkerResult & { retryable?: boolean }) => Promise<void> };
 export async function acquireMyHome(request: MarketplaceSearchRequest, options: AdapterOptions) {
@@ -57,7 +61,18 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
     await options.report(result); delivered += listings.length;
   };
   try {
-    await engine.ready();
+    let access;
+    try { access = await engine.ready(); }
+    catch (error) {
+      // Ingress unreachable or erroring: transient, retried by the run budget; MyHome is not contacted.
+      throw new MyHomeFailure('ACCESS_STATE_UNAVAILABLE', `MyHome access state unavailable; no request sent: ${error instanceof Error ? error.message : String(error)}`, true);
+    }
+    queriesApplied.accessMode = access.mode;
+    if (access.mode === 'CACHE_ONLY') throw new MyHomeFailure('PROVIDER_COOLDOWN',
+      `MyHome is cooling down after an access refusal; no request sent. Fresh acquisition resumes ${access.retryAt ? `after ${access.retryAt}` : 'with the next permitted probe'}.`);
+    let probePending = access.mode === 'PROBE';
+    const maxPages = Math.max(1, Math.trunc(options.maxPages ?? 3));
+    queriesApplied.pageCap = maxPages;
     const locations = await json(endpoints.locations, 'en'), filters = await json(endpoints.filters);
     const queries = buildQueries(request, locations, filters);
     queriesApplied.requests = queries.map(query => query.url);
@@ -79,15 +94,20 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
       const pagination = parsePagination(await json(countUrl.href), 1);
       discoveredCount += pagination.total; queriesApplied.lastPage = pagination.last_page;
       const fingerprints = new Set<string>();
-      // No maxPages/maxResults acquisition cap: only authoritative last_page and
-      // the pre-existing HOMATCH run deadline bound this loop.
+      // Bounded by the owner's page cap (default 3), authoritative last_page and
+      // the run deadline. A capped run still reports MyHome's full count.
       const firstPage = resume && queryIndex === Number(resume.queryIndex) && Number(resume.nextPage) <= Math.max(1, pagination.last_page) + 1
         ? Number(resume.nextPage) : 1;
-      for (let page = firstPage; page <= Math.max(1, pagination.last_page); page++) {
+      const lastPage = Math.min(Math.max(1, pagination.last_page), maxPages);
+      queriesApplied.pagesCapped = pagination.last_page > maxPages;
+      for (let page = firstPage; page <= lastPage; page++) {
+        if (page > firstPage && options.pageIntervalMs) await delay(options.pageIntervalMs, undefined, { signal: options.signal });
         nextPage = page; remaining();
         const url = new URL(query.url); url.searchParams.set('page', String(page));
         const searchUrl = publicSearchUrl(url.href);
         const rows = parseListEnvelope(await json(searchUrl, 'ka', true)); pagesVisited++;
+        // A probe that read a real page reopens MyHome for everyone.
+        if (probePending) { probePending = false; await engine.recovered(); }
         validateSearchListings(rows, query.criteria);
         if (pagination.total === 0 && rows.length) throw new MyHomeFailure('COUNT_MISMATCH', 'Count reported zero but listings were returned.');
         if (!rows.length) {
@@ -176,7 +196,8 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
   } catch (error) {
     const e = error instanceof MyHomeFailure ? error : error instanceof AcquisitionError && error.category === 'ACCESS_RESTRICTED'
       ? new MyHomeFailure('ACCESS_DENIED', error.message) : new MyHomeFailure('ACQUISITION_FAILED', error instanceof Error ? error.message : String(error));
-    const status = delivered || (options.checkpoint?.returnedCount ?? 0) > 0 ? 'PARTIAL' : e.code === 'DEADLINE' ? 'TIMED_OUT' : e.code === 'ACCESS_DENIED' ? 'BLOCKED' : 'FAILED';
+    const status = delivered || (options.checkpoint?.returnedCount ?? 0) > 0 ? 'PARTIAL' : e.code === 'DEADLINE' ? 'TIMED_OUT'
+      : e.code === 'ACCESS_DENIED' || e.code === 'PROVIDER_COOLDOWN' ? 'BLOCKED' : 'FAILED';
     await report(status, [], [{ code: e.code, message: e.message.slice(0, 1000) }], e.retryable && !delivered);
     return { status, pagesVisited, delivered };
   }

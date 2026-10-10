@@ -350,17 +350,15 @@ test('the model is told to treat thin evidence as indicative, never as a rate', 
     'the prompt allows a verdict from a single comparable');
 });
 
-test('the report marks a thin comparison for the reader too', () => {
+test('a thin comparison never reaches the reader as a market rate', () => {
+  // Owner, 2026-10-10: the report no longer renders a numeric price bar or
+  // tier hierarchy — the market is explained in friendly words by the model,
+  // so thin evidence is handled where the words are written.
   const cmp = read('src/components/verify/VerifyReport.tsx');
-  assert.ok(/verify_mkt_thin_note/.test(cmp), 'a thin comparison is presented as a market rate');
-  assert.ok(/tr\.thin \?/.test(cmp), 'a thin band is not marked in the hierarchy');
-  // Neutral, not alarming: this is a limit of the evidence, not a property risk.
-  const bundle = read('src/i18n/translations.ts');
-  const notes = bundle.split('verify_mkt_thin_note: ').slice(1);
-  assert.equal(notes.length, 6);
-  for (const n of notes) {
-    assert.ok(!/(risk|რისკ|риск)/i.test(n.slice(0, 400)), 'thin evidence is framed as property risk');
-  }
+  assert.ok(!/const PriceBar/.test(cmp), 'a numeric price bar is rendered again');
+  const src = read('src/verify/intelligence/prompt.ts');
+  assert.ok(/If marketIntelligence is thin, say less/.test(src), 'thin evidence is not damped in the prose');
+  assert.ok(/Never list individual listings/.test(src), 'the model may still dump listing rows');
 });
 
 /* ── the peer band has to be reachable, or the hierarchy is fiction ──── */

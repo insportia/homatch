@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { APIFY_ONLY_VIA_MEMO23, isRetiredProvider, retiredReason, RETIRED_PROVIDERS } from '../_shared/retiredProviders.ts';
 import { providerConfigured as apifyConfigured } from '../_shared/findBuyers/memo23Client.ts';
 import { drive, adminStop, adminRetry } from './driver.ts';
-import { verifyActor } from '../_shared/findBuyers/admin.ts';
+import { verifyActor, requalifyCampaign } from '../_shared/findBuyers/admin.ts';
 
 // DATAFORSEO AND APIFY ARE RETIRED, AND THIS WORKER CAN NO LONGER REACH THEM.
 //
@@ -89,6 +89,12 @@ Deno.serve(async (req: Request) => {
     /* FIND BUYERS: re-read one memo23 Actor's current price and input schema
        from Apify and record them (verified now). Never enables the Actor and
        never returns the token. */
+    /* Re-judge a finished campaign's stored leads with the current
+       qualification (no provider call). Dry run unless apply === true. */
+    if (mode === 'admin_requalify') {
+      if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
+      return json(await requalifyCampaign(db, String(body.matchingJobId || ''), body.apply === true));
+    }
     if (mode === 'admin_actor_verify') {
       if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
       return json(await verifyActor(db, String(body.actorKey || '')));

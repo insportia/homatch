@@ -57,6 +57,8 @@ export interface CompanyProfileLike {
   encumbrances?: unknown;
   sourceBasis?: unknown;
   extractNumber?: unknown;
+  extractPreparedAt?: unknown;
+  registryFields?: unknown;
   liquidationRegistered?: unknown;
 }
 
@@ -74,6 +76,24 @@ const directorRole = (d: DirectorLike): string =>
  * Matching is on the trimmed, case-folded name because the two shapes differ
  * only in structure, never in spelling.
  */
+/*
+ * ONLY THE REGISTER'S OWN DIRECTORS.
+ *
+ * When the company's extract was parsed (registryFields names "directors"),
+ * the structured entries ARE the directorate. A bare-string name beside them
+ * came from a looser text scan — on job c80f7237 that scan read the pledge
+ * creditor's extract and put Bank of Georgia's general director on the
+ * developer's card with no role. Such a name is not shown as a director.
+ */
+export function registerDirectors(company: { directors?: unknown; registryFields?: unknown }): DirectorLike[] {
+  const all = arr(company.directors) as DirectorLike[];
+  const parsed = arr(company.registryFields).includes('directors');
+  const structured = all.filter((d) => typeof d !== 'string' && directorName(d));
+  if (!parsed || !structured.length) return all;
+  const known = new Set(structured.map((d) => directorName(d).toLocaleLowerCase()));
+  return all.filter((d) => typeof d !== 'string' || known.has(directorName(d).toLocaleLowerCase()));
+}
+
 function dedupeByName(list: DirectorLike[]): DirectorLike[] {
   const seen = new Map<string, DirectorLike>();
   for (const entry of list) {
@@ -130,7 +150,7 @@ export function CompanyIntelligenceCard({
    * company has four directors. Deduplicated by name, keeping whichever entry
    * actually states a role.
    */
-  const directors = dedupeByName(arr(company.directors) as DirectorLike[]);
+  const directors = dedupeByName(registerDirectors(company));
   const shareholders = arr(company.shareholders) as {
     name?: unknown; percentage?: unknown;
   }[];
@@ -158,6 +178,7 @@ export function CompanyIntelligenceCard({
           <Fact icon={MapPin} label={t('verify_co_address')} value={str(company.registeredAddress)} />
           <Fact icon={ShieldCheck} label={t('verify_co_governance')} value={str(company.governanceBody)} />
           <Fact icon={FileText} label={t('verify_co_extract')} value={str(company.extractNumber)} />
+          <Fact icon={History} label={t('vbi_co_extract_date')} value={str(company.extractPreparedAt).replace(/\//g, '.')} />
         </div>
 
         {/* ---- who may sign ---- */}

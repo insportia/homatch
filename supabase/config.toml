@@ -115,6 +115,10 @@ verify_jwt = false
 [functions.research-agent]
 verify_jwt = false
 
+# Worker-facing queue gateway: authenticated by WORKER_TOKEN, not a user JWT.
+[functions.verify-queue]
+verify_jwt = false
+
 [functions.email-webhook]
 verify_jwt = false
 

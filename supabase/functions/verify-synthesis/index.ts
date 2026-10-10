@@ -38,6 +38,7 @@ import { projectSlug } from '../../../src/verify/intelligence/harvest.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
 import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
 import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
+import { withPropertyRegister } from '../../../src/verify/intelligence/registerEnrichment.ts';
 import { looksLikePersonName } from '../../../src/verify/intelligence/peopleIntelligence.ts';
 import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
@@ -194,7 +195,7 @@ async function forCustomer(db: any, payload: Record<string, unknown>): Promise<R
   const { _usage: _droppedUsage, officialVisuals, ...rest } = payload as Record<string, any>;
   if (!Array.isArray(officialVisuals) || !officialVisuals.length) return rest;
   const signed: unknown[] = [];
-  for (const v of officialVisuals.slice(0, 6)) {
+  for (const v of officialVisuals.slice(0, 4)) {
     const path = typeof v?.storagePath === 'string' ? v.storagePath : '';
     if (!/^tas\/[a-f0-9]{64}\.(jpg|png)$/.test(path)) continue;
     try {
@@ -208,6 +209,17 @@ async function forCustomer(db: any, payload: Record<string, unknown>): Promise<R
   return signed.length ? { ...rest, officialVisuals: signed } : rest;
 }
 
+function officialDocumentPages(result: any): number {
+  let n = 0;
+  for (const r of Array.isArray(result?.browserOfficial?.results) ? result.browserOfficial.results : []) {
+    for (const d of Array.isArray(r?.documents) ? r.documents : []) {
+      const p = Number(d?.pagesRead ?? d?.pageCount);
+      if (Number.isFinite(p) && p > 0 && p < 2000) n += p;
+    }
+  }
+  return n;
+}
+
 /** What this verification reviewed, in counts a customer can read. */
 function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unknown> {
   const tas = pkg?.tas;
@@ -219,6 +231,9 @@ function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unkno
     officialCasesReviewed: tas?.coverage?.cases ?? 0,
     officialStepsReviewed: tas?.coverage?.motions ?? 0,
     officialAttachmentsRead: tas?.coverage?.attachmentsRead ?? 0,
+    // Real page counts only: TAS attachments read + every official document
+    // the browser workers opened (register extracts, company extracts …).
+    officialPagesRead: (tas?.coverage?.pagesRead ?? 0) + officialDocumentPages(job?.result_json),
     officialFactsConsolidated: Array.isArray(tas?.facts) ? tas.facts.length : 0,
     // The funnel: discovered → processed → retained → selected → shown.
     officialRecordsDiscovered: tas?.funnel?.discoveredDocuments ?? 0,
@@ -231,6 +246,35 @@ function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unkno
     // Per provider, the state only — reasons and errors stay in Admin.
     providers: providerOutcomes(job?.result_json, job?.mode === 'cadastral' ? ['tas', 'mygov'] : []).map((o) => ({ provider: o.provider, state: o.state })),
   };
+}
+
+/*
+ * What the read-time corrections need beyond the job row. Read-only and
+ * best-effort: the ad-search cost record is fetched only when the report
+ * carries no ad result (jobs finished before PR #138 lost it; the enrichment
+ * itself ignores it whenever the job kept its own stage result), and the admin
+ * policy only to know the searched country. A failed read changes nothing.
+ */
+async function enrichmentContext(db: any, job: any): Promise<{ completedAt: string | null; adsCost: any; adsPolicy: unknown }> {
+  const ctx = { completedAt: job?.completed_at ?? null, adsCost: null as any, adsPolicy: null as unknown };
+  if (job?.synthesis_json?.developerAds) return ctx;
+  try {
+    const { data } = await db
+      .from('cost_events')
+      .select('success,source,timestamp')
+      .eq('job_id', job.id)
+      .eq('operation_type', 'DEVELOPER_ADS_VERIFY')
+      .order('timestamp', { ascending: false })
+      .limit(1);
+    ctx.adsCost = data?.[0] ?? null;
+    if (ctx.adsCost) {
+      const { data: setting } = await db.from('admin_settings').select('value').eq('key', 'verify_developer_ads').maybeSingle();
+      ctx.adsPolicy = setting?.value ?? null;
+    }
+  } catch {
+    /* nothing recovered */
+  }
+  return ctx;
 }
 
 async function persist(db: any, jobId: string, payload: unknown): Promise<void> {
@@ -489,7 +533,24 @@ serve(async (req) => {
      * The persisted report is now authoritative, so returning to a case is
      * a read. */
     if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force) {
-      return json({ ...(await forCustomer(writer, withCredibleParticipants(job.synthesis_json as Record<string, unknown>))), persisted: true });
+      /* The unit's register is re-applied on every read, so reports written
+         before the extracts were decoded (c80f7237) show the true owner and
+         mortgages without a rebuild or a charge. Nothing is written back. */
+      const read = withPropertyRegister(withCredibleParticipants(job.synthesis_json as Record<string, unknown>), job.result_json, await enrichmentContext(writer, job));
+      return json({ ...(await forCustomer(writer, read)), persisted: true });
+    }
+
+    /* ALREADY BEING WRITTEN.
+     *
+     * research-agent marks the job PENDING and builds the report itself the
+     * moment research completes. The page used to call in at the same moment
+     * and, finding no READY report, start a SECOND model build of the same
+     * report — double the cost, and the customer waited on the slower one.
+     * A fresh PENDING is answered "pending"; the page asks again shortly.
+     * A stale one (an evicted build) is rebuilt here as before. */
+    const pendingAge = Date.now() - Date.parse(String(job.synthesis_at ?? ''));
+    if (job.synthesis_state === 'PENDING' && !body?.force && !internal && Number.isFinite(pendingAge) && pendingAge < 4 * 60 * 1000) {
+      return json({ pending: true, retryAfterMs: 4000 }, 202);
     }
 
     // The projection still supplies the deterministic property model (type,
@@ -605,7 +666,7 @@ serve(async (req) => {
       console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
     }
 
-    const payload = {
+    const built = {
       /* Which model actually wrote this, for COGS and for inspection. */
       synthesisModel: MODEL,
       synthesisModelPinned: true,
@@ -670,6 +731,8 @@ serve(async (req) => {
       empty: false,
     };
 
+    /* The register vetoes prose it disproves before anything is stored. */
+    const payload = withPropertyRegister(built, job.result_json, await enrichmentContext(writer, job));
     await persist(writer, jobId, payload);
     return json(await forCustomer(writer, payload));
   } catch (e) {

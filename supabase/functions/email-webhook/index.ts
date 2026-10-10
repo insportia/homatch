@@ -42,11 +42,26 @@ import {
   verifyInboundSignature, type InboundEmail,
 } from '../_shared/comm/generated/inboundEmail.ts';
 import { detectsOptOut, detectsHumanRequest } from '../_shared/comm/generated/handoff.ts';
+import { handleStudioUnsubscribe, isStudioUnsubscribe } from '../_shared/emailStudioUnsubscribe.ts';
 
 /** Bigger than any real reply; smaller than a denial of service. */
 const MAX_BODY_BYTES = 2_000_000;
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  /*
+   * EMAIL STUDIO ONE-CLICK UNSUBSCRIBE (?esu=<recipient>&t=<hmac>).
+   *
+   * A link in a campaign email, opened by a person with no session. It is
+   * served here because this function is already public and production has no
+   * room for another one. It does not bend rule 1: it is authenticated by OUR
+   * HMAC over the recipient id instead of the provider's Svix signature, and a
+   * provider delivery never carries this query parameter.
+   */
+  const reqUrl = new URL(req.url);
+  if ((req.method === 'GET' || req.method === 'POST') && isStudioUnsubscribe(reqUrl)) {
+    return await handleStudioUnsubscribe(reqUrl, serviceClient());
+  }
+
   if (req.method !== 'POST') {
     return new Response('method not allowed', { status: 405 });
   }
@@ -105,7 +120,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
    * apart here and share nothing but the signature check and the dedupe.
    */
   const eventType = String((body as { type?: unknown })?.type ?? '');
-  if (/^email\.(delivered|bounced|complained|delivery_delayed)$/.test(eventType)) {
+  if (/^email\.(delivered|bounced|complained|delivery_delayed|opened|clicked)$/.test(eventType)) {
     const sb = serviceClient();
     try {
       await handleDeliveryEvent(sb, body, eventType, headers.id ?? '');
@@ -164,6 +179,20 @@ const DELIVERY_STATUS: Record<string, string> = {
 };
 
 /**
+ * The provider's vocabulary, in email_studio_recipients'. Opens and clicks are
+ * only delivered when the Resend webhook subscribes to email.opened /
+ * email.clicked and the domain has open/click tracking on; opens are
+ * approximate (image blocking hides some, privacy proxies invent others).
+ */
+const STUDIO_KIND: Record<string, string> = {
+  'email.delivered': 'DELIVERED',
+  'email.bounced': 'BOUNCED',
+  'email.complained': 'COMPLAINED',
+  'email.opened': 'OPENED',
+  'email.clicked': 'CLICKED',
+};
+
+/**
  * What became of a message this product sent.
  *
  * Deduplicated through the SAME claim a reply goes through, keyed on the
@@ -198,7 +227,7 @@ async function handleDeliveryEvent(
   }
 
   const status = DELIVERY_STATUS[eventType];
-  if (!status) {
+  if (!status && !STUDIO_KIND[eventType]) {
     // delivery_delayed, and anything added later. Claimed, so a retry of it
     // is quiet, and then left alone.
     await sb.rpc('comm_finish_webhook_event', {
@@ -210,6 +239,52 @@ async function handleDeliveryEvent(
   /* The id Resend gave us when we sent it, which is what outreach-send stored
      in provider_message_id. It is the only identifier both sides hold. */
   const providerMessageId = typeof data.email_id === 'string' ? data.email_id : null;
+
+  /*
+   * EMAIL STUDIO FIRST. A studio campaign email has its own recipient row keyed
+   * on the same provider message id; when the id is one of those, the event is
+   * applied there (status, opens, clicks, CRM timeline, suppression on bounce
+   * and complaint) and the outreach path below is not involved. When it is not
+   * a studio email the function returns null and outreach handling is exactly
+   * what it was.
+   */
+  const studioKind = STUDIO_KIND[eventType];
+  if (studioKind && providerMessageId) {
+    const bounce = (data.bounce ?? {}) as Record<string, unknown>;
+    const click = (data.click ?? {}) as Record<string, unknown>;
+    const detail: Record<string, unknown> = {};
+    if (studioKind === 'BOUNCED') detail.bounceType = typeof bounce.type === 'string' ? bounce.type : null;
+    // The link only: never the clicker's IP address or user agent.
+    if (studioKind === 'CLICKED' && typeof click.link === 'string') detail.link = click.link.slice(0, 500);
+    const { data: studioCampaign, error: studioError } = await sb.rpc('email_studio_apply_event', {
+      p_provider_message_id: providerMessageId,
+      p_kind: studioKind,
+      p_event_key: eventId,
+      p_detail: detail,
+    });
+    /* A studio failure must not cost outreach its delivery event (for example
+       this function deployed before the studio migration was applied): it is
+       logged and the outreach path below runs as it always has. */
+    if (studioError) {
+      logEvent('email-webhook', 'studio_event_failed', { type: eventType, error: redact(studioError.message) });
+    }
+    if (!studioError && studioCampaign) {
+      logEvent('email-webhook', 'studio_event_applied', { type: eventType });
+      await sb.rpc('comm_finish_webhook_event', {
+        p_provider: 'RESEND', p_event_key: eventId, p_error: null,
+      });
+      return;
+    }
+  }
+  if (!status) {
+    // An open or a click for mail that is not a studio campaign: outreach does
+    // not track either, so it is acknowledged and left alone.
+    await sb.rpc('comm_finish_webhook_event', {
+      p_provider: 'RESEND', p_event_key: eventId, p_error: null,
+    });
+    return;
+  }
+
   const { data: campaignId, error } = await sb.rpc('outreach_apply_delivery_event', {
     p_provider_message_id: providerMessageId,
     p_status: status,

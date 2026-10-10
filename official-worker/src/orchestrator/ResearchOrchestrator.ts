@@ -20,7 +20,7 @@ import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
 import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js';
 import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
 import { runGenericWorkflow } from '../workflows/generic/GenericWorkflow.js';
-import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, shouldSkipDuplicateExecution, dedupeProposedSteps, executionIdentity, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
+import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, stepHeartbeat, shouldSkipDuplicateExecution, dedupeProposedSteps, executionIdentity, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
 import { looksLikeCompanyId } from '../entities/EntityValidation.js';
 import { challenge, captchaNetworkBlocked } from '../browser/BrowserSession.js';
 import { buildHistoricalComparison } from '../documents/HistoricalComparison.js';
@@ -182,14 +182,37 @@ function safePageUrl(page: any): string | null {
 
 export class ResearchOrchestrator {
   private jobs = new Map<string, ResearchJob>();
+  /*
+   * ADMISSION CONTROL (2026-10-10, "what if 1000 people run Verify at once").
+   *
+   * Every job opens its own Chromium. Unbounded, a burst of jobs exhausts the
+   * container's memory and the crash takes every running job with it. At most
+   * WORKER_MAX_ACTIVE_JOBS run at once; the rest wait in arrival order with a
+   * visible queue position, and start the moment a slot frees. A slot is held
+   * until the job is terminal (a job waiting for a human keeps its browser).
+   */
+  private readonly maxActive = Math.max(1, Number(process.env.WORKER_MAX_ACTIVE_JOBS) || 4);
+  private active = new Set<string>();
+  private waiting: Array<{ job: ResearchJob; start: () => void }> = [];
   private sessions = new Map<string, SessionState>();
   private ledgers = new Map<string, EvidenceLedger>();
   private entityQueues = new Map<string, EntityQueue>();
   // One local Chromium per job (LocalBrowserRuntime.JobBrowser), kept so TTL
   // cleanup and process signals can close a context whose job never finished.
   private jobBrowsers = new Map<string, JobBrowser>();
+  /*
+   * API SOURCES START TOGETHER.
+   *
+   * My.gov (NAPR API + a reCAPTCHA per record) and TAS API_FIRST (DWR +
+   * every attachment) are plain HTTP and never touch Chromium, yet the step
+   * loop ran them one after another — up to 7 + 9 minutes in series, past
+   * the official stage's 10-minute deadline. Both start when the job starts;
+   * their step awaits the running promise. Keyed `${jobId}|${source}`.
+   */
+  private prefetch = new Map<string, Promise<{ result: any; keep: boolean; durationMs?: number }>>();
 
   constructor() {
+    setInterval(() => this.pumpQueue(), 1_000).unref?.();
     setInterval(async () => {
       for (const [id, s] of this.sessions) {
         if (Date.now() > s.expires) {
@@ -272,6 +295,45 @@ export class ResearchOrchestrator {
     return finalized;
   }
 
+  /** Start now if a slot is free, else queue in arrival order. */
+  private admit(job: ResearchJob, start: () => void): void {
+    if (this.active.size < this.maxActive) {
+      this.active.add(job.id);
+      (job as any).runStartedAt = now();
+      start();
+      return;
+    }
+    (job as any).queuedAt = now();
+    this.waiting.push({ job, start });
+    this.renumberQueue();
+  }
+
+  private renumberQueue(): void {
+    this.waiting.forEach((w, i) => { (w.job as any).queuePosition = i + 1; });
+  }
+
+  /** Frees the slots of finished jobs and starts the next ones in line. */
+  private pumpQueue(): void {
+    for (const id of this.active) {
+      const j = this.jobs.get(id);
+      if (!j || ['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status) || j._abandoned) this.active.delete(id);
+    }
+    while (this.active.size < this.maxActive && this.waiting.length) {
+      const next = this.waiting.shift()!;
+      if (['FAILED', 'CANCELLED'].includes(next.job.status)) continue;
+      delete (next.job as any).queuePosition;
+      this.active.add(next.job.id);
+      (next.job as any).runStartedAt = now();
+      next.start();
+    }
+    this.renumberQueue();
+  }
+
+  /** Admission snapshot for /health and the status view. */
+  admission(): { maxActive: number; active: number; queued: number } {
+    return { maxActive: this.maxActive, active: this.active.size, queued: this.waiting.length };
+  }
+
   getJob(id: string): ResearchJob | undefined {
     return this.jobs.get(id);
   }
@@ -290,10 +352,12 @@ export class ResearchOrchestrator {
     const id = randomUUID();
     const job: ResearchJob = { id, query, mode, status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], createdAt: now(), updatedAt: now(), tasConfig, captchaPolicy };
     this.jobs.set(id, job);
-    this.run(job).catch((e) => {
-      job.status = 'FAILED';
-      job.stage = 'FAILED';
-      job.error = String(e);
+    this.admit(job, () => {
+      this.run(job).catch((e) => {
+        job.status = 'FAILED';
+        job.stage = 'FAILED';
+        job.error = String(e);
+      });
     });
     return job;
   }
@@ -346,10 +410,12 @@ export class ResearchOrchestrator {
     const step: StepDescriptor = { type: 'entity', source, idCode: stepIdCode, name };
     const job: ResearchJob = { id, query: stepIdCode || name, mode: 'cadastral', status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], steps: [step], createdAt: now(), updatedAt: now(), captchaPolicy };
     this.jobs.set(id, job);
-    this.run(job).catch((e) => {
-      job.status = 'FAILED';
-      job.stage = 'FAILED';
-      job.error = String(e);
+    this.admit(job, () => {
+      this.run(job).catch((e) => {
+        job.status = 'FAILED';
+        job.stage = 'FAILED';
+        job.error = String(e);
+      });
     });
     return job;
   }
@@ -408,6 +474,46 @@ export class ResearchOrchestrator {
     return { service: captchaService, policy: job.captchaPolicy ?? parseCaptchaPolicy(null), jobId: job.id };
   }
 
+  /*
+   * QUEUE PATH — one source for one durable task, outside any job run loop.
+   *
+   * The task carries everything the source needs; nothing is kept here after
+   * it returns (no jobs-map entry, ledgers and entity queues are dropped), so
+   * a replica can run thousands of tasks without growing. HTTP sources get no
+   * browser at all. A human-verification pause cannot be held open by the
+   * queue: its page is closed and the caller records the source as needing a
+   * human, exactly as the driver's unattended-skip does today.
+   */
+  async executeSource(
+    jobBrowser: JobBrowser | null,
+    task: { id: string; query: string; mode: 'cadastral' | 'property'; step: StepDescriptor; tasConfig?: TasImplementationConfig; captchaPolicy?: CaptchaPolicy },
+  ): Promise<{ result: any; keep: boolean }> {
+    const job: ResearchJob = {
+      id: task.id, query: task.query, mode: task.mode, status: 'RUNNING', stage: 'QUEUE_TASK', sourceIndex: 0, results: [],
+      createdAt: now(), updatedAt: now(), tasConfig: task.tasConfig ?? DEFAULT_TAS_CONFIG, captchaPolicy: task.captchaPolicy ?? parseCaptchaPolicy(null),
+    };
+    const browser = jobBrowser ?? (new Proxy({}, { get() { throw new Error('HTTP_SOURCE_USED_BROWSER'); } }) as unknown as JobBrowser);
+    try {
+      const out = await this.runStep(browser, job, task.step);
+      // Companies found in this source's documents travel with the result, so
+      // the job can queue their registry follow-ups (the in-job EntityQueue
+      // does not outlive the task).
+      if (out.result && typeof out.result === 'object') out.result.queueEntities = this.entitiesFor(job.id).all();
+      if (out.keep) {
+        const session = this.sessions.get(job.id);
+        if (session) {
+          await session.page?.close?.().catch(() => {});
+          this.sessions.delete(job.id);
+        }
+      }
+      return out;
+    } finally {
+      this.ledgers.delete(job.id);
+      this.entityQueues.delete(job.id);
+      captchaService.forgetJob(job.id);
+    }
+  }
+
   private async runStep(jobBrowser: JobBrowser, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean }> {
     const ledger = this.ledgerFor(job.id);
     const entities = this.entitiesFor(job.id);
@@ -415,7 +521,15 @@ export class ResearchOrchestrator {
     const query = step.type === 'entity' ? step.idCode || step.name : job.query;
     const forEntity = step.type === 'entity' ? { name: step.name, idCode: step.idCode } : null;
 
-    if (key === 'mygov') return runMyGovApiStep(query, entities, { captcha: this.captchaContext(job) });
+    if (key === 'mygov') {
+      const early = step.type === 'source' ? this.prefetch.get(`${job.id}|mygov`) : undefined;
+      if (early) {
+        this.prefetch.delete(`${job.id}|mygov`);
+        const r = await early;
+        return { result: r.result, keep: r.keep };
+      }
+      return runMyGovApiStep(query, entities, { captcha: this.captchaContext(job) });
+    }
 
     // TAS API_FIRST runs before any browser page is allocated. Its failure is
     // never the customer's: the configured fallback (LEGACY) runs below in the
@@ -424,7 +538,9 @@ export class ResearchOrchestrator {
     if (key === 'tas') {
       const cfg = job.tasConfig ?? DEFAULT_TAS_CONFIG;
       if (cfg.active === 'API_FIRST') {
-        const api = await runTasApiStep(query, entities);
+        const early = step.type === 'source' ? this.prefetch.get(`${job.id}|tas`) : undefined;
+        if (early) this.prefetch.delete(`${job.id}|tas`);
+        const api = (early ? await early : await runTasApiStep(query, entities)) as Awaited<ReturnType<typeof runTasApiStep>>;
         if (!shouldFallBack(api.result) || cfg.fallback !== 'LEGACY') {
           job.tasExecution = { implementation: 'API_FIRST', fallbackFrom: null, durationMs: api.durationMs };
           return { result: api.result, keep: false };
@@ -483,7 +599,11 @@ export class ResearchOrchestrator {
         if (result) result.tasImplementation = { implementation: 'LEGACY', fallbackFrom: tasFallbackFrom };
       } else if (key === 'TAS_MAP') result = await runTasMapWorker(page, query, ledger, entities);
       else if (key === 'enreg') result = await runEnregWorkflow(page, forEntity || { name: query, idCode: /^[0-9-]{6,}$/.test(String(query || '').trim()) ? query : null }, entities);
-      else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities, { captcha: this.captchaContext(job) });
+      // rstax can run for minutes (Search #1, up to two paid solves, Search
+      // #2): its phase transitions move job.updatedAt/stage so the worker's
+      // own stall watchdog and research-agent's progress signature see the
+      // work as it happens, not only once the whole step returns.
+      else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities, { captcha: this.captchaContext(job), onProgress: stepHeartbeat(job, now) });
       else if (key === 'debtor') result = await runDebtorWorker(page, forEntity, entities);
       else result = await runGenericWorkflow(page, key, NAPR_META, query);
 
@@ -509,6 +629,25 @@ export class ResearchOrchestrator {
     }
   }
 
+  /** Kick off the HTTP-only sources still ahead in this job (see `prefetch`). */
+  private startApiSources(job: ResearchJob, startIndex: number): void {
+    const ahead = (job.steps ?? []).slice(startIndex);
+    const has = (k: string) => ahead.some((s) => s.type === 'source' && s.key === k);
+    const entities = this.entitiesFor(job.id);
+    const swallow = <T,>(p: Promise<T>) => {
+      // Awaited by the step; never an unhandled rejection meanwhile.
+      p.catch(() => {});
+      return p;
+    };
+    if (has('mygov') && !this.prefetch.has(`${job.id}|mygov`)) {
+      this.prefetch.set(`${job.id}|mygov`, swallow(runMyGovApiStep(job.query, entities, { captcha: this.captchaContext(job) }) as any));
+    }
+    const cfg = job.tasConfig ?? DEFAULT_TAS_CONFIG;
+    if (cfg.active === 'API_FIRST' && has('tas') && !this.prefetch.has(`${job.id}|tas`)) {
+      this.prefetch.set(`${job.id}|tas`, swallow(runTasApiStep(job.query, entities) as any));
+    }
+  }
+
   private async run(job: ResearchJob, startIndex = 0, existing: JobBrowser | null = null): Promise<void> {
     // The watchdog already finalized this job and tore its browser down.
     if (job._abandoned) return;
@@ -521,6 +660,7 @@ export class ResearchOrchestrator {
       // throwaway profile and the bundled human-assist extension loaded.
       // Headed under xvfb-run (Dockerfile), exactly as this repository ran
       // before Browserless. CAPTCHA is still solved only by the human.
+      this.startApiSources(job, startIndex);
       jobBrowser = jobBrowser || (await launchJobBrowser(job.id));
       this.jobBrowsers.set(job.id, jobBrowser);
       for (let i = startIndex; i < job.steps.length; i++) {
@@ -553,6 +693,7 @@ export class ResearchOrchestrator {
           continue;
         }
         job.stage = step.type === 'entity' ? `CHECKING_${step.source.toUpperCase()}_ENTITY_${step.idCode}` : `CHECKING_${step.key.toUpperCase()}`;
+        job.phase = null;
         const { result, keep } = await this.runStep(jobBrowser, job, step);
         // The watchdog may have finalized this job while the step was in
         // flight (its rejection is what returned us here). Never write back.
@@ -645,6 +786,8 @@ export class ResearchOrchestrator {
       job.historicalComparison = buildHistoricalComparison(job.results.flatMap((r) => (Array.isArray(r?.documents) ? r.documents : [])));
       await closeJobBrowser(jobBrowser, 'job_complete');
       this.jobBrowsers.delete(job.id);
+      this.prefetch.delete(`${job.id}|mygov`);
+      this.prefetch.delete(`${job.id}|tas`);
     } catch (e) {
       if (job._abandoned) {
         // The watchdog already closed this job's browser and finalized it;
@@ -688,8 +831,38 @@ export class ResearchOrchestrator {
 
       await closeJobBrowser(jobBrowser, 'job_failed');
       this.jobBrowsers.delete(job.id);
+      this.prefetch.delete(`${job.id}|mygov`);
+      this.prefetch.delete(`${job.id}|tas`);
       job.updatedAt = now();
     }
+  }
+
+  /**
+   * The customer stopped the investigation. Cooperative and immediate: the
+   * job is marked abandoned FIRST (the run loop and an in-flight step check
+   * it and never write back), its browser is closed (aborting the page in
+   * use), a queued job leaves the line, and no further source is started.
+   * Results already collected stay on the job for the caller to keep.
+   */
+  async cancel(jobId: string): Promise<{ ok: boolean; code: string; status?: string; results?: number }> {
+    const job = this.jobs.get(jobId);
+    if (!job) return { ok: false, code: 'NOT_FOUND' };
+    if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(job.status)) return { ok: true, code: 'ALREADY_FINISHED', status: job.status, results: job.results.length };
+    job._abandoned = true;
+    this.waiting = this.waiting.filter((w) => w.job.id !== jobId);
+    this.prefetch.delete(`${jobId}|mygov`);
+    this.prefetch.delete(`${jobId}|tas`);
+    await closeJobBrowser(this.jobBrowsers.get(jobId) ?? null, 'job_cancelled');
+    this.jobBrowsers.delete(jobId);
+    this.sessions.delete(jobId);
+    captchaService.forgetJob(jobId);
+    job.humanVerification = null;
+    job.status = 'CANCELLED';
+    job.stage = 'CANCELLED';
+    job.updatedAt = now();
+    this.active.delete(jobId);
+    logBrowserLifecycle('job_cancelled', { jobId, resultsKept: job.results.length });
+    return { ok: true, code: 'CANCELLED', status: job.status, results: job.results.length };
   }
 
   async resume(jobId: string): Promise<HumanActionResult> {

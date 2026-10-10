@@ -62,8 +62,8 @@ function fakeDb({ phases, queue = [], runs = [], reserve = { ok: false, reason: 
 const job = (stage, actorKey, extra = {}) => ({ id: `q-${stage}`, matching_job_id: 'job1', language: 'ka', metadata: { stage, actorKey, query: 'ბინა ვაკეში', size: 15, ...extra } });
 const phase1Open = [{ provider: 'TELEGRAM_SOURCES', status: 'PROCESSING', metadata: {} }, { provider: 'APIFY_MEMO23', status: 'PENDING', metadata: { stage: 'FB_GROUP_SEARCH' } }];
 
-test('Phase 2 (independent search and source-dependent) waits while Phase 1 is open — no reservation, no provider request', async () => {
-  for (const j of [job('TIKTOK_SEARCH', 'TIKTOK'), job('FB_GROUP_POSTS', 'FB_GROUP_POSTS', { targetUrl: 'https://www.facebook.com/groups/x/', query: null })]) {
+test('a source-dependent Phase 2 run (reads the discovered pool) waits while Phase 1 is open — no reservation, no provider request', async () => {
+  for (const j of [job('FB_GROUP_POSTS', 'FB_GROUP_POSTS', { targetUrl: 'https://www.facebook.com/groups/x/', query: null })]) {
     requests.length = 0;
     const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future() }, queue: phase1Open });
     const r = await executeSocialJob(db, j);
@@ -84,9 +84,16 @@ test('Phase 2 proceeds to the reservation once Phase 1 is done (partially failed
   assert.deepEqual(timedOut.rpcs, ['find_buyers_reserve_actor_run'], 'an unanswered provider cannot stall Phase 2');
 });
 
-test('the planned-but-not-yet-queued Telegram discovery holds Phase 2 too', async () => {
-  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future(), expectedProviders: ['TELEGRAM_SOURCES'] }, queue: [] });
+test('an independent search (TikTok) does not wait for unrelated discovery: it goes to the reservation at once', async () => {
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future() }, queue: phase1Open });
   const r = await executeSocialJob(db, job('TIKTOK_SEARCH', 'TIKTOK'));
+  assert.notEqual(r.metadata?.lastWait, 'PHASE1_DISCOVERY');
+  assert.ok(rpcs.includes('find_buyers_reserve_actor_run'), 'reserved under the same atomic caps');
+});
+
+test('the planned-but-not-yet-queued Telegram discovery holds the source-dependent reads', async () => {
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: future(), expectedProviders: ['TELEGRAM_SOURCES'] }, queue: [] });
+  const r = await executeSocialJob(db, job('TELEGRAM_CHANNEL', 'TELEGRAM_CHANNEL', { targetUrl: 'https://t.me/tbilisi_flats', query: null }));
   assert.equal(r.outcome, 'WAIT');
   assert.deepEqual(rpcs, []);
 });
@@ -131,4 +138,24 @@ test('the native Telegram read (Find Buyers only) is held by the same gate, with
   assert.match(fn.slice(gate, exec), /loadPhase1\(db, job\.matching_job_id\)/);
   assert.match(fn.slice(gate, exec), /phase2MayStart\(p1\.state\)/);
   assert.match(fn.slice(gate, exec), /finish_discovery_source_job_wait/, 'a wait, not a retry: no attempt is consumed');
+});
+
+test('circuit breaker: an Actor that failed/came back empty twice in this campaign is cancelled before any reservation or provider request', async () => {
+  requests.length = 0;
+  const failed = { actor_key: 'TIKTOK', status: 'FAILED', items_fetched: 0, cost_booked_at: past(), created_at: past() };
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: past() }, queue: [], runs: [failed, { ...failed, status: 'SUCCEEDED' }] });
+  const r = await executeSocialJob(db, job('TIKTOK_SEARCH', 'TIKTOK'));
+  assert.equal(r.outcome, 'CANCELLED');
+  assert.equal(r.error, 'ACTOR_UNPRODUCTIVE_IN_CAMPAIGN');
+  assert.deepEqual(rpcs, [], 'nothing reserved');
+  assert.equal(requests.length, 0, 'nothing sent to Apify');
+});
+
+test('circuit breaker: one productive run keeps the Actor going', async () => {
+  const ok = { actor_key: 'TIKTOK', status: 'SUCCEEDED', items_fetched: 15, useful_results: 1, cost_booked_at: past(), created_at: past() };
+  const bad = { actor_key: 'TIKTOK', status: 'FAILED', items_fetched: 0, cost_booked_at: past(), created_at: past() };
+  const { db, rpcs } = fakeDb({ phases: { phase1DeadlineAt: past() }, queue: [], runs: [bad, ok] });
+  const r = await executeSocialJob(db, job('TIKTOK_SEARCH', 'TIKTOK'));
+  assert.notEqual(r.error, 'ACTOR_UNPRODUCTIVE_IN_CAMPAIGN');
+  assert.ok(rpcs.includes('find_buyers_reserve_actor_run'));
 });

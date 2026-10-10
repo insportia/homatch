@@ -500,19 +500,20 @@ test('there is no "could not confirm" block in the primary report', () => {
    * The original objection was that our pipeline's gaps opened the
    * customer's report; it was never that a buyer should not be told.
    */
-  assert.ok(src.includes('<UnconfirmedCard'), 'the gaps must be stated somewhere');
-  assert.ok(
-    src.indexOf('<UnconfirmedCard') > src.indexOf('<KeyFindings'),
-    'the gaps must not be the introduction'
-  );
+  // Owner, 2026-10-09: what was not established is not written at all —
+  // "რაზეც არ გვაქვს უბრალოდ არ ვწერთ". Supersedes mandate 10.
+  assert.ok(!src.includes('<UnconfirmedCard'), 'gaps are not listed to the customer');
   assert.ok(!src.includes('verify_ir_unconfirmed_title'), 'the old headline block is still gone');
 });
 
-test('the report shows a summary, snapshot, price position, people and self-checks', () => {
+test('the report shows a summary, snapshot, people and self-checks', () => {
   const src = REPORT_TSX();
+  // Owner, 2026-10-10: no price bar or listings table — the market is
+  // explained in friendly words by the MARKET section, not as numbers.
+  assert.ok(!/const PriceBar|<MarketListingsCard/.test(src), 'the market is shown as numbers again');
   // People became CompanyGraph: the flat list said "director, company" and
   // drew nothing, so it could not show who binds whom or who owns what.
-  for (const c of ['SummaryHero', 'KeyFindings', 'Snapshot', 'PriceBar', 'CompanyGraph', 'SelfChecks']) {
+  for (const c of ['SummaryHero', 'KeyFindings', 'Snapshot', 'CompanyGraph', 'SelfChecks']) {
     assert.ok(new RegExp(`const ${c}`).test(src), `${c} is missing from the report`);
   }
 });

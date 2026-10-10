@@ -288,8 +288,8 @@ test('admin Find Buyers control center: every tab renders at 1440px and 390px (e
       await page.waitForSelector('[data-testid="find-buyers-center"] [role="tab"]', { timeout: 30000 });
       const tabs = page.locator('[data-testid="find-buyers-center"] [role="tab"]');
       const n = await tabs.count();
-      /* overview, actors, campaigns, source network (2026-10-08), sources, languages, ledger */
-      if (n !== 7) failures.push(`${lang} ${width}: ${n} tabs`);
+      /* overview, actors, campaigns, source network (2026-10-08), sources, languages, ledger, intelligence (2026-10-24) */
+      if (n !== 8) failures.push(`${lang} ${width}: ${n} tabs`);
       for (let i = 0; i < n; i += 1) {
         await tabs.nth(i).click();
         await page.waitForTimeout(150);
@@ -315,7 +315,9 @@ test('live search module: server state, real source nodes only, real counts, the
   assert.match(main, /Searching — first results are in/);
   assert.match(main, /sources working/);
   assert.match(main, /signals checked/);
-  assert.match(main, /Saved results/, 'stored results are their own section');
+  /* Stored results are their own sections: HOMATCH members and external leads, never merged. */
+  assert.match(main, /HOMATCH Matches/, 'internal matches are their own section');
+  assert.match(main, /External Leads/, 'external leads are their own section');
   const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
   assert.equal(net, 'Live search network. Sources: FACEBOOK, VK, REDDIT', 'only sources the campaign queued');
   assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);
@@ -358,14 +360,17 @@ test('a search that could not start never reads as "finished, 0 results"; launch
 });
 
 test('numbered server pages: page 2 is a server request, kept in the URL, Back returns to page 1', opts, async (t) => {
-  const { page, matchRequests } = await boot(t, { matches: MATCHES, status: withState('COMPLETED_WITH_RESULTS', { active: false }) });
+  const { page } = await boot(t, { matches: MATCHES, status: withState('COMPLETED_WITH_RESULTS', { active: false }) });
   await open(page);
   await page.waitForSelector('nav[aria-label="Match pages"]');
   assert.equal(await page.locator('nav[aria-label="Match pages"] [aria-current="page"]').textContent(), '1');
+  /* The current-page marker follows the URL at once; the page-2 fetch fires a
+     tick later, so wait for that request itself rather than reading the log. */
+  const page2Request = page.waitForRequest((r) => r.url().includes('/rest/v1/matches') && /offset=12/.test(r.url()), { timeout: 30000 });
   await page.getByRole('button', { name: 'Page 2' }).click();
   await page.waitForFunction(() => new URLSearchParams(location.search).get('page') === '2');
   await page.waitForFunction(() => document.querySelector('nav[aria-label="Match pages"] [aria-current="page"]')?.textContent === '2');
-  assert.ok(matchRequests.some((u) => /offset=12/.test(u)), 'page 2 asked the server for offset 12');
+  assert.match((await page2Request).url(), /offset=12/, 'page 2 asked the server for offset 12');
   await page.goBack();
   await page.waitForFunction(() => !new URLSearchParams(location.search).get('page'));
   assert.doesNotMatch(await page.textContent('main'), /Show more|მეტის ჩვენება/);

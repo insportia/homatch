@@ -1,9 +1,62 @@
 # PROJECT STATE
 
-last_updated: 2026-10-08
+last_updated: 2026-10-10
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Verify go-live (PR #145, main 7c90625d, 2026-10-10) — LIVE IN PRODUCTION
+
+- Migrations applied via the Supabase MCP (no runner), so the ledger carries apply-time
+  versions; release proof matches by NAME, which is the repo convention for MCP applies.
+  Repo `20261026090000_verify_durable_execution.sql` = ledger `20261010103430`;
+  repo `20261026100000_verify_credit_budget.sql` = ledger `20261010132816`.
+  Never re-apply either file and never rename the repo files.
+- Edge: research-agent v195, verify-synthesis v76, verify-queue v1 — all PROVEN_EXACT;
+  refs/deployed/edge → 7c90625d. verify-queue was NOT created by the first deploy run
+  (CLI printed "Deployed", function absent); a single rerun of the failed jobs created it.
+- Vercel: dpl_3BoQnJmrdWHfszX9P3UHLiMh7X8x (READY, production, 7c90625d).
+- Railway `homatch-official-worker`: `VERIFY_QUEUE_ENABLED=1` (2026-10-10 ~13:54 UTC);
+  worker polls verify-queue with 200s.
+- Switches: `verify_execution_mode` = "QUEUE", `verify_billing_enabled` = true (2026-10-10).
+  Kill switch: set them back to "LEGACY" / false (new jobs only; running QUEUE jobs finish in QUEUE).
+- Pricing check on production (`verify_price_for_cost`, input in CENTS): C=$0.45 → 17.11
+  credits completed (floor) / 12.98 partial; C=$1.00 → 28.85.
+
+## Verify credit budget + stop/resume (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — LIVE (see above)
+
+- Migration `20261026100000_verify_credit_budget.sql` (after the queue migration). Applied (ledger 20261010132816).
+- research-agent: reserve at start (anonymous → sign-in when on), live `billing` in status,
+  `pause` / `continue` actions, settlement sweep in the driver, ads stage budget guard.
+- Worker: `POST /research/:id/cancel` (needs the Railway deploy for legacy-mode stop).
+- Production facts used (2026-10-10): credits_per_usd 10, vat_rate_bps 1800,
+  billing_cogs_tax_bps 1800, reservation TTL 60 min (Verify extends to 12 h),
+  all accounts on FREE, fx_rates only USD (no GEL/EUR shown until rates are set),
+  Verify AI COGS p50 $0.446 / p90 $0.581 / max $0.79 → ~15 / ~20 / cap credits.
+- Incremental budget (owner rule 2026-10-10): 25 initial, +25 per explicit approval, max 4 / 100,
+  `verify_billing_authorizations` ledger, `verify_budget_gate` before every chargeable stage
+  (IDENTITY, OFFICIAL, OFFICIAL_COLLECTION, FINANCIAL_ENTITY, PUBLIC_RESEARCH, MARKET,
+  DEVELOPER_ADS, SYNTHESIS+REPORT). Awaiting approval = PAUSED with `_pause.reason` BUDGET
+  (no reservation held); limit = BUDGET_LIMIT. UI: VerifyBudgetExtendDialog / VerifyBudgetLimitCard.
+  Stage p95 estimates imply a full run with ads ≈ 45 credits → most full runs ask once.
+- Tests: tests/sql/run-verify-billing.sh (durable, budget, audit regressions, incremental budget,
+  open/close concurrency, approval races), pauseResume, verifyBudgetUi.
+
+## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — LIVE (see Verify go-live)
+
+- Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
+  verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
+  research_jobs.client_request_id + advance lease). NOT applied to production.
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
+  sources as durable tasks; property mode always legacy.
+- Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
+  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+- Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
+  advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
+- CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.
+- Measured on scratch PG16 only (see `scripts/verify-scale/README.md`); no live benchmark yet.
+  10k browser sessions / 10k reports-in-minutes NOT claimed.
+- Rollout/rollback: `scripts/verify-scale/README.md`. Every step needs owner approval.
 
 ## Verify upgrade (branch `claude/dazzling-cray-34t9ur`, 2026-10-08) — IN PROGRESS, NOT DEPLOYED
 
@@ -379,6 +432,62 @@ Owner approvals pending: merge + deploy; apply 20261022090000; set
 `telegram_source_auto_enable=true` (else verified communities wait for an
 operator); optional one-time audit run of the 20 DISCOVERED communities.
 Not done: mirroring imported photos into storage (they die with the source).
+
+## HOMATCH Leads + CRM + property chat + Email Studio (branch claude/homatch-leads-crm-studio, 2026-10-10) — DRAFT PR, NOT merged/deployed
+
+Built on top of PR #137 (claude/nifty-hopper-snzn2d), so it merges after #137. Nothing applied or deployed.
+
+- Migrations (append-only, release order):
+  - 20261028090000 homatch_leads_marketplace: internal leads feed and unlocks (Standard 2.5 / Premium 6 credits, wallet reserve→settle, one entitlement per account per member), consent prefs, Premium rules, CRM, property matching queue (cron every 2 minutes), follow-up cron. `open_native_conversation` now needs an unlock on the owner side of a MATCH.
+  - 20261028100000 property_conversations: message kinds (photo, voice, property card), translations cache, private `dm-media` bucket. Drops `msg_insert` and revokes direct insert/update/delete on `messages`; every send goes through send-message.
+  - 20261028110000 email_studio: `email_studio_*` tables and RPCs. `email_studio_sending_enabled` defaults to false.
+  - 20261028120000 find_buyers_research_budget: credit presets 100–2000 (minimum 100); an extension reserves only the difference.
+- Edge functions (no new ones):
+  - atomic-unlock: `kind=internal_leads`
+  - supply-matching: property mode and queue drain
+  - match-campaign: `extend_budget`
+  - send-message: chat media, cards, AI translate/assist/transcribe
+  - outreach-send: `studio_*` actions
+  - email-webhook: studio events, opens/clicks, one-click unsubscribe
+  - push-send: PROPERTY_OFFER counts as messages
+- Owner switches before going live:
+  - Email Studio sending (admin setting)
+  - the Resend webhook subscribed to opened/clicked
+  - OPENAI_API_KEY for chat AI
+  - price-book rates for CHAT_* (until then shown as UNPRICED)
+
+## Find Buyers intelligence overhaul + Internal Matches + segmentation (branch claude/nifty-hopper-snzn2d, 2026-10-09) — NOT merged/deployed
+
+Baseline: the first paid production campaign (VILLION, job 70b0d32b, HOMATCH 244486,
+2026-10-09): $2.4646 actual, 958 items, 412 analysed, 37 "qualified" leads of which 4
+were genuine purchase requests and 0 compatible with price + place.
+- Classification (research-core/findBuyers/demandClassifier.ts, qualify.ts): roles
+  BUY/RENT seeker, SALE/RENT offer, AGENT, SERVICE, JOB, IRRELEVANT, UNCLEAR; Strong /
+  Potential / Weak / Rejected with explicit reasons; Unknown ≠ Compatible. The 37
+  production leads are regression fixtures (src/research-core/__tests__/fixtures/
+  villionCampaignLeads.json): 37 shown → 2 (1 Potential, 1 Weak), 0 Strong.
+- Root causes fixed: seeker verb ≠ real-estate demand; rent vs buy; "for sale"
+  listings; empty comments[] read as 0 comments (comments never examined);
+  "Tbilisi" matched Lisi; job/rental-only groups paid for; empty Actor results
+  retried; independent searches waited for discovery; reposts not deduped.
+- Orchestration: per-campaign Actor circuit breaker (2 failed/empty runs);
+  LinkedIn group search quarantined (needs login cookies); only source-dependent
+  reads wait for Phase 1; campaign-scoped free Telegram reads of verified
+  communities, paid Actor skips them.
+- Strategy (buyerStrategy.ts): segment (property_market_segments, only with
+  evidence), budget band, district + micro-areas + nearby, personas, explicit-
+  intent queries; depth by budget; bounded query learning.
+- Re-qualification: discovery-queue-worker mode admin_requalify {matchingJobId,
+  apply} — dry run by default; apply keeps rows/evidence/previous verdict.
+- Workstreams merged: market segmentation + Buyer intelligence admin (migrations
+  20261024100000/110000; fixes supply-matching HTTP 500 — missing FK embed),
+  Internal Matches + one DEMO buyer (20261024120000; admin/testers only), campaign
+  report + Research Notes + admin Intelligence tab (20261024130000).
+- Owed on release (owner approval): merge; migrations 20261024090000 → 100000 →
+  110000 → 120000 → 130000; edge deploys (match-campaign, discovery-queue-worker,
+  community-sync, supply-matching, find-property-plan, ingest-live-chat,
+  send-message, viewing-request + any the plan lists); frontend; then
+  admin_requalify dry run → apply for job 70b0d32b; first segmentation apply.
 
 ## Find Buyers — two-phase engine + COMBINED Telegram (same branch/PR #129, 2026-10-08) — NOT merged/deployed
 

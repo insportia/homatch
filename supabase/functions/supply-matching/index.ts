@@ -50,7 +50,16 @@ import {
   type StrengthMap,
   type SupplySide,
 } from '../../../src/research-core/match/compatibility.ts';
-import { nativeSupplyRole, supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
+import { supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
+import {
+  demandSideFromIntentProfile,
+  NATIVE_MIN_AGREEMENTS,
+  strengthFromCriteria,
+  supplySideFromProperty,
+  type IntentProfileShape,
+  type PropertyFactsShape,
+  type PropertyShape,
+} from '../../../src/research-core/match/native-pair.ts';
 import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
 import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
@@ -77,6 +86,8 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 /** How many candidate listings one demand row is compared against per run. */
 const MAX_CANDIDATES = 500;
+/* Active native searches a property-scoped run evaluates one listing against. */
+const PROPERTY_MODE_MAX_DEMAND = 600;
 
 /** How many demand rows a single tick will serve. */
 const MAX_DEMAND = 25;
@@ -89,7 +100,7 @@ const MAX_DEMAND = 25;
  * every Tbilisi enquiry with every Tbilisi listing, which is the failure mode that
  * makes a match list worthless.
  */
-const MIN_AGREEMENTS = 3;
+const MIN_AGREEMENTS = NATIVE_MIN_AGREEMENTS;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -125,8 +136,41 @@ Deno.serve(async (req: Request) => {
     const onlyProfiles: string[] = Array.isArray(body.intentProfileIds)
       ? (body.intentProfileIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, MAX_DEMAND)
       : [];
-    const nativeOnly = body.nativeOnly === true;
-    const limit = Math.max(1, Math.min(nativeOnly ? 200 : MAX_DEMAND, Number(body.maxDemand) || (nativeOnly ? 200 : 10)));
+    /*
+     * A PROPERTY-SCOPED RUN (HOMATCH Leads fresh matching): a listing was created or
+     * changed, or its owner launched a campaign, so THAT property is evaluated against
+     * every active native search — not only the newest few hundred a sweep reaches.
+     * Properties come from the request or from native_match_property_queue, which a
+     * trigger on properties / property_facts fills.
+     */
+    let onlyProperties: string[] = Array.isArray(body.propertyIds)
+      ? (body.propertyIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 50)
+      : [];
+    if (body.drainPropertyQueue === true && !dryRun) {
+      const { data: claimed, error: claimError } = await db.rpc('native_match_claim_properties', { p_limit: 25 });
+      if (claimError) throw claimError;
+      onlyProperties = [...new Set([...onlyProperties, ...((claimed ?? []) as string[])])];
+      if (!onlyProperties.length) return json({ success: true, propertyMode: true, propertiesClaimed: 0 });
+    }
+    const propertyMode = onlyProperties.length > 0;
+    const nativeOnly = body.nativeOnly === true || propertyMode;
+    let limit = Math.max(1, Math.min(nativeOnly ? 200 : MAX_DEMAND, Number(body.maxDemand) || (nativeOnly ? 200 : 10)));
+    let propertyModeDemandIds: string[] = [];
+    if (propertyMode) {
+      const { data: activeSubs, error: activeSubsError } = await db
+        .from('active_search_subscriptions')
+        .select('intent_id')
+        .eq('is_active', true)
+        .not('intent_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(PROPERTY_MODE_MAX_DEMAND);
+      if (activeSubsError) throw activeSubsError;
+      propertyModeDemandIds = [...new Set((activeSubs ?? []).map((r: Record<string, unknown>) => String(r.intent_id)))];
+      if (!propertyModeDemandIds.length) {
+        return json({ success: true, propertyMode: true, properties: onlyProperties, demandConsidered: 0 });
+      }
+      limit = propertyModeDemandIds.length;
+    }
 
     /*
      * THE DEMAND SIDE, and only what is already allowed to be shown.
@@ -141,26 +185,52 @@ Deno.serve(async (req: Request) => {
       .select('id,signal_id,intent_type,transaction_type,city,district,property_types,'
         + 'bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,'
         + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,'
-        + 'signal:raw_signals!signal_id(id,classification_status,platform),'
-        /*
-         * WHOSE DEMAND THIS IS, where it is anybody's.
-         *
-         * intent_profiles has no user column — it holds a requirement, not a person —
-         * and the account is on the subscription that watches it. That is the canonical
-         * join and it is the only thing that makes a native match have two identities;
-         * an external demand read off a forum simply has no row here, which is the
-         * honest answer rather than a gap.
-         */
-        + `subscriptions:active_search_subscriptions${nativeOnly ? '!inner' : ''}!intent_id(user_id,is_active,side,search_criteria)`)
+        + 'signal:raw_signals!signal_id(id,classification_status,platform)')
       .not('city', 'is', null)
       .order('created_at', { ascending: false })
       .limit(limit * 4);
     if (onlySignal) demandQuery = demandQuery.eq('signal_id', onlySignal);
     if (onlyProfiles.length) demandQuery = demandQuery.in('id', onlyProfiles);
-    if (nativeOnly) demandQuery = demandQuery.eq('subscriptions.is_active', true);
+    if (propertyMode) demandQuery = demandQuery.in('id', propertyModeDemandIds);
 
-    const { data: demandRows, error: demandError } = await demandQuery;
+    const { data: profileRows, error: demandError } = await demandQuery;
     if (demandError) throw demandError;
+
+    /*
+     * WHOSE DEMAND THIS IS, where it is anybody's.
+     *
+     * intent_profiles has no user column — it holds a requirement, not a person —
+     * and the account is on the subscription that watches it
+     * (active_search_subscriptions.intent_id). That column carries NO foreign key,
+     * so PostgREST cannot embed it: the former
+     * PostgREST embed of the subscriptions through intent_id failed every
+     * tick with PGRST200 ("could not find a relationship"), which the catch below
+     * rendered as `{"error":"[object Object]"}` — HTTP 500 every 15 minutes and no
+     * supply_matches written since 2026-09-27. The subscriptions are read in a
+     * second query and attached here, under the same `subscriptions` name the rest
+     * of this function already consumes. An external demand read off a forum
+     * simply has no subscription, which is the honest answer rather than a gap.
+     */
+    const profileIds = (profileRows ?? []).map((row: Record<string, unknown>) => String(row.id));
+    const subscriptionsByIntent = new Map<string, Array<Record<string, unknown>>>();
+    if (profileIds.length) {
+      const { data: subscriptionRows, error: subscriptionError } = await db
+        .from('active_search_subscriptions')
+        .select('intent_id,user_id,is_active,side,search_criteria')
+        .in('intent_id', profileIds);
+      if (subscriptionError) throw subscriptionError;
+      for (const sub of (subscriptionRows ?? []) as Array<Record<string, unknown>>) {
+        const key = String(sub.intent_id);
+        const list = subscriptionsByIntent.get(key) ?? [];
+        list.push(sub);
+        subscriptionsByIntent.set(key, list);
+      }
+    }
+    const demandRows = (profileRows ?? [])
+      .map((row: Record<string, unknown>) => ({ ...row, subscriptions: subscriptionsByIntent.get(String(row.id)) ?? [] }))
+      /* A network-only run is about people with an ACTIVE subscription and nobody else. */
+      .filter((row: { subscriptions: Array<Record<string, unknown>> }) =>
+        !nativeOnly || row.subscriptions.some((sub) => sub.is_active === true));
 
     const eligible = (demandRows ?? []).filter((row: Record<string, unknown>) => {
       /*
@@ -281,43 +351,10 @@ Deno.serve(async (req: Request) => {
        */
       const activeSubscription = subscriptions.find((sub) => sub.is_active === true);
       const criteria = (activeSubscription?.search_criteria ?? {}) as Record<string, unknown>;
-      const planStrength = (): StrengthMap | null => {
-        /* A confirmed Search Plan stores each constraint as { value, strength }. */
-        const map: Record<string, string> = {};
-        const pick = (field: string, dimension: string) => {
-          const entry = criteria[field] as { strength?: string } | null | undefined;
-          if (entry && typeof entry === 'object' && entry.strength && entry.strength !== 'UNKNOWN') {
-            map[dimension] = entry.strength;
-          }
-        };
-        pick('city', 'CITY'); pick('districts', 'DISTRICT'); pick('propertyTypes', 'PROPERTY_TYPE');
-        pick('budget', 'PRICE'); pick('bedrooms', 'BEDROOMS'); pick('areaSqm', 'AREA');
-        return Object.keys(map).length ? map as StrengthMap : null;
-      };
-      const statedStrength = (criteria.strength && typeof criteria.strength === 'object')
-        ? criteria.strength as StrengthMap
-        : planStrength();
-      const strength: StrengthMap = statedStrength && Object.keys(statedStrength).length
-        ? { DISTRICT: 'PREFERRED', ...statedStrength }
-        : { DISTRICT: 'PREFERRED' };
-
-      const demand: DemandSide = {
-        intentType: (demandRow.intent_type as string | null) ?? null,
-        transactionType: (demandRow.transaction_type as string | null) ?? null,
-        city: (demandRow.city as string | null) ?? null,
-        district: (demandRow.district as string | null) ?? null,
-        propertyTypes: (demandRow.property_types as string[] | null) ?? null,
-        budgetMin: demandRow.budget_min as number | null,
-        budgetMax: demandRow.budget_max as number | null,
-        currency: (demandRow.currency as string | null) ?? null,
-        areaMin: demandRow.area_min as number | null,
-        areaMax: demandRow.area_max as number | null,
-        bedroomsMin: demandRow.bedrooms_min as number | null,
-        bedroomsMax: demandRow.bedrooms_max as number | null,
-        roomsMin: (demandRow.rooms_min as number | null) ?? null,
-        roomsMax: (demandRow.rooms_max as number | null) ?? null,
-        strength,
-      };
+      /* The mapping is shared (research-core/match/native-pair.ts) so the owner's
+         profile view explains a pair with exactly the inputs this worker scored. */
+      const strength: StrengthMap = strengthFromCriteria(criteria);
+      const demand: DemandSide = demandSideFromIntentProfile(demandRow as IntentProfileShape, strength);
 
       /*
        * CANDIDATE SUPPLY, narrowed cheaply and imprecisely in SQL and decided precisely
@@ -544,7 +581,7 @@ Deno.serve(async (req: Request) => {
        * either side anybody to talk to.
        */
       if (demandUserId) {
-        const { data: nativeRows } = await db
+        let nativeQuery = db
           .from('properties')
           .select('id,user_id,homatch_id,title,transaction_type,property_type,'
             + 'matching_status,archived_at,contact_phone_e164,listed_by_role,'
@@ -561,6 +598,8 @@ Deno.serve(async (req: Request) => {
            */
           .neq('user_id', demandUserId)
           .limit(MAX_CANDIDATES);
+        if (propertyMode) nativeQuery = nativeQuery.in('id', onlyProperties);
+        const { data: nativeRows } = await nativeQuery;
 
         totals.nativeCandidatesRead += (nativeRows ?? []).length;
         /* Which properties still fit, so the ones that no longer do stop being shown. */
@@ -579,25 +618,10 @@ Deno.serve(async (req: Request) => {
            * says which, so only one of the two amounts is ever populated — putting the
            * figure in both would let a rental match a buyer's budget.
            */
-          const transaction = String(propertyRow.transaction_type ?? '').toUpperCase();
-          const amount = (propertyFacts?.total_price as number | null) ?? null;
-          const amountCurrency = (propertyFacts?.currency as string | null) ?? null;
-          const nativeSupply: SupplySide = {
-            /* Who listed it and what they offer -- see nativeSupplyRole. A rental
-               listed by its owner is LANDLORD supply, so a tenant can match it. */
-            role: nativeSupplyRole(transaction, (propertyRow.listed_by_role as string | null) ?? null),
-            transaction: transaction || null,
-            city: (propertyFacts?.city as string | null) ?? null,
-            district: (propertyFacts?.district as string | null) ?? null,
-            propertyType: (propertyRow.property_type as string | null) ?? null,
-            saleAmount: transaction === 'RENT' ? null : amount,
-            saleCurrency: transaction === 'RENT' ? null : amountCurrency,
-            rentAmount: transaction === 'RENT' ? amount : null,
-            rentCurrency: transaction === 'RENT' ? amountCurrency : null,
-            areaSqm: (propertyFacts?.area as number | null) ?? null,
-            bedrooms: (propertyFacts?.bedrooms as number | null) ?? null,
-            rooms: (propertyFacts?.rooms as number | null) ?? null,
-          };
+          const nativeSupply: SupplySide = supplySideFromProperty(
+            propertyRow as PropertyShape,
+            propertyFacts as PropertyFactsShape | null | undefined,
+          );
 
           const assessment = assessMatch(demand, nativeSupply, { minAgreements: MIN_AGREEMENTS });
           if (assessment.compatibility !== 'COMPATIBLE') continue;
@@ -665,10 +689,10 @@ Deno.serve(async (req: Request) => {
             await notify(db, {
               userId: String(propertyRow.user_id),
               type: 'MATCH_AVAILABLE',
-              title: 'A Homatch member is looking for something like your property',
-              body: 'Their stated requirements fit this property.',
+              title: 'New Matching Buyers Found',
+              body: 'New buyer requests matching your property have appeared since your last visit. Review the latest opportunities in HOMATCH.',
               priority: 'NORMAL',
-              deepLink: `/property/${propertyRow.id}/matches`,
+              deepLink: `/property/${propertyRow.id}/leads`,
               entityType: 'supply_match',
               entityId: matchId,
               dedupeKey: `native-match:${matchId}:supply`,
@@ -678,7 +702,7 @@ Deno.serve(async (req: Request) => {
                  aggregate row keeps the FIRST event's title and the other eight are
                  invisible — which is worse than nine interruptions, because the
                  customer does not know there is anything else to look at. */
-              groupTitle: '{n} Homatch members are looking for something like your property',
+              groupTitle: 'New Matching Buyers Found ({n})',
               metadata: {
                 kind: 'NATIVE_MATCH_SUPPLY',
                 property_id: propertyRow.id,
@@ -712,9 +736,27 @@ Deno.serve(async (req: Request) => {
 
         /* A property that no longer fits this demand stops being shown as a match. */
         if (!dryRun) {
+          /* A property-scoped run judged only the queued listings: every other match of
+             this search is kept as it was, and only a queued listing that stopped
+             fitting is retired. */
+          let keep = compatibleProperties;
+          if (propertyMode) {
+            const { data: current } = await db
+              .from('supply_matches')
+              .select('property_id')
+              .eq('intent_profile_id', demandRow.id as string)
+              .eq('source_kind', 'INTERNAL_HOMATCH')
+              .eq('compatibility', 'COMPATIBLE');
+            keep = [...new Set([
+              ...((current ?? []) as Array<{ property_id: string }>)
+                .map((r) => String(r.property_id))
+                .filter((id) => !onlyProperties.includes(id)),
+              ...compatibleProperties,
+            ])];
+          }
           await db.rpc('retire_native_matches', {
             p_intent_profile_id: demandRow.id as string,
-            p_keep: compatibleProperties,
+            p_keep: keep,
           });
         }
       }
@@ -759,6 +801,19 @@ Deno.serve(async (req: Request) => {
       elapsedMs: Date.now() - started,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    /* A PostgrestError is a plain object, not an Error: String() of it is
+       "[object Object]", which hid the real failure for days. */
+    return json({ error: describeError(error) }, 500);
   }
 });
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const e = error as { code?: unknown; message?: unknown; details?: unknown };
+    const parts = [e.code, e.message, e.details].filter((x) => typeof x === 'string' && x);
+    if (parts.length) return parts.join(': ');
+    try { return JSON.stringify(error); } catch { /* fall through */ }
+  }
+  return String(error);
+}

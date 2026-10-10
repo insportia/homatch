@@ -60,7 +60,7 @@ export function VerifyOfficialSourcesPanel() {
   const [testedCode, setTestedCode] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   /** CAPTCHA service state from the worker + the Admin policy. Never holds a key. */
-  const [captcha, setCaptcha] = useState<{ policy: any; worker: any } | null>(null);
+  const [captcha, setCaptcha] = useState<{ policy: any; worker: any; queue?: any; executionMode?: string } | null>(null);
   const [captchaBalance, setCaptchaBalance] = useState<number | null | undefined>(undefined);
   /** Developer Advertising Intelligence: policy, switches, recent stages; schema only on request (free). */
   const [ads, setAds] = useState<any>(null);
@@ -321,7 +321,7 @@ export function VerifyOfficialSourcesPanel() {
                   {captcha.worker.breakerOpen ? <span className="text-amber-600"> · {t('adm_vos_captcha_breaker')}: {captcha.worker.breakerCode}</span> : null}
                 </p>
                 <p>
-                  {t('adm_vos_captcha_today')}: {captcha.worker.usedToday} / {captcha.worker.dailyCap} · {t('adm_vos_captcha_cost_est')}: ${Number(captcha.worker.estCostPerSolveUsd ?? 0).toFixed(3)}
+                  {t('adm_vos_captcha_today')}: {captcha.worker.usedToday} / {captcha.worker.dailyCap ?? '∞'} · {t('adm_vos_captcha_cost_est')}: ${Number(captcha.worker.estCostPerSolveUsd ?? 0).toFixed(3)}
                   {' · '}
                   {captchaBalance === undefined ? (
                     <Button size="sm" variant="ghost" className="h-auto px-1 py-0 text-xs underline" onClick={() => void checkBalance()}>{t('adm_vos_captcha_balance_check')}</Button>
@@ -338,6 +338,28 @@ export function VerifyOfficialSourcesPanel() {
             ) : (
               <p className="text-amber-600 break-words">{t('adm_vos_worker_unreachable')} {captcha?.worker?.error ?? ''}</p>
             )}
+            {captcha?.queue && !captcha.queue.unavailable ? (
+              <div className="space-y-0.5 border-t border-border pt-1.5">
+                <p>
+                  {t('adm_vos_queue_title')} · {t('adm_vos_queue_mode')}: <span className="font-mono">{captcha.executionMode ?? 'LEGACY'}</span>
+                </p>
+                <p>
+                  {t('adm_vos_queue_captcha_24h')}: {captcha.queue.captcha24h?.solves ?? 0} · ${Number(captcha.queue.captcha24h?.costUsd ?? 0).toFixed(3)}
+                  {' · '}
+                  {t('adm_vos_queue_captcha_30d')}: {captcha.queue.captcha30d?.solves ?? 0} · ${Number(captcha.queue.captcha30d?.costUsd ?? 0).toFixed(2)}
+                </p>
+                {Object.keys(captcha.queue.captcha24hBySource ?? {}).length ? (
+                  <p className="text-muted-foreground break-words">
+                    {Object.entries(captcha.queue.captcha24hBySource as Record<string, { n: number; costUsd: number }>).map(([k, v]) => `${k} ${v.n} ($${Number(v.costUsd).toFixed(3)})`).join(' · ')}
+                  </p>
+                ) : null}
+                <p className="text-muted-foreground break-words">
+                  {t('adm_vos_queue_backlog')}: {Object.entries(captcha.queue.byLaneState ?? {}).map(([k, n]) => `${k} ${n}`).join(' · ') || '0'}
+                  {' · '}
+                  {t('adm_vos_queue_oldest')}: {captcha.queue.oldestQueuedSeconds ?? 0}s · {t('adm_vos_queue_dead')}: {captcha.queue.dead24h ?? 0} · {t('adm_vos_queue_reused')}: {captcha.queue.cacheHits24h ?? 0}
+                </p>
+              </div>
+            ) : null}
             {captcha?.policy ? (
               <div className="flex flex-wrap gap-4">
                 {(['mygov', 'rstax'] as const).map((p) => (

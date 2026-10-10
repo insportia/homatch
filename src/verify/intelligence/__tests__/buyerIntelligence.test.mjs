@@ -483,15 +483,15 @@ test('the prompt carries the certainty vocabulary instead of good/bad/unknown', 
   assert.ok(/never good\/bad\/unknown/.test(system));
 });
 
-test('physical completion and legal commissioning are kept apart', () => {
-  // v2 carries this as concrete worked examples in the advice rule rather
-  // than as a standalone heading: an unconfirmed commissioning status must
-  // become "worth confirming", never a contradiction.
+test('a finished building still registered as under construction is never a contradiction or a task', () => {
+  // Owner, 2026-10-09: "ვერ მოიძებნა სამშენებლო ნებართვაო რაც სისულელეა
+  // დასრულებულია უკვე მშენებლობა" — the register lag is normal; what we did
+  // not retrieve is not written, and nothing tells the buyer to "verify" it.
   const { system } = buildIntelligencePrompt(pkgOf(REAL_CASE));
-  assert.ok(/PHYSICAL COMPLETION IS NOT LEGAL COMMISSIONING/.test(system));
-  assert.ok(/ექსპლუატაციაში მიღების აქტუალური სტატუსის გადამოწმება ღირს/.test(system));
-  // ...and it must be said ONCE, in LEGAL, not repeated as a contradiction.
-  assert.ok(/inside SNAPSHOT, once/.test(system));
+  assert.ok(/A FINISHED BUILDING IS NOT A RISK/.test(system));
+  assert.ok(!/გადამოწმება ღირს" — inside SNAPSHOT/.test(system), 'the old "worth verifying" instruction is gone');
+  assert.ok(/WHAT WE DO NOT HAVE IS NOT WRITTEN/.test(system));
+  assert.ok(/A BANK MORTGAGE ON A NEW-BUILD APARTMENT IS NORMAL/.test(system));
 });
 
 test('the prompt never leaks raw research internals or the whole report', () => {

@@ -84,6 +84,8 @@ jobs:
             else
               FNS="$REDEPLOY"
             fi
+            # Held functions (scripts/release/edge-holds.json) are never redeployed from main.
+            FNS=$(node -e "import('./scripts/deploy-scope.mjs').then(m=>console.log(m.withoutHeld(process.argv[1].split(' ')).join(' ')))" "$FNS")
             echo "edge=true" >> $GITHUB_OUTPUT
             echo "functions=$FNS" >> $GITHUB_OUTPUT
             echo "frontend=false" >> $GITHUB_OUTPUT
@@ -445,8 +447,14 @@ jobs:
             else
               LIST="$REDEPLOY"
             fi
+            # A held function is never uploaded from main, even when named here:
+            # its production artifact was proven to come from an unmerged branch.
+            node -e "import('./scripts/deploy-scope.mjs').then(m=>{const held=m.edgeHolds();const asked=process.argv[1].split(' ');for(const h of held){if(asked.includes(h.function)||process.argv[2]==='edge')console.log('::warning::HELD '+h.function+': production runs '+h.sourceBranch+'@'+h.sourceCommit+' (PR #'+h.pr+'); not redeployed from main')}})" "$LIST" "$REDEPLOY"
+            LIST=$(node -e "import('./scripts/deploy-scope.mjs').then(m=>console.log(m.withoutHeld(process.argv[1].split(' ')).join(' ')))" "$LIST")
           else
             node scripts/deploy-scope.mjs >> $GITHUB_STEP_SUMMARY || true
+            # HELD functions are reported, not hidden: production runs code main does not have.
+            node scripts/deploy-scope.mjs --json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const h of JSON.parse(s).held||[])console.log('::warning::HELD '+h.function+': production runs '+h.sourceBranch+'@'+h.sourceCommit+' (PR #'+h.pr+'); not deployed from main and not counted as proven')})"
             LIST=$(node scripts/deploy-scope.mjs --json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).functions.join(' ')))")
           fi
           COUNT=$(echo $LIST | wc -w)
@@ -838,6 +846,12 @@ jobs:
             # Production has run verify_jwt=false since it was first deployed;
             # deploying it here with --no-verify-jwt preserves that exactly.
             "research-agent"
+            # The Verify worker's queue door (claim/heartbeat/complete). Called
+            # only by homatch-official-worker, never by a customer, so it holds
+            # no user JWT: it authenticates the WORKER_TOKEN itself (constant-
+            # time) and answers anything else with 401. Inert until the worker
+            # runs with VERIFY_QUEUE_ENABLED=1.
+            "verify-queue"
             # The durable-job tick. Same shape as the two workers above: it is
             # called by pg_cron, belongs to no customer, and so cannot present
             # a user JWT — it authenticates on the private jobs_worker_token in

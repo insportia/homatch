@@ -172,6 +172,18 @@ export async function finalizeCampaignJob(
         },
       }, freshMatches + socialLeads > 0 ? 'SUCCESS' : 'PARTIAL');
       creditsCharged = settled.chargedCredits;
+      /* "Expand Research": usage beyond the original reservation is charged to the
+         campaign's budget extensions in order; every unused extension credit is
+         released. A campaign without extensions makes this a no-op. */
+      const beyond = Math.max(0, Number(settled.requestedCredits ?? 0) - settled.chargedCredits);
+      const { data: ext, error: extError } = await db.rpc('find_buyers_settle_extensions', {
+        p_job_id: job.id, p_remaining_credits: beyond,
+      });
+      if (extError) {
+        await jobEvent(db, job.id, 'EXTENSION_SETTLE_DEFERRED', { message: extError.message }).catch(() => undefined);
+      } else {
+        creditsCharged += Number((ext as { chargedCredits?: number } | null)?.chargedCredits ?? 0);
+      }
     } catch (error) {
       /* The reservation's own expiry sweeper reconciles it; the job still ends. */
       await jobEvent(db, job.id, 'SETTLE_DEFERRED', { message: errorText(error) }).catch(() => undefined);
@@ -221,6 +233,9 @@ export async function failCampaignJob(
      the customer's whole reservation is released below). */
   await finishSocialCampaign(db, job.id, reason).catch(() => undefined);
   if (grant) await releaseExecution(db, grant, reason.toLowerCase()).catch(() => undefined);
+  /* A failed search keeps none of its budget extensions either. */
+  await db.rpc('find_buyers_settle_extensions', { p_job_id: job.id, p_remaining_credits: 0 })
+    .then(() => undefined, () => undefined);
   await db.from('discovery_query_queue')
     .update({ status: 'CANCELLED', cancel_reason: reason, finished_at: new Date().toISOString(), lease_expires_at: null })
     .eq('matching_job_id', job.id)

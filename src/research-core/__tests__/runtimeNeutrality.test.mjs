@@ -214,6 +214,12 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
     'supabase/functions/_shared/findBuyers/translate.ts',
+    /* Admin re-qualification of a finished campaign's stored leads: the same
+       pure qualification the pipeline uses (research-core/findBuyers/requalify),
+       no provider call. */
+    'supabase/functions/_shared/findBuyers/admin.ts',
+    'supabase/functions/_shared/__tests__/findBuyersPipelineQualification.test.mjs',
+    'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
     /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */
     'supabase/functions/_shared/findBuyers/readiness.ts',
     /*
@@ -225,9 +231,18 @@ test('the core is consumed only through its deliberate integration points', () =
     /* The admin seam onto the Actor catalog: class and lifecycle come from the
        same pure rules the planner and cost bound use. */
     'src/findBuyers/actorCatalog.ts',
+    /* The admin seam onto the place gazetteer (research-core/findBuyers/places):
+       buyer intelligence and market segmentation resolve any-script place names
+       through the same names the Find Buyers planner searches with. */
+    'src/admin/places.ts',
     'supabase/functions/atomic-unlock/index.ts',
     'supabase/functions/classify-signals-v2/index.ts',
     'src/matching/currentDemand.ts',
+    /* HOMATCH Internal Matches: the owner's profile view scores a member (and the admin
+       DEMO buyer) through the worker's own native-pair mapping. Components import this
+       seam, never the core. */
+    'src/matching/internalMatch.ts',
+    'src/matching/__tests__/internalMatch.test.mjs',
     'supabase/functions/_shared/fx.ts',
     'supabase/functions/_shared/__tests__/campaignMoney.test.mjs',
     // The Verify market lane and the seed it is built from.

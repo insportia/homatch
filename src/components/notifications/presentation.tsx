@@ -26,7 +26,7 @@
 // only when it begins with a single slash.
 
 import {
-  Activity, Bell, Building2, CalendarDays, CheckCircle2, ClipboardCheck, CreditCard, FileText,
+  Activity, Bell, Building2, CalendarClock, CalendarDays, CheckCircle2, ClipboardCheck, CreditCard, FileText,
   Lightbulb, Megaphone, MessageSquare, Phone, Search, ShieldAlert, ShieldCheck, UserPlus, Wallet, Zap,
 } from 'lucide-react';
 import type React from 'react';
@@ -52,6 +52,9 @@ function metaString(notif: Notification, key: string): string {
 /* ────────────────────────────────────────────────────────────────────────
  * What it says
  * ──────────────────────────────────────────────────────────────────────── */
+
+/** The English body crm_emit_due_follow_ups stores when the owner wrote no note. */
+const CRM_FOLLOW_UP_DEFAULT_BODY = 'A follow-up you scheduled is due.';
 
 export function notificationText(
   notif: Notification,
@@ -103,12 +106,26 @@ export function notificationText(
     return announcementText(notif, lang);
   }
 
-  /* The two sides of a native match. Grouped rows carry the count; the stored title is
-     English, so the count is rendered from the key instead. */
+  /* The two sides of a native match. The supply side uses the approved Leads copy; its
+     title is already plural, so a grouped row reads the same. */
   if (kind === 'NATIVE_MATCH_SUPPLY') {
-    return grouped > 1
-      ? { title: t('notif_native_supply_many_title', { n: grouped }), body: t('notif_native_supply_body') }
-      : { title: t('notif_native_supply_title'), body: t('notif_native_supply_body') };
+    return { title: t('notif_native_supply_new_title'), body: t('notif_native_supply_new_body') };
+  }
+  /* An owner's property offer, delivered as a native message to a member who accepts
+     offers. "May match" — a requirements fit, never a claim about intent. */
+  if (kind === 'PROPERTY_OFFER') {
+    return { title: t('notif_property_offer_title'), body: t('notif_property_offer_body') };
+  }
+  /*
+   * A follow-up the owner scheduled in the Leads CRM. Typed PROPERTY_ACTION_REQUIRED, so
+   * it must be caught before the type fallback below. The stored body is the owner's own
+   * note when they wrote one, else a fixed English default — only the note is shown.
+   */
+  if (kind === 'CRM_FOLLOW_UP_DUE') {
+    const note = (notif.body ?? '').trim();
+    return note && note !== CRM_FOLLOW_UP_DEFAULT_BODY
+      ? { title: t('notif_crm_follow_up_title'), body: t('notif_crm_follow_up_body_note', { note }) }
+      : { title: t('notif_crm_follow_up_title'), body: t('notif_crm_follow_up_body') };
   }
   if (kind === 'NATIVE_MATCH_DEMAND') {
     /* A demand read from a conversation was never a plan anybody confirmed; saying so
@@ -234,6 +251,8 @@ export function notificationMark(notif: Notification): NotificationMark {
   }
 
   /* The few that want something from you, or went wrong, earn a role. */
+  if (kind === 'CRM_FOLLOW_UP_DUE') return { icon: CalendarClock, tone: 'accent' };
+  if (kind === 'PROPERTY_OFFER') return { icon: MessageSquare, tone: 'accent' };
   if (category === 'MESSAGE') return { icon: MessageSquare, tone: 'accent' };
   if (kind.startsWith('VIEWING_')) return { icon: CalendarDays, tone: 'plain' };
   if (notif.type === 'PROPERTY_ACTION_REQUIRED') return { icon: Phone, tone: 'accent' };
@@ -267,13 +286,17 @@ export function notificationHref(notif: Notification): string | null {
   if (link) return link;
 
   const kind = kindOf(notif);
-  if (kind === 'NEW_MESSAGE') {
+  if (kind === 'NEW_MESSAGE' || kind === 'PROPERTY_OFFER') {
     const id = metaString(notif, 'conversation_id');
     return id ? `/chat?conversation=${encodeURIComponent(id)}` : '/chat';
   }
   if (kind === 'VIEWING_REQUEST' || kind === 'VIEWING_UPDATE') {
     const id = metaString(notif, 'viewing_request_id');
     return id ? `/viewings?request=${encodeURIComponent(id)}` : '/viewings';
+  }
+  if (kind === 'CRM_FOLLOW_UP_DUE') {
+    const id = metaString(notif, 'entry_id') || String((notif as { entity_id?: unknown }).entity_id ?? '');
+    return id ? `/leads?entry=${encodeURIComponent(id)}` : '/leads';
   }
   if (notif.type === 'MATCH_AVAILABLE' || notif.type === 'MATCH_FOUND') {
     const propertyId = notif.property_id ?? metaString(notif, 'property_id');
@@ -287,6 +310,18 @@ export function notificationHref(notif: Notification): string | null {
     return '/credits';
   }
   if (notif.property_id) return `/property/${notif.property_id}`;
+  return null;
+}
+
+/**
+ * The label for a notification's primary action, or null when the row's own tap is
+ * enough. Only kinds with approved CTA copy have one.
+ */
+export function notificationCta(notif: Notification, t: Translate): string | null {
+  const kind = kindOf(notif);
+  if (kind === 'PROPERTY_OFFER') return t('notif_property_offer_cta');
+  if (kind === 'NATIVE_MATCH_SUPPLY') return t('notif_native_supply_cta');
+  if (kind === 'CRM_FOLLOW_UP_DUE') return t('notif_crm_follow_up_cta');
   return null;
 }
 

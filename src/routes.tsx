@@ -35,6 +35,10 @@ const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
 const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
 const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
+const HomatchLeadsPage = lazyRoute(() => import('./pages/property/HomatchLeadsPage'));
+const LeadsCrmPage = lazyRoute(() => import('./pages/LeadsCrmPage'));
+const EmailStudioPage = lazyRoute(() => import('./pages/EmailStudioPage'));
+const DemoConversationPage = lazyRoute(() => import('./pages/property/DemoConversationPage'));
 const CreditsPage = lazyRoute(() => import('./pages/CreditsPage'));
 const ChatPage = lazyRoute(() => import('./pages/ChatPage'));
 const LiveChatPage = lazyRoute(() => import('./pages/LiveChatPage'));
@@ -190,6 +194,8 @@ const AdminLiveChatReportsPage = lazyRoute(() => import('./pages/admin/AdminLive
 const AdminHomePage = lazyRoute(() => import('./pages/admin/AdminHomePage'));
 const AdminIntelligencePage = lazyRoute(() => import('./pages/admin/AdminIntelligencePage'));
 const AdminSupplyMatchesPage = lazyRoute(() => import('./pages/admin/AdminSupplyMatchesPage'));
+const AdminBuyerIntelligencePage = lazyRoute(() => import('./pages/admin/AdminBuyerIntelligencePage'));
+const AdminMarketSegmentationPage = lazyRoute(() => import('./pages/admin/AdminMarketSegmentationPage'));
 const AdminNotificationsPage = lazyRoute(() => import('./pages/admin/AdminNotificationsPage'));
 const AdminAnnouncementsPage = lazyRoute(() => import('./pages/admin/AdminAnnouncementsPage'));
 const AdminAuditLogPage = lazyRoute(() => import('./pages/admin/AdminAuditLogPage'));
@@ -456,6 +462,13 @@ export const routes: RouteConfig[] = [
   { name: 'Edit Property',     path: '/property/:id/edit',        element: <EditPropertyPage /> },
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
   { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
+  { name: 'HOMATCH Leads',     path: '/property/:id/leads',       element: <HomatchLeadsPage /> },
+  { name: 'Leads CRM',         path: '/leads',                    element: <LeadsCrmPage /> },
+  { name: 'Email Studio',      path: '/email-studio',             element: <EmailStudioPage /> },
+  { name: 'Email Campaign',    path: '/email-studio/:campaignId', element: <EmailStudioPage />, visible: false },
+  /* The internal-match DEMO buyer's simulated conversation. Only an administrator or a
+     listed tester can open one: every RPC behind it refuses anybody else. */
+  { name: 'Demo Conversation', path: '/property/:id/matches/demo/:conversationId', element: <DemoConversationPage />, visible: false },
   // Outreach
   { name: 'Communications',    path: '/outreach',                 element: <CommunicationsOverviewPage /> },
   { name: 'Outreach Hub',      path: '/outreach/hub',             element: <OutreachHubPage />,  visible: false },
@@ -587,6 +600,11 @@ export const routes: RouteConfig[] = [
      SQL function that checks is_admin() itself; adminOnly and AdminLayout
      are the screen's manners, not its authorisation. */
   { name: 'Admin Supply Matches', path: '/admin/supply-matches',   element: adminWrap(<AdminSupplyMatchesPage />), adminOnly: true },
+  /* Buyer intelligence: one derived summary per HOMATCH person from what they
+     explicitly asked for; market segmentation: PREMIUM/MIDDLE/ECONOMY against
+     the local asking-price distribution, with preview-before-apply rules. */
+  { name: 'Admin Buyer Intelligence', path: '/admin/buyer-intelligence', element: adminWrap(<AdminBuyerIntelligencePage />), adminOnly: true },
+  { name: 'Admin Market Segmentation', path: '/admin/market-segmentation', element: adminWrap(<AdminMarketSegmentationPage />), adminOnly: true },
   { name: 'Admin Intelligence', path: '/admin/intelligence',       element: adminWrap(<AdminIntelligencePage />), adminOnly: true },
   { name: 'Admin Notifications', path: '/admin/notifications',     element: adminWrap(<AdminNotificationsPage />), adminOnly: true },
   { name: 'Admin Announcements', path: '/admin/announcements',     element: adminWrap(<AdminAnnouncementsPage />), adminOnly: true },

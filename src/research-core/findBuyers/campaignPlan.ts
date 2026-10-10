@@ -8,6 +8,7 @@ import { queriesFor, type QueryPlan } from './queryPlanner.ts';
 import { STAGE_ACTOR, type Stage } from './actorInputs.ts';
 import { armPriority } from './allocator.ts';
 import { planPaidTelegram, type TelegramPreference } from './telegramPreference.ts';
+import type { Depth } from './buyerStrategy.ts';
 
 export interface KnownSource {
   id: string;
@@ -49,6 +50,10 @@ export interface PlanInputs {
    * Absent or empty: all six search languages.
    */
   targetLanguages?: readonly string[] | null;
+  /** What the campaign budget unlocks (buyerStrategy.depthFor). */
+  depth?: Depth | null;
+  /** Each Actor's real record across past campaigns (finished paid runs, qualified leads). */
+  actorHistory?: Record<string, { bookedRuns: number; qualified: number }>;
   now?: number;
 }
 
@@ -189,7 +194,42 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
     pushKnown('TELEGRAM_CHANNEL', 'TELEGRAM', null, paidTelegramFirst ? MAX_KNOWN_PER_FAMILY : 3);
   }
 
-  return restrictToLanguages(jobs, input.targetLanguages, knownSources);
+  return applyDepth(restrictToLanguages(jobs, input.targetLanguages, knownSources), input.depth ?? null, input.actorHistory ?? {});
+}
+
+/** Searches that do not depend on a known source: their reach is what the budget buys. */
+const INDEPENDENT_SEARCH = new Set<Stage>(['TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'REDDIT_SEARCH', 'QUORA_SEARCH', 'BLUESKY_SEARCH']);
+const STAGE_PLATFORM: Partial<Record<Stage, string>> = { TIKTOK_SEARCH: 'TIKTOK', LINKEDIN_POSTS: 'LINKEDIN', REDDIT_SEARCH: 'REDDIT', QUORA_SEARCH: 'QUORA', BLUESKY_SEARCH: 'BLUESKY' };
+/** Finished paid runs after which an Actor that never qualified anyone gets only one exploratory probe. */
+export const UNPRODUCTIVE_AFTER_RUNS = 8;
+
+/**
+ * Budget-aware depth and real performance. Discovery (group/community
+ * search) and known sources are never cut here; independent keyword searches
+ * are limited to the platforms and languages the budget tier unlocks, and an
+ * Actor with a proven zero yield keeps one exploratory probe at low priority.
+ */
+export function applyDepth(jobs: PlannedSocialJob[], depth: Depth | null, history: Record<string, { bookedRuns: number; qualified: number }>): PlannedSocialJob[] {
+  let out = jobs;
+  if (depth) {
+    out = out.filter((j) => {
+      if (!INDEPENDENT_SEARCH.has(j.stage)) return true;
+      if (!depth.platforms.includes(STAGE_PLATFORM[j.stage] ?? '')) return false;
+      if (j.arm.startsWith('TIKTOK_HASHTAG') && depth.tier !== 'BROAD') return false;
+      return j.language === 'multi' || depth.languages.includes(j.language as SearchLanguage);
+    });
+  }
+  const kept = new Map<string, number>();
+  return out.filter((j) => {
+    const h = history[j.actorKey];
+    if (!h || h.bookedRuns < UNPRODUCTIVE_AFTER_RUNS || h.qualified > 0 || !INDEPENDENT_SEARCH.has(j.stage)) return true;
+    const n = kept.get(j.actorKey) ?? 0;
+    kept.set(j.actorKey, n + 1);
+    if (n >= 1) return false;
+    j.priority = Math.max(1, j.priority - 20);
+    j.reason = 'exploration_low_yield';
+    return true;
+  });
 }
 
 /**

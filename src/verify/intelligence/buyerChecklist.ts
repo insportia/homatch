@@ -30,6 +30,7 @@
 
 import type { CompanyIntelligence } from './companyIntelligence.ts';
 import type { MarketIntelligence } from './marketIntelligence.ts';
+import type { PropertyRegister } from './propertyRegister.ts';
 
 /** A single practical action. `detail` explains why it is worth doing. */
 export interface ChecklistItem {
@@ -46,6 +47,8 @@ export interface ChecklistItem {
   url?: string;
   /** The value the buyer needs in hand — a cadastral code, a company id. */
   value?: string;
+  /** Interpolation values for the label/detail strings ({{date}}, {{creditor}}…). */
+  params?: Record<string, string>;
 }
 
 /** Official destinations this product already uses elsewhere. */
@@ -62,7 +65,20 @@ export interface ChecklistInput {
   parkingMentioned?: boolean;
   /** The subject's own asking price, when the research found one. */
   subjectPriceKnown?: boolean;
+  /** The unit's own register, parsed from the extract HOMATCH retrieved. */
+  register?: PropertyRegister | null;
 }
+
+/** dd.mm.yyyy, the way a Georgian document prints a date. */
+const dmy = (iso: string | null | undefined): string => {
+  const m = typeof iso === 'string' ? iso.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : '';
+};
+/** The creditor as a reader names it: the quoted brand when there is one. */
+const creditorName = (c: string | null | undefined): string => {
+  const v = String(c ?? '').trim();
+  return v.match(/["„“]([^"„“”]+)["“”]/)?.[1]?.trim() || v;
+};
 
 /**
  * Builds the checklist. Order is the order a buyer would actually do them:
@@ -76,7 +92,29 @@ export function buildBuyerChecklist(input: ChecklistInput): ChecklistItem[] {
 
   /* ---- the property's own record ---- */
 
-  if (cadastral) {
+  const reg = input.register?.latest ? input.register : null;
+  const asOf = dmy(reg?.latest?.issuedAt);
+  const owners = reg?.latest?.owners ?? [];
+  const privateOwner = owners.length > 0 && owners.every((o) => o.kind === 'PERSON');
+
+  /*
+   * HOMATCH ALREADY READ THE EXTRACT — SAY SO, DON'T ASK FOR IT.
+   *
+   * The c80f7237 report told the buyer to "get the newest extract" while
+   * HOMATCH held one dated 22.09.2026. With an extract in hand the honest
+   * advice is narrower and more useful: the register can change after that
+   * date, so ask for one dated the signing day.
+   */
+  if (cadastral && reg && asOf) {
+    out.push({
+      key: 'EXTRACT_ON_SIGNING_DAY',
+      labelKey: 'bc_fresh_extract_label',
+      detailKey: 'bc_fresh_extract_detail',
+      url: MYGOV_PROPERTY,
+      value: cadastral,
+      params: { date: asOf },
+    });
+  } else if (cadastral) {
     out.push({
       key: 'PROPERTY_EXTRACT',
       labelKey: 'bc_extract_label',
@@ -86,16 +124,40 @@ export function buildBuyerChecklist(input: ChecklistInput): ChecklistItem[] {
     });
   }
 
+  /* A mortgage ON THIS APARTMENT is the buyer's business at closing. */
+  for (const m of (reg?.currentMortgages ?? []).slice(0, 3)) {
+    out.push({
+      key: `UNIT_MORTGAGE${m.agreementNumber ? `_${m.agreementNumber}` : ''}`,
+      labelKey: 'bc_unit_mortgage_label',
+      detailKey: 'bc_unit_mortgage_detail',
+      params: { date: asOf, creditor: creditorName(m.creditor), registered: dmy(m.registeredOn) },
+    });
+  }
+
+  /* The seller must be the person the register names. */
+  if (reg && privateOwner) {
+    out.push({
+      key: 'SELLER_IS_OWNER',
+      labelKey: 'bc_seller_owner_label',
+      // Owner, 2026-10-10: name the owner exactly as the extract does.
+      ...((): { detailKey: string; params: Record<string, string> } => {
+        const names = owners.map((o) => o.name).filter((n): n is string => !!n);
+        return names.length
+          ? { detailKey: 'bc_seller_owner_named_detail', params: { date: asOf, since: dmy(reg.latest!.ownershipRegisteredOn), name: names.join(', ') } }
+          : { detailKey: 'bc_seller_owner_detail', params: { date: asOf, since: dmy(reg.latest!.ownershipRegisteredOn) } };
+      })(),
+    });
+  }
+
   /*
-   * A COMPANY-LEVEL CHARGE EARNS A PROPERTY-LEVEL QUESTION.
+   * A COMPANY-LEVEL CHARGE, ONLY WHEN THE UNIT'S OWN RECORD IS UNKNOWN.
    *
-   * This is the single most useful thing the Villion report can tell its
-   * reader: the registry shows a pledge against the DEVELOPER, and whether
-   * anything is registered against this apartment is a different document
-   * that the buyer can obtain. Stating the distinction is not enough — the
-   * action that resolves it belongs here.
+   * Without an extract, the developer's pledge earns a property-level
+   * question. With one, the apartment's mortgages are known and listed above;
+   * restating the company's pledge as a question about the flat would put
+   * the two back together.
    */
-  if (company?.encumbrances.length && cadastral) {
+  if (!reg && company?.encumbrances.length && cadastral) {
     out.push({
       key: 'ENCUMBRANCE_SCOPE',
       labelKey: 'bc_encumbrance_label',
@@ -105,9 +167,20 @@ export function buildBuyerChecklist(input: ChecklistInput): ChecklistItem[] {
     });
   }
 
+  /* No commissioning task (owner, 2026-10-09): a finished building the
+     register still lists as „მშენებარე“ is the normal registration lag, not
+     something the buyer should be sent to chase. */
+
   /* ---- who the money goes to ---- */
 
-  if (company?.idCode) {
+  /*
+   * The developer is the counterparty only when it is (or may be) the owner.
+   * When the extract names a private owner, the developer's taxpayer status
+   * and signing rule describe somebody who is not selling this flat.
+   */
+  const companyIsCounterparty = !privateOwner;
+
+  if (companyIsCounterparty && company?.idCode) {
     out.push({
       key: 'TAXPAYER_STATUS',
       labelKey: 'bc_taxpayer_label',
@@ -119,7 +192,7 @@ export function buildBuyerChecklist(input: ChecklistInput): ChecklistItem[] {
 
   // Joint representation is a signing rule with a practical consequence, and
   // it is only worth raising when the register actually established it.
-  if (company?.representationRule === 'JOINT') {
+  if (companyIsCounterparty && company?.representationRule === 'JOINT') {
     out.push({
       key: 'JOINT_SIGNATURE',
       labelKey: 'bc_joint_label',
@@ -127,9 +200,15 @@ export function buildBuyerChecklist(input: ChecklistInput): ChecklistItem[] {
     });
   }
 
-  // Always relevant once a company is the counterparty: the account money is
-  // sent to is the one thing no register can confirm afterwards.
-  if (company?.legalName) {
+  // The account money is sent to is the one thing no register can confirm
+  // afterwards — whoever the seller is.
+  if (privateOwner) {
+    out.push({
+      key: 'PAYMENT_ACCOUNT',
+      labelKey: 'bc_payment_label',
+      detailKey: 'bc_payment_owner_detail',
+    });
+  } else if (company?.legalName) {
     out.push({
       key: 'PAYMENT_ACCOUNT',
       labelKey: 'bc_payment_label',

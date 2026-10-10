@@ -125,3 +125,31 @@ export function probeEstimateMicros(a: { startFeeMicros?: number | null; pricePe
   if (a.pricePer1kMicros == null) return 0;
   return Number(a.startFeeMicros ?? 0) + Math.ceil(Math.max(0, size) * Number(a.pricePer1kMicros) / 1000);
 }
+
+/* ── per-campaign Actor circuit breaker ──────────────────────────────── */
+
+/** An Actor's provider message for "the query matched nothing". */
+export function isEmptyResultMessage(message: unknown): boolean {
+  return !/target\(s\) failed/i.test(String(message ?? '')) && /dataset is empty|produced no items|no items (were )?found|no results/i.test(String(message ?? ''));
+}
+
+export interface BreakerRun { status: string; items_fetched?: number | null; useful_results?: number | null; cost_booked_at?: string | null }
+
+/**
+ * OPEN after BREAKER_LIMIT consecutive finished runs of one Actor in one
+ * campaign that failed or returned nothing useful (VILLION: Bluesky failed 6
+ * times, VK twice, LinkedIn posts 3 times with 0 items — all paid). A useful
+ * run resets the count. Runs still in flight are not judged.
+ */
+export const BREAKER_LIMIT = 2;
+export function actorBreaker(runs: readonly BreakerRun[]): { open: boolean; consecutive: number } {
+  let consecutive = 0;
+  for (const r of runs) {
+    const finished = Boolean(r.cost_booked_at) || ['FAILED', 'TIMED_OUT', 'SUCCEEDED', 'ABORTED'].includes(r.status);
+    if (!finished || r.status === 'RELEASED') continue;
+    const bad = r.status !== 'SUCCEEDED' || Number(r.items_fetched ?? 0) === 0;
+    if (bad) consecutive++;
+    else if (Number(r.useful_results ?? 0) > 0 || Number(r.items_fetched ?? 0) > 0) consecutive = 0;
+  }
+  return { open: consecutive >= BREAKER_LIMIT, consecutive };
+}

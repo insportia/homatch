@@ -5,7 +5,8 @@ import {
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
+import { ExternalLeadsHeader, InternalMatchesSection } from '@/components/matching/internal/InternalMatchesSection';
+import { sectionCounts } from '@/matching/internalMatch';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
@@ -24,6 +25,8 @@ import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
 import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
 import { LiveSearchModule, SearchStatusPill } from '@/components/findBuyers/LiveSearchModule';
 import { PageNav } from '@/components/findBuyers/PageNav';
+import { ResearchExtensionDialog } from '@/components/findBuyers/ResearchExtensionDialog';
+import { BTN_PRIMARY } from '@/components/leads/kit';
 import { FRAMED_ACTION, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
 import { arrivalAction, parsePage } from '@/findBuyers/campaignView';
@@ -392,6 +395,7 @@ function MatchesContent() {
   const liveCampaign = campaignStatus?.campaign?.active ? campaignStatus.campaign : null;
   const activeJobId = liveCampaign?.jobId ?? null;
   const campaignActive = Boolean(liveCampaign);
+  const [showExtend, setShowExtend] = useState(false);
   /* The campaign's resolved search languages, so the coverage panel can
      name a language that has produced nothing yet rather than omitting it. */
   const [campaignLanguages, setCampaignLanguages] = useState<string[]>([]);
@@ -401,6 +405,9 @@ function MatchesContent() {
   const [showBudget, setShowBudget] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [leadCount, setLeadCount] = useState(0);
+  /* HOMATCH members (people, demo included when visible) — counted apart from external
+     leads and NEVER added to them. Null until the internal section has loaded. */
+  const [internalCount, setInternalCount] = useState<number | null>(null);
   /* New current-demand matches the live search reported while a page is being read. */
   const [matchesPending, setMatchesPending] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
@@ -935,6 +942,9 @@ function MatchesContent() {
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  /* External = Find Buyers leads + stored external-demand matches (both read off public
+     posts). Internal members are counted only in the HOMATCH section. */
+  const sectionTotals = sectionCounts({ internalPeople: internalCount ?? 0, demoVisible: false, externalLeads: leadCount + counts.total });
   const currentPages = Math.max(1, Math.ceil(currentTotal / MATCHES_PAGE_SIZE));
   const historyPages = Math.max(1, Math.ceil(historyTotal / MATCHES_PAGE_SIZE));
   const dnaFacts = facts ? {
@@ -963,10 +973,11 @@ function MatchesContent() {
             compact
             eyebrow={propertyLabel}
             title={t(titleKey)}
-            subtitle={t('matches_count_line', {
-              /* HOMATCH matches plus potential buyers/tenants from public conversations. */
-              total: String(counts.total + leadCount),
-              new: String(counts.newCount),
+            subtitle={t('im_count_line', {
+              /* Two numbers, never one: HOMATCH members and external leads are different
+                 kinds of result, and a person is counted in exactly one of them. */
+              internal: String(sectionTotals.internal),
+              external: String(sectionTotals.external),
             })}
           />
         </div>
@@ -995,24 +1006,61 @@ function MatchesContent() {
           />
         )}
 
-        {/* ── RESULTS: everything stored for this property, separate from the live search ── */}
-        <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold text-[hsl(218_45%_14%)]">{t('fbl_results_heading')}</h2>
-            <p className="text-2xs text-[hsl(218_28%_38%)]">{t('fbl_results_caption')}</p>
-          </div>
-        </div>
+        {/* ── TAKE YOUR RESEARCH FURTHER: raise the running campaign's total budget. ── */}
+        {activeJobId && propertyId ? (
+          <section className="mt-3 flex flex-col gap-3 rounded-2xl border border-[hsl(var(--border))] bg-white p-4 shadow-card sm:flex-row sm:items-center sm:justify-between" data-testid="research-extend-card">
+            <div className="min-w-0">
+              <p className="font-display text-base font-semibold">{t('rb_ext_heading')}</p>
+              <p className="mt-0.5 text-sm text-[hsl(224_14%_28%)]">{t('rb_ext_description')}</p>
+            </div>
+            <button type="button" className={BTN_PRIMARY} onClick={() => setShowExtend(true)} data-testid="rb-expand-open">
+              {t('rb_cta_expand')}
+            </button>
+          </section>
+        ) : null}
+        {activeJobId && propertyId ? (
+          <ResearchExtensionDialog open={showExtend} propertyId={propertyId} jobId={activeJobId}
+            onClose={() => setShowExtend(false)}
+            onViewResults={() => setShowExtend(false)}
+            onExtended={(total) => {
+              setShowExtend(false);
+              toast.success(t('rb_ext_done', { n: total.toLocaleString(intlLocaleFor(lang)) }));
+              void refreshStatus();
+            }} />
+        ) : null}
+
+        {/* ── HOMATCH LEADS: the internal marketplace workspace for this property. ── */}
+        {propertyId ? (
+          <button type="button" onClick={() => navigate(`/property/${propertyId}/leads`)} data-testid="open-homatch-leads"
+            className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-[#0C1119] p-4 text-start text-white shadow-hover transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 motion-reduce:transition-none">
+            <span className="min-w-0 flex-1">
+              <span className="block text-2xs font-semibold uppercase tracking-[0.16em] text-[hsl(38_92%_62%)]">{t('hl_eyebrow')}</span>
+              <span className="mt-0.5 block font-display text-base font-semibold">{t('hl_headline')}</span>
+              <span className="mt-0.5 block text-sm text-white/75">{t('hl_open_workspace_body')}</span>
+            </span>
+            <span className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-[hsl(38_92%_54%)] px-4 text-sm font-bold text-[#161309]">{t('hl_open_workspace')}</span>
+          </button>
+        ) : null}
+
+        {/* ── HOMATCH MATCHES: members whose stated requirements fit this property (and the
+            DEMO buyer, for administrators and testers only). Its own heading, its own count. */}
+        {propertyId ? (
+          <InternalMatchesSection
+            propertyId={propertyId}
+            counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
+            onCount={setInternalCount}
+          />
+        ) : null}
+
+        {/* ── EXTERNAL LEADS: people found outside HOMATCH. Stored results, separate from
+            the live search, under their own heading and count. */}
+        <ExternalLeadsHeader count={loading ? null : sectionTotals.external} />
         <FilterRail
           options={filters}
           value={filter}
           onChange={(next) => { setFilter(next); setPageParam('page', 1); setPageParam('hp', 1); }}
           ariaLabel={t('matches_filter_all')}
         />
-
-        {/* HOMATCH members whose requirements fit this property, or who asked about it.
-            Two real accounts on both sides — the one kind of result that offers Message
-            and Call. Renders nothing when there is nobody. */}
-        {propertyId ? <NativeMatchesPanel propertyId={propertyId} role="OWNER" className="hm-discovery-panel" /> : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-4">

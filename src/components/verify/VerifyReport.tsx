@@ -66,16 +66,19 @@ import {
   type OfficialHistoryClientView,
 } from './OfficialIntelligence';
 import { readable } from '@/verify/readableText';
-import { buyerOpening, unconfirmedItems } from '@/verify/intelligence/buyerSummary';
-import { stripInternalTerms, marketShape, TIER_LABEL_KEY } from '@/verify/intelligence/marketNarrative';
+import { buyerOpening } from '@/verify/intelligence/buyerSummary';
+import { stripInternalTerms } from '@/verify/intelligence/marketNarrative';
 import { scrubCoverageLanguage } from '@/verify/intelligence/coverageGap';
 import { severitySignals, weighVerdict } from '@/verify/intelligence/severity';
 import { CompanyIntelligenceCard, type CompanyProfileLike } from './CompanyIntelligenceCard';
 import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
-import { UnconfirmedCard } from './UnconfirmedCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
+import { PropertyRegisterCard, CompanyFinanceCard, ReportNav, ExecutiveGlance, ProjectTeamCard, ResearchScaleBanner } from './BuyerIntelligenceCards';
+import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
+import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
+import { splitCitations, hasDistance } from '@/verify/citations';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
 export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
@@ -221,6 +224,13 @@ export interface VerifySynthesis {
   officialHistory?: OfficialHistoryClientView | null;
   /** Developer advertising (Meta Ad Library), a marketing signal only. */
   developerAds?: DeveloperAdsView | null;
+  /** The unit's own NAPR extract, parsed (see propertyRegister.ts). */
+  propertyRegister?: PropertyRegister | null;
+  /** The developer's financial position from what was actually checked. */
+  companyFinance?: CompanyFinanceView | null;
+  projectTeam?: ProjectTeamMember[] | null;
+  /** A reused market snapshot, when the run gathered no comparables of its own. */
+  marketContext?: MarketContextView | null;
 }
 
 /**
@@ -288,7 +298,7 @@ const stripEvidenceIds = (text: string): string =>
  */
 const clean = (s: unknown): string =>
   scrubCoverageLanguage(
-    stripInternalTerms(stripEvidenceIds(readable(typeof s === 'string' ? s : '')))
+    stripInternalTerms(stripEvidenceIds(readable(splitCitations(typeof s === 'string' ? s : '').text)))
   );
 
 const paragraphs = (text: string): string[] =>
@@ -297,7 +307,7 @@ const paragraphs = (text: string): string[] =>
 const Prose: React.FC<{ text: string }> = ({ text }) => (
   <>
     {paragraphs(text).map((p, i) => (
-      <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
+      <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words" dir="auto">{p}</p>
     ))}
   </>
 );
@@ -401,16 +411,39 @@ export function VerifyReport({
     highlights: r.summary?.highlights ?? [],
   }));
 
-  const openQuestions = unconfirmedItems({
-    market: synthesis.market as never,
-    snapshot: synthesis.snapshot as never,
-    rights: rights as never,
-    utilities,
-  });
+  /* The sections this report actually has, for the jump links. */
+  const nav = [
+    { id: 'vbi-summary', labelKey: 'vbi_nav_summary', on: true },
+    { id: 'vbi-register', labelKey: 'vbi_nav_register', on: !!synthesis.propertyRegister?.latest },
+    { id: 'vbi-company', labelKey: 'vbi_nav_company', on: !!(company && (company.name || company.idCode)) },
+    { id: 'vbi-finance', labelKey: 'vbi_nav_finance', on: !!synthesis.companyFinance },
+    { id: 'vbi-market', labelKey: 'vbi_nav_market', on: !!synthesis.marketContext || sections.some((x) => x.key === 'MARKET') },
+    { id: 'verify-story', labelKey: 'vbi_nav_history', on: !!(r.propertyStory?.chapters?.length || synthesis.officialHistory?.milestones?.length) },
+    { id: 'developer-advertising', labelKey: 'vbi_nav_ads', on: !!synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome) },
+    { id: 'vbi-checklist', labelKey: 'vbi_nav_checklist', on: !!synthesis.checklist?.length },
+  ].filter((n) => n.on);
 
   return (
     <article className="mx-auto max-w-[68ch] space-y-8">
-      <SummaryHero summary={r.summary} weighed={weighed} />
+      <ReportNav items={nav} />
+      <div id="vbi-summary" className="scroll-mt-24">
+        <SummaryHero summary={r.summary} weighed={weighed} />
+      </div>
+
+      {/* The decision in four facts, each linked to the section behind it. */}
+      <ResearchScaleBanner
+        coverage={synthesis.research}
+        register={synthesis.propertyRegister?.coverage ?? null}
+        adsSeen={synthesis.developerAds ? (synthesis.developerAds.activeCount ?? 0) + (synthesis.developerAds.historicalCount ?? 0) : null}
+        sources={(synthesis.evidenceGroups ?? []).reduce((n: number, g: any) => n + (Array.isArray(g?.items) ? g.items.length : 0), 0) || null}
+      />
+      {/* Owner, 2026-10-10: no market numbers on cards — the MARKET section explains prices in words. */}
+      <ExecutiveGlance register={synthesis.propertyRegister} finance={synthesis.companyFinance} market={null} />
+
+      {/* A. WHAT THE PROPERTY'S OWN REGISTER SAYS — owner, mortgages, liens,
+          as of the extract HOMATCH read. The most authoritative block in the
+          report, so it comes straight after the verdict. */}
+      <PropertyRegisterCard register={synthesis.propertyRegister} />
 
       {/* B. THE LATEST CONFIRMED OFFICIAL POSITION — the present tense, once. */}
       <CurrentStatusBlock status={r.currentStatus} history={synthesis.officialHistory} clean={clean} />
@@ -420,6 +453,20 @@ export function VerifyReport({
       {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
 
       {findings.length ? <KeyFindings findings={findings} /> : null}
+
+      {/* WHO IS SELLING / BUILDING IT, AND THEIR FINANCIAL POSITION — the
+          register-grade company card, then what was checked about its money. */}
+      <div id="vbi-company" className="scroll-mt-24">
+        <CompanyIntelligenceCard company={company} rights={rights} />
+      </div>
+      <CompanyFinanceCard finance={synthesis.companyFinance} />
+
+      {/* Who designed, engineered and built it (owner, 2026-10-10). */}
+      <ProjectTeamCard team={synthesis.projectTeam} />
+
+      {/* MARKET — a range HOMATCH already held, when this run gathered no
+          comparables of its own (the full market section renders instead
+          when it did). */}
 
       {/* C + D. THE PROPERTY STORY, with the official TAS visuals beside the
           chapter they explain (original → latest where both exist). */}
@@ -446,9 +493,10 @@ export function VerifyReport({
               scanning reader meets them first. */}
           {s.metrics?.length ? <Metrics metrics={s.metrics} /> : null}
           <Prose text={s.body} />
-          {s.key === 'MARKET' && synthesis.market ? <PriceBar m={synthesis.market} /> : null}
+          {/* No listings table or price bar (owner, 2026-10-10): the market is
+              explained in friendly words, not shown as rows of numbers. */}
           {s.key === 'PEOPLE' && people.length ? (
-            <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
+            <CompanyGraph people={people} owner={synthesis.snapshot?.developer} />
           ) : null}
           {/* Under whichever of the two location sections the model actually
               wrote, so the evidenced places sit with the prose about them. */}
@@ -472,7 +520,7 @@ export function VerifyReport({
             <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             {t('verify_ir_people_title')}
           </h2>
-          <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
+          <CompanyGraph people={people} owner={synthesis.snapshot?.developer} />
           {synthesis.people?.representationNote ? (
             <p className="text-sm leading-6 text-muted-foreground break-words">
               {readable(synthesis.people.representationNote)}
@@ -494,7 +542,7 @@ export function VerifyReport({
           <ul className="space-y-4">
             {r.attentionPoints.map((a, i) => (
               <li key={i} className="border-s-2 border-amber-400/70 ps-4 space-y-1">
-                <p className="text-[15px] leading-7 font-medium break-words">{clean(a.point)}</p>
+                <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(a.point)}</p>
                 {a.why ? (
                   <p className="text-sm leading-6 text-muted-foreground break-words">{clean(a.why)}</p>
                 ) : null}
@@ -537,12 +585,8 @@ export function VerifyReport({
         </section>
       ) : null}
 
-      {/* ── 6. WHO IS SELLING IT ────────────────────────────────────────
-          Registry-grade and visually distinct, because it is the most
-          trustworthy thing the run produces. It also holds the one
-          distinction this report must never blur: a pledge against the
-          COMPANY is not a mortgage on the FLAT. */}
-      <CompanyIntelligenceCard company={company} rights={rights} />
+      {/* The company card moved up, beside the developer's finances: it is
+          registry-grade and belongs with who the buyer is dealing with. */}
 
       {/* ── 8. UTILITIES ───────────────────────────────────────────────
           Rendered even when the run established nothing, because a missing
@@ -550,9 +594,9 @@ export function VerifyReport({
           verified" reads as the question it actually is. */}
       <UtilitiesCard utilities={utilities} />
 
-      {/* ── 10. WHAT REMAINS UNCONFIRMED ───────────────────────────────
-          Where the missing price and area live now. */}
-      <UnconfirmedCard items={openQuestions} />
+      {/* ── 10. WHAT REMAINS UNCONFIRMED — removed (owner, 2026-10-09):
+          what the run did not establish is simply not written. A list of
+          gaps read as alarm and said nothing about the property. */}
 
       {/* ── 11. WHAT THIS MEANS FOR THE BUYER ──────────────────────────
           The model's closing sentence, and then the three questions a reader
@@ -560,8 +604,10 @@ export function VerifyReport({
           than from a second paragraph of generated prose. */}
       <BuyerBottomLine
         finalView={clean(r.finalView)}
-        highlights={r.summary?.highlights ?? []}
-        openQuestions={openQuestions}
+        // The highlights already open the report; repeating them here was the
+        // owner's "the same thing many times" (2026-10-10).
+        highlights={[]}
+        openQuestions={[]}
         clean={clean}
       />
 
@@ -577,11 +623,13 @@ export function VerifyReport({
         * that demonstrably held the evidence. They are computed in the
         * bundle now and merely rendered here.
         */}
-      <BuyerChecklist items={synthesis.checklist ?? []} />
+      <div id="vbi-checklist" className="scroll-mt-24">
+        <BuyerChecklist items={synthesis.checklist ?? []} />
+      </div>
       <EvidenceSources groups={buyerFacingGroups(synthesis.evidenceGroups ?? [])} />
 
       {/* H. RESEARCH TRANSPARENCY — what was reviewed, never a link list. */}
-      <ResearchTransparency coverage={synthesis.research} />
+      <ResearchTransparency coverage={synthesis.research} register={synthesis.propertyRegister?.coverage ?? null} />
 
       {r.contractUpload?.recommend !== false ? (
         <section className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">
@@ -707,7 +755,7 @@ const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
           const st = SENTIMENT_STYLE[sentimentOf(f.sentiment)];
           return (
             <li key={i} className={`border-s-2 ${st.edge} ps-4 space-y-1`}>
-              <p className="text-[15px] leading-7 font-medium break-words">{clean(f.finding)}</p>
+              <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(f.finding)}</p>
               {f.whyItMatters ? (
                 <p className="text-sm leading-6 text-muted-foreground break-words">
                   {clean(f.whyItMatters)}
@@ -756,7 +804,7 @@ const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ me
         <span className="block text-2xs uppercase tracking-wide text-muted-foreground break-words">
           {clean(m.label)}
         </span>
-        <span className="block text-sm font-semibold tabular-nums break-words">{clean(m.value)}</span>
+        <span className="block text-sm font-semibold tabular-nums break-words" dir="auto">{clean(m.value)}</span>
       </div>
     ))}
   </div>
@@ -778,7 +826,9 @@ const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ me
  */
 const CompanyGraph: React.FC<{ people: PersonBlock[]; owner?: string }> = ({ people, owner }) => {
   const { t } = useLanguage();
-  const entity = owner || people.find((p) => p.entity)?.entity;
+  // The tree is the COMPANY the people belong to (the developer). The flat's
+  // owner may be a private person who has nothing to do with these directors.
+  const entity = people.find((p) => p.entity)?.entity || owner;
   const current = people.filter((p) => !p.historical);
   const historical = people.filter((p) => p.historical);
 
@@ -858,7 +908,8 @@ const Snapshot: React.FC<{ s: PropertySnapshot }> = ({ s }) => {
         {rows.map(([k, v]) => (
           <div key={k} className="min-w-0">
             <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{t(k)}</dt>
-            <dd className="text-sm break-words">{readable(v as string)}</dd>
+            {/* dir="auto": a Georgian value ("83.20 კვ.მ.") keeps its own order inside an RTL page. */}
+            <dd className="text-sm break-words" dir="auto">{readable(v as string)}</dd>
           </div>
         ))}
       </dl>
@@ -895,6 +946,29 @@ const PLACE_ORDER = [
  * a finding about this property, and is labelled that way rather than being
  * mixed into the evidenced places above it.
  */
+/*
+ * What a source said about reaching a place — its words, attributed, and a
+ * figure marked approximate. "70 მ და 1 წუთი ფეხით" came from a listing site;
+ * there is no geocoder here, so it is never shown as HOMATCH's measurement.
+ */
+const PlaceNote: React.FC<{ note: string }> = ({ note }) => {
+  const { t } = useLanguage();
+  const { text, sources } = splitCitations(note);
+  const said = clean(text);
+  if (!said) return null;
+  const from = sources[0]?.host;
+  /* First-strong isolates: a source's Georgian note inside an Arabic or
+     Hebrew sentence otherwise has its figure and hyphen reordered by bidi. */
+  const iso = (v: string) => `\u2068${v}\u2069`;
+  return (
+    <span className="text-muted-foreground">
+      {' — '}
+      {hasDistance(said) ? t(from ? 'vbi_place_approx_from' : 'vbi_place_approx', { note: iso(said), source: from ? iso(from) : '' }) : <bdi>{said}</bdi>}
+      {!hasDistance(said) && from ? <span className="ms-1 text-2xs">({t('vbi_source', { source: iso(from) })})</span> : null}
+    </span>
+  );
+};
+
 const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
   const { t } = useLanguage();
 
@@ -931,9 +1005,7 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
             <li key={`${p.category}-${i}`} className="border-s-2 border-border ps-4 space-y-0.5">
               <p className="text-[15px] leading-6 break-words">
                 <span className="font-medium">{clean(p.name)}</span>
-                {p.note ? (
-                  <span className="text-muted-foreground"> — {clean(p.note)}</span>
-                ) : null}
+                {p.note ? <PlaceNote note={p.note} /> : null}
               </p>
               <p className="text-xs leading-5 text-muted-foreground break-words">{t(p.whyKey)}</p>
             </li>
@@ -955,156 +1027,6 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
         </div>
       ) : null}
     </section>
-  );
-};
-
-/* ------------------------------------------------------------------ *
- * Price position                                                      *
- * ------------------------------------------------------------------ */
-
-/** Where the asking price sits in its micro-market. Rendered only when the
- *  subject actually has a price of its own — Verify runs from a cadastral
- *  code, so most of the time it does not, and a bar with no marker would
- *  imply a measurement we never made. */
-const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
-  const { t } = useLanguage();
-  /*
-   * MICROLOCATION FIRST.
-   *
-   * marketShape reads the tier counts the research core stored and decides
-   * how local the headline figure actually is. For the stored Villion report
-   * the answer is "not local at all" — nothing in the building, nothing on
-   * the street, and a median computed from 37 named developments across the
-   * city. The number still shows; it stops pretending to measure this address.
-   */
-  const shape = marketShape(m);
-  if (!m.count) return null;
-
-  const span = Math.max(1, m.max - m.min);
-  const pos = (v: number): number => Math.max(0, Math.min(100, ((v - m.min) / span) * 100));
-  const medianPos = pos(m.median);
-  const subjectPos = m.subjectPricePerSqm ? pos(m.subjectPricePerSqm) : null;
-
-  return (
-    <div className="rounded-xl border border-border p-4 space-y-3">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          {t('verify_ir_market_title')}
-        </p>
-        {/*
-          * WHAT THIS NUMBER IS MEASURING, SAID HONESTLY.
-          *
-          * This built its key by lower-casing the basis, which for the stored
-          * Villion report produces `verify_basis_peer_project` — a key that is
-          * defined in NO language, so the buyer was shown that literal string.
-          * The label now comes from the tier table, which has an entry for
-          * every band, and the frame sentence below says whether the figure
-          * describes this building or the city.
-          */}
-        <p className="text-xs text-muted-foreground break-words min-w-0">
-          {shape?.basis ? t(TIER_LABEL_KEY[shape.basis]) : t('verify_mkt_wider_market')} · {m.count}
-        </p>
-      </div>
-
-      {shape?.headlineKey ? (
-        <p className="min-w-0 break-words text-sm leading-relaxed text-ink-soft">
-          {t(shape.headlineKey)}
-        </p>
-      ) : null}
-
-      <div className="relative h-2 rounded-full bg-muted">
-        <div
-          className="absolute top-1/2 -translate-y-1/2 h-3 w-0.5 bg-muted-foreground/70"
-          style={{ insetInlineStart: `${medianPos}%` }}
-          aria-hidden="true"
-        />
-        {subjectPos !== null ? (
-          <div
-            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-primary ring-2 ring-background"
-            style={{ insetInlineStart: `calc(${subjectPos}% - 8px)` }}
-            aria-hidden="true"
-          />
-        ) : null}
-      </div>
-
-      <div className="flex justify-between text-2xs text-muted-foreground">
-        <span>{m.min.toLocaleString()}</span>
-        <span>{t('verify_ir_market_median')} {m.median.toLocaleString()}</span>
-        <span>{m.max.toLocaleString()}</span>
-      </div>
-
-      {m.subjectPricePerSqm && m.deltaFromMedianPct !== undefined ? (
-        <p className="text-sm break-words">
-          {m.subjectPricePerSqm.toLocaleString()} {m.currency}/m² ·{' '}
-          {m.deltaFromMedianPct > 0 ? '+' : ''}{m.deltaFromMedianPct}%
-        </p>
-      ) : null}
-
-      {/* THE WHOLE HIERARCHY, not only the band that won.
-          Comparing a project's units to each other answers "what do five
-          flats in this building cost". The buyer asked whether the property
-          is well positioned in its real local market, and that question needs
-          the street, the district and comparable developments beside it.
-          Rows, not a table: at 320px a five-column table has nowhere to go. */}
-      {m.tiers && m.tiers.length > 1 ? (
-        <dl className="divide-y divide-border/60 border-t border-border/60 pt-1">
-          {m.tiers.map((tr) => (
-            <div key={tr.tier} className="flex items-baseline justify-between gap-3 py-1.5 min-w-0">
-              <dt className="text-2xs text-muted-foreground break-words min-w-0">
-                {t(TIER_LABEL_KEY[tr.tier as keyof typeof TIER_LABEL_KEY] ?? 'verify_mkt_wider_market')}
-                <span className="ms-1 opacity-70">
-                  {tr.count} {t('verify_mkt_listings')}
-                </span>
-                {/* Neutral, not a warning: one listing is real information,
-                    it just is not a spread. Saying so is more useful than
-                    hiding the band or dressing it up as a market rate. */}
-                {tr.thin ? (
-                  <span className="ms-1 opacity-70">· {t('verify_mkt_thin')}</span>
-                ) : null}
-              </dt>
-              <dd className="text-xs tabular-nums shrink-0">
-                {tr.median.toLocaleString()}
-                {tr.min !== tr.max ? (
-                  <span className="text-muted-foreground">
-                    {' '}({tr.min.toLocaleString()}–{tr.max.toLocaleString()})
-                  </span>
-                ) : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-
-      {m.basisIsThin ? (
-        <p className="text-2xs leading-5 text-muted-foreground break-words">
-          {t('verify_mkt_thin_note')}
-        </p>
-      ) : null}
-
-      {/* Why a premium or a discount may be RATIONAL. Deliberately no money
-          attached to any of them: the evidence supports the factor, not a
-          number, and "+8% for concierge" would be a fabrication with a
-          decimal point in it. */}
-      {m.qualityFactors?.length ? (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {m.qualityFactors.map((q, i) => (
-            <span
-              key={i}
-              className={`rounded-full border px-2.5 py-0.5 text-2xs font-medium break-words ${
-                q.direction === 'SUPPORTS_PREMIUM'
-                  /* A factor that supports the asking price is a finding,
-                     not furniture: gold-soft, like every other evidence
-                     chip in the system. */
-                  ? 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
-                  : 'border-dashed border-foreground/25 text-foreground/70'
-              }`}
-            >
-              {readable(q.factor)}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
   );
 };
 

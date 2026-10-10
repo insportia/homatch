@@ -402,6 +402,17 @@ const ANALYST_RULES: string[] = [
   'not a photograph of the finished building. If two renders exist (original and latest), say what',
   'actually changed only when the record confirms the change. Never describe a visual you were not given.',
   '',
+  'visualExplanations: one entry per officialVisuals item (same id), in the language of the rest of the',
+  'report, written like a knowledgeable friend showing the buyer the official drawings — short, natural,',
+  'warm, never bureaucratic. what: what the image shows (kind, which building/floor when scope says so, the',
+  'page of the drawing set). interesting: one thing worth noticing that the metadata and the record support.',
+  'buyerMeaning: what it means for THIS buyer. uncertain: what the image cannot tell. You do NOT see the',
+  'pixels — ground every sentence in the given kind, category, scope, block, file name, page, date and the',
+  'officialHistory; never claim a visual detail you cannot know from those. Never infer structural safety,',
+  'code compliance, build quality or current condition from any image. A RENDER illustrates the design, not',
+  'the built condition. A drawing is the filed design, not proof it was built that way. scope PROJECT means',
+  'the project or another building, not necessarily this flat; only EXACT_UNIT is this flat itself.',
+  '',
   'PEOPLE from officialHistory: only professionals and organisations, in the roles stated. An applicant',
   'is not an owner. A participant from older documents only is historical, not current.',
   '',
@@ -513,6 +524,8 @@ export function buildIntelligencePrompt(
     '                                     "title": "<Georgian heading>", "period": "<e.g. 2016–2018 or empty>",',
     '                                     "body": "<Georgian narrative>", "visualIds": ["<officialVisuals id>"], "cites": ["e.."] } ] },',
     '  "visualCaptions": [ { "visualId": "<officialVisuals id>", "caption": "<few words>", "explanation": "<one sentence>", "cites": ["e.."] } ],',
+    '  "visualExplanations": [ { "id": "<officialVisuals id>", "what": "<1 sentence>", "interesting": "<1 sentence>",',
+    '                           "buyerMeaning": "<1 sentence>", "uncertain": "<1 sentence>" } ],',
     '  "advertisingAssessment": { "statement": "<2-4 Georgian sentences>", "points": ["<one short observation>"], "cites": ["e.."] },',
     '  "attentionPoints": [ { "point": "<what>", "why": "<why it matters to this buyer>", "cites": ["e.."] } ],',
   '  "nextSteps": [ { "step": "<the ACTION, phrased as something to do>",',
@@ -530,7 +543,7 @@ export function buildIntelligencePrompt(
     'attentionPoints: ONLY registered adverse facts (tax lien, seizure, prohibition, debtor entry, liquidation,',
     'a documented dispute). Normally ZERO. Never a bank mortgage, a register stage, a first project or a signature rule.',
     'Omit any section with no meaningful evidence. Never emit an empty section to fill the shape.',
-    'currentStatus, propertyStory and visualCaptions: omit entirely when officialHistory is absent.',
+    'currentStatus, propertyStory, visualCaptions and visualExplanations: omit entirely when officialHistory is absent.',
     'currentStatus.items: 3-6 of the most decision-relevant current official facts, each with its date.',
     'propertyStory: 4-7 chapters, oldest first, 110-220 Georgian words each, told as a story a friend would enjoy',
     'reading. Put every officialVisuals id in the chapter it illustrates (visualIds) and caption it in visualCaptions.',
@@ -611,7 +624,10 @@ export function buildIntelligencePrompt(
       legalStatus: pkg.tas?.available ? pkg.tas.legalClaims.map((c) => ({ state: c.key, status: c.status, basis: c.basis.slice(0, 3) })) : undefined,
       propertyIdentity: extras?.identity ?? undefined,
       officialVisuals: pkg.tas?.visuals?.length
-        ? pkg.tas.visuals.map((v) => ({ id: v.id, role: v.role, kind: v.kind, date: v.date, chapter: v.chapter }))
+        ? pkg.tas.visuals.map((v) => ({
+            id: v.id, role: v.role, kind: v.kind, category: v.category, scope: v.scope, block: v.block,
+            fileName: v.fileName, page: v.page, date: v.date, chapter: v.chapter, versionStatus: v.versionStatus,
+          }))
         : undefined,
       /*
        * COMPANY & OWNERSHIP, read from the official extract.

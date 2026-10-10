@@ -32,6 +32,7 @@ import { parseCadastral } from '../../../src/verify/intelligence/propertyIdentit
 import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, OFFICIAL_STRAGGLER_GRACE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
+import { VISUAL_ASSET_MAX } from '../../../src/verify/intelligence/visualAssets.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
 import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -2438,51 +2439,74 @@ const lane0 = (p: any) => (Array.isArray(p?._marketComparables) ? p._marketCompa
 /*
  * OFFICIAL TAS VISUALS → PRIVATE STORAGE, KEYED BY CONTENT HASH.
  *
- * The worker selects ≤ 6 genuine visuals from TAS attachments and holds the
- * bytes briefly. They are copied once into the private bucket under their
- * sha256, so an unchanged visual is never re-uploaded or re-analysed for a
- * later job (the hash IS the cache key). The customer only ever receives a
- * short-lived signed URL, minted by verify-synthesis at read time.
- * Marketplace photographs never pass through here.
+ * The worker selects a bounded, diverse set of official visuals from TAS
+ * attachments (≤ VISUAL_ASSET_MAX: renders, photos, rendered drawing pages)
+ * and holds the bytes briefly. They are copied once into the private bucket
+ * under their sha256, so an unchanged visual is never re-uploaded or
+ * re-analysed for a later job (the hash IS the cache key). The customer only
+ * ever receives a short-lived signed URL, minted by verify-synthesis at read
+ * time. Provenance, classification and identity hints travel with each
+ * record; the customer-facing scope is decided in tasIntelligence against
+ * the requested unit. Marketplace photographs never pass through here.
  */
 const VISUAL_BUCKET = 'verify-official-visuals';
+/** Legacy (non-queue) copy budget: never let visuals starve the poll. */
+const VISUAL_COLLECT_BUDGET_MS = 60_000;
+const VISUAL_COLLECT_BYTES_MAX = 96 * 1024 * 1024;
 async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
   try {
     const tas = (w?.results || []).find((r: any) => r?.source === 'tas' && r?.tasApi);
-    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 4) : [];
+    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, VISUAL_ASSET_MAX) : [];
     if (!visuals.length) return;
+    const t0 = Date.now();
+    let bytesCopied = 0;
     const out: any[] = [];
+    const failures: string[] = [];
+    const inBucket = async (id: string) => {
+      const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: id, limit: 1 });
+      return Array.isArray(data) && data.length > 0;
+    };
     for (const v of visuals) {
       if (!/^[a-f0-9]{64}$/.test(String(v?.id || ''))) continue;
       const ext = v.mime === 'image/png' ? 'png' : 'jpg';
       const path = `tas/${v.id}.${ext}`;
       let stored = false;
       if (w?.view === 'queue') {
-        // Queue mode: the worker replica that read TAS stored the bytes itself.
-        const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: v.id });
-        stored = Array.isArray(data) && data.length > 0;
+        // Queue mode: the worker replica that read TAS stored the bytes itself
+        // and says so; only an unconfirmed record costs a listing.
+        stored = v.stored === true || (await inBucket(v.id));
+      } else if (Date.now() - t0 > VISUAL_COLLECT_BUDGET_MS || bytesCopied > VISUAL_COLLECT_BYTES_MAX) {
+        stored = await inBucket(v.id);
       } else try {
         const res = await fetch(`${WORKER}/research/visual/${v.id}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(20000) });
         if (res.ok) {
           const bytes = new Uint8Array(await res.arrayBuffer());
+          bytesCopied += bytes.length;
           const up = await sb.storage.from(VISUAL_BUCKET).upload(path, bytes, { contentType: v.mime, upsert: false });
           stored = !up.error || /exist|duplicate/i.test(String(up.error?.message || ''));
+          if (!stored) failures.push(`${String(v.id).slice(0, 12)}:${String(up.error?.message || 'upload').slice(0, 60)}`);
         } else if (res.status === 404) {
           // Evicted from the worker's cache: the bucket may still hold it from an earlier job.
-          const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: v.id });
-          stored = Array.isArray(data) && data.length > 0;
+          stored = await inBucket(v.id);
         }
-      } catch {
+      } catch (e) {
+        failures.push(`${String(v.id).slice(0, 12)}:${String((e as any)?.message || e).slice(0, 60)}`);
         stored = false;
       }
       if (!stored) continue;
       out.push({
-        id: v.id, role: v.role, kind: v.kind, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null,
-        mime: v.mime, extraction: v.extraction, storagePath: path,
+        id: v.id, role: v.role, kind: v.kind, category: v.category ?? null, confidence: v.confidence ?? null,
+        classificationBasis: v.classificationBasis ?? null, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null,
+        mime: v.mime, extraction: v.extraction, page: v.page ?? null, storagePath: path,
         documentId: v.documentId, attachedFileId: v.attachedFileId, motionId: v.motionId ?? null, fileName: v.fileName ?? null,
+        identity: v.identity ?? null, source: 'TAS', usage: 'OFFICIAL_RECORD_REFERENCE',
       });
     }
     if (out.length) p.officialVisuals = out;
+    if (failures.length) {
+      console.warn(JSON.stringify({ scope: 'official_visuals', event: 'visual_copy_failed', count: failures.length, sample: failures.slice(0, 3) }));
+      p._officialVisualsError = `copy failed for ${failures.length} visual(s)`;
+    }
   } catch (e) {
     p._officialVisualsError = String((e as any)?.message || e).slice(0, 160);
   }

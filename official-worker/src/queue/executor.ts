@@ -129,9 +129,13 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
         result.queueEntities = scanEntities('tas', result.documents);
         // Visuals: stored by content hash where the report reads them, so any
         // replica can serve any job.
+        // Bounded upstream (≤ VISUAL_ASSET_MAX assets, byte budget); `stored`
+        // tells research-agent the object exists without a storage listing.
         for (const v of result.tasApi?.visuals ?? []) {
           const img = getCachedVisual(String(v.id));
-          if (img) await upload(String(v.id), img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes)
+          if (!img) continue;
+          await upload(String(v.id), img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes)
+            .then(() => { v.stored = true; })
             .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'visual_upload_failed', task: task.id, sha: String(v.id).slice(0, 12), error: String((e as Error)?.message ?? e).slice(0, 160) })));
         }
         return settle(task, { result, keep: false }, upload, scope);

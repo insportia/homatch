@@ -28,6 +28,10 @@
 // in this structure for audit; none of it is customer prose.
 
 import { revalidateDecision, legalClaims, type LegalClaim } from './legalStatus.ts';
+import {
+  VISUAL_ASSET_MAX, categoryForScope, normalizeVisualCategory, normalizeVisualKind, resolveVisualScope, visualSubject,
+  type VisualAssetKind, type VisualCategory, type VisualScope,
+} from './visualAssets.ts';
 
 export type FactStatus = 'CURRENT' | 'SUPERSEDED' | 'HISTORICAL' | 'CONFLICTING';
 export type Materiality = 'HIGH' | 'MEDIUM' | 'LOW';
@@ -127,6 +131,8 @@ export interface TasFunnel {
   retainedEvents: number;
   milestones: number;
   visualsSelected: number;
+  /** Official visuals withheld because their case names a different parcel. */
+  visualsHidden?: number;
   incomplete: boolean;
   incompleteReasons: string[];
 }
@@ -185,7 +191,19 @@ export interface StoryChapter {
 export interface VisualRef {
   id: string;
   role: 'LATEST_RENDER' | 'EARLIEST_RENDER' | 'SUPPORTING';
-  kind: string;
+  kind: VisualAssetKind;
+  /** Gallery tab. */
+  category: VisualCategory;
+  /** Identity against the requested unit (visualAssets.ts). Never UNRELATED_SUSPECT here: those are withheld. */
+  scope: Exclude<VisualScope, 'UNRELATED_SUSPECT'>;
+  block: string | null;
+  matchBasis: string;
+  /** 1-based page of a rendered drawing. */
+  page: number | null;
+  fileName: string | null;
+  mime: string | null;
+  confidence: number;
+  extraction: string | null;
   date: string | null;
   /** The chapter this visual explains, so the UI places it beside the story. */
   chapter: StoryChapter['key'] | null;
@@ -758,8 +776,29 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── story chapters ──
   const story = buildStory(timeline, facts, nowIso);
 
-  // ── visuals: linked to the nearest dated event and its chapter ──
-  const visuals: VisualRef[] = arr<any>(r0.officialVisuals ?? api?.visuals).slice(0, 4).map((v) => {
+  // ── visuals: identity against the requested unit, then linked to the
+  //    nearest dated event and its chapter. Bounded (VISUAL_ASSET_MAX). ──
+  const apiVisuals = new Map<string, any>(arr<any>(api?.visuals).filter((v) => v && v.id).map((v) => [s(v.id), v]));
+  const unit = obj(r0.exactUnit);
+  const tasRes = tasResults(report).find((t) => t?.tasApi) ?? tasResults(report)[0];
+  const subject = visualSubject(
+    s(unit.cadastralCode ?? unit.code) || s(tasRes?.originalCadastralCode) || s(api?.requestedCadastralCode) || s(api?.searchCadastralCode),
+    { unitNumber: unit.unitNumber ?? unit.apartmentNumber, floor: unit.floor },
+  );
+  let visualsHidden = 0;
+  const visuals: VisualRef[] = [];
+  for (const v0 of arr<any>(r0.officialVisuals ?? api?.visuals)) {
+    if (visuals.length >= VISUAL_ASSET_MAX) break;
+    const id = s(v0?.id);
+    if (!/^[a-f0-9]{64}$/.test(id)) continue;
+    // Stored records may predate the identity fields: the worker record fills them.
+    const v = { ...(apiVisuals.get(id) ?? {}), ...v0, identity: v0?.identity ?? apiVisuals.get(id)?.identity ?? null };
+    const kind = normalizeVisualKind(v.kind);
+    const { scope, block, matchBasis } = resolveVisualScope(kind, v.identity, subject);
+    if (scope === 'UNRELATED_SUSPECT') {
+      visualsHidden++;
+      continue;
+    }
     const d = day(v?.date);
     let nearest: TimelineEvent | null = null;
     if (d)
@@ -768,13 +807,21 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
         if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(d)))) nearest = e;
       }
     const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' ? 'TODAY' : null;
-    return {
-      id: s(v?.id), role: v?.role ?? 'SUPPORTING', kind: s(v?.kind) || 'OTHER_DRAWING', date: d, chapter, eventId: nearest?.id ?? null,
+    visuals.push({
+      id, role: v?.role === 'LATEST_RENDER' || v?.role === 'EARLIEST_RENDER' ? v.role : 'SUPPORTING', kind,
+      category: categoryForScope(kind, normalizeVisualCategory(v.category, kind), scope),
+      scope, block, matchBasis,
+      page: Number(v.page) > 0 ? Number(v.page) : null,
+      fileName: s(v.fileName) || null,
+      mime: s(v.mime) || null,
+      confidence: Number.isFinite(Number(v.confidence)) ? Number(v.confidence) : 0.5,
+      extraction: s(v.extraction) || null,
+      date: d, chapter, eventId: nearest?.id ?? null,
       width: v?.width ?? null, height: v?.height ?? null,
       versionStatus: visualVersionStatus(s(v?.documentId) || null, timeline),
       documentId: s(v?.documentId) || null, attachedFileId: s(v?.attachedFileId) || null,
-    };
-  }).filter((v) => /^[a-f0-9]{64}$/.test(v.id));
+    });
+  }
 
   // ── coverage (truthful, from the worker's own accounting) ──
   const acc = obj(api?.accounting);
@@ -829,6 +876,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       retainedEvents: timeline.length,
       milestones: milestoneIds.length,
       visualsSelected: visuals.length,
+      visualsHidden,
       incomplete: obj(api?.ledger).incomplete === true,
       incompleteReasons: arr<string>(obj(api?.ledger).incompleteReasons).map(String),
     },

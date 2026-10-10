@@ -4,10 +4,13 @@
 // member twice is one unlock) and the customer confirms the exact total. The
 // idempotency key is created when the dialog opens and reused if the confirm is
 // retried, so a double click or a flaky network can never charge twice.
+//
+// Demo Mode passes an `adapter` (a simulated quote and unlock) and `demo`: the same
+// dialog, labelled as a simulation, that never calls the real quote or atomic-unlock.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Lock, ShieldCheck, Wallet } from 'lucide-react';
+import { FlaskConical, Loader2, Lock, ShieldCheck, Wallet } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -17,13 +20,23 @@ import {
 import { BTN_PRIMARY, BTN_SECONDARY } from './kit';
 import { formatCreditsLabel } from './LeadCard';
 
+export interface UnlockAdapter {
+  quote: (matchIds: string[]) => Promise<UnlockQuote>;
+  unlock: (matchIds: string[], key: string) => Promise<UnlockResult>;
+}
+
+const REAL_UNLOCK: UnlockAdapter = { quote: quoteUnlock, unlock: unlockLeads };
+
 export function UnlockDialog({
-  open, matchIds, onClose, onUnlocked,
+  open, matchIds, onClose, onUnlocked, adapter = REAL_UNLOCK, demo = false,
 }: {
   open: boolean;
   matchIds: string[];
   onClose: () => void;
   onUnlocked: (result: UnlockResult) => void;
+  /** Demo Mode only: a simulated quote and unlock in place of the real ones. */
+  adapter?: UnlockAdapter;
+  demo?: boolean;
 }) {
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
@@ -39,7 +52,7 @@ export function UnlockDialog({
     if (!open || !matchIds.length) return;
     let alive = true;
     setLoading(true); setError(null); setQuote(null);
-    quoteUnlock(matchIds)
+    adapter.quote(matchIds)
       .then((q) => { if (alive) setQuote(q); })
       .catch(() => { if (alive) setError('QUOTE_FAILED'); })
       .finally(() => { if (alive) setLoading(false); });
@@ -54,7 +67,7 @@ export function UnlockDialog({
   async function confirm() {
     setSubmitting(true); setError(null);
     try {
-      const result = await unlockLeads(matchIds, key);
+      const result = await adapter.unlock(matchIds, key);
       onUnlocked(result);
     } catch (e) {
       setError(e instanceof UnlockError ? e.code : 'INTERNAL');
@@ -67,8 +80,13 @@ export function UnlockDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o && !submitting) onClose(); }}>
       <DialogContent className="max-h-[90dvh] max-w-[calc(100%-2rem)] overflow-y-auto bg-white sm:max-w-md [&>*]:min-w-0" data-testid="unlock-dialog">
         <DialogHeader>
+          {demo ? (
+            <p data-testid="unlock-demo-badge" className="inline-flex w-fit items-center gap-1 rounded-full bg-[hsl(328_70%_95%)] px-2.5 py-0.5 text-2xs font-bold uppercase tracking-[0.12em] text-[hsl(328_70%_30%)]">
+              <FlaskConical className="h-3 w-3" aria-hidden="true" />{t('demo_badge')}
+            </p>
+          ) : null}
           <DialogTitle className="font-display text-lg">{t(bulk ? 'hl_bulk_title' : 'hl_unlock_title')}</DialogTitle>
-          <DialogDescription className="text-sm text-[hsl(224_14%_30%)]">{t('hl_unlock_body')}</DialogDescription>
+          <DialogDescription className="text-sm text-[hsl(224_14%_30%)]">{t(demo ? 'demo_unlock_body' : 'hl_unlock_body')}</DialogDescription>
         </DialogHeader>
 
         {loading || !quote ? (
@@ -101,6 +119,9 @@ export function UnlockDialog({
                 <dd className="font-display text-lg font-bold tabular-nums text-[hsl(var(--gold-ink))]" dir="ltr">{t('hl_credits_n', { n: cr(quote.totalCredits) })}</dd>
               </div>
             </dl>
+            {demo ? (
+              <p className="rounded-lg bg-[hsl(328_70%_97%)] px-3 py-2 text-xs font-medium leading-relaxed text-[hsl(328_60%_28%)]">{t('demo_unlock_simulated_note')}</p>
+            ) : null}
             {quote.balance != null ? (
               <p className="flex items-center gap-1.5 text-xs text-[hsl(224_14%_30%)]">
                 <Wallet className="h-3.5 w-3.5" aria-hidden="true" />{t('hl_bulk_balance', { n: cr(quote.balance) })}

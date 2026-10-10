@@ -16,6 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isRetiredProvider, retiredReason } from '../_shared/retiredProviders.ts';
 import { accountCheck, providerConfigured as apifyConfigured, Memo23Error } from '../_shared/findBuyers/memo23Client.ts';
+import { probeResend, RESEND_SENDER_DOMAIN } from '../_shared/comm/resendProbe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,6 +60,7 @@ serve(async (req: Request) => {
   let status = 'NOT_CONFIGURED';
   let lastError: string | null = null;
   let success = false;
+  let details: Record<string, unknown> | null = null;
 
   try {
     switch (provider.toUpperCase()) {
@@ -127,16 +129,18 @@ serve(async (req: Request) => {
         break;
       }
       case 'RESEND': {
+        /* Never sends: one GET /domains plus a local webhook-secret self-check
+           (_shared/comm/resendProbe.ts). Only names and states are returned. */
         const key = Deno.env.get('RESEND_API_KEY');
         if (!key) { status = 'NOT_CONFIGURED'; break; }
-        const r = await fetch('https://api.resend.com/emails', {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        // Resend returns 200 or 401 — either way API is reachable
-        success = r.status !== 0;
-        status = r.status === 401 ? 'ERROR' : 'REAL_TEST_PASSED';
-        if (!success) lastError = `HTTP ${r.status}`;
+        const probe = await probeResend(key, Deno.env.get('RESEND_WEBHOOK_SECRET'));
+        status = probe.status;
+        success = probe.status !== 'ERROR';
+        lastError = probe.problem;
+        details = {
+          key: probe.key, domain: probe.domain, domainStatus: probe.domainStatus,
+          sender: RESEND_SENDER_DOMAIN, domains: probe.domains, webhookSecret: probe.webhookSecret,
+        };
         break;
       }
       case 'TWILIO': {
@@ -191,7 +195,7 @@ serve(async (req: Request) => {
     updated_at: now,
   }, { onConflict: 'provider' });
 
-  return new Response(JSON.stringify({ provider, status, latency_ms: latencyMs, error: lastError }), {
+  return new Response(JSON.stringify({ provider, status, latency_ms: latencyMs, error: lastError, details }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 });

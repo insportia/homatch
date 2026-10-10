@@ -1,9 +1,25 @@
 # PROJECT STATE
 
-last_updated: 2026-10-08
+last_updated: 2026-10-10
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
+
+- Durable queue: migration `20261024090000_verify_durable_execution.sql` (verify_tasks,
+  verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
+  research_jobs.client_request_id + advance lease). NOT applied to production.
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
+  sources as durable tasks; property mode always legacy.
+- Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
+  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+- Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
+  advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
+- CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.
+- Measured on scratch PG16 only (see `scripts/verify-scale/README.md`); no live benchmark yet.
+  10k browser sessions / 10k reports-in-minutes NOT claimed.
+- Rollout/rollback: `scripts/verify-scale/README.md`. Every step needs owner approval.
 
 ## Verify upgrade (branch `claude/dazzling-cray-34t9ur`, 2026-10-08) — IN PROGRESS, NOT DEPLOYED
 

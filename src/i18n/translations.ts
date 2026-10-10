@@ -16082,6 +16082,16 @@ const en = {
   /* ── VERIFY AT SCALE ── */
   verify_err_connection: 'The connection was interrupted. Please check your internet and try again.',
   verify_err_busy: 'Many verifications are running right now. Please try again in a moment.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'Durable queue',
+  adm_vos_queue_mode: 'Execution mode',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 h',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 days',
+  adm_vos_queue_backlog: 'Backlog',
+  adm_vos_queue_oldest: 'Oldest waiting',
+  adm_vos_queue_dead: 'Dead-lettered, 24 h',
+  adm_vos_queue_reused: 'Reused results, 24 h',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32078,6 +32088,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_err_connection: 'კავშირი შეწყდა. შეამოწმეთ ინტერნეტი და სცადეთ თავიდან.',
   verify_err_busy: 'ამ წუთას ბევრი შემოწმება მიმდინარეობს. სცადეთ ცოტა ხანში თავიდან.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'მდგრადი რიგი',
+  adm_vos_queue_mode: 'შესრულების რეჟიმი',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 სთ',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 დღე',
+  adm_vos_queue_backlog: 'რიგში',
+  adm_vos_queue_oldest: 'ყველაზე დიდხანს მოლოდინში',
+  adm_vos_queue_dead: 'შეჩერებული, 24 სთ',
+  adm_vos_queue_reused: 'ხელახლა გამოყენებული შედეგები, 24 სთ',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48065,6 +48085,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_err_connection: 'Соединение прервалось. Проверьте интернет и попробуйте ещё раз.',
   verify_err_busy: 'Сейчас выполняется много проверок. Пожалуйста, повторите попытку через минуту.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'Надёжная очередь',
+  adm_vos_queue_mode: 'Режим выполнения',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 ч',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 дней',
+  adm_vos_queue_backlog: 'В очереди',
+  adm_vos_queue_oldest: 'Дольше всех ждёт',
+  adm_vos_queue_dead: 'Остановлено, 24 ч',
+  adm_vos_queue_reused: 'Повторно использовано, 24 ч',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64050,6 +64080,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_err_connection: 'Bağlantı kesildi. İnternetinizi kontrol edip tekrar deneyin.',
   verify_err_busy: 'Şu anda çok sayıda doğrulama yapılıyor. Lütfen birazdan tekrar deneyin.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'Kalıcı kuyruk',
+  adm_vos_queue_mode: 'Çalışma modu',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 sa',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 gün',
+  adm_vos_queue_backlog: 'Bekleyen',
+  adm_vos_queue_oldest: 'En uzun bekleyen',
+  adm_vos_queue_dead: 'Durdurulan, 24 sa',
+  adm_vos_queue_reused: 'Yeniden kullanılan, 24 sa',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -80035,6 +80075,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_err_connection: 'انقطع الاتصال. يُرجى التحقق من الإنترنت والمحاولة مرة أخرى.',
   verify_err_busy: 'تُجرى الآن عمليات تحقق كثيرة. يُرجى المحاولة مرة أخرى بعد قليل.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'الطابور الدائم',
+  adm_vos_queue_mode: 'وضع التنفيذ',
+  adm_vos_queue_captcha_24h: 'CAPTCHA، 24 ساعة',
+  adm_vos_queue_captcha_30d: 'CAPTCHA، 30 يومًا',
+  adm_vos_queue_backlog: 'قيد الانتظار',
+  adm_vos_queue_oldest: 'الأطول انتظارًا',
+  adm_vos_queue_dead: 'متوقفة، 24 ساعة',
+  adm_vos_queue_reused: 'نتائج أُعيد استخدامها، 24 ساعة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -96020,6 +96070,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_err_connection: 'החיבור נקטע. בדקו את חיבור האינטרנט ונסו שוב.',
   verify_err_busy: 'כרגע מתבצעות בדיקות רבות. נסו שוב בעוד רגע.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'תור עמיד',
+  adm_vos_queue_mode: 'מצב הרצה',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 שעות',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 ימים',
+  adm_vos_queue_backlog: 'ממתינים',
+  adm_vos_queue_oldest: 'הממתין הוותיק',
+  adm_vos_queue_dead: 'נעצרו, 24 שעות',
+  adm_vos_queue_reused: 'תוצאות שנעשה בהן שימוש חוזר, 24 שעות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

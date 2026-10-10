@@ -679,7 +679,14 @@ as $$
     'dead24h', (select count(*) from public.verify_tasks where state = 'DEAD' and finished_at > now() - interval '24 hours'),
     'cacheHits24h', (select count(*) from public.verify_tasks where reused is not null and created_at > now() - interval '24 hours'),
     'captcha24h', (select jsonb_build_object('solves', count(*), 'costUsd', coalesce(sum(cost_usd), 0))
-                     from public.verify_captcha_events where created_at > now() - interval '24 hours'));
+                     from public.verify_captcha_events where created_at > now() - interval '24 hours'),
+    -- Per source and outcome, so Admin sees where CAPTCHA money goes (owner
+    -- decision 2026-10-10: no arbitrary daily cap; visibility instead).
+    'captcha24hBySource', coalesce((select jsonb_object_agg(source || ':' || outcome, jsonb_build_object('n', n, 'costUsd', c)) from (
+        select source, outcome, count(*) as n, coalesce(sum(cost_usd), 0) as c from public.verify_captcha_events
+         where created_at > now() - interval '24 hours' group by source, outcome) e), '{}'::jsonb),
+    'captcha30d', (select jsonb_build_object('solves', count(*), 'costUsd', coalesce(sum(cost_usd), 0))
+                     from public.verify_captcha_events where created_at > now() - interval '30 days'));
 $$;
 
 do $$

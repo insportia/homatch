@@ -20,8 +20,10 @@
  *                   once (attempts = 1, no double completion).
  *   crash           half the claims are abandoned (worker killed): leases
  *                   expire, are recovered, and every task still completes once.
- *   same-building   1,000 jobs for flats of ONE building: the parcel TAS read
- *                   runs once; 999 jobs follow it.
+ *   same-building   1,000 jobs for flats of ONE building: TAS case files are
+ *                   read once for the whole building (each flat's task
+ *                   delegates to the parcel scope, as the worker does);
+ *                   TAS_MAP and MyGov run once per distinct flat, not per job.
  *   many-buildings  10,000 jobs over 200 buildings × 50 flats.
  *
  * Output: one JSON report on stdout (latency percentiles from pgbench logs).
@@ -100,7 +102,7 @@ values (('00000000-0000-4000-8000-' || lpad(:u::text, 12, '0'))::uuid,
         '01.18.06.' || lpad(:b::text, 3, '0') || '.055.03.01.' || lpad(:f::text, 3, '0'))
 on conflict ((coalesce(user_id::text, anon_session_id::text)), client_request_id) where client_request_id is not null do nothing;
 select public.verify_task_enqueue(j.id, 'tas', 'tas', 'tas:' || j.query, jsonb_build_object('cadastral', j.query)),
-       public.verify_task_enqueue(j.id, 'TAS_MAP', 'TAS_MAP', 'tasmap:' || split_part(j.query, '.', 4), jsonb_build_object('cadastral', j.query)),
+       public.verify_task_enqueue(j.id, 'TAS_MAP', 'TAS_MAP', 'TAS_MAP:' || j.query, jsonb_build_object('cadastral', j.query)),
        public.verify_task_enqueue(j.id, 'mygov', 'mygov', 'mygov:' || j.query, jsonb_build_object('cadastral', j.query))
   from public.research_jobs j
  where j.user_id = ('00000000-0000-4000-8000-' || lpad(:u::text, 12, '0'))::uuid
@@ -108,10 +110,19 @@ select public.verify_task_enqueue(j.id, 'tas', 'tas', 'tas:' || j.query, jsonb_b
 commit;
 `;
 
-// A worker replica: claim up to 5 tasks of both lanes, complete them.
+// A worker replica: claim up to 5 tasks of both lanes, complete them. A TAS
+// task for a flat first delegates to its parcel scope, exactly as the worker's
+// executor does after its one-request probe; only the parcel's producer reads.
 const DRAIN = `
 \\set w random(1, 100000)
-select count(public.verify_task_complete((x->>'id')::uuid, (x->>'fencingToken')::bigint, '{"ok":true}'::jsonb))
+select count(case
+         when x->>'source' = 'tas' and coalesce(x->'input'->>'resolved', '') <> 'true' then
+           case when public.verify_task_delegate((x->>'id')::uuid, (x->>'fencingToken')::bigint,
+                       'tas:' || array_to_string((string_to_array(x->'input'->>'cadastral', '.'))[1:5], '.'),
+                       (x->'input') || '{"resolved":true}'::jsonb)->>'outcome' = 'PRODUCE'
+                then public.verify_task_complete((x->>'id')::uuid, (x->>'fencingToken')::bigint, '{"ok":true}'::jsonb,
+                       '[]'::jsonb, null, 'tas:' || array_to_string((string_to_array(x->'input'->>'cadastral', '.'))[1:5], '.')) end
+         else public.verify_task_complete((x->>'id')::uuid, (x->>'fencingToken')::bigint, '{"ok":true}'::jsonb) end)
   from public.verify_task_claim('w' || :w, array['HTTP','BROWSER'], 5) x;
 `;
 
@@ -196,9 +207,13 @@ for (const n of SIZES) {
   const before = counts();
   drainAll(32);
   const done = counts();
+  const tasReads = Number(psql(`select count(*) from public.verify_tasks where source = 'tas' and reused is null`));
   const tasmapProducers = Number(psql(`select count(*) from public.verify_tasks where source = 'TAS_MAP' and reused is null`));
-  report.scenarios.push({ name: 'same-building-1000', before, final: done, tasmapProducers,
-    checks: { oneParcelRead: tasmapProducers === 1 } });
+  const flats = Number(psql(`select count(distinct query) from public.research_jobs`));
+  report.scenarios.push({ name: 'same-building-1000', before, final: done, flats, tasReads, tasmapProducers,
+    // TAS case files: one read for the whole building. TAS_MAP and MyGov are
+    // per searched code: one read per distinct flat, never one per job.
+    checks: { oneTasReadPerBuilding: tasReads === 1, oneMapReadPerFlat: tasmapProducers === flats } });
 }
 
 report.finishedAt = new Date().toISOString();

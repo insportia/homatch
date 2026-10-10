@@ -6318,7 +6318,16 @@ Deno.serve(async (req) => {
         } catch (e) {
           worker = { unavailable: true, error: String((e as any)?.message || e).slice(0, 160) };
         }
-        return json({ policy, worker });
+        // Durable ledger (QUEUE mode): every solve, per source, with its cost —
+        // the in-memory worker counters reset on every deploy.
+        let queue: any = null;
+        try {
+          const { data, error } = await sb.rpc('verify_queue_metrics');
+          queue = error ? { unavailable: true } : data;
+        } catch {
+          queue = { unavailable: true };
+        }
+        return json({ policy, worker, queue, executionMode: await verifyExecutionMode(sb) });
       }
 
       // Developer Advertising Intelligence (Verify's own memo23 stage): policy,

@@ -83,7 +83,8 @@ holds and provider settings. Existing restriction evidence should stop startup
 smoke requests. No automatic deployment or paid fallback is authorized by this
 document.
 
-After an actual source grant, an authorized operator deliberately records a newer
+After an actual source grant, quiesce MyHome claims and wait for existing runs to
+finish before clearance. An authorized operator deliberately records a newer
 health.accessClearedAt and accessRestricted=false (preserving other health fields),
 then restarts the canonical worker. There is no worker clearance action. Run one
 bounded authorized search; verify fresh source identities, exact criteria, prices,
@@ -103,8 +104,40 @@ broken-image recovery, thumbnails and mobile overflow.
 
 Local gates:120 focused marketplace tests,47 adapter/engine/SS.ge tests,20
 provider-policy/concurrency tests; repository typecheck, i18n coverage/keys and
-production build passed. Full worker compilation was blocked locally by the
-missing already-declared @2captcha/captcha-solver package, not waived. The sandbox
-account relocked; final remote CI must validate the exact committed code, including
-acknowledgement checks, before release. Authenticated production browser acceptance
-remains unverified; no source permission or live recovery is inferred from CI.
+production build passed. The final19-case Find Property browser run passed.
+Clean CI run38072689785 passed all seven jobs at commit
+406a95352ad6213c8235c0bbcb6b0a5ef77a3f18, including the full worker build and
+504 worker tests (496 passed,8 existing opt-in skips,0 failures). This resolved
+the local missing already-declared dependency; no check was waived.
+Authenticated production browser acceptance remains unverified; no source
+permission or live recovery is inferred from CI.
+
+## Official access decision and operating boundaries
+
+See [the verified options and ready-to-send partnership request](myhome-partnership-request.md).
+The published TNET terms restrict unauthorized information collection and
+commercial content reuse. Ordinary browser readability is not an automation or
+redistribution licence. No new listing access was attempted during this audit.
+
+The provider-independent boundary already used by both products is
+MarketplaceSearchRequest -> acquireMyHome(request, options) -> streamed
+MarketplaceWorkerResult / ExternalListingCandidate. A licensed feed connector
+must produce that same contract; Find Property, Verify, normalization and entity
+resolution need no parallel implementation. HTTP/page fetcher injection is the
+current transport port, not a claim that an unknown feed schema is implemented.
+
+Operational monitoring currently exposes authenticated /health/myhome, structured
+runtime events and the existing admin worker health status. Restriction persistence
+sets health.status=DOWN. These are machine-readable monitoring signals, not proof
+that a human notification destination is configured. Alert routing and delivery
+must be verified against the existing approved monitoring system before calling
+this continuously operated; do not create a new paid notification service.
+
+Page checkpoints and identity upserts recover interrupted runs. They do not
+provide a marketplace-wide continuous change subscription. An approved change
+cursor, deletion/expiry semantics and negotiated schedule are required before
+connecting incremental synchronization. Never infer deletion from a failed or
+incomplete crawl, and never change observedAt into publishedAt or lastVerifiedAt.
+
+Release remains held: source authorization and authenticated production acceptance
+are missing. No production mutation, migration, new service or paid call was made.

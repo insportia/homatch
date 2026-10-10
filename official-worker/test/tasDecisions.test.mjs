@@ -76,3 +76,21 @@ test('a quoted earlier date is not the issue date', () => {
 test('ქართული (contains "თუ") does not trigger the conditional guard', () => {
   assert.equal(extractDecision('ბრძანება N 7000010 20.06.2023 ქართული ტექსტი: მშენებლობის ნებართვა გაიცეს').outcome, 'PERMIT_ISSUED');
 });
+
+test('the title of Resolution No 255 is a citation, not a commissioning (owner live run 2026-10-10)', () => {
+  const text = 'გაცემის თარიღი: 27/05/2022\nგანცხადების ნომერი: AR1897963\nშედეგი: შუალედური\nქალაქ თბილისის მუნიციპალიტეტის არქიტექტურის სამსახური\nგადაწყვეტილება No 5955361\n'
+    + 'მიწის ნაკვეთის სამშენებლოდ გამოყენების პირობების დადგენა\n'
+    + 'საქართველოს მთავრობის 2019 წლის 31 მაისის No255 დადგენილებით დამტკიცებული მშენებლობის ნებართვის გაცემისა და შენობა-ნაგებობის ექსპლუატაციაში მიღების წესის და პირობების, ქალაქ თბილისის ... საფუძველზე\n'
+    + 'ვადგენ: დამტკიცდეს მიწის ნაკვეთის სამშენებლოდ გამოყენების პირობები.';
+  const d = extractDecision(text);
+  assert.notEqual(d.outcome, 'COMMISSIONED');
+  assert.equal(d.outcome, 'INTERMEDIATE', 'the decision states its own result: intermediate');
+  // The citation alone, without a result line, is never a commissioning either.
+  const bare = extractDecision('გადაწყვეტილება No 5955361. ' + 'No255 დადგენილებით დამტკიცებული მშენებლობის ნებართვის გაცემისა და შენობა-ნაგებობის ექსპლუატაციაში მიღების წესის და პირობების საფუძველზე ვადგენ: დამტკიცდეს პირობები.');
+  assert.notEqual(bare.outcome, 'COMMISSIONED');
+});
+
+test('a real acceptance into operation is still read as COMMISSIONED', () => {
+  const d = extractDecision('გადაწყვეტილება № 7000001 თარიღი 01.02.2026. ვბრძანებ: შენობა-ნაგებობა მიღებულ იქნეს ექსპლუატაციაში. ექსპლუატაციაში მიღების აქტი ძალაშია.');
+  assert.equal(d.outcome, 'COMMISSIONED');
+});

@@ -83,6 +83,18 @@ const OPERATIVE_MARKER = /(ვბრძანებ|გადაწყდა|გ
 const NEGATED = /(?:^|[\s,.;:])(?:არ|ვერ|not|не)\s+$/iu;
 /** Conditional / informational boilerplate: "may be suspended", "in case of …". */
 const CONDITIONAL = /(?:^|[\s,(])(?:შეიძლება|შესაძლოა|შემთხვევაში|თუ|may\s+be|could\s+be|in\s+case|может\s+быть|в\s+случае)\s[^.;\n]{0,60}$/iu;
+/**
+ * The NAME of a law, not an act: every Tbilisi architecture decision cites
+ * "…მშენებლობის ნებართვის გაცემისა და შენობა-ნაგებობის ექსპლუატაციაში მიღების
+ * წესისა და პირობების…" (Government Resolution No 255). Read as an outcome it
+ * labelled ordinary decisions "accepted into operation" (owner live run,
+ * 2026-10-10 — no commissioning had even been applied for).
+ */
+const CITATION_AFTER = /^\S*\s+(?:წეს|პირობ|შესახებ\s+(?:კანონ|დადგენილებ))/iu;
+const CITATION_BEFORE = /(?:გაცემისა\s+და|დადგენილებით|დამტკიცებულ|კოდექსის|წესის)\s+[^.;\n]{0,60}$/iu;
+/** The case's own stated result line ("შედეგი: შუალედური") — authoritative when present. */
+const RESULT_LINE = /შედეგი\s*:\s*(შუალედური|დადებითი|უარყოფითი)/iu;
+
 /** "ხარვეზი არ გამოვლინდა": a deficiency that was NOT found. */
 const NOT_FOUND_AFTER = /^\S*\s+(?:არ|ვერ)\s+(?:გამოვლინდ|დაფიქსირდ|აღმოჩნდ|არსებობ)/iu;
 
@@ -109,6 +121,7 @@ function collectHits(text: string): RuleHit[] {
         continue;
       }
       if (CONDITIONAL.test(before)) continue;
+      if (rule.outcome === 'COMMISSIONED' && (CITATION_AFTER.test(after) || CITATION_BEFORE.test(before))) continue;
       if (rule.outcome === 'DEFICIENCY' && NOT_FOUND_AFTER.test(after)) continue;
       hits.push({ outcome: rule.outcome, index: m.index, weak: !!rule.weak });
     }
@@ -176,6 +189,9 @@ export function extractDecision(text: string | null | undefined): ExtractedDecis
   const numberMatch = DECISION_NUMBER.exec(head) ?? ANY_NUMBER_NEAR.exec(head);
   const { outcome: resolved, hit } = resolveHits(collectHits(operativeText(t)));
   let outcome = resolved;
+  // The document says its own result is intermediate: nothing final was decided,
+  // whatever else the text mentions.
+  if (/შუალედური/iu.test(RESULT_LINE.exec(head)?.[1] ?? '') && POLARITY[outcome] === 'POSITIVE') outcome = 'INTERMEDIATE';
   const op = operativeText(t);
   const evidence = hit ? around(op, hit.index) : null;
   if (outcome === 'UNDETERMINED' && !hit && /(ინფორმაცია|ცნობა|განმარტება|information|reply|ответ)/iu.test(head)) outcome = 'INFORMATIONAL';

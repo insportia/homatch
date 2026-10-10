@@ -33,7 +33,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     heartbeat.unref();
     try {
       log('claimed', { runId: job.runId, attempt: job.attempt });
-      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
+      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, enrichDetails: env.MYHOME_DETAIL_ENRICHMENT_ENABLED === 'true', checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
         report: async report => {
           const accepted = await ingest({ action: 'report', runId: job.runId, result: report });
           if ((accepted.rejected?.length ?? 0) > 0 || accepted.accepted !== report.listings.length) throw new Error('Marketplace ingest rejected acquisition records');

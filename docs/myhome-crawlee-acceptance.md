@@ -147,3 +147,50 @@ it does not recover the complete MyHome inventory. Official API/feed or approved
 browser access requires MyHome/TNET permission, quotas and media rights, with
 commercial terms still unknown. See the unsent partnership request; no contact,
 license or free access entitlement is invented here.
+
+## Search-result-first recovery
+
+The retained authentic search fixture contains 58 source keys. Its listing
+25610778 alone provides USD165000, USD1634/m2, 101m2, 4 rooms, 3 bedrooms,
+floor4/8, address and city/district/urban IDs and labels, the original URL slug,
+a487-character description, 15 original photo URLs and last_updated. Both ID
+and UUID are present. Coordinates, metro and yard area are null for this record;
+empty parameters do not establish absence of amenities. These observations are
+historical, not a fresh response or proof that images remain reachable today.
+
+Search data omits structured condition/parking/heating/build-year and bathroom
+IDs, owner phone/ownership evidence, created_at/publication data and is_active.
+They remain unknown. User display title/count/type are attribution signals, not
+proof of ownership. Source last_updated is distinct from our observation time;
+neither establishes current availability.
+
+The adapter now defaults to validated search-result normalization and does not
+open individual detail pages. Pagination, identity deduplication, canonical URL
+validation, criteria checks and existing ingestion/canonicalization remain in
+place. MYHOME_DETAIL_ENRICHMENT_ENABLED=true explicitly opts into optional detail
+enrichment; it is OFF by default and no production environment was changed.
+On detail failure the summary survives with SEARCH_RESULT observation level,
+NOT_REQUESTED/FAILED/ACCESS_RESTRICTED/SKIPPED detail status, null detailVerifiedAt,
+explicit missingFields, UNKNOWN availability and the correct freshness basis.
+Successful details are marked separately. A confirmed conflicting detail is
+excluded rather than concealed by falling back to stale summary facts.
+
+A detail403 stops further detail and page navigation, persists every valid
+summary already obtained from that page, and reports PARTIAL with ACCESS_DENIED.
+The durable source circuit remains closed across restart. Ordinary parser
+failures affect enrichment independently and do not discard search observations.
+Complete search-only pagination can return COMPLETE acquisition while individual
+optional facts remain unknown; COMPLETE does not imply detail verification.
+
+Tests replay the unchanged retained search envelope through acquisition,
+normalization, actual worker-report validation and existing customer property
+pipeline without opening details. Additional deterministic tests cover zero
+detail requests by default, full-page preservation on first-detail403, malformed
+details, successful enrichment and exclusion of changed above-budget details.
+No fresh source access, database write or customer browser acceptance is claimed.
+
+This recovers useful functionality IF search access is authorized and available.
+It does not authorize a new search request through the existing provider-wide
+restriction circuit. Current search accessibility has NOT been freshly verified;
+operator-approved source authorization/clearance is still required for live proof.
+

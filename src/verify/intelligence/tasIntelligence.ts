@@ -27,6 +27,8 @@
 // Everything here is internal. Document ids, attachment ids and hashes stay
 // in this structure for audit; none of it is customer prose.
 
+import { revalidateDecision } from './legalStatus.ts';
+
 export type FactStatus = 'CURRENT' | 'SUPERSEDED' | 'HISTORICAL' | 'CONFLICTING';
 export type Materiality = 'HIGH' | 'MEDIUM' | 'LOW';
 export type FactBasis = 'DOCUMENTED_SPECIFICATION' | 'OFFICIAL_DECISION' | 'OFFICIAL_RECORD';
@@ -460,7 +462,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
         parties: arr<any>(c.parties).map((p) => ({ role: s(p?.role), name: s(p?.name), kind: s(p?.kind), organizationId: p?.organizationId ?? null })),
         values: arr<any>(c.values).map((v) => ({ key: s(v?.key), label: s(v?.label) || null, value: s(v?.value) })),
         technicalFacts: tf.map((f) => ({ category: s(f?.category), key: s(f?.key), value: s(f?.value) })),
-        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? m.decision : null })),
+        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? revalidateDecision(m.decision) : null })),
         block,
       });
     }
@@ -819,7 +821,7 @@ export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso
     arr<any>(c?.motions).some((m) => {
       const kind = s(m?.response);
       if (kind !== 'PDF' && kind !== 'HTML' && kind !== 'OTHER') return false;
-      const outcome = s(obj(m?.decision).outcome);
+      const outcome = s(obj(revalidateDecision(obj(m?.decision))).outcome);
       if (outcome && outcome !== 'UNDETERMINED') return false;
       const d = day(m?.date);
       return !b || !d || d > b.date;

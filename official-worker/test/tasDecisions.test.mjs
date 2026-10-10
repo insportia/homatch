@@ -94,3 +94,8 @@ test('a real acceptance into operation is still read as COMMISSIONED', () => {
   const d = extractDecision('გადაწყვეტილება № 7000001 თარიღი 01.02.2026. ვბრძანებ: შენობა-ნაგებობა მიღებულ იქნეს ექსპლუატაციაში. ექსპლუატაციაში მიღების აქტი ძალაშია.');
   assert.equal(d.outcome, 'COMMISSIONED');
 });
+
+test('a future or conditional mention of acceptance is not an acceptance (banner rule, 2019 Villion decision)', () => {
+  const d = extractDecision('გადაწყვეტილება No 4381827. ვადგენ: დამკვეთმა უზრუნველყოს საინფორმაციო დაფის განთავსება, რომელიც დარჩეს მშენებლობის წარმოების მთელ პერიოდში და მოიხსნას შენობა-ნაგებობის მშენებლობის დასრულების ან/და ექსპლუატაციაში მიღების შემდეგ.');
+  assert.notEqual(d.outcome, 'COMMISSIONED');
+});

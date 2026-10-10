@@ -70,7 +70,14 @@ const OUTCOME_RULES: Array<{ outcome: DecisionOutcome; re: RegExp; weak?: boolea
   { outcome: 'REFUSED', re: /(უარი\s+ეთქვა|უარი\s+ეთქვას|უარის\s+თქმ|უარყოფილ|refused|rejected|отказать)/giu },
   { outcome: 'DEFICIENCY', re: /(ხარვეზ|deficienc|недостат)/giu },
   { outcome: 'INTERMEDIATE', re: /(შუალედური|intermediate|промежуточн)/giu },
-  { outcome: 'COMMISSIONED', re: /(ექსპლუატაციაში\s+მიღებ|ექსპლუატაციაში\s+შეყვან|commissioned|ввод\s+в\s+эксплуатац)/giu },
+  /*
+   * Acceptance into operation is an OPERATIVE act, never a mention: decisions
+   * routinely name it as a future event ("the banner is removed after …
+   * acceptance into operation") or cite the rules that govern it. Only the
+   * order itself — "be accepted into operation", "is put into operation", the
+   * act of acceptance — establishes it (owner live run, 2026-10-10).
+   */
+  { outcome: 'COMMISSIONED', re: /(მიღებულ\s+(?:იქნეს|იქნა)\s+ექსპლუატაციაში|ექსპლუატაციაში\s+მიღებულ\s+(?:იქნეს|იქნა)|ექსპლუატაციაში\s+(?:შეყვანილ|შესულ)\s+(?:იქნეს|იქნა)|ექსპლუატაციაში\s+მიღების\s+(?:შესახებ\s+)?აქტ(?:ი|ის)?\s+(?:დამტკიცდ|გაიცეს|გაცემულ)|(?:is|be|was)\s+(?:hereby\s+)?(?:accepted|put)\s+into\s+operation|принять\s+в\s+эксплуатацию|принят\S*\s+в\s+эксплуатацию)/giu },
   { outcome: 'DEADLINE_EXTENDED', re: /(ვადა\s+გაგრძელდ(?:ეს|ა)|ვადის\s+გაგრძელებ|extension\s+of\s+the\s+(?:permit|deadline)|продлить\s+срок)/giu },
   { outcome: 'AMENDMENT_APPROVED', re: /(ცვლილებ\S*\s+შეთანხმდეს|ცვლილება\s+დამტკიცდეს|შეთანხმდეს\s+ცვლილ|amendment\s+approved|изменени\S*\s+согласова)/giu },
   { outcome: 'PERMIT_ISSUED', re: /(ნებართვა\s+გაიცეს|გაიცეს\s+\S*\s*ნებართვა|მშენებლობის\s+ნებართვის\s+გაცემის\s+შესახებ|permit\s+(?:is\s+)?issued|выдать\s+разрешени)/giu },

@@ -557,7 +557,12 @@ export function VerifyReport({
               still under review — never as an approval. */}
           <LegalPosition history={history} />
           <LegalReality legal={history?.legal} />
-          <CurrentStatusBlock status={r.currentStatus} history={history} clean={clean} />
+          {/* The deterministic position above already states the decision in
+              force; the older status block would repeat it. It stays for
+              reports that carry no reconciled position. */}
+          {(history as { currentPosition?: { effective?: unknown } } | null | undefined)?.currentPosition?.effective ? null : (
+            <CurrentStatusBlock status={r.currentStatus} history={history} clean={clean} />
+          )}
           <PropertyRegisterCard register={synthesis.propertyRegister} source={synthesis.registerSource ?? null} />
           <div id="vbi-company" className="scroll-mt-24">
             <CompanyIntelligenceCard company={company} rights={rights} />

@@ -308,5 +308,5 @@ export function projectTeamFrom(result: unknown, officialTeam: Array<{ name: str
   if (typeof project.architect === 'string') add(project.architect, 'ARCHITECT', 'PUBLIC');
   for (const c of Array.isArray(project.contractors) ? project.contractors : []) add(c, 'CONTRACTOR', 'PUBLIC');
   // The developer is shown in its own sections; here only the professionals.
-  return [...out.values()].filter((m) => !(m.roles.length === 1 && m.roles[0] === 'DEVELOPER')).slice(0, 16);
+  return [...out.values()].filter((m) => !(m.roles.length === 1 && m.roles[0] === 'DEVELOPER')).slice(0, 24);
 }

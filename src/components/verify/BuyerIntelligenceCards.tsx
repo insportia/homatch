@@ -19,7 +19,6 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection, Row, RowList, StatusPill } from './ui';
 import type { PropertyRegister, RegisterMortgage, RegisterState, ProceedingKind } from '@/verify/intelligence/propertyRegister';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
-import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
 
 /** First-strong isolates keep a date or number in reading order inside RTL text. */
 const iso = (s: string): string => `⁦${s}⁩`;
@@ -506,67 +505,5 @@ export function ResearchScaleBanner({
         ))}
       </dl>
     </section>
-  );
-}
-
-
-/* ───────────────────────── The microlocation market ───────────────────────── */
-
-const TIER_KEY: Record<string, string> = {
-  SAME_PROJECT: 'verify_mkt_same_project', SAME_STREET: 'verify_mkt_same_street', SAME_DISTRICT: 'verify_mkt_same_district',
-  PEER_PROJECT: 'verify_mkt_peer_project', WIDER_MARKET: 'verify_mkt_wider_market',
-};
-
-/*
- * WHAT IS FOR SALE AROUND IT, AND FOR HOW MUCH (owner, 2026-10-10).
- * The bands narrowest-first (same project → street → district → city), then
- * the closest listings themselves. Asking prices, never sale prices; no
- * links in the primary report (the evidence explorer owns URLs).
- */
-export function MarketListingsCard({ market }: { market?: MarketIntelligence | null }) {
-  const { t, lang } = useLanguage();
-  if (!market || !market.count) return null;
-  const cur = market.currency || 'USD';
-  const listings = (market.ranked?.length ? market.ranked : market.closest ?? []).slice(0, 8);
-  return (
-    <VerifySection id="vbi-market-listings" eyebrow={t('vbi_mkt_list_eyebrow')} title={t('vbi_mkt_list_title')} subtitle={t('vbi_mkt_list_subtitle', { count: iso(String(market.count)) })}>
-      {market.tiers?.length ? (
-        <RowList>
-          {market.tiers.map((b) => (
-            <Row key={b.tier} label={`${t(TIER_KEY[b.tier] ?? 'verify_mkt_wider_market')} · ${iso(String(b.count))}`}>
-              <span className="font-medium tabular-nums">{iso(`${money(b.median, lang)} ${cur}/m²`)}</span>
-              <span className="block text-xs text-muted-foreground tabular-nums">{iso(`${money(b.min, lang)} – ${money(b.max, lang)} ${cur}/m²`)}</span>
-            </Row>
-          ))}
-        </RowList>
-      ) : null}
-      {listings.length ? (
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
-            <thead>
-              <tr className="text-start text-xs text-muted-foreground">
-                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_where')}</th>
-                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_area')}</th>
-                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_floor')}</th>
-                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_price')}</th>
-                <th className="py-2 text-start font-medium">{t('vbi_mkt_col_sqm')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {listings.map((c, i) => (
-                <tr key={i}>
-                  <td className="py-2 pe-3">{t(TIER_KEY[c.tier] ?? 'verify_mkt_wider_market')}</td>
-                  <td className="py-2 pe-3 tabular-nums">{c.area ? iso(`${c.area} m²`) : '—'}{c.rooms ? <span className="text-muted-foreground"> · {iso(String(c.rooms))} {t('vbi_mkt_rooms')}</span> : null}</td>
-                  <td className="py-2 pe-3 tabular-nums">{c.floor ? iso(String(c.floor)) : '—'}</td>
-                  <td className="py-2 pe-3 tabular-nums">{c.totalPrice ? iso(`${money(c.totalPrice, lang)} ${c.currency || cur}`) : '—'}</td>
-                  <td className="py-2 tabular-nums font-medium">{iso(`${money(c.pricePerSqm, lang)} ${c.currency || cur}`)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      <p className="mt-3 text-xs leading-5 text-muted-foreground break-words">{t('vbi_mkt_list_note')}</p>
-    </VerifySection>
   );
 }

@@ -16075,6 +16075,9 @@ const en = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   bc_seller_owner_named_detail: 'The extract of {{date}} names {{name}} as the owner since {{since}}. Check the seller’s ID against that name, or a valid power of attorney.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_scale_headline_pages: '{{pages}} pages of official documents read, {{count}} records and sources checked — the whole history, read for you',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32064,6 +32067,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   bc_seller_owner_named_detail: '{{date}}-ის ამონაწერის მიხედვით, მესაკუთრე {{since}}-დან არის {{name}}. გამყიდველის პირადობის მოწმობა შეადარეთ ამ სახელს, ან მოითხოვეთ მოქმედი მინდობილობა.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_scale_headline_pages: '{{pages}} გვერდი ოფიციალური დოკუმენტი წავიკითხეთ და {{count}} ჩანაწერი და წყარო შევამოწმეთ — მთელი ისტორია, თქვენთვის წაკითხული',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48044,6 +48050,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   bc_seller_owner_named_detail: 'По выписке от {{date}} собственник с {{since}} — {{name}}. Сверьте удостоверение продавца с этим именем или проверьте действующую доверенность.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_scale_headline_pages: 'Прочитано {{pages}} страниц официальных документов, проверено {{count}} записей и источников — вся история, прочитанная для вас',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64022,6 +64031,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   bc_seller_owner_named_detail: '{{date}} tarihli kayda göre {{since}} tarihinden beri malik {{name}}. Satıcının kimliğini bu adla karşılaştırın veya geçerli bir vekâletname isteyin.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_scale_headline_pages: '{{pages}} sayfa resmi belge okundu, {{count}} kayıt ve kaynak kontrol edildi — tüm geçmiş, sizin için okundu',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -80000,6 +80012,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   bc_seller_owner_named_detail: 'وفق مستخرج {{date}}، المالك منذ {{since}} هو {{name}}. طابق هوية البائع مع هذا الاسم، أو اطلب توكيلًا ساريًا.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_scale_headline_pages: 'قرأنا {{pages}} صفحة من الوثائق الرسمية وفحصنا {{count}} سجلًا ومصدرًا — التاريخ كاملًا، مقروءًا من أجلك',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -95978,6 +95993,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   bc_seller_owner_named_detail: 'לפי הנסח מ־{{date}}, הבעלים מאז {{since}} הוא {{name}}. השוו את תעודת הזהות של המוכר לשם זה, או בקשו ייפוי כוח בתוקף.',
+
+  /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
+  vbi_scale_headline_pages: 'קראנו {{pages}} עמודים של מסמכים רשמיים ובדקנו {{count}} רשומות ומקורות — כל ההיסטוריה, נקראה עבורכם',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

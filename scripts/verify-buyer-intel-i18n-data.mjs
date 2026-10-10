@@ -181,6 +181,14 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
   vbi_team_role_developer: ['Developer', 'დეველოპერი', 'Девелопер', 'Geliştirici', 'المطوّر', 'יזם'],
   vbi_team_role_other: ['Project participant', 'პროექტის მონაწილე', 'Участник проекта', 'Proje katılımcısı', 'مشارك في المشروع', 'משתתף בפרויקט'],
   vbi_scale_title: ['What HOMATCH studied for this report', 'რა შეისწავლა HOMATCH-მა ამ რეპორტისთვის', 'Что HOMATCH изучил для этого отчёта', 'HOMATCH bu rapor için neleri inceledi', 'ما درسته HOMATCH لهذا التقرير', 'מה HOMATCH בדקה עבור הדוח הזה'],
+  vbi_scale_headline_pages: [
+    '{{pages}} pages of official documents read, {{count}} records and sources checked — the whole history, read for you',
+    '{{pages}} გვერდი ოფიციალური დოკუმენტი წავიკითხეთ და {{count}} ჩანაწერი და წყარო შევამოწმეთ — მთელი ისტორია, თქვენთვის წაკითხული',
+    'Прочитано {{pages}} страниц официальных документов, проверено {{count}} записей и источников — вся история, прочитанная для вас',
+    '{{pages}} sayfa resmi belge okundu, {{count}} kayıt ve kaynak kontrol edildi — tüm geçmiş, sizin için okundu',
+    'قرأنا {{pages}} صفحة من الوثائق الرسمية وفحصنا {{count}} سجلًا ومصدرًا — التاريخ كاملًا، مقروءًا من أجلك',
+    'קראנו {{pages}} עמודים של מסמכים רשמיים ובדקנו {{count}} רשומות ומקורות — כל ההיסטוריה, נקראה עבורכם',
+  ],
   vbi_scale_headline: [
     '{{count}} official records, documents and sources — the whole history, read for you',
     '{{count}} ოფიციალური ჩანაწერი, დოკუმენტი და წყარო — მთელი ისტორია, თქვენთვის წაკითხული',

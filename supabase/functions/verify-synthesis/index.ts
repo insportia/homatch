@@ -209,6 +209,17 @@ async function forCustomer(db: any, payload: Record<string, unknown>): Promise<R
   return signed.length ? { ...rest, officialVisuals: signed } : rest;
 }
 
+function officialDocumentPages(result: any): number {
+  let n = 0;
+  for (const r of Array.isArray(result?.browserOfficial?.results) ? result.browserOfficial.results : []) {
+    for (const d of Array.isArray(r?.documents) ? r.documents : []) {
+      const p = Number(d?.pagesRead ?? d?.pageCount);
+      if (Number.isFinite(p) && p > 0 && p < 2000) n += p;
+    }
+  }
+  return n;
+}
+
 /** What this verification reviewed, in counts a customer can read. */
 function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unknown> {
   const tas = pkg?.tas;
@@ -220,6 +231,9 @@ function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unkno
     officialCasesReviewed: tas?.coverage?.cases ?? 0,
     officialStepsReviewed: tas?.coverage?.motions ?? 0,
     officialAttachmentsRead: tas?.coverage?.attachmentsRead ?? 0,
+    // Real page counts only: TAS attachments read + every official document
+    // the browser workers opened (register extracts, company extracts …).
+    officialPagesRead: (tas?.coverage?.pagesRead ?? 0) + officialDocumentPages(job?.result_json),
     officialFactsConsolidated: Array.isArray(tas?.facts) ? tas.facts.length : 0,
     // The funnel: discovered → processed → retained → selected → shown.
     officialRecordsDiscovered: tas?.funnel?.discoveredDocuments ?? 0,

@@ -14,6 +14,8 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // HOMATCH Leads: "Premium" and "villa" are the Turkish words too; an area range is
   // digits and the m² unit in every Latin-script locale; "HOMATCH ID" is a column code.
   'hl_filter_premium', 'hl_segment_premium', 'hl_type_villa', 'hl_req_area_range', 'crm_csv_homatch_id', 'pc_property_ref', 'pc_feat_area', 'es_property_id',
+  // HOMATCH Leads Demo Mode: "HOMATCH Demo" is a source name and "{{n}} m²" is digits and the unit in Turkish too.
+  'demo_source_homatch_demo', 'demo_fact_area',
   // Find Buyers admin source network: "Platform" is the Turkish word too.
   'fbx_net_platform',
   // Find Property: Marketplace Search, Deep Search and Snake are product names, the same

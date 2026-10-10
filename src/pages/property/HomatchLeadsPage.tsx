@@ -6,10 +6,14 @@
 // Paged on the server; filters and sort live in the URL so Back/refresh keep them.
 // Opening the page also asks the matcher to evaluate this listing against every
 // active search now, and marks what the owner has seen (for "Fresh Matches").
+//
+// DEMO MODE (?demo=1): for the owner of the listing who is in the demo audience (the
+// server decides — owner_demo_lead_available), an entry card opens a simulated journey
+// with one fictional buyer in place of the feed. See components/leads/demo.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, Lock, Sparkles, Users } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, FlaskConical, Loader2, Lock, Sparkles, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -26,6 +30,8 @@ import { BTN_PRIMARY, BTN_SECONDARY, BTN_TERTIARY, chipClass, EYEBROW, SURFACE }
 import { formatCreditsLabel, LeadCard } from '@/components/leads/LeadCard';
 import { LeadDetailsDrawer } from '@/components/leads/LeadDetailsDrawer';
 import { UnlockDialog } from '@/components/leads/UnlockDialog';
+import { OwnerDemoJourney } from '@/components/leads/demo/OwnerDemoJourney';
+import { ownerDemoAvailable } from '@/services/ownerDemoLead';
 
 const FILTERS: Array<[LeadFilter, string]> = [
   ['ALL', 'hl_filter_all'], ['STRONG', 'hl_filter_strong'], ['POTENTIAL', 'hl_filter_potential'],
@@ -47,6 +53,10 @@ function HomatchLeadsContent() {
   const filter: LeadFilter = isFilter(params.get('filter')) ? params.get('filter') as LeadFilter : 'ALL';
   const sort: LeadSort = isSort(params.get('sort')) ? params.get('sort') as LeadSort : 'BEST';
   const page = Math.max(0, (Number.parseInt(params.get('page') ?? '1', 10) || 1) - 1);
+  const demoRequested = params.get('demo') === '1';
+  const [demoAvailable, setDemoAvailable] = useState(false);
+  const demoMode = demoRequested && demoAvailable;
+  const openedInDemo = useRef(demoRequested);
 
   const [feed, setFeed] = useState<LeadFeed | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,11 +88,29 @@ function HomatchLeadsContent() {
 
   useEffect(() => { void load(); }, [load]);
 
+  /* Demo Mode is offered only when the server says this caller may see it. */
+  useEffect(() => {
+    if (!propertyId) return;
+    let alive = true;
+    ownerDemoAvailable(propertyId).then((ok) => { if (alive) setDemoAvailable(ok); });
+    return () => { alive = false; };
+  }, [propertyId]);
+
+  const setDemo = useCallback((on: boolean) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (on) next.set('demo', '1'); else next.delete('demo');
+      return next;
+    });
+    window.scrollTo({ top: 0 });
+  }, [setParams]);
+
   /* Once per visit: re-evaluate this listing against every active search, and remember
      the visit after the first paint so this visit's fresh matches still show as fresh. */
   useEffect(() => {
     if (!propertyId) return;
-    requestLeadMatching(propertyId).catch(() => undefined);
+    /* The real matcher is not asked to run for a visit that opens straight into Demo Mode. */
+    if (!openedInDemo.current) requestLeadMatching(propertyId).catch(() => undefined);
     const timer = window.setTimeout(() => { markLeadsSeen(propertyId).catch(() => undefined); }, 4000);
     supabase.from('properties').select('title,homatch_id').eq('id', propertyId).maybeSingle()
       .then(({ data }) => {
@@ -123,7 +151,7 @@ function HomatchLeadsContent() {
 
   return (
     <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
-      <CustomerSurface className="pb-32">
+      <CustomerSurface className={demoMode ? 'pb-72' : 'pb-32'}>
         <div className="pt-4 sm:pt-5">
           <button type="button" className={cn(BTN_TERTIARY, '-ms-2 mb-2')} onClick={() => navigate(`/property/${propertyId}/matches`)}>
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('hl_back_to_find_buyers')}
@@ -132,6 +160,26 @@ function HomatchLeadsContent() {
           {propertyLabel ? <p className="mt-2 truncate text-xs font-medium text-[hsl(224_14%_30%)]">{propertyLabel}</p> : null}
         </div>
 
+        {demoAvailable && !demoMode ? (
+          <section className={cn(SURFACE, 'mt-4 flex flex-col gap-3 border-[hsl(328_60%_85%)] p-4 sm:flex-row sm:items-center sm:p-5')} data-testid="demo-entry" aria-labelledby="demo-entry-title">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[hsl(328_70%_95%)]">
+              <FlaskConical className="h-5 w-5 text-[hsl(328_70%_34%)]" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-2xs font-bold uppercase tracking-[0.16em] text-[hsl(328_70%_30%)]">{t('demo_entry_eyebrow')} · {t('demo_badge')}</p>
+              <h2 id="demo-entry-title" className="mt-0.5 font-display text-base font-semibold leading-snug">{t('demo_entry_title')}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-[hsl(224_14%_26%)]">{t('demo_entry_body')}</p>
+              <p className="mt-1 text-xs text-[hsl(224_14%_32%)]">{t('demo_entry_only_you')}</p>
+            </div>
+            <button type="button" className={cn(BTN_PRIMARY, 'sm:shrink-0')} onClick={() => setDemo(true)} data-testid="demo-start">
+              <FlaskConical className="h-4 w-4" aria-hidden="true" />{t('demo_entry_cta')}
+            </button>
+          </section>
+        ) : null}
+
+        {demoMode ? (
+          <OwnerDemoJourney propertyId={propertyId} propertyLabel={propertyLabel} onExit={() => setDemo(false)} />
+        ) : (<>
         {/* The introductory sales section — approved copy, both segments, one ranking. */}
         <section className={cn(SURFACE, 'mt-4 grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-6')} aria-labelledby="hl-intro">
           <div className="min-w-0">
@@ -220,10 +268,11 @@ function HomatchLeadsContent() {
               aria-label={t('hl_page_next')}><ChevronRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" /></button>
           </nav>
         ) : null}
+        </>)}
       </CustomerSurface>
 
       {/* Bulk Unlock: a summary bar above the mobile navigation, never behind it. */}
-      {selected.size > 0 ? (
+      {selected.size > 0 && !demoMode ? (
         <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 px-3 md:bottom-4" data-testid="bulk-bar">
           <div className={cn(SURFACE, 'mx-auto flex max-w-3xl flex-col gap-3 p-3 shadow-hover sm:flex-row sm:items-center sm:justify-between sm:p-4')}>
             <div className="min-w-0 text-sm">

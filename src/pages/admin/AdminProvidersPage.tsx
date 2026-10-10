@@ -22,6 +22,11 @@ const STATUS_CONFIG = {
   REAL_TEST_PASSED:      { labelKey: 'admin_providers_passed',         color: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400', icon: CheckCircle2 },
   ERROR:                 { labelKey: 'admin_providers_error',          color: 'bg-destructive/10 text-destructive',           icon: XCircle },
 };
+/* comm-provider-status writes its own vocabulary into the same table (HEALTHY / DEGRADED /
+   DOWN). They used to fall through to "Not configured", which hid a working provider. */
+const STATUS_ALIASES: Record<string, keyof typeof STATUS_CONFIG> = {
+  HEALTHY: 'REAL_TEST_PASSED', DEGRADED: 'CONFIGURED_UNVERIFIED', DOWN: 'ERROR',
+};
 
 /*
  * APIFY IS LIVE AGAIN (owner, 2026-10-04), for Find Buyers / Find Tenants
@@ -277,7 +282,7 @@ export default function AdminProvidersPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {loading ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-xl" />) :
           health.map(h => {
-            const cfg = STATUS_CONFIG[h.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.NOT_CONFIGURED;
+            const cfg = STATUS_CONFIG[(STATUS_ALIASES[h.status] ?? h.status) as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.NOT_CONFIGURED;
             const Icon = cfg.icon;
             const cost = costByProvider[h.provider];
             const successRate = h.success_count + h.failure_count > 0

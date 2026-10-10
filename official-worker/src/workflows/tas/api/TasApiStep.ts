@@ -4,6 +4,7 @@
 import type { EntityQueue } from '../../../entities/EntityQueue.js';
 import { recordTasRun } from '../implementation.js';
 import { acquireTasApi, toLegacyTasResult, type TasApiOptions } from './TasApiWorkflow.js';
+import { defaultPdfRendererFactory } from './pdfRender.js';
 
 export function tasApiOptionsFromEnv(env: Record<string, string | undefined> = process.env): TasApiOptions {
   const num = (k: string, d: number) => {
@@ -15,6 +16,10 @@ export function tasApiOptionsFromEnv(env: Record<string, string | undefined> = p
     concurrency: num('TAS_API_CONCURRENCY', 3),
     minGapMs: num('TAS_API_MIN_GAP_MS', 250),
     maxAttachmentDownloads: num('TAS_API_MAX_ATTACHMENT_DOWNLOADS', 500),
+    // Visual Property Intelligence: drawing pages rendered with the bundled
+    // pdf.js in headless Chromium (TAS_VISUAL_PAGE_RENDER=false turns it off).
+    visualBudgetMs: num('TAS_VISUAL_BUDGET_MS', 180_000),
+    renderPdfPages: defaultPdfRendererFactory(env),
   };
 }
 

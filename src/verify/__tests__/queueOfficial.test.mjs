@@ -110,3 +110,28 @@ test('research-agent wires QUEUE mode behind the admin flag and keeps LEGACY the
   const mig = readFileSync(new URL('../../../supabase/migrations/20261026090000_verify_durable_execution.sql', import.meta.url), 'utf8');
   assert.match(mig, /'verify_execution_mode', '"LEGACY"'::jsonb/);
 });
+
+test('stragglers: only retries (attempts > 1) left open is flagged, with the last finish time', () => {
+  const rows = [
+    row({ source: 'tas', dedupe_key: 'tas', state: 'SUCCEEDED', attempts: 1, started_at: '2026-10-10T16:13:08Z', finished_at: '2026-10-10T16:22:19Z', result: { source: 'tas', status: 'SEARCH_CONFIRMED', documents: [] } }),
+    row({ source: 'mygov', dedupe_key: 'mygov', state: 'RUNNING', attempts: 2, started_at: '2026-10-10T16:13:08Z' }),
+  ];
+  const v = queueWorkerView(rows);
+  assert.equal(v.status, 'RUNNING');
+  assert.equal(v.stragglersRetrying, true);
+  assert.equal(v.lastFinishedAt, '2026-10-10T16:22:19Z');
+  // A first attempt still running is real work in progress, not a straggler.
+  rows[1] = { ...rows[1], attempts: 1 };
+  assert.equal(queueWorkerView(rows).stragglersRetrying, false);
+  // Done is never "straggling".
+  rows[1] = { ...rows[1], state: 'SUCCEEDED', finished_at: '2026-10-10T16:24:00Z', result: { source: 'mygov', status: 'SEARCH_CONFIRMED' } };
+  assert.equal(queueWorkerView(rows).stragglersRetrying, false);
+});
+
+test('research-agent ends the official wait on retrying stragglers and keeps stored photos on that path', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../../supabase/functions/research-agent/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /w\.stragglersRetrying[\s\S]{0,200}OFFICIAL_STRAGGLER_GRACE_MS/);
+  const deadline = src.slice(src.indexOf("p.browserOfficial = {\n        ...(p.browserOfficial || {}),"));
+  assert.ok(deadline.slice(0, 900).includes('await collectOfficialVisuals(sb, w, p);'), 'past-deadline path collects visuals');
+});

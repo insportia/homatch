@@ -117,7 +117,7 @@ test('timeline is ordered by real dates, not document ids', () => {
   assert.ok(t.timeline.some((e) => e.kind === 'AMENDMENT' && e.date === '2023-06-01'));
 });
 
-test('participants: exact identity only, applicant never becomes owner, private applicants stay internal', () => {
+test('participants: exact identity only, applicant never becomes owner; verified private applicants are named in their role', () => {
   const t = buildTasIntelligence(report(), '2026-10-08T00:00:00Z');
   const arch = t.participants.filter((p) => p.roles.includes('ARCHITECT'));
   assert.equal(arch.length, 2, 'similar names are NOT merged');
@@ -127,7 +127,8 @@ test('participants: exact identity only, applicant never becomes owner, private 
   assert.equal(arch.find((p) => p.name === 'ნინო კაპანაძე-ბერიძე').current, true);
   const applicant = t.participants.find((p) => p.name === 'გიორგი ბერიძე');
   assert.deepEqual(applicant.roles, ['APPLICANT']);
-  assert.equal(applicant.customerVisible, false);
+  // Owner, 2026-10-10: verified private participants are named — as what the documents say they are.
+  assert.equal(applicant.customerVisible, true);
   assert.ok(!t.participants.some((p) => p.roles.includes('PARCEL_OWNER')));
   const org = t.participants.find((p) => p.organizationId === '405123456');
   assert.deepEqual(org.roles, ['CLIENT']);

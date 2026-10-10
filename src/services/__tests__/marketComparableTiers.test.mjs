@@ -16,9 +16,11 @@
 // sync whenever the real functions change.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // --- copied verbatim from supabase/functions/research-agent/index.ts ---
-const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT']);
+const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET']);
 function normalizeComparableTier(c) {
   if (VALID_COMPARABLE_TIERS.has(c?.comparableType)) return c.comparableType;
   if (c?.sameProject === true) return 'SAME_PROJECT';
@@ -59,6 +61,16 @@ for (const [label, tierFn] of [['backend normalizeComparableTier', normalizeComp
     assert.equal(tierFn(undefined), 'PEER_PROJECT');
   });
 }
+
+test('backend normalizeComparableTier: honest lane labels (SAME_DISTRICT / WIDER_MARKET) survive instead of becoming PEER_PROJECT (2026-10-10 market gate)', () => {
+  assert.equal(normalizeComparableTier({ comparableType: 'SAME_DISTRICT' }), 'SAME_DISTRICT');
+  assert.equal(normalizeComparableTier({ comparableType: 'WIDER_MARKET' }), 'WIDER_MARKET');
+});
+
+test('the backend copy above still matches research-agent', () => {
+  const src = readFileSync(join(process.cwd(), 'supabase/functions/research-agent/index.ts'), 'utf8');
+  assert.ok(src.includes("const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET']);"));
+});
 
 test('groupComparables: three tiers render as three ordered, non-empty-only groups, preserving each comparable\'s original order within its tier', () => {
   const list = [

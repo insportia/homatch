@@ -211,6 +211,14 @@ export function queueWorkerView(rows: QueueTaskRow[]): {
   runStartedAt: string | null;
   completedAt: string | null;
   sourceIndex: number;
+  /** When the most recent task finished (null while none has). */
+  lastFinishedAt: string | null;
+  /**
+   * Every unfinished task is a RETRY (attempts > 1): it already used a full
+   * lease once. Waiting for it costs a whole second run while the rest of
+   * the report sits ready.
+   */
+  stragglersRetrying: boolean;
 } {
   const sorted = [...rows].sort((a, b) =>
     (ORDER[a.source] ?? 10) - (ORDER[b.source] ?? 10) || String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')));
@@ -232,6 +240,8 @@ export function queueWorkerView(rows: QueueTaskRow[]): {
     runStartedAt: started[0] ?? null,
     completedAt: terminal ? finished[finished.length - 1] ?? null : null,
     sourceIndex: results.length,
+    lastFinishedAt: finished[finished.length - 1] ?? null,
+    stragglersRetrying: !terminal && rows.filter((r) => !TERMINAL_TASK_STATES.has(String(r.state))).every((r) => Number(r.attempts ?? 0) > 1),
   };
 }
 

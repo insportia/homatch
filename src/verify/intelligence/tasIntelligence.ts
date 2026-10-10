@@ -27,6 +27,12 @@
 // Everything here is internal. Document ids, attachment ids and hashes stay
 // in this structure for audit; none of it is customer prose.
 
+import { revalidateDecision, legalClaims, type LegalClaim } from './legalStatus.ts';
+import {
+  VISUAL_ASSET_MAX, categoryForScope, normalizeVisualCategory, normalizeVisualKind, resolveVisualScope, visualSubject,
+  type VisualAssetKind, type VisualCategory, type VisualScope,
+} from './visualAssets.ts';
+
 export type FactStatus = 'CURRENT' | 'SUPERSEDED' | 'HISTORICAL' | 'CONFLICTING';
 export type Materiality = 'HIGH' | 'MEDIUM' | 'LOW';
 export type FactBasis = 'DOCUMENTED_SPECIFICATION' | 'OFFICIAL_DECISION' | 'OFFICIAL_RECORD';
@@ -125,6 +131,8 @@ export interface TasFunnel {
   retainedEvents: number;
   milestones: number;
   visualsSelected: number;
+  /** Official visuals withheld because their case names a different parcel. */
+  visualsHidden?: number;
   incomplete: boolean;
   incompleteReasons: string[];
 }
@@ -161,10 +169,15 @@ export interface Participant {
   /** Appears in the most recent case that names anyone in this role. */
   current: boolean;
   /**
-   * Private individuals named only as applicants/owners/clients are kept
-   * internal; professionals and organisations may be named to a buyer.
+   * Owner, 2026-10-10: every VERIFIED participant is named to the buyer —
+   * private landowners and applicants included — with the documented role,
+   * building and dates. Only a name that fails cleaning is kept internal.
+   * Personal ID numbers and contact details never travel (stripped at the
+   * door by cleanParticipantName).
    */
   customerVisible: boolean;
+  /** Buildings/blocks of the cases that name this participant (when stated). */
+  blocks: string[];
 }
 
 export interface StoryChapter {
@@ -178,7 +191,19 @@ export interface StoryChapter {
 export interface VisualRef {
   id: string;
   role: 'LATEST_RENDER' | 'EARLIEST_RENDER' | 'SUPPORTING';
-  kind: string;
+  kind: VisualAssetKind;
+  /** Gallery tab. */
+  category: VisualCategory;
+  /** Identity against the requested unit (visualAssets.ts). Never UNRELATED_SUSPECT here: those are withheld. */
+  scope: Exclude<VisualScope, 'UNRELATED_SUSPECT'>;
+  block: string | null;
+  matchBasis: string;
+  /** 1-based page of a rendered drawing. */
+  page: number | null;
+  fileName: string | null;
+  mime: string | null;
+  confidence: number;
+  extraction: string | null;
   date: string | null;
   /** The chapter this visual explains, so the UI places it beside the story. */
   chapter: StoryChapter['key'] | null;
@@ -229,6 +254,8 @@ export interface TasIntelligence {
   /** The 5–10 events a buyer needs, chosen by relevance; never drops a negative decision. */
   milestoneIds: string[];
   funnel: TasFunnel;
+  /** Distinct legal states, each CONFIRMED / … / NOT_VERIFIED on its own evidence. */
+  legalClaims: LegalClaim[];
 }
 
 // ─────────────────────────────── helpers ───────────────────────────────
@@ -347,10 +374,75 @@ const NON_FACT_KEYS = new Set(['organization', 'idCode', 'buildingBlock', 'build
 const HEADER_WORD = /^(ფართობი|ფართი|რაოდენობა|მნიშვნელობა|დასახელება|ერთეული|სულ|area|value|name|unit|total|площадь|значение)$/i;
 const LAND_CATEGORY = /^(არა)?სასოფლო[\s-]*სამეურნეო$|^(non-?)?agricultural$|^(не)?сельскохозяйственн/i;
 export function acceptableValue(key: string, value: string): boolean {
-  const v = s(value).replace(/[.:;,]+$/, '');
-  if (!v || HEADER_WORD.test(v)) return false;
-  if (key === 'buildingFunction' && LAND_CATEGORY.test(v)) return false;
-  return true;
+  return cleanValue(key, value) !== null;
+}
+
+/*
+ * A FORM VALUE, CLEANED — OR NOTHING.
+ *
+ * The worker reads values out of scanned and layered PDFs. Owner live run
+ * 2026-10-10 (job 220ed087) showed what reaches a report unfiltered:
+ * "....ქმედებები: 1662.0", ";", "ან/და გაბარიტები." as building function and
+ * floors, and text printed twice by the PDF's own layers
+ * ("საცხოვრებელი ობიექტებისაცხოვრებელი ობიექტები"). A value is cleaned once
+ * (doubling, leaked label, stray punctuation) and must then look like a value
+ * of ITS matter; anything else is dropped rather than shown as history.
+ */
+const NUMERIC_KEYS = new Set(['floors', 'undergroundFloors', 'height', 'landArea', 'footprintArea', 'totalArea', 'residentialArea', 'commercialArea', 'units', 'K1', 'K2', 'K3', 'slabThickness', 'concreteVolume', 'maxStructuralSpan']);
+const BUILDING_USE = /საცხოვრებ|კომერცი|სავაჭრ|საოფის|ოფის|სასტუმრ|მრავალბინ|ერთბინ|შერეულ|ადმინისტრაც|საწარმო|სასაწყობ|სპორტ|საგანმანათლ|სამედიცინ|საზოგადოებრივ|residential|commercial|office|hotel|mixed|retail|warehouse|industrial|жил|коммерч|офис/i;
+const SENTENCE = /(?:^|\s)(?:უნდა|იქნას|შეიძლება|გაითვალისწინ|რადგან|რომელიც|თუ|ან\/და|წარმოადგენს|მეტი|ნაკლები)(?:\s|$|[.,;])/u;
+/** "XYZXYZ" or "XYZ XYZ" printed twice by a layered PDF → "XYZ". */
+export function undouble(v: string): string {
+  const t = v.replace(/\s+/g, ' ').trim();
+  for (const sep of ['', ' ']) {
+    const half = (t.length - sep.length) / 2;
+    if (Number.isInteger(half) && half >= 3 && t.slice(0, half) === t.slice(half + sep.length)) return t.slice(0, half);
+  }
+  // Word-level: "წარმოადგენსწარმოადგენს" inside a phrase.
+  return t.replace(/(\S{5,})\1/gu, "$1");
+}
+export function cleanValue(key: string, value: string): string | null {
+  let v = undouble(s(value)).replace(/^[>\s.…;:,·-]+/, '').replace(/[\s.:;,·-]+$/, '').trim();
+  // A label leaked in front ("მიზნობრივი დანიშნულება: X") — keep the value part only.
+  const leaked = /^[^:]{3,60}:\s*(.+)$/u.exec(v);
+  if (leaked && !/\d:\d/.test(v)) v = leaked[1].trim();
+  if (!v || (v.length < 2 && !(NUMERIC_KEYS.has(key) && /\d/.test(v))) || HEADER_WORD.test(v)) return null;
+  if (/[.…]{3,}|\t/.test(value) && v.length < 4) return null;
+  if (v.length > 90 || SENTENCE.test(` ${v} `)) return null;
+  if (NUMERIC_KEYS.has(key) && !/\d/.test(v)) return null;
+  if (key === 'buildingFunction') {
+    if (LAND_CATEGORY.test(v) || /მიზნობრივ|სასოფლო/i.test(v) || !BUILDING_USE.test(v) || /\d/.test(v)) return null;
+  }
+  if (key === 'buildingClass' && !/(?:^|\s|[^a-z])(I{1,3}|IV|V)(?:$|\s|[^a-z])|[1-5]/i.test(v)) return null;
+  return v;
+}
+
+/*
+ * A PARTICIPANT NAME, OR NOTHING.
+ *
+ * Form readers hand over whatever sat in the name cell: "დავით ლოსაბერიძე პ/ნ
+ * 0100…", a CV line ('"იმკ-91" მშენებელ-ინჟინერი. 2018 წლიდან …'), a fragment
+ * of a notarial clause ("ს - დავით ხ… სანოტარო წესით"). The report showed them
+ * as the project team (owner live run 2026-10-10). A name is kept only when it
+ * reads as a person (2–4 words, letters only) or an organisation in a legal
+ * form; personal ID numbers are never carried.
+ */
+const ORG_FORM = /(?:^|\s|[„"«])(შპს|სს|ი\/მ|ააიპ|სსიპ|ა\(ა\)იპ|კს|სპს|llc|ltd|jsc|inc|gmbh|ооо|ао)(?:\s|$|[„"«.])/iu;
+export function cleanParticipantName(raw: string): string | null {
+  let v = undouble(s(raw))
+    .replace(/\s*(?:პ\/ნ|პ\.ნ\.?|p\/n|ს\/კ|ს\.კ\.?|id)\s*:?\s*\d{8,11}/giu, '')
+    .replace(/\s*\(\d{9,11}\)\s*/g, ' ')
+    .replace(/[\t\s]+/g, ' ')
+    .replace(/^[\s\-–—:;,.]+|[\s\-–—:;,.]+$/g, '')
+    .trim();
+  if (!v || v.length < 4 || v.length > 70) return null;
+  if (SENTENCE.test(` ${v} `) || /წლიდან|დარგში|წესით|ექსპერტი|სპეციალისტი|სერტიფიკატ|\d{4}/u.test(v)) return null;
+  if (ORG_FORM.test(v)) return v;
+  // A person: 2–4 words of letters (Georgian, Latin or Cyrillic), each ≥ 2 letters.
+  const words = v.split(' ');
+  if (words.length < 2 || words.length > 4) return null;
+  if (!words.every((w) => /^[\p{L}][\p{L}'’-]{1,}$/u.test(w))) return null;
+  return v;
 }
 
 export function ruleFor(label: string): KeyRule | null {
@@ -460,7 +552,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
         parties: arr<any>(c.parties).map((p) => ({ role: s(p?.role), name: s(p?.name), kind: s(p?.kind), organizationId: p?.organizationId ?? null })),
         values: arr<any>(c.values).map((v) => ({ key: s(v?.key), label: s(v?.label) || null, value: s(v?.value) })),
         technicalFacts: tf.map((f) => ({ category: s(f?.category), key: s(f?.key), value: s(f?.value) })),
-        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? m.decision : null })),
+        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? revalidateDecision(m.decision) : null })),
         block,
       });
     }
@@ -502,6 +594,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     facts: [], timeline: [], participants: [], story: [], visuals: [], conflicts: [], currentFactIds: [],
     officialStatus: { state: 'NOT_ESTABLISHED', since: null, basis: null, validUntil: null, pending: [], conclusive: false, caveats: ['NO_DECISIONS_READ'] },
     milestoneIds: [],
+    legalClaims: legalClaims([]),
     funnel: { discoveredDocuments: 0, discoveredMotions: 0, discoveredAttachments: 0, processedResponses: 0, processedAttachments: 0, deferredAttachments: 0, retainedFacts: 0, retainedEvents: 0, milestones: 0, visualsSelected: 0, incomplete: false, incompleteReasons: [] },
   };
   if (!cases.length) return empty;
@@ -509,7 +602,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── facts: collect occurrences, then group by matter (key + block) ──
   type Occ = { rule: KeyRule | null; key: string; label: string; value: string; block: string | null; src: FactSource; category: TasFact['category']; materiality: Materiality; single: boolean };
   const occ: Occ[] = [];
-  const participantsRaw: Array<{ name: string; kind: string; organizationId: string | null; role: ParticipantRole; date: string | null; documentId: string | null }> = [];
+  const participantsRaw: Array<{ name: string; kind: string; organizationId: string | null; role: ParticipantRole; date: string | null; documentId: string | null; block?: string | null }> = [];
 
   for (const c of cases) {
     const src: FactSource = { documentId: c.documentId, caseRef: c.caseRef, date: c.date, label: c.title };
@@ -517,25 +610,27 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       if (!v.value) continue;
       const rule = ruleFor(v.label ?? v.key) ?? ruleFor(v.key);
       const key = rule?.key ?? `field:${valueIdentity(v.label ?? v.key).slice(0, 60)}`;
-      if (!acceptableValue(key, v.value)) continue;
-      occ.push({ rule, key, label: v.label ?? v.key, value: v.value, block: c.block, src, category: rule?.category ?? 'OTHER', materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
+      const cleaned = cleanValue(key, v.value);
+      if (cleaned === null) continue;
+      occ.push({ rule, key, label: v.label ?? v.key, value: cleaned, block: c.block, src, category: rule?.category ?? 'OTHER', materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const f of c.technicalFacts) {
       if (!f.value || NON_FACT_KEYS.has(f.key)) continue;
       const role = PERSON_FACT_ROLES[f.key];
       if (role) {
         // Values like "ნინო კაპანაძე" or "შპს X (405...)" — one participant per value.
-        participantsRaw.push({ name: f.value, kind: /შპს|სს|llc|ltd|jsc|ооо/i.test(f.value) ? 'ORGANIZATION' : 'UNKNOWN', organizationId: /\b(\d{9})\b/.exec(f.value)?.[1] ?? null, role, date: c.date, documentId: c.documentId });
+        participantsRaw.push({ name: f.value, kind: /შპს|სს|llc|ltd|jsc|ооо/i.test(f.value) ? 'ORGANIZATION' : 'UNKNOWN', organizationId: /\b(\d{9})\b/.exec(f.value)?.[1] ?? null, role, date: c.date, documentId: c.documentId, block: c.block });
         continue;
       }
       const rule = KEY_RULES.find((r) => r.key === f.key) ?? ruleFor(f.key);
       const key = rule?.key ?? `tf:${f.key}`;
-      if (!acceptableValue(key, f.value)) continue;
-      occ.push({ rule, key, label: rule?.key ?? f.key, value: f.value, block: c.block, src, category: rule?.category ?? (['PROJECT', 'PERMIT', 'STRUCTURAL', 'FOUNDATION', 'GEOTECHNICAL', 'MEP', 'LANDSCAPE', 'MATERIAL', 'REVISION'].includes(f.category) ? (f.category as TasFact['category']) : 'OTHER'), materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
+      const cleanedTf = cleanValue(key, f.value);
+      if (cleanedTf === null) continue;
+      occ.push({ rule, key, label: rule?.key ?? f.key, value: cleanedTf, block: c.block, src, category: rule?.category ?? (['PROJECT', 'PERMIT', 'STRUCTURAL', 'FOUNDATION', 'GEOTECHNICAL', 'MEP', 'LANDSCAPE', 'MATERIAL', 'REVISION'].includes(f.category) ? (f.category as TasFact['category']) : 'OTHER'), materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const p of c.parties) {
       if (!p.name) continue;
-      participantsRaw.push({ name: p.name, kind: p.kind || 'UNKNOWN', organizationId: p.organizationId ?? null, role: normalizeRole(p.role), date: c.date, documentId: c.documentId });
+      participantsRaw.push({ name: p.name, kind: p.kind || 'UNKNOWN', organizationId: p.organizationId ?? null, role: normalizeRole(p.role), date: c.date, documentId: c.documentId, block: c.block });
     }
   }
 
@@ -638,33 +733,37 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── participants: exact identity only ──
   const byIdentity = new Map<string, Participant & { _docs: Set<string> }>();
   let pid = 0;
-  for (const p of participantsRaw) {
+  for (const raw of participantsRaw) {
+    const name = cleanParticipantName(raw.name);
+    if (!name) continue;
+    const p = { ...raw, name, kind: raw.kind === 'UNKNOWN' && ORG_FORM.test(name) ? 'ORGANIZATION' : raw.kind };
     const n = normName(p.name);
     if (!n || n.length < 3) continue;
     const id = p.organizationId ? `org:${p.organizationId}` : `name:${n}`;
     let e = byIdentity.get(id);
     if (!e) {
       const kind = p.kind === 'ORGANIZATION' || p.organizationId ? 'ORGANIZATION' : p.kind === 'PERSON' ? 'PERSON' : 'UNKNOWN';
-      e = { id: `tp${++pid}`, name: p.name.replace(/\s*\(\d{9}\)\s*$/, '').trim(), kind, organizationId: p.organizationId, roles: [], firstSeen: p.date, lastSeen: p.date, cases: 0, current: false, customerVisible: true, _docs: new Set() };
+      e = { id: `tp${++pid}`, name: p.name.replace(/\s*\(\d{9}\)\s*$/, '').trim(), kind, organizationId: p.organizationId, roles: [], firstSeen: p.date, lastSeen: p.date, cases: 0, current: false, customerVisible: true, blocks: [], _docs: new Set() };
       byIdentity.set(id, e);
     }
     if (!e.roles.includes(p.role)) e.roles.push(p.role);
     if (p.date && (!e.firstSeen || p.date < e.firstSeen)) e.firstSeen = p.date;
     if (p.date && (!e.lastSeen || p.date > e.lastSeen)) e.lastSeen = p.date;
     if (p.documentId) e._docs.add(p.documentId);
+    if (p.block && !e.blocks.includes(p.block)) e.blocks.push(p.block);
   }
   const participants: Participant[] = [];
   const latestByRole = new Map<ParticipantRole, string>();
   for (const e of byIdentity.values())
     for (const r of e.roles) if (e.lastSeen && (!latestByRole.get(r) || e.lastSeen > latestByRole.get(r)!)) latestByRole.set(r, e.lastSeen);
-  const PRIVATE_ONLY: ParticipantRole[] = ['APPLICANT', 'CO_APPLICANT', 'PARCEL_OWNER', 'CLIENT', 'OTHER'];
   for (const e of byIdentity.values()) {
     const { _docs, ...rest } = e;
     participants.push({
       ...rest,
       cases: _docs.size,
       current: e.roles.some((r) => !!e.lastSeen && latestByRole.get(r) === e.lastSeen),
-      customerVisible: !(e.kind !== 'ORGANIZATION' && e.roles.every((r) => PRIVATE_ONLY.includes(r))),
+      // A name that survived cleaning is a verified name; only an unknown-role person stays internal.
+      customerVisible: !(e.kind !== 'ORGANIZATION' && e.roles.every((r) => r === 'OTHER')),
     });
   }
   participants.sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '') || a.name.localeCompare(b.name));
@@ -677,8 +776,29 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── story chapters ──
   const story = buildStory(timeline, facts, nowIso);
 
-  // ── visuals: linked to the nearest dated event and its chapter ──
-  const visuals: VisualRef[] = arr<any>(r0.officialVisuals ?? api?.visuals).slice(0, 4).map((v) => {
+  // ── visuals: identity against the requested unit, then linked to the
+  //    nearest dated event and its chapter. Bounded (VISUAL_ASSET_MAX). ──
+  const apiVisuals = new Map<string, any>(arr<any>(api?.visuals).filter((v) => v && v.id).map((v) => [s(v.id), v]));
+  const unit = obj(r0.exactUnit);
+  const tasRes = tasResults(report).find((t) => t?.tasApi) ?? tasResults(report)[0];
+  const subject = visualSubject(
+    s(unit.cadastralCode ?? unit.code) || s(tasRes?.originalCadastralCode) || s(api?.requestedCadastralCode) || s(api?.searchCadastralCode),
+    { unitNumber: unit.unitNumber ?? unit.apartmentNumber, floor: unit.floor },
+  );
+  let visualsHidden = 0;
+  const visuals: VisualRef[] = [];
+  for (const v0 of arr<any>(r0.officialVisuals ?? api?.visuals)) {
+    if (visuals.length >= VISUAL_ASSET_MAX) break;
+    const id = s(v0?.id);
+    if (!/^[a-f0-9]{64}$/.test(id)) continue;
+    // Stored records may predate the identity fields: the worker record fills them.
+    const v = { ...(apiVisuals.get(id) ?? {}), ...v0, identity: v0?.identity ?? apiVisuals.get(id)?.identity ?? null };
+    const kind = normalizeVisualKind(v.kind);
+    const { scope, block, matchBasis } = resolveVisualScope(kind, v.identity, subject);
+    if (scope === 'UNRELATED_SUSPECT') {
+      visualsHidden++;
+      continue;
+    }
     const d = day(v?.date);
     let nearest: TimelineEvent | null = null;
     if (d)
@@ -687,13 +807,21 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
         if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(d)))) nearest = e;
       }
     const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' ? 'TODAY' : null;
-    return {
-      id: s(v?.id), role: v?.role ?? 'SUPPORTING', kind: s(v?.kind) || 'OTHER_DRAWING', date: d, chapter, eventId: nearest?.id ?? null,
+    visuals.push({
+      id, role: v?.role === 'LATEST_RENDER' || v?.role === 'EARLIEST_RENDER' ? v.role : 'SUPPORTING', kind,
+      category: categoryForScope(kind, normalizeVisualCategory(v.category, kind), scope),
+      scope, block, matchBasis,
+      page: Number(v.page) > 0 ? Number(v.page) : null,
+      fileName: s(v.fileName) || null,
+      mime: s(v.mime) || null,
+      confidence: Number.isFinite(Number(v.confidence)) ? Number(v.confidence) : 0.5,
+      extraction: s(v.extraction) || null,
+      date: d, chapter, eventId: nearest?.id ?? null,
       width: v?.width ?? null, height: v?.height ?? null,
       versionStatus: visualVersionStatus(s(v?.documentId) || null, timeline),
       documentId: s(v?.documentId) || null, attachedFileId: s(v?.attachedFileId) || null,
-    };
-  }).filter((v) => /^[a-f0-9]{64}$/.test(v.id));
+    });
+  }
 
   // ── coverage (truthful, from the worker's own accounting) ──
   const acc = obj(api?.accounting);
@@ -729,6 +857,14 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     currentFactIds: facts.filter((f) => f.status === 'CURRENT' || f.status === 'CONFLICTING').map((f) => f.id),
     officialStatus,
     milestoneIds,
+    legalClaims: legalClaims(timeline.map((e) => {
+      const kc = cases.find((c) => c.documentId === e.documentId);
+      return {
+        date: e.date, caseRef: e.caseRef, block: kc?.block ?? null,
+        decision: e.decision ? { number: e.decision.number, outcome: e.decision.outcome, evidence: e.decision.evidence } : null,
+        serviceText: kc ? [kc.docType, kc.title].filter(Boolean).join(' · ') : null,
+      };
+    })),
     funnel: {
       discoveredDocuments: Number(obj(api?.ledger).discovered?.documents ?? cases.length) || cases.length,
       discoveredMotions: Number(obj(api?.ledger).discovered?.motions ?? coverage.motions) || 0,
@@ -740,6 +876,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       retainedEvents: timeline.length,
       milestones: milestoneIds.length,
       visualsSelected: visuals.length,
+      visualsHidden,
       incomplete: obj(api?.ledger).incomplete === true,
       incompleteReasons: arr<string>(obj(api?.ledger).incompleteReasons).map(String),
     },
@@ -819,7 +956,7 @@ export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso
     arr<any>(c?.motions).some((m) => {
       const kind = s(m?.response);
       if (kind !== 'PDF' && kind !== 'HTML' && kind !== 'OTHER') return false;
-      const outcome = s(obj(m?.decision).outcome);
+      const outcome = s(obj(revalidateDecision(obj(m?.decision))).outcome);
       if (outcome && outcome !== 'UNDETERMINED') return false;
       const d = day(m?.date);
       return !b || !d || d > b.date;
@@ -1006,7 +1143,7 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
   const team = intel.participants.filter((p) => p.customerVisible);
   if (team.length) {
     push('PROJECT PARTICIPANTS (roles as the documents state them; applicant ≠ owner):', true);
-    for (const p of team) push(`- ${p.name}: ${p.roles.join(', ')}${p.current ? ' (latest documents)' : ` (historical, last ${p.lastSeen ?? 'n/a'})`}`, false);
+    for (const p of team) push(`- ${p.name}: ${p.roles.join(', ')}${p.blocks.length ? ` [building ${p.blocks.join('/')}]` : ''}${p.current ? ' (latest documents)' : ` (historical, last ${p.lastSeen ?? 'n/a'})`}`, false);
   }
   if (arcF || arcE) push(`ARCHIVED (lower-importance, available on request): ${arcF} fact(s), ${arcE} event(s). Archived ≠ absent.`, true);
   return { text: lines.join('\n'), includedFacts: incF, archivedFacts: arcF, includedEvents: incE, archivedEvents: arcE };
@@ -1029,7 +1166,15 @@ export interface OfficialHistoryView {
   evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
   funnel: TasFunnel;
   visuals: Array<{ id: string; versionStatus: VisualRef['versionStatus'] }>;
-  team?: Array<{ name: string; kind: Participant['kind']; roles: ParticipantRole[]; lastSeen: string | null }>;
+  team?: Array<{ name: string; kind: Participant['kind']; roles: ParticipantRole[]; firstSeen: string | null; lastSeen: string | null; blocks: string[] }>;
+  /**
+   * Related milestones told as one step ("the design was amended four times,
+   * 2022–2024") — the individual records stay in `milestones` for the
+   * expandable timeline.
+   */
+  milestoneGroups?: Array<{ kind: EventKind; outcome: DecisionOutcome | null; firstDate: string; lastDate: string; count: number; decisionNumbers: string[] }>;
+  /** Distinct legal states and what establishes each. */
+  legal?: LegalClaim[];
 }
 
 /**
@@ -1050,29 +1195,58 @@ export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView
     })
     .slice(0, 8);
   const st = intel.officialStatus;
+  // A milestone must SAY something: an unread or undetermined decision with no
+  // step name is a reference number, not a step of the story (owner live run
+  // 2026-10-10: ten rows of "№ 6030016AR1897963 · № 6030016").
+  const milestones = intel.milestoneIds.map((id) => byId.get(id)).filter(Boolean)
+    .map((e) => ({
+      date: e!.date, kind: e!.kind, title: e!.title.slice(0, 160), caseRef: e!.caseRef, decisionNumber: e!.decision?.number ?? null,
+      outcome: e!.decision && e!.decision.outcome !== 'UNDETERMINED' && e!.decision.outcome !== 'INFORMATIONAL' ? e!.decision.outcome : null,
+    }))
+    .filter((m) => m.outcome || m.kind !== 'OTHER');
   return {
     status: {
       state: st.state, since: st.since, caseRef: st.basis?.caseRef ?? null, decisionNumber: st.basis?.decisionNumber ?? null,
       validUntil: st.validUntil, conclusive: st.conclusive, caveats: st.caveats, pendingCount: st.pending.length,
     },
-    milestones: intel.milestoneIds.map((id) => byId.get(id)).filter(Boolean).map((e) => ({
-      date: e!.date, kind: e!.kind, title: e!.title.slice(0, 160), caseRef: e!.caseRef, decisionNumber: e!.decision?.number ?? null,
-      outcome: e!.decision && e!.decision.outcome !== 'UNDETERMINED' ? e!.decision.outcome : null,
-    })),
+    milestones,
+    milestoneGroups: groupMilestones(milestones),
+    legal: intel.legalClaims,
     evolution,
     funnel: intel.funnel,
     visuals: intel.visuals.map((v) => ({ id: v.id, versionStatus: v.versionStatus })),
     // The professionals the municipal documents name — never applicants or
     // private parcel owners (owner, 2026-10-10: "who designed and built it").
+    // Everyone the documents name in a verified role — professionals, the
+    // developer, AND landowners / applicants / clients by name (owner,
+    // 2026-10-10) — with the building and dates their role applies to.
     team: intel.participants
-      // Organisations named in any other capacity count too (owner,
-      // 2026-10-10: "others mentioned for other purposes") — but never a
-      // private person outside a professional role.
-      .filter((p) => p.roles.some((r) => TEAM_ROLES.has(r)) || (p.kind === 'ORGANIZATION' && p.roles.includes('OTHER')))
-      .slice(0, 24)
-      .map((p) => ({ name: p.name, kind: p.kind, roles: p.roles.some((r) => TEAM_ROLES.has(r)) ? p.roles.filter((r) => TEAM_ROLES.has(r)) : (['OTHER'] as ParticipantRole[]), lastSeen: p.lastSeen })),
+      .filter((p) => p.customerVisible && (p.roles.some((r) => TEAM_ROLES.has(r) || OWNERSHIP_ROLES.has(r)) || (p.kind === 'ORGANIZATION' && p.roles.includes('OTHER'))))
+      .slice(0, 30)
+      .map((p) => {
+        const roles = p.roles.filter((r) => TEAM_ROLES.has(r) || OWNERSHIP_ROLES.has(r));
+        return { name: p.name, kind: p.kind, roles: roles.length ? roles : (['OTHER'] as ParticipantRole[]), firstSeen: p.firstSeen, lastSeen: p.lastSeen, blocks: p.blocks };
+      }),
   };
 }
+
+/** Consecutive milestones of the same kind and outcome, as one step of the story. */
+export function groupMilestones(ms: Array<{ date: string; kind: EventKind; outcome: DecisionOutcome | null; decisionNumber: string | null }>): NonNullable<OfficialHistoryView['milestoneGroups']> {
+  const out: NonNullable<OfficialHistoryView['milestoneGroups']> = [];
+  for (const m of [...ms].sort((a, b) => a.date.localeCompare(b.date))) {
+    const last = out[out.length - 1];
+    if (last && last.kind === m.kind && last.outcome === m.outcome) {
+      last.lastDate = m.date;
+      last.count++;
+      if (m.decisionNumber && !last.decisionNumbers.includes(m.decisionNumber)) last.decisionNumbers.push(m.decisionNumber);
+    } else {
+      out.push({ kind: m.kind, outcome: m.outcome, firstDate: m.date, lastDate: m.date, count: 1, decisionNumbers: m.decisionNumber ? [m.decisionNumber] : [] });
+    }
+  }
+  return out;
+}
+
+const OWNERSHIP_ROLES = new Set<ParticipantRole>(['PARCEL_OWNER', 'APPLICANT', 'CO_APPLICANT', 'CLIENT']);
 
 const TEAM_ROLES = new Set<ParticipantRole>([
   'DEVELOPER', 'ARCHITECT', 'CO_ARCHITECT', 'STRUCTURAL_ENGINEER', 'GEOTECHNICAL_SPECIALIST', 'EXPERT_REVIEW',

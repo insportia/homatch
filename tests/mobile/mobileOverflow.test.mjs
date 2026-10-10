@@ -435,6 +435,15 @@ test('the verification report has no horizontal overflow at real phone widths', 
         const s = getComputedStyle(el);
         // An element that scrolls on purpose is a solution, not a defect.
         if (s.overflowX === 'auto' || s.overflowX === 'scroll') continue;
+        // …and so is its content: chips scrolled out of a horizontal scroller
+        // (the report's chapter nav) are reachable by scrolling, not overflow.
+        // The scroller itself is still measured above, and so is the page.
+        let inScroller = false;
+        for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+          const ox = getComputedStyle(a).overflowX;
+          if (ox === 'auto' || ox === 'scroll') { inScroller = true; break; }
+        }
+        if (inScroller) continue;
         if (r.right > vw + 1 || r.left < -1) {
           offenders.push({
             tag: el.tagName,

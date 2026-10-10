@@ -151,10 +151,12 @@ test('smooth: each part slides between its cells; a new part grows out of the ol
   assert.deepEqual(between(prev, next, 7), next, 'clamped');
 });
 
-test('pace: an easy start, a gentle rise with the score, calmer with reduced motion, never frantic', () => {
-  assert.ok(tickMs(0, false) >= 220, 'casual at the start');
+test('pace: brisk from the start, quickening with every point, calmer with reduced motion, capped', () => {
+  assert.ok(tickMs(0, false) <= 170, 'brisk at the start (owner 2026-10-10: faster)');
+  assert.ok(tickMs(0, false) >= 140, 'still a fair first second');
   assert.ok(tickMs(10, false) < tickMs(0, false));
-  assert.ok(tickMs(20, false) >= 170, 'a gentle rise');
+  assert.ok(tickMs(20, false) <= 90, 'properly quick by 20');
   assert.ok(tickMs(0, true) > tickMs(0, false));
-  assert.ok(tickMs(1000, false) >= 120);
+  assert.equal(tickMs(1000, false), 80, 'capped: playable on a phone');
+  assert.ok(tickMs(1000, true) >= 150, 'reduced motion never races');
 });

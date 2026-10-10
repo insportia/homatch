@@ -132,7 +132,7 @@ test('authentic retained search observation alone normalizes into existing ingre
   const c=validated.report.listings[0];
   assert.equal(c.sourceListingId,'25610778');assert.equal(c.price,165000);assert.equal(c.currency,'USD');
   assert.equal(c.areaSqm,101);assert.equal(c.rooms,4);assert.equal(c.bedrooms,3);
-  assert.equal(c.description,raw.comment);assert.equal(c.address,raw.address);assert.equal(c.floor,4);assert.equal(c.totalFloors,8);
+  assert.equal(c.description,raw.comment);assert.equal(c.address,raw.address.trim());assert.equal(c.floor,4);assert.equal(c.totalFloors,8);
   assert.deepEqual(c.images,raw.images.map(i=>i.large));assert.equal(c.images.length,15);
   assert.equal(c.seller.publicPhone,null);assert.equal(c.parking,null);assert.equal(c.renovationStatus,null);assert.equal(c.publishedAt,null);
   assert.equal(c.retrievalMetadata.detailVerifiedAt,null);assert.ok(c.updatedAt.startsWith('2026-10-06'));

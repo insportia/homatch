@@ -243,3 +243,70 @@ export function adsViewFromCostRecord(resultJson: unknown, record: AdsCostRecord
     result: resultJson,
   });
 }
+
+
+/* ───────────────────────── 4. who designed and built it ───────────────────────── */
+
+/*
+ * THE PROJECT TEAM (owner, 2026-10-10): architect, constructor, builder,
+ * landscape designer, supervision — from the municipal documents first
+ * (officialHistory.team), then what public research credits by name.
+ * Official names win; the same name is listed once with all its roles.
+ */
+export type TeamRole =
+  | 'DEVELOPER' | 'ARCHITECT' | 'CO_ARCHITECT' | 'STRUCTURAL_ENGINEER' | 'GEOTECHNICAL_SPECIALIST' | 'EXPERT_REVIEW'
+  | 'TECHNICAL_SUPERVISOR' | 'CONTRACTOR' | 'MEP_ENGINEER' | 'LANDSCAPE_ARCHITECT' | 'FIRE_SAFETY' | 'SURVEYOR'
+  | 'INTERIOR_DESIGNER' | 'OTHER';
+
+export interface ProjectTeamMember {
+  name: string;
+  roles: TeamRole[];
+  /** OFFICIAL: named in the municipal (TAS) documents. PUBLIC: credited in public sources. */
+  basis: 'OFFICIAL' | 'PUBLIC';
+  /** Free text role when public research named one we do not map. */
+  roleText?: string | null;
+}
+
+const TEAM_ROLE_WORDS: Array<[RegExp, TeamRole]> = [
+  [/ლანდშაფტ|landscape|ландшафт/i, 'LANDSCAPE_ARCHITECT'],
+  [/ინტერიერ|interior|интерьер/i, 'INTERIOR_DESIGNER'],
+  [/კონსტრუქტ|structural|конструкт/i, 'STRUCTURAL_ENGINEER'],
+  [/ზედამხედველ|supervis|надзор/i, 'TECHNICAL_SUPERVISOR'],
+  [/გეოტექ|geotech|геотех/i, 'GEOTECHNICAL_SPECIALIST'],
+  [/არქიტექტ|architect|архитект|bureau|ბიურო/i, 'ARCHITECT'],
+  [/მშენებ|contractor|builder|general|подряд|строит/i, 'CONTRACTOR'],
+  [/დეველოპ|developer|девелоп/i, 'DEVELOPER'],
+];
+
+export function teamRoleOf(text: string): TeamRole {
+  for (const [re, role] of TEAM_ROLE_WORDS) if (re.test(text)) return role;
+  return 'OTHER';
+}
+
+export function projectTeamFrom(result: unknown, officialTeam: Array<{ name: string; roles: string[] }> | null | undefined): ProjectTeamMember[] {
+  const r = obj(result);
+  const project = obj(r.projectProfile);
+  const out = new Map<string, ProjectTeamMember>();
+  const key = (n: string) => n.toLowerCase().replace(/["'«»„“”]/g, '').replace(/\s+/g, ' ').trim();
+  const add = (name: unknown, role: TeamRole, basis: ProjectTeamMember['basis'], roleText: string | null = null) => {
+    const n = typeof name === 'string' ? name.replace(/\s+/g, ' ').trim() : '';
+    if (n.length < 2 || n.length > 120) return;
+    const k = key(n);
+    const prev = out.get(k);
+    if (prev) {
+      if (!prev.roles.includes(role)) prev.roles.push(role);
+      if (basis === 'OFFICIAL') prev.basis = 'OFFICIAL';
+      return;
+    }
+    out.set(k, { name: n, roles: [role], basis, ...(roleText && role === 'OTHER' ? { roleText } : {}) });
+  };
+  for (const m of officialTeam ?? []) for (const role of m.roles) add(m.name, role as TeamRole, 'OFFICIAL');
+  for (const m of Array.isArray(project.designTeam) ? project.designTeam : []) {
+    const role = typeof m?.role === 'string' ? m.role : '';
+    add(m?.name, teamRoleOf(role), 'PUBLIC', role || null);
+  }
+  if (typeof project.architect === 'string') add(project.architect, 'ARCHITECT', 'PUBLIC');
+  for (const c of Array.isArray(project.contractors) ? project.contractors : []) add(c, 'CONTRACTOR', 'PUBLIC');
+  // The developer is shown in its own sections; here only the professionals.
+  return [...out.values()].filter((m) => !(m.roles.length === 1 && m.roles[0] === 'DEVELOPER')).slice(0, 16);
+}

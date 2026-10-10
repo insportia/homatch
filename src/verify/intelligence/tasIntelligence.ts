@@ -1008,6 +1008,7 @@ export interface OfficialHistoryView {
   evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
   funnel: TasFunnel;
   visuals: Array<{ id: string; versionStatus: VisualRef['versionStatus'] }>;
+  team?: Array<{ name: string; kind: Participant['kind']; roles: ParticipantRole[]; lastSeen: string | null }>;
 }
 
 /**
@@ -1040,5 +1041,16 @@ export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView
     evolution,
     funnel: intel.funnel,
     visuals: intel.visuals.map((v) => ({ id: v.id, versionStatus: v.versionStatus })),
+    // The professionals the municipal documents name — never applicants or
+    // private parcel owners (owner, 2026-10-10: "who designed and built it").
+    team: intel.participants
+      .filter((p) => p.roles.some((r) => TEAM_ROLES.has(r)))
+      .slice(0, 16)
+      .map((p) => ({ name: p.name, kind: p.kind, roles: p.roles.filter((r) => TEAM_ROLES.has(r)), lastSeen: p.lastSeen })),
   };
 }
+
+const TEAM_ROLES = new Set<ParticipantRole>([
+  'DEVELOPER', 'ARCHITECT', 'CO_ARCHITECT', 'STRUCTURAL_ENGINEER', 'GEOTECHNICAL_SPECIALIST', 'EXPERT_REVIEW',
+  'TECHNICAL_SUPERVISOR', 'CONTRACTOR', 'MEP_ENGINEER', 'LANDSCAPE_ARCHITECT', 'FIRE_SAFETY', 'SURVEYOR',
+]);

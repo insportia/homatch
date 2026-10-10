@@ -19,10 +19,11 @@
  * reading of them. The model is handed the result as fact; finalize and the
  * read path (reconcile*) remove prose that contradicts it.
  *
- * PRIVACY. A private owner is described as a private person — never by name,
- * never by personal number. A company owner is named (a registered company's
- * name is public business information and the buyer needs it). Bank and
- * company identification codes are public. Representatives are never read.
+ * PRIVACY. The owner is named as the public extract names them (owner,
+ * 2026-10-10: the buyer must know who is registered as owner — a NAPR
+ * extract is a public document). A private person's 11-digit personal
+ * number never leaves the parser. Bank and company identification codes are
+ * public. Representatives are never read.
  */
 
 import { decodeGeorgianLegacy } from './georgianLegacyText.ts';
@@ -45,7 +46,7 @@ export interface RegisterMortgage {
 
 export interface RegisterOwner {
   kind: 'PERSON' | 'COMPANY';
-  /** Only for a company. A private person is never named here. */
+  /** As printed in the extract. A private person's personal number is never kept. */
   name?: string;
   companyId?: string;
 }
@@ -203,7 +204,9 @@ function parseOwners(text: string): RegisterOwner[] {
         const name = squash(line.replace(/,?\s*(?:ს\/ნ|ს\/კ|ID\/N)\s*:?\s*\d{9}\s*$/, '').replace(/\d{9}\s*$/, '')).replace(/,$/, '');
         return { kind: 'COMPANY', name: name || undefined, ...(id ? { companyId: id } : {}) };
       }
-      return { kind: 'PERSON' };
+      // "სახელი გვარი ,P/N: 01001012345" → the name only.
+      const name = squash(line.replace(/,?\s*(?:P\/N|პ\/ნ)\s*:?\s*\d{11}.*$/, '').replace(/\d{11}.*$/, '')).replace(/,$/, '');
+      return name && /\p{L}/u.test(name) ? { kind: 'PERSON', name } : { kind: 'PERSON' };
     })
     .slice(0, 12);
 }
@@ -248,20 +251,12 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
 }
 
 /**
- * Document text safe to hand a model: decoded, with private persons'
- * names and 11-digit personal numbers removed. A private owner becomes
- * "ფიზიკური პირი"; a representative's name and number are withheld. Company
- * names and 9-digit company codes are public and stay.
+ * Document text safe to hand a model: decoded, with 11-digit personal
+ * numbers removed and representatives withheld. Owner names stay (the
+ * extract is public); company names and 9-digit codes are public too.
  */
 export function redactRegisterText(rawText: string): string {
-  let text = decodeGeorgianLegacy(String(rawText ?? ''));
-  const ownersBody = section(text, /მესაკუთრეები\s*:\s*\n/, [/\nმესაკუთრე\s*:/, L_MORTGAGE, L_TAX]) ?? '';
-  const names = ownersBody
-    .split('\n')
-    .map((l) => l.match(/^\s*(.+?)\s*,?\s*(?:P\/N|პ\/ნ)\s*:?\s*\d{11}/)?.[1]?.replace(/,$/, '').trim())
-    .filter((n): n is string => !!n && n.length > 2);
-  for (const name of names) text = text.split(name).join('ფიზიკური პირი');
-  return text
+  return decodeGeorgianLegacy(String(rawText ?? ''))
     .replace(/(?:P\/N|პ\/ნ)\s*:?\s*\d{11}/g, 'P/N: —')
     .replace(/(წარმომადგენელი\s*:?)[^\n]*/g, '$1 —')
     .replace(/\(\s*\d{11}\s*\)/g, '(—)')
@@ -430,7 +425,7 @@ export function registerModelFacts(reg: PropertyRegister | null): Record<string,
   const l = reg.latest;
   return {
     extractIssuedAt: l.issuedAt,
-    owners: l.owners.map((o) => (o.kind === 'PERSON' ? 'a private individual (name withheld)' : `${o.name ?? 'a company'}${o.companyId ? ` (${o.companyId})` : ''}`)),
+    owners: l.owners.map((o) => (o.kind === 'PERSON' ? `${o.name ?? 'a private individual'} (private individual)` : `${o.name ?? 'a company'}${o.companyId ? ` (${o.companyId})` : ''}`)),
     ownershipRegisteredOn: l.ownershipRegisteredOn,
     ownershipBasis: l.ownershipBasis,
     mortgagesRegisteredOnThisUnit: reg.currentMortgages,
@@ -449,7 +444,7 @@ export function registerPromptFacts(reg: PropertyRegister | null): string {
   if (!facts || !reg?.latest) return '';
   const l = reg.latest;
   return `\nPROPERTY REGISTER — AUTHORITATIVE (parsed from the NAPR extract HOMATCH retrieved; state "as of ${l.issuedAt?.slice(0, 10)}"): ${JSON.stringify(facts)}
-These facts are settled. Never contradict them, never call the owner anything else, never say a termination "does not specify" which mortgage ended when mortgagesRemovedBeforeThisExtract names it, and never ask the buyer to obtain an extract as if none had been read — at most suggest a fresh extract on the signing day to confirm nothing changed after ${l.issuedAt?.slice(0, 10)}. A company's own pledge is a company obligation; a mortgage listed above is on this apartment. "NONE" means the extract states nothing is registered. Never name a private owner.\n`;
+These facts are settled. Never contradict them, never call the owner anything else, never say a termination "does not specify" which mortgage ended when mortgagesRemovedBeforeThisExtract names it, and never ask the buyer to obtain an extract as if none had been read — at most suggest a fresh extract on the signing day to confirm nothing changed after ${l.issuedAt?.slice(0, 10)}. A company's own pledge is a company obligation; a mortgage listed above is on this apartment. "NONE" means the extract states nothing is registered. Name the owner exactly as listed (never a personal number).\n`;
 }
 
 /* ───────────────────────── reconciliation ───────────────────────── */

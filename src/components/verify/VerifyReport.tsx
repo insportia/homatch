@@ -75,9 +75,9 @@ import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
-import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav, ExecutiveGlance } from './BuyerIntelligenceCards';
+import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav, ExecutiveGlance, ProjectTeamCard, ResearchScaleBanner, MarketListingsCard } from './BuyerIntelligenceCards';
 import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
-import type { CompanyFinanceView, MarketContextView } from '@/verify/intelligence/reportGaps';
+import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
 import { splitCitations, hasDistance } from '@/verify/citations';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -228,6 +228,7 @@ export interface VerifySynthesis {
   propertyRegister?: PropertyRegister | null;
   /** The developer's financial position from what was actually checked. */
   companyFinance?: CompanyFinanceView | null;
+  projectTeam?: ProjectTeamMember[] | null;
   /** A reused market snapshot, when the run gathered no comparables of its own. */
   marketContext?: MarketContextView | null;
 }
@@ -430,6 +431,12 @@ export function VerifyReport({
       </div>
 
       {/* The decision in four facts, each linked to the section behind it. */}
+      <ResearchScaleBanner
+        coverage={synthesis.research}
+        register={synthesis.propertyRegister?.coverage ?? null}
+        adsSeen={synthesis.developerAds ? (synthesis.developerAds.activeCount ?? 0) + (synthesis.developerAds.historicalCount ?? 0) : null}
+        sources={(synthesis.evidenceGroups ?? []).reduce((n: number, g: any) => n + (Array.isArray(g?.items) ? g.items.length : 0), 0) || null}
+      />
       <ExecutiveGlance register={synthesis.propertyRegister} finance={synthesis.companyFinance} market={synthesis.market ? null : synthesis.marketContext} />
 
       {/* A. WHAT THE PROPERTY'S OWN REGISTER SAYS — owner, mortgages, liens,
@@ -452,6 +459,9 @@ export function VerifyReport({
         <CompanyIntelligenceCard company={company} rights={rights} />
       </div>
       <CompanyFinanceCard finance={synthesis.companyFinance} />
+
+      {/* Who designed, engineered and built it (owner, 2026-10-10). */}
+      <ProjectTeamCard team={synthesis.projectTeam} />
 
       {/* MARKET — a range HOMATCH already held, when this run gathered no
           comparables of its own (the full market section renders instead
@@ -484,6 +494,7 @@ export function VerifyReport({
           {s.metrics?.length ? <Metrics metrics={s.metrics} /> : null}
           <Prose text={s.body} />
           {s.key === 'MARKET' && synthesis.market ? <PriceBar m={synthesis.market} /> : null}
+          {s.key === 'MARKET' && synthesis.market ? <MarketListingsCard market={synthesis.market as never} /> : null}
           {s.key === 'PEOPLE' && people.length ? (
             <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
           ) : null}
@@ -593,7 +604,9 @@ export function VerifyReport({
           than from a second paragraph of generated prose. */}
       <BuyerBottomLine
         finalView={clean(r.finalView)}
-        highlights={r.summary?.highlights ?? []}
+        // The highlights already open the report; repeating them here was the
+        // owner's "the same thing many times" (2026-10-10).
+        highlights={[]}
         openQuestions={[]}
         clean={clean}
       />

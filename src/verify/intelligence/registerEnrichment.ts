@@ -25,7 +25,7 @@ import { buildBuyerChecklist } from './buyerChecklist.ts';
 import { buildCompanyIntelligence } from './companyIntelligence.ts';
 import { ownerFromRegister } from './bundle.ts';
 import { acceptableValue } from './tasIntelligence.ts';
-import { marketContextFrom, companyFinanceFrom, adsViewFromCostRecord } from './reportGaps.ts';
+import { marketContextFrom, companyFinanceFrom, adsViewFromCostRecord, projectTeamFrom } from './reportGaps.ts';
 import type { AdsCostRecord } from './reportGaps.ts';
 
 export interface EnrichmentContext {
@@ -68,6 +68,10 @@ function withRecoveredSections<T extends Record<string, any>>(payload: T, result
   if (!out.market && out.marketContext === undefined) {
     const mc = marketContextFrom(resultJson, ctx.completedAt ?? null);
     if (mc) out.marketContext = mc;
+  }
+  if (out.projectTeam === undefined) {
+    const team = projectTeamFrom(resultJson, out.officialHistory?.team ?? null);
+    if (team.length) (out as any).projectTeam = team;
   }
   if (out.companyFinance === undefined) {
     try {

@@ -18,7 +18,8 @@
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection, Row, RowList, StatusPill } from './ui';
 import type { PropertyRegister, RegisterMortgage, RegisterState, ProceedingKind } from '@/verify/intelligence/propertyRegister';
-import type { CompanyFinanceView, MarketContextView } from '@/verify/intelligence/reportGaps';
+import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
+import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
 
 /** First-strong isolates keep a date or number in reading order inside RTL text. */
 const iso = (s: string): string => `⁦${s}⁩`;
@@ -71,7 +72,6 @@ export function PropertyRegisterCard({ register }: { register?: PropertyRegister
   if (!register || !latest) return null;
   const asOf = dmy(latest.issuedAt);
   const owners = latest.owners ?? [];
-  const privateOwner = owners.length > 0 && owners.every((o) => o.kind === 'PERSON');
   const since = dmy(latest.ownershipRegisteredOn);
   const proceedings = (register.proceedings ?? []).slice(-12);
 
@@ -87,9 +87,8 @@ export function PropertyRegisterCard({ register }: { register?: PropertyRegister
         {owners.length ? (
           <Row label={t('vbi_reg_owner')}>
             <span className="font-medium">
-              {privateOwner
-                ? t(owners.length > 1 ? 'vbi_reg_owner_persons' : 'vbi_reg_owner_person')
-                : owners.map((o) => (o.kind === 'COMPANY' ? o.name : t('vbi_reg_owner_person'))).filter(Boolean).join(', ')}
+              {/* As the public extract names them (owner, 2026-10-10). */}
+              {owners.map((o) => o.name ?? (o.kind === 'PERSON' ? t('vbi_reg_owner_person') : '')).filter(Boolean).join(', ')}
             </span>
             {since ? (
               <span className="block text-xs text-muted-foreground">
@@ -188,6 +187,9 @@ export function CompanyFinanceCard({ finance }: { finance?: CompanyFinanceView |
             <StatusPill tone={finance.debtorRegistry.state === 'NO_ENTRY' ? 'confirmed' : 'risk'}>
               {t(finance.debtorRegistry.state === 'NO_ENTRY' ? 'vbi_fin_debtor_none' : 'vbi_fin_debtor_listed')}
             </StatusPill>
+            {finance.debtorRegistry.state === 'NO_ENTRY' ? (
+              <span className="block mt-1.5 text-sm leading-6 text-foreground/80 break-words">{t('vbi_fin_debtor_none_explain')}</span>
+            ) : null}
             {dmy(finance.debtorRegistry.checkedOn) ? (
               <span className="block mt-1 text-xs text-muted-foreground">{t('vbi_fin_checked', { date: iso(dmy(finance.debtorRegistry.checkedOn)!) })}</span>
             ) : null}
@@ -203,12 +205,15 @@ export function CompanyFinanceCard({ finance }: { finance?: CompanyFinanceView |
                 </li>
               ))}
             </ul>
-            <span className="block mt-1 text-xs leading-5 text-muted-foreground">{t('vbi_fin_pledge_note')}</span>
+            <span className="block mt-1.5 text-sm leading-6 text-foreground/80 break-words">{t('vbi_fin_pledge_explain')}</span>
           </Row>
         ) : null}
 
         {finance.liquidationRegistered === false ? (
-          <Row label={t('vbi_fin_liquidation')}><StatusPill tone="confirmed">{t('vbi_fin_liquidation_none')}</StatusPill></Row>
+          <Row label={t('vbi_fin_liquidation')}>
+            <StatusPill tone="confirmed">{t('vbi_fin_liquidation_none')}</StatusPill>
+            <span className="block mt-1.5 text-sm leading-6 text-foreground/80 break-words">{t('vbi_fin_liquidation_none_explain')}</span>
+          </Row>
         ) : finance.liquidationRegistered === true ? (
           <Row label={t('vbi_fin_liquidation')}><StatusPill tone="risk">{t('vbi_fin_liquidation_registered')}</StatusPill></Row>
         ) : null}
@@ -226,6 +231,7 @@ export function CompanyFinanceCard({ finance }: { finance?: CompanyFinanceView |
             {finance.taxStatus.registeredOn ? (
               <span className="block mt-1 text-xs text-muted-foreground">{t('vbi_fin_tax_registered', { date: iso(dmy(finance.taxStatus.registeredOn) ?? finance.taxStatus.registeredOn) })}</span>
             ) : null}
+            <span className="block mt-1.5 text-sm leading-6 text-foreground/80 break-words">{t('vbi_fin_tax_explain')}</span>
             <span className="block mt-1 text-xs text-muted-foreground">{t('vbi_fin_tax_checked', { date: iso(dmy(finance.taxStatus.checkedOn) ?? '—') })}</span>
           </Row>
         ) : null}
@@ -354,12 +360,11 @@ export function ExecutiveGlance({
   if (latest) {
     const asOf = dmy(latest.issuedAt);
     const owners = latest.owners ?? [];
-    const privateOwner = owners.length > 0 && owners.every((o) => o.kind === 'PERSON');
     if (owners.length) {
       tiles.push({
         key: 'owner',
         label: t('vbi_glance_owner'),
-        value: privateOwner ? t('vbi_reg_owner_person') : owners.map((o) => o.name).filter(Boolean).join(', '),
+        value: owners.map((o) => o.name ?? (o.kind === 'PERSON' ? t('vbi_reg_owner_person') : '')).filter(Boolean).join(', '),
         note: dmy(latest.ownershipRegisteredOn) ? t('vbi_reg_owner_since', { date: iso(dmy(latest.ownershipRegisteredOn)!) }) : undefined,
         tone: 'quiet',
         href: '#vbi-register',
@@ -421,5 +426,147 @@ export function ExecutiveGlance({
         ))}
       </ul>
     </section>
+  );
+}
+
+
+/* ───────────────────────── Project team ───────────────────────── */
+
+const TEAM_ROLE_KEY: Record<string, string> = {
+  ARCHITECT: 'vbi_team_role_architect', CO_ARCHITECT: 'vbi_team_role_co_architect', STRUCTURAL_ENGINEER: 'vbi_team_role_structural',
+  GEOTECHNICAL_SPECIALIST: 'vbi_team_role_geotechnical', EXPERT_REVIEW: 'vbi_team_role_expert', TECHNICAL_SUPERVISOR: 'vbi_team_role_supervisor',
+  CONTRACTOR: 'vbi_team_role_contractor', MEP_ENGINEER: 'vbi_team_role_mep', LANDSCAPE_ARCHITECT: 'vbi_team_role_landscape',
+  FIRE_SAFETY: 'vbi_team_role_fire', SURVEYOR: 'vbi_team_role_surveyor', INTERIOR_DESIGNER: 'vbi_team_role_interior', DEVELOPER: 'vbi_team_role_developer',
+};
+
+/** Who designed, engineered and built the project — official names first. */
+export function ProjectTeamCard({ team }: { team?: ProjectTeamMember[] | null }) {
+  const { t } = useLanguage();
+  const list = (team ?? []).filter((m) => m.name);
+  if (!list.length) return null;
+  return (
+    <VerifySection id="vbi-team" eyebrow={t('vbi_team_eyebrow')} title={t('vbi_team_title')} subtitle={t('vbi_team_subtitle')}>
+      <RowList>
+        {list.map((m) => (
+          <Row
+            key={m.name}
+            label={m.roles.map((r) => (TEAM_ROLE_KEY[r] ? t(TEAM_ROLE_KEY[r]) : m.roleText || t('vbi_team_role_other'))).join(' · ')}
+          >
+            <span className="font-medium break-words" dir="auto">{m.name}</span>
+            {m.basis === 'OFFICIAL' ? <span className="block text-xs text-muted-foreground">{t('vbi_team_official')}</span> : null}
+          </Row>
+        ))}
+      </RowList>
+    </VerifySection>
+  );
+}
+
+/* ───────────────────────── How much was read ───────────────────────── */
+
+/*
+ * THE SCALE OF THE WORK, AT THE TOP (owner, 2026-10-10: "19 checked" read as
+ * if we had looked at little — the run reads hundreds of pages). Every figure
+ * is a count the run itself recorded; nothing is estimated.
+ */
+export function ResearchScaleBanner({
+  coverage,
+  register,
+  adsSeen,
+  sources,
+}: {
+  coverage?: { officialCasesReviewed?: number; officialAttachmentsRead?: number; officialStepsReviewed?: number; marketListingsAnalyzed?: number } | null;
+  register?: { documents?: number; found?: number } | null;
+  adsSeen?: number | null;
+  sources?: number | null;
+}) {
+  const { t } = useLanguage();
+  const items: Array<{ key: string; n: number }> = [];
+  const add = (key: string, n?: number | null) => {
+    if (n && n > 0) items.push({ key, n });
+  };
+  add('vbi_scale_cases', coverage?.officialCasesReviewed);
+  add('vbi_scale_documents', (coverage?.officialAttachmentsRead ?? 0) + (register?.documents ?? 0));
+  add('vbi_scale_steps', coverage?.officialStepsReviewed);
+  add('vbi_scale_registry', register?.found);
+  add('vbi_scale_listings', coverage?.marketListingsAnalyzed);
+  add('vbi_scale_ads', adsSeen);
+  add('vbi_scale_sources', sources);
+  const total = items.reduce((a, b) => a + b.n, 0);
+  if (total < 1 || items.length < 2) return null;
+  return (
+    <section aria-label={t('vbi_scale_title')} className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/40 p-5 space-y-3">
+      <p className="text-2xs uppercase tracking-wider text-[hsl(var(--gold-ink))]">{t('vbi_scale_title')}</p>
+      <p className="text-lg font-semibold leading-snug break-words">{t('vbi_scale_headline', { count: iso(String(total)) })}</p>
+      <dl className="flex flex-wrap gap-2">
+        {items.map((i) => (
+          <div key={i.key} className="min-w-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs">
+            <dt className="inline text-muted-foreground">{t(i.key)}: </dt>
+            <dd className="inline font-semibold tabular-nums">{iso(String(i.n))}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+
+/* ───────────────────────── The microlocation market ───────────────────────── */
+
+const TIER_KEY: Record<string, string> = {
+  SAME_PROJECT: 'verify_mkt_same_project', SAME_STREET: 'verify_mkt_same_street', SAME_DISTRICT: 'verify_mkt_same_district',
+  PEER_PROJECT: 'verify_mkt_peer_project', WIDER_MARKET: 'verify_mkt_wider_market',
+};
+
+/*
+ * WHAT IS FOR SALE AROUND IT, AND FOR HOW MUCH (owner, 2026-10-10).
+ * The bands narrowest-first (same project → street → district → city), then
+ * the closest listings themselves. Asking prices, never sale prices; no
+ * links in the primary report (the evidence explorer owns URLs).
+ */
+export function MarketListingsCard({ market }: { market?: MarketIntelligence | null }) {
+  const { t, lang } = useLanguage();
+  if (!market || !market.count) return null;
+  const cur = market.currency || 'USD';
+  const listings = (market.ranked?.length ? market.ranked : market.closest ?? []).slice(0, 8);
+  return (
+    <VerifySection id="vbi-market-listings" eyebrow={t('vbi_mkt_list_eyebrow')} title={t('vbi_mkt_list_title')} subtitle={t('vbi_mkt_list_subtitle', { count: iso(String(market.count)) })}>
+      {market.tiers?.length ? (
+        <RowList>
+          {market.tiers.map((b) => (
+            <Row key={b.tier} label={`${t(TIER_KEY[b.tier] ?? 'verify_mkt_wider_market')} · ${iso(String(b.count))}`}>
+              <span className="font-medium tabular-nums">{iso(`${money(b.median, lang)} ${cur}/m²`)}</span>
+              <span className="block text-xs text-muted-foreground tabular-nums">{iso(`${money(b.min, lang)} – ${money(b.max, lang)} ${cur}/m²`)}</span>
+            </Row>
+          ))}
+        </RowList>
+      ) : null}
+      {listings.length ? (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead>
+              <tr className="text-start text-xs text-muted-foreground">
+                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_where')}</th>
+                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_area')}</th>
+                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_floor')}</th>
+                <th className="py-2 pe-3 text-start font-medium">{t('vbi_mkt_col_price')}</th>
+                <th className="py-2 text-start font-medium">{t('vbi_mkt_col_sqm')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {listings.map((c, i) => (
+                <tr key={i}>
+                  <td className="py-2 pe-3">{t(TIER_KEY[c.tier] ?? 'verify_mkt_wider_market')}</td>
+                  <td className="py-2 pe-3 tabular-nums">{c.area ? iso(`${c.area} m²`) : '—'}{c.rooms ? <span className="text-muted-foreground"> · {iso(String(c.rooms))} {t('vbi_mkt_rooms')}</span> : null}</td>
+                  <td className="py-2 pe-3 tabular-nums">{c.floor ? iso(String(c.floor)) : '—'}</td>
+                  <td className="py-2 pe-3 tabular-nums">{c.totalPrice ? iso(`${money(c.totalPrice, lang)} ${c.currency || cur}`) : '—'}</td>
+                  <td className="py-2 tabular-nums font-medium">{iso(`${money(c.pricePerSqm, lang)} ${c.currency || cur}`)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <p className="mt-3 text-xs leading-5 text-muted-foreground break-words">{t('vbi_mkt_list_note')}</p>
+    </VerifySection>
   );
 }

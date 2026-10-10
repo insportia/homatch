@@ -66,7 +66,7 @@ export function classifySourceResult(r: Record<string, any>, unattendedSkips: Re
 
   // An automatic verification that was attempted and failed is CAPTCHA_FAILED,
   // with its precise reason; one never attempted stays CAPTCHA_REQUIRED.
-  const attempted = arr(r.captchaResolution).map(obj).filter((c) => Number(c.attempts) > 0).at(-1);
+  const attempted = arr(r.captchaResolution).map(obj).filter((c) => Number(c.attempts) > 0).slice(-1)[0];
   const gated = status === 'WAITING_HUMAN' || status === 'SKIPPED_HUMAN_VERIFICATION' || (status === 'BLOCKED' && (r.captcha || r.captchaRequired));
   if (gated && attempted && ['REJECTED', 'TIMEOUT', 'UNSOLVABLE', 'PROVIDER_ERROR'].includes(str(attempted.outcome)))
     return out(evidenceCount ? 'PARTIAL' : 'CAPTCHA_FAILED', `AUTO_${str(attempted.outcome)}`);

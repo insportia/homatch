@@ -60,7 +60,7 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
     }
     return Response.json(payload);
   };
-  return { pages,reports,fetcher,run: (overrides={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r)}) };
+  return { pages,reports,fetcher,run: (overrides={},options={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r),...options}) };
 }
 
 test('public Next fixtures confirm exact filters, pagination and detail identity', () => {
@@ -174,6 +174,20 @@ test('a live record with no canonical URL does not truncate pagination or invent
 });
 test('repeated pages report PARTIAL and preserve ingested results',async()=>{const s=simulated({repeated:true});const result=await s.run();assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,24);assert.equal(s.reports.at(-1).errors[0].code,'REPEATED_PAGE');});
 test('unexpected empty page cannot be reported as complete',async()=>{const s=simulated({emptyPage:2});assert.equal((await s.run()).status,'PARTIAL');assert.equal(s.reports.at(-1).errors[0].code,'EMPTY_PAGE');});
+test('restart resumes only an acknowledged page for the exact same source queries', async () => {
+  const interrupted = simulated({ emptyPage: 2 });
+  await interrupted.run();
+  const first = interrupted.reports.find((r) => r.status === 'RESULTS_RECEIVED');
+  assert.equal(first.queryApplied.nextPage, 2);
+  const resumed = simulated();
+  const result = await resumed.run({}, { checkpoint: { queryApplied: first.queryApplied, returnedCount: 24 } });
+  assert.deepEqual(resumed.pages, [2,3,4,5,6]);
+  assert.equal(result.delivered, 139); assert.equal(result.status, 'COMPLETE');
+  const changed = simulated();
+  await changed.run({}, { checkpoint: { queryApplied: { ...first.queryApplied, requests: ['changed filter'] }, returnedCount: 24 } });
+  assert.deepEqual(changed.pages, [1,2,3,4,5,6], 'changed dictionaries/criteria never reuse a stale cursor');
+});
+
 test('access denied is not bypassed or silently converted into empty success',async()=>{const s=simulated({failPage:1});assert.equal((await s.run()).status,'BLOCKED');assert.deepEqual(s.pages,[1]);});
 test('zero inventory is a legitimate complete result',async()=>{const s=simulated({lastPage:0,total:0});assert.equal((await s.run()).status,'COMPLETE');assert.equal(s.reports.at(-1).returnedCount,0);});
 test('count metadata must be authoritative and sane',()=>{assert.throws(()=>parsePagination({result:true,data:{page:2,last_page:6,total:139}},1));assert.throws(()=>parsePagination({result:true,data:{page:1,last_page:0,total:3}},1));});

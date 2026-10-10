@@ -4,11 +4,15 @@ import type { MarketplaceSearchRequest, MarketplaceWorkerResult, ExternalListing
 import { endpoints, publicJson, parsePagination, parseListEnvelope, validateSearchListings, AcquisitionError } from './api.js';
 import { buildQueries, candidateFromMyHome } from './mapping.js';
 import { publicPage, publicSearchUrl } from './public-page.js';
+import { MyHomeEngine, myHomeEngine } from './engine.js';
 
 export class MyHomeFailure extends Error { constructor(public code: string, message: string, public retryable = false) { super(message); } }
-export type AdapterOptions = { fetcher?: typeof fetch; pageFetcher?: typeof fetch; browserMs?: () => number; deadlineAt: string; signal?: AbortSignal;
+export type AdapterOptions = { fetcher?: typeof fetch; pageFetcher?: typeof fetch; browserMs?: () => number; deadlineAt: string; signal?: AbortSignal; engine?: MyHomeEngine;
+  checkpoint?: { queryApplied?: Record<string, unknown>; returnedCount?: number };
   report: (result: MarketplaceWorkerResult & { retryable?: boolean }) => Promise<void> };
 export async function acquireMyHome(request: MarketplaceSearchRequest, options: AdapterOptions) {
+  // Injected fixtures may use an isolated policy. Production shares durable state.
+  const engine = options.engine ?? (options.fetcher ? new MyHomeEngine() : myHomeEngine);
   const started = Date.now(), startedAt = new Date(started).toISOString();
   const deadline = Date.parse(options.deadlineAt);
   const seenIds = new Set<string>(), seenUuids = new Set<string>();
@@ -22,15 +26,19 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
   }
   async function json(url: string, locale = 'ka', page = false, statementId?: string): Promise<any> {
     for (let attempt = 0; ; attempt++) {
-      remaining(); actions++;
+      remaining();
       try {
         const fetcher: typeof fetch = (input, init) => (page ? options.pageFetcher ?? options.fetcher ?? fetch : options.fetcher ?? fetch)(input, { ...init,
           signal: AbortSignal.any([AbortSignal.timeout(Math.min(20000, deadline - Date.now() - 10000)), ...(options.signal ? [options.signal] : [])]) });
-        return (page ? await publicPage(url, fetcher, statementId) : await publicJson(url, locale, fetcher)).payload;
+        return await engine.dictionary(url, locale, async () => {
+          actions++;
+          return (page ? await publicPage(url, fetcher, statementId) : await publicJson(url, locale, fetcher)).payload;
+        });
       } catch (error) {
         const e = error as AcquisitionError;
         const retryable = error instanceof AcquisitionError && (e.status === null || e.status === 408 || e.status === 429 || (e.status !== null && e.status >= 500));
-        if (!retryable || attempt >= 2) throw new MyHomeFailure(e.status === 403 ? 'ACCESS_DENIED' : 'SOURCE_REQUEST_FAILED', e.message, retryable);
+        if (!retryable || attempt >= 2) throw new MyHomeFailure(e.category === 'ACCESS_RESTRICTED' ? 'ACCESS_DENIED'
+          : e.category === 'CONTRACT' ? 'SOURCE_CONTRACT_CHANGED' : 'SOURCE_REQUEST_FAILED', e.message, retryable);
         await delay(500 * 2 ** attempt, undefined, { signal: options.signal });
       }
     }
@@ -45,10 +53,17 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
     await options.report(result); delivered += listings.length;
   };
   try {
+    await engine.ready();
     const locations = await json(endpoints.locations, 'en'), filters = await json(endpoints.filters);
     const queries = buildQueries(request, locations, filters);
     queriesApplied.requests = queries.map(query => query.url);
+    const saved = options.checkpoint?.queryApplied;
+    const resume = saved && JSON.stringify(saved.requests) === JSON.stringify(queriesApplied.requests)
+      && Number.isSafeInteger(saved.queryIndex) && Number(saved.queryIndex) >= 0 && Number(saved.queryIndex) < queries.length
+      && Number.isSafeInteger(saved.nextPage) && Number(saved.nextPage) >= 1 ? saved : null;
+    if (resume) delivered = Math.max(0, Math.trunc(options.checkpoint?.returnedCount ?? 0));
     for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
+      if (resume && queryIndex < Number(resume.queryIndex)) continue;
       currentQuery = queryIndex; const query = queries[queryIndex];
       const countUrl = new URL(query.url); countUrl.pathname += '/count';
       const pagination = parsePagination(await json(countUrl.href), 1);
@@ -56,7 +71,9 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
       const fingerprints = new Set<string>();
       // No maxPages/maxResults acquisition cap: only authoritative last_page and
       // the pre-existing HOMATCH run deadline bound this loop.
-      for (let page = 1; page <= Math.max(1, pagination.last_page); page++) {
+      const firstPage = resume && queryIndex === Number(resume.queryIndex) && Number(resume.nextPage) <= Math.max(1, pagination.last_page) + 1
+        ? Number(resume.nextPage) : 1;
+      for (let page = firstPage; page <= Math.max(1, pagination.last_page); page++) {
         nextPage = page; remaining();
         const url = new URL(query.url); url.searchParams.set('page', String(page));
         const searchUrl = publicSearchUrl(url.href);
@@ -107,7 +124,6 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
           candidates.push(...group.filter((candidate): candidate is ExternalListingCandidate => candidate !== null));
         }
         newRows.forEach(row => { seenIds.add(row.source_id); if (row.source_uuid) seenUuids.add(row.source_uuid); });
-        nextPage = page + 1;
         // A page is normally 24 rows. Split by encoded bytes as well as count so
         // exceptionally long public descriptions cannot breach the ingest limit.
         let batch: ExternalListingCandidate[] = [], bytes = 0;
@@ -116,15 +132,19 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
           if (batch.length && (bytes + size > 1200000 || batch.length >= 100)) { await report('RESULTS_RECEIVED', batch); batch = []; bytes = 0; }
           batch.push(candidate); bytes += size;
         }
-        if (batch.length) await report('RESULTS_RECEIVED', batch);
+        // Only the final acknowledged batch advances the durable page cursor.
+        // Earlier failure replays this page through identity-based upserts.
+        nextPage = page + 1;
+        await report('RESULTS_RECEIVED', batch);
       }
     }
     const status = unavailableUrls ? 'PARTIAL' : 'COMPLETE';
     await report(status, [], unavailableUrls ? [{ code: 'SOURCE_URL_UNAVAILABLE', message: `${unavailableUrls} source records have no canonical URL; IDs: ${unavailableIds.join(',')}. All pagination traversed.` }] : []);
     return { status, pagesVisited, delivered };
   } catch (error) {
-    const e = error instanceof MyHomeFailure ? error : new MyHomeFailure('ACQUISITION_FAILED', error instanceof Error ? error.message : String(error));
-    const status = delivered ? 'PARTIAL' : e.code === 'DEADLINE' ? 'TIMED_OUT' : e.code === 'ACCESS_DENIED' ? 'BLOCKED' : 'FAILED';
+    const e = error instanceof MyHomeFailure ? error : error instanceof AcquisitionError && error.category === 'ACCESS_RESTRICTED'
+      ? new MyHomeFailure('ACCESS_DENIED', error.message) : new MyHomeFailure('ACQUISITION_FAILED', error instanceof Error ? error.message : String(error));
+    const status = delivered || (options.checkpoint?.returnedCount ?? 0) > 0 ? 'PARTIAL' : e.code === 'DEADLINE' ? 'TIMED_OUT' : e.code === 'ACCESS_DENIED' ? 'BLOCKED' : 'FAILED';
     await report(status, [], [{ code: e.code, message: e.message.slice(0, 1000) }], e.retryable && !delivered);
     return { status, pagesVisited, delivered };
   }

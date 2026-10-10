@@ -163,10 +163,15 @@ export interface Participant {
   /** Appears in the most recent case that names anyone in this role. */
   current: boolean;
   /**
-   * Private individuals named only as applicants/owners/clients are kept
-   * internal; professionals and organisations may be named to a buyer.
+   * Owner, 2026-10-10: every VERIFIED participant is named to the buyer —
+   * private landowners and applicants included — with the documented role,
+   * building and dates. Only a name that fails cleaning is kept internal.
+   * Personal ID numbers and contact details never travel (stripped at the
+   * door by cleanParticipantName).
    */
   customerVisible: boolean;
+  /** Buildings/blocks of the cases that name this participant (when stated). */
+  blocks: string[];
 }
 
 export interface StoryChapter {
@@ -579,7 +584,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── facts: collect occurrences, then group by matter (key + block) ──
   type Occ = { rule: KeyRule | null; key: string; label: string; value: string; block: string | null; src: FactSource; category: TasFact['category']; materiality: Materiality; single: boolean };
   const occ: Occ[] = [];
-  const participantsRaw: Array<{ name: string; kind: string; organizationId: string | null; role: ParticipantRole; date: string | null; documentId: string | null }> = [];
+  const participantsRaw: Array<{ name: string; kind: string; organizationId: string | null; role: ParticipantRole; date: string | null; documentId: string | null; block?: string | null }> = [];
 
   for (const c of cases) {
     const src: FactSource = { documentId: c.documentId, caseRef: c.caseRef, date: c.date, label: c.title };
@@ -596,7 +601,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       const role = PERSON_FACT_ROLES[f.key];
       if (role) {
         // Values like "ნინო კაპანაძე" or "შპს X (405...)" — one participant per value.
-        participantsRaw.push({ name: f.value, kind: /შპს|სს|llc|ltd|jsc|ооо/i.test(f.value) ? 'ORGANIZATION' : 'UNKNOWN', organizationId: /\b(\d{9})\b/.exec(f.value)?.[1] ?? null, role, date: c.date, documentId: c.documentId });
+        participantsRaw.push({ name: f.value, kind: /შპს|სს|llc|ltd|jsc|ооо/i.test(f.value) ? 'ORGANIZATION' : 'UNKNOWN', organizationId: /\b(\d{9})\b/.exec(f.value)?.[1] ?? null, role, date: c.date, documentId: c.documentId, block: c.block });
         continue;
       }
       const rule = KEY_RULES.find((r) => r.key === f.key) ?? ruleFor(f.key);
@@ -607,7 +612,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     }
     for (const p of c.parties) {
       if (!p.name) continue;
-      participantsRaw.push({ name: p.name, kind: p.kind || 'UNKNOWN', organizationId: p.organizationId ?? null, role: normalizeRole(p.role), date: c.date, documentId: c.documentId });
+      participantsRaw.push({ name: p.name, kind: p.kind || 'UNKNOWN', organizationId: p.organizationId ?? null, role: normalizeRole(p.role), date: c.date, documentId: c.documentId, block: c.block });
     }
   }
 
@@ -720,26 +725,27 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     let e = byIdentity.get(id);
     if (!e) {
       const kind = p.kind === 'ORGANIZATION' || p.organizationId ? 'ORGANIZATION' : p.kind === 'PERSON' ? 'PERSON' : 'UNKNOWN';
-      e = { id: `tp${++pid}`, name: p.name.replace(/\s*\(\d{9}\)\s*$/, '').trim(), kind, organizationId: p.organizationId, roles: [], firstSeen: p.date, lastSeen: p.date, cases: 0, current: false, customerVisible: true, _docs: new Set() };
+      e = { id: `tp${++pid}`, name: p.name.replace(/\s*\(\d{9}\)\s*$/, '').trim(), kind, organizationId: p.organizationId, roles: [], firstSeen: p.date, lastSeen: p.date, cases: 0, current: false, customerVisible: true, blocks: [], _docs: new Set() };
       byIdentity.set(id, e);
     }
     if (!e.roles.includes(p.role)) e.roles.push(p.role);
     if (p.date && (!e.firstSeen || p.date < e.firstSeen)) e.firstSeen = p.date;
     if (p.date && (!e.lastSeen || p.date > e.lastSeen)) e.lastSeen = p.date;
     if (p.documentId) e._docs.add(p.documentId);
+    if (p.block && !e.blocks.includes(p.block)) e.blocks.push(p.block);
   }
   const participants: Participant[] = [];
   const latestByRole = new Map<ParticipantRole, string>();
   for (const e of byIdentity.values())
     for (const r of e.roles) if (e.lastSeen && (!latestByRole.get(r) || e.lastSeen > latestByRole.get(r)!)) latestByRole.set(r, e.lastSeen);
-  const PRIVATE_ONLY: ParticipantRole[] = ['APPLICANT', 'CO_APPLICANT', 'PARCEL_OWNER', 'CLIENT', 'OTHER'];
   for (const e of byIdentity.values()) {
     const { _docs, ...rest } = e;
     participants.push({
       ...rest,
       cases: _docs.size,
       current: e.roles.some((r) => !!e.lastSeen && latestByRole.get(r) === e.lastSeen),
-      customerVisible: !(e.kind !== 'ORGANIZATION' && e.roles.every((r) => PRIVATE_ONLY.includes(r))),
+      // A name that survived cleaning is a verified name; only an unknown-role person stays internal.
+      customerVisible: !(e.kind !== 'ORGANIZATION' && e.roles.every((r) => r === 'OTHER')),
     });
   }
   participants.sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '') || a.name.localeCompare(b.name));
@@ -1089,7 +1095,7 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
   const team = intel.participants.filter((p) => p.customerVisible);
   if (team.length) {
     push('PROJECT PARTICIPANTS (roles as the documents state them; applicant ≠ owner):', true);
-    for (const p of team) push(`- ${p.name}: ${p.roles.join(', ')}${p.current ? ' (latest documents)' : ` (historical, last ${p.lastSeen ?? 'n/a'})`}`, false);
+    for (const p of team) push(`- ${p.name}: ${p.roles.join(', ')}${p.blocks.length ? ` [building ${p.blocks.join('/')}]` : ''}${p.current ? ' (latest documents)' : ` (historical, last ${p.lastSeen ?? 'n/a'})`}`, false);
   }
   if (arcF || arcE) push(`ARCHIVED (lower-importance, available on request): ${arcF} fact(s), ${arcE} event(s). Archived ≠ absent.`, true);
   return { text: lines.join('\n'), includedFacts: incF, archivedFacts: arcF, includedEvents: incE, archivedEvents: arcE };
@@ -1112,7 +1118,7 @@ export interface OfficialHistoryView {
   evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
   funnel: TasFunnel;
   visuals: Array<{ id: string; versionStatus: VisualRef['versionStatus'] }>;
-  team?: Array<{ name: string; kind: Participant['kind']; roles: ParticipantRole[]; lastSeen: string | null }>;
+  team?: Array<{ name: string; kind: Participant['kind']; roles: ParticipantRole[]; firstSeen: string | null; lastSeen: string | null; blocks: string[] }>;
   /**
    * Related milestones told as one step ("the design was amended four times,
    * 2022–2024") — the individual records stay in `milestones` for the
@@ -1163,13 +1169,16 @@ export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView
     visuals: intel.visuals.map((v) => ({ id: v.id, versionStatus: v.versionStatus })),
     // The professionals the municipal documents name — never applicants or
     // private parcel owners (owner, 2026-10-10: "who designed and built it").
+    // Everyone the documents name in a verified role — professionals, the
+    // developer, AND landowners / applicants / clients by name (owner,
+    // 2026-10-10) — with the building and dates their role applies to.
     team: intel.participants
-      // Organisations named in any other capacity count too (owner,
-      // 2026-10-10: "others mentioned for other purposes") — but never a
-      // private person outside a professional role.
-      .filter((p) => p.roles.some((r) => TEAM_ROLES.has(r)) || (p.kind === 'ORGANIZATION' && p.roles.includes('OTHER')))
-      .slice(0, 24)
-      .map((p) => ({ name: p.name, kind: p.kind, roles: p.roles.some((r) => TEAM_ROLES.has(r)) ? p.roles.filter((r) => TEAM_ROLES.has(r)) : (['OTHER'] as ParticipantRole[]), lastSeen: p.lastSeen })),
+      .filter((p) => p.customerVisible && (p.roles.some((r) => TEAM_ROLES.has(r) || OWNERSHIP_ROLES.has(r)) || (p.kind === 'ORGANIZATION' && p.roles.includes('OTHER'))))
+      .slice(0, 30)
+      .map((p) => {
+        const roles = p.roles.filter((r) => TEAM_ROLES.has(r) || OWNERSHIP_ROLES.has(r));
+        return { name: p.name, kind: p.kind, roles: roles.length ? roles : (['OTHER'] as ParticipantRole[]), firstSeen: p.firstSeen, lastSeen: p.lastSeen, blocks: p.blocks };
+      }),
   };
 }
 
@@ -1188,6 +1197,8 @@ export function groupMilestones(ms: Array<{ date: string; kind: EventKind; outco
   }
   return out;
 }
+
+const OWNERSHIP_ROLES = new Set<ParticipantRole>(['PARCEL_OWNER', 'APPLICANT', 'CO_APPLICANT', 'CLIENT']);
 
 const TEAM_ROLES = new Set<ParticipantRole>([
   'DEVELOPER', 'ARCHITECT', 'CO_ARCHITECT', 'STRUCTURAL_ENGINEER', 'GEOTECHNICAL_SPECIALIST', 'EXPERT_REVIEW',

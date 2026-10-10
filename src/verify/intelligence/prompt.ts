@@ -327,6 +327,12 @@ const ANALYST_RULES: string[] = [
   'and there is no guilt by association. If the register says directors bind the company JOINTLY,',
   'that is practical signing advice and belongs here: say what the buyer should confirm at signing.',
   'Do NOT say a contract would be invalid. Ownership percentages only if you were given them.',
+  'NAME THE PEOPLE. Every participant officialHistory or the registry names in a verified role is named by',
+  'their real name and surname — landowners, applicants, clients and unit owners included, not only firms and',
+  'professionals — each with the role the document states, the building/block it concerns and the period.',
+  'An applicant is not an owner; a landowner is not the developer; the owner of another unit or another',
+  'building is never presented as the owner of the requested one (see propertyIdentity). Never write personal',
+  'ID numbers, phone numbers, emails or home addresses of private persons.',
   '',
 
   'MONEY MOVEMENTS. If FX context is supplied, it explains part of a historical change. It is NEVER',

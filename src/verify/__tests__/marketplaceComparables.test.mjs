@@ -67,23 +67,46 @@ test('report comparable: asking price only, ACTIVE, tiered by real location, der
   const c = toReportComparable(u, { project: null, latitude: 41.709, longitude: 44.754, district: 'Vake' });
   assert.equal(c.listingStatus, 'ACTIVE');
   assert.equal(c.pricePerSqm, '1500');
-  assert.equal(c.comparableType, 'PEER_PROJECT');
+  // A citywide advert ~10 km away is the wider market — never a "peer"
+  // (premise changed 2026-10-10, job 220ed087: the fallback to PEER_PROJECT
+  // is gone), and the measured distance travels with it.
+  assert.equal(c.comparableType, 'WIDER_MARKET');
+  assert.ok(c.distanceM > 5000, `distance not carried: ${c.distanceM}`);
+  assert.equal(c.district, 'Vake');
   assert.equal(c.project, null);
   assert.equal(c.discoveryMethod, 'MARKETPLACE_WORKER_SEARCH');
   const near = toReportComparable(dedupeMarketplace([mk({ scope: 'CITY' })]).unique[0], { project: null, latitude: 41.7095, longitude: 44.7545, district: null });
   assert.equal(near.comparableType, 'MICRO_LOCATION');
+  assert.ok(near.distanceM <= 600);
+  const district = toReportComparable(dedupeMarketplace([mk({ scope: 'DISTRICT', latitude: null })]).unique[0], { project: null, latitude: null, longitude: null, district: 'Vake' });
+  assert.equal(district.comparableType, 'SAME_DISTRICT', 'a district search is district context, not micro-location');
+  for (const t of [c, near, district]) assert.notEqual(t.comparableType, 'PEER_PROJECT');
   const same = toReportComparable(dedupeMarketplace([mk({ title: 'Villion Residence, block B' })]).unique[0], { project: 'Villion', latitude: null, longitude: null, district: null });
   assert.equal(same.comparableType, 'SAME_PROJECT');
 });
 
-test('folded comparables drive the existing market intelligence (median, range, sample) unchanged', () => {
-  const comps = [1400, 1450, 1500, 1550, 1600, 1650].map((p, i) => mk({ sourceListingId: String(i), exactUrl: `https://www.myhome.ge/pr/${i}/`, pricePerSqm: p, latitude: 41.709 + i * 0.01, phoneHash: null }));
-  const r = foldMarketplaceIntoLane([], { comparables: comps, sources: {} }, { project: null, latitude: null, longitude: null, district: 'Vake' }, '2026-10-08T00:00:00Z');
+test('folded comparables drive the market headline only when they are measurably local', () => {
+  // Premise changed (2026-10-10): a district-scope search is CONTEXT and can
+  // never form the headline range. The same six adverts measured within
+  // 600 m of the subject are the immediate micro-location and do.
+  const near = [1400, 1450, 1500, 1550, 1600, 1650].map((p, i) => mk({ sourceListingId: String(i), exactUrl: `https://www.myhome.ge/pr/${i}/`, pricePerSqm: p, latitude: 41.709 + i * 0.001, phoneHash: null }));
+  const subjectAt = { project: null, latitude: 41.709, longitude: 44.754, district: 'Vake' };
+  const r = foldMarketplaceIntoLane([], { comparables: near, sources: {} }, subjectAt, '2026-10-08T00:00:00Z');
   assert.equal(r.comparables.length, 6);
+  assert.ok(r.comparables.every((c) => c.comparableType === 'MICRO_LOCATION' && c.distanceM <= 600));
   const mi = buildMarketIntelligence({ address: 'Chavchavadze Ave, Vake', area: 80, rooms: 3 }, r.comparables);
   assert.ok(mi);
+  assert.equal(mi.basis, 'SAME_STREET');
   assert.equal(mi.count, 6);
   assert.equal(mi.median, 1525);
   assert.equal(mi.min, 1400);
   assert.equal(mi.max, 1650);
+
+  // No coordinates: the same adverts are only known to be in the district.
+  const far = near.map((c) => ({ ...c, latitude: null, longitude: null }));
+  const d = foldMarketplaceIntoLane([], { comparables: far, sources: {} }, { project: null, latitude: null, longitude: null, district: 'Vake' }, '2026-10-08T00:00:00Z');
+  const md = buildMarketIntelligence({ address: 'Chavchavadze Ave, Vake', area: 80, rooms: 3 }, d.comparables);
+  assert.equal(md.basis, 'EVIDENCE_LIMITED');
+  assert.equal(md.min, null);
+  assert.equal(md.tiers.find((t) => t.tier === 'SAME_DISTRICT').contextOnly, true);
 });

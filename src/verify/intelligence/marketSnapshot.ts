@@ -376,6 +376,10 @@ export function draftSnapshot(
   opts: { sourceCount?: number; refreshReason?: RefreshReason | 'INITIAL' } = {}
 ): SnapshotDraft | null {
   if (!market) return null;
+  // No headline range, nothing to reuse: a district or city spread is never
+  // stored as this segment's answer (2026-10-10 market gate).
+  if (market.basis === 'EVIDENCE_LIMITED') return null;
+  const basisTier: ComparableTier = market.basis;
   const median = Number(market.median);
   if (!Number.isFinite(median) || median <= 0) return null;
 
@@ -384,7 +388,7 @@ export function draftSnapshot(
 
   const confidence = confidenceOf({
     usableCount: usable,
-    basis: market.basis,
+    basis: basisTier,
     sourceCount: opts.sourceCount,
   });
 
@@ -392,12 +396,12 @@ export function draftSnapshot(
     segment,
     currency: market.currency || 'USD',
     medianPricePerSqm: median,
-    lowerPricePerSqm: Number.isFinite(Number(market.min)) ? Number(market.min) : null,
-    upperPricePerSqm: Number.isFinite(Number(market.max)) ? Number(market.max) : null,
+    lowerPricePerSqm: market.min != null && Number.isFinite(Number(market.min)) ? Number(market.min) : null,
+    upperPricePerSqm: market.max != null && Number.isFinite(Number(market.max)) ? Number(market.max) : null,
     sampleCount: Math.max(0, Math.trunc(Number(market.count) || 0)),
     usableComparableCount: usable,
     sourceCount: Math.max(1, Math.trunc(opts.sourceCount ?? 1)),
-    basisTier: market.basis ?? null,
+    basisTier,
     confidence,
     refreshReason: opts.refreshReason ?? 'INITIAL',
   };

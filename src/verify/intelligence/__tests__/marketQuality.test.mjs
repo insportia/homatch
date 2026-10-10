@@ -139,7 +139,9 @@ test('condition weighs more than room count, because it is the product', () => {
 test('a report says plainly when it is comparing different products', () => {
   const m = buildMarketIntelligence(
     { ...SUBJECT, condition: 'ახალი რემონტი', pricePerSqm: 2400 },
-    [comp({ condition: 'მწვანე კარკასი' }), comp({ area: '90', pricePerSqm: '1820', condition: 'green frame' })]
+    // Three: a headline (and so a delta) needs MIN_RELIABLE_SAMPLE listings.
+    [comp({ condition: 'მწვანე კარკასი' }), comp({ area: '90', pricePerSqm: '1820', condition: 'green frame' }),
+      comp({ area: '92', pricePerSqm: '1810', condition: 'green frame' })]
   );
   assert.equal(m.subjectCondition, 'NEWLY_RENOVATED');
   assert.equal(m.conditionMix.dominant, 'GREEN_FRAME');
@@ -162,10 +164,11 @@ test('a listing that came off the market is not today\'s market', () => {
   const m = buildMarketIntelligence(SUBJECT, [
     comp({ pricePerSqm: '1800', listingStatus: 'active' }),
     comp({ area: '90', pricePerSqm: '1820', listingStatus: 'active' }),
+    comp({ area: '92', pricePerSqm: '1810', listingStatus: 'active' }),
     comp({ area: '88', pricePerSqm: '1200', listingStatus: 'expired' }),
   ]);
   assert.equal(m.expiredExcluded, 1);
-  assert.equal(m.count, 2);
+  assert.equal(m.count, 3);
   assert.equal(m.median, 1810, 'a withdrawn asking price still moved the median');
 });
 

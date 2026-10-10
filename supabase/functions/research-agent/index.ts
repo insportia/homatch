@@ -1074,7 +1074,13 @@ async function resolveSourceUrls(list: any[]): Promise<any[]> {
   return dedupe(resolved.filter((s: any) => !isLoginPageUrl(s?.url)), (x) => x.url);
 }
 
-const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT']);
+// SAME_DISTRICT / WIDER_MARKET (2026-10-10 market gate): the deterministic
+// lane and the MyHome/SS.ge fold now label district context and citywide
+// stock honestly; without these here every one of them was relabelled
+// PEER_PROJECT on the way into the report. A PEER_PROJECT label alone is no
+// longer trusted downstream (marketIntelligence.scoreComparable requires a
+// nearby, same-segment named development).
+const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET']);
 // normalizeComparableTier() (2026-09-07 market-comparable model, Verify
 // mandate item 7): the MARKET prompt asks the model for a mandatory
 // three-tier "comparableType" per comparable (see prompt() 'MARKET') —
@@ -1090,7 +1096,7 @@ const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_
 // rerun cost") must still show a sensible tier rather than silently
 // defaulting every historical comparable to PEER_PROJECT, so
 // sameProject === true maps to SAME_PROJECT for those legacy records.
-function normalizeComparableTier(c: any): 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT' {
+function normalizeComparableTier(c: any): 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT' | 'SAME_DISTRICT' | 'WIDER_MARKET' {
   if (VALID_COMPARABLE_TIERS.has(c?.comparableType)) return c.comparableType;
   if (c?.sameProject === true) return 'SAME_PROJECT';
   return 'PEER_PROJECT';
@@ -2361,15 +2367,51 @@ async function startVerifyMarketplace(db: any, p: any, seed: any): Promise<void>
 
 const VERIFY_MARKET_MAX_WAIT_MS = 6 * 60 * 1000;
 
+/*
+ * THE SUBJECT AS IT IS KNOWN AT FOLD TIME (2026-10-10 market gate).
+ *
+ * The worker search starts at the top of pollBrowser, often before identity,
+ * TAS or public research have named the project, its district or its
+ * coordinates. Tiering the adverts against that early, empty subject is how
+ * nearby adverts lost their distance. So at fold time — including the
+ * MARKET_READY re-run — any field still missing is filled from a fresh seed
+ * of the job as it stands now. Values known at start are never replaced, and
+ * stage order is unchanged. The headline itself is still only computed at
+ * synthesis (marketIntelligence.buildMarketIntelligence).
+ */
+function marketSubjectNow(j: any, p: any, started: any): { project: string | null; latitude: number | null; longitude: number | null; district: string | null } {
+  const base = { project: null, latitude: null, longitude: null, district: null, ...(started ?? {}) };
+  if (!j) return base;
+  try {
+    const seed: any = buildResearchSeed({
+      jobId: String(j.id),
+      query: j.query,
+      mode: (j.mode ?? j.type) === 'cadastral' ? 'cadastral' : 'property',
+      result: p,
+      knownFacts: {},
+    });
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const coord = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    return {
+      project: base.project ?? str(seed?.project?.name?.value),
+      latitude: base.latitude ?? coord(seed?.location?.latitude?.value),
+      longitude: base.longitude ?? coord(seed?.location?.longitude?.value),
+      district: base.district ?? str(seed?.location?.subDistrict?.value) ?? str(seed?.location?.district?.value),
+    };
+  } catch {
+    return base;
+  }
+}
+
 /** Poll once; fold when finished. Returns true while still waiting. */
-async function pollVerifyMarketplace(p: any): Promise<boolean> {
+async function pollVerifyMarketplace(p: any, j: any = null): Promise<boolean> {
   const m = p?._verifyMarket;
   if (!m || m.done || !m.jobId) return false;
   try {
     const r = await wf(`/verify/market/${m.jobId}`);
     if (r.code === 200 && r.data?.status === 'COMPLETE') {
       const lane = Array.isArray(p._marketComparables) ? p._marketComparables : [];
-      const folded = foldMarketplaceIntoLane(lane, r.data, m.subject ?? { project: null, latitude: null, longitude: null, district: null }, now());
+      const folded = foldMarketplaceIntoLane(lane, r.data, marketSubjectNow(j, p, m.subject), now());
       p._marketComparables = folded.comparables;
       p._marketplaceLedger = { ...folded.ledger, profile: m.profile, durationMs: Date.now() - Date.parse(m.startedAt) };
       p._verifyMarket = { ...m, state: 'FOLDED', done: true };
@@ -2562,7 +2604,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
   await ensureMarketLane(sb, j, j.result_json);
-  await pollVerifyMarketplace(j.result_json);
+  await pollVerifyMarketplace(j.result_json, j);
   if (w.status === 'WAITING_HUMAN') {
     const p = j.result_json || {};
     p._captchaReturnStage = 'BROWSER_WAITING';
@@ -4509,7 +4551,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       // MyHome.ge / SS.ge comparables must be folded BEFORE MARKET reads the
       // set. Still running → hold this stage for the next tick (bounded by
       // VERIFY_MARKET_MAX_WAIT_MS from its start; never indefinitely).
-      const stillWaiting = await pollVerifyMarketplace(j.result_json);
+      const stillWaiting = await pollVerifyMarketplace(j.result_json, j);
       if (laneRan || stillWaiting || j.result_json._verifyMarket?.done) {
         await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       }

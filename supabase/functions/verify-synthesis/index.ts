@@ -242,7 +242,11 @@ function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unkno
     officialEvidenceSelectedForSynthesis: pkg?.items ? pkg.items.filter((i: any) => i.tasRef).length : 0,
     officialMilestonesShown: tas?.funnel?.milestones ?? 0,
     officialProcessingIncomplete: tas?.funnel?.incomplete === true,
-    marketListingsAnalyzed: typeof bundle?.market?.count === 'number' ? bundle.market.count : 0,
+    // analyzedCount: every priced listing scored (count is now the HEADLINE
+    // sample, which is 0..2 when the market is EVIDENCE_LIMITED).
+    marketListingsAnalyzed: typeof bundle?.market?.analyzedCount === 'number'
+      ? bundle.market.analyzedCount
+      : typeof bundle?.market?.count === 'number' ? bundle.market.count : 0,
     marketplaceListingsAdded: typeof ledger?.added === 'number' ? ledger.added : 0,
     // Per provider, the state only — reasons and errors stay in Admin.
     providers: providerOutcomes(job?.result_json, job?.mode === 'cadastral' ? ['tas', 'mygov'] : []).map((o) => ({ provider: o.provider, state: o.state })),

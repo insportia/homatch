@@ -161,7 +161,7 @@ test('the paid scene plan is asked in the background, collected later, kept on f
   assert.match(route, /plan_attempts: Math\.max\(0, row\.plan_attempts - 1\)/);
   assert.match(route, /const PLAN_RESPONSE_MAX_MS = 12 \* 60_000;/);
   // A failure keeps the paid plan; the same picture reuses it (READY's plan, or the failed one's).
-  assert.match(route, /dropped: validated\.dropped, scenePlan: validated \};/);
+  assert.match(route, /dropped: validated\.dropped, scenePlan: validated,\n\s*designGraph: graph \?/);
   assert.match(route, /\.in\('state', \['READY', 'FAILED'\]\)/);
   assert.match(route, /w\.state === 'READY' \? w\.scene_plan : w\.plan_report\?\.final\?\.scenePlan \?\? null/);
 });

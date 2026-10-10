@@ -131,3 +131,16 @@ test('the plan says what the 3D shows: no contradiction, and the drawing\'s ambi
   const blocks = planFidelity(broken).filter((f) => f.severity === 'BLOCK').map((f) => `${f.code}:${f.elementIds.join('/')}`).sort();
   assert.deepEqual(blocks, ['DOOR_HITS_WALL:D2/I1', 'OPENING_OUTSIDE_WALL:D6/E5']);
 });
+
+test('a reused plan brings the graph it was built with; a failed evidence load is recorded, never swallowed', () => {
+  // Production (2026-10-10): a tour reusing a READY tour's plan rebuilt the graph from the picture's pixels, the load
+  // failed silently (.catch(() => null)), and the walk fell back to the plan-only path: 11 pieces dropped, 3 rooms cut off.
+  const route = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
+  assert.match(route, /graph:plan_report->designGraph->graph/);
+  assert.match(route, /reusedGraph = w\?\.state === 'READY' \? graphOf\(/);
+  assert.match(route, /const graph: SpatialDesignGraph \| null = reusedGraph && reused \? reusedGraph :/);
+  assert.match(route, /\.catch\(\(e\) => \{ evidenceError = /);
+  assert.doesNotMatch(route, /loadDesignEvidence\([^)]*\)\.catch\(\(\) => null\)/);
+  assert.match(route, /\.\.\.\(designGraphError \? \{ designGraphError \} : \{\}\)/);
+  assert.match(route, /\.sort\(\(p: Row, q: Row\) => Number\(!!q\.graph\) - Number\(!!p\.graph\)\)\[0\]/);
+});

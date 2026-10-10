@@ -12,10 +12,11 @@
 // building of the same parcel or only the parcel itself.
 
 import React from 'react';
-import { Check, AlertTriangle, Circle, Minus, CircleDashed } from 'lucide-react';
+import { Check, AlertTriangle, Circle, Minus, CircleDashed, Landmark, Hourglass } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   legalRows,
+  legalPosition,
   identityNotice,
   LEGAL_CLAIM_KEY,
   LEGAL_STATUS_VIEW,
@@ -104,6 +105,77 @@ export const LegalReality: React.FC<{ legal?: unknown }> = ({ legal }) => {
       </ol>
       {rows.some((r) => r.status === 'NOT_VERIFIED') ? (
         <p className="text-xs leading-5 text-muted-foreground break-words">{t('vrx_legal_not_verified_note')}</p>
+      ) : null}
+    </div>
+  );
+};
+
+/**
+ * TODAY'S OFFICIAL POSITION, BEFORE THE FIVE STATES.
+ *
+ * The decision in force first (kind, date, decision number), then every
+ * application still under review — and an application under review is shown
+ * as exactly that: "under review — not yet decided", with its deadline. It is
+ * never painted green, never called approved, and never merged into the
+ * effective decision above it.
+ */
+export const LegalPosition: React.FC<{ history?: unknown }> = ({ history }) => {
+  const { t } = useLanguage();
+  const pos = legalPosition(history);
+  if (!pos) return null;
+  const { effective, pending, conflicts } = pos;
+  return (
+    <div className="space-y-3" data-legal-position>
+      {effective ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-700/20 bg-emerald-50/60 p-4 sm:p-5" data-effective>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-white" aria-hidden="true">
+            <Landmark className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0 space-y-0.5">
+            <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-emerald-800">{t('verify_v3_position_effective')}</p>
+            <p className="text-[15px] font-semibold leading-6 break-words">{t(effective.kindKey)}</p>
+            <p className="text-xs leading-5 text-foreground/75 break-words">
+              {[
+                day(effective.date) ? t('verify_v3_position_since', { date: isolate(day(effective.date)!) }) : null,
+                effective.decisionNumber ? t('verify_v3_position_decision', { number: isolate(effective.decisionNumber) }) : null,
+                effective.caseRef ? t('verify_v3_case_ref', { ref: isolate(effective.caseRef) }) : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {pending.length ? (
+        <section aria-labelledby="vrx-pending" className="rounded-2xl border border-amber-500/40 bg-amber-50/50 p-4 sm:p-5" data-pending>
+          <h3 id="vrx-pending" className="flex items-center gap-2 text-sm font-semibold break-words">
+            <Hourglass className="h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+            {t('verify_v3_pending_title', { count: String(pending.length) })}
+          </h3>
+          <ul className="mt-3 space-y-3">
+            {pending.map((p, i) => (
+              <li key={p.caseRef ?? i} className="border-s-2 border-amber-500/60 ps-3">
+                <p className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex max-w-full items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-2xs font-semibold text-amber-900 ring-1 ring-amber-600/30">
+                    {t('verify_v3_pending_chip')}
+                  </span>
+                  {p.caseRef ? <span className="text-xs text-muted-foreground">{t('verify_v3_case_ref', { ref: isolate(p.caseRef) })}</span> : null}
+                </p>
+                {p.subject ? <p className="mt-1 text-sm leading-6 break-words" dir="auto">{p.subject}</p> : null}
+                <p className="text-xs leading-5 text-muted-foreground break-words">
+                  {[
+                    day(p.date) ? t('verify_v3_pending_filed', { date: isolate(day(p.date)!) }) : null,
+                    day(p.deadline) ? t('verify_v3_pending_deadline', { date: isolate(day(p.deadline)!) }) : null,
+                  ].filter(Boolean).join(' · ')}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs leading-5 text-foreground/75 break-words">{t(effective ? 'verify_v3_pending_note' : 'verify_v3_pending_note_plain')}</p>
+        </section>
+      ) : null}
+
+      {conflicts ? (
+        <p className="text-xs leading-5 text-muted-foreground break-words">{t('verify_v3_position_conflicts', { count: String(conflicts) })}</p>
       ) : null}
     </div>
   );

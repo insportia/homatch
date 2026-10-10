@@ -80,10 +80,12 @@ import type { PropertyIdentity } from '@/verify/intelligence/propertyIdentity';
 import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
 import { Reveal } from '@/components/common/Reveal';
 import { VisualExplorer } from './VisualExplorer';
-import { LegalReality, IdentityNotice } from './LegalReality';
+import { LegalReality, LegalPosition, IdentityNotice } from './LegalReality';
+import { OfficialDocuments } from './OfficialDocuments';
+import { BuildingSpecs } from './BuildingSpecs';
 import { PeopleBehind } from './PeopleBehind';
 import { MarketPosition, hasMarketView } from './MarketPosition';
-import { chapterOfSection, identityNotice, SECTION_HEADING_KEY, type ChapterId } from '@/verify/reportPresentation';
+import { chapterOfSection, identityNotice, legalPosition, documentExplorer, specGroups, teamGroupsV2, SECTION_HEADING_KEY, type ChapterId, type RegisterSourceLike } from '@/verify/reportPresentation';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
 import { splitCitations, hasDistance } from '@/verify/citations';
 
@@ -243,6 +245,15 @@ export interface VerifySynthesis {
   marketContext?: MarketContextView | null;
   /** Which unit, building and parcel the records actually concern (propertyIdentity.ts). */
   identity?: PropertyIdentity | null;
+  /* ── Verify v3 contract (optional; older reports lack every one) ── */
+  /** The team grouped by discipline, each role in the document's own words. */
+  projectTeamV2?: unknown[] | null;
+  /** Documented specifications with Approved / Proposed / Unknown status. */
+  technicalSpecs?: unknown[] | null;
+  /** The official applications and their files, newest two first. */
+  officialDocuments?: unknown[] | null;
+  /** Where the register extract came from — reused from an earlier check, or fetched now. */
+  registerSource?: RegisterSourceLike | null;
 }
 
 /**
@@ -412,6 +423,9 @@ export function VerifyReport({
   const history = synthesis.officialHistory ?? null;
   const identity = synthesis.identity ?? null;
   const identityUnresolved = identity?.status === 'UNRESOLVED_MISMATCH';
+  const position = legalPosition(history);
+  const pendingRefs = (position?.pending ?? []).map((p) => p.caseRef).filter((x): x is string => !!x);
+  const hasDocuments = documentExplorer(synthesis.officialDocuments).recent.length > 0;
   const renderSection = (s: { key: string; title: string; body: string; metrics?: { label: string; value: string }[] }) => (
     <section key={s.key} className="space-y-3" data-section={s.key}>
       <h3 className="font-display text-lg font-semibold leading-snug tracking-tight break-words">
@@ -433,21 +447,22 @@ export function VerifyReport({
   const has = {
     explore: true,
     story: !!(r.propertyStory?.chapters?.some((c) => clean(c.body)) || history?.milestones?.length || history?.milestoneGroups?.length || history?.evolution?.length),
-    people: !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
+    people: !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamGroupsV2(synthesis.projectTeamV2).length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
     building: true,
-    legal: !!(history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
+    legal: !!(position || history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
+    documents: hasDocuments,
     location: !!(inChapter('location').length || synthesis.location),
     market: inChapter('market').length > 0 || hasMarketView(synthesis.market),
     final: true,
   };
-  const order: ChapterId[] = ['explore', 'story', 'people', 'building', 'legal', 'location', 'market', 'final'];
+  const order: ChapterId[] = ['explore', 'story', 'people', 'building', 'legal', 'documents', 'location', 'market', 'final'];
   const shown = order.filter((c) => has[c as keyof typeof has]);
   const num = (c: ChapterId) => shown.indexOf(c) + 1;
 
   /* The chapters this report actually has, for the jump links. */
   const nav = [
     { id: 'vbi-summary', labelKey: 'vbi_nav_summary' },
-    ...shown.map((c) => ({ id: `vbi-${c}`, labelKey: `vrx_nav_${c}` })),
+    ...shown.map((c) => ({ id: `vbi-${c}`, labelKey: c === 'documents' ? 'verify_v3_nav_documents' : `vrx_nav_${c}` })),
   ];
 
   return (
@@ -494,6 +509,7 @@ export function VerifyReport({
             projectTeam={synthesis.projectTeam}
             developer={synthesis.snapshot?.developer ?? (company && typeof company.name === 'string' ? company.name : null)}
             financingPartner={synthesis.companyFinance?.financingPartner ?? null}
+            teamV2={synthesis.projectTeamV2}
           />
           {inChapter('people').map(renderSection)}
           {/* The company the people belong to — participants are context and
@@ -524,6 +540,8 @@ export function VerifyReport({
         {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
         {/* The dropped SNAPSHOT section's own figures, kept where figures belong. */}
         {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
+        {/* The documented specifications, each with its approval status. */}
+        {specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
         {/* Rendered even when the run established nothing: a missing section
             reads as "does not apply", a row saying "not yet verified" reads
             as the question it actually is. */}
@@ -535,9 +553,12 @@ export function VerifyReport({
       {has.legal ? (
         <Chapter id="vbi-legal" n={num('legal')} kicker={t('vrx_legal_kicker')} title={t('vrx_legal_title')} lede={t('vrx_legal_lede')}>
           <IdentityNotice identity={identity} />
+          {/* Today's position first: the decision in force, then what is
+              still under review — never as an approval. */}
+          <LegalPosition history={history} />
           <LegalReality legal={history?.legal} />
           <CurrentStatusBlock status={r.currentStatus} history={history} clean={clean} />
-          <PropertyRegisterCard register={synthesis.propertyRegister} />
+          <PropertyRegisterCard register={synthesis.propertyRegister} source={synthesis.registerSource ?? null} />
           <div id="vbi-company" className="scroll-mt-24">
             <CompanyIntelligenceCard company={company} rights={rights} />
           </div>
@@ -560,6 +581,20 @@ export function VerifyReport({
               </ul>
             </section>
           ) : null}
+        </Chapter>
+      ) : null}
+
+      {/* ── OFFICIAL DOCUMENTS ── the applications behind the legal reality,
+          newest two first, each file opening at its official source. */}
+      {has.documents ? (
+        <Chapter id="vbi-documents" n={num('documents')} kicker={t('verify_v3_docs_kicker')} title={t('verify_v3_docs_title')} lede={t('verify_v3_docs_lede')}>
+          <OfficialDocuments
+            docs={synthesis.officialDocuments}
+            pendingRefs={pendingRefs}
+            visuals={synthesis.officialVisuals as unknown[] | undefined}
+            identityUnresolved={identityUnresolved}
+            clean={clean}
+          />
         </Chapter>
       ) : null}
 

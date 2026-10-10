@@ -171,6 +171,12 @@ export interface NormalVerifyResult {
   evidenceGroups?: Record<string, unknown>[];
   checklist?: Record<string, unknown>[];
   identity?: Record<string, unknown> | null;
+  /* Verify v3 contract — passed through as written; the report degrades
+     gracefully when any is absent (src/verify/reportPresentation.ts). */
+  projectTeamV2?: Record<string, unknown>[] | null;
+  technicalSpecs?: Record<string, unknown>[] | null;
+  officialDocuments?: Record<string, unknown>[] | null;
+  registerSource?: Record<string, unknown> | null;
 }
 
 export type PayloadVersion = 'V1' | 'V2' | 'V3' | 'NONE' | 'ERROR';
@@ -474,6 +480,10 @@ function siblingsOf(o: Record<string, unknown>): Omit<NormalVerifyResult, 'repor
     evidenceGroups: asArray(o.evidenceGroups).map(asObject).filter((g) => Object.keys(g).length),
     checklist: asArray(o.checklist).map(asObject).filter((c) => Object.keys(c).length),
     identity: objectOrNull(o.identity),
+    projectTeamV2: Array.isArray(o.projectTeamV2) ? asArray(o.projectTeamV2).map(asObject).filter((m) => asString(m.name)) : null,
+    technicalSpecs: Array.isArray(o.technicalSpecs) ? asArray(o.technicalSpecs).map(asObject).filter((x) => Object.keys(x).length) : null,
+    officialDocuments: Array.isArray(o.officialDocuments) ? asArray(o.officialDocuments).map(asObject).filter((x) => Object.keys(x).length) : null,
+    registerSource: objectOrNull(o.registerSource),
   };
 }
 

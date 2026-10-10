@@ -17622,6 +17622,19 @@ const en = {
   ds_ctrl_dbl_to_release: 'Double-click (or Esc) to get the mouse pointer back',
   ds_ctrl_dbl_click: 'Double-click',
   ds_ctrl_dbl_toggle: 'Mouse look on / off',
+
+  /* ── VERIFY PERFORMANCE (ADMIN) ── */
+  adm_vperf_title: 'Performance: Start → report ready',
+  adm_vperf_hint: 'Server timestamps only. Bars show each stage on the job’s own timeline; gaps are hand-offs between stages.',
+  adm_vperf_total: 'Total',
+  adm_vperf_research: 'Research',
+  adm_vperf_report: 'Report',
+  adm_vperf_queue: 'Queue wait',
+  adm_vperf_worker: 'Worker time',
+  adm_vperf_handoff: 'Hand-offs',
+  adm_vperf_retries: 'Retries',
+  adm_vperf_bottleneck: 'Bottleneck',
+  adm_vperf_newest_two: 'newest two cases',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35158,6 +35171,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'ორჯერ სწრაფად დააწკაპუნეთ (ან Esc) — მაუსის ისრის დაბრუნება',
   ds_ctrl_dbl_click: 'ორჯერ დაწკაპუნება',
   ds_ctrl_dbl_toggle: 'მაუსით მიმოხედვა: ჩართვა / გამორთვა',
+
+  /* ── VERIFY PERFORMANCE (ADMIN) ── */
+  adm_vperf_title: 'სისწრაფე: დაწყება → ანგარიში მზადაა',
+  adm_vperf_hint: 'მხოლოდ სერვერის დროის ნიშნულები. ზოლები აჩვენებს თითოეულ ეტაპს სამუშაოს საკუთარ დროის ხაზზე; შუალედები ეტაპებს შორის გადაცემაა.',
+  adm_vperf_total: 'სულ',
+  adm_vperf_research: 'კვლევა',
+  adm_vperf_report: 'ანგარიში',
+  adm_vperf_queue: 'რიგში ლოდინი',
+  adm_vperf_worker: 'ვორკერის დრო',
+  adm_vperf_handoff: 'გადაცემები',
+  adm_vperf_retries: 'განმეორებები',
+  adm_vperf_bottleneck: 'შემაფერხებელი ეტაპი',
+  adm_vperf_newest_two: 'ორი უახლესი საქმე',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52685,6 +52711,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'Дважды щёлкните (или Esc), чтобы вернуть указатель мыши',
   ds_ctrl_dbl_click: 'Двойной щелчок',
   ds_ctrl_dbl_toggle: 'Обзор мышью: вкл. / выкл.',
+
+  /* ── VERIFY PERFORMANCE (ADMIN) ── */
+  adm_vperf_title: 'Скорость: старт → отчёт готов',
+  adm_vperf_hint: 'Только серверные отметки времени. Полосы показывают этапы на шкале задания; промежутки — передачи между этапами.',
+  adm_vperf_total: 'Всего',
+  adm_vperf_research: 'Исследование',
+  adm_vperf_report: 'Отчёт',
+  adm_vperf_queue: 'Ожидание в очереди',
+  adm_vperf_worker: 'Время воркера',
+  adm_vperf_handoff: 'Передачи',
+  adm_vperf_retries: 'Повторы',
+  adm_vperf_bottleneck: 'Узкое место',
+  adm_vperf_newest_two: 'два новейших дела',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70210,6 +70249,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'Fare imlecini geri almak için çift tıklayın (veya Esc)',
   ds_ctrl_dbl_click: 'Çift tıklama',
   ds_ctrl_dbl_toggle: 'Fareyle bakış: aç / kapat',
+
+  /* ── VERIFY PERFORMANCE (ADMIN) ── */
+  adm_vperf_title: 'Performans: Başlat → rapor hazır',
+  adm_vperf_hint: 'Yalnızca sunucu zaman damgaları. Çubuklar her aşamayı işin kendi zaman çizelgesinde gösterir; boşluklar aşamalar arası devirlerdir.',
+  adm_vperf_total: 'Toplam',
+  adm_vperf_research: 'Araştırma',
+  adm_vperf_report: 'Rapor',
+  adm_vperf_queue: 'Kuyruk bekleme',
+  adm_vperf_worker: 'İşçi süresi',
+  adm_vperf_handoff: 'Devirler',
+  adm_vperf_retries: 'Yeniden denemeler',
+  adm_vperf_bottleneck: 'Darboğaz',
+  adm_vperf_newest_two: 'en yeni iki dosya',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87735,6 +87787,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'انقر نقرًا مزدوجًا (أو Esc) لاستعادة مؤشر الفأرة',
   ds_ctrl_dbl_click: 'نقر مزدوج',
   ds_ctrl_dbl_toggle: 'النظر بالفأرة: تشغيل / إيقاف',
+
+  /* ── VERIFY PERFORMANCE (ADMIN) ── */
+  adm_vperf_title: 'الأداء: البدء → التقرير جاهز',
+  adm_vperf_hint: 'طوابع زمنية من الخادم فقط. تعرض الأشرطة كل مرحلة على الخط الزمني للمهمة؛ الفجوات هي عمليات التسليم بين المراحل.',
+  adm_vperf_total: 'الإجمالي',
+  adm_vperf_research: 'البحث',
+  adm_vperf_report: 'التقرير',
+  adm_vperf_queue: 'انتظار الطابور',
+  adm_vperf_worker: 'وقت العامل',
+  adm_vperf_handoff: 'عمليات التسليم',
+  adm_vperf_retries: 'إعادة المحاولات',
+  adm_vperf_bottleneck: 'عنق الزجاجة',
+  adm_vperf_newest_two: 'أحدث قضيتين',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105260,6 +105325,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'לחצו פעמיים (או Esc) כדי להחזיר את סמן העכבר',
   ds_ctrl_dbl_click: 'לחיצה כפולה',
   ds_ctrl_dbl_toggle: 'מבט בעכבר: הפעלה / כיבוי',
+
+  /* ── VERIFY PERFORMANCE (ADMIN) ── */
+  adm_vperf_title: 'ביצועים: התחלה → הדוח מוכן',
+  adm_vperf_hint: 'חותמות זמן של השרת בלבד. הפסים מציגים כל שלב על ציר הזמן של המשימה; הרווחים הם מסירות בין שלבים.',
+  adm_vperf_total: 'סה״כ',
+  adm_vperf_research: 'מחקר',
+  adm_vperf_report: 'דוח',
+  adm_vperf_queue: 'המתנה בתור',
+  adm_vperf_worker: 'זמן עובד',
+  adm_vperf_handoff: 'מסירות',
+  adm_vperf_retries: 'ניסיונות חוזרים',
+  adm_vperf_bottleneck: 'צוואר בקבוק',
+  adm_vperf_newest_two: 'שני התיקים האחרונים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

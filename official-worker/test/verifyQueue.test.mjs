@@ -4,7 +4,7 @@
 // Fake gateway throughout: no network, no database, no paid CAPTCHA.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { QueueRunner } from '../.tstest-build/queue/QueueRunner.js';
+import { QueueRunner, withExecStamp } from '../.tstest-build/queue/QueueRunner.js';
 import { compactResult, DOC_EXCERPT_CHARS, TOTAL_EXCERPT_CHARS, MAX_RESULT_CHARS, sha256 } from '../.tstest-build/queue/evidence.js';
 import { createVerifyExecutor } from '../.tstest-build/queue/executor.js';
 
@@ -235,4 +235,20 @@ test('executor: a transient CAPTCHA give-up gets ONE fresh retry; a rejection or
   assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'CAPTCHA_NO_CHANGE', retryable: true, retryAfterSeconds: 20 });
   assert.deepEqual(await exec(mkTask({ attempts: 2 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NO_CHANGE', retryable: false });
   assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:REJECTED', retryable: false });
+});
+
+test('a completed result carries the final attempt\'s execution span (performance only)', async () => {
+  const gw = fakeGateway({ queue: [mkTask({ attempts: 2 })] });
+  const r = runner(gw, async () => { await tick(15); return { type: 'complete', result: { status: 'SEARCH_CONFIRMED' } }; });
+  r.start();
+  await until(() => gw.calls.complete.length === 1);
+  await r.stop(100);
+  const done = gw.calls.complete[0];
+  assert.equal(done.result.status, 'SEARCH_CONFIRMED', 'the result itself is untouched');
+  assert.equal(done.result._exec.attempt, 2);
+  assert.ok(done.result._exec.ms >= 10);
+  assert.ok(Date.parse(done.result._exec.finishedAt) >= Date.parse(done.result._exec.startedAt));
+  // Non-object results pass through unchanged.
+  const raw = { type: 'complete', result: null };
+  assert.equal(withExecStamp(raw, { attempts: 1 }, new Date()), raw);
 });

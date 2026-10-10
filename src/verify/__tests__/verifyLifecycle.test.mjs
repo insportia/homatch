@@ -173,6 +173,23 @@ test('a reopened finished job shows its duration, never its age, even before the
   assert.equal(formatElapsed(elapsedMs(reopened)), '09:00');
 });
 
+test('the clock follows the customer\'s wait to the report, from server columns only', () => {
+  const completedAt = new Date(at(11)).toISOString();
+  // Research done, report still being written: still waiting, clock runs.
+  assert.equal(formatElapsed(elapsedMs(run({ status: 'COMPLETE', completedAt, synthesisState: 'PENDING', now: at(12) }))), '12:00');
+  // Report READY: Start → report, frozen at synthesis_at.
+  const ready = run({ status: 'COMPLETE', completedAt, synthesisState: 'READY', synthesisAt: new Date(at(12) + 30_000).toISOString(), reportReady: true, now: at(400) });
+  assert.equal(formatElapsed(elapsedMs(ready)), '12:30');
+  // The page holds the report but its last status read said PENDING: frozen, not running.
+  assert.equal(formatElapsed(elapsedMs(run({ status: 'COMPLETE', completedAt, synthesisState: 'PENDING', reportReady: true, now: at(30) }))), '11:00');
+  // A synthesis lost long ago never turns a duration into an age.
+  assert.equal(formatElapsed(elapsedMs(run({ status: 'COMPLETE', completedAt, synthesisState: 'NONE', now: at(60 * 24) }))), '21:00');
+  // A FAILED synthesis and an unknown state keep the research duration.
+  assert.equal(formatElapsed(elapsedMs(run({ status: 'COMPLETE', completedAt, synthesisState: 'FAILED', now: at(60) }))), '11:00');
+  // A report rebuilt days later is not the original wait.
+  assert.equal(formatElapsed(elapsedMs(run({ status: 'COMPLETE', completedAt, synthesisState: 'READY', synthesisAt: new Date(at(60 * 48)).toISOString(), now: at(60 * 49) }))), '11:00');
+});
+
 test('a failed run stops its clock at its last server update; long runs read as h:mm:ss', () => {
   const failed = run({ status: 'FAILED', updatedAt: new Date(at(2)).toISOString(), now: at(50) });
   assert.equal(formatElapsed(elapsedMs(failed)), '02:00');

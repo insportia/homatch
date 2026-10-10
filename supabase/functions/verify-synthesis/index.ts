@@ -195,7 +195,7 @@ function textOf(p: any): string {
 // as VerifyVisualAsset (src/verify/intelligence/visualAssets.ts), signed in ONE
 // storage call. UNRELATED_SUSPECT assets never reach this list.
 async function forCustomer(db: any, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { _usage: _droppedUsage, officialVisuals, ...rest } = payload as Record<string, any>;
+  const { _usage: _droppedUsage, _timing: _droppedTiming, officialVisuals, ...rest } = payload as Record<string, any>;
   if (!Array.isArray(officialVisuals) || !officialVisuals.length) return rest;
   const signed = await toCustomerVisualAssets(
     officialVisuals,
@@ -559,6 +559,13 @@ serve(async (req) => {
       return json({ pending: true, retryAfterMs: 4000 }, 202);
     }
 
+    // Build timing (internal, src/verify/performance.ts): server clock only,
+    // stored as synthesis_json._timing and stripped by forCustomer().
+    const timing: Record<string, unknown> = {
+      startedAt: new Date().toISOString(),
+      trigger: internal ? (body?.trigger === 'research' ? 'research' : 'driver') : 'customer',
+      forced: !!body?.force,
+    };
     // The projection still supplies the deterministic property model (type,
     // buyer plan, what completed and what did not). The evidence package is
     // what the model reasons over.
@@ -616,8 +623,11 @@ serve(async (req) => {
         empty: true,
       };
       // "No evidence at all" is a real, final answer, not a failure to retry.
+      timing.persistAt = new Date().toISOString();
+      (emptyPayload as Record<string, unknown>)._timing = timing;
       await persist(writer, jobId, emptyPayload);
-      return json(emptyPayload);
+      const { _timing: _droppedEmptyTiming, ...emptyForCustomer } = emptyPayload as Record<string, unknown>;
+      return json(emptyForCustomer);
     }
 
     let raw: string | null = null;
@@ -631,6 +641,7 @@ serve(async (req) => {
       // real under it gets filled with something.
       const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(job.result_json), { identity });
       try {
+        timing.modelStartedAt = new Date().toISOString();
         const res = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -644,6 +655,7 @@ serve(async (req) => {
         });
         if (res.ok) {
           const body = await res.json();
+          timing.modelEndedAt = new Date().toISOString();
           raw = textOf(body);
           const u = body?.usage ?? null;
           usage = {
@@ -746,7 +758,12 @@ serve(async (req) => {
 
     /* The register vetoes prose it disproves before anything is stored. */
     const payload = withPropertyRegister(built, job.result_json, await enrichmentContext(writer, job));
+    if (timing.modelStartedAt && !timing.modelEndedAt) timing.modelEndedAt = new Date().toISOString();
+    if (timing.modelStartedAt) timing.modelMs = Date.parse(String(timing.modelEndedAt)) - Date.parse(String(timing.modelStartedAt));
+    timing.persistAt = new Date().toISOString();
+    (payload as Record<string, unknown>)._timing = timing;
     await persist(writer, jobId, payload);
+    console.log(JSON.stringify({ scope: 'verify_synthesis_timing', jobId, ...timing, persistMs: Date.now() - Date.parse(String(timing.persistAt)) }));
     return json(await forCustomer(writer, payload));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);

@@ -17622,6 +17622,11 @@ const en = {
   ds_ctrl_dbl_to_release: 'Double-click (or Esc) to get the mouse pointer back',
   ds_ctrl_dbl_click: 'Double-click',
   ds_ctrl_dbl_toggle: 'Mouse look on / off',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'Sounds',
+  ds_walk_stand_click: 'Click or press E to stand up',
+  ds_walk_stand_tap: 'Tap to stand up',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35158,6 +35163,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'ორჯერ სწრაფად დააწკაპუნეთ (ან Esc) — მაუსის ისრის დაბრუნება',
   ds_ctrl_dbl_click: 'ორჯერ დაწკაპუნება',
   ds_ctrl_dbl_toggle: 'მაუსით მიმოხედვა: ჩართვა / გამორთვა',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'ხმები',
+  ds_walk_stand_click: 'ადგომა — დააწკაპუნეთ ან დააჭირეთ E-ს',
+  ds_walk_stand_tap: 'ადგომა — შეეხეთ ეკრანს',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52685,6 +52695,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'Дважды щёлкните (или Esc), чтобы вернуть указатель мыши',
   ds_ctrl_dbl_click: 'Двойной щелчок',
   ds_ctrl_dbl_toggle: 'Обзор мышью: вкл. / выкл.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'Звуки',
+  ds_walk_stand_click: 'Щёлкните или нажмите E, чтобы встать',
+  ds_walk_stand_tap: 'Коснитесь, чтобы встать',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70210,6 +70225,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'Fare imlecini geri almak için çift tıklayın (veya Esc)',
   ds_ctrl_dbl_click: 'Çift tıklama',
   ds_ctrl_dbl_toggle: 'Fareyle bakış: aç / kapat',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'Sesler',
+  ds_walk_stand_click: 'Kalkmak için tıklayın veya E’ye basın',
+  ds_walk_stand_tap: 'Kalkmak için dokunun',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87735,6 +87755,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'انقر نقرًا مزدوجًا (أو Esc) لاستعادة مؤشر الفأرة',
   ds_ctrl_dbl_click: 'نقر مزدوج',
   ds_ctrl_dbl_toggle: 'النظر بالفأرة: تشغيل / إيقاف',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'الأصوات',
+  ds_walk_stand_click: 'انقر أو اضغط E للنهوض',
+  ds_walk_stand_tap: 'المس للنهوض',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105260,6 +105285,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_ctrl_dbl_to_release: 'לחצו פעמיים (או Esc) כדי להחזיר את סמן העכבר',
   ds_ctrl_dbl_click: 'לחיצה כפולה',
   ds_ctrl_dbl_toggle: 'מבט בעכבר: הפעלה / כיבוי',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'צלילים',
+  ds_walk_stand_click: 'לחצו או הקישו E כדי לקום',
+  ds_walk_stand_tap: 'געו כדי לקום',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

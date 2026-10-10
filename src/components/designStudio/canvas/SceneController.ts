@@ -40,6 +40,8 @@ import {
   type PlayerSettings, type Posture,
 } from '@/lib/designStudio/player';
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
+import { WalkSounds } from './walkSounds';
+import { soundFor } from '@/lib/designStudio/walkSounds';
 import { PostFx } from './postFx';
 import { roomContaining, wallFrame, type Point } from '@/lib/designStudio/space';
 import { buildProcedural, setFinishBudget, slotColors } from './procedural';
@@ -353,6 +355,15 @@ export class SceneController {
       lightParent: this.scene,
       onDoor: (doorId, blocks) => { if (this.walk) setDoorClosed(this.walk.model, doorId, blocks); },
       onChange: () => { if (this.aimed) this.onAimChange?.(this.hintFor(this.aimed)); this.requestRender(); },
+      // Heard where it happens: a door closing in the next room is quieter than the tap in front of you.
+      onTransition: (e, _from, to) => {
+        const w = this.walk;
+        if (!w) return;
+        const cue = soundFor(e.machine.role, isActiveState(e.machine, to), to);
+        if (!cue) return;
+        const at = this.entryPoint(e);
+        this.sounds.cue(cue, Math.hypot(at.x - w.pos.x, at.y - w.pos.y), e.key);
+      },
     });
     this.buildLighting();
     this.scene.add(this.spaceGroup, this.fixturesGroup, this.modelGroup, this.objectsGroup, this.overlayGroup, this.handleGroup);
@@ -2016,12 +2027,16 @@ export class SceneController {
   /** The actions on offer for a target, in the order a person would reach for them. */
   private actionsFor(t: { entry: LiveEntry | null; objectId: string | null }): ActionCode[] {
     const out: ActionCode[] = [];
-    if (t.entry) out.push(...this.living.actions(t.entry));
+    // What a person does with a seat or a bed comes first (lie down on a bed, sit on a sofa); making the bed after.
     const seats = t.objectId ? this.living.seatsOf(t.objectId) : undefined;
     if (seats && !this.walk?.seated) {
-      if (seats.seats.some((s) => s.posture === 'SIT')) out.push('SIT');
-      if (seats.seats.some((s) => s.posture === 'LIE')) out.push('LIE_DOWN');
+      const sit = seats.seats.some((s) => s.posture === 'SIT');
+      const lie = seats.seats.some((s) => s.posture === 'LIE');
+      if (lie && t.entry?.machine.role === 'BED') out.push('LIE_DOWN');
+      if (sit) out.push('SIT');
+      if (lie) out.push('LIE_DOWN');
     }
+    if (t.entry) out.push(...this.living.actions(t.entry));
     return [...new Set(out)];
   }
 
@@ -2040,6 +2055,7 @@ export class SceneController {
     if (same && !quiet && this.aimQuiet) { this.aimQuiet = false; this.onAimChange?.(this.hintFor(this.aimed)); return; }
     if (same || (!this.aimed && !t)) return;
     this.aimQuiet = quiet;
+    this.choosing = false;
     this.aimed = t && this.hintFor(t) ? t : null;
     if (this.aimBox) { this.overlayGroup.remove(this.aimBox); this.aimBox.geometry.dispose(); (this.aimBox.material as THREE.Material).dispose(); this.aimBox = null; }
     // No box is drawn round what is aimed at: the crosshair turns gold and the hint names it. A wireframe cube
@@ -2087,8 +2103,22 @@ export class SceneController {
    */
   performAimed(action?: ActionCode): boolean {
     const t = this.aimed;
+    // Seated or lying, the press that sat you down gets you up: a click, a tap or E on anything that offers nothing
+    // else (the seat itself, the room) — the hint's Stand up is never the only way.
+    if (this.walk?.seated && !action && (!t || t.objectId === this.walk.seated.objectId || !this.actionsFor(t).length)) return this.standUp();
     if (!t || !this.walk) return false;
-    const code = action ?? this.actionsFor(t)[0];
+    const offered = this.actionsFor(t);
+    // More than one thing to do (a bed: lie down, sit, make it): a click, a tap or E offers the choice — the card's
+    // buttons, or 1/2/3 — never the first of them unasked. The captured mouse is given back to choose with.
+    if (!action && offered.length > 1) {
+      this.aimQuiet = false;
+      this.choosing = true;
+      this.onAimChange?.(this.hintFor(t));
+      this.releasePointer();
+      return true;
+    }
+    this.choosing = false;
+    const code = action ?? offered[0];
     if (!code) return false;
     // Explicit, once, in reach, in this room, never closing a door on the walker (player.ts interactionRefusal).
     const refusal = this.refusalFor(t, code);
@@ -2103,6 +2133,8 @@ export class SceneController {
   }
 
   private lastActionAt = -Infinity;
+  /** A choice card is up (performAimed): 1, 2, 3 take its actions. */
+  private choosing = false;
   /** Why the last explicit use did nothing (QA). */
   lastRefusal: string | null = null;
 
@@ -2447,6 +2479,7 @@ export class SceneController {
     const s = seats[0];
     w.seated = { objectId, posture, returnTo: w.seated?.returnTo ?? { ...w.pos } };
     w.vel = { x: 0, y: 0 };
+    this.sounds.cue('SIT', 0, objectId);
     this.setPosture(postureTransition(w.posture, posture));
     this.glideTo({ x: s.x, y: s.y }, s.yaw, s.eye, s.pitch, posture === 'LIE' ? 1300 : 900);
     this.setAim(null);
@@ -2459,6 +2492,7 @@ export class SceneController {
     const w = this.walk;
     if (!w?.seated) return false;
     const back = w.seated.returnTo;
+    this.sounds.cue('STAND', 0, w.seated.objectId);
     w.seated = null;
     this.setPosture(postureTransition(w.posture, 'STAND'));
     this.glideTo(back, w.yaw, EYE_HEIGHT_M, -0.06, 700);
@@ -2745,6 +2779,7 @@ export class SceneController {
     if (!w) return;
     if (w.route) { const done = w.route.done; w.route = null; done(false); }
     this.walk = null;
+    this.sounds.stopAll();
     this.cancelPendingTap();
     this.lastMouseTap = 0;
     this.leavingLock = true;
@@ -2834,7 +2869,8 @@ export class SceneController {
     if (!this.walk) return false;
     // The ray from the tapped point itself (no radius): the visible thing under the finger, within reach, or nothing.
     const hit = this.targetAt(clientX, clientY);
-    if (!hit) return false;
+    // Seated or lying, a tap anywhere that offers nothing else gets you up (performAimed).
+    if (!hit && !this.walk.seated) return false;
     this.setAim(hit);
     return this.performAimed();
   }
@@ -2853,10 +2889,13 @@ export class SceneController {
   // ── Settings ──────────────────────────────────────────────────────
 
   private settings: PlayerSettings = DEFAULT_SETTINGS;
+  /** The home's sounds while it is walked (walkSounds.ts); the visitor's Sound setting turns them off. */
+  private sounds = new WalkSounds();
   private baseReducedMotion = false;
 
   setPlayerSettings(s: Partial<PlayerSettings>) {
     this.settings = normalizeSettings({ ...this.settings, ...s });
+    this.sounds.setEnabled(this.settings.sound);
     this.reducedMotion = this.baseReducedMotion || this.settings.reducedMotion;
     this.living.setReducedMotion(this.reducedMotion);
   }
@@ -2921,6 +2960,12 @@ export class SceneController {
     if (e.type === 'keydown' && e.code === 'Escape') {
       // Locked, the browser takes Esc to release the mouse (and we open the menu then).
       if (!this.pointerLocked) { e.preventDefault(); this.onMenu?.(); }
+      return;
+    }
+    // A choice card is up: 1, 2, 3 take its actions in order.
+    if (e.type === 'keydown' && this.choosing && this.aimed && /^(Digit|Numpad)[1-3]$/.test(e.code)) {
+      const a = this.actionsFor(this.aimed)[Number(e.code.slice(-1)) - 1];
+      if (a) { e.preventDefault(); this.performAimed(a); }
       return;
     }
     if ((e.code === 'KeyE' || e.code === 'Enter' || e.code === 'Space') && e.type === 'keydown') {
@@ -3062,7 +3107,9 @@ export class SceneController {
         return;
       }
       // Nothing to use there: the page's own targets (a doorway's navigation point under the captured mouse's centre).
-      this.onClickPoint?.(px, py);
+      if (this.onClickPoint?.(px, py)) return;
+      // Seated or lying: the same click gets you up.
+      if (this.walk?.seated) this.standUp();
     };
     if (!g.mouse) { use(); return; }
     // Desktop: a double click captures the mouse for looking, and a double click gives it back (Esc does too). The
@@ -3238,6 +3285,7 @@ export class SceneController {
 
   dispose() {
     if (this.walk) this.exitWalkthrough();
+    this.sounds.dispose();
     this.disposed = true;
     this.resizeObserver.disconnect();
     this.controls.removeEventListener('change', this.requestRender);

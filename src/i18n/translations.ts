@@ -17592,6 +17592,16 @@ const en = {
   demo_step_email_body: 'Generate an Email Studio draft from your listing, edit the subject and preview it on desktop and mobile. Sending stays off.',
   demo_step_activity_title: 'Check notifications and activity',
   demo_step_activity_body: 'Every step left a simulated notification or activity entry. Mark the notifications as read to finish the journey.',
+
+  /* ── VERIFY REPORT UI ── */
+  vrx_team_role_parcel_owner: 'Land owner',
+  vrx_team_role_applicant: 'Permit applicant',
+  vrx_team_role_co_applicant: 'Co-applicant',
+  vrx_team_role_client: 'Client (commissioned the project)',
+  vrx_ownership_title: 'Land & ownership',
+  vrx_ownership_note: 'Named in the official municipal case documents for the project’s land and permits. This is not the owner of the apartment you asked about.',
+  vrx_ownership_building: 'Building {{blocks}}',
+  vrx_ownership_period: 'In the records {{span}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35098,6 +35108,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   demo_step_email_body: 'შექმენით Email Studio-ს მონახაზი თქვენი განცხადებიდან, შეცვალეთ თემა და ნახეთ კომპიუტერსა და მობილურზე. გაგზავნა გამორთულია.',
   demo_step_activity_title: 'ნახეთ შეტყობინებები და აქტივობა',
   demo_step_activity_body: 'ყოველმა ნაბიჯმა დატოვა სიმულირებული შეტყობინება ან აქტივობის ჩანაწერი. მონიშნეთ შეტყობინებები წაკითხულად, რომ გზა დაასრულოთ.',
+
+  /* ── VERIFY REPORT UI ── */
+  vrx_team_role_parcel_owner: 'მიწის ნაკვეთის მესაკუთრე',
+  vrx_team_role_applicant: 'ნებართვის მაძიებელი',
+  vrx_team_role_co_applicant: 'თანამაძიებელი',
+  vrx_team_role_client: 'დამკვეთი',
+  vrx_ownership_title: 'მიწა და საკუთრება',
+  vrx_ownership_note: 'დასახელებულია პროექტის მიწასა და ნებართვებთან დაკავშირებულ ოფიციალურ მუნიციპალურ დოკუმენტებში. ეს არ არის თქვენ მიერ მოთხოვნილი ბინის მესაკუთრე.',
+  vrx_ownership_building: 'კორპუსი {{blocks}}',
+  vrx_ownership_period: 'დოკუმენტებში: {{span}}',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52595,6 +52615,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   demo_step_email_body: 'Создайте черновик Email Studio из объявления, измените тему и посмотрите его на компьютере и телефоне. Отправка отключена.',
   demo_step_activity_title: 'Проверьте уведомления и активность',
   demo_step_activity_body: 'Каждый шаг оставил смоделированное уведомление или запись активности. Отметьте уведомления как прочитанные, чтобы завершить путь.',
+
+  /* ── VERIFY REPORT UI ── */
+  vrx_team_role_parcel_owner: 'Владелец земельного участка',
+  vrx_team_role_applicant: 'Заявитель на разрешение',
+  vrx_team_role_co_applicant: 'Созаявитель',
+  vrx_team_role_client: 'Заказчик проекта',
+  vrx_ownership_title: 'Земля и собственность',
+  vrx_ownership_note: 'Указаны в официальных муниципальных документах по земле и разрешениям проекта. Это не владелец запрошенной вами квартиры.',
+  vrx_ownership_building: 'Корпус {{blocks}}',
+  vrx_ownership_period: 'В документах: {{span}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70090,6 +70120,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   demo_step_email_body: 'İlanınızdan bir Email Studio taslağı oluşturun, konuyu düzenleyin ve masaüstü ile mobilde önizleyin. Gönderim kapalı kalır.',
   demo_step_activity_title: 'Bildirimleri ve etkinliği kontrol edin',
   demo_step_activity_body: 'Her adım simüle bir bildirim veya etkinlik kaydı bıraktı. Süreci bitirmek için bildirimleri okundu olarak işaretleyin.',
+
+  /* ── VERIFY REPORT UI ── */
+  vrx_team_role_parcel_owner: 'Arsa sahibi',
+  vrx_team_role_applicant: 'İzin başvuru sahibi',
+  vrx_team_role_co_applicant: 'Ortak başvuru sahibi',
+  vrx_team_role_client: 'Proje sahibi (işveren)',
+  vrx_ownership_title: 'Arsa ve mülkiyet',
+  vrx_ownership_note: 'Projenin arsası ve izinleriyle ilgili resmî belediye belgelerinde adı geçer. Sorduğunuz dairenin sahibi değildir.',
+  vrx_ownership_building: '{{blocks}} numaralı bina',
+  vrx_ownership_period: 'Belgelerde: {{span}}',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87585,6 +87625,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   demo_step_email_body: 'أنشئ مسودة Email Studio من إعلانك، وعدّل الموضوع، وعاينها على الحاسوب والجوال. يبقى الإرسال متوقفًا.',
   demo_step_activity_title: 'راجع الإشعارات والنشاط',
   demo_step_activity_body: 'ترك كل خطوة إشعارًا محاكى أو سجل نشاط. علّم الإشعارات كمقروءة لإنهاء الرحلة.',
+
+  /* ── VERIFY REPORT UI ── */
+  vrx_team_role_parcel_owner: 'مالك الأرض',
+  vrx_team_role_applicant: 'مقدّم طلب الترخيص',
+  vrx_team_role_co_applicant: 'مقدّم طلب مشارك',
+  vrx_team_role_client: 'العميل (صاحب المشروع)',
+  vrx_ownership_title: 'الأرض والملكية',
+  vrx_ownership_note: 'مذكورون في وثائق البلدية الرسمية الخاصة بأرض المشروع وتراخيصه. هذا ليس مالك الشقة التي سألت عنها.',
+  vrx_ownership_building: 'المبنى {{blocks}}',
+  vrx_ownership_period: 'في السجلات: {{span}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105080,6 +105130,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   demo_step_email_body: 'צרו טיוטה ב־Email Studio מתוך המודעה, ערכו את הנושא וצפו בה במחשב ובנייד. השליחה נשארת כבויה.',
   demo_step_activity_title: 'בדקו התראות ופעילות',
   demo_step_activity_body: 'כל שלב השאיר התראה מדומה או רשומת פעילות. סמנו את ההתראות כנקראו כדי לסיים את המסע.',
+
+  /* ── VERIFY REPORT UI ── */
+  vrx_team_role_parcel_owner: 'בעל הקרקע',
+  vrx_team_role_applicant: 'מבקש ההיתר',
+  vrx_team_role_co_applicant: 'מבקש שותף',
+  vrx_team_role_client: 'המזמין של הפרויקט',
+  vrx_ownership_title: 'קרקע ובעלות',
+  vrx_ownership_note: 'מופיעים במסמכים העירוניים הרשמיים של קרקע הפרויקט וההיתרים שלו. זה אינו הבעלים של הדירה שעליה שאלתם.',
+  vrx_ownership_building: 'בניין {{blocks}}',
+  vrx_ownership_period: 'ברשומות: {{span}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -729,7 +729,7 @@ const SummaryHero: React.FC<{
   return (
     <header className="relative overflow-hidden rounded-3xl bg-[hsl(222_47%_11%)] px-5 py-7 text-white shadow-[0_24px_60px_-30px_hsl(222_47%_11%/0.7)] sm:px-9 sm:py-10">
       {/* One warm light source, top-end. Decorative. */}
-      <span className="pointer-events-none absolute -end-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,hsl(38_92%_56%/0.22),transparent)]" aria-hidden="true" />
+      <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_9rem_at_calc(100%_-_3rem)_3rem,hsl(38_92%_56%/0.22),transparent)] rtl:bg-[radial-gradient(circle_9rem_at_3rem_3rem,hsl(38_92%_56%/0.22),transparent)]" aria-hidden="true" />
       <div className="relative space-y-4">
         <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.1em] text-[hsl(38_92%_66%)]">
           <span className="h-px w-8 bg-[hsl(38_92%_56%)]" aria-hidden="true" />

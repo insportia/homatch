@@ -3,13 +3,23 @@
 // Built by peopleCards() (src/verify/reportPresentation.ts): the municipal
 // documents' team, public credits, the developer and the financing partner,
 // merged by name. The privacy rule is held there: a private individual is
-// never shown outside a professional role.
+// named only in a professional role, or — in the separate "Land & ownership"
+// group — when an official municipal document names them as the project's
+// land owner, permit applicant or client (owner, 2026-10-10). Never an ID
+// number; never presented as the owner of the requested apartment.
 
 import React from 'react';
-import { Building2, HardHat, Landmark, PenTool, User2, BadgeCheck } from 'lucide-react';
+import { Building2, HardHat, Landmark, PenTool, User2, BadgeCheck, MapPinned } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { peopleCards, type TeamEntryLike, type ProjectTeamLike, type PersonCard } from '@/verify/reportPresentation';
+import { peopleCards, yearSpan, OWNERSHIP_ROLES, type TeamEntryLike, type ProjectTeamLike, type PersonCard } from '@/verify/reportPresentation';
 import { TEAM_ROLE_KEY } from './BuyerIntelligenceCards';
+
+const OWNERSHIP_KEY: Record<string, string> = {
+  PARCEL_OWNER: 'vrx_team_role_parcel_owner',
+  APPLICANT: 'vrx_team_role_applicant',
+  CO_APPLICANT: 'vrx_team_role_co_applicant',
+  CLIENT: 'vrx_team_role_client',
+};
 
 const ROLE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   DEVELOPER: Building2,
@@ -26,6 +36,7 @@ function roleLabel(card: PersonCard, t: (k: string) => string): string {
   return card.roles
     .map((r) => {
       if (r === 'FINANCING') return t('vrx_team_role_financing');
+      if (OWNERSHIP_KEY[r]) return t(OWNERSHIP_KEY[r]);
       if (r === 'CREDITED') return card.roleText || t('vbi_team_role_other');
       return TEAM_ROLE_KEY[r] ? t(TEAM_ROLE_KEY[r]) : t('vbi_team_role_other');
     })
@@ -45,8 +56,30 @@ export const PeopleBehind: React.FC<{
     [team, projectTeam, developer, financingPartner],
   );
   if (!cards.length) return null;
+  // A card belongs to the team when it holds any non-ownership role; a pure
+  // land / permit party goes to its own group with the not-your-unit note.
+  const professional = cards.filter((c) => c.roles.some((r) => !OWNERSHIP_ROLES.has(r)));
+  const ownership = cards.filter((c) => !c.roles.some((r) => !OWNERSHIP_ROLES.has(r)));
   return (
-    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label={t('vbi_team_title')}>
+    <div className="space-y-5">
+      {professional.length ? <CardGrid cards={professional} label={t('vbi_team_title')} t={t} /> : null}
+      {ownership.length ? (
+        <section aria-labelledby="vrx-ownership" className="space-y-3">
+          <h3 id="vrx-ownership" className="flex items-center gap-2 text-sm font-semibold break-words">
+            <MapPinned className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            {t('vrx_ownership_title')}
+          </h3>
+          <p className="text-xs leading-5 text-muted-foreground break-words">{t('vrx_ownership_note')}</p>
+          <CardGrid cards={ownership} label={t('vrx_ownership_title')} t={t} />
+        </section>
+      ) : null}
+    </div>
+  );
+};
+
+function CardGrid({ cards, label, t }: { cards: PersonCard[]; label: string; t: (k: string, v?: Record<string, string | number>) => string }) {
+  return (
+    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label={label}>
       {cards.map((c, i) => {
         const Icon = ROLE_ICON[c.roles[0]] ?? (c.organization ? Building2 : User2);
         return (
@@ -62,6 +95,14 @@ export const PeopleBehind: React.FC<{
               <div className="min-w-0 space-y-1">
                 <p className="text-2xs font-semibold uppercase tracking-[0.04em] text-[hsl(var(--gold-ink))] break-words">{roleLabel(c, t)}</p>
                 <p className="text-[15px] font-semibold leading-6 break-words" dir="auto">{c.name}</p>
+                {c.ownership && (c.blocks.length || c.firstSeen || c.lastSeen) ? (
+                  <p className="text-xs text-muted-foreground break-words">
+                    {[
+                      c.blocks.length ? t('vrx_ownership_building', { blocks: c.blocks.join(', ') }) : null,
+                      c.firstSeen || c.lastSeen ? t('vrx_ownership_period', { span: yearSpan(c.firstSeen ?? c.lastSeen ?? '', c.lastSeen ?? c.firstSeen ?? '') }) : null,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                ) : null}
                 {c.official ? (
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">
                     <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
@@ -77,4 +118,4 @@ export const PeopleBehind: React.FC<{
       })}
     </ul>
   );
-};
+}

@@ -174,6 +174,24 @@ export const VERIFY_REPORT_UI_STRINGS = {
   vrx_section_people: ['People connected to the project', 'პროექტთან დაკავშირებული პირები', 'Связанные с проектом лица', 'Projeyle bağlantılı kişiler', 'أشخاص مرتبطون بالمشروع', 'אנשים הקשורים לפרויקט'],
   vrx_section_more: ['More from the research', 'კვლევიდან დამატებით', 'Ещё из исследования', 'Araştırmadan daha fazlası', 'المزيد من البحث', 'עוד מהמחקר'],
 
+  // ── Land & ownership (owner, 2026-10-10: name verified private owners and
+  //    applicants from the official records; never an ID number; never as the
+  //    owner of the requested apartment) ──
+  vrx_team_role_parcel_owner: ['Land owner', 'მიწის ნაკვეთის მესაკუთრე', 'Владелец земельного участка', 'Arsa sahibi', 'مالك الأرض', 'בעל הקרקע'],
+  vrx_team_role_applicant: ['Permit applicant', 'ნებართვის მაძიებელი', 'Заявитель на разрешение', 'İzin başvuru sahibi', 'مقدّم طلب الترخيص', 'מבקש ההיתר'],
+  vrx_team_role_co_applicant: ['Co-applicant', 'თანამაძიებელი', 'Созаявитель', 'Ortak başvuru sahibi', 'مقدّم طلب مشارك', 'מבקש שותף'],
+  vrx_team_role_client: ['Client (commissioned the project)', 'დამკვეთი', 'Заказчик проекта', 'Proje sahibi (işveren)', 'العميل (صاحب المشروع)', 'המזמין של הפרויקט'],
+  vrx_ownership_title: ['Land & ownership', 'მიწა და საკუთრება', 'Земля и собственность', 'Arsa ve mülkiyet', 'الأرض والملكية', 'קרקע ובעלות'],
+  vrx_ownership_note: [
+    'Named in the official municipal case documents for the project’s land and permits. This is not the owner of the apartment you asked about.',
+    'დასახელებულია პროექტის მიწასა და ნებართვებთან დაკავშირებულ ოფიციალურ მუნიციპალურ დოკუმენტებში. ეს არ არის თქვენ მიერ მოთხოვნილი ბინის მესაკუთრე.',
+    'Указаны в официальных муниципальных документах по земле и разрешениям проекта. Это не владелец запрошенной вами квартиры.',
+    'Projenin arsası ve izinleriyle ilgili resmî belediye belgelerinde adı geçer. Sorduğunuz dairenin sahibi değildir.',
+    'مذكورون في وثائق البلدية الرسمية الخاصة بأرض المشروع وتراخيصه. هذا ليس مالك الشقة التي سألت عنها.',
+    'מופיעים במסמכים העירוניים הרשמיים של קרקע הפרויקט וההיתרים שלו. זה אינו הבעלים של הדירה שעליה שאלתם.',
+  ],
+  vrx_ownership_building: ['Building {{blocks}}', 'კორპუსი {{blocks}}', 'Корпус {{blocks}}', '{{blocks}} numaralı bina', 'المبنى {{blocks}}', 'בניין {{blocks}}'],
+  vrx_ownership_period: ['In the records {{span}}', 'დოკუმენტებში: {{span}}', 'В документах: {{span}}', 'Belgelerde: {{span}}', 'في السجلات: {{span}}', 'ברשומות: {{span}}'],
   vrx_team_role_financing: ['Financing partner', 'საფინანსო პარტნიორი', 'Финансовый партнёр', 'Finansman ortağı', 'شريك التمويل', 'שותף מממן'],
   // ── Final visual contract (visualAssets.ts) ──
   vrx_badge_material: ['Project material', 'საპროექტო მასალა', 'Материалы проекта', 'Proje materyali', 'مواد المشروع', 'חומרי פרויקט'],

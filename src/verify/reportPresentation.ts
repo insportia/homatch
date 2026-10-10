@@ -169,7 +169,7 @@ export function yearSpan(first: string, last: string): string {
 
 /* ───────────────────────── People ───────────────────────── */
 
-export interface TeamEntryLike { name: string; kind?: string; roles?: string[]; lastSeen?: string | null }
+export interface TeamEntryLike { name: string; kind?: string; roles?: string[]; firstSeen?: string | null; lastSeen?: string | null; blocks?: string[] | null }
 export interface ProjectTeamLike { name: string; roles?: string[]; basis?: 'OFFICIAL' | 'PUBLIC' | string; roleText?: string | null }
 
 export interface PersonCard {
@@ -181,6 +181,10 @@ export interface PersonCard {
   lastSeen: string | null;
   /** A public statement rather than a register or municipal fact. */
   publicStatement: boolean;
+  /** Named for the project's land / permits (owner, applicant, client) — never the requested unit's owner. */
+  ownership: boolean;
+  firstSeen: string | null;
+  blocks: string[];
 }
 
 const ORG_FORM = /(^|\s|["„“])(შპს|სს|ი\/მ|ააიპ|llc|ltd|jsc|ооо|оао|зао|inc\.?|bank|ბანკი)(\s|$|["“”])/iu;
@@ -189,8 +193,15 @@ const PROFESSIONAL = new Set([
   'TECHNICAL_SUPERVISOR', 'CONTRACTOR', 'MEP_ENGINEER', 'LANDSCAPE_ARCHITECT', 'FIRE_SAFETY', 'SURVEYOR', 'INTERIOR_DESIGNER',
   'FINANCING', 'CREDITED',
 ]);
-/** Roles that never earn a card: applicants and parcel owners may be private people. */
-const NEVER_SHOWN = new Set(['PARCEL_OWNER', 'APPLICANT', 'CO_APPLICANT', 'CLIENT']);
+/**
+ * Ownership roles: shown by name — private people included (owner, 2026-10-10)
+ * — ONLY when an official municipal document names them (the `team` from the
+ * TAS cases), never from a public credit, and always as the project's land /
+ * permit party, never as the requested apartment's owner.
+ */
+export const OWNERSHIP_ROLES = new Set(['PARCEL_OWNER', 'APPLICANT', 'CO_APPLICANT', 'CLIENT']);
+/** A personal number (11 digits in Georgia) or any long digit run never travels in a name. */
+const ID_DIGITS = /\d{6,}/;
 
 const nameKey = (s: string): string =>
   s.toLowerCase().replace(/["„“”'«»]/g, '').replace(/\b(შპს|სს|llc|ltd|jsc)\b/giu, '').replace(/\s+/g, ' ').trim();
@@ -199,7 +210,8 @@ const nameKey = (s: string): string =>
  * The team, merged by name across the municipal documents, public credits,
  * the developer and the financing partner. Roles are unioned; "official"
  * means at least one municipal document named them. A private person is
- * kept only in a professional role; never as an applicant or parcel owner.
+ * kept in a professional role, or as an officially documented land / permit
+ * party (OWNERSHIP_ROLES) — the latter in its own group, never as a unit owner.
  */
 export function peopleCards(input: {
   team?: TeamEntryLike[] | null;
@@ -208,15 +220,18 @@ export function peopleCards(input: {
   financingPartner?: string | null;
 }): PersonCard[] {
   const out = new Map<string, PersonCard>();
-  const add = (name: string, roles: string[], o: { official: boolean; organization: boolean; roleText?: string | null; lastSeen?: string | null; publicStatement?: boolean }) => {
+  const add = (name: string, roles: string[], o: { official: boolean; organization: boolean; roleText?: string | null; firstSeen?: string | null; lastSeen?: string | null; blocks?: string[] | null; publicStatement?: boolean; ownershipAllowed?: boolean }) => {
     const n = String(name ?? '').trim();
-    if (!n) return;
-    const kept = roles.filter((r) => !NEVER_SHOWN.has(r));
+    if (!n || ID_DIGITS.test(n)) return;
+    const kept = roles.filter((r) => !OWNERSHIP_ROLES.has(r) || (o.ownershipAllowed && o.official));
     const professional = kept.some((r) => PROFESSIONAL.has(r));
+    const ownership = kept.some((r) => OWNERSHIP_ROLES.has(r));
     const organization = o.organization || ORG_FORM.test(n);
-    // A private person outside a professional role is never shown by name.
-    if (!professional && !organization) return;
+    // A private person is shown by name only in a professional role or as an
+    // officially documented land / permit party.
+    if (!professional && !organization && !ownership) return;
     if (!kept.length) return;
+    const blocks = (o.blocks ?? []).filter(Boolean).map(String);
     const k = nameKey(n);
     const prev = out.get(k);
     if (prev) {
@@ -225,17 +240,22 @@ export function peopleCards(input: {
       prev.organization = prev.organization || organization;
       prev.roleText = prev.roleText || o.roleText || null;
       prev.lastSeen = prev.lastSeen || o.lastSeen || null;
+      prev.firstSeen = prev.firstSeen || o.firstSeen || null;
       prev.publicStatement = prev.publicStatement && !!o.publicStatement;
+      prev.ownership = prev.ownership || ownership;
+      for (const b of blocks) if (!prev.blocks.includes(b)) prev.blocks.push(b);
       return;
     }
-    out.set(k, { name: n, roles: [...kept], roleText: o.roleText ?? null, official: o.official, organization, lastSeen: o.lastSeen ?? null, publicStatement: !!o.publicStatement });
+    out.set(k, { name: n, roles: [...kept], roleText: o.roleText ?? null, official: o.official, organization, firstSeen: o.firstSeen ?? null, lastSeen: o.lastSeen ?? null, publicStatement: !!o.publicStatement, ownership, blocks });
   };
   if (input.developer) add(input.developer, ['DEVELOPER'], { official: false, organization: true });
   for (const m of input.team ?? []) {
     if (!m?.name) continue;
     const roles = (m.roles ?? []).length ? m.roles! : ['OTHER'];
     // 'OTHER' is shown only for organisations — the server rule, held again here.
-    add(m.name, roles.map((r) => (r === 'OTHER' && m.kind === 'ORGANIZATION' ? 'OTHER_ORG' : r)), { official: true, organization: m.kind === 'ORGANIZATION', lastSeen: m.lastSeen ?? null });
+    add(m.name, roles.map((r) => (r === 'OTHER' && m.kind === 'ORGANIZATION' ? 'OTHER_ORG' : r)), {
+      official: true, organization: m.kind === 'ORGANIZATION', firstSeen: m.firstSeen ?? null, lastSeen: m.lastSeen ?? null, blocks: m.blocks ?? null, ownershipAllowed: true,
+    });
   }
   for (const m of input.projectTeam ?? []) {
     if (!m?.name) continue;

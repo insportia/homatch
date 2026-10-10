@@ -332,7 +332,7 @@ test('milestones are grouped into steps that expand to their own records', () =>
   assert.ok(!/verify_ox_changed_to'\)\} <\/span>/.test(oi) && !/sr-only/.test(oi), 'the screen-reader-only "changed" construct is back');
 });
 
-test('the team never shows a private person outside a professional role', () => {
+test('a private person is named only professionally or as an officially documented land / permit party', () => {
   const cards = peopleCards({
     team: [
       { name: 'ნინო აბაშიძე', kind: 'PERSON', roles: ['PARCEL_OWNER'] },
@@ -345,11 +345,35 @@ test('the team never shows a private person outside a professional role', () => 
     financingPartner: 'Bank of Georgia',
   });
   const names = cards.map((c) => c.name);
-  assert.ok(!names.includes('ნინო აბაშიძე'), 'a private parcel owner is named');
-  assert.ok(!names.includes('Someone'));
+  // Owner, 2026-10-10: an officially documented parcel owner IS named — in the
+  // ownership group, never as a professional and never as the unit's owner.
+  const owner = cards.find((c) => c.name === 'ნინო აბაშიძე');
+  assert.ok(owner && owner.ownership && owner.official, 'an officially documented parcel owner is not named');
+  assert.deepEqual(owner.roles, ['PARCEL_OWNER']);
+  assert.ok(!names.includes('Someone'), 'an unknown-role private person is named');
   assert.equal(names.filter((n) => n === 'გიორგი ბერიძე').length, 1, 'one person, two sources, two cards');
   assert.equal(names[0], 'შპს დეველოპერი');
   assert.ok(cards.find((c) => c.roles.includes('FINANCING'))?.publicStatement);
+});
+
+test('ownership names: official only, never an ID number, building and period kept', () => {
+  const cards = peopleCards({
+    team: [
+      { name: 'ლევან კაპანაძე', kind: 'PERSON', roles: ['APPLICANT'], firstSeen: '2021-03-02', lastSeen: '2024-11-20', blocks: ['01'] },
+      { name: 'თამარ გელაშვილი 01024012345', kind: 'PERSON', roles: ['PARCEL_OWNER'] },
+    ],
+    // A public credit cannot make anyone an owner.
+    projectTeam: [{ name: 'დავით ხუციშვილი', roles: ['PARCEL_OWNER'], basis: 'PUBLIC' }],
+  });
+  const names = cards.map((c) => c.name);
+  const applicant = cards.find((c) => c.name === 'ლევან კაპანაძე');
+  assert.ok(applicant?.ownership);
+  assert.deepEqual(applicant.blocks, ['01']);
+  assert.equal(applicant.firstSeen, '2021-03-02');
+  assert.ok(!names.some((n) => /\d{6,}/.test(n)), 'a personal number travelled with a name');
+  assert.ok(!names.includes('დავით ხუციშვილი'), 'a public credit made someone an owner');
+  const ui = code('src/components/verify/PeopleBehind.tsx');
+  assert.match(ui, /vrx_ownership_note/, 'the not-your-unit note is missing from the ownership group');
 });
 
 /* ── i18n ────────────────────────────────────────────────────────────── */

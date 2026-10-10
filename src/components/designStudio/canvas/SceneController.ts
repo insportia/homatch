@@ -41,6 +41,7 @@ import {
 } from '@/lib/designStudio/player';
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
 import { WalkSounds } from './walkSounds';
+import { buildDecor, disposeDecor } from './walkDecor';
 import { soundFor } from '@/lib/designStudio/walkSounds';
 import { PostFx } from './postFx';
 import { roomContaining, wallFrame, type Point } from '@/lib/designStudio/space';
@@ -2769,9 +2770,41 @@ export class SceneController {
     el.addEventListener('pointermove', this.onLookMove);
     el.addEventListener('pointerup', this.onLookUp);
     el.addEventListener('pointercancel', this.onLookCancel);
+    this.dressForWalk();
     this.placeWalkCamera();
     this.reportRoom();
     this.requestRender();
+  }
+
+  /** What stands in the home, as plan footprints (the walk's plan panel draws them over the walls). */
+  planPieces(): Array<{ x: number; y: number; w: number; d: number; rotation: number; flat: boolean }> {
+    const d = this.lastDesign;
+    if (!d) return [];
+    return d.state.objects.flatMap((o) => {
+      const own = d.assets.get(o.assetId);
+      if (!own || own.placement !== 'FLOOR') return [];
+      const a = shapedAsset(own, o);
+      return [{ x: o.position.x, y: o.position.z, w: a.widthM, d: a.depthM, rotation: o.rotationY, flat: a.heightM < 0.05 }];
+    });
+  }
+
+  /** The walked home's dressing (walkDecor.ts): art, books, a centrepiece, curtains. Never a target or an obstacle. */
+  private decor: THREE.Group | null = null;
+  private dressForWalk() {
+    if (this.decor) { disposeDecor(this.decor); this.decor = null; }
+    const d = this.lastDesign;
+    if (!d || !this.space) return;
+    try {
+      const pieces = d.state.objects.map((obj) => {
+        const own = d.assets.get(obj.assetId);
+        return own ? { obj, asset: shapedAsset(own, obj) } : null;
+      }).filter((x): x is NonNullable<typeof x> => !!x);
+      this.decor = buildDecor({ space: this.space, pieces, palette: d.state.palette ?? [] });
+      this.scene.add(this.decor);
+    } catch {
+      // Dressing is never worth a broken walk.
+      this.decor = null;
+    }
   }
 
   exitWalkthrough() {
@@ -2780,6 +2813,7 @@ export class SceneController {
     if (w.route) { const done = w.route.done; w.route = null; done(false); }
     this.walk = null;
     this.sounds.stopAll();
+    if (this.decor) { disposeDecor(this.decor); this.decor = null; }
     this.cancelPendingTap();
     this.lastMouseTap = 0;
     this.leavingLock = true;

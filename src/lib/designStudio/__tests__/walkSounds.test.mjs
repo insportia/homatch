@@ -50,3 +50,25 @@ test('a piece with several uses offers the choice (a bed: lie down first), never
   assert.match(ctl, /onTransition: \(e, _from, to\) => \{/);
   assert.match(ctl, /this\.walk = null;\n\s+this\.sounds\.stopAll\(\);/);
 });
+
+test('cooking sizzles until done, a sip is a slurp, brewing is the machine', () => {
+  assert.equal(soundFor('STOVE', true, 'SEARING'), 'SIZZLE');
+  assert.equal(soundFor('STOVE', true, 'COOKING'), null); // keeps sizzling, nothing new
+  assert.equal(soundFor('STOVE', true, 'DONE'), 'SIZZLE_END');
+  assert.equal(soundFor('STOVE', true, 'SERVED'), 'PLATE');
+  assert.ok(LOOPING.has('SIZZLE'));
+  assert.equal(soundFor('COFFEE', true, 'BREWING'), 'COFFEE');
+  assert.equal(soundFor('COFFEE', true, 'SIPPING'), 'SLURP');
+  assert.equal(soundFor('COFFEE', true, 'READY'), null);
+});
+
+test('the walk is dressed (art, books, curtains) without touching the design, and its plan is shown, labelled', () => {
+  assert.match(ctl, /this\.decor = buildDecor\(\{ space: this\.space, pieces, palette: d\.state\.palette \?\? \[\] \}\);/);
+  assert.match(ctl, /if \(this\.decor\) \{ disposeDecor\(this\.decor\); this\.decor = null; \}/);
+  const decor = fs.readFileSync(new URL('../../../components/designStudio/canvas/walkDecor.ts', import.meta.url), 'utf8');
+  // Never a target or an obstacle.
+  assert.match(decor, /mesh\.raycast = \(\) => \{\};\n\s+mesh\.userData\.decor = true;/);
+  const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');
+  assert.match(overlay, /<span>\{tr\(planOpen \? 'ds_walk_plan_hide' : 'ds_walk_plan_show'\)\}<\/span>/);
+  assert.match(overlay, /return v \? v === 'open' : !touch;/);
+});

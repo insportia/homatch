@@ -299,6 +299,25 @@ function buildPiece(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColor
       break;
     }
     case 'ARMCHAIR': {
+      if (asset.category === 'OUTDOOR' && !form) {
+        // A balcony's chair is light: a slim metal frame, a slatted wooden seat and back (a bistro chair), never
+        // an upholstered armchair out in the weather.
+        const frame = mat('legs', '#2f3236');
+        const slat = mat('body', '#a77c55');
+        const cw = Math.min(W, 0.48); const cd = Math.min(D, 0.5);
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          const l = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.45, 8), frame);
+          l.position.set(sx * (cw / 2 - 0.03), 0.225, sz * (cd / 2 - 0.03));
+          l.rotation.set(sz * 0.06, 0, -sx * 0.04);
+          g.add(l);
+        }
+        g.add(box(cw, 0.012, cd, 0, 0.44, 0, frame)); // seat frame
+        for (let i = 0; i < 4; i += 1) g.add(box(cw - 0.04, 0.018, cd / 4 - 0.02, 0, 0.455, -cd / 2 + (i + 0.5) * (cd / 4), slat)); // seat slats
+        for (const sx of [-1, 1]) g.add(box(0.016, Math.max(0.3, H - 0.46), 0.016, sx * (cw / 2 - 0.03), 0.46, cd / 2 - 0.03, frame)); // back posts
+        for (let i = 0; i < 3; i += 1) g.add(box(cw - 0.06, 0.05, 0.015, 0, 0.56 + i * 0.08, cd / 2 - 0.03, slat)); // back slats
+        specs.push(seatsAlong(cw, 1, 1.18, 0.02));
+        break;
+      }
       if (form === 'CLUB') {
         // A deep club chair: a low upholstered base, a curved back that wraps into rolled arms, a thick seat
         // cushion, short tapered wooden legs.

@@ -52,4 +52,7 @@ export const DS_STRINGS_37 = {
     'לחצו או הקישו E כדי לקום',
   ],
   ds_walk_stand_tap: ['Tap to stand up', 'ადგომა — შეეხეთ ეკრანს', 'Коснитесь, чтобы встать', 'Kalkmak için dokunun', 'المس للنهوض', 'געו כדי לקום'],
+  // The walk's plan panel: shown and hidden by a labelled button, never an icon alone.
+  ds_walk_plan_show: ['Show plan', 'გეგმის ჩვენება', 'Показать план', 'Planı göster', 'إظهار المخطط', 'הצג תוכנית'],
+  ds_walk_plan_hide: ['Hide plan', 'გეგმის დამალვა', 'Скрыть план', 'Planı gizle', 'إخفاء المخطط', 'הסתר תוכנית'],
 };

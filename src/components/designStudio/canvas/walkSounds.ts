@@ -45,7 +45,7 @@ export class WalkSounds {
 
   /** Play a cue `distanceM` away; `key` names a looping cue's source (the tap that runs). */
   cue(cue: SoundCue, distanceM: number, key: string) {
-    if (cue === 'WATER_OFF' || !LOOPING.has(cue)) this.stopLoop(key);
+    if (!LOOPING.has(cue)) this.stopLoop(key);
     const level = distanceGain(distanceM);
     if (level <= 0) return;
     const ctx = this.ensure();
@@ -73,7 +73,11 @@ export class WalkSounds {
       case 'WATER_OFF': this.squeak(out, t); break;
       case 'CURTAIN': this.swish(out, t, 0.5, 2200, 0.2); break;
       case 'HOB_CLICK': for (let i = 0; i < 3; i += 1) this.click(out, t + i * 0.09, 4200, 0.4); this.burst(out, t + 0.28, 0.4, 'lowpass', 700, 0.7, 0.2); break;
-      case 'COFFEE': this.tone(out, t, 'sawtooth', 115, 120, 1.8, 0.05); this.burst(out, t, 1.8, 'bandpass', 1500, 1.2, 0.12); break;
+      case 'COFFEE': this.brew(out, t); break;
+      case 'SLURP': this.slurp(out, t); break;
+      case 'SIZZLE': this.click(out, t, 4200, 0.3); this.sizzle(out, t + 0.05, key); break;
+      case 'SIZZLE_END': break;
+      case 'PLATE': this.tone(out, t, 'sine', 2900, 2850, 0.35, 0.05); this.tone(out, t + 0.004, 'sine', 4300, 4250, 0.25, 0.03); this.knock(out, t, 900, 0.2); break;
       case 'MOTOR': this.tone(out, t, 'sawtooth', 75, 82, 1.2, 0.07, 320); break;
       case 'SIT': this.burst(out, t, 0.22, 'lowpass', 260, 0.7, 0.45); break;
       case 'STAND': this.burst(out, t, 0.16, 'lowpass', 320, 0.7, 0.25); break;
@@ -169,20 +173,83 @@ export class WalkSounds {
   }
   /** A tap's handle. */
   private squeak(out: AudioNode, t: number) { this.tone(out, t, 'sine', 1150, 1500, 0.06, 0.04); }
-  /** A cistern emptying: a rush that swells, gurgles and drains away over three seconds. */
+  /**
+   * A cistern emptying, the way it sounds in a small tiled room: a soft rush of water (a broad band, no siren-like
+   * sweep), bubbles and a gurgle as the bowl drains, then the quiet hiss of the cistern refilling.
+   */
   private flush(out: AudioNode, t: number) {
     const ctx = this.ctx!;
-    const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 1.2;
-    f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(2600, t + 0.5); f.frequency.exponentialRampToValueAtTime(380, t + 3.2);
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 7;
-    const depth = ctx.createGain(); depth.gain.value = 260;
-    lfo.connect(depth).connect(f.frequency);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.42, t + 0.35); g.gain.setValueAtTime(0.42, t + 1.4); g.gain.linearRampToValueAtTime(0.0001, t + 3.4);
-    src.connect(f).connect(g).connect(out);
-    src.start(t); lfo.start(t); src.stop(t + 3.5); lfo.stop(t + 3.5);
+    // The rush: two bands of noise (body and splash), swelling fast and draining away over ~2.5 s.
+    const layer = (freq: number, q: number, peak: number, hold: number, fade: number) => {
+      const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(peak, t + 0.18);
+      g.gain.setValueAtTime(peak, t + hold);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + hold + fade);
+      src.connect(f).connect(g).connect(out);
+      src.start(t, Math.random()); src.stop(t + hold + fade + 0.05);
+    };
+    layer(650, 0.7, 0.16, 0.9, 1.6);
+    layer(2600, 0.9, 0.06, 0.7, 1.2);
+    // Bubbles: short rising blips as the bowl drains, scattered and fading.
+    for (let i = 0; i < 14; i += 1) {
+      const at = t + 0.7 + Math.random() * 1.5;
+      const f0 = 260 + Math.random() * 360;
+      this.tone(out, at, 'sine', f0, f0 * (1.6 + Math.random() * 0.6), 0.04 + Math.random() * 0.03, 0.035 * (1 - (at - t - 0.7) / 1.8));
+    }
+    // The gurgle as the last of it goes down.
+    this.burst(out, t + 2.0, 0.35, 'bandpass', 380, 3, 0.07, 220);
+    // The cistern refilling: a thin hiss, quiet, for a few seconds.
+    const hiss = ctx.createBufferSource(); hiss.buffer = this.noise; hiss.loop = true;
+    const hp = ctx.createBiquadFilter(); hp.type = 'bandpass'; hp.frequency.value = 5200; hp.Q.value = 1.4;
+    const hg = ctx.createGain();
+    hg.gain.setValueAtTime(0.0001, t + 2.2); hg.gain.linearRampToValueAtTime(0.018, t + 2.6); hg.gain.setValueAtTime(0.018, t + 4.6); hg.gain.linearRampToValueAtTime(0.0001, t + 5.6);
+    hiss.connect(hp).connect(hg).connect(out);
+    hiss.start(t + 2.2); hiss.stop(t + 5.7);
   }
+  /** A coffee machine: the pump's buzz, then the brew dripping and spluttering into the cup. */
+  private brew(out: AudioNode, t: number) {
+    this.tone(out, t, 'sawtooth', 52, 50, 1.6, 0.035, 260);
+    for (let i = 0; i < 18; i += 1) {
+      const at = t + 0.4 + Math.random() * 2.2;
+      this.burst(out, at, 0.05 + Math.random() * 0.05, 'bandpass', 900 + Math.random() * 900, 4, 0.08);
+    }
+    this.burst(out, t + 2.4, 0.4, 'bandpass', 1400, 1.5, 0.1, 600); // the last splutter
+  }
+  /** A sip of hot coffee: air drawn in over the cup (a rising slurp), then a swallow. */
+  private slurp(out: AudioNode, t: number) {
+    const at = t + 0.55; // the cup reaches the lips first
+    this.burst(out, at, 0.32, 'bandpass', 700, 2.5, 0.16, 2600);
+    this.burst(out, at + 0.38, 0.18, 'bandpass', 900, 2.5, 0.08, 2000);
+    this.tone(out, at + 0.62, 'sine', 210, 120, 0.09, 0.12);
+  }
+  /** Fat in a hot pan: a crackling hiss, kept until the cooking is done (stopLoop). */
+  private sizzle(out: AudioNode, t: number, key: string) {
+    const ctx = this.ctx!;
+    this.stopLoop(key);
+    if (!this.crackle) {
+      // Two seconds of hiss with sharp crackles in it, made once and looped.
+      const len = ctx.sampleRate * 2;
+      this.crackle = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = this.crackle.getChannelData(0);
+      for (let i = 0; i < len; i += 1) d[i] = (Math.random() * 2 - 1) * 0.35;
+      for (let k = 0; k < 260; k += 1) {
+        const at = Math.floor(Math.random() * (len - 400));
+        const amp = 0.5 + Math.random() * 0.5;
+        for (let j = 0; j < 120; j += 1) d[at + j] += (Math.random() * 2 - 1) * amp * Math.exp(-j / 18);
+      }
+    }
+    const src = ctx.createBufferSource(); src.buffer = this.crackle; src.loop = true;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.22, t + 0.15); g.gain.linearRampToValueAtTime(0.12, t + 1.2);
+    src.connect(hp).connect(g).connect(out);
+    src.start(t);
+    this.loops.set(key, { src, gain: g });
+  }
+  private crackle: AudioBuffer | null = null;
   /** Running water: kept until its tap is turned off (stopLoop). */
   private water(out: AudioNode, t: number, key: string) {
     const ctx = this.ctx!;

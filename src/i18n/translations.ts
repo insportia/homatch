@@ -17627,6 +17627,10 @@ const en = {
   ds_set_sound: 'Sounds',
   ds_walk_stand_click: 'Click or press E to stand up',
   ds_walk_stand_tap: 'Tap to stand up',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_plan_show: 'Show plan',
+  ds_walk_plan_hide: 'Hide plan',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35168,6 +35172,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_set_sound: 'ხმები',
   ds_walk_stand_click: 'ადგომა — დააწკაპუნეთ ან დააჭირეთ E-ს',
   ds_walk_stand_tap: 'ადგომა — შეეხეთ ეკრანს',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_plan_show: 'გეგმის ჩვენება',
+  ds_walk_plan_hide: 'გეგმის დამალვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52700,6 +52708,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_set_sound: 'Звуки',
   ds_walk_stand_click: 'Щёлкните или нажмите E, чтобы встать',
   ds_walk_stand_tap: 'Коснитесь, чтобы встать',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_plan_show: 'Показать план',
+  ds_walk_plan_hide: 'Скрыть план',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70230,6 +70242,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_set_sound: 'Sesler',
   ds_walk_stand_click: 'Kalkmak için tıklayın veya E’ye basın',
   ds_walk_stand_tap: 'Kalkmak için dokunun',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_plan_show: 'Planı göster',
+  ds_walk_plan_hide: 'Planı gizle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87760,6 +87776,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_set_sound: 'الأصوات',
   ds_walk_stand_click: 'انقر أو اضغط E للنهوض',
   ds_walk_stand_tap: 'المس للنهوض',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_plan_show: 'إظهار المخطط',
+  ds_walk_plan_hide: 'إخفاء المخطط',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105290,6 +105310,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_set_sound: 'צלילים',
   ds_walk_stand_click: 'לחצו או הקישו E כדי לקום',
   ds_walk_stand_tap: 'געו כדי לקום',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_plan_show: 'הצג תוכנית',
+  ds_walk_plan_hide: 'הסתר תוכנית',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

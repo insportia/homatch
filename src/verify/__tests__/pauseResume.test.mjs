@@ -62,7 +62,7 @@ test('the customer sees used / remaining / returned — never costs, VAT or marg
     state: 'PAUSED', authorizedTotal: '25.0000', chargedTotal: '8.0000', used: '8.0000', remaining: '17.0000', usageState: 'SETTLED',
     lastSession: { outcome: 'STOPPED', charged: '8.0000', released: '17.0000' }, budgetGuard: false, sessions: 1,
   });
-  assert.deepEqual(b, { state: 'PAUSED', authorized: 25, used: 8, remaining: 17, charged: 8, live: false, calculating: false, lastReturned: 17, lastCharged: 8, authorizations: null, increment: null, maxBudget: null, canExtend: false, hold: null });
+  assert.deepEqual(b, { state: 'PAUSED', authorized: 25, used: 8, remaining: 17, charged: 8, live: false, calculating: false, lastReturned: 17, lastCharged: 8, authorizations: null, increment: null, incrementUsdCents: null, maxBudget: null, canExtend: false, hold: null });
   const x = publicBilling({ state: 'PAUSED', authorizedTotal: 50, chargedTotal: 41, used: 41, remaining: 9, authorizations: 2, increment: 25, maxBudget: 100, canExtend: true }, { reason: 'BUDGET' });
   assert.equal(x.authorizations, 2);
   assert.equal(x.canExtend, true);

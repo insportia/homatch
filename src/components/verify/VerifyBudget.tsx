@@ -51,6 +51,8 @@ export interface PublicBilling {
   /** Authorisations granted so far (25 each); the approval screen sends it back. */
   authorizations?: number | null;
   increment?: number | null;
+  /** The increment's value in USD cents at the configured credit rate (display only). */
+  incrementUsdCents?: number | null;
   maxBudget?: number | null;
   canExtend?: boolean;
   /** Why a paused job waits: the customer's approval of +25, or the 100 maximum. */
@@ -305,14 +307,22 @@ export function VerifyBudgetSummary({ billing }: { billing: PublicBilling | null
 }
 
 /**
- * The +25 question. Asked by the server (the next check does not fit what the
- * customer authorised), answered only by the customer: nothing is reserved or
- * charged until Continue is pressed, and the request names the screen it
- * answers (its authorisation count) so a double click is one extension.
+ * The extension question. Asked only when the server's gate says the next
+ * paid check does not fit what the customer authorised; answered only by
+ * the customer: nothing is reserved or charged until they continue, and the
+ * request names the screen it answers so a double click is one extension.
+ *
+ * Calm on purpose: it is a spending AUTHORISATION ("up to"), never shown as
+ * an automatic charge. Copy is the owner's exact wording (2026-10-10). The
+ * currency line is display only, from a configured rate; no estimate of the
+ * remaining checks is shown, because the server only holds conservative
+ * stage ceilings — not a reliable expectation of what they will cost.
  */
 export function VerifyBudgetExtendDialog({
   open,
   increment,
+  incrementUsdCents,
+  currencies,
   busy,
   needCredits,
   onContinue,
@@ -320,6 +330,9 @@ export function VerifyBudgetExtendDialog({
 }: {
   open: boolean;
   increment: number;
+  /** The increment's value in USD cents at the configured credit rate (display only). */
+  incrementUsdCents?: number | null;
+  currencies?: LaunchQuote['currencies'];
   busy?: boolean;
   /** The wallet cannot cover the extension: offer to add credits instead. */
   needCredits?: boolean;
@@ -327,25 +340,36 @@ export function VerifyBudgetExtendDialog({
   onStop: () => void;
 }) {
   const { t, lang } = useLanguage();
+  const currency = storedCurrency();
+  const money = incrementUsdCents != null && Number(incrementUsdCents) > 0
+    ? convertUsdCents(Number(incrementUsdCents), currency, currencies ?? [], lang) ?? convertUsdCents(Number(incrementUsdCents), 'USD', [], lang)
+    : null;
+  const n = formatCreditAmount(increment, lang);
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onStop(); }}>
-      <DialogContent className="hm-invest w-[calc(100vw-2rem)] max-w-md gap-0 overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-0 text-foreground shadow-[var(--shadow-hover)] sm:rounded-2xl">
+      <DialogContent className="hm-invest max-h-[calc(100dvh-1rem)] w-[calc(100vw-2rem)] max-w-md gap-0 overflow-y-auto overscroll-contain rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-0 text-foreground shadow-[var(--shadow-hover)] sm:rounded-2xl">
         <div className="h-1 w-full bg-[hsl(38_92%_54%)]" aria-hidden="true" />
-        <div className="space-y-5 p-6 sm:p-7">
-          <DialogHeader className="space-y-2 pr-8 text-start">
+        <div className="space-y-3 px-5 pb-4 pt-4 sm:space-y-5 sm:p-7">
+          <DialogHeader className="space-y-1.5 pr-8 text-start">
             <Eyebrow>{t('verify_budget_eyebrow')}</Eyebrow>
-            <DialogTitle className="font-display text-2xl font-semibold leading-tight text-foreground">{t('verify_extend_title')}</DialogTitle>
+            <DialogTitle className="font-display text-[1.2rem] font-semibold leading-tight text-foreground sm:text-2xl">{t('verify_extend_title')}</DialogTitle>
           </DialogHeader>
-          <div className="rounded-xl bg-[#0C1119] p-5 text-white shadow-card">
+          <DialogDescription className="text-sm leading-[1.45rem] text-muted-foreground">{t('verify_extend_body')}</DialogDescription>
+
+          <div className="rounded-xl bg-[#0C1119] px-5 py-3.5 text-white shadow-card sm:py-4">
             <p className="text-2xs font-medium uppercase tracking-[0.12em] text-white/60">{t('verify_extend_label')}</p>
-            <p className="mt-1.5 whitespace-nowrap font-display text-4xl font-semibold leading-none tracking-tight [font-variant-numeric:tabular-nums]">
-              <bdi>
-                +{formatCreditAmount(increment, lang)}
-                <span className="ms-2 align-baseline text-base font-medium text-[hsl(38_92%_62%)]">{t('verify_budget_unit')}</span>
-              </bdi>
+            <p className="mt-1 font-display text-lg font-semibold leading-snug [font-variant-numeric:tabular-nums] sm:text-xl">
+              <bdi>{t('verify_extend_amount', { n })}</bdi>
             </p>
+            {money ? <p className="mt-0.5 text-sm font-medium text-[hsl(38_92%_62%)]"><bdi>{t('verify_extend_equiv', { v: money })}</bdi></p> : null}
           </div>
-          <DialogDescription className="text-sm leading-6 text-muted-foreground">{t('verify_extend_body')}</DialogDescription>
+
+          <p className="text-sm leading-[1.45rem] text-muted-foreground">{t('verify_extend_note')}</p>
+          <p className="flex items-start gap-2.5 rounded-xl border border-border bg-[hsl(var(--sand))] px-3.5 py-2.5 text-xs leading-[1.15rem] text-foreground/80">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" aria-hidden="true" />
+            <span className="min-w-0">{t('verify_extend_saved')}</span>
+          </p>
+
           {needCredits ? (
             <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
               <p className="text-sm font-medium leading-6 text-foreground break-words">{t('verify_resume_need_credits')}</p>
@@ -354,13 +378,14 @@ export function VerifyBudgetExtendDialog({
               </Button>
             </div>
           ) : null}
-          <div className="grid gap-3">
+          <div className="grid gap-2.5">
             <Button type="button" className={GOLD_ACTION} disabled={busy || needCredits} onClick={onContinue}>
-              {busy ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="me-2 h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />}
+              {busy ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
               {t('verify_extend_continue')}
             </Button>
             <Button type="button" variant="outline" className={FRAMED_ACTION} disabled={busy} onClick={onStop}>{t('verify_extend_stop')}</Button>
           </div>
+          <p className="text-center text-2xs leading-5 text-muted-foreground">{t('verify_extend_consent', { n })}</p>
         </div>
       </DialogContent>
     </Dialog>

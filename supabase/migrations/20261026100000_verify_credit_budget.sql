@@ -72,13 +72,18 @@ update public.billable_products
            'PUBLIC_RESEARCH', 0.23, 'MARKET', 0.29, 'DEVELOPER_ADS', 0.50, 'SYNTHESIS', 0.02, 'REPORT', 0.02, 'DEFAULT', 0.10),
          'target_margin_bps', 5500,
          'contingency_bps', 1000,
+         -- Owner rule (2026-10-10): a completed report leaves HOMATCH at least
+         -- $1.00 of VAT-exclusive revenue above its eligible landed cost. A
+         -- floor, not a fee: the price is the HIGHER of the margin price and
+         -- the floor price, never their sum.
+         'min_net_profit_usd', 1.00,
          'apply_output_vat', true,
          'reservation_ttl_hours', 12,
          'budget_guard_bps', 9000,
          'system_failure_charge', 'NONE',
          'ai_models', jsonb_build_object('default', 'gpt-5.6-terra', 'synthesis', 'gpt-5.6-luna', 'verify_synthesis', 'gpt-5.6-luna'),
          'fallback_usd', jsonb_build_object('CAPTCHA_SOLVE', 0.003),
-         'note', 'Verify credit budget (owner brief 2026-10-10). landed + contingency, 55% target margin on VAT-exclusive revenue, plus VAT; capped at the authorised budget.'
+         'note', 'Verify credit budget (owner brief 2026-10-10). net = max((landed + contingency) / 0.45, landed + $1.00 on a completed report), plus VAT; capped at the authorised budget.'
        )),
        updated_at = now()
  where code = 'VERIFY';
@@ -174,7 +179,12 @@ as $$
 $$;
 
 -- ── 5. The price of a landed cost ───────────────────────────────────────
-create or replace function public.verify_price_for_cost(p_landed_cents numeric)
+-- net (VAT-exclusive) = max( (landed + contingency) / (1 − margin),
+--                            landed + min_net_profit   ← completed reports only )
+-- gross = net × (1 + VAT), in credits rounded UP to the credit precision.
+-- `landed` already carries the non-recoverable taxes (billing_landed_cogs_cents);
+-- contingency is a price component only, never recorded as a cost.
+create or replace function public.verify_price_for_cost(p_landed_cents numeric, p_completed boolean default false)
 returns jsonb
 language plpgsql stable security definer set search_path to ''
 as $$
@@ -183,23 +193,29 @@ declare
   v_landed numeric := round(greatest(coalesce(p_landed_cents, 0), 0), 4);
   v_m numeric := coalesce((v_pol->>'target_margin_bps')::numeric, 5500);
   v_c numeric := coalesce((v_pol->>'contingency_bps')::numeric, 0);
+  v_floor numeric := case when coalesce(p_completed, false)
+                          then round(greatest(coalesce(public.verify_num(v_pol->>'min_net_profit_usd'), 0), 0) * 100, 4) else 0 end;
   v_vat_bps numeric := case when coalesce((v_pol->>'apply_output_vat')::boolean, true)
                             then coalesce((v_pol->>'vat_rate_bps')::numeric, 0) else 0 end;
   v_dp integer := coalesce((v_pol->>'rounding_dp')::integer, 2);
-  v_cont numeric; v_net numeric; v_vat numeric; v_gross numeric; v_exact numeric; v_credits numeric;
+  v_cont numeric; v_margin_net numeric; v_floor_net numeric; v_net numeric; v_vat numeric; v_gross numeric; v_exact numeric; v_credits numeric;
 begin
   if v_m < 0 or v_m >= 10000 then raise exception 'VERIFY_INVALID_MARGIN'; end if;
-  v_cont  := round(v_landed * v_c / 10000, 4);
-  v_net   := round((v_landed + v_cont) / (1 - v_m / 10000), 4);
+  v_cont       := round(v_landed * v_c / 10000, 4);
+  v_margin_net := round((v_landed + v_cont) / (1 - v_m / 10000), 4);
+  v_floor_net  := v_landed + v_floor;
+  v_net   := greatest(v_margin_net, v_floor_net);
   v_vat   := round(v_net * v_vat_bps / 10000, 4);
   v_gross := v_net + v_vat;
   v_exact := public.billing_cents_to_credits(v_gross);
-  -- Round UP to the credit precision: rounding never eats the margin.
+  -- Round UP to the credit precision: rounding never eats the margin or the floor.
   v_credits := ceil(v_exact * power(10, v_dp)) / power(10, v_dp);
   return jsonb_build_object(
     'landedCents', v_landed, 'contingencyCents', v_cont, 'netCents', v_net,
     'vatCents', v_vat, 'vatRateBps', v_vat_bps, 'grossCents', v_gross,
     'targetMarginBps', v_m, 'contingencyBps', v_c,
+    'marginNetCents', v_margin_net, 'minProfitCents', v_floor, 'floorApplied', v_floor_net > v_margin_net,
+    'profitCents', v_net - v_landed,
     'creditsExact', v_exact, 'credits', v_credits);
 end;
 $$;
@@ -565,6 +581,7 @@ begin
     'remaining', greatest(v_b.authorized_total_credits - v_b.charged_total_credits - v_accrued, 0),
     'authorizations', (select count(*) from public.verify_billing_authorizations where job_id = p_job_id),
     'increment', coalesce((v_pol->>'increment_credits')::numeric, 25),
+    'incrementUsdCents', round(coalesce((v_pol->>'increment_credits')::numeric, 25) / nullif(coalesce((v_pol->>'credits_per_usd')::numeric, 10), 0) * 100, 2),
     'maxBudget', coalesce((v_pol->>'max_budget_credits')::numeric, 100),
     'canExtend', (select count(*) from public.verify_billing_authorizations where job_id = p_job_id) < coalesce((v_pol->>'max_authorizations')::integer, 4)
                  and v_b.authorized_total_credits + coalesce((v_pol->>'increment_credits')::numeric, 25) <= coalesce((v_pol->>'max_budget_credits')::numeric, 100),
@@ -577,8 +594,13 @@ end;
 $$;
 
 -- ── 8b. The gate before every chargeable stage ──────────────────────────
--- GO      the stage fits in what is left of the authorisation
--- AWAIT   it does not, and one more +25 may be authorised: ask first
+-- The question is the real one: would the investigation's cumulative price,
+-- after this stage at its conservative estimate, still be inside what the
+-- customer authorised? (The synthesis also covers the report it writes and
+-- is priced as the completed report, $1 floor included.) No percentage
+-- threshold ever interrupts a run.
+-- GO      it fits
+-- AWAIT   it does not, and one more authorisation is possible: ask first
 -- LIMIT   it does not, and the 100-credit maximum is reached
 -- NONE    this job is not budgeted (billing off) or holds no open session
 create or replace function public.verify_budget_gate(p_job_id uuid, p_stage text)
@@ -586,18 +608,40 @@ returns jsonb
 language plpgsql security definer set search_path to ''
 as $$
 declare
-  v jsonb := public.verify_billing_state(p_job_id);
-  v_need numeric;
+  v_pol jsonb := public.verify_budget_policy();
+  v_b public.verify_billing;
+  v_stage text := upper(coalesce(p_stage, ''));
+  v_landed numeric;
+  v_usd numeric;
+  v_add numeric;
+  v_proj numeric;
+  v_n integer;
+  v_can boolean;
 begin
-  if v is null or v->>'state' <> 'ACTIVE' then return jsonb_build_object('decision', 'NONE'); end if;
-  v_need := public.verify_stage_credits(p_stage);
-  -- The synthesis is the last paid step: it must also cover the final report it writes.
-  if upper(p_stage) = 'SYNTHESIS' then v_need := v_need + public.verify_stage_credits('REPORT'); end if;
+  select * into v_b from public.verify_billing where job_id = p_job_id;
+  if not found or v_b.state <> 'ACTIVE'
+     or not exists (select 1 from public.verify_billing_sessions where job_id = p_job_id and state = 'RESERVED') then
+    return jsonb_build_object('decision', 'NONE');
+  end if;
+  begin
+    v_landed := (public.verify_job_cost(p_job_id)->>'landedCents')::numeric;
+  exception when others then
+    v_landed := v_b.landed_charged_cents;
+  end;
+  v_usd := coalesce(public.verify_num(v_pol->'stage_estimates_usd'->>v_stage), public.verify_num(v_pol->'stage_estimates_usd'->>'DEFAULT'), 0.10);
+  if v_stage = 'SYNTHESIS' then
+    v_usd := v_usd + coalesce(public.verify_num(v_pol->'stage_estimates_usd'->>'REPORT'), public.verify_num(v_pol->'stage_estimates_usd'->>'DEFAULT'), 0.10);
+  end if;
+  v_add := public.billing_landed_cogs_cents(round(greatest(v_usd, 0) * 100, 4), 0, 0, 0);
+  v_proj := (public.verify_price_for_cost(coalesce(v_landed, 0) + v_add, v_stage in ('SYNTHESIS', 'REPORT'))->>'credits')::numeric;
+  select count(*) into v_n from public.verify_billing_authorizations where job_id = p_job_id;
+  v_can := v_n < coalesce((v_pol->>'max_authorizations')::integer, 4)
+           and v_b.authorized_total_credits + coalesce((v_pol->>'increment_credits')::numeric, 25) <= coalesce((v_pol->>'max_budget_credits')::numeric, 100);
   return jsonb_build_object(
-    'decision', case when (v->>'remaining')::numeric >= v_need then 'GO'
-                     when (v->>'canExtend')::boolean then 'AWAIT' else 'LIMIT' end,
-    'stage', upper(p_stage), 'needed', v_need, 'remaining', (v->>'remaining')::numeric,
-    'authorizedTotal', (v->>'authorizedTotal')::numeric, 'authorizations', (v->>'authorizations')::integer);
+    'decision', case when v_proj <= v_b.authorized_total_credits then 'GO' when v_can then 'AWAIT' else 'LIMIT' end,
+    'stage', v_stage, 'projectedCredits', v_proj,
+    'shortfall', greatest(v_proj - v_b.authorized_total_credits, 0),
+    'authorizedTotal', v_b.authorized_total_credits, 'authorizations', v_n);
 end;
 $$;
 
@@ -643,7 +687,7 @@ begin
   -- keep a customer's money held. It then charges nothing and is flagged.
   begin
     v_cost := public.verify_job_cost(p_job_id);
-    v_price := public.verify_price_for_cost((v_cost->>'landedCents')::numeric);
+    v_price := public.verify_price_for_cost((v_cost->>'landedCents')::numeric, p_outcome = 'COMPLETE');
     v_landed := (v_cost->>'landedCents')::numeric;
     v_review := (v_cost->>'state') = 'PARTIAL';
   exception when others then
@@ -678,7 +722,10 @@ begin
       'tax_cents', 0,
       'metadata', jsonb_build_object('verify_job_id', p_job_id, 'session', v_s.seq, 'outcome', p_outcome,
                                      'price', v_price, 'cost_state', v_cost->>'state', 'charged_before', v_s.charged_before,
-                                     'overrun_credits', greatest((v_price->>'credits')::numeric - v_b.authorized_total_credits, 0))),
+                                     'overrun_credits', greatest((v_price->>'credits')::numeric - v_b.authorized_total_credits, 0),
+                                     -- The $1 floor could not be met inside the customer's authorisation:
+                                     -- never charged beyond it; recorded for finance instead.
+                                     'profit_floor_shortfall', (v_price->>'floorApplied')::boolean and (v_price->>'credits')::numeric > v_b.authorized_total_credits)),
     case p_outcome when 'COMPLETE' then 'SUCCESS' when 'STOPPED' then 'CANCELLED' else 'PARTIAL' end);
 
   update public.verify_billing_sessions
@@ -758,7 +805,7 @@ begin
     'public.verify_budget_policy()',
     'public.verify_num(text)',
     'public.verify_job_paused_at(jsonb, timestamptz)',
-    'public.verify_price_for_cost(numeric)',
+    'public.verify_price_for_cost(numeric, boolean)',
     'public.verify_job_cost(uuid)',
     'public.verify_billing_open(uuid, uuid, text, boolean, integer)',
     'public.verify_stage_credits(text)',

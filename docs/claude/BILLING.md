@@ -38,8 +38,12 @@ warns when a diff enters this domain.
   25) through `wallet_reserve`, prices its METERED cost live, and settles the
   cumulative price minus what earlier sessions of the same job charged
   (stop/resume never charges twice; the total never exceeds the recorded
-  authorisations). Price = (landed + contingency_bps) / (1 − target_margin_bps)
-  × (1 + vat_rate_bps), rounded up, capped — Verify's own policy, NOT
+  authorisations). Price: net = max((landed + contingency_bps) / (1 − target_margin_bps),
+  landed + min_net_profit_usd $1.00 — COMPLETED reports only); gross = net ×
+  (1 + vat_rate_bps), credits rounded up, capped — a floor, never a fee on top
+  of the margin; stopped/partial sessions are margin-only, system failures
+  release everything. If the cap prevents the floor, the shortfall is recorded
+  (`profit_floor_shortfall`, needs_review), never charged — Verify's own policy, NOT
   `billing_price_quote()` and NOT a plan's `profit_share_to_customer_bps`.
   System failure → release all; customer stop → charge incurred. Missing rate
   → policy `fallback_usd` (FALLBACK) or UNPRICED + `verify_billing.needs_review`.
@@ -51,9 +55,11 @@ warns when a diff enters this domain.
   (own id, unique key `verify:<job>:auth<seq>`, unique (job, seq)); an
   extension names the authorisation count the customer saw
   (`p_expected_authorizations`), so a double click or stale tab adds nothing.
-  Before each chargeable stage research-agent calls `verify_budget_gate`
-  (stage p95 estimate from policy `stage_estimates_usd`, priced the Verify
-  way; SYNTHESIS also covers REPORT): GO runs; AWAIT holds the job PAUSED
+  Before each chargeable stage research-agent calls `verify_budget_gate`:
+  the job's cumulative price after the stage at its p95 estimate (policy
+  `stage_estimates_usd`; SYNTHESIS also covers REPORT and is priced as the
+  completed report, floor included) must fit the authorisation. No
+  percentage threshold interrupts a run. GO runs; AWAIT holds the job PAUSED
   (`_pause.reason = BUDGET`) and closes the session (incurred charged, rest
   released — nothing held while waiting); LIMIT (100 reached) holds with
   `BUDGET_LIMIT` and is never extended. Usage above the authorisation is

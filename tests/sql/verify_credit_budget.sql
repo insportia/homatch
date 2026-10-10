@@ -14,8 +14,8 @@ declare
                               "official_collection":{"input_tokens":300000,"output_tokens":30000,"input_tokens_details":{"cached_tokens":100000}}}';
 begin
   -- Wallets: u1 100 credits, u2 10 credits, u3 100 credits on VIP.
-  insert into public.credit_accounts (user_id, balance) values (u1, 100), (u2, 10), (u3, 100);
-  insert into public.credit_lots (user_id, kind, credits_granted, source_type) values (u1, 'PURCHASED', 100, 'TOPUP'), (u2, 'PURCHASED', 10, 'TOPUP'), (u3, 'PURCHASED', 100, 'TOPUP');
+  insert into public.credit_accounts (user_id, balance) values (u1, 200), (u2, 10), (u3, 100);
+  insert into public.credit_lots (user_id, kind, credits_granted, source_type) values (u1, 'PURCHASED', 200, 'TOPUP'), (u2, 'PURCHASED', 10, 'TOPUP'), (u3, 'PURCHASED', 100, 'TOPUP');
   insert into public.user_subscriptions values (u3, 'VIP', 'ACTIVE', now() + interval '20 days');
   insert into public.research_jobs (user_id) values (u1) returning id into j1;
   insert into public.research_jobs (user_id) values (u1) returning id into j2;
@@ -39,7 +39,7 @@ begin
   r := public.verify_billing_open(j1, u1, 'verify:' || j1 || ':s1');
   if not (r->>'ok')::boolean or (r->>'reservedCredits')::numeric <> 25 then raise exception '2: %', r; end if;
   select balance into bal from public.credit_accounts where user_id = u1;
-  if bal <> 75 then raise exception '2: balance %', bal; end if;
+  if bal <> 175 then raise exception '2: balance %', bal; end if;
   if (select count(*) from public.credit_ledger where user_id = u1 and type = 'SERVICE_RESERVE' and amount = -25) <> 1 then raise exception '2: ledger'; end if;
 
   -- 3. Duplicate / double-click: same key, or any key while a session is open → the same session.
@@ -48,7 +48,7 @@ begin
   r := public.verify_billing_open(j1, u1, 'verify:' || j1 || ':other');
   if not (r->>'duplicate')::boolean then raise exception '3: other key'; end if;
   select balance into bal from public.credit_accounts where user_id = u1;
-  if bal <> 75 then raise exception '3: held twice (%)', bal; end if;
+  if bal <> 175 then raise exception '3: held twice (%)', bal; end if;
   begin
     perform public.verify_billing_open(j1, u2, 'verify:' || j1 || ':intruder');
     raise exception '3: another user opened this job';
@@ -72,11 +72,11 @@ begin
   charged1 := (r->>'charged')::numeric; charged_j1 := charged1;
   if charged1 <> (p->>'credits')::numeric or (r->>'released')::numeric <> 25 - charged1 then raise exception '5: %', r; end if;
   select balance into bal from public.credit_accounts where user_id = u1;
-  if bal <> 100 - charged1 then raise exception '5: balance %', bal; end if;
+  if bal <> 200 - charged1 then raise exception '5: balance %', bal; end if;
   r := public.verify_billing_close(j1, 'COMPLETE');
   if not (r->>'duplicate')::boolean then raise exception '5: second settle'; end if;
   select balance into bal from public.credit_accounts where user_id = u1;
-  if bal <> 100 - charged1 then raise exception '5: second settle moved money'; end if;
+  if bal <> 200 - charged1 then raise exception '5: second settle moved money'; end if;
   if (select count(*) from public.usage_events where reservation_id = (select reservation_id from public.verify_billing_sessions where job_id = j1)) <> 1 then
     raise exception '5: usage event count';
   end if;
@@ -191,7 +191,7 @@ begin
 
   -- 16. Ledger integrity: balance + reserved equals what was granted minus what was charged.
   if (select sum(balance + reserved) from public.credit_accounts where user_id = u1)
-     <> 100 - (select sum(charged_total_credits) from public.verify_billing where user_id = u1) then
+     <> 200 - (select sum(charged_total_credits) from public.verify_billing where user_id = u1) then
     raise exception '16: wallet drift';
   end if;
   if exists (select 1 from public.credit_accounts where balance < 0 or reserved < 0) then raise exception '16: negative'; end if;

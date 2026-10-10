@@ -1182,13 +1182,9 @@ function Editor({
                     <span className="sr-only lg:hidden">{t('p2h_compare_button')}</span>
                   </button>
                 ) : null}
-                <button type="button" onClick={() => setShareOpen('WALKTHROUGH')} data-testid="walk-share" className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
-                  <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span className="hidden lg:inline">{t('ds_share_walkthrough')}</span>
-                  <span className="sr-only lg:hidden">{t('ds_share_walkthrough')}</span>
-                </button>
                 </>
               ) : null}
+              onShare={() => setShareOpen('WALKTHROUGH')}
               rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
               touch={touch || isPhoneLayout()}
               onRoom={walkToRoom}

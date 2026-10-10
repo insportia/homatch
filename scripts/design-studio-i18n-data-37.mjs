@@ -55,4 +55,29 @@ export const DS_STRINGS_37 = {
   // The walk's plan panel: shown and hidden by a labelled button, never an icon alone.
   ds_walk_plan_show: ['Show plan', 'გეგმის ჩვენება', 'Показать план', 'Planı göster', 'إظهار المخطط', 'הצג תוכנית'],
   ds_walk_plan_hide: ['Hide plan', 'გეგმის დამალვა', 'Скрыть план', 'Planı gizle', 'إخفاء المخطط', 'הסתר תוכנית'],
+  // The walk's feature dock (WalkthroughOverlay FeatureDock): what each does, in a line.
+  ds_feat_time_help: [
+    'See the home in morning light, at sunset, in the evening or at night.',
+    'ნახეთ ბინა დილის შუქზე, მზის ჩასვლისას, საღამოს ან ღამით.',
+    'Посмотрите на дом при утреннем свете, на закате, вечером или ночью.',
+    'Evi sabah ışığında, gün batımında, akşam ya da gece görün.',
+    'شاهد المنزل في ضوء الصباح أو عند الغروب أو في المساء أو ليلًا.',
+    'ראו את הבית באור בוקר, בשקיעה, בערב או בלילה.',
+  ],
+  ds_feat_live_help: [
+    'Pick a moment — making coffee, cooking, an evening in — and watch it play out in this home.',
+    'აირჩიეთ მომენტი — ყავის მომზადება, სადილი, საღამო სახლში — და ნახეთ, როგორ გამოიყურება ეს ამ ბინაში.',
+    'Выберите момент — кофе, готовка, вечер дома — и посмотрите, как он проходит в этом доме.',
+    'Bir an seçin — kahve yapmak, yemek pişirmek, evde bir akşam — ve bu evde nasıl geçtiğini izleyin.',
+    'اختر لحظة — إعداد القهوة أو الطهي أو أمسية في المنزل — وشاهدها تحدث في هذا المنزل.',
+    'בחרו רגע — הכנת קפה, בישול, ערב בבית — וצפו בו קורה בבית הזה.',
+  ],
+  ds_feat_share_help: [
+    'Send a link to this walkthrough to family, a buyer or an agent — they walk it in their browser.',
+    'გაუგზავნეთ ამ ტურის ბმული ოჯახს, მყიდველს ან აგენტს — ის ბრაუზერში გაივლის ბინას.',
+    'Отправьте ссылку на эту прогулку семье, покупателю или агенту — они пройдут её в браузере.',
+    'Bu gezintinin bağlantısını ailenize, bir alıcıya ya da emlakçıya gönderin — tarayıcılarında gezsinler.',
+    'أرسل رابط هذه الجولة إلى العائلة أو مشترٍ أو وسيط — يتجولون فيها من متصفحهم.',
+    'שלחו קישור לסיור הזה למשפחה, לקונה או לסוכן — הם יסיירו בו בדפדפן.',
+  ],
 };

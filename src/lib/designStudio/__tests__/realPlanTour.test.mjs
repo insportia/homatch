@@ -198,7 +198,10 @@ test('a kitchen has one run, worked with a metre before it; wardrobes open; a ch
 
 test('the double-click mouse look: on and off by a double click, the single click held while it may be one', () => {
   const ctl = fs.readFileSync(new URL('../../../components/designStudio/canvas/SceneController.ts', import.meta.url), 'utf8');
-  assert.match(ctl, /if \(now - this\.lastMouseTap < DOUBLE_CLICK_MS\) \{[\s\S]{0,160}if \(g\.locked\) this\.releasePointer\(\); else this\.lockPointer\(\);/);
+  // Taken on the second press by time alone (a captured mouse turns the view as it moves, so movement never cancels it).
+  assert.match(ctl, /if \(now - this\.lastMouseDown < DOUBLE_CLICK_MS\) \{[\s\S]{0,200}if \(this\.pointerLocked\) this\.releasePointer\(\); else this\.lockPointer\(\);/);
+  // A refused capture is asked again on the next double click; only a browser without pointer lock stops asking.
+  assert.match(ctl, /name === 'NotSupportedError'\) this\.lockUnavailable = true;/);
   assert.match(ctl, /this\.pendingTap = window\.setTimeout\(/);
   assert.doesNotMatch(ctl, /if \(g\.mouse && !g\.locked\) this\.lockPointer\(\);/);
   const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');

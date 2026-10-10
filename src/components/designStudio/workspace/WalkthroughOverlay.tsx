@@ -25,7 +25,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, Footprints, Keyboard, Map as MapIcon, Maximize, MoreHorizontal, Moon, Mouse, Pause, Play, RotateCcw, Settings2, Sparkles, Sun, Sunset, X,
+  ArrowLeft, Footprints, Keyboard, Map as MapIcon, Maximize, MoreHorizontal, Moon, Mouse, Pause, Play, RotateCcw, Settings2, Share2, Sparkles, Sun, Sunset, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AimHint, SceneController, TimeOfDayEnv, WalkPose } from '@/components/designStudio/canvas/SceneController';
@@ -72,8 +72,10 @@ export interface WalkthroughOverlayProps {
   touring?: boolean;
   onTour?: () => void;
   onFullscreen?: () => void;
-  /** Extra buttons in the top bar (the editor's Photo and Share). */
+  /** Extra buttons in the top bar (the editor's Photo and Compare). */
   actions?: React.ReactNode;
+  /** Share this walkthrough (the editor): shown with Time of day and Live Here, never folded into a menu. */
+  onShare?: () => void;
   /** The page hears which room the visitor is in (the guided tour continues from it). */
   onRoomChange?: (roomId: string | null) => void;
   /**
@@ -245,14 +247,6 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
                     <span>{props.touring ? tr('ds_walk_tour_pause') : tr('ds_walk_tour_play')}</span>
                   </button>
                 ) : null}
-                <button type="button" onClick={() => { c?.releasePointer(); setSheet('LIVE'); }} className={quiet} data-testid="walk-live">
-                  <Sparkles className="h-3.5 w-3.5 text-[hsl(38_92%_62%)]" aria-hidden="true" />
-                  <span>{tr('ds_live_title')}</span>
-                </button>
-                <button type="button" onClick={() => { c?.releasePointer(); setSheet('TIME'); }} className={quiet} data-testid="walk-time">
-                  {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: 'h-3.5 w-3.5', 'aria-hidden': true })}
-                  <span>{tr('ds_env_title')}</span>
-                </button>
                 {plan ? (
                   <button type="button" onClick={back} disabled={!canBack} className={cn(quiet, 'disabled:opacity-40')} data-testid="walk-back">
                     <ArrowLeft className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
@@ -342,6 +336,14 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
         </div>
       ) : null}
 
+      {/* ── What the walk offers, on the screen and explained: the time of day, Live Here, sharing ── */}
+      {!overlayOpen && !live.run ? (
+        <FeatureDock tr={tr} touch={touch} env={env}
+          onEnv={(e) => chooseEnv(e)}
+          onLive={() => { c?.releasePointer(); setSheet('LIVE'); }}
+          onShare={props.onShare ? () => { c?.releasePointer(); props.onShare?.(); } : undefined} />
+      ) : null}
+
       {/* ── Live Here: the moment in progress ── */}
       {live.run && !menu ? <LiveCard live={live} tr={tr} touch={touch} /> : null}
 
@@ -426,6 +428,61 @@ function Dialog({ label, onClose, children }: { label: string; onClose: () => vo
   return (
     <div className="absolute inset-0 z-30 grid place-items-center bg-black/35 p-4" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-label={label} className={cn(panel, 'w-full max-w-sm')}>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * The walk's three things worth trying, always in view: the light at another time of day (chosen right here), Live
+ * Here (a moment of living in the home), and sharing the walk. Each says in a line what it does. On a phone they
+ * are a row of labelled buttons under the top bar (the left thumb's stick has the bottom).
+ */
+function FeatureDock({ tr, touch, env, onEnv, onLive, onShare }: {
+  tr: Translate; touch: boolean; env: TimeOfDayEnv; onEnv: (e: TimeOfDayEnv) => void; onLive: () => void; onShare?: () => void;
+}) {
+  const card = 'rounded-xl bg-[#0C1119]/85 p-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur';
+  if (touch) {
+    return (
+      <div className="pointer-events-auto absolute inset-x-3 top-14 z-20 flex flex-wrap justify-center gap-1.5" data-testid="walk-features">
+        <button type="button" onClick={onLive} className={cn(quiet, 'h-9 bg-[#0C1119]/85')} data-testid="walk-live">
+          <Sparkles className="h-4 w-4 text-[hsl(38_92%_62%)]" aria-hidden="true" /><span>{tr('ds_live_title')}</span>
+        </button>
+        <div className="flex items-center gap-1 rounded-md bg-[#0C1119]/85 px-1 ring-1 ring-white/20" role="radiogroup" aria-label={tr('ds_env_title')} data-testid="walk-time">
+          {ENVS.map(({ id, Icon }) => (
+            <button key={id} type="button" role="radio" aria-checked={env === id} aria-label={tr(`ds_env_${id}`)} onClick={() => onEnv(id)} data-env={id}
+              className={cn('grid h-8 w-8 place-items-center rounded', ring, env === id ? 'bg-white text-[#0C1119]' : 'text-white/85')}>
+              <Icon className={cn('h-4 w-4', id === 'NIGHT' ? 'fill-current' : '')} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+        {onShare ? (
+          <button type="button" onClick={onShare} className={cn(quiet, 'h-9 bg-[hsl(38_92%_56%)] font-semibold text-[#0C1119] ring-0 hover:bg-[hsl(38_92%_62%)]')} data-testid="walk-share">
+            <Share2 className="h-4 w-4" aria-hidden="true" /><span>{tr('ds_share_walkthrough')}</span>
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="pointer-events-auto absolute bottom-3 start-3 z-20 flex w-72 flex-col gap-2" data-testid="walk-features">
+      <section className={card} data-testid="walk-time">
+        <h3 className="flex items-center gap-2 text-[14px] font-semibold">
+          {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: 'h-4 w-4 text-[hsl(38_92%_62%)]', 'aria-hidden': true })}
+          {tr('ds_env_title')}
+        </h3>
+        <p className="mb-2 mt-0.5 text-[13px] text-white/70">{tr('ds_feat_time_help')}</p>
+        <EnvPicker tr={tr} env={env} onChoose={onEnv} />
+      </section>
+      <button type="button" onClick={onLive} className={cn(card, 'text-start hover:bg-[#0C1119]/95', ring)} data-testid="walk-live">
+        <span className="flex items-center gap-2 text-[14px] font-semibold"><Sparkles className="h-4 w-4 text-[hsl(38_92%_62%)]" aria-hidden="true" />{tr('ds_live_title')}</span>
+        <span className="mt-0.5 block text-[13px] text-white/70">{tr('ds_feat_live_help')}</span>
+      </button>
+      {onShare ? (
+        <button type="button" onClick={onShare} className={cn('rounded-xl bg-[hsl(38_92%_56%)] p-3 text-start text-[#0C1119] shadow-lg hover:bg-[hsl(38_92%_62%)]', ring)} data-testid="walk-share">
+          <span className="flex items-center gap-2 text-[14px] font-semibold"><Share2 className="h-4 w-4" aria-hidden="true" />{tr('ds_share_walkthrough')}</span>
+          <span className="mt-0.5 block text-[13px] text-[#0C1119]/80">{tr('ds_feat_share_help')}</span>
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { URL } from 'node:url';
+import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MarketplaceSearchRequest, MarketplaceWorkerResult, ExternalListingCandidate } from '../contract.js';
 import { endpoints, publicJson, parsePagination, parseListEnvelope, validateSearchListings, AcquisitionError } from './api.js';
@@ -58,8 +59,14 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
     const locations = await json(endpoints.locations, 'en'), filters = await json(endpoints.filters);
     const queries = buildQueries(request, locations, filters);
     queriesApplied.requests = queries.map(query => query.url);
+    // Ingress truncates diagnostic URL arrays to 80 characters per item.
+    // Persist a bounded identity separately so acknowledged cursors survive it.
+    queriesApplied.queryFingerprint = createHash('sha256').update(JSON.stringify(queriesApplied.requests)).digest('hex');
     const saved = options.checkpoint?.queryApplied;
-    const resume = saved && JSON.stringify(saved.requests) === JSON.stringify(queriesApplied.requests)
+    const sameQueries = saved && (typeof saved.queryFingerprint === 'string'
+      ? saved.queryFingerprint === queriesApplied.queryFingerprint
+      : JSON.stringify(saved.requests) === JSON.stringify(queriesApplied.requests));
+    const resume = saved && sameQueries
       && Number.isSafeInteger(saved.queryIndex) && Number(saved.queryIndex) >= 0 && Number(saved.queryIndex) < queries.length
       && Number.isSafeInteger(saved.nextPage) && Number(saved.nextPage) >= 1 ? saved : null;
     if (resume) delivered = Math.max(0, Math.trunc(options.checkpoint?.returnedCount ?? 0));

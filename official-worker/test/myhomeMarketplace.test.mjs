@@ -179,13 +179,21 @@ test('restart resumes only an acknowledged page for the exact same source querie
   await interrupted.run();
   const first = interrupted.reports.find((r) => r.status === 'RESULTS_RECEIVED');
   assert.equal(first.queryApplied.nextPage, 2);
+  const validated = validateWorkerReport(first, 'myhome-ge');
+  assert.equal(validated.ok, true);
+  const persisted = validated.report.queryApplied;
+  assert.equal(persisted.requests[0].length, 80, 'exercise the production ingress sanitizer');
+  assert.match(persisted.queryFingerprint, /^[a-f0-9]{64}$/);
   const resumed = simulated();
-  const result = await resumed.run({}, { checkpoint: { queryApplied: first.queryApplied, returnedCount: 24 } });
+  const result = await resumed.run({}, { checkpoint: { queryApplied: persisted, returnedCount: 24 } });
   assert.deepEqual(resumed.pages, [2,3,4,5,6]);
   assert.equal(result.delivered, 139); assert.equal(result.status, 'COMPLETE');
   const changed = simulated();
-  await changed.run({}, { checkpoint: { queryApplied: { ...first.queryApplied, requests: ['changed filter'] }, returnedCount: 24 } });
+  await changed.run({}, { checkpoint: { queryApplied: { ...persisted, queryFingerprint: '0'.repeat(64) }, returnedCount: 24 } });
   assert.deepEqual(changed.pages, [1,2,3,4,5,6], 'changed dictionaries/criteria never reuse a stale cursor');
+  const legacy = simulated();
+  await legacy.run({}, { checkpoint: { queryApplied: { ...persisted, queryFingerprint: undefined }, returnedCount: 24 } });
+  assert.deepEqual(legacy.pages, [1,2,3,4,5,6], 'truncated legacy URLs cannot prove query identity');
 });
 
 test('access denied is not bypassed or silently converted into empty success',async()=>{const s=simulated({failPage:1});assert.equal((await s.run()).status,'BLOCKED');assert.deepEqual(s.pages,[1]);});
@@ -273,7 +281,7 @@ test('district names resolve with or without a "district"/„რაიონი�
   assert.equal(k.urbanId, 65);
 });
 
-test('runtime honors durable access restriction without contacting MyHome and closes only its own run', async () => {
+for (const transport of ['http', 'crawlee']) test(`runtime ${transport} honors durable access restriction without contacting MyHome and closes only its own run`, async () => {
   let sourceRequests = 0, completed = false, claimed = false;
   const reports = [];
   const fetcher = async (input, init) => {
@@ -292,7 +300,7 @@ test('runtime honors durable access restriction without contacting MyHome and cl
     }
     throw Error('unexpected action ' + body.action);
   };
-  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true' }, fetcher);
+  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true', MYHOME_PUBLIC_PAGE_TRANSPORT: transport }, fetcher);
   try {
     for (let i=0;i<100&&!completed;i++) await new Promise(resolve=>setTimeout(resolve,10));
     assert.equal(completed, true);
@@ -301,5 +309,6 @@ test('runtime honors durable access restriction without contacting MyHome and cl
     assert.equal(reports[0].status, 'BLOCKED');
     assert.equal(reports[0].errors[0].code, 'ACCESS_DENIED');
     assert.equal(runtime.status().engine.access, 'ACCESS_RESTRICTED');
+    assert.equal(runtime.status().pageTransport, transport === 'crawlee' ? 'CRAWLEE' : 'HTTP');
   } finally { runtime.shutdown(); }
 });

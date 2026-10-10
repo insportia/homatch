@@ -3,6 +3,10 @@
 // Everything a visitor needs while occupying the home, and nothing more:
 //
 //   · where they are, the rooms, the guided tour, back to the entrance
+//   · the whole home as ONE walk: at each real doorway of the room they are
+//     in, the name of the room behind it (TourNavigation); a tap walks them
+//     through that doorway. Back, the plan, any room, the entrance, exit —
+//     always one tap away
 //   · what they are pointing at, and what they can do with it — only when
 //     it is in reach, as a quiet hint with the actions, never a HUD
 //   · desktop: W A S D, mouse look (the mouse is captured on a click, Esc
@@ -21,10 +25,15 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Footprints, Keyboard, Maximize, Moon, Mouse, Pause, Play, RotateCcw, Settings2, Sparkles, Sun, Sunset, X,
+  ArrowLeft, Footprints, Keyboard, Map as MapIcon, Maximize, MoreHorizontal, Moon, Mouse, Pause, Play, RotateCcw, Settings2, Sparkles, Sun, Sunset, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { AimHint, SceneController, TimeOfDayEnv } from '@/components/designStudio/canvas/SceneController';
+import type { AimHint, SceneController, TimeOfDayEnv, WalkPose } from '@/components/designStudio/canvas/SceneController';
+import type { WalkModel } from '@/lib/designStudio/navigation';
+import type { SpaceModel } from '@/lib/designStudio/space';
+import { roomShot } from '@/lib/designStudio/cameraDirector';
+import { doorPointsFrom, planTour, type DoorPoint } from '@/lib/designStudio/tour';
+import { DoorMarkers, PlanSheet, type MarkerHandle } from './TourNavigation';
 import { DEFAULT_SETTINGS, normalizeSettings, type PlayerSettings, type Posture } from '@/lib/designStudio/player';
 import {
   availableExperiences, planExperience, resolveStep, type Experience, type ResolvedStep, type SceneFacts,
@@ -43,7 +52,7 @@ const ENVS: Array<{ id: TimeOfDayEnv; Icon: typeof Sun }> = [
 ];
 
 const ring = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
-const quiet = cn('inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10', ring);
+const quiet = cn('inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10', ring);
 const panel = 'pointer-events-auto rounded-2xl bg-[#0C1119]/95 p-5 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur';
 const primary = cn('inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-5 text-[14px] font-semibold text-[#0C1119] hover:bg-white/90', ring);
 const secondary = cn('inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-[14px] font-medium text-white ring-1 ring-white/25 hover:bg-white/10', ring);
@@ -65,7 +74,17 @@ export interface WalkthroughOverlayProps {
   actions?: React.ReactNode;
   /** The page hears which room the visitor is in (the guided tour continues from it). */
   onRoomChange?: (roomId: string | null) => void;
+  /**
+   * The whole-home tour: the space and the walk model of THIS walk. With them, the real doorways of the room the
+   * visitor is in carry the names of the rooms behind them (reachable rooms only), Back and the plan appear, and
+   * only reachable rooms are offered.
+   */
+  space?: SpaceModel | null;
+  walkModel?: WalkModel | null;
 }
+
+const DOOR_HINT_MS = 7000;
+const BACK_DEPTH = 24;
 
 export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
   const { controller: c, tr, rooms, touch } = props;
@@ -81,6 +100,8 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
     try { return normalizeSettings(JSON.parse(readStore(SETTINGS_KEY) ?? '{}')); } catch { return DEFAULT_SETTINGS; }
   });
   const menuOpenRef = useRef(false);
+  const markers = useRef<MarkerHandle | null>(null);
+  const goDoorRef = useRef<(d: DoorPoint) => void>(() => {});
   const roomChange = useRef(props.onRoomChange);
   roomChange.current = props.onRoomChange;
   menuOpenRef.current = menu || !!sheet || tutorial;
@@ -95,6 +116,14 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
       onPosture: setPosture,
       onLock: setLocked,
       onMenu: () => { if (!menuOpenRef.current) setMenu(true); },
+      // A click with the mouse captured lands at the screen centre: a doorway's name there is taken.
+      onClickPoint: (x, y) => {
+        if (menuOpenRef.current) return false;
+        const d = markers.current?.at(x, y);
+        if (!d) return false;
+        goDoorRef.current(d);
+        return true;
+      },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c]);
@@ -125,6 +154,54 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
 
   const live = useLiveHere(c);
   const roomName = room ? rooms.find((r) => r.id === room)?.name ?? null : null;
+
+  // ── The whole-home tour ──
+  const { space, walkModel } = props;
+  const plan = useMemo(() => (space && walkModel ? planTour(space, walkModel, c?.camera.aspect ?? 16 / 9) : null), [space, walkModel, c]);
+  const names = useMemo(() => new Map(rooms.map((r) => [r.id, r.name] as const)), [rooms]);
+  const doors = useMemo(() => (plan ? doorPointsFrom(plan, room) : []), [plan, room]);
+  const history = useRef<WalkPose[]>([]);
+  const [canBack, setCanBack] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
+  // The secondary actions, folded into one menu so the walk keeps the screen.
+  const [more, setMore] = useState(false);
+  const [doorHint, setDoorHint] = useState<'WAIT' | 'SHOW' | 'DONE'>('WAIT');
+  // Where the visitor stood before a move: Back walks them there again.
+  const remember = () => {
+    const me = c?.playerState();
+    if (!c || !me) return;
+    history.current.push({ position: me.pos, target: { x: me.pos.x + Math.cos(me.yaw) * 2, y: me.pos.y + Math.sin(me.yaw) * 2 }, fov: c.camera.fov });
+    if (history.current.length > BACK_DEPTH) history.current.shift();
+    setCanBack(true);
+  };
+  const stopTour = () => { if (props.touring) props.onTour?.(); };
+  const goDoor = (d: DoorPoint) => {
+    if (!c) return;
+    stopTour();
+    remember();
+    setDoorHint('DONE');
+    void c.routeTo(d.landing, { through: true });
+  };
+  goDoorRef.current = goDoor;
+  // A room from the chips or the plan: the same collision-safe route through the doors, at the doorway pace (a far
+  // room is a few seconds away, never a slow trek); without the tour, the page's own way there.
+  const goRoom = (id: string) => {
+    remember();
+    const pose = c && space && walkModel ? roomShot(space, walkModel, id, c.camera.aspect) : null;
+    if (c && pose) { stopTour(); void c.routeTo(pose, { through: true }); } else props.onRoom(id);
+  };
+  const back = () => {
+    const to = history.current.pop();
+    setCanBack(history.current.length > 0);
+    if (to && c) { stopTour(); void c.routeTo(to, { through: true }); }
+  };
+  const reset = () => { remember(); props.onReset(); };
+  useEffect(() => {
+    if (doorHint !== 'WAIT' || !doors.length) return undefined;
+    setDoorHint('SHOW');
+    const t = window.setTimeout(() => setDoorHint('DONE'), DOOR_HINT_MS);
+    return () => window.clearTimeout(t);
+  }, [doors.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const seated = posture === 'SEATED' || posture === 'LYING' || posture === 'SITTING_DOWN' || posture === 'LYING_DOWN';
   const overlayOpen = menu || !!sheet || tutorial;
 
@@ -132,53 +209,87 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
     <>
       {/* ── Top: where you are, and the few things you might want ── */}
       <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-col items-stretch gap-2">
-        <div className="pointer-events-auto mx-auto flex w-full max-w-3xl items-center gap-1.5 rounded-xl bg-[#0C1119]/90 px-3 py-2 text-white shadow-lg ring-1 ring-white/10 backdrop-blur sm:gap-2">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-2xl items-center gap-1.5 rounded-xl bg-[#0C1119]/80 px-3 py-1.5 text-white shadow-lg ring-1 ring-white/10 backdrop-blur sm:gap-2">
           <Footprints className="h-4 w-4 shrink-0 text-[hsl(38_92%_62%)]" aria-hidden="true" />
           <p className="min-w-0 flex-1 truncate text-[14px]" aria-live="polite">
-            <span className="font-semibold">{tr('ds_walk_title')}</span>
-            {roomName ? <span className="text-white/75"> · {roomName}</span> : null}
+            <span className="sr-only">{tr('ds_walk_title')} · </span>
+            <span className="font-semibold">{roomName || tr('ds_walk_title')}</span>
           </p>
-          {props.onTour ? (
-            <button type="button" onClick={props.onTour} aria-pressed={!!props.touring} className={quiet} aria-label={props.touring ? tr('ds_walk_tour_pause') : tr('ds_walk_tour_play')}>
-              {props.touring ? <Pause className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />}
-              <span className="hidden lg:inline">{props.touring ? tr('ds_walk_tour_pause') : tr('ds_walk_tour_play')}</span>
+          {plan && space ? (
+            <button type="button" onClick={() => { c?.releasePointer(); setMore(false); setPlanOpen((v) => !v); }} aria-pressed={planOpen} className={quiet} aria-label={tr('ds_walk_plan')} data-testid="walk-plan-open">
+              <MapIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">{tr('ds_walk_plan')}</span>
             </button>
           ) : null}
-          <button type="button" onClick={() => { c?.releasePointer(); setSheet('LIVE'); }} className={quiet} aria-label={tr('ds_live_title')} data-testid="walk-live">
-            <Sparkles className="h-3.5 w-3.5 text-[hsl(38_92%_62%)]" aria-hidden="true" />
-            <span className="hidden md:inline">{tr('ds_live_title')}</span>
-          </button>
-          <button type="button" onClick={() => { c?.releasePointer(); setSheet('TIME'); }} className={quiet} aria-label={tr('ds_env_title')} data-testid="walk-time">
-            {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: 'h-3.5 w-3.5', 'aria-hidden': true })}
-          </button>
-          <button type="button" onClick={props.onReset} className={quiet} aria-label={tr('ds_walk_reset')}>
-            <RotateCcw className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
-          </button>
-          <button type="button" onClick={() => { c?.releasePointer(); setSheet('CONTROLS'); }} className={quiet} aria-label={tr('ds_ctrl_help')} data-testid="walk-controls">
-            <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-          {props.onFullscreen ? (
-            <button type="button" onClick={props.onFullscreen} className={quiet} aria-label={tr('ds_walk_fullscreen')}>
-              <Maximize className="h-3.5 w-3.5" aria-hidden="true" />
+          <div className="relative">
+            <button type="button" onClick={() => { c?.releasePointer(); setMore((v) => !v); }} aria-expanded={more} aria-haspopup="true" className={quiet} aria-label={tr('ds_walk_more')} data-testid="walk-more">
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
             </button>
-          ) : null}
-          {props.actions}
-          <button type="button" onClick={props.onExit} className={cn('inline-flex h-8 items-center gap-1.5 rounded-md bg-white px-2.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90', ring)}>
+            {more ? (
+              <div role="group" aria-label={tr('ds_walk_more')} data-testid="walk-more-menu"
+                onClick={(e) => { if ((e.target as HTMLElement).closest('button')) setMore(false); }}
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setMore(false); } }}
+                className="absolute end-0 top-10 z-30 flex w-60 flex-col gap-0.5 rounded-xl bg-[#0C1119]/95 p-1.5 shadow-xl ring-1 ring-white/10 backdrop-blur [&>button]:w-full [&>button]:justify-start [&>button]:ring-0 [&_span.hidden]:!inline [&_span.sr-only]:!hidden">
+                {props.onTour ? (
+                  <button type="button" onClick={props.onTour} aria-pressed={!!props.touring} className={quiet}>
+                    {props.touring ? <Pause className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />}
+                    <span>{props.touring ? tr('ds_walk_tour_pause') : tr('ds_walk_tour_play')}</span>
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => { c?.releasePointer(); setSheet('LIVE'); }} className={quiet} data-testid="walk-live">
+                  <Sparkles className="h-3.5 w-3.5 text-[hsl(38_92%_62%)]" aria-hidden="true" />
+                  <span>{tr('ds_live_title')}</span>
+                </button>
+                <button type="button" onClick={() => { c?.releasePointer(); setSheet('TIME'); }} className={quiet} data-testid="walk-time">
+                  {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: 'h-3.5 w-3.5', 'aria-hidden': true })}
+                  <span>{tr('ds_env_title')}</span>
+                </button>
+                {plan ? (
+                  <button type="button" onClick={back} disabled={!canBack} className={cn(quiet, 'disabled:opacity-40')} data-testid="walk-back">
+                    <ArrowLeft className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
+                    <span>{tr('ds_walk_back')}</span>
+                  </button>
+                ) : null}
+                <button type="button" onClick={reset} className={quiet} data-testid="walk-entrance">
+                  <RotateCcw className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
+                  <span>{tr('ds_walk_reset')}</span>
+                </button>
+                <button type="button" onClick={() => { c?.releasePointer(); setSheet('CONTROLS'); }} className={quiet} data-testid="walk-controls">
+                  <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{tr('ds_ctrl_help')}</span>
+                </button>
+                {props.onFullscreen ? (
+                  <button type="button" onClick={props.onFullscreen} className={quiet}>
+                    <Maximize className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{tr('ds_walk_fullscreen')}</span>
+                  </button>
+                ) : null}
+                {props.actions}
+              </div>
+            ) : null}
+          </div>
+          <button type="button" onClick={props.onExit} className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-2.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90', ring)}>
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">{props.exitLabel}</span>
             <span className="sr-only sm:hidden">{props.exitLabel}</span>
           </button>
         </div>
-        <nav aria-label={tr('ds_walk_rooms')} className="pointer-events-auto mx-auto flex max-w-full gap-1.5 overflow-x-auto pb-1">
-          {rooms.map((r) => (
-            <button key={r.id} type="button" onClick={() => props.onRoom(r.id)} aria-current={r.id === room ? 'location' : undefined}
-              className={cn('h-8 shrink-0 rounded-full px-3 text-[13px] font-medium shadow-sm ring-1', ring,
-                r.id === room ? 'bg-[#0C1119] text-white ring-[#0C1119]' : 'bg-white/90 text-[#0C1119] ring-black/10 hover:bg-white')}>
-              {r.name}
-            </button>
-          ))}
-        </nav>
       </div>
+
+      {/* ── The real doorways of this room, named after where they lead ── */}
+      {plan ? (
+        <DoorMarkers c={c} walk={walkModel ?? null} doors={doors} names={names} tr={tr} onGo={goDoor} handle={markers}
+          hidden={overlayOpen || seated || !!live.run} />
+      ) : null}
+      {doorHint === 'SHOW' && !overlayOpen && !live.run ? (
+        <p role="status" className="pointer-events-none absolute start-1/2 top-28 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-[#0C1119]/85 px-4 py-2 text-center text-[13px] text-white shadow-lg ring-1 ring-white/15 rtl:translate-x-1/2" data-testid="walk-door-hint">
+          {tr('ds_walk_door_hint')}
+        </p>
+      ) : null}
+      {planOpen && plan && space && !overlayOpen ? (
+        <PlanSheet c={c} space={space} plan={plan} names={names} room={room} tr={tr}
+          onRoom={(id) => { setPlanOpen(false); goRoom(id); }} onClose={() => setPlanOpen(false)} />
+      ) : null}
 
       {/* ── The eye: a quiet centre point while the mouse is captured ── */}
       {locked && !overlayOpen ? (

@@ -29,6 +29,7 @@
 // of evidence may never be written as evidence of absence, and output that
 // fails is discarded for a deterministic report.
 
+import type { PropertyIdentity } from './propertyIdentity.ts';
 import { adsPromptDigest } from '../developerAds.ts';
 import { assetClassSectionNote, sectionsForAssetClass } from './sectionRelevance.ts';
 import type { EvidencePackage } from './evidencePackage.ts';
@@ -63,6 +64,7 @@ import { registerModelFacts } from './propertyRegister.ts';
 export const SECTION_KEYS = [
   'SNAPSHOT',
   'PROJECT',
+  'QUALITY',
   'LOCATION',
   'INFRASTRUCTURE',
   'MARKET',
@@ -144,6 +146,15 @@ const ANALYST_RULES: string[] = [
   '     (density, materials, location, developer); 4) what it means for the buyer in two or three sentences.',
   '  Never list individual listings, ids, row counts or medians/percentiles; never use statistical jargon.',
   '  Asking prices are asks, never sale prices. If marketIntelligence is thin, say less — never invent.',
+  '  THE PRICE OF THIS PROJECT comes ONLY from marketIntelligence.headline (its basis is same project, same',
+  '  street or a nearby comparable development). NEVER quote a district or city spread (tiers marked',
+  '  contextOnly, SAME_DISTRICT or WIDER_MARKET) as this project\'s value or range — those are background only,',
+  '  and may be described only as "elsewhere in the area/city" without implying they price this home.',
+  '  When marketIntelligence.basis is EVIDENCE_LIMITED there is NO market range for this project: say plainly that',
+  '  there were too few comparable listings nearby to give a reliable range. Then use',
+  '  marketIntelligence.projectAskingEvidence / projectAskingRange as what the project itself ASKS (developer',
+  '  marketing, archived offers, listings in the project) — always called asking prices, never sale prices,',
+  '  never a market value. Use whySelected to explain, in plain words, why wider listings were not used.',
   '',
   'QUALITY IS ASSESSED HONESTLY, NOT ASSUMED PREMIUM. Decide the class (premium / upper-middle / middle /',
   'economy) from the evidence: density (livingDensity), structure, materials, facade, insulation, lifts,',
@@ -296,6 +307,16 @@ const ANALYST_RULES: string[] = [
   'justify or undermine a premium, so use the ones you were given rather than describing the project',
   'in general terms.',
   '',
+  'QUALITY. The building as built and as designed, assessed honestly in four clearly separate kinds of',
+  'knowledge — say which kind each statement is, in natural words, not labels: (1) DOCUMENTED — what the',
+  'official documents specify (structure, foundation, slab, concrete, seismic design, facade, insulation,',
+  'windows, lifts, fire safety, parking); (2) VISIBLE — what the photographs show of condition and progress;',
+  '(3) THE DEVELOPER SAYS — marketing claims, attributed as such; (4) NOT KNOWN — what nothing read settles.',
+  'Explain what each matters for daily life (quiet floors, warmth, light, lifts, parking, upkeep) in plain',
+  'sentences. NEVER call a building structurally safe, earthquake-resistant, compliant or high quality on the',
+  'strength of photographs, renders or marketing; a drawing shows the design, not the work done. No scores.',
+  'If almost nothing is documented, say so in two warm sentences and stop — never pad.',
+  '',
   'LOCATION. Micro-location first: the street, what is around it, access, character. Not tourism copy.',
   'location.profile is GENERAL AREA KNOWLEDGE — what any local adviser knows about that district — and',
   'NOT a finding about this property. Use it as background and frame it that way ("ეს უბანი…"), never',
@@ -315,11 +336,41 @@ const ANALYST_RULES: string[] = [
   'and there is no guilt by association. If the register says directors bind the company JOINTLY,',
   'that is practical signing advice and belongs here: say what the buyer should confirm at signing.',
   'Do NOT say a contract would be invalid. Ownership percentages only if you were given them.',
+  'NAME THE PEOPLE. Every participant officialHistory or the registry names in a verified role is named by',
+  'their real name and surname — landowners, applicants, clients and unit owners included, not only firms and',
+  'professionals — each with the role the document states, the building/block it concerns and the period.',
+  'An applicant is not an owner; a landowner is not the developer; the owner of another unit or another',
+  'building is never presented as the owner of the requested one (see propertyIdentity). Never write personal',
+  'ID numbers, phone numbers, emails or home addresses of private persons.',
   '',
 
   'MONEY MOVEMENTS. If FX context is supplied, it explains part of a historical change. It is NEVER',
   'evidence that the property will appreciate. Appreciation may only be discussed as evidence-backed',
   'factors ("ზრდის ერთ-ერთი შესაძლო ფაქტორია…"), never as a promise or a forecast percentage.',
+  '',
+  '── LEGAL STATES AND IDENTITY ARE DECIDED, NOT WRITTEN ──────────────',
+  '',
+  'legalStatus lists distinct legal states — permit issued, works started, works completed, commissioning',
+  'applied for, commissioning approved — each with a status already decided from the records. You may state',
+  'a state as fact ONLY when its status is CONFIRMED. PARTIALLY_CONFIRMED means another building of the',
+  'project, and must be said that way. NOT_VERIFIED means the records read do not show it — write that it',
+  'could not be confirmed from the records, NEVER that it did not happen and NEVER that it did. CONFLICTING',
+  'means the records disagree: say so once. Never derive one state from another (a permit is not',
+  'construction; finished-looking photos are not commissioning; a cited law or a rule about a banner is not',
+  'an act). Words like "ექსპლუატაციაში მიღებულია" / "accepted into operation" may appear ONLY for a',
+  'CONFIRMED COMMISSIONING_APPROVED.',
+  '',
+  'propertyIdentity says which apartment the records actually concern. If its status is',
+  'UNRESOLVED_MISMATCH, the requested unit and the documented unit(s) differ (e.g. another building of the',
+  'same parcel): say so ONCE, calmly and plainly, in SNAPSHOT, and never present facts about the documented',
+  'unit as confirmed facts about the requested one. If PARCEL_ONLY, the papers concern the plot/project, not',
+  'this apartment. Do not repeat the identity caveat in other sections.',
+  '',
+  'TELL THE HISTORY AS A STORY, NOT A REGISTER. officialHistory may contain many similar administrative',
+  'steps; group them in words ("the design was amended several times between 2022 and 2025") instead of',
+  'listing decision numbers, dates and reference codes. No OCR fragments, no raw form values, no lists of',
+  'numbers. A reader should feel a knowledgeable local adviser telling the project\'s life from its first',
+  'record to today, with what is still unconfirmed said once, at the right moment.',
   '',
   '── THE OFFICIAL HISTORY, THE PRESENT, AND THE PICTURES ─────────────',
   '',
@@ -350,6 +401,17 @@ const ANALYST_RULES: string[] = [
   'factual sentence (why it matters), tied to the chapter it belongs to. A render is the approved design,',
   'not a photograph of the finished building. If two renders exist (original and latest), say what',
   'actually changed only when the record confirms the change. Never describe a visual you were not given.',
+  '',
+  'visualExplanations: one entry per officialVisuals item (same id), in the language of the rest of the',
+  'report, written like a knowledgeable friend showing the buyer the official drawings — short, natural,',
+  'warm, never bureaucratic. what: what the image shows (kind, which building/floor when scope says so, the',
+  'page of the drawing set). interesting: one thing worth noticing that the metadata and the record support.',
+  'buyerMeaning: what it means for THIS buyer. uncertain: what the image cannot tell. You do NOT see the',
+  'pixels — ground every sentence in the given kind, category, scope, block, file name, page, date and the',
+  'officialHistory; never claim a visual detail you cannot know from those. Never infer structural safety,',
+  'code compliance, build quality or current condition from any image. A RENDER illustrates the design, not',
+  'the built condition. A drawing is the filed design, not proof it was built that way. scope PROJECT means',
+  'the project or another building, not necessarily this flat; only EXACT_UNIT is this flat itself.',
   '',
   'PEOPLE from officialHistory: only professionals and organisations, in the roles stated. An applicant',
   'is not an owner. A participant from older documents only is historical, not current.',
@@ -420,7 +482,8 @@ const LENGTH_GUIDE: Record<ReturnType<typeof evidenceRichness>, string> = {
 export function buildIntelligencePrompt(
   pkg: EvidencePackage,
   bundle?: IntelligenceBundle,
-  assetClass?: string | null
+  assetClass?: string | null,
+  extras?: { identity?: PropertyIdentity | null },
 ): { system: string; user: string } {
   const richness = evidenceRichness(pkg);
   /* A plot of land has no building quality and a warehouse has no school run.
@@ -461,6 +524,8 @@ export function buildIntelligencePrompt(
     '                                     "title": "<Georgian heading>", "period": "<e.g. 2016–2018 or empty>",',
     '                                     "body": "<Georgian narrative>", "visualIds": ["<officialVisuals id>"], "cites": ["e.."] } ] },',
     '  "visualCaptions": [ { "visualId": "<officialVisuals id>", "caption": "<few words>", "explanation": "<one sentence>", "cites": ["e.."] } ],',
+    '  "visualExplanations": [ { "id": "<officialVisuals id>", "what": "<1 sentence>", "interesting": "<1 sentence>",',
+    '                           "buyerMeaning": "<1 sentence>", "uncertain": "<1 sentence>" } ],',
     '  "advertisingAssessment": { "statement": "<2-4 Georgian sentences>", "points": ["<one short observation>"], "cites": ["e.."] },',
     '  "attentionPoints": [ { "point": "<what>", "why": "<why it matters to this buyer>", "cites": ["e.."] } ],',
   '  "nextSteps": [ { "step": "<the ACTION, phrased as something to do>",',
@@ -478,7 +543,7 @@ export function buildIntelligencePrompt(
     'attentionPoints: ONLY registered adverse facts (tax lien, seizure, prohibition, debtor entry, liquidation,',
     'a documented dispute). Normally ZERO. Never a bank mortgage, a register stage, a first project or a signature rule.',
     'Omit any section with no meaningful evidence. Never emit an empty section to fill the shape.',
-    'currentStatus, propertyStory and visualCaptions: omit entirely when officialHistory is absent.',
+    'currentStatus, propertyStory, visualCaptions and visualExplanations: omit entirely when officialHistory is absent.',
     'currentStatus.items: 3-6 of the most decision-relevant current official facts, each with its date.',
     'propertyStory: 4-7 chapters, oldest first, 110-220 Georgian words each, told as a story a friend would enjoy',
     'reading. Put every officialVisuals id in the chapter it illustrates (visualIds) and caption it in visualCaptions.',
@@ -555,8 +620,14 @@ export function buildIntelligencePrompt(
       officialHistory: pkg.tas?.available
         ? tasDigest(pkg.tas, (id) => pkg.tasCite?.[id] ?? null).text
         : undefined,
+      // Decided deterministically (legalStatus.ts / propertyIdentity.ts); the prose may not upgrade them.
+      legalStatus: pkg.tas?.available ? pkg.tas.legalClaims.map((c) => ({ state: c.key, status: c.status, basis: c.basis.slice(0, 3) })) : undefined,
+      propertyIdentity: extras?.identity ?? undefined,
       officialVisuals: pkg.tas?.visuals?.length
-        ? pkg.tas.visuals.map((v) => ({ id: v.id, role: v.role, kind: v.kind, date: v.date, chapter: v.chapter }))
+        ? pkg.tas.visuals.map((v) => ({
+            id: v.id, role: v.role, kind: v.kind, category: v.category, scope: v.scope, block: v.block,
+            fileName: v.fileName, page: v.page, date: v.date, chapter: v.chapter, versionStatus: v.versionStatus,
+          }))
         : undefined,
       /*
        * COMPANY & OWNERSHIP, read from the official extract.

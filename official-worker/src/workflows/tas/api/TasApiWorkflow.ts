@@ -11,8 +11,9 @@
 //     → LegacySourceResult (unchanged wire shape) + `tasApi` structure
 //
 // No source binary is stored permanently: PDFs are parsed in memory and
-// dropped; only text, hashes, classifications and ≤ 6 chosen visuals (kept
-// in a bounded in-process cache until research-agent collects them) remain.
+// dropped; only text, hashes, classifications and a bounded set of chosen
+// visuals (≤ VISUAL_ASSET_MAX, kept in a byte-bounded in-process cache until
+// they are stored by content hash) remain.
 
 import { bytesToBuffer } from './tasModel.js';
 import { createHash } from 'node:crypto';
@@ -24,7 +25,9 @@ import {
   type PdfTextClass, type SearchReconciliation, type TasCaseDetail, type TasSearchPage, type TasSearchRow,
 } from './tasModel.js';
 import { extractDecision, type ExtractedDecision } from './decisions.js';
-import { extractImagesFromPdf, imageSize, rankVisualCandidates, selectVisualShortlist, type VisualKind } from './visuals.js';
+import { assetsPerFile, extractImagesFromPdf, imageSize, rankVisualCandidates, selectVisualShortlist, VISUAL_ASSET_MAX, VISUAL_FILE_MAX, type VisualKind, type VisualSlot } from './visuals.js';
+import { DRAWING_KINDS, identityHints, readExif, refineWithImage, type IdentityHints, type VisualCategory } from './visualClassify.js';
+import type { PdfPageRenderer, PdfRendererFactory } from './pdfRender.js';
 import { extractTasTechnicalFacts, dedupeTasTechnicalFacts } from '../../../documents/TasTechnicalFacts.js';
 import type { LegacySourceResult, WorkflowResult } from '../../WorkflowResult.js';
 
@@ -49,8 +52,18 @@ export interface TasApiOptions {
   maxAttachmentDownloads?: number;
   /** Per-case text kept for downstream intelligence (chars). */
   caseTextBudget?: number;
+  /** Files opened for visuals (≤ VISUAL_FILE_MAX). */
   visualTarget?: number;
+  /** Assets kept per run (≤ VISUAL_ASSET_MAX). */
   visualMax?: number;
+  /** Total image bytes kept per run. */
+  visualBytesMax?: number;
+  /** Wall-clock spent on visual extraction/rendering per run. */
+  visualBudgetMs?: number;
+  /** Vector drawing page renderer (pdfRender.ts). Absent = no page rendering. */
+  renderPdfPages?: PdfRendererFactory;
+  /** Long edge of rendered drawing pages, px. */
+  renderLongEdge?: number;
   signal?: AbortSignal;
   now?: () => number;
 }
@@ -107,20 +120,39 @@ export interface ProcessingLedger {
   incompleteReasons: string[];
 }
 
+/**
+ * One official visual asset. Provenance travels with every asset; the
+ * customer-facing scope (EXACT_UNIT / BUILDING / TYPICAL_FLOOR / PROJECT /
+ * UNRELATED_SUSPECT) is decided downstream against the requested unit from
+ * `identity` (src/verify/intelligence/visualAssets.ts), because a TAS result
+ * is shared by every flat on the parcel.
+ */
 export interface VisualRecord {
   id: string; // sha256 of the image bytes
   role: 'LATEST_RENDER' | 'EARLIEST_RENDER' | 'SUPPORTING';
   kind: VisualKind;
+  category: VisualCategory;
+  /** 0..1 classification confidence. */
+  confidence: number;
+  /** The evidence that decided `kind` (audit). */
+  classificationBasis: string;
   documentId: string;
   attachedFileId: string;
   motionId: string | null;
   date: string | null;
   fileName: string | null;
+  /** 1-based PDF page for rendered drawing pages; null otherwise. */
+  page: number | null;
   mime: string;
   width: number | null;
   height: number | null;
   bytes: number;
-  extraction: 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE';
+  extraction: 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE' | 'PDF_PAGE_RENDER';
+  identity: IdentityHints;
+  source: 'TAS';
+  usage: 'OFFICIAL_RECORD_REFERENCE';
+  /** Queue path: set once the worker stored the bytes at storagePath. */
+  stored?: boolean;
 }
 
 export interface TasApiCase {
@@ -160,6 +192,13 @@ export interface TasApiResult {
     cacheHits: number;
     visualCandidates: number;
     visualsExtracted: number;
+    /** Files opened for visuals. */
+    visualFilesOpened?: number;
+    /** Drawing pages rendered to images. */
+    pagesRendered?: number;
+    renderFailures?: number;
+    /** Visual work left undone by the time/byte/asset bounds. */
+    visualsSkippedBudget?: number;
   };
   http: { requests: number; retries: number; bytes: number; failures: number };
   ledger: ProcessingLedger | null;
@@ -191,21 +230,34 @@ function cachePut(key: string, v: CachedText): void {
   while (TEXT_CACHE.size > TEXT_CACHE_MAX) TEXT_CACHE.delete(TEXT_CACHE.keys().next().value as string);
 }
 
-/** Chosen visuals, held until research-agent collects them (by sha256). */
+/** Chosen visuals, held until they are stored (by sha256). Bounded by count AND bytes. */
 const VISUAL_CACHE = new Map<string, { bytes: Uint8Array; mime: string; at: number }>();
 const VISUAL_CACHE_MAX = 120;
+const VISUAL_CACHE_BYTES_MAX = 320 * 1024 * 1024;
+let visualCacheBytes = 0;
 export function getCachedVisual(sha: string): { bytes: Uint8Array; mime: string } | null {
   const v = VISUAL_CACHE.get(sha);
   return v ? { bytes: v.bytes, mime: v.mime } : null;
 }
 function putVisual(sha: string, bytes: Uint8Array, mime: string): void {
+  const prev = VISUAL_CACHE.get(sha);
+  if (prev) {
+    visualCacheBytes -= prev.bytes.length;
+    VISUAL_CACHE.delete(sha);
+  }
   VISUAL_CACHE.set(sha, { bytes, mime, at: Date.now() });
-  while (VISUAL_CACHE.size > VISUAL_CACHE_MAX) VISUAL_CACHE.delete(VISUAL_CACHE.keys().next().value as string);
+  visualCacheBytes += bytes.length;
+  while (VISUAL_CACHE.size > VISUAL_CACHE_MAX || (visualCacheBytes > VISUAL_CACHE_BYTES_MAX && VISUAL_CACHE.size > 1)) {
+    const k = VISUAL_CACHE.keys().next().value as string;
+    visualCacheBytes -= VISUAL_CACHE.get(k)?.bytes.length ?? 0;
+    VISUAL_CACHE.delete(k);
+  }
 }
 /** Test hook only. */
 export function __resetTasApiCaches(): void {
   TEXT_CACHE.clear();
   VISUAL_CACHE.clear();
+  visualCacheBytes = 0;
 }
 
 const sha256 = (b: Uint8Array): string => createHash("sha256").update(bytesToBuffer(b)).digest('hex');
@@ -285,7 +337,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       documents: 0, detailsRead: 0, detailFailures: 0, motions: 0,
       responses: { PDF: 0, HTML: 0, EMPTY: 0, OTHER: 0, FAILED: 0, NOT_FETCHED: 0 },
       attachments: 0, caseLevelAttachments: 0, attachmentOutcomes: outcomes(), pdfAttachments: 0, nonPdfAttachments: 0,
-      cacheHits: 0, visualCandidates: 0, visualsExtracted: 0,
+      cacheHits: 0, visualCandidates: 0, visualsExtracted: 0, visualFilesOpened: 0, pagesRendered: 0, renderFailures: 0, visualsSkippedBudget: 0,
     },
     http: client.stats,
     ledger: null,
@@ -436,18 +488,148 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       motionRecords.set(docId, list);
     });
 
-    // Attachment text: PDFs first (where the facts are), newest first.
+    let downloads = 0;
+    // Case context for visual classification and identity (title, type,
+    // description, the motion an attachment belongs to). Bounded.
+    const motionNames = new Map<string, string>();
+    for (const { m } of motionJobs) if (m.name) motionNames.set(m.motionId, m.name);
+    const caseContext = (docId: string, motionId: string | null): string => {
+      const d = details.get(docId);
+      return [d?.title, d?.docType, d?.description, motionId ? motionNames.get(motionId) : null].filter(Boolean).join(' · ').slice(0, 600);
+    };
+    const ranked = rankVisualCandidates(
+      attachmentJobs.map((j) => ({ ...j.a, documentId: j.docId, context: caseContext(j.docId, j.a.motionId), caseCadastralCodes: details.get(j.docId)?.cadastralCodes ?? [] })),
+      { parcel: result.searchCadastralCode },
+    );
+    result.accounting.visualCandidates = ranked.length;
+    const shortlist = selectVisualShortlist(ranked, options.visualTarget ?? VISUAL_FILE_MAX, VISUAL_FILE_MAX);
+    const shortlistIds = new Set(shortlist.map((s) => s.candidate.attachedFileId));
+    const slotOf = new Map(shortlist.map((sl, i) => [sl.candidate.attachedFileId, { slot: sl, order: i }]));
+
+    // ── visuals, processed AS THE SHORTLISTED FILES ARRIVE (they download
+    // first), one at a time, concurrently with the remaining downloads — so
+    // page rendering never waits for, or starves, the text budget. Bounded
+    // by assets, bytes and wall-clock, and never past the run deadline. ──
+    const assetMax = Math.min(Math.max(1, options.visualMax ?? VISUAL_ASSET_MAX), VISUAL_ASSET_MAX);
+    const bytesMax = options.visualBytesMax ?? 96 * 1024 * 1024;
+    const visualDeadline = Math.min(started + budget - 5_000, started + budget);
+    const visualBudgetMs = options.visualBudgetMs ?? 180_000;
+    let visualFirstAt: number | null = null;
+    let visualBytes = 0;
+    let visualsClosed = false;
+    let renderer: PdfPageRenderer | null = null;
+    const visualOrder = new Map<string, number>();
+    const overBudget = () =>
+      visualsClosed || result.visuals.length >= assetMax || visualBytes >= bytesMax || now() >= visualDeadline ||
+      (visualFirstAt !== null && now() - visualFirstAt > visualBudgetMs);
+    const processVisual = async (slot: VisualSlot, order: number, bytes: Uint8Array): Promise<void> => {
+      if (overBudget()) {
+        result.accounting.visualsSkippedBudget = (result.accounting.visualsSkippedBudget ?? 0) + 1;
+        return;
+      }
+      visualFirstAt ??= now();
+      result.accounting.visualFilesOpened = (result.accounting.visualFilesOpened ?? 0) + 1;
+      const c = slot.candidate;
+      const per = assetsPerFile(c);
+      type Out = { bytes: Uint8Array; width: number | null; height: number | null; extraction: VisualRecord['extraction']; page: number | null; pageText: string | null };
+      let outs: Out[] = [];
+      const isPdf = bytesToBuffer(bytes.subarray(0, 4)).toString('latin1') === '%PDF';
+      const embedded = (): Out[] =>
+        extractImagesFromPdf(bytes, { maxImages: per.images }).map((i) => ({ bytes: i.bytes, width: i.width, height: i.height, extraction: 'PDF_EMBEDDED_IMAGE' as const, page: null, pageText: null }));
+      const render = async (): Promise<Out[]> => {
+        if (!options.renderPdfPages || per.pages < 1) return [];
+        const left = visualDeadline - now();
+        if (left < 8_000) return [];
+        try {
+          renderer ??= options.renderPdfPages();
+          const r = await renderer.render(bytes, {
+            maxPages: Math.min(per.pages, assetMax - result.visuals.length),
+            longEdge: options.renderLongEdge ?? 2200,
+            maxBytes: 8 * 1024 * 1024,
+            preferText: PREFER_PAGE_TEXT[c.kind] ?? null,
+            timeoutMs: Math.min(45_000, left - 3_000),
+          });
+          result.accounting.pagesRendered = (result.accounting.pagesRendered ?? 0) + r.pages.length;
+          return r.pages.map((p) => ({ bytes: p.bytes, width: p.width, height: p.height, extraction: 'PDF_PAGE_RENDER' as const, page: p.page, pageText: p.text }));
+        } catch {
+          result.accounting.renderFailures = (result.accounting.renderFailures ?? 0) + 1;
+          return [];
+        }
+      };
+      if (!isPdf) outs = [{ bytes, width: null, height: null, extraction: 'NATIVE_IMAGE', page: null, pageText: null }];
+      else if (DRAWING_KINDS.has(c.kind)) {
+        // A drawing is vector line work: render its pages; a scanned sheet
+        // falls back to its embedded raster.
+        outs = await render();
+        if (!outs.length) outs = embedded();
+      } else {
+        // Photos and renders keep their original pixels when embedded.
+        outs = embedded();
+        if (!outs.length) outs = await render();
+      }
+      const context = caseContext(c.documentId, c.motionId);
+      let firstOfSlot = true;
+      for (const o of outs) {
+        if (visualsClosed || result.visuals.length >= assetMax) break;
+        if (!o.bytes.length || o.bytes.length > 8 * 1024 * 1024 || visualBytes + o.bytes.length > bytesMax) continue;
+        const size = imageSize(o.bytes);
+        if (!size) continue;
+        if (size.width < 400 || size.height < 250) continue;
+        const id = sha256(o.bytes);
+        if (result.visuals.some((v) => v.id === id)) continue;
+        const cls = refineWithImage(
+          { kind: c.kind, category: c.category, confidence: c.confidence, basis: c.basis },
+          { exif: size.mime === 'image/jpeg' ? readExif(o.bytes) : null, extraction: o.extraction, pageText: o.pageText, context },
+        );
+        putVisual(id, o.bytes, size.mime);
+        visualBytes += o.bytes.length;
+        visualOrder.set(id, order * 100 + (o.page ?? 0));
+        result.visuals.push({
+          id,
+          // Only the slot's first render carries LATEST/EARLIEST.
+          role: firstOfSlot && cls.kind === 'RENDER' ? slot.role : 'SUPPORTING',
+          kind: cls.kind,
+          category: cls.category,
+          confidence: Math.round(cls.confidence * 100) / 100,
+          classificationBasis: cls.basis,
+          documentId: c.documentId,
+          attachedFileId: c.attachedFileId,
+          motionId: c.motionId,
+          date: c.date,
+          fileName: c.fileName,
+          page: o.page,
+          mime: size.mime,
+          width: size.width ?? o.width,
+          height: size.height ?? o.height,
+          bytes: o.bytes.length,
+          extraction: o.extraction,
+          identity: identityHints({
+            fileName: c.fileName, description: c.description, caseText: context, pageText: o.pageText,
+            caseCadastralCodes: c.caseCadastralCodes, parcel: result.searchCadastralCode,
+          }),
+          source: 'TAS',
+          usage: 'OFFICIAL_RECORD_REFERENCE',
+        });
+        firstOfSlot = false;
+      }
+    };
+    let visualChain: Promise<void> = Promise.resolve();
+    const enqueueVisual = (attachedFileId: string, bytes: Uint8Array) => {
+      const s0 = slotOf.get(attachedFileId);
+      if (!s0) return;
+      visualChain = visualChain.then(() => processVisual(s0.slot, s0.order, bytes)).catch(() => {});
+    };
+
+    // Attachment text: the shortlisted visual files first (a handful, and the
+    // only way the report gets photos — at the end they lost to the time
+    // budget), then PDFs (where the facts are), newest first.
     const ordered = attachmentJobs.slice().sort((x, y) => {
+      const vx = shortlistIds.has(x.a.attachedFileId) ? 0 : 1;
+      const vy = shortlistIds.has(y.a.attachedFileId) ? 0 : 1;
       const px = x.a.extension === 'pdf' ? 0 : 1;
       const py = y.a.extension === 'pdf' ? 0 : 1;
-      return px - py || (y.a.date ?? '').localeCompare(x.a.date ?? '');
+      return vx - vy || px - py || (y.a.date ?? '').localeCompare(x.a.date ?? '');
     });
-    let downloads = 0;
-    const pdfBytesForVisuals = new Map<string, Uint8Array>();
-    const ranked = rankVisualCandidates(attachmentJobs.map((j) => ({ ...j.a, documentId: j.docId })));
-    result.accounting.visualCandidates = ranked.length;
-    const shortlist = selectVisualShortlist(ranked, options.visualTarget ?? 4, options.visualMax ?? 4);
-    const shortlistIds = new Set(shortlist.map((s) => s.candidate.attachedFileId));
 
     await pool(ordered, options.concurrency ?? 3, async ({ docId, a }) => {
       const rec: AttachmentRecord = {
@@ -476,7 +658,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           if (cls.kind === 'FAILED') rec.outcome = 'DOWNLOAD_FAILED';
           else if (cls.kind === 'EMPTY') rec.outcome = 'EMPTY';
           else if (cls.kind === 'PDF') {
-            if (wantsBytes) pdfBytesForVisuals.set(a.attachedFileId, r.bytes);
+            if (wantsBytes) enqueueVisual(a.attachedFileId, r.bytes);
             try {
               const parsed = await parsePdf(bytesToBuffer(r.bytes));
               text = repairGeorgianMojibake(parsed.text ?? '');
@@ -487,7 +669,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
             }
           } else if (cls.kind === 'IMAGE') {
             rec.outcome = 'IMAGE';
-            if (wantsBytes) pdfBytesForVisuals.set(a.attachedFileId, r.bytes);
+            if (wantsBytes) enqueueVisual(a.attachedFileId, r.bytes);
           } else if (cls.kind === 'HTML') {
             text = htmlToText(bytesToBuffer(r.bytes).toString('utf8'));
             rec.outcome = text.length > 40 ? 'READ_TEXT' : 'LOW_TEXT';
@@ -511,37 +693,15 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       attachmentRecords.set(docId, list);
     });
 
-    // ── 4. visuals: only the shortlist is opened ──
-    for (const slot of shortlist) {
-      const bytes = pdfBytesForVisuals.get(slot.candidate.attachedFileId);
-      if (!bytes) continue;
-      let image: Uint8Array | null = null;
-      let extraction: VisualRecord['extraction'] = 'NATIVE_IMAGE';
-      let width: number | null = null;
-      let height: number | null = null;
-      if (bytesToBuffer(bytes.subarray(0, 4)).toString('latin1') === '%PDF') {
-        const imgs = extractImagesFromPdf(bytes, { maxImages: 1 });
-        if (imgs.length) {
-          image = imgs[0].bytes;
-          width = imgs[0].width;
-          height = imgs[0].height;
-          extraction = 'PDF_EMBEDDED_IMAGE';
-        }
-      } else image = bytes;
-      if (!image || image.length > 8 * 1024 * 1024) continue;
-      const size = imageSize(image);
-      if (!size) continue;
-      if (size.width < 400 || size.height < 250) continue;
-      const id = sha256(image);
-      if (result.visuals.some((v) => v.id === id)) continue;
-      putVisual(id, image, size.mime);
-      result.visuals.push({
-        id, role: slot.role, kind: slot.candidate.kind, documentId: slot.candidate.documentId,
-        attachedFileId: slot.candidate.attachedFileId, motionId: slot.candidate.motionId, date: slot.candidate.date,
-        fileName: slot.candidate.fileName, mime: size.mime, width: width ?? size.width, height: height ?? size.height,
-        bytes: image.length, extraction,
-      });
-    }
+    // ── 4. visuals: wait for the in-flight chain, never past the deadline ──
+    const waitMs = Math.max(0, visualDeadline - now());
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    await Promise.race([visualChain, new Promise<void>((res) => { timer = setTimeout(res, waitMs); (timer as any)?.unref?.(); })]);
+    if (timer) clearTimeout(timer);
+    visualsClosed = true;
+    if (renderer) await (renderer as PdfPageRenderer).close().catch(() => {});
+    // Gallery order: the shortlist's order (latest render first), then page.
+    result.visuals.sort((x, y) => (visualOrder.get(x.id) ?? 0) - (visualOrder.get(y.id) ?? 0));
     result.accounting.visualsExtracted = result.visuals.length;
 
     // ── 5. assemble cases (date order, never by document id) ──
@@ -570,6 +730,17 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
   result.durationMs = now() - started;
   return result;
 }
+
+/** Title-block words that pick the most telling sheets of a drawing set. */
+const PREFER_PAGE_TEXT: Partial<Record<VisualKind, RegExp>> = {
+  FLOOR_PLAN: /(ტიპიურ|typical|სართულის\s*გეგმ|floor\s*plan|план\s*этаж)/i,
+  UNIT_PLAN: /(ბინ|apartment|unit|квартир)/i,
+  SITE_PLAN: /(გენ\.?\s?გეგმ|გენგეგმ|site\s*plan|სიტუაციურ|генплан)/i,
+  SECTION: /(ჭრილ|section|разрез)/i,
+  ELEVATION: /(ფასად|elevation|фасад)/i,
+  FACADE: /(ფასად|elevation|facade|фасад)/i,
+  STRUCTURAL: /(საძირკვ|foundation|კარკას|ფილ|slab|фундамент)/i,
+};
 
 function buildLedger(r: TasApiResult, duplicateReferences: number, pageSize: number): ProcessingLedger {
   const o = r.accounting.attachmentOutcomes;

@@ -174,16 +174,29 @@ export interface MarketSubject {
   district: string | null;
 }
 
-function tier(c: WorkerComparable, subject: MarketSubject): ReportComparable['comparableType'] {
+/*
+ * WHERE A MARKETPLACE ADVERT SITS RELATIVE TO THE SUBJECT.
+ *
+ * There is no fallback to PEER_PROJECT any more (2026-10-10, job 220ed087):
+ * that "conservative label for broader market context" is exactly how 39
+ * citywide adverts became the peer basis of a Krtsanisi valuation. An advert
+ * is SAME_PROJECT by name, MICRO_LOCATION only when MEASURED within 600 m
+ * (the distance travels with it), SAME_DISTRICT when the worker searched the
+ * subject's district, and otherwise WIDER_MARKET. Whether a nearby named
+ * development is a genuine peer is decided later, in marketIntelligence,
+ * where the segment is known.
+ */
+function tier(c: WorkerComparable, subject: MarketSubject): { type: ReportComparable['comparableType']; distanceM: number | null } {
   const project = subject.project?.toLowerCase().trim();
-  if (project && project.length >= 3 && `${c.title ?? ''} ${c.address ?? ''}`.toLowerCase().includes(project)) return 'SAME_PROJECT';
+  if (project && project.length >= 3 && `${c.title ?? ''} ${c.address ?? ''}`.toLowerCase().includes(project)) return { type: 'SAME_PROJECT', distanceM: null };
+  let distanceM: number | null = null;
   if (subject.latitude != null && subject.longitude != null && c.latitude != null && c.longitude != null) {
     const d = metres({ ...c, latitude: subject.latitude, longitude: subject.longitude }, c);
-    if (d != null && d <= 600) return 'MICRO_LOCATION';
+    if (d != null) distanceM = Math.round(d);
+    if (d != null && d <= 600) return { type: 'MICRO_LOCATION', distanceM };
   }
-  if (c.scope === 'DISTRICT') return 'MICRO_LOCATION';
-  // The lane's own conservative label for "broader market context".
-  return 'PEER_PROJECT';
+  if (c.scope === 'DISTRICT') return { type: 'SAME_DISTRICT', distanceM };
+  return { type: 'WIDER_MARKET', distanceM };
 }
 
 const residential = (t: string | null): ReportComparable['propertyType'] =>
@@ -196,6 +209,7 @@ const CONDITION: Record<string, string> = {
 
 export function toReportComparable(c: DedupeResult['unique'][number], subject: MarketSubject): ReportComparable & { marketplaceSource: MarketplaceSource } {
   const ppsm = c.pricePerSqm ?? (c.price && c.areaSqm ? c.price / c.areaSqm : null);
+  const placed = tier(c, subject);
   return {
     source: fam(c.source),
     url: c.exactUrl,
@@ -216,7 +230,12 @@ export function toReportComparable(c: DedupeResult['unique'][number], subject: M
     listingDate: c.updatedAt ?? c.publishedAt ?? null,
     similarity: c.scope === 'DISTRICT' ? 'same district, similar size and rooms' : 'same city, similar size and rooms',
     retrievedAt: c.observedAt,
-    comparableType: tier(c, subject),
+    comparableType: placed.type,
+    // The neighbourhood the portal stated and, when both sides had
+    // coordinates, the measured distance — so tiering downstream can test
+    // location instead of trusting a label.
+    district: c.district ?? null,
+    distanceM: placed.distanceM,
     discoveryMethod: 'MARKETPLACE_WORKER_SEARCH',
     marketplaceSource: c.source,
     ...(c.alsoListedAt.length

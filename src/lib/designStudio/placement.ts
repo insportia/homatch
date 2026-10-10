@@ -158,7 +158,7 @@ export interface PlacementWorld {
   walls: Array<{ id: string; box: SolidBox }>;
   doors: Array<{ id: string; box: SolidBox }>;
   /** Each flight's footprint and the approach in front of its start (both kept free). */
-  stairs: Array<{ id: string; box: SolidBox; approach: SolidBox }>;
+  stairs: Array<{ id: string; box: SolidBox; approach: SolidBox | null }>;
   objects: Array<{ id: string; box: SolidBox; asset: CatalogAsset; flat: boolean; object: ObjectInstance }>;
 }
 
@@ -178,7 +178,7 @@ export function placementWorld(ctx: PlacementContext, room: SpaceRoom): Placemen
   });
   const doors: PlacementWorld['doors'] = [];
   for (const d of ctx.space.doors) {
-    const zone = doorKeepOut(ctx.space, d.id);
+    const zone = doorKeepOut(ctx.space, d.id, room);
     if (zone) doors.push({ id: d.id, box: solidBox(zone) });
   }
   const objects: PlacementWorld['objects'] = [];
@@ -191,9 +191,13 @@ export function placementWorld(ctx: PlacementContext, room: SpaceRoom): Placemen
       box: solidBox(footprint(asset, { x: o.position.x, y: o.position.z }, o.rotationY)),
     });
   }
-  const stairs = (ctx.space.stairs ?? []).map((st) => ({
-    id: st.id, box: solidBox(stairObb(st)), approach: solidBox(stairApproach(st)),
-  }));
+  // A flight's approach is the floor in front of its first step — never across the wall that step stands against
+  // (then it is the next room's floor, and nobody climbs through a wall).
+  const stairs = (ctx.space.stairs ?? []).map((st) => {
+    const near = solidBox(stairApproach(st, 0.15));
+    const walled = walls.some((w) => solidOverlap(w.box, near));
+    return { id: st.id, box: solidBox(stairObb(st)), approach: walled ? null : solidBox(stairApproach(st)) };
+  });
   return { room, walls, doors, stairs, objects };
 }
 
@@ -238,7 +242,7 @@ export function hitsStairs(world: PlacementWorld, box: SolidBox, approach: boole
   }
   if (approach) {
     for (const st of world.stairs) {
-      if (solidOverlap(box, st.approach)) return { code: 'BLOCKS_STAIRS', severity: 'BLOCK', relatedId: st.id };
+      if (st.approach && solidOverlap(box, st.approach)) return { code: 'BLOCKS_STAIRS', severity: 'BLOCK', relatedId: st.id };
     }
   }
   return null;
@@ -269,13 +273,31 @@ export function zoneClear(world: PlacementWorld, zone: SolidBox, instanceId?: st
   return true;
 }
 
-/** The zone in front of a door that must stay passable, on both sides of the wall. */
-export function doorKeepOut(space: SpaceModel, doorId: string): Obb | null {
+/** How deep the floor kept clear in front of a door is: 0.9 m, less in a room too shallow for it (a WC, a wash
+ *  room), where it is what the room leaves after the deepest fitting, never under DOOR_KEEP_OUT_MIN_M. */
+export const DOOR_KEEP_OUT_M = 0.9;
+export const DOOR_KEEP_OUT_MIN_M = 0.45;
+const FITTING_DEPTH_M = 0.65;
+
+/**
+ * The zone in front of a door that must stay passable, on both sides of the wall. Seen from `room` (the room a piece
+ * is placed in), its depth is what that room can give: a 1.2 m deep WC keeps the step through its door clear, not
+ * the whole room.
+ */
+export function doorKeepOut(space: SpaceModel, doorId: string, room?: SpaceRoom): Obb | null {
   const door = space.doors.find((d) => d.id === doorId);
   const wall = door ? space.walls.find((w) => w.id === door.wallId) : null;
   if (!door || !wall) return null;
   const f = wallFrame(wall.mesh);
-  return { cx: door.centre.x, cy: door.centre.y, hw: door.widthM / 2 + 0.1, hd: 0.9, angle: f.angle };
+  let hd = DOOR_KEEP_OUT_M;
+  if (room) {
+    // The room's depth across the door's wall (its extent along the wall's normal).
+    const n = { x: -Math.sin(f.angle), y: Math.cos(f.angle) };
+    const along = room.polygon.map((p) => p.x * n.x + p.y * n.y);
+    const extent = Math.max(...along) - Math.min(...along);
+    hd = Math.max(DOOR_KEEP_OUT_MIN_M, Math.min(DOOR_KEEP_OUT_M, extent - FITTING_DEPTH_M));
+  }
+  return { cx: door.centre.x, cy: door.centre.y, hw: door.widthM / 2 + 0.1, hd, angle: f.angle };
 }
 
 export function roomOf(space: SpaceModel, roomId: string | null): SpaceRoom | null {
@@ -322,13 +344,39 @@ export function evaluateInWorld(
     }
     for (const other of world.objects) {
       if (other.id === instanceId || other.flat) continue;
-      if (solidOverlap(box, other.box)) issues.push({ code: 'OVERLAPS_OBJECT', severity: 'WARN', relatedId: other.id });
+      if (solidOverlap(box, other.box) && !tucked(asset, at, rotation, other.asset, other.object)) issues.push({ code: 'OVERLAPS_OBJECT', severity: 'WARN', relatedId: other.id });
     }
     if (asset.clearanceM > 0 && !zoneClear(world, frontZone(asset, at, rotation, asset.clearanceM), instanceId)) {
       issues.push({ code: 'TIGHT_ACCESS', severity: 'WARN' });
     }
   }
   return issues;
+}
+
+const words = (a: Pick<CatalogAsset, 'category' | 'subcategory' | 'code'>) => [a.category, a.subcategory, a.code].filter(Boolean).join(' ').toUpperCase();
+/** A seat drawn up to a table (a dining chair, a stool, an office or outdoor chair; not an armchair). */
+export const isSeat = (a: Pick<CatalogAsset, 'category' | 'subcategory' | 'code'>) => /CHAIR|STOOL/.test(words(a)) && !/ARMCHAIR|LOUNGE|SOFA/.test(words(a));
+/** A surface a seat is drawn up to (a table, a desk, an island or counter). */
+export const isSeatTable = (a: Pick<CatalogAsset, 'category' | 'subcategory' | 'code'>) => /TABLE|DESK|ISLAND|COUNTER/.test(words(a)) && !/SIDE|BEDSIDE|NIGHTSTAND/.test(words(a));
+/** How far a seat may slide under the table it is drawn up to. */
+export const TUCK_M = 0.3;
+
+/**
+ * A seat drawn up to its table overlaps the table's footprint a little (its front slides under the top): that is
+ * how a dining set stands, not a collision. Tucked: one is a seat, the other a table, the seat's centre is outside
+ * the table and within TUCK_M of it.
+ */
+function tucked(asset: CatalogAsset, at: Point, rotation: number, other: CatalogAsset, obj: ObjectInstance): boolean {
+  const seatHere = isSeat(asset) && isSeatTable(other);
+  const tableHere = isSeatTable(asset) && isSeat(other);
+  if (!seatHere && !tableHere) return false;
+  const seat = seatHere ? { at, asset } : { at: { x: obj.position.x, y: obj.position.z }, asset: other };
+  const table = seatHere ? footprint(other, { x: obj.position.x, y: obj.position.z }, obj.rotationY) : footprint(asset, at, rotation);
+  const c = Math.cos(table.angle); const s = Math.sin(table.angle);
+  const dx = seat.at.x - table.cx; const dy = seat.at.y - table.cy;
+  const lx = Math.abs(dx * c + dy * s) - table.hw; const ly = Math.abs(-dx * s + dy * c) - table.hd;
+  const outside = Math.hypot(Math.max(lx, 0), Math.max(ly, 0));
+  return outside > 0 && Math.min(seat.asset.widthM, seat.asset.depthM) / 2 - outside <= TUCK_M;
 }
 
 export const blocks = (issues: PlacementIssue[]) => issues.some((i) => i.severity === 'BLOCK');
@@ -338,10 +386,28 @@ export const blocks = (issues: PlacementIssue[]) => issues.some((i) => i.severit
  * against the longest wall faces first, centred then stepping outwards,
  * facing into the room; or the room's centre for free-standing pieces.
  */
+/** A plant, a planter or a decorative floor piece: it belongs in a corner, out of the way. */
+function isCornerDecor(asset: Pick<CatalogAsset, 'category' | 'subcategory'>): boolean {
+  return asset.category === 'DECOR' || /PLANT/.test(asset.subcategory ?? '');
+}
+
 export function candidatePositions(ctx: PlacementContext, asset: CatalogAsset, room: SpaceRoom): Array<{ at: Point; rotation: number }> {
   const out: Array<{ at: Point; rotation: number }> = [];
   const centre = room.centroid;
 
+  // A plant or a decorative piece stands in a corner of the room (never in the middle of the floor, where people
+  // walk): each corner pulled in by the piece's own size.
+  if (asset.anchor === 'FREE' && isCornerDecor(asset)) {
+    const poly = room.polygon;
+    const inset = Math.max(asset.widthM, asset.depthM) / 2 + 0.12;
+    for (const p of poly) {
+      const d = Math.hypot(centre.x - p.x, centre.y - p.y) || 1;
+      const k = Math.min(inset * Math.SQRT2, d * 0.45) / d;
+      out.push({ at: { x: p.x + (centre.x - p.x) * k, y: p.y + (centre.y - p.y) * k }, rotation: 0 });
+    }
+    // No corner free: no plant (a plant in the middle of the floor is in someone's way, not a design).
+    return out;
+  }
   if (asset.anchor === 'CENTRE' || asset.anchor === 'FREE') {
     for (const [dx, dy] of [[0, 0], [0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8]]) {
       for (const rotation of [0, Math.PI / 2]) out.push({ at: { x: centre.x + dx, y: centre.y + dy }, rotation });

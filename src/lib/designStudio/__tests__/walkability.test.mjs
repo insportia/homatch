@@ -142,7 +142,7 @@ test('planning rules: one coherent solution per room, a rank for what gives way,
   // with one, the fidelity gate (which puts NOT_WALKABLE first) does; a failure ends in a replan or fail(), and
   // the version is only saved after it.
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(route, /const failing = fidelity \? fidelity\.code : built\.report\.gate && !built\.report\.gate\.ok \? 'NOT_WALKABLE' : null;/);
+  assert.match(route, /const failing = fidelity \? fidelity\.code : built\.report\.gate && !built\.report\.gate\.ok \? 'NOT_WALKABLE' : unfaithful \? 'NOT_FAITHFUL' : implausible;/);
   const gateAt = route.indexOf('const failing = fidelity');
   const failAt = route.indexOf('await fail(admin, row, failing', gateAt);
   const saveAt = route.indexOf("const walkId = await uuidFrom(`ds-walk:${row.id}:version`)", gateAt);
@@ -151,11 +151,12 @@ test('planning rules: one coherent solution per room, a rank for what gives way,
 });
 
 test('CASES 3–5: walking near something never uses it; a tap uses it once; a drag that starts on it only looks', () => {
-  // 3: nothing on the walking path can act — a step only aims (and on touch, quietly: a highlight, no card).
+  // 3: nothing on the walking path can act — a step, a look or a hover only aims, quietly (a highlight, no card,
+  // on every device); the card and its actions come with an explicit click, tap or E.
   const sc = code('src/components/designStudio/canvas/SceneController.ts');
   const step = sc.slice(sc.indexOf('private stepWalk(now: number)'), sc.indexOf('// ── Teardown'));
   assert.doesNotMatch(step, /performAimed|living\.act\(|toggleAimed|sitOn\(/, 'no action while walking');
-  assert.match(sc, /this\.setAim\(hit, this\.touchInput && !this\.lastPointer\);/);
+  assert.match(sc, /this\.setAim\(hit, true\);/);
   assert.match(sc, /this\.onAimChange\?\.\(quiet \? null : this\.hintFor\(this\.aimed\)\);/);
   // 4: an explicit tap — short and still — uses the thing under the finger, once.
   assert.equal(isTap(180, 2, false), true);

@@ -24,6 +24,11 @@ export interface Walkthrough {
   readyAt: string | null;
   /** Walked on a space reconstructed from the pictures (no measured plan). */
   inferred?: boolean;
+  /**
+   * Whether the tour measurably IS the selected design (walkthrough/designGraph.ts promotion gate: its pieces,
+   * materials and the render's regions). null when there is no selected design to compare with.
+   */
+  fidelity?: { promoted: boolean; reasons: string[] } | null;
 }
 
 async function call<T>(route: string, body: Record<string, unknown>): Promise<{ data: T | null; code: string | null }> {

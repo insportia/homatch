@@ -114,6 +114,24 @@ export default function SnakeGame({ status, stageLabel, onView, onClose, statusL
     if (ui.score > best) { setBest(ui.score); writeBest(ui.score); }
   }, [ui.score, best]);
 
+  // The thrill of eating: the score pops, the board glows gold, and every
+  // fifth point a speed badge flashes (the pace rises with the score).
+  const scoreRef = useRef<HTMLSpanElement>(null);
+  const lastScore = useRef(0);
+  const [boost, setBoost] = useState<number | null>(null);
+  useEffect(() => {
+    const prevScore = lastScore.current;
+    lastScore.current = ui.score;
+    if (ui.score <= prevScore || reduced.current) return;
+    scoreRef.current?.animate?.([{ transform: 'scale(1.4)', color: '#F5B841' }, { transform: 'scale(1)' }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    board.current?.animate?.([{ boxShadow: '0 0 0 2px rgba(245,184,65,.85), 0 0 28px rgba(245,184,65,.45)' }, { boxShadow: '0 0 0 0 rgba(245,184,65,0)' }], { duration: 360, easing: 'ease-out' });
+    if (ui.score % 5 === 0) {
+      setBoost(ui.score / 5 + 1);
+      const id = window.setTimeout(() => setBoost(null), 900);
+      return () => window.clearTimeout(id);
+    }
+  }, [ui.score]);
+
   // Keys: only while the game is open; the page's own shortcuts are left alone otherwise.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -297,7 +315,7 @@ export default function SnakeGame({ status, stageLabel, onView, onClose, statusL
         {/* The score, the board and the pad stay together: low on a phone (where the thumbs are), centred on a desktop. */}
         <div className={cn('flex flex-1 flex-col', touchUi ? 'justify-end' : 'justify-center')}>
         <div className="mx-auto mt-2 flex w-full items-center justify-between text-[14px] font-semibold tabular-nums">
-          <span data-testid="snake-score">{t('dsx_sn_score', { n: String(ui.score) })}</span>
+          <span ref={scoreRef} className="inline-block origin-left rtl:origin-right" data-testid="snake-score">{t('dsx_sn_score', { n: String(ui.score) })}</span>
           <span className="text-white/60">{t('dsx_sn_best', { n: String(best) })}</span>
         </div>
 
@@ -310,6 +328,11 @@ export default function SnakeGame({ status, stageLabel, onView, onClose, statusL
             onContextMenu={(e) => e.preventDefault()}
             role="application" aria-label={t('dsx_sn_board')} data-testid="snake-board" data-started={ui.started ? '1' : '0'}>
             <canvas ref={canvas} className="block h-full w-full" />
+            {boost !== null ? (
+              <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center" aria-hidden="true" data-testid="snake-boost">
+                <span className="rounded-full bg-[hsl(38_92%_56%)] px-3 py-1 text-[13px] font-bold tabular-nums text-[#0C1119] shadow-[0_0_24px_rgba(245,184,65,.55)] motion-safe:animate-bounce">⚡ ×{boost}</span>
+              </div>
+            ) : null}
             {ui.alive && !ui.started ? (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4" data-testid="snake-start">
                 <p className="rounded-full bg-black/45 px-4 py-2 text-center text-[13px] font-medium text-white/90 backdrop-blur-sm">{t('dsx_sn_start')}</p>

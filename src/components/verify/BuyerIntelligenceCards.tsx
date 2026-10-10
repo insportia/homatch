@@ -15,6 +15,7 @@
  * is used only for a concern a document actually states. No provider names,
  * states or codes appear here — those stay in Admin.
  */
+import { useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection, Row, RowList, StatusPill } from './ui';
 import type { PropertyRegister, RegisterMortgage, RegisterState, ProceedingKind } from '@/verify/intelligence/propertyRegister';
@@ -303,22 +304,50 @@ export function MarketContextCard({ market }: { market?: MarketContextView | nul
 
 /* ───────────────────────── Navigation ───────────────────────── */
 
+/*
+ * The chapters of the report as jump links, with the chapter being read
+ * marked (aria-current) — an IntersectionObserver, no scroll listener.
+ */
 export function ReportNav({ items }: { items: Array<{ id: string; labelKey: string }> }) {
   const { t } = useLanguage();
+  const [current, setCurrent] = useState<string | null>(null);
+  const ids = items.map((i) => i.id).join('|');
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const els = ids.split('|').map((id) => document.getElementById(id)).filter((e): e is HTMLElement => !!e);
+    if (!els.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (top) setCurrent(top.target.id);
+      },
+      { rootMargin: '-20% 0px -65% 0px' },
+    );
+    els.forEach((e) => io.observe(e));
+    return () => io.disconnect();
+  }, [ids]);
   if (items.length < 3) return null;
   return (
     <nav aria-label={t('vbi_nav_label')} className="min-w-0">
-      <ul className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
-        {items.map((i) => (
-          <li key={i.id} className="shrink-0">
-            <a
-              href={`#${i.id}`}
-              className="inline-flex min-h-[36px] items-center rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground/85 transition-colors hover:border-[hsl(var(--gold-border))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none"
-            >
-              {t(i.labelKey)}
-            </a>
-          </li>
-        ))}
+      <ul className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+        {items.map((i) => {
+          const on = current === i.id;
+          return (
+            <li key={i.id} className="shrink-0">
+              <a
+                href={`#${i.id}`}
+                aria-current={on ? 'location' : undefined}
+                className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border px-4 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none ${
+                  on
+                    ? 'border-[hsl(222_47%_11%)] bg-[hsl(222_47%_11%)] text-white'
+                    : 'border-border bg-card text-foreground/85 hover:border-[hsl(var(--gold-border))] hover:text-foreground'
+                }`}
+              >
+                {t(i.labelKey)}
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
@@ -431,7 +460,7 @@ export function ExecutiveGlance({
 
 /* ───────────────────────── Project team ───────────────────────── */
 
-const TEAM_ROLE_KEY: Record<string, string> = {
+export const TEAM_ROLE_KEY: Record<string, string> = {
   ARCHITECT: 'vbi_team_role_architect', CO_ARCHITECT: 'vbi_team_role_co_architect', STRUCTURAL_ENGINEER: 'vbi_team_role_structural',
   GEOTECHNICAL_SPECIALIST: 'vbi_team_role_geotechnical', EXPERT_REVIEW: 'vbi_team_role_expert', TECHNICAL_SUPERVISOR: 'vbi_team_role_supervisor',
   CONTRACTOR: 'vbi_team_role_contractor', MEP_ENGINEER: 'vbi_team_role_mep', LANDSCAPE_ARCHITECT: 'vbi_team_role_landscape',

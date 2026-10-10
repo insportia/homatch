@@ -5,6 +5,23 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Verify report v2 — accuracy, visuals, market gate, premium UI (PR #150, 2026-10-10) — MERGE PENDING
+- Owner live run (job 220ed087, Villion) exposed: false commissioning (worker read a cited
+  law/banner as an operative act), garbage history, unnamed participants, missing photos
+  (deadline-path gap), no quality section, $900–3000 market range (PEER_PROJECT fallback),
+  and a building-03 request answered with building-01 papers.
+- Deterministic layers: `src/verify/intelligence/legalStatus.ts` (5 claims, operative-only
+  commissioning, kept identical to worker `decisions.ts`), `propertyIdentity.ts`
+  (UNRESOLVED_MISMATCH for same-unit/other-building), `marketIntelligence.ts` headline gate
+  (microlocation tiers, n≥3, IQR trim, else EVIDENCE_LIMITED), `visualAssets.ts` (signed-URL
+  customer contract). Worker: pdf.js-in-Chromium page renderer + visual classification.
+- UI: chapter report (Summary → Explore the property → Story → People → Building → Legal
+  reality → Location → Market → Final); evidence drawer hidden. 186 i18n keys ×6.
+- Private-person naming (owner request) NOT built: auto-mode safety check refused it; the
+  existing professional-roles-only rule stands until the owner authorises it directly.
+- Villion MyGov data was lost to the U+0000 bug (fixed, PR #149); re-synthesis cannot add it —
+  only a fresh paid run can.
+
 ## Owner Demo Mode in HOMATCH Leads + Resend probe fix (branch claude/nifty-hopper-snzn2d, 2026-10-10)
 
 - Demo Mode: `/property/:id/leads?demo=1`, owner-only (owns the listing AND `internal_match_demo_allowed()`: admin or a listed tester; never by email).
@@ -1285,6 +1302,92 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Premium navy/gold UI (cards, live panel, launch, Matches rail); DB audit + code review findings fixed.
 - OWNER-ONLY LIVE TEST: Claude never runs a paid discovery. Deployed state = switches OFF, Actors disabled,
   awaiting the owner's first real campaign (whose results are preserved as normal production data).
+
+## Design Studio whole-home 3D tour correction (branch `claude/design-studio-refinement-r34f6c`, 2026-10-04)
+
+- Root cause of "the 3D tour is a picture / Share disappeared": #100 (7bc52a6) made `WalkthroughPanel`
+  PhotoWalk-primary whenever the design had room pictures (`needsRoomPhotos` always set by DesignResult), so the
+  panel never read or created the server plan walkthrough, and Share (which lives in the walk route) was unreachable.
+  Engine (SceneController, WalkthroughOverlay, navigation, cameraDirector, ShareViewer) unchanged since #96 de55734.
+- Correction: the panel is the server whole-plan walkthrough again (Open + Share on READY via the same ShareDialog,
+  WALKTHROUGH, `/w/<token>`); PhotoWalk is a secondary "step into the picture" chip, never the tour.
+- Whole-home tour: `src/lib/designStudio/tour.ts` (planTour: entry pose, rooms reachable through passable doorways,
+  door navigation points with landing poses), `workspace/TourNavigation.tsx` (doorway names anchored in 3D, plan
+  sheet), WalkthroughOverlay (Back, Plan, reachable room chips, door hint), SceneController `routeTo(pose,
+  { through: true })` ≈ 1.1 s collision-safe route, reduced motion = cut; ambient aim is highlight-only (cards only
+  on explicit click/tap/E). entryShot faces the nearest visible onward doorway. A WALKTHROUGH share auto-enters at
+  the entrance.
+- Tests: `src/lib/designStudio/__tests__/tour.test.mjs` (eight-room fixture `tourApartmentDoc`), browser checkpoint
+  `QA_ONLY=tour node tests/browser/designStudio.qa.mjs`.
+- Rollback: revert the PR's merge commit (frontend only; no migration, no edge/worker change) → back to main 07091d7.
+
+## Design Studio selected render → spatial design graph (same branch, 2026-10-04) — NOT merged, NOT deployed
+
+- Problem: the selected render (e.g. MASTER 7f9e6825 on 32624177) reached the walkthrough only as a text scene plan;
+  every piece was a generic catalogue/procedural item; visual QA 4/10 UNRELIABLE still became READY.
+- Pipeline now (`design-studio-reconstruct/walkthrough.ts` plan step): `designEvidence.ts` (server-side, private
+  storage via service client, nothing signed or exposed) reads the render's legend + id image (`ds_renders.legend`,
+  `map_key`), the SCENE_MAP job and the source-room provenance → `lib/designStudio/walkthrough/regionAppearance.ts`
+  (per-region colours measured from render pixels through the id image) → `designGraph.ts` buildDesignGraph
+  (architecture from the space = truth; design from spec + scene map + legend + pixels) → graphToBuildPlan →
+  buildWalkthrough → applyGraphLook (semantic design forms, colours, PBR materials resolved from the catalogue) →
+  fidelityOf promotion gate (recall ≥ 0.8, generic ≤ 0.2, material ≥ 0.8, regions ≥ 0.8, walkable).
+- Design forms (browser procedural + Runpod factory parity): SHAKER kitchen, CLUB armchair, TV_WALL, UPHOLSTERED bed,
+  BUILT_IN wardrobe, FLUTED vanity, BORDERED rug. `plan_report.designGraph` stores graph + promotion; the public
+  walkthrough carries `fidelity {promoted, reasons}`; the panel shows `dsx_walk_fidelity_note` when not promoted.
+- Local real-project proof (scratchpad, customer data not committed): before generic 25/25, invented 7, materials 0;
+  after important recall 22/22, generic 0, materials 1.0, regions 1.0, promoted. Pixel measurement and textures
+  unprovable locally (sandbox blocks supabase.co) — needs the production re-run.
+- Owed: deploy design-studio-reconstruct + Runpod worker image; re-run walkthrough on 32624177 (approval required:
+  paid OpenAI plan/QA + Runpod GPU, est ≤ $0.10).
+
+### Design Studio photo-project floor plan: geometry before furniture (same branch, 2026-10-08) — NOT deployed
+
+- Failure: project d02e3e62 (render 72361f0e) tour NOT_WALKABLE, 15/46 pieces. Causes: (1) `completeForWalk`
+  deleted the open-plan kitchen-living as a "duplicate" because the hall outline lay inside it (terrace likewise);
+  (2) rooms moved up to 1.2 m "to touch"; (3) pixel-traced corners turned square rooms into diamonds;
+  (4) nothing checked geometry before placement; (5) the raw reading was never stored, so it cannot be re-run free.
+- Fix: `walkthrough/geometryCheck.ts` (expected rooms from the photo reading, ROOM_DROPPED pieces, shape vs the
+  home's wall directions, pieces-in-room, bed fit, reach, measured footprint; CONFIRMED/RECOVERED/UNCERTAIN) → plan()
+  fails GEOMETRY_UNRELIABLE (non-retryable, $0, no GPU) before placement; nested rooms carved
+  (`subtractSquare`), never deleted; room moves only across a wall's thickness (0.35 m); `rightAngleShare` keeps the
+  reader's square outline over a diamond trace; essential pieces placed first, relocated rather than dropped;
+  the validated reading is kept in the WALK_SPACE job output; squared readings carry their measured outline.
+- d02e3e62's stored source: FAIL — kitchen-living + terrace missing (picture 99%), 4 slanted rooms, bedroom pieces
+  outside their rooms, beds do not fit, 4 rooms unreachable. Its kitchen-living outline was never stored: not
+  recoverable without inventing geometry. Next step needs the owner: one bounded second WALK_SPACE reading
+  (first reading $0.0189; estimate ≈ $0.02, cap $0.20).
+
+### Design Studio tour: what the customer walked, fixed at the causes (same branch, 2026-10-09) — NOT deployed
+
+- Diagnosed on the owner's real tour c57a03b9 (project ab2df04c, walk version 23798a66, plan reused, $0.0062 paid:
+  RunPod $0.0037 + QA $0.0025), replayed locally in the harness browser on its exact data (scratch only).
+- Causes (code): gold `Box3Helper` aim box + hover outline (`SceneController` setAim/setHover) drawn while walking;
+  each frame advanced at most 50 ms of walk (`stepWalk`) so a slow GPU (HIGH tier: GTAO + MSAA + shadows) walked in
+  slow motion — the logic itself reaches all 9 rooms and every doorway at speed; balcony doors started CLOSED at
+  runtime though the build plans every door open; `roomShot` started the visitor 0.36 m behind the sofa; evening
+  design lighting on arrival; editor header + walk bar + room chips + hint over the view; placement judged piece by
+  piece (sofa faced away from the TV, coffee table and an armchair dropped, the other pushed against the TV), the
+  ring fallback stood wardrobes free in a room, beds/sofa 0.45–0.85 m off their walls, plants on the centre of the
+  floor, and a room-by-room order let a nightstand win a way over the next room's wardrobe.
+- Fixes: no helper geometry in walk; real-time walking in ≤ 50 ms steps (cap 250 ms) + automatic lightening
+  (fx → shadows → pixel ratio) when frames exceed 40 ms; balcony doors open on entry; arrival in open floor
+  (≥ 0.6 m from pieces, foreground penalty); daylight on arrival; one bar (room · Plan · More · Exit), tour hides the
+  editor header; `walkthrough/seatingGroup.ts` (sofa → TV on the faced wall → table → armchairs, proven walkable,
+  chairs given up first); walkway check as each non-essential piece stands (`closesWalk`), global importance order,
+  wall pieces always wall-backed, plants only in corners; `walkthrough/plausibility.ts` → server gate NOT_PLAUSIBLE;
+  `walkthrough/planFidelity.ts` (BLOCK: opening past its wall, doorway crossed by a wall → GEOMETRY_UNRELIABLE;
+  WARN: enclosed stair, weak-ink wall, dimension mismatch — reported, never "fixed").
+- This plan's ambiguities (WARN, need the original drawing to settle): stair S1 walled on every side while wall I7
+  between it and the living room has 39% ink (likely open stair); I3 40%, I4 31%; porch written 10'×8' vs measured
+  1.52 m deep (37.5%).
+- Furniture assets (no purchase made): production has 47 active assets — 40 `dev/*` procedural placeholders, 7
+  LICENSED GLB (sofa, armchair, coffee table, plant, cabinet, vase, ceiling lamp). Every piece of this tour rendered
+  procedurally; the RunPod pass made 8 pieces and attached 0 (design-bound pieces are never swapped). Plan: (1) let
+  the matcher use the 7 licensed GLBs where category and size fit; (2) add CC0 models (licence recorded per asset)
+  for beds, wardrobes, dining sets, bathroom fixtures and appliances, Draco/meshopt + KTX2, ≤ 1–2 MB per asset;
+  (3) stop paying for the per-tour GPU pass until its output is attached, or attach it to bound pieces. Any paid
+  library needs the owner's approval first.
 
 ### Find Buyers lifecycle truth + UX consolidation (2026-10-04, after the owner's first live test)
 

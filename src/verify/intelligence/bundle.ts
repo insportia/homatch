@@ -217,9 +217,34 @@ export function buildIntelligenceBundle(
   /* ---- market ---- */
 
   const m = obj(r.market);
+  const quality = qualityFactorsFrom(
+    snapshot.amenities,
+    snapshot.condition,
+    snapshot.constructionStatus,
+    snapshot.parking
+  );
+  /*
+   * THE PROJECT'S OWN ASKS, KEPT AS ASKS (2026-10-10 market gate).
+   *
+   * The developer's marketing "from" price is an asking level for the
+   * project. It anchors the peer price band and travels as ASKING evidence;
+   * it is never a transaction and never a headline on its own.
+   */
+  const startingPpsm = Number(m.startingPricePerSqm);
+  const projectAsking: NonNullable<Subject['projectAsking']> =
+    Number.isFinite(startingPpsm) && startingPpsm > 0
+      ? [{ pricePerSqm: startingPpsm, origin: 'DEVELOPER_MARKETING', currency: nonEmpty(unit.currency) ?? 'USD' }]
+      : [];
   const subject: Subject = {
     project: snapshot.project,
     address,
+    // The resolved neighbourhood beats a street NAMED after one.
+    district: location.district,
+    // Three or more evidenced premium signals: a peer must sit in a tighter band.
+    segment: quality.filter((q) => q.direction === 'SUPPORTS_PREMIUM').length >= 3 ? 'PREMIUM' : undefined,
+    projectAsking,
+    // Fit-out state, when the research established one: a segment signal.
+    condition: snapshot.condition,
     area: Number(pkg.subject.area) || undefined,
     rooms: Number(snapshot.rooms) || undefined,
     floor: Number(pkg.subject.floor) || undefined,
@@ -240,16 +265,9 @@ export function buildIntelligenceBundle(
    * traces to recorded evidence — and none of them carries a monetary
    * adjustment, because the data does not support one.
    */
-  const market = buildMarketIntelligence(
-    subject,
-    arr<RawComparable>(m.comparables),
-    qualityFactorsFrom(
-      snapshot.amenities,
-      snapshot.condition,
-      snapshot.constructionStatus,
-      snapshot.parking
-    )
-  );
+  // The ONE place the market headline is computed, at synthesis, after every
+  // acquisition lane has finished and been folded into m.comparables.
+  const market = buildMarketIntelligence(subject, arr<RawComparable>(m.comparables), quality);
 
   /* ---- people ---- */
 

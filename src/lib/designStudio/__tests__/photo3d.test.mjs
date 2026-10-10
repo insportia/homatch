@@ -60,20 +60,22 @@ test('a dollhouse picture is seen from further away (its own camera)', () => {
   assert.ok(m.nearestM >= PHOTO_CAMERAS.MASTER.nearM - 1e-6);
 });
 
-test('the 3D tour card opens the picture itself first; the depth model loads only when a picture is entered', () => {
+test('the 3D tour card is the whole home (server-built from the plan); a design picture made 3D is only a secondary option', () => {
   const panel = readFileSync(new URL('../../../components/designStudio/unified/WalkthroughPanel.tsx', import.meta.url), 'utf8');
   assert.match(panel, /const PhotoWalk = lazy\(\(\) => import\('\.\/PhotoWalk'\)\);/);
-  assert.match(panel, /data-testid="photo3d-enter"/);
-  // With a picture, the 3D tour IS the picture: nothing else on the card, nothing asked of the server.
-  assert.ok(panel.indexOf('if (photoTour) {') > 0 && panel.indexOf('if (photoTour) {') < panel.indexOf('if (!loaded) return null;'));
-  assert.match(panel, /if \(!photoTour\) void read\(\);/);
+  // The plan walkthrough is always read and created; a picture never replaces it (the PhotoWalk-primary branch is gone).
+  assert.doesNotMatch(panel, /photoTour/);
+  assert.match(panel, /useEffect\(\(\) => \{ setWalk\(null\); setHistory\(\[\]\); setLoaded\(false\); void read\(\); \}, \[read\]\);/);
+  assert.ok(panel.indexOf('data-testid="photo3d-enter"') > panel.indexOf('data-testid="walk-open"'), 'the picture is offered after the tour, never instead of it');
+  // Once ready: open it, and share it (the same public link: ShareDialog, WALKTHROUGH, /w/<token>).
+  assert.match(panel, /data-testid="walk-share-open"/);
+  assert.match(panel, /<ShareDialog[\s\S]*versionId=\{walk\.walkVersionId\}[\s\S]*initialType="WALKTHROUGH"/);
   const result = readFileSync(new URL('../../../components/designStudio/unified/DesignResult.tsx', import.meta.url), 'utf8');
-  assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\} needsRoomPhotos \/>/);
+  assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\} \/>/);
   // Only eye-level room pictures are walked: a dollhouse picture (seen from above) has no eye level to enter.
   const walkBlock = result.slice(result.indexOf('const walkPhotos = useMemo'), result.indexOf('const others = data.rooms'));
   assert.doesNotMatch(walkBlock, /kind: 'MASTER'/);
   assert.match(walkBlock, /if \(hero && heroUrl && heroRoomId\)/);
-  assert.match(panel, /data-testid="photo3d-rooms-needed"/);
   const depth = readFileSync(new URL('../photo3d/estimateDepth.ts', import.meta.url), 'utf8');
   // Off the page's thread (a slow phone never freezes the page), the picture reduced to the model's size first,
   // and a hard time limit after which the picture still opens.

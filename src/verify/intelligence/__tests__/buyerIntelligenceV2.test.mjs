@@ -79,17 +79,18 @@ test('thousands separators and currency symbols parse correctly', () => {
 
 test('a same-project listing always outranks one from elsewhere', () => {
   const same = scoreComparable(SUBJECT, comp());
-  // A NAMED development in another district is a peer project, not anonymous
-  // market stock — that classification became reachable when PEER_PROJECT
-  // stopped depending on the research layer volunteering the label. The
-  // invariant this test exists for is unchanged: it must never outrank the
-  // same building.
+  // A NAMED development in a district that is not next to the subject's is
+  // wider market (premise changed 2026-10-10, job 220ed087: PEER_PROJECT now
+  // requires the same or an adjacent neighbourhood and a matching segment;
+  // Saburtalo is not next to Krtsanisi). The invariant this test exists for
+  // is unchanged: it must never outrank the same building.
   const namedElsewhere = scoreComparable(SUBJECT, comp({
     project: 'Other', address: 'თბილისი, საბურთალო', comparableType: 'CITY',
   }));
   assert.ok(same.relevance > namedElsewhere.relevance);
   assert.equal(same.tier, 'SAME_PROJECT');
-  assert.equal(namedElsewhere.tier, 'PEER_PROJECT');
+  assert.equal(namedElsewhere.tier, 'WIDER_MARKET');
+  assert.ok(namedElsewhere.relevanceReasons.includes('OTHER_DISTRICT'));
 
   // An UNBRANDED listing elsewhere is still the wider market.
   const anonymous = scoreComparable(SUBJECT, comp({
@@ -101,7 +102,8 @@ test('a same-project listing always outranks one from elsewhere', () => {
 
 test('the analysis is based on the narrowest band with enough listings', () => {
   const m = buildMarketIntelligence(SUBJECT, [
-    comp({ pricePerSqm: '1800' }), comp({ pricePerSqm: '1900' }),
+    // Three same-project asks: a headline needs MIN_RELIABLE_SAMPLE = 3.
+    comp({ pricePerSqm: '1800' }), comp({ pricePerSqm: '1850', area: '90' }), comp({ pricePerSqm: '1900' }),
     comp({ project: 'Other', address: 'თბილისი, საბურთალო', comparableType: 'CITY', pricePerSqm: '900' }),
   ]);
   // The distant 900 must NOT drag the median down: it is not the micro-market.
@@ -128,7 +130,7 @@ test('with no subject price there is NO positioning — it is never invented', (
 test('with a subject price the delta is exact', () => {
   const m = buildMarketIntelligence(
     { ...SUBJECT, pricePerSqm: 1760 },
-    [comp({ pricePerSqm: '1800' }), comp({ pricePerSqm: '1900' })]
+    [comp({ pricePerSqm: '1800' }), comp({ pricePerSqm: '1850', area: '90' }), comp({ pricePerSqm: '1900' })]
   );
   assert.equal(m.median, 1850);
   assert.equal(m.deltaFromMedianPct, -4.9);
@@ -488,9 +490,16 @@ test('the primary report cannot render a portal URL from evidence', () => {
   // URLs; that file is guarded separately below.
   const urls = [...src.matchAll(/(\w+)\.url/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(urls)], [], `unexpected url source(s): ${urls.join(', ')}`);
-  const visuals = code('src/components/verify/OfficialIntelligence.tsx');
-  assert.ok(!/href=/.test(visuals), 'the official-history blocks must not link anywhere');
-  assert.match(visuals, /storage\\\/v1\\\/object\\\/sign/, 'only signed storage URLs may be rendered as images');
+  const history = code('src/components/verify/OfficialIntelligence.tsx');
+  assert.ok(!/href=/.test(history), 'the official-history blocks must not link anywhere');
+  // The visuals moved to VisualExplorer (2026-10 report rebuild); the guard
+  // moved with them into the pure catalogue, where it is unit-tested.
+  assert.ok(!/<img/.test(history), 'the history blocks render images again, outside the guarded explorer');
+  const catalogue = code('src/verify/visualCatalog.ts');
+  assert.match(catalogue, /storage\\\/v1\\\/object\\\/sign/, 'only signed storage URLs may be rendered as images');
+  const explorer = code('src/components/verify/VisualExplorer.tsx');
+  assert.match(explorer, /catalogVisuals\(/, 'the explorer renders visuals that never passed the catalogue');
+  assert.ok(!/href=/.test(explorer), 'the visual explorer must not link anywhere');
 });
 
 test('there is no "could not confirm" block in the primary report', () => {

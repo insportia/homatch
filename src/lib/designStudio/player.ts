@@ -125,6 +125,38 @@ export function isTap(ms: number, movedPx: number, mouse: boolean): boolean {
   return mouse ? ms < 450 && movedPx < 8 : ms < 350 && movedPx < 6;
 }
 
+/** Two uses closer than this are one (a tap the canvas and the overlay both heard, a key repeat). */
+export const ACTION_COOLDOWN_MS = 350;
+
+export type InteractionRefusal = 'MOVING_STICK' | 'TOO_SOON' | 'OUT_OF_REACH' | 'OTHER_ROOM' | 'WOULD_TRAP';
+
+/**
+ * Whether an explicit use (a tap, a click, E) may act on its target. Never while the thumb is on the stick (that hand
+ * is walking), never twice for one gesture, never beyond reach, never on something in another room (a door between
+ * this room and the next is in both), and never a door closed on the walker standing in it.
+ */
+export function interactionRefusal(a: {
+  now: number; lastActionAt: number; stickActive: boolean; distanceM: number;
+  playerRoom: string | null; targetRoom: string | null; doorTouchesPlayerRoom: boolean; closingOnBody: boolean;
+}): InteractionRefusal | null {
+  if (a.stickActive) return 'MOVING_STICK';
+  if (a.now - a.lastActionAt < ACTION_COOLDOWN_MS) return 'TOO_SOON';
+  if (!(a.distanceM <= REACH_M)) return 'OUT_OF_REACH';
+  if (!a.doorTouchesPlayerRoom && a.playerRoom && a.targetRoom && a.playerRoom !== a.targetRoom) return 'OTHER_ROOM';
+  if (a.closingOnBody) return 'WOULD_TRAP';
+  return null;
+}
+
+/**
+ * Of the usable things near a screen point (E or a captured mouse aims at the centre), the one a person means: the
+ * smallest angle off the line of sight first, then the nearer. `offPx` is its distance on screen from the point.
+ */
+export function pickTarget<T extends { offPx: number; distanceM: number }>(candidates: T[], maxOffPx: number): T | null {
+  const fit = candidates.filter((c) => c.offPx <= maxOffPx && c.distanceM <= REACH_M);
+  if (!fit.length) return null;
+  return fit.sort((x, y) => (x.offPx / maxOffPx + x.distanceM / REACH_M * 0.5) - (y.offPx / maxOffPx + y.distanceM / REACH_M * 0.5))[0];
+}
+
 /** Turn the head by a pointer movement (pixels), per the visitor's settings. */
 export function look(yaw: number, pitch: number, dxPx: number, dyPx: number, settings: PlayerSettings, radPerPx = 0.0026): { yaw: number; pitch: number } {
   const k = radPerPx * settings.lookSensitivity;

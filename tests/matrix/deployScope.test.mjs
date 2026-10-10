@@ -157,10 +157,9 @@ test('H: a held function is never in an owed list, and every hold is evidenced',
   assert.match(yml, /::warning::HELD /, 'held functions are reported in the run, never hidden');
 });
 
-test('H: the design-studio-reconstruct hold names the commit production actually runs', async () => {
+test('H: design-studio-reconstruct is released by PR #109, which carries its code to main', async () => {
   const { edgeHolds } = await import('../../scripts/deploy-scope.mjs');
-  const h = edgeHolds().find((x) => x.function === 'design-studio-reconstruct');
-  assert.ok(h, 'design-studio-reconstruct is held until PR #109 (or its successor) merges');
-  assert.equal(h.sourceCommit, '4ec95ac5');
-  assert.equal(h.pr, 109);
+  // Held while production ran claude/design-studio-refinement-r34f6c@4ec95ac5 ahead of main; PR #109 merges that
+  // branch, so the first deploy from main is the Design Studio code itself (newer than v55), never an older one.
+  assert.equal(edgeHolds().find((x) => x.function === 'design-studio-reconstruct'), undefined);
 });

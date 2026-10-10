@@ -30,7 +30,7 @@ const NEVER_RELEVANT: Record<string, readonly SectionKey[]> = {
   /* Bare land. There is no building, so nothing about building quality is a
    * fact about this property — and a "Project" heading over a plot invites
    * the surrounding development's marketing to be written as if it were. */
-  LAND: ['PROJECT'],
+  LAND: ['PROJECT', 'QUALITY'],
 
   /* A house sold by its owner. It has a building, but no development project
    * and no developer, and forcing developer research onto a private sale was

@@ -66,11 +66,23 @@ function scanEntities(source: string, docs: any[] | undefined) {
   return q.all();
 }
 
+const TRANSIENT_CAPTCHA = new Set(['NO_CHANGE', 'TIMEOUT', 'UNSOLVABLE', 'PROVIDER_ERROR', 'BUDGET_EXHAUSTED']);
+
 /** Map a finished source result to a task outcome; store complete evidence. */
 async function settle(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, cacheScope: string | null): Promise<TaskOutcome> {
   const r = out.result ?? {};
   if (out.keep || r.status === 'WAITING_HUMAN' || r.status === 'CAPTCHA_REQUIRED') {
-    return { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED', retryable: false };
+    // Why the CAPTCHA gave up travels with the task (matched by prefix downstream).
+    const log = Array.isArray(r.captchaResolution) ? r.captchaResolution[r.captchaResolution.length - 1] : null;
+    const why = String(log?.outcome ?? 'NONE');
+    // A transient give-up (the site did not refresh, the solver timed out)
+    // earns ONE more go on a fresh page with a fresh solve budget — the queue
+    // closes the page, so no human can finish it here anyway (live run
+    // 2026-10-10: RS.ge NO_CHANGE twice → the company's tax status was lost).
+    if (TRANSIENT_CAPTCHA.has(why) && Number(task.attempts ?? 1) < 2) {
+      return { type: 'fail', error: `CAPTCHA_${why}`, retryable: true, retryAfterSeconds: 20 };
+    }
+    return { type: 'fail', error: `HUMAN_VERIFICATION_REQUIRED:${why}`, retryable: false };
   }
   if (r.status === 'FAILED') {
     return { type: 'fail', error: String(r.error ?? 'SOURCE_FAILED').slice(0, 500), retryable: true };
@@ -117,9 +129,14 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
         result.queueEntities = scanEntities('tas', result.documents);
         // Visuals: stored by content hash where the report reads them, so any
         // replica can serve any job.
+        // Bounded upstream (≤ VISUAL_ASSET_MAX assets, byte budget); `stored`
+        // tells research-agent the object exists without a storage listing.
         for (const v of result.tasApi?.visuals ?? []) {
           const img = getCachedVisual(String(v.id));
-          if (img) await upload(String(v.id), img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes).catch(() => {});
+          if (!img) continue;
+          await upload(String(v.id), img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes)
+            .then(() => { v.stored = true; })
+            .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'visual_upload_failed', task: task.id, sha: String(v.id).slice(0, 12), error: String((e as Error)?.message ?? e).slice(0, 160) })));
         }
         return settle(task, { result, keep: false }, upload, scope);
       }

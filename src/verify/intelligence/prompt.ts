@@ -29,6 +29,7 @@
 // of evidence may never be written as evidence of absence, and output that
 // fails is discarded for a deterministic report.
 
+import type { PropertyIdentity } from './propertyIdentity.ts';
 import { adsPromptDigest } from '../developerAds.ts';
 import { assetClassSectionNote, sectionsForAssetClass } from './sectionRelevance.ts';
 import type { EvidencePackage } from './evidencePackage.ts';
@@ -63,6 +64,7 @@ import { registerModelFacts } from './propertyRegister.ts';
 export const SECTION_KEYS = [
   'SNAPSHOT',
   'PROJECT',
+  'QUALITY',
   'LOCATION',
   'INFRASTRUCTURE',
   'MARKET',
@@ -296,6 +298,16 @@ const ANALYST_RULES: string[] = [
   'justify or undermine a premium, so use the ones you were given rather than describing the project',
   'in general terms.',
   '',
+  'QUALITY. The building as built and as designed, assessed honestly in four clearly separate kinds of',
+  'knowledge — say which kind each statement is, in natural words, not labels: (1) DOCUMENTED — what the',
+  'official documents specify (structure, foundation, slab, concrete, seismic design, facade, insulation,',
+  'windows, lifts, fire safety, parking); (2) VISIBLE — what the photographs show of condition and progress;',
+  '(3) THE DEVELOPER SAYS — marketing claims, attributed as such; (4) NOT KNOWN — what nothing read settles.',
+  'Explain what each matters for daily life (quiet floors, warmth, light, lifts, parking, upkeep) in plain',
+  'sentences. NEVER call a building structurally safe, earthquake-resistant, compliant or high quality on the',
+  'strength of photographs, renders or marketing; a drawing shows the design, not the work done. No scores.',
+  'If almost nothing is documented, say so in two warm sentences and stop — never pad.',
+  '',
   'LOCATION. Micro-location first: the street, what is around it, access, character. Not tourism copy.',
   'location.profile is GENERAL AREA KNOWLEDGE — what any local adviser knows about that district — and',
   'NOT a finding about this property. Use it as background and frame it that way ("ეს უბანი…"), never',
@@ -320,6 +332,30 @@ const ANALYST_RULES: string[] = [
   'MONEY MOVEMENTS. If FX context is supplied, it explains part of a historical change. It is NEVER',
   'evidence that the property will appreciate. Appreciation may only be discussed as evidence-backed',
   'factors ("ზრდის ერთ-ერთი შესაძლო ფაქტორია…"), never as a promise or a forecast percentage.',
+  '',
+  '── LEGAL STATES AND IDENTITY ARE DECIDED, NOT WRITTEN ──────────────',
+  '',
+  'legalStatus lists distinct legal states — permit issued, works started, works completed, commissioning',
+  'applied for, commissioning approved — each with a status already decided from the records. You may state',
+  'a state as fact ONLY when its status is CONFIRMED. PARTIALLY_CONFIRMED means another building of the',
+  'project, and must be said that way. NOT_VERIFIED means the records read do not show it — write that it',
+  'could not be confirmed from the records, NEVER that it did not happen and NEVER that it did. CONFLICTING',
+  'means the records disagree: say so once. Never derive one state from another (a permit is not',
+  'construction; finished-looking photos are not commissioning; a cited law or a rule about a banner is not',
+  'an act). Words like "ექსპლუატაციაში მიღებულია" / "accepted into operation" may appear ONLY for a',
+  'CONFIRMED COMMISSIONING_APPROVED.',
+  '',
+  'propertyIdentity says which apartment the records actually concern. If its status is',
+  'UNRESOLVED_MISMATCH, the requested unit and the documented unit(s) differ (e.g. another building of the',
+  'same parcel): say so ONCE, calmly and plainly, in SNAPSHOT, and never present facts about the documented',
+  'unit as confirmed facts about the requested one. If PARCEL_ONLY, the papers concern the plot/project, not',
+  'this apartment. Do not repeat the identity caveat in other sections.',
+  '',
+  'TELL THE HISTORY AS A STORY, NOT A REGISTER. officialHistory may contain many similar administrative',
+  'steps; group them in words ("the design was amended several times between 2022 and 2025") instead of',
+  'listing decision numbers, dates and reference codes. No OCR fragments, no raw form values, no lists of',
+  'numbers. A reader should feel a knowledgeable local adviser telling the project\'s life from its first',
+  'record to today, with what is still unconfirmed said once, at the right moment.',
   '',
   '── THE OFFICIAL HISTORY, THE PRESENT, AND THE PICTURES ─────────────',
   '',
@@ -420,7 +456,8 @@ const LENGTH_GUIDE: Record<ReturnType<typeof evidenceRichness>, string> = {
 export function buildIntelligencePrompt(
   pkg: EvidencePackage,
   bundle?: IntelligenceBundle,
-  assetClass?: string | null
+  assetClass?: string | null,
+  extras?: { identity?: PropertyIdentity | null },
 ): { system: string; user: string } {
   const richness = evidenceRichness(pkg);
   /* A plot of land has no building quality and a warehouse has no school run.
@@ -555,6 +592,9 @@ export function buildIntelligencePrompt(
       officialHistory: pkg.tas?.available
         ? tasDigest(pkg.tas, (id) => pkg.tasCite?.[id] ?? null).text
         : undefined,
+      // Decided deterministically (legalStatus.ts / propertyIdentity.ts); the prose may not upgrade them.
+      legalStatus: pkg.tas?.available ? pkg.tas.legalClaims.map((c) => ({ state: c.key, status: c.status, basis: c.basis.slice(0, 3) })) : undefined,
+      propertyIdentity: extras?.identity ?? undefined,
       officialVisuals: pkg.tas?.visuals?.length
         ? pkg.tas.visuals.map((v) => ({ id: v.id, role: v.role, kind: v.kind, date: v.date, chapter: v.chapter }))
         : undefined,

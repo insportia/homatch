@@ -28,6 +28,7 @@ import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optiona
 // _shared/providerSwitch.ts, exactly as Find Buyers reads it.
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
+import { parseCadastral } from '../../../src/verify/intelligence/propertyIdentity.ts';
 import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, OFFICIAL_STRAGGLER_GRACE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
@@ -1345,6 +1346,10 @@ interface AggregatedTasFact {
   // one of its facts — never inferred or guessed across documents, and
   // never invented when the project is genuinely a single building.
   block: string | null;
+}
+function buildingFromCode(code: string | null): { parcel: string; building: string; section: string | null; unit: string | null; source: 'CADASTRAL_CODE' } | null {
+  const p = parseCadastral(code);
+  return p && p.building ? { parcel: p.parcel, building: p.building, section: p.section, unit: p.unit, source: 'CADASTRAL_CODE' } : null;
 }
 function aggregateTasTechnicalFacts(browserOfficial: any): AggregatedTasFact[] {
   const out: AggregatedTasFact[] = [];
@@ -4103,7 +4108,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // 01.18.06.019.055 in the report merely because evidence was easier to
     // find for the parent).
     exactUnit: j.mode === 'cadastral' ? { code: j.query, verified: !!i.exactUnit?.verified, note: i.exactUnit?.note || null } : i.exactUnit || null,
-    building: i.building || null,
+    // A null model answer must not erase what the code itself states: the
+    // building group of a unit code (…055 · 03 · 01 · 503) is a fact.
+    building: i.building || buildingFromCode(j.mode === 'cadastral' ? j.query : null),
     // v25: reconciledIdentity (see reconcileIdentity() above) enriches the
     // IDENTITY-stage project profile with whatever MARKET corroborated,
     // WITHOUT overwriting a field IDENTITY itself already stated — this is

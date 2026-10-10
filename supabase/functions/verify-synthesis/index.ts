@@ -29,6 +29,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
 import { officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
+import { resolveIdentity } from '../../../src/verify/intelligence/propertyIdentity.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -482,7 +483,7 @@ serve(async (req) => {
 
     const { data: job, error } = await supabase
       .from('research_jobs')
-      .select('id,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at')
+      .select('id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at')
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw error;
@@ -558,6 +559,11 @@ serve(async (req) => {
     // what the model reasons over.
     const projection = projectVerify({ jobId: job.id, report: job.result_json });
     const pkg = buildEvidencePackage(job.result_json);
+    // Identity from OFFICIAL records only (TAS cases, registry documents and evidence) — never listings.
+    const rj = job.result_json ?? {};
+    const identity = resolveIdentity(rj?.exactUnit?.code ?? job.query ?? null, {
+      tas: rj?.browserOfficial, documents: rj?.documents, official: rj?.officialEvidence, rights: rj?.rightsAndRestrictions, land: rj?.landProfile,
+    });
 
     // Market, location, people and the buyer's own official self-checks are
     // computed deterministically here; the model is handed the RESULT and asked
@@ -618,7 +624,7 @@ serve(async (req) => {
       // The asset class decides which sections this property can even have:
       // a plot of land has no building quality, and a heading with nothing
       // real under it gets filled with something.
-      const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(job.result_json));
+      const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(job.result_json), { identity });
       try {
         const res = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
@@ -720,6 +726,8 @@ serve(async (req) => {
       // conclusiveness), the 5–10 milestones, value changes, and the funnel
       // from discovered records to what is shown. Case/decision numbers only.
       officialHistory: pkg.tas ? officialHistoryView(pkg.tas) : null,
+      // Which unit the records actually concern; a near match is never merged (propertyIdentity.ts).
+      identity,
       // Developer advertising (marketing signal): only a completed stage reaches
       // the customer; the view carries no run ids or costs by construction.
       developerAds: pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,

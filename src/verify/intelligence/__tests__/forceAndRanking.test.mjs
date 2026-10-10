@@ -43,7 +43,7 @@ test('a forced rebuild is refused while a recent one exists', () => {
   assert.match(guard, /retryAfterSeconds/);
   // It is keyed on when the report was actually built.
   assert.match(guard, /job\.synthesis_at/);
-  assert.match(code, /select\('id,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at'\)/);
+  assert.match(code, /select\('id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at'\)/, 'synthesis_at is read (and query, for the unit identity check)');
 });
 
 test('a cached read is not affected by the guard', () => {

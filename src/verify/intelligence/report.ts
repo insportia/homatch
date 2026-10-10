@@ -547,6 +547,7 @@ const SECTION_FOR: Partial<Record<EvidenceItem['category'], SectionKey>> = {
 const TITLES: Record<SectionKey, string> = {
   SNAPSHOT: 'ქონების მიმდინარე მდგომარეობა',
   PROJECT: 'პროექტი და მშენებლობის ხარისხი',
+  QUALITY: 'შენობა და ხარისხი',
   LOCATION: 'მდებარეობა და ცხოვრება',
   INFRASTRUCTURE: 'ინფრასტრუქტურა და ყოველდღიური კომფორტი',
   MARKET: 'ფასი და ბაზარი',

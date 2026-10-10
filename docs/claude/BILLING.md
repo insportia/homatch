@@ -32,6 +32,19 @@ warns when a diff enters this domain.
 - **Find Buyers minimum** is `find_buyers_min_usd` ($10) converted through
   `credits_per_usd` (100 credits at 10/$). It is not a second credit rate.
 
+- **Verify credit budget** (migration `20261024100000`, OFF until
+  `admin_settings.verify_billing_enabled` = true). A Verify reserves its
+  authorised budget (`billable_products.VERIFY.config.verify_budget.max_budget_credits`,
+  25) through `wallet_reserve`, prices its METERED cost live, and settles the
+  cumulative price minus what earlier sessions of the same job charged
+  (stop/resume never charges twice; the total never exceeds the recorded
+  authorisations). Price = (landed + contingency_bps) / (1 − target_margin_bps)
+  × (1 + vat_rate_bps), rounded up, capped — Verify's own policy, NOT
+  `billing_price_quote()` and NOT a plan's `profit_share_to_customer_bps`.
+  System failure → release all; customer stop → charge incurred. Missing rate
+  → policy `fallback_usd` (FALLBACK) or UNPRICED + `verify_billing.needs_review`.
+  Customer UI shows credits used / remaining / returned only.
+
 ## Where it lives
 
 - Edge: `supabase/functions/{billing,credits-topup,payment-webhook,

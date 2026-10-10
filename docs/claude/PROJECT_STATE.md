@@ -5,6 +5,19 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Verify credit budget + stop/resume (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
+
+- Migration `20261024100000_verify_credit_budget.sql` (after the queue migration). NOT applied.
+  `verify_billing_enabled` seeded false: until switched on, Verify is not charged (unchanged).
+- research-agent: reserve at start (anonymous → sign-in when on), live `billing` in status,
+  `pause` / `continue` actions, settlement sweep in the driver, ads stage budget guard.
+- Worker: `POST /research/:id/cancel` (needs the Railway deploy for legacy-mode stop).
+- Production facts used (2026-10-10): credits_per_usd 10, vat_rate_bps 1800,
+  billing_cogs_tax_bps 1800, reservation TTL 60 min (Verify extends to 12 h),
+  all accounts on FREE, fx_rates only USD (no GEL/EUR shown until rates are set),
+  Verify AI COGS p50 $0.446 / p90 $0.581 / max $0.79 → ~15 / ~20 / cap credits.
+- Tests: tests/sql/run-verify-billing.sh (16 checks + concurrency), pauseResume, verifyBudgetUi.
+
 ## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
 
 - Durable queue: migration `20261024090000_verify_durable_execution.sql` (verify_tasks,

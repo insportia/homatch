@@ -146,6 +146,7 @@ export type ParticipantRole =
   | 'LANDSCAPE_ARCHITECT'
   | 'FIRE_SAFETY'
   | 'SURVEYOR'
+  | 'INTERIOR_DESIGNER'
   | 'OTHER';
 
 export interface Participant {
@@ -204,6 +205,8 @@ export interface TasCoverage {
   officialResponses: number;
   attachmentsAccounted: number;
   attachmentsRead: number;
+  /** Pages of the attachments actually read (the worker's own page counts). */
+  pagesRead?: number;
   scanOnly: number;
   unsupportedFormats: number;
   notProcessed: number;
@@ -292,7 +295,17 @@ const KEY_RULES: KeyRule[] = [
   { key: 'foundationType', category: 'FOUNDATION', materiality: 'MEDIUM', single: true, re: /საძირკვ|ფუნდამენტ|foundation|фундамент/i },
   { key: 'piles', category: 'FOUNDATION', materiality: 'MEDIUM', single: true, re: /ხიმინჯ|piles?|сва/i },
   { key: 'geologicalSurvey', category: 'GEOTECHNICAL', materiality: 'LOW', single: false, re: /გეოლოგ|geolog|геолог/i },
+  { key: 'slabThickness', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /ფილ(?:ის|ების)\s+სისქე|slab\s+thickness|толщина\s+плит/i },
+  { key: 'concreteClass', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /ბეტონის\s+(?:კლასი|მარკა|სიმტკიცის)|concrete\s+(?:class|grade)|класс\s+бетона/i },
+  { key: 'concreteVolume', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /ბეტონის\s+(?:მოცულობა|ხარჯი|საერთო)|concrete\s+volume|объ[её]м\s+бетона/i },
+  { key: 'rebarClass', category: 'STRUCTURAL', materiality: 'LOW', single: true, re: /არმატურ|rebar|арматур/i },
+  { key: 'foundationSlab', category: 'FOUNDATION', materiality: 'MEDIUM', single: true, re: /ფილოვან\S*\s+საძირკვ|raft|mat\s+foundation|плитн/i },
+  { key: 'pileSize', category: 'FOUNDATION', materiality: 'LOW', single: true, re: /ხიმინჯ\S*\s+(?:სიგრძე|დიამეტრი|სიღრმე)|pile\s+(?:length|diameter)/i },
+  { key: 'wallMaterial', category: 'MATERIAL', materiality: 'LOW', single: true, re: /კედლ(?:ის|ების)\s+(?:მასალა|შევსება)|wall\s+material/i },
+  { key: 'facadeMaterial', category: 'MATERIAL', materiality: 'LOW', single: true, re: /ფასადის\s+(?:მოპირკეთება|მასალა|დამუშავება)|facade\s+(?:cladding|material)/i },
+  { key: 'insulation', category: 'MATERIAL', materiality: 'LOW', single: true, re: /თბოიზოლაცი|insulation|утепл/i },
   { key: 'seismic', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /სეისმ|seismic|сейсм/i },
+  { key: 'seismicZone', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /სეისმურ(?:ობა|ი\s+(?:ზონა|ბალი|მედეგობა))|seismic\s+(?:zone|intensity)/i },
   { key: 'energyEfficiency', category: 'MEP', materiality: 'LOW', single: true, re: /ენერგოეფექტ|energy/i },
   { key: 'fireSafety', category: 'MEP', materiality: 'MEDIUM', single: true, re: /ხანძარ|fire|пожар/i },
   { key: 'elevator', category: 'MEP', materiality: 'LOW', single: true, re: /ლიფტ|elevator|лифт/i },
@@ -314,8 +327,31 @@ const PERSON_FACT_ROLES: Record<string, ParticipantRole> = {
   supervisionRole: 'TECHNICAL_SUPERVISOR',
   applicant: 'APPLICANT',
   parcelOwner: 'PARCEL_OWNER',
+  landscapeSpecialist: 'LANDSCAPE_ARCHITECT',
+  mepSpecialist: 'MEP_ENGINEER',
+  fireSafetySpecialist: 'FIRE_SAFETY',
+  contractorCompany: 'CONTRACTOR',
+  interiorDesigner: 'INTERIOR_DESIGNER',
 };
 const NON_FACT_KEYS = new Set(['organization', 'idCode', 'buildingBlock', 'buildingLiter']);
+
+/*
+ * VALUES THAT ARE NOT VALUES OF THEIR MATTER.
+ *
+ * Job c80f7237 rendered "building function: ფართობი → არასასოფლო სამეურნეო".
+ * Neither is a building function: "ფართობი" (area) is a table header the form
+ * reader took for a value, and "არასასოფლო სამეურნეო" (non-agricultural) is
+ * the LAND category of the plot. A history built from them invents a change
+ * of purpose that never happened, so they are refused at the door.
+ */
+const HEADER_WORD = /^(ფართობი|ფართი|რაოდენობა|მნიშვნელობა|დასახელება|ერთეული|სულ|area|value|name|unit|total|площадь|значение)$/i;
+const LAND_CATEGORY = /^(არა)?სასოფლო[\s-]*სამეურნეო$|^(non-?)?agricultural$|^(не)?сельскохозяйственн/i;
+export function acceptableValue(key: string, value: string): boolean {
+  const v = s(value).replace(/[.:;,]+$/, '');
+  if (!v || HEADER_WORD.test(v)) return false;
+  if (key === 'buildingFunction' && LAND_CATEGORY.test(v)) return false;
+  return true;
+}
 
 export function ruleFor(label: string): KeyRule | null {
   const t = s(label);
@@ -334,6 +370,7 @@ export function normalizeRole(raw: string): ParticipantRole {
   if (/დეველოპ|developer|девелоп|застройщик/.test(t)) return 'DEVELOPER';
   if (/მესაკუთრ|owner|собственник/.test(t)) return 'PARCEL_OWNER';
   if (/ლანდშაფტ|landscape/.test(t)) return 'LANDSCAPE_ARCHITECT';
+  if (/ინტერიერ|interior/.test(t)) return 'INTERIOR_DESIGNER';
   if (/თანაავტორ|co-?author/.test(t)) return 'CO_ARCHITECT';
   if (/არქიტექტ|architect|архитект/.test(t)) return 'ARCHITECT';
   if (/კონსტრუქტ|კონსტრუქციულ|structural|конструкт/.test(t)) return 'STRUCTURAL_ENGINEER';
@@ -480,6 +517,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       if (!v.value) continue;
       const rule = ruleFor(v.label ?? v.key) ?? ruleFor(v.key);
       const key = rule?.key ?? `field:${valueIdentity(v.label ?? v.key).slice(0, 60)}`;
+      if (!acceptableValue(key, v.value)) continue;
       occ.push({ rule, key, label: v.label ?? v.key, value: v.value, block: c.block, src, category: rule?.category ?? 'OTHER', materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const f of c.technicalFacts) {
@@ -492,6 +530,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       }
       const rule = KEY_RULES.find((r) => r.key === f.key) ?? ruleFor(f.key);
       const key = rule?.key ?? `tf:${f.key}`;
+      if (!acceptableValue(key, f.value)) continue;
       occ.push({ rule, key, label: rule?.key ?? f.key, value: f.value, block: c.block, src, category: rule?.category ?? (['PROJECT', 'PERMIT', 'STRUCTURAL', 'FOUNDATION', 'GEOTECHNICAL', 'MEP', 'LANDSCAPE', 'MATERIAL', 'REVISION'].includes(f.category) ? (f.category as TasFact['category']) : 'OTHER'), materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const p of c.parties) {
@@ -639,7 +678,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   const story = buildStory(timeline, facts, nowIso);
 
   // ── visuals: linked to the nearest dated event and its chapter ──
-  const visuals: VisualRef[] = arr<any>(r0.officialVisuals ?? api?.visuals).slice(0, 6).map((v) => {
+  const visuals: VisualRef[] = arr<any>(r0.officialVisuals ?? api?.visuals).slice(0, 4).map((v) => {
     const d = day(v?.date);
     let nearest: TimelineEvent | null = null;
     if (d)
@@ -669,6 +708,8 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     officialResponses: Number(obj(acc.responses).PDF || 0) + Number(obj(acc.responses).HTML || 0),
     attachmentsAccounted: Number(acc.attachments) || 0,
     attachmentsRead: Number(outcomes.READ_TEXT || 0) + Number(outcomes.LOW_TEXT || 0),
+    pagesRead: arr<any>(api?.cases).reduce((n, c) => n + arr<any>(c?.attachments).reduce((m, a) =>
+      m + ((a?.outcome === 'READ_TEXT' || a?.outcome === 'LOW_TEXT') && Number(a?.pages) > 0 ? Number(a.pages) : 0), 0), 0),
     scanOnly: Number(outcomes.SCAN_OR_IMAGE_ONLY || 0),
     unsupportedFormats: Number(outcomes.UNSUPPORTED_FORMAT || 0),
     notProcessed: Number(outcomes.NOT_PROCESSED_BUDGET || 0) + Number(outcomes.DOWNLOAD_FAILED || 0) + Number(outcomes.FAILED || 0),
@@ -988,6 +1029,7 @@ export interface OfficialHistoryView {
   evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
   funnel: TasFunnel;
   visuals: Array<{ id: string; versionStatus: VisualRef['versionStatus'] }>;
+  team?: Array<{ name: string; kind: Participant['kind']; roles: ParticipantRole[]; lastSeen: string | null }>;
 }
 
 /**
@@ -1020,5 +1062,19 @@ export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView
     evolution,
     funnel: intel.funnel,
     visuals: intel.visuals.map((v) => ({ id: v.id, versionStatus: v.versionStatus })),
+    // The professionals the municipal documents name — never applicants or
+    // private parcel owners (owner, 2026-10-10: "who designed and built it").
+    team: intel.participants
+      // Organisations named in any other capacity count too (owner,
+      // 2026-10-10: "others mentioned for other purposes") — but never a
+      // private person outside a professional role.
+      .filter((p) => p.roles.some((r) => TEAM_ROLES.has(r)) || (p.kind === 'ORGANIZATION' && p.roles.includes('OTHER')))
+      .slice(0, 24)
+      .map((p) => ({ name: p.name, kind: p.kind, roles: p.roles.some((r) => TEAM_ROLES.has(r)) ? p.roles.filter((r) => TEAM_ROLES.has(r)) : (['OTHER'] as ParticipantRole[]), lastSeen: p.lastSeen })),
   };
 }
+
+const TEAM_ROLES = new Set<ParticipantRole>([
+  'DEVELOPER', 'ARCHITECT', 'CO_ARCHITECT', 'STRUCTURAL_ENGINEER', 'GEOTECHNICAL_SPECIALIST', 'EXPERT_REVIEW',
+  'TECHNICAL_SUPERVISOR', 'CONTRACTOR', 'MEP_ENGINEER', 'LANDSCAPE_ARCHITECT', 'FIRE_SAFETY', 'SURVEYOR', 'INTERIOR_DESIGNER',
+]);

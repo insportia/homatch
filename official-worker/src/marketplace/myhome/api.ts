@@ -64,6 +64,10 @@ export function validateSearchListings(listings:Listing[],criteria:Criteria) {
     }
   }
 }
+/** A district name without its "district"/„რაიონი“ suffix, Georgian genitive folded (ვაკის → ვაკე is not derivable; ვაკის → ვაკ, ვაკე → ვაკ). */
+export function districtKey(v:string):string {
+  return v.toLowerCase().replace(/\s+(district|raioni|rayon|raion|რაიონი|უბანი|район)$/u,'').trim().replace(/(ის|ი|ე|ა)$/u,'');
+}
 export function resolveLocation(criteria:Criteria,payload:any):Criteria {
   if(!Array.isArray(payload?.data)) throw new Error('Invalid location dictionary');
   const names = (item:any) => [item.display_name,item.display_name_in,item.slug,
@@ -83,13 +87,16 @@ export function resolveLocation(criteria:Criteria,payload:any):Criteria {
   const city=match(payload.data,criteria.city,criteria.cityId ?? knownCity,'city');
   let districtId=criteria.districtId,urbanId=criteria.urbanId;
   if(criteria.district) {
-    const name=criteria.district.toLowerCase();
-    if(['krtsanisi','krwanisi','კრწანისი'].includes(name) && city.id === 1) {
+    // "Vake district" / „ვაკის რაიონი“ / "Vake raioni" name the same place as
+    // the dictionary's "Vake" / „ვაკე“; an exact-only match threw and the
+    // Verify search silently widened to the whole city.
+    const name=districtKey(criteria.district);
+    if(['krtsanisi','krwanisi','კრწანისი'].map(districtKey).includes(name) && city.id === 1) {
       if(districtId !== undefined && districtId !== 6 || urbanId !== undefined && urbanId !== 65) throw new Error('Conflicting Krtsanisi IDs');
       districtId=6;urbanId=65;
     } else {
-      const districts=(city.districts ?? []).filter((d:any)=>names(d).some((v:any)=>typeof v==='string' && v.toLowerCase()===name));
-      const urbans=(city.districts ?? []).flatMap((d:any)=>(d.urbans ?? []).map((u:any)=>({...u,parent_id:d.id}))).filter((u:any)=>names(u).some((v:any)=>typeof v==='string' && v.toLowerCase()===name));
+      const districts=(city.districts ?? []).filter((d:any)=>names(d).some((v:any)=>typeof v==='string' && districtKey(v)===name));
+      const urbans=(city.districts ?? []).flatMap((d:any)=>(d.urbans ?? []).map((u:any)=>({...u,parent_id:d.id}))).filter((u:any)=>names(u).some((v:any)=>typeof v==='string' && districtKey(v)===name));
       if(districts.length+urbans.length !== 1) throw new Error('Unknown or ambiguous district/urban');
       const resolvedDistrict=districts[0]?.id ?? urbans[0].parent_id;
       const resolvedUrban=urbans[0]?.id;

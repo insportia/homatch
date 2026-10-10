@@ -138,9 +138,9 @@ export function BuyerChecklist({ items }: { items: ChecklistItem[] }) {
               {i + 1}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="min-w-0 break-words text-sm font-medium text-foreground">{t(item.labelKey)}</p>
+              <p className="min-w-0 break-words text-sm font-medium text-foreground">{t(item.labelKey, item.params)}</p>
               <p className="mt-1 min-w-0 break-words text-sm leading-relaxed text-muted-foreground">
-                {t(item.detailKey)}
+                {t(item.detailKey, item.params)}
               </p>
               {/* The value they need in hand, and the place to use it. */}
               {item.value ? (

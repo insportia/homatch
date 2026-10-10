@@ -33,7 +33,9 @@ export const DEFAULT_CAPTCHA_POLICY: CaptchaPolicy = {
   enabled: true,
   providers: { mygov: true, rstax: true },
   maxAttemptsPerProvider: 2,
-  maxSolvesPerJob: 3,
+  // NAPR gates EVERY application record with its own reCAPTCHA: production
+  // job e02d4f16 found 8 records and read 4 before a cap of 3 stopped it.
+  maxSolvesPerJob: 12,
 };
 
 /** Admin setting → policy. Missing → the default (on); explicit enabled:false → off. Caps are clamped. */
@@ -49,13 +51,14 @@ export function parseCaptchaPolicy(raw: unknown): CaptchaPolicy {
     enabled: o.enabled !== false,
     providers: { mygov: p.mygov !== false, rstax: p.rstax !== false },
     maxAttemptsPerProvider: clamp(o.maxAttemptsPerProvider, 1, 3, DEFAULT_CAPTCHA_POLICY.maxAttemptsPerProvider),
-    maxSolvesPerJob: clamp(o.maxSolvesPerJob, 1, 6, DEFAULT_CAPTCHA_POLICY.maxSolvesPerJob),
+    maxSolvesPerJob: clamp(o.maxSolvesPerJob, 1, 24, DEFAULT_CAPTCHA_POLICY.maxSolvesPerJob),
   };
 }
 
 export type CaptchaOutcome =
   | 'ACCEPTED' // solved AND the official source accepted it
-  | 'REJECTED' // solved, but the source refused the token
+  | 'REJECTED' // solved, but the source refused the token (its warning re-rendered after the post-solve search)
+  | 'NO_CHANGE' // solved, but the source showed no fresh response to the post-solve search (stale screen) — NOT a rejection
   | 'TIMEOUT'
   | 'UNSOLVABLE'
   | 'PROVIDER_ERROR'
@@ -147,7 +150,7 @@ export class CaptchaService {
 
   private dailyCap(): number {
     const n = Number(this.env.CAPTCHA_DAILY_CAP ?? 50);
-    return Number.isFinite(n) && n >= 0 ? n : 50;
+    return Number.isFinite(n) && n >= 0 ? n : 300;
   }
 
   private costUsd(): number {
@@ -272,12 +275,33 @@ export class CaptchaService {
    */
   async reportAcceptance(req: Pick<SolveRequest, 'provider' | 'jobId'>, solved: { solveId: string; latencyMs: number }, accepted: boolean): Promise<void> {
     this.record({ provider: req.provider, jobId: req.jobId, outcome: accepted ? 'ACCEPTED' : 'REJECTED', latencyMs: solved.latencyMs, estCostUsd: accepted ? this.costUsd() : 0 });
+    // maxAttemptsPerProvider bounds FAILED attempts at one challenge. A token
+    // the source accepted gives its attempt back, so a source that gates
+    // every record (NAPR) is limited only by maxSolvesPerJob and the day cap.
+    if (accepted) {
+      const k = `${req.jobId}|${req.provider}`;
+      this.perJobProvider.set(k, Math.max(0, (this.perJobProvider.get(k) ?? 0) - 1));
+    }
     try {
       if (!this.solver) return;
       if (accepted) await this.solver.goodReport(solved.solveId);
       else await this.solver.badReport(solved.solveId);
     } catch {
       /* reporting is best effort */
+    }
+  }
+
+  /**
+   * The source neither accepted nor refused the token: the post-solve search
+   * produced no fresh render at all (stale screen). That is no evidence about
+   * the token, so 2Captcha gets no bad report and the solve stays billed
+   * (estimated cost recorded). Never throws.
+   */
+  reportNoChange(req: Pick<SolveRequest, 'provider' | 'jobId'>, solved: { solveId: string; latencyMs: number }): void {
+    try {
+      this.record({ provider: req.provider, jobId: req.jobId, outcome: 'NO_CHANGE', latencyMs: solved.latencyMs, estCostUsd: this.costUsd() });
+    } catch {
+      /* ledger is best effort */
     }
   }
 

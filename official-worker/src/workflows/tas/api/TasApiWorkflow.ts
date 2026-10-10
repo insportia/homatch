@@ -31,6 +31,11 @@ import type { LegacySourceResult, WorkflowResult } from '../../WorkflowResult.js
 export const TAS_API_IMPLEMENTATION = 'API_FIRST';
 export const TAS_API_VERSION = 'tas-api-1';
 
+/** Per-case text the worker itself reads for technical facts. */
+const FACT_TEXT_BUDGET = 40_000;
+/** All TAS case text sent on to research-agent, across cases. */
+export const TAS_TOTAL_TEXT_BUDGET = 120_000;
+
 type PdfParser = (bytes: Buffer) => Promise<{ text: string; numpages: number; info?: any }>;
 const defaultPdfParser: PdfParser = (bytes) => createRequire(import.meta.url)('pdf-parse/lib/pdf-parse.js')(bytes);
 
@@ -127,6 +132,8 @@ export interface TasApiCase {
   attachments: AttachmentRecord[];
   /** Bounded, source-ordered text of the case (structured fields first). */
   text: string;
+  /** Up to 40k chars — read in the worker for technical facts, never sent on. */
+  factText?: string;
   textTruncated: boolean;
 }
 
@@ -230,7 +237,11 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
   const parsePdf = options.parsePdf ?? defaultPdfParser;
   const pageSize = options.pageSize ?? TAS_PAGE_SIZE;
   const maxPages = options.maxPages ?? 60;
-  const caseTextBudget = options.caseTextBudget ?? 40_000;
+  // Text sent to research-agent per case. The edge function has a 2 s CPU
+  // budget: 40k per case × dozens of cases (Villion, 2026-10-10) made every
+  // poll exceed it ("CPU Time exceeded", 546). Facts are still read from up
+  // to FACT_TEXT_BUDGET here in the worker.
+  const caseTextBudget = options.caseTextBudget ?? 8_000;
   const maxDownloads = options.maxAttachmentDownloads ?? 500;
 
   const outcomes = (): Record<AttachmentOutcome, number> => ({
@@ -410,7 +421,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     const pdfBytesForVisuals = new Map<string, Uint8Array>();
     const ranked = rankVisualCandidates(attachmentJobs.map((j) => ({ ...j.a, documentId: j.docId })));
     result.accounting.visualCandidates = ranked.length;
-    const shortlist = selectVisualShortlist(ranked, options.visualTarget ?? 4, options.visualMax ?? 6);
+    const shortlist = selectVisualShortlist(ranked, options.visualTarget ?? 4, options.visualMax ?? 4);
     const shortlistIds = new Set(shortlist.map((s) => s.candidate.attachedFileId));
 
     await pool(ordered, options.concurrency ?? 3, async ({ docId, a }) => {
@@ -484,7 +495,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       let width: number | null = null;
       let height: number | null = null;
       if (bytesToBuffer(bytes.subarray(0, 4)).toString('latin1') === '%PDF') {
-        const imgs = extractImagesFromPdf(bytes, { maxImages: 6 });
+        const imgs = extractImagesFromPdf(bytes, { maxImages: 1 });
         if (imgs.length) {
           image = imgs[0].bytes;
           width = imgs[0].width;
@@ -521,6 +532,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         motions: (motionRecords.get(row.documentId) ?? []).sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')),
         attachments: (attachmentRecords.get(row.documentId) ?? []).sort((a, b) => Number(a.attachedFileId) - Number(b.attachedFileId)),
         text: full.slice(0, caseTextBudget),
+        factText: full.slice(0, FACT_TEXT_BUDGET),
         textTruncated: full.length > caseTextBudget,
       });
     }
@@ -589,9 +601,17 @@ function caseHeader(d: TasCaseDetail, row: TasSearchRow): string {
  * capped, never silently empty.
  */
 export function toLegacyTasResult(r: TasApiResult): LegacySourceResult & { tasApi: Omit<TasApiResult, 'cases'> & { cases: any[] } } {
+  // Newest cases keep their text first; the total stays bounded.
+  let remaining = TAS_TOTAL_TEXT_BUDGET;
+  const sendText = new Map<any, string>();
+  for (const c of [...r.cases].sort((a, b) => (caseDate(b) ?? '').localeCompare(caseDate(a) ?? ''))) {
+    const t = c.text.slice(0, Math.max(0, remaining));
+    remaining -= t.length;
+    sendText.set(c, t);
+  }
   const docs = r.cases.map((c) => {
     const date = caseDate(c);
-    const text = c.text;
+    const text = sendText.get(c) ?? '';
     return {
       id: `tas_${c.detail.documentId}`,
       source: 'tas',
@@ -649,7 +669,7 @@ export function toLegacyTasResult(r: TasApiResult): LegacySourceResult & { tasAp
     unmappedKeys: Object.keys(c.detail.unmapped ?? {}).slice(0, 80),
     motions: c.motions,
     attachments: c.attachments,
-    technicalFacts: dedupeTasTechnicalFacts(extractTasTechnicalFacts(c.text)),
+    technicalFacts: dedupeTasTechnicalFacts(extractTasTechnicalFacts(c.factText ?? c.text)),
     textTruncated: c.textTruncated,
   }));
   const { cases: _cases, ...rest } = r;

@@ -10,6 +10,7 @@ import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import {
   assessFinancialEntityWait, beginWait, unavailableEntityResult,
   type WatchdogState,
+  stallLimitsFor,
 } from '../_shared/verifyWatchdog.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import { notify } from '../_shared/notify.ts';
@@ -25,7 +26,7 @@ import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 // _shared/providerSwitch.ts, exactly as Find Buyers reads it.
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
-import { pgSafe, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
+import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
@@ -1559,7 +1560,10 @@ function searchBudgetFor(j: any, s: Stage): string {
     if (stage === 'market') {
       const mp = j?.result_json?._reusePlan?.marketPlan;
       if (mp && typeof mp.searchBudget === 'number') {
-        if (!mp.refresh && mp.searchBudget === 0) {
+        // No listing reached this job (lane failed or off): a snapshot band
+        // is not a substitute for comparables the buyer can read.
+        const haveComparables = Array.isArray(j?.result_json?._marketComparables) && j.result_json._marketComparables.length > 0;
+        if (!mp.refresh && mp.searchBudget === 0 && haveComparables) {
           return [
             '',
             'SEARCH BUDGET: none needed for this step.',
@@ -1573,8 +1577,8 @@ function searchBudgetFor(j: any, s: Stage): string {
         return searchBudgetInstruction({
           stage: 'market',
           level: 'TARGETED',
-          searchBudget: mp.searchBudget,
-          reason: String(mp.summary ?? ''),
+          searchBudget: haveComparables ? mp.searchBudget : Math.max(4, Number(mp.searchBudget) || 0),
+          reason: haveComparables ? String(mp.summary ?? '') : 'no comparable listings reached this verification yet; find current ones',
         } as any);
       }
     }
@@ -1611,10 +1615,12 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `ASSET CLASS (v28): from the actual evidence gathered, classify this property's assetClass as one of APARTMENT_IN_PROJECT / PRIVATE_RESALE / PRIVATE_HOUSE / LAND / COMMERCIAL / RENTAL / UNDER_CONSTRUCTION / COMPANY_OWNED / MIXED_OR_UNKNOWN — never assume every property has the same evidence shape (a private resale apartment has no developer/company research to do; a land parcel has no utilities/commissioning; a company-owned unit may). Use MIXED_OR_UNKNOWN rather than guessing when the evidence does not clearly indicate one category. This classification only shapes how deep/which categories of research make sense — it never itself becomes a customer-facing risk statement. ` +
       `Also research the marketed PROJECT/DEVELOPMENT this property likely belongs to (its public name, developer, physical building/complex) as thoroughly as public web evidence allows — this is a separate concept from the bare cadastral/unit identity. ` +
       `For construction/completion, keep THREE separate concepts and never merge them: declaredCompletionTarget (a developer/marketing target date, labeled as declared, never as actual), observedConstructionStatus (what current public evidence — photos, posts, listings — shows about physical progress right now), and commissioningStatus (ONLY "OFFICIALLY_CONFIRMED" with an evidenceUrl when a specific authoritative document/act says the building was put into exploitation — otherwise always "NOT_INDEPENDENTLY_VERIFIED", regardless of how complete the building looks). ` +
+      `BRAND AND SOCIAL PAGES: search the web for the developer's and the project's OFFICIAL Facebook page (and Instagram). Return facebookPage.url exactly as found (https://www.facebook.com/...) and facebookPage.name exactly as the page title appears on Facebook — that name is what its ads run under. brandName is the short consumer brand the project is marketed under (e.g. "Villion"), not the legal entity. Only pages that clearly belong to this developer/project; null otherwise. ` +
+      `DESIGN TEAM: every professional or firm publicly credited on the project — architect, architectural bureau, structural engineer/constructor, builder/general contractor, landscape designer, interior designer, technical supervision — as designTeam [{role,name}] in the answer language; omit roles nobody is credited for. ` +
       `If you find publicly evidenced information that a specific bank offers mortgage/financing for this exact project or developer (e.g. a bank's own published partner-project list, a developer page naming a partner bank), add it to project.facts as an ordinary evidenced fact (bank name + program if known) — never invent or assume standard bank financing exists just because a project is common practice; omit it entirely if unevidenced. ` +
       `UTILITIES MATRIX: from the listing text, project page, or any document you actually read, report whether electricity/water/gas/sewage/internet connections are explicitly mentioned for this exact unit/property. Each utility's status may be "CONFIRMED_CONNECTED" or "CONFIRMED_NOT_CONNECTED" ONLY when the source explicitly states that; otherwise it MUST be "NOT_MENTIONED" — never infer a utility is connected merely because the building looks complete or other units mention it. If nothing at all discusses utilities, return utilitiesMatrix as null rather than five NOT_MENTIONED entries. ` +
       `Return {"entity":{"name":string,"type":string,"confidence":"HIGH"|"MEDIUM"|"LOW"},"assetClass":"APARTMENT_IN_PROJECT"|"PRIVATE_RESALE"|"PRIVATE_HOUSE"|"LAND"|"COMMERCIAL"|"RENTAL"|"UNDER_CONSTRUCTION"|"COMPANY_OWNED"|"MIXED_OR_UNKNOWN","identifiedParent":object|null,"exactUnit":{"code":string|null,"verified":boolean,"note":string}|null,"building":object|null,` +
-      `"project":{"name":string|null,"aliases":string[],"address":string|null,"developer":string|null,"developerCompany":string|null,"website":string|null,"buildings":string|null,"floors":string|null,"unitCounts":string|null,"declaredCompletionTarget":string|null,"observedConstructionStatus":string|null,"commissioningStatus":{"status":"OFFICIALLY_CONFIRMED"|"NOT_INDEPENDENTLY_VERIFIED","evidenceUrl":string|null},"architect":string|null,"contractors":string[],"amenities":string[],"facts":string[]}|null,` +
+      `"project":{"name":string|null,"aliases":string[],"address":string|null,"developer":string|null,"developerCompany":string|null,"website":string|null,"brandName":string|null,"facebookPage":{"url":string|null,"name":string|null}|null,"instagramUrl":string|null,"designTeam":[{"role":string,"name":string}],"buildings":string|null,"floors":string|null,"unitCounts":string|null,"declaredCompletionTarget":string|null,"observedConstructionStatus":string|null,"commissioningStatus":{"status":"OFFICIALLY_CONFIRMED"|"NOT_INDEPENDENTLY_VERIFIED","evidenceUrl":string|null},"architect":string|null,"contractors":string[],"amenities":string[],"facts":string[]}|null,` +
       `"utilitiesMatrix":{"electricity":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"water":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"gas":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"sewage":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"internet":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null}}|null,` +
       `"facts":string[],"expansionTerms":string[],"unverified":string[]}.`
     );
@@ -1718,10 +1724,17 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
      * portal blocked — this is empty and the stage behaves exactly as it
      * always did. The fallback is the previous behaviour, not a gap.
      */
-    const laneBrief = p._marketComparables && p._marketLane
+    // Comparables can arrive without a lane summary (the portal lane threw
+    // after the MyHome/SS.ge listings were folded in): brief them anyway.
+    const laneComparables = Array.isArray(p._marketComparables) ? p._marketComparables : [];
+    const laneBrief = laneComparables.length || (p._marketComparables && p._marketLane)
       ? marketLaneBrief({
-          comparables: p._marketComparables,
-          summary: p._marketLane,
+          comparables: laneComparables,
+          summary: p._marketLane || {
+            advertisements: laneComparables.length, uniqueProperties: laneComparables.length, crossPosted: 0, uncertainDuplicates: 0,
+            independentSourceCount: new Set(laneComparables.map((c: any) => c?.source ?? c?.sourceFamily ?? c?.url?.split('/')[2])).size,
+            portals: [], widened: false,
+          },
           conflicts: p._marketConflicts || [],
         } as any) + '\n\n'
       : '';
@@ -1835,6 +1848,9 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
   // Worker text (extracted documents above all) may hold characters Postgres
   // cannot store: one NUL in a NAPR record froze job c80f7237 for an hour.
   // Made storable here, at the one place worker data enters this function.
+  // Bounded first: a TAS API_FIRST job can carry megabytes of case text, and
+  // scanning all of it on every poll exhausted the edge CPU budget.
+  if (path.startsWith('/research/')) z = boundWorkerJob(z);
   const stats: PgSafeStats = { nul: 0, surrogates: 0 };
   z = pgSafe(z, stats);
   if (stats.nul || stats.surrogates) console.warn(`research-agent: worker ${path} returned ${stats.nul} NUL / ${stats.surrogates} lone-surrogate character(s); removed before storage`);
@@ -1846,7 +1862,7 @@ async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string
   const p = await createOpenAIResponse(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
   return sb
     .from('research_jobs')
-    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai' }, error: null, updated_at: now() })
+    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai', startedAt: now() }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
 /** A jsonb admin setting, as the value it holds (adminSetting() stringifies). */
@@ -1892,7 +1908,7 @@ async function captchaPolicyFor(sb: any): Promise<{ enabled: boolean; providers:
     enabled: o.enabled !== false,
     providers: { mygov: o.providers?.mygov !== false, rstax: o.providers?.rstax !== false },
     maxAttemptsPerProvider: n(o.maxAttemptsPerProvider, 1, 3, 2),
-    maxSolvesPerJob: n(o.maxSolvesPerJob, 1, 6, 3),
+    maxSolvesPerJob: n(o.maxSolvesPerJob, 1, 24, 12),
   };
 }
 
@@ -2234,7 +2250,7 @@ const VISUAL_BUCKET = 'verify-official-visuals';
 async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
   try {
     const tas = (w?.results || []).find((r: any) => r?.source === 'tas' && r?.tasApi);
-    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 6) : [];
+    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 4) : [];
     if (!visuals.length) return;
     const out: any[] = [];
     for (const v of visuals) {
@@ -2331,10 +2347,34 @@ async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
  */
 const persistOfficialTransition = (sb: any, j: any, patch: Record<string, any>) => persistOfficialTransitionWith(sb, j, patch);
 
+/*
+ * THE OFFICIAL DEADLINE COUNTS FROM WHEN THE WORKER STARTED THE JOB.
+ *
+ * The worker admits a bounded number of jobs at once and queues the rest. A
+ * job waiting in line is not slow, it is waiting its turn: its 14 minutes
+ * start at runStartedAt. The wait itself is capped (OFFICIAL_QUEUE_MAX_MS) so
+ * a stuck queue still ends in a report built from the other sources.
+ */
+const OFFICIAL_QUEUE_MAX_MS = 45 * 60 * 1000;
+function officialPastDeadline(j: any, w: any): boolean {
+  const launched = Date.parse(j.result_json?._worker?.startedAt || '');
+  if (w?.status === 'QUEUED') return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_MAX_MS;
+  const started = Date.parse(w?.runStartedAt || '') || launched;
+  return Number.isFinite(started) && started > 0 && Date.now() - started > OFFICIAL_BROWSER_DEADLINE_MS;
+}
+
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
-  const w = (await wf(`/research/${id}`)).data;
+  /*
+   * Poll the light status view; fetch the full job (documents included) only
+   * when this tick will actually read it: finished, failed, or past the
+   * deadline. An older worker ignores ?view and answers in full.
+   */
+  let w = (await wf(`/research/${id}?view=status`)).data;
+  if (w?.view === 'status') {
+    if (w.status === 'COMPLETE' || w.status === 'FAILED' || officialPastDeadline(j, w)) w = (await wf(`/research/${id}`)).data;
+  }
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
   await ensureMarketLane(sb, j, j.result_json);
@@ -2377,13 +2417,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       });
   }
   if (w.status !== 'COMPLETE') {
-    const startedAt = Date.parse(j.result_json?._worker?.startedAt || '');
-    const workerAgeMs = Number.isFinite(startedAt)
-      ? Date.now() - startedAt
-      : 0;
-    const MAX_BROWSER_WAIT_MS = OFFICIAL_BROWSER_DEADLINE_MS;
-
-    if (startedAt && workerAgeMs > MAX_BROWSER_WAIT_MS) {
+    if (officialPastDeadline(j, w)) {
       const p = j.result_json || {};
       const partialResults = Array.isArray(w.results) ? w.results : [];
 
@@ -2448,7 +2482,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // have just filled it in and this branch is the one that repeats.
     return sb.from('research_jobs').update({
       result_json: j.result_json,
-      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null },
+      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null },
       updated_at: now(),
     }).eq('id', j.id);
   }
@@ -2648,13 +2682,49 @@ function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'
 // reconciliation-stage trigger. Persisted once per chain run so each
 // individual source's CAPTCHA pause/resume doesn't need to re-derive it.
 async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
-  const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  /*
+   * CLAIM BEFORE STARTING THE WORKER.
+   *
+   * The status/resume path and the background driver can both advance the
+   * same row. Both used to call the worker first and write second, so job
+   * c80f7237 started TWO rstax worker jobs 6 ms apart (6570a2ad and an
+   * orphan, d367ab14) — two paid CAPTCHA solves each, one browser never
+   * released. The row now moves to FINANCIAL_ENTITY_WAITING only if it is
+   * still the row this tick read; a tick that loses the claim starts nothing.
+   */
   const p = j.result_json || {};
+  p._financialEntityRequestedFor = { source, name, idCode };
+  p._financialReturnStage = returnStage;
+  let claimedAt: string | null = null;
+  if (j.updated_at) {
+    // The claim carries the remaining queue and return stage, so even a tick
+    // that dies right after it leaves a row the next tick can continue.
+    claimedAt = now();
+    const { data: claimed, error: claimError } = await sb
+      .from('research_jobs')
+      .update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, updated_at: claimedAt })
+      .eq('id', j.id)
+      .eq('updated_at', j.updated_at)
+      .select('id');
+    if (claimError) throw claimError;
+    if (!claimed?.length) return null;
+  }
+  let r: any;
+  try {
+    r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  } catch (e) {
+    // Nothing started: hand the row back exactly as it was, so the caller's
+    // retry handling sees the same stage it always did.
+    if (claimedAt) {
+      await sb.from('research_jobs')
+        .update({ status: j.status, stage: j.stage, result_json: j.result_json, updated_at: now() })
+        .eq('id', j.id).eq('updated_at', claimedAt);
+    }
+    throw e;
+  }
   // The watchdog's clock starts with the job, not with the first poll: a
   // worker that never reports anything at all must still time out.
   p._worker = { jobId: r.data.jobId, wait: beginWait(Date.now()) };
-  p._financialEntityRequestedFor = { source, name, idCode };
-  p._financialReturnStage = returnStage;
   return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
 }
 // processFinancialQueue() (v28, NEW): drives `_financialQueue` (initialized
@@ -2705,6 +2775,7 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
      */
     const assessment = assessFinancialEntityWait(
       prior._worker?.wait as WatchdogState | undefined, w, Date.now(),
+      stallLimitsFor(prior._financialEntityRequestedFor?.source),
     );
     if (!assessment.giveUp) {
       // Persist the clock so the next tick can tell movement from stillness.
@@ -3484,6 +3555,10 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
   prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
+  // STAGE TIMINGS (internal). Each model stage's own span; the gaps between
+  // consecutive spans are the browser, financial-queue and marketplace waits.
+  // Measured, so performance work is argued from data. Stripped for customers.
+  prior._stageTimes = { ...(prior._stageTimes || {}), [s.toLowerCase()]: { startedAt: j.progress?.startedAt ?? null, finishedAt: now() } };
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -3929,6 +4004,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * by reading it mid-run and then finding it gone from the finished row.
      */
     _reusePlan: prior._reusePlan ?? null,
+    _stageTimes: prior._stageTimes ?? null,
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
     // every customer response by sanitizeForCustomer().
@@ -4714,6 +4790,21 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
        * find it. Never shown to a customer; stripped at the boundary with the
        * rest of _reusePlan. */
       brief: snapshotBrief(decided),
+      /* The figures as STRUCTURE, so a reused snapshot reaches the report's
+       * market section instead of only the model's brief (c80f7237 lost its
+       * market section this way). Aggregates only — no listing data. */
+      snapshot: decided.snapshot && !decided.refresh
+        ? {
+            scope_type: decided.snapshot.scope_type,
+            currency: decided.snapshot.currency,
+            median_price_per_sqm: decided.snapshot.median_price_per_sqm,
+            lower_price_per_sqm: decided.snapshot.lower_price_per_sqm,
+            upper_price_per_sqm: decided.snapshot.upper_price_per_sqm,
+            usable_comparable_count: decided.snapshot.usable_comparable_count,
+            confidence: decided.snapshot.confidence,
+            last_refreshed_at: decided.snapshot.last_refreshed_at,
+          }
+        : null,
     };
   } catch (e) {
     console.error('research-agent: market plan threw', e instanceof Error ? e.message : String(e));
@@ -5086,7 +5177,7 @@ async function learnFromVerification(db: any, jobId: string, report: any): Promi
      * Names and a representation mode are what a buyer needs; the numbers are
      * not their business and are certainly not shared intelligence.
      */
-    const control = extractControlStructure((report as any)?.browserOfficial);
+    const control = extractControlStructure((report as any)?.browserOfficial, (report as any)?.companyProfile?.idCode ?? null);
     const forHarvest = (control.directors.length || control.representation)
       ? {
           ...report,
@@ -5249,7 +5340,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -5324,8 +5415,12 @@ function sanitizeForCustomer(job: any): any {
   // The control structure is read from the UNSANITIZED evidence, which only
   // exists on this side, and merged in as names plus a representation mode.
   // Done on read, so the reports already in the database gain it too.
-  const control = extractControlStructure((job.result_json as any)?.browserOfficial);
-  if (control.directors.length || control.representation) {
+  // Only the developer's own extract, by its identification code — never the
+  // pledge creditor's (c80f7237 showed the bank's director as the developer's).
+  // When the registry overlay already supplied the directors, they stand.
+  const control = extractControlStructure((job.result_json as any)?.browserOfficial, r.companyProfile?.idCode ?? null);
+  const overlaid = Array.isArray(r.companyProfile?.registryFields) && r.companyProfile.registryFields.includes('directors');
+  if (!overlaid && (control.directors.length || control.representation)) {
     const existing = Array.isArray(r.companyProfile?.directors) ? r.companyProfile.directors : [];
     const merged = [...existing];
     for (const d of control.directors.map((x) => sanitizeCustomerString(x)).filter(Boolean)) {
@@ -5360,6 +5455,7 @@ function sanitizeForCustomer(job: any): any {
   // internal economics. A customer buys the current state of their property,
   // not a description of how cheaply we assembled it.
   delete r._reusePlan;
+  delete r._stageTimes;
   delete r._worker;
   delete r._cost;
   delete r._searches;

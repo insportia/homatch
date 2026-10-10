@@ -281,7 +281,7 @@ test('implementation health ledger: runs, last success/failure, duration', () =>
   assert.equal(h.lastDurationMs, 300);
 });
 
-test('visual candidates: ranked by metadata before any download; paperwork excluded; budget 2–4, max 6', () => {
+test('visual candidates: ranked by metadata before any download; paperwork excluded; at most 4: render, architecture, structure', () => {
   const att = (id, name, date, ext = 'pdf', size = 500000) => ({ attachedFileId: id, documentId: 'd', motionId: null, fileName: name, extension: ext, contentType: null, sizeBytes: size, date, description: null, sourcePath: '$' });
   const ranked = rankVisualCandidates([
     att('1', 'ხელშეკრულება.pdf', '2020-01-01'),
@@ -295,13 +295,16 @@ test('visual candidates: ranked by metadata before any download; paperwork exclu
   ]);
   assert.ok(!ranked.some((c) => c.attachedFileId === '1'), 'contracts are not visuals');
   assert.ok(!ranked.some((c) => c.attachedFileId === '7'), 'DWG never on the critical path');
+  // Owner, 2026-10-10: 3-4 pictures in total — render, architecture, structure.
   const shortlist = selectVisualShortlist(ranked, 4, 6);
   assert.equal(shortlist[0].role, 'LATEST_RENDER');
   assert.equal(shortlist[0].candidate.attachedFileId, '3');
-  assert.equal(shortlist[1].role, 'EARLIEST_RENDER');
-  assert.equal(shortlist[1].candidate.attachedFileId, '2');
-  assert.ok(shortlist.length <= 4);
-  assert.ok(selectVisualShortlist(ranked, 10, 6).length <= 6);
+  assert.equal(shortlist[1].candidate.kind, 'SITE_PLAN', 'architecture comes second');
+  assert.ok(['STRUCTURAL', 'CONSTRUCTION_PHOTO'].includes(shortlist[2].candidate.kind), 'structure comes third');
+  assert.equal(shortlist[3].role, 'EARLIEST_RENDER');
+  assert.equal(shortlist[3].candidate.attachedFileId, '2');
+  assert.equal(shortlist.length, 4);
+  assert.ok(selectVisualShortlist(ranked, 10, 6).length <= 4, 'never more than four');
 });
 
 test('PDF embedded image extraction: DCTDecode streams with size, small images skipped', () => {

@@ -49,7 +49,7 @@ export const IdentityNotice: React.FC<{ identity?: IdentityLike | null }> = ({ i
   const n = identityNotice(identity);
   if (!n) return null;
   return (
-    <div role="note" className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/60 px-4 py-3.5 sm:px-5">
+    <div role="note" className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft)/0.60)] px-4 py-3.5 sm:px-5">
       <p className="text-sm font-semibold break-words">{t('vrx_identity_title')}</p>
       <p className="mt-1 text-sm leading-6 text-foreground/85 break-words">
         {t(n.key, Object.fromEntries(Object.entries(n.vars).map(([k, v]) => [k, isolate(v)])))}

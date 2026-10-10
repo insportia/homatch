@@ -60,7 +60,7 @@ export const PeopleBehind: React.FC<{
                 <Icon className="h-5 w-5" />
               </span>
               <div className="min-w-0 space-y-1">
-                <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))] break-words">{roleLabel(c, t)}</p>
+                <p className="text-2xs font-semibold uppercase tracking-[0.04em] text-[hsl(var(--gold-ink))] break-words">{roleLabel(c, t)}</p>
                 <p className="text-[15px] font-semibold leading-6 break-words" dir="auto">{c.name}</p>
                 {c.official ? (
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">

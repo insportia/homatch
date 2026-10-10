@@ -30,6 +30,7 @@ import {
   LEGAL_CLAIM_KEY,
 } from '../reportPresentation.ts';
 import { normalizeVerifyResult } from '../resultNormalizer.ts';
+import { marketView, TIER_KEY, REASON_KEY, AREA_KEYS } from '../marketPresentation.ts';
 import { VERIFY_REPORT_UI_STRINGS } from '../../../scripts/verify-report-ui-i18n-data.mjs';
 
 const ROOT = process.cwd();
@@ -245,10 +246,69 @@ test('the chapters appear in the story-first order', () => {
   }
 });
 
-test('the market chapter is a mount point that renders no numbers yet', () => {
+test('the market headline appears only for a RANGE; otherwise the evidence is called limited', () => {
+  const ranged = marketView({
+    currency: 'USD',
+    headline: { state: 'RANGE', basis: 'SAME_STREET', tiersUsed: ['SAME_STREET', 'PEER_PROJECT'], median: 1500, mean: 1510, min: 1300, max: 1700, count: 7, outliersTrimmed: 1, minimumSample: 3, trimMethod: 'IQR_1_5' },
+    projectAskingEvidence: [{ kind: 'ASKING', origin: 'DEVELOPER_MARKETING', pricePerSqm: 1400, currency: 'USD', state: 'ACTIVE', url: 'https://x.ge/a', notTransaction: true }],
+    projectAskingRange: null,
+    ranked: [
+      { tier: 'SAME_STREET', pricePerSqm: 1450, currency: 'USD', headlineEligible: true, district: 'KRTSANISI', relevanceReasons: ['SAME_STREET', 'SIZE_SIMILAR', 'CONDITION_MISMATCH', 'HEADLINE_ELIGIBLE'], url: 'https://ss.ge/1', state: 'ACTIVE' },
+      { tier: 'SAME_STREET', pricePerSqm: 3450, currency: 'USD', headlineEligible: true, outlier: true, relevanceReasons: [] },
+      { tier: 'WIDER_MARKET', pricePerSqm: 900, currency: 'USD', headlineEligible: false, relevanceReasons: [] },
+    ],
+    tiers: [{ tier: 'WIDER_MARKET', median: 1100, min: 800, max: 1500, count: 40, thin: false, contextOnly: true, outliersTrimmed: 0 }],
+  });
+  assert.equal(ranged.headline.state, 'RANGE');
+  assert.deepEqual(ranged.headline.tiers, ['SAME_STREET', 'PEER_PROJECT']);
+  assert.equal(ranged.comparables.length, 1, 'an outlier or a context-only listing joined the comparison');
+  assert.equal(ranged.comparables[0].districtKey, 'vrx_area_krtsanisi');
+  assert.deepEqual(ranged.comparables[0].fits, ['vrx_mr_same_street', 'vrx_mr_size_similar']);
+  assert.deepEqual(ranged.comparables[0].differs, ['vrx_mr_condition_mismatch']);
+  assert.ok(!JSON.stringify(ranged).includes('http'), 'a URL reached the market view');
+  assert.equal(ranged.asking[0].originKey, 'vrx_mkt_origin_developer_marketing');
+  assert.deepEqual(ranged.context.map((c) => c.tier), ['WIDER_MARKET']);
+
+  const limited = marketView({ currency: 'USD', headline: { state: 'EVIDENCE_LIMITED', basis: 'EVIDENCE_LIMITED', tiersUsed: [], median: null, min: null, max: null, count: 2, minimumSample: 3 } });
+  assert.deepEqual(limited.headline, { state: 'EVIDENCE_LIMITED', count: 2, minimumSample: 3 });
+  // A RANGE without numbers is never drawn as one.
+  assert.equal(marketView({ headline: { state: 'RANGE', median: null, min: null, max: null, count: 5 } }).headline.state, 'EVIDENCE_LIMITED');
+  // An older stored market shape gives prose only.
+  assert.equal(marketView({ currency: 'USD', median: 1000, min: 900, max: 1100, count: 12 }), null);
+
   const ui = code('src/components/verify/MarketPosition.tsx');
-  assert.match(ui, /market\?: unknown/);
-  assert.ok(!/median|perSqm|toLocaleString|NumberFormat/.test(ui), 'market numbers are rendered before the contract is rebuilt');
+  assert.match(ui, /h\?\.state === 'RANGE' \?/, 'the headline is drawn without checking its state');
+  assert.match(ui, /vrx_mkt_project_asking_note/, 'project asks are not labelled as asking prices');
+  assert.ok(!/ComparablesCard|MarketRangeCard|activeMin|activeMax/.test(ui), 'the legacy market cards are back');
+  assert.ok(!/\.url\b/.test(ui), 'the market card renders a listing URL');
+  for (const k of Object.values(TIER_KEY)) assert.equal(valuesOf(k).length, 6, k);
+  assert.equal(valuesOf('cmp_reason_peer_project')[0], 'A comparable development nearby');
+  for (const r of Object.values(REASON_KEY)) assert.equal(valuesOf(r.key).length, 6, r.key);
+  for (const a of AREA_KEYS) assert.equal(valuesOf(`vrx_area_${a.toLowerCase()}`).length, 6, a);
+});
+
+test('the final visual contract: generic material, other buildings, explanation precedence', () => {
+  const [low, other, own, kind] = catalogVisuals(
+    [
+      { id: 'a', kind: 'OTHER', confidence: 0.3, url: SIGNED(1) },
+      { id: 'b', kind: 'FLOOR_PLAN', scope: 'PROJECT', matchBasis: 'OTHER_BUILDING', block: '01', url: SIGNED(2), documentRef: { documentId: 'secret' } },
+      { id: 'c', kind: 'PHOTO', url: SIGNED(3), explanation: { what: 'Own', interesting: '', buyerMeaning: '', uncertain: 'u' } },
+      { id: 'd', kind: 'ELEVATION', url: SIGNED(4) },
+    ],
+    [{ id: 'c', what: 'Report-level' }, { id: 'd', what: 'From report' }],
+    [{ visualId: 'd', caption: 'Legacy', explanation: 'Legacy text' }],
+  );
+  assert.equal(low.badge, 'MATERIAL', 'a low-confidence asset is labelled as something specific');
+  assert.equal(other.otherBuilding, true);
+  assert.equal(other.badge, 'GENERAL_PLAN');
+  assert.equal(own.explanation.what, 'Own', 'the asset\'s own explanation does not win');
+  assert.equal(kind.explanation.what, 'From report', 'report.visualExplanations does not beat legacy captions');
+  assert.equal(kind.captionKey, 'verify_visual_kind_elevation');
+  assert.ok(!JSON.stringify([low, other, own, kind]).includes('secret'), 'an internal document ref is carried into the view');
+  for (const k of ['photo', 'render', 'construction_photo', 'site_plan', 'master_plan', 'floor_plan', 'unit_plan', 'section', 'elevation', 'facade', 'structural', 'engineering', 'location_diagram', 'other']) {
+    assert.equal(valuesOf(`verify_visual_kind_${k}`).length, 6, k);
+  }
+  assert.equal(valuesOf('vrx_visual_other_building').length, 6);
 });
 
 /* ── timeline and people ─────────────────────────────────────────────── */

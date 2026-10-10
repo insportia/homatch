@@ -45,6 +45,7 @@ const BADGE_TONE: Record<CatalogVisual['badge'], string> = {
   EXACT_UNIT_PLAN: 'bg-sky-50 text-sky-900 ring-sky-700/25',
   TYPICAL_FLOOR_PLAN: 'bg-slate-100 text-slate-800 ring-slate-500/25',
   GENERAL_PLAN: 'bg-slate-100 text-slate-800 ring-slate-500/25',
+  MATERIAL: 'bg-slate-100 text-slate-800 ring-slate-500/25',
 };
 
 const Badge: React.FC<{ v: CatalogVisual; className?: string }> = ({ v, className }) => {
@@ -65,7 +66,7 @@ function useVisualText(clean: Clean) {
       const label = t(BADGE_KEY[v.badge]);
       return {
         label,
-        title: title || what || t('verify_ox_visual_default'),
+        title: title || what || t(v.captionKey),
         alt: [label, what || title].filter(Boolean).join(' — '),
         what,
       };
@@ -80,7 +81,7 @@ function useVersionBadge(history?: { visuals?: Array<{ id: string; versionStatus
   return (v: CatalogVisual): string | null => {
     if (v.role === 'EARLIEST_RENDER') return t('verify_ox_original');
     if (v.role === 'LATEST_RENDER') {
-      const status = history?.visuals?.find((x) => x.id === v.id)?.versionStatus;
+      const status = v.versionStatus ?? history?.visuals?.find((x) => x.id === v.id)?.versionStatus;
       return t(status === 'CURRENT_APPROVED' ? 'verify_ox_latest' : 'verify_ox_latest_submitted');
     }
     return null;
@@ -91,7 +92,7 @@ const Meta: React.FC<{ v: CatalogVisual; className?: string }> = ({ v, className
   const { t } = useLanguage();
   const parts = [
     day(v.date) ? <bdi key="d" dir="ltr" className="tabular-nums">{day(v.date)}</bdi> : null,
-    v.block ? <span key="b">{t('vrx_visual_block', { block: v.block })}</span> : null,
+    v.block ? <span key="b">{t(v.otherBuilding ? 'vrx_visual_other_building' : 'vrx_visual_block', { block: v.block })}</span> : null,
     v.page ? <span key="p">{t('vrx_visual_page', { page: String(v.page) })}</span> : null,
   ].filter(Boolean);
   if (!parts.length) return null;
@@ -122,7 +123,7 @@ const Explanation: React.FC<{ v: CatalogVisual; clean: Clean; tone?: 'light' | '
     <div className="space-y-3">
       {rows.map(([key, text]) => (
         <div key={key} className="space-y-0.5">
-          <p className={`text-2xs font-semibold uppercase tracking-[0.12em] ${label}`}>{t(key)}</p>
+          <p className={`text-2xs font-semibold uppercase tracking-[0.04em] ${label}`}>{t(key)}</p>
           <p className={`text-sm leading-6 break-words ${body}`} dir="auto">{clean(text)}</p>
         </div>
       ))}
@@ -308,7 +309,7 @@ const Lightbox: React.FC<{
       aria-modal="true"
       aria-labelledby="vx-lightbox-title"
       onKeyDown={onKeyDown}
-      className="fixed inset-0 z-[100] flex flex-col bg-[hsl(222_47%_6%)]/[0.97] text-[hsl(0_0%_96%)]"
+      className="fixed inset-0 z-[100] flex flex-col bg-[hsl(222_47%_6%)] text-[hsl(0_0%_96%)]"
     >
       {/* Top bar */}
       <div className="flex items-center gap-2 px-3 py-2 sm:px-5 sm:py-3">
@@ -316,6 +317,7 @@ const Lightbox: React.FC<{
           <div className="flex flex-wrap items-center gap-2">
             <Badge v={v} />
             {version ? <span className="text-2xs font-medium text-[hsl(38_92%_66%)]">{version}</span> : null}
+            {v.otherBuilding && v.block ? <span className="text-2xs font-semibold text-white">{t('vrx_visual_other_building', { block: v.block })}</span> : null}
             {items.length > 1 ? (
               <span className="text-2xs tabular-nums text-[hsl(220_14%_72%)]">
                 <bdi dir="ltr">{index + 1} / {items.length}</bdi>
@@ -500,7 +502,12 @@ export const VisualExplorer: React.FC<{
             <span className="absolute start-3 top-3 flex flex-wrap items-center gap-2">
               <Badge v={active} className="shadow-sm" />
               {version ? (
-                <span className="rounded-full bg-[hsl(222_47%_11%)]/85 px-2.5 py-1 text-2xs font-medium text-[hsl(38_92%_66%)] ring-1 ring-[hsl(38_92%_54%)]/40">{version}</span>
+                <span className="rounded-full bg-[hsl(222_47%_11%/0.85)] px-2.5 py-1 text-2xs font-medium text-[hsl(38_92%_66%)] ring-1 ring-[hsl(38_92%_54%/0.40)]">{version}</span>
+              ) : null}
+              {active.otherBuilding && active.block ? (
+                <span className="rounded-full bg-white/90 px-2.5 py-1 text-2xs font-semibold text-slate-900 ring-1 ring-slate-500/30">
+                  {t('vrx_visual_other_building', { block: active.block })}
+                </span>
               ) : null}
             </span>
             <span className="absolute bottom-3 end-3 inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-black/55 px-3 text-2xs font-medium text-white opacity-90 motion-safe:transition-opacity group-hover:opacity-100">

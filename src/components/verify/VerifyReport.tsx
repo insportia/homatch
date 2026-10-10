@@ -77,11 +77,12 @@ import { BuyerBottomLine } from './BuyerBottomLine';
 import { PropertyRegisterCard, CompanyFinanceCard, ReportNav, ResearchScaleBanner } from './BuyerIntelligenceCards';
 import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
 import type { PropertyIdentity } from '@/verify/intelligence/propertyIdentity';
+import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
 import { Reveal } from '@/components/common/Reveal';
 import { VisualExplorer } from './VisualExplorer';
 import { LegalReality, IdentityNotice } from './LegalReality';
 import { PeopleBehind } from './PeopleBehind';
-import { MarketPosition } from './MarketPosition';
+import { MarketPosition, hasMarketView } from './MarketPosition';
 import { chapterOfSection, identityNotice, SECTION_HEADING_KEY, type ChapterId } from '@/verify/reportPresentation';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
 import { splitCitations, hasDistance } from '@/verify/citations';
@@ -205,7 +206,8 @@ export interface VerifySynthesis {
   report: BuyerIntelligence | null;
   evidence?: EvidenceRef[];
   snapshot?: PropertySnapshot;
-  market?: MarketBlock | null;
+  /** MarketIntelligence (marketIntelligence.ts) today; MarketBlock in stored older reports. */
+  market?: MarketBlock | MarketIntelligence | null;
   /*
    * THE LAST BROKEN LINK IN LOCATION & LIVING.
    *
@@ -435,7 +437,7 @@ export function VerifyReport({
     building: true,
     legal: !!(history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
     location: !!(inChapter('location').length || synthesis.location),
-    market: inChapter('market').length > 0,
+    market: inChapter('market').length > 0 || hasMarketView(synthesis.market),
     final: true,
   };
   const order: ChapterId[] = ['explore', 'story', 'people', 'building', 'legal', 'location', 'market', 'final'];
@@ -572,11 +574,11 @@ export function VerifyReport({
         </Chapter>
       ) : null}
 
-      {/* ── MARKET POSITION ── prose only; the numbers card mounts inside
-          MarketPosition when the rebuilt market contract lands. */}
+      {/* ── MARKET POSITION ── the prose, then only what the deterministic
+          market intelligence supports (marketPresentation.ts). */}
       {has.market ? (
         <Chapter id="vbi-market" n={num('market')} kicker={t('vrx_market_kicker')} title={t('vrx_market_title')}>
-          <MarketPosition sections={inChapter('market')} market={synthesis.marketContext} renderSection={renderSection} />
+          <MarketPosition sections={inChapter('market')} market={synthesis.market} renderSection={renderSection} />
         </Chapter>
       ) : null}
 
@@ -634,7 +636,7 @@ export function VerifyReport({
             data is untouched: evidenceGroups and research still arrive. */}
 
         {r.contractUpload?.recommend !== false ? (
-          <section className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/50 p-5 sm:p-6 space-y-3">
+          <section className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft)/0.50)] p-5 sm:p-6 space-y-3">
             <div className="flex items-start gap-3">
               <FileText className="h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))] mt-0.5" aria-hidden="true" />
               <p className="text-sm leading-6 break-words min-w-0">
@@ -683,9 +685,9 @@ const Chapter: React.FC<{
   return (
     <Reveal as="section" id={id} aria-labelledby={hid} className="scroll-mt-24 space-y-6">
       <header className="space-y-2.5">
-        <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
-          <span className="tabular-nums">{String(n).padStart(2, '0')}</span>
-          <span className="h-px w-8 bg-[hsl(var(--gold-border))]" aria-hidden="true" />
+        <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.1em] text-[hsl(var(--gold-ink))]">
+          <span className="shrink-0 whitespace-nowrap tabular-nums">{String(n).padStart(2, '0')}</span>
+          <span className="h-px w-8 shrink-0 bg-[hsl(var(--gold-border))]" aria-hidden="true" />
           <span className="min-w-0 break-words">{kicker}</span>
         </p>
         <h2 id={hid} className="font-display text-2xl font-semibold leading-tight tracking-tight break-words sm:text-[1.75rem]">
@@ -729,7 +731,7 @@ const SummaryHero: React.FC<{
       {/* One warm light source, top-end. Decorative. */}
       <span className="pointer-events-none absolute -end-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,hsl(38_92%_56%/0.22),transparent)]" aria-hidden="true" />
       <div className="relative space-y-4">
-        <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_66%)]">
+        <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.1em] text-[hsl(38_92%_66%)]">
           <span className="h-px w-8 bg-[hsl(38_92%_56%)]" aria-hidden="true" />
           {t('verify_ir_summary_title')}
         </p>

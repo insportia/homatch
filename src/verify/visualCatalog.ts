@@ -12,6 +12,10 @@
  *     the unit's identity is itself unresolved. A missing scope reads as the
  *     plainest honest label ("Plan"), not the most flattering one.
  *
+ * Explanations: the asset's own `explanation` first, then
+ * report.visualExplanations by id, then the legacy report.visualCaptions.
+ * Internal fields (documentRef, fileName, matchBasis) are read, never shown.
+ *
  * Two shapes are tolerated: the rebuilt one (kind / category / scope / block /
  * page / mime …) and the original one ({ id, role, kind, date, width, height,
  * url }, kinds RENDER / FACADE / SITE_PLAN / FLOOR_PLAN / STRUCTURAL /
@@ -24,7 +28,7 @@ export type VisualKind =
   | 'SECTION' | 'ELEVATION' | 'FACADE' | 'STRUCTURAL' | 'ENGINEERING' | 'LOCATION_DIAGRAM' | 'OTHER';
 export type VisualCategory = 'BUILDING' | 'APARTMENT' | 'ARCHITECTURE' | 'STRUCTURE' | 'CONSTRUCTION' | 'SITE';
 export type VisualScope = 'EXACT_UNIT' | 'BUILDING' | 'TYPICAL_FLOOR' | 'PROJECT';
-export type VisualBadge = 'PHOTO' | 'RENDER' | 'DRAWING' | 'PLAN' | 'EXACT_UNIT_PLAN' | 'TYPICAL_FLOOR_PLAN' | 'GENERAL_PLAN';
+export type VisualBadge = 'PHOTO' | 'RENDER' | 'DRAWING' | 'PLAN' | 'EXACT_UNIT_PLAN' | 'TYPICAL_FLOOR_PLAN' | 'GENERAL_PLAN' | 'MATERIAL';
 
 export interface VisualExplanation {
   what: string;
@@ -46,6 +50,16 @@ export interface CatalogVisual {
   height: number | null;
   /** LATEST_RENDER / EARLIEST_RENDER from the original shape, when present. */
   role: string | null;
+  /** CURRENT_APPROVED / HISTORICAL_APPROVED / UNDETERMINED, when the asset says. */
+  versionStatus: string | null;
+  /**
+   * The asset concerns ANOTHER building of the project (scope PROJECT, basis
+   * OTHER_BUILDING): labelled "Building <block> of the project", never as the
+   * requested unit's building.
+   */
+  otherBuilding: boolean;
+  /** i18n key of the generic caption for the kind (verify_visual_kind_<kind>). */
+  captionKey: string;
   badge: VisualBadge;
   /** A drawing the reader will want to zoom into rather than glance at. */
   technical: boolean;
@@ -117,7 +131,10 @@ function kindOf(raw: Record<string, unknown>): VisualKind {
  * The label a reader sees. Never stronger than the data: an EXACT_UNIT plan
  * whose unit identity is unresolved is shown as a plain plan.
  */
-export function badgeFor(kind: VisualKind, scope: VisualScope | null, identityUnresolved = false): VisualBadge {
+export function badgeFor(kind: VisualKind, scope: VisualScope | null, identityUnresolved = false, confidence: number | null = null): VisualBadge {
+  // An unclassified asset is "project material" unless the classifier was
+  // confident about it — and never a photo.
+  if (kind === 'OTHER' && (confidence === null || confidence < 0.5)) return 'MATERIAL';
   if (PHOTO_KINDS.has(kind)) return 'PHOTO';
   if (kind === 'RENDER') return 'RENDER';
   if (UNIT_PLAN_KINDS.has(kind)) {
@@ -139,7 +156,16 @@ export const BADGE_KEY: Record<VisualBadge, string> = {
   EXACT_UNIT_PLAN: 'vrx_badge_exact_unit_plan',
   TYPICAL_FLOOR_PLAN: 'vrx_badge_typical_floor_plan',
   GENERAL_PLAN: 'vrx_badge_general_plan',
+  MATERIAL: 'vrx_badge_material',
 };
+
+/**
+ * The server names a generic caption `verify.visual.kind.<KIND>`; the bundle's
+ * keys are flat identifiers, so it lives at `verify_visual_kind_<kind>`.
+ */
+export function captionKeyFor(kind: VisualKind): string {
+  return `verify_visual_kind_${kind.toLowerCase()}`;
+}
 
 export const CATEGORY_KEY: Record<VisualCategory, string> = {
   BUILDING: 'vrx_tab_building',
@@ -173,6 +199,11 @@ export function normalizeVisual(
   const sc = str(o.scope).toUpperCase();
   const scope = SCOPES.has(sc as VisualScope) ? (sc as VisualScope) : null;
   const page = typeof o.page === 'number' && Number.isInteger(o.page) && o.page > 0 ? o.page : null;
+  const confidence = typeof o.confidence === 'number' && Number.isFinite(o.confidence) ? o.confidence : null;
+  // The asset's own explanation wins over the report-level one.
+  const own = o.explanation && typeof o.explanation === 'object' ? (o.explanation as RawExplanation) : null;
+  const ownExp = own ? { what: str(own.what), interesting: str(own.interesting), buyerMeaning: str(own.buyerMeaning), uncertain: str(own.uncertain) } : null;
+  const explanation = ownExp && (ownExp.what || ownExp.interesting || ownExp.buyerMeaning || ownExp.uncertain) ? ownExp : opts.explanation ?? null;
   return {
     id,
     url,
@@ -185,10 +216,13 @@ export function normalizeVisual(
     width: num(o.width),
     height: num(o.height),
     role: str(o.role) || null,
-    badge: badgeFor(kind, scope, !!opts.identityUnresolved),
+    versionStatus: str(o.versionStatus) || null,
+    otherBuilding: scope === 'PROJECT' && str(o.matchBasis) === 'OTHER_BUILDING' && !!str(o.block),
+    captionKey: captionKeyFor(kind),
+    badge: badgeFor(kind, scope, !!opts.identityUnresolved, confidence),
     technical: !PHOTO_KINDS.has(kind) && kind !== 'RENDER',
     title: opts.title ?? null,
-    explanation: opts.explanation ?? null,
+    explanation,
   };
 }
 

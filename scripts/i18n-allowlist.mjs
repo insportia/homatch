@@ -305,6 +305,11 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'ds_tag_mat_metal',
   'ds_tag_mat_rattan',
 
+  // Verify market position: Tbilisi district names are proper nouns, written
+  // the same way in Turkish as in English.
+  'vrx_area_krtsanisi', 'vrx_area_sololaki', 'vrx_area_mtatsminda', 'vrx_area_vera', 'vrx_area_vake',
+  'vrx_area_avlabari', 'vrx_area_saburtalo', 'vrx_area_didube', 'vrx_area_nadzaladevi', 'vrx_area_gldani',
+  'vrx_area_samgori', 'vrx_area_lisi', 'vrx_area_bagebi', 'vrx_area_varketili',
 ]);
 
 // Heuristic: values that don't need translating in the first place, so an

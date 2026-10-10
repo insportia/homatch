@@ -101,6 +101,9 @@ export interface MarketplaceSearchRequest {
   exclusions: string[];
   /** Source-independent floor choices; vague choices are never converted to numeric floors. */
   floorPreferences?: string[];
+  /** Optional post-acquisition constraints; older persisted requests remain valid. */
+  floorRange?: { min: number | null; max: number | null } | null;
+  maxBuildingAge?: number | null;
   searchLanguages: string[];
   /**
    * The hard ceiling a worker may collect up to. Workers collect slightly above
@@ -109,18 +112,6 @@ export interface MarketplaceSearchRequest {
    */
   collectPriceMaxUsd: number;
   requestedAt: string;
-}
-
-/**
- * Optional post-acquisition constraints; older persisted requests remain valid.
- * Applied by the core after acquisition — no worker reads them — so they sit in
- * this merged declaration, outside the worker-facing body above that the
- * official worker's Docker-local snapshot (official-worker/src/marketplace/
- * contract.ts) mirrors verbatim.
- */
-export interface MarketplaceSearchRequest {
-  floorRange?: { min: number | null; max: number | null } | null;
-  maxBuildingAge?: number | null;
 }
 
 /** Upper bound workers collect to: the customer's max + the 10% upgrade ceiling. */

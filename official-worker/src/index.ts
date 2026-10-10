@@ -99,6 +99,8 @@ app.get('/health', (_q: any, r: any) =>
   r.json({
     ok: true,
     service: 'homatch-official-worker',
+    // Verify capacity: running jobs vs the cap, and how many wait in line.
+    admission: orchestrator.admission(),
     // Presence facts only. Session health is at /health/telegram (token-only).
     telegram: { configured: telegram.status().configured, enabled: telegram.status().enabled },
     // Deployed is not the same as able. Two Railway services run this image
@@ -256,8 +258,24 @@ app.get('/research/visual/:sha', auth, (req: any, res: any) => {
 
 app.get('/research/:id', auth, (req: any, res: any) => {
   const j = orchestrator.getJob(req.params.id);
-  return j ? res.json(j) : res.status(404).json({ error: 'not found' });
+  if (!j) return res.status(404).json({ error: 'not found' });
+  // ?view=status — what a poller needs while the job runs, without the
+  // documents: re-sending megabytes of text every 30 s exhausted the edge
+  // function's CPU budget (2026-10-10).
+  if (req.query?.view === 'status') return res.json(statusView(j));
+  return res.json(j);
 });
+
+function statusView(j: any) {
+  return {
+    id: j.id, status: j.status, stage: j.stage, sourceIndex: j.sourceIndex,
+    steps: j.steps, humanVerification: j.humanVerification, error: j.error,
+    createdAt: j.createdAt, updatedAt: j.updatedAt, completedAt: j.completedAt,
+    results: (Array.isArray(j.results) ? j.results : []).map((r: any) => ({ source: r?.source, status: r?.status, sourceName: r?.sourceName })),
+    queuePosition: j.queuePosition ?? null, queuedAt: j.queuedAt ?? null, runStartedAt: j.runStartedAt ?? null,
+    view: 'status',
+  };
+}
 
 // POST /research/enreg-entity — the closed-loop fix for a confirmed gap:
 // a legal entity (developer/owner company) discovered by research-agent's

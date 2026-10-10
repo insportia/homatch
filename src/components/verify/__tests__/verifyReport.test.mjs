@@ -58,6 +58,13 @@ test('no card invents a conclusion of its own', () => {
     // conclusion of their own. The story and current status the report
     // renders live inside `report`, under the same grounding gate as before.
     'officialVisuals', 'research',
+    // 2026-10 buyer-intelligence refinement (job c80f7237). All three are
+    // computed deterministically server-side and rendered as given:
+    // `propertyRegister` is the unit's NAPR extract parsed in code,
+    // `companyFinance` collects registry checks with their dates, and
+    // `marketContext` is a stored market snapshot's aggregates. None is the
+    // model's opinion, and the component draws no conclusion from them.
+    'propertyRegister', 'companyFinance', 'marketContext',
     // Same standing: the deterministic official history (decided status,
     // milestones, value changes) computed in tasIntelligence.ts.
     'officialHistory',
@@ -67,6 +74,10 @@ test('no card invents a conclusion of its own', () => {
     // reaches no conclusion; the only prose about it is report.advertisingAssessment,
     // under guardAdvertising.
     'developerAds',
+    // Round 3 (owner, 2026-10-10): `projectTeam` lists the professionals the
+    // TAS documents and public research name, merged in reportGaps.ts — a
+    // list of names and roles, no conclusion of its own.
+    'projectTeam',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);
@@ -104,13 +115,9 @@ test('an incomplete check is advice, never a warning', () => {
    * was actually protecting: the gaps must come after the findings, never
    * before them.
    */
-  const unconfAt = reportCode.indexOf('<UnconfirmedCard');
-  const findingsAt = reportCode.indexOf('<KeyFindings');
-  assert.ok(unconfAt > 0, 'what remains unconfirmed must be stated somewhere');
-  assert.ok(
-    unconfAt > findingsAt,
-    'the gaps must not open the report — that is the defect v2 removed'
-  );
+  // Owner, 2026-10-09 (supersedes mandate 10): what was not established is
+  // not written at all — a list of gaps read as alarm.
+  assert.ok(!reportCode.includes('<UnconfirmedCard'), 'gaps are not listed to the customer');
 
   const actions = reportCode.slice(reportCode.indexOf('r.buyerActions?.length'));
   const actionsBlock = actions.slice(0, actions.indexOf('</section>'));

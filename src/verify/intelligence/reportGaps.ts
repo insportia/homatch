@@ -32,6 +32,7 @@
  * All three are pure: no network, no writes, nothing paid.
  */
 
+import { cleanParticipantName } from './tasIntelligence.ts';
 import { resolveDeveloperIdentity, summarizeAds, parseDeveloperAdsPolicy } from '../developerAds.ts';
 import type { DeveloperAdsView } from '../developerAds.ts';
 import type { CompanyIntelligence } from './companyIntelligence.ts';
@@ -300,7 +301,12 @@ export function projectTeamFrom(result: unknown, officialTeam: Array<{ name: str
     }
     out.set(k, { name: n, roles: [role], basis, ...(roleText && role === 'OTHER' ? { roleText } : {}) });
   };
-  for (const m of officialTeam ?? []) for (const role of m.roles) add(m.name, role as TeamRole, 'OFFICIAL');
+  // Reports stored before names were cleaned upstream still carry CV lines and
+  // clause fragments as "names" (owner live run 2026-10-10): clean them here too.
+  for (const m of officialTeam ?? []) {
+    const name = cleanParticipantName(m.name);
+    if (name) for (const role of m.roles) add(name, role as TeamRole, 'OFFICIAL');
+  }
   for (const m of Array.isArray(project.designTeam) ? project.designTeam : []) {
     const role = typeof m?.role === 'string' ? m.role : '';
     add(m?.name, teamRoleOf(role), 'PUBLIC', role || null);

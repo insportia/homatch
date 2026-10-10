@@ -110,13 +110,18 @@ test('large history: 300 cases × routine steps → a 5–10 milestone story, ne
   assert.ok(d.archivedEvents > 400);
 });
 
-test('customer view carries case/decision numbers and dates — never internal ids, hashes or private names', () => {
-  const r = report([kase('100', '2019-01-10', 'ნებართვა', [mot('1', '2019-03-01', 'ნებართვა', dec('PERMIT_ISSUED', '111'))], { parties: [{ role: 'APPLICANT', name: 'გიორგი ბერიძე', kind: 'PERSON' }] })]);
+test('customer view carries case/decision numbers, dates and verified names in their role — never internal ids, hashes or personal numbers', () => {
+  const r = report([kase('100', '2019-01-10', 'ნებართვა', [mot('1', '2019-03-01', 'ნებართვა', dec('PERMIT_ISSUED', '111'))], { parties: [{ role: 'APPLICANT', name: 'გიორგი ბერიძე პ/ნ 01005006844', kind: 'PERSON' }] })]);
   r.officialVisuals = [{ id: SHA('a'), role: 'LATEST_RENDER', kind: 'RENDER', date: '2019-01-10', documentId: '100', attachedFileId: '777' }];
   const view = officialHistoryView(buildTasIntelligence(r, NOW));
   const s = JSON.stringify({ ...view, visuals: undefined });
   assert.ok(s.includes('AR1100') && s.includes('111'));
-  assert.ok(!s.includes('"100"') && !s.includes('777') && !s.includes('გიორგი'));
+  assert.ok(!s.includes('"100"') && !s.includes('777'), 'no internal document/attachment ids');
+  assert.ok(!s.includes('01005006844'), 'never a personal ID number');
+  // Owner, 2026-10-10: a verified private participant is named — in the role the documents give.
+  const g = view.team.find((m) => m.name === 'გიორგი ბერიძე');
+  assert.ok(g, 'verified applicant is named');
+  assert.deepEqual(g.roles, ['APPLICANT'], 'an applicant, never an owner');
 });
 
 test('prompt-safe official payload: TAS raw text replaced by the digest; other sources untouched', () => {

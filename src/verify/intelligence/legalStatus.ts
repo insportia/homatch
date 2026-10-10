@@ -49,6 +49,8 @@ export const COMMISSIONING_OPERATIVE = /(მიღებულ\s+(?:იქნე
 
 /** A TAS case whose OWN service is acceptance into operation (the application, not its outcome). */
 const COMMISSIONING_SERVICE = /(?:ნომენკლატურა|მომსახურება|სახეობა)\s*:?\s*[^\n]{0,80}ექსპლუატაციაში\s+მიღება/iu;
+/** A short case type that IS the service ("შენობა-ნაგებობის ექსპლუატაციაში მიღება"), never a long text quoting it. */
+const SERVICE_NAME = /^[^\n]{0,60}ექსპლუატაციაში\s+მიღებ[^\n]{0,40}$/iu;
 
 /** The document's own result line, when it states one. */
 const RESULT_LINE = /შედეგი\s*:\s*(შუალედური|დადებითი|უარყოფითი)/iu;
@@ -105,7 +107,7 @@ export function legalClaims(events: LegalStatusEvent[], target: { block: string 
   const permits = by((e) => outcome(e) === 'PERMIT_ISSUED' || outcome(e) === 'AMENDMENT_APPROVED');
   const revoked = by((e) => outcome(e) === 'CANCELLED' || outcome(e) === 'SUSPENDED');
   const commissioned = by((e) => outcome(e) === 'COMMISSIONED' && COMMISSIONING_OPERATIVE.test(String(e.decision?.evidence ?? '')));
-  const applied = by((e) => COMMISSIONING_SERVICE.test(String(e.serviceText ?? '')));
+  const applied = by((e) => { const t = String(e.serviceText ?? ''); return COMMISSIONING_SERVICE.test(t) || (t.length <= 110 && SERVICE_NAME.test(t)); });
   return [
     claim('PERMIT_ISSUED', permits, revoked),
     // Works starting / finishing are facts no decision outcome establishes on its own.

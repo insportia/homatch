@@ -17720,6 +17720,14 @@ const en = {
   ds_feat_time_help: 'See the home in morning light, at sunset, in the evening or at night.',
   ds_feat_live_help: 'Pick a moment — making coffee, cooking, an evening in — and watch it play out in this home.',
   ds_feat_share_help: 'Send a link to this walkthrough to family, a buyer or an agent — they walk it in their browser.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: refreshing now',
+  mps_source_FRESH: '{{source}}: fresh listings',
+  mps_source_PARTIAL: '{{source}}: partly refreshed — the rest are previously collected listings',
+  mps_source_CACHED: '{{source}}: temporarily unavailable — showing previously collected listings with their last-checked time',
+  mps_source_UNAVAILABLE: '{{source}}: temporarily unavailable — no previously collected listings match',
+  mps_source_retry: 'Next refresh attempt after {{time}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35354,6 +35362,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_feat_time_help: 'ნახეთ ბინა დილის შუქზე, მზის ჩასვლისას, საღამოს ან ღამით.',
   ds_feat_live_help: 'აირჩიეთ მომენტი — ყავის მომზადება, სადილი, საღამო სახლში — და ნახეთ, როგორ გამოიყურება ეს ამ ბინაში.',
   ds_feat_share_help: 'გაუგზავნეთ ამ ტურის ბმული ოჯახს, მყიდველს ან აგენტს — ის ბრაუზერში გაივლის ბინას.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: მიმდინარეობს განახლება',
+  mps_source_FRESH: '{{source}}: ახალი განცხადებები',
+  mps_source_PARTIAL: '{{source}}: ნაწილობრივ განახლდა — დანარჩენი ადრე შეგროვებული განცხადებებია',
+  mps_source_CACHED: '{{source}}: დროებით მიუწვდომელია — ნაჩვენებია ადრე შეგროვებული განცხადებები ბოლო შემოწმების დროით',
+  mps_source_UNAVAILABLE: '{{source}}: დროებით მიუწვდომელია — ადრე შეგროვებული შესაბამისი განცხადებები არ მოიძებნა',
+  mps_source_retry: 'შემდეგი განახლების მცდელობა: {{time}}-ის შემდეგ',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52979,6 +52995,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_feat_time_help: 'Посмотрите на дом при утреннем свете, на закате, вечером или ночью.',
   ds_feat_live_help: 'Выберите момент — кофе, готовка, вечер дома — и посмотрите, как он проходит в этом доме.',
   ds_feat_share_help: 'Отправьте ссылку на эту прогулку семье, покупателю или агенту — они пройдут её в браузере.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: идёт обновление',
+  mps_source_FRESH: '{{source}}: свежие объявления',
+  mps_source_PARTIAL: '{{source}}: обновлено частично — остальные объявления собраны ранее',
+  mps_source_CACHED: '{{source}}: временно недоступен — показаны ранее собранные объявления с временем последней проверки',
+  mps_source_UNAVAILABLE: '{{source}}: временно недоступен — подходящих ранее собранных объявлений нет',
+  mps_source_retry: 'Следующая попытка обновления после {{time}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70602,6 +70626,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_feat_time_help: 'Evi sabah ışığında, gün batımında, akşam ya da gece görün.',
   ds_feat_live_help: 'Bir an seçin — kahve yapmak, yemek pişirmek, evde bir akşam — ve bu evde nasıl geçtiğini izleyin.',
   ds_feat_share_help: 'Bu gezintinin bağlantısını ailenize, bir alıcıya ya da emlakçıya gönderin — tarayıcılarında gezsinler.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: güncelleniyor',
+  mps_source_FRESH: '{{source}}: güncel ilanlar',
+  mps_source_PARTIAL: '{{source}}: kısmen güncellendi — kalanlar daha önce toplanan ilanlar',
+  mps_source_CACHED: '{{source}}: geçici olarak kullanılamıyor — daha önce toplanan ilanlar son kontrol zamanlarıyla gösteriliyor',
+  mps_source_UNAVAILABLE: '{{source}}: geçici olarak kullanılamıyor — eşleşen daha önce toplanmış ilan yok',
+  mps_source_retry: 'Sonraki güncelleme denemesi: {{time}} sonrası',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -88225,6 +88257,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_feat_time_help: 'شاهد المنزل في ضوء الصباح أو عند الغروب أو في المساء أو ليلًا.',
   ds_feat_live_help: 'اختر لحظة — إعداد القهوة أو الطهي أو أمسية في المنزل — وشاهدها تحدث في هذا المنزل.',
   ds_feat_share_help: 'أرسل رابط هذه الجولة إلى العائلة أو مشترٍ أو وسيط — يتجولون فيها من متصفحهم.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: جارٍ التحديث',
+  mps_source_FRESH: '{{source}}: إعلانات حديثة',
+  mps_source_PARTIAL: '{{source}}: تم التحديث جزئيًا — الباقي إعلانات جُمعت سابقًا',
+  mps_source_CACHED: '{{source}}: غير متاح مؤقتًا — تُعرض إعلانات جُمعت سابقًا مع وقت آخر فحص لها',
+  mps_source_UNAVAILABLE: '{{source}}: غير متاح مؤقتًا — لا توجد إعلانات مطابقة جُمعت سابقًا',
+  mps_source_retry: 'محاولة التحديث التالية بعد {{time}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105848,6 +105888,14 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_feat_time_help: 'ראו את הבית באור בוקר, בשקיעה, בערב או בלילה.',
   ds_feat_live_help: 'בחרו רגע — הכנת קפה, בישול, ערב בבית — וצפו בו קורה בבית הזה.',
   ds_feat_share_help: 'שלחו קישור לסיור הזה למשפחה, לקונה או לסוכן — הם יסיירו בו בדפדפן.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_source_REFRESHING: '{{source}}: מתעדכן כעת',
+  mps_source_FRESH: '{{source}}: מודעות עדכניות',
+  mps_source_PARTIAL: '{{source}}: עודכן חלקית — השאר מודעות שנאספו קודם',
+  mps_source_CACHED: '{{source}}: לא זמין זמנית — מוצגות מודעות שנאספו קודם עם זמן הבדיקה האחרון',
+  mps_source_UNAVAILABLE: '{{source}}: לא זמין זמנית — אין מודעות תואמות שנאספו קודם',
+  mps_source_retry: 'ניסיון הרענון הבא אחרי {{time}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

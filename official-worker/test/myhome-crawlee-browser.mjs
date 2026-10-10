@@ -38,21 +38,23 @@ test('real Crawlee/Chromium preserves Next search/detail identity, photos and re
   } finally { await transport.close(); }
 });
 
-test('403 stops Crawlee and durable engine before a second navigation; no retry or escalation', {timeout:60000}, async () => {
+test('403 stops Crawlee and records a bounded durable cooldown before a second navigation; no retry or escalation', {timeout:60000}, async () => {
   const {transport,navigations} = reader(() => ({status:403,headers:{'cf-mitigated':'challenge',server:'cloudflare'},contentType:'text/html',body:'<html>cf_chl_PRIVATE_TOKEN</html>'}));
-  let blocked = false;
+  let cooling = false; const evidence = [];
+  const store = () => ({ decide: async () => ({ mode: cooling ? 'CACHE_ONLY' : 'LIVE', retryAt: null }), restrict: async (e) => { cooling = true; evidence.push(e); }, recovered: async () => {} });
   const engine = new MyHomeEngine();
-  engine.configure({restricted:async()=>blocked,restrict:async()=>{blocked=true;}});
+  engine.configure(store());
   try {
-    await engine.ready();
+    assert.equal((await engine.ready()).mode, 'LIVE');
     await assert.rejects(engine.guard(()=>publicPage(fixture.searchUrl,transport.fetcher)), error => {
       assert.equal(error.status,403); assert.match(error.message,/CHALLENGE_REQUIRED/);
       assert.ok(!error.message.includes('PRIVATE_TOKEN')); return true;
     });
-    assert.equal(blocked,true);
+    assert.equal(cooling,true); assert.ok(evidence.length === 1 && !evidence[0].includes('PRIVATE_TOKEN'));
     await assert.rejects(transport.fetcher(fixture.detailUrl),/ACCESS_RESTRICTED/);
-    const restarted = new MyHomeEngine(); restarted.configure({restricted:async()=>blocked,restrict:async()=>{}});
-    await assert.rejects(restarted.ready(),/ACCESS_RESTRICTED/);
+    // A restarted worker reads the durable cooldown instead of navigating.
+    const restarted = new MyHomeEngine(); restarted.configure(store());
+    assert.equal((await restarted.ready()).mode, 'CACHE_ONLY');
     assert.equal(navigations.length,1);
   } finally { await transport.close(); }
 });

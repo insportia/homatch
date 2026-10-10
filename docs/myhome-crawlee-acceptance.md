@@ -255,3 +255,44 @@ returning health;
 Any later 401/403/challenge writes a new ACCESS_DENIED run (newer than the
 clearance) and closes the circuit again; retries, rotation and challenge
 interaction stay disabled.
+
+## Provider access redesign — 2026-10-10 (replaces the permanent circuit)
+
+Owner requirement: one refusal must never shut MyHome search off for all
+customers, and recovery must never need a manual database clearance.
+
+Live evidence that drove it: run `c98ad7e9` (20:36 UTC) read pages 1–2
+(48 fresh listings, persisted, 29 canonical properties with photos and
+original URLs), then page 3 returned `403 CHALLENGE_REQUIRED server=cloudflare`.
+The old circuit then blocked every later search until someone wrote
+`accessClearedAt`, and each blocked run wrote a new ACCESS_DENIED record that
+extended the block.
+
+State machine (`src/research-core/marketplace/provider-access.ts`, stored as
+`health.access` on the worker row, compare-and-set on `access.version`):
+
+- AVAILABLE → runs are LIVE.
+- A real 401/403/challenge → COOLDOWN for 15 min, then 30 min, 1 h, 2 h,
+  4 h, capped at 6 h. A refusal after 24 h of access restarts at 15 min.
+- After the cooldown exactly one run is a PROBE (5-minute lease; a crashed
+  probe frees itself). A probe that reads a page → AVAILABLE; refused again →
+  next cooldown step. The startup check never spends the probe.
+- Ingress errors, timeouts and upstream 5xx never change the state. An
+  unreadable state fails the run as retryable without contacting MyHome.
+- The legacy `accessRestricted: true` flag reads as a 15-minute cooldown from
+  when it was set, so the 20:36 block expires on its own.
+
+Customer behaviour: searches are always accepted. During a cooldown the MyHome
+run is BLOCKED with `PROVIDER_COOLDOWN` (no request sent), and matching MyHome
+listings collected in the last 14 days are added to the search, each with its
+original `observedAt` (freshness VERIFIED/RECENT/STALE stays true), marked
+`observationLevel: CACHED`. Fresh rows are never overwritten, the run's
+returned_count stays fresh-only, and a search with only cached results is
+PARTIAL_COMPLETE, never COMPLETE. The results header lists each source as
+refreshing / fresh / partly refreshed / previously collected / unavailable,
+with the next refresh attempt time. SS.ge is unchanged.
+
+Load on MyHome: owner decision — at most the first 3 result pages per search
+(MyHome's full match count is still reported), a fixed 5 s pause between pages,
+one MyHome run at a time (others wait in the durable queue), no detail pages.
+No proxy, identity rotation, CAPTCHA solving or challenge interaction.

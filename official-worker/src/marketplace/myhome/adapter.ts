@@ -8,6 +8,7 @@ import { MyHomeEngine, myHomeEngine } from './engine.js';
 
 export class MyHomeFailure extends Error { constructor(public code: string, message: string, public retryable = false) { super(message); } }
 export type AdapterOptions = { fetcher?: typeof fetch; pageFetcher?: typeof fetch; browserMs?: () => number; deadlineAt: string; signal?: AbortSignal; engine?: MyHomeEngine;
+  pageTransport?: 'PUBLIC_NEXT_DATA_BROWSER' | 'PUBLIC_NEXT_DATA_CRAWLEE';
   checkpoint?: { queryApplied?: Record<string, unknown>; returnedCount?: number };
   report: (result: MarketplaceWorkerResult & { retryable?: boolean }) => Promise<void> };
 export async function acquireMyHome(request: MarketplaceSearchRequest, options: AdapterOptions) {
@@ -19,7 +20,7 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
   let unavailableUrls = 0;
   const unavailableIds: string[] = [];
   let pagesVisited = 0, actions = 0, discoveredCount = 0, delivered = 0, nextPage = 1, currentQuery = 0;
-  const queriesApplied: Record<string, string | number | boolean | null | string[]> = { acquisition: options.pageFetcher ? 'PUBLIC_NEXT_DATA_BROWSER' : 'PUBLIC_NEXT_DATA', dictionariesAndCount: 'PUBLIC_API' };
+  const queriesApplied: Record<string, string | number | boolean | null | string[]> = { acquisition: options.pageFetcher ? options.pageTransport ?? 'PUBLIC_NEXT_DATA_BROWSER' : 'PUBLIC_NEXT_DATA', dictionariesAndCount: 'PUBLIC_API' };
   function remaining() {
     options.signal?.throwIfAborted();
     if (!Number.isFinite(deadline) || Date.now() > deadline - 15000) throw new MyHomeFailure('DEADLINE', 'Existing worker deadline reached; already ingested batches remain available.');

@@ -4,11 +4,14 @@ import { endpoints, publicJson } from './myhome/api.js';
 import { publicPage, publicSearchUrl } from './myhome/public-page.js';
 import { createPublicBrowserReader } from './myhome/browser-page.js';
 import { myHomeEngine } from './myhome/engine.js';
+import { createCrawleeBrowserReader } from './myhome/crawlee-page.js';
 
 export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fetch) {
   const token = env.MYHOME_WORKER_TOKEN ?? '', baseUrl = env.SUPABASE_URL ?? '';
   const enabled = env.MYHOME_MARKETPLACE_ENABLED === 'true';
-  const browserPages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'browser';
+  const crawleePages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'crawlee';
+  const browserPages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'browser' || crawleePages;
+  const createReader = () => crawleePages ? createCrawleeBrowserReader() : browserPages ? createPublicBrowserReader() : null;
   const configured = token.length >= 32 && /^https:\/\/[^/]+$/.test(baseUrl);
   const controller = new AbortController();
   let active = 0, lastClaimAt: string | null = null, lastError: string | null = null;
@@ -25,12 +28,12 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
   }
   async function run(job: any) {
     active++;
-    const reader = browserPages ? createPublicBrowserReader() : null;
+    const reader = createReader();
     const heartbeat = setInterval(() => { void ingest({ action: 'heartbeat', runId: job.runId, leaseSeconds: 120 }).catch(error => { lastError = error.message; }); }, 30000);
     heartbeat.unref();
     try {
       log('claimed', { runId: job.runId, attempt: job.attempt });
-      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
+      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
         report: async report => {
           const accepted = await ingest({ action: 'report', runId: job.runId, result: report });
           if ((accepted.rejected?.length ?? 0) > 0 || accepted.accepted !== report.listings.length) throw new Error('Marketplace ingest rejected acquisition records');
@@ -57,7 +60,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     if (!enabled) return;
     // Startup smoke checks execute from the actual production container. They
     // do not insert customer data and expose only status/count facts in logs.
-    const reader = browserPages ? createPublicBrowserReader() : null;
+    const reader = createReader();
     const pageFetcher = reader?.fetcher ?? fetcher;
     try {
       await myHomeEngine.ready();
@@ -71,7 +74,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
       if (list.payload?.result !== true || !Array.isArray(rows)) throw new Error('Production MyHome list schema invalid');
       const first = rows.find((row: any) => row.dynamic_slug);
       const detail = first ? await publicPage(`https://www.myhome.ge/udzravi-qoneba/${encodeURIComponent(first.dynamic_slug)}-${first.id}/`, pageFetcher, String(first.id)) : null;
-      smoke = { pageTransport: browserPages ? 'BROWSER' : 'HTTP', locationsStatus: locations.status, filtersStatus: filters.status, listStatus: list.status, countStatus: count.status,
+      smoke = { pageTransport: crawleePages ? 'CRAWLEE' : browserPages ? 'BROWSER' : 'HTTP', locationsStatus: locations.status, filtersStatus: filters.status, listStatus: list.status, countStatus: count.status,
         detailStatus: detail?.status ?? null, parsed: rows.length, total: count.payload?.data?.total ?? null, checkedAt: new Date().toISOString() };
       log('production_connectivity', smoke);
       });
@@ -89,5 +92,5 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     }
   }
   void loop().catch(error => { lastError = error.message; log('runtime_error', { message: lastError }); });
-  return { status: () => ({ enabled, configured, pageTransport: browserPages ? 'BROWSER' : 'HTTP', active, lastClaimAt, lastError, connectivity: smoke, engine: myHomeEngine.status() }), shutdown: () => controller.abort() };
+  return { status: () => ({ enabled, configured, pageTransport: crawleePages ? 'CRAWLEE' : browserPages ? 'BROWSER' : 'HTTP', active, lastClaimAt, lastError, connectivity: smoke, engine: myHomeEngine.status() }), shutdown: () => controller.abort() };
 }

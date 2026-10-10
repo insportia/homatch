@@ -1,0 +1,40 @@
+name: MyHome Crawlee transport
+on:
+  pull_request:
+    paths:
+      - 'official-worker/src/marketplace/myhome/**'
+      - 'official-worker/src/marketplace/MyHomeRuntime.ts'
+      - 'official-worker/test/myhome-crawlee-browser.mjs'
+      - 'official-worker/package.json'
+      - 'official-worker/npm-shrinkwrap.json'
+      - '.github/workflows/myhome-crawlee.yml'
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install worker packages
+        working-directory: official-worker
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Export initial npm resolution
+        working-directory: official-worker
+        run: |
+          npm shrinkwrap
+          node --input-type=module -e "import{readFileSync}from'node:fs';console.log('HOMATCH_LOCK='+readFileSync('npm-shrinkwrap.json').toString('base64'))"
+      - name: Compile worker
+        working-directory: official-worker
+        run: npm run test:build
+      - name: Install existing Chromium version
+        working-directory: official-worker
+        run: npx playwright install chromium --with-deps
+      - name: Real Chromium against local source fixtures only
+        working-directory: official-worker
+        run: node --test test/myhome-crawlee-browser.mjs

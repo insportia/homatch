@@ -28,7 +28,7 @@ import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optiona
 // _shared/providerSwitch.ts, exactly as Find Buyers reads it.
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
-import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
+import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, OFFICIAL_STRAGGLER_GRACE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
@@ -2516,6 +2516,10 @@ function officialPastDeadline(j: any, w: any): boolean {
   const launched = Date.parse(j.result_json?._worker?.startedAt || '');
   if (w?.status === 'QUEUED') return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_MAX_MS;
   const started = Date.parse(w?.runStartedAt || '') || launched;
+  if (w?.view === 'queue' && w.stragglersRetrying) {
+    const last = Date.parse(w.lastFinishedAt || '');
+    if (Number.isFinite(last) && Date.now() - last > OFFICIAL_STRAGGLER_GRACE_MS) return true;
+  }
   return Number.isFinite(started) && started > 0 && Date.now() - started > OFFICIAL_BROWSER_DEADLINE_MS;
 }
 
@@ -2603,6 +2607,10 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       };
 
       delete p._worker;
+      // Official photos the finished sources already stored still belong in
+      // the report when another source ran out of time (live run 2026-10-10:
+      // tas stored 2 visuals, mygov straggled, the report showed none).
+      await collectOfficialVisuals(sb, w, p);
 
       const ev = dedupe(
         [...(j.evidence_bundle || []), ...bev(w)],

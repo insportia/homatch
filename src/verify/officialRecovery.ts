@@ -29,6 +29,12 @@
 // inventory: ~413 files on one project, its own 9-minute budget) while My.gov
 // solves a reCAPTCHA per record in parallel; 10 cut a complete read short.
 export const OFFICIAL_BROWSER_DEADLINE_MS = 14 * 60 * 1000;
+/**
+ * Queue mode: once every task still open is a retry, the report waits at most
+ * this long after the last task finished before going ahead with what it has
+ * (live run 2026-10-10 idled ~5 min on a retrying MyGov task).
+ */
+export const OFFICIAL_STRAGGLER_GRACE_MS = 3 * 60 * 1000;
 /** A BROWSER_WAITING row that has not been written for this long is stalled, not slow. */
 export const OFFICIAL_STALL_MS = 5 * 60 * 1000;
 

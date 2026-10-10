@@ -198,7 +198,7 @@ test('executor: human verification is final, a failed source is retried, success
     { result: { status: 'SEARCH_CONFIRMED', documents: [{ id: 'x', fullText: 'z'.repeat(DOC_EXCERPT_CHARS + 1) }] }, keep: false },
   ];
   const exec = createVerifyExecutor({ ...noBrowser, orchestrator: {}, mygov: async () => outs.shift() });
-  assert.deepEqual(await exec(mkTask(), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED', retryable: false });
+  assert.deepEqual(await exec(mkTask(), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NONE', retryable: false });
   assert.deepEqual(await exec(mkTask(), ctxFor(gw)), { type: 'fail', error: 'timeout', retryable: true });
   const ok = await exec(mkTask(), ctxFor(gw));
   assert.equal(ok.type, 'complete');
@@ -224,4 +224,15 @@ test('executor: browser sources get their own Chromium, always closed; unknown s
   assert.deepEqual(closed, launched, 'every Chromium is closed, including after a crash');
   assert.deepEqual(steps[0], { type: 'entity', source: 'enreg', idCode: '404670272', name: 'Millenio Group' });
   assert.deepEqual(await exec(mkTask({ source: 'nope' }), ctxFor(gw)), { type: 'fail', error: 'UNKNOWN_SOURCE nope', retryable: false });
+});
+
+test('executor: a transient CAPTCHA give-up gets ONE fresh retry; a rejection or a second give-up is final', async () => {
+  const gw = fakeGateway();
+  const noChange = { result: { status: 'WAITING_HUMAN', captchaResolution: [{ outcome: 'NO_CHANGE' }] }, keep: false };
+  const rejected = { result: { status: 'WAITING_HUMAN', captchaResolution: [{ outcome: 'REJECTED' }] }, keep: false };
+  const outs = [noChange, noChange, rejected];
+  const exec = createVerifyExecutor({ ...noBrowser, orchestrator: {}, mygov: async () => outs.shift() });
+  assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'CAPTCHA_NO_CHANGE', retryable: true, retryAfterSeconds: 20 });
+  assert.deepEqual(await exec(mkTask({ attempts: 2 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NO_CHANGE', retryable: false });
+  assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:REJECTED', retryable: false });
 });

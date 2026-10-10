@@ -436,18 +436,23 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       motionRecords.set(docId, list);
     });
 
-    // Attachment text: PDFs first (where the facts are), newest first.
-    const ordered = attachmentJobs.slice().sort((x, y) => {
-      const px = x.a.extension === 'pdf' ? 0 : 1;
-      const py = y.a.extension === 'pdf' ? 0 : 1;
-      return px - py || (y.a.date ?? '').localeCompare(x.a.date ?? '');
-    });
     let downloads = 0;
     const pdfBytesForVisuals = new Map<string, Uint8Array>();
     const ranked = rankVisualCandidates(attachmentJobs.map((j) => ({ ...j.a, documentId: j.docId })));
     result.accounting.visualCandidates = ranked.length;
     const shortlist = selectVisualShortlist(ranked, options.visualTarget ?? 4, options.visualMax ?? 4);
     const shortlistIds = new Set(shortlist.map((s) => s.candidate.attachedFileId));
+
+    // Attachment text: the shortlisted visual files first (a handful, and the
+    // only way the report gets photos — at the end they lost to the time
+    // budget), then PDFs (where the facts are), newest first.
+    const ordered = attachmentJobs.slice().sort((x, y) => {
+      const vx = shortlistIds.has(x.a.attachedFileId) ? 0 : 1;
+      const vy = shortlistIds.has(y.a.attachedFileId) ? 0 : 1;
+      const px = x.a.extension === 'pdf' ? 0 : 1;
+      const py = y.a.extension === 'pdf' ? 0 : 1;
+      return vx - vy || px - py || (y.a.date ?? '').localeCompare(x.a.date ?? '');
+    });
 
     await pool(ordered, options.concurrency ?? 3, async ({ docId, a }) => {
       const rec: AttachmentRecord = {

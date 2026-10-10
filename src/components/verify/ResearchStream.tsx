@@ -42,6 +42,12 @@ import { ResearchNetwork } from '@/components/verify/ResearchNetwork';
 // The shared Snake (also offered beside Design Studio renders). Loaded only
 // when someone actually chooses to play.
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+import SnakeLaunchCard from '@/components/games/SnakeLaunchCard';
+
+/** The player's record, kept by the game itself (same key). */
+function snakeBest(): number {
+  try { return Number(window.localStorage.getItem('hm-snake-best')) || 0; } catch { return 0; }
+}
 
 export interface ResearchStreamProps {
   status?: string | null;
@@ -260,18 +266,12 @@ export function ResearchStream({
       <p className="text-xs leading-relaxed text-muted-foreground break-words">{t('verify_stream_note')}</p>
 
       {!stopped && !reportReady && (
-        <div className="flex">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setPlaying(true)}
-            className="h-auto min-h-11 whitespace-normal px-4 py-2 text-start leading-snug"
-            data-testid="verify-play-snake"
-          >
-            {t('verify_net_play_snake')}
-          </Button>
-        </div>
+        <SnakeLaunchCard
+          label={t('verify_net_play_snake')}
+          bestLabel={snakeBest() > 0 ? t('dsx_sn_best', { n: String(snakeBest()) }) : null}
+          onOpen={() => setPlaying(true)}
+          testId="verify-play-snake"
+        />
       )}
 
       {/* Rendered at the document root: a fixed overlay inside this spaced

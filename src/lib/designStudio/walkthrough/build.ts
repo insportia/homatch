@@ -54,7 +54,7 @@ import { arrangeSeating, seatRole, type SeatPiece } from './seatingGroup.ts';
 import { backGap, plausibility, WALL_BACK_GAP_M } from './plausibility.ts';
 import { type ObjectShape, shapedAsset } from '../objectShape.ts';
 import { applyOperation, type Operation, type OperationContext, validateOperation } from '../operations.ts';
-import { candidatePositions, evaluateInWorld as evaluateBase, footprint, frontZone, isSeat, isSeatTable, type Obb, type PlacementIssue, type PlacementWorld, placementWorld, snapToWall, solidBox, solidOverlap, TUCK_M } from '../placement.ts';
+import { candidatePositions, evaluateInWorld as evaluateBase, footprint, frontZone, isSeat, isSeatTable, type Obb, type PlacementIssue, type PlacementWorld, placementWorld, snapToWall, type SolidBox, solidBox, solidOverlap, TUCK_M } from '../placement.ts';
 import { ceilingSurfaceId, floorSurfaceId, type Point, pointInPolygon, type SpaceModel, type SpaceRoom, surfacesOfRoom, wallFrame } from '../space.ts';
 
 // ── The rooms, as the model is shown them ────────────────────────────────────
@@ -208,22 +208,35 @@ const verdictOf = (issues: PlacementIssue[]): Verdict =>
  * at. The floor before them (their catalogue clearance) is theirs.
  */
 const usedFromFront = (a: CatalogAsset) => a.clearanceM > 0 && !isFlat(a)
-  && /WARDROBE|DRESSER|KITCHEN|FRIDGE|REFRIGERATOR|WASHER|VANITY|TOILET|SHOWER|\bBATH\b|BOOKSHELF|DESK/.test([a.category, a.subcategory, a.code].filter(Boolean).join(' ').toUpperCase());
+  && USED_FROM_FRONT.test(`${a.category ?? ''} ${a.subcategory ?? ''} ${a.code}`.toUpperCase());
+const USED_FROM_FRONT = /WARDROBE|DRESSER|KITCHEN|FRIDGE|REFRIGERATOR|WASHER|VANITY|TOILET|SHOWER|\bBATH\b|BOOKSHELF|DESK/;
 
 /**
  * Does a piece take the floor a piece is used from? Standing in front of a wardrobe, a kitchen run or a vanity (the
  * table pushed against the counter, the wardrobe whose doors meet the bed), or standing used-from-front with another
  * piece before it. A seat drawn up to its table is how a table is used, never a finding.
  */
+/** The front zones of a world's standing pieces, made once per world (a placement search judges hundreds of poses). */
+const frontZones = new WeakMap<PlacementWorld, Array<SolidBox | null>>();
+function zonesOf(world: PlacementWorld): Array<SolidBox | null> {
+  let z = frontZones.get(world);
+  if (!z) {
+    z = world.objects.map((o) => (!o.flat && usedFromFront(o.asset) ? frontZone(o.asset, { x: o.object.position.x, y: o.object.position.z }, o.object.rotationY, o.asset.clearanceM) : null));
+    frontZones.set(world, z);
+  }
+  return z;
+}
 function blocksUse(world: PlacementWorld, asset: CatalogAsset, at: Point, rotation: number, instanceId?: string): boolean {
-  if (isFlat(asset)) return false;
+  if (isFlat(asset) || !world.objects.length) return false;
+  const zones = zonesOf(world);
   const box = solidBox(footprint(asset, at, rotation));
   const mine = usedFromFront(asset) ? frontZone(asset, at, rotation, asset.clearanceM) : null;
-  for (const o of world.objects) {
+  for (let i = 0; i < world.objects.length; i += 1) {
+    const o = world.objects[i];
     if (o.flat || o.id === instanceId) continue;
-    if (usedFromFront(o.asset) && solidOverlap(box, frontZone(o.asset, { x: o.object.position.x, y: o.object.position.z }, o.object.rotationY, o.asset.clearanceM))) return true;
-    const seatPair = (isSeat(asset) && isSeatTable(o.asset)) || (isSeatTable(asset) && isSeat(o.asset));
-    if (mine && !seatPair && solidOverlap(mine, o.box)) return true;
+    const zone = zones[i];
+    if (zone && solidOverlap(box, zone)) return true;
+    if (mine && solidOverlap(mine, o.box) && !((isSeat(asset) && isSeatTable(o.asset)) || (isSeatTable(asset) && isSeat(o.asset)))) return true;
   }
   return false;
 }

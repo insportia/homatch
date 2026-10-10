@@ -488,9 +488,16 @@ test('the primary report cannot render a portal URL from evidence', () => {
   // URLs; that file is guarded separately below.
   const urls = [...src.matchAll(/(\w+)\.url/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(urls)], [], `unexpected url source(s): ${urls.join(', ')}`);
-  const visuals = code('src/components/verify/OfficialIntelligence.tsx');
-  assert.ok(!/href=/.test(visuals), 'the official-history blocks must not link anywhere');
-  assert.match(visuals, /storage\\\/v1\\\/object\\\/sign/, 'only signed storage URLs may be rendered as images');
+  const history = code('src/components/verify/OfficialIntelligence.tsx');
+  assert.ok(!/href=/.test(history), 'the official-history blocks must not link anywhere');
+  // The visuals moved to VisualExplorer (2026-10 report rebuild); the guard
+  // moved with them into the pure catalogue, where it is unit-tested.
+  assert.ok(!/<img/.test(history), 'the history blocks render images again, outside the guarded explorer');
+  const catalogue = code('src/verify/visualCatalog.ts');
+  assert.match(catalogue, /storage\\\/v1\\\/object\\\/sign/, 'only signed storage URLs may be rendered as images');
+  const explorer = code('src/components/verify/VisualExplorer.tsx');
+  assert.match(explorer, /catalogVisuals\(/, 'the explorer renders visuals that never passed the catalogue');
+  assert.ok(!/href=/.test(explorer), 'the visual explorer must not link anywhere');
 });
 
 test('there is no "could not confirm" block in the primary report', () => {

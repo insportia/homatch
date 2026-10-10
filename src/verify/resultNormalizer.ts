@@ -123,6 +123,10 @@ export interface NormalReport {
   currentStatus?: { statement: string; items: { label: string; value: string; date: string }[] };
   propertyStory?: { chapters: { key: string; title: string; period: string; body: string; visualIds: string[] }[] };
   visualCaptions?: { visualId: string; caption: string; explanation: string }[];
+  /** Per-visual reading: what / interesting / buyer meaning / uncertain. */
+  visualExplanations?: { id: string; what: string; interesting: string; buyerMeaning: string; uncertain: string }[];
+  /** What the developer's advertising suggests, guarded against official claims. */
+  advertisingAssessment?: Record<string, unknown>;
 }
 
 /**
@@ -157,6 +161,16 @@ export interface NormalVerifyResult {
   officialHistory?: Record<string, unknown> | null;
   /** Developer advertising view (marketing signal), completed stage only. */
   developerAds?: Record<string, unknown> | null;
+  /* Deterministic blocks the report renders directly. Passed through as the
+     server wrote them — the case page used to drop every one of these, so the
+     same job read differently depending on which door it was opened from. */
+  propertyRegister?: Record<string, unknown> | null;
+  companyFinance?: Record<string, unknown> | null;
+  projectTeam?: Record<string, unknown>[] | null;
+  marketContext?: Record<string, unknown> | null;
+  evidenceGroups?: Record<string, unknown>[];
+  checklist?: Record<string, unknown>[];
+  identity?: Record<string, unknown> | null;
 }
 
 export type PayloadVersion = 'V1' | 'V2' | 'V3' | 'NONE' | 'ERROR';
@@ -453,11 +467,23 @@ function siblingsOf(o: Record<string, unknown>): Omit<NormalVerifyResult, 'repor
     research: Object.keys(asObject(o.research)).length ? asObject(o.research) : null,
     officialHistory: Object.keys(asObject(o.officialHistory)).length ? asObject(o.officialHistory) : null,
     developerAds: Array.isArray(asObject(o.developerAds).advertisers) ? asObject(o.developerAds) : null,
+    propertyRegister: objectOrNull(o.propertyRegister),
+    companyFinance: objectOrNull(o.companyFinance),
+    projectTeam: Array.isArray(o.projectTeam) ? asArray(o.projectTeam).map(asObject).filter((m) => asString(m.name)) : null,
+    marketContext: objectOrNull(o.marketContext),
+    evidenceGroups: asArray(o.evidenceGroups).map(asObject).filter((g) => Object.keys(g).length),
+    checklist: asArray(o.checklist).map(asObject).filter((c) => Object.keys(c).length),
+    identity: objectOrNull(o.identity),
   };
 }
 
+function objectOrNull(v: unknown): Record<string, unknown> | null {
+  const o = asObject(v);
+  return Object.keys(o).length ? o : null;
+}
+
 /** The official-history blocks, kept only where they carry text. */
-function officialBlocks(r: Record<string, unknown>): Pick<NormalReport, 'currentStatus' | 'propertyStory' | 'visualCaptions'> {
+function officialBlocks(r: Record<string, unknown>): Pick<NormalReport, 'currentStatus' | 'propertyStory' | 'visualCaptions' | 'visualExplanations' | 'advertisingAssessment'> {
   const cs = asObject(r.currentStatus);
   const items = asArray(cs.items).map(asObject)
     .map((i) => ({ label: asString(i.label), value: asString(i.value), date: asString(i.date) }))
@@ -468,7 +494,13 @@ function officialBlocks(r: Record<string, unknown>): Pick<NormalReport, 'current
   const captions = asArray(r.visualCaptions).map(asObject)
     .map((v) => ({ visualId: asString(v.visualId), caption: asString(v.caption), explanation: asString(v.explanation) }))
     .filter((v) => v.visualId && v.caption);
+  const explanations = asArray(r.visualExplanations).map(asObject)
+    .map((v) => ({ id: asString(v.id), what: asString(v.what), interesting: asString(v.interesting), buyerMeaning: asString(v.buyerMeaning), uncertain: asString(v.uncertain) }))
+    .filter((v) => v.id && (v.what || v.interesting || v.buyerMeaning || v.uncertain));
+  const ads = asObject(r.advertisingAssessment);
   return {
+    ...(explanations.length ? { visualExplanations: explanations } : {}),
+    ...(Object.keys(ads).length ? { advertisingAssessment: ads } : {}),
     ...(asString(cs.statement) || items.length ? { currentStatus: { statement: asString(cs.statement), items } } : {}),
     ...(chapters.length ? { propertyStory: { chapters } } : {}),
     ...(captions.length ? { visualCaptions: captions } : {}),

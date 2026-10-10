@@ -78,6 +78,10 @@ test('no card invents a conclusion of its own', () => {
     // TAS documents and public research name, merged in reportGaps.ts — a
     // list of names and roles, no conclusion of its own.
     'projectTeam',
+    // Report rebuild (owner, 2026-10-10): `identity` says which unit, building
+    // and parcel the records concern (propertyIdentity.ts). Rendered only as
+    // the identity notice, through identityNotice(); no conclusion of its own.
+    'identity',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);
@@ -397,7 +401,14 @@ test('"რას გავაკეთებდი ყიდვამდე" is 
 test('participants survive even when the prose does not reach them', () => {
   // The directors regression: people were extracted and then not shown.
   assert.ok(reportCode.includes('CompanyGraph'), 'there is no participant block');
-  assert.ok(/!sections\.some\(\(s\) => s\.key === 'PEOPLE'\)/.test(reportCode),
+  // Since the 2026-10 rebuild the participants have their own place in "The
+  // people behind it", rendered whenever there are any — whatever the prose
+  // wrote. The guard is that nothing makes them depend on a PEOPLE section.
+  const i = reportCode.indexOf('<CompanyGraph');
+  assert.ok(i > 0, 'the participant block is never mounted');
+  assert.match(reportCode.slice(i - 400, i), /\{people\.length \? \(/,
+    'the participant block is no longer gated on there being participants');
+  assert.ok(!/s\.key === 'PEOPLE' && people\.length/.test(reportCode),
     'people are only shown when the model wrote a PEOPLE section');
 });
 

@@ -7,7 +7,12 @@
 //     the private verify-evidence bucket (never truncated);
 //   * the result keeps a bounded excerpt per document plus a fullTextRef
 //     pointing at the stored original, with textTruncated set honestly;
-//   * an oversized structured payload is stored whole and trimmed in place.
+//   * TAS's two newest ("priority") cases keep their complete text INLINE
+//     (sized by the source, ≤ 400k chars across both) AND stored whole, with
+//     textRef / textSha256 / textComplete;
+//   * an oversized structured payload is stored whole and trimmed in place
+//     (priority cases' structure is never trimmed; their inline text gives
+//     way last, flagged textComplete:false, the stored ref intact).
 // Nothing is discarded: every byte read is in storage and traceable.
 
 import { createHash } from 'node:crypto';
@@ -42,6 +47,25 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
     const full = typeof d.fullText === 'string' && d.fullText.length ? d.fullText : typeof d.rawText === 'string' ? d.rawText : '';
     delete d.fullText;
     if (!full) continue;
+    if (d.priority) {
+      // TAS "two newest cases": the complete text stays INLINE (already sized
+      // by the source, ≤ PRIORITY_INLINE_TEXT_MAX across both) and is ALSO
+      // stored whole, so a later size trim can never lose it.
+      const inline = typeof d.rawText === 'string' ? d.rawText : full;
+      const hash = sha256(full);
+      const path = await upload(hash, 'text/plain', full);
+      refs.push({ sha256: hash, path, chars: full.length, contentType: 'text/plain', documentId: d.id ?? null, title: d.title ?? null });
+      d.fullTextRef = { sha256: hash, path, chars: full.length };
+      d.textRef = d.fullTextRef;
+      d.textSha256 = hash;
+      d.rawText = inline;
+      d.textComplete = inline.length >= full.length;
+      d.textTruncated = !d.textComplete;
+      stats.storedDocuments++;
+      stats.storedChars += full.length;
+      stats.excerptChars += inline.length;
+      continue;
+    }
     const keep = Math.max(0, Math.min(DOC_EXCERPT_CHARS, remaining));
     const excerpt = full.slice(0, keep);
     if (excerpt.length < full.length || full.length > DOC_EXCERPT_CHARS) {
@@ -69,6 +93,21 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
     trimStructure(result);
     stats.trimmedStructure = true;
     serialized = JSON.stringify(result);
+    // Still too large: the priority texts give way (largest first); each
+    // keeps its stored ref and says it is no longer complete inline.
+    let over = serialized.length - MAX_RESULT_CHARS;
+    if (over > 0) {
+      for (const d of docs.filter((x) => x?.priority && typeof x.rawText === 'string').sort((a, b) => b.rawText.length - a.rawText.length)) {
+        if (over <= 0) break;
+        const cut = Math.min(d.rawText.length, over + 1024);
+        d.rawText = d.rawText.slice(0, d.rawText.length - cut);
+        d.textComplete = false;
+        d.textTruncated = true;
+        d.inlineTrimmedForSize = true;
+        over -= cut;
+      }
+      serialized = JSON.stringify(result);
+    }
   }
   return { result, evidenceRefs: refs, contentHash: sha256(serialized), stats };
 }
@@ -80,6 +119,7 @@ function trimStructure(r: any): void {
   const cases = r.tasApi?.cases;
   if (Array.isArray(cases)) {
     for (const c of cases) {
+      if (c?.priority) continue; // the two newest cases keep their complete structure
       if (Array.isArray(c?.attachments)) c.attachments = c.attachments.slice(0, 80);
       if (Array.isArray(c?.motions)) c.motions = c.motions.slice(0, 120);
     }

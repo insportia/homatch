@@ -52,7 +52,7 @@ export function visualKindOf(text: string): { kind: VisualKind; weight: number }
 
 export type RankInput = TasAttachment & { documentId: string; context?: string | null; caseCadastralCodes?: string[] };
 
-function parcelMatches(codes: string[], parcel: string | null | undefined): boolean | null {
+export function parcelMatches(codes: string[], parcel: string | null | undefined): boolean | null {
   if (!parcel || !codes.length) return null;
   return codes.some((c) => c === parcel || c.startsWith(`${parcel}.`) || parcel.startsWith(`${c}.`));
 }

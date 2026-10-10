@@ -154,7 +154,7 @@ test('evidence: the excerpt budget favours the newest documents and nothing is d
 
 test('evidence: an oversized structured result is stored whole before it is trimmed', async () => {
   const gw = fakeGateway();
-  const records = Array.from({ length: 4000 }, (_, i) => ({ i, blob: 'y'.repeat(400) }));
+  const records = Array.from({ length: 6000 }, (_, i) => ({ i, blob: "y".repeat(400) })); // > 2 MB
   const c = await compactResult({ traversal: { records } }, (sha, ct, body) => gw.upload(sha, ct, body));
   assert.equal(c.stats.trimmedStructure, true);
   assert.equal(gw.calls.upload.length, 1);
@@ -162,6 +162,24 @@ test('evidence: an oversized structured result is stored whole before it is trim
   assert.equal(c.result.traversal.records.length, 60);
   assert.equal(c.result.fullResultRef.chars, gw.calls.upload[0].chars);
   assert.ok(JSON.stringify(c.result).length < MAX_RESULT_CHARS);
+});
+
+test('evidence: the bound is UTF-8 bytes — a Georgian-heavy priority result fits the queue body', async () => {
+  // verify-queue refuses a body over 2.5 MB; Georgian is 3 bytes per character.
+  const gw = fakeGateway();
+  const geo = 'ქართული ტექსტი '.repeat(40_000); // ~600k characters, ~1.6 MB UTF-8
+  const docs = [
+    { id: 'p1', priority: 1, rawText: geo, textComplete: true },
+    { id: 'p2', priority: 2, rawText: geo, textComplete: true },
+  ];
+  const c = await compactResult({ documents: docs, traversal: { records: [] } }, (sha, ct, body) => gw.upload(sha, ct, body));
+  const bytes = Buffer.byteLength(JSON.stringify(c.result), 'utf8');
+  assert.ok(bytes <= MAX_RESULT_CHARS, `result is ${bytes} bytes`);
+  assert.ok(bytes < 2_500_000, 'would be refused by verify-queue');
+  const trimmed = c.result.documents.filter((d) => d.inlineTrimmedForSize);
+  assert.ok(trimmed.length >= 1, 'oversized priority text gives way inline');
+  for (const d of trimmed) assert.equal(d.textComplete, false, 'an inline-trimmed text never claims completeness');
+  assert.ok(c.result.fullResultRef?.path, 'the complete result is stored before trimming');
 });
 
 const noBrowser = { launchBrowser: async () => { throw new Error('no browser in this test'); }, closeBrowser: async () => {} };

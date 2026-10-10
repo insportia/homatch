@@ -20,7 +20,17 @@ import type { EvidenceRef } from './gateway.js';
 
 export const DOC_EXCERPT_CHARS = 8_000;
 export const TOTAL_EXCERPT_CHARS = 120_000;
-export const MAX_RESULT_CHARS = 1_200_000;
+/*
+ * The bound is in UTF-8 BYTES, not characters: verify-queue refuses a body
+ * over 2.5 MB (MAX_BODY_BYTES) and Georgian text is 3 bytes per character,
+ * so a 1.2M-character result could be a 3.6 MB request and fail with 413.
+ * 2.0 MB leaves room for evidenceRefs and the request envelope.
+ */
+export const MAX_RESULT_BYTES = 2_000_000;
+/** @deprecated kept for callers that still import it; the bound is MAX_RESULT_BYTES. */
+export const MAX_RESULT_CHARS = MAX_RESULT_BYTES;
+const utf8 = new TextEncoder();
+const bytesOf = (s: string) => utf8.encode(s).length;
 
 export type Uploader = (sha256: string, contentType: EvidenceRef['contentType'], body: string) => Promise<string>;
 
@@ -84,7 +94,7 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
   }
 
   let serialized = JSON.stringify(result);
-  if (serialized.length > MAX_RESULT_CHARS) {
+  if (bytesOf(serialized) > MAX_RESULT_BYTES) {
     // The complete structured result is preserved in storage first.
     const hash = sha256(serialized);
     const path = await upload(hash, 'application/json', serialized);
@@ -95,10 +105,12 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
     serialized = JSON.stringify(result);
     // Still too large: the priority texts give way (largest first); each
     // keeps its stored ref and says it is no longer complete inline.
-    let over = serialized.length - MAX_RESULT_CHARS;
+    let over = bytesOf(serialized) - MAX_RESULT_BYTES;
     if (over > 0) {
       for (const d of docs.filter((x) => x?.priority && typeof x.rawText === 'string').sort((a, b) => b.rawText.length - a.rawText.length)) {
         if (over <= 0) break;
+        // `over` is bytes; a Georgian character is up to 3 bytes, so cutting
+        // `over` characters always frees at least `over` bytes.
         const cut = Math.min(d.rawText.length, over + 1024);
         d.rawText = d.rawText.slice(0, d.rawText.length - cut);
         d.textComplete = false;

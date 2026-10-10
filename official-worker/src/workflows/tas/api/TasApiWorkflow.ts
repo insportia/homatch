@@ -46,7 +46,10 @@ export const TAS_API_VERSION = 'tas-api-2';
 /** All OLDER-case TAS text sent on to research-agent, across cases. */
 export const TAS_TOTAL_TEXT_BUDGET = 120_000;
 /** Priority-case text carried INLINE, across both priority cases; the rest travels by content-addressed ref. */
-export const PRIORITY_INLINE_TEXT_MAX = 400_000;
+// ≈ 900 KB of Georgian UTF-8: well inside the queue's byte bound together with
+// the rest of the result. Text beyond it is never lost — it is stored in full
+// (content-addressed) and referenced from the document record.
+export const PRIORITY_INLINE_TEXT_MAX = 300_000;
 /** Visual assets kept from the priority cases (separate from the ≤ VISUAL_ASSET_MAX gallery). */
 export const PRIORITY_VISUAL_MAX = 48;
 

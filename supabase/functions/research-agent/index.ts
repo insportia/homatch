@@ -26,7 +26,7 @@ import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 // _shared/providerSwitch.ts, exactly as Find Buyers reads it.
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
-import { pgSafe, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
+import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
@@ -1848,6 +1848,9 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
   // Worker text (extracted documents above all) may hold characters Postgres
   // cannot store: one NUL in a NAPR record froze job c80f7237 for an hour.
   // Made storable here, at the one place worker data enters this function.
+  // Bounded first: a TAS API_FIRST job can carry megabytes of case text, and
+  // scanning all of it on every poll exhausted the edge CPU budget.
+  if (path.startsWith('/research/')) z = boundWorkerJob(z);
   const stats: PgSafeStats = { nul: 0, surrogates: 0 };
   z = pgSafe(z, stats);
   if (stats.nul || stats.surrogates) console.warn(`research-agent: worker ${path} returned ${stats.nul} NUL / ${stats.surrogates} lone-surrogate character(s); removed before storage`);
@@ -2344,10 +2347,34 @@ async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
  */
 const persistOfficialTransition = (sb: any, j: any, patch: Record<string, any>) => persistOfficialTransitionWith(sb, j, patch);
 
+/*
+ * THE OFFICIAL DEADLINE COUNTS FROM WHEN THE WORKER STARTED THE JOB.
+ *
+ * The worker admits a bounded number of jobs at once and queues the rest. A
+ * job waiting in line is not slow, it is waiting its turn: its 14 minutes
+ * start at runStartedAt. The wait itself is capped (OFFICIAL_QUEUE_MAX_MS) so
+ * a stuck queue still ends in a report built from the other sources.
+ */
+const OFFICIAL_QUEUE_MAX_MS = 45 * 60 * 1000;
+function officialPastDeadline(j: any, w: any): boolean {
+  const launched = Date.parse(j.result_json?._worker?.startedAt || '');
+  if (w?.status === 'QUEUED') return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_MAX_MS;
+  const started = Date.parse(w?.runStartedAt || '') || launched;
+  return Number.isFinite(started) && started > 0 && Date.now() - started > OFFICIAL_BROWSER_DEADLINE_MS;
+}
+
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
-  const w = (await wf(`/research/${id}`)).data;
+  /*
+   * Poll the light status view; fetch the full job (documents included) only
+   * when this tick will actually read it: finished, failed, or past the
+   * deadline. An older worker ignores ?view and answers in full.
+   */
+  let w = (await wf(`/research/${id}?view=status`)).data;
+  if (w?.view === 'status') {
+    if (w.status === 'COMPLETE' || w.status === 'FAILED' || officialPastDeadline(j, w)) w = (await wf(`/research/${id}`)).data;
+  }
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
   await ensureMarketLane(sb, j, j.result_json);
@@ -2390,13 +2417,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       });
   }
   if (w.status !== 'COMPLETE') {
-    const startedAt = Date.parse(j.result_json?._worker?.startedAt || '');
-    const workerAgeMs = Number.isFinite(startedAt)
-      ? Date.now() - startedAt
-      : 0;
-    const MAX_BROWSER_WAIT_MS = OFFICIAL_BROWSER_DEADLINE_MS;
-
-    if (startedAt && workerAgeMs > MAX_BROWSER_WAIT_MS) {
+    if (officialPastDeadline(j, w)) {
       const p = j.result_json || {};
       const partialResults = Array.isArray(w.results) ? w.results : [];
 
@@ -2461,7 +2482,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // have just filled it in and this branch is the one that repeats.
     return sb.from('research_jobs').update({
       result_json: j.result_json,
-      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null },
+      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null },
       updated_at: now(),
     }).eq('id', j.id);
   }

@@ -182,6 +182,18 @@ function safePageUrl(page: any): string | null {
 
 export class ResearchOrchestrator {
   private jobs = new Map<string, ResearchJob>();
+  /*
+   * ADMISSION CONTROL (2026-10-10, "what if 1000 people run Verify at once").
+   *
+   * Every job opens its own Chromium. Unbounded, a burst of jobs exhausts the
+   * container's memory and the crash takes every running job with it. At most
+   * WORKER_MAX_ACTIVE_JOBS run at once; the rest wait in arrival order with a
+   * visible queue position, and start the moment a slot frees. A slot is held
+   * until the job is terminal (a job waiting for a human keeps its browser).
+   */
+  private readonly maxActive = Math.max(1, Number(process.env.WORKER_MAX_ACTIVE_JOBS) || 4);
+  private active = new Set<string>();
+  private waiting: Array<{ job: ResearchJob; start: () => void }> = [];
   private sessions = new Map<string, SessionState>();
   private ledgers = new Map<string, EvidenceLedger>();
   private entityQueues = new Map<string, EntityQueue>();
@@ -200,6 +212,7 @@ export class ResearchOrchestrator {
   private prefetch = new Map<string, Promise<{ result: any; keep: boolean; durationMs?: number }>>();
 
   constructor() {
+    setInterval(() => this.pumpQueue(), 1_000).unref?.();
     setInterval(async () => {
       for (const [id, s] of this.sessions) {
         if (Date.now() > s.expires) {
@@ -282,6 +295,45 @@ export class ResearchOrchestrator {
     return finalized;
   }
 
+  /** Start now if a slot is free, else queue in arrival order. */
+  private admit(job: ResearchJob, start: () => void): void {
+    if (this.active.size < this.maxActive) {
+      this.active.add(job.id);
+      (job as any).runStartedAt = now();
+      start();
+      return;
+    }
+    (job as any).queuedAt = now();
+    this.waiting.push({ job, start });
+    this.renumberQueue();
+  }
+
+  private renumberQueue(): void {
+    this.waiting.forEach((w, i) => { (w.job as any).queuePosition = i + 1; });
+  }
+
+  /** Frees the slots of finished jobs and starts the next ones in line. */
+  private pumpQueue(): void {
+    for (const id of this.active) {
+      const j = this.jobs.get(id);
+      if (!j || ['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status) || j._abandoned) this.active.delete(id);
+    }
+    while (this.active.size < this.maxActive && this.waiting.length) {
+      const next = this.waiting.shift()!;
+      if (['FAILED', 'CANCELLED'].includes(next.job.status)) continue;
+      delete (next.job as any).queuePosition;
+      this.active.add(next.job.id);
+      (next.job as any).runStartedAt = now();
+      next.start();
+    }
+    this.renumberQueue();
+  }
+
+  /** Admission snapshot for /health and the status view. */
+  admission(): { maxActive: number; active: number; queued: number } {
+    return { maxActive: this.maxActive, active: this.active.size, queued: this.waiting.length };
+  }
+
   getJob(id: string): ResearchJob | undefined {
     return this.jobs.get(id);
   }
@@ -300,10 +352,12 @@ export class ResearchOrchestrator {
     const id = randomUUID();
     const job: ResearchJob = { id, query, mode, status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], createdAt: now(), updatedAt: now(), tasConfig, captchaPolicy };
     this.jobs.set(id, job);
-    this.run(job).catch((e) => {
-      job.status = 'FAILED';
-      job.stage = 'FAILED';
-      job.error = String(e);
+    this.admit(job, () => {
+      this.run(job).catch((e) => {
+        job.status = 'FAILED';
+        job.stage = 'FAILED';
+        job.error = String(e);
+      });
     });
     return job;
   }
@@ -356,10 +410,12 @@ export class ResearchOrchestrator {
     const step: StepDescriptor = { type: 'entity', source, idCode: stepIdCode, name };
     const job: ResearchJob = { id, query: stepIdCode || name, mode: 'cadastral', status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], steps: [step], createdAt: now(), updatedAt: now(), captchaPolicy };
     this.jobs.set(id, job);
-    this.run(job).catch((e) => {
-      job.status = 'FAILED';
-      job.stage = 'FAILED';
-      job.error = String(e);
+    this.admit(job, () => {
+      this.run(job).catch((e) => {
+        job.status = 'FAILED';
+        job.stage = 'FAILED';
+        job.error = String(e);
+      });
     });
     return job;
   }

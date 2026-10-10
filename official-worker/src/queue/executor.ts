@@ -21,12 +21,12 @@ import type { JobBrowser } from '../browser/LocalBrowserRuntime.js';
 import { captchaService, parseCaptchaPolicy } from '../captcha/captchaService.js';
 import type { CaptchaPolicy } from '../captcha/captchaService.js';
 import type { StepDescriptor } from '../orchestrator/ResearchContext.js';
-import { acquireTasApi, getCachedVisual, probeTasResolvedCode, toLegacyTasResult } from '../workflows/tas/api/TasApiWorkflow.js';
+import { acquireTasApi, getCachedVisual, probeTasResolvedCode, tasEvidenceObjects, toLegacyTasResult } from '../workflows/tas/api/TasApiWorkflow.js';
 import { tasApiOptionsFromEnv } from '../workflows/tas/api/TasApiStep.js';
 import { runMyGovApiStep } from '../workflows/mygov/MyGovApiWorkflow.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
 import { compactResult } from './evidence.js';
-import type { QueueTask } from './gateway.js';
+import type { EvidenceRef, QueueTask } from './gateway.js';
 import type { Executor, TaskOutcome } from './QueueRunner.js';
 
 /** The orchestrator surface the executor needs (structural, so this module
@@ -69,7 +69,7 @@ function scanEntities(source: string, docs: any[] | undefined) {
 const TRANSIENT_CAPTCHA = new Set(['NO_CHANGE', 'TIMEOUT', 'UNSOLVABLE', 'PROVIDER_ERROR', 'BUDGET_EXHAUSTED']);
 
 /** Map a finished source result to a task outcome; store complete evidence. */
-async function settle(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, cacheScope: string | null): Promise<TaskOutcome> {
+async function settle(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, cacheScope: string | null, extraRefs: EvidenceRef[] = []): Promise<TaskOutcome> {
   const r = out.result ?? {};
   if (out.keep || r.status === 'WAITING_HUMAN' || r.status === 'CAPTCHA_REQUIRED') {
     // Why the CAPTCHA gave up travels with the task (matched by prefix downstream).
@@ -88,7 +88,7 @@ async function settle(task: QueueTask, out: { result: any; keep: boolean }, uplo
     return { type: 'fail', error: String(r.error ?? 'SOURCE_FAILED').slice(0, 500), retryable: true };
   }
   const c = await compactResult(r, upload);
-  return { type: 'complete', result: c.result, evidenceRefs: c.evidenceRefs, contentHash: c.contentHash, cacheScope };
+  return { type: 'complete', result: c.result, evidenceRefs: [...c.evidenceRefs, ...extraRefs], contentHash: c.contentHash, cacheScope };
 }
 
 export function createVerifyExecutor(deps: ExecutorDeps): Executor {
@@ -131,14 +131,28 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
         // replica can serve any job.
         // Bounded upstream (≤ VISUAL_ASSET_MAX assets, byte budget); `stored`
         // tells research-agent the object exists without a storage listing.
-        for (const v of result.tasApi?.visuals ?? []) {
-          const img = getCachedVisual(String(v.id));
+        // The two newest cases' visuals (a superset of their gallery assets) are stored the same way, once per hash.
+        const storedIds = new Set<string>();
+        for (const v of [...(result.tasApi?.visuals ?? []), ...(result.tasApi?.priorityVisuals ?? [])]) {
+          const id = String(v.id);
+          if (storedIds.has(id)) {
+            v.stored = true;
+            continue;
+          }
+          const img = getCachedVisual(id);
           if (!img) continue;
-          await upload(String(v.id), img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes)
-            .then(() => { v.stored = true; })
-            .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'visual_upload_failed', task: task.id, sha: String(v.id).slice(0, 12), error: String((e as Error)?.message ?? e).slice(0, 160) })));
+          await upload(id, img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes)
+            .then(() => { v.stored = true; storedIds.add(id); })
+            .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'visual_upload_failed', task: task.id, sha: id.slice(0, 12), error: String((e as Error)?.message ?? e).slice(0, 160) })));
         }
-        return settle(task, { result, keep: false }, upload, scope);
+        // Sanitized raw detail / form replies: content-addressed evidence, never inline.
+        const extraRefs: EvidenceRef[] = [];
+        for (const ev of tasEvidenceObjects(raw)) {
+          await upload(ev.sha256, 'application/json', ev.json)
+            .then((path) => { extraRefs.push({ sha256: ev.sha256, path, chars: ev.json.length, contentType: 'application/json', documentId: `tas_${ev.documentId}`, title: `TAS ${ev.kind} reply ${ev.documentId}` }); })
+            .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'tas_raw_upload_failed', task: task.id, kind: ev.kind, error: String((e as Error)?.message ?? e).slice(0, 160) })));
+        }
+        return settle(task, { result, keep: false }, upload, scope, extraRefs);
       }
 
       if (task.source === 'mygov') {

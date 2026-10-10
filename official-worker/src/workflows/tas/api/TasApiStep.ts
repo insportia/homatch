@@ -20,6 +20,13 @@ export function tasApiOptionsFromEnv(env: Record<string, string | undefined> = p
     // pdf.js in headless Chromium (TAS_VISUAL_PAGE_RENDER=false turns it off).
     visualBudgetMs: num('TAS_VISUAL_BUDGET_MS', 180_000),
     renderPdfPages: defaultPdfRendererFactory(env),
+    // Two newest cases: full fidelity. Bounds are hard limits that DEFER
+    // (with a reason, continued by the next run) — never silent loss.
+    priorityMaxBytes: num('TAS_PRIORITY_MAX_BYTES', 150 * 1024 * 1024),
+    priorityRenderPages: num('TAS_PRIORITY_RENDER_PAGES', 48),
+    priorityConcurrency: num('TAS_PRIORITY_CONCURRENCY', 2),
+    // Public application form discovery (read-only, ≤ 3 requests per priority case). NOT live-verified.
+    formDiscovery: env.TAS_FORM_DISCOVERY !== 'false',
   };
 }
 

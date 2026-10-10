@@ -30,6 +30,36 @@ from this repository (its sandbox cannot reach tas.ge / docs.tbilisi.gov.ge).
 | Decision outcome / number / issue date from response text | Shape VERIFIED for one motion (639208/4304382: decision 4303543, 13/12/2018, intermediate); other templates' wording NOT VERIFIED | `decisions.ts` (`extractDecision`), conservative: no operative wording → UNDETERMINED |
 | 1161121: 21 vs 22 | The history's line-anchored regex `^s\d+\.attachedFileId=` only sees assignment-form records, not inline object literals — the plausible cause of 21 | graph evaluation covers both forms (tested) |
 
+## Two newest cases — full fidelity (tas-api-2, 2026-10-10)
+
+Production forensic (job 220ed087, parcel 01.18.06.019.055, 19 cases): every
+stored case had `title:null, status:null, values:[]`, `unmappedKeys:['isSuccess']`;
+AR11161121 (22 attachments) had 21 attachments `NOT_PROCESSED_BUDGET`. Changes,
+and what is and is not verified:
+
+| Contract / behaviour | Status | Encoded in |
+|---|---|---|
+| Detail reply wraps the case in an envelope carrying `isSuccess` (the only unmapped root key in production) | INFERRED from production `unmappedKeys`; the envelope key holding the case (`source`/`data`/…) is NOT VERIFIED — the normaliser picks the root or the child object carrying the most case fields | `caseRootOf()` in `tasModel.ts` |
+| Label/value pairs anywhere in the detail graph (`docValues`, `docClassCalculatorValues`, `archDocMeta`, `docAuthor`, `coApplicants[]`, `archDocType`, any `{name\|label\|title\|key…, value\|text…}`) → `values[{label,value,path}]` | Field names NOT VERIFIED live (still "from master prompt"); extraction is graph-wide so unknown containers are still read | `extractLabelValuePairs()` |
+| Sanitized raw detail reply (personal ids masked, phones/e-mails removed) stored as content-addressed JSON evidence | Worker-side only | `TasApiCase.rawDetail`, `tasEvidenceObjects()`, `queue/executor.ts` |
+| Priority = two newest cases by the application's own date (`detail.submittedAt ?? searchRow.date`), parcel-matched; tie-break date desc → registration number desc → documentId desc | Deterministic, tested | `priority.ts` `selectPriorityCases()` |
+| Date forms: ISO (zone-less = UTC), DD/MM/YYYY, DD.MM.YYYY, DD-MM-YYYY with HH:MM[:SS], YYYY.MM.DD, Georgian month names | Real TAS date formats beyond `new Date(…)` and DD/MM/YYYY are NOT VERIFIED | `parseTasDateMs()` |
+| Public form page `/architect/public.html?docId=<id>` → `<script src=…/architect/dwr/interface/*.js>` → DWR method names | **NOT VERIFIED LIVE** (sandbox cannot reach docs.tbilisi.gov.ge). Behind `TAS_FORM_DISCOVERY` (default on); ≤ 3 HTTP requests per priority case, no retries, same-origin scripts only; method names recorded in `tasApi.formDiscovery.methods` | `formDiscovery.ts`, `priority.ts` (`findInterfaceScripts`, `parseDwrInterface`) |
+| Form read call: only a method whose NAME reads one document/form/values by id (`get/load/read/find/fetch/view/show…` + `public/form/value/application/document/doc`), exactly one parameter, no write verb, not a list/search/motion method; called once with `string:<documentId>`, plaincall at `/architect/dwr/call/plaincall/<Script>.<method>.dwr`, page `/architect/public.html?docId=<id>` | **NOT VERIFIED LIVE** — no such method is known to exist; a missing method is `form.status: NOT_AVAILABLE`, any error `FAILED` (with reason), never fatal | `pickFormMethod()`, `captureCaseForm()` |
+| `DownloadServlet` per-request byte bound for priority attachments (default 150 MB, `TAS_PRIORITY_MAX_BYTES`) | Same endpoint as above (EXERCISED); larger files → `DEFERRED` `PAYLOAD_TOO_LARGE:<bytes>` | `TasApiClient.request(…, {maxBytes})` |
+| DWG / PLA / PLN / RAR / ZIP / 7Z / DXF / RVT / IFC / SKP are accounted from metadata (`UNSUPPORTED_FORMAT`, official URL, declared size) and NOT downloaded | Policy (nothing in the worker reads them) | `isUnsupportedExtension()` |
+| Per-page PDF text (scanned page = < 50 chars) via pdf-parse `pagerender` | pdf-parse API; fidelity on real TAS PDFs NOT VERIFIED (see PDF parser row) | `defaultPdfParser` |
+
+Deferral / continuation: priority attachments are processed first, in a
+deterministic order (priority 1 then 2, by attachedFileId). A file is
+`DEFERRED` only when a hard bound is hit (run deadline reserve, byte bound) —
+with `deferredReason`, the official URL, `completeness.deferredAttachmentIds`
+and `tasApi.priorityCoverage: 'PARTIAL'`. Finished files are cached per
+attachedFileId (text, page info, visual records; visual bytes while held in
+the in-process cache), so a follow-up run on the same replica re-uses them
+and only fetches what was deferred. The cache is in-process: a different
+replica re-reads from TAS.
+
 Acceptance (owner's TASK.md §19) has NOT been met from this repository.
 API_FIRST therefore ships inactive: `admin_settings.verify_tas_implementation`
 defaults to LEGACY, and any FAILED API run falls back to LEGACY in-step.

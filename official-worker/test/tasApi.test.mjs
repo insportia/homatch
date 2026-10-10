@@ -229,7 +229,10 @@ test('API_FIRST: unchanged evidence is served from cache on the next run (no re-
   const r2 = await acquireTasApi(FULL, { fetcher: b.fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4 });
   // 133 responses = 67 PDF + 1 HTML (cached) + 65 EMPTY. EMPTY answers are
   // deliberately NOT cached — a decision uploaded since must be seen.
-  assert.ok(r2.accounting.cacheHits >= 68 + 413 - VISUAL_FILE_MAX);
+  // DWG/PLA/RAR are accounted from metadata and never downloaded, so they are not cache hits either.
+  const neverDownloaded = r2.cases.flatMap((c) => c.attachments).filter((x) => x.outcome === 'UNSUPPORTED_FORMAT' && !x.sha256).length;
+  assert.ok(neverDownloaded > 0);
+  assert.ok(r2.accounting.cacheHits >= 68 + 413 - neverDownloaded - VISUAL_FILE_MAX);
   assert.equal(r2.accounting.responses.EMPTY, 65);
   assert.ok(b.calls.filter((c) => c.path === '/DownloadServlet').length <= VISUAL_FILE_MAX, 'only shortlisted visuals re-fetched');
 });
@@ -239,7 +242,11 @@ test('API_FIRST: attachment download budget is ACCOUNTED, not hidden', async () 
   const { fetcher } = fixtureFetcher();
   const r = await acquireTasApi(FULL, { fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4, maxAttachmentDownloads: 50 });
   assert.equal(r.accounting.attachments, 413);
-  assert.ok(r.accounting.attachmentOutcomes.NOT_PROCESSED_BUDGET >= 413 - 56);
+  // The budget binds OLDER cases only; the two newest cases are never budget-cut.
+  const older = r.cases.filter((c) => !c.priority).flatMap((c) => c.attachments);
+  const neverDownloaded = older.filter((x) => x.outcome === 'UNSUPPORTED_FORMAT' && !x.sha256).length;
+  assert.ok(r.accounting.attachmentOutcomes.NOT_PROCESSED_BUDGET >= older.length - neverDownloaded - 56);
+  assert.equal(r.cases.filter((c) => c.priority).flatMap((c) => c.attachments).filter((x) => x.outcome === 'NOT_PROCESSED_BUDGET').length, 0);
 });
 
 test('legacy wire adapter: same LegacySourceResult shape, one bounded document per case, structured tasApi without text', async () => {
@@ -252,7 +259,10 @@ test('legacy wire adapter: same LegacySourceResult shape, one bounded document p
   assert.equal(legacy.originalCadastralCode, FULL);
   assert.equal(legacy.resolvedSearchCadastralCode, BASE);
   assert.equal(legacy.documents.length, 19);
-  assert.ok(legacy.documents.every((d) => d.rawText.length <= 5000 && d.complete));
+  // Older cases are bounded; the two newest carry their complete text.
+  assert.ok(legacy.documents.filter((d) => !d.priority).every((d) => d.rawText.length <= 5000 && d.complete));
+  assert.equal(legacy.documents.filter((d) => d.priority).length, 2);
+  assert.ok(legacy.documents.filter((d) => d.priority).every((d) => d.textComplete && !d.textTruncated));
   assert.ok(legacy.documents.some((d) => d.textTruncated));
   assert.equal(legacy.workflowResult.state, 'TAS_EXHAUSTED');
   const c = legacy.tasApi.cases.find((x) => x.documentId === '1161121');
@@ -378,7 +388,8 @@ test('processing ledger: discovery vs processing vs deferral, and an honest inco
   const partial = await acquireTasApi(FULL, { fetcher: b.fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4, maxAttachmentDownloads: 30 });
   assert.equal(partial.ledger.incomplete, true);
   assert.ok(partial.ledger.incompleteReasons.includes('ATTACHMENTS_DEFERRED_BY_BUDGET'));
-  assert.ok(partial.ledger.deferred.attachmentsBudget > 300);
+  assert.ok(partial.ledger.deferred.attachmentsBudget > 250);
+  assert.equal(partial.ledger.deferred.attachmentsPriority, 0, 'priority cases are never budget-deferred');
 });
 
 test('a hostile reply cannot pollute Object.prototype through any path step', () => {

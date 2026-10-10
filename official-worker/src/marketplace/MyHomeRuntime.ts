@@ -9,6 +9,7 @@ import { createCrawleeBrowserReader } from './myhome/crawlee-page.js';
 export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fetch) {
   const token = env.MYHOME_WORKER_TOKEN ?? '', baseUrl = env.SUPABASE_URL ?? '';
   const enabled = env.MYHOME_MARKETPLACE_ENABLED === 'true';
+  const enrichDetails = env.MYHOME_DETAIL_ENRICHMENT_ENABLED === 'true';
   const crawleePages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'crawlee';
   const browserPages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'browser' || crawleePages;
   const createReader = () => crawleePages ? createCrawleeBrowserReader() : browserPages ? createPublicBrowserReader() : null;
@@ -33,7 +34,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     heartbeat.unref();
     try {
       log('claimed', { runId: job.runId, attempt: job.attempt });
-      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, enrichDetails: env.MYHOME_DETAIL_ENRICHMENT_ENABLED === 'true', checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
+      const result = await acquireMyHome(job.request, { fetcher, engine: myHomeEngine, enrichDetails, checkpoint: { queryApplied: job.queryApplied, returnedCount: job.returnedCount }, pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs, deadlineAt: job.deadlineAt, signal: controller.signal,
         report: async report => {
           const accepted = await ingest({ action: 'report', runId: job.runId, result: report });
           if ((accepted.rejected?.length ?? 0) > 0 || accepted.accepted !== report.listings.length) throw new Error('Marketplace ingest rejected acquisition records');
@@ -72,10 +73,12 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
       const count = await publicJson(endpoints.count + query, 'ka', fetcher);
       const rows = list.payload?.data?.data;
       if (list.payload?.result !== true || !Array.isArray(rows)) throw new Error('Production MyHome list schema invalid');
-      const first = rows.find((row: any) => row.dynamic_slug);
+      // Search-result acquisition is the default; a detail page is opened at
+      // startup only when optional enrichment is enabled, never on every boot.
+      const first = enrichDetails ? rows.find((row: any) => row.dynamic_slug) : null;
       const detail = first ? await publicPage(`https://www.myhome.ge/udzravi-qoneba/${encodeURIComponent(first.dynamic_slug)}-${first.id}/`, pageFetcher, String(first.id)) : null;
       smoke = { pageTransport: crawleePages ? 'CRAWLEE' : browserPages ? 'BROWSER' : 'HTTP', locationsStatus: locations.status, filtersStatus: filters.status, listStatus: list.status, countStatus: count.status,
-        detailStatus: detail?.status ?? null, parsed: rows.length, total: count.payload?.data?.total ?? null, checkedAt: new Date().toISOString() };
+        detailStatus: detail?.status ?? (enrichDetails ? null : 'NOT_REQUESTED'), parsed: rows.length, total: count.payload?.data?.total ?? null, checkedAt: new Date().toISOString() };
       log('production_connectivity', smoke);
       });
     } catch (error) { lastError = (error as Error).message; log('connectivity_error', { message: lastError }); }

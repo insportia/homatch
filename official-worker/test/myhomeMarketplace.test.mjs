@@ -315,6 +315,26 @@ test('runtime uses authenticated claim, heartbeat and result report without a se
   finally{runtime.shutdown();}
 });
 
+test('runtime startup connectivity check reads search and count but opens no detail page by default',async()=>{
+  const source=simulated({lastPage:1,total:3});const sourceUrls=[];
+  const fetcher=async(input,init)=>{
+    if(!String(input).includes('/functions/v1/')){sourceUrls.push(new URL(String(input)));return source.fetcher(input,init);}
+    const body=JSON.parse(init.body);
+    if(body.action==='source-health') return Response.json({accessRestricted:false});
+    if(body.action==='claim') return Response.json({runs:[]});
+    return Response.json({});
+  };
+  const runtime=startMyHomeRuntime({SUPABASE_URL:'https://example.supabase.co',MYHOME_WORKER_TOKEN:'x'.repeat(40),MYHOME_MARKETPLACE_ENABLED:'true'},fetcher);
+  try {
+    for(let i=0;i<100&&!runtime.status().connectivity;i++) await new Promise(resolve=>setTimeout(resolve,10));
+    const smoke=runtime.status().connectivity;
+    assert.ok(smoke,'startup connectivity check completed');
+    assert.equal(smoke.listStatus,200);assert.equal(smoke.detailStatus,'NOT_REQUESTED');
+    const pages=sourceUrls.filter(url=>url.hostname==='www.myhome.ge');
+    assert.ok(pages.length>=1);
+    assert.ok(pages.every(url=>url.pathname==='/udzravi-qoneba/'),'only the search page is opened: '+pages.map(url=>url.pathname).join(','));
+  } finally{runtime.shutdown();}
+});
 test('access diagnostics distinguish explicit CAPTCHA, managed challenge and unknown rejection without leaking response data', async () => {
   for (const [body,headers,category] of [
     ['<div class="cf-turnstile">SECRET_CHALLENGE_TOKEN</div>',{'server':'cloudflare'},'CAPTCHA_REQUIRED'],

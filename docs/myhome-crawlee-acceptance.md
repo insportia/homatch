@@ -194,3 +194,64 @@ It does not authorize a new search request through the existing provider-wide
 restriction circuit. Current search accessibility has NOT been freshly verified;
 operator-approved source authorization/clearance is still required for live proof.
 
+
+## Handoff continuation — 2026-10-10 (evidence added after PR152)
+
+Read-only production evidence not captured above:
+
+| UTC | Stage | Outcome (from `discovery_marketplace_worker_runs` / Railway logs) |
+| --- | --- | --- |
+| 2026-10-08 19:28, 19:52 | anonymous `api-statements.tnet.ge` list | FAILED, HTTP 401 (API closed to anonymous use) |
+| 2026-10-08 20:10 | **search page** `/udzravi-qoneba/?cities=1&urbans=38…` | BLOCKED, HTTP 403 |
+| 2026-10-08 20:23 | **search page**, same query | BLOCKED, HTTP 403 CHALLENGE_REQUIRED server=cloudflare |
+| 2026-10-09 07:59 | search + detail, BROWSER | COMPLETE, 44 persisted |
+| 2026-10-09 11:20 | first detail page 21944160 | BLOCKED, HTTP 403 CHALLENGE_REQUIRED server=cloudflare |
+| 2026-10-10 19:07:03 | startup connectivity of deployment `8d5c3fe9` (main `a452ba8`, BROWSER) | locations/filters/list/count/detail all HTTP 200; 24 parsed; total 26079 |
+
+Consequences:
+
+- The restriction has been observed on search pages too, not only on detail
+  pages. Search-only acquisition reduces requests per run (count + result
+  pages, no per-listing page) but is not proven to avoid the restriction.
+- Outcomes changed from 403 to 200 and back to 403 within the same deployment
+  and region over hours. The cause (rule, rate, egress reputation, session)
+  remains unobserved; nothing above establishes it.
+- Main (deployed) has no durable circuit and its startup check opened one
+  detail page on every worker boot. PR152's circuit, once deployed, reads
+  the 2026-10-09 ACCESS_DENIED run and blocks MyHome until a deliberate
+  clearance newer than that failure is recorded.
+
+Code change in this continuation: the startup connectivity check opens a
+detail page only when `MYHOME_DETAIL_ENRICHMENT_ENABLED=true`; by default it
+reads dictionaries, one search page and count, and reports
+`detailStatus: NOT_REQUESTED`. Regression test:
+`runtime startup connectivity check reads search and count but opens no detail
+page by default`.
+
+The out-of-scope Verify edit (`src/verify/providerOutcomes.ts`) was reverted
+to main.
+
+Field evidence (retained authentic fixture, B-class): the search record's
+`comment` (487 chars) is byte-identical to the detail page's `comment`, so
+search-only acquisition keeps the full description for that record. Search
+records lack condition/heating/parking/build-year/bathroom IDs, owner name,
+phone, created_at and is_active; those stay unknown (listed in
+`missingFields`), never inferred.
+
+### Operator clearance (deliberate, owner-authorized only)
+
+The worker has no clearance action. An operator records clearance on the
+worker row, only with fresh evidence of access and owner authorization:
+
+```sql
+update discovery_marketplace_workers
+set health = health - 'accessRestricted'
+  || jsonb_build_object('accessClearedAt', now(), 'clearedBy', '<operator>',
+                        'clearanceEvidence', '<evidence reference>')
+where worker_id = 'myhome-agent'
+returning health;
+```
+
+Any later 401/403/challenge writes a new ACCESS_DENIED run (newer than the
+clearance) and closes the circuit again; retries, rotation and challenge
+interaction stay disabled.

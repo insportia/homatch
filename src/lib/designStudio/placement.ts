@@ -131,7 +131,9 @@ export function footprint(asset: Pick<CatalogAsset, 'widthM' | 'depthM'>, at: Po
 
 export type PlacementIssueCode =
   | 'NO_ROOM' | 'OUTSIDE_ROOM' | 'THROUGH_WALL' | 'BLOCKS_DOOR' | 'OVERLAPS_OBJECT' | 'TIGHT_ACCESS'
-  | 'ON_STAIRS' | 'BLOCKS_STAIRS';
+  | 'ON_STAIRS' | 'BLOCKS_STAIRS'
+  /** The walkthrough build only: in front of a piece used from its front, or its own front taken (build.ts). */
+  | 'BLOCKS_USE';
 
 export interface PlacementIssue {
   code: PlacementIssueCode;

@@ -340,7 +340,9 @@ test('circulation removes the least furniture that frees the way: the corrected 
   // 10 m² kitchen with its run and fridge: with the comfort margin the table gives way (CIRCULATION), never the run.
   assert.deepEqual(where('dev/kitchen-run'), ['r4']);
   const table = report.items.find((i) => i.code === 'dev/dining-table-4');
-  assert.ok(where('dev/dining-table-4').length === 1 || table.reason === 'CIRCULATION', JSON.stringify(table));
+  // Nor may it stand in the floor the run and the fridge are worked from (build.ts blocksUse): with none left it is
+  // not placed at all (NO_SAFE_PLACE).
+  assert.ok(where('dev/dining-table-4').length === 1 || ['CIRCULATION', 'NO_SAFE_PLACE'].includes(table.reason), JSON.stringify(table));
   // Walkability is now judged with a comfort margin (a 0.7 m passage, not a body's 0.44 m): the study's desk and its
   // chair narrowed the only way into r3 below that, and no single clean pose clears it, so they give way — the bed,
   // the room's own piece, never does. Production dropped 31 of 37 pieces here; only small and mid pieces may go.

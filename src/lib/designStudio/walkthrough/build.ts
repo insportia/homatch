@@ -54,7 +54,7 @@ import { arrangeSeating, seatRole, type SeatPiece } from './seatingGroup.ts';
 import { backGap, plausibility, WALL_BACK_GAP_M } from './plausibility.ts';
 import { type ObjectShape, shapedAsset } from '../objectShape.ts';
 import { applyOperation, type Operation, type OperationContext, validateOperation } from '../operations.ts';
-import { candidatePositions, evaluateInWorld, footprint, isSeat, isSeatTable, type Obb, type PlacementIssue, placementWorld, snapToWall, solidBox, solidOverlap, TUCK_M } from '../placement.ts';
+import { candidatePositions, evaluateInWorld as evaluateBase, footprint, frontZone, isSeat, isSeatTable, type Obb, type PlacementIssue, type PlacementWorld, placementWorld, snapToWall, solidBox, solidOverlap, TUCK_M } from '../placement.ts';
 import { ceilingSurfaceId, floorSurfaceId, type Point, pointInPolygon, type SpaceModel, type SpaceRoom, surfacesOfRoom, wallFrame } from '../space.ts';
 
 // ── The rooms, as the model is shown them ────────────────────────────────────
@@ -202,6 +202,38 @@ const DEG = Math.PI / 180;
 type Verdict = 'CLEAN' | 'TIGHT' | null;
 const verdictOf = (issues: PlacementIssue[]): Verdict =>
   issues.length === 0 ? 'CLEAN' : issues.every((i) => i.code === 'TIGHT_ACCESS') ? 'TIGHT' : null;
+
+/**
+ * Pieces used from their front: a wardrobe's doors, a kitchen run's counter, a dresser's drawers, a fixture stood
+ * at. The floor before them (their catalogue clearance) is theirs.
+ */
+const usedFromFront = (a: CatalogAsset) => a.clearanceM > 0 && !isFlat(a)
+  && /WARDROBE|DRESSER|KITCHEN|FRIDGE|REFRIGERATOR|WASHER|VANITY|TOILET|SHOWER|\bBATH\b|BOOKSHELF|DESK/.test([a.category, a.subcategory, a.code].filter(Boolean).join(' ').toUpperCase());
+
+/**
+ * Does a piece take the floor a piece is used from? Standing in front of a wardrobe, a kitchen run or a vanity (the
+ * table pushed against the counter, the wardrobe whose doors meet the bed), or standing used-from-front with another
+ * piece before it. A seat drawn up to its table is how a table is used, never a finding.
+ */
+function blocksUse(world: PlacementWorld, asset: CatalogAsset, at: Point, rotation: number, instanceId?: string): boolean {
+  if (isFlat(asset)) return false;
+  const box = solidBox(footprint(asset, at, rotation));
+  const mine = usedFromFront(asset) ? frontZone(asset, at, rotation, asset.clearanceM) : null;
+  for (const o of world.objects) {
+    if (o.flat || o.id === instanceId) continue;
+    if (usedFromFront(o.asset) && solidOverlap(box, frontZone(o.asset, { x: o.object.position.x, y: o.object.position.z }, o.object.rotationY, o.asset.clearanceM))) return true;
+    const seatPair = (isSeat(asset) && isSeatTable(o.asset)) || (isSeatTable(asset) && isSeat(o.asset));
+    if (mine && !seatPair && solidOverlap(mine, o.box)) return true;
+  }
+  return false;
+}
+
+/** The placement rules (placement.ts) and, for a walkthrough, the floor each piece is used from (blocksUse). */
+function evaluateInWorld(world: PlacementWorld, asset: CatalogAsset, at: Point, rotation: number, instanceId?: string): PlacementIssue[] {
+  const issues = evaluateBase(world, asset, at, rotation, instanceId);
+  if (blocksUse(world, asset, at, rotation, instanceId)) issues.push({ code: 'BLOCKS_USE', severity: 'WARN' });
+  return issues;
+}
 
 /** The shape a scaled piece is drawn and collided at (no shape at scale 1). */
 function shapeAt(asset: CatalogAsset, scale: number): ObjectShape | undefined {
@@ -377,8 +409,9 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     // and passages kept clear by the same search): the room keeps what the picture shows while it has space.
     if (isLocked(item)) {
       // At its own size, else a little smaller (a 0.8 m shower tray where a 0.9 m one does not fit), never less
-      // than FALLBACK_SCALES allows.
-      for (const k of FALLBACK_SCALES) {
+      // than FALLBACK_SCALES allows — a shower down to the smallest tray made (SHOWER_TRAY_MIN_M): it is built to
+      // the room, and a 1.2 m bath whose door needs its half metre takes a 0.7 m tray.
+      for (const k of fallbackScales(own, item.scale || 1)) {
         const sized = shapedAsset(own, { shape: itemShape(own, item, (item.scale || 1) * k) });
         const free = findPose(space, assets, working.objects, room, sized, { ...item, pose: null, lock: null });
         if (free) { options.push({ ...free, relocated: true, ...(k !== 1 ? { scale: (item.scale || 1) * k } : {}) }); break; }
@@ -399,6 +432,20 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       }
       if (backed.length) options.splice(0, options.length, ...backed);
       else if (!isEssential(own)) options.length = 0;
+    }
+    // A dining chair stands drawn up to its table, or not at all: a chair left where the render showed it, its table
+    // moved off the counter's floor, stood alone in the kitchen.
+    const table = isSeat(own) && !isLocked(item)
+      ? placedOrder.find((p) => p.roomId === room.id && p.report.outcome !== 'DROPPED' && !p.flat && isSeatTable(p.asset)) : undefined;
+    if (table) {
+      const world = placementWorld({ space, assets, objects: working.objects }, room);
+      const seen = item.pose ? { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y } : null;
+      const slots = tableSlots(table.box, asset).filter((c) => pointInPolygon(c.at, room.polygon) && !onStairs(space, asset, c.at, c.rotation)
+        && verdictOf(evaluateInWorld(world, asset, c.at, c.rotation)) === 'CLEAN')
+        .map((c) => ({ ...c, kept: false, why: 'AT_TABLE', movedM: seen ? r3(Math.hypot(c.at.x - seen.x, c.at.y - seen.y)) : null, verdict: 'CLEAN' as Verdict }))
+        .sort((a, b) => (a.movedM ?? 0) - (b.movedM ?? 0));
+      options.splice(0, options.length, ...slots);
+      if (!slots.length) { entry.reason = 'NO_PLACE_AT_TABLE'; continue; }
     }
     if (!options.length) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
     let found: (typeof options)[number] | null = null;
@@ -1054,6 +1101,37 @@ const RESIZE_STEPS = [0.92, 0.85];
 const SQUEEZE_RADIUS_M = 0.1;
 /** A picture's piece with no place where it was seen is placed elsewhere in its room at these sizes, in turn. */
 const FALLBACK_SCALES = [1, 0.9, 0.85];
+/** How far a chair drawn up to a table slides under its top (m). */
+const CHAIR_TUCK_M = 0.12;
+/**
+ * The places at a table a chair is drawn up to, facing it: two along each long side of a table 1.2 m or longer
+ * (one along a shorter one), one at each end.
+ */
+function tableSlots(table: Obb, chair: Pick<CatalogAsset, 'depthM'>): Array<{ at: Point; rotation: number }> {
+  const u = { x: Math.cos(table.angle), y: Math.sin(table.angle) };
+  const v = { x: -Math.sin(table.angle), y: Math.cos(table.angle) };
+  const facing = (d: Point) => Math.atan2(d.x, -d.y);
+  const out: Array<{ at: Point; rotation: number }> = [];
+  const back = chair.depthM / 2 - CHAIR_TUCK_M;
+  const along = table.hw * 2 >= 1.2 ? [-table.hw / 2, table.hw / 2] : [0];
+  for (const side of [1, -1]) {
+    for (const t of along) {
+      const at = { x: table.cx + u.x * t + v.x * side * (table.hd + back), y: table.cy + u.y * t + v.y * side * (table.hd + back) };
+      out.push({ at, rotation: facing({ x: v.x * side, y: v.y * side }) });
+    }
+    const end = { x: table.cx + u.x * side * (table.hw + back), y: table.cy + u.y * side * (table.hw + back) };
+    out.push({ at: end, rotation: facing({ x: u.x * side, y: u.y * side }) });
+  }
+  return out;
+}
+
+/** The smallest shower tray made (m): a shower is fitted to its room down to this, never below. */
+const SHOWER_TRAY_MIN_M = 0.7;
+function fallbackScales(own: CatalogAsset, scale: number): number[] {
+  if (!/SHOWER/.test([own.subcategory, own.code].filter(Boolean).join(' ').toUpperCase())) return FALLBACK_SCALES;
+  const least = SHOWER_TRAY_MIN_M / Math.max(0.01, Math.min(own.widthM, own.depthM) * scale);
+  return least >= FALLBACK_SCALES[FALLBACK_SCALES.length - 1] ? FALLBACK_SCALES : [...FALLBACK_SCALES, 0.8, least].filter((k) => k >= least - 1e-9);
+}
 /** Trial walks one push of the final door pass may take (the plan step has one edge invocation's CPU). */
 const FINAL_PUSH_WALKS = 20;
 /** How far a picture's piece may be moved, last, to open a required route (recorded as CIRCULATION_MOVED). */
@@ -1068,7 +1146,9 @@ const PASSAGE_TOLERANCE_M = 0.05;
  * The findings that still move a piece standing where a picture of the real home shows it: not a tight front
  * zone, and not a door's keep-out unless it stands in the passage itself (see BuildInput.anchorsAsSeen).
  */
-function seenIssues(space: SpaceModel, issues: PlacementIssue[], asset: CatalogAsset, at: Point, rotation: number): PlacementIssue[] {
+function seenIssues(space: SpaceModel, issues0: PlacementIssue[], asset: CatalogAsset, at: Point, rotation: number): PlacementIssue[] {
+  // Where a photo of the real home shows a piece, the floor before another is what the home has (never a reason).
+  const issues = issues0.filter((i) => i.code !== 'BLOCKS_USE');
   if (!issues.some((i) => i.code === 'TIGHT_ACCESS' || i.code === 'BLOCKS_DOOR')) return issues;
   const box = solidBox(footprint(asset, at, rotation));
   return issues.filter((i) => {

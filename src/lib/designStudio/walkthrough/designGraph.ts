@@ -482,12 +482,43 @@ function fitScale(o: GraphObject, asset: CatalogAsset, room: SpaceModel['rooms']
   return Math.max(0.5, Math.min(1, Math.round(fit * 100) / 100));
 }
 
+/**
+ * A plan that draws the WC apart from the bath (an Indian "LET." beside a "BATH", a European WC beside a shower
+ * room) keeps its toilet in the WC. A render's map that put the toilet AND the shower in the bath left the WC empty and
+ * the bath too full to take its shower; the toilet is read the way the plan is drawn: it moves to the nearest WC
+ * that has none, from a bath that keeps a shower or a tub, and is placed afresh there (its pose belonged to the bath).
+ * Returns each moved object's new room.
+ */
+export function wetRoomMoves(graph: SpatialDesignGraph, space: SpaceModel): Map<string, string> {
+  const moves = new Map<string, string>();
+  const centre = (id: string): Point | null => {
+    const r = space.rooms.find((x) => x.id === id);
+    if (!r || !r.polygon.length) return null;
+    return { x: r.polygon.reduce((a, p) => a + p.x, 0) / r.polygon.length, y: r.polygon.reduce((a, p) => a + p.y, 0) / r.polygon.length };
+  };
+  const toilets = graph.rooms.filter((r) => r.kind === 'BATHROOM' && r.objects.some((o) => /SHOWER|BATH/.test(o.label)))
+    .flatMap((r) => r.objects.filter((o) => o.label === 'TOILET').map((o) => ({ o, from: r.roomId })));
+  for (const wc of graph.rooms.filter((r) => r.kind === 'WC' && !r.objects.some((o) => o.label === 'TOILET'))) {
+    const at = centre(wc.roomId);
+    if (!at) continue;
+    const best = toilets.filter((t) => !moves.has(t.o.id)).map((t) => ({ t, c: centre(t.from) })).filter((x) => x.c)
+      .sort((a, b) => Math.hypot(a.c!.x - at.x, a.c!.y - at.y) - Math.hypot(b.c!.x - at.x, b.c!.y - at.y))[0];
+    if (best) moves.set(best.t.o.id, wc.roomId);
+  }
+  return moves;
+}
+
 export function graphToBuildPlan(graph: SpatialDesignGraph, space: SpaceModel, materials: CatalogMaterial[], assets: Map<string, CatalogAsset>): BuildPlan {
+  const moves = wetRoomMoves(graph, space);
+  const objectsOf = (r: GraphRoom): GraphObject[] => [
+    ...r.objects.filter((o) => !moves.has(o.id)),
+    ...graph.rooms.flatMap((x) => x.objects).filter((o) => moves.get(o.id) === r.roomId).map((o) => ({ ...o, roomId: r.roomId, pose: null })),
+  ];
   const rooms: BuildRoom[] = graph.rooms.map((r) => {
     const floorM = resolveMaterial(r.floor, 'FLOOR', materials);
     const wallM = resolveMaterial(r.walls, 'WALL', materials);
     const room = space.rooms.find((x) => x.id === r.roomId);
-    const items: BuildItem[] = r.objects.filter((o) => o.code && assets.has(o.code)).map((o) => ({
+    const items: BuildItem[] = objectsOf(r).filter((o) => o.code && assets.has(o.code)).map((o) => ({
       code: o.code!, type: o.label, pose: o.pose, scale: fitScale(o, assets.get(o.code!)!, room), color: o.colors.main, origin: o.pose ? 'PLANNED' : 'PROGRAMME', refKey: o.id,
       // The render's anchors keep their place: nudged only as far as walkability needs.
       lock: o.pose && o.importance === 'ANCHOR' ? { maxShiftM: 0.45, maxTurnDeg: 20 } : null,
@@ -599,7 +630,12 @@ export function fidelityOf(graph: SpatialDesignGraph, state: DesignState, report
   // A region another piece accounts for (a countertop, a bedside lamp) is placed when its host is.
   const hostOf = new Map<string, string>();
   for (const o of objs) for (const a of o.absorbs) hostOf.set(a, o.id);
-  const placedImportant = important.filter((o) => placedRefs.has(o.id) || (hostOf.has(o.id) && placedRefs.has(hostOf.get(o.id)!)));
+  // A second copy of a one-per-room piece (the same kitchen run seen twice) is the one that stands: the room shows it.
+  const standing = report.items.filter((i) => i.instanceId && i.outcome !== 'DROPPED');
+  const twinPlaced = new Set(report.items.filter((i) => i.outcome === 'DROPPED' && i.reason === 'REDUNDANT' && i.refKey
+    && standing.some((p) => p.roomId === i.roomId && p.code === i.code)).map((i) => i.refKey!));
+  const shown = (id: string) => placedRefs.has(id) || twinPlaced.has(id);
+  const placedImportant = important.filter((o) => shown(o.id) || (hostOf.has(o.id) && shown(hostOf.get(o.id)!)));
   const refOf = new Map(report.items.filter((i) => i.instanceId).map((i) => [i.instanceId!, i.refKey ?? null]));
   const known = new Set(objs.map((o) => o.id));
   let designed = 0; let generic = 0; let invented = 0;

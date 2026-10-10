@@ -336,10 +336,11 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
       {/* ── Touch: the left thumb walks ── */}
       {touch && !overlayOpen ? <StickZone controller={c} label={tr('ds_walk_joystick')} /> : null}
 
-      {/* ── Desktop: how to start looking ── */}
-      {!touch && !locked && !overlayOpen && !live.run ? (
-        <p className="pointer-events-none absolute bottom-3 start-1/2 z-10 -translate-x-1/2 rounded-md bg-[#0C1119]/80 px-3 py-1.5 text-[13px] text-white/90 rtl:translate-x-1/2">
-          {tr('ds_ctrl_click_to_look')}
+      {/* ── Desktop: how mouse-look starts and how the mouse comes back, said before the first click ── */}
+      {!touch && !overlayOpen && !live.run ? (
+        <p className="pointer-events-none absolute start-1/2 top-16 z-10 -translate-x-1/2 rounded-md bg-[#0C1119]/80 px-3 py-1.5 text-[13px] text-white/90 ring-1 ring-white/10 rtl:translate-x-1/2"
+          role="status" aria-live="polite" data-testid="walk-look-hint">
+          {tr(locked ? 'ds_ctrl_dbl_to_release' : 'ds_ctrl_dbl_to_look')}
         </p>
       ) : null}
 
@@ -487,6 +488,7 @@ function Tutorial({ tr, touch, onClose, again }: { tr: Translate; touch: boolean
         <div className="mt-4 grid gap-3 text-[13px]" data-testid="tutorial-desktop">
           <Row keys={<><span className="grid grid-cols-3 gap-1"><span /><Key>W</Key><span /><Key>A</Key><Key>S</Key><Key>D</Key></span></>} text={tr('ds_ctrl_move')} />
           <Row keys={<span className="inline-grid h-9 w-9 place-items-center rounded-lg bg-white/10 ring-1 ring-white/25"><Mouse className="h-4 w-4" aria-hidden="true" /></span>} text={tr('ds_ctrl_look')} />
+          <Row keys={<Key wide>{tr('ds_ctrl_dbl_click')}</Key>} text={tr('ds_ctrl_dbl_toggle')} />
           <Row keys={<Key wide>{tr('ds_ctrl_click')}</Key>} text={tr('ds_ctrl_interact')} />
           <Row keys={<Key wide>Shift</Key>} text={tr('ds_ctrl_faster')} />
           <Row keys={<Key wide>Esc</Key>} text={tr('ds_ctrl_menu')} />

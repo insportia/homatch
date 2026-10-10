@@ -17616,6 +17616,12 @@ const en = {
   dsx_walk_failed_geometry: 'The floor plan of this home could not be reconstructed reliably from its pictures: some rooms are missing or misshapen. We did not build a tour that would show the wrong home.',
   ds_walk_more: 'More',
   dsx_walk_failed_quality: 'We could not furnish this home convincingly enough to walk through it — the furniture would block the way or stand where no one would put it. We did not publish a tour that would show it badly.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_ctrl_dbl_to_look: 'Double-click to look around with the mouse',
+  ds_ctrl_dbl_to_release: 'Double-click (or Esc) to get the mouse pointer back',
+  ds_ctrl_dbl_click: 'Double-click',
+  ds_ctrl_dbl_toggle: 'Mouse look on / off',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35146,6 +35152,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_walk_failed_geometry: 'ფოტოებიდან ამ ბინის გეგმის სანდოდ აღდგენა ვერ მოხერხდა: ზოგი ოთახი აკლია ან არასწორი ფორმისაა. ტური, რომელიც სხვა ბინას აჩვენებდა, არ შევქმენით.',
   ds_walk_more: 'მეტი',
   dsx_walk_failed_quality: 'ამ ბინის დამაჯერებლად მოწყობა ვერ მოხერხდა — ავეჯი გზას გადაკეტავდა ან იქ იდგებოდა, სადაც არავინ დადგამდა. ცუდად ნაჩვენები ტური არ გამოვაქვეყნეთ.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_ctrl_dbl_to_look: 'ორჯერ სწრაფად დააწკაპუნეთ — მაუსით მიმოხედვა',
+  ds_ctrl_dbl_to_release: 'ორჯერ სწრაფად დააწკაპუნეთ (ან Esc) — მაუსის ისრის დაბრუნება',
+  ds_ctrl_dbl_click: 'ორჯერ დაწკაპუნება',
+  ds_ctrl_dbl_toggle: 'მაუსით მიმოხედვა: ჩართვა / გამორთვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52667,6 +52679,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_walk_failed_geometry: 'Не удалось надёжно восстановить планировку этого дома по изображениям: некоторые комнаты отсутствуют или искажены. Мы не стали строить прогулку, которая показала бы другой дом.',
   ds_walk_more: 'Ещё',
   dsx_walk_failed_quality: 'Не удалось убедительно обставить этот дом для прогулки — мебель перекрыла бы проход или стояла бы там, где её никто не поставит. Мы не стали публиковать прогулку, которая показала бы его плохо.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_ctrl_dbl_to_look: 'Дважды щёлкните, чтобы осматриваться мышью',
+  ds_ctrl_dbl_to_release: 'Дважды щёлкните (или Esc), чтобы вернуть указатель мыши',
+  ds_ctrl_dbl_click: 'Двойной щелчок',
+  ds_ctrl_dbl_toggle: 'Обзор мышью: вкл. / выкл.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70186,6 +70204,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_walk_failed_geometry: 'Bu evin kat planı görsellerinden güvenilir şekilde yeniden oluşturulamadı: bazı odalar eksik veya biçimi bozuk. Yanlış evi gösterecek bir gezinti oluşturmadık.',
   ds_walk_more: 'Daha fazla',
   dsx_walk_failed_quality: 'Bu evi içinde gezilecek kadar inandırıcı biçimde döşeyemedik — mobilyalar yolu kapatacak ya da kimsenin koymayacağı yerlerde duracaktı. Evi kötü gösterecek bir gezinti yayımlamadık.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_ctrl_dbl_to_look: 'Fareyle etrafa bakmak için çift tıklayın',
+  ds_ctrl_dbl_to_release: 'Fare imlecini geri almak için çift tıklayın (veya Esc)',
+  ds_ctrl_dbl_click: 'Çift tıklama',
+  ds_ctrl_dbl_toggle: 'Fareyle bakış: aç / kapat',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87705,6 +87729,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_walk_failed_geometry: 'تعذّرت إعادة بناء مخطط هذا المنزل بشكل موثوق من صوره: بعض الغرف مفقودة أو مشوّهة. لم ننشئ جولة قد تعرض منزلًا مختلفًا.',
   ds_walk_more: 'المزيد',
   dsx_walk_failed_quality: 'لم نتمكن من تأثيث هذا المنزل بشكل مقنع يكفي للتجول فيه — كان الأثاث سيسد الطريق أو يقف حيث لا يضعه أحد. لم ننشر جولة قد تعرضه بشكل سيئ.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_ctrl_dbl_to_look: 'انقر نقرًا مزدوجًا للنظر حولك بالفأرة',
+  ds_ctrl_dbl_to_release: 'انقر نقرًا مزدوجًا (أو Esc) لاستعادة مؤشر الفأرة',
+  ds_ctrl_dbl_click: 'نقر مزدوج',
+  ds_ctrl_dbl_toggle: 'النظر بالفأرة: تشغيل / إيقاف',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105224,6 +105254,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_walk_failed_geometry: 'לא ניתן היה לשחזר באופן אמין את תוכנית הדירה מהתמונות: חלק מהחדרים חסרים או מעוותים. לא יצרנו סיור שהיה מציג בית אחר.',
   ds_walk_more: 'עוד',
   dsx_walk_failed_quality: 'לא הצלחנו לרהט את הבית הזה באופן משכנע מספיק כדי לסייר בו — הרהיטים היו חוסמים את הדרך או עומדים במקום שאיש לא היה מציב אותם. לא פרסמנו סיור שהיה מציג אותו רע.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_ctrl_dbl_to_look: 'לחצו פעמיים כדי להסתכל סביב עם העכבר',
+  ds_ctrl_dbl_to_release: 'לחצו פעמיים (או Esc) כדי להחזיר את סמן העכבר',
+  ds_ctrl_dbl_click: 'לחיצה כפולה',
+  ds_ctrl_dbl_toggle: 'מבט בעכבר: הפעלה / כיבוי',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

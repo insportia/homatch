@@ -40,9 +40,14 @@ test('the real plan\'s tour: walkable everywhere, every room with its essential 
   assert.deepEqual(built.report.gate.missingEssential, []);
   const standing = (ref) => built.report.items.find((i) => i.refKey === ref)?.instanceId;
   // What the first real tour lost and must keep now: the sofa, both beds, both wardrobes, the toilet, the vanity.
-  for (const ref of ['ai:sofa:1', 'ai:bed:1', 'ai:bed:2', 'wardrobe:1', 'wardrobe:2', 'ai:toilet:1', 'vanity:1', 'ai:tv_unit:1', 'kitchen_cabinets:1', 'kitchen_cabinets:2', 'ai:dining_table:1']) {
+  for (const ref of ['ai:sofa:1', 'ai:bed:1', 'ai:bed:2', 'wardrobe:1', 'wardrobe:2', 'ai:toilet:1', 'vanity:1', 'ai:tv_unit:1', 'kitchen_cabinets:2', 'ai:dining_table:1']) {
     assert.ok(standing(ref), `${ref} stands`);
   }
+  // The render's kitchen run was read twice (kitchen_cabinets:1 and :2): ONE run stands, the plan's own, and the
+  // render's run counts as shown by it.
+  const twin = built.report.items.find((i) => i.refKey === 'kitchen_cabinets:1');
+  assert.deepEqual([twin.outcome, twin.reason], ['DROPPED', 'REDUNDANT']);
+  assert.ok(!promotion.metrics.unresolvedImportant.includes('kitchen_cabinets:1'));
   assert.ok(promotion.metrics.importantRecall >= READY_MIN_RECALL, `recall ${promotion.metrics.importantRecall}`);
   // The visitor's tour reaches every room, the balcony and the porch included.
   const tour = planTour(space, buildWalkModel(space, state.objects, assets));
@@ -143,4 +148,59 @@ test('a reused plan brings the graph it was built with; a failed evidence load i
   assert.doesNotMatch(route, /loadDesignEvidence\([^)]*\)\.catch\(\(\) => null\)/);
   assert.match(route, /\.\.\.\(designGraphError \? \{ designGraphError \} : \{\}\)/);
   assert.match(route, /\.sort\(\(p: Row, q: Row\) => Number\(!!q\.graph\) - Number\(!!p\.graph\)\)\[0\]/);
+});
+
+// ── The third real tour (2026-10-10): what the customer still could not walk or believe ─────────────────────────
+// The WC ("LET.") stood empty and the bath ("BATH") held the toilet and lost its shower; the render's kitchen run,
+// read twice, stood on both walls (two sinks, two hobs) with the table pushed against both counters; the second
+// bedroom's wardrobe stood 5 cm from the bed.
+
+import { frontZone, footprint, solidBox, solidOverlap } from '../placement.ts';
+import { isFlat } from '../catalog.ts';
+import { shapedAsset } from '../objectShape.ts';
+
+/** Free floor before a piece (m): the deepest front zone, in 5 cm steps, that no other standing piece enters. */
+function freeFront(objects, o) {
+  const pieces = objects.map((x) => ({ x, a: shapedAsset(assets.get(x.assetId), x) })).filter((p) => p.a && !isFlat(p.a));
+  const own = shapedAsset(assets.get(o.assetId), o);
+  let free = 0;
+  for (let r = 0.05; r <= 1.5 + 1e-9; r += 0.05) {
+    const z = frontZone(own, { x: o.position.x, y: o.position.z }, o.rotationY, r);
+    if (pieces.some((p) => p.x !== o && solidOverlap(z, solidBox(footprint(p.a, { x: p.x.position.x, y: p.x.position.z }, p.x.rotationY))))) break;
+    free = r;
+  }
+  return free;
+}
+
+test('the wet rooms are the plan\'s: the toilet in the WC, the shower in the bath (a tray fitted to its 1.2 m room)', () => {
+  const { built, state } = build();
+  const at = (ref) => state.objects.find((o) => o.instanceId === built.report.items.find((i) => i.refKey === ref)?.instanceId);
+  assert.equal(at('ai:toilet:1')?.roomId, 'R5');
+  const shower = at('shower:1');
+  assert.equal(shower?.roomId, 'R6');
+  assert.ok(Math.min(shower.shape?.widthM ?? 0.9, shower.shape?.depthM ?? 0.9) >= 0.7 - 1e-9);
+});
+
+test('a kitchen has one run, worked with a metre before it; wardrobes open; a chair stands only at its table', () => {
+  const { state } = build();
+  const runs = state.objects.filter((o) => o.assetId === 'dev/kitchen-run');
+  assert.equal(runs.length, 1);
+  assert.ok(freeFront(state.objects, runs[0]) >= 1.0, `run ${freeFront(state.objects, runs[0])}`);
+  for (const w of state.objects.filter((o) => o.assetId.startsWith('dev/wardrobe'))) {
+    assert.ok(freeFront(state.objects, w) >= 0.8, `${w.roomId} wardrobe ${freeFront(state.objects, w)}`);
+  }
+  const table = state.objects.find((o) => o.assetId.startsWith('dev/dining-table'));
+  const tableBox = footprint(shapedAsset(assets.get(table.assetId), table), { x: table.position.x, y: table.position.z }, table.rotationY);
+  for (const c of state.objects.filter((o) => o.assetId === 'dev/dining-chair')) {
+    assert.ok(distanceToObb({ x: c.position.x, y: c.position.z }, tableBox) <= 0.4, `chair ${c.instanceId} away from the table`);
+  }
+});
+
+test('the double-click mouse look: on and off by a double click, the single click held while it may be one', () => {
+  const ctl = fs.readFileSync(new URL('../../../components/designStudio/canvas/SceneController.ts', import.meta.url), 'utf8');
+  assert.match(ctl, /if \(now - this\.lastMouseTap < DOUBLE_CLICK_MS\) \{[\s\S]{0,160}if \(g\.locked\) this\.releasePointer\(\); else this\.lockPointer\(\);/);
+  assert.match(ctl, /this\.pendingTap = window\.setTimeout\(/);
+  assert.doesNotMatch(ctl, /if \(g\.mouse && !g\.locked\) this\.lockPointer\(\);/);
+  const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');
+  assert.match(overlay, /tr\(locked \? 'ds_ctrl_dbl_to_release' : 'ds_ctrl_dbl_to_look'\)/);
 });

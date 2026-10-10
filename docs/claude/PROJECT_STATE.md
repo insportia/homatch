@@ -1,11 +1,33 @@
 # PROJECT STATE
 
-last_updated: 2026-10-10
+last_updated: 2026-10-11
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
-## Verify report v2 — accuracy, visuals, market gate, premium UI (PR #150, 2026-10-10) — MERGE PENDING
+## Verify v3 — newest-two TAS full fidelity, professionals, legal position, register reuse, timing (2026-10-11) — PR OPEN
+- Forensic audit of job 220ed087 (read-only SQL): AR11161121 (newest, 2026-09-17) stored with
+  `values:[]` and 21/22 attachments NOT_PROCESSED_BUDGET → professionals/photos never reached
+  storage; 11 Mar 2026 "commissioning" = Res. №255 citation stored as COMMISSIONED (old worker);
+  the job's MyGov task was cancelled (NUL bug) — unit extract exists in earlier same-user jobs
+  e02d4f16 / c80f7237 (BoG apartment mortgage 02/09/2026; termination registered 22/09/2026).
+- Worker (tas-api-2): two newest cases by application date get every attachment processed
+  (UNSUPPORTED_FORMAT / DEFERRED-with-reason, never silent), full text (inline ≤300k chars +
+  content-addressed refs), page render + visual classification, best-effort public form
+  discovery (`TAS_FORM_DISCOVERY`, NOT VERIFIED live), completeness gate, `tasApi.timings`.
+  Queue results are now bounded in UTF-8 BYTES (≤2.0 MB; verify-queue body limit 2.5 MB).
+- Intelligence: tasProfessionals (documented roles, Goga≠Giorgi), technicalSpecs
+  (APPROVED/PROPOSED), officialDocuments, pendingApplications + currentPosition, future-dated
+  refs excluded, register reuse from the same user's earlier job (disclosed), banks never team
+  members, REPORT_LOGIC_VERSION 3 auto-rebuild-once on open (≤21 days).
+- Timing: src/verify/performance.ts; `_stageTimes.official_browser`, task `_exec`, synthesis
+  `_timing` (stripped from customers); Admin → Verify official sources → performance table.
+  research-agent starts synthesis immediately at COMPLETE.
+- Owner runs the final live jobs (2026-10-11 instruction): do not auto-launch paid Verify jobs.
+- Sandbox cannot reach docs.tbilisi.gov.ge (proxy 403); production SQL writes from this session
+  time out (guard hook) — rebuild-on-open replaces manual resynthesis.
+
+## Verify report v2 — accuracy, visuals, market gate, premium UI (PR #150, 2026-10-10) — LIVE (a452ba83)
 - Owner live run (job 220ed087, Villion) exposed: false commissioning (worker read a cited
   law/banner as an operative act), garbage history, unnamed participants, missing photos
   (deadline-path gap), no quality section, $900–3000 market range (PEER_PROJECT fallback),

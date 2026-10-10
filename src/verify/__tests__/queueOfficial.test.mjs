@@ -135,3 +135,9 @@ test('research-agent ends the official wait on retrying stragglers and keeps sto
   const deadline = src.slice(src.indexOf("p.browserOfficial = {\n        ...(p.browserOfficial || {}),"));
   assert.ok(deadline.slice(0, 900).includes('await collectOfficialVisuals(sb, w, p);'), 'past-deadline path collects visuals');
 });
+
+test('the worker\'s execution stamp never reaches the official result', () => {
+  const r = taskResult(row({ source: 'mygov', dedupe_key: 'mygov', state: 'SUCCEEDED', result: { source: 'mygov', status: 'SEARCH_CONFIRMED', _exec: { ms: 1 } } }));
+  assert.equal('_exec' in r, false);
+  assert.equal(r.status, 'SEARCH_CONFIRMED');
+});

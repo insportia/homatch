@@ -28,6 +28,7 @@
 // in this structure for audit; none of it is customer prose.
 
 import { revalidateDecision, legalClaims, type LegalClaim } from './legalStatus.ts';
+import { readCaseSources, caseDecisionState, caseIsClosed, caseSubject, redactPersonal } from './tasCaseSources.ts';
 import {
   VISUAL_ASSET_MAX, categoryForScope, normalizeVisualCategory, normalizeVisualKind, resolveVisualScope, visualSubject,
   type VisualAssetKind, type VisualCategory, type VisualScope,
@@ -239,6 +240,36 @@ export interface TasCoverage {
   latestDate: string | null;
 }
 
+/**
+ * An application on file without a decision: what was asked, when, and by
+ * when the authority must answer. Never an approval, and never a reason to
+ * set aside the latest effective decision.
+ */
+export interface PendingApplication {
+  caseRef: string | null;
+  date: string | null;
+  deadline: string | null;
+  subject: string | null;
+  status: 'UNDER_REVIEW';
+  /** The case's own displayed status, e.g. „განხილვის პროცესში“. */
+  statusText: string | null;
+  applicant: string | null;
+}
+
+/**
+ * A dated reference later than the job's own completion: a date the papers
+ * cite (a hearing, a planned step), never an issued decision. Kept out of the
+ * timeline, the status and the legal claims.
+ */
+export interface FutureDatedReference {
+  flag: 'FUTURE_DATED_REFERENCE';
+  date: string;
+  caseRef: string | null;
+  title: string;
+  decisionNumber: string | null;
+  citedOutcome: string | null;
+}
+
 export interface TasIntelligence {
   available: boolean;
   coverage: TasCoverage;
@@ -256,6 +287,10 @@ export interface TasIntelligence {
   funnel: TasFunnel;
   /** Distinct legal states, each CONFIRMED / … / NOT_VERIFIED on its own evidence. */
   legalClaims: LegalClaim[];
+  /** Applications on file without a decision (newest first). */
+  pendingApplications?: PendingApplication[];
+  /** References dated after the job completed — never issued decisions. */
+  futureDatedReferences?: FutureDatedReference[];
 }
 
 // ─────────────────────────────── helpers ───────────────────────────────
@@ -361,6 +396,8 @@ const PERSON_FACT_ROLES: Record<string, ParticipantRole> = {
   interiorDesigner: 'INTERIOR_DESIGNER',
 };
 const NON_FACT_KEYS = new Set(['organization', 'idCode', 'buildingBlock', 'buildingLiter']);
+/** Form labels whose value is a person or organisation in a role, not a specification. */
+const PERSON_LABEL = /არქიტექტორ|თანაავტორ|^ავტორ|სპეციალისტ|^ექსპერტ|კონსტრუქტორ|ინჟინერ|გეოლოგი$|დეველოპერ|დამკვეთ|განმცხადებ|მესაკუთრ|ორგანიზაცია$|შემსრულებელ|სახელი|გვარი|architect|co-?author|specialist|engineer|developer|applicant/iu;
 
 /*
  * VALUES THAT ARE NOT VALUES OF THEIR MATTER.
@@ -550,7 +587,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
         status: s(c.status) || null,
         date: day(c.date),
         parties: arr<any>(c.parties).map((p) => ({ role: s(p?.role), name: s(p?.name), kind: s(p?.kind), organizationId: p?.organizationId ?? null })),
-        values: arr<any>(c.values).map((v) => ({ key: s(v?.key), label: s(v?.label) || null, value: s(v?.value) })),
+        values: arr<any>(c.values).map((v) => ({ key: s(v?.key) || s(v?.path), label: s(v?.label) || null, value: s(redactPersonal(s(v?.value))) })),
         technicalFacts: tf.map((f) => ({ category: s(f?.category), key: s(f?.key), value: s(f?.value) })),
         motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? revalidateDecision(m.decision) : null })),
         block,
@@ -595,6 +632,8 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     officialStatus: { state: 'NOT_ESTABLISHED', since: null, basis: null, validUntil: null, pending: [], conclusive: false, caveats: ['NO_DECISIONS_READ'] },
     milestoneIds: [],
     legalClaims: legalClaims([]),
+    pendingApplications: [],
+    futureDatedReferences: [],
     funnel: { discoveredDocuments: 0, discoveredMotions: 0, discoveredAttachments: 0, processedResponses: 0, processedAttachments: 0, deferredAttachments: 0, retainedFacts: 0, retainedEvents: 0, milestones: 0, visualsSelected: 0, incomplete: false, incompleteReasons: [] },
   };
   if (!cases.length) return empty;
@@ -608,6 +647,11 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     const src: FactSource = { documentId: c.documentId, caseRef: c.caseRef, date: c.date, label: c.title };
     for (const v of c.values) {
       if (!v.value) continue;
+      // A form row that names a PERSON in a role is a participant, never a project fact (and never a "conflict").
+      if (PERSON_LABEL.test(v.label ?? v.key)) {
+        participantsRaw.push({ name: v.value, kind: 'UNKNOWN', organizationId: null, role: normalizeRole(v.label ?? v.key), date: c.date, documentId: c.documentId, block: c.block });
+        continue;
+      }
       const rule = ruleFor(v.label ?? v.key) ?? ruleFor(v.key);
       const key = rule?.key ?? `field:${valueIdentity(v.label ?? v.key).slice(0, 60)}`;
       const cleaned = cleanValue(key, v.value);
@@ -701,12 +745,20 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
 
   // ── timeline: cases and their motions, by real date ──
   const timeline: TimelineEvent[] = [];
+  const futureDatedReferences: FutureDatedReference[] = [];
+  const nowDay = String(nowIso).slice(0, 10);
   let eid = 0;
   const seenEvents = new Set<string>();
   const pushEvent = (date: string | null, title: string, c: CaseInput, status: string | null, decision: any = null) => {
     const d = decision && OUTCOMES.has(decision.outcome) ? decision : null;
-    const when = (d?.issueDate as string | null) ?? date;
+    const when = day(d?.issueDate as string | null) ?? date;
     if (!when || (!title && !d)) return;
+    // A date after the job completed is a cited date, not an issued act (job 220ed087: 2026-11-03 in a September 2026 case).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(nowDay) && when > nowDay) {
+      if (!futureDatedReferences.some((f) => f.date === when && f.caseRef === c.caseRef && f.decisionNumber === (d?.number ?? null)))
+        futureDatedReferences.push({ flag: 'FUTURE_DATED_REFERENCE', date: when, caseRef: c.caseRef, title: title || (d?.number ? `№ ${d.number}` : ''), decisionNumber: d?.number ?? null, citedOutcome: d?.outcome ?? null });
+      return;
+    }
     // A read decision's legal effect outranks the wording of the step's name.
     const kind = d && d.outcome !== 'UNDETERMINED' && d.outcome !== 'INFORMATIONAL' ? KIND_FOR_OUTCOME[d.outcome as DecisionOutcome] : eventKind(`${title} ${status ?? ''}`);
     const k = `${when}|${kind}|${valueIdentity(title)}|${c.documentId ?? ''}|${d?.number ?? ''}`;
@@ -845,8 +897,26 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     latestDate: dates[dates.length - 1] ?? null,
   };
 
+  // ── applications on file without a decision ──
+  const pendingApplications: PendingApplication[] = [];
+  const effectiveDate = officialStatus.basis?.date ?? '';
+  const yearAgo = new Date(Date.parse(nowIso) - 365 * 864e5).toISOString().slice(0, 10);
+  for (const c of readCaseSources(report)) {
+    const st = caseDecisionState(c, nowDay);
+    const open = st === 'UNDER_REVIEW' || (st === 'UNDECIDED' && !caseIsClosed(c) && !!c.date && c.date > effectiveDate && c.date >= yearAgo && c.date <= nowDay);
+    if (!open) continue;
+    const applicantParty = c.parties.find((p) => normalizeRole(p.role) === 'APPLICANT');
+    pendingApplications.push({
+      caseRef: c.caseRef, date: c.date, deadline: c.deadline, subject: caseSubject(c), status: 'UNDER_REVIEW', statusText: c.status,
+      applicant: applicantParty ? cleanParticipantName(applicantParty.name) : null,
+    });
+  }
+  pendingApplications.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+
   return {
     available: true,
+    pendingApplications,
+    futureDatedReferences,
     coverage,
     facts,
     timeline,
@@ -959,6 +1029,7 @@ export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso
       const outcome = s(obj(revalidateDecision(obj(m?.decision))).outcome);
       if (outcome && outcome !== 'UNDETERMINED') return false;
       const d = day(m?.date);
+      if (d && d > nowIso.slice(0, 10)) return false;
       return !b || !d || d > b.date;
     }));
   if (b && (unreadLater || timeline.some((e) => e.date > b.date && e.decision && e.decision.outcome === 'UNDETERMINED'))) caveats.push('LATER_UNDETERMINED_DECISION');
@@ -1114,6 +1185,10 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
   push(`Coverage: ${intel.coverage.cases} case(s), ${intel.coverage.motions} recorded steps, earliest ${intel.coverage.earliestDate ?? 'n/a'}, latest ${intel.coverage.latestDate ?? 'n/a'}.`, true);
   const st = intel.officialStatus;
   push(`CURRENT OFFICIAL STATUS (deterministic, from decisions): ${st.state}${st.since ? ` since ${st.since}` : ''}${st.basis?.caseRef ? ` — case ${st.basis.caseRef}` : ''}${st.basis?.decisionNumber ? `, decision № ${st.basis.decisionNumber}` : ''}${st.validUntil ? `, valid until ${st.validUntil}` : ''}. ${st.conclusive ? 'CONCLUSIVE.' : `NOT CONCLUSIVE (${st.caveats.join(', ') || 'no controlling decision read'}) — say so plainly, never upgrade it.`}${st.pending.length ? ` Pending later applications: ${st.pending.map((p) => `${p.caseRef ?? '?'} (${p.date}, ${p.outcome})`).join('; ')}.` : ''}`, true);
+  for (const a of intel.pendingApplications ?? [])
+    push(`PENDING APPLICATION (UNDER REVIEW — NO DECISION; never an approval, never overrides the effective decision above): case ${a.caseRef ?? '?'} filed ${a.date ?? 'n/a'}${a.deadline ? `, answer due ${a.deadline}` : ''}${a.statusText ? `, displayed status „${a.statusText}“` : ''}${a.subject ? ` — ${a.subject}` : ''}${a.applicant ? `; applicant ${a.applicant}` : ''}.`, true);
+  if (intel.futureDatedReferences?.length)
+    push(`FUTURE-DATED REFERENCES (dated after this check; cited dates, NOT issued decisions — never state them as decided): ${intel.futureDatedReferences.slice(0, 8).map((f) => `${f.date} in case ${f.caseRef ?? '?'}`).join('; ')}.`, true);
   if (intel.funnel.incomplete) push(`PROCESSING INCOMPLETE: ${intel.funnel.incompleteReasons.join(', ')} — conclusions that depend on unread material must be stated as provisional.`, true);
   push('CURRENT DOCUMENTED POSITION:', true);
   const current = intel.facts.filter((f) => f.status === 'CURRENT' || f.status === 'CONFLICTING').sort((a, b) => rank[a.materiality] - rank[b.materiality]);
@@ -1175,6 +1250,57 @@ export interface OfficialHistoryView {
   milestoneGroups?: Array<{ kind: EventKind; outcome: DecisionOutcome | null; firstDate: string; lastDate: string; count: number; decisionNumbers: string[] }>;
   /** Distinct legal states and what establishes each. */
   legal?: LegalClaim[];
+  /** Applications on file without a decision — UNDER_REVIEW, never approvals. */
+  pendingApplications?: PendingApplication[];
+  /** References dated after the check completed — never issued decisions. */
+  futureDatedReferences?: FutureDatedReference[];
+  /**
+   * The present, in reading order: the latest EFFECTIVE decision first, then
+   * applications still under review, then unresolved conflicts.
+   */
+  currentPosition?: CurrentPosition;
+}
+
+export interface CurrentPosition {
+  effective: {
+    state: OfficialState;
+    outcome: DecisionOutcome;
+    caseRef: string | null;
+    decisionNumber: string | null;
+    date: string | null;
+    validUntil: string | null;
+    /** The latest permit / approval itself, when the controlling decision is a later extension. */
+    permit: { caseRef: string | null; decisionNumber: string | null; date: string; outcome: DecisionOutcome } | null;
+  } | null;
+  pending: PendingApplication[];
+  conflicts: Array<{ label: string; block: string | null; values: Array<{ value: string; date: string | null }> }>;
+  conclusive: boolean;
+}
+
+/** The present, ordered: effective decision → pending amendments → conflicts. */
+export function currentPositionOf(intel: TasIntelligence): CurrentPosition {
+  const st = intel.officialStatus;
+  const permits = intel.timeline.filter((e) => e.decision && ['PERMIT_ISSUED', 'AMENDMENT_APPROVED', 'APPROVED', 'COMMISSIONED'].includes(e.decision.outcome));
+  const permit = permits.length ? permits[permits.length - 1] : null;
+  return {
+    effective: st.basis
+      ? {
+          state: st.state, outcome: st.basis.outcome, caseRef: st.basis.caseRef, decisionNumber: st.basis.decisionNumber, date: st.basis.date, validUntil: st.validUntil,
+          permit: permit && (permit.caseRef !== st.basis.caseRef || permit.date !== st.basis.date)
+            ? { caseRef: permit.caseRef, decisionNumber: permit.decision!.number, date: permit.date, outcome: permit.decision!.outcome }
+            : null,
+        }
+      : null,
+    pending: [
+      ...(intel.pendingApplications ?? []),
+      // An application answered only with an intermediate step / deficiency notice is still pending.
+      ...st.pending
+        .filter((p) => !(intel.pendingApplications ?? []).some((a) => a.caseRef && a.caseRef === p.caseRef))
+        .map((p): PendingApplication => ({ caseRef: p.caseRef, date: p.date, deadline: null, subject: null, status: 'UNDER_REVIEW', statusText: null, applicant: null })),
+    ],
+    conflicts: intel.conflicts.map((c) => ({ label: c.label, block: c.block, values: c.values })),
+    conclusive: st.conclusive,
+  };
 }
 
 /**
@@ -1212,6 +1338,9 @@ export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView
     milestones,
     milestoneGroups: groupMilestones(milestones),
     legal: intel.legalClaims,
+    pendingApplications: intel.pendingApplications ?? [],
+    futureDatedReferences: intel.futureDatedReferences ?? [],
+    currentPosition: currentPositionOf(intel),
     evolution,
     funnel: intel.funnel,
     visuals: intel.visuals.map((v) => ({ id: v.id, versionStatus: v.versionStatus })),

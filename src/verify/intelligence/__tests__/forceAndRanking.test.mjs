@@ -32,7 +32,8 @@ const code = SYNTH.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 test('a forced rebuild is refused while a recent one exists', () => {
   assert.match(code, /FORCE_COOLDOWN_MS/, 'the cooldown must exist');
-  const guard = code.slice(code.indexOf('const FORCE_COOLDOWN_MS'), code.indexOf('const projection'));
+  // The build moved into buildReport(); the guard ends where the read/upgrade branches begin.
+  const guard = code.slice(code.indexOf('const FORCE_COOLDOWN_MS'), code.indexOf('const upgrade ='));
 
   // Only forced rebuilds are affected; a normal read is untouched.
   assert.match(guard, /if \(body\?\.force && !internal\)/);
@@ -43,16 +44,19 @@ test('a forced rebuild is refused while a recent one exists', () => {
   assert.match(guard, /retryAfterSeconds/);
   // It is keyed on when the report was actually built.
   assert.match(guard, /job\.synthesis_at/);
-  assert.match(code, /select\('id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at'\)/, 'synthesis_at is read (and query, for the unit identity check)');
+  // user_id is read too: the register fallback scopes earlier jobs to the SAME user (registerReuse.ts).
+  assert.match(code, /select\('id,user_id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at'\)/, 'synthesis_at is read (and query, for the unit identity check)');
 });
 
 test('a cached read is not affected by the guard', () => {
   // The persisted-report branch must still return without any rebuild.
+  // The only exception is the one-time logic-version upgrade (reportVersion.ts), gated by shouldAutoUpgrade.
   assert.match(
     code,
-    /if \(job\.synthesis_state === 'READY' && job\.synthesis_json && !body\?\.force\)/,
+    /if \(job\.synthesis_state === 'READY' && job\.synthesis_json && !body\?\.force && !upgrade\)/,
     'returning to a finished case must remain a read'
   );
+  assert.match(code, /const upgrade = !body\?\.force && shouldAutoUpgrade\(/, 'only the version gate may turn a read into a rebuild');
 });
 
 test('cross-user protection stays where it belongs', () => {

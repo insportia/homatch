@@ -40,4 +40,19 @@ export const DS_STRINGS_37 = {
     'النظر بالفأرة: تشغيل / إيقاف',
     'מבט בעכבר: הפעלה / כיבוי',
   ],
+  // Walk sounds (walkSounds.ts): the visitor may turn them off.
+  ds_set_sound: ['Sounds', 'ხმები', 'Звуки', 'Sesler', 'الأصوات', 'צלילים'],
+  // Seated or lying: the same press gets you up (SceneController performAimed).
+  ds_walk_stand_click: [
+    'Click or press E to stand up',
+    'ადგომა — დააწკაპუნეთ ან დააჭირეთ E-ს',
+    'Щёлкните или нажмите E, чтобы встать',
+    'Kalkmak için tıklayın veya E’ye basın',
+    'انقر أو اضغط E للنهوض',
+    'לחצו או הקישו E כדי לקום',
+  ],
+  ds_walk_stand_tap: ['Tap to stand up', 'ადგომა — შეეხეთ ეკრანს', 'Коснитесь, чтобы встать', 'Kalkmak için dokunun', 'المس للنهوض', 'געו כדי לקום'],
+  // The walk's plan panel: shown and hidden by a labelled button, never an icon alone.
+  ds_walk_plan_show: ['Show plan', 'გეგმის ჩვენება', 'Показать план', 'Planı göster', 'إظهار المخطط', 'הצג תוכנית'],
+  ds_walk_plan_hide: ['Hide plan', 'გეგმის დამალვა', 'Скрыть план', 'Planı gizle', 'إخفاء المخطط', 'הסתר תוכנית'],
 };

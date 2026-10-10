@@ -159,6 +159,9 @@ const Lightbox: React.FC<{
   const [pos, setPos] = React.useState({ x: 0, y: 0 });
   const [dragging, setDragging] = React.useState(false);
   const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [loaded, setLoaded] = React.useState<Set<string>>(() => new Set());
+  const markLoaded = React.useCallback((id: string) => setLoaded((l) => (l.has(id) ? l : new Set(l).add(id))), []);
+  const stripRef = React.useRef<HTMLDivElement | null>(null);
   const maxScale = v?.technical ? 6 : 4;
 
   const pointers = React.useRef(new Map<number, { x: number; y: number }>());
@@ -167,6 +170,11 @@ const Lightbox: React.FC<{
 
   const reset = React.useCallback(() => { setScale(1); setPos({ x: 0, y: 0 }); }, []);
   React.useEffect(reset, [index, reset]);
+  /* Keep the current thumbnail in view as the reader moves through the set. */
+  React.useEffect(() => {
+    const el = stripRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [index]);
 
   const bound = React.useCallback((p: { x: number; y: number }, s: number) => {
     const el = stageRef.current;
@@ -353,6 +361,9 @@ const Lightbox: React.FC<{
           onDoubleClick={() => (scale > 1 ? reset() : zoomTo(2.5))}
         >
           <div className="absolute inset-0 flex items-center justify-center p-2 sm:p-6">
+            {!loaded.has(v.id) ? (
+              <span className="absolute inset-6 rounded-xl bg-white/[0.06] motion-safe:animate-pulse sm:inset-12" aria-hidden="true" />
+            ) : null}
             <img
               key={v.id}
               src={v.url}
@@ -362,8 +373,9 @@ const Lightbox: React.FC<{
               referrerPolicy="no-referrer"
               draggable={false}
               decoding="async"
+              onLoad={() => markLoaded(v.id)}
               onError={() => onBroken(v.id)}
-              className={`max-h-full max-w-full select-none object-contain ${v.technical ? 'bg-white' : ''} ${dragging ? '' : 'motion-safe:transition-transform motion-safe:duration-200'}`}
+              className={`relative max-h-full max-w-full select-none object-contain ${v.technical ? 'bg-white' : ''} ${loaded.has(v.id) ? 'opacity-100' : 'opacity-0'} ${dragging ? '' : 'motion-safe:transition-[transform,opacity] motion-safe:duration-200'}`}
               style={{ transform: `translate3d(${pos.x}px, ${pos.y}px, 0) scale(${scale})`, transformOrigin: 'center center' }}
             />
           </div>
@@ -406,6 +418,40 @@ const Lightbox: React.FC<{
           </div>
         </div>
       </div>
+
+      {/* Every image of the set, one tap away. */}
+      {items.length > 1 ? (
+        <div
+          ref={stripRef}
+          className="flex shrink-0 gap-2 overflow-x-auto border-t border-white/10 px-3 py-2 [scrollbar-width:thin] sm:px-5"
+          aria-label={t('verify_v3_lightbox_thumbs')}
+          role="group"
+        >
+          {items.map((it, i) => {
+            const on = i === index;
+            return (
+              <button
+                key={it.id}
+                type="button"
+                aria-current={on ? 'true' : undefined}
+                aria-label={text(it).alt}
+                onClick={() => onIndex(i)}
+                className={`relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)] motion-safe:transition-opacity sm:h-14 sm:w-20 ${on ? 'ring-2 ring-[hsl(38_92%_54%)]' : 'opacity-60 hover:opacity-100'}`}
+              >
+                <img
+                  src={it.url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  draggable={false}
+                  className={`h-full w-full ${it.technical ? 'bg-white object-contain' : 'object-cover'}`}
+                />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>,
     document.body,
   );
@@ -439,6 +485,7 @@ export const VisualExplorer: React.FC<{
   const [tab, setTab] = React.useState<VisualCategory | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [lightbox, setLightbox] = React.useState<number | null>(null);
+  const [stageLoaded, setStageLoaded] = React.useState<Set<string>>(() => new Set());
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const current: VisualCategory | null = tab && tabs.some((x) => x.category === tab) ? tab : hero?.category ?? tabs[0]?.category ?? null;
@@ -486,6 +533,9 @@ export const VisualExplorer: React.FC<{
             className="group relative block w-full overflow-hidden rounded-2xl bg-[hsl(222_47%_11%)] shadow-[0_18px_50px_-24px_hsl(222_47%_11%/0.55)] ring-1 ring-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)]"
             style={{ aspectRatio: ratio, maxHeight: '70vh' }}
           >
+            {!stageLoaded.has(active.id) ? (
+              <span className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-white/[0.10] motion-safe:animate-pulse" aria-hidden="true" />
+            ) : null}
             <img
               key={active.id}
               src={active.url}
@@ -495,8 +545,9 @@ export const VisualExplorer: React.FC<{
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
+              onLoad={() => setStageLoaded((l) => (l.has(active.id) ? l : new Set(l).add(active.id)))}
               onError={() => onBroken(active.id)}
-              className={`h-full w-full ${active.technical ? 'bg-white object-contain' : 'object-cover'} motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]`}
+              className={`relative h-full w-full ${active.technical ? 'bg-white object-contain' : 'object-cover'} motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]`}
             />
             <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
             <span className="absolute start-3 end-3 top-3 flex flex-wrap items-center gap-2">
@@ -612,5 +663,36 @@ export const VisualExplorer: React.FC<{
         />
       ) : null}
     </div>
+  );
+};
+
+/* ───────────────────────── Shared viewer ───────────────────────── */
+
+/**
+ * The same full-screen viewer, for another section that holds catalogued
+ * official images (the document explorer). Signed URLs only — the items have
+ * already passed catalogVisuals().
+ */
+export const OfficialImagesViewer: React.FC<{
+  items: CatalogVisual[];
+  start: number;
+  onClose: () => void;
+  clean: Clean;
+}> = ({ items, start, onClose, clean }) => {
+  const [index, setIndex] = React.useState(start);
+  const [gone, setGone] = React.useState<Set<string>>(() => new Set());
+  const versionBadge = useVersionBadge(null);
+  const list = items.filter((v) => !gone.has(v.id));
+  if (!list.length) return null;
+  return (
+    <Lightbox
+      items={list}
+      index={Math.min(index, list.length - 1)}
+      onIndex={setIndex}
+      onClose={onClose}
+      onBroken={(id) => setGone((g) => new Set(g).add(id))}
+      clean={clean}
+      versionBadge={versionBadge}
+    />
   );
 };

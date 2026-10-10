@@ -204,3 +204,12 @@ test('the double-click mouse look: on and off by a double click, the single clic
   const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');
   assert.match(overlay, /tr\(locked \? 'ds_ctrl_dbl_to_release' : 'ds_ctrl_dbl_to_look'\)/);
 });
+
+test('a balcony or porch is furnished with light chairs and a round table, never armchairs or a sofa', () => {
+  const { state } = build();
+  const out = state.objects.filter((o) => o.roomId === 'R9' || o.roomId === 'R1');
+  assert.ok(out.some((o) => o.assetId === 'dev/outdoor-chair'));
+  assert.ok(!out.some((o) => /armchair|sofa-|coffee-table/.test(o.assetId)), JSON.stringify(out.map((o) => o.assetId)));
+  // The outdoor chair keeps its own form (the render's club armchair does not follow it out).
+  for (const o of out.filter((x) => x.assetId === 'dev/outdoor-chair')) assert.notEqual(o.shape?.form, 'CLUB');
+});

@@ -20,6 +20,7 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
+import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
@@ -2594,9 +2595,26 @@ function officialPastDeadline(j: any, w: any): boolean {
   return Number.isFinite(started) && started > 0 && Date.now() - started > OFFICIAL_BROWSER_DEADLINE_MS;
 }
 
+/*
+ * OFFICIAL STAGE SPAN (internal, src/verify/performance.ts).
+ *
+ * `_worker` is deleted on every way out of BROWSER_WAITING, and with it the
+ * only record of when the official stage began. The span is kept in
+ * _stageTimes next to the model stages, stamped from server clocks: launch
+ * (startBrowser), the worker's own run start (admission wait in LEGACY mode)
+ * and this transition.
+ */
+function stampOfficialStage(p: any, launch: { startedAt: string | null; queue: boolean }, w: any, outcome: string): void {
+  p._stageTimes = {
+    ...(p._stageTimes || {}),
+    official_browser: { startedAt: launch.startedAt, runStartedAt: typeof w?.runStartedAt === 'string' ? w.runStartedAt : null, finishedAt: now(), outcome, mode: launch.queue ? 'QUEUE' : 'LEGACY' },
+  };
+}
+
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
+  const launch = { startedAt: j.result_json?._worker?.startedAt ?? null, queue: !!j.result_json?._worker?.queue };
   let w: any;
   if (j.result_json?._worker?.queue) {
     /*
@@ -2645,6 +2663,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     };
 
     delete p._worker;
+    stampOfficialStage(p, launch, w, 'FAILED');
 
     const ev = dedupe(
       [...(j.evidence_bundle || []), ...bev(w)],
@@ -2678,6 +2697,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       };
 
       delete p._worker;
+      stampOfficialStage(p, launch, w, 'DEADLINE');
       // Official photos the finished sources already stored still belong in
       // the report when another source ran out of time (live run 2026-10-10:
       // tas stored 2 visuals, mygov straggled, the report showed none).
@@ -2754,6 +2774,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   p.browserOfficial = { results: w.results || [], completedAt: w.completedAt || now(), historicalComparison: w.historicalComparison || null, discoveredEntities: w.discoveredEntities || [] };
   // Admin diagnostics: which TAS implementation actually produced the result.
   if (w.tasExecution) p._tasExecution = w.tasExecution;
+  stampOfficialStage(p, launch, w, 'COMPLETE');
   await collectOfficialVisuals(sb, w, p);
   return persistOfficialTransition(sb, j, { status: 'CREATED', stage: 'OFFICIAL_READY', result_json: p, evidence_bundle: dedupe([...(j.evidence_bundle || []), ...bev(w)], (x) => x.url), captcha: {}, progress: { phase: 'official_browser_complete', percent: 44, provider: 'playwright' }, updated_at: now() });
 }
@@ -3844,6 +3865,28 @@ function applyEvidenceGate(result: any, identity: any, official: any, reconciled
   return result;
 }
 
+/*
+ * The finished job keeps its own task timeline (QUEUE mode): enqueue, first
+ * claim, finish, attempts and the worker's final-attempt stamp per official
+ * task — timing columns only, never inputs or results. One light read at
+ * completion; a failed read keeps the stage times as they were.
+ */
+async function stageTimesWithTasks(sb: any, jobId: string, stageTimes: any): Promise<any> {
+  const base = stageTimes && typeof stageTimes === 'object' ? { ...stageTimes } : null;
+  try {
+    const { data, error } = await sb
+      .from('verify_tasks')
+      .select('id,source,dedupe_key,state,attempts,reused,created_at,started_at,finished_at,exec:result->_exec')
+      .eq('job_id', jobId)
+      .order('created_at', { ascending: true })
+      .limit(60);
+    if (error || !data?.length) return base;
+    return { ...(base || {}), tasks: taskTimeline(data) };
+  } catch {
+    return base;
+  }
+}
+
 async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any> {
   const z = parse(extractOpenAIText(p));
   const sources = extractOpenAISources(p);
@@ -4302,7 +4345,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * by reading it mid-run and then finding it gone from the finished row.
      */
     _reusePlan: prior._reusePlan ?? null,
-    _stageTimes: prior._stageTimes ?? null,
+    _stageTimes: await stageTimesWithTasks(sb, j.id, prior._stageTimes),
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
     // every customer response by sanitizeForCustomer().
@@ -4322,6 +4365,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   };
   result = applyEvidenceGate(result, i, o, reconciledIdentity);
   const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  // The report starts NOW, in parallel with the bookkeeping below, instead of
+  // on the driver's next sweep (see startSynthesisNow).
+  if (!finished?.error) await startSynthesisNow(sb, j.id);
   // The job is already saved. Bookkeeping runs after it and separately, so a
   // failure here can cost us a number but never a customer's report.
   await recordVerificationCost(sb, { id: j.id, result_json: result });
@@ -5807,6 +5853,12 @@ function stripInternalInProgress(result: any): any {
 }
 
 function sanitizeForCustomer(job: any): any {
+  // The persisted report's internal bookkeeping (model usage, build timing)
+  // never rides along on a status read; verify-synthesis strips the same keys.
+  if (job?.synthesis_json && typeof job.synthesis_json === 'object' && ('_usage' in job.synthesis_json || '_timing' in job.synthesis_json)) {
+    const { _usage: _u, _timing: _t, ...synthesis } = job.synthesis_json;
+    job = { ...job, synthesis_json: synthesis };
+  }
   // v32 (P0 fix): `research_jobs.error` also carries the last TRANSIENT
   // retry's message while a job is still actively being retried (see
   // advance()'s catch — a retriable classification leaves status:'CREATED'
@@ -6205,6 +6257,64 @@ async function driveSynthesis(sb: any): Promise<void> {
       console.error(`research-agent drive: synthesis failed for ${j.id}`, e);
       await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', j.id);
     }
+  }
+}
+
+/*
+ * THE REPORT STARTS THE MOMENT RESEARCH COMPLETES.
+ *
+ * Before: COMPLETE was written and the report waited for whoever came
+ * first — the page (which built it inside its own request, raced a 45 s
+ * timeout, and left synthesis_state NONE so the driver's next sweep could
+ * start a SECOND build of the same report), or the driver, which reaches
+ * driveSynthesis only after it has stepped every live job (pg_cron every
+ * 30 s, up to ~55 s per live job). Measured as `report_wait` in
+ * src/verify/performance.ts.
+ *
+ * After: the same claim driveSynthesis makes (PENDING, attempt counted,
+ * synthesis_at = start), taken conditionally so only one caller wins, then
+ * the same internal call, kept alive past this response. The page finds
+ * PENDING and waits for this build instead of starting its own; the driver
+ * leaves a fresh PENDING alone and retries a stale one exactly as before.
+ * Same build, same model, same attempt budget — earlier, and exactly once.
+ */
+async function startSynthesisNow(sb: any, jobId: string): Promise<void> {
+  try {
+    const { data: row } = await sb.from('research_jobs').select('synthesis_state,synthesis_attempts').eq('id', jobId).maybeSingle();
+    const state = String(row?.synthesis_state ?? '');
+    const attempts = Number(row?.synthesis_attempts ?? 0);
+    if (!row || (state !== 'NONE' && state !== 'FAILED') || attempts >= MAX_SYNTHESIS_ATTEMPTS) return;
+    const { data: claimed } = await sb
+      .from('research_jobs')
+      .update({ synthesis_state: 'PENDING', synthesis_attempts: attempts + 1, synthesis_at: now() })
+      .eq('id', jobId)
+      .eq('synthesis_state', state)
+      .eq('synthesis_attempts', attempts)
+      .select('id');
+    if (!claimed?.length) return;
+    const call = fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/verify-synthesis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'x-internal-driver': '1',
+      },
+      body: JSON.stringify({ jobId, internal: true, trigger: 'research' }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`verify-synthesis ${res.status}`);
+      })
+      .catch(async (e) => {
+        // Exactly what the driver does on failure: FAILED is swept again.
+        console.error(`research-agent: immediate synthesis failed for ${jobId}`, e);
+        await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', jobId).eq('synthesis_state', 'PENDING');
+      });
+    const rt = (globalThis as any).EdgeRuntime;
+    if (rt?.waitUntil) rt.waitUntil(call);
+    else await call;
+  } catch (e) {
+    // The driver's sweep remains the safety net.
+    console.error(`research-agent: could not start synthesis for ${jobId}`, e);
   }
 }
 
@@ -6729,9 +6839,39 @@ Deno.serve(async (req) => {
       const limit = Math.min(Math.max(Number(b.limit) || 20, 1), 50);
       const { data: rows } = await sb
         .from('research_jobs')
-        .select('id,status,stage,mode,query,created_at,completed_at,result_json,synthesis_json,synthesis_state')
+        .select('id,status,stage,mode,query,created_at,completed_at,updated_at,result_json,synthesis_json,synthesis_state,synthesis_at')
         .order('created_at', { ascending: false })
         .limit(limit);
+      /*
+       * PERFORMANCE (src/verify/performance.ts): Start → report READY with
+       * stage spans, queue wait, retries and bottleneck. Task rows and the
+       * CAPTCHA ledger are read live (timing columns only) and fall back to
+       * the timeline the job kept in _stageTimes.tasks.
+       */
+      const ids = (rows || []).map((j: any) => j.id);
+      const [{ data: taskRows }, { data: captchaRows }] = ids.length
+        ? await Promise.all([
+            sb.from('verify_tasks').select('id,job_id,source,dedupe_key,state,attempts,reused,created_at,started_at,finished_at,exec:result->_exec').in('job_id', ids).limit(1000),
+            sb.from('verify_captcha_events').select('job_id,task_id,source,solve_ms,outcome').in('job_id', ids).limit(2000),
+          ])
+        : [{ data: [] }, { data: [] }];
+      const byJob = (list: any[] | null) => {
+        const m = new Map<string, any[]>();
+        for (const x of list ?? []) m.set(x.job_id, [...(m.get(x.job_id) ?? []), x]);
+        return m;
+      };
+      const tasksByJob = byJob(taskRows);
+      const captchaByJob = byJob(captchaRows);
+      const performanceOf = (j: any) => {
+        try {
+          const r = j.result_json || {};
+          const live = tasksByJob.get(j.id);
+          const tasks = live?.length ? live : Array.isArray(r._stageTimes?.tasks) ? r._stageTimes.tasks : [];
+          return buildVerifyPerformance(j, tasks, r, j.synthesis_json?._timing ?? null, { captcha: captchaByJob.get(j.id) ?? [], now: now() });
+        } catch {
+          return null;
+        }
+      };
       const jobs = (rows || []).map((j: any) => {
         const r = j.result_json || {};
         const tas = (r.browserOfficial?.results || []).find((x: any) => x?.source === 'tas') || null;
@@ -6778,6 +6918,7 @@ Deno.serve(async (req) => {
           // Automatic verification attempts per source (outcome, attempts, latency — no tokens).
           captcha: (r.browserOfficial?.results || []).flatMap((x: any) => (Array.isArray(x?.captchaResolution) ? x.captchaResolution : []).map((c: any) => ({ source: x.source, type: c.type ?? null, attempts: c.attempts ?? 0, outcome: c.outcome ?? null, latencyMs: c.latencyMs ?? 0 }))),
           ai: { researchTokens: tokens, synthesis: usage, synthesisState: j.synthesis_state ?? null, searches: r.webSearchCalls ?? r._searches ?? null },
+          performance: performanceOf(j),
         };
       });
       return json({ jobs });

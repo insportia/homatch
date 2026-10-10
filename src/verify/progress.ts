@@ -57,6 +57,10 @@ export interface ProgressInput {
   reportReady?: boolean;
   /** research_jobs.updated_at — where a stopped run without completed_at stopped. */
   updatedAt?: string | number | null | undefined;
+  /** research_jobs.synthesis_state: NONE/PENDING while the report is still being written. */
+  synthesisState?: string | null | undefined;
+  /** research_jobs.synthesis_at — when synthesis_state is READY, the moment the report became available. */
+  synthesisAt?: string | number | null | undefined;
   /** Injected so this module is pure and testable. */
   now?: number;
 }
@@ -150,9 +154,33 @@ export function elapsedMs(input: ProgressInput): number {
   // run freezes at its last server update.
   const status = String(input.status || '').toUpperCase();
   const stopped = status === 'FAILED' || status === 'CANCELLED';
-  const end = toMillis(input.completedAt) ?? (stopped ? toMillis(input.updatedAt) ?? now : now);
+  const completed = toMillis(input.completedAt);
+  let end = completed ?? (stopped ? toMillis(input.updatedAt) ?? now : now);
+  /*
+   * The customer is waiting for the REPORT, not for research. Research
+   * finishing while the report is still being written used to freeze the
+   * clock at completed_at for the whole synthesis minute — the customer
+   * watched a stopped clock beside "writing the report". So:
+   *   - report READY → the clock stops where the server says it became
+   *     available (synthesis_at), i.e. Start → report;
+   *   - report still being written (NONE/PENDING) → the clock keeps running,
+   *     bounded so a case reopened long after a lost synthesis shows a
+   *     duration, never its age.
+   * Both read server columns only.
+   */
+  if (completed !== null && status === 'COMPLETE') {
+    const synthesis = String(input.synthesisState || '').toUpperCase();
+    const readyAt = toMillis(input.synthesisAt);
+    if (synthesis === 'READY' && readyAt !== null && readyAt >= completed && readyAt - completed <= REPORT_WAIT_MAX_MS) end = readyAt;
+    // A report the page already holds ends the wait even if the last status
+    // read predates READY: never a clock running beside a finished report.
+    else if (!input.reportReady && (synthesis === 'NONE' || synthesis === 'PENDING')) end = Math.max(completed, Math.min(now, completed + REPORT_WAIT_MAX_MS));
+  }
   return Math.max(0, end - started);
 }
+
+/** Longest report write the clock will follow past research completion. */
+export const REPORT_WAIT_MAX_MS = 10 * 60 * 1000;
 
 export function estimateProgress(input: ProgressInput): number {
   // The only thing that means finished.

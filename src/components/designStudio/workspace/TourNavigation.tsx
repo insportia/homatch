@@ -164,16 +164,29 @@ export function PlanSheet({ c, space, plan, names, room, tr, onRoom, onClose }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c, view]);
 
+  // The plan as it was read: its walls at their thickness, the doors and windows in them, what stands in each room.
+  const pieces = useMemo(() => c?.planPieces() ?? [], [c]);
+  const openings = useMemo(() => space.walls.flatMap((w) => {
+    const m = w.mesh;
+    const len = Math.hypot(m.end.x - m.start.x, m.end.y - m.start.y) || 1;
+    const dx = (m.end.x - m.start.x) / len; const dy = (m.end.y - m.start.y) / len;
+    return m.openings.map((o) => ({
+      id: `${w.id}:${o.id}`, kind: o.kind, t: m.thicknessM,
+      a: { x: m.start.x + dx * (o.offsetM - o.widthM / 2), y: m.start.y + dy * (o.offsetM - o.widthM / 2) },
+      b: { x: m.start.x + dx * (o.offsetM + o.widthM / 2), y: m.start.y + dy * (o.offsetM + o.widthM / 2) },
+    }));
+  }), [space]);
+
   return (
-    <div role="dialog" aria-modal="false" aria-label={tr('ds_walk_plan_title')} data-testid="walk-plan"
-      className="pointer-events-auto absolute inset-x-3 bottom-3 z-30 rounded-2xl bg-[#0C1119]/95 p-3 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur sm:inset-x-auto sm:end-3 sm:w-[22rem]">
+    <div role="region" aria-label={tr('ds_walk_plan_title')} data-testid="walk-plan"
+      className="pointer-events-auto absolute inset-x-3 bottom-3 z-30 rounded-2xl bg-[#0C1119]/92 p-3 text-white shadow-2xl ring-1 ring-white/15 backdrop-blur sm:inset-x-auto sm:bottom-auto sm:end-3 sm:top-16 sm:w-[min(30rem,42vw)]">
       <div className="flex items-center gap-2">
         <h2 className="min-w-0 flex-1 truncate text-[14px] font-semibold">{tr('ds_walk_plan_title')}</h2>
-        <button type="button" onClick={onClose} aria-label={tr('ds_set_done')} className={cn('grid h-9 w-9 place-items-center rounded-full hover:bg-white/10', ring)}>
-          <X className="h-4 w-4" aria-hidden="true" />
+        <button type="button" onClick={onClose} className={cn('inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium ring-1 ring-white/25 hover:bg-white/10', ring)} data-testid="walk-plan-hide">
+          <X className="h-4 w-4" aria-hidden="true" />{tr('ds_walk_plan_hide')}
         </button>
       </div>
-      <svg style={{ direction: 'ltr' }} viewBox={`-0.4 -0.4 ${view.w + 0.8} ${view.h + 0.8}`} className="mt-2 max-h-[38dvh] w-full" role="group" aria-label={tr('ds_walk_rooms')}>
+      <svg style={{ direction: 'ltr' }} viewBox={`-0.4 -0.4 ${view.w + 0.8} ${view.h + 0.8}`} className="mt-2 max-h-[44dvh] w-full" role="group" aria-label={tr('ds_walk_rooms')}>
         {space.rooms.map((r) => {
           const ok = plan.reachable.has(r.id);
           const here = r.id === room;
@@ -190,11 +203,34 @@ export function PlanSheet({ c, space, plan, names, room, tr, onRoom, onClose }: 
                   <polygon points={pts} fill="transparent" className="cursor-pointer" />
                   <text x={sx(r.centroid.x)} y={sy(r.centroid.y)} textAnchor="middle" dominantBaseline="middle" fontSize={Math.min(0.42, Math.max(0.26, Math.sqrt(r.areaM2) / 9))}
                     fill={here ? '#fff' : 'rgba(255,255,255,0.85)'} className="pointer-events-none select-none font-semibold">{label}</text>
+                  <text x={sx(r.centroid.x)} y={sy(r.centroid.y) + Math.min(0.42, Math.max(0.26, Math.sqrt(r.areaM2) / 9)) * 1.1} textAnchor="middle" dominantBaseline="middle"
+                    fontSize={Math.min(0.3, Math.max(0.2, Math.sqrt(r.areaM2) / 12))} fill="rgba(255,255,255,0.6)" className="pointer-events-none select-none">{r.areaM2.toFixed(1)} m²</text>
                 </a>
               ) : null}
             </g>
           );
         })}
+        {/* What stands in the rooms: footprints, rugs fainter. */}
+        {pieces.map((p, i) => {
+          const c0 = Math.cos(p.rotation); const s0 = Math.sin(p.rotation);
+          const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([kx, ky]) => {
+            const lx = (kx * p.w) / 2; const ly = (ky * p.d) / 2;
+            return `${sx(p.x + lx * c0 - ly * s0)},${sy(p.y + lx * s0 + ly * c0)}`;
+          }).join(' ');
+          return <polygon key={i} points={pts} className="pointer-events-none" fill={p.flat ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.18)'} stroke="rgba(255,255,255,0.45)" strokeWidth={0.025} />;
+        })}
+        {/* The walls as drawn, at their thickness; doors and windows cut into them. */}
+        {space.walls.map((w) => (
+          <line key={w.id} className="pointer-events-none" x1={sx(w.mesh.start.x)} y1={sy(w.mesh.start.y)} x2={sx(w.mesh.end.x)} y2={sy(w.mesh.end.y)}
+            stroke="#e9e4da" strokeWidth={Math.max(0.08, w.mesh.thicknessM)} strokeLinecap="square" />
+        ))}
+        {openings.map((o) => (
+          <g key={o.id} className="pointer-events-none">
+            <line x1={sx(o.a.x)} y1={sy(o.a.y)} x2={sx(o.b.x)} y2={sy(o.b.y)} stroke="#0C1119" strokeWidth={Math.max(0.1, o.t) + 0.02} />
+            <line x1={sx(o.a.x)} y1={sy(o.a.y)} x2={sx(o.b.x)} y2={sy(o.b.y)} stroke={o.kind === 'WINDOW' ? '#8fc6e8' : 'hsl(38, 92%, 62%)'} strokeWidth={o.kind === 'WINDOW' ? 0.06 : 0.035}
+              strokeDasharray={o.kind === 'DOOR' ? '0.12 0.08' : undefined} />
+          </g>
+        ))}
         <g ref={meRef} aria-label={tr('ds_walk_you_are_here')}>
           <path d="M 0 0 L 0.9 -0.35 L 0.9 0.35 Z" fill="hsla(38, 92%, 62%, 0.4)" />
           <circle r={0.2} fill="hsl(38, 92%, 62%)" stroke="#0C1119" strokeWidth={0.06} />

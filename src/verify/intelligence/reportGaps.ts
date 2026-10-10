@@ -292,6 +292,9 @@ export function projectTeamFrom(result: unknown, officialTeam: Array<{ name: str
   const add = (name: unknown, role: TeamRole, basis: ProjectTeamMember['basis'], roleText: string | null = null) => {
     const n = typeof name === 'string' ? name.replace(/\s+/g, ' ').trim() : '';
     if (n.length < 2 || n.length > 120) return;
+    // A bank is never a project-team member (job 220ed087: "თიბისი ბანკი — იპოთეკური შეძენის შესაძლებლობა").
+    // Only an officially evidenced financing relation may appear, and only in the finance context.
+    if (/ბანკ|\bbank\b|банк/iu.test(n) || /ბანკ|\bbank\b|банк|იპოთეკ|mortgage/iu.test(roleText ?? '')) return;
     const k = key(n);
     const prev = out.get(k);
     if (prev) {

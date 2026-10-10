@@ -44,6 +44,8 @@ export type Translate = (key: string, vars?: Record<string, string | number>) =>
 
 const SETTINGS_KEY = 'hm_walk_settings_v1';
 const TUTORIAL_KEY = (touch: boolean) => `hm_walk_tutorial_v1_${touch ? 'touch' : 'desktop'}`;
+/** Whether the plan panel is shown (remembered per device kind): open by default on a desktop, where it fits. */
+const PLAN_KEY = (touch: boolean) => `hm_walk_plan_v1_${touch ? 'touch' : 'desktop'}`;
 const readStore = (k: string): string | null => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const writeStore = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* private mode: fine */ } };
 
@@ -162,7 +164,13 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
   const doors = useMemo(() => (plan ? doorPointsFrom(plan, room) : []), [plan, room]);
   const history = useRef<WalkPose[]>([]);
   const [canBack, setCanBack] = useState(false);
-  const [planOpen, setPlanOpen] = useState(false);
+  // The plan beside the walk, so the tour can be checked against the drawing: open on a desktop unless hidden.
+  const [planOpen, setPlanOpenRaw] = useState(() => { const v = readStore(PLAN_KEY(touch)); return v ? v === 'open' : !touch; });
+  const setPlanOpen = (next: boolean | ((v: boolean) => boolean)) => setPlanOpenRaw((v) => {
+    const n = typeof next === 'function' ? next(v) : next;
+    writeStore(PLAN_KEY(touch), n ? 'open' : 'hidden');
+    return n;
+  });
   // The secondary actions, folded into one menu so the walk keeps the screen.
   const [more, setMore] = useState(false);
   const [doorHint, setDoorHint] = useState<'WAIT' | 'SHOW' | 'DONE'>('WAIT');
@@ -216,9 +224,10 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
             <span className="font-semibold">{roomName || tr('ds_walk_title')}</span>
           </p>
           {plan && space ? (
-            <button type="button" onClick={() => { c?.releasePointer(); setMore(false); setPlanOpen((v) => !v); }} aria-pressed={planOpen} className={quiet} aria-label={tr('ds_walk_plan')} data-testid="walk-plan-open">
+            <button type="button" onClick={() => { c?.releasePointer(); setMore(false); setPlanOpen((v) => !v); }} aria-pressed={planOpen} data-testid="walk-plan-open"
+              className={cn(quiet, planOpen ? 'bg-[hsl(38_92%_56%)]/25 ring-[hsl(38_92%_62%)]/60' : 'bg-white/10')}>
               <MapIcon className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">{tr('ds_walk_plan')}</span>
+              <span>{tr(planOpen ? 'ds_walk_plan_hide' : 'ds_walk_plan_show')}</span>
             </button>
           ) : null}
           <div className="relative">
@@ -288,7 +297,7 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
       ) : null}
       {planOpen && plan && space && !overlayOpen ? (
         <PlanSheet c={c} space={space} plan={plan} names={names} room={room} tr={tr}
-          onRoom={(id) => { setPlanOpen(false); goRoom(id); }} onClose={() => setPlanOpen(false)} />
+          onRoom={(id) => goRoom(id)} onClose={() => setPlanOpen(false)} />
       ) : null}
 
       {/* ── The eye: a quiet centre point while the mouse is captured ── */}
@@ -304,9 +313,11 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
           {aim ? (
             <>
               <span className="truncate">{tr(`ds_ix_${aim.role.toLowerCase()}`)}</span>
-              {aim.actions.slice(0, 3).map((a) => (
+              {aim.actions.slice(0, 3).map((a, i) => (
                 <button key={a} type="button" onClick={() => { c?.performAimed(a); }} data-action={a}
-                  className={cn('h-8 shrink-0 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90', ring)}>
+                  className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90', ring)}>
+                  {/* Desktop: the key that takes it (1, 2, 3) when there is a choice. */}
+                  {!touch && aim.actions.length > 1 ? <kbd className="rounded bg-[#0C1119]/10 px-1 text-2xs font-semibold" aria-hidden="true">{i + 1}</kbd> : null}
                   {tr(`ds_act_${a}`)}
                 </button>
               ))}
@@ -321,6 +332,7 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
           ) : (
             <>
               <span className="truncate">{tr(posture === 'LYING' || posture === 'LYING_DOWN' ? 'ds_walk_lying' : 'ds_walk_seated')}</span>
+              <span className="hidden truncate text-white/60 sm:inline">· {tr(touch ? 'ds_walk_stand_tap' : 'ds_walk_stand_click')}</span>
               <button type="button" onClick={() => c?.standIfSeated()} data-action="STAND_UP"
                 className={cn('h-8 shrink-0 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90', ring)}>
                 {tr('ds_act_STAND_UP')}
@@ -372,6 +384,7 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
             <Toggle label={tr('ds_set_invert')} checked={settings.invertY} onChange={(v) => changeSettings({ invertY: v })} />
             <Toggle label={tr('ds_set_invert_x')} checked={settings.invertX} onChange={(v) => changeSettings({ invertX: v })} />
             <Toggle label={tr('ds_set_reduced')} checked={settings.reducedMotion} onChange={(v) => changeSettings({ reducedMotion: v })} />
+            <Toggle label={tr('ds_set_sound')} checked={settings.sound} onChange={(v) => changeSettings({ sound: v })} />
           </div>
           <button type="button" className={cn(primary, 'mt-5 w-full')} onClick={() => setSheet(null)}>{tr('ds_set_done')}</button>
         </Dialog>

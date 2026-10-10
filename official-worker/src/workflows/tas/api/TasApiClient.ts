@@ -132,13 +132,14 @@ export class TasApiClient {
     }
   }
 
-  async request(url: string, init: RequestInit = {}): Promise<HttpResult> {
-    const retries = this.o.retries ?? 2;
+  /** `maxBytes` overrides the client's per-reply byte bound (priority attachments); `retries` the retry count (0 for strictly bounded discovery). */
+  async request(url: string, init: RequestInit = {}, opts: { maxBytes?: number; retries?: number } = {}): Promise<HttpResult> {
+    const retries = opts.retries ?? this.o.retries ?? 2;
     for (let attempt = 0; ; attempt++) {
       if (this.remainingMs() < 2000) throw new TasDeadline();
       this.o.signal?.throwIfAborted();
       try {
-        const r = await this.slot(() => this.once(url, init));
+        const r = await this.slot(() => this.once(url, init, opts.maxBytes));
         if ((r.status === 429 || r.status >= 500) && attempt < retries) {
           this.stats.retries++;
           await new Promise((res) => setTimeout(res, 800 * 2 ** attempt));
@@ -157,7 +158,7 @@ export class TasApiClient {
     }
   }
 
-  private async once(url: string, init: RequestInit): Promise<HttpResult> {
+  private async once(url: string, init: RequestInit, maxBytes?: number): Promise<HttpResult> {
     const started = Date.now();
     this.stats.requests++;
     const timeout = Math.max(1000, Math.min(this.o.timeoutMs ?? 30000, this.remainingMs() - 1000));
@@ -168,7 +169,7 @@ export class TasApiClient {
       signal: AbortSignal.any(signals),
       headers: { 'User-Agent': 'HOMATCH-Verify/1.0 (+https://homatch.live)', ...(init.headers as any) },
     });
-    const max = this.o.maxBytes ?? 40 * 1024 * 1024;
+    const max = maxBytes ?? this.o.maxBytes ?? 40 * 1024 * 1024;
     const declared = Number(res.headers.get('content-length') ?? NaN);
     if (Number.isFinite(declared) && declared > max) {
       try { await res.body?.cancel(); } catch { /* ignore */ }
@@ -179,7 +180,7 @@ export class TasApiClient {
     return { status: res.status, contentType: res.headers.get('content-type'), disposition: res.headers.get('content-disposition'), bytes: buf, durationMs: Date.now() - started };
   }
 
-  async dwrCall(path: string, scriptName: string, methodName: string, params: DwrParam[], page: string = TAS_PUBLIC.publicPage): Promise<{ data: DwrValue; objectCount: number }> {
+  async dwrCall(path: string, scriptName: string, methodName: string, params: DwrParam[], page: string = TAS_PUBLIC.publicPage, opts: { retries?: number } = {}): Promise<{ data: DwrValue; objectCount: number }> {
     this.batch += 1;
     // Stateless: no cookies, empty httpSessionId/scriptSessionId — the server
     // creates its own DWR script session (live-verified).
@@ -188,7 +189,7 @@ export class TasApiClient {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain', Referer: `${TAS_PUBLIC.origin}${page}` },
       body,
-    });
+    }, opts);
     if (r.status < 200 || r.status >= 300) throw new Error(`TAS_DWR_HTTP_${r.status}`);
     const reply = parseDwrReply(bytesToBuffer(r.bytes).toString('utf8'));
     if (!reply.ok) throw new Error(`TAS_DWR_EXCEPTION ${reply.exception?.javaClassName ?? ''} ${reply.exception?.message ?? ''}`.trim());

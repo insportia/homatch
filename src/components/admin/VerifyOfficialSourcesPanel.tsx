@@ -20,6 +20,7 @@ import { supabase } from '@/db/supabase';
 import { getAdminSettings, updateAdminSetting } from '@/services/api';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
+import { VerifyPerformanceTable } from '@/components/admin/VerifyPerformanceTable';
 
 type Impl = 'LEGACY' | 'API_FIRST';
 interface TasSetting { active: Impl; fallback: Impl | null }
@@ -500,6 +501,13 @@ export function VerifyOfficialSourcesPanel() {
           ) : (
             <p className="text-xs text-muted-foreground">{t('adm_vos_no_data')}</p>
           )}
+        </section>
+
+        {/* ── End-to-end performance: Start → report READY ── */}
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">{t('adm_vperf_title')}</h3>
+          <p className="text-xs text-muted-foreground">{t('adm_vperf_hint')}</p>
+          <VerifyPerformanceTable jobs={jobs} />
         </section>
       </CardContent>
     </Card>

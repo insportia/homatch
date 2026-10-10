@@ -154,7 +154,8 @@ function confirmedEntities(rows: QueueTaskRow[]): Array<{ identificationCode: st
 export function taskResult(r: QueueTaskRow): any | null {
   const entity = r.input && (r.input.idCode || r.input.name) && !isPrimary(r) ? { name: r.input.name ?? null, idCode: r.input.idCode ?? null } : null;
   if (r.state === 'SUCCEEDED' && r.result && typeof r.result === 'object') {
-    const { queueEntities: _drop, ...rest } = r.result;
+    // _exec: the worker's timing stamp — performance diagnostics only.
+    const { queueEntities: _drop, _exec: _dropExec, ...rest } = r.result;
     return {
       ...rest,
       source: rest.source ?? (r.source === 'tas_legacy' ? 'tas' : r.source),

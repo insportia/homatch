@@ -85,8 +85,10 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         return json({ accessRestricted: true });
       }
+      // jsonb containment takes JSON text: postgrest-js serializes an array
+      // argument as a Postgres array literal (cs.{[object Object]}) and fails.
       const { data, error } = await db.from('discovery_marketplace_worker_runs')
-        .select('created_at,errors').eq('worker_id', workerId).contains('errors', [{ code: 'ACCESS_DENIED' }])
+        .select('created_at,errors').eq('worker_id', workerId).contains('errors', '[{"code":"ACCESS_DENIED"}]')
         .order('created_at', { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;
       return json({ accessRestricted: myHomeRestricted(worker.health, data) });

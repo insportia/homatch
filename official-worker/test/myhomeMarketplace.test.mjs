@@ -219,6 +219,7 @@ test('runtime uses authenticated claim, heartbeat and result report without a se
     if(!String(input).includes('/functions/v1/')) return source.fetcher(input,init);
     assert.equal(init.headers.Authorization,'Bearer '+'x'.repeat(40));assert.equal(init.headers['x-homatch-worker'],'myhome-agent');
     const body=JSON.parse(init.body);bodies.push(body);
+    if(body.action==='source-health') return Response.json({accessRestricted:false});
     if(body.action==='claim'){const runs=claimed?[]:[{runId:'00000000-0000-4000-8000-000000000003',attempt:1,deadlineAt:new Date(Date.now()+900000).toISOString(),request}];claimed=true;return Response.json({runs});}
     if(body.action==='report'){assert.equal(body.report,undefined);assert.equal(validateWorkerReport(body.result,'myhome-ge').ok,true);completed=body.result.status==='COMPLETE';return Response.json({accepted:body.result.listings.length,rejected:[],searchStatus:'RESULTS_AVAILABLE'});}
     return Response.json({leaseExpiresAt:new Date().toISOString()});
@@ -270,4 +271,35 @@ test('district names resolve with or without a "district"/„რაიონი�
   assert.equal(resolveLocation({ city: 'Tbilisi', district: 'Vake district' }, dict).districtId, 3);
   const k = resolveLocation({ city: 'თბილისი', district: 'კრწანისი' }, dict);
   assert.equal(k.urbanId, 65);
+});
+
+test('runtime honors durable access restriction without contacting MyHome and closes only its own run', async () => {
+  let sourceRequests = 0, completed = false, claimed = false;
+  const reports = [];
+  const fetcher = async (input, init) => {
+    if (!String(input).includes('/functions/v1/')) { sourceRequests++; throw Error('restricted source must not be contacted'); }
+    assert.equal(init.headers.Authorization, 'Bearer ' + 'x'.repeat(40));
+    assert.equal(init.headers['x-homatch-worker'], 'myhome-agent');
+    const body = JSON.parse(init.body);
+    if (body.action === 'source-health') return Response.json({ accessRestricted: true });
+    if (body.action === 'claim') {
+      const runs = claimed ? [] : [{ runId: '00000000-0000-4000-8000-000000000004', attempt: 1, deadlineAt: new Date(Date.now()+900000).toISOString(), request }];
+      claimed = true; return Response.json({ runs });
+    }
+    if (body.action === 'report') {
+      reports.push(body.result); completed = true;
+      return Response.json({ accepted: 0, rejected: [], searchStatus: 'PARTIAL_COMPLETE' });
+    }
+    throw Error('unexpected action ' + body.action);
+  };
+  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true' }, fetcher);
+  try {
+    for (let i=0;i<100&&!completed;i++) await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(completed, true);
+    assert.equal(sourceRequests, 0);
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].status, 'BLOCKED');
+    assert.equal(reports[0].errors[0].code, 'ACCESS_DENIED');
+    assert.equal(runtime.status().engine.access, 'ACCESS_RESTRICTED');
+  } finally { runtime.shutdown(); }
 });

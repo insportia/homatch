@@ -2815,7 +2815,7 @@ export class SceneController {
     this.sounds.stopAll();
     if (this.decor) { disposeDecor(this.decor); this.decor = null; }
     this.cancelPendingTap();
-    this.lastMouseTap = 0;
+    this.lastMouseDown = 0;
     this.leavingLock = true;
     if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock?.();
     window.removeEventListener('keydown', this.onWalkKey);
@@ -2954,12 +2954,15 @@ export class SceneController {
   lockPointer(): boolean {
     const el = this.renderer.domElement as HTMLCanvasElement & { requestPointerLock?: () => Promise<void> | void };
     if (!this.walk || this.lockUnavailable || !el.requestPointerLock) return false;
+    // A refused request (the browser's pause right after the mouse was given back, a lost focus) is tried again on
+    // the next double click: only a browser without pointer lock at all stops asking.
+    const refused = (err: unknown) => { if ((err as { name?: string } | null)?.name === 'NotSupportedError') this.lockUnavailable = true; };
     try {
       const r = el.requestPointerLock();
-      if (r && typeof (r as Promise<void>).catch === 'function') (r as Promise<void>).catch(() => { this.lockUnavailable = true; });
+      if (r && typeof (r as Promise<void>).catch === 'function') (r as Promise<void>).catch(refused);
       return true;
-    } catch {
-      this.lockUnavailable = true;
+    } catch (err) {
+      refused(err);
       return false;
     }
   }
@@ -3146,16 +3149,7 @@ export class SceneController {
       if (this.walk?.seated) this.standUp();
     };
     if (!g.mouse) { use(); return; }
-    // Desktop: a double click captures the mouse for looking, and a double click gives it back (Esc does too). The
-    // overlay says so before the first click.
-    const now = performance.now();
-    if (now - this.lastMouseTap < DOUBLE_CLICK_MS) {
-      this.lastMouseTap = 0;
-      this.cancelPendingTap();
-      if (g.locked) this.releasePointer(); else this.lockPointer();
-      return;
-    }
-    this.lastMouseTap = now;
+    // (A double click is taken where it starts, onLookDown: it never reaches here.)
     if (!g.locked) { use(); return; }
     // Captured, a single click waits out the double-click window: the click that starts "give the mouse back" never
     // also opens a door or walks through a doorway.
@@ -3166,7 +3160,7 @@ export class SceneController {
     }, DOUBLE_CLICK_MS);
   }
 
-  private lastMouseTap = 0;
+  private lastMouseDown = 0;
   private pendingTap = 0;
   private cancelPendingTap() {
     if (this.pendingTap) window.clearTimeout(this.pendingTap);
@@ -3175,6 +3169,21 @@ export class SceneController {
 
   private onLookDown = (e: PointerEvent) => {
     if (!this.walk || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (e.pointerType === 'mouse') {
+      // Desktop: a double click captures the mouse for looking, and a double click gives it back (Esc does too); the
+      // overlay says so before the first click. Taken on the second press (a press is what lets a page capture the
+      // mouse) and by time alone: a hand that moves the mouse a little while double-clicking — and, captured, every
+      // movement turns the view — still double-clicks.
+      const now = performance.now();
+      if (now - this.lastMouseDown < DOUBLE_CLICK_MS) {
+        this.lastMouseDown = 0;
+        this.cancelPendingTap();
+        this.gestures.clear();
+        if (this.pointerLocked) this.releasePointer(); else this.lockPointer();
+        return;
+      }
+      this.lastMouseDown = now;
+    }
     this.touchInput = e.pointerType !== 'mouse';
     this.beginGesture(e.pointerId, e.clientX, e.clientY, e.pointerType === 'mouse');
     if (!this.pointerLocked) this.renderer.domElement.setPointerCapture?.(e.pointerId);

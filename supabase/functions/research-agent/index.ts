@@ -2347,6 +2347,22 @@ async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
  */
 const persistOfficialTransition = (sb: any, j: any, patch: Record<string, any>) => persistOfficialTransitionWith(sb, j, patch);
 
+/*
+ * THE OFFICIAL DEADLINE COUNTS FROM WHEN THE WORKER STARTED THE JOB.
+ *
+ * The worker admits a bounded number of jobs at once and queues the rest. A
+ * job waiting in line is not slow, it is waiting its turn: its 14 minutes
+ * start at runStartedAt. The wait itself is capped (OFFICIAL_QUEUE_MAX_MS) so
+ * a stuck queue still ends in a report built from the other sources.
+ */
+const OFFICIAL_QUEUE_MAX_MS = 45 * 60 * 1000;
+function officialPastDeadline(j: any, w: any): boolean {
+  const launched = Date.parse(j.result_json?._worker?.startedAt || '');
+  if (w?.status === 'QUEUED') return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_MAX_MS;
+  const started = Date.parse(w?.runStartedAt || '') || launched;
+  return Number.isFinite(started) && started > 0 && Date.now() - started > OFFICIAL_BROWSER_DEADLINE_MS;
+}
+
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
@@ -2357,9 +2373,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
    */
   let w = (await wf(`/research/${id}?view=status`)).data;
   if (w?.view === 'status') {
-    const startedAtMs = Date.parse(j.result_json?._worker?.startedAt || '');
-    const pastDeadline = Number.isFinite(startedAtMs) && Date.now() - startedAtMs > OFFICIAL_BROWSER_DEADLINE_MS;
-    if (w.status === 'COMPLETE' || w.status === 'FAILED' || pastDeadline) w = (await wf(`/research/${id}`)).data;
+    if (w.status === 'COMPLETE' || w.status === 'FAILED' || officialPastDeadline(j, w)) w = (await wf(`/research/${id}`)).data;
   }
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
@@ -2403,13 +2417,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       });
   }
   if (w.status !== 'COMPLETE') {
-    const startedAt = Date.parse(j.result_json?._worker?.startedAt || '');
-    const workerAgeMs = Number.isFinite(startedAt)
-      ? Date.now() - startedAt
-      : 0;
-    const MAX_BROWSER_WAIT_MS = OFFICIAL_BROWSER_DEADLINE_MS;
-
-    if (startedAt && workerAgeMs > MAX_BROWSER_WAIT_MS) {
+    if (officialPastDeadline(j, w)) {
       const p = j.result_json || {};
       const partialResults = Array.isArray(w.results) ? w.results : [];
 
@@ -2474,7 +2482,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // have just filled it in and this branch is the one that repeats.
     return sb.from('research_jobs').update({
       result_json: j.result_json,
-      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null },
+      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null },
       updated_at: now(),
     }).eq('id', j.id);
   }

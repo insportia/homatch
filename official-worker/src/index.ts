@@ -99,6 +99,8 @@ app.get('/health', (_q: any, r: any) =>
   r.json({
     ok: true,
     service: 'homatch-official-worker',
+    // Verify capacity: running jobs vs the cap, and how many wait in line.
+    admission: orchestrator.admission(),
     // Presence facts only. Session health is at /health/telegram (token-only).
     telegram: { configured: telegram.status().configured, enabled: telegram.status().enabled },
     // Deployed is not the same as able. Two Railway services run this image
@@ -270,6 +272,7 @@ function statusView(j: any) {
     steps: j.steps, humanVerification: j.humanVerification, error: j.error,
     createdAt: j.createdAt, updatedAt: j.updatedAt, completedAt: j.completedAt,
     results: (Array.isArray(j.results) ? j.results : []).map((r: any) => ({ source: r?.source, status: r?.status, sourceName: r?.sourceName })),
+    queuePosition: j.queuePosition ?? null, queuedAt: j.queuedAt ?? null, runStartedAt: j.runStartedAt ?? null,
     view: 'status',
   };
 }

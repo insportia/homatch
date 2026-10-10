@@ -133,7 +133,10 @@ test('research-agent: worker data is sanitized at entry, every official exit is 
   const poll = src.slice(src.indexOf('async function pollBrowser('), src.indexOf('// pickFinancialCandidate()'));
   assert.equal((poll.match(/stage: 'OFFICIAL_READY'/g) || []).length, (poll.match(/return persistOfficialTransition\(sb, j, \{/g) || []).length, 'every OFFICIAL_READY transition is a checked write');
   assert.doesNotMatch(poll, /return sb\s*\.from\('research_jobs'\)\s*\.update\(\{\s*status: 'CREATED'/);
-  assert.match(poll, /const MAX_BROWSER_WAIT_MS = OFFICIAL_BROWSER_DEADLINE_MS;/);
+  // The deadline counts from when the worker started the job, not while it queued.
+  assert.match(poll, /if \(officialPastDeadline\(j, w\)\) \{/);
+  assert.match(src, /function officialPastDeadline[\s\S]{0,600}OFFICIAL_BROWSER_DEADLINE_MS/);
+  assert.match(src, /w\?\.status === 'QUEUED'[\s\S]{0,120}OFFICIAL_QUEUE_MAX_MS/);
   assert.match(poll, /currentSource: currentOfficialSource\(w\)/);
   const drive = src.slice(src.indexOf('async function driveJob('), src.indexOf('async function driveJob(') + 2000);
   assert.match(drive, /await advance\(sb, key, model, j, jobLanguage\(j\)\);\n[\s\S]{0,300}if \(await recoverStalledOfficial\(sb, j\)\) return;/);

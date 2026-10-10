@@ -16078,6 +16078,10 @@ const en = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: '{{pages}} pages of official documents read, {{count}} records and sources checked — the whole history, read for you',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'The connection was interrupted. Please check your internet and try again.',
+  verify_err_busy: 'Many verifications are running right now. Please try again in a moment.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32070,6 +32074,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: '{{pages}} გვერდი ოფიციალური დოკუმენტი წავიკითხეთ და {{count}} ჩანაწერი და წყარო შევამოწმეთ — მთელი ისტორია, თქვენთვის წაკითხული',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'კავშირი შეწყდა. შეამოწმეთ ინტერნეტი და სცადეთ თავიდან.',
+  verify_err_busy: 'ამ წუთას ბევრი შემოწმება მიმდინარეობს. სცადეთ ცოტა ხანში თავიდან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48053,6 +48061,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: 'Прочитано {{pages}} страниц официальных документов, проверено {{count}} записей и источников — вся история, прочитанная для вас',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'Соединение прервалось. Проверьте интернет и попробуйте ещё раз.',
+  verify_err_busy: 'Сейчас выполняется много проверок. Пожалуйста, повторите попытку через минуту.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64034,6 +64046,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: '{{pages}} sayfa resmi belge okundu, {{count}} kayıt ve kaynak kontrol edildi — tüm geçmiş, sizin için okundu',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'Bağlantı kesildi. İnternetinizi kontrol edip tekrar deneyin.',
+  verify_err_busy: 'Şu anda çok sayıda doğrulama yapılıyor. Lütfen birazdan tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -80015,6 +80031,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: 'قرأنا {{pages}} صفحة من الوثائق الرسمية وفحصنا {{count}} سجلًا ومصدرًا — التاريخ كاملًا، مقروءًا من أجلك',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'انقطع الاتصال. يُرجى التحقق من الإنترنت والمحاولة مرة أخرى.',
+  verify_err_busy: 'تُجرى الآن عمليات تحقق كثيرة. يُرجى المحاولة مرة أخرى بعد قليل.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -95996,6 +96016,10 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: 'קראנו {{pages}} עמודים של מסמכים רשמיים ובדקנו {{count}} רשומות ומקורות — כל ההיסטוריה, נקראה עבורכם',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'החיבור נקטע. בדקו את חיבור האינטרנט ונסו שוב.',
+  verify_err_busy: 'כרגע מתבצעות בדיקות רבות. נסו שוב בעוד רגע.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

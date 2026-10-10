@@ -269,9 +269,13 @@ test('the pipeline is driven by something other than a browser', () => {
   assert.ok(agent.includes("'drive'"), 'there is no driver action');
   assert.ok(/driveLiveJobs\(/.test(agent), 'nothing sweeps live jobs');
   // The driver must step the SAME state machine the client steps.
-  assert.ok(/await advance\(sb, key, model, j, jobLanguage\(j\)\)/.test(agent.replace(/\s+/g, ' ')) ||
-            /advance\(sb, key, model, j, jobLanguage\(j\)\)/.test(agent),
-    'the driver does not call advance() — there is a second implementation');
+  // It goes through advanceExclusive (one advancer per job), which must itself
+  // be nothing but a lease around the same advance().
+  assert.ok(/advanceExclusive\(sb, key, model, j, jobLanguage\(j\)\)/.test(agent),
+    'the driver does not step jobs through the shared entry point');
+  const wrapper = agent.slice(agent.indexOf('async function advanceExclusive('), agent.indexOf('async function advance('));
+  assert.ok(/await advance\(sb, k, m, j, l\);/.test(wrapper),
+    'advanceExclusive does not call advance() — there is a second implementation');
 });
 
 test('the driver authenticates, and cannot be triggered by a customer token', () => {

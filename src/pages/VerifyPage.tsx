@@ -106,10 +106,26 @@ async function readFunctionErrorBody(e:any):Promise<any>{
 // replace it with real, safe, structured error surfacing"). See
 // readFunctionErrorBody() above for why this has to read `e.context` at
 // all.
-async function resolveFunctionErrorMessage(e:any,fallback:string):Promise<string>{
+// Transport and server-internal failures never reach the customer verbatim
+// ("Failed to send a request to the Edge Function" is a browser/network fact,
+// not something a buyer can act on). They become one of two plain messages;
+// every message the server wrote for people (already localised) passes through.
+const TRANSPORT_ERROR_RE=/failed to send a request|functionsfetcherror|failed to fetch|networkerror|load failed|fetch failed|network request failed|the operation was aborted|timed? ?out/i;
+const SERVER_INTERNAL_RE=/internal server error|non-2xx|functionsrelayerror|relay error|could not create research job|boot_error|worker_limit|wall clock|cpu time/i;
+type ErrorCopy={connection:string;busy:string};
+function friendlyInvokeMessage(message:string,statusCode:number,copy:ErrorCopy|null):string{
+  if(!copy)return message;
+  if(TRANSPORT_ERROR_RE.test(message)||(!statusCode&&/fetch|network|request/i.test(message)))return copy.connection;
+  if(SERVER_INTERNAL_RE.test(message)||statusCode===429||statusCode>=500&&statusCode!==503)return copy.busy;
+  return message;
+}
+/** Transport failure or 5xx/429: safe to retry an idempotent request. */
+function isRetryableInvokeError(e:any):boolean{const st=Number(e?.context?.status)||0;return st===0||st===429||(st>=500&&st!==503)}
+async function resolveFunctionErrorMessage(e:any,fallback:string,copy:ErrorCopy|null=null):Promise<string>{
   const body=await readFunctionErrorBody(e);
-  if(body&&typeof body.error==='string'&&body.error.trim())return body.error;
-  return(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback);
+  const statusCode=Number(e?.context?.status)||0;
+  if(body&&typeof body.error==='string'&&body.error.trim())return friendlyInvokeMessage(body.error,statusCode,copy);
+  return friendlyInvokeMessage(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback,statusCode,copy);
 }
 // MAX_TRANSIENT_POLL_RETRIES / computeTransientPollBackoffMs (v33, P0
 // incident 2026-09-07, job 533a8c19-f160-4f06-ab27-517c1f661b86): production
@@ -150,10 +166,10 @@ function computeTransientPollBackoffMs(retryCount:number):number{const n=Math.ma
 //                               uncaught-exception path, or no response at
 //                               all — exactly the incident class this fix
 //                               targets)
-async function classifyFunctionInvokeError(e:any,fallback:string):Promise<{message:string;category:'AUTH'|'CONFIG'|'TERMINAL'|'TRANSIENT'}>{
+async function classifyFunctionInvokeError(e:any,fallback:string,copy:ErrorCopy|null=null):Promise<{message:string;category:'AUTH'|'CONFIG'|'TERMINAL'|'TRANSIENT'}>{
   const body=await readFunctionErrorBody(e);
-  const message=(body&&typeof body.error==='string'&&body.error.trim())?body.error:(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback);
   const statusCode=Number(e?.context?.status)||0;
+  const message=friendlyInvokeMessage((body&&typeof body.error==='string'&&body.error.trim())?body.error:(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback),statusCode,copy);
   const category=statusCode===401?'AUTH':statusCode===503?'CONFIG':(statusCode===400||statusCode===404||statusCode===409)?'TERMINAL':'TRANSIENT';
   return{message,category};
 }
@@ -683,7 +699,7 @@ if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setCaptcha(nu
      yet — a success state with nothing in it. Loading now stays true until
      loadSynthesis() settles, and the stream switches to its synthesis row so
      the wait is described honestly rather than looking stuck. */
-  void loadSynthesis(id).finally(()=>setLoading(false));/* The verification persists BY ITSELF. A finished check is not a thing the customer then has to file somewhere else: createDealRoomFromVerify() is idempotent and reuses the existing case for this property, so the run simply becomes — or continues — that property's Verification Case. Failure is silent on purpose: the report on screen is still complete and correct, and the button below offers the save again. */void saveCase(id,data.result_json,{silent:true});return}}catch(e:any){const{message,category}=await classifyFunctionInvokeError(e,t('verify_err_status_fetch_failed'));if(category==='TRANSIENT'&&transientRetryCount.current<MAX_TRANSIENT_POLL_RETRIES){
+  void loadSynthesis(id).finally(()=>setLoading(false));/* The verification persists BY ITSELF. A finished check is not a thing the customer then has to file somewhere else: createDealRoomFromVerify() is idempotent and reuses the existing case for this property, so the run simply becomes — or continues — that property's Verification Case. Failure is silent on purpose: the report on screen is still complete and correct, and the button below offers the save again. */void saveCase(id,data.result_json,{silent:true});return}}catch(e:any){const{message,category}=await classifyFunctionInvokeError(e,t('verify_err_status_fetch_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')});if(category==='TRANSIENT'&&transientRetryCount.current<MAX_TRANSIENT_POLL_RETRIES){
   // The core P0 fix: keep the existing progress UI exactly as it is, show a
   // calm notice instead of the red error box, and keep polling with
   // backoff — never stop(), never setLoading(false), never touch jobId/
@@ -750,7 +766,7 @@ const{data,error}=await supabase.functions.invoke('research-agent',{body:{action
 if(error)throw error;if(data?.error)throw new Error(data.error);
 stop();setLoading(false);setCaptcha(null);setPollNotice(null);
 setJobMeta(m=>({...(m||{}),status:'CANCELLED'}))}
-catch(e:any){setErr(await resolveFunctionErrorMessage(e,t('verify_err_stop_failed')))}
+catch(e:any){setErr(await resolveFunctionErrorMessage(e,t('verify_err_stop_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}
 finally{setStopping(false);setConfirmStop(false)}};
 /* THE HANDOVER LANDING.
    AuthContext claims the anonymous work the instant an account exists and
@@ -799,7 +815,12 @@ const run=async()=>{if(!valid)return;stop();setLoading(true);setErr(null);setPol
    to a session the server issues; signing in hands it over, same job, same
    evidence, never run twice. */
 const anonToken=supaUser?null:await ensureAnonymousSession();
-const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'start',query:query.trim(),type:mode,language:lang,anonSessionToken:anonToken??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);const id=String(data?.jobId||data?.id||'');if(!id)throw new Error(t('verify_err_no_job_id'));setJobId(id);/* Register the run in the durable job registry the moment research-agent
+/* One id per submission: a retry of this same start (dropped response,
+   flaky network) returns the job already created instead of a second one. */
+const clientRequestId=typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():`v${Date.now().toString(36)}${Math.random().toString(36).slice(2,12)}`;
+let data:any=null;let error:any=null;
+for(let attempt=0;attempt<3;attempt++){({data,error}=await supabase.functions.invoke('research-agent',{body:{action:'start',query:query.trim(),type:mode,language:lang,anonSessionToken:anonToken??undefined,clientRequestId}}));if(!error||!isRetryableInvokeError(error)||attempt===2)break;await new Promise(r=>setTimeout(r,1500*(attempt+1)))}
+if(error)throw error;if(data?.error)throw new Error(data.error);const id=String(data?.jobId||data?.id||'');if(!id)throw new Error(t('verify_err_no_job_id'));setJobId(id);/* Register the run in the durable job registry the moment research-agent
    answers with an id. research_jobs and its pg_cron driver are what RUN the
    verification; this is what lets the customer SEE it running from any other
    page, and what puts it back in front of them when they return (PART C
@@ -812,7 +833,7 @@ void startJobBestEffort({productType:'VERIFY',subjectType:'RESEARCH_JOB',subject
 // completes, so a mid-run refresh reconnects to the RUNNING job (mandate
 // test M), not just a COMPLETE one.
 {const params=new URLSearchParams(searchParams);if(params.get('job')!==id){params.set('job',id);setSearchParams(params,{replace:true})}}
-if(data?.progress)setProgress(data.progress);if(data?.sections)setSections(data.sections);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_start_failed')))}};
+if(data?.progress)setProgress(data.progress);if(data?.sections)setSections(data.sections);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_start_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}};
 
 // Asks the server what should happen for this source. Advisory only: it
 // creates no state unless the answer is USER_SIDE_HANDOFF, and any failure
@@ -864,7 +885,7 @@ const saveCase=async(jid?:string,rep?:Report,opts?:{silent?:boolean})=>{
   }catch(e){
     // Never swallowed. A background attempt stays quiet; an explicit one
     // tells the customer what happened and leaves the button usable.
-    if(!opts?.silent)setCaseErr(await resolveFunctionErrorMessage(e,t('verify_case_save_failed')));
+    if(!opts?.silent)setCaseErr(await resolveFunctionErrorMessage(e,t('verify_case_save_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}));
     return null;
   }finally{savingRef.current=false;setSavingCase(false)}
 };
@@ -874,8 +895,8 @@ const saveCase=async(jid?:string,rep?:Report,opts?:{silent?:boolean})=>{
 // Center lands -- the case's Documents tab -- so there is one document
 // architecture, not two. If the case has not been persisted yet (the
 // automatic save failed, or is still in flight), save it first and then go.
-const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed')))}};
-const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed')))}};
+const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}};
+const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}};
 // openVerifyHistorySidebar(): the global "browse every research run I've ever
 // started" sidebar (mandate section 29). Always a plain SELECT
 // (listVerifyHistory), never a research-agent call — opening the sidebar

@@ -139,7 +139,8 @@ test('research-agent: worker data is sanitized at entry, every official exit is 
   assert.match(src, /w\?\.status === 'QUEUED'[\s\S]{0,120}OFFICIAL_QUEUE_MAX_MS/);
   assert.match(poll, /currentSource: currentOfficialSource\(w\)/);
   const drive = src.slice(src.indexOf('async function driveJob('), src.indexOf('async function driveJob(') + 2000);
-  assert.match(drive, /await advance\(sb, key, model, j, jobLanguage\(j\)\);\n[\s\S]{0,300}if \(await recoverStalledOfficial\(sb, j\)\) return;/);
+  // The driver steps through the exclusive wrapper (one advancer per job), then checks for a stall.
+  assert.match(drive, /if \(!\(await advanceExclusive\(sb, key, model, j, jobLanguage\(j\)\)\)\) return;\n[\s\S]{0,300}if \(await recoverStalledOfficial\(sb, j\)\) return;/);
   assert.doesNotMatch(src, /browserAgeMs > 12 \* 60 \* 1000/);
 });
 

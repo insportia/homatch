@@ -182,7 +182,7 @@ test('the verification is counted before the money is spent', () => {
   // unbounded retry loop.
   const src = agent();
   const iCount = src.indexOf('research_jobs: (anonSession.research_jobs ?? 0) + 1');
-  const iInsert = src.indexOf("const { data: j, error } = await sb.from('research_jobs').insert(");
+  const iInsert = src.indexOf("let { data: j, error } = await sb.from('research_jobs').insert(");
   assert.ok(iCount > 0 && iInsert > iCount, 'an anonymous run starts before it is counted');
 });
 

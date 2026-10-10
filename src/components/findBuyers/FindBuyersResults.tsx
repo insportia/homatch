@@ -13,6 +13,7 @@ import { PotentialBuyerCard } from '@/components/findBuyers/PotentialBuyerCard';
 import { PageNav } from '@/components/findBuyers/PageNav';
 import { getPropertyLeadsPage, type PotentialLead } from '@/services/findBuyers';
 import { arrivalAction } from '@/findBuyers/campaignView';
+import { groupLeads } from '@/findBuyers/campaignReport';
 
 export const LEADS_PAGE_SIZE = 9;
 
@@ -82,9 +83,23 @@ export function FindBuyersResults({
           <RefreshCw className="h-4 w-4 opacity-80" aria-hidden="true" />
         </button>
       )}
-      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-        {rows.map((lead) => <PotentialBuyerCard key={lead.id} lead={lead} propertyId={propertyId} />)}
-      </div>
+      {/* Grouped by match category (Strong → Potential → Weak; leads found before
+          match review follow as "not yet reviewed"). Rejected leads never reach
+          this list: find_buyers_current_leads excludes them. */}
+      {groupLeads(rows).map((g) => (
+        <div key={g.category} className="space-y-2" data-testid="fbx-lead-group" data-category={g.category}>
+          <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)]">
+            <span className={cn('h-2.5 w-2.5 rounded-full', g.category === 'STRONG' ? 'bg-[hsl(40_94%_50%)]'
+              : g.category === 'POTENTIAL' ? 'bg-[hsl(40_80%_65%)]' : g.category === 'WEAK' ? 'bg-[hsl(218_30%_70%)]' : 'border border-dashed border-[hsl(218_30%_55%)]')} aria-hidden="true" />
+            <span>{t(`fbr_cat_${g.category}`)}</span>
+            <span className="rounded-full bg-[hsl(218_70%_96%)] px-2 py-px text-2xs font-bold tabular-nums text-[hsl(220_60%_30%)]">{g.rows.length}</span>
+          </h3>
+          {g.category === 'UNCATEGORISED' && <p className="text-2xs text-[hsl(218_28%_38%)]">{t('fbr_cat_explain_UNCATEGORISED')}</p>}
+          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            {g.rows.map((lead) => <PotentialBuyerCard key={lead.id} lead={lead} propertyId={propertyId} />)}
+          </div>
+        </div>
+      ))}
       <PageNav page={Math.min(page, totalPages)} totalPages={totalPages} onPage={onPage} label={t('fbl_leads_pages')} />
     </section>
   );

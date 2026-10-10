@@ -18,9 +18,10 @@ import {
 } from '@/services/findBuyers';
 import { actorLifecycle, classifyActor } from '@/findBuyers/actorCatalog';
 import { SourceNetworkPanel } from './SourceNetworkPanel';
+import { FindBuyersIntelligencePanel } from './FindBuyersIntelligencePanel';
 
-type Tab = 'overview' | 'actors' | 'campaigns' | 'network' | 'sources' | 'languages' | 'ledger';
-const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'network', 'sources', 'languages', 'ledger'];
+type Tab = 'overview' | 'actors' | 'campaigns' | 'network' | 'sources' | 'languages' | 'ledger' | 'intelligence';
+const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'network', 'sources', 'languages', 'ledger', 'intelligence'];
 const WINDOWS = [1, 7, 30, 0];
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
@@ -297,6 +298,7 @@ export function FindBuyersControlCenter() {
       ) : null}
 
       {tab === 'network' ? <SourceNetworkPanel days={days} /> : null}
+      {tab === 'intelligence' ? <FindBuyersIntelligencePanel days={days} /> : null}
 
       {data && tab === 'sources' ? (
         <div className="mt-4">

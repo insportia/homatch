@@ -41,13 +41,14 @@ function fakeDb(rows) {
         log.upserts.push(st.payload);
         return { data: fresh ? [{ id: 'x' }] : [], error: null };
       }
-      const hit = targets.filter((t) => st.filters.every(([c, v]) => t[c] === v));
+      const hit = targets.filter((t) => st.filters.every(([c, v, op]) => (op === 'in' ? v.includes(t[c]) : t[c] === v)));
       if (st.op === 'update') { for (const t of hit) Object.assign(t, st.payload); log.updates.push({ ids: hit.map((t) => t.external_id), patch: st.payload }); return { data: null, error: null }; }
       return { data: st.limit ? hit.slice(0, st.limit) : hit, error: null };
     };
     const b = {
       select() { return b; }, order() { return b; }, is() { return b; }, maybeSingle() { st.single = true; return b; },
       eq(c, v) { st.filters.push([c, v]); return b; },
+      in(c, v) { st.filters.push([c, v, 'in']); return b; },
       limit(n) { st.limit = n; return b; },
       upsert(p) { st.op = 'upsert'; st.payload = p; return b; },
       update(p) { st.op = 'update'; st.payload = p; return b; },
@@ -111,6 +112,34 @@ test('with automatic activation on, the campaign reads what it verified — in t
   assert.equal(report.readNow, 1);
   assert.deepEqual(read, [targets[0].id]);
   assert.equal(targets[0].discovery_enabled, true);
+});
+
+test('with automatic activation OFF, the campaign still reads what it verified — once, without switching it on', async () => {
+  const { db, targets } = fakeDb([{ external_id: 'tbilisi_flats', name: 'Квартиры Тбилиси' }]);
+  const client = fakeClient({}, { tbilisi_flats: PROPERTY_POSTS });
+  const read = [];
+  const report = await discoverTelegramSources(db, client, SETTINGS(false), {
+    queries: ['квартиры тбилиси'], maxQueries: 12, city: 'Tbilisi', campaign: true,
+    readTarget: async (id) => { read.push(id); return { target: 'tbilisi_flats', outcome: 'OK' }; },
+  });
+  assert.equal(targets[0].lifecycle, 'AUDITED');
+  assert.equal(targets[0].discovery_enabled, false, 'never switched on for other collectors');
+  assert.equal(report.activated, 0);
+  assert.deepEqual(read, [targets[0].id]);
+  assert.deepEqual(report.readTargets, ['tbilisi_flats'], 'the paid Actor skips what the free reader read');
+});
+
+test('previously verified but switched-off communities of this city are read by the free reader for the campaign', async () => {
+  const { db, targets } = fakeDb([
+    { external_id: 'tbilisi_realty', name: 'Недвижимость Тбилиси', lifecycle: 'AUDITED', readability: 'READABLE', discovery_enabled: false, relevance_score: 0.6 },
+    { external_id: 'batumi_realty', name: 'Недвижимость Батуми', lifecycle: 'AUDITED', readability: 'READABLE', discovery_enabled: false, relevance_score: 0.9 },
+  ]);
+  const read = [];
+  const report = await discoverTelegramSources(db, fakeClient({}, {}), SETTINGS(false), {
+    queries: [], maxQueries: 12, city: 'Tbilisi', campaign: true, readTarget: async (id) => { read.push(id); return { target: id, outcome: 'OK' }; },
+  });
+  assert.deepEqual(read, [targets[0].id], 'Batumi is never read for a Tbilisi campaign');
+  assert.equal(report.readNow, 1);
 });
 
 test('a community that does not qualify is never activated or read', async () => {

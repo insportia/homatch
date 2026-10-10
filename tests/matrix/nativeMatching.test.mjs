@@ -129,10 +129,15 @@ test('a property is shaped as supply, with one price in one place', () => {
    * figure in both saleAmount and rentAmount would let a 1,200/month rental satisfy a
    * buyer's 150,000 budget.
    */
+  /* The mapping moved verbatim into the shared pure helper (native-pair.ts) so the owner's
+     profile view and the worker cannot map a pair differently; the worker calls it. */
   const nativeBlock = worker.slice(worker.indexOf('const nativeSupply: SupplySide'));
-  assert.match(nativeBlock.slice(0, 900), /saleAmount: transaction === 'RENT' \? null : amount/,
+  assert.match(nativeBlock.slice(0, 300), /supplySideFromProperty\(/, 'the worker uses the shared mapping');
+  const mapping = read('src', 'research-core', 'match', 'native-pair.ts');
+  const supplyFn = mapping.slice(mapping.indexOf('export function supplySideFromProperty'));
+  assert.match(supplyFn.slice(0, 1600), /saleAmount: transaction === 'RENT' \? null : amount/,
     'a rental price can reach the sale field');
-  assert.match(nativeBlock.slice(0, 900), /rentAmount: transaction === 'RENT' \? amount : null/,
+  assert.match(supplyFn.slice(0, 1600), /rentAmount: transaction === 'RENT' \? amount : null/,
     'a sale price can reach the rent field');
 });
 

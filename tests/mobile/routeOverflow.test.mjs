@@ -177,6 +177,15 @@ const ROUTES = [
    */
   { path: '/admin/social-discovery', name: 'admin social discovery', auth: true, admin: true },
   /*
+   * BUYER INTELLIGENCE and MARKET SEGMENTATION. New admin screens with a stat
+   * grid, a long filter bar, removable chips and long Georgian labels -- the
+   * shapes most likely to widen a 320px page or mirror badly in RTL. They
+   * render against the populated admin_buyer_* / admin_*segment* fixtures
+   * below, not an empty state.
+   */
+  { path: '/admin/buyer-intelligence?city=%E1%83%97%E1%83%91%E1%83%98%E1%83%9A%E1%83%98%E1%83%A1%E1%83%98&segments=PREMIUM,MIDDLE', name: 'admin buyer intelligence', auth: true, admin: true },
+  { path: '/admin/market-segmentation', name: 'admin market segmentation', auth: true, admin: true },
+  /*
    * THE SCREEN THE PRODUCT IS SOLD ON, and it was not in this matrix.
    *
    * /property/:id/matches is where a customer meets the locked preview, the
@@ -632,6 +641,53 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
           elapsedMs: 12,
         }));
       }
+      /* Buyer intelligence + market segmentation (shapes of the admin_* RPCs in
+         20261024100000 / 20261024110000). */
+      if (url.includes('/rest/v1/rpc/admin_buyer_intelligence_list')) {
+        return r.fulfill(json({ page: 1, page_size: 25, total: 2, rows: [
+          { user_id: 'b1', email: 'long.georgian.name@example.test', full_name: 'ნინო ხარაიშვილი-მაჭავარიანი', role: 'BOTH',
+            intent_level: 'ACTIVE_SEARCH', level_rank: 6, sources: ['FIND_PROPERTY_PLAN', 'FIND_PROPERTY_MARKETPLACE'], source_count: 2,
+            latest_at: '2026-10-08T10:00:00Z', age_days: 1, freshness: 'FRESH', stale: false, is_active: true, confidence: 1,
+            transactions: ['SALE', 'RENT'], property_types: ['APARTMENT'], countries: ['GE'], cities: ['თბილისი'], city_keys: ['tbilisi'],
+            districts: ['ვაკე', 'საბურთალო', 'მთაწმინდა'], district_keys: ['vake', 'saburtalo', 'mtatsminda'], neighborhood_keys: [],
+            budget_min_usd: 120000, budget_max_usd: 160000, budget_confirmed: true, bedrooms_min: 2, bedrooms_max: null,
+            area_min: 80, area_max: 110, internal_matches: 3, compatible_matches: 2, best_match_score: 0.82, segments: ['ECONOMY', 'MIDDLE', 'PREMIUM'] },
+          { user_id: 'b2', email: 'b2@example.test', full_name: null, role: 'TENANT', intent_level: 'SAVED_REQUIREMENTS', level_rank: 4,
+            sources: ['STATED_IN_CONVERSATION'], source_count: 1, latest_at: '2025-01-08T10:00:00Z', age_days: 640, freshness: 'ANCIENT',
+            stale: true, is_active: false, confidence: 0.6, transactions: ['RENT'], property_types: [], countries: [], cities: ['ბათუმი'],
+            city_keys: ['batumi'], districts: [], district_keys: [], neighborhood_keys: [], budget_min_usd: null, budget_max_usd: null,
+            budget_confirmed: false, bedrooms_min: null, bedrooms_max: null, area_min: null, area_max: null, internal_matches: 0,
+            compatible_matches: 0, best_match_score: null, segments: [] },
+        ] }));
+      }
+      if (url.includes('/rest/v1/rpc/admin_buyer_intelligence_stats')) {
+        return r.fulfill(json({ people: 2, buyers: 1, tenants: 2, eligible_buyers: 1, eligible_tenants: 1, strong: 1, exploratory: 1,
+          stale: 1, uncertain: 0, budget_confirmed: 1, budget_unknown: 1,
+          by_city: [{ city: 'tbilisi', count: 1 }, { city: 'batumi', count: 1 }],
+          by_district: [{ district: 'vake', count: 1 }, { district: 'saburtalo', count: 1 }],
+          by_source: { FIND_PROPERTY_PLAN: 1, FIND_PROPERTY_MARKETPLACE: 1, STATED_IN_CONVERSATION: 1 },
+          by_level: { ACTIVE_SEARCH: 1, SAVED_REQUIREMENTS: 1 }, by_segment: { PREMIUM: 1 },
+          budget_ranges: { sale: { lt_50k: 0, '50k_100k': 0, '100k_200k': 1, '200k_400k': 0, gte_400k: 0, unknown: 0 },
+            rent: { lt_500: 0, '500_1000': 0, '1000_2000': 0, gte_2000: 0, unknown: 2 } },
+          internal_matches: { total: 3, compatible: 2, uncertain: 1, stale: 0 },
+          external_leads: { available: false, total: 37, qualified: null, reason: 'MATCH_CATEGORY_NOT_DEPLOYED' } }));
+      }
+      if (url.includes('/rest/v1/rpc/admin_market_segment_rules')) {
+        const params = { minComparables: 8, premiumPercentile: 0.7, economyPercentile: 0.3, levels: ['STREET', 'NEIGHBORHOOD', 'DISTRICT', 'CITY'], minAreaSqm: 10 };
+        return r.fulfill(json({ rules: [{ id: 'rule-1', version: 1, params, status: 'ACTIVE', note: null, created_at: '2026-10-09T08:00:00Z', activated_at: '2026-10-09T08:00:00Z', retired_at: null }],
+          audit: [{ id: 'a1', rule_id: 'rule-1', version: 1, action: 'APPLIED', actor: { id: 'u1', email: 'admin@example.test', full_name: 'Admin User' },
+            params, before_counts: {}, after_counts: {}, changed_count: 264, created_at: '2026-10-09T08:00:00Z' }],
+          stored: { PREMIUM: 41, MIDDLE: 120, ECONOMY: 63, UNKNOWN: 40, last_computed_at: '2026-10-09T08:00:00Z' } }));
+      }
+      if (url.includes('/rest/v1/rpc/admin_property_segments_list')) {
+        return r.fulfill(json({ page: 1, page_size: 25, total: 1, rows: [{ property_id: 'p1', homatch_id: 482915, title: 'ბინა ვაკეში, ჭავჭავაძის გამზირზე, ახალაშენებულ კორპუსში',
+          owner: { id: 'o1', email: 'owner@example.test', full_name: 'Owner' }, transaction: 'SALE', property_type: 'APARTMENT', country: 'GE',
+          city: 'თბილისი', district: 'ვაკე', neighborhood: null, street: 'ილია ჭავჭავაძის გამზირი 37', price: 170000, currency: 'USD', area: 100,
+          bedrooms: 2, rooms: 3, price_per_sqm: 1700, price_per_sqm_usd: 1700, segment: 'PREMIUM', confidence: 0.425, confidence_band: 'LOW',
+          level: 'DISTRICT', sample_size: 10, percentile: 0.85, version: 1, computed_at: '2026-10-09T08:00:00Z',
+          basis: { reason: 'CLASSIFIED', dispersion: 0.16, subjectPricePerSqmUsd: 1700, thresholds: { economyMax: 1370, premiumMin: 1630, median: 1500, currency: 'USD' },
+            levelsTried: [{ level: 'STREET', key: 'tbilisi|ილია ჭავჭავაძის', sampleSize: 2, sufficient: false }, { level: 'DISTRICT', key: 'tbilisi|vake', sampleSize: 10, sufficient: true }] } }] }));
+      }
       if (url.includes('/rest/v1/dev_members')) {
         return r.fulfill(json([{ workspace_id: DEV_WORKSPACE.id, role: 'OWNER' }]));
       }
@@ -941,7 +997,9 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
        * proved it survives the narrowest width; 360, 390 and 430 were unchecked.
        */
       '/admin/social-discovery',
-    ].includes(r.path));
+      /* The two newest admin screens: stat grids, chip rows, long Georgian labels. */
+      '/admin/market-segmentation',
+    ].includes(r.path) || r.path.startsWith('/admin/buyer-intelligence'));
   for (const route of SPREAD) {
     for (const width of WIDTHS.filter((w) => w !== 320)) {
       const r = await measure(route, width, 'en');

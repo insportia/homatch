@@ -13,24 +13,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { MessageSquare, Send, ArrowLeft, MoreVertical, Phone, MessageCircle, AlertTriangle, CheckCheck, Check, Clock } from 'lucide-react';
+import { MessageSquare, Send, ArrowLeft, MoreVertical, Phone, MessageCircle, AlertTriangle } from 'lucide-react';
 import { getConversations, getMessages, sendMessage, markMessageSeen, shareContactInfo, getContactShare, reportConversation } from '@/services/api3';
 import type { Conversation, Message } from '@/types/phase3';
 import { getActiveConversation, setActiveConversation } from '@/lib/notifications/signals';
 import { markConversationNotificationsRead } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-function MessageStatusIcon({ status }: { status: string }) {
-  /* These render inside the OUTBOUND bubble (strong ink fill), so they must
-     read against `bg-primary`: gold for seen (8:1 on the dark fill), the
-     bubble's own light foreground for the rest. `text-primary`/muted ink
-     here was invisible on the dark bubble. */
-  if (status === 'SEEN') return <CheckCheck className="h-3 w-3 text-gold" />;
-  if (status === 'DELIVERED') return <CheckCheck className="h-3 w-3 text-primary-foreground/70" />;
-  if (status === 'SENT') return <Check className="h-3 w-3 text-primary-foreground/70" />;
-  return <Clock className="h-3 w-3 text-primary-foreground/70" />;
-}
+import { MessageStatusIcon } from '@/components/chat/MessageStatusIcon';
 
 function ConvItem({ conv, active, onClick, myId }: { conv: Conversation; active: boolean; onClick: () => void; myId: string }) {
   const { t } = useLanguage();

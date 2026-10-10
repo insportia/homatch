@@ -60,7 +60,7 @@ test('language detection by script', () => {
   assert.equal(detectLanguage('❤️❤️'), null);
 });
 
-test('similarity gate: comparable listing ≥85 fetches comments; unrelated parents never do', () => {
+test('similarity gate: comparable listing ≥75 fetches comments; unrelated parents never do', () => {
   const similar = extractTextFacts('იყიდება 2 საძინებლიანი ბინა კრწანისში, 78 კვ.მ, ფასი $125 000');
   const s = scoreSimilarity(SALE, similar, { ageDays: 2 });
   assert.ok(s.score >= 85, `score ${s.score}`);
@@ -71,8 +71,8 @@ test('similarity gate: comparable listing ≥85 fetches comments; unrelated pare
   assert.equal(decideComments(r.score, { commentCount: 50, ageDays: 1, sourceYield: 1 }), 'SKIP_LOW_SIMILARITY');
   const vague = extractTextFacts('Nice apartment, DM for details');
   assert.ok(scoreSimilarity(SALE, vague, { ageDays: 3 }).score < 70, 'unknown dimensions never look like a match');
-  assert.equal(decideComments(78, { commentCount: 1, ageDays: 40, sourceYield: 0 }), 'SKIP_WEAK_SIGNALS');
-  assert.equal(decideComments(78, { commentCount: 9, ageDays: 2 }), 'FETCH_JUSTIFIED');
+  assert.equal(decideComments(65, { commentCount: 1, ageDays: 40, sourceYield: 0 }), 'SKIP_WEAK_SIGNALS');
+  assert.equal(decideComments(65, { commentCount: 9, ageDays: 2 }), 'FETCH_JUSTIFIED');
   assert.equal(decideComments(95, { commentCount: 0 }), 'SKIP_NO_COMMENTS');
   const price = extractTextFacts('Продается 2-комнатная квартира в Ваке 60 м2 90000$');
   assert.equal(price.price, 90000, 'area digits never leak into the price');
@@ -229,4 +229,13 @@ test('Reddit, Quora and Bluesky are probed in their realistic languages when ena
   const { input } = buildInput('REDDIT_SEARCH', { query: 'relocating to tbilisi', size: 20 }, null);
   assert.equal(input.mode, 'searchGlobal', 'Reddit runs a site-wide search (required mode)');
   assert.deepEqual(input.searchQueries, ['relocating to tbilisi']);
+});
+
+test('an empty comments list is "not fetched" (unknown), never "zero comments"; explicit counters still count', async () => {
+  const { normalizePost } = await import('../findBuyers/normalize.ts');
+  const p = (o) => normalizePost('FACEBOOK', { url: 'https://www.facebook.com/groups/1/permalink/2/', text: 'იყიდება ბინა', id: '2', ...o });
+  assert.equal(p({ comments: [] }).engagement.comments, null);
+  assert.equal(p({ comments: [], commentsCount: 0 }).engagement.comments, 0);
+  assert.equal(p({ commentsCount: 7 }).engagement.comments, 7);
+  assert.equal(p({ comments: [{ text: 'ფასი?', id: 'c1' }] }).engagement.comments, 1);
 });

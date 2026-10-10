@@ -410,7 +410,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     const pdfBytesForVisuals = new Map<string, Uint8Array>();
     const ranked = rankVisualCandidates(attachmentJobs.map((j) => ({ ...j.a, documentId: j.docId })));
     result.accounting.visualCandidates = ranked.length;
-    const shortlist = selectVisualShortlist(ranked, options.visualTarget ?? 4, options.visualMax ?? 6);
+    const shortlist = selectVisualShortlist(ranked, options.visualTarget ?? 4, options.visualMax ?? 4);
     const shortlistIds = new Set(shortlist.map((s) => s.candidate.attachedFileId));
 
     await pool(ordered, options.concurrency ?? 3, async ({ docId, a }) => {
@@ -484,7 +484,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       let width: number | null = null;
       let height: number | null = null;
       if (bytesToBuffer(bytes.subarray(0, 4)).toString('latin1') === '%PDF') {
-        const imgs = extractImagesFromPdf(bytes, { maxImages: 6 });
+        const imgs = extractImagesFromPdf(bytes, { maxImages: 1 });
         if (imgs.length) {
           image = imgs[0].bytes;
           width = imgs[0].width;

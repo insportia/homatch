@@ -67,7 +67,7 @@ import {
 } from './OfficialIntelligence';
 import { readable } from '@/verify/readableText';
 import { buyerOpening } from '@/verify/intelligence/buyerSummary';
-import { stripInternalTerms, marketShape, TIER_LABEL_KEY } from '@/verify/intelligence/marketNarrative';
+import { stripInternalTerms } from '@/verify/intelligence/marketNarrative';
 import { scrubCoverageLanguage } from '@/verify/intelligence/coverageGap';
 import { severitySignals, weighVerdict } from '@/verify/intelligence/severity';
 import { CompanyIntelligenceCard, type CompanyProfileLike } from './CompanyIntelligenceCard';
@@ -75,9 +75,9 @@ import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
-import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav, ExecutiveGlance } from './BuyerIntelligenceCards';
+import { PropertyRegisterCard, CompanyFinanceCard, MarketContextCard, ReportNav, ExecutiveGlance, ProjectTeamCard, ResearchScaleBanner } from './BuyerIntelligenceCards';
 import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
-import type { CompanyFinanceView, MarketContextView } from '@/verify/intelligence/reportGaps';
+import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
 import { splitCitations, hasDistance } from '@/verify/citations';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -228,6 +228,7 @@ export interface VerifySynthesis {
   propertyRegister?: PropertyRegister | null;
   /** The developer's financial position from what was actually checked. */
   companyFinance?: CompanyFinanceView | null;
+  projectTeam?: ProjectTeamMember[] | null;
   /** A reused market snapshot, when the run gathered no comparables of its own. */
   marketContext?: MarketContextView | null;
 }
@@ -430,6 +431,12 @@ export function VerifyReport({
       </div>
 
       {/* The decision in four facts, each linked to the section behind it. */}
+      <ResearchScaleBanner
+        coverage={synthesis.research}
+        register={synthesis.propertyRegister?.coverage ?? null}
+        adsSeen={synthesis.developerAds ? (synthesis.developerAds.activeCount ?? 0) + (synthesis.developerAds.historicalCount ?? 0) : null}
+        sources={(synthesis.evidenceGroups ?? []).reduce((n: number, g: any) => n + (Array.isArray(g?.items) ? g.items.length : 0), 0) || null}
+      />
       <ExecutiveGlance register={synthesis.propertyRegister} finance={synthesis.companyFinance} market={synthesis.market ? null : synthesis.marketContext} />
 
       {/* A. WHAT THE PROPERTY'S OWN REGISTER SAYS — owner, mortgages, liens,
@@ -452,6 +459,9 @@ export function VerifyReport({
         <CompanyIntelligenceCard company={company} rights={rights} />
       </div>
       <CompanyFinanceCard finance={synthesis.companyFinance} />
+
+      {/* Who designed, engineered and built it (owner, 2026-10-10). */}
+      <ProjectTeamCard team={synthesis.projectTeam} />
 
       {/* MARKET — a range HOMATCH already held, when this run gathered no
           comparables of its own (the full market section renders instead
@@ -483,7 +493,8 @@ export function VerifyReport({
               scanning reader meets them first. */}
           {s.metrics?.length ? <Metrics metrics={s.metrics} /> : null}
           <Prose text={s.body} />
-          {s.key === 'MARKET' && synthesis.market ? <PriceBar m={synthesis.market} /> : null}
+          {/* No listings table or price bar (owner, 2026-10-10): the market is
+              explained in friendly words, not shown as rows of numbers. */}
           {s.key === 'PEOPLE' && people.length ? (
             <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
           ) : null}
@@ -593,7 +604,9 @@ export function VerifyReport({
           than from a second paragraph of generated prose. */}
       <BuyerBottomLine
         finalView={clean(r.finalView)}
-        highlights={r.summary?.highlights ?? []}
+        // The highlights already open the report; repeating them here was the
+        // owner's "the same thing many times" (2026-10-10).
+        highlights={[]}
         openQuestions={[]}
         clean={clean}
       />
@@ -1012,156 +1025,6 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
         </div>
       ) : null}
     </section>
-  );
-};
-
-/* ------------------------------------------------------------------ *
- * Price position                                                      *
- * ------------------------------------------------------------------ */
-
-/** Where the asking price sits in its micro-market. Rendered only when the
- *  subject actually has a price of its own — Verify runs from a cadastral
- *  code, so most of the time it does not, and a bar with no marker would
- *  imply a measurement we never made. */
-const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
-  const { t } = useLanguage();
-  /*
-   * MICROLOCATION FIRST.
-   *
-   * marketShape reads the tier counts the research core stored and decides
-   * how local the headline figure actually is. For the stored Villion report
-   * the answer is "not local at all" — nothing in the building, nothing on
-   * the street, and a median computed from 37 named developments across the
-   * city. The number still shows; it stops pretending to measure this address.
-   */
-  const shape = marketShape(m);
-  if (!m.count) return null;
-
-  const span = Math.max(1, m.max - m.min);
-  const pos = (v: number): number => Math.max(0, Math.min(100, ((v - m.min) / span) * 100));
-  const medianPos = pos(m.median);
-  const subjectPos = m.subjectPricePerSqm ? pos(m.subjectPricePerSqm) : null;
-
-  return (
-    <div className="rounded-xl border border-border p-4 space-y-3">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          {t('verify_ir_market_title')}
-        </p>
-        {/*
-          * WHAT THIS NUMBER IS MEASURING, SAID HONESTLY.
-          *
-          * This built its key by lower-casing the basis, which for the stored
-          * Villion report produces `verify_basis_peer_project` — a key that is
-          * defined in NO language, so the buyer was shown that literal string.
-          * The label now comes from the tier table, which has an entry for
-          * every band, and the frame sentence below says whether the figure
-          * describes this building or the city.
-          */}
-        <p className="text-xs text-muted-foreground break-words min-w-0">
-          {shape?.basis ? t(TIER_LABEL_KEY[shape.basis]) : t('verify_mkt_wider_market')} · {m.count}
-        </p>
-      </div>
-
-      {shape?.headlineKey ? (
-        <p className="min-w-0 break-words text-sm leading-relaxed text-ink-soft">
-          {t(shape.headlineKey)}
-        </p>
-      ) : null}
-
-      <div className="relative h-2 rounded-full bg-muted">
-        <div
-          className="absolute top-1/2 -translate-y-1/2 h-3 w-0.5 bg-muted-foreground/70"
-          style={{ insetInlineStart: `${medianPos}%` }}
-          aria-hidden="true"
-        />
-        {subjectPos !== null ? (
-          <div
-            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-primary ring-2 ring-background"
-            style={{ insetInlineStart: `calc(${subjectPos}% - 8px)` }}
-            aria-hidden="true"
-          />
-        ) : null}
-      </div>
-
-      <div className="flex justify-between text-2xs text-muted-foreground">
-        <span>{m.min.toLocaleString()}</span>
-        <span>{t('verify_ir_market_median')} {m.median.toLocaleString()}</span>
-        <span>{m.max.toLocaleString()}</span>
-      </div>
-
-      {m.subjectPricePerSqm && m.deltaFromMedianPct !== undefined ? (
-        <p className="text-sm break-words">
-          {m.subjectPricePerSqm.toLocaleString()} {m.currency}/m² ·{' '}
-          {m.deltaFromMedianPct > 0 ? '+' : ''}{m.deltaFromMedianPct}%
-        </p>
-      ) : null}
-
-      {/* THE WHOLE HIERARCHY, not only the band that won.
-          Comparing a project's units to each other answers "what do five
-          flats in this building cost". The buyer asked whether the property
-          is well positioned in its real local market, and that question needs
-          the street, the district and comparable developments beside it.
-          Rows, not a table: at 320px a five-column table has nowhere to go. */}
-      {m.tiers && m.tiers.length > 1 ? (
-        <dl className="divide-y divide-border/60 border-t border-border/60 pt-1">
-          {m.tiers.map((tr) => (
-            <div key={tr.tier} className="flex items-baseline justify-between gap-3 py-1.5 min-w-0">
-              <dt className="text-2xs text-muted-foreground break-words min-w-0">
-                {t(TIER_LABEL_KEY[tr.tier as keyof typeof TIER_LABEL_KEY] ?? 'verify_mkt_wider_market')}
-                <span className="ms-1 opacity-70">
-                  {tr.count} {t('verify_mkt_listings')}
-                </span>
-                {/* Neutral, not a warning: one listing is real information,
-                    it just is not a spread. Saying so is more useful than
-                    hiding the band or dressing it up as a market rate. */}
-                {tr.thin ? (
-                  <span className="ms-1 opacity-70">· {t('verify_mkt_thin')}</span>
-                ) : null}
-              </dt>
-              <dd className="text-xs tabular-nums shrink-0">
-                {tr.median.toLocaleString()}
-                {tr.min !== tr.max ? (
-                  <span className="text-muted-foreground">
-                    {' '}({tr.min.toLocaleString()}–{tr.max.toLocaleString()})
-                  </span>
-                ) : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-
-      {m.basisIsThin ? (
-        <p className="text-2xs leading-5 text-muted-foreground break-words">
-          {t('verify_mkt_thin_note')}
-        </p>
-      ) : null}
-
-      {/* Why a premium or a discount may be RATIONAL. Deliberately no money
-          attached to any of them: the evidence supports the factor, not a
-          number, and "+8% for concierge" would be a fabrication with a
-          decimal point in it. */}
-      {m.qualityFactors?.length ? (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {m.qualityFactors.map((q, i) => (
-            <span
-              key={i}
-              className={`rounded-full border px-2.5 py-0.5 text-2xs font-medium break-words ${
-                q.direction === 'SUPPORTS_PREMIUM'
-                  /* A factor that supports the asking price is a finding,
-                     not furniture: gold-soft, like every other evidence
-                     chip in the system. */
-                  ? 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
-                  : 'border-dashed border-foreground/25 text-foreground/70'
-              }`}
-            >
-              {readable(q.factor)}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
   );
 };
 

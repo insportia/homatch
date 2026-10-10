@@ -146,3 +146,23 @@ test('extractTasTechnicalFacts: a document that never mentions a block/liter lab
   const facts = extractTasTechnicalFacts('სართულების რაოდენობა: 9');
   assert.equal(facts.some((f) => f.key === 'buildingBlock' || f.key === 'buildingLiter'), false);
 });
+
+test('extractTasTechnicalFacts: construction quantities (slab thickness, concrete class/volume) are extracted from labelled lines', () => {
+  const text = [
+    'სართულშუა ფილის სისქე: 22 სმ',
+    'ბეტონის კლასი: B30',
+    'ბეტონის მოცულობა: 4 850 მ³',
+  ].join('\n');
+  const facts = extractTasTechnicalFacts(text);
+  const by = (k) => facts.find((f) => f.key === k);
+  assert.match(by('slabThickness')?.value ?? '', /22/);
+  assert.match(by('concreteClass')?.value ?? '', /B30/);
+  assert.match(by('concreteVolume')?.value ?? '', /4 850/);
+});
+
+test('extractTasTechnicalFacts: a landscape specialist named in the documents is captured (synthetic name)', () => {
+  const facts = extractTasTechnicalFacts('ლანდშაფტის არქიტექტორი: თამარ გელაშვილი');
+  const f = facts.find((x) => x.key === 'landscapeSpecialist' || x.category === 'LANDSCAPE');
+  assert.ok(f, 'expected a landscape fact');
+  assert.match(JSON.stringify(facts), /თამარ გელაშვილი/);
+});

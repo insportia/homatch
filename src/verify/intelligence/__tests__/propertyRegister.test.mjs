@@ -24,15 +24,16 @@ test('legacy-encoded extract text decodes to Georgian; Unicode and Latin text ar
   assert.match(decodeGeorgianLegacy(EXTRACT_2209), /NMA0003673681/);
 });
 
-test('extract: owner is a private person (never named), with purchase basis and rights date', () => {
+test('extract: owner is named as the public extract names them, with purchase basis and rights date', () => {
+  // Owner, 2026-10-10: the buyer must see who is registered as owner.
   const e = parseRegisterExtract(EXTRACT_2209, '35489011');
-  assert.deepEqual(e.owners, [{ kind: 'PERSON' }]);
+  assert.deepEqual(e.owners, [{ kind: 'PERSON', name: 'სატესტო მესაკუთრე' }]);
   assert.equal(e.ownershipRegisteredOn, '2026-05-27');
   assert.equal(e.ownershipBasis, 'PURCHASE');
   assert.equal(e.issuedAt, '2026-09-22T09:47:44');
   const json = JSON.stringify(e);
   assert.ok(!json.includes('00000000000'), 'personal number never leaves the parser');
-  assert.ok(!json.includes('სატესტო'), 'a private owner is never named');
+  assert.ok(json.includes('სატესტო მესაკუთრე'), 'the registered owner is named');
 });
 
 test('extract: company owner is named with its public id', () => {
@@ -159,16 +160,14 @@ test('sentence splitter keeps cadastral codes and street abbreviations intact', 
   assert.equal(sentences('კრწანისის ქ. 6. მესაკუთრე.').length, 2);
 });
 
-test('text for a model is decoded and carries no private name or personal number', async () => {
+test('text for a model is decoded and carries no personal number (the owner is named)', async () => {
   const { redactRegisterText } = await import('../propertyRegister.ts');
   const { DECISION_TERMINATION } = await import('./fixtures/propertyRegisterFixture.mjs');
   const out = redactRegisterText(EXTRACT_2209);
   assert.match(out, /ამონაწერი საჯარო რეესტრიდან/);
-  assert.ok(!out.includes('სატესტო'));
+  assert.match(out, /სატესტო მესაკუთრე/);
   assert.ok(!out.includes('00000000000'));
-  assert.match(out, /ფიზიკური პირი/);
   assert.match(out, /204378869/, 'a company code is public and stays');
   const decision = redactRegisterText(DECISION_TERMINATION.replace('[REDACTED]', 'სახელი გვარი (12345678901)'));
   assert.ok(!decision.includes('12345678901'));
-  assert.ok(!decision.includes('სახელი გვარი'));
 });

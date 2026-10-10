@@ -69,6 +69,8 @@ export interface DeveloperIdentity {
   legalId: string | null;
   projectNames: string[];
   website: string | null;
+  /** The developer's/project's official Facebook page, as public research found it. */
+  facebookPageUrl?: string | null;
   /** What the Ad Library is searched for (brand/project names, never a bare legal form). */
   searchTerms: string[];
   /** Registry-confirmed legal entity, or web research only. */
@@ -104,7 +106,8 @@ export function resolveDeveloperIdentity(result: unknown, maxTerms = 4): Develop
     .map(s)
     .filter(Boolean);
   const address = s(project.address);
-  const projects = [project.name, ...arr(project.aliases), pub.project].map(s).filter((x) => x && !looksLikeAddress(x, address));
+  const fbPageTitle = s(obj(project.facebookPage).name).replace(/\s*[|•–-]\s*(home|facebook|official)\b.*$/i, '').trim();
+  const projects = [project.name, ...arr(project.aliases), pub.project, project.brandName, fbPageTitle].map(s).filter((x) => x && !looksLikeAddress(x, address));
   const uniq = (xs: string[]) => {
     const seen = new Set<string>();
     return xs.filter((x) => {
@@ -132,19 +135,28 @@ export function resolveDeveloperIdentity(result: unknown, maxTerms = 4): Develop
    * developer brand, then the longer names.
    */
   const words = (x: string) => nameKey(x).split(' ').filter(Boolean).length;
+  /*
+   * THE FACEBOOK PAGE'S OWN NAME FIRST (owner, 2026-10-10): research finds
+   * the developer's official page; its title is exactly what its ads run
+   * under in the Ad Library. Then the marketed brand.
+   */
+  const fbPage = obj(project.facebookPage);
+  const pageName = s(fbPage.name).replace(/\s*[|•–-]\s*(home|facebook|official)\b.*$/i, '').replace(/[^\p{L}\p{N}\s.&'-]/gu, '').trim();
+  const brandName = s(project.brandName);
   const domainBrand = website ? (hostOf(website).split('.').slice(-2)[0] ?? '') : '';
   const domainTerm =
     domainBrand.length >= 3 && [...projectNames, ...brands].some((n) => nameKey(n).split(' ').includes(domainBrand))
       ? [domainBrand[0].toUpperCase() + domainBrand.slice(1)]
       : [];
   const shortProjects = projectNames.filter((x) => words(x) === 1);
-  const terms = uniq([...domainTerm, ...shortProjects, brands[0], ...projectNames, ...brands.slice(1)].filter(Boolean) as string[]).slice(0, maxTerms);
+  const terms = uniq([pageName, brandName, ...domainTerm, ...shortProjects, brands[0], ...projectNames, ...brands.slice(1)].filter(Boolean) as string[]).slice(0, maxTerms);
   return {
     developerNames,
     legalName,
     legalId,
     projectNames,
     website,
+    facebookPageUrl: /^https:\/\/(www\.|m\.)?facebook\.com\//i.test(s(fbPage.url)) ? s(fbPage.url) : null,
     searchTerms: terms,
     basis: s(company.sourceBasis) === 'REGISTRY_CONFIRMED' ? 'REGISTRY_CONFIRMED' : developerNames.length ? 'WEB_RESEARCH_ONLY' : 'NONE',
   };
@@ -335,6 +347,8 @@ export function socialProfiles(result: unknown, identity: DeveloperIdentity, mat
   // 2. The developer's own website (already established by Verify).
   if (identity.website && !out.has(profileKey(identity.website)))
     out.set(profileKey(identity.website), { platform: 'WEBSITE', url: identity.website, label: null, owner: 'DEVELOPER', status: 'OFFICIAL', basis: 'OFFICIAL_WEBSITE' });
+  if (identity.facebookPageUrl && !out.has(profileKey(identity.facebookPageUrl)))
+    out.set(profileKey(identity.facebookPageUrl), { platform: 'FACEBOOK', url: identity.facebookPageUrl, label: null, owner: 'PROJECT', status: 'OFFICIAL', basis: 'OFFICIAL_WEBSITE' });
   // 3. Social URLs Verify's research saw: possible matches unless confirmed above.
   const r = obj(result);
   for (const src of [...arr(r.sources), ...arr(r.evidence_bundle)]) {

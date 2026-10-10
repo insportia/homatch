@@ -30,6 +30,8 @@ import { buildBuyerChecklist } from './buyerChecklist.ts';
 import type { ChecklistItem } from './buyerChecklist.ts';
 import { selectComparables } from './comparableSelection.ts';
 import { buildPropertyRegister } from './propertyRegister.ts';
+import { livingDensityFrom, type LivingDensity } from './livingDensity.ts';
+import { companyFinanceFrom, type CompanyFinanceView } from './reportGaps.ts';
 import type { PropertyRegister } from './propertyRegister.ts';
 import type { ComparableSelection } from './comparableSelection.ts';
 
@@ -80,6 +82,10 @@ export interface IntelligenceBundle {
   people: PeopleIntelligence;
   participants: ParticipantModel;
   fx: FxContext | null;
+  /** Homes per floor and land per household, computed from the documented scale. */
+  livingDensity: LivingDensity | null;
+  /** The developer's checked financial position (debtors, tax, liquidation, bank financing). */
+  finance: CompanyFinanceView | null;
   /*
    * THE UNIT'S OWN REGISTER (Service 176 extracts, parsed). Null when the
    * provider returned nothing usable. Authoritative over every prose claim
@@ -302,19 +308,21 @@ export function buildIntelligenceBundle(
   return {
     snapshot, market, company: companyIntel, location, people, participants, fx, selfChecks,
     evidenceGroups, checklist, comparables, register,
+    livingDensity: livingDensityFrom(project, register?.latest?.landAreaSqm ?? null),
+    finance: companyFinanceFrom(report, companyIntel),
   };
 }
 
 /*
- * The snapshot's owner line, from the extract. A private person is described,
- * never named (the snapshot is customer-facing). Undefined when there is no
- * extract, so the older sources still decide.
+ * The snapshot's owner line, from the extract: the owners as the public
+ * extract names them (owner, 2026-10-10); "ფიზიკური პირი" only when a
+ * person's name could not be read. Undefined when there is no extract, so
+ * the older sources still decide.
  */
 export function ownerFromRegister(reg: PropertyRegister | null): string | undefined {
   const owners = reg?.latest?.owners ?? [];
   if (!owners.length) return undefined;
-  if (owners.every((o) => o.kind === 'PERSON')) return owners.length > 1 ? 'ფიზიკური პირები' : 'ფიზიკური პირი';
-  return owners.map((o) => (o.kind === 'COMPANY' ? o.name ?? '' : 'ფიზიკური პირი')).filter(Boolean).join(', ') || undefined;
+  return owners.map((o) => o.name ?? (o.kind === 'PERSON' ? 'ფიზიკური პირი' : '')).filter(Boolean).join(', ') || undefined;
 }
 
 const ownerIsPrivate = (reg: PropertyRegister | null) => {

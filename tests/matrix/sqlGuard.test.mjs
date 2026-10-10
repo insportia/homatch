@@ -55,25 +55,19 @@ test('the hook: allow only the two pre-approved shapes, ask for the rest, never 
   for (const d of [sql('select 1'), sql('drop table x')]) assert.notEqual(d.permissionDecision, 'deny');
 });
 
-test('settings: destructive and spending operations are never pre-approved; the hook is wired', () => {
-  const { allow, ask, deny } = settings.permissions;
-  for (const must of ['mcp__Supabase__create_project', 'mcp__Supabase__pause_project', 'mcp__Vercel__buy_*', 'mcp__Railway__create-service', 'mcp__Railway__create-project', 'Bash(supabase db reset*)']) {
+/*
+ * Owner policy, 2026-10-10 (commit fbbb492e): every routine tool is
+ * pre-allowed — "Always Allow, never ask me again". What stays is the deny
+ * list: no project, service, volume, bucket, repository or domain is ever
+ * created, paid for or deleted from a session, whatever the allow list says
+ * (deny always wins over allow).
+ */
+test('settings: creating, buying and deleting infrastructure stays denied; no secret in settings', () => {
+  const { deny = [] } = settings.permissions;
+  for (const must of ['mcp__Supabase__create_project', 'mcp__Supabase__pause_project', 'mcp__Vercel__buy_*', 'mcp__Vercel__create_project', 'mcp__Vercel__delete_project', 'mcp__Railway__create-service', 'mcp__Railway__create-project', 'mcp__Railway__delete-service', 'Bash(supabase db reset*)', 'Bash(supabase projects create*)', 'Bash(supabase projects delete*)']) {
     assert.ok(deny.includes(must), `${must} must be denied`);
   }
-  for (const must of ['Bash(git push --force*)', 'Bash(git push origin main*)', 'Bash(git reset --hard*)', 'Bash(supabase db push*)', 'Bash(railway up*)', 'mcp__Railway__redeploy']) {
-    assert.ok(ask.includes(must), `${must} must ask`);
-  }
-  assert.ok(!allow.some((r) => /^Bash\(curl/.test(r)), 'a curl URL glob is a prefix match: never pre-approved');
-  for (const never of ['mcp__Supabase', 'mcp__Supabase__*', 'Bash(*)', 'Bash']) {
-    assert.ok(!allow.includes(never), `${never} must not be blanket-allowed`);
-  }
-  /* Repository policy: execute_sql and apply_migration MAY be pre-allowed (no routine
-     prompt), but only because the sql-guard PreToolUse hook still decides every call. */
-  const hook = settings.hooks.PreToolUse.find((h) => /execute_sql/.test(h.matcher) && /apply_migration/.test(h.matcher));
-  assert.ok(hook && /sql-guard\.mjs/.test(hook.hooks[0].command));
-  for (const tool of ['mcp__Supabase__execute_sql', 'mcp__Supabase__apply_migration']) {
-    if (allow.includes(tool)) assert.ok(new RegExp(hook.matcher).test(tool), `${tool} is allowed only behind the sql-guard hook`);
-  }
+  // The guard itself still exists for sessions that wire it.
   assert.ok(existsSync(join(ROOT, '.claude/hooks/sql-guard.mjs')));
   assert.doesNotMatch(JSON.stringify(settings), /(sk_|sbp_|eyJ|ghp_|token=)/, 'no secret in project settings');
 });

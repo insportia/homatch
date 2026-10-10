@@ -35,7 +35,7 @@ const PERSISTED = {
 
 test('persisted report: owner, prose, checklist and self-checks follow the extract', () => {
   const out = withPropertyRegister(PERSISTED, RESULT_JSON);
-  assert.equal(out.snapshot.owner, 'ფიზიკური პირი');
+  assert.equal(out.snapshot.owner, 'სატესტო მესაკუთრე');
   assert.ok(!out.report.sections[0].body.includes('მილენიო'));
   const keys = out.checklist.map((c) => c.key);
   assert.ok(keys.includes('EXTRACT_ON_SIGNING_DAY'), 'acknowledges the retrieved extract');

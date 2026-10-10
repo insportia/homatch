@@ -195,7 +195,7 @@ async function forCustomer(db: any, payload: Record<string, unknown>): Promise<R
   const { _usage: _droppedUsage, officialVisuals, ...rest } = payload as Record<string, any>;
   if (!Array.isArray(officialVisuals) || !officialVisuals.length) return rest;
   const signed: unknown[] = [];
-  for (const v of officialVisuals.slice(0, 6)) {
+  for (const v of officialVisuals.slice(0, 4)) {
     const path = typeof v?.storagePath === 'string' ? v.storagePath : '';
     if (!/^tas\/[a-f0-9]{64}\.(jpg|png)$/.test(path)) continue;
     try {

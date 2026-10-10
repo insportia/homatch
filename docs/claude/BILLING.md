@@ -32,7 +32,7 @@ warns when a diff enters this domain.
 - **Find Buyers minimum** is `find_buyers_min_usd` ($10) converted through
   `credits_per_usd` (100 credits at 10/$). It is not a second credit rate.
 
-- **Verify credit budget** (migration `20261024100000`, OFF until
+- **Verify credit budget** (migration `20261026100000`, OFF until
   `admin_settings.verify_billing_enabled` = true). A Verify reserves its
   authorised budget (`billable_products.VERIFY.config.verify_budget.max_budget_credits`,
   25) through `wallet_reserve`, prices its METERED cost live, and settles the

@@ -51,6 +51,9 @@
  * owner switches it on, Verify behaves exactly as before.
  * ══════════════════════════════════════════════════════════════════════ */
 
+-- research_jobs is on every status poll: never queue behind a long lock.
+set local lock_timeout = '5s';
+
 -- ── 1. Policy (data, not code) ──────────────────────────────────────────
 update public.billable_products
    set config = coalesce(config, '{}'::jsonb) || jsonb_build_object('verify_budget', jsonb_build_object(
@@ -80,7 +83,8 @@ alter table public.research_jobs add column if not exists resume_count integer n
 
 -- ── 3. Budget and sessions ──────────────────────────────────────────────
 create table if not exists public.verify_billing (
-  job_id                   uuid primary key references public.research_jobs(id) on delete cascade,
+  -- RESTRICT: a job that ever held money keeps its billing history.
+  job_id                   uuid primary key references public.research_jobs(id) on delete restrict,
   user_id                  uuid not null,
   authorized_total_credits numeric(12,4) not null check (authorized_total_credits >= 0),
   charged_total_credits    numeric(12,4) not null default 0 check (charged_total_credits >= 0),
@@ -97,7 +101,7 @@ create table if not exists public.verify_billing (
 
 create table if not exists public.verify_billing_sessions (
   id                    uuid primary key default gen_random_uuid(),
-  job_id                uuid not null references public.verify_billing(job_id) on delete cascade,
+  job_id                uuid not null references public.verify_billing(job_id) on delete restrict,
   seq                   integer not null,
   reservation_id        uuid not null,
   reserved_credits      numeric(12,4) not null,
@@ -170,6 +174,31 @@ begin
 end;
 $$;
 
+-- ── 6a. Safe readers ─────────────────────────────────────────────────────
+-- A malformed stored number reads as NULL (unknown), never an exception that
+-- would block a settlement or a release.
+create or replace function public.verify_num(p text)
+returns numeric
+language sql immutable set search_path to ''
+as $$
+  select case when p ~ '^\s*-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?\s*$' then p::numeric end;
+$$;
+
+-- Was the job paused at this moment? Work done for others while this job was
+-- stopped (a shared producer that kept running for another customer) is not
+-- billed to it.
+create or replace function public.verify_job_paused_at(p_result jsonb, p_at timestamptz)
+returns boolean
+language sql immutable set search_path to ''
+as $$
+  select coalesce(p_at is not null and (
+    exists (
+      select 1 from jsonb_array_elements(case when jsonb_typeof(p_result->'_pauseHistory') = 'array' then p_result->'_pauseHistory' else '[]'::jsonb end) h(v)
+       where (h.v->>'at') ~ '^\d{4}-' and p_at >= (h.v->>'at')::timestamptz
+         and p_at < coalesce(case when (h.v->>'resumedAt') ~ '^\d{4}-' then (h.v->>'resumedAt')::timestamptz end, 'infinity'::timestamptz))
+    or coalesce((p_result->'_pause'->>'at') ~ '^\d{4}-' and p_at >= (p_result->'_pause'->>'at')::timestamptz, false)), false);
+$$;
+
 -- ── 6. What a job has cost so far (metered, priced now) ─────────────────
 create or replace function public.verify_job_cost(p_job_id uuid)
 returns jsonb
@@ -205,10 +234,10 @@ begin
   loop
     continue when jsonb_typeof(s.value) <> 'object';
     v_model := coalesce(v_pol->'ai_models'->>s.key, v_pol->'ai_models'->>'default', 'gpt-5.6-terra');
-    v_in  := coalesce((s.value->>'input_tokens')::numeric, 0);
-    v_cin := coalesce((s.value->'input_tokens_details'->>'cached_tokens')::numeric, 0);
-    v_out := coalesce((s.value->>'output_tokens')::numeric, 0);
-    v_ws  := coalesce((coalesce(j.result_json->'webSearchCalls', j.result_json->'_searches')->>s.key)::numeric, 0);
+    v_in  := greatest(coalesce(public.verify_num(s.value->>'input_tokens'), 0), 0);
+    v_cin := greatest(coalesce(public.verify_num(s.value->'input_tokens_details'->>'cached_tokens'), 0), 0);
+    v_out := greatest(coalesce(public.verify_num(s.value->>'output_tokens'), 0), 0);
+    v_ws  := greatest(coalesce(public.verify_num(coalesce(j.result_json->'webSearchCalls', j.result_json->'_searches')->>s.key), 0), 0);
     r_in  := public.price_per_unit_at('OPENAI', v_model, 'INPUT_TOKEN', now());
     r_cin := public.price_per_unit_at('OPENAI', v_model, 'CACHED_INPUT_TOKEN', now());
     r_out := public.price_per_unit_at('OPENAI', v_model, 'OUTPUT_TOKEN', now());
@@ -226,9 +255,9 @@ begin
   -- The report synthesis (verify-synthesis), stored on the job when written.
   if jsonb_typeof(j.synthesis_json->'_usage') = 'object' then
     v_model := coalesce(j.synthesis_json->'_usage'->>'model', v_pol->'ai_models'->>'verify_synthesis', 'gpt-5.6-luna');
-    v_in  := coalesce((j.synthesis_json->'_usage'->>'inputTokens')::numeric, 0);
-    v_cin := coalesce((j.synthesis_json->'_usage'->>'cachedTokens')::numeric, 0);
-    v_out := coalesce((j.synthesis_json->'_usage'->>'outputTokens')::numeric, 0);
+    v_in  := greatest(coalesce(public.verify_num(j.synthesis_json->'_usage'->>'inputTokens'), 0), 0);
+    v_cin := greatest(coalesce(public.verify_num(j.synthesis_json->'_usage'->>'cachedTokens'), 0), 0);
+    v_out := greatest(coalesce(public.verify_num(j.synthesis_json->'_usage'->>'outputTokens'), 0), 0);
     r_in  := public.price_per_unit_at('OPENAI', v_model, 'INPUT_TOKEN', now());
     r_cin := public.price_per_unit_at('OPENAI', v_model, 'CACHED_INPUT_TOKEN', now());
     r_out := public.price_per_unit_at('OPENAI', v_model, 'OUTPUT_TOKEN', now());
@@ -246,11 +275,25 @@ begin
   -- without them, the solves the job's own results report are counted.
   -- Results reused from another job (queue: shared/cache) cost this job
   -- nothing and are not counted.
-  select count(*), coalesce(sum(cost_usd), 0) into v_events, v_line
-    from public.verify_captcha_events where job_id = p_job_id;
+  select count(*) into v_events from public.verify_captcha_events where job_id = p_job_id;
   if v_events > 0 then
-    v_usd := v_usd + v_line;
-    v_lines := v_lines || jsonb_build_object('kind', 'CAPTCHA', 'units', v_events, 'usd', round(v_line, 6), 'state', 'PRICED');
+    declare
+      v_known numeric; v_unknown integer;
+    begin
+      select coalesce(sum(cost_usd) filter (where cost_usd is not null), 0),
+             count(*) filter (where cost_usd is null and outcome in ('ACCEPTED', 'REJECTED', 'NO_CHANGE'))
+        into v_known, v_unknown
+        from public.verify_captcha_events ev
+       where ev.job_id = p_job_id and not public.verify_job_paused_at(j.result_json, ev.created_at);
+      v_state := 'PRICED';
+      if v_unknown > 0 then
+        v_rate := coalesce(public.price_per_unit_at('2CAPTCHA', 'recaptcha_v2', 'SOLVE', now()), (v_pol->'fallback_usd'->>'CAPTCHA_SOLVE')::numeric);
+        if v_rate is null then v_state := 'UNPRICED'; v_unpriced := v_unpriced + 1;
+        else v_state := 'FALLBACK'; v_fallback := v_fallback + 1; v_known := v_known + v_unknown * v_rate; end if;
+      end if;
+      v_usd := v_usd + v_known;
+      v_lines := v_lines || jsonb_build_object('kind', 'CAPTCHA', 'units', v_events, 'usd', round(v_known, 6), 'state', v_state);
+    end;
   else
     for e in
       select c.value as c
@@ -259,7 +302,7 @@ begin
        where not (r.value ? 'queue')
     loop
       if e.c->>'outcome' in ('ACCEPTED', 'REJECTED', 'NO_CHANGE') then
-        v_solves := v_solves + greatest(coalesce((e.c->>'attempts')::numeric, 1), 1);
+        v_solves := v_solves + greatest(coalesce(public.verify_num(e.c->>'attempts'), 1), 1);
       end if;
     end loop;
     if v_solves > 0 then
@@ -279,11 +322,16 @@ begin
   end if;
 
   -- Provider runs recorded against the job (developer advertising Actor).
+  -- OpenAI work is priced above from the job's own usage; its cost_events
+  -- rows (written for finance when the job completes) are the same spend and
+  -- are never counted twice. PARTIAL is a floor (counted, and flagged).
   for e in
     select provider, operation_type, count(*) as n,
-           sum(case when pricing_state in ('ACTUAL','ESTIMATED') or pricing_state is null then cost_usd else 0 end) as usd,
-           bool_or(pricing_state = 'UNPRICED') as unpriced
-      from public.cost_events where job_id = p_job_id
+           sum(case when pricing_state is null or pricing_state in ('ACTUAL', 'ESTIMATED', 'PARTIAL') then greatest(cost_usd, 0) else 0 end) as usd,
+           bool_or(pricing_state in ('UNPRICED', 'PARTIAL')) as unpriced
+      from public.cost_events ce
+     where ce.job_id = p_job_id and ce.provider::text <> 'OPENAI'
+       and not public.verify_job_paused_at(j.result_json, ce."timestamp")
      group by provider, operation_type
   loop
     v_usd := v_usd + coalesce(e.usd, 0);
@@ -345,15 +393,12 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'SESSION_ALREADY_CLOSED');
   end if;
 
-  if v_extra > 0 then
-    update public.verify_billing
-       set authorized_total_credits = authorized_total_credits + v_extra,
-           authorizations = authorizations || jsonb_build_array(jsonb_build_object('credits', v_extra, 'at', now(), 'kind', 'ADDITIONAL')),
-           updated_at = now()
-     where job_id = p_job_id returning * into v_b;
+  -- An additional authorisation counts once per request key, and only takes
+  -- effect when the reservation it pays for succeeds (below).
+  if v_extra > 0 and exists (select 1 from jsonb_array_elements(v_b.authorizations) a where a->>'key' = p_idempotency_key) then
+    v_extra := 0;
   end if;
-
-  v_remaining := round(v_b.authorized_total_credits - v_b.charged_total_credits, 4);
+  v_remaining := round(v_b.authorized_total_credits + v_extra - v_b.charged_total_credits, 4);
   if v_remaining <= 0 then
     return jsonb_build_object('ok', false, 'reason', 'BUDGET_EXHAUSTED', 'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits);
   end if;
@@ -361,8 +406,12 @@ begin
   begin
     select * into v_res from public.wallet_reserve(p_user_id, 'VERIFY', v_remaining, p_idempotency_key, 0, v_remaining, p_job_id::text,
       jsonb_build_object('verify_job_id', p_job_id, 'session', coalesce((select max(seq) from public.verify_billing_sessions where job_id = p_job_id), 0) + 1,
-                         'authorized_total', v_b.authorized_total_credits, 'charged_before', v_b.charged_total_credits));
+                         'authorized_total', v_b.authorized_total_credits + v_extra, 'charged_before', v_b.charged_total_credits));
   exception when others then
+    -- Nothing was held: a job that never held money leaves no billing row.
+    if not exists (select 1 from public.verify_billing_sessions where job_id = p_job_id) then
+      delete from public.verify_billing where job_id = p_job_id;
+    end if;
     if sqlerrm like '%INSUFFICIENT_CREDITS%' then
       return jsonb_build_object('ok', false, 'reason', 'INSUFFICIENT_CREDITS', 'requiredCredits', v_remaining,
         'availableCredits', (select balance from public.credit_accounts where user_id = p_user_id));
@@ -373,6 +422,17 @@ begin
     end if;
     raise;
   end;
+
+  if v_res.was_duplicate and not exists (select 1 from public.usage_reservations r where r.id = v_res.reservation_id and r.job_ref = p_job_id::text and r.status = 'RESERVED') then
+    raise exception 'IDEMPOTENCY_KEY_REUSED';
+  end if;
+  if v_extra > 0 then
+    update public.verify_billing
+       set authorized_total_credits = authorized_total_credits + v_extra,
+           authorizations = authorizations || jsonb_build_array(jsonb_build_object('credits', v_extra, 'at', now(), 'kind', 'ADDITIONAL', 'key', p_idempotency_key)),
+           updated_at = now()
+     where job_id = p_job_id returning * into v_b;
+  end if;
 
   -- A Verify can outlive the generic reservation TTL; the job keeps it alive.
   update public.usage_reservations
@@ -411,10 +471,15 @@ begin
   select * into v_s from public.verify_billing_sessions where job_id = p_job_id and state = 'RESERVED';
   select * into v_last from public.verify_billing_sessions where job_id = p_job_id and state <> 'RESERVED' order by seq desc limit 1;
   if v_s.id is not null then
-    v_cost := public.verify_job_cost(p_job_id);
-    v_price := public.verify_price_for_cost((v_cost->>'landedCents')::numeric);
-    v_total := least((v_price->>'credits')::numeric, v_b.authorized_total_credits);
-    v_accrued := least(greatest(v_total - v_s.charged_before, 0), v_s.reserved_credits);
+    begin
+      v_cost := public.verify_job_cost(p_job_id);
+      v_price := public.verify_price_for_cost((v_cost->>'landedCents')::numeric);
+      v_total := least((v_price->>'credits')::numeric, v_b.authorized_total_credits);
+      v_accrued := least(greatest(v_total - v_s.charged_before, 0), v_s.reserved_credits);
+    exception when others then
+      v_cost := jsonb_build_object('state', 'PARTIAL', 'error', left(sqlerrm, 200));
+      v_accrued := 0;
+    end;
     update public.usage_reservations
        set expires_at = now() + make_interval(hours => coalesce((v_pol->>'reservation_ttl_hours')::integer, 12))
      where id = v_s.reservation_id and status = 'RESERVED' and expires_at < now() + interval '2 hours';
@@ -473,18 +538,31 @@ begin
     return jsonb_build_object('ok', true, 'expired', true, 'charged', 0, 'released', v_s.reserved_credits);
   end if;
 
-  v_cost := public.verify_job_cost(p_job_id);
-  v_price := public.verify_price_for_cost((v_cost->>'landedCents')::numeric);
-  v_landed := (v_cost->>'landedCents')::numeric;
-  v_review := (v_cost->>'state') = 'PARTIAL';
+  -- Pricing is best-effort here: a cost that cannot be computed must never
+  -- keep a customer's money held. It then charges nothing and is flagged.
+  begin
+    v_cost := public.verify_job_cost(p_job_id);
+    v_price := public.verify_price_for_cost((v_cost->>'landedCents')::numeric);
+    v_landed := (v_cost->>'landedCents')::numeric;
+    v_review := (v_cost->>'state') = 'PARTIAL';
+  exception when others then
+    v_cost := jsonb_build_object('state', 'ERROR', 'error', left(sqlerrm, 200));
+    v_price := null; v_landed := null; v_review := true;
+  end;
 
-  if p_outcome = 'SYSTEM_FAILED' then
-    select * into v_rel from public.wallet_release(v_s.reservation_id, 'verify_system_failure',
-      jsonb_build_object('provider', 'verify', 'provider_operation', 'verify_session', 'landed_cogs_cents', greatest(v_landed - v_b.landed_charged_cents, 0),
+  if p_outcome = 'SYSTEM_FAILED' or v_price is null then
+    select * into v_rel from public.wallet_release(v_s.reservation_id,
+      case when p_outcome = 'SYSTEM_FAILED' then 'verify_system_failure' else 'verify_cost_unavailable' end,
+      jsonb_build_object('provider', 'verify', 'provider_operation', 'verify_session', 'landed_cogs_cents', greatest(coalesce(v_landed, 0) - v_b.landed_charged_cents, 0),
                          'metadata', jsonb_build_object('verify_job_id', p_job_id, 'session', v_s.seq, 'cost', v_cost)));
     update public.verify_billing_sessions set state = 'RELEASED', outcome = p_outcome, charged_credits = 0,
            released_credits = v_s.reserved_credits, cost = v_cost, price = v_price, closed_at = now() where id = v_s.id;
-    update public.verify_billing set state = 'RELEASED', needs_review = needs_review or v_review, updated_at = now() where job_id = p_job_id;
+    update public.verify_billing
+       set state = case when p_outcome = 'SYSTEM_FAILED' then 'RELEASED' when p_outcome = 'STOPPED' then 'PAUSED' else 'SETTLED' end,
+           -- The released session's cost is logged on the release; never again on a later settle.
+           landed_charged_cents = greatest(landed_charged_cents, coalesce(v_landed, 0)),
+           needs_review = needs_review or v_review, updated_at = now()
+     where job_id = p_job_id;
     return jsonb_build_object('ok', true, 'charged', 0, 'released', v_s.reserved_credits, 'chargedTotal', v_b.charged_total_credits);
   end if;
 
@@ -531,8 +609,11 @@ begin
   update public.verify_tasks
      set dedupe_key = dedupe_key || '#a' || substr(md5(id::text || now()::text), 1, 6), updated_at = now()
    where job_id = p_job_id and state in ('CANCELLED', 'FAILED', 'DEAD')
-     and dedupe_key not like '%#a%';
+     and dedupe_key !~ '#a[0-9a-f]{6}$';
   get diagnostics v_n = row_count;
+  -- The job's own tasks still waiting or running are wanted again.
+  update public.verify_tasks set cancel_requested = false, updated_at = now()
+   where job_id = p_job_id and state in ('QUEUED', 'RUNNING') and cancel_requested;
   return v_n;
 end;
 $$;
@@ -569,6 +650,8 @@ declare f text;
 begin
   foreach f in array array[
     'public.verify_budget_policy()',
+    'public.verify_num(text)',
+    'public.verify_job_paused_at(jsonb, timestamptz)',
     'public.verify_price_for_cost(numeric)',
     'public.verify_job_cost(uuid)',
     'public.verify_billing_open(uuid, uuid, text, numeric)',

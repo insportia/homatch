@@ -18,7 +18,7 @@ production; the harness runs against a scratch Postgres only.
 
 ## Files
 
-- `supabase/migrations/20261024090000_verify_durable_execution.sql` — tables,
+- `supabase/migrations/20261026090000_verify_durable_execution.sql` — tables,
   claim/heartbeat/complete/fail/release/delegate/cancel functions, metrics,
   bucket, `verify_execution_mode` = `"LEGACY"`.
 - `supabase/functions/verify-queue/` — the worker's door (WORKER_TOKEN).
@@ -36,7 +36,7 @@ production; the harness runs against a scratch Postgres only.
 P="psql -h /tmp -p 55432 -U postgres -v ON_ERROR_STOP=1 -q"
 $P -c "create database vq_t"
 $P -d vq_t -f tests/sql/verify_durable_execution_fixture.sql
-$P -d vq_t -f supabase/migrations/20261024090000_verify_durable_execution.sql
+$P -d vq_t -f supabase/migrations/20261026090000_verify_durable_execution.sql
 $P -d vq_t -f tests/sql/verify_durable_execution.sql      # "all checks passed"
 
 PG_BIN=/usr/lib/postgresql/16/bin node scripts/verify-scale/queue-load.mjs > report.json
@@ -75,7 +75,7 @@ replica can hold; see "Capacity" below.
 
 ## Rollout (each step needs the owner's explicit approval)
 
-1. Apply migration `20261024090000` (additive: new tables/functions/bucket,
+1. Apply migration `20261026090000` (additive: new tables/functions/bucket,
    two nullable columns + one unique index on `research_jobs`). With the flag
    at `LEGACY` nothing changes behaviour.
 2. Merge → CI deploys `research-agent` (LEGACY path unchanged; advance lease

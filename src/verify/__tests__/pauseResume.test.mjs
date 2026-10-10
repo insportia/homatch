@@ -43,6 +43,10 @@ test('settlement: report delivered → charged; system failure → released; sto
   assert.equal(settlementOutcome({ status: 'COMPLETE', synthesis_state: 'PENDING', completed_at: '2026-10-10T08:00:00Z' }, o), 'SYSTEM_FAILED');
   assert.equal(settlementOutcome({ status: 'FAILED' }, o), 'SYSTEM_FAILED');
   assert.equal(settlementOutcome({ status: 'PAUSED' }, o), 'STOPPED');
+  // A continuation in progress (budget opened after the pause) is not released under it...
+  assert.equal(settlementOutcome({ status: 'PAUSED', paused_at: '2026-10-10T11:00:00Z' }, { ...o, openSessionAt: '2026-10-10T11:58:00Z' }), null);
+  // ...unless it never got the job running.
+  assert.equal(settlementOutcome({ status: 'PAUSED', paused_at: '2026-10-10T11:00:00Z' }, { ...o, openSessionAt: '2026-10-10T11:40:00Z' }), 'STOPPED');
   assert.equal(settlementOutcome({ status: 'CANCELLED' }, o), 'STOPPED');
   assert.equal(settlementOutcome({ status: 'RUNNING' }, o), null);
 });
@@ -74,7 +78,8 @@ test('research-agent: reserves before work, stops cooperatively, never advances 
   const ex = src.slice(src.indexOf('async function advanceExclusive('), src.indexOf('async function advance('));
   assert.equal((ex.match(/pauseRequested\(sb, j\.id\)/g) || []).length, 2);
   // Continue reserves only what is left (SQL), with a key per continuation.
-  assert.match(src, /p_idempotency_key: `verify:\$\{id\}:r\$\{n \+ 1\}`/);
+  assert.match(src, /p_idempotency_key: `verify:\$\{id\}:r\$\{n \+ 1\}:s\$\{seq \+ 1\}`/);
+  assert.match(src, /\/\/ A continuation never runs without an open budget\.\n\s+if \(!o\?\.ok\) \{/);
   // A continuation is applied once (compare-and-set on status + resume_count).
   assert.match(src, /\.eq\('status', 'PAUSED'\)\.eq\('resume_count', n\)/);
   // Ended jobs are settled by the driver sweep.

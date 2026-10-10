@@ -107,6 +107,6 @@ test('research-agent wires QUEUE mode behind the admin flag and keeps LEGACY the
   assert.match(src, /queueWorkerView\(rows\)/);
   assert.match(src, /research_job_advance_acquire/);
   assert.match(src, /client_request_id/);
-  const mig = readFileSync(new URL('../../../supabase/migrations/20261024090000_verify_durable_execution.sql', import.meta.url), 'utf8');
+  const mig = readFileSync(new URL('../../../supabase/migrations/20261026090000_verify_durable_execution.sql', import.meta.url), 'utf8');
   assert.match(mig, /'verify_execution_mode', '"LEGACY"'::jsonb/);
 });

@@ -32,6 +32,9 @@
 
 -- ───────────────────────── source policy ─────────────────────────
 
+-- research_jobs is on every status poll: never queue behind a long lock.
+set local lock_timeout = '5s';
+
 create table if not exists public.verify_source_policy (
   source          text primary key,
   lane            text not null check (lane in ('HTTP','BROWSER')),
@@ -133,6 +136,7 @@ create index if not exists verify_tasks_running_source_idx on public.verify_task
 create index if not exists verify_tasks_job_idx on public.verify_tasks (job_id);
 create index if not exists verify_tasks_followers_idx on public.verify_tasks (shared_task_id) where state = 'WAITING_SHARED';
 -- SINGLE-FLIGHT: at most one live producer per scope.
+create index if not exists verify_tasks_dead_recent on public.verify_tasks (finished_at) where state = 'DEAD';
 create unique index if not exists verify_tasks_one_producer_per_scope
   on public.verify_tasks (scope_key) where scope_key is not null and state in ('QUEUED','RUNNING');
 
@@ -152,7 +156,8 @@ create table if not exists public.verify_captcha_events (
   provider         text not null default '2captcha',
   kind             text,
   outcome          text not null,
-  cost_usd         numeric(10,5) not null default 0,
+  -- NULL = the provider cost is unknown (never recorded as a silent 0).
+  cost_usd         numeric(10,5) check (cost_usd is null or cost_usd >= 0),
   solve_ms         integer,
   error_code       text,
   created_at       timestamptz not null default now()
@@ -271,8 +276,10 @@ begin
         select * into v_task from public.verify_tasks where job_id = p_job_id and dedupe_key = p_dedupe_key;
         return public.verify_task_json(v_task) || jsonb_build_object('created', false);
       end if;
-      -- An earlier-priority follower lifts its producer.
-      update public.verify_tasks set priority = least(priority, p_priority) where id = v_producer.id and state = 'QUEUED';
+      -- An earlier-priority follower lifts its producer; a producer whose own
+      -- job was stopped is wanted again, so its cancellation is withdrawn.
+      update public.verify_tasks set priority = least(priority, p_priority), cancel_requested = false
+       where id = v_producer.id and (state = 'QUEUED' or cancel_requested);
       return public.verify_task_json(v_task) || jsonb_build_object('created', true);
     end if;
   end if;
@@ -290,6 +297,29 @@ end;
 $$;
 
 /*
+ * A task whose job was stopped ends here, whatever path it takes next
+ * (graceful release, a failed or abandoned attempt): CANCELLED, its scope
+ * handed on (the oldest follower from another job inherits the work), never
+ * back to QUEUED where no claim would ever take it and it would hold the
+ * scope's single-producer slot for every other customer.
+ */
+create or replace function public.verify_task_close_cancelled(p_task_id uuid)
+returns void
+language plpgsql security definer set search_path to ''
+as $$
+begin
+  update public.verify_tasks t
+     set state = 'CANCELLED', finished_at = now(), updated_at = now(),
+         lease_owner = null, lease_expires_at = null,
+         error = coalesce(t.error || ' | ', '') || 'CANCELLED',
+         input = case when t.scope_key is not null then t.input || jsonb_build_object('_scope', t.scope_key) else t.input end,
+         scope_key = null
+   where t.id = p_task_id and t.state in ('QUEUED', 'RUNNING');
+  if found then perform public.verify_task_settle_followers(p_task_id); end if;
+end;
+$$;
+
+/*
  * LEASE RECOVERY — RUNNING tasks whose lease expired (crashed or stalled
  * worker) go back to the queue with backoff, or to DEAD after max_attempts.
  * Called opportunistically by every claim; also callable on its own.
@@ -301,9 +331,13 @@ as $$
 declare
   v_n integer;
 begin
+  -- Abandoned tasks of a stopped job are closed, not retried.
+  perform public.verify_task_close_cancelled(t.id)
+     from public.verify_tasks t
+    where t.state = 'RUNNING' and t.lease_expires_at < now() and t.cancel_requested;
   with expired as (
     select id from public.verify_tasks
-     where state = 'RUNNING' and lease_expires_at < now()
+     where state = 'RUNNING' and lease_expires_at < now() and not cancel_requested
      order by lease_expires_at
      for update skip locked
      limit greatest(p_limit, 1)
@@ -418,6 +452,7 @@ begin
     select id into v_heir from public.verify_tasks
      where shared_task_id = v_p.id and state = 'WAITING_SHARED' order by created_at limit 1;
     if v_heir is not null then
+      if v_p.input ? '_scope' then perform pg_advisory_xact_lock(hashtextextended('verify_scope:' || (v_p.input->>'_scope'), 0)); end if;
       update public.verify_tasks
          set state = 'QUEUED', shared_task_id = null, reused = null, scope_key = v_p.input->>'_scope',
              run_after = now(), updated_at = now()
@@ -494,6 +529,12 @@ as $$
 declare
   v_task public.verify_tasks;
 begin
+  -- The current holder ending a task its job stopped: cancelled, not retried.
+  if exists (select 1 from public.verify_tasks where id = p_task_id and state = 'RUNNING' and fencing_token = p_token
+               and (cancel_requested or p_error = 'CANCELLED')) then
+    perform public.verify_task_close_cancelled(p_task_id);
+    return jsonb_build_object('ok', true, 'state', 'CANCELLED');
+  end if;
   update public.verify_tasks
      set state = case
                    when not p_retryable then 'FAILED'
@@ -522,6 +563,10 @@ returns boolean
 language plpgsql security definer set search_path to ''
 as $$
 begin
+  if exists (select 1 from public.verify_tasks where id = p_task_id and state = 'RUNNING' and fencing_token = p_token and cancel_requested) then
+    perform public.verify_task_close_cancelled(p_task_id);
+    return true;
+  end if;
   update public.verify_tasks
      set state = 'QUEUED', attempts = greatest(attempts - 1, 0), run_after = now(),
          lease_owner = null, lease_expires_at = null, updated_at = now()
@@ -617,7 +662,7 @@ $$;
 -- CAPTCHA ACCOUNTING — idempotent per attempt.
 create or replace function public.verify_captcha_record(
   p_idempotency_key text, p_task_id uuid, p_job_id uuid, p_source text, p_outcome text,
-  p_cost_usd numeric default 0, p_solve_ms integer default null, p_kind text default null,
+  p_cost_usd numeric default null, p_solve_ms integer default null, p_kind text default null,
   p_error_code text default null, p_provider text default '2captcha')
 returns boolean
 language plpgsql security definer set search_path to ''
@@ -625,7 +670,7 @@ as $$
 begin
   insert into public.verify_captcha_events (idempotency_key, task_id, job_id, source, provider, kind, outcome, cost_usd, solve_ms, error_code)
   values (p_idempotency_key, p_task_id, p_job_id, p_source, coalesce(p_provider, '2captcha'), p_kind, p_outcome,
-          coalesce(p_cost_usd, 0), p_solve_ms, p_error_code)
+          case when p_cost_usd is null or p_cost_usd < 0 then null else p_cost_usd end, p_solve_ms, p_error_code)
   on conflict (idempotency_key) do nothing;
   return found;
 end;
@@ -701,6 +746,7 @@ begin
     'public.verify_task_claim(text, text[], integer)',
     'public.verify_task_heartbeat(uuid, bigint)',
     'public.verify_task_settle_followers(uuid)',
+    'public.verify_task_close_cancelled(uuid)',
     'public.verify_task_complete(uuid, bigint, jsonb, jsonb, text, text)',
     'public.verify_task_fail(uuid, bigint, text, boolean, integer)',
     'public.verify_task_release(uuid, bigint)',

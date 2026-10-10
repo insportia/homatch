@@ -3,7 +3,7 @@
  *
  * In QUEUE mode (admin_settings.verify_execution_mode = "QUEUE") the official
  * sources of a cadastral Verify are not one long in-memory worker job any
- * more: each source is a row in verify_tasks (migration 20261024090000),
+ * more: each source is a row in verify_tasks (migration 20261026090000),
  * claimed by any worker replica under a lease, retried with backoff, shared
  * between jobs that ask the same question (single-flight + evidence cache),
  * and surviving worker restarts and deploys.

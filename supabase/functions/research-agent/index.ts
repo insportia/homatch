@@ -1899,7 +1899,7 @@ async function tasImplementationFor(sb: any): Promise<{ active: string; fallback
  *
  * "LEGACY" (default): one in-memory worker job per Verify, as before.
  * "QUEUE": each official source is a durable verify_tasks row (migration
- * 20261024090000) that any worker replica claims under a lease — survives
+ * 20261026090000) that any worker replica claims under a lease — survives
  * restarts and deploys, is retried with backoff, and is shared between jobs
  * asking the same question. Cadastral jobs only; property-mode jobs keep the
  * legacy path. Switching back to LEGACY affects new jobs only: a job started
@@ -1940,7 +1940,7 @@ async function cancelJobTasks(sb: any, jobId: string, taskId: string | null = nu
 }
 
 /*
- * VERIFY CREDIT BUDGET (migration 20261024100000).
+ * VERIFY CREDIT BUDGET (migration 20261026100000).
  *
  * admin_settings.verify_billing_enabled switches it on. The money itself is
  * decided in SQL (verify_billing_open / _state / _close over the existing
@@ -6220,9 +6220,12 @@ async function settleVerifyBudgets(sb: any): Promise<void> {
   try {
     const { data: open, error } = await sb.from('verify_billing').select('job_id').eq('state', 'ACTIVE').order('updated_at', { ascending: true }).limit(25);
     if (error || !open?.length) return;
-    const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at').in('id', open.map((x: any) => x.job_id));
+    const ids = open.map((x: any) => x.job_id);
+    const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at,paused_at').in('id', ids);
+    const { data: sessions } = await sb.from('verify_billing_sessions').select('job_id,created_at').in('job_id', ids).eq('state', 'RESERVED');
+    const openedAt = new Map((sessions ?? []).map((x: any) => [x.job_id, x.created_at]));
     for (const job of jobs ?? []) {
-      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS });
+      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS, openSessionAt: openedAt.get(job.id) ?? null });
       if (outcome) await closeBilling(sb, job.id, outcome);
     }
   } catch (e) {
@@ -6795,12 +6798,16 @@ Deno.serve(async (req) => {
       const { data: hasBilling } = await sb.from('verify_billing').select('job_id').eq('job_id', id).maybeSingle();
       if (hasBilling) {
         const extra = b.approveExtraCredits === true ? Math.max(0, Math.min(Number(b.extraCredits) || 0, 25)) : 0;
-        const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: id, p_user_id: j.user_id, p_idempotency_key: `verify:${id}:r${n + 1}`, p_extra_credits: extra });
+        // One key per continuation attempt: a duplicate request shares it; an
+        // attempt whose budget was already closed gets a fresh one.
+        const seq = Number((await billingStateFor(sb, id))?.sessions) || 0;
+        const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: id, p_user_id: j.user_id, p_idempotency_key: `verify:${id}:r${n + 1}:s${seq + 1}`, p_extra_credits: extra });
         if (oe) {
           console.error('research-agent: verify_billing_open on continue', oe.message);
           return json({ error: 'BILLING_UNAVAILABLE', code: 'BILLING_UNAVAILABLE' }, 503);
         }
-        if (!o?.ok && o?.reason !== 'SESSION_ALREADY_CLOSED') {
+        // A continuation never runs without an open budget.
+        if (!o?.ok) {
           return json({ error: o?.reason ?? 'BILLING_UNAVAILABLE', code: o?.reason ?? 'BILLING_UNAVAILABLE', requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, billing: publicBilling(await billingStateFor(sb, id)) }, o?.reason === 'INSUFFICIENT_CREDITS' || o?.reason === 'BUDGET_EXHAUSTED' ? 402 : 409);
         }
       }
@@ -6985,7 +6992,7 @@ Deno.serve(async (req) => {
     const reusePlan = await shadowReusePlan(sb, q);
     const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
     let { data: j, error } = await sb.from('research_jobs').insert({ ...row, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }).select('*').single();
-    // Before migration 20261024090000 the column does not exist: start as before.
+    // Before migration 20261026090000 the column does not exist: start as before.
     if (error?.code === '42703' && clientRequestId) ({ data: j, error } = await sb.from('research_jobs').insert(row).select('*').single());
     if (error || !j) {
       // The same request arriving twice (double click, network retry) lost

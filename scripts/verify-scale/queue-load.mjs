@@ -51,7 +51,7 @@ function resetDb() {
   psql(`drop database if exists ${DB}`, 'postgres');
   psql(`create database ${DB}`, 'postgres');
   psqlFile(join(ROOT, 'tests/sql/verify_durable_execution_fixture.sql'));
-  psqlFile(join(ROOT, 'supabase/migrations/20261024090000_verify_durable_execution.sql'));
+  psqlFile(join(ROOT, 'supabase/migrations/20261026090000_verify_durable_execution.sql'));
   psql(`alter table public.research_jobs add column if not exists query text`);
 }
 

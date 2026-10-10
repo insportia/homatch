@@ -7,7 +7,7 @@ MATTERS right now, verify against the live systems, not this file)
 
 ## Verify credit budget + stop/resume (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
 
-- Migration `20261024100000_verify_credit_budget.sql` (after the queue migration). NOT applied.
+- Migration `20261026100000_verify_credit_budget.sql` (after the queue migration). NOT applied.
   `verify_billing_enabled` seeded false: until switched on, Verify is not charged (unchanged).
 - research-agent: reserve at start (anonymous → sign-in when on), live `billing` in status,
   `pause` / `continue` actions, settlement sweep in the driver, ads stage budget guard.
@@ -20,7 +20,7 @@ MATTERS right now, verify against the live systems, not this file)
 
 ## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
 
-- Durable queue: migration `20261024090000_verify_durable_execution.sql` (verify_tasks,
+- Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
   verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
   research_jobs.client_request_id + advance lease). NOT applied to production.
 - Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official

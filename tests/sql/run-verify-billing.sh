@@ -7,11 +7,12 @@ P="psql -v ON_ERROR_STOP=1 -q"
 cd "$(dirname "$0")/../.."
 $P -d postgres -c "drop database if exists $DB" -c "create database $DB"
 $P -d $DB -f tests/sql/verify_durable_execution_fixture.sql
-$P -d $DB -f supabase/migrations/20261024090000_verify_durable_execution.sql
+$P -d $DB -f supabase/migrations/20261026090000_verify_durable_execution.sql
 $P -d $DB -f tests/sql/verify_credit_budget_fixture.sql
-$P -d $DB -f supabase/migrations/20261024100000_verify_credit_budget.sql
+$P -d $DB -f supabase/migrations/20261026100000_verify_credit_budget.sql
 $P -d $DB -f tests/sql/verify_durable_execution.sql
 $P -d $DB -f tests/sql/verify_credit_budget.sql
+$P -d $DB -f tests/sql/verify_billing_audit_regressions.sql
 
 # Concurrency: 30 simultaneous starts of one job (double clicks, retries, two tabs)
 # hold the budget once; 30 simultaneous closes settle once; another product's

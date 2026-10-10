@@ -69,12 +69,20 @@ export function resumeTarget(p: PauseRecord): ResumeTarget {
 
 /** How the open budget session of a job in this state is closed, or null to wait. */
 export function settlementOutcome(
-  job: { status?: string | null; synthesis_state?: string | null; synthesis_attempts?: number | null; completed_at?: string | null },
-  opts: { maxSynthesisAttempts: number; synthesisGraceMs: number; now?: number },
+  job: { status?: string | null; synthesis_state?: string | null; synthesis_attempts?: number | null; completed_at?: string | null; paused_at?: string | null },
+  opts: { maxSynthesisAttempts: number; synthesisGraceMs: number; now?: number; openSessionAt?: string | null; resumeGraceMs?: number },
 ): 'COMPLETE' | 'STOPPED' | 'SYSTEM_FAILED' | null {
   const now = opts.now ?? Date.now();
   switch (job.status) {
-    case 'PAUSED':
+    case 'PAUSED': {
+      // A budget opened AFTER the pause is a continuation in progress: it is
+      // left alone for a short grace (the job is about to run on it); one that
+      // never got its job running is released after that.
+      const opened = Date.parse(opts.openSessionAt ?? '');
+      const paused = Date.parse(job.paused_at ?? '');
+      if (Number.isFinite(opened) && Number.isFinite(paused) && opened > paused && now - opened < (opts.resumeGraceMs ?? 10 * 60_000)) return null;
+      return 'STOPPED';
+    }
     case 'CANCELLED':
       return 'STOPPED';
     case 'FAILED':

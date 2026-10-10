@@ -4,7 +4,7 @@
  * The worker holds no database credential (CLAUDE.md: no service key on
  * Railway). Every queue operation goes through this function, authenticated
  * with the same WORKER_TOKEN research-agent already uses towards the worker,
- * and executed by the SQL functions of migration 20261024090000, which do all
+ * and executed by the SQL functions of migration 20261026090000, which do all
  * the locking, fencing and single-flight work atomically.
  *
  * Actions (POST JSON {action, ...}):
@@ -141,7 +141,8 @@ Deno.serve(async (req: Request) => {
             p_job_id: UUID.test(str(e.jobId, 40)) ? e.jobId : null,
             p_source: str(e.source, 40) || 'unknown',
             p_outcome: str(e.outcome, 40) || 'UNKNOWN',
-            p_cost_usd: Number.isFinite(Number(e.costUsd)) ? Number(e.costUsd) : 0,
+            // Unknown stays unknown (NULL), never a silent 0.
+            p_cost_usd: e.costUsd != null && e.costUsd !== '' && Number.isFinite(Number(e.costUsd)) && Number(e.costUsd) >= 0 ? Number(e.costUsd) : null,
             p_solve_ms: Number.isFinite(Number(e.solveMs)) ? Math.trunc(Number(e.solveMs)) : null,
             p_kind: str(e.kind, 40) || null,
             p_error_code: str(e.errorCode, 80) || null,

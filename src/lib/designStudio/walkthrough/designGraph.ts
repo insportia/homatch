@@ -508,10 +508,27 @@ export function wetRoomMoves(graph: SpatialDesignGraph, space: SpaceModel): Map<
   return moves;
 }
 
+/** Rooms out in the weather: a balcony, a terrace, a porch. */
+const OUTDOOR_KINDS = new Set(['BALCONY', 'TERRACE', 'PORCH', 'LOGGIA', 'PATIO']);
+/**
+ * What a balcony is furnished with: light chairs and a small round table, never an upholstered armchair, a sofa
+ * or a living room's coffee table. The render's lounge pieces out there are built from the catalogue's outdoor
+ * pieces when it has them (their place and colours kept); the design's indoor form does not follow them out.
+ */
+export function outdoorCode(roomKind: string, label: string, assets: Map<string, CatalogAsset>): string | null {
+  if (!OUTDOOR_KINDS.has(roomKind)) return null;
+  const want = /ARMCHAIR|SOFA|RECLINER|LOUNGE|CHAIR/.test(label) ? 'dev/outdoor-chair' : /COFFEE_TABLE|SIDE_TABLE|TABLE/.test(label) ? 'dev/outdoor-table' : null;
+  return want && assets.has(want) ? want : null;
+}
+
 export function graphToBuildPlan(graph: SpatialDesignGraph, space: SpaceModel, materials: CatalogMaterial[], assets: Map<string, CatalogAsset>): BuildPlan {
   const moves = wetRoomMoves(graph, space);
+  const outside = (r: GraphRoom, o: GraphObject): GraphObject => {
+    const code = outdoorCode(r.kind, o.label, assets);
+    return code ? { ...o, code, form: null } : o;
+  };
   const objectsOf = (r: GraphRoom): GraphObject[] => [
-    ...r.objects.filter((o) => !moves.has(o.id)),
+    ...r.objects.filter((o) => !moves.has(o.id)).map((o) => outside(r, o)),
     ...graph.rooms.flatMap((x) => x.objects).filter((o) => moves.get(o.id) === r.roomId).map((o) => ({ ...o, roomId: r.roomId, pose: null })),
   ];
   const rooms: BuildRoom[] = graph.rooms.map((r) => {
@@ -566,8 +583,10 @@ export function applyGraphLook(graph: SpatialDesignGraph, space: SpaceModel, sta
     const asset = assets.get(obj.assetId);
     const shape = obj.shape ?? (asset ? { widthM: asset.widthM, depthM: asset.depthM, heightM: asset.heightM, form: null, secondary: null } : undefined);
     // A design form taller than the catalogue piece carries its real height (the factory fits a piece to it exactly).
-    const tall = g.form ? FORM_HEIGHT_M[g.form] : undefined;
-    if (shape) obj.shape = { ...shape, heightM: tall ? Math.max(shape.heightM, tall) : shape.heightM, form: g.form ?? shape.form, secondary: g.colors.second ?? shape.secondary };
+    // A piece built from another code than the render's (an outdoor chair for a balcony's armchair) keeps its own form.
+    const form = obj.assetId === g.code ? g.form : null;
+    const tall = form ? FORM_HEIGHT_M[form] : undefined;
+    if (shape) obj.shape = { ...shape, heightM: tall ? Math.max(shape.heightM, tall) : shape.heightM, form: form ?? shape.form, secondary: g.colors.second ?? shape.secondary };
     if (g.colors.main) obj.colorOverride = g.colors.main;
     // A designed piece is drawn by HOMATCH from the design, never replaced by an earlier generic model.
     delete (obj as ObjectInstance & { generated?: unknown }).generated;
@@ -645,7 +664,7 @@ export function fidelityOf(graph: SpatialDesignGraph, state: DesignState, report
     const g = objs.find((x) => x.id === ref)!;
     // Designed: its form (when the design gives one) and its colours or its fixture role come from the graph.
     const fixture = /SHOWER|TOILET|BATH|VANITY|PLANT/.test(g.label);
-    if ((g.colors.main || g.colors.second || fixture) && (!g.form || o.shape?.form === g.form)) designed += 1; else generic += 1;
+    if ((g.colors.main || g.colors.second || fixture) && (!g.form || o.assetId !== g.code || o.shape?.form === g.form)) designed += 1; else generic += 1;
   }
   const total = Math.max(1, state.objects.length);
   const designedRooms = graph.rooms.filter((r) => r.floor.evidence.some((e) => e === 'SPEC' || e === 'PIXELS' || e === 'CONTINUITY') && r.walls.evidence.some((e) => e === 'SPEC' || e === 'PIXELS' || e === 'CONTINUITY'));

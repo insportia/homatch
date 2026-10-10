@@ -44,6 +44,8 @@ export type Translate = (key: string, vars?: Record<string, string | number>) =>
 
 const SETTINGS_KEY = 'hm_walk_settings_v1';
 const TUTORIAL_KEY = (touch: boolean) => `hm_walk_tutorial_v1_${touch ? 'touch' : 'desktop'}`;
+/** Whether the plan panel is shown (remembered per device kind): open by default on a desktop, where it fits. */
+const PLAN_KEY = (touch: boolean) => `hm_walk_plan_v1_${touch ? 'touch' : 'desktop'}`;
 const readStore = (k: string): string | null => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const writeStore = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* private mode: fine */ } };
 
@@ -162,7 +164,13 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
   const doors = useMemo(() => (plan ? doorPointsFrom(plan, room) : []), [plan, room]);
   const history = useRef<WalkPose[]>([]);
   const [canBack, setCanBack] = useState(false);
-  const [planOpen, setPlanOpen] = useState(false);
+  // The plan beside the walk, so the tour can be checked against the drawing: open on a desktop unless hidden.
+  const [planOpen, setPlanOpenRaw] = useState(() => { const v = readStore(PLAN_KEY(touch)); return v ? v === 'open' : !touch; });
+  const setPlanOpen = (next: boolean | ((v: boolean) => boolean)) => setPlanOpenRaw((v) => {
+    const n = typeof next === 'function' ? next(v) : next;
+    writeStore(PLAN_KEY(touch), n ? 'open' : 'hidden');
+    return n;
+  });
   // The secondary actions, folded into one menu so the walk keeps the screen.
   const [more, setMore] = useState(false);
   const [doorHint, setDoorHint] = useState<'WAIT' | 'SHOW' | 'DONE'>('WAIT');
@@ -216,9 +224,10 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
             <span className="font-semibold">{roomName || tr('ds_walk_title')}</span>
           </p>
           {plan && space ? (
-            <button type="button" onClick={() => { c?.releasePointer(); setMore(false); setPlanOpen((v) => !v); }} aria-pressed={planOpen} className={quiet} aria-label={tr('ds_walk_plan')} data-testid="walk-plan-open">
+            <button type="button" onClick={() => { c?.releasePointer(); setMore(false); setPlanOpen((v) => !v); }} aria-pressed={planOpen} data-testid="walk-plan-open"
+              className={cn(quiet, planOpen ? 'bg-[hsl(38_92%_56%)]/25 ring-[hsl(38_92%_62%)]/60' : 'bg-white/10')}>
               <MapIcon className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">{tr('ds_walk_plan')}</span>
+              <span>{tr(planOpen ? 'ds_walk_plan_hide' : 'ds_walk_plan_show')}</span>
             </button>
           ) : null}
           <div className="relative">
@@ -288,7 +297,7 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
       ) : null}
       {planOpen && plan && space && !overlayOpen ? (
         <PlanSheet c={c} space={space} plan={plan} names={names} room={room} tr={tr}
-          onRoom={(id) => { setPlanOpen(false); goRoom(id); }} onClose={() => setPlanOpen(false)} />
+          onRoom={(id) => goRoom(id)} onClose={() => setPlanOpen(false)} />
       ) : null}
 
       {/* ── The eye: a quiet centre point while the mouse is captured ── */}

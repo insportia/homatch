@@ -264,3 +264,20 @@ test('understand: atomic per-user quota checked BEFORE any model call; 429 with 
   assert.match(sql, /insert into public\.rate_limit_events \(user_id, operation\)/);
   assert.match(sql, /revoke all on function public\.consume_marketplace_rate_limit\(uuid, text, integer, integer, integer, integer\) from public, anon, authenticated/);
 });
+
+// The MyHome access circuit reads the latest ACCESS_DENIED run through jsonb
+// containment. An array argument is serialized by postgrest-js as a Postgres
+// array literal (cs.{[object Object]}), which Postgres rejects; the ingress
+// then answered every source-health call with HTTP 500. Drive the exact
+// filter value through the real client serializer.
+test('MyHome source-health filters ACCESS_DENIED runs with JSON text the real client sends as jsonb', async () => {
+  const src = code(WI);
+  const m = src.match(/\.contains\('errors',\s*('([^']*)'|[^)]*)\)/);
+  assert.ok(m, 'source-health reads errors through contains()');
+  assert.ok(m[2] !== undefined, `contains() argument must be a JSON string literal, got: ${m[1]}`);
+  assert.deepEqual(JSON.parse(m[2]), [{ code: 'ACCESS_DENIED' }]);
+  const { createClient } = await import('@supabase/supabase-js');
+  const query = createClient('https://example.supabase.co', 'anon-key').from('discovery_marketplace_worker_runs')
+    .select('created_at,errors').contains('errors', m[2]);
+  assert.equal(new URL(String(query.url)).searchParams.get('errors'), 'cs.[{"code":"ACCESS_DENIED"}]');
+});

@@ -40,9 +40,11 @@ export interface PlayerSettings {
   /** Optional; off by default. Moving right always turns right unless the visitor asks otherwise. */
   invertX: boolean;
   reducedMotion: boolean;
+  /** The home's sounds as it is used (a door, a tap, a switch): on unless the visitor turns them off. */
+  sound: boolean;
 }
 
-export const DEFAULT_SETTINGS: PlayerSettings = { lookSensitivity: 1, speed: 1, invertY: false, invertX: false, reducedMotion: false };
+export const DEFAULT_SETTINGS: PlayerSettings = { lookSensitivity: 1, speed: 1, invertY: false, invertX: false, reducedMotion: false, sound: true };
 
 /** Settings from storage or a form, bounded to what is safe and comfortable. */
 export function normalizeSettings(raw: unknown): PlayerSettings {
@@ -54,6 +56,7 @@ export function normalizeSettings(raw: unknown): PlayerSettings {
     invertY: x.invertY === true,
     invertX: x.invertX === true,
     reducedMotion: x.reducedMotion === true,
+    sound: x.sound !== false,
   };
 }
 

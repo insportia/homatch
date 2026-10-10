@@ -17707,6 +17707,10 @@ const en = {
   verify_v3_reg_parcel_security_note: 'Registered on the parcel or building rather than on the apartment alone. Ask the developer and the lender how this apartment will be released from it before you pay.',
   verify_v3_reg_reused: 'Based on the registry extract retrieved on {{date}} in your earlier check.',
   verify_v3_lightbox_thumbs: 'All images in this set',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'Sounds',
+  ds_walk_stand_click: 'Click or press E to stand up',
+  ds_walk_stand_tap: 'Tap to stand up',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35328,6 +35332,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_v3_reg_parcel_security_note: 'რეგისტრირებულია ნაკვეთზე ან შენობაზე და არა მხოლოდ ბინაზე. გადახდამდე ჰკითხეთ დეველოპერს და კრედიტორს, როგორ გათავისუფლდება მისგან ეს ბინა.',
   verify_v3_reg_reused: 'ეფუძნება საჯარო რეესტრის ამონაწერს, რომელიც თქვენი წინა შემოწმებისას, {{date}}-ს იქნა მიღებული.',
   verify_v3_lightbox_thumbs: 'ამ ნაკრების ყველა გამოსახულება',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'ხმები',
+  ds_walk_stand_click: 'ადგომა — დააწკაპუნეთ ან დააჭირეთ E-ს',
+  ds_walk_stand_tap: 'ადგომა — შეეხეთ ეკრანს',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52940,6 +52948,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_v3_reg_parcel_security_note: 'Зарегистрировано на участок или здание, а не только на квартиру. До оплаты спросите девелопера и кредитора, как эта квартира будет из-под него выведена.',
   verify_v3_reg_reused: 'Основано на выписке из реестра, полученной {{date}} при вашей предыдущей проверке.',
   verify_v3_lightbox_thumbs: 'Все изображения набора',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'Звуки',
+  ds_walk_stand_click: 'Щёлкните или нажмите E, чтобы встать',
+  ds_walk_stand_tap: 'Коснитесь, чтобы встать',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70550,6 +70562,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_v3_reg_parcel_security_note: 'Yalnızca daireye değil, arsaya veya binaya kayıtlı. Ödeme yapmadan önce geliştiriciye ve alacaklıya bu dairenin nasıl serbest bırakılacağını sorun.',
   verify_v3_reg_reused: 'Önceki kontrolünüzde {{date}} tarihinde alınan tapu kaydı özetine dayanır.',
   verify_v3_lightbox_thumbs: 'Bu setteki tüm görseller',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'Sesler',
+  ds_walk_stand_click: 'Kalkmak için tıklayın veya E’ye basın',
+  ds_walk_stand_tap: 'Kalkmak için dokunun',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -88160,6 +88176,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_v3_reg_parcel_security_note: 'مسجّل على الأرض أو المبنى لا على الشقة وحدها. قبل الدفع، اسأل المطوّر والجهة الدائنة كيف ستُحرَّر هذه الشقة منه.',
   verify_v3_reg_reused: 'يستند إلى مستخرج السجل الذي جُلب في {{date}} خلال فحصك السابق.',
   verify_v3_lightbox_thumbs: 'كل الصور في هذه المجموعة',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'الأصوات',
+  ds_walk_stand_click: 'انقر أو اضغط E للنهوض',
+  ds_walk_stand_tap: 'المس للنهوض',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105770,6 +105790,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_v3_reg_parcel_security_note: 'רשום על המגרש או הבניין ולא על הדירה בלבד. לפני התשלום שאלו את היזם ואת המלווה איך הדירה תשוחרר ממנו.',
   verify_v3_reg_reused: 'מבוסס על נסח הרישום שהתקבל ב-{{date}} בבדיקה הקודמת שלכם.',
   verify_v3_lightbox_thumbs: 'כל התמונות בסדרה',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_sound: 'צלילים',
+  ds_walk_stand_click: 'לחצו או הקישו E כדי לקום',
+  ds_walk_stand_tap: 'געו כדי לקום',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

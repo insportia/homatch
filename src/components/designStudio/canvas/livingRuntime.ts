@@ -105,6 +105,8 @@ export interface LivingOptions {
   lightParent?: THREE.Object3D;
   onDoor: (doorId: string, blocks: boolean) => void;
   onChange: () => void;
+  /** A machine starts moving into a state a visitor caused (heard: walkSounds), never the time of day's. */
+  onTransition?: (e: LiveEntry, from: string, to: string) => void;
 }
 
 export class LivingRuntime {
@@ -276,10 +278,11 @@ export class LivingRuntime {
   force(key: string, state: string, now = performance.now()) {
     const e = this.entries.get(key);
     if (!e || !e.machine.states.has(state) || (e.target ?? e.state) === state) return;
-    this.begin(e, state, now);
+    this.begin(e, state, now, 1, false);
   }
 
-  private begin(e: LiveEntry, to: string, now: number, scale = 1) {
+  private begin(e: LiveEntry, to: string, now: number, scale = 1, heard = true) {
+    const was = e.target ?? e.state;
     const parts = new Map<string, PoseValue>();
     for (const [id, rig] of e.parts) parts.set(id, { p: [...rig.cur.p], r: [...rig.cur.r], s: [...rig.cur.s], tint: rig.cur.tint?.clone() ?? null });
     const effects = new Map<string, number>();
@@ -292,6 +295,7 @@ export class LivingRuntime {
     const def = e.machine.states.get(to);
     // Closing a door blocks at once; opening frees the way as it starts to swing.
     if (e.doorId) this.opts.onDoor(e.doorId, !!def?.blocks);
+    if (heard && was !== to) this.opts.onTransition?.(e, was, to);
     if (e.duration <= 0) this.finish(e, now);
     this.opts.onChange();
   }

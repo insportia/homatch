@@ -139,3 +139,25 @@ test('research-agent: worker data is sanitized at entry, every official exit is 
   assert.match(drive, /await advance\(sb, key, model, j, jobLanguage\(j\)\);\n[\s\S]{0,300}if \(await recoverStalledOfficial\(sb, j\)\) return;/);
   assert.doesNotMatch(src, /browserAgeMs > 12 \* 60 \* 1000/);
 });
+
+/* ── bounded worker payloads (job 1a70af7d, 2026-10-10: CPU Time exceeded) ── */
+import { boundWorkerJob, TAS_DOC_TEXT_CAP, TAS_TOTAL_TEXT_CAP } from '../officialRecovery.ts';
+
+test('a TAS API_FIRST job is bounded before research-agent touches it', () => {
+  const big = 'ა'.repeat(40_000);
+  const docs = Array.from({ length: 30 }, (_, i) => ({ rawText: big, documentDate: `20${10 + i}-01-01` }));
+  const job = { status: 'COMPLETE', results: [{ source: 'tas', documents: docs }, { source: 'mygov', documents: [{ rawText: big }] }] };
+  boundWorkerJob(job);
+  const tas = job.results[0].documents;
+  assert.ok(tas.every((d) => d.rawText.length <= TAS_DOC_TEXT_CAP));
+  assert.ok(tas.reduce((n, d) => n + d.rawText.length, 0) <= TAS_TOTAL_TEXT_CAP);
+  // Newest case keeps its text; the register extract is untouched.
+  assert.equal(tas[29].rawText.length, TAS_DOC_TEXT_CAP);
+  assert.equal(job.results[1].documents[0].rawText.length, 40_000);
+});
+
+test('research-agent polls the light status view and fetches the full job only when it reads it', () => {
+  const src = readFileSync(new URL('../../../supabase/functions/research-agent/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /\?view=status/);
+  assert.match(src, /boundWorkerJob\(z\)/);
+});

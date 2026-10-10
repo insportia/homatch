@@ -212,3 +212,40 @@ export async function recoverStalledOfficial(sb: Db, before: { id: string; updat
     return false;
   }
 }
+
+/* ───────────── bounded worker payloads ───────────── */
+
+/** TAS text research-agent keeps, per case document and in total. */
+export const TAS_DOC_TEXT_CAP = 8_000;
+export const TAS_TOTAL_TEXT_CAP = 120_000;
+
+/*
+ * A WORKER JOB, BOUNDED BEFORE ANYTHING ELSE TOUCHES IT.
+ *
+ * TAS API_FIRST reads every attachment of every case; the first live run
+ * (job 1a70af7d, 2026-10-10) returned so much case text that every poll of
+ * research-agent hit the edge CPU limit ("CPU Time exceeded", HTTP 546) and
+ * the customer saw "Failed to send a request to the Edge Function". The
+ * worker now caps what it sends; this is the same cap on the receiving side,
+ * so an older worker (or a bigger project) can never do it again. Newest
+ * documents keep their text first. Mutates and returns the job.
+ */
+export function boundWorkerJob<T>(job: T): T {
+  const results = (job as any)?.results;
+  if (!Array.isArray(results)) return job;
+  for (const r of results) {
+    if (!r || typeof r !== 'object' || r.source !== 'tas' || !Array.isArray(r.documents)) continue;
+    let remaining = TAS_TOTAL_TEXT_CAP;
+    const order = [...r.documents].sort((a: any, b: any) => String(b?.documentDate ?? '').localeCompare(String(a?.documentDate ?? '')));
+    for (const d of order) {
+      if (!d || typeof d.rawText !== 'string') continue;
+      const keep = Math.max(0, Math.min(TAS_DOC_TEXT_CAP, remaining));
+      if (d.rawText.length > keep) {
+        d.rawText = d.rawText.slice(0, keep);
+        d.textTruncated = true;
+      }
+      remaining -= d.rawText.length;
+    }
+  }
+  return job;
+}

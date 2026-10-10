@@ -1160,6 +1160,28 @@ end $$;
 revoke all on function public.native_match_claim_properties(integer) from public, anon, authenticated;
 grant execute on function public.native_match_claim_properties(integer) to service_role;
 
+/* Drain the queue every two minutes: a listing change reaches matching demand promptly. */
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'cron') and exists (select 1 from pg_namespace where nspname = 'net') then
+    perform cron.unschedule(jobid) from cron.job where jobname = 'homatch-native-property-queue';
+    perform cron.schedule(
+      'homatch-native-property-queue',
+      '*/2 * * * *',
+      $cron$
+      select net.http_post(
+        url := 'https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/supply-matching',
+        headers := jsonb_build_object('Content-Type', 'application/json',
+          'x-cron-token', (select value #>> '{}' from public.admin_settings where key = 'supply_matching_token')),
+        body := '{"drainPropertyQueue":true}'::jsonb,
+        timeout_milliseconds := 60000
+      )
+      where exists (select 1 from public.native_match_property_queue);
+      $cron$
+    );
+  end if;
+end $$;
+
 /* A campaign launch (or the owner opening HOMATCH Leads) asks for a full re-evaluation. */
 create or replace function public.internal_leads_request_matching(p_property_id uuid)
 returns boolean language plpgsql security definer set search_path = public as $$

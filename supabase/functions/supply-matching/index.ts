@@ -86,6 +86,8 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 /** How many candidate listings one demand row is compared against per run. */
 const MAX_CANDIDATES = 500;
+/* Active native searches a property-scoped run evaluates one listing against. */
+const PROPERTY_MODE_MAX_DEMAND = 600;
 
 /** How many demand rows a single tick will serve. */
 const MAX_DEMAND = 25;
@@ -134,8 +136,41 @@ Deno.serve(async (req: Request) => {
     const onlyProfiles: string[] = Array.isArray(body.intentProfileIds)
       ? (body.intentProfileIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, MAX_DEMAND)
       : [];
-    const nativeOnly = body.nativeOnly === true;
-    const limit = Math.max(1, Math.min(nativeOnly ? 200 : MAX_DEMAND, Number(body.maxDemand) || (nativeOnly ? 200 : 10)));
+    /*
+     * A PROPERTY-SCOPED RUN (HOMATCH Leads fresh matching): a listing was created or
+     * changed, or its owner launched a campaign, so THAT property is evaluated against
+     * every active native search — not only the newest few hundred a sweep reaches.
+     * Properties come from the request or from native_match_property_queue, which a
+     * trigger on properties / property_facts fills.
+     */
+    let onlyProperties: string[] = Array.isArray(body.propertyIds)
+      ? (body.propertyIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 50)
+      : [];
+    if (body.drainPropertyQueue === true && !dryRun) {
+      const { data: claimed, error: claimError } = await db.rpc('native_match_claim_properties', { p_limit: 25 });
+      if (claimError) throw claimError;
+      onlyProperties = [...new Set([...onlyProperties, ...((claimed ?? []) as string[])])];
+      if (!onlyProperties.length) return json({ success: true, propertyMode: true, propertiesClaimed: 0 });
+    }
+    const propertyMode = onlyProperties.length > 0;
+    const nativeOnly = body.nativeOnly === true || propertyMode;
+    let limit = Math.max(1, Math.min(nativeOnly ? 200 : MAX_DEMAND, Number(body.maxDemand) || (nativeOnly ? 200 : 10)));
+    let propertyModeDemandIds: string[] = [];
+    if (propertyMode) {
+      const { data: activeSubs, error: activeSubsError } = await db
+        .from('active_search_subscriptions')
+        .select('intent_id')
+        .eq('is_active', true)
+        .not('intent_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(PROPERTY_MODE_MAX_DEMAND);
+      if (activeSubsError) throw activeSubsError;
+      propertyModeDemandIds = [...new Set((activeSubs ?? []).map((r: Record<string, unknown>) => String(r.intent_id)))];
+      if (!propertyModeDemandIds.length) {
+        return json({ success: true, propertyMode: true, properties: onlyProperties, demandConsidered: 0 });
+      }
+      limit = propertyModeDemandIds.length;
+    }
 
     /*
      * THE DEMAND SIDE, and only what is already allowed to be shown.
@@ -156,6 +191,7 @@ Deno.serve(async (req: Request) => {
       .limit(limit * 4);
     if (onlySignal) demandQuery = demandQuery.eq('signal_id', onlySignal);
     if (onlyProfiles.length) demandQuery = demandQuery.in('id', onlyProfiles);
+    if (propertyMode) demandQuery = demandQuery.in('id', propertyModeDemandIds);
 
     const { data: profileRows, error: demandError } = await demandQuery;
     if (demandError) throw demandError;
@@ -545,7 +581,7 @@ Deno.serve(async (req: Request) => {
        * either side anybody to talk to.
        */
       if (demandUserId) {
-        const { data: nativeRows } = await db
+        let nativeQuery = db
           .from('properties')
           .select('id,user_id,homatch_id,title,transaction_type,property_type,'
             + 'matching_status,archived_at,contact_phone_e164,listed_by_role,'
@@ -562,6 +598,8 @@ Deno.serve(async (req: Request) => {
            */
           .neq('user_id', demandUserId)
           .limit(MAX_CANDIDATES);
+        if (propertyMode) nativeQuery = nativeQuery.in('id', onlyProperties);
+        const { data: nativeRows } = await nativeQuery;
 
         totals.nativeCandidatesRead += (nativeRows ?? []).length;
         /* Which properties still fit, so the ones that no longer do stop being shown. */
@@ -651,10 +689,10 @@ Deno.serve(async (req: Request) => {
             await notify(db, {
               userId: String(propertyRow.user_id),
               type: 'MATCH_AVAILABLE',
-              title: 'A Homatch member is looking for something like your property',
-              body: 'Their stated requirements fit this property.',
+              title: 'New Matching Buyers Found',
+              body: 'New buyer requests matching your property have appeared since your last visit. Review the latest opportunities in HOMATCH.',
               priority: 'NORMAL',
-              deepLink: `/property/${propertyRow.id}/matches`,
+              deepLink: `/property/${propertyRow.id}/leads`,
               entityType: 'supply_match',
               entityId: matchId,
               dedupeKey: `native-match:${matchId}:supply`,
@@ -664,7 +702,7 @@ Deno.serve(async (req: Request) => {
                  aggregate row keeps the FIRST event's title and the other eight are
                  invisible — which is worse than nine interruptions, because the
                  customer does not know there is anything else to look at. */
-              groupTitle: '{n} Homatch members are looking for something like your property',
+              groupTitle: 'New Matching Buyers Found',
               metadata: {
                 kind: 'NATIVE_MATCH_SUPPLY',
                 property_id: propertyRow.id,
@@ -698,9 +736,27 @@ Deno.serve(async (req: Request) => {
 
         /* A property that no longer fits this demand stops being shown as a match. */
         if (!dryRun) {
+          /* A property-scoped run judged only the queued listings: every other match of
+             this search is kept as it was, and only a queued listing that stopped
+             fitting is retired. */
+          let keep = compatibleProperties;
+          if (propertyMode) {
+            const { data: current } = await db
+              .from('supply_matches')
+              .select('property_id')
+              .eq('intent_profile_id', demandRow.id as string)
+              .eq('source_kind', 'INTERNAL_HOMATCH')
+              .eq('compatibility', 'COMPATIBLE');
+            keep = [...new Set([
+              ...((current ?? []) as Array<{ property_id: string }>)
+                .map((r) => String(r.property_id))
+                .filter((id) => !onlyProperties.includes(id)),
+              ...compatibleProperties,
+            ])];
+          }
           await db.rpc('retire_native_matches', {
             p_intent_profile_id: demandRow.id as string,
-            p_keep: compatibleProperties,
+            p_keep: keep,
           });
         }
       }

@@ -172,6 +172,40 @@ Deno.serve(async (req: Request) => {
     }
 
     /*
+     * EXPAND RESEARCH — raise a running campaign's TOTAL research budget. Only the
+     * difference is authorised (find_buyers_extend_budget: its own wallet reservation,
+     * idempotent on the caller's key, serialised on the campaign row); findings already
+     * saved stay, and the campaign's provider ceiling widens by what the difference buys.
+     * Settled with the campaign at finalize; unused credits are released.
+     */
+    if (controlAction === 'extend_budget') {
+      const extendJobId = String(body.jobId || '');
+      const totalCredits = Math.floor(Number(body.totalCredits));
+      const extendKey = String(body.idempotencyKey || '');
+      const { data: owned } = await db.from('matching_jobs')
+        .select('id,property_id,user_id').eq('id', extendJobId).eq('property_id', propertyId).maybeSingle();
+      if (!owned) return json({ error: 'That search does not belong to this property.', reasonCode: 'UNKNOWN_JOB' }, 404);
+      /* Spending is the owner's decision alone: an administrator may pause or stop a
+         search, never authorise credits from the owner's wallet. */
+      if (property.user_id !== homatchUser.id) return json({ error: 'Only the owner can expand the research budget.', reasonCode: 'OWNER_ONLY' }, 403);
+      if (!Number.isFinite(totalCredits) || totalCredits <= 0) return json({ error: 'Choose a total research budget.', reasonCode: 'INVALID_TOTAL' }, 400);
+      const { data: extended, error: extendError } = await db.rpc('find_buyers_extend_budget', {
+        p_user_id: owned.user_id, p_job_id: extendJobId, p_total_credits: totalCredits, p_idempotency_key: extendKey,
+      });
+      if (extendError) {
+        const m = String(extendError.message ?? '');
+        const code = ['INSUFFICIENT_CREDITS', 'TOTAL_NOT_HIGHER', 'CAMPAIGN_FINISHED', 'ABOVE_CAMPAIGN_MAXIMUM',
+          'BELOW_MIN_VIABLE_BUDGET', 'IDEMPOTENCY_KEY_REQUIRED', 'UNKNOWN_CAMPAIGN'].find((c) => m.includes(c)) ?? 'REFUSED';
+        return json({ error: 'The research budget could not be expanded.', reasonCode: code }, code === 'INSUFFICIENT_CREDITS' ? 402 : 409);
+      }
+      await event(db, extendJobId, 'BUDGET_EXTENDED', {
+        message: 'The owner expanded the research budget',
+        ...(extended as Record<string, unknown>),
+      }).catch(() => undefined);
+      return json({ success: true, jobId: extendJobId, ...(extended as Record<string, unknown>) });
+    }
+
+    /*
      * TRANSLATE one lead's public text into the reader's UI language. Owner
      * only (the property check above), cached, costed as TRANSLATION COGS.
      * The original text is never replaced.

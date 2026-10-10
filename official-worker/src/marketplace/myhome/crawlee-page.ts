@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { URL } from 'node:url';
 import { Configuration, PlaywrightCrawler, RequestQueue, NonRetryableError } from '@crawlee/playwright';
 import { chromium, type Page } from 'playwright';
 import { AcquisitionError } from './api.js';

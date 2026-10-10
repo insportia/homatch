@@ -23,12 +23,7 @@ jobs:
           node-version: 24
       - name: Install worker packages
         working-directory: official-worker
-        run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Export initial npm resolution
-        working-directory: official-worker
-        run: |
-          npm shrinkwrap
-          node --input-type=module -e "import{readFileSync}from'node:fs';console.log('HOMATCH_LOCK='+readFileSync('npm-shrinkwrap.json').toString('base64'))"
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Compile worker
         working-directory: official-worker
         run: npm run test:build

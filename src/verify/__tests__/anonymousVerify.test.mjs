@@ -125,8 +125,10 @@ test('every job response for an anonymous caller goes through the gate', () => {
   const handler = src.slice(src.indexOf("const a = req.headers.get('Authorization');"));
   const bare = handler.match(/return json\(sanitizeForCustomer\(/g) ?? [];
   assert.equal(bare.length, 0, 'a job is returned without passing the anonymous gate');
-  // Three places answer with a job: cancel-on-finished, cancel, and status.
-  assert.equal((handler.match(/forCaller\(/g) ?? []).length, 3,
+  // Seven places answer with a job: cancel-on-finished, cancel, pause (not
+  // live, and after stopping), continue (not paused, and after continuing),
+  // and status.
+  assert.equal((handler.match(/forCaller\(/g) ?? []).length, 7,
     'a job response was added or removed without going through the gate');
 });
 
@@ -146,7 +148,8 @@ test('reads are scoped by owner, so knowing a job id is never enough', () => {
   // research_jobs.id appears in URLs. It authorises nothing.
   assert.ok(!/\.eq\('id', id\)\.eq\('user_id', user\.id\)/.test(src),
     'a read still hard-codes the account owner and cannot see an anonymous job');
-  assert.equal((src.match(/ownedBy\(sb\.from\('research_jobs'\)/g) ?? []).length, 3,
+  // The three existing job reads, plus pause and continue.
+  assert.equal((src.match(/ownedBy\(sb\.from\('research_jobs'\)/g) ?? []).length, 5,
     'not every job read is owner-scoped');
   assert.ok(/anonSession \? q\.eq\('anon_session_id', anonSession\.id\) : q\.eq\('user_id', user!\.id\)/.test(src),
     'ownership is not decided by who the caller actually is');
@@ -182,7 +185,7 @@ test('the verification is counted before the money is spent', () => {
   // unbounded retry loop.
   const src = agent();
   const iCount = src.indexOf('research_jobs: (anonSession.research_jobs ?? 0) + 1');
-  const iInsert = src.indexOf("const { data: j, error } = await sb.from('research_jobs').insert(");
+  const iInsert = src.indexOf("let { data: j, error } = await sb.from('research_jobs').insert(");
   assert.ok(iCount > 0 && iInsert > iCount, 'an anonymous run starts before it is counted');
 });
 

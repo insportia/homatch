@@ -474,6 +474,46 @@ export class ResearchOrchestrator {
     return { service: captchaService, policy: job.captchaPolicy ?? parseCaptchaPolicy(null), jobId: job.id };
   }
 
+  /*
+   * QUEUE PATH — one source for one durable task, outside any job run loop.
+   *
+   * The task carries everything the source needs; nothing is kept here after
+   * it returns (no jobs-map entry, ledgers and entity queues are dropped), so
+   * a replica can run thousands of tasks without growing. HTTP sources get no
+   * browser at all. A human-verification pause cannot be held open by the
+   * queue: its page is closed and the caller records the source as needing a
+   * human, exactly as the driver's unattended-skip does today.
+   */
+  async executeSource(
+    jobBrowser: JobBrowser | null,
+    task: { id: string; query: string; mode: 'cadastral' | 'property'; step: StepDescriptor; tasConfig?: TasImplementationConfig; captchaPolicy?: CaptchaPolicy },
+  ): Promise<{ result: any; keep: boolean }> {
+    const job: ResearchJob = {
+      id: task.id, query: task.query, mode: task.mode, status: 'RUNNING', stage: 'QUEUE_TASK', sourceIndex: 0, results: [],
+      createdAt: now(), updatedAt: now(), tasConfig: task.tasConfig ?? DEFAULT_TAS_CONFIG, captchaPolicy: task.captchaPolicy ?? parseCaptchaPolicy(null),
+    };
+    const browser = jobBrowser ?? (new Proxy({}, { get() { throw new Error('HTTP_SOURCE_USED_BROWSER'); } }) as unknown as JobBrowser);
+    try {
+      const out = await this.runStep(browser, job, task.step);
+      // Companies found in this source's documents travel with the result, so
+      // the job can queue their registry follow-ups (the in-job EntityQueue
+      // does not outlive the task).
+      if (out.result && typeof out.result === 'object') out.result.queueEntities = this.entitiesFor(job.id).all();
+      if (out.keep) {
+        const session = this.sessions.get(job.id);
+        if (session) {
+          await session.page?.close?.().catch(() => {});
+          this.sessions.delete(job.id);
+        }
+      }
+      return out;
+    } finally {
+      this.ledgers.delete(job.id);
+      this.entityQueues.delete(job.id);
+      captchaService.forgetJob(job.id);
+    }
+  }
+
   private async runStep(jobBrowser: JobBrowser, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean }> {
     const ledger = this.ledgerFor(job.id);
     const entities = this.entitiesFor(job.id);
@@ -795,6 +835,34 @@ export class ResearchOrchestrator {
       this.prefetch.delete(`${job.id}|tas`);
       job.updatedAt = now();
     }
+  }
+
+  /**
+   * The customer stopped the investigation. Cooperative and immediate: the
+   * job is marked abandoned FIRST (the run loop and an in-flight step check
+   * it and never write back), its browser is closed (aborting the page in
+   * use), a queued job leaves the line, and no further source is started.
+   * Results already collected stay on the job for the caller to keep.
+   */
+  async cancel(jobId: string): Promise<{ ok: boolean; code: string; status?: string; results?: number }> {
+    const job = this.jobs.get(jobId);
+    if (!job) return { ok: false, code: 'NOT_FOUND' };
+    if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(job.status)) return { ok: true, code: 'ALREADY_FINISHED', status: job.status, results: job.results.length };
+    job._abandoned = true;
+    this.waiting = this.waiting.filter((w) => w.job.id !== jobId);
+    this.prefetch.delete(`${jobId}|mygov`);
+    this.prefetch.delete(`${jobId}|tas`);
+    await closeJobBrowser(this.jobBrowsers.get(jobId) ?? null, 'job_cancelled');
+    this.jobBrowsers.delete(jobId);
+    this.sessions.delete(jobId);
+    captchaService.forgetJob(jobId);
+    job.humanVerification = null;
+    job.status = 'CANCELLED';
+    job.stage = 'CANCELLED';
+    job.updatedAt = now();
+    this.active.delete(jobId);
+    logBrowserLifecycle('job_cancelled', { jobId, resultsKept: job.results.length });
+    return { ok: true, code: 'CANCELLED', status: job.status, results: job.results.length };
   }
 
   async resume(jobId: string): Promise<HumanActionResult> {

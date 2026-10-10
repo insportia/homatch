@@ -1,9 +1,45 @@
 # PROJECT STATE
 
-last_updated: 2026-10-08
+last_updated: 2026-10-10
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Verify credit budget + stop/resume (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
+
+- Migration `20261026100000_verify_credit_budget.sql` (after the queue migration). NOT applied.
+  `verify_billing_enabled` seeded false: until switched on, Verify is not charged (unchanged).
+- research-agent: reserve at start (anonymous → sign-in when on), live `billing` in status,
+  `pause` / `continue` actions, settlement sweep in the driver, ads stage budget guard.
+- Worker: `POST /research/:id/cancel` (needs the Railway deploy for legacy-mode stop).
+- Production facts used (2026-10-10): credits_per_usd 10, vat_rate_bps 1800,
+  billing_cogs_tax_bps 1800, reservation TTL 60 min (Verify extends to 12 h),
+  all accounts on FREE, fx_rates only USD (no GEL/EUR shown until rates are set),
+  Verify AI COGS p50 $0.446 / p90 $0.581 / max $0.79 → ~15 / ~20 / cap credits.
+- Incremental budget (owner rule 2026-10-10): 25 initial, +25 per explicit approval, max 4 / 100,
+  `verify_billing_authorizations` ledger, `verify_budget_gate` before every chargeable stage
+  (IDENTITY, OFFICIAL, OFFICIAL_COLLECTION, FINANCIAL_ENTITY, PUBLIC_RESEARCH, MARKET,
+  DEVELOPER_ADS, SYNTHESIS+REPORT). Awaiting approval = PAUSED with `_pause.reason` BUDGET
+  (no reservation held); limit = BUDGET_LIMIT. UI: VerifyBudgetExtendDialog / VerifyBudgetLimitCard.
+  Stage p95 estimates imply a full run with ads ≈ 45 credits → most full runs ask once.
+- Tests: tests/sql/run-verify-billing.sh (durable, budget, audit regressions, incremental budget,
+  open/close concurrency, approval races), pauseResume, verifyBudgetUi.
+
+## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
+
+- Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
+  verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
+  research_jobs.client_request_id + advance lease). NOT applied to production.
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
+  sources as durable tasks; property mode always legacy.
+- Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
+  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+- Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
+  advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
+- CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.
+- Measured on scratch PG16 only (see `scripts/verify-scale/README.md`); no live benchmark yet.
+  10k browser sessions / 10k reports-in-minutes NOT claimed.
+- Rollout/rollback: `scripts/verify-scale/README.md`. Every step needs owner approval.
 
 ## Verify upgrade (branch `claude/dazzling-cray-34t9ur`, 2026-10-08) — IN PROGRESS, NOT DEPLOYED
 

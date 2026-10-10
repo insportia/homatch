@@ -16078,6 +16078,72 @@ const en = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: '{{pages}} pages of official documents read, {{count}} records and sources checked — the whole history, read for you',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'The connection was interrupted. Please check your internet and try again.',
+  verify_err_busy: 'Many verifications are running right now. Please try again in a moment.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'Durable queue',
+  adm_vos_queue_mode: 'Execution mode',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 h',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 days',
+  adm_vos_queue_backlog: 'Backlog',
+  adm_vos_queue_oldest: 'Oldest waiting',
+  adm_vos_queue_dead: 'Dead-lettered, 24 h',
+  adm_vos_queue_reused: 'Reused results, 24 h',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_title: 'Start verification',
+  verify_budget_note: 'Your final cost may be lower. Unused credits remain in your wallet.',
+  verify_budget_required: 'Required balance',
+  verify_budget_credits: '{{n}} credits',
+  verify_budget_approx: 'Approximate value',
+  verify_budget_currency: 'Currency',
+  verify_budget_missing: 'You need {{n}} more credits to start.',
+  verify_budget_add_credits: 'Add credits',
+  verify_budget_start: 'Start Verification',
+  verify_budget_used: 'Credits used',
+  verify_budget_remaining: 'Credits remaining',
+  verify_budget_calculating: 'Calculating…',
+  verify_paused_title: 'Investigation paused',
+  verify_paused_returned: 'Returned to your balance',
+  verify_paused_partial: 'Partial results are available. You can continue at any time.',
+  verify_resume: 'Resume Investigation',
+  verify_view_partial: 'View partial results',
+  verify_resume_need_credits: 'Add credits to continue this investigation.',
+  verify_final_cost: 'Final cost',
+  verify_unused_returned: 'Unused credits returned',
+  verify_pause_confirm_title: 'Stop the investigation?',
+  verify_pause_confirm_body: 'Research stops right away. You pay only for work already done, unused credits return to your balance, and everything found so far is kept. You can continue later.',
+  verify_pause_confirm_keep: 'Keep going',
+  verify_pause_confirm_stop: 'Stop investigation',
+  verify_pausing: 'Stopping…',
+  verify_ads_budget_limit: 'Advertising activity was not checked so that the investigation stayed within your budget.',
+  verify_err_sign_in_required: 'Sign in to start a verification.',
+  vh_state_paused: 'Paused — tap to resume',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'Verification budget',
+  verify_budget_unit: 'credits',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'Approximately {{v}}',
+  verify_budget_available: 'Credits available',
+  verify_extend_title: 'Continue your investigation?',
+  verify_extend_body: 'HOMATCH has completed the available investigation steps and found that additional research is needed to continue. You can authorize the next stage or stop here and review the results collected so far.',
+  verify_extend_continue: 'Continue Investigation',
+  verify_extend_stop: 'Stop & View Results',
+  verify_awaiting_title: 'Waiting for your approval',
+  verify_awaiting_body: 'Your results so far are saved. Nothing is reserved while you decide.',
+  verify_limit_title: 'Investigation budget limit reached',
+  verify_limit_max: '{{n}} credits maximum',
+  verify_limit_body: 'Your collected results are saved. Some checks may remain incomplete.',
+  verify_limit_view: 'View Available Results',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_extend_amount: 'Up to {{n}} credits',
+  verify_extend_equiv: '{{v}} max.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32070,6 +32136,72 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: '{{pages}} გვერდი ოფიციალური დოკუმენტი წავიკითხეთ და {{count}} ჩანაწერი და წყარო შევამოწმეთ — მთელი ისტორია, თქვენთვის წაკითხული',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'კავშირი შეწყდა. შეამოწმეთ ინტერნეტი და სცადეთ თავიდან.',
+  verify_err_busy: 'ამ წუთას ბევრი შემოწმება მიმდინარეობს. სცადეთ ცოტა ხანში თავიდან.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'მდგრადი რიგი',
+  adm_vos_queue_mode: 'შესრულების რეჟიმი',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 სთ',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 დღე',
+  adm_vos_queue_backlog: 'რიგში',
+  adm_vos_queue_oldest: 'ყველაზე დიდხანს მოლოდინში',
+  adm_vos_queue_dead: 'შეჩერებული, 24 სთ',
+  adm_vos_queue_reused: 'ხელახლა გამოყენებული შედეგები, 24 სთ',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_title: 'ვერიფიკაციის დაწყება',
+  verify_budget_note: 'საბოლოო ღირებულება შეიძლება ნაკლები იყოს. გამოუყენებელი კრედიტები თქვენს საფულეში რჩება.',
+  verify_budget_required: 'საჭირო ბალანსი',
+  verify_budget_credits: '{{n}} კრედიტი',
+  verify_budget_approx: 'მიახლოებითი ღირებულება',
+  verify_budget_currency: 'ვალუტა',
+  verify_budget_missing: 'დასაწყებად კიდევ {{n}} კრედიტი გჭირდებათ.',
+  verify_budget_add_credits: 'კრედიტების დამატება',
+  verify_budget_start: 'ვერიფიკაციის დაწყება',
+  verify_budget_used: 'გამოყენებული კრედიტები',
+  verify_budget_remaining: 'დარჩენილი კრედიტები',
+  verify_budget_calculating: 'ითვლება…',
+  verify_paused_title: 'კვლევა შეჩერებულია',
+  verify_paused_returned: 'ბალანსზე დაბრუნდა',
+  verify_paused_partial: 'ნაწილობრივი შედეგები ხელმისაწვდომია. კვლევის გაგრძელება ნებისმიერ დროს შეგიძლიათ.',
+  verify_resume: 'კვლევის გაგრძელება',
+  verify_view_partial: 'ნაწილობრივი შედეგების ნახვა',
+  verify_resume_need_credits: 'კვლევის გასაგრძელებლად დაამატეთ კრედიტები.',
+  verify_final_cost: 'საბოლოო ღირებულება',
+  verify_unused_returned: 'დაბრუნებული გამოუყენებელი კრედიტები',
+  verify_pause_confirm_title: 'შევაჩეროთ კვლევა?',
+  verify_pause_confirm_body: 'კვლევა მაშინვე შეჩერდება. გადაიხდით მხოლოდ უკვე შესრულებულ სამუშაოში, გამოუყენებელი კრედიტები ბალანსზე დაგიბრუნდებათ, მოძიებული ყველაფერი კი შეინახება. გაგრძელება მოგვიანებით შეგიძლიათ.',
+  verify_pause_confirm_keep: 'არა, გავაგრძელოთ',
+  verify_pause_confirm_stop: 'კვლევის შეჩერება',
+  verify_pausing: 'ჩერდება…',
+  verify_ads_budget_limit: 'სარეკლამო აქტივობა არ შემოწმებულა, რათა კვლევა თქვენს ბიუჯეტში დარჩენილიყო.',
+  verify_err_sign_in_required: 'ვერიფიკაციის დასაწყებად შედით ანგარიშზე.',
+  vh_state_paused: 'შეჩერებულია — შეეხეთ გასაგრძელებლად',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'ვერიფიკაციის ბიუჯეტი',
+  verify_budget_unit: 'კრედიტი',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'დაახლოებით {{v}}',
+  verify_budget_available: 'ხელმისაწვდომი კრედიტები',
+  verify_extend_title: 'გავაგრძელოთ კვლევა?',
+  verify_extend_body: 'HOMATCH-მა ხელმისაწვდომი საკვლევი ეტაპები დაასრულა და გაგრძელებისთვის დამატებითი კვლევაა საჭირო. შეგიძლიათ დაადასტუროთ შემდეგი ეტაპი ან აქ შეჩერდეთ და აქამდე შეგროვებული შედეგები ნახოთ.',
+  verify_extend_continue: 'კვლევის გაგრძელება',
+  verify_extend_stop: 'შეჩერება და შედეგების ნახვა',
+  verify_awaiting_title: 'ელოდება თქვენს თანხმობას',
+  verify_awaiting_body: 'აქამდე მიღებული შედეგები შენახულია. სანამ გადაწყვეტთ, თქვენი კრედიტები თავისუფალი რჩება.',
+  verify_limit_title: 'კვლევის ბიუჯეტის ლიმიტი ამოიწურა',
+  verify_limit_max: 'მაქსიმუმ {{n}} კრედიტი',
+  verify_limit_body: 'შეგროვებული შედეგები შენახულია. ზოგიერთი შემოწმება შეიძლება დაუსრულებელი დარჩეს.',
+  verify_limit_view: 'ხელმისაწვდომი შედეგების ნახვა',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_extend_amount: 'არაუმეტეს {{n}} კრედიტი',
+  verify_extend_equiv: 'მაქს. {{v}}',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48053,6 +48185,72 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: 'Прочитано {{pages}} страниц официальных документов, проверено {{count}} записей и источников — вся история, прочитанная для вас',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'Соединение прервалось. Проверьте интернет и попробуйте ещё раз.',
+  verify_err_busy: 'Сейчас выполняется много проверок. Пожалуйста, повторите попытку через минуту.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'Надёжная очередь',
+  adm_vos_queue_mode: 'Режим выполнения',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 ч',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 дней',
+  adm_vos_queue_backlog: 'В очереди',
+  adm_vos_queue_oldest: 'Дольше всех ждёт',
+  adm_vos_queue_dead: 'Остановлено, 24 ч',
+  adm_vos_queue_reused: 'Повторно использовано, 24 ч',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_title: 'Запуск проверки',
+  verify_budget_note: 'Итоговая стоимость может быть ниже. Неиспользованные кредиты останутся в вашем кошельке.',
+  verify_budget_required: 'Необходимый баланс',
+  verify_budget_credits: '{{n}} кредитов',
+  verify_budget_approx: 'Приблизительная стоимость',
+  verify_budget_currency: 'Валюта',
+  verify_budget_missing: 'Для запуска нужно ещё {{n}} кредитов.',
+  verify_budget_add_credits: 'Добавить кредиты',
+  verify_budget_start: 'Начать проверку',
+  verify_budget_used: 'Использовано кредитов',
+  verify_budget_remaining: 'Осталось кредитов',
+  verify_budget_calculating: 'Подсчёт…',
+  verify_paused_title: 'Проверка приостановлена',
+  verify_paused_returned: 'Возвращено на баланс',
+  verify_paused_partial: 'Доступны частичные результаты. Продолжить можно в любое время.',
+  verify_resume: 'Продолжить проверку',
+  verify_view_partial: 'Посмотреть частичные результаты',
+  verify_resume_need_credits: 'Добавьте кредиты, чтобы продолжить проверку.',
+  verify_final_cost: 'Итоговая стоимость',
+  verify_unused_returned: 'Возвращено неиспользованных кредитов',
+  verify_pause_confirm_title: 'Остановить проверку?',
+  verify_pause_confirm_body: 'Проверка остановится сразу. Вы платите только за уже выполненную работу, неиспользованные кредиты вернутся на баланс, а всё найденное сохранится. Продолжить можно позже.',
+  verify_pause_confirm_keep: 'Продолжить',
+  verify_pause_confirm_stop: 'Остановить проверку',
+  verify_pausing: 'Остановка…',
+  verify_ads_budget_limit: 'Рекламная активность не проверялась, чтобы проверка осталась в рамках вашего бюджета.',
+  verify_err_sign_in_required: 'Войдите, чтобы начать проверку.',
+  vh_state_paused: 'Приостановлено — нажмите, чтобы продолжить',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'Бюджет проверки',
+  verify_budget_unit: 'кредитов',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'Примерно {{v}}',
+  verify_budget_available: 'Доступно кредитов',
+  verify_extend_title: 'Продолжить проверку?',
+  verify_extend_body: 'HOMATCH завершил доступные этапы проверки: для продолжения нужно дополнительное исследование. Вы можете подтвердить следующий этап или остановиться и посмотреть уже собранные результаты.',
+  verify_extend_continue: 'Продолжить проверку',
+  verify_extend_stop: 'Остановить и посмотреть результаты',
+  verify_awaiting_title: 'Ожидает вашего подтверждения',
+  verify_awaiting_body: 'Полученные результаты сохранены. Пока вы решаете, ничего не резервируется.',
+  verify_limit_title: 'Достигнут лимит бюджета проверки',
+  verify_limit_max: 'Максимум {{n}} кредитов',
+  verify_limit_body: 'Собранные результаты сохранены. Некоторые проверки могут остаться незавершёнными.',
+  verify_limit_view: 'Посмотреть доступные результаты',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_extend_amount: 'До {{n}} кредитов',
+  verify_extend_equiv: 'Не более {{v}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64034,6 +64232,72 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: '{{pages}} sayfa resmi belge okundu, {{count}} kayıt ve kaynak kontrol edildi — tüm geçmiş, sizin için okundu',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'Bağlantı kesildi. İnternetinizi kontrol edip tekrar deneyin.',
+  verify_err_busy: 'Şu anda çok sayıda doğrulama yapılıyor. Lütfen birazdan tekrar deneyin.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'Kalıcı kuyruk',
+  adm_vos_queue_mode: 'Çalışma modu',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 sa',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 gün',
+  adm_vos_queue_backlog: 'Bekleyen',
+  adm_vos_queue_oldest: 'En uzun bekleyen',
+  adm_vos_queue_dead: 'Durdurulan, 24 sa',
+  adm_vos_queue_reused: 'Yeniden kullanılan, 24 sa',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_title: 'Doğrulamayı başlat',
+  verify_budget_note: 'Nihai tutar daha düşük olabilir. Kullanılmayan krediler cüzdanınızda kalır.',
+  verify_budget_required: 'Gerekli bakiye',
+  verify_budget_credits: '{{n}} kredi',
+  verify_budget_approx: 'Yaklaşık değer',
+  verify_budget_currency: 'Para birimi',
+  verify_budget_missing: 'Başlamak için {{n}} kredi daha gerekiyor.',
+  verify_budget_add_credits: 'Kredi ekle',
+  verify_budget_start: 'Doğrulamayı Başlat',
+  verify_budget_used: 'Kullanılan kredi',
+  verify_budget_remaining: 'Kalan kredi',
+  verify_budget_calculating: 'Hesaplanıyor…',
+  verify_paused_title: 'Araştırma duraklatıldı',
+  verify_paused_returned: 'Bakiyenize iade edildi',
+  verify_paused_partial: 'Kısmi sonuçlar hazır. Dilediğiniz zaman devam edebilirsiniz.',
+  verify_resume: 'Araştırmaya Devam Et',
+  verify_view_partial: 'Kısmi sonuçları gör',
+  verify_resume_need_credits: 'Araştırmaya devam etmek için kredi ekleyin.',
+  verify_final_cost: 'Nihai tutar',
+  verify_unused_returned: 'İade edilen kullanılmayan kredi',
+  verify_pause_confirm_title: 'Araştırma durdurulsun mu?',
+  verify_pause_confirm_body: 'Araştırma hemen durur. Yalnızca yapılmış iş için ödersiniz, kullanılmayan krediler bakiyenize döner ve bulunan her şey saklanır. Daha sonra devam edebilirsiniz.',
+  verify_pause_confirm_keep: 'Devam et',
+  verify_pause_confirm_stop: 'Araştırmayı durdur',
+  verify_pausing: 'Durduruluyor…',
+  verify_ads_budget_limit: 'Araştırmanın bütçeniz içinde kalması için reklam faaliyeti kontrol edilmedi.',
+  verify_err_sign_in_required: 'Doğrulama başlatmak için giriş yapın.',
+  vh_state_paused: 'Duraklatıldı — devam etmek için dokunun',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'Doğrulama bütçesi',
+  verify_budget_unit: 'kredi',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'Yaklaşık {{v}}',
+  verify_budget_available: 'Kullanılabilir kredi',
+  verify_extend_title: 'Araştırmaya devam edilsin mi?',
+  verify_extend_body: 'HOMATCH mevcut araştırma adımlarını tamamladı ve devam etmek için ek araştırma gerektiğini belirledi. Bir sonraki aşamayı onaylayabilir ya da burada durup şimdiye kadar toplanan sonuçları inceleyebilirsiniz.',
+  verify_extend_continue: 'Araştırmaya Devam Et',
+  verify_extend_stop: 'Durdur ve Sonuçları Gör',
+  verify_awaiting_title: 'Onayınız bekleniyor',
+  verify_awaiting_body: 'Şimdiye kadarki sonuçlarınız kaydedildi. Siz karar verene kadar hiçbir şey ayrılmaz.',
+  verify_limit_title: 'Araştırma bütçe sınırına ulaşıldı',
+  verify_limit_max: 'En fazla {{n}} kredi',
+  verify_limit_body: 'Toplanan sonuçlarınız kaydedildi. Bazı kontroller tamamlanmamış kalabilir.',
+  verify_limit_view: 'Mevcut Sonuçları Gör',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_extend_amount: 'En fazla {{n}} kredi',
+  verify_extend_equiv: 'En fazla {{v}}',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -80015,6 +80279,72 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: 'قرأنا {{pages}} صفحة من الوثائق الرسمية وفحصنا {{count}} سجلًا ومصدرًا — التاريخ كاملًا، مقروءًا من أجلك',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'انقطع الاتصال. يُرجى التحقق من الإنترنت والمحاولة مرة أخرى.',
+  verify_err_busy: 'تُجرى الآن عمليات تحقق كثيرة. يُرجى المحاولة مرة أخرى بعد قليل.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'الطابور الدائم',
+  adm_vos_queue_mode: 'وضع التنفيذ',
+  adm_vos_queue_captcha_24h: 'CAPTCHA، 24 ساعة',
+  adm_vos_queue_captcha_30d: 'CAPTCHA، 30 يومًا',
+  adm_vos_queue_backlog: 'قيد الانتظار',
+  adm_vos_queue_oldest: 'الأطول انتظارًا',
+  adm_vos_queue_dead: 'متوقفة، 24 ساعة',
+  adm_vos_queue_reused: 'نتائج أُعيد استخدامها، 24 ساعة',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_title: 'بدء التحقق',
+  verify_budget_note: 'قد تكون التكلفة النهائية أقل. يبقى الرصيد غير المستخدم في محفظتك.',
+  verify_budget_required: 'الرصيد المطلوب',
+  verify_budget_credits: '{{n}} رصيد',
+  verify_budget_approx: 'قيمة تقريبية',
+  verify_budget_currency: 'العملة',
+  verify_budget_missing: 'تحتاج إلى {{n}} رصيد إضافي للبدء.',
+  verify_budget_add_credits: 'إضافة اعتمادات',
+  verify_budget_start: 'بدء التحقق',
+  verify_budget_used: 'الرصيد المستخدم',
+  verify_budget_remaining: 'الرصيد المتبقي',
+  verify_budget_calculating: 'جارٍ الحساب…',
+  verify_paused_title: 'تم إيقاف التحقق مؤقتًا',
+  verify_paused_returned: 'أُعيد إلى رصيدك',
+  verify_paused_partial: 'النتائج الجزئية متاحة. يمكنك المتابعة في أي وقت.',
+  verify_resume: 'متابعة التحقق',
+  verify_view_partial: 'عرض النتائج الجزئية',
+  verify_resume_need_credits: 'أضف اعتمادات لمتابعة التحقق.',
+  verify_final_cost: 'التكلفة النهائية',
+  verify_unused_returned: 'الرصيد غير المستخدم المُعاد',
+  verify_pause_confirm_title: 'إيقاف التحقق؟',
+  verify_pause_confirm_body: 'يتوقف التحقق فورًا. تدفع فقط مقابل العمل المنجز، ويعود الرصيد غير المستخدم إلى رصيدك، ويُحفظ كل ما وُجد حتى الآن. يمكنك المتابعة لاحقًا.',
+  verify_pause_confirm_keep: 'متابعة',
+  verify_pause_confirm_stop: 'إيقاف التحقق',
+  verify_pausing: 'جارٍ الإيقاف…',
+  verify_ads_budget_limit: 'لم يُفحص النشاط الإعلاني كي يبقى التحقق ضمن ميزانيتك.',
+  verify_err_sign_in_required: 'سجّل الدخول لبدء التحقق.',
+  vh_state_paused: 'متوقف مؤقتًا — انقر للمتابعة',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'ميزانية التحقق',
+  verify_budget_unit: 'رصيد',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'حوالي {{v}}',
+  verify_budget_available: 'الرصيد المتاح',
+  verify_extend_title: 'هل تريد متابعة التحقق؟',
+  verify_extend_body: 'أكملت HOMATCH خطوات التحقق المتاحة ووجدت أن المتابعة تتطلب بحثًا إضافيًا. يمكنك الموافقة على المرحلة التالية أو التوقف هنا ومراجعة النتائج التي جُمعت حتى الآن.',
+  verify_extend_continue: 'متابعة التحقق',
+  verify_extend_stop: 'إيقاف وعرض النتائج',
+  verify_awaiting_title: 'بانتظار موافقتك',
+  verify_awaiting_body: 'نتائجك حتى الآن محفوظة. لا يُحجز أي رصيد بينما تقرر.',
+  verify_limit_title: 'تم بلوغ الحد الأقصى لميزانية التحقق',
+  verify_limit_max: '{{n}} رصيد كحد أقصى',
+  verify_limit_body: 'النتائج التي جُمعت محفوظة. قد تبقى بعض الفحوصات غير مكتملة.',
+  verify_limit_view: 'عرض النتائج المتاحة',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_extend_amount: 'حتى {{n}} رصيد',
+  verify_extend_equiv: '{{v}} كحد أقصى',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -95996,6 +96326,72 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY BUYER INTELLIGENCE (register, finance, market, customer-first copy) ── */
   vbi_scale_headline_pages: 'קראנו {{pages}} עמודים של מסמכים רשמיים ובדקנו {{count}} רשומות ומקורות — כל ההיסטוריה, נקראה עבורכם',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_err_connection: 'החיבור נקטע. בדקו את חיבור האינטרנט ונסו שוב.',
+  verify_err_busy: 'כרגע מתבצעות בדיקות רבות. נסו שוב בעוד רגע.',
+
+  /* ── VERIFY AT SCALE ── */
+  adm_vos_queue_title: 'תור עמיד',
+  adm_vos_queue_mode: 'מצב הרצה',
+  adm_vos_queue_captcha_24h: 'CAPTCHA, 24 שעות',
+  adm_vos_queue_captcha_30d: 'CAPTCHA, 30 ימים',
+  adm_vos_queue_backlog: 'ממתינים',
+  adm_vos_queue_oldest: 'הממתין הוותיק',
+  adm_vos_queue_dead: 'נעצרו, 24 שעות',
+  adm_vos_queue_reused: 'תוצאות שנעשה בהן שימוש חוזר, 24 שעות',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_title: 'התחלת אימות',
+  verify_budget_note: 'העלות הסופית עשויה להיות נמוכה יותר. קרדיטים שלא נוצלו נשארים בארנק שלך.',
+  verify_budget_required: 'יתרה נדרשת',
+  verify_budget_credits: '{{n}} קרדיטים',
+  verify_budget_approx: 'ערך משוער',
+  verify_budget_currency: 'מטבע',
+  verify_budget_missing: 'דרושים עוד {{n}} קרדיטים כדי להתחיל.',
+  verify_budget_add_credits: 'הוספת קרדיטים',
+  verify_budget_start: 'התחלת אימות',
+  verify_budget_used: 'קרדיטים שנוצלו',
+  verify_budget_remaining: 'קרדיטים שנותרו',
+  verify_budget_calculating: 'מחשב…',
+  verify_paused_title: 'החקירה הושהתה',
+  verify_paused_returned: 'הוחזר ליתרה שלך',
+  verify_paused_partial: 'תוצאות חלקיות זמינות. אפשר להמשיך בכל עת.',
+  verify_resume: 'המשך החקירה',
+  verify_view_partial: 'הצגת תוצאות חלקיות',
+  verify_resume_need_credits: 'הוסיפו קרדיטים כדי להמשיך בחקירה.',
+  verify_final_cost: 'עלות סופית',
+  verify_unused_returned: 'קרדיטים שלא נוצלו והוחזרו',
+  verify_pause_confirm_title: 'לעצור את החקירה?',
+  verify_pause_confirm_body: 'החקירה נעצרת מיד. משלמים רק על עבודה שכבר בוצעה, קרדיטים שלא נוצלו חוזרים ליתרה, וכל מה שנמצא עד כה נשמר. אפשר להמשיך מאוחר יותר.',
+  verify_pause_confirm_keep: 'להמשיך',
+  verify_pause_confirm_stop: 'עצירת החקירה',
+  verify_pausing: 'עוצר…',
+  verify_ads_budget_limit: 'פעילות הפרסום לא נבדקה כדי שהחקירה תישאר בתקציב שלך.',
+  verify_err_sign_in_required: 'התחברו כדי להתחיל אימות.',
+  vh_state_paused: 'מושהה — הקישו כדי להמשיך',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'תקציב האימות',
+  verify_budget_unit: 'קרדיטים',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'בערך {{v}}',
+  verify_budget_available: 'קרדיטים זמינים',
+  verify_extend_title: 'להמשיך בחקירה?',
+  verify_extend_body: 'HOMATCH השלימה את שלבי החקירה הזמינים ומצאה שנדרש מחקר נוסף כדי להמשיך. אפשר לאשר את השלב הבא או לעצור כאן ולעיין בתוצאות שנאספו עד כה.',
+  verify_extend_continue: 'המשך החקירה',
+  verify_extend_stop: 'עצירה והצגת התוצאות',
+  verify_awaiting_title: 'ממתין לאישורך',
+  verify_awaiting_body: 'התוצאות עד כה נשמרו. דבר אינו נשמר בצד בזמן שאתם מחליטים.',
+  verify_limit_title: 'הגעת למגבלת התקציב של החקירה',
+  verify_limit_max: 'מקסימום {{n}} קרדיטים',
+  verify_limit_body: 'התוצאות שנאספו נשמרו. ייתכן שחלק מהבדיקות יישארו חלקיות.',
+  verify_limit_view: 'הצגת התוצאות הזמינות',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_extend_amount: 'עד {{n}} קרדיטים',
+  verify_extend_equiv: '{{v}} לכל היותר',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

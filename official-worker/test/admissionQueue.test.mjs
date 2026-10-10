@@ -37,3 +37,26 @@ test('a burst of jobs runs at most WORKER_MAX_ACTIVE_JOBS at once; the rest queu
   o.pumpQueue();
   assert.equal(started.length, 3);
 });
+
+test('cancel: a queued job leaves the line, a running one frees its slot and starts nothing more', async () => {
+  const o = new ResearchOrchestrator();
+  const started = [];
+  o.run = async (job) => { started.push(job.id); job.status = 'RUNNING'; };
+  const jobs = [1, 2, 3].map((i) => o.start(`cancel-${i}`, 'cadastral'));
+  jobs[0].results = [{ source: 'TAS_MAP', status: 'SEARCH_CONFIRMED' }];
+
+  const queued = await o.cancel(jobs[2].id);
+  assert.equal(queued.code, 'CANCELLED');
+  assert.deepEqual(o.admission(), { maxActive: 2, active: 2, queued: 0 });
+
+  const running = await o.cancel(jobs[0].id);
+  assert.equal(running.results, 1, 'collected results are kept');
+  assert.equal(jobs[0]._abandoned, true, 'the run loop stops at its next check');
+  assert.equal(jobs[0].status, 'CANCELLED');
+  assert.equal(o.admission().active, 1);
+  o.pumpQueue();
+  assert.deepEqual(started, [jobs[0].id, jobs[1].id], 'the cancelled queued job never starts');
+
+  assert.equal((await o.cancel(jobs[0].id)).code, 'ALREADY_FINISHED', 'idempotent');
+  assert.equal((await o.cancel('missing')).code, 'NOT_FOUND');
+});

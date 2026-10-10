@@ -31,8 +31,6 @@ import type { LegacySourceResult, WorkflowResult } from '../../WorkflowResult.js
 export const TAS_API_IMPLEMENTATION = 'API_FIRST';
 export const TAS_API_VERSION = 'tas-api-1';
 
-/** Per-case text the worker itself reads for technical facts. */
-const FACT_TEXT_BUDGET = 40_000;
 /** All TAS case text sent on to research-agent, across cases. */
 export const TAS_TOTAL_TEXT_BUDGET = 120_000;
 
@@ -132,8 +130,10 @@ export interface TasApiCase {
   attachments: AttachmentRecord[];
   /** Bounded, source-ordered text of the case (structured fields first). */
   text: string;
-  /** Up to 40k chars — read in the worker for technical facts, never sent on. */
-  factText?: string;
+  /** The complete case text (every response and attachment read). Facts are
+   *  extracted from it in the worker; the queue path stores it as evidence.
+   *  Never sent in the legacy polling payload. */
+  fullText?: string;
   textTruncated: boolean;
 }
 
@@ -222,6 +222,31 @@ async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>): Prom
 }
 
 // ─────────────────────────────── the workflow ───────────────────────────────
+
+/**
+ * WHICH CADASTRAL CODE DOES TAS ANSWER FOR? One search request per candidate
+ * (flat first, then its parents), stopping at the first that has case files —
+ * exactly the order acquireTasApi() uses. Lets the queue share one parcel
+ * read across every flat in a building that has no case files of its own.
+ */
+export async function probeTasResolvedCode(query: string, options: TasApiOptions = {}): Promise<{ code: string | null; tried: string[] }> {
+  const now = options.now ?? Date.now;
+  const client = new TasApiClient({
+    fetcher: options.fetcher,
+    deadlineAt: now() + Math.min(options.budgetMs ?? 60_000, 60_000),
+    concurrency: 1,
+    minGapMs: options.minGapMs ?? 250,
+    signal: options.signal,
+  });
+  const pageSize = options.pageSize ?? TAS_PAGE_SIZE;
+  const tried: string[] = [];
+  for (const code of isCadastralCode(query) ? candidateSequence(query) : [query]) {
+    tried.push(code);
+    const page = parseSearchPage((await client.search(code, 0, pageSize)).data);
+    if (page.rows.length) return { code, tried };
+  }
+  return { code: null, tried };
+}
 
 export async function acquireTasApi(query: string, options: TasApiOptions = {}): Promise<TasApiResult> {
   const now = options.now ?? Date.now;
@@ -532,7 +557,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         motions: (motionRecords.get(row.documentId) ?? []).sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')),
         attachments: (attachmentRecords.get(row.documentId) ?? []).sort((a, b) => Number(a.attachedFileId) - Number(b.attachedFileId)),
         text: full.slice(0, caseTextBudget),
-        factText: full.slice(0, FACT_TEXT_BUDGET),
+        fullText: full,
         textTruncated: full.length > caseTextBudget,
       });
     }
@@ -600,7 +625,7 @@ function caseHeader(d: TasCaseDetail, row: TasSearchRow): string {
  * document per case keeps result_json bounded; per-case text is ordered and
  * capped, never silently empty.
  */
-export function toLegacyTasResult(r: TasApiResult): LegacySourceResult & { tasApi: Omit<TasApiResult, 'cases'> & { cases: any[] } } {
+export function toLegacyTasResult(r: TasApiResult, opts: { includeFullText?: boolean } = {}): LegacySourceResult & { tasApi: Omit<TasApiResult, 'cases'> & { cases: any[] } } {
   // Newest cases keep their text first; the total stays bounded.
   let remaining = TAS_TOTAL_TEXT_BUDGET;
   const sendText = new Map<any, string>();
@@ -628,7 +653,10 @@ export function toLegacyTasResult(r: TasApiResult): LegacySourceResult & { tasAp
       extractedEvidenceIds: [],
       discoveredEntityIds: [],
       tasDocumentId: c.detail.documentId,
-      textTruncated: c.textTruncated,
+      textTruncated: c.textTruncated || text.length < c.text.length,
+      // Queue path only: the complete text, stored as evidence by the worker
+      // and stripped before anything is sent on.
+      ...(opts.includeFullText && c.fullText ? { fullText: c.fullText } : {}),
     };
   });
   const found = r.accounting.documents;
@@ -669,7 +697,7 @@ export function toLegacyTasResult(r: TasApiResult): LegacySourceResult & { tasAp
     unmappedKeys: Object.keys(c.detail.unmapped ?? {}).slice(0, 80),
     motions: c.motions,
     attachments: c.attachments,
-    technicalFacts: dedupeTasTechnicalFacts(extractTasTechnicalFacts(c.factText ?? c.text)),
+    technicalFacts: dedupeTasTechnicalFacts(extractTasTechnicalFacts(c.fullText ?? c.text)),
     textTruncated: c.textTruncated,
   }));
   const { cases: _cases, ...rest } = r;

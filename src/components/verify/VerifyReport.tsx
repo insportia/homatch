@@ -243,6 +243,14 @@ export interface VerifySynthesis {
   marketContext?: MarketContextView | null;
   /** Which unit, building and parcel the records actually concern (propertyIdentity.ts). */
   identity?: PropertyIdentity | null;
+  /** Named professionals with documented roles and provenance (tasProfessionals.ts). */
+  projectTeamV2?: import('@/verify/intelligence/tasProfessionals').TeamMemberV2[] | null;
+  /** Documented specifications with their standing: APPROVED / PROPOSED / UNKNOWN (technicalSpecs.ts). */
+  technicalSpecs?: import('@/verify/intelligence/technicalSpecs').TechnicalSpec[] | null;
+  /** TAS cases and their files, priority cases first (officialDocuments.ts). */
+  officialDocuments?: import('@/verify/intelligence/officialDocuments').OfficialDocument[] | null;
+  /** Set when the register came from the buyer's own earlier check of this unit (registerReuse.ts). */
+  registerSource?: (import('@/verify/intelligence/registerReuse').RegisterSource & { freshExtractAdvised?: boolean }) | null;
 }
 
 /**

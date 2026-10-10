@@ -171,6 +171,12 @@ export interface NormalVerifyResult {
   evidenceGroups?: Record<string, unknown>[];
   checklist?: Record<string, unknown>[];
   identity?: Record<string, unknown> | null;
+  /* The official dossier (officialDossier.ts) and the register's provenance,
+     passed through exactly as verify-synthesis wrote them. */
+  projectTeamV2?: Record<string, unknown>[] | null;
+  technicalSpecs?: Record<string, unknown>[] | null;
+  officialDocuments?: Record<string, unknown>[] | null;
+  registerSource?: Record<string, unknown> | null;
 }
 
 export type PayloadVersion = 'V1' | 'V2' | 'V3' | 'NONE' | 'ERROR';
@@ -474,6 +480,10 @@ function siblingsOf(o: Record<string, unknown>): Omit<NormalVerifyResult, 'repor
     evidenceGroups: asArray(o.evidenceGroups).map(asObject).filter((g) => Object.keys(g).length),
     checklist: asArray(o.checklist).map(asObject).filter((c) => Object.keys(c).length),
     identity: objectOrNull(o.identity),
+    projectTeamV2: Array.isArray(o.projectTeamV2) ? asArray(o.projectTeamV2).map(asObject).filter((m) => asString(m.name)) : null,
+    technicalSpecs: Array.isArray(o.technicalSpecs) ? asArray(o.technicalSpecs).map(asObject).filter((t) => asString(t.key) && asString(t.value)) : null,
+    officialDocuments: Array.isArray(o.officialDocuments) ? asArray(o.officialDocuments).map(asObject).filter((d) => Object.keys(d).length) : null,
+    registerSource: objectOrNull(o.registerSource),
   };
 }
 

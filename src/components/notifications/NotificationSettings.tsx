@@ -2,6 +2,7 @@ import { Bell, BellOff, Loader2, Mail, Send, ShieldCheck } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { LeadContactPreferences } from '@/components/notifications/LeadContactPreferences';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
@@ -293,6 +294,9 @@ export function NotificationSettings() {
           />
         </div>
       </div>
+
+      {/* ── As a lead: what owners may do ────────────────────────────── */}
+      <LeadContactPreferences />
 
       {/* ── Marketing ────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 p-5">

@@ -363,7 +363,7 @@ export async function settleExecution(
   grant: ExecutionGrant,
   usage: ActualUsage,
   outcome: 'SUCCESS' | 'PARTIAL' | 'CANCELLED' | 'TIMEOUT' = 'SUCCESS',
-): Promise<{ chargedCredits: number; releasedCredits: number; clamped: boolean }> {
+): Promise<{ chargedCredits: number; releasedCredits: number; clamped: boolean; requestedCredits?: number }> {
   const { data: landed } = await sb.rpc('billing_landed_cogs_cents', {
     p_raw_provider_cents: usage.rawProviderCostCents ?? 0,
     p_ai_cents: usage.aiCostCents ?? 0,
@@ -426,6 +426,9 @@ export async function settleExecution(
     chargedCredits: n(row.settled_credits),
     releasedCredits: n(row.released_credits),
     clamped: !!row.clamped,
+    /* What the actual work priced at, before the reservation's ceiling clamped it —
+       so a Find Buyers budget extension can carry the rest (campaignRun). */
+    requestedCredits: actualCredits,
   };
 }
 

@@ -434,7 +434,15 @@ function useNativeActions(row: NativeMatchRow) {
     try {
       const conversationId = await openNativeConversation(row.kind, row.id);
       navigate(`/chat?conversation=${encodeURIComponent(conversationId)}`);
-    } catch { setError(true); } finally { setOpening(false); }
+    } catch (e) {
+      /* An owner reaches a matched member through HOMATCH Leads: the contact is
+         unlocked there first (Standard 2.5 / Premium 6 credits, once per member). */
+      if (String((e as { message?: string })?.message ?? '').includes('UNLOCK_REQUIRED') && row.property_id) {
+        navigate(`/property/${encodeURIComponent(row.property_id)}/leads`);
+        return;
+      }
+      setError(true);
+    } finally { setOpening(false); }
   };
   const call = async () => {
     setCalling(true); setError(false);

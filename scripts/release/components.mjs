@@ -244,6 +244,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(internal_lead|lead_contact_prefs_of$|lead_contact_preferences|my_lead_contact_preferences$|set_my_lead_contact_preferences$|native_match_|admin_internal_lead|open_native_conversation$)/, 'DISCOVERY'],
   // The seller's CRM for unlocked leads.
   [/^public\.(lead_crm_|crm_)/, 'PRODUCT'],
+  // Property conversations (media, translation cache, seen/mute/block RPCs) and Email Studio.
+  [/^public\.(message_translations$|messages_reply_same_conversation$|mark_conversation_seen$|set_conversation_muted$|block_conversation_counterpart$|unblock_conversation_counterpart$|my_conversation_context$|my_message_translations$|conversation_for_participant$|dm_media_object_allowed$|email_studio_)/, 'PRODUCT'],
 ];
 
 /* Translation keys by prefix: a translation change reaches the component
@@ -265,5 +267,5 @@ export const I18N_KEY_OWNERS = [
   [/^fbl_/, 'DISCOVERY'],
   [/^im_/, 'DISCOVERY'],
   [/^(hl|rb)_/, 'DISCOVERY'],
-  [/^crm_/, 'PRODUCT'],
+  [/^(crm|pc|es)_/, 'PRODUCT'],
 ];

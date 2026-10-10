@@ -37,6 +37,7 @@ const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDeta
 const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
 const HomatchLeadsPage = lazyRoute(() => import('./pages/property/HomatchLeadsPage'));
 const LeadsCrmPage = lazyRoute(() => import('./pages/LeadsCrmPage'));
+const EmailStudioPage = lazyRoute(() => import('./pages/EmailStudioPage'));
 const DemoConversationPage = lazyRoute(() => import('./pages/property/DemoConversationPage'));
 const CreditsPage = lazyRoute(() => import('./pages/CreditsPage'));
 const ChatPage = lazyRoute(() => import('./pages/ChatPage'));
@@ -463,6 +464,8 @@ export const routes: RouteConfig[] = [
   { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
   { name: 'HOMATCH Leads',     path: '/property/:id/leads',       element: <HomatchLeadsPage /> },
   { name: 'Leads CRM',         path: '/leads',                    element: <LeadsCrmPage /> },
+  { name: 'Email Studio',      path: '/email-studio',             element: <EmailStudioPage /> },
+  { name: 'Email Campaign',    path: '/email-studio/:campaignId', element: <EmailStudioPage />, visible: false },
   /* The internal-match DEMO buyer's simulated conversation. Only an administrator or a
      listed tester can open one: every RPC behind it refuses anybody else. */
   { name: 'Demo Conversation', path: '/property/:id/matches/demo/:conversationId', element: <DemoConversationPage />, visible: false },

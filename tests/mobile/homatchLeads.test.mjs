@@ -188,7 +188,7 @@ test('1440 (en): approved copy, two segments ranked by score, nothing identifyin
   assert.match(await cards.nth(1).textContent(), /74%/);
   const html = await page.content();
   assert.doesNotMatch(html, /Layla|Ivan|\+971|@x\.test/, 'no identity before unlock');
-  assert.match(main, /Looking for a apartment in Ortachala, Krtsanisi, Tbilisi, with a budget of/);
+  assert.match(main, /Looking for an apartment in Ortachala, Krtsanisi, Tbilisi, with a budget of/);
   await shot(page, 'leads-en-1440');
 });
 

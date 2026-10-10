@@ -81,7 +81,7 @@ export const PROPERTY_CHAT_STRINGS = {
 
   /* ── recipient control (approved + their inverses) ── */
   pc_block: ['Block Contact', 'კონტაქტის დაბლოკვა', 'Заблокировать контакт', 'Kişiyi engelle', 'حظر جهة الاتصال', 'חסימת איש הקשר'],
-  pc_unblock: ['Unblock Contact', 'კონტაქტის განბლოკვა', 'Разблокировать контакт', 'Engeli kaldır', 'إلغاء حظر جهة الاتصال', 'ביטול חסימת איש הקשר'],
+  pc_unblock: ['Unblock Contact', 'ბლოკის მოხსნა', 'Снять блокировку', 'Engeli kaldır', 'إلغاء حظر جهة الاتصال', 'ביטול חסימת איש הקשר'],
   pc_report: ['Report Conversation', 'საუბრის გასაჩივრება', 'Пожаловаться на переписку', 'Görüşmeyi bildir', 'الإبلاغ عن المحادثة', 'דיווח על השיחה'],
   pc_mute: ['Mute Notifications', 'შეტყობინებების დადუმება', 'Отключить уведомления', 'Bildirimleri sessize al', 'كتم الإشعارات', 'השתקת התראות'],
   pc_unmute: ['Unmute Notifications', 'შეტყობინებების ჩართვა', 'Включить уведомления', 'Bildirimleri aç', 'إلغاء كتم الإشعارات', 'ביטול השתקת התראות'],
@@ -89,17 +89,17 @@ export const PROPERTY_CHAT_STRINGS = {
   pc_block_confirm_title: ['Block this contact?', 'დაბლოკოთ ეს კონტაქტი?', 'Заблокировать этот контакт?', 'Bu kişi engellensin mi?', 'هل تريد حظر جهة الاتصال هذه؟', 'לחסום את איש הקשר?'],
   pc_block_confirm_desc: [
     'They won’t be able to send you messages on HOMATCH. You can unblock them at any time.',
-    'ის ვეღარ შეძლებს HOMATCH-ზე შეტყობინებების გამოგზავნას. განბლოკვა ნებისმიერ დროს შეგიძლიათ.',
-    'Этот человек не сможет отправлять вам сообщения в HOMATCH. Разблокировать можно в любое время.',
+    'ის ვეღარ შეძლებს HOMATCH-ზე შეტყობინებების გამოგზავნას. ბლოკის მოხსნა ნებისმიერ დროს შეგიძლიათ.',
+    'Этот человек не сможет отправлять вам сообщения в HOMATCH. Снять блокировку можно в любое время.',
     'Bu kişi size HOMATCH üzerinden mesaj gönderemeyecek. Engeli istediğiniz zaman kaldırabilirsiniz.',
     'لن يتمكن من إرسال رسائل إليك على HOMATCH. يمكنك إلغاء الحظر في أي وقت.',
     'הוא/היא לא יוכלו לשלוח לכם הודעות ב-HOMATCH. אפשר לבטל את החסימה בכל עת.',
   ],
   pc_blocked_toast: ['Contact blocked.', 'კონტაქტი დაბლოკილია.', 'Контакт заблокирован.', 'Kişi engellendi.', 'تم حظر جهة الاتصال.', 'איש הקשר נחסם.'],
-  pc_unblocked_toast: ['Contact unblocked.', 'კონტაქტი განბლოკილია.', 'Контакт разблокирован.', 'Kişinin engeli kaldırıldı.', 'تم إلغاء حظر جهة الاتصال.', 'החסימה בוטלה.'],
+  pc_unblocked_toast: ['Contact unblocked.', 'ბლოკი მოხსნილია.', 'Блокировка снята.', 'Kişinin engeli kaldırıldı.', 'تم إلغاء حظر جهة الاتصال.', 'החסימה בוטלה.'],
   pc_muted_toast: ['Notifications muted for this conversation.', 'ამ საუბრის შეტყობინებები დადუმებულია.', 'Уведомления этой переписки отключены.', 'Bu görüşmenin bildirimleri sessize alındı.', 'تم كتم إشعارات هذه المحادثة.', 'ההתראות לשיחה זו הושתקו.'],
   pc_unmuted_toast: ['Notifications turned on.', 'შეტყობინებები ჩართულია.', 'Уведомления включены.', 'Bildirimler açıldı.', 'تم تشغيل الإشعارات.', 'ההתראות הופעלו.'],
-  pc_blocked_notice: ['You blocked this contact. Unblock them to send messages.', 'თქვენ დაბლოკეთ ეს კონტაქტი. შეტყობინების გასაგზავნად განბლოკეთ.', 'Вы заблокировали этот контакт. Разблокируйте его, чтобы отправлять сообщения.', 'Bu kişiyi engellediniz. Mesaj göndermek için engeli kaldırın.', 'لقد حظرت جهة الاتصال هذه. ألغِ الحظر لإرسال الرسائل.', 'חסמתם את איש הקשר. בטלו את החסימה כדי לשלוח הודעות.'],
+  pc_blocked_notice: ['You blocked this contact. Unblock them to send messages.', 'თქვენ დაბლოკეთ ეს კონტაქტი. შეტყობინების გასაგზავნად მოხსენით ბლოკი.', 'Вы заблокировали этот контакт. Снимите блокировку, чтобы отправлять сообщения.', 'Bu kişiyi engellediniz. Mesaj göndermek için engeli kaldırın.', 'لقد حظرت جهة الاتصال هذه. ألغِ الحظر لإرسال الرسائل.', 'חסמתם את איש הקשר. בטלו את החסימה כדי לשלוח הודעות.'],
   pc_blocked_by_them: ['You can’t send messages in this conversation.', 'ამ საუბარში შეტყობინების გაგზავნა შეუძლებელია.', 'В этой переписке нельзя отправлять сообщения.', 'Bu görüşmede mesaj gönderemezsiniz.', 'لا يمكنك إرسال رسائل في هذه المحادثة.', 'לא ניתן לשלוח הודעות בשיחה זו.'],
   pc_awaiting_reply: [
     'You can send {{n}} more message(s) before they reply. Thoughtful messages get better answers.',

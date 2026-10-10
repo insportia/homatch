@@ -380,6 +380,29 @@ Owner approvals pending: merge + deploy; apply 20261022090000; set
 operator); optional one-time audit run of the 20 DISCOVERED communities.
 Not done: mirroring imported photos into storage (they die with the source).
 
+## HOMATCH Leads + CRM + property chat + Email Studio (branch claude/homatch-leads-crm-studio, 2026-10-10) — DRAFT PR, NOT merged/deployed
+
+Built on top of PR #137 (claude/nifty-hopper-snzn2d), so it merges after #137. Nothing applied or deployed.
+
+- Migrations (append-only, release order):
+  - 20261027090000 homatch_leads_marketplace: internal leads feed and unlocks (Standard 2.5 / Premium 6 credits, wallet reserve→settle, one entitlement per account per member), consent prefs, Premium rules, CRM, property matching queue (cron every 2 minutes), follow-up cron. `open_native_conversation` now needs an unlock on the owner side of a MATCH.
+  - 20261027100000 property_conversations: message kinds (photo, voice, property card), translations cache, private `dm-media` bucket. Drops `msg_insert` and revokes direct insert/update/delete on `messages`; every send goes through send-message.
+  - 20261027110000 email_studio: `email_studio_*` tables and RPCs. `email_studio_sending_enabled` defaults to false.
+  - 20261027120000 find_buyers_research_budget: credit presets 100–2000 (minimum 100); an extension reserves only the difference.
+- Edge functions (no new ones):
+  - atomic-unlock: `kind=internal_leads`
+  - supply-matching: property mode and queue drain
+  - match-campaign: `extend_budget`
+  - send-message: chat media, cards, AI translate/assist/transcribe
+  - outreach-send: `studio_*` actions
+  - email-webhook: studio events, opens/clicks, one-click unsubscribe
+  - push-send: PROPERTY_OFFER counts as messages
+- Owner switches before going live:
+  - Email Studio sending (admin setting)
+  - the Resend webhook subscribed to opened/clicked
+  - OPENAI_API_KEY for chat AI
+  - price-book rates for CHAT_* (until then shown as UNPRICED)
+
 ## Find Buyers intelligence overhaul + Internal Matches + segmentation (branch claude/nifty-hopper-snzn2d, 2026-10-09) — NOT merged/deployed
 
 Baseline: the first paid production campaign (VILLION, job 70b0d32b, HOMATCH 244486,

@@ -11,6 +11,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, FlaskConical, Loader2, Mail, Send, ShieldCheck, Sparkles } from 'lucide-react';
 import { CustomerSurface } from '@/components/customer/surface';
+import { AppLayout } from '@/components/layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
@@ -366,6 +367,7 @@ export default function EmailStudioPage() {
   const excluded = review ? Object.entries(review.reasons ?? {}) : [];
 
   return (
+    <AppLayout noPadding>
     <div className={cn(CANVAS, 'min-h-[calc(100dvh-4rem)] pb-16 pt-6 sm:pt-8')}>
       <CustomerSurface className="space-y-5">
         <header className="max-w-3xl">
@@ -506,5 +508,6 @@ export default function EmailStudioPage() {
         onConfirm={onSend}
       />
     </div>
+    </AppLayout>
   );
 }

@@ -7,7 +7,7 @@
 // src/emailStudio/templates.ts and render.ts, because the server renders it.
 export const EMAIL_STUDIO_STRINGS = {
   /* ── header ── */
-  es_eyebrow: ['HOMATCH EMAIL STUDIO', 'HOMATCH EMAIL STUDIO', 'HOMATCH EMAIL STUDIO', 'HOMATCH EMAIL STUDIO', 'استوديو البريد من HOMATCH', 'סטודיו הדוא״ל של HOMATCH'],
+  es_eyebrow: ['HOMATCH EMAIL STUDIO', 'HOMATCH ელფოსტის სტუდია', 'EMAIL-СТУДИЯ HOMATCH', 'HOMATCH E-POSTA STÜDYOSU', 'استوديو البريد من HOMATCH', 'סטודיו הדוא״ל של HOMATCH'],
   es_title: [
     'Create a Property Offer They’ll Want to Explore',
     'შექმენით ქონების შეთავაზება, რომლის გაცნობაც მოუნდებათ',
@@ -166,16 +166,16 @@ export const EMAIL_STUDIO_STRINGS = {
     'כתובות הדוא״ל נשארות פרטיות — HOMATCH שולח בשמכם ולעולם לא מציג אותן.',
   ],
   es_no_leads: [
-    'You have not unlocked any HOMATCH leads yet. Unlock potentially interested people in HOMATCH Leads first.',
+    'You have not opened any HOMATCH leads yet. Open the contacts of potentially interested people in HOMATCH Leads first.',
     'HOMATCH-ის ლიდები ჯერ არ გაგიხსნიათ. ჯერ გახსენით პოტენციურად დაინტერესებული პირები HOMATCH Leads-ში.',
     'Вы ещё не открыли ни одного лида HOMATCH. Сначала откройте потенциально заинтересованных людей в HOMATCH Leads.',
-    'Henüz hiçbir HOMATCH potansiyel müşterisinin kilidini açmadınız. Önce HOMATCH Leads’te potansiyel olarak ilgilenen kişilerin kilidini açın.',
+    'Henüz hiçbir HOMATCH potansiyel müşterisini açmadınız. Önce HOMATCH Leads’te potansiyel olarak ilgilenen kişilerin iletişim bilgilerini açın.',
     'لم تفتح أي عملاء محتملين في HOMATCH بعد. افتح أولًا الأشخاص المحتمل اهتمامهم في HOMATCH Leads.',
     'עדיין לא פתחתם אף ליד ב־HOMATCH. פתחו קודם אנשים שעשויים להתעניין ב־HOMATCH Leads.',
   ],
   es_open_leads: ['Open HOMATCH Leads', 'HOMATCH Leads-ის გახსნა', 'Открыть HOMATCH Leads', 'HOMATCH Leads’i aç', 'فتح HOMATCH Leads', 'פתיחת HOMATCH Leads'],
   es_reason_eligible: ['Can receive', 'შეუძლია მიღება', 'Может получить', 'Alabilir', 'يمكنه الاستلام', 'יכול לקבל'],
-  es_reason_not_unlocked: ['Not unlocked by you', 'თქვენ არ გაგიხსნიათ', 'Не открыт вами', 'Sizin tarafınızdan açılmadı', 'لم تفتحه بعد', 'לא נפתח על ידכם'],
+  es_reason_not_unlocked: ['Not opened by you', 'თქვენ არ გაგიხსნიათ', 'Не открыт вами', 'Sizin tarafınızdan açılmadı', 'لم تفتحه بعد', 'לא נפתח על ידכם'],
   es_reason_unavailable: ['Account unavailable', 'ანგარიში მიუწვდომელია', 'Аккаунт недоступен', 'Hesap kullanılamıyor', 'الحساب غير متاح', 'החשבון אינו זמין'],
   es_reason_blocked: ['Messaging blocked', 'მიმოწერა დაბლოკილია', 'Переписка заблокирована', 'Mesajlaşma engellendi', 'المراسلة محظورة', 'ההתכתבות חסומה'],
   es_reason_no_consent: ['Has not agreed to marketing emails', 'სარეკლამო წერილებზე თანხმობა არ აქვს', 'Не давал согласия на рекламные письма', 'Pazarlama e-postalarına onay vermedi', 'لم يوافق على رسائل التسويق', 'לא הסכים לקבל דוא״ל שיווקי'],

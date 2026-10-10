@@ -13,6 +13,7 @@ $P -d $DB -f supabase/migrations/20261026100000_verify_credit_budget.sql
 $P -d $DB -f tests/sql/verify_durable_execution.sql
 $P -d $DB -f tests/sql/verify_credit_budget.sql
 $P -d $DB -f tests/sql/verify_billing_audit_regressions.sql
+$P -d $DB -f tests/sql/verify_incremental_budget.sql
 
 # Concurrency: 30 simultaneous starts of one job (double clicks, retries, two tabs)
 # hold the budget once; 30 simultaneous closes settle once; another product's
@@ -49,5 +50,39 @@ begin
   if v_bal + v_reserved <> 60 - v_charged then raise exception 'concurrency: drift bal % reserved % charged %', v_bal, v_reserved, v_charged; end if;
   if v_reserved <> v_other then raise exception 'concurrency: reserved % vs other holds %', v_reserved, v_other; end if;
   raise notice 'verify_credit_budget concurrency: 1 session, 1 capture, wallet consistent (charged %, other holds %)', v_charged, v_other;
+end \$\$;
+SQL
+
+# Approval races: 20 simultaneous "+25" clicks from the same screen are one
+# extension; stop and approve racing each other leave a consistent wallet.
+U2=00000000-0000-4000-8000-0000000000c2
+J2=00000000-0000-4000-8000-00000000c0b2
+$P -d $DB -c "insert into public.credit_accounts (user_id, balance) values ('$U2', 200);
+              insert into public.credit_lots (user_id, kind, credits_granted, source_type) values ('$U2','PURCHASED',200,'TOPUP');
+              insert into public.research_jobs (id, user_id, result_json) values ('$J2', '$U2', '{\"_cost\":{\"identity\":{\"input_tokens\":200000,\"output_tokens\":15000}}}');
+              select public.verify_billing_open('$J2', '$U2', 'verify:c0b2:s1');
+              select public.verify_billing_close('$J2', 'STOPPED');" >/dev/null
+for i in $(seq 1 20); do
+  $P -d $DB -c "select public.verify_billing_open('$J2', '$U2', 'verify:c0b2:click$i', true, 1)" >/dev/null &
+done
+wait
+for i in $(seq 1 10); do
+  $P -d $DB -c "select public.verify_billing_close('$J2', 'STOPPED')" >/dev/null &
+  $P -d $DB -c "select public.verify_billing_open('$J2', '$U2', 'verify:c0b2:race$i', true, 2)" >/dev/null 2>&1 &
+done
+wait
+$P -d $DB -At <<SQL
+do \$\$
+declare v_auth int; v_open int; v_bal numeric; v_res numeric; v_charged numeric; v_authorized numeric;
+begin
+  select count(*) into v_open from public.verify_billing_sessions where job_id = '$J2' and state = 'RESERVED';
+  select count(*) into v_auth from public.verify_billing_authorizations where job_id = '$J2';
+  select balance, reserved into v_bal, v_res from public.credit_accounts where user_id = '$U2';
+  select charged_total_credits, authorized_total_credits into v_charged, v_authorized from public.verify_billing where job_id = '$J2';
+  if v_open > 1 then raise exception 'approval race: % open sessions', v_open; end if;
+  if v_auth > 3 or v_authorized <> 25 * v_auth then raise exception 'approval race: % authorisations, authorised %', v_auth, v_authorized; end if;
+  if v_bal < 0 or v_res < 0 or v_bal + v_res <> 200 - v_charged then raise exception 'approval race: wallet drift bal % res % charged %', v_bal, v_res, v_charged; end if;
+  if v_charged > v_authorized then raise exception 'approval race: charged above authorisation'; end if;
+  raise notice 'verify approval races: % authorisations (≤ 1 per screen), % open session(s), wallet consistent', v_auth, v_open;
 end \$\$;
 SQL

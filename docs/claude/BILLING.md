@@ -43,7 +43,26 @@ warns when a diff enters this domain.
   `billing_price_quote()` and NOT a plan's `profit_share_to_customer_bps`.
   System failure → release all; customer stop → charge incurred. Missing rate
   → policy `fallback_usd` (FALLBACK) or UNPRICED + `verify_billing.needs_review`.
-  Customer UI shows credits used / remaining / returned only.
+  Customer UI shows credits used / available / returned only.
+  **Incremental authorisation (owner rule 2026-10-10):** 25 credits to start,
+  +25 only per explicit customer approval, at most 4 authorisations / 100
+  credits per job, cumulative across every stop and continuation, never
+  reset. Each authorisation is one row in `verify_billing_authorizations`
+  (own id, unique key `verify:<job>:auth<seq>`, unique (job, seq)); an
+  extension names the authorisation count the customer saw
+  (`p_expected_authorizations`), so a double click or stale tab adds nothing.
+  Before each chargeable stage research-agent calls `verify_budget_gate`
+  (stage p95 estimate from policy `stage_estimates_usd`, priced the Verify
+  way; SYNTHESIS also covers REPORT): GO runs; AWAIT holds the job PAUSED
+  (`_pause.reason = BUDGET`) and closes the session (incurred charged, rest
+  released — nothing held while waiting); LIMIT (100 reached) holds with
+  `BUDGET_LIMIT` and is never extended. Usage above the authorisation is
+  absorbed (wallet_settle caps the charge), recorded as `overrun_credits`
+  and flagged `needs_review` for finance.
+  VAT decision for the owner/accountant: landed cost already carries
+  `billing_cogs_tax_bps` 18 % (reverse-charge on foreign providers, owner
+  rule 2026-10-04) and the price adds 18 % output VAT; if the input VAT is
+  recoverable, the landed uplift overprices by ~18 %. Not changed here.
 
 ## Where it lives
 

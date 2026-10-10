@@ -117,8 +117,20 @@ export function optionalStageFits(
   return remaining >= stageMaxCredits;
 }
 
+/**
+ * Why a paused job is waiting, for the customer: 'APPROVAL' — the next check
+ * needs another +25 the customer has not approved yet; 'LIMIT' — the
+ * 100-credit maximum is reached; null — an ordinary stop (or not paused).
+ */
+export function budgetHold(pause: { reason?: unknown } | null | undefined): 'APPROVAL' | 'LIMIT' | null {
+  if (!pause || typeof pause !== 'object') return null;
+  if (pause.reason === 'BUDGET') return 'APPROVAL';
+  if (pause.reason === 'BUDGET_LIMIT') return 'LIMIT';
+  return null;
+}
+
 /** The customer-safe billing summary (no costs, rates, VAT or margins). */
-export function publicBilling(state: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+export function publicBilling(state: Record<string, unknown> | null | undefined, pause?: { reason?: unknown } | null): Record<string, unknown> | null {
   if (!state || typeof state !== 'object') return null;
   const num = (v: unknown) => {
     const n = Number(v);
@@ -135,5 +147,10 @@ export function publicBilling(state: Record<string, unknown> | null | undefined)
     calculating: state.usageState === 'CALCULATING',
     lastReturned: last ? num(last.released) : null,
     lastCharged: last ? num(last.charged) : null,
+    authorizations: Number.isInteger(Number(state.authorizations)) ? Number(state.authorizations) : null,
+    increment: num(state.increment),
+    maxBudget: num(state.maxBudget),
+    canExtend: state.canExtend === true,
+    hold: budgetHold(pause),
   };
 }

@@ -121,12 +121,12 @@ begin
   r := public.verify_billing_open(j6, u1, 'verify:' || j6 || ':s1');
   if (r->>'ok')::boolean then raise exception '8: closed key reopened %', r; end if;
 
-  -- 9. Fully spent: no more without an explicit, recorded authorisation.
+  -- 9. Fully spent: no more without an explicit, recorded authorisation (+25, from policy — never a client amount).
   r := public.verify_billing_open(j2, u1, 'verify:' || j2 || ':s2');
-  if r->>'reason' <> 'BUDGET_EXHAUSTED' then raise exception '9: %', r; end if;
-  r := public.verify_billing_open(j2, u1, 'verify:' || j2 || ':s2x', 10);
-  if (r->>'reservedCredits')::numeric <> 10 or (r->>'authorizedTotal')::numeric <> 35 then raise exception '9: extra %', r; end if;
-  if jsonb_array_length((select authorizations from public.verify_billing where job_id = j2)) <> 2 then raise exception '9: authorisation not recorded'; end if;
+  if r->>'reason' <> 'BUDGET_EXHAUSTED' or not (r->>'canExtend')::boolean then raise exception '9: %', r; end if;
+  r := public.verify_billing_open(j2, u1, 'verify:' || j2 || ':s2x', true, 1);
+  if (r->>'reservedCredits')::numeric <> 25 or (r->>'authorizedTotal')::numeric <> 50 or (r->>'authorizations')::int <> 2 then raise exception '9: extra %', r; end if;
+  if (select count(*) from public.verify_billing_authorizations where job_id = j2) <> 2 then raise exception '9: authorisation not recorded'; end if;
   perform public.verify_billing_close(j2, 'SYSTEM_FAILED');
 
   -- 10. Insufficient balance: refused, nothing held.

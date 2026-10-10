@@ -97,3 +97,34 @@ replica can hold; see "Capacity" below.
   tasks are released on shutdown and stay in the table.
 - The migration is additive; nothing needs to be dropped to roll back.
   No wallet, ledger, research history or evidence row is modified by it.
+
+## Verify credit budget — deployment checklist (owner approval at every step)
+
+Nothing below has been executed. `verify_billing_enabled` stays `false` and
+`verify_execution_mode` stays `"LEGACY"` until the owner says otherwise.
+
+1. Merge PR #145 (owner). CI deploys `research-agent` and `verify-queue`;
+   with both flags off, behaviour is unchanged (no gate decision is ever
+   AWAIT/LIMIT without an ACTIVE `verify_billing` row).
+2. Apply `20261026090000` then `20261026100000` in release order (owner).
+   Additive: new tables/functions/settings; no wallet, ledger or job row is
+   rewritten. Check `verify_budget_policy()` (25 / +25 / 4 / 100).
+3. Frontend deploy (Vercel, from main). The launch dialog only appears when
+   `verify_launch_quote().enabled` is true.
+4. Owner test account only: set `verify_billing_enabled = true`, run one
+   Verify, approve one +25, stop, continue; confirm in SQL:
+   `verify_billing_authorizations` rows = approvals + 1, `credit_accounts.reserved`
+   back to 0 after each stop, `charged_total_credits` ≤ `authorized_total_credits`.
+5. Railway (`homatch-official-worker`, same service) only when
+   `official-worker/` changed — needed for legacy-mode Stop (`/research/:id/cancel`).
+
+### Rollback
+
+- `verify_billing_enabled = false` — new Verifies are not charged; open
+  sessions are closed by the driver sweep (charged for completed reports,
+  released for failures). No refund is invented and none is lost.
+- Jobs already held at AWAIT stay PAUSED with their results saved; a job
+  that already has a budget keeps its rules (continuing it still needs the
+  customer's +25 approval, never more than 100). Only new jobs are unbilled.
+- The migrations are additive; nothing needs dropping. Wallet balances,
+  ledgers, research history and evidence are untouched by rollback.

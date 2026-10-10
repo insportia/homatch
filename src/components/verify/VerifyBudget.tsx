@@ -3,7 +3,10 @@
  *
  *   before   required balance (the authorised maximum), its approximate value
  *            in a currency of their choice, one sentence, one action
- *   during   credits used, credits remaining
+ *   during   credits used, credits available
+ *   awaiting the next check needs another +25: one premium question,
+ *            Continue Investigation / Stop & View Results (never automatic)
+ *   limit    the 100-credit maximum is reached: results are saved
  *   paused   used, returned, partial results, Resume
  *   done     final cost, unused credits returned
  *
@@ -21,7 +24,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, Pause, Play, Wallet } from 'lucide-react';
+import { Loader2, Pause, Play, ShieldCheck, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -45,6 +48,13 @@ export interface PublicBilling {
   calculating: boolean;
   lastReturned: number | null;
   lastCharged: number | null;
+  /** Authorisations granted so far (25 each); the approval screen sends it back. */
+  authorizations?: number | null;
+  increment?: number | null;
+  maxBudget?: number | null;
+  canExtend?: boolean;
+  /** Why a paused job waits: the customer's approval of +25, or the 100 maximum. */
+  hold?: 'APPROVAL' | 'LIMIT' | null;
 }
 
 const INTL: Record<string, string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', ar: 'ar', he: 'he-IL' };
@@ -156,7 +166,7 @@ export function VerifyLaunchDialog({
               </p>
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
                 <span className="text-sm text-white/75" title={t('verify_budget_approx')}>
-                  {value ? <bdi>≈ {value}</bdi> : null}
+                  {value ? t('verify_budget_approx_value', { v: value }) : null}
                 </span>
                 {options.length > 1 ? (
                   <label className="inline-flex items-center">
@@ -210,7 +220,7 @@ export function VerifyBudgetLine({ billing }: { billing: PublicBilling | null })
     <section className="hm-invest-panel p-4 sm:p-5" aria-live="polite">
       <dl className="grid grid-cols-2 gap-3">
         <Stat label={t('verify_budget_used')} value={billing.calculating ? t('verify_budget_calculating') : formatCreditAmount(billing.used, lang)} unit={billing.calculating ? undefined : t('verify_budget_unit')} quiet={billing.calculating} />
-        <Stat label={t('verify_budget_remaining')} value={formatCreditAmount(billing.remaining, lang)} unit={t('verify_budget_unit')} />
+        <Stat label={t('verify_budget_available')} value={formatCreditAmount(billing.remaining, lang)} unit={t('verify_budget_unit')} />
       </dl>
       {share != null ? (
         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[hsl(var(--sand))]" role="presentation">
@@ -228,19 +238,19 @@ export function VerifyPausedCard({
   onResume,
   onViewPartial,
   resumeError,
-  extraCredits,
-  onApproveExtra,
+  onReviewApproval,
 }: {
   billing: PublicBilling | null;
   resuming?: boolean;
   onResume: () => void;
   onViewPartial?: () => void;
   resumeError?: 'INSUFFICIENT_CREDITS' | 'BUDGET_EXHAUSTED' | string | null;
-  extraCredits?: number;
-  onApproveExtra?: () => void;
+  /** Opens the +25 question again (the investigation is waiting on it). */
+  onReviewApproval?: () => void;
 }) {
   const { t, lang } = useLanguage();
-  const needsApproval = resumeError === 'BUDGET_EXHAUSTED' && !!onApproveExtra;
+  if (billing?.hold === 'LIMIT') return <VerifyBudgetLimitCard maxBudget={billing.maxBudget ?? 100} onView={onViewPartial} />;
+  const needsApproval = (billing?.hold === 'APPROVAL' || resumeError === 'BUDGET_EXHAUSTED') && !!onReviewApproval;
   return (
     <section className="hm-invest-panel hm-invest-focus space-y-5 p-5 sm:p-7">
       <header className="space-y-1.5">
@@ -249,7 +259,7 @@ export function VerifyPausedCard({
           <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]">
             <Pause className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
           </span>
-          <span className="min-w-0 break-words">{t('verify_paused_title')}</span>
+          <span className="min-w-0 break-words">{t(needsApproval ? 'verify_awaiting_title' : 'verify_paused_title')}</span>
         </h2>
       </header>
       {billing ? (
@@ -258,31 +268,20 @@ export function VerifyPausedCard({
           <Stat label={t('verify_paused_returned')} value={formatCreditAmount(billing.lastReturned, lang)} unit={t('verify_budget_unit')} />
         </dl>
       ) : null}
-      <p className="text-sm leading-6 text-muted-foreground">{t('verify_paused_partial')}</p>
+      <p className="text-sm leading-6 text-muted-foreground">{t(needsApproval ? 'verify_awaiting_body' : 'verify_paused_partial')}</p>
       {resumeError === 'INSUFFICIENT_CREDITS' ? (
         <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
           <p className="text-sm font-medium leading-6">{t('verify_resume_need_credits')}</p>
           <Button asChild className={FRAMED_ACTION}><Link to="/credits"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('verify_budget_add_credits')}</Link></Button>
         </div>
       ) : null}
-      {needsApproval ? (
-        <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
-          <p className="text-sm font-medium leading-6">{t('verify_resume_budget_used', { n: formatCreditAmount(extraCredits ?? 0, lang) })}</p>
-          <Button type="button" className={GOLD_ACTION} onClick={onApproveExtra} disabled={resuming}>
-            {resuming ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            {t('verify_resume_approve_extra', { n: formatCreditAmount(extraCredits ?? 0, lang) })}
-          </Button>
-        </div>
-      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
-        {needsApproval ? null : (
-          <Button type="button" className={GOLD_ACTION} onClick={onResume} disabled={resuming}>
-            {resuming ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="me-2 h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />}
-            {t('verify_resume')}
-          </Button>
-        )}
+        <Button type="button" className={GOLD_ACTION} onClick={needsApproval ? onReviewApproval : onResume} disabled={resuming}>
+          {resuming ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="me-2 h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />}
+          {t(needsApproval ? 'verify_extend_continue' : 'verify_resume')}
+        </Button>
         {onViewPartial ? (
-          <Button type="button" variant="outline" className={cn(FRAMED_ACTION, needsApproval && 'sm:col-span-2')} onClick={onViewPartial}>{t('verify_view_partial')}</Button>
+          <Button type="button" variant="outline" className={FRAMED_ACTION} onClick={onViewPartial}>{t('verify_view_partial')}</Button>
         ) : null}
       </div>
     </section>
@@ -301,6 +300,90 @@ export function VerifyBudgetSummary({ billing }: { billing: PublicBilling | null
         <Stat strong label={t('verify_final_cost')} value={formatCreditAmount(billing.charged, lang)} unit={t('verify_budget_unit')} />
         {returned != null ? <Stat label={t('verify_unused_returned')} value={formatCreditAmount(returned, lang)} unit={t('verify_budget_unit')} /> : null}
       </dl>
+    </section>
+  );
+}
+
+/**
+ * The +25 question. Asked by the server (the next check does not fit what the
+ * customer authorised), answered only by the customer: nothing is reserved or
+ * charged until Continue is pressed, and the request names the screen it
+ * answers (its authorisation count) so a double click is one extension.
+ */
+export function VerifyBudgetExtendDialog({
+  open,
+  increment,
+  busy,
+  needCredits,
+  onContinue,
+  onStop,
+}: {
+  open: boolean;
+  increment: number;
+  busy?: boolean;
+  /** The wallet cannot cover the extension: offer to add credits instead. */
+  needCredits?: boolean;
+  onContinue: () => void;
+  onStop: () => void;
+}) {
+  const { t, lang } = useLanguage();
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onStop(); }}>
+      <DialogContent className="hm-invest w-[calc(100vw-2rem)] max-w-md gap-0 overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-0 text-foreground shadow-[var(--shadow-hover)] sm:rounded-2xl">
+        <div className="h-1 w-full bg-[hsl(38_92%_54%)]" aria-hidden="true" />
+        <div className="space-y-5 p-6 sm:p-7">
+          <DialogHeader className="space-y-2 pr-8 text-start">
+            <Eyebrow>{t('verify_budget_eyebrow')}</Eyebrow>
+            <DialogTitle className="font-display text-2xl font-semibold leading-tight text-foreground">{t('verify_extend_title')}</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-xl bg-[#0C1119] p-5 text-white shadow-card">
+            <p className="text-2xs font-medium uppercase tracking-[0.12em] text-white/60">{t('verify_extend_label')}</p>
+            <p className="mt-1.5 whitespace-nowrap font-display text-4xl font-semibold leading-none tracking-tight [font-variant-numeric:tabular-nums]">
+              <bdi>
+                +{formatCreditAmount(increment, lang)}
+                <span className="ms-2 align-baseline text-base font-medium text-[hsl(38_92%_62%)]">{t('verify_budget_unit')}</span>
+              </bdi>
+            </p>
+          </div>
+          <DialogDescription className="text-sm leading-6 text-muted-foreground">{t('verify_extend_body')}</DialogDescription>
+          {needCredits ? (
+            <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
+              <p className="text-sm font-medium leading-6 text-foreground break-words">{t('verify_resume_need_credits')}</p>
+              <Button asChild className={FRAMED_ACTION}>
+                <Link to="/credits"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('verify_budget_add_credits')}</Link>
+              </Button>
+            </div>
+          ) : null}
+          <div className="grid gap-3">
+            <Button type="button" className={GOLD_ACTION} disabled={busy || needCredits} onClick={onContinue}>
+              {busy ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="me-2 h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />}
+              {t('verify_extend_continue')}
+            </Button>
+            <Button type="button" variant="outline" className={FRAMED_ACTION} disabled={busy} onClick={onStop}>{t('verify_extend_stop')}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The 100-credit maximum is reached: no further extension; what was found is kept. */
+export function VerifyBudgetLimitCard({ maxBudget, onView }: { maxBudget: number; onView?: () => void }) {
+  const { t, lang } = useLanguage();
+  return (
+    <section className="hm-invest-panel hm-invest-focus space-y-5 p-5 sm:p-7">
+      <header className="space-y-1.5">
+        <Eyebrow>{t('verify_budget_eyebrow')}</Eyebrow>
+        <h2 className="flex items-center gap-2.5 font-display text-xl font-semibold leading-tight text-foreground">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]">
+            <ShieldCheck className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 break-words">{t('verify_limit_title')}</span>
+        </h2>
+        <p className="text-sm font-semibold text-[hsl(var(--gold-ink))]">{t('verify_limit_max', { n: formatCreditAmount(maxBudget, lang) })}</p>
+      </header>
+      <p className="text-sm leading-6 text-muted-foreground">{t('verify_limit_body')}</p>
+      {onView ? <Button type="button" className={GOLD_ACTION} onClick={onView}>{t('verify_limit_view')}</Button> : null}
     </section>
   );
 }

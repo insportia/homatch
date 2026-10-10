@@ -16095,7 +16095,7 @@ const en = {
 
   /* ── VERIFY AT SCALE ── */
   verify_budget_title: 'Start verification',
-  verify_budget_note: 'Your investigation may cost less. Unused credits remain in your wallet.',
+  verify_budget_note: 'Your final cost may be lower. Unused credits remain in your wallet.',
   verify_budget_required: 'Required balance',
   verify_budget_credits: '{{n}} credits',
   verify_budget_approx: 'Approximate value',
@@ -16112,8 +16112,6 @@ const en = {
   verify_resume: 'Resume Investigation',
   verify_view_partial: 'View partial results',
   verify_resume_need_credits: 'Add credits to continue this investigation.',
-  verify_resume_budget_used: 'This investigation has used its budget. Continuing needs up to {{n}} more credits.',
-  verify_resume_approve_extra: 'Approve {{n}} more credits',
   verify_final_cost: 'Final cost',
   verify_unused_returned: 'Unused credits returned',
   verify_pause_confirm_title: 'Stop the investigation?',
@@ -16128,6 +16126,21 @@ const en = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_eyebrow: 'Verification budget',
   verify_budget_unit: 'credits',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'Approximately {{v}}',
+  verify_budget_available: 'Credits available',
+  verify_extend_title: 'Continue your investigation?',
+  verify_extend_body: 'Additional checks are recommended for a more complete report.',
+  verify_extend_label: 'Additional budget',
+  verify_extend_continue: 'Continue Investigation',
+  verify_extend_stop: 'Stop & View Results',
+  verify_awaiting_title: 'Waiting for your approval',
+  verify_awaiting_body: 'Your results so far are saved. Nothing is reserved while you decide.',
+  verify_limit_title: 'Investigation budget limit reached',
+  verify_limit_max: '{{n}} credits maximum',
+  verify_limit_body: 'Your collected results are saved. Some checks may remain incomplete.',
+  verify_limit_view: 'View Available Results',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32137,7 +32150,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY AT SCALE ── */
   verify_budget_title: 'ვერიფიკაციის დაწყება',
-  verify_budget_note: 'კვლევა შეიძლება ნაკლები დაჯდეს. გამოუყენებელი კრედიტები თქვენს საფულეში რჩება.',
+  verify_budget_note: 'საბოლოო ღირებულება შეიძლება ნაკლები იყოს. გამოუყენებელი კრედიტები თქვენს საფულეში რჩება.',
   verify_budget_required: 'საჭირო ბალანსი',
   verify_budget_credits: '{{n}} კრედიტი',
   verify_budget_approx: 'მიახლოებითი ღირებულება',
@@ -32154,8 +32167,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_resume: 'კვლევის გაგრძელება',
   verify_view_partial: 'ნაწილობრივი შედეგების ნახვა',
   verify_resume_need_credits: 'კვლევის გასაგრძელებლად დაამატეთ კრედიტები.',
-  verify_resume_budget_used: 'ამ კვლევამ ბიუჯეტი ამოწურა. გაგრძელებას დასჭირდება არაუმეტეს {{n}} დამატებითი კრედიტი.',
-  verify_resume_approve_extra: 'დამატებით {{n}} კრედიტის დადასტურება',
   verify_final_cost: 'საბოლოო ღირებულება',
   verify_unused_returned: 'დაბრუნებული გამოუყენებელი კრედიტები',
   verify_pause_confirm_title: 'შევაჩეროთ კვლევა?',
@@ -32170,6 +32181,21 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_eyebrow: 'ვერიფიკაციის ბიუჯეტი',
   verify_budget_unit: 'კრედიტი',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'დაახლოებით {{v}}',
+  verify_budget_available: 'ხელმისაწვდომი კრედიტები',
+  verify_extend_title: 'გავაგრძელოთ კვლევა?',
+  verify_extend_body: 'უფრო სრული ანგარიშისთვის რეკომენდებულია დამატებითი შემოწმებები.',
+  verify_extend_label: 'დამატებითი ბიუჯეტი',
+  verify_extend_continue: 'კვლევის გაგრძელება',
+  verify_extend_stop: 'შეჩერება და შედეგების ნახვა',
+  verify_awaiting_title: 'ელოდება თქვენს თანხმობას',
+  verify_awaiting_body: 'აქამდე მიღებული შედეგები შენახულია. სანამ გადაწყვეტთ, თქვენი კრედიტები თავისუფალი რჩება.',
+  verify_limit_title: 'კვლევის ბიუჯეტის ლიმიტი ამოიწურა',
+  verify_limit_max: 'მაქსიმუმ {{n}} კრედიტი',
+  verify_limit_body: 'შეგროვებული შედეგები შენახულია. ზოგიერთი შემოწმება შეიძლება დაუსრულებელი დარჩეს.',
+  verify_limit_view: 'ხელმისაწვდომი შედეგების ნახვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48170,7 +48196,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY AT SCALE ── */
   verify_budget_title: 'Запуск проверки',
-  verify_budget_note: 'Проверка может обойтись дешевле. Неиспользованные кредиты останутся в вашем кошельке.',
+  verify_budget_note: 'Итоговая стоимость может быть ниже. Неиспользованные кредиты останутся в вашем кошельке.',
   verify_budget_required: 'Необходимый баланс',
   verify_budget_credits: '{{n}} кредитов',
   verify_budget_approx: 'Приблизительная стоимость',
@@ -48187,8 +48213,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_resume: 'Продолжить проверку',
   verify_view_partial: 'Посмотреть частичные результаты',
   verify_resume_need_credits: 'Добавьте кредиты, чтобы продолжить проверку.',
-  verify_resume_budget_used: 'Бюджет этой проверки израсходован. Для продолжения понадобится не более {{n}} кредитов.',
-  verify_resume_approve_extra: 'Разрешить ещё {{n}} кредитов',
   verify_final_cost: 'Итоговая стоимость',
   verify_unused_returned: 'Возвращено неиспользованных кредитов',
   verify_pause_confirm_title: 'Остановить проверку?',
@@ -48203,6 +48227,21 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_eyebrow: 'Бюджет проверки',
   verify_budget_unit: 'кредитов',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'Примерно {{v}}',
+  verify_budget_available: 'Доступно кредитов',
+  verify_extend_title: 'Продолжить проверку?',
+  verify_extend_body: 'Для более полного отчёта рекомендуются дополнительные проверки.',
+  verify_extend_label: 'Дополнительный бюджет',
+  verify_extend_continue: 'Продолжить проверку',
+  verify_extend_stop: 'Остановить и посмотреть результаты',
+  verify_awaiting_title: 'Ожидает вашего подтверждения',
+  verify_awaiting_body: 'Полученные результаты сохранены. Пока вы решаете, ничего не резервируется.',
+  verify_limit_title: 'Достигнут лимит бюджета проверки',
+  verify_limit_max: 'Максимум {{n}} кредитов',
+  verify_limit_body: 'Собранные результаты сохранены. Некоторые проверки могут остаться незавершёнными.',
+  verify_limit_view: 'Посмотреть доступные результаты',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64201,7 +64240,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY AT SCALE ── */
   verify_budget_title: 'Doğrulamayı başlat',
-  verify_budget_note: 'Araştırmanız daha az tutabilir. Kullanılmayan krediler cüzdanınızda kalır.',
+  verify_budget_note: 'Nihai tutar daha düşük olabilir. Kullanılmayan krediler cüzdanınızda kalır.',
   verify_budget_required: 'Gerekli bakiye',
   verify_budget_credits: '{{n}} kredi',
   verify_budget_approx: 'Yaklaşık değer',
@@ -64218,8 +64257,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_resume: 'Araştırmaya Devam Et',
   verify_view_partial: 'Kısmi sonuçları gör',
   verify_resume_need_credits: 'Araştırmaya devam etmek için kredi ekleyin.',
-  verify_resume_budget_used: 'Bu araştırmanın bütçesi kullanıldı. Devam etmek için en fazla {{n}} kredi daha gerekir.',
-  verify_resume_approve_extra: '{{n}} kredi daha onayla',
   verify_final_cost: 'Nihai tutar',
   verify_unused_returned: 'İade edilen kullanılmayan kredi',
   verify_pause_confirm_title: 'Araştırma durdurulsun mu?',
@@ -64234,6 +64271,21 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_eyebrow: 'Doğrulama bütçesi',
   verify_budget_unit: 'kredi',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'Yaklaşık {{v}}',
+  verify_budget_available: 'Kullanılabilir kredi',
+  verify_extend_title: 'Araştırmaya devam edilsin mi?',
+  verify_extend_body: 'Daha eksiksiz bir rapor için ek kontroller önerilir.',
+  verify_extend_label: 'Ek bütçe',
+  verify_extend_continue: 'Araştırmaya Devam Et',
+  verify_extend_stop: 'Durdur ve Sonuçları Gör',
+  verify_awaiting_title: 'Onayınız bekleniyor',
+  verify_awaiting_body: 'Şimdiye kadarki sonuçlarınız kaydedildi. Siz karar verene kadar hiçbir şey ayrılmaz.',
+  verify_limit_title: 'Araştırma bütçe sınırına ulaşıldı',
+  verify_limit_max: 'En fazla {{n}} kredi',
+  verify_limit_body: 'Toplanan sonuçlarınız kaydedildi. Bazı kontroller tamamlanmamış kalabilir.',
+  verify_limit_view: 'Mevcut Sonuçları Gör',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -80232,7 +80284,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY AT SCALE ── */
   verify_budget_title: 'بدء التحقق',
-  verify_budget_note: 'قد تكلّف عملية التحقق أقل. يبقى الرصيد غير المستخدم في محفظتك.',
+  verify_budget_note: 'قد تكون التكلفة النهائية أقل. يبقى الرصيد غير المستخدم في محفظتك.',
   verify_budget_required: 'الرصيد المطلوب',
   verify_budget_credits: '{{n}} رصيد',
   verify_budget_approx: 'قيمة تقريبية',
@@ -80249,8 +80301,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_resume: 'متابعة التحقق',
   verify_view_partial: 'عرض النتائج الجزئية',
   verify_resume_need_credits: 'أضف اعتمادات لمتابعة التحقق.',
-  verify_resume_budget_used: 'استُنفدت ميزانية هذا التحقق. تتطلب المتابعة ما يصل إلى {{n}} رصيد إضافي.',
-  verify_resume_approve_extra: 'الموافقة على {{n}} رصيد إضافي',
   verify_final_cost: 'التكلفة النهائية',
   verify_unused_returned: 'الرصيد غير المستخدم المُعاد',
   verify_pause_confirm_title: 'إيقاف التحقق؟',
@@ -80265,6 +80315,21 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_eyebrow: 'ميزانية التحقق',
   verify_budget_unit: 'رصيد',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'حوالي {{v}}',
+  verify_budget_available: 'الرصيد المتاح',
+  verify_extend_title: 'هل تريد متابعة التحقق؟',
+  verify_extend_body: 'يُنصح بإجراء فحوصات إضافية للحصول على تقرير أكثر اكتمالًا.',
+  verify_extend_label: 'ميزانية إضافية',
+  verify_extend_continue: 'متابعة التحقق',
+  verify_extend_stop: 'إيقاف وعرض النتائج',
+  verify_awaiting_title: 'بانتظار موافقتك',
+  verify_awaiting_body: 'نتائجك حتى الآن محفوظة. لا يُحجز أي رصيد بينما تقرر.',
+  verify_limit_title: 'تم بلوغ الحد الأقصى لميزانية التحقق',
+  verify_limit_max: '{{n}} رصيد كحد أقصى',
+  verify_limit_body: 'النتائج التي جُمعت محفوظة. قد تبقى بعض الفحوصات غير مكتملة.',
+  verify_limit_view: 'عرض النتائج المتاحة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -96263,7 +96328,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY AT SCALE ── */
   verify_budget_title: 'התחלת אימות',
-  verify_budget_note: 'החקירה עשויה לעלות פחות. קרדיטים שלא נוצלו נשארים בארנק שלך.',
+  verify_budget_note: 'העלות הסופית עשויה להיות נמוכה יותר. קרדיטים שלא נוצלו נשארים בארנק שלך.',
   verify_budget_required: 'יתרה נדרשת',
   verify_budget_credits: '{{n}} קרדיטים',
   verify_budget_approx: 'ערך משוער',
@@ -96280,8 +96345,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_resume: 'המשך החקירה',
   verify_view_partial: 'הצגת תוצאות חלקיות',
   verify_resume_need_credits: 'הוסיפו קרדיטים כדי להמשיך בחקירה.',
-  verify_resume_budget_used: 'התקציב של חקירה זו נוצל. ההמשך ידרוש עד {{n}} קרדיטים נוספים.',
-  verify_resume_approve_extra: 'אישור {{n}} קרדיטים נוספים',
   verify_final_cost: 'עלות סופית',
   verify_unused_returned: 'קרדיטים שלא נוצלו והוחזרו',
   verify_pause_confirm_title: 'לעצור את החקירה?',
@@ -96296,6 +96359,21 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_eyebrow: 'תקציב האימות',
   verify_budget_unit: 'קרדיטים',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_approx_value: 'בערך {{v}}',
+  verify_budget_available: 'קרדיטים זמינים',
+  verify_extend_title: 'להמשיך בחקירה?',
+  verify_extend_body: 'מומלץ לבצע בדיקות נוספות לקבלת דוח מלא יותר.',
+  verify_extend_label: 'תקציב נוסף',
+  verify_extend_continue: 'המשך החקירה',
+  verify_extend_stop: 'עצירה והצגת התוצאות',
+  verify_awaiting_title: 'ממתין לאישורך',
+  verify_awaiting_body: 'התוצאות עד כה נשמרו. דבר אינו נשמר בצד בזמן שאתם מחליטים.',
+  verify_limit_title: 'הגעת למגבלת התקציב של החקירה',
+  verify_limit_max: 'מקסימום {{n}} קרדיטים',
+  verify_limit_body: 'התוצאות שנאספו נשמרו. ייתכן שחלק מהבדיקות יישארו חלקיות.',
+  verify_limit_view: 'הצגת התוצאות הזמינות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -37,11 +37,11 @@ begin
   perform public.verify_captcha_record('a4-2', null, jc, 'mygov', 'ACCEPTED', -5);
   if (select cost_usd from public.verify_captcha_events where idempotency_key = 'a4-2') is not null then raise exception 'H4a: negative stored'; end if;
 
-  -- HIGH 2: a refused top-up authorisation is not kept; a retry does not add it twice.
+  -- HIGH 2: a refused authorisation is not kept; a retry does not add it twice.
   update public.credit_accounts set balance = 0 where user_id = u;
-  r := public.verify_billing_open(jd, u, 'verify:' || jd || ':s1', 25);
+  r := public.verify_billing_open(jd, u, 'verify:' || jd || ':s1');
   if r->>'reason' <> 'INSUFFICIENT_CREDITS' then raise exception 'H2: %', r; end if;
-  r := public.verify_billing_open(jd, u, 'verify:' || jd || ':s1', 25);
+  r := public.verify_billing_open(jd, u, 'verify:' || jd || ':s1');
   if exists (select 1 from public.verify_billing where job_id = jd) then raise exception 'H2: billing row left behind (authorised %)', (select authorized_total_credits from public.verify_billing where job_id = jd); end if;
   update public.credit_accounts set balance = 30 where user_id = u;
 

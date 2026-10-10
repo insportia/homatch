@@ -16,7 +16,14 @@ MATTERS right now, verify against the live systems, not this file)
   billing_cogs_tax_bps 1800, reservation TTL 60 min (Verify extends to 12 h),
   all accounts on FREE, fx_rates only USD (no GEL/EUR shown until rates are set),
   Verify AI COGS p50 $0.446 / p90 $0.581 / max $0.79 → ~15 / ~20 / cap credits.
-- Tests: tests/sql/run-verify-billing.sh (16 checks + concurrency), pauseResume, verifyBudgetUi.
+- Incremental budget (owner rule 2026-10-10): 25 initial, +25 per explicit approval, max 4 / 100,
+  `verify_billing_authorizations` ledger, `verify_budget_gate` before every chargeable stage
+  (IDENTITY, OFFICIAL, OFFICIAL_COLLECTION, FINANCIAL_ENTITY, PUBLIC_RESEARCH, MARKET,
+  DEVELOPER_ADS, SYNTHESIS+REPORT). Awaiting approval = PAUSED with `_pause.reason` BUDGET
+  (no reservation held); limit = BUDGET_LIMIT. UI: VerifyBudgetExtendDialog / VerifyBudgetLimitCard.
+  Stage p95 estimates imply a full run with ads ≈ 45 credits → most full runs ask once.
+- Tests: tests/sql/run-verify-billing.sh (durable, budget, audit regressions, incremental budget,
+  open/close concurrency, approval races), pauseResume, verifyBudgetUi.
 
 ## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
 

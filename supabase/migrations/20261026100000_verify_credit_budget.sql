@@ -57,7 +57,19 @@ set local lock_timeout = '5s';
 -- ── 1. Policy (data, not code) ──────────────────────────────────────────
 update public.billable_products
    set config = coalesce(config, '{}'::jsonb) || jsonb_build_object('verify_budget', jsonb_build_object(
-         'max_budget_credits', 25,
+         -- Owner rule (2026-10-10): 25 to start, +25 per explicit approval,
+         -- at most four authorisations, never more than 100 per investigation.
+         'initial_credits', 25,
+         'increment_credits', 25,
+         'max_budget_credits', 100,
+         'max_authorizations', 4,
+         -- Conservative raw provider USD a stage may cost, checked BEFORE it
+         -- starts (production p95 per stage 2026-10-10, rounded up; the ads
+         -- Actor at its own hard ceiling). Not a charge: what is charged is
+         -- always the metered cost.
+         'stage_estimates_usd', jsonb_build_object(
+           'IDENTITY', 0.15, 'OFFICIAL', 0.05, 'OFFICIAL_COLLECTION', 0.09, 'FINANCIAL_ENTITY', 0.02,
+           'PUBLIC_RESEARCH', 0.23, 'MARKET', 0.29, 'DEVELOPER_ADS', 0.50, 'SYNTHESIS', 0.02, 'REPORT', 0.02, 'DEFAULT', 0.10),
          'target_margin_bps', 5500,
          'contingency_bps', 1000,
          'apply_output_vat', true,
@@ -73,7 +85,7 @@ update public.billable_products
 
 insert into public.admin_settings (key, value, description)
 values ('verify_billing_enabled', 'false'::jsonb,
-        'Verify credit budget: reserve the authorised budget (default 25 credits) at start, charge the metered and priced cost, release the rest. false = Verify is not charged (previous behaviour).')
+        'Verify credit budget: reserve 25 credits at start, +25 per explicit customer approval up to 100, charge the metered and priced cost, release the rest. false = Verify is not charged (previous behaviour).')
 on conflict (key) do nothing;
 
 -- ── 2. Job control columns: durable stop intent, pause, resume count ────
@@ -92,7 +104,6 @@ create table if not exists public.verify_billing (
   landed_charged_cents     numeric(14,4) not null default 0,
   state                    text not null default 'ACTIVE'
                            check (state in ('ACTIVE','PAUSED','SETTLED','RELEASED')),
-  authorizations           jsonb not null default '[]'::jsonb,
   needs_review             boolean not null default false,
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now(),
@@ -117,6 +128,25 @@ create table if not exists public.verify_billing_sessions (
   closed_at             timestamptz,
   unique (job_id, seq)
 );
+-- Every authorisation the customer gave, one row each: its own id and key.
+-- The authorised total is their sum; (job_id, seq) makes a double approval
+-- one approval, and the policy bounds seq (four) and the total (100).
+create table if not exists public.verify_billing_authorizations (
+  id               uuid primary key default gen_random_uuid(),
+  job_id           uuid not null references public.verify_billing(job_id) on delete restrict,
+  seq              integer not null check (seq >= 1),
+  kind             text not null check (kind in ('INITIAL', 'EXTENSION')),
+  credits          numeric(12,4) not null check (credits > 0),
+  idempotency_key  text not null unique,
+  reservation_id   uuid,
+  created_at       timestamptz not null default now(),
+  unique (job_id, seq)
+);
+alter table public.verify_billing_authorizations enable row level security;
+alter table public.verify_billing_authorizations force row level security;
+revoke all on public.verify_billing_authorizations from public, anon, authenticated;
+grant select, insert on public.verify_billing_authorizations to service_role;
+
 -- At most one open session per job: a second concurrent open cannot exist.
 create unique index if not exists verify_billing_one_open_session
   on public.verify_billing_sessions(job_id) where state = 'RESERVED';
@@ -351,40 +381,53 @@ begin
 end;
 $$;
 
--- ── 7. Open (or re-open on resume) a budget session ─────────────────────
--- Reserves what is left of the authorised total; idempotent per key; an open
--- session is returned as is. p_extra_credits is an explicit additional
--- authorisation by the customer (recorded), never implied.
+-- ── 7. Open a budget session (start, continue, or an approved +25) ──────
+-- Reserves what is left of the authorised total. The first open authorises
+-- the initial 25; p_extend = an explicit customer approval of one more
+-- increment (+25), refused past four authorisations or 100 credits. The
+-- amount is policy, never a client value. p_expected_authorizations is the
+-- count the customer's screen showed: a double click (or an approval made
+-- from a stale screen) is therefore exactly one extension.
 create or replace function public.verify_billing_open(
-  p_job_id uuid, p_user_id uuid, p_idempotency_key text, p_extra_credits numeric default 0)
+  p_job_id uuid, p_user_id uuid, p_idempotency_key text,
+  p_extend boolean default false, p_expected_authorizations integer default null)
 returns jsonb
 language plpgsql security definer set search_path to ''
 as $$
 declare
   v_pol jsonb := public.verify_budget_policy();
+  v_initial numeric := coalesce((v_pol->>'initial_credits')::numeric, 25);
+  v_inc numeric := coalesce((v_pol->>'increment_credits')::numeric, 25);
+  v_max numeric := coalesce((v_pol->>'max_budget_credits')::numeric, 100);
+  v_max_auth integer := coalesce((v_pol->>'max_authorizations')::integer, 4);
   v_b public.verify_billing;
   v_s public.verify_billing_sessions;
+  v_count integer;
+  v_new numeric := 0;
+  v_kind text;
   v_remaining numeric;
   v_res record;
   v_seq integer;
-  v_extra numeric := round(greatest(coalesce(p_extra_credits, 0), 0), 4);
-  v_max numeric := coalesce((v_pol->>'max_budget_credits')::numeric, 25);
+  v_can_extend boolean;
 begin
   if p_idempotency_key is null or length(p_idempotency_key) < 8 then raise exception 'IDEMPOTENCY_KEY_REQUIRED'; end if;
-  if v_extra > v_max then raise exception 'EXTRA_AUTHORIZATION_TOO_LARGE'; end if;
   if not exists (select 1 from public.research_jobs where id = p_job_id and user_id = p_user_id) then
     raise exception 'JOB_NOT_OWNED';
   end if;
 
-  insert into public.verify_billing (job_id, user_id, authorized_total_credits, authorizations)
-  values (p_job_id, p_user_id, v_max, jsonb_build_array(jsonb_build_object('credits', v_max, 'at', now(), 'kind', 'INITIAL')))
+  insert into public.verify_billing (job_id, user_id, authorized_total_credits)
+  values (p_job_id, p_user_id, 0)
   on conflict (job_id) do nothing;
+  -- Serialises every open, approval, stop and settlement of this job.
   select * into v_b from public.verify_billing where job_id = p_job_id for update;
+  select count(*) into v_count from public.verify_billing_authorizations where job_id = p_job_id;
+  v_can_extend := v_count < v_max_auth and v_b.authorized_total_credits + v_inc <= v_max;
 
   select * into v_s from public.verify_billing_sessions where job_id = p_job_id and state = 'RESERVED';
   if found then
     return jsonb_build_object('ok', true, 'duplicate', true, 'sessionId', v_s.id, 'reservationId', v_s.reservation_id,
-      'reservedCredits', v_s.reserved_credits, 'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits);
+      'reservedCredits', v_s.reserved_credits, 'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits,
+      'authorizations', v_count);
   end if;
 
   -- A session already opened under this key (a retried request after it closed) is not reopened.
@@ -393,32 +436,44 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'SESSION_ALREADY_CLOSED');
   end if;
 
-  -- An additional authorisation counts once per request key, and only takes
-  -- effect when the reservation it pays for succeeds (below).
-  if v_extra > 0 and exists (select 1 from jsonb_array_elements(v_b.authorizations) a where a->>'key' = p_idempotency_key) then
-    v_extra := 0;
+  if v_count = 0 then
+    v_new := v_initial; v_kind := 'INITIAL';
+  elsif p_extend then
+    if p_expected_authorizations is not null and p_expected_authorizations <> v_count then
+      return jsonb_build_object('ok', false, 'reason', 'STALE_REQUEST', 'authorizations', v_count,
+        'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits);
+    end if;
+    if not v_can_extend then
+      return jsonb_build_object('ok', false, 'reason', 'BUDGET_LIMIT', 'authorizations', v_count,
+        'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits, 'maxBudget', v_max);
+    end if;
+    v_new := v_inc; v_kind := 'EXTENSION';
   end if;
-  v_remaining := round(v_b.authorized_total_credits + v_extra - v_b.charged_total_credits, 4);
+
+  v_remaining := round(v_b.authorized_total_credits + v_new - v_b.charged_total_credits, 4);
   if v_remaining <= 0 then
-    return jsonb_build_object('ok', false, 'reason', 'BUDGET_EXHAUSTED', 'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits);
+    return jsonb_build_object('ok', false, 'reason', 'BUDGET_EXHAUSTED', 'canExtend', v_can_extend, 'authorizations', v_count,
+      'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits);
   end if;
 
   begin
     select * into v_res from public.wallet_reserve(p_user_id, 'VERIFY', v_remaining, p_idempotency_key, 0, v_remaining, p_job_id::text,
       jsonb_build_object('verify_job_id', p_job_id, 'session', coalesce((select max(seq) from public.verify_billing_sessions where job_id = p_job_id), 0) + 1,
-                         'authorized_total', v_b.authorized_total_credits + v_extra, 'charged_before', v_b.charged_total_credits));
+                         'authorized_total', v_b.authorized_total_credits + v_new, 'charged_before', v_b.charged_total_credits,
+                         'authorization', case when v_new > 0 then v_kind end));
   exception when others then
     -- Nothing was held: a job that never held money leaves no billing row.
-    if not exists (select 1 from public.verify_billing_sessions where job_id = p_job_id) then
+    if not exists (select 1 from public.verify_billing_sessions where job_id = p_job_id)
+       and not exists (select 1 from public.verify_billing_authorizations where job_id = p_job_id) then
       delete from public.verify_billing where job_id = p_job_id;
     end if;
-    if sqlerrm like '%INSUFFICIENT_CREDITS%' then
+    if sqlerrm like '%INSUFFICIENT_CREDITS%' or sqlerrm like '%CREDIT_ACCOUNT_NOT_FOUND%' then
       return jsonb_build_object('ok', false, 'reason', 'INSUFFICIENT_CREDITS', 'requiredCredits', v_remaining,
-        'availableCredits', (select balance from public.credit_accounts where user_id = p_user_id));
+        'availableCredits', coalesce((select balance from public.credit_accounts where user_id = p_user_id), 0),
+        'authorizations', v_count, 'canExtend', v_can_extend);
     elsif sqlerrm like '%BELOW_MIN_VIABLE_BUDGET%' then
-      return jsonb_build_object('ok', false, 'reason', 'BUDGET_EXHAUSTED', 'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits);
-    elsif sqlerrm like '%CREDIT_ACCOUNT_NOT_FOUND%' then
-      return jsonb_build_object('ok', false, 'reason', 'INSUFFICIENT_CREDITS', 'requiredCredits', v_remaining, 'availableCredits', 0);
+      return jsonb_build_object('ok', false, 'reason', 'BUDGET_EXHAUSTED', 'canExtend', v_can_extend, 'authorizations', v_count,
+        'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits);
     end if;
     raise;
   end;
@@ -426,12 +481,13 @@ begin
   if v_res.was_duplicate and not exists (select 1 from public.usage_reservations r where r.id = v_res.reservation_id and r.job_ref = p_job_id::text and r.status = 'RESERVED') then
     raise exception 'IDEMPOTENCY_KEY_REUSED';
   end if;
-  if v_extra > 0 then
-    update public.verify_billing
-       set authorized_total_credits = authorized_total_credits + v_extra,
-           authorizations = authorizations || jsonb_build_array(jsonb_build_object('credits', v_extra, 'at', now(), 'kind', 'ADDITIONAL', 'key', p_idempotency_key)),
-           updated_at = now()
+  -- The authorisation counts only once the money it stands for is held.
+  if v_new > 0 then
+    insert into public.verify_billing_authorizations (job_id, seq, kind, credits, idempotency_key, reservation_id)
+    values (p_job_id, v_count + 1, v_kind, v_new, 'verify:' || p_job_id || ':auth' || (v_count + 1), v_res.reservation_id);
+    update public.verify_billing set authorized_total_credits = authorized_total_credits + v_new, updated_at = now()
      where job_id = p_job_id returning * into v_b;
+    v_count := v_count + 1;
   end if;
 
   -- A Verify can outlive the generic reservation TTL; the job keeps it alive.
@@ -447,7 +503,22 @@ begin
 
   return jsonb_build_object('ok', true, 'duplicate', false, 'sessionId', v_s.id, 'reservationId', v_s.reservation_id,
     'reservedCredits', v_s.reserved_credits, 'authorizedTotal', v_b.authorized_total_credits, 'chargedTotal', v_b.charged_total_credits,
-    'balanceAfter', v_res.balance_after);
+    'authorizations', v_count, 'extended', v_kind = 'EXTENSION', 'balanceAfter', v_res.balance_after);
+end;
+$$;
+
+-- What a research stage may cost at most, in credits, priced the Verify way
+-- from the policy's conservative estimate. Used BEFORE the stage starts.
+create or replace function public.verify_stage_credits(p_stage text)
+returns numeric
+language plpgsql stable security definer set search_path to ''
+as $$
+declare
+  v_pol jsonb := public.verify_budget_policy();
+  v_usd numeric := coalesce(public.verify_num(v_pol->'stage_estimates_usd'->>upper(coalesce(p_stage, ''))),
+                            public.verify_num(v_pol->'stage_estimates_usd'->>'DEFAULT'), 0.10);
+begin
+  return (public.verify_price_for_cost(public.billing_landed_cogs_cents(round(greatest(v_usd, 0) * 100, 4), 0, 0, 0))->>'credits')::numeric;
 end;
 $$;
 
@@ -492,11 +563,41 @@ begin
     'accrued', v_accrued,
     'used', v_b.charged_total_credits + v_accrued,
     'remaining', greatest(v_b.authorized_total_credits - v_b.charged_total_credits - v_accrued, 0),
+    'authorizations', (select count(*) from public.verify_billing_authorizations where job_id = p_job_id),
+    'increment', coalesce((v_pol->>'increment_credits')::numeric, 25),
+    'maxBudget', coalesce((v_pol->>'max_budget_credits')::numeric, 100),
+    'canExtend', (select count(*) from public.verify_billing_authorizations where job_id = p_job_id) < coalesce((v_pol->>'max_authorizations')::integer, 4)
+                 and v_b.authorized_total_credits + coalesce((v_pol->>'increment_credits')::numeric, 25) <= coalesce((v_pol->>'max_budget_credits')::numeric, 100),
     'usageState', case when v_s.id is null then 'SETTLED' when v_cost->>'state' = 'PARTIAL' then 'CALCULATING' else 'LIVE' end,
     'lastSession', case when v_last.id is null then null else jsonb_build_object(
         'outcome', v_last.outcome, 'charged', v_last.charged_credits, 'released', v_last.released_credits, 'closedAt', v_last.closed_at) end,
     'budgetGuard', v_s.id is not null and (v_b.charged_total_credits + v_accrued) >= v_b.authorized_total_credits * coalesce((v_pol->>'budget_guard_bps')::numeric, 9000) / 10000,
     'sessions', (select count(*) from public.verify_billing_sessions where job_id = p_job_id));
+end;
+$$;
+
+-- ── 8b. The gate before every chargeable stage ──────────────────────────
+-- GO      the stage fits in what is left of the authorisation
+-- AWAIT   it does not, and one more +25 may be authorised: ask first
+-- LIMIT   it does not, and the 100-credit maximum is reached
+-- NONE    this job is not budgeted (billing off) or holds no open session
+create or replace function public.verify_budget_gate(p_job_id uuid, p_stage text)
+returns jsonb
+language plpgsql security definer set search_path to ''
+as $$
+declare
+  v jsonb := public.verify_billing_state(p_job_id);
+  v_need numeric;
+begin
+  if v is null or v->>'state' <> 'ACTIVE' then return jsonb_build_object('decision', 'NONE'); end if;
+  v_need := public.verify_stage_credits(p_stage);
+  -- The synthesis is the last paid step: it must also cover the final report it writes.
+  if upper(p_stage) = 'SYNTHESIS' then v_need := v_need + public.verify_stage_credits('REPORT'); end if;
+  return jsonb_build_object(
+    'decision', case when (v->>'remaining')::numeric >= v_need then 'GO'
+                     when (v->>'canExtend')::boolean then 'AWAIT' else 'LIMIT' end,
+    'stage', upper(p_stage), 'needed', v_need, 'remaining', (v->>'remaining')::numeric,
+    'authorizedTotal', (v->>'authorizedTotal')::numeric, 'authorizations', (v->>'authorizations')::integer);
 end;
 $$;
 
@@ -576,7 +677,8 @@ begin
       'landed_cogs_cents', greatest(v_landed - v_b.landed_charged_cents, 0),
       'tax_cents', 0,
       'metadata', jsonb_build_object('verify_job_id', p_job_id, 'session', v_s.seq, 'outcome', p_outcome,
-                                     'price', v_price, 'cost_state', v_cost->>'state', 'charged_before', v_s.charged_before)),
+                                     'price', v_price, 'cost_state', v_cost->>'state', 'charged_before', v_s.charged_before,
+                                     'overrun_credits', greatest((v_price->>'credits')::numeric - v_b.authorized_total_credits, 0))),
     case p_outcome when 'COMPLETE' then 'SUCCESS' when 'STOPPED' then 'CANCELLED' else 'PARTIAL' end);
 
   update public.verify_billing_sessions
@@ -587,7 +689,10 @@ begin
      set charged_total_credits = charged_total_credits + v_set.settled_credits,
          landed_charged_cents = greatest(landed_charged_cents, v_landed),
          state = case when p_outcome = 'STOPPED' then 'PAUSED' else 'SETTLED' end,
-         needs_review = needs_review or v_review or v_set.clamped,
+         -- A priced cost above everything the customer authorised is absorbed
+         -- by HOMATCH, never charged, and recorded for finance review.
+         needs_review = needs_review or v_review or v_set.clamped
+                        or (v_price->>'credits')::numeric > v_b.authorized_total_credits,
          updated_at = now()
    where job_id = p_job_id
   returning * into v_b;
@@ -627,7 +732,8 @@ language plpgsql stable security definer set search_path to ''
 as $$
 declare
   v_pol jsonb := public.verify_budget_policy();
-  v_max numeric := coalesce((v_pol->>'max_budget_credits')::numeric, 25);
+  -- The launch asks for the INITIAL authorisation only (25), never the 100 maximum.
+  v_max numeric := coalesce((v_pol->>'initial_credits')::numeric, 25);
   v_uid uuid := auth.uid();
 begin
   return jsonb_build_object(
@@ -654,7 +760,9 @@ begin
     'public.verify_job_paused_at(jsonb, timestamptz)',
     'public.verify_price_for_cost(numeric)',
     'public.verify_job_cost(uuid)',
-    'public.verify_billing_open(uuid, uuid, text, numeric)',
+    'public.verify_billing_open(uuid, uuid, text, boolean, integer)',
+    'public.verify_stage_credits(text)',
+    'public.verify_budget_gate(uuid, text)',
     'public.verify_billing_state(uuid)',
     'public.verify_billing_close(uuid, text)',
     'public.verify_job_requeue_unfinished(uuid)'

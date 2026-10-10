@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { isPausable, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../pauseResume.ts';
+import { isPausable, resumeTarget, settlementOutcome, optionalStageFits, publicBilling, budgetHold } from '../pauseResume.ts';
 
 const agent = () => readFileSync(new URL('../../../supabase/functions/research-agent/index.ts', import.meta.url), 'utf8');
 
@@ -62,10 +62,49 @@ test('the customer sees used / remaining / returned — never costs, VAT or marg
     state: 'PAUSED', authorizedTotal: '25.0000', chargedTotal: '8.0000', used: '8.0000', remaining: '17.0000', usageState: 'SETTLED',
     lastSession: { outcome: 'STOPPED', charged: '8.0000', released: '17.0000' }, budgetGuard: false, sessions: 1,
   });
-  assert.deepEqual(b, { state: 'PAUSED', authorized: 25, used: 8, remaining: 17, charged: 8, live: false, calculating: false, lastReturned: 17, lastCharged: 8 });
+  assert.deepEqual(b, { state: 'PAUSED', authorized: 25, used: 8, remaining: 17, charged: 8, live: false, calculating: false, lastReturned: 17, lastCharged: 8, authorizations: null, increment: null, maxBudget: null, canExtend: false, hold: null });
+  const x = publicBilling({ state: 'PAUSED', authorizedTotal: 50, chargedTotal: 41, used: 41, remaining: 9, authorizations: 2, increment: 25, maxBudget: 100, canExtend: true }, { reason: 'BUDGET' });
+  assert.equal(x.authorizations, 2);
+  assert.equal(x.canExtend, true);
+  assert.equal(x.hold, 'APPROVAL', 'the +25 question is the server\'s, never inferred by the page');
   assert.equal(publicBilling(null), null);
   const json = JSON.stringify(b).toLowerCase();
   for (const word of ['vat', 'margin', 'cogs', 'cost', 'landed', 'contingency']) assert.ok(!json.includes(word), word);
+});
+
+test('budget hold: approval, the 100 maximum, or an ordinary stop', () => {
+  assert.equal(budgetHold({ reason: 'BUDGET' }), 'APPROVAL');
+  assert.equal(budgetHold({ reason: 'BUDGET_LIMIT' }), 'LIMIT');
+  assert.equal(budgetHold({ status: 'RUNNING', stage: 'MARKET_WAITING' }), null);
+  assert.equal(budgetHold(null), null);
+  // A job held before FINANCIAL_ENTITY continues by re-reading its queue (no worker job yet).
+  assert.deepEqual(resumeTarget({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', reason: 'BUDGET' }), { status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', requeueOfficial: false, restartBrowser: false });
+  // Held before MARKET: continues at MARKET_READY, nothing earlier is repeated.
+  assert.deepEqual(resumeTarget({ status: 'CREATED', stage: 'MARKET_READY', reason: 'BUDGET' }), { status: 'CREATED', stage: 'MARKET_READY', requeueOfficial: false, restartBrowser: false });
+  // Awaiting approval holds nothing: a paused job's open session is closed by the sweep.
+  assert.equal(settlementOutcome({ status: 'PAUSED' }, { maxSynthesisAttempts: 4, synthesisGraceMs: 1 }), 'STOPPED');
+});
+
+test('research-agent: every chargeable stage asks the budget gate first; only an explicit approval extends', () => {
+  const src = agent();
+  const adv = src.slice(src.indexOf('async function advance('), src.indexOf("const a = String(j.stage || '').match(/^(IDENTITY|OFFICIAL_COLLECTION|PUBLIC_RESEARCH|MARKET|SYNTHESIS)_WAITING$/);\n    if (!a || !j.response_id) return;"));
+  for (const [gate, call] of [['IDENTITY', "launch(sb, k, m, j, 'IDENTITY', l)"], ['OFFICIAL', 'startBrowser(sb, j)'], ['OFFICIAL_COLLECTION', "launch(sb, k, m, j, 'OFFICIAL_COLLECTION', l)"], ['PUBLIC_RESEARCH', "launch(sb, k, m, j, 'PUBLIC_RESEARCH', l)"], ['MARKET', "launch(sb, k, m, j, 'MARKET', l)"], ['SYNTHESIS', "launch(sb, k, m, j, 'SYNTHESIS', l)"]]) {
+    const g = adv.indexOf(`holdForBudget(sb, j, '${gate}')`);
+    assert.ok(g > 0 && g < adv.indexOf(call), `${gate} is gated before it launches`);
+  }
+  const fq = src.slice(src.indexOf('async function processFinancialQueue('), src.indexOf('async function pollFinancialEntity('));
+  assert.ok(fq.indexOf("holdForBudget(sb, { ...j, result_json: prior }, 'FINANCIAL_ENTITY'") < fq.indexOf('return startFinancialEntity('));
+  assert.match(src, /budgetGate\(sb, j\.id, 'DEVELOPER_ADS'\)/);
+  // Held = PAUSED with the reason, conditional on the row, then the session is closed (nothing held).
+  const hold = src.slice(src.indexOf('async function holdForBudget('), src.indexOf('async function holdForBudget(') + 1400);
+  assert.match(hold, /reason: decision === 'AWAIT' \? 'BUDGET' : 'BUDGET_LIMIT'/);
+  assert.match(hold, /\.eq\('status', j\.status\)\.eq\('stage', j\.stage\)/);
+  assert.match(hold, /closeBilling\(sb, j\.id, 'STOPPED'\)/);
+  // Continue: the approval names its screen; a held job never continues without it; the limit never extends.
+  assert.match(src, /p_extend: extend, p_expected_authorizations: extend \? expected : null/);
+  assert.match(src, /held === 'BUDGET' && !extend/);
+  assert.match(src, /held === 'BUDGET_LIMIT'/);
+  assert.doesNotMatch(src, /approveExtraCredits|p_extra_credits/);
 });
 
 test('research-agent: reserves before work, stops cooperatively, never advances a paused job', () => {

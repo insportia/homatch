@@ -420,6 +420,13 @@ app.post('/research/:id/resume', auth, async (req: any, res: any) => {
   return humanActionResponse(res, req.params.id, r);
 });
 
+// The customer stopped the investigation: stop starting sources, abort the
+// browser, keep what was collected (GET /research/:id still returns it).
+app.post('/research/:id/cancel', auth, async (req: any, res: any) => {
+  const r = await orchestrator.cancel(req.params.id);
+  res.status(r.ok ? 200 : 404).json(r);
+});
+
 app.post('/research/:id/skip', auth, async (req: any, res: any) => {
   const r = await orchestrator.skip(req.params.id);
   return humanActionResponse(res, req.params.id, r, { skipped: r.source });

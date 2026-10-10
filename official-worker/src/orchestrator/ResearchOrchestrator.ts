@@ -929,6 +929,34 @@ export class ResearchOrchestrator {
     return { ok: true, code: 'OK', status: 'RUNNING' };
   }
 
+  /**
+   * The customer stopped the investigation. Cooperative and immediate: the
+   * job is marked abandoned FIRST (the run loop and an in-flight step check
+   * it and never write back), its browser is closed (aborting the page in
+   * use), a queued job leaves the line, and no further source is started.
+   * Results already collected stay on the job for the caller to keep.
+   */
+  async cancel(jobId: string): Promise<{ ok: boolean; code: string; status?: string; results?: number }> {
+    const job = this.jobs.get(jobId);
+    if (!job) return { ok: false, code: 'NOT_FOUND' };
+    if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(job.status)) return { ok: true, code: 'ALREADY_FINISHED', status: job.status, results: job.results.length };
+    job._abandoned = true;
+    this.waiting = this.waiting.filter((w) => w.job.id !== jobId);
+    this.prefetch.delete(`${jobId}|mygov`);
+    this.prefetch.delete(`${jobId}|tas`);
+    await closeJobBrowser(this.jobBrowsers.get(jobId) ?? null, 'job_cancelled');
+    this.jobBrowsers.delete(jobId);
+    this.sessions.delete(jobId);
+    captchaService.forgetJob(jobId);
+    job.humanVerification = null;
+    job.status = 'CANCELLED';
+    job.stage = 'CANCELLED';
+    job.updatedAt = now();
+    this.active.delete(jobId);
+    logBrowserLifecycle('job_cancelled', { jobId, resultsKept: job.results.length });
+    return { ok: true, code: 'CANCELLED', status: job.status, results: job.results.length };
+  }
+
   async skip(jobId: string): Promise<HumanActionResult> {
     const job = this.jobs.get(jobId);
     const session = this.sessions.get(jobId);

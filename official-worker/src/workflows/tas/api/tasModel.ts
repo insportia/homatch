@@ -14,6 +14,7 @@
 // attachments with motionId = null countable — see dwr.ts's header.
 
 import { walkObjects, toPlain, type DwrValue } from './dwr.js';
+import { isSensitiveKey, redactPersonalData } from './privacy.js';
 
 /** The repository's local Buffer type shim exposes only the string overload. */
 export const bytesToBuffer = Buffer.from as unknown as (bytes: Uint8Array) => Buffer;
@@ -57,23 +58,59 @@ export function scalar(v: unknown): string | null {
   return null;
 }
 
-/** A date value in a DWR reply: a Date, epoch millis, ISO, or DD/MM/YYYY|DD.MM.YYYY. */
-export function toIsoDate(v: unknown): string | null {
-  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString();
-  if (typeof v === 'number' && v > 315532800000 && v < 4102444800000) return new Date(v).toISOString();
+/** Georgian month-name stems (nominative and case forms share them). */
+const KA_MONTHS: Array<[RegExp, number]> = [
+  [/^იანვ/, 1], [/^თებ/, 2], [/^მარტ/, 3], [/^აპრ/, 4], [/^მაის/, 5], [/^ივნ/, 6],
+  [/^ივლ/, 7], [/^აგვ/, 8], [/^სექტ/, 9], [/^ოქტ/, 10], [/^ნოემ/, 11], [/^დეკ/, 12],
+];
+
+function utcMs(y: number, mo: number, d: number, h = 0, mi = 0, s = 0): number | null {
+  if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && h <= 23 && mi <= 59 && s <= 59)) return null;
+  const ms = Date.UTC(y, mo - 1, d, h, mi, s);
+  const back = new Date(ms);
+  // 31/02 must not silently roll into March.
+  return back.getUTCMonth() === mo - 1 && back.getUTCDate() === d ? ms : null;
+}
+
+/**
+ * Deterministic date parsing for TAS values (epoch ms, never local time):
+ * Date objects, epoch millis, ISO (a zone-less ISO time is read as UTC),
+ * DD/MM/YYYY · DD.MM.YYYY · DD-MM-YYYY with optional HH:MM[:SS],
+ * YYYY.MM.DD / YYYY/MM/DD, and Georgian month names
+ * ("17 სექტემბერი 2026", "17 სექტემბრის 2026 წ."). Day-first always —
+ * Georgian and European registers never write month-first.
+ */
+export function parseTasDateMs(v: unknown): number | null {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.getTime();
+  if (typeof v === 'number') return v > 315532800000 && v < 4102444800000 ? v : null;
   if (typeof v !== 'string') return null;
-  const s = v.trim();
-  let m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/.exec(s);
+  const s = v.replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  let m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  if (m) return utcMs(+m[3], +m[2], +m[1], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
+  m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?\s*(Z|[+-]\d{2}:?\d{2})?/.exec(s);
   if (m) {
-    const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0));
-    return Number.isNaN(d.getTime()) || +m[2] > 12 ? null : d.toISOString();
+    if (m[7]) {
+      const t = Date.parse(s);
+      return Number.isNaN(t) ? null : t;
+    }
+    return utcMs(+m[1], +m[2], +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
   }
-  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  m = /^(\d{4})[./](\d{1,2})[./](\d{1,2})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  if (m) return utcMs(+m[1], +m[2], +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
+  m = /^(\d{1,2})\s+([ა-ჿ]+)\s+(\d{4})(?:\s*წ\.?)?(?:[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
   if (m) {
-    const d = new Date(s.length === 10 ? `${s}T00:00:00Z` : s);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    const word = m[2];
+    const month = KA_MONTHS.find(([re]) => re.test(word))?.[1];
+    return month ? utcMs(+m[3], month, +m[1], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0) : null;
   }
   return null;
+}
+
+/** A date value in a DWR reply as ISO (accepted forms: parseTasDateMs). */
+export function toIsoDate(v: unknown): string | null {
+  const ms = parseTasDateMs(v);
+  return ms === null ? null : new Date(ms).toISOString();
 }
 
 /** The array of result rows inside a search reply, wherever the server put it. */
@@ -193,7 +230,9 @@ export interface TasValue {
   key: string;
   label: string | null;
   value: string;
-  group: 'docValues' | 'docClassCalculatorValues' | 'archDocMeta' | 'other';
+  /** Where the pair sits in the reply graph (audit / de-duplication). */
+  path: string;
+  group: 'docValues' | 'docClassCalculatorValues' | 'archDocMeta' | 'party' | 'form' | 'other';
 }
 
 export interface TasCaseDetail {
@@ -211,6 +250,8 @@ export interface TasCaseDetail {
   responseText: string | null;
   parties: TasParty[];
   values: TasValue[];
+  /** Label/value pairs found in the graph BEFORE privacy filtering (≥ values.length). */
+  valuesDiscovered: number;
   attachments: TasAttachment[];
   motions: TasMotion[];
   /** Scalar fields of the root object that no mapping above consumed. */
@@ -282,35 +323,127 @@ function extOf(name: string | null): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
+const LABEL_KEYS = ['name', 'label', 'title', 'fieldName', 'paramName', 'valueName', 'caption', 'fieldLabel', 'attrName', 'propertyName', 'typeName', 'key'];
+const VALUE_KEYS = ['value', 'val', 'textValue', 'stringValue', 'numberValue', 'numValue', 'doubleValue', 'dateValue', 'valueText', 'fieldValue', 'displayValue', 'text'];
+
 function valueLabel(o: Record<string, any>): string | null {
-  return scalar(o.name ?? o.label ?? o.title ?? o.fieldName ?? o.paramName ?? o.valueName ?? o.typeName ?? o.key);
+  for (const k of LABEL_KEYS) {
+    const s = scalar(o[k]);
+    if (s) return s;
+  }
+  return null;
 }
 function valueValue(o: Record<string, any>): string | null {
-  const v = o.value ?? o.val ?? o.textValue ?? o.stringValue ?? o.numberValue ?? o.numValue ?? o.doubleValue ?? o.dateValue ?? o.valueText;
-  return v instanceof Date ? v.toISOString() : scalar(v);
+  for (const k of VALUE_KEYS) {
+    const v = o[k];
+    if (v === undefined || v === null || v === '') continue;
+    const s = v instanceof Date ? (Number.isNaN(v.getTime()) ? null : v.toISOString()) : scalar(v);
+    if (s) return s;
+  }
+  return null;
 }
 
-function collectValues(arr: unknown, group: TasValue['group'], out: TasValue[]): void {
+/** Value collector: every pair counted as discovered; sensitive ones never kept; text redacted. */
+class ValueSink {
+  readonly out: TasValue[] = [];
+  discovered = 0;
+  private paths = new Set<string>();
+  add(v: Omit<TasValue, 'value'> & { value: string }, sensitiveHint?: string | null): void {
+    if (this.paths.has(v.path)) return;
+    this.paths.add(v.path);
+    this.discovered++;
+    if (isSensitiveKey(v.key) || isSensitiveKey(v.label) || isSensitiveKey(sensitiveHint)) return;
+    this.out.push({ ...v, label: v.label === null ? null : redactPersonalData(v.label).slice(0, 300), value: redactPersonalData(v.value).slice(0, 2000) });
+  }
+}
+
+function collectValues(arr: unknown, group: TasValue['group'], sink: ValueSink, base: string): void {
   if (Array.isArray(arr)) {
-    for (const item of arr) {
-      if (!item || typeof item !== 'object') continue;
+    arr.forEach((item, i) => {
+      if (!item || typeof item !== 'object') return;
       const label = valueLabel(item as any);
       const value = valueValue(item as any);
-      if (!value) continue;
-      out.push({ key: scalar((item as any).code ?? (item as any).id ?? label) ?? `${group}.${out.length}`, label, value, group });
-    }
+      if (!value) return;
+      sink.add({ key: scalar((item as any).code ?? (item as any).id ?? label) ?? `${group}.${i}`, label, value, group, path: `${base}[${i}]` });
+    });
   } else if (arr && typeof arr === 'object' && !(arr instanceof Date)) {
     for (const [k, v] of Object.entries(arr as Record<string, unknown>)) {
       if (v && typeof v === 'object' && !(v instanceof Date)) {
         const label = valueLabel(v as any) ?? k;
         const value = valueValue(v as any);
-        if (value) out.push({ key: k, label, value, group });
+        if (value) sink.add({ key: k, label, value, group, path: `${base}.${k}` });
         continue;
       }
-      const value = scalar(v);
-      if (value) out.push({ key: k, label: k, value, group });
+      const value = v instanceof Date ? toIsoDate(v) : scalar(v);
+      if (value) sink.add({ key: k, label: k, value, group, path: `${base}.${k}` });
     }
   }
+}
+
+/** Scalar fields of a named container (applicant, co-applicant, document type). */
+function flattenScalars(o: unknown, group: TasValue['group'], sink: ValueSink, base: string): void {
+  if (!o || typeof o !== 'object' || o instanceof Date || Array.isArray(o)) return;
+  for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+    const value = v instanceof Date ? toIsoDate(v) : scalar(v);
+    if (value) sink.add({ key: k, label: k, value, group, path: `${base}.${k}` });
+  }
+}
+
+/**
+ * Every label/value pair anywhere in a DWR reply graph: the named value
+ * groups, the applicant/co-applicant/type containers, and any object shaped
+ * {name|label|title|key…, value|text…}. Personal identifiers, phones and
+ * e-mails are counted as discovered but never kept.
+ */
+export function extractLabelValuePairs(data: DwrValue, group: TasValue['group'] = 'other'): { values: TasValue[]; discovered: number } {
+  const sink = new ValueSink();
+  collectGraphValues(data, sink, group);
+  return { values: sink.out, discovered: sink.discovered };
+}
+
+const CASE_KEYS = [
+  'documentId', 'docId', 'documentNo', 'regNumber', 'registrationNumber', 'docName', 'title', 'regDate', 'registrationDate', 'createDate',
+  'docStatusName', 'statusName', 'status', 'address', 'objectAddress', 'naprCadCode', 'cadCode', 'docAuthor', 'coApplicants',
+  'docValues', 'docClassCalculatorValues', 'archDocMeta', 'archDocType', 'attachedFiles', 'motions', 'docMotions', 'lastMotion', 'responseText',
+];
+const isPlainObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);
+const caseKeyScore = (o: Record<string, any>) => CASE_KEYS.reduce((n, k) => n + (o[k] !== undefined && o[k] !== null ? 1 : 0), 0);
+
+/**
+ * The object that IS the case. A reply may wrap it — production replies of
+ * getUserDocumentLastMotion carry a root `isSuccess` (job 220ed087: the only
+ * unmapped root key), the same envelope as the search reply — so the case
+ * fields sit one level down. The root wins ties; a child object (or the
+ * first element of a child array) wins only when it carries more case fields.
+ */
+export function caseRootOf(data: DwrValue): { root: Record<string, any>; path: string } {
+  const root = isPlainObj(data) ? data : {};
+  let best = { root, path: '$', score: caseKeyScore(root) };
+  for (const [k, v] of Object.entries(root)) {
+    const cand = isPlainObj(v) ? { o: v, path: `$.${k}` } : Array.isArray(v) && isPlainObj(v[0]) ? { o: v[0] as Record<string, any>, path: `$.${k}[0]` } : null;
+    if (!cand) continue;
+    const score = caseKeyScore(cand.o);
+    if (score > best.score) best = { root: cand.o, path: cand.path, score };
+  }
+  return { root: best.root, path: best.path };
+}
+
+function collectGraphValues(data: DwrValue, sink: ValueSink, fallbackGroup: TasValue['group']): void {
+  const { root, path: rp } = caseRootOf(data);
+  collectValues(root.docValues, 'docValues', sink, `${rp}.docValues`);
+  collectValues(root.docClassCalculatorValues, 'docClassCalculatorValues', sink, `${rp}.docClassCalculatorValues`);
+  collectValues(root.archDocMeta, 'archDocMeta', sink, `${rp}.archDocMeta`);
+  flattenScalars(root.docAuthor, 'party', sink, `${rp}.docAuthor`);
+  if (Array.isArray(root.coApplicants)) root.coApplicants.forEach((c: unknown, i: number) => flattenScalars(c, 'party', sink, `${rp}.coApplicants[${i}]`));
+  flattenScalars(root.archDocType, 'archDocMeta', sink, `${rp}.archDocType`);
+  walkObjects(data, (o, path) => {
+    if (o.attachedFileId !== undefined) return; // a file record, not a form field
+    const label = valueLabel(o as any);
+    const value = valueValue(o as any);
+    if (!label || !value || label === value) return;
+    const key = scalar((o as any).code ?? (o as any).id ?? (o as any).key) ?? label;
+    sink.add({ key, label, value, group: fallbackGroup, path }, scalar((o as any).type ?? (o as any).fieldType));
+  });
 }
 
 const ROOT_CONSUMED = new Set([
@@ -318,32 +451,32 @@ const ROOT_CONSUMED = new Set([
   'archDocType', 'attachedFiles', 'motions', 'docMotions', 'lastMotion', 'regNumber', 'registrationNumber', 'docNumber',
   'docName', 'title', 'name', 'address', 'objectAddress', 'naprCadCode', 'cadCode', 'cadastralCode', 'regDate',
   'registrationDate', 'createDate', 'docStatusName', 'statusName', 'status', 'description', 'projectDescription',
+  'docTypeName', 'archDocTypeName', 'docTypeText', 'projectName', 'objectName', 'subject', 'docStatusText', 'statusText', 'stateName', 'docStatus',
 ]);
 
 /** Normalise one `getUserDocumentLastMotion` reply graph. */
 export function normalizeCaseDetail(documentId: string, data: DwrValue, objectCount = 0): TasCaseDetail {
-  const root = (data && typeof data === 'object' && !Array.isArray(data) && !(data instanceof Date) ? data : {}) as Record<string, any>;
+  const wrapper = isPlainObj(data) ? data : {};
+  const { root, path: rootPath } = caseRootOf(data);
   const parties: TasParty[] = [];
   const attachments = new Map<string, TasAttachment>();
   const motions = new Map<string, TasMotion>();
-  const values: TasValue[] = [];
+  const sink = new ValueSink();
   const cadastral = new Set<string>();
 
   const author = root.docAuthor;
   if (author && typeof author === 'object') {
-    const p = partyFrom(author, roleFromKey('docAuthor', author), '$.docAuthor');
+    const p = partyFrom(author, roleFromKey('docAuthor', author), `${rootPath}.docAuthor`);
     if (p) parties.push(p);
   }
   if (Array.isArray(root.coApplicants)) {
     root.coApplicants.forEach((c: any, i: number) => {
       if (!c || typeof c !== 'object') return;
-      const p = partyFrom(c, roleFromKey('coApplicants', c), `$.coApplicants[${i}]`);
+      const p = partyFrom(c, roleFromKey('coApplicants', c), `${rootPath}.coApplicants[${i}]`);
       if (p) parties.push(p);
     });
   }
-  collectValues(root.docValues, 'docValues', values);
-  collectValues(root.docClassCalculatorValues, 'docClassCalculatorValues', values);
-  collectValues(root.archDocMeta, 'archDocMeta', values);
+  collectGraphValues(data, sink, 'other');
 
   walkObjects(data, (o, path) => {
     const fileId = o.attachedFileId ?? (/attachedFiles\[\d+\]$/.test(path) ? (o.id ?? o.fileId) : undefined);
@@ -398,7 +531,7 @@ export function normalizeCaseDetail(documentId: string, data: DwrValue, objectCo
     // Further participants wherever the graph names them.
     for (const [k, v] of Object.entries(o)) {
       if (!v || typeof v !== 'object' || Array.isArray(v) || v instanceof Date) continue;
-      if (k === 'docAuthor' && path === '$') continue;
+      if (k === 'docAuthor' && path === rootPath) continue;
       if (!/(architect|developer|client|owner|engineer|designer|contractor|supervisor|expert|author|applicant|representative)/i.test(k)) continue;
       const p = partyFrom(v as any, roleFromKey(k, v as any), `${path}.${k}`);
       if (p) parties.push(p);
@@ -415,23 +548,25 @@ export function normalizeCaseDetail(documentId: string, data: DwrValue, objectCo
       motions.set(a.motionId, { motionId: a.motionId, date: null, name: null, status: null, decisionNumber: null, sourcePath: a.sourcePath });
 
   const unmapped: Record<string, string> = {};
-  for (const [k, v] of Object.entries(root)) {
-    if (ROOT_CONSUMED.has(k)) continue;
-    const s = scalar(v);
-    if (s) unmapped[k] = s.slice(0, 500);
+  for (const obj of root === wrapper ? [root] : [wrapper, root]) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (ROOT_CONSUMED.has(k) || unmapped[k] !== undefined) continue;
+      const s = scalar(v);
+      if (s) unmapped[k] = s.slice(0, 500);
+    }
   }
 
   const archType = root.archDocType;
   const docType =
     scalar(archType && typeof archType === 'object' ? (archType.name ?? archType.typeName ?? archType.title) : archType) ??
-    scalar(root.docTypeName);
+    scalar(root.docTypeName ?? root.archDocTypeName ?? root.docTypeText);
 
   return {
     documentId,
     docType,
-    title: scalar(root.docName ?? root.title ?? root.name) ?? docType,
+    title: scalar(root.docName ?? root.title ?? root.name ?? root.projectName ?? root.objectName ?? root.subject) ?? docType,
     registrationNumber: scalar(root.documentNo ?? root.regNumber ?? root.registrationNumber ?? root.docNumber),
-    status: scalar(root.docStatusName ?? root.statusName ?? root.status),
+    status: scalar(root.docStatusName ?? root.statusName ?? root.docStatusText ?? root.statusText ?? root.stateName ?? (typeof root.status === 'object' ? root.status?.name : root.status) ?? (typeof root.docStatus === 'object' ? root.docStatus?.name : root.docStatus)),
     submittedAt: toIsoDate(root.regDate ?? root.registrationDate ?? root.createDate),
     lastMotionAt: [...motions.values()].map((m) => m.date).filter(Boolean).sort().pop() ?? null,
     address: scalar(root.address ?? root.objectAddress),
@@ -439,7 +574,8 @@ export function normalizeCaseDetail(documentId: string, data: DwrValue, objectCo
     description: scalar(root.projectDescription ?? root.description),
     responseText: scalar(root.responseText),
     parties: dedupeParties(parties),
-    values,
+    values: sink.out,
+    valuesDiscovered: sink.discovered,
     attachments: [...attachments.values()].sort((a, b) => Number(a.attachedFileId) - Number(b.attachedFileId)),
     motions: [...motions.values()].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || Number(a.motionId) - Number(b.motionId)),
     unmapped,

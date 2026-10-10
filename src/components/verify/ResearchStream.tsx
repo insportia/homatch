@@ -57,6 +57,9 @@ export interface ResearchStreamProps {
   completedAt?: string | null;
   /** research_jobs.updated_at — where a stopped run's clock stops. */
   updatedAt?: string | null;
+  /** research_jobs.synthesis_state / synthesis_at — the clock runs until the report is READY. */
+  synthesisState?: string | null;
+  synthesisAt?: string | null;
   /** True only when a valid report has been persisted. */
   reportReady?: boolean;
   /** The customer-sanitised research result, for the real-fact reveal. */
@@ -82,6 +85,8 @@ export function ResearchStream({
   createdAt,
   completedAt,
   updatedAt,
+  synthesisState,
+  synthesisAt,
   reportReady = false,
   result,
   subject,
@@ -136,7 +141,7 @@ export function ResearchStream({
     return () => clearInterval(id);
   }, []);
 
-  const input = { status, stage, createdAt, completedAt, updatedAt, reportReady };
+  const input = { status, stage, createdAt, completedAt, updatedAt, reportReady, synthesisState, synthesisAt };
   const elapsed = formatElapsed(elapsedMs(input));
   // Synthesis is a real phase of the pipeline, so say so rather than leaving
   // the stream describing research that has already finished.

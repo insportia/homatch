@@ -50,6 +50,14 @@ interface Running {
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** The completed result, with this attempt's execution span (worker clock). */
+export function withExecStamp<T extends { result: unknown }>(outcome: T, task: Pick<QueueTask, 'attempts'>, startedAt: Date, finishedAt: Date = new Date()): T {
+  const r = outcome.result;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return outcome;
+  const _exec = { startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), ms: finishedAt.getTime() - startedAt.getTime(), attempt: task.attempts ?? null };
+  return { ...outcome, result: { ...(r as Record<string, unknown>), _exec } };
+}
+
 export class QueueRunner {
   private readonly o: Required<Omit<RunnerOptions, 'log' | 'sleep'>> & Pick<RunnerOptions, 'log'>;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -151,6 +159,10 @@ export class QueueRunner {
     }, beatMs);
     (beat as any).unref?.();
 
+    // When THIS attempt really started executing (the row's started_at is the
+    // FIRST claim). Read by src/verify/performance.ts to separate retry time
+    // from execution time; research-agent never forwards it to a customer.
+    const execStartedAt = new Date();
     let outcome: TaskOutcome;
     try {
       outcome = await this.o.executor(task, { signal: controller.signal, gateway: this.o.gateway, workerId: this.o.workerId });
@@ -167,7 +179,7 @@ export class QueueRunner {
     if (entry.lost) return;
     try {
       if (outcome.type === 'complete') {
-        const r = await this.o.gateway.complete(task, outcome);
+        const r = await this.o.gateway.complete(task, withExecStamp(outcome, task, execStartedAt));
         if (r?.ok) this.counters.completed++;
         else this.log('queue_complete_rejected', { task: task.id, reason: r?.reason });
       } else if (outcome.type === 'fail') {

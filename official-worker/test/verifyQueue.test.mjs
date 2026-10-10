@@ -4,7 +4,7 @@
 // Fake gateway throughout: no network, no database, no paid CAPTCHA.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { QueueRunner } from '../.tstest-build/queue/QueueRunner.js';
+import { QueueRunner, withExecStamp } from '../.tstest-build/queue/QueueRunner.js';
 import { compactResult, DOC_EXCERPT_CHARS, TOTAL_EXCERPT_CHARS, MAX_RESULT_CHARS, sha256 } from '../.tstest-build/queue/evidence.js';
 import { createVerifyExecutor } from '../.tstest-build/queue/executor.js';
 
@@ -154,7 +154,7 @@ test('evidence: the excerpt budget favours the newest documents and nothing is d
 
 test('evidence: an oversized structured result is stored whole before it is trimmed', async () => {
   const gw = fakeGateway();
-  const records = Array.from({ length: 4000 }, (_, i) => ({ i, blob: 'y'.repeat(400) }));
+  const records = Array.from({ length: 6000 }, (_, i) => ({ i, blob: "y".repeat(400) })); // > 2 MB
   const c = await compactResult({ traversal: { records } }, (sha, ct, body) => gw.upload(sha, ct, body));
   assert.equal(c.stats.trimmedStructure, true);
   assert.equal(gw.calls.upload.length, 1);
@@ -162,6 +162,24 @@ test('evidence: an oversized structured result is stored whole before it is trim
   assert.equal(c.result.traversal.records.length, 60);
   assert.equal(c.result.fullResultRef.chars, gw.calls.upload[0].chars);
   assert.ok(JSON.stringify(c.result).length < MAX_RESULT_CHARS);
+});
+
+test('evidence: the bound is UTF-8 bytes — a Georgian-heavy priority result fits the queue body', async () => {
+  // verify-queue refuses a body over 2.5 MB; Georgian is 3 bytes per character.
+  const gw = fakeGateway();
+  const geo = 'ქართული ტექსტი '.repeat(40_000); // ~600k characters, ~1.6 MB UTF-8
+  const docs = [
+    { id: 'p1', priority: 1, rawText: geo, textComplete: true },
+    { id: 'p2', priority: 2, rawText: geo, textComplete: true },
+  ];
+  const c = await compactResult({ documents: docs, traversal: { records: [] } }, (sha, ct, body) => gw.upload(sha, ct, body));
+  const bytes = Buffer.byteLength(JSON.stringify(c.result), 'utf8');
+  assert.ok(bytes <= MAX_RESULT_CHARS, `result is ${bytes} bytes`);
+  assert.ok(bytes < 2_500_000, 'would be refused by verify-queue');
+  const trimmed = c.result.documents.filter((d) => d.inlineTrimmedForSize);
+  assert.ok(trimmed.length >= 1, 'oversized priority text gives way inline');
+  for (const d of trimmed) assert.equal(d.textComplete, false, 'an inline-trimmed text never claims completeness');
+  assert.ok(c.result.fullResultRef?.path, 'the complete result is stored before trimming');
 });
 
 const noBrowser = { launchBrowser: async () => { throw new Error('no browser in this test'); }, closeBrowser: async () => {} };
@@ -235,4 +253,20 @@ test('executor: a transient CAPTCHA give-up gets ONE fresh retry; a rejection or
   assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'CAPTCHA_NO_CHANGE', retryable: true, retryAfterSeconds: 20 });
   assert.deepEqual(await exec(mkTask({ attempts: 2 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NO_CHANGE', retryable: false });
   assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:REJECTED', retryable: false });
+});
+
+test('a completed result carries the final attempt\'s execution span (performance only)', async () => {
+  const gw = fakeGateway({ queue: [mkTask({ attempts: 2 })] });
+  const r = runner(gw, async () => { await tick(15); return { type: 'complete', result: { status: 'SEARCH_CONFIRMED' } }; });
+  r.start();
+  await until(() => gw.calls.complete.length === 1);
+  await r.stop(100);
+  const done = gw.calls.complete[0];
+  assert.equal(done.result.status, 'SEARCH_CONFIRMED', 'the result itself is untouched');
+  assert.equal(done.result._exec.attempt, 2);
+  assert.ok(done.result._exec.ms >= 10);
+  assert.ok(Date.parse(done.result._exec.finishedAt) >= Date.parse(done.result._exec.startedAt));
+  // Non-object results pass through unchanged.
+  const raw = { type: 'complete', result: null };
+  assert.equal(withExecStamp(raw, { attempts: 1 }, new Date()), raw);
 });

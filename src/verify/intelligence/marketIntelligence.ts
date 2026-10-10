@@ -233,6 +233,8 @@ export type ListingState = 'ACTIVE' | 'EXPIRED' | 'UNKNOWN';
 export interface ScoredComparable {
   /** Never rendered in the primary report — the evidence explorer owns URLs. */
   url?: string;
+  /** Where the listing was read (portal / developer site), so a shown comparable carries its source. */
+  source?: string;
   tier: ComparableTier;
   /** 0..100. Internal; the customer sees its effect, not the number. */
   relevance: number;
@@ -772,6 +774,7 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
 
   return {
     url: text(c.url) || undefined,
+    source: text(c.source) || undefined,
     tier,
     state,
     condition,

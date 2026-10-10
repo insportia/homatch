@@ -32,6 +32,7 @@
 // Function.
 
 import { buildTasIntelligence } from './tasIntelligence.ts';
+import { buildOfficialDossier } from './officialDossier.ts';
 
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
@@ -148,6 +149,8 @@ export interface EvidencePackage {
   tasCite?: Record<string, string>;
   /** Developer Advertising Intelligence (Meta Ad Library), when the stage ran. */
   developerAds?: import('../developerAds.ts').DeveloperAdsView;
+  /** Team, specifications, documents and the two priority cases (officialDossier.ts). */
+  dossier?: import('./officialDossier.ts').OfficialDossier;
 }
 
 /* ------------------------------------------------------------------ *
@@ -220,8 +223,14 @@ export const TAS_EVENT_KA: Record<string, string> = {
   REFUSAL: 'უარი', SUSPENSION: 'შეჩერება', INSPECTION: 'შემოწმება', COMMISSIONING: 'ექსპლუატაციაში მიღება', DECISION: 'გადაწყვეტილება', OTHER: 'ჩანაწერი',
 };
 
-export function buildEvidencePackage(report: unknown): EvidencePackage {
+/**
+ * `opts.now` is the job's completion time: dated references later than it
+ * are cited dates, never decisions, and the result must not depend on the
+ * day a report happens to be rebuilt.
+ */
+export function buildEvidencePackage(report: unknown, opts: { now?: string | null } = {}): EvidencePackage {
   const r = obj(report);
+  const nowIso = opts.now && Number.isFinite(Date.parse(opts.now)) ? new Date(Date.parse(opts.now)).toISOString() : new Date().toISOString();
   const items: EvidenceItem[] = [];
   let n = 0;
   const add = (i: Omit<EvidenceItem, 'id'>): void => {
@@ -230,7 +239,7 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
   };
 
   /* ---- TAS: the official project history, consolidated ---- */
-  const tas = buildTasIntelligence(r);
+  const tas = buildTasIntelligence(r, nowIso);
   const tasCite: Record<string, string> = {};
   if (tas.available) {
     const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
@@ -684,7 +693,17 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
     truncated,
     ...(tas.available ? { tas, tasCite } : {}),
     ...(adsView ? { developerAds: adsView } : {}),
+    dossier: safeDossier(r, tas, nowIso),
   };
+}
+
+function safeDossier(r: unknown, tas: import('./tasIntelligence.ts').TasIntelligence, nowIso: string): import('./officialDossier.ts').OfficialDossier {
+  try {
+    return buildOfficialDossier(r, tas, nowIso);
+  } catch {
+    // A dossier is an enrichment: a malformed case never costs the report.
+    return { projectTeamV2: [], technicalSpecs: [], officialDocuments: [], priorityCases: [] };
+  }
 }
 
 /** Total evidence weight, used to decide how substantial a report may be. */

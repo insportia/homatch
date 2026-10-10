@@ -39,6 +39,8 @@ export interface RenderPdfOptions {
   preferText?: RegExp | null;
   /** Pages scanned for `preferText` (text layer only, cheap). */
   scanPages?: number;
+  /** Exact 1-based pages to render (e.g. scanned pages without a text layer); overrides the automatic choice. */
+  pages?: number[];
   timeoutMs?: number;
 }
 
@@ -114,7 +116,7 @@ export function createChromiumPdfRenderer(opts: { launch?: () => Promise<any>; e
         await page.goto(`${ORIGIN}/`);
         const b64 = bytesToBuffer(pdf).toString('base64');
         const work = page.evaluate(
-          async ({ b64, maxPages, longEdge, maxBytes, prefer, scanPages }: any) => {
+          async ({ b64, maxPages, longEdge, maxBytes, prefer, scanPages, exact }: any) => {
             const g0 = globalThis as any;
             const lib = g0['pdfjs-dist/build/pdf'];
             lib.GlobalWorkerOptions.workerSrc = '/pdf.worker.js';
@@ -144,7 +146,7 @@ export function createChromiumPdfRenderer(opts: { launch?: () => Promise<any>; e
               for (const p of scanned) if (re.test(await textOf(p))) hits.push(p);
               order = [...hits, ...order.filter((p) => !hits.includes(p))];
             }
-            const chosen = order.slice(0, maxPages).sort((a, b) => a - b);
+            const chosen = (Array.isArray(exact) && exact.length ? exact.filter((p: number) => p >= 1 && p <= n) : order).slice(0, maxPages).sort((a: number, b: number) => a - b);
             const out: any[] = [];
             for (const p of chosen) {
               const pg = await doc.getPage(p);
@@ -179,6 +181,7 @@ export function createChromiumPdfRenderer(opts: { launch?: () => Promise<any>; e
             maxBytes: o.maxBytes ?? 8 * 1024 * 1024,
             prefer: o.preferText ? o.preferText.source : null,
             scanPages: o.scanPages ?? 12,
+            exact: Array.isArray(o.pages) ? o.pages.filter((p) => Number.isInteger(p) && p >= 1) : null,
           },
         );
         // A timed-out evaluate rejects later (page closed): never unhandled.

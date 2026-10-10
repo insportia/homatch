@@ -16,8 +16,8 @@
 // shots drive the walkthrough's entry, its room-to-room tour, and later a
 // cinematic path (a sequence of shots along the room graph).
 
-import { COMFORT_RADIUS_M, EYE_HEIGHT_M, isFree, nearestFree, type WalkModel } from './navigation.ts';
-import { roomContaining, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
+import { COMFORT_RADIUS_M, EYE_HEIGHT_M, distanceToObb, isFree, nearestFree, type WalkModel } from './navigation.ts';
+import { pointInPolygon, roomContaining, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
 
 export interface CameraShot {
   kind: 'ENTRY' | 'ROOM';
@@ -41,8 +41,23 @@ export interface RoomGraph {
   entryDoorId: string | null;
 }
 
-const MIN_HFOV = 62;
+/** Never narrower than an interior photographer's lens: a narrow room seen down its length stays a room, not a tunnel. */
+const MIN_HFOV = 74;
+/** A room shot's depth counts up to this (beyond it, a longer view is not a better one). */
+const FRAME_DEPTH_M = 4;
+/** How much the furnished design in frame weighs in a room shot (per m² of pieces, near ones more), and its cap. */
+const FRAMED_WEIGHT = 1.2;
+const FRAMED_CAP_M2 = 4;
 const MAX_HFOV = 92;
+/**
+ * Where a visitor stands to see a room: in open floor, at least this far from any standing piece (never wedged
+ * behind a sofa's back or against a wardrobe), whenever the room has such a spot.
+ */
+export const STANCE_CLEAR_M = 0.6;
+/** Open-floor spots are also looked for on a grid this fine (m), not only at the room's corners and edges. */
+const STANCE_GRID_M = 0.4;
+/** A standing piece this near in front of the eye (m) hides the room behind it: such a view is marked down. */
+const FOREGROUND_M = 1.3;
 
 /** Which rooms each door joins, found by stepping through the opening on both sides. */
 export function roomGraph(space: SpaceModel): RoomGraph {
@@ -180,12 +195,29 @@ function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: 
     }
   }
 
+  // Open floor anywhere in the room (a room's corners and edges can all be furnished).
+  const xs = poly.map((p) => p.x); const ys = poly.map((p) => p.y);
+  for (let x = Math.min(...xs) + STANCE_GRID_M / 2; x < Math.max(...xs); x += STANCE_GRID_M) {
+    for (let y = Math.min(...ys) + STANCE_GRID_M / 2; y < Math.max(...ys); y += STANCE_GRID_M) {
+      if (pointInPolygon({ x, y }, poly)) candidates.push({ x, y });
+    }
+  }
+  const clearOfPieces = (p: Point) => walk.furniture.reduce((m, o) => Math.min(m, distanceToObb(p, o)), Infinity);
+
+  // What the room is about: the standing pieces in it (their centres and footprints), as the walk sees them.
+  const pieces = walk.furniture.filter((o) => pointInPolygon({ x: o.cx, y: o.cy }, poly)).map((o) => ({ at: { x: o.cx, y: o.cy }, area: 4 * o.hw * o.hd }));
+  const pieceArea = pieces.reduce((s0, p) => s0 + p.area, 0);
+  const focus = pieceArea > 0 ? { x: pieces.reduce((s0, p) => s0 + p.at.x * p.area, 0) / pieceArea, y: pieces.reduce((s0, p) => s0 + p.at.y * p.area, 0) / pieceArea } : null;
+
   let best: { score: number; at: Point; target: Point; hfov: number } | null = null;
   for (const raw of candidates) {
     const at = isFree(walk, raw) ? raw : nearestFree(walk, raw, 0.4);
     if (!at || roomContaining(space, at) !== room.id) continue;
-    // Look across the room: toward the centroid, pulled toward a window in view.
-    let look = angleOf(at, c);
+    if (strict && clearOfPieces(at) < STANCE_CLEAR_M) continue;
+    // Look across the room (toward its centre) or at what the room is about (its furnished focus), each pulled
+    // toward a window in view; whichever frames more of the room's design wins below.
+    for (const towards of focus ? [c, focus] : [c]) {
+    let look = angleOf(at, towards);
     const inView = windows.filter((w) => Math.abs(wrap(angleOf(at, w) - look)) < Math.PI / 3 && clearSight(walk, at, w));
     if (inView.length) {
       const w = inView[0];
@@ -207,8 +239,20 @@ function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: 
     if (seen < 1.5) continue;
     const target = { x: at.x + Math.cos(look) * Math.max(1, seen * 0.6), y: at.y + Math.sin(look) * Math.max(1, seen * 0.6) };
     if (!clearSight(walk, at, target)) continue;
-    const score = seen + inView.length * 1.5 - Math.max(0, hfov - 80) * 0.05;
+    // The design in frame: the pieces within the view and within sight, nearer and larger weighing more. Depth
+    // counts only up to FRAME_DEPTH_M (a long room's far end is not a view of it).
+    const half = (hfov * Math.PI) / 360;
+    const framed = pieces.filter((p) => Math.abs(wrap(angleOf(at, p.at) - look)) < half && Math.hypot(p.at.x - at.x, p.at.y - at.y) > 0.8 && clearSight(walk, at, p.at))
+      .reduce((s0, p) => s0 + p.area / (1 + Math.hypot(p.at.x - at.x, p.at.y - at.y) / 4), 0);
+    // A piece right in front of the eye (a sofa's back, a wardrobe's side) is a wall of furniture, not a view.
+    const blocked = walk.furniture.some((o) => {
+      const d = Math.hypot(o.cx - at.x, o.cy - at.y);
+      return distanceToObb(at, o) < FOREGROUND_M && d > 1e-6 && Math.abs(wrap(angleOf(at, { x: o.cx, y: o.cy }) - look)) < half * 0.8;
+    });
+    const score = Math.min(seen, FRAME_DEPTH_M) + inView.length * 1.5 + Math.min(FRAMED_CAP_M2, framed) * FRAMED_WEIGHT - Math.max(0, hfov - 80) * 0.05
+      - (blocked ? 2.5 : 0);
     if (!best || score > best.score + 1e-9) best = { score, at, target, hfov };
+    }
   }
   if (!best) {
     const at = nearestFree(walk, c, 1.5);
@@ -234,7 +278,13 @@ export function entryShot(space: SpaceModel, walk: WalkModel, aspect = 16 / 9, g
     const raw = { x: door.centre.x + Math.cos(dir) * 0.7, y: door.centre.y + Math.sin(dir) * 0.7 };
     const at = nearestFree(walk, raw, 0.6);
     if (at && roomContaining(space, at) === room.id) {
-      const target = { x: at.x + Math.cos(dir) * 2, y: at.y + Math.sin(dir) * 2 };
+      // Facing on into the home: toward the nearest doorway onward from the entry room that can be seen from here
+      // (a small hall's far wall is not a view); without one, straight in from the front door.
+      const onward = graph.links
+        .filter((l) => l.b && (l.a === room.id || l.b === room.id) && l.doorId !== graph.entryDoorId && clearSight(walk, at, l.at))
+        .sort((p, q) => Math.hypot(p.at.x - at.x, p.at.y - at.y) - Math.hypot(q.at.x - at.x, q.at.y - at.y))[0];
+      const look = onward ? angleOf(at, onward.at) : dir;
+      const target = { x: at.x + Math.cos(look) * 2, y: at.y + Math.sin(look) * 2 };
       return { kind: 'ENTRY', roomId: room.id, position: at, height: EYE_HEIGHT_M, target, targetHeight: EYE_HEIGHT_M - 0.1, fov: verticalFov(78, aspect) };
     }
   }

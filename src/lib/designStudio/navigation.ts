@@ -50,7 +50,24 @@ export interface WalkModel {
 }
 
 /** The solid parts of every wall, and every piece in the way. */
+// A space's walls, doorways and flights never change while it is walked: built once per space, shared by every
+// model of it (so their bucket index and the static free-space answers below are built once too).
+const fixedOf = new WeakMap<SpaceModel, { walls: Obb[]; doorways: Map<string, Obb>; stairs: Point[][] }>();
+
 export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], assets: Map<string, CatalogAsset>): WalkModel {
+  let fixed = fixedOf.get(space);
+  if (!fixed) { fixed = fixedParts(space); fixedOf.set(space, fixed); }
+  const furniture: Obb[] = [];
+  for (const o of objects) {
+    const own = assets.get(o.assetId);
+    const a = own ? shapedAsset(own, o) : undefined;
+    if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M || softPiece(a)) continue;
+    furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
+  }
+  return { space, walls: fixed.walls, furniture, doors: space.doors.map((d) => d.centre), stairs: fixed.stairs, doorways: new Map(fixed.doorways), closedDoors: new Set(), radius: BODY_RADIUS_M };
+}
+
+function fixedParts(space: SpaceModel): { walls: Obb[]; doorways: Map<string, Obb>; stairs: Point[][] } {
   const walls: Obb[] = [];
   const doorways = new Map<string, Obb>();
   for (const wall of space.walls) {
@@ -88,16 +105,8 @@ export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], ass
     }
   }
 
-  const furniture: Obb[] = [];
-  for (const o of objects) {
-    const own = assets.get(o.assetId);
-    const a = own ? shapedAsset(own, o) : undefined;
-    if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M || softPiece(a)) continue;
-    furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
-  }
-
   const stairs = (space.stairs ?? []).map((st) => st.polygon).filter((p) => p.length >= 3);
-  return { space, walls, furniture, doors: space.doors.map((d) => d.centre), stairs, doorways, closedDoors: new Set(), radius: BODY_RADIUS_M };
+  return { walls, doorways, stairs };
 }
 
 /**
@@ -126,11 +135,15 @@ export function recoverPosition(model: WalkModel, p: Point): Point | null {
 }
 
 /** Distance from a point to an oriented box (0 inside). */
+// A box's cosine and sine, kept with it while its angle is unchanged (the same numbers, computed once).
+const trig = new WeakMap<Obb, { a: number; c: number; s: number }>();
 export function distanceToObb(p: Point, b: Obb): number {
   const dx = p.x - b.cx;
   const dy = p.y - b.cy;
-  const c = Math.cos(b.angle);
-  const s = Math.sin(b.angle);
+  let t = trig.get(b);
+  if (!t || t.a !== b.angle) { t = { a: b.angle, c: Math.cos(b.angle), s: Math.sin(b.angle) }; trig.set(b, t); }
+  const c = t.c;
+  const s = t.s;
   const lx = dx * c + dy * s;
   const ly = -dx * s + dy * c;
   const qx = Math.max(Math.abs(lx) - b.hw, 0);
@@ -164,8 +177,10 @@ export function inSpace(model: WalkModel, p: Point): boolean {
 // boxes near the point (the same answer as looking at all of them, for any radius up to INDEX_REACH_M).
 const INDEX_CELL_M = 1;
 const INDEX_REACH_M = 0.6;
-const indexes = new WeakMap<Obb[], Map<string, Obb[]>>();
-function indexOf(list: Obb[]): Map<string, Obb[]> {
+// Cells by number (i, j within ±2^15 m), no strings in the hot path.
+const cellKey = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
+const indexes = new WeakMap<Obb[], Map<number, Obb[]>>();
+function indexOf(list: Obb[]): Map<number, Obb[]> {
   let idx = indexes.get(list);
   if (idx) return idx;
   idx = new Map();
@@ -173,7 +188,7 @@ function indexOf(list: Obb[]): Map<string, Obb[]> {
     const r = Math.hypot(b.hw, b.hd) + INDEX_REACH_M;
     for (let i = Math.floor((b.cx - r) / INDEX_CELL_M); i <= Math.floor((b.cx + r) / INDEX_CELL_M); i += 1) {
       for (let j = Math.floor((b.cy - r) / INDEX_CELL_M); j <= Math.floor((b.cy + r) / INDEX_CELL_M); j += 1) {
-        const k = `${i},${j}`;
+        const k = cellKey(i, j);
         (idx.get(k) ?? idx.set(k, []).get(k)!).push(b);
       }
     }
@@ -183,16 +198,32 @@ function indexOf(list: Obb[]): Map<string, Obb[]> {
 }
 function blockedBy(list: Obb[], p: Point, radius: number): boolean {
   if (radius > INDEX_REACH_M) { for (const b of list) if (distanceToObb(p, b) < radius) return true; return false; }
-  const near = indexOf(list).get(`${Math.floor(p.x / INDEX_CELL_M)},${Math.floor(p.y / INDEX_CELL_M)}`);
+  const near = indexOf(list).get(cellKey(Math.floor(p.x / INDEX_CELL_M), Math.floor(p.y / INDEX_CELL_M)));
   if (near) for (const b of near) if (distanceToObb(p, b) < radius) return true;
   return false;
 }
 
+// The space's own answer at a point (in the space, clear of walls and flights) for a radius: it never changes while
+// the space is walked, so each grid point is measured once per radius, however many furniture trials ask it.
+const staticFree = new WeakMap<Obb[], Map<number, Map<number, boolean>>>();
+const pointKey = (p: Point) => Math.round(p.x * 1000) * 4194304 + Math.round(p.y * 1000);
+function clearOfSpace(model: WalkModel, p: Point): boolean {
+  let byRadius = staticFree.get(model.walls);
+  if (!byRadius) { byRadius = new Map(); staticFree.set(model.walls, byRadius); }
+  let cache = byRadius.get(model.radius);
+  if (!cache) { cache = new Map(); byRadius.set(model.radius, cache); }
+  const k = pointKey(p);
+  const known = cache.get(k);
+  if (known !== undefined) return known;
+  let ok = inSpace(model, p) && !blockedBy(model.walls, p, model.radius);
+  if (ok) for (const s of model.stairs ?? []) if (distanceToPolygon(p, s) < model.radius) { ok = false; break; }
+  cache.set(k, ok);
+  return ok;
+}
+
 export function isFree(model: WalkModel, p: Point): boolean {
-  if (!inSpace(model, p)) return false;
-  if (blockedBy(model.walls, p, model.radius)) return false;
+  if (!clearOfSpace(model, p)) return false;
   if (blockedBy(model.furniture, p, model.radius)) return false;
-  for (const s of model.stairs ?? []) if (distanceToPolygon(p, s) < model.radius) return false;
   for (const id of model.closedDoors) {
     const leaf = model.doorways.get(id);
     if (leaf && distanceToObb(p, leaf) < model.radius) return false;
@@ -234,7 +265,7 @@ const SLIDE_TURNS = [0.35, 0.7, 1.05];
 function contactNormal(model: WalkModel, p: Point): Point | null {
   let best: { d: number; n: Point } | null = null;
   for (const list of [model.walls, model.furniture]) {
-    const near = indexOf(list).get(`${Math.floor(p.x / INDEX_CELL_M)},${Math.floor(p.y / INDEX_CELL_M)}`) ?? [];
+    const near = indexOf(list).get(cellKey(Math.floor(p.x / INDEX_CELL_M), Math.floor(p.y / INDEX_CELL_M))) ?? [];
     for (const b of near) {
       const c = Math.cos(b.angle); const s = Math.sin(b.angle);
       const dx = p.x - b.cx; const dy = p.y - b.cy;

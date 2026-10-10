@@ -361,3 +361,20 @@ test('circulation removes the least furniture that frees the way: the corrected 
   const comfortAfter = roomy(state.objects);
   for (const id of comfortBefore) assert.ok(comfortAfter.has(id), `${id} not comfortably reachable`);
 });
+
+test('a WC or wash room too small to have floor clear of its door is still reached; furniture never wins over a door', async () => {
+  const fs = await import('node:fs');
+  const { buildSpaceModel } = await import('../space.ts');
+  const { buildWalkModel } = await import('../navigation.ts');
+  const { reachableRooms } = await import('../walkthrough/build.ts');
+  // A real floor plan's geometry (labels removed): a 1.0 × 1.2 m WC and a 1.2 × 1.2 m bath off a 1.9 × 1.3 m wash room.
+  const scene = JSON.parse(fs.readFileSync(new URL('./fixtures/two-bed-small-wet-rooms.scene.json', import.meta.url), 'utf8'));
+  const space = buildSpaceModel(scene);
+  assert.deepEqual([...reachableRooms(space, buildWalkModel(space, [], new Map()))].sort(), ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']);
+  const src = fs.readFileSync(new URL('../walkthrough/build.ts', import.meta.url), 'utf8');
+  // The last word: the smallest push first, then a move anywhere clean in the room (its lock released), then a
+  // removal — and never a removal that opens nothing.
+  assert.match(src, /if \(pushAside\(way, better, FINAL_PUSH_WALKS\)\) continue;/);
+  assert.match(src, /p\.box = box; p\.lock = undefined; relocated \+= 1;/);
+  assert.match(src, /if \(!best \|\| best\.n <= now\) break;/);
+});

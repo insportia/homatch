@@ -136,3 +136,35 @@ test('Live Here offers what this reconstructed apartment can do, and nothing it 
   const bare = { machines: machines.filter((m) => m.role !== 'STOVE'), seats };
   assert.ok(!availableExperiences(bare, { x: 3, y: 5 }).some((x) => x.id === 'dinner'));
 });
+
+// ── Explicit interaction only ───────────────────────────────────────────────
+
+test('an explicit use acts only in reach, in the room, once, with the thumb off the stick, never closing a door on the walker', async () => {
+  const { interactionRefusal, ACTION_COOLDOWN_MS, REACH_M } = await import('../player.ts');
+  const ok = { now: 10_000, lastActionAt: 0, stickActive: false, distanceM: 1, playerRoom: 'r-living', targetRoom: 'r-living', doorTouchesPlayerRoom: false, closingOnBody: false };
+  assert.equal(interactionRefusal(ok), null);
+  assert.equal(interactionRefusal({ ...ok, stickActive: true }), 'MOVING_STICK');
+  assert.equal(interactionRefusal({ ...ok, lastActionAt: ok.now - ACTION_COOLDOWN_MS + 1 }), 'TOO_SOON');
+  assert.equal(interactionRefusal({ ...ok, distanceM: REACH_M + 0.01 }), 'OUT_OF_REACH');
+  assert.equal(interactionRefusal({ ...ok, targetRoom: 'r-bed' }), 'OTHER_ROOM');
+  // A door joins two rooms: usable from either.
+  assert.equal(interactionRefusal({ ...ok, targetRoom: 'r-bed', doorTouchesPlayerRoom: true }), null);
+  assert.equal(interactionRefusal({ ...ok, closingOnBody: true }), 'WOULD_TRAP');
+});
+
+test('E picks the usable thing nearest the line of sight, the nearer of two equally near, nothing beyond reach', async () => {
+  const { pickTarget, REACH_M } = await import('../player.ts');
+  assert.equal(pickTarget([{ id: 'a', offPx: 40, distanceM: 1 }, { id: 'b', offPx: 10, distanceM: 2 }], 60).id, 'b');
+  assert.equal(pickTarget([{ id: 'a', offPx: 30, distanceM: 2 }, { id: 'b', offPx: 30, distanceM: 1 }], 60).id, 'b');
+  assert.equal(pickTarget([{ id: 'a', offPx: 70, distanceM: 1 }], 60), null);
+  assert.equal(pickTarget([{ id: 'a', offPx: 5, distanceM: REACH_M + 0.5 }], 60), null);
+});
+
+test('a drag is never a tap: a finger that moved 6 px, or held 350 ms, uses nothing', async () => {
+  const { isTap } = await import('../player.ts');
+  assert.equal(isTap(120, 2, false), true);
+  assert.equal(isTap(120, 6, false), false);
+  assert.equal(isTap(350, 0, false), false);
+  assert.equal(isTap(300, 7, true), true);
+  assert.equal(isTap(300, 8, true), false);
+});

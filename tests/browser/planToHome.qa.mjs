@@ -919,6 +919,15 @@ async function photoPath(browser, { width, height, lang, touch }) {
   check(`${tag}: the tour opens, with the quiet reconstructed-space note`, await page.getByTestId('walk-inferred-note').isVisible());
   if (lang === 'ka') check(`${tag}: reconstructed-space note copy`, (await page.getByTestId('walk-inferred-note').innerText()).includes('არსებული ვიზუალური მასალის საფუძველზე'));
   check(`${tag}: one reading of the space for the tap and the follow-ups (${store.walk.readings} reading, ${store.walk.creates} asks)`, store.walk.readings === 1);
+  // Ready: the whole home is the tour (never a single picture), and it is shared from here (WALKTHROUGH, /w/<token>).
+  check(`${tag}: the ready tour says it is the whole home, entered at the entrance`, await page.getByTestId('walk-ready-note').isVisible());
+  check(`${tag}: stepping into a picture is only a secondary option`, (await page.getByTestId('photo3d-enter').count()) <= 1 && (await page.getByTestId('walk-open').count()) === 1);
+  await page.getByTestId('walk-share-open').click();
+  const shareDialog = page.locator('[role="dialog"][aria-modal="true"]');
+  await shareDialog.waitFor({ timeout: 10000 });
+  check(`${tag}: Share opens on the walkthrough link`, (await shareDialog.locator('[role="radio"][aria-checked="true"]').count()) === 1);
+  await shot('walk-share');
+  await shareDialog.getByRole('button').first().click();
   await page.getByTestId('walk-inferred-note').scrollIntoViewIfNeeded();
   await shot('walk-ready');
   await s.noOverflow(tag, 'the 3D tour ready');

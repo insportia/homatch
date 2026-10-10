@@ -46,13 +46,17 @@ export type Basis = 'OBSERVED' | 'INFERRED_HIGH' | 'INFERRED_MEDIUM' | 'INFERRED
 export const basisOf = (basis: 'OBSERVED' | 'INFERRED', confidence: number): Basis =>
   (basis === 'OBSERVED' ? 'OBSERVED' : confidence >= 0.7 ? 'INFERRED_HIGH' : confidence >= 0.45 ? 'INFERRED_MEDIUM' : 'INFERRED_LOW');
 
-export interface Repair { code: 'DUPLICATE_ROOM_REMOVED' | 'ROOM_MOVED_TO_TOUCH' | 'DOOR_INFERRED' | 'ENTRANCE_INFERRED' | 'DOOR_WIDENED' | 'CEILING_TYPICAL' | 'RECTANGLES_USED' | 'ROOM_UNREACHABLE'; element: string }
+export interface Repair { code: 'DUPLICATE_ROOM_REMOVED' | 'ROOM_CARVED' | 'ROOM_MERGED_INTO_OPEN_PLAN' | 'ROOM_MOVED_TO_TOUCH' | 'DOOR_INFERRED' | 'ENTRANCE_INFERRED' | 'DOOR_WIDENED' | 'CEILING_TYPICAL' | 'RECTANGLES_USED' | 'ROOM_UNREACHABLE'; element: string }
 
 const TYPICAL_CEILING_M = 2.7;
 const MIN_DOOR_M = 0.8;
 const TOUCH_TOL = 0.25;
 const MIN_SHARED_M = 0.9;
-const MAX_MOVE_M = 1.2;
+/** A room is moved to touch only across a wall's own thickness (rooms read on the two faces of one wall). A wider
+ *  gap is a fact of the reading, never closed by moving a wall: the room stays where it was read, and an
+ *  unreached room is reported (geometryCheck.ts), not made reachable. */
+export const WALL_GAP_M = 0.35;
+const MAX_MOVE_M = WALL_GAP_M;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 function area(poly: P[]): number {
@@ -185,6 +189,115 @@ function exteriorPoint(room: ReconRoom, rooms: ReconRoom[]): P | null {
   return best?.at ?? null;
 }
 
+// ── Rooms inside rooms ───────────────────────────────────────────────────────
+
+/** The share of a polygon's perimeter running along the axes (within 3°): 1 for a square-walled room. */
+export function axisShare(poly: P[]): number {
+  let on = 0; let all = 0;
+  for (const [p, q] of edgesOf(poly)) {
+    const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    all += L;
+    const deg = Math.abs((Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI) % 90;
+    if (Math.min(deg, 90 - deg) <= 3) on += L;
+  }
+  return all ? on / all : 0;
+}
+
+/**
+ * `outer` minus the `holes`, exactly, for square-walled outlines: the plane is cut on every vertex coordinate
+ * (a compressed grid), each cell kept when its centre is in `outer` and in none of the holes, and the largest
+ * connected piece's boundary traced (collinear corners dropped). Null when the result is not one simple outline
+ * of the same room (a hole floating inside, nothing left, or the outlines not square).
+ */
+export function subtractSquare(outer: P[], holes: P[][]): P[] | null {
+  if ([outer, ...holes].some((p) => axisShare(p) < 0.98)) return null;
+  const snap = (v: number) => Math.round(v * 1000) / 1000;
+  const xs = [...new Set([outer, ...holes].flatMap((p) => p.map((q) => snap(q[0]))))].sort((a, b) => a - b);
+  const ys = [...new Set([outer, ...holes].flatMap((p) => p.map((q) => snap(q[1]))))].sort((a, b) => a - b);
+  const nx = xs.length - 1; const ny = ys.length - 1;
+  if (nx < 1 || ny < 1) return null;
+  const cell = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j += 1) {
+    for (let i = 0; i < nx; i += 1) {
+      const c: P = [(xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2];
+      if (inside(c, outer) && !holes.some((h) => inside(c, h))) cell[j * nx + i] = 1;
+    }
+  }
+  // The largest connected piece (by area).
+  const comp = new Int32Array(nx * ny).fill(-1);
+  let best = -1; let bestArea = 0; let id = 0;
+  for (let s = 0; s < cell.length; s += 1) {
+    if (!cell[s] || comp[s] >= 0) continue;
+    const stack = [s]; comp[s] = id; let a = 0;
+    while (stack.length) {
+      const k = stack.pop()!; const i = k % nx; const j = Math.floor(k / nx);
+      a += (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j]);
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const u = i + di; const v = j + dj; const n = v * nx + u;
+        if (u >= 0 && v >= 0 && u < nx && v < ny && cell[n] && comp[n] < 0) { comp[n] = id; stack.push(n); }
+      }
+    }
+    if (a > bestArea) { bestArea = a; best = id; }
+    id += 1;
+  }
+  if (best < 0) return null;
+  const on = (i: number, j: number) => i >= 0 && j >= 0 && i < nx && j < ny && comp[j * nx + i] === best;
+  // Boundary edges, counter-clockwise around the kept cells (grid-index corners).
+  const next = new Map<string, Array<[number, number]>>();
+  const add = (a: [number, number], b: [number, number]) => { const k = `${a[0]},${a[1]}`; next.set(k, [...(next.get(k) ?? []), b]); };
+  let edges = 0;
+  for (let j = 0; j < ny; j += 1) {
+    for (let i = 0; i < nx; i += 1) {
+      if (!on(i, j)) continue;
+      if (!on(i, j - 1)) { add([i, j], [i + 1, j]); edges += 1; }
+      if (!on(i + 1, j)) { add([i + 1, j], [i + 1, j + 1]); edges += 1; }
+      if (!on(i, j + 1)) { add([i + 1, j + 1], [i, j + 1]); edges += 1; }
+      if (!on(i - 1, j)) { add([i, j + 1], [i, j]); edges += 1; }
+    }
+  }
+  // One loop must use every boundary edge: anything else is a hole (a room floating inside this one).
+  const startKey = [...next.keys()].sort()[0];
+  const loop: Array<[number, number]> = [];
+  let at = startKey.split(',').map(Number) as [number, number];
+  for (let guard = 0; guard <= edges; guard += 1) {
+    loop.push(at);
+    const outs = next.get(`${at[0]},${at[1]}`);
+    if (!outs?.length) return null;
+    at = outs.shift()!;
+    if (`${at[0]},${at[1]}` === startKey) break;
+  }
+  if (loop.length !== edges || [...next.values()].some((v) => v.length)) return null;
+  const pts = loop.map(([i, j]) => [xs[i], ys[j]] as P);
+  const simple = pts.filter((p, k) => {
+    const a = pts[(k - 1 + pts.length) % pts.length]; const b = pts[(k + 1) % pts.length];
+    return Math.abs((p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0])) > 1e-9;
+  });
+  return simple.length >= 4 ? simple : null;
+}
+
+/** Each room lying inside a larger one is cut out of it (or, when it cannot be, is a zone of that open plan). */
+function separateNested<R extends ReconRoom>(rooms: R[], repairs: Repair[]): R[] {
+  let out = [...rooms];
+  for (const host of [...rooms].sort((a, b) => area(b.polygon) - area(a.polygon))) {
+    const current = out.find((r) => r.key === host.key);
+    if (!current) continue;
+    const nested = out.filter((r) => r.key !== host.key && area(r.polygon) < area(current.polygon) && r.outdoor === current.outdoor
+      && sharedFloor(r.polygon, current.polygon) > 0.6);
+    if (!nested.length) continue;
+    const carved = subtractSquare(current.polygon, nested.map((r) => r.polygon));
+    if (carved && area(carved) >= 0.25 * area(current.polygon)) {
+      out = out.map((r) => (r.key === host.key ? { ...r, polygon: carved } : r));
+      for (const r of nested) repairs.push({ code: 'ROOM_CARVED', element: `${host.key}−${r.key}` });
+    } else {
+      // Not separable: the open plan stays whole, and the zone read inside it is part of it.
+      const gone = new Set(nested.map((r) => r.key));
+      out = out.filter((r) => !gone.has(r.key));
+      for (const r of nested) repairs.push({ code: 'ROOM_MERGED_INTO_OPEN_PLAN', element: `${r.key}→${host.key}` });
+    }
+  }
+  return out;
+}
+
 /**
  * The deterministic completion pass on the reading (metres): what a walkable scene needs and the pictures did not
  * settle. Every repair is recorded; nothing is added that a walk does not need.
@@ -194,14 +307,17 @@ export function completeForWalk(input: Reconstruction): { recon: Reconstruction;
   let rooms = input.rooms.map((r) => ({ ...r, polygon: r.polygon.map((p) => [p[0], p[1]] as P) }));
   let openings = input.openings.map((o) => ({ ...o }));
 
-  // 1. A room read twice (two outlines over the same floor): the less certain one goes. Measured on the outlines
-  //    themselves (a small room beside an L-shaped one is not inside it).
+  // 1. A room read twice (two outlines over the same floor, each mostly the other): the less certain one goes.
+  //    A room lying INSIDE a larger one (a hall drawn within an open-plan living's outline) is not a duplicate:
+  //    the larger room is never deleted for it — the smaller is cut out of it (ROOM_CARVED), or, when it cannot
+  //    be (it floats inside, or the outlines are not square), it is a zone of the open plan (ROOM_MERGED_INTO_OPEN_PLAN).
   const keep: typeof rooms = [];
   for (const r of [...rooms].sort((a, b) => b.confidence - a.confidence || area(b.polygon) - area(a.polygon))) {
-    const dup = keep.find((k) => Math.max(sharedFloor(r.polygon, k.polygon), sharedFloor(k.polygon, r.polygon)) > 0.6);
+    const dup = keep.find((k) => Math.min(sharedFloor(r.polygon, k.polygon), sharedFloor(k.polygon, r.polygon)) > 0.6);
     if (dup) repairs.push({ code: 'DUPLICATE_ROOM_REMOVED', element: r.key }); else keep.push(r);
   }
   rooms = rooms.filter((r) => keep.some((k) => k.key === r.key));
+  rooms = separateNested(rooms, repairs);
 
   // 2. Doors wide enough to walk through.
   openings = openings.map((o) => {

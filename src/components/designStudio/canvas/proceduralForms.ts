@@ -182,6 +182,40 @@ export function shellChair(g: THREE.Group, W: number, D: number, H: number, shel
   g.add(back);
 }
 
+/**
+ * A tub chair (a dining or occasional chair whose back curves round into its arms): a thick round seat cushion, a
+ * low barrel back wrapping three quarters of the way round, on four short tapered legs. Front is −z, like every piece.
+ */
+export function tubChair(g: THREE.Group, W: number, D: number, H: number, body: Mat, legs: Mat) {
+  const seatY = Math.min(0.46, Math.max(0.36, H * 0.52));
+  const legH = seatY - 0.12;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const l = mesh(new THREE.CylinderGeometry(0.016, 0.011, legH, 10), legs);
+    l.position.set(sx * (W / 2 - 0.08), legH / 2, sz * (D / 2 - 0.08));
+    l.rotation.set(sz * 0.08, 0, -sx * 0.08);
+    g.add(l);
+  }
+  const r = Math.min(W, D) / 2;
+  // The base of the tub and the seat cushion on it.
+  g.add(blob(r * 0.98, 0.07, r * 0.98, 0, legH, 0, body));
+  g.add(blob(r * 0.86, 0.06, r * 0.86, 0, legH + 0.08, -0.01, body));
+  // The barrel: an open cylinder round the back and sides, centred on the back (+z; theta 0 is +z), the gap at the
+  // front; two walls, so it reads as padded.
+  const backH = Math.max(0.18, H - legH);
+  const arc = Math.PI * 1.45;
+  for (const [rad, k] of [[r, 1], [r - 0.05, 0.96]] as const) {
+    const shell = mesh(new THREE.CylinderGeometry(rad, rad, backH * k, 32, 1, true, -arc / 2, arc), body);
+    (shell.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    shell.position.set(0, legH + (backH * k) / 2, 0);
+    g.add(shell);
+  }
+  // A rounded top edge along the barrel.
+  const rim = mesh(new THREE.TorusGeometry(r - 0.025, 0.028, 8, 32, arc), body);
+  rim.rotation.set(Math.PI / 2, 0, Math.PI / 2 - arc / 2);
+  rim.position.set(0, legH + backH, 0);
+  g.add(rim);
+}
+
 /** A round pedestal table (a tulip base) or, low and round, a drum. */
 export function roundTable(g: THREE.Group, W: number, D: number, H: number, top: Mat, base: Mat) {
   const r = Math.min(W, D) / 2;

@@ -1,15 +1,4 @@
 {
   "_comment": "Edge functions whose PRODUCTION artifact comes from an unmerged branch. A held function is never uploaded by the deploy workflow (push or manual redeploy) and is never reported as proven: every run prints it as HELD with the reason below. A hold is removed only by a reviewed PR, normally the PR that merges the source branch, in the same change. Evidence for each entry must be the exact deployed artifact, not an assumption.",
-  "holds": [
-    {
-      "function": "design-studio-reconstruct",
-      "reason": "Production v55 runs the Design Studio walkthrough from an unmerged branch: 98/98 deployed files are byte-identical to the source commit, while main matches only 74 (13 differ, 11 absent, e.g. src/lib/designStudio/walkthrough/readingRepair.ts, geometryCheck.ts, renderPlan.ts). Deploying it from main would replace that implementation with an older one.",
-      "sourceBranch": "claude/design-studio-refinement-r34f6c",
-      "sourceCommit": "4ec95ac5",
-      "pr": 109,
-      "productionVersion": 55,
-      "heldSince": "2026-10-10",
-      "release": "Remove this entry in the PR that merges the source branch (or a reconciled successor), so that its first deploy from main carries the Design Studio code."
-    }
-  ]
+  "holds": []
 }

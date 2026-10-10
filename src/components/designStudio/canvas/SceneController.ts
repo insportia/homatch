@@ -198,6 +198,8 @@ interface PickData { pick: PickTarget }
 /** Walking: the longest real time one frame may advance (s), and the step it is walked in (s). */
 const WALK_MAX_FRAME_S = 0.25;
 const WALK_STEP_S = 0.05;
+/** Two clicks this close together are one double click: mouse-look on, or off again. */
+const DOUBLE_CLICK_MS = 320;
 /** A walk drawn slower than this per frame (median, ms) is lightened (see watchWalkFrames). */
 const WALK_SLOW_FRAME_MS = 40;
 
@@ -2743,6 +2745,8 @@ export class SceneController {
     if (!w) return;
     if (w.route) { const done = w.route.done; w.route = null; done(false); }
     this.walk = null;
+    this.cancelPendingTap();
+    this.lastMouseTap = 0;
     this.leavingLock = true;
     if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock?.();
     window.removeEventListener('keydown', this.onWalkKey);
@@ -3050,16 +3054,42 @@ export class SceneController {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const px = g.locked ? rect.left + rect.width / 2 : x;
     const py = g.locked ? rect.top + rect.height / 2 : y;
-    const hit = this.targetAt(px, py);
-    if (hit) {
-      this.setAim(hit);
-      this.performAimed();
+    const use = () => {
+      const hit = this.targetAt(px, py);
+      if (hit) {
+        this.setAim(hit);
+        this.performAimed();
+        return;
+      }
+      // Nothing to use there: the page's own targets (a doorway's navigation point under the captured mouse's centre).
+      this.onClickPoint?.(px, py);
+    };
+    if (!g.mouse) { use(); return; }
+    // Desktop: a double click captures the mouse for looking, and a double click gives it back (Esc does too). The
+    // overlay says so before the first click.
+    const now = performance.now();
+    if (now - this.lastMouseTap < DOUBLE_CLICK_MS) {
+      this.lastMouseTap = 0;
+      this.cancelPendingTap();
+      if (g.locked) this.releasePointer(); else this.lockPointer();
       return;
     }
-    // Nothing to use there: the page's own targets (a doorway's navigation point under the captured mouse's centre).
-    if (this.onClickPoint?.(px, py)) return;
-    // A click on empty space captures the mouse for looking (desktop).
-    if (g.mouse && !g.locked) this.lockPointer();
+    this.lastMouseTap = now;
+    if (!g.locked) { use(); return; }
+    // Captured, a single click waits out the double-click window: the click that starts "give the mouse back" never
+    // also opens a door or walks through a doorway.
+    this.cancelPendingTap();
+    this.pendingTap = window.setTimeout(() => {
+      this.pendingTap = 0;
+      if (this.walk && this.pointerLocked) use();
+    }, DOUBLE_CLICK_MS);
+  }
+
+  private lastMouseTap = 0;
+  private pendingTap = 0;
+  private cancelPendingTap() {
+    if (this.pendingTap) window.clearTimeout(this.pendingTap);
+    this.pendingTap = 0;
   }
 
   private onLookDown = (e: PointerEvent) => {

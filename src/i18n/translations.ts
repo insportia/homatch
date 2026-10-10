@@ -16130,11 +16130,10 @@ const en = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_approx_value: 'Approximately {{v}}',
   verify_budget_available: 'Credits available',
-  verify_extend_title: 'Your property deserves the full picture.',
-  verify_extend_body: 'We\'ve completed part of your investigation. A few additional checks could reveal important details and help make your report more complete.',
-  verify_extend_label: 'Additional budget',
-  verify_extend_continue: 'Continue My Verification',
-  verify_extend_stop: 'Stop & View Current Results',
+  verify_extend_title: 'Continue your investigation?',
+  verify_extend_body: 'HOMATCH has completed the available investigation steps and found that additional research is needed to continue. You can authorize the next stage or stop here and review the results collected so far.',
+  verify_extend_continue: 'Continue Investigation',
+  verify_extend_stop: 'Stop & View Results',
   verify_awaiting_title: 'Waiting for your approval',
   verify_awaiting_body: 'Your results so far are saved. Nothing is reserved while you decide.',
   verify_limit_title: 'Investigation budget limit reached',
@@ -16145,9 +16144,6 @@ const en = {
   /* ── VERIFY AT SCALE ── */
   verify_extend_amount: 'Up to {{n}} credits',
   verify_extend_equiv: '{{v}} max.',
-  verify_extend_note: 'You may spend less. Only the actual cost of additional checks is charged, and unused credits return to your wallet.',
-  verify_extend_saved: 'Your completed checks and findings are already saved. Nothing you\'ve paid for needs to be repeated unnecessarily.',
-  verify_extend_consent: 'Continuing authorizes up to {{n}} additional credits. No automatic extra charges.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32192,11 +32188,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_approx_value: 'დაახლოებით {{v}}',
   verify_budget_available: 'ხელმისაწვდომი კრედიტები',
-  verify_extend_title: 'თქვენი ქონება სრულ სურათს იმსახურებს.',
-  verify_extend_body: 'კვლევის ნაწილი დასრულებულია. რამდენიმე დამატებითმა შემოწმებამ შეიძლება მნიშვნელოვანი დეტალები გამოავლინოს და ანგარიში უფრო სრული გახადოს.',
-  verify_extend_label: 'დამატებითი ბიუჯეტი',
-  verify_extend_continue: 'ჩემი ვერიფიკაციის გაგრძელება',
-  verify_extend_stop: 'შეჩერება და მიმდინარე შედეგების ნახვა',
+  verify_extend_title: 'გავაგრძელოთ კვლევა?',
+  verify_extend_body: 'HOMATCH-მა ხელმისაწვდომი საკვლევი ეტაპები დაასრულა და გაგრძელებისთვის დამატებითი კვლევაა საჭირო. შეგიძლიათ დაადასტუროთ შემდეგი ეტაპი ან აქ შეჩერდეთ და აქამდე შეგროვებული შედეგები ნახოთ.',
+  verify_extend_continue: 'კვლევის გაგრძელება',
+  verify_extend_stop: 'შეჩერება და შედეგების ნახვა',
   verify_awaiting_title: 'ელოდება თქვენს თანხმობას',
   verify_awaiting_body: 'აქამდე მიღებული შედეგები შენახულია. სანამ გადაწყვეტთ, თქვენი კრედიტები თავისუფალი რჩება.',
   verify_limit_title: 'კვლევის ბიუჯეტის ლიმიტი ამოიწურა',
@@ -32207,9 +32202,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_extend_amount: 'არაუმეტეს {{n}} კრედიტი',
   verify_extend_equiv: 'მაქს. {{v}}',
-  verify_extend_note: 'შეიძლება ნაკლები დახარჯოთ. ჩამოიჭრება მხოლოდ დამატებითი შემოწმებების რეალური ღირებულება, გამოუყენებელი კრედიტები კი საფულეში დაბრუნდება.',
-  verify_extend_saved: 'დასრულებული შემოწმებები და მიგნებები უკვე შენახულია. გადახდილი სამუშაო ზედმეტად არ განმეორდება.',
-  verify_extend_consent: 'გაგრძელებით ადასტურებთ არაუმეტეს {{n}} დამატებით კრედიტს. ავტომატური დამატებითი ჩამოჭრა არ ხდება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48245,11 +48237,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_approx_value: 'Примерно {{v}}',
   verify_budget_available: 'Доступно кредитов',
-  verify_extend_title: 'Ваша недвижимость заслуживает полной картины.',
-  verify_extend_body: 'Мы завершили часть проверки. Несколько дополнительных проверок могут выявить важные детали и сделать ваш отчёт более полным.',
-  verify_extend_label: 'Дополнительный бюджет',
-  verify_extend_continue: 'Продолжить мою проверку',
-  verify_extend_stop: 'Остановить и посмотреть текущие результаты',
+  verify_extend_title: 'Продолжить проверку?',
+  verify_extend_body: 'HOMATCH завершил доступные этапы проверки: для продолжения нужно дополнительное исследование. Вы можете подтвердить следующий этап или остановиться и посмотреть уже собранные результаты.',
+  verify_extend_continue: 'Продолжить проверку',
+  verify_extend_stop: 'Остановить и посмотреть результаты',
   verify_awaiting_title: 'Ожидает вашего подтверждения',
   verify_awaiting_body: 'Полученные результаты сохранены. Пока вы решаете, ничего не резервируется.',
   verify_limit_title: 'Достигнут лимит бюджета проверки',
@@ -48260,9 +48251,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_extend_amount: 'До {{n}} кредитов',
   verify_extend_equiv: 'Не более {{v}}',
-  verify_extend_note: 'Вы можете потратить меньше. Списывается только фактическая стоимость дополнительных проверок, а неиспользованные кредиты вернутся в ваш кошелёк.',
-  verify_extend_saved: 'Завершённые проверки и находки уже сохранены. То, за что вы уже заплатили, не придётся без необходимости повторять.',
-  verify_extend_consent: 'Продолжая, вы разрешаете до {{n}} дополнительных кредитов. Никаких автоматических дополнительных списаний.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64296,11 +64284,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_approx_value: 'Yaklaşık {{v}}',
   verify_budget_available: 'Kullanılabilir kredi',
-  verify_extend_title: 'Mülkünüz tam resmi hak ediyor.',
-  verify_extend_body: 'Araştırmanızın bir kısmını tamamladık. Birkaç ek kontrol önemli ayrıntıları ortaya çıkarabilir ve raporunuzu daha eksiksiz hale getirebilir.',
-  verify_extend_label: 'Ek bütçe',
-  verify_extend_continue: 'Doğrulamama Devam Et',
-  verify_extend_stop: 'Durdur ve Mevcut Sonuçları Gör',
+  verify_extend_title: 'Araştırmaya devam edilsin mi?',
+  verify_extend_body: 'HOMATCH mevcut araştırma adımlarını tamamladı ve devam etmek için ek araştırma gerektiğini belirledi. Bir sonraki aşamayı onaylayabilir ya da burada durup şimdiye kadar toplanan sonuçları inceleyebilirsiniz.',
+  verify_extend_continue: 'Araştırmaya Devam Et',
+  verify_extend_stop: 'Durdur ve Sonuçları Gör',
   verify_awaiting_title: 'Onayınız bekleniyor',
   verify_awaiting_body: 'Şimdiye kadarki sonuçlarınız kaydedildi. Siz karar verene kadar hiçbir şey ayrılmaz.',
   verify_limit_title: 'Araştırma bütçe sınırına ulaşıldı',
@@ -64311,9 +64298,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_extend_amount: 'En fazla {{n}} kredi',
   verify_extend_equiv: 'En fazla {{v}}',
-  verify_extend_note: 'Daha az harcayabilirsiniz. Yalnızca ek kontrollerin gerçek maliyeti tahsil edilir; kullanılmayan krediler cüzdanınıza geri döner.',
-  verify_extend_saved: 'Tamamlanan kontrolleriniz ve bulgularınız zaten kaydedildi. Ödediğiniz hiçbir şeyin gereksiz yere tekrarlanması gerekmez.',
-  verify_extend_consent: 'Devam ederek en fazla {{n}} ek krediye onay verirsiniz. Otomatik ek ücret alınmaz.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -80347,11 +80331,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_approx_value: 'حوالي {{v}}',
   verify_budget_available: 'الرصيد المتاح',
-  verify_extend_title: 'عقارك يستحق الصورة الكاملة.',
-  verify_extend_body: 'لقد أكملنا جزءًا من التحقق. قد تكشف بضع فحوصات إضافية عن تفاصيل مهمة وتساعد على جعل تقريرك أكثر اكتمالًا.',
-  verify_extend_label: 'ميزانية إضافية',
-  verify_extend_continue: 'متابعة التحقق الخاص بي',
-  verify_extend_stop: 'إيقاف وعرض النتائج الحالية',
+  verify_extend_title: 'هل تريد متابعة التحقق؟',
+  verify_extend_body: 'أكملت HOMATCH خطوات التحقق المتاحة ووجدت أن المتابعة تتطلب بحثًا إضافيًا. يمكنك الموافقة على المرحلة التالية أو التوقف هنا ومراجعة النتائج التي جُمعت حتى الآن.',
+  verify_extend_continue: 'متابعة التحقق',
+  verify_extend_stop: 'إيقاف وعرض النتائج',
   verify_awaiting_title: 'بانتظار موافقتك',
   verify_awaiting_body: 'نتائجك حتى الآن محفوظة. لا يُحجز أي رصيد بينما تقرر.',
   verify_limit_title: 'تم بلوغ الحد الأقصى لميزانية التحقق',
@@ -80362,9 +80345,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_extend_amount: 'حتى {{n}} رصيد',
   verify_extend_equiv: '{{v}} كحد أقصى',
-  verify_extend_note: 'قد تنفق أقل. تُحتسب فقط التكلفة الفعلية للفحوصات الإضافية، ويعود الرصيد غير المستخدم إلى محفظتك.',
-  verify_extend_saved: 'فحوصاتك ونتائجك المكتملة محفوظة بالفعل. لن يلزم تكرار أي شيء دفعت مقابله دون داعٍ.',
-  verify_extend_consent: 'المتابعة تعني الموافقة على ما يصل إلى {{n}} رصيد إضافي. لا توجد رسوم إضافية تلقائية.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -96398,11 +96378,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_budget_approx_value: 'בערך {{v}}',
   verify_budget_available: 'קרדיטים זמינים',
-  verify_extend_title: 'הנכס שלך ראוי לתמונה המלאה.',
-  verify_extend_body: 'השלמנו חלק מהחקירה. כמה בדיקות נוספות עשויות לחשוף פרטים חשובים ולעזור להפוך את הדוח שלך למלא יותר.',
-  verify_extend_label: 'תקציב נוסף',
-  verify_extend_continue: 'המשך האימות שלי',
-  verify_extend_stop: 'עצירה והצגת התוצאות הנוכחיות',
+  verify_extend_title: 'להמשיך בחקירה?',
+  verify_extend_body: 'HOMATCH השלימה את שלבי החקירה הזמינים ומצאה שנדרש מחקר נוסף כדי להמשיך. אפשר לאשר את השלב הבא או לעצור כאן ולעיין בתוצאות שנאספו עד כה.',
+  verify_extend_continue: 'המשך החקירה',
+  verify_extend_stop: 'עצירה והצגת התוצאות',
   verify_awaiting_title: 'ממתין לאישורך',
   verify_awaiting_body: 'התוצאות עד כה נשמרו. דבר אינו נשמר בצד בזמן שאתם מחליטים.',
   verify_limit_title: 'הגעת למגבלת התקציב של החקירה',
@@ -96413,9 +96392,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY AT SCALE ── */
   verify_extend_amount: 'עד {{n}} קרדיטים',
   verify_extend_equiv: '{{v}} לכל היותר',
-  verify_extend_note: 'ייתכן שתוציאו פחות. מחויבת רק העלות בפועל של הבדיקות הנוספות, וקרדיטים שלא נוצלו חוזרים לארנק שלך.',
-  verify_extend_saved: 'הבדיקות והממצאים שהושלמו כבר נשמרו. שום דבר ששילמתם עליו לא יחזור על עצמו שלא לצורך.',
-  verify_extend_consent: 'ההמשך מאשר עד {{n}} קרדיטים נוספים. ללא חיובים נוספים אוטומטיים.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

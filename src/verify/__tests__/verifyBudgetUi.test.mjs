@@ -37,19 +37,14 @@ test('the component renders server numbers only; conversion is display-only and 
   assert.match(ui, /<bdi/);
 });
 
-test('the extension popup uses the owner\'s exact English copy (2026-10-10)', () => {
+test('the extension popup uses the approved copy (go-live brief, 2026-10-10)', () => {
   const en = (k) => VERIFY_SCALE_STRINGS[k][0];
-  assert.equal(en('verify_budget_eyebrow').toUpperCase(), 'VERIFICATION BUDGET');
-  assert.equal(en('verify_extend_title'), 'Your property deserves the full picture.');
-  assert.equal(en('verify_extend_body'), "We've completed part of your investigation. A few additional checks could reveal important details and help make your report more complete.");
-  assert.equal(en('verify_extend_label').toUpperCase(), 'ADDITIONAL BUDGET');
-  assert.equal(en('verify_extend_amount').replace('{{n}}', '25'), 'Up to 25 credits');
-  assert.equal(en('verify_extend_equiv').replace('{{v}}', '$2.50'), '$2.50 max.');
-  assert.equal(en('verify_extend_note'), 'You may spend less. Only the actual cost of additional checks is charged, and unused credits return to your wallet.');
-  assert.equal(en('verify_extend_saved'), "Your completed checks and findings are already saved. Nothing you've paid for needs to be repeated unnecessarily.");
-  assert.equal(en('verify_extend_continue'), 'Continue My Verification');
-  assert.equal(en('verify_extend_stop'), 'Stop & View Current Results');
-  assert.equal(en('verify_extend_consent').replace('{{n}}', '25'), 'Continuing authorizes up to 25 additional credits. No automatic extra charges.');
+  assert.equal(en('verify_extend_title'), 'Continue your investigation?');
+  assert.equal(en('verify_extend_body'), 'HOMATCH has completed the available investigation steps and found that additional research is needed to continue. You can authorize the next stage or stop here and review the results collected so far.');
+  assert.equal(`${en('verify_extend_amount').replace('{{n}}', '25')} / ${en('verify_extend_equiv').replace('{{v}}', '$2.50')}`, 'Up to 25 credits / $2.50 max.');
+  assert.equal(en('verify_extend_continue'), 'Continue Investigation');
+  assert.equal(en('verify_extend_stop'), 'Stop & View Results');
+  for (const gone of ['verify_extend_note', 'verify_extend_saved', 'verify_extend_consent', 'verify_extend_label']) assert.ok(!(gone in VERIFY_SCALE_STRINGS), gone);
 });
 
 test('the popup opens only on the server\'s word, once per screen; no authorisation milestones are shown', () => {

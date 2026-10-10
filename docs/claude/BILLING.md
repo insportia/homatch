@@ -65,10 +65,13 @@ warns when a diff enters this domain.
   `BUDGET_LIMIT` and is never extended. Usage above the authorisation is
   absorbed (wallet_settle caps the charge), recorded as `overrun_credits`
   and flagged `needs_review` for finance.
-  VAT decision for the owner/accountant: landed cost already carries
-  `billing_cogs_tax_bps` 18 % (reverse-charge on foreign providers, owner
-  rule 2026-10-04) and the price adds 18 % output VAT; if the input VAT is
-  recoverable, the landed uplift overprices by ~18 %. Not changed here.
+  VAT once (owner rule 2026-10-10): Verify's cost is `verify_cost_cents` —
+  actual provider cost + real fees (`billing_cogs_fee_bps`) + non-recoverable
+  input tax only when a provider genuinely charges it (policy
+  `nonrecoverable_input_tax_bps`, 0). The global `billing_cogs_tax_bps` 18 %
+  uplift is NOT used by Verify (other products unchanged). Output VAT 18 % is
+  applied once, on the customer price; top-ups carry no VAT (payments
+  vat_rate_bps 0).
 
 ## Where it lives
 

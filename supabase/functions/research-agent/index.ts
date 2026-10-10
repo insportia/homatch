@@ -1975,7 +1975,7 @@ async function closeBilling(sb: any, jobId: string, outcome: 'COMPLETE' | 'STOPP
 /** Credits an optional paid stage could cost at most, priced the Verify way. */
 async function stageCeilingCredits(sb: any, maxProviderUsd: number): Promise<number> {
   try {
-    const { data: landed } = await sb.rpc('billing_landed_cogs_cents', { p_raw_provider_cents: Math.round(maxProviderUsd * 10000) / 100, p_ai_cents: 0, p_enrichment_cents: 0, p_infra_cents: 0 });
+    const { data: landed } = await sb.rpc('verify_cost_cents', { p_raw_cents: Math.round(maxProviderUsd * 10000) / 100 });
     const { data: price } = await sb.rpc('verify_price_for_cost', { p_landed_cents: landed });
     const credits = Number(price?.credits);
     return Number.isFinite(credits) ? credits : 0;

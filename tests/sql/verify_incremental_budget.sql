@@ -26,8 +26,10 @@ begin
   if (public.verify_price_for_cost(35)->>'credits')::numeric  <> 10.10 then raise exception 'F: $0.35 → %', public.verify_price_for_cost(35); end if;
   if (public.verify_price_for_cost(70)->>'credits')::numeric  <> 20.20 then raise exception 'F: $0.70 → %', public.verify_price_for_cost(70); end if;
   if (public.verify_price_for_cost(100)->>'credits')::numeric <> 28.85 then raise exception 'F: $1.00 → %', public.verify_price_for_cost(100); end if;
-  -- Raw provider $0.10 → landed 11.80 ¢ (existing billing_cogs_tax_bps 1800) → 3.41 credits.
-  if (public.verify_price_for_cost(public.billing_landed_cogs_cents(10, 0, 0, 0))->>'credits')::numeric <> 3.41 then raise exception 'F: raw $0.10'; end if;
+  -- VAT once (owner rule 2026-10-10): raw provider $0.10 is the eligible cost — no 18 % uplift
+  -- (the global billing_cogs_tax_bps stays 1800 for other products and is not used by Verify).
+  if public.verify_cost_cents(10) <> 10 or public.billing_landed_cogs_cents(10, 0, 0, 0) <> 11.8 then raise exception 'F: Verify cost uplifted'; end if;
+  if (public.verify_price_for_cost(public.verify_cost_cents(10))->>'credits')::numeric <> 2.89 then raise exception 'F: raw $0.10'; end if;
   -- VAT is 18 % of the VAT-exclusive price; margin is 55 % of it over landed + contingency.
   p := public.verify_price_for_cost(70);
   if (p->>'vatCents')::numeric <> round((p->>'netCents')::numeric * 0.18, 4) then raise exception 'F: VAT %', p; end if;
@@ -60,8 +62,8 @@ begin
     if (p->>'grossCents')::numeric <> (p->>'netCents')::numeric + (p->>'vatCents')::numeric
        or abs((p->>'vatCents')::numeric - (p->>'netCents')::numeric * 0.18) > 0.0001 then raise exception 'P: VAT at %: %', cents, p; end if;
   end loop;
-  -- Non-recoverable input tax enters the landed cost once (raw $0.10 → 11.80 ¢), output VAT once on the price.
-  if public.billing_landed_cogs_cents(10, 0, 0, 0) <> 11.8 then raise exception 'P: landed tax'; end if;
+  -- No input tax is invented; a genuinely non-recoverable one is a policy number, applied once to the cost.
+  if public.verify_cost_cents(35) <> 35 then raise exception 'P: invented input tax'; end if;
   -- A stopped/partial session is not a completed report: margin only, no floor.
   if (public.verify_price_for_cost(10, false)->>'floorApplied')::boolean or (public.verify_price_for_cost(10, false)->>'credits')::numeric <> 2.89 then raise exception 'P: floor on a non-completed charge'; end if;
 
@@ -87,7 +89,7 @@ begin
   -- The synthesis is priced as the completed report (floor included) and covers the report it writes.
   g := public.verify_budget_gate(j1, 'SYNTHESIS');
   if (g->>'projectedCredits')::numeric <> (public.verify_price_for_cost((public.verify_job_cost(j1)->>'landedCents')::numeric
-       + public.billing_landed_cogs_cents(4, 0, 0, 0), true)->>'credits')::numeric then raise exception 'G: synthesis + report %', g; end if;
+       + public.verify_cost_cents(4), true)->>'credits')::numeric then raise exception 'G: synthesis + report %', g; end if;
 
   -- E. Awaiting approval holds nothing: what was used is settled, the rest returned.
   select balance into bal0 from public.credit_accounts where user_id = u;

@@ -17,12 +17,19 @@
  * THE PRICE (all numeric, never floating point; policy in
  * billable_products.config.verify_budget, VAT rate in admin_settings):
  *
- *   landed     = billing_landed_cogs_cents(metered provider cost)   (existing
- *                definition: provider cost + billing_cogs_tax_bps + fees)
- *   contingency= landed × contingency_bps                (a PRICE component,
+ *   C          = verify_cost_cents(metered provider cost): the ACTUAL eligible
+ *                economic cost — provider cost + real transaction fees
+ *                (billing_cogs_fee_bps) + non-recoverable input tax only when
+ *                a provider invoice genuinely carries it (policy
+ *                nonrecoverable_input_tax_bps, 0). Owner rule 2026-10-10: VAT
+ *                is applied ONCE, to the customer price; Verify does not use
+ *                the global billing_cogs_tax_bps uplift.
+ *   contingency= C × contingency_bps                     (a PRICE component,
  *                never recorded as incurred cost)
- *   net        = (landed + contingency) / (1 − target_margin_bps)  VAT-exclusive
- *   vat        = net × vat_rate_bps                   (output VAT, when applied)
+ *   net        = max((C + contingency) / (1 − target_margin_bps),
+ *                    C + min_net_profit_usd)   VAT-exclusive; the floor on a
+ *                                              COMPLETED report only
+ *   vat        = net × vat_rate_bps          (output VAT, once; top-ups carry none)
  *   gross      = net + vat                              VAT-inclusive charge
  *   credits    = gross → credits (credits_per_usd), rounded UP to
  *                billing_credit_rounding_dp, then capped at the authorisation.
@@ -77,6 +84,9 @@ update public.billable_products
          -- floor, not a fee: the price is the HIGHER of the margin price and
          -- the floor price, never their sum.
          'min_net_profit_usd', 1.00,
+         -- Non-recoverable input tax actually charged by Verify's providers
+         -- (bps of provider cost). 0: no provider invoice carries one today.
+         'nonrecoverable_input_tax_bps', 0,
          'apply_output_vat', true,
          'reservation_ttl_hours', 12,
          'budget_guard_bps', 9000,
@@ -178,11 +188,29 @@ as $$
            'enabled', public.billing_setting_bool('verify_billing_enabled', false));
 $$;
 
+-- ── 4b. Verify's eligible economic cost of a raw provider amount ────────
+-- Provider cost + real transaction fees + genuinely non-recoverable input tax
+-- (policy, 0 by default). Never the global 18 % billing_cogs_tax_bps uplift:
+-- the customer's VAT is applied once, on the price (owner rule 2026-10-10).
+create or replace function public.verify_cost_cents(p_raw_cents numeric)
+returns numeric
+language plpgsql stable security definer set search_path to ''
+as $$
+declare
+  v_pol jsonb := public.verify_budget_policy();
+  v_tax numeric := greatest(coalesce(public.verify_num(v_pol->>'nonrecoverable_input_tax_bps'), 0), 0);
+  v_fee numeric := greatest(public.billing_setting_num('billing_cogs_fee_bps', 0), 0);
+begin
+  if coalesce(p_raw_cents, 0) < 0 then raise exception 'NEGATIVE_COGS'; end if;
+  return round(coalesce(p_raw_cents, 0) * (1 + (v_tax + v_fee) / 10000), 4);
+end;
+$$;
+
 -- ── 5. The price of a landed cost ───────────────────────────────────────
 -- net (VAT-exclusive) = max( (landed + contingency) / (1 − margin),
 --                            landed + min_net_profit   ← completed reports only )
 -- gross = net × (1 + VAT), in credits rounded UP to the credit precision.
--- `landed` already carries the non-recoverable taxes (billing_landed_cogs_cents);
+-- `landed` is the actual eligible cost (verify_cost_cents): no VAT uplift;
 -- contingency is a price component only, never recorded as a cost.
 create or replace function public.verify_price_for_cost(p_landed_cents numeric, p_completed boolean default false)
 returns jsonb
@@ -388,7 +416,7 @@ begin
 
   return jsonb_build_object(
     'rawUsd', round(v_usd, 6),
-    'landedCents', public.billing_landed_cogs_cents(round(v_usd * 100, 4), 0, 0, 0),
+    'landedCents', public.verify_cost_cents(round(v_usd * 100, 4)),
     'unpricedLines', v_unpriced,
     'fallbackLines', v_fallback,
     'state', case when v_unpriced > 0 then 'PARTIAL' when v_fallback > 0 then 'FALLBACK' else 'PRICED' end,
@@ -534,7 +562,7 @@ declare
   v_usd numeric := coalesce(public.verify_num(v_pol->'stage_estimates_usd'->>upper(coalesce(p_stage, ''))),
                             public.verify_num(v_pol->'stage_estimates_usd'->>'DEFAULT'), 0.10);
 begin
-  return (public.verify_price_for_cost(public.billing_landed_cogs_cents(round(greatest(v_usd, 0) * 100, 4), 0, 0, 0))->>'credits')::numeric;
+  return (public.verify_price_for_cost(public.verify_cost_cents(round(greatest(v_usd, 0) * 100, 4)))->>'credits')::numeric;
 end;
 $$;
 
@@ -632,7 +660,7 @@ begin
   if v_stage = 'SYNTHESIS' then
     v_usd := v_usd + coalesce(public.verify_num(v_pol->'stage_estimates_usd'->>'REPORT'), public.verify_num(v_pol->'stage_estimates_usd'->>'DEFAULT'), 0.10);
   end if;
-  v_add := public.billing_landed_cogs_cents(round(greatest(v_usd, 0) * 100, 4), 0, 0, 0);
+  v_add := public.verify_cost_cents(round(greatest(v_usd, 0) * 100, 4));
   v_proj := (public.verify_price_for_cost(coalesce(v_landed, 0) + v_add, v_stage in ('SYNTHESIS', 'REPORT'))->>'credits')::numeric;
   select count(*) into v_n from public.verify_billing_authorizations where job_id = p_job_id;
   v_can := v_n < coalesce((v_pol->>'max_authorizations')::integer, 4)
@@ -805,6 +833,7 @@ begin
     'public.verify_budget_policy()',
     'public.verify_num(text)',
     'public.verify_job_paused_at(jsonb, timestamptz)',
+    'public.verify_cost_cents(numeric)',
     'public.verify_price_for_cost(numeric, boolean)',
     'public.verify_job_cost(uuid)',
     'public.verify_billing_open(uuid, uuid, text, boolean, integer)',

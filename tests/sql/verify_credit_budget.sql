@@ -60,17 +60,19 @@ begin
   if (s->>'accrued')::numeric <> 0 or (s->>'remaining')::numeric <> 25 or s->>'usageState' <> 'LIVE' then raise exception '4: idle %', s; end if;
   update public.research_jobs set result_json = jsonb_build_object('_cost', usage1, '_searches', '{"identity":3}'::jsonb) where id = j1;
   c := public.verify_job_cost(j1);
-  -- 200k × $2/M + 20k × $12/M + 3 × $0.01 = 0.40 + 0.24 + 0.03 = $0.67 → landed 67 × 1.18 = 79.06 ¢
-  if (c->>'rawUsd')::numeric <> 0.67 or (c->>'landedCents')::numeric <> 79.06 then raise exception '4: cost %', c; end if;
+  -- 200k × $2/M + 20k × $12/M + 3 × $0.01 = 0.40 + 0.24 + 0.03 = $0.67 → eligible cost 67 ¢ (VAT once, on the price)
+  if (c->>'rawUsd')::numeric <> 0.67 or (c->>'landedCents')::numeric <> 67 then raise exception '4: cost %', c; end if;
   s := public.verify_billing_state(j1);
-  p := public.verify_price_for_cost(79.06);
+  p := public.verify_price_for_cost(67);
   if (s->>'accrued')::numeric <> (p->>'credits')::numeric then raise exception '4: accrued % vs %', s, p; end if;
   if (s->>'used')::numeric + (s->>'remaining')::numeric <> 25 then raise exception '4: used + remaining %', s; end if;
 
   -- 5. Settles below the maximum; the rest goes back. Idempotent.
   r := public.verify_billing_close(j1, 'COMPLETE');
   charged1 := (r->>'charged')::numeric; charged_j1 := charged1;
-  if charged1 <> (p->>'credits')::numeric or (r->>'released')::numeric <> 25 - charged1 then raise exception '5: %', r; end if;
+  -- A completed report is priced with the $1 floor (67 ¢ + $1 > 67 ¢ × 1.1 / 0.45).
+  p := public.verify_price_for_cost(67, true);
+  if charged1 <> (p->>'credits')::numeric or charged1 <> 19.71 or (r->>'released')::numeric <> 25 - charged1 then raise exception '5: %', r; end if;
   select balance into bal from public.credit_accounts where user_id = u1;
   if bal <> 200 - charged1 then raise exception '5: balance %', bal; end if;
   r := public.verify_billing_close(j1, 'COMPLETE');

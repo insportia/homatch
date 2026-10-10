@@ -436,6 +436,25 @@ export function registerModelFacts(reg: PropertyRegister | null): Record<string,
     taxLien: l.taxLien, seizureOrProhibition: l.seizure, debtorRegistry: l.debtorRegistry,
     landFunction: l.landFunction, buildingsMarkedUnderConstruction: l.buildingsUnderConstruction, unitMarkedUnderConstruction: l.unitUnderConstruction,
     proceedings: reg.proceedings.map((p) => ({ kind: p.kind, filedOn: p.filedOn, completedOn: p.completedOn, documentsRead: p.read })),
+    ...extractFreshness(reg),
+  };
+}
+
+/**
+ * Whether the register moved after the newest extract HOMATCH holds. A fresh
+ * extract is advised ONLY then (a registry step newer than the extract);
+ * otherwise the buyer is never sent for a document Verify already read.
+ */
+export function extractFreshness(reg: PropertyRegister | null): { registryStepsAfterExtract: Array<{ kind: ProceedingKind; filedOn: string | null; completedOn: string | null; outcome: string | null }>; freshExtractAdvised: boolean; removalNotResolved: boolean } {
+  const issued = reg?.latest?.issuedAt?.slice(0, 10) ?? null;
+  const after = issued
+    ? (reg?.proceedings ?? []).filter((p) => (p.completedOn ?? p.filedOn ?? '') > issued)
+    : [];
+  return {
+    registryStepsAfterExtract: after.map((p) => ({ kind: p.kind, filedOn: p.filedOn, completedOn: p.completedOn, outcome: p.outcome })),
+    freshExtractAdvised: after.length > 0,
+    // A mortgage that left the register without a termination HOMATCH could read: say exactly that.
+    removalNotResolved: (reg?.removedMortgages ?? []).some((m) => !m.removedBy),
   };
 }
 

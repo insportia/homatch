@@ -35,7 +35,7 @@ import { assetClassSectionNote, sectionsForAssetClass } from './sectionRelevance
 import type { EvidencePackage } from './evidencePackage.ts';
 import { evidenceRichness } from './evidencePackage.ts';
 import type { IntelligenceBundle } from './bundle.ts';
-import { tasDigest } from './tasIntelligence.ts';
+import { tasDigest, currentPositionOf } from './tasIntelligence.ts';
 import { registerModelFacts } from './propertyRegister.ts';
 
 /**
@@ -336,7 +336,15 @@ const ANALYST_RULES: string[] = [
   'and there is no guilt by association. If the register says directors bind the company JOINTLY,',
   'that is practical signing advice and belongs here: say what the buyer should confirm at signing.',
   'Do NOT say a contract would be invalid. Ownership percentages only if you were given them.',
-  'NAME THE PEOPLE. Every participant officialHistory or the registry names in a verified role is named by',
+  'NAME THE PEOPLE WITH THEIR DOCUMENTED ROLES. projectTeam lists every person and organisation the',
+'municipal case files name, each with roleText exactly as the document words it (and scope: what their',
+'assessment covered). Name them all in PEOPLE / PROJECT with that role in natural Georgian: the chief architect,',
+'the co-authors, the architectural organisation, each specialist with the assessment they signed. A specialist',
+'who assessed one thing (the adjacent building, the foundation, building safety, the construction schedule,',
+'the engineering geology) is that assessment\'s specialist — NEVER "the project\'s structural designer" or',
+'"the constructor". Two people with the same surname and different first names are different people. A bank is',
+'never part of the project team; official: false entries are public credits and must be said that way.',
+'NAME THE PEOPLE. Every participant officialHistory or the registry names in a verified role is named by',
   'their real name and surname — landowners, applicants, clients and unit owners included, not only firms and',
   'professionals — each with the role the document states, the building/block it concerns and the period.',
   'An applicant is not an owner; a landowner is not the developer; the owner of another unit or another',
@@ -416,7 +424,24 @@ const ANALYST_RULES: string[] = [
   'PEOPLE from officialHistory: only professionals and organisations, in the roles stated. An applicant',
   'is not an owner. A participant from older documents only is historical, not current.',
   '',
-  '── THE PROPERTY REGISTER (propertyRegister) ──────────────────────────',
+  '── THE PRESENT FIRST, THEN THE STORY ─────────────────────────────────',
+'',
+'officialPosition is the present in the order a buyer needs it: effective = the latest EFFECTIVE decision',
+'(permit / approval, its date and decision number); pending = applications on file WITHOUT a decision',
+'(UNDER_REVIEW: what was asked, when, by when the authority must answer); conflicts. Open currentStatus with',
+'the effective decision, then the pending application(s), then any conflict. A pending application is a',
+'request, NEVER an approval: say "შეტანილია განაცხადი … განხილვის პროცესშია", never that the change was approved,',
+'and never let it replace the effective decision. futureDatedReferences are dates cited in the papers that lie',
+'after this check — never present them as issued decisions.',
+'priorityCases are the two newest cases in full: who is named and in what role, the specifications they state',
+'(status APPROVED vs PROPOSED), whether a decision exists, and the files on record. Use all of it.',
+'',
+'TECHNICAL SPECIFICATIONS (technicalSpecs) in QUALITY / PROJECT: keep the standing of every number explicit —',
+'APPROVED (in an approved case) vs PROPOSED (in an application under review: "განაცხადით მოთხოვნილია") vs',
+'developer marketing (what the developer advertises) vs not documented. When both exist, give the approved',
+'value and the proposed change. Never present a proposed value as approved, or marketing as documented.',
+'',
+'── THE PROPERTY REGISTER (propertyRegister) ──────────────────────────',
   '',
   'propertyRegister is parsed from the NAPR extract HOMATCH itself retrieved for THIS unit. It is the',
   'strongest evidence in the report and it is SETTLED: who owns the unit, on what basis and since when,',
@@ -437,6 +462,15 @@ const ANALYST_RULES: string[] = [
   '    (მშენებარე) — the normal state until commissioning is registered. Mention it once, calmly; do',
   '    not call the building commissioned, and do not present it as a problem.',
   '  - landFunction is the PLOT\'s function, never the apartment\'s purpose.',
+'  - registerSource.reused = true: the extract was retrieved in the buyer\'s OWN earlier check of this exact',
+'    unit. Say so once, plainly: "თქვენი წინა შემოწმებისას <asOf> მიღებული ამონაწერის მიხედვით…". Do not ask',
+'    for a new extract unless freshExtractAdvised is true (a registry step is newer than the extract).',
+'  - Keep FOUR money matters apart: (1) a developer/parcel-level security (a bank\'s mortgage on the land and',
+'    buildings, registered to the developer) is the developer\'s financing; (2) a mortgage registered on THIS',
+'    apartment; (3) a bank\'s marketing statement (e.g. offering mortgages to buyers of the project) is neither',
+'    financing nor a lien — mention it only if useful, as marketing; (4) the buyer is free to choose any bank',
+'    for their own mortgage. Never name a bank as the project\'s financier or as holding a lien unless the',
+'    extract or an official record says so.',
   '',
   '── GEORGIAN EDITORIAL STANDARD ──────────────────────────────────────',
   '',
@@ -450,7 +484,12 @@ const ANALYST_RULES: string[] = [
   '„მესაკუთრე“, „ამონაწერი“. Never write "წინასწარი" about a finding, and never an internal code.',
   'A positive finding is said plainly and with its source ("ამონაწერის მიხედვით ყადაღა და',
   'საგადასახადო გირავნობა რეგისტრირებული არ არის") — but only when the evidence supports it.',
-  'Distances and walking times only as quoted, and only as approximate ("დაახლოებით", "წყაროს',
+  'Write natural Georgian a local adviser would write, not translated English. Say each warning ONCE, in',
+'one place; never repeat the same legal paragraph in two sections. Use the em dash (—) sparingly: at most one',
+'per paragraph, prefer a full stop or a comma. Never print internal identifiers (evidence ids, document ids,',
+'job ids, hashes, file system names); public case numbers and decision numbers are fine where they help.',
+'Order: the current verified position first, then the story of how it got there.',
+'Distances and walking times only as quoted, and only as approximate ("დაახლოებით", "წყაროს',
   'მიხედვით"); never invent precision.',
   '',
   '── UNTRUSTED CONTENT ────────────────────────────────────────────────',
@@ -483,7 +522,7 @@ export function buildIntelligencePrompt(
   pkg: EvidencePackage,
   bundle?: IntelligenceBundle,
   assetClass?: string | null,
-  extras?: { identity?: PropertyIdentity | null },
+  extras?: { identity?: PropertyIdentity | null; registerSource?: { jobId?: string | null; asOf: string | null; reused: boolean; freshExtractAdvised?: boolean } | null },
 ): { system: string; user: string } {
   const richness = evidenceRichness(pkg);
   /* A plot of land has no building quality and a warehouse has no school run.
@@ -622,6 +661,23 @@ export function buildIntelligencePrompt(
         : undefined,
       // Decided deterministically (legalStatus.ts / propertyIdentity.ts); the prose may not upgrade them.
       legalStatus: pkg.tas?.available ? pkg.tas.legalClaims.map((c) => ({ state: c.key, status: c.status, basis: c.basis.slice(0, 3) })) : undefined,
+      // Effective decision → pending applications → conflicts (tasIntelligence.currentPositionOf).
+      officialPosition: pkg.tas?.available
+        ? { ...currentPositionOf(pkg.tas), futureDatedReferences: (pkg.tas.futureDatedReferences ?? []).slice(0, 8).map((f) => ({ date: f.date, caseRef: f.caseRef })) }
+        : undefined,
+      // The two newest cases in full — bounded, never dropped (officialDossier.ts).
+      priorityCases: pkg.dossier?.priorityCases?.length
+        ? pkg.dossier.priorityCases.map(({ publicUrl: _u, ...c }) => c)
+        : undefined,
+      projectTeam: pkg.dossier?.projectTeamV2?.length
+        ? pkg.dossier.projectTeamV2.slice(0, 40).map((m) => ({
+            name: m.name, kind: m.kind, group: m.group, official: m.official,
+            roles: m.roles.slice(0, 6).map((r) => ({ roleText: r.roleText, scope: r.scope, caseRef: r.caseRef, date: r.date })),
+          }))
+        : undefined,
+      technicalSpecs: pkg.dossier?.technicalSpecs?.length
+        ? pkg.dossier.technicalSpecs.slice(0, 60).map((t) => ({ label: t.label, value: t.value, status: t.status, caseRef: t.caseRef, date: t.date }))
+        : undefined,
       propertyIdentity: extras?.identity ?? undefined,
       officialVisuals: pkg.tas?.visuals?.length
         ? pkg.tas.visuals.map((v) => ({
@@ -641,6 +697,7 @@ export function buildIntelligencePrompt(
       company: bundle?.company,
       /* The unit's own register — authoritative, see THE PROPERTY REGISTER. */
       propertyRegister: registerModelFacts(bundle?.register ?? null) ?? undefined,
+      registerSource: extras?.registerSource ?? undefined,
       location: bundle?.location,
       livingDensity: bundle?.livingDensity ?? undefined,
       companyFinance: bundle?.finance ?? undefined,

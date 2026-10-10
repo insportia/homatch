@@ -43,6 +43,9 @@ import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
 import { withPropertyRegister } from '../../../src/verify/intelligence/registerEnrichment.ts';
 import { looksLikePersonName } from '../../../src/verify/intelligence/peopleIntelligence.ts';
 import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
+import { REPORT_LOGIC_VERSION, shouldAutoUpgrade, versionMarkers, markUpgradeAttempted, logicVersionOf } from '../../../src/verify/intelligence/reportVersion.ts';
+import { hasOwnRegister, reuseEarlierRegister, targetCadastralCode, type RegisterCandidate } from '../../../src/verify/intelligence/registerReuse.ts';
+import { extractFreshness } from '../../../src/verify/intelligence/propertyRegister.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
 
 /**
@@ -436,6 +439,310 @@ async function recordMarketSnapshot(db: any, job: any, bundle: any): Promise<voi
   }
 }
 
+/*
+ * THE REGISTER FROM THE BUYER'S OWN EARLIER CHECK (registerReuse.ts).
+ *
+ * Only when this job's own result yields no extract. Same user_id, same
+ * exact cadastral code, COMPLETE, earlier, newest first, at most five
+ * candidates — read with the service client because the decision is a
+ * server one, but scoped to the job owner's own rows, never cross-user. Each
+ * candidate's browserOfficial is fetched alone so five full result_json
+ * blobs are never pulled at once. Best-effort: any failure means no reuse.
+ */
+async function loadEarlierRegister(db: any, job: any, rj: any) {
+  try {
+    const userId = job?.user_id;
+    const code = targetCadastralCode(rj, job?.query ?? null);
+    if (!userId || !code) return null;
+    const queries = [...new Set([String(job?.query ?? '').trim(), code].filter(Boolean))];
+    const { data: ids, error } = await db
+      .from('research_jobs')
+      .select('id,completed_at')
+      .eq('user_id', userId)
+      .eq('status', 'COMPLETE')
+      .is('deleted_at', null)
+      .in('query', queries)
+      .neq('id', job.id)
+      .lt('completed_at', job.completed_at ?? new Date().toISOString())
+      .order('completed_at', { ascending: false })
+      .limit(5);
+    if (error || !Array.isArray(ids) || !ids.length) return null;
+    for (const row of ids) {
+      const { data } = await db
+        .from('research_jobs')
+        .select('id,completed_at,browserOfficial:result_json->browserOfficial')
+        .eq('id', row.id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!data) continue;
+      const candidate: RegisterCandidate = { id: data.id, completedAt: data.completed_at ?? null, browserOfficial: data.browserOfficial };
+      const reused = reuseEarlierRegister(rj, code, [candidate]);
+      if (reused) return reused;
+    }
+  } catch (e) {
+    console.warn('verify-synthesis: earlier register lookup failed', e instanceof Error ? e.message : String(e));
+  }
+  return null;
+}
+
+/*
+ * ONE AUTO-UPGRADE PER REPORT AND VERSION (reportVersion.ts).
+ *
+ * The claim is a compare-and-set on the row the caller just read: READY and
+ * the same synthesis_at. Exactly one concurrent opener wins; the others see
+ * PENDING and are answered "pending" by the ordinary guard, exactly like an
+ * in-flight first build. The stored report stays in synthesis_json until the
+ * rebuilt one replaces it.
+ */
+async function claimUpgrade(db: any, job: any): Promise<boolean> {
+  try {
+    let q = db
+      .from('research_jobs')
+      .update({ synthesis_state: 'PENDING', synthesis_at: new Date().toISOString() })
+      .eq('id', job.id)
+      .eq('synthesis_state', 'READY');
+    q = job.synthesis_at ? q.eq('synthesis_at', job.synthesis_at) : q.is('synthesis_at', null);
+    const { data, error } = await q.select('id');
+    return !error && Array.isArray(data) && data.length === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** A failed upgrade puts the stored report back, marked so it is not retried on every open. */
+async function restoreAfterFailedUpgrade(db: any, job: any): Promise<void> {
+  const { error } = await db
+    .from('research_jobs')
+    .update({ synthesis_state: 'READY', synthesis_json: markUpgradeAttempted(job.synthesis_json ?? {}), synthesis_at: job.synthesis_at ?? new Date().toISOString() })
+    .eq('id', job.id);
+  if (error) console.error(`verify-synthesis: could not restore report for ${job.id}: ${error.message ?? error}`);
+}
+
+/*
+ * THE BUILD — one path for a first synthesis, a forced rebuild and an
+ * auto-upgrade alike (same evidence, same model call, same gates).
+ */
+async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean }): Promise<Record<string, unknown>> {
+  const jobId: string = job.id;
+  /* The unit's register: this job's own, or — when its Service 176 task
+     yielded none — the buyer's own earlier extract for the same exact unit. */
+  let rj: any = job.result_json ?? {};
+  let registerSource: { jobId: string; asOf: string | null; reused: true; freshExtractAdvised: boolean } | null = null;
+  if (!hasOwnRegister(rj)) {
+    const reused = await loadEarlierRegister(writer, job, rj);
+    if (reused) {
+      rj = reused.resultJson;
+      registerSource = { ...reused.registerSource, freshExtractAdvised: extractFreshness(reused.register).freshExtractAdvised };
+    }
+  }
+  // The projection still supplies the deterministic property model (type,
+  // buyer plan, what completed and what did not). The evidence package is
+  // what the model reasons over.
+  const projection = projectVerify({ jobId: job.id, report: rj });
+  // "Now" is the job's own completion: a date the papers cite after it is never a decision.
+  const pkg = buildEvidencePackage(rj, { now: job.completed_at ?? null });
+  // Identity from OFFICIAL records only (TAS cases, registry documents and evidence) — never listings.
+  const identity = resolveIdentity(rj?.exactUnit?.code ?? job.query ?? null, {
+    tas: rj?.browserOfficial, documents: rj?.documents, official: rj?.officialEvidence, rights: rj?.rightsAndRestrictions, land: rj?.landProfile,
+  });
+
+  // Market, location, people and the buyer's own official self-checks are
+  // computed deterministically here; the model is handed the RESULT and asked
+  // to explain it, never to do the arithmetic.
+  const fx = await fetchFx(earliestEvidenceDate(pkg.items));
+  const bundle = buildIntelligenceBundle(rj, pkg, fx);
+
+  /*
+   * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET, KEPT.
+   *
+   * bundle.market is the deterministic answer — median, band, tier, sample
+   * size — computed from comparables that were actually gathered. Until now
+   * it was quoted once and discarded, so the next flat in the same building
+   * paid for the same five-band sweep to rebuild it. That sweep is 45% of
+   * what a Verify costs.
+   *
+   * Stored against the SEGMENT it describes rather than the job that
+   * happened to compute it. Bookkeeping: it runs after the report is safe
+   * and can never cost a customer their answer.
+   */
+  await recordMarketSnapshot(writer, job, bundle);
+
+  // No evidence at all is a legitimate outcome, not an error: every source
+  // may have been technically unavailable. Say so plainly rather than
+  // returning an empty report that reads like a clean bill of health.
+  if (!pkg.items.length) {
+    const emptyPayload = {
+      report: null,
+      mode: 'DETERMINISTIC' as const,
+      propertyType: projection.propertyType,
+      snapshot: bundle.snapshot,
+      selfChecks: bundle.selfChecks,
+    /*
+     * DETERMINISTIC, SO A QUIET MODEL CANNOT DELETE THEM.
+     *
+     * The live Villion synthesis returned evidenceUsed: [] and
+     * nextSteps: [] while the report displayed a company id, two
+     * shareholders and a registered pledge. These three are computed from
+     * the evidence package and the market scoring, so they exist whenever
+     * the underlying evidence does.
+     */
+    evidenceGroups: bundle.evidenceGroups,
+    checklist: bundle.checklist,
+    comparableSelection: bundle.comparables,
+      empty: true,
+      ...versionMarkers(job.synthesis_json, opts.autoUpgrade),
+    };
+    // "No evidence at all" is a real, final answer, not a failure to retry.
+    await persist(writer, jobId, emptyPayload);
+    return emptyPayload;
+  }
+
+  let raw: string | null = null;
+  // Token usage of THIS call, kept with the report for COGS and Admin.
+  // It used to be discarded, leaving the final synthesis unmetered.
+  let usage: { model: string; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null } | null = null;
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (apiKey) {
+    // The asset class decides which sections this property can even have:
+    // a plot of land has no building quality, and a heading with nothing
+    // real under it gets filled with something.
+    const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(rj), {
+      identity,
+      // Provenance for the prose, without the internal job id.
+      registerSource: registerSource ? { asOf: registerSource.asOf, reused: true, freshExtractAdvised: registerSource.freshExtractAdvised } : null,
+    });
+    try {
+      const res = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: MODEL,
+          input: [
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+          ],
+        }),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        raw = textOf(body);
+        const u = body?.usage ?? null;
+        usage = {
+          model: MODEL,
+          inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
+          outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
+          cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
+        };
+      } else {
+        // The provider's own words, not a summary of them.
+        const detail = (await res.text()).slice(0, 500);
+        const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${MODEL} refused: HTTP ${res.status} ${detail}`;
+        if (MODEL_UNAVAILABLE_STATUSES.has(res.status)) throw new Error(reason);
+        console.error(reason);
+      }
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      // Re-throw the availability refusal raised just above; a transport
+      // failure is transient and degrades the prose, never the report.
+      if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) throw e;
+      console.error('synthesis model call failed', reason);
+    }
+  }
+
+  // The bundle travels into finalize so the deterministic facts can veto a
+  // model statement that contradicts them — see stripFalseScarcity.
+  const final = finalizeReport(pkg, raw, bundle);
+  if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
+    // Worth knowing about: a model that keeps failing the gate is a
+    // prompt/model problem we want visible in logs, not silently absorbed.
+    console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
+  }
+
+  const built = {
+    /* Which model actually wrote this, for COGS and for inspection. */
+    synthesisModel: MODEL,
+    synthesisModelPinned: true,
+    report: {
+      // v3: summary + keyFindings replace overallView/executiveSummary, and
+      // the pre-purchase checklist is gone rather than renamed.
+      summary: final.summary,
+      // The latest confirmed official position, the documented history
+      // oldest-first, and one caption per official TAS visual.
+      ...(final.currentStatus ? { currentStatus: final.currentStatus } : {}),
+      ...(final.propertyStory ? { propertyStory: final.propertyStory } : {}),
+      ...(final.visualCaptions ? { visualCaptions: final.visualCaptions } : {}),
+      ...(final.visualExplanations?.length ? { visualExplanations: final.visualExplanations } : {}),
+      keyFindings: final.keyFindings,
+      sections: final.sections,
+      attentionPoints: final.attentionPoints,
+      finalView: final.finalView,
+      contractUpload: final.contractUpload,
+    },
+    // The sources behind the prose, so the UI can offer them underneath
+    // without the customer having to read raw research output.
+    evidence: final.evidenceUsed,
+    snapshot: bundle.snapshot,
+    market: bundle.market,
+    location: bundle.location,
+    people: bundle.people,
+    fx: bundle.fx,
+    // Official checks the BUYER can run. These replace the old inventory of
+    // what our own pipeline could not retrieve.
+    selfChecks: bundle.selfChecks,
+    /*
+     * DETERMINISTIC, SO A QUIET MODEL CANNOT DELETE THEM.
+     *
+     * The live Villion synthesis returned evidenceUsed: [] and
+     * nextSteps: [] while the report displayed a company id, two
+     * shareholders and a registered pledge. These three are computed from
+     * the evidence package and the market scoring, so they exist whenever
+     * the underlying evidence does.
+     */
+    evidenceGroups: bundle.evidenceGroups,
+    checklist: bundle.checklist,
+    comparableSelection: bundle.comparables,
+    // Reusable by Contract Intelligence when a signatory must be compared
+    // against the register.
+    participants: bundle.participants,
+    mode: final.mode,
+    propertyType: projection.propertyType,
+    evidenceCounts: pkg.tierCounts,
+    // Research transparency: counts only, never links.
+    research: researchCoverage(job, pkg, bundle),
+    // Deterministic official history for the report: status (with its
+    // conclusiveness), the 5–10 milestones, value changes, and the funnel
+    // from discovered records to what is shown. Case/decision numbers only.
+    officialHistory: pkg.tas ? officialHistoryView(pkg.tas) : null,
+    // Which unit the records actually concern; a near match is never merged (propertyIdentity.ts).
+    identity,
+    // Developer advertising (marketing signal): only a completed stage reaches
+    // the customer; the view carries no run ids or costs by construction.
+    developerAds: pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,
+    // Bucket paths (internal) of the customer-visible visuals, with their
+    // scope/category; forCustomer() turns them into signed URLs.
+    officialVisuals: persistableVisuals(rj?.officialVisuals, pkg.tas?.visuals ?? []),
+    /*
+     * THE OFFICIAL DOSSIER (officialDossier.ts) — customer-visible, names
+     * kept exactly: the team with documented roles and provenance, the
+     * specifications with their standing (APPROVED / PROPOSED), and the
+     * case files with their public TAS links, priority cases first.
+     */
+    projectTeamV2: pkg.dossier?.projectTeamV2 ?? [],
+    technicalSpecs: pkg.dossier?.technicalSpecs ?? [],
+    officialDocuments: pkg.dossier?.officialDocuments ?? [],
+    // Disclosed when the extract came from the buyer's own earlier check of this unit.
+    registerSource,
+    _usage: usage,
+    empty: false,
+    ...versionMarkers(job.synthesis_json, opts.autoUpgrade),
+  };
+
+  /* The register vetoes prose it disproves before anything is stored. */
+  const payload = withPropertyRegister(built, rj, await enrichmentContext(writer, job));
+  await persist(writer, jobId, payload);
+  return await forCustomer(writer, payload);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -488,7 +795,7 @@ serve(async (req) => {
 
     const { data: job, error } = await supabase
       .from('research_jobs')
-      .select('id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at')
+      .select('id,user_id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at')
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw error;
@@ -538,12 +845,32 @@ serve(async (req) => {
      * finished case from History re-ran the model and re-charged for it.
      * The persisted report is now authoritative, so returning to a case is
      * a read. */
-    if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force) {
+    /* A report built by older logic, for a recent job, is rebuilt ONCE
+       (reportVersion.ts). Everything else reads exactly as before. */
+    const upgrade = !body?.force && shouldAutoUpgrade({
+      synthesisState: job.synthesis_state, synthesisJson: job.synthesis_json, completedAt: job.completed_at, now: Date.now(),
+    });
+    const serveStored = async () => {
+      const read = withPropertyRegister(withCredibleParticipants(job.synthesis_json as Record<string, unknown>), job.result_json, await enrichmentContext(writer, job));
+      return json({ ...(await forCustomer(writer, read)), persisted: true });
+    };
+    if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force && !upgrade) {
+      const read = withPropertyRegister(withCredibleParticipants(job.synthesis_json as Record<string, unknown>), job.result_json, await enrichmentContext(writer, job));
       /* The unit's register is re-applied on every read, so reports written
          before the extracts were decoded (c80f7237) show the true owner and
          mortgages without a rebuild or a charge. Nothing is written back. */
-      const read = withPropertyRegister(withCredibleParticipants(job.synthesis_json as Record<string, unknown>), job.result_json, await enrichmentContext(writer, job));
       return json({ ...(await forCustomer(writer, read)), persisted: true });
+    }
+    if (upgrade) {
+      if (!(await claimUpgrade(writer, job))) return await serveStored();
+      console.log(`verify-synthesis: auto-upgrading report ${job.id} from logic v${logicVersionOf(job.synthesis_json)} to v${REPORT_LOGIC_VERSION}`);
+      try {
+        return json(await buildReport(job, writer, { autoUpgrade: true }));
+      } catch (e) {
+        console.error(`verify-synthesis: auto-upgrade of ${job.id} failed`, e instanceof Error ? e.message : String(e));
+        await restoreAfterFailedUpgrade(writer, job);
+        return await serveStored();
+      }
     }
 
     /* ALREADY BEING WRITTEN.
@@ -559,195 +886,7 @@ serve(async (req) => {
       return json({ pending: true, retryAfterMs: 4000 }, 202);
     }
 
-    // The projection still supplies the deterministic property model (type,
-    // buyer plan, what completed and what did not). The evidence package is
-    // what the model reasons over.
-    const projection = projectVerify({ jobId: job.id, report: job.result_json });
-    const pkg = buildEvidencePackage(job.result_json);
-    // Identity from OFFICIAL records only (TAS cases, registry documents and evidence) — never listings.
-    const rj = job.result_json ?? {};
-    const identity = resolveIdentity(rj?.exactUnit?.code ?? job.query ?? null, {
-      tas: rj?.browserOfficial, documents: rj?.documents, official: rj?.officialEvidence, rights: rj?.rightsAndRestrictions, land: rj?.landProfile,
-    });
-
-    // Market, location, people and the buyer's own official self-checks are
-    // computed deterministically here; the model is handed the RESULT and asked
-    // to explain it, never to do the arithmetic.
-    const fx = await fetchFx(earliestEvidenceDate(pkg.items));
-    const bundle = buildIntelligenceBundle(job.result_json, pkg, fx);
-
-    /*
-     * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET, KEPT.
-     *
-     * bundle.market is the deterministic answer — median, band, tier, sample
-     * size — computed from comparables that were actually gathered. Until now
-     * it was quoted once and discarded, so the next flat in the same building
-     * paid for the same five-band sweep to rebuild it. That sweep is 45% of
-     * what a Verify costs.
-     *
-     * Stored against the SEGMENT it describes rather than the job that
-     * happened to compute it. Bookkeeping: it runs after the report is safe
-     * and can never cost a customer their answer.
-     */
-    await recordMarketSnapshot(writer, job, bundle);
-
-    // No evidence at all is a legitimate outcome, not an error: every source
-    // may have been technically unavailable. Say so plainly rather than
-    // returning an empty report that reads like a clean bill of health.
-    if (!pkg.items.length) {
-      const emptyPayload = {
-        report: null,
-        mode: 'DETERMINISTIC' as const,
-        propertyType: projection.propertyType,
-        snapshot: bundle.snapshot,
-        selfChecks: bundle.selfChecks,
-      /*
-       * DETERMINISTIC, SO A QUIET MODEL CANNOT DELETE THEM.
-       *
-       * The live Villion synthesis returned evidenceUsed: [] and
-       * nextSteps: [] while the report displayed a company id, two
-       * shareholders and a registered pledge. These three are computed from
-       * the evidence package and the market scoring, so they exist whenever
-       * the underlying evidence does.
-       */
-      evidenceGroups: bundle.evidenceGroups,
-      checklist: bundle.checklist,
-      comparableSelection: bundle.comparables,
-        empty: true,
-      };
-      // "No evidence at all" is a real, final answer, not a failure to retry.
-      await persist(writer, jobId, emptyPayload);
-      return json(emptyPayload);
-    }
-
-    let raw: string | null = null;
-    // Token usage of THIS call, kept with the report for COGS and Admin.
-    // It used to be discarded, leaving the final synthesis unmetered.
-    let usage: { model: string; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null } | null = null;
-    const apiKey = Deno.env.get('OPENAI_API_KEY');
-    if (apiKey) {
-      // The asset class decides which sections this property can even have:
-      // a plot of land has no building quality, and a heading with nothing
-      // real under it gets filled with something.
-      const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(job.result_json), { identity });
-      try {
-        const res = await fetch('https://api.openai.com/v1/responses', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: MODEL,
-            input: [
-              { role: 'system', content: system },
-              { role: 'user', content: user },
-            ],
-          }),
-        });
-        if (res.ok) {
-          const body = await res.json();
-          raw = textOf(body);
-          const u = body?.usage ?? null;
-          usage = {
-            model: MODEL,
-            inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
-            outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
-            cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
-          };
-        } else {
-          // The provider's own words, not a summary of them.
-          const detail = (await res.text()).slice(0, 500);
-          const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${MODEL} refused: HTTP ${res.status} ${detail}`;
-          if (MODEL_UNAVAILABLE_STATUSES.has(res.status)) throw new Error(reason);
-          console.error(reason);
-        }
-      } catch (e) {
-        const reason = e instanceof Error ? e.message : String(e);
-        // Re-throw the availability refusal raised just above; a transport
-        // failure is transient and degrades the prose, never the report.
-        if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) throw e;
-        console.error('synthesis model call failed', reason);
-      }
-    }
-
-    // The bundle travels into finalize so the deterministic facts can veto a
-    // model statement that contradicts them — see stripFalseScarcity.
-    const final = finalizeReport(pkg, raw, bundle);
-    if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
-      // Worth knowing about: a model that keeps failing the gate is a
-      // prompt/model problem we want visible in logs, not silently absorbed.
-      console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
-    }
-
-    const built = {
-      /* Which model actually wrote this, for COGS and for inspection. */
-      synthesisModel: MODEL,
-      synthesisModelPinned: true,
-      report: {
-        // v3: summary + keyFindings replace overallView/executiveSummary, and
-        // the pre-purchase checklist is gone rather than renamed.
-        summary: final.summary,
-        // The latest confirmed official position, the documented history
-        // oldest-first, and one caption per official TAS visual.
-        ...(final.currentStatus ? { currentStatus: final.currentStatus } : {}),
-        ...(final.propertyStory ? { propertyStory: final.propertyStory } : {}),
-        ...(final.visualCaptions ? { visualCaptions: final.visualCaptions } : {}),
-        ...(final.visualExplanations?.length ? { visualExplanations: final.visualExplanations } : {}),
-        keyFindings: final.keyFindings,
-        sections: final.sections,
-        attentionPoints: final.attentionPoints,
-        finalView: final.finalView,
-        contractUpload: final.contractUpload,
-      },
-      // The sources behind the prose, so the UI can offer them underneath
-      // without the customer having to read raw research output.
-      evidence: final.evidenceUsed,
-      snapshot: bundle.snapshot,
-      market: bundle.market,
-      location: bundle.location,
-      people: bundle.people,
-      fx: bundle.fx,
-      // Official checks the BUYER can run. These replace the old inventory of
-      // what our own pipeline could not retrieve.
-      selfChecks: bundle.selfChecks,
-      /*
-       * DETERMINISTIC, SO A QUIET MODEL CANNOT DELETE THEM.
-       *
-       * The live Villion synthesis returned evidenceUsed: [] and
-       * nextSteps: [] while the report displayed a company id, two
-       * shareholders and a registered pledge. These three are computed from
-       * the evidence package and the market scoring, so they exist whenever
-       * the underlying evidence does.
-       */
-      evidenceGroups: bundle.evidenceGroups,
-      checklist: bundle.checklist,
-      comparableSelection: bundle.comparables,
-      // Reusable by Contract Intelligence when a signatory must be compared
-      // against the register.
-      participants: bundle.participants,
-      mode: final.mode,
-      propertyType: projection.propertyType,
-      evidenceCounts: pkg.tierCounts,
-      // Research transparency: counts only, never links.
-      research: researchCoverage(job, pkg, bundle),
-      // Deterministic official history for the report: status (with its
-      // conclusiveness), the 5–10 milestones, value changes, and the funnel
-      // from discovered records to what is shown. Case/decision numbers only.
-      officialHistory: pkg.tas ? officialHistoryView(pkg.tas) : null,
-      // Which unit the records actually concern; a near match is never merged (propertyIdentity.ts).
-      identity,
-      // Developer advertising (marketing signal): only a completed stage reaches
-      // the customer; the view carries no run ids or costs by construction.
-      developerAds: pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,
-      // Bucket paths (internal) of the customer-visible visuals, with their
-      // scope/category; forCustomer() turns them into signed URLs.
-      officialVisuals: persistableVisuals(job.result_json?.officialVisuals, pkg.tas?.visuals ?? []),
-      _usage: usage,
-      empty: false,
-    };
-
-    /* The register vetoes prose it disproves before anything is stored. */
-    const payload = withPropertyRegister(built, job.result_json, await enrichmentContext(writer, job));
-    await persist(writer, jobId, payload);
-    return json(await forCustomer(writer, payload));
+    return json(await buildReport(job, writer, { autoUpgrade: false }));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     console.error('verify-synthesis failed', reason);

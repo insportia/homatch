@@ -94,39 +94,52 @@ export interface VisualSlot {
   candidate: VisualCandidate;
 }
 
+/** What each visual explains to a buyer. One of each, in this order. */
+const ARCHITECTURE_KINDS: VisualKind[] = ['FACADE', 'SITE_PLAN', 'LANDSCAPE', 'FLOOR_PLAN'];
+const STRUCTURE_KINDS: VisualKind[] = ['STRUCTURAL', 'CONSTRUCTION_PHOTO'];
+
+/** Owner, 2026-10-10: three or four pictures in total are enough. */
+export const VISUAL_HARD_CAP = 4;
+
 /**
- * Pick the shortlist to actually open. Default target 2–4, never more than
- * `max` (6). The latest render leads; the earliest render is added only when
- * it is materially older (≥ 90 days) and from a different file, so an
- * "Original → Latest" comparison is only offered when there is history.
+ * Pick the shortlist to actually open — never more than four (owner,
+ * 2026-10-10: "3-4 photos are enough for a buyer to see the project and its
+ * structure"). The set explains different things, in this order:
+ *   1. the latest render (what the project looks like);
+ *   2. one architectural drawing (facade, site plan, landscape, floor plan);
+ *   3. one structural picture (structure drawing or construction photo);
+ *   4. the earliest render, when it is materially older (≥ 90 days) and a
+ *      different file — an "Original → Latest" comparison — else any other
+ *      kind not yet shown.
  */
-export function selectVisualShortlist(ranked: VisualCandidate[], target = 4, max = 6): VisualSlot[] {
-  const cap = Math.min(Math.max(1, target), max);
-  const renders = ranked.filter((c) => c.kind === 'RENDER' || c.kind === 'FACADE');
+export function selectVisualShortlist(ranked: VisualCandidate[], target = 4, max = VISUAL_HARD_CAP): VisualSlot[] {
+  const cap = Math.min(Math.max(1, target), max, VISUAL_HARD_CAP);
+  const renders = ranked.filter((c) => c.kind === 'RENDER');
   const dated = renders.filter((c) => c.date).sort((a, b) => a.date!.localeCompare(b.date!));
   const slots: VisualSlot[] = [];
   const used = new Set<string>();
-  const latest = dated.length ? dated[dated.length - 1] : renders[0];
-  if (latest) {
-    slots.push({ role: 'LATEST_RENDER', candidate: latest });
-    used.add(latest.attachedFileId);
+  const kindsTaken = new Set<VisualKind>();
+  const take = (role: VisualSlot['role'], c: VisualCandidate | undefined) => {
+    if (!c || slots.length >= cap || used.has(c.attachedFileId)) return false;
+    slots.push({ role, candidate: c });
+    used.add(c.attachedFileId);
+    kindsTaken.add(c.kind);
+    return true;
+  };
+  const latest = dated.length ? dated[dated.length - 1] : renders[0] ?? ranked.find((c) => c.kind === 'FACADE');
+  take(latest?.kind === 'RENDER' ? 'LATEST_RENDER' : 'SUPPORTING', latest);
+  for (const group of [ARCHITECTURE_KINDS, STRUCTURE_KINDS]) {
+    const best = ranked.find((c) => group.includes(c.kind) && !used.has(c.attachedFileId) && !kindsTaken.has(c.kind));
+    take('SUPPORTING', best);
   }
   const earliest = dated[0];
   if (
     earliest && latest && earliest.attachedFileId !== latest.attachedFileId && latest.date &&
     Date.parse(latest.date) - Date.parse(earliest.date!) >= 90 * 864e5
-  ) {
-    slots.push({ role: 'EARLIEST_RENDER', candidate: earliest });
-    used.add(earliest.attachedFileId);
-  }
-  // One of each supporting kind, best first, so the set explains different things.
-  const kindsTaken = new Set<VisualKind>(slots.map((s) => s.candidate.kind));
+  ) take('EARLIEST_RENDER', earliest);
   for (const c of ranked) {
     if (slots.length >= cap) break;
-    if (used.has(c.attachedFileId) || kindsTaken.has(c.kind)) continue;
-    slots.push({ role: 'SUPPORTING', candidate: c });
-    used.add(c.attachedFileId);
-    kindsTaken.add(c.kind);
+    if (!kindsTaken.has(c.kind)) take('SUPPORTING', c);
   }
   return slots;
 }

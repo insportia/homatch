@@ -676,7 +676,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   const story = buildStory(timeline, facts, nowIso);
 
   // ── visuals: linked to the nearest dated event and its chapter ──
-  const visuals: VisualRef[] = arr<any>(r0.officialVisuals ?? api?.visuals).slice(0, 6).map((v) => {
+  const visuals: VisualRef[] = arr<any>(r0.officialVisuals ?? api?.visuals).slice(0, 4).map((v) => {
     const d = day(v?.date);
     let nearest: TimelineEvent | null = null;
     if (d)

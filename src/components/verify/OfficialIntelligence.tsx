@@ -285,7 +285,7 @@ export const PropertyStoryBlock: React.FC<{
   const [broken, setBroken] = React.useState<Set<string>>(() => new Set());
   const onBroken = React.useCallback((id: string) => setBroken((b) => new Set(b).add(id)), []);
   const story = (chapters ?? []).filter((c) => clean(c.body));
-  const usable = (visuals ?? []).filter((v) => safeVisualUrl(v.url) && !broken.has(v.id)).slice(0, 6);
+  const usable = (visuals ?? []).filter((v) => safeVisualUrl(v.url) && !broken.has(v.id)).slice(0, 4);
   const milestones = history?.milestones ?? [];
   const evolution = history?.evolution ?? [];
   if (!story.length && !usable.length && !milestones.length && !evolution.length) return null;

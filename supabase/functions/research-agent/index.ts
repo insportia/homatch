@@ -2247,7 +2247,7 @@ const VISUAL_BUCKET = 'verify-official-visuals';
 async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
   try {
     const tas = (w?.results || []).find((r: any) => r?.source === 'tas' && r?.tasApi);
-    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 6) : [];
+    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 4) : [];
     if (!visuals.length) return;
     const out: any[] = [];
     for (const v of visuals) {

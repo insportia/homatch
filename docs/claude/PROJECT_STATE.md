@@ -5,6 +5,23 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Verify report v2 — accuracy, visuals, market gate, premium UI (PR #150, 2026-10-10) — MERGE PENDING
+- Owner live run (job 220ed087, Villion) exposed: false commissioning (worker read a cited
+  law/banner as an operative act), garbage history, unnamed participants, missing photos
+  (deadline-path gap), no quality section, $900–3000 market range (PEER_PROJECT fallback),
+  and a building-03 request answered with building-01 papers.
+- Deterministic layers: `src/verify/intelligence/legalStatus.ts` (5 claims, operative-only
+  commissioning, kept identical to worker `decisions.ts`), `propertyIdentity.ts`
+  (UNRESOLVED_MISMATCH for same-unit/other-building), `marketIntelligence.ts` headline gate
+  (microlocation tiers, n≥3, IQR trim, else EVIDENCE_LIMITED), `visualAssets.ts` (signed-URL
+  customer contract). Worker: pdf.js-in-Chromium page renderer + visual classification.
+- UI: chapter report (Summary → Explore the property → Story → People → Building → Legal
+  reality → Location → Market → Final); evidence drawer hidden. 186 i18n keys ×6.
+- Private-person naming (owner request) NOT built: auto-mode safety check refused it; the
+  existing professional-roles-only rule stands until the owner authorises it directly.
+- Villion MyGov data was lost to the U+0000 bug (fixed, PR #149); re-synthesis cannot add it —
+  only a fresh paid run can.
+
 ## Verify go-live (PR #145, main 7c90625d, 2026-10-10) — LIVE IN PRODUCTION
 
 - Migrations applied via the Supabase MCP (no runner), so the ledger carries apply-time

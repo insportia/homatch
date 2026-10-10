@@ -418,6 +418,64 @@ def test_a_curved_sofa_is_a_curve_not_a_row_of_boxes():
     assert out["outputs"]["objects"]["gsofacurved"]["ok"] is True
 
 
+def _glb_points(data: bytes) -> list[tuple[float, float, float]]:
+    length = struct.unpack_from("<I", data, 12)[0]
+    gl = json.loads(data[20:20 + length])
+    bin_start = 20 + length + 8
+    pts = []
+    for m in gl["meshes"]:
+        for prim in m["primitives"]:
+            acc = gl["accessors"][prim["attributes"]["POSITION"]]
+            view = gl["bufferViews"][acc["bufferView"]]
+            off = bin_start + view.get("byteOffset", 0) + acc.get("byteOffset", 0)
+            stride = view.get("byteStride", 12)
+            pts += [struct.unpack_from("<3f", data, off + k * stride) for k in range(acc["count"])]
+    return pts
+
+
+DESIGN_PIECES = [
+    # kind, design form, size (w, d, h): h is the form's full height (designGraph.ts FORM_HEIGHT_M).
+    ("KITCHEN_RUN", "SHAKER", 2.4, 0.62, 2.3, {"body": "#4b3022", "top": "#c7b59b"}),
+    ("VANITY", "FLUTED", 0.8, 0.48, 0.85, {"body": "#4b3022", "top": "#c7b59b"}),
+    ("ARMCHAIR", "CLUB", 0.85, 0.85, 0.85, {"body": "#4d5842", "legs": "#4b3022"}),
+    ("TV_UNIT", "TV_WALL", 1.8, 0.45, 2.42, {"body": "#4b3022"}),
+    ("WARDROBE", "BUILT_IN", 1.8, 0.6, 2.5, {"body": "#4b3022"}),
+    ("BED", "UPHOLSTERED", 1.6, 2.05, 1.25, {"body": "#cbbba3", "linen": "#f1e9dc"}),
+    ("RUG", "BORDERED", 2.0, 1.4, 0.01, {"body": "#d8c2a5", "accent": "#b88768"}),
+]
+
+
+def test_a_design_form_is_its_own_geometry_at_its_full_height():
+    """The selected design's forms (a shaker kitchen with wall cabinets, a built-in TV wall, a channel-tufted bed…)
+    are built as their own geometry — more parts than the plain piece of the same kind — and stand at their full
+    height: the factory fits a piece to its size exactly, so a TV wall is never squashed to a console."""
+    s = spec()
+    s["outputs"] = {"render": False, "scene": False, "objects": True}
+    base = next(o for o in s["objects"] if o["kind"] == "SOFA")
+    objs = []
+    for i, (kind, form, w, d, h, colors) in enumerate(DESIGN_PIECES):
+        for variant, f in (("d", form), ("p", None)):
+            objs.append({**base, "id": f"{kind.lower()}-{variant}", "kind": kind, "form": f, "size": {"w": w, "d": d, "h": h}, "colors": colors,
+                         "at": [1.0 + i * 1.3, 2.0 if variant == "d" else 5.0], "runtime": True, "group": f"g{kind.lower().replace('_', '')}{variant}"})
+    s["objects"] = objs
+    urls = {o["group"]: f"{R2}&{o['group']}" for o in objs}
+    tr = FakeTransfer()
+    out = pipeline_mod.run_job(parse_job(job(s, outputs={"objects": urls})), {**tools(), "gltf_transform": None}, tr)
+    pts = {url.split("&")[-1]: _glb_points(data) for url, _n, _ct, data in tr.puts}
+    mats = {url.split("&")[-1]: len(json.loads(data[20:20 + struct.unpack_from("<I", data, 12)[0]]).get("materials", [])) for url, _n, _ct, data in tr.puts}
+    for kind, form, w, d, h, _c in DESIGN_PIECES:
+        g = kind.lower().replace("_", "")
+        designed, plain = pts[f"g{g}d"], pts[f"g{g}p"]
+        ys = [q[1] for q in designed]
+        assert abs((max(ys) - min(ys)) - h) < 0.02, f"{form}: {max(ys) - min(ys):.3f} m tall, not {h}"
+        if kind == "RUG":
+            # A bordered rug is its border and its field: two materials where a plain rug has one.
+            assert mats[f"g{g}d"] >= 2 and mats[f"g{g}d"] > mats[f"g{g}p"], f"{form}: {mats[f'g{g}d']} materials"
+        else:
+            assert len({tuple(round(c, 4) for c in q) for q in designed}) > len({tuple(round(c, 4) for c in q) for q in plain}), f"{form} has its own parts"
+        assert out["outputs"]["objects"][f"g{g}d"]["ok"] is True
+
+
 @needs_blender
 def test_a_tint_balances_the_texture_and_exports_a_valid_factor():
     """The picture's colour is reached by balancing against the texture's real average (never the

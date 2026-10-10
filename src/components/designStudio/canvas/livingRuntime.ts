@@ -256,6 +256,11 @@ export class LivingRuntime {
     return actionsFrom(entry.machine, entry.target ?? entry.state).map((t) => t.action);
   }
 
+  /** The state an action leads to from where the entry is heading (null when it cannot take it). */
+  nextState(entry: LiveEntry, action: ActionCode): string | null {
+    return actionsFrom(entry.machine, entry.target ?? entry.state).find((x) => x.action === action)?.to ?? null;
+  }
+
   /** Take an action. Returns false if the entry cannot do it from its current state. */
   act(key: string, action: ActionCode, now = performance.now()): boolean {
     const e = this.entries.get(key);

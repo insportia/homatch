@@ -26,6 +26,7 @@ import { stableJson } from '@/lib/designStudio/stableJson';
 import { openQuestions, resumeStep, type PhotoAnswer, type PhotoFlowRecord } from '@/lib/designStudio/photoProject';
 import type { RenderQuote } from '@/lib/designStudio/renders/contract';
 import { DesignStudioError } from '@/services/designStudio/errors';
+import { StorageError } from '@/services/storage/objectStore';
 import { DesignStudioFailure } from '@/services/designStudio/durable';
 import { runDesign, type RunStage } from '@/services/designStudio/designRun';
 import { quoteRender } from '@/services/designStudio/renders';
@@ -43,6 +44,7 @@ const ERROR_KEY: Record<string, string> = {
   DS_INSUFFICIENT_CREDITS: 'dsx_no_credits',
   DS_RATE_LIMITED: 'sf_error_busy',
   DS_TOO_MANY_REFERENCES: 'dsx_pu_too_many',
+  DS_UPLOAD_FAILED: 'contract_err_upload_failed',
 };
 
 const sha16 = async (text: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))]
@@ -121,7 +123,9 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
     setError(null);
     setLocalUrls(files.map((f) => URL.createObjectURL(f)));
     try {
-      const refs = await uploadPhotos({ userId, projectId, files, onEach: (n, total) => setProgress({ n, total }) });
+      // A photo that never reached storage (refused or blocked transfer) is an upload failure, not a reading one.
+      const refs = await uploadPhotos({ userId, projectId, files, onEach: (n, total) => setProgress({ n, total }) })
+        .catch((e) => { throw e instanceof DesignStudioError ? e : new DesignStudioError('DS_UPLOAD_FAILED', e instanceof StorageError || e instanceof TypeError ? e.message : String(e)); });
       const created = await startPhotoProject({ userId, projectId, referenceIds: refs.map((r) => r.id) });
       setRecon(created);
       setAnswers([]);

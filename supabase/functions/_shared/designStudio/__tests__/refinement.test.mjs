@@ -246,7 +246,7 @@ test('C: the Result shows a room picture only once one was generated; never the 
 
 test('E: the 3D tour starts from the project; a photo design walks on the project\'s plan, else on a space reconstructed from its pictures', () => {
   const walk = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(walk, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*let onPlan = await designOnPlan\(admin, version, project\.id\);/);
+  assert.match(walk, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*const renderId = body\.renderId \?\? null;\s*let onPlan = await designOnPlan\(admin, version, project\.id, renderId\);/);
   assert.match(walk, /const id = await uuidFrom\(`ds-walk-photo-design:\$\{version\.id\}:\$\{plan\.id\}`\);/, 'asked again, the same version');
   assert.match(walk, /design_dna: version\.design_dna \?\? null,\s*\}, \{ onConflict: 'id', ignoreDuplicates: true \}\);\s*if \(error\) return null;/, 'the design (DNA → its specification) is carried onto the plan');
   // Never "add a plan": the space is reconstructed (src/lib/designStudio/__tests__/inferredSpace.test.mjs).

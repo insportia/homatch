@@ -171,4 +171,6 @@ export interface WalkGate {
   crowded: string[];
   missingEssential: string[];
   spawnValid: boolean;
+  /** What a person would not believe (plausibility.ts): a wall piece standing free, a sofa facing away, a cramped arrival. */
+  implausible?: Array<{ code: string; roomId: string | null; instanceId: string | null; detail: string }>;
 }

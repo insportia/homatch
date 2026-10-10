@@ -17602,6 +17602,20 @@ const en = {
   vrx_ownership_note: 'Named in the official municipal case documents for the project’s land and permits. This is not the owner of the apartment you asked about.',
   vrx_ownership_building: 'Building {{blocks}}',
   vrx_ownership_period: 'In the records {{span}}',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'Go to {{room}}',
+  ds_walk_back: 'Back',
+  ds_walk_plan: 'Plan',
+  ds_walk_plan_title: 'The whole home — choose a room',
+  ds_walk_you_are_here: 'You are here',
+  ds_walk_door_hint: 'Each doorway shows where it leads — choose one to walk through.',
+  dsx_walk_share: 'Share the 3D tour',
+  dsx_walk_ready_note: 'Your whole home in one walk: you start at the entrance and go room to room through the real doorways.',
+  dsx_walk_fidelity_note: 'This tour does not yet fully match your selected design — some pieces or finishes are approximations. Create a new tour to rebuild it from the design.',
+  dsx_photo3d_secondary: 'Or step into the design picture',
+  dsx_walk_failed_geometry: 'The floor plan of this home could not be reconstructed reliably from its pictures: some rooms are missing or misshapen. We did not build a tour that would show the wrong home.',
+  ds_walk_more: 'More',
+  dsx_walk_failed_quality: 'We could not furnish this home convincingly enough to walk through it — the furniture would block the way or stand where no one would put it. We did not publish a tour that would show it badly.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35118,6 +35132,20 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vrx_ownership_note: 'დასახელებულია პროექტის მიწასა და ნებართვებთან დაკავშირებულ ოფიციალურ მუნიციპალურ დოკუმენტებში. ეს არ არის თქვენ მიერ მოთხოვნილი ბინის მესაკუთრე.',
   vrx_ownership_building: 'კორპუსი {{blocks}}',
   vrx_ownership_period: 'დოკუმენტებში: {{span}}',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'გადასვლა: {{room}}',
+  ds_walk_back: 'უკან',
+  ds_walk_plan: 'გეგმა',
+  ds_walk_plan_title: 'მთელი ბინა — აირჩიეთ ოთახი',
+  ds_walk_you_are_here: 'თქვენ აქ ხართ',
+  ds_walk_door_hint: 'ყოველ კართან წერია, სად მიდის — აირჩიეთ და გაიარეთ.',
+  dsx_walk_share: '3D ტურის გაზიარება',
+  dsx_walk_ready_note: 'მთელი ბინა ერთ ტურში: იწყებთ შესასვლელიდან და ოთახიდან ოთახში ნამდვილი კარებით გადადიხართ.',
+  dsx_walk_fidelity_note: 'ეს ტური ჯერ სრულად არ ემთხვევა არჩეულ დიზაინს — ზოგი ნივთი ან მასალა მიახლოებითია. შექმენით ახალი ტური, რომ დიზაინიდან თავიდან აიგოს.',
+  dsx_photo3d_secondary: 'ან შედით დიზაინის სურათში',
+  dsx_walk_failed_geometry: 'ფოტოებიდან ამ ბინის გეგმის სანდოდ აღდგენა ვერ მოხერხდა: ზოგი ოთახი აკლია ან არასწორი ფორმისაა. ტური, რომელიც სხვა ბინას აჩვენებდა, არ შევქმენით.',
+  ds_walk_more: 'მეტი',
+  dsx_walk_failed_quality: 'ამ ბინის დამაჯერებლად მოწყობა ვერ მოხერხდა — ავეჯი გზას გადაკეტავდა ან იქ იდგებოდა, სადაც არავინ დადგამდა. ცუდად ნაჩვენები ტური არ გამოვაქვეყნეთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52625,6 +52653,20 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vrx_ownership_note: 'Указаны в официальных муниципальных документах по земле и разрешениям проекта. Это не владелец запрошенной вами квартиры.',
   vrx_ownership_building: 'Корпус {{blocks}}',
   vrx_ownership_period: 'В документах: {{span}}',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'Перейти: {{room}}',
+  ds_walk_back: 'Назад',
+  ds_walk_plan: 'План',
+  ds_walk_plan_title: 'Вся квартира — выберите комнату',
+  ds_walk_you_are_here: 'Вы здесь',
+  ds_walk_door_hint: 'У каждого дверного проёма указано, куда он ведёт, — выберите и пройдите.',
+  dsx_walk_share: 'Поделиться 3D-прогулкой',
+  dsx_walk_ready_note: 'Вся квартира за одну прогулку: вы начинаете у входа и переходите из комнаты в комнату через настоящие двери.',
+  dsx_walk_fidelity_note: 'Эта прогулка пока не полностью соответствует выбранному дизайну — часть предметов или отделки приблизительна. Создайте новую прогулку, чтобы пересобрать её по дизайну.',
+  dsx_photo3d_secondary: 'Или войдите в изображение дизайна',
+  dsx_walk_failed_geometry: 'Не удалось надёжно восстановить планировку этого дома по изображениям: некоторые комнаты отсутствуют или искажены. Мы не стали строить прогулку, которая показала бы другой дом.',
+  ds_walk_more: 'Ещё',
+  dsx_walk_failed_quality: 'Не удалось убедительно обставить этот дом для прогулки — мебель перекрыла бы проход или стояла бы там, где её никто не поставит. Мы не стали публиковать прогулку, которая показала бы его плохо.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70130,6 +70172,20 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vrx_ownership_note: 'Projenin arsası ve izinleriyle ilgili resmî belediye belgelerinde adı geçer. Sorduğunuz dairenin sahibi değildir.',
   vrx_ownership_building: '{{blocks}} numaralı bina',
   vrx_ownership_period: 'Belgelerde: {{span}}',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: '{{room}} alanına geç',
+  ds_walk_back: 'Geri',
+  ds_walk_plan: 'Kat planı',
+  ds_walk_plan_title: 'Tüm ev — bir oda seçin',
+  ds_walk_you_are_here: 'Buradasınız',
+  ds_walk_door_hint: 'Her kapı nereye açıldığını gösterir — geçmek için birini seçin.',
+  dsx_walk_share: '3D turu paylaş',
+  dsx_walk_ready_note: 'Tüm eviniz tek bir turda: girişten başlar, gerçek kapılardan odadan odaya geçersiniz.',
+  dsx_walk_fidelity_note: 'Bu tur henüz seçtiğiniz tasarımla tam olarak eşleşmiyor — bazı parçalar veya yüzeyler yaklaşık. Tasarımdan yeniden oluşturmak için yeni bir tur oluşturun.',
+  dsx_photo3d_secondary: 'Ya da tasarım görseline adım atın',
+  dsx_walk_failed_geometry: 'Bu evin kat planı görsellerinden güvenilir şekilde yeniden oluşturulamadı: bazı odalar eksik veya biçimi bozuk. Yanlış evi gösterecek bir gezinti oluşturmadık.',
+  ds_walk_more: 'Daha fazla',
+  dsx_walk_failed_quality: 'Bu evi içinde gezilecek kadar inandırıcı biçimde döşeyemedik — mobilyalar yolu kapatacak ya da kimsenin koymayacağı yerlerde duracaktı. Evi kötü gösterecek bir gezinti yayımlamadık.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87635,6 +87691,20 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vrx_ownership_note: 'مذكورون في وثائق البلدية الرسمية الخاصة بأرض المشروع وتراخيصه. هذا ليس مالك الشقة التي سألت عنها.',
   vrx_ownership_building: 'المبنى {{blocks}}',
   vrx_ownership_period: 'في السجلات: {{span}}',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'الانتقال إلى {{room}}',
+  ds_walk_back: 'رجوع',
+  ds_walk_plan: 'المخطط',
+  ds_walk_plan_title: 'المنزل بالكامل — اختر غرفة',
+  ds_walk_you_are_here: 'أنت هنا',
+  ds_walk_door_hint: 'كل مدخل يبيّن إلى أين يؤدي — اختر واحدًا لتعبره.',
+  dsx_walk_share: 'مشاركة الجولة ثلاثية الأبعاد',
+  dsx_walk_ready_note: 'منزلك بالكامل في جولة واحدة: تبدأ من المدخل وتنتقل من غرفة إلى أخرى عبر الأبواب الحقيقية.',
+  dsx_walk_fidelity_note: 'هذه الجولة لا تطابق تصميمك المختار بالكامل بعد — بعض القطع أو التشطيبات تقريبية. أنشئ جولة جديدة لإعادة بنائها من التصميم.',
+  dsx_photo3d_secondary: 'أو ادخل إلى صورة التصميم',
+  dsx_walk_failed_geometry: 'تعذّرت إعادة بناء مخطط هذا المنزل بشكل موثوق من صوره: بعض الغرف مفقودة أو مشوّهة. لم ننشئ جولة قد تعرض منزلًا مختلفًا.',
+  ds_walk_more: 'المزيد',
+  dsx_walk_failed_quality: 'لم نتمكن من تأثيث هذا المنزل بشكل مقنع يكفي للتجول فيه — كان الأثاث سيسد الطريق أو يقف حيث لا يضعه أحد. لم ننشر جولة قد تعرضه بشكل سيئ.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105140,6 +105210,20 @@ const he: Partial<Record<TranslationKey, string>> = {
   vrx_ownership_note: 'מופיעים במסמכים העירוניים הרשמיים של קרקע הפרויקט וההיתרים שלו. זה אינו הבעלים של הדירה שעליה שאלתם.',
   vrx_ownership_building: 'בניין {{blocks}}',
   vrx_ownership_period: 'ברשומות: {{span}}',
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'מעבר אל {{room}}',
+  ds_walk_back: 'חזרה',
+  ds_walk_plan: 'תוכנית',
+  ds_walk_plan_title: 'כל הבית — בחרו חדר',
+  ds_walk_you_are_here: 'אתם כאן',
+  ds_walk_door_hint: 'כל פתח מראה לאן הוא מוביל — בחרו אחד כדי לעבור דרכו.',
+  dsx_walk_share: 'שיתוף הסיור התלת־ממדי',
+  dsx_walk_ready_note: 'כל הבית בסיור אחד: מתחילים בכניסה ועוברים מחדר לחדר דרך הדלתות האמיתיות.',
+  dsx_walk_fidelity_note: 'הסיור הזה עדיין לא תואם במלואו את העיצוב שבחרתם — חלק מהפריטים או מהגימורים משוערים. צרו סיור חדש כדי לבנות אותו מחדש מהעיצוב.',
+  dsx_photo3d_secondary: 'או היכנסו לתמונת העיצוב',
+  dsx_walk_failed_geometry: 'לא ניתן היה לשחזר באופן אמין את תוכנית הדירה מהתמונות: חלק מהחדרים חסרים או מעוותים. לא יצרנו סיור שהיה מציג בית אחר.',
+  ds_walk_more: 'עוד',
+  dsx_walk_failed_quality: 'לא הצלחנו לרהט את הבית הזה באופן משכנע מספיק כדי לסייר בו — הרהיטים היו חוסמים את הדרך או עומדים במקום שאיש לא היה מציב אותם. לא פרסמנו סיור שהיה מציג אותו רע.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

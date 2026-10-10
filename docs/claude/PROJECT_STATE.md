@@ -5,10 +5,27 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
-## Verify credit budget + stop/resume (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
+## Verify go-live (PR #145, main 7c90625d, 2026-10-10) — LIVE IN PRODUCTION
 
-- Migration `20261026100000_verify_credit_budget.sql` (after the queue migration). NOT applied.
-  `verify_billing_enabled` seeded false: until switched on, Verify is not charged (unchanged).
+- Migrations applied via the Supabase MCP (no runner), so the ledger carries apply-time
+  versions; release proof matches by NAME, which is the repo convention for MCP applies.
+  Repo `20261026090000_verify_durable_execution.sql` = ledger `20261010103430`;
+  repo `20261026100000_verify_credit_budget.sql` = ledger `20261010132816`.
+  Never re-apply either file and never rename the repo files.
+- Edge: research-agent v195, verify-synthesis v76, verify-queue v1 — all PROVEN_EXACT;
+  refs/deployed/edge → 7c90625d. verify-queue was NOT created by the first deploy run
+  (CLI printed "Deployed", function absent); a single rerun of the failed jobs created it.
+- Vercel: dpl_3BoQnJmrdWHfszX9P3UHLiMh7X8x (READY, production, 7c90625d).
+- Railway `homatch-official-worker`: `VERIFY_QUEUE_ENABLED=1` (2026-10-10 ~13:54 UTC);
+  worker polls verify-queue with 200s.
+- Switches: `verify_execution_mode` = "QUEUE", `verify_billing_enabled` = true (2026-10-10).
+  Kill switch: set them back to "LEGACY" / false (new jobs only; running QUEUE jobs finish in QUEUE).
+- Pricing check on production (`verify_price_for_cost`, input in CENTS): C=$0.45 → 17.11
+  credits completed (floor) / 12.98 partial; C=$1.00 → 28.85.
+
+## Verify credit budget + stop/resume (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — LIVE (see above)
+
+- Migration `20261026100000_verify_credit_budget.sql` (after the queue migration). Applied (ledger 20261010132816).
 - research-agent: reserve at start (anonymous → sign-in when on), live `billing` in status,
   `pause` / `continue` actions, settlement sweep in the driver, ads stage budget guard.
 - Worker: `POST /research/:id/cancel` (needs the Railway deploy for legacy-mode stop).
@@ -25,7 +42,7 @@ MATTERS right now, verify against the live systems, not this file)
 - Tests: tests/sql/run-verify-billing.sh (durable, budget, audit regressions, incremental budget,
   open/close concurrency, approval races), pauseResume, verifyBudgetUi.
 
-## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — VALIDATED LOCALLY, NOT APPLIED/DEPLOYED
+## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — LIVE (see Verify go-live)
 
 - Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
   verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,

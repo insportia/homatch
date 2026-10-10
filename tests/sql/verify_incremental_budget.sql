@@ -11,6 +11,7 @@ declare
   small constant jsonb := '{"identity":{"input_tokens":100000,"output_tokens":10000}}';
   medium constant jsonb := '{"identity":{"input_tokens":100000,"output_tokens":10000},"official_collection":{"input_tokens":300000,"output_tokens":30000}}';
 begin
+  insert into public.users (id, auth_id) values (u, u), (poor, poor);
   insert into public.credit_accounts (user_id, balance) values (u, 500), (poor, 30);
   insert into public.credit_lots (user_id, kind, credits_granted, source_type) values (u, 'PURCHASED', 500, 'TOPUP'), (poor, 'PURCHASED', 30, 'TOPUP');
   insert into public.research_jobs (user_id) values (u) returning id into j1;

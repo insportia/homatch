@@ -7,6 +7,7 @@ declare
   r jsonb; c jsonb; t jsonb; t2 jsonb; s text; n integer;
   usage constant jsonb := '{"identity":{"input_tokens":200000,"output_tokens":20000}}';
 begin
+  insert into public.users (id, auth_id) values (u, u);
   insert into public.credit_accounts (user_id, balance) values (u, 30);
   insert into public.credit_lots (user_id, kind, credits_granted, source_type) values (u, 'PURCHASED', 30, 'TOPUP');
   insert into public.research_jobs (user_id) values (u) returning id into ja;

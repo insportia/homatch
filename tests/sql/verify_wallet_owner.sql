@@ -85,6 +85,20 @@ begin
   select count(*) into n from public.verify_billing_authorizations where job_id = j4;
   if n <> 1 then raise exception 'W8: authorizations %', n; end if;
 
+  -- W9. Surface: the auth-id → wallet mapping is service-only; the quote is signed-in only.
+  if has_function_privilege('anon', 'public.verify_wallet_user(uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.verify_wallet_user(uuid)', 'execute') then
+    raise exception 'W9: verify_wallet_user exposed to clients';
+  end if;
+  if has_function_privilege('anon', 'public.verify_billing_open(uuid, uuid, text, boolean, integer)', 'execute')
+     or has_function_privilege('authenticated', 'public.verify_billing_open(uuid, uuid, text, boolean, integer)', 'execute') then
+    raise exception 'W9: verify_billing_open exposed to clients';
+  end if;
+  if has_function_privilege('anon', 'public.verify_launch_quote()', 'execute')
+     or not has_function_privilege('authenticated', 'public.verify_launch_quote()', 'execute') then
+    raise exception 'W9: verify_launch_quote grants';
+  end if;
+
   raise notice 'verify wallet owner: all checks passed';
 end;
 $$;

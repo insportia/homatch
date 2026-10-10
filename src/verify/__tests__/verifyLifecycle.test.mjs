@@ -269,9 +269,13 @@ test('the pipeline is driven by something other than a browser', () => {
   assert.ok(agent.includes("'drive'"), 'there is no driver action');
   assert.ok(/driveLiveJobs\(/.test(agent), 'nothing sweeps live jobs');
   // The driver must step the SAME state machine the client steps.
-  assert.ok(/await advance\(sb, key, model, j, jobLanguage\(j\)\)/.test(agent.replace(/\s+/g, ' ')) ||
-            /advance\(sb, key, model, j, jobLanguage\(j\)\)/.test(agent),
-    'the driver does not call advance() — there is a second implementation');
+  // It goes through advanceExclusive (one advancer per job), which must itself
+  // be nothing but a lease around the same advance().
+  assert.ok(/advanceExclusive\(sb, key, model, j, jobLanguage\(j\)\)/.test(agent),
+    'the driver does not step jobs through the shared entry point');
+  const wrapper = agent.slice(agent.indexOf('async function advanceExclusive('), agent.indexOf('async function advance('));
+  assert.ok(/await advance\(sb, k, m, j, l\);/.test(wrapper),
+    'advanceExclusive does not call advance() — there is a second implementation');
 });
 
 test('the driver authenticates, and cannot be triggered by a customer token', () => {
@@ -417,9 +421,11 @@ test('only an explicit action cancels, and it is not a failure', () => {
 
 test('the page offers an explicit stop, behind a confirmation', () => {
   const page = code('src/pages/VerifyPage.tsx');
-  assert.ok(/action:'cancel'/.test(page.replace(/\s/g, '')), 'the page cannot cancel a run');
+  // Stop is a pause: resumable, charges only work already done (server: action 'pause').
+  assert.ok(/action:'pause'/.test(page.replace(/\s/g, '')), 'the page cannot stop a run');
   assert.ok(page.includes('AlertDialog'), 'stopping is not confirmed');
-  assert.ok(page.includes('verify_stop_confirm_title'), 'there is no confirmation copy');
+  assert.ok(page.includes('verify_pause_confirm_title'), 'there is no confirmation copy');
+  assert.ok(/action:'continue'/.test(page.replace(/\s/g, '')), 'a stopped run cannot be resumed');
   const stream = code('src/components/verify/ResearchStream.tsx');
   assert.ok(stream.includes('verify_stop_research'), 'the stop control is not offered during a run');
 });

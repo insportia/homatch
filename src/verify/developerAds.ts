@@ -388,7 +388,9 @@ export function themesOf(texts: string[]): Array<{ theme: AdTheme; count: number
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([theme, count]) => ({ theme, count }));
 }
 
-export type AdsOutcome = 'COMPLETE' | 'CACHED' | 'DISABLED' | 'PROVIDER_OFF' | 'NOT_CONFIGURED' | 'NO_IDENTITY' | 'UNSUPPORTED' | 'TIMEOUT' | 'FAILED';
+// BUDGET_LIMIT: not run because the customer's remaining authorised budget could not cover it (disclosed in the report).
+// STOPPED: the customer stopped the investigation while the run was in progress.
+export type AdsOutcome = 'COMPLETE' | 'CACHED' | 'DISABLED' | 'PROVIDER_OFF' | 'NOT_CONFIGURED' | 'NO_IDENTITY' | 'UNSUPPORTED' | 'TIMEOUT' | 'FAILED' | 'BUDGET_LIMIT' | 'STOPPED';
 
 /** The customer-safe view stored as result_json.developerAds (no run ids, no costs). */
 export interface DeveloperAdsView {

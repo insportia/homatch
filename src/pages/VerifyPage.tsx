@@ -53,6 +53,7 @@ import {verifyCustomerState} from '@/verify/completion';
 import {UtilitiesReadinessCard} from '@/components/verify/UtilitiesReadinessCard';
 import {CompanyOwnershipCard} from '@/components/verify/CompanyOwnershipCard';
 import {NextStepsCard} from '@/components/verify/NextStepsCard';
+import {VerifyLaunchDialog,VerifyBudgetLine,VerifyPausedCard,VerifyBudgetSummary,VerifyBudgetExtendDialog,type LaunchQuote,type PublicBilling} from '@/components/verify/VerifyBudget';
 const clean=(s?:string|null)=>String(s||'').replace(/\*\*/g,'').replace(/#{1,6}\s*/g,'').trim();
 // 2026-09-07 Verify mandate ("never expose internal FSM/provider vocabulary
 // to the customer"): research-agent/index.ts writes progress.phase as a raw
@@ -106,10 +107,26 @@ async function readFunctionErrorBody(e:any):Promise<any>{
 // replace it with real, safe, structured error surfacing"). See
 // readFunctionErrorBody() above for why this has to read `e.context` at
 // all.
-async function resolveFunctionErrorMessage(e:any,fallback:string):Promise<string>{
+// Transport and server-internal failures never reach the customer verbatim
+// ("Failed to send a request to the Edge Function" is a browser/network fact,
+// not something a buyer can act on). They become one of two plain messages;
+// every message the server wrote for people (already localised) passes through.
+const TRANSPORT_ERROR_RE=/failed to send a request|functionsfetcherror|failed to fetch|networkerror|load failed|fetch failed|network request failed|the operation was aborted|timed? ?out/i;
+const SERVER_INTERNAL_RE=/internal server error|non-2xx|functionsrelayerror|relay error|could not create research job|boot_error|worker_limit|wall clock|cpu time/i;
+type ErrorCopy={connection:string;busy:string};
+function friendlyInvokeMessage(message:string,statusCode:number,copy:ErrorCopy|null):string{
+  if(!copy)return message;
+  if(TRANSPORT_ERROR_RE.test(message)||(!statusCode&&/fetch|network|request/i.test(message)))return copy.connection;
+  if(SERVER_INTERNAL_RE.test(message)||statusCode===429||statusCode>=500&&statusCode!==503)return copy.busy;
+  return message;
+}
+/** Transport failure or 5xx/429: safe to retry an idempotent request. */
+function isRetryableInvokeError(e:any):boolean{const st=Number(e?.context?.status)||0;return st===0||st===429||(st>=500&&st!==503)}
+async function resolveFunctionErrorMessage(e:any,fallback:string,copy:ErrorCopy|null=null):Promise<string>{
   const body=await readFunctionErrorBody(e);
-  if(body&&typeof body.error==='string'&&body.error.trim())return body.error;
-  return(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback);
+  const statusCode=Number(e?.context?.status)||0;
+  if(body&&typeof body.error==='string'&&body.error.trim())return friendlyInvokeMessage(body.error,statusCode,copy);
+  return friendlyInvokeMessage(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback,statusCode,copy);
 }
 // MAX_TRANSIENT_POLL_RETRIES / computeTransientPollBackoffMs (v33, P0
 // incident 2026-09-07, job 533a8c19-f160-4f06-ab27-517c1f661b86): production
@@ -150,10 +167,10 @@ function computeTransientPollBackoffMs(retryCount:number):number{const n=Math.ma
 //                               uncaught-exception path, or no response at
 //                               all — exactly the incident class this fix
 //                               targets)
-async function classifyFunctionInvokeError(e:any,fallback:string):Promise<{message:string;category:'AUTH'|'CONFIG'|'TERMINAL'|'TRANSIENT'}>{
+async function classifyFunctionInvokeError(e:any,fallback:string,copy:ErrorCopy|null=null):Promise<{message:string;category:'AUTH'|'CONFIG'|'TERMINAL'|'TRANSIENT'}>{
   const body=await readFunctionErrorBody(e);
-  const message=(body&&typeof body.error==='string'&&body.error.trim())?body.error:(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback);
   const statusCode=Number(e?.context?.status)||0;
+  const message=friendlyInvokeMessage((body&&typeof body.error==='string'&&body.error.trim())?body.error:(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback),statusCode,copy);
   const category=statusCode===401?'AUTH':statusCode===503?'CONFIG':(statusCode===400||statusCode===404||statusCode===409)?'TERMINAL':'TRANSIENT';
   return{message,category};
 }
@@ -621,7 +638,7 @@ const[jobMeta,setJobMeta]=useState<{status?:string;stage?:string;created_at?:str
    payload the poll already returns; only a WHITELIST of known fields is
    ever read from it (see extractLiveFacts), never arbitrary content, which
    is what keeps in-progress internals off the screen. */
-const[partial,setPartial]=useState<any>(null);/* The waiting game stays mounted after the report arrives while it is open, so a finished run never yanks it away mid-game. */const[gameOpen,setGameOpen]=useState(false);/* Section maturity is computed SERVER-side on every status read (research-agent's `sections` block) so two tabs, a phone and a reopened case all derive the same answer from the same evidence instead of from their own render time. */const[sections,setSections]=useState<any>(null);/* research-agent `liveCounters`: only numbers the pipeline established; null = unknown. Feeds the research network. */const[liveCounters,setLiveCounters]=useState<any>(null);const[stopping,setStopping]=useState(false);const[confirmStop,setConfirmStop]=useState(false);const recovered=useRef(false);
+const[partial,setPartial]=useState<any>(null);/* The waiting game stays mounted after the report arrives while it is open, so a finished run never yanks it away mid-game. */const[gameOpen,setGameOpen]=useState(false);/* Section maturity is computed SERVER-side on every status read (research-agent's `sections` block) so two tabs, a phone and a reopened case all derive the same answer from the same evidence instead of from their own render time. */const[sections,setSections]=useState<any>(null);/* research-agent `liveCounters`: only numbers the pipeline established; null = unknown. Feeds the research network. */const[liveCounters,setLiveCounters]=useState<any>(null);const[stopping,setStopping]=useState(false);const[confirmStop,setConfirmStop]=useState(false);/* The customer's Verify budget (server-computed: used, remaining, returned). */const[billing,setBilling]=useState<PublicBilling|null>(null);const[launchQuote,setLaunchQuote]=useState<LaunchQuote|null>(null);const[launchOpen,setLaunchOpen]=useState(false);const[resuming,setResuming]=useState(false);const[resumeError,setResumeError]=useState<string|null>(null);/* The +25 question is asked once per authorisation count in this page view (a poll never re-opens it; a refresh does). */const[extendDismissedAt,setExtendDismissedAt]=useState<number|null>(null);const recovered=useRef(false);
 // HUMAN-VERIFICATION HANDOFF (2026-09-09). When a source refuses our NETWORK
 // rather than presenting a solvable puzzle, the server-browser CAPTCHA screen
 // is useless — a screenshot does not change the source IP. In that case the
@@ -668,7 +685,7 @@ const check=async(id:string)=>{if(!id||busy.current)return;busy.current=true;let
 // away (regression requirement: a stale error/notice must be cleared the
 // moment recovery succeeds, not on the next poll after that).
 setPollNotice(null);transientRetryCount.current=0;
-if(data?.progress)setProgress(data.progress);if(data?.sections)setSections(data.sections);setLiveCounters(data?.liveCounters??null);setJobMeta({status:data?.status,stage:data?.stage,created_at:data?.created_at,completed_at:data?.completed_at,updated_at:data?.updated_at});if(data?.result_json)setPartial(data.result_json);/* An explicit stop is not a failure and must never be shown as one. */if(data?.status==='CANCELLED'){again=false;stop();setLoading(false);setCaptcha(null);setPollNotice(null);return}if(data?.status==='FAILED'){again=false;stop();setLoading(false);/* A run that expired waiting for the customer is not a failed research
+if(data?.progress)setProgress(data.progress);if(data?.sections)setSections(data.sections);setLiveCounters(data?.liveCounters??null);setBilling(data?.billing??null);setJobMeta({status:data?.status,stage:data?.stage,created_at:data?.created_at,completed_at:data?.completed_at,updated_at:data?.updated_at});if(data?.result_json)setPartial(data.result_json);/* Paused: nothing runs in the background; the partial results and Resume are shown. */if(data?.status==='PAUSED'){again=false;stop();setLoading(false);setCaptcha(null);setPollNotice(null);return}/* An explicit stop is not a failure and must never be shown as one. */if(data?.status==='CANCELLED'){again=false;stop();setLoading(false);setCaptcha(null);setPollNotice(null);return}if(data?.status==='FAILED'){again=false;stop();setLoading(false);/* A run that expired waiting for the customer is not a failed research
    run, and must not be described as one. terminalReason is a safe enum
    the server sends in place of its internal marker. */setErr(data.error||t(data?.terminalReason==='EXPIRED'?'verify_err_human_expired':'verify_err_research_failed'));return}if(data?.status==='WAITING_HUMAN'){again=false;stop();setLoading(false);const r=data.result_json||{};const src=String(data?.captcha?.source||data?.verification_site||r.verificationSite||'');const wjid=r.workerJobId||r.officialWorkerJobId||r?._worker?.jobId||data?.progress?.workerJobId||data?.captcha?.workerJobId;const turl=data?.captcha?.url||r.verificationUrl||null;setCaptcha({...r,jobId:id,workerJobId:wjid,verificationSite:src,verificationUrl:turl});/* The customer NEVER solves a challenge in the worker browser. Every human-required stop goes to the handoff decision now; the old `networkBlocked===true` gate is exactly what routed an ordinary CAPTCHA into the streamed Railway Chromium. */void offerHandoff(id,src,data?.captcha?.networkBlocked===true||r?.captchaNetworkBlocked===true,wjid,turl);return}if(data?.awaitingSignIn){
   /* Done, paid for, and one sign-in away. Polling stops because there is
@@ -683,7 +700,7 @@ if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setCaptcha(nu
      yet — a success state with nothing in it. Loading now stays true until
      loadSynthesis() settles, and the stream switches to its synthesis row so
      the wait is described honestly rather than looking stuck. */
-  void loadSynthesis(id).finally(()=>setLoading(false));/* The verification persists BY ITSELF. A finished check is not a thing the customer then has to file somewhere else: createDealRoomFromVerify() is idempotent and reuses the existing case for this property, so the run simply becomes — or continues — that property's Verification Case. Failure is silent on purpose: the report on screen is still complete and correct, and the button below offers the save again. */void saveCase(id,data.result_json,{silent:true});return}}catch(e:any){const{message,category}=await classifyFunctionInvokeError(e,t('verify_err_status_fetch_failed'));if(category==='TRANSIENT'&&transientRetryCount.current<MAX_TRANSIENT_POLL_RETRIES){
+  void loadSynthesis(id).finally(()=>setLoading(false));/* The verification persists BY ITSELF. A finished check is not a thing the customer then has to file somewhere else: createDealRoomFromVerify() is idempotent and reuses the existing case for this property, so the run simply becomes — or continues — that property's Verification Case. Failure is silent on purpose: the report on screen is still complete and correct, and the button below offers the save again. */void saveCase(id,data.result_json,{silent:true});return}}catch(e:any){const{message,category}=await classifyFunctionInvokeError(e,t('verify_err_status_fetch_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')});if(category==='TRANSIENT'&&transientRetryCount.current<MAX_TRANSIENT_POLL_RETRIES){
   // The core P0 fix: keep the existing progress UI exactly as it is, show a
   // calm notice instead of the red error box, and keep polling with
   // backoff — never stop(), never setLoading(false), never touch jobId/
@@ -746,12 +763,26 @@ finally{setSynthesisLoading(false);setSynthesisSettled(true)}};
    are not cancellation and never reach this. A cancelled run is CANCELLED,
    not FAILED, and everything already collected is kept. */
 const doStop=async()=>{const id=jobId;if(!id)return;setStopping(true);try{
-const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'cancel',jobId:id,language:lang,anonSessionToken:currentAnonymousToken()??undefined}});
+/* STOP = pause: resumable, charges only work already done, keeps everything. */
+const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'pause',jobId:id,language:lang,anonSessionToken:currentAnonymousToken()??undefined}});
 if(error)throw error;if(data?.error)throw new Error(data.error);
-stop();setLoading(false);setCaptcha(null);setPollNotice(null);
-setJobMeta(m=>({...(m||{}),status:'CANCELLED'}))}
-catch(e:any){setErr(await resolveFunctionErrorMessage(e,t('verify_err_stop_failed')))}
+if(data?.billing)setBilling(data.billing);
+if(data?.status==='PAUSED'){stop();setLoading(false);setCaptcha(null);setPollNotice(null);setJobMeta(m=>({...(m||{}),status:'PAUSED'}))}
+/* The step in progress applies the stop at its next checkpoint: keep reading until it has. */
+else schedule(id,1500)}
+catch(e:any){setErr(await resolveFunctionErrorMessage(e,t('verify_err_stop_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}
 finally{setStopping(false);setConfirmStop(false)}};
+/* RESUME the same investigation: completed work is reused, only the unused
+   budget is reserved again, and more than the original budget only ever
+   follows an explicit approval. */
+const resumeInvestigation=async(extend=false)=>{const id=jobId;if(!id)return;setResuming(true);setResumeError(null);setErr(null);try{
+/* An extension names the screen it answers (its authorisation count): a double click or a stale tab adds nothing. */
+const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'continue',jobId:id,language:lang,anonSessionToken:currentAnonymousToken()??undefined,...(extend?{extend:true,expectedAuthorizations:billing?.authorizations??null}:{})}});
+if(error)throw error;if(data?.error)throw new Error(data.error);
+if(data?.billing)setBilling(data.billing);
+if(data?.status&&data.status!=='PAUSED'){setLoading(true);setJobMeta(m=>({...(m||{}),status:data.status,stage:data.stage}));schedule(id,800)}}
+catch(e:any){const body=await readFunctionErrorBody(e);if(body?.code==='INSUFFICIENT_CREDITS'||body?.code==='BUDGET_EXHAUSTED'){setResumeError(body.code);setExtendDismissedAt(null);if(body?.billing)setBilling(body.billing)}else if(body?.code==='STALE_REQUEST'||body?.code==='BUDGET_APPROVAL_REQUIRED'||body?.code==='BUDGET_LIMIT'){/* The screen was out of date: show the current state, ask nothing twice. */if(body?.billing)setBilling(body.billing);void check(id)}else setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}
+finally{setResuming(false)}};
 /* THE HANDOVER LANDING.
    AuthContext claims the anonymous work the instant an account exists and
    announces it. The job is the same row with the same id — all that changed
@@ -794,12 +825,23 @@ if(!supaUser)return;recovered.current=true;void(async()=>{try{const{data}=await 
 if(data?.id)openJob(data.id)}catch{/* best effort: a failed lookup must not block the landing page */}})();
 // eslint-disable-next-line react-hooks/exhaustive-deps
 },[supaUser]);
-const run=async()=>{if(!valid)return;stop();setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setReport(null);setSynthesis(null);setSynthesisSettled(false);setCaptcha(null);setJobId(null);setJobMeta(null);setPartial(null);setProgress(null);setSections(null);setLiveCounters(null);setAwaitingSignIn(false);try{
+/* START. With Verify billing on, a signed-in customer first sees the launch
+   dialog (required balance, approximate value, one action); without it the
+   research starts exactly as before. The quote is the server's. */
+const loadLaunchQuote=async():Promise<LaunchQuote|null>=>{try{const{data,error}=await supabase.rpc('verify_launch_quote');if(error||!data)return null;return data as LaunchQuote}catch{return null}};
+const run=async()=>{if(!valid)return;if(supaUser){const q=await loadLaunchQuote();if(q?.enabled){setLaunchQuote(q);setLaunchOpen(true);return}}await startNow()};
+const confirmLaunch=async()=>{setLaunchOpen(false);await startNow()};
+const startNow=async()=>{if(!valid)return;stop();setLoading(true);setBilling(null);setResumeError(null);setErr(null);setPollNotice(null);transientRetryCount.current=0;setReport(null);setSynthesis(null);setSynthesisSettled(false);setCaptcha(null);setJobId(null);setJobMeta(null);setPartial(null);setProgress(null);setSections(null);setLiveCounters(null);setAwaitingSignIn(false);try{
 /* Somebody can check a property before they have an account. The work belongs
    to a session the server issues; signing in hands it over, same job, same
    evidence, never run twice. */
 const anonToken=supaUser?null:await ensureAnonymousSession();
-const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'start',query:query.trim(),type:mode,language:lang,anonSessionToken:anonToken??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);const id=String(data?.jobId||data?.id||'');if(!id)throw new Error(t('verify_err_no_job_id'));setJobId(id);/* Register the run in the durable job registry the moment research-agent
+/* One id per submission: a retry of this same start (dropped response,
+   flaky network) returns the job already created instead of a second one. */
+const clientRequestId=typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():`v${Date.now().toString(36)}${Math.random().toString(36).slice(2,12)}`;
+let data:any=null;let error:any=null;
+for(let attempt=0;attempt<3;attempt++){({data,error}=await supabase.functions.invoke('research-agent',{body:{action:'start',query:query.trim(),type:mode,language:lang,anonSessionToken:anonToken??undefined,clientRequestId}}));if(!error||!isRetryableInvokeError(error)||attempt===2)break;await new Promise(r=>setTimeout(r,1500*(attempt+1)))}
+if(error)throw error;if(data?.error)throw new Error(data.error);const id=String(data?.jobId||data?.id||'');if(!id)throw new Error(t('verify_err_no_job_id'));setJobId(id);/* Register the run in the durable job registry the moment research-agent
    answers with an id. research_jobs and its pg_cron driver are what RUN the
    verification; this is what lets the customer SEE it running from any other
    page, and what puts it back in front of them when they return (PART C
@@ -812,7 +854,7 @@ void startJobBestEffort({productType:'VERIFY',subjectType:'RESEARCH_JOB',subject
 // completes, so a mid-run refresh reconnects to the RUNNING job (mandate
 // test M), not just a COMPLETE one.
 {const params=new URLSearchParams(searchParams);if(params.get('job')!==id){params.set('job',id);setSearchParams(params,{replace:true})}}
-if(data?.progress)setProgress(data.progress);if(data?.sections)setSections(data.sections);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_start_failed')))}};
+if(data?.progress)setProgress(data.progress);if(data?.sections)setSections(data.sections);schedule(id,500)}catch(e:any){setLoading(false);{const body=await readFunctionErrorBody(e);if(body?.code==='INSUFFICIENT_CREDITS'){const q=await loadLaunchQuote();if(q){setLaunchQuote(q);setLaunchOpen(true);return}}if(body?.code==='SIGN_IN_REQUIRED'){setErr(t('verify_err_sign_in_required'));return}}setErr(await resolveFunctionErrorMessage(e,t('verify_err_start_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}};
 
 // Asks the server what should happen for this source. Advisory only: it
 // creates no state unless the answer is USER_SIDE_HANDOFF, and any failure
@@ -864,7 +906,7 @@ const saveCase=async(jid?:string,rep?:Report,opts?:{silent?:boolean})=>{
   }catch(e){
     // Never swallowed. A background attempt stays quiet; an explicit one
     // tells the customer what happened and leaves the button usable.
-    if(!opts?.silent)setCaseErr(await resolveFunctionErrorMessage(e,t('verify_case_save_failed')));
+    if(!opts?.silent)setCaseErr(await resolveFunctionErrorMessage(e,t('verify_case_save_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}));
     return null;
   }finally{savingRef.current=false;setSavingCase(false)}
 };
@@ -874,8 +916,8 @@ const saveCase=async(jid?:string,rep?:Report,opts?:{silent?:boolean})=>{
 // Center lands -- the case's Documents tab -- so there is one document
 // architecture, not two. If the case has not been persisted yet (the
 // automatic save failed, or is still in flight), save it first and then go.
-const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed')))}};
-const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed')))}};
+const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}};
+const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang,anonSessionToken:currentAnonymousToken()??undefined}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed'),{connection:t('verify_err_connection'),busy:t('verify_err_busy')}))}};
 // openVerifyHistorySidebar(): the global "browse every research run I've ever
 // started" sidebar (mandate section 29). Always a plain SELECT
 // (listVerifyHistory), never a research-agent call — opening the sidebar
@@ -923,14 +965,14 @@ return <AppLayout noPadding>{homatchUser&&<VerifyHistorySidebar open={sidebarOpe
     the report it produced, must not have a list of other properties competing
     for the same screen. Signed-out visitors can still run a check — they just
     have nothing saved to come back to, and the case list is owner-only under
-    RLS regardless of what renders. */}{homatchUser&&!report&&!loading&&!captcha&&!jobId&&<><StartFromDocument/><VerifyRecentChecks items={allHistory} loading={allHistoryLoading} onOpen={id=>openJob(id,true)}/></>}{err&&<div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive break-words">{err}{!loading&&valid&&<div className="mt-3"><Button type="button" size="sm" variant="outline" onClick={()=>void run()} className="h-auto min-h-11 whitespace-normal px-4 py-2 text-start leading-snug">{t('verify_result_retry')}</Button></div>}</div>}{(loading||(gameOpen&&!!report)||(!loading&&jobMeta?.status==='FAILED'))&&<ResearchStream status={jobMeta?.status} stage={jobMeta?.stage} createdAt={jobMeta?.created_at} completedAt={jobMeta?.completed_at} updatedAt={jobMeta?.updated_at} reportReady={customerState==='COMPLETE'} result={report||partial} subject={query||report?.exactUnit?.code||null} synthesizing={customerState==='FINALIZING'} sections={sections?.sections} liveCounters={liveCounters} onStop={report?undefined:!loading?undefined:()=>setConfirmStop(true)} stopping={stopping} onPlayingChange={setGameOpen} onViewReport={()=>{setGameOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}/>}{loading&&<ResearchSections sections={sections}/>}{jobMeta?.status==='CANCELLED'&&!loading&&<div className="p-4 rounded-xl border border-border bg-card/60 text-sm space-y-1"><p className="font-medium">{t('verify_stopped_title')}</p><p className="text-muted-foreground break-words">{t('verify_stopped_body')}</p></div>}{awaitingSignIn&&!loading&&<Card className="border-primary/30"><CardContent className="pt-5 space-y-3">
+    RLS regardless of what renders. */}{homatchUser&&!report&&!loading&&!captcha&&!jobId&&<><StartFromDocument/><VerifyRecentChecks items={allHistory} loading={allHistoryLoading} onOpen={id=>openJob(id,true)}/></>}{err&&<div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive break-words">{err}{!loading&&valid&&<div className="mt-3"><Button type="button" size="sm" variant="outline" onClick={()=>void run()} className="h-auto min-h-11 whitespace-normal px-4 py-2 text-start leading-snug">{t('verify_result_retry')}</Button></div>}</div>}{(loading||(gameOpen&&!!report)||(!loading&&jobMeta?.status==='FAILED'))&&<ResearchStream status={jobMeta?.status} stage={jobMeta?.stage} createdAt={jobMeta?.created_at} completedAt={jobMeta?.completed_at} updatedAt={jobMeta?.updated_at} reportReady={customerState==='COMPLETE'} result={report||partial} subject={query||report?.exactUnit?.code||null} synthesizing={customerState==='FINALIZING'} sections={sections?.sections} liveCounters={liveCounters} onStop={report?undefined:!loading?undefined:()=>setConfirmStop(true)} stopping={stopping} onPlayingChange={setGameOpen} onViewReport={()=>{setGameOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}/>}{loading&&<VerifyBudgetLine billing={billing}/>}{(loading||jobMeta?.status==='PAUSED')&&<div id="verify-partial"><ResearchSections sections={sections}/></div>}{jobMeta?.status==='PAUSED'&&!loading&&<VerifyPausedCard billing={billing} resuming={resuming} onResume={()=>void resumeInvestigation(false)} onViewPartial={()=>document.getElementById('verify-partial')?.scrollIntoView({behavior:'smooth',block:'start'})} resumeError={resumeError} onReviewApproval={()=>setExtendDismissedAt(null)}/>}{jobMeta?.status==='PAUSED'&&!loading&&<VerifyBudgetExtendDialog open={!!billing&&billing.canExtend!==false&&billing.hold!=='LIMIT'&&(billing.hold==='APPROVAL'||resumeError==='BUDGET_EXHAUSTED')&&extendDismissedAt!==(billing.authorizations??0)} increment={billing?.increment??25} incrementUsdCents={billing?.incrementUsdCents??null} currencies={launchQuote?.currencies??[]} busy={resuming} needCredits={resumeError==='INSUFFICIENT_CREDITS'} onContinue={()=>void resumeInvestigation(true)} onStop={()=>{setExtendDismissedAt(billing?.authorizations??0);document.getElementById('verify-partial')?.scrollIntoView({behavior:'smooth',block:'start'})}}/>}{jobMeta?.status==='CANCELLED'&&!loading&&<div className="p-4 rounded-xl border border-border bg-card/60 text-sm space-y-1"><p className="font-medium">{t('verify_stopped_title')}</p><p className="text-muted-foreground break-words">{t('verify_stopped_body')}</p></div>}{awaitingSignIn&&!loading&&<Card className="border-primary/30"><CardContent className="pt-5 space-y-3">
   <div className="flex items-center gap-2"><Shield className="h-5 w-5 text-primary shrink-0"/><h2 className="text-lg font-semibold break-words">{t('verify_anon_ready_title')}</h2></div>
   <p className="text-sm text-muted-foreground leading-relaxed break-words">{t('verify_anon_ready_body')}</p>
   {/* The job id rides along, so signing in returns to THIS research rather
       than to an empty Verify page. It is not what authorises anything — the
       claim secret in this browser is — so carrying it in the URL is safe. */}
   <Button onClick={()=>{rememberPendingPath(`/verify?job=${jobId??''}`);nav('/auth/login')}}>{t('verify_anon_ready_cta')}</Button>
-</CardContent></Card>}<AlertDialog open={confirmStop} onOpenChange={setConfirmStop}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t('verify_stop_confirm_title')}</AlertDialogTitle><AlertDialogDescription>{t('verify_stop_confirm_body')}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t('verify_stop_confirm_keep')}</AlertDialogCancel><AlertDialogAction onClick={()=>{void doStop()}}>{t('verify_stop_confirm_stop')}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>{loading&&pollNotice&&<p className="mt-1.5 text-sm text-muted-foreground">{pollNotice}</p>}{report&&!loading&&<div className="verify-report space-y-4"><Card><CardContent className="pt-5 space-y-2"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold break-words">{clean(report.entityName)||query}</h2><PropertyTypeBadge report={report} mode={mode}/></div>{report.exactUnit?.code&&<p className="fact text-sm break-all">{report.exactUnit.code}</p>}</CardContent></Card>{synthesis?<VerifyReport synthesis={synthesis} contractCaseId={caseId} company={report?.companyProfile} rights={report?.rightsAndRestrictions} utilities={report?.utilitiesMatrix} evidence={<div className="space-y-4"><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><PropertyTypeBadge report={report} mode={mode}/></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile} report={report}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesReadinessCard report={report}/><CompanyOwnershipCard report={report}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions} report={report}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
+</CardContent></Card>}<VerifyLaunchDialog open={launchOpen} quote={launchQuote} busy={loading} onOpenChange={setLaunchOpen} onConfirm={()=>void confirmLaunch()}/><AlertDialog open={confirmStop} onOpenChange={setConfirmStop}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t('verify_pause_confirm_title')}</AlertDialogTitle><AlertDialogDescription>{t('verify_pause_confirm_body')}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t('verify_pause_confirm_keep')}</AlertDialogCancel><AlertDialogAction onClick={()=>{void doStop()}}>{t('verify_pause_confirm_stop')}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>{loading&&pollNotice&&<p className="mt-1.5 text-sm text-muted-foreground">{pollNotice}</p>}{report&&!loading&&<div className="verify-report space-y-4"><VerifyBudgetSummary billing={billing}/><Card><CardContent className="pt-5 space-y-2"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold break-words">{clean(report.entityName)||query}</h2><PropertyTypeBadge report={report} mode={mode}/></div>{report.exactUnit?.code&&<p className="fact text-sm break-all">{report.exactUnit.code}</p>}</CardContent></Card>{synthesis?<VerifyReport synthesis={synthesis} contractCaseId={caseId} company={report?.companyProfile} rights={report?.rightsAndRestrictions} utilities={report?.utilitiesMatrix} evidence={<div className="space-y-4"><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><PropertyTypeBadge report={report} mode={mode}/></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile} report={report}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesReadinessCard report={report}/><CompanyOwnershipCard report={report}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions} report={report}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
     DiscoveredEntitiesCard permanently removed from the customer report (Verify
     mandate: no technical/audit-trail clutter in the customer-facing view).
     This used to be done post-build by scripts/apply-verify-ux-patch.mjs

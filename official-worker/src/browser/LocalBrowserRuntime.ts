@@ -544,6 +544,13 @@ export async function closeAllJobBrowsers(reason: string): Promise<void> {
   }
 }
 
+const SHUTDOWN_HOOKS: Array<() => Promise<void>> = [];
+/** Work that must finish before browsers close on a signal (e.g. the queue
+ * runner handing its tasks back). Bounded: a hook gets at most 30 s. */
+export function beforeShutdown(hook: () => Promise<void>): void {
+  SHUTDOWN_HOOKS.push(hook);
+}
+
 let signalsInstalled = false;
 /** Installs SIGINT/SIGTERM handlers so a container stop cannot leave zombie
  * Chromium processes or orphaned profile directories behind. */
@@ -552,7 +559,11 @@ export function installProcessCleanup(): void {
   signalsInstalled = true;
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
-      closeAllJobBrowsers(`signal_${signal}`)
+      Promise.race([
+        Promise.allSettled(SHUTDOWN_HOOKS.map((h) => h())),
+        new Promise((r) => setTimeout(r, 30_000)),
+      ])
+        .then(() => closeAllJobBrowsers(`signal_${signal}`))
         .catch(() => {})
         .finally(() => process.exit(0));
     });

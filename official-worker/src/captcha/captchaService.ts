@@ -148,9 +148,33 @@ export class CaptchaService {
     return names.find((n) => typeof this.env[n] === 'string' && this.env[n]!.trim().length >= 16) ?? null;
   }
 
+  /*
+   * No internal daily quota by default (owner, 2026-10-10: solve whenever a
+   * source legitimately requires it; never reduce research completeness for
+   * an artificial cap). An operator can still set CAPTCHA_DAILY_CAP; spend is
+   * bounded by the per-job policy, the provider balance and the breaker.
+   */
   private dailyCap(): number {
-    const n = Number(this.env.CAPTCHA_DAILY_CAP ?? 50);
-    return Number.isFinite(n) && n >= 0 ? n : 300;
+    const raw = this.env.CAPTCHA_DAILY_CAP;
+    if (raw === undefined || String(raw).trim() === '') return Number.POSITIVE_INFINITY;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : Number.POSITIVE_INFINITY;
+  }
+
+  private sinks: Array<(e: CaptchaLedgerEntry) => void> = [];
+
+  /** Durable accounting: the queue runner forwards every entry to the ledger table. */
+  onRecord(sink: (e: CaptchaLedgerEntry) => void): () => void {
+    this.sinks.push(sink);
+    return () => {
+      this.sinks = this.sinks.filter((s) => s !== sink);
+    };
+  }
+
+  /** Per-job counters are dropped when the job (or task) is finished. */
+  forgetJob(jobId: string): void {
+    this.perJob.delete(jobId);
+    for (const k of [...this.perJobProvider.keys()]) if (k.startsWith(`${jobId}|`)) this.perJobProvider.delete(k);
   }
 
   private costUsd(): number {
@@ -176,7 +200,7 @@ export class CaptchaService {
       configured: !!keyName,
       keyVariable: keyName,
       killSwitch: String(this.env.CAPTCHA_AUTO_SOLVE ?? '').toLowerCase() === 'off',
-      dailyCap: this.dailyCap(),
+      dailyCap: Number.isFinite(this.dailyCap()) ? this.dailyCap() : null,
       usedToday: this.usedToday,
       breakerOpen: this.breakerUntil > this.now(),
       breakerCode: this.breakerUntil > this.now() ? this.breakerCode : null,
@@ -203,7 +227,15 @@ export class CaptchaService {
   }
 
   record(entry: Omit<CaptchaLedgerEntry, 'at'>): void {
-    this.ledger.push({ ...entry, at: new Date(this.now()).toISOString() });
+    const full = { ...entry, at: new Date(this.now()).toISOString() };
+    this.ledger.push(full);
+    for (const sink of this.sinks) {
+      try {
+        sink(full);
+      } catch {
+        /* accounting must never break a solve */
+      }
+    }
     if (this.ledger.length > 500) this.ledger.splice(0, this.ledger.length - 500);
     // Redacted operational log: no key, no token, no page content.
     console.log(`[captcha] ${entry.provider} job=${entry.jobId.slice(0, 8)} outcome=${entry.outcome} ms=${entry.latencyMs}${entry.code ? ` code=${entry.code}` : ''}`);

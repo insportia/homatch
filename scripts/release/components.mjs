@@ -153,7 +153,7 @@ export const COMPONENTS = {
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },
   VERIFY: {
-    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, fn('research-agent', 'verify-synthesis', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
+    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
     suites: ['mobile:verify', 'mobile:routes'],
   },
   MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes'] },
@@ -175,7 +175,7 @@ export const COMPONENTS = {
   EDGE: { paths: [/^supabase\/functions\/[^_/][^/]*\//] },
   // No runtime effect: validated by static + unit.
   TOOLING: {
-    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
+    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/verify-scale\//, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
   },
   // Unit-run tests, and browser files no CI gate runs (manual suites:
   // test:surfaces, test:pwa, heroMobile) — changing them cannot change what

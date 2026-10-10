@@ -838,6 +838,12 @@ jobs:
             # Production has run verify_jwt=false since it was first deployed;
             # deploying it here with --no-verify-jwt preserves that exactly.
             "research-agent"
+            # The Verify worker's queue door (claim/heartbeat/complete). Called
+            # only by homatch-official-worker, never by a customer, so it holds
+            # no user JWT: it authenticates the WORKER_TOKEN itself (constant-
+            # time) and answers anything else with 401. Inert until the worker
+            # runs with VERIFY_QUEUE_ENABLED=1.
+            "verify-queue"
             # The durable-job tick. Same shape as the two workers above: it is
             # called by pg_cron, belongs to no customer, and so cannot present
             # a user JWT — it authenticates on the private jobs_worker_token in

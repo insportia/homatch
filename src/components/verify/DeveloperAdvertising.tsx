@@ -125,6 +125,14 @@ export function DeveloperAdvertising({
   assessment?: AdvertisingAssessmentView | null;
 }) {
   const { t, lang } = useLanguage();
+  // Not run to stay inside the customer's authorised budget: said, not hidden.
+  if (view?.outcome === 'BUDGET_LIMIT') {
+    return (
+      <VerifySection id="developer-advertising" eyebrow={t('verify_ads_eyebrow')} title={t('verify_ads_title')}>
+        <p className="text-sm leading-6 text-muted-foreground break-words">{t('verify_ads_budget_limit')}</p>
+      </VerifySection>
+    );
+  }
   if (!view || (view.outcome !== 'COMPLETE' && view.outcome !== 'CACHED')) return null;
 
   const checked = day(view.verifiedAt);

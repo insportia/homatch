@@ -20,6 +20,7 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
+import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -1939,6 +1940,51 @@ async function cancelJobTasks(sb: any, jobId: string, taskId: string | null = nu
 }
 
 /*
+ * VERIFY CREDIT BUDGET (migration 20261024100000).
+ *
+ * admin_settings.verify_billing_enabled switches it on. The money itself is
+ * decided in SQL (verify_billing_open / _state / _close over the existing
+ * wallet): this file only says WHEN — at start, on every status read (live
+ * usage, keeps a long reservation alive), on stop, and when a job ends.
+ */
+async function verifyBillingEnabled(sb: any): Promise<boolean> {
+  const v = await adminSettingJson(sb, 'verify_billing_enabled');
+  return v === true || v === 'true';
+}
+async function billingStateFor(sb: any, jobId: string): Promise<any | null> {
+  try {
+    const { data, error } = await sb.rpc('verify_billing_state', { p_job_id: jobId });
+    return error ? null : data ?? null;
+  } catch {
+    return null;
+  }
+}
+async function closeBilling(sb: any, jobId: string, outcome: 'COMPLETE' | 'STOPPED' | 'PARTIAL' | 'SYSTEM_FAILED'): Promise<any | null> {
+  try {
+    const { data, error } = await sb.rpc('verify_billing_close', { p_job_id: jobId, p_outcome: outcome });
+    if (error) {
+      console.error(`research-agent: verify_billing_close ${jobId} ${outcome}`, error.message);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.error(`research-agent: verify_billing_close ${jobId} ${outcome}`, e);
+    return null;
+  }
+}
+/** Credits an optional paid stage could cost at most, priced the Verify way. */
+async function stageCeilingCredits(sb: any, maxProviderUsd: number): Promise<number> {
+  try {
+    const { data: landed } = await sb.rpc('billing_landed_cogs_cents', { p_raw_provider_cents: Math.round(maxProviderUsd * 10000) / 100, p_ai_cents: 0, p_enrichment_cents: 0, p_infra_cents: 0 });
+    const { data: price } = await sb.rpc('verify_price_for_cost', { p_landed_cents: landed });
+    const credits = Number(price?.credits);
+    return Number.isFinite(credits) ? credits : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/*
  * AUTOMATIC CAPTCHA POLICY (Admin setting verify_captcha_auto_solve).
  *
  * Forwarded to the official worker with every job; the worker's shared
@@ -2037,6 +2083,13 @@ async function advanceDeveloperAds(sb: any, j: any): Promise<boolean> {
         p.developerAds = view;
         p._developerAds = { state: 'CACHED', done: true, cacheKey, cachedFrom: cached[0].id, finishedAt: now(), ads: hit.ads };
         return false;
+      }
+      // Inside the customer's authorised budget only: when what is left could
+      // not cover this stage at its own ceiling, it is not run, and the report
+      // says advertising was not checked (BUDGET_LIMIT) — never silently.
+      const budget = await billingStateFor(sb, j.id);
+      if (budget && budget.state === 'ACTIVE' && !optionalStageFits(budget, await stageCeilingCredits(sb, policy.maxChargeUsd))) {
+        return finishDeveloperAds(p, 'BUDGET_LIMIT', { cacheKey }, [], identity, policy);
       }
       // Exactly one paid run per job: claim the stage atomically before spending.
       // A concurrent advance (client poll vs background driver) loses the claim and waits.
@@ -4194,6 +4247,102 @@ async function notifyVerificationReady(sb: any, j: any): Promise<void> {
  * applied the RPC does not exist; stepping then proceeds exactly as before.
  */
 const ADVANCE_LEASE_SECONDS = 120;
+async function freshJob(sb: any, id: string): Promise<any | null> {
+  const { data } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+  return data ?? null;
+}
+async function pauseRequested(sb: any, id: string): Promise<boolean> {
+  try {
+    const { data, error } = await sb.from('research_jobs').select('pause_requested_at,status').eq('id', id).maybeSingle();
+    return !error && !!data?.pause_requested_at && isPausable(data.status);
+  } catch {
+    return false; // before the migration: no durable stop intent
+  }
+}
+
+/*
+ * STOP — no new chargeable work, abort what can be aborted, keep everything.
+ *
+ *   AI stage   the background response is cancelled; one that had already
+ *              finished is KEPT (re-read on resume, never paid twice); the
+ *              usage of a cancelled one is recorded, because it was incurred.
+ *   official   queue mode: the job's tasks are cancelled (RUNNING tasks see
+ *              CANCEL at their next heartbeat; shared work other jobs wait on
+ *              keeps running for them). Legacy: the worker job is cancelled
+ *              and what it collected so far is kept for the partial report.
+ *   registry   the interrupted lookup goes back to the front of its queue.
+ * Then the job is PAUSED (conditional on still being live) and the budget
+ * session settles what was incurred and releases the rest.
+ */
+async function applyPause(sb: any, k: string, j: any): Promise<void> {
+  if (!isPausable(j.status)) return;
+  const p = j.result_json || {};
+  const pause: any = {
+    status: j.status, stage: j.stage, at: now(),
+    queue: !!(p._worker?.queue || p._queueMode),
+    captchaReturnStage: p._captchaReturnStage ?? null,
+    tasImplementation: p._worker?.tasImplementation ?? null,
+  };
+  const ai = String(j.stage || '').match(/^(IDENTITY|OFFICIAL_COLLECTION|PUBLIC_RESEARCH|MARKET|SYNTHESIS)_WAITING$/);
+  if (ai && j.response_id) {
+    try {
+      await openaiFetch(`https://api.openai.com/v1/responses/${encodeURIComponent(j.response_id)}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${k}` } });
+    } catch {
+      /* already finished or not cancellable */
+    }
+    try {
+      const r = await getOpenAIResponse(k, j.response_id);
+      if (r?.status === 'completed') pause.responseKept = true;
+      else if (r?.usage) p._cost = { ...(p._cost || {}), [`${ai[1].toLowerCase()}_stopped`]: r.usage };
+    } catch {
+      /* usage unknown: the stage's cost is not recorded rather than invented */
+    }
+  }
+  const official = ['BROWSER_WAITING', 'FINANCIAL_ENTITY_WAITING', 'CAPTCHA_REQUIRED'].includes(j.stage) || j.status === 'WAITING_HUMAN';
+  if (official) {
+    const wid = p._worker?.jobId;
+    if (pause.queue || p._worker?.queueTaskId !== undefined) await cancelJobTasks(sb, j.id);
+    else if (wid) {
+      try {
+        await wf(`/research/${wid}/cancel`, 'POST', {});
+      } catch {
+        /* an older worker without the route: its watchdog reaps the job */
+      }
+      if (j.stage === 'BROWSER_WAITING') {
+        try {
+          const w = (await wf(`/research/${wid}`)).data;
+          if (Array.isArray(w?.results) && w.results.length) p.browserOfficial = { ...(p.browserOfficial || {}), results: w.results, partial: true };
+        } catch {
+          /* keep what is already stored */
+        }
+      }
+    }
+    if (j.stage === 'FINANCIAL_ENTITY_WAITING' || p._captchaReturnStage === 'FINANCIAL_ENTITY_WAITING') {
+      const req = p._financialEntityRequestedFor?.source;
+      if (req) p._financialQueue = [req, ...(Array.isArray(p._financialQueue) ? p._financialQueue.filter((x: string) => x !== req) : [])];
+      pause.stage = 'FINANCIAL_ENTITY_WAITING';
+    }
+    delete p._worker;
+  }
+  // A running paid advertising Actor is aborted; what it already billed is recorded and charged.
+  const ads = p._developerAds;
+  if (ads?.state === 'RUNNING' && ads.runId) {
+    try {
+      await apifyAbortRun(ads.runId);
+      const run = await apifyGetRun(ads.runId).catch(() => null);
+      const partial = ads.datasetId ? await apifyDatasetItems(ads.datasetId, Number(ads.policy?.maxItems) || 50).catch(() => null) : null;
+      await recordDeveloperAdsCost(sb, j, run, partial ? partial.items.length : null);
+    } catch {
+      /* recorded as unknown by the Actor's own accounting */
+    }
+    await finishDeveloperAds(p, 'STOPPED', {}, [], undefined, undefined);
+  }
+  p._pause = pause;
+  const { data: paused } = await sb.from('research_jobs')
+    .update({ status: 'PAUSED', stage: 'PAUSED', paused_at: now(), pause_requested_at: null, driver_claimed_at: null, captcha: {}, result_json: p, progress: { ...(j.progress || {}), phase: 'paused' }, updated_at: now() })
+    .eq('id', j.id).in('status', [...PAUSABLE_STATUSES]).select('id');
+  if (paused?.length) await closeBilling(sb, j.id, 'STOPPED');
+}
 async function advanceExclusive(sb: any, k: string, m: string, j: any, l: string): Promise<boolean> {
   let token: string | null = null;
   try {
@@ -4204,7 +4353,17 @@ async function advanceExclusive(sb: any, k: string, m: string, j: any, l: string
     /* lease unavailable: proceed unguarded, as before */
   }
   try {
+    // A stop requested while no one held the job is applied here, before any
+    // new work starts; one requested during the step, right after it.
+    if (await pauseRequested(sb, j.id)) {
+      await applyPause(sb, k, await freshJob(sb, j.id) ?? j);
+      return true;
+    }
     await advance(sb, k, m, j, l);
+    if (await pauseRequested(sb, j.id)) {
+      const fresh = await freshJob(sb, j.id);
+      if (fresh && isPausable(fresh.status)) await applyPause(sb, k, fresh);
+    }
     return true;
   } finally {
     if (token) {
@@ -6046,7 +6205,29 @@ async function driveLiveJobs(sb: any, key: string, model: string): Promise<void>
   // Runs even if the sweep threw: a COMPLETE job still owes its customer a
   // report, and that is independent of whatever went wrong above.
   await driveSynthesis(sb);
+  await settleVerifyBudgets(sb);
   await retireAbandonedJobs(sb);
+}
+
+/*
+ * Close every open Verify budget whose job has ended: charged when the
+ * customer received the report (or stopped), released when the system
+ * failed them. Idempotent in SQL; a crash between a job ending and this
+ * sweep only delays the release.
+ */
+const SYNTHESIS_SETTLE_GRACE_MS = 2 * 60 * 60 * 1000;
+async function settleVerifyBudgets(sb: any): Promise<void> {
+  try {
+    const { data: open, error } = await sb.from('verify_billing').select('job_id').eq('state', 'ACTIVE').order('updated_at', { ascending: true }).limit(25);
+    if (error || !open?.length) return;
+    const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at').in('id', open.map((x: any) => x.job_id));
+    for (const job of jobs ?? []) {
+      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS });
+      if (outcome) await closeBilling(sb, job.id, outcome);
+    }
+  } catch (e) {
+    console.error('research-agent drive: budget settlement sweep failed', e);
+  }
 }
 
 /*
@@ -6546,7 +6727,7 @@ Deno.serve(async (req) => {
         // would force a Railway deploy for no gain: the DB row is the
         // authority, the driver skips cancelled jobs, and the orphaned
         // browser session is reaped by the worker's own watchdog.
-        try { await wf(`/research/${wid}/skip`, 'POST', {}); } catch { /* already gone */ }
+        try { await wf(`/research/${wid}/cancel`, 'POST', {}); } catch { /* an older worker: its watchdog reaps the job */ }
       }
       await sb.from('research_jobs').update({
         status: 'CANCELLED',
@@ -6557,8 +6738,94 @@ Deno.serve(async (req) => {
         progress: { ...(j.progress || {}), phase: 'cancelled' },
         updated_at: now(),
       }).eq('id', id);
+      // What was legitimately incurred is charged; the rest goes back.
+      await closeBilling(sb, id, 'STOPPED');
       const { data: after } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
       return json(forCaller(after || { ...j, status: 'CANCELLED', stage: 'CANCELLED' }));
+    }
+
+    /* STOP (pause) — the customer can come back to it.
+     *
+     * The intent is written first (durable), then applied by whoever holds the
+     * job: this request when the job is idle, or the step in progress at its
+     * next checkpoint (advanceExclusive). Either way no new chargeable work
+     * starts after this returns. */
+    if (action === 'pause') {
+      const id = String(b.jobId || '');
+      const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+      if (!j) return json({ error: 'Job not found' }, 404);
+      if (j.status === 'PAUSED' || !isPausable(j.status)) {
+        return json({ ...forCaller(j), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id)) });
+      }
+      await sb.from('research_jobs').update({ pause_requested_at: now() }).eq('id', id).in('status', [...PAUSABLE_STATUSES]);
+      let token: string | null = null;
+      let held = false;
+      try {
+        const { data, error } = await sb.rpc('research_job_advance_acquire', { p_job_id: id, p_seconds: ADVANCE_LEASE_SECONDS });
+        if (error) held = false;
+        else if (data === null) held = true;
+        else token = data;
+      } catch {
+        held = false;
+      }
+      try {
+        if (!held) {
+          const fresh = await freshJob(sb, id);
+          if (fresh && isPausable(fresh.status)) await applyPause(sb, key, fresh);
+        }
+      } finally {
+        if (token) await sb.rpc('research_job_advance_release', { p_job_id: id, p_token: token }).then(() => {}, () => {});
+      }
+      const after = (await freshJob(sb, id)) ?? j;
+      return json({ ...forCaller(after), pausing: after.status !== 'PAUSED', billing: anonSession ? null : publicBilling(await billingStateFor(sb, id)) });
+    }
+
+    /* CONTINUE a paused investigation: same job, same evidence.
+     *
+     * Only the unused part of the authorised budget is reserved again (never a
+     * fresh 25), completed stages are not repeated, the official sources that
+     * did not finish are queued again through the cache, and a second request
+     * for the same continuation is the same continuation. */
+    if (action === 'continue') {
+      const id = String(b.jobId || '');
+      const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+      if (!j) return json({ error: 'Job not found' }, 404);
+      if (j.status !== 'PAUSED') return json({ ...forCaller(j), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id)) });
+      const n = Number(j.resume_count) || 0;
+      const { data: hasBilling } = await sb.from('verify_billing').select('job_id').eq('job_id', id).maybeSingle();
+      if (hasBilling) {
+        const extra = b.approveExtraCredits === true ? Math.max(0, Math.min(Number(b.extraCredits) || 0, 25)) : 0;
+        const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: id, p_user_id: j.user_id, p_idempotency_key: `verify:${id}:r${n + 1}`, p_extra_credits: extra });
+        if (oe) {
+          console.error('research-agent: verify_billing_open on continue', oe.message);
+          return json({ error: 'BILLING_UNAVAILABLE', code: 'BILLING_UNAVAILABLE' }, 503);
+        }
+        if (!o?.ok && o?.reason !== 'SESSION_ALREADY_CLOSED') {
+          return json({ error: o?.reason ?? 'BILLING_UNAVAILABLE', code: o?.reason ?? 'BILLING_UNAVAILABLE', requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, billing: publicBilling(await billingStateFor(sb, id)) }, o?.reason === 'INSUFFICIENT_CREDITS' || o?.reason === 'BUDGET_EXHAUSTED' ? 402 : 409);
+        }
+      }
+      const pause = j.result_json?._pause || { status: 'CREATED', stage: 'QUEUED' };
+      const target = resumeTarget(pause);
+      const p = { ...(j.result_json || {}) };
+      p._pauseHistory = [...(Array.isArray(p._pauseHistory) ? p._pauseHistory : []), { ...pause, resumedAt: now() }].slice(-20);
+      delete p._pause;
+      if (target.requeueOfficial) {
+        await sb.rpc('verify_job_requeue_unfinished', { p_job_id: id });
+        const tasImplementation = pause.tasImplementation ?? (await tasImplementationFor(sb));
+        await enqueueTasks(sb, id, officialTaskPlan({ mode: j.mode, query: j.query }, { tasImplementation, captchaPolicy: await captchaPolicyFor(sb) }));
+        p._worker = { jobId: `queue:${id}`, queue: true, startedAt: now(), tasImplementation };
+      }
+      const { data: resumed } = await sb.from('research_jobs')
+        .update({ status: target.status, stage: target.stage, resume_count: n + 1, paused_at: null, pause_requested_at: null, cancelled_at: null, result_json: p, progress: { ...(j.progress || {}), phase: 'resuming' }, updated_at: now() })
+        .eq('id', id).eq('status', 'PAUSED').eq('resume_count', n).select('*');
+      const row = resumed?.[0] ?? (await freshJob(sb, id)) ?? j;
+      if (resumed?.length) {
+        const next = advanceExclusive(sb, key, model, row, lang).catch((e) => console.error('research-agent: first continued step failed', e));
+        const rt = (globalThis as any).EdgeRuntime;
+        if (rt?.waitUntil) rt.waitUntil(next);
+        else await next;
+      }
+      return json({ ...forCaller(row), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id)) });
     }
 
     if (action === 'status' || action === 'resume' || action === 'skip') {
@@ -6613,7 +6880,7 @@ Deno.serve(async (req) => {
       if (action === 'skip' && j.status === 'WAITING_HUMAN') {
         j = await skipHumanWait(sb, j);
       }
-      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED'].includes(j.status)) {
+      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED', 'PAUSED'].includes(j.status)) {
         await advanceExclusive(sb, key, model, j, lang);
         const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
         j = r.data || j;
@@ -6624,11 +6891,13 @@ Deno.serve(async (req) => {
       // for admin support/debugging, only the customer-facing HTTP body changes.
       // A finished job's answer only changes when its row does: serve it from
       // memory instead of re-sanitising the whole report on every poll.
-      const settled = ['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status);
-      const memoKey = settled ? `${j.id}|${j.updated_at}|${j.synthesis_state ?? ''}|${j.synthesis_at ?? ''}|${anonSession ? 'a' : 'u'}` : null;
+      // The customer's budget: used, remaining, returned — never a cost or rate.
+      const billing = anonSession ? null : publicBilling(await billingStateFor(sb, j.id));
+      const settled = ['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status) && (!billing || billing.state !== 'ACTIVE');
+      const memoKey = settled ? `${j.id}|${j.updated_at}|${j.synthesis_state ?? ''}|${j.synthesis_at ?? ''}|${anonSession ? 'a' : 'u'}|${billing?.state ?? ''}|${billing?.charged ?? ''}` : null;
       const memo = memoKey ? finishedResponseMemo.get(memoKey) : undefined;
       if (memo) return new Response(memo, { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
-      const body = JSON.stringify({ ...forCaller(j), liveCounters: liveCountersFor(j) });
+      const body = JSON.stringify({ ...forCaller(j), liveCounters: liveCountersFor(j), ...(billing ? { billing } : {}) });
       if (memoKey) rememberFinishedResponse(memoKey, body);
       return new Response(body, { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
@@ -6660,6 +6929,9 @@ Deno.serve(async (req) => {
       const twin = await existingStart();
       if (twin) return json({ accepted: true, jobId: twin.id, duplicate: true }, 202);
     }
+    // A budget belongs to a wallet: with Verify billing on, a visitor signs in first.
+    const billingOn = await verifyBillingEnabled(sb);
+    if (billingOn && anonSession) return json({ error: 'sign in to start a verification', code: 'SIGN_IN_REQUIRED' }, 402);
     // `_lang` is what lets a job that finishes with NOBODY WATCHING still be
     // written in the language the customer chose. Without it the driver would
     // have to guess, and the report would silently change language whenever
@@ -6724,6 +6996,20 @@ Deno.serve(async (req) => {
       }
       console.error('research-agent: could not create research job', error?.message);
       return json({ error: 'Could not create research job' }, 500);
+    }
+    /*
+     * RESERVE BEFORE ANY BILLABLE WORK. The authorised budget (25 credits) is
+     * held through the wallet; nothing has run yet, so a refusal removes the
+     * empty job and the customer keeps every credit.
+     */
+    if (billingOn && user) {
+      const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: j.id, p_user_id: user.id, p_idempotency_key: `verify:${j.id}:s1` });
+      if (oe || !o?.ok) {
+        await sb.from('research_jobs').delete().eq('id', j.id);
+        if (oe) console.error('research-agent: verify_billing_open', oe.message);
+        const reason = o?.reason ?? 'BILLING_UNAVAILABLE';
+        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null }, reason === 'INSUFFICIENT_CREDITS' ? 402 : 503);
+      }
     }
     /*
      * The job id is the answer; the first step is not part of it. A slow

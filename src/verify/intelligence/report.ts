@@ -48,6 +48,7 @@ import { SECTION_KEYS } from './prompt.ts';
 import type { SectionKey } from './prompt.ts';
 import type { IntelligenceBundle } from './bundle.ts';
 import { tasLabel, TAS_EVENT_KA, OFFICIAL_STATE_KA } from './evidencePackage.ts';
+import { VISUAL_ASSET_MAX } from './visualAssets.ts';
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -160,6 +161,14 @@ export interface VisualCaption {
   explanation: string;
   cites: string[];
 }
+/** Per-asset explanation (Visual Property Intelligence), keyed by the visual id. */
+export interface VisualExplanationOut {
+  id: string;
+  what: string;
+  interesting: string;
+  buyerMeaning: string;
+  uncertain: string;
+}
 
 /** Developer Advertising Intelligence — the model's assessment of the ad evidence. */
 export interface AdvertisingAssessment {
@@ -193,6 +202,8 @@ export interface BuyerIntelligenceReport {
   propertyStory?: PropertyStory;
   /** One caption + explanation per official TAS visual actually supplied. */
   visualCaptions?: VisualCaption[];
+  /** One friendly what / interesting / buyer meaning / uncertain per customer-visible visual. */
+  visualExplanations?: VisualExplanationOut[];
   keyFindings: KeyFinding[];
   sections: ReportSection[];
   attentionPoints: AttentionPoint[];
@@ -370,7 +381,12 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     .map((v) => (v ?? {}) as Record<string, unknown>)
     .filter((v) => asString(v.visualId) && asString(v.caption))
     .map((v) => ({ visualId: asString(v.visualId), caption: asString(v.caption), explanation: asString(v.explanation), cites: asCites(v.cites) }))
-    .slice(0, 6);
+    .slice(0, VISUAL_ASSET_MAX);
+  const visualExplanations: VisualExplanationOut[] = asArray(p.visualExplanations)
+    .map((v) => (v ?? {}) as Record<string, unknown>)
+    .filter((v) => asString(v.id) && asString(v.what))
+    .map((v) => ({ id: asString(v.id), what: asString(v.what), interesting: asString(v.interesting), buyerMeaning: asString(v.buyerMeaning), uncertain: asString(v.uncertain) }))
+    .slice(0, VISUAL_ASSET_MAX);
 
   const ad = (p.advertisingAssessment ?? null) as Record<string, unknown> | null;
   const advertisingAssessment: AdvertisingAssessment | undefined = ad && (asString(ad.statement) || asArray(ad.points).length)
@@ -381,6 +397,7 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     ...(currentStatus ? { currentStatus } : {}),
     ...(chapters.length ? { propertyStory: { chapters } } : {}),
     ...(visualCaptions.length ? { visualCaptions } : {}),
+    ...(visualExplanations.length ? { visualExplanations } : {}),
     ...(advertisingAssessment ? { advertisingAssessment } : {}),
     summary: { label, statement: asString(sm.statement), highlights },
     keyFindings,
@@ -788,12 +805,16 @@ export function finalizeReport(
     ? { chapters: parsed.propertyStory.chapters.map((c) => ({ ...c, visualIds: c.visualIds.filter((id) => visualIds.has(id)) })) }
     : undefined;
   const captions = (parsed.visualCaptions ?? []).filter((v) => visualIds.has(v.visualId));
+  const explained = (parsed.visualExplanations ?? []).filter((v) => visualIds.has(v.id)).map(guardVisualExplanation).filter(Boolean) as VisualExplanationOut[];
 
   // Whatever the model left out, the record still tells — plainly.
   const fallback = deterministicTas(pkg);
   const currentStatus = withholdUnprovenStatement(pkg, parsed.currentStatus ?? fallback.currentStatus);
   const propertyStory = story?.chapters.length ? story : fallback.propertyStory;
   const visualCaptions = captions.length ? captions : fallback.visualCaptions;
+  // Every visible visual gets an explanation: the model's, else the record's plain one.
+  const explainedIds = new Set(explained.map((e) => e.id));
+  const visualExplanations = [...explained, ...(fallback.visualExplanations ?? []).filter((e) => !explainedIds.has(e.id))];
   // Only when the advertising stage actually produced evidence, and never beyond what it can show.
   const advertisingAssessment = pkg?.developerAds ? guardAdvertising(parsed.advertisingAssessment) : undefined;
 
@@ -802,6 +823,7 @@ export function finalizeReport(
     ...(currentStatus ? { currentStatus } : {}),
     ...(propertyStory ? { propertyStory } : {}),
     ...(visualCaptions ? { visualCaptions } : {}),
+    ...(visualExplanations.length ? { visualExplanations } : {}),
     summary: parsed.summary ?? { label: 'BALANCED', statement: '', highlights: [] },
     keyFindings: parsed.keyFindings ?? [],
     sections: parsed.sections ?? [],
@@ -844,21 +866,69 @@ const CHAPTER_TITLE: Record<StoryChapterKey, string> = {
 
 const VISUAL_CAPTION_KA: Record<string, string> = {
   RENDER: 'პროექტის ოფიციალური ვიზუალიზაცია',
+  PHOTO: 'ოფიციალური საქმის ფოტო',
   FACADE: 'ფასადის ოფიციალური ნახაზი',
+  ELEVATION: 'ფასადის ნახაზი',
+  SECTION: 'შენობის ჭრილი',
   SITE_PLAN: 'გენერალური გეგმა',
+  MASTER_PLAN: 'განაშენიანების გეგმა',
+  LOCATION_DIAGRAM: 'მდებარეობის სქემა',
   FLOOR_PLAN: 'სართულის გეგმა',
+  UNIT_PLAN: 'ბინის გეგმა',
   STRUCTURAL: 'კონსტრუქციული ნახაზი',
+  ENGINEERING: 'საინჟინრო ნახაზი',
   CONSTRUCTION_PHOTO: 'სამშენებლო პროცესის ფოტო',
   LANDSCAPE: 'გამწვანების პროექტი',
+  OTHER: 'საპროექტო მასალა',
   OTHER_DRAWING: 'საპროექტო მასალა',
 };
+
+const PHOTO_KINDS = new Set(['PHOTO', 'CONSTRUCTION_PHOTO']);
+
+/** Plain, record-grounded explanation of one visual (Georgian). No pixel claims. */
+export function deterministicVisualExplanation(v: {
+  id: string; kind: string; scope?: string; block?: string | null; page?: number | null; date?: string | null;
+}): VisualExplanationOut {
+  const base = VISUAL_CAPTION_KA[v.kind] ?? VISUAL_CAPTION_KA.OTHER;
+  const what = `${base}${v.block ? ` — კორპუსი ${v.block}` : ''}${v.page ? `, ნახაზების ნაკრების ${v.page}-ე გვერდი` : ''}.`;
+  const interesting = v.date
+    ? `მასალა ოფიციალურ სამშენებლო საქმეს ${v.date}-ში დაერთო — ეს მისი დროის მდგომარეობაა.`
+    : 'მასალა ოფიციალური სამშენებლო საქმის დანართია.';
+  const buyerMeaning = v.scope === 'EXACT_UNIT'
+    ? 'ეს ნახაზი სწორედ თქვენს ბინას ეხება — შეადარეთ ის ხელშეკრულების დანართს.'
+    : v.scope === 'TYPICAL_FLOOR'
+      ? 'გეგმა გიჩვენებთ, როგორ არის დაგეგმილი თქვენი სართულის განლაგება.'
+      : v.scope === 'BUILDING'
+        ? 'მასალა თქვენს კორპუსს ეხება.'
+        : 'მასალა მთლიან პროექტს ან სხვა კორპუსს ეხება — არა აუცილებლად თქვენს ბინას.';
+  const uncertain = v.kind === 'RENDER'
+    ? 'ვიზუალიზაცია დიზაინის ილუსტრაციაა და არა აშენებული შენობის ფოტო.'
+    : PHOTO_KINDS.has(v.kind)
+      ? 'ფოტო გადაღების დროის მდგომარეობას აჩვენებს და არა დღევანდელს.'
+      : 'ნახაზი წარდგენილ პროექტს აჩვენებს: ის არ ადასტურებს, რომ შენობა ზუსტად ასე აშენდა, და არც კონსტრუქციის ხარისხს ან უსაფრთხოებას.';
+  return { id: v.id, what, interesting, buyerMeaning, uncertain };
+}
+
+/** Claims an image can never support: safety, compliance, quality, condition. */
+const VISUAL_OVERREACH = /(უსაფრთხო|სეისმომედეგ|მყარი|ხარისხიან|მაღალი\s*ხარისხ|შეესაბამება\s*ნორმ|კანონიერ|safe\b|safety\s*(is|was)\s*(confirmed|ensured)|earthquake.?proof|compliant|high.?quality|well.?built|sturdy|надежн|безопасн|качествен)/i;
+const NO_URL = /(https?:\/\/|www\.|\/storage\/v1\/)/i;
+
+/** Drops overreaching sentences and links; an explanation without a `what` is dropped. */
+export function guardVisualExplanation(e: VisualExplanationOut): VisualExplanationOut | null {
+  const clean = (t: string, allowOverreachWords = false) =>
+    t.split(/(?<=[.!?։])\s+/).filter((x) => x.trim() && !NO_URL.test(x) && (allowOverreachWords || !VISUAL_OVERREACH.test(x))).join(' ').trim().slice(0, 400);
+  const what = clean(e.what);
+  if (!what) return null;
+  // `uncertain` may NAME what cannot be judged ("not the safety…").
+  return { id: e.id, what, interesting: clean(e.interesting), buyerMeaning: clean(e.buyerMeaning), uncertain: clean(e.uncertain, true) };
+}
 
 /**
  * Current status, story chapters and visual captions written from the
  * consolidated record alone. Plainer than the model's prose, never less
  * true: each sentence is one cited official fact or event.
  */
-export function deterministicTas(pkg: EvidencePackage): Pick<BuyerIntelligenceReport, 'currentStatus' | 'propertyStory' | 'visualCaptions'> {
+export function deterministicTas(pkg: EvidencePackage): Pick<BuyerIntelligenceReport, 'currentStatus' | 'propertyStory' | 'visualCaptions' | 'visualExplanations'> {
   const tas = pkg?.tas;
   const cite = pkg?.tasCite ?? {};
   if (!tas?.available) return {};
@@ -904,15 +974,17 @@ export function deterministicTas(pkg: EvidencePackage): Pick<BuyerIntelligenceRe
   const visualCaptions: VisualCaption[] = tas.visuals.map((v) => ({
     visualId: v.id,
     caption: `${VISUAL_CAPTION_KA[v.kind] ?? VISUAL_CAPTION_KA.OTHER_DRAWING}${v.role === 'EARLIEST_RENDER' ? ' — საწყისი ვერსია' : v.role === 'LATEST_RENDER' ? ' — უახლესი ვერსია' : ''}`,
-    explanation: v.kind === 'CONSTRUCTION_PHOTO'
+    explanation: v.kind === 'CONSTRUCTION_PHOTO' || v.kind === 'PHOTO'
       ? 'ფოტო ოფიციალური საქმის მასალებიდანაა და მისი გადაღების დროის მდგომარეობას აჩვენებს.'
-      : 'ეს დამტკიცებული საპროექტო მასალაა — ის აჩვენებს რა იყო დაგეგმილი და არა დასრულებულ შენობას.',
+      : `ეს ${v.versionStatus === 'CURRENT_APPROVED' || v.versionStatus === 'HISTORICAL_APPROVED' ? 'დამტკიცებული ' : 'ოფიციალურ საქმეში წარდგენილი '}საპროექტო მასალაა — ის აჩვენებს რა იყო დაგეგმილი და არა დასრულებულ შენობას.`,
     cites: [],
   }));
+  const visualExplanations: VisualExplanationOut[] = tas.visuals.map((v) => deterministicVisualExplanation(v));
   return {
     ...(currentStatus ? { currentStatus } : {}),
     ...(chapters.length ? { propertyStory: { chapters } } : {}),
     ...(visualCaptions.length ? { visualCaptions } : {}),
+    ...(visualExplanations.length ? { visualExplanations } : {}),
   };
 }
 

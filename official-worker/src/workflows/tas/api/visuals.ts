@@ -4,25 +4,20 @@
 //   1. rankVisualCandidates(): metadata only (file name, description, type,
 //      date, motion relationship). Nothing is downloaded to decide what is
 //      worth looking at.
-//   2. extractImagesFromPdf() / native images: only the shortlisted
-//      candidates are opened, and only their embedded raster images are read
-//      — no rasteriser, no DWG/PLA rendering on the critical path.
+//   2. extractImagesFromPdf() / native images / pdfRender.ts: only the
+//      shortlisted candidates are opened; photo/render PDFs yield their
+//      embedded raster images, vector drawings are rendered page-by-page
+//      (bounded). DWG/PLA/RAR are never opened.
 //
 // STRICT SOURCE SEPARATION: everything here comes from TAS official
 // attachments. Marketplace photos never enter this module.
 
 import { bytesToBuffer } from './tasModel.js';
 import type { TasAttachment } from './tasModel.js';
+import { classifyVisualMeta, DRAWING_KINDS, type VisualAssetKind, type VisualCategory } from './visualClassify.js';
 
-export type VisualKind =
-  | 'RENDER'
-  | 'FACADE'
-  | 'SITE_PLAN'
-  | 'FLOOR_PLAN'
-  | 'STRUCTURAL'
-  | 'CONSTRUCTION_PHOTO'
-  | 'LANDSCAPE'
-  | 'OTHER_DRAWING';
+/** The classification vocabulary (visualClassify.ts). Kept under the old name for callers. */
+export type VisualKind = VisualAssetKind;
 
 export interface VisualCandidate {
   attachedFileId: string;
@@ -31,46 +26,50 @@ export interface VisualCandidate {
   fileName: string | null;
   date: string | null;
   kind: VisualKind;
+  category: VisualCategory;
+  confidence: number;
+  basis: string;
   score: number;
   native: boolean;
+  /** Case context used for classification (title / type / motion), bounded. */
+  context: string | null;
+  /** The TAS case's cadastral codes (identity provenance). */
+  caseCadastralCodes: string[];
+  /** false when the case's own codes name a different parcel. */
+  parcelMatch: boolean | null;
+  description: string | null;
+  sizeBytes: number | null;
   reason: string;
 }
 
-const KIND_RULES: Array<{ kind: VisualKind; re: RegExp; weight: number }> = [
-  { kind: 'RENDER', re: /(render|რენდერ|ვიზუალიზაც|визуализ|3d|perspective|პერსპექტივ|ხედ(ი|ებ)|aerial|bird)/i, weight: 100 },
-  { kind: 'FACADE', re: /(facade|façade|ფასად|фасад|elevation|ჭრილ)/i, weight: 70 },
-  { kind: 'SITE_PLAN', re: /(site.?plan|master.?plan|გენ\.?\s?გეგმ|გენგეგმ|სიტუაციურ|генплан|ситуацион|ტოპო|topo)/i, weight: 65 },
-  { kind: 'STRUCTURAL', re: /(structur|კონსტრუქ|საძირკვ|ფუნდამენტ|foundation|фундамент|армир|არმატურ|კარკას|ხიმინჯ|pile|seismic|სეისმ)/i, weight: 55 },
-  { kind: 'CONSTRUCTION_PHOTO', re: /(photo|ფოტო|фото|ფოტოფიქსაც|monitor|მონიტორინგ|progress)/i, weight: 50 },
-  { kind: 'LANDSCAPE', re: /(landscape|ლანდშაფტ|გამწვანებ|озелен)/i, weight: 40 },
-  { kind: 'FLOOR_PLAN', re: /(floor.?plan|სართულის გეგმ|გეგმ|plan|планировк|план)/i, weight: 35 },
-];
-
-/** Paperwork that is never a meaningful visual, whatever its format. */
-const EXCLUDE = /(ხელშეკრულ|contract|договор|ამონაწერ|extract|выписк|ქვითარ|invoice|receipt|გადახდ|payment|მინდობილ|power.?of.?attorney|доверенн|პირადობ|passport|id.?card|განცხადებ|application|заявлен|ბრძანებ|decree|სერტიფიკ|certificate|ლიცენზ|license|ცნობ)/i;
-
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'webp']);
 
+/** Back-compat: the metadata kind of a free text (null = paperwork / nothing visual). */
 export function visualKindOf(text: string): { kind: VisualKind; weight: number } | null {
-  if (!text || EXCLUDE.test(text)) return null;
-  for (const r of KIND_RULES) if (r.re.test(text)) return { kind: r.kind, weight: r.weight };
-  return null;
+  const c = classifyVisualMeta({ fileName: text });
+  return c && c.matched ? { kind: c.kind, weight: c.weight } : null;
 }
 
-export function rankVisualCandidates(
-  attachments: Array<TasAttachment & { documentId: string }>,
-): VisualCandidate[] {
+export type RankInput = TasAttachment & { documentId: string; context?: string | null; caseCadastralCodes?: string[] };
+
+function parcelMatches(codes: string[], parcel: string | null | undefined): boolean | null {
+  if (!parcel || !codes.length) return null;
+  return codes.some((c) => c === parcel || c.startsWith(`${parcel}.`) || parcel.startsWith(`${c}.`));
+}
+
+export function rankVisualCandidates(attachments: RankInput[], opts: { parcel?: string | null } = {}): VisualCandidate[] {
   const out: VisualCandidate[] = [];
   for (const a of attachments) {
     const ext = a.extension ?? '';
     const native = IMAGE_EXT.has(ext);
     if (!native && ext !== 'pdf') continue; // DWG/PLA/RAR never on the critical path
-    const text = `${a.fileName ?? ''} ${a.description ?? ''}`;
-    const k = visualKindOf(text);
+    const c = classifyVisualMeta({ fileName: a.fileName, description: a.description, context: a.context ?? null, extension: ext });
+    if (!c) continue; // paperwork
     // An unlabelled native image is still a plausible project picture; an
     // unlabelled PDF is far more often paperwork.
-    const hit = k ?? (native ? { kind: 'OTHER_DRAWING' as VisualKind, weight: 20 } : null);
-    if (!hit) continue;
+    if (!c.matched && !native) continue;
+    const codes = (a.caseCadastralCodes ?? []).map(String);
+    const parcelMatch = parcelMatches(codes, opts.parcel);
     const recency = a.date ? Math.min(10, Math.max(0, (Date.parse(a.date) - Date.parse('2005-01-01')) / (365 * 864e5))) : 0;
     const size = a.sizeBytes ?? 0;
     const sizeHint = size > 0 && size < 25_000 ? -30 : 0; // icons and stamps
@@ -80,10 +79,18 @@ export function rankVisualCandidates(
       motionId: a.motionId,
       fileName: a.fileName,
       date: a.date,
-      kind: hit.kind,
-      score: hit.weight + (native ? 15 : 0) + recency + sizeHint,
+      kind: c.kind,
+      category: c.category,
+      confidence: c.confidence,
+      basis: c.basis,
+      score: c.weight + (native ? 15 : 0) + recency + sizeHint + (parcelMatch === false ? -60 : 0),
       native,
-      reason: k ? `name/description matches ${hit.kind}` : 'unlabelled native image',
+      context: a.context ? String(a.context).slice(0, 400) : null,
+      caseCadastralCodes: codes,
+      parcelMatch,
+      description: a.description ?? null,
+      sizeBytes: a.sizeBytes ?? null,
+      reason: c.matched ? `${c.basis} → ${c.kind}` : 'unlabelled native image',
     });
   }
   return out.sort((x, y) => y.score - x.score || (y.date ?? '').localeCompare(x.date ?? ''));
@@ -94,54 +101,88 @@ export interface VisualSlot {
   candidate: VisualCandidate;
 }
 
-/** What each visual explains to a buyer. One of each, in this order. */
-const ARCHITECTURE_KINDS: VisualKind[] = ['FACADE', 'SITE_PLAN', 'LANDSCAPE', 'FLOOR_PLAN'];
-const STRUCTURE_KINDS: VisualKind[] = ['STRUCTURAL', 'CONSTRUCTION_PHOTO'];
+/**
+ * VISUAL PROPERTY INTELLIGENCE BOUNDS (2026-10-10, superseding the earlier
+ * "three or four pictures" cap): the report now has a gallery with tabs
+ * (building / apartment / architecture / structure / construction / site),
+ * so the worker opens a diverse, bounded set of files and yields at most
+ * VISUAL_ASSET_MAX assets per job (a drawing PDF can yield several pages).
+ */
+export const VISUAL_ASSET_MAX = 24;
+/** Files opened for visuals per job. */
+export const VISUAL_FILE_MAX = 14;
+/** @deprecated name kept for callers; equals VISUAL_FILE_MAX. */
+export const VISUAL_HARD_CAP = VISUAL_FILE_MAX;
 
-/** Owner, 2026-10-10: three or four pictures in total are enough. */
-export const VISUAL_HARD_CAP = 4;
+/** Round-robin order of kinds: one of each before a second of any. */
+const KIND_ORDER: VisualKind[] = [
+  'RENDER', 'PHOTO', 'CONSTRUCTION_PHOTO', 'SITE_PLAN', 'FLOOR_PLAN', 'UNIT_PLAN', 'ELEVATION', 'FACADE', 'SECTION',
+  'MASTER_PLAN', 'STRUCTURAL', 'LOCATION_DIAGRAM', 'OTHER', 'ENGINEERING',
+];
+
+/** Same file attached to several cases: one slot is enough. */
+const dupKey = (c: VisualCandidate) => `${(c.fileName ?? '').toLowerCase()}|${c.sizeBytes ?? ''}`;
 
 /**
- * Pick the shortlist to actually open — never more than four (owner,
- * 2026-10-10: "3-4 photos are enough for a buyer to see the project and its
- * structure"). The set explains different things, in this order:
- *   1. the latest render (what the project looks like);
- *   2. one architectural drawing (facade, site plan, landscape, floor plan);
- *   3. one structural picture (structure drawing or construction photo);
- *   4. the earliest render, when it is materially older (≥ 90 days) and a
- *      different file — an "Original → Latest" comparison — else any other
- *      kind not yet shown.
+ * Pick the files to open, bounded (≤ VISUAL_FILE_MAX):
+ *   1. the latest render (what the project looks like), and the earliest
+ *      render when materially older (≥ 90 days) — "original → latest";
+ *   2. then round-robin over kinds, best score first, so the gallery covers
+ *      photos, site, floors, elevations, sections and structure before a
+ *      second file of any kind;
+ *   3. files whose case names a different parcel are never opened (they
+ *      could only ever be UNRELATED_SUSPECT, hidden from the customer).
  */
-export function selectVisualShortlist(ranked: VisualCandidate[], target = 4, max = VISUAL_HARD_CAP): VisualSlot[] {
-  const cap = Math.min(Math.max(1, target), max, VISUAL_HARD_CAP);
-  const renders = ranked.filter((c) => c.kind === 'RENDER');
+export function selectVisualShortlist(ranked: VisualCandidate[], target = VISUAL_FILE_MAX, max = VISUAL_FILE_MAX): VisualSlot[] {
+  const cap = Math.min(Math.max(1, target), max, VISUAL_FILE_MAX);
+  const pool = ranked.filter((c) => c.parcelMatch !== false);
+  const renders = pool.filter((c) => c.kind === 'RENDER');
   const dated = renders.filter((c) => c.date).sort((a, b) => a.date!.localeCompare(b.date!));
   const slots: VisualSlot[] = [];
   const used = new Set<string>();
-  const kindsTaken = new Set<VisualKind>();
+  const dups = new Set<string>();
   const take = (role: VisualSlot['role'], c: VisualCandidate | undefined) => {
-    if (!c || slots.length >= cap || used.has(c.attachedFileId)) return false;
+    if (!c || slots.length >= cap || used.has(c.attachedFileId) || dups.has(dupKey(c))) return false;
     slots.push({ role, candidate: c });
     used.add(c.attachedFileId);
-    kindsTaken.add(c.kind);
+    if (c.fileName) dups.add(dupKey(c));
     return true;
   };
-  const latest = dated.length ? dated[dated.length - 1] : renders[0] ?? ranked.find((c) => c.kind === 'FACADE');
-  take(latest?.kind === 'RENDER' ? 'LATEST_RENDER' : 'SUPPORTING', latest);
-  for (const group of [ARCHITECTURE_KINDS, STRUCTURE_KINDS]) {
-    const best = ranked.find((c) => group.includes(c.kind) && !used.has(c.attachedFileId) && !kindsTaken.has(c.kind));
-    take('SUPPORTING', best);
-  }
+  const latest = dated.length ? dated[dated.length - 1] : renders[0];
+  if (latest) take('LATEST_RENDER', latest);
   const earliest = dated[0];
   if (
     earliest && latest && earliest.attachedFileId !== latest.attachedFileId && latest.date &&
     Date.parse(latest.date) - Date.parse(earliest.date!) >= 90 * 864e5
   ) take('EARLIEST_RENDER', earliest);
-  for (const c of ranked) {
-    if (slots.length >= cap) break;
-    if (!kindsTaken.has(c.kind)) take('SUPPORTING', c);
+  const buckets = new Map<VisualKind, VisualCandidate[]>();
+  for (const c of pool) buckets.set(c.kind, [...(buckets.get(c.kind) ?? []), c]);
+  let progressed = true;
+  while (slots.length < cap && progressed) {
+    progressed = false;
+    for (const k of KIND_ORDER) {
+      if (slots.length >= cap) break;
+      const list = buckets.get(k) ?? [];
+      while (list.length) {
+        const c = list.shift()!;
+        if (take('SUPPORTING', c)) {
+          progressed = true;
+          break;
+        }
+      }
+    }
   }
   return slots;
+}
+
+/** How many assets one opened file may yield. */
+export function assetsPerFile(c: VisualCandidate): { pages: number; images: number } {
+  if (c.native) return { pages: 0, images: 1 };
+  if (c.kind === 'FLOOR_PLAN' || c.kind === 'UNIT_PLAN') return { pages: 4, images: 2 };
+  if (DRAWING_KINDS.has(c.kind)) return { pages: 3, images: 2 };
+  if (c.kind === 'PHOTO' || c.kind === 'CONSTRUCTION_PHOTO') return { pages: 2, images: 4 };
+  if (c.kind === 'RENDER') return { pages: 2, images: 3 };
+  return { pages: 1, images: 2 };
 }
 
 export interface EmbeddedImage {
@@ -173,6 +214,9 @@ export function extractImagesFromPdf(pdf: Uint8Array, opts: { minWidth?: number;
     if (dictStart < 0 || streamKw < 0 || streamKw - m.index > 4000) continue;
     const dict = text.slice(dictStart, streamKw);
     if (!/\/Subtype\s*\/Image/.test(dict)) continue;
+    // CMYK JPEGs (often Adobe-inverted) display wrongly as a bare .jpg; the
+    // page renderer handles them, so they are not extracted raw.
+    if (/\/DeviceCMYK|\/Decode\s*\[\s*1\s+0/.test(dict)) continue;
     const width = Number(/\/Width\s+(\d+)/.exec(dict)?.[1] ?? NaN);
     const height = Number(/\/Height\s+(\d+)/.exec(dict)?.[1] ?? NaN);
     let dataStart = streamKw + 'stream'.length;

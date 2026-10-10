@@ -217,7 +217,7 @@ app.post('/tas/test', auth, async (req: any, res: any) => {
     reconciliation: api?.reconciliation ?? null,
     accounting: api?.accounting ?? null,
     http: api?.http ?? null,
-    visuals: (api?.visuals ?? []).map((v: any) => ({ role: v.role, kind: v.kind, date: v.date, width: v.width, height: v.height, extraction: v.extraction })),
+    visuals: (api?.visuals ?? []).map((v: any) => ({ role: v.role, kind: v.kind, category: v.category, confidence: v.confidence, page: v.page ?? null, date: v.date, width: v.width, height: v.height, extraction: v.extraction, blocks: v.identity?.blocks ?? [] })),
   });
 });
 

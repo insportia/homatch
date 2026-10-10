@@ -8,7 +8,7 @@ import { serializeDwrCall, parseDwrReply, dwr, walkObjects } from '../.tstest-bu
 import { normalizeCaseDetail, parseSearchPage, classifyPayload, classifyPdfText, maskPersonalId, toIsoDate, fileNameFromDisposition, repairGeorgianMojibake } from '../.tstest-build/workflows/tas/api/tasModel.js';
 import { searchParams } from '../.tstest-build/workflows/tas/api/TasApiClient.js';
 import { acquireTasApi, toLegacyTasResult, __resetTasApiCaches, getCachedVisual } from '../.tstest-build/workflows/tas/api/TasApiWorkflow.js';
-import { rankVisualCandidates, selectVisualShortlist, extractImagesFromPdf, imageSize } from '../.tstest-build/workflows/tas/api/visuals.js';
+import { rankVisualCandidates, selectVisualShortlist, extractImagesFromPdf, imageSize, VISUAL_ASSET_MAX, VISUAL_FILE_MAX } from '../.tstest-build/workflows/tas/api/visuals.js';
 import { parseTasConfig, shouldFallBack, recordTasRun, tasHealth, __resetTasHealth } from '../.tstest-build/workflows/tas/implementation.js';
 import { candidateSequence } from '../.tstest-build/workflows/tas/cadastral.js';
 import { BASE, FULL, DOC_IDS, buildDetails, fixtureFetcher, fixturePdfParser, fakeJpeg } from './fixtures/tas/tasFixture.mjs';
@@ -206,9 +206,18 @@ test('API_FIRST end-to-end over the fixture: exhaustive pagination, reconciliati
   // Cases are ordered by real date, not by document id.
   const dates = r.cases.map((c) => c.detail.submittedAt);
   assert.deepEqual(dates, dates.slice().sort());
-  // Visual budget respected; chosen bytes are cached for collection.
-  assert.ok(r.visuals.length >= 1 && r.visuals.length <= 6);
-  for (const v of r.visuals) assert.ok(getCachedVisual(v.id));
+  // Visual bounds respected; chosen bytes are cached for collection; every
+  // asset carries its provenance.
+  assert.ok(r.visuals.length >= 1 && r.visuals.length <= VISUAL_ASSET_MAX);
+  assert.ok(r.accounting.visualFilesOpened <= VISUAL_FILE_MAX);
+  for (const v of r.visuals) {
+    assert.ok(getCachedVisual(v.id));
+    assert.match(v.id, /^[a-f0-9]{64}$/);
+    assert.equal(v.source, 'TAS');
+    assert.equal(v.usage, 'OFFICIAL_RECORD_REFERENCE');
+    assert.ok(v.documentId && v.attachedFileId && v.kind && v.category && v.mime && v.width && v.height);
+    assert.ok(Array.isArray(v.identity.caseCadastralCodes));
+  }
   assert.ok(calls.length > 0);
 });
 
@@ -220,9 +229,9 @@ test('API_FIRST: unchanged evidence is served from cache on the next run (no re-
   const r2 = await acquireTasApi(FULL, { fetcher: b.fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4 });
   // 133 responses = 67 PDF + 1 HTML (cached) + 65 EMPTY. EMPTY answers are
   // deliberately NOT cached — a decision uploaded since must be seen.
-  assert.ok(r2.accounting.cacheHits >= 68 + 400);
+  assert.ok(r2.accounting.cacheHits >= 68 + 413 - VISUAL_FILE_MAX);
   assert.equal(r2.accounting.responses.EMPTY, 65);
-  assert.ok(b.calls.filter((c) => c.path === '/DownloadServlet').length <= 6, 'only shortlisted visuals re-fetched');
+  assert.ok(b.calls.filter((c) => c.path === '/DownloadServlet').length <= VISUAL_FILE_MAX, 'only shortlisted visuals re-fetched');
 });
 
 test('API_FIRST: attachment download budget is ACCOUNTED, not hidden', async () => {
@@ -281,7 +290,7 @@ test('implementation health ledger: runs, last success/failure, duration', () =>
   assert.equal(h.lastDurationMs, 300);
 });
 
-test('visual candidates: ranked by metadata before any download; paperwork excluded; at most 4: render, architecture, structure', () => {
+test('visual candidates: ranked by metadata before any download; paperwork excluded; diverse and bounded', () => {
   const att = (id, name, date, ext = 'pdf', size = 500000) => ({ attachedFileId: id, documentId: 'd', motionId: null, fileName: name, extension: ext, contentType: null, sizeBytes: size, date, description: null, sourcePath: '$' });
   const ranked = rankVisualCandidates([
     att('1', 'ხელშეკრულება.pdf', '2020-01-01'),
@@ -292,19 +301,35 @@ test('visual candidates: ranked by metadata before any download; paperwork exclu
     att('6', 'ფოტოფიქსაცია.jpg', '2025-01-01', 'jpg'),
     att('7', 'პროექტი.dwg', '2025-01-01', 'dwg'),
     att('8', 'stamp.jpg', '2025-01-01', 'jpg', 9000),
+    att('9', '02. floor plans.pdf', '2022-06-06'),
+    att('10', '03. sections.pdf', '2022-06-06'),
   ]);
   assert.ok(!ranked.some((c) => c.attachedFileId === '1'), 'contracts are not visuals');
   assert.ok(!ranked.some((c) => c.attachedFileId === '7'), 'DWG never on the critical path');
-  // Owner, 2026-10-10: 3-4 pictures in total — render, architecture, structure.
-  const shortlist = selectVisualShortlist(ranked, 4, 6);
+  const shortlist = selectVisualShortlist(ranked);
   assert.equal(shortlist[0].role, 'LATEST_RENDER');
   assert.equal(shortlist[0].candidate.attachedFileId, '3');
-  assert.equal(shortlist[1].candidate.kind, 'SITE_PLAN', 'architecture comes second');
-  assert.ok(['STRUCTURAL', 'CONSTRUCTION_PHOTO'].includes(shortlist[2].candidate.kind), 'structure comes third');
-  assert.equal(shortlist[3].role, 'EARLIEST_RENDER');
-  assert.equal(shortlist[3].candidate.attachedFileId, '2');
-  assert.equal(shortlist.length, 4);
-  assert.ok(selectVisualShortlist(ranked, 10, 6).length <= 4, 'never more than four');
+  assert.equal(shortlist[1].role, 'EARLIEST_RENDER');
+  assert.equal(shortlist[1].candidate.attachedFileId, '2');
+  const kinds = shortlist.map((s) => s.candidate.kind);
+  for (const k of ['SITE_PLAN', 'STRUCTURAL', 'FLOOR_PLAN', 'SECTION', 'PHOTO']) assert.ok(kinds.includes(k), k);
+  assert.ok(shortlist.length <= VISUAL_FILE_MAX);
+  // Bound respected with many candidates.
+  const many = rankVisualCandidates(Array.from({ length: 60 }, (_, i) => att(String(100 + i), `render ${i}.jpg`, '2024-01-01', 'jpg', 400000 + i)));
+  assert.equal(selectVisualShortlist(many, 99, 99).length, VISUAL_FILE_MAX);
+});
+
+test('visual candidates: a case filed for a different parcel is never opened', () => {
+  const att = (id, name, codes) => ({ attachedFileId: id, documentId: `d${id}`, motionId: null, fileName: name, extension: 'jpg', contentType: null, sizeBytes: 500000, date: '2024-01-01', description: null, sourcePath: '$', caseCadastralCodes: codes });
+  const ranked = rankVisualCandidates([
+    att('1', 'render a.jpg', ['01.18.06.019.055']),
+    att('2', 'render b.jpg', ['01.18.06.019.099']),
+    att('3', 'render c.jpg', []),
+  ], { parcel: '01.18.06.019.055' });
+  assert.equal(ranked.find((c) => c.attachedFileId === '2').parcelMatch, false);
+  const ids = selectVisualShortlist(ranked).map((s) => s.candidate.attachedFileId);
+  assert.ok(!ids.includes('2'));
+  assert.ok(ids.includes('1') && ids.includes('3'));
 });
 
 test('PDF embedded image extraction: DCTDecode streams with size, small images skipped', () => {

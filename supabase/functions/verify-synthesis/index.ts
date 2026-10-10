@@ -29,6 +29,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
 import { officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
+import { persistableVisuals, toCustomerVisualAssets, VISUAL_BUCKET, VISUAL_URL_TTL_SECONDS } from '../../../src/verify/intelligence/visualAssets.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -189,23 +190,23 @@ function textOf(p: any): string {
  * leave the response too. A visual that cannot be signed is simply omitted:
  * the textual report stands on its own.
  */
-const VISUAL_BUCKET = 'verify-official-visuals';
-const VISUAL_URL_TTL_SECONDS = 3600;
+// Visual Property Intelligence: every customer-visible asset (≤ VISUAL_ASSET_MAX),
+// as VerifyVisualAsset (src/verify/intelligence/visualAssets.ts), signed in ONE
+// storage call. UNRELATED_SUSPECT assets never reach this list.
 async function forCustomer(db: any, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { _usage: _droppedUsage, officialVisuals, ...rest } = payload as Record<string, any>;
   if (!Array.isArray(officialVisuals) || !officialVisuals.length) return rest;
-  const signed: unknown[] = [];
-  for (const v of officialVisuals.slice(0, 4)) {
-    const path = typeof v?.storagePath === 'string' ? v.storagePath : '';
-    if (!/^tas\/[a-f0-9]{64}\.(jpg|png)$/.test(path)) continue;
-    try {
-      const { data } = await db.storage.from(VISUAL_BUCKET).createSignedUrl(path, VISUAL_URL_TTL_SECONDS);
-      if (!data?.signedUrl) continue;
-      signed.push({ id: v.id, role: v.role, kind: v.kind, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null, url: data.signedUrl });
-    } catch {
-      /* omitted, never fatal */
-    }
-  }
+  const signed = await toCustomerVisualAssets(
+    officialVisuals,
+    async (paths, ttl) => {
+      const out: Record<string, string | null> = {};
+      const { data, error } = await db.storage.from(VISUAL_BUCKET).createSignedUrls(paths, ttl);
+      if (error) throw error;
+      for (const d of Array.isArray(data) ? data : []) if (d?.path) out[d.path] = d.signedUrl ?? null;
+      return out;
+    },
+    { explanations: rest?.report?.visualExplanations, ttlSeconds: VISUAL_URL_TTL_SECONDS },
+  ).catch(() => []);
   return signed.length ? { ...rest, officialVisuals: signed } : rest;
 }
 
@@ -679,6 +680,7 @@ serve(async (req) => {
         ...(final.currentStatus ? { currentStatus: final.currentStatus } : {}),
         ...(final.propertyStory ? { propertyStory: final.propertyStory } : {}),
         ...(final.visualCaptions ? { visualCaptions: final.visualCaptions } : {}),
+        ...(final.visualExplanations?.length ? { visualExplanations: final.visualExplanations } : {}),
         keyFindings: final.keyFindings,
         sections: final.sections,
         attentionPoints: final.attentionPoints,
@@ -723,10 +725,9 @@ serve(async (req) => {
       // Developer advertising (marketing signal): only a completed stage reaches
       // the customer; the view carries no run ids or costs by construction.
       developerAds: pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,
-      // Bucket paths (internal); forCustomer() turns them into signed URLs.
-      officialVisuals: Array.isArray(job.result_json?.officialVisuals)
-        ? job.result_json.officialVisuals.filter((v: any) => (pkg.tas?.visuals ?? []).some((t) => t.id === v?.id))
-        : [],
+      // Bucket paths (internal) of the customer-visible visuals, with their
+      // scope/category; forCustomer() turns them into signed URLs.
+      officialVisuals: persistableVisuals(job.result_json?.officialVisuals, pkg.tas?.visuals ?? []),
       _usage: usage,
       empty: false,
     };

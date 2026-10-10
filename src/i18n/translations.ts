@@ -16124,6 +16124,10 @@ const en = {
   verify_ads_budget_limit: 'Advertising activity was not checked so that the investigation stayed within your budget.',
   verify_err_sign_in_required: 'Sign in to start a verification.',
   vh_state_paused: 'Paused — tap to resume',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'Verification budget',
+  verify_budget_unit: 'credits',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32162,6 +32166,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_ads_budget_limit: 'სარეკლამო აქტივობა არ შემოწმებულა, რათა კვლევა თქვენს ბიუჯეტში დარჩენილიყო.',
   verify_err_sign_in_required: 'ვერიფიკაციის დასაწყებად შედით ანგარიშზე.',
   vh_state_paused: 'შეჩერებულია — შეეხეთ გასაგრძელებლად',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'ვერიფიკაციის ბიუჯეტი',
+  verify_budget_unit: 'კრედიტი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48191,6 +48199,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_ads_budget_limit: 'Рекламная активность не проверялась, чтобы проверка осталась в рамках вашего бюджета.',
   verify_err_sign_in_required: 'Войдите, чтобы начать проверку.',
   vh_state_paused: 'Приостановлено — нажмите, чтобы продолжить',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'Бюджет проверки',
+  verify_budget_unit: 'кредитов',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -64218,6 +64230,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_ads_budget_limit: 'Araştırmanın bütçeniz içinde kalması için reklam faaliyeti kontrol edilmedi.',
   verify_err_sign_in_required: 'Doğrulama başlatmak için giriş yapın.',
   vh_state_paused: 'Duraklatıldı — devam etmek için dokunun',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'Doğrulama bütçesi',
+  verify_budget_unit: 'kredi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -80245,6 +80261,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_ads_budget_limit: 'لم يُفحص النشاط الإعلاني كي يبقى التحقق ضمن ميزانيتك.',
   verify_err_sign_in_required: 'سجّل الدخول لبدء التحقق.',
   vh_state_paused: 'متوقف مؤقتًا — انقر للمتابعة',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'ميزانية التحقق',
+  verify_budget_unit: 'رصيد',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -96272,6 +96292,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_ads_budget_limit: 'פעילות הפרסום לא נבדקה כדי שהחקירה תישאר בתקציב שלך.',
   verify_err_sign_in_required: 'התחברו כדי להתחיל אימות.',
   vh_state_paused: 'מושהה — הקישו כדי להמשיך',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_budget_eyebrow: 'תקציב האימות',
+  verify_budget_unit: 'קרדיטים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

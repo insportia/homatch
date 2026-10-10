@@ -111,4 +111,6 @@ export const VERIFY_SCALE_STRINGS = {
   ],
   verify_err_sign_in_required: ['Sign in to start a verification.', 'ვერიფიკაციის დასაწყებად შედით ანგარიშზე.', 'Войдите, чтобы начать проверку.', 'Doğrulama başlatmak için giriş yapın.', 'سجّل الدخول لبدء التحقق.', 'התחברו כדי להתחיל אימות.'],
   vh_state_paused: ['Paused — tap to resume', 'შეჩერებულია — შეეხეთ გასაგრძელებლად', 'Приостановлено — нажмите, чтобы продолжить', 'Duraklatıldı — devam etmek için dokunun', 'متوقف مؤقتًا — انقر للمتابعة', 'מושהה — הקישו כדי להמשיך'],
+  verify_budget_eyebrow: ['Verification budget', 'ვერიფიკაციის ბიუჯეტი', 'Бюджет проверки', 'Doğrulama bütçesi', 'ميزانية التحقق', 'תקציב האימות'],
+  verify_budget_unit: ['credits', 'კრედიტი', 'кредитов', 'kredi', 'رصيد', 'קרדיטים'],
 };

@@ -12,13 +12,20 @@
  * this file, and a currency conversion is display only: it never changes the
  * credits charged. A currency appears only when an exchange rate is
  * configured (fx_rates); without one the value is shown in USD only.
+ *
+ * DESIGN: Verify's own premium system (UI_CONTRACTS.md) — the light
+ * `.hm-invest` ground, white hairline panels, a gold eyebrow, the deep navy
+ * band for the one figure that matters, and Verify's gold call to action.
+ * Every button is the same framed 48 px control. The dialog renders in a
+ * portal outside the page, so it carries the `.hm-invest` scope itself.
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, Pause, Play, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { cn } from '@/lib/utils';
 
 export interface LaunchQuote {
   enabled: boolean;
@@ -64,6 +71,31 @@ export function convertUsdCents(usdCents: number, currency: string, rates: Launc
   }
 }
 
+/* ── The controls: one size, one radius, one frame ─────────────────────── */
+// Verify's own call to action (the search button on the Verification Center).
+const GOLD_ACTION =
+  'h-auto min-h-12 w-full whitespace-normal rounded-xl border border-[hsl(38_70%_46%)] bg-[hsl(38_92%_54%)] px-6 py-3 text-[15px] font-bold leading-snug text-[#161309] shadow-card hover:bg-[hsl(38_92%_60%)] focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)] focus-visible:ring-offset-2 disabled:border-transparent disabled:bg-[hsl(38_30%_88%)] disabled:text-[#161309]/45 disabled:opacity-100';
+// The framed secondary: same box, a drawn line instead of a fill.
+const FRAMED_ACTION =
+  'h-auto min-h-12 w-full whitespace-normal rounded-xl border border-foreground/20 bg-white px-6 py-3 text-[15px] font-semibold leading-snug text-foreground shadow-card hover:border-[hsl(var(--gold-border))] hover:bg-[hsl(var(--gold-soft))] hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2';
+
+const Eyebrow = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">{children}</p>
+);
+
+/** One figure in a framed tile: the number large, its unit small beside it (wraps, never clips). */
+function Stat({ label, value, unit, strong, quiet }: { label: string; value: string; unit?: string; strong?: boolean; quiet?: boolean }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-border bg-[hsl(var(--sand))] px-4 py-3">
+      <dt className="text-2xs font-medium leading-snug text-muted-foreground break-words">{label}</dt>
+      <dd className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-1.5 [font-variant-numeric:tabular-nums]">
+        <bdi className={cn(quiet ? 'text-base font-medium text-muted-foreground' : 'font-semibold text-foreground', !quiet && (strong ? 'text-2xl' : 'text-xl'))}>{value}</bdi>
+        {unit ? <span className="text-sm font-medium text-muted-foreground">{unit}</span> : null}
+      </dd>
+    </div>
+  );
+}
+
 const STORE = 'homatch.verify.displayCurrency';
 function storedCurrency(): string {
   try {
@@ -105,65 +137,64 @@ export function VerifyLaunchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm gap-5 sm:rounded-2xl">
-        <DialogHeader className="space-y-2 pr-8 text-start">
-          <DialogTitle className="text-lg">{t('verify_budget_title')}</DialogTitle>
-          <DialogDescription className="text-sm leading-6">{t('verify_budget_note')}</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="hm-invest w-[calc(100vw-2rem)] max-w-md gap-0 overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-0 text-foreground shadow-[var(--shadow-hover)] sm:rounded-2xl">
+        <div className="h-1 w-full bg-[hsl(38_92%_54%)]" aria-hidden="true" />
+        <div className="space-y-5 p-6 sm:p-7">
+          <DialogHeader className="space-y-2 pr-8 text-start">
+            <Eyebrow>{t('verify_budget_eyebrow')}</Eyebrow>
+            <DialogTitle className="font-display text-2xl font-semibold leading-tight text-foreground">{t('verify_budget_title')}</DialogTitle>
+          </DialogHeader>
 
-        {quote ? (
-          <div className="rounded-xl border border-border bg-card/60 p-4 space-y-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-sm text-muted-foreground">{t('verify_budget_required')}</span>
-              <span className="whitespace-nowrap text-2xl font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-                <bdi>{t('verify_budget_credits', { n: formatCreditAmount(quote.maxCredits, lang) })}</bdi>
-              </span>
+          {quote ? (
+            <div className="rounded-xl bg-[#0C1119] p-5 text-white shadow-card">
+              <p className="text-2xs font-medium uppercase tracking-[0.12em] text-white/60">{t('verify_budget_required')}</p>
+              <p className="mt-1.5 whitespace-nowrap font-display text-4xl font-semibold leading-none tracking-tight [font-variant-numeric:tabular-nums]">
+                <bdi>
+                  {formatCreditAmount(quote.maxCredits, lang)}
+                  <span className="ms-2 align-baseline text-base font-medium text-[hsl(38_92%_62%)]">{t('verify_budget_unit')}</span>
+                </bdi>
+              </p>
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                <span className="text-sm text-white/75" title={t('verify_budget_approx')}>
+                  {value ? <bdi>≈ {value}</bdi> : null}
+                </span>
+                {options.length > 1 ? (
+                  <label className="inline-flex items-center">
+                    <span className="sr-only">{t('verify_budget_currency')}</span>
+                    <select
+                      value={shown}
+                      onChange={(e) => pick(e.target.value)}
+                      className="h-9 rounded-lg border border-white/20 bg-white/5 px-2.5 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)] [&>option]:text-[#0C1119]"
+                    >
+                      {options.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+              {shown !== 'USD' ? <p className="mt-2 text-xs text-white/55">{t('verify_budget_approx')}</p> : null}
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground" title={t('verify_budget_approx')}>
-                {value ? <bdi>≈ {value}</bdi> : null}
-              </span>
-              {options.length > 1 ? (
-                <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="sr-only">{t('verify_budget_currency')}</span>
-                  <select
-                    value={shown}
-                    onChange={(e) => pick(e.target.value)}
-                    className="h-8 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {options.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
+          ) : (
+            <div className="flex justify-center rounded-xl border border-border py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" /></div>
+          )}
+
+          <DialogDescription className="text-sm leading-6 text-muted-foreground">{t('verify_budget_note')}</DialogDescription>
+
+          {quote && missing > 0 ? (
+            <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
+              <p className="text-sm font-medium leading-6 text-foreground break-words">{t('verify_budget_missing', { n: formatCreditAmount(missing, lang) })}</p>
+              <Button asChild className={FRAMED_ACTION}>
+                <Link to="/credits"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('verify_budget_add_credits')}</Link>
+              </Button>
             </div>
-            {shown !== 'USD' ? <p className="text-xs text-muted-foreground">{t('verify_budget_approx')}</p> : null}
-          </div>
-        ) : (
-          <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" /></div>
-        )}
+          ) : null}
 
-        {quote && missing > 0 ? (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm space-y-2">
-            <p className="break-words">{t('verify_budget_missing', { n: formatCreditAmount(missing, lang) })}</p>
-            <Button asChild size="sm" className="w-full sm:w-auto">
-              <Link to="/credits"><Wallet className="me-1.5 h-4 w-4" aria-hidden="true" />{t('verify_budget_add_credits')}</Link>
-            </Button>
-          </div>
-        ) : null}
-
-        <DialogFooter className="gap-2 sm:gap-2">
-          <Button
-            type="button"
-            className="w-full min-h-11"
-            disabled={!quote || busy || missing > 0}
-            onClick={onConfirm}
-          >
+          <Button type="button" className={GOLD_ACTION} disabled={!quote || busy || missing > 0} onClick={onConfirm}>
             {busy ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
             {t('verify_budget_start')}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -173,21 +204,20 @@ export function VerifyLaunchDialog({
 export function VerifyBudgetLine({ billing }: { billing: PublicBilling | null }) {
   const { t, lang } = useLanguage();
   if (!billing || billing.state !== 'ACTIVE') return null;
+  const total = Number(billing.authorized) || 0;
+  const share = total > 0 && !billing.calculating ? Math.min(100, Math.max(0, (Number(billing.used) / total) * 100)) : null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-border bg-card/60 px-4 py-2.5 text-sm" aria-live="polite">
-      <span>
-        <span className="text-muted-foreground">{t('verify_budget_used')} </span>
-        {billing.calculating ? (
-          <span className="text-muted-foreground">{t('verify_budget_calculating')}</span>
-        ) : (
-          <bdi className="font-medium [font-variant-numeric:tabular-nums]">{formatCreditAmount(billing.used, lang)}</bdi>
-        )}
-      </span>
-      <span>
-        <span className="text-muted-foreground">{t('verify_budget_remaining')} </span>
-        <bdi className="font-medium [font-variant-numeric:tabular-nums]">{formatCreditAmount(billing.remaining, lang)}</bdi>
-      </span>
-    </div>
+    <section className="hm-invest-panel p-4 sm:p-5" aria-live="polite">
+      <dl className="grid grid-cols-2 gap-3">
+        <Stat label={t('verify_budget_used')} value={billing.calculating ? t('verify_budget_calculating') : formatCreditAmount(billing.used, lang)} unit={billing.calculating ? undefined : t('verify_budget_unit')} quiet={billing.calculating} />
+        <Stat label={t('verify_budget_remaining')} value={formatCreditAmount(billing.remaining, lang)} unit={t('verify_budget_unit')} />
+      </dl>
+      {share != null ? (
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[hsl(var(--sand))]" role="presentation">
+          <div className="h-full rounded-full bg-[hsl(38_92%_54%)] transition-[width] duration-700 ease-out" style={{ width: `${share}%` }} />
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -210,49 +240,52 @@ export function VerifyPausedCard({
   onApproveExtra?: () => void;
 }) {
   const { t, lang } = useLanguage();
+  const needsApproval = resumeError === 'BUDGET_EXHAUSTED' && !!onApproveExtra;
   return (
-    <div className="rounded-2xl border border-primary/25 bg-card/70 p-5 space-y-4">
-      <div className="flex items-center gap-2">
-        <Pause className="h-4 w-4 text-primary" aria-hidden="true" />
-        <p className="font-semibold">{t('verify_paused_title')}</p>
-      </div>
+    <section className="hm-invest-panel hm-invest-focus space-y-5 p-5 sm:p-7">
+      <header className="space-y-1.5">
+        <Eyebrow>{t('verify_budget_eyebrow')}</Eyebrow>
+        <h2 className="flex items-center gap-2.5 font-display text-xl font-semibold leading-tight text-foreground">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]">
+            <Pause className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 break-words">{t('verify_paused_title')}</span>
+        </h2>
+      </header>
       {billing ? (
-        <dl className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <dt className="text-muted-foreground">{t('verify_budget_used')}</dt>
-            <dd className="font-medium [font-variant-numeric:tabular-nums]"><bdi>{t('verify_budget_credits', { n: formatCreditAmount(billing.charged, lang) })}</bdi></dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t('verify_paused_returned')}</dt>
-            <dd className="font-medium [font-variant-numeric:tabular-nums]"><bdi>{t('verify_budget_credits', { n: formatCreditAmount(billing.lastReturned, lang) })}</bdi></dd>
-          </div>
+        <dl className="grid grid-cols-2 gap-3">
+          <Stat label={t('verify_budget_used')} value={formatCreditAmount(billing.charged, lang)} unit={t('verify_budget_unit')} />
+          <Stat label={t('verify_paused_returned')} value={formatCreditAmount(billing.lastReturned, lang)} unit={t('verify_budget_unit')} />
         </dl>
       ) : null}
-      <p className="text-sm text-muted-foreground">{t('verify_paused_partial')}</p>
+      <p className="text-sm leading-6 text-muted-foreground">{t('verify_paused_partial')}</p>
       {resumeError === 'INSUFFICIENT_CREDITS' ? (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm space-y-2">
-          <p>{t('verify_resume_need_credits')}</p>
-          <Button asChild size="sm"><Link to="/credits"><Wallet className="me-1.5 h-4 w-4" aria-hidden="true" />{t('verify_budget_add_credits')}</Link></Button>
+        <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
+          <p className="text-sm font-medium leading-6">{t('verify_resume_need_credits')}</p>
+          <Button asChild className={FRAMED_ACTION}><Link to="/credits"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('verify_budget_add_credits')}</Link></Button>
         </div>
       ) : null}
-      {resumeError === 'BUDGET_EXHAUSTED' && onApproveExtra ? (
-        <div className="rounded-xl border border-border bg-background/60 p-3 text-sm space-y-2">
-          <p>{t('verify_resume_budget_used', { n: formatCreditAmount(extraCredits ?? 0, lang) })}</p>
-          <Button size="sm" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-center" onClick={onApproveExtra} disabled={resuming}>{t('verify_resume_approve_extra', { n: formatCreditAmount(extraCredits ?? 0, lang) })}</Button>
+      {needsApproval ? (
+        <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
+          <p className="text-sm font-medium leading-6">{t('verify_resume_budget_used', { n: formatCreditAmount(extraCredits ?? 0, lang) })}</p>
+          <Button type="button" className={GOLD_ACTION} onClick={onApproveExtra} disabled={resuming}>
+            {resuming ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            {t('verify_resume_approve_extra', { n: formatCreditAmount(extraCredits ?? 0, lang) })}
+          </Button>
         </div>
       ) : null}
-      <div className="flex flex-col gap-2 sm:flex-row">
-        {resumeError === 'BUDGET_EXHAUSTED' && onApproveExtra ? null : (
-        <Button type="button" className="h-auto min-h-11 whitespace-normal py-2" onClick={onResume} disabled={resuming}>
-          {resuming ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="me-2 h-4 w-4 rtl:-scale-x-100" aria-hidden="true" />}
-          {t('verify_resume')}
-        </Button>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {needsApproval ? null : (
+          <Button type="button" className={GOLD_ACTION} onClick={onResume} disabled={resuming}>
+            {resuming ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="me-2 h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />}
+            {t('verify_resume')}
+          </Button>
         )}
         {onViewPartial ? (
-          <Button type="button" variant="outline" className="h-auto min-h-11 whitespace-normal py-2" onClick={onViewPartial}>{t('verify_view_partial')}</Button>
+          <Button type="button" variant="outline" className={cn(FRAMED_ACTION, needsApproval && 'sm:col-span-2')} onClick={onViewPartial}>{t('verify_view_partial')}</Button>
         ) : null}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -263,17 +296,11 @@ export function VerifyBudgetSummary({ billing }: { billing: PublicBilling | null
   // Everything authorised and not charged went back to the wallet.
   const returned = billing.authorized != null && billing.charged != null ? Math.max(0, billing.authorized - billing.charged) : null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 rounded-xl border border-border bg-card/60 px-4 py-3 text-sm">
-      <span>
-        <span className="text-muted-foreground">{t('verify_final_cost')} </span>
-        <bdi className="font-semibold [font-variant-numeric:tabular-nums]">{t('verify_budget_credits', { n: formatCreditAmount(billing.charged, lang) })}</bdi>
-      </span>
-      {returned != null ? (
-        <span>
-          <span className="text-muted-foreground">{t('verify_unused_returned')} </span>
-          <bdi className="font-medium [font-variant-numeric:tabular-nums]">{t('verify_budget_credits', { n: formatCreditAmount(returned, lang) })}</bdi>
-        </span>
-      ) : null}
-    </div>
+    <section className="hm-invest-panel p-4 sm:p-5">
+      <dl className="grid grid-cols-2 gap-3">
+        <Stat strong label={t('verify_final_cost')} value={formatCreditAmount(billing.charged, lang)} unit={t('verify_budget_unit')} />
+        {returned != null ? <Stat label={t('verify_unused_returned')} value={formatCreditAmount(returned, lang)} unit={t('verify_budget_unit')} /> : null}
+      </dl>
+    </section>
   );
 }

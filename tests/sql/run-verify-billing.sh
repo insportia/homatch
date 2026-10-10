@@ -10,16 +10,19 @@ $P -d $DB -f tests/sql/verify_durable_execution_fixture.sql
 $P -d $DB -f supabase/migrations/20261026090000_verify_durable_execution.sql
 $P -d $DB -f tests/sql/verify_credit_budget_fixture.sql
 $P -d $DB -f supabase/migrations/20261026100000_verify_credit_budget.sql
+$P -d $DB -f supabase/migrations/20261027090000_verify_wallet_owner.sql
 $P -d $DB -f tests/sql/verify_durable_execution.sql
 $P -d $DB -f tests/sql/verify_credit_budget.sql
 $P -d $DB -f tests/sql/verify_billing_audit_regressions.sql
 $P -d $DB -f tests/sql/verify_incremental_budget.sql
+$P -d $DB -f tests/sql/verify_wallet_owner.sql
 
 # Concurrency: 30 simultaneous starts of one job (double clicks, retries, two tabs)
 # hold the budget once; 30 simultaneous closes settle once; another product's
 # reservations on the same wallet in parallel never drive it negative.
 U=00000000-0000-4000-8000-0000000000c1
-$P -d $DB -c "insert into public.credit_accounts (user_id, balance) values ('$U', 60);
+$P -d $DB -c "insert into public.users (id, auth_id) values ('$U', '$U');
+              insert into public.credit_accounts (user_id, balance) values ('$U', 60);
               insert into public.credit_lots (user_id, kind, credits_granted, source_type) values ('$U','PURCHASED',60,'TOPUP');
               insert into public.research_jobs (id, user_id) values ('00000000-0000-4000-8000-00000000c0b1', '$U');"
 for i in $(seq 1 30); do
@@ -57,7 +60,8 @@ SQL
 # extension; stop and approve racing each other leave a consistent wallet.
 U2=00000000-0000-4000-8000-0000000000c2
 J2=00000000-0000-4000-8000-00000000c0b2
-$P -d $DB -c "insert into public.credit_accounts (user_id, balance) values ('$U2', 200);
+$P -d $DB -c "insert into public.users (id, auth_id) values ('$U2', '$U2');
+              insert into public.credit_accounts (user_id, balance) values ('$U2', 200);
               insert into public.credit_lots (user_id, kind, credits_granted, source_type) values ('$U2','PURCHASED',200,'TOPUP');
               insert into public.research_jobs (id, user_id, result_json) values ('$J2', '$U2', '{\"_cost\":{\"identity\":{\"input_tokens\":200000,\"output_tokens\":15000}}}');
               select public.verify_billing_open('$J2', '$U2', 'verify:c0b2:s1');

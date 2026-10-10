@@ -14,6 +14,7 @@ declare
                               "official_collection":{"input_tokens":300000,"output_tokens":30000,"input_tokens_details":{"cached_tokens":100000}}}';
 begin
   -- Wallets: u1 100 credits, u2 10 credits, u3 100 credits on VIP.
+  insert into public.users (id, auth_id) values (u1, u1), (u2, u2), (u3, u3);
   insert into public.credit_accounts (user_id, balance) values (u1, 200), (u2, 10), (u3, 100);
   insert into public.credit_lots (user_id, kind, credits_granted, source_type) values (u1, 'PURCHASED', 200, 'TOPUP'), (u2, 'PURCHASED', 10, 'TOPUP'), (u3, 'PURCHASED', 100, 'TOPUP');
   insert into public.user_subscriptions values (u3, 'VIP', 'ACTIVE', now() + interval '20 days');

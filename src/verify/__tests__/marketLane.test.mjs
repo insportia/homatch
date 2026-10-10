@@ -74,7 +74,9 @@ test('comparables arrive in the report\'s existing shape, with provenance', asyn
     for (const key of ['source', 'url', 'area', 'price', 'currency', 'pricePerSqm', 'comparableType']) {
       assert.ok(key in c, `comparable carries ${key}`);
     }
-    assert.ok(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT'].includes(c.comparableType));
+    // 2026-10-10: the lane never falls back to PEER_PROJECT — a district
+    // filter is SAME_DISTRICT context and anything else is WIDER_MARKET.
+    assert.ok(['SAME_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET'].includes(c.comparableType), c.comparableType);
     // Provenance a reader can check, and a reason it was considered relevant.
     assert.equal(c.discoveryMethod, 'DETERMINISTIC_PORTAL_SEARCH');
     assert.ok(c.similarity.length > 0);

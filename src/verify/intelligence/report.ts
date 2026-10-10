@@ -718,7 +718,13 @@ export function stripFalseScarcity(
 ): BuyerIntelligenceReport {
   if (!bundle) return report;
 
-  const marketContradicted = bundle.market?.contextAvailable === true;
+  /*
+   * An EVIDENCE_LIMITED market is the deterministic layer itself saying the
+   * local sample is too small to headline — a sentence saying so is TRUE and
+   * must not be scrubbed (2026-10-10 market gate).
+   */
+  const marketContradicted =
+    bundle.market?.contextAvailable === true && bundle.market?.basis !== 'EVIDENCE_LIMITED';
   const sourceDidNotRun = bundle.company?.status === 'SOURCE_UNAVAILABLE';
   if (!marketContradicted && !sourceDidNotRun) return report;
 

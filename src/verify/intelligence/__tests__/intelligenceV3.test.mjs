@@ -48,42 +48,70 @@ const COMPARABLES = [
 
 /* ── the hierarchy ─────────────────────────────────────────────────── */
 
+// Premise (2026-10-10 market gate): PEER_PROJECT is now a NAMED development in
+// the same or an adjacent neighbourhood AND the same segment. Vake and
+// Saburtalo are not next to Krtsanisi, so those two are city background;
+// Krtsanisi Residence and Ortachala Hills, priced within the band around the
+// project's own asks, are the peers.
+const ORDER = ['SAME_PROJECT', 'SAME_STREET', 'PEER_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET'];
+
 test('every band that has listings is published, not only the winning one', () => {
   const m = buildMarketIntelligence(SUBJECT, COMPARABLES);
   const tiers = m.tiers.map((t) => t.tier);
-  // Narrowest first, always.
-  assert.deepEqual(tiers, ['SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'PEER_PROJECT'].filter((t) => tiers.includes(t)));
+  // Most relevant first, always.
+  assert.deepEqual(tiers, ORDER.filter((t) => tiers.includes(t)));
   assert.ok(tiers.includes('SAME_PROJECT'), 'the same-project band is missing');
   assert.ok(tiers.length >= 3, `only ${tiers.length} bands published — this is the same-project-only report again`);
+  assert.equal(m.tierCounts.PEER_PROJECT, 3, 'the nearby named developments are the peers');
+  assert.equal(m.tierCounts.WIDER_MARKET, 2, 'Vake and Saburtalo are background, not peers of a Krtsanisi building');
   for (const t of m.tiers) {
     assert.ok(t.count > 0 && t.median > 0, `${t.tier} published with nothing in it`);
     assert.ok(t.min <= t.median && t.median <= t.max, `${t.tier} range is inconsistent`);
+    assert.equal(t.contextOnly, t.tier === 'SAME_DISTRICT' || t.tier === 'WIDER_MARKET');
   }
 });
 
 test('the narrowest band with enough listings still drives the analysis', () => {
-  const m = buildMarketIntelligence(SUBJECT, COMPARABLES);
+  const third = { ...COMPARABLES[0], area: '91', pricePerSqm: '1860' };
+  const m = buildMarketIntelligence(SUBJECT, [...COMPARABLES, third]);
   assert.equal(m.basis, 'SAME_PROJECT');
-  assert.equal(m.basisCount, 2);
+  assert.equal(m.basisCount, 3);
   // Publishing the wider bands must not drag the headline number around.
   assert.equal(m.median, 1860);
+  assert.equal(m.headline.state, 'RANGE');
+  assert.deepEqual(m.headline.tiersUsed, ['SAME_PROJECT']);
 });
 
-test('a comparable development ranks above open-market stock, never above location', () => {
-  const peer = scoreComparable(SUBJECT, COMPARABLES[5]);
-  const sameProject = scoreComparable(SUBJECT, COMPARABLES[0]);
-  const sameDistrict = scoreComparable(SUBJECT, COMPARABLES[4]);
+test('a comparable development ranks above district stock and open-market stock, never above location', () => {
+  const ctx = { priceAnchor: 1860 };
+  const peer = scoreComparable(SUBJECT, COMPARABLES[4], ctx);
+  const sameProject = scoreComparable(SUBJECT, COMPARABLES[0], ctx);
+  const sameStreet = scoreComparable(SUBJECT, { address: 'თბილისი, კრწანისის ქუჩა 9', area: '90', pricePerSqm: '1750', currency: 'USD' }, ctx);
+  const districtStock = scoreComparable(SUBJECT, { address: 'თბილისი, კრწანისი', area: '90', pricePerSqm: '1650', currency: 'USD' }, ctx);
+  const wider = scoreComparable(SUBJECT, COMPARABLES[5], ctx);
   assert.equal(peer.tier, 'PEER_PROJECT');
-  assert.ok(peer.relevance < sameDistrict.relevance, 'a peer project outranked a district match');
+  assert.equal(sameStreet.tier, 'SAME_STREET');
+  assert.equal(districtStock.tier, 'SAME_DISTRICT');
+  assert.equal(wider.tier, 'WIDER_MARKET');
   assert.ok(peer.relevance < sameProject.relevance, 'a peer project outranked the same building');
+  assert.ok(peer.relevance < sameStreet.relevance, 'a peer project outranked the same street');
+  assert.ok(peer.relevance > districtStock.relevance, 'unnamed district stock outranked a nearby peer development');
+  assert.ok(districtStock.relevance > wider.relevance);
+  assert.ok(peer.relevanceReasons.includes('PRICE_BAND_MATCH'));
+  assert.ok(peer.headlineEligible && !districtStock.headlineEligible && !wider.headlineEligible);
 });
 
 test('a single listing is shown as context but never carries the analysis', () => {
   const one = buildMarketIntelligence(SUBJECT, [COMPARABLES[0], COMPARABLES[5], COMPARABLES[6]]);
   // It appears in the hierarchy...
   assert.ok(one.tiers.some((t) => t.tier === 'SAME_PROJECT' && t.count === 1));
-  // ...but two peer listings are what actually meet the minimum.
-  assert.equal(one.basisCount >= 2, true);
+  // ...but neither it nor two distant listings may form a headline.
+  assert.equal(one.basis, 'EVIDENCE_LIMITED');
+  assert.equal(one.median, null);
+  assert.equal(one.min, null);
+  assert.equal(one.max, null);
+  assert.equal(one.subjectValuation, 'EVIDENCE_LIMITED');
+  assert.ok(one.projectAskingEvidence.some((e) => e.kind === 'ASKING' && e.pricePerSqm === 1850));
 });
 
 test('no comparables at all means no market section, never an empty one', () => {
@@ -283,57 +311,84 @@ test('rich same-project evidence carries the analysis and is not marked thin', (
 });
 
 test('a single comparable is used, but never called a market', () => {
-  // The exact shape the live report produced. The figures are real; what
-  // must not happen is presenting them as a distribution.
+  // The exact shape the live report produced. The figure is real — so it
+  // travels as the project's own ASKING evidence — but one asking price is
+  // not a distribution, so there is no headline median/min/max at all
+  // (premise changed 2026-10-10: a headline needs MIN_RELIABLE_SAMPLE = 3).
   const m = buildMarketIntelligence(SUBJECT, [one()]);
-  assert.equal(m.count, 1);
-  assert.equal(m.median, 1850, 'a single asking price is still real information');
+  assert.equal(m.count, 1, 'the eligible listing is still counted');
+  assert.equal(m.basis, 'EVIDENCE_LIMITED');
+  assert.equal(m.median, null, 'one listing was presented as a market');
   assert.equal(m.basisIsThin, true, 'one listing was presented as a market');
   assert.ok(m.tiers.every((t) => t.thin), 'a one-listing band is not marked thin');
+  assert.deepEqual(m.projectAskingEvidence.map((e) => [e.kind, e.origin, e.pricePerSqm]), [['ASKING', 'SAME_PROJECT_LISTING', 1850]],
+    'a single asking price is still real information');
 });
 
 test('a thin basis is never labelled as a narrower band than the data spans', () => {
   // The defect: with one same-project listing and others elsewhere, basis was
-  // stamped SAME_PROJECT while the median came from EVERY comparable — the
-  // report said "in the same project" about a number that was not.
+  // stamped SAME_PROJECT while the median came from EVERY comparable.
   //
-  // When no single band has enough, the analysis is stitched across bands.
-  // The honest label is then the WIDEST band the data reaches, never a
-  // narrower one, and the whole thing is thin by definition: two listings
-  // from two different bands do not describe either band.
-  const order = ['SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'PEER_PROJECT', 'WIDER_MARKET'];
+  // Two eligible listings (same project + a same-street flat) and one Vake
+  // development that is not a peer of a Krtsanisi building: nothing may
+  // headline, and nothing narrower may be claimed.
   const mixed = [
     one(),
-    one({ project: 'Krtsanisi Park', address: 'კრწანისის ქუჩა 20', comparableType: 'MICRO_LOCATION', pricePerSqm: '1700' }),
+    one({ project: null, address: 'თბილისი, კრწანისის ქუჩა 20', comparableType: 'MICRO_LOCATION', pricePerSqm: '1700' }),
     one({ project: 'Vake Boutique', address: 'თბილისი, ვაკე', comparableType: 'PEER_PROJECT', pricePerSqm: '2400' }),
   ];
-  const m = buildMarketIntelligence(SUBJECT, mixed);
+  const limited = buildMarketIntelligence(SUBJECT, mixed);
+  assert.equal(limited.basisIsThin, true, 'a stitched comparison was presented as a solid one');
+  assert.equal(limited.basis, 'EVIDENCE_LIMITED');
+  assert.equal(limited.basisCount, 2, 'basisCount says how many eligible listings were found');
+  assert.equal(limited.min, null);
+  assert.equal(limited.max, null);
 
-  assert.equal(m.basisIsThin, true, 'a stitched comparison was presented as a solid one');
-  // The label must resolve to a band that actually has listings...
-  const row = m.tiers.find((t) => t.tier === m.basis);
-  assert.ok(row, `basis ${m.basis} is not a band with any listings`);
-  // ...and must be at least as wide as every band that contributed.
-  const widestPresent = Math.max(...m.tiers.map((t) => order.indexOf(t.tier)));
-  assert.equal(order.indexOf(m.basis), widestPresent,
-    `basis ${m.basis} is narrower than the data it was computed from`);
-  // basisCount describes what was USED, which is all of it.
-  assert.equal(m.basisCount, 3);
+  // Three eligible listings across two bands DO form a headline — labelled
+  // with the widest band used, never a narrower one.
+  const enough = buildMarketIntelligence(SUBJECT, [
+    ...mixed,
+    one({ project: null, address: 'თბილისი, კრწანისის ქუჩა 2', comparableType: 'MICRO_LOCATION', pricePerSqm: '1760' }),
+  ]);
+  assert.equal(enough.basisIsThin, false);
+  assert.equal(enough.basis, 'SAME_STREET', `basis ${enough.basis} is not the widest band the data came from`);
+  assert.deepEqual(enough.headline.tiersUsed, ['SAME_PROJECT', 'SAME_STREET']);
+  assert.equal(enough.basisCount, 3);
+  assert.ok(enough.max < 2400, 'the Vake development leaked into the headline range');
 });
 
-test('peer, district and broader bands each carry the analysis when they are the narrowest with enough', () => {
+test('only same project, same street and strict peers may carry the analysis — never the district or the city', () => {
   const district = [
-    one({ project: 'A', address: 'თბილისი, კრწანისი, ორთაჭალის გზა 4', comparableType: 'MICRO_LOCATION', pricePerSqm: '1600' }),
-    one({ project: 'B', address: 'თბილისი, კრწანისი, ორთაჭალის გზა 9', comparableType: 'MICRO_LOCATION', pricePerSqm: '1650' }),
+    one({ project: null, address: 'თბილისი, კრწანისი, ორთაჭალის გზა 4', comparableType: 'MICRO_LOCATION', pricePerSqm: '1600' }),
+    one({ project: null, address: 'თბილისი, კრწანისი, ორთაჭალის გზა 9', comparableType: 'MICRO_LOCATION', pricePerSqm: '1650' }),
+    one({ project: null, address: 'თბილისი, კრწანისი, ჭავჭავაძის 3', comparableType: 'MICRO_LOCATION', pricePerSqm: '1700' }),
   ];
-  assert.equal(buildMarketIntelligence(SUBJECT, district).basis, 'SAME_DISTRICT');
-  assert.equal(buildMarketIntelligence(SUBJECT, district).basisIsThin, false);
+  const d = buildMarketIntelligence(SUBJECT, district);
+  assert.equal(d.tierCounts.SAME_DISTRICT, 3);
+  assert.equal(d.basis, 'EVIDENCE_LIMITED', 'district stock produced a headline range');
+  assert.ok(d.whySelected.some((w) => w.code === 'CONTEXT_ONLY_TIER' && w.tier === 'SAME_DISTRICT' && w.count === 3));
 
-  const peers = [
+  // Named developments in Vake and Saburtalo are not peers of a Krtsanisi building.
+  const far = [
     one({ project: 'Vake Boutique', address: 'თბილისი, ვაკე', comparableType: 'PEER_PROJECT', pricePerSqm: '2400' }),
     one({ project: 'Saburtalo Sky', address: 'თბილისი, საბურთალო', comparableType: 'PEER_PROJECT', pricePerSqm: '1500' }),
+    one({ project: 'Didube Plaza', address: 'თბილისი, დიდუბე', comparableType: 'PEER_PROJECT', pricePerSqm: '1300' }),
   ];
-  assert.equal(buildMarketIntelligence(SUBJECT, peers).basis, 'PEER_PROJECT');
+  const f = buildMarketIntelligence(SUBJECT, far);
+  assert.equal(f.tierCounts.PEER_PROJECT, 0);
+  assert.equal(f.basis, 'EVIDENCE_LIMITED');
+
+  // Named developments next door (Ortachala, Sololaki), priced like the project, are.
+  const peers = [
+    one(),
+    one({ project: 'Ortachala Hills', address: 'თბილისი, ორთაჭალა', comparableType: 'PEER_PROJECT', pricePerSqm: '1800' }),
+    one({ project: 'Sololaki Court', address: 'თბილისი, სოლოლაკი', comparableType: 'PEER_PROJECT', pricePerSqm: '1950' }),
+    one({ project: 'Krtsanisi Park', address: 'თბილისი, კრწანისი', comparableType: 'PEER_PROJECT', pricePerSqm: '1700' }),
+  ];
+  const p = buildMarketIntelligence(SUBJECT, peers);
+  assert.equal(p.tierCounts.PEER_PROJECT, 3);
+  assert.equal(p.basis, 'PEER_PROJECT');
+  assert.equal(p.median, 1800);
 });
 
 test('no usable comparables produces no market section at all', () => {
@@ -363,16 +418,31 @@ test('a thin comparison never reaches the reader as a market rate', () => {
 
 /* ── the peer band has to be reachable, or the hierarchy is fiction ──── */
 
-test('a named development elsewhere is a peer, not anonymous market stock', () => {
-  // PEER_PROJECT had never been produced in production: the research layer
-  // labels a distant development MICRO_LOCATION more often than PEER_PROJECT,
-  // and a comparable on a street with no district hint fell all the way to
-  // WIDER_MARKET, beside arbitrary city stock.
-  const named = scoreComparable(SUBJECT, {
+test('a named development is a peer only when it is nearby and the same segment', () => {
+  // Premise changed (2026-10-10, job 220ed087): a project NAME used to be
+  // enough to make a listing a peer anywhere in the city, which is how 39
+  // listings from Saburtalo, Navtlughi, Didi Dighomi and Didube became the
+  // "peer" basis of a Krtsanisi valuation. A name is now necessary, not
+  // sufficient: the neighbourhood must be the same or adjacent, and the
+  // segment must be shown to match.
+  const nowhere = scoreComparable(SUBJECT, {
     project: 'Villa Residence', address: 'თბილისი, გრიგოლ ვოლსკის ქუჩა',
     area: '95', pricePerSqm: '7776', currency: 'GEL', comparableType: 'MICRO_LOCATION',
   });
-  assert.equal(named.tier, 'PEER_PROJECT', 'a named development is still treated as open-market stock');
+  assert.equal(nowhere.tier, 'WIDER_MARKET', 'a named development with no known place was promoted to a peer');
+  assert.ok(nowhere.relevanceReasons.includes('DISTRICT_UNKNOWN'));
+
+  const nextDoorInBand = scoreComparable(SUBJECT, {
+    project: 'Sololaki Court', address: 'თბილისი, სოლოლაკი', area: '95', pricePerSqm: '1900', currency: 'USD',
+  }, { priceAnchor: 1860 });
+  assert.equal(nextDoorInBand.tier, 'PEER_PROJECT');
+  assert.ok(nextDoorInBand.relevanceReasons.includes('ADJACENT_DISTRICT'));
+
+  const nextDoorNoSegment = scoreComparable(SUBJECT, {
+    project: 'Sololaki Court', address: 'თბილისი, სოლოლაკი', area: '95', pricePerSqm: '1900', currency: 'USD',
+  });
+  assert.equal(nextDoorNoSegment.tier, 'WIDER_MARKET', 'an unknown segment was counted as a match');
+  assert.ok(nextDoorNoSegment.relevanceReasons.includes('SEGMENT_UNKNOWN'));
 
   // ...and an unbranded listing genuinely is wider market.
   const anonymous = scoreComparable(SUBJECT, {
@@ -383,10 +453,18 @@ test('a named development elsewhere is a peer, not anonymous market stock', () =
 });
 
 test('a peer never outranks a location match', () => {
-  const peer = scoreComparable(SUBJECT, { project: 'Vake Boutique', address: 'თბილისი, ვაკე', area: '95', pricePerSqm: '2400', currency: 'USD' });
-  const district = scoreComparable(SUBJECT, { project: 'Ortachala Hills', address: 'თბილისი, კრწანისი, ორთაჭალის გზა 4', area: '92', pricePerSqm: '1600', currency: 'USD' });
+  // Premise (2026-10-10): a distant named development (Vake, for a Krtsanisi
+  // building) is wider market and ranks below district stock; a strict peer
+  // next door still never outranks the same street or the same building.
+  const distant = scoreComparable(SUBJECT, { project: 'Vake Boutique', address: 'თბილისი, ვაკე', area: '95', pricePerSqm: '2400', currency: 'USD' });
+  const district = scoreComparable(SUBJECT, { address: 'თბილისი, კრწანისი, ორთაჭალის გზა 4', area: '92', pricePerSqm: '1600', currency: 'USD' });
+  const peer = scoreComparable(SUBJECT, { project: 'Ortachala Hills', address: 'თბილისი, ორთაჭალა', area: '92', pricePerSqm: '1800', currency: 'USD' }, { priceAnchor: 1850 });
+  const street = scoreComparable(SUBJECT, { address: 'თბილისი, კრწანისის ქუჩა 9', area: '92', pricePerSqm: '1800', currency: 'USD' });
   const sameProject = scoreComparable(SUBJECT, { project: 'VILLION Krtsanisi Homes', address: 'კრწანისის ქუჩა 6', area: '94', pricePerSqm: '1850', currency: 'USD' });
-  assert.ok(peer.relevance < district.relevance, 'a peer outranked a district match');
+  assert.equal(distant.tier, 'WIDER_MARKET');
+  assert.equal(peer.tier, 'PEER_PROJECT');
+  assert.ok(distant.relevance < district.relevance, 'a distant development outranked a district match');
+  assert.ok(peer.relevance < street.relevance, 'a peer outranked the same street');
   assert.ok(district.relevance < sameProject.relevance, 'a district match outranked the same building');
 });
 

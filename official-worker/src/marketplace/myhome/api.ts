@@ -11,11 +11,15 @@ export const endpoints = {
 export type Listing = ReturnType<typeof normalizeListing>;
 export type HttpRecord = {url:string;status:number|null;error?:string};
 export class AcquisitionError extends Error {
+  category: 'ACCESS_RESTRICTED' | 'TRANSPORT' | 'HTTP' | 'CONTRACT';
   status:number|null;
   url:string;
   // Ingress bounds error messages to 300 characters. Keep the diagnostic first
   // so a long search URL cannot erase the HTTP/network failure itself.
-  constructor(url:string,status:number|null,message:string) {super(`${message}; URL: ${url}`);this.url=url;this.status=status;}
+  constructor(url:string,status:number|null,message:string,category?: AcquisitionError['category']) {
+    super(`${message}; URL: ${url}`);this.url=url;this.status=status;
+    this.category = category ?? (status === null ? 'TRANSPORT' : status === 401 || status === 403 ? 'ACCESS_RESTRICTED' : status === 200 ? 'CONTRACT' : 'HTTP');
+  }
 }
 export async function publicJson(url:string,locale='ka',fetcher:typeof fetch=fetch) {
   let response:Response;

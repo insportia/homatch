@@ -205,6 +205,52 @@ test('V2 mobile: workspace, touch gallery and property AI composer at 375px and 
   }
 });
 
+test('V2: source photos load on demand, failed photos recover, and dossier thumbnails remain usable', opts, async (t) => {
+  const { page, state } = await boot(t, { resumeStatus: 'PARTIAL_COMPLETE', width: 390 });
+  const property = OUTPUT.properties.find((p) => p.images.length === 3);
+  assert.ok(property, 'fixture includes a three-photo canonical property');
+  const requested = [];
+  // Synthetic image responses only: no source traffic or production credentials.
+  await page.route('https://img.example/**', async (route) => {
+    requested.push(route.request().url());
+    if (route.request().url() === property.images[2]) return route.fulfill({ status: 404, body: '' });
+    return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#23354b"/></svg>' });
+  });
+  await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`);
+  await page.waitForURL((url) => url.searchParams.get('revision') === state.revision);
+  const card = page.locator(`[data-property-key=${JSON.stringify(property.key)}]`);
+  const gallery = card.getByRole('group', { name: 'Photos', exact: true });
+  const loaded = async (container, src) => {
+    await page.waitForFunction(({ selector, src }) => {
+      const img = [...document.querySelectorAll(`${selector} img`)].find((el) => el.getAttribute('src') === src);
+      return img?.complete && img.naturalWidth > 0;
+    }, { selector: container, src });
+  };
+  await gallery.scrollIntoViewIfNeeded();
+  await loaded(`[data-property-key=${JSON.stringify(property.key)}]`, property.images[0]);
+  assert.ok(!requested.includes(property.images[1]) && !requested.includes(property.images[2]), 'cards do not preload inactive photos');
+  const resultsUrl = page.url();
+  await gallery.getByRole('button', { name: 'Next photo', exact: true }).click();
+  await loaded(`[data-property-key=${JSON.stringify(property.key)}]`, property.images[1]);
+  assert.equal(await gallery.locator('[aria-live="polite"]').textContent(), '2/3');
+  await gallery.getByRole('button', { name: 'Next photo', exact: true }).click();
+  await page.waitForFunction((key) => {
+    const card = [...document.querySelectorAll('[data-property-key]')].find((el) => el.getAttribute('data-property-key') === key);
+    return card?.querySelector('[role="group"] button')?.querySelector('svg') && !card.querySelector('[role="group"] img');
+  }, property.key);
+  assert.equal(await gallery.locator('[aria-live="polite"]').textContent(), '3/3', 'failed image has a stable fallback');
+  assert.equal(page.url(), resultsUrl, 'photo controls never navigate');
+  await gallery.getByRole('button', { name: 'Previous photo', exact: true }).click();
+  await loaded(`[data-property-key=${JSON.stringify(property.key)}]`, property.images[1]);
+  await card.getByRole('button', { name: 'View property', exact: true }).click();
+  await page.locator('[data-property-dossier]').waitFor();
+  await page.getByRole('button', { name: 'Photo 2', exact: true }).click();
+  await loaded('[data-property-dossier] [role="group"]', property.images[1]);
+  assert.equal(await page.getByRole('button', { name: 'Photo 2', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.ok(await overflow(page) <= 1);
+  await shot(page, 'v2-mobile-loaded-source-photo');
+});
+
 test('V2: an unavailable dossier cannot be hidden by a later successful search-status response', opts, async (t) => {
   const { page, state } = await boot(t, { resumeStatus: 'COMPLETE' });
   state.statusDelayMs = 100;

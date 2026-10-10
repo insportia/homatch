@@ -35,14 +35,19 @@ test('owner start canonicalization maps Varketili through proven multilingual My
   }
   assert.deepEqual(req.districts,['Varketili']);assert.ok(!JSON.stringify(buildQueries(req,liveShape,filters)).includes('სუხიშვილის'));
 });
-function simulated({ lastPage = 6, total = 139, repeated = false, failPage = null, duplicate = false, emptyPage = null, missingUrlId = null } = {}) {
-  const pages = [], reports = []; let listCalls = 0;
+function simulated({ lastPage = 6, total = 139, repeated = false, failPage = null, duplicate = false, emptyPage = null, missingUrlId = null, detailFailure = null, detailPrice = null } = {}) {
+  const pages = [], reports = [], details = []; let listCalls = 0;
   const fetcher = async (input) => {
     const url = new URL(input); let payload;
     if(url.hostname.includes('locations')) payload = locations;
     else if(url.pathname.endsWith('statement-parameters')) payload = filters;
     else if(url.pathname.endsWith('/count')) payload = { result:true,data:{page:1,last_page:lastPage,total} };
-    else if(url.hostname === 'www.myhome.ge' && /-\d+\/$/.test(url.pathname)) { const id = Number(url.pathname.match(/-(\d+)\/$/)[1]); payload = {result:true,data:{statement:{...row(id),room_type_id:11}}}; }
+    else if(url.hostname === 'www.myhome.ge' && /-\d+\/$/.test(url.pathname)) {
+      const id = Number(url.pathname.match(/-(\d+)\/$/)[1]); details.push(id);
+      if (detailFailure === 403) return new Response('CHALLENGE_REQUIRED', {status:403,headers:{server:'cloudflare'}});
+      if (detailFailure === 'parser') return new Response('<html>not structured data</html>');
+      payload = {result:true,data:{statement:{...row(id),room_type_id:11,...(detailPrice === null ? {} : {price:{2:{price_total:detailPrice}}})}}};
+    }
     else { const page = Number(url.searchParams.get('page')); pages.push(page);listCalls++;
       if(failPage===page) return new Response('Denied',{status:403});
       const size = total === 0 || emptyPage===page ? 0 : page===lastPage ? total-(lastPage-1)*24 : 24;
@@ -60,8 +65,81 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
     }
     return Response.json(payload);
   };
-  return { pages,reports,fetcher,run: (overrides={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r)}) };
+  return { pages,reports,details,fetcher,run: (overrides={},options={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r),...options}) };
 }
+
+test('search-first acquisition never opens details by default and preserves all pages', async () => {
+  const s = simulated({detailFailure:403});
+  const result = await s.run();
+  assert.equal(result.status,'COMPLETE'); assert.equal(result.delivered,139);
+  assert.deepEqual(s.details,[]); assert.deepEqual(s.pages,[1,2,3,4,5,6]);
+  const candidate = s.reports.find(r=>r.listings.length).listings[0];
+  assert.equal(candidate.retrievalMetadata.observationLevel,'SEARCH_RESULT');
+  assert.equal(candidate.retrievalMetadata.detailEnrichment,'NOT_REQUESTED');
+  assert.equal(candidate.retrievalMetadata.detailVerifiedAt,null);
+  assert.equal(candidate.retrievalMetadata.availability,'UNKNOWN');
+});
+
+test('optional detail restriction persists the valid search page and never retries or visits page 2', async () => {
+  const s=simulated({detailFailure:403});
+  const result=await s.run({}, {enrichDetails:true});
+  assert.equal(result.status,'PARTIAL'); assert.equal(result.delivered,24);
+  assert.deepEqual(s.pages,[1]); assert.deepEqual(s.details,[1]);
+  assert.equal(s.reports.at(-1).errors[0].code,'ACCESS_DENIED');
+  const candidates=s.reports.flatMap(r=>r.listings);
+  assert.equal(candidates.length,24);
+  assert.equal(candidates[0].retrievalMetadata.detailEnrichment,'ACCESS_RESTRICTED');
+  assert.equal(candidates[1].retrievalMetadata.detailEnrichment,'SKIPPED');
+  for(const c of candidates) assert.equal(c.retrievalMetadata.detailVerifiedAt,null);
+});
+
+test('optional malformed detail preserves summaries with explicit incomplete evidence', async () => {
+  const s=simulated({lastPage:1,total:3,detailFailure:'parser'});
+  const result=await s.run({}, {enrichDetails:true});
+  assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,3);
+  assert.deepEqual(s.details,[1,2,3]);
+  assert.ok(s.reports.flatMap(r=>r.listings).every(c=>c.retrievalMetadata.detailEnrichment==='FAILED'));
+});
+
+test('optional detail enrichment succeeds, but known budget contradictions never fall back to old summaries', async () => {
+  const ok=simulated({lastPage:1,total:3});await ok.run({}, {enrichDetails:true});
+  assert.ok(ok.reports.flatMap(r=>r.listings).every(c=>c.retrievalMetadata.observationLevel==='DETAIL' && c.retrievalMetadata.detailVerifiedAt===c.observedAt));
+  const changed=simulated({lastPage:1,total:3,detailPrice:300000});
+  const result=await changed.run({}, {enrichDetails:true});
+  assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,0);
+  assert.equal(changed.reports.at(-1).errors[0].code,'DETAIL_FILTER_MISMATCH');
+});
+
+test('authentic retained search observation alone normalizes into existing ingress and customer properties', async () => {
+  const fixture=JSON.parse(readFileSync(new URL('./fixtures/myhome-public-next.json',import.meta.url),'utf8'));
+  const raw=fixture.search.props.pageProps.dehydratedState.queries[0].state.data.data.data[0];
+  // Replay the retained source query's 176000 collection ceiling as this test's
+  // hard budget. Original 160000-budget ranking is covered independently.
+  const historicalRequest={...request,districts:['Vake'],priceMinUsd:120000,priceMaxUsd:176000,collectPriceMaxUsd:176000,areaMinSqm:80,areaMaxSqm:110,rooms:null,bedrooms:null};
+  const dictionaries={data:[{id:raw.city_id,display_name:'Tbilisi',districts:[{id:raw.district_id,display_name:'Vake-Saburtalo',urbans:[{id:raw.urban_id,display_name:'Vake'}]}]}]};
+  const reports=[];let details=0;
+  const fetcher=async input=>{
+    const url=new URL(input);
+    if(url.hostname.includes('locations')) return Response.json(dictionaries);
+    if(url.pathname.endsWith('statement-parameters')) return Response.json(filters);
+    if(url.pathname.endsWith('/count')) return Response.json({result:true,data:{page:1,last_page:1,total:1}});
+    if(url.pathname.match(/-\d+\/$/)){details++;return new Response('CHALLENGE_REQUIRED',{status:403});}
+    return new Response(`<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(fixture.search)}</script>`);
+  };
+  const result=await acquireMyHome(historicalRequest,{fetcher,deadlineAt:new Date(Date.now()+900000).toISOString(),report:async r=>reports.push(r)});
+  assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,1);assert.equal(details,0);
+  const validated=validateWorkerReport(reports.find(r=>r.listings.length),'myhome-ge');assert.equal(validated.ok,true);
+  const c=validated.report.listings[0];
+  assert.equal(c.sourceListingId,'25610778');assert.equal(c.price,165000);assert.equal(c.currency,'USD');
+  assert.equal(c.areaSqm,101);assert.equal(c.rooms,4);assert.equal(c.bedrooms,3);
+  assert.equal(c.description,raw.comment);assert.equal(c.address,raw.address.trim());assert.equal(c.floor,4);assert.equal(c.totalFloors,8);
+  assert.deepEqual(c.images,raw.images.map(i=>i.large));assert.equal(c.images.length,15);
+  assert.equal(c.seller.publicPhone,null);assert.equal(c.parking,null);assert.equal(c.renovationStatus,null);assert.equal(c.publishedAt,null);
+  assert.equal(c.retrievalMetadata.detailVerifiedAt,null);assert.ok(c.updatedAt.startsWith('2026-10-06'));
+  const output=processSearch({request:historicalRequest,candidates:[{candidate:c}],now:new Date('2026-10-09T08:00:00Z')});
+  assert.equal(output.properties.length,1);assert.equal(output.properties[0].listings[0].sourceListingId,c.sourceListingId);
+  assert.deepEqual(output.properties[0].images,c.images.slice(0,12), 'canonical summaries retain the existing 12-photo cap and original URLs');
+});
 
 test('public Next fixtures confirm exact filters, pagination and detail identity', () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/myhome-public-next.json',import.meta.url),'utf8'));
@@ -174,6 +252,28 @@ test('a live record with no canonical URL does not truncate pagination or invent
 });
 test('repeated pages report PARTIAL and preserve ingested results',async()=>{const s=simulated({repeated:true});const result=await s.run();assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,24);assert.equal(s.reports.at(-1).errors[0].code,'REPEATED_PAGE');});
 test('unexpected empty page cannot be reported as complete',async()=>{const s=simulated({emptyPage:2});assert.equal((await s.run()).status,'PARTIAL');assert.equal(s.reports.at(-1).errors[0].code,'EMPTY_PAGE');});
+test('restart resumes only an acknowledged page for the exact same source queries', async () => {
+  const interrupted = simulated({ emptyPage: 2 });
+  await interrupted.run();
+  const first = interrupted.reports.find((r) => r.status === 'RESULTS_RECEIVED');
+  assert.equal(first.queryApplied.nextPage, 2);
+  const validated = validateWorkerReport(first, 'myhome-ge');
+  assert.equal(validated.ok, true);
+  const persisted = validated.report.queryApplied;
+  assert.equal(persisted.requests[0].length, 80, 'exercise the production ingress sanitizer');
+  assert.match(persisted.queryFingerprint, /^[a-f0-9]{64}$/);
+  const resumed = simulated();
+  const result = await resumed.run({}, { checkpoint: { queryApplied: persisted, returnedCount: 24 } });
+  assert.deepEqual(resumed.pages, [2,3,4,5,6]);
+  assert.equal(result.delivered, 139); assert.equal(result.status, 'COMPLETE');
+  const changed = simulated();
+  await changed.run({}, { checkpoint: { queryApplied: { ...persisted, queryFingerprint: '0'.repeat(64) }, returnedCount: 24 } });
+  assert.deepEqual(changed.pages, [1,2,3,4,5,6], 'changed dictionaries/criteria never reuse a stale cursor');
+  const legacy = simulated();
+  await legacy.run({}, { checkpoint: { queryApplied: { ...persisted, queryFingerprint: undefined }, returnedCount: 24 } });
+  assert.deepEqual(legacy.pages, [1,2,3,4,5,6], 'truncated legacy URLs cannot prove query identity');
+});
+
 test('access denied is not bypassed or silently converted into empty success',async()=>{const s=simulated({failPage:1});assert.equal((await s.run()).status,'BLOCKED');assert.deepEqual(s.pages,[1]);});
 test('zero inventory is a legitimate complete result',async()=>{const s=simulated({lastPage:0,total:0});assert.equal((await s.run()).status,'COMPLETE');assert.equal(s.reports.at(-1).returnedCount,0);});
 test('count metadata must be authoritative and sane',()=>{assert.throws(()=>parsePagination({result:true,data:{page:2,last_page:6,total:139}},1));assert.throws(()=>parsePagination({result:true,data:{page:1,last_page:0,total:3}},1));});
@@ -205,6 +305,7 @@ test('runtime uses authenticated claim, heartbeat and result report without a se
     if(!String(input).includes('/functions/v1/')) return source.fetcher(input,init);
     assert.equal(init.headers.Authorization,'Bearer '+'x'.repeat(40));assert.equal(init.headers['x-homatch-worker'],'myhome-agent');
     const body=JSON.parse(init.body);bodies.push(body);
+    if(body.action==='source-health') return Response.json({accessRestricted:false});
     if(body.action==='claim'){const runs=claimed?[]:[{runId:'00000000-0000-4000-8000-000000000003',attempt:1,deadlineAt:new Date(Date.now()+900000).toISOString(),request}];claimed=true;return Response.json({runs});}
     if(body.action==='report'){assert.equal(body.report,undefined);assert.equal(validateWorkerReport(body.result,'myhome-ge').ok,true);completed=body.result.status==='COMPLETE';return Response.json({accepted:body.result.listings.length,rejected:[],searchStatus:'RESULTS_AVAILABLE'});}
     return Response.json({leaseExpiresAt:new Date().toISOString()});
@@ -214,6 +315,26 @@ test('runtime uses authenticated claim, heartbeat and result report without a se
   finally{runtime.shutdown();}
 });
 
+test('runtime startup connectivity check reads search and count but opens no detail page by default',async()=>{
+  const source=simulated({lastPage:1,total:3});const sourceUrls=[];
+  const fetcher=async(input,init)=>{
+    if(!String(input).includes('/functions/v1/')){sourceUrls.push(new URL(String(input)));return source.fetcher(input,init);}
+    const body=JSON.parse(init.body);
+    if(body.action==='source-health') return Response.json({accessRestricted:false});
+    if(body.action==='claim') return Response.json({runs:[]});
+    return Response.json({});
+  };
+  const runtime=startMyHomeRuntime({SUPABASE_URL:'https://example.supabase.co',MYHOME_WORKER_TOKEN:'x'.repeat(40),MYHOME_MARKETPLACE_ENABLED:'true'},fetcher);
+  try {
+    for(let i=0;i<100&&!runtime.status().connectivity;i++) await new Promise(resolve=>setTimeout(resolve,10));
+    const smoke=runtime.status().connectivity;
+    assert.ok(smoke,'startup connectivity check completed');
+    assert.equal(smoke.listStatus,200);assert.equal(smoke.detailStatus,'NOT_REQUESTED');
+    const pages=sourceUrls.filter(url=>url.hostname==='www.myhome.ge');
+    assert.ok(pages.length>=1);
+    assert.ok(pages.every(url=>url.pathname==='/udzravi-qoneba/'),'only the search page is opened: '+pages.map(url=>url.pathname).join(','));
+  } finally{runtime.shutdown();}
+});
 test('access diagnostics distinguish explicit CAPTCHA, managed challenge and unknown rejection without leaking response data', async () => {
   for (const [body,headers,category] of [
     ['<div class="cf-turnstile">SECRET_CHALLENGE_TOKEN</div>',{'server':'cloudflare'},'CAPTCHA_REQUIRED'],
@@ -256,4 +377,36 @@ test('district names resolve with or without a "district"/„რაიონი�
   assert.equal(resolveLocation({ city: 'Tbilisi', district: 'Vake district' }, dict).districtId, 3);
   const k = resolveLocation({ city: 'თბილისი', district: 'კრწანისი' }, dict);
   assert.equal(k.urbanId, 65);
+});
+
+for (const transport of ['http', 'crawlee']) test(`runtime ${transport} honors durable access restriction without contacting MyHome and closes only its own run`, async () => {
+  let sourceRequests = 0, completed = false, claimed = false;
+  const reports = [];
+  const fetcher = async (input, init) => {
+    if (!String(input).includes('/functions/v1/')) { sourceRequests++; throw Error('restricted source must not be contacted'); }
+    assert.equal(init.headers.Authorization, 'Bearer ' + 'x'.repeat(40));
+    assert.equal(init.headers['x-homatch-worker'], 'myhome-agent');
+    const body = JSON.parse(init.body);
+    if (body.action === 'source-health') return Response.json({ accessRestricted: true });
+    if (body.action === 'claim') {
+      const runs = claimed ? [] : [{ runId: '00000000-0000-4000-8000-000000000004', attempt: 1, deadlineAt: new Date(Date.now()+900000).toISOString(), request }];
+      claimed = true; return Response.json({ runs });
+    }
+    if (body.action === 'report') {
+      reports.push(body.result); completed = true;
+      return Response.json({ accepted: 0, rejected: [], searchStatus: 'PARTIAL_COMPLETE' });
+    }
+    throw Error('unexpected action ' + body.action);
+  };
+  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true', MYHOME_PUBLIC_PAGE_TRANSPORT: transport }, fetcher);
+  try {
+    for (let i=0;i<100&&!completed;i++) await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(completed, true);
+    assert.equal(sourceRequests, 0);
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].status, 'BLOCKED');
+    assert.equal(reports[0].errors[0].code, 'ACCESS_DENIED');
+    assert.equal(runtime.status().engine.access, 'ACCESS_RESTRICTED');
+    assert.equal(runtime.status().pageTransport, transport === 'crawlee' ? 'CRAWLEE' : 'HTTP');
+  } finally { runtime.shutdown(); }
 });

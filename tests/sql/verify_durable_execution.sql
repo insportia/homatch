@@ -108,6 +108,13 @@ begin
   t := public.verify_task_enqueue(j3, 'rstax', 'rstax:C8', 'rstax:C8', '{}');
   n := public.verify_job_cancel_tasks(j3);
   if (select state from public.verify_tasks where id = (t->>'id')::uuid) <> 'CANCELLED' then raise exception '11: queued task not cancelled'; end if;
+  -- 11b. Cancelling one task of a job leaves its other tasks alone, and frees the scope.
+  t  := public.verify_task_enqueue(j3, 'enreg', 'enreg:C9', 'enreg:C9', '{}');
+  t2 := public.verify_task_enqueue(j3, 'debtor', 'debtor:C9', 'debtor:C9', '{}');
+  n := public.verify_job_cancel_tasks(j3, (t->>'id')::uuid);
+  if n <> 1 or (select state from public.verify_tasks where id = (t2->>'id')::uuid) <> 'QUEUED' then raise exception '11b: per-task cancel spilled over'; end if;
+  t := public.verify_task_enqueue(j2, 'enreg', 'enreg:C9', 'enreg:C9', '{}');
+  if t->>'state' <> 'QUEUED' then raise exception '11b: cancelled task still holds the scope: %', t->>'state'; end if;
 
   -- 12. One advancer per job.
   if public.research_job_advance_acquire(j1, 30) is null then raise exception '12: first acquire failed'; end if;

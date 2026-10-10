@@ -19,6 +19,7 @@ import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/in
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
+import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -1893,6 +1894,51 @@ async function tasImplementationFor(sb: any): Promise<{ active: string; fallback
 }
 
 /*
+ * EXECUTION MODE (Admin setting verify_execution_mode).
+ *
+ * "LEGACY" (default): one in-memory worker job per Verify, as before.
+ * "QUEUE": each official source is a durable verify_tasks row (migration
+ * 20261024090000) that any worker replica claims under a lease — survives
+ * restarts and deploys, is retried with backoff, and is shared between jobs
+ * asking the same question. Cadastral jobs only; property-mode jobs keep the
+ * legacy path. Switching back to LEGACY affects new jobs only: a job started
+ * in QUEUE mode finishes in QUEUE mode (its result_json carries the marker).
+ */
+async function verifyExecutionMode(sb: any): Promise<'LEGACY' | 'QUEUE'> {
+  const v = await adminSettingJson(sb, 'verify_execution_mode');
+  return v === 'QUEUE' || v?.mode === 'QUEUE' ? 'QUEUE' : 'LEGACY';
+}
+
+/** Enqueue planned tasks; idempotent per (job, dedupe key). */
+async function enqueueTasks(sb: any, jobId: string, plans: TaskPlan[]): Promise<any[]> {
+  const out: any[] = [];
+  for (const t of plans) {
+    const { data, error } = await sb.rpc('verify_task_enqueue', {
+      p_job_id: jobId, p_source: t.source, p_dedupe_key: t.dedupeKey, p_scope_key: t.scopeKey, p_input: t.input, p_priority: t.priority,
+    });
+    if (error) throw new Error(`verify_task_enqueue ${t.source}: ${error.message}`);
+    out.push(data);
+  }
+  return out;
+}
+
+const QUEUE_TASK_COLUMNS = 'id,source,dedupe_key,state,input,result,error,reused,attempts,created_at,started_at,finished_at,updated_at';
+async function jobTasks(sb: any, jobId: string): Promise<QueueTaskRow[]> {
+  const { data, error } = await sb.from('verify_tasks').select(QUEUE_TASK_COLUMNS).eq('job_id', jobId).order('created_at', { ascending: true });
+  if (error) throw new Error(`verify_tasks read: ${error.message}`);
+  return data ?? [];
+}
+
+/** Stop this job's queued work (shared producers other jobs wait on keep running). */
+async function cancelJobTasks(sb: any, jobId: string, taskId: string | null = null): Promise<void> {
+  try {
+    await sb.rpc('verify_job_cancel_tasks', { p_job_id: jobId, p_task_id: taskId });
+  } catch {
+    /* best effort: the tasks' results are simply not read */
+  }
+}
+
+/*
  * AUTOMATIC CAPTCHA POLICY (Admin setting verify_captcha_auto_solve).
  *
  * Forwarded to the official worker with every job; the worker's shared
@@ -2085,6 +2131,15 @@ async function recordDeveloperAdsCost(db: any, job: any, run: any, billedItems: 
 async function startBrowser(sb: any, j: any): Promise<any> {
   const tasImplementation = await tasImplementationFor(sb);
   const captchaPolicy = await captchaPolicyFor(sb);
+  if (j.mode === 'cadastral' && (await verifyExecutionMode(sb)) === 'QUEUE') {
+    const plans = officialTaskPlan({ mode: j.mode, query: j.query }, { tasImplementation, captchaPolicy });
+    await enqueueTasks(sb, j.id, plans);
+    const p = j.result_json || {};
+    // `_worker` keeps the shape every deadline/stall guard already reads;
+    // `queue: true` routes polling to the task rows instead of the worker.
+    p._worker = { jobId: `queue:${j.id}`, queue: true, startedAt: new Date().toISOString(), tasImplementation };
+    return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'BROWSER_WAITING', result_json: p, progress: { phase: 'official_browser', percent: 34, provider: 'queue', sourcesCompleted: 0, sourcesTotal: plans.length }, updated_at: now() }).eq('id', j.id);
+  }
   const r = await wf('/research', 'POST', { query: j.query, mode: j.mode, tasImplementation, captchaPolicy });
   const p = j.result_json || {};
   p._worker = {
@@ -2258,7 +2313,11 @@ async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
       const ext = v.mime === 'image/png' ? 'png' : 'jpg';
       const path = `tas/${v.id}.${ext}`;
       let stored = false;
-      try {
+      if (w?.view === 'queue') {
+        // Queue mode: the worker replica that read TAS stored the bytes itself.
+        const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: v.id });
+        stored = Array.isArray(data) && data.length > 0;
+      } else try {
         const res = await fetch(`${WORKER}/research/visual/${v.id}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(20000) });
         if (res.ok) {
           const bytes = new Uint8Array(await res.arrayBuffer());
@@ -2366,14 +2425,33 @@ function officialPastDeadline(j: any, w: any): boolean {
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
-  /*
-   * Poll the light status view; fetch the full job (documents included) only
-   * when this tick will actually read it: finished, failed, or past the
-   * deadline. An older worker ignores ?view and answers in full.
-   */
-  let w = (await wf(`/research/${id}?view=status`)).data;
-  if (w?.view === 'status') {
-    if (w.status === 'COMPLETE' || w.status === 'FAILED' || officialPastDeadline(j, w)) w = (await wf(`/research/${id}`)).data;
+  let w: any;
+  if (j.result_json?._worker?.queue) {
+    /*
+     * QUEUE MODE: the job's task rows ARE the official job. Follow-ups the
+     * rows call for (registry lookups for companies the documents named, the
+     * TAS legacy fallback) are enqueued first, then the rows are read back as
+     * the worker view every branch below already understands.
+     */
+    let rows = await jobTasks(sb, j.id);
+    const more = followUpTasks(rows, { tasImplementation: j.result_json._worker.tasImplementation ?? null });
+    if (more.length) {
+      await enqueueTasks(sb, j.id, more);
+      rows = await jobTasks(sb, j.id);
+    }
+    w = queueWorkerView(rows);
+    // Leaving the official stage unfinished: stop this job's remaining work.
+    if (w.status !== 'COMPLETE' && officialPastDeadline(j, w)) await cancelJobTasks(sb, j.id);
+  } else {
+    /*
+     * Poll the light status view; fetch the full job (documents included) only
+     * when this tick will actually read it: finished, failed, or past the
+     * deadline. An older worker ignores ?view and answers in full.
+     */
+    w = (await wf(`/research/${id}?view=status`)).data;
+    if (w?.view === 'status') {
+      if (w.status === 'COMPLETE' || w.status === 'FAILED' || officialPastDeadline(j, w)) w = (await wf(`/research/${id}`)).data;
+    }
   }
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
@@ -2482,7 +2560,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // have just filled it in and this branch is the one that repeats.
     return sb.from('research_jobs').update({
       result_json: j.result_json,
-      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null },
+      progress: { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null },
       updated_at: now(),
     }).eq('id', j.id);
   }
@@ -2711,6 +2789,14 @@ async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' |
   }
   let r: any;
   try {
+    if (j.mode === 'cadastral' && (j.result_json?._queueMode === true || (await verifyExecutionMode(sb)) === 'QUEUE')) {
+      // QUEUE MODE: the lookup is a durable task, shared with any other job
+      // asking about the same company inside the registry's freshness window.
+      const [task] = await enqueueTasks(sb, j.id, [entityTask(source, { idCode, name }, source === 'rstax' ? await captchaPolicyFor(sb) : null)]);
+      p._queueMode = true;
+      p._worker = { jobId: `task:${task?.id}`, queueTaskId: task?.id ?? null, startedAt: new Date().toISOString() };
+      return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'queue' }, updated_at: now() }).eq('id', j.id);
+    }
     r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
   } catch (e) {
     // Nothing started: hand the row back exactly as it was, so the caller's
@@ -2752,10 +2838,40 @@ async function processFinancialQueue(sb: any, j: any): Promise<any> {
   prior._financialQueue = [];
   return sb.from('research_jobs').update({ status: 'CREATED', stage: returnStage, result_json: prior, updated_at: now() }).eq('id', j.id);
 }
+const QUEUE_ENTITY_MAX_WAIT_MS = 20 * 60 * 1000;
 async function pollFinancialEntity(sb: any, j: any): Promise<any> {
   const prior = j.result_json || {};
   const id = prior?._worker?.jobId;
   if (!id) return processFinancialQueue(sb, j);
+  if (prior._worker?.queueTaskId !== undefined) {
+    // QUEUE MODE. The task carries its own lease, retries and dead-letter, so
+    // the only bound needed here is a generous total one.
+    const taskId = prior._worker.queueTaskId;
+    const { data: row } = taskId ? await sb.from('verify_tasks').select(QUEUE_TASK_COLUMNS).eq('id', taskId).maybeSingle() : { data: null };
+    const v = singleTaskView(row ?? null);
+    const waited = Date.now() - (Date.parse(prior._worker.startedAt || '') || Date.now());
+    if (v.status === 'QUEUED' || v.status === 'RUNNING') {
+      if (waited < QUEUE_ENTITY_MAX_WAIT_MS) return;
+      const requested = prior._financialEntityRequestedFor || {};
+      prior.browserOfficial = prior.browserOfficial || { results: [] };
+      prior.browserOfficial.results = [...(prior.browserOfficial.results || []), unavailableEntityResult({
+        source: requested.source || 'enreg', name: requested.name ?? null, idCode: requested.idCode ?? null,
+        reason: 'GIVE_UP_MAX_WAIT', waitedMs: waited, workerJobId: id, atIso: new Date().toISOString(),
+      })];
+      delete prior._worker;
+      if (taskId) await cancelJobTasks(sb, j.id, taskId);
+      await sb.from('research_jobs').update({ result_json: prior, captcha: {}, updated_at: now() }).eq('id', j.id);
+      return processFinancialQueue(sb, { ...j, result_json: prior });
+    }
+    if (v.results[0]) {
+      prior.browserOfficial = prior.browserOfficial || { results: [] };
+      prior.browserOfficial.results = [...(prior.browserOfficial.results || []), v.results[0]];
+    }
+    delete prior._worker;
+    const ev = dedupe([...(j.evidence_bundle || []), ...bev(v)], (x: any) => x.url);
+    await sb.from('research_jobs').update({ result_json: prior, evidence_bundle: ev, captcha: {}, updated_at: now() }).eq('id', j.id);
+    return processFinancialQueue(sb, { ...j, result_json: prior, evidence_bundle: ev });
+  }
   const w = (await wf(`/research/${id}`)).data;
   if (w.status === 'WAITING_HUMAN') {
     prior._captchaReturnStage = 'FINANCIAL_ENTITY_WAITING';
@@ -4067,6 +4183,40 @@ async function notifyVerificationReady(sb: any, j: any): Promise<void> {
   });
 }
 
+/*
+ * ONE ADVANCER PER JOB AT A TIME.
+ *
+ * The status poll and the background driver both step jobs. Their writes
+ * were individually guarded, but two concurrent steps could still both
+ * launch the same stage. A short row lease (research_job_advance_acquire)
+ * makes stepping exclusive: whoever holds it steps, everyone else just reads.
+ * A crashed holder's lease expires on its own. Before the migration is
+ * applied the RPC does not exist; stepping then proceeds exactly as before.
+ */
+const ADVANCE_LEASE_SECONDS = 120;
+async function advanceExclusive(sb: any, k: string, m: string, j: any, l: string): Promise<boolean> {
+  let token: string | null = null;
+  try {
+    const { data, error } = await sb.rpc('research_job_advance_acquire', { p_job_id: j.id, p_seconds: ADVANCE_LEASE_SECONDS });
+    if (!error && data === null) return false; // another invocation is stepping this job
+    if (!error) token = data;
+  } catch {
+    /* lease unavailable: proceed unguarded, as before */
+  }
+  try {
+    await advance(sb, k, m, j, l);
+    return true;
+  } finally {
+    if (token) {
+      try {
+        await sb.rpc('research_job_advance_release', { p_job_id: j.id, p_token: token });
+      } catch {
+        /* expires on its own */
+      }
+    }
+  }
+}
+
 async function advance(sb: any, k: string, m: string, j: any, l: string): Promise<any> {
   try {
     if (j.status === 'CREATED' && j.stage === 'QUEUED') return await launch(sb, k, m, j, 'IDENTITY', l);
@@ -4904,7 +5054,7 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
   const seed = buildResearchSeed({
     jobId: String(job.id),
     query: job.query,
-    mode: job.type === 'cadastral' ? 'cadastral' : 'property',
+    mode: (job.mode ?? job.type) === 'cadastral' ? 'cadastral' : 'property',
     result,
     knownFacts,
   });
@@ -5589,6 +5739,15 @@ function jobLanguage(j: any): string {
   return LANG[stored] ? stored : 'ka';
 }
 
+/* Finished-job status bodies, per isolate, bounded (oldest evicted first). */
+const FINISHED_MEMO_MAX = 200;
+const finishedResponseMemo = new Map<string, string>();
+function rememberFinishedResponse(key: string, body: string): void {
+  if (body.length > 4_000_000) return;
+  finishedResponseMemo.set(key, body);
+  while (finishedResponseMemo.size > FINISHED_MEMO_MAX) finishedResponseMemo.delete(finishedResponseMemo.keys().next().value as string);
+}
+
 async function claimJob(sb: any, id: string): Promise<boolean> {
   const cutoff = new Date(Date.now() - DRIVE_CLAIM_TTL_MS).toISOString();
   const { data } = await sb
@@ -5624,7 +5783,8 @@ async function driveJob(sb: any, key: string, model: string, id: string): Promis
       // Terminal, cancelled, or now waiting on a human: the driver's job here
       // is done and re-ticking would be wrong, not merely wasteful.
       if (!j || j.cancelled_at || !DRIVE_LIVE_STATUSES.includes(j.status)) return;
-      await advance(sb, key, model, j, jobLanguage(j));
+      // Another invocation (a client poll) is stepping it right now: done here.
+      if (!(await advanceExclusive(sb, key, model, j, jobLanguage(j)))) return;
       // A step that wrote nothing on a long-silent official stage is a stall,
       // whatever caused it: move on with what is stored instead of reclaiming
       // the same job every tick.
@@ -6369,7 +6529,10 @@ Deno.serve(async (req) => {
       // error, and must never overwrite a report the customer already has.
       if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status)) return json(forCaller(j));
       const wid = j.result_json?._worker?.jobId;
-      if (wid) {
+      // Queue mode: stop this job's queued and running tasks (shared work
+      // other jobs depend on keeps running for them).
+      if (j.result_json?._worker?.queue || j.result_json?._queueMode) await cancelJobTasks(sb, j.id);
+      else if (wid) {
         // Best effort only. The worker has no cancel route and adding one
         // would force a Railway deploy for no gain: the DB row is the
         // authority, the driver skips cancelled jobs, and the orphaned
@@ -6442,7 +6605,7 @@ Deno.serve(async (req) => {
         j = await skipHumanWait(sb, j);
       }
       if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED'].includes(j.status)) {
-        await advance(sb, key, model, j, lang);
+        await advanceExclusive(sb, key, model, j, lang);
         const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
         j = r.data || j;
       }
@@ -6450,13 +6613,44 @@ Deno.serve(async (req) => {
       // (see sanitizeForCustomer above). The DB row itself is left untouched —
       // full browserOfficial/cost/provider diagnostics remain queryable there
       // for admin support/debugging, only the customer-facing HTTP body changes.
-      return json({ ...forCaller(j), liveCounters: liveCountersFor(j) });
+      // A finished job's answer only changes when its row does: serve it from
+      // memory instead of re-sanitising the whole report on every poll.
+      const settled = ['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status);
+      const memoKey = settled ? `${j.id}|${j.updated_at}|${j.synthesis_state ?? ''}|${j.synthesis_at ?? ''}|${anonSession ? 'a' : 'u'}` : null;
+      const memo = memoKey ? finishedResponseMemo.get(memoKey) : undefined;
+      if (memo) return new Response(memo, { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      const body = JSON.stringify({ ...forCaller(j), liveCounters: liveCountersFor(j) });
+      if (memoKey) rememberFinishedResponse(memoKey, body);
+      return new Response(body, { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
 
     const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
     const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
     if (!q) return json({ error: 'Query required' }, 400);
     if (mode === 'cadastral' && !CAD.test(q)) return json({ error: 'Invalid cadastral code' }, 400);
+    /*
+     * IDEMPOTENT START. The client sends one id per submission; a repeat of
+     * the same submission (retry after a dropped response, double click)
+     * returns the job it already created instead of starting — and paying
+     * for — a second one. Unique per caller in the database
+     * (research_jobs_client_request_unique), so a race resolves there too.
+     */
+    const clientRequestId = /^[A-Za-z0-9_-]{8,80}$/.test(String(b.clientRequestId || '')) ? String(b.clientRequestId) : null;
+    const existingStart = async () => {
+      if (!clientRequestId) return null;
+      try {
+        let qb = sb.from('research_jobs').select('id').eq('client_request_id', clientRequestId);
+        qb = anonSession ? qb.eq('anon_session_id', anonSession.id) : qb.eq('user_id', user!.id);
+        const { data, error } = await qb.maybeSingle();
+        return error ? null : data;
+      } catch {
+        return null;
+      }
+    };
+    {
+      const twin = await existingStart();
+      if (twin) return json({ accepted: true, jobId: twin.id, duplicate: true }, 202);
+    }
     // `_lang` is what lets a job that finishes with NOBODY WATCHING still be
     // written in the language the customer chose. Without it the driver would
     // have to guess, and the report would silently change language whenever
@@ -6508,9 +6702,31 @@ Deno.serve(async (req) => {
      * name is kept because it is what the whole pipeline reads.
      */
     const reusePlan = await shadowReusePlan(sb, q);
-    const { data: j, error } = await sb.from('research_jobs').insert({ ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
-    if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
-    await advance(sb, key, model, j, lang);
+    const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
+    let { data: j, error } = await sb.from('research_jobs').insert({ ...row, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }).select('*').single();
+    // Before migration 20261024090000 the column does not exist: start as before.
+    if (error?.code === '42703' && clientRequestId) ({ data: j, error } = await sb.from('research_jobs').insert(row).select('*').single());
+    if (error || !j) {
+      // The same request arriving twice (double click, network retry) lost
+      // the race to its twin: answer with the job the twin created.
+      if (clientRequestId && error?.code === '23505') {
+        const twin = await existingStart();
+        if (twin) return json({ accepted: true, jobId: twin.id, duplicate: true }, 202);
+      }
+      console.error('research-agent: could not create research job', error?.message);
+      return json({ error: 'Could not create research job' }, 500);
+    }
+    /*
+     * The job id is the answer; the first step is not part of it. A slow
+     * first step (identity research) used to hold this response open until
+     * the browser gave up — "Failed to send a request to the Edge Function"
+     * on a job that had in fact started. It now runs after the response, and
+     * the driver/status polls continue it regardless.
+     */
+    const first = advanceExclusive(sb, key, model, j, lang).catch((e) => console.error('research-agent: first step failed', e));
+    const rt = (globalThis as any).EdgeRuntime;
+    if (rt?.waitUntil) rt.waitUntil(first);
+    else await first;
     return json({ accepted: true, jobId: j.id }, 202);
   } catch (e) {
     console.error('research-agent: unhandled exception reached the top-level handler', e);

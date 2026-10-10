@@ -24,6 +24,7 @@ import type { StepDescriptor } from '../orchestrator/ResearchContext.js';
 import { acquireTasApi, getCachedVisual, probeTasResolvedCode, toLegacyTasResult } from '../workflows/tas/api/TasApiWorkflow.js';
 import { tasApiOptionsFromEnv } from '../workflows/tas/api/TasApiStep.js';
 import { runMyGovApiStep } from '../workflows/mygov/MyGovApiWorkflow.js';
+import { EntityQueue } from '../entities/EntityQueue.js';
 import { compactResult } from './evidence.js';
 import type { QueueTask } from './gateway.js';
 import type { Executor, TaskOutcome } from './QueueRunner.js';
@@ -53,6 +54,17 @@ const BROWSER_STEPS: Record<string, (t: QueueTask) => StepDescriptor> = {
   debtor: (t) => ({ type: 'entity', source: 'debtor', idCode: t.input.idCode ?? null, name: String(t.input.name ?? t.input.idCode ?? '') }),
   rstax: (t) => ({ type: 'entity', source: 'rstax', idCode: t.input.idCode ?? null, name: String(t.input.name ?? t.input.idCode ?? '') }),
 };
+
+/** Companies named in a source's complete document text (same scanner the
+ *  in-job EntityQueue uses), for the job's registry follow-ups. */
+function scanEntities(source: string, docs: any[] | undefined) {
+  const q = new EntityQueue();
+  for (const d of docs ?? []) {
+    const text = typeof d?.fullText === 'string' && d.fullText ? d.fullText : d?.rawText;
+    if (text) q.scanText(text, { source, sourceDocument: d.url, retrievedAt: new Date().toISOString() });
+  }
+  return q.all();
+}
 
 /** Map a finished source result to a task outcome; store complete evidence. */
 async function settle(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, cacheScope: string | null): Promise<TaskOutcome> {
@@ -102,6 +114,7 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
         const raw = await tas.acquire(query, { ...tasApiOptionsFromEnv(), signal: ctx.signal });
         const result: any = toLegacyTasResult(raw, { includeFullText: true });
         result.tasImplementation = { implementation: 'API_FIRST', fallbackFrom: null, queue: true };
+        result.queueEntities = scanEntities('tas', result.documents);
         // Visuals: stored by content hash where the report reads them, so any
         // replica can serve any job.
         for (const v of result.tasApi?.visuals ?? []) {
@@ -112,7 +125,9 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
       }
 
       if (task.source === 'mygov') {
-        const out = await mygov(cadastral, undefined, { captcha: { service: captchaService, policy, jobId: task.id } });
+        const entities = new EntityQueue();
+        const out = await mygov(cadastral, entities, { captcha: { service: captchaService, policy, jobId: task.id } });
+        if (out?.result && typeof out.result === 'object') (out.result as any).queueEntities = entities.all();
         return settle(task, out, upload, task.scopeKey);
       }
 

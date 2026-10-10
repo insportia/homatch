@@ -495,6 +495,10 @@ export class ResearchOrchestrator {
     const browser = jobBrowser ?? (new Proxy({}, { get() { throw new Error('HTTP_SOURCE_USED_BROWSER'); } }) as unknown as JobBrowser);
     try {
       const out = await this.runStep(browser, job, task.step);
+      // Companies found in this source's documents travel with the result, so
+      // the job can queue their registry follow-ups (the in-job EntityQueue
+      // does not outlive the task).
+      if (out.result && typeof out.result === 'object') out.result.queueEntities = this.entitiesFor(job.id).all();
       if (out.keep) {
         const session = this.sessions.get(job.id);
         if (session) {

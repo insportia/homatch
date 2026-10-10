@@ -51,8 +51,8 @@ create table if not exists public.verify_source_policy (
 -- municipal case files change slowly and are shared per parcel.
 insert into public.verify_source_policy (source, lane, scope_kind, shareable, fresh_seconds, max_running, max_attempts, lease_seconds, note) values
   ('tas',     'HTTP',    'PARCEL',  true,  21600, 24, 3, 900, 'TAS API_FIRST case files: shared per resolved cadastral code for 6 h'),
-  ('tas_legacy','BROWSER','PARCEL', true,  21600, 6,  3, 900, 'TAS browser workflow (fallback)'),
-  ('TAS_MAP', 'BROWSER', 'PARCEL',  true,  21600, 8,  3, 600, 'MS map + NAPR popup: parcel facts, 6 h'),
+  ('tas_legacy','BROWSER','UNIT',   true,  21600, 6,  3, 900, 'TAS browser workflow (fallback), per searched code'),
+  ('TAS_MAP', 'BROWSER', 'UNIT',    true,  21600, 8,  3, 600, 'MS map + NAPR popup for the searched code, 6 h'),
   ('mygov',   'HTTP',    'UNIT',    true,  600,   16, 3, 600, 'Unit register (owner, mortgages): reused for 10 min, same flat only'),
   ('enreg',   'BROWSER', 'COMPANY', true,  86400, 6,  3, 600, 'Company registry extract: 24 h'),
   ('debtor',  'BROWSER', 'COMPANY', true,  21600, 6,  3, 300, 'Debtor registry: 6 h'),
@@ -588,7 +588,9 @@ $$;
 
 -- CANCEL — durable job cancellation. Queued work stops; running work is told
 -- through its heartbeat; a producer other jobs are waiting on keeps running.
-create or replace function public.verify_job_cancel_tasks(p_job_id uuid)
+-- p_task_id narrows the cancellation to one task of the job (an abandoned
+-- registry lookup); omitted, every task of the job.
+create or replace function public.verify_job_cancel_tasks(p_job_id uuid, p_task_id uuid default null)
 returns integer
 language plpgsql security definer set search_path to ''
 as $$
@@ -600,11 +602,13 @@ begin
          input = case when t.scope_key is not null then t.input || jsonb_build_object('_scope', t.scope_key) else t.input end,
          scope_key = null
    where t.job_id = p_job_id and t.state in ('QUEUED','WAITING_SHARED')
+     and (p_task_id is null or t.id = p_task_id)
      and not exists (select 1 from public.verify_tasks f where f.shared_task_id = t.id and f.state = 'WAITING_SHARED' and f.job_id <> p_job_id);
   get diagnostics v_n = row_count;
   update public.verify_tasks t
      set cancel_requested = true, updated_at = now()
    where t.job_id = p_job_id and t.state = 'RUNNING'
+     and (p_task_id is null or t.id = p_task_id)
      and not exists (select 1 from public.verify_tasks f where f.shared_task_id = t.id and f.state = 'WAITING_SHARED' and f.job_id <> p_job_id);
   return v_n;
 end;
@@ -694,7 +698,7 @@ begin
     'public.verify_task_fail(uuid, bigint, text, boolean, integer)',
     'public.verify_task_release(uuid, bigint)',
     'public.verify_task_delegate(uuid, bigint, text, jsonb)',
-    'public.verify_job_cancel_tasks(uuid)',
+    'public.verify_job_cancel_tasks(uuid, uuid)',
     'public.verify_captcha_record(text, uuid, uuid, text, text, numeric, integer, text, text, text)',
     'public.research_job_advance_acquire(uuid, integer)',
     'public.research_job_advance_release(uuid, uuid)',

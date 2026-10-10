@@ -22,6 +22,28 @@ MATTERS right now, verify against the live systems, not this file)
 - Villion MyGov data was lost to the U+0000 bug (fixed, PR #149); re-synthesis cannot add it —
   only a fresh paid run can.
 
+## Owner Demo Mode in HOMATCH Leads + Resend probe fix (branch claude/nifty-hopper-snzn2d, 2026-10-10)
+
+- Demo Mode: `/property/:id/leads?demo=1`, owner-only (owns the listing AND `internal_match_demo_allowed()`: admin or a listed tester; never by email).
+- Migration 20261029090000_owner_demo_lead (append-only):
+  - adds columns to `demo_buyer_profiles` and `demo_conversations`;
+  - seeds one fictional buyer, "Alex Morgan", for HOMATCH 244486 (`demo_key owner-demo-lead-alex-morgan`): $140–180k, 2 bedrooms, parking, Krtsanisi/Ortachala, simulated 92%, 2.5 credits simulated, contact on example.com and +995 000;
+  - adds the RPCs `owner_demo_lead_available/open/act/reset`.
+  - Writes only to the `demo_*` tables, so no wallet, lead feed, CRM, conversations, notifications or Email Studio send is ever touched.
+  - Proof: `tests/sql/run-owner-demo-lead.sh`.
+- UI: `src/components/leads/demo/OwnerDemoJourney.tsx` reuses LeadCard, the UnlockDialog (simulated `adapter`), the CRM statuses, the chat ticks, and the Email Studio renderer and preview.
+  - It includes a guided walkthrough (11 steps), Reset and Exit.
+  - Strings: `scripts/owner-demo-i18n-*.mjs`, all six languages.
+  - Browser test: `tests/mobile/ownerDemoLead.test.mjs`.
+- Resend diagnosis (2026-10-10):
+  - RESEND_API_KEY works: a real notification email was SENT on 2026-10-02 from no-reply@auth.homatch.live.
+  - provider_health.RESEND=NOT_CONFIGURED is the 2026-08-28 seed row; `last_tested_at` is null, so it has never been probed.
+  - The old probe (GET /emails) misread sending-only keys as ERROR and 5xx as PASSED.
+  - Fix: `_shared/comm/resendProbe.ts`. It makes one GET /domains (no send) and requires the sender domain to be verified. It also self-checks RESEND_WEBHOOK_SECRET with email-webhook's own verifier.
+  - AdminProvidersPage now shows HEALTHY/DEGRADED/DOWN instead of "Not configured".
+  - No comm_webhook_events have ever been received, so the Resend webhook is not wired (or its secret is missing).
+  - `email_studio_sending_enabled` and `outreach_email_sending_enabled` both stay false.
+
 ## Verify go-live (PR #145, main 7c90625d, 2026-10-10) — LIVE IN PRODUCTION
 
 - Migrations applied via the Supabase MCP (no runner), so the ledger carries apply-time

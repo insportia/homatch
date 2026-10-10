@@ -37,7 +37,7 @@ test('no card invents a conclusion of its own', () => {
   // The component may read verdict / verdictReasons / sections /
   // incompleteSources and nothing else. Anything more would be a second
   // opinion competing with the projection.
-  const reads = [...reportCode.matchAll(/synthesis[.?]*\.([a-zA-Z]+)/g)].map((m) => m[1]);
+  const reads = [...reportCode.matchAll(/synthesis[.?]*\.([a-zA-Z][a-zA-Z0-9]*)/g)].map((m) => m[1]);
   const allowed = new Set([
     // `location`, like `market` and `people`, is computed deterministically in
     // the intelligence bundle and rendered as given. It is not a second
@@ -82,6 +82,12 @@ test('no card invents a conclusion of its own', () => {
     // and parcel the records concern (propertyIdentity.ts). Rendered only as
     // the identity notice, through identityNotice(); no conclusion of its own.
     'identity',
+    // Verify v3 (owner, 2026-10-10): the discipline-grouped team with each
+    // role in the document's own wording, the documented specifications with
+    // their approval status, the official applications and their files, and
+    // where the register extract came from. All deterministic, rendered as
+    // given through reportPresentation.ts; none is a conclusion of its own.
+    'projectTeamV2', 'technicalSpecs', 'officialDocuments', 'registerSource',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);

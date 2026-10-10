@@ -20,6 +20,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection, Row, RowList, StatusPill } from './ui';
 import type { PropertyRegister, RegisterMortgage, RegisterState, ProceedingKind } from '@/verify/intelligence/propertyRegister';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
+import { registerView, type RegisterSourceLike } from '@/verify/reportPresentation';
 
 /** First-strong isolates keep a date or number in reading order inside RTL text. */
 const iso = (s: string): string => `⁦${s}⁩`;
@@ -66,12 +67,17 @@ function MortgageLine({ m }: { m: RegisterMortgage }) {
   return <span className="break-words">{parts.join(' · ')}</span>;
 }
 
-export function PropertyRegisterCard({ register }: { register?: PropertyRegister | null }) {
+export function PropertyRegisterCard({ register, source }: { register?: PropertyRegister | null; source?: RegisterSourceLike | null }) {
   const { t } = useLanguage();
   const latest = register?.latest;
-  if (!register || !latest) return null;
+  const view = registerView(register, source);
+  if (!register || !latest || !view) return null;
   const asOf = dmy(latest.issuedAt);
-  const owners = latest.owners ?? [];
+  // Names only, as the public extract prints them; registerView strips any
+  // personal number that travelled with a name.
+  const ownerText = view.owners.length
+    ? view.owners.map((o) => o.name).join(', ')
+    : (latest.owners ?? []).some((o) => o.kind === 'PERSON') ? t('vbi_reg_owner_person') : '';
   const since = dmy(latest.ownershipRegisteredOn);
   const proceedings = (register.proceedings ?? []).slice(-12);
 
@@ -84,11 +90,11 @@ export function PropertyRegisterCard({ register }: { register?: PropertyRegister
       accent
     >
       <RowList>
-        {owners.length ? (
+        {ownerText ? (
           <Row label={t('vbi_reg_owner')}>
             <span className="font-medium">
               {/* As the public extract names them (owner, 2026-10-10). */}
-              {owners.map((o) => o.name ?? (o.kind === 'PERSON' ? t('vbi_reg_owner_person') : '')).filter(Boolean).join(', ')}
+              {ownerText}
             </span>
             {since ? (
               <span className="block text-xs text-muted-foreground">
@@ -98,12 +104,12 @@ export function PropertyRegisterCard({ register }: { register?: PropertyRegister
           </Row>
         ) : null}
 
-        <Row label={t('vbi_reg_mortgage')}>
-          {register.currentMortgages.length ? (
+        <Row label={t('verify_v3_reg_unit_mortgage')}>
+          {view.unitMortgages.length ? (
             <div className="space-y-2">
-              <StatusPill tone="attention">{t('vbi_reg_mortgage_pill', { count: String(register.currentMortgages.length) })}</StatusPill>
+              <StatusPill tone="attention">{t('vbi_reg_mortgage_pill', { count: String(view.unitMortgages.length) })}</StatusPill>
               <ul className="space-y-1">
-                {register.currentMortgages.map((m, i) => (
+                {(view.unitMortgages as RegisterMortgage[]).map((m, i) => (
                   <li key={`${m.agreementNumber}-${i}`}><MortgageLine m={m} /></li>
                 ))}
               </ul>
@@ -124,6 +130,23 @@ export function PropertyRegisterCard({ register }: { register?: PropertyRegister
             </ul>
           ) : null}
         </Row>
+
+        {/* Security on the developer's parcel or building — distinct from a
+            mortgage on the apartment itself, and said only when the extract
+            is the parcel's or the record marks it so. */}
+        {view.parcelMortgages.length ? (
+          <Row label={t('verify_v3_reg_parcel_security')}>
+            <div className="space-y-2">
+              <StatusPill tone="attention">{t('vbi_reg_mortgage_pill', { count: String(view.parcelMortgages.length) })}</StatusPill>
+              <ul className="space-y-1">
+                {(view.parcelMortgages as RegisterMortgage[]).map((m, i) => (
+                  <li key={`pm-${i}`}><MortgageLine m={m} /></li>
+                ))}
+              </ul>
+              <p className="text-xs leading-5 text-muted-foreground">{t('verify_v3_reg_parcel_security_note')}</p>
+            </div>
+          </Row>
+        ) : null}
 
         {latest.taxLien !== 'UNKNOWN' ? <Row label={t('vbi_reg_tax_lien')}><StateValue state={latest.taxLien} /></Row> : null}
         {latest.seizure !== 'UNKNOWN' ? <Row label={t('vbi_reg_seizure')}><StateValue state={latest.seizure} /></Row> : null}
@@ -163,7 +186,11 @@ export function PropertyRegisterCard({ register }: { register?: PropertyRegister
         </div>
       ) : null}
 
-      {asOf ? <p className="mt-4 text-xs leading-5 text-muted-foreground break-words">{t('vbi_reg_fresh', { date: iso(asOf) })}</p> : null}
+      {view.disclosure ? (
+        <p className="mt-4 rounded-xl bg-muted/60 px-3 py-2 text-xs leading-5 text-foreground/80 break-words" data-register-reused>
+          {t('verify_v3_reg_reused', { date: iso(dmy(view.disclosure.date)!) })}
+        </p>
+      ) : asOf ? <p className="mt-4 text-xs leading-5 text-muted-foreground break-words">{t('vbi_reg_fresh', { date: iso(asOf) })}</p> : null}
     </VerifySection>
   );
 }

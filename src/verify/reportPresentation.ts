@@ -275,7 +275,7 @@ export function peopleCards(input: {
 
 /* ───────────────────────── Chapters ───────────────────────── */
 
-export type ChapterId = 'summary' | 'explore' | 'story' | 'people' | 'building' | 'legal' | 'location' | 'market' | 'final';
+export type ChapterId = 'summary' | 'explore' | 'story' | 'people' | 'building' | 'legal' | 'documents' | 'location' | 'market' | 'final';
 
 /**
  * Which chapter a prose section belongs to. A key this list does not know —
@@ -313,3 +313,477 @@ export const SECTION_HEADING_KEY: Record<string, string> = {
   MARKET: 'vrx_section_market',
   PEOPLE: 'vrx_section_people',
 };
+
+/* ═══════════════════════ Verify v3 — contract views ═══════════════════════
+ *
+ * Every field below is produced by the intelligence layer and treated as
+ * OPTIONAL: a report stored before it existed lacks it, and the view degrades
+ * to the older presentation rather than to an empty or a stronger claim.
+ */
+
+const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+const isoDay = (v: unknown): string | null => {
+  const m = typeof v === 'string' ? /^(\d{4})-(\d{2})-(\d{2})/.exec(v) : null;
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+};
+const newestFirst = (a: string | null, b: string | null): number => (b ?? '').localeCompare(a ?? '');
+
+/** Only an absolute http(s) link may become an href — never javascript:, never a storage path. */
+export function safeHref(v: unknown): string | null {
+  const s = str(v);
+  if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return null;
+  try {
+    const u = new URL(s);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ───────────────────────── Project team (v2) ───────────────────────── */
+
+export type TeamGroup = 'DEVELOPER' | 'ARCHITECTURE' | 'STRUCTURAL' | 'GEOTECHNICAL' | 'LANDSCAPE' | 'CONSTRUCTION_ORG' | 'SAFETY' | 'OTHER';
+export const TEAM_GROUP_ORDER: TeamGroup[] = ['DEVELOPER', 'ARCHITECTURE', 'STRUCTURAL', 'GEOTECHNICAL', 'LANDSCAPE', 'CONSTRUCTION_ORG', 'SAFETY', 'OTHER'];
+export const TEAM_GROUP_KEY: Record<TeamGroup, string> = {
+  DEVELOPER: 'verify_v3_team_group_developer',
+  ARCHITECTURE: 'verify_v3_team_group_architecture',
+  STRUCTURAL: 'verify_v3_team_group_structural',
+  GEOTECHNICAL: 'verify_v3_team_group_geotechnical',
+  LANDSCAPE: 'verify_v3_team_group_landscape',
+  CONSTRUCTION_ORG: 'verify_v3_team_group_construction_org',
+  SAFETY: 'verify_v3_team_group_safety',
+  OTHER: 'verify_v3_team_group_other',
+};
+
+export interface TeamRoleV2Like {
+  code?: string | null;
+  roleText?: string | null;
+  scope?: string | null;
+  caseRef?: string | null;
+  date?: string | null;
+  documentTitle?: string | null;
+  sourceUrl?: string | null;
+}
+export interface TeamMemberV2Like {
+  name?: string | null;
+  kind?: string | null;
+  group?: string | null;
+  organization?: string | null;
+  roles?: TeamRoleV2Like[] | null;
+  firstSeen?: string | null;
+  lastSeen?: string | null;
+  official?: boolean | null;
+}
+export interface TeamRoleV2 {
+  code: string | null;
+  roleText: string;
+  scope: string | null;
+  caseRef: string | null;
+  date: string | null;
+  documentTitle: string | null;
+  sourceUrl: string | null;
+}
+export interface TeamCardV2 {
+  name: string;
+  organizationKind: boolean;
+  group: TeamGroup;
+  organization: string | null;
+  /** The documented wording, as the record has it — the card's headline. */
+  headline: TeamRoleV2;
+  /** Every documented role, newest first, the headline included. */
+  roles: TeamRoleV2[];
+  firstSeen: string | null;
+  lastSeen: string | null;
+  official: boolean;
+}
+
+/**
+ * A name a reader can be shown: no digits (a personal or registry number
+ * never travels in a name), at most five words, no list or label punctuation
+ * that marks a raw fragment ("არქიტექტორი: ..."), and at least two letters.
+ */
+export function plausibleName(v: unknown): boolean {
+  const s = str(v);
+  if (s.length < 2 || s.length > 90) return false;
+  if (/\d/.test(s)) return false;
+  if (/[:;|/\\<>{}[\]=]/.test(s)) return false;
+  const words = s.replace(/["„“”«»']/g, ' ').split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 5) return false;
+  return (s.match(/\p{L}/gu) ?? []).length >= 2;
+}
+
+const cleanText = (v: unknown, max = 220): string | null => {
+  const s = str(v).replace(/\s+/g, ' ');
+  return s && s.length <= max ? s : s ? `${s.slice(0, max - 1).trimEnd()}…` : null;
+};
+
+/**
+ * The v2 team, grouped by discipline in a fixed order. A member without a
+ * plausible name, or without a single documented role wording, is dropped:
+ * a card never falls back to a generic "Other" headline.
+ */
+export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards: TeamCardV2[] }> {
+  if (!Array.isArray(members) || !members.length) return [];
+  const byKey = new Map<string, TeamCardV2>();
+  for (const raw of members as TeamMemberV2Like[]) {
+    if (!raw || typeof raw !== 'object' || !plausibleName(raw.name)) continue;
+    const name = str(raw.name).replace(/\s+/g, ' ');
+    const g = str(raw.group).toUpperCase() as TeamGroup;
+    const group: TeamGroup = TEAM_GROUP_ORDER.includes(g) ? g : 'OTHER';
+    const roles: TeamRoleV2[] = [];
+    const seen = new Set<string>();
+    for (const r of Array.isArray(raw.roles) ? raw.roles : []) {
+      const roleText = cleanText(r?.roleText, 160);
+      if (!roleText) continue;
+      const role: TeamRoleV2 = {
+        code: str(r?.code) || null,
+        roleText,
+        scope: cleanText(r?.scope),
+        caseRef: str(r?.caseRef) || null,
+        date: isoDay(r?.date),
+        documentTitle: cleanText(r?.documentTitle, 160),
+        sourceUrl: safeHref(r?.sourceUrl),
+      };
+      const k = `${role.roleText}|${role.caseRef ?? ''}|${role.date ?? ''}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      roles.push(role);
+    }
+    if (!roles.length) continue;
+    const org = str(raw.organization);
+    const card: TeamCardV2 = {
+      name,
+      organizationKind: str(raw.kind).toUpperCase() === 'ORGANIZATION' || ORG_FORM.test(name),
+      group,
+      organization: org && !/\d{6,}/.test(org) && nameKey(org) !== nameKey(name) ? org : null,
+      headline: roles[0],
+      roles: [...roles].sort((a, b) => newestFirst(a.date, b.date)),
+      firstSeen: isoDay(raw.firstSeen),
+      lastSeen: isoDay(raw.lastSeen),
+      official: raw.official !== false,
+    };
+    const key = `${group}|${nameKey(name)}`;
+    const prev = byKey.get(key);
+    if (prev) {
+      for (const r of card.roles) if (!prev.roles.some((p) => p.roleText === r.roleText && p.caseRef === r.caseRef && p.date === r.date)) prev.roles.push(r);
+      prev.roles.sort((a, b) => newestFirst(a.date, b.date));
+      prev.official = prev.official || card.official;
+      prev.organization = prev.organization ?? card.organization;
+      continue;
+    }
+    byKey.set(key, card);
+  }
+  const all = [...byKey.values()];
+  return TEAM_GROUP_ORDER
+    .map((group) => {
+      const cards = all.filter((c) => c.group === group);
+      // The developer group opens with the company; elsewhere the named
+      // professionals come before their firms. Otherwise the data's order.
+      const orgRank = (c: TeamCardV2) => (group === 'DEVELOPER' ? (c.organizationKind ? 0 : 1) : c.organizationKind ? 1 : 0);
+      return { group, cards: cards.map((c, i) => ({ c, i })).sort((a, b) => orgRank(a.c) - orgRank(b.c) || a.i - b.i).map((x) => x.c) };
+    })
+    .filter((x) => x.cards.length > 0);
+}
+
+/* ───────────────────────── Official documents ───────────────────────── */
+
+export type DocFileKind = 'PDF' | 'IMAGE' | 'DRAWING' | 'ARCHIVE' | 'OTHER';
+export type DocReadState = 'READ' | 'VISUAL' | 'UNSUPPORTED' | 'DEFERRED' | 'NOT_READ';
+export type DocCaseStatus = 'UNDER_REVIEW' | 'APPROVED' | 'REFUSED' | 'HISTORICAL';
+
+export const DOC_READ_KEY: Record<DocReadState, string> = {
+  READ: 'verify_v3_doc_read_full',
+  VISUAL: 'verify_v3_doc_read_visual',
+  UNSUPPORTED: 'verify_v3_doc_read_unsupported',
+  DEFERRED: 'verify_v3_doc_read_deferred',
+  NOT_READ: 'verify_v3_doc_read_not_read',
+};
+export const DOC_STATUS_KEY: Record<DocCaseStatus, string> = {
+  UNDER_REVIEW: 'verify_v3_doc_status_under_review',
+  APPROVED: 'verify_v3_doc_status_approved',
+  REFUSED: 'verify_v3_doc_status_refused',
+  HISTORICAL: 'verify_v3_doc_status_historical',
+};
+
+export interface DocFileView {
+  fileName: string | null;
+  format: string | null;
+  kind: DocFileKind;
+  read: DocReadState;
+  pages: number | null;
+  href: string | null;
+  date: string | null;
+}
+export interface DocCaseView {
+  caseRef: string | null;
+  documentId: string | null;
+  date: string | null;
+  title: string | null;
+  status: DocCaseStatus;
+  priority: 1 | 2 | null;
+  href: string | null;
+  files: DocFileView[];
+}
+
+export function readStateOf(outcome: unknown): DocReadState {
+  const o = str(outcome).toUpperCase();
+  if (!o) return 'NOT_READ';
+  if (/UNSUPPORTED/.test(o)) return 'UNSUPPORTED';
+  if (/DEFER|QUEUE/.test(o)) return 'DEFERRED';
+  if (/VISUAL|IMAGE/.test(o)) return 'VISUAL';
+  if (/^READ|TEXT|PARSED/.test(o)) return 'READ';
+  return 'NOT_READ';
+}
+
+/**
+ * A case's status chip. "Approved" only when the record says so — anything
+ * pending, or named in the pending applications, is under review, and
+ * anything unrecognised is a historical record, never an approval.
+ */
+export function caseStatusOf(status: unknown, pending = false): DocCaseStatus {
+  const s = str(status).toUpperCase();
+  if (pending || /UNDER_REVIEW|PENDING|IN_PROGRESS|SUBMITTED|განხილვ|მიმდინარე/u.test(s)) return 'UNDER_REVIEW';
+  if (/REFUS|REJECT|DENIED|უარ/u.test(s)) return 'REFUSED';
+  if (/^(APPROVED|ISSUED|GRANTED|SATISFIED|PERMITTED|COMPLETED_APPROVED)$|დამტკიც|გაცემ|დაკმაყოფ/u.test(s)) return 'APPROVED';
+  return 'HISTORICAL';
+}
+
+/** A title a reader can use — never an id, a file hash or a bare number. */
+export function readableTitle(v: unknown): string | null {
+  const s = cleanText(v, 180);
+  if (!s) return null;
+  if (/^[\d\s./_-]+$/.test(s)) return null;
+  if (/^[a-f0-9-]{16,}$/i.test(s)) return null;
+  return s;
+}
+
+const FILE_KINDS = new Set<DocFileKind>(['PDF', 'IMAGE', 'DRAWING', 'ARCHIVE', 'OTHER']);
+
+/**
+ * The official document explorer: the two newest applications first (by the
+ * server's priority, else by date), every older one after them newest first.
+ */
+export function documentExplorer(docs: unknown, pendingRefs: Iterable<string> = []): { recent: DocCaseView[]; earlier: DocCaseView[] } {
+  if (!Array.isArray(docs) || !docs.length) return { recent: [], earlier: [] };
+  const pending = new Set([...pendingRefs].filter(Boolean));
+  const cases: DocCaseView[] = [];
+  const seen = new Set<string>();
+  for (const d of docs as Array<Record<string, unknown>>) {
+    if (!d || typeof d !== 'object') continue;
+    const caseRef = str(d.caseRef) || null;
+    const documentId = str(d.documentId) || null;
+    const key = caseRef ?? documentId ?? '';
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    const files: DocFileView[] = (Array.isArray(d.files) ? d.files : []).filter((f) => f && typeof f === 'object').map((f: Record<string, unknown>) => {
+      const k = str(f.kind).toUpperCase() as DocFileKind;
+      const format = str(f.format).replace(/^\./, '').toUpperCase().slice(0, 8) || (/\.([a-z0-9]{2,5})$/i.exec(str(f.fileName))?.[1]?.toUpperCase() ?? null);
+      return {
+        fileName: cleanText(f.fileName, 120),
+        format,
+        kind: FILE_KINDS.has(k) ? k : 'OTHER',
+        read: readStateOf(f.outcome),
+        pages: typeof f.pages === 'number' && Number.isInteger(f.pages) && f.pages > 0 ? f.pages : null,
+        href: safeHref(f.sourceUrl),
+        date: isoDay(f.date),
+      };
+    });
+    const priority = d.priority === 1 || d.priority === 2 ? d.priority : null;
+    cases.push({
+      caseRef,
+      documentId,
+      date: isoDay(d.caseDate),
+      title: readableTitle(d.title),
+      status: caseStatusOf(d.status, !!caseRef && pending.has(caseRef)),
+      priority,
+      href: safeHref(d.publicUrl),
+      files,
+    });
+  }
+  const byDate = (a: DocCaseView, b: DocCaseView) => newestFirst(a.date, b.date);
+  const prioritised = cases.filter((c) => c.priority).sort((a, b) => (a.priority! - b.priority!) || byDate(a, b));
+  const recent = (prioritised.length ? prioritised : [...cases].sort(byDate)).slice(0, 2);
+  const earlier = cases.filter((c) => !recent.includes(c)).sort(byDate);
+  return { recent, earlier };
+}
+
+/**
+ * Which official document (and file) each extracted image came from, keyed
+ * by the image id. Internal: used only to put a "view images" button next to
+ * the right file — the document id never reaches the catalogued view.
+ */
+export function visualSources(rawVisuals: unknown): Map<string, { documentId: string; fileName: string | null }> {
+  const out = new Map<string, { documentId: string; fileName: string | null }>();
+  for (const r of Array.isArray(rawVisuals) ? (rawVisuals as Array<Record<string, unknown>>) : []) {
+    if (!r || typeof r !== 'object') continue;
+    const id = str(r.id);
+    const ref = r.documentRef && typeof r.documentRef === 'object' ? (r.documentRef as Record<string, unknown>) : null;
+    const documentId = str(ref?.documentId) || str(r.documentId);
+    if (id && documentId) out.set(id, { documentId, fileName: str(r.fileName) || null });
+  }
+  return out;
+}
+
+/* ───────────────────────── Legal position ───────────────────────── */
+
+export interface PendingView { caseRef: string | null; date: string | null; deadline: string | null; subject: string | null }
+export interface EffectiveView { kind: string; kindKey: string; date: string | null; decisionNumber: string | null; caseRef: string | null }
+
+const DECISION_KINDS = new Set(['application', 'permit', 'approval', 'amendment', 'extension', 'refusal', 'suspension', 'inspection', 'commissioning', 'decision']);
+
+/**
+ * Today's official position: the effective decision first, then everything
+ * still under review — each pending item is ONLY "under review, not yet
+ * decided", whatever its subject says. Null when the report has neither.
+ */
+export function legalPosition(history: unknown): { effective: EffectiveView | null; pending: PendingView[]; conflicts: number } | null {
+  if (!history || typeof history !== 'object') return null;
+  const h = history as Record<string, unknown>;
+  const cp = (h.currentPosition && typeof h.currentPosition === 'object' ? h.currentPosition : {}) as Record<string, unknown>;
+  const e = cp.effective && typeof cp.effective === 'object' ? (cp.effective as Record<string, unknown>) : null;
+  let effective: EffectiveView | null = null;
+  if (e && (isoDay(e.date) || str(e.decisionNumber) || str(e.caseRef))) {
+    const kind = str(e.kind).toLowerCase();
+    effective = {
+      kind,
+      kindKey: DECISION_KINDS.has(kind) ? `verify_ox_kind_${kind}` : 'verify_ox_kind_decision',
+      date: isoDay(e.date),
+      decisionNumber: str(e.decisionNumber) || null,
+      caseRef: str(e.caseRef) || null,
+    };
+  }
+  const merged = new Map<string, PendingView>();
+  const list = [
+    ...(Array.isArray(h.pendingApplications) ? h.pendingApplications : []),
+    ...(Array.isArray(cp.pending) ? cp.pending : []),
+  ] as Array<Record<string, unknown>>;
+  for (const p of list) {
+    if (!p || typeof p !== 'object') continue;
+    const v: PendingView = { caseRef: str(p.caseRef) || null, date: isoDay(p.date), deadline: isoDay(p.deadline), subject: cleanText(p.subject, 200) };
+    if (!v.caseRef && !v.date && !v.subject) continue;
+    const k = v.caseRef ?? `${v.date}|${v.subject}`;
+    const prev = merged.get(k);
+    merged.set(k, prev ? { caseRef: prev.caseRef, date: prev.date ?? v.date, deadline: prev.deadline ?? v.deadline, subject: prev.subject ?? v.subject } : v);
+  }
+  const pending = [...merged.values()].sort((a, b) => newestFirst(a.date, b.date));
+  const conflicts = Array.isArray(cp.conflicts) ? cp.conflicts.length : 0;
+  if (!effective && !pending.length && !conflicts) return null;
+  return { effective, pending, conflicts };
+}
+
+/* ───────────────────────── Technical specifications ───────────────────────── */
+
+export type SpecGroup = 'SITE' | 'VOLUME' | 'AREAS' | 'STRUCTURE' | 'FACADE' | 'TRANSPORT' | 'OTHER';
+export type SpecStatus = 'APPROVED' | 'PROPOSED' | 'UNKNOWN';
+export const SPEC_GROUP_ORDER: SpecGroup[] = ['SITE', 'VOLUME', 'AREAS', 'STRUCTURE', 'FACADE', 'TRANSPORT', 'OTHER'];
+export const SPEC_GROUP_KEY: Record<SpecGroup, { title: string; meaning: string }> = {
+  SITE: { title: 'verify_v3_spec_group_site', meaning: 'verify_v3_spec_meaning_site' },
+  VOLUME: { title: 'verify_v3_spec_group_volume', meaning: 'verify_v3_spec_meaning_volume' },
+  AREAS: { title: 'verify_v3_spec_group_areas', meaning: 'verify_v3_spec_meaning_areas' },
+  STRUCTURE: { title: 'verify_v3_spec_group_structure', meaning: 'verify_v3_spec_meaning_structure' },
+  FACADE: { title: 'verify_v3_spec_group_facade', meaning: 'verify_v3_spec_meaning_facade' },
+  TRANSPORT: { title: 'verify_v3_spec_group_transport', meaning: 'verify_v3_spec_meaning_transport' },
+  OTHER: { title: 'verify_v3_spec_group_other', meaning: '' },
+};
+export const SPEC_STATUS_KEY: Record<SpecStatus, string> = {
+  APPROVED: 'verify_v3_spec_status_approved',
+  PROPOSED: 'verify_v3_spec_status_proposed',
+  UNKNOWN: 'verify_v3_spec_status_unknown',
+};
+
+export interface SpecRow { key: string; label: string; value: string; status: SpecStatus; caseRef: string | null; date: string | null }
+
+/** Ordered: the first pattern a key or label meets decides its group. */
+const SPEC_RULES: Array<[SpecGroup, RegExp]> = [
+  ['SITE', /land|parcel|plot|site|\bk[-_ ]?[123]\b|^k[123]|coefficient|density|ნაკვეთ|მიწის|კ[-‐ ]?[123]|კოეფიციენტ/iu],
+  ['TRANSPORT', /elevator|lift|parking|garage|car|stair|ლიფტ|პარკ|ავტოსადგომ|კიბ/iu],
+  ['STRUCTURE', /foundation|structur|frame|seismic|concrete|pile|საძირკვ|კონსტრუქ|კარკას|სეისმ|ბეტონ|ხიმინჯ/iu],
+  ['FACADE', /facade|façade|material|cladding|window|glazing|roof|ფასად|მასალ|მოპირკეთ|ფანჯ|მინა|სახურავ/iu],
+  ['AREAS', /area|sqm|m2|m²|ფართ/iu],
+  ['VOLUME', /floor|stor(e)?y|height|volume|level|buildings|units?|apartments?|სართულ|სიმაღლ|მოცულობ|ბინების რაოდენობ|ერთეულ/iu],
+];
+
+export function specGroupOf(key: string, label: string): SpecGroup {
+  const hay = `${key} ${label}`;
+  for (const [g, re] of SPEC_RULES) if (re.test(hay)) return g;
+  return 'OTHER';
+}
+
+export function specGroups(specs: unknown): Array<{ group: SpecGroup; rows: SpecRow[] }> {
+  if (!Array.isArray(specs) || !specs.length) return [];
+  const rows: Array<SpecRow & { group: SpecGroup; i: number }> = [];
+  const seen = new Set<string>();
+  (specs as Array<Record<string, unknown>>).forEach((s, i) => {
+    if (!s || typeof s !== 'object') return;
+    const label = cleanText(s.label, 80);
+    let value = cleanText(s.value, 120);
+    if (!label || !value) return;
+    const unit = str(s.unit);
+    if (unit && !value.toLowerCase().includes(unit.toLowerCase())) value = `${value} ${unit}`;
+    const st = str(s.status).toUpperCase();
+    const status: SpecStatus = st === 'APPROVED' || st === 'PROPOSED' ? st : 'UNKNOWN';
+    const key = str(s.key) || label;
+    const dedupe = `${key}|${value}|${status}`;
+    if (seen.has(dedupe)) return;
+    seen.add(dedupe);
+    rows.push({ key, label, value, status, caseRef: str(s.caseRef) || null, date: isoDay(s.date), group: specGroupOf(key, label), i });
+  });
+  const rank: Record<SpecStatus, number> = { APPROVED: 0, PROPOSED: 1, UNKNOWN: 2 };
+  return SPEC_GROUP_ORDER
+    .map((group) => ({
+      group,
+      rows: (() => {
+        // In the data's order, with a key's approved and proposed values side
+        // by side (approved first) so a pending change reads as a change.
+        const inGroup = rows.filter((r) => r.group === group);
+        const firstAt = new Map<string, number>();
+        for (const r of inGroup) if (!firstAt.has(r.key)) firstAt.set(r.key, r.i);
+        return inGroup
+          .sort((a, b) => firstAt.get(a.key)! - firstAt.get(b.key)! || rank[a.status] - rank[b.status] || a.i - b.i)
+          .map(({ group: _g, i: _i, ...r }) => r);
+      })(),
+    }))
+    .filter((g) => g.rows.length > 0);
+}
+
+/* ───────────────────────── Register: ownership & security ───────────────────────── */
+
+export interface MortgageLike { creditor?: string | null; registeredOn?: string | null; agreementNumber?: string | null; agreementDate?: string | null; level?: string | null; scope?: string | null }
+export interface RegisterSourceLike { jobId?: string | null; asOf?: string | null; reused?: boolean | null }
+
+/** A parcel code has five segments; a unit code carries building/floor/unit after it. */
+export const isParcelCode = (code: unknown): boolean => /^\d{2}\.\d{2}\.\d{2}\.\d{3}\.\d{3}$/.test(str(code));
+
+/**
+ * The register, split the way a buyer needs it: who holds the record (names
+ * only — a personal number never travels), the mortgages registered on the
+ * apartment itself, the security sitting on the developer's parcel or
+ * building, and those since removed. "Parcel-level" is said only when the
+ * extract itself is the parcel's, or the record marks the mortgage so.
+ */
+export function registerView(register: unknown, source?: RegisterSourceLike | null): {
+  owners: Array<{ name: string; company: boolean }>;
+  unitMortgages: MortgageLike[];
+  parcelMortgages: MortgageLike[];
+  removed: number;
+  disclosure: { date: string } | null;
+} | null {
+  if (!register || typeof register !== 'object') return null;
+  const r = register as Record<string, unknown>;
+  const latest = (r.latest && typeof r.latest === 'object' ? r.latest : null) as Record<string, unknown> | null;
+  if (!latest) return null;
+  const owners = (Array.isArray(latest.owners) ? latest.owners : [])
+    .map((o: Record<string, unknown>) => ({ name: str(o?.name).replace(/\(?\s*\d{6,}\s*\)?/g, ' ').replace(/[,\s]+$/, '').replace(/\s+/g, ' ').trim(), company: str(o?.kind).toUpperCase() === 'COMPANY' }))
+    .filter((o) => o.name.length >= 2);
+  const parcelExtract = isParcelCode(r.cadastralCode);
+  const parcelLevel = (m: MortgageLike) => parcelExtract || /PARCEL|LAND|BUILDING|DEVELOPER|PROJECT/i.test(str(m.level) || str(m.scope));
+  const current = (Array.isArray(r.currentMortgages) ? r.currentMortgages : []) as MortgageLike[];
+  const asOf = isoDay(source?.asOf);
+  return {
+    owners,
+    unitMortgages: current.filter((m) => m && !parcelLevel(m)),
+    parcelMortgages: current.filter((m) => m && parcelLevel(m)),
+    removed: Array.isArray(r.removedMortgages) ? r.removedMortgages.length : 0,
+    disclosure: source?.reused && asOf ? { date: asOf } : null,
+  };
+}

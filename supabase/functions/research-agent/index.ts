@@ -32,6 +32,7 @@ import { parseCadastral } from '../../../src/verify/intelligence/propertyIdentit
 import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, OFFICIAL_STRAGGLER_GRACE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
+import { VISUAL_ASSET_MAX } from '../../../src/verify/intelligence/visualAssets.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
 import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -1074,7 +1075,13 @@ async function resolveSourceUrls(list: any[]): Promise<any[]> {
   return dedupe(resolved.filter((s: any) => !isLoginPageUrl(s?.url)), (x) => x.url);
 }
 
-const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT']);
+// SAME_DISTRICT / WIDER_MARKET (2026-10-10 market gate): the deterministic
+// lane and the MyHome/SS.ge fold now label district context and citywide
+// stock honestly; without these here every one of them was relabelled
+// PEER_PROJECT on the way into the report. A PEER_PROJECT label alone is no
+// longer trusted downstream (marketIntelligence.scoreComparable requires a
+// nearby, same-segment named development).
+const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET']);
 // normalizeComparableTier() (2026-09-07 market-comparable model, Verify
 // mandate item 7): the MARKET prompt asks the model for a mandatory
 // three-tier "comparableType" per comparable (see prompt() 'MARKET') —
@@ -1090,7 +1097,7 @@ const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_
 // rerun cost") must still show a sensible tier rather than silently
 // defaulting every historical comparable to PEER_PROJECT, so
 // sameProject === true maps to SAME_PROJECT for those legacy records.
-function normalizeComparableTier(c: any): 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT' {
+function normalizeComparableTier(c: any): 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT' | 'SAME_DISTRICT' | 'WIDER_MARKET' {
   if (VALID_COMPARABLE_TIERS.has(c?.comparableType)) return c.comparableType;
   if (c?.sameProject === true) return 'SAME_PROJECT';
   return 'PEER_PROJECT';
@@ -1785,11 +1792,11 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `WHEN TO STOP SEARCHING: the analysis downstream needs at least 2 priced, ACTIVE, residential comparables in a band before that band can be used at all. Once you hold at least 3 such comparables spread over at least 2 bands - including the most specific band you were able to populate - you have what the report needs, and further searching has measurably NOT improved these reports. Stop there and write up what you found. This is a stopping condition, not a quota: if a band you have already searched is genuinely thin, or something you found contradicts what you were told, keep going. Being right still outranks being cheap. ` +
       `RELEVANCE STILL BOUNDS IT: never pad a band with listings that are not actually comparable, never invent a listing you cannot support with a specific deep URL, and never describe a band you did not search. If a band genuinely has nothing findable, return nothing for it — an honestly empty band is correct, a fabricated one is not. ` +
       `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt. If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
-      `COMPARABLE TIER (mandatory per comparable, 2026-09-07 market-comparable model): classify "comparableType" as exactly one of "SAME_PROJECT" (literally the same building/project/complex as the subject — if the project has named blocks/phases/buildings and you can tell the comparable is a DIFFERENT block/phase than the subject's own, prefer "MICRO_LOCATION" instead, since a different block of the same complex is not the same physical structure), "MICRO_LOCATION" (a different project but the same street/immediate neighborhood/walking-distance area), or "PEER_PROJECT" (a comparable development elsewhere in the city included only for broader market context). This is a REQUIRED classification, never omitted or left to infer downstream — when genuinely uncertain between MICRO_LOCATION and PEER_PROJECT, use PEER_PROJECT (the more conservative, less specific claim). ` +
+      `COMPARABLE TIER (mandatory per comparable, 2026-09-07 market-comparable model): classify "comparableType" as exactly one of "SAME_PROJECT" (literally the same building/project/complex as the subject — if the project has named blocks/phases/buildings and you can tell the comparable is a DIFFERENT block/phase than the subject's own, prefer "MICRO_LOCATION" instead, since a different block of the same complex is not the same physical structure), "MICRO_LOCATION" (a different project but the same street/immediate neighborhood/walking-distance area), "PEER_PROJECT" (a genuinely comparable named development in the SAME or an ADJACENT neighbourhood, in a similar segment and price class), or "WIDER_MARKET" (anything elsewhere in the city — background context only, never a valuation basis). This is a REQUIRED classification, never omitted or left to infer downstream — when genuinely uncertain, use the WIDER tier (WIDER_MARKET over PEER_PROJECT, PEER_PROJECT over MICRO_LOCATION): the less specific claim is the conservative one. ` +
       `LISTING STATUS (mandatory per comparable — market price MUST reflect what is on the market NOW, never a stale figure): set "listingStatus" from what the page/evidence actually shows — "ACTIVE" only when the listing itself currently reads as available/on the market (no "sold"/"removed"/"no longer available"/"archived" marker, and not a stale page you cannot confirm is still live), "EXPIRED" or "REMOVED" or "SOLD" when the evidence itself says so, otherwise "UNKNOWN" (the safe default when you genuinely cannot tell — never guess ACTIVE just because a page loaded). Also set "propertyType" ("RESIDENTIAL","COMMERCIAL","LAND","OTHER") whenever the evidence supports it. Only ACTIVE + RESIDENTIAL comparables may ever be used for a *current* price range — everything else exists only for historical/contextual reference, so do not skip this field to save effort. ` +
       `SUBJECT PROPERTY'S OWN PRICE (separate from comparables): if — and only if — you find the subject property's own price/price-per-sqm specifically evidenced (its own listing, an official document, or public reporting), return it in "subject" below with the exact evidence URL, AND classify it with "priceType": "STARTING" when this is a developer's marketing "starting from" / "from" price for the project (never a specific unit's actual price), "CURRENT_LISTING" when it is a specific unit's own live asking price, "SOLD" when evidence shows it already sold at this price, or "OFFICIAL_DOCUMENT" when it comes from a registry/permit/contract document rather than a marketplace listing. A "STARTING" price must never be presented or treated as the property's current median/typical price — keep it a distinct, separately labeled figure. Never estimate or infer any of this from comparables; leave every field null when no such evidence exists for THIS specific property. ` +
       `PRICE-DRIVER EVIDENCE (mandatory, qualitative only — you do NOT compute a median, a percentage, or a CHEAPER/NORMAL/PREMIUM classification; a deterministic step downstream does that arithmetic from the numeric comparables/subject fields above): list the concrete, evidence-backed factors relevant to how this property's price compares to its market, grounded only in evidence already gathered this run (Identity/Official/PublicResearch above, or your own comparables): construction completion stage, remaining inventory/scarcity, availability of internal/developer installment financing, construction materials and structural system, architecture/design and architect reputation, developer reputation, parking availability, floor/view/layout, amenities, location/micro-location, bank financing availability, and current supply of comparable listings. Never state a price driver you cannot support with evidence gathered this run — omit it instead. ` +
-      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"comparableType":"SAME_PROJECT"|"MICRO_LOCATION"|"PEER_PROJECT","listingStatus":"ACTIVE"|"EXPIRED"|"REMOVED"|"SOLD"|"UNKNOWN","propertyType":"RESIDENTIAL"|"COMMERCIAL"|"LAND"|"OTHER"|null}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null,"priceType":"STARTING"|"CURRENT_LISTING"|"SOLD"|"OFFICIAL_DOCUMENT"|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
+      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"comparableType":"SAME_PROJECT"|"MICRO_LOCATION"|"PEER_PROJECT"|"WIDER_MARKET","listingStatus":"ACTIVE"|"EXPIRED"|"REMOVED"|"SOLD"|"UNKNOWN","propertyType":"RESIDENTIAL"|"COMMERCIAL"|"LAND"|"OTHER"|null}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null,"priceType":"STARTING"|"CURRENT_LISTING"|"SOLD"|"OFFICIAL_DOCUMENT"|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
     );
   }
 
@@ -2361,15 +2368,51 @@ async function startVerifyMarketplace(db: any, p: any, seed: any): Promise<void>
 
 const VERIFY_MARKET_MAX_WAIT_MS = 6 * 60 * 1000;
 
+/*
+ * THE SUBJECT AS IT IS KNOWN AT FOLD TIME (2026-10-10 market gate).
+ *
+ * The worker search starts at the top of pollBrowser, often before identity,
+ * TAS or public research have named the project, its district or its
+ * coordinates. Tiering the adverts against that early, empty subject is how
+ * nearby adverts lost their distance. So at fold time — including the
+ * MARKET_READY re-run — any field still missing is filled from a fresh seed
+ * of the job as it stands now. Values known at start are never replaced, and
+ * stage order is unchanged. The headline itself is still only computed at
+ * synthesis (marketIntelligence.buildMarketIntelligence).
+ */
+function marketSubjectNow(j: any, p: any, started: any): { project: string | null; latitude: number | null; longitude: number | null; district: string | null } {
+  const base = { project: null, latitude: null, longitude: null, district: null, ...(started ?? {}) };
+  if (!j) return base;
+  try {
+    const seed: any = buildResearchSeed({
+      jobId: String(j.id),
+      query: j.query,
+      mode: (j.mode ?? j.type) === 'cadastral' ? 'cadastral' : 'property',
+      result: p,
+      knownFacts: {},
+    });
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const coord = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    return {
+      project: base.project ?? str(seed?.project?.name?.value),
+      latitude: base.latitude ?? coord(seed?.location?.latitude?.value),
+      longitude: base.longitude ?? coord(seed?.location?.longitude?.value),
+      district: base.district ?? str(seed?.location?.subDistrict?.value) ?? str(seed?.location?.district?.value),
+    };
+  } catch {
+    return base;
+  }
+}
+
 /** Poll once; fold when finished. Returns true while still waiting. */
-async function pollVerifyMarketplace(p: any): Promise<boolean> {
+async function pollVerifyMarketplace(p: any, j: any = null): Promise<boolean> {
   const m = p?._verifyMarket;
   if (!m || m.done || !m.jobId) return false;
   try {
     const r = await wf(`/verify/market/${m.jobId}`);
     if (r.code === 200 && r.data?.status === 'COMPLETE') {
       const lane = Array.isArray(p._marketComparables) ? p._marketComparables : [];
-      const folded = foldMarketplaceIntoLane(lane, r.data, m.subject ?? { project: null, latitude: null, longitude: null, district: null }, now());
+      const folded = foldMarketplaceIntoLane(lane, r.data, marketSubjectNow(j, p, m.subject), now());
       p._marketComparables = folded.comparables;
       p._marketplaceLedger = { ...folded.ledger, profile: m.profile, durationMs: Date.now() - Date.parse(m.startedAt) };
       p._verifyMarket = { ...m, state: 'FOLDED', done: true };
@@ -2396,51 +2439,74 @@ const lane0 = (p: any) => (Array.isArray(p?._marketComparables) ? p._marketCompa
 /*
  * OFFICIAL TAS VISUALS → PRIVATE STORAGE, KEYED BY CONTENT HASH.
  *
- * The worker selects ≤ 6 genuine visuals from TAS attachments and holds the
- * bytes briefly. They are copied once into the private bucket under their
- * sha256, so an unchanged visual is never re-uploaded or re-analysed for a
- * later job (the hash IS the cache key). The customer only ever receives a
- * short-lived signed URL, minted by verify-synthesis at read time.
- * Marketplace photographs never pass through here.
+ * The worker selects a bounded, diverse set of official visuals from TAS
+ * attachments (≤ VISUAL_ASSET_MAX: renders, photos, rendered drawing pages)
+ * and holds the bytes briefly. They are copied once into the private bucket
+ * under their sha256, so an unchanged visual is never re-uploaded or
+ * re-analysed for a later job (the hash IS the cache key). The customer only
+ * ever receives a short-lived signed URL, minted by verify-synthesis at read
+ * time. Provenance, classification and identity hints travel with each
+ * record; the customer-facing scope is decided in tasIntelligence against
+ * the requested unit. Marketplace photographs never pass through here.
  */
 const VISUAL_BUCKET = 'verify-official-visuals';
+/** Legacy (non-queue) copy budget: never let visuals starve the poll. */
+const VISUAL_COLLECT_BUDGET_MS = 60_000;
+const VISUAL_COLLECT_BYTES_MAX = 96 * 1024 * 1024;
 async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
   try {
     const tas = (w?.results || []).find((r: any) => r?.source === 'tas' && r?.tasApi);
-    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 4) : [];
+    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, VISUAL_ASSET_MAX) : [];
     if (!visuals.length) return;
+    const t0 = Date.now();
+    let bytesCopied = 0;
     const out: any[] = [];
+    const failures: string[] = [];
+    const inBucket = async (id: string) => {
+      const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: id, limit: 1 });
+      return Array.isArray(data) && data.length > 0;
+    };
     for (const v of visuals) {
       if (!/^[a-f0-9]{64}$/.test(String(v?.id || ''))) continue;
       const ext = v.mime === 'image/png' ? 'png' : 'jpg';
       const path = `tas/${v.id}.${ext}`;
       let stored = false;
       if (w?.view === 'queue') {
-        // Queue mode: the worker replica that read TAS stored the bytes itself.
-        const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: v.id });
-        stored = Array.isArray(data) && data.length > 0;
+        // Queue mode: the worker replica that read TAS stored the bytes itself
+        // and says so; only an unconfirmed record costs a listing.
+        stored = v.stored === true || (await inBucket(v.id));
+      } else if (Date.now() - t0 > VISUAL_COLLECT_BUDGET_MS || bytesCopied > VISUAL_COLLECT_BYTES_MAX) {
+        stored = await inBucket(v.id);
       } else try {
         const res = await fetch(`${WORKER}/research/visual/${v.id}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(20000) });
         if (res.ok) {
           const bytes = new Uint8Array(await res.arrayBuffer());
+          bytesCopied += bytes.length;
           const up = await sb.storage.from(VISUAL_BUCKET).upload(path, bytes, { contentType: v.mime, upsert: false });
           stored = !up.error || /exist|duplicate/i.test(String(up.error?.message || ''));
+          if (!stored) failures.push(`${String(v.id).slice(0, 12)}:${String(up.error?.message || 'upload').slice(0, 60)}`);
         } else if (res.status === 404) {
           // Evicted from the worker's cache: the bucket may still hold it from an earlier job.
-          const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: v.id });
-          stored = Array.isArray(data) && data.length > 0;
+          stored = await inBucket(v.id);
         }
-      } catch {
+      } catch (e) {
+        failures.push(`${String(v.id).slice(0, 12)}:${String((e as any)?.message || e).slice(0, 60)}`);
         stored = false;
       }
       if (!stored) continue;
       out.push({
-        id: v.id, role: v.role, kind: v.kind, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null,
-        mime: v.mime, extraction: v.extraction, storagePath: path,
+        id: v.id, role: v.role, kind: v.kind, category: v.category ?? null, confidence: v.confidence ?? null,
+        classificationBasis: v.classificationBasis ?? null, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null,
+        mime: v.mime, extraction: v.extraction, page: v.page ?? null, storagePath: path,
         documentId: v.documentId, attachedFileId: v.attachedFileId, motionId: v.motionId ?? null, fileName: v.fileName ?? null,
+        identity: v.identity ?? null, source: 'TAS', usage: 'OFFICIAL_RECORD_REFERENCE',
       });
     }
     if (out.length) p.officialVisuals = out;
+    if (failures.length) {
+      console.warn(JSON.stringify({ scope: 'official_visuals', event: 'visual_copy_failed', count: failures.length, sample: failures.slice(0, 3) }));
+      p._officialVisualsError = `copy failed for ${failures.length} visual(s)`;
+    }
   } catch (e) {
     p._officialVisualsError = String((e as any)?.message || e).slice(0, 160);
   }
@@ -2562,7 +2628,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
   await ensureMarketLane(sb, j, j.result_json);
-  await pollVerifyMarketplace(j.result_json);
+  await pollVerifyMarketplace(j.result_json, j);
   if (w.status === 'WAITING_HUMAN') {
     const p = j.result_json || {};
     p._captchaReturnStage = 'BROWSER_WAITING';
@@ -4509,7 +4575,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       // MyHome.ge / SS.ge comparables must be folded BEFORE MARKET reads the
       // set. Still running → hold this stage for the next tick (bounded by
       // VERIFY_MARKET_MAX_WAIT_MS from its start; never indefinitely).
-      const stillWaiting = await pollVerifyMarketplace(j.result_json);
+      const stillWaiting = await pollVerifyMarketplace(j.result_json, j);
       if (laneRan || stillWaiting || j.result_json._verifyMarket?.done) {
         await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       }

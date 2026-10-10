@@ -20,12 +20,24 @@
 // It is pure: same input, same output. No clock, no network, no database.
 
 /**
- * The comparison hierarchy, narrowest first.
+ * The comparison hierarchy, most relevant first (2026-10-10 market gate).
  *
- * PEER_PROJECT sits between the district and the open market on purpose: a
- * boutique development elsewhere in the city is a far better guide to a
- * boutique development's price than the district average, which mixes it
- * with generic stock it does not actually compete with.
+ *   SAME_PROJECT   the same development (same building when a block is known)
+ *   SAME_STREET    the immediate micro-location: the same street, or measured
+ *                  within 600 m when both sides carry coordinates
+ *   PEER_PROJECT   a NAMED comparable development in the SAME or an ADJACENT
+ *                  neighbourhood (see marketGeography.ts) whose segment is
+ *                  shown to match — price band and/or condition. Unknown
+ *                  segment or unknown geography never qualifies.
+ *   SAME_DISTRICT  other stock in the same neighbourhood — context only
+ *   WIDER_MARKET   everything else in the city — background only
+ *
+ * Only the first three may ever form the HEADLINE range, and only with at
+ * least MIN_RELIABLE_SAMPLE listings after outlier trimming. Production job
+ * 220ed087 (Villion Krtsanisi Homes) headlined "$928–3,000/m²" from 39
+ * listings in Saburtalo, Navtlughi, Didi Dighomi and Didube labelled
+ * PEER_PROJECT merely because they carried a project name. That label no
+ * longer means "named, anywhere".
  */
 import {
   conditionDistance,
@@ -34,6 +46,7 @@ import {
   type ConditionGrade,
   type ConditionMix,
 } from './comparableCondition.ts';
+import { areAdjacent, firstAreaOf, type AreaKey } from './marketGeography.ts';
 
 export type ComparableTier =
   | 'SAME_PROJECT'
@@ -42,15 +55,119 @@ export type ComparableTier =
   | 'PEER_PROJECT'
   | 'WIDER_MARKET';
 
+/** The tiers allowed to form the headline range. Everything else is context. */
+export const HEADLINE_TIERS: readonly ComparableTier[] = ['SAME_PROJECT', 'SAME_STREET', 'PEER_PROJECT'];
+
+/** Fewer reliable listings than this and there is no headline range at all. */
+export const MIN_RELIABLE_SAMPLE = 3;
+
+/** What the headline is built from, or why there is none. */
+export type MarketBasis = ComparableTier | 'EVIDENCE_LIMITED';
+
+/**
+ * Short machine-readable reasons a comparable sits where it does.
+ * Stable codes — the narrative and Admin read these, never free prose.
+ */
+export type RelevanceReason =
+  | 'SAME_PROJECT'
+  | 'SAME_STREET'
+  | 'WITHIN_600M'
+  | 'SAME_DISTRICT'
+  | 'ADJACENT_DISTRICT'
+  | 'OTHER_DISTRICT'
+  | 'DISTRICT_UNKNOWN'
+  | 'DISTRICT_FROM_STREET_NAME'
+  | 'NAMED_DEVELOPMENT'
+  | 'UNNAMED_STOCK'
+  | 'PRICE_BAND_MATCH'
+  | 'PRICE_BAND_MISMATCH'
+  | 'CONDITION_MATCH'
+  | 'CONDITION_MISMATCH'
+  | 'SEGMENT_UNKNOWN'
+  | 'SIZE_NEAR_IDENTICAL'
+  | 'SIZE_SIMILAR'
+  | 'SIZE_VERY_DIFFERENT'
+  | 'SAME_ROOMS'
+  | 'SIMILAR_FLOOR'
+  | 'ACTIVE'
+  | 'EXPIRED'
+  | 'STALE'
+  | 'HEADLINE_ELIGIBLE'
+  | 'CONTEXT_ONLY'
+  | 'OUTLIER_TRIMMED';
+
 /** Published per band, so the customer sees the whole hierarchy at once. */
 export interface TierStats {
   tier: ComparableTier;
+  /** After outlier trimming (IQR) when the band holds four or more. */
   median: number;
   min: number;
   max: number;
   count: number;
   /** Too few listings to characterise this band on its own. */
   thin: boolean;
+  /** SAME_DISTRICT / WIDER_MARKET: background, never this property's value. */
+  contextOnly: boolean;
+  /** Listings outside the IQR fences, left out of median/min/max. */
+  outliersTrimmed: number;
+}
+
+/**
+ * The project's OWN asking prices — never transactions.
+ *
+ * A same-project listing, an archived offer for the project, or the
+ * developer's marketing "from" price. Kept apart from the headline so a
+ * report with no reliable local sample can still say what the project
+ * itself asks, labelled as an ask.
+ */
+export type ProjectAskingOrigin = 'SAME_PROJECT_LISTING' | 'ARCHIVED_OFFER' | 'DEVELOPER_MARKETING';
+
+export interface ProjectAskingEvidence {
+  kind: 'ASKING';
+  origin: ProjectAskingOrigin;
+  pricePerSqm: number;
+  currency: string;
+  state: ListingState;
+  url?: string;
+  date?: string;
+  /** Always true: an asking price is not a sale price. */
+  notTransaction: true;
+}
+
+/** The headline range, or the explicit statement that there is none. */
+export interface MarketHeadline {
+  state: 'RANGE' | 'EVIDENCE_LIMITED';
+  basis: MarketBasis;
+  /** Which headline-eligible tiers the numbers came from. Empty when limited. */
+  tiersUsed: ComparableTier[];
+  median: number | null;
+  mean: number | null;
+  min: number | null;
+  max: number | null;
+  /** Listings in the range after trimming; when limited, the eligible listings found. */
+  count: number;
+  outliersTrimmed: number;
+  minimumSample: number;
+  trimMethod: 'IQR_1_5' | 'NONE';
+}
+
+/** One line of "why these comparables", as a stable code plus a count. */
+export interface WhySelected {
+  code:
+    | 'HEADLINE_FROM_TIER'
+    | 'EVIDENCE_LIMITED'
+    | 'CONTEXT_ONLY_TIER'
+    | 'EXCLUDED_OTHER_DISTRICT'
+    | 'EXCLUDED_DISTRICT_UNKNOWN'
+    | 'EXCLUDED_SEGMENT_MISMATCH'
+    | 'EXCLUDED_SEGMENT_UNKNOWN'
+    | 'EXCLUDED_STALE'
+    | 'OUTLIERS_TRIMMED'
+    | 'DUPLICATES_REMOVED'
+    | 'EXPIRED_EXCLUDED'
+    | 'PROJECT_ASKING_EVIDENCE';
+  count: number;
+  tier?: ComparableTier;
 }
 
 /**
@@ -95,6 +212,10 @@ export interface RawComparable {
   url?: string | null;
   source?: string | null;
   similarity?: string | null;
+  /** The neighbourhood the source stated, when it did. */
+  district?: string | null;
+  /** Measured metres from the subject, only when both had coordinates. */
+  distanceM?: number | string | null;
 }
 
 /**
@@ -129,6 +250,16 @@ export interface ScoredComparable {
   state: ListingState;
   /** When the listing itself is dated, how old it was at research time. */
   ageMonths?: number;
+  /** Machine-readable: why this listing sits in its tier and how it compares. */
+  relevanceReasons: RelevanceReason[];
+  /** The neighbourhood it resolved to, when one could be read. */
+  district?: AreaKey;
+  /** Segment evidence against the subject: MATCH needs a positive signal. */
+  segment: 'MATCH' | 'MISMATCH' | 'UNKNOWN';
+  /** May contribute to the headline range (tier, freshness, not trimmed). */
+  headlineEligible: boolean;
+  /** Left out of a range because it fell outside the IQR fences. */
+  outlier?: boolean;
 }
 
 /**
@@ -147,6 +278,11 @@ export type SubjectValuationState =
   | 'AVAILABLE'
   /** The market is understood; this specific unit has no price to compare. */
   | 'NO_SUBJECT_PRICE'
+  /**
+   * Context exists, but fewer than MIN_RELIABLE_SAMPLE eligible local
+   * listings: there is no headline range to place this unit against.
+   */
+  | 'EVIDENCE_LIMITED'
   /** Nothing comparable was found; no market statement can be made at all. */
   | 'NO_COMPARABLE_BASIS';
 
@@ -157,15 +293,31 @@ export interface MarketIntelligence {
   subjectTotalPrice?: number;
   subjectArea?: number;
 
-  median: number;
-  mean: number;
-  min: number;
-  max: number;
+  /*
+   * THE HEADLINE, MIRRORED FROM `headline` FOR EXISTING READERS.
+   *
+   * Null when the basis is EVIDENCE_LIMITED: no district or city spread is
+   * ever substituted for a missing local range.
+   */
+  median: number | null;
+  mean: number | null;
+  min: number | null;
+  max: number | null;
+  /** Listings behind the headline (eligible listings found, when limited). */
   count: number;
+  /** Every priced listing that was scored, whatever its tier. */
+  analyzedCount: number;
 
-  /** The band the analysis is really based on, strongest available. */
-  basis: ComparableTier;
+  /** The band the headline is based on, or EVIDENCE_LIMITED. */
+  basis: MarketBasis;
   basisCount: number;
+  headline: MarketHeadline;
+  /** The project's own asking prices (listings, archived offers, marketing). */
+  projectAskingEvidence: ProjectAskingEvidence[];
+  /** Summary of projectAskingEvidence; asks, never transactions. */
+  projectAskingRange: { min: number; max: number; median: number; count: number; currency: string } | null;
+  /** Why the headline is what it is, as stable codes with counts. */
+  whySelected: WhySelected[];
 
   /*
    * MARKET CONTEXT AND SUBJECT VALUATION, ANSWERED SEPARATELY.
@@ -366,7 +518,10 @@ function monthsBetween(listed: string, retrieved: string): number | undefined {
   return Math.round(((to - from) / 86_400_000 / 30.44) * 10) / 10;
 }
 
-/** Tbilisi district names that appear in this pipeline's address strings. */
+/**
+ * The Tbilisi district an address names, in Georgian — kept for callers that
+ * want a display name. Tiering itself uses marketGeography.areaOf().
+ */
 const DISTRICT_HINTS = [
   'ვაკე', 'საბურთალო', 'ვერა', 'მთაწმინდა', 'კრწანისი', 'ისანი', 'სამგორი',
   'გლდანი', 'ნაძალადევი', 'დიდუბე', 'ჩუღურეთი', 'დიღომი', 'ვაშლიჯვარი',
@@ -387,12 +542,78 @@ export interface Subject {
   condition?: string;
   project?: string;
   address?: string;
+  /**
+   * The neighbourhood/district, when the research resolved one. Preferred
+   * over anything read out of the address, because a street NAMED after a
+   * neighbourhood ("Krtsanisi St.") is not proof of being in it.
+   */
+  district?: string;
   area?: number;
   rooms?: number;
   floor?: number;
   pricePerSqm?: number;
   totalPrice?: number;
   currency?: string;
+  /** PREMIUM tightens the price band a peer must sit in. */
+  segment?: 'PREMIUM' | 'STANDARD';
+  /** The project's own asks gathered outside the comparable list. */
+  projectAsking?: Array<{
+    pricePerSqm: number;
+    currency?: string;
+    origin: ProjectAskingOrigin;
+    url?: string;
+    date?: string;
+  }>;
+}
+
+/** Context the build computes once and every comparable is scored against. */
+export interface ScoringContext {
+  /**
+   * The project's own price level (subject ask, else the median of the
+   * project's asks). A peer's price band is judged against this.
+   */
+  priceAnchor?: number;
+}
+
+/** Older than this and a listing is context, never headline. */
+const STALE_MONTHS = 18;
+
+/** A peer's price per m² must sit inside anchor × [low, high]. */
+const BAND = { low: 0.75, high: 1.33, premiumLow: 0.85 };
+
+/**
+ * Whether a comparable is the same KIND of product as the subject.
+ *
+ * MATCH needs a positive signal — a price band around the project's own
+ * level, or a condition on a neighbouring rung. Anything contradicting is a
+ * MISMATCH. With no signal at all it is UNKNOWN, and UNKNOWN is never
+ * treated as a match.
+ */
+function segmentOf(
+  subject: Subject,
+  ppsm: number,
+  compCondition: unknown,
+  ctx: ScoringContext,
+  out: RelevanceReason[],
+): 'MATCH' | 'MISMATCH' | 'UNKNOWN' {
+  let match = false;
+  let mismatch = false;
+  const anchor = ctx.priceAnchor;
+  if (anchor && anchor > 0) {
+    const low = subject.segment === 'PREMIUM' ? BAND.premiumLow : BAND.low;
+    const r = ppsm / anchor;
+    if (r >= low && r <= BAND.high) { match = true; out.push('PRICE_BAND_MATCH'); }
+    else { mismatch = true; out.push('PRICE_BAND_MISMATCH'); }
+  }
+  const rungs = conditionDistance(subject.condition, compCondition);
+  if (rungs !== null) {
+    if (rungs <= 1) { match = true; out.push('CONDITION_MATCH'); }
+    else { mismatch = true; out.push('CONDITION_MISMATCH'); }
+  }
+  if (mismatch) return 'MISMATCH';
+  if (match) return 'MATCH';
+  out.push('SEGMENT_UNKNOWN');
+  return 'UNKNOWN';
 }
 
 /**
@@ -403,8 +624,12 @@ export interface Subject {
  * room similarity refine within that; recency and an active listing state add
  * a little confidence. A generic city-wide listing can never outscore a
  * same-project one.
+ *
+ * The research layer's own label is trusted only where it cannot overstate:
+ * SAME_PROJECT (identity) and a measured distance. A PEER_PROJECT or
+ * MICRO_LOCATION label alone proves nothing about where a listing is.
  */
-export function scoreComparable(subject: Subject, c: RawComparable): ScoredComparable | null {
+export function scoreComparable(subject: Subject, c: RawComparable, ctx: ScoringContext = {}): ScoredComparable | null {
   const pps = num(c.pricePerSqm);
   const area = num(c.area);
   const total = num(c.price);
@@ -412,6 +637,7 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
   if (!derived || derived <= 0) return null;
 
   const reasons: string[] = [];
+  const why: RelevanceReason[] = [];
   let tier: ComparableTier = 'WIDER_MARKET';
   /*
    * THE BASE LEAVES ROOM FOR THE REFINEMENTS.
@@ -419,67 +645,80 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
    * These used to start at 100 for a same-project listing, against a 0..100
    * clamp — so every refinement above it was discarded, and two flats in the
    * same building both scored 100 whether one was bare concrete and the other
-   * finished. That is the one place condition matters MOST, and it was the
-   * one place the score could not express it.
-   *
-   * The bands still dominate, and the tier-first sort below makes that
-   * structural rather than arithmetic: a peer project cannot outrank a
-   * location match however well it refines.
+   * finished. The bands still dominate, and the tier-first sort below makes
+   * that structural rather than arithmetic.
    */
   let score = 16;
 
   const state: ListingState =
     lower(c.listingStatus) === 'active'
       ? 'ACTIVE'
-      : /expired|removed|sold|inactive|withdrawn|დასრულებ|წაშლილ/.test(lower(c.listingStatus))
+      : /expired|removed|sold|inactive|withdrawn|archiv|დასრულებ|წაშლილ/.test(lower(c.listingStatus))
         ? 'EXPIRED'
         : 'UNKNOWN';
 
-  const peerProject = lower(c.comparableType) === 'peer_project';
-  // A project name the subject does not share. Not a location match, but
-  // not anonymous stock either.
-  const namedDevelopment = !!text(c.project);
+  const label = lower(c.comparableType);
   const sameProject =
-    lower(c.comparableType) === 'same_project' ||
+    label === 'same_project' ||
     // Both addresses, so a shared district name is recognised as a place
     // rather than as a shared identity.
     sameProjectName(subject.project, c.project, `${text(subject.address)} ${text(c.address)}`);
   const sameStreet =
     !!subject.address && !!c.address && streetKey(subject.address) !== '' &&
     streetKey(subject.address) === streetKey(c.address);
-  const subjDistrict = districtOf(subject.address);
-  const compDistrict = districtOf(c.address);
+  const distance = num(c.distanceM);
+  const measuredNear = distance !== undefined && distance >= 0 && distance <= 600;
+
+  const subjArea = firstAreaOf(subject.district, subject.address);
+  const compArea = firstAreaOf(c.district, c.address);
+  const relation: 'SAME' | 'ADJACENT' | 'OTHER' | 'UNKNOWN' =
+    !subjArea || !compArea
+      ? 'UNKNOWN'
+      : subjArea.area === compArea.area
+        ? 'SAME'
+        : areAdjacent(subjArea.area, compArea.area)
+          ? 'ADJACENT'
+          : 'OTHER';
+  const named = !!text(c.project) || label === 'peer_project';
 
   if (sameProject) {
     tier = 'SAME_PROJECT';
     score = 76;
     reasons.push('same project');
-  } else if (sameStreet) {
+    why.push('SAME_PROJECT');
+  } else if (sameStreet || measuredNear) {
     tier = 'SAME_STREET';
     score = 60;
     reasons.push('same street');
-  } else if (subjDistrict && compDistrict && subjDistrict === compDistrict) {
-    tier = 'SAME_DISTRICT';
-    score = 46;
-    reasons.push('same district');
-  } else if (peerProject || namedDevelopment) {
-    /*
-     * A NAMED DEVELOPMENT ELSEWHERE IS A PEER, NOT GENERIC STOCK.
-     *
-     * PEER_PROJECT had never once been produced in production. The research
-     * layer labels a distant development MICRO_LOCATION more often than
-     * PEER_PROJECT, and this branch only trusted its label — so a comparable
-     * like "Villa Residence" on a street with no district hint fell all the
-     * way to WIDER_MARKET and sat beside arbitrary city stock.
-     *
-     * Carrying a project NAME is itself the evidence: an apartment in a named
-     * development is a closer comparison for another named development than
-     * an unbranded flat is. Better than the open market, weaker than any
-     * location match, and never allowed to outrank one.
-     */
-    tier = 'PEER_PROJECT';
-    score = 32;
-    reasons.push('comparable development');
+    why.push(sameStreet ? 'SAME_STREET' : 'WITHIN_600M');
+  } else {
+    why.push(
+      relation === 'SAME' ? 'SAME_DISTRICT'
+        : relation === 'ADJACENT' ? 'ADJACENT_DISTRICT'
+          : relation === 'OTHER' ? 'OTHER_DISTRICT'
+            : 'DISTRICT_UNKNOWN',
+    );
+    if (compArea?.viaStreetName || (relation !== 'UNKNOWN' && subjArea?.viaStreetName)) why.push('DISTRICT_FROM_STREET_NAME');
+    why.push(named ? 'NAMED_DEVELOPMENT' : 'UNNAMED_STOCK');
+    // Segment is only asked of a candidate peer: nearby and named.
+    const nearby = relation === 'SAME' || relation === 'ADJACENT';
+    const segment = nearby && named ? segmentOf(subject, derived, c.condition, ctx, why) : 'UNKNOWN';
+    if (nearby && named && segment === 'MATCH') {
+      /*
+       * A NAMED DEVELOPMENT NEARBY, IN THE SAME SEGMENT, IS A PEER.
+       *
+       * Strict on purpose. A name alone used to be enough — anywhere in the
+       * city — and that is how 39 listings from Saburtalo and Didi Dighomi
+       * became the "peer" basis of a Krtsanisi valuation.
+       */
+      tier = 'PEER_PROJECT';
+      score = 50;
+      reasons.push('comparable development nearby');
+    } else if (relation === 'SAME' || (relation === 'UNKNOWN' && label === 'same_district')) {
+      tier = 'SAME_DISTRICT';
+      score = 40;
+      reasons.push('same district');
+    }
   }
 
   const rooms = num(c.rooms);
@@ -487,16 +726,16 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
 
   if (subject.area && area) {
     const diff = Math.abs(area - subject.area) / subject.area;
-    if (diff <= 0.08) { score += 12; reasons.push('near-identical size'); }
-    else if (diff <= 0.2) { score += 6; reasons.push('similar size'); }
-    else if (diff > 0.5) { score -= 10; reasons.push('very different size'); }
+    if (diff <= 0.08) { score += 12; reasons.push('near-identical size'); why.push('SIZE_NEAR_IDENTICAL'); }
+    else if (diff <= 0.2) { score += 6; reasons.push('similar size'); why.push('SIZE_SIMILAR'); }
+    else if (diff > 0.5) { score -= 10; reasons.push('very different size'); why.push('SIZE_VERY_DIFFERENT'); }
   }
-  if (subject.rooms && rooms && rooms === subject.rooms) { score += 5; reasons.push('same room count'); }
-  if (subject.floor && floor && Math.abs(floor - subject.floor) <= 1) { score += 3; reasons.push('similar floor'); }
-  if (state === 'ACTIVE') { score += 4; reasons.push('currently listed'); }
+  if (subject.rooms && rooms && rooms === subject.rooms) { score += 5; reasons.push('same room count'); why.push('SAME_ROOMS'); }
+  if (subject.floor && floor && Math.abs(floor - subject.floor) <= 1) { score += 3; reasons.push('similar floor'); why.push('SIMILAR_FLOOR'); }
+  if (state === 'ACTIVE') { score += 4; reasons.push('currently listed'); why.push('ACTIVE'); }
   // A price that came off the market is weaker evidence of today's market,
   // even where it is still allowed to inform the picture.
-  if (state === 'EXPIRED') { score -= 8; reasons.push('no longer listed'); }
+  if (state === 'EXPIRED') { score -= 8; reasons.push('no longer listed'); why.push('EXPIRED'); }
 
   /*
    * CONDITION IS NOT A TIE-BREAKER, IT IS THE PRODUCT.
@@ -519,6 +758,17 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
   // months ago describes a different one, and says so quietly rather than
   // being thrown away.
   if (ageMonths !== undefined && ageMonths > 12) { score -= 6; reasons.push('older listing'); }
+  const stale = ageMonths !== undefined && ageMonths > STALE_MONTHS;
+  if (stale) why.push('STALE');
+
+  const segment: ScoredComparable['segment'] =
+    why.includes('PRICE_BAND_MISMATCH') || why.includes('CONDITION_MISMATCH')
+      ? 'MISMATCH'
+      : why.includes('PRICE_BAND_MATCH') || why.includes('CONDITION_MATCH')
+        ? 'MATCH'
+        : 'UNKNOWN';
+  const headlineEligible = HEADLINE_TIERS.includes(tier) && !stale;
+  why.push(headlineEligible ? 'HEADLINE_ELIGIBLE' : 'CONTEXT_ONLY');
 
   return {
     url: text(c.url) || undefined,
@@ -535,6 +785,10 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
     totalPrice: total,
     similarity: text(c.similarity) || undefined,
     reasons,
+    relevanceReasons: why,
+    district: compArea?.area,
+    segment,
+    headlineEligible,
   };
 }
 
@@ -573,8 +827,12 @@ export function positioningFor(deltaPct: number): Positioning {
  * The build                                                           *
  * ------------------------------------------------------------------ */
 
-const TIER_ORDER: ComparableTier[] = [
-  'SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'PEER_PROJECT', 'WIDER_MARKET',
+/*
+ * Most relevant first. A strict PEER_PROJECT (named, nearby, same segment)
+ * now outranks generic same-district stock: it is the closer product.
+ */
+export const TIER_ORDER: ComparableTier[] = [
+  'SAME_PROJECT', 'SAME_STREET', 'PEER_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET',
 ];
 
 /*
@@ -637,8 +895,31 @@ export function qualityFactorsFrom(
   return out;
 }
 
-/** At least this many listings before a tier can carry the analysis alone. */
-const MIN_FOR_BASIS = 2;
+/**
+ * Tukey fences (1.5 × IQR) on price per m².
+ *
+ * Nothing is trimmed below four listings: with three, "the odd one out" is a
+ * matter of opinion, and the range already says how wide it is.
+ */
+export function trimOutliers<T>(items: T[], value: (t: T) => number): { kept: T[]; trimmed: T[] } {
+  if (items.length < 4) return { kept: items.slice(), trimmed: [] };
+  const s = items.map(value).sort((a, b) => a - b);
+  const q = (p: number): number => {
+    const i = (s.length - 1) * p;
+    const lo = Math.floor(i);
+    const hi = Math.ceil(i);
+    return s[lo] + (s[hi] - s[lo]) * (i - lo);
+  };
+  const q1 = q(0.25);
+  const q3 = q(0.75);
+  const iqr = q3 - q1;
+  const low = q1 - 1.5 * iqr;
+  const high = q3 + 1.5 * iqr;
+  const kept: T[] = [];
+  const trimmed: T[] = [];
+  for (const t of items) (value(t) >= low && value(t) <= high ? kept : trimmed).push(t);
+  return { kept, trimmed };
+}
 
 /**
  * The same flat, posted twice.
@@ -671,24 +952,106 @@ function comparableIdentity(c: ScoredComparable & { project?: string }): string 
   ]);
 }
 
+const ARCHIVE_HINT = /archiv|არქივ|wayback|web\.archive/i;
+
+/**
+ * The project's own asking prices, from what the research recorded.
+ *
+ * Same-project listings (live or archived) and the developer's marketing
+ * "from" price. Every entry is kind ASKING: none of them is what a flat sold
+ * for, and the type cannot say otherwise.
+ */
+function projectAskingFrom(
+  subject: Subject,
+  sameProject: ScoredComparable[],
+): ProjectAskingEvidence[] {
+  const out: ProjectAskingEvidence[] = [];
+  const seen = new Set<string>();
+  const push = (e: ProjectAskingEvidence) => {
+    const key = `${e.origin}|${Math.round(e.pricePerSqm)}|${(e.url ?? '').toLowerCase().replace(/[?#].*$/, '')}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(e);
+  };
+  for (const a of subject.projectAsking ?? []) {
+    const p = num(a?.pricePerSqm);
+    if (!p || p <= 0) continue;
+    push({
+      kind: 'ASKING',
+      origin: a.origin,
+      pricePerSqm: Math.round(p),
+      currency: text(a.currency) || subject.currency || 'USD',
+      state: a.origin === 'ARCHIVED_OFFER' ? 'EXPIRED' : 'UNKNOWN',
+      ...(a.url ? { url: a.url } : {}),
+      ...(a.date ? { date: a.date } : {}),
+      notTransaction: true,
+    });
+  }
+  for (const c of sameProject) {
+    const archived = c.state === 'EXPIRED' || ARCHIVE_HINT.test(`${c.similarity ?? ''} ${c.url ?? ''}`);
+    push({
+      kind: 'ASKING',
+      origin: archived ? 'ARCHIVED_OFFER' : 'SAME_PROJECT_LISTING',
+      pricePerSqm: Math.round(c.pricePerSqm),
+      currency: c.currency,
+      state: c.state,
+      ...(c.url ? { url: c.url } : {}),
+      notTransaction: true,
+    });
+  }
+  return out;
+}
+
+const CONTEXT_TIERS: readonly ComparableTier[] = ['SAME_DISTRICT', 'WIDER_MARKET'];
+
+/**
+ * THE ONE PLACE THE MARKET HEADLINE IS COMPUTED.
+ *
+ * Called at synthesis (bundle.ts → verify-synthesis), after acquisition has
+ * finished, over every comparable the run gathered. The model is handed the
+ * result; it never computes or widens a range itself.
+ *
+ *   1. score every comparable (tier, segment, freshness, reasons);
+ *   2. dedupe, and drop expired listings while current ones exist;
+ *   3. headline = the most relevant HEADLINE tier holding ≥ 3 listings after
+ *      IQR trimming, else all headline-eligible listings together if they
+ *      reach 3 (labelled with the widest tier used), else EVIDENCE_LIMITED
+ *      with NO median/min/max — a district or city spread is never put in
+ *      its place;
+ *   4. district and city bands are published as context only;
+ *   5. the project's own asks travel separately as ASKING evidence.
+ */
 export function buildMarketIntelligence(
   subject: Subject,
   raw: RawComparable[],
   /** Snapshot signals, so the price can be read against the product. */
   quality: QualityFactor[] = []
 ): MarketIntelligence | null {
-  const all = raw
+  /*
+   * THE PROJECT'S OWN PRICE LEVEL, FOR THE PEER PRICE BAND.
+   *
+   * The subject's own ask when it has one; otherwise what the project itself
+   * asks (marketing price, archived offers, same-project listings). Without
+   * any of these, a peer can still match on condition — never on nothing.
+   */
+  const firstPass = raw
     .map((c) => scoreComparable(subject, c))
+    .filter((c): c is ScoredComparable => !!c);
+  const projectLevels = [
+    ...(subject.projectAsking ?? []).map((a) => num(a?.pricePerSqm)).filter((n): n is number => !!n && n > 0),
+    ...firstPass.filter((c) => c.tier === 'SAME_PROJECT').map((c) => c.pricePerSqm),
+  ];
+  const priceAnchor = subject.pricePerSqm || (projectLevels.length ? median(projectLevels) : undefined);
+
+  const all = raw
+    .map((c) => scoreComparable(subject, c, { priceAnchor }))
     .filter((c): c is ScoredComparable => !!c)
     /*
      * BAND FIRST, THEN HOW CLOSE WITHIN IT.
      *
      * Sorting on the score alone made 'a peer project never outranks a
-     * location match' an arithmetic accident: it held only while the band
-     * bases happened to be further apart than the refinements could reach.
-     * Making it the primary key states the rule instead of hoping for it,
-     * and frees the score to mean what it should — how comparable this
-     * listing is, given its band.
+     * location match' an arithmetic accident. Making it the primary key
+     * states the rule instead of hoping for it.
      */
     .sort((x, y) => TIER_ORDER.indexOf(x.tier) - TIER_ORDER.indexOf(y.tier) || y.relevance - x.relevance);
 
@@ -705,15 +1068,9 @@ export function buildMarketIntelligence(
   /*
    * A PRICE THAT CAME OFF THE MARKET IS NOT THIS MARKET.
    *
-   * An expired listing is a historical asking level. Including it in today's
-   * median says the market contains an offer that no longer exists.
-   *
-   * But it is only dropped when there is still something to compare against:
-   * with nothing else, a withdrawn asking price is the only evidence there
-   * is, and returning null instead would tell the buyer nothing at all. And
-   * UNKNOWN is never treated as expired — roughly a third of production
-   * comparables carry no status, and reading our own missing field as
-   * "removed" is the absence rule broken in arithmetic instead of in prose.
+   * Dropped only when there is still something current to compare against,
+   * and UNKNOWN is never treated as expired. An expired same-project offer
+   * is still kept as the project's own ASKING evidence below.
    */
   const current = unique.filter((c) => c.state !== 'EXPIRED');
   const expiredExcluded = current.length ? unique.length - current.length : 0;
@@ -726,134 +1083,183 @@ export function buildMarketIntelligence(
     {} as Record<ComparableTier, number>
   );
 
-  // The narrowest band that actually has enough listings to mean something.
-  // Falling back one tier at a time is what stops a single same-project
-  // listing from being presented as "the market".
-  let basis: ComparableTier = 'WIDER_MARKET';
-  let basisSet = scored;
-  let basisIsThin = false;
-  for (const t of TIER_ORDER) {
-    const inTier = scored.filter((c) => c.tier === t);
-    if (inTier.length >= MIN_FOR_BASIS) { basis = t; basisSet = inTier; break; }
+  /* ---- the headline: eligible tiers only, trimmed, at least three ---- */
+
+  const eligible = scored.filter((c) => c.headlineEligible);
+  let chosen: ScoredComparable[] | null = null;
+  let trimmedOut: ScoredComparable[] = [];
+  let tiersUsed: ComparableTier[] = [];
+  for (const t of HEADLINE_TIERS) {
+    const { kept, trimmed } = trimOutliers(eligible.filter((c) => c.tier === t), (c) => c.pricePerSqm);
+    if (kept.length >= MIN_RELIABLE_SAMPLE) {
+      chosen = kept;
+      trimmedOut = trimmed;
+      tiersUsed = [t];
+      break;
+    }
   }
-  /*
-   * Nothing reached the minimum.
-   *
-   * This used to relabel the basis as SAME_PROJECT whenever exactly one
-   * same-project listing existed — while the median was still being computed
-   * across EVERY comparable. The report then said "in the same project"
-   * about a number that came from the whole set, which is the one thing a
-   * price comparison must never do.
-   *
-   * The honest description is: everything we have, and not enough of it. The
-   * numbers still compute — a single asking price is real information — but
-   * `basisIsThin` travels with them so the prose, the model and the UI can
-   * all say so instead of implying a precision that is not there.
-   */
-  if (basisSet === scored) {
-    // No single band could carry the analysis, so it is stitched across all
-    // of them. That is thin by definition, however many listings there are
-    // in total: two listings from two different bands do not describe either
-    // band. The label is the WIDEST band actually present — the honest
-    // description of a set that reaches that far — and never a narrower one
-    // the numbers did not come from.
-    basisIsThin = true;
-    const present = TIER_ORDER.filter((t) => tierCounts[t] > 0);
-    if (present.length) basis = present[present.length - 1];
+  if (!chosen) {
+    /*
+     * No single tier is deep enough, but the eligible tiers together may be:
+     * two same-project asks and two named developments next door are four
+     * local listings. Labelled with the WIDEST tier used — never a narrower
+     * one the numbers did not come from.
+     */
+    const { kept, trimmed } = trimOutliers(eligible, (c) => c.pricePerSqm);
+    if (kept.length >= MIN_RELIABLE_SAMPLE) {
+      chosen = kept;
+      trimmedOut = trimmed;
+      tiersUsed = HEADLINE_TIERS.filter((t) => kept.some((c) => c.tier === t));
+    }
+  }
+  for (const c of trimmedOut) {
+    c.outlier = true;
+    c.relevanceReasons.push('OUTLIER_TRIMMED');
   }
 
-  const values = basisSet.map((c) => c.pricePerSqm);
-  const med = median(values);
+  const limited = !chosen;
+  const basis: MarketBasis = limited ? 'EVIDENCE_LIMITED' : tiersUsed[tiersUsed.length - 1];
+  const values = (chosen ?? []).map((c) => c.pricePerSqm);
+  const med = values.length ? median(values) : 0;
+  const headline: MarketHeadline = {
+    state: limited ? 'EVIDENCE_LIMITED' : 'RANGE',
+    basis,
+    tiersUsed,
+    median: limited ? null : Math.round(med),
+    mean: limited ? null : Math.round(mean(values)),
+    min: limited ? null : Math.round(Math.min(...values)),
+    max: limited ? null : Math.round(Math.max(...values)),
+    count: limited ? eligible.length : values.length,
+    outliersTrimmed: trimmedOut.length,
+    minimumSample: MIN_RELIABLE_SAMPLE,
+    trimMethod: trimmedOut.length ? 'IQR_1_5' : 'NONE',
+  };
+
   const closest = scored.slice(0, 5);
   // Same ordering, no truncation: selection needs the bands the shortlist
   // cannot reach.
   const ranked = scored;
 
-  const mix = conditionMix(basisSet.map((c) => c.condition));
+  const mix = conditionMix((chosen ?? []).map((c) => c.condition));
   const subjectGrade = conditionGrade(subject.condition);
   /*
-   * The comparison is between different products.
-   *
-   * Only claimed when BOTH sides are actually known and the comparables have
-   * a clear centre of gravity — an unknown condition on either side means we
-   * cannot say they differ, which is not the same as saying they match.
+   * The comparison is between different products. Only claimed when BOTH
+   * sides are actually known and the headline set has a clear centre.
    */
-  const conditionMismatch =
-    !!subjectGrade && !!mix.dominant && subjectGrade !== mix.dominant;
+  const conditionMismatch = !!subjectGrade && !!mix.dominant && subjectGrade !== mix.dominant;
 
   /*
    * MARKET CONTEXT AND SUBJECT VALUATION, ANSWERED SEPARATELY.
    *
-   * Set here rather than patched onto `out` afterwards, so the type carries
-   * them: a report that cannot say where THIS unit sits can still say what
-   * the market looks like, and the two answers must not collapse into one
-   * sentence about insufficient data.
+   * Context exists whenever priced listings were gathered — even when none
+   * of them may headline. Valuation needs a headline range.
    */
-  const contextAvailable = basisSet.length > 0 && med > 0;
+  const contextAvailable = scored.length > 0;
   const subjectValuation: SubjectValuationState = !contextAvailable
     ? 'NO_COMPARABLE_BASIS'
-    : subject.pricePerSqm
-      ? 'AVAILABLE'
-      : 'NO_SUBJECT_PRICE';
+    : limited
+      ? 'EVIDENCE_LIMITED'
+      : subject.pricePerSqm
+        ? 'AVAILABLE'
+        : 'NO_SUBJECT_PRICE';
+
+  const projectAskingEvidence = projectAskingFrom(subject, unique.filter((c) => c.tier === 'SAME_PROJECT'));
+  const askVals = projectAskingEvidence.map((e) => e.pricePerSqm);
+  const projectAskingRange = askVals.length
+    ? {
+        min: Math.min(...askVals),
+        max: Math.max(...askVals),
+        median: Math.round(median(askVals)),
+        count: askVals.length,
+        currency: projectAskingEvidence[0].currency,
+      }
+    : null;
+
+  /* ---- why: stable codes with counts, for the narrative and Admin ---- */
+
+  const whySelected: WhySelected[] = [];
+  const add = (code: WhySelected['code'], count: number, tier?: ComparableTier) => {
+    if (count > 0 || code === 'EVIDENCE_LIMITED') whySelected.push({ code, count, ...(tier ? { tier } : {}) });
+  };
+  if (limited) add('EVIDENCE_LIMITED', eligible.length);
+  else for (const t of tiersUsed) add('HEADLINE_FROM_TIER', (chosen ?? []).filter((c) => c.tier === t).length, t);
+  for (const t of CONTEXT_TIERS) add('CONTEXT_ONLY_TIER', tierCounts[t], t);
+  const has = (c: ScoredComparable, r: RelevanceReason) => c.relevanceReasons.includes(r);
+  const notHeadline = scored.filter((c) => !HEADLINE_TIERS.includes(c.tier));
+  add('EXCLUDED_OTHER_DISTRICT', notHeadline.filter((c) => has(c, 'OTHER_DISTRICT')).length);
+  add('EXCLUDED_DISTRICT_UNKNOWN', notHeadline.filter((c) => has(c, 'DISTRICT_UNKNOWN')).length);
+  add('EXCLUDED_SEGMENT_MISMATCH', notHeadline.filter((c) => c.segment === 'MISMATCH').length);
+  add('EXCLUDED_SEGMENT_UNKNOWN', notHeadline.filter((c) => has(c, 'SEGMENT_UNKNOWN')).length);
+  add('EXCLUDED_STALE', scored.filter((c) => HEADLINE_TIERS.includes(c.tier) && has(c, 'STALE')).length);
+  add('OUTLIERS_TRIMMED', trimmedOut.length);
+  add('DUPLICATES_REMOVED', duplicatesRemoved);
+  add('EXPIRED_EXCLUDED', expiredExcluded);
+  add('PROJECT_ASKING_EVIDENCE', projectAskingEvidence.length);
 
   const out: MarketIntelligence = {
     contextAvailable,
     subjectValuation,
-    currency: basisSet[0]?.currency ?? subject.currency ?? 'USD',
+    currency: chosen?.[0]?.currency ?? scored[0]?.currency ?? subject.currency ?? 'USD',
     subjectPricePerSqm: subject.pricePerSqm,
     subjectTotalPrice: subject.totalPrice,
     subjectArea: subject.area,
-    median: Math.round(med),
-    mean: Math.round(mean(values)),
-    min: Math.round(Math.min(...values)),
-    max: Math.round(Math.max(...values)),
-    count: values.length,
+    median: headline.median,
+    mean: headline.mean,
+    min: headline.min,
+    max: headline.max,
+    count: headline.count,
+    analyzedCount: scored.length,
     basis,
-    basisCount: basisSet.length,
+    basisCount: headline.count,
+    headline,
+    projectAskingEvidence,
+    projectAskingRange,
+    whySelected,
     closest,
     ranked,
     tierCounts,
-    // Every populated band, narrowest first. A single listing is still worth
-    // showing as context — it is only barred from CARRYING the analysis,
-    // which is what basis/MIN_FOR_BASIS decides.
+    // Every populated band, most relevant first, trimmed the same way. A
+    // single listing is still worth showing as context — it is only barred
+    // from CARRYING the analysis.
     tiers: TIER_ORDER.map((t) => {
       const inTier = scored.filter((c) => c.tier === t);
       if (!inTier.length) return null;
-      const vs = inTier.map((c) => c.pricePerSqm);
+      const { kept, trimmed } = trimOutliers(inTier, (c) => c.pricePerSqm);
+      const vs = kept.map((c) => c.pricePerSqm);
       return {
         tier: t,
         median: Math.round(median(vs)),
         min: Math.round(Math.min(...vs)),
         max: Math.round(Math.max(...vs)),
-        count: vs.length,
-        thin: vs.length < MIN_FOR_BASIS,
+        count: inTier.length,
+        thin: inTier.length < MIN_RELIABLE_SAMPLE,
+        contextOnly: !HEADLINE_TIERS.includes(t),
+        outliersTrimmed: trimmed.length,
       };
     }).filter((x): x is TierStats => x !== null),
     qualityFactors: quality,
-    basisIsThin,
+    basisIsThin: limited,
     askingNotTransaction: true,
     duplicatesRemoved,
     expiredExcluded,
     /*
-     * Computed over the BASIS, not over everything: the mix has to describe
-     * the set the median actually came from, or the prose would caveat the
-     * wrong number.
+     * Computed over the HEADLINE set, not over everything: the mix has to
+     * describe the set the median actually came from.
      */
     conditionMix: mix,
     subjectCondition: subjectGrade ?? undefined,
     conditionMismatch,
   };
 
-  // Positioning only exists when the subject has a price of its own. Verify
-  // runs from a cadastral code, so most of the time it does not — and
-  // inventing one from the comparables would be exactly the fabrication this
+  // Positioning only exists when the subject has a price of its own AND a
+  // headline range exists. Inventing either would be the fabrication this
   // product refuses.
-  if (subject.pricePerSqm && med > 0) {
+  if (!limited && subject.pricePerSqm && med > 0) {
     const delta = ((subject.pricePerSqm - med) / med) * 100;
     out.deltaFromMedianPct = round1(delta);
     out.positioning = positioningFor(delta);
 
-    const closestMed = median(closest.map((c) => c.pricePerSqm));
+    const closestMed = median((chosen ?? []).slice(0, 5).map((c) => c.pricePerSqm));
     if (closestMed > 0) {
       out.deltaFromClosestPct = round1(((subject.pricePerSqm - closestMed) / closestMed) * 100);
     }

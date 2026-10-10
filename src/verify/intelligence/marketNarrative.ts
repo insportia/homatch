@@ -92,6 +92,12 @@ export interface MarketShape {
   basisIsLocal: boolean;
   /** True when nothing was found in the same project or the same street. */
   noLocalEvidence: boolean;
+  /**
+   * The deterministic layer found fewer than three reliable local listings
+   * and produced NO headline range (basis EVIDENCE_LIMITED). Any figures are
+   * context only, and the frame says so.
+   */
+  evidenceLimited: boolean;
   /** i18n key framing the figures, or null when there are none to frame. */
   headlineKey: string | null;
 }
@@ -128,6 +134,7 @@ export function marketShape(market: unknown): MarketShape | null {
     count: count(counts[tier]),
   })).filter((t) => t.count > 0);
 
+  const evidenceLimited = String(m.basis ?? '').toUpperCase() === 'EVIDENCE_LIMITED';
   const basis = tierOf(m.basis);
   const basisCount = count(m.basisCount) || count(m.count);
   const basisIsLocal = !!basis && LOCAL_TIERS.has(basis);
@@ -166,7 +173,7 @@ export function marketShape(market: unknown): MarketShape | null {
         ? 'verify_mkt_frame_surrounding'
         : 'verify_mkt_frame_wider';
 
-  return { tiers, basis, basisCount, basisIsLocal, noLocalEvidence, headlineKey };
+  return { tiers, basis, basisCount, basisIsLocal, noLocalEvidence, evidenceLimited, headlineKey };
 }
 
 /* ------------------------------------------------------------------ *

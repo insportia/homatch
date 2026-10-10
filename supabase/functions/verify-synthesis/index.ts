@@ -601,8 +601,10 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     };
     // "No evidence at all" is a real, final answer, not a failure to retry.
     timing.persistAt = new Date().toISOString();
-    await persist(writer, jobId, { ...emptyPayload, _timing: timing });
-    return emptyPayload;
+    (emptyPayload as Record<string, unknown>)._timing = timing;
+    await persist(writer, jobId, emptyPayload);
+    const { _timing: _droppedEmptyTiming, ...emptyForCustomer } = emptyPayload as Record<string, unknown>;
+    return emptyForCustomer;
   }
 
   let raw: string | null = null;

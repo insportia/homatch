@@ -43,6 +43,23 @@ function sameSecret(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Postgres text and jsonb cannot hold U+0000, and official pages do contain it
+ * (MyGov 176, 2026-10-10: every `complete` failed with "unsupported Unicode
+ * escape sequence", the lease expired and the task re-ran the same CAPTCHAs).
+ * Strip it from every string, keys included, before anything reaches SQL.
+ */
+function stripNul(v: unknown): unknown {
+  if (typeof v === 'string') return v.includes('\u0000') ? v.replaceAll('\u0000', '') : v;
+  if (Array.isArray(v)) return v.map(stripNul);
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) out[stripNul(k) as string] = stripNul(x);
+    return out;
+  }
+  return v;
+}
+
 const str = (v: unknown, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
 const int = (v: unknown, lo: number, hi: number, d: number) => {
   const n = Math.trunc(Number(v));
@@ -65,7 +82,7 @@ Deno.serve(async (req: Request) => {
   if (text.length > MAX_BODY_BYTES) return json({ error: 'PAYLOAD_TOO_LARGE' }, 413);
   let body: Record<string, any>;
   try {
-    body = JSON.parse(text);
+    body = stripNul(JSON.parse(text)) as Record<string, any>;
   } catch {
     return json({ error: 'BAD_JSON' }, 400);
   }

@@ -140,13 +140,16 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
               }
             }
             const candidate = candidateFromMyHome(raw, filters, searchUrl);
-            candidate.retrievalMetadata = { ...candidate.retrievalMetadata,
-              acquisition: options.pageFetcher ? options.pageTransport ?? 'PUBLIC_NEXT_DATA_BROWSER' : 'PUBLIC_NEXT_DATA',
+            // Ingress retains at most 20 metadata entries. Completeness must
+            // precede optional dictionary diagnostics or it is silently lost.
+            candidate.retrievalMetadata = {
               observationLevel: detailStatus === 'COMPLETE' ? 'DETAIL' : 'SEARCH_RESULT',
               detailEnrichment: detailStatus, detailVerifiedAt: detailStatus === 'COMPLETE' ? candidate.observedAt ?? null : null,
               availability: 'UNKNOWN', freshnessBasis: candidate.updatedAt ? 'SOURCE_UPDATED_AT' : 'OBSERVED_AT_ONLY',
               missingFields: ['description', 'bathrooms', 'latitude', 'longitude', 'renovationStatus', 'constructionYear', 'parking', 'publishedAt']
-                .filter(key => candidate[key as keyof ExternalListingCandidate] == null).join(',') };
+                .filter(key => candidate[key as keyof ExternalListingCandidate] == null).join(','),
+              ...candidate.retrievalMetadata,
+              acquisition: options.pageFetcher ? options.pageTransport ?? 'PUBLIC_NEXT_DATA_BROWSER' : 'PUBLIC_NEXT_DATA' };
             candidates.push(candidate);
         }
         newRows.forEach(row => { seenIds.add(row.source_id); if (row.source_uuid) seenUuids.add(row.source_uuid); });

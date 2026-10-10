@@ -72,3 +72,14 @@ test('the walk is dressed (art, books, curtains) without touching the design, an
   assert.match(overlay, /<span>\{tr\(planOpen \? 'ds_walk_plan_hide' : 'ds_walk_plan_show'\)\}<\/span>/);
   assert.match(overlay, /return v \? v === 'open' : !touch;/);
 });
+
+test('time of day, Live Here and sharing are on the screen, each explained — never folded into a menu', () => {
+  const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');
+  assert.match(overlay, /<FeatureDock tr=\{tr\} touch=\{touch\} env=\{env\}/);
+  for (const k of ['ds_feat_time_help', 'ds_feat_live_help', 'ds_feat_share_help']) assert.ok(overlay.includes(`tr('${k}')`), k);
+  // Not in the More menu any more.
+  const more = overlay.slice(overlay.indexOf('data-testid="walk-more-menu"'), overlay.indexOf('{props.actions}'));
+  assert.ok(!more.includes("setSheet('LIVE')") && !more.includes("setSheet('TIME')"));
+  const ws = fs.readFileSync(new URL('../../../components/designStudio/workspace/DesignWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(ws, /onShare=\{\(\) => setShareOpen\('WALKTHROUGH'\)\}/);
+});

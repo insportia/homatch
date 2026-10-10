@@ -17716,6 +17716,11 @@ const en = {
   ds_walk_plan_show: 'Show plan',
   ds_walk_plan_hide: 'Hide plan',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_feat_time_help: 'See the home in morning light, at sunset, in the evening or at night.',
+  ds_feat_live_help: 'Pick a moment — making coffee, cooking, an evening in — and watch it play out in this home.',
+  ds_feat_share_help: 'Send a link to this walkthrough to family, a buyer or an agent — they walk it in their browser.',
+
   /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
   mps_source_REFRESHING: '{{source}}: refreshing now',
   mps_source_FRESH: '{{source}}: fresh listings',
@@ -35353,6 +35358,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_walk_plan_show: 'გეგმის ჩვენება',
   ds_walk_plan_hide: 'გეგმის დამალვა',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_feat_time_help: 'ნახეთ ბინა დილის შუქზე, მზის ჩასვლისას, საღამოს ან ღამით.',
+  ds_feat_live_help: 'აირჩიეთ მომენტი — ყავის მომზადება, სადილი, საღამო სახლში — და ნახეთ, როგორ გამოიყურება ეს ამ ბინაში.',
+  ds_feat_share_help: 'გაუგზავნეთ ამ ტურის ბმული ოჯახს, მყიდველს ან აგენტს — ის ბრაუზერში გაივლის ბინას.',
+
   /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
   mps_source_REFRESHING: '{{source}}: მიმდინარეობს განახლება',
   mps_source_FRESH: '{{source}}: ახალი განცხადებები',
@@ -52981,6 +52991,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_walk_plan_show: 'Показать план',
   ds_walk_plan_hide: 'Скрыть план',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_feat_time_help: 'Посмотрите на дом при утреннем свете, на закате, вечером или ночью.',
+  ds_feat_live_help: 'Выберите момент — кофе, готовка, вечер дома — и посмотрите, как он проходит в этом доме.',
+  ds_feat_share_help: 'Отправьте ссылку на эту прогулку семье, покупателю или агенту — они пройдут её в браузере.',
+
   /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
   mps_source_REFRESHING: '{{source}}: идёт обновление',
   mps_source_FRESH: '{{source}}: свежие объявления',
@@ -70606,6 +70621,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_walk_plan_show: 'Planı göster',
   ds_walk_plan_hide: 'Planı gizle',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_feat_time_help: 'Evi sabah ışığında, gün batımında, akşam ya da gece görün.',
+  ds_feat_live_help: 'Bir an seçin — kahve yapmak, yemek pişirmek, evde bir akşam — ve bu evde nasıl geçtiğini izleyin.',
+  ds_feat_share_help: 'Bu gezintinin bağlantısını ailenize, bir alıcıya ya da emlakçıya gönderin — tarayıcılarında gezsinler.',
 
   /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
   mps_source_REFRESHING: '{{source}}: güncelleniyor',
@@ -88233,6 +88253,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_walk_plan_show: 'إظهار المخطط',
   ds_walk_plan_hide: 'إخفاء المخطط',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_feat_time_help: 'شاهد المنزل في ضوء الصباح أو عند الغروب أو في المساء أو ليلًا.',
+  ds_feat_live_help: 'اختر لحظة — إعداد القهوة أو الطهي أو أمسية في المنزل — وشاهدها تحدث في هذا المنزل.',
+  ds_feat_share_help: 'أرسل رابط هذه الجولة إلى العائلة أو مشترٍ أو وسيط — يتجولون فيها من متصفحهم.',
+
   /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
   mps_source_REFRESHING: '{{source}}: جارٍ التحديث',
   mps_source_FRESH: '{{source}}: إعلانات حديثة',
@@ -105858,6 +105883,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_walk_plan_show: 'הצג תוכנית',
   ds_walk_plan_hide: 'הסתר תוכנית',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_feat_time_help: 'ראו את הבית באור בוקר, בשקיעה, בערב או בלילה.',
+  ds_feat_live_help: 'בחרו רגע — הכנת קפה, בישול, ערב בבית — וצפו בו קורה בבית הזה.',
+  ds_feat_share_help: 'שלחו קישור לסיור הזה למשפחה, לקונה או לסוכן — הם יסיירו בו בדפדפן.',
 
   /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
   mps_source_REFRESHING: '{{source}}: מתעדכן כעת',

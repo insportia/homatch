@@ -352,6 +352,8 @@ test('a search that could not start never reads as "finished, 0 results"; launch
       queue: { total: 0, queued: 0, running: 0, done: 0, failed: 0, cancelled: 0, paused: 0 }, runs: { inFlight: 0, succeeded: 0, failed: 0 } } };
   const { page } = await boot(t, { status });
   await open(page);
+  // The status answer renders after the page shell: wait for it, not for any text.
+  await page.getByText('The search could not start').first().waitFor({ timeout: 30000 });
   const main = await page.textContent('main');
   assert.match(main, /The search could not start/);
   assert.doesNotMatch(main, /Search finished — no new active demand/);

@@ -75,7 +75,8 @@ test('market: structured snapshot (new jobs) wins; own comparables or a refresh 
 test('finance: debtor registry, pledge, liquidation and financing — and an RS.ge timeout is NOT a tax finding', () => {
   const f = companyFinanceFrom(RESULT, buildCompanyIntelligence(RESULT));
   assert.deepEqual(f.debtorRegistry, { state: 'NO_ENTRY', checkedOn: '2026-10-09' });
-  assert.deepEqual(f.taxStatus, { state: 'NOT_CHECKED', checkedOn: null });
+  // RS.ge timed out: not checked, with its state — never adverse, never positive.
+  assert.deepEqual(f.taxStatus, { state: 'NOT_CHECKED', checkedOn: null, verification: 'TEMPORARILY_UNAVAILABLE' });
   assert.deepEqual(f.pledges, [{ creditor: 'სს საქართველოს ბანკი 204378869', reference: 'R23757008', registeredOn: '2023-12-19' }]);
   assert.equal(f.liquidationRegistered, false);
   assert.equal(f.registryExtractDate, '2024-08-15');

@@ -15,6 +15,8 @@
  * reads queue results and legacy results identically.
  */
 
+import { rsStatusFromTaskError, withoutRsRaw } from './rsTaxpayer.ts';
+
 export const QUEUE_SOURCES_CADASTRAL = ['TAS_MAP', 'tas', 'mygov'] as const;
 /** Same bound as the worker's in-job entity follow-ups (MAX_AUTO_ENREG_ENTITIES). */
 export const MAX_QUEUE_ENTITY_COMPANIES = 3;
@@ -184,7 +186,8 @@ export function taskResult(r: QueueTaskRow): any | null {
   const entity = r.input && (r.input.idCode || r.input.name) && !isPrimary(r) ? { name: r.input.name ?? null, idCode: r.input.idCode ?? null } : null;
   if (r.state === 'SUCCEEDED' && r.result && typeof r.result === 'object') {
     // _exec: the worker's timing stamp — performance diagnostics only.
-    const { queueEntities: _drop, _exec: _dropExec, ...rest } = r.result;
+    // RS.ge's raw answer lives in evidence storage, never in the job row.
+    const { queueEntities: _drop, _exec: _dropExec, ...rest } = withoutRsRaw(r.result);
     return {
       ...rest,
       source: rest.source ?? (r.source === 'tas_legacy' ? 'tas' : r.source),
@@ -193,12 +196,16 @@ export function taskResult(r: QueueTaskRow): any | null {
     };
   }
   if (r.state === 'FAILED' || r.state === 'DEAD') {
-    const human = /HUMAN_VERIFICATION_REQUIRED/.test(String(r.error ?? ''));
     const source = r.source === 'tas_legacy' ? 'tas' : r.source;
+    // RS.ge says which of its four states it ended in (rs=… in the error).
+    const rs = source === 'rstax' ? rsStatusFromTaskError(r.error) : null;
+    const human = rs ? rs === 'PENDING_VERIFICATION' : /HUMAN_VERIFICATION_REQUIRED/.test(String(r.error ?? ''));
+    const evidence = rs ? /\bevidence=([0-9a-f]{64})\b/.exec(String(r.error ?? ''))?.[1] ?? null : null;
     return {
       source,
       sourceName: source,
-      status: human ? 'SKIPPED_HUMAN_VERIFICATION' : 'FAILED',
+      status: human ? 'SKIPPED_HUMAN_VERIFICATION' : rs === 'VERIFICATION_FAILED' ? 'VERIFICATION_FAILED' : rs === 'TEMPORARILY_UNAVAILABLE' ? 'TEMPORARILY_UNAVAILABLE' : 'FAILED',
+      ...(rs ? { rsVerification: { status: rs, ...(evidence ? { rawResponseRef: { sha256: evidence } } : {}) } } : {}),
       traversal: human ? { status: 'SKIPPED_HUMAN_VERIFICATION' } : null,
       error: human ? null : publicTaskError(r.error),
       documents: [],
@@ -257,7 +264,15 @@ export function queueWorkerView(rows: QueueTaskRow[]): {
   const replaced = sorted.some((r) => r.source === 'tas_legacy' && r.dedupe_key === 'tas_legacy');
   const visible = sorted.filter((r) => !(replaced && r.source === 'tas' && r.dedupe_key === 'tas' && r.state !== 'SUCCEEDED'));
   const results = visible.map(taskResult).filter(Boolean);
-  const terminal = rows.length > 0 && rows.every((r) => TERMINAL_TASK_STATES.has(String(r.state)));
+  /*
+   * RS.ge never holds the official stage open. It is one CAPTCHA lookup that
+   * takes 2–7 minutes; the stage finishes on its other sources, an RS.ge
+   * result already in is included, and one still running is picked up later
+   * by the financial stage (the same task: enqueue is idempotent per job and
+   * key), so the report's other sections never wait on it.
+   */
+  const gating = rows.filter((r) => r.source !== 'rstax');
+  const terminal = gating.length > 0 && gating.every((r) => TERMINAL_TASK_STATES.has(String(r.state)));
   const started = rows.map((r) => r.started_at).filter(Boolean).sort() as string[];
   const finished = rows.map((r) => r.finished_at).filter(Boolean).sort() as string[];
   const status = terminal ? 'COMPLETE' : started.length || rows.some((r) => r.state !== 'QUEUED') ? 'RUNNING' : 'QUEUED';
@@ -271,7 +286,7 @@ export function queueWorkerView(rows: QueueTaskRow[]): {
     completedAt: terminal ? finished[finished.length - 1] ?? null : null,
     sourceIndex: results.length,
     lastFinishedAt: finished[finished.length - 1] ?? null,
-    stragglersRetrying: !terminal && rows.filter((r) => !TERMINAL_TASK_STATES.has(String(r.state))).every((r) => Number(r.attempts ?? 0) > 1),
+    stragglersRetrying: !terminal && gating.filter((r) => !TERMINAL_TASK_STATES.has(String(r.state))).every((r) => Number(r.attempts ?? 0) > 1),
   };
 }
 

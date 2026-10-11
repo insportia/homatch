@@ -23,6 +23,7 @@ import { VerifySection, Row, RowList, StatusPill } from './ui';
 import type { PropertyRegister, RegisterMortgage, RegisterState, ProceedingKind } from '@/verify/intelligence/propertyRegister';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
 import { registerView, type RegisterSourceLike } from '@/verify/reportPresentation';
+import { rsTaxCardModel } from '@/verify/rsTaxpayer';
 
 /** First-strong isolates keep a date or number in reading order inside RTL text. */
 const iso = (s: string): string => `⁦${s}⁩`;
@@ -248,23 +249,10 @@ export function CompanyFinanceCard({ finance }: { finance?: CompanyFinanceView |
           <Row label={t('vbi_fin_liquidation')}><StatusPill tone="risk">{t('vbi_fin_liquidation_registered')}</StatusPill></Row>
         ) : null}
 
-        {/* Shown only when RS.ge actually answered (owner, 2026-10-09: what
-            was not established is not written). */}
-        {finance.taxStatus.state === 'CHECKED' ? (
-          <Row label={t('vbi_fin_tax')}>
-            {finance.taxStatus.status ? (
-              <StatusPill tone="confirmed"><span dir="auto">{finance.taxStatus.status}</span></StatusPill>
-            ) : null}
-            {finance.taxStatus.vatStatus ? (
-              <span className="block mt-1 text-sm break-words" dir="auto">{t('vbi_fin_vat', { value: finance.taxStatus.vatStatus })}</span>
-            ) : null}
-            {finance.taxStatus.registeredOn ? (
-              <span className="block mt-1 text-xs text-muted-foreground">{t('vbi_fin_tax_registered', { date: iso(dmy(finance.taxStatus.registeredOn) ?? finance.taxStatus.registeredOn) })}</span>
-            ) : null}
-            <span className="block mt-1.5 text-sm leading-6 text-foreground/80 break-words">{t('vbi_fin_tax_explain')}</span>
-            <span className="block mt-1 text-xs text-muted-foreground">{t('vbi_fin_tax_checked', { date: iso(dmy(finance.taxStatus.checkedOn) ?? '—') })}</span>
-          </Row>
-        ) : null}
+        {/* RS.ge: only what its taxpayer registry literally returned, with the
+            check date and where to repeat it. A check that did not complete
+            reads neutrally — never positive, never adverse. */}
+        <TaxpayerRow finance={finance} />
 
         {finance.financingPartner ? (
           <Row label={t('vbi_fin_financing')}>
@@ -275,6 +263,46 @@ export function CompanyFinanceCard({ finance }: { finance?: CompanyFinanceView |
       </RowList>
       {extract ? <p className="mt-4 text-xs text-muted-foreground">{t('vbi_fin_extract_date', { date: iso(extract) })}</p> : null}
     </VerifySection>
+  );
+}
+
+/** RS.ge's own column name, readable: "TaxPayerType" → "Tax payer type"; Georgian labels stay as given. */
+const rsLabel = (l: string): string =>
+  /^[A-Za-z0-9_]+$/.test(l)
+    ? l.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim().replace(/^./, (c) => c.toUpperCase()).replace(/(?<=\s)[A-Z](?=[a-z])/g, (c) => c.toLowerCase())
+    : l;
+
+function TaxpayerRow({ finance }: { finance: CompanyFinanceView }) {
+  const { t } = useLanguage();
+  const model = rsTaxCardModel(finance.taxStatus, finance.companyId);
+  if (!model) return null;
+  const checked = dmy(model.checkedOn);
+  return (
+    <Row label={t('vbi_fin_tax')}>
+      <StatusPill tone={model.pill.tone}>{model.pill.text ? <span dir="auto">{model.pill.text}</span> : t(model.pill.key!)}</StatusPill>
+      {model.cautionKey ? (
+        <span className="block mt-1.5 text-sm leading-6 text-[hsl(var(--gold-ink))] break-words">{t(model.cautionKey)}</span>
+      ) : null}
+      {model.rows.length ? (
+        <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+          {model.rows.map((r, i) => (
+            <div key={i} className="contents">
+              <dt className="text-xs text-muted-foreground break-words" dir="auto">{r.labelKey ? t(r.labelKey) : rsLabel(r.label ?? '')}</dt>
+              <dd className="text-sm text-foreground break-words" dir="auto">
+                {r.yesNo === true ? t('vbi_rs_yes') : r.yesNo === false ? t('vbi_rs_no') : r.isDate ? iso(dmy(r.value) ?? r.value) : r.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      <span className="block mt-1.5 text-sm leading-6 text-foreground/80 break-words">{t(model.explainKey, model.explainVars)}</span>
+      <span className="block mt-1 text-xs text-muted-foreground">
+        {checked ? <>{t('vbi_fin_tax_checked', { date: iso(checked) })} · </> : null}
+        <a href={model.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
+          {t('vbi_rs_source_link')}
+        </a>
+      </span>
+    </Row>
   );
 }
 

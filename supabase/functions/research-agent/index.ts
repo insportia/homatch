@@ -19,6 +19,7 @@ import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/in
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
+import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
@@ -3346,7 +3347,15 @@ async function processFinancialQueue(sb: any, j: any): Promise<any> {
   return sb.from('research_jobs').update({ status: 'CREATED', stage: returnStage, result_json: prior, updated_at: now() }).eq('id', j.id);
 }
 const QUEUE_ENTITY_MAX_WAIT_MS = 20 * 60 * 1000;
-const QUEUE_RSTAX_MAX_WAIT_MS = 3 * 60 * 1000;
+/*
+ * RS.ge runs 2–7 minutes end to end (production 2026-10-10..11: 124–412 s —
+ * Search #1, a 2Captcha solve, Search #2, RS.ge's answer). A three-minute cap
+ * gave up on runs that were about to succeed. Eight minutes covers the
+ * slowest observed run; RS.ge no longer holds the official stage open
+ * (queueWorkerView), so this wait is spent only after the other official
+ * sources are already in.
+ */
+const QUEUE_RSTAX_MAX_WAIT_MS = 8 * 60 * 1000;
 async function pollFinancialEntity(sb: any, j: any): Promise<any> {
   const prior = j.result_json || {};
   const id = prior?._worker?.jobId;
@@ -3360,9 +3369,9 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
     const waited = Date.now() - (Date.parse(prior._worker.startedAt || '') || Date.now());
     if (v.status === 'QUEUED' || v.status === 'RUNNING') {
       // RS.ge is a CAPTCHA lookup that already had the whole official stage
-      // to run in parallel; the report does not wait on it past three
-      // minutes more (owner live run 2026-10-11: 7 minutes on the critical
-      // path, ending in an unsolvable CAPTCHA anyway).
+      // to run in parallel; the report waits on it at most
+      // QUEUE_RSTAX_MAX_WAIT_MS from here, then records it as temporarily
+      // unavailable (never as a finding).
       const limit = prior._financialEntityRequestedFor?.source === 'rstax' ? QUEUE_RSTAX_MAX_WAIT_MS : QUEUE_ENTITY_MAX_WAIT_MS;
       if (waited < limit) return;
       const requested = prior._financialEntityRequestedFor || {};
@@ -3445,7 +3454,8 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
   // enrichment step, never a reason to fail the whole job — on FAILED, just
   // move on to whatever else remains in the queue.
   if (w.status === 'COMPLETE') {
-    const entityResult = (w.results || [])[0] || null;
+    // RS.ge's raw answer stays in the worker's log/evidence, never in the job row.
+    const entityResult = (w.results || [])[0] ? withoutRsRaw((w.results || [])[0]) : null;
     if (entityResult) {
       prior.browserOfficial = prior.browserOfficial || { results: [] };
       prior.browserOfficial.results = [...(prior.browserOfficial.results || []), entityResult];
@@ -3730,7 +3740,7 @@ function classifyOfficialDocumentKind(doc: { title?: string | null; type?: strin
 }
 function buildLegalStatusMatrix(
   officialStatus: any,
-  opts: { officialDocs: any[]; companyLiquidationSuspected: boolean; debtorRecordFound: boolean; rightsAndRestrictionsStatus: string },
+  opts: { officialDocs: any[]; companyLiquidationSuspected: boolean; debtorRecordFound: boolean; rightsAndRestrictionsStatus: string; taxpayerStatus?: LegalStatusValue },
   lang: string
 ): LegalStatusMatrix {
   const outcome = (source: string) => sourceOutcome(officialStatus, source);
@@ -3746,8 +3756,12 @@ function buildLegalStatusMatrix(
   const debtorRegistryStatus: LegalStatusValue =
     debtorOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : debtorOutcome === 'FOUND' ? 'CONFIRMED_ATTENTION' : debtorOutcome === 'NO_RESULT' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
 
+  // RS.ge: from its own results when the caller has them (rsTaxpayerLegalStatus:
+  // a record → positive, or ATTENTION for a liquidated/suspended status;
+  // pending → human verification; no record / unavailable / failed → not
+  // confirmed — never positive without a record RS.ge returned).
   const rstaxOutcome = outcome('rstax');
-  const taxpayerStatusValue: LegalStatusValue = rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  const taxpayerStatusValue: LegalStatusValue = opts.taxpayerStatus ?? (rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED');
 
   // Property encumbrances draws on rightsAndRestrictions (the more precise,
   // already-evidence-gated signal — see prompt() OFFICIAL_COLLECTION) rather
@@ -4453,7 +4467,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // `requiresManualVerification: false` below with a real, per-category
   // evidence matrix plus one concrete action card for every category that
   // did not reach a confirmed state.
-  const legalStatus = buildLegalStatusMatrix(officialStatus, { officialDocs, companyLiquidationSuspected: companyLiquidation.suspected, debtorRecordFound, rightsAndRestrictionsStatus: rrStatus }, l);
+  const legalStatus = buildLegalStatusMatrix(officialStatus, { officialDocs, companyLiquidationSuspected: companyLiquidation.suspected, debtorRecordFound, rightsAndRestrictionsStatus: rrStatus, taxpayerStatus: rsTaxpayerLegalStatus(prior.browserOfficial?.results) }, l);
   const manualVerificationActions = await applyLinkValidation(buildManualVerificationActions(legalStatus, l));
 
   // overallAssessment (v30): keyStrengths/itemsToVerify are the model's own

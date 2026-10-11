@@ -14,7 +14,7 @@
  *   fail       {id, token, error, retryable?, retryAfterSeconds?}
  *   release    {id, token}
  *   delegate   {id, token, scopeKey, input?}
- *   captcha    {events[]}                          → durable CAPTCHA ledger
+ *   captcha    {events[]}                          → durable CAPTCHA ledger (+ cost_events for paid solves)
  *   upload     {sha256, contentType}               → signed upload URL (or exists)
  *   metrics                                        → queue depth / age / costs
  *
@@ -23,6 +23,7 @@
  * travel to the private verify-evidence bucket, never through here.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { captchaCostEventRow } from '../_shared/captchaCost.ts';
 
 const MAX_BODY_BYTES = 2_500_000;
 const MAX_RESULT_BYTES = 1_500_000;
@@ -166,7 +167,25 @@ Deno.serve(async (req: Request) => {
             p_provider: str(e.provider, 40) || '2captcha',
           });
           if (error) throw error;
-          if (data === true) recorded++;
+          if (data === true) {
+            recorded++;
+            // Finance sees the same solve in cost_events (once: only a newly recorded ledger event).
+            const row = captchaCostEventRow({
+              idempotencyKey: key,
+              source: str(e.source, 40) || 'unknown',
+              outcome: str(e.outcome, 40) || 'UNKNOWN',
+              costUsd: e.costUsd != null && e.costUsd !== '' && Number.isFinite(Number(e.costUsd)) && Number(e.costUsd) >= 0 ? Number(e.costUsd) : null,
+              kind: str(e.kind, 40) || null,
+              provider: str(e.provider, 40) || '2captcha',
+              jobId: UUID.test(str(e.jobId, 40)) ? e.jobId : null,
+              taskId: UUID.test(str(e.taskId, 40)) ? e.taskId : null,
+            });
+            if (row) {
+              const { error: costError } = await db.from('cost_events').insert([row]);
+              // Never fails the ledger write: the ledger row is the record of truth for the meter.
+              if (costError) console.error(`verify-queue: captcha cost_events insert failed: ${costError.message ?? costError}`);
+            }
+          }
         }
         return json({ recorded });
       }

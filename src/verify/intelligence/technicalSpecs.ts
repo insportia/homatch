@@ -179,13 +179,14 @@ export function extractTechnicalSpecs(reportOrCases: unknown, nowIso: string | n
     const add = (label: string, value: string, kind: 'FORM' | 'TEXT', source: string | null) => {
       const rule = ruleForLabel(label);
       if (!rule) return;
+      // "1170.8 კ1=0.5": the coefficient itself rides on its area's line,
+      // even when the area was already read from the form.
+      const coeff = rule.kind === 'AREA' ? /(?:კ|k)\s*-?\s*([123])\s*=\s*(\d+(?:[.,]\d+)?)/iu.exec(value) : null;
+      if (coeff) add(`კ-${coeff[1]} კოეფიციენტი`, coeff[2], kind, source);
       const v = normValue(rule, value);
       if (!v || seen.has(rule.key)) return;
       seen.add(rule.key);
       occ.push({ rule, ...v, caseRef: c.caseRef, date: c.date, source, sourceKind: kind, status });
-      // "1170.8 კ1=0.5": the coefficient itself rides on its area's line.
-      const coeff = /(?:კ|k)\s*-?\s*([123])\s*=\s*(\d+(?:[.,]\d+)?)/iu.exec(value);
-      if (coeff && rule.kind === 'AREA') add(`კ-${coeff[1]} კოეფიციენტი`, coeff[2], kind, source);
     };
     for (const f of c.fields) add(f.label, f.value, 'FORM', c.publicUrl);
     for (const t of c.texts)

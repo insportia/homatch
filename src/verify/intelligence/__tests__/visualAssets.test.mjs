@@ -94,8 +94,9 @@ test('intelligence: mixed render / photo / drawings keep kind+category; other-pa
   assert.equal(normalizeVisualKind('OTHER_DRAWING'), 'OTHER');
 });
 
-test('intelligence + serialization: bound respected end-to-end (30 → 24)', async () => {
-  const many = Array.from({ length: 30 }, (_, i) => vis(String.fromCharCode(97 + (i % 26)) + '', { id: (i.toString(16).padStart(2, '0')).repeat(32), storagePath: `tas/${(i.toString(16).padStart(2, '0')).repeat(32)}.jpg` }));
+// The bound is VISUAL_ASSET_MAX (48 since 2026-10-11: recovered pictures are appended to the worker's 24).
+test('intelligence + serialization: bound respected end-to-end (bound + 6 → bound)', async () => {
+  const many = Array.from({ length: VISUAL_ASSET_MAX + 6 }, (_, i) => vis(String.fromCharCode(97 + (i % 26)) + '', { id: (i.toString(16).padStart(2, '0')).repeat(32), storagePath: `tas/${(i.toString(16).padStart(2, '0')).repeat(32)}.jpg` }));
   const intel = buildTasIntelligence(report(many));
   assert.equal(intel.visuals.length, VISUAL_ASSET_MAX);
   const persisted = persistableVisuals(many, intel.visuals);

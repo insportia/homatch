@@ -16,7 +16,7 @@ import {
   buildOverpassQuery,
   buildStoredNeighborhood,
   centerFromBrowserOfficial,
-  geocodeQuery,
+  geocodeQueries,
   overpassFailed,
   parentParcel,
   parseNominatim,
@@ -50,8 +50,14 @@ async function timed<T>(ms: number, run: (signal: AbortSignal) => Promise<T>): P
 
 /** Address → coordinates via Nominatim, house or street precision only. */
 export async function geocodeAddress(address: unknown, fetchImpl: FetchLike = fetch): Promise<NeighborhoodCenter | null> {
-  const q = geocodeQuery(address);
-  if (!q) return null;
+  for (const q of geocodeQueries(address)) {
+    const hit = await geocodeOnce(q, fetchImpl);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+async function geocodeOnce(q: string, fetchImpl: FetchLike): Promise<NeighborhoodCenter | null> {
   // Nominatim usage policy: no more than one request per second.
   const wait = lastNominatimAt + 1100 - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));

@@ -320,3 +320,30 @@ test('every neighbourhood string exists in all six languages, placeholders intac
     assert.ok(!/წუთ|ფეხით/.test(values[1]), `${key} speaks of walking minutes`);
   }
 });
+
+test('geocodeQueries: full address, then without district, then street + city (job dbf04e48)', async () => {
+  const { geocodeQueries } = await import('../neighborhood.ts');
+  assert.deepEqual(geocodeQueries('18 Kristian Stiven Street, Digomi, Tbilisi'), [
+    '18 Kristian Stiven Street, Digomi, Tbilisi',
+    '18 Kristian Stiven Street, Tbilisi',
+    'Kristian Stiven Street, Tbilisi',
+  ]);
+  assert.deepEqual(geocodeQueries('მარშალ გელოვანის გამზ. 23, საბურთალო, თბილისი')[0], 'მარშალ გელოვანის გამზირი 23, საბურთალო, თბილისი');
+  assert.equal(geocodeQueries('კრწანისის ქ. 6, თბილისი').length, 2);
+  assert.deepEqual(geocodeQueries('Digomi, Tbilisi'), []);
+});
+
+test('geocodeAddress tries the next query when the first has no house/street hit', async () => {
+  const { geocodeAddress } = await import('../neighborhoodFetch.ts');
+  const asked = [];
+  const fakeFetch = async (url) => {
+    const q = decodeURIComponent(new URL(url).searchParams.get('q'));
+    asked.push(q);
+    const body = q === 'Kristian Stiven Street, Tbilisi' ? [{ lat: '41.79', lon: '44.75', addresstype: 'road' }] : [];
+    return { ok: true, json: async () => body };
+  };
+  const c = await geocodeAddress('18 Kristian Stiven Street, Digomi, Tbilisi', fakeFetch);
+  assert.equal(asked.length, 3);
+  assert.equal(c.precision, 'STREET');
+  assert.equal(c.basis, 'GEOCODED_ADDRESS');
+});

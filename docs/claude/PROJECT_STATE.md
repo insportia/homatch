@@ -1435,3 +1435,26 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Report: deterministic unit identity (unitIdentity.ts), mortgage lifecycle + extract-dated legal position (propertyRegister.ts), TAS chronology by filing date (tasChronology.ts), Krtsanisi-first market hierarchy with INSUFFICIENT_EVIDENCE valuation (marketHierarchy.ts), professionals from AcadNusx title blocks/signatures (tasProfessionals.ts), premium report order + people/gallery cards.
 - REPORT_LOGIC_VERSION 4: recent reports rebuild once on open from retained evidence (one model call; no source re-acquisition).
 - Open: Rekhviashvili (Goga/Giorgi) not in stored text beyond the 300k cut (storage sha256/bf/bf0838…); AR11148112 text only in storage; decision 7839183 printed issue date unread; visual dates null; TAS page render failures.
+
+## Verify final polish for .601 (2026-10-11, logic v5)
+
+- Target: job 8ba97da9 (.601 Villion). It rebuilds once on its next open under REPORT_LOGIC_VERSION 5, from stored evidence. No new paid job.
+- **Visual recovery:**
+  - verify-synthesis calls research-agent `recover_visuals`, which fetches the skipped TAS images through the worker's POST `/verify/tas-files`.
+  - Blank images are filtered out (visualQuality.ts).
+  - The gallery is grouped into a dated chronology (visualCatalog.visualChronology).
+- **Market refresh:**
+  - verify-synthesis starts research-agent `refresh_market`.
+  - The worker runs MyHome through Find Property's MyHomeRuntime (`acquireForVerify`, 10 pages per district) and SS.ge for კრწანისი, then ორთაჭალა.
+  - The cron driver (pollMarketRefreshes) folds the listings in and sets `synthesis_json._rebuildRequested`, which triggers exactly one more rebuild.
+- **Documents:**
+  - research-agent `document_file` fetches through the worker's `/verify/tas-file` and caches into the private bucket `verify-documents` (migration 20261030091500), then returns a signed URL.
+  - Raw DownloadServlet links are never rendered.
+- **Fast read path:** READY v5 reports are served from synthesis_json only (reportReadPath.ts), backed by a client sessionStorage cache keyed by logic version.
+- **Neighbourhood:** OpenStreetMap Overpass (neighborhood.ts), with straight-line metres and route numbers from OSM route relations. There is no model fallback, and walking minutes are removed.
+- **Korter:** BLOCKED_BY_TERMS (korter.ge terms §5.3 forbid scraping) and NO_DOCUMENTED_API. The provider (official-worker/src/verify/korter) is OFF and only reads `GET /verify/korter/status`.
+- **Narrative:**
+  - technicalExplained, projectMath (K1/K2/K3 corrected; saleable area never derived), projectStory (three tracks), buyerAssessment (guarded), editorial pass.
+- **Open items:**
+  - The MyHome engine's own 0-result issue in Verify is resolved by using the runtime's page reader. Production proof is still pending.
+  - Developer website and Facebook renders need written rights from the developer.

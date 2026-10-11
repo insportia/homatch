@@ -300,6 +300,8 @@ export interface ScoredComparable {
   exclusions: CustomerExclusion[];
   /** Listing address as the source wrote it (street level, public listing). */
   address?: string;
+  /** The project / building name the listing stated, when it did. */
+  project?: string;
   listingDate?: string;
   dealType: DealType;
   priceKind: PriceKind;
@@ -890,6 +892,7 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
     level,
     exclusions,
     address: text(c.address) || undefined,
+    project: text(c.project) || undefined,
     listingDate: text(c.listingDate) || undefined,
     dealType,
     priceKind: priceKindOf(c),

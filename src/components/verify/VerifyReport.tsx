@@ -54,6 +54,8 @@ import { ContractUpload } from './ContractUpload';
 import { VerifyLinkedContracts } from './VerifyLinkedContracts';
 import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, MapPin, Users } from 'lucide-react';
+import { NeighborhoodSection } from './NeighborhoodSection';
+import type { StoredNeighborhood } from '@/verify/intelligence/neighborhood';
 import {
   CurrentStatusBlock,
   PropertyStoryBlock,
@@ -83,7 +85,12 @@ import { VisualExplorer } from './VisualExplorer';
 import { catalogVisuals } from '@/verify/visualCatalog';
 import { LegalReality, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
+import { VerifyJobProvider } from './OfficialLink';
+import { LazyMount } from './LazyMount';
 import { BuildingSpecs } from './BuildingSpecs';
+import { TechnicalExplained } from './TechnicalExplained';
+import { ProjectMath } from './ProjectMath';
+import { BuyerAssessment } from './BuyerAssessment';
 import { PeopleBehind } from './PeopleBehind';
 import { MarketPosition, hasMarketView } from './MarketPosition';
 import { chapterOfSection, identityNotice, legalPosition, documentExplorer, specGroups, teamGroupsV2, SECTION_HEADING_KEY, type ChapterId, type RegisterSourceLike } from '@/verify/reportPresentation';
@@ -179,6 +186,10 @@ export interface BuyerIntelligence {
   nextSteps?: { step: string; why: string; cites: string[] }[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
+  /** Final narrative pass (2026-10-11), all built deterministically in verify-synthesis. */
+  technicalExplained?: unknown;
+  projectSignals?: unknown;
+  buyerAssessment?: unknown;
 }
 
 /**
@@ -203,6 +214,8 @@ export interface LocationBlock {
   profile?: { district: string; character: string; likelyResidents: string[]; context: string[] };
   nearby: NearbyPlaceBlock[];
   minimal: boolean;
+  /* Source-verified OpenStreetMap lookup stored at build time (neighborhood.ts). */
+  neighborhood?: StoredNeighborhood | null;
 }
 
 export interface VerifySynthesis {
@@ -481,6 +494,8 @@ export function VerifyReport({
   ];
 
   return (
+    /* The job id lets official file links open through the secure viewer (OfficialLink). */
+    <VerifyJobProvider jobId={typeof (synthesis as { jobId?: unknown }).jobId === 'string' ? (synthesis as { jobId?: string }).jobId : null}>
     <article className="vrx mx-auto w-full max-w-[56rem] space-y-12 sm:space-y-16">
       <ReportNav items={nav} />
 
@@ -564,7 +579,7 @@ export function VerifyReport({
       {/* ── THE STORY ── prose first, then the grouped official timeline. */}
       {has.story ? (
         <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
-          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} />
+          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} />
         </Chapter>
       ) : null}
 
@@ -615,6 +630,9 @@ export function VerifyReport({
         {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
         {/* The documented specifications, each with its approval status. */}
         {specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
+        {/* What the technical facts mean, then the project's numbers worked through. */}
+        <TechnicalExplained cards={r.technicalExplained} />
+        <ProjectMath specs={synthesis.technicalSpecs} />
         {/* Rendered even when the run established nothing: a missing section
             reads as "does not apply", a row saying "not yet verified" reads
             as the question it actually is. */}
@@ -625,13 +643,15 @@ export function VerifyReport({
           newest two first, each file opening at its official source. */}
       {has.documents ? (
         <Chapter id="vbi-documents" n={num('documents')} kicker={t('verify_v3_docs_kicker')} title={t('verify_v3_docs_title')} lede={t('verify_v3_docs_lede')}>
-          <OfficialDocuments
-            docs={synthesis.officialDocuments}
-            pendingRefs={pendingRefs}
-            visuals={synthesis.officialVisuals as unknown[] | undefined}
-            identityUnresolved={identityUnresolved}
-            clean={clean}
-          />
+          <LazyMount>
+            <OfficialDocuments
+              docs={synthesis.officialDocuments}
+              pendingRefs={pendingRefs}
+              visuals={synthesis.officialVisuals as unknown[] | undefined}
+              identityUnresolved={identityUnresolved}
+              clean={clean}
+            />
+          </LazyMount>
         </Chapter>
       ) : null}
 
@@ -657,6 +677,8 @@ export function VerifyReport({
       {/* ── FINAL PERSPECTIVE ── what it means, what to do, what to check. */}
       <Chapter id="vbi-final" n={num('final')} kicker={t('vrx_final_kicker')} title={t('vrx_final_title')}>
         {inChapter('final').map(renderSection)}
+        {/* The buyer assessment comes right before the final verdict. */}
+        <BuyerAssessment assessment={r.buyerAssessment} clean={clean} />
         <BuyerBottomLine
           finalView={clean(r.finalView)}
           // The highlights already open the report; repeating them here was the
@@ -732,6 +754,7 @@ export function VerifyReport({
         </p>
       </Chapter>
     </article>
+    </VerifyJobProvider>
   );
 }
 
@@ -1087,24 +1110,26 @@ const PLACE_ORDER = [
  * mixed into the evidenced places above it.
  */
 /*
- * What a source said about reaching a place — its words, attributed, and a
- * figure marked approximate. "70 მ და 1 წუთი ფეხით" came from a listing site;
- * there is no geocoder here, so it is never shown as HOMATCH's measurement.
+ * What a source said about reaching a place, in its words and attributed.
+ * A figure ("70 მ და 1 წუთი ფეხით") is no longer shown: measured distances
+ * come only from the OpenStreetMap lookup (NeighborhoodSection).
  */
 const PlaceNote: React.FC<{ note: string }> = ({ note }) => {
   const { t } = useLanguage();
   const { text, sources } = splitCitations(note);
   const said = clean(text);
-  if (!said) return null;
+  /* A distance or travel time nobody measured is not shown at all, even in a
+     report stored before the OpenStreetMap lookup existed. */
+  if (!said || hasDistance(said) || /(წუთ|ფეხით|მანქანით|minute|walk)/i.test(said)) return null;
   const from = sources[0]?.host;
   /* First-strong isolates: a source's Georgian note inside an Arabic or
      Hebrew sentence otherwise has its figure and hyphen reordered by bidi. */
   const iso = (v: string) => `\u2068${v}\u2069`;
   return (
     <span className="text-muted-foreground">
-      {' — '}
-      {hasDistance(said) ? t(from ? 'vbi_place_approx_from' : 'vbi_place_approx', { note: iso(said), source: from ? iso(from) : '' }) : <bdi>{said}</bdi>}
-      {!hasDistance(said) && from ? <span className="ms-1 text-2xs">({t('vbi_source', { source: iso(from) })})</span> : null}
+      {' · '}
+      <bdi>{said}</bdi>
+      {from ? <span className="ms-1 text-2xs">({t('vbi_source', { source: iso(from) })})</span> : null}
     </span>
   );
 };
@@ -1112,7 +1137,9 @@ const PlaceNote: React.FC<{ note: string }> = ({ note }) => {
 const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
   const { t } = useLanguage();
 
-  const places = [...(l.nearby ?? [])]
+  const measured = l.neighborhood ?? null;
+  /* A successful OpenStreetMap lookup replaces the research layer's names. */
+  const places = (measured?.status === 'OK' ? [] : [...(l.nearby ?? [])])
     .filter((p) => p && clean(p.name))
     .sort((a, b) => {
       const rank = (c: string) => {
@@ -1127,7 +1154,7 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
   // Nothing resolved and nothing found: silence is the correct output. A
   // heading with no content under it is what gets filled with city
   // description, which is the filler this report structure exists to prevent.
-  if (!places.length && !where.length && !l.profile) return null;
+  if (!places.length && !where.length && !l.profile && !measured) return null;
 
   return (
     <section className="space-y-3">
@@ -1152,6 +1179,8 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
           ))}
         </ul>
       ) : null}
+
+      {measured ? <NeighborhoodSection n={measured} /> : null}
 
       {l.profile ? (
         <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
@@ -1271,8 +1300,9 @@ const SelfChecks: React.FC<{ checks: SelfCheck[] }> = ({ checks }) => {
 
 const EvidenceDrawer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useLanguage();
+  const [open, setOpen] = React.useState(false);
   return (
-    <details className="group rounded-xl border border-border bg-card">
+    <details className="group rounded-xl border border-border bg-card" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between gap-3">
         <span className="min-w-0">
           <span className="block text-sm font-medium break-words">{t('verify_report_evidence_toggle')}</span>
@@ -1284,7 +1314,7 @@ const EvidenceDrawer: React.FC<{ children: React.ReactNode }> = ({ children }) =
       </summary>
       {/* Children are only mounted while open, so the collapsed report never
           pays for hundreds of rows of document and revision detail. */}
-      <div className="px-5 pb-5 pt-1 space-y-4">{children}</div>
+      <div className="px-5 pb-5 pt-1 space-y-4">{open ? children : null}</div>
     </details>
   );
 };

@@ -425,6 +425,20 @@ export interface TeamCardV2 {
   firstSeen: string | null;
   lastSeen: string | null;
   official: boolean;
+  /**
+   * Which filings this card's documented work belongs to (owner, 2026-10-11):
+   * a person named in one application took part in THAT application's
+   * project, not in the whole project's life. Never "continuously responsible".
+   */
+  participation: TeamParticipation;
+}
+export interface TeamParticipation {
+  /** Distinct official cases the roles come from. */
+  cases: number;
+  first: string | null;
+  last: string | null;
+  /** The case and date, when every role comes from one case. */
+  single: { caseRef: string | null; date: string | null } | null;
 }
 
 /**
@@ -459,6 +473,31 @@ export function plausibleName(v: unknown): boolean {
  */
 const AUTHORITY = /(მუნიციპალიტეტ|მერია|მერიის|სსიპ|სამსახურ|სამინისტრო|საკრებულო|ministry|municipal|city hall|\bLEPL\b)/iu;
 export const isAuthority = (name: unknown): boolean => AUTHORITY.test(str(name));
+
+/*
+ * Drawing-legend fragments the document reader took for people (production
+ * .601, AR11161121: "განგაშისა და", "საქვეითე გადასასვლელი", "საავტომობილო
+ * გადაადგილება", "საშუალებები და პირობითი აღნიშვნები"). A person's name never
+ * contains a conjunction and never one of these legend nouns.
+ */
+const LEGEND_NOUN = /(გადაადგილ|გადასასვლელ|საშუალებ|აღნიშვნ|განგაშ|სახანძრ|ლენტ|ტერიტორი|მოძრაობ|საქვეითე|საავტომობილო|პირობით|ღობე|ნიშნულ|ტროტუარ|შესასვლელ|სადარბაზო|ავტოსადგომ|ხიდ(?:ი|ის)|ნახაზ|გეგმ|ჭრილ)/u;
+const CONJUNCTION = /(?:^|\s)(?:და|ან|თუ|ხოლო|რომ|ასევე)(?:\s|$)/u;
+export function legendFragment(name: unknown, organization = false): boolean {
+  const s = str(name);
+  if (!s) return true;
+  if (LEGEND_NOUN.test(s)) return true;
+  return !organization && CONJUNCTION.test(s);
+}
+/*
+ * A role read from a drawing or attachment that names no responsibility:
+ * no scope, no "label: value" wording, and a generic or legend code. The
+ * form's roles (sourceUrl on the case page) are never dropped by this.
+ */
+const WEAK_ROLE_CODES = new Set(['OTHER', 'SAFETY_ASSESSMENT', '']);
+function weakAttachmentRole(r: TeamRoleV2Like | null | undefined): boolean {
+  const code = str(r?.code).toUpperCase();
+  return WEAK_ROLE_CODES.has(code) && !str(r?.scope) && !str(r?.roleText).includes(':') && /DownloadServlet/i.test(str(r?.sourceUrl));
+}
 
 /** A form field's label stored as if it were the role. */
 const FORM_LABEL = /(სახელი\s*(და|,)\s*გვარი|სახელწოდება\s*$|name and surname|full name)/iu;
@@ -546,11 +585,13 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
     if (!raw || typeof raw !== 'object' || !plausibleName(raw.name)) continue;
     const name = str(raw.name).replace(/\s+/g, ' ');
     if (isAuthority(name)) continue;
+    if (legendFragment(name, str(raw.kind).toUpperCase() === 'ORGANIZATION' || ORG_FORM.test(name))) continue;
     const g = str(raw.group).toUpperCase() as TeamGroup;
     const given: TeamGroup = TEAM_GROUP_ORDER.includes(g) ? g : 'OTHER';
     const roles: TeamRoleV2[] = [];
     const seen = new Set<string>();
     for (const r of Array.isArray(raw.roles) ? raw.roles : []) {
+      if (weakAttachmentRole(r)) continue;
       const roleText = cleanText(r?.roleText, 160);
       if (!roleText || PERSONAL_MARKER.test(roleText)) continue;
       const code = str(r?.code).toUpperCase() || null;
@@ -597,6 +638,7 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
       firstSeen: isoDay(raw.firstSeen),
       lastSeen: isoDay(raw.lastSeen),
       official: raw.official !== false,
+      participation: participationOf(roles),
     };
     const key = nameKey(name);
     const prev = byKey.get(key);
@@ -605,6 +647,7 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
       prev.roles.sort((a, b) => newestFirst(a.date, b.date));
       if (rankOf(card.headline) < rankOf(prev.headline)) { prev.headline = card.headline; prev.group = card.group; }
       prev.official = prev.official || card.official;
+      prev.participation = participationOf(prev.roles);
       prev.organization = prev.organization ?? card.organization;
       continue;
     }
@@ -620,6 +663,26 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
       return { group, cards: cards.map((c, i) => ({ c, i })).sort((a, b) => orgRank(a.c) - orgRank(b.c) || a.i - b.i).map((x) => x.c) };
     })
     .filter((x) => x.cards.length > 0);
+}
+
+/** The filings a card's roles come from: count, first and last date, or the one case. */
+export function participationOf(roles: TeamRoleV2[]): TeamParticipation {
+  const byCase = new Map<string, string | null>();
+  for (const r of roles) {
+    const k = r.caseRef ?? (r.date ? `@${r.date}` : '');
+    if (!k) continue;
+    const prev = byCase.get(k);
+    // A case's date is its earliest documented step.
+    if (prev === undefined || (r.date && (!prev || r.date < prev))) byCase.set(k, r.date);
+  }
+  const dates = [...byCase.values()].filter((d): d is string => !!d).sort();
+  const only = byCase.size === 1 ? [...byCase.entries()][0] : null;
+  return {
+    cases: byCase.size,
+    first: dates[0] ?? null,
+    last: dates[dates.length - 1] ?? null,
+    single: only ? { caseRef: only[0].startsWith('@') ? null : only[0], date: only[1] } : null,
+  };
 }
 
 /** How many distinct official cases name this card — the evidence count. */

@@ -29,6 +29,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, RotateCw, AlertTriangle, Ban } from 'lucide-react';
 import { SectionBoundary } from '@/components/common/SectionBoundary';
+import { VerifyJobProvider } from '@/components/verify/OfficialLink';
 import {
   VerifyReport,
   type VerifySynthesis,
@@ -257,11 +258,14 @@ export const VerifyResultView: React.FC<VerifyResultViewProps> = ({
           name="VerifyReport"
           context={{ subjectType: 'RESEARCH_JOB', subjectId, payloadVersion: normalized.payloadVersion }}
         >
-          <VerifyReport
-            synthesis={toVerifySynthesis(result)}
-            evidence={evidence}
-            contractCaseId={contractCaseId}
-          />
+          {/* The case's job id: official files open through the secure viewer. */}
+          <VerifyJobProvider jobId={subjectId}>
+            <VerifyReport
+              synthesis={toVerifySynthesis(result)}
+              evidence={evidence}
+              contractCaseId={contractCaseId}
+            />
+          </VerifyJobProvider>
         </SectionBoundary>
       ) : null}
 

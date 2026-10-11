@@ -31,11 +31,15 @@ import { buildEvidencePackage } from '../../../src/verify/intelligence/evidenceP
 import { officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { resolveIdentity } from '../../../src/verify/intelligence/propertyIdentity.ts';
 import { persistableVisuals, toCustomerVisualAssets, VISUAL_BUCKET, VISUAL_URL_TTL_SECONDS } from '../../../src/verify/intelligence/visualAssets.ts';
+import { annotateVisualQuality, visualByteSizes } from '../../../src/verify/intelligence/visualQuality.ts';
+import { applyVisualRecovery, needsVisualRecovery } from '../../../src/verify/intelligence/visualRecovery.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/marketSnapshot.ts';
 import { writeSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
 import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
+import { withNeighborhood } from '../../../src/verify/intelligence/locationIntelligence.ts';
+import { resolveNeighborhood } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
 import { projectSlug } from '../../../src/verify/intelligence/harvest.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
 import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
@@ -47,6 +51,11 @@ import { REPORT_LOGIC_VERSION, shouldAutoUpgrade, versionMarkers, markUpgradeAtt
 import { hasOwnRegister, reuseEarlierRegister, targetCadastralCode, type RegisterCandidate } from '../../../src/verify/intelligence/registerReuse.ts';
 import { extractFreshness } from '../../../src/verify/intelligence/propertyRegister.ts';
 import { buildUnitIdentity } from '../../../src/verify/intelligence/unitIdentity.ts';
+import { explainTechnical } from '../../../src/verify/intelligence/technicalExplained.ts';
+import { extractProjectSignals } from '../../../src/verify/intelligence/projectStory.ts';
+import { finalBuyerAssessment } from '../../../src/verify/intelligence/buyerAssessment.ts';
+import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '../../../src/verify/intelligence/reportReadPath.ts';
+import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
 
 /**
@@ -198,8 +207,12 @@ function textOf(p: any): string {
 // Visual Property Intelligence: every customer-visible asset (≤ VISUAL_ASSET_MAX),
 // as VerifyVisualAsset (src/verify/intelligence/visualAssets.ts), signed in ONE
 // storage call. UNRELATED_SUSPECT assets never reach this list.
-async function forCustomer(db: any, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { _usage: _droppedUsage, _timing: _droppedTiming, officialVisuals, ...rest } = payload as Record<string, any>;
+// `jobId` travels with the answer so the report can open official files
+// through the secure viewer (research-agent `document_file`); the caller
+// already knows it, nothing new is disclosed.
+async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: string): Promise<Record<string, unknown>> {
+  const { _usage: _droppedUsage, _timing: _droppedTiming, officialVisuals, ...stripped } = payload as Record<string, any>;
+  const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
   if (!Array.isArray(officialVisuals) || !officialVisuals.length) return rest;
   const signed = await toCustomerVisualAssets(
     officialVisuals,
@@ -561,8 +574,23 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   // Market, location, people and the buyer's own official self-checks are
   // computed deterministically here; the model is handed the RESULT and asked
   // to explain it, never to do the arithmetic.
+  /* Source-verified neighbourhood (OpenStreetMap, neighborhood.ts): measured
+     here, in parallel with FX, and stored with the report so opening it never
+     refetches. A failure is stored as UNAVAILABLE; there is no LLM fallback. */
+  const neighborhoodP = resolveNeighborhood({
+    resultJson: rj,
+    query: job.query ?? null,
+    address: pkg.subject?.address ?? null,
+    previous: job.synthesis_json?.location?.neighborhood,
+    earlierBrowserOfficial: async (parcel: string) => {
+      const { data } = await writer.from('research_jobs').select('bo:result_json->browserOfficial')
+        .like('query', `${parcel}%`).neq('id', jobId).order('created_at', { ascending: false }).limit(8);
+      return (data ?? []).map((r: any) => r?.bo);
+    },
+  });
   const fx = await fetchFx(earliestEvidenceDate(pkg.items));
   const bundle = buildIntelligenceBundle(rj, pkg, fx);
+  bundle.location = withNeighborhood(bundle.location, await neighborhoodP);
 
   /*
    * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET, KEPT.
@@ -695,6 +723,13 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       attentionPoints: final.attentionPoints,
       finalView: final.finalView,
       contractUpload: final.contractUpload,
+      // Final narrative pass (2026-10-11): deterministic, from stored evidence.
+      // The glossary cards for the technical facts, and what the record says
+      // about the works (audit finding, site photos, the project's own
+      // statement) for the three-track story. buyerAssessment is set below,
+      // once the register has been merged in.
+      technicalExplained: explainTechnical({ specs: pkg.dossier?.technicalSpecs ?? [], publicResearch: rj?.publicResearch, team: pkg.dossier?.projectTeamV2 ?? [] }),
+      projectSignals: extractProjectSignals(rj),
     },
     // The sources behind the prose, so the UI can offer them underneath
     // without the customer having to read raw research output.
@@ -738,7 +773,9 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     developerAds: pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,
     // Bucket paths (internal) of the customer-visible visuals, with their
     // scope/category; forCustomer() turns them into signed URLs.
-    officialVisuals: persistableVisuals(rj?.officialVisuals, pkg.tas?.visuals ?? []),
+    // Each record carries its byte size and quality verdict (visualQuality.ts):
+    // a blank layer stays here with its reason; forCustomer never shows it.
+    officialVisuals: annotateVisualQuality(persistableVisuals(rj?.officialVisuals, pkg.tas?.visuals ?? []), visualByteSizes(rj)),
     /*
      * THE OFFICIAL DOSSIER (officialDossier.ts) — customer-visible, names
      * kept exactly: the team with documented roles and provenance, the
@@ -757,13 +794,75 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
 
   /* The register vetoes prose it disproves before anything is stored. */
   const payload = withPropertyRegister(built, rj, await enrichmentContext(writer, job));
+  // The buyer assessment rests on the merged facts (register, history, market):
+  // the model's draft when it passes the guard, else assembled from them.
+  (payload as { report: Record<string, unknown> }).report.buyerAssessment = finalBuyerAssessment(final.buyerAssessmentDraft, payload);
   if (timing.modelStartedAt && !timing.modelEndedAt) timing.modelEndedAt = new Date().toISOString();
   if (timing.modelStartedAt) timing.modelMs = Date.parse(String(timing.modelEndedAt)) - Date.parse(String(timing.modelStartedAt));
   timing.persistAt = new Date().toISOString();
   (payload as Record<string, unknown>)._timing = timing;
+  /* Enriched above by the current read derivations: a READY open may serve it
+     without result_json (reportReadPath.ts). */
+  Object.assign(payload as Record<string, unknown>, readEnrichmentMarkers());
   await persist(writer, jobId, payload);
   console.log(JSON.stringify({ scope: 'verify_synthesis_timing', jobId, ...timing, persistMs: Date.now() - Date.parse(String(timing.persistAt)) }));
-  return await forCustomer(writer, payload);
+  return await forCustomer(writer, payload, jobId);
+}
+
+/*
+ * BEFORE A LOGIC-VERSION REBUILD: RECOVER SKIPPED OFFICIAL PICTURES.
+ *
+ * A report built from a run whose older-case budget skipped native images
+ * (or kept the newest cases' stored pictures out of the gallery) asks
+ * research-agent's `recover_visuals` once, server to server with the service
+ * key, and folds the answer into the in-memory result_json the rebuild reads
+ * (research-agent has already written the same change to the row). Network
+ * wait only; bounded at 60 s; any failure is logged and the rebuild goes on
+ * with what it has. Charges nothing.
+ */
+async function recoverVisualsBeforeRebuild(job: any): Promise<void> {
+  try {
+    if (!job?.result_json || !needsVisualRecovery(job.result_json)) return;
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const url = Deno.env.get('SUPABASE_URL') ?? '';
+    if (!key || !url) return;
+    const res = await fetch(`${url}/functions/v1/research-agent`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, apikey: key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'recover_visuals', jobId: job.id }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(`recover_visuals_http_${res.status}:${String(body?.error ?? '').slice(0, 60)}`);
+    if (body?.apply) applyVisualRecovery(job.result_json, body.apply);
+    console.log(JSON.stringify({ scope: 'verify_synthesis', event: 'visual_recovery', jobId: job.id, skipped: !!body?.skipped, counts: body?.marker?.counts ?? null }));
+  } catch (e) {
+    console.warn(JSON.stringify({ scope: 'verify_synthesis', event: 'visual_recovery_failed', jobId: job?.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
+  }
+}
+
+/*
+ * BEFORE A REBUILD: START THE ONE MARKET REFRESH (marketRefresh.ts).
+ * Start only (the worker search takes minutes); the cron driver folds the
+ * listings and requests one further rebuild. Bounded at 15 s, never blocks.
+ */
+async function startMarketRefreshBeforeRebuild(job: any): Promise<void> {
+  try {
+    if (!job?.result_json || !needsMarketRefresh(job.result_json)) return;
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const url = Deno.env.get('SUPABASE_URL') ?? '';
+    if (!key || !url) return;
+    const res = await fetch(`${url}/functions/v1/research-agent`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, apikey: key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh_market', jobId: job.id }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await res.json().catch(() => null);
+    console.log(JSON.stringify({ scope: 'verify_synthesis', event: 'market_refresh_start', jobId: job.id, status: res.status, started: !!body?.started, skipped: !!body?.skipped }));
+  } catch (e) {
+    console.warn(JSON.stringify({ scope: 'verify_synthesis', event: 'market_refresh_start_failed', jobId: job?.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
+  }
 }
 
 serve(async (req) => {
@@ -816,13 +915,35 @@ serve(async (req) => {
     const jobId = String(body?.jobId ?? '').trim();
     if (!jobId) return json({ error: 'jobId is required' }, 400);
 
+    /* READY FAST PATH (reportReadPath.ts). The row is read WITHOUT
+       result_json (1.8 MB for job 8ba97da9); result_json is fetched only when
+       something below actually needs it: a rebuild, an upgrade, or a report
+       persisted before its read derivations were applied at build time. */
+    const readStarted = performance.now();
     const { data: job, error } = await supabase
       .from('research_jobs')
-      .select('id,user_id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at')
+      .select(READY_FAST_COLUMNS)
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw error;
     if (!job) return json({ error: 'not found' }, 404);
+    const loadMs = Math.round(performance.now() - readStarted);
+    const readLog = (path: string, extra: Record<string, unknown> = {}) =>
+      console.log(JSON.stringify({ scope: 'verify_synthesis_read', jobId, path, loadMs, totalMs: Math.round(performance.now() - readStarted), ...extra }));
+    if (canServeStoredFast(job, { force: !!body?.force })) {
+      const signStarted = performance.now();
+      const out = await forCustomer(writer, withCredibleParticipants(job.synthesis_json as Record<string, unknown>), job.id);
+      readLog('fast', { signMs: Math.round(performance.now() - signStarted), visuals: Array.isArray((out as any).officialVisuals) ? (out as any).officialVisuals.length : 0 });
+      return json({ ...out, persisted: true });
+    }
+    let resultLoaded = false;
+    const ensureResult = async () => {
+      if (resultLoaded) return;
+      const { data: full, error: rjError } = await supabase.from('research_jobs').select('result_json').eq('id', jobId).maybeSingle();
+      if (rjError) throw rjError;
+      (job as any).result_json = full?.result_json ?? null;
+      resultLoaded = true;
+    };
 
     /* ============================================================== *
      * WHAT `force` IS, AND WHAT IT MUST NOT BECOME.
@@ -874,18 +995,27 @@ serve(async (req) => {
       synthesisState: job.synthesis_state, synthesisJson: job.synthesis_json, completedAt: job.completed_at, now: Date.now(),
     });
     const serveStored = async () => {
+      await ensureResult();
       const read = withPropertyRegister(withCredibleParticipants(job.synthesis_json as Record<string, unknown>), job.result_json, await enrichmentContext(writer, job));
-      return json({ ...(await forCustomer(writer, read)), persisted: true });
+      return json({ ...(await forCustomer(writer, read, job.id)), persisted: true });
     };
     if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force && !upgrade) {
+      await ensureResult();
+      const enrichStarted = performance.now();
       const read = withPropertyRegister(withCredibleParticipants(job.synthesis_json as Record<string, unknown>), job.result_json, await enrichmentContext(writer, job));
+      readLog('full', { enrichMs: Math.round(performance.now() - enrichStarted) });
       /* The unit's register is re-applied on every read, so reports written
          before the extracts were decoded (c80f7237) show the true owner and
          mortgages without a rebuild or a charge. Nothing is written back. */
-      return json({ ...(await forCustomer(writer, read)), persisted: true });
+      return json({ ...(await forCustomer(writer, read, job.id)), persisted: true });
     }
     if (upgrade) {
       if (!(await claimUpgrade(writer, job))) return await serveStored();
+      await ensureResult();
+      // Pictures an older run skipped are recovered first (never blocks the rebuild).
+      await recoverVisualsBeforeRebuild(job);
+      // Market evidence is refreshed from the free portals in the background; the driver folds it and asks for one more rebuild.
+      await startMarketRefreshBeforeRebuild(job);
       console.log(`verify-synthesis: auto-upgrading report ${job.id} from logic v${logicVersionOf(job.synthesis_json)} to v${REPORT_LOGIC_VERSION}`);
       try {
         return json(await buildReport(job, writer, { autoUpgrade: true, trigger: 'customer', forced: false }));
@@ -909,6 +1039,7 @@ serve(async (req) => {
       return json({ pending: true, retryAfterMs: 4000 }, 202);
     }
 
+    await ensureResult();
     return json(await buildReport(job, writer, { autoUpgrade: false, trigger: internal ? (body?.trigger === 'research' ? 'research' : 'driver') : 'customer', forced: !!body?.force }));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);

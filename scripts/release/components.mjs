@@ -153,7 +153,7 @@ export const COMPONENTS = {
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },
   VERIFY: {
-    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
+    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
     suites: ['mobile:verify', 'mobile:routes'],
   },
   MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes'] },

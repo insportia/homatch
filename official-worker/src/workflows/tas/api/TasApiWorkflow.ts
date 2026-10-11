@@ -430,6 +430,14 @@ function putVisual(sha: string, bytes: Uint8Array, mime: string): void {
     VISUAL_CACHE.delete(k);
   }
 }
+/**
+ * The same bounded cache, for a targeted re-fetch of named attachments
+ * (tasFileRecovery.ts → POST /verify/tas-files); GET /research/visual/:sha
+ * serves it exactly like a full run's visuals.
+ */
+export function cacheTasVisual(sha: string, bytes: Uint8Array, mime: string): void {
+  putVisual(sha, bytes, mime);
+}
 /** Test hook only. */
 export function __resetTasApiCaches(): void {
   TEXT_CACHE.clear();
@@ -437,6 +445,13 @@ export function __resetTasApiCaches(): void {
   visualCacheBytes = 0;
 }
 
+/** Byte bound of one budget-exempt older-case image. */
+export const BUDGET_EXEMPT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+/** Native images are never skipped by the older-case budget (declared size, when known, within the bound). */
+export function isBudgetExemptImage(extension: string | null | undefined, sizeBytes: number | null | undefined): boolean {
+  if (!/^(jpe?g|png|webp)$/i.test(String(extension ?? ''))) return false;
+  return !(typeof sizeBytes === 'number' && sizeBytes > BUDGET_EXEMPT_IMAGE_MAX_BYTES);
+}
 const sha256 = (b: Uint8Array): string => createHash("sha256").update(bytesToBuffer(b)).digest('hex');
 const sha256Text = (s: string): string => createHash('sha256').update(s).digest('hex');
 
@@ -1195,6 +1210,19 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       if (!s0) return;
       visualChain = visualChain.then(() => processVisual(s0.slot, s0.order, bytes)).catch(() => {});
     };
+    // A budget-exempt image outside the shortlist: same processing, after
+    // the shortlist's slots (its candidate is already ranked on metadata).
+    let exemptOrder = 500;
+    const enqueueExemptImage = (attachedFileId: string, bytes: Uint8Array) => {
+      const c = ranked.find((x) => x.attachedFileId === attachedFileId);
+      if (!c || c.parcelMatch === false) return;
+      const order = exemptOrder++;
+      // The files-opened bound (VISUAL_FILE_MAX) holds; an image past it stays
+      // IMAGE in the ledger and is recoverable later (visualRecovery.ts).
+      visualChain = visualChain
+        .then(() => ((result.accounting.visualFilesOpened ?? 0) < VISUAL_FILE_MAX ? processVisual({ role: 'SUPPORTING', candidate: c }, order, bytes) : undefined))
+        .catch(() => {});
+    };
 
     // Attachment text: the shortlisted visual files first (a handful, and the
     // only way the report gets photos — at the end they lost to the time
@@ -1221,6 +1249,11 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       const cached = cacheGet(key, now());
       // A file a priority case already downloaded in this run is never fetched twice.
       const wantsBytes = shortlistIds.has(a.attachedFileId) && !handled.has(a.attachedFileId);
+      // OLDER-CASE BUDGET EXEMPTION (2026-10-11): a native image (renders and
+      // photographs attached as .jpg/.png/.webp) is small and is the only way
+      // the report gets those pictures, so neither the older-case clock nor
+      // the download count skips it. Its own byte bound still applies.
+      const smallImage = isBudgetExemptImage(a.extension, a.sizeBytes);
       try {
         if (isUnsupportedExtension(a.extension)) {
           // DWG/PLA/RAR …: nothing here reads them; accounted with the official link, not downloaded.
@@ -1231,15 +1264,15 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           result.accounting.cacheHits++;
           Object.assign(rec, { outcome: cached.outcome, pages: cached.pages, textChars: cached.text.length, sha256: cached.sha256, format: cached.format ?? rec.format, cached: true });
           if (cached.text) attachmentPiece(docId, a, cached.text);
-        } else if (!wantsBytes && (now() > olderDeadline || (typeof a.sizeBytes === 'number' && a.sizeBytes > olderMaxFile))) {
+        } else if (!wantsBytes && !smallImage && (now() > olderDeadline || (typeof a.sizeBytes === 'number' && a.sizeBytes > olderMaxFile))) {
           // Older-case budget: accounted with its official link, not downloaded.
           rec.outcome = 'NOT_PROCESSED_BUDGET';
           rec.url = attachmentUrl(a.attachedFileId);
           rec.sizeBytes = a.sizeBytes;
           result.olderBudgetReached = true;
-        } else if (downloads < maxDownloads || wantsBytes) {
+        } else if (downloads < maxDownloads || wantsBytes || smallImage) {
           downloads++;
-          const r = await timed('attachmentDownloadsMs', () => client.request(attachmentUrl(a.attachedFileId)));
+          const r = await timed('attachmentDownloadsMs', () => client.request(attachmentUrl(a.attachedFileId), {}, smallImage && !wantsBytes ? { maxBytes: BUDGET_EXEMPT_IMAGE_MAX_BYTES } : {}));
           timings.counts.downloads++;
           timings.counts.downloadBytes += r.bytes.length;
           // The servlet's own Content-Disposition is the authoritative name
@@ -1274,6 +1307,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           } else if (cls.kind === 'IMAGE') {
             rec.outcome = 'IMAGE';
             if (wantsBytes) enqueueVisual(a.attachedFileId, r.bytes);
+            else if (smallImage) enqueueExemptImage(a.attachedFileId, r.bytes);
           } else if (cls.kind === 'HTML') {
             text = htmlToText(bytesToBuffer(r.bytes).toString('utf8'));
             rec.outcome = text.length > 40 ? 'READ_TEXT' : 'LOW_TEXT';

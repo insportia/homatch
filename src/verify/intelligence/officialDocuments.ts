@@ -1,6 +1,8 @@
 /*
- * THE OFFICIAL DOCUMENTS LIST — every TAS case and its files, with links a
- * buyer can open on the municipality's own public page.
+ * THE OFFICIAL DOCUMENTS LIST — every TAS case and its files. The customer
+ * opens a file through HOMATCH's secure viewer by its attachedFileId; the
+ * DownloadServlet sourceUrl is kept for audit only (browsers often get
+ * "Access Denied" there), see src/verify/officialDocumentLibrary.ts.
  *
  * Ordered for reading: the two priority cases (newest first) at the top,
  * then the rest by case date, newest first. Bounded so a project with
@@ -20,7 +22,10 @@ export interface OfficialDocumentFile {
   kind: OfficialFileKind;
   outcome: string | null;
   pages: number | null;
+  /** Internal audit reference only; the UI never renders it as a button (officialDocumentLibrary.ts). */
   sourceUrl: string | null;
+  /** The TAS attachment id the secure viewer (research-agent `document_file`) serves by. */
+  attachedFileId: string | null;
   date: string | null;
 }
 
@@ -62,6 +67,7 @@ export function buildOfficialDocuments(reportOrCases: unknown, opts: { maxCases?
         outcome: a.outcome,
         pages: a.pages,
         sourceUrl: tasAttachmentUrl(a.attachedFileId),
+        attachedFileId: a.attachedFileId && /^\d{1,12}$/.test(String(a.attachedFileId)) ? String(a.attachedFileId) : null,
         date: a.date,
       }))
       .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));

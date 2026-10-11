@@ -19,6 +19,7 @@ import {
   type NormalizedVerifyResult,
 } from '@/verify/resultNormalizer';
 import { reportError } from '@/lib/errorReporting';
+import { readCachedReport, writeCachedReport, sessionStore } from '@/verify/reportCache';
 
 /** What the result screens need about the run itself. */
 export interface VerifyJobFacts {
@@ -29,6 +30,8 @@ export interface VerifyJobFacts {
   createdAt: string | null;
   completedAt: string | null;
   synthesisState: string;
+  /** Moves on every rebuild: part of the opened-report cache key (verify/reportCache.ts). */
+  synthesisAt: string | null;
 }
 
 /**
@@ -58,7 +61,7 @@ export async function getVerifyCompany(jobId: string): Promise<CompanyIntelligen
 export async function getVerifyJobFacts(jobId: string): Promise<VerifyJobFacts | null> {
   const { data, error } = await supabase
     .from('research_jobs')
-    .select('id,status,stage,cancelled_at,created_at,completed_at,synthesis_state')
+    .select('id,status,stage,cancelled_at,created_at,completed_at,synthesis_state,synthesis_at')
     .eq('id', jobId)
     .maybeSingle();
   if (error) throw error;
@@ -71,6 +74,7 @@ export async function getVerifyJobFacts(jobId: string): Promise<VerifyJobFacts |
     createdAt: (data.created_at as string | null) ?? null,
     completedAt: (data.completed_at as string | null) ?? null,
     synthesisState: (data.synthesis_state as string) ?? 'NONE',
+    synthesisAt: (data.synthesis_at as string | null) ?? null,
   };
 }
 
@@ -114,11 +118,22 @@ export async function loadVerifyResult(
     });
   }
 
+  /* A READY report already opened in this tab renders from the per-tab cache
+     (keyed by synthesis_at and the logic versions); no second server read. */
+  const cacheId = { jobId, synthesisAt: facts?.synthesisState === 'READY' ? facts.synthesisAt : null };
+  if (!opts?.force) {
+    const hit = readCachedReport(sessionStore(), cacheId);
+    if (hit && !hit.stale) {
+      return normalizeVerifyResult({ raw: hit.payload, jobStatus: facts?.status ?? 'COMPLETE', cancelledAt: facts?.cancelledAt });
+    }
+  }
+
   try {
     const { data, error } = await supabase.functions.invoke('verify-synthesis', {
       body: { jobId, ...(opts?.force ? { force: true } : {}) },
     });
     if (error) throw error;
+    writeCachedReport(sessionStore(), cacheId, data);
     const normalized = normalizeVerifyResult({
       raw: data,
       jobStatus: facts?.status ?? 'COMPLETE',

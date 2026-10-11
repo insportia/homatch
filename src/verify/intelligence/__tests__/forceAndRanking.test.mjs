@@ -1,3 +1,4 @@
+import { READY_FAST_COLUMNS } from '../reportReadPath.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -45,7 +46,10 @@ test('a forced rebuild is refused while a recent one exists', () => {
   // It is keyed on when the report was actually built.
   assert.match(guard, /job\.synthesis_at/);
   // user_id is read too: the register fallback scopes earlier jobs to the SAME user (registerReuse.ts).
-  assert.match(code, /select\('id,user_id,query,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at'\)/, 'synthesis_at is read (and query, for the unit identity check)');
+  // The READY open reads every column but result_json (reportReadPath.ts); result_json is loaded on demand.
+  assert.match(code, /\.select\(READY_FAST_COLUMNS\)/);
+  assert.equal(READY_FAST_COLUMNS, 'id,user_id,query,status,completed_at,synthesis_json,synthesis_state,synthesis_at', 'synthesis_at is read (and query, for the unit identity check)');
+  assert.match(code, /select\('result_json'\)\.eq\('id', jobId\)/, 'result_json is no longer loaded for rebuilds and full reads');
 });
 
 test('a cached read is not affected by the guard', () => {

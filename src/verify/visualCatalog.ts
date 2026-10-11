@@ -67,6 +67,8 @@ export interface CatalogVisual {
   title: string | null;
   /** The official case (TAS document id) the image was filed with, when known. */
   documentId: string | null;
+  /** A camera's own EXIF date (photographs only), when the record carries one. */
+  exifDate: string | null;
   explanation: VisualExplanation | null;
 }
 
@@ -250,6 +252,7 @@ export function normalizeVisual(
     technical: !PHOTO_KINDS.has(kind) && kind !== 'RENDER',
     title: opts.title ?? null,
     documentId: docIdOf(o),
+    exifDate: isoDate(o.exifDate),
     explanation,
   };
 }
@@ -316,4 +319,156 @@ export function heroVisual(visuals: CatalogVisual[]): CatalogVisual | null {
   let best: CatalogVisual | null = null;
   for (const v of visuals) if (!best || rank(v) < rank(best)) best = v;
   return best;
+}
+
+/* ───────────────────────── the project's story, in pictures ───────────────────────── */
+
+/**
+ * VISUAL CHRONOLOGY (owner, 2026-10-11): the gallery tells the project's
+ * story in five chapters, oldest intent to newest evidence:
+ *
+ *   ORIGINAL      the original concept and historical renders (renders and
+ *                 unlabelled project images filed BEFORE the newest case that
+ *                 holds any);
+ *   DESIGNS       approved designs and revisions (every drawing and plan);
+ *   CONSTRUCTION  construction progress and documented changes (construction
+ *                 photographs, and photographs older than CURRENT);
+ *   LATEST        the latest available renders and project images (the
+ *                 newest case that holds any);
+ *   CURRENT       the current documented condition: photographs filed within
+ *                 CURRENT_PHOTO_MONTHS of today.
+ *
+ * Dates come from the official case the image was filed with (its filing
+ * date) or a camera's own EXIF date; never invented. A render is never
+ * evidence of completion, and where no recent photograph exists the gallery
+ * says so in one sentence.
+ */
+export type VisualChapter = 'ORIGINAL' | 'DESIGNS' | 'CONSTRUCTION' | 'LATEST' | 'CURRENT';
+export const CHAPTER_ORDER: VisualChapter[] = ['ORIGINAL', 'DESIGNS', 'CONSTRUCTION', 'LATEST', 'CURRENT'];
+export const CHAPTER_KEY: Record<VisualChapter, string> = {
+  ORIGINAL: 'vfv_ch_original',
+  DESIGNS: 'vfv_ch_designs',
+  CONSTRUCTION: 'vfv_ch_construction',
+  LATEST: 'vfv_ch_latest',
+  CURRENT: 'vfv_ch_current',
+};
+/** A photograph is "current" when filed within this many months of today. */
+export const CURRENT_PHOTO_MONTHS = 24;
+
+/** What the picture IS, said first on every card. */
+export type PictureType = 'RENDER' | 'PHOTO' | 'CONSTRUCTION_PHOTO' | 'DRAWING' | 'IMAGE';
+export const PICTURE_TYPE_KEY: Record<PictureType, string> = {
+  RENDER: 'vfv_type_render',
+  PHOTO: 'vfv_type_photo',
+  CONSTRUCTION_PHOTO: 'vfv_type_construction_photo',
+  DRAWING: 'vfv_type_drawing',
+  IMAGE: 'vfv_type_image',
+};
+
+export function pictureTypeOf(v: Pick<CatalogVisual, 'kind' | 'badge'>): PictureType {
+  if (v.kind === 'CONSTRUCTION_PHOTO') return 'CONSTRUCTION_PHOTO';
+  if (v.badge === 'PHOTO') return 'PHOTO';
+  if (v.badge === 'RENDER') return 'RENDER';
+  if (v.badge === 'MATERIAL') return 'IMAGE';
+  return 'DRAWING';
+}
+
+export interface VisualCaseInfo { caseRef?: string | null; date?: string | null }
+
+export interface DatedLabel {
+  /** i18n key of the date phrase, with its variables (month is a 1-based number as a string). */
+  key: string;
+  vars: Record<string, string>;
+}
+
+export interface ChronoVisual {
+  visual: CatalogVisual;
+  chapter: VisualChapter;
+  type: PictureType;
+  /** The date the picture is placed by (YYYY-MM-DD), and where it came from. */
+  date: string | null;
+  dateSource: 'EXIF' | 'CASE' | 'ASSET' | null;
+  /** The prominent card label: type key + date phrase. */
+  typeKey: string;
+  dated: DatedLabel;
+}
+
+export interface VisualChronology {
+  groups: Array<{ chapter: VisualChapter; items: ChronoVisual[] }>;
+  /** No photograph filed within CURRENT_PHOTO_MONTHS: said plainly, once. */
+  noCurrentPhotos: boolean;
+  /** The newest photograph's date, when there is one (for that sentence). */
+  newestPhotoDate: string | null;
+}
+
+const monthsBetween = (a: string, b: string): number => {
+  const [ya, ma] = [Number(a.slice(0, 4)), Number(a.slice(5, 7))];
+  const [yb, mb] = [Number(b.slice(0, 4)), Number(b.slice(5, 7))];
+  return (yb - ya) * 12 + (mb - ma);
+};
+
+/** The date phrase of a card: "from the <month> <year> application", "photographed <date>", or "date not stated". */
+export function datedLabel(date: string | null, source: ChronoVisual['dateSource']): DatedLabel {
+  if (!date) return { key: 'vfv_date_unknown', vars: {} };
+  const year = date.slice(0, 4);
+  const month = String(Number(date.slice(5, 7)));
+  if (source === 'EXIF') return { key: 'vfv_date_exif', vars: { date: `${date.slice(8, 10)}.${date.slice(5, 7)}.${year}` } };
+  return { key: 'vfv_date_application', vars: { year, month } };
+}
+
+/**
+ * Place every catalogued visual in its chapter, newest last within a chapter
+ * (the story reads forward). `cases` maps a TAS document id to its case
+ * (filing date). `today` is YYYY-MM-DD (injected so the rule is testable).
+ */
+export function visualChronology(visuals: CatalogVisual[], cases: Map<string, VisualCaseInfo> | null | undefined, today: string): VisualChronology {
+  const dateOf = (v: CatalogVisual): { date: string | null; source: ChronoVisual['dateSource'] } => {
+    if (v.exifDate && (v.badge === 'PHOTO')) return { date: v.exifDate, source: 'EXIF' };
+    const c = v.documentId ? cases?.get(v.documentId) : undefined;
+    const cd = c?.date && /^\d{4}-\d{2}-\d{2}/.test(c.date) ? c.date.slice(0, 10) : null;
+    if (cd) return { date: cd, source: 'CASE' };
+    if (v.date) return { date: v.date, source: 'ASSET' };
+    return { date: null, source: null };
+  };
+  const rows = visuals.map((v) => {
+    const d = dateOf(v);
+    return { v, type: pictureTypeOf(v), date: d.date, source: d.source };
+  });
+  const isPicture = (t: PictureType) => t === 'RENDER' || t === 'IMAGE';
+  const isPhoto = (t: PictureType) => t === 'PHOTO' || t === 'CONSTRUCTION_PHOTO';
+  const latestPictureDate = rows.filter((r) => isPicture(r.type) && r.date).map((r) => r.date!).sort().pop() ?? null;
+  const newestPhotoDate = rows.filter((r) => isPhoto(r.type) && r.date).map((r) => r.date!).sort().pop() ?? null;
+  const currentPhotos = !!newestPhotoDate && monthsBetween(newestPhotoDate, today) <= CURRENT_PHOTO_MONTHS;
+  const chapterOf = (r: (typeof rows)[number]): VisualChapter => {
+    if (isPicture(r.type)) {
+      if (r.date && latestPictureDate) return r.date === latestPictureDate ? 'LATEST' : 'ORIGINAL';
+      // Undated: only the server's own LATEST_RENDER marker places it last.
+      return r.v.role === 'LATEST_RENDER' && !latestPictureDate ? 'LATEST' : 'ORIGINAL';
+    }
+    if (isPhoto(r.type)) {
+      // The newest photographs, when recent, are today's documented condition.
+      if (currentPhotos && r.date && r.date.slice(0, 7) === newestPhotoDate!.slice(0, 7)) return 'CURRENT';
+      return 'CONSTRUCTION';
+    }
+    return 'DESIGNS';
+  };
+  const items: ChronoVisual[] = rows.map((r) => ({
+    visual: r.v,
+    chapter: chapterOf(r),
+    type: r.type,
+    date: r.date,
+    dateSource: r.source,
+    typeKey: PICTURE_TYPE_KEY[r.type],
+    dated: datedLabel(r.date, r.source),
+  }));
+  const groups = CHAPTER_ORDER.map((chapter) => ({
+    chapter,
+    items: items
+      .filter((i) => i.chapter === chapter)
+      // Oldest first; undated last; stable otherwise.
+      .map((i, n) => ({ i, n }))
+      .sort((a, b) => (a.i.date ?? '9999').localeCompare(b.i.date ?? '9999') || a.n - b.n)
+      .map((x) => x.i),
+  })).filter((g) => g.items.length > 0);
+  return { groups, noCurrentPhotos: !currentPhotos, newestPhotoDate };
 }

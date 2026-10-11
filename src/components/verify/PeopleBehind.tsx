@@ -21,7 +21,6 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import {
   peopleCards,
   teamGroupsV2,
-  caseCount,
   yearSpan,
   TEAM_GROUP_DUTY_KEY,
   OWNERSHIP_ROLES,
@@ -35,6 +34,28 @@ import {
 } from '@/verify/reportPresentation';
 import { TEAM_ROLE_KEY } from './BuyerIntelligenceCards';
 import { OfficialLink } from './OfficialLink';
+import { kaOfMonth } from '@/verify/intelligence/kaDates';
+
+/** "მონაწილეობა: 2026 წლის სექტემბრის განაცხადის პროექტი" — the filing(s) a card's work belongs to. */
+function useInvolvement(card: TeamCardV2): string | null {
+  const { t, lang } = useLanguage();
+  const p = card.participation;
+  if (!p || !p.cases || !p.first) return null;
+  const monthYear = (iso: string): string => {
+    if (lang === 'ka') return kaOfMonth(iso) ?? iso.slice(0, 7);
+    try {
+      return new Intl.DateTimeFormat(lang, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso.slice(0, 10)}T00:00:00Z`));
+    } catch {
+      return iso.slice(0, 7);
+    }
+  };
+  if (p.cases === 1) return t('verify_fn_part_one', { period: monthYear(p.first) });
+  const from = p.first.slice(0, 4);
+  const to = (p.last ?? p.first).slice(0, 4);
+  return from === to
+    ? t('verify_fn_part_many_year', { count: String(p.cases), year: from })
+    : t('verify_fn_part_many', { count: String(p.cases), from, to });
+}
 
 const dmy = (iso?: string | null): string | null => {
   const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
@@ -245,8 +266,7 @@ function TeamCard({ card, id, director }: { card: TeamCardV2; id: string; direct
   const [open, setOpen] = React.useState(false);
   const Icon = card.organizationKind ? Building2 : User2;
   const h = card.headline;
-  const cases = caseCount(card);
-  const span = card.firstSeen || card.lastSeen ? yearSpan(card.firstSeen ?? card.lastSeen ?? '', card.lastSeen ?? card.firstSeen ?? '') : null;
+  const involvement = useInvolvement(card);
   // Every OTHER documented role, in the reader's words, de-duplicated.
   const others = [...new Set(card.roles.map(roleText).filter((x) => x !== roleText(h)))].slice(0, 3);
   return (
@@ -268,10 +288,8 @@ function TeamCard({ card, id, director }: { card: TeamCardV2; id: string; direct
         <p className="mt-2.5 rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs leading-5 text-foreground/80 break-words">{t('verify_p0_team_director_note')}</p>
       ) : null}
       {h.scope ? <p className="mt-2.5 text-sm leading-6 text-foreground/85 break-words" dir="auto">{h.scope}</p> : null}
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
-        {cases ? <span className="rounded-full bg-muted px-2.5 py-0.5 text-2xs font-medium tabular-nums text-foreground/80">{t('verify_p0_team_cases', { count: String(cases) })}</span> : null}
-        {span ? <span className="rounded-full bg-muted px-2.5 py-0.5 text-2xs font-medium tabular-nums text-foreground/80"><bdi dir="ltr">{span}</bdi></span> : null}
-      </div>
+      {/* Which filing(s) this work belongs to: a stage of the project, not its whole life. */}
+      {involvement ? <p className="mt-2.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs leading-5 text-foreground/80 break-words" data-involvement>{involvement}</p> : null}
       <SourceLine role={h} className="mt-2" />
       {card.official ? (
         <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">

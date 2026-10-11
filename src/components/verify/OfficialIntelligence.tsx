@@ -15,6 +15,8 @@ import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ChevronDown } from 'lucide-react';
 import { timelineGroups, yearSpan } from '@/verify/reportPresentation';
+import { projectStory } from '@/verify/intelligence/projectStory';
+import { ProjectStory } from './ProjectStory';
 
 export interface CurrentStatusView {
   statement: string;
@@ -300,32 +302,56 @@ export const PropertyStoryBlock: React.FC<{
   chapters?: StoryChapterView[] | null;
   history?: OfficialHistoryClientView | null;
   clean: (s: string) => string;
-}> = ({ chapters, history, clean }) => {
+  /** report.projectSignals: what the record says about the works (projectStory.ts). */
+  signals?: unknown;
+  /** technicalSpecs, so a pending application's figures can be compared with the approved ones. */
+  specs?: unknown;
+}> = ({ chapters, history, clean, signals, specs }) => {
   const story = (chapters ?? []).filter((c) => clean(c.body));
-  const hasTimeline = !!(history?.milestones?.length || history?.milestoneGroups?.length);
+  /* The grouped event story with its three tracks replaces the plain
+     timeline whenever the record supports it (owner, 2026-10-11). */
+  const events = React.useMemo(() => projectStory({ history, signals, specs }), [history, signals, specs]);
+  const hasTimeline = !!(events || history?.milestones?.length || history?.milestoneGroups?.length);
   const hasEvolution = !!history?.evolution?.length;
   if (!story.length && !hasTimeline && !hasEvolution) return null;
 
+  const chaptersList = story.length ? (
+    <ol className="space-y-7">
+      {story.map((c) => (
+        <li key={c.key} className="space-y-2">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 className="font-display text-lg font-semibold leading-snug break-words">{clean(c.title)}</h3>
+            {c.period ? <Ltr className="text-2xs font-medium tabular-nums text-[hsl(var(--gold-ink))]">{c.period}</Ltr> : null}
+          </div>
+          {clean(c.body).split(/\n{2,}/).map((p, i) => (
+            <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
+          ))}
+        </li>
+      ))}
+    </ol>
+  ) : null;
   return (
     <div className="space-y-8">
-      {story.length ? (
-        <ol className="space-y-7">
-          {story.map((c) => (
-            <li key={c.key} className="space-y-2">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h3 className="font-display text-lg font-semibold leading-snug break-words">{clean(c.title)}</h3>
-                {c.period ? <Ltr className="text-2xs font-medium tabular-nums text-[hsl(var(--gold-ink))]">{c.period}</Ltr> : null}
-              </div>
-              {clean(c.body).split(/\n{2,}/).map((p, i) => (
-                <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
-              ))}
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      {history && hasTimeline ? <Timeline history={history} clean={clean} /> : null}
+      {/* With the event story on screen, the long-form chapters tell the same
+          life a second time: they stay one tap away instead of in the flow. */}
+      {events ? <ProjectStory view={events} clean={clean} /> : chaptersList}
+      {events && chaptersList ? <StoryChaptersDisclosure>{chaptersList}</StoryChaptersDisclosure> : null}
+      {!events && history && hasTimeline ? <Timeline history={history} clean={clean} /> : null}
       {history && hasEvolution ? <EvolutionList items={history.evolution} clean={clean} /> : null}
     </div>
+  );
+};
+
+const StoryChaptersDisclosure: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useLanguage();
+  return (
+    <details className="group rounded-2xl border border-border bg-card px-4 py-1 sm:px-5" data-story-chapters>
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] [&::-webkit-details-marker]:hidden">
+        {t('verify_fn_story_full')}
+        <ChevronDown className="h-4 w-4 shrink-0 motion-safe:transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="pb-4 pt-2">{children}</div>
+    </details>
   );
 };
 

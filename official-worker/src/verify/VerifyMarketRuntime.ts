@@ -63,7 +63,7 @@ export interface VerifyComparable {
 export interface SourceRun {
   source: SourceKey;
   status: 'QUEUED' | 'RUNNING' | 'COMPLETE' | 'PARTIAL' | 'FAILED' | 'DISABLED' | 'TIMED_OUT';
-  attempts: Array<{ scope: 'DISTRICT' | 'CITY'; discovered: number; returned: number; status: string; error: string | null; durationMs: number }>;
+  attempts: Array<{ scope: 'DISTRICT' | 'CITY'; district?: string | null; discovered: number; returned: number; status: string; error: string | null; durationMs: number }>;
   listings: number;
   error: string | null;
 }
@@ -90,6 +90,31 @@ export interface VerifyMarketDeps {
 }
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 24);
+
+/*
+ * VERIFY-SIDE LOCALITY NAMES (2026-10-11, job 8ba97da9).
+ *
+ * The research seed names Tbilisi's ADMINISTRATIVE raion ("კრწანისი"), while
+ * SS.ge indexes neighbourhoods: the .601 run's district-scoped SS.ge search
+ * returned nothing, and its citywide fallback carried listings whose SS.ge
+ * neighbourhood was "ორთაჭალა" (Krtsanisi St. itself sits in Ortachala). So
+ * a raion is searched as itself first and then as the neighbourhoods the
+ * portals use for it, each as its own DISTRICT attempt. Each name is still
+ * resolved live by the unchanged MyHome / SS.ge adapters; an unknown name
+ * fails that one attempt only.
+ */
+const LOCALITY_ALIASES: Array<{ match: RegExp; localities: string[] }> = [
+  { match: /^(?:კრწანის(?:ი|ის)?|krtsanisi|krwanisi|крцаниси)(?:\s+(?:district|raioni|რაიონი|район))?$/iu, localities: ['ორთაჭალა'] },
+];
+
+/** The district names a Verify market search tries, in order, before widening to the city. */
+export function districtCandidates(district: string | null): string[] {
+  const d = typeof district === 'string' ? district.trim() : '';
+  if (!d) return [];
+  const out = [d];
+  for (const a of LOCALITY_ALIASES) if (a.match.test(d)) for (const l of a.localities) if (!out.includes(l)) out.push(l);
+  return out;
+}
 
 /** The comparable window. Area ±25 %, rooms ±1, price ±60 % around a known ask. */
 export function buildMarketplaceRequest(profile: VerifyMarketProfile, district: string | null, nowIso = new Date().toISOString()): MarketplaceSearchRequest {
@@ -166,16 +191,20 @@ export function toVerifyComparable(source: SourceKey, c: ExternalListingCandidat
 
 async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMarketProfile, run: SourceRun, deps: VerifyMarketDeps): Promise<VerifyComparable[]> {
   const now = deps.now ?? Date.now;
-  const cap = deps.maxPerSource ?? 80;
+  const cap = deps.maxPerSource ?? 300;
   const minLocal = deps.minLocalSample ?? 8;
   const out = new Map<string, VerifyComparable>();
-  const scopes: Array<{ scope: 'DISTRICT' | 'CITY'; district: string | null }> = profile.district
-    ? [{ scope: 'DISTRICT', district: profile.district }, { scope: 'CITY', district: null }]
-    : [{ scope: 'CITY', district: null }];
+  const scopes: Array<{ scope: 'DISTRICT' | 'CITY'; district: string | null }> = [
+    ...districtCandidates(profile.district).map((district) => ({ scope: 'DISTRICT' as const, district })),
+    { scope: 'CITY', district: null },
+  ];
   run.status = 'RUNNING';
   const runStarted = now();
-  const total = deps.sourceBudgetMs ?? 150_000;
+  const total = deps.sourceBudgetMs ?? 300_000;
   for (const { scope, district } of scopes) {
+    // Every local name is searched (Krtsanisi St. listings sit under both
+    // კრწანისი and ორთაჭალა); only the citywide widening is skipped once the
+    // local sample is representative.
     if (scope === 'CITY' && out.size >= minLocal) break;
     const remaining = total - (now() - runStarted);
     if (remaining < 25_000) break;
@@ -208,7 +237,7 @@ async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMa
       } else status = 'PARTIAL';
     }
     if (controller.signal.aborted && status !== 'FAILED') status = 'PARTIAL';
-    run.attempts.push({ scope, discovered, returned: out.size, status, error, durationMs: now() - started });
+    run.attempts.push({ scope, district, discovered, returned: out.size, status, error, durationMs: now() - started });
     if (out.size >= cap) break;
   }
   const comparables = [...out.values()].slice(0, cap);

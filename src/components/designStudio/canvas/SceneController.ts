@@ -39,7 +39,7 @@ import {
   DEFAULT_SETTINGS, REACH_M, TOUCH_LOOK_RAD_PER_PX, TOUCH_PACE, canWalk, interactionRefusal, isTap, look, normalizeSettings, pickTarget, postureTransition, stepBody, stickInput, wishVelocity,
   type PlayerSettings, type Posture,
 } from '@/lib/designStudio/player';
-import { LivingRuntime, type LiveEntry } from './livingRuntime';
+import { LivingRuntime, machineNear, type LiveEntry } from './livingRuntime';
 import { WalkSounds } from './walkSounds';
 import { buildDecor, disposeDecor } from './walkDecor';
 import { soundFor } from '@/lib/designStudio/walkSounds';
@@ -201,6 +201,10 @@ interface PickData { pick: PickTarget }
 /** Walking: the longest real time one frame may advance (s), and the step it is walked in (s). */
 const WALK_MAX_FRAME_S = 0.25;
 const WALK_STEP_S = 0.05;
+/** On a phone, a machine this near (m) and in front offers its buttons even off the middle of the view. */
+const TOUCH_NEAR_M = 1.3;
+/** How near (m) a point on a many-machine piece must be to a machine's part to mean that machine. */
+const MACHINE_NEAR_M = 0.45;
 /** On a phone, what is in front within this (m) shows its buttons as the visitor comes to it. */
 const TOUCH_OFFER_M = 1.5;
 /** How far from a fingertip (px) a tap still finds what it meant. */
@@ -2020,6 +2024,11 @@ export class SceneController {
         if (own.length === 1 || seats) {
           return { entry: own.length === 1 ? own[0] : null, objectId, node: this.objectsById.get(objectId) ?? hit.object };
         }
+        // A piece with several machines (a kitchen run: its tap, hob, coffee machine and cupboards; a vanity: its
+        // tap and drawers): the one whose parts are nearest the point looked at. A tap's spout is not itself one of
+        // its machine's parts, so without this nothing on the run could be used by looking at it.
+        const near = machineNear(own, hit.point, MACHINE_NEAR_M);
+        if (near) return { entry: near, objectId, node: hit.object };
         return null;
       }
       // The nearest solid thing decides: a part behind a wall is not reachable.
@@ -2075,6 +2084,41 @@ export class SceneController {
 
   private aimQuiet = false;
 
+  /**
+   * A phone visitor standing right by something usable that is not exactly in the middle of the view (a tap below
+   * the eye, a switch beside the door): the nearest machine within TOUCH_NEAR_M, in front (within 70° of the way
+   * one faces), not behind a wall. Light fittings and doors' leaves are for looking at, not for this.
+   */
+  private machineInFront(): ReturnType<SceneController['targetAt']> {
+    const w = this.walk;
+    if (!w) return null;
+    const f = { x: Math.cos(w.yaw), y: Math.sin(w.yaw) };
+    let best: { e: LiveEntry; d: number; at: Point } | null = null;
+    for (const e of this.living.all()) {
+      if (e.machine.role === 'LIGHT' || e.doorId) continue;
+      const at = this.entryPoint(e);
+      const dx = at.x - w.pos.x; const dy = at.y - w.pos.y;
+      const d = Math.hypot(dx, dy);
+      if (d > TOUCH_NEAR_M || (d > 0.05 && (dx * f.x + dy * f.y) / d < Math.cos((70 * Math.PI) / 180))) continue;
+      if (!best || d < best.d) best = { e, d, at };
+    }
+    if (!best) return null;
+    // Not through a wall: the space between the eye and it is clear.
+    const eye = new THREE.Vector3(w.pos.x, w.eye, -w.pos.y);
+    const node = [...best.e.parts.values()][0]?.node;
+    const target = node ? new THREE.Box3().setFromObject(node).getCenter(new THREE.Vector3()) : new THREE.Vector3(best.at.x, 0.9, -best.at.y);
+    if (new THREE.Box3().setFromObject(node ?? new THREE.Object3D()).isEmpty()) target.set(best.at.x, 0.9, -best.at.y);
+    const dir = target.clone().sub(eye);
+    const len = dir.length();
+    this.raycaster.set(eye, dir.normalize());
+    this.raycaster.far = Math.max(0, len - 0.1);
+    const wall = this.raycaster.intersectObjects([this.spaceGroup], true).find((h) => h.object.visible);
+    this.raycaster.far = Infinity;
+    if (wall) return null;
+    const objectNode = best.e.objectId ? this.objectsById.get(best.e.objectId) : undefined;
+    return { entry: best.e, objectId: best.e.objectId, node: objectNode ?? node ?? this.objectsGroup };
+  }
+
   /** A phone visitor standing within TOUCH_OFFER_M of what is in front of them: its buttons show without a tap. */
   private offeredOnApproach(t: { node: THREE.Object3D } | null): boolean {
     const w = this.walk;
@@ -2098,7 +2142,7 @@ export class SceneController {
       const rect = this.renderer.domElement.getBoundingClientRect();
       const p = this.lastPointer ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       // A phone aims along the line of sight with a fingertip's give (a tap's handle is small on a phone screen).
-      const hit = !this.lastPointer && this.touchInput ? this.targetNearCentre() : this.targetAt(p.x, p.y);
+      const hit = !this.lastPointer && this.touchInput ? (this.targetNearCentre() ?? this.machineInFront()) : this.targetAt(p.x, p.y);
       // A hovering mouse on its way to the hint's buttons crosses bare floor:
       // the aim lingers briefly so the button is still there when it arrives.
       if (!hit && this.lastPointer && this.aimed) {

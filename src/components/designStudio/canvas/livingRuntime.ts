@@ -109,6 +109,26 @@ export interface LivingOptions {
   onTransition?: (e: LiveEntry, from: string, to: string) => void;
 }
 
+/**
+ * Of a piece's machines, the one with a part within `maxM` of a point on the piece (a kitchen run's tap, hob, coffee
+ * machine and cupboards; a vanity's tap and drawers). A part with nothing drawn yet (a tap's water while it is off)
+ * is where its node is.
+ */
+export function machineNear(entries: LiveEntry[], point: THREE.Vector3, maxM: number): LiveEntry | null {
+  let best: LiveEntry | null = null;
+  let bestD = maxM;
+  const box = new THREE.Box3();
+  const at = new THREE.Vector3();
+  for (const e of entries) {
+    for (const rig of e.parts.values()) {
+      box.setFromObject(rig.node);
+      const d = box.isEmpty() ? rig.node.getWorldPosition(at).distanceTo(point) : box.distanceToPoint(point);
+      if (d < bestD) { bestD = d; best = e; }
+    }
+  }
+  return best;
+}
+
 export class LivingRuntime {
   private entries = new Map<string, LiveEntry>();
   private seatSets = new Map<string, SeatSet>();

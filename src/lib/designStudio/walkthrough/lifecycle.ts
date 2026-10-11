@@ -25,7 +25,7 @@ export const isTerminal = (s: string): boolean => TERMINAL.has(s as WalkState);
 /** Longer than one step can take in an edge invocation (the OpenAI plan is the longest), so a live worker is never taken over. */
 export const LEASE_MS = 4 * 60_000;
 /** Plan attempts (one OpenAI scene plan each). */
-export const MAX_PLAN_ATTEMPTS = 2;
+export const MAX_PLAN_ATTEMPTS = 3;
 /** Factory submissions: a second only after the first was proven dead at the provider. */
 export const MAX_SUBMIT_ATTEMPTS = 2;
 /** Result-processing attempts (re-reading and verifying the outputs). */
@@ -50,6 +50,8 @@ export interface WalkRow {
   walk_version_id: string | null;
   factory_job_id: string | null;
   provider_job_id: string | null;
+  /** A scene plan asked in the background and not yet collected: collecting it is never refused for attempts spent. */
+  timings?: { planResponse?: { id?: string } | null } | null;
 }
 
 export const leaseFree = (row: Pick<WalkRow, 'lease_at'>, now: number): boolean =>
@@ -77,7 +79,7 @@ export function nextStep(row: WalkRow, now: number, opts: { force?: boolean } = 
     case 'PLANNING':
       // A plan already saved (an invocation that died after saving it) is never asked for again.
       if (row.scene_plan && row.walk_version_id) return row.factory_job_id ? { kind: 'POLL' } : row.submit_attempts >= MAX_SUBMIT_ATTEMPTS ? { kind: 'FAIL', code: 'SUBMIT_FAILED' } : { kind: 'SUBMIT' };
-      return row.plan_attempts >= MAX_PLAN_ATTEMPTS ? { kind: 'FAIL', code: 'PLAN_FAILED' } : { kind: 'PLAN' };
+      return row.plan_attempts >= MAX_PLAN_ATTEMPTS && !row.timings?.planResponse?.id ? { kind: 'FAIL', code: 'PLAN_FAILED' } : { kind: 'PLAN' };
     case 'SUBMITTED':
     case 'RUNNING':
       if (!row.factory_job_id) return row.submit_attempts >= MAX_SUBMIT_ATTEMPTS ? { kind: 'FAIL', code: 'SUBMIT_FAILED' } : { kind: 'SUBMIT' };

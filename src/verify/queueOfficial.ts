@@ -105,7 +105,10 @@ const isPrimary = (r: QueueTaskRow) => !String(r.dedupe_key).includes(':');
  * Deduplicated against what the job already has, so calling it again plans
  * nothing new.
  */
-export function followUpTasks(rows: QueueTaskRow[], ctx: { tasImplementation?: TasImplementationLike | null } = {}): TaskPlan[] {
+export function followUpTasks(
+  rows: QueueTaskRow[],
+  ctx: { tasImplementation?: TasImplementationLike | null; captchaPolicy?: { enabled?: boolean; providers?: { rstax?: boolean } } | null } = {},
+): TaskPlan[] {
   const have = new Set(rows.map((r) => r.dedupe_key));
   const out: TaskPlan[] = [];
   const tas = rows.find((r) => r.source === 'tas' && r.dedupe_key === 'tas');
@@ -114,17 +117,43 @@ export function followUpTasks(rows: QueueTaskRow[], ctx: { tasImplementation?: T
     const c = code(tas.input?.cadastral ?? tas.input?.query);
     if (c) out.push({ source: 'tas_legacy', dedupeKey: 'tas_legacy', scopeKey: `tas_legacy:${c}`, input: { cadastral: c, query: c, mode: 'cadastral' }, priority: 100 });
   }
+  /*
+   * REGISTRY LOOKUPS START AS SOON AS A SOURCE NAMES A COMPANY.
+   *
+   * They used to wait for EVERY primary source to finish. Owner live run
+   * 2026-10-11: MyGov named the companies at 06:44, TAS finished at 06:51,
+   * so ENREG/Debtor sat idle for seven minutes, and RS.ge only started after
+   * the whole official stage — then took seven more minutes on the critical
+   * path. Now each succeeded primary's companies are looked up at once, in
+   * parallel with the slower sources, and RS.ge (the one CAPTCHA lookup) is
+   * started for the first company in the same breath. The later financial
+   * stage asks for the same task and finds it running or finished. Still at
+   * most MAX_QUEUE_ENTITY_COMPANIES companies per job, and still only the
+   * PRIMARY sources' companies: a registry extract never fans out again.
+   */
   const primaries = rows.filter(isPrimary);
-  const primaryDone = primaries.length > 0 && primaries.every((r) => TERMINAL_TASK_STATES.has(String(r.state))) && !out.length;
-  if (primaryDone) {
-    // Companies named by the PRIMARY sources only, as in the worker: a
-    // registry extract naming further companies never fans out again.
-    const ordered = [...primaries].sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')) || a.dedupe_key.localeCompare(b.dedupe_key));
-    for (const e of confirmedEntities(ordered).slice(0, MAX_QUEUE_ENTITY_COMPANIES)) {
+  const succeeded = primaries.filter((r) => r.state === 'SUCCEEDED');
+  if (succeeded.length && !out.length) {
+    const ordered = [...succeeded].sort((a, b) => String(a.finished_at ?? a.created_at ?? '').localeCompare(String(b.finished_at ?? b.created_at ?? '')) || a.dedupe_key.localeCompare(b.dedupe_key));
+    const companies = new Set(
+      rows.filter((r) => !isPrimary(r) && ENTITY_FOLLOW_UP_SOURCES.includes(r.source as any)).map((r) => String(r.dedupe_key).split(':').slice(1).join(':')),
+    );
+    const rstaxOn = !!ctx.captchaPolicy && ctx.captchaPolicy.enabled !== false && ctx.captchaPolicy.providers?.rstax !== false;
+    const rstaxPlanned = rows.some((r) => r.source === 'rstax');
+    let first = true;
+    for (const e of confirmedEntities(ordered)) {
+      const key = String(e.identificationCode);
+      if (!companies.has(key) && companies.size >= MAX_QUEUE_ENTITY_COMPANIES) break;
+      companies.add(key);
       for (const source of ENTITY_FOLLOW_UP_SOURCES) {
         const t = entityTask(source, { idCode: e.identificationCode, name: e.name });
         if (!have.has(t.dedupeKey)) out.push(t);
       }
+      if (first && rstaxOn && !rstaxPlanned) {
+        const t = entityTask('rstax', { idCode: e.identificationCode, name: e.name }, ctx.captchaPolicy);
+        if (!have.has(t.dedupeKey)) out.push(t);
+      }
+      first = false;
     }
   }
   return out;
@@ -253,4 +282,39 @@ export function singleTaskView(row: QueueTaskRow | null): { status: 'QUEUED' | '
   if (row.state === 'FAILED' || row.state === 'DEAD') return { status: 'COMPLETE', results: [taskResult(row)].filter(Boolean) };
   if (row.state === 'CANCELLED') return { status: 'FAILED', results: [] };
   return { status: row.state === 'QUEUED' ? 'QUEUED' : 'RUNNING', results: [] };
+}
+
+/*
+ * THE OFFICIAL STAGE, AS IT HAPPENS (customer progress only).
+ *
+ * Owner live run 2026-10-11: MyGov and TAS had both finished while the job
+ * page still showed every official section as "not started" — the sections
+ * read result_json, and result_json only receives the official results when
+ * the whole stage ends. This is the per-source state of the primary tasks,
+ * written on every tick while the stage runs, so the page can say what has
+ * genuinely finished. States only: no payload, no personal data.
+ */
+export type OfficialLiveState = 'QUEUED' | 'RUNNING' | 'DONE' | 'UNAVAILABLE';
+export interface OfficialLive {
+  sources: Array<{ source: string; state: OfficialLiveState }>;
+  done: number;
+  total: number;
+}
+export function officialLiveOf(rows: QueueTaskRow[]): OfficialLive {
+  const sorted = [...rows].filter(isPrimary).sort((a, b) => (ORDER[a.source] ?? 10) - (ORDER[b.source] ?? 10));
+  const replaced = sorted.some((r) => r.source === 'tas_legacy');
+  const sources = sorted
+    .filter((r) => !(replaced && r.source === 'tas' && r.state !== 'SUCCEEDED'))
+    .map((r) => {
+      const s = String(r.state);
+      const state: OfficialLiveState = s === 'SUCCEEDED'
+        ? 'DONE'
+        : TERMINAL_TASK_STATES.has(s)
+          ? 'UNAVAILABLE'
+          : s === 'QUEUED' && !r.started_at
+            ? 'QUEUED'
+            : 'RUNNING';
+      return { source: r.source === 'tas_legacy' ? 'tas' : r.source, state };
+    });
+  return { sources, done: sources.filter((s) => s.state === 'DONE' || s.state === 'UNAVAILABLE').length, total: sources.length };
 }

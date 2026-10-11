@@ -17239,10 +17239,10 @@ const en = {
   verify_resume_need_credits: 'Add credits to continue this investigation.',
   verify_final_cost: 'Final cost',
   verify_unused_returned: 'Unused credits returned',
-  verify_pause_confirm_title: 'Stop the investigation?',
-  verify_pause_confirm_body: 'Research stops right away. You pay only for work already done, unused credits return to your balance, and everything found so far is kept. You can continue later.',
+  verify_pause_confirm_title: 'Stop the research now?',
+  verify_pause_confirm_body: 'The research stops immediately and does not continue in the background. Credits already used are not refunded, and the result will be incomplete — only what was found up to this moment. Credits not yet used return to your balance.',
   verify_pause_confirm_keep: 'Keep going',
-  verify_pause_confirm_stop: 'Stop investigation',
+  verify_pause_confirm_stop: 'Yes, stop now',
   verify_pausing: 'Stopping…',
   verify_ads_budget_limit: 'Advertising activity was not checked so that the investigation stayed within your budget.',
   verify_err_sign_in_required: 'Sign in to start a verification.',
@@ -17728,6 +17728,19 @@ const en = {
   mps_source_CACHED: '{{source}}: temporarily unavailable — showing previously collected listings with their last-checked time',
   mps_source_UNAVAILABLE: '{{source}}: temporarily unavailable — no previously collected listings match',
   mps_source_retry: 'Next refresh attempt after {{time}}',
+
+  /* ── VERIFY LIVE JOB PAGE ── */
+  verify_stop_warning: 'Stopping ends the research at once — nothing continues in the background. Credits already used are not refunded and the report will be incomplete.',
+  verify_budget_live: 'Credits, live',
+  verify_budget_reserved: 'Reserved for this research: {{n}} credits',
+  verify_sections_progress: '{{done}} of {{total}} ready',
+  verify_live_src_TAS_MAP: 'City map (TAS)',
+  verify_live_src_tas: 'Construction permit cases (TAS)',
+  verify_live_src_mygov: 'Public Registry extract (MyGov)',
+  verify_live_state_queued: 'Waiting',
+  verify_live_state_running: 'In progress',
+  verify_live_state_done: 'Received',
+  verify_live_state_unavailable: 'Not available',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -34881,10 +34894,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_resume_need_credits: 'კვლევის გასაგრძელებლად დაამატეთ კრედიტები.',
   verify_final_cost: 'საბოლოო ღირებულება',
   verify_unused_returned: 'დაბრუნებული გამოუყენებელი კრედიტები',
-  verify_pause_confirm_title: 'შევაჩეროთ კვლევა?',
-  verify_pause_confirm_body: 'კვლევა მაშინვე შეჩერდება. გადაიხდით მხოლოდ უკვე შესრულებულ სამუშაოში, გამოუყენებელი კრედიტები ბალანსზე დაგიბრუნდებათ, მოძიებული ყველაფერი კი შეინახება. გაგრძელება მოგვიანებით შეგიძლიათ.',
+  verify_pause_confirm_title: 'შევწყვიტოთ კვლევა ახლავე?',
+  verify_pause_confirm_body: 'კვლევა მაშინვე წყდება და ფონურ რეჟიმში აღარ გაგრძელდება. უკვე დახარჯული კრედიტები არ ბრუნდება, შედეგი კი არასრული იქნება — მხოლოდ ის, რაც ამ მომენტამდე მოვიძიეთ. ჯერ გამოუყენებელი კრედიტები ბალანსზე დაგიბრუნდებათ.',
   verify_pause_confirm_keep: 'არა, გავაგრძელოთ',
-  verify_pause_confirm_stop: 'კვლევის შეჩერება',
+  verify_pause_confirm_stop: 'დიახ, შეწყვიტე',
   verify_pausing: 'ჩერდება…',
   verify_ads_budget_limit: 'სარეკლამო აქტივობა არ შემოწმებულა, რათა კვლევა თქვენს ბიუჯეტში დარჩენილიყო.',
   verify_err_sign_in_required: 'ვერიფიკაციის დასაწყებად შედით ანგარიშზე.',
@@ -35370,6 +35383,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: დროებით მიუწვდომელია — ნაჩვენებია ადრე შეგროვებული განცხადებები ბოლო შემოწმების დროით',
   mps_source_UNAVAILABLE: '{{source}}: დროებით მიუწვდომელია — ადრე შეგროვებული შესაბამისი განცხადებები არ მოიძებნა',
   mps_source_retry: 'შემდეგი განახლების მცდელობა: {{time}}-ის შემდეგ',
+
+  /* ── VERIFY LIVE JOB PAGE ── */
+  verify_stop_warning: 'შეწყვეტისას კვლევა მაშინვე სრულდება — ფონურ რეჟიმში აღარაფერი გაგრძელდება. დახარჯული კრედიტები არ ბრუნდება, ანგარიში კი არასრული იქნება.',
+  verify_budget_live: 'კრედიტები რეალურ დროში',
+  verify_budget_reserved: 'ამ კვლევისთვის დარეზერვებულია {{n}} კრედიტი',
+  verify_sections_progress: '{{total}}-დან მზადაა {{done}}',
+  verify_live_src_TAS_MAP: 'ქალაქის რუკა (TAS)',
+  verify_live_src_tas: 'სამშენებლო ნებართვის საქმეები (TAS)',
+  verify_live_src_mygov: 'საჯარო რეესტრის ამონაწერი (MyGov)',
+  verify_live_state_queued: 'რიგშია',
+  verify_live_state_running: 'მიმდინარეობს',
+  verify_live_state_done: 'მიღებულია',
+  verify_live_state_unavailable: 'მიუწვდომელია',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -52514,10 +52540,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_resume_need_credits: 'Добавьте кредиты, чтобы продолжить проверку.',
   verify_final_cost: 'Итоговая стоимость',
   verify_unused_returned: 'Возвращено неиспользованных кредитов',
-  verify_pause_confirm_title: 'Остановить проверку?',
-  verify_pause_confirm_body: 'Проверка остановится сразу. Вы платите только за уже выполненную работу, неиспользованные кредиты вернутся на баланс, а всё найденное сохранится. Продолжить можно позже.',
+  verify_pause_confirm_title: 'Остановить исследование сейчас?',
+  verify_pause_confirm_body: 'Исследование остановится сразу и не продолжится в фоновом режиме. Уже израсходованные кредиты не возвращаются, а результат будет неполным — только то, что найдено к этому моменту. Ещё не использованные кредиты вернутся на баланс.',
   verify_pause_confirm_keep: 'Продолжить',
-  verify_pause_confirm_stop: 'Остановить проверку',
+  verify_pause_confirm_stop: 'Да, остановить',
   verify_pausing: 'Остановка…',
   verify_ads_budget_limit: 'Рекламная активность не проверялась, чтобы проверка осталась в рамках вашего бюджета.',
   verify_err_sign_in_required: 'Войдите, чтобы начать проверку.',
@@ -53003,6 +53029,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: временно недоступен — показаны ранее собранные объявления с временем последней проверки',
   mps_source_UNAVAILABLE: '{{source}}: временно недоступен — подходящих ранее собранных объявлений нет',
   mps_source_retry: 'Следующая попытка обновления после {{time}}',
+
+  /* ── VERIFY LIVE JOB PAGE ── */
+  verify_stop_warning: 'Остановка сразу завершает исследование — в фоне ничего не продолжится. Израсходованные кредиты не возвращаются, а отчёт будет неполным.',
+  verify_budget_live: 'Кредиты в реальном времени',
+  verify_budget_reserved: 'Зарезервировано для исследования: {{n}} кредитов',
+  verify_sections_progress: 'Готово {{done}} из {{total}}',
+  verify_live_src_TAS_MAP: 'Карта города (TAS)',
+  verify_live_src_tas: 'Дела о разрешениях на строительство (TAS)',
+  verify_live_src_mygov: 'Выписка из Публичного реестра (MyGov)',
+  verify_live_state_queued: 'В очереди',
+  verify_live_state_running: 'Выполняется',
+  verify_live_state_done: 'Получено',
+  verify_live_state_unavailable: 'Недоступно',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70145,10 +70184,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_resume_need_credits: 'Araştırmaya devam etmek için kredi ekleyin.',
   verify_final_cost: 'Nihai tutar',
   verify_unused_returned: 'İade edilen kullanılmayan kredi',
-  verify_pause_confirm_title: 'Araştırma durdurulsun mu?',
-  verify_pause_confirm_body: 'Araştırma hemen durur. Yalnızca yapılmış iş için ödersiniz, kullanılmayan krediler bakiyenize döner ve bulunan her şey saklanır. Daha sonra devam edebilirsiniz.',
+  verify_pause_confirm_title: 'Araştırma şimdi durdurulsun mu?',
+  verify_pause_confirm_body: 'Araştırma hemen durur ve arka planda devam etmez. Kullanılmış krediler iade edilmez ve sonuç eksik olur — yalnızca bu ana kadar bulunanlar. Henüz kullanılmamış krediler bakiyenize döner.',
   verify_pause_confirm_keep: 'Devam et',
-  verify_pause_confirm_stop: 'Araştırmayı durdur',
+  verify_pause_confirm_stop: 'Evet, durdur',
   verify_pausing: 'Durduruluyor…',
   verify_ads_budget_limit: 'Araştırmanın bütçeniz içinde kalması için reklam faaliyeti kontrol edilmedi.',
   verify_err_sign_in_required: 'Doğrulama başlatmak için giriş yapın.',
@@ -70634,6 +70673,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: geçici olarak kullanılamıyor — daha önce toplanan ilanlar son kontrol zamanlarıyla gösteriliyor',
   mps_source_UNAVAILABLE: '{{source}}: geçici olarak kullanılamıyor — eşleşen daha önce toplanmış ilan yok',
   mps_source_retry: 'Sonraki güncelleme denemesi: {{time}} sonrası',
+
+  /* ── VERIFY LIVE JOB PAGE ── */
+  verify_stop_warning: 'Durdurmak araştırmayı hemen bitirir — arka planda hiçbir şey devam etmez. Kullanılmış krediler iade edilmez ve rapor eksik olur.',
+  verify_budget_live: 'Krediler, canlı',
+  verify_budget_reserved: 'Bu araştırma için ayrılan: {{n}} kredi',
+  verify_sections_progress: '{{total}} bölümden {{done}} hazır',
+  verify_live_src_TAS_MAP: 'Şehir haritası (TAS)',
+  verify_live_src_tas: 'İnşaat izni dosyaları (TAS)',
+  verify_live_src_mygov: 'Kamu Sicili özeti (MyGov)',
+  verify_live_state_queued: 'Sırada',
+  verify_live_state_running: 'Sürüyor',
+  verify_live_state_done: 'Alındı',
+  verify_live_state_unavailable: 'Erişilemedi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -87776,10 +87828,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_resume_need_credits: 'أضف اعتمادات لمتابعة التحقق.',
   verify_final_cost: 'التكلفة النهائية',
   verify_unused_returned: 'الرصيد غير المستخدم المُعاد',
-  verify_pause_confirm_title: 'إيقاف التحقق؟',
-  verify_pause_confirm_body: 'يتوقف التحقق فورًا. تدفع فقط مقابل العمل المنجز، ويعود الرصيد غير المستخدم إلى رصيدك، ويُحفظ كل ما وُجد حتى الآن. يمكنك المتابعة لاحقًا.',
+  verify_pause_confirm_title: 'إيقاف البحث الآن؟',
+  verify_pause_confirm_body: 'يتوقف البحث فورًا ولا يستمر في الخلفية. لا تُسترد الأرصدة المستخدمة، وستكون النتيجة غير مكتملة — فقط ما وُجد حتى هذه اللحظة. تعود الأرصدة غير المستخدمة بعد إلى رصيدك.',
   verify_pause_confirm_keep: 'متابعة',
-  verify_pause_confirm_stop: 'إيقاف التحقق',
+  verify_pause_confirm_stop: 'نعم، أوقف الآن',
   verify_pausing: 'جارٍ الإيقاف…',
   verify_ads_budget_limit: 'لم يُفحص النشاط الإعلاني كي يبقى التحقق ضمن ميزانيتك.',
   verify_err_sign_in_required: 'سجّل الدخول لبدء التحقق.',
@@ -88265,6 +88317,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: غير متاح مؤقتًا — تُعرض إعلانات جُمعت سابقًا مع وقت آخر فحص لها',
   mps_source_UNAVAILABLE: '{{source}}: غير متاح مؤقتًا — لا توجد إعلانات مطابقة جُمعت سابقًا',
   mps_source_retry: 'محاولة التحديث التالية بعد {{time}}',
+
+  /* ── VERIFY LIVE JOB PAGE ── */
+  verify_stop_warning: 'الإيقاف ينهي البحث فورًا — لا يستمر شيء في الخلفية. لا تُسترد الأرصدة المستخدمة وسيكون التقرير غير مكتمل.',
+  verify_budget_live: 'الأرصدة مباشرة',
+  verify_budget_reserved: 'المحجوز لهذا البحث: {{n}} رصيد',
+  verify_sections_progress: '{{done}} من {{total}} جاهزة',
+  verify_live_src_TAS_MAP: 'خريطة المدينة (TAS)',
+  verify_live_src_tas: 'ملفات تصاريح البناء (TAS)',
+  verify_live_src_mygov: 'مستخرج السجل العام (MyGov)',
+  verify_live_state_queued: 'في الانتظار',
+  verify_live_state_running: 'قيد التنفيذ',
+  verify_live_state_done: 'تم الاستلام',
+  verify_live_state_unavailable: 'غير متاح',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105407,10 +105472,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_resume_need_credits: 'הוסיפו קרדיטים כדי להמשיך בחקירה.',
   verify_final_cost: 'עלות סופית',
   verify_unused_returned: 'קרדיטים שלא נוצלו והוחזרו',
-  verify_pause_confirm_title: 'לעצור את החקירה?',
-  verify_pause_confirm_body: 'החקירה נעצרת מיד. משלמים רק על עבודה שכבר בוצעה, קרדיטים שלא נוצלו חוזרים ליתרה, וכל מה שנמצא עד כה נשמר. אפשר להמשיך מאוחר יותר.',
+  verify_pause_confirm_title: 'לעצור את המחקר עכשיו?',
+  verify_pause_confirm_body: 'המחקר נעצר מיד ואינו ממשיך ברקע. קרדיטים שכבר נוצלו אינם מוחזרים, והתוצאה תהיה חלקית — רק מה שנמצא עד לרגע זה. קרדיטים שטרם נוצלו חוזרים ליתרה.',
   verify_pause_confirm_keep: 'להמשיך',
-  verify_pause_confirm_stop: 'עצירת החקירה',
+  verify_pause_confirm_stop: 'כן, לעצור עכשיו',
   verify_pausing: 'עוצר…',
   verify_ads_budget_limit: 'פעילות הפרסום לא נבדקה כדי שהחקירה תישאר בתקציב שלך.',
   verify_err_sign_in_required: 'התחברו כדי להתחיל אימות.',
@@ -105896,6 +105961,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: לא זמין זמנית — מוצגות מודעות שנאספו קודם עם זמן הבדיקה האחרון',
   mps_source_UNAVAILABLE: '{{source}}: לא זמין זמנית — אין מודעות תואמות שנאספו קודם',
   mps_source_retry: 'ניסיון הרענון הבא אחרי {{time}}',
+
+  /* ── VERIFY LIVE JOB PAGE ── */
+  verify_stop_warning: 'עצירה מסיימת את המחקר מיד — דבר אינו ממשיך ברקע. קרדיטים שנוצלו אינם מוחזרים והדוח יהיה חלקי.',
+  verify_budget_live: 'קרדיטים בזמן אמת',
+  verify_budget_reserved: 'שמורים למחקר זה: {{n}} קרדיטים',
+  verify_sections_progress: '{{done}} מתוך {{total}} מוכנים',
+  verify_live_src_TAS_MAP: 'מפת העיר (TAS)',
+  verify_live_src_tas: 'תיקי היתרי בנייה (TAS)',
+  verify_live_src_mygov: 'נסח מהמרשם הציבורי (MyGov)',
+  verify_live_state_queued: 'ממתין',
+  verify_live_state_running: 'בתהליך',
+  verify_live_state_done: 'התקבל',
+  verify_live_state_unavailable: 'לא זמין',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

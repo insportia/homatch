@@ -213,6 +213,9 @@ export function pickFormMethod(methods: DwrMethodInfo[], exclude: string[] = ['U
   const score = (m: DwrMethodInfo): number => {
     const n = m.method;
     if (exclude.includes(`${m.script}.${m.method}`)) return -1;
+    // An operator interface, or field metadata rather than a case's values.
+    if (/^Administration$/i.test(m.script)) return -1;
+    if (/(MimeTypes?|Types$|Config|Settings|Meta|Schema|Defs?$|Definitions?)/.test(n)) return -1;
     if (m.arity !== 1) return -1;
     if (!/^(get|load|read|find|fetch|view|show)/i.test(n)) return -1;
     if (WRITE_VERB.test(n.replace(/^(get|load|read|find|fetch|view|show)/i, ''))) return -1;

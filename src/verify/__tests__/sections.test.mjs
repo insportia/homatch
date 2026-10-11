@@ -284,3 +284,21 @@ test('the abandoned source is disclosed, and does not fail the verification', ()
   assert.equal(official.metrics.sourcesConfirmed, 1);
   assert.equal(official.metrics.sourcesBlocked, 1);
 });
+
+test('finished official sources show as finished while the stage still runs (owner live run 2026-10-11)', () => {
+  const live = { sources: [{ source: 'TAS_MAP', state: 'DONE' }, { source: 'tas', state: 'RUNNING' }, { source: 'mygov', state: 'DONE' }], done: 2, total: 3 };
+  const running = at({ _officialLive: live }, { stage: 'BROWSER_WAITING', status: 'RUNNING' });
+  const official = find(running, 'OFFICIAL');
+  assert.equal(official.maturity, 'ENRICHING');
+  assert.equal(official.metrics.sourcesChecked, 3);
+  assert.equal(official.metrics.sourcesConfirmed, 2);
+  assert.deepEqual(official.sources.map((s) => s.state), ['DONE', 'RUNNING', 'DONE']);
+  // The registry answered: identification is under way, not "not started".
+  assert.equal(find(running, 'PROPERTY').maturity, 'ENRICHING');
+  // Once coverage exists the final official verdict replaces the live view.
+  const after = at({ _officialLive: live, officialSourceCoverage: [{ customerStatus: 'SUCCESS' }] }, { stage: 'COMPLETE', status: 'COMPLETE' });
+  assert.equal(find(after, 'OFFICIAL').sources, undefined);
+  // Unknown states are dropped, never rendered.
+  const junk = at({ _officialLive: { sources: [{ source: 'tas', state: 'HACKED' }] } }, { stage: 'BROWSER_WAITING', status: 'RUNNING' });
+  assert.equal(find(junk, 'OFFICIAL').maturity, 'PENDING');
+});

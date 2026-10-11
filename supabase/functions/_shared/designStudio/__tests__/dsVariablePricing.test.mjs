@@ -299,7 +299,10 @@ test('the server code: quote from the price book, maximum reserved as the ceilin
   assert.match(generate, /object_map_usd: ai\.sceneUsd \?\? null/);
   assert.match(generate, /aiUsd: known \? \(ai\.imageUsd \?\? 0\) \+ \(ai\.sceneUsd \?\? 0\) : null/);
   // The walkthrough: its AI under DS_WALKTHROUGH, reserved before work, settled on READY, released on FAILED.
-  assert.equal((walkthrough.match(/productCode: WALK_PRODUCT/g) ?? []).length, 2);
+  // Four model calls, every one metered under the walkthrough product: the space read, the plan, the AI room match
+  // and the AI layout review.
+  assert.equal((walkthrough.match(/productCode: WALK_PRODUCT/g) ?? []).length, 4);
+  for (const step of ['walkthrough_room_match', 'walkthrough_layout_review']) assert.match(walkthrough, new RegExp(`step: '${step}'`));
   assert.match(walkthrough, /const money = await reserveWalkthrough\(admin, \{ actorId, projectId: project\.id/);
   assert.equal((walkthrough.match(/await closeWalkthroughBilling\(admin, row\.id, 'SETTLE'\);/g) ?? []).length, 2);
   assert.match(walkthrough, /await closeWalkthroughBilling\(admin, row\.id, 'RELEASE'\);/);

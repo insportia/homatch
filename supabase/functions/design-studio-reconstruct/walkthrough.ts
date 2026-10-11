@@ -51,7 +51,7 @@ import { uuidFrom } from '../_shared/designStudio/renderKeys.ts';
 import { normalizePreferences, type PlanAssetContext, type PlanContext, type PlanMaterialContext } from '../_shared/designStudio/aiPlan.ts';
 import { offerFor } from '../_shared/designStudio/designIntent.ts';
 import {
-  imageAspect, REFERENCE_QA_SYSTEM, referenceSceneRequest, sceneRequest, validateScenePlan, type ReferenceInput, type SceneInput, type ValidatedScenePlan,
+  imageAspect, matchItem, REFERENCE_QA_SYSTEM, referenceSceneRequest, sceneRequest, validateScenePlan, type ReferenceInput, type SceneInput, type ValidatedScenePlan,
 } from '../_shared/designStudio/walkthrough/scenePlan.ts';
 import { validateScene } from '../_shared/designStudio/sceneMap.ts';
 import { QA_SCHEMA, validateQaReport } from '../_shared/designStudio/hybrid/qa.ts';
@@ -78,7 +78,9 @@ import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/
 import { buildCanonical } from '../../../src/lib/designStudio/scale.ts';
 import { compileSceneSpec } from '../../../src/lib/designStudio/hybrid/compileSpec.ts';
 import { buildWalkthrough, roomSketches } from '../../../src/lib/designStudio/walkthrough/build.ts';
-import { applyGraphLook, buildDesignGraph, fidelityOf, GRAPH_VERSION, graphToBuildPlan, READY_MIN_RECALL, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
+import { homeProgramme } from '../../../src/lib/designStudio/walkthrough/programme.ts';
+import { applyReview, LAYOUT_REVIEW_VERSION, readReview, reviewLayout, reviewRequest, type ReviewLayout, type ReviewOp } from '../../../src/lib/designStudio/walkthrough/layoutReview.ts';
+import { applyGraphLook, buildDesignGraph, fidelityOf, GRAPH_VERSION, graphToBuildPlan, mapSourceRooms, READY_MIN_RECALL, readRoomMatch, roomMatchRequest, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
 import { loadDesignEvidence } from './designEvidence.ts';
 import { anchorLock, feedbackOf, homeOrigin, referenceCameraPose, referenceFidelity, visualVerdict, type FidelityReport } from '../../../src/lib/designStudio/walkthrough/fidelity.ts';
 import { buildWalkModel, isFree, nearestFree } from '../../../src/lib/designStudio/navigation.ts';
@@ -99,6 +101,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** How often a background scene plan is asked for its answer, and how long it is waited for. */
 const PLAN_RESPONSE_POLL_MS = 10_000;
 const PLAN_RESPONSE_MAX_MS = 12 * 60_000;
+/** How long the AI's review of a built layout is waited for before the tour goes on without it. */
+const REVIEW_MAX_MS = 8 * 60_000;
+/** The AI layout review (layoutReview.ts) runs on every tour with a picture unless switched off here. */
+const LAYOUT_REVIEW_ON = (Deno.env.get('DS_LAYOUT_REVIEW') ?? 'on') !== 'off';
 const MODEL = Deno.env.get('OPENAI_DS_WALK_MODEL') || Deno.env.get('OPENAI_DS_DESIGN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 /** The model that compares the factory's reference-view render with the picture. */
 const QA_MODEL = Deno.env.get('OPENAI_DS_QA_MODEL') || MODEL;
@@ -1017,6 +1023,34 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // the same graph — never rebuilt from the picture's pixels again (that load can fail, and then the walk silently
   // fell back to the plan-only path, which is not the design).
   let reusedGraph: SpatialDesignGraph | null = null;
+  // The AI's review of this tour's first build (layoutReview.ts): asked once, in the background; while it is out, the
+  // plan it reviewed is kept with the row and built again, unchanged but for the review's corrections.
+  const review = (row.timings?.layoutReview ?? null) as { id?: string; at?: string; state?: string; layout?: ReviewLayout; aiRoomMap?: Record<string, string | null> | null } | null;
+  let reviewOps: ReviewOp[] = [];
+  let reviewCost: Row | null = null;
+  let reviewState: string | null = review?.state ?? null;
+  if (review?.id && row.scene_plan?.rooms) {
+    reused = row.scene_plan as ValidatedScenePlan; reusedFrom = row.id;
+    if (!review.state) {
+      const key = Deno.env.get('OPENAI_API_KEY');
+      const got = key ? await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(review.id)}`, { headers: { Authorization: `Bearer ${key}` } })
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+      const waiting = !got || got.status === 'queued' || got.status === 'in_progress';
+      if (waiting && Date.now() - Date.parse(review.at ?? '') < REVIEW_MAX_MS) {
+        await release(admin, row, { plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS) });
+        return;
+      }
+      if (got?.status === 'completed') {
+        let parsed: unknown = null;
+        try { parsed = JSON.parse(textOf(got)); } catch { parsed = null; }
+        reviewOps = review.layout ? readReview(parsed, review.layout) : [];
+        const askedAt = Date.parse(review.at ?? '') || Date.now();
+        const metered = await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: QA_MODEL, startedAt: askedAt }, got, { step: 'walkthrough_layout_review', walkthrough: row.id, background: true });
+        reviewCost = { kind: 'OPENAI_LAYOUT_REVIEW', model: QA_MODEL, usd: metered?.aiCents == null ? null : metered.aiCents / 100, basis: metered?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: got?.usage ?? null, ms: Date.now() - askedAt };
+        reviewState = reviewOps.length ? 'APPLYING' : 'NO_CHANGES';
+      } else reviewState = 'UNAVAILABLE';
+    }
+  }
   const graphOf = (report: Row): SpatialDesignGraph | null => {
     const g = report?.designGraph?.graph;
     // A graph from older code (its rooms matched by kind alone, a kitchen-living or office left unmatched) is built again.
@@ -1090,7 +1124,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const costLine = reused
     ? { kind: 'OPENAI_SCENE_PLAN', model: null, usd: 0, basis: 'REUSED', reusedFrom, tokens: null, ms: 0, attempt: row.plan_attempts }
     : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - askedAt, attempt: row.plan_attempts, step };
-  const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload || reused ? [costLine] : [])];
+  const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload || (reused && reusedFrom !== row.id) ? [costLine] : []), ...(reviewCost ? [reviewCost] : [])];
   const { planResponse: _answered, ...earlier } = (row.timings ?? {}) as Row;
   const timings = { ...earlier, ...(provenance ? { reference: provenance, planKey } : {}) };
   if (!validated || !validated.rooms.length) {
@@ -1114,23 +1148,71 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const evidence = reference && !(reusedGraph && reused)
     ? await loadDesignEvidence(admin, row, space, version.source_id, reference.bytes).catch((e) => { evidenceError = String((e as Error)?.message ?? e).slice(0, 300); return null; })
     : null;
+  // Rooms of the picture that kind and use could not match (mapSourceRooms) are matched by the AI: a small text
+  // question, asked only then, metered like every model call; its answer is checked (real, unused rooms only).
+  let aiRoomMap: Record<string, string | null> | null = null;
+  let roomMatchCost: Row | null = null;
+  if (review?.aiRoomMap) aiRoomMap = review.aiRoomMap;
+  else if (evidence && !(reusedGraph && reused) && apiKey) {
+    const det = mapSourceRooms(evidence.sourceRooms, space);
+    const open = evidence.sourceRooms.filter((r) => !det[r.id]);
+    const taken = new Set(Object.values(det).filter(Boolean));
+    const uses = homeProgramme(space.rooms);
+    const free = space.rooms.filter((r) => !taken.has(r.id)).map((r) => ({ id: r.id, kind: r.kind, label: r.label, areaM2: Math.round(r.areaM2 * 10) / 10, use: uses.get(r.id)?.use ?? 'OTHER' }));
+    if (open.length && free.length) {
+      const askedAt = Date.now();
+      const body = roomMatchRequest(MODEL, open.map((r) => ({ ...r, pieces: evidence.sceneMap.filter((e) => e.kind === 'OBJECT' && e.room === r.id).map((e) => String(e.label)).slice(0, 30) })), free);
+      const got = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000),
+      }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (got) {
+        let parsed: unknown = null;
+        try { parsed = JSON.parse(textOf(got)); } catch { parsed = null; }
+        aiRoomMap = readRoomMatch(parsed, open.map((r) => r.id), free.map((r) => r.id));
+        const metered = await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: MODEL, startedAt: askedAt }, got, { step: 'walkthrough_room_match', walkthrough: row.id });
+        roomMatchCost = { kind: 'OPENAI_ROOM_MATCH', model: MODEL, usd: metered?.aiCents == null ? null : metered.aiCents / 100, basis: metered?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: got?.usage ?? null, ms: Date.now() - askedAt };
+        cost.push(roomMatchCost);
+      }
+    }
+  }
   const graph: SpatialDesignGraph | null = reusedGraph && reused ? reusedGraph : evidence && evidence.sourceRooms.length && evidence.sceneMap.some((e) => e.kind === 'OBJECT')
     ? buildDesignGraph({
-      space, spec, sceneMap: evidence.sceneMap, legend: evidence.legend, sourceRooms: evidence.sourceRooms, scenePlan: validated, appearance: evidence.appearance,
+      space, spec, sceneMap: evidence.sceneMap, legend: evidence.legend, sourceRooms: evidence.sourceRooms, aiRoomMap, scenePlan: validated, appearance: evidence.appearance,
       source: { renderId: String(row.render_id), sceneMapJobId: provenance?.sceneMapJobId ?? null, specJobId: row.spec_job_id ?? null },
     })
     : null;
   const designGraphError = reference && !graph ? evidenceError ?? (evidence ? 'NO_ROOMS_OR_OBJECTS' : 'NO_EVIDENCE') : null;
-  const graphPlan = graph ? { ...graphToBuildPlan(graph, space, cat.materials, assets), styleCode: preferences.style } : null;
+  // The AI's own plan, room by room (the model saw the picture and placed every piece in the measured rooms).
+  const aiRooms = validated.rooms.map((pr) => ({
+    ...pr,
+    items: pr.items.map((it) => ({ ...it, refKey: it.ref?.key ?? null, lock: it.ref?.locked && roomsById.has(pr.roomId) ? anchorLock(roomsById.get(pr.roomId)!) : null })),
+  }));
+  const graphPlan0 = graph ? { ...graphToBuildPlan(graph, space, cat.materials, assets), styleCode: preferences.style } : null;
+  // A room the graph could not furnish from the render (its region unmatched, its pieces unread) is furnished from
+  // the AI's plan of that same room, never left to generic pieces while the model's placement of it exists.
+  const aiFilled: string[] = [];
+  const graphPlan = graphPlan0 ? {
+    ...graphPlan0,
+    rooms: [
+      ...graphPlan0.rooms.map((r) => {
+        const ai = aiRooms.find((x) => x.roomId === r.roomId);
+        if (r.items.length || !ai?.items.length) return r;
+        aiFilled.push(r.roomId);
+        return { ...r, items: ai.items };
+      }),
+      ...aiRooms.filter((ai) => ai.items.length && roomsById.has(ai.roomId) && !graphPlan0.rooms.some((r) => r.roomId === ai.roomId))
+        .map((ai) => { aiFilled.push(ai.roomId); return ai; }),
+    ],
+  } : null;
+  const plan0 = graphPlan ?? { lighting: validated.lighting, palette: validated.palette, styleCode: preferences.style, rooms: aiRooms };
+  // The review's corrections, on the same plan it reviewed (built again from the same inputs, so the same pieces).
+  const pickFor = (type: string, roomId: string): string | null => {
+    const room = roomsById.get(roomId);
+    return room ? matchItem({ type: type as never, assetCode: null }, { kind: room.kind, areaM2: room.areaM2 }, offered.ctx.assets, preferences)?.code ?? null : null;
+  };
+  const corrected = reviewState === 'APPLYING' && review?.layout ? applyReview(plan0, reviewOps, review.layout, pickFor) : null;
   const built = buildWalkthrough({
-    space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`,
-    plan: graphPlan ?? {
-      lighting: validated.lighting, palette: validated.palette, styleCode: preferences.style,
-      rooms: validated.rooms.map((pr) => ({
-        ...pr,
-        items: pr.items.map((it) => ({ ...it, refKey: it.ref?.key ?? null, lock: it.ref?.locked && roomsById.has(pr.roomId) ? anchorLock(roomsById.get(pr.roomId)!) : null })),
-      })),
-    },
+    space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`, plan: corrected?.plan ?? plan0,
   });
   const buildMs = Date.now() - buildStarted;
   // The design's look on the built pieces, and the promotion gate: is this, measurably, the selected design?
@@ -1153,6 +1235,14 @@ async function plan(admin: Row, row: Row): Promise<void> {
     camera: validated.reference.camera, cameraNote: validated.reference.cameraNote, facts: validated.reference.facts, fidelity,
     replans: replan ? Number(replan.attempt) || 1 : 0, reusedFrom, reuseRefused, sceneMapElements: reference?.sceneMap.length ?? 0, buildMs,
   } : { mode: 'SPECIFICATION', reusedFrom, reuseRefused, buildMs };
+  if (failing && corrected) {
+    // The corrected tour failed a gate the reviewed one passed: the review is set aside, the tour built as it was.
+    await release(admin, row, {
+      plan_attempts: Math.max(0, row.plan_attempts - 1), cost, next_check_at: iso(Date.now()),
+      timings: { ...timings, layoutReview: { ...review, state: 'REJECTED', rejectedFor: failing, ops: reviewOps.length } },
+    });
+    return;
+  }
   if (failing) {
     // The paid plan is kept with the failure: the same picture is never planned (and paid for) twice, and the
     // build can be reproduced exactly.
@@ -1175,6 +1265,30 @@ async function plan(admin: Row, row: Row): Promise<void> {
     return;
   }
 
+  // The AI's review of the built layout against the picture (layoutReview.ts): asked once, in the background, when the
+  // tour has a picture; its corrections are applied on the next step and kept only if every gate still passes.
+  if (LAYOUT_REVIEW_ON && !review && reference?.dataUrl && apiKey) {
+    const layout = reviewLayout(space, input.rooms, plan0, built.state, built.report, assets);
+    const made = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...reviewRequest(QA_MODEL, reference.dataUrl, layout), background: true, store: true }),
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (made?.id && (made.status === 'queued' || made.status === 'in_progress' || made.status === 'completed')) {
+      await release(admin, row, {
+        scene_plan: validated, cost, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS),
+        timings: { ...timings, layoutReview: { id: made.id, at: iso(Date.now()), version: LAYOUT_REVIEW_VERSION, layout, aiRoomMap } },
+      });
+      return;
+    }
+  }
+  if (review) {
+    // Kept with the tour (without the layout it reviewed): what the review said, and what became of it.
+    const { layout: _reviewed, ...kept } = review as Row;
+    timings.layoutReview = reviewState === 'REJECTED' ? kept : {
+      ...kept, state: reviewState === 'APPLYING' ? 'APPLIED' : reviewState, applied: corrected?.applied ?? 0, skipped: corrected?.skipped ?? 0,
+      ops: reviewOps.map((o) => ({ op: o.op, roomId: o.roomId, reason: o.reason })),
+    };
+  }
   // Saved as its own version of the design (the approved one is never touched); the same id on a re-plan.
   const walkId = await uuidFrom(`ds-walk:${row.id}:version`);
   const name = (typeof row.timings?.name === 'string' && row.timings.name) || `3D ${row.revision}`;
@@ -1198,7 +1312,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
     // binds (the factory never swaps them for generic models).
     designGraph: graph ? {
       version: graph.version, source: graph.source, roomMap: graph.roomMap, evidence: evidence?.report ?? null, promotion, reusedFrom: reusedGraph && reused ? reusedFrom : null,
-      bound: built.report.items.filter((i) => i.refKey && i.instanceId).map((i) => i.instanceId), graph,
+      // Only the graph's own pieces are bound (a room furnished from the AI plan has no design form to draw).
+      bound: built.report.items.filter((i) => i.refKey && i.instanceId && !aiFilled.includes(i.roomId)).map((i) => i.instanceId), graph, aiFilledRooms: aiFilled,
     } : (reference ? { version: null, promotion: { promoted: false, reasons: ['NO_DESIGN_GRAPH'], metrics: null }, evidence: evidence?.report ?? null } : null),
   };
   await release(admin, row, {

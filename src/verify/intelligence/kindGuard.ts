@@ -138,7 +138,9 @@ export function kindCopyKey(baseKey: string, kind: unknown): { key: string; noun
 /** t() through the kind: `kt(t, 'verify_v6s_legal_body', kind)`. */
 export function kindT(t: (key: string, vars?: Record<string, string>) => string, baseKey: string, kind: unknown, vars: Record<string, string> = {}): string {
   const { key, nounKey: nk } = kindCopyKey(baseKey, kind);
-  return t(key, nk ? { ...vars, noun: t(nk) } : vars);
+  if (nk) return t(key, { ...vars, noun: t(nk) });
+  // The apartment path calls t() exactly as before.
+  return Object.keys(vars).length ? t(key, vars) : t(key);
 }
 
 /* ───────────────────────── for the model ───────────────────────── */

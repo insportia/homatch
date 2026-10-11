@@ -37,6 +37,9 @@ import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/i
 import { VISUAL_ASSET_MAX } from '../../../src/verify/intelligence/visualAssets.ts';
 import { applyVisualRecovery, needsVisualRecovery, recoverableAttachments, recoveryMarker, storedUnpersistedVisuals, storedVisualRecord, tasApiOf, VISUAL_RECOVERY_SOURCE, type WorkerFileOutcome } from '../../../src/verify/intelligence/visualRecovery.ts';
 import { assessVisualQuality } from '../../../src/verify/intelligence/visualQuality.ts';
+import { freshPhotoAddress, freshPhotoCenter, freshPhotoSubject, freshPhotosDue, freshPhotosNeeded, notRunSearch, officialPhotoDates, type FreshPhotoSearch } from '../../../src/verify/freshPhotos.ts';
+import { geocodeAddress } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
+import { runFreshPhotoSearch } from '../_shared/freshPhotos/search.ts';
 import { ledgerFileFor, documentCachePath, DOCUMENT_BUCKET, DOCUMENT_URL_TTL_SECONDS } from '../../../src/verify/officialDocumentLibrary.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
@@ -2700,6 +2703,81 @@ async function recoverJobVisuals(sb: any, jobId: string): Promise<{ status: numb
   if (!Array.isArray(wrote) || !wrote.length) return { status: 200, body: { ok: true, skipped: true, reason: 'concurrent_recovery' } };
   console.log(JSON.stringify({ scope: 'official_visuals', event: 'visual_recovery', jobId, ms: Date.now() - t0, ...marker.counts, complete: marker.complete, error: failure }));
   return { status: 200, body: { ok: true, marker, apply } };
+}
+
+/*
+ * FRESH PHOTOGRAPHS OF THE BUILDING (action `fresh_photos`, 2026-10-11).
+ *
+ * When the official photographs are old, undated or only document-dated,
+ * one or two authentic, recent photographs of the exact building are looked
+ * for in public sources whose reuse is permitted (Wikimedia Commons; Mapillary
+ * when MAPILLARY_ACCESS_TOKEN is set), judged by src/verify/freshPhotos.ts
+ * (distance, heading, names, capture date, licence), copied into the private
+ * bucket under <jobId>/fresh/, and recorded as result_json._freshPhotos
+ * (FreshPhotoSearch). verify-synthesis carries it into the report as
+ * `freshPhotos` and signs the paths at read time. Centre: what the report
+ * already resolved (stored neighbourhood centre, map traversal, cadastral
+ * plan), else a house-precision geocode. At most once per 24 h per job unless
+ * the service role forces it; written once per run (compare-and-set on
+ * checkedAt). Free APIs: a cost row of 0 (ZERO_REAL) is recorded.
+ */
+async function freshJobPhotos(sb: any, jobId: string, force: boolean): Promise<{ status: number; body: Record<string, unknown> }> {
+  const t0 = Date.now();
+  const { data: j, error } = await sb.from('research_jobs').select('id,status,result_json,synthesis_json').eq('id', jobId).maybeSingle();
+  if (error) return { status: 500, body: { error: 'read_failed' } };
+  if (!j) return { status: 404, body: { error: 'Job not found' } };
+  if (j.status !== 'COMPLETE' || !j.result_json) return { status: 409, body: { error: 'job_not_complete' } };
+  const rj = j.result_json;
+  const sj = j.synthesis_json ?? {};
+  const prev = rj._freshPhotos ?? null;
+  const nowD = new Date();
+  if (!freshPhotosDue(prev, nowD.getTime(), force)) return { status: 200, body: { ok: true, skipped: true, freshPhotos: prev } };
+  const checkedAt = nowD.toISOString();
+  let result: FreshPhotoSearch;
+  if (!force && !freshPhotosNeeded(sj, nowD)) {
+    result = notRunSearch('OFFICIAL_PHOTOS_RECENT', checkedAt);
+  } else {
+    let center = freshPhotoCenter(sj, rj);
+    if (!center) {
+      const g = await geocodeAddress(freshPhotoAddress(sj, rj)).catch(() => null);
+      // A street-precision geocode is the street, not the building.
+      if (g && g.precision === 'HOUSE') center = { lat: g.lat, lng: g.lng, basis: 'GEOCODED_ADDRESS' };
+    }
+    result = await runFreshPhotoSearch({
+      jobId,
+      center,
+      subject: freshPhotoSubject(sj, rj),
+      newestOfficialPhotoDate: officialPhotoDates(sj)[0]?.date ?? null,
+      mapillaryToken: Deno.env.get('MAPILLARY_ACCESS_TOKEN') || null,
+      store: async (path, bytes, mime) => {
+        const up = await sb.storage.from(VISUAL_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
+        return !up.error || /exist|duplicate/i.test(String(up.error?.message || ''));
+      },
+    });
+    result.checkedAt = checkedAt;
+  }
+  rj._freshPhotos = result;
+  let q = sb.from('research_jobs').update({ result_json: rj }).eq('id', jobId);
+  q = prev?.checkedAt ? q.eq('result_json->_freshPhotos->>checkedAt', prev.checkedAt) : prev ? q.eq('result_json->_freshPhotos->>searchedAt', String(prev.searchedAt ?? '')) : q.is('result_json->_freshPhotos', null);
+  const { data: wrote, error: werr } = await q.select('id');
+  if (werr) return { status: 500, body: { error: 'write_failed' } };
+  if (!Array.isArray(wrote) || !wrote.length) return { status: 200, body: { ok: true, skipped: true, reason: 'concurrent_search' } };
+  if (result.status !== 'NOT_RUN' && result.status !== 'NO_LOCATION') {
+    const { error: cerr } = await sb.from('cost_events').insert([{
+      provider: 'WIKIMEDIA_COMMONS',
+      operation_type: 'FRESH_PHOTOS_VERIFY',
+      source: `fresh_photos;status=${result.status};sources=${result.sources.filter((s) => s.status === 'SEARCHED').map((s) => s.source).join('+') || 'none'}`,
+      units: result.photos.length,
+      cost_usd: 0,
+      pricing_state: 'ZERO_REAL',
+      success: result.status !== 'FAILED',
+      cache_hit: false,
+      job_id: jobId,
+    }]);
+    if (cerr) console.error(`research-agent: could not record fresh photos cost for ${jobId}: ${cerr.message ?? cerr}`);
+  }
+  console.log(JSON.stringify({ scope: 'fresh_photos', event: 'fresh_photo_search', jobId, ms: Date.now() - t0, status: result.status, photos: result.photos.length, sources: result.sources.map((s) => `${s.source}:${s.status}:${s.candidates}/${s.accepted}`) }));
+  return { status: 200, body: { ok: true, freshPhotos: result } };
 }
 
 /*
@@ -6842,6 +6920,25 @@ Deno.serve(async (req) => {
       }
       if (!WORKER || !WT) return json({ error: 'not configured' }, 503);
       const r = await recoverJobVisuals(svc, jobId);
+      return json(r.body, r.status);
+    }
+
+    // FRESH PHOTOGRAPHS — same callers and trust model as recover_visuals; only the service role may force.
+    if (String(preAuthBody?.action || '') === 'fresh_photos') {
+      const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', svcKey);
+      const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+      let same = !!svcKey && bearer.length === svcKey.length;
+      for (let i = 0; same && i < svcKey.length; i++) if (bearer.charCodeAt(i) !== svcKey.charCodeAt(i)) same = false;
+      const jobId = String(preAuthBody?.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'jobId required' }, 400);
+      if (!same) {
+        const { data: { user } } = await svc.auth.getUser(bearer);
+        if (!user) return json({ error: 'Invalid session' }, 401);
+        const { data: own } = await svc.from('research_jobs').select('id').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+        if (!own) return json({ error: 'Job not found' }, 404);
+      }
+      const r = await freshJobPhotos(svc, jobId, same && preAuthBody?.force === true);
       return json(r.body, r.status);
     }
 

@@ -85,6 +85,7 @@ import { VisualExplorer } from './VisualExplorer';
 import { LegalFindings, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
 import { VerifyJobProvider } from './OfficialLink';
+import { PropertyFactsCard } from './PropertyFactsCard';
 import { LazyMount } from './LazyMount';
 import { BuildingSpecs } from './BuildingSpecs';
 import { TechnicalExplained } from './TechnicalExplained';
@@ -518,6 +519,7 @@ export function VerifyReport({
           adsSeen={synthesis.developerAds ? (synthesis.developerAds.activeCount ?? 0) + (synthesis.developerAds.historicalCount ?? 0) : null}
           sources={(synthesis.evidenceGroups ?? []).reduce((n: number, g: any) => n + (Array.isArray(g?.items) ? g.items.length : 0), 0) || null}
         />
+        <PropertyFactsCard synthesis={synthesis} />
       </div>
 
       {/* ── EXPLORE THE PROPERTY ── the official visuals, labelled. */}

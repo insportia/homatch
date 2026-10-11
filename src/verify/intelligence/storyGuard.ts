@@ -22,7 +22,6 @@ export interface GuardChapter {
   title: string;
   period?: string;
   body: string;
-  [k: string]: unknown;
 }
 
 interface EvolutionCase {

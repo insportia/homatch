@@ -15,6 +15,7 @@ import {
 import { GALLERY_24, BLANK_IDS, PRIORITY_STORED_NOT_IN_GALLERY, CASE_DATES, resultJson601 } from './fixtures/krtsanisiVisuals601.mjs';
 import { VERIFY_FINAL_VISUALS_STRINGS } from '../../../scripts/verify-final-visuals-i18n-data.mjs';
 import { VERIFY_V6_VISUALS_STRINGS } from '../../../scripts/verify-v6-visuals-i18n-data.mjs';
+import { VERIFY_V7_GALLERY_STRINGS } from '../../../scripts/verify-v7-gallery-i18n-data.mjs';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
@@ -63,26 +64,31 @@ test('blanks stay in the stored report with a reason and never reach the custome
 
 /* ── chronology ─────────────────────────────────────────────────────────── */
 
-// Premise (2026-10-11, visual evolution): the five chapters became five tabs,
-// newest first: TODAY / LATEST / CHANGES / OLD / DRAWINGS (visualEvolution.test.mjs
-// holds the Digomi set). On .601: Sept 2026 photographs are today, the newest
-// case's pictures the latest design, 2022 renders a change, 2018 photographs history.
+// Premise (2026-10-11, v7 dating): the five tabs are LATEST_PHOTOS / LATEST /
+// CHANGES / OLD / DRAWINGS (visualEvolution.test.mjs holds the Digomi set). A
+// photo is never "today": the Sept 2026 photographs are the latest photos, but
+// their capture date is unverified (case filing only), so the tab reads "last
+// available" and noCurrentPhotos holds. The newest case's pictures are the
+// latest design, 2022 renders a change, 2018 photographs history.
 test('the .601 gallery reads newest first, dated from the case filings', () => {
   const usable = GALLERY_24.filter((v) => !BLANK_IDS.includes(v.id));
   const catalog = catalogVisuals(signedAll([...usable, ...PRIORITY_STORED_NOT_IN_GALLERY.slice(0, 3)]));
   const chrono = visualChronology(catalog, CASES, TODAY);
   const chapterOf = (id) => chrono.groups.find((g) => g.items.some((i) => i.visual.id === id))?.chapter;
-  assert.deepEqual(chrono.groups.map((g) => g.chapter), ['TODAY', 'LATEST', 'CHANGES', 'OLD', 'DRAWINGS']);
-  assert.equal(chrono.defaultChapter, 'TODAY');
+  assert.deepEqual(chrono.groups.map((g) => g.chapter), ['LATEST_PHOTOS', 'LATEST', 'CHANGES', 'OLD', 'DRAWINGS']);
+  assert.equal(chrono.defaultChapter, 'LATEST_PHOTOS');
+  assert.equal(chrono.latestPhotos.kind, 'LAST_AVAILABLE');
+  assert.equal(chrono.latestPhotos.badge, null, 'a 2026 photo carried a "found photo | year" badge in 2026');
   // 2022 renders: an earlier version within five years; the newest case's own pictures: the latest.
   assert.equal(chapterOf(GALLERY_24[0].id), 'CHANGES');
   assert.equal(chapterOf(PRIORITY_STORED_NOT_IN_GALLERY[0].id), 'LATEST');
-  // Drawings: drawings. 2018 site photographs: history. Sept 2026 photographs: today.
+  // Drawings: drawings. 2018 site photographs: history. Sept 2026 photographs: the latest photos.
   assert.equal(chapterOf(GALLERY_24[7].id), 'DRAWINGS');
   assert.equal(chapterOf(GALLERY_24[2].id), 'OLD');
-  assert.equal(chapterOf(GALLERY_24[16].id), 'TODAY');
+  assert.equal(chapterOf(GALLERY_24[16].id), 'LATEST_PHOTOS');
+  assert.equal(chrono.hero.id, chrono.groups[0].items[0].visual.id);
   assert.equal(chrono.noNewerRender, false);
-  assert.equal(chrono.noCurrentPhotos, false);
+  assert.equal(chrono.noCurrentPhotos, true, 'a filing date was taken as a verified capture');
   // Every card is dated from its case, never invented.
   const all = chrono.groups.flatMap((g) => g.items);
   assert.equal(all.length, catalog.length);
@@ -108,7 +114,7 @@ test('render vs photograph is always distinguished; a render is never current co
   }
   const chrono = visualChronology(cat, CASES, TODAY);
   for (const g of chrono.groups) {
-    if (g.chapter === 'TODAY') for (const i of g.items) assert.ok(i.type === 'PHOTO' || i.type === 'CONSTRUCTION_PHOTO', `${i.type} in ${g.chapter}`);
+    if (g.chapter === 'LATEST_PHOTOS') for (const i of g.items) assert.ok(i.type === 'PHOTO' || i.type === 'CONSTRUCTION_PHOTO', `${i.type} in ${g.chapter}`);
     if (g.chapter === 'LATEST') for (const i of g.items) assert.ok(i.type === 'RENDER' || i.type === 'IMAGE', `${i.type} in ${g.chapter}`);
   }
 });
@@ -118,7 +124,11 @@ test('with no recent photograph the gallery says so; undated pictures are not da
   const chrono = visualChronology(old, CASES, TODAY);
   assert.equal(chrono.noCurrentPhotos, true);
   assert.equal(chrono.newestPhotoDate, '2018-12-07');
-  assert.ok(!chrono.groups.some((g) => g.chapter === 'TODAY'));
+  // The 2018 photographs are the last available ones: shown first, with their year, never as current.
+  assert.equal(chrono.groups[0].chapter, 'LATEST_PHOTOS');
+  assert.equal(chrono.latestPhotos.kind, 'LAST_AVAILABLE');
+  assert.deepEqual(chrono.latestPhotos.badge, { key: 'vg_photos_badge', noteKey: 'vg_photos_badge_note', vars: { year: '2018' } });
+  for (const i of chrono.groups[0].items) assert.equal(i.photoDating, 'ARCHIVAL');
   const none = visualChronology(catalogVisuals(signedAll([GALLERY_24[0]])), new Map(), TODAY);
   assert.equal(none.noCurrentPhotos, true);
   assert.equal(none.newestPhotoDate, null);
@@ -213,7 +223,7 @@ test('every chronology string exists in six locales with its placeholders, and i
   const keys = [...Object.values(CHAPTER_KEY), ...Object.values(PICTURE_TYPE_KEY), 'vfv_date_application', 'vfv_date_exif', 'vfv_date_unknown',
     'vfv_render_not_evidence', 'vfv_image_type_note', 'vfv_no_current_photos', 'vfv_no_current_photos_since', 'vev_tabs_label', 'vev_date_filename',
     ...Array.from({ length: 12 }, (_, i) => `vfv_month_${i + 1}`)];
-  const STRINGS = { ...VERIFY_FINAL_VISUALS_STRINGS, ...VERIFY_V6_VISUALS_STRINGS };
+  const STRINGS = { ...VERIFY_FINAL_VISUALS_STRINGS, ...VERIFY_V6_VISUALS_STRINGS, ...VERIFY_V7_GALLERY_STRINGS };
   assert.equal(CHAPTER_ORDER.length, 5);
   for (const k of keys) {
     const v = STRINGS[k];

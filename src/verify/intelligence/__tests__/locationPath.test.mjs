@@ -153,7 +153,8 @@ test('LINK 7 — it is mounted with the prose, and standalone when there is none
   const src = renderer();
   assert.match(src, /s\.key === locationHost && synthesis\.location/,
     'the places are not attached to the section that discusses them');
-  assert.match(src, /synthesis\.location && !locationHost \? <LocationLiving/,
+  // v7: also gated by the property kind (no living-location block for parking/commercial).
+  assert.match(src, /synthesis\.location && !locationHost(?: && ks\.livingLocation)? \? <LocationLiving/,
     'with no LOCATION or INFRASTRUCTURE section written, the places disappear');
 });
 

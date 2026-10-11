@@ -20,6 +20,7 @@
  */
 
 import { buildPropertyRegister, reconcileReport, sentences, unitLegalPosition } from './propertyRegister.ts';
+import { propertyKindOverlay } from './propertyKind.ts';
 import { buildUnitIdentity } from './unitIdentity.ts';
 import type { PropertyRegister } from './propertyRegister.ts';
 import { buildBuyerChecklist } from './buyerChecklist.ts';
@@ -235,7 +236,14 @@ export function withPropertyRegister<T extends Record<string, any>>(payload: T, 
   } catch {
     unitIdentity = null;
   }
-  if (!reg?.latest) return { ...payload, report, officialHistory, ...(unitIdentity ? { unitIdentity } : {}) };
+  // v7: what kind of property the register says this is (propertyKind.ts); propertyType corrected from UNKNOWN.
+  let kindFields: ReturnType<typeof propertyKindOverlay> = {};
+  try {
+    kindFields = propertyKindOverlay(resultJson, reg?.latest ?? null, payload.propertyType);
+  } catch {
+    kindFields = {};
+  }
+  if (!reg?.latest) return { ...payload, report, officialHistory, ...(unitIdentity ? { unitIdentity } : {}), ...kindFields };
 
   const snapshot = { ...obj(payload.snapshot) };
   const owner = ownerFromRegister(reg);
@@ -262,5 +270,5 @@ export function withPropertyRegister<T extends Record<string, any>>(payload: T, 
 
   // Ownership, mortgages step by step (application ≠ cancellation) and restrictions, scoped and dated.
   const legalPosition = unitLegalPosition(reg);
-  return { ...payload, report, officialHistory, snapshot, checklist, selfChecks, propertyRegister: reg, ...(unitIdentity ? { unitIdentity } : {}), ...(legalPosition ? { unitLegalPosition: legalPosition } : {}) };
+  return { ...payload, report, officialHistory, snapshot, checklist, selfChecks, propertyRegister: reg, ...(unitIdentity ? { unitIdentity } : {}), ...(legalPosition ? { unitLegalPosition: legalPosition } : {}), ...kindFields };
 }

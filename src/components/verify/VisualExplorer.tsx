@@ -1,15 +1,18 @@
 // HOMATCH Verify — "Explore the property".
 //
 // The official visuals of the project as one place to look: a large stage,
-// five tabs, newest first (დღეს / ბოლო პროექტი / ცვლილებები / ძველი ვერსიები /
-// ნახაზები; only the tabs that hold something; it opens on the newest
-// verified one), a thumbnail strip, and a full-screen viewer with zoom
+// five tabs, newest first (უახლესი ფოტოები / ბოლო პროექტი / ცვლილებები /
+// ძველი ვერსიები / ნახაზები; only the tabs that hold something; it opens on
+// the newest photographs, a verified fresh one first), a thumbnail strip, and a full-screen viewer with zoom
 // (pinch, wheel, buttons, keys), pan and swipe. Every card says what it is,
 // when (a verified date or period), what it concerns (unit / building /
 // project), what it shows and why it matters. A picture filed five or more
 // years ago carries the mandatory historical label ON the image and above
 // it ("ძველი საპროექტო ვერსია | 2012 წელი"), and when no newer verified
 // render exists the gallery says so ("განახლებული რენდერი ვერ მოიძებნა").
+// A photograph is never "today": its card says whether its capture date is
+// verified, or only the date of the material it was filed in (visualDates.ts),
+// and the latest-photos tab says which of the two cases applies.
 //
 // THE RULES (held in src/verify/visualCatalog.ts, tested there):
 //   - only signed storage URLs are rendered; anything else is dropped
@@ -27,8 +30,8 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOff, Images, History } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
+  catalogFreshPhotos,
   catalogVisuals,
-  heroVisual,
   scopeKeyFor,
   visualChronology,
   BADGE_KEY,
@@ -37,8 +40,10 @@ import {
   type CatalogVisual,
   type ChronoVisual,
   type HistoricalLabel,
+  type LatestPhotosHeader,
   type VisualChapter,
 } from '@/verify/visualCatalog';
+import { documentDatePhrase } from '@/verify/intelligence/visualDates';
 import { safeHref } from '@/verify/reportPresentation';
 import { OfficialLink } from './OfficialLink';
 
@@ -100,12 +105,20 @@ function useDatedText() {
   }, [t]);
 }
 
+/** A card's supporting date notes; an archival note's {{date}} is phrased per language ("2025 წლის 14 აპრილით"). */
+function useDateNotes() {
+  const { t, lang } = useLanguage();
+  return React.useCallback((c: ChronoVisual | null | undefined): string[] => (c?.notes ?? []).map((n) =>
+    t(n.key, n.vars.date ? { ...n.vars, date: documentDatePhrase(n.vars.date, lang) ?? n.vars.date } : n.vars)), [t, lang]);
+}
+
 function useChronoLabel() {
   const { t } = useLanguage();
   const dated = useDatedText();
   return React.useCallback((c: ChronoVisual | undefined | null): string => {
     if (!c) return '';
-    return `${t(c.typeKey)} · ${dated(c)}`;
+    // An archival photograph is named by its year ("2025 წლის საარქივო ფოტო"), never by a capture date it does not have.
+    return `${c.photoLabel ? t(c.photoLabel.key, c.photoLabel.vars) : t(c.typeKey)} · ${dated(c)}`;
   }, [t, dated]);
 }
 
@@ -138,6 +151,64 @@ const HistoricalOverlay: React.FC<{ h: HistoricalLabel }> = ({ h }) => {
     >
       {t(h.badgeKey, h.vars)}
     </span>
+  );
+};
+
+/**
+ * A fresh photo's credit: source, author, license (with its link), the
+ * verified capture date, and separately the publication and retrieval dates
+ * (never presented as the capture date).
+ */
+const FreshCredit: React.FC<{ v: CatalogVisual; tone?: 'light' | 'dark' }> = ({ v, tone = 'light' }) => {
+  const { t } = useLanguage();
+  const f = v.fresh;
+  if (!f) return null;
+  const muted = tone === 'dark' ? 'text-[hsl(220_14%_72%)]' : 'text-muted-foreground';
+  // Links go through OfficialLink (safeHref-checked, new tab), never a raw anchor.
+  const sourceHref = safeHref(f.sourceUrl);
+  const licenseHref = safeHref(f.licenseUrl);
+  const sourceName = t(`vg_src_${f.source.toLowerCase()}`);
+  const dmy = (iso: string | null) => (iso ? <bdi dir="ltr" className="tabular-nums">{day(iso)}</bdi> : null);
+  return (
+    <dl className={`grid grid-cols-1 gap-x-3 gap-y-1 text-xs leading-5 sm:grid-cols-[minmax(6rem,auto)_1fr] ${muted}`} data-fresh-credit>
+      <dt className="font-semibold">{t('vg_fresh_source')}</dt>
+      <dd className="min-w-0 break-words">
+        {sourceHref ? <OfficialLink href={sourceHref} label={sourceName} tone={tone} /> : sourceName}
+      </dd>
+      {f.author ? (<><dt className="font-semibold">{t('vg_fresh_author')}</dt><dd className="min-w-0 break-words" dir="auto">{f.author}</dd></>) : null}
+      {f.license ? (
+        <>
+          <dt className="font-semibold">{t('vg_fresh_license')}</dt>
+          <dd className="min-w-0 break-words">{licenseHref ? <OfficialLink href={licenseHref} label={f.license} tone={tone} /> : <bdi dir="ltr">{f.license}</bdi>}</dd>
+        </>
+      ) : null}
+      <dt className="font-semibold">{t('vg_fresh_captured')}</dt>
+      <dd>{f.capture ? dmy(f.capture.date) : t('vg_capture_unknown_title')}</dd>
+      {f.publishedAt ? (<><dt className="font-semibold">{t('vg_fresh_published')}</dt><dd>{dmy(f.publishedAt)}</dd></>) : null}
+      {f.retrievedAt ? (<><dt className="font-semibold">{t('vg_fresh_retrieved')}</dt><dd>{dmy(f.retrievedAt)}</dd></>) : null}
+    </dl>
+  );
+};
+
+/**
+ * The latest-photos tab says which case applies: the newest verified photos
+ * of the building, or the last available photo (with its year when it is
+ * not this year's). A photo is never called "today".
+ */
+const LatestPhotosNote: React.FC<{ h: LatestPhotosHeader }> = ({ h }) => {
+  const { t } = useLanguage();
+  return (
+    <div className="space-y-2 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4" data-latest-photos={h.kind}>
+      {h.badge ? (
+        <span data-latest-photo-badge className="inline-flex max-w-full items-center gap-1.5 whitespace-normal rounded-full bg-[hsl(222_47%_11%)] px-2.5 py-1 text-start text-2xs font-semibold text-[hsl(38_92%_66%)] ring-1 ring-[hsl(38_92%_54%/0.40)]">
+          <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words">{t(h.badge.key, h.badge.vars)}</span>
+        </span>
+      ) : null}
+      <p className="text-sm font-semibold leading-6 text-foreground break-words">{t(h.titleKey)}</p>
+      <p className="text-sm leading-6 text-foreground/80 break-words">{t(h.bodyKey)}</p>
+      {h.badge ? <p className="text-xs leading-5 text-foreground/75 break-words">{t(h.badge.noteKey, h.badge.vars)}</p> : null}
+    </div>
   );
 };
 
@@ -261,7 +332,9 @@ const Lightbox: React.FC<{
   labelOf?: (v: CatalogVisual) => string | null;
   /** The mandatory historical label of an earlier-versions picture. */
   historicalOf?: (v: CatalogVisual) => HistoricalLabel | null;
-}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge, cases, identityUnresolved, labelOf, historicalOf }) => {
+  /** The date notes of a picture (capture unknown / archival material date). */
+  notesOf?: (v: CatalogVisual) => string[];
+}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge, cases, identityUnresolved, labelOf, historicalOf, notesOf }) => {
   const { t, lang } = useLanguage();
   const rtl = lang === 'ar' || lang === 'he';
   const v = items[index];
@@ -515,6 +588,8 @@ const Lightbox: React.FC<{
         <aside className="hidden w-[22rem] shrink-0 overflow-y-auto border-s border-white/10 p-5 lg:block" aria-label={t('vrx_visual_about')}>
           <Meta v={v} className="mb-1 !text-[hsl(220_14%_72%)]" />
           <SourceRow v={v} cases={cases} tone="dark" />
+          <FreshCredit v={v} tone="dark" />
+          {(notesOf?.(v) ?? []).map((n, i) => <p key={i} className="mt-2 text-xs leading-5 text-[hsl(220_14%_80%)]">{n}</p>)}
           {hist ? <p className="mt-3 text-xs leading-5 text-[hsl(38_92%_72%)]">{t(hist.noteKey, hist.vars)}</p> : null}
           <div className="mt-3"><Explanation v={v} clean={clean} tone="dark" /></div>
           <p className="mt-4 text-2xs leading-relaxed text-[hsl(220_14%_66%)]">{t('verify_ox_visual_note')}</p>
@@ -535,6 +610,8 @@ const Lightbox: React.FC<{
           <div id="vx-sheet" hidden={!sheetOpen} className="max-h-[45vh] overflow-y-auto px-4 pb-4">
             <Meta v={v} className="mb-1 !text-[hsl(220_14%_72%)]" />
             <SourceRow v={v} cases={cases} tone="dark" />
+            <FreshCredit v={v} tone="dark" />
+            {(notesOf?.(v) ?? []).map((n, i) => <p key={i} className="mt-2 text-xs leading-5 text-[hsl(220_14%_80%)]">{n}</p>)}
             {hist ? <p className="mt-3 text-xs leading-5 text-[hsl(38_92%_72%)]">{t(hist.noteKey, hist.vars)}</p> : null}
             <div className="mt-3"><Explanation v={v} clean={clean} tone="dark" /></div>
             <p className="mt-4 text-2xs leading-relaxed text-[hsl(220_14%_66%)]">{t('verify_ox_visual_note')}</p>
@@ -591,25 +668,33 @@ export const VisualExplorer: React.FC<{
   history?: { visuals?: Array<{ id: string; versionStatus: string }> } | null;
   /** The report's officialDocuments: each image's case number, date and official page. */
   docs?: unknown[] | null;
+  /**
+   * synthesis_json.freshPhotos (FreshPhotoSearch, signed `url`s added at
+   * read time): accepted photos with a verified capture date lead the
+   * latest-photos tab and open the gallery.
+   */
+  freshPhotos?: unknown;
   clean: Clean;
-}> = ({ visuals, explanations, captions, identityUnresolved, history, docs, clean }) => {
+}> = ({ visuals, explanations, captions, identityUnresolved, history, docs, freshPhotos, clean }) => {
   const { t, lang } = useLanguage();
   const rtl = lang === 'ar' || lang === 'he';
+  const today = new Date().toISOString().slice(0, 10);
   const catalog = React.useMemo(
-    () => catalogVisuals(visuals ?? [], explanations ?? [], captions ?? [], { identityUnresolved }),
-    [visuals, explanations, captions, identityUnresolved],
+    () => [...catalogFreshPhotos(freshPhotos, { today }), ...catalogVisuals(visuals ?? [], explanations ?? [], captions ?? [], { identityUnresolved })],
+    [freshPhotos, today, visuals, explanations, captions, identityUnresolved],
   );
   const [broken, setBroken] = React.useState<Set<string>>(() => new Set());
   const onBroken = React.useCallback((id: string) => setBroken((b) => (b.has(id) ? b : new Set(b).add(id))), []);
   const usable = React.useMemo(() => catalog.filter((v) => !broken.has(v.id)), [catalog, broken]);
-  const hero = React.useMemo(() => heroVisual(usable), [usable]);
   const text = useVisualText(clean);
   const label = useChronoLabel();
   const dateText = useDatedText();
-  const versionBadge = useVersionBadge(history);
+  const dateNotes = useDateNotes();
+  const baseVersionBadge = useVersionBadge(history);
   const cases = React.useMemo(() => visualCaseMap(docs), [docs]);
-  // The project's story: chapters by filing date (visualCatalog.ts).
-  const chrono = React.useMemo(() => visualChronology(usable, cases, new Date().toISOString().slice(0, 10)), [usable, cases]);
+  // The project's story: tabs by verified capture / document date (visualCatalog.ts, visualDates.ts).
+  const chrono = React.useMemo(() => visualChronology(usable, cases, today), [usable, cases, today]);
+  const hero = chrono.hero;
   const tabs = React.useMemo(() => chrono.groups.map((g) => ({ chapter: g.chapter, count: g.items.length })), [chrono]);
   const chronoOf = React.useMemo(() => new Map(chrono.groups.flatMap((g) => g.items.map((i) => [i.visual.id, i] as const))), [chrono]);
 
@@ -628,6 +713,11 @@ export const VisualExplorer: React.FC<{
   // A tab opens on its newest picture (the hero only when it is that tab's first choice).
   const active = inTab.find((v) => v.id === activeId) ?? inTab[0] ?? null;
   const historicalOf = (v: CatalogVisual): HistoricalLabel | null => chronoOf.get(v.id)?.historical ?? null;
+  const notesOf = (v: CatalogVisual): string[] => dateNotes(chronoOf.get(v.id));
+  // "Latest design" is said only of a render the dates place in the latest design;
+  // an old LATEST_RENDER (a 2013 case) is never presented as the latest.
+  const versionBadge = (v: CatalogVisual): string | null =>
+    v.role === 'LATEST_RENDER' && chronoOf.get(v.id)?.chapter !== 'LATEST' ? null : baseVersionBadge(v);
 
   if (!usable.length) {
     return (
@@ -685,6 +775,8 @@ export const VisualExplorer: React.FC<{
           </div>
         </div>
       ) : null}
+      {/* The latest-photos tab says which case applies, before its image. */}
+      {current === 'LATEST_PHOTOS' && chrono.latestPhotos ? <LatestPhotosNote h={chrono.latestPhotos} /> : null}
       {/* The stage */}
       {active && at ? (
         <figure className="space-y-3">
@@ -737,6 +829,7 @@ export const VisualExplorer: React.FC<{
               <p className="text-sm font-semibold leading-6 text-[hsl(var(--gold-ink))] break-words" data-visual-label>{label(activeChrono)}</p>
             ) : null}
             {hist ? <p className="text-sm leading-6 text-foreground/85 break-words" data-historical-note>{t(hist.noteKey, hist.vars)}</p> : null}
+            {notesOf(active).map((n, i) => <p key={i} className="text-sm leading-6 text-foreground/80 break-words" data-date-note>{n}</p>)}
             {/* Every card: what it shows, when, what kind of picture, what it concerns, why it matters. */}
             <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(7rem,auto)_1fr]" data-visual-card>
               <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_what')}</dt>
@@ -759,6 +852,7 @@ export const VisualExplorer: React.FC<{
             ) : null}
             <Meta v={active} />
             <SourceRow v={active} cases={cases} />
+            <FreshCredit v={active} />
           </figcaption>
         </figure>
       ) : null}
@@ -794,8 +888,8 @@ export const VisualExplorer: React.FC<{
           })}
         </div>
       ) : null}
-      {/* No recent photograph on file: said plainly, once. */}
-      {chrono.noCurrentPhotos ? (
+      {/* No photograph at all: said plainly, once (the latest-photos tab speaks for itself). */}
+      {chrono.noCurrentPhotos && !chrono.latestPhotos ? (
         <p className="text-xs leading-5 text-muted-foreground break-words" data-no-current-photos>
           {chrono.newestPhotoDate
             ? t('vfv_no_current_photos_since', { year: chrono.newestPhotoDate.slice(0, 4) })
@@ -838,7 +932,11 @@ export const VisualExplorer: React.FC<{
                   className="h-full w-full object-contain"
                 />
                 <span className={`absolute inset-x-1 bottom-1 truncate rounded-md px-1.5 py-0.5 text-start text-2xs font-medium leading-4 ${cl?.historical ? 'bg-[hsl(222_47%_8%/0.85)] text-[hsl(38_92%_66%)]' : 'bg-black/60 text-white'}`}>
-                  {cl?.historical ? t(cl.historical.badgeKey, cl.historical.vars) : cl ? t(cl.typeKey) : vt.label}
+                  {cl?.historical
+                    ? t(cl.historical.badgeKey, cl.historical.vars)
+                    : cl
+                      ? `${cl.photoLabel ? t(cl.photoLabel.key, cl.photoLabel.vars) : t(cl.typeKey)}${cl.date ? '' : ` · ${t('vg_undated')}`}`
+                      : vt.label}
                 </span>
               </button>
             );
@@ -861,6 +959,7 @@ export const VisualExplorer: React.FC<{
           identityUnresolved={identityUnresolved}
           labelOf={(v) => label(chronoOf.get(v.id)) || null}
           historicalOf={historicalOf}
+          notesOf={notesOf}
         />
       ) : null}
     </div>

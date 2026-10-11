@@ -48,6 +48,8 @@ export interface UnitIdentityModel {
     floor: string | null;
     apartment: string | null;
     areaSqm: number | null;
+    /** The registered description of the unit as the extract prints it (v7). */
+    description?: string | null;
     underConstruction: boolean | null;
     /** Date of the official evidence (extract preparation). */
     evidenceDate: string | null;
@@ -152,10 +154,13 @@ export function buildUnitIdentity(report: unknown, query?: string | null): UnitI
       verified: v.verified,
       basis: v.basis,
       registeredAddress: address,
-      block: ap.block,
-      floor: ap.floor,
-      apartment: ap.apartment ?? parts.unit?.replace(/^0+/, '') ?? null,
+      // The registered address first; the extract's own owners row when the address does not say (v7).
+      block: ap.block ?? latest?.unitBlock ?? null,
+      floor: ap.floor ?? latest?.unitFloor ?? null,
+      apartment: ap.apartment ?? latest?.unitNumber ?? parts.unit?.replace(/^0+/, '') ?? null,
       areaSqm: latest?.unitAreaSqm ?? null,
+      /** The unit's registered description, e.g. "ფართი (მშენებარე)" (v7). */
+      description: latest?.unitDescription ?? null,
       underConstruction: latest ? latest.unitUnderConstruction : null,
       evidenceDate: latest?.issuedAt ?? v.evidenceDate,
       observedAt: reg?.observedAt ?? null,
@@ -163,7 +168,7 @@ export function buildUnitIdentity(report: unknown, query?: string | null): UnitI
     parentParcel: parts.building
       ? { code: parts.parcel, scope: 'PARENT_PARCEL', landAreaSqm: latest?.landAreaSqm ?? null, landFunction: latest?.landFunction ?? null, source: latest ? 'NAPR_EXTRACT' : 'CADASTRAL_CODE' }
       : null,
-    building: { groupCode: parts.building, block: ap.block, scope: 'BUILDING', source: ap.block ? 'NAPR_EXTRACT' : 'CADASTRAL_CODE' },
+    building: { groupCode: parts.building, block: ap.block ?? latest?.unitBlock ?? null, scope: 'BUILDING', source: ap.block || latest?.unitBlock ? 'NAPR_EXTRACT' : 'CADASTRAL_CODE' },
     project: projectName || developer || projectAddress ? { name: projectName, developer, address: projectAddress, source: 'RESEARCH_IDENTITY' } : null,
     ownership: {
       current: latest && latest.owners.length

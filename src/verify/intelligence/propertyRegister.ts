@@ -67,6 +67,32 @@ export interface RegisterExtract {
   /** The unit itself marked ფართი(მშენებარე). */
   unitUnderConstruction: boolean;
   unitAreaSqm: number | null;
+  /*
+   * THE UNIT'S OWN ROW IN THE OWNERS TABLE (v7, job eeefada9), read in both
+   * layouts: collapsed on one line ("…საკუთრებაფართი(მშენებარე)სართული2,ბინა
+   * N4,79.50 კვ.მ.") and wrapped ("…ბინა\nN601,ბლოკი "ც"\n94.10\nკვ.მ.").
+   * All optional so persisted registers from older logic still type-check.
+   */
+  /** The registered description of the unit as printed, e.g. "ფართი (მშენებარე)". */
+  unitDescription?: string | null;
+  /** The whole registered item text of the row, e.g. "ფართი (მშენებარე) სართული 2, ბინა N4". */
+  unitItemText?: string | null;
+  unitFloor?: string | null;
+  /** Apartment / parking / office number as the row prints it. */
+  unitNumber?: string | null;
+  unitBlock?: string | null;
+  /** True when the owners table has a row for a unit (an apartment, parking space…); false for a parcel-only extract. */
+  unitRowFound?: boolean;
+  /** The parcel's address line (not the unit's registered address). */
+  parcelAddress?: string | null;
+  /** Total area of the buildings on the parcel, as printed (never the unit's area). */
+  buildingsTotalAreaSqm?: number | null;
+  /** The buildings line as printed, e.g. "შენობა N01 (მშენებარე)". */
+  buildingsText?: string | null;
+  /** The extract PDF itself on the official NAPR blob service (set by buildPropertyRegister). */
+  documentUrl?: string | null;
+  /** The record's public NAPR page (set by buildPropertyRegister). */
+  recordUrl?: string | null;
   mortgages: RegisterMortgage[];
   taxLien: RegisterState;
   seizure: RegisterState;
@@ -229,10 +255,75 @@ function parseOwners(text: string): RegisterOwner[] {
         return { kind: 'COMPANY', name: name || undefined, ...(id ? { companyId: id } : {}) };
       }
       // "სახელი გვარი ,P/N: 01001012345" → the name only.
-      const name = squash(line.replace(/,?\s*(?:P\/N|პ\/ნ)\s*:?\s*\d{11}.*$/, '').replace(/\d{11}.*$/, '')).replace(/,$/, '');
+      const name = squash(line.replace(/,?\s*(?:P\/N|პ\/ნ)\s*:?\s*(?:\d{11}|—).*$/, '').replace(/\d{11}.*$/, '')).replace(/,$/, '');
       return name && /\p{L}/u.test(name) ? { kind: 'PERSON', name } : { kind: 'PERSON' };
     })
     .slice(0, 12);
+}
+
+/*
+ * THE OWNERS TABLE ROW, LAYOUT-INDEPENDENT.
+ *
+ * The table header is "საკუთრება:ფართი:წილი:"; each row is the owner's name,
+ * the ownership type (საკუთრება / თანასაკუთრება), the registered item
+ * (description, floor, number, block) and its area in კვ.მ. pdf-to-text may
+ * keep the row on one line or wrap it anywhere, so the row is flattened
+ * before reading. Only this row is read for the unit's area: the parcel area
+ * (დაზუსტებული ფართობი) and the buildings' total (საერთო ფართი) sit in
+ * other sections and can never be taken for it.
+ */
+export interface UnitRow {
+  description: string | null;
+  itemText: string | null;
+  areaSqm: number | null;
+  floor: string | null;
+  number: string | null;
+  block: string | null;
+}
+
+const UNIT_ROW_HEADER = /საკუთრება\s*:\s*ფართი\s*:\s*წილი\s*:/;
+const AREA_IN_ROW = /(\d{1,6}(?:[.,]\d{1,2})?)\s*კვ\s*\.?\s*მ/u;
+
+/** Spaces around brackets and after commas, as a person writes it. */
+const tidy = (s: string) =>
+  squash(s.replace(/(სართული|ბინა|ბლოკი)(?=[\d"'„N№])/gu, '$1 ').replace(/\s*\(\s*/g, ' (').replace(/\s*\)\s*/g, ') ').replace(/\s*,\s*/g, ', '))
+    .replace(/\s+\)/g, ')').replace(/[\s,;]+$/, '');
+
+export function parseUnitRow(ownersBlock: string): UnitRow | null {
+  const body = section(ownersBlock, UNIT_ROW_HEADER, [L_MORTGAGE, L_TAX, /\nიპოთეკა\b/]);
+  if (body == null) return null;
+  const flat = squash(body.replace(FOOTER, ''));
+  if (!flat) return null;
+  // The first row: up to and including its area (a parcel-only row may have none).
+  const area = AREA_IN_ROW.exec(flat);
+  const row = area ? flat.slice(0, area.index) : flat;
+  // The item starts after the ownership type that follows the owner's name.
+  const type = /(?:თანა)?საკუთრება/u.exec(row);
+  const item = type ? row.slice(type.index + type[0].length) : '';
+  const itemText = item.trim() ? tidy(item) : null;
+  if (!itemText && !area) return null;
+  // The description is what precedes the floor / number / block (e.g. "ფართი (მშენებარე)").
+  const lead = itemText ? itemText.match(/^(.*?)(?=სართული|ბინა\s|ბინა(?:N|№)|ბლოკი|კორპუსი|,|$)/u)?.[1] ?? '' : '';
+  const description = lead.trim() ? tidy(lead) : null;
+  const t = itemText ?? '';
+  const floor = t.match(/სართული\s*(-?\d{1,3})/u)?.[1] ?? null;
+  const number =
+    t.match(/(?:ბინა|ავტოსადგომი|პარკინგი|ავტოფარეხი|ოფისი|სათავსო|ფართი)\s*(?:N|№|ნომერი)\s*([\p{L}\d-]{1,8})/u)?.[1] ??
+    t.match(/ბინა\s*(\d{1,5})/u)?.[1] ??
+    null;
+  const block =
+    t.match(/ბლოკი\s*["'„“”]?\s*([\p{L}\d]{1,3})/u)?.[1] ??
+    t.match(/["'„“]\s*([\p{L}\d]{1,3})\s*["'“”]\s*ბლოკი/u)?.[1] ??
+    null;
+  const areaSqm = area ? Number(area[1].replace(',', '.')) : null;
+  return {
+    description,
+    itemText,
+    areaSqm: areaSqm != null && Number.isFinite(areaSqm) && areaSqm > 0 ? areaSqm : null,
+    floor,
+    number: number ? number.replace(/[,;]+$/, '') : null,
+    block,
+  };
 }
 
 /** True for the registry extract PDF (as opposed to a decision page). */
@@ -252,6 +343,10 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
   const landArea = text.match(/დაზუსტებული\s+ფართობი\s*:\s*([\d.]+)/)?.[1];
   const buildings = section(text, /შენობა-ნაგებობები\s*:/, [L_OWNERS]) ?? '';
   const unitArea = ownersBlock.match(/\n\s*([\d]+\.\d{1,2})\s*\n\s*კვ\.მ/)?.[1];
+  // v7: the owners row, read whether pdf-to-text kept it on one line or wrapped it (eeefada9).
+  const unitRow = parseUnitRow(ownersBlock);
+  const parcelAddress = section(text, /მისამართი\s*:/, [/\nნაკვეთის\s+საკუთრების\s+ტიპი/, /\nნაკვეთის\s+ფუნქცია/, L_OWNERS]);
+  const buildingsTotal = squash(buildings).match(/(?:საერთო\s+ფართ\S*|ფართით?)\s*-?\s*(\d{1,7}(?:\.\d{1,2})?)\s*კვ/u)?.[1];
   const mortgageBody = section(text, L_MORTGAGE, [L_TAX, L_SEIZURE, L_DEBTOR]);
   const tail = [L_SEIZURE, L_DEBTOR, L_END];
 
@@ -266,7 +361,16 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
     landAreaSqm: landArea ? Number(landArea) : null,
     buildingsUnderConstruction: /მშენებარე/.test(buildings),
     unitUnderConstruction: /ფართი\s*\(\s*მშენებარე\s*\)/.test(ownersBlock),
-    unitAreaSqm: unitArea ? Number(unitArea) : null,
+    unitAreaSqm: unitArea ? Number(unitArea) : unitRow?.areaSqm ?? null,
+    unitDescription: unitRow?.description ?? null,
+    unitItemText: unitRow?.itemText ?? null,
+    unitFloor: unitRow?.floor ?? null,
+    unitNumber: unitRow?.number ?? null,
+    unitBlock: unitRow?.block ?? null,
+    unitRowFound: !!unitRow?.itemText,
+    parcelAddress: parcelAddress ? squash(parcelAddress) || null : null,
+    buildingsTotalAreaSqm: buildingsTotal ? Number(buildingsTotal) : null,
+    buildingsText: squash(buildings) || null,
     mortgages: mortgageBody ? parseMortgages(mortgageBody) : [],
     taxLien: stateOf(text, L_TAX, [L_SEIZURE, L_DEBTOR, /\nვალდებულება\s*\n/, L_END]),
     seizure: stateOf(text, L_SEIZURE, tail.slice(1)),
@@ -344,6 +448,24 @@ export function proceedingKind(typeText: string | null | undefined): ProceedingK
 
 /* ───────────────────────── the register ───────────────────────── */
 
+/** The NAPR blob service URL of an extract PDF, or null for anything else. */
+export function officialExtractUrl(v: unknown): string | null {
+  if (typeof v !== 'string' || !/^https:\/\/[^\s"'<>]+$/i.test(v.trim())) return null;
+  try {
+    const u = new URL(v.trim());
+    if (u.protocol !== 'https:' || u.hostname !== 'bs.napr.gov.ge' || !/^\/GetBlob$/i.test(u.pathname) || u.username || u.password) return null;
+    return v.trim();
+  } catch {
+    return null;
+  }
+}
+
+/** The public NAPR record page for a Service 176 application id. */
+export function officialRecordUrl(appID: unknown): string | null {
+  const id = String(appID ?? '').trim();
+  return /^\d{4,12}$/.test(id) ? `https://naprweb.reestri.gov.ge/_dea/#/view/${id}` : null;
+}
+
 const sameMortgage = (a: RegisterMortgage, b: RegisterMortgage) =>
   (a.agreementNumber && a.agreementNumber === b.agreementNumber) ||
   (!a.agreementNumber && a.applicationNumber && a.applicationNumber === b.applicationNumber);
@@ -402,6 +524,9 @@ export function buildPropertyRegister(browserOfficial: unknown): PropertyRegiste
       documents++;
       const extract = parseRegisterExtract(d.rawText, recordId);
       if (extract) {
+        // The extract PDF itself and its record page: public NAPR links, no personal data in either.
+        extract.documentUrl = officialExtractUrl(d.url ?? d.sourceReference?.url);
+        extract.recordUrl = officialRecordUrl(recordId);
         extracts.push(extract);
         continue;
       }

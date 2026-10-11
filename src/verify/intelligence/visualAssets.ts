@@ -97,6 +97,10 @@ export interface VerifyVisualAsset {
   versionStatus: 'CURRENT_APPROVED' | 'HISTORICAL_APPROVED' | 'UNDETERMINED';
   /** A camera's own EXIF date of a recovered photograph (YYYY-MM-DD), when present. */
   exifDate?: string;
+  /** The case the image was filed with (AR…), joined at build time (visualDates.ts). */
+  caseRef?: string;
+  /** Provenance dates written at build time (visualDates.ts): capture (EXIF only) vs document date. */
+  dates?: { capture: { date: string; source: string } | null; document: { date: string; source: string; caseRef: string | null } | null };
 }
 
 /**
@@ -376,6 +380,19 @@ export function persistableVisuals(stored: unknown, kept: VisualMeta[], max = VI
   return out;
 }
 
+/** A stored `dates` value in the visualDates.ts shape (dates and an AR case reference only), else null. */
+function storedVisualDates(raw: unknown): VerifyVisualAsset['dates'] | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const day = (x: unknown) => (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null);
+  const o = raw as Record<string, any>;
+  const cd = o.capture && typeof o.capture === 'object' ? day(o.capture.date) : null;
+  const dd = o.document && typeof o.document === 'object' ? day(o.document.date) : null;
+  const capture = cd && (o.capture.source === 'EXIF' || o.capture.source === 'PROVIDER_CAPTURE') ? { date: cd, source: String(o.capture.source) } : null;
+  const ref = dd && typeof o.document.caseRef === 'string' && /^[A-Z]{1,4}\d{3,14}$/.test(o.document.caseRef) ? o.document.caseRef : null;
+  const document = dd && (o.document.source === 'CASE_FILED' || o.document.source === 'FILE_NAME') ? { date: dd, source: String(o.document.source), caseRef: ref } : null;
+  return capture || document ? { capture, document } : null;
+}
+
 /** Signs many bucket paths; returns path → signed URL (or null). */
 export type VisualSigner = (paths: string[], ttlSeconds: number) => Promise<Record<string, string | null>>;
 
@@ -450,6 +467,9 @@ export async function toCustomerVisualAssets(
       role: v.role === 'LATEST_RENDER' || v.role === 'EARLIEST_RENDER' ? v.role : 'SUPPORTING',
       versionStatus: v.versionStatus === 'CURRENT_APPROVED' || v.versionStatus === 'HISTORICAL_APPROVED' ? v.versionStatus : 'UNDETERMINED',
       ...(typeof v.exifDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.exifDate) ? { exifDate: v.exifDate } : {}),
+      // Provenance (visualDates.ts), passed through only in its exact shape; the gallery re-validates it.
+      ...(typeof v.caseRef === 'string' && /^[A-Z]{1,4}\d{3,14}$/.test(v.caseRef) ? { caseRef: v.caseRef } : {}),
+      ...(storedVisualDates(v.dates) ? { dates: storedVisualDates(v.dates)! } : {}),
     });
   }
   return out;

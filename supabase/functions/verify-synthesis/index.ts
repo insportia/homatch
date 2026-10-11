@@ -32,6 +32,7 @@ import { officialHistoryView } from '../../../src/verify/intelligence/tasIntelli
 import { resolveIdentity } from '../../../src/verify/intelligence/propertyIdentity.ts';
 import { persistableVisuals, toCustomerVisualAssets, VISUAL_BUCKET, VISUAL_URL_TTL_SECONDS } from '../../../src/verify/intelligence/visualAssets.ts';
 import { annotateVisualQuality, visualByteSizes } from '../../../src/verify/intelligence/visualQuality.ts';
+import { withVisualDates } from '../../../src/verify/intelligence/visualDates.ts';
 import { applyVisualRecovery, needsVisualRecovery } from '../../../src/verify/intelligence/visualRecovery.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
@@ -54,6 +55,7 @@ import { extractFreshness } from '../../../src/verify/intelligence/propertyRegis
 import { buildUnitIdentity } from '../../../src/verify/intelligence/unitIdentity.ts';
 import { explainTechnical } from '../../../src/verify/intelligence/technicalExplained.ts';
 import { extractProjectSignals } from '../../../src/verify/intelligence/projectStory.ts';
+import { keepStoryOnRebuild } from '../../../src/verify/intelligence/storyGuard.ts';
 import { finalBuyerAssessment } from '../../../src/verify/intelligence/buyerAssessment.ts';
 import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '../../../src/verify/intelligence/reportReadPath.ts';
 import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
@@ -215,6 +217,26 @@ function textOf(p: any): string {
 async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: string): Promise<Record<string, unknown>> {
   const { _usage: _droppedUsage, _timing: _droppedTiming, officialVisuals, ...stripped } = payload as Record<string, any>;
   const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
+  // Fresh photographs (freshPhotos.ts): each bucket path becomes a signed URL
+  // in the same bucket with the same TTL; an unsignable photo is omitted.
+  if (Array.isArray(rest.freshPhotos?.photos) && rest.freshPhotos.photos.length) {
+    const fp = rest.freshPhotos;
+    const paths = fp.photos.map((p: any) => String(p?.path ?? '')).filter(Boolean);
+    const urls: Record<string, string | null> = {};
+    if (paths.length) {
+      const { data, error } = await db.storage.from(VISUAL_BUCKET).createSignedUrls(paths, VISUAL_URL_TTL_SECONDS).catch((e: unknown) => ({ data: null, error: e }));
+      if (!error) for (const d of Array.isArray(data) ? data : []) if (d?.path) urls[d.path] = d.signedUrl ?? null;
+    }
+    rest.freshPhotos = {
+      ...fp,
+      photos: fp.photos.flatMap((p: any) => {
+        const url = urls[String(p?.path ?? '')];
+        if (!url) return [];
+        const { path: _path, ...photo } = p;
+        return [{ ...photo, url }];
+      }),
+    };
+  }
   if (!Array.isArray(officialVisuals) || !officialVisuals.length) return rest;
   const signed = await toCustomerVisualAssets(
     officialVisuals,
@@ -734,6 +756,11 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
   }
 
+  /* The project's signals, read once: the status cards and the story guard use them. */
+  const projectSignals = extractProjectSignals(rj);
+  /* v7 (owner, 2026-10-11): an automatic rebuild keeps the stored chapters
+     (the editorial baseline); every story passes the continuity guard. */
+  const propertyStory = keepStoryOnRebuild(job.synthesis_json, final.propertyStory, { autoUpgrade: opts.autoUpgrade, evolution: projectSignals?.evolution });
   const built = {
     /* Which model actually wrote this, for COGS and for inspection. */
     synthesisModel: MODEL,
@@ -745,7 +772,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       // The latest confirmed official position, the documented history
       // oldest-first, and one caption per official TAS visual.
       ...(final.currentStatus ? { currentStatus: final.currentStatus } : {}),
-      ...(final.propertyStory ? { propertyStory: final.propertyStory } : {}),
+      ...(propertyStory ? { propertyStory } : {}),
       ...(final.visualCaptions ? { visualCaptions: final.visualCaptions } : {}),
       ...(final.visualExplanations?.length ? { visualExplanations: final.visualExplanations } : {}),
       keyFindings: final.keyFindings,
@@ -759,7 +786,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       // statement) for the three-track story. buyerAssessment is set below,
       // once the register has been merged in.
       technicalExplained: explainTechnical({ specs: pkg.dossier?.technicalSpecs ?? [], publicResearch: rj?.publicResearch, team: pkg.dossier?.projectTeamV2 ?? [] }),
-      projectSignals: extractProjectSignals(rj),
+      projectSignals,
     },
     // The sources behind the prose, so the UI can offer them underneath
     // without the customer having to read raw research output.
@@ -805,7 +832,14 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     // scope/category; forCustomer() turns them into signed URLs.
     // Each record carries its byte size and quality verdict (visualQuality.ts):
     // a blank layer stays here with its reason; forCustomer never shows it.
-    officialVisuals: annotateVisualQuality(persistableVisuals(rj?.officialVisuals, pkg.tas?.visuals ?? []), visualByteSizes(rj)),
+    // Each record also carries its case (caseRef) and provenance dates
+    // (visualDates.ts): capture ONLY from EXIF, file-name / filing dates as
+    // DOCUMENT dates, joined through officialDocuments.
+    officialVisuals: withVisualDates(
+      annotateVisualQuality(persistableVisuals(rj?.officialVisuals, pkg.tas?.visuals ?? []), visualByteSizes(rj)),
+      pkg.dossier?.officialDocuments ?? [],
+      { today: new Date().toISOString().slice(0, 10) },
+    ),
     /*
      * THE OFFICIAL DOSSIER (officialDossier.ts) — customer-visible, names
      * kept exactly: the team with documented roles and provenance, the
@@ -815,6 +849,9 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     projectTeamV2: pkg.dossier?.projectTeamV2 ?? [],
     technicalSpecs: pkg.dossier?.technicalSpecs ?? [],
     officialDocuments: pkg.dossier?.officialDocuments ?? [],
+    // Recent public photographs of the building (research-agent `fresh_photos`,
+    // freshPhotos.ts): bucket paths here, signed by forCustomer() at read time.
+    freshPhotos: rj?._freshPhotos ?? null,
     // Disclosed when the extract came from the buyer's own earlier check of this unit.
     registerSource,
     _usage: usage,
@@ -868,6 +905,36 @@ async function recoverVisualsBeforeRebuild(job: any): Promise<void> {
     console.log(JSON.stringify({ scope: 'verify_synthesis', event: 'visual_recovery', jobId: job.id, skipped: !!body?.skipped, counts: body?.marker?.counts ?? null }));
   } catch (e) {
     console.warn(JSON.stringify({ scope: 'verify_synthesis', event: 'visual_recovery_failed', jobId: job?.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
+  }
+}
+
+/*
+ * BEFORE A BUILD: LOOK ONCE FOR RECENT PHOTOGRAPHS OF THE BUILDING.
+ *
+ * research-agent's `fresh_photos` (free public sources, at most once per
+ * 24 h per job, nothing charged) searches, copies accepted images into the
+ * private bucket and writes result_json._freshPhotos; the answer is folded
+ * into the in-memory result_json the build reads. Bounded at 35 s; any
+ * failure is logged and the build goes on without it.
+ */
+async function freshPhotosBeforeBuild(job: any): Promise<void> {
+  try {
+    if (!job?.result_json || job.status !== 'COMPLETE') return;
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const url = Deno.env.get('SUPABASE_URL') ?? '';
+    if (!key || !url) return;
+    const res = await fetch(`${url}/functions/v1/research-agent`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, apikey: key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'fresh_photos', jobId: job.id }),
+      signal: AbortSignal.timeout(35_000),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(`fresh_photos_http_${res.status}:${String(body?.error ?? '').slice(0, 60)}`);
+    if (body?.freshPhotos && typeof body.freshPhotos === 'object') job.result_json._freshPhotos = body.freshPhotos;
+    console.log(JSON.stringify({ scope: 'verify_synthesis', event: 'fresh_photos', jobId: job.id, skipped: !!body?.skipped, status: body?.freshPhotos?.status ?? null, photos: Array.isArray(body?.freshPhotos?.photos) ? body.freshPhotos.photos.length : 0 }));
+  } catch (e) {
+    console.warn(JSON.stringify({ scope: 'verify_synthesis', event: 'fresh_photos_failed', jobId: job?.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
   }
 }
 
@@ -1046,6 +1113,8 @@ serve(async (req) => {
       await recoverVisualsBeforeRebuild(job);
       // Market evidence is refreshed from the free portals in the background; the driver folds it and asks for one more rebuild.
       await startMarketRefreshBeforeRebuild(job);
+      // Recent public photographs of the building, once per 24 h (never blocks the rebuild).
+      await freshPhotosBeforeBuild(job);
       console.log(`verify-synthesis: auto-upgrading report ${job.id} from logic v${logicVersionOf(job.synthesis_json)} to v${REPORT_LOGIC_VERSION}`);
       try {
         return json(await buildReport(job, writer, { autoUpgrade: true, trigger: 'customer', forced: false }));
@@ -1070,6 +1139,8 @@ serve(async (req) => {
     }
 
     await ensureResult();
+    // A first build (or a forced one) looks once for recent photographs too.
+    if (!job.synthesis_json || body?.force) await freshPhotosBeforeBuild(job);
     return json(await buildReport(job, writer, { autoUpgrade: false, trigger: internal ? (body?.trigger === 'research' ? 'research' : 'driver') : 'customer', forced: !!body?.force }));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);

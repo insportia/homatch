@@ -30,6 +30,8 @@
 // function, so there is no reason for this one to be duplicated. Both the
 // edge function and the archetype regression tests now import THIS file.
 
+import { registryAssetClass } from './intelligence/propertyKind.ts';
+
 export const PUBLIC_RESEARCH_TARGETS = [
   'architect',
   'architecture studio',
@@ -257,6 +259,11 @@ export function extractControlStructure(browserOfficial: unknown, companyId?: st
 
 export function resolveAssetClass(r: any): string {
   const declared = typeof r?.assetClass === 'string' ? r.assetClass : null;
+  // v7 (eeefada9): the official register's own wording ("ბინა N4", a parcel-only
+  // extract, "ოფისი"…) decides when the declared class is unknown or contradicts it
+  // (propertyKind.ts). Never from the cadastral code's shape.
+  const registry = registryAssetClass(r, declared);
+  if (registry) return registry;
   if (declared && declared !== 'MIXED_OR_UNKNOWN') return declared;
 
   const projectName = r?.projectProfile?.name || r?.reconciledIdentity?.project || null;

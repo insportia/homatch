@@ -18,6 +18,7 @@ import {
 } from '../intelligence/visualRecovery.ts';
 import { DIGOMI_GALLERY_12, DIGOMI_BLANK_ID, DIGOMI_CASES, digomiResultJson } from './fixtures/digomiVisualsEeefada9.mjs';
 import { VERIFY_V6_VISUALS_STRINGS } from '../../../scripts/verify-v6-visuals-i18n-data.mjs';
+import { VERIFY_V7_GALLERY_STRINGS } from '../../../scripts/verify-v7-gallery-i18n-data.mjs';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
@@ -62,29 +63,37 @@ test('file-name dates: full dates always; day.month only when the case year make
 
 /* ── tabs ───────────────────────────────────────────────────────────────── */
 
-test('as stored today: everything visual is 2012–2013 history, labelled, and the gallery says no newer render exists', async () => {
+// Premise (v7 dating, 2026-10-11): the newest photographs always open the
+// gallery in the latest-photos tab, with their year and "last available"
+// header, even when they are 2012 photographs; they are never "today".
+test('as stored before recovery: the 2012 photos are the last available ones (with their year), the rest 2012–2013 history', async () => {
   const assets = await toCustomerVisualAssets(digomiResultJson().officialVisuals, sign);
   const cat = catalogVisuals(assets);
   const chrono = visualChronology(cat, CASES, TODAY);
-  assert.deepEqual(chrono.groups.map((g) => g.chapter), ['OLD', 'DRAWINGS']);
+  assert.deepEqual(chrono.groups.map((g) => g.chapter), ['LATEST_PHOTOS', 'OLD', 'DRAWINGS']);
   assert.equal(chrono.noNewerRender, true);
-  // Opens on the newest verified tab: the 2024 structural drawing is newer than 2012–2013.
-  assert.equal(chrono.defaultChapter, 'DRAWINGS');
+  assert.equal(chrono.defaultChapter, 'LATEST_PHOTOS');
+  const latest = chrono.groups[0].items;
+  assert.deepEqual(latest.map((i) => i.visual.fileName), ['foto.pdf', 'foto.pdf', 'foto.pdf', 'foto.pdf']);
+  assert.equal(chrono.latestPhotos.kind, 'LAST_AVAILABLE');
+  assert.deepEqual(chrono.latestPhotos.badge.vars, { year: '2012' });
+  for (const i of latest) {
+    assert.equal(i.photoDating, 'ARCHIVAL', '2012 site photos must never read as current condition');
+    assert.deepEqual(i.photoLabel, { key: 'vg_archival_photo', vars: { year: '2012' } });
+  }
   const old = chrono.groups.find((g) => g.chapter === 'OLD').items;
-  assert.equal(old.length, 10);
+  assert.equal(old.length, 6);
   const render2012 = old.find((i) => i.visual.fileName === 'fotomontaji da aqsiometriuli xedebi.pdf');
   assert.deepEqual(render2012.historical, { badgeKey: 'vev_hist_render_badge', noteKey: 'vev_hist_render_note', vars: { year: '2012' } });
   const render2013 = old.find((i) => i.visual.fileName === 'Render.pdf');
   assert.equal(render2013.historical.vars.year, '2013');
-  const photo2012 = old.find((i) => i.visual.fileName === 'foto.pdf');
-  assert.equal(photo2012.historical.badgeKey, 'vev_hist_photo_badge', '2012 site photos must never read as current condition');
   // Newest first inside a tab: 2013 before 2012.
   assert.equal(old[0].date, '2013-07-06');
   for (const i of old) assert.ok(i.historical, `${i.visual.fileName} has no historical label`);
   assert.equal(chrono.noCurrentPhotos, true);
 });
 
-test('after recovery: the 2025 photomontage is the latest design, dated photos are today, 2012 stays history', () => {
+test('after recovery: the 2025 photomontage is the latest design, the 2025 photo leads the latest photos (archival), 2012 stays history', () => {
   const rj = digomiResultJson();
   const rec = (n, documentId, attachedFileId, fileName, kind, extraction = 'NATIVE_IMAGE') =>
     storedVisualRecord({ id: hex(n), kind, category: 'BUILDING', documentId, attachedFileId, fileName, width: 2400, height: 1600, bytes: 1_200_000, mime: 'image/jpeg', extraction },
@@ -102,19 +111,23 @@ test('after recovery: the 2025 photomontage is the latest design, dated photos a
   const chrono = visualChronology(cat, CASES, TODAY);
   const tab = (id) => chrono.groups.find((g) => g.items.some((i) => i.visual.id === id));
   assert.deepEqual(chrono.groups.map((g) => g.chapter), CHAPTER_ORDER);
-  assert.equal(chrono.defaultChapter, 'TODAY');
+  assert.equal(chrono.defaultChapter, 'LATEST_PHOTOS');
   assert.equal(chrono.noNewerRender, false);
   assert.equal(tab(hex(1)).chapter, 'LATEST');
   assert.equal(tab(hex(2)).chapter, 'LATEST');
   assert.equal(tab(hex(4)).chapter, 'CHANGES', 'the February 2025 renders are an earlier version');
-  const today = chrono.groups.find((g) => g.chapter === 'TODAY').items;
-  assert.equal(today.length, 1);
-  assert.equal(today[0].visual.id, hex(3));
-  assert.equal(today[0].dateSource, 'FILENAME');
-  assert.deepEqual(today[0].dated, { key: 'vev_date_filename', vars: { date: '14.04.2025' } });
-  // Never a render in today; never history in the latest design.
+  const latestPhotos = chrono.groups.find((g) => g.chapter === 'LATEST_PHOTOS').items;
+  assert.equal(latestPhotos.length, 1);
+  assert.equal(latestPhotos[0].visual.id, hex(3));
+  // The file-name date is a DOCUMENT date: placed by it, never shown as a capture date.
+  assert.equal(latestPhotos[0].dateSource, 'FILENAME');
+  assert.equal(latestPhotos[0].dates.capture, null);
+  assert.deepEqual(latestPhotos[0].dates.document, { date: '2025-04-14', source: 'FILE_NAME', caseRef: 'AR11087185' });
+  assert.deepEqual(latestPhotos[0].dated, { key: 'vg_capture_unknown_title', vars: {} });
+  assert.equal(chrono.hero.id, hex(3));
+  // Never a render among the latest photos; never history in the latest design.
   for (const g of chrono.groups) for (const i of g.items) {
-    if (g.chapter === 'TODAY') assert.ok(i.type === 'PHOTO' || i.type === 'CONSTRUCTION_PHOTO');
+    if (g.chapter === 'LATEST_PHOTOS') assert.ok(i.type === 'PHOTO' || i.type === 'CONSTRUCTION_PHOTO');
     if (g.chapter === 'LATEST' || g.chapter === 'CHANGES') assert.ok(!i.date || i.date >= '2021-10-11');
     if (g.chapter === 'OLD') assert.ok(i.date && i.date <= `${2026 - HISTORICAL_YEARS}-10-11`);
   }
@@ -190,7 +203,7 @@ test('the explorer shows the historical label on and above the image, the empty 
 
 test('the visual-evolution copy: six locales, placeholders intact, the owner-approved Georgian verbatim, in the bundle', () => {
   const bundle = read('src/i18n/translations.ts');
-  const S = VERIFY_V6_VISUALS_STRINGS;
+  const S = { ...VERIFY_V6_VISUALS_STRINGS, ...VERIFY_V7_GALLERY_STRINGS };
   for (const k of [...Object.values(CHAPTER_KEY), ...Object.values(CHAPTER_WHY_KEY)]) assert.ok(S[k], `${k} has no copy`);
   for (const [k, v] of Object.entries(S)) {
     assert.equal(v.length, 6, k);
@@ -206,5 +219,7 @@ test('the visual-evolution copy: six locales, placeholders intact, the owner-app
   assert.equal(S.vev_hist_render_note[1], 'ეს გამოსახულება პროექტის ადრინდელ არქიტექტურულ ჩანაფიქრს ასახავს. მოგვიანებით პროექტი შესაძლოა შეცვლილიყო, ამიტომ ეს რენდერი არ უნდა აღიქვათ როგორც დღევანდელი შენობის ზუსტი გამოსახულება.');
   assert.equal(S.vev_no_newer_title[1], 'განახლებული რენდერი ვერ მოიძებნა');
   assert.equal(S.vev_no_newer_body[1], 'ამ ეტაპზე ვერ მოვიძიეთ უფრო ახალი, დადასტურებული რენდერი, რომელიც შენობის ბოლო საპროექტო ვერსიას ასახავს. ამიტომ ძველ გამოსახულებას მხოლოდ პროექტის ისტორიის გასაცნობად გაჩვენებთ.');
-  assert.deepEqual(['vev_tab_today', 'vev_tab_latest', 'vev_tab_changes', 'vev_tab_old', 'vev_tab_drawings'].map((k) => S[k][1]), ['დღეს', 'ბოლო პროექტი', 'ცვლილებები', 'ძველი ვერსიები', 'ნახაზები']);
+  // "დღეს" never labels photographs (v7): the photo tab is "უახლესი ფოტოები".
+  assert.deepEqual(CHAPTER_ORDER.map((c) => S[CHAPTER_KEY[c]][1]), ['უახლესი ფოტოები', 'ბოლო პროექტი', 'ცვლილებები', 'ძველი ვერსიები', 'ნახაზები']);
+  for (const k of Object.values(CHAPTER_KEY)) assert.notEqual(S[k][1], 'დღეს');
 });

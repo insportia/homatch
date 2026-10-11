@@ -23,7 +23,8 @@
  * conservative default.
  */
 
-import { correctVisualKind, fileNameDate } from './intelligence/visualAssets.ts';
+import { correctVisualKind } from './intelligence/visualAssets.ts';
+import { freshPhotoViews, sanitizeVisualDates, visualDates, type FreshPhotoView, type VisualDates } from './intelligence/visualDates.ts';
 
 export type VisualKind =
   | 'PHOTO' | 'RENDER' | 'CONSTRUCTION_PHOTO' | 'SITE_PLAN' | 'MASTER_PLAN' | 'FLOOR_PLAN' | 'UNIT_PLAN'
@@ -74,6 +75,12 @@ export interface CatalogVisual {
   /** The official file name: read for its date and kind, never displayed raw. */
   fileName: string | null;
   explanation: VisualExplanation | null;
+  /** The case the image was filed with (AR…), when the record carries it (visualDates.ts). */
+  caseRef?: string | null;
+  /** Provenance dates written at build time (visualDates.ts), re-validated; null on older records. */
+  dates?: VisualDates | null;
+  /** Set only for a fresh photo found outside the official record (synthesis_json.freshPhotos). */
+  fresh?: FreshPhotoView | null;
 }
 
 /** Display order of the category tabs. */
@@ -260,7 +267,51 @@ export function normalizeVisual(
     exifDate: isoDate(o.exifDate),
     fileName: str(o.fileName).slice(0, 200) || null,
     explanation,
+    caseRef: /^[A-Z]{1,4}\d{3,14}$/.test(str(o.caseRef)) ? str(o.caseRef) : null,
+    dates: sanitizeVisualDates(o.dates),
+    fresh: null,
   };
+}
+
+/**
+ * synthesis_json.freshPhotos → catalogued photographs. Only accepted photos
+ * with a signed storage URL (added at read time) are shown; each keeps its
+ * source, author, license, capture and publication dates (FreshPhotoView).
+ */
+export function catalogFreshPhotos(raw: unknown, opts: { today?: string | null } = {}): CatalogVisual[] {
+  const out: CatalogVisual[] = [];
+  for (const p of freshPhotoViews(raw, opts)) {
+    const url = signedVisualUrl(p.url);
+    if (!url) continue;
+    const scope: VisualScope = p.scope === 'DEVELOPMENT' ? 'PROJECT' : 'BUILDING';
+    out.push({
+      id: `fresh:${p.id}`,
+      url,
+      kind: 'PHOTO',
+      category: 'BUILDING',
+      scope,
+      block: null,
+      page: null,
+      date: null,
+      width: p.width,
+      height: p.height,
+      role: null,
+      versionStatus: null,
+      otherBuilding: false,
+      captionKey: captionKeyFor('PHOTO'),
+      badge: 'PHOTO',
+      technical: false,
+      title: null,
+      documentId: null,
+      exifDate: null,
+      fileName: null,
+      explanation: null,
+      caseRef: null,
+      dates: { capture: p.capture, document: null },
+      fresh: p,
+    });
+  }
+  return out;
 }
 
 /**
@@ -331,32 +382,38 @@ export function heroVisual(visuals: CatalogVisual[]): CatalogVisual | null {
 /* ───────────────────────── the gallery's tabs: what is true when ───────────────────────── */
 
 /**
- * VISUAL EVOLUTION (owner, 2026-10-11, superseding the five-chapter story):
- * five tabs, newest first, only those that hold something:
+ * VISUAL EVOLUTION (owner, 2026-10-11; v7 dating, same day): five tabs,
+ * newest first, only those that hold something:
  *
- *   TODAY     დღეს           photographs filed within CURRENT_PHOTO_MONTHS
- *                            (the newest month of them). Never a render.
- *   LATEST    ბოლო პროექტი   the newest verified design images (renders,
- *                            photomontages, unlabelled project pictures) that
- *                            are not historical.
- *   CHANGES   ცვლილებები     earlier design versions and photographs of the
- *                            last HISTORICAL_YEARS: how the project changed.
- *   OLD       ძველი ვერსიები  design images and photographs filed
- *                            HISTORICAL_YEARS or more ago: history, each with
- *                            the mandatory "earlier design version | <year>"
- *                            label on and above the image.
- *   DRAWINGS  ნახაზები       plans, sections, facades, structure, site.
+ *   LATEST_PHOTOS  უახლესი ფოტოები  the newest photographs we hold, by a
+ *                                   VERIFIED capture date (camera EXIF, a
+ *                                   provider's capture date), else by the
+ *                                   date of the material they were filed in.
+ *                                   Never a render. A photo is never called
+ *                                   "today" or "current": the tab header says
+ *                                   which case applies (newest verified, or
+ *                                   last available with its year).
+ *   LATEST         ბოლო პროექტი     the newest DATED design images (renders,
+ *                                   photomontages, unlabelled project
+ *                                   pictures) filed within HISTORICAL_YEARS.
+ *                                   Never an undated one, never an old one,
+ *                                   whatever its role or file name says.
+ *   CHANGES        ცვლილებები       earlier design versions and photographs
+ *                                   of the last HISTORICAL_YEARS, and
+ *                                   undated pictures (marked, last).
+ *   OLD            ძველი ვერსიები    pictures dated HISTORICAL_YEARS or more
+ *                                   ago, each with the mandatory historical
+ *                                   label on and above the image.
+ *   DRAWINGS       ნახაზები         plans, sections, facades, structure, site.
  *
- * Dates are VERIFIED or absent: a camera's EXIF date (photographs), a date
- * the official file name states (fileNameDate: "ფოტო 14-04-2025"), the
- * official case's filing date, the asset's own date. Never invented. When
- * historical renders exist and no newer one does, the gallery says so
- * ("განახლებული რენდერი ვერ მოიძებნა").
+ * Dates come from visualDates.ts: a capture date ONLY from EXIF / provider
+ * capture; a file-name date or case filing date is a DOCUMENT date (when the
+ * material was submitted), never a capture date.
  */
-export type VisualChapter = 'TODAY' | 'LATEST' | 'CHANGES' | 'OLD' | 'DRAWINGS';
-export const CHAPTER_ORDER: VisualChapter[] = ['TODAY', 'LATEST', 'CHANGES', 'OLD', 'DRAWINGS'];
+export type VisualChapter = 'LATEST_PHOTOS' | 'LATEST' | 'CHANGES' | 'OLD' | 'DRAWINGS';
+export const CHAPTER_ORDER: VisualChapter[] = ['LATEST_PHOTOS', 'LATEST', 'CHANGES', 'OLD', 'DRAWINGS'];
 export const CHAPTER_KEY: Record<VisualChapter, string> = {
-  TODAY: 'vev_tab_today',
+  LATEST_PHOTOS: 'vev_tab_latest_photos',
   LATEST: 'vev_tab_latest',
   CHANGES: 'vev_tab_changes',
   OLD: 'vev_tab_old',
@@ -364,15 +421,17 @@ export const CHAPTER_KEY: Record<VisualChapter, string> = {
 };
 /** Why a picture in this tab matters, when synthesis wrote no buyer meaning for it. */
 export const CHAPTER_WHY_KEY: Record<VisualChapter, string> = {
-  TODAY: 'vev_why_today',
+  LATEST_PHOTOS: 'vg_why_latest_photos',
   LATEST: 'vev_why_latest',
   CHANGES: 'vev_why_changes',
   OLD: 'vev_why_old',
   DRAWINGS: 'vev_why_drawings',
 };
-/** A photograph is "today" when filed within this many months of today. */
+/** A verified capture this recent may be called "the newest photos of the building". */
 export const CURRENT_PHOTO_MONTHS = 24;
-/** Pictures filed this many years ago or more are history, not the current project. */
+/** Photographs within this many days of the newest one share the latest-photos tab. */
+export const LATEST_PHOTO_WINDOW_DAYS = 90;
+/** Pictures dated this many years ago or more are history, not the current project. */
 export const HISTORICAL_YEARS = 5;
 
 /** What the picture IS, said first on every card. */
@@ -401,7 +460,10 @@ export interface DatedLabel {
   vars: Record<string, string>;
 }
 
-export type DateSource = 'EXIF' | 'FILENAME' | 'CASE' | 'ASSET';
+export type DateSource = 'EXIF' | 'PROVIDER_CAPTURE' | 'FILENAME' | 'CASE' | 'ASSET';
+
+/** How a photograph is dated: a verified capture, only an archival (document) date, or nothing. */
+export type PhotoDating = 'CAPTURED' | 'ARCHIVAL' | 'UNKNOWN';
 
 /** The mandatory label of a historical picture: on the image and above it, with its supporting copy. */
 export interface HistoricalLabel {
@@ -418,41 +480,88 @@ export interface ChronoVisual {
   /** The date the picture is placed by (YYYY-MM-DD), and where it came from. */
   date: string | null;
   dateSource: DateSource | null;
+  /** The provenance dates (visualDates.ts): capture and document, never confused. */
+  dates: VisualDates;
+  caseRef: string | null;
   /** The prominent card label: type key + date phrase. */
   typeKey: string;
+  /** The card's date line. */
   dated: DatedLabel;
+  /** Photographs only. */
+  photoDating: PhotoDating | null;
+  /** "{{year}} წლის საარქივო ფოტო": replaces the type in the label of an archival photograph. */
+  photoLabel: DatedLabel | null;
+  /**
+   * Supporting lines under the date. `vars.date` of vg_archival_note is an
+   * ISO date the UI phrases per language (documentDatePhrase).
+   */
+  notes: DatedLabel[];
   /** Set for every picture in OLD (its date is verified by construction). */
   historical: HistoricalLabel | null;
 }
 
+export interface LatestPhotosHeader {
+  /** NEWEST_VERIFIED: every photo in the tab has a verified, recent capture date. */
+  kind: 'NEWEST_VERIFIED' | 'LAST_AVAILABLE';
+  titleKey: string;
+  bodyKey: string;
+  /** "უახლესი მოძიებული ფოტო | {{year}} წელი" when that year is before the current one. */
+  badge: { key: string; noteKey: string; vars: { year: string } } | null;
+}
+
 export interface VisualChronology {
   groups: Array<{ chapter: VisualChapter; items: ChronoVisual[] }>;
-  /** The tab the gallery opens on: the newest verified category. */
+  /** The tab the gallery opens on: the newest photographs, else the newest verified category. */
   defaultChapter: VisualChapter | null;
-  /** No photograph filed within CURRENT_PHOTO_MONTHS: said plainly, once. */
+  /** The opening image: the newest photograph (a verified fresh one first); never an old render. */
+  hero: CatalogVisual | null;
+  /** What the latest-photos tab header says; null when it does not exist. */
+  latestPhotos: LatestPhotosHeader | null;
+  /** No recent photograph with a VERIFIED capture date. */
   noCurrentPhotos: boolean;
-  /** The newest photograph's date, when there is one (for that sentence). */
+  /** The newest photograph's placing date (capture, else document), when there is one. */
   newestPhotoDate: string | null;
   /** Historical renders exist and no newer verified render does ("განახლებული რენდერი ვერ მოიძებნა"). */
   noNewerRender: boolean;
 }
 
+const DAY_MS = 864e5;
 const monthsBetween = (a: string, b: string): number => {
   const [ya, ma] = [Number(a.slice(0, 4)), Number(a.slice(5, 7))];
   const [yb, mb] = [Number(b.slice(0, 4)), Number(b.slice(5, 7))];
   return (yb - ya) * 12 + (mb - ma);
 };
-const yearsBetween = (a: string, b: string): number => (Date.parse(b) - Date.parse(a)) / (365.25 * 864e5);
+const yearsBetween = (a: string, b: string): number => (Date.parse(b) - Date.parse(a)) / (365.25 * DAY_MS);
+const dmyOf = (date: string) => `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}`;
 
-/** The date phrase of a card: "from the <month> <year> application", "photographed <date>", "<date> in the file name", or "date not stated". */
+/** The date phrase of a design image or drawing: "from the <month> <year> application", "photographed <date>", "<date> in the file name", or "date not stated". */
 export function datedLabel(date: string | null, source: ChronoVisual['dateSource']): DatedLabel {
   if (!date) return { key: 'vfv_date_unknown', vars: {} };
   const year = date.slice(0, 4);
   const month = String(Number(date.slice(5, 7)));
-  const dmy = `${date.slice(8, 10)}.${date.slice(5, 7)}.${year}`;
-  if (source === 'EXIF') return { key: 'vfv_date_exif', vars: { date: dmy } };
-  if (source === 'FILENAME') return { key: 'vev_date_filename', vars: { date: dmy } };
+  if (source === 'EXIF' || source === 'PROVIDER_CAPTURE') return { key: 'vfv_date_exif', vars: { date: dmyOf(date) } };
+  if (source === 'FILENAME') return { key: 'vev_date_filename', vars: { date: dmyOf(date) } };
   return { key: 'vfv_date_application', vars: { year, month } };
+}
+
+/**
+ * A photograph's date line, label and notes (owner-approved copy):
+ *   CAPTURED  "photographed DD.MM.YYYY"
+ *   ARCHIVAL  "ფოტოს გადაღების თარიღი უცნობია", labelled "{{year}} წლის საარქივო
+ *             ფოტო", with the note that the materials are dated {{date}}
+ *   UNKNOWN   "ფოტოს გადაღების თარიღი უცნობია" and its explanation only
+ */
+export function photoDatedLabel(dates: VisualDates): { dating: PhotoDating; dated: DatedLabel; label: DatedLabel | null; notes: DatedLabel[] } {
+  if (dates.capture) return { dating: 'CAPTURED', dated: { key: 'vfv_date_exif', vars: { date: dmyOf(dates.capture.date) } }, label: null, notes: [] };
+  if (dates.document) {
+    return {
+      dating: 'ARCHIVAL',
+      dated: { key: 'vg_capture_unknown_title', vars: {} },
+      label: { key: 'vg_archival_photo', vars: { year: dates.document.date.slice(0, 4) } },
+      notes: [{ key: 'vg_archival_note', vars: { date: dates.document.date } }],
+    };
+  }
+  return { dating: 'UNKNOWN', dated: { key: 'vg_capture_unknown_title', vars: {} }, label: null, notes: [{ key: 'vg_capture_unknown_body', vars: {} }] };
 }
 
 const HISTORICAL_KEYS: Record<PictureType, { badgeKey: string; noteKey: string }> = {
@@ -465,57 +574,101 @@ const HISTORICAL_KEYS: Record<PictureType, { badgeKey: string; noteKey: string }
 
 /**
  * Place every catalogued visual in its tab, newest first within a tab.
- * `cases` maps a TAS document id to its case (filing date). `today` is
- * YYYY-MM-DD (injected so the rule is testable).
+ * `cases` maps a TAS document id to its case (caseRef, filing date). `today`
+ * is YYYY-MM-DD (injected so the rule is testable). Fresh photos
+ * (catalogFreshPhotos) are passed in the same list.
  */
 export function visualChronology(visuals: CatalogVisual[], cases: Map<string, VisualCaseInfo> | null | undefined, today: string): VisualChronology {
-  const dateOf = (v: CatalogVisual): { date: string | null; source: DateSource | null } => {
-    if (v.exifDate && v.badge === 'PHOTO') return { date: v.exifDate, source: 'EXIF' };
-    const c = v.documentId ? cases?.get(v.documentId) : undefined;
-    const cd = c?.date && /^\d{4}-\d{2}-\d{2}/.test(c.date) ? c.date.slice(0, 10) : null;
-    const fd = fileNameDate(v.fileName, cd ?? v.date);
-    if (fd && fd <= today) return { date: fd, source: 'FILENAME' };
-    if (cd) return { date: cd, source: 'CASE' };
-    if (v.date) return { date: v.date, source: 'ASSET' };
-    return { date: null, source: null };
-  };
-  const rows = visuals.map((v) => {
-    const d = dateOf(v);
-    return { v, type: pictureTypeOf(v), date: d.date, source: d.source };
-  });
+  const caseMap = cases ?? new Map<string, VisualCaseInfo>();
   const isPicture = (t: PictureType) => t === 'RENDER' || t === 'IMAGE';
   const isPhoto = (t: PictureType) => t === 'PHOTO' || t === 'CONSTRUCTION_PHOTO';
+  const rows = visuals.map((v, n) => {
+    const type = pictureTypeOf(v);
+    const own = v.fresh
+      ? { caseRef: null, dates: { capture: v.fresh.capture, document: null } as VisualDates }
+      : visualDates(v, caseMap, { today });
+    const dates = own.dates;
+    let date: string | null = null;
+    let source: DateSource | null = null;
+    if (dates.capture && isPhoto(type)) { date = dates.capture.date; source = dates.capture.source === 'EXIF' ? 'EXIF' : 'PROVIDER_CAPTURE'; }
+    else if (dates.document) { date = dates.document.date; source = dates.document.source === 'FILE_NAME' ? 'FILENAME' : 'CASE'; }
+    // An asset's own unexplained date may order a drawing or render; it never dates a photograph.
+    else if (v.date && !isPhoto(type) && v.date <= today) { date = v.date; source = 'ASSET'; }
+    const captured = isPhoto(type) && !!dates.capture;
+    return { v, n, type, date, source, dates: isPhoto(type) ? dates : { capture: null, document: dates.document }, caseRef: own.caseRef, captured };
+  });
+  type Row = (typeof rows)[number];
   const old = (d: string | null) => !!d && yearsBetween(d, today) >= HISTORICAL_YEARS;
+
+  /* ── the newest photographs ── */
+  const photos = rows.filter((r) => isPhoto(r.type) && r.date);
+  const maxOf = (list: Row[]) => list.map((r) => r.date!).sort().pop() ?? null;
+  const vMax = maxOf(photos.filter((r) => r.captured));
+  const dMax = maxOf(photos.filter((r) => !r.captured));
+  const minus = (d: string, days: number) => new Date(Date.parse(d) - days * DAY_MS).toISOString().slice(0, 10);
+  const latestPhotoIds = new Set<Row>();
+  let header: LatestPhotosHeader | null = null;
+  const newestPhotoDate = maxOf(photos);
+  if (vMax && (!dMax || vMax >= dMax)) {
+    // A verified capture is the newest: only verified photographs share the tab.
+    for (const r of photos) if (r.captured && r.date! >= minus(vMax, LATEST_PHOTO_WINDOW_DAYS)) latestPhotoIds.add(r);
+  } else if (dMax) {
+    // Only document dates (or older captures): the newest material's photographs.
+    for (const r of photos) if (r.date! >= minus(dMax, LATEST_PHOTO_WINDOW_DAYS)) latestPhotoIds.add(r);
+  }
+  if (latestPhotoIds.size) {
+    const all = [...latestPhotoIds];
+    const allVerified = all.every((r) => r.captured);
+    const newest = maxOf(all)!;
+    const recent = monthsBetween(newest, today) <= CURRENT_PHOTO_MONTHS;
+    const year = newest.slice(0, 4);
+    header = allVerified && recent
+      ? { kind: 'NEWEST_VERIFIED', titleKey: 'vg_photos_fresh_title', bodyKey: 'vg_photos_fresh_body', badge: null }
+      : {
+          kind: 'LAST_AVAILABLE',
+          titleKey: 'vg_photos_last_title',
+          bodyKey: 'vg_photos_last_body',
+          badge: Number(year) < Number(today.slice(0, 4)) ? { key: 'vg_photos_badge', noteKey: 'vg_photos_badge_note', vars: { year } } : null,
+        };
+  }
+
+  /* ── the newest design ── */
   const latestPictureDate = rows.filter((r) => isPicture(r.type) && r.date && !old(r.date)).map((r) => r.date!).sort().pop() ?? null;
-  const newestPhotoDate = rows.filter((r) => isPhoto(r.type) && r.date).map((r) => r.date!).sort().pop() ?? null;
-  const currentPhotos = !!newestPhotoDate && monthsBetween(newestPhotoDate, today) <= CURRENT_PHOTO_MONTHS;
-  const chapterOf = (r: (typeof rows)[number]): VisualChapter => {
+
+  const chapterOf = (r: Row): VisualChapter => {
     if (isPicture(r.type)) {
       if (old(r.date)) return 'OLD';
-      // The newest verified design (filed within ~6 weeks of the newest one): the latest project.
-      if (r.date && latestPictureDate) return Date.parse(r.date) >= Date.parse(latestPictureDate) - 45 * 864e5 ? 'LATEST' : 'CHANGES';
-      // Undated: only the server's own LATEST_RENDER marker places it last.
-      return r.v.role === 'LATEST_RENDER' && !latestPictureDate ? 'LATEST' : 'CHANGES';
+      // The newest dated design (filed within ~6 weeks of the newest one). An
+      // undated picture is never "the latest", whatever its role says.
+      if (r.date && latestPictureDate) return Date.parse(r.date) >= Date.parse(latestPictureDate) - 45 * DAY_MS ? 'LATEST' : 'CHANGES';
+      return 'CHANGES';
     }
     if (isPhoto(r.type)) {
+      if (latestPhotoIds.has(r)) return 'LATEST_PHOTOS';
       if (old(r.date)) return 'OLD';
-      // The newest photographs, when recent, are today's documented condition.
-      if (currentPhotos && r.date && r.date.slice(0, 7) === newestPhotoDate!.slice(0, 7)) return 'TODAY';
       return 'CHANGES';
     }
     return 'DRAWINGS';
   };
-  const items: ChronoVisual[] = rows.map((r) => {
+  const items: Array<ChronoVisual & { _n: number; _captured: boolean }> = rows.map((r) => {
     const chapter = chapterOf(r);
+    const photo = isPhoto(r.type) ? photoDatedLabel(r.dates) : null;
     return {
       visual: r.v,
       chapter,
       type: r.type,
       date: r.date,
       dateSource: r.source,
+      dates: r.dates,
+      caseRef: r.caseRef,
       typeKey: PICTURE_TYPE_KEY[r.type],
-      dated: datedLabel(r.date, r.source),
+      dated: photo ? photo.dated : datedLabel(r.date, r.source),
+      photoDating: photo ? photo.dating : null,
+      photoLabel: photo ? photo.label : null,
+      notes: photo ? photo.notes : [],
       historical: chapter === 'OLD' && r.date ? { ...HISTORICAL_KEYS[r.type], vars: { year: r.date.slice(0, 4) } } : null,
+      _n: r.n,
+      _captured: r.captured,
     };
   });
   const typeRank: Record<PictureType, number> = { RENDER: 0, PHOTO: 1, CONSTRUCTION_PHOTO: 1, IMAGE: 2, DRAWING: 3 };
@@ -523,17 +676,26 @@ export function visualChronology(visuals: CatalogVisual[], cases: Map<string, Vi
     chapter,
     items: items
       .filter((i) => i.chapter === chapter)
-      // Newest first; renders and photographs before unlabelled pictures; undated last; stable otherwise.
-      .map((i, n) => ({ i, n }))
-      .sort((a, b) => (b.i.date ?? '0000').localeCompare(a.i.date ?? '0000') || typeRank[a.i.type] - typeRank[b.i.type] || a.n - b.n)
-      .map((x) => x.i),
+      .sort((a, b) =>
+        // Latest photos: verified captures first (a fresh one before an official one).
+        (chapter === 'LATEST_PHOTOS' ? Number(b._captured) - Number(a._captured) || Number(!!b.visual.fresh) - Number(!!a.visual.fresh) : 0) ||
+        // Newest first; undated last, marked; renders and photographs before unlabelled pictures; stable otherwise.
+        (b.date ?? '0000').localeCompare(a.date ?? '0000') || typeRank[a.type] - typeRank[b.type] || a._n - b._n)
+      .map(({ _n, _captured, ...i }) => i as ChronoVisual),
   })).filter((g) => g.items.length > 0);
   const has = (c: VisualChapter) => groups.some((g) => g.chapter === c);
-  const newestIn = (c: VisualChapter) => groups.find((g) => g.chapter === c)?.items.map((i) => i.date).filter(Boolean).sort().pop() ?? '';
-  const defaultChapter: VisualChapter | null =
-    (['TODAY', 'LATEST', 'CHANGES'] as VisualChapter[]).find(has) ??
-    (has('OLD') && has('DRAWINGS') ? (newestIn('DRAWINGS') > newestIn('OLD') ? 'DRAWINGS' : 'OLD') : has('OLD') ? 'OLD' : has('DRAWINGS') ? 'DRAWINGS' : null);
+  const defaultChapter: VisualChapter | null = (['LATEST_PHOTOS', 'LATEST', 'CHANGES', 'DRAWINGS', 'OLD'] as VisualChapter[]).find(has) ?? null;
+  const first = (c: VisualChapter | null) => (c ? groups.find((g) => g.chapter === c)?.items[0]?.visual ?? null : null);
+  const hero = first(defaultChapter);
   const oldRenders = items.some((i) => i.chapter === 'OLD' && i.type === 'RENDER');
   const newerRenders = items.some((i) => i.chapter !== 'OLD' && i.type === 'RENDER');
-  return { groups, defaultChapter, noCurrentPhotos: !currentPhotos, newestPhotoDate, noNewerRender: oldRenders && !newerRenders };
+  return {
+    groups,
+    defaultChapter,
+    hero,
+    latestPhotos: header,
+    noCurrentPhotos: header?.kind !== 'NEWEST_VERIFIED',
+    newestPhotoDate,
+    noNewerRender: oldRenders && !newerRenders,
+  };
 }

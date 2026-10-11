@@ -140,13 +140,21 @@ const Step: React.FC<{ s: EvolutionStep; clean: (s: string) => string }> = ({ s,
   );
 };
 
-export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string) => string }> = ({ view, clean }) => {
+/**
+ * `part` (owner, 2026-10-11 v7): the readable chapters lead the story, so the
+ * step list, the latest approved file set and the pending applications
+ * ('details') sit in the detailed-chronology disclosure, while the four
+ * status cards ('status') stay visible under the chapters. Default: both.
+ */
+export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string) => string; part?: 'all' | 'details' | 'status' }> = ({ view, clean, part = 'all' }) => {
   const { t } = useLanguage();
   const c = clean ?? ((s: string) => s);
   const evo = view.evolution;
+  const details = part !== 'status';
+  const status = part !== 'details';
   return (
-    <div className="space-y-8" data-project-story>
-      {evo && evo.steps.length ? (
+    <div className="space-y-8" data-project-story={part}>
+      {!details ? null : evo && evo.steps.length ? (
         <ol className="relative space-y-7 border-s border-border ps-5" aria-label={t('verify_v6s_steps_label')} data-evolution>
           {evo.steps.map((s) => <Step key={s.id} s={s} clean={c} />)}
         </ol>
@@ -189,7 +197,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
       )}
 
       {/* The latest approved documentation, and exactly which drawings its file set lacks. */}
-      {evo?.latest ? (
+      {details && evo?.latest ? (
         <section aria-labelledby="vrx-latest" className="rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-4 sm:p-5" data-latest-approved>
           <h3 id="vrx-latest" className="flex items-center gap-2 text-sm font-semibold break-words">
             <BookOpen className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
@@ -202,7 +210,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
       ) : null}
 
       {/* Changes still under consideration: the approved copy, then each application. */}
-      {evo && (evo.pending.length || evo.resolved.length) ? (
+      {details && evo && (evo.pending.length || evo.resolved.length) ? (
         <section aria-labelledby="vrx-pending-changes" className="space-y-4" data-pending-changes>
           <h3 id="vrx-pending-changes" className="flex items-center gap-2 font-display text-lg font-semibold leading-snug tracking-tight break-words">
             <Hourglass className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
@@ -225,6 +233,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
       ) : null}
 
       {/* Where it stands today: four things, never merged. */}
+      {status ? (
       <section aria-labelledby="vrx-today" className="space-y-3">
         <h3 id="vrx-today" className="text-sm font-semibold break-words">{t('verify_v6s_status_title')}</h3>
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label={t('verify_fn_story_tracks_label')}>
@@ -242,6 +251,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
           })}
         </ul>
       </section>
+      ) : null}
     </div>
   );
 };

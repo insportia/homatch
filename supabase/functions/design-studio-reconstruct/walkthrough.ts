@@ -60,10 +60,10 @@ import { callerOf, cancelProviderJob, factoryConfig, FACTORY_STAGES, JOB_FIELDS,
 import { failure, inBackground, isFresh, kick, readFailure } from './durable.ts';
 import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
-import { inferredSpace, mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
-import { repairReading } from '../../../src/lib/designStudio/walkthrough/readingRepair.ts';
-import { carryPoint, furnishingFromReading, readFurnishing, renderTraceBrief, sceneTransform, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
+import { mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
+import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
 import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
+import { PHOTO_SPACE_VERSION, spaceFromReading, type PhotoSpace } from '../../../src/lib/designStudio/walkthrough/photoSpace.ts';
 import { planFidelity, type PlanFinding } from '../../../src/lib/designStudio/walkthrough/planFidelity.ts';
 import { dressBuilt, planFromFurnishing, RENDER_WALK_RADIUS_M } from '../../../src/lib/designStudio/walkthrough/renderPlan.ts';
 import { renderGate } from '../../../src/lib/designStudio/walkthrough/renderGate.ts';
@@ -343,42 +343,21 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
     imageAspects: images.map((img) => img.aspect),
     frames: measured && viewIndex != null ? [{ image: selected, view: viewIndex, frame: measured.frame }] : [],
   });
-  // Squared to its walls and its doors made doors (readingRepair.ts), every change recorded.
-  const repaired = repairReading(read);
-  const recon = repaired.recon;
-  const space = inferredSpace(recon, `walk-space:${a.photoSource.id}`);
-  if ('problems' in space) return fail(`SPACE_NOT_BUILDABLE:${space.problems.slice(0, 3).join(',')}`, false, paid);
-  // The render's own pieces, in the built scene's metres: the walkthrough's furnishing (renderFurnishing.ts).
-  const furnishing: RenderFurnishing | null = selected >= 0 && a.renderId ? furnishingFromReading(recon, space.canonical.scene.floors, a.renderId, selected, measured?.lighting ?? null) : null;
-  // Is this the home? Checked against the customer's own picture, the reading's pieces and the measured outline
-  // (carried into the scene's frame), before anything is placed (geometryCheck.ts). Recorded with the space.
-  const toScene = sceneTransform(recon, space.canonical.scene.floors);
-  const geometryCheck = checkGeometry({
-    rooms: roomsOfScene(space.canonical.scene.floors),
-    pieces: furnishing ? furnishing.objects : [],
-    expected: expectedOfUnderstanding(u),
-    unreachable: space.unreachable, repairs: space.repairs,
-    footprint: toScene && recon.fidelity?.outline?.length ? recon.fidelity.outline.map((p) => carryPoint(toScene, p)) : null,
+  // Squared, completed, built, furnished from the selected render and checked against the evidence — laid out again
+  // from its pieces when the read outlines fail that check (photoSpace.ts). Pure: rebuilt later from the kept reading.
+  const lighting = measured?.lighting ?? null;
+  const built = spaceFromReading(read, {
+    sourceKey: `walk-space:${a.photoSource.id}`, expected: expectedOfUnderstanding(u),
+    furnish: selected >= 0 && a.renderId ? (recon, floors) => furnishingFromReading(recon, floors, a.renderId!, selected, lighting) : null,
   });
-
-  // An ESTIMATED floor-plan source of this project, marked inferred, used only by the walkthrough.
-  const { data: made, error } = await admin.from('ds_spatial_sources').insert({
-    project_id: a.project.id, user_id: a.actorId, kind: 'FLOORPLAN_SCENE', status: 'READY', geometry_state: 'ESTIMATED', editability: 'GENERATED',
-    canonical: space.canonical, calibration: { metresPerPx: space.canonical.metresPerPx, inferred: true },
-    generator_version: space.canonical.generatorVersion,
-    provenance: {
-      origin: 'INFERRED_FOR_WALKTHROUGH', inferred: true, verified: false, fromSourceId: a.photoSource.id, designVersionId: a.version.id, jobId: a.jobId,
-      repairs: space.repairs, spawn: space.spawn, reachable: space.reachable, unreachable: space.unreachable, basis: space.basis, generator: 'OPENAI_FIRST',
-      readingRepairs: repaired.repairs, ...(a.renderId ? { fromRenderId: a.renderId, frameMeasured: !!measured, frameFidelity: recon.fidelity ?? null } : {}),
-      ...(furnishing ? { furnishing } : {}),
-      geometryCheck,
-    },
-  }).select('id').single();
-  if (error || !made?.id) return fail('SOURCE_NOT_RECORDED', false, paid);
+  if ('problems' in built) return fail(`SPACE_NOT_BUILDABLE:${built.problems.slice(0, 3).join(',')}`, false, paid);
+  const { space, geometryCheck, furnishing } = built;
+  const made = await recordSpace(admin, { ...a, frameMeasured: !!measured }, built);
+  if (!made) return fail('SOURCE_NOT_RECORDED', false, paid);
   await admin.from('ds_jobs').update({
     status: 'SUCCEEDED', finished_at: new Date().toISOString(), ...paid,
     output: {
-      kind: 'WALK_SPACE', sourceId: made.id, rooms: space.reachable.length + space.unreachable.length, repairs: space.repairs.length, basis: space.basis, mostlyInferred: mostlyInferred(space.basis),
+      kind: 'WALK_SPACE', sourceId: made, rooms: space.reachable.length + space.unreachable.length, repairs: space.repairs.length, basis: space.basis, mostlyInferred: mostlyInferred(space.basis),
       geometry: geometryCheck.verdict,
       // The validated reading itself (no pictures in it): the space can be rebuilt from it by better code, never bought again.
       reading: read,
@@ -386,6 +365,52 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
     },
   }).eq('id', a.jobId).eq('status', 'RUNNING');
   return true;
+}
+
+/**
+ * The ESTIMATED floor-plan source of a photo design, marked inferred and used only by the walkthrough: what the
+ * reading became (photoSpace.ts), every repair and the geometry check recorded with it. Its id, or null.
+ */
+async function recordSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null; jobId: string; frameMeasured: boolean; rebuiltFrom?: string },
+  built: PhotoSpace): Promise<string | null> {
+  const { space, recon, furnishing, geometryCheck } = built;
+  const { data: made, error } = await admin.from('ds_spatial_sources').insert({
+    project_id: a.project.id, user_id: a.actorId, kind: 'FLOORPLAN_SCENE', status: 'READY', geometry_state: 'ESTIMATED', editability: 'GENERATED',
+    canonical: space.canonical, calibration: { metresPerPx: space.canonical.metresPerPx, inferred: true },
+    generator_version: space.canonical.generatorVersion,
+    provenance: {
+      origin: 'INFERRED_FOR_WALKTHROUGH', inferred: true, verified: false, fromSourceId: a.photoSource.id, designVersionId: a.version.id, jobId: a.jobId,
+      repairs: space.repairs, spawn: space.spawn, reachable: space.reachable, unreachable: space.unreachable, basis: space.basis, generator: 'OPENAI_FIRST',
+      readingRepairs: built.readingRepairs, ...(a.renderId ? { fromRenderId: a.renderId, frameMeasured: a.frameMeasured, frameFidelity: recon.fidelity ?? null } : {}),
+      ...(furnishing ? { furnishing } : {}),
+      geometryCheck, photoSpace: PHOTO_SPACE_VERSION, layout: built.layout, layoutRepairs: built.layoutRepairs,
+      ...(a.rebuiltFrom ? { rebuiltFrom: a.rebuiltFrom } : {}),
+    },
+  }).select('id').single();
+  return error || !made?.id ? null : String(made.id);
+}
+
+/**
+ * A photo space built by older code that failed its geometry check, built again from its own kept reading by this
+ * code (photoSpace.ts) — no picture read again, nothing paid. Only its owner's, only once per version of this code:
+ * the new space records PHOTO_SPACE_VERSION, so it is never rebuilt by the same code twice. True when a new space
+ * was recorded (the newest space of the render is the one walked: designOnPlan).
+ */
+async function rebuildSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null }, source: Row): Promise<boolean> {
+  const prov = source?.provenance;
+  if (prov?.inferred !== true || prov.photoSpace === PHOTO_SPACE_VERSION || prov.geometryCheck?.verdict !== 'FAIL' || !UUID.test(String(prov.jobId ?? ''))) return false;
+  if (String(prov.fromSourceId) !== String(a.photoSource?.id) || (prov.fromRenderId ?? null) !== (a.renderId ?? null)) return false;
+  const { data: job } = await admin.from('ds_jobs').select('id, user_id, project_id, status, output').eq('id', prov.jobId).maybeSingle();
+  if (!job || job.status !== 'SUCCEEDED' || String(job.user_id) !== a.actorId || String(job.project_id) !== String(a.project.id) || !job.output?.reading?.rooms) return false;
+  const image = Number.isInteger(prov.furnishing?.image) ? prov.furnishing.image : -1;
+  const lighting = prov.furnishing?.lighting ?? null;
+  const built = spaceFromReading(job.output.reading, {
+    sourceKey: `walk-space:${a.photoSource.id}`, expected: expectedOfUnderstanding(a.photoSource.canonical?.understanding ?? null),
+    furnish: image >= 0 && a.renderId ? (recon, floors) => furnishingFromReading(recon, floors, a.renderId!, image, lighting) : null,
+  });
+  // Same verdict, same evidence: nothing new to walk.
+  if ('problems' in built || built.geometryCheck.verdict !== 'PASS') return false;
+  return !!await recordSpace(admin, { ...a, jobId: String(job.id), frameMeasured: prov.frameMeasured === true, rebuiltFrom: String(source.id) }, built);
 }
 
 /** The design and every geometry correction of it (newest first): one walkthrough history across them. */
@@ -496,6 +521,11 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
       const again = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId, body });
       if (again.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
       if (again.state === 'READY') onPlan = await designOnPlan(admin, version, project.id, renderId) ?? onPlan;
+    }
+    // A space from these pictures that older code could not make walkable: built again from its kept reading (free).
+    if (onPlan && onPlan.source.provenance?.inferred === true) {
+      const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
+      if (photo && await rebuildSpace(admin, { actorId, project, version, photoSource: photo, renderId }, onPlan.source)) onPlan = await designOnPlan(admin, version, project.id, renderId) ?? onPlan;
     }
     if (!onPlan) {
       const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
@@ -901,7 +931,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const dna = version.design_dna?.version === 'ds-dna-1' ? version.design_dna : null;
   const preferences = normalizePreferences(dna?.preferences ?? null);
   // A space read from the selected render carries that render's pieces: the walkthrough is furnished with exactly
-  // them (no scene-plan call), walked, and promoted only on both verdicts (planFromRender).
+  // them (no scene-plan call), walked, and published only when walkable and (at least approximately) the render (planFromRender).
   const furnishing = readFurnishing(design.source?.provenance?.furnishing);
   if (furnishing && row.render_id && furnishing.renderId === String(row.render_id)) { await planFromRender(admin, row, design, furnishing, preferences.style ?? null); return; }
   let spec: Row = null;
@@ -1146,7 +1176,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
  * The walkthrough of the selected render, furnished from its own pieces (renderPlan.ts): matched or drawn at their
  * seen size and form, settled where the render shows them, turned to their context, walked by the walker's body
  * (pieces in a required way pushed off it as little as clears it, every correction recorded), and promoted only
- * when it is both the render (VISUAL) and walkable (NAVIGATION) — renderGate.ts. No model call is made here.
+ * when it is both the render (VISUAL) and walkable (NAVIGATION) — renderGate.ts; published as APPROXIMATE when it is
+ * walkable and most of the render (gate.ready). No model call is made here.
  */
 async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: RenderFurnishing, styleCode: string | null): Promise<void> {
   const { version, space } = design;
@@ -1166,11 +1197,13 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
   const costLine = { kind: 'RENDER_FURNISHING', model: null, usd: 0, basis: 'NO_MODEL_CALL', tokens: null, ms: Date.now() - started, attempt: row.plan_attempts };
   const cost = [...(Array.isArray(row.cost) ? row.cost : []), costLine];
   const reference = {
-    mode: 'RENDER_FURNISHED', renderId: furnishing.renderId, read: furnishing.read, traced: furnishing.traced,
+    mode: 'RENDER_FURNISHED', renderId: furnishing.renderId, read: furnishing.read, traced: furnishing.traced, approximate: gate.approximate,
     unmatched: rp.unmatched, unplaced: rp.unplaced, gate, buildMs: Date.now() - started,
   };
   const timings = { ...row.timings, renderFurnishing: { version: furnishing.version, renderId: furnishing.renderId, sourceId: version.source_id } };
-  if (!gate.promoted) {
+  // Published when it is the render, or walkable and approximately the render (renderGate.ts READY_MIN_*) — then
+  // recorded as APPROXIMATE, never as the render.
+  if (!gate.ready) {
     const code = !gate.navigation.pass ? 'NOT_WALKABLE' : 'NOT_FAITHFUL';
     await fail(admin, row, code, {
       cost, timings: { ...timings, lastFindings: [...gate.visual.reasons, ...gate.navigation.reasons] },
@@ -1183,7 +1216,7 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
   const { error: insertErr } = await admin.from('ds_versions').upsert({
     id: walkId, project_id: version.project_id, user_id: version.user_id, source_id: version.source_id, parent_id: version.id,
     name, origin: 'AI', job_id: version.job_id, state: dressed.state, style_tags: version.style_tags ?? [],
-    change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: furnishing.version, renderId: furnishing.renderId }],
+    change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: furnishing.version, renderId: furnishing.renderId, approximate: gate.approximate }],
     design_dna: version.design_dna ?? null,
   }, { onConflict: 'id', ignoreDuplicates: true });
   if (insertErr) { await release(admin, row, { error: 'VERSION_NOT_RECORDED', cost, timings, next_check_at: iso(Date.now() + 15_000) }); return; }

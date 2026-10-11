@@ -311,9 +311,14 @@ export function ResearchStream({
         * screen and should not be the loudest element on it.
         */}
       {onStop && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background/60 p-3 sm:p-4">
-          <p className="min-w-0 basis-full text-xs leading-relaxed text-muted-foreground sm:flex-1 sm:basis-auto">
-            {t('verify_controls_hint')}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive/[0.04] p-3 sm:p-4">
+          {/* Owner live run 2026-10-11: "research continues in the background"
+              sat beside this button and read as what stopping does. It is the
+              opposite: stopping ends the research at once, spent credits are
+              not refunded and the report is incomplete. That is said here;
+              leaving the PAGE (which does continue) is said in the note above. */}
+          <p className="min-w-0 basis-full text-xs leading-relaxed text-foreground/80 sm:flex-1 sm:basis-auto">
+            {t('verify_stop_warning')}
           </p>
           <Button
             variant="outline"

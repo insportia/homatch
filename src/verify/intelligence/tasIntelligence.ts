@@ -28,6 +28,7 @@
 // in this structure for audit; none of it is customer prose.
 
 import { revalidateDecision, legalClaims, type LegalClaim } from './legalStatus.ts';
+import { buildCaseChronology, latestCasesByFiling, permitTerm, plausibleBlock, type CaseStage, type ChronologyCase } from './tasChronology.ts';
 import { readCaseSources, caseDecisionState, caseIsClosed, caseSubject, redactPersonal } from './tasCaseSources.ts';
 import {
   VISUAL_ASSET_MAX, categoryForScope, normalizeVisualCategory, normalizeVisualKind, resolveVisualScope, visualSubject,
@@ -254,6 +255,14 @@ export interface PendingApplication {
   /** The case's own displayed status, e.g. „განხილვის პროცესში“. */
   statusText: string | null;
   applicant: string | null;
+  /**
+   * The procedural stage the record shows (tasChronology.ts): SUBMITTED (no
+   * response yet), UNDER_REVIEW (deficiency notices only) or RESPONSE_UNREAD
+   * (a response exists whose outcome could not be read) — never an approval.
+   */
+  stage?: CaseStage;
+  /** The latest published response, when one exists. */
+  lastResponse?: { number: string | null; publishedOn: string | null } | null;
 }
 
 /**
@@ -291,6 +300,8 @@ export interface TasIntelligence {
   pendingApplications?: PendingApplication[];
   /** References dated after the job completed — never issued decisions. */
   futureDatedReferences?: FutureDatedReference[];
+  /** Every case in FILING order with its stage and legal effect (tasChronology.ts). */
+  caseChronology?: ChronologyCase[];
 }
 
 // ─────────────────────────────── helpers ───────────────────────────────
@@ -578,7 +589,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
   if (api) {
     for (const c of arr<any>(api.cases)) {
       const tf = arr<any>(c.technicalFacts);
-      const block = s(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value) || null;
+      const block = plausibleBlock(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value);
       cases.push({
         documentId: s(c.documentId) || null,
         caseRef: s(c.registrationNumber) || null,
@@ -599,7 +610,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
   for (const r of results)
     for (const d of arr<any>(r.documents)) {
       const tf = arr<any>(d.technicalFacts);
-      const block = s(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value) || null;
+      const block = plausibleBlock(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value);
       cases.push({
         documentId: s(d.tasDocumentId ?? d.id) || null,
         caseRef: null,
@@ -767,7 +778,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     timeline.push({
       id: `te${++eid}`, date: when, kind, title: title || (d?.number ? `№ ${d.number}` : ''), caseRef: c.caseRef, documentId: c.documentId, status,
       materiality: d && OUTCOME_MATERIAL.has(d.outcome) ? 'HIGH' : EVENT_MATERIALITY[kind],
-      decision: d ? { number: d.number ?? null, outcome: d.outcome, evidence: d.evidence ? String(d.evidence).slice(0, 240) : null, validUntil: d.validUntil ?? null } : null,
+      decision: d ? { number: d.number ?? null, outcome: d.outcome, evidence: d.evidence ? String(d.evidence).slice(0, 240) : null, validUntil: d.validUntil ?? (d.outcome === 'PERMIT_ISSUED' || d.outcome === 'AMENDMENT_APPROVED' || d.outcome === 'DEADLINE_EXTENDED' ? permitTerm(d.evidence)?.until ?? null : null) } : null,
       relevance: 0,
     });
   };
@@ -912,11 +923,20 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     });
   }
   pendingApplications.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+  const caseChronology = buildCaseChronology(report, nowIso);
+  for (const a of pendingApplications) {
+    const c = caseChronology.find((x) => x.caseRef && x.caseRef === a.caseRef);
+    if (!c) continue;
+    a.stage = c.stage === 'DECIDED' ? 'UNDER_REVIEW' : c.stage;
+    const last = [...c.unreadResponses].sort((x, y) => String(x.publishedOn ?? '').localeCompare(String(y.publishedOn ?? ''))).pop() ?? null;
+    a.lastResponse = last;
+  }
 
   return {
     available: true,
     pendingApplications,
     futureDatedReferences,
+    caseChronology,
     coverage,
     facts,
     timeline,
@@ -1043,7 +1063,7 @@ export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso
   const blockOf = new Map<string, string>();
   for (const c of arr<any>(api?.cases)) {
     const tf = arr<any>(c?.technicalFacts);
-    const blk = s(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value);
+    const blk = plausibleBlock(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value) ?? '';
     if (blk) blockOf.set(s(c?.documentId), blk.toLowerCase());
   }
   const finalByCase = new Map<string, { outcome: string; block: string | null }>();
@@ -1255,11 +1275,21 @@ export interface OfficialHistoryView {
   /** References dated after the check completed — never issued decisions. */
   futureDatedReferences?: FutureDatedReference[];
   /**
+   * Every case in FILING order, each with its procedural stage and legal
+   * effect; the scope is the parent parcel the cases were filed for.
+   */
+  caseChronology?: ChronologyCaseView[];
+  /** The two newest cases by filing date, newest first. */
+  latestCases?: ChronologyCaseView[];
+  /**
    * The present, in reading order: the latest EFFECTIVE decision first, then
    * applications still under review, then unresolved conflicts.
    */
   currentPosition?: CurrentPosition;
 }
+
+/** A case as the customer report may show it: no applicant identity, no internal ids. */
+export type ChronologyCaseView = Omit<ChronologyCase, 'metrics'> & { metrics: ChronologyCase['metrics'] };
 
 export interface CurrentPosition {
   effective: {
@@ -1340,6 +1370,8 @@ export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView
     legal: intel.legalClaims,
     pendingApplications: intel.pendingApplications ?? [],
     futureDatedReferences: intel.futureDatedReferences ?? [],
+    caseChronology: intel.caseChronology ?? [],
+    latestCases: latestCasesByFiling(intel.caseChronology ?? [], 2),
     currentPosition: currentPositionOf(intel),
     evolution,
     funnel: intel.funnel,

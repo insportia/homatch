@@ -62,22 +62,30 @@ test('a failed source is an honest FAILED result; human verification is a skip, 
   assert.equal(taskResult(row({ source: 'tas', dedupe_key: 'tas', state: 'RUNNING' })), null);
 });
 
-test('registry follow-ups: once, after the primary sources, bounded, from primary documents only', () => {
+test('registry follow-ups start as soon as a primary names companies — bounded, primary documents only (owner live run 2026-10-11)', () => {
   const ents = (k) => Array.from({ length: 5 }, (_, i) => ({ name: `Co ${k}${i}`, identificationCode: `40${k}00000${i}` }));
   const rows = [
     row({ source: 'TAS_MAP', dedupe_key: 'TAS_MAP', state: 'SUCCEEDED', result: { source: 'TAS_MAP' } }),
     row({ source: 'tas', dedupe_key: 'tas', state: 'RUNNING' }),
     row({ source: 'mygov', dedupe_key: 'mygov', state: 'SUCCEEDED', result: { source: 'mygov', queueEntities: ents(1) } }),
   ];
-  assert.deepEqual(followUpTasks(rows), [], 'nothing while a primary source is still running');
-  rows[1] = { ...rows[1], state: 'SUCCEEDED', result: { source: 'tas' } };
+  // TAS is still running: MyGov's companies are looked up NOW, not after TAS.
   const plan = followUpTasks(rows);
   assert.equal(plan.length, MAX_QUEUE_ENTITY_COMPANIES * 2);
   assert.deepEqual([...new Set(plan.map((p) => p.source))], ['enreg', 'debtor']);
   assert.equal(plan[0].scopeKey, 'enreg:401000000');
-  // Planned rows exist now; an entity result naming more companies fans out nothing.
-  const after = [...rows, ...plan.map((p) => row({ source: p.source, dedupe_key: p.dedupeKey, state: 'SUCCEEDED', input: p.input, result: { source: p.source, queueEntities: ents(9) } }))];
-  assert.deepEqual(followUpTasks(after), []);
+  // With a CAPTCHA policy, RS.ge starts for the first company in parallel too.
+  const withTax = followUpTasks(rows, { captchaPolicy: { enabled: true, providers: { rstax: true } } });
+  const tax = withTax.filter((p) => p.source === 'rstax');
+  assert.equal(tax.length, 1);
+  assert.equal(tax[0].scopeKey, 'rstax:401000000');
+  assert.deepEqual(tax[0].input.captchaPolicy, { enabled: true, providers: { rstax: true } });
+  assert.equal(followUpTasks(rows, { captchaPolicy: { enabled: false } }).filter((p) => p.source === 'rstax').length, 0);
+  // Planned rows exist now; TAS finishing with more companies stays within the cap,
+  // and an entity result naming more companies fans out nothing.
+  const after = [...rows, ...withTax.map((p) => row({ source: p.source, dedupe_key: p.dedupeKey, state: 'SUCCEEDED', input: p.input, result: { source: p.source, queueEntities: ents(9) } }))];
+  after[1] = { ...after[1], state: 'SUCCEEDED', result: { source: 'tas', queueEntities: ents(2) } };
+  assert.deepEqual(followUpTasks(after, { captchaPolicy: { enabled: true } }), []);
 });
 
 test('TAS API failure falls back to the legacy browser workflow once, when configured', () => {
@@ -140,4 +148,24 @@ test('the worker\'s execution stamp never reaches the official result', () => {
   const r = taskResult(row({ source: 'mygov', dedupe_key: 'mygov', state: 'SUCCEEDED', result: { source: 'mygov', status: 'SEARCH_CONFIRMED', _exec: { ms: 1 } } }));
   assert.equal('_exec' in r, false);
   assert.equal(r.status, 'SEARCH_CONFIRMED');
+});
+
+test('officialLiveOf: per-source states while the stage runs (owner live run 2026-10-11)', async () => {
+  const { officialLiveOf } = await import('../queueOfficial.ts');
+  const rows = [
+    row({ source: 'mygov', dedupe_key: 'mygov', state: 'SUCCEEDED', started_at: '2026-10-11T06:41:47Z', finished_at: '2026-10-11T06:44:15Z' }),
+    row({ source: 'TAS_MAP', dedupe_key: 'TAS_MAP', state: 'SUCCEEDED', started_at: '2026-10-11T06:41:54Z', finished_at: '2026-10-11T06:42:43Z' }),
+    row({ source: 'tas', dedupe_key: 'tas', state: 'RUNNING', started_at: '2026-10-11T06:41:47Z' }),
+    row({ source: 'enreg', dedupe_key: 'enreg:404670272', state: 'QUEUED' }),
+  ];
+  const live = officialLiveOf(rows);
+  assert.deepEqual(live.sources, [
+    { source: 'TAS_MAP', state: 'DONE' },
+    { source: 'tas', state: 'RUNNING' },
+    { source: 'mygov', state: 'DONE' },
+  ]);
+  assert.equal(live.done, 2);
+  assert.equal(live.total, 3);
+  // Payload never travels: states only.
+  assert.ok(!JSON.stringify(live).includes('result'));
 });

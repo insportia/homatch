@@ -189,7 +189,10 @@ const comp = (tier, relevance, over = {}) => ({
   tier, relevance, pricePerSqm: 1800, currency: 'USD', reasons: [], state: 'ACTIVE', ...over,
 });
 
-test('unrelated districts are context, never direct comparables', () => {
+// Premise (2026-10-11, job 8ba97da9): unrelated districts are excluded
+// ENTIRELY — neither direct nor context. Context is level 5 (same/adjacent
+// neighbourhood) only.
+test('unrelated districts are never selected, not even as context', () => {
   // The live shape: one local listing, then a pile of citywide ones.
   const scored = [
     comp('SAME_PROJECT', 95),
@@ -201,8 +204,8 @@ test('unrelated districts are context, never direct comparables', () => {
   assert.equal(sel.direct.length, 1, 'only the genuinely local one is direct');
   assert.equal(sel.direct[0].tier, 'SAME_PROJECT');
   assert.ok(sel.direct.every((d) => d.tier !== 'WIDER_MARKET'), 'no citywide listing may be direct');
-  assert.ok(sel.context.length > 0, 'the rest is explicitly wider-city context');
-  assert.ok(sel.context.every((c) => c.reasonKey === 'cmp_reason_wider_market'));
+  assert.equal(sel.context.length, 0, 'a citywide listing reached the customer as context');
+  assert.ok(![...sel.direct, ...sel.context].some((c) => c.reasonKey === 'cmp_reason_wider_market'));
   assert.equal(sel.directIsThin, true, 'one listing is an anecdote, and the report should say so');
   assert.equal(sel.rawCount, 7);
 });
@@ -214,20 +217,26 @@ test('the direct set is never padded to hit a number', () => {
 });
 
 test('bands are ordered strongest first, and each carries its reason', () => {
+  // Premise (2026-10-11, job 8ba97da9): hierarchy order — a nearby premium
+  // peer (level 4) outranks unnamed district stock (level 5), which is shown
+  // only as context and only while levels 1–4 are thin.
   const sel = selectComparables([
     comp('PEER_PROJECT', 70), comp('SAME_STREET', 60),
     comp('SAME_PROJECT', 50), comp('SAME_DISTRICT', 65),
   ]);
   assert.deepEqual(
     sel.direct.map((d) => d.tier),
-    ['SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'PEER_PROJECT'],
+    ['SAME_PROJECT', 'SAME_STREET', 'PEER_PROJECT'],
     'band beats raw relevance — a same-project flat outranks a better-scoring stranger'
   );
   assert.deepEqual(
     sel.direct.map((d) => d.reasonKey),
-    ['cmp_reason_same_project', 'cmp_reason_same_street', 'cmp_reason_same_district', 'cmp_reason_peer_project']
+    ['cmp_reason_same_project', 'cmp_reason_same_street', 'cmp_reason_peer_project']
   );
+  assert.equal(sel.context.length, 0, 'district stock shown although levels 1-4 already reach the threshold');
   assert.equal(sel.directIsThin, false);
+  const thin = selectComparables([comp('SAME_PROJECT', 50), comp('SAME_DISTRICT', 65)]);
+  assert.deepEqual(thin.context.map((c) => c.reasonKey), ['cmp_reason_same_district']);
 });
 
 test('a strong local set is capped rather than dumped', () => {

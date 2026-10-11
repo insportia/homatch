@@ -98,8 +98,12 @@ export default function SnakeLaunchCard({ label, bestLabel, onOpen, testId }: {
     >
       {/* Gold hairline that brightens on hover. */}
       <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-2xl bg-[linear-gradient(135deg,rgba(233,185,73,0.55),rgba(233,185,73,0.08)_40%,rgba(233,185,73,0.08)_60%,rgba(233,185,73,0.5))] opacity-70 transition-opacity duration-300 group-hover:opacity-100" />
-      <span className="relative flex items-center gap-3 rounded-[15px] bg-[#0A0B0D] p-2.5 sm:gap-4 sm:p-3">
-        <span className="relative block w-[46%] max-w-[260px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10">
+      {/* Owner live run 2026-10-11: beside a 46%-wide board the Georgian
+          label wrapped into a narrow column. On a phone the board now sits
+          on top at full width and the label gets the whole row below it;
+          side by side only from sm, where there is room for both. */}
+      <span className="relative flex flex-col gap-3 rounded-[15px] bg-[#0A0B0D] p-2.5 sm:flex-row sm:items-center sm:gap-4 sm:p-3">
+        <span className="relative block w-full shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10 sm:w-[42%] sm:max-w-[260px]">
           <svg viewBox={`0 0 ${COLS * CELL} ${ROWS * CELL}`} className="block h-auto w-full" aria-hidden="true">
             <defs>
               <radialGradient id="sl-glow" cx="85%" cy="0%" r="95%">
@@ -136,14 +140,18 @@ export default function SnakeLaunchCard({ label, bestLabel, onOpen, testId }: {
           </svg>
         </span>
 
+        <span className="flex min-w-0 items-center gap-3 sm:flex-1">
         <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-sm font-semibold leading-snug text-white break-words sm:text-[15px]">{label}</span>
-          {bestLabel ? <span className="text-xs text-white/55">{bestLabel}</span> : null}
+          <span className="text-[15px] font-semibold leading-snug text-white [overflow-wrap:anywhere] [text-wrap:balance]">{label}</span>
+          {bestLabel ? (
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-0.5 text-xs font-medium text-[#F2C75C] [font-variant-numeric:tabular-nums]">{bestLabel}</span>
+          ) : null}
         </span>
 
         <span aria-hidden="true" className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#F6D27A,#D9A233)] text-[#14100A] shadow-[0_0_0_4px_rgba(233,185,73,0.14)] transition-transform duration-200 motion-safe:group-hover:scale-110">
           <span className="absolute inset-0 rounded-full ring-2 ring-[#E9B949]/50 motion-safe:animate-ping [animation-duration:2.2s]" />
           <Play className="relative h-5 w-5 translate-x-[1px] fill-current rtl:-scale-x-100" />
+        </span>
         </span>
       </span>
     </button>

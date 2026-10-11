@@ -19,7 +19,8 @@
  * Nothing is written back; the stored row is never modified.
  */
 
-import { buildPropertyRegister, reconcileReport, sentences } from './propertyRegister.ts';
+import { buildPropertyRegister, reconcileReport, sentences, unitLegalPosition } from './propertyRegister.ts';
+import { buildUnitIdentity } from './unitIdentity.ts';
 import type { PropertyRegister } from './propertyRegister.ts';
 import { buildBuyerChecklist } from './buyerChecklist.ts';
 import { buildCompanyIntelligence } from './companyIntelligence.ts';
@@ -179,6 +180,20 @@ function withLegalTruth<T extends Record<string, any>>(payload: T, resultJson: u
     if (next.pendingApplications === undefined) next.pendingApplications = fresh.pendingApplications;
     if (next.currentPosition === undefined) next.currentPosition = fresh.currentPosition;
     if (next.futureDatedReferences === undefined) next.futureDatedReferences = fresh.futureDatedReferences;
+    /*
+     * Deterministic projections are re-derived on read: the filing-order case
+     * chronology, the two newest cases, the pending stages, and the legal
+     * claims (whose basis once carried an applicant's home address as a
+     * "block" — job 8ba97da9). A stored permit status without its term gets
+     * the term the act states.
+     */
+    next.caseChronology = fresh.caseChronology;
+    next.latestCases = fresh.latestCases;
+    next.pendingApplications = fresh.pendingApplications;
+    next.currentPosition = fresh.currentPosition;
+    next.legal = fresh.legal;
+    if (obj(next.status).state === fresh.status.state && !obj(next.status).validUntil && fresh.status.validUntil)
+      next.status = { ...obj(next.status), validUntil: fresh.status.validUntil };
     if (obj(stored.status).state === 'COMMISSIONED' && fresh.status.state !== 'COMMISSIONED') {
       next.status = fresh.status;
       next.legal = fresh.legal;
@@ -208,7 +223,19 @@ export function withPropertyRegister<T extends Record<string, any>>(payload: T, 
   // Reconciliation also removes the malformed purpose change, which needs no register.
   const report = payload.report ? reconcileReport(payload.report, reg) : payload.report;
   const officialHistory = payload.officialHistory ? cleanOfficialHistory(payload.officialHistory) : payload.officialHistory;
-  if (!reg?.latest) return { ...payload, report, officialHistory };
+  /*
+   * WHICH PROPERTY, DECIDED FROM OFFICIAL RECORDS (unitIdentity.ts): the exact
+   * unit (verified by the NAPR extract when one was read), its parent parcel,
+   * building/block, the research project/developer, and ownership with dates.
+   * Re-derived on every read, so persisted reports carry it without a rebuild.
+   */
+  let unitIdentity: ReturnType<typeof buildUnitIdentity> = null;
+  try {
+    unitIdentity = buildUnitIdentity(resultJson);
+  } catch {
+    unitIdentity = null;
+  }
+  if (!reg?.latest) return { ...payload, report, officialHistory, ...(unitIdentity ? { unitIdentity } : {}) };
 
   const snapshot = { ...obj(payload.snapshot) };
   const owner = ownerFromRegister(reg);
@@ -233,5 +260,7 @@ export function withPropertyRegister<T extends Record<string, any>>(payload: T, 
     ? payload.selfChecks.filter((c: any) => c?.kind !== 'TAXPAYER_REGISTRY')
     : payload.selfChecks;
 
-  return { ...payload, report, officialHistory, snapshot, checklist, selfChecks, propertyRegister: reg };
+  // Ownership, mortgages step by step (application ≠ cancellation) and restrictions, scoped and dated.
+  const legalPosition = unitLegalPosition(reg);
+  return { ...payload, report, officialHistory, snapshot, checklist, selfChecks, propertyRegister: reg, ...(unitIdentity ? { unitIdentity } : {}), ...(legalPosition ? { unitLegalPosition: legalPosition } : {}) };
 }

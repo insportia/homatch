@@ -106,8 +106,25 @@ export function parcelRelation(report: unknown): ParcelRelation {
     unitCode,
     parcelCode,
     differs: !!(unitCode && parcelCode && unitCode !== parcelCode),
-    unitVerified: unit.verified === true,
+    unitVerified: unit.verified === true || officialRecordForUnit(r, unitCode),
   };
+}
+
+/*
+ * THE REGISTRY'S OWN RECORD FOR THIS EXACT UNIT VERIFIES IT.
+ *
+ * exactUnit.verified is the research model's answer, written before the
+ * registry is read. Job 8ba97da9 held the NAPR extract for
+ * …055.03.01.601 (apartment, floor, block, area, owner, date) and still showed
+ * the unit as unconfirmed and its rights as possibly the parcel's.
+ * service176Evidence carries only identity-bound registry facts (record ↔
+ * document ↔ code validated server-side); a CADCODE fact for this exact code
+ * is official confirmation. Never downgrades a verified unit.
+ */
+function officialRecordForUnit(r: Record<string, unknown>, unitCode: string | null): boolean {
+  if (!unitCode) return false;
+  const facts = Array.isArray(r.service176Evidence) ? (r.service176Evidence as Array<Record<string, any>>) : [];
+  return facts.some((f) => f?.field === 'CADCODE' && String(f?.value ?? '').trim() === unitCode);
 }
 
 /*

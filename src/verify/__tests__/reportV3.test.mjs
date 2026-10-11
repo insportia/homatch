@@ -67,7 +67,8 @@ const TEAM = [
 
 test('the team is grouped by discipline, in a fixed order, under documented wording', () => {
   const groups = teamGroupsV2(TEAM);
-  assert.deepEqual(groups.map((g) => g.group), ['DEVELOPER', 'ARCHITECTURE', 'STRUCTURAL', 'GEOTECHNICAL', 'CONSTRUCTION_ORG', 'SAFETY']);
+  // Owner, 2026-10-11: the professionals lead, the commissioning side follows.
+  assert.deepEqual(groups.map((g) => g.group), ['ARCHITECTURE', 'STRUCTURAL', 'GEOTECHNICAL', 'CONSTRUCTION_ORG', 'SAFETY', 'DEVELOPER']);
   const arch = groups.find((g) => g.group === 'ARCHITECTURE').cards;
   assert.deepEqual(arch.map((c) => c.name), ['დარეჯან შათაშვილი', 'დავით სორდია', 'გიორგი ლეჟავა', 'შპს არტიტექსი'], 'people before their firm, otherwise the record order');
   const chief = arch[0];
@@ -289,4 +290,93 @@ test('every v3 key is in all six locales with its placeholders, in the house ter
   for (const g of TEAM_GROUP_ORDER) assert.equal(valuesOf(TEAM_GROUP_KEY[g]).length, 6, TEAM_GROUP_KEY[g]);
   const all = Object.values(VERIFY_REPORT_V3_STRINGS).flat().join('\n');
   assert.ok(!/confirmed buyer|შესატყვისი/i.test(all));
+});
+
+/* ── production report 01.18.06.019.055.03.01.601 (sanitized fixture) ──── */
+
+import { STORED_SYNTHESIS, customerSynthesis, VISUAL_IDS } from './fixtures/job601Synthesis.mjs';
+import { caseCount, isAuthority, TEAM_GROUP_DUTY_KEY } from '../reportPresentation.ts';
+import { scopeKeyFor } from '../visualCatalog.ts';
+import { VERIFY_P0_UI_STRINGS } from '../../../scripts/verify-p0-ui-i18n-data.mjs';
+
+test('job 601: the documented team renders as disciplines, without extraction noise or the city authority', () => {
+  const groups = teamGroupsV2(STORED_SYNTHESIS.projectTeamV2);
+  const by = Object.fromEntries(groups.map((g) => [g.group, g.cards]));
+  assert.deepEqual(groups.map((g) => g.group), ['ARCHITECTURE', 'APPLICANTS', 'OTHER']);
+  // The two chief architects, headed by their architect role — not by "applicant".
+  assert.deepEqual(by.ARCHITECTURE.map((c) => c.name), ['დარეჯან შათაშვილი', 'დავით ლოსაბერიძე']);
+  for (const c of by.ARCHITECTURE) {
+    assert.equal(c.headline.code, 'CHIEF_ARCHITECT');
+    assert.equal(c.headline.labelKey, 'verify_p0_role_chief_architect', 'a form label ("…სახელი და გვარი") reached the reader as a role');
+    assert.ok(caseCount(c) >= 6, 'the evidence drawer lost cases');
+    assert.ok(c.roles.every((r) => r.sourceUrl?.startsWith('https://docs.tbilisi.gov.ge/')));
+  }
+  // The developer's director commissioned and applied — he is never seated among the architects.
+  assert.ok(by.APPLICANTS.some((c) => c.name === 'ლევან ჩაჩუა' && c.headline.labelKey === 'vrx_team_role_client'));
+  assert.ok(!by.ARCHITECTURE.some((c) => c.name === 'ლევან ჩაჩუა'));
+  const names = groups.flatMap((g) => g.cards.map((c) => c.name));
+  for (const noise of ['•••) ნაცვლად - შპს „ქეი-ელ-გრუპი“', '•••) ნაცვლად დაფიქსირდეს შპს', 'გამოყენებული წესები', 'მრავალბინიანი საცხოვრებელი სახლი', 'ქ. თბილისის მუნიციპალიტეტის სსიპ']) {
+    assert.ok(!names.includes(noise), `"${noise}" became a person`);
+  }
+  assert.equal(isAuthority('ქ. თბილისის მუნიციპალიტეტის სსიპ'), true);
+  // No role shown to a reader carries a personal-number marker.
+  for (const c of groups.flatMap((g) => g.cards)) for (const r of c.roles) assert.ok(!/პ\/ნ/.test(r.roleText));
+  // The non-official supplier is shown, and as public.
+  assert.equal(by.OTHER[0].name, 'GBS');
+  assert.equal(by.OTHER[0].official, false);
+  for (const g of ['ARCHITECTURE', 'APPLICANTS']) assert.ok(TEAM_GROUP_DUTY_KEY[g], g);
+});
+
+test('job 601: all 24 official visuals survive forCustomer and the catalogue, labelled as project-wide', async () => {
+  const s = await customerSynthesis();
+  assert.equal(s.officialVisuals.length, 24);
+  const cat = catalogVisuals(s.officialVisuals, s.report.visualExplanations, s.report.visualCaptions);
+  assert.deepEqual(cat.map((v) => v.id), VISUAL_IDS);
+  for (const v of cat) {
+    assert.equal(scopeKeyFor(v), 'verify_p0_scope_project', 'a project-wide image was given a narrower scope');
+    assert.notEqual(v.badge, 'EXACT_UNIT_PLAN');
+    assert.ok(v.documentId, 'the image lost its case');
+    assert.ok(v.explanation?.what);
+  }
+  // A forged exact-unit drawing is never presented as this apartment's plan.
+  const [forged] = catalogVisuals([{ ...s.officialVisuals[6], kind: 'ELEVATION', scope: 'EXACT_UNIT' }]);
+  assert.equal(scopeKeyFor(forged), 'verify_p0_scope_building');
+  const [unresolved] = catalogVisuals([{ ...s.officialVisuals[6], kind: 'UNIT_PLAN', scope: 'EXACT_UNIT' }], [], [], { identityUnresolved: true });
+  assert.notEqual(unresolved.badge, 'EXACT_UNIT_PLAN');
+  assert.equal(scopeKeyFor(unresolved, true), 'verify_p0_scope_building');
+});
+
+test('job 601: the report renders the gallery near the top and the team with evidence, once', () => {
+  const report = code('src/components/verify/VerifyReport.tsx');
+  assert.match(report, /<VisualExplorer[\s\S]{0,400}docs=\{synthesis\.officialDocuments\}/, 'the gallery lost its case links');
+  assert.match(report, /directors=\{directors\}/, 'directors are not passed to the team');
+  assert.match(report, /teamV2Groups\.length \? \[\] : inChapter\('people'\)/, 'the people prose repeats the documented team');
+  assert.match(report, /people\.length && !companyListsDirectors/, 'the directors tree repeats the company card');
+  const ui = code('src/components/verify/PeopleBehind.tsx');
+  assert.match(ui, /verify_p0_team_evidence_show/);
+  assert.match(ui, /r\.labelKey \? t\(r\.labelKey\) : r\.roleText/);
+  const gallery = code('src/components/verify/VisualExplorer.tsx');
+  assert.match(gallery, /<ScopeChip v=\{active\}/, 'the stage image has no scope label');
+  assert.match(gallery, /data-gallery-count=\{usable\.length\}/);
+  const company = code('src/components/verify/CompanyIntelligenceCard.tsx');
+  assert.match(company, /REPRESENTATION_CODE_KEY\[role\.toUpperCase\(\)\]/, 'a representation code prints as English');
+});
+
+test('the P0 copy: six locales, placeholders intact, the house terminology', () => {
+  const used = new Set();
+  for (const f of ['src/components/verify/PeopleBehind.tsx', 'src/components/verify/VisualExplorer.tsx', 'src/components/verify/VerifyReport.tsx', 'src/components/verify/CompanyIntelligenceCard.tsx', 'src/verify/reportPresentation.ts', 'src/verify/visualCatalog.ts']) {
+    for (const m of read(f).matchAll(/'(verify_p0_[a-z0-9_]+)'/g)) used.add(m[1]);
+  }
+  for (const k of used) assert.ok(VERIFY_P0_UI_STRINGS[k] || valuesOf(k).length === 6, `${k} has no copy`);
+  for (const [key, values] of Object.entries(VERIFY_P0_UI_STRINGS)) {
+    assert.equal(values.length, 6, key);
+    const want = (values[0].match(/\{\{\w+\}\}/g) ?? []).sort().join();
+    for (const v of values) {
+      assert.ok(v.trim(), `${key} is empty`);
+      assert.equal((v.match(/\{\{\w+\}\}/g) ?? []).sort().join(), want, `${key}: ${v}`);
+    }
+    assert.ok(!/[a-z]{4}/i.test(values[1].replace(/\{\{\w+\}\}/g, '')), `${key}: Latin text in Georgian`);
+  }
+  const all = Object.values(VERIFY_P0_UI_STRINGS).flat().join('\n');
+  assert.ok(!/confirmed buyer|შესატყვისი|ტბილისი/i.test(all));
 });

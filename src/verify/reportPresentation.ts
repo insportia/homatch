@@ -342,17 +342,40 @@ export function safeHref(v: unknown): string | null {
 
 /* ───────────────────────── Project team (v2) ───────────────────────── */
 
-export type TeamGroup = 'DEVELOPER' | 'ARCHITECTURE' | 'STRUCTURAL' | 'GEOTECHNICAL' | 'LANDSCAPE' | 'CONSTRUCTION_ORG' | 'SAFETY' | 'OTHER';
-export const TEAM_GROUP_ORDER: TeamGroup[] = ['DEVELOPER', 'ARCHITECTURE', 'STRUCTURAL', 'GEOTECHNICAL', 'LANDSCAPE', 'CONSTRUCTION_ORG', 'SAFETY', 'OTHER'];
+export type TeamGroup =
+  | 'ARCHITECTURE' | 'STRUCTURAL' | 'GEOTECHNICAL' | 'ENGINEERING' | 'DESIGN' | 'LANDSCAPE' | 'CONSTRUCTION_ORG' | 'SAFETY'
+  | 'DEVELOPER' | 'APPLICANTS' | 'OTHER';
+/*
+ * THE ORDER A BUYER ASKS IN (owner, 2026-10-11): who designed it, who made it
+ * stand up, who engineered it, then who commissioned and applied for it.
+ * The professionals lead; the commissioning side follows.
+ */
+export const TEAM_GROUP_ORDER: TeamGroup[] = [
+  'ARCHITECTURE', 'STRUCTURAL', 'GEOTECHNICAL', 'ENGINEERING', 'DESIGN', 'LANDSCAPE', 'CONSTRUCTION_ORG', 'SAFETY',
+  'DEVELOPER', 'APPLICANTS', 'OTHER',
+];
 export const TEAM_GROUP_KEY: Record<TeamGroup, string> = {
   DEVELOPER: 'verify_v3_team_group_developer',
   ARCHITECTURE: 'verify_v3_team_group_architecture',
   STRUCTURAL: 'verify_v3_team_group_structural',
   GEOTECHNICAL: 'verify_v3_team_group_geotechnical',
+  ENGINEERING: 'verify_p0_team_group_engineering',
+  DESIGN: 'verify_p0_team_group_design',
   LANDSCAPE: 'verify_v3_team_group_landscape',
   CONSTRUCTION_ORG: 'verify_v3_team_group_construction_org',
   SAFETY: 'verify_v3_team_group_safety',
+  APPLICANTS: 'verify_p0_team_group_applicants',
   OTHER: 'verify_v3_team_group_other',
+};
+/** What each group is responsible for — one line under its heading. */
+export const TEAM_GROUP_DUTY_KEY: Partial<Record<TeamGroup, string>> = {
+  ARCHITECTURE: 'verify_p0_team_duty_architecture',
+  STRUCTURAL: 'verify_p0_team_duty_structural',
+  GEOTECHNICAL: 'verify_p0_team_duty_geotechnical',
+  ENGINEERING: 'verify_p0_team_duty_engineering',
+  DESIGN: 'verify_p0_team_duty_design',
+  DEVELOPER: 'verify_p0_team_duty_developer',
+  APPLICANTS: 'verify_p0_team_duty_applicants',
 };
 
 export interface TeamRoleV2Like {
@@ -376,7 +399,14 @@ export interface TeamMemberV2Like {
 }
 export interface TeamRoleV2 {
   code: string | null;
+  /** The record's own wording. When it is only a FORM FIELD LABEL, see `labelKey`. */
   roleText: string;
+  /**
+   * An i18n key for the role, set when the documented wording is a form
+   * field's label ("დამკვეთ(ებ)ის სახელი და გვარი" — "client's first and last
+   * name") rather than a role: the reader is told the role, never the label.
+   */
+  labelKey: string | null;
   scope: string | null;
   caseRef: string | null;
   date: string | null;
@@ -388,7 +418,7 @@ export interface TeamCardV2 {
   organizationKind: boolean;
   group: TeamGroup;
   organization: string | null;
-  /** The documented wording, as the record has it — the card's headline. */
+  /** The strongest documented role — the card's headline. */
   headline: TeamRoleV2;
   /** Every documented role, newest first, the headline included. */
   roles: TeamRoleV2[];
@@ -401,16 +431,95 @@ export interface TeamCardV2 {
  * A name a reader can be shown: no digits (a personal or registry number
  * never travels in a name), at most five words, no list or label punctuation
  * that marks a raw fragment ("არქიტექტორი: ..."), and at least two letters.
+ *
+ * Also never a masked identifier or a sentence fragment (production,
+ * 01.18.06.019.055.03.01.601: "•••305) ნაცვლად - შპს „ქეი-ელ-გრუპი“"), and
+ * never a common noun the extractor mistook for a name ("გამოყენებული
+ * წესები" — "rules applied"; "მრავალბინიანი საცხოვრებელი სახლი" — "apartment
+ * building").
  */
+const NOT_A_NAME = /(ნაცვლად|დაფიქსირდეს|წესებ|წესი|სახლი|ნაგებობ|ობიექტ|პროექტ|ნებართვ|განცხად|დოკუმენტ|ბრძანებ|გადაწყვეტილ|სართულ|ფართობ|ნაკვეთ|შენობ|მიწის)/u;
 export function plausibleName(v: unknown): boolean {
   const s = str(v);
   if (s.length < 2 || s.length > 90) return false;
   if (/\d/.test(s)) return false;
-  if (/[:;|/\\<>{}[\]=]/.test(s)) return false;
+  if (/[:;|/\\<>{}[\]=()•*…]/.test(s)) return false;
+  if (/^[-–—.,\s]/.test(s)) return false;
   const words = s.replace(/["„“”«»']/g, ' ').split(/\s+/).filter(Boolean);
   if (!words.length || words.length > 5) return false;
+  if (NOT_A_NAME.test(s) && !ORG_FORM.test(s)) return false;
   return (s.match(/\p{L}/gu) ?? []).length >= 2;
 }
+
+/**
+ * The reviewing authority, not a member of the project team. The city's
+ * architecture service appears on every TAS case as the body that DECIDES; a
+ * buyer reading it under "architects" would think the municipality designed
+ * the building.
+ */
+const AUTHORITY = /(მუნიციპალიტეტ|მერია|მერიის|სსიპ|სამსახურ|სამინისტრო|საკრებულო|ministry|municipal|city hall|\bLEPL\b)/iu;
+export const isAuthority = (name: unknown): boolean => AUTHORITY.test(str(name));
+
+/** A form field's label stored as if it were the role. */
+const FORM_LABEL = /(სახელი\s*(და|,)\s*გვარი|სახელწოდება\s*$|name and surname|full name)/iu;
+/** A fragment that carries a personal-number marker is never shown. */
+const PERSONAL_MARKER = /(პ\/ნ|პირადი\s*ნომ|personal\s*(id|no))/iu;
+
+/** The role a reader is told, by code, when the wording is only a label. */
+export const TEAM_ROLE_LABEL_KEY: Record<string, string> = {
+  CHIEF_ARCHITECT: 'verify_p0_role_chief_architect',
+  ARCHITECT: 'vbi_team_role_architect',
+  CO_ARCHITECT: 'vbi_team_role_co_architect',
+  STRUCTURAL_ENGINEER: 'vbi_team_role_structural',
+  GEOTECHNICAL_SPECIALIST: 'vbi_team_role_geotechnical',
+  EXPERT_REVIEW: 'vbi_team_role_expert',
+  MEP_ENGINEER: 'vbi_team_role_mep',
+  ENGINEER: 'verify_p0_role_engineer',
+  LANDSCAPE_ARCHITECT: 'vbi_team_role_landscape',
+  INTERIOR_DESIGNER: 'vbi_team_role_interior',
+  DESIGNER: 'verify_p0_role_designer',
+  CONTRACTOR: 'vbi_team_role_contractor',
+  TECHNICAL_SUPERVISOR: 'vbi_team_role_supervisor',
+  FIRE_SAFETY: 'vbi_team_role_fire',
+  SURVEYOR: 'vbi_team_role_surveyor',
+  DEVELOPER: 'vrx_team_role_client',
+  CLIENT: 'vrx_team_role_client',
+  APPLICANT: 'vrx_team_role_applicant',
+  // Roles the document-level extractor names (tasProfessionals.ts, P0 .601).
+  SAFETY_ASSESSMENT: 'verify_p0_role_safety_expert',
+  GEOTECHNICAL_EXPERT_ASSESSMENT: 'verify_p0_role_geotech_expert',
+  CONSTRUCTION_ORGANIZATION_SCHEDULE: 'verify_p0_role_construction_org',
+  ARCHITECTURAL_ORGANIZATION: 'verify_p0_role_design_firm',
+  DRAWING_TITLE_BLOCK: 'verify_p0_role_drawing_title_block',
+};
+
+/* Which discipline a role code belongs to. A code not listed keeps the
+   group the record gave it. */
+const GROUP_OF_CODE: Record<string, TeamGroup> = {
+  CHIEF_ARCHITECT: 'ARCHITECTURE', ARCHITECT: 'ARCHITECTURE', CO_ARCHITECT: 'ARCHITECTURE',
+  STRUCTURAL_ENGINEER: 'STRUCTURAL', EXPERT_REVIEW: 'STRUCTURAL',
+  GEOTECHNICAL_SPECIALIST: 'GEOTECHNICAL',
+  MEP_ENGINEER: 'ENGINEERING', ENGINEER: 'ENGINEERING',
+  INTERIOR_DESIGNER: 'DESIGN', DESIGNER: 'DESIGN',
+  LANDSCAPE_ARCHITECT: 'LANDSCAPE',
+  CONTRACTOR: 'CONSTRUCTION_ORG', TECHNICAL_SUPERVISOR: 'CONSTRUCTION_ORG',
+  FIRE_SAFETY: 'SAFETY', SAFETY_ASSESSMENT: 'SAFETY',
+  GEOTECHNICAL_EXPERT_ASSESSMENT: 'GEOTECHNICAL',
+  CONSTRUCTION_ORGANIZATION_SCHEDULE: 'CONSTRUCTION_ORG',
+  ARCHITECTURAL_ORGANIZATION: 'ARCHITECTURE',
+  // DRAWING_TITLE_BLOCK deliberately has no discipline: a name printed in a
+  // title block without a role is never promoted to architect or engineer.
+};
+/* How strongly a role describes what the person DID — a professional role
+   heads the card over a permit application. Lower is stronger. */
+const ROLE_RANK: Record<string, number> = {
+  CHIEF_ARCHITECT: 0, ARCHITECT: 1, STRUCTURAL_ENGINEER: 1, GEOTECHNICAL_SPECIALIST: 1, MEP_ENGINEER: 1, ENGINEER: 1,
+  LANDSCAPE_ARCHITECT: 1, INTERIOR_DESIGNER: 1, DESIGNER: 1, CO_ARCHITECT: 2, EXPERT_REVIEW: 2, CONTRACTOR: 2,
+  TECHNICAL_SUPERVISOR: 2, FIRE_SAFETY: 2, SAFETY_ASSESSMENT: 2, GEOTECHNICAL_EXPERT_ASSESSMENT: 2, CONSTRUCTION_ORGANIZATION_SCHEDULE: 2, ARCHITECTURAL_ORGANIZATION: 2, DRAWING_TITLE_BLOCK: 4, SURVEYOR: 3, DEVELOPER: 4, CLIENT: 4, APPLICANT: 5,
+};
+const rankOf = (r: TeamRoleV2): number => ROLE_RANK[(r.code ?? '').toUpperCase()] ?? 3;
+/** Roles that only say who commissioned or filed — never a discipline. */
+const COMMISSIONING = new Set(['APPLICANT', 'CLIENT', 'DEVELOPER']);
 
 const cleanText = (v: unknown, max = 220): string | null => {
   const s = str(v).replace(/\s+/g, ' ');
@@ -418,9 +527,17 @@ const cleanText = (v: unknown, max = 220): string | null => {
 };
 
 /**
- * The v2 team, grouped by discipline in a fixed order. A member without a
- * plausible name, or without a single documented role wording, is dropped:
- * a card never falls back to a generic "Other" headline.
+ * The v2 team, grouped by discipline in a fixed order.
+ *
+ * Dropped: a member without a plausible name, the reviewing authority, and a
+ * member without a single documented role. A role whose wording carries a
+ * personal-number marker is dropped; one whose wording is only a form label
+ * is shown by its code's role name.
+ *
+ * Grouping follows the STRONGEST documented role, not the extractor's guess:
+ * a person who only ever applied for a permit is not listed under
+ * architecture, and a company director is never presented as an architect
+ * unless an official record names them in an architect's role.
  */
 export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards: TeamCardV2[] }> {
   if (!Array.isArray(members) || !members.length) return [];
@@ -428,45 +545,65 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
   for (const raw of members as TeamMemberV2Like[]) {
     if (!raw || typeof raw !== 'object' || !plausibleName(raw.name)) continue;
     const name = str(raw.name).replace(/\s+/g, ' ');
+    if (isAuthority(name)) continue;
     const g = str(raw.group).toUpperCase() as TeamGroup;
-    const group: TeamGroup = TEAM_GROUP_ORDER.includes(g) ? g : 'OTHER';
+    const given: TeamGroup = TEAM_GROUP_ORDER.includes(g) ? g : 'OTHER';
     const roles: TeamRoleV2[] = [];
     const seen = new Set<string>();
     for (const r of Array.isArray(raw.roles) ? raw.roles : []) {
       const roleText = cleanText(r?.roleText, 160);
-      if (!roleText) continue;
+      if (!roleText || PERSONAL_MARKER.test(roleText)) continue;
+      const code = str(r?.code).toUpperCase() || null;
+      const isLabel = FORM_LABEL.test(roleText);
+      const labelKey = isLabel ? (code && TEAM_ROLE_LABEL_KEY[code]) || null : null;
+      if (isLabel && !labelKey) continue;
       const role: TeamRoleV2 = {
-        code: str(r?.code) || null,
+        code,
         roleText,
+        labelKey,
         scope: cleanText(r?.scope),
         caseRef: str(r?.caseRef) || null,
         date: isoDay(r?.date),
         documentTitle: cleanText(r?.documentTitle, 160),
         sourceUrl: safeHref(r?.sourceUrl),
       };
-      const k = `${role.roleText}|${role.caseRef ?? ''}|${role.date ?? ''}`;
+      if (role.scope && role.scope === role.roleText) role.scope = null;
+      const k = `${role.labelKey ?? role.roleText}|${role.caseRef ?? ''}|${role.date ?? ''}`;
       if (seen.has(k)) continue;
       seen.add(k);
       roles.push(role);
     }
     if (!roles.length) continue;
+    // The headline is the strongest role; ties keep the record's order.
+    const headline = roles.map((r, i) => ({ r, i })).sort((a, b) => rankOf(a.r) - rankOf(b.r) || a.i - b.i)[0].r;
+    const codes = roles.map((r) => (r.code ?? '').toUpperCase());
+    const discipline = codes.map((c) => GROUP_OF_CODE[c]).find(Boolean);
+    const onlyCommissioning = codes.every((c) => COMMISSIONING.has(c));
+    const organizationKind = str(raw.kind).toUpperCase() === 'ORGANIZATION' || ORG_FORM.test(name);
+    let group: TeamGroup = discipline ?? given;
+    if (!discipline && onlyCommissioning) {
+      // A developer company stays the developer; a person who commissioned
+      // or applied joins the applicants — never a discipline they never held.
+      group = organizationKind && codes.includes('DEVELOPER') ? 'DEVELOPER' : given === 'DEVELOPER' && organizationKind ? 'DEVELOPER' : 'APPLICANTS';
+    }
     const org = str(raw.organization);
     const card: TeamCardV2 = {
       name,
-      organizationKind: str(raw.kind).toUpperCase() === 'ORGANIZATION' || ORG_FORM.test(name),
+      organizationKind,
       group,
-      organization: org && !/\d{6,}/.test(org) && nameKey(org) !== nameKey(name) ? org : null,
-      headline: roles[0],
+      organization: org && !/\d{6,}/.test(org) && nameKey(org) !== nameKey(name) && !isAuthority(org) ? org : null,
+      headline,
       roles: [...roles].sort((a, b) => newestFirst(a.date, b.date)),
       firstSeen: isoDay(raw.firstSeen),
       lastSeen: isoDay(raw.lastSeen),
       official: raw.official !== false,
     };
-    const key = `${group}|${nameKey(name)}`;
+    const key = nameKey(name);
     const prev = byKey.get(key);
     if (prev) {
       for (const r of card.roles) if (!prev.roles.some((p) => p.roleText === r.roleText && p.caseRef === r.caseRef && p.date === r.date)) prev.roles.push(r);
       prev.roles.sort((a, b) => newestFirst(a.date, b.date));
+      if (rankOf(card.headline) < rankOf(prev.headline)) { prev.headline = card.headline; prev.group = card.group; }
       prev.official = prev.official || card.official;
       prev.organization = prev.organization ?? card.organization;
       continue;
@@ -483,6 +620,11 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
       return { group, cards: cards.map((c, i) => ({ c, i })).sort((a, b) => orgRank(a.c) - orgRank(b.c) || a.i - b.i).map((x) => x.c) };
     })
     .filter((x) => x.cards.length > 0);
+}
+
+/** How many distinct official cases name this card — the evidence count. */
+export function caseCount(card: TeamCardV2): number {
+  return new Set(card.roles.map((r) => r.caseRef).filter(Boolean)).size;
 }
 
 /* ───────────────────────── Official documents ───────────────────────── */
@@ -626,8 +768,16 @@ export function visualSources(rawVisuals: unknown): Map<string, { documentId: st
 
 /* ───────────────────────── Legal position ───────────────────────── */
 
-export interface PendingView { caseRef: string | null; date: string | null; deadline: string | null; subject: string | null }
-export interface EffectiveView { kind: string; kindKey: string; date: string | null; decisionNumber: string | null; caseRef: string | null }
+/**
+ * stage: SUBMITTED (no response yet) / UNDER_REVIEW (deficiency notices only) /
+ * RESPONSE_UNREAD (a response exists whose outcome could not be read) — never
+ * an approval. Labels: verify_p0_case_stage_* (scripts/verify-p0-legal-i18n-data.mjs).
+ */
+export interface PendingView { caseRef: string | null; date: string | null; deadline: string | null; subject: string | null; stage?: 'SUBMITTED' | 'UNDER_REVIEW' | 'RESPONSE_UNREAD' | null; lastResponseNumber?: string | null }
+/** validUntil: the construction term's end the controlling act states (e.g. 7839183 → 2028-03-11). */
+export interface EffectiveView { kind: string; kindKey: string; date: string | null; decisionNumber: string | null; caseRef: string | null; validUntil?: string | null }
+
+const PENDING_STAGES = new Set(['SUBMITTED', 'UNDER_REVIEW', 'RESPONSE_UNREAD']);
 
 const DECISION_KINDS = new Set(['application', 'permit', 'approval', 'amendment', 'extension', 'refusal', 'suspension', 'inspection', 'commissioning', 'decision']);
 
@@ -650,6 +800,7 @@ export function legalPosition(history: unknown): { effective: EffectiveView | nu
       date: isoDay(e.date),
       decisionNumber: str(e.decisionNumber) || null,
       caseRef: str(e.caseRef) || null,
+      validUntil: isoDay(e.validUntil),
     };
   }
   const merged = new Map<string, PendingView>();
@@ -659,11 +810,15 @@ export function legalPosition(history: unknown): { effective: EffectiveView | nu
   ] as Array<Record<string, unknown>>;
   for (const p of list) {
     if (!p || typeof p !== 'object') continue;
-    const v: PendingView = { caseRef: str(p.caseRef) || null, date: isoDay(p.date), deadline: isoDay(p.deadline), subject: cleanText(p.subject, 200) };
+    const stage = PENDING_STAGES.has(str(p.stage)) ? (str(p.stage) as PendingView['stage']) : null;
+    const last = p.lastResponse && typeof p.lastResponse === 'object' ? str((p.lastResponse as Record<string, unknown>).number) || null : null;
+    const v: PendingView = { caseRef: str(p.caseRef) || null, date: isoDay(p.date), deadline: isoDay(p.deadline), subject: cleanText(p.subject, 200), stage, lastResponseNumber: last };
     if (!v.caseRef && !v.date && !v.subject) continue;
     const k = v.caseRef ?? `${v.date}|${v.subject}`;
     const prev = merged.get(k);
-    merged.set(k, prev ? { caseRef: prev.caseRef, date: prev.date ?? v.date, deadline: prev.deadline ?? v.deadline, subject: prev.subject ?? v.subject } : v);
+    merged.set(k, prev
+      ? { caseRef: prev.caseRef, date: prev.date ?? v.date, deadline: prev.deadline ?? v.deadline, subject: prev.subject ?? v.subject, stage: prev.stage ?? v.stage, lastResponseNumber: prev.lastResponseNumber ?? v.lastResponseNumber }
+      : v);
   }
   const pending = [...merged.values()].sort((a, b) => newestFirst(a.date, b.date));
   const conflicts = Array.isArray(cp.conflicts) ? cp.conflicts.length : 0;

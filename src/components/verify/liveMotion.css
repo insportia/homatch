@@ -1,0 +1,36 @@
+/* ── Verify live job page (owner live run 2026-10-11) ─────────────────────
+   Credits rise as a chip and fade; the progress bar carries a slow sheen;
+   a section that changes state settles in. Reduced motion: still. */
+@keyframes hm-credit-rise {
+  0% { opacity: 0; transform: translateY(6px) scale(0.92); }
+  18% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-22px) scale(1); }
+}
+@keyframes hm-credit-sheen {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes hm-section-settle {
+  0% { opacity: 0.4; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes hm-live-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.hm-credit-chip { animation: hm-credit-rise 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.hm-credit-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: hm-credit-sheen 2.4s ease-in-out infinite;
+}
+.hm-section-settle { animation: hm-section-settle 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+.hm-live-sweep {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(233, 185, 73, 0.16) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: hm-live-sweep 2.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-credit-chip { animation: none; opacity: 0; }
+  .hm-credit-shimmer, .hm-live-sweep { animation: none; background: none; }
+  .hm-section-settle { animation: none; }
+}

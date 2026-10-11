@@ -30,7 +30,9 @@
 // fails is discarded for a deterministic report.
 
 import type { PropertyIdentity } from './propertyIdentity.ts';
+import type { UnitIdentityModel } from './unitIdentity.ts';
 import { adsPromptDigest } from '../developerAds.ts';
+import { marketForPrompt } from './marketHierarchy.ts';
 import { assetClassSectionNote, sectionsForAssetClass } from './sectionRelevance.ts';
 import type { EvidencePackage } from './evidencePackage.ts';
 import { evidenceRichness } from './evidencePackage.ts';
@@ -138,7 +140,7 @@ const ANALYST_RULES: string[] = [
   'MARKET IS A REAL MARKET STUDY, TOLD LIKE A FRIEND WOULD (the MARKET section, 250-450 words). There is NO',
   'listings table and no price chart in the report — the owner removed them: a buyer must not see technical',
   'rows and numbers. Read marketIntelligence yourself and explain the current market in warm, plain words:',
-  '  1) the microlocation — what is on sale around this home (same project, same street, the district) and',
+  '  1) the microlocation — what is on sale around this home (same project, same street, nearby) and',
   '     what kind of homes they are; 2) the price ranges in simple words, with at most a few rounded figures',
   '     ("roughly $1,500-1,900 per m²"), and WHERE and WHY prices differ — condition (white/black frame vs',
   '     renovated), size, floor and view, the quality and class of the project; 3) how this project compares',
@@ -146,15 +148,25 @@ const ANALYST_RULES: string[] = [
   '     (density, materials, location, developer); 4) what it means for the buyer in two or three sentences.',
   '  Never list individual listings, ids, row counts or medians/percentiles; never use statistical jargon.',
   '  Asking prices are asks, never sale prices. If marketIntelligence is thin, say less — never invent.',
-  '  THE PRICE OF THIS PROJECT comes ONLY from marketIntelligence.headline (its basis is same project, same',
-  '  street or a nearby comparable development). NEVER quote a district or city spread (tiers marked',
-  '  contextOnly, SAME_DISTRICT or WIDER_MARKET) as this project\'s value or range — those are background only,',
-  '  and may be described only as "elsewhere in the area/city" without implying they price this home.',
-  '  When marketIntelligence.basis is EVIDENCE_LIMITED there is NO market range for this project: say plainly that',
-  '  there were too few comparable listings nearby to give a reliable range. Then use',
-  '  marketIntelligence.projectAskingEvidence / projectAskingRange as what the project itself ASKS (developer',
-  '  marketing, archived offers, listings in the project) — always called asking prices, never sale prices,',
-  '  never a market value. Use whySelected to explain, in plain words, why wider listings were not used.',
+  // ── MARKET: location hierarchy + deterministic valuation (2026-10-11, job 8ba97da9) ──
+  '  THE LOCATION HIERARCHY. marketIntelligence.hierarchy.comparables is the ONLY set of listings you may',
+  '  describe, in this order: 1 same project/building, 2 same address, 3 same street micro-location, 4 a',
+  '  comparable premium development in the same or adjacent neighbourhood, 5 broader nearby (each carries its',
+  '  reason; level 5 never prices this home). Listings from other districts were excluded on purpose: never',
+  '  mention other districts\' prices, never describe "the city" or "Tbilisi" price levels, never give a',
+  '  citywide or district median or spread.',
+  '  THE PRICE OF THIS PROJECT comes ONLY from marketIntelligence.valuation.',
+  '  NEVER quote a district or city spread as this project\'s value or range, and never as "context" either.',
+  '  When marketIntelligence.valuation.state is INSUFFICIENT_EVIDENCE — with basis',
+  '  EVIDENCE_LIMITED there is NO market range for this project — write NO price figure for this home or its',
+  '  market: no per-m² number, no range,',
+  '  no metric with a price. Say plainly, once, that there were too few defensible comparable listings',
+  '  (minimumComparables) for a reliable valuation, and describe the closest listings in words (where, size,',
+  '  condition), not prices. The deterministic market card carries the project\'s own asks',
+  '  (projectAskingEvidence / projectAskingRange) labelled as asking prices; do not restate them as a value.',
+  '  When valuation.state is ESTIMATE, use only valuation.pricePerSqm (rounded), call it a range of ASKING',
+  '  prices (priceBasis), and never also say that no reliable valuation is possible.',
+  '  A sentence that contradicts valuation is removed after you answer (enforceValuation).',
   '',
   'QUALITY IS ASSESSED HONESTLY, NOT ASSUMED PREMIUM. Decide the class (premium / upper-middle / middle /',
   'economy) from the evidence: density (livingDensity), structure, materials, facade, insulation, lifts,',
@@ -262,7 +274,8 @@ const ANALYST_RULES: string[] = [
   '',
   'THIN EVIDENCE IS STILL EVIDENCE — BUT SAY WHICH IT IS. If marketIntelligence.basisIsThin is true,',
   'or a band is marked thin, the figures come from one or two asking prices rather than a distribution.',
-  'Use them, and say plainly that they are indicative rather than a market rate. NEVER describe one',
+  'Describe them in words — with NO figure when valuation.state is INSUFFICIENT_EVIDENCE — and say plainly',
+  'that they are indicative rather than a market rate. NEVER describe one',
   'listing as "the market", never quote a median as if it were a spread, and never conclude a property',
   'is over- or under-priced from a single comparable. "ერთი აქტიური განცხადების მიხედვით" is honest;',
   '"ბაზრის მედიანა" over one listing is not.',
@@ -284,7 +297,7 @@ const ANALYST_RULES: string[] = [
   'shape the day are worth a paragraph.',
   '',
   'MARKET. You are given computed statistics over SCORED comparables, with the band each came from',
-  '(same project / same street / same district / peer projects / wider market). Use those numbers and',
+  '(same project / same address / same street / nearby premium peer / broader nearby). Use those numbers and',
   'say what this property actually competes with. Quality is part of price: a lower-density boutique',
   'building with parking, concierge and better glazing may rationally trade above generic nearby',
   'stock, and unfinished condition or a poor floor may rationally trade below it. Do NOT mechanically',
@@ -373,6 +386,38 @@ const ANALYST_RULES: string[] = [
   'same parcel): say so ONCE, calmly and plainly, in SNAPSHOT, and never present facts about the documented',
   'unit as confirmed facts about the requested one. If PARCEL_ONLY, the papers concern the plot/project, not',
   'this apartment. Do not repeat the identity caveat in other sections.',
+  '',
+  '── SCOPE, SOURCE AND DATE OF EVERY LEGAL CONCLUSION ─────────────────',
+  '',
+  'unitIdentity separates the EXACT UNIT, its PARENT PARCEL, the BUILDING/block, the PROJECT/developer',
+  '(research identity, not a registry fact) and OWNERSHIP (current owner as of the extract date, and earlier',
+  'owners with their own dates). If unitIdentity.exactUnit.verified is true, an official NAPR record confirms',
+  'THIS apartment: never write that the unit was not verified, not independently confirmed or uncertain, and',
+  'never present its owner, mortgage or restrictions as parcel-level. Each legal statement names its scope',
+  '(this apartment / the parent parcel / the building / the developer company), its source (the extract, a',
+  'TAS decision) and its date ("the extract prepared on <extractIssuedAt> shows…"). TAS cases are filed for',
+  'the PARENT PARCEL, not for this apartment — say so when you use them.',
+  'propertyRegister.mortgageChronology tells a mortgage step by step. ACTIVE, TERMINATION_APPLIED and',
+  'TERMINATION_SUSPENDED all mean the mortgage IS STILL REGISTERED on this apartment: an application or a',
+  'suspended application to terminate it is not a cancellation. Only CANCELLATION_REGISTERED means it was',
+  'cancelled, on the date of that step; CANCELLATION_REGISTERED_AFTER_EXTRACT means the extract still lists it',
+  'but a later registry decision granted its termination — say both, each with its date. Never state the',
+  'apartment is free of a mortgage, lien or seizure',
+  '"today" or "currently": state it as of the extract date and, once, advise a fresh extract on signing day.',
+  'Never use "სუფთა"/"clean"/"чистый" for a register. Keep apart: (a) a mortgage on this apartment, (b) the',
+  'developer company\'s bank obligations, (c) project financing statements, (d) parent-parcel encumbrances,',
+  '(e) tax liens / seizures / debtor records. Never say a company obligation is or is not the same as a unit',
+  'mortgage unless a record says so.',
+  'officialHistory.caseChronology / latestCases list the TAS cases in FILING order with a decided stage:',
+  'SUBMITTED (filed, no official response yet), UNDER_REVIEW (deficiency notices only), RESPONSE_UNREAD (a',
+  'response exists whose outcome was not read — never call it approved, refused or merely "under review"),',
+  'DECIDED with an effect. PERMIT_FOR_CORRECTED_PROJECT is an amended permit re-issued for a corrected',
+  'project (state its term when given). A permit is never construction completion and never commissioning.',
+  'Use each decision\'s own date as given; never take a date from another case that cites it, and never order',
+  'cases by their numbers.',
+  'NO CONTRADICTIONS. The deterministic fields above win over anything you would infer. Before answering,',
+  'check that no two sentences disagree (verified vs unverified unit; mortgage active vs cancelled; permit',
+  'vs commissioning; pending vs decided). If they would, keep the deterministic one and drop the other.',
   '',
   'TELL THE HISTORY AS A STORY, NOT A REGISTER. officialHistory may contain many similar administrative',
   'steps; group them in words ("the design was amended several times between 2022 and 2025") instead of',
@@ -522,7 +567,7 @@ export function buildIntelligencePrompt(
   pkg: EvidencePackage,
   bundle?: IntelligenceBundle,
   assetClass?: string | null,
-  extras?: { identity?: PropertyIdentity | null; registerSource?: { jobId?: string | null; asOf: string | null; reused: boolean; freshExtractAdvised?: boolean } | null },
+  extras?: { identity?: PropertyIdentity | null; unitIdentity?: UnitIdentityModel | null; registerSource?: { jobId?: string | null; asOf: string | null; reused: boolean; freshExtractAdvised?: boolean } | null },
 ): { system: string; user: string } {
   const richness = evidenceRichness(pkg);
   /* A plot of land has no building quality and a warehouse has no school run.
@@ -647,7 +692,9 @@ export function buildIntelligencePrompt(
        * official self-checks are rendered deterministically elsewhere.
        */
       contextForAdvice: pkg.unavailable.map((u) => u.label),
-      marketIntelligence: bundle?.market,
+      // Curated view only (marketHierarchy.marketForPrompt): the excluded citywide
+      // pool never reaches the model, so it cannot quote a city spread (job 8ba97da9).
+      marketIntelligence: marketForPrompt(bundle?.market) ?? undefined,
       /*
        * The consolidated TAS history: every HIGH-materiality fact and event
        * always, lower-importance detail while room remains, and an explicit
@@ -679,6 +726,16 @@ export function buildIntelligencePrompt(
         ? pkg.dossier.technicalSpecs.slice(0, 60).map((t) => ({ label: t.label, value: t.value, status: t.status, caseRef: t.caseRef, date: t.date }))
         : undefined,
       propertyIdentity: extras?.identity ?? undefined,
+      // Exact unit / parent parcel / building / project / ownership, scoped and dated (unitIdentity.ts).
+      unitIdentity: extras?.unitIdentity ?? undefined,
+      // TAS cases in FILING order with stage and effect; the two newest in full (tasChronology.ts).
+      caseChronology: pkg.tas?.caseChronology?.length
+        ? pkg.tas.caseChronology.map((c) => ({
+            caseRef: c.caseRef, filedOn: c.filedOn, scope: c.scope, stage: c.stage, effect: c.effect, lastActivityOn: c.lastActivityOn,
+            decisions: c.decisions.map((d) => ({ number: d.number, date: d.date, dateBasis: d.dateBasis, effect: d.effect, term: d.term, correctedProject: d.correctedProject })),
+            unreadResponses: c.unreadResponses, deficiencyNotices: c.deficiencyNotices, supersedesPermit: c.supersedesPermit,
+          }))
+        : undefined,
       officialVisuals: pkg.tas?.visuals?.length
         ? pkg.tas.visuals.map((v) => ({
             id: v.id, role: v.role, kind: v.kind, category: v.category, scope: v.scope, block: v.block,
@@ -721,7 +778,10 @@ export function buildIntelligencePrompt(
          * computed in marketIntelligence rather than judged here.
          */
         marketContextAndSubjectValuationAreSeparate: true,
-        neverCallTheMarketInsufficientWhenComparablesExist: true,
+        // The deterministic valuation decides; prose never contradicts it (2026-10-11).
+        valuationStateIsDeterministic: bundle?.market?.valuation?.state ?? null,
+        noPriceFigureWhenValuationInsufficient: true,
+        neverCallTheMarketInsufficientWhenValuationIsEstimate: true,
         /*
          * A SOURCE THAT DID NOT RUN FOUND NOTHING BECAUSE IT DID NOT LOOK.
          *

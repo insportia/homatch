@@ -67,6 +67,15 @@ const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 const directorName = (d: DirectorLike): string =>
   typeof d === 'string' ? d.trim() : str((d as { name?: unknown })?.name);
+/* A register CODE ("JOINT") is never printed as English inside a Georgian
+   page; free text the register itself wrote ("ერთობლივი") passes through. */
+const REPRESENTATION_CODE_KEY: Record<string, string> = {
+  JOINT: 'verify_p0_rep_joint',
+  SOLE: 'verify_p0_rep_sole',
+  INDIVIDUAL: 'verify_p0_rep_sole',
+  SEPARATE: 'verify_p0_rep_separate',
+  MIXED: 'verify_p0_rep_separate',
+};
 const directorRole = (d: DirectorLike): string =>
   typeof d === 'string' ? '' : str((d as { representation?: unknown })?.representation);
 
@@ -196,7 +205,7 @@ export function CompanyIntelligenceCard({
                   <li key={i} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span className="min-w-0 break-words text-sm text-foreground">{n}</span>
                     {role ? (
-                      <span className="text-2xs text-muted-foreground break-words">{role}</span>
+                      <span className="text-2xs text-muted-foreground break-words">{REPRESENTATION_CODE_KEY[role.toUpperCase()] ? t(REPRESENTATION_CODE_KEY[role.toUpperCase()]) : role}</span>
                     ) : null}
                   </li>
                 );

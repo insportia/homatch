@@ -62,7 +62,12 @@ test('every band that has listings is published, not only the winning one', () =
   assert.deepEqual(tiers, ORDER.filter((t) => tiers.includes(t)));
   assert.ok(tiers.includes('SAME_PROJECT'), 'the same-project band is missing');
   assert.ok(tiers.length >= 3, `only ${tiers.length} bands published — this is the same-project-only report again`);
-  assert.equal(m.tierCounts.PEER_PROJECT, 3, 'the nearby named developments are the peers');
+  // Premise (2026-10-11, job 8ba97da9): Krtsanisi Residence (კრწანისის ქუჩა 12)
+  // and Krtsanisi Park (No. 20) are ON THE SUBJECT'S STREET. The old whole-
+  // address comparison missed that; streets are now parsed, so they are the
+  // immediate micro-location and only Ortachala Hills is a nearby peer.
+  assert.equal(m.tierCounts.SAME_STREET, 2, 'listings on the subject\'s own street were not recognised');
+  assert.equal(m.tierCounts.PEER_PROJECT, 1, 'the nearby named development is the peer');
   assert.equal(m.tierCounts.WIDER_MARKET, 2, 'Vake and Saburtalo are background, not peers of a Krtsanisi building');
   for (const t of m.tiers) {
     assert.ok(t.count > 0 && t.median > 0, `${t.tier} published with nothing in it`);

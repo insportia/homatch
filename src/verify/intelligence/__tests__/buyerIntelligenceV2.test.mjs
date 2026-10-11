@@ -499,7 +499,12 @@ test('the primary report cannot render a portal URL from evidence', () => {
   assert.match(catalogue, /storage\\\/v1\\\/object\\\/sign/, 'only signed storage URLs may be rendered as images');
   const explorer = code('src/components/verify/VisualExplorer.tsx');
   assert.match(explorer, /catalogVisuals\(/, 'the explorer renders visuals that never passed the catalogue');
-  assert.ok(!/href=/.test(explorer), 'the visual explorer must not link anywhere');
+  // Owner P0 (2026-10-11): each official visual links to its source document,
+  // so the one allowed link is OfficialLink (safeHref-checked); a raw anchor or
+  // any other href stays forbidden.
+  assert.ok(!/<a[\s>]/.test(explorer), 'the visual explorer renders a raw anchor');
+  assert.ok(!/href=/.test(explorer.replace(/<OfficialLink\b[^>]*href=/g, '')), 'the visual explorer links somewhere other than OfficialLink');
+  assert.match(code('src/components/verify/OfficialLink.tsx'), /safeHref/, 'OfficialLink must check every link');
 });
 
 test('there is no "could not confirm" block in the primary report', () => {

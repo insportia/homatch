@@ -96,7 +96,10 @@ test('the shortlist never drops a stronger band for a weaker one', () => {
   assert.equal(m.ranked[0].tier, 'SAME_PROJECT', 'and it carries the same ordering');
 });
 
-test('selection reads the full pool, so city context can exist at all', () => {
+// Premise (2026-10-11, job 8ba97da9): the full pool is still what selection
+// reads, but Didi Dighomi beside Krtsanisi is never context any more — only
+// same/adjacent-neighbourhood stock is, and only when levels 1-4 are thin.
+test('selection reads the full pool, and the city never reaches the customer', () => {
   const m = buildMarketIntelligence(
     { project: 'Villion', address: 'კრწანისის ქუჩა 6', area: 60 },
     [
@@ -112,8 +115,9 @@ test('selection reads the full pool, so city context can exist at all', () => {
   // are local. From the ranked pool it can.
   const fromShortlist = selectComparables(m.closest);
   const fromPool = selectComparables(m.ranked);
-  assert.equal(fromShortlist.context.length, 0, 'the shortlist cannot describe the wider market');
-  assert.ok(fromPool.context.length > 0, 'the ranked pool can');
+  assert.equal(fromShortlist.context.length, 0);
+  assert.equal(fromPool.context.length, 0, 'a Didi Dighomi listing was shown beside a Krtsanisi flat');
+  assert.equal(fromPool.counts.WIDER_MARKET, 6, 'the wider pool is still counted, just never shown');
   assert.ok(fromPool.rawCount > fromShortlist.rawCount, 'and reports the real basis');
 });
 

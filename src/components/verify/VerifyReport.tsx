@@ -80,6 +80,7 @@ import type { PropertyIdentity } from '@/verify/intelligence/propertyIdentity';
 import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
 import { Reveal } from '@/components/common/Reveal';
 import { VisualExplorer } from './VisualExplorer';
+import { catalogVisuals } from '@/verify/visualCatalog';
 import { LegalReality, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
 import { BuildingSpecs } from './BuildingSpecs';
@@ -426,6 +427,17 @@ export function VerifyReport({
   const position = legalPosition(history);
   const pendingRefs = (position?.pending ?? []).map((p) => p.caseRef).filter((x): x is string => !!x);
   const hasDocuments = documentExplorer(synthesis.officialDocuments).recent.length > 0;
+  const teamV2Groups = teamGroupsV2(synthesis.projectTeamV2);
+  const companyDirectors = Array.isArray((company as { directors?: unknown } | null | undefined)?.directors)
+    ? ((company as { directors: unknown[] }).directors).map((d) => (typeof d === 'string' ? d : String((d as { name?: unknown })?.name ?? ''))).filter(Boolean)
+    : [];
+  const companyListsDirectors = companyDirectors.length > 0;
+  /* Everyone the register names as running the developer — so the team
+     section can say so, and never seat a director among the architects. */
+  const directors = [
+    ...companyDirectors,
+    ...people.filter((p) => [p.role, ...(p.roles ?? [])].some((r) => String(r).toUpperCase() === 'DIRECTOR')).map((p) => p.name),
+  ];
   const renderSection = (s: { key: string; title: string; body: string; metrics?: { label: string; value: string }[] }) => (
     <section key={s.key} className="space-y-3" data-section={s.key}>
       <h3 className="font-display text-lg font-semibold leading-snug tracking-tight break-words">
@@ -447,7 +459,7 @@ export function VerifyReport({
   const has = {
     explore: true,
     story: !!(r.propertyStory?.chapters?.some((c) => clean(c.body)) || history?.milestones?.length || history?.milestoneGroups?.length || history?.evolution?.length),
-    people: !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamGroupsV2(synthesis.projectTeamV2).length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
+    people: !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
     building: true,
     legal: !!(position || history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
     documents: hasDocuments,
@@ -455,7 +467,10 @@ export function VerifyReport({
     market: inChapter('market').length > 0 || hasMarketView(synthesis.market),
     final: true,
   };
-  const order: ChapterId[] = ['explore', 'story', 'people', 'building', 'legal', 'documents', 'location', 'market', 'final'];
+  /* THE BUYER'S ORDER (owner, 2026-10-11): what it looks like, whether it is
+     legally sound, how it got here, who is behind it, then the building,
+     the files, the place, the price and what to do. */
+  const order: ChapterId[] = ['explore', 'legal', 'story', 'people', 'building', 'documents', 'location', 'market', 'final'];
   const shown = order.filter((c) => has[c as keyof typeof has]);
   const num = (c: ChapterId) => shown.indexOf(c) + 1;
 
@@ -472,6 +487,16 @@ export function VerifyReport({
       {/* ── FIRST IMPRESSION ── what this is, and what to know first. */}
       <div id="vbi-summary" className="scroll-mt-24 space-y-6">
         <SummaryHero summary={r.summary} weighed={weighed} snapshot={synthesis.snapshot} />
+        {/* What this report holds, one tap from each: the reader sees at once
+            that the images, the people and the files are here — and where. */}
+        <ReportContents
+          items={[
+            { href: '#vbi-explore', key: 'verify_p0_jump_visuals', count: catalogCount(synthesis.officialVisuals) },
+            { href: '#vbi-people', key: 'verify_p0_jump_people', count: teamV2Groups.reduce((n, g) => n + g.cards.length, 0) },
+            { href: '#vbi-documents', key: 'verify_p0_jump_cases', count: hasDocuments ? (Array.isArray(synthesis.officialDocuments) ? synthesis.officialDocuments.length : 0) : 0 },
+            { href: '#vbi-building', key: 'verify_p0_jump_specs', count: Array.isArray(synthesis.technicalSpecs) ? synthesis.technicalSpecs.length : 0 },
+          ]}
+        />
         {findings.length ? <KeyFindings findings={findings} /> : null}
         {/* How much was read — told once, compactly, under the verdict. */}
         <ResearchScaleBanner
@@ -490,62 +515,9 @@ export function VerifyReport({
           captions={r.visualCaptions as unknown[] | undefined}
           identityUnresolved={identityUnresolved}
           history={history}
+          docs={synthesis.officialDocuments}
           clean={clean}
         />
-      </Chapter>
-
-      {/* ── THE STORY ── prose first, then the grouped official timeline. */}
-      {has.story ? (
-        <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
-          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} />
-        </Chapter>
-      ) : null}
-
-      {/* ── THE PEOPLE BEHIND IT ── */}
-      {has.people ? (
-        <Chapter id="vbi-people" n={num('people')} kicker={t('vrx_people_kicker')} title={t('vrx_people_title')}>
-          <PeopleBehind
-            team={history?.team}
-            projectTeam={synthesis.projectTeam}
-            developer={synthesis.snapshot?.developer ?? (company && typeof company.name === 'string' ? company.name : null)}
-            financingPartner={synthesis.companyFinance?.financingPartner ?? null}
-            teamV2={synthesis.projectTeamV2}
-          />
-          {inChapter('people').map(renderSection)}
-          {/* The company the people belong to — participants are context and
-              must not vanish just because the prose did not reach them. */}
-          {people.length ? (
-            <div className="space-y-3">
-              <h3 className="flex items-center gap-2 text-sm font-semibold break-words">
-                <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                {t('verify_ir_people_title')}
-              </h3>
-              <CompanyGraph people={people} owner={synthesis.snapshot?.developer} />
-              {synthesis.people?.representationNote ? (
-                <p className="text-sm leading-6 text-muted-foreground break-words">
-                  {readable(synthesis.people.representationNote)}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-          {/* What the developer says about the project — labelled as a claim.
-              Absent unless the stage completed. */}
-          <DeveloperAdvertising view={synthesis.developerAds} assessment={r.advertisingAssessment} />
-        </Chapter>
-      ) : null}
-
-      {/* ── THE BUILDING ── project and quality prose, the basics, utilities. */}
-      <Chapter id="vbi-building" n={num('building')} kicker={t('vrx_building_kicker')} title={t('vrx_building_title')}>
-        {inChapter('building').map(renderSection)}
-        {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
-        {/* The dropped SNAPSHOT section's own figures, kept where figures belong. */}
-        {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
-        {/* The documented specifications, each with its approval status. */}
-        {specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
-        {/* Rendered even when the run established nothing: a missing section
-            reads as "does not apply", a row saying "not yet verified" reads
-            as the question it actually is. */}
-        <UtilitiesCard utilities={utilities} />
       </Chapter>
 
       {/* ── LEGAL REALITY ── the five legal states, today's official position,
@@ -588,6 +560,66 @@ export function VerifyReport({
           ) : null}
         </Chapter>
       ) : null}
+
+      {/* ── THE STORY ── prose first, then the grouped official timeline. */}
+      {has.story ? (
+        <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
+          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} />
+        </Chapter>
+      ) : null}
+
+      {/* ── THE PEOPLE BEHIND IT ── */}
+      {has.people ? (
+        <Chapter id="vbi-people" n={num('people')} kicker={t('vrx_people_kicker')} title={t('vrx_people_title')}>
+          <PeopleBehind
+            team={history?.team}
+            projectTeam={synthesis.projectTeam}
+            developer={synthesis.snapshot?.developer ?? (company && typeof company.name === 'string' ? company.name : null)}
+            financingPartner={synthesis.companyFinance?.financingPartner ?? null}
+            teamV2={synthesis.projectTeamV2}
+            directors={directors}
+          />
+          {/* With the documented team on screen, the model's paragraph about
+              the same people is the third telling of it (team cards, company
+              card, prose) — the owner's "the same thing many times". */}
+          {(teamV2Groups.length ? [] : inChapter('people')).map(renderSection)}
+          {/* The company the people belong to — participants are context and
+              must not vanish just because the prose did not reach them. The
+              company card in the legal chapter already lists the register's
+              directors; the tree is drawn only when that card has none. */}
+          {people.length && !companyListsDirectors ? (
+            <div className="space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold break-words">
+                <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                {t('verify_ir_people_title')}
+              </h3>
+              <CompanyGraph people={people} owner={synthesis.snapshot?.developer} />
+              {synthesis.people?.representationNote ? (
+                <p className="text-sm leading-6 text-muted-foreground break-words">
+                  {readable(synthesis.people.representationNote)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {/* What the developer says about the project — labelled as a claim.
+              Absent unless the stage completed. */}
+          <DeveloperAdvertising view={synthesis.developerAds} assessment={r.advertisingAssessment} />
+        </Chapter>
+      ) : null}
+
+      {/* ── THE BUILDING ── project and quality prose, the basics, utilities. */}
+      <Chapter id="vbi-building" n={num('building')} kicker={t('vrx_building_kicker')} title={t('vrx_building_title')}>
+        {inChapter('building').map(renderSection)}
+        {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
+        {/* The dropped SNAPSHOT section's own figures, kept where figures belong. */}
+        {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
+        {/* The documented specifications, each with its approval status. */}
+        {specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
+        {/* Rendered even when the run established nothing: a missing section
+            reads as "does not apply", a row saying "not yet verified" reads
+            as the question it actually is. */}
+        <UtilitiesCard utilities={utilities} />
+      </Chapter>
 
       {/* ── OFFICIAL DOCUMENTS ── the applications behind the legal reality,
           newest two first, each file opening at its official source. */}
@@ -820,6 +852,30 @@ const SummaryHero: React.FC<{
         * carried only a label.
         */}
     </header>
+  );
+};
+
+/** Signed official images the gallery will actually show. */
+const catalogCount = (v: unknown): number => catalogVisuals(Array.isArray(v) ? v : []).length;
+
+/** The report's contents, as counted jump links — only what exists. */
+const ReportContents: React.FC<{ items: Array<{ href: string; key: string; count: number }> }> = ({ items }) => {
+  const { t } = useLanguage();
+  const shown = items.filter((i) => i.count > 0);
+  if (!shown.length) return null;
+  return (
+    <nav aria-label={t('verify_p0_jump_label')} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {shown.map((i) => (
+        <a
+          key={i.href}
+          href={i.href}
+          className="group flex min-h-[44px] flex-col justify-center rounded-xl border border-border bg-card px-3.5 py-2.5 transition-colors hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none"
+        >
+          <span className="font-display text-xl font-semibold tabular-nums leading-tight text-foreground">{i.count}</span>
+          <span className="text-xs leading-5 text-muted-foreground break-words group-hover:text-foreground">{t(i.key)}</span>
+        </a>
+      ))}
+    </nav>
   );
 };
 

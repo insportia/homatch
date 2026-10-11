@@ -197,3 +197,142 @@ export function firstAreaOf(...texts: unknown[]): AreaMatch | null {
   }
   return fallback;
 }
+
+/* ------------------------------------------------------------------ *
+ * Streets (2026-10-11 location hierarchy, job 8ba97da9)               *
+ * ------------------------------------------------------------------ */
+
+/*
+ * WHY STREETS ARE PARSED, NOT COMPARED AS WHOLE ADDRESSES.
+ *
+ * The subject was "თბილისი, კრწანისის ქ. 6" and two listings were
+ * "კრწანისის ქ., ორთაჭალა, თბილისი". The old test normalised BOTH WHOLE
+ * ADDRESSES and compared them for equality, so the city/district tail and
+ * its order decided the answer — and `\b` never matches next to a Georgian
+ * letter, so "ქ" was not even stripped. Two listings on the subject's own
+ * street fell to WIDER_MARKET beside Didi Dighomi.
+ *
+ * The registry also spells the street "ქრწანისის" (ქ for კ). Both letters
+ * transliterate to "k", so the stem comparison below is spelling-tolerant
+ * by construction.
+ */
+
+export type StreetKind = 'STREET' | 'AVENUE' | 'LANE' | 'DEAD_END' | 'OTHER';
+
+export interface StreetRef {
+  /** Transliterated, case ending removed: "კრწანისის" / "Krtsanisi" / "ქრწანისის" → "krtsanis". */
+  stem: string;
+  /** The street words as written (lower-case), e.g. "კრწანისის მეორე". */
+  name: string;
+  kind: StreetKind;
+  /** House number when stated ("6", "12ა"). */
+  number: string | null;
+}
+
+const STREET_TRANSLIT: Record<string, string> = {
+  ა: 'a', ბ: 'b', გ: 'g', დ: 'd', ე: 'e', ვ: 'v', ზ: 'z', თ: 't', ი: 'i',
+  კ: 'k', ლ: 'l', მ: 'm', ნ: 'n', ო: 'o', პ: 'p', ჟ: 'zh', რ: 'r', ს: 's',
+  ტ: 't', უ: 'u', ფ: 'p', ქ: 'k', ღ: 'g', ყ: 'k', შ: 'sh', ჩ: 'ch', ც: 'ts',
+  ძ: 'dz', წ: 'ts', ჭ: 'ch', ხ: 'kh', ჯ: 'j', ჰ: 'h',
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'i',
+  к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'p',
+  х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sh', ы: 'i', э: 'e', ю: 'iu', я: 'ia', ъ: '', ь: '',
+};
+
+/** Georgian marker words AFTER the name ("კრწანისის ქ. 6"), Latin likewise ("Krtsanisi St. 6"). */
+const MARKER_AFTER: ReadonlyArray<readonly [RegExp, StreetKind]> = [
+  [/^(?:ქუჩა|ქუჩის|ქუჩაზე|ქ\.?)$/u, 'STREET'],
+  [/^(?:გამზირი|გამზ\.?)$/u, 'AVENUE'],
+  [/^(?:შესახვევი|შეს\.?)$/u, 'LANE'],
+  [/^(?:ჩიხი)$/u, 'DEAD_END'],
+  [/^(?:ხეივანი|აღმართი|სანაპირო|დაღმართი)$/u, 'OTHER'],
+  [/^(?:st\.?|str\.?|street)$/u, 'STREET'],
+  [/^(?:ave\.?|avenue)$/u, 'AVENUE'],
+  [/^(?:lane|ln\.?)$/u, 'LANE'],
+  [/^(?:rd\.?|road)$/u, 'OTHER'],
+];
+/** Russian puts the marker BEFORE the name ("ул. Крцаниси 6"). */
+const MARKER_BEFORE: ReadonlyArray<readonly [RegExp, StreetKind]> = [
+  [/^(?:ул\.?|улица)$/u, 'STREET'],
+  [/^(?:пр\.?|пр-т|проспект)$/u, 'AVENUE'],
+  [/^(?:пер\.?|переулок)$/u, 'LANE'],
+];
+
+const isNumberToken = (w: string) => /^\d+[\p{L}]?$/u.test(w);
+
+/*
+ * The distinctive word of a street name: the longest one. "არტურ ლაისტის"
+ * and "ა. ლაისტის" are one street; "კრწანისის მეორე" is named after Krtsanisi.
+ */
+const keyWord = (nameWords: string[]): string =>
+  nameWords.flatMap((w) => w.split('.')).filter(Boolean)
+    .reduce((best, w) => (w.length > best.length ? w : best), '');
+
+function stemOf(word: string): string {
+  const t = [...word.toLowerCase()].map((ch) => STREET_TRANSLIT[ch] ?? ch).join('')
+    .replace(/[^\p{L}\p{N}-]/gu, '')
+    .replace(/(.)\1+/gu, '$1');
+  // Georgian genitive / nominative endings: "krtsanisis" and "krtsanisi" are one street.
+  return t.length > 5 ? t.replace(/(?:is|i|s)$/u, '') : t;
+}
+
+/**
+ * The street an address names, or null. Reads each comma-separated part on
+ * its own, so the city/district tail never decides whether two streets match.
+ */
+export function streetOf(address: unknown): StreetRef | null {
+  if (typeof address !== 'string' || !address.trim()) return null;
+  for (const part of address.toLowerCase().split(/[,;]/)) {
+    const words = part.replace(/№/g, ' ').trim().split(/\s+/).filter(Boolean);
+    for (let i = 0; i < words.length; i++) {
+      const after = MARKER_AFTER.find(([re]) => re.test(words[i]));
+      if (after && i > 0) {
+        const nameWords = words.slice(0, i).filter((w) => !isNumberToken(w));
+        if (!nameWords.length) continue;
+        const next = words[i + 1];
+        return {
+          stem: stemOf(keyWord(nameWords)),
+          name: nameWords.join(' '),
+          kind: after[1],
+          number: next && isNumberToken(next) ? next : null,
+        };
+      }
+      const before = MARKER_BEFORE.find(([re]) => re.test(words[i]));
+      if (before && i + 1 < words.length) {
+        const rest = words.slice(i + 1);
+        const nameWords = rest.filter((w) => !isNumberToken(w));
+        if (!nameWords.length) continue;
+        const num = rest.find(isNumberToken) ?? null;
+        return { stem: stemOf(keyWord(nameWords)), name: nameWords.join(' '), kind: before[1], number: num };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * How two addresses relate at street level.
+ *
+ *   SAME_ADDRESS  same street, same house number (the same building)
+ *   SAME_STREET   same street, different or unstated number
+ *   STREET_BRANCH a lane/dead-end named after the same street (e.g.
+ *                 "კრწანისის მეორე შესახვევი" off Krtsanisi St.) — the same
+ *                 micro-location, reported as such
+ *   null          different streets, or a street could not be read
+ */
+export type StreetRelation = 'SAME_ADDRESS' | 'SAME_STREET' | 'STREET_BRANCH';
+
+export function streetRelation(a: unknown, b: unknown): StreetRelation | null {
+  const sa = streetOf(a);
+  const sb = streetOf(b);
+  if (!sa || !sb || sa.stem.length < 3 || sa.stem !== sb.stem) return null;
+  const sameKind = sa.kind === sb.kind && sa.name === sb.name;
+  if (!sameKind) {
+    // "კრწანისის ქ." vs "კრწანისის მეორე შესახვევი": a branch of the same street.
+    const isBranch = (s: StreetRef) => s.kind === 'LANE' || s.kind === 'DEAD_END';
+    if (isBranch(sa) || isBranch(sb)) return 'STREET_BRANCH';
+    // Same stem, different marker words (ქ. vs ქუჩა, St vs Street): one street.
+    if (sa.kind !== sb.kind) return null;
+  }
+  return sa.number && sb.number && sa.number === sb.number ? 'SAME_ADDRESS' : 'SAME_STREET';
+}

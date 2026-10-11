@@ -412,8 +412,13 @@ test('participants survive even when the prose does not reach them', () => {
   // wrote. The guard is that nothing makes them depend on a PEOPLE section.
   const i = reportCode.indexOf('<CompanyGraph');
   assert.ok(i > 0, 'the participant block is never mounted');
-  assert.match(reportCode.slice(i - 400, i), /\{people\.length \? \(/,
+  // P0 2026-10-11 (owner: no repeated sections): the block also stands down
+  // when the company card already lists the same registered directors —
+  // the participants are still on the page, once.
+  assert.match(reportCode.slice(i - 400, i), /\{people\.length(?: && !companyListsDirectors)? \? \(/,
     'the participant block is no longer gated on there being participants');
+  assert.match(reportCode, /const companyListsDirectors = companyDirectors\.length > 0;/,
+    'the de-duplication gate must depend only on the company card actually listing directors');
   assert.ok(!/s\.key === 'PEOPLE' && people\.length/.test(reportCode),
     'people are only shown when the model wrote a PEOPLE section');
 });

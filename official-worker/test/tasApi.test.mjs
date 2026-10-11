@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { serializeDwrCall, parseDwrReply, dwr, walkObjects } from '../.tstest-build/workflows/tas/api/dwr.js';
 import { normalizeCaseDetail, parseSearchPage, classifyPayload, classifyPdfText, maskPersonalId, toIsoDate, fileNameFromDisposition, repairGeorgianMojibake } from '../.tstest-build/workflows/tas/api/tasModel.js';
 import { searchParams } from '../.tstest-build/workflows/tas/api/TasApiClient.js';
-import { acquireTasApi, toLegacyTasResult, __resetTasApiCaches, getCachedVisual } from '../.tstest-build/workflows/tas/api/TasApiWorkflow.js';
+import { acquireTasApi, toLegacyTasResult, __resetTasApiCaches, getCachedVisual, VISUAL_EXEMPT_FILE_MAX, BUDGET_EXEMPT_PDF_MAX } from '../.tstest-build/workflows/tas/api/TasApiWorkflow.js';
 import { rankVisualCandidates, selectVisualShortlist, extractImagesFromPdf, imageSize, VISUAL_ASSET_MAX, VISUAL_FILE_MAX } from '../.tstest-build/workflows/tas/api/visuals.js';
 import { parseTasConfig, shouldFallBack, recordTasRun, tasHealth, __resetTasHealth } from '../.tstest-build/workflows/tas/implementation.js';
 import { candidateSequence } from '../.tstest-build/workflows/tas/cadastral.js';
@@ -209,7 +209,10 @@ test('API_FIRST end-to-end over the fixture: exhaustive pagination, reconciliati
   // Visual bounds respected; chosen bytes are cached for collection; every
   // asset carries its provenance.
   assert.ok(r.visuals.length >= 1 && r.visuals.length <= VISUAL_ASSET_MAX);
-  assert.ok(r.accounting.visualFilesOpened <= VISUAL_FILE_MAX);
+  // The shortlist opens ≤ VISUAL_FILE_MAX files; budget-exempt pictures (native
+  // images, visual-named PDFs) have their own bound since 2026-10-11.
+  assert.ok((r.accounting.visualExemptFilesOpened ?? 0) <= VISUAL_EXEMPT_FILE_MAX);
+  assert.ok(r.accounting.visualFilesOpened <= VISUAL_FILE_MAX + (r.accounting.visualExemptFilesOpened ?? 0));
   for (const v of r.visuals) {
     assert.ok(getCachedVisual(v.id));
     assert.match(v.id, /^[a-f0-9]{64}$/);
@@ -245,7 +248,8 @@ test('API_FIRST: attachment download budget is ACCOUNTED, not hidden', async () 
   // The budget binds OLDER cases only; the two newest cases are never budget-cut.
   const older = r.cases.filter((c) => !c.priority).flatMap((c) => c.attachments);
   const neverDownloaded = older.filter((x) => x.outcome === 'UNSUPPORTED_FORMAT' && !x.sha256).length;
-  assert.ok(r.accounting.attachmentOutcomes.NOT_PROCESSED_BUDGET >= older.length - neverDownloaded - 56);
+  // Native images and up to BUDGET_EXEMPT_PDF_MAX visual-named PDFs are exempt (2026-10-11).
+  assert.ok(r.accounting.attachmentOutcomes.NOT_PROCESSED_BUDGET >= older.length - neverDownloaded - 56 - BUDGET_EXEMPT_PDF_MAX);
   assert.equal(r.cases.filter((c) => c.priority).flatMap((c) => c.attachments).filter((x) => x.outcome === 'NOT_PROCESSED_BUDGET').length, 0);
 });
 

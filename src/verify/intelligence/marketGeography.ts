@@ -29,11 +29,14 @@ export type AreaKey =
   | 'OLD_TBILISI' | 'KRTSANISI' | 'ORTACHALA' | 'SOLOLAKI' | 'MTATSMINDA'
   | 'VERA' | 'VAKE' | 'AVLABARI' | 'CHUGHURETI' | 'ISANI' | 'SABURTALO'
   | 'DIDUBE' | 'DIDI_DIGHOMI' | 'DIGHOMI' | 'VASHLIJVARI' | 'NADZALADEVI'
-  | 'GLDANI' | 'SAMGORI' | 'NAVTLUGHI' | 'LISI' | 'BAGEBI' | 'VARKETILI';
+  | 'GLDANI' | 'SAMGORI' | 'NAVTLUGHI' | 'LISI' | 'BAGEBI' | 'VARKETILI'
+  /* 2026-10-11 v6 (job eeefada9, Digomi): portals file the Digomi massif apart from Digomi 1-9. */
+  | 'DIGHOMI_MASSIVE';
 
 /** Longest/most specific aliases first within each area; areas are tried in this order. */
 const AREA_ALIASES: ReadonlyArray<readonly [AreaKey, readonly string[]]> = [
   ['DIDI_DIGHOMI', ['დიდი დიღომი', 'didi dighomi', 'didi digomi', 'диди дигоми']],
+  ['DIGHOMI_MASSIVE', ['დიღმის მასივი', 'dighomi massive', 'digomi massive', 'dighomi massif', 'дигомский массив']],
   ['OLD_TBILISI', ['ძველი თბილისი', 'old tbilisi', 'старый тбилиси', 'აბანოთუბანი', 'abanotubani', 'მეტეხი', 'metekhi']],
   ['KRTSANISI', ['კრწანისი', 'krtsanisi', 'крцаниси']],
   ['ORTACHALA', ['ორთაჭალა', 'ortachala', 'ortatchala', 'орточала', 'ортачала']],
@@ -89,6 +92,8 @@ const ADJACENT_PAIRS: ReadonlyArray<readonly [AreaKey, AreaKey]> = [
   ['SABURTALO', 'DIDUBE'],
   ['DIDUBE', 'DIGHOMI'],
   ['DIGHOMI', 'DIDI_DIGHOMI'],
+  ['DIGHOMI', 'DIGHOMI_MASSIVE'],
+  ['DIDI_DIGHOMI', 'DIGHOMI_MASSIVE'],
   ['AVLABARI', 'ISANI'],
   ['ISANI', 'SAMGORI'],
   ['ISANI', 'NAVTLUGHI'],
@@ -104,6 +109,11 @@ for (const [a, b] of ADJACENT_PAIRS) {
   if (!ADJ.has(b)) ADJ.set(b, new Set());
   ADJ.get(a)!.add(b);
   ADJ.get(b)!.add(a);
+}
+
+/** The Georgian display name of an area key (its first alias), for callers that store a name. */
+export function areaName(key: AreaKey | null | undefined): string | undefined {
+  return key ? AREA_ALIASES.find(([k]) => k === key)?.[1][0] : undefined;
 }
 
 export function areAdjacent(a: AreaKey | null | undefined, b: AreaKey | null | undefined): boolean {

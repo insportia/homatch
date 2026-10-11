@@ -25,6 +25,11 @@ export interface VisualCandidate {
   motionId: string | null;
   fileName: string | null;
   date: string | null;
+  /**
+   * The date the file is placed by: its own upload date, else its motion's,
+   * else the case filing date (TAS attachments rarely carry their own).
+   */
+  caseDate?: string | null;
   kind: VisualKind;
   category: VisualCategory;
   confidence: number;
@@ -50,7 +55,22 @@ export function visualKindOf(text: string): { kind: VisualKind; weight: number }
   return c && c.matched ? { kind: c.kind, weight: c.weight } : null;
 }
 
-export type RankInput = TasAttachment & { documentId: string; context?: string | null; caseCadastralCodes?: string[] };
+export type RankInput = TasAttachment & { documentId: string; context?: string | null; caseCadastralCodes?: string[]; caseDate?: string | null };
+
+/** The date a candidate is ranked and placed by (its own date, else its case's). */
+export const candidateDate = (c: { date?: string | null; caseDate?: string | null }): string | null => c.date ?? c.caseDate ?? null;
+
+/** A case this many years older than the newest visual case is history, not the current project. */
+export const OLD_CASE_YEARS = 5;
+/** Files from such old cases in one shortlist (the earliest render counts). */
+export const OLD_CASE_FILE_MAX = 4;
+const YEAR_MS = 365.25 * 864e5;
+/** Years between a date and the newest one (≥ 0; null when either is unknown). */
+export function yearsBefore(date: string | null | undefined, newest: string | null | undefined): number | null {
+  const a = date ? Date.parse(date) : NaN;
+  const b = newest ? Date.parse(newest) : NaN;
+  return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, (b - a) / YEAR_MS) : null;
+}
 
 export function parcelMatches(codes: string[], parcel: string | null | undefined): boolean | null {
   if (!parcel || !codes.length) return null;
@@ -59,6 +79,11 @@ export function parcelMatches(codes: string[], parcel: string | null | undefined
 
 export function rankVisualCandidates(attachments: RankInput[], opts: { parcel?: string | null } = {}): VisualCandidate[] {
   const out: VisualCandidate[] = [];
+  // NEWEST FIRST (2026-10-11, job eeefada9): recency used to be measured
+  // from 2005 and capped at 2015, on the attachment's own date, which TAS
+  // almost never sends, so a 2012 photo PDF outranked the 2025 renders.
+  // It is now measured back from the newest case that holds a candidate.
+  const newest = attachments.map((a) => a.date ?? a.caseDate ?? null).filter((d): d is string => !!d && Number.isFinite(Date.parse(d))).sort().pop() ?? null;
   for (const a of attachments) {
     const ext = a.extension ?? '';
     const native = IMAGE_EXT.has(ext);
@@ -70,7 +95,8 @@ export function rankVisualCandidates(attachments: RankInput[], opts: { parcel?: 
     if (!c.matched && !native) continue;
     const codes = (a.caseCadastralCodes ?? []).map(String);
     const parcelMatch = parcelMatches(codes, opts.parcel);
-    const recency = a.date ? Math.min(10, Math.max(0, (Date.parse(a.date) - Date.parse('2005-01-01')) / (365 * 864e5))) : 0;
+    const age = yearsBefore(a.date ?? a.caseDate ?? null, newest);
+    const recency = age === null ? 0 : Math.max(0, 40 - 6 * age) - (age >= OLD_CASE_YEARS ? 15 : 0);
     const size = a.sizeBytes ?? 0;
     const sizeHint = size > 0 && size < 25_000 ? -30 : 0; // icons and stamps
     out.push({
@@ -79,6 +105,7 @@ export function rankVisualCandidates(attachments: RankInput[], opts: { parcel?: 
       motionId: a.motionId,
       fileName: a.fileName,
       date: a.date,
+      caseDate: a.caseDate ?? null,
       kind: c.kind,
       category: c.category,
       confidence: c.confidence,
@@ -93,7 +120,7 @@ export function rankVisualCandidates(attachments: RankInput[], opts: { parcel?: 
       reason: c.matched ? `${c.basis} → ${c.kind}` : 'unlabelled native image',
     });
   }
-  return out.sort((x, y) => y.score - x.score || (y.date ?? '').localeCompare(x.date ?? ''));
+  return out.sort((x, y) => y.score - x.score || (candidateDate(y) ?? '').localeCompare(candidateDate(x) ?? ''));
 }
 
 export interface VisualSlot {
@@ -121,7 +148,9 @@ const KIND_ORDER: VisualKind[] = [
 ];
 
 /** Same file attached to several cases: one slot is enough. */
-const dupKey = (c: VisualCandidate) => `${(c.fileName ?? '').toLowerCase()}|${c.sizeBytes ?? ''}`;
+// Without a declared size a generic name ("1.jpg") is not evidence of the
+// same file: the newest cases name their pictures 1.jpg / 2.jpg / 3.jpg too.
+const dupKey = (c: VisualCandidate) => `${(c.fileName ?? '').toLowerCase()}|${c.sizeBytes ?? `doc:${c.documentId}`}`;
 
 /**
  * Pick the files to open, bounded (≤ VISUAL_FILE_MAX):
@@ -137,12 +166,18 @@ export function selectVisualShortlist(ranked: VisualCandidate[], target = VISUAL
   const cap = Math.min(Math.max(1, target), max, VISUAL_FILE_MAX);
   const pool = ranked.filter((c) => c.parcelMatch !== false);
   const renders = pool.filter((c) => c.kind === 'RENDER');
-  const dated = renders.filter((c) => c.date).sort((a, b) => a.date!.localeCompare(b.date!));
+  const dated = renders.filter((c) => candidateDate(c)).sort((a, b) => candidateDate(a)!.localeCompare(candidateDate(b)!));
+  const newest = pool.map(candidateDate).filter((d): d is string => !!d).sort().pop() ?? null;
+  const isOld = (c: VisualCandidate) => (yearsBefore(candidateDate(c), newest) ?? 0) >= OLD_CASE_YEARS;
+  let oldTaken = 0;
   const slots: VisualSlot[] = [];
   const used = new Set<string>();
   const dups = new Set<string>();
   const take = (role: VisualSlot['role'], c: VisualCandidate | undefined) => {
     if (!c || slots.length >= cap || used.has(c.attachedFileId) || dups.has(dupKey(c))) return false;
+    // Older cases are history: a few of their files, never the gallery.
+    if (isOld(c) && oldTaken >= OLD_CASE_FILE_MAX) return false;
+    if (isOld(c)) oldTaken++;
     slots.push({ role, candidate: c });
     used.add(c.attachedFileId);
     if (c.fileName) dups.add(dupKey(c));
@@ -152,8 +187,8 @@ export function selectVisualShortlist(ranked: VisualCandidate[], target = VISUAL
   if (latest) take('LATEST_RENDER', latest);
   const earliest = dated[0];
   if (
-    earliest && latest && earliest.attachedFileId !== latest.attachedFileId && latest.date &&
-    Date.parse(latest.date) - Date.parse(earliest.date!) >= 90 * 864e5
+    earliest && latest && earliest.attachedFileId !== latest.attachedFileId && candidateDate(latest) &&
+    Date.parse(candidateDate(latest)!) - Date.parse(candidateDate(earliest)!) >= 90 * 864e5
   ) take('EARLIEST_RENDER', earliest);
   const buckets = new Map<VisualKind, VisualCandidate[]>();
   for (const c of pool) buckets.set(c.kind, [...(buckets.get(c.kind) ?? []), c]);

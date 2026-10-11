@@ -13,6 +13,15 @@
 //     among them — with an evidence drawer;
 //   * no OCR fragment or the city authority appears as a person;
 //   * no horizontal overflow.
+// v6 layout (owner, 2026-10-11), also at 360px:
+//   * five navigation groups in order, sticky directly under the app header;
+//     a jump lands with its heading below the bar (scroll-margin) and marks
+//     the group active (aria-current); the bar scrolls sideways on a phone,
+//     the page never does;
+//   * the people chapter opens with the approved introduction and every
+//     documented person carries a stage label;
+//   * at the bottom of the page nothing of the report sits under the fixed
+//     bottom navigation or the floating assistant button.
 // And a report stored before v3 (no projectTeamV2, no officialVisuals) still
 // renders, with the gallery's honest empty state.
 
@@ -92,6 +101,64 @@ async function openReport(browser, synthesis, { width, height, lang = 'ka' }) {
   return { ctx, page };
 }
 
+/** The v6 five-group navigation, the people introduction and the bottom clearance. */
+async function checkNavigation(page, at) {
+  const nav = await page.evaluate(() => {
+    const n = document.querySelector('[data-report-nav]');
+    const links = [...(n?.querySelectorAll('a[data-nav-target]') ?? [])];
+    return {
+      position: n ? getComputedStyle(n).position : null,
+      targets: links.map((a) => a.getAttribute('data-nav-target')),
+      labels: links.map((a) => a.textContent.trim()),
+      intro: document.querySelectorAll('#vbi-people [data-people-intro] p').length,
+      cards: [...document.querySelectorAll('#vbi-people [data-team-group] > ul > li')].map((li) => ({ stage: li.getAttribute('data-stage'), chip: !!li.querySelector('[data-stage-chip]') })),
+    };
+  });
+  assert.equal(nav.position, 'sticky', `${at}: the navigation is not sticky`);
+  assert.deepEqual(nav.targets, ['vbi-g-main', 'vbi-g-project', 'vbi-g-safety', 'vbi-g-place', 'vbi-g-documents'], `${at}: nav groups`);
+  assert.deepEqual(nav.labels, ['მთავარი', 'პროექტი', 'უსაფრთხოება', 'გარემო და ფასი', 'დოკუმენტები'], `${at}: nav labels`);
+  assert.equal(nav.intro, 3, `${at}: the people introduction is missing`);
+  // Every dated documented role says which stage it belongs to; an undated one says nothing rather than guess.
+  assert.ok(nav.cards.length > 0 && nav.cards.every((c) => ['CURRENT', 'EARLIER', 'UNDATED'].includes(c.stage) && c.chip === (c.stage !== 'UNDATED')), `${at}: stage labels ${JSON.stringify(nav.cards)}`);
+  assert.ok(nav.cards.some((c) => c.chip), `${at}: no stage label at all`);
+
+  for (const id of ['vbi-g-safety', 'vbi-g-place', 'vbi-g-project']) {
+    await page.locator(`[data-report-nav] a[data-nav-target="${id}"]`).click();
+    await page.waitForTimeout(1300);
+    const m = await page.evaluate((gid) => {
+      const header = [...document.querySelectorAll('header')].find((h) => ['sticky', 'fixed'].includes(getComputedStyle(h).position) && h.getBoundingClientRect().top <= 1);
+      const bar = document.querySelector('[data-report-nav]').getBoundingClientRect();
+      return {
+        headerBottom: header ? header.getBoundingClientRect().bottom : 0,
+        barTop: bar.top, barBottom: bar.bottom,
+        target: document.getElementById(gid).getBoundingClientRect().top,
+        current: document.querySelector('[data-report-nav] a[aria-current="location"]')?.getAttribute('data-nav-target') ?? null,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    }, id);
+    assert.ok(Math.abs(m.barTop - m.headerBottom) <= 2, `${at}: the bar is not directly under the header ${JSON.stringify(m)}`);
+    assert.ok(m.target >= m.barBottom - 1 && m.target <= m.barBottom + 64, `${at}: ${id} landed under the bar or far below it ${JSON.stringify(m)}`);
+    assert.equal(m.current, id, `${at}: ${id} is not marked as the active group`);
+    assert.ok(m.overflow <= 1, `${at}: horizontal overflow ${m.overflow}px`);
+  }
+
+  // The end of the report clears every fixed control at the bottom of the screen.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.waitForTimeout(250);
+  const end = await page.evaluate(() => {
+    const article = document.querySelector('.verify-report article');
+    const last = article.lastElementChild?.lastElementChild ?? article.lastElementChild;
+    const fixed = [...document.querySelectorAll('body *')].filter((el) => {
+      const cs = getComputedStyle(el);
+      if (cs.position !== 'fixed' || cs.visibility === 'hidden' || cs.display === 'none') return false;
+      const b = el.getBoundingClientRect();
+      return b.width > 0 && b.height > 0 && b.top > window.innerHeight / 2 && b.top < window.innerHeight;
+    }).map((el) => el.getBoundingClientRect().top);
+    return { lastBottom: last.getBoundingClientRect().bottom, fixedTop: fixed.length ? Math.min(...fixed) : window.innerHeight };
+  });
+  assert.ok(end.lastBottom <= end.fixedTop + 1, `${at}: the end of the report sits under a fixed control ${JSON.stringify(end)}`);
+}
+
 test('job 601: the official gallery and the people behind the project render, desktop and phone', opts, async (t) => {
   if (skipReason) assert.fail(`verify premium report could not run: ${skipReason}`);
   const { chromium } = resolvePlaywright();
@@ -101,7 +168,7 @@ test('job 601: the official gallery and the people behind the project render, de
   for (let i = 0; i < 80; i++) { try { await fetch(BASE); break; } catch { await new Promise((r) => setTimeout(r, 250)); } }
 
   const synthesis = await customerSynthesis();
-  for (const [width, height] of [[1440, 1000], [390, 844]]) {
+  for (const [width, height] of [[1440, 1000], [390, 844], [360, 740]]) {
     const { ctx, page } = await openReport(browser, synthesis, { width, height });
     const r = await page.evaluate(() => {
       const top = (sel) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + window.scrollY : -1; };
@@ -120,7 +187,7 @@ test('job 601: the official gallery and the people behind the project render, de
       };
     });
     const at = `${width}px`;
-    assert.ok(r.explore > 0 && r.explore < r.legal && r.legal < r.people && r.people < r.market, `${at}: chapter order ${JSON.stringify(r)}`);
+    assert.ok(r.explore > 0 && r.explore < r.people && r.people < r.legal && r.legal < r.market, `${at}: chapter order ${JSON.stringify({ ...r, text: undefined })}`);
     assert.equal(r.galleryCount, 24, `${at}: gallery count`);
     assert.ok(r.loaded >= 1, `${at}: no official image loaded`);
     const by = Object.fromEntries(r.groups.map((g) => [g.group, g.names]));
@@ -133,6 +200,25 @@ test('job 601: the official gallery and the people behind the project render, de
     // The evidence drawer opens.
     await page.locator('#vbi-people button[aria-expanded="false"]').first().click();
     assert.equal(await page.locator('#vbi-people button[aria-expanded="true"]').count(), 1);
+    await checkNavigation(page, at);
+    await ctx.close();
+  }
+
+  // RTL at 360px: the bar scrolls sideways inside itself, the page does not.
+  {
+    const { ctx, page } = await openReport(browser, synthesis, { width: 360, height: 740, lang: 'ar' });
+    await page.locator('[data-report-nav] a[data-nav-target="vbi-g-documents"]').click();
+    await page.waitForTimeout(1300);
+    const rtl = await page.evaluate(() => {
+      const list = document.querySelector('[data-report-nav] ul').getBoundingClientRect();
+      const on = document.querySelector('[data-report-nav] a[aria-current="location"]');
+      const b = on?.getBoundingClientRect();
+      return { dir: document.documentElement.dir, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, current: on?.getAttribute('data-nav-target'), visible: !!b && b.left >= list.left - 1 && b.right <= list.right + 1 };
+    });
+    assert.equal(rtl.dir, 'rtl');
+    assert.ok(rtl.overflow <= 1, `rtl 360px: horizontal overflow ${rtl.overflow}px`);
+    assert.equal(rtl.current, 'vbi-g-documents');
+    assert.ok(rtl.visible, 'rtl 360px: the active group is scrolled out of the bar');
     await ctx.close();
   }
 

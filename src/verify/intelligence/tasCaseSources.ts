@@ -324,3 +324,78 @@ export function caseSubject(c: CaseSource): string | null {
   const s = uniq.join(' · ');
   return s ? (s.length > 300 ? `${s.slice(0, 297)}…` : s) : null;
 }
+
+/* ───────────────────────── stored full texts ───────────────────────── */
+
+/*
+ * THE TEXT BEYOND THE INLINE CAP.
+ *
+ * The worker keeps a TAS priority case's text inline only up to a size
+ * (job 8ba97da9: 300 000 of 355 903 characters for AR11161121) and stores the
+ * complete text in the private verify-evidence bucket (evidence.ts). Whatever
+ * sits past the cut, "საექსპერტო დასკვნები.pdf" there, was invisible to the
+ * extractors. verify-synthesis now downloads the stored originals named here,
+ * at build time, within these bounds, and hands them to applyStoredTasText().
+ * Planning is pure; the I/O stays in the edge function.
+ */
+export interface StoredTextPlan {
+  documentId: string;
+  path: string;
+  chars: number;
+}
+
+export const STORED_TEXT_LIMITS = { maxDocs: 2, perDocChars: 1_200_000, totalChars: 1_600_000 } as const;
+
+/** The stored full texts worth reading: truncated TAS priority documents, newest priority first, within bounds. */
+export function planStoredTasTexts(report: unknown, limits: { maxDocs: number; perDocChars: number; totalChars: number } = STORED_TEXT_LIMITS): StoredTextPlan[] {
+  const results = arr<any>(obj(obj(report).browserOfficial).results).filter((r) => str(r?.source).toLowerCase() === 'tas');
+  const candidates: Array<StoredTextPlan & { priority: number }> = [];
+  for (const r of results)
+    for (const d of arr<any>(r?.documents)) {
+      const priority = priorityOf(d?.priority);
+      if (!priority) continue;
+      if (typeof d?.fullText === 'string' && d.fullText) continue;
+      const ref = obj(d?.fullTextRef ?? d?.textRef);
+      const path = str(ref.path);
+      const chars = Number(ref.chars) || 0;
+      const inline = typeof d?.rawText === 'string' ? d.rawText.length : 0;
+      const truncated = d?.textTruncated === true || d?.textComplete === false || inline < chars;
+      // Only the bucket's own content-addressed layout: never an arbitrary path.
+      if (!truncated || !/^sha256\/[0-9a-f]{2}\/[0-9a-f]{64}\.txt$/.test(path) || chars <= 0 || chars > limits.perDocChars) continue;
+      const documentId = str(d?.tasDocumentId) || str(d?.id).replace(/^tas_/, '');
+      if (!documentId) continue;
+      candidates.push({ documentId, path, chars, priority });
+    }
+  candidates.sort((a, b) => a.priority - b.priority);
+  const out: StoredTextPlan[] = [];
+  let total = 0;
+  for (const c of candidates) {
+    if (out.length >= limits.maxDocs || total + c.chars > limits.totalChars) continue;
+    total += c.chars;
+    out.push({ documentId: c.documentId, path: c.path, chars: c.chars });
+  }
+  return out;
+}
+
+/**
+ * Put a downloaded original in place of the inline excerpt (in memory only;
+ * result_json is never written back). A body that is not the stored document
+ * (shorter than the inline excerpt, or far from the recorded size) is ignored.
+ */
+export function applyStoredTasText(report: unknown, documentId: string, text: string, expectedChars: number): boolean {
+  if (typeof text !== 'string' || !text) return false;
+  if (expectedChars > 0 && Math.abs(text.length - expectedChars) > Math.max(64, expectedChars * 0.01)) return false;
+  for (const r of arr<any>(obj(obj(report).browserOfficial).results)) {
+    if (str(r?.source).toLowerCase() !== 'tas') continue;
+    for (const d of arr<any>(r?.documents)) {
+      const id = str(d?.tasDocumentId) || str(d?.id).replace(/^tas_/, '');
+      if (id !== documentId) continue;
+      const inline = typeof d?.rawText === 'string' ? d.rawText : '';
+      if (text.length < inline.length) return false;
+      d.fullText = text;
+      d.textTruncated = false;
+      return true;
+    }
+  }
+  return false;
+}

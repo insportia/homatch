@@ -92,7 +92,10 @@ test('NOT_VERIFIED is never shown as negative', () => {
   // None of the six opens with, or is, a bare negative.
   for (const v of values) assert.ok(!/^(no|არა|нет|hayır|لا|לא)\b/iu.test(v.trim()), `reads as a "no": ${v}`);
   const ui = code('src/components/verify/LegalReality.tsx');
-  assert.match(ui, /LEGAL_STATUS_VIEW\[r\.status\]/, 'the component chooses its own presentation');
+  // The five-stage circle widget was removed (owner, 2026-10-11): the legal
+  // section shows dated findings; construction states live in the story.
+  assert.ok(!/LEGAL_STATUS_VIEW|legalRows|lg:grid-cols-5/.test(ui), 'the five-stage widget is back');
+  assert.match(ui, /legalFindings\(/, 'the legal section renders its dated findings');
   assert.ok(!/destructive/.test(ui), 'a legal state is painted as a defect');
 });
 
@@ -232,20 +235,24 @@ test('the evidence drawer, research transparency and the glance are not rendered
   assert.match(read('src/components/verify/VerifyReport.tsx'), /evidenceGroups\?: EvidenceGroup\[\]/);
 });
 
-test('the chapters appear in the buyer order: images, legal standing, history, people, building', () => {
+test('the chapters appear in the buyer order, in five navigation groups', () => {
   const report = code('src/components/verify/VerifyReport.tsx');
-  // Owner, 2026-10-11: the official gallery near the top, then whether it is
-  // legally sound, then how it got here and who is behind it.
-  const ids = ['vbi-summary', 'vbi-explore', 'vbi-legal', 'vbi-story', 'vbi-people', 'vbi-building', 'vbi-location', 'vbi-market', 'vbi-final'];
+  // Owner, 2026-10-11 (v6): მთავარი (summary, findings, gallery) · პროექტი
+  // (story, people, building) · უსაფრთხოება (legal) · გარემო და ფასი
+  // (location, market) · დოკუმენტები; the final perspective closes the report.
+  const ids = ['vbi-g-main', 'vbi-summary', 'vbi-explore', 'vbi-g-project', 'vbi-story', 'vbi-people', 'vbi-building', 'vbi-g-safety', 'vbi-legal',
+    'vbi-g-place', 'vbi-location', 'vbi-market', 'vbi-g-documents', 'vbi-documents', 'vbi-final'];
   const at = ids.map((id) => report.indexOf(`id="${id}"`));
   for (let i = 0; i < ids.length; i++) assert.ok(at[i] > 0, `${ids[i]} is missing`);
   for (let i = 1; i < ids.length; i++) assert.ok(at[i] > at[i - 1], `${ids[i]} is out of order`);
   // Attention points live in the legal chapter, once.
   assert.equal((report.match(/r\.attentionPoints\.map/g) ?? []).length, 1);
-  assert.ok(report.indexOf('r.attentionPoints.map') > at[2] && report.indexOf('r.attentionPoints.map') < at[3]);
-  for (const c of ['explore', 'story', 'people', 'building', 'legal', 'location', 'market', 'final']) {
-    assert.equal(valuesOf(`vrx_nav_${c}`).length, 6, `vrx_nav_${c}`);
-  }
+  assert.ok(report.indexOf('r.attentionPoints.map') > at[8] && report.indexOf('r.attentionPoints.map') < at[9]);
+  for (const g of ['main', 'project', 'safety', 'place', 'documents']) assert.equal(valuesOf(`verify_v6_nav_${g}`).length, 6, `verify_v6_nav_${g}`);
+  assert.deepEqual(['main', 'project', 'safety', 'place', 'documents'].map((g) => valuesOf(`verify_v6_nav_${g}`)[1]),
+    ['მთავარი', 'პროექტი', 'უსაფრთხოება', 'გარემო და ფასი', 'დოკუმენტები']);
+  // The old ten-chapter jump grid is gone.
+  assert.ok(!/ReportContents/.test(report));
 });
 
 test('the market headline appears only for a RANGE; otherwise the evidence is called limited', () => {

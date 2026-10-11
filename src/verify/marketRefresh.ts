@@ -17,6 +17,7 @@
 // and the original ledger (kept under `previous`) are untouched.
 
 import { foldMarketplaceIntoLane } from './marketplaceComparables.ts';
+import { subjectMarketFacts } from './intelligence/marketHierarchy.ts';
 
 export const MARKET_REFRESH_VERSION = 1;
 /** A refresh that never reports back is abandoned after this long. */
@@ -50,7 +51,16 @@ export function needsMarketRefresh(resultJson: unknown): boolean {
 /** The profile the refresh searches with: the original search's, as recorded. */
 export function refreshProfile(resultJson: unknown): Record<string, any> | null {
   const p = obj(obj(obj(resultJson)._marketplaceLedger).profile);
-  return typeof p.city === 'string' && p.city.trim() ? p : null;
+  if (!(typeof p.city === 'string' && p.city.trim())) return null;
+  // The original search often started before the subject's district was known
+  // (job eeefada9 searched citywide). The refresh uses the district the
+  // subject's own official address names, so it searches locally.
+  if (!p.district) {
+    let district: string | undefined;
+    try { district = subjectMarketFacts(resultJson as any).district; } catch { district = undefined; }
+    if (district) return { ...p, district };
+  }
+  return p;
 }
 
 export function startedMarker(previous: unknown, workerJobId: string, profile: unknown, nowIso: string): MarketRefreshMarker {

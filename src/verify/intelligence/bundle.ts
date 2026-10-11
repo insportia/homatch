@@ -184,14 +184,17 @@ export function buildIntelligenceBundle(
   const company = obj(r.companyProfile);
   const reconciled = obj(r.reconciledIdentity);
 
+  // v6 (job eeefada9): the subject's own address by provenance. A reconciled
+  // address copied from a marketplace listing ("…საბურთალო") is not it.
+  const marketFacts = subjectMarketFacts(report);
   const address =
-    pkg.subject.address ?? nonEmpty(reconciled.address) ?? nonEmpty(unit.address);
+    pkg.subject.address ?? marketFacts.address ?? nonEmpty(reconciled.address) ?? nonEmpty(unit.address);
 
   const register = buildPropertyRegister(r.browserOfficial);
 
   const location = buildLocationIntelligence([
     address,
-    nonEmpty(reconciled.address),
+    marketFacts.address === address ? undefined : nonEmpty(reconciled.address),
     ...arr<unknown>(pr.facts).map(clean),
   ], pr.nearbyPlaces);
 
@@ -236,11 +239,15 @@ export function buildIntelligenceBundle(
     Number.isFinite(startingPpsm) && startingPpsm > 0
       ? [{ pricePerSqm: startingPpsm, origin: 'DEVELOPER_MARKETING', currency: nonEmpty(unit.currency) ?? 'USD' }]
       : [];
+  // v6 (job eeefada9): the subject's OWN address/neighbourhood/kind by
+  // provenance — never a marketplace listing's address that leaked into
+  // reconciledIdentity (marketHierarchy.subjectMarketFacts).
   const subject: Subject = {
     project: snapshot.project,
-    address,
+    address: marketFacts.address ?? address,
     // The resolved neighbourhood beats a street NAMED after one.
-    district: location.district,
+    district: marketFacts.district ?? location.district,
+    propertyKind: marketFacts.propertyKind,
     // Three or more evidenced premium signals: a peer must sit in a tighter band.
     segment: quality.filter((q) => q.direction === 'SUPPORTS_PREMIUM').length >= 3 ? 'PREMIUM' : undefined,
     projectAsking,
@@ -248,11 +255,11 @@ export function buildIntelligenceBundle(
     condition: snapshot.condition,
     // The register's unit area when exactUnit has none — no area, no size band
     // (2026-10-11 location hierarchy, job 8ba97da9).
-    area: Number(pkg.subject.area) || register?.latest?.unitAreaSqm || undefined,
+    area: Number(pkg.subject.area) || register?.latest?.unitAreaSqm || marketFacts.area || undefined,
     rooms: Number(snapshot.rooms) || undefined,
     // Verify is a purchase; a development (or a unit under construction) is a new build.
     dealType: 'SALE',
-    buildingClass: subjectMarketFacts(report).buildingClass,
+    buildingClass: marketFacts.buildingClass,
     floor: Number(pkg.subject.floor) || undefined,
     // Verify runs from a cadastral code, so the subject usually has NO asking
     // price of its own. That is why positioning is optional downstream: we

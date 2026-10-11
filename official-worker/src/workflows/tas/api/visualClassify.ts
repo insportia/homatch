@@ -70,8 +70,14 @@ export const PAPERWORK = /(ხელშეკრულ|contract|договор|�
  * ones ("site plan" before "plan", "unit plan" before "floor plan", render
  * before photo). `weight` ranks candidates before anything is downloaded.
  */
-const RULES: Array<{ kind: VisualAssetKind; re: RegExp; confidence: number; weight: number; label: string }> = [
+const RULES: Array<{ kind: VisualAssetKind; re: RegExp; confidence: number; weight: number; label: string; unless?: RegExp }> = [
   { kind: 'RENDER', label: 'render', confidence: 0.9, weight: 100, re: /(render|რენდერ|ვიზუალიზაც|vizualiz|visuali[sz]|визуализ|effects?result|lumion|v-?ray|corona|enscape|twinmotion|\b3d\b|perspective|პერსპექტივ|aerial|bird.?s?.?eye)/i },
+  // A photomontage ("ფოტომონტაჟი", "fotomontaji") is the design composited
+  // onto a photo of the site, and an axonometric view is a drawn 3D view:
+  // both are DESIGN images, never photographs of the building (2026-10-11,
+  // job eeefada9: "fotomontaji da aqsiometriuli xedebi.pdf" was called PHOTO).
+  // "რენდ1.jpg" is a render; "დემონტაჟი" (demolition) is not a montage.
+  { kind: 'RENDER', label: 'photomontage', confidence: 0.85, weight: 95, re: /(ფოტო.?მონტაჟ|(?<!დე)მონტაჟ|foto.?montaj|photo.?montag|фото.?монтаж|(?<![a-z])mon[tr]a[jž]|აქსონომეტრ|aqs[io]+n?ometr|axonometr|аксонометр|რენდ|(?<![a-z])rend\s?\d|ვიზუალ|vizual)/i, unless: /(ლიფტ|lift|elevator|ელექტრო|electr|კაბელ|cable|სანტექნ|plumb|ვენტილ|ventil|გათბობ|heating|ინსტალაც|install|ქვაბ|boiler|ტრანსფორმატ)/i },
   { kind: 'MASTER_PLAN', label: 'master plan', confidence: 0.85, weight: 64, re: /(master.?plan|მასტერ.?პლან|განაშენიანების.{0,20}გეგმ|გრგ|gdrp)/i },
   { kind: 'SITE_PLAN', label: 'site plan', confidence: 0.85, weight: 65, re: /(site|გენ\.?\s?გეგმ|გენგეგმ|gen.?gegm|სიტუაციურ|situaci|генплан|ситуацион|ტოპო|topo|შენობის\s*ლაქ|shenobis.?laqa|\blaqa\b|ლაქა|footprint|ლანდშაფტ|landscape|გამწვანებ|озелен)/i },
   { kind: 'LOCATION_DIAGRAM', label: 'location', confidence: 0.6, weight: 45, re: /(location|მდებარეობ|ორთოფოტო|ortho|\bmap\b|რუკა|გარემო|garemo|surround|схема\s*располож)/i },
@@ -112,7 +118,7 @@ export function classifyVisualMeta(input: ClassifyInput): (VisualClassification 
   const text = `${name} ${input.description ?? ''}`.trim();
   if (text && isPaperwork(text)) return null;
   for (const r of RULES) {
-    if (!r.re.test(text)) continue;
+    if (!r.re.test(text) || r.unless?.test(text)) continue;
     let kind = r.kind;
     let basis = `name:${r.label}`;
     if (kind === 'PHOTO' && input.context && CONSTRUCTION_CONTEXT.test(`${text} ${input.context}`)) {

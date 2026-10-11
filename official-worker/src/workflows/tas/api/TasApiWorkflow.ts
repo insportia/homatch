@@ -31,7 +31,7 @@ import {
 } from './tasModel.js';
 import { toPlain } from './dwr.js';
 import { extractDecision, type ExtractedDecision } from './decisions.js';
-import { assetsPerFile, extractImagesFromPdf, imageSize, rankVisualCandidates, selectVisualShortlist, VISUAL_ASSET_MAX, VISUAL_FILE_MAX, type VisualKind, type VisualSlot } from './visuals.js';
+import { assetsPerFile, candidateDate, extractImagesFromPdf, imageSize, OLD_CASE_YEARS, rankVisualCandidates, selectVisualShortlist, yearsBefore, VISUAL_ASSET_MAX, VISUAL_FILE_MAX, type VisualKind, type VisualSlot } from './visuals.js';
 import { classifyVisualMeta, DRAWING_KINDS, PICTURE_KINDS, identityHints, readExif, refineWithImage, type IdentityHints, type VisualCategory } from './visualClassify.js';
 import type { PdfPageRenderer, PdfRendererFactory } from './pdfRender.js';
 import { buildCompleteness, isUnsupportedExtension, MATERIAL_TEXT, selectPriorityCases, type PriorityCompleteness, type PriorityRank } from './priority.js';
@@ -354,6 +354,10 @@ export interface TasApiResult {
     renderFailures?: number;
     /** Visual work left undone by the time/byte/asset bounds. */
     visualsSkippedBudget?: number;
+    /** Budget-exempt files (native images, visual-named PDFs) opened beyond the shortlist (≤ VISUAL_EXEMPT_FILE_MAX). */
+    visualExemptFilesOpened?: number;
+    /** Older-case gallery assets replaced by a picture of a much newer case. */
+    visualsReplacedByNewer?: number;
     /** Priority assets not kept because the priority visual bound was reached (still classified on the attachment). */
     priorityVisualsCapped?: number;
   };
@@ -451,6 +455,28 @@ export const BUDGET_EXEMPT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
 export function isBudgetExemptImage(extension: string | null | undefined, sizeBytes: number | null | undefined): boolean {
   if (!/^(jpe?g|png|webp)$/i.test(String(extension ?? ''))) return false;
   return !(typeof sizeBytes === 'number' && sizeBytes > BUDGET_EXEMPT_IMAGE_MAX_BYTES);
+}
+/**
+ * Visual-named PDFs (photographs, photomontages, renders, facades) of older
+ * cases are budget-exempt too (2026-10-11, job eeefada9: "ფოტომონტაჟი.pdf",
+ * "ფოტო 14-04-2025.pdf" and "ფასადები 27,12.pdf" of the 2025 cases were
+ * NOT_PROCESSED_BUDGET while 2012 files filled the gallery). Bounded: a
+ * declared size above this is skipped, an undeclared one is cut at it.
+ */
+export const BUDGET_EXEMPT_PDF_MAX_BYTES = 20 * 1024 * 1024;
+/** Budget-exempt visual PDFs per run (a follow-up recovery covers the rest). */
+export const BUDGET_EXEMPT_PDF_MAX = 12;
+/** Budget-exempt files opened for the gallery per run, beyond the shortlist (VISUAL_FILE_MAX). */
+export const VISUAL_EXEMPT_FILE_MAX = 20;
+/** The file names that make a PDF worth opening for its pictures. */
+export const VISUAL_PDF_NAME = /(ფოტო|photo|foto|фото|მონტაჟ|montaj|монтаж|რენდ|render|рендер|ვიზუალ|vizual|visual|визуал|ხედებ|xedeb|ფასად|fasad|facade|фасад|elevation|აქსონომეტრ|aqs[io]+n?ometr|axonometr|სურათ|surat)/i;
+const DEMOLITION = /(დემონტაჟ|demontaj|демонтаж)/i;
+export function isBudgetExemptVisualPdf(fileName: string | null | undefined, extension: string | null | undefined, sizeBytes: number | null | undefined): boolean {
+  if (String(extension ?? '').toLowerCase() !== 'pdf') return false;
+  const name = String(fileName ?? '');
+  if (!VISUAL_PDF_NAME.test(name) || DEMOLITION.test(name)) return false;
+  if (classifyVisualMeta({ fileName: name, extension: 'pdf' }) === null) return false; // paperwork
+  return !(typeof sizeBytes === 'number' && sizeBytes > BUDGET_EXEMPT_PDF_MAX_BYTES);
 }
 const sha256 = (b: Uint8Array): string => createHash("sha256").update(bytesToBuffer(b)).digest('hex');
 const sha256Text = (s: string): string => createHash('sha256').update(s).digest('hex');
@@ -800,9 +826,15 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         text: `[${a.date?.slice(0, 10) ?? 'undated'} · ${a.fileName ?? 'attachment'}]\n${text}`,
       });
 
-    // Visual shortlist (gallery), ranked on metadata over ALL cases.
+    // Visual shortlist (gallery), ranked on metadata over ALL cases. TAS
+    // rarely dates an attachment: its motion's date, else the case filing
+    // date, places it (newest cases first).
+    const rowDate = new Map(rows.map((r) => [r.documentId, r.date ?? null]));
+    const caseDateOfDoc = (docId: string): string | null => details.get(docId)?.submittedAt ?? rowDate.get(docId) ?? null;
+    const motionDate = new Map(motionJobs.map(({ m }) => [m.motionId, m.date ?? null]));
+    const fileDateOf = (docId: string, a: AttJob['a']): string | null => (a.motionId ? motionDate.get(a.motionId) ?? null : null) ?? caseDateOfDoc(docId);
     const ranked = rankVisualCandidates(
-      attachmentJobs.map((j) => ({ ...j.a, documentId: j.docId, context: caseContext(j.docId, j.a.motionId), caseCadastralCodes: details.get(j.docId)?.cadastralCodes ?? [] })),
+      attachmentJobs.map((j) => ({ ...j.a, documentId: j.docId, context: caseContext(j.docId, j.a.motionId), caseCadastralCodes: details.get(j.docId)?.cadastralCodes ?? [], caseDate: fileDateOf(j.docId, j.a) })),
       { parcel: result.searchCadastralCode },
     );
     result.accounting.visualCandidates = ranked.length;
@@ -832,8 +864,30 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     };
     const visualOrder = new Map<string, number>();
     const galleryHas = (id: string) => result.visuals.some((v) => v.id === id);
+    // NEWEST CASES FIRST: when the gallery is full, a picture from a case at
+    // least OLD_CASE_YEARS newer replaces the oldest-case supporting asset.
+    const visualDate = new Map<string, string | null>();
+    const evictOlder = (rec: VisualRecord, recDate: string | null): boolean => {
+      if (!recDate) return false;
+      let victim = -1;
+      let victimDate: string | null = null;
+      result.visuals.forEach((v, i) => {
+        const d = visualDate.get(v.id) ?? null;
+        if (v.role !== 'SUPPORTING' || !d || (yearsBefore(d, recDate) ?? 0) < OLD_CASE_YEARS) return;
+        if (victimDate === null || d < victimDate) { victim = i; victimDate = d; }
+      });
+      if (victim < 0) return false;
+      const [gone] = result.visuals.splice(victim, 1);
+      visualBytes -= gone.bytes;
+      visualOrder.delete(gone.id);
+      result.accounting.visualsReplacedByNewer = (result.accounting.visualsReplacedByNewer ?? 0) + 1;
+      return true;
+    };
     const addToGallery = (rec: VisualRecord, order: number): boolean => {
+      const recDate = caseDateOfDoc(rec.documentId);
+      if (!visualsClosed && result.visuals.length >= assetMax && !galleryHas(rec.id)) evictOlder(rec, recDate);
       if (visualsClosed || result.visuals.length >= assetMax || galleryHas(rec.id) || visualBytes + rec.bytes > bytesMax) return false;
+      visualDate.set(rec.id, recDate);
       visualBytes += rec.bytes;
       visualOrder.set(rec.id, order);
       result.visuals.push(rec);
@@ -1150,7 +1204,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     const overBudget = () =>
       visualsClosed || result.visuals.length >= assetMax || visualBytes >= bytesMax || now() >= visualDeadline ||
       (visualFirstAt !== null && now() - visualFirstAt > visualBudgetMs);
-    const processVisual = async (slot: VisualSlot, order: number, bytes: Uint8Array): Promise<void> => {
+    const processVisual = async (slot: VisualSlot, order: number, bytes: Uint8Array, embeddedOnly = false): Promise<void> => {
       if (overBudget()) {
         result.accounting.visualsSkippedBudget = (result.accounting.visualsSkippedBudget ?? 0) + 1;
         return;
@@ -1184,6 +1238,8 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         }
       };
       if (!isPdf) outs = [{ bytes, width: null, height: null, extraction: 'NATIVE_IMAGE', page: null, pageText: null }];
+      // A budget-exempt PDF: its embedded pictures only (no page rendering).
+      else if (embeddedOnly) outs = embedded();
       else if (DRAWING_KINDS.has(c.kind)) {
         // A drawing is vector line work: render its pages; a scanned sheet
         // falls back to its embedded raster.
@@ -1212,17 +1268,33 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     };
     // A budget-exempt image outside the shortlist: same processing, after
     // the shortlist's slots (its candidate is already ranked on metadata).
-    let exemptOrder = 500;
-    const enqueueExemptImage = (attachedFileId: string, bytes: Uint8Array) => {
+    //
+    // ROOT CAUSE (2026-10-11, job eeefada9): these images used to share the
+    // shortlist's files-opened bound (VISUAL_FILE_MAX = 14). The shortlist
+    // (ranked without case dates, so 2012 PDFs first) always used all 14,
+    // even when its drawing renders failed, so every downloaded 2024–2025
+    // .jpg (outcome IMAGE) was dropped. Exempt files now have their own bound
+    // and are placed newest case first; the gallery prefers them over
+    // pictures of cases OLD_CASE_YEARS older (addToGallery).
+    let exemptOpened = 0;
+    const newestRanked = ranked.map(candidateDate).filter((d): d is string => !!d).sort().pop() ?? null;
+    // After the shortlist's slots; a newer case gets a smaller order (months back from the newest).
+    const exemptOrderOf = (c: { date?: string | null; caseDate?: string | null }) =>
+      500 + Math.min(399, Math.round((yearsBefore(candidateDate(c), newestRanked) ?? 33) * 12));
+    const enqueueExemptImage = (attachedFileId: string, bytes: Uint8Array, embeddedOnly = false) => {
       const c = ranked.find((x) => x.attachedFileId === attachedFileId);
       if (!c || c.parcelMatch === false) return;
-      const order = exemptOrder++;
-      // The files-opened bound (VISUAL_FILE_MAX) holds; an image past it stays
-      // IMAGE in the ledger and is recoverable later (visualRecovery.ts).
+      const order = exemptOrderOf(c);
       visualChain = visualChain
-        .then(() => ((result.accounting.visualFilesOpened ?? 0) < VISUAL_FILE_MAX ? processVisual({ role: 'SUPPORTING', candidate: c }, order, bytes) : undefined))
+        .then(() => {
+          if (exemptOpened >= VISUAL_EXEMPT_FILE_MAX) return undefined;
+          exemptOpened++;
+          result.accounting.visualExemptFilesOpened = exemptOpened;
+          return processVisual({ role: 'SUPPORTING', candidate: c }, order, bytes, embeddedOnly);
+        })
         .catch(() => {});
     };
+    let exemptPdfs = 0;
 
     // Attachment text: the shortlisted visual files first (a handful, and the
     // only way the report gets photos — at the end they lost to the time
@@ -1235,7 +1307,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       const vy = shortlistIds.has(y.a.attachedFileId) ? 0 : 1;
       const px = x.a.extension === 'pdf' ? 0 : 1;
       const py = y.a.extension === 'pdf' ? 0 : 1;
-      return vx - vy || px - py || (y.a.date ?? '').localeCompare(x.a.date ?? '') || idAsc(x.a.attachedFileId, y.a.attachedFileId);
+      return vx - vy || px - py || (fileDateOf(y.docId, y.a) ?? '').localeCompare(fileDateOf(x.docId, x.a) ?? '') || idAsc(x.a.attachedFileId, y.a.attachedFileId);
     });
 
     const olderDeadline = now() + (options.olderCasesBudgetMs ?? 120_000);
@@ -1254,6 +1326,10 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       // the report gets those pictures, so neither the older-case clock nor
       // the download count skips it. Its own byte bound still applies.
       const smallImage = isBudgetExemptImage(a.extension, a.sizeBytes);
+      // Visual-named PDFs, bounded in bytes and count (isBudgetExemptVisualPdf).
+      const visualPdf = !smallImage && !shortlistIds.has(a.attachedFileId) && exemptPdfs < BUDGET_EXEMPT_PDF_MAX && isBudgetExemptVisualPdf(a.fileName, a.extension, a.sizeBytes);
+      if (visualPdf) exemptPdfs++;
+      const exempt = smallImage || visualPdf;
       try {
         if (isUnsupportedExtension(a.extension)) {
           // DWG/PLA/RAR …: nothing here reads them; accounted with the official link, not downloaded.
@@ -1264,15 +1340,16 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           result.accounting.cacheHits++;
           Object.assign(rec, { outcome: cached.outcome, pages: cached.pages, textChars: cached.text.length, sha256: cached.sha256, format: cached.format ?? rec.format, cached: true });
           if (cached.text) attachmentPiece(docId, a, cached.text);
-        } else if (!wantsBytes && !smallImage && (now() > olderDeadline || (typeof a.sizeBytes === 'number' && a.sizeBytes > olderMaxFile))) {
+        } else if (!wantsBytes && !exempt && (now() > olderDeadline || (typeof a.sizeBytes === 'number' && a.sizeBytes > olderMaxFile))) {
           // Older-case budget: accounted with its official link, not downloaded.
           rec.outcome = 'NOT_PROCESSED_BUDGET';
           rec.url = attachmentUrl(a.attachedFileId);
           rec.sizeBytes = a.sizeBytes;
           result.olderBudgetReached = true;
-        } else if (downloads < maxDownloads || wantsBytes || smallImage) {
+        } else if (downloads < maxDownloads || wantsBytes || exempt) {
           downloads++;
-          const r = await timed('attachmentDownloadsMs', () => client.request(attachmentUrl(a.attachedFileId), {}, smallImage && !wantsBytes ? { maxBytes: BUDGET_EXEMPT_IMAGE_MAX_BYTES } : {}));
+          const exemptMax = smallImage ? BUDGET_EXEMPT_IMAGE_MAX_BYTES : BUDGET_EXEMPT_PDF_MAX_BYTES;
+          const r = await timed('attachmentDownloadsMs', () => client.request(attachmentUrl(a.attachedFileId), {}, exempt && !wantsBytes ? { maxBytes: exemptMax } : {}));
           timings.counts.downloads++;
           timings.counts.downloadBytes += r.bytes.length;
           // The servlet's own Content-Disposition is the authoritative name
@@ -1287,6 +1364,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           else if (cls.kind === 'EMPTY') rec.outcome = 'EMPTY';
           else if (cls.kind === 'PDF') {
             if (wantsBytes) enqueueVisual(a.attachedFileId, r.bytes);
+            else if (visualPdf) enqueueExemptImage(a.attachedFileId, r.bytes, true);
             const reuse = rec.sha256 ? parsedBySha.get(rec.sha256) : undefined;
             if (reuse) {
               text = reuse.text;

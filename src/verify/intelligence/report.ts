@@ -50,7 +50,7 @@ import type { IntelligenceBundle } from './bundle.ts';
 import { tasLabel, TAS_EVENT_KA, OFFICIAL_STATE_KA } from './evidencePackage.ts';
 import { VISUAL_ASSET_MAX } from './visualAssets.ts';
 import { enforceValuation } from './marketHierarchy.ts';
-import { polishText, provenanceOpening, stripProvenanceOpening } from './editorial.ts';
+import { polishText, provenanceOpening, stripProvenanceOpening, stripCaseIdentifiers, nearDuplicate } from './editorial.ts';
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -1151,9 +1151,12 @@ export function applyFactOwnership(r: BuyerIntelligenceReport): BuyerIntelligenc
 export function polishReport(r: BuyerIntelligenceReport): BuyerIntelligenceReport {
   let basisStated = false;
   const seen = new Set<string>();
+  // Sentences already read, for the near-duplicate check (a conclusion said twice in other words).
+  const said: string[] = [];
   const fix = (text: string, opts: { dedupe?: boolean } = {}): string => {
     if (!text) return text;
-    const polished = polishText(text);
+    // Case and decision numbers belong to the evidence lists, never the prose (owner, 2026-10-11).
+    const polished = stripCaseIdentifiers(polishText(text));
     const paras = polished.split(/\n{2,}/);
     return paras
       .map((para) => para
@@ -1168,7 +1171,9 @@ export function polishReport(r: BuyerIntelligenceReport): BuyerIntelligenceRepor
           const k = sentenceKey(sentence);
           if (k.length <= 40) return true;
           if (seen.has(k)) return false;
+          if (said.some((x) => nearDuplicate(x, sentence))) return false;
           seen.add(k);
+          said.push(sentence);
           return true;
         })
         .join(' '))

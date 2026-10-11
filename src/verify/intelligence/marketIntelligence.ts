@@ -52,7 +52,10 @@ import {
   dealTypeOf,
   priceKindOf,
   buildingClassOf,
+  comparableKindOf,
+  kindsCompatible,
   SIZE_BAND,
+  type PropertyKind,
   type CustomerExclusion,
   type DealType,
   type Freshness,
@@ -114,7 +117,9 @@ export type RelevanceReason =
   | 'STREET_BRANCH'
   | 'SIZE_OUT_OF_BAND'
   | 'DEAL_TYPE_MISMATCH'
-  | 'CLASS_MISMATCH';
+  | 'CLASS_MISMATCH'
+  /* v6 property-kind gate */
+  | 'PROPERTY_TYPE_MISMATCH';
 
 /** Published per band, so the customer sees the whole hierarchy at once. */
 export interface TierStats {
@@ -608,6 +613,11 @@ export interface Subject {
   dealType?: 'SALE' | 'RENT';
   /** NEW_BUILD for a development; old-stock comparables are then a different product. */
   buildingClass?: 'NEW_BUILD' | 'OLD_STOCK';
+  /**
+   * What the subject IS (v6, job dbf04e48): a parking space, an apartment, a
+   * shop, a house. A comparable of another kind is never shown or priced.
+   */
+  propertyKind?: PropertyKind;
   /** The project's own asks gathered outside the comparable list. */
   projectAsking?: Array<{
     pricePerSqm: number;
@@ -859,6 +869,11 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
   if (subject.buildingClass && buildingClassOf(c) && buildingClassOf(c) !== subject.buildingClass) {
     exclusions.push('CLASS_MISMATCH');
     why.push('CLASS_MISMATCH');
+  }
+  // Property kind (v6, job dbf04e48): a parking space is not priced from flats.
+  if (!kindsCompatible(subject.propertyKind, comparableKindOf(c))) {
+    exclusions.push('PROPERTY_TYPE_MISMATCH');
+    why.push('PROPERTY_TYPE_MISMATCH');
   }
   if (rungs !== null && rungs >= 2) exclusions.push('CONDITION_FAR');
   if (state === 'EXPIRED') exclusions.push('EXPIRED');
@@ -1271,7 +1286,16 @@ export function buildMarketIntelligence(
         ? 'AVAILABLE'
         : 'NO_SUBJECT_PRICE';
 
-  const projectAskingEvidence = projectAskingFrom(subject, unique.filter((c) => c.tier === 'SAME_PROJECT'));
+  /*
+   * The project's asks describe ITS apartments. For a parking space or a shop
+   * (v6, job dbf04e48) they are another product: only same-kind listings and
+   * no developer "from" price, which is quoted for flats.
+   */
+  const askSubject = subject.propertyKind && subject.propertyKind !== 'APARTMENT' ? { ...subject, projectAsking: [] } : subject;
+  const projectAskingEvidence = projectAskingFrom(
+    askSubject,
+    unique.filter((c) => c.tier === 'SAME_PROJECT' && !c.exclusions.includes('PROPERTY_TYPE_MISMATCH')),
+  );
   const askVals = projectAskingEvidence.map((e) => e.pricePerSqm);
   const projectAskingRange = askVals.length
     ? {
@@ -1371,7 +1395,8 @@ export function buildMarketIntelligence(
   // Positioning only exists when the subject has a price of its own AND a
   // headline range exists. Inventing either would be the fabrication this
   // product refuses.
-  if (!limited && subject.pricePerSqm && med > 0) {
+  // v6: and only when the deterministic valuation itself is an ESTIMATE.
+  if (!limited && subject.pricePerSqm && med > 0 && hierarchy.valuation.state === 'ESTIMATE') {
     const delta = ((subject.pricePerSqm - med) / med) * 100;
     out.deltaFromMedianPct = round1(delta);
     out.positioning = positioningFor(delta);

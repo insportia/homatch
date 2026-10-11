@@ -16,6 +16,7 @@ import {
   buildOverpassQuery,
   buildStoredNeighborhood,
   centerFromBrowserOfficial,
+  centerFromCadastralPlan,
   geocodeQueries,
   overpassFailed,
   parentParcel,
@@ -125,11 +126,21 @@ export async function resolveNeighborhood(input: ResolveNeighborhoodInput): Prom
     let center: NeighborhoodCenter | null = null;
     const own = centerFromBrowserOfficial(rj.browserOfficial, parcel);
     if (own) center = { ...own, basis: 'MS_MAP_PARCEL', parcel };
+    // v6 (job eeefada9): the official cadastral plan's UTM grid, read by the same traversal.
+    if (!center) {
+      const plan = centerFromCadastralPlan(rj.browserOfficial, parcel);
+      if (plan) center = { ...plan, basis: 'CADASTRAL_PLAN', parcel };
+    }
     if (!center && parcel && input.earlierBrowserOfficial) {
       try {
-        for (const bo of await input.earlierBrowserOfficial(parcel)) {
+        const earlier = await input.earlierBrowserOfficial(parcel);
+        for (const bo of earlier) {
           const p = centerFromBrowserOfficial(bo, parcel);
           if (p) { center = { ...p, basis: 'MS_MAP_PARCEL_EARLIER', parcel }; break; }
+        }
+        for (const bo of center ? [] : earlier) {
+          const p = centerFromCadastralPlan(bo, parcel);
+          if (p) { center = { ...p, basis: 'CADASTRAL_PLAN', parcel }; break; }
         }
       } catch { /* an unreadable earlier job is no centre, not an error */ }
     }

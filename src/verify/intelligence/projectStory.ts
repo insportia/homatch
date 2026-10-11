@@ -30,8 +30,9 @@
  */
 
 import { readCaseSources } from './tasCaseSources.ts';
-import { kaOnDay, kaInMonth, kaOfMonth, kaOfDay, yearOf } from './kaDates.ts';
+import { kaOnDay, kaInMonth, kaOfDay, yearOf } from './kaDates.ts';
 import { stripProvenanceOpening, replaceDashes } from './editorial.ts';
+import { extractEvolution, readEvolution, evolutionView, openApplications, statusLines, type CaseEvolution, type EvolutionView } from './projectEvolution.ts';
 
 /* ───────────────────────── Signals from the raw result ───────────────────────── */
 
@@ -49,6 +50,8 @@ export interface ProjectSignals {
   /** The project's public description of works (never an official fact). */
   developerStatus: { text: string; date: string | null } | null;
   developerStart: string | null;
+  /** Per case: the published acts and the drawing sets filed (projectEvolution.ts). */
+  evolution?: CaseEvolution[];
 }
 
 const AUDIT = /შიდა\s+აუდიტ\S*\s+და\s+მონიტორინგ/u;
@@ -98,6 +101,7 @@ export function extractProjectSignals(result: unknown): ProjectSignals {
     photoCases,
     developerStatus: status ? { text: status, date: statusDate ? kaMonthToIso(statusDate[1], statusDate[2], statusDate[3]) : null } : null,
     developerStart: str(pr.constructionStart) || null,
+    evolution: extractEvolution(result),
   };
 }
 
@@ -117,13 +121,15 @@ export function readProjectSignals(v: unknown): ProjectSignals | null {
     photoCases: Array.isArray(o.photoCases) ? (o.photoCases as Array<Record<string, unknown>>).map((p) => ({ caseRef: str(p?.caseRef) || null, date: day(p?.date) })) : [],
     developerStatus: ds && str(ds.text) ? { text: str(ds.text), date: day(ds.date) } : null,
     developerStart: str(o.developerStart) || null,
+    evolution: readEvolution(o.evolution),
   };
 }
 
 /* ───────────────────────── The story ───────────────────────── */
 
 export type StoryStage = 'PROPOSED' | 'APPROVED' | 'IMPLEMENTED' | 'DOCUMENTED';
-export type StoryTrack = 'CONSTRUCTION' | 'PERMIT' | 'COMMISSIONING';
+/** Construction activity, physical completion, official approval, commissioning: never merged. */
+export type StoryTrack = 'CONSTRUCTION' | 'COMPLETION' | 'PERMIT' | 'COMMISSIONING';
 
 export interface StoryEvidence { caseRef: string | null; decisionNumber: string | null; date: string | null }
 export interface StoryEvent {
@@ -143,12 +149,14 @@ export interface StoryEvent {
 }
 export interface TrackSummary {
   track: StoryTrack;
-  state: 'STARTED_DOCUMENTED' | 'NOT_DOCUMENTED' | 'PERMIT_IN_FORCE' | 'PERMIT_UNKNOWN' | 'COMMISSIONED' | 'NO_ACT_SEEN';
+  state: 'STARTED_DOCUMENTED' | 'NOT_DOCUMENTED' | 'COMPLETION_CLAIMED' | 'PERMIT_IN_FORCE' | 'PERMIT_UNKNOWN' | 'COMMISSIONED' | 'NO_ACT_SEEN';
   text: string;
 }
 export interface ProjectStoryView {
   tracks: TrackSummary[];
   events: StoryEvent[];
+  /** The project's evolution, step by step, when the case records support it. */
+  evolution: EvolutionView | null;
 }
 
 interface Decision { number: string | null; date: string | null; outcome: string | null; effect: string | null; term: { from: string | null; until: string | null } | null }
@@ -222,6 +230,8 @@ export interface StoryInput {
   signals?: unknown;
   /** Approved technical specs, to say whether a pending application changes the main figures. */
   specs?: unknown;
+  /** synthesis.unitIdentity: the register's "under construction" mark, with its date. */
+  unitIdentity?: unknown;
 }
 
 export function projectStory(input: StoryInput): ProjectStoryView | null {
@@ -230,10 +240,8 @@ export function projectStory(input: StoryInput): ProjectStoryView | null {
   const signals = readProjectSignals(input.signals);
   let cases = readCases(history);
   if (!cases.length) cases = casesFromMilestones(history);
-  const pendingRefs = new Set(
-    (Array.isArray(history.pendingApplications) ? (history.pendingApplications as Array<Record<string, unknown>>) : [])
-      .map((p) => str(p?.caseRef)).filter(Boolean),
-  );
+  // Listed as pending, minus those whose own published act shows a decision.
+  const pendingRefs = new Set(openApplications(history, signals?.evolution ?? []).map((p) => p.caseRef ?? '').filter(Boolean));
   const status = history.status && typeof history.status === 'object' ? (history.status as Record<string, unknown>) : {};
   const events: StoryEvent[] = [];
 
@@ -310,8 +318,13 @@ export function projectStory(input: StoryInput): ProjectStoryView | null {
   }
 
   /* ── the permit in force ── */
+  // The status block's validity belongs to ITS decision only (job eeefada9: 2014-01-01 is the 2012 permit's).
+  const statusUntil = (d: Decision | undefined): string | null => {
+    const v = day(status.validUntil);
+    return d && v && str(status.decisionNumber) === (d.number ?? '') && v > (d.date ?? '') ? v : null;
+  };
   if (current) {
-    const until = current.d.term?.until ?? day(status.validUntil);
+    const until = current.d.term?.until ?? statusUntil(current.d);
     const sup = current.c.supersedesPermit;
     events.push({
       id: `permit-${current.d.date}`,
@@ -394,33 +407,38 @@ export function projectStory(input: StoryInput): ProjectStoryView | null {
 
   events.sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999'));
 
-  /* ── the three tracks ── */
-  const tracks: TrackSummary[] = [];
+  /* ── the four tracks: construction activity, physical completion, official approval, commissioning ── */
+  const evolution = evolutionView({ history, evolution: signals?.evolution ?? [], developerStatus: signals?.developerStatus ?? null });
   const started = !!(audit || photo || signals?.photoCases.length);
   const devSays = signals?.developerStatus ? developerStatusSentence(signals.developerStatus.text) : null;
-  tracks.push(started
-    ? {
-        track: 'CONSTRUCTION', state: 'STARTED_DOCUMENTED',
-        text: [
-          audit ? `მშენებლობა დაწყებულია: ამას ოფიციალურად აჩვენებს მერიის აუდიტის ${kaOfMonth(audit.date) ?? ''} დასკვნა.`.replace('  ', ' ') : 'მშენებლობის მიმდინარეობას ქალაქში წარდგენილი ფოტოები აჩვენებს.',
-          devSays ? `${devSays} ეს საჯარო განცხადებაა და არა ოფიციალური აქტი.` : null,
-        ].filter(Boolean).join(' '),
-      }
-    : { track: 'CONSTRUCTION', state: 'NOT_DOCUMENTED', text: 'მშენებლობის მიმდინარეობის ოფიციალური ჩანაწერი წაკითხულ დოკუმენტებში არ ჩანს. ეს არ ნიშნავს, რომ მშენებლობა არ დაწყებულა.' });
-  const until = current?.d.term?.until ?? day(status.validUntil);
-  tracks.push(current
-    ? {
-        track: 'PERMIT', state: 'PERMIT_IN_FORCE',
-        text: [`მოქმედი ნებართვა ${kaOnDay(current.d.date)} გაიცა${until ? ` და ${kaOnDay(until)} იწურება` : ''}.`, pendingRefs.size ? `ამის შემდეგ შეტანილი ${pendingRefs.size} განაცხადი ჯერ გადაწყვეტილების გარეშეა.` : null].filter(Boolean).join(' '),
-      }
-    : { track: 'PERMIT', state: 'PERMIT_UNKNOWN', text: 'მოქმედი მშენებლობის ნებართვა წაკითხულ ჩანაწერებში არ ჩანს.' });
+  const until = current ? current.d.term?.until ?? statusUntil(current.d) : null;
   const commissioned = String(status.state ?? '').toUpperCase() === 'COMMISSIONED' || legalConfirmed(history, 'COMMISSIONING_APPROVED');
-  tracks.push(commissioned
-    ? { track: 'COMMISSIONING', state: 'COMMISSIONED', text: 'ქალაქის აქტით შენობა ექსპლუატაციაში მიღებულია.' }
-    : { track: 'COMMISSIONING', state: 'NO_ACT_SEEN', text: 'ექსპლუატაციაში მიღების აქტი წაკითხულ ჩანაწერებში არ ჩანს. ეს ცალკე ოფიციალური ეტაპია, რომელსაც ვერც ნებართვა და ვერც ფოტოები ჩაანაცვლებს.' });
+  const unit = input.unitIdentity && typeof input.unitIdentity === 'object' ? (input.unitIdentity as Record<string, unknown>) : {};
+  const exact = unit.exactUnit && typeof unit.exactUnit === 'object' ? (unit.exactUnit as Record<string, unknown>) : {};
+  const latestDesign = evolution ? [...evolution.steps].reverse().find((s) => (s.status === 'APPROVED' && s.kind !== 'CONDITIONS') || s.kind === 'DESIGN_CHANGE') ?? null : null;
+  const lines = statusLines({
+    audit: audit ? { date: audit.date } : null,
+    photoDates: (signals?.photoCases ?? []).map((p) => p.date ?? '').filter(Boolean),
+    developerStatus: signals?.developerStatus ?? null,
+    developerSays: devSays,
+    permit: current ? { date: current.d.date, until, corrected: /CORRECTED/.test(current.d.effect ?? '') } : null,
+    latestDesignDate: latestDesign?.decidedOn ?? null,
+    commissioned,
+    registerUnderConstruction: exact.underConstruction === true ? { asOf: day(exact.evidenceDate) } : null,
+  });
+  const line = (k: string) => lines.find((l) => l.key === k)!.text;
+  const tracks: TrackSummary[] = [
+    { track: 'CONSTRUCTION', state: started ? 'STARTED_DOCUMENTED' : 'NOT_DOCUMENTED', text: line('CONSTRUCTION_ACTIVITY') },
+    { track: 'COMPLETION', state: devSays ? 'COMPLETION_CLAIMED' : 'NOT_DOCUMENTED', text: line('PHYSICAL_COMPLETION') },
+    {
+      track: 'PERMIT', state: current ? 'PERMIT_IN_FORCE' : 'PERMIT_UNKNOWN',
+      text: [line('OFFICIAL_APPROVAL'), current && pendingRefs.size ? `ამის შემდეგ შეტანილი ${pendingRefs.size} განაცხადი ჯერ გადაწყვეტილების გარეშეა.` : null].filter(Boolean).join(' '),
+    },
+    { track: 'COMMISSIONING', state: commissioned ? 'COMMISSIONED' : 'NO_ACT_SEEN', text: line('COMMISSIONING') },
+  ];
 
-  if (!events.length) return null;
-  return { tracks, events };
+  if (!events.length && !evolution) return null;
+  return { tracks, events, evolution };
 }
 
 

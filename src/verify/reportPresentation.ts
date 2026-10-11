@@ -431,6 +431,14 @@ export interface TeamCardV2 {
    * project, not in the whole project's life. Never "continuously responsible".
    */
   participation: TeamParticipation;
+  /**
+   * Which stage of the project the documented work belongs to: CURRENT when
+   * the card's newest dated role falls within a year of the newest dated role
+   * on the whole team (the project's current filings), EARLIER otherwise,
+   * UNDATED when nothing is dated. One signature on an old application never
+   * makes someone "the project's architect" today.
+   */
+  stage?: 'CURRENT' | 'EARLIER' | 'UNDATED';
 }
 export interface TeamParticipation {
   /** Distinct official cases the roles come from. */
@@ -655,6 +663,8 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
     byKey.set(key, card);
   }
   const all = [...byKey.values()];
+  const newest = all.flatMap((c) => c.roles.map((r) => r.date ?? '')).filter(Boolean).sort().pop() ?? null;
+  for (const c of all) c.stage = stageOf(c.roles, newest);
   return TEAM_GROUP_ORDER
     .map((group) => {
       const cards = all.filter((c) => c.group === group);
@@ -664,6 +674,15 @@ export function teamGroupsV2(members: unknown): Array<{ group: TeamGroup; cards:
       return { group, cards: cards.map((c, i) => ({ c, i })).sort((a, b) => orgRank(a.c) - orgRank(b.c) || a.i - b.i).map((x) => x.c) };
     })
     .filter((x) => x.cards.length > 0);
+}
+
+const STAGE_WINDOW_DAYS = 365;
+/** CURRENT / EARLIER / UNDATED — see TeamCardV2.stage. */
+export function stageOf(roles: Array<{ date: string | null }>, newestOnTeam: string | null): 'CURRENT' | 'EARLIER' | 'UNDATED' {
+  const last = roles.map((r) => r.date ?? '').filter(Boolean).sort().pop();
+  if (!last || !newestOnTeam) return 'UNDATED';
+  const gap = (Date.parse(`${newestOnTeam}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) / 86_400_000;
+  return Number.isFinite(gap) && gap <= STAGE_WINDOW_DAYS ? 'CURRENT' : 'EARLIER';
 }
 
 /** The filings a card's roles come from: count, first and last date, or the one case. */

@@ -49,7 +49,7 @@ export const REASON_KEY: Record<string, { key: string; fits: boolean }> = {
 export const AREA_KEYS = [
   'OLD_TBILISI', 'KRTSANISI', 'ORTACHALA', 'SOLOLAKI', 'MTATSMINDA', 'VERA', 'VAKE', 'AVLABARI', 'CHUGHURETI', 'ISANI',
   'SABURTALO', 'DIDUBE', 'DIDI_DIGHOMI', 'DIGHOMI', 'VASHLIJVARI', 'NADZALADEVI', 'GLDANI', 'SAMGORI', 'NAVTLUGHI',
-  'LISI', 'BAGEBI', 'VARKETILI',
+  'LISI', 'BAGEBI', 'VARKETILI', 'DIGHOMI_MASSIVE',
 ] as const;
 export const areaKey = (a: unknown): string | null =>
   typeof a === 'string' && (AREA_KEYS as readonly string[]).includes(a) ? `vrx_area_${a.toLowerCase()}` : null;
@@ -89,6 +89,8 @@ export interface MarketComparableView {
   totalPrice?: number | null;
   /** Plain differences from the subject, as i18n keys with variables. */
   differences?: Array<{ key: string; vars?: Record<string, string> }>;
+  /** v6: an asking price (a listing) or a registered transaction, always said. */
+  priceKind?: 'ASKING' | 'TRANSACTION';
 }
 
 /** Why there is no valuation number, and what would make one possible. */
@@ -104,6 +106,23 @@ export interface MarketInsufficiency {
   /** i18n keys, in order: what is missing, then what would make a valuation possible. */
   missingKeys: string[];
   nextStepKeys: string[];
+  /** v6: listings of another property kind set aside (apartments for a parking space). */
+  otherKind?: number;
+}
+
+/** v6: the subject's own price, and whether any verdict on it is allowed. */
+export type SubjectPriceView =
+  | { state: 'UNKNOWN' }
+  | { state: 'KNOWN_NO_VERDICT'; pricePerSqm: number; currency: string }
+  | { state: 'KNOWN'; pricePerSqm: number; currency: string; positionKey: string };
+
+/** v6: how the curated set was chosen, for the collapsible methodology panel. */
+export interface MarketMethod {
+  levelCounts: Record<string, number>;
+  excluded: Array<{ key: string; count: number }>;
+  sizeBand: { min: number; max: number } | null;
+  minimum: number;
+  subjectKindKey: string | null;
 }
 
 export interface MarketView {
@@ -118,6 +137,10 @@ export interface MarketView {
   context: Array<{ tier: MarketTier; median: number; count: number }>;
   /** Present only when the deterministic valuation is INSUFFICIENT_EVIDENCE. */
   insufficiency?: MarketInsufficiency | null;
+  /** v6 */
+  subjectPrice?: SubjectPriceView;
+  subjectKind?: string | null;
+  method?: MarketMethod | null;
 }
 
 const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
@@ -219,6 +242,7 @@ function hierarchyComparables(m: Record<string, any>, currency: string): MarketC
         listingDate: isoDay(c.listingDate),
         totalPrice: total ?? (area ? Math.round(c.pricePerSqm * area) : null),
         differences: differencesFromSubject(c, subject),
+        priceKind: c.priceKind === 'TRANSACTION' ? 'TRANSACTION' : 'ASKING',
       };
     });
 }
@@ -240,14 +264,82 @@ export function insufficiencyOf(m: Record<string, any>): MarketInsufficiency | n
   const otherDistricts = (Number(ex.UNRELATED_DISTRICT) || 0) + (Number(ex.DISTRICT_UNKNOWN) || 0);
   const sizeOutOfBand = Number(ex.SIZE_OUT_OF_BAND) || 0;
   const subjectAreaKnown = !!n(m.subjectArea) || !!sizeBand;
-  const missingKeys = ['vfm_missing_local'];
+  const otherKind = Number(ex.PROPERTY_TYPE_MISMATCH) || 0;
+  const kind = typeof v.subjectKind === 'string' ? v.subjectKind : null;
+  const missingKeys = kind && kind !== 'APARTMENT' && otherKind > 0 ? [`vfm6_missing_same_kind_${kind.toLowerCase()}`] : ['vfm_missing_local'];
+  // A parking space / shop / house: the missing thing is same-kind stock; size and district noise from apartments is not the story.
+  const sameKindMissing = missingKeys[0] !== 'vfm_missing_local';
   if (!subjectAreaKnown) missingKeys.push('vfm_missing_area');
-  if (sizeOutOfBand > 0) missingKeys.push('vfm_missing_size');
-  if (otherDistricts > 0) missingKeys.push('vfm_missing_other_districts');
+  if (sizeOutOfBand > 0 && !sameKindMissing) missingKeys.push('vfm_missing_size');
+  if (otherDistricts > 0 && !sameKindMissing) missingKeys.push('vfm_missing_other_districts');
   missingKeys.push('vfm_missing_transactions');
-  const nextStepKeys = ['vfm_next_same_project', 'vfm_next_same_street', 'vfm_next_registered_sales', 'vfm_next_developer_prices'];
+  const nextStepKeys = kind === 'PARKING'
+    ? ['vfm6_next_parking_developer', 'vfm6_next_parking_listings', 'vfm_next_registered_sales']
+    : ['vfm_next_same_project', 'vfm_next_same_street', 'vfm_next_registered_sales', 'vfm_next_developer_prices'];
   if (!subjectAreaKnown) nextStepKeys.push('vfm_next_subject_area');
-  return { have, need, otherDistricts, sizeOutOfBand, sizeBand, subjectAreaKnown, missingKeys, nextStepKeys };
+  return { have, need, otherDistricts, sizeOutOfBand, sizeBand, subjectAreaKnown, missingKeys, nextStepKeys, otherKind };
+}
+
+const KIND_KEY: Record<string, string> = {
+  APARTMENT: 'vfm6_kind_apartment',
+  PARKING: 'vfm6_kind_parking',
+  COMMERCIAL: 'vfm6_kind_commercial',
+  HOUSE: 'vfm6_kind_house',
+  LAND: 'vfm6_kind_land',
+};
+const POSITION_KEY: Record<string, string> = {
+  BELOW_MARKET_RANGE: 'vfm6_pos_below',
+  ATTRACTIVE: 'vfm6_pos_lower',
+  AROUND_MARKET: 'vfm6_pos_around',
+  PREMIUM: 'vfm6_pos_higher',
+  SIGNIFICANT_PREMIUM: 'vfm6_pos_well_above',
+};
+const EXCLUSION_KEY: Record<string, string> = {
+  UNRELATED_DISTRICT: 'vfm6_ex_other_district',
+  DISTRICT_UNKNOWN: 'vfm6_ex_district_unknown',
+  PROPERTY_TYPE_MISMATCH: 'vfm6_ex_other_kind',
+  SIZE_OUT_OF_BAND: 'vfm6_ex_size',
+  SIZE_UNKNOWN: 'vfm6_ex_size_unknown',
+  DEAL_TYPE_MISMATCH: 'vfm6_ex_rent',
+  CLASS_MISMATCH: 'vfm6_ex_class',
+  CONDITION_FAR: 'vfm6_ex_condition',
+  EXPIRED: 'vfm6_ex_expired',
+  STALE: 'vfm6_ex_stale',
+  OUTLIER: 'vfm6_ex_outlier',
+};
+
+/**
+ * The subject's own price and the verdict it allows (v6). No asking price of
+ * its own: no verdict at all. A price but no estimate: the price, no verdict.
+ */
+export function subjectPriceOf(m: Record<string, any>, currency: string): SubjectPriceView {
+  const p = n(m.subjectPricePerSqm);
+  if (!p) return { state: 'UNKNOWN' };
+  const estimate = obj(m.valuation).state === 'ESTIMATE';
+  const key = typeof m.positioning === 'string' ? POSITION_KEY[m.positioning] : undefined;
+  return estimate && key
+    ? { state: 'KNOWN', pricePerSqm: p, currency, positionKey: key }
+    : { state: 'KNOWN_NO_VERDICT', pricePerSqm: p, currency };
+}
+
+/** How the curated set was chosen: counts only, for the collapsible panel. */
+export function methodOf(m: Record<string, any>): MarketMethod | null {
+  const h = obj(m.hierarchy);
+  if (!h.levelCounts) return null;
+  const v = obj(m.valuation);
+  const sb = obj(v.sizeBand ?? h.sizeBand);
+  const excluded = Object.entries(obj(h.excluded))
+    .filter(([k, c]) => EXCLUSION_KEY[k] && Number(c) > 0)
+    .map(([k, c]) => ({ key: EXCLUSION_KEY[k], count: Number(c) }))
+    .sort((a, b) => b.count - a.count);
+  const lc = obj(h.levelCounts);
+  return {
+    levelCounts: Object.fromEntries([1, 2, 3, 4, 5].map((l) => [String(l), Number(lc[l]) || 0])),
+    excluded,
+    sizeBand: n(sb.min) && n(sb.max) ? { min: sb.min as number, max: sb.max as number } : null,
+    minimum: Number(v.minimumComparables) || 3,
+    subjectKindKey: typeof v.subjectKind === 'string' ? KIND_KEY[v.subjectKind] ?? null : null,
+  };
 }
 
 export function marketView(raw: unknown): MarketView | null {
@@ -310,5 +402,11 @@ export function marketView(raw: unknown): MarketView | null {
     .filter((t) => t.contextOnly === true && isTier(t.tier) && t.tier !== 'WIDER_MARKET' && n(t.median) && Number(t.count) > 0)
     .map((t) => ({ tier: t.tier as MarketTier, median: t.median as number, count: Number(t.count) }));
 
-  return { currency, headline, asking, askingRange, comparables, context, insufficiency: insufficiencyOf(m) };
+  const kind = obj(m.valuation).subjectKind;
+  return {
+    currency, headline, asking, askingRange, comparables, context, insufficiency: insufficiencyOf(m),
+    subjectPrice: subjectPriceOf(m, currency),
+    subjectKind: typeof kind === 'string' ? kind : null,
+    method: methodOf(m),
+  };
 }

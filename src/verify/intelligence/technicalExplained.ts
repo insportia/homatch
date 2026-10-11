@@ -40,6 +40,35 @@ export interface TechnicalCard {
   why: string;
   buyerMeaning: string;
   verify: string;
+  /** What the documents establish (and from which kind of source). */
+  establishes: string;
+  /** What the documents cannot prove about the finished building. */
+  cannotProve: string;
+}
+
+/** Materials and finishes, told under their own heading (owner copy "მასალები და მოპირკეთება"). */
+export const MATERIAL_TOPICS: TechTopic[] = ['FACADE', 'WINDOWS', 'INSULATION', 'FINISHES'];
+
+/* What a design document cannot prove, per topic. Fixed text, never model output. */
+const CANNOT_PROVE: Record<TechTopic, string> = {
+  STRUCTURE: 'დოკუმენტი ვერ ადასტურებს, რომ ბეტონის მარკა, არმატურა და ელემენტების ზომები მშენებლობისას ზუსტად პროექტით შესრულდა. ამას ტექნიკური ზედამხედველობის ჟურნალი და ლაბორატორიული გამოცდის აქტები აჩვენებს.',
+  FOUNDATION: 'დოკუმენტი ვერ ადასტურებს, რა სიღრმეზე და როგორ მოეწყო საძირკველი რეალურად. ამას ფარული სამუშაოების აქტები და ზედამხედველობის ჩანაწერები აჩვენებს.',
+  SEISMIC: 'დოკუმენტი გაანგარიშებას აჩვენებს და არა იმას, რამდენად ზუსტად შესრულდა კონსტრუქციული დეტალები, რომლებზეც სეისმომედეგობაა დამოკიდებული.',
+  FACADE: 'ნახაზი ან აღწერა ვერ აჩვენებს, რა ხარისხის მასალა დამონტაჟდა და როგორ არის დამაგრებული. ფასადის მდგომარეობა ადგილზე უნდა ნახოთ.',
+  WINDOWS: 'დოკუმენტი ვერ ადასტურებს, რომელი მწარმოებლის პროფილი და მინაპაკეტი დამონტაჟდა რეალურად და რა ხარისხით.',
+  INSULATION: 'დოკუმენტი ვერ აჩვენებს, რა სისქის და რა ხარისხის თბოიზოლაცია დაიგო ფაქტობრივად. ეს ზამთარში ბინის სითბოზე და გათბობის ხარჯზე აისახება.',
+  ENERGY: 'დეკლარაცია გაანგარიშებაა. ბინის რეალური ენერგომოხმარება შესრულების ხარისხსა და ექსპლუატაციაზეა დამოკიდებული.',
+  MEP: 'სქემები აჩვენებს, რა იყო დაგეგმილი. ქსელებთან რეალური მიერთება და სისტემების მუშაობა ჩაბარებისას უნდა შემოწმდეს.',
+  LIFTS: 'დოკუმენტი ვერ ადასტურებს, რომელი მოდელის ლიფტი დამონტაჟდა და გაიარა თუ არა მან ტექნიკური შემოწმება.',
+  FINISHES: 'აღწერა ვერ აჩვენებს, რა მდგომარეობაში ჩაგაბარებთ ბინას. ჩაბარების პირობები ხელშეკრულებაში უნდა ჩაიწეროს.',
+};
+
+/** What the documents establish: an official design statement, or the developer's public description. */
+export function establishesOf(source: TechSource, date: string | null): string {
+  const when = date && /^\d{4}-\d{2}-\d{2}/.test(date) ? ` (${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)})` : '';
+  return source === 'OFFICIAL'
+    ? `ქალაქში წარდგენილი საპროექტო დოკუმენტი${when} ადგენს, რომ ეს გადაწყვეტა პროექტით იყო გათვალისწინებული.`
+    : 'ეს პროექტის საჯარო აღწერაა. ის აჩვენებს, რას აცხადებს დეველოპერი, და არა იმას, რა შეათანხმა ქალაქმა.';
 }
 
 interface Term { id: string; topic: TechTopic; re: RegExp; what: string | ((m: RegExpExecArray) => string) }
@@ -255,6 +284,8 @@ export function explainTechnical(input: TechnicalInput): TechnicalCard[] {
       why: t.why,
       buyerMeaning: t.buyerMeaning,
       verify: t.verify,
+      establishes: establishesOf(lead.source, lead.date),
+      cannotProve: CANNOT_PROVE[topic],
     });
   }
   return cards;
@@ -277,5 +308,8 @@ export function readTechnicalCards(v: unknown): TechnicalCard[] {
       why: str(c.why),
       buyerMeaning: str(c.buyerMeaning),
       verify: str(c.verify),
+      // Persisted cards from before these two fields get them on read: fixed text, same rule.
+      establishes: str(c.establishes) || establishesOf(c.source === 'OFFICIAL' ? 'OFFICIAL' : 'PUBLIC', str(c.date) || null),
+      cannotProve: str(c.cannotProve) || CANNOT_PROVE[c.topic as TechTopic],
     }));
 }

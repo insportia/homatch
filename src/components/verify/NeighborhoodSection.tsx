@@ -47,18 +47,36 @@ const Point: React.FC<{ p: NeighborhoodPoint; tone: 'pro' | 'con' }> = ({ p, ton
   );
 };
 
-export const NeighborhoodSection: React.FC<{ n: StoredNeighborhood }> = ({ n }) => {
+/**
+ * The owner-approved LOCATION introduction (APPROVED_COPY.md), verbatim. It
+ * goes at the top of the location chapter; the measured specifics follow it.
+ */
+export const LocationIntro: React.FC<{ showTitle?: boolean }> = ({ showTitle = true }) => {
+  const { t } = useLanguage();
+  return (
+    <div className="space-y-3" data-location-intro="approved">
+      {showTitle ? <h3 className="font-display text-lg font-semibold leading-snug break-words">{t('vnb6_intro_title')}</h3> : null}
+      <p className="text-[15px] leading-7 text-foreground/90 break-words">{t('vnb6_intro_p1')}</p>
+      <p className="text-[15px] leading-7 text-foreground/90 break-words">{t('vnb6_intro_p2')}</p>
+    </div>
+  );
+};
+
+export const NeighborhoodSection: React.FC<{ n: StoredNeighborhood; intro?: boolean }> = ({ n, intro = false }) => {
   const { t } = useLanguage();
   const view = neighborhoodView(n);
-  if (!view) return null;
+  if (!view) return intro ? <LocationIntro /> : null;
 
   if (view.status !== 'OK') {
     return (
+      <>
+      {intro ? <LocationIntro /> : null}
       <div className="rounded-xl border border-border bg-card p-4" data-neighborhood-status={view.status}>
         <p className="text-sm leading-6 text-muted-foreground break-words">
           {t(view.status === 'NO_LOCATION' ? 'verify_nb_no_location' : 'verify_nb_unavailable')}
         </p>
       </div>
+      </>
     );
   }
 
@@ -66,6 +84,8 @@ export const NeighborhoodSection: React.FC<{ n: StoredNeighborhood }> = ({ n }) 
   const metres = (m: number) => t('verify_nb_m', { m: String(m) });
 
   return (
+    <>
+    {intro ? <LocationIntro /> : null}
     <div className="min-w-0 space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5" data-neighborhood-status="OK">
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -173,6 +193,7 @@ export const NeighborhoodSection: React.FC<{ n: StoredNeighborhood }> = ({ n }) 
         </p>
       </div>
     </div>
+    </>
   );
 };
 

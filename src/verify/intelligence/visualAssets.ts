@@ -143,6 +143,69 @@ export function normalizeVisualKind(k: unknown): VisualAssetKind {
   return LEGACY_KIND[s] ?? 'OTHER';
 }
 
+// ─────────────────────────── file-name evidence ───────────────────────────
+//
+// Reports stored before the worker learnt these words (job eeefada9,
+// 2026-10-11) say PHOTO for "fotomontaji da aqsiometriuli xedebi.pdf": a
+// photomontage is the DESIGN composited onto a site photo and an
+// axonometric view is a drawn 3D view. The file name is re-read on every
+// read so such an asset is a RENDER, never a photograph of the building.
+
+/** Names that mean a design image (render, photomontage, axonometric view). */
+export const RENDER_NAME =
+  /(render|რენდ|ვიზუალიზაც|vizualiz|visuali[sz]|визуализ|ფოტო.?მონტაჟ|(?<!დე)მონტაჟ|foto.?montaj|photo.?montag|фото.?монтаж|(?<![a-z])mon[tr]a[jž]|აქსონომეტრ|aqs[io]+n?ometr|axonometr|аксонометр|effects?result|lumion|(?<![a-z])rend\s?\d)/i;
+const NOT_RENDER_NAME = /(დემონტაჟ|demontaj|демонтаж|ლიფტ|lift|elevator|ელექტრო|electr|კაბელ|სანტექნ|ვენტილ|ინსტალაც|install)/i;
+
+export function isRenderName(fileName: unknown): boolean {
+  const n = typeof fileName === 'string' ? fileName : '';
+  return !!n && RENDER_NAME.test(n) && !NOT_RENDER_NAME.test(n);
+}
+
+/** A picture whose file name says render is a render; nothing is ever downgraded. */
+export function correctVisualKind<K extends string>(kind: K, fileName: unknown): K | 'RENDER' {
+  if ((kind === 'PHOTO' || kind === 'CONSTRUCTION_PHOTO' || kind === 'OTHER') && isRenderName(fileName)) return 'RENDER';
+  return kind;
+}
+
+const DAY = 864e5;
+const validYmd = (y: number, m: number, d: number): string | null => {
+  if (!(y >= 1990 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  if (t.getUTCMonth() !== m - 1) return null;
+  return t.toISOString().slice(0, 10);
+};
+
+/**
+ * The date a file name states ("ფოტო 14-04-2025.pdf" → 2025-04-14;
+ * "ფასადები 27,12.pdf" filed 2025-09-23 → 2025-12-27), Georgian day-first.
+ * A day and month without a year are placed only when the case filing date
+ * leaves exactly one year in [filing − 120 days, filing + 270 days];
+ * otherwise null. Never invents: no case date, no year-less date.
+ */
+export function fileNameDate(fileName: unknown, caseDate?: string | null): string | null {
+  let n = typeof fileName === 'string' ? fileName : '';
+  n = n.replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\d+(?:\.\d+){3,}/g, ' ');
+  if (!n) return null;
+  const iso = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/.exec(n);
+  const full = iso ? validYmd(+iso[1], +iso[2], +iso[3]) : null;
+  const cy = caseDate && /^\d{4}-\d{2}-\d{2}/.test(caseDate) ? caseDate.slice(0, 10) : null;
+  const sane = (d: string | null) => (d && (!cy || Date.parse(d) <= Date.parse(cy) + 2 * 365 * DAY) ? d : null);
+  if (full) return sane(full);
+  const dmy = /(?<!\d)(\d{1,2})[.,\-/](\d{1,2})[.,\-/](\d{4}|\d{2})(?!\d)/.exec(n);
+  if (dmy) {
+    const y = dmy[3].length === 2 ? 2000 + Number(dmy[3]) : Number(dmy[3]);
+    return sane(validYmd(y, +dmy[2], +dmy[1]));
+  }
+  const dm = /(?<![\d.,\-/])(\d{2})\s?[.,\-]\s?(\d{2})(?![\d.,\-/]*\d)/.exec(n);
+  if (!dm || !cy) return null;
+  const base = Date.parse(cy);
+  const year = Number(cy.slice(0, 4));
+  const fits = [year - 1, year, year + 1]
+    .map((y) => validYmd(y, +dm[2], +dm[1]))
+    .filter((d): d is string => !!d && Date.parse(d) >= base - 120 * DAY && Date.parse(d) <= base + 270 * DAY);
+  return fits.length === 1 ? fits[0] : null;
+}
+
 const CATEGORIES: readonly VisualCategory[] = ['BUILDING', 'APARTMENT', 'ARCHITECTURE', 'STRUCTURE', 'CONSTRUCTION', 'SITE'];
 export function normalizeVisualCategory(c: unknown, kind: VisualAssetKind): VisualCategory {
   const s = String(c ?? '').toUpperCase();
@@ -298,7 +361,7 @@ export function persistableVisuals(stored: unknown, kept: VisualMeta[], max = VI
     out.push({
       ...s,
       storagePath: path,
-      kind: m.kind ?? s.kind,
+      kind: correctVisualKind(String(m.kind ?? s.kind ?? 'OTHER'), s.fileName ?? m.fileName),
       category: m.category ?? s.category ?? null,
       scope: m.scope ?? 'PROJECT',
       block: m.block ?? null,
@@ -355,9 +418,10 @@ export async function toCustomerVisualAssets(
     const url = urls[v.storagePath];
     if (!isSignedVisualUrl(url)) continue;
     seen.add(v.id);
-    const kind = normalizeVisualKind(v.kind);
+    // A stored PHOTO named "fotomontaji" is a render (file-name evidence above).
+    const kind = correctVisualKind(normalizeVisualKind(v.kind), v.fileName) as VisualAssetKind;
     const scope: VisualScope = ['EXACT_UNIT', 'BUILDING', 'TYPICAL_FLOOR', 'PROJECT'].includes(v.scope) ? v.scope : 'PROJECT';
-    const category = categoryForScope(kind, normalizeVisualCategory(v.category, kind), scope);
+    const category = categoryForScope(kind, kind === 'RENDER' ? 'BUILDING' : normalizeVisualCategory(v.category, kind), scope);
     const n = (x: unknown) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Number(x) : null);
     out.push({
       id: v.id,

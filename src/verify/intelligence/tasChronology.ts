@@ -35,6 +35,8 @@
  */
 
 import { COMMISSIONING_OPERATIVE, revalidateDecision } from './legalStatus.ts';
+import { readActBlock, type CaseActRecord } from './projectEvolution.ts';
+import { textSections } from './tasCaseSources.ts';
 
 export type CaseStage = 'SUBMITTED' | 'UNDER_REVIEW' | 'RESPONSE_UNREAD' | 'DECIDED';
 export type CaseEffect =
@@ -45,7 +47,9 @@ export type CaseEffect =
   | 'COMMISSIONED'
   | 'REFUSED'
   | 'SUSPENDED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  /** An order that changes an earlier act (area figures, wording); read from its published text. */
+  | 'ACT_AMENDED';
 
 export interface PermitTerm {
   from: string | null;
@@ -179,6 +183,52 @@ function effectOf(outcome: string, evidence: string, correctedProject: boolean):
 
 const CONSISTENT_WINDOW_DAYS = 120;
 
+/**
+ * Published acts per TAS document, read from the retained case text. Job
+ * eeefada9: responses 7869341 (AR11136621) and 7930086 (AR11143236) carry
+ * "შედეგი: თანხმობა" and amend the area figures of order 7761945; the worker
+ * left them UNDETERMINED, so both cases read as "pending" for months.
+ */
+export function publishedActs(report: unknown): Map<string, CaseActRecord[]> {
+  const out = new Map<string, CaseActRecord[]>();
+  for (const r of arr<any>(obj(obj(report).browserOfficial).results)) {
+    if (s(r?.source).toLowerCase() !== 'tas') continue;
+    for (const d of arr<any>(r?.documents)) {
+      const id = s(d?.tasDocumentId) || s(d?.id).replace(/^tas_/, '');
+      const text = typeof d?.fullText === 'string' && d.fullText ? d.fullText : typeof d?.rawText === 'string' ? d.rawText : '';
+      if (!id || !text || out.has(id)) continue;
+      const acts: CaseActRecord[] = [];
+      for (const sec of textSections(text)) {
+        if (sec.fileName || !sec.date) continue;
+        const act = readActBlock(sec.lines, sec.date);
+        if (act) acts.push(act);
+      }
+      out.set(id, acts);
+    }
+  }
+  return out;
+}
+
+/** The stages an application covers ("სტადიები: პროექტის შეთანხმება / მშენებლობის ნებართვა"). */
+function caseStages(report: unknown, documentId: string): { stages: string[]; changeOfApproved: boolean } {
+  const res = (stages: string[], text: string) => ({ stages, changeOfApproved: /შეთანხმებული\s+პროექტის\s+ცვლილება/u.test(text.slice(0, 4000)) });
+  for (const r of arr<any>(obj(obj(report).browserOfficial).results))
+    for (const d of arr<any>(r?.documents)) {
+      if ((s(d?.tasDocumentId) || s(d?.id).replace(/^tas_/, '')) !== documentId) continue;
+      const text = typeof d?.rawText === 'string' ? d.rawText : '';
+      const at = text.search(/სტადიები\s*:/u);
+      if (at < 0) return res([], text);
+      const out: string[] = [];
+      for (const line of text.slice(at).split('\n').slice(1, 6)) {
+        const l = line.trim();
+        if (!l || /^(?:დამკვეთი|მისამართი)/u.test(l) || l.length > 60) break;
+        out.push(l);
+      }
+      return res(out, text);
+    }
+  return { stages: [], changeOfApproved: false };
+}
+
 /** All TAS cases for the parcel, in filing order, each with its stage and legal effect. */
 export function buildCaseChronology(report: unknown, nowIso: string = new Date().toISOString()): ChronologyCase[] {
   const results = arr<any>(obj(obj(report).browserOfficial).results).filter((r) => s(r?.source).toLowerCase() === 'tas');
@@ -186,10 +236,14 @@ export function buildCaseChronology(report: unknown, nowIso: string = new Date()
   if (!api) return [];
   const nowDay = String(nowIso).slice(0, 10);
   const issued = actIssueDates(report);
+  const acts = publishedActs(report);
   const out: ChronologyCase[] = [];
 
   for (const c of arr<any>(api.cases)) {
     const filedOn = day(c?.date);
+    const ownActs = acts.get(s(c?.documentId)) ?? [];
+    const { stages, changeOfApproved } = caseStages(report, s(c?.documentId));
+    const permitWithApproval = stages.some((x) => /მშენებლობის\s+ნებართვა/u.test(x)) && stages.some((x) => /პროექტის\s+შეთანხმება/u.test(x));
     const decisions: ChronologyDecision[] = [];
     const unreadResponses: ChronologyCase['unreadResponses'] = [];
     let deficiencyNotices = 0;
@@ -201,7 +255,20 @@ export function buildCaseChronology(report: unknown, nowIso: string = new Date()
       const d = m?.decision && typeof m.decision === 'object' ? revalidateDecision(m.decision) : null;
       const outcome = s(d?.outcome);
       if (!d || !outcome || outcome === 'UNDETERMINED' || outcome === 'INFORMATIONAL') {
-        if (response && response !== 'EMPTY') unreadResponses.push({ number: s(d?.number ?? m?.decisionNumber) || null, publishedOn });
+        // The response's own published text decides what the classifier could not.
+        const n = s(d?.number ?? m?.decisionNumber);
+        const act = n ? ownActs.find((a) => a.number === n) ?? null : null;
+        if (act && act.result === 'CONSENT' && act.amends) {
+          const ownDay = act.issuedOn;
+          const ok = !!ownDay && !!publishedOn && ownDay <= publishedOn && (Date.parse(publishedOn) - Date.parse(ownDay)) / 864e5 <= CONSISTENT_WINDOW_DAYS;
+          decisions.push({ number: n, date: ok ? ownDay : publishedOn, dateBasis: ok ? 'ACT_ISSUE_DATE' : 'RESPONSE_PUBLISHED', publishedOn, outcome: 'ACT_AMENDED', effect: 'ACT_AMENDED', term: null, correctedProject: false });
+          continue;
+        }
+        if (act && act.result === 'INTERMEDIATE') {
+          deficiencyNotices++;
+          continue;
+        }
+        if (response && response !== 'EMPTY') unreadResponses.push({ number: n || null, publishedOn });
         continue;
       }
       if (outcome === 'DEFICIENCY' || outcome === 'INTERMEDIATE') {
@@ -215,13 +282,17 @@ export function buildCaseChronology(report: unknown, nowIso: string = new Date()
       const ownOk = !!own && !!publishedOn && own <= publishedOn && (Date.parse(publishedOn) - Date.parse(own)) / 864e5 <= CONSISTENT_WINDOW_DAYS;
       const correctedProject = CORRECTED.test(evidence);
       const term = permitTerm(evidence);
+      // An approval of an application that covers the permit stage too issues the permit (7761945).
+      const effect: CaseEffect | null = outcome === 'APPROVED' && permitWithApproval
+        ? (correctedProject || changeOfApproved ? 'PERMIT_FOR_CORRECTED_PROJECT' : 'PERMIT')
+        : effectOf(outcome, evidence, correctedProject);
       decisions.push({
         number,
         date: ownOk ? own : publishedOn,
         dateBasis: ownOk ? 'ACT_ISSUE_DATE' : 'RESPONSE_PUBLISHED',
         publishedOn,
         outcome,
-        effect: effectOf(outcome, evidence, correctedProject),
+        effect,
         term: term && (day(d.validUntil) ? { from: term.from, until: day(d.validUntil) } : term),
         correctedProject,
       });

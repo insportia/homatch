@@ -82,7 +82,7 @@ import type { PropertyIdentity } from '@/verify/intelligence/propertyIdentity';
 import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
 import { Reveal } from '@/components/common/Reveal';
 import { VisualExplorer } from './VisualExplorer';
-import { LegalReality, LegalPosition, IdentityNotice } from './LegalReality';
+import { LegalFindings, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
 import { VerifyJobProvider } from './OfficialLink';
 import { LazyMount } from './LazyMount';
@@ -540,7 +540,7 @@ export function VerifyReport({
       {/* ── THE STORY ── prose first, then the grouped official timeline. */}
       {has.story ? (
         <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
-          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} />
+          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} unitIdentity={(synthesis as { unitIdentity?: unknown }).unitIdentity} />
         </Chapter>
       ) : null}
 
@@ -610,10 +610,13 @@ export function VerifyReport({
       {has.legal ? (
         <Chapter id="vbi-legal" n={num('legal')} kicker={t('vrx_legal_kicker')} title={t('vrx_legal_title')} lede={t('vrx_legal_lede')}>
           <IdentityNotice identity={identity} />
-          {/* Today's position first: the decision in force, then what is
-              still under review — never as an approval. */}
-          <LegalPosition history={history} />
-          <LegalReality legal={history?.legal} />
+          {/* The approved legal introduction, then the dated findings scope by
+              scope (apartment, parcel, building, ownership, mortgages,
+              obligations, applications on file). */}
+          <LegalFindings synthesis={synthesis} signals={r.projectSignals} />
+          {/* Today's position: the decision in force, then what is still
+              under review — never as an approval. */}
+          <LegalPosition history={history} signals={r.projectSignals} />
           {/* The deterministic position above already states the decision in
               force; the older status block would repeat it. It stays for
               reports that carry no reconciled position. */}

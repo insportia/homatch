@@ -545,13 +545,15 @@ async function restoreAfterFailedUpgrade(db: any, job: any): Promise<void> {
  * documents, 1.6M characters, 8 s each, in parallel); a failure leaves the
  * inline excerpt, exactly as before. Memory only: result_json is not written.
  */
+/** Private bucket holding the full stored source texts (written by verify-queue). */
+const EVIDENCE_BUCKET = 'verify-evidence';
 async function hydrateStoredTasTexts(db: any, rj: any, timing: Record<string, unknown>): Promise<void> {
   const started = performance.now();
   const plan = planStoredTasTexts(rj);
   if (!plan.length) return;
   const read = await Promise.all(plan.map(async (p) => {
     try {
-      const dl = db.storage.from('verify-evidence').download(p.path);
+      const dl = db.storage.from(EVIDENCE_BUCKET).download(p.path);
       const res: any = await Promise.race([dl, new Promise((r) => setTimeout(() => r({ error: 'timeout' }), 8000))]);
       if (res?.error || !res?.data) return false;
       return applyStoredTasText(rj, p.documentId, await res.data.text(), p.chars);

@@ -267,6 +267,7 @@ const COMPONENT_RULES: Array<[DrawingComponent, RegExp]> = [
   ['CONSTRUCTION_ORG', /პოსი|მოპი|\bPOS\b|\bposi\b|\bmopi\b|ეტაპებ|კალენდარ/iu],
   ['SITE_PHOTOS', /ფოტო|foto|photo|surat|სურათ|არსებულ|arsebul|\bPH\b/iu],
 ];
+const DESIGN_FILES: DrawingComponent[] = ['FACADES', 'PLANS', 'SECTIONS', 'SITE_PLAN', 'PHOTOMONTAGE'];
 const SKIP_FILE = /მინდობილ|mindobil|ბანერ|baneri|ქვითარ|ამონაწერ|\.(?:pla|rar|zip|jpg|jpeg|png|tif)$/iu;
 
 /** A revision date in a file name: "27,12", "30.04", "2022.10.10", "25,07,2025", "14-04-2025". */
@@ -319,12 +320,17 @@ export function caseComponents(c: Pick<CaseSource, 'attachments' | 'date'> & { m
     const entry = map.get(comp) ?? { component: comp, revisions: [], oldAndNew: false, files: [] };
     if (date && !entry.revisions.includes(date)) entry.revisions.push(date);
     if (comp === 'PHOTOMONTAGE' && /ძველ|zvel|\bold\b/iu.test(name)) entry.oldAndNew = entry.oldAndNew || c.attachments.some((x) => /ახალი\s*მონტაჟ|axali\s*montaj|new\s*montage/iu.test(str(x.fileName)));
-    if (entry.files.length < 6 && !entry.files.some((f) => f.name === name)) {
+    // Files are kept for the drawing set only (the evidence shows them), three per component: the payload stays small.
+    if (DESIGN_FILES.includes(comp) && !entry.files.some((f) => f.name === name)) {
       entry.files.push({ name: name.length > 90 ? `${name.slice(0, 87)}…` : name, url: tasAttachmentUrl(a.attachedFileId), date });
     }
     map.set(comp, entry);
   }
-  const components = [...map.values()].map((e) => ({ ...e, revisions: e.revisions.sort() }));
+  const components = [...map.values()].map((e) => ({
+    ...e,
+    revisions: e.revisions.sort(),
+    files: [...e.files].sort((x, y) => (x.date ?? '').localeCompare(y.date ?? '')).slice(-3),
+  }));
   return { components, correctionFiles, storeys };
 }
 

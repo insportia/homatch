@@ -98,9 +98,16 @@ export interface CustomerComparable {
   /** True only when this listing is in the valuation's numbers (never level 5, never when insufficient). */
   valuationUse: boolean;
   address?: string;
+  /** The project / building name, only when the listing itself stated one. */
+  project?: string;
   district?: AreaKey;
   area?: number;
   rooms?: number;
+  floor?: number;
+  /** Normalised condition rung, when the listing stated one. */
+  condition?: string;
+  /** ACTIVE / EXPIRED / UNKNOWN as the source reported it. */
+  state?: 'ACTIVE' | 'EXPIRED' | 'UNKNOWN';
   pricePerSqm: number;
   totalPrice?: number;
   currency: string;
@@ -219,9 +226,13 @@ function toCustomer(c: ScoredComparable, used: ReadonlySet<ScoredComparable>): C
     reason: reasonOf(c),
     valuationUse: used.has(c),
     ...(c.address ? { address: c.address } : {}),
+    ...(c.project ? { project: c.project } : {}),
     ...(c.district ? { district: c.district } : {}),
     ...(c.area ? { area: c.area } : {}),
     ...(c.rooms ? { rooms: c.rooms } : {}),
+    ...(typeof c.floor === 'number' ? { floor: c.floor } : {}),
+    ...(c.condition ? { condition: c.condition } : {}),
+    state: c.state,
     pricePerSqm: Math.round(c.pricePerSqm),
     ...(c.totalPrice ? { totalPrice: c.totalPrice } : {}),
     currency: c.currency,

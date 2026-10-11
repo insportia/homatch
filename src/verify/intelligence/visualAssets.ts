@@ -17,6 +17,8 @@
 //
 // Pure: no network, no clock. Safe in Edge Functions and the browser.
 
+import { isUnusableVisual } from './visualQuality.ts';
+
 export type VisualAssetKind =
   | 'PHOTO'
   | 'RENDER'
@@ -93,10 +95,18 @@ export interface VerifyVisualAsset {
   matchBasis: string;
   role: 'LATEST_RENDER' | 'EARLIEST_RENDER' | 'SUPPORTING';
   versionStatus: 'CURRENT_APPROVED' | 'HISTORICAL_APPROVED' | 'UNDETERMINED';
+  /** A camera's own EXIF date of a recovered photograph (YYYY-MM-DD), when present. */
+  exifDate?: string;
 }
 
-/** Per-job bound on customer-visible official visuals (worker: VISUAL_ASSET_MAX). */
-export const VISUAL_ASSET_MAX = 24;
+/**
+ * Per-job bound on customer-visible official visuals. The worker's own
+ * gallery bound is still 24 per run (official-worker visuals.ts); the
+ * report holds up to 48 since the newest cases' stored pictures and the
+ * attachments recovered after an older-case budget (visualRecovery.ts) are
+ * appended to the worker's gallery (2026-10-11).
+ */
+export const VISUAL_ASSET_MAX = 48;
 export const VISUAL_BUCKET = 'verify-official-visuals';
 export const VISUAL_URL_TTL_SECONDS = 3600;
 export const VISUAL_STORAGE_PATH = /^tas\/[a-f0-9]{64}\.(jpg|png)$/;
@@ -320,6 +330,9 @@ export async function toCustomerVisualAssets(
   const list = (Array.isArray(records) ? records : [])
     .filter((v: any) => v && SHA.test(String(v.id)) && typeof v.storagePath === 'string' && VISUAL_STORAGE_PATH.test(v.storagePath))
     .filter((v: any) => v.scope !== 'UNRELATED_SUSPECT')
+    // Blank / unreadable layers (visualQuality.ts) stay in the stored report
+    // with their reason; the customer gallery never shows them.
+    .filter((v: any) => !isUnusableVisual(v))
     .slice(0, max);
   if (!list.length) return [];
   let urls: Record<string, string | null> = {};
@@ -372,6 +385,7 @@ export async function toCustomerVisualAssets(
       matchBasis: typeof v.matchBasis === 'string' ? v.matchBasis : 'TAS_PARCEL_SEARCH',
       role: v.role === 'LATEST_RENDER' || v.role === 'EARLIEST_RENDER' ? v.role : 'SUPPORTING',
       versionStatus: v.versionStatus === 'CURRENT_APPROVED' || v.versionStatus === 'HISTORICAL_APPROVED' ? v.versionStatus : 'UNDETERMINED',
+      ...(typeof v.exifDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.exifDate) ? { exifDate: v.exifDate } : {}),
     });
   }
   return out;

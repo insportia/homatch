@@ -185,7 +185,8 @@ test('nothing renders when nothing was found', () => {
   const src = renderer();
   const i = src.indexOf('const LocationLiving');
   const component = src.slice(i, i + 2500);
-  assert.match(component, /if \(!places\.length && !where\.length && !l\.profile\) return null;/,
+  // A measured OpenStreetMap lookup is content in its own right (2026-10-11).
+  assert.match(component, /if \(!places\.length && !where\.length && !l\.profile && !measured\) return null;/,
     'an empty location block still renders a heading');
 });
 

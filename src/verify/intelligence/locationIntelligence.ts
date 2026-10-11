@@ -18,6 +18,12 @@
 //
 // If the district is not recognised, this returns the address facts alone and
 // no characterisation. An unknown area produces silence, never a guess.
+//
+// Measured distances DO exist since 2026-10-11, but not here: verify-synthesis
+// attaches an OpenStreetMap lookup (neighborhood.ts) via withNeighborhood(),
+// and that is the only place a metre figure may come from.
+
+import type { StoredNeighborhood } from './neighborhood.ts';
 
 export interface AreaProfile {
   /** Canonical district name, as written in Georgian. */
@@ -98,13 +104,45 @@ export function nearbyPlaces(raw: unknown): NearbyPlace[] {
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const note = typeof e.note === 'string' && e.note.trim() ? e.note.trim() : null;
+    const said = typeof e.note === 'string' && e.note.trim() ? e.note.trim() : null;
+    // A travel time or distance nobody measured is dropped, not softened.
+    const note = said && !isUnverifiedReach(said) ? said : null;
     out.push({ category, name, note, whyKey: PLACE_WHY_KEYS[category] });
   }
 
   return out.sort(
     (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
   );
+}
+
+/*
+ * TRAVEL TIMES NOBODY MEASURED (2026-10-11, job 8ba97da9).
+ *
+ * The research layer returned every place with "ფეხით დაახლოებით 3 წუთია"
+ * attached, phrased as if sourced. Nothing measured those minutes. A note
+ * that states a distance or a travel time is dropped here; measured
+ * distances now come only from the OpenStreetMap lookup (neighborhood.ts).
+ * Relative wording a source used ("on the same street") survives.
+ */
+export function isUnverifiedReach(note: string): boolean {
+  return /\d+(?:[.,]\d+)?\s*(?:მ(?![ა-ჰ])|მეტრ|კმ(?![ა-ჰ])|წთ|წუთ|km\b|m\b|min|minutes?|метр|км|мин)/i.test(note)
+    || /(წუთ|ფეხით|მანქანით|minute|walk|drive|by car|минут|пешком)/i.test(note);
+}
+
+/**
+ * Attaches the OpenStreetMap lookup. When it succeeded it REPLACES the
+ * research layer's place list: measured places beat named-but-unmeasured
+ * ones, and keeping both would show the same supermarket twice with two
+ * different kinds of claim.
+ */
+export function withNeighborhood(location: LocationIntelligence, neighborhood: StoredNeighborhood | null | undefined): LocationIntelligence {
+  if (!neighborhood) return location;
+  return {
+    ...location,
+    neighborhood,
+    nearby: neighborhood.status === 'OK' ? [] : location.nearby,
+    minimal: location.minimal && neighborhood.status !== 'OK',
+  };
 }
 
 export interface LocationIntelligence {
@@ -117,6 +155,8 @@ export interface LocationIntelligence {
   nearby: NearbyPlace[];
   /** True when nothing beyond a raw address string could be resolved. */
   minimal: boolean;
+  /** Source-verified OpenStreetMap lookup, attached at report build time. */
+  neighborhood?: StoredNeighborhood | null;
 }
 
 /*

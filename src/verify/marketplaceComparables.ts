@@ -257,8 +257,8 @@ export function listingKeyFromUrl(url: string | null | undefined): string | null
 
 export interface MarketplaceLedger {
   searchesPerformed: number;
-  myhome: { status: string; listings: number; discovered: number };
-  ssge: { status: string; listings: number; discovered: number };
+  myhome: { status: string; listings: number; discovered: number; attempts?: LedgerAttempt[] };
+  ssge: { status: string; listings: number; discovered: number; attempts?: LedgerAttempt[] };
   crossPlatformDuplicatesRemoved: number;
   sameSourceDuplicatesRemoved: number;
   alreadyInLane: number;
@@ -268,9 +268,12 @@ export interface MarketplaceLedger {
   scopes: { district: number; city: number };
 }
 
+/** One worker search, kept so a district search that came back empty can be explained (job 8ba97da9). */
+export interface LedgerAttempt { scope: string; district: string | null; status: string; error: string | null; discovered: number; returned: number }
+
 interface WorkerJobLike {
   status?: string;
-  sources?: Record<string, { status?: string; listings?: number; attempts?: Array<{ discovered?: number }> }>;
+  sources?: Record<string, { status?: string; listings?: number; attempts?: Array<{ discovered?: number; scope?: string; district?: string | null; status?: string; error?: string | null; returned?: number }> }>;
   comparables?: WorkerComparable[];
 }
 
@@ -307,10 +310,19 @@ export function foldMarketplaceIntoLane(
     .sort((a, b) => a - b);
   const src = (k: string) => job?.sources?.[k] ?? {};
   const disc = (k: string) => (src(k).attempts ?? []).reduce((m, a) => Math.max(m, Number(a?.discovered) || 0), 0);
+  const tries = (k: string): LedgerAttempt[] =>
+    (src(k).attempts ?? []).slice(0, 6).map((a) => ({
+      scope: String(a?.scope ?? 'UNKNOWN'),
+      district: typeof a?.district === 'string' ? a.district.slice(0, 80) : null,
+      status: String(a?.status ?? 'UNKNOWN'),
+      error: typeof a?.error === 'string' ? a.error.slice(0, 160) : null,
+      discovered: Number(a?.discovered) || 0,
+      returned: Number(a?.returned) || 0,
+    }));
   const ledger: MarketplaceLedger = {
     searchesPerformed: ['MYHOME', 'SSGE'].reduce((s, k) => s + (src(k).attempts?.length ?? 0), 0),
-    myhome: { status: String(src('MYHOME').status ?? 'NOT_RUN'), listings: Number(src('MYHOME').listings ?? 0), discovered: disc('MYHOME') },
-    ssge: { status: String(src('SSGE').status ?? 'NOT_RUN'), listings: Number(src('SSGE').listings ?? 0), discovered: disc('SSGE') },
+    myhome: { status: String(src('MYHOME').status ?? 'NOT_RUN'), listings: Number(src('MYHOME').listings ?? 0), discovered: disc('MYHOME'), attempts: tries('MYHOME') },
+    ssge: { status: String(src('SSGE').status ?? 'NOT_RUN'), listings: Number(src('SSGE').listings ?? 0), discovered: disc('SSGE'), attempts: tries('SSGE') },
     crossPlatformDuplicatesRemoved: d.crossPlatformDuplicates,
     sameSourceDuplicatesRemoved: d.sameSourceDuplicates,
     alreadyInLane,

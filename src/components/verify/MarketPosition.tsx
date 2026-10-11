@@ -42,6 +42,48 @@ const Money: React.FC<{ v: number; cur: string; className?: string }> = ({ v, cu
   const money = useMoney();
   return <bdi dir="ltr" className={`tabular-nums ${className ?? ''}`}>{money(v, cur)}</bdi>;
 };
+/** A whole price (not per m²). */
+const Total: React.FC<{ v: number; cur: string; className?: string }> = ({ v, cur, className }) => {
+  const money = useMoney();
+  return <bdi dir="ltr" className={`tabular-nums ${className ?? ''}`}>{money(v, cur).replace(/\/m²$/, '')}</bdi>;
+};
+
+/* ───────────── no valuation: what is missing, what would help ───────────── */
+
+const Insufficient: React.FC<{ info: NonNullable<MarketView['insufficiency']> }> = ({ info }) => {
+  const { t } = useLanguage();
+  const vars: Record<string, string> = {
+    have: String(info.have),
+    need: String(info.need),
+    other: String(info.otherDistricts),
+    size: String(info.sizeOutOfBand),
+    min: info.sizeBand ? String(Math.round(info.sizeBand.min)) : '',
+    max: info.sizeBand ? String(Math.round(info.sizeBand.max)) : '',
+  };
+  return (
+    <div className="space-y-4 rounded-xl border border-[hsl(var(--gold-border))] bg-muted/30 p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-semibold break-words">{t('vfm_insufficient_title')}</p>
+          <p className="text-sm leading-6 text-foreground/85 break-words">{t('vfm_insufficient_body', vars)}</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-muted-foreground">{t('vfm_missing_title')}</p>
+        <ul className="list-disc space-y-1 ps-5 text-sm leading-6 text-foreground/85">
+          {info.missingKeys.map((k) => <li key={k} className="break-words">{t(k, vars)}</li>)}
+        </ul>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-muted-foreground">{t('vfm_next_title')}</p>
+        <ul className="list-disc space-y-1 ps-5 text-sm leading-6 text-foreground/85">
+          {info.nextStepKeys.map((k) => <li key={k} className="break-words">{t(k, vars)}</li>)}
+        </ul>
+      </div>
+    </div>
+  );
+};
 const day = (iso?: string | null) => {
   const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
   return m ? `${m[3]}.${m[2]}.${m[1]}` : null;
@@ -127,6 +169,8 @@ const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
           <p className="text-sm leading-6 text-foreground/85 break-words">{t('vrx_mkt_range_from', { count: String(h.count), tiers })}</p>
           {h.outliersTrimmed > 0 ? <p className="text-xs leading-5 text-muted-foreground">{t('vrx_mkt_trimmed', { count: String(h.outliersTrimmed) })}</p> : null}
         </div>
+      ) : h && view.insufficiency ? (
+        <Insufficient info={view.insufficiency} />
       ) : h ? (
         <div className="flex items-start gap-3 rounded-xl bg-muted/40 p-4">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -183,10 +227,15 @@ const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
             {view.comparables.map((c, i) => {
               const open = selected === i;
               const facts = [
-                c.districtKey ? t(c.districtKey) : null,
+                c.address ? null : c.districtKey ? t(c.districtKey) : null,
                 c.area ? `${Math.round(c.area)} m²` : null,
                 c.rooms ? t('vrx_mkt_rooms', { count: String(c.rooms) }) : null,
+                typeof c.floor === 'number' ? t('vfm_floor', { floor: String(c.floor) }) : null,
+                c.conditionKey ? t(c.conditionKey) : null,
+                c.statusKey ? t(c.statusKey) : null,
+                c.listingDate ? day(c.listingDate) : null,
               ].filter(Boolean).join(' · ');
+              const heading = c.project ?? (c.levelKey ? t(c.levelKey) : t(TIER_KEY[c.tier]));
               return (
                 <li key={i}>
                   <button
@@ -196,14 +245,23 @@ const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
                     className={`flex min-h-[52px] w-full items-center gap-3 px-4 py-2.5 text-start transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none ${open ? 'bg-muted/40' : ''}`}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium break-words">{t(TIER_KEY[c.tier])}</span>
+                      <span className="block text-sm font-medium break-words">{heading}</span>
+                      {c.project && c.levelKey ? <span className="block text-2xs font-semibold uppercase tracking-wide text-[hsl(var(--gold-ink))] break-words">{t(c.levelKey)}</span> : null}
+                      {c.address ? <span className="block text-xs text-foreground/80 break-words">{c.address}</span> : null}
                       {facts ? <span className="block text-xs text-muted-foreground break-words">{facts}</span> : null}
                     </span>
-                    <span className="shrink-0 text-sm font-semibold"><Money v={c.pricePerSqm} cur={c.currency} /></span>
+                    <span className="shrink-0 text-end">
+                      <span className="block text-sm font-semibold"><Money v={c.pricePerSqm} cur={c.currency} /></span>
+                      {c.totalPrice ? <span className="block text-2xs text-muted-foreground"><Total v={c.totalPrice} cur={c.currency} /></span> : null}
+                    </span>
                     <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground motion-safe:transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
                   </button>
                   {open ? (
                     <div className="space-y-2 px-4 pb-3 text-xs leading-5">
+                      {c.differences?.length ? (
+                        <p className="text-muted-foreground"><span className="font-semibold text-foreground">{t('vrx_mkt_differs')}: </span>{c.differences.map((d) => t(d.key, d.vars)).join(' · ')}</p>
+                      ) : null}
+                      {c.broader ? <p className="text-muted-foreground">{t('vfm_broader_note')}</p> : null}
                       {c.fits.length ? (
                         <p><span className="font-semibold">{t('vrx_mkt_why')}: </span>{c.fits.map((k) => t(k)).join(' · ')}</p>
                       ) : null}

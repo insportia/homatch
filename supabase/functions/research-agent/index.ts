@@ -35,6 +35,9 @@ import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransitio
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { VISUAL_ASSET_MAX } from '../../../src/verify/intelligence/visualAssets.ts';
+import { applyVisualRecovery, needsVisualRecovery, recoverableAttachments, recoveryMarker, storedUnpersistedVisuals, storedVisualRecord, tasApiOf, VISUAL_RECOVERY_SOURCE, type WorkerFileOutcome } from '../../../src/verify/intelligence/visualRecovery.ts';
+import { assessVisualQuality } from '../../../src/verify/intelligence/visualQuality.ts';
+import { ledgerFileFor, documentCachePath, DOCUMENT_BUCKET, DOCUMENT_URL_TTL_SECONDS } from '../../../src/verify/officialDocumentLibrary.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
 import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -2512,6 +2515,113 @@ async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
   } catch (e) {
     p._officialVisualsError = String((e as any)?.message || e).slice(0, 160);
   }
+}
+
+/*
+ * RECOVER SKIPPED OFFICIAL PICTURES (action `recover_visuals`, 2026-10-11).
+ *
+ * A finished job whose TAS run accounted native images as
+ * NOT_PROCESSED_BUDGET (older-case clock) or kept the newest cases' stored
+ * pictures out of its 24-asset gallery gets them back, once, without a new
+ * paid job: the stored ones are appended directly; the skipped attachments
+ * are fetched by id through the worker's POST /verify/tas-files and copied
+ * into the private bucket exactly as collectOfficialVisuals copies them
+ * (GET /research/visual/:sha → upload under tas/<sha>). Records are
+ * APPENDED with provenance; ledger entries become RECOVERED with the
+ * original outcome kept; result_json is written once, guarded by the
+ * `_visualRecovery` marker (compare-and-set). Charges nothing. Pure parts:
+ * src/verify/intelligence/visualRecovery.ts.
+ */
+const VISUAL_RECOVERY_BUDGET_MS = 50_000;
+async function recoverJobVisuals(sb: any, jobId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const t0 = Date.now();
+  const { data: j, error } = await sb.from('research_jobs').select('id,status,result_json').eq('id', jobId).maybeSingle();
+  if (error) return { status: 500, body: { error: 'read_failed' } };
+  if (!j) return { status: 404, body: { error: 'Job not found' } };
+  if (j.status !== 'COMPLETE' || !j.result_json) return { status: 409, body: { error: 'job_not_complete' } };
+  const rj = j.result_json;
+  const prev = recoveryMarker(rj);
+  if (!needsVisualRecovery(rj)) return { status: 200, body: { ok: true, skipped: true, marker: prev } };
+  const at = new Date().toISOString();
+  const stored = storedUnpersistedVisuals(rj, at);
+  const candidates = recoverableAttachments(rj, { exclude: stored.records.map((r: any) => String(r.attachedFileId ?? '')) });
+  const byFile = new Map(candidates.map((c) => [c.attachedFileId, c]));
+  const api = tasApiOf(rj);
+  const records: any[] = [...stored.records];
+  const outcomes: WorkerFileOutcome[] = [];
+  let skippedQuality = stored.skippedQuality;
+  let failure: string | null = null;
+  let incomplete = false;
+  if (candidates.length) {
+    try {
+      const res = await fetch(`${WORKER}/verify/tas-files`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${WT}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parcel: api?.searchCadastralCode ?? null,
+          budgetMs: 32_000,
+          files: candidates.map((c) => ({ attachedFileId: c.attachedFileId, documentId: c.documentId, motionId: c.motionId, fileName: c.fileName, context: c.context, caseCadastralCodes: c.caseCadastralCodes })),
+        }),
+        signal: AbortSignal.timeout(40_000),
+      });
+      if (!res.ok) throw new Error(`worker_http_${res.status}`);
+      const w = await res.json();
+      const visualsById = new Map<string, any>((Array.isArray(w?.visuals) ? w.visuals : []).map((v: any) => [String(v?.id), v]));
+      const copy = async (v: any): Promise<boolean> => {
+        const rec = storedVisualRecord(v, { recoveredAt: at, recoveredFrom: VISUAL_RECOVERY_SOURCE });
+        if (!rec) return false;
+        const r = await fetch(`${WORKER}/research/visual/${rec.id}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(20000) });
+        if (r.ok) {
+          const up = await sb.storage.from(VISUAL_BUCKET).upload(rec.storagePath, new Uint8Array(await r.arrayBuffer()), { contentType: rec.mime, upsert: false });
+          if (up.error && !/exist|duplicate/i.test(String(up.error?.message || ''))) return false;
+        } else {
+          const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: rec.id, limit: 1 });
+          if (!(Array.isArray(data) && data.length)) return false;
+        }
+        const c = byFile.get(String(v.attachedFileId));
+        records.push({ ...rec, exifDate: v.exifDate ?? null, caseDate: c?.caseDate ?? null });
+        return true;
+      };
+      for (const f of Array.isArray(w?.files) ? w.files : []) {
+        const id = String(f?.attachedFileId ?? '');
+        if (!byFile.has(id)) continue;
+        if (f.outcome !== 'RECOVERED') {
+          if (f.outcome === 'DEADLINE' || f.outcome === 'DOWNLOAD_FAILED') incomplete = true;
+          outcomes.push({ attachedFileId: id, outcome: String(f.outcome), reason: f.reason ?? null });
+          continue;
+        }
+        let kept = 0;
+        for (const vid of Array.isArray(f.visualIds) ? f.visualIds : []) {
+          const v = visualsById.get(String(vid));
+          if (!v) continue;
+          if (!assessVisualQuality(v).usable) {
+            skippedQuality++;
+            continue;
+          }
+          if (Date.now() - t0 > VISUAL_RECOVERY_BUDGET_MS) {
+            incomplete = true;
+            break;
+          }
+          if (await copy(v).catch(() => false)) kept++;
+          else incomplete = true;
+        }
+        outcomes.push({ attachedFileId: id, outcome: kept ? 'RECOVERED' : 'NO_VISUAL', visualIds: f.visualIds ?? [] });
+      }
+    } catch (e) {
+      failure = String((e as any)?.message || e).slice(0, 160);
+      incomplete = true;
+    }
+  }
+  const apply = { at, records, outcomes, requested: candidates.length, storedAppended: stored.records.length, skippedQuality, complete: !incomplete, error: failure };
+  const marker = applyVisualRecovery(rj, apply);
+  // Compare-and-set on the marker: a concurrent recovery never writes twice.
+  let q = sb.from('research_jobs').update({ result_json: rj }).eq('id', jobId);
+  q = prev ? q.eq('result_json->_visualRecovery->>at', prev.at) : q.is('result_json->_visualRecovery', null);
+  const { data: wrote, error: werr } = await q.select('id');
+  if (werr) return { status: 500, body: { error: 'write_failed' } };
+  if (!Array.isArray(wrote) || !wrote.length) return { status: 200, body: { ok: true, skipped: true, reason: 'concurrent_recovery' } };
+  console.log(JSON.stringify({ scope: 'official_visuals', event: 'visual_recovery', jobId, ms: Date.now() - t0, ...marker.counts, complete: marker.complete, error: failure }));
+  return { status: 200, body: { ok: true, marker, apply } };
 }
 
 /*
@@ -6632,6 +6742,30 @@ Deno.serve(async (req) => {
     // shared secret held in admin_settings, exactly as the existing
     // continuous-matching-worker cron is. Same shape, same blast radius.
     const preAuthBody = req.method === 'POST' ? await req.clone().json().catch(() => ({})) : {};
+    /*
+     * RECOVER SKIPPED OFFICIAL PICTURES — the job's owner, or verify-synthesis
+     * server-to-server with the service-role key compared in full (the same
+     * trust model verify-synthesis uses for its driver). See recoverJobVisuals.
+     */
+    if (String(preAuthBody?.action || '') === 'recover_visuals') {
+      const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', svcKey);
+      const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+      let same = !!svcKey && bearer.length === svcKey.length;
+      for (let i = 0; same && i < svcKey.length; i++) if (bearer.charCodeAt(i) !== svcKey.charCodeAt(i)) same = false;
+      const jobId = String(preAuthBody?.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'jobId required' }, 400);
+      if (!same) {
+        const { data: { user } } = await svc.auth.getUser(bearer);
+        if (!user) return json({ error: 'Invalid session' }, 401);
+        const { data: own } = await svc.from('research_jobs').select('id').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+        if (!own) return json({ error: 'Job not found' }, 404);
+      }
+      if (!WORKER || !WT) return json({ error: 'not configured' }, 503);
+      const r = await recoverJobVisuals(svc, jobId);
+      return json(r.body, r.status);
+    }
+
     if (String(preAuthBody?.action || '') === 'drive') {
       const svc = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
       const expected = await adminSetting(svc, 'verify_driver_token');
@@ -6984,6 +7118,65 @@ Deno.serve(async (req) => {
         };
       });
       return json({ jobs });
+    }
+    /*
+     * SECURE DOCUMENT VIEWER (document_file) — no charge.
+     *
+     * TAS's DownloadServlet answers many customer browsers with "Access
+     * Denied", so a report file is opened through HOMATCH instead: the caller
+     * must own the job (or be an admin) and the attachedFileId must be a
+     * viewable file in THAT job's own document ledger (officialDocumentLibrary
+     * ledgerFileFor — the same rule the page uses to show the button). The
+     * worker fetches it once (/verify/tas-file, token-only, bounded, polite);
+     * it is cached privately in verify-documents/files/<id>.<ext> and every
+     * request gets a fresh short-lived signed URL. Anonymous sessions are
+     * refused: their report is withheld until sign-in anyway.
+     */
+    if (b?.action === 'document_file') {
+      if (!user) return json({ error: 'sign_in_required' }, 401);
+      const jobId = String(b.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'bad_request' }, 400);
+      let { data: row } = await sb.from('research_jobs').select('id,docs:synthesis_json->officialDocuments').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+      if (!row) {
+        const { data: me } = await sb.from('users').select('is_admin').eq('auth_id', user.id).maybeSingle();
+        if (me?.is_admin) ({ data: row } = await sb.from('research_jobs').select('id,docs:synthesis_json->officialDocuments').eq('id', jobId).maybeSingle());
+      }
+      if (!row) return json({ error: 'not_found' }, 404);
+      const gate = ledgerFileFor((row as any).docs, b.attachedFileId);
+      if (!gate.ok) return json({ error: gate.reason }, gate.reason === 'not_in_report' ? 404 : gate.reason === 'bad_id' ? 400 : 403);
+      const id = String(b.attachedFileId);
+      const path = documentCachePath(id, gate.format);
+      const bucket = sb.storage.from(DOCUMENT_BUCKET);
+      const sign = async () => {
+        const { data, error } = await bucket.createSignedUrl(path, DOCUMENT_URL_TTL_SECONDS);
+        return error ? null : data?.signedUrl ?? null;
+      };
+      let url = await sign();
+      let cached = !!url;
+      if (!url) {
+        if (!WORKER || !WT) return json({ error: 'unavailable' }, 503);
+        let res: Response;
+        try {
+          res = await fetch(`${WORKER}/verify/tas-file?attachedFileId=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(55000) });
+        } catch {
+          return json({ error: 'source_unavailable' }, 502);
+        }
+        if (!res.ok) {
+          const reason = res.status === 413 ? 'too_large' : 'source_unavailable';
+          console.warn(JSON.stringify({ scope: 'verify_document_file', jobId, attachedFileId: id, workerStatus: res.status }));
+          return json({ error: reason }, res.status === 413 ? 413 : 502);
+        }
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        const contentType = res.headers.get('content-type') || 'application/octet-stream';
+        // Only a real pdf/jpeg/png is cached and served (the worker sniffs the bytes).
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(contentType)) return json({ error: 'not_viewable' }, 415);
+        const { error: upErr } = await bucket.upload(path, bytes, { contentType, upsert: true });
+        if (upErr) console.warn(JSON.stringify({ scope: 'verify_document_file', jobId, attachedFileId: id, upload: String(upErr.message ?? upErr) }));
+        url = await sign();
+        cached = false;
+      }
+      if (!url) return json({ error: 'source_unavailable' }, 502);
+      return json({ url, expiresIn: DOCUMENT_URL_TTL_SECONDS, fileName: gate.item.fileName, format: gate.format, cached });
     }
     /** The last thing every job response passes through. */
     /*

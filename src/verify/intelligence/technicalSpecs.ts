@@ -35,21 +35,36 @@ export interface TechnicalSpec {
   sourceKind: 'FORM' | 'TEXT';
 }
 
-type Kind = 'AREA' | 'LENGTH' | 'COEFF' | 'COUNT' | 'TEXT' | 'CLASS';
+type Kind = 'AREA' | 'VOLUME' | 'LENGTH' | 'COEFF' | 'COUNT' | 'TEXT' | 'CLASS';
 interface SpecRule { key: string; label: string; kind: Kind; re: RegExp }
 
 /** Order matters: the first matching rule wins. */
 const RULES: SpecRule[] = [
-  { key: 'k2CalculationArea', label: 'კ-2 კოეფიციენტის გაანგარიშების ფართობი', kind: 'AREA', re: /(?:კ|k)\s*-?\s*2[^\n]{0,30}(?:ფართ|area|გაანგარიშ)|(?:ფართ|area)[^\n]{0,30}(?:კ|k)\s*-?\s*2\b/iu },
-  { key: 'k1Area', label: 'კ-1 კოეფიციენტის ფართობი (განაშენიანება)', kind: 'AREA', re: /(?:კ|k)\s*-?\s*1[^\n]{0,30}(?:ფართ|area)|განაშენიანების\s+ფართ|footprint/iu },
-  { key: 'landscapingArea', label: 'გამწვანების ფართობი', kind: 'AREA', re: /(?:გამწვანებ|ლანდშაფტ)[^\n]{0,30}ფართ|(?:კ|k)\s*-?\s*3[^\n]{0,30}(?:ფართ|area)|landscap\w*\s+area/iu },
+  /*
+   * The city form states each coefficient's AREA on a label that runs over
+   * two lines (".კ1 განაშენიანების კოეფიციენტის საანგარიშო ფართობი (კვ.მ და
+   * ასახული კოეფიციენტში). : 1170.8 კ1=0.5"); joinWrappedLabels() rejoins it,
+   * and the windows below are wide enough for the full label.
+   */
+  { key: 'k2CalculationArea', label: 'კ-2 კოეფიციენტის გაანგარიშების ფართობი', kind: 'AREA', re: /(?:კ|k)\s*-?\s*2[^\n]{0,70}(?:ფართ|area|გაანგარიშ)|(?:ფართ|area)[^\n]{0,30}(?:კ|k)\s*-?\s*2\b/iu },
+  { key: 'k1Area', label: 'კ-1 კოეფიციენტის ფართობი (განაშენიანება)', kind: 'AREA', re: /(?:კ|k)\s*-?\s*1[^\n]{0,70}(?:ფართ|area)|footprint/iu },
+  { key: 'landscapingArea', label: 'კ-3 კოეფიციენტის ფართობი (გამწვანება)', kind: 'AREA', re: /(?:კ|k)\s*-?\s*3[^\n]{0,70}(?:ფართ|area)|(?:გამწვანებ|ლანდშაფტ)[^\n]{0,60}ფართ|landscap\w*\s+area/iu },
+  /*
+   * "განაშენიანების ფართობი" ALONE is the form's own built-up figure, not the
+   * K-1 footprint (.601: 7 793.7 m² on a 2 145 m² plot whose K-1 area is
+   * 1 170.8 m²). It is kept under its own key so nothing computes K-1 from it.
+   */
+  { key: 'builtUpArea', label: 'განაშენიანების ფართობი (ფორმის მიხედვით)', kind: 'AREA', re: /^\.?\s*განაშენიანების\s+ფართ/iu },
   { key: 'landArea', label: 'მიწის ნაკვეთის ფართობი', kind: 'AREA', re: /(?:მიწის\s+)?ნაკვეთის\s+ფართ|land\s+(?:plot\s+)?area|площадь\s+участка/iu },
   { key: 'residentialArea', label: 'საცხოვრებელი ფართობი', kind: 'AREA', re: /საცხოვრებელი\s+(?:ფართ|ფუნქციის\s+ფართ)|residential\s+area/iu },
   { key: 'officeArea', label: 'საოფისე ფართობი', kind: 'AREA', re: /საოფისე\s+ფართ|ოფისის\s+ფართ|office\s+area/iu },
   { key: 'commercialArea', label: 'კომერციული ფართობი', kind: 'AREA', re: /(?:კომერციული|სავაჭრო)\s+ფართ|commercial\s+area/iu },
   { key: 'summerArea', label: 'საზაფხულო ფართობი (აივნები, ტერასები)', kind: 'AREA', re: /საზაფხულო\s+ფართ|summer\s+area/iu },
+  { key: 'stairArea', label: 'კიბის უჯრედებისა და სადარბაზოების ფართობი', kind: 'AREA', re: /კიბის\s+უჯრედ[^\n]{0,40}ფართ|სადარბაზოს\s+ფართ|stair\w*\s+(?:and\s+lobby\s+)?area/iu },
+  { key: 'auxiliaryArea', label: 'დამხმარე ფართობი', kind: 'AREA', re: /დამხმარე\s+ფართ|auxiliary\s+area/iu },
   { key: 'parkingArea', label: 'ავტოსადგომის ფართობი', kind: 'AREA', re: /(?:ავტოსადგომ|პარკინგ)[^\n]{0,20}ფართ|parking\s+area/iu },
   { key: 'totalArea', label: 'საერთო ფართობი', kind: 'AREA', re: /საერთო\s+ფართ|სამშენებლო\s+ფართ|total\s+(?:floor\s+)?area/iu },
+  { key: 'buildingVolume', label: 'სამშენებლო მოცულობა', kind: 'VOLUME', re: /სამშენებლო\s+მოცულობ|building\s+volume/iu },
   { key: 'structuralHeight', label: 'კონსტრუქციული სიმაღლე', kind: 'LENGTH', re: /კონსტრუქციული\s+სიმაღლ|structural\s+height/iu },
   { key: 'undergroundDepth', label: 'მიწისქვეშა ნაწილის სიღრმე', kind: 'LENGTH', re: /მიწისქვეშა[^\n]{0,30}სიღრმ|ჩაღრმავებ|underground\s+depth/iu },
   { key: 'heightAboveGround', label: 'მიწისზედა სიმაღლე', kind: 'LENGTH', re: /მიწისზედა[^\n]{0,30}სიმაღლ|შენობის\s+სიმაღლ|^სიმაღლე$|height\s+above\s+ground|building\s+height/iu },
@@ -68,7 +83,7 @@ const RULES: SpecRule[] = [
   { key: 'buildingFunction', label: 'შენობის ფუნქცია', kind: 'TEXT', re: /შენობის\s+(?:ფუნქცი|დანიშნულებ)|ფუნქციური\s+დანიშნულებ|building\s+use/iu },
 ];
 
-const UNIT: Record<Kind, string | null> = { AREA: 'მ²', LENGTH: 'მ', COEFF: null, COUNT: null, TEXT: null, CLASS: null };
+const UNIT: Record<Kind, string | null> = { AREA: 'მ²', VOLUME: 'მ³', LENGTH: 'მ', COEFF: null, COUNT: null, TEXT: null, CLASS: null };
 
 /** "2,145 მ²" → 2145; "5 242,3" → 5242.3; "0,5" → 0.5; "22.75 მ" → 22.75. */
 export function parseNumber(raw: string): number | null {
@@ -86,6 +101,7 @@ export function parseNumber(raw: string): number | null {
 function plausible(kind: Kind, n: number | null, value: string): boolean {
   switch (kind) {
     case 'AREA': return n !== null && n > 0 && n < 1_000_000;
+    case 'VOLUME': return n !== null && n > 0 && n < 10_000_000;
     case 'LENGTH': return n !== null && n > 0 && n < 500;
     case 'COEFF': return n !== null && n >= 0 && n < 20;
     case 'COUNT': return n !== null && Number.isInteger(n) && n >= 0 && n < 5000;
@@ -113,6 +129,30 @@ function normValue(rule: SpecRule, raw: string): { value: string; numeric: numbe
 }
 
 const LINE = /^(.{2,120}?)\s*(?:[:：=\t|]|\s[–—-]\s)\s*(.{1,200})$/u;
+
+/**
+ * The city form wraps long labels: ".კ2 … საანგარიშო ფართობი (კვ.მ და" /
+ * "ასახული კოეფიციენტში). : 5242.3 კ2=2.4", or puts the value alone on the
+ * next line (": 797.9 კ3=0.4"). A dotted form label without its value is
+ * joined with up to two following lines until it has one. Whitespace is
+ * normalised on the way.
+ */
+export function joinWrappedLabels(lines: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    let cur = lines[i].replace(/\s+/g, ' ').trim();
+    let joined = 0;
+    while (/^\.\S/u.test(cur) && !LINE.test(cur) && joined < 2 && i + 1 < lines.length) {
+      const next = lines[i + 1].replace(/\s+/g, ' ').trim();
+      if (!next || /^\.\S/u.test(next)) break;
+      cur = `${cur} ${next}`;
+      i++;
+      joined++;
+    }
+    out.push(cur);
+  }
+  return out;
+}
 
 function statusOf(c: CaseSource, nowDay: string | null, latestApproval: string): SpecStatus {
   const s = caseDecisionState(c, nowDay);
@@ -143,11 +183,14 @@ export function extractTechnicalSpecs(reportOrCases: unknown, nowIso: string | n
       if (!v || seen.has(rule.key)) return;
       seen.add(rule.key);
       occ.push({ rule, ...v, caseRef: c.caseRef, date: c.date, source, sourceKind: kind, status });
+      // "1170.8 კ1=0.5": the coefficient itself rides on its area's line.
+      const coeff = /(?:კ|k)\s*-?\s*([123])\s*=\s*(\d+(?:[.,]\d+)?)/iu.exec(value);
+      if (coeff && rule.kind === 'AREA') add(`კ-${coeff[1]} კოეფიციენტი`, coeff[2], kind, source);
     };
     for (const f of c.fields) add(f.label, f.value, 'FORM', c.publicUrl);
     for (const t of c.texts)
-      for (const line of t.text.split(/\n/).slice(0, 6000)) {
-        const m = LINE.exec(line.replace(/\s+/g, ' ').trim());
+      for (const line of joinWrappedLabels(t.text.split(/\n/).slice(0, 6000))) {
+        const m = LINE.exec(line);
         if (m) add(m[1], m[2], 'TEXT', t.sourceUrl ?? c.publicUrl);
       }
   }

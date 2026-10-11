@@ -70,6 +70,40 @@ export interface MarketComparableView {
   fits: string[];
   differs: string[];
   expired: boolean;
+  /*
+   * The curated hierarchy fields (2026-10-11 final polish). Present when the
+   * stored market carries `hierarchy`; older shapes leave them null/empty.
+   */
+  /** i18n key for the hierarchy level (same project … broader nearby). */
+  levelKey?: string | null;
+  /** Level 5: shown for orientation only, never priced. */
+  broader?: boolean;
+  /** Real project / building name, only when the listing stated one. */
+  project?: string | null;
+  /** Street-level public listing address. */
+  address?: string | null;
+  floor?: number | null;
+  conditionKey?: string | null;
+  statusKey?: string | null;
+  listingDate?: string | null;
+  totalPrice?: number | null;
+  /** Plain differences from the subject, as i18n keys with variables. */
+  differences?: Array<{ key: string; vars?: Record<string, string> }>;
+}
+
+/** Why there is no valuation number, and what would make one possible. */
+export interface MarketInsufficiency {
+  have: number;
+  need: number;
+  /** Listings left out because they are in another or an unknown district (no prices shown). */
+  otherDistricts: number;
+  /** Local listings left out because they are far from the subject's size. */
+  sizeOutOfBand: number;
+  sizeBand: { min: number; max: number } | null;
+  subjectAreaKnown: boolean;
+  /** i18n keys, in order: what is missing, then what would make a valuation possible. */
+  missingKeys: string[];
+  nextStepKeys: string[];
 }
 
 export interface MarketView {
@@ -82,6 +116,8 @@ export interface MarketView {
   askingRange: { min: number; max: number; median: number; count: number; currency: string } | null;
   comparables: MarketComparableView[];
   context: Array<{ tier: MarketTier; median: number; count: number }>;
+  /** Present only when the deterministic valuation is INSUFFICIENT_EVIDENCE. */
+  insufficiency?: MarketInsufficiency | null;
 }
 
 const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
@@ -91,6 +127,128 @@ const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
 
 /** Max comparables in the interactive comparison. */
 export const MAX_COMPARABLES = 6;
+
+/* ------------------------------------------------------------------ *
+ * The curated hierarchy set                                            *
+ * ------------------------------------------------------------------ */
+
+const LEVEL_TIER: Record<number, MarketTier> = { 1: 'SAME_PROJECT', 2: 'SAME_STREET', 3: 'SAME_STREET', 4: 'PEER_PROJECT', 5: 'SAME_DISTRICT' };
+export const LEVEL_I18N: Record<number, string> = {
+  1: 'vfm_level_same_project',
+  2: 'vfm_level_same_address',
+  3: 'vfm_level_same_street',
+  4: 'vfm_level_premium_peer',
+  5: 'vfm_level_broader',
+};
+const CONDITION_I18N: Record<string, string> = {
+  BLACK_FRAME: 'vfm_cond_black_frame',
+  GREEN_FRAME: 'vfm_cond_green_frame',
+  WHITE_FRAME: 'vfm_cond_white_frame',
+  RENOVATED: 'vfm_cond_renovated',
+  NEWLY_RENOVATED: 'vfm_cond_newly_renovated',
+};
+const LADDER = ['BLACK_FRAME', 'GREEN_FRAME', 'WHITE_FRAME', 'RENOVATED', 'NEWLY_RENOVATED'];
+const STATUS_I18N: Record<string, string> = { ACTIVE: 'vfm_status_active', EXPIRED: 'vfm_status_expired', UNKNOWN: 'vfm_status_unknown' };
+
+const isoDay = (v: unknown): string | null => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+/** A public street address only: no URL, no long free text. */
+const cleanAddress = (v: unknown): string | null => {
+  if (typeof v !== 'string') return null;
+  const s = v.replace(/\s+/g, ' ').trim();
+  return s && s.length <= 140 && !/https?:|www\./i.test(s) ? s : null;
+};
+const cleanName = (v: unknown): string | null => {
+  if (typeof v !== 'string') return null;
+  const s = v.replace(/\s+/g, ' ').trim();
+  return s && s.length <= 80 && !/https?:|www\.|@/i.test(s) ? s : null;
+};
+
+/** Plain differences from the subject: size, condition, listing status. */
+export function differencesFromSubject(
+  c: { area?: unknown; condition?: unknown; state?: unknown; freshness?: unknown; priceKind?: unknown },
+  subject: { area?: unknown; condition?: unknown },
+): Array<{ key: string; vars?: Record<string, string> }> {
+  const out: Array<{ key: string; vars?: Record<string, string> }> = [];
+  const a = n(c.area);
+  const sa = n(subject.area);
+  if (a && sa) {
+    const pct = Math.round(((a - sa) / sa) * 100);
+    if (Math.abs(pct) >= 5) out.push({ key: pct > 0 ? 'vfm_diff_larger' : 'vfm_diff_smaller', vars: { pct: String(Math.abs(pct)) } });
+    else out.push({ key: 'vfm_diff_size_similar' });
+  }
+  const cg = typeof c.condition === 'string' ? LADDER.indexOf(c.condition) : -1;
+  const sg = typeof subject.condition === 'string' ? LADDER.indexOf(subject.condition) : -1;
+  if (cg >= 0 && sg >= 0 && cg !== sg) out.push({ key: cg > sg ? 'vfm_diff_better_condition' : 'vfm_diff_worse_condition' });
+  else if (cg < 0) out.push({ key: 'vfm_diff_condition_unknown' });
+  if (c.state === 'EXPIRED') out.push({ key: 'vfm_diff_not_active' });
+  else if (c.state !== 'ACTIVE') out.push({ key: 'vfm_diff_status_unconfirmed' });
+  if (c.freshness === 'UNDATED') out.push({ key: 'vfm_diff_undated' });
+  if (c.priceKind !== 'TRANSACTION') out.push({ key: 'vfm_diff_asking' });
+  return out;
+}
+
+function hierarchyComparables(m: Record<string, any>, currency: string): MarketComparableView[] | null {
+  const h = obj(m.hierarchy);
+  if (!Array.isArray(h.comparables)) return null;
+  const subject = { area: m.subjectArea, condition: m.subjectCondition };
+  return arr(h.comparables)
+    .map(obj)
+    .filter((c) => [1, 2, 3, 4, 5].includes(c.level) && n(c.pricePerSqm) && c.dealType !== 'RENT')
+    .sort((a, b) => a.level - b.level)
+    .slice(0, MAX_COMPARABLES)
+    .map((c): MarketComparableView => {
+      const area = n(c.area);
+      const total = n(c.totalPrice);
+      return {
+        tier: LEVEL_TIER[c.level],
+        pricePerSqm: Math.round(c.pricePerSqm),
+        currency: typeof c.currency === 'string' && c.currency ? c.currency : currency,
+        area,
+        rooms: n(c.rooms),
+        districtKey: areaKey(c.district),
+        fits: [],
+        differs: [],
+        expired: c.state === 'EXPIRED',
+        levelKey: LEVEL_I18N[c.level],
+        broader: c.level === 5,
+        project: cleanName(c.project),
+        address: cleanAddress(c.address),
+        floor: typeof c.floor === 'number' && Number.isFinite(c.floor) ? c.floor : null,
+        conditionKey: typeof c.condition === 'string' ? CONDITION_I18N[c.condition] ?? null : null,
+        statusKey: typeof c.state === 'string' ? STATUS_I18N[c.state] ?? null : null,
+        listingDate: isoDay(c.listingDate),
+        totalPrice: total ?? (area ? Math.round(c.pricePerSqm * area) : null),
+        differences: differencesFromSubject(c, subject),
+      };
+    });
+}
+
+/**
+ * INSUFFICIENT_EVIDENCE, explained: how many defensible comparables there
+ * are against how many are needed, what was set aside and why, and what
+ * evidence would make a valuation possible. Never a number for the home.
+ */
+export function insufficiencyOf(m: Record<string, any>): MarketInsufficiency | null {
+  const v = obj(m.valuation);
+  if (v.state !== 'INSUFFICIENT_EVIDENCE') return null;
+  const h = obj(m.hierarchy);
+  const ex = obj(h.excluded);
+  const sb = obj(v.sizeBand ?? h.sizeBand);
+  const sizeBand = n(sb.min) && n(sb.max) ? { min: sb.min as number, max: sb.max as number } : null;
+  const have = Number(v.defensibleComparables) || 0;
+  const need = Number(v.minimumComparables) || 3;
+  const otherDistricts = (Number(ex.UNRELATED_DISTRICT) || 0) + (Number(ex.DISTRICT_UNKNOWN) || 0);
+  const sizeOutOfBand = Number(ex.SIZE_OUT_OF_BAND) || 0;
+  const subjectAreaKnown = !!n(m.subjectArea) || !!sizeBand;
+  const missingKeys = ['vfm_missing_local'];
+  if (!subjectAreaKnown) missingKeys.push('vfm_missing_area');
+  if (sizeOutOfBand > 0) missingKeys.push('vfm_missing_size');
+  if (otherDistricts > 0) missingKeys.push('vfm_missing_other_districts');
+  missingKeys.push('vfm_missing_transactions');
+  const nextStepKeys = ['vfm_next_same_project', 'vfm_next_same_street', 'vfm_next_registered_sales', 'vfm_next_developer_prices'];
+  if (!subjectAreaKnown) nextStepKeys.push('vfm_next_subject_area');
+  return { have, need, otherDistricts, sizeOutOfBand, sizeBand, subjectAreaKnown, missingKeys, nextStepKeys };
+}
 
 export function marketView(raw: unknown): MarketView | null {
   const m = obj(raw);
@@ -125,7 +283,9 @@ export function marketView(raw: unknown): MarketView | null {
     : null;
 
   const pool = arr(m.ranked).length ? arr(m.ranked) : arr(m.closest);
-  const comparables = pool
+  // The curated location hierarchy, when the stored market carries it; the
+  // older ranked pool only for reports built before it existed.
+  const comparables = hierarchyComparables(m, currency) ?? pool
     .map(obj)
     .filter((c) => c.headlineEligible === true && c.outlier !== true && isTier(c.tier) && c.tier !== 'WIDER_MARKET'
       && !(Array.isArray(c.exclusions) && c.exclusions.length) && n(c.pricePerSqm))
@@ -150,5 +310,5 @@ export function marketView(raw: unknown): MarketView | null {
     .filter((t) => t.contextOnly === true && isTier(t.tier) && t.tier !== 'WIDER_MARKET' && n(t.median) && Number(t.count) > 0)
     .map((t) => ({ tier: t.tier as MarketTier, median: t.median as number, count: Number(t.count) }));
 
-  return { currency, headline, asking, askingRange, comparables, context };
+  return { currency, headline, asking, askingRange, comparables, context, insufficiency: insufficiencyOf(m) };
 }

@@ -1,8 +1,11 @@
 // HOMATCH Verify — "Explore the property".
 //
 // The official visuals of the project as one place to look: a large stage,
-// category tabs (only the categories that hold something), a thumbnail strip,
-// and a full-screen viewer with zoom, pan and swipe.
+// the project's story in chapters (original concept → approved designs →
+// construction → latest renders → current condition; only the chapters that
+// hold something), a thumbnail strip, and a full-screen viewer with zoom,
+// pan and swipe. Every card says what it is and when it was filed
+// ("Project render · from the September 2026 application").
 //
 // THE RULES (held in src/verify/visualCatalog.ts, tested there):
 //   - only signed storage URLs are rendered; anything else is dropped
@@ -21,13 +24,14 @@ import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOf
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   catalogVisuals,
-  categoryTabs,
   heroVisual,
   scopeKeyFor,
+  visualChronology,
   BADGE_KEY,
-  CATEGORY_KEY,
+  CHAPTER_KEY,
   type CatalogVisual,
-  type VisualCategory,
+  type ChronoVisual,
+  type VisualChapter,
 } from '@/verify/visualCatalog';
 import { safeHref } from '@/verify/reportPresentation';
 import { OfficialLink } from './OfficialLink';
@@ -79,6 +83,16 @@ const Badge: React.FC<{ v: CatalogVisual; className?: string; wrap?: boolean }> 
     </span>
   );
 };
+
+/** "Project render · from the September 2026 application": what it is, then when it was filed. */
+function useChronoLabel() {
+  const { t } = useLanguage();
+  return React.useCallback((c: ChronoVisual | undefined | null): string => {
+    if (!c) return '';
+    const vars = c.dated.vars.month ? { ...c.dated.vars, month: t(`vfv_month_${c.dated.vars.month}`) } : c.dated.vars;
+    return `${t(c.typeKey)} · ${t(c.dated.key, vars)}`;
+  }, [t]);
+}
 
 function useVisualText(clean: Clean) {
   const { t } = useLanguage();
@@ -196,7 +210,9 @@ const Lightbox: React.FC<{
   versionBadge: (v: CatalogVisual) => string | null;
   cases?: VisualCaseMap;
   identityUnresolved?: boolean;
-}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge, cases, identityUnresolved }) => {
+  /** The chronology label ("Project render · from the … application"), when the caller has one. */
+  labelOf?: (v: CatalogVisual) => string | null;
+}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge, cases, identityUnresolved, labelOf }) => {
   const { t, lang } = useLanguage();
   const rtl = lang === 'ar' || lang === 'he';
   const v = items[index];
@@ -382,6 +398,7 @@ const Lightbox: React.FC<{
               </span>
             ) : null}
           </div>
+          {labelOf?.(v) ? <p className="mt-1 truncate text-xs font-semibold text-[hsl(38_92%_66%)]">{labelOf(v)}</p> : null}
           <h2 id="vx-lightbox-title" className="mt-1 truncate text-sm font-medium !text-[hsl(0_0%_96%)]" dir="auto">{tx.title}</h2>
         </div>
         <button type="button" className={btn} onClick={() => zoomTo(scale / 1.4)} disabled={scale <= MIN_SCALE} aria-label={t('vrx_lightbox_zoom_out')}>
@@ -497,7 +514,7 @@ const Lightbox: React.FC<{
                   decoding="async"
                   referrerPolicy="no-referrer"
                   draggable={false}
-                  className={`h-full w-full ${it.technical ? 'bg-white object-contain' : 'object-cover'}`}
+                  className="h-full w-full object-contain"
                 />
               </button>
             );
@@ -531,21 +548,26 @@ export const VisualExplorer: React.FC<{
   const [broken, setBroken] = React.useState<Set<string>>(() => new Set());
   const onBroken = React.useCallback((id: string) => setBroken((b) => (b.has(id) ? b : new Set(b).add(id))), []);
   const usable = React.useMemo(() => catalog.filter((v) => !broken.has(v.id)), [catalog, broken]);
-  const tabs = React.useMemo(() => categoryTabs(usable), [usable]);
   const hero = React.useMemo(() => heroVisual(usable), [usable]);
   const text = useVisualText(clean);
+  const label = useChronoLabel();
   const versionBadge = useVersionBadge(history);
   const cases = React.useMemo(() => visualCaseMap(docs), [docs]);
+  // The project's story: chapters by filing date (visualCatalog.ts).
+  const chrono = React.useMemo(() => visualChronology(usable, cases, new Date().toISOString().slice(0, 10)), [usable, cases]);
+  const tabs = React.useMemo(() => chrono.groups.map((g) => ({ chapter: g.chapter, count: g.items.length })), [chrono]);
+  const chronoOf = React.useMemo(() => new Map(chrono.groups.flatMap((g) => g.items.map((i) => [i.visual.id, i] as const))), [chrono]);
 
-  const [tab, setTab] = React.useState<VisualCategory | null>(null);
+  const [tab, setTab] = React.useState<VisualChapter | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [lightbox, setLightbox] = React.useState<number | null>(null);
   const [stageLoaded, setStageLoaded] = React.useState<Set<string>>(() => new Set());
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
-  const current: VisualCategory | null = tab && tabs.some((x) => x.category === tab) ? tab : hero?.category ?? tabs[0]?.category ?? null;
-  const inTab = usable.filter((v) => v.category === current);
-  const active = inTab.find((v) => v.id === activeId) ?? (hero && hero.category === current ? hero : inTab[0]) ?? null;
+  const heroChapter = hero ? chronoOf.get(hero.id)?.chapter ?? null : null;
+  const current: VisualChapter | null = tab && tabs.some((x) => x.chapter === tab) ? tab : heroChapter ?? tabs[0]?.chapter ?? null;
+  const inTab = chrono.groups.find((g) => g.chapter === current)?.items.map((i) => i.visual) ?? [];
+  const active = inTab.find((v) => v.id === activeId) ?? (hero && heroChapter === current ? hero : inTab[0]) ?? null;
 
   if (!usable.length) {
     return (
@@ -559,7 +581,7 @@ export const VisualExplorer: React.FC<{
   const selectTab = (i: number) => {
     const next = tabs[(i + tabs.length) % tabs.length];
     if (!next) return;
-    setTab(next.category);
+    setTab(next.chapter);
     setActiveId(null);
     tabRefs.current[(i + tabs.length) % tabs.length]?.focus();
   };
@@ -574,7 +596,10 @@ export const VisualExplorer: React.FC<{
 
   const at = active ? text(active) : null;
   const version = active ? versionBadge(active) : null;
-  const ratio = active?.width && active?.height ? `${active.width} / ${active.height}` : '16 / 10';
+  const activeChrono = active ? chronoOf.get(active.id) : null;
+  // A tall picture would push the page: the stage keeps a sane ratio and the
+  // whole image is shown inside it (object-contain on a navy matte).
+  const ratio = active?.width && active?.height ? `${Math.max(active.width / active.height, 0.8)}` : '16 / 10';
 
   const caseCount = new Set(usable.map((v) => v.documentId).filter(Boolean)).size;
   return (
@@ -612,7 +637,7 @@ export const VisualExplorer: React.FC<{
               referrerPolicy="no-referrer"
               onLoad={() => setStageLoaded((l) => (l.has(active.id) ? l : new Set(l).add(active.id)))}
               onError={() => onBroken(active.id)}
-              className={`relative h-full w-full ${active.technical ? 'bg-white object-contain' : 'object-cover'} motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]`}
+              className="relative h-full w-full object-contain motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]"
             />
             <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
             <span className="absolute start-3 end-3 top-3 flex flex-wrap items-center gap-2">
@@ -633,7 +658,13 @@ export const VisualExplorer: React.FC<{
             </span>
           </button>
           <figcaption className="space-y-1">
+            {activeChrono ? (
+              <p className="text-sm font-semibold leading-6 text-[hsl(var(--gold-ink))] break-words" data-visual-label>{label(activeChrono)}</p>
+            ) : null}
             <p className="text-[15px] font-medium leading-6 break-words" dir="auto">{at.title}</p>
+            {activeChrono && (activeChrono.type === 'RENDER' || activeChrono.type === 'IMAGE') ? (
+              <p className="text-xs leading-5 text-muted-foreground break-words">{t(activeChrono.type === 'RENDER' ? 'vfv_render_not_evidence' : 'vfv_image_type_note')}</p>
+            ) : null}
             <Meta v={active} />
             <SourceRow v={active} cases={cases} />
             {active.explanation?.buyerMeaning ? (
@@ -643,35 +674,44 @@ export const VisualExplorer: React.FC<{
         </figure>
       ) : null}
 
-      {/* Category tabs — only the ones that hold something */}
+      {/* The story's chapters — only the ones that hold something. The chips
+          scroll sideways inside their own box; the page never does. */}
       {tabs.length > 1 ? (
-        <div role="tablist" aria-label={t('vrx_explore_tabs')} className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+        <div role="tablist" aria-label={t('vfv_chapters_label')} className="flex min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:thin]">
           {tabs.map((x, i) => {
-            const selected = x.category === current;
+            const selected = x.chapter === current;
             return (
               <button
-                key={x.category}
+                key={x.chapter}
                 ref={(el) => { tabRefs.current[i] = el; }}
                 type="button"
                 role="tab"
-                id={`vx-tab-${x.category}`}
+                id={`vx-tab-${x.chapter}`}
                 aria-selected={selected}
                 aria-controls="vx-panel"
                 tabIndex={selected ? 0 : -1}
                 onKeyDown={(e) => onTabKey(e, i)}
-                onClick={() => { setTab(x.category); setActiveId(null); }}
+                onClick={() => { setTab(x.chapter); setActiveId(null); }}
                 className={`inline-flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none ${
                   selected
                     ? 'border-[hsl(222_47%_11%)] bg-[hsl(222_47%_11%)] text-white'
                     : 'border-border bg-card text-foreground/80 hover:border-[hsl(var(--gold-border))] hover:text-foreground'
                 }`}
               >
-                {t(CATEGORY_KEY[x.category])}
+                {t(CHAPTER_KEY[x.chapter])}
                 <span className={`tabular-nums ${selected ? 'text-[hsl(38_92%_66%)]' : 'text-muted-foreground'}`}>{x.count}</span>
               </button>
             );
           })}
         </div>
+      ) : null}
+      {/* No recent photograph on file: said plainly, once. */}
+      {chrono.noCurrentPhotos ? (
+        <p className="text-xs leading-5 text-muted-foreground break-words" data-no-current-photos>
+          {chrono.newestPhotoDate
+            ? t('vfv_no_current_photos_since', { year: chrono.newestPhotoDate.slice(0, 4) })
+            : t('vfv_no_current_photos')}
+        </p>
       ) : null}
 
       {/* Thumbnails */}
@@ -684,13 +724,14 @@ export const VisualExplorer: React.FC<{
         >
           {inTab.map((v) => {
             const vt = text(v);
+            const cl = chronoOf.get(v.id);
             const on = v.id === active?.id;
             return (
               <button
                 key={v.id}
                 type="button"
                 aria-pressed={on}
-                aria-label={vt.alt}
+                aria-label={cl ? `${label(cl)} — ${vt.alt}` : vt.alt}
                 onClick={() => setActiveId(v.id)}
                 className={`group relative h-[72px] w-[96px] shrink-0 overflow-hidden rounded-xl bg-[hsl(222_47%_11%)] ring-offset-2 ring-offset-background transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)] motion-reduce:transition-none sm:h-[84px] sm:w-[120px] ${
                   on ? 'ring-2 ring-[hsl(38_92%_54%)]' : 'opacity-80 hover:opacity-100'
@@ -705,10 +746,10 @@ export const VisualExplorer: React.FC<{
                   decoding="async"
                   referrerPolicy="no-referrer"
                   onError={() => onBroken(v.id)}
-                  className={`h-full w-full ${v.technical ? 'bg-white object-contain' : 'object-cover'}`}
+                  className="h-full w-full object-contain"
                 />
                 <span className="absolute inset-x-1 bottom-1 truncate rounded-md bg-black/60 px-1.5 py-0.5 text-start text-2xs font-medium leading-4 text-white">
-                  {vt.label}
+                  {cl ? t(cl.typeKey) : vt.label}
                 </span>
               </button>
             );
@@ -729,6 +770,7 @@ export const VisualExplorer: React.FC<{
           versionBadge={versionBadge}
           cases={cases}
           identityUnresolved={identityUnresolved}
+          labelOf={(v) => label(chronoOf.get(v.id)) || null}
         />
       ) : null}
     </div>

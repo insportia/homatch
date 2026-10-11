@@ -95,3 +95,10 @@ test('a phone: the stick stays put in its corner, a fingertip finds what it mean
   const { TOUCH_LOOK_RAD_PER_PX, TOUCH_PACE } = await import('../player.ts');
   assert.ok(TOUCH_LOOK_RAD_PER_PX >= 0.0035 && TOUCH_PACE > 1 && TOUCH_PACE <= 1.25);
 });
+
+test('a phone: the feature row is one line that fits (time steps through its four), the door hint sits below it', () => {
+  const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');
+  assert.match(overlay, /flex flex-nowrap items-center justify-center gap-1\.5" data-testid="walk-features"/);
+  assert.match(overlay, /onEnv\(ENVS\[\(ENVS\.findIndex\(\(x\) => x\.id === env\) \+ 1\) % ENVS\.length\]\.id\)/);
+  assert.match(overlay, /touch \? 'top-\[6\.75rem\]' : 'top-28'\)\} data-testid="walk-door-hint"/);
+});

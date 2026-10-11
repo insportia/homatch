@@ -286,7 +286,8 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
           hidden={overlayOpen || seated || !!live.run} />
       ) : null}
       {doorHint === 'SHOW' && !overlayOpen && !live.run ? (
-        <p role="status" className="pointer-events-none absolute start-1/2 top-28 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-[#0C1119]/85 px-4 py-2 text-center text-[13px] text-white shadow-lg ring-1 ring-white/15 rtl:translate-x-1/2" data-testid="walk-door-hint">
+        // Below the phone's feature row (it never sits on a button), under the top bar on a desktop.
+        <p role="status" className={cn('pointer-events-none absolute start-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-[#0C1119]/85 px-4 py-2 text-center text-[13px] text-white shadow-lg ring-1 ring-white/15 rtl:translate-x-1/2', touch ? 'top-[6.75rem]' : 'top-28')} data-testid="walk-door-hint">
           {tr('ds_walk_door_hint')}
         </p>
       ) : null}
@@ -444,21 +445,20 @@ function FeatureDock({ tr, touch, env, onEnv, onLive, onShare }: {
   const card = 'rounded-xl bg-[#0C1119]/85 p-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur';
   if (touch) {
     return (
-      <div className="pointer-events-auto absolute inset-x-3 top-14 z-20 flex flex-wrap justify-center gap-1.5" data-testid="walk-features">
-        <button type="button" onClick={onLive} className={cn(quiet, 'h-9 bg-[#0C1119]/85')} data-testid="walk-live">
-          <Sparkles className="h-4 w-4 text-[hsl(38_92%_62%)]" aria-hidden="true" /><span>{tr('ds_live_title')}</span>
+      // One row that always fits a phone: Live Here, the time of day as one button that steps through the four (its
+      // icon says which), Share — short words, never wrapping onto what is below.
+      <div className="pointer-events-auto absolute inset-x-3 top-14 z-20 flex flex-nowrap items-center justify-center gap-1.5" data-testid="walk-features">
+        <button type="button" onClick={onLive} className={cn(quiet, 'h-9 min-w-0 bg-[#0C1119]/85')} data-testid="walk-live">
+          <Sparkles className="h-4 w-4 shrink-0 text-[hsl(38_92%_62%)]" aria-hidden="true" /><span className="truncate">{tr('ds_live_title')}</span>
         </button>
-        <div className="flex items-center gap-1 rounded-md bg-[#0C1119]/85 px-1 ring-1 ring-white/20" role="radiogroup" aria-label={tr('ds_env_title')} data-testid="walk-time">
-          {ENVS.map(({ id, Icon }) => (
-            <button key={id} type="button" role="radio" aria-checked={env === id} aria-label={tr(`ds_env_${id}`)} onClick={() => onEnv(id)} data-env={id}
-              className={cn('grid h-8 w-8 place-items-center rounded', ring, env === id ? 'bg-white text-[#0C1119]' : 'text-white/85')}>
-              <Icon className={cn('h-4 w-4', id === 'NIGHT' ? 'fill-current' : '')} aria-hidden="true" />
-            </button>
-          ))}
-        </div>
+        <button type="button" onClick={() => onEnv(ENVS[(ENVS.findIndex((x) => x.id === env) + 1) % ENVS.length].id)} data-testid="walk-time"
+          aria-label={`${tr('ds_env_title')}: ${tr(`ds_env_${env}`)}`} className={cn(quiet, 'h-9 shrink-0 bg-[#0C1119]/85')}>
+          {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: cn('h-4 w-4', env === 'NIGHT' ? 'fill-current' : ''), 'aria-hidden': true })}
+          <span>{tr(`ds_env_${env}`)}</span>
+        </button>
         {onShare ? (
-          <button type="button" onClick={onShare} className={cn(quiet, 'h-9 bg-[hsl(38_92%_56%)] font-semibold text-[#0C1119] ring-0 hover:bg-[hsl(38_92%_62%)]')} data-testid="walk-share">
-            <Share2 className="h-4 w-4" aria-hidden="true" /><span>{tr('ds_share_walkthrough')}</span>
+          <button type="button" onClick={onShare} className={cn(quiet, 'h-9 shrink-0 bg-[hsl(38_92%_56%)] font-semibold text-[#0C1119] ring-0 hover:bg-[hsl(38_92%_62%)]')} data-testid="walk-share">
+            <Share2 className="h-4 w-4" aria-hidden="true" /><span>{tr('ds_share_short')}</span>
           </button>
         ) : null}
       </div>

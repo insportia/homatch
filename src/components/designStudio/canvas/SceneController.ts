@@ -201,6 +201,8 @@ interface PickData { pick: PickTarget }
 /** Walking: the longest real time one frame may advance (s), and the step it is walked in (s). */
 const WALK_MAX_FRAME_S = 0.25;
 const WALK_STEP_S = 0.05;
+/** On a phone, what is in front within this (m) shows its buttons as the visitor comes to it. */
+const TOUCH_OFFER_M = 1.5;
 /** How far from a fingertip (px) a tap still finds what it meant. */
 const TOUCH_TAP_RADIUS_PX = 28;
 /** Two clicks this close together are one double click: mouse-look on, or off again. */
@@ -2064,12 +2066,23 @@ export class SceneController {
     // No box is drawn round what is aimed at: the crosshair turns gold and the hint names it. A wireframe cube
     // in a walked home reads as a bug, not a cue (and its bounds included the contact shadow, so it was too big).
     this.renderer.domElement.style.cursor = this.aimed ? 'pointer' : (this.walk ? 'crosshair' : '');
-    // Quiet (a touch visitor merely walking near it): the highlight only — no card, no buttons, no action.
-    this.onAimChange?.(quiet ? null : this.hintFor(this.aimed));
+    // Quiet (a visitor merely walking or looking near it): the highlight only — no card, no buttons, no action. On a
+    // phone, what is right in front within arm's length offers its buttons as you come to it (the tap, the door),
+    // still only used when one is pressed.
+    this.onAimChange?.(quiet && !this.offeredOnApproach(this.aimed) ? null : this.hintFor(this.aimed));
     this.requestRender();
   }
 
   private aimQuiet = false;
+
+  /** A phone visitor standing within TOUCH_OFFER_M of what is in front of them: its buttons show without a tap. */
+  private offeredOnApproach(t: { node: THREE.Object3D } | null): boolean {
+    const w = this.walk;
+    if (!t || !w || !this.touchInput) return false;
+    const box = new THREE.Box3().setFromObject(t.node);
+    const nearest = { x: Math.max(box.min.x, Math.min(box.max.x, w.pos.x)), y: Math.max(-box.max.z, Math.min(-box.min.z, w.pos.y)) };
+    return Math.hypot(nearest.x - w.pos.x, nearest.y - w.pos.y) <= TOUCH_OFFER_M;
+  }
 
   private refreshAimBox() {
     if (this.aimBox && this.aimed) this.aimBox.box.setFromObject(this.aimed.node);
@@ -2084,7 +2097,8 @@ export class SceneController {
       if (!this.walk) return;
       const rect = this.renderer.domElement.getBoundingClientRect();
       const p = this.lastPointer ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      const hit = this.targetAt(p.x, p.y);
+      // A phone aims along the line of sight with a fingertip's give (a tap's handle is small on a phone screen).
+      const hit = !this.lastPointer && this.touchInput ? this.targetNearCentre() : this.targetAt(p.x, p.y);
       // A hovering mouse on its way to the hint's buttons crosses bare floor:
       // the aim lingers briefly so the button is still there when it arrives.
       if (!hit && this.lastPointer && this.aimed) {

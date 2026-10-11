@@ -77,7 +77,7 @@ export function nounGroup(kind: unknown): NounGroup {
 }
 
 /** The Georgian noun for the subject of the report, in the given case. */
-export function subjectNoun(kind: PropertyKind | string | null | undefined, c: NounCase = 'nom'): string {
+export function subjectNoun(kind: PropertyKind | string | null | undefined | unknown, c: NounCase = 'nom'): string {
   return FORMS[nounGroup(kind)][c];
 }
 

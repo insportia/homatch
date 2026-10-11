@@ -146,7 +146,9 @@ test('an explicit use acts only in reach, in the room, once, with the thumb off 
   assert.equal(interactionRefusal({ ...ok, stickActive: true }), 'MOVING_STICK');
   assert.equal(interactionRefusal({ ...ok, lastActionAt: ok.now - ACTION_COOLDOWN_MS + 1 }), 'TOO_SOON');
   assert.equal(interactionRefusal({ ...ok, distanceM: REACH_M + 0.01 }), 'OUT_OF_REACH');
-  assert.equal(interactionRefusal({ ...ok, targetRoom: 'r-bed' }), 'OTHER_ROOM');
+  assert.equal(interactionRefusal({ ...ok, targetRoom: 'r-bed', distanceM: 2 }), 'OTHER_ROOM');
+  // ... but the tap in a WC too small to step into is used from its doorway, within arm's length.
+  assert.equal(interactionRefusal({ ...ok, targetRoom: 'r-bed', distanceM: 1 }), null);
   // A door joins two rooms: usable from either.
   assert.equal(interactionRefusal({ ...ok, targetRoom: 'r-bed', doorTouchesPlayerRoom: true }), null);
   assert.equal(interactionRefusal({ ...ok, closingOnBody: true }), 'WOULD_TRAP');
@@ -160,11 +162,12 @@ test('E picks the usable thing nearest the line of sight, the nearer of two equa
   assert.equal(pickTarget([{ id: 'a', offPx: 5, distanceM: REACH_M + 0.5 }], 60), null);
 });
 
-test('a drag is never a tap: a finger that moved 6 px, or held 350 ms, uses nothing', async () => {
+test('a drag is never a tap: a finger that moved 12 px, or held 400 ms, uses nothing (a fingertip rolls a little)', async () => {
   const { isTap } = await import('../player.ts');
   assert.equal(isTap(120, 2, false), true);
-  assert.equal(isTap(120, 6, false), false);
-  assert.equal(isTap(350, 0, false), false);
+  assert.equal(isTap(300, 10, false), true);
+  assert.equal(isTap(120, 12, false), false);
+  assert.equal(isTap(400, 0, false), false);
   assert.equal(isTap(300, 7, true), true);
   assert.equal(isTap(300, 8, true), false);
 });

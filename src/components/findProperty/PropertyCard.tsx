@@ -1,9 +1,10 @@
-import { AlertTriangle, ArrowRight, BedDouble, Check, DoorOpen, Globe2, MapPin, Ruler, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BedDouble, Check, Clock, DoorOpen, Globe2, MapPin, Ruler, ShieldCheck } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { PropertyView } from '@/services/marketplaceSearch';
-import { currentActivity, listingAgeText, num, pct, type T, usd } from './format';
+import { listingTimes, num, pct, type T, usd } from './format';
 import { PropertyGallery } from './PropertyGallery';
 import { DuplicateBadge, DuplicateListings } from './DuplicateListings';
+import { ContactLine } from './ContactLine';
 
 /** Every source this property was found on, by its public name. */
 export const sourceNames = (p: PropertyView) => [...new Set(p.listings.map((l) => l.sourceName ?? l.source).filter(Boolean))];
@@ -17,6 +18,8 @@ export function sellerLabel(seller: { classification: string; reasonCodes?: stri
   const inferred = !seller.reasonCodes?.some((code) => code.startsWith('DECLARED_'));
   if (inferred && seller.classification === 'BROKER') return t('fpr_seller_likely_broker');
   if (inferred && seller.classification === 'AGENCY') return t('fpr_seller_likely_agency');
+  // The source itself says agent (MyHome "აგენტი"): say exactly that.
+  if (seller.reasonCodes?.includes('DECLARED_BROKER')) return t('mps_seller_agent');
   return t(SELLER_KEY[seller.classification]);
 }
 
@@ -82,8 +85,19 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
               {sellerLabel(p.seller, t)}
             </span>
           ) : null}
-          <span className="text-muted-foreground">{listingAgeText(currentActivity(p), t)}</span>
         </div>
+        {(() => {
+          const times = listingTimes(p.listings.find((l) => l.listingId === intel?.primaryListingId) ?? p.listings[0], t);
+          return <div data-card-times className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+            <p className="min-w-0">
+              {times.published ? <span className="block font-medium text-foreground/85">{times.published}</span> : null}
+              {times.updated ? <span className="block font-medium text-foreground/85">{times.updated}</span> : null}
+              {times.unknown ? <span className="block">{t('mps_time_unknown')}</span> : null}
+              {times.seen ? <span className="block">{times.seen}</span> : null}
+            </p>
+          </div>;
+        })()}
         {p.priceDiscrepancy?.significant ? <p className="text-xs text-muted-foreground">{t('mps_price_diff_badge')}</p> : null}
         <div ref={duplicatesRef}><DuplicateListings p={p} t={t} open={duplicatesOpen} onOpenChange={setDuplicatesOpen} /></div>
 
@@ -111,7 +125,8 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
         {intel?.warnings.length ? <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[hsl(var(--gold-ink))]"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t(`fpr_warning_${intel.warnings[0]}`)}</p> : null}
         {p.unverified.length > 0 ? <p className="text-xs leading-relaxed text-muted-foreground">{t('mps_not_stated')}: {missingRequirements(p.unverified, t)}</p> : null}
         {f.floor != null && f.totalFloors != null && f.floor === f.totalFloors ? <p className="text-xs leading-relaxed text-muted-foreground">{t('fpa_top_floor_note')}</p> : null}
-        <p className="mt-auto inline-flex items-center gap-1.5 pt-2 text-xs font-medium text-foreground/80" data-card-source>
+        <ContactLine listing={p.listings.find((l) => l.listingId === intel?.primaryListingId) ?? p.listings[0]} t={t} className="mt-auto" />
+        <p className="inline-flex items-center gap-1.5 pt-1 text-xs font-medium text-foreground/80" data-card-source>
           <Globe2 className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" aria-hidden="true" /><span dir="auto">{t('mps_card_source', { source: sources.join(' · ') })}</span>
         </p>
         <div className="flex flex-wrap items-center gap-2">

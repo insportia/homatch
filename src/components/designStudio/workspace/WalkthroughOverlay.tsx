@@ -229,7 +229,8 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
             <button type="button" onClick={() => { c?.releasePointer(); setMore(false); setPlanOpen((v) => !v); }} aria-pressed={planOpen} data-testid="walk-plan-open"
               className={cn(quiet, planOpen ? 'bg-[hsl(38_92%_56%)]/25 ring-[hsl(38_92%_62%)]/60' : 'bg-white/10')}>
               <MapIcon className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{tr(planOpen ? 'ds_walk_plan_hide' : 'ds_walk_plan_show')}</span>
+              {/* A phone keeps it short (its pressed state says shown or hidden). */}
+              <span>{touch ? tr('ds_walk_plan') : tr(planOpen ? 'ds_walk_plan_hide' : 'ds_walk_plan_show')}</span>
             </button>
           ) : null}
           <div className="relative">
@@ -285,7 +286,8 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
           hidden={overlayOpen || seated || !!live.run} />
       ) : null}
       {doorHint === 'SHOW' && !overlayOpen && !live.run ? (
-        <p role="status" className="pointer-events-none absolute start-1/2 top-28 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-[#0C1119]/85 px-4 py-2 text-center text-[13px] text-white shadow-lg ring-1 ring-white/15 rtl:translate-x-1/2" data-testid="walk-door-hint">
+        // Below the phone's feature row (it never sits on a button), under the top bar on a desktop.
+        <p role="status" className={cn('pointer-events-none absolute start-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-[#0C1119]/85 px-4 py-2 text-center text-[13px] text-white shadow-lg ring-1 ring-white/15 rtl:translate-x-1/2', touch ? 'top-[6.75rem]' : 'top-28')} data-testid="walk-door-hint">
           {tr('ds_walk_door_hint')}
         </p>
       ) : null}
@@ -328,7 +330,7 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
               <span className="truncate">{tr(posture === 'LYING' || posture === 'LYING_DOWN' ? 'ds_walk_lying' : 'ds_walk_seated')}</span>
               <span className="hidden truncate text-white/60 sm:inline">· {tr(touch ? 'ds_walk_stand_tap' : 'ds_walk_stand_click')}</span>
               <button type="button" onClick={() => c?.standIfSeated()} data-action="STAND_UP"
-                className={cn('h-8 shrink-0 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90', ring)}>
+                className={cn('shrink-0 rounded-full bg-white font-semibold text-[#0C1119] hover:bg-white/90', touch ? 'h-11 px-6 text-[15px]' : 'h-8 px-3.5 text-[13px]', ring)}>
                 {tr('ds_act_STAND_UP')}
               </button>
             </>
@@ -443,21 +445,20 @@ function FeatureDock({ tr, touch, env, onEnv, onLive, onShare }: {
   const card = 'rounded-xl bg-[#0C1119]/85 p-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur';
   if (touch) {
     return (
-      <div className="pointer-events-auto absolute inset-x-3 top-14 z-20 flex flex-wrap justify-center gap-1.5" data-testid="walk-features">
-        <button type="button" onClick={onLive} className={cn(quiet, 'h-9 bg-[#0C1119]/85')} data-testid="walk-live">
-          <Sparkles className="h-4 w-4 text-[hsl(38_92%_62%)]" aria-hidden="true" /><span>{tr('ds_live_title')}</span>
+      // One row that always fits a phone: Live Here, the time of day as one button that steps through the four (its
+      // icon says which), Share — short words, never wrapping onto what is below.
+      <div className="pointer-events-auto absolute inset-x-3 top-14 z-20 flex flex-nowrap items-center justify-center gap-1.5" data-testid="walk-features">
+        <button type="button" onClick={onLive} className={cn(quiet, 'h-9 min-w-0 bg-[#0C1119]/85')} data-testid="walk-live">
+          <Sparkles className="h-4 w-4 shrink-0 text-[hsl(38_92%_62%)]" aria-hidden="true" /><span className="truncate">{tr('ds_live_title')}</span>
         </button>
-        <div className="flex items-center gap-1 rounded-md bg-[#0C1119]/85 px-1 ring-1 ring-white/20" role="radiogroup" aria-label={tr('ds_env_title')} data-testid="walk-time">
-          {ENVS.map(({ id, Icon }) => (
-            <button key={id} type="button" role="radio" aria-checked={env === id} aria-label={tr(`ds_env_${id}`)} onClick={() => onEnv(id)} data-env={id}
-              className={cn('grid h-8 w-8 place-items-center rounded', ring, env === id ? 'bg-white text-[#0C1119]' : 'text-white/85')}>
-              <Icon className={cn('h-4 w-4', id === 'NIGHT' ? 'fill-current' : '')} aria-hidden="true" />
-            </button>
-          ))}
-        </div>
+        <button type="button" onClick={() => onEnv(ENVS[(ENVS.findIndex((x) => x.id === env) + 1) % ENVS.length].id)} data-testid="walk-time"
+          aria-label={`${tr('ds_env_title')}: ${tr(`ds_env_${env}`)}`} className={cn(quiet, 'h-9 shrink-0 bg-[#0C1119]/85')}>
+          {React.createElement(ENVS.find((x) => x.id === env)?.Icon ?? Sun, { className: cn('h-4 w-4', env === 'NIGHT' ? 'fill-current' : ''), 'aria-hidden': true })}
+          <span>{tr(`ds_env_${env}`)}</span>
+        </button>
         {onShare ? (
-          <button type="button" onClick={onShare} className={cn(quiet, 'h-9 bg-[hsl(38_92%_56%)] font-semibold text-[#0C1119] ring-0 hover:bg-[hsl(38_92%_62%)]')} data-testid="walk-share">
-            <Share2 className="h-4 w-4" aria-hidden="true" /><span>{tr('ds_share_walkthrough')}</span>
+          <button type="button" onClick={onShare} className={cn(quiet, 'h-9 shrink-0 bg-[hsl(38_92%_56%)] font-semibold text-[#0C1119] ring-0 hover:bg-[hsl(38_92%_62%)]')} data-testid="walk-share">
+            <Share2 className="h-4 w-4" aria-hidden="true" /><span>{tr('ds_share_short')}</span>
           </button>
         ) : null}
       </div>
@@ -582,31 +583,34 @@ function Row({ keys, text }: { keys: React.ReactNode; text: string }) {
  * the screen and follows it; the knob moves through a ref, never React
  * state. A short tap without movement uses what it touched.
  */
+/**
+ * The walking stick, fixed in the bottom-left corner (physically left in every language: thumbs do not mirror). The
+ * thumb pushes the knob from the stick's own centre wherever it lands on the pad, so the stick never jumps under
+ * it; the rest of the screen is for looking (and tapping what is there).
+ */
 function StickZone({ controller, label }: { controller: SceneController | null; label: string }) {
   const zone = useRef<HTMLDivElement>(null);
-  const base = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
-  const active = useRef<{ id: number; x: number; y: number; t: number; moved: number } | null>(null);
+  const active = useRef<{ id: number } | null>(null);
   const R = 46;
 
-  const show = (x: number, y: number) => {
-    const b = base.current;
+  const centre = () => {
     const rect = zone.current?.getBoundingClientRect();
-    if (!b || !rect) return;
-    b.style.display = 'grid';
-    b.style.left = `${x - rect.left - 56}px`;
-    b.style.top = `${y - rect.top - 56}px`;
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: 0, y: 0 };
   };
-  const move = (e: React.PointerEvent) => {
-    const a = active.current;
-    if (!a || a.id !== e.pointerId) return;
-    let dx = e.clientX - a.x;
-    let dy = e.clientY - a.y;
-    a.moved = Math.max(a.moved, Math.hypot(dx, dy));
+  const push = (e: React.PointerEvent) => {
+    const c = centre();
+    let dx = e.clientX - c.x;
+    let dy = e.clientY - c.y;
     const len = Math.hypot(dx, dy);
     if (len > R) { dx = (dx / len) * R; dy = (dy / len) * R; }
     if (knob.current) knob.current.style.transform = `translate(${dx}px, ${dy}px)`;
     controller?.setWalkStick(dx / R, dy / R);
+  };
+  const move = (e: React.PointerEvent) => {
+    const a = active.current;
+    if (!a || a.id !== e.pointerId) return;
+    push(e);
   };
   const end = (e: React.PointerEvent) => {
     const a = active.current;
@@ -614,26 +618,19 @@ function StickZone({ controller, label }: { controller: SceneController | null; 
     active.current = null;
     controller?.setWalkStick(0, 0);
     if (knob.current) knob.current.style.transform = 'translate(0px, 0px)';
-    if (base.current) base.current.style.display = 'none';
-    // A quick, still touch is a tap on what is under it; any stick movement is walking, never an interaction.
-    if (a.moved < 6 && performance.now() - a.t < 300) controller?.tapAt(e.clientX, e.clientY);
   };
 
   return (
     <div ref={zone} role="application" aria-label={label} data-testid="stick-zone"
-      // Physically LEFT in every language (RTL too): thumbs, like games, do not mirror.
-      className="absolute bottom-0 left-0 top-28 z-10 w-[45%] touch-none select-none"
+      className="absolute bottom-6 left-5 z-10 grid h-36 w-36 touch-none select-none place-items-center rounded-full bg-[#0C1119]/30 ring-1 ring-white/35 backdrop-blur-sm"
       onPointerDown={(e) => {
         if (active.current) return;
-        active.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
+        active.current = { id: e.pointerId };
         e.currentTarget.setPointerCapture(e.pointerId);
-        show(e.clientX, e.clientY);
+        push(e);
       }}
       onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
-      <div ref={base} className="pointer-events-none absolute hidden h-28 w-28 place-items-center rounded-full bg-[#0C1119]/30 ring-1 ring-white/35 backdrop-blur-sm" style={{ display: 'none' }}>
-        <div ref={knob} className="h-12 w-12 rounded-full bg-white/85 shadow-md" />
-      </div>
-      <span aria-hidden="true" className="pointer-events-none absolute bottom-6 left-6 h-16 w-16 rounded-full ring-1 ring-white/25" />
+      <div ref={knob} className="pointer-events-none h-14 w-14 rounded-full bg-white/85 shadow-md" />
     </div>
   );
 }

@@ -292,7 +292,8 @@ PARTIAL_COMPLETE, never COMPLETE. The results header lists each source as
 refreshing / fresh / partly refreshed / previously collected / unavailable,
 with the next refresh attempt time. SS.ge is unchanged.
 
-Load on MyHome: owner decision — at most the first 3 result pages per search
+Load on MyHome: owner decision — at most the first 2 result pages per search (owner, 2026-10-11: page 3 of a
+short burst was refused by Cloudflare on every live attempt)
 (MyHome's full match count is still reported), a fixed 5 s pause between pages,
 one MyHome run at a time (others wait in the durable queue), no detail pages.
 No proxy, identity rotation, CAPTCHA solving or challenge interaction.

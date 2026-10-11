@@ -1,4 +1,5 @@
-import { Building2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
+import { PhotoViewer } from './PhotoViewer';
 import React, { useRef, useState } from 'react';
 import type { T } from './format';
 
@@ -11,6 +12,11 @@ export function PropertyGallery({ images, t, onOpen, full = false, overlay }: { 
   const suppressClick = useRef(false);
   const active = Math.min(index, Math.max(0, photos.length - 1));
   const change = (delta: number) => setIndex((current) => (current + delta + photos.length) % photos.length);
+  const [viewer, setViewer] = useState(false);
+  const viewable = photos.filter((src) => !broken.has(src));
+  const openViewer = () => { if (viewable.length) setViewer(true); };
+  // The full page has no other target for a photo click: it opens the viewer.
+  const activate = onOpen ?? (full ? openViewer : undefined);
   return <div className="space-y-2">
     <div role="group" aria-label={t('mps_photos')} className={`group relative touch-pan-y overflow-hidden bg-[#0C1119] ${full ? 'aspect-[16/9] rounded-2xl' : 'aspect-[16/10]'}`}
       onKeyDown={(event) => { if (photos.length > 1 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); change(event.key === 'ArrowRight' ? 1 : -1); } }}
@@ -26,11 +32,13 @@ export function PropertyGallery({ images, t, onOpen, full = false, overlay }: { 
         }
         touch.current = null;
       }}>
-      <button type="button" disabled={!onOpen} onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } onOpen?.(); }} aria-label={t('fpw_open_gallery')}
+      <button type="button" disabled={!activate} onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } activate?.(); }} aria-label={onOpen ? t('fpw_open_gallery') : t('mps_photo_fullscreen')}
         className="absolute inset-0 grid h-full w-full place-items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         {photos[active] && !broken.has(photos[active]) ? <img src={photos[active]} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className={`h-full w-full ${full ? 'object-contain' : 'object-cover'}`} onError={() => setBroken((current) => new Set([...current, photos[active]]))} /> : <Building2 className="h-12 w-12 text-white/30" aria-hidden="true" />}
       </button>
       {overlay ? <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-1.5 [&>*]:pointer-events-auto">{overlay}</div> : null}
+      {viewable.length ? <button type="button" onClick={openViewer} aria-label={t('mps_photo_fullscreen')} data-photo-fullscreen
+        className="absolute bottom-2 start-2 grid h-11 w-11 place-items-center rounded-full bg-black/65 text-white focus-visible:ring-2 focus-visible:ring-ring"><Maximize2 className="h-5 w-5" aria-hidden="true" /></button> : null}
       {photos.length > 1 ? <>
         <button type="button" onClick={() => change(-1)} aria-label={t('fpw_previous_photo')} className="absolute start-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white focus-visible:ring-2 focus-visible:ring-ring"><ChevronLeft className="h-5 w-5 rtl:rotate-180" aria-hidden="true" /></button>
         <button type="button" onClick={() => change(1)} aria-label={t('fpw_next_photo')} className="absolute end-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white focus-visible:ring-2 focus-visible:ring-ring"><ChevronRight className="h-5 w-5 rtl:rotate-180" aria-hidden="true" /></button>
@@ -42,5 +50,6 @@ export function PropertyGallery({ images, t, onOpen, full = false, overlay }: { 
         {broken.has(src) ? <span className="grid h-full w-full place-items-center bg-[#0C1119]"><Building2 className="h-5 w-5 text-white/30" aria-hidden="true" /></span> : <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="h-full w-full object-cover" onError={() => setBroken((current) => new Set([...current, src]))} />}
       </button>)}
     </div> : null}
+    {viewer ? <PhotoViewer photos={viewable} start={Math.max(0, viewable.indexOf(photos[active]))} t={t} onClose={() => setViewer(false)} /> : null}
   </div>;
 }

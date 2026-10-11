@@ -23,7 +23,11 @@ export const DECEL_M_S2 = 13.0;
 /** The thumb stick: a small push does nothing (a resting thumb is not a step), and the response is gentle near the centre. */
 export const STICK_DEAD_ZONE = 0.15;
 /** Touch looking turns a little less per pixel than a mouse: a thumb drag is long and coarse. */
-export const TOUCH_LOOK_RAD_PER_PX = 0.0021;
+export const TOUCH_LOOK_RAD_PER_PX = 0.0038;
+/** A phone's stick walks a little faster than a keyboard's step (a thumb covers a home in fewer pushes). */
+export const TOUCH_PACE = 1.2;
+/** A small room seen through its doorway (a WC, a shower room too tight to step into) is used from this close. */
+export const NEIGHBOUR_REACH_M = 1.6;
 export const PITCH_MIN = -1.2;
 export const PITCH_MAX = 1.0;
 /** How far a person reaches to open, switch or sit (metres from the eye). */
@@ -125,7 +129,8 @@ export function stickInput(x: number, y: number): { x: number; y: number } {
  * a finger is held to a tighter bound than a mouse.
  */
 export function isTap(ms: number, movedPx: number, mouse: boolean): boolean {
-  return mouse ? ms < 450 && movedPx < 8 : ms < 350 && movedPx < 6;
+  // A fingertip rolls a few pixels as it lands and lifts: 12 px and 400 ms still read as a tap.
+  return mouse ? ms < 450 && movedPx < 8 : ms < 400 && movedPx < 12;
 }
 
 /** Two uses closer than this are one (a tap the canvas and the overlay both heard, a key repeat). */
@@ -145,7 +150,9 @@ export function interactionRefusal(a: {
   if (a.stickActive) return 'MOVING_STICK';
   if (a.now - a.lastActionAt < ACTION_COOLDOWN_MS) return 'TOO_SOON';
   if (!(a.distanceM <= REACH_M)) return 'OUT_OF_REACH';
-  if (!a.doorTouchesPlayerRoom && a.playerRoom && a.targetRoom && a.playerRoom !== a.targetRoom) return 'OTHER_ROOM';
+  // Another room: only what stands within arm's length of the doorway one stands in (the tap in a WC too small to
+  // step into); the ray never passes a wall, so nothing is used through one.
+  if (!a.doorTouchesPlayerRoom && a.playerRoom && a.targetRoom && a.playerRoom !== a.targetRoom && a.distanceM > NEIGHBOUR_REACH_M) return 'OTHER_ROOM';
   if (a.closingOnBody) return 'WOULD_TRAP';
   return null;
 }

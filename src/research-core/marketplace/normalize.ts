@@ -74,7 +74,8 @@ export interface NormalizedListing {
   freshness: FreshnessState;
   /** Listing age beyond the market's ceiling for this deal kind (listing-age-policy.ts). */
   oldListing: boolean;
-  seller: ExternalListingCandidate['seller'] & { phoneKey: string | null };
+  /** phoneFromDescription: the number is one the seller wrote in the public listing text, not a source field. */
+  seller: ExternalListingCandidate['seller'] & { phoneKey: string | null; phoneFromDescription?: boolean };
   provenance: ExternalListingCandidate['provenance'];
   completeness: number;
 }
@@ -125,6 +126,10 @@ export function normalizeCandidate(
   const oldListing = listingActivity(c.publishedAt, c.updatedAt, now).expired;
   const phoneFromField = c.seller.publicPhone ? phoneKey(c.seller.publicPhone) : null;
   const phoneFromText = publicContactsIn(c.description).find((x) => x.kind === 'PHONE')?.key ?? null;
+  // MyHome's search payload labels its users; "agent"/"broker" is the source's own declaration.
+  const userType = typeof c.retrievalMetadata?.userType === 'string' ? c.retrievalMetadata.userType.toLowerCase() : null;
+  const declaredType = c.seller.declaredType
+    ?? (userType === 'agent' || userType === 'broker' ? 'BROKER' : userType === 'developer' ? 'DEVELOPER' : null);
   const fields = [c.price, c.areaSqm, c.rooms, c.bedrooms, c.floor, c.district, c.city, c.buildingStatus, c.renovationStatus, c.images[0]];
   return {
     id: `${c.source}:${c.sourceListingId}`,
@@ -171,7 +176,12 @@ export function normalizeCandidate(
     lastVerifiedAt: freshness === 'VERIFIED' ? c.observedAt : null,
     freshness,
     oldListing,
-    seller: { ...c.seller, phoneKey: phoneFromField ?? phoneFromText },
+    seller: {
+      ...c.seller, declaredType, phoneKey: phoneFromField ?? phoneFromText,
+      // A number the seller published in the description is shown as written there, labelled as such.
+      publicPhone: c.seller.publicPhone ?? (phoneFromText ? formatPhone(phoneFromText) : null),
+      phoneFromDescription: !c.seller.publicPhone && !!phoneFromText,
+    },
     provenance: c.provenance,
     completeness: fields.filter((v) => v !== null && v !== undefined).length / fields.length,
   };
@@ -206,4 +216,10 @@ export function validateListing(
   if (!listing.transactionType) warnings.push('TRANSACTION_NOT_STATED');
   if (!listing.propertyType) warnings.push('PROPERTY_TYPE_NOT_STATED');
   return { valid: true, listing, warnings };
+}
+
+/** "+995 599 12 34 56" for a Georgian mobile key; any other key as it is. */
+export function formatPhone(key: string): string {
+  const m = /^\+995(5\d{2})(\d{2})(\d{2})(\d{2})$/.exec(key);
+  return m ? `+995 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : key;
 }

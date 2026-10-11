@@ -56,14 +56,31 @@ export interface ListingView {
   freshness: NormalizedListing['freshness'];
   publishedAt?: string | null;
   updatedAt?: string | null;
-  seller: { classification: SellerAssessment['classification']; name: string | null; publicPhone: string | null; publicEmail: string | null; publicProfile: string | null };
+  seller: { classification: SellerAssessment['classification']; name: string | null; publicPhone: string | null; phoneFromDescription?: boolean; publicEmail: string | null; publicProfile: string | null };
   authorUrl: string | null;
   isLowest: boolean;
   isHighest: boolean;
 }
 
+/** Another property that MAY be the same flat: too uncertain to merge, shown side by side instead. */
+export interface PossibleMatchView {
+  key: string;
+  confidence: number;
+  title: string | null;
+  priceUsd: number | null;
+  areaSqm: number | null;
+  floor: number | null;
+  image: string | null;
+  source: string;
+  sourceName: string | null;
+  exactUrl: string;
+  observedAt: string;
+}
+
 export interface ResultProperty {
   identity?: { status: 'CONFIRMED_DUPLICATE' | 'INSUFFICIENT_EVIDENCE'; evidence: string[]; version: string };
+  /** POSSIBLE_SAME_PROPERTY partners (never merged); absent on results stored before this field existed. */
+  possibleMatches?: PossibleMatchView[];
   key: string;
   group: ResultGroup;
   rank: number;
@@ -245,6 +262,28 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   });
 
   const possibleKeys = new Set(resolution.possible.flatMap((pair) => [resolution.keyOf.get(pair.a), resolution.keyOf.get(pair.b)]));
+  const workingByKey = new Map(working.map((w) => [w.key, w]));
+  const partners = new Map<string, Map<string, number>>();
+  for (const pair of resolution.possible) {
+    const a = resolution.keyOf.get(pair.a), b = resolution.keyOf.get(pair.b);
+    if (!a || !b || a === b) continue;
+    for (const [x, y] of [[a, b], [b, a]] as const) {
+      const m = partners.get(x) ?? new Map<string, number>();
+      m.set(y, Math.max(m.get(y) ?? 0, pair.confidence));
+      partners.set(x, m);
+    }
+  }
+  const possibleMatchesOf = (key: string): PossibleMatchView[] => [...(partners.get(key) ?? new Map<string, number>())]
+    .flatMap(([k, confidence]) => {
+      const o = workingByKey.get(k);
+      if (!o) return [];
+      return [{
+        key: k, confidence, title: o.rep.title, priceUsd: o.facts.priceUsd, areaSqm: o.facts.areaSqm, floor: o.facts.floor,
+        image: o.rep.images[0] ?? o.members.flatMap((m) => m.images)[0] ?? null,
+        source: o.rep.source, sourceName: o.rep.sourceName, exactUrl: o.rep.exactUrl, observedAt: o.rep.observedAt,
+      }];
+    })
+    .sort((x, y) => y.confidence - x.confidence || x.key.localeCompare(y.key)).slice(0, 6);
   const descriptions = new Map<string, Set<string>>();
   for (const w of working) {
     const fp = descriptionFingerprint(w.rep.description);
@@ -318,6 +357,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     properties.push({
       identity: { status: w.members.length > 1 ? 'CONFIRMED_DUPLICATE' : 'INSUFFICIENT_EVIDENCE',
         evidence: w.cluster.evidence.filter((e) => e.startsWith('corroborated') || e.startsWith('same source') || e === 'same canonical url'), version: 'marketplace-property-entity-2' },
+      ...(possibleKeys.has(w.key) ? { possibleMatches: possibleMatchesOf(w.key) } : {}),
       key: w.key,
       group,
       rank: i + 1,
@@ -350,7 +390,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
         updatedAt: m.updatedAt,
         seller: {
           classification: w.sellers.get(m.id)!.classification,
-          name: m.seller.name, publicPhone: m.seller.publicPhone, publicEmail: m.seller.publicEmail, publicProfile: m.seller.publicProfile,
+          name: m.seller.name, publicPhone: m.seller.publicPhone, ...(m.seller.phoneFromDescription ? { phoneFromDescription: true } : {}), publicEmail: m.seller.publicEmail, publicProfile: m.seller.publicProfile,
         },
         authorUrl: m.provenance.authorUrl,
         isLowest: prices.get(m.id)?.isLowest ?? false,

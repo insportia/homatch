@@ -17,7 +17,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOff, ExternalLink, Images } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOff, Images } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   catalogVisuals,
@@ -147,13 +147,7 @@ const SourceRow: React.FC<{ v: CatalogVisual; cases?: VisualCaseMap; tone?: 'lig
   return (
     <div className={`flex flex-wrap items-center gap-x-3 ${tone === 'dark' ? 'text-[hsl(220_14%_72%)]' : 'text-muted-foreground'}`}>
       {text ? <p className="text-xs leading-5">{t('verify_p0_visual_filed_with', { case: text })}</p> : null}
-      {c.href ? (tone === 'dark' ? (
-        <a href={c.href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[44px] items-center gap-1 text-xs font-semibold text-[hsl(38_92%_66%)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)]">
-          {t('verify_v3_official_source')}
-          <ExternalLink className="h-3.5 w-3.5 shrink-0 rtl:-scale-x-100" aria-hidden="true" />
-          <span className="sr-only">{t('verify_v3_opens_new_tab')}</span>
-        </a>
-      ) : <OfficialLink href={c.href} />) : null}
+      {c.href ? <OfficialLink href={c.href} tone={tone} /> : null}
     </div>
   );
 };

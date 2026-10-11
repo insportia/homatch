@@ -86,6 +86,7 @@ import { LegalFindings, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
 import { VerifyJobProvider } from './OfficialLink';
 import { PropertyFactsCard } from './PropertyFactsCard';
+import { sectionsFor, type PropertyKind } from '@/verify/intelligence/propertyKind';
 import { LazyMount } from './LazyMount';
 import { BuildingSpecs } from './BuildingSpecs';
 import { TechnicalExplained } from './TechnicalExplained';
@@ -463,21 +464,25 @@ export function VerifyReport({
       {/* Under whichever of the two location sections the model actually
           wrote, so the evidenced places sit with the prose about them. */}
       {s.key === locationHost && synthesis.location ? (
-        <LocationLiving l={synthesis.location} />
+        ks.livingLocation ? <LocationLiving l={synthesis.location} /> : null
       ) : null}
     </section>
   );
 
+  /* Which chapters this kind of property has (owner, 2026-10-11 v7): the
+     registry's own classification, never the code's length. Unknown, other
+     and ambiguous keep every chapter (propertyKind.ts sectionsFor). */
+  const ks = sectionsFor(((synthesis as { propertyKind?: { kind?: string } }).propertyKind?.kind ?? 'UNKNOWN') as PropertyKind);
   /* What each chapter has to say. A chapter with nothing is not drawn. */
   const has = {
     explore: true,
     story: !!(r.propertyStory?.chapters?.some((c) => clean(c.body)) || history?.milestones?.length || history?.milestoneGroups?.length || history?.evolution?.length),
-    people: !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
+    people: ks.projectTeam && !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
     building: true,
     legal: !!(position || history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
     documents: hasDocuments,
     location: !!(inChapter('location').length || synthesis.location),
-    market: inChapter('market').length > 0 || hasMarketView(synthesis.market),
+    market: ks.apartmentMarket && (inChapter('market').length > 0 || hasMarketView(synthesis.market)),
     final: true,
   };
   /* THE BUYER'S ORDER, IN FIVE GROUPS (owner, 2026-10-11, v6):
@@ -593,14 +598,14 @@ export function VerifyReport({
         {/* The dropped SNAPSHOT section's own figures, kept where figures belong. */}
         {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
         {/* The documented specifications, each with its approval status. */}
-        {specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
+        {ks.buildingSpecs && specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
         {/* What the technical facts mean, then the project's numbers worked through. */}
         <TechnicalExplained cards={r.technicalExplained} />
         <ProjectMath specs={synthesis.technicalSpecs} />
         {/* Rendered even when the run established nothing: a missing section
             reads as "does not apply", a row saying "not yet verified" reads
             as the question it actually is. */}
-        <UtilitiesCard utilities={utilities} />
+        {ks.unitUtilities ? <UtilitiesCard utilities={utilities} /> : null}
       </Chapter>
 
       </div>
@@ -668,7 +673,7 @@ export function VerifyReport({
           {/* And on its own when the model wrote neither section. Places a
               source named are evidence, and evidence must not vanish because
               the prose did not reach it. */}
-          {synthesis.location && !locationHost ? <LocationLiving l={synthesis.location} /> : null}
+          {synthesis.location && !locationHost && ks.livingLocation ? <LocationLiving l={synthesis.location} /> : null}
           </LazyMount>
         </Chapter>
       ) : null}

@@ -579,7 +579,7 @@ export function freshPhotoSubject(synthesisJson: unknown, resultJson: unknown): 
   const multipleBlocks = !(new Set(docs).size === 1 && (buildingsCount == null || buildingsCount <= 1));
   const uniq = <T>(xs: T[], k: (x: T) => string) => xs.filter((x, i) => xs.findIndex((y) => k(y) === k(x)) === i);
   return {
-    developmentNames: uniq(devs, fold),
+    developmentNames: uniq<string>(devs, (s) => fold(s)),
     streets: uniq(streets, (s) => `${fold(s.name)}|${s.number ?? ''}`),
     block: normBlock(ident.building ?? obj(rj.building).building),
     multipleBlocks,

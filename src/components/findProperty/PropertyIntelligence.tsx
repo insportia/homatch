@@ -1,5 +1,5 @@
 import { AlertTriangle, ExternalLink, Info, Landmark, LineChart, Mail, Phone, ShieldCheck, User } from 'lucide-react';
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { safeExternalUrl } from '@/lib/safeExternalUrl';
@@ -9,7 +9,8 @@ import type { PropertyView } from '@/services/marketplaceSearch';
 import { checkedAgo, currentActivity, listingActivity, listingAgeText, num, pct, type T, usd } from './format';
 import { advantageText, missingRequirements, reasonText, SELLER_KEY, sellerLabel } from './PropertyCard';
 import { PropertyGallery } from './PropertyGallery';
-import { DuplicateListings } from './DuplicateListings';
+import { DuplicateBadge, DuplicateListings } from './DuplicateListings';
+import { sourceNames } from './PropertyCard';
 
 function IntelligenceFrame({ children, fullPage, open, onOpenChange, isRTL }: { children: React.ReactNode; fullPage: boolean; open: boolean; onOpenChange: (o: boolean) => void; isRTL: boolean }) {
   if (fullPage) return <article data-property-dossier className="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card">{children}</article>;
@@ -44,6 +45,8 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
 }) {
   const navigate = useNavigate();
   const listingsRef = useRef<HTMLDivElement>(null);
+  const duplicatesRef = useRef<HTMLDivElement>(null);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(true);
   if (!p) return null;
   const f = p.facts;
   const d = p.priceDiscrepancy;
@@ -53,7 +56,13 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
     <IntelligenceFrame fullPage={fullPage} open={open} onOpenChange={onOpenChange} isRTL={isRTL}>
         <PropertyGallery images={p.images} t={t} full />
         <div className="space-y-6 p-5 sm:p-6">
-          {fullPage ? <header className="space-y-1 text-start"><h1 className="font-display text-3xl font-semibold tracking-[-0.02em]">{usd(f.priceUsd)}</h1><p dir="auto" className="text-[15px] text-muted-foreground">{place || p.title}</p></header> : <SheetHeader className="space-y-1 text-start"><SheetTitle className="font-display text-3xl font-semibold">{usd(f.priceUsd)}</SheetTitle><SheetDescription dir="auto">{place || p.title}</SheetDescription></SheetHeader>}
+          <div className="-mx-5 -mt-5 space-y-3 bg-[#0C1119] px-5 pb-5 pt-5 text-white sm:-mx-6 sm:-mt-6 sm:px-6" data-property-band>
+            {fullPage ? <header className="space-y-1 text-start"><h1 className="font-display text-3xl font-semibold tracking-[-0.02em] text-white sm:text-4xl">{usd(f.priceUsd)}</h1><p dir="auto" className="text-[15px] text-white/75">{place || p.title}</p></header> : <SheetHeader className="space-y-1 text-start"><SheetTitle className="font-display text-3xl font-semibold text-white">{usd(f.priceUsd)}</SheetTitle><SheetDescription dir="auto" className="text-white/75">{place || p.title}</SheetDescription></SheetHeader>}
+            <div className="flex flex-wrap items-center gap-2">
+              {sourceNames(p).map((name) => <span key={name} dir="auto" className="rounded-full border border-[hsl(var(--gold)/0.6)] px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--gold))]">{t('mps_card_source', { source: name })}</span>)}
+              <DuplicateBadge p={p} t={t} onClick={() => { setDuplicatesOpen(true); duplicatesRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }} />
+            </div>
+          </div>
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
             {f.pricePerSqmUsd ? <p>{t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) })}</p> : null}
             <p>{t('fpw_listing_count', { n: p.listings.length })} · {t('mps_sources_n', { n: p.sourceCount })}</p>
@@ -64,7 +73,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
             {FACTS.map(([k, label]) => {
               const v = factValue(k, f[k], t, p);
               return v ? (
-                <div key={k} className="rounded-xl border border-border bg-card px-3.5 py-2.5">
+                <div key={k} className="rounded-xl border border-border border-t-2 border-t-[hsl(var(--gold)/0.7)] bg-card px-3.5 py-2.5 shadow-sm">
                   <dt className="text-xs text-muted-foreground">{t(label)}</dt>
                   <dd className="text-[15px] font-medium text-foreground">{v}</dd>
                 </div>
@@ -72,7 +81,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
             })}
           </dl>
           <p className="text-sm text-muted-foreground">{t(f.elevator === true || f.amenities.includes('ELEVATOR') ? 'fpa_elevator_yes' : f.elevator === false || f.amenities.includes('NO_ELEVATOR') ? 'fpa_elevator_no' : 'fpa_elevator_unknown')}</p>
-          <DuplicateListings p={p} t={t} />
+          <div ref={duplicatesRef}><DuplicateListings p={p} t={t} open={duplicatesOpen} onOpenChange={setDuplicatesOpen} /></div>
 
           {p.intelligence ? <section className="space-y-2">
             <h3 className="font-display text-lg font-semibold">{t('fpr_evidence_title')}</h3>

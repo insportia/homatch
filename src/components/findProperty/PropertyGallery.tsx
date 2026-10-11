@@ -1,9 +1,9 @@
 import { Building2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import type { T } from './format';
 
 /** Only the active photo loads on cards. Controls never activate the property. */
-export function PropertyGallery({ images, t, onOpen, full = false }: { images: string[]; t: T; onOpen?: () => void; full?: boolean }) {
+export function PropertyGallery({ images, t, onOpen, full = false, overlay }: { images: string[]; t: T; onOpen?: () => void; full?: boolean; overlay?: React.ReactNode }) {
   const photos = [...new Set(images.filter(Boolean))];
   const [index, setIndex] = useState(0);
   const [broken, setBroken] = useState<Set<string>>(() => new Set());
@@ -30,6 +30,7 @@ export function PropertyGallery({ images, t, onOpen, full = false }: { images: s
         className="absolute inset-0 grid h-full w-full place-items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         {photos[active] && !broken.has(photos[active]) ? <img src={photos[active]} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className={`h-full w-full ${full ? 'object-contain' : 'object-cover'}`} onError={() => setBroken((current) => new Set([...current, photos[active]]))} /> : <Building2 className="h-12 w-12 text-white/30" aria-hidden="true" />}
       </button>
+      {overlay ? <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-1.5 [&>*]:pointer-events-auto">{overlay}</div> : null}
       {photos.length > 1 ? <>
         <button type="button" onClick={() => change(-1)} aria-label={t('fpw_previous_photo')} className="absolute start-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white focus-visible:ring-2 focus-visible:ring-ring"><ChevronLeft className="h-5 w-5 rtl:rotate-180" aria-hidden="true" /></button>
         <button type="button" onClick={() => change(1)} aria-label={t('fpw_next_photo')} className="absolute end-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white focus-visible:ring-2 focus-visible:ring-ring"><ChevronRight className="h-5 w-5 rtl:rotate-180" aria-hidden="true" /></button>

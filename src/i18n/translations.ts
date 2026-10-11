@@ -17821,6 +17821,15 @@ const en = {
   verify_p0_role_construction_org: 'Construction organisation project',
   verify_p0_role_design_firm: 'Design firm',
   verify_p0_role_mep_firm: 'Engineering systems design company',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'Source: {{source}}',
+  mps_duplicate_badge: 'Duplicate · {{n}} listings',
+  mps_duplicate_hint: 'The same property is listed {{n}} times. See every listing and compare their prices.',
+  mps_duplicates_banner: '{{n}} properties are listed more than once',
+  mps_duplicates_show: 'Show duplicates',
+  fpr_duplicatesOnly: 'Duplicates only',
+  fpr_filter_duplicatesOnly: 'Duplicates only',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35556,6 +35565,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_p0_role_construction_org: 'მშენებლობის ორგანიზაციის პროექტი',
   verify_p0_role_design_firm: 'საპროექტო ორგანიზაცია',
   verify_p0_role_mep_firm: 'საინჟინრო სისტემების საპროექტო კომპანია',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'წყარო: {{source}}',
+  mps_duplicate_badge: 'დუბლიკატი · {{n}} განცხადება',
+  mps_duplicate_hint: 'ერთი და იგივე ქონება გამოქვეყნებულია {{n}}-ჯერ. ნახე ყველა განცხადება და შეადარე ფასები.',
+  mps_duplicates_banner: '{{n}} ქონება გამოქვეყნებულია რამდენჯერმე',
+  mps_duplicates_show: 'დუბლიკატების ნახვა',
+  fpr_duplicatesOnly: 'მხოლოდ დუბლიკატები',
+  fpr_filter_duplicatesOnly: 'მხოლოდ დუბლიკატები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -53282,6 +53300,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_p0_role_construction_org: 'Проект организации строительства',
   verify_p0_role_design_firm: 'Проектная организация',
   verify_p0_role_mep_firm: 'Компания по проектированию инженерных систем',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'Источник: {{source}}',
+  mps_duplicate_badge: 'Дубликат · объявлений: {{n}}',
+  mps_duplicate_hint: 'Один и тот же объект опубликован {{n}} раз. Посмотрите все объявления и сравните цены.',
+  mps_duplicates_banner: 'Объектов, опубликованных несколько раз: {{n}}',
+  mps_duplicates_show: 'Показать дубликаты',
+  fpr_duplicatesOnly: 'Только дубликаты',
+  fpr_filter_duplicatesOnly: 'Только дубликаты',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -71006,6 +71033,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_p0_role_construction_org: 'İnşaat organizasyon projesi',
   verify_p0_role_design_firm: 'Proje firması',
   verify_p0_role_mep_firm: 'Mühendislik sistemleri tasarım şirketi',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'Kaynak: {{source}}',
+  mps_duplicate_badge: 'Kopya · {{n}} ilan',
+  mps_duplicate_hint: 'Aynı mülk {{n}} kez ilan edilmiş. Tüm ilanları görün ve fiyatları karşılaştırın.',
+  mps_duplicates_banner: '{{n}} mülk birden fazla kez ilan edilmiş',
+  mps_duplicates_show: 'Kopyaları göster',
+  fpr_duplicatesOnly: 'Yalnızca kopyalar',
+  fpr_filter_duplicatesOnly: 'Yalnızca kopyalar',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -88730,6 +88766,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_p0_role_construction_org: 'مشروع تنظيم البناء',
   verify_p0_role_design_firm: 'شركة التصميم',
   verify_p0_role_mep_firm: 'شركة تصميم الأنظمة الهندسية',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'المصدر: {{source}}',
+  mps_duplicate_badge: 'مكرّر · {{n}} إعلانات',
+  mps_duplicate_hint: 'العقار نفسه منشور {{n}} مرات. اطّلع على كل الإعلانات وقارن أسعارها.',
+  mps_duplicates_banner: '{{n}} عقارات منشورة أكثر من مرة',
+  mps_duplicates_show: 'عرض المكرّرات',
+  fpr_duplicatesOnly: 'المكرّرات فقط',
+  fpr_filter_duplicatesOnly: 'المكرّرات فقط',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -106454,6 +106499,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_p0_role_construction_org: 'תוכנית ארגון הבנייה',
   verify_p0_role_design_firm: 'משרד התכנון',
   verify_p0_role_mep_firm: 'חברת תכנון מערכות הנדסיות',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'מקור: {{source}}',
+  mps_duplicate_badge: 'כפילות · {{n}} מודעות',
+  mps_duplicate_hint: 'אותו נכס פורסם {{n}} פעמים. ראו את כל המודעות והשוו את המחירים.',
+  mps_duplicates_banner: '{{n}} נכסים פורסמו יותר מפעם אחת',
+  mps_duplicates_show: 'הצגת כפילויות',
+  fpr_duplicatesOnly: 'כפילויות בלבד',
+  fpr_filter_duplicatesOnly: 'כפילויות בלבד',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

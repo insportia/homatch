@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Loader2, Search } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { filtersFromParams, pageNumbers, type ResultFilters, resultParams } from '@/research-core/marketplace/browse-results';
@@ -58,6 +58,10 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
       {search.partial ? <div role="status" className="space-y-1"><p className="text-sm font-medium">{t('mps_partial_title')}</p><p className="text-sm text-muted-foreground">{t('mps_partial_body')}</p></div> : null}
     </div>
     {data ? <ResultFiltersPanel t={t} filters={filters} facets={data.facets} onChange={update} onReset={reset} /> : null}
+    {data && data.facets.duplicates > 0 && !filters.duplicatesOnly ? <div role="note" data-duplicates-banner className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.07)] px-4 py-3">
+      <p className="inline-flex items-center gap-2 text-sm font-medium"><Copy className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('mps_duplicates_banner', { n: data.facets.duplicates })}</p>
+      <button type="button" onClick={() => update({ duplicatesOnly: true }, 1)} className="inline-flex min-h-[44px] items-center rounded-xl bg-[#0C1119] px-4 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">{t('mps_duplicates_show')}</button>
+    </div> : null}
     {changed ? <div className="hm-discovery-panel flex flex-wrap items-center justify-between gap-3 p-4" role="status"><p className="text-sm">{t('fpr_results_changed')}</p><button type="button" onClick={refresh} className="min-h-[44px] rounded-xl border border-border px-4 text-sm font-semibold">{t('fpr_refresh')}</button></div> : null}
     {error && error !== 'RESULTS_CHANGED' ? <div role="alert" className="hm-discovery-panel space-y-3 p-4"><p>{t('mps_error_generic')}</p><button type="button" onClick={() => setRetry((n) => n + 1)} className="min-h-[44px] rounded-xl border px-4">{t('fpr_retry')}</button></div> : null}
     {data ? <div className="flex flex-wrap gap-2" aria-label={t('fpr_sections')}><button type="button" onClick={() => update({ section: undefined })} aria-pressed={!filters.section} className={`min-h-[44px] rounded-xl border px-3 text-sm ${!filters.section ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.1)]' : 'border-border'}`}>{t('fpr_all')}</button>{RESULT_SECTIONS.filter((s) => data.sections[s] > 0).map((section) => <button key={section} type="button" onClick={() => update({ section })} aria-pressed={filters.section === section} className={`min-h-[44px] rounded-xl border px-3 text-sm ${filters.section === section ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.1)]' : 'border-border'}`}>{t(`fpr_section_${section}`)} <span className="text-muted-foreground">{data.sections[section]}</span></button>)}</div> : null}

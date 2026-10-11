@@ -493,7 +493,7 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
   await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
-  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'გონივრული გაუმჯობესება · +5–10%', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
+  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'გონივრული გაუმჯობესება · +5–10%', 'რატომ გირჩევს HOMATCH', 'წყარო: SOURCE-A · SOURCE-B · SOURCE-C', 'დუბლიკატი · 3 განცხადება', 'ფასებში სხვაობა',
     '$9,000', 'რატომ ღირს განხილვა', 'გინდა უფრო ფართოდ მოვძებნოთ?']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
@@ -501,8 +501,16 @@ test('ka, 1440: complete request → READY without questions → search → grou
   assert.ok((await page.locator('section[aria-labelledby="mps-g-UPGRADE"]').textContent()).includes('+5.3%'), 'upgrade shows both measured over-budget amount and percentage');
   await shot(page, 'ka-1440-results');
 
-  /* The three-source flat: one card, one property sheet, three exact links. */
-  const card = page.locator('article', { hasText: 'ნაპოვნია 3 წყაროში' }).first();
+  /* The three-source flat: one card, labelled Duplicate; the badge opens all three listings with their prices. */
+  const card = page.locator('article', { hasText: 'დუბლიკატი · 3 განცხადება' }).first();
+  assert.ok((await card.locator('[data-card-source]').textContent()).includes('წყარო: SOURCE-A · SOURCE-B · SOURCE-C'), 'the source is named next to View property / Compare');
+  await card.locator('[data-duplicate-badge]').first().click();
+  const duplicates = card.locator('[data-confirmed-duplicates]');
+  await duplicates.locator('a[href^="http"]').first().waitFor();
+  assert.equal(await duplicates.evaluate((d) => d.open), true, 'the badge opens the duplicates');
+  assert.equal(await duplicates.locator('a[href^="http"]').count(), 3, 'every listing of the property is listed');
+  for (const s of ['$162,000', '$165,000', '$181,000']) assert.ok((await duplicates.textContent()).includes(s), `duplicate price ${s}`);
+  assert.ok(await page.locator('[data-duplicates-banner]').count(), 'the results say some properties are listed more than once');
   await card.getByRole('button', { name: 'ქონების ნახვა' }).click();
   await page.locator('#mps-listings').waitFor();
   const sheet = page.locator('[data-property-dossier]');
@@ -686,6 +694,35 @@ test('ka: owner can leave a resumed failed search without hiding or retrying it 
   await page.getByRole('button',{name:'ახალი ძიება',exact:true}).click();
   await page.locator('textarea').waitFor();
   assert.equal(state.starts,0);assert.ok(!new URL(page.url()).searchParams.has('search'));
+});
+
+test('duplicates: the banner filters to properties listed more than once; the property page names its sources (en, he RTL)', opts, async (t) => {
+  for (const [lang, width] of [['en', 1280], ['he', 390]]) {
+    const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE' });
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-duplicates-banner]').waitFor({ timeout: 30000 });
+    await page.locator('[data-duplicates-banner] button').click();
+    await page.waitForFunction(() => new URL(location.href).searchParams.has('fp_duplicatesOnly'));
+    const cards = page.locator('main article[data-property-key]');
+    // The pre-filter page can still be on screen for a moment: wait for the
+    // filtered list itself (every card a confirmed duplicate), not any card.
+    await page.waitForFunction(() => {
+      const shown = [...document.querySelectorAll('main article[data-property-key]')];
+      return shown.length > 0 && shown.every((a) => a.querySelector('[data-duplicate-badge]'));
+    }, null, { timeout: 30000 });
+    const n = await cards.count();
+    assert.ok(n >= 1, `${lang}: duplicates are listed`);
+    for (let i = 0; i < n; i++) assert.ok(await cards.nth(i).locator('[data-duplicate-badge]').count(), `${lang}: every shown card is a confirmed duplicate`);
+    assert.equal(await page.locator('[data-duplicates-banner]').count(), 0, `${lang}: the banner gives way to the active filter`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `${lang}: no horizontal overflow (${overflow}px)`);
+    await cards.first().getByRole('button', { name: lang === 'en' ? 'View property' : /./ }).first().click();
+    const band = page.locator('[data-property-band]');
+    await band.waitFor();
+    assert.ok(await band.locator('[data-duplicate-badge]').count(), `${lang}: the property page marks the duplicate`);
+    assert.ok(await page.locator('[data-confirmed-duplicates]').evaluate((d) => d.open), `${lang}: duplicates are open on the property page`);
+    await page.context().close();
+  }
 });
 
 test('partial and empty results say so, without technical errors', opts, async (t) => {

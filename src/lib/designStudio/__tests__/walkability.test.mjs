@@ -157,7 +157,10 @@ test('CASES 3–5: walking near something never uses it; a tap uses it once; a d
   const step = sc.slice(sc.indexOf('private stepWalk(now: number)'), sc.indexOf('// ── Teardown'));
   assert.doesNotMatch(step, /performAimed|living\.act\(|toggleAimed|sitOn\(/, 'no action while walking');
   assert.match(sc, /this\.setAim\(hit, true\);/);
-  assert.match(sc, /this\.onAimChange\?\.\(quiet \? null : this\.hintFor\(this\.aimed\)\);/);
+  // ... except that on a phone what is right in front, within arm's length, offers its buttons as one comes to it —
+  // still used only when a button is pressed.
+  assert.match(sc, /this\.onAimChange\?\.\(quiet && !this\.offeredOnApproach\(this\.aimed\) \? null : this\.hintFor\(this\.aimed\)\);/);
+  assert.match(sc, /return Math\.hypot\(nearest\.x - w\.pos\.x, nearest\.y - w\.pos\.y\) <= TOUCH_OFFER_M;/);
   // 4: an explicit tap — short and still — uses the thing under the finger, once.
   assert.equal(isTap(180, 2, false), true);
   const end = sc.slice(sc.indexOf('private endGesture('), sc.indexOf('private onLookDown'));

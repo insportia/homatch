@@ -27,7 +27,7 @@ import {
   canTransition, validateWorkerReport, type WorkerRunStatus,
 } from '../../../src/research-core/marketplace/worker-contract.ts';
 import { DEFAULT_LEASE_SECONDS, leaseUntil, retryDecision } from '../../../src/research-core/marketplace/dispatch.ts';
-import { loadMarketplaceSwitches, processAndStore, reapRuns } from '../_shared/marketplaceSearch.ts';
+import { loadMarketplaceSwitches, processAndStore, reapRuns, shareRecentResults } from '../_shared/marketplaceSearch.ts';
 import {
   decideProviderAccess, readProviderAccess, recordRecovery, recordRestriction, type ProviderAccess,
 } from '../../../src/research-core/marketplace/provider-access.ts';
@@ -127,6 +127,8 @@ Deno.serve(async (req: Request) => {
         .eq('worker_id', workerId).in('status', ['SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'])
         .lte('lease_expires_at', new Date().toISOString()).limit(200);
       await reapRuns(db, (stale ?? []) as Array<Record<string, unknown>>, () => maxAttempts);
+      /* Identical searches are answered from a run that just finished, not refetched. */
+      await shareRecentResults(db, workerId).catch((e) => console.error(JSON.stringify({ event: 'share_failed', workerId, message: String(e?.message ?? e).slice(0, 200) })));
       const { data, error } = await db.rpc('claim_marketplace_worker_runs', {
         p_worker_id: workerId, p_limit: Number(body.limit) || 5, p_lease_seconds: leaseSeconds,
       });
@@ -171,7 +173,9 @@ Deno.serve(async (req: Request) => {
       }
       // Replayed batches upsert the same identities; do not inflate run totals.
       const { count: persisted, error: countError } = await db.from('discovery_marketplace_listings')
-        .select('id', { count: 'exact', head: true }).eq('search_id', run.search_id).eq('worker_run_id', run.id);
+        .select('id', { count: 'exact', head: true }).eq('search_id', run.search_id).eq('worker_run_id', run.id)
+        // Pool (CACHED) rows share the run id but are not this run's fresh results.
+        .or('raw->retrievalMetadata->>observationLevel.is.null,raw->retrievalMetadata->>observationLevel.neq.CACHED');
       if (countError || persisted === null) throw countError ?? new Error('Missing persisted listing count');
       const returned = persisted;
       /* A transient failure with budget left goes back to the queue; it never fails the search. */

@@ -283,3 +283,15 @@ test('MyHome access uses the bounded provider state machine; no permanent circui
   assert.match(shared, /ignoreDuplicates: true/, 'cached rows never overwrite fresh ones');
   assert.ok(!existsSync(join(root, 'supabase/functions/_shared/myHomeAccess.ts')));
 });
+
+// Shared pool at scale: searches answer instantly from listings already
+// collected; identical searches share one fetch; a run's fresh count never
+// includes pooled rows.
+test('marketplace scale: instant pool answer at start, one fetch per identical search, fresh-only run counts', () => {
+  const ms = code(MS), wi = code(WI), sh = code(SH);
+  assert.match(ms, /serveCachedListings\(db, searchId, request, \(inserted \?\? \[\]\) as Array<Record<string, unknown>>, now, true\)/, 'search start answers from the pool');
+  assert.match(wi, /await shareRecentResults\(db, workerId\)[\s\S]{0,400}claim_marketplace_worker_runs/, 'sharing runs before every claim');
+  assert.match(wi, /observationLevel\.is\.null,raw->retrievalMetadata->>observationLevel\.neq\.CACHED/, 'pooled rows are not counted as fresh results');
+  assert.match(sh, /'ssge-agent': 'ss-ge'/);
+  assert.match(sh, /CACHE_WINDOW_MS = 72 \* 3600_000/, 'only listings confirmed within 72 hours are served');
+});

@@ -15,6 +15,43 @@ export function listingAgeText(activity: ListingActivity, t: T): string {
   return t(activity.basis === 'UPDATED' ? 'fpr_updated' : 'fpr_published', { age });
 }
 
+/** "2 საათის წინ": minutes under an hour, hours under a day, then days. */
+export function agoText(iso: string, t: T, now = Date.now()): string | null {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return null;
+  const minutes = Math.max(1, Math.floor((now - at) / 60_000));
+  if (minutes < 60) return t('mps_ago_minutes', { n: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('mps_ago_hours', { n: hours });
+  return t('mps_ago_days', { n: Math.floor(hours / 24) });
+}
+
+/** "10 ოქტ., 12:50" in Tbilisi time, in the page language. */
+export function exactTime(iso: string): string | null {
+  const at = new Date(iso);
+  if (!Number.isFinite(at.getTime())) return null;
+  const lang = typeof document !== 'undefined' ? document.documentElement.lang || undefined : undefined;
+  try {
+    return new Intl.DateTimeFormat(lang, { timeZone: 'Asia/Tbilisi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
+  } catch {
+    return new Intl.DateTimeFormat(undefined, { timeZone: 'Asia/Tbilisi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
+  }
+}
+
+/** The source's own dates for one listing, exactly; never a promotion date and never invented. */
+export function listingTimes(listing: { publishedAt?: string | null; updatedAt?: string | null; observedAt?: string; lastVerifiedAt?: string | null } | undefined, t: T, now = Date.now()) {
+  const line = (key: string, iso: string | null | undefined) => {
+    if (!iso) return null;
+    const when = exactTime(iso), ago = agoText(iso, t, now);
+    return when && ago ? t(key, { when, ago }) : null;
+  };
+  const published = line('mps_time_published', listing?.publishedAt);
+  const updated = listing?.updatedAt && listing.updatedAt !== listing.publishedAt ? line('mps_time_updated', listing.updatedAt) : null;
+  const seenIso = listing?.lastVerifiedAt ?? listing?.observedAt;
+  const seen = seenIso ? agoText(seenIso, t, now) : null;
+  return { published, updated, unknown: !published && !updated, seen: seen ? t('mps_time_seen', { ago: seen }) : null };
+}
+
 /** USD as the approved copy writes it ("$162,000") in every language. */
 export function usd(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';

@@ -174,3 +174,25 @@ test('terminal unavailable history never hijacks bare entry, explicit recovery r
   assert.equal(shouldResumeSearch(failed, 'history', now.getTime()), true);
   assert.equal(shouldResumeSearch({ ...failed, terminal: false }, null, now.getTime()), true);
 });
+test('possible duplicates stay separate, point at each other, and the duplicates filter shows both', () => {
+  const images = F.CONFIRMED_IDENTITY.images;
+  const list = [F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'a', images }), F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'b', images: [images[0]], price: 158000 })];
+  const output = process(list);
+  assert.equal(output.properties.length, 2, 'never merged');
+  assert.equal(output.stats.possibleDuplicates, 1);
+  const [x, y] = output.properties.map(publicView);
+  for (const [p, other] of [[x, y], [y, x]]) {
+    assert.ok(p.intelligence.warnings.includes('POSSIBLE_DUPLICATE'));
+    assert.equal(p.identity.status, 'INSUFFICIENT_EVIDENCE');
+    assert.equal(p.possibleMatches.length, 1);
+    assert.equal(p.possibleMatches[0].key, other.key);
+    assert.equal(p.possibleMatches[0].priceUsd, other.facts.priceUsd);
+    assert.equal(p.possibleMatches[0].exactUrl, other.listings[0].exactUrl);
+  }
+  const page = browseResults([x, y], { duplicatesOnly: true }, 1, now);
+  assert.equal(page.total, 2);
+  assert.equal(page.facets.possibleDuplicates, 2);
+  assert.equal(page.facets.duplicates, 0);
+  const single = process([F.listing({ sourceListingId: 'solo' })]).properties.map(publicView)[0];
+  assert.equal('possibleMatches' in single, false, 'only possible duplicates carry partners');
+});

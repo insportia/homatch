@@ -245,13 +245,13 @@ test('production processes all six pages, all 139 unique IDs and progressive bat
   assert.equal(s.reports.at(-1).status,'COMPLETE');assert.equal(s.reports.at(-1).listings.length,0);
 });
 test('an explicit page budget can traverse 50 pages',async()=>{const s=simulated({lastPage:50,total:1200});const result=await s.run({},{maxPages:50});assert.equal(result.delivered,1200);assert.equal(s.pages.length,50);});
-test('owner page cap: by default only the first 3 result pages are requested and the full count is still reported',async()=>{
+test('owner page cap: by default only the first 2 result pages are requested and the full count is still reported',async()=>{
   const s=simulated();const result=await s.run();
-  assert.deepEqual(s.pages,[1,2,3]);assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,72);
-  const last=s.reports.at(-1);assert.equal(last.discoveredCount,139);assert.equal(last.queryApplied.pageCap,3);assert.equal(last.queryApplied.pagesCapped,true);
+  assert.deepEqual(s.pages,[1,2]);assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,48);
+  const last=s.reports.at(-1);assert.equal(last.discoveredCount,139);assert.equal(last.queryApplied.pageCap,2);assert.equal(last.queryApplied.pagesCapped,true);
 });
 test('pages are paced: a fixed pause precedes every page after the first',async()=>{
-  const s=simulated();const started=Date.now();await s.run({},{pageIntervalMs:40});
+  const s=simulated();const started=Date.now();await s.run({},{pageIntervalMs:40,maxPages:3});
   assert.ok(Date.now()-started>=80,'two pauses before pages 2 and 3');assert.deepEqual(s.pages,[1,2,3]);
 });
 test('a live record with no canonical URL does not truncate pagination or invent a URL',async()=>{
@@ -463,7 +463,7 @@ test('probe refused again: one request, cooldown recorded, no recovery, nothing 
 
 test('a refusal mid-run keeps the pages already read and cools down', async () => {
   const s = simulated({ failPage: 3 }), st = accessStore('LIVE'), engine = new MyHomeEngine(); engine.configure(st);
-  const result = await s.run({}, { engine });
+  const result = await s.run({}, { engine, maxPages: 3 });
   assert.equal(result.status, 'PARTIAL'); assert.equal(result.delivered, 48); assert.deepEqual(s.pages, [1, 2, 3]);
   assert.equal(st.calls.restrict.length, 1);
 });

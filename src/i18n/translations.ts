@@ -17830,6 +17830,27 @@ const en = {
   mps_duplicates_show: 'Show duplicates',
   fpr_duplicatesOnly: 'Duplicates only',
   fpr_filter_duplicatesOnly: 'Duplicates only',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_possible_duplicate_badge: 'Possible duplicate',
+  mps_possible_duplicate_hint: 'This may be the same flat listed again. Compare photos, size, floor and price before you decide.',
+  mps_possible_duplicate_this: 'this listing',
+  mps_possible_duplicate_floor: 'floor {{n}}',
+  mps_duplicates_banner_possible: '{{n}} properties may be listed more than once',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_time_published: 'Posted {{when}} ({{ago}})',
+  mps_time_updated: 'Updated {{when}} ({{ago}})',
+  mps_time_unknown: 'The source does not show when this was posted',
+  mps_time_seen: 'Seen by HOMATCH {{ago}}',
+  mps_ago_minutes: '{{n}} min ago',
+  mps_ago_hours: '{{n}} h ago',
+  mps_ago_days: '{{n}} days ago',
+  mps_photo_fullscreen: 'Open photo full screen',
+  mps_photo_close: 'Close',
+  mps_photo_zoom_in: 'Zoom in',
+  mps_photo_zoom_out: 'Zoom out',
+  mps_photo_hint: 'Double-tap or scroll to zoom · drag to move',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35574,6 +35595,27 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mps_duplicates_show: 'დუბლიკატების ნახვა',
   fpr_duplicatesOnly: 'მხოლოდ დუბლიკატები',
   fpr_filter_duplicatesOnly: 'მხოლოდ დუბლიკატები',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_possible_duplicate_badge: 'შესაძლო დუბლიკატი',
+  mps_possible_duplicate_hint: 'შეიძლება ეს იგივე ბინა იყოს, ხელახლა გამოქვეყნებული. შეადარე ფოტოები, ფართი, სართული და ფასი.',
+  mps_possible_duplicate_this: 'ეს განცხადება',
+  mps_possible_duplicate_floor: '{{n}} სართული',
+  mps_duplicates_banner_possible: '{{n}} ქონება შეიძლება რამდენჯერმე იყოს გამოქვეყნებული',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_time_published: 'დადებულია {{when}} ({{ago}})',
+  mps_time_updated: 'განახლდა {{when}} ({{ago}})',
+  mps_time_unknown: 'წყარო არ აჩვენებს, როდის დაიდო',
+  mps_time_seen: 'HOMATCH-მა ნახა {{ago}}',
+  mps_ago_minutes: '{{n}} წუთის წინ',
+  mps_ago_hours: '{{n}} საათის წინ',
+  mps_ago_days: '{{n}} დღის წინ',
+  mps_photo_fullscreen: 'ფოტოს სრულ ეკრანზე გახსნა',
+  mps_photo_close: 'დახურვა',
+  mps_photo_zoom_in: 'გადიდება',
+  mps_photo_zoom_out: 'დაპატარავება',
+  mps_photo_hint: 'გასადიდებლად ორჯერ დააჭირე ან დაატრიალე · გადასაადგილებლად გადაათრიე',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -53309,6 +53351,27 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mps_duplicates_show: 'Показать дубликаты',
   fpr_duplicatesOnly: 'Только дубликаты',
   fpr_filter_duplicatesOnly: 'Только дубликаты',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_possible_duplicate_badge: 'Возможный дубликат',
+  mps_possible_duplicate_hint: 'Возможно, это та же квартира, опубликованная повторно. Сравните фото, площадь, этаж и цену.',
+  mps_possible_duplicate_this: 'это объявление',
+  mps_possible_duplicate_floor: '{{n}} этаж',
+  mps_duplicates_banner_possible: 'Объектов, возможно опубликованных несколько раз: {{n}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_time_published: 'Опубликовано {{when}} ({{ago}})',
+  mps_time_updated: 'Обновлено {{when}} ({{ago}})',
+  mps_time_unknown: 'Источник не указывает дату публикации',
+  mps_time_seen: 'HOMATCH видел {{ago}}',
+  mps_ago_minutes: '{{n}} мин назад',
+  mps_ago_hours: '{{n}} ч назад',
+  mps_ago_days: '{{n}} дн. назад',
+  mps_photo_fullscreen: 'Открыть фото на весь экран',
+  mps_photo_close: 'Закрыть',
+  mps_photo_zoom_in: 'Увеличить',
+  mps_photo_zoom_out: 'Уменьшить',
+  mps_photo_hint: 'Двойное касание или колесо — масштаб · перетащите для перемещения',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -71042,6 +71105,27 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mps_duplicates_show: 'Kopyaları göster',
   fpr_duplicatesOnly: 'Yalnızca kopyalar',
   fpr_filter_duplicatesOnly: 'Yalnızca kopyalar',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_possible_duplicate_badge: 'Olası kopya',
+  mps_possible_duplicate_hint: 'Bu, yeniden ilan edilmiş aynı daire olabilir. Karar vermeden önce fotoğrafları, alanı, katı ve fiyatı karşılaştırın.',
+  mps_possible_duplicate_this: 'bu ilan',
+  mps_possible_duplicate_floor: '{{n}}. kat',
+  mps_duplicates_banner_possible: '{{n}} mülk birden fazla kez ilan edilmiş olabilir',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_time_published: 'Yayınlandı {{when}} ({{ago}})',
+  mps_time_updated: 'Güncellendi {{when}} ({{ago}})',
+  mps_time_unknown: 'Kaynak ilanın ne zaman verildiğini göstermiyor',
+  mps_time_seen: 'HOMATCH {{ago}} gördü',
+  mps_ago_minutes: '{{n}} dk önce',
+  mps_ago_hours: '{{n}} saat önce',
+  mps_ago_days: '{{n}} gün önce',
+  mps_photo_fullscreen: 'Fotoğrafı tam ekran aç',
+  mps_photo_close: 'Kapat',
+  mps_photo_zoom_in: 'Yakınlaştır',
+  mps_photo_zoom_out: 'Uzaklaştır',
+  mps_photo_hint: 'Yakınlaştırmak için çift dokunun veya kaydırın · taşımak için sürükleyin',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -88775,6 +88859,27 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mps_duplicates_show: 'عرض المكرّرات',
   fpr_duplicatesOnly: 'المكرّرات فقط',
   fpr_filter_duplicatesOnly: 'المكرّرات فقط',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_possible_duplicate_badge: 'مكرّر محتمل',
+  mps_possible_duplicate_hint: 'قد تكون هذه الشقة نفسها منشورة مرة أخرى. قارن الصور والمساحة والطابق والسعر قبل أن تقرّر.',
+  mps_possible_duplicate_this: 'هذا الإعلان',
+  mps_possible_duplicate_floor: 'الطابق {{n}}',
+  mps_duplicates_banner_possible: '{{n}} عقارات قد تكون منشورة أكثر من مرة',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_time_published: 'نُشر {{when}} ({{ago}})',
+  mps_time_updated: 'حُدّث {{when}} ({{ago}})',
+  mps_time_unknown: 'لا يُظهر المصدر تاريخ النشر',
+  mps_time_seen: 'شاهده HOMATCH {{ago}}',
+  mps_ago_minutes: 'قبل {{n}} دقيقة',
+  mps_ago_hours: 'قبل {{n}} ساعة',
+  mps_ago_days: 'قبل {{n}} يوم',
+  mps_photo_fullscreen: 'فتح الصورة بملء الشاشة',
+  mps_photo_close: 'إغلاق',
+  mps_photo_zoom_in: 'تكبير',
+  mps_photo_zoom_out: 'تصغير',
+  mps_photo_hint: 'انقر مرتين أو مرّر للتكبير · اسحب للتحريك',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -106508,6 +106613,27 @@ const he: Partial<Record<TranslationKey, string>> = {
   mps_duplicates_show: 'הצגת כפילויות',
   fpr_duplicatesOnly: 'כפילויות בלבד',
   fpr_filter_duplicatesOnly: 'כפילויות בלבד',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_possible_duplicate_badge: 'כפילות אפשרית',
+  mps_possible_duplicate_hint: 'ייתכן שזו אותה דירה שפורסמה שוב. השוו תמונות, שטח, קומה ומחיר לפני שתחליטו.',
+  mps_possible_duplicate_this: 'מודעה זו',
+  mps_possible_duplicate_floor: 'קומה {{n}}',
+  mps_duplicates_banner_possible: '{{n}} נכסים ייתכן שפורסמו יותר מפעם אחת',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_time_published: 'פורסם {{when}} ({{ago}})',
+  mps_time_updated: 'עודכן {{when}} ({{ago}})',
+  mps_time_unknown: 'המקור אינו מציג מתי פורסם',
+  mps_time_seen: 'HOMATCH ראה {{ago}}',
+  mps_ago_minutes: 'לפני {{n}} דק׳',
+  mps_ago_hours: 'לפני {{n}} שעות',
+  mps_ago_days: 'לפני {{n}} ימים',
+  mps_photo_fullscreen: 'פתיחת התמונה במסך מלא',
+  mps_photo_close: 'סגירה',
+  mps_photo_zoom_in: 'הגדלה',
+  mps_photo_zoom_out: 'הקטנה',
+  mps_photo_hint: 'הקשה כפולה או גלילה להגדלה · גררו להזזה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

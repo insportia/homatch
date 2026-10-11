@@ -71,7 +71,7 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
     if (access.mode === 'CACHE_ONLY') throw new MyHomeFailure('PROVIDER_COOLDOWN',
       `MyHome is cooling down after an access refusal; no request sent. Fresh acquisition resumes ${access.retryAt ? `after ${access.retryAt}` : 'with the next permitted probe'}.`);
     let probePending = access.mode === 'PROBE';
-    const maxPages = Math.max(1, Math.trunc(options.maxPages ?? 3));
+    const maxPages = Math.max(1, Math.trunc(options.maxPages ?? 2));
     queriesApplied.pageCap = maxPages;
     const locations = await json(endpoints.locations, 'en'), filters = await json(endpoints.filters);
     const queries = buildQueries(request, locations, filters);

@@ -1,7 +1,7 @@
-import { AlertTriangle, ArrowRight, BedDouble, Check, DoorOpen, Globe2, MapPin, Ruler, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BedDouble, Check, Clock, DoorOpen, Globe2, MapPin, Ruler, ShieldCheck } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { PropertyView } from '@/services/marketplaceSearch';
-import { currentActivity, listingAgeText, num, pct, type T, usd } from './format';
+import { listingTimes, num, pct, type T, usd } from './format';
 import { PropertyGallery } from './PropertyGallery';
 import { DuplicateBadge, DuplicateListings } from './DuplicateListings';
 
@@ -82,8 +82,19 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
               {sellerLabel(p.seller, t)}
             </span>
           ) : null}
-          <span className="text-muted-foreground">{listingAgeText(currentActivity(p), t)}</span>
         </div>
+        {(() => {
+          const times = listingTimes(p.listings.find((l) => l.listingId === intel?.primaryListingId) ?? p.listings[0], t);
+          return <div data-card-times className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+            <p className="min-w-0">
+              {times.published ? <span className="block font-medium text-foreground/85">{times.published}</span> : null}
+              {times.updated ? <span className="block font-medium text-foreground/85">{times.updated}</span> : null}
+              {times.unknown ? <span className="block">{t('mps_time_unknown')}</span> : null}
+              {times.seen ? <span className="block">{times.seen}</span> : null}
+            </p>
+          </div>;
+        })()}
         {p.priceDiscrepancy?.significant ? <p className="text-xs text-muted-foreground">{t('mps_price_diff_badge')}</p> : null}
         <div ref={duplicatesRef}><DuplicateListings p={p} t={t} open={duplicatesOpen} onOpenChange={setDuplicatesOpen} /></div>
 

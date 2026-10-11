@@ -6,7 +6,7 @@ import { safeExternalUrl } from '@/lib/safeExternalUrl';
 import { investmentHandoff, mortgageHandoff } from '@/research-core/marketplace/handoff';
 import type { ResultProperty } from '@/research-core/marketplace/pipeline';
 import type { PropertyView } from '@/services/marketplaceSearch';
-import { checkedAgo, currentActivity, listingActivity, listingAgeText, num, pct, type T, usd } from './format';
+import { checkedAgo, listingActivity, listingAgeText, listingTimes, num, pct, type T, usd } from './format';
 import { advantageText, missingRequirements, reasonText, SELLER_KEY, sellerLabel } from './PropertyCard';
 import { PropertyGallery } from './PropertyGallery';
 import { DuplicateBadge, DuplicateListings } from './DuplicateListings';
@@ -66,8 +66,16 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
             {f.pricePerSqmUsd ? <p>{t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) })}</p> : null}
             <p>{t('fpw_listing_count', { n: p.listings.length })} · {t('mps_sources_n', { n: p.sourceCount })}</p>
-            <p>{listingAgeText(currentActivity(p), t)}</p>
           </div>
+          {(() => {
+            const times = listingTimes(p.listings.find((l) => l.listingId === p.intelligence?.primaryListingId) ?? p.listings[0], t);
+            return <div data-property-times className="space-y-0.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm">
+              {times.published ? <p className="font-medium">{times.published}</p> : null}
+              {times.updated ? <p className="font-medium">{times.updated}</p> : null}
+              {times.unknown ? <p className="text-muted-foreground">{t('mps_time_unknown')}</p> : null}
+              {times.seen ? <p className="text-xs text-muted-foreground">{times.seen}</p> : null}
+            </div>;
+          })()}
 
           <dl className="grid grid-cols-2 gap-2">
             {FACTS.map(([k, label]) => {

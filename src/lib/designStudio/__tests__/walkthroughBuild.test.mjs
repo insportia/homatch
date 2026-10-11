@@ -75,7 +75,8 @@ test('a pose through a wall is corrected to the nearest clean one, and the move 
   assert.equal(r.outcome, 'CORRECTED');
   assert.ok(r.movedM > 0 && r.movedM < 1.5, String(r.movedM));
   assert.ok(['THROUGH_WALL', 'OUTSIDE_ROOM'].includes(r.reason), r.reason);
-  assert.equal(state.objects.length, 1);
+  // The room the plan furnished holds just its piece (the plan's other rooms are furnished by the room programme).
+  assert.equal(state.objects.filter((o) => o.roomId === 'r-living').length, 1);
 });
 
 test('two pieces asked for the same spot never overlap: the second moves or is dropped', () => {
@@ -90,7 +91,7 @@ test('two pieces asked for the same spot never overlap: the second moves or is d
 
 test('a piece with no safe place anywhere is dropped and reported, never forced in', () => {
   const { state, report } = build([room('r-bath', { items: [item('dev/sofa-xl', { x: 1, y: 1.5, rotationDeg: 0 })] })]);
-  assert.equal(state.objects.length, 0);
+  assert.equal(state.objects.filter((o) => o.assetId === 'dev/sofa-xl').length, 0);
   assert.equal(report.items[0].outcome, 'DROPPED');
   assert.equal(report.items[0].reason, 'NO_SAFE_PLACE');
 });
@@ -145,7 +146,7 @@ test('the floor plan is never touched: the compiled walls, openings and rooms ar
   const a = compile(emptyDesignState()); const b = compile(state);
   assert.deepEqual(b.walls.map((w) => [w.id, w.start, w.end, w.openings]), a.walls.map((w) => [w.id, w.start, w.end, w.openings]));
   assert.deepEqual(b.rooms.map((r) => [r.id, r.polygon]), a.rooms.map((r) => [r.id, r.polygon]));
-  assert.ok(b.objects.length === 1);
+  assert.ok(b.objects.length >= 1 && b.objects.length === state.objects.length);
 });
 
 test('the same plan on the same design builds the same design, byte for byte', () => {

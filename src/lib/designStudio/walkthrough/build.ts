@@ -51,10 +51,11 @@ import {
 } from './walkability.ts';
 import { ANCHOR_FALLBACK_M } from './fidelity.ts';
 import { arrangeSeating, seatRole, type SeatPiece } from './seatingGroup.ts';
+import { homeProgramme, type Need } from './programme.ts';
 import { backGap, plausibility, WALL_BACK_GAP_M } from './plausibility.ts';
 import { type ObjectShape, shapedAsset } from '../objectShape.ts';
 import { applyOperation, type Operation, type OperationContext, validateOperation } from '../operations.ts';
-import { candidatePositions, evaluateInWorld as evaluateBase, footprint, frontZone, isSeat, isSeatTable, type Obb, type PlacementIssue, type PlacementWorld, placementWorld, snapToWall, type SolidBox, solidBox, solidOverlap, TUCK_M } from '../placement.ts';
+import { candidatePositions, evaluateInWorld as evaluateBase, footprint, frontOf, frontZone, isSeat, isSeatTable, type Obb, type PlacementIssue, type PlacementWorld, placementWorld, snapToWall, type SolidBox, solidBox, solidOverlap, TUCK_M } from '../placement.ts';
 import { ceilingSurfaceId, floorSurfaceId, type Point, pointInPolygon, type SpaceModel, type SpaceRoom, surfacesOfRoom, wallFrame } from '../space.ts';
 
 // ── The rooms, as the model is shown them ────────────────────────────────────
@@ -286,6 +287,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
 
   // ── Finishes, room by room ──
   const rooms = new Map(space.rooms.map((r) => [r.id, r]));
+  const programme = homeProgramme(space.rooms);
   for (const pr of input.plan.rooms) {
     const room = rooms.get(pr.roomId);
     if (!room) continue;
@@ -517,35 +519,118 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       drop(victim, 'OVERFURNISHED');
     }
   }
-  for (const pr of input.plan.rooms) {
-    const room = rooms.get(pr.roomId);
-    const role = room ? essentialRole(room.kind) : null;
-    if (!room || !role || room.areaM2 < 5) continue;
-    const have = standingIn(room.id).find((p) => servesRole(p.asset, role));
-    if (have) { have.essential = true; continue; }
+  // The room programme (programme.ts): every room holds what makes it that room — the kitchen its cabinetry and
+  // fridge, the bathroom its toilet, basin and shower, the bedroom its bed and wardrobe, the living room its sofa,
+  // table and television — whatever the plan left out, placed by the walkthrough's own rules. A piece serving a core
+  // need is never given way for a walk.
+  // A small room is solved as a set: when the core needs do not all fit in one order (a toilet taking the shower's
+  // corner), the room's own additions are taken back and other orders and smaller pieces are tried.
+  // Where a programme piece may stand, beyond being clean: a television only where a sofa of the room faces it (the
+  // plausibility gate's own test), a sofa facing the television when there is one, and on a balcony or terrace
+  // against its edge (a chair in the middle of a narrow balcony is taken away again for the walk).
+  const faces = (sofa: { at: Point; rotation: number }, tv: { at: Point; rotation: number }) => {
+    const f = frontOf(sofa.rotation);
+    const rel = { x: tv.at.x - sofa.at.x, y: tv.at.y - sofa.at.y };
+    const along = rel.x * f.x + rel.y * f.y;
+    const lateral = Math.abs(rel.x * f.y - rel.y * f.x);
+    const turned = Math.abs(Math.atan2(Math.sin(tv.rotation - sofa.rotation - Math.PI), Math.cos(tv.rotation - sofa.rotation - Math.PI)));
+    return along >= 1.2 && lateral <= 1.0 && turned < 0.6;
+  };
+  const posed = (roomId: string, role: 'SOFA' | 'TV') => working.objects.filter((o) => o.roomId === roomId && assets.get(o.assetId) && seatRole('', assets.get(o.assetId)!) === role)
+    .map((o) => ({ at: { x: o.position.x, y: o.position.z }, rotation: o.rotationY }));
+  const toEdge = (room: SpaceRoom, at: Point) => Math.min(...room.polygon.map((p, i) => {
+    const q = room.polygon[(i + 1) % room.polygon.length];
+    const dx = q.x - p.x; const dy = q.y - p.y; const l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((at.x - p.x) * dx + (at.y - p.y) * dy) / l2));
+    return Math.hypot(at.x - (p.x + t * dx), at.y - (p.y + t * dy));
+  }));
+  const poseRules = (nd: Need, room: SpaceRoom, asset: CatalogAsset) => {
+    const role = seatRole('', asset);
+    if (role === 'TV') {
+      const sofas = posed(room.id, 'SOFA');
+      return sofas.length ? { accept: (c: { at: Point; rotation: number }) => sofas.some((s) => faces(s, c)) } : {};
+    }
+    if (role === 'SOFA') {
+      const tvs = posed(room.id, 'TV');
+      return tvs.length ? { prefer: (c: { at: Point; rotation: number }) => (tvs.some((t) => faces(c, t)) ? 0 : 1) } : {};
+    }
+    if (room.outdoor && nd.id.startsWith('OUTDOOR')) return { prefer: (c: { at: Point; rotation: number }) => toEdge(room, c.at) };
+    return {};
+  };
+  const permutations = <T,>(xs: T[]): T[][] => (xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest])));
+  for (const room of space.rooms) {
+    const prog = programme.get(room.id);
     // A picture's home is furnished with what the picture shows: nothing is added to it.
-    if (input.anchorsAsSeen) continue;
-    // The catalogue's best piece for the role: the design's style first, then the size that suits the room.
-    const target = role === 'BED' ? (room.areaM2 >= 10 ? 3.2 : 2.0) : role === 'SOFA' ? (room.areaM2 >= 18 ? 2.0 : 1.5) : role === 'TABLE' ? 1.4 : 1.8;
-    const options = [...assets.values()].filter((a) => a.active !== false && a.placement === 'FLOOR' && servesRole(a, role)
-      && (!a.roomKinds?.length || a.roomKinds.includes(room.kind)))
-      .sort((a, b) => Number(b.styleTags?.includes(input.plan.styleCode ?? '')) - Number(a.styleTags?.includes(input.plan.styleCode ?? ''))
-        || Math.abs(a.widthM * a.depthM - target) - Math.abs(b.widthM * b.depthM - target) || (a.code < b.code ? -1 : 1))
+    if (!prog || room.areaM2 < 1.2 || input.anchorsAsSeen) continue;
+    const cores = prog.needs.filter((nd) => nd.core).sort((a, b) => b.targetM2 - a.targetM2);
+    // A room the design furnished keeps the design: only what defines the room is added to it (a bathroom the plan
+    // left without a toilet). A room the design left empty is furnished by the whole programme.
+    const designed = (input.plan.rooms.find((pr) => pr.roomId === room.id)?.items.length ?? 0) > 0;
+    const rest = designed ? [] : prog.needs.filter((nd) => !nd.core);
+    const optionsFor = (nd: Need, smallest: boolean) => [...assets.values()].filter((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)
+      && (!a.roomKinds?.length || a.roomKinds.some((k) => prog.kinds.includes(k))))
+      .sort((a, b) => (smallest ? a.widthM * a.depthM - b.widthM * b.depthM : 0)
+        || Number(b.styleTags?.includes(input.plan.styleCode ?? '')) - Number(a.styleTags?.includes(input.plan.styleCode ?? ''))
+        || Math.abs(a.widthM * a.depthM - nd.targetM2) - Math.abs(b.widthM * b.depthM - nd.targetM2) || (a.code < b.code ? -1 : 1))
       .slice(0, 5);
-    for (const asset of options) {
-      const found = findPose(space, assets, working.objects, room, asset, { code: asset.code, type: role, pose: null, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem);
-      if (!found) continue;
-      n += 1;
-      const object: ObjectInstance = {
-        instanceId: `${input.idPrefix}-${n}`, assetId: asset.code, roomId: room.id,
-        position: { x: r3(found.at.x), y: 0, z: r3(found.at.y) }, rotationY: Math.round(found.rotation * 1e6) / 1e6,
-        materialVariant: null, colorOverride: null, locked: false,
-      };
-      if (apply({ type: 'ADD_OBJECT', object })) continue;
-      const entry: ItemReport = { roomId: room.id, code: asset.code, type: role, instanceId: object.instanceId, outcome: 'PLACED', reason: 'ESSENTIAL', movedM: null, warnings: [] };
-      report.items.push(entry);
-      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: false, area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: true });
-      break;
+    /** One pass in this order; returns the pieces it added and the needs (core, other) it could not meet. */
+    const pass = (order: Need[], smallest: boolean) => {
+      const added: Array<typeof placedOrder[number]> = [];
+      const used = new Set<string>();
+      let coreMissing = 0;
+      let otherMissing = 0;
+      for (const nd of order) {
+        const have = standingIn(room.id).filter((p) => !used.has(p.instanceId) && nd.serves(p.asset)).slice(0, nd.count);
+        for (const h of have) { used.add(h.instanceId); if (nd.core) h.essential = true; }
+        for (let k = have.length; k < nd.count; k += 1) {
+          let placed = false;
+          for (const asset of optionsFor(nd, smallest)) {
+            const found = findPose(space, assets, working.objects, room, asset, { code: asset.code, type: nd.id, pose: null, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem, poseRules(nd, room, asset));
+            if (!found) continue;
+            n += 1;
+            const object: ObjectInstance = {
+              instanceId: `${input.idPrefix}-${n}`, assetId: asset.code, roomId: room.id,
+              position: { x: r3(found.at.x), y: 0, z: r3(found.at.y) }, rotationY: Math.round(found.rotation * 1e6) / 1e6,
+              materialVariant: null, colorOverride: null, locked: false,
+            };
+            if (apply({ type: 'ADD_OBJECT', object })) continue;
+            const entry: ItemReport = { roomId: room.id, code: asset.code, type: nd.id, instanceId: object.instanceId, outcome: 'PLACED', reason: nd.core ? 'ESSENTIAL' : 'PROGRAMME', movedM: null, warnings: [] };
+            const p = { roomId: room.id, instanceId: object.instanceId, flat: false, area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: nd.core };
+            report.items.push(entry);
+            placedOrder.push(p);
+            added.push(p);
+            used.add(object.instanceId);
+            placed = true;
+            break;
+          }
+          if (!placed) { if (nd.core) coreMissing += nd.count - k; else otherMissing += nd.count - k; break; }
+        }
+      }
+      return { added, coreMissing, otherMissing };
+    };
+    const undo = (added: Array<typeof placedOrder[number]>) => {
+      for (const p of added) {
+        apply({ type: 'REMOVE_OBJECT', instanceId: p.instanceId });
+        placedOrder.splice(placedOrder.indexOf(p), 1);
+        report.items.splice(report.items.indexOf(p.report), 1);
+      }
+    };
+    // Orders tried: the core needs in each order (largest first leads), the rest after; with few needs, every order
+    // of all of them (a wardrobe placed before the bed leaves the bed a wall, the other way round it may not). The
+    // first order that meets everything stands; else the one that met the most.
+    const all = [...cores, ...rest];
+    // A television is placed after the sofa it must face (never a sofa turned to suit a television placed first).
+    const sofaFirst = (o: Need[]) => !o.some((nd) => nd.id === 'TV') || o.findIndex((nd) => nd.id === 'SOFA') < 0 || o.findIndex((nd) => nd.id === 'SOFA') < o.findIndex((nd) => nd.id === 'TV');
+    const orders = (all.length <= 4 ? permutations(all) : permutations(cores).slice(0, 6).map((o) => [...o, ...rest])).filter(sofaFirst);
+    const tries = [false, true].flatMap((smallest) => orders.slice(0, 24).map((order) => ({ order, smallest })));
+    let best: { i: number; score: number } | null = null;
+    for (const [i, t] of tries.entries()) {
+      const r = pass(t.order, t.smallest);
+      const score = r.coreMissing * 100 + r.otherMissing;
+      if (!score) { best = null; break; }
+      if (!best || score < best.score) best = { i, score };
+      undo(r.added);
+      if (i === tries.length - 1) pass(tries[best.i].order, tries[best.i].smallest);
     }
   }
 
@@ -945,8 +1030,17 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
   const unreachable = start ? lostRooms(working.objects) : [];
   report.circulation.reachableAfter = start ? [...reachableRooms(space, buildWalkModel(space, working.objects, assets), { start })].sort() : [];
   const crowded = space.rooms.filter((r) => planned.has(r.id) && densityChecked(r.kind) && density(r, standingIn(r.id).map((p) => p.area)) > DENSITY_MAX + 0.08).map((r) => r.id);
-  const missingEssential = input.plan.rooms.map((pr) => rooms.get(pr.roomId)).filter((r): r is SpaceRoom => !!r && r.areaM2 >= 5)
-    .filter((r) => { const role = essentialRole(r.kind); return !!role && !standingIn(r.id).some((p) => servesRole(p.asset, role)); }).map((r) => r.id);
+  // A television the programme added that the walk's repairs left facing no sofa: taken away again (no television
+  // is better than one the sofa turns its back on — the plausibility gate would refuse the home for it).
+  for (const f of plausibility(space, working.objects, assets, buildWalkModel(space, working.objects, assets)).filter((x) => x.code === 'SOFA_FACES_AWAY')) {
+    if (!f.roomId) continue;
+    for (const p of standingIn(f.roomId).filter((q) => q.report.reason === 'PROGRAMME' && seatRole('', q.asset) === 'TV')) drop(p, 'NOT_FACED');
+  }
+  // A room missing what defines it (its programme's core needs): the READY gate refuses the home.
+  const missingEssential = space.rooms.filter((r) => r.areaM2 >= 1.2)
+    .filter((r) => (programme.get(r.id)?.needs ?? []).some((nd) => nd.core && !standingIn(r.id).some((p) => nd.serves(p.asset))
+      // Only what the catalogue can provide is owed (a catalogue with no shower cannot fail a bathroom for it).
+      && [...assets.values()].some((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)))).map((r) => r.id);
   const furnishedModel = buildWalkModel(space, working.objects, assets);
   const spawn = circulationStart(space, furnishedModel);
   report.relocated = relocated;
@@ -1185,6 +1279,7 @@ const SCALE_FLOOR = 0.85;
  */
 function findPose(
   space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, asset: CatalogAsset, item: BuildItem,
+  opts: { prefer?: (c: { at: Point; rotation: number }) => number; accept?: (c: { at: Point; rotation: number }) => boolean } = {},
 ): { at: Point; rotation: number; kept: boolean; why: string | null; movedM: number | null; verdict: Verdict } | null {
   const ctx = { space, assets, objects };
   const world = placementWorld(ctx, room);
@@ -1224,7 +1319,9 @@ function findPose(
     const turn = Math.abs(Math.atan2(Math.sin(c.rotation - proposal.rotation), Math.cos(c.rotation - proposal.rotation)));
     return Math.hypot(c.at.x - proposal.at.x, c.at.y - proposal.at.y) + turn * 0.25;
   };
-  const ordered = proposal ? cands.map((c, i) => ({ c, i, k: cost(c) })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.c) : cands;
+  const preferred = opts.prefer ? cands.map((c, i) => ({ c, i, k: opts.prefer!(c) })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.c) : cands;
+  const ordered = (proposal ? cands.map((c, i) => ({ c, i, k: cost(c) })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.c) : preferred)
+    .filter((c) => !opts.accept || opts.accept(c));
   let tight: { at: Point; rotation: number } | null = null;
   for (const c of ordered) {
     const v = judge(c.at, c.rotation);

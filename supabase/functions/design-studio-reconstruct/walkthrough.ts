@@ -936,7 +936,16 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // When the render's own pieces cannot make a walkable tour (they contradict one another, or crowd the doors of the
   // rooms they were read in), the walkthrough is not failed: it is planned as every other one is, below — the
   // selected design placed by the walkthrough's own rules in the same space. Never a dead end on the render's pieces.
-  if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && await planFromRender(admin, row, design, furnishing, preferences.style ?? null)) return;
+  // Declined once, never built again: the usual path collects its plan over several invocations, and building the
+  // render's pieces again in each would spend the invocation's CPU before the plan is even read.
+  const declined = !!row.timings?.renderFurnishing?.declined;
+  if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && !declined && await planFromRender(admin, row, design, furnishing, preferences.style ?? null)) return;
+  // Just declined in this invocation (its CPU spent on the render's pieces): recorded, and the usual plan starts in
+  // a fresh invocation.
+  if (furnishing && row.render_id && !declined && row.timings?.renderFurnishing?.declined) {
+    await release(admin, row, { plan_attempts: Math.max(0, row.plan_attempts - 1), timings: row.timings, next_check_at: iso(Date.now()) });
+    return;
+  }
   let spec: Row = null;
   if (row.spec_job_id) {
     const { data: job } = await admin.from('ds_jobs').select('output, status, user_id').eq('id', row.spec_job_id).maybeSingle();

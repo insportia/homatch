@@ -126,7 +126,11 @@ test('the server builds photo spaces through spaceFromReading, rebuilds an old f
   const fromRender = route.slice(route.indexOf('async function planFromRender'), route.indexOf('// ── SUBMIT'));
   assert.match(fromRender, /if \(!gate\.ready\) \{[\s\S]{0,600}?return false;\s*\}/);
   assert.doesNotMatch(fromRender.slice(fromRender.indexOf('if (!gate.ready)'), fromRender.indexOf('return false;')), /await fail\(/);
-  assert.match(route, /furnishing\.renderId === String\(row\.render_id\) && await planFromRender\(admin, row, design, furnishing, preferences\.style \?\? null\)\) return;/);
+  assert.match(route, /furnishing\.renderId === String\(row\.render_id\) && !declined && await planFromRender\(admin, row, design, furnishing, preferences\.style \?\? null\)\) return;/);
+  // Declined once, never built again (it spent an invocation's CPU): the usual plan starts in a fresh invocation,
+  // and the declining one is not counted as a plan attempt.
+  assert.match(route, /const declined = !!row\.timings\?\.renderFurnishing\?\.declined;/);
+  assert.match(route, /if \(furnishing && row\.render_id && !declined && row\.timings\?\.renderFurnishing\?\.declined\) \{\s*await release\(admin, row, \{ plan_attempts: Math\.max\(0, row\.plan_attempts - 1\), timings: row\.timings, next_check_at: iso\(Date\.now\(\)\) \}\);\s*return;/);
   assert.ok(READY_MIN_IMPORTANT_RECALL >= 0.8 && READY_MIN_RECALL >= 0.7);
   const gate = code('src/lib/designStudio/walkthrough/renderGate.ts');
   assert.match(gate, /const ready = promoted \|\| \(navPass && roughly\);/);

@@ -296,3 +296,28 @@ Load on MyHome: owner decision — at most the first 3 result pages per search
 (MyHome's full match count is still reported), a fixed 5 s pause between pages,
 one MyHome run at a time (others wait in the durable queue), no detail pages.
 No proxy, identity rotation, CAPTCHA solving or challenge interaction.
+
+## Shared listing pool and one fetch per identical search — 2026-10-11
+
+Live test 2026-10-11 07:33 UTC (search 9c0c8304, Varketili): the probe read
+page 1 (MyHome reopened), page 2 (48 fresh listings), and page 3 returned 403;
+cooldown 15 min; 27 pooled listings (observed 2026-10-07) were added and shown
+as STALE. That is the second time exactly page 3 was refused, with or without
+the 5 s pause. SS.ge has never been refused (9 runs).
+
+Scale changes (owner decision: thousands of simultaneous searches):
+
+- Instant answer: at search start every pooled source (MyHome, SS.ge) answers
+  at once from listings earlier searches collected, selected by the search's
+  own pipeline, then live runs add fresh ones (a fresh row replaces the pooled
+  copy of the same listing). Only observations within 72 hours are pooled, so a
+  listing its source has not re-confirmed recently (possibly sold, expired or
+  deleted) is never served; expired source dates were already hidden at read time.
+- One fetch per identical search: before every claim, a queued run whose request
+  equals one the same worker finished in the last 30 minutes is answered from
+  that run's fresh listings (`sharedFromRun`, real observation times kept).
+  Workers take one run at a time, so identical searches queue behind the first.
+- A run's `returned_count` counts only its fresh rows, never pooled ones, so a
+  source is never shown as freshly refreshed from pool data.
+
+Not yet built: scheduled background refresh of popular segments (next PR).

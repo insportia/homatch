@@ -35,7 +35,7 @@ import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../..
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
-  consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage,
+  consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings,
 
 } from '../_shared/marketplaceSearch.ts';
 
@@ -230,10 +230,20 @@ Deno.serve(async (req: Request) => {
       /* CONCURRENT DISPATCH: one run per eligible worker, all in ONE insert. Every worker can
          claim its run immediately and independently; nothing waits for another worker. */
       if (eligible.length) {
-        await db.from('discovery_marketplace_worker_runs').insert(eligible.map((w) => ({
+        const { data: inserted } = await db.from('discovery_marketplace_worker_runs').insert(eligible.map((w) => ({
           search_id: searchId, worker_id: w.workerId, request: { ...request, maxResults: w.maxResults },
           deadline_at: new Date(now.getTime() + w.timeoutMs).toISOString(),
-        })));
+        }))).select('id,worker_id,status');
+        /* INSTANT ANSWER: matching listings the shared pool already holds are shown at
+           once, with their own last-checked time; live runs then add fresh ones. Best
+           effort: a pool failure never blocks the search itself. */
+        try {
+          if (await serveCachedListings(db, searchId, request, (inserted ?? []) as Array<Record<string, unknown>>, now, true) > 0) {
+            await processAndStore(db, searchId);
+            const { data: refreshed } = await db.from('discovery_marketplace_searches').select('*').eq('id', searchId).maybeSingle();
+            if (refreshed) return json({ search: await summary(db, refreshed) }, 202);
+          }
+        } catch (error) { console.error(JSON.stringify({ event: 'pool_answer_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
       }
       return json({ search: await summary(db, search) }, 202);
     }

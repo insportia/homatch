@@ -511,6 +511,18 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   const { data: project } = await admin.from('ds_projects').select('id, user_id, deleting_at').eq('id', version.project_id).maybeSingle();
   if (!project || project.deleting_at || String(project.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
   let { data: source } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical, provenance').eq('id', version.source_id).maybeSingle();
+  // A photo design already carried onto its reconstructed space (its walkthrough asked again): that space, made by
+  // older code, is built again from its kept reading first (rebuildSpace), and the design walked on the new one.
+  if (source?.kind === 'FLOORPLAN_SCENE' && source.provenance?.inferred === true && version.parent_id && UUID.test(String(source.provenance?.fromSourceId ?? ''))) {
+    const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', source.provenance.fromSourceId).maybeSingle();
+    const { data: root } = await caller.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at, parent_id, name, style_tags').eq('id', version.parent_id).maybeSingle();
+    const renderId = body.renderId ?? null;
+    if (photo?.kind === 'PHOTO_SET' && root && !root.archived_at && String(root.user_id) === actorId && root.source_id === photo.id
+      && await rebuildSpace(admin, { actorId, project, version: root, photoSource: photo, renderId }, source)) {
+      const again = await designOnPlan(admin, root, project.id, renderId);
+      if (again) { ({ version, source } = again); lineage = await lineageOf(admin, version.id); }
+    }
+  }
   // A design made from photos: walked on the measured plan this project already has (nothing uploaded again),
   // carrying the design — its DNA and Design Specification — onto that geometry. Without one, its space is
   // reconstructed from the pictures the project already has (reconstructSpace): never a request to upload again.

@@ -69,7 +69,7 @@ test('the walk is dressed (art, books, curtains) without touching the design, an
   // Never a target or an obstacle.
   assert.match(decor, /mesh\.raycast = \(\) => \{\};\n\s+mesh\.userData\.decor = true;/);
   const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');
-  assert.match(overlay, /<span>\{tr\(planOpen \? 'ds_walk_plan_hide' : 'ds_walk_plan_show'\)\}<\/span>/);
+  assert.match(overlay, /<span>\{touch \? tr\('ds_walk_plan'\) : tr\(planOpen \? 'ds_walk_plan_hide' : 'ds_walk_plan_show'\)\}<\/span>/);
   assert.match(overlay, /return v \? v === 'open' : !touch;/);
 });
 
@@ -82,4 +82,16 @@ test('time of day, Live Here and sharing are on the screen, each explained — n
   assert.ok(!more.includes("setSheet('LIVE')") && !more.includes("setSheet('TIME')"));
   const ws = fs.readFileSync(new URL('../../../components/designStudio/workspace/DesignWorkspace.tsx', import.meta.url), 'utf8');
   assert.match(ws, /onShare=\{\(\) => setShareOpen\('WALKTHROUGH'\)\}/);
+});
+
+test('a phone: the stick stays put in its corner, a fingertip finds what it meant, a thumb walks a little faster', async () => {
+  const overlay = fs.readFileSync(new URL('../../../components/designStudio/workspace/WalkthroughOverlay.tsx', import.meta.url), 'utf8');
+  const stick = overlay.slice(overlay.indexOf('function StickZone('), overlay.indexOf('// ── Live Here: running'));
+  // Fixed in the bottom-left corner, pushed from its own centre: never a base that appears under the thumb.
+  assert.match(stick, /className="absolute bottom-6 left-5 z-10 grid h-36 w-36/);
+  assert.doesNotMatch(stick, /b\.style\.left = /);
+  assert.match(ctl, /const hit = g\.mouse \? this\.targetAt\(px, py\) : this\.targetNear\(px, py, TOUCH_TAP_RADIUS_PX\);/);
+  assert.match(ctl, /this\.touchInput \? \{ \.\.\.this\.settings, speed: this\.settings\.speed \* TOUCH_PACE \} : this\.settings/);
+  const { TOUCH_LOOK_RAD_PER_PX, TOUCH_PACE } = await import('../player.ts');
+  assert.ok(TOUCH_LOOK_RAD_PER_PX >= 0.0035 && TOUCH_PACE > 1 && TOUCH_PACE <= 1.25);
 });

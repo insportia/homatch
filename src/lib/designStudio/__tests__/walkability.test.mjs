@@ -166,9 +166,10 @@ test('CASES 3–5: walking near something never uses it; a tap uses it once; a d
   // 5: a finger that moved (looking) never uses anything, and never drags a door or drawer by hand.
   assert.equal(isTap(180, 12, false), false); assert.equal(isTap(600, 2, false), false);
   assert.match(sc, /if \(mouse && hit\?\.entry && this\.living\.canScrub\(hit\.entry\)\)/);
-  // The thumb stick: any movement is walking; only a quick, still touch taps.
+  // The thumb stick only walks: it is a small pad in its corner now, and taps land on the screen around it.
   const overlay = code('src/components/designStudio/workspace/WalkthroughOverlay.tsx');
-  assert.match(overlay, /if \(a\.moved < 6 && performance\.now\(\) - a\.t < 300\) controller\?\.tapAt/);
+  const stick = overlay.slice(overlay.indexOf('function StickZone('), overlay.indexOf('// ── Live Here: running'));
+  assert.doesNotMatch(stick, /tapAt/);
   assert.deepEqual(stickInput(STICK_DEAD_ZONE * 0.9, 0), { x: 0, y: 0 }, 'a resting thumb does not walk');
   const half = stickInput(0.55, 0).x; const full = stickInput(1, 0).x;
   assert.ok(half > 0 && half < 0.5 && Math.abs(full - 1) < 1e-9, 'gentle near the centre, a walk at full push');

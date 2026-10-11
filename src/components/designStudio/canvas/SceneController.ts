@@ -36,7 +36,7 @@ import {
   easeInOut as easeInOutCubic, isActiveState, validateInteractions, type ActionCode, type InteractionRole, type InteractionSpec,
 } from '@/lib/designStudio/interactions';
 import {
-  DEFAULT_SETTINGS, REACH_M, TOUCH_LOOK_RAD_PER_PX, canWalk, interactionRefusal, isTap, look, normalizeSettings, pickTarget, postureTransition, stepBody, stickInput, wishVelocity,
+  DEFAULT_SETTINGS, REACH_M, TOUCH_LOOK_RAD_PER_PX, TOUCH_PACE, canWalk, interactionRefusal, isTap, look, normalizeSettings, pickTarget, postureTransition, stepBody, stickInput, wishVelocity,
   type PlayerSettings, type Posture,
 } from '@/lib/designStudio/player';
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
@@ -201,6 +201,8 @@ interface PickData { pick: PickTarget }
 /** Walking: the longest real time one frame may advance (s), and the step it is walked in (s). */
 const WALK_MAX_FRAME_S = 0.25;
 const WALK_STEP_S = 0.05;
+/** How far from a fingertip (px) a tap still finds what it meant. */
+const TOUCH_TAP_RADIUS_PX = 28;
 /** Two clicks this close together are one double click: mouse-look on, or off again. */
 const DOUBLE_CLICK_MS = 320;
 /** A walk drawn slower than this per frame (median, ms) is lightened (see watchWalkFrames). */
@@ -2185,6 +2187,23 @@ export class SceneController {
     return pickTarget(found, radius)?.t ?? null;
   }
 
+  /** What a point means, or failing that the usable thing nearest it on screen within `radius` px (a fingertip). */
+  private targetNear(x: number, y: number, radius: number): ReturnType<SceneController['targetAt']> {
+    const exact = this.targetAt(x, y);
+    if (exact || !this.walk) return exact;
+    const found: Array<{ t: NonNullable<ReturnType<SceneController['targetAt']>>; offPx: number; distanceM: number }> = [];
+    for (const r of [radius / 2, radius]) {
+      for (let k = 0; k < 8; k += 1) {
+        const a = (k / 8) * Math.PI * 2;
+        const t = this.targetAt(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        if (!t) continue;
+        const c = new THREE.Box3().setFromObject(t.node).getCenter(new THREE.Vector3());
+        found.push({ t, offPx: r, distanceM: Math.hypot(c.x - this.walk.pos.x, -c.z - this.walk.pos.y) });
+      }
+    }
+    return pickTarget(found, radius)?.t ?? null;
+  }
+
   /** The old name, kept for the overlay's single-button path. */
   toggleAimed(): boolean {
     return this.performAimed();
@@ -2902,7 +2921,7 @@ export class SceneController {
   tapAt(clientX: number, clientY: number): boolean {
     if (!this.walk) return false;
     // The ray from the tapped point itself (no radius): the visible thing under the finger, within reach, or nothing.
-    const hit = this.targetAt(clientX, clientY);
+    const hit = this.targetNear(clientX, clientY, TOUCH_TAP_RADIUS_PX);
     // Seated or lying, a tap anywhere that offers nothing else gets you up (performAimed).
     if (!hit && !this.walk.seated) return false;
     this.setAim(hit);
@@ -3137,7 +3156,8 @@ export class SceneController {
     const px = g.locked ? rect.left + rect.width / 2 : x;
     const py = g.locked ? rect.top + rect.height / 2 : y;
     const use = () => {
-      const hit = this.targetAt(px, py);
+      // A fingertip covers more than a pixel: what it lands near counts (the tap, a light switch).
+      const hit = g.mouse ? this.targetAt(px, py) : this.targetNear(px, py, TOUCH_TAP_RADIUS_PX);
       if (hit) {
         this.setAim(hit);
         this.performAimed();
@@ -3305,7 +3325,8 @@ export class SceneController {
       if (wantsToMove && (w.posture === 'SEATED' || w.posture === 'LYING')) this.standUp();
       return wantsToMove;
     }
-    const wish = wishVelocity(input, w.yaw, this.settings);
+    // A thumb on the stick walks a little faster than a key (TOUCH_PACE).
+    const wish = wishVelocity(input, w.yaw, this.touchInput ? { ...this.settings, speed: this.settings.speed * TOUCH_PACE } : this.settings);
     const moving = Math.hypot(w.vel.x, w.vel.y) > 1e-3;
     if (!wantsToMove && !moving) return false;
     // Safety net only: a body standing somewhere it cannot be (a door closed on it, a numerical edge) is eased to

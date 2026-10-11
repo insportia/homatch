@@ -478,7 +478,8 @@ test('light is a fixed pool, never a light per lamp (every forward-rendered ligh
 });
 
 test('mobile: the walking thumb is physically on the left in every language', () => {
-  assert.match(read('src/components/designStudio/workspace/WalkthroughOverlay.tsx'), /absolute bottom-0 left-0 top-28/);
+  // A fixed pad in the bottom-left corner: `left`, never `start` (thumbs do not mirror in RTL).
+  assert.match(read('src/components/designStudio/workspace/WalkthroughOverlay.tsx'), /absolute bottom-6 left-5 z-10 grid h-36 w-36/);
 });
 
 test('the three AI readings share one deployed function, because the project is at its function cap', () => {

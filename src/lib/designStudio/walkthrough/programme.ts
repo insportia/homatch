@@ -75,7 +75,7 @@ export function roomUseOf(kind: string, label: string | null, home: { habitableR
 
 /** The pieces a room of this use holds, core first, larger rooms holding more. */
 export function needsOf(use: Use, areaM2: number): Need[] {
-  const living = [need('SOFA', role('SOFA'), 1.6, true), ...(areaM2 >= 10 ? [need('COFFEE_TABLE', role('COFFEE_TABLE'), 0.5)] : []), ...(areaM2 >= 12 ? [need('TV', role('TV'), 0.6)] : [])];
+  const living = [need('SOFA', role('SOFA'), 1.6, true), ...(areaM2 >= 10 ? [need('COFFEE_TABLE', role('COFFEE_TABLE'), 0.5)] : []), ...(areaM2 >= 12 ? [need('TV', role('TV'), 0.6)] : []), ...(areaM2 >= 16 ? [need('ARMCHAIR', role('ARMCHAIR'), 0.7)] : [])];
   const dining = (min: number) => (areaM2 >= min ? [need('DINING_TABLE', diningTable, 1.2), need('DINING_CHAIR', diningChair, 0.25, false, areaM2 >= min + 6 ? 4 : 2)] : []);
   switch (use) {
     case 'KITCHEN': return [...KITCHEN_NEEDS, ...dining(9)];

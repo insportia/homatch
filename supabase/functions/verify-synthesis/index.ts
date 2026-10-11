@@ -47,7 +47,7 @@ import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt
 import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
 import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
 import { withPropertyRegister } from '../../../src/verify/intelligence/registerEnrichment.ts';
-import { looksLikePersonName } from '../../../src/verify/intelligence/peopleIntelligence.ts';
+import { looksLikePersonName, redactPeopleSupport, scrubPersonalNumbersDeep } from '../../../src/verify/intelligence/peopleIntelligence.ts';
 import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
 import { REPORT_LOGIC_VERSION, shouldAutoUpgrade, versionMarkers, markUpgradeAttempted, logicVersionOf } from '../../../src/verify/intelligence/reportVersion.ts';
 import { hasOwnRegister, reuseEarlierRegister, targetCadastralCode, type RegisterCandidate } from '../../../src/verify/intelligence/registerReuse.ts';
@@ -56,6 +56,7 @@ import { buildUnitIdentity } from '../../../src/verify/intelligence/unitIdentity
 import { explainTechnical } from '../../../src/verify/intelligence/technicalExplained.ts';
 import { extractProjectSignals } from '../../../src/verify/intelligence/projectStory.ts';
 import { keepStoryOnRebuild } from '../../../src/verify/intelligence/storyGuard.ts';
+import { propertyKindFromResult, type PropertyKindResult } from '../../../src/verify/intelligence/propertyKind.ts';
 import { finalBuyerAssessment } from '../../../src/verify/intelligence/buyerAssessment.ts';
 import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '../../../src/verify/intelligence/reportReadPath.ts';
 import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
@@ -217,6 +218,9 @@ function textOf(p: any): string {
 async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: string): Promise<Record<string, unknown>> {
   const { _usage: _droppedUsage, _timing: _droppedTiming, officialVisuals, ...stripped } = payload as Record<string, any>;
   const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
+  // Personal numbers never reach the browser, whatever an older build stored.
+  if (rest.people) rest.people = redactPeopleSupport(rest.people);
+  for (const k of ['report', 'evidence', 'evidenceGroups', 'officialHistory', 'officialDocuments', 'people', 'participants', 'projectTeam', 'projectTeamV2', 'identity']) if (rest[k]) rest[k] = scrubPersonalNumbersDeep(rest[k]);
   // Fresh photographs (freshPhotos.ts): each bucket path becomes a signed URL
   // in the same bucket with the same TTL; an unsignable photo is omitted.
   if (Array.isArray(rest.freshPhotos?.photos) && rest.freshPhotos.photos.length) {
@@ -642,6 +646,13 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   });
   const fx = await fetchFx(earliestEvidenceDate(pkg.items));
   const bundle = buildIntelligenceBundle(rj, pkg, fx);
+  /* v7: what the register says this property IS (parking, land, apartment…), for the prompt and the story. */
+  let subjectKind: PropertyKindResult | null = null;
+  try {
+    subjectKind = propertyKindFromResult(rj);
+  } catch {
+    subjectKind = null;
+  }
   bundle.location = withNeighborhood(bundle.location, await neighborhoodP);
 
   /*
@@ -706,6 +717,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       unitIdentity,
       // Provenance for the prose, without the internal job id.
       registerSource: registerSource ? { asOf: registerSource.asOf, reused: true, freshExtractAdvised: registerSource.freshExtractAdvised } : null,
+      propertyKind: subjectKind,
     });
     try {
       timing.modelStartedAt = new Date().toISOString();
@@ -760,7 +772,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   const projectSignals = extractProjectSignals(rj);
   /* v7 (owner, 2026-10-11): an automatic rebuild keeps the stored chapters
      (the editorial baseline); every story passes the continuity guard. */
-  const propertyStory = keepStoryOnRebuild(job.synthesis_json, final.propertyStory, { autoUpgrade: opts.autoUpgrade, evolution: projectSignals?.evolution });
+  const propertyStory = keepStoryOnRebuild(job.synthesis_json, final.propertyStory, { autoUpgrade: opts.autoUpgrade, evolution: projectSignals?.evolution, kind: subjectKind?.kind ?? null });
   const built = {
     /* Which model actually wrote this, for COGS and for inspection. */
     synthesisModel: MODEL,

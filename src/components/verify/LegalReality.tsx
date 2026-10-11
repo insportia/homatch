@@ -13,6 +13,7 @@ import { legalPosition, identityNotice, type IdentityLike } from '@/verify/repor
 import { legalFindings, type LegalFinding, type LegalFindingScope } from '@/verify/intelligence/legalStatus';
 import { readProjectSignals } from '@/verify/intelligence/projectStory';
 import { evolutionView, openApplications } from '@/verify/intelligence/projectEvolution';
+import { apartmentCopy, copyKindOf, kindT, nounKey } from '@/verify/intelligence/kindGuard';
 
 const day = (iso?: string | null): string | null => {
   const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
@@ -20,13 +21,13 @@ const day = (iso?: string | null): string | null => {
 };
 const isolate = (s: string): string => `⁦${s}⁩`;
 
-export const IdentityNotice: React.FC<{ identity?: IdentityLike | null }> = ({ identity }) => {
+export const IdentityNotice: React.FC<{ identity?: IdentityLike | null; kind?: string }> = ({ identity, kind }) => {
   const { t } = useLanguage();
   const n = identityNotice(identity);
   if (!n) return null;
   return (
     <div role="note" className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft)/0.60)] px-4 py-3.5 sm:px-5">
-      <p className="text-sm font-semibold break-words">{t('vrx_identity_title')}</p>
+      <p className="text-sm font-semibold break-words">{kindT(t, 'vrx_identity_title', kind)}</p>
       <p className="mt-1 text-sm leading-6 text-foreground/85 break-words">
         {t(n.key, Object.fromEntries(Object.entries(n.vars).map(([k, v]) => [k, isolate(v)])))}
       </p>
@@ -62,6 +63,7 @@ export const LegalReality: React.FC<{ legal?: unknown; synthesis?: unknown; sign
   return <LegalFindings synthesis={synthesis} signals={signals} />;
 };
 
+/* EXACT_UNIT for a non-apartment: the registry kind's own label (kindGuard.nounKey). */
 const SCOPE_KEY: Record<LegalFindingScope, string> = {
   EXACT_UNIT: 'verify_v6s_scope_unit',
   PARENT_PARCEL: 'verify_v6s_scope_parcel',
@@ -88,13 +90,15 @@ export const LegalFindings: React.FC<{ synthesis?: unknown; signals?: unknown }>
       unitIdentity: s.unitIdentity,
       companyFinance: s.companyFinance,
       applications: history ? { open: openApplications(history, sig?.evolution ?? []), resolvedOn: (evo?.resolved ?? []).map((x) => x.decidedOn ?? '').filter(Boolean) } : null,
+      kind: copyKindOf(s),
     });
   }, [synthesis, signals]);
+  const kind = copyKindOf(synthesis);
   return (
     <section aria-labelledby="vrx-legal-findings" className="space-y-4" data-legal-findings>
       <div className="space-y-2">
         <h3 id="vrx-legal-findings" className="font-display text-xl font-semibold leading-snug tracking-tight break-words">{t('verify_v6s_legal_title')}</h3>
-        {t('verify_v6s_legal_body').split(/\n+/).map((p, i) => (
+        {kindT(t, 'verify_v6s_legal_body', kind).split(/\n+/).map((p, i) => (
           <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
         ))}
       </div>
@@ -103,7 +107,7 @@ export const LegalFindings: React.FC<{ synthesis?: unknown; signals?: unknown }>
           <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {view.findings.map((f) => (
               <li key={`${f.key}-${f.observedOn ?? ''}`} className={`min-w-0 rounded-2xl border-s-4 border border-border bg-card p-4 ${FINDING_TONE[f.tone]}`} data-legal-finding={f.key} data-scope={f.scope}>
-                <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-[hsl(var(--gold-ink))]">{t(SCOPE_KEY[f.scope])}</p>
+                <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-[hsl(var(--gold-ink))]">{t(f.scope === 'EXACT_UNIT' && !apartmentCopy(kind) ? nounKey(kind, 'scope') : SCOPE_KEY[f.scope])}</p>
                 <p className="mt-1 text-sm leading-6 text-foreground/90 break-words" dir="auto">{f.text}</p>
                 <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-muted-foreground">
                   {day(f.observedOn) ? <span>{t('verify_v6s_observed', { date: isolate(day(f.observedOn)!) })}</span> : null}

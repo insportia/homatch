@@ -123,7 +123,8 @@ test('the identity notice shows for an unresolved mismatch, with the codes', () 
   assert.equal(identityNotice({ status: 'NOT_VERIFIED' }), null);
   assert.equal(identityNotice(null), null);
   const report = code('src/components/verify/VerifyReport.tsx');
-  assert.match(report, /<IdentityNotice identity=\{identity\} \/>/, 'the notice is never mounted');
+  // v7: the registry kind names the subject in the notice title (kindGuard.kindT).
+  assert.match(report, /<IdentityNotice identity=\{identity\} kind=\{copyKind\} \/>/, 'the notice is never mounted');
 });
 
 /* ── the visual explorer ─────────────────────────────────────────────── */

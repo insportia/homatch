@@ -863,13 +863,16 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       continue;
     }
     const d = day(v?.date);
+    // The case's filing date links an undated picture to its chapter (v7 sweep:
+    // a 2013 render was filed under TODAY because it had no date of its own).
+    const linkDate = d ?? (s(v?.documentId) ? cases.find((c) => c.documentId === s(v?.documentId))?.date ?? null : null);
     let nearest: TimelineEvent | null = null;
-    if (d)
+    if (linkDate)
       for (const e of timeline) {
-        const gap = Math.abs(Date.parse(e.date) - Date.parse(d));
-        if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(d)))) nearest = e;
+        const gap = Math.abs(Date.parse(e.date) - Date.parse(linkDate));
+        if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(linkDate)))) nearest = e;
       }
-    const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' ? 'TODAY' : null;
+    const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' && !linkDate ? 'TODAY' : null;
     visuals.push({
       id, role: v?.role === 'LATEST_RENDER' || v?.role === 'EARLIEST_RENDER' ? v.role : 'SUPPORTING', kind,
       category: categoryForScope(kind, normalizeVisualCategory(v.category, kind), scope),
@@ -885,6 +888,13 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       documentId: s(v?.documentId) || null, attachedFileId: s(v?.attachedFileId) || null,
     });
   }
+
+  // ── render roles from dates (owner, 2026-10-11 v7, job eeefada9): the worker
+  //    names a "latest render" before later recovery adds newer ones, and
+  //    stored visuals carry no date — so a 2013 render was called the latest
+  //    and the model wrote "უახლესი რენდერი". The roles are re-derived here
+  //    from each render's own date, else its case filing date. ──
+  assignRenderRoles(visuals, new Map(cases.filter((c) => c.documentId && c.date).map((c) => [c.documentId!, c.date!])));
 
   // ── coverage (truthful, from the worker's own accounting) ──
   const acc = obj(api?.accounting);
@@ -1413,3 +1423,22 @@ const TEAM_ROLES = new Set<ParticipantRole>([
   'DEVELOPER', 'ARCHITECT', 'CO_ARCHITECT', 'STRUCTURAL_ENGINEER', 'GEOTECHNICAL_SPECIALIST', 'EXPERT_REVIEW',
   'TECHNICAL_SUPERVISOR', 'CONTRACTOR', 'MEP_ENGINEER', 'LANDSCAPE_ARCHITECT', 'FIRE_SAFETY', 'SURVEYOR', 'INTERIOR_DESIGNER',
 ]);
+
+/**
+ * LATEST_RENDER = the newest dated render (own date, else its case's filing
+ * date); EARLIEST_RENDER = the oldest when at least 90 days older; every
+ * other render SUPPORTING. Undated renders never take a role while a dated
+ * one exists. Mutates in place; returns the list for convenience.
+ */
+export function assignRenderRoles<T extends { role: string; kind: string; date: string | null; documentId: string | null }>(visuals: T[], caseDates: Map<string, string>): T[] {
+  const dateOf = (v: T): string | null => v.date ?? (v.documentId ? caseDates.get(v.documentId) ?? null : null);
+  const renders = visuals.filter((v) => v.kind === 'RENDER');
+  const dated = renders.filter((v) => dateOf(v)).sort((a, b) => dateOf(a)!.localeCompare(dateOf(b)!));
+  if (!dated.length) return visuals;
+  for (const v of renders) (v as { role: string }).role = 'SUPPORTING';
+  const latest = dated[dated.length - 1];
+  (latest as { role: string }).role = 'LATEST_RENDER';
+  const earliest = dated[0];
+  if (earliest !== latest && Date.parse(dateOf(latest)!) - Date.parse(dateOf(earliest)!) >= 90 * 864e5) (earliest as { role: string }).role = 'EARLIEST_RENDER';
+  return visuals;
+}

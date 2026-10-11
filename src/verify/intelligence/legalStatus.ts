@@ -24,6 +24,8 @@
  * nine times — from a cited law and a banner rule).
  */
 
+import { subjectNoun } from './kindGuard.ts';
+
 export type LegalClaimKey =
   | 'PERMIT_ISSUED'
   | 'CONSTRUCTION_STARTED'
@@ -178,6 +180,8 @@ export interface LegalFindingsInput {
   companyFinance?: unknown;
   /** Open applications (projectEvolution.openApplications) and the ones decided by a published act. */
   applications?: { open: Array<{ caseRef: string | null; date: string | null }>; resolvedOn: string[] } | null;
+  /** The registry kind (kindGuard.copyKindOf): the subject's noun. Absent: the apartment wording, unchanged. */
+  kind?: unknown;
 }
 
 export interface LegalFindingsView {
@@ -196,24 +200,26 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
   const extractDate = d10(o(ulp.evidence).extractIssuedAt) ?? d10(exact.evidenceDate) ?? d10(o(ulp.mortgages).asOf);
   const unitVerified = exact.verified === true || (t(ulp.scope) === 'EXACT_UNIT' && t(o(ulp.evidence).source) === 'NAPR_EXTRACT');
   const out: LegalFinding[] = [];
+  // ბინა for an apartment (the approved wording), ავტოსადგომი for a parking space… (kindGuard.ts).
+  const N = (c: Parameters<typeof subjectNoun>[1]) => subjectNoun(input.kind ?? 'APARTMENT', c);
 
   /* the exact apartment */
   if (unitVerified) {
     const where = [
-      t(exact.apartment) ? `ბინა N${t(exact.apartment)}` : null,
+      t(exact.apartment) ? `${N('label')} N${t(exact.apartment)}` : null,
       t(exact.floor) ? `${t(exact.floor)} სართული` : null,
       t(exact.block) ? `ბლოკი „${t(exact.block)}“` : null,
       typeof exact.areaSqm === 'number' ? `${sqm(exact.areaSqm)} მ²` : null,
     ].filter(Boolean).join(', ');
     out.push({
       key: 'EXACT_UNIT', scope: 'EXACT_UNIT', tone: 'positive',
-      text: `საჯარო რეესტრის ამონაწერი ზუსტად ამ ბინას ეხება${where ? ` (${where})` : ''}. ბინა რეესტრში ცალკე ერთეულად არის რეგისტრირებული.`,
+      text: `საჯარო რეესტრის ამონაწერი ზუსტად ამ ${N('dat')} ეხება${where ? ` (${where})` : ''}. ${N('nom')} რეესტრში ცალკე ერთეულად არის რეგისტრირებული.`,
       observedOn: d10(exact.evidenceDate) ?? extractDate, ref: t(exact.code) || t(ulp.cadastralCode) || null,
     });
   } else if (Object.keys(ulp).length || Object.keys(exact).length) {
     out.push({
       key: 'EXACT_UNIT', scope: 'EXACT_UNIT', tone: 'attention',
-      text: 'ზუსტად ამ ბინის ამონაწერი ჩანაწერებში არ არის. ქვემოთ მოცემული ჩანაწერები ნაკვეთს ან შენობას ეხება და ბინის სამართლებრივ მდგომარეობად ვერ ჩაითვლება.',
+      text: `ზუსტად ამ ${N('gen')} ამონაწერი ჩანაწერებში არ არის. ქვემოთ მოცემული ჩანაწერები ნაკვეთს ან შენობას ეხება და ${N('gen')} სამართლებრივ მდგომარეობად ვერ ჩაითვლება.`,
       observedOn: null, ref: t(exact.code) || null,
     });
   }
@@ -225,7 +231,7 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
       text: [
         typeof parcel.landAreaSqm === 'number' ? `შენობა დგას ${sqm(parcel.landAreaSqm)} მ² ფართობის მიწის ნაკვეთზე` : 'შენობა დგას ცალკე რეგისტრირებულ მიწის ნაკვეთზე',
         t(parcel.landFunction) ? `, რომლის დანიშნულებაა „${t(parcel.landFunction)}“.` : '.',
-        ' მიწის დანიშნულება და ფართობი ნაკვეთს ეხება და არა ბინას.',
+        ` მიწის დანიშნულება და ფართობი ნაკვეთს ეხება და არა ${N('dat')}.`,
       ].join(''),
       observedOn: t(parcel.source) === 'NAPR_EXTRACT' ? extractDate : null, ref: t(parcel.code) || null,
     });
@@ -237,7 +243,7 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
     out.push({
       key: 'BUILDING', scope: 'BUILDING', tone: 'neutral',
       text: [
-        block ? `ბინა ეკუთვნის ბლოკს „${block}“.` : null,
+        block ? `${N('nom')} ეკუთვნის ბლოკს „${block}“.` : null,
         exact.underConstruction === true ? 'ამონაწერში შენობა მშენებარედაა აღრიცხული. ეს ექსპლუატაციაში მიღებამდე ჩვეულებრივი მდგომარეობაა და პრობლემას არ ნიშნავს.' : null,
       ].filter(Boolean).join(' '),
       observedOn: extractDate, ref: null,
@@ -250,7 +256,7 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
   if (currentWho) {
     out.push({
       key: 'OWNERSHIP_CURRENT', scope: 'EXACT_UNIT', tone: 'neutral',
-      text: `ამონაწერის თარიღისთვის ბინის მესაკუთრედ რეგისტრირებულია ${currentWho}${d10(own.registeredOn) ? `, ${kaDat(d10(own.registeredOn))}` : ''}${BASIS_KA[t(own.basis).toUpperCase()] ? ` ${BASIS_KA[t(own.basis).toUpperCase()]}` : ''}.`,
+      text: `ამონაწერის თარიღისთვის ${N('gen')} მესაკუთრედ რეგისტრირებულია ${currentWho}${d10(own.registeredOn) ? `, ${kaDat(d10(own.registeredOn))}` : ''}${BASIS_KA[t(own.basis).toUpperCase()] ? ` ${BASIS_KA[t(own.basis).toUpperCase()]}` : ''}.`,
       observedOn: d10(own.asOf) ?? extractDate, ref: null,
     });
   }
@@ -273,7 +279,7 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
     const cancelled = d10(steps.find((x) => t(x.step) === 'CANCELLATION_REGISTERED')?.date);
     out.push({
       key: 'MORTGAGE_CANCELLED', scope: 'EXACT_UNIT', tone: 'positive',
-      text: `ბინაზე ${reg ? `${kaDat(reg)} ` : ''}რეგისტრირებული იპოთეკა${t(h.creditor) ? ` (კრედიტორი: ${t(h.creditor)})` : ''} ${cancelled ? `${kaDat(cancelled)} ` : ''}გაუქმდა.`.replace(/\s+/g, ' '),
+      text: `${N('on')} ${reg ? `${kaDat(reg)} ` : ''}რეგისტრირებული იპოთეკა${t(h.creditor) ? ` (კრედიტორი: ${t(h.creditor)})` : ''} ${cancelled ? `${kaDat(cancelled)} ` : ''}გაუქმდა.`.replace(/\s+/g, ' '),
       observedOn: cancelled ?? extractDate, ref: null,
     });
   }
@@ -281,13 +287,13 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
   if (active.length) {
     out.push({
       key: 'MORTGAGE_CURRENT', scope: 'EXACT_UNIT', tone: 'attention',
-      text: `ამონაწერის თარიღისთვის ბინაზე რეგისტრირებულია იპოთეკა${t(active[0].creditor) ? ` (${t(active[0].creditor)})` : ''}. ხელშეკრულებაში უნდა ჩაიწეროს, როდის და როგორ გაუქმდება ის.`,
+      text: `ამონაწერის თარიღისთვის ${N('on')} რეგისტრირებულია იპოთეკა${t(active[0].creditor) ? ` (${t(active[0].creditor)})` : ''}. ხელშეკრულებაში უნდა ჩაიწეროს, როდის და როგორ გაუქმდება ის.`,
       observedOn: d10(mort.asOf) ?? extractDate, ref: null,
     });
   } else if (t(mort.state).toUpperCase() === 'NONE_REGISTERED') {
     out.push({
       key: 'MORTGAGE_CURRENT', scope: 'EXACT_UNIT', tone: 'positive',
-      text: 'ამონაწერის თარიღისთვის ბინაზე მოქმედი იპოთეკა რეგისტრირებული არ არის.',
+      text: `ამონაწერის თარიღისთვის ${N('on')} მოქმედი იპოთეკა რეგისტრირებული არ არის.`,
       observedOn: d10(mort.asOf) ?? extractDate, ref: null,
     });
   }
@@ -297,13 +303,13 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
   if (['seizure', 'taxLien', 'debtorRegistry'].every((k) => t(r[k]).toUpperCase() === 'NONE')) {
     out.push({
       key: 'RESTRICTIONS', scope: 'EXACT_UNIT', tone: 'positive',
-      text: 'ყადაღა, საგადასახადო გირავნობა და მოვალეთა რეესტრის ჩანაწერი ბინაზე არ ფიქსირდება.',
+      text: `ყადაღა, საგადასახადო გირავნობა და მოვალეთა რეესტრის ჩანაწერი ${N('on')} არ ფიქსირდება.`,
       observedOn: d10(r.asOf) ?? extractDate, ref: null,
     });
   } else if (['seizure', 'taxLien', 'debtorRegistry'].some((k) => /ACTIVE|REGISTERED|PRESENT/i.test(t(r[k])))) {
     out.push({
       key: 'RESTRICTIONS', scope: 'EXACT_UNIT', tone: 'attention',
-      text: 'ამონაწერში ბინაზე შეზღუდვა ფიქსირდება (ყადაღა, საგადასახადო გირავნობა ან მოვალეთა რეესტრის ჩანაწერი). გარიგებამდე მისი გაუქმება აუცილებელია.',
+      text: `ამონაწერში ${N('on')} შეზღუდვა ფიქსირდება (ყადაღა, საგადასახადო გირავნობა ან მოვალეთა რეესტრის ჩანაწერი). გარიგებამდე მისი გაუქმება აუცილებელია.`,
       observedOn: d10(r.asOf) ?? extractDate, ref: null,
     });
   }
@@ -318,7 +324,7 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
       key: 'COMPANY_OBLIGATIONS', scope: 'COMPANY', tone: pledges.length ? 'neutral' : 'positive',
       text: [
         pledges.length
-          ? `დეველოპერის (${company}) ქონებაზე რეგისტრირებულია ${pledges.length === 1 ? 'გირავნობა' : `${pledges.length} გირავნობა`}${t(pledges[0].creditor) ? ` (${t(pledges[0].creditor).replace(/\s+\d{9}$/, '')}${d10(pledges[0].registeredOn) ? `, ${kaGen(d10(pledges[0].registeredOn))} რეგისტრაციით` : ''})` : ''}. ეს დეველოპერის ვალდებულებაა და არა ბინაზე რეგისტრირებული იპოთეკა.`
+          ? `დეველოპერის (${company}) ქონებაზე რეგისტრირებულია ${pledges.length === 1 ? 'გირავნობა' : `${pledges.length} გირავნობა`}${t(pledges[0].creditor) ? ` (${t(pledges[0].creditor).replace(/\s+\d{9}$/, '')}${d10(pledges[0].registeredOn) ? `, ${kaGen(d10(pledges[0].registeredOn))} რეგისტრაციით` : ''})` : ''}. ეს დეველოპერის ვალდებულებაა და არა ${N('on')} რეგისტრირებული იპოთეკა.`
           : `დეველოპერის (${company}) ქონებაზე გირავნობა კომპანიის ამონაწერში არ ფიქსირდება.`,
         debtor === 'NO_ENTRY' ? 'კომპანია მოვალეთა რეესტრში არ არის.' : debtor === 'LISTED' || debtor === 'ENTRY' ? 'კომპანია მოვალეთა რეესტრშია რეგისტრირებული.' : null,
         cf.liquidationRegistered === true ? 'კომპანიის ლიკვიდაცია რეგისტრირებულია.' : null,
@@ -329,7 +335,7 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
     if (partner) {
       out.push({
         key: 'PROJECT_FINANCING', scope: 'PROJECT', tone: 'neutral',
-        text: `დეველოპერის საჯარო ინფორმაციაში პროექტის დაფინანსების პარტნიორად ${partner} არის დასახელებული. ეს დეველოპერის დაფინანსებაა და ბინაზე ვალდებულებად არ აისახება.`,
+        text: `დეველოპერის საჯარო ინფორმაციაში პროექტის დაფინანსების პარტნიორად ${partner} არის დასახელებული. ეს დეველოპერის დაფინანსებაა და ${N('on')} ვალდებულებად არ აისახება.`,
         observedOn: null, ref: null,
       });
     }
@@ -342,7 +348,7 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
     out.push({
       key: 'PENDING_APPLICATIONS', scope: 'PROJECT', tone: apps.open.length ? 'attention' : 'neutral',
       text: apps.open.length
-        ? `ქალაქში ${apps.open.length === 1 ? 'ერთი განაცხადი' : `${apps.open.length} განაცხადი`} ჯერ გადაწყვეტილების გარეშეა. ის პროექტს ეხება და ბინის ამონაწერზე არ აისახება, სანამ გადაწყვეტილება არ მიიღება.`
+        ? `ქალაქში ${apps.open.length === 1 ? 'ერთი განაცხადი' : `${apps.open.length} განაცხადი`} ჯერ გადაწყვეტილების გარეშეა. ის პროექტს ეხება და ${N('gen')} ამონაწერზე არ აისახება, სანამ გადაწყვეტილება არ მიიღება.`
         : 'ქალაქის სიაში განხილვაში მყოფად ნაჩვენები განაცხადები უკვე გადაწყვეტილია: გამოქვეყნებული ბრძანებები ფართობების მაჩვენებლებს ასწორებს. ისინი პროექტის ისტორიაშია აღწერილი.',
       observedOn: apps.open.length ? latest : [...apps.resolvedOn].sort().pop() ?? null, ref: null,
     });
@@ -352,6 +358,6 @@ export function legalFindings(input: LegalFindingsInput): LegalFindingsView | nu
   return {
     findings: out,
     extractDate,
-    freshnessNote: extractDate ? `ბინის მონაცემები ${kaGen(extractDate)} ამონაწერს ეყრდნობა და იმ დღის მდგომარეობას ასახავს. გარიგების დღეს ახალი ამონაწერი აიღეთ.` : null,
+    freshnessNote: extractDate ? `${N('gen')} მონაცემები ${kaGen(extractDate)} ამონაწერს ეყრდნობა და იმ დღის მდგომარეობას ასახავს. გარიგების დღეს ახალი ამონაწერი აიღეთ.` : null,
   };
 }

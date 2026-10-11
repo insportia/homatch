@@ -30,6 +30,7 @@
  */
 
 import { readCaseSources } from './tasCaseSources.ts';
+import { subjectNoun } from './kindGuard.ts';
 import { kaOnDay, kaInMonth, kaOfDay, yearOf } from './kaDates.ts';
 import { stripProvenanceOpening, replaceDashes } from './editorial.ts';
 import { extractEvolution, readEvolution, evolutionView, openApplications, statusLines, type CaseEvolution, type EvolutionView } from './projectEvolution.ts';
@@ -232,6 +233,8 @@ export interface StoryInput {
   specs?: unknown;
   /** synthesis.unitIdentity: the register's "under construction" mark, with its date. */
   unitIdentity?: unknown;
+  /** The registry kind (kindGuard.copyKindOf): the subject's noun. Absent: the apartment wording, unchanged. */
+  kind?: unknown;
 }
 
 export function projectStory(input: StoryInput): ProjectStoryView | null {
@@ -312,7 +315,7 @@ export function projectStory(input: StoryInput): ProjectStoryView | null {
       what: `${kaInMonth(audit.date) ?? ''} ქალაქის არქიტექტურის სამსახურმა, ახალი განაცხადის განხილვისას, მერიის შიდა აუდიტის წერილზე მიუთითა: მშენებლობა შეთანხმებული პროექტის დარღვევით მიმდინარეობდა.`.trim()
         + (audit.fineRequested ? ' სამსახურმა მოითხოვა მუნიციპალური ინსპექციის დადგენილება და ჯარიმის გადახდის დამადასტურებელი ქვითარი.' : ''),
       changed: laterPermit ? `${kaOnDay(laterPermit.d.date)} შესწორებული პროექტისთვის ახალი ნებართვა გაიცა.` : null,
-      why: 'ეს ოფიციალურად აჩვენებს, რომ მშენებლობა ამ დროისთვის უკვე მიმდინარეობდა. შესწორებული პროექტი ჩვეულებრივ ასეთ განსხვავებას აწესრიგებს, ამიტომ ღირს იმის გარკვევა, ეხება თუ არა ცვლილება თქვენს ბინას.',
+      why: `ეს ოფიციალურად აჩვენებს, რომ მშენებლობა ამ დროისთვის უკვე მიმდინარეობდა. შესწორებული პროექტი ჩვეულებრივ ასეთ განსხვავებას აწესრიგებს, ამიტომ ღირს იმის გარკვევა, ეხება თუ არა ცვლილება თქვენს ${subjectNoun(input.kind ?? 'APARTMENT', 'dat')}.`,
       evidence: [{ caseRef: audit.caseRef, decisionNumber: audit.decisionNumber, date: audit.date }],
     });
   }

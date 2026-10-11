@@ -87,6 +87,8 @@ import { OfficialDocuments } from './OfficialDocuments';
 import { VerifyJobProvider } from './OfficialLink';
 import { PropertyFactsCard } from './PropertyFactsCard';
 import { sectionsFor, type PropertyKind } from '@/verify/intelligence/propertyKind';
+import { copyKindOf, marketPlanForKind } from '@/verify/intelligence/kindGuard';
+import { KIND_LABEL_KEY } from '@/verify/propertyFacts';
 import { LazyMount } from './LazyMount';
 import { BuildingSpecs } from './BuildingSpecs';
 import { TechnicalExplained } from './TechnicalExplained';
@@ -473,6 +475,11 @@ export function VerifyReport({
      registry's own classification, never the code's length. Unknown, other
      and ambiguous keep every chapter (propertyKind.ts sectionsFor). */
   const ks = sectionsFor(((synthesis as { propertyKind?: { kind?: string } }).propertyKind?.kind ?? 'UNKNOWN') as PropertyKind);
+  /* v7: the same report for every kind (kindGuard.ts). The deterministic copy names the
+     registry kind (an apartment's wording is unchanged), and a non-apartment gets a market
+     of its own kind when one was gathered, else one honest sentence: never a silent gap. */
+  const copyKind = copyKindOf(synthesis);
+  const marketPlan = marketPlanForKind((synthesis as { propertyKind?: { kind?: string } }).propertyKind?.kind, synthesis.market);
   /* What each chapter has to say. A chapter with nothing is not drawn. */
   const has = {
     explore: true,
@@ -482,7 +489,7 @@ export function VerifyReport({
     legal: !!(position || history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
     documents: hasDocuments,
     location: !!(inChapter('location').length || synthesis.location),
-    market: ks.apartmentMarket && (inChapter('market').length > 0 || hasMarketView(synthesis.market)),
+    market: marketPlan.mode === 'NOTE' ? true : marketPlan.mode === 'MARKET' ? hasMarketView(synthesis.market) : ks.apartmentMarket && (inChapter('market').length > 0 || hasMarketView(synthesis.market)),
     final: true,
   };
   /* THE BUYER'S ORDER, IN FIVE GROUPS (owner, 2026-10-11, v6):
@@ -548,7 +555,7 @@ export function VerifyReport({
       {/* ── THE STORY ── prose first, then the grouped official timeline. */}
       {has.story ? (
         <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
-          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} unitIdentity={(synthesis as { unitIdentity?: unknown }).unitIdentity} />
+          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} unitIdentity={(synthesis as { unitIdentity?: unknown }).unitIdentity} kind={copyKind} />
         </Chapter>
       ) : null}
 
@@ -600,7 +607,7 @@ export function VerifyReport({
         {/* The documented specifications, each with its approval status. */}
         {ks.buildingSpecs && specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
         {/* What the technical facts mean, then the project's numbers worked through. */}
-        <TechnicalExplained cards={r.technicalExplained} />
+        <TechnicalExplained cards={r.technicalExplained} kind={copyKind} />
         <ProjectMath specs={synthesis.technicalSpecs} />
         {/* Rendered even when the run established nothing: a missing section
             reads as "does not apply", a row saying "not yet verified" reads
@@ -617,7 +624,7 @@ export function VerifyReport({
           the register, the company — and what deserves attention, once. */}
       {has.legal ? (
         <Chapter id="vbi-legal" n={num('legal')} kicker={t('vrx_legal_kicker')} title={t('vrx_legal_title')} lede={t('vrx_legal_lede')}>
-          <IdentityNotice identity={identity} />
+          <IdentityNotice identity={identity} kind={copyKind} />
           {/* The approved legal introduction, then the dated findings scope by
               scope (apartment, parcel, building, ownership, mortgages,
               obligations, applications on file). */}
@@ -631,9 +638,9 @@ export function VerifyReport({
           {(history as { currentPosition?: { effective?: unknown } } | null | undefined)?.currentPosition?.effective ? null : (
             <CurrentStatusBlock status={r.currentStatus} history={history} clean={clean} />
           )}
-          <PropertyRegisterCard register={synthesis.propertyRegister} source={synthesis.registerSource ?? null} />
+          <PropertyRegisterCard register={synthesis.propertyRegister} source={synthesis.registerSource ?? null} kind={copyKind} />
           <div id="vbi-company" className="scroll-mt-[var(--vbi-offset,8rem)]">
-            <CompanyIntelligenceCard company={company} rights={rights} />
+            <CompanyIntelligenceCard company={company} rights={rights} kind={copyKind} />
           </div>
           <CompanyFinanceCard finance={synthesis.companyFinance} />
           {inChapter('legal').map(renderSection)}
@@ -683,7 +690,13 @@ export function VerifyReport({
       {has.market ? (
         <Chapter id="vbi-market" n={num('market')} kicker={t('vrx_market_kicker')} title={t('vrx_market_title')}>
           <LazyMount minHeight="24rem">
-            <MarketPosition sections={inChapter('market')} market={synthesis.market} renderSection={renderSection} />
+            {marketPlan.mode === 'NOTE' ? (
+              <p className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words" data-market-kind-note={copyKind}>
+                {t(marketPlan.noteKey, { kind: KIND_LABEL_KEY[copyKind] ? t(KIND_LABEL_KEY[copyKind]!) : '' })}
+              </p>
+            ) : (
+              <MarketPosition sections={inChapter('market')} market={synthesis.market} renderSection={renderSection} />
+            )}
           </LazyMount>
         </Chapter>
       ) : null}
@@ -717,7 +730,7 @@ export function VerifyReport({
       <Chapter id="vbi-final" n={num('final')} kicker={t('vrx_final_kicker')} title={t('vrx_final_title')}>
         {inChapter('final').map(renderSection)}
         {/* The buyer assessment comes right before the final verdict. */}
-        <BuyerAssessment assessment={r.buyerAssessment} clean={clean} />
+        <BuyerAssessment assessment={r.buyerAssessment} clean={clean} kind={copyKind} />
         <BuyerBottomLine
           finalView={clean(r.finalView)}
           // The highlights already open the report; repeating them here was the

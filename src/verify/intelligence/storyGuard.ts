@@ -17,6 +17,8 @@
 // Runs at build time (verify-synthesis) and again at render time, so reports
 // already stored are read the same way. Idempotent.
 
+import { storyFitsKind } from './kindGuard.ts';
+
 export interface GuardChapter {
   key: string;
   title: string;
@@ -136,16 +138,22 @@ export function evolutionOf(signals: unknown): unknown {
  * (logic upgrade, market refresh) of a report that already has a v6+ story
  * keeps that story instead of the model's new wording; a first build or a
  * forced rebuild takes the new one. Either way the continuity guard applies.
+ *
+ * v7 (kindGuard.ts): the stored story is kept only when it fits the
+ * registry kind: always for an apartment or an unsettled kind, and for a
+ * parking space / land / house / commercial / office / storage only when no
+ * sentence of it describes the subject as an apartment. An apartment-flavoured
+ * story of a parking space (job dbf04e48) is replaced by the new, kind-aware one.
  */
 export function keepStoryOnRebuild<T extends { chapters?: GuardChapter[] }>(
   previousSynthesis: unknown,
   fresh: T | undefined,
-  opts: { autoUpgrade: boolean; evolution: unknown },
+  opts: { autoUpgrade: boolean; evolution: unknown; kind?: unknown },
 ): T | { chapters: GuardChapter[] } | undefined {
   const prev = obj(previousSynthesis);
   const prevStory = obj(obj(prev.report).propertyStory);
   const prevChapters = Array.isArray(prevStory.chapters) ? (prevStory.chapters as GuardChapter[]).filter((c) => c && typeof c.body === 'string' && c.body.trim()) : [];
-  const keep = opts.autoUpgrade && Number(prev._logicVersion) >= 6 && prevChapters.length >= 3;
+  const keep = opts.autoUpgrade && Number(prev._logicVersion) >= 6 && prevChapters.length >= 3 && storyFitsKind(prevChapters, opts.kind);
   const base = keep ? { ...prevStory, chapters: prevChapters } : fresh;
   if (!base?.chapters?.length) return base;
   return { ...base, chapters: guardStoryContinuity(base.chapters, opts.evolution) };

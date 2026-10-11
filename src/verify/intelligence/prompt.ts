@@ -39,6 +39,8 @@ import { evidenceRichness } from './evidencePackage.ts';
 import type { IntelligenceBundle } from './bundle.ts';
 import { tasDigest, currentPositionOf } from './tasIntelligence.ts';
 import { registerModelFacts } from './propertyRegister.ts';
+import { kindPromptBlock } from './kindGuard.ts';
+import type { PropertyKindResult } from './propertyKind.ts';
 
 /**
  * Sections the report may use, in the order a buyer reads them.
@@ -613,7 +615,11 @@ export function buildIntelligencePrompt(
   pkg: EvidencePackage,
   bundle?: IntelligenceBundle,
   assetClass?: string | null,
-  extras?: { identity?: PropertyIdentity | null; unitIdentity?: UnitIdentityModel | null; registerSource?: { jobId?: string | null; asOf: string | null; reused: boolean; freshExtractAdvised?: boolean } | null },
+  extras?: {
+    identity?: PropertyIdentity | null; unitIdentity?: UnitIdentityModel | null; registerSource?: { jobId?: string | null; asOf: string | null; reused: boolean; freshExtractAdvised?: boolean } | null;
+    /** v7: the registry-verified kind (propertyKind.ts); its writing rules go into the system prompt (kindGuard.kindPromptBlock). */
+    propertyKind?: PropertyKindResult | null;
+  },
 ): { system: string; user: string } {
   const richness = evidenceRichness(pkg);
   /* A plot of land has no building quality and a warehouse has no school run.
@@ -621,6 +627,9 @@ export function buildIntelligencePrompt(
    * heading with nothing under it being filled with something. */
   const allowed = sectionsForAssetClass(assetClass);
   const classNote = assetClassSectionNote(assetClass);
+  // v7: the registry-verified kind, its area and unit row, and how to write about that kind.
+  const latestUnit = bundle?.register?.latest ?? null;
+  const kindNote = kindPromptBlock(extras?.propertyKind ?? null, latestUnit);
 
   const system = [
     ...ANALYST_RULES,
@@ -689,6 +698,7 @@ export function buildIntelligencePrompt(
     'summary of how the developer presents the project today (channels, campaign length, offers, tone, audience).',
     'points: 2-5 items. Cite the ad evidence.',
     ...(classNote ? ['', classNote] : []),
+    ...(kindNote ? ['', kindNote] : []),
     '',
     'There is NO "buyerActions" field and there is no pre-purchase checklist. nextSteps is NOT it:',
     'a checklist enumerates everything a cautious buyer might do, and it filled up with the fields',
@@ -776,6 +786,10 @@ export function buildIntelligencePrompt(
       propertyIdentity: extras?.identity ?? undefined,
       // Exact unit / parent parcel / building / project / ownership, scoped and dated (unitIdentity.ts).
       unitIdentity: extras?.unitIdentity ?? undefined,
+      // v7: what the register says this property IS (never derived from the cadastral code).
+      propertyKind: extras?.propertyKind && extras.propertyKind.kind !== 'UNKNOWN'
+        ? { kind: extras.propertyKind.kind, registryWording: extras.propertyKind.basis.map((b) => b.text).slice(0, 4), explanation: extras.propertyKind.explanation ?? undefined }
+        : undefined,
       // TAS cases in FILING order with stage and effect; the two newest in full (tasChronology.ts).
       caseChronology: pkg.tas?.caseChronology?.length
         ? pkg.tas.caseChronology.map((c) => ({

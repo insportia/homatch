@@ -360,7 +360,8 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
     landFunction: landFunction ? squash(landFunction) : null,
     landAreaSqm: landArea ? Number(landArea) : null,
     buildingsUnderConstruction: /მშენებარე/.test(buildings),
-    unitUnderConstruction: /ფართი\s*\(\s*მშენებარე\s*\)/.test(ownersBlock),
+    // Any unit marked (მშენებარე): ფართი, ავტოსადგომი N17, … (v7, job dbf04e48).
+    unitUnderConstruction: /ფართი\s*\(\s*მშენებარე\s*\)/.test(ownersBlock) || /\(\s*მშენებარე\s*\)/.test(unitRow?.description ?? ''),
     unitAreaSqm: unitArea ? Number(unitArea) : unitRow?.areaSqm ?? null,
     unitDescription: unitRow?.description ?? null,
     unitItemText: unitRow?.itemText ?? null,
@@ -764,6 +765,9 @@ export function registerModelFacts(reg: PropertyRegister | null): Record<string,
     })),
     taxLien: l.taxLien, seizureOrProhibition: l.seizure, debtorRegistry: l.debtorRegistry,
     landFunction: l.landFunction, buildingsMarkedUnderConstruction: l.buildingsUnderConstruction, unitMarkedUnderConstruction: l.unitUnderConstruction,
+    // v7: the unit's own row (its registered area, description, number, floor/level, block) and the parcel area — never confused.
+    unitAreaSqm: l.unitAreaSqm, unitDescription: l.unitDescription ?? null, unitItemText: l.unitItemText ?? null,
+    unitNumber: l.unitNumber ?? null, unitFloorOrLevel: l.unitFloor ?? null, unitBlock: l.unitBlock ?? null, parcelLandAreaSqm: l.landAreaSqm,
     proceedings: reg.proceedings.map((p) => ({
       kind: p.kind, applicationNumber: p.applicationNumber, filedOn: p.filedOn, completedOn: p.completedOn, documentsRead: p.read,
       decisions: (p.decisions ?? []).map((d) => ({ number: d.number, date: d.date, outcome: d.outcome })),
@@ -804,7 +808,7 @@ export function registerPromptFacts(reg: PropertyRegister | null): string {
   if (!facts || !reg?.latest) return '';
   const l = reg.latest;
   return `\nPROPERTY REGISTER — AUTHORITATIVE (parsed from the NAPR extract HOMATCH retrieved; state "as of ${l.issuedAt?.slice(0, 10)}"): ${JSON.stringify(facts)}
-These facts are settled. Never contradict them, never call the owner anything else, never say a termination "does not specify" which mortgage ended when mortgagesRemovedBeforeThisExtract names it, and never ask the buyer to obtain an extract as if none had been read — at most suggest a fresh extract on the signing day to confirm nothing changed after ${l.issuedAt?.slice(0, 10)}. A company's own pledge is a company obligation; a mortgage listed above is on this apartment. "NONE" means the extract states nothing is registered. Name the owner exactly as listed (never a personal number).\n`;
+These facts are settled. Never contradict them, never call the owner anything else, never say a termination "does not specify" which mortgage ended when mortgagesRemovedBeforeThisExtract names it, and never ask the buyer to obtain an extract as if none had been read — at most suggest a fresh extract on the signing day to confirm nothing changed after ${l.issuedAt?.slice(0, 10)}. A company's own pledge is a company obligation; a mortgage listed above is on this exact unit (whatever its registered kind: unitItemText). "NONE" means the extract states nothing is registered. Name the owner exactly as listed (never a personal number).\n`;
 }
 
 /* ───────────────────────── reconciliation ───────────────────────── */

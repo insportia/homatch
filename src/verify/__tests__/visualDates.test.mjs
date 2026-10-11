@@ -158,7 +158,8 @@ test('a historical render marked LATEST_RENDER (2013) is history; the newest dat
   const cat = catalogVisuals(EEEFADA9.map((v) => ({ ...v, url: SIGNED(v.id) })));
   const chrono = visualChronology(cat, CASES, TODAY);
   const render2013 = chrono.groups.flatMap((g) => g.items).find((i) => i.visual.fileName === 'Render.pdf');
-  assert.equal(render2013.visual.role, 'LATEST_RENDER');
+  // v7 proof fix: outside the latest-design tab the stale role is demoted, so no "latest" badge or wording.
+  assert.equal(render2013.visual.role, 'SUPPORTING');
   assert.equal(render2013.chapter, 'OLD');
   assert.deepEqual(render2013.historical.vars, { year: '2013' });
   assert.ok(!groupOf(chrono, 'LATEST').some((i) => i.visual.fileName === 'Render.pdf'));

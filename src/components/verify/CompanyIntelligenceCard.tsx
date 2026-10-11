@@ -36,6 +36,7 @@ import {
   Building2, Users, ShieldCheck, FileText, Landmark, History, MapPin,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { kindT } from '@/verify/intelligence/kindGuard';
 import { VerifySection } from '@/components/verify/ui';
 
 /** Directors arrive as strings on older runs and as objects on newer ones. */
@@ -138,9 +139,12 @@ export function CompanyIntelligenceCard({
   company,
   /** result_json.rightsAndRestrictions — the PROPERTY-level picture. */
   rights,
+  kind,
 }: {
   company?: CompanyProfileLike | null;
   rights?: { status?: unknown; items?: unknown; statement?: unknown } | null;
+  /** The registry kind (kindGuard.copyKindOf); the apartment copy is unchanged without it. */
+  kind?: string;
 }) {
   const { t } = useLanguage();
   if (!company) return null;
@@ -285,7 +289,7 @@ export function CompanyIntelligenceCard({
             {/* The sentence that stops a company pledge being read as a
                 mortgage on the flat. */}
             <p className="min-w-0 break-words text-2xs leading-relaxed text-muted-foreground">
-              {t('verify_co_company_scope_note')}
+              {kindT(t, 'verify_co_company_scope_note', kind)}
             </p>
           </div>
         ) : null}

@@ -260,7 +260,8 @@ test('the register card names owners only, separates parcel security, and disclo
   assert.match(valuesOf('verify_v3_reg_reused')[0], /earlier check/);
   assert.match(valuesOf('verify_v3_reg_reused')[1], /\{\{date\}\}/);
   const report = code('src/components/verify/VerifyReport.tsx');
-  assert.match(report, /<PropertyRegisterCard register=\{synthesis\.propertyRegister\} source=\{synthesis\.registerSource \?\? null\} \/>/);
+  // v7: the card names the registry kind ("on this parking space") through kindGuard.kindT.
+  assert.match(report, /<PropertyRegisterCard register=\{synthesis\.propertyRegister\} source=\{synthesis\.registerSource \?\? null\} kind=\{copyKind\} \/>/);
 });
 
 /* ── plumbing & i18n ──────────────────────────────────────────────────── */

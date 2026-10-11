@@ -654,7 +654,8 @@ export function visualChronology(visuals: CatalogVisual[], cases: Map<string, Vi
     const chapter = chapterOf(r);
     const photo = isPhoto(r.type) ? photoDatedLabel(r.dates) : null;
     return {
-      visual: r.v,
+      // Outside the latest-design tab nothing may call itself the latest (v7).
+      visual: chapter === 'LATEST' ? r.v : withoutLatestClaims(r.v),
       chapter,
       type: r.type,
       date: r.date,
@@ -698,4 +699,22 @@ export function visualChronology(visuals: CatalogVisual[], cases: Map<string, Vi
     newestPhotoDate,
     noNewerRender: oldRenders && !newerRenders,
   };
+}
+
+/** "Newest / latest" wording, in the six report languages. */
+const LATEST_CLAIM = /(უახლეს|ბოლო\s+საპროექტო|\blatest\b|\bnewest\b|\bmost recent\b|последн|новейш|en son|en yeni|الأحدث|الأخير|האחרונ|העדכני)/i;
+
+/**
+ * A visual that is not in the latest-design tab, with every sentence that
+ * calls it the latest removed from its explanation and its LATEST_RENDER
+ * role demoted (job eeefada9: a 2013 render captioned "უახლესი რენდერი").
+ */
+export function withoutLatestClaims(v: CatalogVisual): CatalogVisual {
+  const strip = (t: string | undefined | null): string => String(t ?? '').split(/(?<=[.!?։])\s+/).filter((x) => x.trim() && !LATEST_CLAIM.test(x)).join(' ').trim();
+  const e = v.explanation;
+  const title = v.title && LATEST_CLAIM.test(v.title) ? null : v.title;
+  const explanation = e ? { ...e, what: strip(e.what), interesting: strip(e.interesting), buyerMeaning: strip(e.buyerMeaning), uncertain: e.uncertain } : e;
+  const role = v.role === 'LATEST_RENDER' ? 'SUPPORTING' : v.role;
+  if (role === v.role && title === v.title && JSON.stringify(explanation) === JSON.stringify(e)) return v;
+  return { ...v, role, title, explanation } as CatalogVisual;
 }

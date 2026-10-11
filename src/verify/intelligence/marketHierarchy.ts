@@ -45,6 +45,8 @@ import type {
 import { areaName, firstAreaOf, type AreaKey } from './marketGeography.ts';
 import { buildLocationIntelligence } from './locationIntelligence.ts';
 import { buildPropertyRegister } from './propertyRegister.ts';
+import { propertyKindFromResult } from './propertyKind.ts';
+import { marketKindFor } from './kindGuard.ts';
 
 /** ±35% of the subject's area. 94.10 m² → 61.2–127.0 m². */
 export const SIZE_BAND = 0.35;
@@ -632,6 +634,16 @@ export function subjectPropertyKind(report: unknown): PropertyKind | null {
       : asset === 'APARTMENT_IN_PROJECT' || asset === 'PRIVATE_RESALE' ? 'APARTMENT' : null);
 }
 
+/** The market kind of a non-apartment registry kind (an apartment keeps the text-based gate unchanged). */
+function registryMarketKind(report: unknown): PropertyKind | null {
+  try {
+    const k = marketKindFor(propertyKindFromResult(report).kind);
+    return k && k !== 'APARTMENT' ? k : null;
+  } catch {
+    return null;
+  }
+}
+
 /** "…ფართობი შეადგენს 12.00 კვ.მ-ს" / "ფართობია 94.10 კვ.მ." — the unit area an official sentence states. */
 function officialArea(report: unknown): number | undefined {
   const r = objOf(report);
@@ -679,7 +691,9 @@ export function subjectMarketFacts(report: unknown): {
   const area = numOf(unit.area ?? unit.areaSqm) ?? numOf(reg?.latest?.unitAreaSqm) ?? officialArea(r);
   const project = txt(pr.project) || txt(proj.name) || txt(rec.project) || undefined;
   const underConstruction = reg?.latest?.unitUnderConstruction === true || reg?.latest?.buildingsUnderConstruction === true;
-  const propertyKind = subjectPropertyKind(r);
+  // v7: when no text names the kind, the register's own classification (propertyKind.ts) gates a
+  // non-apartment subject to its own market (a parking space, land, a house, commercial space).
+  const propertyKind = subjectPropertyKind(r) ?? registryMarketKind(r);
   return {
     ...(address ? { address } : {}),
     ...(district ? { district } : {}),

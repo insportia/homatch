@@ -26,8 +26,9 @@ import type { DesignState, ObjectInstance } from '../designState.ts';
 import type { DesignForm } from '../objectShape.ts';
 import { type Point, type SpaceModel, surfacesOfRoom, wallFrame } from '../space.ts';
 import type { BuildItem, BuildPlan, BuildReport, BuildRoom } from './build.ts';
+import { homeProgramme, roomUseOf } from './programme.ts';
 
-export const GRAPH_VERSION = 'ds-graph-1';
+export const GRAPH_VERSION = 'ds-graph-2';
 
 // ── Evidence (structural types: the edge function passes its rows as they are) ─────────────────────
 
@@ -130,9 +131,11 @@ const KIND_ALIASES: Record<string, string[]> = {
 
 /**
  * The reading's rooms matched to the space's: by kind, in order (the space was built from the same reading, so its
- * second bedroom is the reading's second bedroom). A room with no counterpart maps to null.
+ * second bedroom is the reading's second bedroom); then, for those left, by what the room is used as (programme.ts):
+ * the reading may name a KITCHEN_LIVING or an OFFICE that the space, read with the reader's own kinds, holds as a
+ * LIVING room labelled kitchen-living or an UNKNOWN room labelled office. A room with no counterpart maps to null.
  */
-export function mapSourceRooms(sourceRooms: Array<{ id: string; kind: string }>, space: SpaceModel): Record<string, string | null> {
+export function mapSourceRooms(sourceRooms: Array<{ id: string; kind: string; label?: string | null }>, space: SpaceModel): Record<string, string | null> {
   const out: Record<string, string | null> = {};
   const used = new Set<string>();
   for (const s of sourceRooms) {
@@ -140,6 +143,20 @@ export function mapSourceRooms(sourceRooms: Array<{ id: string; kind: string }>,
     const room = kinds.map((k) => space.rooms.find((r) => r.kind === k && !used.has(r.id))).find(Boolean) ?? null;
     if (room) used.add(room.id);
     out[s.id] = room?.id ?? null;
+  }
+  const left = sourceRooms.filter((s) => !out[s.id]);
+  if (!left.length) return out;
+  const programme = homeProgramme(space.rooms);
+  const habitable = sourceRooms.filter((s) => !/BATH|WC|HALL|CORRIDOR|STORAGE|STAIR|BALCONY|TERRACE/.test(s.kind)).length;
+  const group = (u: string) => (u === 'KITCHEN_LIVING' || u === 'LIVING' || u === 'STUDIO' ? 'OPEN' : u);
+  for (const exact of [true, false]) {
+    for (const s of left) {
+      if (out[s.id]) continue;
+      const use = roomUseOf(s.kind, s.label ?? null, { habitableRooms: habitable, kitchenRoomId: null, roomId: s.id });
+      if (use === 'OTHER') continue;
+      const room = space.rooms.find((r) => !used.has(r.id) && (exact ? programme.get(r.id)?.use === use : group(programme.get(r.id)?.use ?? '') === group(use)));
+      if (room) { used.add(room.id); out[s.id] = room.id; }
+    }
   }
   return out;
 }

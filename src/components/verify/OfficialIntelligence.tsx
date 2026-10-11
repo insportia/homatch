@@ -19,6 +19,7 @@ import { ChevronDown } from 'lucide-react';
 import { timelineGroups, yearSpan } from '@/verify/reportPresentation';
 import { projectStory } from '@/verify/intelligence/projectStory';
 import { ProjectStory, StoryIntro } from './ProjectStory';
+import { isDateList } from '@/verify/intelligence/rawText';
 import { guardStoryContinuity, evolutionOf, stripListMarkers, periodLabel } from '@/verify/intelligence/storyGuard';
 import { guardKindText } from '@/verify/intelligence/kindGuard';
 
@@ -322,7 +323,7 @@ export const PropertyStoryBlock: React.FC<{
      the owner's editorial baseline, minus unsupported continuity between an
      earlier project on the parcel and the current development. */
   const story = React.useMemo(
-    () => guardStoryContinuity(chapters ?? [], evolutionOf(signals)).map((c) => ({ ...c, body: guardKindText(stripListMarkers(clean(c.body)), kind) })).filter((c) => c.body),
+    () => guardStoryContinuity(chapters ?? [], evolutionOf(signals)).map((c) => ({ ...c, body: guardKindText(stripListMarkers(clean(c.body)), kind) })).filter((c) => c.body && !isDateList(c.body)),
     [chapters, signals, clean, kind],
   );
   /* The project's evolution, step by step (projectStory.ts). */

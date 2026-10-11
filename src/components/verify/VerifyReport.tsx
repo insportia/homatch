@@ -86,6 +86,7 @@ import { LegalFindings, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
 import { VerifyJobProvider } from './OfficialLink';
 import { PropertyFactsCard } from './PropertyFactsCard';
+import { isRawRecord, RAW_FINDING_WHY } from '@/verify/intelligence/rawText';
 import { sectionsFor, type PropertyKind } from '@/verify/intelligence/propertyKind';
 import { copyKindOf, marketPlanForKind } from '@/verify/intelligence/kindGuard';
 import { KIND_LABEL_KEY } from '@/verify/propertyFacts';
@@ -409,7 +410,8 @@ export function VerifyReport({
    * dropped when the snapshot is present; its METRICS are kept and move into
    * the building chapter where numbers belong.
    */
-  const allSections = (r.sections ?? []).filter((s) => clean(s.body));
+  // Raw "Field: value" record dumps from the no-model template are never shown (owner, 2026-10-11).
+  const allSections = (r.sections ?? []).filter((s) => clean(s.body) && !clean(s.body).split(/(?<=[.!?])\s+/).every((x) => isRawRecord(x)));
   const snapshotSection = allSections.find((s) => s.key === 'SNAPSHOT');
   const sections = orderForReading(
     synthesis.snapshot ? allSections.filter((s) => s.key !== 'SNAPSHOT') : allSections
@@ -422,7 +424,7 @@ export function VerifyReport({
      stands on its own in the location chapter. */
   const locationHost =
     (['LOCATION', 'INFRASTRUCTURE'] as const).find((k) => sections.some((s) => s.key === k)) ?? null;
-  const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding));
+  const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding) && f.whyItMatters !== RAW_FINDING_WHY && !isRawRecord(f.finding));
 
   /*
    * THE VERDICT, WEIGHED RATHER THAN COUNTED.

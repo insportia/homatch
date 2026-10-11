@@ -17728,6 +17728,15 @@ const en = {
   mps_source_CACHED: '{{source}}: temporarily unavailable — showing previously collected listings with their last-checked time',
   mps_source_UNAVAILABLE: '{{source}}: temporarily unavailable — no previously collected listings match',
   mps_source_retry: 'Next refresh attempt after {{time}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'Source: {{source}}',
+  mps_duplicate_badge: 'Duplicate · {{n}} listings',
+  mps_duplicate_hint: 'The same property is listed {{n}} times. See every listing and compare their prices.',
+  mps_duplicates_banner: '{{n}} properties are listed more than once',
+  mps_duplicates_show: 'Show duplicates',
+  fpr_duplicatesOnly: 'Duplicates only',
+  fpr_filter_duplicatesOnly: 'Duplicates only',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35370,6 +35379,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: დროებით მიუწვდომელია — ნაჩვენებია ადრე შეგროვებული განცხადებები ბოლო შემოწმების დროით',
   mps_source_UNAVAILABLE: '{{source}}: დროებით მიუწვდომელია — ადრე შეგროვებული შესაბამისი განცხადებები არ მოიძებნა',
   mps_source_retry: 'შემდეგი განახლების მცდელობა: {{time}}-ის შემდეგ',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'წყარო: {{source}}',
+  mps_duplicate_badge: 'დუბლიკატი · {{n}} განცხადება',
+  mps_duplicate_hint: 'ერთი და იგივე ქონება გამოქვეყნებულია {{n}}-ჯერ. ნახე ყველა განცხადება და შეადარე ფასები.',
+  mps_duplicates_banner: '{{n}} ქონება გამოქვეყნებულია რამდენჯერმე',
+  mps_duplicates_show: 'დუბლიკატების ნახვა',
+  fpr_duplicatesOnly: 'მხოლოდ დუბლიკატები',
+  fpr_filter_duplicatesOnly: 'მხოლოდ დუბლიკატები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -53003,6 +53021,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: временно недоступен — показаны ранее собранные объявления с временем последней проверки',
   mps_source_UNAVAILABLE: '{{source}}: временно недоступен — подходящих ранее собранных объявлений нет',
   mps_source_retry: 'Следующая попытка обновления после {{time}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'Источник: {{source}}',
+  mps_duplicate_badge: 'Дубликат · объявлений: {{n}}',
+  mps_duplicate_hint: 'Один и тот же объект опубликован {{n}} раз. Посмотрите все объявления и сравните цены.',
+  mps_duplicates_banner: 'Объектов, опубликованных несколько раз: {{n}}',
+  mps_duplicates_show: 'Показать дубликаты',
+  fpr_duplicatesOnly: 'Только дубликаты',
+  fpr_filter_duplicatesOnly: 'Только дубликаты',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -70634,6 +70661,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: geçici olarak kullanılamıyor — daha önce toplanan ilanlar son kontrol zamanlarıyla gösteriliyor',
   mps_source_UNAVAILABLE: '{{source}}: geçici olarak kullanılamıyor — eşleşen daha önce toplanmış ilan yok',
   mps_source_retry: 'Sonraki güncelleme denemesi: {{time}} sonrası',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'Kaynak: {{source}}',
+  mps_duplicate_badge: 'Kopya · {{n}} ilan',
+  mps_duplicate_hint: 'Aynı mülk {{n}} kez ilan edilmiş. Tüm ilanları görün ve fiyatları karşılaştırın.',
+  mps_duplicates_banner: '{{n}} mülk birden fazla kez ilan edilmiş',
+  mps_duplicates_show: 'Kopyaları göster',
+  fpr_duplicatesOnly: 'Yalnızca kopyalar',
+  fpr_filter_duplicatesOnly: 'Yalnızca kopyalar',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -88265,6 +88301,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: غير متاح مؤقتًا — تُعرض إعلانات جُمعت سابقًا مع وقت آخر فحص لها',
   mps_source_UNAVAILABLE: '{{source}}: غير متاح مؤقتًا — لا توجد إعلانات مطابقة جُمعت سابقًا',
   mps_source_retry: 'محاولة التحديث التالية بعد {{time}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'المصدر: {{source}}',
+  mps_duplicate_badge: 'مكرّر · {{n}} إعلانات',
+  mps_duplicate_hint: 'العقار نفسه منشور {{n}} مرات. اطّلع على كل الإعلانات وقارن أسعارها.',
+  mps_duplicates_banner: '{{n}} عقارات منشورة أكثر من مرة',
+  mps_duplicates_show: 'عرض المكرّرات',
+  fpr_duplicatesOnly: 'المكرّرات فقط',
+  fpr_filter_duplicatesOnly: 'المكرّرات فقط',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -105896,6 +105941,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   mps_source_CACHED: '{{source}}: לא זמין זמנית — מוצגות מודעות שנאספו קודם עם זמן הבדיקה האחרון',
   mps_source_UNAVAILABLE: '{{source}}: לא זמין זמנית — אין מודעות תואמות שנאספו קודם',
   mps_source_retry: 'ניסיון הרענון הבא אחרי {{time}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_card_source: 'מקור: {{source}}',
+  mps_duplicate_badge: 'כפילות · {{n}} מודעות',
+  mps_duplicate_hint: 'אותו נכס פורסם {{n}} פעמים. ראו את כל המודעות והשוו את המחירים.',
+  mps_duplicates_banner: '{{n}} נכסים פורסמו יותר מפעם אחת',
+  mps_duplicates_show: 'הצגת כפילויות',
+  fpr_duplicatesOnly: 'כפילויות בלבד',
+  fpr_filter_duplicatesOnly: 'כפילויות בלבד',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

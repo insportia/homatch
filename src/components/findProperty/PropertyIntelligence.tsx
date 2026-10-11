@@ -10,6 +10,7 @@ import { checkedAgo, listingActivity, listingAgeText, listingTimes, num, pct, ty
 import { advantageText, missingRequirements, reasonText, SELLER_KEY, sellerLabel } from './PropertyCard';
 import { PropertyGallery } from './PropertyGallery';
 import { DuplicateBadge, DuplicateListings } from './DuplicateListings';
+import { ContactLine } from './ContactLine';
 import { sourceNames } from './PropertyCard';
 
 function IntelligenceFrame({ children, fullPage, open, onOpenChange, isRTL }: { children: React.ReactNode; fullPage: boolean; open: boolean; onOpenChange: (o: boolean) => void; isRTL: boolean }) {
@@ -67,6 +68,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
             {f.pricePerSqmUsd ? <p>{t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) })}</p> : null}
             <p>{t('fpw_listing_count', { n: p.listings.length })} · {t('mps_sources_n', { n: p.sourceCount })}</p>
           </div>
+          <ContactLine listing={p.listings.find((l) => l.listingId === p.intelligence?.primaryListingId) ?? p.listings[0]} t={t} />
           {(() => {
             const times = listingTimes(p.listings.find((l) => l.listingId === p.intelligence?.primaryListingId) ?? p.listings[0], t);
             return <div data-property-times className="space-y-0.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm">
@@ -176,7 +178,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
                     {(l.seller.name || l.seller.publicPhone || l.seller.publicEmail || profile) ? (
                       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-foreground/85">
                         {l.seller.name ? <li className="inline-flex items-center gap-1.5"><User className="h-4 w-4 text-muted-foreground" aria-hidden="true" /><span dir="auto">{l.seller.name}</span></li> : null}
-                        {l.seller.publicPhone ? <li><a className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline" href={`tel:${l.seller.publicPhone.replace(/[^\d+]/g, '')}`}><Phone className="h-4 w-4 text-muted-foreground" aria-hidden="true" /><span dir="ltr">{l.seller.publicPhone}</span></a></li> : null}
+                        {l.seller.publicPhone ? <li><a className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline" href={`tel:${l.seller.publicPhone.replace(/[^\d+]/g, '')}`}><Phone className="h-4 w-4 text-muted-foreground" aria-hidden="true" /><span dir="ltr">{l.seller.publicPhone}</span></a>{l.seller.phoneFromDescription ? <span className="ms-1.5 text-xs text-muted-foreground">({t('mps_contact_from_description_short')})</span> : null}</li> : null}
                         {l.seller.publicEmail ? <li><a className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline" href={`mailto:${l.seller.publicEmail}`}><Mail className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{l.seller.publicEmail}</a></li> : null}
                         {profile ? <li><a className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline" href={profile} target="_blank" rel="noopener noreferrer"><User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{t('mps_author_profile')}</a></li> : null}
                       </ul>

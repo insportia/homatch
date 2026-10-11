@@ -217,6 +217,13 @@ test('proven central heating and positive attributes resolve dynamic IDs, with e
   assert.throws(()=>buildQueries({...request,mustHave:['CENTRAL_HEATING']},locations,filters),/Dictionary mapping unavailable/);
 });
 
+test('MyHome user_type: agent and broker are declared agents; a private person is not called an owner',()=>{
+  const map=(type)=>candidateFromMyHome({...row(1),user_type:type===null?null:{type}},filters,'https://api-statements.tnet.ge/v1/statements');
+  assert.equal(map('agent').seller.declaredType,'BROKER');assert.equal(map('broker').seller.declaredType,'BROKER');
+  assert.equal(map('physical').seller.declaredType,null);assert.equal(map(null).seller.declaredType,null);
+  assert.equal(map('agent').retrievalMetadata.userType,'agent');
+});
+
 test('unproven detail criteria are not invented; source years and exact detail counts stay truthful',()=>{
   const c=candidateFromMyHome({...row(1),room:'10+',room_type_id:10,build_year:'1955-2000'},filters,'https://api-statements.tnet.ge/v1/statements');
   assert.equal(c.rooms,9,'detail dictionary ID wins over an inherited list label');assert.equal(c.constructionYear,null);assert.equal(c.retrievalMetadata.buildYearSource,'1955-2000');

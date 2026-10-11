@@ -56,7 +56,7 @@ export interface ListingView {
   freshness: NormalizedListing['freshness'];
   publishedAt?: string | null;
   updatedAt?: string | null;
-  seller: { classification: SellerAssessment['classification']; name: string | null; publicPhone: string | null; publicEmail: string | null; publicProfile: string | null };
+  seller: { classification: SellerAssessment['classification']; name: string | null; publicPhone: string | null; phoneFromDescription?: boolean; publicEmail: string | null; publicProfile: string | null };
   authorUrl: string | null;
   isLowest: boolean;
   isHighest: boolean;
@@ -390,7 +390,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
         updatedAt: m.updatedAt,
         seller: {
           classification: w.sellers.get(m.id)!.classification,
-          name: m.seller.name, publicPhone: m.seller.publicPhone, publicEmail: m.seller.publicEmail, publicProfile: m.seller.publicProfile,
+          name: m.seller.name, publicPhone: m.seller.publicPhone, ...(m.seller.phoneFromDescription ? { phoneFromDescription: true } : {}), publicEmail: m.seller.publicEmail, publicProfile: m.seller.publicProfile,
         },
         authorUrl: m.provenance.authorUrl,
         isLowest: prices.get(m.id)?.isLowest ?? false,

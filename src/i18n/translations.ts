@@ -17851,6 +17851,17 @@ const en = {
   mps_photo_zoom_in: 'Zoom in',
   mps_photo_zoom_out: 'Zoom out',
   mps_photo_hint: 'Double-tap or scroll to zoom · drag to move',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_contact_title: 'Contact',
+  mps_contact_call: 'Call',
+  mps_contact_from_description: 'The seller wrote this number in the listing description.',
+  mps_contact_from_description_short: 'from the description',
+  mps_contact_on_source: 'See the number on {{source}}',
+  mps_contact_source_only: '{{source}} shows this seller\'s number only on its own page, after a click.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_seller_agent: 'Agent',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -35616,6 +35627,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mps_photo_zoom_in: 'გადიდება',
   mps_photo_zoom_out: 'დაპატარავება',
   mps_photo_hint: 'გასადიდებლად ორჯერ დააჭირე ან დაატრიალე · გადასაადგილებლად გადაათრიე',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_contact_title: 'საკონტაქტო',
+  mps_contact_call: 'დარეკვა',
+  mps_contact_from_description: 'ეს ნომერი გამყიდველმა განცხადების აღწერაში მიუთითა.',
+  mps_contact_from_description_short: 'აღწერიდან',
+  mps_contact_on_source: 'ნომრის ნახვა {{source}}-ზე',
+  mps_contact_source_only: '{{source}} ამ გამყიდველის ნომერს მხოლოდ თავის გვერდზე აჩვენებს, ღილაკზე დაჭერის შემდეგ.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_seller_agent: 'აგენტი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -53372,6 +53394,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mps_photo_zoom_in: 'Увеличить',
   mps_photo_zoom_out: 'Уменьшить',
   mps_photo_hint: 'Двойное касание или колесо — масштаб · перетащите для перемещения',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_contact_title: 'Контакт',
+  mps_contact_call: 'Позвонить',
+  mps_contact_from_description: 'Этот номер продавец указал в описании объявления.',
+  mps_contact_from_description_short: 'из описания',
+  mps_contact_on_source: 'Номер на {{source}}',
+  mps_contact_source_only: '{{source}} показывает номер этого продавца только на своей странице, после нажатия.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_seller_agent: 'Агент',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -71126,6 +71159,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mps_photo_zoom_in: 'Yakınlaştır',
   mps_photo_zoom_out: 'Uzaklaştır',
   mps_photo_hint: 'Yakınlaştırmak için çift dokunun veya kaydırın · taşımak için sürükleyin',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_contact_title: 'İletişim',
+  mps_contact_call: 'Ara',
+  mps_contact_from_description: 'Satıcı bu numarayı ilan açıklamasına yazmış.',
+  mps_contact_from_description_short: 'açıklamadan',
+  mps_contact_on_source: 'Numara {{source}} üzerinde',
+  mps_contact_source_only: '{{source}} bu satıcının numarasını yalnızca kendi sayfasında, tıkladıktan sonra gösteriyor.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_seller_agent: 'Emlakçı',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -88880,6 +88924,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mps_photo_zoom_in: 'تكبير',
   mps_photo_zoom_out: 'تصغير',
   mps_photo_hint: 'انقر مرتين أو مرّر للتكبير · اسحب للتحريك',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_contact_title: 'التواصل',
+  mps_contact_call: 'اتصال',
+  mps_contact_from_description: 'كتب البائع هذا الرقم في وصف الإعلان.',
+  mps_contact_from_description_short: 'من الوصف',
+  mps_contact_on_source: 'الرقم على {{source}}',
+  mps_contact_source_only: 'يعرض {{source}} رقم هذا البائع على صفحته فقط، بعد النقر.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_seller_agent: 'وكيل',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -106634,6 +106689,17 @@ const he: Partial<Record<TranslationKey, string>> = {
   mps_photo_zoom_in: 'הגדלה',
   mps_photo_zoom_out: 'הקטנה',
   mps_photo_hint: 'הקשה כפולה או גלילה להגדלה · גררו להזזה',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_contact_title: 'יצירת קשר',
+  mps_contact_call: 'התקשרות',
+  mps_contact_from_description: 'המוכר כתב את המספר בתיאור המודעה.',
+  mps_contact_from_description_short: 'מהתיאור',
+  mps_contact_on_source: 'המספר ב-{{source}}',
+  mps_contact_source_only: '{{source}} מציג את מספר המוכר רק בדף שלו, לאחר לחיצה.',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_seller_agent: 'סוכן',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

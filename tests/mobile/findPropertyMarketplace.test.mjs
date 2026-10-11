@@ -756,6 +756,12 @@ test('possible duplicates, exact listing times and the full-screen photo viewer 
     if (lang === 'ka') assert.match(times, /დადებულია .*\d{2}:\d{2} \((5|30) საათის წინ|1 დღის წინ\)/);
     if (lang === 'en') assert.match(times, /Posted .*\d{2}:\d{2} \((5 h ago|1 days ago)\)/);
     assert.doesNotMatch(times, /\{\{/);
+    // Contact: a call button for a published number, otherwise the way to the source's own "show number".
+    const contact = card.locator('[data-contact]');
+    await contact.waitFor();
+    const call = contact.locator('a[data-contact-call]');
+    if (await call.count()) assert.match(await call.getAttribute('href'), /^tel:\+?\d{9,15}$/);
+    else assert.match(await contact.locator('a[data-contact-source]').getAttribute('href'), /^https:\/\//);
     // Full-screen viewer: open, zoom, move to the next photo, close with Esc.
     await card.locator('[data-photo-fullscreen]').click();
     const viewer = page.locator('[data-photo-viewer]');

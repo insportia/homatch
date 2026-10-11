@@ -126,7 +126,7 @@ export function candidateFromMyHome(raw: any, filters: any, sourceUrl: string, o
     furnished, parking, amenities: [...new Set(amenities)], images: listing.images.slice(0, 24), imageHashes: [],
     publishedAt: null, updatedAt: knownDate(raw.last_updated), observedAt,
     seller: { name: text(raw.owner_name) ?? text(raw.user_title), publicPhone: text(raw.user_phone_number), publicEmail: null, publicProfile: null,
-      declaredType: raw.is_owner === true ? 'OWNER' : null, sourceListingCount: number(raw.user_statements_count) },
+      declaredType: raw.is_owner === true ? 'OWNER' : ['agent', 'broker'].includes(String(raw.user_type?.type ?? '').toLowerCase()) ? 'BROKER' : null, sourceListingCount: number(raw.user_statements_count) },
     provenance: { exactUrl: listing.source_url, authorUrl: null, sourceUrl },
     evidence: [{ field: 'sourceIdentity', text: `MyHome id=${raw.id}, uuid=${raw.uuid ?? ''}` },
       ...parameters.slice(0, 10).map(row => ({ field: 'sourceFeature', text: String(row.display_name ?? row.svg_file_name).slice(0, 500) })),

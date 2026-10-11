@@ -301,29 +301,34 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   return { status: derived.status, properties: properties.length, strongMatches };
 }
 
-/** Sources whose runs fall back to previously collected listings when fresh
- * acquisition is unavailable. SS.ge keeps its existing behaviour. */
-export const CACHE_FALLBACK: Record<string, string> = { 'myhome-agent': 'myhome-ge' };
-export const CACHE_WINDOW_MS = 14 * 24 * 3600_000;
+/** Sources answered instantly from HOMATCH's shared listing pool (what earlier
+ * searches already collected), then refreshed live. */
+export const CACHE_FALLBACK: Record<string, string> = { 'myhome-agent': 'myhome-ge', 'ssge-agent': 'ss-ge' };
+/** Only listings their source confirmed within this window are served from the
+ * pool: an older observation may already be sold, expired or deleted. */
+export const CACHE_WINDOW_MS = 72 * 3600_000;
 const CACHE_SCAN_ROWS = 3000;
 
 /**
- * MyHome unavailable (cooling down, refused, failed, timed out) or only partly
- * read: add the previously collected listings of the same source that this
- * search's own pipeline accepts. Each keeps its ORIGINAL observedAt, so
- * freshness (VERIFIED / RECENT / STALE) and "last checked" stay true, and is
- * marked observationLevel CACHED. Fresh rows are never overwritten
- * (ignoreDuplicates on the search/source/listing key); the run's status and
- * returned_count are not changed, so a cached answer is never reported as a
- * fresh refresh. Runs once per run: a run that already holds cached rows is
- * skipped.
+ * The shared listing pool. At search start (atStart) every pooled source
+ * answers immediately from listings earlier searches collected; afterwards a
+ * run that could not refresh (cooling down, refused, failed, timed out) or only
+ * partly did falls back to it. Only the listings this search's own pipeline
+ * accepts are added, each with its ORIGINAL observedAt (freshness and "last
+ * checked" stay true) and marked observationLevel CACHED; only observations
+ * within CACHE_WINDOW_MS are used. A fresh row for the same listing replaces
+ * the cached one when the live run reports it; cached rows never overwrite
+ * fresh ones (ignoreDuplicates). Run status and returned_count are unchanged,
+ * so a pooled answer is never reported as a fresh refresh. Runs once per run.
  */
 export async function serveCachedListings(db: Db, searchId: string, request: MarketplaceSearchRequest,
-  runRows: Array<Record<string, unknown>>, now = new Date()): Promise<number> {
+  runRows: Array<Record<string, unknown>>, now = new Date(), atStart = false): Promise<number> {
   let served = 0;
   for (const run of runRows) {
     const sourceKey = CACHE_FALLBACK[String(run.worker_id)];
-    if (!sourceKey || !['BLOCKED', 'FAILED', 'TIMED_OUT', 'PARTIAL'].includes(String(run.status))) continue;
+    // At search start every pooled source answers at once; afterwards only a
+    // run that could not refresh (or only partly) falls back to the pool.
+    if (!sourceKey || (!atStart && !['BLOCKED', 'FAILED', 'TIMED_OUT', 'PARTIAL'].includes(String(run.status)))) continue;
     const { data: already } = await db.from('discovery_marketplace_listings').select('id')
       .eq('worker_run_id', run.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED').limit(1);
     if ((already ?? []).length) continue;
@@ -350,4 +355,63 @@ export async function serveCachedListings(db: Db, searchId: string, request: Mar
     served += cached.length;
   }
   return served;
+}
+
+/** Results of an identical search finished this recently are shared, not refetched. */
+export const SHARE_WINDOW_MS = 30 * 60_000;
+
+/** What a source is asked: the request without its per-search identity. */
+export function requestKey(request: unknown): string {
+  const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v;
+  const { searchId: _s, searchPlanId: _p, requestedAt: _r, maxResults: _m, ...rest } = (request ?? {}) as Record<string, unknown>;
+  return JSON.stringify(canon(rest));
+}
+
+/**
+ * ONE FETCH FOR MANY IDENTICAL SEARCHES. Runs once before every claim: a queued
+ * run whose request equals one this worker finished within SHARE_WINDOW_MS is
+ * answered from that run's fresh listings (their own observedAt, so "last
+ * checked" stays true) instead of asking the source again. Workers take one run
+ * at a time, so identical searches queue behind the first and are answered as
+ * soon as it finishes. The run is closed with the source run's status and errors
+ * (a partly read run stays PARTIAL) and records sharedFromRun.
+ */
+export async function shareRecentResults(db: Db, workerId: string, now = new Date(),
+  process: (db: Db, searchId: string, now: Date) => Promise<unknown> = processAndStore): Promise<number> {
+  const { data: queued } = await db.from('discovery_marketplace_worker_runs').select('id,search_id,request')
+    .eq('worker_id', workerId).eq('status', 'QUEUED').order('created_at', { ascending: true }).limit(50);
+  if (!(queued ?? []).length) return 0;
+  const { data: recent } = await db.from('discovery_marketplace_worker_runs')
+    .select('id,status,request,discovered_count,query_applied,errors,completed_at').eq('worker_id', workerId)
+    .in('status', ['COMPLETE', 'PARTIAL']).gt('returned_count', 0)
+    .gte('completed_at', new Date(now.getTime() - SHARE_WINDOW_MS).toISOString())
+    .order('completed_at', { ascending: false }).limit(50);
+  const byKey = new Map<string, Record<string, unknown>>();
+  for (const r of recent ?? []) { const k = requestKey(r.request); if (!byKey.has(k)) byKey.set(k, r); }
+  let shared = 0;
+  for (const q of queued ?? []) {
+    const source = byKey.get(requestKey(q.request));
+    if (!source) continue;
+    const { data: rows } = await db.from('discovery_marketplace_listings')
+      .select('source_key,source_listing_id,exact_url,raw,observed_at').eq('worker_run_id', source.id).limit(5000);
+    const fresh = (rows ?? []).filter((r: { raw: ExternalListingCandidate }) => r.raw?.retrievalMetadata?.observationLevel !== 'CACHED');
+    if (!fresh.length) continue;
+    // Close first, conditionally: a concurrent claim can never also run it.
+    const { data: closed } = await db.from('discovery_marketplace_worker_runs').update({
+      status: source.status, returned_count: fresh.length, discovered_count: source.discovered_count,
+      query_applied: { ...((source.query_applied ?? {}) as Record<string, unknown>), sharedFromRun: source.id },
+      errors: source.errors ?? [], completed_at: now.toISOString(), updated_at: now.toISOString(),
+    }).eq('id', q.id).eq('status', 'QUEUED').select('id').maybeSingle();
+    if (!closed) continue;
+    for (const batch of chunk(fresh, 500)) {
+      const { error } = await db.from('discovery_marketplace_listings').upsert(batch.map((r: Record<string, unknown>) => ({
+        ...r, search_id: q.search_id, worker_run_id: q.id, updated_at: now.toISOString(),
+      })), { onConflict: 'search_id,source_key,source_listing_id' });
+      if (error) throw new Error(error.message);
+    }
+    await process(db, String(q.search_id), now);
+    shared++;
+  }
+  return shared;
 }

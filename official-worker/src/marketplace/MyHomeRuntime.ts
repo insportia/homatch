@@ -111,13 +111,13 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
    * Verify's market lane used to call the bare adapter without this runtime's
    * public-page reader, so every Verify MyHome search found nothing. It now
    * runs here: same engine and access state, same page transport, same fixed
-   * pause between pages, and the same one-run-at-a-time rule (it waits for a
-   * running Find Property search and holds the slot while it runs). Only the
-   * page cap differs: Verify needs the local inventory (Krtsanisi /
-   * Ortachala), not the first screen, so the caller passes its own cap.
-   * Find Property's behaviour is unchanged.
+   * pause between pages, the same page cap (MYHOME_MAX_PAGES: a deeper page
+   * draws MyHome's Cloudflare challenge and cools MyHome down for every
+   * customer), and the same one-run-at-a-time rule (it waits for a running
+   * Find Property search and holds the slot while it runs). Depth comes from
+   * narrower queries (one per local district), never from more pages.
    */
-  async function acquireForVerify(request: any, options: { deadlineAt: string; signal?: AbortSignal; report: (r: any) => Promise<void>; maxPages?: number }) {
+  async function acquireForVerify(request: any, options: { deadlineAt: string; signal?: AbortSignal; report: (r: any) => Promise<void> }) {
     const deadline = Date.parse(options.deadlineAt);
     while (active >= MAX_ACTIVE) {
       if (options.signal?.aborted || Date.now() > deadline - 30000) throw new Error('MYHOME_BUSY');
@@ -126,7 +126,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     active++;
     const reader = createReader();
     try {
-      return await acquireMyHome(request, { fetcher, engine: myHomeEngine, enrichDetails, maxPages: Math.max(1, Math.trunc(options.maxPages ?? maxPages)), pageIntervalMs,
+      return await acquireMyHome(request, { fetcher, engine: myHomeEngine, enrichDetails, maxPages, pageIntervalMs,
         pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs,
         deadlineAt: options.deadlineAt, signal: options.signal, report: options.report });
     } finally { await reader?.close(); active--; }

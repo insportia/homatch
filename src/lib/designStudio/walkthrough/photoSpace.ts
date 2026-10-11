@@ -15,7 +15,7 @@ import { layoutFromPieces, type LayoutRepair } from './pieceLayout.ts';
 import { repairReading, type ReadingRepair } from './readingRepair.ts';
 import { carryPoint, sceneTransform, type RenderFurnishing } from './renderFurnishing.ts';
 
-export const PHOTO_SPACE_VERSION = 'ds-photo-space-2';
+export const PHOTO_SPACE_VERSION = 'ds-photo-space-3';
 
 /** Issues a new layout of the same rooms can cure (a missing room it cannot). */
 const LAYOUT_ISSUES = new Set(['ROOM_SHAPE_INVALID', 'PIECES_OUTSIDE_ROOM', 'ROOM_UNREACHABLE', 'ESSENTIAL_DOES_NOT_FIT', 'FOOTPRINT_UNCOVERED']);

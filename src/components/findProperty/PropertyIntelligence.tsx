@@ -29,7 +29,7 @@ const Bullet = ({ children }: { children: React.ReactNode }) => <li className="f
   <span className="mt-1 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold)/0.18)]"><Check className="h-3 w-3 text-[hsl(var(--gold-ink))]" aria-hidden="true" /></span><span className="min-w-0">{children}</span>
 </li>;
 const Chip = ({ children, tone = 'plain' }: { children: React.ReactNode; tone?: 'plain' | 'gold' | 'dashed' }) => <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
-  tone === 'gold' ? 'bg-[hsl(var(--gold)/0.18)] text-[hsl(var(--gold-ink))]' : tone === 'dashed' ? 'border border-dashed border-foreground/25 text-foreground/75' : 'border border-foreground/12 bg-background text-foreground/80'}`}>{children}</span>;
+  tone === 'gold' ? 'bg-[hsl(var(--gold)/0.18)] text-[hsl(var(--gold-ink))]' : tone === 'dashed' ? 'border border-dashed border-foreground/25 text-foreground/75' : 'border border-foreground/10 bg-background text-foreground/80'}`}>{children}</span>;
 
 function IntelligenceFrame({ children, fullPage, open, onOpenChange, isRTL }: { children: React.ReactNode; fullPage: boolean; open: boolean; onOpenChange: (o: boolean) => void; isRTL: boolean }) {
   if (fullPage) return <article data-property-dossier className="mx-auto w-full max-w-5xl overflow-hidden rounded-3xl border border-foreground/10 bg-[hsl(var(--background))] shadow-[0_2px_4px_rgba(12,17,25,0.06),0_30px_60px_-30px_rgba(12,17,25,0.45)]">{children}</article>;

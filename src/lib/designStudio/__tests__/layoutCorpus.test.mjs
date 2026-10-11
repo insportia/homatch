@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { spaceFromReading } from '../walkthrough/photoSpace.ts';
 import { buildSpaceModel } from '../space.ts';
 import { buildWalkthrough } from '../walkthrough/build.ts';
+import { pieceRole } from '../placementSearch.ts';
 import { homeProgramme, needsOf, roomUseOf } from '../walkthrough/programme.ts';
 import { emptyDesignState } from '../designState.ts';
 import { prodAssets } from './fixtures/devCatalogue.mjs';
@@ -54,6 +55,18 @@ for (const [name, rooms] of Object.entries(HOMES)) {
     for (const r of space.rooms) {
       const objs = built.state.objects.filter((o) => o.roomId === r.id).map((o) => assets.get(o.assetId));
       for (const nd of prog.get(r.id).needs.filter((x) => x.core)) assert.ok(objs.some((a) => nd.serves(a)), `${r.id} (${prog.get(r.id).use}) has its ${nd.id}`);
+    }
+    // Partner pieces stand together: a chair at its table or desk, a coffee table in front of its sofa.
+    const placed = built.state.objects.map((o) => ({ o, a: assets.get(o.assetId) })).filter((p) => p.a);
+    const near = (p, q, m) => Math.hypot(p.o.position.x - q.o.position.x, p.o.position.z - q.o.position.z) <= m;
+    const of = (roomId, role) => placed.filter((p) => p.o.roomId === roomId && pieceRole(p.a) === role);
+    for (const p of placed) {
+      if (/OUTDOOR/.test(`${p.a.category} ${p.a.subcategory} ${p.a.code}`)) continue;
+      const role = pieceRole(p.a);
+      if (role === 'CHAIR') { assert.ok(of(p.o.roomId, 'TABLE').some((t) => near(p, t, 1.6)), `${name}: ${p.a.code} in ${p.o.roomId} sits at a table or desk`); }
+      if (role === 'TV') { assert.ok(of(p.o.roomId, 'SOFA').some((t) => near(p, t, 4.6)), `${name}: ${p.a.code} in ${p.o.roomId} is watched from a sofa`); }
+      if (/FRIDGE/.test(p.a.code.toUpperCase())) assert.ok(placed.some((q) => q.o.roomId === p.o.roomId && /KITCHEN-RUN/.test(q.a.code.toUpperCase()) && near(p, q, 2.2)), `${name}: the fridge in ${p.o.roomId} stands by the kitchen`);
+      if (role === 'COFFEE_TABLE') { assert.ok(of(p.o.roomId, 'SOFA').some((t) => near(p, t, 1.8)), `${name}: ${p.a.code} in ${p.o.roomId} stands at a sofa`); }
     }
   });
 }

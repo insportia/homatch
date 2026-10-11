@@ -52,8 +52,16 @@ export function plausibility(space: SpaceModel, objects: ObjectInstance[], asset
     return own ? { o, asset: shapedAsset(own, o), at: { x: o.position.x, y: o.position.z } } : null;
   }).filter((x): x is NonNullable<typeof x> => !!x);
 
+  // A sofa that faces its television is a living group's own seat: in an open room it floats, its back to the
+  // dining table or the kitchen, and stands on no wall.
+  const watching = (p: (typeof placed)[number]) => seatRole('', p.asset) === 'SOFA' && placed.some((t) => {
+    if (t.o.roomId !== p.o.roomId || seatRole('', t.asset) !== 'TV') return false;
+    const f = frontOf(p.o.rotationY);
+    const rel = { x: t.at.x - p.at.x, y: t.at.y - p.at.y };
+    return rel.x * f.x + rel.y * f.y >= 1.2 && Math.abs(rel.x * f.y - rel.y * f.x) <= 1.0;
+  });
   for (const p of placed) {
-    if (!isWallPiece(p.asset)) continue;
+    if (!isWallPiece(p.asset) || watching(p)) continue;
     const gap = backGap(space, p.asset, p.at, p.o.rotationY);
     if (gap > WALL_BACK_GAP_M) issues.push({ code: 'WALL_PIECE_FREE_STANDING', roomId: p.o.roomId, instanceId: p.o.instanceId, detail: `${p.o.assetId} back ${gap.toFixed(2)} m from the wall` });
   }

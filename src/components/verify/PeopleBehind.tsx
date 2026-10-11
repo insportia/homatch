@@ -288,7 +288,7 @@ function TeamCard({ card, id, director }: { card: TeamCardV2; id: string; direct
         <p className="mt-2.5 rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs leading-5 text-foreground/80 break-words">{t('verify_p0_team_director_note')}</p>
       ) : null}
       {h.scope ? <p className="mt-2.5 text-sm leading-6 text-foreground/85 break-words" dir="auto">{h.scope}</p> : null}
-      {/* Which filing(s) this work belongs to: a stage, never "continuously responsible". */}
+      {/* Which filing(s) this work belongs to: a stage of the project, not its whole life. */}
       {involvement ? <p className="mt-2.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs leading-5 text-foreground/80 break-words" data-involvement>{involvement}</p> : null}
       <SourceLine role={h} className="mt-2" />
       {card.official ? (

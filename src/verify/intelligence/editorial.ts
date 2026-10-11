@@ -72,22 +72,28 @@ export function replaceDashes(text: string): string {
  * explicit: each entry is a transliteration the model has actually produced.
  */
 export const BRAND_FIXES: Array<[RegExp, string]> = [
-  [/\b[Kk]arpuri\b|\bKARPURI\b|კარპური/gu, 'კარფური'],
-  [/\bCarrefour\b(?=[^\n]*[ა-ჰ])/gu, 'კარფური'],
-  [/ფარმა\s+დეპო|ფარმადეფო|\b[Pp]harma\s?[Dd]epo\b(?=[^\n]*[ა-ჰ])/gu, 'ფარმადეპო'],
-  [/\b[Pp]sp\b(?=[^\n]*[ა-ჰ])|ფსპ/gu, 'PSP'],
-  [/\b[Aa]versi\b(?=[^\n]*[ა-ჰ])|ავერს(?=\s)/gu, 'ავერსი'],
-  [/\b[Ss]paar\b(?=[^\n]*[ა-ჰ])|სპაარი?(?=[\s,.])/gu, 'სპარი'],
-  [/\b[Nn]ikora\b(?=[^\n]*[ა-ჰ])/gu, 'ნიკორა'],
-  [/\b[Ff]resco\b(?=[^\n]*[ა-ჰ])/gu, 'ფრესკო'],
-  [/\b[Ee]ast\s?[Pp]oint\b(?=[^\n]*[ა-ჰ])/gu, 'ისთ ფოინთი'],
+  [/\b[Kk]arpuri\b|\bKARPURI\b|კარპური|\bCarrefour\b/gu, 'კარფური'],
+  [/ფარმა\s+დეპო|ფარმადეფო|\b[Pp]harma\s?[Dd]epo\b/gu, 'ფარმადეპო'],
+  [/\b[Pp]sp\b|ფსპ/gu, 'PSP'],
+  [/\b[Aa]versi\b/gu, 'ავერსი'],
+  [/\b[Ss]paar\b|სპაარი?(?=[\s,.])/gu, 'სპარი'],
+  [/\b[Nn]ikora\b/gu, 'ნიკორა'],
+  [/\b[Ff]resco\b/gu, 'ფრესკო'],
+  [/\b[Ee]ast\s?[Pp]oint\b/gu, 'ისთ ფოინთი'],
 ];
 
+/** Applied only to lines written in Georgian: an English sentence keeps its brand spelling. */
 export function fixBrands(text: string): string {
   if (!text) return text;
-  let out = text;
-  for (const [re, to] of BRAND_FIXES) out = out.replace(re, to);
-  return out;
+  return text
+    .split('\n')
+    .map((line) => {
+      if (!/[ა-ჰ]/u.test(line)) return line;
+      let out = line;
+      for (const [re, to] of BRAND_FIXES) out = out.replace(re, to);
+      return out;
+    })
+    .join('\n');
 }
 
 /** One field, mechanically: dashes and brands. Openings need the whole report (see report.ts). */

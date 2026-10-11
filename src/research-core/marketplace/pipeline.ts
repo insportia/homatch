@@ -75,10 +75,27 @@ export interface PossibleMatchView {
   sourceName: string | null;
   exactUrl: string;
   observedAt: string;
+  /** Why the two may be one flat, in customer vocabulary (see matchReasons). */
+  reasons?: MatchReason[];
+}
+
+export type MatchReason = 'SAME_LISTING' | 'PHOTOS' | 'DESCRIPTION' | 'PHONE' | 'LOCATION' | 'ADDRESS_AND_LAYOUT';
+/** The resolver's evidence strings, translated into reasons a person can check themselves. */
+export function matchReasons(evidence: readonly string[]): MatchReason[] {
+  const out = new Set<MatchReason>();
+  for (const e of evidence) {
+    if (e.startsWith('corroborated')) { out.add('PHOTOS'); out.add('ADDRESS_AND_LAYOUT'); out.add('DESCRIPTION'); }
+    else if (e === 'same canonical url' || e.startsWith('same source')) out.add('SAME_LISTING');
+    else if (e === 'shared listing images' || e === 'shared image') out.add('PHOTOS');
+    else if (e === 'substantial shared description') out.add('DESCRIPTION');
+    else if (e === 'shared public phone') out.add('PHONE');
+    else if (e === 'same coordinates') out.add('LOCATION');
+  }
+  return [...out];
 }
 
 export interface ResultProperty {
-  identity?: { status: 'CONFIRMED_DUPLICATE' | 'INSUFFICIENT_EVIDENCE'; evidence: string[]; version: string };
+  identity?: { status: 'CONFIRMED_DUPLICATE' | 'INSUFFICIENT_EVIDENCE'; evidence: string[]; version: string; reasons?: MatchReason[] };
   /** POSSIBLE_SAME_PROPERTY partners (never merged); absent on results stored before this field existed. */
   possibleMatches?: PossibleMatchView[];
   key: string;
@@ -263,24 +280,27 @@ export function processSearch(input: PipelineInput): PipelineOutput {
 
   const possibleKeys = new Set(resolution.possible.flatMap((pair) => [resolution.keyOf.get(pair.a), resolution.keyOf.get(pair.b)]));
   const workingByKey = new Map(working.map((w) => [w.key, w]));
-  const partners = new Map<string, Map<string, number>>();
+  const partners = new Map<string, Map<string, { confidence: number; reasons: Set<MatchReason> }>>();
   for (const pair of resolution.possible) {
     const a = resolution.keyOf.get(pair.a), b = resolution.keyOf.get(pair.b);
     if (!a || !b || a === b) continue;
     for (const [x, y] of [[a, b], [b, a]] as const) {
-      const m = partners.get(x) ?? new Map<string, number>();
-      m.set(y, Math.max(m.get(y) ?? 0, pair.confidence));
+      const m = partners.get(x) ?? new Map<string, { confidence: number; reasons: Set<MatchReason> }>();
+      const prev = m.get(y) ?? { confidence: 0, reasons: new Set<MatchReason>() };
+      for (const r of matchReasons(pair.evidence)) prev.reasons.add(r);
+      m.set(y, { confidence: Math.max(prev.confidence, pair.confidence), reasons: prev.reasons });
       partners.set(x, m);
     }
   }
-  const possibleMatchesOf = (key: string): PossibleMatchView[] => [...(partners.get(key) ?? new Map<string, number>())]
-    .flatMap(([k, confidence]) => {
+  const possibleMatchesOf = (key: string): PossibleMatchView[] => [...(partners.get(key) ?? new Map<string, { confidence: number; reasons: Set<MatchReason> }>())]
+    .flatMap(([k, { confidence, reasons }]) => {
       const o = workingByKey.get(k);
       if (!o) return [];
       return [{
         key: k, confidence, title: o.rep.title, priceUsd: o.facts.priceUsd, areaSqm: o.facts.areaSqm, floor: o.facts.floor,
         image: o.rep.images[0] ?? o.members.flatMap((m) => m.images)[0] ?? null,
         source: o.rep.source, sourceName: o.rep.sourceName, exactUrl: o.rep.exactUrl, observedAt: o.rep.observedAt,
+        reasons: [...reasons],
       }];
     })
     .sort((x, y) => y.confidence - x.confidence || x.key.localeCompare(y.key)).slice(0, 6);
@@ -356,7 +376,8 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     const prices = new Map((w.discrepancy?.prices ?? []).map((p) => [p.listingId, p]));
     properties.push({
       identity: { status: w.members.length > 1 ? 'CONFIRMED_DUPLICATE' : 'INSUFFICIENT_EVIDENCE',
-        evidence: w.cluster.evidence.filter((e) => e.startsWith('corroborated') || e.startsWith('same source') || e === 'same canonical url'), version: 'marketplace-property-entity-2' },
+        evidence: w.cluster.evidence.filter((e) => e.startsWith('corroborated') || e.startsWith('same source') || e === 'same canonical url'), version: 'marketplace-property-entity-2',
+        ...(w.members.length > 1 ? { reasons: matchReasons(w.cluster.evidence) } : {}) },
       ...(possibleKeys.has(w.key) ? { possibleMatches: possibleMatchesOf(w.key) } : {}),
       key: w.key,
       group,

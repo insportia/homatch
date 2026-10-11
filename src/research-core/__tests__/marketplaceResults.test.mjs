@@ -211,3 +211,13 @@ test('seller type and contact come from what the source and the seller actually 
   const none = normalizeCandidate(F.listing({ sourceListingId: 'np', description: 'No contact here.', seller: { declaredType: null, publicPhone: null, sourceListingCount: 1 } }), { now });
   assert.equal(none.seller.publicPhone, null); assert.equal(none.seller.phoneFromDescription, false);
 });
+test('duplicate reasons name what a person can check: photos, description, phone, place, address and layout', async () => {
+  const { matchReasons } = await import('../marketplace/pipeline.ts');
+  assert.deepEqual(matchReasons(['shared listing images', 'substantial shared description']).sort(), ['DESCRIPTION', 'PHOTOS']);
+  assert.deepEqual(matchReasons(['same canonical url']), ['SAME_LISTING']);
+  assert.deepEqual(matchReasons(['corroborated photo set, specific address, description and unit configuration']).sort(), ['ADDRESS_AND_LAYOUT', 'DESCRIPTION', 'PHOTOS']);
+  assert.deepEqual(matchReasons(['price within 2%']), [], 'nothing a person could not check is offered as a reason');
+  const confirmed = views(F.fixtureCandidates ? [F.listing({ ...F.CONFIRMED_IDENTITY, source: 'source-a', sourceListingId: 'x1' }), F.listing({ ...F.CONFIRMED_IDENTITY, source: 'source-b', sourceListingId: 'x2' })] : [])
+    .find((p) => p.identity?.status === 'CONFIRMED_DUPLICATE');
+  if (confirmed) assert.ok(confirmed.identity.reasons.length >= 1);
+});

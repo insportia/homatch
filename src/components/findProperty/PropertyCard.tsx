@@ -1,9 +1,10 @@
 import { AlertTriangle, ArrowRight, BedDouble, Check, Clock, DoorOpen, Globe2, MapPin, Ruler, ShieldCheck } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { PropertyView } from '@/services/marketplaceSearch';
 import { listingTimes, num, pct, type T, usd } from './format';
 import { PropertyGallery } from './PropertyGallery';
-import { DuplicateBadge, DuplicateListings } from './DuplicateListings';
+import { DuplicateBadge } from './DuplicateListings';
+import { DuplicatesDialog } from './DuplicatesDialog';
 import { ContactLine } from './ContactLine';
 
 /** Every source this property was found on, by its public name. */
@@ -50,9 +51,9 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
   const original = safeExternalUrl(p.listings.find((l) => l.listingId === intel?.primaryListingId)?.exactUrl ?? p.listings[0]?.exactUrl);
   const elevator = f.elevator ?? (f.amenities.includes('ELEVATOR') ? true : f.amenities.includes('NO_ELEVATOR') ? false : null);
   const sources = sourceNames(p);
-  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
-  const duplicatesRef = useRef<HTMLDivElement>(null);
-  const showDuplicates = () => { setDuplicatesOpen(true); requestAnimationFrame(() => duplicatesRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })); };
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const confirmedDuplicate = p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
+  const showDuplicates = () => setDialogOpen(true);
   return (
     <article data-property-key={p.key} className="hm-discovery-panel group flex min-w-0 flex-col overflow-hidden rounded-2xl border-foreground/10 shadow-[0_1px_2px_rgba(12,17,25,0.06),0_12px_28px_-16px_rgba(12,17,25,0.35)] transition hover:border-[hsl(var(--gold-border))] hover:shadow-[0_1px_2px_rgba(12,17,25,0.08),0_18px_36px_-16px_rgba(12,17,25,0.45)] motion-safe:hover:-translate-y-0.5">
       <PropertyGallery images={p.images} t={t} onOpen={onOpen} overlay={<>
@@ -99,7 +100,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
           </div>;
         })()}
         {p.priceDiscrepancy?.significant ? <p className="text-xs text-muted-foreground">{t('mps_price_diff_badge')}</p> : null}
-        <div ref={duplicatesRef}><DuplicateListings p={p} t={t} open={duplicatesOpen} onOpenChange={setDuplicatesOpen} /></div>
+        {dialogOpen ? <DuplicatesDialog p={p} t={t} open={dialogOpen} onOpenChange={setDialogOpen} confirmed={confirmedDuplicate} /> : null}
 
         {upgrade ? (
           <div className="space-y-2 rounded-xl bg-[hsl(var(--gold)/0.06)] p-3.5">

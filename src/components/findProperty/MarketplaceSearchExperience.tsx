@@ -246,7 +246,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
         resultsReady={!!search && search.totalProperties > 0}
         onViewResults={() => { setPlaying(false); setView('RESULTS'); }} />
       {route.propertyKey && !open && !propertyError && view !== 'ERROR' ? <div aria-busy="true" className="h-64 animate-pulse rounded-xl bg-muted/60" /> : null}
-      {route.propertyKey && propertyError ? <div role="alert" className="space-y-3"><p>{t('fpw_property_unavailable')}</p><button type="button" onClick={() => setPropertyRetry((value) => value + 1)} className="min-h-11 rounded-xl border border-border px-4">{t('fpw_retry')}</button></div> : null}
+      {route.propertyKey && propertyError ? <div role="alert" className="space-y-3"><p>{t('fpw_property_unavailable')}</p><button type="button" onClick={() => setPropertyRetry((value) => value + 1)} className="min-h-11 rounded-xl bg-[#0C1119] px-4 font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">{t('fpw_retry')}</button></div> : null}
       {route.propertyKey && search ? <Link to={`/find-property/search/${search.id}${location.search}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-foreground/15 bg-card px-4 text-sm font-semibold shadow-sm transition hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpw_back_results')}</Link> : null}
       <PropertyIntelligence t={t} p={open} open={!!open} onOpenChange={(o) => { if (!o) setOpen(null); }} isRTL={isRTL} fullPage={!!route.propertyKey}
         propertyType={search?.brief.propertyType?.value ?? null}

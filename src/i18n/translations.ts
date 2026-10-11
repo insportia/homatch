@@ -18102,6 +18102,24 @@ const en = {
   verify_fn_part_one: 'Involvement: the project filed in {{period}}',
   verify_fn_part_many: 'Involvement: {{count}} filed projects, {{from}} to {{to}}',
   verify_fn_part_many_year: 'Involvement: {{count}} filed projects in {{year}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_dup_dialog_title_confirmed: 'One flat, {{n}} listings',
+  mps_dup_dialog_title_possible: 'Possibly the same flat',
+  mps_dup_dialog_body_confirmed: 'HOMATCH matched these listings to the same flat. Compare the prices and choose where to reach the seller.',
+  mps_dup_dialog_body_possible: 'These listings look alike but are not confirmed as one flat. Compare photos, size, floor and price.',
+  mps_dup_dialog_spread: 'Prices from {{low}} to {{high}} — a {{diff}} difference',
+  mps_dup_more_expensive: '{{diff}} more than the lowest',
+  mps_dup_view_more: 'View in full',
+  mps_dup_open_full: 'Open the full comparison',
+  mps_dup_dialog_note_confirmed: 'Matched on independent evidence; a price difference alone never merges listings.',
+  mps_dup_dialog_note_possible: 'Not merged: HOMATCH shows them side by side so you can judge for yourself.',
+  mps_dup_reason_SAME_LISTING: 'Same listing, posted again',
+  mps_dup_reason_PHOTOS: 'Same photos',
+  mps_dup_reason_DESCRIPTION: 'Same description',
+  mps_dup_reason_PHONE: 'Same phone number',
+  mps_dup_reason_LOCATION: 'Same location on the map',
+  mps_dup_reason_ADDRESS_AND_LAYOUT: 'Same address, size, floor and rooms',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36118,6 +36136,24 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_fn_part_one: 'მონაწილეობა: {{period}} განაცხადის პროექტი',
   verify_fn_part_many: 'მონაწილეობა: {{count}} განაცხადის პროექტში, {{from}} წლიდან {{to}} წლამდე',
   verify_fn_part_many_year: 'მონაწილეობა: {{count}} განაცხადის პროექტში, {{year}} წელს',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_dup_dialog_title_confirmed: 'ერთი ბინა, {{n}} განცხადება',
+  mps_dup_dialog_title_possible: 'შესაძლოა ერთი და იგივე ბინაა',
+  mps_dup_dialog_body_confirmed: 'HOMATCH-მა ეს განცხადებები ერთსა და იმავე ბინას დაუკავშირა. შეადარე ფასები და აირჩიე, სად დაუკავშირდე გამყიდველს.',
+  mps_dup_dialog_body_possible: 'ეს განცხადებები ერთმანეთს ჰგავს, მაგრამ ერთ ბინად ჯერ არ დასტურდება. შეადარე ფოტოები, ფართი, სართული და ფასი.',
+  mps_dup_dialog_spread: 'ფასები {{low}}-დან {{high}}-მდე — სხვაობა {{diff}}',
+  mps_dup_more_expensive: 'ყველაზე იაფზე {{diff}}-ით ძვირი',
+  mps_dup_view_more: 'ვრცლად ნახვა',
+  mps_dup_open_full: 'სრული შედარების გახსნა',
+  mps_dup_dialog_note_confirmed: 'დაკავშირებულია დამოუკიდებელი მტკიცებულებით; მხოლოდ ფასის მიხედვით განცხადებები არასდროს ერთიანდება.',
+  mps_dup_dialog_note_possible: 'არ არის გაერთიანებული: HOMATCH გვერდიგვერდ გაჩვენებს, რომ თავად შეაფასო.',
+  mps_dup_reason_SAME_LISTING: 'იგივე განცხადება, ხელახლა დადებული',
+  mps_dup_reason_PHOTOS: 'იგივე ფოტოები',
+  mps_dup_reason_DESCRIPTION: 'იგივე აღწერა',
+  mps_dup_reason_PHONE: 'იგივე ნომერი',
+  mps_dup_reason_LOCATION: 'იგივე მდებარეობა რუკაზე',
+  mps_dup_reason_ADDRESS_AND_LAYOUT: 'იგივე მისამართი, ფართი, სართული და ოთახები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -54125,6 +54161,24 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_fn_part_one: 'Участие: проект, поданный в {{period}}',
   verify_fn_part_many: 'Участие: {{count}} поданных проектов, с {{from}} по {{to}}',
   verify_fn_part_many_year: 'Участие: {{count}} поданных проектов в {{year}} году',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_dup_dialog_title_confirmed: 'Одна квартира, {{n}} объявлений',
+  mps_dup_dialog_title_possible: 'Возможно, это одна и та же квартира',
+  mps_dup_dialog_body_confirmed: 'HOMATCH сопоставил эти объявления с одной квартирой. Сравните цены и выберите, где связаться с продавцом.',
+  mps_dup_dialog_body_possible: 'Эти объявления похожи, но не подтверждены как одна квартира. Сравните фото, площадь, этаж и цену.',
+  mps_dup_dialog_spread: 'Цены от {{low}} до {{high}} — разница {{diff}}',
+  mps_dup_more_expensive: 'на {{diff}} дороже самой низкой',
+  mps_dup_view_more: 'Подробнее',
+  mps_dup_open_full: 'Открыть полное сравнение',
+  mps_dup_dialog_note_confirmed: 'Сопоставлено по независимым признакам; одна лишь цена никогда не объединяет объявления.',
+  mps_dup_dialog_note_possible: 'Не объединено: HOMATCH показывает их рядом, чтобы вы решили сами.',
+  mps_dup_reason_SAME_LISTING: 'То же объявление, опубликовано повторно',
+  mps_dup_reason_PHOTOS: 'Те же фото',
+  mps_dup_reason_DESCRIPTION: 'То же описание',
+  mps_dup_reason_PHONE: 'Тот же номер',
+  mps_dup_reason_LOCATION: 'То же место на карте',
+  mps_dup_reason_ADDRESS_AND_LAYOUT: 'Тот же адрес, площадь, этаж и комнаты',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -72130,6 +72184,24 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_fn_part_one: 'Katılım: {{period}} tarihinde sunulan proje',
   verify_fn_part_many: 'Katılım: {{count}} sunulan proje, {{from}} ile {{to}} arası',
   verify_fn_part_many_year: 'Katılım: {{year}} yılında {{count}} sunulan proje',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_dup_dialog_title_confirmed: 'Tek daire, {{n}} ilan',
+  mps_dup_dialog_title_possible: 'Muhtemelen aynı daire',
+  mps_dup_dialog_body_confirmed: 'HOMATCH bu ilanları aynı daireyle eşleştirdi. Fiyatları karşılaştırın ve satıcıya nereden ulaşacağınızı seçin.',
+  mps_dup_dialog_body_possible: 'Bu ilanlar benziyor ama tek daire olarak doğrulanmadı. Fotoğrafları, alanı, katı ve fiyatı karşılaştırın.',
+  mps_dup_dialog_spread: 'Fiyatlar {{low}} ile {{high}} arası — {{diff}} fark',
+  mps_dup_more_expensive: 'en düşükten {{diff}} fazla',
+  mps_dup_view_more: 'Ayrıntılı gör',
+  mps_dup_open_full: 'Tam karşılaştırmayı aç',
+  mps_dup_dialog_note_confirmed: 'Bağımsız kanıtlarla eşleştirildi; yalnızca fiyat ilanları asla birleştirmez.',
+  mps_dup_dialog_note_possible: 'Birleştirilmedi: kendiniz karar verebilmeniz için HOMATCH bunları yan yana gösterir.',
+  mps_dup_reason_SAME_LISTING: 'Aynı ilan, yeniden yayınlanmış',
+  mps_dup_reason_PHOTOS: 'Aynı fotoğraflar',
+  mps_dup_reason_DESCRIPTION: 'Aynı açıklama',
+  mps_dup_reason_PHONE: 'Aynı telefon',
+  mps_dup_reason_LOCATION: 'Haritada aynı konum',
+  mps_dup_reason_ADDRESS_AND_LAYOUT: 'Aynı adres, alan, kat ve oda',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -90135,6 +90207,24 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_fn_part_one: 'المشاركة: المشروع المقدَّم في {{period}}',
   verify_fn_part_many: 'المشاركة: {{count}} مشاريع مقدَّمة، من {{from}} إلى {{to}}',
   verify_fn_part_many_year: 'المشاركة: {{count}} مشاريع مقدَّمة في {{year}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_dup_dialog_title_confirmed: 'شقة واحدة، {{n}} إعلانات',
+  mps_dup_dialog_title_possible: 'قد تكون الشقة نفسها',
+  mps_dup_dialog_body_confirmed: 'ربط HOMATCH هذه الإعلانات بالشقة نفسها. قارن الأسعار واختر أين تتواصل مع البائع.',
+  mps_dup_dialog_body_possible: 'تتشابه هذه الإعلانات لكن لم يتأكد أنها شقة واحدة. قارن الصور والمساحة والطابق والسعر.',
+  mps_dup_dialog_spread: 'الأسعار من {{low}} إلى {{high}} — فرق {{diff}}',
+  mps_dup_more_expensive: 'أغلى من الأدنى بـ {{diff}}',
+  mps_dup_view_more: 'عرض كامل',
+  mps_dup_open_full: 'فتح المقارنة الكاملة',
+  mps_dup_dialog_note_confirmed: 'تمت المطابقة بأدلة مستقلة؛ السعر وحده لا يدمج الإعلانات أبدًا.',
+  mps_dup_dialog_note_possible: 'غير مدمجة: يعرضها HOMATCH جنبًا إلى جنب لتقرّر بنفسك.',
+  mps_dup_reason_SAME_LISTING: 'الإعلان نفسه، منشور مجددًا',
+  mps_dup_reason_PHOTOS: 'الصور نفسها',
+  mps_dup_reason_DESCRIPTION: 'الوصف نفسه',
+  mps_dup_reason_PHONE: 'رقم الهاتف نفسه',
+  mps_dup_reason_LOCATION: 'الموقع نفسه على الخريطة',
+  mps_dup_reason_ADDRESS_AND_LAYOUT: 'العنوان والمساحة والطابق والغرف نفسها',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -108140,6 +108230,24 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_fn_part_one: 'מעורבות: הפרויקט שהוגש ב-{{period}}',
   verify_fn_part_many: 'מעורבות: {{count}} פרויקטים שהוגשו, מ-{{from}} עד {{to}}',
   verify_fn_part_many_year: 'מעורבות: {{count}} פרויקטים שהוגשו ב-{{year}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_dup_dialog_title_confirmed: 'דירה אחת, {{n}} מודעות',
+  mps_dup_dialog_title_possible: 'ייתכן שזו אותה דירה',
+  mps_dup_dialog_body_confirmed: 'HOMATCH שייך את המודעות האלה לאותה דירה. השוו מחירים ובחרו היכן לפנות למוכר.',
+  mps_dup_dialog_body_possible: 'המודעות דומות אך לא אומתו כדירה אחת. השוו תמונות, שטח, קומה ומחיר.',
+  mps_dup_dialog_spread: 'מחירים מ-{{low}} עד {{high}} — הפרש של {{diff}}',
+  mps_dup_more_expensive: 'יקר ב-{{diff}} מהזול ביותר',
+  mps_dup_view_more: 'צפייה מלאה',
+  mps_dup_open_full: 'פתיחת ההשוואה המלאה',
+  mps_dup_dialog_note_confirmed: 'השיוך מבוסס על ראיות בלתי תלויות; מחיר לבדו לעולם אינו מאחד מודעות.',
+  mps_dup_dialog_note_possible: 'לא אוחדו: HOMATCH מציג אותן זו לצד זו כדי שתחליטו בעצמכם.',
+  mps_dup_reason_SAME_LISTING: 'אותה מודעה, פורסמה שוב',
+  mps_dup_reason_PHOTOS: 'אותן תמונות',
+  mps_dup_reason_DESCRIPTION: 'אותו תיאור',
+  mps_dup_reason_PHONE: 'אותו מספר טלפון',
+  mps_dup_reason_LOCATION: 'אותו מיקום במפה',
+  mps_dup_reason_ADDRESS_AND_LAYOUT: 'אותה כתובת, שטח, קומה וחדרים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

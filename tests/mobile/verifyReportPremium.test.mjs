@@ -137,7 +137,8 @@ test('job 601: the official gallery and the people behind the project render, de
   }
 
   // A report stored before v3 still renders — the gallery says it has nothing, honestly.
-  const { ctx, page } = await openReport(browser, LEGACY_SYNTHESIS, { width: 390, height: 844 });
+  const { projectTeamV2: _t, technicalSpecs: _s, officialDocuments: _d, officialVisuals: _v, ...legacyShape } = LEGACY_SYNTHESIS;
+  const { ctx, page } = await openReport(browser, legacyShape, { width: 390, height: 844 });
   const legacy = await page.evaluate(() => ({
     explore: !!document.querySelector('#vbi-explore'),
     imgs: document.querySelectorAll('#vbi-explore img').length,

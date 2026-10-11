@@ -953,8 +953,14 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // selected design placed by the walkthrough's own rules in the same space. Never a dead end on the render's pieces.
   // Declined once, never built again: the usual path collects its plan over several invocations, and building the
   // render's pieces again in each would spend the invocation's CPU before the plan is even read.
-  const declined = !!row.timings?.renderFurnishing?.declined;
-  if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && !declined && await planFromRender(admin, row, design, furnishing, preferences.style ?? null)) return;
+  // A render walk an earlier invocation started and never finished (killed by the CPU limit) counts as declined: it
+  // is never built again (it would be killed again, and every kill spends a plan attempt).
+  const declined = !!row.timings?.renderFurnishing?.declined || !!row.timings?.renderFurnishing?.tried;
+  if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && !declined) {
+    row.timings = { ...row.timings, renderFurnishing: { ...(row.timings?.renderFurnishing ?? {}), tried: true } };
+    await admin.from('ds_walkthroughs').update({ timings: row.timings }).eq('id', row.id).eq('attempts', row.attempts);
+    if (await planFromRender(admin, row, design, furnishing, preferences.style ?? null)) return;
+  }
   // Just declined in this invocation (its CPU spent on the render's pieces): recorded, and the usual plan starts in
   // a fresh invocation.
   if (furnishing && row.render_id && !declined && row.timings?.renderFurnishing?.declined) {

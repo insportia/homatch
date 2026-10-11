@@ -187,6 +187,8 @@ test('steps follow the saved work: plan → submit → poll → process; a saved
 
 test('bounded retries: plan, submit, result processing and the overall backstop', () => {
   assert.deepEqual(nextStep(row({ plan_attempts: MAX_PLAN_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'PLAN_FAILED' });
+  // A plan asked in the background is always collected, however many attempts were spent getting it asked.
+  assert.deepEqual(nextStep(row({ plan_attempts: MAX_PLAN_ATTEMPTS, timings: { planResponse: { id: 'resp_1' } } }), NOW), { kind: 'PLAN' });
   assert.deepEqual(nextStep(row({ state: 'SUBMITTED', submit_attempts: MAX_SUBMIT_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'SUBMIT_FAILED' });
   assert.deepEqual(nextStep(row({ state: 'PROCESSING_RESULT', factory_job_id: 'f', result_attempts: MAX_RESULT_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'RESULT_PROCESSING_FAILED' });
   assert.deepEqual(nextStep(row({ state: 'RUNNING', factory_job_id: 'f', attempts: MAX_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'TOO_MANY_ATTEMPTS' });

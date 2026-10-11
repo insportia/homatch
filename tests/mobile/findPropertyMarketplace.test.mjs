@@ -704,7 +704,12 @@ test('duplicates: the banner filters to properties listed more than once; the pr
     await page.locator('[data-duplicates-banner] button').click();
     await page.waitForFunction(() => new URL(location.href).searchParams.has('fp_duplicatesOnly'));
     const cards = page.locator('main article[data-property-key]');
-    await cards.first().waitFor({ timeout: 30000 });
+    // The pre-filter page can still be on screen for a moment: wait for the
+    // filtered list itself (every card a confirmed duplicate), not any card.
+    await page.waitForFunction(() => {
+      const shown = [...document.querySelectorAll('main article[data-property-key]')];
+      return shown.length > 0 && shown.every((a) => a.querySelector('[data-duplicate-badge]'));
+    }, null, { timeout: 30000 });
     const n = await cards.count();
     assert.ok(n >= 1, `${lang}: duplicates are listed`);
     for (let i = 0; i < n; i++) assert.ok(await cards.nth(i).locator('[data-duplicate-badge]').count(), `${lang}: every shown card is a confirmed duplicate`);

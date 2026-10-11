@@ -21,6 +21,7 @@
 
 import { buildPropertyRegister, reconcileReport, sentences, unitLegalPosition } from './propertyRegister.ts';
 import { propertyKindOverlay } from './propertyKind.ts';
+import { guardReportForKind } from './kindGuard.ts';
 import { buildUnitIdentity } from './unitIdentity.ts';
 import type { PropertyRegister } from './propertyRegister.ts';
 import { buildBuyerChecklist } from './buyerChecklist.ts';
@@ -222,7 +223,7 @@ export function withPropertyRegister<T extends Record<string, any>>(payload: T, 
   // The register reused from the buyer's own earlier check (registerReuse.ts) was persisted with the report.
   if (!reg?.latest && payload.registerSource && obj(payload.propertyRegister).latest) reg = payload.propertyRegister as PropertyRegister;
   // Reconciliation also removes the malformed purpose change, which needs no register.
-  const report = payload.report ? reconcileReport(payload.report, reg) : payload.report;
+  let report = payload.report ? reconcileReport(payload.report, reg) : payload.report;
   const officialHistory = payload.officialHistory ? cleanOfficialHistory(payload.officialHistory) : payload.officialHistory;
   /*
    * WHICH PROPERTY, DECIDED FROM OFFICIAL RECORDS (unitIdentity.ts): the exact
@@ -243,6 +244,8 @@ export function withPropertyRegister<T extends Record<string, any>>(payload: T, 
   } catch {
     kindFields = {};
   }
+  // v7 (kindGuard.ts): a non-apartment subject is never written about as an apartment, stored reports included.
+  if (kindFields.propertyKind && report) report = guardReportForKind(report, kindFields.propertyKind.kind) as typeof report;
   if (!reg?.latest) return { ...payload, report, officialHistory, ...(unitIdentity ? { unitIdentity } : {}), ...kindFields };
 
   const snapshot = { ...obj(payload.snapshot) };

@@ -28,6 +28,7 @@ const replaceDashes = (x: string): string => stripCaseIdentifiers(dashes(x));
 import { kaInMonth, kaOfMonth, kaOfDay, kaOnDay } from './kaDates.ts';
 import { readProjectSignals } from './projectStory.ts';
 import { openApplications, evolutionView } from './projectEvolution.ts';
+import { copyKindOf, subjectNoun, guardAssessmentForKind } from './kindGuard.ts';
 
 export type AssessmentArea = 'LEGAL' | 'HISTORY' | 'CONSTRUCTION' | 'PEOPLE' | 'NEIGHBORHOOD' | 'MARKET';
 export const ASSESSMENT_AREAS: AssessmentArea[] = ['LEGAL', 'HISTORY', 'CONSTRUCTION', 'PEOPLE', 'NEIGHBORHOOD', 'MARKET'];
@@ -57,20 +58,21 @@ export interface FinalConclusion {
   stanceText: string;
 }
 
-/** A concern that weighs on the apartment itself, not on the project's paperwork. */
-const HEAVY = /ბინაზე\s+(?:იპოთეკა|ყადაღა)|ჯერ\s+კიდევ\s+რეგისტრირებულია|ყადაღ|უარი\s+ეთქვა|შეჩერებ|გაუქმებულია\s+ნებართვა|სასამართლო\s+დავ|მოვალეთა\s+რეესტრშია/u;
+/** A concern that weighs on the apartment itself, not on the project's paperwork (any kind's noun: kindGuard.subjectNoun). */
+const heavy = (kind: unknown): RegExp => new RegExp(`${subjectNoun(kind, 'on')}\\s+(?:იპოთეკა|ყადაღა)|ჯერ\\s+კიდევ\\s+რეგისტრირებულია|ყადაღ|უარი\\s+ეთქვა|შეჩერებ|გაუქმებულია\\s+ნებართვა|სასამართლო\\s+დავ|მოვალეთა\\s+რეესტრშია`, 'u');
 
-const STANCE_TEXT: Record<Stance, string> = {
+const stanceText = (kind: unknown): Record<Stance, string> => ({
   POSITIVE: 'დოკუმენტებით დადასტურებული ფაქტები ამ ქონების შეძენის განხილვას მყარ საფუძველს უქმნის. დარჩენილი საკითხები ჩვეულებრივი გადამოწმების ნაწილია და ხელმოწერამდე მათი გარკვევა შესაძლებელია.',
   BALANCED: 'მტკიცებულებები დაბალანსებულ შეფასებას იძლევა: პროექტს დოკუმენტებით დადასტურებული ძლიერი მხარეები აქვს, თუმცა ზემოთ ჩამოთვლილ საკითხებზე პასუხი ხელმოწერამდე უნდა გქონდეთ.',
-  CAUTIOUS: 'ამ ეტაპზე მტკიცებულებები ფრთხილ მიდგომას მოითხოვს: ზემოთ ჩამოთვლილი საკითხები პირდაპირ ეხება ბინის სამართლებრივ ან ოფიციალურ მდგომარეობას და გადაწყვეტილებამდე მათი გარკვევა აუცილებელია.',
-};
+  CAUTIOUS: `ამ ეტაპზე მტკიცებულებები ფრთხილ მიდგომას მოითხოვს: ზემოთ ჩამოთვლილი საკითხები პირდაპირ ეხება ${subjectNoun(kind, 'gen')} სამართლებრივ ან ოფიციალურ მდგომარეობას და გადაწყვეტილებამდე მათი გარკვევა აუცილებელია.`,
+});
 
-export function finalConclusion(a: Pick<BuyerAssessment, 'strengths' | 'concerns'>): FinalConclusion | null {
+/** `kind`: the registry kind (kindGuard.copyKindOf); an apartment's text is unchanged. */
+export function finalConclusion(a: Pick<BuyerAssessment, 'strengths' | 'concerns'>, kind: unknown = 'APARTMENT'): FinalConclusion | null {
   const strengths = a.strengths.map((x) => x.trim()).filter(Boolean);
   const concerns = a.concerns.map((x) => x.trim()).filter(Boolean);
   if (!strengths.length && !concerns.length) return null;
-  const stance: Stance = !strengths.length || concerns.some((c) => HEAVY.test(c))
+  const stance: Stance = !strengths.length || concerns.some((c) => heavy(kind).test(c))
     ? 'CAUTIOUS'
     : strengths.length >= 2 && concerns.length <= 1 ? 'POSITIVE' : 'BALANCED';
   const end = (x: string) => (/[.!?]$/.test(x) ? x : `${x}.`);
@@ -78,7 +80,7 @@ export function finalConclusion(a: Pick<BuyerAssessment, 'strengths' | 'concerns
     stance,
     strengths: strengths.length ? `ამ პროექტში დოკუმენტებით დადასტურებულია: ${strengths.map((x) => end(x).replace(/\.$/, '')).map((x, i) => (i ? x.charAt(0).toLowerCase() + x.slice(1) : x)).join('; ')}.` : '',
     concerns: concerns.map(end),
-    stanceText: STANCE_TEXT[stance],
+    stanceText: stanceText(kind)[stance],
   };
 }
 
@@ -219,6 +221,8 @@ export function assessmentFacts(synthesis: unknown): AssessmentFacts {
 
 export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
   const f = assessmentFacts(synthesis);
+  // The subject's noun by case (ბინა for an apartment, ავტოსადგომი for a parking space…).
+  const N = (c: Parameters<typeof subjectNoun>[1]) => subjectNoun(copyKindOf(synthesis), c);
   const synthesisLines: BuyerAssessment['synthesis'] = [];
   const strengths: string[] = [];
   const concerns: string[] = [];
@@ -227,15 +231,15 @@ export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
   /* legal */
   if (f.extractDate) {
     const parts: string[] = [];
-    if (f.mortgageCancelled) parts.push(`ბინაზე ${kaOnDay(f.mortgageCancelled.registeredOn) ?? ''} რეგისტრირებული ბანკის იპოთეკა ${kaOnDay(f.mortgageCancelled.cancelledOn) ?? ''} გაუქმდა`.replace(/\s+/g, ' '));
+    if (f.mortgageCancelled) parts.push(`${N('on')} ${kaOnDay(f.mortgageCancelled.registeredOn) ?? ''} რეგისტრირებული ბანკის იპოთეკა ${kaOnDay(f.mortgageCancelled.cancelledOn) ?? ''} გაუქმდა`.replace(/\s+/g, ' '));
     if (f.restrictionsNone) parts.push('ყადაღა, საგადასახადო გირავნობა და მოვალეთა რეესტრის ჩანაწერი არ ფიქსირდება');
     if (parts.length) {
       synthesisLines.push({ area: 'LEGAL', text: `${kaOfDay(f.extractDate)} ამონაწერით ${parts.join('; ')}.` });
-      strengths.push('ბინის სამართლებრივი მდგომარეობა ამონაწერის თარიღისთვის დატვირთვისგან თავისუფალია.');
+      strengths.push(`${N('gen')} სამართლებრივი მდგომარეობა ამონაწერის თარიღისთვის დატვირთვისგან თავისუფალია.`);
     }
     checks.push('ხელმოწერის დღეს აიღეთ ახალი ამონაწერი საჯარო რეესტრიდან.');
   }
-  if (f.mortgageActive) concerns.push('ამონაწერში ბინაზე იპოთეკა ჯერ კიდევ რეგისტრირებულია. მისი გაუქმების წესი ხელშეკრულებაში უნდა ჩაიწეროს.');
+  if (f.mortgageActive) concerns.push(`ამონაწერში ${N('on')} იპოთეკა ჯერ კიდევ რეგისტრირებულია. მისი გაუქმების წესი ხელშეკრულებაში უნდა ჩაიწეროს.`);
 
   /* history */
   if (f.permitInForce) {
@@ -248,11 +252,11 @@ export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
       ? `${kaOnDay(latest.date) ?? ''} შეტანილ განაცხადზე საბოლოო გადაწყვეტილება ჯერ არ ჩანს. მისი შედეგი შეიძლება პროექტს ცვლიდეს.`.trim()
       : `${({ 2: 'ორ', 3: 'სამ', 4: 'ოთხ' } as Record<number, string>)[f.pending.length] ?? f.pending.length} განაცხადზე, რომელთაგან ბოლო ${kaOnDay(latest.date) ?? ''} შევიდა, საბოლოო გადაწყვეტილება ჯერ არ ჩანს. მათი შედეგი შეიძლება პროექტს ცვლიდეს.`.replace(/\s+/g, ' '));
   }
-  if (f.pending.length) checks.push('ჰკითხეთ გამყიდველს, რას ეხება განხილვის პროცესში მყოფი განაცხადი და ეხება თუ არა ის თქვენს ბინას.');
+  if (f.pending.length) checks.push(`ჰკითხეთ გამყიდველს, რას ეხება განხილვის პროცესში მყოფი განაცხადი და ეხება თუ არა ის თქვენს ${N('dat')}.`);
   if (f.designChanges || f.figureFixes) {
     if (!f.pending.length) strengths.push(`პროექტის ყველა ცვლილება${f.figureFixes ? ' და ფართობების შესწორება' : ''} ქალაქმა ოფიციალურად შეათანხმა.`);
-    concerns.push(`${f.designChanges ? `პროექტი ${f.designChanges}-ჯერ შეიცვალა` : 'ფართობების მაჩვენებლები რამდენჯერმე შესწორდა'}${f.figureFixes && f.designChanges ? ' და ფართობების მაჩვენებლებიც შესწორდა' : ''}. პრაქტიკულად ეს ნიშნავს, რომ ბინის ფართი და გეგმარება ხელშეკრულებაში ბოლო შეთანხმებულ ვერსიას უნდა ეყრდნობოდეს${f.latestDesignDate ? ` (${kaOfDay(f.latestDesignDate)} გადაწყვეტილება)` : ''}.`);
-    checks.push('ხელშეკრულებაში მიუთითეთ პროექტის ბოლო შეთანხმებული ვერსია და ბინის ფართი ბოლო შესწორებული მაჩვენებლებით.');
+    concerns.push(`${f.designChanges ? `პროექტი ${f.designChanges}-ჯერ შეიცვალა` : 'ფართობების მაჩვენებლები რამდენჯერმე შესწორდა'}${f.figureFixes && f.designChanges ? ' და ფართობების მაჩვენებლებიც შესწორდა' : ''}. პრაქტიკულად ეს ნიშნავს, რომ ${N('gen')} ფართი და გეგმარება ხელშეკრულებაში ბოლო შეთანხმებულ ვერსიას უნდა ეყრდნობოდეს${f.latestDesignDate ? ` (${kaOfDay(f.latestDesignDate)} გადაწყვეტილება)` : ''}.`);
+    checks.push(`ხელშეკრულებაში მიუთითეთ პროექტის ბოლო შეთანხმებული ვერსია და ${N('gen')} ფართი ბოლო შესწორებული მაჩვენებლებით.`);
   }
 
   /* construction */
@@ -264,7 +268,7 @@ export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
   }
   if (f.auditFinding) {
     concerns.push(`${kaInMonth(f.auditFinding.date) ?? ''} მერიის აუდიტმა მიუთითა, რომ მშენებლობა შეთანხმებული პროექტისგან განსხვავებით მიმდინარეობდა. შემდეგ შესწორებული პროექტისთვის ნებართვა გაიცა, თუმცა ღირს გარკვევა, რა შეიცვალა.`.trim());
-    checks.push('ჰკითხეთ, რა განსხვავება დააფიქსირა აუდიტმა და მოიცავს თუ არა შესწორებული პროექტი თქვენს ბინას.');
+    checks.push(`ჰკითხეთ, რა განსხვავება დააფიქსირა აუდიტმა და მოიცავს თუ არა შესწორებული პროექტი თქვენს ${N('dat')}.`);
   }
   if (!f.commissioned) checks.push('ჰკითხეთ, როდის არის მოსალოდნელი ექსპლუატაციაში მიღება, და ჩაწერეთ ეს ვადა ხელშეკრულებაში.');
 
@@ -276,7 +280,7 @@ export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
 
   /* neighbourhood */
   if (f.neighbourhoodPlaces) {
-    synthesisLines.push({ area: 'NEIGHBORHOOD', text: `წყაროებში ბინის ახლოს ${f.neighbourhoodPlaces} ყოველდღიური დანიშნულების ადგილია დასახელებული.` });
+    synthesisLines.push({ area: 'NEIGHBORHOOD', text: `წყაროებში ${N('gen')} ახლოს ${f.neighbourhoodPlaces} ყოველდღიური დანიშნულების ადგილია დასახელებული.` });
   }
 
   /* market */
@@ -284,13 +288,13 @@ export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
     synthesisLines.push({ area: 'MARKET', text: f.marketThin ? 'ამ პროექტის ფასის შესაფასებლად საბაზრო მონაცემები ცოტაა.' : 'ახლომდებარე შეთავაზებები ფასის შესაფასებლად საკმარის ორიენტირს იძლევა.' });
     if (f.marketThin) {
       concerns.push('საბაზრო მონაცემები მწირია, ამიტომ ფასის სამართლიანობის დამოუკიდებლად შეფასება რთულია.');
-      checks.push('შეადარეთ ფასი იმავე პროექტში ან ქუჩაზე გაყიდულ ბინებს და, საჭიროების შემთხვევაში, დაუკვეთეთ შეფასება.');
+      checks.push(`შეადარეთ ფასი იმავე პროექტში ან ქუჩაზე გაყიდულ ${N('plDat')} და, საჭიროების შემთხვევაში, დაუკვეთეთ შეფასება.`);
     }
   }
 
   const narrative = [
     strengths.length
-      ? 'ამ ეტაპზე პროექტი მყიდველის გონივრულ ნდობას იმსახურებს იმ ნაწილში, რასაც დოკუმენტები ადასტურებს: ბინის სამართლებრივი მდგომარეობა და მოქმედი ნებართვა მყარ საფუძველს ქმნის.'
+      ? `ამ ეტაპზე პროექტი მყიდველის გონივრულ ნდობას იმსახურებს იმ ნაწილში, რასაც დოკუმენტები ადასტურებს: ${N('gen')} სამართლებრივი მდგომარეობა და მოქმედი ნებართვა მყარ საფუძველს ქმნის.`
       : 'დოკუმენტებით დადასტურებული ფაქტები ჯერ საკმარისი არ არის, რომ პროექტზე ნდობის შესახებ მტკიცე დასკვნა გაკეთდეს.',
     concerns.length
       ? 'ნდობა სრული რომ იყოს, რამდენიმე საკითხი ჯერ კიდევ გასარკვევია და ისინი ქვემოთ ცალკეა ჩამოთვლილი. არცერთი მათგანი თავისთავად უარყოფითი დასკვნა არ არის, მაგრამ ხელმოწერამდე თითოეულზე პასუხი უნდა გქონდეთ.'
@@ -316,14 +320,15 @@ export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
 export function finalBuyerAssessment(modelValue: unknown, synthesis: unknown): BuyerAssessment {
   const fallback = buildBuyerAssessment(synthesis);
   const parsed = parseBuyerAssessment(modelValue);
-  const polish = (a: BuyerAssessment): BuyerAssessment => ({
+  // A non-apartment subject is never written about as an apartment (kindGuard.ts).
+  const polish = (a: BuyerAssessment): BuyerAssessment => guardAssessmentForKind({
     ...a,
     synthesis: a.synthesis.map((s) => ({ ...s, text: replaceDashes(s.text) })),
     narrative: replaceDashes(a.narrative),
     strengths: a.strengths.map(replaceDashes),
     concerns: a.concerns.map(replaceDashes),
     checks: a.checks.map(replaceDashes),
-  });
+  }, copyKindOf(synthesis));
   if (!parsed || assessmentProblems(parsed).length) return polish(fallback);
   const f = assessmentFacts(synthesis);
   const concerns = [...parsed.concerns];
@@ -342,8 +347,8 @@ export function finalBuyerAssessment(modelValue: unknown, synthesis: unknown): B
   });
 }
 
-export function readBuyerAssessment(v: unknown): (BuyerAssessment & { conclusion: FinalConclusion | null }) | null {
+export function readBuyerAssessment(v: unknown, kind: unknown = 'APARTMENT'): (BuyerAssessment & { conclusion: FinalConclusion | null }) | null {
   const p = parseBuyerAssessment(v);
   if (!p) return null;
-  return { ...p, source: obj(v).source === 'MODEL' ? 'MODEL' : 'DETERMINISTIC', conclusion: finalConclusion(p) };
+  return { ...p, source: obj(v).source === 'MODEL' ? 'MODEL' : 'DETERMINISTIC', conclusion: finalConclusion(p, kind) };
 }

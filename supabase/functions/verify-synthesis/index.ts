@@ -56,6 +56,7 @@ import { buildUnitIdentity } from '../../../src/verify/intelligence/unitIdentity
 import { explainTechnical } from '../../../src/verify/intelligence/technicalExplained.ts';
 import { extractProjectSignals } from '../../../src/verify/intelligence/projectStory.ts';
 import { keepStoryOnRebuild } from '../../../src/verify/intelligence/storyGuard.ts';
+import { propertyKindFromResult, type PropertyKindResult } from '../../../src/verify/intelligence/propertyKind.ts';
 import { finalBuyerAssessment } from '../../../src/verify/intelligence/buyerAssessment.ts';
 import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '../../../src/verify/intelligence/reportReadPath.ts';
 import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
@@ -644,6 +645,13 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   });
   const fx = await fetchFx(earliestEvidenceDate(pkg.items));
   const bundle = buildIntelligenceBundle(rj, pkg, fx);
+  /* v7: what the register says this property IS (parking, land, apartment…), for the prompt and the story. */
+  let subjectKind: PropertyKindResult | null = null;
+  try {
+    subjectKind = propertyKindFromResult(rj);
+  } catch {
+    subjectKind = null;
+  }
   bundle.location = withNeighborhood(bundle.location, await neighborhoodP);
 
   /*
@@ -708,6 +716,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       unitIdentity,
       // Provenance for the prose, without the internal job id.
       registerSource: registerSource ? { asOf: registerSource.asOf, reused: true, freshExtractAdvised: registerSource.freshExtractAdvised } : null,
+      propertyKind: subjectKind,
     });
     try {
       timing.modelStartedAt = new Date().toISOString();
@@ -762,7 +771,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   const projectSignals = extractProjectSignals(rj);
   /* v7 (owner, 2026-10-11): an automatic rebuild keeps the stored chapters
      (the editorial baseline); every story passes the continuity guard. */
-  const propertyStory = keepStoryOnRebuild(job.synthesis_json, final.propertyStory, { autoUpgrade: opts.autoUpgrade, evolution: projectSignals?.evolution });
+  const propertyStory = keepStoryOnRebuild(job.synthesis_json, final.propertyStory, { autoUpgrade: opts.autoUpgrade, evolution: projectSignals?.evolution, kind: subjectKind?.kind ?? null });
   const built = {
     /* Which model actually wrote this, for COGS and for inspection. */
     synthesisModel: MODEL,

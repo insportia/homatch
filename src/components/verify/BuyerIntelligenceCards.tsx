@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { kindT } from '@/verify/intelligence/kindGuard';
 import { VerifySection, Row, RowList, StatusPill } from './ui';
 import type { PropertyRegister, RegisterMortgage, RegisterState, ProceedingKind } from '@/verify/intelligence/propertyRegister';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
@@ -68,7 +69,8 @@ function MortgageLine({ m }: { m: RegisterMortgage }) {
   return <span className="break-words">{parts.join(' · ')}</span>;
 }
 
-export function PropertyRegisterCard({ register, source }: { register?: PropertyRegister | null; source?: RegisterSourceLike | null }) {
+/* `kind`: the registry kind (kindGuard.copyKindOf); the apartment copy is unchanged without it. */
+export function PropertyRegisterCard({ register, source, kind }: { register?: PropertyRegister | null; source?: RegisterSourceLike | null; kind?: string }) {
   const { t } = useLanguage();
   const latest = register?.latest;
   const view = registerView(register, source);
@@ -105,7 +107,7 @@ export function PropertyRegisterCard({ register, source }: { register?: Property
           </Row>
         ) : null}
 
-        <Row label={t('verify_v3_reg_unit_mortgage')}>
+        <Row label={kindT(t, 'verify_v3_reg_unit_mortgage', kind)}>
           {view.unitMortgages.length ? (
             <div className="space-y-2">
               <StatusPill tone="attention">{t('vbi_reg_mortgage_pill', { count: String(view.unitMortgages.length) })}</StatusPill>
@@ -144,7 +146,7 @@ export function PropertyRegisterCard({ register, source }: { register?: Property
                   <li key={`pm-${i}`}><MortgageLine m={m} /></li>
                 ))}
               </ul>
-              <p className="text-xs leading-5 text-muted-foreground">{t('verify_v3_reg_parcel_security_note')}</p>
+              <p className="text-xs leading-5 text-muted-foreground">{kindT(t, 'verify_v3_reg_parcel_security_note', kind)}</p>
             </div>
           </Row>
         ) : null}

@@ -31,9 +31,10 @@ const STANCE_TONE = {
  * buyer can do, and the approved closing paragraph. Never a placeholder,
  * never a purchase recommendation, never a percentage.
  */
-export const BuyerAssessment: React.FC<{ assessment?: unknown; clean?: (s: string) => string }> = ({ assessment, clean }) => {
+/* `kind`: the registry kind (kindGuard.copyKindOf); the apartment copy is unchanged without it. */
+export const BuyerAssessment: React.FC<{ assessment?: unknown; clean?: (s: string) => string; kind?: string }> = ({ assessment, clean, kind }) => {
   const { t } = useLanguage();
-  const a = React.useMemo(() => readBuyerAssessment(assessment), [assessment]);
+  const a = React.useMemo(() => readBuyerAssessment(assessment, kind ?? 'APARTMENT'), [assessment, kind]);
   if (!a) return null;
   const c = clean ?? ((s: string) => s);
   const k = a.conclusion;

@@ -10,6 +10,7 @@
 import React from 'react';
 import { BadgeCheck, Globe2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { kindT } from '@/verify/intelligence/kindGuard';
 import { readTechnicalCards, MATERIAL_TOPICS, type TechnicalCard } from '@/verify/intelligence/technicalExplained';
 
 const dmy = (iso?: string | null): string | null => {
@@ -84,7 +85,7 @@ const Intro: React.FC<{ id: string; title: string; body: string }> = ({ id, titl
  * then the approved MATERIALS copy over the facade, windows, insulation and
  * finishes. Each heading shows only with findings under it.
  */
-export const TechnicalExplained: React.FC<{ cards?: unknown }> = ({ cards }) => {
+export const TechnicalExplained: React.FC<{ cards?: unknown; kind?: string }> = ({ cards, kind }) => {
   const { t } = useLanguage();
   const list = React.useMemo(() => readTechnicalCards(cards), [cards]);
   if (!list.length) return null;
@@ -100,7 +101,7 @@ export const TechnicalExplained: React.FC<{ cards?: unknown }> = ({ cards }) => 
       ) : null}
       {materials.length ? (
         <section aria-labelledby="vrx-materials" className="space-y-4" data-materials>
-          <Intro id="vrx-materials" title={t('verify_v6s_materials_title')} body={t('verify_v6s_materials_body')} />
+          <Intro id="vrx-materials" title={t('verify_v6s_materials_title')} body={kindT(t, 'verify_v6s_materials_body', kind)} />
           <Cards list={materials} />
         </section>
       ) : null}

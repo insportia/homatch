@@ -20,6 +20,7 @@
 import React from 'react';
 import { HardHat, Building2, FileCheck2, KeyRound, ChevronDown, Hourglass, FileStack, BookOpen } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { kindT } from '@/verify/intelligence/kindGuard';
 import type { ProjectStoryView, StoryStage, StoryTrack } from '@/verify/intelligence/projectStory';
 import type { EvolutionStep, StepEvidence, StepStatus } from '@/verify/intelligence/projectEvolution';
 import { OfficialLink } from './OfficialLink';
@@ -62,10 +63,11 @@ const TRACK_TONE: Record<string, string> = {
 };
 
 /** The approved introduction, or the concrete discoveries that replace it. */
-export const StoryIntro: React.FC<{ discoveries?: string | null; clean?: (s: string) => string }> = ({ discoveries, clean }) => {
+export const StoryIntro: React.FC<{ discoveries?: string | null; clean?: (s: string) => string; kind?: string }> = ({ discoveries, clean, kind }) => {
   const { t } = useLanguage();
   const c = clean ?? ((s: string) => s);
-  const body = discoveries ? c(discoveries) : t('verify_v6s_intro_body');
+  // kindGuard.kindT: the approved apartment copy, or its variant naming the registry kind.
+  const body = discoveries ? c(discoveries) : kindT(t, 'verify_v6s_intro_body', kind);
   return (
     <div className="space-y-2" data-story-intro={discoveries ? 'discoveries' : 'copy'}>
       <h3 className="font-display text-xl font-semibold leading-snug tracking-tight break-words">{t('verify_v6s_intro_title')}</h3>
@@ -146,7 +148,7 @@ const Step: React.FC<{ s: EvolutionStep; clean: (s: string) => string }> = ({ s,
  * ('details') sit in the detailed-chronology disclosure, while the four
  * status cards ('status') stay visible under the chapters. Default: both.
  */
-export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string) => string; part?: 'all' | 'details' | 'status' }> = ({ view, clean, part = 'all' }) => {
+export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string) => string; part?: 'all' | 'details' | 'status'; kind?: string }> = ({ view, clean, part = 'all', kind }) => {
   const { t } = useLanguage();
   const c = clean ?? ((s: string) => s);
   const evo = view.evolution;
@@ -216,7 +218,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
             <Hourglass className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
             {t(evo.pending.length ? 'verify_v6s_pending_title' : 'verify_v6s_resolved_title')}
           </h3>
-          {evo.pending.length ? t('verify_v6s_pending_body').split(/\n+/).map((p, i) => (
+          {evo.pending.length ? kindT(t, 'verify_v6s_pending_body', kind).split(/\n+/).map((p, i) => (
             <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
           )) : null}
           {evo.pending.length ? (

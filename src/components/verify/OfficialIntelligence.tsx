@@ -20,6 +20,7 @@ import { timelineGroups, yearSpan } from '@/verify/reportPresentation';
 import { projectStory } from '@/verify/intelligence/projectStory';
 import { ProjectStory, StoryIntro } from './ProjectStory';
 import { guardStoryContinuity, evolutionOf, stripListMarkers, periodLabel } from '@/verify/intelligence/storyGuard';
+import { guardKindText } from '@/verify/intelligence/kindGuard';
 
 export interface CurrentStatusView {
   statement: string;
@@ -314,16 +315,18 @@ export const PropertyStoryBlock: React.FC<{
   specs?: unknown;
   /** synthesis.unitIdentity (optional): the register's "under construction" mark and its date. */
   unitIdentity?: unknown;
-}> = ({ chapters, history, clean, signals, specs, unitIdentity }) => {
+  /** The registry kind (kindGuard.copyKindOf): a non-apartment story never calls the subject an apartment. */
+  kind?: string;
+}> = ({ chapters, history, clean, signals, specs, unitIdentity, kind }) => {
   /* The model's chapters, kept to what the records connect (storyGuard.ts):
      the owner's editorial baseline, minus unsupported continuity between an
      earlier project on the parcel and the current development. */
   const story = React.useMemo(
-    () => guardStoryContinuity(chapters ?? [], evolutionOf(signals)).map((c) => ({ ...c, body: stripListMarkers(clean(c.body)) })).filter((c) => c.body),
-    [chapters, signals, clean],
+    () => guardStoryContinuity(chapters ?? [], evolutionOf(signals)).map((c) => ({ ...c, body: guardKindText(stripListMarkers(clean(c.body)), kind) })).filter((c) => c.body),
+    [chapters, signals, clean, kind],
   );
   /* The project's evolution, step by step (projectStory.ts). */
-  const events = React.useMemo(() => projectStory({ history, signals, specs, unitIdentity }), [history, signals, specs, unitIdentity]);
+  const events = React.useMemo(() => projectStory({ history, signals, specs, unitIdentity, kind }), [history, signals, specs, unitIdentity, kind]);
   const hasTimeline = !!(events || history?.milestones?.length || history?.milestoneGroups?.length);
   // The step-by-step evolution already tells every change, with its figures.
   const hasEvolution = !!history?.evolution?.length && !events?.evolution;
@@ -347,16 +350,16 @@ export const PropertyStoryBlock: React.FC<{
       ))}
     </div>
   ) : null;
-  const details = events ? <ProjectStory view={events} clean={clean} part="details" /> : history && hasTimeline ? <Timeline history={history} clean={clean} /> : null;
+  const details = events ? <ProjectStory view={events} clean={clean} part="details" kind={kind} /> : history && hasTimeline ? <Timeline history={history} clean={clean} /> : null;
   return (
     <div className="space-y-8">
       {/* The introduction first: the approved copy, or the concrete discoveries
           the records establish. Never behind an accordion. */}
-      <StoryIntro discoveries={events?.evolution?.discoveries ?? null} clean={clean} />
+      <StoryIntro discoveries={events?.evolution?.discoveries ?? null} clean={clean} kind={kind} />
       {chaptersList}
       {/* Where it stands today: physical works, permit, completion and
           commissioning, never merged. Visible. */}
-      {events ? <ProjectStory view={events} clean={clean} part="status" /> : null}
+      {events ? <ProjectStory view={events} clean={clean} part="status" kind={kind} /> : null}
       {/* Without chapters, the chronology is the story and stays in the flow. */}
       {chaptersList ? (details ? <StoryDetailsDisclosure>{details}</StoryDetailsDisclosure> : null) : details}
       {history && hasEvolution ? <EvolutionList items={history.evolution} clean={clean} /> : null}

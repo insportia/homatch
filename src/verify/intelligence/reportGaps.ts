@@ -201,7 +201,7 @@ export function companyFinanceFrom(resultJson: unknown, company: CompanyIntellig
   const fields = rsPublicFields(tax?.taxpayerData);
   const hasTaxData = !!(fields.taxpayerName || fields.status || fields.vatStatus || fields.registrationDate || fields.legalForm || fields.address || fields.extra.length);
   const found = tax ? rsRecordFound(tax) : null;
-  const taxRead = verification === 'VERIFIED' && !tax.unavailable && (found === false || (found === true && (hasTaxData || (Array.isArray(tax.documents) && tax.documents.length > 0))));
+  const taxRead = !!tax && verification === 'VERIFIED' && !tax.unavailable && (found === false || (found === true && (hasTaxData || (Array.isArray(tax.documents) && tax.documents.length > 0))));
   const checkedAt = typeof tax?.rsVerification?.checkedAt === 'string' ? tax.rsVerification.checkedAt : tax?.retrievedAt;
   const taxStatus: CompanyFinanceView['taxStatus'] = taxRead
     ? {

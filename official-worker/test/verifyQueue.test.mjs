@@ -270,3 +270,47 @@ test('a completed result carries the final attempt\'s execution span (performanc
   const raw = { type: 'complete', result: null };
   assert.equal(withExecStamp(raw, { attempts: 1 }, new Date()), raw);
 });
+
+// ── RS.ge (rstax): every outcome stores RS.ge's answer; only VERIFIED completes ──
+test('executor (rstax): the redacted answer is stored as evidence on EVERY outcome; only VERIFIED completes; one retry for transient', async () => {
+  const gw = fakeGateway();
+  const rec = (status, serverOutcome, httpStatus = 200) => ({ status, serverOutcome, httpStatus, responseFormat: 'JSON', rowCount: 1, columns: ['Name'], rawResponse: '{"Data":[{"TaxPayerID":"40*****72","Name":"შპს ტესტი"}]}', rawResponseBytes: 60, rawTruncated: false, requestHadTin: true, reason: null, checkedAt: '2026-10-11T10:00:00.000Z', sourceUrl: 'https://www.rs.ge/TaxpayersRegistry' });
+  const outs = [
+    { result: { source: 'rstax', status: 'SEARCH_CONFIRMED', documents: [], taxpayerData: { taxpayerName: 'შპს ტესტი' }, rsVerification: rec('VERIFIED', 'ACCEPTED') }, keep: false },
+    { result: { source: 'rstax', status: 'WAITING_HUMAN', captchaResolution: [{ outcome: 'REJECTED' }], rsVerification: rec('VERIFICATION_FAILED', 'REJECTED') }, keep: true },
+    { result: { source: 'rstax', status: 'TEMPORARILY_UNAVAILABLE', rsVerification: rec('TEMPORARILY_UNAVAILABLE', 'HTTP_ERROR', 503) }, keep: false },
+    { result: { source: 'rstax', status: 'TEMPORARILY_UNAVAILABLE', rsVerification: rec('TEMPORARILY_UNAVAILABLE', 'NETWORK_ERROR', null) }, keep: false },
+    { result: { source: 'rstax', status: 'FAILED', error: 'navigation timeout' }, keep: false },
+    { result: { source: 'rstax', status: 'WAITING_HUMAN', captchaResolution: [{ outcome: 'DISABLED' }], rsVerification: rec('PENDING_VERIFICATION', 'NOT_SEARCHED', null) }, keep: true },
+  ];
+  const exec = createVerifyExecutor({
+    launchBrowser: async (id) => ({ id }), closeBrowser: async () => {},
+    orchestrator: { executeSource: async () => outs.shift() },
+  });
+  const rs = (o = {}) => mkTask({ source: 'rstax', lane: 'BROWSER', dedupeKey: 'rstax:404670272', scopeKey: 'rstax:404670272', input: { idCode: '404670272', name: 'M' }, ...o });
+
+  const ok = await exec(rs(), ctxFor(gw));
+  assert.equal(ok.type, 'complete');
+  assert.equal(ok.cacheScope, 'rstax:404670272');
+  assert.equal(ok.result.rsVerification.rawResponse, undefined, 'the raw answer never travels in the result');
+  assert.match(ok.result.rsVerification.rawResponseRef.sha256, /^[0-9a-f]{64}$/);
+  assert.ok(ok.evidenceRefs.some((r) => r.sha256 === ok.result.rsVerification.rawResponseRef.sha256 && r.contentType === 'application/json'));
+
+  const rejected = await exec(rs(), ctxFor(gw));
+  assert.equal(rejected.type, 'fail');
+  assert.equal(rejected.retryable, false);
+  assert.match(rejected.error, /^RS_VERIFICATION_FAILED rs=VERIFICATION_FAILED outcome=REJECTED http=200 evidence=[0-9a-f]{64}$/);
+
+  const transient = await exec(rs({ attempts: 1 }), ctxFor(gw));
+  assert.deepEqual({ ...transient, error: transient.error.replace(/ evidence=.*/, '') }, { type: 'fail', error: 'RS_TEMPORARILY_UNAVAILABLE rs=TEMPORARILY_UNAVAILABLE outcome=HTTP_ERROR http=503', retryable: true, retryAfterSeconds: 30 });
+  const second = await exec(rs({ attempts: 2 }), ctxFor(gw));
+  assert.equal(second.retryable, false, 'at most one retry');
+  const crash = await exec(rs({ attempts: 2 }), ctxFor(gw));
+  assert.deepEqual(crash, { type: 'fail', error: 'RS_TEMPORARILY_UNAVAILABLE rs=TEMPORARILY_UNAVAILABLE outcome=NONE http=-', retryable: false });
+  const pending = await exec(rs(), ctxFor(gw));
+  assert.match(pending.error, /^HUMAN_VERIFICATION_REQUIRED:DISABLED rs=PENDING_VERIFICATION /);
+  assert.equal(pending.retryable, false);
+
+  // Five answers stored (the crash had none), each a JSON evidence object.
+  assert.equal(gw.calls.upload.filter((u) => u.ct === 'application/json').length, 5);
+});

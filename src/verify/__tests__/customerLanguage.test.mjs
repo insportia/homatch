@@ -52,10 +52,18 @@ test('uncertainty is still disclosed — calmly, and a tax-status timeout is exp
   assert.match(ka.vbi_fin_tax_help, /არც დადებითი ნიშანია და არც უარყოფითი/);
   assert.match(ka.vbi_ads_none_note, /არ ამტკიცებს/);
   const card = fs.readFileSync(new URL('../../components/verify/BuyerIntelligenceCards.tsx', import.meta.url), 'utf8');
-  // NOT_CHECKED renders nothing at all (owner, 2026-10-09: what was not
-  // established is not written) — and never a risk tone.
-  assert.match(card, /finance\.taxStatus\.state === 'CHECKED' \? \(/);
+  // The RS.ge row renders through rsTaxCardModel (2026-10-11, RS.ge fix): a
+  // check that never ran renders nothing at all (owner, 2026-10-09: what was
+  // not established is not written); one that ran but did not complete gets
+  // the calm "to be confirmed" copy above in a QUIET pill — never a risk tone.
+  assert.match(card, /<TaxpayerRow finance=\{finance\} \/>/);
+  assert.match(card, /<StatusPill tone=\{model\.pill\.tone\}>/);
   assert.ok(!/taxStatus[\s\S]{0,200}tone="risk"/.test(card), 'tax status is never a risk tone');
+  const model = fs.readFileSync(new URL('../rsTaxpayer.ts', import.meta.url), 'utf8');
+  assert.match(model, /if \(!v\) return null;/, 'a check that never ran writes nothing');
+  assert.match(model, /kind: 'STATE', pill: \{ tone: 'quiet', key \}/, 'an incomplete check is quiet, never adverse');
+  assert.ok(!/tone: 'risk'/.test(model), 'RS.ge never renders a risk tone');
+  assert.match(ka.vbi_rs_state_unavailable_explain, /არც დადებითი ნიშანია და არც უარყოფითი/);
 });
 
 test('report components never render a raw provider state or status code', () => {

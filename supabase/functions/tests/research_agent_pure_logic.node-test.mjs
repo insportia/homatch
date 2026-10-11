@@ -1397,7 +1397,7 @@ function buildLegalStatusMatrix(officialStatus, opts) {
   const debtorOutcome = outcome('debtor');
   const debtorRegistryStatus = debtorOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : debtorOutcome === 'FOUND' ? 'CONFIRMED_ATTENTION' : debtorOutcome === 'NO_RESULT' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
   const rstaxOutcome = outcome('rstax');
-  const taxpayerStatusValue = rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  const taxpayerStatusValue = opts.taxpayerStatus ?? (rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED');
   const registrySkipped = outcome('mygov') === 'SKIPPED' || outcome('napr') === 'SKIPPED';
   const propertyEncumbrancesStatus =
     opts.rightsAndRestrictionsStatus === 'RESTRICTION_IDENTIFIED' ? 'CONFIRMED_ATTENTION' : opts.rightsAndRestrictionsStatus === 'NONE_FOUND_IN_CHECKED_SOURCE' ? 'CONFIRMED_POSITIVE' : registrySkipped ? 'HUMAN_VERIFICATION_REQUIRED' : 'NOT_CONFIRMED';

@@ -5,7 +5,10 @@
  * pending, unavailable or failed.
  *
  * Order is en, ka, ru, tr, ar, he — LANGS in lib/i18nSplice.mjs.
- * {{id}} survives in every locale.
+ * {{id}} survives in every locale. Customer-first voice
+ * (src/verify/__tests__/customerLanguage.test.mjs): a check that did not
+ * complete is described calmly, as something to confirm — never narrated as
+ * a failure, never adverse.
  *
  * RS_STRINGS are new keys. RS_REPLACED_STRINGS overwrite an existing key on
  * purpose: vbi_fin_tax_explain used to say the company is "in good standing
@@ -55,32 +58,32 @@ export const RS_STRINGS = {
     'מרשם משלמי המסים של רשות ההכנסות לא החזיר רשומה עבור מספר החברה {{id}} בתאריך המצוין. כשלעצמו זה אינו סימן טוב ואינו סימן רע; מומלץ לאמת את המספר מול החברה.',
   ],
   vbi_rs_source_link: ['Check on rs.ge', 'გადაამოწმეთ rs.ge-ზე', 'Проверить на rs.ge', 'rs.ge üzerinde kontrol edin', 'تحقّقوا على rs.ge', 'בדקו ב-rs.ge'],
-  vbi_rs_state_pending: ['Awaiting verification', 'ვერიფიკაციას ელოდება', 'Ожидает проверки', 'Doğrulama bekleniyor', 'بانتظار التحقق', 'ממתין לאימות'],
+  vbi_rs_state_pending: ['To be confirmed', 'დამატებით დასაზუსტებელია', 'Требует уточнения', 'Teyit edilecek', 'قيد التأكيد', 'טעון אישור'],
   vbi_rs_state_pending_explain: [
-    'The Revenue Service check needs an extra verification step and has not been completed in this research. This is neither a good nor a bad sign — you can check it on rs.ge with company ID {{id}}.',
-    'შემოსავლების სამსახურის შემოწმებას დამატებითი ვერიფიკაცია სჭირდება და ამ კვლევაში არ დასრულებულა. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
-    'Проверке в Службе доходов нужен дополнительный шаг подтверждения, и в этом исследовании она не завершена. Это ни хороший, ни плохой знак — проверить можно на rs.ge по коду {{id}}.',
-    'Gelir İdaresi kontrolü ek bir doğrulama adımı gerektiriyor ve bu araştırmada tamamlanmadı. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla kontrol edebilirsiniz.',
-    'يتطلب فحص مصلحة الإيرادات خطوة تحقق إضافية ولم يكتمل في هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق على rs.ge برمز الشركة {{id}}.',
-    'בדיקת רשות ההכנסות דורשת שלב אימות נוסף ולא הושלמה במחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק ב-rs.ge עם מספר החברה {{id}}.',
+    'The taxpayer registry check is still to be confirmed for this research. This is neither a good nor a bad sign — you can check it in a minute on rs.ge with company ID {{id}}.',
+    'გადამხდელთა რეესტრის შემოწმება ამ კვლევისთვის დამატებით დასაზუსტებელია. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
+    'Проверка по реестру налогоплательщиков для этого исследования ещё требует уточнения. Это ни хороший, ни плохой знак — проверить можно за минуту на rs.ge по коду {{id}}.',
+    'Vergi mükellefleri sicili kontrolü bu araştırma için henüz teyit edilecek. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla bir dakikada kontrol edebilirsiniz.',
+    'لا يزال فحص سجل دافعي الضرائب قيد التأكيد في هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق خلال دقيقة على rs.ge برمز الشركة {{id}}.',
+    'בדיקת מרשם משלמי המסים עדיין טעונה אישור במחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק תוך דקה ב-rs.ge עם מספר החברה {{id}}.',
   ],
-  vbi_rs_state_unavailable: ['Temporarily unavailable', 'დროებით მიუწვდომელია', 'Временно недоступно', 'Geçici olarak kullanılamıyor', 'غير متاح مؤقتًا', 'לא זמין זמנית'],
+  vbi_rs_state_unavailable: ['Temporarily unavailable', 'დროებით მიუწვდომელი იყო', 'Временно недоступен', 'Geçici olarak erişilemedi', 'غير متاح مؤقتًا', 'לא היה זמין זמנית'],
   vbi_rs_state_unavailable_explain: [
-    'The Revenue Service registry did not respond during this research. This is neither a good nor a bad sign — you can check it on rs.ge with company ID {{id}}.',
-    'შემოსავლების სამსახურის რეესტრმა ამ კვლევის დროს არ უპასუხა. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
-    'Реестр Службы доходов не ответил во время этого исследования. Это ни хороший, ни плохой знак — проверить можно на rs.ge по коду {{id}}.',
-    'Gelir İdaresi sicili bu araştırma sırasında yanıt vermedi. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla kontrol edebilirsiniz.',
-    'لم يستجب سجل مصلحة الإيرادات خلال هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق على rs.ge برمز الشركة {{id}}.',
-    'מרשם רשות ההכנסות לא הגיב במהלך מחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק ב-rs.ge עם מספר החברה {{id}}.',
+    'The Revenue Service registry was temporarily unavailable during this research. This is neither a good nor a bad sign — you can check it in a minute on rs.ge with company ID {{id}}.',
+    'შემოსავლების სამსახურის რეესტრი ამ კვლევის დროს დროებით მიუწვდომელი იყო. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
+    'Реестр Службы доходов был временно недоступен во время этого исследования. Это ни хороший, ни плохой знак — проверить можно за минуту на rs.ge по коду {{id}}.',
+    'Gelir İdaresi sicili bu araştırma sırasında geçici olarak erişilemezdi. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla bir dakikada kontrol edebilirsiniz.',
+    'كان سجل مصلحة الإيرادات غير متاح مؤقتًا خلال هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق خلال دقيقة على rs.ge برمز الشركة {{id}}.',
+    'מרשם רשות ההכנסות לא היה זמין זמנית במהלך מחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק תוך דקה ב-rs.ge עם מספר החברה {{id}}.',
   ],
-  vbi_rs_state_failed: ['Could not be verified', 'ვერ გადამოწმდა', 'Не удалось проверить', 'Doğrulanamadı', 'تعذّر التحقق', 'לא ניתן היה לאמת'],
+  vbi_rs_state_failed: ['To be checked on rs.ge', 'rs.ge-ზე გადასამოწმებელია', 'Стоит проверить на rs.ge', 'rs.ge üzerinde kontrol edilmeli', 'يُستحسن التحقق على rs.ge', 'כדאי לבדוק ב-rs.ge'],
   vbi_rs_state_failed_explain: [
-    'The Revenue Service check could not be completed automatically in this research. This is neither a good nor a bad sign — you can check it on rs.ge with company ID {{id}}.',
-    'შემოსავლების სამსახურის შემოწმება ამ კვლევაში ავტომატურად ვერ დასრულდა. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
-    'Проверку в Службе доходов не удалось завершить автоматически в этом исследовании. Это ни хороший, ни плохой знак — проверить можно на rs.ge по коду {{id}}.',
-    'Gelir İdaresi kontrolü bu araştırmada otomatik olarak tamamlanamadı. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla kontrol edebilirsiniz.',
-    'تعذّر إكمال فحص مصلحة الإيرادات تلقائيًا في هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق على rs.ge برمز الشركة {{id}}.',
-    'לא ניתן היה להשלים אוטומטית את בדיקת רשות ההכנסות במחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק ב-rs.ge עם מספר החברה {{id}}.',
+    'The taxpayer registry entry for this company is best checked directly on rs.ge. This is neither a good nor a bad sign — it takes a minute with company ID {{id}}.',
+    'კომპანიის ჩანაწერი გადამხდელთა რეესტრში სასურველია უშუალოდ rs.ge-ზე გადაამოწმოთ. ეს არც დადებითი ნიშანია და არც უარყოფითი — ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
+    'Запись компании в реестре налогоплательщиков лучше проверить напрямую на rs.ge. Это ни хороший, ни плохой знак — это займёт минуту по коду {{id}}.',
+    'Şirketin vergi mükellefleri sicilindeki kaydını doğrudan rs.ge üzerinde kontrol etmeniz önerilir. Bu ne olumlu ne olumsuz bir işarettir — {{id}} şirket koduyla bir dakika sürer.',
+    'يُستحسن التحقق من قيد الشركة في سجل دافعي الضرائب مباشرةً على rs.ge. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يستغرق الأمر دقيقة برمز الشركة {{id}}.',
+    'מומלץ לבדוק את רישום החברה במרשם משלמי המסים ישירות ב-rs.ge. זה אינו סימן טוב ואינו סימן רע — זה לוקח דקה עם מספר החברה {{id}}.',
   ],
 };
 

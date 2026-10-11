@@ -47,7 +47,7 @@ import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt
 import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
 import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
 import { withPropertyRegister } from '../../../src/verify/intelligence/registerEnrichment.ts';
-import { looksLikePersonName, redactPeopleSupport } from '../../../src/verify/intelligence/peopleIntelligence.ts';
+import { looksLikePersonName, redactPeopleSupport, scrubPersonalNumbersDeep } from '../../../src/verify/intelligence/peopleIntelligence.ts';
 import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
 import { REPORT_LOGIC_VERSION, shouldAutoUpgrade, versionMarkers, markUpgradeAttempted, logicVersionOf } from '../../../src/verify/intelligence/reportVersion.ts';
 import { hasOwnRegister, reuseEarlierRegister, targetCadastralCode, type RegisterCandidate } from '../../../src/verify/intelligence/registerReuse.ts';
@@ -220,6 +220,7 @@ async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: st
   const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
   // Personal numbers never reach the browser, whatever an older build stored.
   if (rest.people) rest.people = redactPeopleSupport(rest.people);
+  for (const k of ['report', 'evidence', 'evidenceGroups', 'officialHistory', 'officialDocuments', 'people', 'participants', 'projectTeam', 'projectTeamV2', 'identity']) if (rest[k]) rest[k] = scrubPersonalNumbersDeep(rest[k]);
   // Fresh photographs (freshPhotos.ts): each bucket path becomes a signed URL
   // in the same bucket with the same TTL; an unsignable photo is omitted.
   if (Array.isArray(rest.freshPhotos?.photos) && rest.freshPhotos.photos.length) {

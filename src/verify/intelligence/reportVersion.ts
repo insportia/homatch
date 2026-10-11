@@ -16,7 +16,7 @@
  */
 
 /** Bump when report-building logic changes what a customer must be told. */
-export const REPORT_LOGIC_VERSION = 6;
+export const REPORT_LOGIC_VERSION = 7;
 export const AUTO_UPGRADE_WINDOW_DAYS = 21;
 
 const obj = (v: unknown): Record<string, any> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : {});

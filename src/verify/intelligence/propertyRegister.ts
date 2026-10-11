@@ -360,7 +360,8 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
     landFunction: landFunction ? squash(landFunction) : null,
     landAreaSqm: landArea ? Number(landArea) : null,
     buildingsUnderConstruction: /მშენებარე/.test(buildings),
-    unitUnderConstruction: /ფართი\s*\(\s*მშენებარე\s*\)/.test(ownersBlock),
+    // Any unit marked (მშენებარე): ფართი, ავტოსადგომი N17, … (v7, job dbf04e48).
+    unitUnderConstruction: /ფართი\s*\(\s*მშენებარე\s*\)/.test(ownersBlock) || /\(\s*მშენებარე\s*\)/.test(unitRow?.description ?? ''),
     unitAreaSqm: unitArea ? Number(unitArea) : unitRow?.areaSqm ?? null,
     unitDescription: unitRow?.description ?? null,
     unitItemText: unitRow?.itemText ?? null,

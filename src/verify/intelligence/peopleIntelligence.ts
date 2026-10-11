@@ -229,6 +229,33 @@ export function redactPeopleSupport<T>(people: T): T {
   return { ...o, people: o.people.map((p) => (typeof p?.support === 'string' ? { ...p, support: redactPersonalData(p.support) } : p)) } as T;
 }
 
+/** Keys whose values are identifiers or links, never prose: left untouched by the deep scrub. */
+const SCRUB_SKIP = new Set(['id', 'visualId', 'documentId', 'attachedFileId', 'sha256', 'url', 'href', 'path', 'publicUrl', 'documentUrl', 'recordUrl', 'sourceUrl', 'jobId']);
+const PERSONAL_NUMBER = /(?:(?:პ\/ნ|P\/N|ID\/N|პირადი\s+ნომერი)\s*:?\s*)?(?<![\p{L}\p{N}])\d{11}(?!\p{N})/gu;
+
+/**
+ * Every 11-digit personal number removed from every prose string of a
+ * customer payload (sweep 2026-10-11: eight stored v0 reports still carried
+ * "<applicant> პ/ნ <number>" in section bodies and evidence claims, served on
+ * every open). Identifier and link fields are skipped; 9-digit company and
+ * 12-digit application numbers are not personal and stay.
+ */
+export function scrubPersonalNumbersDeep<T>(value: T, key = ''): T {
+  if (typeof value === 'string') {
+    if (SCRUB_SKIP.has(key)) return value;
+    const s0 = value.replace(/\\[nrt](?=\d)/g, ' ');
+    // A fresh non-global test: a shared /g regex would carry lastIndex between strings.
+    return (new RegExp(PERSONAL_NUMBER.source, 'u').test(s0) ? s0.replace(PERSONAL_NUMBER, '').replace(/\s*,\s*,/g, ',').replace(/[ \t]+,/g, ',').replace(/[ \t]{2,}/g, ' ').trim() : value) as T;
+  }
+  if (Array.isArray(value)) return value.map((v) => scrubPersonalNumbersDeep(v, key)) as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = scrubPersonalNumbersDeep(v, k);
+    return out as T;
+  }
+  return value;
+}
+
 export function redactPersonalData(text: unknown): string {
   return String(text ?? '')
     // Escaped line breaks ("name,\\n01234567890") join the number to a letter,

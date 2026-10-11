@@ -342,6 +342,12 @@ export function guardReportForKind<T extends Record<string, any>>(report: T | nu
       ? { ...v, what: g(v.what), interesting: g(v.interesting), buyerMeaning: g(v.buyerMeaning), uncertain: g(v.uncertain) }
       : v));
   }
+  // Technical glossary cards (sweep 2026-10-11, job dbf04e48: "ბინის სითბოს დანაკარგი" on a parking space).
+  if (Array.isArray(out.technicalExplained)) {
+    out.technicalExplained = out.technicalExplained
+      .map((c: any) => (c && typeof c === 'object' ? { ...c, what: g(c.what), why: g(c.why), buyerMeaning: g(c.buyerMeaning), verify: g(c.verify) } : c))
+      .filter((c: any) => !c || typeof c !== 'object' || String(c.what ?? '').trim() || String(c.why ?? '').trim());
+  }
   if (out.buyerAssessment && typeof out.buyerAssessment === 'object') out.buyerAssessment = guardAssessmentForKind(out.buyerAssessment, kind);
   return out as T;
 }

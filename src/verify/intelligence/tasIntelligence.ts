@@ -863,13 +863,16 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       continue;
     }
     const d = day(v?.date);
+    // The case's filing date links an undated picture to its chapter (v7 sweep:
+    // a 2013 render was filed under TODAY because it had no date of its own).
+    const linkDate = d ?? (s(v?.documentId) ? cases.find((c) => c.documentId === s(v?.documentId))?.date ?? null : null);
     let nearest: TimelineEvent | null = null;
-    if (d)
+    if (linkDate)
       for (const e of timeline) {
-        const gap = Math.abs(Date.parse(e.date) - Date.parse(d));
-        if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(d)))) nearest = e;
+        const gap = Math.abs(Date.parse(e.date) - Date.parse(linkDate));
+        if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(linkDate)))) nearest = e;
       }
-    const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' ? 'TODAY' : null;
+    const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' && !linkDate ? 'TODAY' : null;
     visuals.push({
       id, role: v?.role === 'LATEST_RENDER' || v?.role === 'EARLIEST_RENDER' ? v.role : 'SUPPORTING', kind,
       category: categoryForScope(kind, normalizeVisualCategory(v.category, kind), scope),

@@ -53,3 +53,28 @@ test('personal numbers never survive, even glued to an escaped line break', () =
   const fc = vs.slice(vs.indexOf('async function forCustomer'), vs.indexOf('async function forCustomer') + 800);
   assert.match(fc, /redactPeopleSupport\(rest\.people\)/);
 });
+
+test('sweep 2026-10-11: stored prose loses personal numbers on read; identifiers and company numbers stay', async () => {
+  const { scrubPersonalNumbersDeep } = await import('../intelligence/peopleIntelligence.ts');
+  const out = scrubPersonalNumbersDeep({
+    report: { sections: [{ body: 'განმცხადებელი ვაჟა პ/ნ 01234567890, კომპანია 424619256, განცხადება 882026515135.' }, { body: 'მეორე 01234567891 და მესამე 01234567892' }] },
+    evidence: [{ claim: 'X,\\n01234567890', url: 'https://x/01234567890' }],
+    id: '01234567890',
+  });
+  const text = JSON.stringify(out.report) + out.evidence[0].claim;
+  assert.doesNotMatch(text, /(?<!\d)\d{11}(?!\d)/);
+  assert.match(text, /424619256/);
+  assert.match(text, /882026515135/);
+  assert.equal(out.id, '01234567890');
+  assert.equal(out.evidence[0].url, 'https://x/01234567890');
+  const vs = readFileSync(join(import.meta.dirname, '..', '..', '..', 'supabase/functions/verify-synthesis/index.ts'), 'utf8');
+  assert.match(vs, /scrubPersonalNumbersDeep\(rest\[k\]\)/);
+});
+
+test('sweep 2026-10-11: technical cards on a parking space lose apartment wording', async () => {
+  const { guardReportForKind } = await import('../intelligence/kindGuard.ts');
+  const r = guardReportForKind({ technicalExplained: [{ key: 'k2', what: 'კ-2 შენობის საერთო ფართის კოეფიციენტია.', why: 'ბინის სითბოს დანაკარგი ამაზეა დამოკიდებული.', buyerMeaning: '', verify: 'ბინაში ნახეთ ფანჯრები.' }] }, 'PARKING');
+  const c = r.technicalExplained[0];
+  assert.match(c.what, /კ-2/);
+  assert.doesNotMatch(`${c.why} ${c.verify}`, /ბინ/);
+});

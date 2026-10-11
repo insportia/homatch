@@ -398,7 +398,10 @@ async function recordSpace(admin: Row, a: { actorId: string; project: Row; versi
  */
 async function rebuildSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null }, source: Row): Promise<boolean> {
   const prov = source?.provenance;
-  if (prov?.inferred !== true || prov.photoSpace === PHOTO_SPACE_VERSION || prov.geometryCheck?.verdict !== 'FAIL' || !UUID.test(String(prov.jobId ?? ''))) return false;
+  // Rebuilt: a space that failed its check, or one laid out from its pieces by older layout rules (rooms now get the
+  // widths and areas their use needs). A space read as it was and passing stays as it is.
+  const stale = prov?.geometryCheck?.verdict === 'FAIL' || prov?.layout === 'FROM_PIECES';
+  if (prov?.inferred !== true || prov.photoSpace === PHOTO_SPACE_VERSION || !stale || !UUID.test(String(prov.jobId ?? ''))) return false;
   if (String(prov.fromSourceId) !== String(a.photoSource?.id) || (prov.fromRenderId ?? null) !== (a.renderId ?? null)) return false;
   const { data: job } = await admin.from('ds_jobs').select('id, user_id, project_id, status, output').eq('id', prov.jobId).maybeSingle();
   if (!job || job.status !== 'SUCCEEDED' || String(job.user_id) !== a.actorId || String(job.project_id) !== String(a.project.id) || !job.output?.reading?.rooms) return false;

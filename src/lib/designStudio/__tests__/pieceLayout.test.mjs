@@ -113,12 +113,12 @@ test('the server builds photo spaces through spaceFromReading, rebuilds an old f
   const rebuild = route.slice(route.indexOf('async function rebuildSpace'), route.indexOf('/** The design and every geometry correction of it'));
   // Only a failed space of older code, only the owner's own reading of these pictures and this render, never a model call.
   assert.match(rebuild, /prov\.photoSpace === PHOTO_SPACE_VERSION/);
-  assert.match(rebuild, /prov\.geometryCheck\?\.verdict !== 'FAIL'/);
+  assert.match(rebuild, /const stale = prov\?\.geometryCheck\?\.verdict === 'FAIL' \|\| prov\?\.layout === 'FROM_PIECES';/);
   assert.match(rebuild, /String\(job\.user_id\) !== a\.actorId/);
   assert.match(rebuild, /built\.geometryCheck\.verdict !== 'PASS'\) return false;/);
   assert.doesNotMatch(rebuild, /fetch\(|OPENAI|meterAiCall/);
   assert.match(route, /photoSpace: PHOTO_SPACE_VERSION, layout: built\.layout, layoutRepairs: built\.layoutRepairs,/);
-  assert.equal(PHOTO_SPACE_VERSION, 'ds-photo-space-2');
+  assert.equal(PHOTO_SPACE_VERSION, 'ds-photo-space-3');
   // A render walk that is walkable and most of the render is published, recorded as approximate.
   assert.match(route, /if \(!gate\.ready\) \{/);
   assert.match(route, /approximate: gate\.approximate/);

@@ -53,7 +53,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
   return (
     <article data-property-key={p.key} className="hm-discovery-panel group flex min-w-0 flex-col overflow-hidden rounded-2xl border-foreground/10 shadow-[0_1px_2px_rgba(12,17,25,0.06),0_12px_28px_-16px_rgba(12,17,25,0.35)] transition hover:border-[hsl(var(--gold-border))] hover:shadow-[0_1px_2px_rgba(12,17,25,0.08),0_18px_36px_-16px_rgba(12,17,25,0.45)] motion-safe:hover:-translate-y-0.5">
       <PropertyGallery images={p.images} t={t} onOpen={onOpen} overlay={<>
-        {sources.map((name) => <span key={name} dir="auto" className="rounded-full bg-[#0C1119]/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-white backdrop-blur-sm">{name}</span>)}
+        {sources.map((name) => <span key={name} dir="auto" className="rounded-full bg-[#0C1119]/80 px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.08em] text-white backdrop-blur-sm">{name}</span>)}
         <DuplicateBadge p={p} t={t} onClick={showDuplicates} />
       </>} />
       <div className="h-px bg-gradient-to-r from-transparent via-[hsl(var(--gold)/0.55)] to-transparent" aria-hidden="true" />

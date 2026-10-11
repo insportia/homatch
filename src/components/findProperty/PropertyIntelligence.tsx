@@ -59,7 +59,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
           <div className="-mx-5 -mt-5 space-y-3 bg-[#0C1119] px-5 pb-5 pt-5 text-white sm:-mx-6 sm:-mt-6 sm:px-6" data-property-band>
             {fullPage ? <header className="space-y-1 text-start"><h1 className="font-display text-3xl font-semibold tracking-[-0.02em] text-white sm:text-4xl">{usd(f.priceUsd)}</h1><p dir="auto" className="text-[15px] text-white/75">{place || p.title}</p></header> : <SheetHeader className="space-y-1 text-start"><SheetTitle className="font-display text-3xl font-semibold text-white">{usd(f.priceUsd)}</SheetTitle><SheetDescription dir="auto" className="text-white/75">{place || p.title}</SheetDescription></SheetHeader>}
             <div className="flex flex-wrap items-center gap-2">
-              {sourceNames(p).map((name) => <span key={name} dir="auto" className="rounded-full border border-[hsl(var(--gold)/0.6)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--gold))]">{t('mps_card_source', { source: name })}</span>)}
+              {sourceNames(p).map((name) => <span key={name} dir="auto" className="rounded-full border border-[hsl(var(--gold)/0.6)] px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--gold))]">{t('mps_card_source', { source: name })}</span>)}
               <DuplicateBadge p={p} t={t} onClick={() => { setDuplicatesOpen(true); duplicatesRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }} />
             </div>
           </div>

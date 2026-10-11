@@ -1,8 +1,11 @@
 import { Copy, ExternalLink } from 'lucide-react';
 import type { PropertyView } from '@/services/marketplaceSearch';
 import { safeExternalUrl } from '@/lib/safeExternalUrl';
-import { isConfirmedDuplicate } from '@/research-core/marketplace/browse-results';
 import { checkedAgo, type T, usd } from './format';
+
+/** Same rule as browse-results' isConfirmedDuplicate (the server filter): only
+ * the identity resolver's confirmation counts, never an inferred grouping. */
+const isConfirmedDuplicate = (p: PropertyView) => p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
 
 /** The "Duplicate" badge: one property published as several listings. */
 export function DuplicateBadge({ p, t, onClick, className = '' }: { p: PropertyView; t: T; onClick?: () => void; className?: string }) {
@@ -38,7 +41,7 @@ export function DuplicateListings({ p, t, open, onOpenChange }: { p: PropertyVie
             {image ? <img src={image} alt="" loading="lazy" decoding="async" className="h-20 w-24 shrink-0 rounded-lg object-cover" onError={(e) => { e.currentTarget.hidden = true; }} /> : null}
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--gold-ink))]" dir="auto">{l.sourceName ?? l.source}</p>
-              <p className="font-display text-base font-semibold">{usd(l.priceUsd)}{isLowest && p.listings.length > 1 ? <span className="ms-2 rounded-full bg-[hsl(var(--gold)/0.18)] px-2 py-0.5 align-middle text-[11px] font-semibold">{t('mps_price_lowest')}</span> : null}</p>
+              <p className="font-display text-base font-semibold">{usd(l.priceUsd)}{isLowest && p.listings.length > 1 ? <span className="ms-2 rounded-full bg-[hsl(var(--gold)/0.18)] px-2 py-0.5 align-middle text-2xs font-semibold">{t('mps_price_lowest')}</span> : null}</p>
               {l.priceUsd != null && Number.isFinite(lowest) && l.priceUsd > lowest ? <p className="text-xs text-muted-foreground">+{usd(l.priceUsd - lowest)}</p> : null}
               <p className="text-xs text-muted-foreground">{checkedAgo(l.lastVerifiedAt ?? l.observedAt, t)}</p>
               {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">{t('mps_open_original')}<ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /></a> : null}

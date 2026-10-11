@@ -42,6 +42,7 @@
 // exists, substantial claims must carry a citation, and output that fails is
 // DISCARDED for a deterministic report built from the same evidence.
 
+import { isDateList, isRawRecord } from './rawText.ts';
 import type { EvidencePackage, EvidenceItem } from './evidencePackage.ts';
 import { dedupeBlock, isParkingConfirmationPrompt, type TopicKey } from './dedupe.ts';
 import { SECTION_KEYS } from './prompt.ts';
@@ -465,6 +466,98 @@ function customerProse(c: Partial<BuyerIntelligenceReport>): string {
   ].join('\n');
 }
 
+/**
+ * SALVAGE BEFORE JUDGING (2026-10-11, jobs eeefada9 and dbf04e48).
+ *
+ * The gate below rejected the WHOLE model report for a single weak item — one
+ * uncited status line, one uncited market section — and the customer got the
+ * deterministic template (raw date lists) instead of the narrative. The gate's
+ * purpose is that nothing unsupported is shown, not that everything is thrown
+ * away: an unsupported ITEM is removed, the supported rest is kept. Only
+ * structural failures (no summary, no sections, unparseable) still reject.
+ */
+export function salvageReport(
+  pkg: EvidencePackage,
+  candidate: Partial<BuyerIntelligenceReport> | null,
+): { report: Partial<BuyerIntelligenceReport> | null; pruned: string[] } {
+  if (!candidate) return { report: null, pruned: [] };
+  const pruned: string[] = [];
+  const known = new Set(packageItems(pkg).map((i) => i.id));
+  const grounded = <T extends { cites?: string[] }>(x: T, where: string): T => {
+    const cites = Array.isArray(x.cites) ? x.cites : [];
+    const ok = cites.filter((c) => known.has(c));
+    if (ok.length !== cites.length) pruned.push(`ungrounded citation removed in ${where}`);
+    return { ...x, cites: ok };
+  };
+  // Sentences no customer prose may carry: a URL, or absence stated as fact.
+  const badSentence = (t: string) =>
+    /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:ge|com|net|org)\/|DownloadServlet|NewArchitectureResponse/i.test(t) ||
+    ABSENCE_AS_FACT.some((p) => t.includes(p));
+  const clean = (t: unknown, where: string): string => {
+    const text = typeof t === 'string' ? t : '';
+    const kept = text.split(/(?<=[.!?])\s+/).filter((x) => !badSentence(x));
+    const out = kept.join(' ').trim();
+    if (out !== text.trim()) pruned.push(`sentence removed in ${where}`);
+    return out;
+  };
+  const c: Partial<BuyerIntelligenceReport> = { ...candidate };
+  if (c.summary) {
+    c.summary = {
+      ...c.summary,
+      statement: clean(c.summary.statement, 'summary'),
+      highlights: (c.summary.highlights ?? []).map((h) => grounded({ ...h, headline: clean(h.headline, 'highlight'), detail: clean(h.detail, 'highlight') }, 'summary highlight')).filter((h) => h.headline || h.detail),
+    };
+  }
+  if (c.keyFindings) {
+    c.keyFindings = c.keyFindings
+      .map((f) => grounded({ ...f, finding: clean(f.finding, 'key finding'), whyItMatters: clean(f.whyItMatters, 'key finding') }, 'key finding'))
+      .filter((f) => {
+        if (f.finding && f.whyItMatters) return true;
+        pruned.push('key finding without its consequence removed');
+        return false;
+      });
+  }
+  if (c.sections) {
+    c.sections = c.sections
+      .map((sec) => grounded({ ...sec, title: clean(sec.title, `section ${sec.key}`), body: clean(sec.body, `section ${sec.key}`) }, `section ${sec.key}`))
+      .filter((sec) => {
+        if (!sec.body.trim()) return false;
+        if (!sec.cites.length && sec.body.length > 240) { pruned.push(`uncited section ${sec.key} removed`); return false; }
+        return true;
+      });
+  }
+  if (c.attentionPoints) c.attentionPoints = c.attentionPoints.map((a) => grounded({ ...a, point: clean(a.point, 'attention'), why: clean(a.why, 'attention') }, 'attentionPoints')).filter((a) => a.point);
+  if (c.nextSteps) {
+    c.nextSteps = c.nextSteps.map((st) => grounded(st, 'nextSteps')).filter((st) => {
+      if (st.cites.length) return true;
+      pruned.push('uncited next step removed');
+      return false;
+    });
+  }
+  if (c.currentStatus) {
+    const items = (c.currentStatus.items ?? []).map((i) => grounded(i, 'currentStatus')).filter((i) => {
+      if (i.cites.length) return true;
+      pruned.push('uncited current-status item removed');
+      return false;
+    });
+    c.currentStatus = { ...c.currentStatus, statement: clean(c.currentStatus.statement, 'current status'), items };
+  }
+  if (c.propertyStory) {
+    c.propertyStory = {
+      ...c.propertyStory,
+      chapters: (c.propertyStory.chapters ?? []).map((ch) => grounded({ ...ch, body: clean(ch.body, `story ${ch.key}`) }, `story ${ch.key}`)).filter((ch) => {
+        if (!ch.body.trim()) return false;
+        if (!ch.cites.length && ch.body.length > 240) { pruned.push(`uncited story chapter ${ch.key} removed`); return false; }
+        return true;
+      }),
+    };
+  }
+  if (c.visualCaptions) c.visualCaptions = c.visualCaptions.map((v) => grounded(v, 'visualCaptions'));
+  if (c.advertisingAssessment) c.advertisingAssessment = grounded(c.advertisingAssessment, 'advertisingAssessment');
+  if (typeof c.finalView === 'string') c.finalView = clean(c.finalView, 'final view');
+  return { report: c, pruned };
+}
+
 export function validateReport(
   pkg: EvidencePackage,
   candidate: Partial<BuyerIntelligenceReport> | null
@@ -627,26 +720,27 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
     // not dumped into a section as a list.
     const mine = allItems.filter((i) => SECTION_FOR[i.category] === key && !i.tasRef);
     if (!mine.length) continue;
+    // Raw source claims are not prose a buyer reads (owner, 2026-10-11): a
+    // section is kept only when its claims read as Georgian sentences, not as
+    // "Field: value" records.
+    const readable = mine.filter((i) => !isRawRecord(i.claim));
+    if (!readable.length) continue;
     sections.push({
       key,
       title: TITLES[key],
-      body: mine.map((i) => i.claim).join(' '),
+      body: readable.map((i) => i.claim).join(' '),
       metrics: [],
-      cites: mine.map((i) => i.id),
+      cites: readable.map((i) => i.id),
     });
   }
 
   // The strongest few claims, stated as themselves. No interpretation is
   // offered because none can be justified without a model.
-  const keyFindings: KeyFinding[] = packageItems(pkg)
-    .filter((i) => i.tier <= 2 && !i.tasRef)
-    .slice(0, MAX_KEY_FINDINGS)
-    .map((i) => ({
-      finding: i.claim,
-      whyItMatters: 'ეს ჩანაწერი პირდაპირ ამ ქონებას ეხება.',
-      sentiment: 'BALANCED' as Sentiment,
-      cites: [i.id],
-    }));
+  // Owner, 2026-10-11: raw source claims ("Cadastral code: …", "Application
+  // registration: …") listed as findings told the buyer nothing. Without a
+  // model there are no findings; the deterministic blocks (facts card,
+  // gallery, chronology, legal) carry the record instead.
+  const keyFindings: KeyFinding[] = [];
 
   const tasBlocks = deterministicTas(pkg);
   return {
@@ -796,7 +890,9 @@ export function finalizeReport(
   raw: string | null | undefined,
   bundle?: IntelligenceBundle | null
 ): BuyerIntelligenceReport {
-  const parsed = parseReport(raw);
+  const salvaged = salvageReport(pkg, parseReport(raw));
+  const parsed = salvaged.report;
+  if (salvaged.pruned.length) console.warn('buyer intelligence pruned', JSON.stringify(salvaged.pruned.slice(0, 20)));
   const check = validateReport(pkg, parsed);
 
   if (!check.ok || !parsed) {
@@ -985,6 +1081,10 @@ export function deterministicTas(pkg: EvidencePackage): Pick<BuyerIntelligenceRe
       ...events.map((e) => `${e.date} — ${TAS_EVENT_KA[e.kind] ?? ''}: ${e.title}.`),
       ...changed.map((f) => `${tasLabel(f.key, f.label)} ადრე იყო ${f.value}, შემდეგ შეიცვალა — ${f.supersededBy}.`),
     ];
+    // A chapter that would only list dates and decision labels is not a
+    // story (owner, 2026-10-11, job dbf04e48): the step-by-step chronology
+    // already tells those events, with their meaning.
+    if (isDateList(lines.join(' '))) continue;
     chapters.push({
       key: ch.key,
       title: CHAPTER_TITLE[ch.key],

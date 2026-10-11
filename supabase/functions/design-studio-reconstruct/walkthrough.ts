@@ -78,7 +78,7 @@ import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/
 import { buildCanonical } from '../../../src/lib/designStudio/scale.ts';
 import { compileSceneSpec } from '../../../src/lib/designStudio/hybrid/compileSpec.ts';
 import { buildWalkthrough, roomSketches } from '../../../src/lib/designStudio/walkthrough/build.ts';
-import { applyGraphLook, buildDesignGraph, fidelityOf, graphToBuildPlan, READY_MIN_RECALL, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
+import { applyGraphLook, buildDesignGraph, fidelityOf, GRAPH_VERSION, graphToBuildPlan, READY_MIN_RECALL, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
 import { loadDesignEvidence } from './designEvidence.ts';
 import { anchorLock, feedbackOf, homeOrigin, referenceCameraPose, referenceFidelity, visualVerdict, type FidelityReport } from '../../../src/lib/designStudio/walkthrough/fidelity.ts';
 import { buildWalkModel, isFree, nearestFree } from '../../../src/lib/designStudio/navigation.ts';
@@ -1019,7 +1019,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
   let reusedGraph: SpatialDesignGraph | null = null;
   const graphOf = (report: Row): SpatialDesignGraph | null => {
     const g = report?.designGraph?.graph;
-    return g && Array.isArray(g.rooms) && String(g.source?.renderId ?? '') === String(row.render_id ?? '') ? g as SpatialDesignGraph : null;
+    // A graph from older code (its rooms matched by kind alone, a kitchen-living or office left unmatched) is built again.
+    return g && Array.isArray(g.rooms) && g.version === GRAPH_VERSION && String(g.source?.renderId ?? '') === String(row.render_id ?? '') ? g as SpatialDesignGraph : null;
   };
   let reuseRefused: string | null = null;
   const keepRooms = (plan0: ValidatedScenePlan) => { const ids = new Set(space.rooms.map((r) => r.id)); return { ...plan0, rooms: plan0.rooms.filter((r) => ids.has(r.roomId)) }; };

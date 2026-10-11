@@ -23,16 +23,16 @@ const MAX_ID_IMAGE_BYTES = 4 * 1024 * 1024;
 export interface DesignEvidence {
   sceneMap: MapElement[];
   legend: Legend | null;
-  sourceRooms: Array<{ id: string; kind: string }>;
+  sourceRooms: Array<{ id: string; kind: string; label: string | null }>;
   appearance: Record<string, RegionLook> | null;
   /** What was read, for the report (never a key or a URL). */
   report: { sceneMapElements: number; legendEntries: number; sourceRooms: number; pixels: 'MEASURED' | 'UNAVAILABLE' | 'NO_ID_IMAGE'; regionsMeasured: number };
 }
 
 /** The reading's rooms this project's space came from: the reconstruction behind its source, else the space itself. */
-async function sourceRoomsOf(admin: Row, sourceId: string, space: SpaceModel, legendRooms: Set<string>): Promise<Array<{ id: string; kind: string }>> {
+async function sourceRoomsOf(admin: Row, sourceId: string, space: SpaceModel, legendRooms: Set<string>): Promise<Array<{ id: string; kind: string; label: string | null }>> {
   // A render drawn over the plan names the plan's own rooms.
-  if (legendRooms.size && [...legendRooms].every((id) => space.rooms.some((r) => r.id === id))) return space.rooms.map((r) => ({ id: r.id, kind: r.kind }));
+  if (legendRooms.size && [...legendRooms].every((id) => space.rooms.some((r) => r.id === id))) return space.rooms.map((r) => ({ id: r.id, kind: r.kind, label: r.label }));
   // A space inferred for the walkthrough from a photo set: that set's reconstruction is the reading.
   let id: string | null = sourceId;
   for (let hop = 0; hop < 3 && id; hop += 1) {
@@ -41,7 +41,7 @@ async function sourceRoomsOf(admin: Row, sourceId: string, space: SpaceModel, le
     if (typeof recon === 'string') {
       const { data: r } = await admin.from('ds_reconstructions').select('analysis').eq('id', recon).maybeSingle();
       const rooms = Array.isArray(r?.analysis?.rooms) ? r.analysis.rooms : [];
-      const out = rooms.filter((x: Row) => typeof x?.id === 'string' && typeof x?.kind === 'string').map((x: Row) => ({ id: x.id, kind: x.kind }));
+      const out = rooms.filter((x: Row) => typeof x?.id === 'string' && typeof x?.kind === 'string').map((x: Row) => ({ id: x.id, kind: x.kind, label: typeof x.label === 'string' ? x.label : null }));
       if (out.length) return out;
     }
     id = typeof s?.provenance?.fromSourceId === 'string' ? s.provenance.fromSourceId : null;

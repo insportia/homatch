@@ -72,6 +72,20 @@ test('the reading\'s rooms map onto the space by kind, in order (corridor ↔ ha
   assert.deepEqual(m, { s1: 'r-living', s2: 'r-kitchen', s3: 'r-bath', s4: 'r-corr', s5: 'r-bed1', s6: 'r-bed2', s7: 'r-entry', s8: 'r-balcony' });
 });
 
+test('a room the reading names by its use maps onto the space room used that way (kitchen-living, office)', () => {
+  // The photo reading says KITCHEN_LIVING and OFFICE; the space, read with the reader's own kinds, holds a LIVING room
+  // labelled kitchen / living and an UNKNOWN room labelled office. Left unmapped, every piece the render shows in
+  // them was lost and the rooms were furnished with generic pieces instead.
+  const rect = (x0, y0, x1, y1) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+  const floor = (id, kind, label, polygon) => ({ id, kind, label, polygon, outdoor: kind === 'BALCONY' });
+  const sp = { rooms: [floor('r-kitchen_living', 'LIVING', 'Kitchen / Living', rect(0, 0, 6, 4)), floor('r-office', 'UNKNOWN', 'Office', rect(6, 0, 9, 3)),
+    floor('r-bedroom', 'BEDROOM', null, rect(6, 3, 9, 7)), floor('r-bathroom', 'BATHROOM', null, rect(0, 4, 2, 6)), floor('r-balcony', 'BALCONY', null, rect(9, 0, 10.5, 7))]
+    .map((r) => ({ ...r, areaM2: (r.polygon[1].x - r.polygon[0].x) * (r.polygon[2].y - r.polygon[1].y) })) };
+  const m = mapSourceRooms([{ id: 'r1', kind: 'KITCHEN_LIVING', label: 'სამზარეულო-მისაღები' }, { id: 'r2', kind: 'BATHROOM' }, { id: 'r3', kind: 'OFFICE', label: 'სამუშაო ოთახი' },
+    { id: 'r4', kind: 'BEDROOM' }, { id: 'r5', kind: 'BALCONY' }], sp);
+  assert.deepEqual(m, { r1: 'r-kitchen_living', r2: 'r-bathroom', r3: 'r-office', r4: 'r-bedroom', r5: 'r-balcony' });
+});
+
 test('every region of the render is consumed; nothing the render does not show is in the graph', () => {
   const g = graphOf();
   assert.equal(g.regions.filter((r) => !r.consumedBy).length, 0, JSON.stringify(g.regions.filter((r) => !r.consumedBy)));

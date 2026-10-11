@@ -61,11 +61,14 @@ export interface BrowsePage {
   items: CustomerProperty[]; page: number; pageSize: number; pages: number; total: number; totalCurrent: number;
   sections: Record<ResultSection, number>;
   summary: { strong: number; close: number; verification: number; unknownDates: number; excludedOld: number };
-  facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string }>; duplicates: number };
+  facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string }>; duplicates: number; possibleDuplicates: number };
 }
 /** One property published as several listings, confirmed by the identity resolver (never inferred). */
 export const isConfirmedDuplicate = (p: Pick<CustomerProperty, 'identity' | 'listings'>) =>
   p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
+/** May be the same flat as another result: never merged, shown side by side so a person can judge. */
+export const isPossibleDuplicate = (p: Pick<CustomerProperty, 'identity' | 'listings' | 'intelligence'>) =>
+  !isConfirmedDuplicate(p) && !!p.intelligence?.warnings.includes('POSSIBLE_DUPLICATE');
 const sectionOf = (p: CustomerProperty): ResultSection => p.intelligence?.section ?? (p.group === 'UPGRADE' ? 'UPGRADE' : p.group === 'BEST' ? 'BEST' : 'CLOSE');
 export function browseResults(properties: readonly CustomerProperty[], rawFilters: unknown = {}, requestedPage = 1, now = new Date()): BrowsePage {
   const filters = sanitizeResultFilters(rawFilters);
@@ -92,7 +95,7 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
       && (!filters.source || p.listings.some((l) => l.source === filters.source))
       && (!filters.strongOnly || intel?.strong === true)
       && (!filters.hidePossibleDuplicates || !intel?.warnings.includes('POSSIBLE_DUPLICATE'))
-      && (!filters.duplicatesOnly || isConfirmedDuplicate(p))
+      && (!filters.duplicatesOnly || isConfirmedDuplicate(p) || isPossibleDuplicate(p))
       && (!filters.verification || (filters.verification === 'NEEDS') === !!intel?.verificationNeeded);
   });
   const sections = Object.fromEntries(RESULT_SECTIONS.map((s) => [s, matches.filter((p) => sectionOf(p) === s).length])) as Record<ResultSection, number>;
@@ -115,7 +118,7 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
     facets: { districts: distinct(current.map((p) => p.facts.district)), buildings: distinct(current.map((p) => p.facts.buildingStatus)),
       conditions: distinct(current.map((p) => p.facts.renovationStatus)), sellers: distinct(current.map((p) => p.seller.classification)),
       sources: [...sources].sort(([a], [b]) => a.localeCompare(b)).map(([key, name]) => ({ key, name })),
-      duplicates: current.filter(isConfirmedDuplicate).length },
+      duplicates: current.filter(isConfirmedDuplicate).length, possibleDuplicates: current.filter(isPossibleDuplicate).length },
   };
 }
 

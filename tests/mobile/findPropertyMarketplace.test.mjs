@@ -725,6 +725,64 @@ test('duplicates: the banner filters to properties listed more than once; the pr
   }
 });
 
+test('possible duplicates, exact listing times and the full-screen photo viewer (ka 390, en 1280, he RTL)', opts, async (t) => {
+  const hoursAgo = (h) => new Date(Date.now() - h * 3600000).toISOString();
+  const images = F.CONFIRMED_IDENTITY.images;
+  const list = [
+    F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'pa', images, publishedAt: hoursAgo(5), observedAt: hoursAgo(0.2) }),
+    F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'pb', images: [images[0]], price: 158000, publishedAt: hoursAgo(30), observedAt: hoursAgo(0.2) }),
+  ];
+  const output = processSearch({ request: F.FIXTURE_REQUEST, candidates: F.fixtureCandidates(list), now: new Date() });
+  assert.equal(output.stats.possibleDuplicates, 1, 'fixture forms one possible pair');
+  for (const [lang, width] of [['ka', 390], ['en', 1280], ['he', 390]]) {
+    const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE', output });
+    await page.route('https://img.example/**', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000"><rect width="1600" height="1000" fill="#23354b"/></svg>' }));
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    const cards = page.locator('main article[data-property-key]');
+    await cards.first().waitFor({ timeout: 30000 });
+    assert.equal(await cards.count(), 2, `${lang}: never merged`);
+    const card = cards.first();
+    // Possible duplicate: an outlined badge that opens both listings side by side.
+    const badge = card.locator('[data-duplicate-badge="possible"]').first();
+    await badge.waitFor();
+    if (lang === 'ka') assert.equal((await badge.textContent()).trim(), 'შესაძლო დუბლიკატი');
+    await badge.click();
+    const panel = card.locator('[data-possible-duplicates]');
+    assert.equal(await panel.evaluate((d) => d.open), true, `${lang}: the badge opens the comparison`);
+    assert.equal(await panel.locator('[data-possible-row]').count(), 2, `${lang}: this listing and the possible match`);
+    assert.ok(await panel.locator('a[target="_blank"]').count() >= 2);
+    // Exact source time with hours, in Tbilisi time.
+    const times = (await card.locator('[data-card-times]').textContent()) ?? '';
+    if (lang === 'ka') assert.match(times, /დადებულია .*\d{2}:\d{2} \((5|30) საათის წინ|1 დღის წინ\)/);
+    if (lang === 'en') assert.match(times, /Posted .*\d{2}:\d{2} \((5 h ago|1 days ago)\)/);
+    assert.doesNotMatch(times, /\{\{/);
+    // Contact: a call button for a published number, otherwise the way to the source's own "show number".
+    const contact = card.locator('[data-contact]');
+    await contact.waitFor();
+    const call = contact.locator('a[data-contact-call]');
+    if (await call.count()) assert.match(await call.getAttribute('href'), /^tel:\+?\d{9,15}$/);
+    else assert.match(await contact.locator('a[data-contact-source]').getAttribute('href'), /^https:\/\//);
+    // Full-screen viewer: open, zoom, move to the next photo, close with Esc.
+    await card.locator('[data-photo-fullscreen]').click();
+    const viewer = page.locator('[data-photo-viewer]');
+    await viewer.waitFor();
+    const zoom = viewer.locator('[data-photo-zoom]');
+    assert.equal((await zoom.textContent()).trim(), '100%');
+    await viewer.getByRole('button', { name: lang === 'en' ? 'Zoom in' : /./ }).first().waitFor();
+    await viewer.locator('button').nth(1).click();
+    assert.equal((await zoom.textContent()).trim(), '150%', `${lang}: zoom in`);
+    await viewer.locator('[data-photo-viewer-image]').dblclick();
+    assert.equal((await zoom.textContent()).trim(), '100%', `${lang}: double click resets`);
+    const box = await viewer.locator('[data-photo-viewer-image]').boundingBox();
+    assert.ok(box && box.width > width * 0.6, `${lang}: the photo fills the screen (${box?.width}px)`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `${lang}: no horizontal overflow (${overflow}px)`);
+    await page.keyboard.press('Escape');
+    await viewer.waitFor({ state: 'detached' });
+    await page.context().close();
+  }
+});
+
 test('partial and empty results say so, without technical errors', opts, async (t) => {
   {
     const { page } = await boot(t, { lang: 'ka', resumeStatus: 'PARTIAL_COMPLETE' });

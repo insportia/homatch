@@ -10,8 +10,9 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
   const token = env.MYHOME_WORKER_TOKEN ?? '', baseUrl = env.SUPABASE_URL ?? '';
   const enabled = env.MYHOME_MARKETPLACE_ENABLED === 'true';
   const enrichDetails = env.MYHOME_DETAIL_ENRICHMENT_ENABLED === 'true';
-  // Owner decision: the first 3 result pages are enough; fixed pause between pages.
-  const maxPages = Math.max(1, Math.trunc(Number(env.MYHOME_MAX_PAGES)) || 3);
+  // Owner decision (2026-10-11): the first 2 result pages. Page 3 of a short burst
+  // was refused every time it was tried live; pages 1-2 always answered.
+  const maxPages = Math.max(1, Math.trunc(Number(env.MYHOME_MAX_PAGES)) || 2);
   const pageIntervalMs = Math.max(0, Math.trunc(Number(env.MYHOME_PAGE_INTERVAL_MS ?? 5000)) || 0);
   // One MyHome run at a time: further searches wait in the durable queue.
   const MAX_ACTIVE = 1;

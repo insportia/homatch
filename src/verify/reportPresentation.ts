@@ -485,6 +485,12 @@ export const TEAM_ROLE_LABEL_KEY: Record<string, string> = {
   DEVELOPER: 'vrx_team_role_client',
   CLIENT: 'vrx_team_role_client',
   APPLICANT: 'vrx_team_role_applicant',
+  // Roles the document-level extractor names (tasProfessionals.ts, P0 .601).
+  SAFETY_ASSESSMENT: 'verify_p0_role_safety_expert',
+  GEOTECHNICAL_EXPERT_ASSESSMENT: 'verify_p0_role_geotech_expert',
+  CONSTRUCTION_ORGANIZATION_SCHEDULE: 'verify_p0_role_construction_org',
+  ARCHITECTURAL_ORGANIZATION: 'verify_p0_role_design_firm',
+  DRAWING_TITLE_BLOCK: 'verify_p0_role_drawing_title_block',
 };
 
 /* Which discipline a role code belongs to. A code not listed keeps the
@@ -498,13 +504,18 @@ const GROUP_OF_CODE: Record<string, TeamGroup> = {
   LANDSCAPE_ARCHITECT: 'LANDSCAPE',
   CONTRACTOR: 'CONSTRUCTION_ORG', TECHNICAL_SUPERVISOR: 'CONSTRUCTION_ORG',
   FIRE_SAFETY: 'SAFETY', SAFETY_ASSESSMENT: 'SAFETY',
+  GEOTECHNICAL_EXPERT_ASSESSMENT: 'GEOTECHNICAL',
+  CONSTRUCTION_ORGANIZATION_SCHEDULE: 'CONSTRUCTION_ORG',
+  ARCHITECTURAL_ORGANIZATION: 'ARCHITECTURE',
+  // DRAWING_TITLE_BLOCK deliberately has no discipline: a name printed in a
+  // title block without a role is never promoted to architect or engineer.
 };
 /* How strongly a role describes what the person DID — a professional role
    heads the card over a permit application. Lower is stronger. */
 const ROLE_RANK: Record<string, number> = {
   CHIEF_ARCHITECT: 0, ARCHITECT: 1, STRUCTURAL_ENGINEER: 1, GEOTECHNICAL_SPECIALIST: 1, MEP_ENGINEER: 1, ENGINEER: 1,
   LANDSCAPE_ARCHITECT: 1, INTERIOR_DESIGNER: 1, DESIGNER: 1, CO_ARCHITECT: 2, EXPERT_REVIEW: 2, CONTRACTOR: 2,
-  TECHNICAL_SUPERVISOR: 2, FIRE_SAFETY: 2, SAFETY_ASSESSMENT: 3, SURVEYOR: 3, DEVELOPER: 4, CLIENT: 4, APPLICANT: 5,
+  TECHNICAL_SUPERVISOR: 2, FIRE_SAFETY: 2, SAFETY_ASSESSMENT: 2, GEOTECHNICAL_EXPERT_ASSESSMENT: 2, CONSTRUCTION_ORGANIZATION_SCHEDULE: 2, ARCHITECTURAL_ORGANIZATION: 2, DRAWING_TITLE_BLOCK: 4, SURVEYOR: 3, DEVELOPER: 4, CLIENT: 4, APPLICANT: 5,
 };
 const rankOf = (r: TeamRoleV2): number => ROLE_RANK[(r.code ?? '').toUpperCase()] ?? 3;
 /** Roles that only say who commissioned or filed — never a discipline. */

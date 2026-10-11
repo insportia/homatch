@@ -25,7 +25,7 @@ import { acquireTasApi, getCachedVisual, probeTasResolvedCode, tasEvidenceObject
 import { tasApiOptionsFromEnv } from '../workflows/tas/api/TasApiStep.js';
 import { runMyGovApiStep } from '../workflows/mygov/MyGovApiWorkflow.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
-import { compactResult } from './evidence.js';
+import { compactResult, sha256 } from './evidence.js';
 import type { EvidenceRef, QueueTask } from './gateway.js';
 import type { Executor, TaskOutcome } from './QueueRunner.js';
 
@@ -67,6 +67,66 @@ function scanEntities(source: string, docs: any[] | undefined) {
 }
 
 const TRANSIENT_CAPTCHA = new Set(['NO_CHANGE', 'TIMEOUT', 'UNSOLVABLE', 'PROVIDER_ERROR', 'BUDGET_EXHAUSTED']);
+
+/** The four RS.ge states, from the worker's record or (older shapes) its status. */
+function rsStatusOf(r: any): 'VERIFIED' | 'PENDING_VERIFICATION' | 'TEMPORARILY_UNAVAILABLE' | 'VERIFICATION_FAILED' {
+  const s = String(r?.rsVerification?.status ?? '');
+  if (s === 'VERIFIED' || s === 'PENDING_VERIFICATION' || s === 'TEMPORARILY_UNAVAILABLE' || s === 'VERIFICATION_FAILED') return s;
+  if (r?.status === 'SEARCH_CONFIRMED' || r?.status === 'NO_RESULT_CONFIRMED') return 'VERIFIED';
+  if (r?.status === 'WAITING_HUMAN' || r?.status === 'CAPTCHA_REQUIRED') return 'PENDING_VERIFICATION';
+  if (r?.status === 'FAILED' || r?.status === 'TEMPORARILY_UNAVAILABLE') return 'TEMPORARILY_UNAVAILABLE';
+  return 'VERIFICATION_FAILED';
+}
+
+/**
+ * RS.ge (rstax). Every outcome — success or failure — stores RS.ge's own
+ * answer (redacted: TIN masked, ≤ 20 KB, with HTTP status and outcome) as
+ * content-addressed evidence; the result keeps a reference, never the raw
+ * text. Only a VERIFIED check (a parsed record or a confirmed no-record)
+ * completes the task, so a failure is never cached for other jobs. A
+ * transient failure (network / 5xx / timeout) gets ONE more go; a rejected or
+ * unreadable answer, a record and a no-record never repeat.
+ */
+async function settleRs(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>): Promise<TaskOutcome> {
+  const r = out.result ?? {};
+  const rec = r.rsVerification && typeof r.rsVerification === 'object' ? r.rsVerification : null;
+  const refs: EvidenceRef[] = [];
+  let evidence: string | null = null;
+  if (rec) {
+    const doc = JSON.stringify({ source: 'rstax', taskId: task.id, ...rec });
+    const hash = sha256(doc);
+    try {
+      const path = await upload(hash, 'application/json', doc);
+      refs.push({ sha256: hash, path, chars: doc.length, contentType: 'application/json', documentId: `rstax_answer_${hash.slice(0, 12)}`, title: 'RS.ge search answer (redacted)' });
+      evidence = hash;
+      const { rawResponse: _raw, ...rest } = rec;
+      r.rsVerification = { ...rest, rawResponseRef: { sha256: hash, path, chars: doc.length } };
+    } catch (e) {
+      // Storage down: keep the (already redacted, bounded) answer inline rather than lose it.
+      console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'rstax_answer_upload_failed', task: task.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
+    }
+  }
+  const status = rsStatusOf(r);
+  const tag = `rs=${status} outcome=${rec?.serverOutcome ?? 'NONE'} http=${rec?.httpStatus ?? '-'}${evidence ? ` evidence=${evidence}` : ''}`;
+  console.log(JSON.stringify({ scope: 'rstax_captcha', event: 'task_outcome', task: task.id.slice(0, 8), attempt: Number(task.attempts ?? 1), status, serverOutcome: rec?.serverOutcome ?? null, httpStatus: rec?.httpStatus ?? null, rowCount: rec?.rowCount ?? null, columns: rec?.columns ?? [], evidence: evidence ? evidence.slice(0, 12) : null }));
+  const firstAttempt = Number(task.attempts ?? 1) < 2;
+  if (status === 'VERIFIED') {
+    const c = await compactResult(r, upload);
+    return { type: 'complete', result: c.result, evidenceRefs: [...c.evidenceRefs, ...refs], contentHash: c.contentHash, cacheScope: task.scopeKey };
+  }
+  if (status === 'PENDING_VERIFICATION') {
+    const log = Array.isArray(r.captchaResolution) ? r.captchaResolution[r.captchaResolution.length - 1] : null;
+    const why = String(log?.outcome ?? 'NONE');
+    if (TRANSIENT_CAPTCHA.has(why) && firstAttempt) return { type: 'fail', error: `CAPTCHA_${why} ${tag}`, retryable: true, retryAfterSeconds: 20 };
+    return { type: 'fail', error: `HUMAN_VERIFICATION_REQUIRED:${why} ${tag}`, retryable: false };
+  }
+  if (status === 'TEMPORARILY_UNAVAILABLE') {
+    return firstAttempt
+      ? { type: 'fail', error: `RS_TEMPORARILY_UNAVAILABLE ${tag}`, retryable: true, retryAfterSeconds: 30 }
+      : { type: 'fail', error: `RS_TEMPORARILY_UNAVAILABLE ${tag}`, retryable: false };
+  }
+  return { type: 'fail', error: `RS_VERIFICATION_FAILED ${tag}`, retryable: false };
+}
 
 /** Map a finished source result to a task outcome; store complete evidence. */
 async function settle(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, cacheScope: string | null, extraRefs: EvidenceRef[] = []): Promise<TaskOutcome> {
@@ -170,6 +230,7 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
           id: task.id, query: task.input.query ?? cadastral, mode: task.input.mode === 'property' ? 'property' : 'cadastral',
           step: step(task), tasConfig: { active: 'LEGACY', fallback: null }, captchaPolicy: policy,
         });
+        if (task.source === 'rstax') return settleRs(task, out, upload);
         return settle(task, out, upload, task.scopeKey);
       } finally {
         await deps.closeBrowser(browser, 'queue_task_done').catch(() => {});

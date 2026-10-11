@@ -6,6 +6,19 @@ import { RSTAX_URL, RSTAX_ID_INPUT_SELECTORS, RSTAX_CAPTCHA_BLOCK_PHRASE, RSTAX_
 import type { LegacySourceResult, RsTaxpayerPublicData } from '../WorkflowResult.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 import { parseRsTaxpayerFields, hasParsedTaxpayerEvidence } from './RsTaxpayerParsing.js';
+import {
+  RS_GRID_PATH,
+  classifyRsGridResponse,
+  buildRsVerificationRecord,
+  rsRecordLogFields,
+  rsStatusForOutcome,
+  pickRsRow,
+  mapRsRow,
+  type RsGridCapture,
+  type RsGridClassification,
+  type RsVerificationRecord,
+  type RsVerificationStatus,
+} from './RsTaxpayerResponse.js';
 import type { CaptchaContext, CaptchaResolution } from '../../captcha/captchaService.js';
 import { detectChallengeInHtml } from '../../captcha/detect.js';
 
@@ -383,7 +396,15 @@ async function tryAutoVerifyRs(
 
 function buildResult(
   status: string,
-  opts: { selector?: string | null; value?: string | null; resultText?: string | null; error?: string | null; forEntity: { name: string; idCode: string | null } | null; taxpayerData?: RsTaxpayerPublicData | null }
+  opts: {
+    selector?: string | null;
+    value?: string | null;
+    resultText?: string | null;
+    error?: string | null;
+    forEntity: { name: string; idCode: string | null } | null;
+    taxpayerData?: RsTaxpayerPublicData | null;
+    rsVerification?: RsVerificationRecord | null;
+  }
 ): LegacySourceResult {
   return {
     source: 'rstax',
@@ -408,16 +429,109 @@ function buildResult(
     forEntity: opts.forEntity,
     error: opts.error || null,
     taxpayerData: opts.taxpayerData ?? null,
+    rsVerification: opts.rsVerification ?? null,
   };
 }
 
+/** A verification record for an outcome that has no server answer behind it. */
+function rsRecord(status: RsVerificationStatus, serverOutcome: RsVerificationRecord['serverOutcome'], idCode: string | null, reason: string | null, capture: RsGridCapture | null = null, classification: RsGridClassification | null = null): RsVerificationRecord {
+  return buildRsVerificationRecord({ capture, classification, tin: idCode, sourceUrl: RSTAX_URL, status, serverOutcome, reason });
+}
+
 /**
- * RS uses a normal, always-visible reCAPTCHA widget. Merely seeing
- * `.g-recaptcha` therefore does NOT mean the human step is still pending.
- * The live-verified flow is:
- *   TIN -> Search #1 -> human solves CAPTCHA -> Search #2 -> result.
- *
- * We only observe the solved state; we never solve or bypass the CAPTCHA.
+ * Watch RS.ge's own search endpoint (GrdSearchTaxPayers) for ONE search:
+ * every answer is captured with its status and complete body, every failed
+ * request as a network error. Also keeps the path/status list of the other
+ * rs.ge XHRs for the diagnostic log (paths only — never a query string,
+ * token, TIN or body).
+ */
+function watchGrid(page: Page, idCode: string) {
+  const captures: RsGridCapture[] = [];
+  const pending: Promise<unknown>[] = [];
+  const paths: Array<{ path: string; status: number; type: string }> = [];
+  const carriesTin = (req: any): boolean | null => {
+    try {
+      if (String(req?.url?.() || '').includes(idCode)) return true;
+      const body = req?.postData?.();
+      return typeof body === 'string' ? body.includes(idCode) : null;
+    } catch {
+      return null;
+    }
+  };
+  const onResponse = (r: any) => {
+    try {
+      const req = r.request?.();
+      const kind = String(req?.resourceType?.() || '');
+      const u = new URL(String(r.url?.() || ''));
+      if (!/(^|\.)rs\.ge$/i.test(u.hostname)) return;
+      if ((kind === 'xhr' || kind === 'fetch' || kind === 'document') && paths.length < 12) paths.push({ path: u.pathname.slice(0, 80), status: Number(r.status?.()) || 0, type: kind });
+      if (!RS_GRID_PATH.test(u.pathname)) return;
+      let contentType: string | null = null;
+      try {
+        contentType = String(r.headers?.()['content-type'] ?? '') || null;
+      } catch {
+        /* no headers */
+      }
+      const cap: RsGridCapture = { status: Number(r.status?.()) || 0, contentType, body: null, requestHadTin: carriesTin(req) };
+      captures.push(cap);
+      pending.push(
+        Promise.resolve(r.text?.())
+          .then((t: unknown) => {
+            cap.body = typeof t === 'string' ? t : null;
+          })
+          .catch(() => {
+            /* body unreadable: classified as an empty answer */
+          }),
+      );
+    } catch {
+      /* unreadable response */
+    }
+  };
+  const onFailed = (req: any) => {
+    try {
+      const u = new URL(String(req?.url?.() || ''));
+      if (!/(^|\.)rs\.ge$/i.test(u.hostname) || !RS_GRID_PATH.test(u.pathname)) return;
+      const why = String(req?.failure?.()?.errorText || 'request failed').replace(/[^\w:. -]/g, '').slice(0, 80);
+      captures.push({ status: 0, contentType: null, body: null, networkError: why || 'request failed', requestHadTin: carriesTin(req) });
+    } catch {
+      /* unreadable request */
+    }
+  };
+  (page as any).on?.('response', onResponse);
+  (page as any).on?.('requestfailed', onFailed);
+  return {
+    captures,
+    paths,
+    /** Let in-flight body reads finish (bounded). */
+    async settle(ms: number): Promise<void> {
+      await Promise.race([Promise.allSettled(pending), new Promise((r) => setTimeout(r, ms))]);
+    },
+    stop(): void {
+      (page as any).off?.('response', onResponse);
+      (page as any).off?.('requestfailed', onFailed);
+    },
+  };
+}
+
+/** Taxpayer text for the entity scanner and resultContext: "label: value" lines. */
+const rowText = (row: Record<string, string>): string =>
+  Object.entries(row)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n')
+    .slice(0, 4000);
+
+/**
+ * RS uses a normal, always-visible reCAPTCHA v2 widget. Merely seeing
+ * `.g-recaptcha` therefore does NOT mean the verification step is pending.
+ * The live flow:
+ *   TIN -> Search #1 ("ძიება") -> RS asks for the security check ->
+ *   the shared CAPTCHA service (2Captcha) solves the reCAPTCHA, the token is
+ *   delivered where the widget puts a human's token -> "ძიება" is clicked
+ *   automatically (Search #2) -> RS.ge's search endpoint answers ->
+ *   the answer itself is classified and parsed (RsTaxpayerResponse.ts).
+ * When automatic solving is unavailable (disabled, budget, unsupported) the
+ * existing human path takes over. This helper only OBSERVES whether a
+ * token is in place; it never solves anything itself.
  */
 async function rsCaptchaSolved(page: Page): Promise<boolean> {
   try {
@@ -467,8 +581,9 @@ export async function runRsTaxpayerWorker(
 ): Promise<LegacySourceResult> {
   const idCode = forEntity?.idCode ? String(forEntity.idCode).trim() : null;
   if (!forEntity || !idCode) {
-    return buildResult('START', { forEntity, error: 'no identifier (TIN) supplied — RS Taxpayers Registry has no name-search field' });
+    return buildResult('START', { forEntity, error: 'no identifier (TIN) supplied — RS Taxpayers Registry has no name-search field', rsVerification: rsRecord('VERIFICATION_FAILED', 'NOT_SEARCHED', null, 'NO_IDENTIFIER') });
   }
+  const jobTag = opts.captcha ? opts.captcha.jobId.slice(0, 8) : null;
 
   try {
     if (!opts.skipGoto) {
@@ -492,13 +607,15 @@ export async function runRsTaxpayerWorker(
       }
     }
     if (!usedSelector) {
-      return buildResult('SEARCH_CONTROL_NOT_FOUND', { forEntity, value: idCode, error: 'search field not found' });
+      return buildResult('SEARCH_CONTROL_NOT_FOUND', { forEntity, value: idCode, error: 'search field not found', rsVerification: rsRecord('VERIFICATION_FAILED', 'NOT_SEARCHED', idCode, 'SEARCH_CONTROL_NOT_FOUND') });
     }
 
+    // THIS attempt's baseline, taken right before its own click.
     const before = await (page as any).mainFrame().locator('body').innerText({ timeout: 5000 }).catch(() => '');
 
-    // Search #2 after an AUTOMATIC solve: its verdict must come from a fresh
-    // render, never from what Search #1 left on screen.
+    // Search #2 after an AUTOMATIC solve: its verdict comes from RS.ge's own
+    // answer (or a FRESH warning render), never from what Search #1 left on
+    // screen.
     const postSolve = !!(opts._attempt?.solved && opts.captcha);
     let dialogWarn = false;
     const onDialog = (d: any) => {
@@ -509,38 +626,27 @@ export async function runRsTaxpayerWorker(
       }
       Promise.resolve(d.dismiss?.()).catch(() => {});
     };
-    // What Search #2 actually asked the server, and what came back: path and
-    // status only — never a query string, token, TIN or body.
-    const net: Array<{ path: string; status: number; type: string }> = [];
-    const onResponse = (r: any) => {
-      try {
-        const req = r.request?.();
-        const kind = String(req?.resourceType?.() || '');
-        if (kind !== 'xhr' && kind !== 'fetch' && kind !== 'document') return;
-        const u = new URL(String(r.url?.() || ''));
-        if (!/(^|\.)rs\.ge$/i.test(u.hostname) || net.length >= 12) return;
-        net.push({ path: u.pathname.slice(0, 80), status: Number(r.status?.()) || 0, type: kind });
-      } catch {
-        /* unreadable response */
-      }
+    const grid = watchGrid(page, idCode);
+    (page as any).on?.('dialog', onDialog);
+    const stopWatching = () => {
+      grid.stop();
+      (page as any).off?.('dialog', onDialog);
     };
     if (postSolve) {
       progress(opts, `SEARCH2_ATTEMPT_${opts._attempt!.n}`);
       await armFreshRenderWatch(page);
-      (page as any).on?.('dialog', onDialog);
-      (page as any).on?.('response', onResponse);
     } else progress(opts, opts.skipGoto ? 'SEARCH2_HUMAN' : 'SEARCH1');
 
     // Exact source-owned submit control. On the initial pass this is Search
-    // #1 (which exposes the CAPTCHA gate). On same-session resume after the
-    // user solves CAPTCHA, this is Search #2 (which returns the real result).
+    // #1 (which exposes the CAPTCHA gate). After a solve (or a human resume)
+    // this is Search #2 (which returns the real result).
     const clickedAt = Date.now();
     const btn = (page as any).locator('#btnSearch1').first();
     let submitted = false;
     if (postSolve) {
       // After a solve the challenge overlay is still over the page.
       const r = await submitSearchInPage(page);
-      logRs('search2_submitted', { jobId: opts.captcha!.jobId.slice(0, 8), attempt: opts._attempt!.n, ...r });
+      logRs('search2_submitted', { jobId: jobTag, attempt: opts._attempt!.n, ...r });
       submitted = r.clicked;
     } else {
       try {
@@ -557,121 +663,176 @@ export async function runRsTaxpayerWorker(
         await (page as any).locator(usedSelector).first().press('Enter');
         submitted = true;
       } catch {
-        (page as any).off?.('dialog', onDialog);
-        return buildResult('SUBMIT_FAILED', { forEntity, selector: usedSelector, value: idCode, error: 'submit failed' });
+        stopWatching();
+        return buildResult('SUBMIT_FAILED', { forEntity, selector: usedSelector, value: idCode, error: 'submit failed', rsVerification: rsRecord('VERIFICATION_FAILED', 'NOT_SEARCHED', idCode, 'SUBMIT_FAILED') });
       }
     }
 
     await (page as any).waitForTimeout(1000);
 
-    let sig: Awaited<ReturnType<typeof waitForResultSignal>>;
+    // Wait for whichever comes first: RS.ge's answer to the search, a fresh
+    // render of its warning (post-solve only), or a new result on the page.
+    let sig: Awaited<ReturnType<typeof waitForResultSignal>> = { changed: false, after: before, signal: null, queryEchoed: false, waitedMs: 0 };
     let fresh: { mutations: number; warnRendered: number } | null = null;
-    if (postSolve) {
-      // Up to RS_POST_SOLVE_WAIT_MS for EITHER a new result signal OR a fresh
-      // render of the warning — whichever comes first.
-      const deadline = Date.now() + (opts.postSolveWaitMs ?? RS_POST_SOLVE_WAIT_MS);
-      for (;;) {
-        sig = await waitForResultSignal((page as any).mainFrame(), before, idCode, { timeoutMs: 1000 });
-        if (sig.changed) break;
-        fresh = await readFreshRenderWatch(page);
-        if ((fresh?.warnRendered ?? 0) > 0 || dialogWarn) {
-          const prev = sig.after;
-          sig = { ...sig, after: await (page as any).mainFrame().locator('body').innerText({ timeout: 3000 }).catch(() => prev) };
-          break;
-        }
-        if (Date.now() >= deadline) break;
+    const deadline = Date.now() + (postSolve ? (opts.postSolveWaitMs ?? RS_POST_SOLVE_WAIT_MS) : 10_000);
+    for (;;) {
+      if (grid.captures.length) break;
+      sig = await waitForResultSignal((page as any).mainFrame(), before, idCode, { timeoutMs: 1000 });
+      if (grid.captures.length) break;
+      if (sig.changed) {
+        // The page moved; give the search answer a moment to land too.
+        const until = Math.min(deadline, Date.now() + 3000);
+        while (!grid.captures.length && Date.now() < until) await (page as any).waitForTimeout(250);
+        break;
       }
-      fresh = await readFreshRenderWatch(page);
-      (page as any).off?.('dialog', onDialog);
-      (page as any).off?.('response', onResponse);
-      logRs('search2_network', { jobId: opts.captcha!.jobId.slice(0, 8), attempt: opts._attempt!.n, requests: net });
-    } else sig = await waitForResultSignal((page as any).mainFrame(), before, idCode);
+      if (postSolve) {
+        fresh = await readFreshRenderWatch(page);
+        if ((fresh?.warnRendered ?? 0) > 0 || dialogWarn) break;
+      }
+      if (Date.now() >= deadline) break;
+    }
+    await grid.settle(5000);
+    if (postSolve) fresh = await readFreshRenderWatch(page);
+    // The page as it is NOW (the result may have rendered after the answer).
+    if (!sig.changed) sig = await waitForResultSignal((page as any).mainFrame(), before, idCode, { timeoutMs: 500 });
+    stopWatching();
+    if (postSolve) logRs('search2_network', { jobId: jobTag, attempt: opts._attempt!.n, requests: grid.paths });
+
+    const capture = grid.captures.length ? grid.captures[grid.captures.length - 1] : null;
+    const cls = capture ? classifyRsGridResponse(capture) : null;
+    if (capture) {
+      const probe = buildRsVerificationRecord({ capture, classification: cls, tin: idCode, sourceUrl: RSTAX_URL });
+      logRs('search_answer', { jobId: jobTag, attempt: opts._attempt?.n ?? 0, phase: postSolve ? 'SEARCH2' : opts.skipGoto ? 'SEARCH2_HUMAN' : 'SEARCH1', answers: grid.captures.length, waitedMs: Date.now() - clickedAt, ...rsRecordLogFields(probe) });
+    }
+
+    const verified = postSolve ? opts._attempt! : null;
+    const withCaptcha = (r: LegacySourceResult): LegacySourceResult => (verified ? ({ ...r, captchaResolution: [verified.log] } as LegacySourceResult) : r);
+    const accept = async () => {
+      if (!verified) return;
+      await opts.captcha!.service.reportAcceptance({ provider: 'rstax', jobId: opts.captcha!.jobId }, verified.solved!, true);
+      verified.log.outcome = 'ACCEPTED';
+      logRs('post_solve_outcome', { jobId: jobTag, attempt: verified.n, outcome: 'ACCEPTED', basis: cls ? 'SERVER_ANSWER' : 'PAGE', waitedMs: Date.now() - clickedAt });
+    };
+    const noChange = (why: string) => {
+      if (!verified) return;
+      opts.captcha!.service.reportNoChange({ provider: 'rstax', jobId: opts.captcha!.jobId }, verified.solved!);
+      verified.log.outcome = 'NO_CHANGE';
+      logRs('post_solve_outcome', { jobId: jobTag, attempt: verified.n, outcome: 'NO_CHANGE', basis: why, gateShown: false, mutations: fresh?.mutations ?? null, warnRendered: fresh?.warnRendered ?? null, viaDialog: dialogWarn, waitedMs: Date.now() - clickedAt });
+    };
+
+    // ── 1. RS.ge answered the search: a record, or a valid empty answer. ──
+    if (cls && (cls.outcome === 'ACCEPTED' || cls.outcome === 'NO_RESULT')) {
+      await accept();
+      const rec = buildRsVerificationRecord({ capture, classification: cls, tin: idCode, sourceUrl: RSTAX_URL });
+      if (cls.outcome === 'NO_RESULT') {
+        return withCaptcha(buildResult('NO_RESULT_CONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: 'RS.ge returned no taxpayer record for this identifier.', rsVerification: rec }));
+      }
+      const row = pickRsRow(cls.rows, idCode)!;
+      const taxpayerData = mapRsRow(row, idCode);
+      const text = rowText(row);
+      if (entities) entities.scanText(text, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
+      logRs('taxpayer_parsed', { jobId: jobTag, rows: cls.rows.length, mapped: Object.entries(taxpayerData).filter(([k, v]) => k !== 'otherPublicFields' && v).map(([k]) => k), otherFields: Object.keys(taxpayerData.otherPublicFields) });
+      return withCaptcha(buildResult('SEARCH_CONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: text, taxpayerData, rsVerification: rec }));
+    }
+
+    // ── 2. A transport failure: RS.ge did not answer (network / 5xx). ──
+    if (cls && (cls.outcome === 'NETWORK_ERROR' || (cls.outcome === 'HTTP_ERROR' && rsStatusForOutcome('HTTP_ERROR', capture!.status) === 'TEMPORARILY_UNAVAILABLE'))) {
+      noChange(cls.outcome);
+      const rec = buildRsVerificationRecord({ capture, classification: cls, tin: idCode, sourceUrl: RSTAX_URL });
+      return withCaptcha(buildResult('TEMPORARILY_UNAVAILABLE', { forEntity, selector: usedSelector, value: idCode, error: `RS.ge search endpoint unavailable (${cls.reason ?? cls.outcome})`, rsVerification: rec }));
+    }
+
+    // A DOM-only reading, for pages whose answer was not captured (or not structured).
+    const domRead = (): { status: 'NO_RESULT_CONFIRMED' | 'SEARCH_CONFIRMED'; data: RsTaxpayerPublicData | null } | null => {
+      if (!sig.changed) return null;
+      if (hasNoResultPhrase(sig.after)) return { status: 'NO_RESULT_CONFIRMED', data: null };
+      const d = parseRsTaxpayerFields(sig.after, idCode);
+      return hasParsedTaxpayerEvidence(d) ? { status: 'SEARCH_CONFIRMED', data: d } : null;
+    };
+
+    if (postSolve) {
+      const att = opts._attempt!;
+      const cap = opts.captcha!;
+      // ── 3. Refused: by the server's own answer, or a FRESH warning render. ──
+      const freshWarn = (fresh?.warnRendered ?? 0) > 0 || dialogWarn;
+      if (cls?.outcome === 'REJECTED' || (!cls && freshWarn)) {
+        logRs('post_solve_outcome', { jobId: jobTag, attempt: att.n, outcome: 'REJECTED', basis: cls ? 'SERVER_ANSWER' : 'FRESH_WARNING', gateShown: true, mutations: fresh?.mutations ?? null, warnRendered: fresh?.warnRendered ?? null, viaDialog: dialogWarn, waitedMs: Date.now() - clickedAt });
+        // A fresh token through the same integration would be refused the
+        // same way, so no second paid solve.
+        await cap.service.reportAcceptance({ provider: 'rstax', jobId: cap.jobId }, att.solved!, false);
+        att.log.outcome = 'REJECTED';
+        const rec = cls
+          ? buildRsVerificationRecord({ capture, classification: cls, tin: idCode, sourceUrl: RSTAX_URL })
+          : rsRecord('VERIFICATION_FAILED', 'REJECTED', idCode, freshWarn && dialogWarn ? 'WARNING_DIALOG' : 'WARNING_RENDERED');
+        return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, rsVerification: rec }), status: 'WAITING_HUMAN', captchaResolution: [att.log] } as LegacySourceResult;
+      }
+      const dom = domRead();
+      if (dom) {
+        await accept();
+        if (dom.status === 'SEARCH_CONFIRMED' && entities) entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
+        const rec = rsRecord('VERIFIED', dom.status === 'SEARCH_CONFIRMED' ? 'ACCEPTED' : 'NO_RESULT', idCode, cls ? `PAGE_READ_${cls.outcome}` : 'PAGE_READ', capture, cls);
+        return withCaptcha(buildResult(dom.status, { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, taxpayerData: dom.data, rsVerification: rec }));
+      }
+      // ── 4. RS.ge answered 200 with something we cannot read: never solve
+      // again (the token was evidently taken), store the answer for diagnosis.
+      if (cls) {
+        noChange(`SERVER_${cls.outcome}`);
+        const rec = buildRsVerificationRecord({ capture, classification: cls, tin: idCode, sourceUrl: RSTAX_URL });
+        return withCaptcha(buildResult('VERIFICATION_FAILED', { forEntity, selector: usedSelector, value: idCode, error: `RS.ge answered but the answer could not be read (${cls.reason ?? cls.outcome})`, rsVerification: rec }));
+      }
+      // ── 5. No answer, no fresh render at all: a stale screen says nothing
+      // about the token. One more attempt within the cap is allowed.
+      noChange('NO_ANSWER');
+      const auto = await tryAutoVerifyRs(page, forEntity, entities, cap, { ...att, solved: null }, opts);
+      if (auto.result) return auto.result;
+      return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, rsVerification: rsRecord('TEMPORARILY_UNAVAILABLE', 'NO_RESPONSE', idCode, `CAPTCHA_${auto.log.outcome}`) }), status: 'WAITING_HUMAN', captchaResolution: [auto.log] } as LegacySourceResult;
+    }
+
+    // ── Search #1, or a human-resumed search. ──
+    const dom = domRead();
+    if (dom && cls?.outcome !== 'REJECTED') {
+      if (dom.status === 'SEARCH_CONFIRMED' && entities) entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
+      const rec = rsRecord('VERIFIED', dom.status === 'SEARCH_CONFIRMED' ? 'ACCEPTED' : 'NO_RESULT', idCode, cls ? `PAGE_READ_${cls.outcome}` : 'PAGE_READ', capture, cls);
+      return buildResult(dom.status, { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, taxpayerData: dom.data, rsVerification: rec });
+    }
     const solved = await rsCaptchaSolved(page);
 
     // Source-specific CAPTCHA gate. The generic challenge() detector cannot
     // be used here because RS keeps the reCAPTCHA widget visible even AFTER
-    // it has been solved; doing so caused an endless WAITING_HUMAN loop on
-    // resume. A visible widget is pending only when it is not proven solved,
-    // or when RS explicitly says the security button must still be checked.
-    if (RSTAX_CAPTCHA_BLOCK_PHRASE.test(sig.after) || (!solved && /g-recaptcha|recaptcha/i.test(await (page as any).locator('body').innerHTML().catch(() => '')))) {
-      if (postSolve) {
-        const att = opts._attempt!;
-        const cap = opts.captcha!;
-        const reShown = (fresh?.warnRendered ?? 0) > 0 || dialogWarn;
-        logRs('post_solve_outcome', { jobId: cap.jobId.slice(0, 8), attempt: att.n, outcome: reShown ? 'REJECTED' : 'NO_CHANGE', gateShown: true, mutations: fresh?.mutations ?? null, warnRendered: fresh?.warnRendered ?? null, viaDialog: dialogWarn, waitedMs: Date.now() - clickedAt });
-        if (reShown) {
-          // REJECTED: RS rendered its warning again in answer to Search #2.
-          // A fresh token through the same integration would be refused the
-          // same way, so no second paid solve — the human path takes over.
-          await cap.service.reportAcceptance({ provider: 'rstax', jobId: cap.jobId }, att.solved!, false);
-          att.log.outcome = 'REJECTED';
-          return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after }), status: 'WAITING_HUMAN', captchaResolution: [att.log] } as LegacySourceResult;
-        }
-        // NO_CHANGE: Search #2 produced no fresh render at all — a stale
-        // screen says nothing about the token. Never a rejection (no bad
-        // report); one more attempt within the cap is allowed.
-        cap.service.reportNoChange({ provider: 'rstax', jobId: cap.jobId }, att.solved!);
-        att.log.outcome = 'NO_CHANGE';
-      }
+    // it has been solved. On Search #1 the warning on screen is the one this
+    // very search rendered (there was no earlier search), so reading it is
+    // sound here — unlike after a solve, where only a FRESH render counts.
+    const gate =
+      cls?.outcome === 'REJECTED' ||
+      (!cls || cls.outcome === 'UNPARSEABLE'
+        ? RSTAX_CAPTCHA_BLOCK_PHRASE.test(sig.after) || (!solved && /g-recaptcha|recaptcha/i.test(await (page as any).locator('body').innerHTML().catch(() => '')))
+        : false);
+    if (gate) {
       if (opts.captcha) {
-        const auto = await tryAutoVerifyRs(page, forEntity, entities, opts.captcha, opts._attempt ? { ...opts._attempt, solved: null } : undefined, opts);
+        const auto = await tryAutoVerifyRs(page, forEntity, entities, opts.captcha, undefined, opts);
         if (auto.result) return auto.result;
-        return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after }), status: 'WAITING_HUMAN', captchaResolution: [auto.log] } as LegacySourceResult;
+        return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, rsVerification: rsRecord('PENDING_VERIFICATION', 'NOT_SEARCHED', idCode, `CAPTCHA_${auto.log.outcome}`) }), status: 'WAITING_HUMAN', captchaResolution: [auto.log] } as LegacySourceResult;
       }
-      return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after }), status: 'WAITING_HUMAN' };
+      return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, rsVerification: rsRecord('PENDING_VERIFICATION', 'NOT_SEARCHED', idCode, 'HUMAN_VERIFICATION') }), status: 'WAITING_HUMAN' };
     }
-    // Past the gate after an automatic verification: RS accepted the token.
-    const verified = opts._attempt?.solved && opts.captcha ? opts._attempt : null;
 
+    if (cls) {
+      // RS.ge answered (no gate shown) with something we cannot read.
+      const rec = buildRsVerificationRecord({ capture, classification: cls, tin: idCode, sourceUrl: RSTAX_URL });
+      return buildResult('VERIFICATION_FAILED', { forEntity, selector: usedSelector, value: idCode, error: `RS.ge answered but the answer could not be read (${cls.reason ?? cls.outcome})`, rsVerification: rec });
+    }
     if (!sig.changed) {
-      if (verified) {
-        // No gate and no result after a solve: also a stale screen, not a rejection.
-        opts.captcha!.service.reportNoChange({ provider: 'rstax', jobId: opts.captcha!.jobId }, verified.solved!);
-        verified.log.outcome = 'NO_CHANGE';
-        logRs('post_solve_outcome', { jobId: opts.captcha!.jobId.slice(0, 8), attempt: verified.n, outcome: 'NO_CHANGE', gateShown: false, mutations: fresh?.mutations ?? null, waitedMs: Date.now() - clickedAt });
-        return { ...buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'post-solve search produced no fresh result (NO_CHANGE)' }), captchaResolution: [verified.log] } as LegacySourceResult;
-      }
-      return buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'search submitted but no new result signal appeared' });
+      return buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'search submitted but no new result signal appeared', rsVerification: rsRecord('TEMPORARILY_UNAVAILABLE', 'NO_RESPONSE', idCode, 'NO_ANSWER') });
     }
-
-    const noResult = hasNoResultPhrase(sig.after);
-    const candidateData = noResult ? null : parseRsTaxpayerFields(sig.after, idCode);
-    let status: string;
-    let taxpayerData: RsTaxpayerPublicData | null;
-
-    if (noResult) {
-      status = 'NO_RESULT_CONFIRMED';
-      taxpayerData = null;
-    } else if (hasParsedTaxpayerEvidence(candidateData)) {
-      status = 'SEARCH_CONFIRMED';
-      taxpayerData = candidateData;
-    } else {
-      status = 'SUBMITTED_UNPARSED';
-      taxpayerData = null;
-    }
-
-    if (entities && status === 'SEARCH_CONFIRMED' && sig.after) {
-      entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
-    }
-
-    if (verified) {
-      // Acceptance = RS answered the search (a record, or a confirmed no-result).
-      if (status === 'SEARCH_CONFIRMED' || status === 'NO_RESULT_CONFIRMED') {
-        await opts.captcha!.service.reportAcceptance({ provider: 'rstax', jobId: opts.captcha!.jobId }, verified.solved!, true);
-        verified.log.outcome = 'ACCEPTED';
-        logRs('post_solve_outcome', { jobId: opts.captcha!.jobId.slice(0, 8), attempt: verified.n, outcome: 'ACCEPTED', waitedMs: Date.now() - clickedAt });
-      }
-    }
-    const finalResult = buildResult(status, {
+    return buildResult('SUBMITTED_UNPARSED', {
       forEntity,
       selector: usedSelector,
       value: idCode,
       resultText: sig.after,
-      taxpayerData,
-      error: status === 'SUBMITTED_UNPARSED' ? 'search submitted and page changed, but no parseable taxpayer fields were found — not treated as confirmed evidence' : null,
+      error: 'search submitted and page changed, but no parseable taxpayer fields were found — not treated as confirmed evidence',
+      rsVerification: rsRecord('VERIFICATION_FAILED', 'NO_RESPONSE', idCode, 'PAGE_UNPARSED'),
     });
-    return verified ? ({ ...finalResult, captchaResolution: [verified.log] } as LegacySourceResult) : finalResult;
   } catch (e) {
-    return buildResult('FAILED', { forEntity, error: String(e) });
+    return buildResult('FAILED', { forEntity, error: String(e), rsVerification: rsRecord('TEMPORARILY_UNAVAILABLE', 'NO_RESPONSE', idCode, 'EXCEPTION') });
   }
 }

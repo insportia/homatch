@@ -36,6 +36,8 @@ import { cleanParticipantName } from './tasIntelligence.ts';
 import { resolveDeveloperIdentity, summarizeAds, parseDeveloperAdsPolicy } from '../developerAds.ts';
 import type { DeveloperAdsView } from '../developerAds.ts';
 import type { CompanyIntelligence } from './companyIntelligence.ts';
+import { rsVerificationStatusOf, rsRecordFound, rsPublicFields, rsStatusTone, RS_TAXPAYER_REGISTRY_URL } from '../rsTaxpayer.ts';
+import type { RsVerificationStatus, RsRecordTone, RsExtraField } from '../rsTaxpayer.ts';
 
 const obj = (v: unknown): Record<string, any> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : {};
@@ -129,10 +131,28 @@ export interface CompanyFinanceView {
   taxStatus: {
     state: TaxStatusState;
     checkedOn: string | null;
+    /**
+     * How the RS.ge check ended (rsTaxpayer.ts): VERIFIED when RS.ge answered
+     * (a record or a confirmed no-record), else PENDING_VERIFICATION /
+     * TEMPORARILY_UNAVAILABLE / VERIFICATION_FAILED. Null: never ran.
+     */
+    verification?: RsVerificationStatus | null;
+    /** CHECKED only: true = RS.ge returned a record, false = it returned none for this identifier. */
+    recordFound?: boolean | null;
+    /** CHECKED with a record: caution for a liquidated/suspended-type status. */
+    tone?: RsRecordTone;
     /** What RS.ge's own record says, verbatim and short — only when CHECKED. */
     status?: string | null;
     vatStatus?: string | null;
     registeredOn?: string | null;
+    taxpayerName?: string | null;
+    legalForm?: string | null;
+    address?: string | null;
+    identificationCode?: string | null;
+    /** Every other column RS.ge returned, labelled as RS.ge named it. */
+    extra?: RsExtraField[];
+    /** Where the reader can repeat the check. */
+    sourceUrl?: string;
   };
   /** Charges registered against the COMPANY (not the apartment). */
   pledges: Array<{ creditor: string | null; reference: string | null; registeredOn: string | null }>;
@@ -174,21 +194,42 @@ export function companyFinanceFrom(resultJson: unknown, company: CompanyIntellig
   const tax = resultFor(r, 'rstax', companyId);
   // The RS worker returns its record in taxpayerData, never as documents —
   // requiring documents meant a successful RS.ge search could never show.
-  const taxData = obj(tax?.taxpayerData);
-  const hasTaxData = ['taxpayerName', 'status', 'vatStatus', 'registrationDate', 'legalForm'].some((k) => typeof taxData[k] === 'string' && taxData[k].trim());
-  const taxRead = !!tax && !tax.unavailable && ((Array.isArray(tax.documents) && tax.documents.length > 0) || hasTaxData) &&
-    ['VERIFIED', 'SEARCH_CONFIRMED', 'COMPLETED', 'SUCCESS'].includes(String(tax.status));
-  const taxStatus = {
-    state: taxRead ? ('CHECKED' as const) : ('NOT_CHECKED' as const),
-    checkedOn: taxRead ? isoOfDmy(tax.retrievedAt) : null,
-    ...(taxRead
-      ? {
-          status: short(taxData.status),
-          vatStatus: short(taxData.vatStatus),
-          registeredOn: isoOfDmy(taxData.registrationDate) ?? (typeof taxData.registrationDate === 'string' ? taxData.registrationDate.slice(0, 20) : null),
-        }
-      : {}),
-  };
+  // Only what RS.ge literally returned is shown; a check that did not end
+  // VERIFIED is NOT_CHECKED with its state (neutral copy, never adverse,
+  // never positive).
+  const verification = tax ? rsVerificationStatusOf(tax) : null;
+  const fields = rsPublicFields(tax?.taxpayerData);
+  const hasTaxData = !!(fields.taxpayerName || fields.status || fields.vatStatus || fields.registrationDate || fields.legalForm || fields.address || fields.extra.length);
+  const found = tax ? rsRecordFound(tax) : null;
+  const taxRead = verification === 'VERIFIED' && !tax.unavailable && (found === false || (found === true && (hasTaxData || (Array.isArray(tax.documents) && tax.documents.length > 0))));
+  const checkedAt = typeof tax?.rsVerification?.checkedAt === 'string' ? tax.rsVerification.checkedAt : tax?.retrievedAt;
+  const taxStatus: CompanyFinanceView['taxStatus'] = taxRead
+    ? {
+        state: 'CHECKED',
+        checkedOn: isoOfDmy(checkedAt),
+        verification: 'VERIFIED',
+        recordFound: found,
+        sourceUrl: RS_TAXPAYER_REGISTRY_URL,
+        ...(found
+          ? {
+              tone: rsStatusTone(fields.status),
+              status: short(fields.status),
+              vatStatus: short(fields.vatStatus),
+              registeredOn: isoOfDmy(fields.registrationDate) ?? (fields.registrationDate ? fields.registrationDate.slice(0, 20) : null),
+              taxpayerName: fields.taxpayerName,
+              legalForm: fields.legalForm,
+              address: fields.address,
+              identificationCode: fields.identificationCode,
+              extra: fields.extra,
+            }
+          : {}),
+      }
+    : {
+        state: 'NOT_CHECKED',
+        checkedOn: null,
+        // A VERIFIED record with nothing readable in it is not a check the report can show.
+        verification: verification === 'VERIFIED' ? 'VERIFICATION_FAILED' : verification,
+      };
 
   const pledges = (company?.encumbrances ?? []).map((e) => ({
     creditor: e.creditor ? e.creditor.replace(/\s*\(საქართველო\)/, '').trim() : null,

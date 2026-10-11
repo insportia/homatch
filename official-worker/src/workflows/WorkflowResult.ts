@@ -83,6 +83,12 @@ export interface LegacySourceResult {
    * the raw resultContext text. Optional/nullable: a field this run could
    * not confidently parse is left null/empty, never guessed. */
   taxpayerData?: RsTaxpayerPublicData | null;
+  /** RS.ge only (2026-10-11): how the check ended, from RS.ge's own answer
+   * to the search — status, server outcome, HTTP status, field names and the
+   * redacted raw answer (TIN masked, ≤ 20 KB). Present on EVERY outcome so a
+   * failure is diagnosable; the queue executor moves the raw answer into
+   * evidence storage before the result leaves the worker. */
+  rsVerification?: import('./financial/RsTaxpayerResponse.js').RsVerificationRecord | null;
   /** NEW (2026-09-06 "final alignment pass", MyGov Debtor Registry) —
    * explicit, code-computed interpretation of the debtor-registry result,
    * never left for the customer report generator to infer from the raw

@@ -2556,7 +2556,7 @@ async function pollMarketRefreshes(sb: any): Promise<void> {
   try {
     const { data: jobs, error } = await sb
       .from('research_jobs')
-      .select('id,query,mode,type,result_json,synthesis_json,synthesis_state')
+      .select('id,query,mode,result_json,synthesis_json,synthesis_state')
       .eq('status', 'COMPLETE')
       .eq('result_json->_marketRefresh->>state', 'RUNNING')
       .limit(3);
@@ -2575,6 +2575,12 @@ async function pollMarketRefreshes(sb: any): Promise<void> {
       if (!next) continue;
       const { error: we } = await sb.from('research_jobs').update({ result_json: next }).eq('id', j.id).eq('result_json->_marketRefresh->>state', 'RUNNING');
       if (we) { console.error('research-agent drive: market-refresh write failed', we); continue; }
+      // A refresh the worker lost (restart/deploy) or that timed out starts
+      // again at once while attempts remain — not only on the next rebuild.
+      if (next._marketRefresh?.state !== 'FOLDED' && needsMarketRefresh(next)) {
+        const again = await startJobMarketRefresh(sb, j.id);
+        console.log(JSON.stringify({ scope: 'verify_market_refresh', jobId: j.id, state: 'RESTARTED', status: again.status }));
+      }
       const folded = next._marketRefresh?.state === 'FOLDED';
       console.log(JSON.stringify({ scope: 'verify_market_refresh', jobId: j.id, state: next._marketRefresh?.state, before: next._marketRefresh?.before ?? null, after: next._marketRefresh?.after ?? null }));
       // Only new comparables are worth a rebuild; the report asks for it once.

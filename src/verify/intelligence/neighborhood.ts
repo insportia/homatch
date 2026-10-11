@@ -192,7 +192,25 @@ export function centerFromBrowserOfficial(browserOfficial: unknown, parcel: stri
 export function geocodeQuery(address: unknown): string | null {
   const a = String(address ?? '').replace(/\s+/g, ' ').trim();
   if (!a || !/\d/.test(a)) return null; // a street without a number is too coarse to measure from
-  return a.replace(/(^|[\s,])ქ\.(?=\s|,|$)/g, '$1ქუჩა').replace(/\bSt\.?(?=\s|,|$)/g, 'Street');
+  return a.replace(/(^|[\s,])ქ\.(?=\s|,|$)/g, '$1ქუჩა').replace(/(^|[\s,])გამზ\.(?=\s|,|$)/g, '$1გამზირი').replace(/\bSt\.?(?=\s|,|$)/g, 'Street');
+}
+
+/*
+ * The geocoder's tries, best first (job dbf04e48: "18 Kristian Stiven Street,
+ * Digomi, Tbilisi" had no house or street hit as written). The full address,
+ * then without the district, then the street and city alone. Each is still
+ * accepted only at house or street precision (parseNominatim), so a try can
+ * never fall back to a district centroid. At most three requests.
+ */
+export function geocodeQueries(address: unknown): string[] {
+  const full = geocodeQuery(address);
+  if (!full) return [];
+  const parts = full.split(',').map((x) => x.trim()).filter(Boolean);
+  const out = [full];
+  if (parts.length >= 3) out.push([parts[0], parts[parts.length - 1]].join(', '));
+  const street = parts[0].replace(/^\d+[a-zა-ჰ]?\s+/i, '').replace(/\s+\d+[a-zა-ჰ]?$/i, '').trim();
+  if (street && street !== parts[0]) out.push([street, parts.length > 1 ? parts[parts.length - 1] : 'Tbilisi'].join(', '));
+  return [...new Set(out)].slice(0, 3);
 }
 
 /** Nominatim's first hit, accepted only at house or street precision. */

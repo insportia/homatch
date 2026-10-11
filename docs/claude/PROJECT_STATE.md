@@ -1445,7 +1445,7 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   - The gallery is grouped into a dated chronology (visualCatalog.visualChronology).
 - **Market refresh:**
   - verify-synthesis starts research-agent `refresh_market`.
-  - The worker runs MyHome through Find Property's MyHomeRuntime (`acquireForVerify`, 10 pages per district) and SS.ge for კრწანისი, then ორთაჭალა.
+  - The worker runs MyHome through Find Property's MyHomeRuntime (`acquireForVerify`, with its own 2-page cap: page 3 draws a Cloudflare challenge that cools MyHome down for everyone; job dbf04e48) and SS.ge for კრწანისი, then ორთაჭალა.
   - The cron driver (pollMarketRefreshes) folds the listings in and sets `synthesis_json._rebuildRequested`, which triggers exactly one more rebuild.
 - **Documents:**
   - research-agent `document_file` fetches through the worker's `/verify/tas-file` and caches into the private bucket `verify-documents` (migration 20261030091500), then returns a signed URL.

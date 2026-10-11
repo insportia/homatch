@@ -231,8 +231,10 @@ app.post('/tas/test', auth, async (req: any, res: any) => {
 // VERIFY_MARKET_ENABLED=false switches the route off without a deploy of
 // research-agent; research-agent's own admin setting gates the caller side.
 const verifyMarket = new VerifyMarketRuntime({
-  // MyHome goes through Find Property's own runtime (reader, engine, pacing, one run at a time).
-  acquireMyHome: (request, options) => myhome.acquireForVerify(request, { ...(options as any), maxPages: Number(process.env.VERIFY_MARKET_MYHOME_MAX_PAGES) || 10 }),
+  // MyHome goes through Find Property's own runtime (reader, engine, pacing,
+  // one run at a time) AND its page cap: page 3 draws MyHome's Cloudflare
+  // challenge (job dbf04e48, 2026-10-11), which cools MyHome down for everyone.
+  acquireMyHome: (request, options) => myhome.acquireForVerify(request, options as any),
   acquireSsge: (request, options) => acquireSsge(request, options as any),
   maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 300,
   sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 300000,

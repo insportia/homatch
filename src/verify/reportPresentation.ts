@@ -477,10 +477,11 @@ export const isAuthority = (name: unknown): boolean => AUTHORITY.test(str(name))
 /*
  * Drawing-legend fragments the document reader took for people (production
  * .601, AR11161121: "განგაშისა და", "საქვეითე გადასასვლელი", "საავტომობილო
- * გადაადგილება", "საშუალებები და პირობითი აღნიშვნები"). A person's name never
+ * გადაადგილება", "საშუალებები და პირობითი აღნიშვნები"; job dbf04e48: "ასახული
+ * კოეფიციენტში", "არსებული საზღრები"). A person's name never
  * contains a conjunction and never one of these legend nouns.
  */
-const LEGEND_NOUN = /(გადაადგილ|გადასასვლელ|საშუალებ|აღნიშვნ|განგაშ|სახანძრ|ლენტ|ტერიტორი|მოძრაობ|საქვეითე|საავტომობილო|პირობით|ღობე|ნიშნულ|ტროტუარ|შესასვლელ|სადარბაზო|ავტოსადგომ|ხიდ(?:ი|ის)|ნახაზ|გეგმ|ჭრილ)/u;
+const LEGEND_NOUN = /(კოეფიციენტ|საზღვ|საზღრ|ასახულ|არსებულ|მოცემულ|მითითებულ|გათვალისწინებულ|დაგეგმილ|გადაადგილ|გადასასვლელ|საშუალებ|აღნიშვნ|განგაშ|სახანძრ|ლენტ|ტერიტორი|მოძრაობ|საქვეითე|საავტომობილო|პირობით|ღობე|ნიშნულ|ტროტუარ|შესასვლელ|სადარბაზო|ავტოსადგომ|ხიდ(?:ი|ის)|ნახაზ|გეგმ|ჭრილ)/u;
 const CONJUNCTION = /(?:^|\s)(?:და|ან|თუ|ხოლო|რომ|ასევე)(?:\s|$)/u;
 export function legendFragment(name: unknown, organization = false): boolean {
   const s = str(name);

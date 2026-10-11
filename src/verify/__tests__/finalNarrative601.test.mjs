@@ -145,3 +145,13 @@ test('copy: six locales, placeholders intact, no em dashes, house terminology', 
   }
   for (const k of used) assert.ok(VERIFY_FINAL_NARRATIVE_STRINGS[k], `${k} has no copy`);
 });
+
+test('legend fragments from job dbf04e48 never render as people; real names do', async () => {
+  const { legendFragment, plausibleName } = await import('../reportPresentation.ts');
+  for (const junk of ['ასახული კოეფიციენტში', 'არსებული საზღრები']) assert.equal(legendFragment(junk), true, junk);
+  for (const name of ['ზურაბი კულალაღაშვილი', 'გურამ ფშავლიშვილი', 'მიხეილ ჯინჭარაძე', 'დარეჯან შათაშვილი']) {
+    assert.equal(legendFragment(name), false, name);
+    assert.equal(plausibleName(name), true, name);
+  }
+  assert.equal(legendFragment('შპს ჯეო სითი დიღომი', true), false);
+});

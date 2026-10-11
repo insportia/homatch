@@ -83,5 +83,8 @@ test('Verify MyHome runs through Find Property\'s runtime (reader, engine, pacin
   assert.match(index, /acquireMyHome:\s*\(request, options\) => myhome\.acquireForVerify\(/);
   assert.doesNotMatch(index, /import \{ acquireMyHome \}/);
   const fn = runtime.slice(runtime.indexOf('async function acquireForVerify'), runtime.indexOf('void loop()'));
-  for (const piece of ['pageFetcher: reader?.fetcher', 'engine: myHomeEngine', 'pageIntervalMs', 'while (active >= MAX_ACTIVE)', 'active--']) assert.ok(fn.includes(piece), piece);
+  for (const piece of ['pageFetcher: reader?.fetcher', 'engine: myHomeEngine', 'maxPages, pageIntervalMs', 'while (active >= MAX_ACTIVE)', 'active--']) assert.ok(fn.includes(piece), piece);
+  // The page cap is Find Property's own: page 3 draws MyHome's Cloudflare challenge (job dbf04e48).
+  assert.doesNotMatch(fn, /options\.maxPages/);
+  assert.doesNotMatch(index, /VERIFY_MARKET_MYHOME_MAX_PAGES|maxPages:/);
 });

@@ -89,11 +89,21 @@ export interface RegisterProceeding {
   completedOn: string | null;
   /** True when its documents were opened and read. */
   read: boolean;
-  /** Decision outcome, when the decision was read. */
-  outcome: 'SATISFIED' | 'REFUSED' | 'SUSPENDED' | null;
+  /** The FINAL decision's outcome (the latest one read), when a decision was read. */
+  outcome: DecisionOutcome | null;
+  /** The final decision's number and date — never an earlier, intermediate one. */
   decisionNumber: string | null;
   decisionDate: string | null;
+  /**
+   * Every decision read for this proceeding, oldest first. A proceeding can
+   * be SUSPENDED (e.g. fee unpaid) and later SATISFIED; the two are distinct
+   * legal steps and are never collapsed (job 8ba97da9: termination
+   * 882026724195 was suspended on 18.08.2026 and registered on 24.08.2026).
+   */
+  decisions?: Array<{ number: string | null; date: string | null; outcome: DecisionOutcome | null }>;
 }
+
+export type DecisionOutcome = 'SATISFIED' | 'REFUSED' | 'SUSPENDED' | 'DISCONTINUED';
 
 export interface RemovedMortgage extends RegisterMortgage {
   /** ISO datetime of the last extract that still listed it. */
@@ -102,8 +112,22 @@ export interface RemovedMortgage extends RegisterMortgage {
   removedBy: { applicationNumber: string; decisionNumber: string | null; decisionDate: string | null } | null;
 }
 
+/** One extract HOMATCH read: who it named, what it listed, and when it was prepared. */
+export interface ExtractSummary {
+  issuedAt: string | null;
+  applicationNumber: string | null;
+  owners: RegisterOwner[];
+  ownershipRegisteredOn: string | null;
+  ownershipBasis: RegisterExtract['ownershipBasis'];
+  mortgageAgreements: Array<string | null>;
+}
+
 export interface PropertyRegister {
   cadastralCode: string | null;
+  /** Every extract read, oldest first — ownership history, never only the latest. */
+  history?: ExtractSummary[];
+  /** When the registry's proceedings list was observed (the search run), ISO. */
+  observedAt?: string | null;
   /** The newest extract HOMATCH holds — what the register said, and when. */
   latest: RegisterExtract | null;
   /** Mortgages listed in the latest extract. */
@@ -201,7 +225,7 @@ function parseOwners(text: string): RegisterOwner[] {
     .map((line): RegisterOwner => {
       if (COMPANY_FORM.test(line) && !PERSON_ID.test(line)) {
         const id = line.match(/(\d{9})\s*$/)?.[1];
-        const name = squash(line.replace(/,?\s*(?:ს\/ნ|ს\/კ|ID\/N)\s*:?\s*\d{9}\s*$/, '').replace(/\d{9}\s*$/, '')).replace(/,$/, '');
+        const name = squash(line.replace(/,?\s*(?:ს\/ნ|ს\/კ|ID\/N|ID\s*ნომერი)\s*:?\s*\d{9}\s*$/, '').replace(/\d{9}\s*$/, '')).replace(/\s*,$/, '');
         return { kind: 'COMPANY', name: name || undefined, ...(id ? { companyId: id } : {}) };
       }
       // "სახელი გვარი ,P/N: 01001012345" → the name only.
@@ -273,18 +297,39 @@ interface Decision {
   outcome: RegisterProceeding['outcome'];
 }
 
+/*
+ * THE DECISION'S OWN HEADING DECIDES ITS OUTCOME.
+ *
+ * A suspension says what is needed "სარეგისტრაციო მოთხოვნის
+ * დაკმაყოფილებისთვის" (for the request to be satisfied) — the words of a
+ * satisfaction. Matching the body read a fee-unpaid SUSPENSION as a granted
+ * termination (job 8ba97da9, decision 882026724195-03 of 18.08.2026). The
+ * heading under the decision number is the act's own title: read it first.
+ */
+const HEADING_SUSPENDED = /წარმოების\s+შეჩერების\s+შესახებ/;
+const HEADING_DISCONTINUED = /წარმოების\s+შეწყვეტის\s+შესახებ/;
+const HEADING_REFUSED = /(?:უარის\s+თქმის\s+შესახებ|უარი\s+ეთქვა)/;
+const BODY_SATISFIED = /მოთხოვნის\s+დაკმაყოფილების\s+თაობაზე/;
+
 export function parseDecision(rawText: string, recordId: string): Decision | null {
   const text = decodeGeorgianLegacy(String(rawText ?? ''));
   const m = text.match(/გადაწყვეტილება\s*#\s*([\w-]+)\s*\((\d{2}\.\d{2}\.\d{4})\)/);
   if (!m) return null;
   const service = text.match(/მომსახურების\s+სახე\s*:\s*([^\n]+)/)?.[1] ?? null;
-  const outcome = /მოთხოვნის\s+დაკმაყოფილების/.test(text)
-    ? 'SATISFIED'
-    : /უარის\s+თქმის|უარი\s+ეთქვა/.test(text)
-      ? 'REFUSED'
-      : /შეჩერებ/.test(text)
-        ? 'SUSPENDED'
-        : null;
+  // The act's title: the line(s) right after the decision number, before the application details.
+  const after = text.slice((m.index ?? 0) + m[0].length);
+  const heading = after.slice(0, Math.max(0, after.search(/განცხადების\s+ნომერი/)) || 160);
+  const outcome: RegisterProceeding['outcome'] = HEADING_SUSPENDED.test(heading)
+    ? 'SUSPENDED'
+    : HEADING_DISCONTINUED.test(heading)
+      ? 'DISCONTINUED'
+      : HEADING_REFUSED.test(heading)
+        ? 'REFUSED'
+        : BODY_SATISFIED.test(text)
+          ? 'SATISFIED'
+          : /შეჩერდეს\s+სარეგისტრაციო\s+წარმოება/.test(text)
+            ? 'SUSPENDED'
+            : null;
   return { recordId: String(recordId), number: m[1], date: isoDay(m[2]), service: service ? squash(service) : null, outcome };
 }
 
@@ -319,7 +364,9 @@ export function buildPropertyRegister(browserOfficial: unknown): PropertyRegiste
   if (!results.length) return null;
 
   const extracts: RegisterExtract[] = [];
-  const decisions = new Map<string, Decision>();
+  // A record can carry several decisions (suspended, then satisfied): all are kept.
+  const decisions = new Map<string, Decision[]>();
+  let observedAt: string | null = null;
   const proceedings = new Map<string, RegisterProceeding>();
   const byRecord = new Map<string, string>(); // recordId → application number
   let cadastralCode: string | null = null;
@@ -330,6 +377,7 @@ export function buildPropertyRegister(browserOfficial: unknown): PropertyRegiste
     const code = typeof search?.cadastralCode === 'string' ? search.cadastralCode : null;
     if (!code) continue;
     cadastralCode = cadastralCode ?? code;
+    if (typeof result?.retrievedAt === 'string' && (!observedAt || result.retrievedAt > observedAt)) observedAt = result.retrievedAt;
     const list = Array.isArray(search.records) ? search.records : [];
     for (const r of list.slice(0, 60)) {
       const app = String(r?.regNumber ?? '').trim();
@@ -358,19 +406,23 @@ export function buildPropertyRegister(browserOfficial: unknown): PropertyRegiste
         continue;
       }
       const decision = parseDecision(d.rawText, recordId);
-      if (decision) decisions.set(recordId, decision);
+      if (decision) decisions.set(recordId, [...(decisions.get(recordId) ?? []), decision]);
     }
   }
   if (!cadastralCode) return null;
 
   for (const [recordId, app] of byRecord) {
     const p = proceedings.get(app)!;
-    const decision = decisions.get(recordId);
-    if (extracts.some((e) => e.recordId === recordId) || decision) p.read = true;
-    if (decision) {
-      p.outcome = decision.outcome;
-      p.decisionNumber = decision.number;
-      p.decisionDate = decision.date;
+    // Oldest first; on the same day the later decision number is the later act.
+    const read = [...(decisions.get(recordId) ?? [])].sort((a, b) =>
+      String(a.date ?? '').localeCompare(String(b.date ?? '')) || String(a.number ?? '').localeCompare(String(b.number ?? ''), undefined, { numeric: true }));
+    if (extracts.some((e) => e.recordId === recordId) || read.length) p.read = true;
+    if (read.length) {
+      const final = read[read.length - 1];
+      p.outcome = final.outcome;
+      p.decisionNumber = final.number;
+      p.decisionDate = final.date;
+      p.decisions = read.map((d) => ({ number: d.number, date: d.date, outcome: d.outcome }));
     }
   }
 
@@ -382,34 +434,186 @@ export function buildPropertyRegister(browserOfficial: unknown): PropertyRegiste
   for (const e of extracts.slice(0, -1)) {
     for (const m of e.mortgages) {
       if (currentMortgages.some((c) => sameMortgage(c, m))) continue;
-      if (removed.some((r) => sameMortgage(r, m))) continue;
-      // The termination that falls between the two extracts and was granted.
-      const termination = [...proceedings.values()].find(
-        (p) =>
-          p.kind === 'MORTGAGE_TERMINATED' &&
-          p.outcome === 'SATISFIED' &&
-          (!p.decisionDate || !e.issuedAt || p.decisionDate >= e.issuedAt.slice(0, 10)) &&
-          (!p.decisionDate || !latest?.issuedAt || p.decisionDate <= latest.issuedAt.slice(0, 10))
-      );
-      removed.push({
-        ...m,
-        lastSeenAt: e.issuedAt,
-        removedBy: termination
-          ? { applicationNumber: termination.applicationNumber, decisionNumber: termination.decisionNumber, decisionDate: termination.decisionDate }
-          : null,
-      });
+      const seen = removed.find((r) => sameMortgage(r, m));
+      // "Last seen" is the LAST extract that still listed it, not the first (8ba97da9: 17.08.2026, not 09.09.2024).
+      if (seen) {
+        if (e.issuedAt && (!seen.lastSeenAt || e.issuedAt > seen.lastSeenAt)) seen.lastSeenAt = e.issuedAt;
+        continue;
+      }
+      removed.push({ ...m, lastSeenAt: e.issuedAt, removedBy: null });
     }
+  }
+  // The termination that was finally GRANTED after the mortgage was last seen and by the latest extract.
+  for (const m of removed) {
+    const termination = [...proceedings.values()].find(
+      (p) =>
+        p.kind === 'MORTGAGE_TERMINATED' &&
+        p.outcome === 'SATISFIED' &&
+        (!p.decisionDate || !m.lastSeenAt || p.decisionDate >= m.lastSeenAt.slice(0, 10)) &&
+        (!p.decisionDate || !latest?.issuedAt || p.decisionDate <= latest.issuedAt.slice(0, 10))
+    );
+    m.removedBy = termination
+      ? { applicationNumber: termination.applicationNumber, decisionNumber: termination.decisionNumber, decisionDate: termination.decisionDate }
+      : null;
   }
 
   const all = [...proceedings.values()].sort((a, b) => String(a.filedOn ?? '').localeCompare(String(b.filedOn ?? '')));
   const read = all.filter((p) => p.read).length;
   return {
     cadastralCode,
+    history: extracts.map((e) => ({
+      issuedAt: e.issuedAt, applicationNumber: e.applicationNumber, owners: e.owners,
+      ownershipRegisteredOn: e.ownershipRegisteredOn, ownershipBasis: e.ownershipBasis,
+      mortgageAgreements: e.mortgages.map((m) => m.agreementNumber ?? m.applicationNumber),
+    })),
+    observedAt,
     latest,
     currentMortgages,
     removedMortgages: removed,
     proceedings: all,
     coverage: { found: all.length, read, documents, notOpened: all.length - read },
+  };
+}
+
+/* ───────────────────────── the unit's legal position ───────────────────────── */
+
+/*
+ * WHAT IS REGISTERED ON THIS UNIT, STEP BY STEP, AND AS OF WHEN.
+ *
+ * Distinct legal steps are never collapsed: a mortgage REGISTERED on the unit,
+ * an APPLICATION to terminate it, a SUSPENSION of that application, and the
+ * REGISTERED CANCELLATION are four different things (job 8ba97da9: BoG's
+ * termination application 882026724195 was filed 13.08.2026, suspended
+ * 18.08.2026 for an unpaid fee, and registered 24.08.2026 — and only the
+ * extract of 24.08.2026 shows the unit without the mortgage).
+ *
+ * Every conclusion carries its scope (this exact cadastral unit), its source
+ * (the NAPR extract) and its date (the extract's preparation moment). A
+ * company's bank obligations, project financing and parent-parcel
+ * encumbrances are NOT in this register and are never inferred from it.
+ */
+export type MortgageLifecycle =
+  | 'ACTIVE'
+  | 'TERMINATION_APPLIED'
+  | 'TERMINATION_SUSPENDED'
+  | 'CANCELLATION_REGISTERED'
+  /** Listed in the latest extract HOMATCH holds, but a later registry decision granted its termination. */
+  | 'CANCELLATION_REGISTERED_AFTER_EXTRACT'
+  | 'ABSENT_FROM_LATEST_EXTRACT';
+
+export interface MortgageStep {
+  date: string | null;
+  step: 'MORTGAGE_REGISTERED' | 'TERMINATION_APPLIED' | 'SUSPENDED' | 'REFUSED' | 'DISCONTINUED' | 'CANCELLATION_REGISTERED';
+  applicationNumber: string | null;
+  decisionNumber: string | null;
+}
+
+export interface UnitMortgageHistory {
+  scope: 'EXACT_UNIT';
+  creditor: string | null;
+  creditorId: string | null;
+  agreementNumber: string | null;
+  registeredOn: string | null;
+  lifecycle: MortgageLifecycle;
+  /** Preparation moment of the last extract that listed it. */
+  lastSeenInExtractOf: string | null;
+  /** Preparation moment of the first extract read that no longer lists it. */
+  absentFromExtractOf: string | null;
+  steps: MortgageStep[];
+}
+
+export interface UnitLegalPosition {
+  scope: 'EXACT_UNIT';
+  cadastralCode: string | null;
+  evidence: {
+    source: 'NAPR_EXTRACT';
+    /** The extract's own preparation moment — the date every conclusion below is "as of". */
+    extractIssuedAt: string | null;
+    extractApplicationNumber: string | null;
+    /** When HOMATCH observed the registry's proceedings list (later than the extract). */
+    proceedingsObservedAt: string | null;
+  };
+  ownership: { owners: RegisterOwner[]; registeredOn: string | null; basis: RegisterExtract['ownershipBasis']; asOf: string | null } | null;
+  ownershipHistory: Array<{ owners: RegisterOwner[]; registeredOn: string | null; basis: RegisterExtract['ownershipBasis']; seenInExtractOf: string | null }>;
+  mortgages: { state: 'ACTIVE' | 'NONE_REGISTERED'; asOf: string | null; history: UnitMortgageHistory[] };
+  restrictions: { taxLien: RegisterState; seizure: RegisterState; debtorRegistry: RegisterState; asOf: string | null };
+  /** Proceedings filed and not finally decided (none of SATISFIED / REFUSED / DISCONTINUED). */
+  openProceedings: Array<{ kind: ProceedingKind; applicationNumber: string; filedOn: string | null; lastOutcome: DecisionOutcome | null }>;
+  freshExtractAdvised: boolean;
+  /** What this register does NOT cover — said, never inferred. */
+  notCovered: Array<'COMPANY_OBLIGATIONS' | 'PROJECT_FINANCING' | 'PARENT_PARCEL_ENCUMBRANCES'>;
+}
+
+const FINAL = new Set<DecisionOutcome>(['SATISFIED', 'REFUSED', 'DISCONTINUED']);
+
+function terminationSteps(p: RegisterProceeding): MortgageStep[] {
+  const steps: MortgageStep[] = [{ date: p.filedOn, step: 'TERMINATION_APPLIED', applicationNumber: p.applicationNumber, decisionNumber: null }];
+  for (const d of p.decisions ?? (p.outcome ? [{ number: p.decisionNumber, date: p.decisionDate, outcome: p.outcome }] : [])) {
+    const step: MortgageStep['step'] | null = d.outcome === 'SATISFIED' ? 'CANCELLATION_REGISTERED' : d.outcome === 'SUSPENDED' ? 'SUSPENDED' : d.outcome === 'REFUSED' ? 'REFUSED' : d.outcome === 'DISCONTINUED' ? 'DISCONTINUED' : null;
+    if (step) steps.push({ date: d.date, step, applicationNumber: p.applicationNumber, decisionNumber: d.number });
+  }
+  return steps;
+}
+
+export function unitLegalPosition(reg: PropertyRegister | null): UnitLegalPosition | null {
+  if (!reg?.latest) return null;
+  const l = reg.latest;
+  const asOf = l.issuedAt;
+  const history = reg.history ?? [];
+  const terminations = reg.proceedings.filter((p) => p.kind === 'MORTGAGE_TERMINATED');
+  const mortgages: UnitMortgageHistory[] = [];
+
+  const extractDay = String(asOf ?? '').slice(0, 10);
+  for (const m of reg.currentMortgages) {
+    const after = (p: RegisterProceeding) => !m.registeredOn || !p.filedOn || p.filedOn >= m.registeredOn;
+    // A termination GRANTED after the extract was prepared — only attributable when one mortgage is listed.
+    const grantedLater = reg.currentMortgages.length === 1
+      ? terminations.find((p) => p.outcome === 'SATISFIED' && after(p) && !!p.decisionDate && p.decisionDate > extractDay) ?? null
+      : null;
+    // A termination filed after this mortgage and not yet granted: applied for, NOT cancelled.
+    const open = grantedLater ?? terminations.find((p) => p.outcome !== 'SATISFIED' && after(p)) ?? null;
+    const lifecycle: MortgageLifecycle = grantedLater
+      ? 'CANCELLATION_REGISTERED_AFTER_EXTRACT'
+      : open ? (open.outcome === 'SUSPENDED' ? 'TERMINATION_SUSPENDED' : 'TERMINATION_APPLIED') : 'ACTIVE';
+    mortgages.push({
+      scope: 'EXACT_UNIT', creditor: m.creditor, creditorId: m.creditorId, agreementNumber: m.agreementNumber, registeredOn: m.registeredOn,
+      lifecycle, lastSeenInExtractOf: asOf, absentFromExtractOf: null,
+      steps: [{ date: m.registeredOn, step: 'MORTGAGE_REGISTERED', applicationNumber: m.applicationNumber, decisionNumber: null }, ...(open ? terminationSteps(open) : [])],
+    });
+  }
+  for (const m of reg.removedMortgages) {
+    const absent = history.find((h) => h.issuedAt && m.lastSeenAt && h.issuedAt > m.lastSeenAt)?.issuedAt ?? asOf;
+    const termination = m.removedBy ? terminations.find((p) => p.applicationNumber === m.removedBy!.applicationNumber) ?? null : null;
+    mortgages.push({
+      scope: 'EXACT_UNIT', creditor: m.creditor, creditorId: m.creditorId, agreementNumber: m.agreementNumber, registeredOn: m.registeredOn,
+      lifecycle: termination ? 'CANCELLATION_REGISTERED' : 'ABSENT_FROM_LATEST_EXTRACT',
+      lastSeenInExtractOf: m.lastSeenAt, absentFromExtractOf: absent,
+      steps: [{ date: m.registeredOn, step: 'MORTGAGE_REGISTERED', applicationNumber: m.applicationNumber, decisionNumber: null }, ...(termination ? terminationSteps(termination) : [])],
+    });
+  }
+
+  const ownershipHistory: UnitLegalPosition['ownershipHistory'] = [];
+  for (const h of history) {
+    const key = `${h.ownershipRegisteredOn}|${h.owners.map((o) => o.name ?? o.companyId ?? '').join(',')}`;
+    if (ownershipHistory.some((o) => `${o.registeredOn}|${o.owners.map((x) => x.name ?? x.companyId ?? '').join(',')}` === key)) continue;
+    ownershipHistory.push({ owners: h.owners, registeredOn: h.ownershipRegisteredOn, basis: h.ownershipBasis, seenInExtractOf: h.issuedAt });
+  }
+
+  const fresh = extractFreshness(reg);
+  return {
+    scope: 'EXACT_UNIT',
+    cadastralCode: reg.cadastralCode,
+    evidence: { source: 'NAPR_EXTRACT', extractIssuedAt: asOf, extractApplicationNumber: l.applicationNumber, proceedingsObservedAt: reg.observedAt ?? null },
+    ownership: l.owners.length ? { owners: l.owners, registeredOn: l.ownershipRegisteredOn, basis: l.ownershipBasis, asOf } : null,
+    ownershipHistory,
+    mortgages: { state: reg.currentMortgages.length ? 'ACTIVE' : 'NONE_REGISTERED', asOf, history: mortgages },
+    restrictions: { taxLien: l.taxLien, seizure: l.seizure, debtorRegistry: l.debtorRegistry, asOf },
+    openProceedings: reg.proceedings
+      // A decision read and not final, or filed after the extract with nothing read about it.
+      .filter((p) => (p.outcome ? !FINAL.has(p.outcome) : (p.filedOn ?? '') > String(asOf ?? '').slice(0, 10)))
+      .map((p) => ({ kind: p.kind, applicationNumber: p.applicationNumber, filedOn: p.filedOn, lastOutcome: p.outcome })),
+    freshExtractAdvised: fresh.freshExtractAdvised,
+    notCovered: ['COMPANY_OBLIGATIONS', 'PROJECT_FINANCING', 'PARENT_PARCEL_ENCUMBRANCES'],
   };
 }
 
@@ -435,7 +639,19 @@ export function registerModelFacts(reg: PropertyRegister | null): Record<string,
     })),
     taxLien: l.taxLien, seizureOrProhibition: l.seizure, debtorRegistry: l.debtorRegistry,
     landFunction: l.landFunction, buildingsMarkedUnderConstruction: l.buildingsUnderConstruction, unitMarkedUnderConstruction: l.unitUnderConstruction,
-    proceedings: reg.proceedings.map((p) => ({ kind: p.kind, filedOn: p.filedOn, completedOn: p.completedOn, documentsRead: p.read })),
+    proceedings: reg.proceedings.map((p) => ({
+      kind: p.kind, applicationNumber: p.applicationNumber, filedOn: p.filedOn, completedOn: p.completedOn, documentsRead: p.read,
+      decisions: (p.decisions ?? []).map((d) => ({ number: d.number, date: d.date, outcome: d.outcome })),
+    })),
+    // Step-by-step, scoped and dated (unitLegalPosition): an application is never a cancellation.
+    mortgageChronology: unitLegalPosition(reg)?.mortgages.history.map((m) => ({
+      scope: m.scope, creditor: m.creditor, agreementNumber: m.agreementNumber, registeredOn: m.registeredOn, lifecycle: m.lifecycle,
+      lastSeenInExtractOf: m.lastSeenInExtractOf, absentFromExtractOf: m.absentFromExtractOf,
+      steps: m.steps.map((x) => ({ date: x.date, step: x.step, decisionNumber: x.decisionNumber })),
+    })),
+    scope: 'EXACT_UNIT',
+    notCoveredByThisRegister: ['COMPANY_OBLIGATIONS', 'PROJECT_FINANCING', 'PARENT_PARCEL_ENCUMBRANCES'],
+    proceedingsObservedAt: reg.observedAt ?? null,
     ...extractFreshness(reg),
   };
 }
@@ -499,13 +715,25 @@ export function sentences(text: string): string[] {
 export interface ReconcileRules {
   ownerIsPrivate: boolean;
   terminationResolved: boolean;
+  /** A mortgage is listed in the latest extract (an application to end it is not an end). */
+  mortgageStillRegistered?: boolean;
+  /** The NAPR extract for this exact unit was read: the unit is officially identified. */
+  unitVerified?: boolean;
 }
+
+/* "The mortgage ended / was cancelled" — false while the latest extract still lists one. */
+const MORTGAGE_CLEARED = /(იპოთეკ\S*\s+(?:შეწყდა|მოიხსნა|გაუქმდა|გაუქმებულია|შეწყვეტილია)|mortgage\s+(?:was\s+|has\s+been\s+|is\s+)?(?:terminated|cancell?ed|released|removed|lifted|discharged)|ипотек\S*\s+(?:прекращ|снят|погаш))/iu;
+/* "The exact unit could not be / was not independently verified" — false once its extract was read. */
+const UNIT_UNVERIFIED = /(დამოუკიდებლად\s+(?:ვერ|არ)\s+(?:იქნა\s+)?(?:და)?(?:დადასტურ|გადამოწმ)|not\s+(?:been\s+)?independently\s+(?:verified|confirmed)|независимо\s+не\s+подтвержд|(?:იდენტობ|identity|ვინაობ)[^.!?]{0,60}(?:ვერ\s+დადასტურდა|არ\s+არის\s+დადასტურებ|not\s+(?:been\s+)?(?:verified|confirmed)|unverified))/iu;
 
 export function rulesFrom(reg: PropertyRegister | null): ReconcileRules {
   const owners = reg?.latest?.owners ?? [];
   return {
     ownerIsPrivate: owners.length > 0 && owners.every((o) => o.kind === 'PERSON'),
     terminationResolved: (reg?.removedMortgages ?? []).length > 0,
+    // Only when NO mortgage ended: a sentence about an earlier mortgage that did end stays true.
+    mortgageStillRegistered: (reg?.currentMortgages ?? []).length > 0 && (reg?.removedMortgages ?? []).length === 0,
+    unitVerified: !!reg?.latest,
   };
 }
 
@@ -513,6 +741,8 @@ export function contradicts(sentence: string, rules: ReconcileRules): boolean {
   if (rules.ownerIsPrivate && OWNER_WORD.test(sentence) && COMPANY_WORD.test(sentence)) return true;
   if (rules.terminationResolved && TERMINATION_WORD.test(sentence) && UNSPECIFIED_WORD.test(sentence)) return true;
   if (BOGUS_PURPOSE.test(sentence)) return true;
+  if (rules.mortgageStillRegistered && MORTGAGE_CLEARED.test(sentence)) return true;
+  if (rules.unitVerified && UNIT_UNVERIFIED.test(sentence)) return true;
   return false;
 }
 

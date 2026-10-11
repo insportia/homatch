@@ -106,11 +106,87 @@ export function isoDay(v: unknown): string | null {
 export function redactPersonal(text: string): string {
   return String(text ?? '')
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, ' ')
+    // A personal number the worker already masked ("(პ/ნ: •••305)") is still a
+    // personal-number fragment: it goes, brackets and all, so the clause around
+    // it does not read as "label: value".
+    .replace(/\(?\s*(?:პ\/ნ|პ\.ნ\.?|p\/n|პირადი\s+(?:ნომერი|№))\s*:?\s*[•*·]{2,}\s*\d{0,4}\s*\)?/giu, ' ')
+    .replace(/[•]{2,}\s*\d{0,4}/g, ' ')
     .replace(/(?:პ\/ნ|პ\.ნ\.?|p\/n|პირადი\s+(?:ნომერი|№))\s*:?\s*\d{11}/giu, ' ')
     .replace(/(?<!\d)\d{11}(?!\d)/g, ' ')
     .replace(/(?:ტელ(?:ეფონი)?\.?|tel\.?|phone|მობ\.?)\s*:?\s*\+?[\d\s()-]{7,18}\d/giu, ' ')
     .replace(/\+995[\s-]?\d{3}[\s-]?\d{2,3}[\s-]?\d{2,3}[\s-]?\d{0,3}/g, ' ')
     .replace(/(?<!\d)5\d{2}[\s-]\d{2}[\s-]\d{2}[\s-]\d{2}(?!\d)/g, ' ');
+}
+
+/*
+ * AcadNusx: Georgian typed in a Latin-keyed font. Drawing title blocks and
+ * older engineering reports in TAS attachments extract as "darejan SaTaSvili",
+ * "proeqtis avtori", "/ia mSvidobaZe/" — the names and roles are there, in the
+ * wrong alphabet. The key map is fixed (lower case + the seven shifted keys).
+ */
+const ACAD_NUSX: Record<string, string> = {
+  a: 'ა', b: 'ბ', g: 'გ', d: 'დ', e: 'ე', v: 'ვ', z: 'ზ', T: 'თ', i: 'ი', k: 'კ', l: 'ლ', m: 'მ', n: 'ნ', o: 'ო',
+  p: 'პ', J: 'ჟ', r: 'რ', s: 'ს', t: 'ტ', u: 'უ', f: 'ფ', q: 'ქ', R: 'ღ', y: 'ყ', S: 'შ', C: 'ჩ', c: 'ც', Z: 'ძ',
+  w: 'წ', W: 'ჭ', x: 'ხ', j: 'ჯ', h: 'ჰ',
+};
+
+/**
+ * Is this line Georgian typed in AcadNusx? Every Latin word uses only the
+ * font's keys (lower case, or one of T J R S C Z W), at least one word is
+ * a real word (≥ 4 letters), and the line carries no Georgian script of its
+ * own. English ("GSPublisherVersion", "CARD", "Eksel") fails on its capitals.
+ */
+export function looksAcadNusx(line: string): boolean {
+  const s = String(line ?? '');
+  if (/[ა-ჿ]/u.test(s)) return false;
+  const words = s.match(/[A-Za-z]+/g);
+  if (!words || !words.length) return false;
+  if (!words.every((w) => /^[a-zTJRSCZW]+$/.test(w))) return false;
+  if (!words.some((w) => w.length >= 4)) return false;
+  // English function words never occur in AcadNusx Georgian.
+  if (words.some((w) => /^(?:the|and|of|for|with|from|this|that|version|page|scale|date)$/.test(w))) return false;
+  return true;
+}
+
+/** AcadNusx → Georgian (only the Latin letters change). */
+export function decodeAcadNusx(line: string): string {
+  return String(line ?? '').replace(/[A-Za-z]/g, (ch) => ACAD_NUSX[ch] ?? ch);
+}
+
+/** A line in Georgian script, decoded from AcadNusx when it is typed that way. */
+export function georgianLine(line: string): string {
+  return looksAcadNusx(line) ? decodeAcadNusx(line) : String(line ?? '');
+}
+
+export interface TextSection {
+  /** The attachment's file name, or null for the case's own text / a motion. */
+  fileName: string | null;
+  /** The header's date, when the header carries one. */
+  date: string | null;
+  lines: string[];
+}
+
+/**
+ * The worker concatenates a case's attachments into one text, each under a
+ * header line "[undated · file.pdf]" / "[2024-04-19 · motion · response]".
+ * Split it back so every finding can name the file it came from.
+ */
+export function textSections(text: string): TextSection[] {
+  const out: TextSection[] = [];
+  let cur: TextSection = { fileName: null, date: null, lines: [] };
+  for (const raw of String(text ?? '').replace(/\r/g, '').split('\n')) {
+    const h = /^\s*\[(undated|\d{4}-\d{2}-\d{2})\s+·\s+([^\]\n]{1,240})\]\s*$/u.exec(raw);
+    if (h) {
+      if (cur.lines.length || cur.fileName) out.push(cur);
+      const label = h[2].trim();
+      const isFile = /\.[a-z0-9]{2,5}$/i.test(label) && !/^motion\b/i.test(label);
+      cur = { fileName: isFile ? label : null, date: h[1] === 'undated' ? null : h[1], lines: [] };
+      continue;
+    }
+    cur.lines.push(raw);
+  }
+  if (cur.lines.length || cur.fileName) out.push(cur);
+  return out;
 }
 
 function fieldsOf(c: Record<string, any>): CaseField[] {

@@ -46,6 +46,7 @@ import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/
 import { REPORT_LOGIC_VERSION, shouldAutoUpgrade, versionMarkers, markUpgradeAttempted, logicVersionOf } from '../../../src/verify/intelligence/reportVersion.ts';
 import { hasOwnRegister, reuseEarlierRegister, targetCadastralCode, type RegisterCandidate } from '../../../src/verify/intelligence/registerReuse.ts';
 import { extractFreshness } from '../../../src/verify/intelligence/propertyRegister.ts';
+import { buildUnitIdentity } from '../../../src/verify/intelligence/unitIdentity.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
 
 /**
@@ -551,7 +552,11 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   // Identity from OFFICIAL records only (TAS cases, registry documents and evidence) — never listings.
   const identity = resolveIdentity(rj?.exactUnit?.code ?? job.query ?? null, {
     tas: rj?.browserOfficial, documents: rj?.documents, official: rj?.officialEvidence, rights: rj?.rightsAndRestrictions, land: rj?.landProfile,
+    // The unit's own NAPR record (identity-bound Service 176 facts) documents the exact unit.
+    register: rj?.service176Evidence,
   });
+  // Exact unit / parent parcel / building / project / ownership, from official records only (unitIdentity.ts).
+  const unitIdentity = buildUnitIdentity(rj, job.query ?? null);
 
   // Market, location, people and the buyer's own official self-checks are
   // computed deterministically here; the model is handed the RESULT and asked
@@ -618,6 +623,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     // real under it gets filled with something.
     const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(rj), {
       identity,
+      unitIdentity,
       // Provenance for the prose, without the internal job id.
       registerSource: registerSource ? { asOf: registerSource.asOf, reused: true, freshExtractAdvised: registerSource.freshExtractAdvised } : null,
     });

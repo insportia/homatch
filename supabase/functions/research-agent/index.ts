@@ -19,7 +19,7 @@ import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/in
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
-import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
+import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
@@ -30,6 +30,7 @@ import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optiona
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
 import { parseCadastral } from '../../../src/verify/intelligence/propertyIdentity.ts';
+import { officialUnitOverlay, unitVerification } from '../../../src/verify/intelligence/unitIdentity.ts';
 import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, OFFICIAL_STRAGGLER_GRACE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
@@ -2545,11 +2546,15 @@ function liveCountersFor(j: any): Record<string, number | string | null> {
   };
 }
 
-async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
+async function ensureMarketLane(sb: any, j: any, p: any, checkpoint?: () => Promise<void>): Promise<boolean> {
   if (p._marketLaneAttempted) return false;
+  // Marked as started, not attempted: the flag is stored before the lane
+  // runs, so a tick killed inside it is recognised by the next one.
+  p._marketLaneStartedAt = now();
+  if (checkpoint) await checkpoint().catch(() => {});
   p._marketLaneAttempted = true;
   try {
-    const lane = await runVerifyMarketLane(sb, j, p);
+    const lane = await runVerifyMarketLane(sb, j, p, checkpoint);
     if (lane) {
       p._marketLane = lane.summary;
       p._marketComparables = lane.comparables;
@@ -2616,6 +2621,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   if (!id) throw new Error('missing worker job');
   const launch = { startedAt: j.result_json?._worker?.startedAt ?? null, queue: !!j.result_json?._worker?.queue };
   let w: any;
+  let live: ReturnType<typeof officialLiveOf> | null = null;
   if (j.result_json?._worker?.queue) {
     /*
      * QUEUE MODE: the job's task rows ARE the official job. Follow-ups the
@@ -2624,12 +2630,18 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
      * the worker view every branch below already understands.
      */
     let rows = await jobTasks(sb, j.id);
-    const more = followUpTasks(rows, { tasImplementation: j.result_json._worker.tasImplementation ?? null });
+    const more = followUpTasks(rows, {
+      tasImplementation: j.result_json._worker.tasImplementation ?? null,
+      // RS.ge starts in parallel with the slower official sources only when
+      // a company has actually been named (one CAPTCHA lookup, first company).
+      captchaPolicy: rows.some((r) => r.state === 'SUCCEEDED') && !rows.some((r) => r.source === 'rstax') ? await captchaPolicyFor(sb) : null,
+    });
     if (more.length) {
       await enqueueTasks(sb, j.id, more);
       rows = await jobTasks(sb, j.id);
     }
     w = queueWorkerView(rows);
+    live = officialLiveOf(rows);
     // Leaving the official stage unfinished: stop this job's remaining work.
     if (w.status !== 'COMPLETE' && officialPastDeadline(j, w)) await cancelJobTasks(sb, j.id);
   } else {
@@ -2645,7 +2657,30 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   }
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
-  await ensureMarketLane(sb, j, j.result_json);
+  if (live) j.result_json._officialLive = live;
+  /*
+   * CHECKPOINT BEFORE THE MARKET LANE (owner live run 2026-10-11, job
+   * 8ba97da9). The lane is the heaviest thing a tick does; when it ran past
+   * the edge CPU limit the invocation was killed before any write, so its
+   * "attempted once" flag was never stored, the next tick ran it again, and
+   * the row stayed frozen at sourcesCompleted:0 for fourteen minutes while
+   * every official source had already finished. The flag and the live
+   * progress are now stored first: a lane that dies costs one tick, never
+   * the job, and the page sees real progress from the first tick.
+   */
+  const checkpoint = async () => {
+    const patch: Record<string, any> = { result_json: j.result_json, updated_at: now() };
+    if (w?.status !== 'COMPLETE') patch.progress = officialWaitProgress(w);
+    const { error } = await sb.from('research_jobs').update(patch).eq('id', j.id);
+    if (error) console.error('research-agent: official checkpoint failed', error.message);
+  };
+  if (!j.result_json._marketLaneAttempted && j.result_json._marketLaneStartedAt) {
+    // A lane that started on an earlier tick and never reported back was
+    // killed mid-flight. Recorded, and never run again for this job.
+    j.result_json._marketLaneAttempted = true;
+    j.result_json._marketLaneError = 'LANE_INTERRUPTED';
+  }
+  await ensureMarketLane(sb, j, j.result_json, checkpoint);
   await pollVerifyMarketplace(j.result_json, j);
   if (w.status === 'WAITING_HUMAN') {
     const p = j.result_json || {};
@@ -2735,9 +2770,6 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // FSM transition happens here, only progress/updated_at, computed from
     // the worker's own step bookkeeping (sourceIndex/steps/results) so the
     // frontend's poll sees real, moving progress instead of a frozen value.
-    const total = Array.isArray(w.steps) && w.steps.length ? w.steps.length : null;
-    const done = Array.isArray(w.results) ? w.results.length : 0;
-    const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
 
     /*
      * THE OFFICIAL REGISTRY IS NO LONGER A MUTEX.
@@ -2756,7 +2788,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // have just filled it in and this branch is the one that repeats.
     return sb.from('research_jobs').update({
       result_json: j.result_json,
-      progress: { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null },
+      progress: officialWaitProgress(w),
       updated_at: now(),
     }).eq('id', j.id);
   }
@@ -2777,6 +2809,14 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   stampOfficialStage(p, launch, w, 'COMPLETE');
   await collectOfficialVisuals(sb, w, p);
   return persistOfficialTransition(sb, j, { status: 'CREATED', stage: 'OFFICIAL_READY', result_json: p, evidence_bundle: dedupe([...(j.evidence_bundle || []), ...bev(w)], (x) => x.url), captcha: {}, progress: { phase: 'official_browser_complete', percent: 44, provider: 'playwright' }, updated_at: now() });
+}
+
+/** The row's progress while the official stage runs, from the worker's (or queue's) own bookkeeping. */
+function officialWaitProgress(w: any): Record<string, any> {
+  const total = Array.isArray(w?.steps) && w.steps.length ? w.steps.length : null;
+  const done = Array.isArray(w?.results) ? w.results.length : 0;
+  const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
+  return { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null };
 }
 
 // pickFinancialCandidate() / startFinancialEntity() / pollFinancialEntity() /
@@ -3040,6 +3080,7 @@ async function processFinancialQueue(sb: any, j: any): Promise<any> {
   return sb.from('research_jobs').update({ status: 'CREATED', stage: returnStage, result_json: prior, updated_at: now() }).eq('id', j.id);
 }
 const QUEUE_ENTITY_MAX_WAIT_MS = 20 * 60 * 1000;
+const QUEUE_RSTAX_MAX_WAIT_MS = 3 * 60 * 1000;
 async function pollFinancialEntity(sb: any, j: any): Promise<any> {
   const prior = j.result_json || {};
   const id = prior?._worker?.jobId;
@@ -3052,7 +3093,12 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
     const v = singleTaskView(row ?? null);
     const waited = Date.now() - (Date.parse(prior._worker.startedAt || '') || Date.now());
     if (v.status === 'QUEUED' || v.status === 'RUNNING') {
-      if (waited < QUEUE_ENTITY_MAX_WAIT_MS) return;
+      // RS.ge is a CAPTCHA lookup that already had the whole official stage
+      // to run in parallel; the report does not wait on it past three
+      // minutes more (owner live run 2026-10-11: 7 minutes on the critical
+      // path, ending in an unsolvable CAPTCHA anyway).
+      const limit = prior._financialEntityRequestedFor?.source === 'rstax' ? QUEUE_RSTAX_MAX_WAIT_MS : QUEUE_ENTITY_MAX_WAIT_MS;
+      if (waited < limit) return;
       const requested = prior._financialEntityRequestedFor || {};
       prior.browserOfficial = prior.browserOfficial || { results: [] };
       prior.browserOfficial.results = [...(prior.browserOfficial.results || []), unavailableEntityResult({
@@ -4216,7 +4262,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // regression: 01.18.06.019.055.03.01.603 must never become
     // 01.18.06.019.055 in the report merely because evidence was easier to
     // find for the parent).
-    exactUnit: j.mode === 'cadastral' ? { code: j.query, verified: !!i.exactUnit?.verified, note: i.exactUnit?.note || null } : i.exactUnit || null,
+    // Verified from the OFFICIAL register for this exact code (unitIdentity.ts), not only the model's
+    // identity answer written before the registry was read (8ba97da9). Never downgraded.
+    exactUnit: j.mode === 'cadastral' ? { code: j.query, verified: !!i.exactUnit?.verified || unitVerification({ browserOfficial: prior.browserOfficial }, j.query).verified, note: i.exactUnit?.note || null } : i.exactUnit || null,
     // A null model answer must not erase what the code itself states: the
     // building group of a unit code (…055 · 03 · 01 · 503) is a fact.
     building: i.building || buildingFromCode(j.mode === 'cadastral' ? j.query : null),
@@ -5375,7 +5423,7 @@ function discoveryInputsFor(_db: any, seed: any) {
   };
 }
 
-async function runVerifyMarketLane(db: any, job: any, result: any): Promise<MarketLaneResult | null> {
+async function runVerifyMarketLane(db: any, job: any, result: any, checkpoint?: () => Promise<void>): Promise<MarketLaneResult | null> {
   /*
    * Everything already known about this subject, as fact_key -> value.
    *
@@ -5410,6 +5458,9 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
   // Started first, so MyHome.ge / SS.ge search in parallel with the portal
   // lane and the official sources. Never fatal.
   await startVerifyMarketplace(db, result, seed);
+  // The MyHome/SS.ge job id is stored before the portal lane runs, so a
+  // tick killed inside the lane still folds that search in later.
+  if (checkpoint) await checkpoint().catch(() => {});
 
   const runtime = createPortalRuntime();
   const discovery = discoveryInputsFor(db, seed);
@@ -5916,6 +5967,14 @@ function sanitizeForCustomer(job: any): any {
   // Applied on READ, so the reports already in the database are classified by
   // the same rule as new ones rather than staying permanently unknown.
   r.assetClass = resolveAssetClass(r);
+  // Identity and rights from the OFFICIAL register, on READ (unitIdentity.ts): the exact unit is
+  // verified by its NAPR extract, and the rights statement is dated by that extract and scoped to the
+  // unit — never by when the job finished (8ba97da9). Persisted reports are corrected without a rerun.
+  try {
+    Object.assign(r, officialUnitOverlay(job.result_json, job.query ?? null));
+  } catch {
+    /* the stored fields stand */
+  }
   // The control structure is read from the UNSANITIZED evidence, which only
   // exists on this side, and merged in as names plus a representation mode.
   // Done on read, so the reports already in the database gain it too.
@@ -5986,6 +6045,9 @@ function sanitizeForCustomer(job: any): any {
   delete r._marketConflicts;
   delete r._marketLaneAttempted;
   delete r._marketLaneError;
+  delete r._marketLaneStartedAt;
+  // Per-source official states: read by computeSections before this runs.
+  delete r._officialLive;
   delete r._enregEntityRequestedFor;
   // v28: the generalized financial-queue bookkeeping (enreg/rstax/debtor) —
   // same reasoning as _enregEntityRequestedFor above, kept alongside it

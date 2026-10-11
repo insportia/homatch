@@ -49,6 +49,7 @@ import type { SectionKey } from './prompt.ts';
 import type { IntelligenceBundle } from './bundle.ts';
 import { tasLabel, TAS_EVENT_KA, OFFICIAL_STATE_KA } from './evidencePackage.ts';
 import { VISUAL_ASSET_MAX } from './visualAssets.ts';
+import { enforceValuation } from './marketHierarchy.ts';
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -825,7 +826,12 @@ export function finalizeReport(
   // Only when the advertising stage actually produced evidence, and never beyond what it can show.
   const advertisingAssessment = pkg?.developerAds ? guardAdvertising(parsed.advertisingAssessment) : undefined;
 
-  return removeRepeatedSentences(stripFalseScarcity(applyFactOwnership({
+  /*
+   * The deterministic valuation overrides the prose (2026-10-11, job 8ba97da9):
+   * INSUFFICIENT_EVIDENCE leaves no price figure in market prose; ESTIMATE
+   * leaves no "no reliable valuation" sentence. See marketHierarchy.ts.
+   */
+  return enforceValuation(removeRepeatedSentences(stripFalseScarcity(applyFactOwnership({
     ...(advertisingAssessment ? { advertisingAssessment } : {}),
     ...(currentStatus ? { currentStatus } : {}),
     ...(propertyStory ? { propertyStory } : {}),
@@ -841,7 +847,7 @@ export function finalizeReport(
     mode: 'MODEL',
     rejectedBecause: [],
     evidenceUsed: packageItems(pkg).filter((i) => cited.has(i.id)),
-  }), bundle));
+  }), bundle)), bundle?.market);
 }
 
 /**

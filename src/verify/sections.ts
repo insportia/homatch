@@ -25,6 +25,8 @@
 // i18n and the UI. A backend that emits English prose cannot be translated and
 // cannot be re-designed without a deploy.
 
+import { unitVerification } from './intelligence/unitIdentity.ts';
+
 export type SectionId =
   | 'PROPERTY'
   | 'LOCATION'
@@ -84,6 +86,12 @@ export interface SectionState {
   notes: string[];
   /** ISO time this section last changed. Lets the UI avoid needless redraws. */
   updatedAt: string;
+  /**
+   * OFFICIAL only, while the stage runs: each official source's own state
+   * (TAS map, TAS cases, MyGov registry), so a finished source shows as
+   * finished before the whole stage ends.
+   */
+  sources?: Array<{ source: string; state: 'QUEUED' | 'RUNNING' | 'DONE' | 'UNAVAILABLE' }>;
 }
 
 export interface SectionsSnapshot {
@@ -140,13 +148,32 @@ export function computeSections(input: SectionInput): SectionsSnapshot {
     maturity: SectionMaturity,
     metrics: Record<string, number | null>,
     notes: string[] = [],
+    sources?: SectionState['sources'],
   ) => {
-    sections.push({ id, maturity, metrics, notes, updatedAt });
+    sections.push({ id, maturity, metrics, notes, updatedAt, ...(sources ? { sources } : {}) });
   };
+
+  /*
+   * The official stage as it runs (research-agent's _officialLive). Owner live
+   * run 2026-10-11: MyGov and TAS had finished while every row still read
+   * "not started", because the official results land in the result only when
+   * the whole stage ends. States only; ignored once the stage has ended.
+   */
+  const LIVE_STATES = new Set(['QUEUED', 'RUNNING', 'DONE', 'UNAVAILABLE']);
+  const liveSources: NonNullable<SectionState['sources']> = Array.isArray(r._officialLive?.sources)
+    ? r._officialLive.sources
+      .filter((x: any) => typeof x?.source === 'string' && LIVE_STATES.has(x?.state))
+      .map((x: any) => ({ source: String(x.source).slice(0, 20), state: x.state }))
+    : [];
+  const liveDone = (src: string) => liveSources.some((x) => x.source === src && x.state === 'DONE');
+  const liveStarted = liveSources.some((x) => x.state !== 'QUEUED');
 
   // ── PROPERTY ────────────────────────────────────────────────────────────
   const identified = has(r.exactUnit?.code) || has(r.identifiedParent?.code) || has(r.identity?.entity?.name);
-  const unitVerified = r.exactUnit?.verified === true;
+  // Decided from OFFICIAL records (unitIdentity.ts): a NAPR extract or an
+  // identity-bound Service 176 record for this exact code verifies the unit,
+  // whatever the research model said. Verified evidence is never downgraded.
+  const unitVerified = unitVerification(r).verified;
   /*
    * A FINISHED RUN NEVER LEAVES A SECTION PENDING.
    *
@@ -162,7 +189,9 @@ export function computeSections(input: SectionInput): SectionsSnapshot {
     !identified
       ? finished
         ? 'UNAVAILABLE'
-        : 'PENDING'
+        : liveDone('TAS_MAP') || liveDone('mygov')
+          ? 'ENRICHING'
+          : 'PENDING'
       : unitVerified
         ? 'VERIFIED'
         : finished
@@ -241,7 +270,22 @@ export function computeSections(input: SectionInput): SectionsSnapshot {
   ).length;
   const documents = count(r.officialDocumentsRetrieved);
   const officialDone = r.browserOfficial?.unavailable === true || coverage.length > 0;
-  push(
+  const liveFinished = liveSources.filter((x) => x.state === 'DONE').length;
+  const officialRunning = !officialDone && !finished && liveSources.length > 0;
+  if (officialRunning) {
+    push(
+      'OFFICIAL',
+      liveStarted ? 'ENRICHING' : 'PENDING',
+      {
+        sourcesChecked: liveSources.length,
+        sourcesConfirmed: liveFinished || null,
+        sourcesBlocked: null,
+        documentsRetrieved: null,
+      },
+      [],
+      liveSources,
+    );
+  } else push(
     'OFFICIAL',
     !officialDone
       ? finished

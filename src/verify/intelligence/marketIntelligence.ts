@@ -46,7 +46,21 @@ import {
   type ConditionGrade,
   type ConditionMix,
 } from './comparableCondition.ts';
-import { areAdjacent, firstAreaOf, type AreaKey } from './marketGeography.ts';
+import { areAdjacent, firstAreaOf, streetRelation, type AreaKey } from './marketGeography.ts';
+import {
+  buildLocationHierarchy,
+  dealTypeOf,
+  priceKindOf,
+  buildingClassOf,
+  SIZE_BAND,
+  type CustomerExclusion,
+  type DealType,
+  type Freshness,
+  type HierarchyLevel,
+  type LocationHierarchy,
+  type MarketValuation,
+  type PriceKind,
+} from './marketHierarchy.ts';
 
 export type ComparableTier =
   | 'SAME_PROJECT'
@@ -94,7 +108,13 @@ export type RelevanceReason =
   | 'STALE'
   | 'HEADLINE_ELIGIBLE'
   | 'CONTEXT_ONLY'
-  | 'OUTLIER_TRIMMED';
+  | 'OUTLIER_TRIMMED'
+  /* 2026-10-11 location hierarchy (job 8ba97da9) */
+  | 'SAME_ADDRESS'
+  | 'STREET_BRANCH'
+  | 'SIZE_OUT_OF_BAND'
+  | 'DEAL_TYPE_MISMATCH'
+  | 'CLASS_MISMATCH';
 
 /** Published per band, so the customer sees the whole hierarchy at once. */
 export interface TierStats {
@@ -216,6 +236,12 @@ export interface RawComparable {
   district?: string | null;
   /** Measured metres from the subject, only when both had coordinates. */
   distanceM?: number | string | null;
+  /** SALE / RENT when the source states it; otherwise read from the URL/text. */
+  dealType?: string | null;
+  transactionType?: string | null;
+  /** ASKING (a listing) unless the source says this was a registered TRANSACTION. */
+  priceKind?: string | null;
+  propertyType?: string | null;
 }
 
 /**
@@ -260,6 +286,24 @@ export interface ScoredComparable {
   segment: 'MATCH' | 'MISMATCH' | 'UNKNOWN';
   /** May contribute to the headline range (tier, freshness, not trimmed). */
   headlineEligible: boolean;
+  /*
+   * THE CUSTOMER LOCATION HIERARCHY (2026-10-11, job 8ba97da9).
+   *
+   *   1 same project / building     2 same address (street + house number)
+   *   3 same street micro-location  4 comparable premium project nearby
+   *   5 broader nearby (same / adjacent neighbourhood) — explicit reason,
+   *     never prices the subject
+   *   null — an unrelated or unknown district: never shown, never priced.
+   */
+  level: HierarchyLevel | null;
+  /** Why it may not be shown to a customer (empty = it may). */
+  exclusions: CustomerExclusion[];
+  /** Listing address as the source wrote it (street level, public listing). */
+  address?: string;
+  listingDate?: string;
+  dealType: DealType;
+  priceKind: PriceKind;
+  freshness: Freshness;
   /** Left out of a range because it fell outside the IQR fences. */
   outlier?: boolean;
 }
@@ -389,6 +433,14 @@ export interface MarketIntelligence {
   basisIsThin: boolean;
   /** Always true: everything here is an ASK. */
   askingNotTransaction: true;
+  /*
+   * THE DETERMINISTIC VALUATION (2026-10-11). ESTIMATE carries numbers;
+   * INSUFFICIENT_EVIDENCE carries none, and the prose may not add one
+   * (marketHierarchy.enforceValuation).
+   */
+  valuation: MarketValuation;
+  /** The curated, customer-facing comparable set and what was excluded. */
+  hierarchy: LocationHierarchy;
 }
 
 /* ------------------------------------------------------------------ *
@@ -410,14 +462,6 @@ const num = (v: unknown): number | undefined => {
 const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 const lower = (v: unknown): string => text(v).toLowerCase();
 
-/** Normalizes a Georgian/Latin address enough to compare streets. */
-const streetKey = (v: unknown): string =>
-  lower(v)
-    .replace(/[.,#№]/g, ' ')
-    .replace(/\b(ქუჩა|ქ|street|st|ave|avenue|გამზირი)\b/g, ' ')
-    .replace(/\d+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 
 /**
  * Whether two project names are the same development.
@@ -558,6 +602,10 @@ export interface Subject {
   currency?: string;
   /** PREMIUM tightens the price band a peer must sit in. */
   segment?: 'PREMIUM' | 'STANDARD';
+  /** What the buyer is doing. Verify is a purchase: SALE unless stated. */
+  dealType?: 'SALE' | 'RENT';
+  /** NEW_BUILD for a development; old-stock comparables are then a different product. */
+  buildingClass?: 'NEW_BUILD' | 'OLD_STOCK';
   /** The project's own asks gathered outside the comparable list. */
   projectAsking?: Array<{
     pricePerSqm: number;
@@ -577,8 +625,14 @@ export interface ScoringContext {
   priceAnchor?: number;
 }
 
-/** Older than this and a listing is context, never headline. */
-const STALE_MONTHS = 18;
+/**
+ * Older than this and a listing is no longer shown or priced (2026-10-11:
+ * was 18 months and context-only; an ask from more than a year ago does not
+ * describe today's market).
+ */
+const STALE_MONTHS = 12;
+/** Older than this and a listing is flagged AGING. */
+const AGING_MONTHS = 6;
 
 /** A peer's price per m² must sit inside anchor × [low, high]. */
 const BAND = { low: 0.75, high: 1.33, premiumLow: 0.85 };
@@ -665,9 +719,13 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
     // Both addresses, so a shared district name is recognised as a place
     // rather than as a shared identity.
     sameProjectName(subject.project, c.project, `${text(subject.address)} ${text(c.address)}`);
-  const sameStreet =
-    !!subject.address && !!c.address && streetKey(subject.address) !== '' &&
-    streetKey(subject.address) === streetKey(c.address);
+  /*
+   * Street by PARSED street, not by whole-address equality (2026-10-11).
+   * "თბილისი, კრწანისის ქ. 6" and "კრწანისის ქ., ორთაჭალა, თბილისი" are
+   * the same street; the old comparison said they were not.
+   */
+  const street = streetRelation(subject.address, c.address);
+  const sameStreet = street !== null;
   const distance = num(c.distanceM);
   const measuredNear = distance !== undefined && distance >= 0 && distance <= 600;
 
@@ -693,6 +751,8 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
     score = 60;
     reasons.push('same street');
     why.push(sameStreet ? 'SAME_STREET' : 'WITHIN_600M');
+    if (street === 'SAME_ADDRESS') why.push('SAME_ADDRESS');
+    if (street === 'STREET_BRANCH') why.push('STREET_BRANCH');
   } else {
     why.push(
       relation === 'SAME' ? 'SAME_DISTRICT'
@@ -755,7 +815,7 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
     else if (rungs >= 3) { score -= 12; reasons.push('very different condition'); }
   }
 
-  const ageMonths = monthsBetween(text(c.listingDate), text(c.retrievedAt));
+  const ageMonths = monthsBetween(text(c.listingDate).slice(0, 10), text(c.retrievedAt));
   // An asking price from last week describes this market. One from eighteen
   // months ago describes a different one, and says so quietly rather than
   // being thrown away.
@@ -769,7 +829,42 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
       : why.includes('PRICE_BAND_MATCH') || why.includes('CONDITION_MATCH')
         ? 'MATCH'
         : 'UNKNOWN';
-  const headlineEligible = HEADLINE_TIERS.includes(tier) && !stale;
+  /*
+   * THE CUSTOMER GATE (2026-10-11). Location decides the level; size band,
+   * deal type, building class, condition and freshness decide whether the
+   * listing may be shown at all. Nothing here is softened to fill a quota.
+   */
+  const level: HierarchyLevel | null =
+    tier === 'SAME_PROJECT' ? 1
+      : tier === 'SAME_STREET' ? (street === 'SAME_ADDRESS' ? 2 : 3)
+        : tier === 'PEER_PROJECT' ? 4
+          : relation === 'SAME' || relation === 'ADJACENT' ? 5
+            : null;
+  const exclusions: CustomerExclusion[] = [];
+  if (level === null) exclusions.push(relation === 'OTHER' ? 'UNRELATED_DISTRICT' : 'DISTRICT_UNKNOWN');
+  if (subject.area && subject.area > 0) {
+    if (!area) exclusions.push('SIZE_UNKNOWN');
+    else if (Math.abs(area - subject.area) / subject.area > SIZE_BAND) {
+      exclusions.push('SIZE_OUT_OF_BAND');
+      why.push('SIZE_OUT_OF_BAND');
+    }
+  }
+  const dealType = dealTypeOf(c, derived);
+  if ((subject.dealType ?? 'SALE') === 'SALE' ? dealType === 'RENT' : dealType === 'SALE') {
+    exclusions.push('DEAL_TYPE_MISMATCH');
+    why.push('DEAL_TYPE_MISMATCH');
+  }
+  if (subject.buildingClass && buildingClassOf(c) && buildingClassOf(c) !== subject.buildingClass) {
+    exclusions.push('CLASS_MISMATCH');
+    why.push('CLASS_MISMATCH');
+  }
+  if (rungs !== null && rungs >= 2) exclusions.push('CONDITION_FAR');
+  if (state === 'EXPIRED') exclusions.push('EXPIRED');
+  if (stale) exclusions.push('STALE');
+  const freshness: Freshness =
+    ageMonths === undefined ? 'UNDATED' : stale ? 'STALE' : ageMonths > AGING_MONTHS ? 'AGING' : 'FRESH';
+
+  const headlineEligible = HEADLINE_TIERS.includes(tier) && exclusions.length === 0;
   why.push(headlineEligible ? 'HEADLINE_ELIGIBLE' : 'CONTEXT_ONLY');
 
   return {
@@ -792,6 +887,13 @@ export function scoreComparable(subject: Subject, c: RawComparable, ctx: Scoring
     district: compArea?.area,
     segment,
     headlineEligible,
+    level,
+    exclusions,
+    address: text(c.address) || undefined,
+    listingDate: text(c.listingDate) || undefined,
+    dealType,
+    priceKind: priceKindOf(c),
+    freshness,
   };
 }
 
@@ -1199,7 +1301,11 @@ export function buildMarketIntelligence(
   add('EXPIRED_EXCLUDED', expiredExcluded);
   add('PROJECT_ASKING_EVIDENCE', projectAskingEvidence.length);
 
+  const hierarchy = buildLocationHierarchy(subject, scored, chosen ?? []);
+
   const out: MarketIntelligence = {
+    valuation: hierarchy.valuation,
+    hierarchy,
     contextAvailable,
     subjectValuation,
     currency: chosen?.[0]?.currency ?? scored[0]?.currency ?? subject.currency ?? 'USD',
@@ -1224,8 +1330,13 @@ export function buildMarketIntelligence(
     // Every populated band, most relevant first, trimmed the same way. A
     // single listing is still worth showing as context — it is only barred
     // from CARRYING the analysis.
-    tiers: TIER_ORDER.map((t) => {
-      const inTier = scored.filter((c) => c.tier === t);
+    /*
+     * NEVER A CITYWIDE MEDIAN (2026-10-11). WIDER_MARKET is not published as
+     * a band at all, and every band is computed over listings that passed
+     * the customer gate — a 150 m² flat does not describe a 94 m² one.
+     */
+    tiers: TIER_ORDER.filter((t) => t !== 'WIDER_MARKET').map((t): TierStats | null => {
+      const inTier = scored.filter((c) => c.tier === t && c.exclusions.length === 0);
       if (!inTier.length) return null;
       const { kept, trimmed } = trimOutliers(inTier, (c) => c.pricePerSqm);
       const vs = kept.map((c) => c.pricePerSqm);

@@ -22,7 +22,9 @@
  * Every button is the same framed 48 px control. The dialog renders in a
  * portal outside the page, so it carries the `.hm-invest` scope itself.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTweenedNumber } from '@/verify/useTweenedNumber';
+import './liveMotion.css';
 import { Link } from 'react-router-dom';
 import { Loader2, Pause, Play, ShieldCheck, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -213,20 +215,95 @@ export function VerifyLaunchDialog({
 }
 
 /** During research: used and remaining, nothing else. */
+/*
+ * LIVE CREDITS (owner live run 2026-10-11: "show the spending as it happens").
+ *
+ * The deep navy band of the Verify system, with the two figures that matter
+ * moving between the values the server actually reports: available counts
+ * down, used counts up, and every real increase surfaces as a small gold
+ * chip that rises and fades. Nothing is extrapolated between polls — the
+ * motion is a tween between two measured numbers, never a guess.
+ */
 export function VerifyBudgetLine({ billing }: { billing: PublicBilling | null }) {
   const { t, lang } = useLanguage();
-  if (!billing || billing.state !== 'ACTIVE') return null;
-  const total = Number(billing.authorized) || 0;
-  const share = total > 0 && !billing.calculating ? Math.min(100, Math.max(0, (Number(billing.used) / total) * 100)) : null;
+  const active = !!billing && billing.state === 'ACTIVE';
+  const used = active && !billing!.calculating ? Number(billing!.used) : null;
+  const remaining = active ? Number(billing!.remaining) : null;
+  const usedNow = useTweenedNumber(used);
+  const remainingNow = useTweenedNumber(remaining);
+  // Each real increase in "used" becomes one rising chip.
+  const lastUsed = useRef<number | null>(null);
+  const [chips, setChips] = useState<Array<{ id: number; delta: number }>>([]);
+  useEffect(() => {
+    if (used === null || !Number.isFinite(used)) return;
+    const prev = lastUsed.current;
+    lastUsed.current = used;
+    if (prev === null || !(used > prev)) return;
+    const id = Date.now();
+    setChips((c) => [...c.slice(-2), { id, delta: used - prev }]);
+    const timer = setTimeout(() => setChips((c) => c.filter((x) => x.id !== id)), 1800);
+    return () => clearTimeout(timer);
+  }, [used]);
+  if (!active) return null;
+  const total = Number(billing!.authorized) || 0;
+  const share = total > 0 && usedNow !== null ? Math.min(100, Math.max(0, (usedNow / total) * 100)) : null;
   return (
-    <section className="hm-invest-panel p-4 sm:p-5" aria-live="polite">
-      <dl className="grid grid-cols-2 gap-3">
-        <Stat label={t('verify_budget_used')} value={billing.calculating ? t('verify_budget_calculating') : formatCreditAmount(billing.used, lang)} unit={billing.calculating ? undefined : t('verify_budget_unit')} quiet={billing.calculating} />
-        <Stat label={t('verify_budget_available')} value={formatCreditAmount(billing.remaining, lang)} unit={t('verify_budget_unit')} />
+    <section
+      aria-live="polite"
+      aria-label={t('verify_budget_live')}
+      className="relative isolate overflow-hidden rounded-2xl border border-white/10 bg-[#0C1119] p-4 text-white shadow-card sm:p-5"
+    >
+      <span aria-hidden="true" className="pointer-events-none absolute -top-16 end-[-10%] -z-10 h-40 w-64 rounded-full bg-[radial-gradient(closest-side,rgba(233,185,73,0.18),transparent)]" />
+      <div className="flex items-center justify-between gap-3">
+        <p className="flex min-w-0 items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_62%)]">
+          <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-[hsl(38_92%_58%)] opacity-60 motion-safe:animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[hsl(38_92%_58%)]" />
+          </span>
+          <span className="min-w-0 break-words">{t('verify_budget_live')}</span>
+        </p>
+        <Wallet className="h-4 w-4 shrink-0 text-white/40" aria-hidden="true" />
+      </div>
+
+      <dl className="mt-3 grid grid-cols-2 gap-3">
+        <div className="relative min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+          <dt className="text-2xs font-medium leading-snug text-white/60 break-words">{t('verify_budget_used')}</dt>
+          <dd className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-1.5 [font-variant-numeric:tabular-nums]">
+            <bdi className={cn('font-semibold', usedNow === null ? 'text-base text-white/60' : 'text-2xl text-[hsl(38_92%_62%)]')}>
+              {usedNow === null ? t('verify_budget_calculating') : formatCreditAmount(usedNow, lang)}
+            </bdi>
+            {usedNow === null ? null : <span className="text-xs font-medium text-white/55">{t('verify_budget_unit')}</span>}
+          </dd>
+          <span aria-hidden="true" className="pointer-events-none absolute end-3 top-2">
+            {chips.map((c) => (
+              <span key={c.id} className="hm-credit-chip absolute end-0 top-0 whitespace-nowrap rounded-full bg-[hsl(38_92%_54%)] px-2 py-0.5 text-2xs font-bold text-[#161309] [font-variant-numeric:tabular-nums]">
+                +{formatCreditAmount(c.delta, lang)}
+              </span>
+            ))}
+          </span>
+        </div>
+        <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+          <dt className="text-2xs font-medium leading-snug text-white/60 break-words">{t('verify_budget_available')}</dt>
+          <dd className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-1.5 [font-variant-numeric:tabular-nums]">
+            <bdi className="text-2xl font-semibold text-white">{formatCreditAmount(remainingNow ?? 0, lang)}</bdi>
+            <span className="text-xs font-medium text-white/55">{t('verify_budget_unit')}</span>
+          </dd>
+        </div>
       </dl>
+
       {share != null ? (
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[hsl(var(--sand))]" role="presentation">
-          <div className="h-full rounded-full bg-[hsl(38_92%_54%)] transition-[width] duration-700 ease-out" style={{ width: `${share}%` }} />
+        <div className="mt-3.5 space-y-1.5">
+          <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10" role="presentation">
+            <div
+              className="relative h-full rounded-full bg-[linear-gradient(90deg,hsl(38_80%_42%),hsl(38_92%_58%),hsl(42_100%_72%))] shadow-[0_0_12px_rgba(233,185,73,0.55)] rtl:bg-[linear-gradient(270deg,hsl(38_80%_42%),hsl(38_92%_58%),hsl(42_100%_72%))]"
+              style={{ width: `${Math.max(share, 1.5)}%` }}
+            >
+              <span aria-hidden="true" className="hm-credit-shimmer absolute inset-0 rounded-full" />
+            </div>
+          </div>
+          {total > 0 ? (
+            <p className="text-2xs text-white/50 [font-variant-numeric:tabular-nums]">{t('verify_budget_reserved', { n: formatCreditAmount(total, lang) })}</p>
+          ) : null}
         </div>
       ) : null}
     </section>

@@ -103,7 +103,10 @@ test('folded comparables drive the market headline only when they are measurably
   assert.equal(mi.max, 1650);
 
   // No coordinates: the same adverts are only known to be in the district.
-  const far = near.map((c) => ({ ...c, latitude: null, longitude: null }));
+  // Premise (2026-10-11, job 8ba97da9): streets are parsed now, so adverts on
+  // the subject's own avenue ("Chavchavadze Ave 10") ARE the same street. The
+  // district-only case is adverts on another Vake street.
+  const far = near.map((c) => ({ ...c, latitude: null, longitude: null, address: 'Abashidze St 20' }));
   const d = foldMarketplaceIntoLane([], { comparables: far, sources: {} }, { project: null, latitude: null, longitude: null, district: 'Vake' }, '2026-10-08T00:00:00Z');
   const md = buildMarketIntelligence({ address: 'Chavchavadze Ave, Vake', area: 80, rooms: 3 }, d.comparables);
   assert.equal(md.basis, 'EVIDENCE_LIMITED');

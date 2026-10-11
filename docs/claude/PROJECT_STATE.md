@@ -1429,3 +1429,9 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   (owner/admin; owner uploads untouched). The owner page auto-refreshes once when an imported property holds ≤1 photo.
 - Open owner decision: the 25 credits settled by the failed 693e6d75 campaign (reservation 1a7b4d83) — refund needs
   explicit owner confirmation (money movement).
+
+## Verify P0 .601 recovery (2026-10-11, PR #162)
+- Live job 8ba97da9 (unit 01.18.06.019.055.03.01.601) took 28m34s; critical path cut: market-lane CPU loop checkpointed, ENREG/Debtor/RS.ge start as soon as a primary names a company (RS.ge waits ≤3 min more), older TAS cases bounded (120 s, 20 MB/file), form discovery never calls Administration.*.
+- Report: deterministic unit identity (unitIdentity.ts), mortgage lifecycle + extract-dated legal position (propertyRegister.ts), TAS chronology by filing date (tasChronology.ts), Krtsanisi-first market hierarchy with INSUFFICIENT_EVIDENCE valuation (marketHierarchy.ts), professionals from AcadNusx title blocks/signatures (tasProfessionals.ts), premium report order + people/gallery cards.
+- REPORT_LOGIC_VERSION 4: recent reports rebuild once on open from retained evidence (one model call; no source re-acquisition).
+- Open: Rekhviashvili (Goga/Giorgi) not in stored text beyond the 300k cut (storage sha256/bf/bf0838…); AR11148112 text only in storage; decision 7839183 printed issue date unread; visual dates null; TAS page render failures.

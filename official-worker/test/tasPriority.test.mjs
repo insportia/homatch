@@ -119,6 +119,13 @@ test('DWR interface discovery (pure): same-origin interface scripts only; read-o
   assert.equal(pickFormMethod(m2.filter((m) => m.method !== 'getPublicForm')), null, 'the detail call is never re-chosen');
 });
 
+test('form discovery never picks the operator interface or field metadata (live run 2026-10-11: Administration.getDocFieldMimeTypes)', () => {
+  const admin = parseDwrInterface("Administration.getDocFieldMimeTypes = function(p0, callback) { dwr.engine._execute(Administration._path, 'Administration', 'getDocFieldMimeTypes', p0, callback); }\nAdministration.getDocumentValues = function(p0, callback) { dwr.engine._execute(Administration._path, 'Administration', 'getDocumentValues', p0, callback); }", 'Administration');
+  assert.equal(pickFormMethod(admin), null);
+  const user = parseDwrInterface("ArchCommons.getDocFieldTypes = function(p0, callback) { dwr.engine._execute(ArchCommons._path, 'ArchCommons', 'getDocFieldTypes', p0, callback); }\nArchCommons.getDocumentFormValues = function(p0, callback) { dwr.engine._execute(ArchCommons._path, 'ArchCommons', 'getDocumentFormValues', p0, callback); }", 'ArchCommons');
+  assert.equal(pickFormMethod([...admin, ...user]).method, 'getDocumentFormValues');
+});
+
 test('AR11161121-like case: 22 mixed attachments all accounted, full text, visuals classified, form captured, COMPLETE', async () => {
   __resetTasApiCaches();
   const { fetcher, calls } = priorityFetcher();

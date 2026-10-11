@@ -18,7 +18,7 @@
 // "final". A section that could not be established says so rather than
 // staying blank, because an empty row reads as "still loading" forever.
 
-import React from 'react';
+import './liveMotion.css';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { SectionId, SectionMaturity, SectionState, SectionsSnapshot } from '@/verify/sections';
 
@@ -85,57 +85,109 @@ const NOTE_LABEL: Record<string, string> = {
   MARKET_SOURCE_JOIN_REQUIRED: 'verify_note_market_source_blocked',
 };
 
-/** ✓ for settled, ● for moving, ○ for not started, ! for unavailable. */
-function mark(maturity: SectionMaturity): string {
-  if (maturity === 'VERIFIED') return '✓';
-  if (maturity === 'PARTIAL') return '◐';
-  if (maturity === 'UNAVAILABLE') return '—';
-  if (maturity === 'PENDING') return '○';
-  return '●';
+/*
+ * PREMIUM, LIVE (owner live run 2026-10-11: "it lags behind what we already
+ * found, and I do not like its design").
+ *
+ * The lag was server-side (the official results only landed when the whole
+ * stage ended); the official section now carries each source's own state
+ * while it runs. The panel itself is the Verify navy band: a segmented meter
+ * of the nine sections, rows that settle in when their state changes, and a
+ * gold sweep on whatever is being worked on right now. Reduced motion: still.
+ */
+const SETTLED: readonly SectionMaturity[] = ['VERIFIED', 'PARTIAL', 'UNAVAILABLE'];
+const MOVING: readonly SectionMaturity[] = ['PRELIMINARY', 'ENRICHING'];
+
+function StateIcon({ maturity }: { maturity: SectionMaturity }) {
+  const base = 'relative grid h-7 w-7 shrink-0 place-items-center rounded-full';
+  if (maturity === 'VERIFIED') {
+    return (
+      <span className={`${base} bg-[linear-gradient(145deg,#F6D27A,#D9A233)] text-[#14100A] shadow-[0_0_0_3px_rgba(233,185,73,0.15)]`} aria-hidden="true">
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5"><path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </span>
+    );
+  }
+  if (maturity === 'PARTIAL') {
+    return (
+      <span className={`${base} border border-[hsl(38_92%_58%)]/70`} aria-hidden="true">
+        <span className="h-3.5 w-3.5 rounded-full bg-[conic-gradient(hsl(38_92%_58%)_0_50%,transparent_50%_100%)]" />
+      </span>
+    );
+  }
+  if (maturity === 'UNAVAILABLE') {
+    return <span className={`${base} border border-white/15 text-white/40`} aria-hidden="true"><span className="h-0.5 w-3 rounded bg-current" /></span>;
+  }
+  if (MOVING.includes(maturity)) {
+    return (
+      <span className={base} aria-hidden="true">
+        <span className="absolute inset-0 rounded-full border-2 border-[hsl(38_92%_58%)]/20" />
+        <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-[hsl(38_92%_58%)] motion-safe:animate-spin [animation-duration:1.4s]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[hsl(38_92%_58%)] motion-safe:animate-pulse" />
+      </span>
+    );
+  }
+  return <span className={`${base} border border-dashed border-white/20`} aria-hidden="true" />;
 }
 
-function toneFor(maturity: SectionMaturity): string {
-  switch (maturity) {
-    case 'VERIFIED':
-      return 'text-emerald-600 dark:text-emerald-400';
-    case 'PARTIAL':
-      return 'text-amber-600 dark:text-amber-400';
-    case 'UNAVAILABLE':
-      return 'text-muted-foreground';
-    case 'PENDING':
-      return 'text-muted-foreground';
-    default:
-      return 'text-primary';
-  }
-}
+const STATE_TONE: Record<SectionMaturity, string> = {
+  VERIFIED: 'border-[hsl(38_92%_58%)]/40 bg-[hsl(38_92%_58%)]/15 text-[hsl(38_92%_70%)]',
+  PARTIAL: 'border-[hsl(38_92%_58%)]/30 bg-transparent text-[hsl(38_92%_66%)]',
+  UNAVAILABLE: 'border-white/10 bg-transparent text-white/45',
+  PENDING: 'border-white/10 bg-transparent text-white/45',
+  PRELIMINARY: 'border-white/15 bg-white/5 text-white/80',
+  ENRICHING: 'border-white/15 bg-white/5 text-white/80',
+};
+
+const SOURCE_DOT: Record<string, string> = {
+  DONE: 'bg-[hsl(38_92%_58%)]',
+  RUNNING: 'bg-[hsl(38_92%_58%)] motion-safe:animate-pulse',
+  QUEUED: 'border border-white/30',
+  UNAVAILABLE: 'border border-white/20',
+};
 
 function SectionRow({ section }: { section: SectionState }) {
   const { t } = useLanguage();
   const metrics = Object.entries(section.metrics).filter(
     ([key, value]) => typeof value === 'number' && value > 0 && METRIC_LABEL[key],
   ) as Array<[string, number]>;
+  const moving = MOVING.includes(section.maturity);
 
   return (
-    <li className="flex items-start gap-3">
-      <span
-        aria-hidden="true"
-        className={`mt-0.5 w-4 shrink-0 text-center text-sm leading-5 ${toneFor(section.maturity)}`}
-      >
-        {mark(section.maturity)}
-      </span>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-sm font-medium break-words">{t(SECTION_LABEL[section.id])}</span>
-          <span className={`text-2xs uppercase tracking-wider ${toneFor(section.maturity)}`}>
+    <li
+      className={`hm-section-settle relative flex items-start gap-3 overflow-hidden rounded-xl border px-3 py-2.5 ${
+        moving ? 'hm-live-sweep border-[hsl(38_92%_58%)]/25 bg-white/[0.03]' : 'border-white/[0.07] bg-white/[0.02]'
+      }`}
+    >
+      <StateIcon maturity={section.maturity} />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={`text-sm font-medium break-words ${section.maturity === 'PENDING' ? 'text-white/55' : 'text-white'}`}>
+            {t(SECTION_LABEL[section.id])}
+          </span>
+          <span className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider ${STATE_TONE[section.maturity]}`}>
             {t(MATURITY_LABEL[section.maturity])}
           </span>
         </div>
 
+        {Array.isArray(section.sources) && section.sources.length > 0 && (
+          <ul className="space-y-1">
+            {section.sources.map((src) => (
+              <li key={src.source} className="flex min-w-0 items-center gap-2 text-2xs">
+                <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${SOURCE_DOT[src.state] ?? SOURCE_DOT.QUEUED}`} />
+                <span className="min-w-0 flex-1 break-words text-white/75">{t(`verify_live_src_${src.source}`)}</span>
+                <span className={`shrink-0 ${src.state === 'DONE' ? 'text-[hsl(38_92%_66%)]' : 'text-white/45'}`}>
+                  {t(`verify_live_state_${src.state.toLowerCase()}`)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {metrics.length > 0 && (
-          <ul className="flex flex-wrap gap-x-3 gap-y-0.5">
+          <ul className="flex flex-wrap gap-1.5">
             {metrics.map(([key, value]) => (
-              <li key={key} className="text-2xs text-muted-foreground">
-                <span className="tabular-nums font-medium text-foreground/80">{value}</span>{' '}
+              <li key={key} className="rounded-full bg-white/[0.06] px-2 py-0.5 text-2xs text-white/60">
+                <span className="font-semibold text-white/90 [font-variant-numeric:tabular-nums]">{value}</span>{' '}
                 {t(METRIC_LABEL[key])}
               </li>
             ))}
@@ -144,7 +196,7 @@ function SectionRow({ section }: { section: SectionState }) {
 
         {section.notes.map((note) =>
           NOTE_LABEL[note] ? (
-            <p key={note} className="text-2xs text-muted-foreground/80 break-words">
+            <p key={note} className="text-2xs text-white/50 break-words">
               {t(NOTE_LABEL[note])}
             </p>
           ) : null,
@@ -161,6 +213,8 @@ export interface ResearchSectionsProps {
 export function ResearchSections({ sections }: ResearchSectionsProps) {
   const { t } = useLanguage();
   if (!sections || !Array.isArray(sections.sections) || sections.sections.length === 0) return null;
+  const list = sections.sections;
+  const done = list.filter((s) => SETTLED.includes(s.maturity)).length;
 
   /*
    * Sections that have not started are shown, dimmed, rather than hidden.
@@ -173,14 +227,38 @@ export function ResearchSections({ sections }: ResearchSectionsProps) {
     <section
       aria-live="polite"
       aria-label={t('verify_sections_title')}
-      className="rounded-2xl border border-border bg-card/40 p-4 sm:p-5 space-y-3"
+      className="relative isolate overflow-hidden rounded-2xl border border-white/10 bg-[#0C1119] p-4 text-white shadow-card sm:p-5"
     >
-      <p className="text-2xs uppercase tracking-wider text-muted-foreground">
-        {t('verify_sections_title')}
-      </p>
-      <ul className="space-y-2.5">
-        {sections.sections.map((section) => (
-          <SectionRow key={section.id} section={section} />
+      <span aria-hidden="true" className="pointer-events-none absolute -top-20 start-[-10%] -z-10 h-48 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(233,185,73,0.14),transparent)]" />
+      <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+        <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_62%)]">{t('verify_sections_title')}</p>
+        <p className="text-2xs text-white/55 [font-variant-numeric:tabular-nums]">
+          {t('verify_sections_progress', { done: String(done), total: String(list.length) })}
+        </p>
+      </div>
+      {/* One segment per section, lit by its real state. */}
+      <div className="mt-2.5 flex gap-1" role="presentation">
+        {list.map((s) => (
+          <span
+            key={s.id}
+            className={`h-1.5 flex-1 rounded-full transition-colors duration-700 ${
+              s.maturity === 'VERIFIED'
+                ? 'bg-[hsl(38_92%_58%)] shadow-[0_0_8px_rgba(233,185,73,0.5)]'
+                : s.maturity === 'PARTIAL'
+                  ? 'bg-[hsl(38_92%_58%)]/60'
+                  : MOVING.includes(s.maturity)
+                    ? 'hm-live-sweep bg-[hsl(38_92%_58%)]/30'
+                    : s.maturity === 'UNAVAILABLE'
+                      ? 'bg-white/20'
+                      : 'bg-white/10'
+            }`}
+          />
+        ))}
+      </div>
+      <ul className="mt-3.5 space-y-2">
+        {list.map((section) => (
+          // Keyed by state as well: a change of state replays the settle-in.
+          <SectionRow key={`${section.id}-${section.maturity}`} section={section} />
         ))}
       </ul>
     </section>

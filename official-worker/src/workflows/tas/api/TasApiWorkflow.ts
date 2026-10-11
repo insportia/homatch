@@ -87,6 +87,16 @@ export interface TasApiOptions {
   minGapMs?: number;
   /** Upper bound on OLDER-case attachment downloads per run; the rest are ACCOUNTED, not hidden. Priority cases are never bounded by it. */
   maxAttachmentDownloads?: number;
+  /**
+   * Wall-clock for OLDER-case attachments (default 120 s). Owner live run
+   * 2026-10-11: older cases took 8 of the 9.6 TAS minutes (2 GB downloaded)
+   * while the two newest cases took 42 s. Past it, older files are ACCOUNTED
+   * with their official link (NOT_PROCESSED_BUDGET), never hidden; a cached
+   * text is still used. The two newest cases are never bounded by it.
+   */
+  olderCasesBudgetMs?: number;
+  /** An older-case file the listing declares larger than this (default 20 MB) is accounted, not downloaded. */
+  olderMaxFileBytes?: number;
   /** Per-case text kept for downstream intelligence (chars) — OLDER cases only. */
   caseTextBudget?: number;
   /** Files opened for visuals (≤ VISUAL_FILE_MAX). */
@@ -351,6 +361,8 @@ export interface TasApiResult {
   ledger: ProcessingLedger | null;
   durationMs: number;
   deadlineReached: boolean;
+  /** Older-case files were accounted without download (time or size budget). The newest cases are unaffected. */
+  olderBudgetReached?: boolean;
   /** True only when every search candidate ran to a stop condition. A run cut short in search is never "no result". */
   searchComplete: boolean;
   error: string | null;
@@ -1198,6 +1210,8 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       return vx - vy || px - py || (y.a.date ?? '').localeCompare(x.a.date ?? '') || idAsc(x.a.attachedFileId, y.a.attachedFileId);
     });
 
+    const olderDeadline = now() + (options.olderCasesBudgetMs ?? 120_000);
+    const olderMaxFile = options.olderMaxFileBytes ?? 20 * 1024 * 1024;
     await pool(ordered, concurrency, async ({ docId, a }) => {
       const rec: AttachmentRecord = {
         attachedFileId: a.attachedFileId, documentId: docId, motionId: a.motionId, fileName: a.fileName, date: a.date,
@@ -1217,6 +1231,12 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           result.accounting.cacheHits++;
           Object.assign(rec, { outcome: cached.outcome, pages: cached.pages, textChars: cached.text.length, sha256: cached.sha256, format: cached.format ?? rec.format, cached: true });
           if (cached.text) attachmentPiece(docId, a, cached.text);
+        } else if (!wantsBytes && (now() > olderDeadline || (typeof a.sizeBytes === 'number' && a.sizeBytes > olderMaxFile))) {
+          // Older-case budget: accounted with its official link, not downloaded.
+          rec.outcome = 'NOT_PROCESSED_BUDGET';
+          rec.url = attachmentUrl(a.attachedFileId);
+          rec.sizeBytes = a.sizeBytes;
+          result.olderBudgetReached = true;
         } else if (downloads < maxDownloads || wantsBytes) {
           downloads++;
           const r = await timed('attachmentDownloadsMs', () => client.request(attachmentUrl(a.attachedFileId)));
@@ -1273,7 +1293,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     });
 
     // ── 6. visuals: wait for the in-flight chain, never past the deadline ──
-    const waitMs = Math.max(0, visualDeadline - now());
+    const waitMs = Math.max(0, Math.min(visualDeadline, olderDeadline + 15_000) - now());
     let timer: ReturnType<typeof setTimeout> | null = null;
     await Promise.race([visualChain, new Promise<void>((res) => { timer = setTimeout(res, waitMs); (timer as any)?.unref?.(); })]);
     if (timer) clearTimeout(timer);

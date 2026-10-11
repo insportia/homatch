@@ -10,7 +10,9 @@
  *     price is not a sale price.
  *   - Comparables are the closest headline-eligible ones, described with
  *     plain-word reasons and a district name — never a raw id or URL.
- *   - Context-only tiers (same district / wider market) are secondary.
+ *   - Context-only tiers are secondary, and the citywide WIDER_MARKET band is
+ *     never shown at all — not even for a report stored before 2026-10-11
+ *     (job 8ba97da9 showed "Wider market · 1,600 USD/m²" beside a Krtsanisi flat).
  *   - A payload in an older market shape (no `headline`) yields no numbers.
  */
 
@@ -125,7 +127,8 @@ export function marketView(raw: unknown): MarketView | null {
   const pool = arr(m.ranked).length ? arr(m.ranked) : arr(m.closest);
   const comparables = pool
     .map(obj)
-    .filter((c) => c.headlineEligible === true && c.outlier !== true && isTier(c.tier) && n(c.pricePerSqm))
+    .filter((c) => c.headlineEligible === true && c.outlier !== true && isTier(c.tier) && c.tier !== 'WIDER_MARKET'
+      && !(Array.isArray(c.exclusions) && c.exclusions.length) && n(c.pricePerSqm))
     .slice(0, MAX_COMPARABLES)
     .map((c) => {
       const reasons = arr(c.relevanceReasons).filter((r) => typeof r === 'string' && REASON_KEY[r]);
@@ -144,7 +147,7 @@ export function marketView(raw: unknown): MarketView | null {
 
   const context = arr(m.tiers)
     .map(obj)
-    .filter((t) => t.contextOnly === true && isTier(t.tier) && n(t.median) && Number(t.count) > 0)
+    .filter((t) => t.contextOnly === true && isTier(t.tier) && t.tier !== 'WIDER_MARKET' && n(t.median) && Number(t.count) > 0)
     .map((t) => ({ tier: t.tier as MarketTier, median: t.median as number, count: Number(t.count) }));
 
   return { currency, headline, asking, askingRange, comparables, context };

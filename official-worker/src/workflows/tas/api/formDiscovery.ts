@@ -71,10 +71,19 @@ export function formDiscoveryDiagnostics(s: FormDiscoveryState) {
   };
 }
 
+/*
+ * Live run 2026-10-11 (job 8ba97da9): the page loads Administration.js,
+ * ArchCommons.js, CommonMethods.js and UserMethods.js; only Administration.js
+ * was read and Administration.getDocFieldMimeTypes (field metadata, not a
+ * case's values) was called. Administration is an operator interface — it is
+ * never fetched or called now; the public-user interfaces come first.
+ */
 const scriptRank = (u: string) => {
   const n = parseUrl(u).pathname.split('/').pop() ?? '';
-  return /public/i.test(n) ? 0 : /doc/i.test(n) ? 1 : /form/i.test(n) ? 2 : /UserMethods/i.test(n) ? 4 : 3;
+  if (/^Administration/i.test(n)) return 9;
+  return /public/i.test(n) ? 0 : /UserMethods/i.test(n) ? 1 : /ArchCommons/i.test(n) ? 2 : /CommonMethods/i.test(n) ? 3 : /doc|form/i.test(n) ? 4 : 5;
 };
+export const isOperatorScript = (u: string) => /^Administration/i.test(parseUrl(u).pathname.split('/').pop() ?? '');
 
 /**
  * One priority case's form capture. Never throws. `raw` is the sanitized
@@ -96,7 +105,7 @@ export async function captureCaseForm(client: TasApiClient, documentId: string, 
       const r = await client.request(s.pageUrl, { headers: { Accept: 'text/html' } }, { retries: 0 });
       s.pageStatus = r.status;
       if (r.status < 200 || r.status >= 300) s.pageError = `PAGE_HTTP_${r.status}`;
-      else s.interfaceScripts = findInterfaceScripts(bytesToBuffer(r.bytes).toString('utf8'), s.pageUrl).sort((a, b) => scriptRank(a) - scriptRank(b) || a.localeCompare(b));
+      else s.interfaceScripts = findInterfaceScripts(bytesToBuffer(r.bytes).toString('utf8'), s.pageUrl).filter((u) => !isOperatorScript(u)).sort((a, b) => scriptRank(a) - scriptRank(b) || a.localeCompare(b));
     }
     if (s.pageError) return { ...base, status: 'FAILED', reason: s.pageError };
     let chosen: DwrMethodInfo | null = pickFormMethod(s.methods);

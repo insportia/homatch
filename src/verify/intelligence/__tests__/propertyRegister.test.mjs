@@ -152,7 +152,7 @@ test('reconcile leaves a company owner claim alone when the register owner IS a 
   const rules = { ownerIsPrivate: false, terminationResolved: false };
   const s = 'მესაკუთრედ მითითებულია შპს „მილენიო გრუპი“.';
   assert.equal(reconcileText(s, rules), s);
-  assert.deepEqual(rulesFrom(null), { ownerIsPrivate: false, terminationResolved: false });
+  assert.deepEqual(rulesFrom(null), { ownerIsPrivate: false, terminationResolved: false, mortgageStillRegistered: false, unitVerified: false });
 });
 
 test('sentence splitter keeps cadastral codes and street abbreviations intact', () => {

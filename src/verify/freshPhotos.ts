@@ -212,7 +212,7 @@ export function parseDayDate(raw: unknown): string | null {
     return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
   }
   const s = String(raw).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim();
-  let m = s.match(/(?<!\d)(\d{4})[-:/.](\d{1,2})[-:/.](\d{1,2})(?!\d)/);
+  let m = s.match(/(?<!\d)(\d{4})[\-/.:](\d{1,2})[\-/.:](\d{1,2})(?!\d)/);
   if (m) return validYmd(m[1], m[2], m[3]);
   m = s.match(/(?<!\d)(\d{1,2})[./](\d{1,2})[./](\d{4})(?!\d)/);
   if (m) return validYmd(m[3], m[2], m[1]);

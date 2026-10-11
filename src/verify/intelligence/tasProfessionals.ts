@@ -159,7 +159,7 @@ export function roleCode(roleText: string, scope: string | null = null): { code:
   if (/არქიტექტ|architect/iu.test(t)) return { code: 'ARCHITECT', group: 'ARCHITECTURE' };
   if (/ზედამხედველ|supervis/iu.test(t)) return { code: 'TECHNICAL_SUPERVISION', group: 'CONSTRUCTION_ORG' };
   if (/მშენებელ|კონტრაქტორ|contractor|builder/iu.test(t)) return { code: 'CONTRACTOR', group: 'CONSTRUCTION_ORG' };
-  if (/ვენტილ|გათბობ|ელექტრ|წყალმომარაგ|კანალიზ|hvac|mep|electric|plumb/iu.test(t)) return { code: 'MEP_ENGINEER', group: 'OTHER' };
+  if (/ვენტილ|გათბობ|ელექტრ|წყალმომარაგ|კანალიზ|გაზმომარაგ|გაზსადენ|hvac|mep|electric|plumb/iu.test(t)) return { code: 'MEP_ENGINEER', group: 'OTHER' };
   if (/ინტერიერ|interior/iu.test(t)) return { code: 'INTERIOR_DESIGNER', group: 'OTHER' };
   if (assessment) return { code: 'EXPERT_ASSESSMENT', group: 'OTHER' };
   return { code: 'OTHER', group: 'OTHER' };
@@ -279,6 +279,8 @@ function sectionSubject(opening: string): string | null {
 
 /** A CV starts: nothing after it is a project role (qualifications are not roles). */
 const CV_START = /^(?:CV\b|C\.V\.|curriculum|ავტობიოგრაფ|რეზიუმე)|^დაბადების(?:\s+თარიღი)?\s*:?$|^განათლება\s*:?$/iu;
+/** A new document after a CV inside the same file. */
+const CV_END = /^(?:შემსრულებელი\s+(?:კომპანია|ორგანიზაცია)|საპროექტო\s+ობიექტი|განმარტებითი\s+ბარათი|საექსპერტო\s+(?:დასკვნა|შეფასება)|\[undated|სარჩევი|შინაარსი)/u;
 /** Signature verbs: "დაამუშავა: / ბ. გოგოლაური /". */
 const SIGN_VERB = /^(?:დაამუშავა|შეასრულა|შეადგინა|მოამზადა|შეამოწმა)$/u;
 /** A decision's clause naming a new client: "დამკვეთად X-ის ნაცვლად - შპს „Y“". */
@@ -334,10 +336,16 @@ function hitsFromText(c: CaseSource, t: CaseSource['texts'][number], titleBlock:
     let lastPeople: RawHit[] = [];
     let lastPeopleAt = -99;
     let labelledTitleBlock = false;
+    let cvUntil = -1;
     const standalone: string[] = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (CV_START.test(line)) break;
+      // A CV runs until the next document starts (or ~150 lines): nothing in it is a project role.
+      if (cvUntil < 0 && CV_START.test(line)) cvUntil = i + 150;
+      if (cvUntil >= 0) {
+        if (i < cvUntil && !CV_END.test(line)) continue;
+        cvUntil = -1;
+      }
       if (line.length > 400) { heading = null; pending = []; continue; }
 
       const sig = /^(.*?)[\s:]*\/\s*([^/]{3,40}?)\s*\/\s*$/u.exec(line);
@@ -388,6 +396,21 @@ function hitsFromText(c: CaseSource, t: CaseSource['texts'][number], titleBlock:
         }
         lastPeople = [];
         continue;
+      }
+
+      // An engineering part's title page: "შემსრულებელი კომპანია "…"" … "საინჟინრო ნაწილი:" / "გაზმომარაგების პროექტი".
+      const performer = !colon ? /^შემსრულებელი\s+(?:კომპანია|ორგანიზაცია)\s+(.{3,60})$/u.exec(line) : null;
+      if (performer) {
+        const raw = performer[1].trim();
+        const org = asOrganizationName(raw) ?? (/^[„"«]?[ა-ჰA-Za-z][ა-ჰA-Za-z\s-]{1,40}[“"»”]?$/u.test(raw) && raw.replace(/[„“"«»”]/g, '').trim().split(/\s+/).length <= 4 ? raw.replace(/[„“"«»”]/g, '').trim() : null);
+        let part: string | null = null;
+        for (let k = i + 1; k < Math.min(lines.length, i + 9); k++)
+          if (/^საინ\S*\s+ნაწილი\s*:?$/u.test(lines[k]) && /პროექტი$/u.test(lines[k + 1] ?? '')) { part = lines[k + 1]; break; }
+        if (org && !BANK.test(org) && !AUTHORITY.test(org)) {
+          out.push({ name: org, kind: 'ORGANIZATION', roleText: part ? `შემსრულებელი კომპანია: ${part}` : 'შემსრულებელი კომპანია', scope: part, ...meta });
+          pending = [];
+          continue;
+        }
       }
 
       const dash = /^(.{4,70}?)\s+[–—-]\s+(.{3,180})$/u.exec(line);

@@ -54,6 +54,7 @@ import { extractFreshness } from '../../../src/verify/intelligence/propertyRegis
 import { buildUnitIdentity } from '../../../src/verify/intelligence/unitIdentity.ts';
 import { explainTechnical } from '../../../src/verify/intelligence/technicalExplained.ts';
 import { extractProjectSignals } from '../../../src/verify/intelligence/projectStory.ts';
+import { keepStoryOnRebuild } from '../../../src/verify/intelligence/storyGuard.ts';
 import { finalBuyerAssessment } from '../../../src/verify/intelligence/buyerAssessment.ts';
 import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '../../../src/verify/intelligence/reportReadPath.ts';
 import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
@@ -734,6 +735,11 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
   }
 
+  /* The project's signals, read once: the status cards and the story guard use them. */
+  const projectSignals = extractProjectSignals(rj);
+  /* v7 (owner, 2026-10-11): an automatic rebuild keeps the stored chapters
+     (the editorial baseline); every story passes the continuity guard. */
+  const propertyStory = keepStoryOnRebuild(job.synthesis_json, final.propertyStory, { autoUpgrade: opts.autoUpgrade, evolution: projectSignals?.evolution });
   const built = {
     /* Which model actually wrote this, for COGS and for inspection. */
     synthesisModel: MODEL,
@@ -745,7 +751,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       // The latest confirmed official position, the documented history
       // oldest-first, and one caption per official TAS visual.
       ...(final.currentStatus ? { currentStatus: final.currentStatus } : {}),
-      ...(final.propertyStory ? { propertyStory: final.propertyStory } : {}),
+      ...(propertyStory ? { propertyStory } : {}),
       ...(final.visualCaptions ? { visualCaptions: final.visualCaptions } : {}),
       ...(final.visualExplanations?.length ? { visualExplanations: final.visualExplanations } : {}),
       keyFindings: final.keyFindings,
@@ -759,7 +765,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       // statement) for the three-track story. buyerAssessment is set below,
       // once the register has been merged in.
       technicalExplained: explainTechnical({ specs: pkg.dossier?.technicalSpecs ?? [], publicResearch: rj?.publicResearch, team: pkg.dossier?.projectTeamV2 ?? [] }),
-      projectSignals: extractProjectSignals(rj),
+      projectSignals,
     },
     // The sources behind the prose, so the UI can offer them underneath
     // without the customer having to read raw research output.

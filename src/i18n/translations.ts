@@ -18271,6 +18271,9 @@ const en = {
   verify_v6s_stance_balanced: 'The evidence supports a balanced assessment',
   verify_v6s_stance_cautious: 'The evidence calls for caution',
   verify_v6s_final_closing: 'Our aim is not to make the decision for you. We want you to make your choice as informed as possible, knowing the project\'s strengths and seeing in advance the matters worth extra attention.',
+
+  /* ── VERIFY V7 STORY ── */
+  verify_v7_story_details: 'Detailed chronology and official documents',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36456,6 +36459,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_v6s_stance_balanced: 'მტკიცებულებები დაბალანსებულ შეფასებას ამყარებს',
   verify_v6s_stance_cautious: 'მტკიცებულებები სიფრთხილეს მოითხოვს',
   verify_v6s_final_closing: 'ჩვენი მიზანი არ არის თქვენს ნაცვლად გადაწყვეტილების მიღება. გვინდა, რომ არჩევანი მაქსიმალურად ინფორმირებულად გააკეთოთ, იცოდეთ პროექტის ძლიერი მხარეები და წინასწარ ხედავდეთ საკითხებს, რომლებზეც დამატებითი ყურადღების გამახვილება ღირს.',
+
+  /* ── VERIFY V7 STORY ── */
+  verify_v7_story_details: 'დეტალური ქრონოლოგია და ოფიციალური დოკუმენტები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -54632,6 +54638,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_v6s_stance_balanced: 'Данные поддерживают взвешенную оценку',
   verify_v6s_stance_cautious: 'Данные требуют осторожности',
   verify_v6s_final_closing: 'Наша цель не принять решение за вас. Мы хотим, чтобы вы сделали выбор максимально осознанно, знали сильные стороны проекта и заранее видели вопросы, которым стоит уделить дополнительное внимание.',
+
+  /* ── VERIFY V7 STORY ── */
+  verify_v7_story_details: 'Подробная хронология и официальные документы',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -72806,6 +72815,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_v6s_stance_balanced: 'Kanıtlar dengeli bir değerlendirmeyi destekliyor',
   verify_v6s_stance_cautious: 'Kanıtlar temkinli olmayı gerektiriyor',
   verify_v6s_final_closing: 'Amacımız sizin yerinize karar vermek değil. Seçiminizi mümkün olduğunca bilgili yapmanızı, projenin güçlü yanlarını bilmenizi ve ek dikkat gerektiren konuları önceden görmenizi istiyoruz.',
+
+  /* ── VERIFY V7 STORY ── */
+  verify_v7_story_details: 'Ayrıntılı kronoloji ve resmî belgeler',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -90980,6 +90992,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_v6s_stance_balanced: 'الأدلة تدعم تقييمًا متوازنًا',
   verify_v6s_stance_cautious: 'الأدلة تستدعي الحذر',
   verify_v6s_final_closing: 'ليس هدفنا أن نتخذ القرار نيابةً عنك. نريد أن يكون اختيارك مستنيرًا قدر الإمكان، وأن تعرف نقاط قوة المشروع وترى مسبقًا المسائل التي تستحق اهتمامًا إضافيًا.',
+
+  /* ── VERIFY V7 STORY ── */
+  verify_v7_story_details: 'التسلسل الزمني المفصل والوثائق الرسمية',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -109154,6 +109169,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_v6s_stance_balanced: 'הראיות תומכות בהערכה מאוזנת',
   verify_v6s_stance_cautious: 'הראיות מחייבות זהירות',
   verify_v6s_final_closing: 'המטרה שלנו אינה לקבל את ההחלטה במקומכם. אנחנו רוצים שתבחרו בצורה מושכלת ככל האפשר, תכירו את החוזקות של הפרויקט ותראו מראש את הנושאים שכדאי לתת עליהם תשומת לב נוספת.',
+
+  /* ── VERIFY V7 STORY ── */
+  verify_v7_story_details: 'כרונולוגיה מפורטת ומסמכים רשמיים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

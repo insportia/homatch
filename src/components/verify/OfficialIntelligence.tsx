@@ -1,10 +1,11 @@
 // HOMATCH Verify — the official-history blocks of the report.
 //
 //   CurrentStatusBlock     the latest confirmed official position, with dates
-//   PropertyStoryBlock     the documented history: the introduction, then the
-//                          project's evolution step by step (ProjectStory),
-//                          visible by default; the model's chapters one tap
-//                          away; older reports keep the grouped timeline.
+//   PropertyStoryBlock     the documented history: the introduction, the
+//                          readable chapters (always visible), the four status
+//                          cards, then the step-by-step chronology with case
+//                          numbers in one disclosure; older reports keep the
+//                          grouped timeline.
 //                          The official visuals moved to VisualExplorer.
 //   ResearchTransparency   what was reviewed, in counts — never links
 //
@@ -18,6 +19,7 @@ import { ChevronDown } from 'lucide-react';
 import { timelineGroups, yearSpan } from '@/verify/reportPresentation';
 import { projectStory } from '@/verify/intelligence/projectStory';
 import { ProjectStory, StoryIntro } from './ProjectStory';
+import { guardStoryContinuity, evolutionOf, stripListMarkers, periodLabel } from '@/verify/intelligence/storyGuard';
 
 export interface CurrentStatusView {
   statement: string;
@@ -313,51 +315,61 @@ export const PropertyStoryBlock: React.FC<{
   /** synthesis.unitIdentity (optional): the register's "under construction" mark and its date. */
   unitIdentity?: unknown;
 }> = ({ chapters, history, clean, signals, specs, unitIdentity }) => {
-  const story = (chapters ?? []).filter((c) => clean(c.body));
-  /* The project's evolution, step by step, replaces the plain timeline
-     whenever the record supports it (owner, 2026-10-11). Visible by default. */
+  /* The model's chapters, kept to what the records connect (storyGuard.ts):
+     the owner's editorial baseline, minus unsupported continuity between an
+     earlier project on the parcel and the current development. */
+  const story = React.useMemo(
+    () => guardStoryContinuity(chapters ?? [], evolutionOf(signals)).map((c) => ({ ...c, body: stripListMarkers(clean(c.body)) })).filter((c) => c.body),
+    [chapters, signals, clean],
+  );
+  /* The project's evolution, step by step (projectStory.ts). */
   const events = React.useMemo(() => projectStory({ history, signals, specs, unitIdentity }), [history, signals, specs, unitIdentity]);
   const hasTimeline = !!(events || history?.milestones?.length || history?.milestoneGroups?.length);
   // The step-by-step evolution already tells every change, with its figures.
   const hasEvolution = !!history?.evolution?.length && !events?.evolution;
   if (!story.length && !hasTimeline && !hasEvolution) return null;
 
+  /* THE READABLE STORY LEADS (owner, 2026-10-11 v7): the chapters are always
+     visible, in order, without numbers; the step list, case numbers and
+     decision references move into one disclosure below them. */
   const chaptersList = story.length ? (
-    <ol className="space-y-7">
+    <div className="space-y-7" data-story-chapters>
       {story.map((c) => (
-        <li key={c.key} className="space-y-2">
+        <section key={c.key} className="space-y-2" data-story-chapter={c.key}>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h3 className="font-display text-lg font-semibold leading-snug break-words">{clean(c.title)}</h3>
-            {c.period ? <Ltr className="text-2xs font-medium tabular-nums text-[hsl(var(--gold-ink))]">{c.period}</Ltr> : null}
+            {periodLabel(c.period) ? <Ltr className="text-2xs font-medium tabular-nums text-[hsl(var(--gold-ink))]">{periodLabel(c.period)}</Ltr> : null}
           </div>
-          {clean(c.body).split(/\n{2,}/).map((p, i) => (
+          {c.body.split(/\n{2,}/).map((p, i) => (
             <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
           ))}
-        </li>
+        </section>
       ))}
-    </ol>
+    </div>
   ) : null;
+  const details = events ? <ProjectStory view={events} clean={clean} part="details" /> : history && hasTimeline ? <Timeline history={history} clean={clean} /> : null;
   return (
     <div className="space-y-8">
       {/* The introduction first: the approved copy, or the concrete discoveries
           the records establish. Never behind an accordion. */}
       <StoryIntro discoveries={events?.evolution?.discoveries ?? null} clean={clean} />
-      {/* With the event story on screen, the long-form chapters tell the same
-          life a second time: they stay one tap away instead of in the flow. */}
-      {events ? <ProjectStory view={events} clean={clean} /> : chaptersList}
-      {events && chaptersList ? <StoryChaptersDisclosure>{chaptersList}</StoryChaptersDisclosure> : null}
-      {!events && history && hasTimeline ? <Timeline history={history} clean={clean} /> : null}
+      {chaptersList}
+      {/* Where it stands today: physical works, permit, completion and
+          commissioning, never merged. Visible. */}
+      {events ? <ProjectStory view={events} clean={clean} part="status" /> : null}
+      {/* Without chapters, the chronology is the story and stays in the flow. */}
+      {chaptersList ? (details ? <StoryDetailsDisclosure>{details}</StoryDetailsDisclosure> : null) : details}
       {history && hasEvolution ? <EvolutionList items={history.evolution} clean={clean} /> : null}
     </div>
   );
 };
 
-const StoryChaptersDisclosure: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const StoryDetailsDisclosure: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useLanguage();
   return (
-    <details className="group rounded-2xl border border-border bg-card px-4 py-1 sm:px-5" data-story-chapters>
+    <details className="group rounded-2xl border border-border bg-card px-4 py-1 sm:px-5" data-story-details>
       <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] [&::-webkit-details-marker]:hidden">
-        {t('verify_fn_story_full')}
+        {t('verify_v7_story_details')}
         <ChevronDown className="h-4 w-4 shrink-0 motion-safe:transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div className="pb-4 pt-2">{children}</div>

@@ -222,9 +222,19 @@ export function parseRegistryShareholders(
  * legitimately carried elsewhere as an ENTITY attribute, but inside a
  * sentence about a named individual it adds nothing a buyer needs.
  */
+/** A people block with every `support` line redacted again (stored reports predate the fix). */
+export function redactPeopleSupport<T>(people: T): T {
+  const o = people as { people?: Array<Record<string, unknown>> } | null | undefined;
+  if (!o || !Array.isArray(o.people)) return people;
+  return { ...o, people: o.people.map((p) => (typeof p?.support === 'string' ? { ...p, support: redactPersonalData(p.support) } : p)) } as T;
+}
+
 export function redactPersonalData(text: unknown): string {
   return String(text ?? '')
-    .replace(/\b\d{9,11}\b/g, '')
+    // Escaped line breaks ("name,\\n01234567890") join the number to a letter,
+    // so the number is matched by digits alone, not by a word boundary.
+    .replace(/\\[nrt]/g, ' ')
+    .replace(/(?<!\d)\d{9,11}(?!\d)/g, '')
     .replace(/\b[\w.+-]+@[\w-]+\.[\w.]+\b/g, '')
     .replace(/(\+995[\s-]?)?\b\d{3}[\s-]?\d{2}[\s-]?\d{2}[\s-]?\d{2}\b/g, '')
     .replace(/\s*,\s*,/g, ',')

@@ -531,6 +531,7 @@ export function VerifyReport({
           identityUnresolved={identityUnresolved}
           history={history}
           docs={synthesis.officialDocuments}
+          freshPhotos={(synthesis as { freshPhotos?: unknown }).freshPhotos}
           clean={clean}
         />
       </Chapter>

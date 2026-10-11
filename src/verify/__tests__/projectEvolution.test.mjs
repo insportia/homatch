@@ -277,7 +277,11 @@ test('components: the story is visible by default, the five-stage widget is gone
   const read = (f) => fs.readFileSync(new URL(`../../components/verify/${f}.tsx`, import.meta.url), 'utf8');
   const oi = read('OfficialIntelligence');
   const block = oi.slice(oi.indexOf('export const PropertyStoryBlock'));
-  assert.ok(block.indexOf('<StoryIntro') < block.indexOf('<ProjectStory'), 'the introduction is not first');
+  // v7 (owner, 2026-10-11): introduction, then the readable chapters, then the
+  // status cards; the step list sits in the detailed-chronology disclosure.
+  const ret = block.slice(block.indexOf('return (\n    <div className="space-y-8">'));
+  assert.ok(ret.indexOf('<StoryIntro') < ret.indexOf('{chaptersList}'), 'the introduction is not first');
+  assert.ok(ret.indexOf('{chaptersList}') < ret.indexOf('part="status"'), 'the chapters do not lead');
   const ps = read('ProjectStory');
   const evolution = ps.slice(ps.indexOf('data-evolution>'), ps.indexOf('data-latest-approved'));
   assert.ok(!/<details/.test(evolution.slice(0, evolution.indexOf('<Step'))), 'the story sits behind an accordion');

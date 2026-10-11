@@ -85,4 +85,10 @@ test('wiring: verify-synthesis starts the refresh on a rebuild; the driver folds
   assert.match(ra, /action \|\| ''\) === 'refresh_market'/);
   assert.match(ra, /await driveSynthesis\(sb\);\s*await pollMarketRefreshes\(sb\);/);
   assert.match(ra, /_rebuildRequested: rebuildRequest\('MARKET_REFRESH'/);
+  // Production 2026-10-11: selecting a column research_jobs does not have
+  // (`type`) failed the sweep every tick; only real columns may be selected.
+  const sweep = ra.slice(ra.indexOf('async function pollMarketRefreshes'), ra.indexOf('async function pollMarketRefreshes') + 900);
+  const cols = (sweep.match(/\.select\('([^']+)'\)/) ?? [])[1]?.split(',') ?? [];
+  assert.deepEqual(cols.filter((c) => !['id', 'query', 'mode', 'result_json', 'synthesis_json', 'synthesis_state'].includes(c)), []);
+  assert.match(ra, /needsMarketRefresh\(next\)\) \{\s*const again = await startJobMarketRefresh\(sb, j\.id\)/);
 });

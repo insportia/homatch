@@ -164,7 +164,7 @@ function SectionRow({ section }: { section: SectionState }) {
           <span className={`text-sm font-medium break-words ${section.maturity === 'PENDING' ? 'text-white/55' : 'text-white'}`}>
             {t(SECTION_LABEL[section.id])}
           </span>
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${STATE_TONE[section.maturity]}`}>
+          <span className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider ${STATE_TONE[section.maturity]}`}>
             {t(MATURITY_LABEL[section.maturity])}
           </span>
         </div>

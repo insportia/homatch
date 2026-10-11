@@ -276,7 +276,7 @@ export function VerifyBudgetLine({ billing }: { billing: PublicBilling | null })
           </dd>
           <span aria-hidden="true" className="pointer-events-none absolute end-3 top-2">
             {chips.map((c) => (
-              <span key={c.id} className="hm-credit-chip absolute end-0 top-0 whitespace-nowrap rounded-full bg-[hsl(38_92%_54%)] px-2 py-0.5 text-[11px] font-bold text-[#161309] [font-variant-numeric:tabular-nums]">
+              <span key={c.id} className="hm-credit-chip absolute end-0 top-0 whitespace-nowrap rounded-full bg-[hsl(38_92%_54%)] px-2 py-0.5 text-2xs font-bold text-[#161309] [font-variant-numeric:tabular-nums]">
                 +{formatCreditAmount(c.delta, lang)}
               </span>
             ))}

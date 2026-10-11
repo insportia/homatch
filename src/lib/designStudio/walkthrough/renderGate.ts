@@ -31,6 +31,15 @@ export const MAX_PLACEHOLDER_RATIO = 0.35;
 /** A piece moved further than this from where the render put it counts as displaced (reported; a share is gated). */
 export const DISPLACED_M = 0.6;
 export const MAX_DISPLACED_SHARE = 0.15;
+/**
+ * READY without being the render: a reading whose pieces contradict one another (eight chairs and four armchairs on
+ * one table) or whose rooms had to be laid out again from its pieces (pieceLayout.ts) can never stand every piece
+ * exactly where the pixels put it. Such a walkthrough is still published — walkable, every room with what makes it
+ * that room, most of the render's important pieces standing — and recorded as APPROXIMATE, never as the render.
+ * The same bar a design-graph walkthrough meets to be READY (designGraph.ts READY_MIN_RECALL).
+ */
+export const READY_MIN_IMPORTANT_RECALL = 0.8;
+export const READY_MIN_RECALL = 0.7;
 
 export interface RenderGateInput {
   space: SpaceModel;
@@ -45,6 +54,10 @@ export interface RenderGateInput {
 
 export interface RenderGate {
   promoted: boolean;
+  /** Publishable: promoted, or walkable and approximately the render (READY_MIN_*). */
+  ready: boolean;
+  /** Published as approximately the render, not as the render (ready but not promoted). */
+  approximate: boolean;
   visual: { pass: boolean; reasons: string[]; metrics: Record<string, number> };
   navigation: { pass: boolean; reasons: string[]; metrics: Record<string, number>; unreachable: string[]; blockedDoors: string[]; traps: Array<{ roomId: string; areaM2: number }>; spawn: { x: number; y: number } | null };
   facing: FacingFinding[];
@@ -107,8 +120,12 @@ export function renderGate(input: RenderGateInput): RenderGate {
 
   const visualPass = !visualReasons.length;
   const navPass = !navReasons.length;
+  const promoted = visualPass && navPass;
+  const roughly = importantRecall >= READY_MIN_IMPORTANT_RECALL && recall >= READY_MIN_RECALL && placeholders <= MAX_PLACEHOLDER_RATIO
+    && !facing.some((f) => f.code === 'REVERSED') && !build.gate?.missingEssential?.length;
+  const ready = promoted || (navPass && roughly);
   return {
-    promoted: visualPass && navPass,
+    promoted, ready, approximate: ready && !promoted,
     visual: {
       pass: visualPass, reasons: visualReasons,
       metrics: {

@@ -133,7 +133,8 @@ test('the server checks the geometry before placing anything, and a failed check
   assert.match(route, /const geometry = await geometryOf\(admin, design\);\s*if \(geometry && geometry\.verdict === 'FAIL'\) \{/);
   assert.match(route, /await fail\(admin, row, 'GEOMETRY_UNRELIABLE'/);
   // The reading's own check is recorded with the space it made.
-  assert.match(route, /const geometryCheck = checkGeometry\(/);
+  assert.match(route, /const built = spaceFromReading\(read, \{/);
+  assert.match(code('src/lib/designStudio/walkthrough/photoSpace.ts'), /const geometryCheck = checkGeometry\(/);
   assert.match(route, /\.\.\.\(furnishing \? \{ furnishing \} : \{\}\),\s*geometryCheck,/);
   // The validated reading is kept with its job: rebuilding the space never buys it again.
   assert.match(route, /reading: read,/);

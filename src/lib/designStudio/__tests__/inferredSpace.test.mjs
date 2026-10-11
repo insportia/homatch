@@ -47,7 +47,8 @@ test('the reconstruction reader is reused with a walk brief: source pictures for
   assert.match(walkRoute, /input: \[\{ role: 'system', content: RECON_SYSTEM \}, \{ role: 'user', content \}\]/, 'the existing reconstruction reader');
   // Read with each picture's shape and the selected render's measured frame, then made buildable (readingRepair.ts).
   assert.match(walkRoute, /const \{ recon: read \} = validateReconstruction\(raw, images\.length, \{\s*\/\/[^\n]*\n\s*imageAspects: images\.map\(\(img\) => img\.aspect\),\s*frames: measured && viewIndex != null \? \[\{ image: selected, view: viewIndex, frame: measured\.frame \}\] : \[\],/);
-  assert.match(walkRoute, /const repaired = repairReading\(read\);\s*const recon = repaired\.recon;/);
+  assert.match(walkRoute, /const built = spaceFromReading\(read, \{/);
+  assert.match(code('src/lib/designStudio/walkthrough/photoSpace.ts'), /const repaired = repairReading\(read\);\s*const recon = repaired\.recon;/);
   assert.deepEqual([basisOf('OBSERVED', 0.2), basisOf('INFERRED', 0.8), basisOf('INFERRED', 0.5), basisOf('INFERRED', 0.2)], ['OBSERVED', 'INFERRED_HIGH', 'INFERRED_MEDIUM', 'INFERRED_LOW']);
 });
 
@@ -56,7 +57,9 @@ test('A: a generated design with no floor plan starts its walkthrough (no upload
   assert.match(route, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*const renderId = body\.renderId \?\? null;\s*let onPlan = await designOnPlan\(admin, version, project\.id, renderId\);/);
   // A space read from other pictures is read once more from the selected render; a failed reading keeps the old one.
   assert.match(route, /if \(onPlan && renderId && onPlan\.source\.provenance\?\.inferred === true && onPlan\.source\.provenance\?\.fromRenderId !== renderId\) \{/);
-  assert.match(route, /if \(again\.state === 'READY'\) onPlan = await designOnPlan\(admin, version, project\.id, renderId\) \?\? onPlan;\s*\}\s*if \(!onPlan\) \{/);
+  assert.match(route, /if \(again\.state === 'READY'\) onPlan = await designOnPlan\(admin, version, project\.id, renderId\) \?\? onPlan;\s*\}/);
+  // A space older code could not make walkable is built again from its kept reading (no new reading) before it is walked.
+  assert.match(route, /if \(photo && await rebuildSpace\(admin, \{ actorId, project, version, photoSource: photo, renderId \}, onPlan\.source\)\) onPlan = await designOnPlan\(admin, version, project\.id, renderId\) \?\? onPlan;\s*\}\s*if \(!onPlan\) \{/);
   assert.match(route, /const space = await reconstructSpace\(admin,/);
   assert.match(route, /if \(space\.state === 'RUNNING'\) return json\(\{ walkthrough: null, reconstructing: true \}, 202\);/);
   assert.doesNotMatch(route, /have: \['DESIGN', 'PHOTOS'\]/, 'the "add a plan" answer is gone');

@@ -118,6 +118,10 @@ test('the server builds photo spaces through spaceFromReading, rebuilds an old f
   assert.match(rebuild, /built\.geometryCheck\.verdict !== 'PASS'\) return false;/);
   assert.doesNotMatch(rebuild, /fetch\(|OPENAI|meterAiCall/);
   assert.match(route, /photoSpace: PHOTO_SPACE_VERSION, layout: built\.layout, layoutRepairs: built\.layoutRepairs,/);
+  // Asked again for a design already walked on its reconstructed space, that space is rebuilt too (not only on the
+  // first walk from the photo design): the request starts from the on-plan version, whose parent is the photo design.
+  assert.match(route, /if \(source\?\.kind === 'FLOORPLAN_SCENE' && source\.provenance\?\.inferred === true && version\.parent_id/);
+  assert.match(route, /await rebuildSpace\(admin, \{ actorId, project, version: root, photoSource: photo, renderId \}, source\)\) \{\s*const again = await designOnPlan\(admin, root, project\.id, renderId\);/);
   assert.equal(PHOTO_SPACE_VERSION, 'ds-photo-space-3');
   // A render walk that is walkable and most of the render is published, recorded as approximate.
   assert.match(route, /if \(!gate\.ready\) \{/);

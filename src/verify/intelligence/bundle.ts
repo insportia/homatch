@@ -29,6 +29,7 @@ import type { EvidenceGroup } from './evidenceGroups.ts';
 import { buildBuyerChecklist } from './buyerChecklist.ts';
 import type { ChecklistItem } from './buyerChecklist.ts';
 import { selectComparables } from './comparableSelection.ts';
+import { subjectMarketFacts } from './marketHierarchy.ts';
 import { buildPropertyRegister } from './propertyRegister.ts';
 import { livingDensityFrom, type LivingDensity } from './livingDensity.ts';
 import { companyFinanceFrom, type CompanyFinanceView } from './reportGaps.ts';
@@ -245,8 +246,13 @@ export function buildIntelligenceBundle(
     projectAsking,
     // Fit-out state, when the research established one: a segment signal.
     condition: snapshot.condition,
-    area: Number(pkg.subject.area) || undefined,
+    // The register's unit area when exactUnit has none — no area, no size band
+    // (2026-10-11 location hierarchy, job 8ba97da9).
+    area: Number(pkg.subject.area) || register?.latest?.unitAreaSqm || undefined,
     rooms: Number(snapshot.rooms) || undefined,
+    // Verify is a purchase; a development (or a unit under construction) is a new build.
+    dealType: 'SALE',
+    buildingClass: subjectMarketFacts(report).buildingClass,
     floor: Number(pkg.subject.floor) || undefined,
     // Verify runs from a cadastral code, so the subject usually has NO asking
     // price of its own. That is why positioning is optional downstream: we

@@ -33,6 +33,8 @@
 
 import { buildTasIntelligence } from './tasIntelligence.ts';
 import { buildOfficialDossier } from './officialDossier.ts';
+import { scoreComparable } from './marketIntelligence.ts';
+import { isCitableComparable, subjectMarketFacts } from './marketHierarchy.ts';
 
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
@@ -509,7 +511,24 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
 
   const m = obj(r.market);
   const comparables = arr<Record<string, unknown>>(m.comparables);
+  /*
+   * ONLY LISTINGS THE LOCATION HIERARCHY ADMITS ARE CITABLE (2026-10-11, job
+   * 8ba97da9). Every gathered listing used to become a MARKET evidence item,
+   * so Didi Dighomi, Navtlughi and Saburtalo asks sat in the sources under a
+   * Krtsanisi report and the model cited them. An unrelated/unknown district,
+   * an off-band size, a rental or a stale ask is not evidence about this home.
+   */
+  const facts = subjectMarketFacts(r);
+  const marketSubject = {
+    project: subject.project ?? facts.project,
+    address: subject.address ?? facts.address,
+    district: facts.district,
+    area: Number(subject.area) || facts.area,
+    dealType: 'SALE' as const,
+    buildingClass: facts.buildingClass,
+  };
   for (const c of comparables) {
+    if (!isCitableComparable(scoreComparable(marketSubject, c as never))) continue;
     const price = nonEmpty(c?.price);
     const per = nonEmpty(c?.pricePerSqm);
     const area = nonEmpty(c?.area);

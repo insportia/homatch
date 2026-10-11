@@ -17,17 +17,40 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOff, ExternalLink, Images } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   catalogVisuals,
   categoryTabs,
   heroVisual,
+  scopeKeyFor,
   BADGE_KEY,
   CATEGORY_KEY,
   type CatalogVisual,
   type VisualCategory,
 } from '@/verify/visualCatalog';
+import { safeHref } from '@/verify/reportPresentation';
+import { OfficialLink } from './OfficialLink';
+
+/** The official case an image was filed with: its number, date and public page. */
+export interface VisualCase { caseRef: string | null; date: string | null; href: string | null }
+export type VisualCaseMap = Map<string, VisualCase>;
+
+/** documentId → the case it belongs to, from the report's officialDocuments. */
+export function visualCaseMap(docs: unknown): VisualCaseMap {
+  const m: VisualCaseMap = new Map();
+  for (const d of Array.isArray(docs) ? docs : []) {
+    const o = (d && typeof d === 'object' ? d : {}) as Record<string, unknown>;
+    const id = typeof o.documentId === 'string' || typeof o.documentId === 'number' ? String(o.documentId) : '';
+    if (!id) continue;
+    m.set(id, {
+      caseRef: typeof o.caseRef === 'string' && o.caseRef.trim() ? o.caseRef.trim() : null,
+      date: typeof o.caseDate === 'string' ? o.caseDate : null,
+      href: safeHref(o.publicUrl),
+    });
+  }
+  return m;
+}
 
 type Clean = (s: string) => string;
 
@@ -105,6 +128,36 @@ const Meta: React.FC<{ v: CatalogVisual; className?: string }> = ({ v, className
   );
 };
 
+/** Exact apartment / this building / the whole project — said on every image. */
+const ScopeChip: React.FC<{ v: CatalogVisual; identityUnresolved?: boolean; className?: string }> = ({ v, identityUnresolved, className }) => {
+  const { t } = useLanguage();
+  return (
+    <span className={`inline-flex max-w-full items-center whitespace-normal rounded-full bg-[hsl(222_47%_11%/0.85)] px-2.5 py-1 text-start text-2xs font-medium text-white ring-1 ring-white/20 ${className ?? ''}`}>
+      {t(scopeKeyFor(v, identityUnresolved))}
+    </span>
+  );
+};
+
+/** Case № · date · the official page — where this image was filed. */
+const SourceRow: React.FC<{ v: CatalogVisual; cases?: VisualCaseMap; tone?: 'light' | 'dark' }> = ({ v, cases, tone = 'light' }) => {
+  const { t } = useLanguage();
+  const c = v.documentId ? cases?.get(v.documentId) : undefined;
+  if (!c || (!c.caseRef && !c.href)) return null;
+  const text = [c.caseRef ? t('verify_v3_case_ref', { ref: `\u2066${c.caseRef}\u2069` }) : null, day(c.date) ? `\u2066${day(c.date)}\u2069` : null].filter(Boolean).join(' · ');
+  return (
+    <div className={`flex flex-wrap items-center gap-x-3 ${tone === 'dark' ? 'text-[hsl(220_14%_72%)]' : 'text-muted-foreground'}`}>
+      {text ? <p className="text-xs leading-5">{t('verify_p0_visual_filed_with', { case: text })}</p> : null}
+      {c.href ? (tone === 'dark' ? (
+        <a href={c.href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[44px] items-center gap-1 text-xs font-semibold text-[hsl(38_92%_66%)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)]">
+          {t('verify_v3_official_source')}
+          <ExternalLink className="h-3.5 w-3.5 shrink-0 rtl:-scale-x-100" aria-hidden="true" />
+          <span className="sr-only">{t('verify_v3_opens_new_tab')}</span>
+        </a>
+      ) : <OfficialLink href={c.href} />) : null}
+    </div>
+  );
+};
+
 /** What / interesting / buyer meaning / uncertain — only the parts that exist. */
 const Explanation: React.FC<{ v: CatalogVisual; clean: Clean; tone?: 'light' | 'dark' }> = ({ v, clean, tone = 'light' }) => {
   const { t } = useLanguage();
@@ -147,7 +200,9 @@ const Lightbox: React.FC<{
   onBroken: (id: string) => void;
   clean: Clean;
   versionBadge: (v: CatalogVisual) => string | null;
-}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge }) => {
+  cases?: VisualCaseMap;
+  identityUnresolved?: boolean;
+}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge, cases, identityUnresolved }) => {
   const { t, lang } = useLanguage();
   const rtl = lang === 'ar' || lang === 'he';
   const v = items[index];
@@ -324,6 +379,7 @@ const Lightbox: React.FC<{
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge v={v} wrap />
+            <ScopeChip v={v} identityUnresolved={identityUnresolved} />
             {version ? <span className="text-2xs font-medium text-[hsl(38_92%_66%)]">{version}</span> : null}
             {v.otherBuilding && v.block ? <span className="text-2xs font-semibold text-white">{t('vrx_visual_other_building', { block: v.block })}</span> : null}
             {items.length > 1 ? (
@@ -394,8 +450,9 @@ const Lightbox: React.FC<{
 
         {/* Desktop side panel */}
         <aside className="hidden w-[22rem] shrink-0 overflow-y-auto border-s border-white/10 p-5 lg:block" aria-label={t('vrx_visual_about')}>
-          <Meta v={v} className="mb-3 !text-[hsl(220_14%_72%)]" />
-          <Explanation v={v} clean={clean} tone="dark" />
+          <Meta v={v} className="mb-1 !text-[hsl(220_14%_72%)]" />
+          <SourceRow v={v} cases={cases} tone="dark" />
+          <div className="mt-3"><Explanation v={v} clean={clean} tone="dark" /></div>
           <p className="mt-4 text-2xs leading-relaxed text-[hsl(220_14%_66%)]">{t('verify_ox_visual_note')}</p>
         </aside>
 
@@ -412,8 +469,9 @@ const Lightbox: React.FC<{
             <ChevronRight className={`h-4 w-4 motion-safe:transition-transform ${sheetOpen ? '-rotate-90' : 'rotate-90'}`} aria-hidden="true" />
           </button>
           <div id="vx-sheet" hidden={!sheetOpen} className="max-h-[45vh] overflow-y-auto px-4 pb-4">
-            <Meta v={v} className="mb-3 !text-[hsl(220_14%_72%)]" />
-            <Explanation v={v} clean={clean} tone="dark" />
+            <Meta v={v} className="mb-1 !text-[hsl(220_14%_72%)]" />
+            <SourceRow v={v} cases={cases} tone="dark" />
+            <div className="mt-3"><Explanation v={v} clean={clean} tone="dark" /></div>
             <p className="mt-4 text-2xs leading-relaxed text-[hsl(220_14%_66%)]">{t('verify_ox_visual_note')}</p>
           </div>
         </div>
@@ -466,8 +524,10 @@ export const VisualExplorer: React.FC<{
   /** True when the unit's identity is unresolved: "exact apartment plan" is withdrawn. */
   identityUnresolved?: boolean;
   history?: { visuals?: Array<{ id: string; versionStatus: string }> } | null;
+  /** The report's officialDocuments: each image's case number, date and official page. */
+  docs?: unknown[] | null;
   clean: Clean;
-}> = ({ visuals, explanations, captions, identityUnresolved, history, clean }) => {
+}> = ({ visuals, explanations, captions, identityUnresolved, history, docs, clean }) => {
   const { t, lang } = useLanguage();
   const rtl = lang === 'ar' || lang === 'he';
   const catalog = React.useMemo(
@@ -481,6 +541,7 @@ export const VisualExplorer: React.FC<{
   const hero = React.useMemo(() => heroVisual(usable), [usable]);
   const text = useVisualText(clean);
   const versionBadge = useVersionBadge(history);
+  const cases = React.useMemo(() => visualCaseMap(docs), [docs]);
 
   const [tab, setTab] = React.useState<VisualCategory | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -521,8 +582,18 @@ export const VisualExplorer: React.FC<{
   const version = active ? versionBadge(active) : null;
   const ratio = active?.width && active?.height ? `${active.width} / ${active.height}` : '16 / 10';
 
+  const caseCount = new Set(usable.map((v) => v.documentId).filter(Boolean)).size;
   return (
     <div className="space-y-4">
+      {/* How much there is, before the first image. */}
+      <p className="flex items-center gap-2 text-sm font-medium text-foreground/85" data-gallery-count={usable.length}>
+        <Images className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+        <span className="min-w-0 break-words">
+          {caseCount > 1
+            ? t('verify_p0_gallery_count_cases', { count: String(usable.length), cases: String(caseCount) })
+            : t('verify_p0_gallery_count', { count: String(usable.length) })}
+        </span>
+      </p>
       {/* The stage */}
       {active && at ? (
         <figure className="space-y-3">
@@ -552,6 +623,7 @@ export const VisualExplorer: React.FC<{
             <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
             <span className="absolute start-3 end-3 top-3 flex flex-wrap items-center gap-2">
               <Badge v={active} className="shadow-sm" wrap />
+              <ScopeChip v={active} identityUnresolved={identityUnresolved} className="shadow-sm" />
               {version ? (
                 <span className="rounded-full bg-[hsl(222_47%_11%/0.85)] px-2.5 py-1 text-2xs font-medium text-[hsl(38_92%_66%)] ring-1 ring-[hsl(38_92%_54%/0.40)]">{version}</span>
               ) : null}
@@ -569,6 +641,7 @@ export const VisualExplorer: React.FC<{
           <figcaption className="space-y-1">
             <p className="text-[15px] font-medium leading-6 break-words" dir="auto">{at.title}</p>
             <Meta v={active} />
+            <SourceRow v={active} cases={cases} />
             {active.explanation?.buyerMeaning ? (
               <p className="text-sm leading-6 text-muted-foreground break-words" dir="auto">{clean(active.explanation.buyerMeaning)}</p>
             ) : null}
@@ -660,6 +733,8 @@ export const VisualExplorer: React.FC<{
           onBroken={(id) => { onBroken(id); setLightbox(null); }}
           clean={clean}
           versionBadge={versionBadge}
+          cases={cases}
+          identityUnresolved={identityUnresolved}
         />
       ) : null}
     </div>

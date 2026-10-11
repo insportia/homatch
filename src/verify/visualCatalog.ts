@@ -65,6 +65,8 @@ export interface CatalogVisual {
   technical: boolean;
   /** Legacy one-line caption, when that is all the report carries. */
   title: string | null;
+  /** The official case (TAS document id) the image was filed with, when known. */
+  documentId: string | null;
   explanation: VisualExplanation | null;
 }
 
@@ -147,6 +149,31 @@ export function badgeFor(kind: VisualKind, scope: VisualScope | null, identityUn
   return 'DRAWING';
 }
 
+/** The case id an asset was filed with: the rebuilt shape's documentRef, or a stored record's own field. */
+function docIdOf(o: Record<string, unknown>): string | null {
+  const ref = o.documentRef && typeof o.documentRef === 'object' ? (o.documentRef as Record<string, unknown>).documentId : null;
+  const id = str(ref) || str(o.documentId);
+  return /^\d{3,12}$/.test(id) ? id : null;
+}
+
+/**
+ * WHAT THE IMAGE IS ABOUT, said every time. The TAS record is shared by every
+ * flat on the parcel, so a buyer must be told whether a picture concerns
+ * their apartment, their building or the project as a whole. A missing scope
+ * reads as the project — the widest, never the most flattering.
+ */
+export const SCOPE_KEY: Record<VisualScope, string> = {
+  EXACT_UNIT: 'verify_p0_scope_exact_unit',
+  TYPICAL_FLOOR: 'verify_p0_scope_typical_floor',
+  BUILDING: 'verify_p0_scope_building',
+  PROJECT: 'verify_p0_scope_project',
+};
+export function scopeKeyFor(v: Pick<CatalogVisual, 'scope' | 'badge'>, identityUnresolved = false): string {
+  // An exact-unit scope is withdrawn with the label when the unit is unresolved.
+  if (v.scope === 'EXACT_UNIT' && (identityUnresolved || (v.badge !== 'EXACT_UNIT_PLAN' && v.badge !== 'PHOTO'))) return SCOPE_KEY.BUILDING;
+  return SCOPE_KEY[v.scope ?? 'PROJECT'];
+}
+
 /** i18n key for every badge — one per badge, so no asset is ever unlabeled. */
 export const BADGE_KEY: Record<VisualBadge, string> = {
   PHOTO: 'vrx_badge_photo',
@@ -222,6 +249,7 @@ export function normalizeVisual(
     badge: badgeFor(kind, scope, !!opts.identityUnresolved, confidence),
     technical: !PHOTO_KINDS.has(kind) && kind !== 'RENDER',
     title: opts.title ?? null,
+    documentId: docIdOf(o),
     explanation,
   };
 }

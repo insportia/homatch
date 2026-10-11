@@ -30,6 +30,7 @@ import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optiona
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
 import { parseCadastral } from '../../../src/verify/intelligence/propertyIdentity.ts';
+import { officialUnitOverlay, unitVerification } from '../../../src/verify/intelligence/unitIdentity.ts';
 import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, OFFICIAL_STRAGGLER_GRACE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
@@ -4261,7 +4262,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // regression: 01.18.06.019.055.03.01.603 must never become
     // 01.18.06.019.055 in the report merely because evidence was easier to
     // find for the parent).
-    exactUnit: j.mode === 'cadastral' ? { code: j.query, verified: !!i.exactUnit?.verified, note: i.exactUnit?.note || null } : i.exactUnit || null,
+    // Verified from the OFFICIAL register for this exact code (unitIdentity.ts), not only the model's
+    // identity answer written before the registry was read (8ba97da9). Never downgraded.
+    exactUnit: j.mode === 'cadastral' ? { code: j.query, verified: !!i.exactUnit?.verified || unitVerification({ browserOfficial: prior.browserOfficial }, j.query).verified, note: i.exactUnit?.note || null } : i.exactUnit || null,
     // A null model answer must not erase what the code itself states: the
     // building group of a unit code (…055 · 03 · 01 · 503) is a fact.
     building: i.building || buildingFromCode(j.mode === 'cadastral' ? j.query : null),
@@ -5964,6 +5967,14 @@ function sanitizeForCustomer(job: any): any {
   // Applied on READ, so the reports already in the database are classified by
   // the same rule as new ones rather than staying permanently unknown.
   r.assetClass = resolveAssetClass(r);
+  // Identity and rights from the OFFICIAL register, on READ (unitIdentity.ts): the exact unit is
+  // verified by its NAPR extract, and the rights statement is dated by that extract and scoped to the
+  // unit — never by when the job finished (8ba97da9). Persisted reports are corrected without a rerun.
+  try {
+    Object.assign(r, officialUnitOverlay(job.result_json, job.query ?? null));
+  } catch {
+    /* the stored fields stand */
+  }
   // The control structure is read from the UNSANITIZED evidence, which only
   // exists on this side, and merged in as names plus a representation mode.
   // Done on read, so the reports already in the database gain it too.

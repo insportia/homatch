@@ -232,15 +232,17 @@ test('the evidence drawer, research transparency and the glance are not rendered
   assert.match(read('src/components/verify/VerifyReport.tsx'), /evidenceGroups\?: EvidenceGroup\[\]/);
 });
 
-test('the chapters appear in the story-first order', () => {
+test('the chapters appear in the buyer order: images, legal standing, history, people, building', () => {
   const report = code('src/components/verify/VerifyReport.tsx');
-  const ids = ['vbi-summary', 'vbi-explore', 'vbi-story', 'vbi-people', 'vbi-building', 'vbi-legal', 'vbi-location', 'vbi-market', 'vbi-final'];
+  // Owner, 2026-10-11: the official gallery near the top, then whether it is
+  // legally sound, then how it got here and who is behind it.
+  const ids = ['vbi-summary', 'vbi-explore', 'vbi-legal', 'vbi-story', 'vbi-people', 'vbi-building', 'vbi-location', 'vbi-market', 'vbi-final'];
   const at = ids.map((id) => report.indexOf(`id="${id}"`));
   for (let i = 0; i < ids.length; i++) assert.ok(at[i] > 0, `${ids[i]} is missing`);
   for (let i = 1; i < ids.length; i++) assert.ok(at[i] > at[i - 1], `${ids[i]} is out of order`);
   // Attention points live in the legal chapter, once.
   assert.equal((report.match(/r\.attentionPoints\.map/g) ?? []).length, 1);
-  assert.ok(report.indexOf('r.attentionPoints.map') > at[5] && report.indexOf('r.attentionPoints.map') < at[6]);
+  assert.ok(report.indexOf('r.attentionPoints.map') > at[2] && report.indexOf('r.attentionPoints.map') < at[3]);
   for (const c of ['explore', 'story', 'people', 'building', 'legal', 'location', 'market', 'final']) {
     assert.equal(valuesOf(`vrx_nav_${c}`).length, 6, `vrx_nav_${c}`);
   }
@@ -267,7 +269,9 @@ test('the market headline appears only for a RANGE; otherwise the evidence is ca
   assert.deepEqual(ranged.comparables[0].differs, ['vrx_mr_condition_mismatch']);
   assert.ok(!JSON.stringify(ranged).includes('http'), 'a URL reached the market view');
   assert.equal(ranged.asking[0].originKey, 'vrx_mkt_origin_developer_marketing');
-  assert.deepEqual(ranged.context.map((c) => c.tier), ['WIDER_MARKET']);
+  // Premise (2026-10-11, job 8ba97da9): the citywide band is never shown, not
+  // even as context, and not even for a report stored before the change.
+  assert.deepEqual(ranged.context.map((c) => c.tier), []);
 
   const limited = marketView({ currency: 'USD', headline: { state: 'EVIDENCE_LIMITED', basis: 'EVIDENCE_LIMITED', tiersUsed: [], median: null, min: null, max: null, count: 2, minimumSample: 3 } });
   assert.deepEqual(limited.headline, { state: 'EVIDENCE_LIMITED', count: 2, minimumSample: 3 });

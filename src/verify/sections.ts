@@ -25,6 +25,8 @@
 // i18n and the UI. A backend that emits English prose cannot be translated and
 // cannot be re-designed without a deploy.
 
+import { unitVerification } from './intelligence/unitIdentity.ts';
+
 export type SectionId =
   | 'PROPERTY'
   | 'LOCATION'
@@ -168,7 +170,10 @@ export function computeSections(input: SectionInput): SectionsSnapshot {
 
   // ── PROPERTY ────────────────────────────────────────────────────────────
   const identified = has(r.exactUnit?.code) || has(r.identifiedParent?.code) || has(r.identity?.entity?.name);
-  const unitVerified = r.exactUnit?.verified === true;
+  // Decided from OFFICIAL records (unitIdentity.ts): a NAPR extract or an
+  // identity-bound Service 176 record for this exact code verifies the unit,
+  // whatever the research model said. Verified evidence is never downgraded.
+  const unitVerified = unitVerification(r).verified;
   /*
    * A FINISHED RUN NEVER LEAVES A SECTION PENDING.
    *

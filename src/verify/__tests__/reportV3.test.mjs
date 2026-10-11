@@ -201,7 +201,7 @@ test('the effective decision comes first; pending applications are under review,
   const pendingBlock = ui.slice(ui.indexOf('data-pending'));
   assert.ok(!/emerald/.test(pendingBlock.slice(0, pendingBlock.indexOf('conflicts ?'))), 'a pending application is painted as confirmed');
   const report = code('src/components/verify/VerifyReport.tsx');
-  assert.ok(report.indexOf('<LegalPosition') < report.indexOf('<LegalReality'), 'the current position is not shown first');
+  assert.ok(report.indexOf('<LegalFindings') > -1 && report.indexOf('<LegalFindings') < report.indexOf('<LegalPosition'), 'the dated legal findings do not open the legal chapter');
 });
 
 /* ── specifications ───────────────────────────────────────────────────── */

@@ -1,9 +1,10 @@
 // HOMATCH Verify — the official-history blocks of the report.
 //
 //   CurrentStatusBlock     the latest confirmed official position, with dates
-//   PropertyStoryBlock     the documented history: story chapters as prose
-//                          first, then an expandable timeline of grouped
-//                          official steps, then what changed (from -> to).
+//   PropertyStoryBlock     the documented history: the introduction, then the
+//                          project's evolution step by step (ProjectStory),
+//                          visible by default; the model's chapters one tap
+//                          away; older reports keep the grouped timeline.
 //                          The official visuals moved to VisualExplorer.
 //   ResearchTransparency   what was reviewed, in counts — never links
 //
@@ -16,7 +17,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { ChevronDown } from 'lucide-react';
 import { timelineGroups, yearSpan } from '@/verify/reportPresentation';
 import { projectStory } from '@/verify/intelligence/projectStory';
-import { ProjectStory } from './ProjectStory';
+import { ProjectStory, StoryIntro } from './ProjectStory';
 
 export interface CurrentStatusView {
   statement: string;
@@ -273,7 +274,10 @@ const Timeline: React.FC<{ history: OfficialHistoryClientView; clean: (s: string
 /** What changed between versions of the design — only when there is a change. */
 const EvolutionList: React.FC<{ items: OfficialHistoryClientView['evolution']; clean: (s: string) => string }> = ({ items, clean }) => {
   const { t } = useLanguage();
-  const rows = (items ?? []).filter((e) => clean(e.from) && clean(e.to) && clean(e.from) !== clean(e.to));
+  // Only real figures: a short value with a number in it. Extraction fragments
+  // ("(შესაბამისად სართულიანობა) და ფართობი აკმაყოფილებს 503") are never a change.
+  const figure = (v: string) => v.length <= 24 && /\d/.test(v) && !/ნაც(?:ვ)?ლად|შეესაბამება|აკმაყოფილებს/u.test(v);
+  const rows = (items ?? []).filter((e) => figure(clean(e.from)) && figure(clean(e.to)) && clean(e.from) !== clean(e.to));
   if (!rows.length) return null;
   return (
     <div className="space-y-3">
@@ -306,13 +310,16 @@ export const PropertyStoryBlock: React.FC<{
   signals?: unknown;
   /** technicalSpecs, so a pending application's figures can be compared with the approved ones. */
   specs?: unknown;
-}> = ({ chapters, history, clean, signals, specs }) => {
+  /** synthesis.unitIdentity (optional): the register's "under construction" mark and its date. */
+  unitIdentity?: unknown;
+}> = ({ chapters, history, clean, signals, specs, unitIdentity }) => {
   const story = (chapters ?? []).filter((c) => clean(c.body));
-  /* The grouped event story with its three tracks replaces the plain
-     timeline whenever the record supports it (owner, 2026-10-11). */
-  const events = React.useMemo(() => projectStory({ history, signals, specs }), [history, signals, specs]);
+  /* The project's evolution, step by step, replaces the plain timeline
+     whenever the record supports it (owner, 2026-10-11). Visible by default. */
+  const events = React.useMemo(() => projectStory({ history, signals, specs, unitIdentity }), [history, signals, specs, unitIdentity]);
   const hasTimeline = !!(events || history?.milestones?.length || history?.milestoneGroups?.length);
-  const hasEvolution = !!history?.evolution?.length;
+  // The step-by-step evolution already tells every change, with its figures.
+  const hasEvolution = !!history?.evolution?.length && !events?.evolution;
   if (!story.length && !hasTimeline && !hasEvolution) return null;
 
   const chaptersList = story.length ? (
@@ -332,6 +339,9 @@ export const PropertyStoryBlock: React.FC<{
   ) : null;
   return (
     <div className="space-y-8">
+      {/* The introduction first: the approved copy, or the concrete discoveries
+          the records establish. Never behind an accordion. */}
+      <StoryIntro discoveries={events?.evolution?.discoveries ?? null} clean={clean} />
       {/* With the event story on screen, the long-form chapters tell the same
           life a second time: they stay one tap away instead of in the flow. */}
       {events ? <ProjectStory view={events} clean={clean} /> : chaptersList}

@@ -8,14 +8,15 @@
  *                         actually checked, each with its date
  *   MarketContextCard     the market range HOMATCH already held for this
  *                         segment, dated, as asking prices
- *   ReportNav             jump links to the sections this report has
+ *   ReportNav             the sticky five-group navigation of the report
  *
  * CUSTOMER-FIRST. Each card leads with what HOMATCH found. Uncertainty is
  * named specifically and calmly („დამატებით დასაზუსტებელია“); strong colour
  * is used only for a concern a document actually states. No provider names,
  * states or codes appear here — those stay in Admin.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection, Row, RowList, StatusPill } from './ui';
 import type { PropertyRegister, RegisterMortgage, RegisterState, ProceedingKind } from '@/verify/intelligence/propertyRegister';
@@ -332,42 +333,146 @@ export function MarketContextCard({ market }: { market?: MarketContextView | nul
 /* ───────────────────────── Navigation ───────────────────────── */
 
 /*
- * The chapters of the report as jump links, with the chapter being read
- * marked (aria-current) — an IntersectionObserver, no scroll listener.
+ * THE REPORT'S NAVIGATION: five groups, sticky under the app header (v6).
+ *
+ * - The bar sits just below whichever sticky header the shell draws (its
+ *   height is measured, not guessed: 56, 64 or 80px), so it never covers it.
+ * - It publishes --vbi-offset (header + bar + breathing room) on <html>; every
+ *   group and chapter uses it as scroll-margin, so a jump lands with its
+ *   heading visible instead of under the bar.
+ * - The active group is the last one whose top has passed that offset,
+ *   recomputed on IntersectionObserver changes and scroll (rAF-throttled).
+ * - On a phone the pills scroll horizontally and the active one is kept in
+ *   view; the page itself never scrolls sideways.
+ * - A jump re-aligns once when a lazily mounted section above the target
+ *   changed the page's height on the way.
  */
 export function ReportNav({ items }: { items: Array<{ id: string; labelKey: string }> }) {
   const { t } = useLanguage();
-  const [current, setCurrent] = useState<string | null>(null);
+  const [current, setCurrent] = useState<string | null>(items[0]?.id ?? null);
+  const [top, setTop] = useState<number | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
   const ids = items.map((i) => i.id).join('|');
+
+  // Where the bar sticks, and how far below it a jump should land.
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return;
+    if (typeof window === 'undefined') return;
+    const measure = () => {
+      const header = [...document.querySelectorAll('header')].find((h) => {
+        const cs = getComputedStyle(h);
+        return (cs.position === 'sticky' || cs.position === 'fixed') && h.getBoundingClientRect().top <= 1 && h.offsetHeight > 0 && h.offsetHeight < 160;
+      });
+      const headerH = header ? Math.round(header.getBoundingClientRect().height) : 0;
+      const barH = navRef.current ? Math.round(navRef.current.getBoundingClientRect().height) : 52;
+      setTop(headerH);
+      document.documentElement.style.setProperty('--vbi-offset', `${headerH + barH + 16}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      document.documentElement.style.removeProperty('--vbi-offset');
+    };
+  }, [ids]);
+
+  // Which group the reader is in.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     const els = ids.split('|').map((id) => document.getElementById(id)).filter((e): e is HTMLElement => !!e);
     if (!els.length) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (top) setCurrent(top.target.id);
-      },
-      { rootMargin: '-20% 0px -65% 0px' },
-    );
-    els.forEach((e) => io.observe(e));
-    return () => io.disconnect();
+    let frame = 0;
+    const offset = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vbi-offset')) || 128;
+    const recompute = () => {
+      frame = 0;
+      const line = offset() + 8;
+      let active = els[0].id;
+      for (const el of els) if (el.getBoundingClientRect().top <= line) active = el.id;
+      // At the very bottom the last group is the one being read.
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) active = els[els.length - 1].id;
+      setCurrent((c) => (c === active ? c : active));
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(recompute); };
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(schedule, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+      els.forEach((e) => io!.observe(e));
+    }
+    window.addEventListener('scroll', schedule, { passive: true });
+    recompute();
+    return () => {
+      io?.disconnect();
+      window.removeEventListener('scroll', schedule);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, [ids]);
-  if (items.length < 3) return null;
+
+  // Keep the active pill visible inside the horizontally scrolling bar.
+  useEffect(() => {
+    const list = listRef.current;
+    const pill = current ? list?.querySelector<HTMLElement>(`[data-nav-target="${current}"]`) : null;
+    if (!list || !pill || list.scrollWidth <= list.clientWidth) return;
+    // Relative geometry, so it holds in RTL too (where scrollLeft runs negative).
+    const lb = list.getBoundingClientRect();
+    const pb = pill.getBoundingClientRect();
+    if (pb.left < lb.left) list.scrollBy({ left: pb.left - lb.left - 16 });
+    else if (pb.right > lb.right) list.scrollBy({ left: pb.right - lb.right + 16 });
+  }, [current]);
+
+  const jump = (e: ReactMouseEvent<HTMLAnchorElement>, id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    e.preventDefault();
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    try { history.replaceState(history.state, '', `#${id}`); } catch { /* sandboxed */ }
+    setCurrent(id);
+    // Lazily mounted sections above the target can move it while we travel
+    // (and just after we arrive): re-align a few times, unless the reader
+    // takes over the scrolling.
+    let cancelled = false;
+    const stop = () => { cancelled = true; };
+    const opts = { once: true, passive: true } as const;
+    window.addEventListener('wheel', stop, opts);
+    window.addEventListener('touchstart', stop, opts);
+    window.addEventListener('keydown', stop, { once: true });
+    const settle = () => {
+      if (cancelled) return;
+      const off = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vbi-offset')) || 128;
+      const drift = el.getBoundingClientRect().top - off;
+      if (Math.abs(drift) > 12) window.scrollBy({ top: drift, behavior: 'auto' });
+    };
+    for (const ms of reduce ? [60, 250, 600, 1100] : [750, 1100, 1600]) window.setTimeout(settle, ms);
+    window.setTimeout(() => {
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchstart', stop);
+      window.removeEventListener('keydown', stop);
+    }, 1700);
+  };
+
+  if (items.length < 2) return null;
   return (
-    <nav aria-label={t('vbi_nav_label')} className="min-w-0">
-      <ul className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+    <nav
+      ref={navRef}
+      aria-label={t('verify_v6_nav_label')}
+      data-report-nav=""
+      className="sticky top-16 z-20 -mx-1 min-w-0 rounded-2xl border border-border/80 bg-background/95 px-1 py-1 shadow-[0_8px_24px_-18px_hsl(222_47%_11%/0.45)] backdrop-blur-md supports-[backdrop-filter]:bg-background/85 md:top-20"
+      style={top !== null ? { top } : undefined}
+    >
+      <ul ref={listRef} className="flex gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {items.map((i) => {
           const on = current === i.id;
           return (
             <li key={i.id} className="shrink-0">
               <a
                 href={`#${i.id}`}
+                data-nav-target={i.id}
+                onClick={(e) => jump(e, i.id)}
                 aria-current={on ? 'location' : undefined}
-                className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border px-4 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none ${
+                className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-xl px-3.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none ${
                   on
-                    ? 'border-[hsl(222_47%_11%)] bg-[hsl(222_47%_11%)] text-white'
-                    : 'border-border bg-card text-foreground/85 hover:border-[hsl(var(--gold-border))] hover:text-foreground'
+                    ? 'bg-[hsl(222_47%_11%)] text-white shadow-[inset_0_-2px_0_hsl(38_92%_56%)]'
+                    : 'text-foreground/80 hover:bg-muted hover:text-foreground'
                 }`}
               >
                 {t(i.labelKey)}

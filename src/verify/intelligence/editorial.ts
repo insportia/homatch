@@ -10,7 +10,10 @@
  *     source basis, established ONCE; every later sentence that opens with
  *     one loses the opening;
  *   - brand names are written the way the brands write themselves in
- *     Georgian (კარფური, never Karpuri).
+ *     Georgian (კარფური, never Karpuri);
+ *   - case and decision numbers leave the prose for the evidence
+ *     (stripCaseIdentifiers), and a conclusion said twice in nearly the same
+ *     words is said once (nearDuplicate, used by report.ts).
  *
  * Nothing here adds a claim. The worst it can do is drop a repeated
  * opening or change a dash into a comma. Pure.
@@ -94,6 +97,37 @@ export function fixBrands(text: string): string {
       return out;
     })
     .join('\n');
+}
+
+/*
+ * RAW IDENTIFIERS STAY IN THE EVIDENCE (owner, 2026-10-11). A TAS case number
+ * ("AR11143236") or a decision number ("No7761945", "№ 7761945") in a sentence
+ * is procedure, not information; the evidence list under each fact carries
+ * it. Removed with the words that only introduce it; the sentence around it
+ * stays grammatical. Cadastral codes are left alone: a buyer uses them.
+ */
+export function stripCaseIdentifiers(text: string): string {
+  if (!text || !/AR\d{5,9}|(?:No|N|№)\s*\d{6,8}/u.test(text)) return text;
+  return text
+    // a parenthesised reference: "(AR11143236)", "(საქმე AR11143236, № 7930086)"
+    .replace(/\s*\((?:[^()]{0,24}\s)?(?:AR\d{5,9}|(?:No|N|№)\s*\d{6,8})(?:[,;]?\s*(?:AR\d{5,9}|(?:No|N|№)\s*\d{6,8}|[^()]{0,16}))*\)/gu, '')
+    // "განაცხადით/საქმით/ბრძანებით/გადაწყვეტილებით No… " → the noun stays
+    .replace(/(\S+)\s+(?:No|N|№)\s*\d{6,8}(?=[\s,.;:]|$)/gu, (_m, w: string) => w)
+    .replace(/(?:No|N|№)\s*\d{6,8}\s+/gu, '')
+    .replace(/\s*AR\d{5,9}(?=[\s,.;:)]|$)/gu, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([,.;:])/g, '$1')
+    .replace(/(^|\n)[ \t]+/g, '$1');
+}
+
+/** Two sentences that say the same thing in nearly the same words (a duplicate conclusion). */
+export function nearDuplicate(a: string, b: string): boolean {
+  const words = (x: string) => new Set(x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2));
+  const A = words(a), B = words(b);
+  if (A.size < 6 || B.size < 6) return false;
+  let both = 0;
+  for (const w of A) if (B.has(w)) both++;
+  return both / (A.size + B.size - both) >= 0.8;
 }
 
 /** One field, mechanically: dashes and brands. Openings need the whole report (see report.ts). */

@@ -22,9 +22,12 @@
  * never model text. Pure and deterministic.
  */
 
-import { replaceDashes } from './editorial.ts';
+import { replaceDashes as dashes, stripCaseIdentifiers } from './editorial.ts';
+
+const replaceDashes = (x: string): string => stripCaseIdentifiers(dashes(x));
 import { kaInMonth, kaOfMonth, kaOfDay, kaOnDay } from './kaDates.ts';
 import { readProjectSignals } from './projectStory.ts';
+import { openApplications, evolutionView } from './projectEvolution.ts';
 
 export type AssessmentArea = 'LEGAL' | 'HISTORY' | 'CONSTRUCTION' | 'PEOPLE' | 'NEIGHBORHOOD' | 'MARKET';
 export const ASSESSMENT_AREAS: AssessmentArea[] = ['LEGAL', 'HISTORY', 'CONSTRUCTION', 'PEOPLE', 'NEIGHBORHOOD', 'MARKET'];
@@ -36,6 +39,47 @@ export interface BuyerAssessment {
   concerns: string[];
   checks: string[];
   source: 'MODEL' | 'DETERMINISTIC';
+}
+
+/*
+ * THE FINAL CONCLUSION (owner, 2026-10-11): the approved copy with its three
+ * bracketed parts replaced by verified specifics: the strengths, the concerns
+ * with their practical significance, and whether the evidence supports a
+ * POSITIVE, BALANCED or CAUTIOUS assessment. Derived from the assessment's
+ * own lists, so a persisted report gets it on read. Never a placeholder,
+ * never a purchase recommendation, never a percentage.
+ */
+export type Stance = 'POSITIVE' | 'BALANCED' | 'CAUTIOUS';
+export interface FinalConclusion {
+  stance: Stance;
+  strengths: string;
+  concerns: string[];
+  stanceText: string;
+}
+
+/** A concern that weighs on the apartment itself, not on the project's paperwork. */
+const HEAVY = /ბინაზე\s+(?:იპოთეკა|ყადაღა)|ჯერ\s+კიდევ\s+რეგისტრირებულია|ყადაღ|უარი\s+ეთქვა|შეჩერებ|გაუქმებულია\s+ნებართვა|სასამართლო\s+დავ|მოვალეთა\s+რეესტრშია/u;
+
+const STANCE_TEXT: Record<Stance, string> = {
+  POSITIVE: 'დოკუმენტებით დადასტურებული ფაქტები ამ ქონების შეძენის განხილვას მყარ საფუძველს უქმნის. დარჩენილი საკითხები ჩვეულებრივი გადამოწმების ნაწილია და ხელმოწერამდე მათი გარკვევა შესაძლებელია.',
+  BALANCED: 'მტკიცებულებები დაბალანსებულ შეფასებას იძლევა: პროექტს დოკუმენტებით დადასტურებული ძლიერი მხარეები აქვს, თუმცა ზემოთ ჩამოთვლილ საკითხებზე პასუხი ხელმოწერამდე უნდა გქონდეთ.',
+  CAUTIOUS: 'ამ ეტაპზე მტკიცებულებები ფრთხილ მიდგომას მოითხოვს: ზემოთ ჩამოთვლილი საკითხები პირდაპირ ეხება ბინის სამართლებრივ ან ოფიციალურ მდგომარეობას და გადაწყვეტილებამდე მათი გარკვევა აუცილებელია.',
+};
+
+export function finalConclusion(a: Pick<BuyerAssessment, 'strengths' | 'concerns'>): FinalConclusion | null {
+  const strengths = a.strengths.map((x) => x.trim()).filter(Boolean);
+  const concerns = a.concerns.map((x) => x.trim()).filter(Boolean);
+  if (!strengths.length && !concerns.length) return null;
+  const stance: Stance = !strengths.length || concerns.some((c) => HEAVY.test(c))
+    ? 'CAUTIOUS'
+    : strengths.length >= 2 && concerns.length <= 1 ? 'POSITIVE' : 'BALANCED';
+  const end = (x: string) => (/[.!?]$/.test(x) ? x : `${x}.`);
+  return {
+    stance,
+    strengths: strengths.length ? `ამ პროექტში დოკუმენტებით დადასტურებულია: ${strengths.map((x) => end(x).replace(/\.$/, '')).map((x, i) => (i ? x.charAt(0).toLowerCase() + x.slice(1) : x)).join('; ')}.` : '',
+    concerns: concerns.map(end),
+    stanceText: STANCE_TEXT[stance],
+  };
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
@@ -50,6 +94,8 @@ const PERCENT = /\d\s*%|პროცენტ|percent|процент/iu;
 const INSPECTED = /(HOMATCH|ჰომატჩ|ჩვენ)\S*\s+(?:\S+\s+){0,3}(?:დაათვალიერ|ადგილზე\s+(?:შეამოწმ|ნახ)|ინსპექტირ|inspect|visited|осмотрел)|(?:we|HOMATCH)\s+(?:have\s+)?(?:inspected|visited|surveyed)/iu;
 /** Commissioning stated as fact. */
 const COMMISSIONED = /ექსპლუატაციაში\s+(?:მიღებულია|მიღებული\s+(?:არის|შენობა)|შევიდა)|has\s+been\s+commissioned|accepted\s+into\s+operation|введен\S*\s+в\s+эксплуатацию/iu;
+/** A purchase recommendation: the decision is the buyer's. */
+const RECOMMEND = /გირჩევთ\s+(?:\S+\s+){0,2}(?:შეძენ|ყიდვ|იყიდ)|ღირს\s+(?:ამ\s+ბინის\s+)?(?:ყიდვა|შეძენა)|recommend\s+(?:buying|purchas)|you\s+should\s+buy|рекомендуем\s+(?:купить|покупку)/iu;
 /** Praise that is a verdict, not an assessment. */
 const PRAISE = /უნაკლო|იდეალურ|გარანტირებულ|უსაფრთხო\s+ინვესტიცი|საუკეთესო\s+ინვესტიცი|აუცილებლად\s+(?:იყიდეთ|შეიძინეთ)|ურისკო|risk[-\s]?free|guaranteed|perfect\s+(?:choice|investment)|flawless|must\s+buy|confirmed\s+buyer/iu;
 
@@ -62,6 +108,7 @@ export function assessmentProblems(a: Partial<BuyerAssessment> | null | undefine
   if (INSPECTED.test(all)) problems.push('assessment claims HOMATCH inspected the property');
   if (COMMISSIONED.test(all)) problems.push('assessment claims commissioning');
   if (PRAISE.test(all)) problems.push('assessment is automatic praise');
+  if (RECOMMEND.test(all)) problems.push('assessment recommends the purchase');
   if (/https?:\/\/|www\./i.test(all)) problems.push('assessment contains a URL');
   return problems;
 }
@@ -91,6 +138,10 @@ export interface AssessmentFacts {
   ownedByPurchaseSince: string | null;
   permitInForce: { date: string | null; until: string | null } | null;
   pending: Array<{ caseRef: string | null; date: string | null }>;
+  /** Approved changes of the design, and orders that corrected the area figures. */
+  designChanges: number;
+  figureFixes: number;
+  latestDesignDate: string | null;
   auditFinding: { date: string | null } | null;
   constructionDocumented: boolean;
   developerSaysComplete: boolean;
@@ -115,7 +166,19 @@ export function assessmentFacts(synthesis: unknown): AssessmentFacts {
   const status = obj(history.status);
   const report = obj(s.report);
   const signals = readProjectSignals(report.projectSignals ?? s.projectSignals);
-  const pending = arr(history.pendingApplications).map(obj).map((p) => ({ caseRef: str(p.caseRef) || null, date: str(p.date).slice(0, 10) || null }));
+  // Listed as pending, minus applications whose own published act shows a decision.
+  const pending = openApplications(history, signals?.evolution ?? []);
+  const evo = evolutionView({ history, evolution: signals?.evolution ?? [] });
+  const designChanges = (evo?.steps ?? []).filter((x) => x.kind === 'DESIGN_CHANGE');
+  const figureFixes = (evo?.steps ?? []).filter((x) => x.kind === 'FIGURES_CORRECTED');
+  const latestDesign = [...(evo?.steps ?? [])].reverse().find((x) => x.kind === 'DESIGN_CHANGE' || (x.status === 'APPROVED' && x.kind !== 'CONDITIONS')) ?? null;
+  // The permit in force: the newest permit of the chronology; a validity date only when it belongs to it.
+  const chrono = arr(history.caseChronology).map(obj);
+  const permits = chrono.flatMap((c) => arr(c.decisions).map(obj)).filter((d) => str(d.outcome) === 'PERMIT_ISSUED' || /PERMIT/.test(str(d.effect)))
+    .sort((a, b) => str(a.date).localeCompare(str(b.date)));
+  const lastPermit = permits[permits.length - 1] ?? null;
+  // An approval that also issued the permit (both stages in one application) is a permit too.
+  const evoPermit = [...(evo?.steps ?? [])].reverse().find((x) => x.status === 'PERMIT') ?? null;
   const market = obj(s.market);
   const valuation = obj(market.valuation);
   const location = obj(s.location);
@@ -131,7 +194,14 @@ export function assessmentFacts(synthesis: unknown): AssessmentFacts {
     restrictionsNone: ['seizure', 'taxLien', 'debtorRegistry'].every((k) => str(restr[k]).toUpperCase() === 'NONE'),
     extractDate: day(obj(ulp.evidence).extractIssuedAt) ?? day(mortgages.asOf),
     ownedByPurchaseSince: str(ownership.basis).toUpperCase() === 'PURCHASE' ? day(ownership.registeredOn) : null,
-    permitInForce: str(status.state).toUpperCase() === 'PERMITTED' ? { date: day(status.since), until: day(status.validUntil) } : null,
+    permitInForce: evoPermit && (!lastPermit || (evoPermit.decidedOn ?? '') > str(lastPermit.date))
+      ? { date: evoPermit.decidedOn, until: null }
+      : lastPermit
+      ? { date: day(lastPermit.date), until: day(obj(lastPermit.term).until) ?? (str(status.decisionNumber) === str(lastPermit.number) && str(status.validUntil) > str(lastPermit.date) ? day(status.validUntil) : null) }
+      : str(status.state).toUpperCase() === 'PERMITTED' ? { date: day(status.since), until: str(status.validUntil) > str(status.since) ? day(status.validUntil) : null } : null,
+    designChanges: designChanges.length,
+    figureFixes: figureFixes.length,
+    latestDesignDate: latestDesign?.decidedOn ?? null,
     pending,
     auditFinding: signals?.auditFinding ? { date: signals.auditFinding.date } : null,
     constructionDocumented: !!(signals?.auditFinding || signals?.photoCases.length),
@@ -179,6 +249,11 @@ export function buildBuyerAssessment(synthesis: unknown): BuyerAssessment {
       : `${({ 2: 'ორ', 3: 'სამ', 4: 'ოთხ' } as Record<number, string>)[f.pending.length] ?? f.pending.length} განაცხადზე, რომელთაგან ბოლო ${kaOnDay(latest.date) ?? ''} შევიდა, საბოლოო გადაწყვეტილება ჯერ არ ჩანს. მათი შედეგი შეიძლება პროექტს ცვლიდეს.`.replace(/\s+/g, ' '));
   }
   if (f.pending.length) checks.push('ჰკითხეთ გამყიდველს, რას ეხება განხილვის პროცესში მყოფი განაცხადი და ეხება თუ არა ის თქვენს ბინას.');
+  if (f.designChanges || f.figureFixes) {
+    if (!f.pending.length) strengths.push(`პროექტის ყველა ცვლილება${f.figureFixes ? ' და ფართობების შესწორება' : ''} ქალაქმა ოფიციალურად შეათანხმა.`);
+    concerns.push(`${f.designChanges ? `პროექტი ${f.designChanges}-ჯერ შეიცვალა` : 'ფართობების მაჩვენებლები რამდენჯერმე შესწორდა'}${f.figureFixes && f.designChanges ? ' და ფართობების მაჩვენებლებიც შესწორდა' : ''}. პრაქტიკულად ეს ნიშნავს, რომ ბინის ფართი და გეგმარება ხელშეკრულებაში ბოლო შეთანხმებულ ვერსიას უნდა ეყრდნობოდეს${f.latestDesignDate ? ` (${kaOfDay(f.latestDesignDate)} გადაწყვეტილება)` : ''}.`);
+    checks.push('ხელშეკრულებაში მიუთითეთ პროექტის ბოლო შეთანხმებული ვერსია და ბინის ფართი ბოლო შესწორებული მაჩვენებლებით.');
+  }
 
   /* construction */
   if (f.constructionDocumented || f.auditFinding) {
@@ -267,8 +342,8 @@ export function finalBuyerAssessment(modelValue: unknown, synthesis: unknown): B
   });
 }
 
-export function readBuyerAssessment(v: unknown): BuyerAssessment | null {
+export function readBuyerAssessment(v: unknown): (BuyerAssessment & { conclusion: FinalConclusion | null }) | null {
   const p = parseBuyerAssessment(v);
   if (!p) return null;
-  return { ...p, source: obj(v).source === 'MODEL' ? 'MODEL' : 'DETERMINISTIC' };
+  return { ...p, source: obj(v).source === 'MODEL' ? 'MODEL' : 'DETERMINISTIC', conclusion: finalConclusion(p) };
 }

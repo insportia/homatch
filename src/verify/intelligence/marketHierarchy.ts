@@ -42,7 +42,7 @@ import type {
   ScoredComparable,
   Subject,
 } from './marketIntelligence.ts';
-import type { AreaKey } from './marketGeography.ts';
+import { areaName, firstAreaOf, type AreaKey } from './marketGeography.ts';
 import { buildLocationIntelligence } from './locationIntelligence.ts';
 import { buildPropertyRegister } from './propertyRegister.ts';
 
@@ -71,7 +71,9 @@ export type CustomerExclusion =
   | 'CLASS_MISMATCH'
   | 'CONDITION_FAR'
   | 'EXPIRED'
-  | 'STALE';
+  | 'STALE'
+  /* v6 (job dbf04e48): a parking space is never priced from apartments. */
+  | 'PROPERTY_TYPE_MISMATCH';
 
 export type HierarchyReason =
   | 'SAME_PROJECT'
@@ -136,6 +138,8 @@ export interface MarketValuation {
   levelsUsed: HierarchyLevel[];
   sizeBand: { min: number; max: number } | null;
   reasonCode: 'TOO_FEW_DEFENSIBLE_COMPARABLES' | null;
+  /** The subject's property kind the gate compared against, when known (v6). */
+  subjectKind?: PropertyKind | null;
   /** Always true: no district or citywide listing is ever in these numbers. */
   localOnly: true;
 }
@@ -191,6 +195,60 @@ export function buildingClassOf(c: RawComparable): 'NEW_BUILD' | 'OLD_STOCK' | n
   if (OLD_STOCK.test(t)) return 'OLD_STOCK';
   if (NEW_BUILD.test(t)) return 'NEW_BUILD';
   return null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Property kind (v6, job dbf04e48)                                     *
+ * ------------------------------------------------------------------ */
+
+/*
+ * WHY (production job dbf04e48): the unit was a 12 m² PARKING SPACE
+ * ("ავტოსადგომი N17") and its market section was built from 144 apartment
+ * listings. An apartment's price per m² says nothing about a parking space,
+ * a shop or a house. Kind is read from what the register and the listing
+ * SAY; an unknown kind on either side never excludes on its own, except that
+ * a parking subject is never compared with residential stock.
+ */
+export type PropertyKind = 'APARTMENT' | 'PARKING' | 'COMMERCIAL' | 'HOUSE' | 'LAND';
+
+const KIND_PATTERNS: ReadonlyArray<readonly [PropertyKind, RegExp]> = [
+  ['PARKING', /ავტოსადგომ|პარკინგის\s*ადგილ|ავტოფარეხ|გარაჟ|parking[\s_-]*(?:space|spot|place|lot)|\bparking\b(?!.*(?:bina|apartment))|car[\s_-]*park|\bgarage\b|машино-?мест|паркинг|гараж|otopark|avtosadgom|avtofarekh|parkingi|garazh/iu],
+  ['COMMERCIAL', /კომერციულ|საოფისე|ოფისი|სავაჭრო|მაღაზი|commercial|office|retail|\bshop\b|коммерческ|офис|торгов|ticari|ofis|dükkan|komerciul|saofise|\bofisi\b/iu],
+  ['HOUSE', /კერძო\s*სახლ|ინდივიდუალური\s*საცხოვრებელი\s*სახლ|აგარაკ|private[\s_-]*house|\bhouse\b|\bvilla\b|townhouse|cottage|частный\s*дом|коттедж|müstakil|villa|kerdzo-sakhl|sakhli|agarak/iu],
+  ['LAND', /მიწის\s*ნაკვეთ(?!.*ბინა)|\bland\b(?!\s*area)|\bplot\b|земельн|участок|\barsa\b|miwis-nakvet|nakveti/iu],
+  ['APARTMENT', /ბინა|ბინის|საცხოვრებელი\s*ფართ|apartment|\bflat\b|квартир|daire|\bbina\b|-bina-|otaxiani|APARTMENT_IN_PROJECT|PRIVATE_RESALE/iu],
+];
+
+/** The kind a short descriptor names, or null. Most specific first: "parking in an apartment block" is parking. */
+export function propertyKindOfText(text: unknown): PropertyKind | null {
+  const t = typeof text === 'string' ? text : '';
+  if (!t.trim()) return null;
+  for (const [kind, re] of KIND_PATTERNS) if (re.test(t)) return kind;
+  return null;
+}
+
+/** The comparable's kind: the source's stated type first, then its URL/title. */
+export function comparableKindOf(c: RawComparable): PropertyKind | null {
+  const stated = txt(c.propertyType).toUpperCase();
+  if (/PARKING|GARAGE/.test(stated)) return 'PARKING';
+  if (/COMMERCIAL|OFFICE|RETAIL/.test(stated)) return 'COMMERCIAL';
+  if (/^LAND$/.test(stated)) return 'LAND';
+  if (/^HOUSE$|VILLA/.test(stated)) return 'HOUSE';
+  if (/^APARTMENT$|^FLAT$/.test(stated)) return 'APARTMENT';
+  const loose = propertyKindOfText([c.url, c.similarity, c.comparableType].map(txt).join(' '));
+  if (loose) return loose;
+  // A portal's RESIDENTIAL is a home: an apartment unless the text said house.
+  if (stated === 'RESIDENTIAL') return 'APARTMENT';
+  return null;
+}
+
+/** Whether a comparable of kind `comp` may describe a subject of kind `subject`. */
+export function kindsCompatible(subject: PropertyKind | null | undefined, comp: PropertyKind | null): boolean {
+  if (!subject) return true;
+  // A parking subject needs a parking comparable, stated as such.
+  if (subject === 'PARKING') return comp === 'PARKING';
+  if (!comp) return true;
+  return comp === subject;
 }
 
 /* ------------------------------------------------------------------ *
@@ -298,6 +356,7 @@ export function buildLocationHierarchy(
     levelsUsed: enough ? [...new Set(chosen.map((c) => c.level as HierarchyLevel))].sort() : [],
     sizeBand,
     reasonCode: enough ? null : 'TOO_FEW_DEFENSIBLE_COMPARABLES',
+    subjectKind: subject.propertyKind ?? null,
     localOnly: true,
   };
 
@@ -376,6 +435,22 @@ const VALUATION_DENIAL = [
   /(?:нет|невозможно)[^.!?]{0,40}(?:надежн|достоверн)[^.!?]{0,40}(?:оценк|диапазон|стоимост)/i,
 ];
 
+/*
+ * A PRICE VERDICT on the subject ("the price is attractive / reasonable /
+ * high", "below market"). v6: with no asking price of the subject's own there
+ * is nothing to judge, so such a sentence is removed wherever it appears.
+ */
+const PRICE_WORD = /ფას|ღირებულ|price|priced|value|valuation|цен|стоимост|fiyat|سعر|מחיר/iu;
+const VERDICT = [
+  /მიმზიდველ|გონივრულ|სამართლიან|კონკურენტულ|ხელსაყრელ|გადაჭარბებულ|ძვირ(?:ია|ად|ი\s)|იაფ|ბაზარზე\s+(?:დაბალ|მაღალ)|საბაზროზე\s+(?:დაბალ|მაღალ)|მაღალი\s+ფას|დაბალი\s+ფას/iu,
+  /\b(?:attractive(?:ly)?|reasonabl[ey]|fair(?:ly)?\s+priced|fair\s+price|good\s+value|overpriced|underpriced|expensive|cheap|competitive(?:ly)?|bargain|below\s+(?:the\s+)?market|above\s+(?:the\s+)?market|high\s+price|low\s+price)\b/iu,
+  /привлекательн|разумн|справедлив|завышен|занижен|дорог|дешев|выше\s+рынк|ниже\s+рынк/iu,
+];
+/* Saying a verdict CANNOT be given is the honest answer, not a verdict. */
+const VERDICT_WITHHELD = /თქმა|ვერ\s+ვიტყვ|ვერ\s+ვაფასებ|არ\s+ვაფასებ|ვერ\s+შევაფას|cannot\s+(?:say|judge|tell)|can't\s+(?:say|judge|tell)|not\s+possible\s+to\s+(?:say|judge)|нельзя\s+(?:сказать|оценить)/iu;
+const isVerdict = (s: string) =>
+  PRICE_WORD.test(s) && VERDICT.some((re) => re.test(s)) && !VERDICT_WITHHELD.test(s) && !VALUATION_DENIAL.some((re) => re.test(s));
+
 // A full stop after an abbreviation ("ქ. 6", "St. 6") does not end a sentence.
 const splitSentences = (t: string): string[] =>
   t.split(/(?<=(?:\p{L}{3}|\d|[)»"”%²])[.!?։])\s+/u).filter((s) => s.trim());
@@ -409,16 +484,20 @@ export function enforceValuation<T extends AnyReport>(report: T, market: MarketI
   const v = market?.valuation;
   if (!report || !v) return report;
   const insufficient = v.state === 'INSUFFICIENT_EVIDENCE';
+  // v6: a verdict needs the subject's own asking price AND an estimate.
+  const noVerdict = insufficient || !(Number(market?.subjectPricePerSqm) > 0);
   const removed: string[] = [];
   const marketish = (dim?: string, key?: string) => key === 'MARKET' || dim === 'MARKET_POSITION';
   // In market prose any money figure is a price claim; elsewhere only a price
   // per area is. A denial of the valuation only matters in market prose.
-  const scope = (text: string, isMarket: boolean): string =>
-    insufficient
+  const scope = (text: string, isMarket: boolean): string => {
+    const out = insufficient
       ? scrub(text, (s) => (isMarket ? MONEY : PER_AREA).test(s), removed)
       : isMarket
         ? scrub(text, (s) => VALUATION_DENIAL.some((re) => re.test(s)), removed)
         : text;
+    return noVerdict ? scrub(out, isVerdict, removed) : out;
+  };
 
   const sections = (report.sections ?? []).map((sec: AnyReport) => {
     const isMarket = marketish(undefined, sec.key);
@@ -489,6 +568,81 @@ const numOf = (v: unknown): number | undefined => {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 };
 
+/*
+ * THE SUBJECT'S OWN ADDRESS, BY PROVENANCE (v6, job eeefada9).
+ *
+ * reconciledIdentity.address for the Digomi job was "მარშალ გელოვანის გამზ.
+ * 23, საბურთალო" — copied from a MyHome listing — while the register extract
+ * said "ქალაქი თბილისი, სოფელი დიღომი, კრისტიან სტივენის ქუჩა N18". The
+ * market then treated two Saburtalo flats as SAME_ADDRESS and the summary
+ * placed the project in Saburtalo. Official text wins; a reconciled address
+ * whose evidence is a marketplace listing, or whose neighbourhood disagrees
+ * with the official/project address, is never the subject's address.
+ */
+const ADDRESS_LEAD = /(?:რეგისტრირებულია\s+მისამართზე|მისამართი|მისამართზე|registered\s+address|address)\s*:\s*/iu;
+const UNIT_TAIL = /,\s*(?:სართული|სართ\.|floor|ბინა|ავტოსადგომი|ფართი|ოფისი|კომერციული|„?[ა-ჰA-Z]“?\s*ბლოკი|ბლოკი|კორპუსი|სადარბაზო)/iu;
+
+/** Address and unit descriptor from one official sentence ("…მისამართზე: <address>, სართული 2, ბინა N4."). */
+export function parseOfficialAddress(sentence: unknown): { address: string; descriptor: string } | null {
+  const t = typeof sentence === 'string' ? sentence.replace(/\s+/g, ' ') : '';
+  const m = ADDRESS_LEAD.exec(t);
+  if (!m) return null;
+  // To the end of the sentence; "N18." / "ქ. 6" do not end it.
+  const rest = t.slice(m.index + m[0].length).split(/(?<=[\p{L})»"”])\.(?:\s|$)/u)[0].trim();
+  if (!rest || !/\d/.test(rest)) return null;
+  const cut = UNIT_TAIL.exec(rest);
+  const address = (cut ? rest.slice(0, cut.index) : rest).replace(/[\s,;.]+$/u, '').trim();
+  const descriptor = cut ? rest.slice(cut.index + 1).replace(/[\s,;.]+$/u, '').trim() : '';
+  if (address.length < 6 || address.length > 160 || !/\d/.test(address)) return null;
+  return { address, descriptor };
+}
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
+/** The register's own address line for the subject, when an official sentence states it. */
+export function officialSubjectAddress(report: unknown): { address: string; descriptor: string } | null {
+  const r = objOf(report);
+  const docFacts = (Array.isArray(r.documents) ? r.documents : []).flatMap((d: unknown) => strings(objOf(d).facts));
+  for (const s of [...strings(r.officialEvidence), ...docFacts]) {
+    const hit = parseOfficialAddress(s);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+const MARKETPLACE = /myhome\.ge|ss\.ge|korter|livo|place\.ge|binebi|area\.ge|home\.ss/i;
+
+/** Whether reconciledIdentity.address rests on a marketplace listing rather than the subject's own records. */
+function addressFromListing(rec: Record<string, any>): boolean {
+  const prov = objOf(rec.provenance).address;
+  const items = Array.isArray(prov) ? prov : prov ? [prov] : [];
+  return items.some((p: unknown) => MARKETPLACE.test(`${txt(objOf(p).url)} ${txt(objOf(p).source)}`));
+}
+
+/** The subject's property kind: the register's unit descriptor, then the stated type, then the asset class. */
+export function subjectPropertyKind(report: unknown): PropertyKind | null {
+  const r = objOf(report);
+  const unit = objOf(r.exactUnit);
+  const official = officialSubjectAddress(r);
+  const asset = txt(r.assetClass).toUpperCase();
+  return propertyKindOfText(official?.descriptor)
+    ?? propertyKindOfText(txt(unit.propertyType))
+    ?? propertyKindOfText(txt(r.entityType))
+    ?? (asset === 'PRIVATE_HOUSE' ? 'HOUSE' : asset === 'LAND' ? 'LAND' : asset === 'COMMERCIAL' ? 'COMMERCIAL'
+      : asset === 'APARTMENT_IN_PROJECT' || asset === 'PRIVATE_RESALE' ? 'APARTMENT' : null);
+}
+
+/** "…ფართობი შეადგენს 12.00 კვ.მ-ს" / "ფართობია 94.10 კვ.მ." — the unit area an official sentence states. */
+function officialArea(report: unknown): number | undefined {
+  const r = objOf(report);
+  for (const s of strings(r.officialEvidence)) {
+    if (/მიწის|ნაკვეთ/u.test(s)) continue;
+    const m = /ფართ(?:ობ)?[^.\d]{0,40}?(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:კვ\.?\s?მ|მ²|m²)/u.exec(s);
+    if (m) return numOf(m[1]);
+  }
+  return undefined;
+}
+
 /**
  * Address, neighbourhood, area and building class of the subject, read the
  * same way wherever the market gate runs (bundle and evidence package).
@@ -498,7 +652,7 @@ const numOf = (v: unknown): number | undefined => {
  * (job 8ba97da9: 94.1 m² was in the register, not in exactUnit).
  */
 export function subjectMarketFacts(report: unknown): {
-  address?: string; district?: string; area?: number; project?: string; buildingClass?: 'NEW_BUILD';
+  address?: string; district?: string; area?: number; project?: string; buildingClass?: 'NEW_BUILD'; propertyKind?: PropertyKind;
 } {
   const r = objOf(report);
   const unit = objOf(r.exactUnit);
@@ -506,19 +660,33 @@ export function subjectMarketFacts(report: unknown): {
   const rec = objOf(r.reconciledIdentity);
   const proj = objOf(r.projectProfile);
   const pr = objOf(r.publicResearch);
-  const address = txt(unit.address) || txt(parent.address) || txt(r.address) || txt(rec.address) || txt(proj.address) || undefined;
-  const facts = Array.isArray(pr.facts) ? pr.facts.filter((f: unknown) => typeof f === 'string') : [];
-  const loc = buildLocationIntelligence([address, txt(rec.address) || undefined, ...facts]);
+  const official = officialSubjectAddress(r)?.address;
+  // The subject's own records, most authoritative first.
+  const own = [txt(unit.address), official, txt(parent.address), txt(parent.developmentAddress), txt(proj.address), txt(r.address)]
+    .filter((a): a is string => !!a);
+  const ownArea = firstAreaOf(...own)?.area;
+  const recAddress = txt(rec.address);
+  const recArea = recAddress ? firstAreaOf(recAddress)?.area : undefined;
+  const recUsable = !!recAddress && !addressFromListing(rec) && (!ownArea || !recArea || recArea === ownArea);
+  const address = own[0] || (recUsable ? recAddress : '') || undefined;
+  const facts = strings(pr.facts);
+  const loc = buildLocationIntelligence([...own, recUsable ? recAddress : undefined, ...facts]);
+  // A neighbourhood the subject's own address names outright ("სოფელი დიღომი",
+  // "Digomi") beats the curated-profile lookup, which knows fewer areas.
+  const named = firstAreaOf(...own, recUsable ? recAddress : undefined);
+  const district = named && !named.viaStreetName ? areaName(named.area) : loc.district ?? areaName(named?.area);
   const reg = buildPropertyRegister(r.browserOfficial);
-  const area = numOf(unit.area ?? unit.areaSqm) ?? numOf(reg?.latest?.unitAreaSqm);
+  const area = numOf(unit.area ?? unit.areaSqm) ?? numOf(reg?.latest?.unitAreaSqm) ?? officialArea(r);
   const project = txt(pr.project) || txt(proj.name) || txt(rec.project) || undefined;
   const underConstruction = reg?.latest?.unitUnderConstruction === true || reg?.latest?.buildingsUnderConstruction === true;
+  const propertyKind = subjectPropertyKind(r);
   return {
     ...(address ? { address } : {}),
-    ...(loc.district ? { district: loc.district } : {}),
+    ...(district ? { district } : {}),
     ...(area ? { area } : {}),
     ...(project ? { project } : {}),
     // A named development or a unit the register shows under construction is a new build.
     ...(project || underConstruction ? { buildingClass: 'NEW_BUILD' as const } : {}),
+    ...(propertyKind ? { propertyKind } : {}),
   };
 }

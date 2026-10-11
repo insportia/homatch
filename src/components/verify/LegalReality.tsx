@@ -1,49 +1,24 @@
-// HOMATCH Verify — the legal reality of the building, state by state.
+// HOMATCH Verify — the legal reality of the apartment, scope by scope.
 //
-// Five distinct legal states, in the order a building lives through them,
-// each shown with exactly the status the records establish
-// (src/verify/intelligence/legalStatus.ts). The presentation lives in
-// LEGAL_STATUS_VIEW (src/verify/reportPresentation.ts) and has no negative
-// tone at all: NOT_VERIFIED reads "could not be confirmed from the records
-// read" — never "no" — because a record HOMATCH did not read is not evidence
-// that something did not happen.
-//
-// Also here, once: the identity notice, when the records concern a different
-// building of the same parcel or only the parcel itself.
+// The approved introduction, then the findings at once, each with the date
+// of its record (legalStatus.ts legalFindings). Today's official position of
+// the project (LegalPosition) and, once, the identity notice when the records
+// concern a different building of the same parcel or only the parcel itself.
+// The five-stage circle widget was removed (owner, 2026-10-11).
 
 import React from 'react';
-import { Check, AlertTriangle, Circle, Minus, CircleDashed, Landmark, Hourglass } from 'lucide-react';
+import { Landmark, Hourglass } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import {
-  legalRows,
-  legalPosition,
-  identityNotice,
-  LEGAL_CLAIM_KEY,
-  LEGAL_STATUS_VIEW,
-  type IdentityLike,
-  type LegalTone,
-} from '@/verify/reportPresentation';
+import { legalPosition, identityNotice, type IdentityLike } from '@/verify/reportPresentation';
+import { legalFindings, type LegalFinding, type LegalFindingScope } from '@/verify/intelligence/legalStatus';
+import { readProjectSignals } from '@/verify/intelligence/projectStory';
+import { evolutionView, openApplications } from '@/verify/intelligence/projectEvolution';
 
 const day = (iso?: string | null): string | null => {
   const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
   return m ? `${m[3]}.${m[2]}.${m[1]}` : null;
 };
 const isolate = (s: string): string => `⁦${s}⁩`;
-
-const TONE: Record<LegalTone, { dot: string; text: string; line: string }> = {
-  confirmed: { dot: 'bg-emerald-600 text-white ring-emerald-600/20', text: 'text-emerald-800', line: 'bg-emerald-600/50' },
-  partial: { dot: 'bg-[hsl(var(--gold))] text-[hsl(222_47%_11%)] ring-[hsl(var(--gold-border))]', text: 'text-[hsl(var(--gold-ink))]', line: 'bg-[hsl(var(--gold-border))]' },
-  attention: { dot: 'bg-amber-100 text-amber-800 ring-amber-500/40', text: 'text-amber-800', line: 'bg-border' },
-  neutral: { dot: 'bg-card text-muted-foreground ring-border', text: 'text-muted-foreground', line: 'bg-border' },
-};
-
-const ICON = {
-  check: Check,
-  half: Circle,
-  alert: AlertTriangle,
-  open: CircleDashed,
-  dash: Minus,
-} as const;
 
 export const IdentityNotice: React.FC<{ identity?: IdentityLike | null }> = ({ identity }) => {
   const { t } = useLanguage();
@@ -68,45 +43,79 @@ export const IdentityNotice: React.FC<{ identity?: IdentityLike | null }> = ({ i
   );
 };
 
-export const LegalReality: React.FC<{ legal?: unknown }> = ({ legal }) => {
+/**
+ * THE LEGAL SECTION (owner, 2026-10-11): the approved introduction, then the
+ * findings at once, scope by scope (the exact apartment, its parcel, its
+ * building, current and earlier ownership, a cancelled mortgage, a mortgage
+ * in force, other restrictions, the developer's obligations, the project's
+ * financing, applications on file), each with the date of the record it
+ * rests on. An extract shows its own day, never "today" (legalStatus.ts).
+ *
+ * The five-stage construction widget (green and grey circles repeating
+ * "could not be confirmed") is gone: construction activity, completion,
+ * approval and commissioning are told in the project's story instead
+ * (ProjectStory.tsx). `legal` stays accepted so older mounts compile; it no
+ * longer draws anything.
+ */
+export const LegalReality: React.FC<{ legal?: unknown; synthesis?: unknown; signals?: unknown }> = ({ synthesis, signals }) => {
+  if (!synthesis) return null;
+  return <LegalFindings synthesis={synthesis} signals={signals} />;
+};
+
+const SCOPE_KEY: Record<LegalFindingScope, string> = {
+  EXACT_UNIT: 'verify_v6s_scope_unit',
+  PARENT_PARCEL: 'verify_v6s_scope_parcel',
+  BUILDING: 'verify_v6s_scope_building',
+  COMPANY: 'verify_v6s_scope_company',
+  PROJECT: 'verify_v6s_scope_project',
+};
+const FINDING_TONE: Record<LegalFinding['tone'], string> = {
+  positive: 'border-emerald-700/40',
+  neutral: 'border-[hsl(var(--gold-border))]',
+  attention: 'border-amber-500/60',
+};
+
+export const LegalFindings: React.FC<{ synthesis?: unknown; signals?: unknown }> = ({ synthesis, signals }) => {
   const { t } = useLanguage();
-  const rows = legalRows(legal);
-  if (!rows.length) return null;
+  const view = React.useMemo(() => {
+    const s = (synthesis && typeof synthesis === 'object' ? synthesis : {}) as Record<string, unknown>;
+    const r = (s.report && typeof s.report === 'object' ? s.report : {}) as Record<string, unknown>;
+    const sig = readProjectSignals(signals ?? r.projectSignals ?? s.projectSignals);
+    const history = s.officialHistory;
+    const evo = evolutionView({ history, evolution: sig?.evolution ?? [] });
+    return legalFindings({
+      unitLegalPosition: s.unitLegalPosition,
+      unitIdentity: s.unitIdentity,
+      companyFinance: s.companyFinance,
+      applications: history ? { open: openApplications(history, sig?.evolution ?? []), resolvedOn: (evo?.resolved ?? []).map((x) => x.decidedOn ?? '').filter(Boolean) } : null,
+    });
+  }, [synthesis, signals]);
   return (
-    <div className="space-y-3">
-      <ol className="relative grid grid-cols-1 gap-0 lg:grid-cols-5 lg:gap-3" aria-label={t('vrx_legal_states_label')}>
-        {rows.map((r, i) => {
-          const view = LEGAL_STATUS_VIEW[r.status];
-          const tone = TONE[view.tone];
-          const Icon = ICON[view.icon];
-          const basis = r.basis
-            .map((b) => [day(b.date), b.decisionNumber ? `№ ${b.decisionNumber}` : null, b.block ? t('vrx_visual_block', { block: b.block }) : null].filter(Boolean).join(' · '))
-            .filter(Boolean)
-            .slice(0, 2);
-          return (
-            <li key={r.key} className="relative flex gap-3 pb-5 last:pb-0 lg:flex-col lg:gap-2 lg:pb-0" data-status={r.status}>
-              {/* the connector between states */}
-              {i < rows.length - 1 ? (
-                <span className={`absolute start-[15px] top-8 bottom-0 w-px lg:hidden ${tone.line}`} aria-hidden="true" />
-              ) : null}
-              <span className={`relative z-[1] flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ${tone.dot}`} aria-hidden="true">
-                <Icon className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 space-y-0.5">
-                <p className="text-sm font-semibold leading-5 break-words">{t(LEGAL_CLAIM_KEY[r.key])}</p>
-                <p className={`text-xs font-medium leading-5 break-words ${tone.text}`}>{t(view.labelKey)}</p>
-                {basis.map((b, n) => (
-                  <p key={n} className="text-2xs leading-4 text-muted-foreground"><bdi dir="ltr" className="tabular-nums">{b}</bdi></p>
-                ))}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      {rows.some((r) => r.status === 'NOT_VERIFIED') ? (
-        <p className="text-xs leading-5 text-muted-foreground break-words">{t('vrx_legal_not_verified_note')}</p>
+    <section aria-labelledby="vrx-legal-findings" className="space-y-4" data-legal-findings>
+      <div className="space-y-2">
+        <h3 id="vrx-legal-findings" className="font-display text-xl font-semibold leading-snug tracking-tight break-words">{t('verify_v6s_legal_title')}</h3>
+        {t('verify_v6s_legal_body').split(/\n+/).map((p, i) => (
+          <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
+        ))}
+      </div>
+      {view ? (
+        <>
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {view.findings.map((f) => (
+              <li key={`${f.key}-${f.observedOn ?? ''}`} className={`min-w-0 rounded-2xl border-s-4 border border-border bg-card p-4 ${FINDING_TONE[f.tone]}`} data-legal-finding={f.key} data-scope={f.scope}>
+                <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-[hsl(var(--gold-ink))]">{t(SCOPE_KEY[f.scope])}</p>
+                <p className="mt-1 text-sm leading-6 text-foreground/90 break-words" dir="auto">{f.text}</p>
+                <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+                  {day(f.observedOn) ? <span>{t('verify_v6s_observed', { date: isolate(day(f.observedOn)!) })}</span> : null}
+                  {f.ref ? <bdi dir="ltr" className="font-mono tabular-nums">{f.ref}</bdi> : null}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {view.freshnessNote ? <p className="text-sm leading-6 text-muted-foreground break-words" data-legal-freshness>{view.freshnessNote}</p> : null}
+        </>
       ) : null}
-    </div>
+    </section>
   );
 };
 
@@ -119,11 +128,16 @@ export const LegalReality: React.FC<{ legal?: unknown }> = ({ legal }) => {
  * never painted green, never called approved, and never merged into the
  * effective decision above it.
  */
-export const LegalPosition: React.FC<{ history?: unknown }> = ({ history }) => {
+export const LegalPosition: React.FC<{ history?: unknown; signals?: unknown }> = ({ history, signals }) => {
   const { t } = useLanguage();
   const pos = legalPosition(history);
   if (!pos) return null;
-  const { effective, pending, conflicts } = pos;
+  const { effective, conflicts } = pos;
+  /* An application whose own published act shows a decision is not pending
+     (job eeefada9: 7869341 and 7930086 read "შედეგი: თანხმობა"). */
+  const open = new Set(openApplications(history, readProjectSignals(signals)?.evolution ?? []).map((p) => p.caseRef ?? ''));
+  const pending = pos.pending.filter((p) => !p.caseRef || open.has(p.caseRef));
+  if (!effective && !pending.length && !conflicts) return null;
   return (
     <div className="space-y-3" data-legal-position>
       {effective ? (

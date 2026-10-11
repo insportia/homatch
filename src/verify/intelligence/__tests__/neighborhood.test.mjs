@@ -66,7 +66,8 @@ test('the parcel centre comes from the map the worker moved to, never its start 
 });
 
 test('the address geocode is a labelled fallback at house or street precision only', () => {
-  assert.equal(geocodeQuery('თბილისი, კრწანისის ქ. 6'), 'თბილისი, კრწანისის ქუჩა 6');
+  // v6: street first, the way a geocoder reads it (registerOrder).
+  assert.equal(geocodeQuery('თბილისი, კრწანისის ქ. 6'), 'კრწანისის ქუჩა 6, თბილისი');
   assert.equal(geocodeQuery('Krtsanisi'), null, 'a district name alone was geocoded');
   assert.equal(parseNominatim([{ lat: '41.6766', lon: '44.8247', addresstype: 'building' }]).precision, 'HOUSE');
   assert.equal(parseNominatim([{ lat: '41.6766', lon: '44.8247', addresstype: 'road', category: 'highway' }]).precision, 'STREET');

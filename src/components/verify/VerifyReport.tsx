@@ -54,7 +54,7 @@ import { ContractUpload } from './ContractUpload';
 import { VerifyLinkedContracts } from './VerifyLinkedContracts';
 import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, MapPin, Users } from 'lucide-react';
-import { NeighborhoodSection } from './NeighborhoodSection';
+import { NeighborhoodSection, LocationIntro } from './NeighborhoodSection';
 import type { StoredNeighborhood } from '@/verify/intelligence/neighborhood';
 import {
   CurrentStatusBlock,
@@ -82,8 +82,7 @@ import type { PropertyIdentity } from '@/verify/intelligence/propertyIdentity';
 import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
 import { Reveal } from '@/components/common/Reveal';
 import { VisualExplorer } from './VisualExplorer';
-import { catalogVisuals } from '@/verify/visualCatalog';
-import { LegalReality, LegalPosition, IdentityNotice } from './LegalReality';
+import { LegalFindings, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
 import { VerifyJobProvider } from './OfficialLink';
 import { LazyMount } from './LazyMount';
@@ -480,38 +479,37 @@ export function VerifyReport({
     market: inChapter('market').length > 0 || hasMarketView(synthesis.market),
     final: true,
   };
-  /* THE BUYER'S ORDER (owner, 2026-10-11): what it looks like, whether it is
-     legally sound, how it got here, who is behind it, then the building,
-     the files, the place, the price and what to do. */
-  const order: ChapterId[] = ['explore', 'legal', 'story', 'people', 'building', 'documents', 'location', 'market', 'final'];
+  /* THE BUYER'S ORDER, IN FIVE GROUPS (owner, 2026-10-11, v6):
+       მთავარი      summary, key findings, the official gallery
+       პროექტი      story, people, building (specs, scale, utilities)
+       უსაფრთხოება   legal reality, ownership/register, decisions in force and pending
+       გარემო და ფასი location, market
+       დოკუმენტები    the official document library
+     then the final perspective, which closes the report under the last group. */
+  const order: ChapterId[] = ['explore', 'story', 'people', 'building', 'legal', 'location', 'market', 'documents', 'final'];
   const shown = order.filter((c) => has[c as keyof typeof has]);
   const num = (c: ChapterId) => shown.indexOf(c) + 1;
 
-  /* The chapters this report actually has, for the jump links. */
+  /* The groups this report actually has, for the sticky navigation. */
   const nav = [
-    { id: 'vbi-summary', labelKey: 'vbi_nav_summary' },
-    ...shown.map((c) => ({ id: `vbi-${c}`, labelKey: c === 'documents' ? 'verify_v3_nav_documents' : `vrx_nav_${c}` })),
+    { id: 'vbi-g-main', labelKey: 'verify_v6_nav_main' },
+    { id: 'vbi-g-project', labelKey: 'verify_v6_nav_project' },
+    ...(has.legal ? [{ id: 'vbi-g-safety', labelKey: 'verify_v6_nav_safety' }] : []),
+    ...(has.location || has.market ? [{ id: 'vbi-g-place', labelKey: 'verify_v6_nav_place' }] : []),
+    ...(has.documents ? [{ id: 'vbi-g-documents', labelKey: 'verify_v6_nav_documents' }] : []),
   ];
 
   return (
     /* The job id lets official file links open through the secure viewer (OfficialLink). */
     <VerifyJobProvider jobId={typeof (synthesis as { jobId?: unknown }).jobId === 'string' ? (synthesis as { jobId?: string }).jobId : null}>
-    <article className="vrx mx-auto w-full max-w-[56rem] space-y-12 sm:space-y-16">
+    <article className="vrx mx-auto w-full max-w-[56rem] space-y-12 pb-8 sm:space-y-16">
       <ReportNav items={nav} />
 
+      {/* ════ NAV GROUP: main ════ */}
+      <div id="vbi-g-main" data-nav-group="main" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
       {/* ── FIRST IMPRESSION ── what this is, and what to know first. */}
-      <div id="vbi-summary" className="scroll-mt-24 space-y-6">
+      <div id="vbi-summary" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-6">
         <SummaryHero summary={r.summary} weighed={weighed} snapshot={synthesis.snapshot} />
-        {/* What this report holds, one tap from each: the reader sees at once
-            that the images, the people and the files are here — and where. */}
-        <ReportContents
-          items={[
-            { href: '#vbi-explore', key: 'verify_p0_jump_visuals', count: catalogCount(synthesis.officialVisuals) },
-            { href: '#vbi-people', key: 'verify_p0_jump_people', count: teamV2Groups.reduce((n, g) => n + g.cards.length, 0) },
-            { href: '#vbi-documents', key: 'verify_p0_jump_cases', count: hasDocuments ? (Array.isArray(synthesis.officialDocuments) ? synthesis.officialDocuments.length : 0) : 0 },
-            { href: '#vbi-building', key: 'verify_p0_jump_specs', count: Array.isArray(synthesis.technicalSpecs) ? synthesis.technicalSpecs.length : 0 },
-          ]}
-        />
         {findings.length ? <KeyFindings findings={findings} /> : null}
         {/* How much was read — told once, compactly, under the verdict. */}
         <ResearchScaleBanner
@@ -535,57 +533,20 @@ export function VerifyReport({
         />
       </Chapter>
 
-      {/* ── LEGAL REALITY ── the five legal states, today's official position,
-          the register, the company — and what deserves attention, once. */}
-      {has.legal ? (
-        <Chapter id="vbi-legal" n={num('legal')} kicker={t('vrx_legal_kicker')} title={t('vrx_legal_title')} lede={t('vrx_legal_lede')}>
-          <IdentityNotice identity={identity} />
-          {/* Today's position first: the decision in force, then what is
-              still under review — never as an approval. */}
-          <LegalPosition history={history} />
-          <LegalReality legal={history?.legal} />
-          {/* The deterministic position above already states the decision in
-              force; the older status block would repeat it. It stays for
-              reports that carry no reconciled position. */}
-          {(history as { currentPosition?: { effective?: unknown } } | null | undefined)?.currentPosition?.effective ? null : (
-            <CurrentStatusBlock status={r.currentStatus} history={history} clean={clean} />
-          )}
-          <PropertyRegisterCard register={synthesis.propertyRegister} source={synthesis.registerSource ?? null} />
-          <div id="vbi-company" className="scroll-mt-24">
-            <CompanyIntelligenceCard company={company} rights={rights} />
-          </div>
-          <CompanyFinanceCard finance={synthesis.companyFinance} />
-          {inChapter('legal').map(renderSection)}
-          {r.attentionPoints?.length ? (
-            <section className="space-y-3">
-              <h3 className="font-display text-lg font-semibold leading-snug tracking-tight break-words">
-                {t('verify_ir_attention_title')}
-              </h3>
-              <ul className="space-y-4">
-                {r.attentionPoints.map((a, i) => (
-                  <li key={i} className="border-s-2 border-amber-400/70 ps-4 space-y-1">
-                    <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(a.point)}</p>
-                    {a.why ? (
-                      <p className="text-sm leading-6 text-muted-foreground break-words">{clean(a.why)}</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-        </Chapter>
-      ) : null}
+      </div>
 
+      {/* ════ NAV GROUP: project ════ */}
+      <div id="vbi-g-project" data-nav-group="project" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
       {/* ── THE STORY ── prose first, then the grouped official timeline. */}
       {has.story ? (
         <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
-          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} />
+          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} unitIdentity={(synthesis as { unitIdentity?: unknown }).unitIdentity} />
         </Chapter>
       ) : null}
 
       {/* ── THE PEOPLE BEHIND IT ── */}
       {has.people ? (
-        <Chapter id="vbi-people" n={num('people')} kicker={t('vrx_people_kicker')} title={t('vrx_people_title')}>
+        <Chapter id="vbi-people" n={num('people')} kicker={t('vrx_people_kicker')} title={t('verify_v6_people_title')}>
           <PeopleBehind
             team={history?.team}
             projectTeam={synthesis.projectTeam}
@@ -639,6 +600,92 @@ export function VerifyReport({
         <UtilitiesCard utilities={utilities} />
       </Chapter>
 
+      </div>
+
+      {/* ════ NAV GROUP: safety ════ */}
+      {has.legal ? (
+      <div id="vbi-g-safety" data-nav-group="safety" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
+      {/* ── LEGAL REALITY ── the five legal states, today's official position,
+          the register, the company — and what deserves attention, once. */}
+      {has.legal ? (
+        <Chapter id="vbi-legal" n={num('legal')} kicker={t('vrx_legal_kicker')} title={t('vrx_legal_title')} lede={t('vrx_legal_lede')}>
+          <IdentityNotice identity={identity} />
+          {/* The approved legal introduction, then the dated findings scope by
+              scope (apartment, parcel, building, ownership, mortgages,
+              obligations, applications on file). */}
+          <LegalFindings synthesis={synthesis} signals={r.projectSignals} />
+          {/* Today's position: the decision in force, then what is still
+              under review — never as an approval. */}
+          <LegalPosition history={history} signals={r.projectSignals} />
+          {/* The deterministic position above already states the decision in
+              force; the older status block would repeat it. It stays for
+              reports that carry no reconciled position. */}
+          {(history as { currentPosition?: { effective?: unknown } } | null | undefined)?.currentPosition?.effective ? null : (
+            <CurrentStatusBlock status={r.currentStatus} history={history} clean={clean} />
+          )}
+          <PropertyRegisterCard register={synthesis.propertyRegister} source={synthesis.registerSource ?? null} />
+          <div id="vbi-company" className="scroll-mt-[var(--vbi-offset,8rem)]">
+            <CompanyIntelligenceCard company={company} rights={rights} />
+          </div>
+          <CompanyFinanceCard finance={synthesis.companyFinance} />
+          {inChapter('legal').map(renderSection)}
+          {r.attentionPoints?.length ? (
+            <section className="space-y-3">
+              <h3 className="font-display text-lg font-semibold leading-snug tracking-tight break-words">
+                {t('verify_ir_attention_title')}
+              </h3>
+              <ul className="space-y-4">
+                {r.attentionPoints.map((a, i) => (
+                  <li key={i} className="border-s-2 border-amber-400/70 ps-4 space-y-1">
+                    <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(a.point)}</p>
+                    {a.why ? (
+                      <p className="text-sm leading-6 text-muted-foreground break-words">{clean(a.why)}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </Chapter>
+      ) : null}
+
+      </div>
+      ) : null}
+
+      {/* ════ NAV GROUP: place ════ */}
+      {(has.location || has.market) ? (
+      <div id="vbi-g-place" data-nav-group="place" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
+      {/* ── LOCATION ── */}
+      {has.location ? (
+        <Chapter id="vbi-location" n={num('location')} kicker={t('vrx_location_kicker')} title={t('vrx_location_title')}>
+          {/* The approved LOCATION introduction (agent D), drawn at once; the measured places below mount on approach. */}
+          <LocationIntro />
+          <LazyMount minHeight="20rem">
+          {inChapter('location').map(renderSection)}
+          {/* And on its own when the model wrote neither section. Places a
+              source named are evidence, and evidence must not vanish because
+              the prose did not reach it. */}
+          {synthesis.location && !locationHost ? <LocationLiving l={synthesis.location} /> : null}
+          </LazyMount>
+        </Chapter>
+      ) : null}
+
+      {/* ── MARKET POSITION ── the prose, then only what the deterministic
+          market intelligence supports (marketPresentation.ts). */}
+      {has.market ? (
+        <Chapter id="vbi-market" n={num('market')} kicker={t('vrx_market_kicker')} title={t('vrx_market_title')}>
+          <LazyMount minHeight="24rem">
+            <MarketPosition sections={inChapter('market')} market={synthesis.market} renderSection={renderSection} />
+          </LazyMount>
+        </Chapter>
+      ) : null}
+
+      </div>
+      ) : null}
+
+      {/* ════ NAV GROUP: documents ════ */}
+      {has.documents ? (
+      <div id="vbi-g-documents" data-nav-group="documents" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
       {/* ── OFFICIAL DOCUMENTS ── the applications behind the legal reality,
           newest two first, each file opening at its official source. */}
       {has.documents ? (
@@ -655,23 +702,7 @@ export function VerifyReport({
         </Chapter>
       ) : null}
 
-      {/* ── LOCATION ── */}
-      {has.location ? (
-        <Chapter id="vbi-location" n={num('location')} kicker={t('vrx_location_kicker')} title={t('vrx_location_title')}>
-          {inChapter('location').map(renderSection)}
-          {/* And on its own when the model wrote neither section. Places a
-              source named are evidence, and evidence must not vanish because
-              the prose did not reach it. */}
-          {synthesis.location && !locationHost ? <LocationLiving l={synthesis.location} /> : null}
-        </Chapter>
-      ) : null}
-
-      {/* ── MARKET POSITION ── the prose, then only what the deterministic
-          market intelligence supports (marketPresentation.ts). */}
-      {has.market ? (
-        <Chapter id="vbi-market" n={num('market')} kicker={t('vrx_market_kicker')} title={t('vrx_market_title')}>
-          <MarketPosition sections={inChapter('market')} market={synthesis.market} renderSection={renderSection} />
-        </Chapter>
+      </div>
       ) : null}
 
       {/* ── FINAL PERSPECTIVE ── what it means, what to do, what to check. */}
@@ -721,7 +752,7 @@ export function VerifyReport({
 
         {/* The checklist is computed in the bundle and merely rendered here,
             so a quiet model cannot delete it. */}
-        <div id="vbi-checklist" className="scroll-mt-24">
+        <div id="vbi-checklist" className="scroll-mt-[var(--vbi-offset,8rem)]">
           <BuyerChecklist items={synthesis.checklist ?? []} />
         </div>
 
@@ -778,7 +809,7 @@ const Chapter: React.FC<{
 }> = ({ id, headingId, n, kicker, title, lede, children }) => {
   const hid = headingId ?? `${id}-title`;
   return (
-    <Reveal as="section" id={id} aria-labelledby={hid} className="scroll-mt-24 space-y-6">
+    <Reveal as="section" id={id} aria-labelledby={hid} className="scroll-mt-[var(--vbi-offset,8rem)] space-y-6">
       <header className="space-y-2.5">
         <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.1em] text-[hsl(var(--gold-ink))]">
           <span className="shrink-0 whitespace-nowrap tabular-nums">{String(n).padStart(2, '0')}</span>
@@ -878,37 +909,12 @@ const SummaryHero: React.FC<{
   );
 };
 
-/** Signed official images the gallery will actually show. */
-const catalogCount = (v: unknown): number => catalogVisuals(Array.isArray(v) ? v : []).length;
-
-/** The report's contents, as counted jump links — only what exists. */
-const ReportContents: React.FC<{ items: Array<{ href: string; key: string; count: number }> }> = ({ items }) => {
-  const { t } = useLanguage();
-  const shown = items.filter((i) => i.count > 0);
-  if (!shown.length) return null;
-  return (
-    <nav aria-label={t('verify_p0_jump_label')} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {shown.map((i) => (
-        <a
-          key={i.href}
-          href={i.href}
-          className="group flex min-h-[44px] flex-col justify-center rounded-xl border border-border bg-card px-3.5 py-2.5 transition-colors hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none"
-        >
-          <span className="font-display text-xl font-semibold tabular-nums leading-tight text-foreground">{i.count}</span>
-          <span className="text-xs leading-5 text-muted-foreground break-words group-hover:text-foreground">{t(i.key)}</span>
-        </a>
-      ))}
-    </nav>
-  );
-};
-
 /* ------------------------------------------------------------------ *
  * Key findings                                                        *
  * ------------------------------------------------------------------ */
 
 /** A shortlist. Every row answers "why does this matter to me". */
 const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
-  const { t } = useLanguage();
   return (
     /* No heading: this IS the introduction begun by SummaryHero above. A
        second title here is what made the report start for a second time. */

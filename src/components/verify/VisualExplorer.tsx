@@ -1,11 +1,15 @@
 // HOMATCH Verify — "Explore the property".
 //
 // The official visuals of the project as one place to look: a large stage,
-// the project's story in chapters (original concept → approved designs →
-// construction → latest renders → current condition; only the chapters that
-// hold something), a thumbnail strip, and a full-screen viewer with zoom,
-// pan and swipe. Every card says what it is and when it was filed
-// ("Project render · from the September 2026 application").
+// five tabs, newest first (დღეს / ბოლო პროექტი / ცვლილებები / ძველი ვერსიები /
+// ნახაზები; only the tabs that hold something; it opens on the newest
+// verified one), a thumbnail strip, and a full-screen viewer with zoom
+// (pinch, wheel, buttons, keys), pan and swipe. Every card says what it is,
+// when (a verified date or period), what it concerns (unit / building /
+// project), what it shows and why it matters. A picture filed five or more
+// years ago carries the mandatory historical label ON the image and above
+// it ("ძველი საპროექტო ვერსია | 2012 წელი"), and when no newer verified
+// render exists the gallery says so ("განახლებული რენდერი ვერ მოიძებნა").
 //
 // THE RULES (held in src/verify/visualCatalog.ts, tested there):
 //   - only signed storage URLs are rendered; anything else is dropped
@@ -20,7 +24,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOff, Images } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2, Info, ImageOff, Images, History } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   catalogVisuals,
@@ -29,8 +33,10 @@ import {
   visualChronology,
   BADGE_KEY,
   CHAPTER_KEY,
+  CHAPTER_WHY_KEY,
   type CatalogVisual,
   type ChronoVisual,
+  type HistoricalLabel,
   type VisualChapter,
 } from '@/verify/visualCatalog';
 import { safeHref } from '@/verify/reportPresentation';
@@ -85,14 +91,55 @@ const Badge: React.FC<{ v: CatalogVisual; className?: string; wrap?: boolean }> 
 };
 
 /** "Project render · from the September 2026 application": what it is, then when it was filed. */
-function useChronoLabel() {
+/** The verified date or period of a card ("from the September 2026 application", "dated 14.04.2025 in the official file name"). */
+function useDatedText() {
   const { t } = useLanguage();
-  return React.useCallback((c: ChronoVisual | undefined | null): string => {
-    if (!c) return '';
+  return React.useCallback((c: ChronoVisual): string => {
     const vars = c.dated.vars.month ? { ...c.dated.vars, month: t(`vfv_month_${c.dated.vars.month}`) } : c.dated.vars;
-    return `${t(c.typeKey)} · ${t(c.dated.key, vars)}`;
+    return t(c.dated.key, vars);
   }, [t]);
 }
+
+function useChronoLabel() {
+  const { t } = useLanguage();
+  const dated = useDatedText();
+  return React.useCallback((c: ChronoVisual | undefined | null): string => {
+    if (!c) return '';
+    return `${t(c.typeKey)} · ${dated(c)}`;
+  }, [t, dated]);
+}
+
+/**
+ * THE MANDATORY HISTORICAL LABEL (owner, 2026-10-11): "ძველი საპროექტო
+ * ვერსია | 2012 წელი", shown above the image AND on it, for every picture in
+ * the earlier-versions tab (its date is verified by construction).
+ */
+const HistoricalBadge: React.FC<{ h: HistoricalLabel; className?: string }> = ({ h, className }) => {
+  const { t } = useLanguage();
+  return (
+    <span
+      data-historical-badge
+      className={`inline-flex max-w-full items-center gap-1.5 whitespace-normal rounded-full bg-[hsl(38_92%_54%)] px-2.5 py-1 text-start text-2xs font-semibold text-[hsl(222_47%_11%)] ring-1 ring-black/10 ${className ?? ''}`}
+    >
+      <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 break-words">{t(h.badgeKey, h.vars)}</span>
+    </span>
+  );
+};
+
+/** The label printed ON the picture: a band across its bottom edge, never cropping it. */
+const HistoricalOverlay: React.FC<{ h: HistoricalLabel }> = ({ h }) => {
+  const { t } = useLanguage();
+  return (
+    <span
+      data-historical-overlay
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-[hsl(222_47%_8%/0.78)] px-3 py-1.5 text-center text-xs font-semibold tracking-[0.02em] text-[hsl(38_92%_66%)]"
+    >
+      {t(h.badgeKey, h.vars)}
+    </span>
+  );
+};
 
 function useVisualText(clean: Clean) {
   const { t } = useLanguage();
@@ -212,7 +259,9 @@ const Lightbox: React.FC<{
   identityUnresolved?: boolean;
   /** The chronology label ("Project render · from the … application"), when the caller has one. */
   labelOf?: (v: CatalogVisual) => string | null;
-}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge, cases, identityUnresolved, labelOf }) => {
+  /** The mandatory historical label of an earlier-versions picture. */
+  historicalOf?: (v: CatalogVisual) => HistoricalLabel | null;
+}> = ({ items, index, onIndex, onClose, onBroken, clean, versionBadge, cases, identityUnresolved, labelOf, historicalOf }) => {
   const { t, lang } = useLanguage();
   const rtl = lang === 'ar' || lang === 'he';
   const v = items[index];
@@ -373,6 +422,7 @@ const Lightbox: React.FC<{
   if (!v) return null;
   const tx = text(v);
   const version = versionBadge(v);
+  const hist = historicalOf?.(v) ?? null;
   const btn = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[hsl(0_0%_96%)] ring-1 ring-white/15 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)] disabled:opacity-40 motion-reduce:transition-none';
 
   return createPortal(
@@ -388,6 +438,7 @@ const Lightbox: React.FC<{
       <div className="flex items-center gap-2 px-3 py-2 sm:px-5 sm:py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            {hist ? <HistoricalBadge h={hist} /> : null}
             <Badge v={v} wrap />
             <ScopeChip v={v} identityUnresolved={identityUnresolved} />
             {version ? <span className="text-2xs font-medium text-[hsl(38_92%_66%)]">{version}</span> : null}
@@ -446,6 +497,7 @@ const Lightbox: React.FC<{
               style={{ transform: `translate3d(${pos.x}px, ${pos.y}px, 0) scale(${scale})`, transformOrigin: 'center center' }}
             />
           </div>
+          {hist ? <HistoricalOverlay h={hist} /> : null}
           {items.length > 1 ? (
             <>
               <button type="button" className={`${btn} absolute start-2 top-1/2 -translate-y-1/2 bg-black/40 sm:start-4`} onClick={() => go(-1)} aria-label={t('vrx_lightbox_prev')}>
@@ -463,6 +515,7 @@ const Lightbox: React.FC<{
         <aside className="hidden w-[22rem] shrink-0 overflow-y-auto border-s border-white/10 p-5 lg:block" aria-label={t('vrx_visual_about')}>
           <Meta v={v} className="mb-1 !text-[hsl(220_14%_72%)]" />
           <SourceRow v={v} cases={cases} tone="dark" />
+          {hist ? <p className="mt-3 text-xs leading-5 text-[hsl(38_92%_72%)]">{t(hist.noteKey, hist.vars)}</p> : null}
           <div className="mt-3"><Explanation v={v} clean={clean} tone="dark" /></div>
           <p className="mt-4 text-2xs leading-relaxed text-[hsl(220_14%_66%)]">{t('verify_ox_visual_note')}</p>
         </aside>
@@ -482,6 +535,7 @@ const Lightbox: React.FC<{
           <div id="vx-sheet" hidden={!sheetOpen} className="max-h-[45vh] overflow-y-auto px-4 pb-4">
             <Meta v={v} className="mb-1 !text-[hsl(220_14%_72%)]" />
             <SourceRow v={v} cases={cases} tone="dark" />
+            {hist ? <p className="mt-3 text-xs leading-5 text-[hsl(38_92%_72%)]">{t(hist.noteKey, hist.vars)}</p> : null}
             <div className="mt-3"><Explanation v={v} clean={clean} tone="dark" /></div>
             <p className="mt-4 text-2xs leading-relaxed text-[hsl(220_14%_66%)]">{t('verify_ox_visual_note')}</p>
           </div>
@@ -551,6 +605,7 @@ export const VisualExplorer: React.FC<{
   const hero = React.useMemo(() => heroVisual(usable), [usable]);
   const text = useVisualText(clean);
   const label = useChronoLabel();
+  const dateText = useDatedText();
   const versionBadge = useVersionBadge(history);
   const cases = React.useMemo(() => visualCaseMap(docs), [docs]);
   // The project's story: chapters by filing date (visualCatalog.ts).
@@ -565,11 +620,14 @@ export const VisualExplorer: React.FC<{
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const heroChapter = hero ? chronoOf.get(hero.id)?.chapter ?? null : null;
-  // Opens on today's documented condition, else the latest renders, else the hero's chapter.
-  const opening: VisualChapter | null = tabs.find((x) => x.chapter === 'CURRENT')?.chapter ?? tabs.find((x) => x.chapter === 'LATEST')?.chapter ?? heroChapter;
+  // Opens on the newest verified tab: today's photographs, else the latest
+  // design, else the changes, else the newer of earlier versions / drawings.
+  const opening: VisualChapter | null = chrono.defaultChapter ?? heroChapter;
   const current: VisualChapter | null = tab && tabs.some((x) => x.chapter === tab) ? tab : opening ?? tabs[0]?.chapter ?? null;
   const inTab = chrono.groups.find((g) => g.chapter === current)?.items.map((i) => i.visual) ?? [];
-  const active = inTab.find((v) => v.id === activeId) ?? (hero && heroChapter === current ? hero : inTab[0]) ?? null;
+  // A tab opens on its newest picture (the hero only when it is that tab's first choice).
+  const active = inTab.find((v) => v.id === activeId) ?? inTab[0] ?? null;
+  const historicalOf = (v: CatalogVisual): HistoricalLabel | null => chronoOf.get(v.id)?.historical ?? null;
 
   if (!usable.length) {
     return (
@@ -599,6 +657,8 @@ export const VisualExplorer: React.FC<{
   const at = active ? text(active) : null;
   const version = active ? versionBadge(active) : null;
   const activeChrono = active ? chronoOf.get(active.id) : null;
+  const hist = activeChrono?.historical ?? null;
+  const why = active?.explanation?.buyerMeaning ? clean(active.explanation.buyerMeaning) : activeChrono ? t(CHAPTER_WHY_KEY[activeChrono.chapter]) : '';
   // A tall picture would push the page: the stage keeps a sane ratio and the
   // whole image is shown inside it (object-contain on a navy matte).
   const ratio = active?.width && active?.height ? `${Math.max(active.width / active.height, 0.8)}` : '16 / 10';
@@ -615,9 +675,21 @@ export const VisualExplorer: React.FC<{
             : t('verify_p0_gallery_count', { count: String(usable.length) })}
         </span>
       </p>
+      {/* No newer verified render than the historical ones: said once, plainly. */}
+      {chrono.noNewerRender ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4" data-no-newer-render>
+          <History className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-semibold leading-6 text-foreground break-words">{t('vev_no_newer_title')}</p>
+            <p className="text-sm leading-6 text-foreground/80 break-words">{t('vev_no_newer_body')}</p>
+          </div>
+        </div>
+      ) : null}
       {/* The stage */}
       {active && at ? (
         <figure className="space-y-3">
+          {/* The historical label ABOVE the image (and again on it, below). */}
+          {hist ? <HistoricalBadge h={hist} className="text-xs" /> : null}
           <button
             type="button"
             onClick={() => setLightbox(inTab.findIndex((v) => v.id === active.id))}
@@ -642,6 +714,7 @@ export const VisualExplorer: React.FC<{
               className="relative h-full w-full object-contain motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]"
             />
             <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
+            {hist ? <HistoricalOverlay h={hist} /> : null}
             <span className="absolute start-3 end-3 top-3 flex flex-wrap items-center gap-2">
               <Badge v={active} className="shadow-sm" wrap />
               <ScopeChip v={active} identityUnresolved={identityUnresolved} className="shadow-sm" />
@@ -654,24 +727,38 @@ export const VisualExplorer: React.FC<{
                 </span>
               ) : null}
             </span>
-            <span className="absolute bottom-3 end-3 inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-black/55 px-3 text-2xs font-medium text-white opacity-90 motion-safe:transition-opacity group-hover:opacity-100">
+            <span className={`absolute end-3 inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-black/55 px-3 text-2xs font-medium text-white opacity-90 motion-safe:transition-opacity group-hover:opacity-100 ${hist ? 'bottom-11' : 'bottom-3'}`}>
               <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
               {t('vrx_explore_open')}
             </span>
           </button>
-          <figcaption className="space-y-1">
+          <figcaption className="space-y-2">
             {activeChrono ? (
               <p className="text-sm font-semibold leading-6 text-[hsl(var(--gold-ink))] break-words" data-visual-label>{label(activeChrono)}</p>
             ) : null}
-            <p className="text-[15px] font-medium leading-6 break-words" dir="auto">{at.title}</p>
-            {activeChrono && (activeChrono.type === 'RENDER' || activeChrono.type === 'IMAGE') ? (
+            {hist ? <p className="text-sm leading-6 text-foreground/85 break-words" data-historical-note>{t(hist.noteKey, hist.vars)}</p> : null}
+            {/* Every card: what it shows, when, what kind of picture, what it concerns, why it matters. */}
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(7rem,auto)_1fr]" data-visual-card>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_what')}</dt>
+              <dd className="font-medium leading-6 break-words" dir="auto">{at.title}</dd>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_type')}</dt>
+              <dd className="leading-6 break-words">{activeChrono ? t(activeChrono.typeKey) : at.label}</dd>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_date')}</dt>
+              <dd className="leading-6 break-words">{activeChrono ? dateText(activeChrono) : t('vfv_date_unknown')}</dd>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_scope')}</dt>
+              <dd className="leading-6 break-words">{t(scopeKeyFor(active, identityUnresolved))}{active.block ? ` · ${t(active.otherBuilding ? 'vrx_visual_other_building' : 'vrx_visual_block', { block: active.block })}` : ''}</dd>
+              {why ? (
+                <>
+                  <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_why')}</dt>
+                  <dd className="leading-6 text-foreground/85 break-words" dir="auto">{why}</dd>
+                </>
+              ) : null}
+            </dl>
+            {activeChrono && (activeChrono.type === 'RENDER' || activeChrono.type === 'IMAGE') && !hist ? (
               <p className="text-xs leading-5 text-muted-foreground break-words">{t(activeChrono.type === 'RENDER' ? 'vfv_render_not_evidence' : 'vfv_image_type_note')}</p>
             ) : null}
             <Meta v={active} />
             <SourceRow v={active} cases={cases} />
-            {active.explanation?.buyerMeaning ? (
-              <p className="text-sm leading-6 text-muted-foreground break-words" dir="auto">{clean(active.explanation.buyerMeaning)}</p>
-            ) : null}
           </figcaption>
         </figure>
       ) : null}
@@ -679,7 +766,7 @@ export const VisualExplorer: React.FC<{
       {/* The story's chapters — only the ones that hold something. The chips
           scroll sideways inside their own box; the page never does. */}
       {tabs.length > 1 ? (
-        <div role="tablist" aria-label={t('vfv_chapters_label')} className="flex min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:thin]">
+        <div role="tablist" aria-label={t('vev_tabs_label')} className="flex min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:thin]">
           {tabs.map((x, i) => {
             const selected = x.chapter === current;
             return (
@@ -750,8 +837,8 @@ export const VisualExplorer: React.FC<{
                   onError={() => onBroken(v.id)}
                   className="h-full w-full object-contain"
                 />
-                <span className="absolute inset-x-1 bottom-1 truncate rounded-md bg-black/60 px-1.5 py-0.5 text-start text-2xs font-medium leading-4 text-white">
-                  {cl ? t(cl.typeKey) : vt.label}
+                <span className={`absolute inset-x-1 bottom-1 truncate rounded-md px-1.5 py-0.5 text-start text-2xs font-medium leading-4 ${cl?.historical ? 'bg-[hsl(222_47%_8%/0.85)] text-[hsl(38_92%_66%)]' : 'bg-black/60 text-white'}`}>
+                  {cl?.historical ? t(cl.historical.badgeKey, cl.historical.vars) : cl ? t(cl.typeKey) : vt.label}
                 </span>
               </button>
             );
@@ -773,6 +860,7 @@ export const VisualExplorer: React.FC<{
           cases={cases}
           identityUnresolved={identityUnresolved}
           labelOf={(v) => label(chronoOf.get(v.id)) || null}
+          historicalOf={historicalOf}
         />
       ) : null}
     </div>

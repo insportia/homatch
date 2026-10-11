@@ -526,6 +526,8 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
     area: Number(subject.area) || facts.area,
     dealType: 'SALE' as const,
     buildingClass: facts.buildingClass,
+    // v6 (job dbf04e48): a parking space never cites apartment listings.
+    propertyKind: facts.propertyKind,
   };
   for (const c of comparables) {
     if (!isCitableComparable(scoreComparable(marketSubject, c as never))) continue;

@@ -18,7 +18,7 @@ import { job601Report, text1161121, TAS } from './fixtures/job601TasPeople.mjs';
 import {
   extractTasProfessionals, asOrganizationName, asPersonName, asSignatureName, teamKey, tidyRoleLabel, buildProjectTeamV2,
 } from '../intelligence/tasProfessionals.ts';
-import { readCaseSources, redactPersonal, decodeAcadNusx, looksAcadNusx, textSections } from '../intelligence/tasCaseSources.ts';
+import { readCaseSources, redactPersonal, decodeAcadNusx, looksAcadNusx, textSections, planStoredTasTexts, applyStoredTasText, STORED_TEXT_LIMITS } from '../intelligence/tasCaseSources.ts';
 import { buildOfficialDossier } from '../intelligence/officialDossier.ts';
 
 const DL = (id) => `https://docs.tbilisi.gov.ge/DownloadServlet?downloadCase=2&attachedFileId=${id}`;
@@ -181,4 +181,73 @@ test('the dossier carries the team into projectTeamV2 and the priority digest, w
   const json = JSON.stringify(dossier.projectTeamV2);
   assert.doesNotMatch(json, /•|\d{11}|პ\/ნ|@|ტელ/);
   assert.equal(TAS('1161121'), 'https://docs.tbilisi.gov.ge/architect/public.html?docId=1161121');
+});
+
+/*
+ * THE TEXT PAST THE INLINE CAP. Production (job 8ba97da9): AR11161121 keeps
+ * 300 000 of 355 903 characters inline; "საექსპერტო დასკვნები.pdf" starts
+ * after the cut and lives only in verify-evidence (sha256/bf/bf0838…).
+ * verify-synthesis downloads the planned originals and applies them. The
+ * appended section below is SYNTHETIC wording (the stored file could not be
+ * read from the sandbox); it proves the path, not the production names.
+ */
+const BF = 'sha256/bf/bf08381ac83801eafd69734f66e64765cf2d649d76fa033523ea86424cfc70cc.txt';
+const SYNTHETIC_EXPERT_SECTION = [
+  '[undated · საექსპერტო დასკვნები.pdf]',
+  'მიმდებარე შენობის კონსტრუქციული მდგომარეობის შეფასება – სპეციალისტი: გოგა რეხვიაშვილი',
+].join('\n');
+function truncatedReport() {
+  const rep = job601Report({ pad: 50 });
+  const doc = rep.browserOfficial.results[0].documents[0];
+  const full = `${doc.rawText}\n${SYNTHETIC_EXPERT_SECTION}`;
+  Object.assign(doc, { priority: 1, textComplete: false, textTruncated: true, fullTextRef: { path: BF, chars: full.length, sha256: BF.slice(10, 74) } });
+  return { rep, full };
+}
+
+test('stored full texts: the priority document past the inline cap is planned, bounded and applied', () => {
+  const { rep, full } = truncatedReport();
+  const before = extractTasProfessionals(rep).map((m) => m.name);
+  assert.ok(!before.includes('გოგა რეხვიაშვილი'), 'not visible in the inline excerpt');
+  const plan = planStoredTasTexts(rep);
+  assert.deepEqual(plan, [{ documentId: '1161121', path: BF, chars: full.length }]);
+  // Bounds: an oversized document, a foreign path, or a complete inline text is never planned.
+  assert.deepEqual(planStoredTasTexts(rep, { ...STORED_TEXT_LIMITS, perDocChars: 10 }), []);
+  const foreign = truncatedReport().rep;
+  foreign.browserOfficial.results[0].documents[0].fullTextRef.path = '../secrets.txt';
+  assert.deepEqual(planStoredTasTexts(foreign), []);
+  // A body that is not the stored document is refused.
+  assert.equal(applyStoredTasText(rep, '1161121', 'short', full.length), false);
+  assert.equal(applyStoredTasText(rep, '1161121', full, full.length), true);
+  assert.deepEqual(planStoredTasTexts(rep), [], 'applied once, never planned again');
+  const after = extractTasProfessionals(rep);
+  const goga = after.find((m) => m.name === 'გოგა რეხვიაშვილი');
+  assert.ok(goga, 'the name past the cut is found');
+  assert.equal(goga.roles[0].documentTitle, 'საექსპერტო დასკვნები.pdf');
+  assert.equal(goga.roles[0].code, 'ADJACENT_BUILDING_STRUCTURAL_ASSESSMENT');
+  assert.ok(!after.some((m) => m.name === 'გიორგი რეხვიაშვილი'), 'a similar name the text does not print is not invented');
+});
+
+test('eeefada9: the 13 stored projectTeamV2 entries render as 11 cards, legend fragments dropped, stages by filing date', async () => {
+  const { teamGroupsV2, stageOf } = await import('../reportPresentation.ts');
+  const { EEE_TEAM_V2 } = await import('./fixtures/jobEeeTeamV2.mjs');
+  assert.equal(EEE_TEAM_V2.length, 13);
+  const groups = teamGroupsV2(EEE_TEAM_V2);
+  const cards = groups.flatMap((g) => g.cards.map((c) => ({ ...c, g: g.group })));
+  assert.equal(cards.length, 11);
+  for (const junk of ['ასახული კოეფიციენტში', 'არსებული საზღრები']) assert.ok(!cards.some((c) => c.name === junk), junk);
+  const at = (n) => cards.find((c) => c.name === n);
+  // The current chief architect, and three who signed one application each in 2012-2013.
+  assert.equal(at('ლუკა ჭკადუა').g, 'ARCHITECTURE');
+  assert.equal(at('ლუკა ჭკადუა').stage, 'CURRENT');
+  for (const n of ['ილია ხავთასი', 'ნოე სოხაძე', 'გიორგი როსტიაშვილი']) {
+    assert.equal(at(n).g, 'ARCHITECTURE', n);
+    assert.equal(at(n).stage, 'EARLIER', `${n}: one 2012-2013 signature is an earlier stage, not today's architect`);
+    assert.equal(at(n).participation.cases, 1, n);
+  }
+  // Clients and applicants are never seated among the designers; two spellings stay two entries.
+  for (const n of ['ნიკა ბერიძე', 'გიორგი წიკლაური', 'ვახტანგ ნოზაძე', 'ვახტანგ ნოძაძე']) assert.equal(at(n).g, 'APPLICANTS', n);
+  assert.equal(at('გიორგი წიკლაური').stage, 'CURRENT');
+  assert.equal(stageOf([{ date: null }], '2026-01-01'), 'UNDATED');
+  assert.equal(stageOf([{ date: '2025-01-02' }], '2026-01-01'), 'CURRENT');
+  assert.equal(stageOf([{ date: '2024-12-01' }], '2026-01-01'), 'EARLIER');
 });

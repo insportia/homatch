@@ -38,7 +38,7 @@ const STORED_STOPS = 6;
  */
 export const MS_MAP_DEFAULT_CENTER = '44.7433554-41.7850526';
 
-export type CenterBasis = 'MS_MAP_PARCEL' | 'MS_MAP_PARCEL_EARLIER' | 'GEOCODED_ADDRESS';
+export type CenterBasis = 'MS_MAP_PARCEL' | 'MS_MAP_PARCEL_EARLIER' | 'CADASTRAL_PLAN' | 'GEOCODED_ADDRESS';
 
 export interface GeoPoint {
   lat: number;
@@ -188,9 +188,107 @@ export function centerFromBrowserOfficial(browserOfficial: unknown, parcel: stri
   return null;
 }
 
+/*
+ * THE PARCEL CENTRE FROM THE OFFICIAL CADASTRAL PLAN (v6, job eeefada9).
+ *
+ * The TAS map traversal reached the parcel but its URL never left the start
+ * view, so there was no #C= centre; the address geocode then failed and the
+ * neighbourhood said NO_LOCATION. The same traversal read the NAPR cadastral
+ * plan ("საკადასტრო გეგმა") of the parcel, and that plan prints its grid in
+ * WGS 84 / UTM zone 38N: eastings 478640…478680, northings 4625950…4625990
+ * for a 1:400 sheet centred on the parcel. The centre of that grid is the
+ * parcel to within a few tens of metres, from an official document.
+ *
+ * Accepted only when the plan names THIS parent parcel and states UTM 38N,
+ * with at least two distinct eastings and northings spanning under 1 km.
+ */
+const UTM38_ZONE = 38;
+
+/** WGS 84 / UTM (northern hemisphere) → latitude/longitude, degrees. */
+export function utmToLatLng(easting: number, northing: number, zone = UTM38_ZONE): GeoPoint {
+  const a = 6378137;
+  const f = 1 / 298.257223563;
+  const k0 = 0.9996;
+  const e2 = f * (2 - f);
+  const ep2 = e2 / (1 - e2);
+  const x = easting - 500000;
+  const M = northing / k0;
+  const mu = M / (a * (1 - e2 / 4 - (3 * e2 ** 2) / 64 - (5 * e2 ** 3) / 256));
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const phi1 = mu
+    + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * Math.sin(2 * mu)
+    + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * Math.sin(4 * mu)
+    + (151 * e1 ** 3 / 96) * Math.sin(6 * mu)
+    + (1097 * e1 ** 4 / 512) * Math.sin(8 * mu);
+  const sin1 = Math.sin(phi1), cos1 = Math.cos(phi1), tan1 = Math.tan(phi1);
+  const N1 = a / Math.sqrt(1 - e2 * sin1 ** 2);
+  const T1 = tan1 ** 2;
+  const C1 = ep2 * cos1 ** 2;
+  const R1 = (a * (1 - e2)) / (1 - e2 * sin1 ** 2) ** 1.5;
+  const D = x / (N1 * k0);
+  const lat = phi1 - (N1 * tan1 / R1) * (D ** 2 / 2
+    - (5 + 3 * T1 + 10 * C1 - 4 * C1 ** 2 - 9 * ep2) * D ** 4 / 24
+    + (61 + 90 * T1 + 298 * C1 + 45 * T1 ** 2 - 252 * ep2 - 3 * C1 ** 2) * D ** 6 / 720);
+  const lng0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+  const lng = lng0 + (D - (1 + 2 * T1 + C1) * D ** 3 / 6
+    + (5 - 2 * C1 + 28 * T1 - 3 * C1 ** 2 + 8 * ep2 + 24 * T1 ** 2) * D ** 5 / 120) / cos1;
+  return { lat: (lat * 180) / Math.PI, lng: (lng * 180) / Math.PI };
+}
+
+/** The grid centre of one cadastral-plan text for `parcel`, or null. */
+export function centerFromCadastralPlanText(text: unknown, parcel: string | null): GeoPoint | null {
+  const t = typeof text === 'string' ? text : '';
+  if (!parcel || !t) return null;
+  if (!/საკადასტრო\s+გეგმა|cadastral\s+plan/iu.test(t)) return null;
+  if (!/UTM\s*zone\s*38\s*N/iu.test(t)) return null;
+  const code = /საკადასტრო\s+კოდი\s*:\s*(\d{2}\.\d{2}\.\d{2}\.\d{3}\.\d{3})/u.exec(t);
+  if (!code || code[1] !== parcel) return null;
+  const nums = (t.match(/(?<![\d.])\d{6,7}(?![\d.])/g) ?? []).map(Number);
+  const east = [...new Set(nums.filter((v) => v >= 166000 && v <= 834000))];
+  const north = [...new Set(nums.filter((v) => v >= 4500000 && v <= 4850000))];
+  if (east.length < 2 || north.length < 2) return null;
+  const span = (xs: number[]) => Math.max(...xs) - Math.min(...xs);
+  if (span(east) > 1000 || span(north) > 1000) return null;
+  const mid = (xs: number[]) => (Math.max(...xs) + Math.min(...xs)) / 2;
+  const p = utmToLatLng(mid(east), mid(north));
+  return inGeorgia(p) ? p : null;
+}
+
+/** The parcel centre from any cadastral plan the official traversal read. */
+export function centerFromCadastralPlan(browserOfficial: unknown, parcel: string | null): GeoPoint | null {
+  if (!parcel) return null;
+  const results = (browserOfficial as { results?: unknown } | null)?.results;
+  if (!Array.isArray(results)) return null;
+  for (const r of results) {
+    const docs = (r as { documents?: unknown } | null)?.documents;
+    if (!Array.isArray(docs)) continue;
+    for (const d of docs) {
+      const e = (d ?? {}) as Record<string, unknown>;
+      const p = centerFromCadastralPlanText(`${String(e.title ?? '')}\n${String(e.rawText ?? '')}`, parcel);
+      if (p) return p;
+    }
+  }
+  return null;
+}
+
+/*
+ * The register writes city first with its own words ("ქალაქი თბილისი,
+ * სოფელი დიღომი, კრისტიან სტივენის ქუჩა N18"); a geocoder wants street
+ * first ("კრისტიან სტივენის ქუჩა 18, დიღომი, თბილისი"). v6, job eeefada9.
+ */
+export function registerOrder(address: string): string {
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean)
+    .map((p) => p.replace(/^(?:ქალაქი|ქ\.|სოფელი|სოფ\.|დაბა|რაიონი)\s+/u, '').replace(/(^|\s)N\s?(\d)/gu, '$1$2'));
+  if (parts.length < 2) return parts.join(', ');
+  const isStreet = (p: string) => /ქუჩ|ქ\.|გამზ|ჩიხ|შესახვ|street|st\.?\b|ave|\d/iu.test(p);
+  const firstStreet = parts.findIndex(isStreet);
+  if (firstStreet <= 0) return parts.join(', ');
+  return [...parts.slice(firstStreet), ...parts.slice(0, firstStreet).reverse()].join(', ');
+}
+
 /** Address text a geocoder can read: Georgian "ქ." spelled out as "ქუჩა". */
 export function geocodeQuery(address: unknown): string | null {
-  const a = String(address ?? '').replace(/\s+/g, ' ').trim();
+  const a = registerOrder(String(address ?? '').replace(/\s+/g, ' ').trim());
   if (!a || !/\d/.test(a)) return null; // a street without a number is too coarse to measure from
   return a.replace(/(^|[\s,])ქ\.(?=\s|,|$)/g, '$1ქუჩა').replace(/(^|[\s,])გამზ\.(?=\s|,|$)/g, '$1გამზირი').replace(/\bSt\.?(?=\s|,|$)/g, 'Street');
 }
@@ -304,7 +402,10 @@ export function categorize(t: Tags | undefined): { category: NeighborhoodCategor
 /** The display name: Georgian first, then the local name, then the brand. */
 export function displayName(t: Tags | undefined): string | null {
   if (!t) return null;
-  const v = t['name:ka'] || t.name || t['brand:ka'] || t.brand || '';
+  // A chain tagged only in Latin ("Carrefour") reads in Georgian when the
+  // brand has a Georgian form (brand:ka "კარფური"); v6 spelling rule.
+  const latinOnly = !!t.name && !/[ა-ჰ]/u.test(t.name) && !!t['brand:ka'] && !!t.brand && t.name.toLowerCase().includes(t.brand.toLowerCase());
+  const v = t['name:ka'] || (latinOnly ? t.name.replace(new RegExp(t.brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), t['brand:ka']) : '') || t.name || t['brand:ka'] || t.brand || '';
   const clean = v.replace(/\s+/g, ' ').trim();
   return clean || null;
 }

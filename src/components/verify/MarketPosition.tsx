@@ -57,6 +57,7 @@ const Insufficient: React.FC<{ info: NonNullable<MarketView['insufficiency']> }>
     need: String(info.need),
     other: String(info.otherDistricts),
     size: String(info.sizeOutOfBand),
+    kinds: String(info.otherKind ?? 0),
     min: info.sizeBand ? String(Math.round(info.sizeBand.min)) : '',
     max: info.sizeBand ? String(Math.round(info.sizeBand.max)) : '',
   };
@@ -140,6 +141,75 @@ const Scale: React.FC<{ view: MarketView; selected: number | null; onSelect: (i:
   );
 };
 
+/* ───────────── v6: the approved section intro ───────────── */
+
+/**
+ * The owner-approved MARKET introduction (APPROVED_COPY.md), verbatim. A
+ * parking space, shop or house is not "ბინა": for those the intro says what
+ * is being compared instead, so the copy never states something untrue.
+ */
+export const MarketIntro: React.FC<{ subjectKind?: string | null; showTitle?: boolean }> = ({ subjectKind, showTitle = true }) => {
+  const { t } = useLanguage();
+  const other = subjectKind && subjectKind !== 'APARTMENT' ? subjectKind.toLowerCase() : null;
+  const paragraphs = other ? [t(`vfm6_intro_${other}`)] : [t('vfm6_intro_p1'), t('vfm6_intro_p2'), t('vfm6_intro_p3')];
+  return (
+    <div className="space-y-3" data-market-intro={other ?? 'apartment'}>
+      {showTitle ? <h3 className="font-display text-lg font-semibold leading-snug break-words">{t('vfm6_intro_title')}</h3> : null}
+      {paragraphs.map((p, i) => <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>)}
+    </div>
+  );
+};
+
+/** The subject's own price: a verdict only with a price AND an estimate (v6). */
+const SubjectPrice: React.FC<{ view: MarketView }> = ({ view }) => {
+  const { t } = useLanguage();
+  const sp = view.subjectPrice;
+  if (!sp) return null;
+  if (sp.state === 'UNKNOWN') {
+    return <p className="text-sm leading-6 text-muted-foreground break-words" data-subject-price="unknown">{t('vfm6_subject_price_unknown')}</p>;
+  }
+  return (
+    <div className="rounded-xl border border-border px-4 py-3" data-subject-price={sp.state === 'KNOWN' ? 'verdict' : 'no-verdict'}>
+      <p className="text-xs text-muted-foreground">{t('vfm6_subject_price_label')}</p>
+      <p className="text-base font-semibold"><Money v={sp.pricePerSqm} cur={sp.currency} /></p>
+      <p className="mt-1 text-sm leading-6 text-foreground/85 break-words">
+        {sp.state === 'KNOWN' ? t(sp.positionKey) : t('vfm6_subject_price_no_verdict')}
+      </p>
+    </div>
+  );
+};
+
+/** How the comparison was built: collapsed, so the method never crowds the answer. */
+const Method: React.FC<{ view: MarketView }> = ({ view }) => {
+  const { t } = useLanguage();
+  const m = view.method;
+  const h = view.headline;
+  return (
+    <details className="group rounded-xl border border-border bg-muted/20 px-4 py-3 [&_summary::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] rounded-lg">
+        <span className="min-w-0 break-words">{t('vfm6_method_title')}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground motion-safe:transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="space-y-3 pt-2 text-xs leading-5 text-muted-foreground">
+        <p className="break-words">{t('vfm6_method_hierarchy')}</p>
+        {m?.subjectKindKey ? <p className="break-words">{t('vfm6_method_kind', { kind: t(m.subjectKindKey) })}</p> : null}
+        {m?.sizeBand ? <p className="break-words">{t('vfm6_method_size', { min: String(Math.round(m.sizeBand.min)), max: String(Math.round(m.sizeBand.max)) })}</p> : null}
+        <p className="break-words">{t('vfm6_method_minimum', { count: String(m?.minimum ?? 3) })}</p>
+        {m?.excluded.length ? (
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground/80">{t('vfm6_method_excluded')}</p>
+            <ul className="list-disc space-y-0.5 ps-5">
+              {m.excluded.map((e) => <li key={e.key} className="break-words">{t(e.key, { count: String(e.count) })}</li>)}
+            </ul>
+          </div>
+        ) : null}
+        {h?.state === 'RANGE' && h.outliersTrimmed > 0 ? <p className="break-words">{t('vrx_mkt_trimmed', { count: String(h.outliersTrimmed) })}</p> : null}
+        <p className="break-words">{t('vrx_mkt_asking_note')}</p>
+      </div>
+    </details>
+  );
+};
+
 /* ───────────── the card ───────────── */
 
 const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
@@ -167,7 +237,6 @@ const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
             </div>
           </div>
           <p className="text-sm leading-6 text-foreground/85 break-words">{t('vrx_mkt_range_from', { count: String(h.count), tiers })}</p>
-          {h.outliersTrimmed > 0 ? <p className="text-xs leading-5 text-muted-foreground">{t('vrx_mkt_trimmed', { count: String(h.outliersTrimmed) })}</p> : null}
         </div>
       ) : h && view.insufficiency ? (
         <Insufficient info={view.insufficiency} />
@@ -180,6 +249,8 @@ const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
           </div>
         </div>
       ) : null}
+
+      <SubjectPrice view={view} />
 
       <Scale view={view} selected={selected} onSelect={(i) => setSelected((s) => (s === i ? null : i))} />
 
@@ -252,6 +323,11 @@ const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
                     </span>
                     <span className="shrink-0 text-end">
                       <span className="block text-sm font-semibold"><Money v={c.pricePerSqm} cur={c.currency} /></span>
+                      {c.priceKind ? (
+                        <span className={`mt-0.5 inline-block rounded-full px-1.5 text-2xs font-semibold uppercase tracking-wide ${c.priceKind === 'TRANSACTION' ? 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]' : 'bg-muted text-muted-foreground'}`}>
+                          {t(c.priceKind === 'TRANSACTION' ? 'vfm6_badge_transaction' : 'vrx_mkt_asking_badge')}
+                        </span>
+                      ) : null}
                       {c.totalPrice ? <span className="block text-2xs text-muted-foreground"><Total v={c.totalPrice} cur={c.currency} /></span> : null}
                     </span>
                     <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground motion-safe:transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
@@ -292,7 +368,7 @@ const MarketCard: React.FC<{ view: MarketView }> = ({ view }) => {
         </div>
       ) : null}
 
-      <p className="text-2xs leading-relaxed text-muted-foreground">{t('vrx_mkt_asking_note')}</p>
+      <Method view={view} />
     </div>
   );
 };
@@ -302,11 +378,15 @@ export const MarketPosition: React.FC<{
   /** synthesis.market — MarketIntelligence. An older shape yields prose only. */
   market?: unknown;
   renderSection: (s: MarketPositionSection) => React.ReactNode;
-}> = ({ sections, market, renderSection }) => {
+  /** False when the chapter heading already carries the approved question. */
+  showIntroTitle?: boolean;
+}> = ({ sections, market, renderSection, showIntroTitle = true }) => {
   const view = React.useMemo(() => marketView(market), [market]);
   if (!sections.length && !view) return null;
   return (
     <div className="space-y-8">
+      {/* v6: the approved introduction, then the verified specifics. */}
+      <MarketIntro subjectKind={view?.subjectKind} showTitle={showIntroTitle} />
       {sections.map((s) => <React.Fragment key={s.key}>{renderSection(s)}</React.Fragment>)}
       {view ? <MarketCard view={view} /> : null}
     </div>

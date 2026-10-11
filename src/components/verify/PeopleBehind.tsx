@@ -140,6 +140,14 @@ export const PeopleBehind: React.FC<{
     : [];
   return (
     <div className="space-y-8">
+      {/* What a buyer should take from the cards below (owner-approved copy):
+          who does what on a building, that every name is documented, and
+          that a documented role is not a claim about today. */}
+      <div className="max-w-[68ch] space-y-3 text-[15px] leading-7 text-foreground/85" data-people-intro="">
+        <p className="break-words">{t('verify_v6_people_intro_1')}</p>
+        <p className="break-words">{t('verify_v6_people_intro_2')}</p>
+        <p className="break-words">{t('verify_v6_people_intro_3')}</p>
+      </div>
       {groups.length ? (
         <>
           {groups.map((g) => <TeamGroupSection key={g.group} group={g.group} cards={g.cards} directors={directorKeys} />)}
@@ -270,7 +278,7 @@ function TeamCard({ card, id, director }: { card: TeamCardV2; id: string; direct
   // Every OTHER documented role, in the reader's words, de-duplicated.
   const others = [...new Set(card.roles.map(roleText).filter((x) => x !== roleText(h)))].slice(0, 3);
   return (
-    <li className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card p-4 transition-shadow duration-300 hover:shadow-[0_12px_32px_-18px_hsl(222_47%_11%/0.35)] motion-reduce:transition-none">
+    <li className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card p-4 transition-shadow duration-300 hover:shadow-[0_12px_32px_-18px_hsl(222_47%_11%/0.35)] motion-reduce:transition-none" data-stage={card.stage ?? 'UNDATED'}>
       <span className="absolute inset-y-0 start-0 w-[3px] bg-[hsl(var(--gold-border))] opacity-70 group-hover:opacity-100" aria-hidden="true" />
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(222_47%_11%)] text-[hsl(38_92%_62%)]" aria-hidden="true">
@@ -289,6 +297,19 @@ function TeamCard({ card, id, director }: { card: TeamCardV2; id: string; direct
       ) : null}
       {h.scope ? <p className="mt-2.5 text-sm leading-6 text-foreground/85 break-words" dir="auto">{h.scope}</p> : null}
       {/* Which filing(s) this work belongs to: a stage of the project, not its whole life. */}
+      {/* Which stage of the project the work belongs to: the current filings,
+          or an earlier stage (one signature on an old application never makes
+          someone the building's architect today). */}
+      {card.stage === 'CURRENT' || card.stage === 'EARLIER' ? (
+        <p className="mt-2.5" data-stage-chip="">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium leading-4 ${card.stage === 'CURRENT' ? 'bg-[hsl(222_47%_11%)] text-white' : 'border border-border bg-muted/50 text-foreground/80'}`}>
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${card.stage === 'CURRENT' ? 'bg-[hsl(38_92%_56%)]' : 'bg-muted-foreground/60'}`} aria-hidden="true" />
+            {card.stage === 'CURRENT'
+              ? t('verify_v6_team_stage_current')
+              : t('verify_v6_team_stage_earlier', { span: `\u2066${yearSpan(card.participation.first ?? card.firstSeen ?? '', card.participation.last ?? card.lastSeen ?? '')}\u2069` })}
+          </span>
+        </p>
+      ) : null}
       {involvement ? <p className="mt-2.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs leading-5 text-foreground/80 break-words" data-involvement>{involvement}</p> : null}
       <SourceLine role={h} className="mt-2" />
       {card.official ? (

@@ -31,7 +31,7 @@ import { revalidateDecision, legalClaims, type LegalClaim } from './legalStatus.
 import { buildCaseChronology, latestCasesByFiling, permitTerm, plausibleBlock, type CaseStage, type ChronologyCase } from './tasChronology.ts';
 import { readCaseSources, caseDecisionState, caseIsClosed, caseSubject, redactPersonal } from './tasCaseSources.ts';
 import {
-  VISUAL_ASSET_MAX, categoryForScope, normalizeVisualCategory, normalizeVisualKind, resolveVisualScope, visualSubject,
+  VISUAL_ASSET_MAX, categoryForScope, normalizeVisualCategory, normalizeVisualKind, correctVisualKind, resolveVisualScope, visualSubject,
   type VisualAssetKind, type VisualCategory, type VisualScope,
 } from './visualAssets.ts';
 
@@ -856,7 +856,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     if (!/^[a-f0-9]{64}$/.test(id)) continue;
     // Stored records may predate the identity fields: the worker record fills them.
     const v = { ...(apiVisuals.get(id) ?? {}), ...v0, identity: v0?.identity ?? apiVisuals.get(id)?.identity ?? null };
-    const kind = normalizeVisualKind(v.kind);
+    const kind = correctVisualKind(normalizeVisualKind(v.kind), v.fileName);
     const { scope, block, matchBasis } = resolveVisualScope(kind, v.identity, subject);
     if (scope === 'UNRELATED_SUSPECT') {
       visualsHidden++;

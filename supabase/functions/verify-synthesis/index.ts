@@ -40,6 +40,7 @@ import { writeSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts
 import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
 import { withNeighborhood } from '../../../src/verify/intelligence/locationIntelligence.ts';
 import { resolveNeighborhood } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
+import { subjectMarketFacts } from '../../../src/verify/intelligence/marketHierarchy.ts';
 import { projectSlug } from '../../../src/verify/intelligence/harvest.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
 import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
@@ -56,6 +57,7 @@ import { extractProjectSignals } from '../../../src/verify/intelligence/projectS
 import { finalBuyerAssessment } from '../../../src/verify/intelligence/buyerAssessment.ts';
 import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '../../../src/verify/intelligence/reportReadPath.ts';
 import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
+import { planStoredTasTexts, applyStoredTasText } from '../../../src/verify/intelligence/tasCaseSources.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
 
 /**
@@ -536,6 +538,32 @@ async function restoreAfterFailedUpgrade(db: any, job: any): Promise<void> {
  * THE BUILD — one path for a first synthesis, a forced rebuild and an
  * auto-upgrade alike (same evidence, same model call, same gates).
  */
+/*
+ * TAS text past the worker's inline cap (tasCaseSources.planStoredTasTexts):
+ * the stored originals of the priority cases, read once per build from the
+ * private verify-evidence bucket with the service client. Bounded (two
+ * documents, 1.6M characters, 8 s each, in parallel); a failure leaves the
+ * inline excerpt, exactly as before. Memory only: result_json is not written.
+ */
+/** Private bucket holding the full stored source texts (written by verify-queue). */
+const EVIDENCE_BUCKET = 'verify-evidence';
+async function hydrateStoredTasTexts(db: any, rj: any, timing: Record<string, unknown>): Promise<void> {
+  const started = performance.now();
+  const plan = planStoredTasTexts(rj);
+  if (!plan.length) return;
+  const read = await Promise.all(plan.map(async (p) => {
+    try {
+      const dl = db.storage.from(EVIDENCE_BUCKET).download(p.path);
+      const res: any = await Promise.race([dl, new Promise((r) => setTimeout(() => r({ error: 'timeout' }), 8000))]);
+      if (res?.error || !res?.data) return false;
+      return applyStoredTasText(rj, p.documentId, await res.data.text(), p.chars);
+    } catch {
+      return false;
+    }
+  }));
+  timing.storedTasTexts = { planned: plan.length, applied: read.filter(Boolean).length, chars: plan.reduce((n, p) => n + p.chars, 0), ms: Math.round(performance.now() - started) };
+}
+
 async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; trigger: 'research' | 'driver' | 'customer'; forced: boolean }): Promise<Record<string, unknown>> {
   const jobId: string = job.id;
   // Build timing (internal, src/verify/performance.ts): server clock only,
@@ -561,6 +589,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   // what the model reasons over.
   const projection = projectVerify({ jobId: job.id, report: rj });
   // "Now" is the job's own completion: a date the papers cite after it is never a decision.
+  await hydrateStoredTasTexts(writer, rj, timing);
   const pkg = buildEvidencePackage(rj, { now: job.completed_at ?? null });
   // Identity from OFFICIAL records only (TAS cases, registry documents and evidence) — never listings.
   const identity = resolveIdentity(rj?.exactUnit?.code ?? job.query ?? null, {
@@ -580,7 +609,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   const neighborhoodP = resolveNeighborhood({
     resultJson: rj,
     query: job.query ?? null,
-    address: pkg.subject?.address ?? null,
+    // v6 (job eeefada9): the register's own address when the package has none.
+    address: pkg.subject?.address ?? subjectMarketFacts(rj).address ?? null,
     previous: job.synthesis_json?.location?.neighborhood,
     earlierBrowserOfficial: async (parcel: string) => {
       const { data } = await writer.from('research_jobs').select('bo:result_json->browserOfficial')

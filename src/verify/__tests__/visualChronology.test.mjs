@@ -14,6 +14,7 @@ import {
 } from '../intelligence/visualRecovery.ts';
 import { GALLERY_24, BLANK_IDS, PRIORITY_STORED_NOT_IN_GALLERY, CASE_DATES, resultJson601 } from './fixtures/krtsanisiVisuals601.mjs';
 import { VERIFY_FINAL_VISUALS_STRINGS } from '../../../scripts/verify-final-visuals-i18n-data.mjs';
+import { VERIFY_V6_VISUALS_STRINGS } from '../../../scripts/verify-v6-visuals-i18n-data.mjs';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
@@ -62,19 +63,25 @@ test('blanks stay in the stored report with a reason and never reach the custome
 
 /* ── chronology ─────────────────────────────────────────────────────────── */
 
-test('the .601 gallery reads as a story, dated from the case filings', () => {
+// Premise (2026-10-11, visual evolution): the five chapters became five tabs,
+// newest first: TODAY / LATEST / CHANGES / OLD / DRAWINGS (visualEvolution.test.mjs
+// holds the Digomi set). On .601: Sept 2026 photographs are today, the newest
+// case's pictures the latest design, 2022 renders a change, 2018 photographs history.
+test('the .601 gallery reads newest first, dated from the case filings', () => {
   const usable = GALLERY_24.filter((v) => !BLANK_IDS.includes(v.id));
   const catalog = catalogVisuals(signedAll([...usable, ...PRIORITY_STORED_NOT_IN_GALLERY.slice(0, 3)]));
   const chrono = visualChronology(catalog, CASES, TODAY);
   const chapterOf = (id) => chrono.groups.find((g) => g.items.some((i) => i.visual.id === id))?.chapter;
-  assert.deepEqual(chrono.groups.map((g) => g.chapter), ['ORIGINAL', 'DESIGNS', 'CONSTRUCTION', 'LATEST', 'CURRENT']);
-  // 2022 renders: the original concept; the newest case's own pictures: the latest.
-  assert.equal(chapterOf(GALLERY_24[0].id), 'ORIGINAL');
+  assert.deepEqual(chrono.groups.map((g) => g.chapter), ['TODAY', 'LATEST', 'CHANGES', 'OLD', 'DRAWINGS']);
+  assert.equal(chrono.defaultChapter, 'TODAY');
+  // 2022 renders: an earlier version within five years; the newest case's own pictures: the latest.
+  assert.equal(chapterOf(GALLERY_24[0].id), 'CHANGES');
   assert.equal(chapterOf(PRIORITY_STORED_NOT_IN_GALLERY[0].id), 'LATEST');
-  // Drawings: designs. 2018 site photographs: documented changes. Sept 2026 photographs: current.
-  assert.equal(chapterOf(GALLERY_24[7].id), 'DESIGNS');
-  assert.equal(chapterOf(GALLERY_24[2].id), 'CONSTRUCTION');
-  assert.equal(chapterOf(GALLERY_24[16].id), 'CURRENT');
+  // Drawings: drawings. 2018 site photographs: history. Sept 2026 photographs: today.
+  assert.equal(chapterOf(GALLERY_24[7].id), 'DRAWINGS');
+  assert.equal(chapterOf(GALLERY_24[2].id), 'OLD');
+  assert.equal(chapterOf(GALLERY_24[16].id), 'TODAY');
+  assert.equal(chrono.noNewerRender, false);
   assert.equal(chrono.noCurrentPhotos, false);
   // Every card is dated from its case, never invented.
   const all = chrono.groups.flatMap((g) => g.items);
@@ -101,7 +108,8 @@ test('render vs photograph is always distinguished; a render is never current co
   }
   const chrono = visualChronology(cat, CASES, TODAY);
   for (const g of chrono.groups) {
-    if (g.chapter === 'CURRENT' || g.chapter === 'CONSTRUCTION') for (const i of g.items) assert.ok(i.type === 'PHOTO' || i.type === 'CONSTRUCTION_PHOTO', `${i.type} in ${g.chapter}`);
+    if (g.chapter === 'TODAY') for (const i of g.items) assert.ok(i.type === 'PHOTO' || i.type === 'CONSTRUCTION_PHOTO', `${i.type} in ${g.chapter}`);
+    if (g.chapter === 'LATEST') for (const i of g.items) assert.ok(i.type === 'RENDER' || i.type === 'IMAGE', `${i.type} in ${g.chapter}`);
   }
 });
 
@@ -110,7 +118,7 @@ test('with no recent photograph the gallery says so; undated pictures are not da
   const chrono = visualChronology(old, CASES, TODAY);
   assert.equal(chrono.noCurrentPhotos, true);
   assert.equal(chrono.newestPhotoDate, '2018-12-07');
-  assert.ok(!chrono.groups.some((g) => g.chapter === 'CURRENT'));
+  assert.ok(!chrono.groups.some((g) => g.chapter === 'TODAY'));
   const none = visualChronology(catalogVisuals(signedAll([GALLERY_24[0]])), new Map(), TODAY);
   assert.equal(none.noCurrentPhotos, true);
   assert.equal(none.newestPhotoDate, null);
@@ -135,7 +143,9 @@ test('recoverable: budget-skipped images of the ledger, never paperwork or what 
   const rj = resultJson601();
   assert.ok(needsVisualRecovery(rj));
   const stored = storedUnpersistedVisuals(rj, '2026-10-11T00:00:00Z');
-  assert.deepEqual(stored.records.map((r) => r.fileName), ['1.jpg', '2.jpg', '3.jpg'], 'blank layers, paperwork scans or duplicates were appended');
+  // "ძველი მონტაჟი.pdf" (old montage) is a render by its name (visualAssets.ts), so it is kept since v2.
+  assert.deepEqual(stored.records.map((r) => r.fileName), ['1.jpg', '2.jpg', '3.jpg', 'ძველი მონტაჟი.pdf'], 'blank layers, paperwork scans or duplicates were appended');
+  assert.equal(stored.records[3].kind, 'RENDER');
   assert.equal(stored.skippedQuality, 2);
   for (const r of stored.records) {
     assert.equal(r.provenance.recoveredFrom, VISUAL_RECOVERY_STORED_SOURCE);
@@ -160,7 +170,7 @@ test('applying a recovery appends with provenance, marks the ledger and is idemp
     outcomes: [{ attachedFileId: '4850052', outcome: 'RECOVERED' }, { attachedFileId: '4850053', outcome: 'DEADLINE' }],
     requested: 5, storedAppended: stored.records.length, skippedQuality: stored.skippedQuality, complete: false,
   });
-  assert.equal(rj.officialVisuals.length, 24 + 4);
+  assert.equal(rj.officialVisuals.length, 24 + 5);
   assert.equal(rj.officialVisuals.at(-1).provenance.recoveredFrom, 'TAS_ATTACHMENT_RECOVERY');
   assert.equal(rj.officialVisuals.at(-1).provenance.attachedFileId, '4850052');
   const ledger = rj.browserOfficial.results[1].tasApi.cases[1].attachments;
@@ -171,8 +181,9 @@ test('applying a recovery appends with provenance, marks the ledger and is idemp
   const acc = rj.browserOfficial.results[1].tasApi.accounting.attachmentOutcomes;
   assert.equal(acc.NOT_PROCESSED_BUDGET, 42);
   assert.equal(acc.RECOVERED, 1);
-  assert.deepEqual({ ...marker.counts }, { requested: 5, recovered: 1, appended: 4, storedAppended: 3, failed: 1, skippedQuality: 2 });
-  assert.equal(rj._visualRecovery.version, 1);
+  assert.deepEqual({ ...marker.counts }, { requested: 5, recovered: 1, appended: 5, storedAppended: 4, failed: 1, skippedQuality: 2 });
+  assert.equal(rj._visualRecovery.version, 2);
+  assert.equal(rj._visualRecovery.appendedTotal, 5);
   assert.equal(rj._visualRecovery.complete, false);
   // A partial recovery is resumed, then stops; applying the same records twice appends nothing.
   assert.equal(needsVisualRecovery(rj), true);
@@ -200,11 +211,12 @@ test('the explorer renders chapters, labels and the no-photo sentence; images ar
 test('every chronology string exists in six locales with its placeholders, and in the bundle', () => {
   const bundle = read('src/i18n/translations.ts');
   const keys = [...Object.values(CHAPTER_KEY), ...Object.values(PICTURE_TYPE_KEY), 'vfv_date_application', 'vfv_date_exif', 'vfv_date_unknown',
-    'vfv_render_not_evidence', 'vfv_image_type_note', 'vfv_no_current_photos', 'vfv_no_current_photos_since', 'vfv_chapters_label',
+    'vfv_render_not_evidence', 'vfv_image_type_note', 'vfv_no_current_photos', 'vfv_no_current_photos_since', 'vev_tabs_label', 'vev_date_filename',
     ...Array.from({ length: 12 }, (_, i) => `vfv_month_${i + 1}`)];
+  const STRINGS = { ...VERIFY_FINAL_VISUALS_STRINGS, ...VERIFY_V6_VISUALS_STRINGS };
   assert.equal(CHAPTER_ORDER.length, 5);
   for (const k of keys) {
-    const v = VERIFY_FINAL_VISUALS_STRINGS[k];
+    const v = STRINGS[k];
     assert.ok(v && v.length === 6, k);
     const want = (v[0].match(/\{\{\w+\}\}/g) ?? []).sort().join();
     for (const s of v) {

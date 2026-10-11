@@ -107,7 +107,7 @@ test('spaceFromReading: the read outlines fail, the layout from the pieces passe
   assert.deepEqual(plain.layoutRepairs, []);
 });
 
-test('the server builds photo spaces through spaceFromReading, rebuilds an old failed one from its kept reading for free, and publishes an approximate render walk', () => {
+test('the server builds photo spaces through spaceFromReading, rebuilds an old failed one from its kept reading for free, and publishes an approximate render walk or plans it the usual way', () => {
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
   assert.match(route, /const built = spaceFromReading\(read, \{/);
   const rebuild = route.slice(route.indexOf('async function rebuildSpace'), route.indexOf('/** The design and every geometry correction of it'));
@@ -122,6 +122,11 @@ test('the server builds photo spaces through spaceFromReading, rebuilds an old f
   // A render walk that is walkable and most of the render is published, recorded as approximate.
   assert.match(route, /if \(!gate\.ready\) \{/);
   assert.match(route, /approximate: gate\.approximate/);
+  // A render walk that is not even that is declined, never failed: the walkthrough is planned the usual way instead.
+  const fromRender = route.slice(route.indexOf('async function planFromRender'), route.indexOf('// ── SUBMIT'));
+  assert.match(fromRender, /if \(!gate\.ready\) \{[\s\S]{0,600}?return false;\s*\}/);
+  assert.doesNotMatch(fromRender.slice(fromRender.indexOf('if (!gate.ready)'), fromRender.indexOf('return false;')), /await fail\(/);
+  assert.match(route, /furnishing\.renderId === String\(row\.render_id\) && await planFromRender\(admin, row, design, furnishing, preferences\.style \?\? null\)\) return;/);
   assert.ok(READY_MIN_IMPORTANT_RECALL >= 0.8 && READY_MIN_RECALL >= 0.7);
   const gate = code('src/lib/designStudio/walkthrough/renderGate.ts');
   assert.match(gate, /const ready = promoted \|\| \(navPass && roughly\);/);

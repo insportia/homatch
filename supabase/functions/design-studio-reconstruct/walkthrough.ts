@@ -933,7 +933,10 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // A space read from the selected render carries that render's pieces: the walkthrough is furnished with exactly
   // them (no scene-plan call), walked, and published only when walkable and (at least approximately) the render (planFromRender).
   const furnishing = readFurnishing(design.source?.provenance?.furnishing);
-  if (furnishing && row.render_id && furnishing.renderId === String(row.render_id)) { await planFromRender(admin, row, design, furnishing, preferences.style ?? null); return; }
+  // When the render's own pieces cannot make a walkable tour (they contradict one another, or crowd the doors of the
+  // rooms they were read in), the walkthrough is not failed: it is planned as every other one is, below — the
+  // selected design placed by the walkthrough's own rules in the same space. Never a dead end on the render's pieces.
+  if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && await planFromRender(admin, row, design, furnishing, preferences.style ?? null)) return;
   let spec: Row = null;
   if (row.spec_job_id) {
     const { data: job } = await admin.from('ds_jobs').select('output, status, user_id').eq('id', row.spec_job_id).maybeSingle();
@@ -1179,7 +1182,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
  * when it is both the render (VISUAL) and walkable (NAVIGATION) — renderGate.ts; published as APPROXIMATE when it is
  * walkable and most of the render (gate.ready). No model call is made here.
  */
-async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: RenderFurnishing, styleCode: string | null): Promise<void> {
+async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: RenderFurnishing, styleCode: string | null): Promise<boolean> {
   const { version, space } = design;
   const started = Date.now();
   const cat = await catalogue(admin);
@@ -1204,12 +1207,9 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
   // Published when it is the render, or walkable and approximately the render (renderGate.ts READY_MIN_*) — then
   // recorded as APPROXIMATE, never as the render.
   if (!gate.ready) {
-    const code = !gate.navigation.pass ? 'NOT_WALKABLE' : 'NOT_FAITHFUL';
-    await fail(admin, row, code, {
-      cost, timings: { ...timings, lastFindings: [...gate.visual.reasons, ...gate.navigation.reasons] },
-      plan_report: { final: { build: { counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated }, reference } },
-    });
-    return;
+    // Declined, not failed: the caller plans it the usual way; why the render's pieces could not stand is kept.
+    row.timings = { ...timings, renderFurnishing: { ...timings.renderFurnishing, declined: !gate.navigation.pass ? 'NOT_WALKABLE' : 'NOT_FAITHFUL', reasons: [...gate.visual.reasons, ...gate.navigation.reasons], metrics: gate.visual.metrics } };
+    return false;
   }
   const walkId = await uuidFrom(`ds-walk:${row.id}:version`);
   const name = (typeof row.timings?.name === 'string' && row.timings.name) || `3D ${row.revision}`;
@@ -1219,7 +1219,7 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
     change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: furnishing.version, renderId: furnishing.renderId, approximate: gate.approximate }],
     design_dna: version.design_dna ?? null,
   }, { onConflict: 'id', ignoreDuplicates: true });
-  if (insertErr) { await release(admin, row, { error: 'VERSION_NOT_RECORDED', cost, timings, next_check_at: iso(Date.now() + 15_000) }); return; }
+  if (insertErr) { await release(admin, row, { error: 'VERSION_NOT_RECORDED', cost, timings, next_check_at: iso(Date.now() + 15_000) }); return true; }
   await admin.from('ds_versions').update({ state: dressed.state }).eq('id', walkId);
   await release(admin, row, {
     state: 'PLANNING',
@@ -1228,6 +1228,7 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
     plan_report: { build: built.report, reference, planMs: Date.now() - started, model: null },
     walk_version_id: walkId, cost, error: null, next_check_at: iso(Date.now()), timings,
   });
+  return true;
 }
 
 // ── SUBMIT ──────────────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@
 // a repair and stays ESTIMATED. Pure and deterministic (Deno + Node).
 
 import type { ReconObject, ReconOpening, ReconRoom, Reconstruction } from '../reconstructRead.ts';
+import { roomUseOf, type Use } from './programme.ts';
 
 type P = [number, number];
 interface Rect { x0: number; y0: number; x1: number; y1: number }
@@ -40,6 +41,9 @@ const ANCHORS = new Set(['BED_DOUBLE', 'BED_SINGLE', 'TOILET', 'SHOWER', 'BATH',
 const MIN_SIDE_M = 1.5;
 /** A cut keeps this far off the pieces it separates (m), when it can. */
 const CUT_MARGIN_M = 0.35;
+/** The narrowest (m) and the least floor (m²) a room of each use is laid out with: spacious, plainly that room. */
+const MIN_SIDE: Partial<Record<Use, number>> = { LIVING: 3.2, KITCHEN_LIVING: 3.4, STUDIO: 3.4, BEDROOM: 2.8, KITCHEN: 2.2, DINING: 2.6, OFFICE: 2.2, BATHROOM: 1.6, WC: 1.0 };
+const MIN_AREA: Partial<Record<Use, number>> = { LIVING: 15, KITCHEN_LIVING: 20, STUDIO: 22, BEDROOM: 10, KITCHEN: 6.5, DINING: 8, OFFICE: 6.5, BATHROOM: 3.8, WC: 1.4 };
 /** Longer than this many times its width, a room reads as a corridor. */
 const MAX_ASPECT = 2.2;
 /** How many of the most promising cuts are followed to the end: at the first two levels, then the next two. */
@@ -55,7 +59,7 @@ function boundsOf(pts: P[]): Rect {
   return { x0: Math.min(...pts.map((p) => p[0])), y0: Math.min(...pts.map((p) => p[1])), x1: Math.max(...pts.map((p) => p[0])), y1: Math.max(...pts.map((p) => p[1])) };
 }
 
-interface Seeded { key: string; seeds: P[]; weight: number; /** Seeds that define the room (a bed, a toilet): never on the wrong side of a wall. */ anchors: P[] }
+interface Seeded { key: string; seeds: P[]; weight: number; /** Seeds that define the room (a bed, a toilet): never on the wrong side of a wall. */ anchors: P[]; /** The narrowest the room may be (m), by what it is used as. */ minSide: number }
 
 /** How wrong one room's rectangle is: its pieces outside it, its defining pieces near or past its walls, its shape, its size. */
 function roomScore(r: Seeded, rect: Rect, areaPerWeight: number): number {
@@ -64,7 +68,7 @@ function roomScore(r: Seeded, rect: Rect, areaPerWeight: number): number {
   const w = rect.x1 - rect.x0; const h = rect.y1 - rect.y0;
   const ratio = Math.max(w, h) / Math.max(0.1, Math.min(w, h));
   const size = Math.abs(Math.log((w * h) / Math.max(1, r.weight * areaPerWeight)));
-  return outside * 10 + anchorsOut * 4 + Math.max(0, ratio - MAX_ASPECT) * 1.5 + size * 1.5 + Math.max(0, MIN_SIDE_M - Math.min(w, h)) * 10;
+  return outside * 10 + anchorsOut * 4 + Math.max(0, ratio - MAX_ASPECT) * 1.5 + size * 1.5 + Math.max(0, r.minSide - Math.min(w, h)) * 10;
 }
 
 interface Cut { axis: 0 | 1; cut: number; a: Seeded[]; b: Seeded[]; quick: number }
@@ -131,11 +135,15 @@ export function layoutFromPieces(recon: Reconstruction): { recon: Reconstruction
   const placed = (o: ReconObject) => Array.isArray(o.at) && Number.isFinite(o.at[0]) && Number.isFinite(o.at[1]);
 
   // Each indoor room's seeds: its own standing pieces, else where the reader put it.
+  const habitable = indoor.filter((r) => !/BATH|WC|HALL|CORRIDOR|STORAGE/.test(`${r.kind} ${r.label ?? ''}`.toUpperCase())).length;
   const seeded: Seeded[] = indoor.map((r) => {
     const pieces = recon.objects.filter((o) => o.room === r.key && placed(o) && !WALL_BORNE.has(o.type));
     const own = pieces.map((o) => o.at);
     const anchors = pieces.filter((o) => ANCHORS.has(o.type)).map((o) => o.at);
-    return { key: r.key, seeds: own.length ? own : [centroid(r.polygon)], anchors, weight: Math.max(2, area(r.polygon)) };
+    // Rooms a person lives in, not corridors: at least what its use needs (a bed with a way round it, a sofa and its
+    // table), whatever area the reader guessed.
+    const use = roomUseOf(r.kind, r.label, { habitableRooms: habitable, kitchenRoomId: null, roomId: r.key });
+    return { key: r.key, seeds: own.length ? own : [centroid(r.polygon)], anchors, weight: Math.max(2, area(r.polygon), MIN_AREA[use] ?? 0), minSide: MIN_SIDE[use] ?? MIN_SIDE_M };
   });
   const allSeeds = seeded.flatMap((s) => s.seeds);
 

@@ -429,8 +429,11 @@ export function candidatePositions(ctx: PlacementContext, asset: CatalogAsset, r
     const usable = seg.to - seg.from - asset.widthM;
     if (usable < 0) continue;
     const mid = (seg.from + seg.to) / 2;
+    // A corner piece stands clear of the wall meeting this one (its half thickness and a margin): at the very end
+    // of the run it would stand in that wall, and no corner piece (a shower) could ever be placed.
+    const inset = Math.min(usable / 2, wall.mesh.thicknessM / 2 + 0.02);
     const steps = asset.anchor === 'CORNER'
-      ? [-usable / 2, usable / 2]
+      ? [-usable / 2 + inset, usable / 2 - inset]
       : [0, ...Array.from({ length: Math.floor(usable / 0.25) }, (_, i) => (i % 2 === 0 ? 1 : -1) * 0.25 * Math.ceil((i + 1) / 2))
         .filter((d) => Math.abs(d) <= usable / 2)];
     for (const d of steps) {

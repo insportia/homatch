@@ -63,11 +63,11 @@ export const LegalReality: React.FC<{ legal?: unknown; synthesis?: unknown; sign
 };
 
 const SCOPE_KEY: Record<LegalFindingScope, string> = {
-  EXACT_UNIT: 'verify_v6_scope_unit',
-  PARENT_PARCEL: 'verify_v6_scope_parcel',
-  BUILDING: 'verify_v6_scope_building',
-  COMPANY: 'verify_v6_scope_company',
-  PROJECT: 'verify_v6_scope_project',
+  EXACT_UNIT: 'verify_v6s_scope_unit',
+  PARENT_PARCEL: 'verify_v6s_scope_parcel',
+  BUILDING: 'verify_v6s_scope_building',
+  COMPANY: 'verify_v6s_scope_company',
+  PROJECT: 'verify_v6s_scope_project',
 };
 const FINDING_TONE: Record<LegalFinding['tone'], string> = {
   positive: 'border-emerald-700/40',
@@ -93,8 +93,8 @@ export const LegalFindings: React.FC<{ synthesis?: unknown; signals?: unknown }>
   return (
     <section aria-labelledby="vrx-legal-findings" className="space-y-4" data-legal-findings>
       <div className="space-y-2">
-        <h3 id="vrx-legal-findings" className="font-display text-xl font-semibold leading-snug tracking-tight break-words">{t('verify_v6_legal_title')}</h3>
-        {t('verify_v6_legal_body').split(/\n+/).map((p, i) => (
+        <h3 id="vrx-legal-findings" className="font-display text-xl font-semibold leading-snug tracking-tight break-words">{t('verify_v6s_legal_title')}</h3>
+        {t('verify_v6s_legal_body').split(/\n+/).map((p, i) => (
           <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
         ))}
       </div>
@@ -106,7 +106,7 @@ export const LegalFindings: React.FC<{ synthesis?: unknown; signals?: unknown }>
                 <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-[hsl(var(--gold-ink))]">{t(SCOPE_KEY[f.scope])}</p>
                 <p className="mt-1 text-sm leading-6 text-foreground/90 break-words" dir="auto">{f.text}</p>
                 <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-                  {day(f.observedOn) ? <span>{t('verify_v6_observed', { date: isolate(day(f.observedOn)!) })}</span> : null}
+                  {day(f.observedOn) ? <span>{t('verify_v6s_observed', { date: isolate(day(f.observedOn)!) })}</span> : null}
                   {f.ref ? <bdi dir="ltr" className="font-mono tabular-nums">{f.ref}</bdi> : null}
                 </p>
               </li>

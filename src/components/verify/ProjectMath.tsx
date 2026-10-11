@@ -75,10 +75,10 @@ export const ProjectMath: React.FC<{ specs?: unknown }> = ({ specs }) => {
       <div className="space-y-1.5">
         <h3 id="vrx-math" className="flex items-center gap-2 font-display text-lg font-semibold leading-snug tracking-tight break-words">
           <Calculator className="h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
-          {t('verify_v6_scale_title')}
+          {t('verify_v6s_scale_title')}
         </h3>
         {/* The owner's PROJECT SCALE copy, then the project's own figures. */}
-        {t('verify_v6_scale_body').split(/\n+/).map((p, i) => (
+        {t('verify_v6s_scale_body').split(/\n+/).map((p, i) => (
           <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
         ))}
         <p className="max-w-[62ch] text-sm leading-6 text-muted-foreground break-words">{t('verify_fn_math_lede')}</p>

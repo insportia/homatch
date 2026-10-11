@@ -41,9 +41,9 @@ export const BuyerAssessment: React.FC<{ assessment?: unknown; clean?: (s: strin
     <section aria-labelledby="vrx-assess" className="space-y-5 rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-5 sm:p-6" data-buyer-assessment={a.source} data-stance={k?.stance ?? null}>
       <h3 id="vrx-assess" className="flex items-center gap-2 font-display text-xl font-semibold leading-snug tracking-tight break-words">
         <Scale className="h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
-        {t('verify_v6_final_title')}
+        {t('verify_v6s_final_title')}
       </h3>
-      {t('verify_v6_final_lede').split(/\n+/).map((p, i) => (
+      {t('verify_v6s_final_lede').split(/\n+/).map((p, i) => (
         <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
       ))}
 
@@ -51,7 +51,7 @@ export const BuyerAssessment: React.FC<{ assessment?: unknown; clean?: (s: strin
         <div className="space-y-1.5" data-conclusion-strengths>
           <p className="flex items-center gap-1.5 text-sm font-semibold break-words">
             <ThumbsUp className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
-            {t('verify_v6_final_strengths')}
+            {t('verify_v6s_final_strengths')}
           </p>
           <p className="text-[15px] leading-7 text-foreground break-words" dir="auto">{c(k.strengths)}</p>
         </div>
@@ -61,7 +61,7 @@ export const BuyerAssessment: React.FC<{ assessment?: unknown; clean?: (s: strin
         <div className="space-y-1.5" data-conclusion-concerns>
           <p className="flex items-center gap-1.5 text-sm font-semibold break-words">
             <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-            {t('verify_v6_final_concerns')}
+            {t('verify_v6s_final_concerns')}
           </p>
           <ul className="space-y-1.5">
             {k.concerns.map((x, i) => (
@@ -73,7 +73,7 @@ export const BuyerAssessment: React.FC<{ assessment?: unknown; clean?: (s: strin
 
       {k ? (
         <div className={`rounded-xl border p-4 ${STANCE_TONE[k.stance]}`} data-conclusion-stance={k.stance}>
-          <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t(`verify_v6_stance_${k.stance.toLowerCase()}`)}</p>
+          <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t(`verify_v6s_stance_${k.stance.toLowerCase()}`)}</p>
           <p className="mt-1 text-[15px] leading-7 text-foreground break-words" dir="auto">{c(k.stanceText)}</p>
         </div>
       ) : null}
@@ -92,7 +92,7 @@ export const BuyerAssessment: React.FC<{ assessment?: unknown; clean?: (s: strin
         </div>
       ) : null}
 
-      <p className="border-t border-border pt-3 text-[15px] leading-7 text-foreground/85 break-words">{t('verify_v6_final_closing')}</p>
+      <p className="border-t border-border pt-3 text-[15px] leading-7 text-foreground/85 break-words">{t('verify_v6s_final_closing')}</p>
     </section>
   );
 };

@@ -65,10 +65,10 @@ const TRACK_TONE: Record<string, string> = {
 export const StoryIntro: React.FC<{ discoveries?: string | null; clean?: (s: string) => string }> = ({ discoveries, clean }) => {
   const { t } = useLanguage();
   const c = clean ?? ((s: string) => s);
-  const body = discoveries ? c(discoveries) : t('verify_v6_intro_body');
+  const body = discoveries ? c(discoveries) : t('verify_v6s_intro_body');
   return (
     <div className="space-y-2" data-story-intro={discoveries ? 'discoveries' : 'copy'}>
-      <h3 className="font-display text-xl font-semibold leading-snug tracking-tight break-words">{t('verify_v6_intro_title')}</h3>
+      <h3 className="font-display text-xl font-semibold leading-snug tracking-tight break-words">{t('verify_v6s_intro_title')}</h3>
       {body.split(/\n+/).map((p, i) => (
         <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words" dir="auto">{p}</p>
       ))}
@@ -84,7 +84,7 @@ const Evidence: React.FC<{ items: StepEvidence[] }> = ({ items }) => {
     <details className="group mt-2" data-step-evidence>
       <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center gap-1.5 rounded-lg text-xs font-semibold text-foreground/75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] [&::-webkit-details-marker]:hidden">
         <FileStack className="h-4 w-4 shrink-0" aria-hidden="true" />
-        {t('verify_v6_evidence')}
+        {t('verify_v6s_evidence')}
         <ChevronDown className="h-4 w-4 shrink-0 motion-safe:transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
       <ul className="mb-1 space-y-2.5 border-s border-dashed border-border ps-3">
@@ -92,13 +92,13 @@ const Evidence: React.FC<{ items: StepEvidence[] }> = ({ items }) => {
           <li key={`${x.caseRef ?? 'case'}-${i}`} className="space-y-0.5 text-xs leading-5 text-muted-foreground">
             <p className="break-words">
               {[
-                x.caseRef ? t('verify_v6_evidence_case', { ref: isolate(x.caseRef) }) : null,
-                dmy(x.filedOn) ? t('verify_v6_evidence_filed', { date: isolate(dmy(x.filedOn)!) }) : null,
-                ...x.decisions.map((d) => [t('verify_v6_evidence_decision', { number: isolate(d.number ?? '') }), dmy(d.date) ? isolate(dmy(d.date)!) : null].filter(Boolean).join(' · ')),
+                x.caseRef ? t('verify_v6s_evidence_case', { ref: isolate(x.caseRef) }) : null,
+                dmy(x.filedOn) ? t('verify_v6s_evidence_filed', { date: isolate(dmy(x.filedOn)!) }) : null,
+                ...x.decisions.map((d) => [t('verify_v6s_evidence_decision', { number: isolate(d.number ?? '') }), dmy(d.date) ? isolate(dmy(d.date)!) : null].filter(Boolean).join(' · ')),
               ].filter(Boolean).join(' · ')}
             </p>
             <div className="flex flex-wrap items-center gap-x-3">
-              {x.url ? <OfficialLink href={x.url} label={t('verify_v6_evidence_open_case')} /> : null}
+              {x.url ? <OfficialLink href={x.url} label={t('verify_v6s_evidence_open_case')} /> : null}
               {x.files.map((f, n) => (f.url ? <OfficialLink key={`${f.name}-${n}`} href={f.url} label={f.name} /> : null))}
             </div>
           </li>
@@ -124,16 +124,16 @@ const Step: React.FC<{ s: EvolutionStep; clean: (s: string) => string }> = ({ s,
       <span className="absolute -start-[1.6rem] top-1.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--gold-border))] ring-4 ring-background" aria-hidden="true" />
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         {decided || filed ? <bdi dir="ltr" className="text-xs font-medium tabular-nums text-[hsl(var(--gold-ink))]">{decided ?? filed}</bdi> : null}
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold ring-1 ${STEP_TONE[s.status]}`}>{t(`verify_v6_status_${s.status.toLowerCase()}`)}</span>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold ring-1 ${STEP_TONE[s.status]}`}>{t(`verify_v6s_status_${s.status.toLowerCase()}`)}</span>
       </div>
       <h4 className="mt-1 text-base font-semibold leading-6 break-words" dir="auto">{clean(s.title)}</h4>
       <p className="mt-1 text-[15px] leading-7 text-foreground break-words" dir="auto">{clean(s.what)}</p>
       <dl className="mt-2 space-y-2">
-        <Row label={t('verify_v6_step_requested')} text={s.requested} clean={clean} />
-        <Row label={t('verify_v6_step_changed')} text={s.changed} clean={clean} />
-        <Row label={t('verify_v6_step_final')} text={s.final} clean={clean} />
-        <Row label={t('verify_v6_step_impact')} text={s.impact} clean={clean} />
-        <Row label={t('verify_v6_step_unverified')} text={s.unverified} clean={clean} muted />
+        <Row label={t('verify_v6s_step_requested')} text={s.requested} clean={clean} />
+        <Row label={t('verify_v6s_step_changed')} text={s.changed} clean={clean} />
+        <Row label={t('verify_v6s_step_final')} text={s.final} clean={clean} />
+        <Row label={t('verify_v6s_step_impact')} text={s.impact} clean={clean} />
+        <Row label={t('verify_v6s_step_unverified')} text={s.unverified} clean={clean} muted />
       </dl>
       <Evidence items={s.evidence} />
     </li>
@@ -147,7 +147,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
   return (
     <div className="space-y-8" data-project-story>
       {evo && evo.steps.length ? (
-        <ol className="relative space-y-7 border-s border-border ps-5" aria-label={t('verify_v6_steps_label')} data-evolution>
+        <ol className="relative space-y-7 border-s border-border ps-5" aria-label={t('verify_v6s_steps_label')} data-evolution>
           {evo.steps.map((s) => <Step key={s.id} s={s} clean={c} />)}
         </ol>
       ) : (
@@ -193,7 +193,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
         <section aria-labelledby="vrx-latest" className="rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-4 sm:p-5" data-latest-approved>
           <h3 id="vrx-latest" className="flex items-center gap-2 text-sm font-semibold break-words">
             <BookOpen className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
-            {t('verify_v6_latest_title')}
+            {t('verify_v6s_latest_title')}
           </h3>
           <p className="mt-1.5 text-sm leading-6 text-foreground/90 break-words" dir="auto">{c(evo.latest.text)}</p>
           {evo.latest.missing ? <p className="mt-1 text-sm leading-6 text-muted-foreground break-words" dir="auto">{c(evo.latest.missing)}</p> : null}
@@ -206,9 +206,9 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
         <section aria-labelledby="vrx-pending-changes" className="space-y-4" data-pending-changes>
           <h3 id="vrx-pending-changes" className="flex items-center gap-2 font-display text-lg font-semibold leading-snug tracking-tight break-words">
             <Hourglass className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
-            {t(evo.pending.length ? 'verify_v6_pending_title' : 'verify_v6_resolved_title')}
+            {t(evo.pending.length ? 'verify_v6s_pending_title' : 'verify_v6s_resolved_title')}
           </h3>
-          {evo.pending.length ? t('verify_v6_pending_body').split(/\n+/).map((p, i) => (
+          {evo.pending.length ? t('verify_v6s_pending_body').split(/\n+/).map((p, i) => (
             <p key={i} className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
           )) : null}
           {evo.pending.length ? (
@@ -218,7 +218,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
           ) : null}
           {evo.resolved.length ? (
             <p className="text-sm leading-6 text-muted-foreground break-words" data-resolved-pending>
-              {t('verify_v6_resolved_note', { count: String(evo.resolved.length), dates: evo.resolved.map((r) => dmy(r.decidedOn)).filter(Boolean).map((d) => isolate(d!)).join(', ') })}
+              {t('verify_v6s_resolved_note', { count: String(evo.resolved.length), dates: evo.resolved.map((r) => dmy(r.decidedOn)).filter(Boolean).map((d) => isolate(d!)).join(', ') })}
             </p>
           ) : null}
         </section>
@@ -226,7 +226,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
 
       {/* Where it stands today: four things, never merged. */}
       <section aria-labelledby="vrx-today" className="space-y-3">
-        <h3 id="vrx-today" className="text-sm font-semibold break-words">{t('verify_v6_status_title')}</h3>
+        <h3 id="vrx-today" className="text-sm font-semibold break-words">{t('verify_v6s_status_title')}</h3>
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label={t('verify_fn_story_tracks_label')}>
           {view.tracks.map((tr) => {
             const Icon = TRACK_ICON[tr.track];
@@ -234,7 +234,7 @@ export const ProjectStory: React.FC<{ view: ProjectStoryView; clean?: (s: string
               <li key={tr.track} className={`min-w-0 rounded-2xl border-2 bg-card p-4 ${TRACK_TONE[tr.state] ?? 'border-border'}`} data-track={tr.track} data-track-state={tr.state}>
                 <p className="flex items-center gap-2 text-sm font-semibold break-words">
                   <Icon className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
-                  {t(`verify_v6_track_${tr.track.toLowerCase()}`)}
+                  {t(`verify_v6s_track_${tr.track.toLowerCase()}`)}
                 </p>
                 <p className="mt-1.5 text-sm leading-6 text-foreground/85 break-words" dir="auto">{c(tr.text)}</p>
               </li>

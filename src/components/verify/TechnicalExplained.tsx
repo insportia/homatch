@@ -24,10 +24,10 @@ export function hasTechnicalExplained(cards: unknown): boolean {
 /* Each finding: what the term means, what the documents establish, why it
    matters, what the documents cannot prove, then what to check. */
 const ROWS: Array<{ field: keyof Pick<TechnicalCard, 'what' | 'establishes' | 'why' | 'cannotProve' | 'verify'>; key: string }> = [
-  { field: 'what', key: 'verify_v6_tech_term' },
-  { field: 'establishes', key: 'verify_v6_tech_establishes' },
-  { field: 'why', key: 'verify_v6_tech_why' },
-  { field: 'cannotProve', key: 'verify_v6_tech_cannot' },
+  { field: 'what', key: 'verify_v6s_tech_term' },
+  { field: 'establishes', key: 'verify_v6s_tech_establishes' },
+  { field: 'why', key: 'verify_v6s_tech_why' },
+  { field: 'cannotProve', key: 'verify_v6s_tech_cannot' },
   { field: 'verify', key: 'verify_fn_tech_check' },
 ];
 
@@ -94,13 +94,13 @@ export const TechnicalExplained: React.FC<{ cards?: unknown }> = ({ cards }) => 
     <div className="space-y-8" data-technical-explained>
       {technical.length ? (
         <section aria-labelledby="vrx-tech" className="space-y-4">
-          <Intro id="vrx-tech" title={t('verify_v6_tech_title')} body={t('verify_v6_tech_body')} />
+          <Intro id="vrx-tech" title={t('verify_v6s_tech_title')} body={t('verify_v6s_tech_body')} />
           <Cards list={technical} />
         </section>
       ) : null}
       {materials.length ? (
         <section aria-labelledby="vrx-materials" className="space-y-4" data-materials>
-          <Intro id="vrx-materials" title={t('verify_v6_materials_title')} body={t('verify_v6_materials_body')} />
+          <Intro id="vrx-materials" title={t('verify_v6s_materials_title')} body={t('verify_v6s_materials_body')} />
           <Cards list={materials} />
         </section>
       ) : null}

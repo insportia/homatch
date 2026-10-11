@@ -16,7 +16,7 @@
  */
 
 /** Bump when report-building logic changes what a customer must be told. */
-export const REPORT_LOGIC_VERSION = 4;
+export const REPORT_LOGIC_VERSION = 5;
 export const AUTO_UPGRADE_WINDOW_DAYS = 21;
 
 const obj = (v: unknown): Record<string, any> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : {});
@@ -35,13 +35,29 @@ export interface UpgradeInput {
   now: number;
 }
 
+/*
+ * A REBUILD REQUESTED BY NEW EVIDENCE (2026-10-11).
+ *
+ * When derived evidence of a finished job is refreshed (marketRefresh.ts:
+ * the free portal listings), the job's report carries
+ * `_rebuildRequested: {reason, at}`. That request is honoured exactly once:
+ * a rebuilt payload no longer carries it, and a failed attempt records
+ * `_rebuildRequestAttempted = at` so it is not retried on every open.
+ */
+export function rebuildRequestPending(payload: unknown): boolean {
+  const p = obj(payload);
+  const at = obj(p._rebuildRequested).at;
+  return typeof at === 'string' && !!at && p._rebuildRequestAttempted !== at;
+}
+
 export function shouldAutoUpgrade(i: UpgradeInput): boolean {
   if (i.synthesisState !== 'READY') return false;
   const p = obj(i.synthesisJson);
   if (!Object.keys(p).length) return false;
-  if (logicVersionOf(p) >= REPORT_LOGIC_VERSION) return false;
+  const requested = rebuildRequestPending(p);
+  if (!requested && logicVersionOf(p) >= REPORT_LOGIC_VERSION) return false;
   // Already attempted for this version (succeeded payloads carry the new version anyway).
-  if (Number(p._autoUpgradeAttempted) >= REPORT_LOGIC_VERSION) return false;
+  if (!requested && Number(p._autoUpgradeAttempted) >= REPORT_LOGIC_VERSION) return false;
   const done = Date.parse(String(i.completedAt ?? ''));
   if (!Number.isFinite(done)) return false;
   const age = i.now - done;
@@ -57,5 +73,6 @@ export function versionMarkers(previous: unknown, autoUpgrade: boolean): Record<
 
 /** The old payload, marked so a failed upgrade is not retried on every open. */
 export function markUpgradeAttempted<T extends Record<string, any>>(previous: T): T & { _autoUpgradeAttempted: number } {
-  return { ...previous, _autoUpgradeAttempted: REPORT_LOGIC_VERSION };
+  const at = obj(previous?._rebuildRequested).at;
+  return { ...previous, _autoUpgradeAttempted: REPORT_LOGIC_VERSION, ...(typeof at === 'string' && at ? { _rebuildRequestAttempted: at } : {}) };
 }

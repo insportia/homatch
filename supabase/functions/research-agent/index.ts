@@ -57,6 +57,7 @@ import { summariseSources } from '../../../src/verify/intelligence/sourceVersion
 import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
 import { foldMarketplaceIntoLane, marketProfileFromSeed } from '../../../src/verify/marketplaceComparables.ts';
+import { MARKET_REFRESH_MAX_WAIT_MS, failedMarker, foldMarketRefresh, needsMarketRefresh, rebuildRequest, refreshProfile, startedMarker } from '../../../src/verify/marketRefresh.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { subjectGeoFromSeed } from '../../../src/verify/search/subjectGeo.ts';
 import { httpCrawlFetcher } from '../../../src/verify/search/httpCrawlFetcher.ts';
@@ -2514,6 +2515,77 @@ async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
     }
   } catch (e) {
     p._officialVisualsError = String((e as any)?.message || e).slice(0, 160);
+  }
+}
+
+/*
+ * REFRESH A FINISHED JOB'S MARKET EVIDENCE, ONCE (action `refresh_market`,
+ * owner 2026-10-11). Pure parts: src/verify/marketRefresh.ts.
+ *
+ * Starts the worker's /verify/market search (MyHome through Find Property's
+ * own runtime, SS.ge by its portal district names) with the profile the
+ * original search recorded, and marks result_json._marketRefresh RUNNING.
+ * The cron driver (pollMarketRefreshes) folds the listings in when the
+ * worker finishes and asks verify-synthesis for one rebuild. Free public
+ * sources, no model call, charges nothing.
+ */
+async function startJobMarketRefresh(sb: any, jobId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { data: j, error } = await sb.from('research_jobs').select('id,status,result_json').eq('id', jobId).maybeSingle();
+  if (error) return { status: 500, body: { error: 'read_failed' } };
+  if (!j) return { status: 404, body: { error: 'Job not found' } };
+  if (j.status !== 'COMPLETE') return { status: 409, body: { error: 'job_not_complete' } };
+  const rj = j.result_json && typeof j.result_json === 'object' ? j.result_json : null;
+  if (!rj) return { status: 409, body: { error: 'no_result' } };
+  if (!needsMarketRefresh(rj)) return { status: 200, body: { skipped: true, marker: rj._marketRefresh ?? null } };
+  const enabled = await adminSettingJson(sb, 'verify_marketplace_market_enabled');
+  if (enabled === false || enabled === 'false') return { status: 200, body: { skipped: true, reason: 'disabled' } };
+  const profile = refreshProfile(rj);
+  if (!profile) return { status: 200, body: { skipped: true, reason: 'no_profile' } };
+  const r = await wf('/verify/market', 'POST', { profile });
+  const at = now();
+  const marker = r.code === 202 && r.data?.jobId
+    ? startedMarker(rj._marketRefresh, String(r.data.jobId), profile, at)
+    : { ...failedMarker(rj._marketRefresh, 'FAILED', at, `START_${r.code}`), attempts: (Number(rj._marketRefresh?.attempts) || 0) + 1 };
+  const { error: we } = await sb.from('research_jobs').update({ result_json: { ...rj, _marketRefresh: marker } }).eq('id', jobId).eq('status', 'COMPLETE');
+  if (we) return { status: 500, body: { error: 'write_failed' } };
+  return { status: 202, body: { started: marker.state === 'RUNNING', marker } };
+}
+
+/** Cron step: fold finished market refreshes and request one rebuild each. */
+async function pollMarketRefreshes(sb: any): Promise<void> {
+  try {
+    const { data: jobs, error } = await sb
+      .from('research_jobs')
+      .select('id,query,mode,type,result_json,synthesis_json,synthesis_state')
+      .eq('status', 'COMPLETE')
+      .eq('result_json->_marketRefresh->>state', 'RUNNING')
+      .limit(3);
+    if (error) { console.error('research-agent drive: market-refresh sweep failed', error); return; }
+    for (const j of jobs ?? []) {
+      const rj = j.result_json ?? {};
+      const m = rj._marketRefresh ?? {};
+      let next: any = null;
+      try {
+        const r = await wf(`/verify/market/${m.workerJobId}`);
+        if (r.code === 200 && r.data?.status === 'COMPLETE') {
+          next = foldMarketRefresh(rj, r.data, marketSubjectNow(j, rj, null), now());
+        } else if (r.code === 404) next = { ...rj, _marketRefresh: failedMarker(m, 'LOST', now()) };
+      } catch { /* transient: next tick */ }
+      if (!next && Date.now() - Date.parse(String(m.startedAt)) > MARKET_REFRESH_MAX_WAIT_MS) next = { ...rj, _marketRefresh: failedMarker(m, 'TIMED_OUT', now()) };
+      if (!next) continue;
+      const { error: we } = await sb.from('research_jobs').update({ result_json: next }).eq('id', j.id).eq('result_json->_marketRefresh->>state', 'RUNNING');
+      if (we) { console.error('research-agent drive: market-refresh write failed', we); continue; }
+      const folded = next._marketRefresh?.state === 'FOLDED';
+      console.log(JSON.stringify({ scope: 'verify_market_refresh', jobId: j.id, state: next._marketRefresh?.state, before: next._marketRefresh?.before ?? null, after: next._marketRefresh?.after ?? null }));
+      // Only new comparables are worth a rebuild; the report asks for it once.
+      if (folded && Number(next._marketRefresh.after) > Number(next._marketRefresh.before) && j.synthesis_state === 'READY' && j.synthesis_json) {
+        await sb.from('research_jobs')
+          .update({ synthesis_json: { ...j.synthesis_json, _rebuildRequested: rebuildRequest('MARKET_REFRESH', now()) } })
+          .eq('id', j.id).eq('synthesis_state', 'READY');
+      }
+    }
+  } catch (e) {
+    console.error('research-agent drive: market-refresh step failed', e);
   }
 }
 
@@ -6630,6 +6702,7 @@ async function driveLiveJobs(sb: any, key: string, model: string): Promise<void>
   // Runs even if the sweep threw: a COMPLETE job still owes its customer a
   // report, and that is independent of whatever went wrong above.
   await driveSynthesis(sb);
+  await pollMarketRefreshes(sb);
   await settleVerifyBudgets(sb);
   await retireAbandonedJobs(sb);
 }
@@ -6763,6 +6836,26 @@ Deno.serve(async (req) => {
       }
       if (!WORKER || !WT) return json({ error: 'not configured' }, 503);
       const r = await recoverJobVisuals(svc, jobId);
+      return json(r.body, r.status);
+    }
+
+    // REFRESH MARKET EVIDENCE — same callers and trust model as recover_visuals.
+    if (String(preAuthBody?.action || '') === 'refresh_market') {
+      const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', svcKey);
+      const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+      let same = !!svcKey && bearer.length === svcKey.length;
+      for (let i = 0; same && i < svcKey.length; i++) if (bearer.charCodeAt(i) !== svcKey.charCodeAt(i)) same = false;
+      const jobId = String(preAuthBody?.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'jobId required' }, 400);
+      if (!same) {
+        const { data: { user } } = await svc.auth.getUser(bearer);
+        if (!user) return json({ error: 'Invalid session' }, 401);
+        const { data: own } = await svc.from('research_jobs').select('id').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+        if (!own) return json({ error: 'Job not found' }, 404);
+      }
+      if (!WORKER || !WT) return json({ error: 'not configured' }, 503);
+      const r = await startJobMarketRefresh(svc, jobId);
       return json(r.body, r.status);
     }
 

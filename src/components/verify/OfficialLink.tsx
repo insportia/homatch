@@ -20,7 +20,9 @@ const VerifyJobContext = React.createContext<string | null>(null);
 
 /** The report's job id, so official file links can open through the secure viewer. */
 export function VerifyJobProvider({ jobId, children }: { jobId?: string | null; children: React.ReactNode }) {
-  return <VerifyJobContext.Provider value={jobId && /^[0-9a-f-]{36}$/i.test(jobId) ? jobId : null}>{children}</VerifyJobContext.Provider>;
+  // Without an id of its own it keeps the one an outer screen provided.
+  const outer = React.useContext(VerifyJobContext);
+  return <VerifyJobContext.Provider value={jobId && /^[0-9a-f-]{36}$/i.test(jobId) ? jobId : outer}>{children}</VerifyJobContext.Provider>;
 }
 export const useVerifyJobId = (): string | null => React.useContext(VerifyJobContext);
 

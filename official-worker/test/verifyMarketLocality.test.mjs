@@ -58,3 +58,30 @@ test('still thin after every local name: widens to the city exactly once', async
   await waitDone(job);
   assert.deepEqual(calls, ['კრწანისი', 'ორთაჭალა', 'CITY']);
 });
+
+test('a rich first local name still searches the other local name, never the city', async () => {
+  const calls = [];
+  const rt = new VerifyMarketRuntime({
+    minLocalSample: 8,
+    acquireMyHome: async (req, { report }) => {
+      const d = req.districts[0] ?? 'CITY';
+      calls.push(d);
+      await report({ status: 'COMPLETE', discoveredCount: 40, listings: Array.from({ length: 20 }, (_, i) => listing(`${d}-${i}`, d)) });
+    },
+    acquireSsge: async () => undefined,
+  });
+  const job = rt.start({ city: 'თბილისი', district: 'კრწანისი', transactionType: 'BUY', propertyType: 'APARTMENT', areaSqm: 94, rooms: 3, priceUsd: null }, ['MYHOME']);
+  await waitDone(job);
+  assert.deepEqual(calls, ['კრწანისი', 'ორთაჭალა']);
+  assert.equal(job.comparables.length, 40);
+});
+
+test('Verify MyHome runs through Find Property\'s runtime (reader, engine, pacing, one run at a time)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const index = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../src/marketplace/MyHomeRuntime.ts', import.meta.url), 'utf8');
+  assert.match(index, /acquireMyHome:\s*\(request, options\) => myhome\.acquireForVerify\(/);
+  assert.doesNotMatch(index, /import \{ acquireMyHome \}/);
+  const fn = runtime.slice(runtime.indexOf('async function acquireForVerify'), runtime.indexOf('void loop()'));
+  for (const piece of ['pageFetcher: reader?.fetcher', 'engine: myHomeEngine', 'pageIntervalMs', 'while (active >= MAX_ACTIVE)', 'active--']) assert.ok(fn.includes(piece), piece);
+});

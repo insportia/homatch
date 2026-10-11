@@ -565,7 +565,9 @@ export const VisualExplorer: React.FC<{
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const heroChapter = hero ? chronoOf.get(hero.id)?.chapter ?? null : null;
-  const current: VisualChapter | null = tab && tabs.some((x) => x.chapter === tab) ? tab : heroChapter ?? tabs[0]?.chapter ?? null;
+  // Opens on today's documented condition, else the latest renders, else the hero's chapter.
+  const opening: VisualChapter | null = tabs.find((x) => x.chapter === 'CURRENT')?.chapter ?? tabs.find((x) => x.chapter === 'LATEST')?.chapter ?? heroChapter;
+  const current: VisualChapter | null = tab && tabs.some((x) => x.chapter === tab) ? tab : opening ?? tabs[0]?.chapter ?? null;
   const inTab = chrono.groups.find((g) => g.chapter === current)?.items.map((i) => i.visual) ?? [];
   const active = inTab.find((v) => v.id === activeId) ?? (hero && heroChapter === current ? hero : inTab[0]) ?? null;
 

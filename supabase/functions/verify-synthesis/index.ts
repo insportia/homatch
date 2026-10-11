@@ -51,7 +51,11 @@ import { REPORT_LOGIC_VERSION, shouldAutoUpgrade, versionMarkers, markUpgradeAtt
 import { hasOwnRegister, reuseEarlierRegister, targetCadastralCode, type RegisterCandidate } from '../../../src/verify/intelligence/registerReuse.ts';
 import { extractFreshness } from '../../../src/verify/intelligence/propertyRegister.ts';
 import { buildUnitIdentity } from '../../../src/verify/intelligence/unitIdentity.ts';
+import { explainTechnical } from '../../../src/verify/intelligence/technicalExplained.ts';
+import { extractProjectSignals } from '../../../src/verify/intelligence/projectStory.ts';
+import { finalBuyerAssessment } from '../../../src/verify/intelligence/buyerAssessment.ts';
 import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '../../../src/verify/intelligence/reportReadPath.ts';
+import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
 
 /**
@@ -719,6 +723,13 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       attentionPoints: final.attentionPoints,
       finalView: final.finalView,
       contractUpload: final.contractUpload,
+      // Final narrative pass (2026-10-11): deterministic, from stored evidence.
+      // The glossary cards for the technical facts, and what the record says
+      // about the works (audit finding, site photos, the project's own
+      // statement) for the three-track story. buyerAssessment is set below,
+      // once the register has been merged in.
+      technicalExplained: explainTechnical({ specs: pkg.dossier?.technicalSpecs ?? [], publicResearch: rj?.publicResearch, team: pkg.dossier?.projectTeamV2 ?? [] }),
+      projectSignals: extractProjectSignals(rj),
     },
     // The sources behind the prose, so the UI can offer them underneath
     // without the customer having to read raw research output.
@@ -783,6 +794,9 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
 
   /* The register vetoes prose it disproves before anything is stored. */
   const payload = withPropertyRegister(built, rj, await enrichmentContext(writer, job));
+  // The buyer assessment rests on the merged facts (register, history, market):
+  // the model's draft when it passes the guard, else assembled from them.
+  (payload as { report: Record<string, unknown> }).report.buyerAssessment = finalBuyerAssessment(final.buyerAssessmentDraft, payload);
   if (timing.modelStartedAt && !timing.modelEndedAt) timing.modelEndedAt = new Date().toISOString();
   if (timing.modelStartedAt) timing.modelMs = Date.parse(String(timing.modelEndedAt)) - Date.parse(String(timing.modelStartedAt));
   timing.persistAt = new Date().toISOString();
@@ -824,6 +838,30 @@ async function recoverVisualsBeforeRebuild(job: any): Promise<void> {
     console.log(JSON.stringify({ scope: 'verify_synthesis', event: 'visual_recovery', jobId: job.id, skipped: !!body?.skipped, counts: body?.marker?.counts ?? null }));
   } catch (e) {
     console.warn(JSON.stringify({ scope: 'verify_synthesis', event: 'visual_recovery_failed', jobId: job?.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
+  }
+}
+
+/*
+ * BEFORE A REBUILD: START THE ONE MARKET REFRESH (marketRefresh.ts).
+ * Start only (the worker search takes minutes); the cron driver folds the
+ * listings and requests one further rebuild. Bounded at 15 s, never blocks.
+ */
+async function startMarketRefreshBeforeRebuild(job: any): Promise<void> {
+  try {
+    if (!job?.result_json || !needsMarketRefresh(job.result_json)) return;
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const url = Deno.env.get('SUPABASE_URL') ?? '';
+    if (!key || !url) return;
+    const res = await fetch(`${url}/functions/v1/research-agent`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, apikey: key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh_market', jobId: job.id }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await res.json().catch(() => null);
+    console.log(JSON.stringify({ scope: 'verify_synthesis', event: 'market_refresh_start', jobId: job.id, status: res.status, started: !!body?.started, skipped: !!body?.skipped }));
+  } catch (e) {
+    console.warn(JSON.stringify({ scope: 'verify_synthesis', event: 'market_refresh_start_failed', jobId: job?.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
   }
 }
 
@@ -976,6 +1014,8 @@ serve(async (req) => {
       await ensureResult();
       // Pictures an older run skipped are recovered first (never blocks the rebuild).
       await recoverVisualsBeforeRebuild(job);
+      // Market evidence is refreshed from the free portals in the background; the driver folds it and asks for one more rebuild.
+      await startMarketRefreshBeforeRebuild(job);
       console.log(`verify-synthesis: auto-upgrading report ${job.id} from logic v${logicVersionOf(job.synthesis_json)} to v${REPORT_LOGIC_VERSION}`);
       try {
         return json(await buildReport(job, writer, { autoUpgrade: true, trigger: 'customer', forced: false }));

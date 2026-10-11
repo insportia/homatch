@@ -191,7 +191,7 @@ export function toVerifyComparable(source: SourceKey, c: ExternalListingCandidat
 
 async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMarketProfile, run: SourceRun, deps: VerifyMarketDeps): Promise<VerifyComparable[]> {
   const now = deps.now ?? Date.now;
-  const cap = deps.maxPerSource ?? 80;
+  const cap = deps.maxPerSource ?? 300;
   const minLocal = deps.minLocalSample ?? 8;
   const out = new Map<string, VerifyComparable>();
   const scopes: Array<{ scope: 'DISTRICT' | 'CITY'; district: string | null }> = [
@@ -200,10 +200,12 @@ async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMa
   ];
   run.status = 'RUNNING';
   const runStarted = now();
-  const total = deps.sourceBudgetMs ?? 150_000;
+  const total = deps.sourceBudgetMs ?? 300_000;
   for (const { scope, district } of scopes) {
-    // A local sample that is already representative ends the search.
-    if (out.size >= minLocal) break;
+    // Every local name is searched (Krtsanisi St. listings sit under both
+    // კრწანისი and ორთაჭალა); only the citywide widening is skipped once the
+    // local sample is representative.
+    if (scope === 'CITY' && out.size >= minLocal) break;
     const remaining = total - (now() - runStarted);
     if (remaining < 25_000) break;
     const started = now();

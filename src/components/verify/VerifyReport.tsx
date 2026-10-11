@@ -88,6 +88,9 @@ import { OfficialDocuments } from './OfficialDocuments';
 import { VerifyJobProvider } from './OfficialLink';
 import { LazyMount } from './LazyMount';
 import { BuildingSpecs } from './BuildingSpecs';
+import { TechnicalExplained } from './TechnicalExplained';
+import { ProjectMath } from './ProjectMath';
+import { BuyerAssessment } from './BuyerAssessment';
 import { PeopleBehind } from './PeopleBehind';
 import { MarketPosition, hasMarketView } from './MarketPosition';
 import { chapterOfSection, identityNotice, legalPosition, documentExplorer, specGroups, teamGroupsV2, SECTION_HEADING_KEY, type ChapterId, type RegisterSourceLike } from '@/verify/reportPresentation';
@@ -183,6 +186,10 @@ export interface BuyerIntelligence {
   nextSteps?: { step: string; why: string; cites: string[] }[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
+  /** Final narrative pass (2026-10-11), all built deterministically in verify-synthesis. */
+  technicalExplained?: unknown;
+  projectSignals?: unknown;
+  buyerAssessment?: unknown;
 }
 
 /**
@@ -572,7 +579,7 @@ export function VerifyReport({
       {/* ── THE STORY ── prose first, then the grouped official timeline. */}
       {has.story ? (
         <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
-          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} />
+          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} />
         </Chapter>
       ) : null}
 
@@ -623,6 +630,9 @@ export function VerifyReport({
         {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
         {/* The documented specifications, each with its approval status. */}
         {specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
+        {/* What the technical facts mean, then the project's numbers worked through. */}
+        <TechnicalExplained cards={r.technicalExplained} />
+        <ProjectMath specs={synthesis.technicalSpecs} />
         {/* Rendered even when the run established nothing: a missing section
             reads as "does not apply", a row saying "not yet verified" reads
             as the question it actually is. */}
@@ -667,6 +677,8 @@ export function VerifyReport({
       {/* ── FINAL PERSPECTIVE ── what it means, what to do, what to check. */}
       <Chapter id="vbi-final" n={num('final')} kicker={t('vrx_final_kicker')} title={t('vrx_final_title')}>
         {inChapter('final').map(renderSection)}
+        {/* The buyer assessment comes right before the final verdict. */}
+        <BuyerAssessment assessment={r.buyerAssessment} clean={clean} />
         <BuyerBottomLine
           finalView={clean(r.finalView)}
           // The highlights already open the report; repeating them here was the

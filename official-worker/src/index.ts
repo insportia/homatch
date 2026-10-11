@@ -14,7 +14,6 @@ import { parseTasFileRequest, recoverTasFiles } from './workflows/tas/api/tasFil
 import { isCadastralCode } from './workflows/tas/cadastral.js';
 import { startMyHomeRuntime } from './marketplace/MyHomeRuntime.js';
 import { startSsgeRuntime } from './marketplace/ssge/runtime.mjs';
-import { acquireMyHome } from './marketplace/myhome/adapter.js';
 import { acquireSsge } from './marketplace/ssge/acquire.mjs';
 import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey } from './verify/VerifyMarketRuntime.js';
 import { korterStatusCache } from './verify/korter/index.js';
@@ -232,10 +231,11 @@ app.post('/tas/test', auth, async (req: any, res: any) => {
 // VERIFY_MARKET_ENABLED=false switches the route off without a deploy of
 // research-agent; research-agent's own admin setting gates the caller side.
 const verifyMarket = new VerifyMarketRuntime({
-  acquireMyHome: (request, options) => acquireMyHome(request, options as any),
+  // MyHome goes through Find Property's own runtime (reader, engine, pacing, one run at a time).
+  acquireMyHome: (request, options) => myhome.acquireForVerify(request, { ...(options as any), maxPages: Number(process.env.VERIFY_MARKET_MYHOME_MAX_PAGES) || 10 }),
   acquireSsge: (request, options) => acquireSsge(request, options as any),
-  maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 80,
-  sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 150000,
+  maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 300,
+  sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 300000,
 });
 app.post('/verify/market', auth, (req: any, res: any) => {
   if (process.env.VERIFY_MARKET_ENABLED === 'false') return res.status(503).json({ error: 'verify market disabled' });

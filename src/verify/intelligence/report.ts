@@ -50,6 +50,7 @@ import type { IntelligenceBundle } from './bundle.ts';
 import { tasLabel, TAS_EVENT_KA, OFFICIAL_STATE_KA } from './evidencePackage.ts';
 import { VISUAL_ASSET_MAX } from './visualAssets.ts';
 import { enforceValuation } from './marketHierarchy.ts';
+import { polishText, provenanceOpening, stripProvenanceOpening } from './editorial.ts';
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -211,6 +212,12 @@ export interface BuyerIntelligenceReport {
   nextSteps: NextStep[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
+  /**
+   * The model's buyer assessment exactly as written (strict schema in
+   * buyerAssessment.ts). Guarded and merged with the verified facts in
+   * verify-synthesis by finalBuyerAssessment(); never rendered raw.
+   */
+  buyerAssessmentDraft?: unknown;
   mode: 'MODEL' | 'DETERMINISTIC';
   rejectedBecause: string[];
   evidenceUsed: EvidenceItem[];
@@ -407,6 +414,7 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     nextSteps,
     finalView: asString(p.finalView),
     contractUpload: { recommend: cu.recommend !== false, text: asString(cu.text) },
+    ...(p.buyerAssessment && typeof p.buyerAssessment === 'object' ? { buyerAssessmentDraft: p.buyerAssessment } : {}),
   };
 }
 
@@ -792,7 +800,7 @@ export function finalizeReport(
   const check = validateReport(pkg, parsed);
 
   if (!check.ok || !parsed) {
-    return { ...deterministicReport(pkg), rejectedBecause: check.problems };
+    return polishReport({ ...deterministicReport(pkg), rejectedBecause: check.problems });
   }
 
   const cited = new Set([
@@ -831,7 +839,8 @@ export function finalizeReport(
    * INSUFFICIENT_EVIDENCE leaves no price figure in market prose; ESTIMATE
    * leaves no "no reliable valuation" sentence. See marketHierarchy.ts.
    */
-  return enforceValuation(removeRepeatedSentences(stripFalseScarcity(applyFactOwnership({
+  // The editorial pass runs first, so the vetoes below judge the final wording.
+  return enforceValuation(removeRepeatedSentences(stripFalseScarcity(polishReport(applyFactOwnership({
     ...(advertisingAssessment ? { advertisingAssessment } : {}),
     ...(currentStatus ? { currentStatus } : {}),
     ...(propertyStory ? { propertyStory } : {}),
@@ -847,7 +856,8 @@ export function finalizeReport(
     mode: 'MODEL',
     rejectedBecause: [],
     evidenceUsed: packageItems(pkg).filter((i) => cited.has(i.id)),
-  }), bundle)), bundle?.market);
+    ...(parsed.buyerAssessmentDraft ? { buyerAssessmentDraft: parsed.buyerAssessmentDraft } : {}),
+  })), bundle)), bundle?.market);
 }
 
 /**
@@ -1117,5 +1127,90 @@ export function applyFactOwnership(r: BuyerIntelligenceReport): BuyerIntelligenc
     sections: r.sections.map((s) => ({ ...s, body: bodies.get(s.key) ?? s.body })).filter((s) => s.body.trim()),
     attentionPoints,
     finalView,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * The editorial pass (owner, 2026-10-11)                              *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Every customer prose field, in READING order, mechanically corrected:
+ *
+ *   - em/en dashes used as punctuation become natural punctuation and the
+ *     known brand transliterations are fixed (editorial.ts);
+ *   - the source basis is established ONCE: the first sentence that opens
+ *     with "ოფიციალური ინფორმაციის მიხედვით" (or any provenance opening)
+ *     keeps it, every later one loses it;
+ *   - a sentence already read in an earlier field is dropped from the later
+ *     one (removeRepeatedSentences covers the main blocks; this also covers
+ *     the highlights, the findings' "why" and the next steps).
+ *
+ * Nothing is added. Applied to the model's report and to the fallback.
+ */
+export function polishReport(r: BuyerIntelligenceReport): BuyerIntelligenceReport {
+  let basisStated = false;
+  const seen = new Set<string>();
+  const fix = (text: string, opts: { dedupe?: boolean } = {}): string => {
+    if (!text) return text;
+    const polished = polishText(text);
+    const paras = polished.split(/\n{2,}/);
+    return paras
+      .map((para) => para
+        .split(/(?<=[.!?…])\s+/)
+        .map((sentence) => {
+          if (!provenanceOpening(sentence)) return sentence;
+          if (!basisStated) { basisStated = true; return sentence; }
+          return stripProvenanceOpening(sentence);
+        })
+        .filter((sentence) => {
+          if (!opts.dedupe) return true;
+          const k = sentenceKey(sentence);
+          if (k.length <= 40) return true;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        })
+        .join(' '))
+      .filter((para) => para.trim())
+      .join('\n\n');
+  };
+  const d = { dedupe: true };
+  const summary = {
+    ...r.summary,
+    statement: fix(r.summary.statement, d),
+    highlights: r.summary.highlights.map((h) => ({ ...h, headline: fix(h.headline), detail: fix(h.detail, d) })),
+  };
+  const keyFindings = r.keyFindings.map((f) => ({ ...f, finding: fix(f.finding, d), whyItMatters: fix(f.whyItMatters, d) })).filter((f) => f.finding.trim());
+  const currentStatus = r.currentStatus
+    ? { ...r.currentStatus, statement: fix(r.currentStatus.statement, d), items: r.currentStatus.items.map((i) => ({ ...i, label: fix(i.label), value: fix(i.value) })) }
+    : undefined;
+  const propertyStory = r.propertyStory
+    ? { chapters: r.propertyStory.chapters.map((c) => ({ ...c, title: fix(c.title), period: polishText(c.period), body: fix(c.body, d) })).filter((c) => c.body.trim()) }
+    : undefined;
+  const sections = r.sections.map((s) => ({ ...s, title: fix(s.title), body: fix(s.body, d), metrics: (s.metrics ?? []).map((m) => ({ ...m, label: fix(m.label), value: polishText(m.value) })) })).filter((s) => s.body.trim());
+  const attentionPoints = r.attentionPoints.map((a) => ({ ...a, point: fix(a.point, d), why: fix(a.why, d) })).filter((a) => a.point.trim());
+  const nextSteps = r.nextSteps.map((n) => ({ ...n, step: fix(n.step, d), why: fix(n.why) })).filter((n) => n.step.trim());
+  const visualCaptions = r.visualCaptions?.map((v) => ({ ...v, caption: fix(v.caption), explanation: fix(v.explanation) }));
+  const visualExplanations = r.visualExplanations?.map((v) => ({ ...v, what: fix(v.what), interesting: fix(v.interesting), buyerMeaning: fix(v.buyerMeaning), uncertain: fix(v.uncertain) }));
+  const advertisingAssessment = r.advertisingAssessment
+    ? { ...r.advertisingAssessment, statement: fix(r.advertisingAssessment.statement, d), points: r.advertisingAssessment.points.map((p) => fix(p)) }
+    : undefined;
+  const finalView = fix(r.finalView, d);
+  const contractUpload = { ...r.contractUpload, text: fix(r.contractUpload.text) };
+  return {
+    ...r,
+    summary,
+    keyFindings,
+    ...(currentStatus ? { currentStatus } : {}),
+    ...(propertyStory ? { propertyStory } : {}),
+    ...(visualCaptions ? { visualCaptions } : {}),
+    ...(visualExplanations ? { visualExplanations } : {}),
+    ...(advertisingAssessment ? { advertisingAssessment } : {}),
+    sections,
+    attentionPoints,
+    nextSteps,
+    finalView,
+    contractUpload,
   };
 }

@@ -23,7 +23,7 @@
  * Pure: imported by the edge function and by the browser.
  */
 
-import { REPORT_LOGIC_VERSION, logicVersionOf } from './reportVersion.ts';
+import { REPORT_LOGIC_VERSION, logicVersionOf, rebuildRequestPending } from './reportVersion.ts';
 
 export const READ_ENRICHMENT_REVISION = 1;
 
@@ -49,6 +49,8 @@ export function canServeStoredFast(job: { synthesis_state?: unknown; synthesis_j
   const p = obj(job.synthesis_json);
   if (!Object.keys(p).length || p.empty === true) return false;
   if (logicVersionOf(p) !== REPORT_LOGIC_VERSION) return false;
+  // New evidence asked for one rebuild (reportVersion.rebuildRequestPending).
+  if (rebuildRequestPending(p)) return false;
   return p._readEnrichment === READ_ENRICHMENT_REVISION && p._readEnrichedLogic === REPORT_LOGIC_VERSION;
 }
 

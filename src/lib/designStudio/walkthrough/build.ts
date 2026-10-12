@@ -1222,7 +1222,35 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     const now = opened(working.objects);
     const best = nearest.map((p) => ({ p, n: opened(working.objects.filter((o) => o.instanceId !== p.instanceId)) }))
       .sort((a, b) => b.n - a.n || a.p.rank - b.p.rank)[0];
-    if (!best || best.n <= now) break;
+    if (!best || best.n <= now) {
+      // 6. The way is held by what is never removed (a bathroom's fittings in front of its door, a bed across the
+      //    only way in): one of them is MOVED — to a clean pose against a wall of its own room — never taken away.
+      const fixed = standing().filter((p) => p.rank >= 5)
+        .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
+        .filter((e) => e.d < walkRadius + 0.35).sort((a, b) => a.d - b.d).map((e) => e.p).slice(0, 4);
+      let moved = false;
+      for (const p of fixed) {
+        const obj = objectOf(p); const home = rooms.get(p.roomId);
+        if (!obj || !home) continue;
+        const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+        const poses = cleanPoses(space, assets, others, home, p.asset, 16)
+          .sort((a, b) => Math.hypot(a.at.x - obj.position.x, a.at.y - obj.position.z) - Math.hypot(b.at.x - obj.position.x, b.at.y - obj.position.z));
+        for (const pose of poses) {
+          const at = footprint(p.asset, pose.at, pose.rotation);
+          if (way.some((q) => distanceToObb(q, at) < walkRadius)) continue;
+          const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+          if (!better([...others, next])) continue;
+          working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
+          p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(at.cx - p.box.cx, at.cy - p.box.cy));
+          p.box = at; p.lock = undefined; relocated += 1;
+          repairedNow(p, 'DOOR_CLEARED');
+          moved = true; break;
+        }
+        if (moved) break;
+      }
+      if (moved) continue;
+      break;
+    }
     const victim = best.p;
     drop(victim, 'DOOR_CLEARED');
     if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
@@ -1250,7 +1278,9 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     }
   }
   // A room missing what defines it (its programme's core needs): the READY gate refuses the home.
-  const missingEssential = space.rooms.filter((r) => r.areaM2 >= 1.2)
+  // A study without its desk is still a study a person walks through (a room with a door on every wall has no wall
+  // for one): what makes a home's other rooms what they are is owed, a study's desk is furnished when it fits.
+  const missingEssential = space.rooms.filter((r) => r.areaM2 >= 1.2 && programme.get(r.id)?.use !== 'OFFICE')
     .filter((r) => (programme.get(r.id)?.needs ?? []).some((nd) => nd.core && !standingIn(r.id).some((p) => (nd.metBy ?? nd.serves)(p.asset))
       // Only what the catalogue can provide is owed (a catalogue with no shower cannot fail a bathroom for it).
       && [...assets.values()].some((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)))).map((r) => r.id);

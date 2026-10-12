@@ -1213,8 +1213,16 @@ async function plan(admin: Row, row: Row): Promise<void> {
   try { raw = text ? JSON.parse(text) : null; } catch { raw = null; }
   // The rule plan: every room named, no finishes or pieces proposed — the design graph, the room programme and the
   // default finishes of the design's style fill them (validateScenePlan, buildWalkthrough).
-  if (ruled) raw = { summary: 'HOMATCH rule plan: the model did not answer', lighting: null, rooms: input.rooms.map((x) => ({ roomId: x.id, floor: null, walls: null, accentWall: null, ceiling: null, furniture: [] })) };
-  const validated: ValidatedScenePlan | null = reused ?? (raw ? validateScenePlan(raw, input, refInput ? { reference: { view: refInput.view, home } } : {}) : null);
+  const rulePlan = { summary: 'HOMATCH rule plan: the model did not answer', lighting: null, rooms: input.rooms.map((x) => ({ roomId: x.id, floor: null, walls: null, accentWall: null, ceiling: null, furniture: [] })) };
+  if (ruled) raw = rulePlan;
+  const validate = (x: unknown) => validateScenePlan(x, input, refInput ? { reference: { view: refInput.view, home } } : {});
+  let validated: ValidatedScenePlan | null = reused ?? (raw ? validate(raw) : null);
+  // No usable plan — never delivered, unreadable, or the last attempt failed: the rule plan, in this same step, so a
+  // walkthrough never ends for want of the model's plan.
+  if (!reused && !ruled && (!validated || !validated.rooms.length) && (missed || payload || row.plan_attempts >= MAX_PLAN_ATTEMPTS)) {
+    ruled = true;
+    validated = validate(rulePlan);
+  }
   const step = refInput ? (replan ? 'walkthrough_reference_replan' : 'walkthrough_reference_plan') : 'walkthrough_scene_plan';
   // Asked in the background: its time runs from when it was asked.
   const askedAt = pending?.at && !reused ? Date.parse(pending.at) || started : started;

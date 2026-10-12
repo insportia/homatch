@@ -99,6 +99,8 @@ test('a plan the model never delivers is not waited on again: the walkthrough is
   assert.match(src, /const PLAN_RESPONSE_MAX_MS = 6 \* 60_000;/);
   assert.match(src, /if \(!payload\) missed = \{ id: pending\.id, status:/);
   assert.match(src, /\} else if \(!reused && misses\.length\) \{\n    ruled = true;/);
-  assert.match(src, /if \(ruled\) raw = \{ summary: 'HOMATCH rule plan: the model did not answer'/);
+  assert.match(src, /const rulePlan = \{ summary: 'HOMATCH rule plan: the model did not answer'/);
+  // No usable plan on a miss, an unreadable answer or the last attempt: the rule plan in the same step.
+  assert.match(src, /if \(!reused && !ruled && \(!validated \|\| !validated\.rooms\.length\) && \(missed \|\| payload \|\| row\.plan_attempts >= MAX_PLAN_ATTEMPTS\)\) \{\n    ruled = true;\n    validated = validate\(rulePlan\);/);
   assert.match(src, /!String\(x\.plan\.summary \?\? ''\)\.startsWith\('HOMATCH rule plan'\)/);
 });

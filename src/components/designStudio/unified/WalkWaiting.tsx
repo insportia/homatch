@@ -8,9 +8,11 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SectionBoundary } from '@/components/common/SectionBoundary';
+import { lazyRoute } from '@/lib/lazyRoute';
 import './walkWaiting.css';
 
-const WalkGrowth = React.lazy(() => import('./WalkGrowth'));
+const WalkGrowth = lazyRoute(() => import('./WalkGrowth'));
 /** The model's edges dissolve into the page: no frame around it. */
 const FADE = 'radial-gradient(ellipse 72% 78% at 50% 50%, #000 58%, transparent 100%)';
 
@@ -137,9 +139,13 @@ export function WalkWaiting({ stage, labels, stepIds, note, testId, children }: 
       {still || failed ? <FlatPlan still={still} /> : (
         // The living model, unframed: it grows out of the page and fades back into it at its edges.
         <div className="relative -mx-4 h-[290px] sm:-mx-8 sm:h-[360px]" style={{ maskImage: FADE, WebkitMaskImage: FADE }}>
-          <React.Suspense fallback={<div className="absolute inset-0 flex items-center px-6"><div className="w-full"><FlatPlan still={false} /></div></div>}>
-            <WalkGrowth onFail={onFail} />
-          </React.Suspense>
+          {/* Decoration never costs the page: a chunk a deploy removed, a browser without some WebGL feature — the
+              flat drawing stands in, the tour's progress below is untouched. */}
+          <SectionBoundary name="walk-growth" fallback={<div className="absolute inset-0 flex items-center px-6"><div className="w-full"><FlatPlan still={false} /></div></div>}>
+            <React.Suspense fallback={<div className="absolute inset-0 flex items-center px-6"><div className="w-full"><FlatPlan still={false} /></div></div>}>
+              <WalkGrowth onFail={onFail} />
+            </React.Suspense>
+          </SectionBoundary>
         </div>
       )}
 

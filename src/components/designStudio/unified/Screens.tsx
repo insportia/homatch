@@ -8,7 +8,8 @@
 // here: the copy says so ("you can go to another page"), and a failure says
 // what it is — saved and worth trying again, or a file that cannot be used.
 
-import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyRoute } from '@/lib/lazyRoute';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, FileText, ImagePlus, Loader2, Plus, RefreshCw, RotateCcw, Upload, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -16,7 +17,7 @@ import type { RunStage } from '@/services/designStudio/designRun';
 import { listRenders } from '@/services/designStudio/renders';
 import { PRIMARY, QUIET, RING, Screen } from '../planToHome/SimpleSteps';
 
-const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+const SnakeGame = lazyRoute(() => import('@/components/games/SnakeGame'));
 
 export const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const MAX_PHOTOS = 6;

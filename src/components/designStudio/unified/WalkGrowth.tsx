@@ -306,11 +306,17 @@ export default function WalkGrowth({ onFail }: { onFail: () => void }) {
       camera.updateProjectionMatrix();
     };
     resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(el);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+    ro?.observe(el);
+    if (!ro) window.addEventListener('resize', resize);
 
+    let failed = false;
     const tick = (now: number) => {
+      if (failed) return;
       frame = requestAnimationFrame(tick);
+      try { step(now); } catch { failed = true; cancelAnimationFrame(frame); onFail(); }
+    };
+    const step = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (document.hidden) return;
@@ -355,7 +361,8 @@ export default function WalkGrowth({ onFail }: { onFail: () => void }) {
 
     return () => {
       cancelAnimationFrame(frame);
-      ro.disconnect();
+      ro?.disconnect();
+      if (!ro) window.removeEventListener('resize', resize);
       home.dispose();
       groundGeo.dispose(); groundMat.dispose(); moteGeo.dispose(); moteMat.dispose(); moteTex.dispose();
       renderer.dispose();

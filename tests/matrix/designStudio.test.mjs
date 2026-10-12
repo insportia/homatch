@@ -813,7 +813,7 @@ test('Snake only watches: no service, no database, no job control', () => {
   }
   assert.match(game, /status: WatchedStatus/);
   const screens = code('src/components/designStudio/unified/Screens.tsx');
-  assert.match(screens, /lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\)/, 'loaded only when someone plays');
+  assert.match(screens, /lazyRoute\(\(\) => import\('@\/components\/games\/SnakeGame'\)\)/, 'loaded only when someone plays');
   assert.match(code('src/lib/games/snake.ts'), /export function step\(/);
 });
 
@@ -895,7 +895,7 @@ test('the customer never sees HOMATCH\'s prompt words; the look\'s words reach t
 test('Snake: "Play again" is a real button press (the board never captures a press on a button); it is offered while a 3D tour is built', () => {
   assert.match(code('src/components/games/SnakeGame.tsx'), /if \(e\.target instanceof Element && e\.target\.closest\('button'\)\) return;\s*gesture\.current =/);
   const walk = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
-  assert.match(walk, /lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\)/);
+  assert.match(walk, /lazyRoute\(\(\) => import\('@\/components\/games\/SnakeGame'\)\)/);
   assert.match(walk, /status=\{walk\.state === 'READY' \? 'READY' : walk\.state === 'FAILED' \|\| walk\.state === 'CANCELLED' \? 'FAILED' : 'PROCESSING'\}/);
 });
 

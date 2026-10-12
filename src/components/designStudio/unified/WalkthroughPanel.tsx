@@ -21,9 +21,10 @@
 // Stepping into a single design picture (PhotoWalk) stays available as a
 // secondary option; it is never the tour itself.
 
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazyRoute } from '@/lib/lazyRoute';
 import { useNavigate } from 'react-router-dom';
-import { Box, Check, Footprints, Image as ImageIcon, Info, Loader2, RotateCcw, Share2 } from 'lucide-react';
+import { Box, Footprints, Image as ImageIcon, Info, Loader2, RotateCcw, Share2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
@@ -35,9 +36,10 @@ import { ShareDialog } from '@/components/designStudio/workspace/ShareDialog';
 import { WalkWaiting } from './WalkWaiting';
 
 // The same game as every long wait: it only watches the walkthrough's real state (this panel keeps following it).
-const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+// A chunk a deploy removed is retried, then the page becomes the current build once (lazyRoute.ts).
+const SnakeGame = lazyRoute(() => import('@/components/games/SnakeGame'));
 // Three.js and the depth model load only when a picture is entered (the secondary option).
-const PhotoWalk = lazy(() => import('./PhotoWalk'));
+const PhotoWalk = lazyRoute(() => import('./PhotoWalk'));
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F4EF]';
 const DARK = cn('inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0C1119] px-5 text-[15px] font-semibold text-white disabled:opacity-60', RING);

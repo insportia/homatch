@@ -62,7 +62,7 @@ test('a dollhouse picture is seen from further away (its own camera)', () => {
 
 test('the 3D tour card is the whole home (server-built from the plan); a design picture made 3D is only a secondary option', () => {
   const panel = readFileSync(new URL('../../../components/designStudio/unified/WalkthroughPanel.tsx', import.meta.url), 'utf8');
-  assert.match(panel, /const PhotoWalk = lazy\(\(\) => import\('\.\/PhotoWalk'\)\);/);
+  assert.match(panel, /const PhotoWalk = lazyRoute\(\(\) => import\('\.\/PhotoWalk'\)\);/);
   // The plan walkthrough is always read and created; a picture never replaces it (the PhotoWalk-primary branch is gone).
   assert.doesNotMatch(panel, /photoTour/);
   assert.match(panel, /useEffect\(\(\) => \{ setWalk\(null\); setHistory\(\[\]\); setLoaded\(false\); void read\(\); \}, \[read\]\);/);
@@ -91,6 +91,6 @@ test('the 3D tour card is the whole home (server-built from the plan); a design 
   assert.match(walk, /signedUrls\(\[photo\.key\], 900\)/);
   // The wait says what it is doing, and has the same game as every long wait.
   assert.match(walk, /dsx_photo3d_measuring/);
-  assert.match(walk, /const SnakeGame = lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\);/);
+  assert.match(walk, /const SnakeGame = lazyRoute\(\(\) => import\('@\/components\/games\/SnakeGame'\)\);/);
   assert.match(walk, /setPhase\(\{ kind: 'FAILED', code: stage \}\)/);
 });

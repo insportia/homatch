@@ -109,7 +109,7 @@ test('spaceFromReading: the read outlines fail, the layout from the pieces passe
 
 test('the server builds photo spaces through spaceFromReading, rebuilds an old failed one from its kept reading for free, and publishes an approximate render walk or plans it the usual way', () => {
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(route, /const built = spaceFromReading\(read, \{/);
+  assert.match(route, /const spaceOf = \(recon: typeof read\) => spaceFromReading\(recon, \{[\s\S]*const built = useDraft \? fromDraft! : spaceOf\(read\);/);
   const rebuild = route.slice(route.indexOf('async function rebuildSpace'), route.indexOf('/** The design and every geometry correction of it'));
   // Only a failed space of older code, only the owner's own reading of these pictures and this render, never a model call.
   assert.match(rebuild, /prov\.photoSpace === PHOTO_SPACE_VERSION/);

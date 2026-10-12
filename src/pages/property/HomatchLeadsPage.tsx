@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, FlaskConical, Loader2, Lock, Sparkles, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FlaskConical, Loader2, Lock, Sparkles, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -26,12 +26,11 @@ import {
   type LeadFeed, type LeadFilter, type LeadItem, type LeadSort,
 } from '@/services/homatchLeads';
 import { selectionTotals } from '@/leads/leadSummary';
-import { BTN_PRIMARY, BTN_SECONDARY, BTN_TERTIARY, chipClass, EYEBROW, SURFACE } from '@/components/leads/kit';
+import { BTN_PRIMARY, BTN_SECONDARY, chipClass, EYEBROW, SURFACE } from '@/components/leads/kit';
 import { formatCreditsLabel, LeadCard } from '@/components/leads/LeadCard';
 import { LeadDetailsDrawer } from '@/components/leads/LeadDetailsDrawer';
 import { UnlockDialog } from '@/components/leads/UnlockDialog';
 import { OwnerDemoJourney } from '@/components/leads/demo/OwnerDemoJourney';
-import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
 import { ownerDemoAvailable } from '@/services/ownerDemoLead';
 
 const FILTERS: Array<[LeadFilter, string]> = [
@@ -63,9 +62,6 @@ function HomatchLeadsContent() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [propertyLabel, setPropertyLabel] = useState<string | null>(null);
-  const [counterpart, setCounterpart] = useState<'BUYER' | 'TENANT' | null>(null);
-  const [externalCount, setExternalCount] = useState<number | null>(null);
-  const [externalPage, setExternalPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [unlockIds, setUnlockIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<LeadItem | null>(null);
@@ -116,10 +112,9 @@ function HomatchLeadsContent() {
     /* The real matcher is not asked to run for a visit that opens straight into Demo Mode. */
     if (!openedInDemo.current) requestLeadMatching(propertyId).catch(() => undefined);
     const timer = window.setTimeout(() => { markLeadsSeen(propertyId).catch(() => undefined); }, 4000);
-    supabase.from('properties').select('title,homatch_id,transaction_type').eq('id', propertyId).maybeSingle()
+    supabase.from('properties').select('title,homatch_id').eq('id', propertyId).maybeSingle()
       .then(({ data }) => {
         if (data) setPropertyLabel([data.homatch_id ? `HOMATCH ${data.homatch_id}` : null, data.title].filter(Boolean).join(' · '));
-        if (data) setCounterpart(/rent|lease/i.test(String(data.transaction_type ?? '')) ? 'TENANT' : 'BUYER');
       });
     return () => window.clearTimeout(timer);
   }, [propertyId]);
@@ -158,9 +153,7 @@ function HomatchLeadsContent() {
     <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
       <CustomerSurface className={demoMode ? 'pb-72' : 'pb-32'}>
         <div className="pt-4 sm:pt-5">
-          <button type="button" className={cn(BTN_TERTIARY, '-ms-2 mb-2')} onClick={() => navigate(`/property/${propertyId}/matches`)}>
-            <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('hl_back_to_find_buyers')}
-          </button>
+          {/* Back is the shell's one control, top left (parent: the matches page). */}
           <PageHero compact eyebrow={t('hl_eyebrow')} title={t('hl_headline')} subtitle={t('hl_description')} />
           {propertyLabel ? <p className="mt-2 truncate text-xs font-medium text-[hsl(224_14%_30%)]">{propertyLabel}</p> : null}
         </div>
@@ -273,20 +266,6 @@ function HomatchLeadsContent() {
               aria-label={t('hl_page_next')}><ChevronRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" /></button>
           </nav>
         ) : null}
-
-        {/* ── PEOPLE FOUND ON PUBLIC PLATFORMS ──
-            The genuine, qualified results of this property's Find Buyers / Find Tenants
-            campaigns (find_buyers_current_leads): each with its original public post,
-            date and evidence. Not HOMATCH members, so nothing to open or pay for here;
-            the same component the Find Buyers page renders. Hidden while there are none. */}
-        <section className={cn('mt-8', externalCount === 0 && 'hidden')} aria-labelledby="hl-external" data-testid="leads-external">
-          <h2 id="hl-external" className="font-display text-lg font-semibold text-[hsl(224_14%_10%)]">{t('hl_external_title')}</h2>
-          <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-[hsl(224_14%_26%)]">{t('hl_external_body')}</p>
-          <div className="mt-3">
-            <FindBuyersResults qualifiedOnly propertyId={propertyId} counterpart={counterpart} liveSignal={null}
-              page={externalPage} onPage={setExternalPage} onCount={setExternalCount} />
-          </div>
-        </section>
         </>)}
       </CustomerSurface>
 

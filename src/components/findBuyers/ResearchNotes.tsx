@@ -26,7 +26,8 @@ export function useReportFormatters(): Formatters {
 export function ResearchNotes({ report, className }: { report: CampaignReport; className?: string }) {
   const { t } = useLanguage();
   const fmt = useReportFormatters();
-  const notes = researchNotes(report, fmt);
+  /* Customer copy: a source that failed is ours to fix, not the owner's to read (2026-10-12). */
+  const notes = researchNotes({ ...report, notes: report.notes.filter((x) => x.code !== 'SOURCES_FAILED') }, fmt);
   if (notes.length === 0) return null;
   return (
     <section aria-labelledby="fbr-notes-title" data-testid="fbr-research-notes"

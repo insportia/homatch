@@ -246,14 +246,15 @@ test('final report (production campaign 70b0d32b): truthful summary, Research No
   assert.equal(await page.getAttribute('[data-testid="fbr-report"]', 'data-live'), 'false');
   assert.match(await page.innerText('[data-testid="fbr-scope"]'), /not a survey of the whole market/);
   const notes = await page.locator('[data-testid="fbr-research-notes"] li').allInnerTexts();
-  assert.equal(notes.length, 7, notes.join('\n'));
+  /* A source that failed (here Bluesky, VK) is ours to fix and is not shown to the owner (2026-10-12). */
+  assert.equal(notes.length, 6, notes.join('\n'));
+  assert.ok(!notes.some((n) => /Bluesky, VK/.test(n)), 'failed sources are not listed to the owner');
   assert.match(notes[0], /Candidates found before match review was introduced: 37/);
   assert.match(notes[1], /60% of the analysed posts/);
-  assert.match(notes[2], /Bluesky, VK/);
-  assert.match(notes[3], /88% of the research budget/);
-  assert.match(notes[4], /time limit before they ran: 7/);
-  assert.match(notes[5], /No comments were examined.*posts: 322/);
-  assert.match(notes[6], /all 130 messages came through paid access to 8 channels/);
+  assert.match(notes[2], /88% of the research budget/);
+  assert.match(notes[3], /time limit before they ran: 7/);
+  assert.match(notes[4], /No comments were examined.*posts: 322/);
+  assert.match(notes[5], /all 130 messages came through paid access to 8 channels/);
   await expand(page);
   const l = await layout(page);
   assert.match(l.report, /Property searched/i);
@@ -263,7 +264,8 @@ test('final report (production campaign 70b0d32b): truthful summary, Research No
   assert.match(l.report, /Search tasks completed: 89 of 106/);
   assert.match(l.report, /No source has produced a qualified match yet/, 'jobingeorgia (14 unreviewed leads) is not a "best source"');
   assert.doesNotMatch(l.report, /jobingeorgia/);
-  assert.match(l.report, /Unavailable during this search: Bluesky, VK/);
+  /* 2026-10-12: sources that failed stay internal — no limitation line, no "retry" option for the owner. */
+  assert.doesNotMatch(l.report, /Unavailable during this search|sources that were unavailable|Bluesky, VK/);
   assert.match(l.report, /Search for source groups in Arabic, Hebrew, Georgian, Russian, Turkish/);
   assert.match(l.report, /Telegram communities discovered but not yet read: 31/);
   assert.match(l.report, /none of them guarantees more interested people/);

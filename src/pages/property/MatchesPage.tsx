@@ -26,6 +26,7 @@ import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
 import { LiveSearchModule, SearchStatusPill } from '@/components/findBuyers/LiveSearchModule';
 import { PageNav } from '@/components/findBuyers/PageNav';
 import { ResearchExtensionDialog } from '@/components/findBuyers/ResearchExtensionDialog';
+import { SearchStartingDialog, type SearchStartPhase } from '@/components/findBuyers/SearchStartingDialog';
 import { BTN_PRIMARY } from '@/components/leads/kit';
 import { FRAMED_ACTION, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
@@ -403,6 +404,7 @@ function MatchesContent() {
   /* The search does not begin until the customer has said how much it
      may spend. Wallet balance is not campaign budget. */
   const [showBudget, setShowBudget] = useState(false);
+  const [startPhase, setStartPhase] = useState<SearchStartPhase>(null);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [leadCount, setLeadCount] = useState(0);
   /* HOMATCH members (people, demo included when visible) — counted apart from external
@@ -795,14 +797,16 @@ function MatchesContent() {
     if (!propertyId || !homatchUser) return;
     setShowBudget(false);
     setCampaignLoading(true);
+    setStartPhase('starting');
     try {
       const result = await startMatchingCampaign(
         propertyId, homatchUser.id, authorizedMaxCredits, searchLanguages ?? null,
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      toast.success(t('matches_campaign_started_toast'));
+      setStartPhase('started');
     } catch (e) {
+      setStartPhase(null);
       { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
     } finally {
       /* Whatever happened, the server says what the campaign is now. */
@@ -1309,6 +1313,10 @@ function MatchesContent() {
         the customer picks the ceiling from the configured ladder. The figure
         it hands back is what becomes authorized_max_credits.
       */}
+      {/* Already on the search page: "watch it" closes the dialog onto the live search. */}
+      <SearchStartingDialog phase={startPhase} tenant={counterpart === 'TENANT'} goLabelKey="fbs_watch_search"
+        onGo={() => { setStartPhase(null); document.getElementById('fbl-live')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+        onClose={() => setStartPhase(null)} />
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto [&>*]:min-w-0">
           <DialogHeader>

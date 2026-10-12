@@ -160,7 +160,7 @@ test('the paid scene plan is asked in the background, collected later, kept on f
   assert.match(route, /fetch\(`https:\/\/api\.openai\.com\/v1\/responses\/\$\{encodeURIComponent\(pending\.id\)\}`/);
   // Waiting for it is not an attempt, and it is waited for a bounded time.
   assert.match(route, /plan_attempts: Math\.max\(0, row\.plan_attempts - 1\)/);
-  assert.match(route, /const PLAN_RESPONSE_MAX_MS = 12 \* 60_000;/);
+  assert.match(route, /const PLAN_RESPONSE_MAX_MS = 6 \* 60_000;/);
   // A failure keeps the paid plan; the same picture reuses it (READY's plan, or the failed one's).
   assert.match(route, /dropped: validated\.dropped, scenePlan: validated,\n\s*designGraph: graph \?/);
   assert.match(route, /\.in\('state', \['READY', 'FAILED'\]\)/);

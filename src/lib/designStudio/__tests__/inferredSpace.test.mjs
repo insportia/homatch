@@ -47,7 +47,7 @@ test('the reconstruction reader is reused with a walk brief: source pictures for
   assert.match(walkRoute, /input: \[\{ role: 'system', content: RECON_SYSTEM \}, \{ role: 'user', content \}\]/, 'the existing reconstruction reader');
   // Read with each picture's shape and the selected render's measured frame, then made buildable (readingRepair.ts).
   assert.match(walkRoute, /const \{ recon: read \} = validateReconstruction\(raw, images\.length, \{\s*\/\/[^\n]*\n\s*imageAspects: images\.map\(\(img\) => img\.aspect\),\s*frames: measured && viewIndex != null \? \[\{ image: selected, view: viewIndex, frame: measured\.frame \}\] : \[\],/);
-  assert.match(walkRoute, /const built = spaceFromReading\(read, \{/);
+  assert.match(walkRoute, /const spaceOf = \(recon: typeof read\) => spaceFromReading\(recon, \{[\s\S]*const built = useDraft \? fromDraft! : spaceOf\(read\);/);
   assert.match(code('src/lib/designStudio/walkthrough/photoSpace.ts'), /const repaired = repairReading\(read\);\s*const recon = repaired\.recon;/);
   assert.deepEqual([basisOf('OBSERVED', 0.2), basisOf('INFERRED', 0.8), basisOf('INFERRED', 0.5), basisOf('INFERRED', 0.2)], ['OBSERVED', 'INFERRED_HIGH', 'INFERRED_MEDIUM', 'INFERRED_LOW']);
 });
@@ -68,6 +68,9 @@ test('A: a generated design with no floor plan starts its walkthrough (no upload
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
   for (const gone of [/walk-needs-plan/, /walk-add-plan/, /onAddPlan/, /dsx_walk_needs_/, /dsx_walk_missing_/]) assert.doesNotMatch(panel, gone);
   assert.match(panel, /data-testid="walk-reconstructing"/);
+  // Shown and followed also when an earlier tour of the design is on the page (a plan read again for a new tour).
+  assert.match(panel, /\{reconstructing \? \(/);
+  assert.match(panel, /if \(!reconstructing\) return;\s*const timer = setInterval\(\(\) => \{ void start\(false\); \}, SPACE_POLL_MS\);/);
   assert.doesNotMatch(code('src/components/designStudio/unified/DesignResult.tsx'), /start=floorplan/, 'the Result never sends the customer to upload the property again');
   // The isometric apartment of the reconstruction fixtures: a real navigable scene, every indoor room reached.
   const raw = JSON.parse(code('src/lib/designStudio/__tests__/fixtures/isometric-apartment.recon.json'));

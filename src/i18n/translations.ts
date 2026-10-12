@@ -18388,6 +18388,27 @@ const en = {
   vbi_rs_state_unavailable_explain: 'The Revenue Service registry was temporarily unavailable during this research. This is neither a good nor a bad sign — you can check it in a minute on rs.ge with company ID {{id}}.',
   vbi_rs_state_failed: 'To be checked on rs.ge',
   vbi_rs_state_failed_explain: 'The taxpayer registry entry for this company is best checked directly on rs.ge. This is neither a good nor a bad sign — it takes a minute with company ID {{id}}.',
+
+  /* ── PROPERTY PHOTOS (upload your own when the source listing is gone) ── */
+  fbl_media_add_own: 'Upload your own photos',
+
+  /* ── HOMATCH LEADS — PEOPLE FOUND ON PUBLIC PLATFORMS ── */
+  hl_external_title: 'People found on public platforms',
+  hl_external_body: 'Potentially interested people that Find Buyers found in real public posts. Each shows its original post, date and why it matches. They are not HOMATCH members: reach them through the original post.',
+
+  /* ── FIND BUYERS ADAPTIVE SEARCH (passes tried, why the search ended) ── */
+  fbr_cov_passes: 'Search passes tried',
+  fbr_pass_DIRECT: 'Direct requests',
+  fbr_pass_SEMANTIC: 'Other wordings and languages',
+  fbr_pass_FLEXIBLE: 'Nearby areas and close budgets',
+  fbr_pass_EXPLORE: 'New groups and platforms',
+  fbr_pass_COMMENTS: 'Comments under relevant posts',
+  fbr_stop_BUDGET_EXHAUSTED: 'The search ended when its research budget was used.',
+  fbr_stop_MAX_ROUNDS: 'The search ended after every planned pass was tried.',
+  fbr_stop_COVERAGE_COMPLETE: 'The search ended after covering every available source and wording.',
+  fbr_stop_NO_USABLE_ACTOR: 'The search ended because no further source could be searched right now.',
+  fbr_stop_MODEL_DIMINISHING_RETURNS: 'The search ended because further passes were finding nothing new.',
+  fbr_stop_NOTHING_NEW_TO_SEARCH: 'The search ended because every useful wording had already been searched.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36690,6 +36711,27 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vbi_rs_state_unavailable_explain: 'შემოსავლების სამსახურის რეესტრი ამ კვლევის დროს დროებით მიუწვდომელი იყო. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
   vbi_rs_state_failed: 'rs.ge-ზე გადასამოწმებელია',
   vbi_rs_state_failed_explain: 'კომპანიის ჩანაწერი გადამხდელთა რეესტრში სასურველია უშუალოდ rs.ge-ზე გადაამოწმოთ. ეს არც დადებითი ნიშანია და არც უარყოფითი — ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
+
+  /* ── PROPERTY PHOTOS (upload your own when the source listing is gone) ── */
+  fbl_media_add_own: 'ატვირთეთ საკუთარი ფოტოები',
+
+  /* ── HOMATCH LEADS — PEOPLE FOUND ON PUBLIC PLATFORMS ── */
+  hl_external_title: 'საჯარო პლატფორმებზე აღმოჩენილი ადამიანები',
+  hl_external_body: 'პოტენციურად დაინტერესებული ადამიანები, რომლებიც მყიდველების ძიებამ რეალურ საჯარო პოსტებში იპოვა. თითოეულს ახლავს ორიგინალი პოსტი, თარიღი და დამთხვევის მიზეზი. ისინი HOMATCH-ის წევრები არ არიან: დაუკავშირდით ორიგინალი პოსტის მეშვეობით.',
+
+  /* ── FIND BUYERS ADAPTIVE SEARCH (passes tried, why the search ended) ── */
+  fbr_cov_passes: 'ძიების გამოყენებული ეტაპები',
+  fbr_pass_DIRECT: 'პირდაპირი მოთხოვნები',
+  fbr_pass_SEMANTIC: 'სხვა ფორმულირებები და ენები',
+  fbr_pass_FLEXIBLE: 'მეზობელი უბნები და ახლო ბიუჯეტები',
+  fbr_pass_EXPLORE: 'ახალი ჯგუფები და პლატფორმები',
+  fbr_pass_COMMENTS: 'კომენტარები შესაბამის პოსტებზე',
+  fbr_stop_BUDGET_EXHAUSTED: 'ძიება დასრულდა, როცა კვლევის ბიუჯეტი ამოიწურა.',
+  fbr_stop_MAX_ROUNDS: 'ძიება დასრულდა ყველა დაგეგმილი ეტაპის შემდეგ.',
+  fbr_stop_COVERAGE_COMPLETE: 'ძიება დასრულდა ყველა ხელმისაწვდომი წყაროსა და ფორმულირების დაფარვის შემდეგ.',
+  fbr_stop_NO_USABLE_ACTOR: 'ძიება დასრულდა, რადგან ამჟამად სხვა წყაროს მოძიება ვერ ხერხდება.',
+  fbr_stop_MODEL_DIMINISHING_RETURNS: 'ძიება დასრულდა, რადგან შემდგომი ეტაპები ახალს აღარაფერს პოულობდა.',
+  fbr_stop_NOTHING_NEW_TO_SEARCH: 'ძიება დასრულდა, რადგან ყველა სასარგებლო ფორმულირება უკვე მოძიებული იყო.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -54983,6 +55025,27 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vbi_rs_state_unavailable_explain: 'Реестр Службы доходов был временно недоступен во время этого исследования. Это ни хороший, ни плохой знак — проверить можно за минуту на rs.ge по коду {{id}}.',
   vbi_rs_state_failed: 'Стоит проверить на rs.ge',
   vbi_rs_state_failed_explain: 'Запись компании в реестре налогоплательщиков лучше проверить напрямую на rs.ge. Это ни хороший, ни плохой знак — это займёт минуту по коду {{id}}.',
+
+  /* ── PROPERTY PHOTOS (upload your own when the source listing is gone) ── */
+  fbl_media_add_own: 'Загрузить свои фото',
+
+  /* ── HOMATCH LEADS — PEOPLE FOUND ON PUBLIC PLATFORMS ── */
+  hl_external_title: 'Люди, найденные на публичных площадках',
+  hl_external_body: 'Потенциально заинтересованные люди, которых поиск покупателей нашёл в реальных публичных постах. У каждого указаны исходный пост, дата и причина совпадения. Они не участники HOMATCH: связывайтесь через исходный пост.',
+
+  /* ── FIND BUYERS ADAPTIVE SEARCH (passes tried, why the search ended) ── */
+  fbr_cov_passes: 'Выполненные этапы поиска',
+  fbr_pass_DIRECT: 'Прямые запросы',
+  fbr_pass_SEMANTIC: 'Другие формулировки и языки',
+  fbr_pass_FLEXIBLE: 'Соседние районы и близкий бюджет',
+  fbr_pass_EXPLORE: 'Новые группы и платформы',
+  fbr_pass_COMMENTS: 'Комментарии под подходящими постами',
+  fbr_stop_BUDGET_EXHAUSTED: 'Поиск завершён: исследовательский бюджет израсходован.',
+  fbr_stop_MAX_ROUNDS: 'Поиск завершён после всех запланированных этапов.',
+  fbr_stop_COVERAGE_COMPLETE: 'Поиск завершён: охвачены все доступные источники и формулировки.',
+  fbr_stop_NO_USABLE_ACTOR: 'Поиск завершён: других доступных источников сейчас нет.',
+  fbr_stop_MODEL_DIMINISHING_RETURNS: 'Поиск завершён: новые этапы перестали находить что-то новое.',
+  fbr_stop_NOTHING_NEW_TO_SEARCH: 'Поиск завершён: все полезные формулировки уже проверены.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73274,6 +73337,27 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vbi_rs_state_unavailable_explain: 'Gelir İdaresi sicili bu araştırma sırasında geçici olarak erişilemezdi. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla bir dakikada kontrol edebilirsiniz.',
   vbi_rs_state_failed: 'rs.ge üzerinde kontrol edilmeli',
   vbi_rs_state_failed_explain: 'Şirketin vergi mükellefleri sicilindeki kaydını doğrudan rs.ge üzerinde kontrol etmeniz önerilir. Bu ne olumlu ne olumsuz bir işarettir — {{id}} şirket koduyla bir dakika sürer.',
+
+  /* ── PROPERTY PHOTOS (upload your own when the source listing is gone) ── */
+  fbl_media_add_own: 'Kendi fotoğraflarınızı yükleyin',
+
+  /* ── HOMATCH LEADS — PEOPLE FOUND ON PUBLIC PLATFORMS ── */
+  hl_external_title: 'Herkese açık platformlarda bulunan kişiler',
+  hl_external_body: 'Alıcı Bul’un gerçek, herkese açık gönderilerde bulduğu potansiyel olarak ilgilenen kişiler. Her birinde orijinal gönderi, tarih ve eşleşme nedeni gösterilir. HOMATCH üyesi değillerdir: onlara orijinal gönderi üzerinden ulaşın.',
+
+  /* ── FIND BUYERS ADAPTIVE SEARCH (passes tried, why the search ended) ── */
+  fbr_cov_passes: 'Denenen arama aşamaları',
+  fbr_pass_DIRECT: 'Doğrudan talepler',
+  fbr_pass_SEMANTIC: 'Farklı ifadeler ve diller',
+  fbr_pass_FLEXIBLE: 'Yakın bölgeler ve yakın bütçeler',
+  fbr_pass_EXPLORE: 'Yeni gruplar ve platformlar',
+  fbr_pass_COMMENTS: 'İlgili gönderilerin altındaki yorumlar',
+  fbr_stop_BUDGET_EXHAUSTED: 'Araştırma bütçesi kullanıldığında arama sona erdi.',
+  fbr_stop_MAX_ROUNDS: 'Planlanan tüm aşamalar denendikten sonra arama sona erdi.',
+  fbr_stop_COVERAGE_COMPLETE: 'Mevcut tüm kaynaklar ve ifadeler tarandıktan sonra arama sona erdi.',
+  fbr_stop_NO_USABLE_ACTOR: 'Şu anda aranabilecek başka kaynak olmadığı için arama sona erdi.',
+  fbr_stop_MODEL_DIMINISHING_RETURNS: 'Sonraki aşamalar yeni bir şey bulamadığı için arama sona erdi.',
+  fbr_stop_NOTHING_NEW_TO_SEARCH: 'Tüm faydalı ifadeler zaten arandığı için arama sona erdi.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91565,6 +91649,27 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vbi_rs_state_unavailable_explain: 'كان سجل مصلحة الإيرادات غير متاح مؤقتًا خلال هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق خلال دقيقة على rs.ge برمز الشركة {{id}}.',
   vbi_rs_state_failed: 'يُستحسن التحقق على rs.ge',
   vbi_rs_state_failed_explain: 'يُستحسن التحقق من قيد الشركة في سجل دافعي الضرائب مباشرةً على rs.ge. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يستغرق الأمر دقيقة برمز الشركة {{id}}.',
+
+  /* ── PROPERTY PHOTOS (upload your own when the source listing is gone) ── */
+  fbl_media_add_own: 'ارفع صورك الخاصة',
+
+  /* ── HOMATCH LEADS — PEOPLE FOUND ON PUBLIC PLATFORMS ── */
+  hl_external_title: 'أشخاص عُثر عليهم على منصات عامة',
+  hl_external_body: 'أشخاص يُحتمل أن يكونوا مهتمين وجدهم «البحث عن مشترين» في منشورات عامة حقيقية. يظهر لكل منهم المنشور الأصلي وتاريخه وسبب التطابق. ليسوا أعضاء في HOMATCH: تواصل معهم عبر المنشور الأصلي.',
+
+  /* ── FIND BUYERS ADAPTIVE SEARCH (passes tried, why the search ended) ── */
+  fbr_cov_passes: 'مراحل البحث التي جُرّبت',
+  fbr_pass_DIRECT: 'طلبات مباشرة',
+  fbr_pass_SEMANTIC: 'صياغات ولغات أخرى',
+  fbr_pass_FLEXIBLE: 'مناطق قريبة وميزانيات متقاربة',
+  fbr_pass_EXPLORE: 'مجموعات ومنصات جديدة',
+  fbr_pass_COMMENTS: 'التعليقات على المنشورات ذات الصلة',
+  fbr_stop_BUDGET_EXHAUSTED: 'انتهى البحث عند استخدام ميزانية البحث.',
+  fbr_stop_MAX_ROUNDS: 'انتهى البحث بعد تجربة جميع المراحل المخطط لها.',
+  fbr_stop_COVERAGE_COMPLETE: 'انتهى البحث بعد تغطية جميع المصادر والصياغات المتاحة.',
+  fbr_stop_NO_USABLE_ACTOR: 'انتهى البحث لعدم توفر مصدر آخر يمكن البحث فيه حاليًا.',
+  fbr_stop_MODEL_DIMINISHING_RETURNS: 'انتهى البحث لأن المراحل الإضافية لم تعد تجد جديدًا.',
+  fbr_stop_NOTHING_NEW_TO_SEARCH: 'انتهى البحث لأن جميع الصياغات المفيدة قد بُحث فيها بالفعل.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -109856,6 +109961,27 @@ const he: Partial<Record<TranslationKey, string>> = {
   vbi_rs_state_unavailable_explain: 'מרשם רשות ההכנסות לא היה זמין זמנית במהלך מחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק תוך דקה ב-rs.ge עם מספר החברה {{id}}.',
   vbi_rs_state_failed: 'כדאי לבדוק ב-rs.ge',
   vbi_rs_state_failed_explain: 'מומלץ לבדוק את רישום החברה במרשם משלמי המסים ישירות ב-rs.ge. זה אינו סימן טוב ואינו סימן רע — זה לוקח דקה עם מספר החברה {{id}}.',
+
+  /* ── PROPERTY PHOTOS (upload your own when the source listing is gone) ── */
+  fbl_media_add_own: 'העלו תמונות משלכם',
+
+  /* ── HOMATCH LEADS — PEOPLE FOUND ON PUBLIC PLATFORMS ── */
+  hl_external_title: 'אנשים שנמצאו בפלטפורמות ציבוריות',
+  hl_external_body: 'אנשים שעשויים להתעניין שחיפוש קונים מצא בפוסטים ציבוריים אמיתיים. לכל אחד מוצגים הפוסט המקורי, התאריך וסיבת ההתאמה. הם אינם חברי HOMATCH: פנו אליהם דרך הפוסט המקורי.',
+
+  /* ── FIND BUYERS ADAPTIVE SEARCH (passes tried, why the search ended) ── */
+  fbr_cov_passes: 'שלבי החיפוש שנוסו',
+  fbr_pass_DIRECT: 'בקשות ישירות',
+  fbr_pass_SEMANTIC: 'ניסוחים ושפות נוספים',
+  fbr_pass_FLEXIBLE: 'אזורים סמוכים ותקציבים קרובים',
+  fbr_pass_EXPLORE: 'קבוצות ופלטפורמות חדשות',
+  fbr_pass_COMMENTS: 'תגובות מתחת לפוסטים רלוונטיים',
+  fbr_stop_BUDGET_EXHAUSTED: 'החיפוש הסתיים כשתקציב המחקר נוצל.',
+  fbr_stop_MAX_ROUNDS: 'החיפוש הסתיים לאחר שכל השלבים המתוכננים נוסו.',
+  fbr_stop_COVERAGE_COMPLETE: 'החיפוש הסתיים לאחר כיסוי כל המקורות והניסוחים הזמינים.',
+  fbr_stop_NO_USABLE_ACTOR: 'החיפוש הסתיים כי כרגע אין מקור נוסף שניתן לחפש בו.',
+  fbr_stop_MODEL_DIMINISHING_RETURNS: 'החיפוש הסתיים כי שלבים נוספים לא מצאו דבר חדש.',
+  fbr_stop_NOTHING_NEW_TO_SEARCH: 'החיפוש הסתיים כי כל הניסוחים השימושיים כבר נבדקו.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

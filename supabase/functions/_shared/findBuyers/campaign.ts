@@ -10,6 +10,7 @@
 
 import { buildPropertyDna, type PropertyDna } from '../../../../src/research-core/findBuyers/propertyDna.ts';
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
+import { publicSearchPasses } from '../../../../src/research-core/findBuyers/adaptiveLoop.ts';
 import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
 import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
 import { classifyDemand } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
@@ -112,17 +113,32 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
     .select('queries').eq('dna_key', dna.dnaKey).eq('plan_version', QUERY_PLAN_VERSION).maybeSingle();
   if (cached?.queries) return mergeModelQueries(base, onSide(cached.queries as any[]));
   const book = parsePriceBook(priceBookRaw);
+  /* The whole property as a seeker would weigh it: what it is, where, for how much
+     and with what — plus the buyer/tenant profiles the strategy expects. The model
+     proposes phrasings; deterministic code validates every one (schema, six
+     languages, on-side demand reading, per-language cap) before any is used. */
+  const family = dna.family ?? 'APARTMENT';
   const ask = {
-    transaction: dna.transaction, propertyType: dna.propertyType, city: dna.city, district: dna.district,
-    bedrooms: dna.bedrooms, areaSqm: dna.areaSqm, price: dna.price, currency: dna.currency,
+    transaction: dna.transaction, family, propertyType: dna.propertyType,
+    city: dna.city, district: dna.district, neighborhood: dna.neighborhood,
+    bedrooms: dna.bedrooms, rooms: dna.rooms, areaSqm: dna.areaSqm, price: dna.price, currency: dna.currency,
+    priceBand: dna.tolerances.price, features: dna.amenities, condition: dna.condition, newBuild: dna.newBuild,
+    likelyProfiles: (strategy?.personas ?? []).map((p) => p.key),
     existing: base.queries.filter((q) => q.kind === 'demand').map((q) => `${q.language}: ${q.query}`),
   };
+  const verb = dna.transaction === 'RENT' ? 'RENT' : 'BUY';
   const res = await openAiJson<{ queries: Array<{ language: string; query: string }> }>(book,
-    `You write short social-media search phrases that real people in Georgia write when they personally WANT TO ${dna.transaction === 'RENT' ? 'RENT' : 'BUY'} a property like this one. Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording, with an explicit ${dna.transaction === 'RENT' ? 'renting' : 'purchase'} verb and the district or city as people write it. Never a bare "looking for" phrase. No hashtags, no quotes.`,
+    `You write short social-media search phrases that real people in Georgia write when they personally WANT TO ${verb} a ${family.toLowerCase()} like this one (family: ${family}). `
+    + `Think about who realistically wants it (likelyProfiles, budget, area) and how they phrase a request in everyday, colloquial language. `
+    + `Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording, with an explicit ${dna.transaction === 'RENT' ? 'renting' : 'purchase'} verb and the correct noun for a ${family.toLowerCase()}. `
+    + `A request may name the city and a budget without the exact district — that is still a seeker. Never a phrase an owner, seller or agent would write (no "for sale", "selling", "offer"). Never a bare "looking for". No hashtags, no quotes.`,
     ask, MODEL_QUERY_SCHEMA, { maxTokens: 700 });
   await recordAiCost(db, { key: `ai:queries:${matchingJobId}`, matchingJobId, kind: 'AI', operation: 'QUERY_PLAN', result: res, metadata: { dnaKey: dna.dnaKey } })
     .catch(() => undefined);
   const proposed = res.data?.queries ?? [];
+  /* A failed call is NOT cached. Caching its empty result made every later campaign
+     for the same property skip the model for good (2026-10-12 audit). */
+  if (res.error || !res.data) return mergeModelQueries(base, onSide(proposed));
   /* Best-effort cache: never blocks the plan. A PostgREST builder is only
      thenable (no .catch), so it is awaited inside try. The old
      `.upsert(...).catch(...)` threw a TypeError here on every uncached search
@@ -272,7 +288,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const econ = campaignEconomics(input.credits, rate, settings.providerShareBps);
   const f = input.facts ?? {};
   const dna = buildPropertyDna({
-    transactionType: input.property.transaction_type, propertyType: input.property.property_type,
+    transactionType: input.property.transaction_type, propertyType: input.property.property_type, title: input.property.title,
     countryCode: f.country_code, city: f.city, district: f.district, neighborhood: f.neighborhood,
     latitude: f.latitude, longitude: f.longitude, totalPrice: f.total_price, currency: f.currency, area: f.area,
     rooms: f.rooms, bedrooms: f.bedrooms, floor: f.floor, totalFloors: f.total_floors, condition: f.condition,
@@ -437,11 +453,12 @@ export async function sweepStaleActorRuns(db: any) {
 
 /** Customer-safe counters (no actor ids, no costs). */
 export async function campaignStats(db: any, matchingJobId: string) {
-  const [runs, leads, assess, queue] = await Promise.all([
+  const [runs, leads, assess, queue, camp] = await Promise.all([
     db.from('find_buyers_actor_runs').select('source,language,status,qualified_leads,items_fetched,useful_results,stale_dropped').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_leads').select('strength,source,signal_count').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_assessments').select('content_kind').eq('matching_job_id', matchingJobId).limit(5000),
     db.from('discovery_query_queue').select('provider,status,metadata').eq('matching_job_id', matchingJobId),
+    db.from('find_buyers_campaigns').select('query_plan').eq('matching_job_id', matchingJobId).maybeSingle(),
   ]);
   const r = (runs.data ?? []) as any[];
   const l = (leads.data ?? []) as any[];
@@ -462,6 +479,9 @@ export async function campaignStats(db: any, matchingJobId: string) {
     /* 30-day rule, made visible: older or undated items skipped, never stored. */
     staleSkipped: r.reduce((n, x) => n + Number(x.stale_dropped || 0), 0),
     degradedSources: [...new Set(r.filter((x) => ['FAILED', 'TIMED_OUT'].includes(x.status)).map((x) => x.source))],
+    /* The adaptive search, as the owner may see it (stats is owner-readable;
+       query_plan, which carries the economics, is not). */
+    searchPasses: publicSearchPasses((camp?.data as any)?.query_plan?.adaptive),
   };
 }
 

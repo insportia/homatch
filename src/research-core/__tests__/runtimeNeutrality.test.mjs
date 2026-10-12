@@ -222,6 +222,9 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
     /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */
     'supabase/functions/_shared/findBuyers/readiness.ts',
+    /* The adaptive search round: the pure ladder, validation and evidence
+       shaping (research-core/findBuyers/adaptiveLoop) around queue I/O. */
+    'supabase/functions/_shared/findBuyers/adaptive.ts',
     /*
      * The one UI seam onto the Find Buyers core: owner screens show what a search
      * looks for through the same Property DNA the search uses. Components import

@@ -20,7 +20,7 @@ import { GOLD_FILL, GOLD_TEXT, SourceBadge } from '@/components/findBuyers/brand
 import { ResearchNotes, useReportFormatters } from '@/components/findBuyers/ResearchNotes';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { placeName } from '@/lib/placeNames';
-import { getCampaignReport } from '@/services/findBuyers';
+import { getCampaignReport, getCampaignState, type FindBuyersCampaignState } from '@/services/findBuyers';
 import {
   bestSources, communityLabel, contentMix, limitationMessage, nextSearchOptions, rejectionBreakdown, secondsSinceStart, splitDuration,
   type CampaignReport as Report,
@@ -29,6 +29,8 @@ import {
 const SOFT = 'text-[hsl(218_40%_85%)]';
 const PANEL = 'rounded-xl bg-white/[0.04] p-3.5 ring-1 ring-inset ring-white/10';
 const LIVE_REFRESH_MS = 15_000;
+const PASSES = ['DIRECT', 'SEMANTIC', 'FLEXIBLE', 'EXPLORE', 'COMMENTS'];
+const STOPS = ['BUDGET_EXHAUSTED', 'MAX_ROUNDS', 'COVERAGE_COMPLETE', 'NO_USABLE_ACTOR', 'MODEL_DIMINISHING_RETURNS', 'NOTHING_NEW_TO_SEARCH'];
 
 type T = (k: string, v?: Record<string, string | number>) => string;
 
@@ -97,6 +99,8 @@ export function CampaignReport({ jobId, live, refreshKey, id }: {
   const { t, lang } = useLanguage();
   const fmt = useReportFormatters();
   const [report, setReport] = useState<Report | null>(null);
+  /* The adaptive passes live in the campaign's owner-readable stats, not in the report RPC. */
+  const [passes, setPasses] = useState<NonNullable<FindBuyersCampaignState['stats']['searchPasses']> | null>(null);
   const [open, setOpen] = useState(false);
   const lastRead = useRef(0);
   const lastJob = useRef<string | null>(null);
@@ -105,9 +109,10 @@ export function CampaignReport({ jobId, live, refreshKey, id }: {
     let alive = true;
     const fresh = lastJob.current !== jobId;
     if (!fresh && live && Date.now() - lastRead.current < LIVE_REFRESH_MS) return undefined;
-    if (fresh) { lastJob.current = jobId; setReport(null); }
+    if (fresh) { lastJob.current = jobId; setReport(null); setPasses(null); }
     lastRead.current = Date.now();
     void getCampaignReport(jobId).then((r) => { if (alive && r) setReport(r); }).catch(() => {});
+    void getCampaignState(jobId).then((c) => { if (alive) setPasses(c?.stats?.searchPasses ?? null); }).catch(() => {});
     return () => { alive = false; };
   }, [jobId, live, refreshKey]);
 
@@ -251,6 +256,17 @@ export function CampaignReport({ jobId, live, refreshKey, id }: {
                 <Stat value={cov.commentsExamined} label={t('fbr_cov_comments')} />
                 <Stat value={cov.staleSkipped} label={t('fbr_cov_stale')} />
               </div>
+              {passes && passes.passes.length > 0 && (
+                <div data-testid="fbr-passes">
+                  <p className={cn('text-2xs', SOFT)}>{t('fbr_cov_passes')}</p>
+                  <ol className="mt-1 flex flex-wrap gap-1.5">
+                    {passes.passes.filter((x) => PASSES.includes(x)).map((x) => <li key={x}><Chip>{t(`fbr_pass_${x}`)}</Chip></li>)}
+                  </ol>
+                  {!report.live && passes.stop && STOPS.includes(passes.stop) && (
+                    <p className="mt-1.5 text-2xs leading-relaxed text-white" data-testid="fbr-stop">{t(`fbr_stop_${passes.stop}`)}</p>
+                  )}
+                </div>
+              )}
               <p className={cn('text-2xs leading-relaxed', SOFT)} data-testid="fbr-tasks">
                 {t('fbr_cov_tasks', { done: String(report.coveragePlan.queue.done), total: String(report.coveragePlan.queue.total), stopped: String(stopped) })}
                 {cov.duplicatesRemoved > 0 ? <>{' · '}{t('fbr_cov_dupes', { n: String(cov.duplicatesRemoved) })}</> : null}

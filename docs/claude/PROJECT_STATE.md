@@ -5,6 +5,33 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Find Buyers adaptive search + all property families + photo fixes (branch claude/nifty-hopper-snzn2d, 2026-10-12)
+
+- **Adaptive loop**: `src/research-core/findBuyers/adaptiveLoop.ts` (pure) + `_shared/findBuyers/adaptive.ts`
+  (I/O). The driver (`discovery-queue-worker/driver.ts` advanceCampaigns) runs one adaptive
+  round when a campaign's queue drains before its deadline, instead of finalizing. Ladder
+  DIRECT → SEMANTIC → FLEXIBLE → EXPLORE → COMMENTS, max 4 rounds × 6 jobs, ≤60% of the
+  remaining budget per round. OpenAI proposes (strict schema, numbers only);
+  `validateActions` enforces allowlist/health/stage/budget/no-repeat/parent gates;
+  `fallbackActions` runs when the model is unavailable. Jobs go through the same
+  executor + atomic reservation + caps. State: `query_plan.adaptive` (admin);
+  owner-safe summary: `stats.searchPasses` (shown in the search report).
+- **Property families** (`propertyFamily.ts`): APARTMENT/HOUSE/LAND/COMMERCIAL/PARKING
+  (parking = OTHER + title keyword). Strategy, planner, model prompt and type gate agree.
+  QUALIFICATION_VERSION 3 (budget: ≥95% COMPATIBLE, ≥85% STRETCH).
+- Model planner failures are no longer cached (`find_buyers_query_cache`).
+- Leads hub "People found on public platforms" lists only STRONG/POTENTIAL leads.
+- **VILLION 37 legacy leads**: local dry-run requalification = 2 POTENTIAL (one person),
+  1 WEAK, 34 REJECTED. Applying (`admin_requalify` apply) awaits owner approval.
+- **Photos**: VILLION's MyHome listing 25805378 is no longer shown publicly (refresh
+  returns LISTING_NOT_AVAILABLE); zero HOMATCH-managed photos platform-wide (owner upload
+  never exercised). Fixed: cover removal now promotes the next photo and keeps
+  `cover_photo_url` valid; Design Studio renders covers via PrivateImage; MediaRefresh
+  offers "Upload your own photos" when the listing is gone.
+- **Demo** migration `20261029090000_owner_demo_lead` is on main, NOT in the prod ledger
+  (the only pending one). Apply via deploy.yml `run_migrations` dispatch.
+- No paid Actor run started; the first capped VILLION live test awaits owner approval.
+
 ## Verify v3 — newest-two TAS full fidelity, professionals, legal position, register reuse, timing (2026-10-11) — PR OPEN
 - Forensic audit of job 220ed087 (read-only SQL): AR11161121 (newest, 2026-09-17) stored with
   `values:[]` and 21/22 attachments NOT_PROCESSED_BUDGET → professionals/photos never reached

@@ -18,7 +18,7 @@ import { groupLeads } from '@/findBuyers/campaignReport';
 export const LEADS_PAGE_SIZE = 9;
 
 export function FindBuyersResults({
-  propertyId, counterpart, liveSignal, page, onPage, onCount,
+  propertyId, counterpart, liveSignal, page, onPage, onCount, qualifiedOnly = false,
 }: {
   propertyId: string;
   counterpart: 'BUYER' | 'TENANT' | null;
@@ -27,6 +27,8 @@ export function FindBuyersResults({
   page: number;
   onPage: (p: number) => void;
   onCount?: (n: number) => void;
+  /** Only leads that passed qualification (Strong / Potential): the Leads hub never lists unreviewed or weak ones. */
+  qualifiedOnly?: boolean;
 }) {
   const { t } = useLanguage();
   const [rows, setRows] = useState<PotentialLead[] | null>(null);
@@ -37,12 +39,12 @@ export function FindBuyersResults({
   const topRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async (p: number) => {
-    const res = await getPropertyLeadsPage(propertyId, p, LEADS_PAGE_SIZE);
+    const res = await getPropertyLeadsPage(propertyId, p, LEADS_PAGE_SIZE, { qualifiedOnly });
     setRows(res.rows);
     setTotal(res.total);
     onCount?.(res.total);
     setPending(false);
-  }, [propertyId, onCount]);
+  }, [propertyId, onCount, qualifiedOnly]);
 
   useEffect(() => { void load(page); }, [load, page]);
 

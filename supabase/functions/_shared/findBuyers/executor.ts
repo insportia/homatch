@@ -65,7 +65,10 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
     if (!phase2MayStart(p1.state)) {
       return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { lastWait: 'PHASE1_DISCOVERY', phase1Open: p1.open, phase1DeadlineAt: p1.deadlineAt } });
     }
-  } else if (phases?.budget && typeof phases.budget.discoveryCapMicros === 'number') {
+  } else if (!String(meta.arm ?? '').startsWith('adaptive:') && phases?.budget && typeof phases.budget.discoveryCapMicros === 'number') {
+    /* An adaptive round (adaptive.ts) is not Phase 1: it was budgeted against the
+       campaign's REMAINING provider budget when it was queued, and the campaign-wide
+       hard cap below still applies to it atomically. */
     /* Phase 1's own ceiling (planned from this campaign's prices). The
        campaign-wide hard cap stays atomic in find_buyers_reserve_actor_run. */
     const actor = await actorRow(db, String(meta.actorKey));

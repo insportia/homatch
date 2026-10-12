@@ -10,12 +10,13 @@
 // its reasons; nothing about the person is invented — all values come from the
 // DemandReading, which comes from the text.
 
+import { propertyFamily, type PropertyFamily } from './propertyFamily.ts';
 import type { PropertyDna } from './propertyDna.ts';
 import type { DemandReading } from './demandClassifier.ts';
 import { toUsd } from './demandClassifier.ts';
 import { NEARBY_DISTRICTS, normKey, parentDistrict } from './places.ts';
 
-export const QUALIFICATION_VERSION = 2;
+export const QUALIFICATION_VERSION = 3;
 
 export type MatchCategory = 'STRONG' | 'POTENTIAL' | 'WEAK' | 'REJECTED';
 export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'INCOMPATIBLE' | 'UNKNOWN';
@@ -63,8 +64,11 @@ export function budgetFit(r: DemandReading, dna: PropertyDna, fx?: QualifyContex
     ? toUsd({ amount: dna.price, currency: (dna.currency as 'GEL' | 'EUR') }, fx) : dna.price;
   /* A purchase budget against a sale price; a monthly budget against a rent. */
   if (wantMin != null && wantMin > price * 1.3) return 'INCOMPATIBLE';
-  if (want >= price * 0.9) return 'COMPATIBLE';
-  if (want >= price * 0.8) return 'STRETCH';
+  /* Within a normal negotiating margin (5%) the budget fits. Up to 15% under is the
+     controlled flexibility the search allows: kept, but labelled STRETCH and never
+     reported as an exact budget match (2026-10-12; was 10% / 20%). */
+  if (want >= price * 0.95) return 'COMPATIBLE';
+  if (want >= price * 0.85) return 'STRETCH';
   return 'INCOMPATIBLE';
 }
 
@@ -85,8 +89,7 @@ export function locationFit(r: DemandReading, dna: PropertyDna): Fit {
 }
 
 export function requirementsFit(r: DemandReading, dna: PropertyDna): Fit {
-  const dnaType = dna.propertyType === 'HOUSE' || dna.propertyType === 'VILLA' ? 'HOUSE'
-    : dna.propertyType === 'LAND' ? 'LAND' : dna.propertyType === 'COMMERCIAL' || dna.propertyType === 'OFFICE' ? 'COMMERCIAL' : 'APARTMENT';
+  const dnaType = familyOf(dna);
   if (r.propertyType && r.propertyType !== dnaType) return 'INCOMPATIBLE';
   const dnaRooms = dna.rooms ?? (dna.bedrooms != null ? dna.bedrooms + 1 : null);
   let d: number | null = null;
@@ -117,7 +120,7 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
     case 'UNCLEAR': reasons.push('UNCLEAR_INTENT'); break;
     default: if (r.role !== seekerRole) reasons.push('WRONG_TRANSACTION');
   }
-  if (!reasons.length && r.propertyType === 'COMMERCIAL' && dna.propertyType !== 'COMMERCIAL') reasons.push('NON_RESIDENTIAL');
+  if (!reasons.length && r.propertyType === 'COMMERCIAL' && familyOf(dna) !== 'COMMERCIAL') reasons.push('NON_RESIDENTIAL');
 
   /* 4–6: compatibility, each with UNKNOWN kept distinct. */
   const bFit = budgetFit(r, dna, ctx.fx);
@@ -126,7 +129,9 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   if (!reasons.length) {
     if (bFit === 'INCOMPATIBLE') reasons.push('BUDGET_INCOMPATIBLE');
     if (lFit === 'INCOMPATIBLE' && r.cities.length && !r.districts.length) reasons.push('OTHER_CITY');
-    if (qFit === 'INCOMPATIBLE' && r.propertyType && r.propertyType !== (dna.propertyType === 'HOUSE' ? 'HOUSE' : 'APARTMENT')) reasons.push('PROPERTY_TYPE_MISMATCH');
+    /* The family must match. Before 2026-10-12 only HOUSE vs APARTMENT was compared,
+       so an apartment seeker for a land plot or a shop was kept as a WEAK lead. */
+    if (r.propertyType && r.propertyType !== familyOf(dna)) reasons.push('PROPERTY_TYPE_MISMATCH');
   }
   /* 7: evidence must be current. */
   if (ctx.ageDays == null) reasons.push('UNDATED');
@@ -183,4 +188,9 @@ export function legacyIntentClass(q: Qualification, counterpart: 'BUYER' | 'TENA
   }
   const high = q.category === 'STRONG' || q.category === 'POTENTIAL';
   return counterpart === 'TENANT' ? (high ? 'TENANT_HIGH' : 'TENANT_MEDIUM') : (high ? 'BUYER_HIGH' : 'BUYER_MEDIUM');
+}
+
+/** The DNA's family; a DNA stored before `family` existed derives it from its type. */
+export function familyOf(dna: { propertyType: string | null; family?: PropertyFamily }): PropertyFamily {
+  return dna.family ?? propertyFamily(dna.propertyType);
 }

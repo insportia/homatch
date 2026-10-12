@@ -3,7 +3,8 @@
 // photo (the 2026-10-04 MyHome case), and is offered as an action otherwise.
 // Same property; nothing an owner added is removed.
 import React, { useEffect, useRef, useState } from 'react';
-import { Images, Loader2 } from 'lucide-react';
+import { ImagePlus, Images, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { refreshPropertyMedia } from '@/services/propertyLifecycle';
@@ -17,6 +18,9 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
   const [busy, setBusy] = useState(false);
   /* Why photos cannot be brought in, kept on screen (an automatic try shows no toast). */
   const [note, setNote] = useState<string | null>(null);
+  /* The source no longer shows the listing: its photos can never be refreshed from
+     there, so the owner's own upload is the only way to the correct photos. */
+  const [gone, setGone] = useState(false);
   const autoTried = useRef(false);
 
   const run = async (auto: boolean) => {
@@ -33,7 +37,7 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
     } catch (e) {
       /* Say WHY: a listing the source no longer shows is not "could not be read". */
       const code = (e as { code?: string | null })?.code ?? null;
-      if (code === 'LISTING_NOT_AVAILABLE') setNote(t('fbl_media_listing_gone'));
+      if (code === 'LISTING_NOT_AVAILABLE') { setNote(t('fbl_media_listing_gone')); setGone(true); }
       if (!auto) toast.error(t(code === 'LISTING_NOT_AVAILABLE' ? 'fbl_media_listing_gone' : code === 'UNSUPPORTED_SOURCE' ? 'fbl_media_unsupported' : 'fbl_media_failed'));
     } finally {
       setBusy(false);
@@ -57,6 +61,12 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
         {t(busy ? 'fbl_media_refreshing' : 'fbl_media_refresh')}
       </button>
       {note && !busy ? <p className="mt-1.5 text-2xs text-[hsl(218_20%_40%)]" role="status" data-testid="media-refresh-note">{note}</p> : null}
+      {gone && !busy ? (
+        <Link to={`/property/${propertyId}/edit#section-photos`} data-testid="media-add-own"
+          className="mt-1.5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[hsl(38_92%_54%)] px-3 text-2xs font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
+          <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />{t('fbl_media_add_own')}
+        </Link>
+      ) : null}
     </>
   );
 }

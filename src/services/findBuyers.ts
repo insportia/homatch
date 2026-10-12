@@ -96,6 +96,8 @@ export interface FindBuyersCampaignState {
     qualified?: number;
     strong?: number;
     duplicatesRemoved?: number;
+    /** The adaptive search ladder, owner-safe (no costs, no queries). */
+    searchPasses?: { rounds: number; passes: string[]; stop: string | null };
   };
   finalized_at: string | null;
   last_activity_at: string | null;
@@ -316,12 +318,15 @@ const LEAD_COLUMNS = 'id,matching_job_id,counterpart,source,intent_class,overall
 const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit';
 
 /** One page of leads, strongest first, stable order (server-side range). */
-export async function getPropertyLeadsPage(propertyId: string, page: number, pageSize: number): Promise<{ rows: PotentialLead[]; total: number }> {
+export async function getPropertyLeadsPage(
+  propertyId: string, page: number, pageSize: number, opts: { qualifiedOnly?: boolean } = {},
+): Promise<{ rows: PotentialLead[]; total: number }> {
   const from = Math.max(0, page - 1) * pageSize;
-  const read = (columns: string) => supabase
+  const base = (columns: string) => supabase
     .from('find_buyers_current_leads')
     .select(columns, { count: 'exact' })
-    .eq('property_id', propertyId)
+    .eq('property_id', propertyId);
+  const read = (columns: string) => (opts.qualifiedOnly ? base(columns).in('match_category', ['STRONG', 'POTENTIAL']) : base(columns))
     .order('overall_score', { ascending: false })
     .order('created_at', { ascending: false })
     .order('id', { ascending: true })
@@ -329,6 +334,9 @@ export async function getPropertyLeadsPage(propertyId: string, page: number, pag
   /* Qualification columns first; a database without them (before the
      qualification migration) still answers with the legacy columns. */
   let { data, error, count } = await read(`${LEAD_COLUMNS},${QUALIFICATION_COLUMNS}`);
+  /* qualifiedOnly never falls back to unreviewed leads: without the
+     qualification columns there is nothing qualified to show. */
+  if (error && opts.qualifiedOnly) return { rows: [], total: 0 };
   if (error) ({ data, error, count } = await read(LEAD_COLUMNS));
   if (error) return { rows: [], total: 0 };
   return {

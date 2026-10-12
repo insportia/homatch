@@ -70,7 +70,8 @@ test('the request: the pictures and the reading, a strict schema; the edge funct
   assert.match(body.input[1].content.at(-1).text, /"key":"hall"/);
   const src = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
   assert.match(src, /draftRequest\(SPACE_MODEL, draftImages, read\)/);
-  assert.match(src, /const useDraft = !!fromDraft && !\('problems' in fromDraft\) && fromDraft\.layout === 'READ' && fromDraft\.geometryCheck\.verdict === 'PASS';/);
+  assert.match(src, /const asRead = \(x: ReturnType<typeof spaceOf> \| null\) => !!x && !\('problems' in x\) && x\.layout === 'READ' && x\.geometryCheck\.verdict === 'PASS';/);
+  assert.match(src, /const useDraft = !useArchitect && asRead\(fromDraft\);/);
   assert.match(src, /reading: kept,/);
   assert.match(src, /purpose: 'WALK_SPACE_DRAFT'/);
 });

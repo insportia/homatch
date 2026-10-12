@@ -1,7 +1,9 @@
 /* ── 3D tour, while it is made (WalkWaiting.tsx) ─────────────────────────
-   The home's plan draws itself in gold, its rooms fill, its furniture settles
-   in, a soft light sweeps it; the bar carries a slow sheen and the steps
-   settle as they change. Reduced motion: the finished drawing, still. */
+   Plan after plan draws itself (a gold pen runs the outline, the partitions
+   follow), its rooms fill, its furniture settles in, its lamps glow, then it
+   gives way to the next — for as long as the work lasts. A soft light sweeps
+   it; the bar carries a slow sheen; the steps settle as they change.
+   Reduced motion: one finished drawing, still. */
 @keyframes hm-walk-draw { to { stroke-dashoffset: 0; } }
 @keyframes hm-walk-fill { from { opacity: 0; } to { opacity: 1; } }
 @keyframes hm-walk-piece {
@@ -26,6 +28,14 @@
   0% { opacity: 0.4; transform: translateX(-4px); }
   100% { opacity: 1; transform: translateX(0); }
 }
+@keyframes hm-walk-out {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.985); }
+}
+@keyframes hm-walk-pen {
+  0%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
 @keyframes hm-walk-breathe {
   0%, 100% { box-shadow: 0 0 0 0 rgba(233, 185, 73, 0.45); }
   50% { box-shadow: 0 0 0 6px rgba(233, 185, 73, 0); }
@@ -39,12 +49,15 @@
 .hm-walk-sheen { animation: hm-walk-sheen 2.2s ease-in-out infinite; }
 .hm-walk-step { animation: hm-walk-step 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
 .hm-walk-dot { animation: hm-walk-breathe 1.8s ease-in-out infinite; }
+.hm-walk-cycle { transform-box: view-box; transform-origin: center; animation: hm-walk-out 0.6s ease-in 6.85s forwards; }
+.hm-walk-pen { animation: hm-walk-pen 1.7s ease-out forwards; }
 .hm-walk-bar { transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1); }
 
 @media (prefers-reduced-motion: reduce) {
   .hm-walk-wall { animation: none; stroke-dashoffset: 0; }
   .hm-walk-room, .hm-walk-piece { animation: none; opacity: 1; transform: none; }
-  .hm-walk-light, .hm-walk-scan, .hm-walk-sheen, .hm-walk-step, .hm-walk-dot { animation: none; }
+  .hm-walk-light, .hm-walk-scan, .hm-walk-sheen, .hm-walk-step, .hm-walk-dot, .hm-walk-cycle { animation: none; }
+  .hm-walk-pen { display: none; }
   .hm-walk-scan, .hm-walk-sheen { opacity: 0; }
   .hm-walk-bar { transition: none; }
 }

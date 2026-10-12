@@ -47,7 +47,7 @@ test('the reconstruction reader is reused with a walk brief: source pictures for
   assert.match(walkRoute, /input: \[\{ role: 'system', content: RECON_SYSTEM \}, \{ role: 'user', content \}\]/, 'the existing reconstruction reader');
   // Read with each picture's shape and the selected render's measured frame, then made buildable (readingRepair.ts).
   assert.match(walkRoute, /const \{ recon: read \} = validateReconstruction\(raw, images\.length, \{\s*\/\/[^\n]*\n\s*imageAspects: images\.map\(\(img\) => img\.aspect\),\s*frames: measured && viewIndex != null \? \[\{ image: selected, view: viewIndex, frame: measured\.frame \}\] : \[\],/);
-  assert.match(walkRoute, /const spaceOf = \(recon: typeof read\) => spaceFromReading\(recon, \{[\s\S]*const built = useDraft \? fromDraft! : spaceOf\(read\);/);
+  assert.match(walkRoute, /const spaceOf = \(recon: typeof read\) => spaceFromReading\(recon, \{[\s\S]*const built = useArchitect \? fromArchitect! : useDraft \? fromDraft! : spaceOf\(read\);/);
   assert.match(code('src/lib/designStudio/walkthrough/photoSpace.ts'), /const repaired = repairReading\(read\);\s*const recon = repaired\.recon;/);
   assert.deepEqual([basisOf('OBSERVED', 0.2), basisOf('INFERRED', 0.8), basisOf('INFERRED', 0.5), basisOf('INFERRED', 0.2)], ['OBSERVED', 'INFERRED_HIGH', 'INFERRED_MEDIUM', 'INFERRED_LOW']);
 });

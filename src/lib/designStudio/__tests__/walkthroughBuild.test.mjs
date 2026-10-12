@@ -384,5 +384,8 @@ test('a WC or wash room too small to have floor clear of its door is still reach
   assert.match(src, /if \(!best \|\| best\.n <= now\) \{/);
   // And when the way is held by what is never removed (fittings, a bed, the kitchen): one of them is moved, never removed.
   assert.match(src, /const fixed = standing\(\)\.filter\(\(p\) => p\.rank >= 5\)/);
-  assert.match(src, /if \(moved\) continue;\n      break;/);
+  assert.match(src, /if \(!near\.length\) \{ if \(moveFixed\(way, better\)\) continue; break; \}/);
+  assert.match(src, /if \(moveFixed\(way, better\)\) continue;\n      break;/);
+  // And the aisle guarantee: nothing stands on the aisle from any door to its room's free floor.
+  assert.match(src, /const blockers = standing\(\)\.filter\(\(p\) => onAisle\(p\.box\)\)/);
 });

@@ -112,15 +112,16 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
     else if (r.reconstructing) setReconstructing(true);
     else { setReconstructing(false); setProblem(t('dsx_walk_unavailable')); }
   };
-  // The space is being reconstructed on the server: the same request again until the walkthrough exists.
+  // The space is being reconstructed (or read again) on the server: the same request again until the new
+  // walkthrough exists — also when an earlier tour of this design is on the page.
   useEffect(() => {
-    if (!reconstructing || walk) return;
+    if (!reconstructing) return;
     const timer = setInterval(() => { void start(false); }, SPACE_POLL_MS);
     return () => clearInterval(timer);
-  }, [reconstructing, walk]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reconstructing]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back on the page while the server reconstructs the space (or with the tour already asked): picked up again.
   useEffect(() => {
-    if (!loaded || walk) return;
+    if (!loaded) return;
     try { if (window.sessionStorage.getItem(`hm-ds-walk:${designVersionId}`) === '1') void start(false); } catch { /* private mode */ }
   }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -151,7 +152,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
 
       {problem ? <p role="alert" className="mt-3 rounded-2xl bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{problem}</p> : null}
 
-      {!walk && reconstructing ? (
+      {reconstructing ? (
         <div className="mt-4" role="status" aria-live="polite" data-testid="walk-reconstructing">
           <ol className="space-y-2">
             <li className="flex items-center gap-2 text-[15px] font-semibold text-[#0C1119]" aria-current="step" data-testid="walk-step-space"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('dsx_walk_step_space')}</li>

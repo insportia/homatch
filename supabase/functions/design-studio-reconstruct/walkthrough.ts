@@ -61,6 +61,7 @@ import { failure, inBackground, isFresh, kick, readFailure } from './durable.ts'
 import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
 import { mostlyInferred, WALK_BRIEF_VERSION, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
+import { applyDraft, draftRequest, PLAN_DRAFT_VERSION } from '../../../src/lib/designStudio/walkthrough/planDraft.ts';
 import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
 import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
 import { PHOTO_SPACE_VERSION, spaceFromReading, type PhotoSpace } from '../../../src/lib/designStudio/walkthrough/photoSpace.ts';
@@ -350,13 +351,32 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
     imageAspects: images.map((img) => img.aspect),
     frames: measured && viewIndex != null ? [{ image: selected, view: viewIndex, frame: measured.frame }] : [],
   });
+  // The architect's draft (planDraft.ts): the reading redrawn as an orthogonal plan in its own frame, from the plan
+  // view and the selected picture. Used when it is a plan and passes the geometry check as read; else the reading
+  // stands as before (squared, or laid out again from its pieces).
+  const draftImages = [...(measured ? [`data:image/jpeg;base64,${b64(measured.view)}`] : []), ...(selected >= 0 ? [images[selected].url] : []), ...(images[0] ? [images[0].url] : [])];
+  const draftAsked = Date.now();
+  const draftPayload: Row = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(draftRequest(SPACE_MODEL, draftImages, read)), signal: AbortSignal.timeout(150_000),
+  }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const draftCost = draftPayload ? await meterAiCall(admin, { userId: a.actorId, productCode: 'DS_RECONSTRUCT', jobRef: a.jobId, model: SPACE_MODEL, startedAt: draftAsked }, draftPayload,
+    { purpose: 'WALK_SPACE_DRAFT', generator: 'OPENAI_FIRST' }) : null;
+  if (draftCost?.aiCents != null && 'cost_cents' in paid) (paid as Row).cost_cents = ((paid as Row).cost_cents ?? 0) + draftCost.aiCents;
+  let draftRaw: unknown = null;
+  try { draftRaw = draftPayload ? JSON.parse(textOf(draftPayload)) : null; } catch { draftRaw = null; }
+  const drafted = draftRaw ? applyDraft(read, draftRaw) : null;
   // Squared, completed, built, furnished from the selected render and checked against the evidence — laid out again
   // from its pieces when the read outlines fail that check (photoSpace.ts). Pure: rebuilt later from the kept reading.
   const lighting = measured?.lighting ?? null;
-  const built = spaceFromReading(read, {
+  const spaceOf = (recon: typeof read) => spaceFromReading(recon, {
     sourceKey: `walk-space:${a.photoSource.id}`, expected: expectedOfUnderstanding(u),
-    furnish: selected >= 0 && a.renderId ? (recon, floors) => furnishingFromReading(recon, floors, a.renderId!, selected, lighting) : null,
+    furnish: selected >= 0 && a.renderId ? (rc, floors) => furnishingFromReading(rc, floors, a.renderId!, selected, lighting) : null,
   });
+  const fromDraft = drafted ? spaceOf(drafted.recon) : null;
+  const useDraft = !!fromDraft && !('problems' in fromDraft) && fromDraft.layout === 'READ' && fromDraft.geometryCheck.verdict === 'PASS';
+  const built = useDraft ? fromDraft! : spaceOf(read);
+  const kept = useDraft ? drafted!.recon : read;
   if ('problems' in built) return fail(`SPACE_NOT_BUILDABLE:${built.problems.slice(0, 3).join(',')}`, false, paid);
   const { space, geometryCheck, furnishing } = built;
   const made = await recordSpace(admin, { ...a, frameMeasured: !!measured }, built);
@@ -367,7 +387,9 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
       kind: 'WALK_SPACE', sourceId: made, rooms: space.reachable.length + space.unreachable.length, repairs: space.repairs.length, basis: space.basis, mostlyInferred: mostlyInferred(space.basis),
       geometry: geometryCheck.verdict,
       // The validated reading itself (no pictures in it): the space can be rebuilt from it by better code, never bought again.
-      reading: read,
+      // When the architect's draft was used, the drafted reading is the one kept (and rebuilt from).
+      reading: kept,
+      planDraft: { version: PLAN_DRAFT_VERSION, asked: !!draftPayload, valid: !!drafted, used: useDraft, split: drafted?.split ?? [], rejected: drafted && !useDraft ? (fromDraft && 'problems' in fromDraft ? 'NOT_BUILDABLE' : `${(fromDraft as Row)?.layout}:${(fromDraft as Row)?.geometryCheck?.verdict}`) : null },
       ...(a.renderId ? { renderId: a.renderId, frameMeasured: !!measured, pieces: furnishing ? { read: furnishing.read, traced: furnishing.traced } : null } : {}),
     },
   }).eq('id', a.jobId).eq('status', 'RUNNING');

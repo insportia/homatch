@@ -102,7 +102,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** How often a background scene plan is asked for its answer, and how long it is waited for. */
 const PLAN_RESPONSE_POLL_MS = 10_000;
-const PLAN_RESPONSE_MAX_MS = 12 * 60_000;
+// A plan takes 2–4 minutes; one not answered in 6 is not waited for again (the rule plan follows: plan() below).
+const PLAN_RESPONSE_MAX_MS = 6 * 60_000;
 /** How long the AI's review of a built layout is waited for before the tour goes on without it. */
 const REVIEW_MAX_MS = 8 * 60_000;
 /** The AI layout review (layoutReview.ts) runs on every tour with a picture unless switched off here. */
@@ -1160,7 +1161,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
     const { data: same } = await admin.from('ds_walkthroughs').select('id, state, scene_plan, plan_report').eq('project_id', row.project_id).in('state', ['READY', 'FAILED'])
       .eq('timings->>planKey', planKey).neq('id', row.id).order('created_at', { ascending: false }).limit(6);
     const hit = (same ?? []).map((w: Row) => ({ id: w.id, plan: w.state === 'READY' ? w.scene_plan : w.plan_report?.final?.scenePlan ?? null, graph: w.state === 'READY' ? graphOf(w.plan_report) : null }))
-      .filter((x: Row) => x.plan?.rooms && x.plan.reference)
+      // A rule plan (the model did not answer) is never reused: the next walkthrough asks the model again.
+      .filter((x: Row) => x.plan?.rooms && x.plan.reference && !String(x.plan.summary ?? '').startsWith('HOMATCH rule plan'))
       // A READY walkthrough with its graph first: its plan was proven buildable as the design, a failed one's was not.
       .sort((p: Row, q: Row) => Number(!!q.graph) - Number(!!p.graph))[0];
     if (hit) { reused = keepRooms(hit.plan); reusedFrom = hit.id; reusedGraph = hit.graph; }
@@ -1175,15 +1177,23 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // minutes never races the edge runtime's wall clock, and a paid answer is never lost with a killed invocation.
   // Waiting for it is not a plan attempt; a model that refuses background mode is asked as before.
   const pending = row.timings?.planResponse as { id?: string; at?: string } | undefined;
+  // Plans the model never delivered (timed out, failed, cut off), with why: after one, the walkthrough is planned by
+  // HOMATCH's own rules — the design graph and each room's programme place every piece — never waited on again.
+  const misses: Row[] = Array.isArray(row.timings?.planMisses) ? row.timings.planMisses : [];
+  let missed: Row | null = null;
+  let ruled = false;
   if (!reused && pending?.id) {
     const got = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(pending.id)}`, { headers: { Authorization: `Bearer ${apiKey}` } })
-      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    const waiting = !got || got.status === 'queued' || got.status === 'in_progress';
+      .then(async (r) => (r.ok ? r.json() : { status: `HTTP_${r.status}` })).catch(() => null);
+    const waiting = !got || got.status === 'queued' || got.status === 'in_progress' || /^HTTP_5/.test(String(got.status));
     if (waiting && Date.now() - Date.parse(pending.at ?? '') < PLAN_RESPONSE_MAX_MS) {
       await release(admin, row, { plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS) });
       return;
     }
     payload = got?.status === 'completed' ? got : null;
+    if (!payload) missed = { id: pending.id, status: String(got?.status ?? 'NO_ANSWER'), reason: got?.error?.code ?? got?.incomplete_details?.reason ?? null, at: iso(Date.now()) };
+  } else if (!reused && misses.length) {
+    ruled = true;
   } else if (!reused) try {
     const body = refInput ? referenceSceneRequest(MODEL, input, refInput) : sceneRequest(MODEL, input);
     const ask = (extra: Row) => fetch('https://api.openai.com/v1/responses', {
@@ -1201,6 +1211,9 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const text = payload ? textOf(payload) : '';
   let raw: unknown = null;
   try { raw = text ? JSON.parse(text) : null; } catch { raw = null; }
+  // The rule plan: every room named, no finishes or pieces proposed — the design graph, the room programme and the
+  // default finishes of the design's style fill them (validateScenePlan, buildWalkthrough).
+  if (ruled) raw = { summary: 'HOMATCH rule plan: the model did not answer', lighting: null, rooms: input.rooms.map((x) => ({ roomId: x.id, floor: null, walls: null, accentWall: null, ceiling: null, furniture: [] })) };
   const validated: ValidatedScenePlan | null = reused ?? (raw ? validateScenePlan(raw, input, refInput ? { reference: { view: refInput.view, home } } : {}) : null);
   const step = refInput ? (replan ? 'walkthrough_reference_replan' : 'walkthrough_reference_plan') : 'walkthrough_scene_plan';
   // Asked in the background: its time runs from when it was asked.
@@ -1211,9 +1224,9 @@ async function plan(admin: Row, row: Row): Promise<void> {
     : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - askedAt, attempt: row.plan_attempts, step };
   const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload || (reused && reusedFrom !== row.id) ? [costLine] : []), ...(reviewCost ? [reviewCost] : [])];
   const { planResponse: _answered, ...earlier } = (row.timings ?? {}) as Row;
-  const timings = { ...earlier, ...(provenance ? { reference: provenance, planKey } : {}) };
+  const timings: Row = { ...earlier, ...(provenance ? { reference: provenance, planKey } : {}), ...(missed ? { planMisses: [...misses, missed].slice(-6) } : {}), ...(ruled ? { planRuled: { at: iso(Date.now()), misses: misses.length } } : {}) };
   if (!validated || !validated.rooms.length) {
-    await release(admin, row, { error: payload ? 'PLAN_INVALID' : 'PLAN_UNAVAILABLE', cost, timings, next_check_at: iso(Date.now() + 15_000) });
+    await release(admin, row, { error: payload ? 'PLAN_INVALID' : 'PLAN_UNAVAILABLE', cost, timings, next_check_at: iso(Date.now() + (missed ? 1_000 : 15_000)) });
     return;
   }
 

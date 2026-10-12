@@ -68,6 +68,9 @@ test('A: a generated design with no floor plan starts its walkthrough (no upload
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
   for (const gone of [/walk-needs-plan/, /walk-add-plan/, /onAddPlan/, /dsx_walk_needs_/, /dsx_walk_missing_/]) assert.doesNotMatch(panel, gone);
   assert.match(panel, /data-testid="walk-reconstructing"/);
+  // Shown and followed also when an earlier tour of the design is on the page (a plan read again for a new tour).
+  assert.match(panel, /\{reconstructing \? \(/);
+  assert.match(panel, /if \(!reconstructing\) return;\s*const timer = setInterval\(\(\) => \{ void start\(false\); \}, SPACE_POLL_MS\);/);
   assert.doesNotMatch(code('src/components/designStudio/unified/DesignResult.tsx'), /start=floorplan/, 'the Result never sends the customer to upload the property again');
   // The isometric apartment of the reconstruction fixtures: a real navigable scene, every indoor room reached.
   const raw = JSON.parse(code('src/lib/designStudio/__tests__/fixtures/isometric-apartment.recon.json'));

@@ -103,14 +103,15 @@ export interface ProofActor extends ActorFacts {
   start_fee_micros?: number | null;
   probe_size: number;
   max_results: number;
-  campaign_spend_cap_micros: number;
+  /** NULL = no per-Actor cap (2026-10-12): the campaign provider budget is the only bound. */
+  campaign_spend_cap_micros: number | null;
 }
 
 export interface ProofLine {
   actorKey: string;
   probeMicros: number | null;
   maxMicros: number | null;
-  capMicros: number;
+  capMicros: number | null;
   priced: boolean;
 }
 
@@ -125,20 +126,22 @@ export interface ProofPlan {
 
 /**
  * The bound of one user-triggered proof search over the chosen Actors. The
- * maximum provider exposure is min(sum of per-Actor campaign caps, provider
- * budget); the customer is never charged more than the reservation.
+ * maximum provider exposure is the provider budget (or less, when every chosen
+ * Actor still carries a per-Actor cap); the customer is never charged more
+ * than the reservation.
  */
 export function proofPlan(actors: ProofActor[], opts: { credits: number; creditsPerUsd: number; providerShareBps: number }): ProofPlan {
   const lines = actors.map((a) => {
     const probe = runEstimateMicros(a, a.probe_size);
     const max = runEstimateMicros(a, a.max_results);
-    return { actorKey: a.actor_key, probeMicros: probe, maxMicros: max == null ? null : Math.min(max, a.campaign_spend_cap_micros),
-      capMicros: a.campaign_spend_cap_micros, priced: probe != null };
+    return { actorKey: a.actor_key, probeMicros: probe, maxMicros: max == null ? null : a.campaign_spend_cap_micros == null ? max : Math.min(max, a.campaign_spend_cap_micros),
+      capMicros: a.campaign_spend_cap_micros ?? null, priced: probe != null };
   });
   const budget = Math.floor(opts.credits / opts.creditsPerUsd * 1e6 * opts.providerShareBps / 10000);
   const unpriced = lines.filter((l) => !l.priced).map((l) => l.actorKey);
   const estimated = unpriced.length ? null : lines.reduce((s, l) => s + (l.probeMicros ?? 0), 0);
-  const maxProvider = Math.min(budget, lines.reduce((s, l) => s + l.capMicros, 0));
+  const capped = lines.every((l) => l.capMicros != null);
+  const maxProvider = capped ? Math.min(budget, lines.reduce((s, l) => s + (l.capMicros ?? 0), 0)) : budget;
   return { lines, estimatedProviderMicros: estimated, maxProviderMicros: maxProvider,
     customerReservationCredits: opts.credits, maxCustomerChargeCredits: opts.credits, unpriced };
 }

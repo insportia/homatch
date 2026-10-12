@@ -253,13 +253,13 @@ function hashKey(s: string) {
 
 export async function enabledActorMap(db: any, maxAgeDays: number) {
   const { data } = await db.from('find_buyers_actor_registry')
-    .select('actor_key,probe_size,priority,enabled,emergency_disabled,health,pricing_verified_at,pricing_model,price_per_1k_micros,start_fee_micros');
-  const out: Record<string, { probeSize: number; priority: number; startFeeMicros: number; pricePer1kMicros: number }> = {};
+    .select('actor_key,probe_size,max_results,priority,enabled,emergency_disabled,health,pricing_verified_at,pricing_model,price_per_1k_micros,start_fee_micros');
+  const out: Record<string, { probeSize: number; maxResults: number; priority: number; startFeeMicros: number; pricePer1kMicros: number }> = {};
   const cutoff = Date.now() - maxAgeDays * 86_400_000;
   for (const a of (data ?? []) as any[]) {
     if (!a.enabled || a.emergency_disabled || a.health === 'DISABLED') continue;
     if (!a.pricing_verified_at || Date.parse(a.pricing_verified_at) < cutoff || a.pricing_model === 'UNKNOWN' || a.price_per_1k_micros == null) continue;
-    out[a.actor_key] = { probeSize: Number(a.probe_size) || 20, priority: Number(a.priority) || 50,
+    out[a.actor_key] = { probeSize: Number(a.probe_size) || 20, maxResults: Number(a.max_results) || Number(a.probe_size) || 20, priority: Number(a.priority) || 50,
       startFeeMicros: Number(a.start_fee_micros ?? 0), pricePer1kMicros: Number(a.price_per_1k_micros) };
   }
   return out;

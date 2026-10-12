@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   actorExhausted, fallbackActions, flexBand, nextStep, stopIsPremature, validateActions, evidenceForModel,
-  MAX_ADAPTIVE_ROUNDS, ADAPTIVE_ACTION_SCHEMA,
+  MAX_ADAPTIVE_ROUNDS, ADAPTIVE_ACTION_SCHEMA, AI_RESERVE_MICROS,
 } from '../findBuyers/adaptiveLoop.ts';
 import { classifyDemand } from '../findBuyers/demandClassifier.ts';
 import { qualify } from '../findBuyers/qualify.ts';
@@ -131,13 +131,14 @@ test('8. an Actor that repeatedly returns nothing is not run again', () => {
   assert.equal(actorExhausted(actor('TIKTOK', { globalRuns: 10, globalItems: 150, globalQualified: 0 })), 'NO_YIELD_ACROSS_CAMPAIGNS', 'learned across campaigns');
 });
 
-test('9. budget exhausted: the loop stops honestly, and a round never commits past its share of what is left', () => {
+test('9. budget exhausted: the loop stops honestly, and a round never commits past what is left (OpenAI reserve kept)', () => {
   assert.deepEqual(nextStep(evidence({ spentMicros: 2_799_000 }), GATES), { kind: 'STOP', reason: 'BUDGET_EXHAUSTED' });
-  const tight = evidence({ spentMicros: 2_700_000 });
+  const tight = evidence({ spentMicros: 2_650_000 });
   const many = ['Сабуртало', 'Ваке', 'Сололаки', 'Глдани', 'Дидубе', 'Исани', 'Надзаладеви', 'Мтацминда'].map((d) => ({ language: 'ru', query: `недвижимость ${d} Тбилиси` }));
   const v = validateActions([{ type: 'EXPLORE_SOURCES', stage: 'FB_GROUP_SEARCH', actorKey: null, queries: many, urls: [], rationale: '' }],
     { evidence: tight, gates: GATES, pass: 'EXPLORE' });
-  assert.ok(v.committedMicros <= 0.6 * 100_000);
+  assert.ok(v.committedMicros <= 150_000 - AI_RESERVE_MICROS, `committed ${v.committedMicros}`);
+  assert.ok(v.jobs.length > 0, 'what fits is still searched');
   assert.ok(v.rejected.some((r) => r.reason === 'OVER_BUDGET'));
   assert.deepEqual(nextStep(evidence({ round: MAX_ADAPTIVE_ROUNDS }), GATES), { kind: 'STOP', reason: 'MAX_ROUNDS' });
 });
@@ -200,4 +201,44 @@ test('the driver runs an adaptive round before finalizing a drained campaign', a
   const finalize = src.indexOf("status: 'classifying', progress: 82");
   assert.ok(hook > 0 && finalize > hook, 'adaptiveRound must run before the campaign moves to classifying');
   assert.match(src.slice(hook, finalize), /queued > 0[\s\S]*continue;/);
+});
+
+test('the AI sizes each run; code only keeps it inside the Actor and the round budget', async () => {
+  const { runSize } = await import('../findBuyers/adaptiveLoop.ts');
+  const posts = { ...GATES.FB_GROUP_POSTS, maxResults: 100 };
+  assert.equal(runSize(posts, null), 20, 'no proposal → probe size');
+  assert.equal(runSize(posts, 60), 60, 'the AI\'s size is used as given');
+  assert.equal(runSize(posts, 5000), 100, 'never above what the Actor accepts');
+  assert.equal(runSize(posts, 1), 5, 'never a run too small to be worth its start fee');
+  const gates = { ...GATES, FB_GROUP_SEARCH: { ...GATES.FB_GROUP_SEARCH, maxResults: 40 } };
+  const e = evidence({ budgetMicros: 5_000_000, spentMicros: 0 });
+  const big = validateActions([{ type: 'EXPLORE_SOURCES', stage: 'FB_GROUP_SEARCH', actorKey: 'FB_GROUP_SEARCH',
+    queries: [{ language: 'ru', query: 'Квартиры Тбилиси купить' }], urls: [], itemsPerRun: 40, rationale: 'groups pay off' }],
+    { evidence: e, gates, pass: 'EXPLORE' });
+  assert.equal(big.jobs[0]?.size, 40, JSON.stringify(big.rejected));
+  /* The model sees each Actor's price and the round allowance, so it can do the arithmetic itself. */
+  const m = evidenceForModel(e, 'EXPLORE', gates);
+  assert.equal(m.budget.allocatableUsd, 4.95, 'all of the remaining $5 except the OpenAI reserve: no fixed share');
+  assert.deepEqual(m.pricing.find((p) => p.actorKey === 'FB_GROUP_SEARCH'),
+    { actorKey: 'FB_GROUP_SEARCH', startFeeUsd: 0.008, pricePer1kUsd: 1.9, defaultItemsPerRun: 10, maxItemsPerRun: 40 });
+  assert.ok(ADAPTIVE_ACTION_SCHEMA.schema.properties.actions.items.required.includes('itemsPerRun'), 'strict schema carries the size');
+});
+
+test('OpenAI spend counts against the same provider budget; there is no fixed per-round or per-Actor share', () => {
+  const e = evidence({ budgetMicros: 5_000_000, spentMicros: 4_000_000, aiSpentMicros: 300_000 });
+  const m = evidenceForModel(e, 'SEMANTIC', GATES);
+  assert.equal(m.budget.remainingUsd, 1);
+  assert.equal(m.budget.modelSpentUsd, 0.3);
+  /* One Actor may take everything allocatable when the AI decides so. */
+  const big = validateActions([{ type: 'REFINE_QUERIES', stage: 'TIKTOK_SEARCH', actorKey: 'TIKTOK',
+    queries: [{ language: 'ru', query: 'куплю квартиру в Тбилиси' }], urls: [], itemsPerRun: 400, rationale: 'all in' }],
+    { evidence: e, gates: { ...GATES, TIKTOK: { ...GATES.TIKTOK, maxResults: 400 } }, pass: 'SEMANTIC' });
+  assert.equal(big.jobs.length, 1, JSON.stringify(big.rejected));
+  assert.equal(big.committedMicros, 8_000 + 800_000);
+  /* …but never more than the budget minus the OpenAI reserve. */
+  const over = validateActions([{ type: 'REFINE_QUERIES', stage: 'TIKTOK_SEARCH', actorKey: 'TIKTOK',
+    queries: [{ language: 'ru', query: 'куплю квартиру в Тбилиси' }], urls: [], itemsPerRun: 600, rationale: 'too much' }],
+    { evidence: e, gates: { ...GATES, TIKTOK: { ...GATES.TIKTOK, maxResults: 600 } }, pass: 'SEMANTIC' });
+  assert.equal(over.jobs.length, 0);
+  assert.equal(over.rejected[0].reason, 'OVER_BUDGET');
 });

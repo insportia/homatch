@@ -30,7 +30,16 @@ MATTERS right now, verify against the live systems, not this file)
   offers "Upload your own photos" when the listing is gone.
 - **Demo** migration `20261029090000_owner_demo_lead` is on main, NOT in the prod ledger
   (the only pending one). Apply via deploy.yml `run_migrations` dispatch.
-- No paid Actor run started; the first capped VILLION live test awaits owner approval.
+- **Budget architecture (owner, 2026-10-12)**: 100-credit minimum and provider budget
+  (credits ÷ credits_per_usd × provider_share_bps) unchanged. Per-Actor daily/campaign caps
+  removed (migration `20261031090000_find_buyers_no_actor_caps`: NULL = none; an admin-set cap
+  still applies). The reserve RPC now counts the campaign's OpenAI ledger rows as committed,
+  so Actor runs + OpenAI never pass the provider budget. Campaign row lock, idempotency
+  replay, per-Actor concurrency, global run slots, release-on-failure unchanged
+  (`tests/sql/find_buyers_no_actor_caps.sql`). The AI chooses Actor, query, itemsPerRun and
+  how much of the allocatable budget (remaining − $0.05 model reserve) to spend; no fixed shares.
+- VILLION live test approved by the owner; it starts only after PR #190 is merged, deployed
+  and production readiness is verified.
 
 ## Verify v3 — newest-two TAS full fidelity, professionals, legal position, register reuse, timing (2026-10-11) — PR OPEN
 - Forensic audit of job 220ed087 (read-only SQL): AR11161121 (newest, 2026-09-17) stored with

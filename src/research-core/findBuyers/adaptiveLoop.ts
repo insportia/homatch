@@ -6,7 +6,7 @@
 //
 // NOW, whenever a campaign's queue drains before its deadline:
 //
-//   evidence  →  next pass on a bounded fallback ladder  →  OpenAI proposes actions
+//   evidence  →  next pass on a bounded fallback ladder  →  the model proposes actions
 //             →  this file validates every action  →  queue only what passes
 //             →  or stop, with an honest reason and the coverage that was searched.
 //
@@ -39,8 +39,17 @@ export const MAX_ADAPTIVE_ROUNDS = 4;
 export const MAX_JOBS_PER_ROUND = 6;
 /** Controlled numeric flexibility for the FLEXIBLE pass (±12%). */
 export const FLEX = 0.12;
-/** Share of the remaining budget one round may commit (the rest stays for later passes). */
-export const ROUND_BUDGET_SHARE = 0.6;
+/**
+ * Kept free of Actor runs for the campaign's remaining model calls (planning,
+ * classification, these rounds): the model is paid from the same provider budget.
+ * Not an allocation rule: everything above it is the AI's to allocate.
+ */
+export const AI_RESERVE_MICROS = 50_000;
+
+/** What a round may commit to Actor runs: the whole remaining budget minus the model reserve. */
+export function allocatableMicros(e: Pick<CampaignEvidence, 'budgetMicros' | 'spentMicros'>): number {
+  return Math.max(0, remainingMicros(e) - AI_RESERVE_MICROS);
+}
 
 export type StopReason =
   | 'BUDGET_EXHAUSTED' | 'MAX_ROUNDS' | 'COVERAGE_COMPLETE' | 'NO_USABLE_ACTOR' | 'MODEL_DIMINISHING_RETURNS' | 'NOTHING_NEW_TO_SEARCH';
@@ -49,7 +58,25 @@ export type StopReason =
 export const QUERY_STAGES: readonly Stage[] = ['FB_GROUP_SEARCH', 'TIKTOK_SEARCH', 'BLUESKY_SEARCH', 'LINKEDIN_POSTS', 'REDDIT_SEARCH', 'QUORA_SEARCH'];
 const COMMENT_STAGES: readonly Stage[] = ['FB_COMMENTS', 'IG_COMMENTS'];
 
-export interface ActorGate { probeSize: number; priority: number; startFeeMicros: number; pricePer1kMicros: number }
+export interface ActorGate {
+  probeSize: number; priority: number; startFeeMicros: number; pricePer1kMicros: number;
+  /** The Actor's registry max_results: the largest run the AI may ask for. */
+  maxResults?: number;
+}
+
+/** Smallest run the AI may ask for: below this a start fee buys almost nothing. */
+export const MIN_ITEMS_PER_RUN = 5;
+
+/**
+ * How many items one run fetches. The AI decides (itemsPerRun); deterministic
+ * code only keeps it inside what the Actor accepts. No proposal → the probe size.
+ */
+export function runSize(g: ActorGate, requested: number | null | undefined): number {
+  const max = Math.max(g.probeSize, Number(g.maxResults) || g.probeSize);
+  const n = Number(requested);
+  if (!Number.isFinite(n) || n <= 0) return g.probeSize;
+  return Math.min(max, Math.max(MIN_ITEMS_PER_RUN, Math.round(n)));
+}
 
 export interface ActorEvidence {
   actorKey: string;
@@ -75,7 +102,10 @@ export interface CampaignEvidence {
   round: number;
   passesTried: Pass[];
   budgetMicros: number;
+  /** Everything committed against the provider budget: Actor runs AND the model's calls. */
   spentMicros: number;
+  /** The model-call part of spentMicros (already included there). */
+  aiSpentMicros?: number;
   sourcesDiscovered: number;
   postsInspected: number;
   signals: number;
@@ -149,7 +179,7 @@ export function nextStep(e: CampaignEvidence, gates: Record<string, ActorGate>):
   if (e.round >= MAX_ADAPTIVE_ROUNDS) return { kind: 'STOP', reason: 'MAX_ROUNDS' };
   const cheapest = cheapestRun(e, gates);
   if (cheapest == null) return { kind: 'STOP', reason: 'NO_USABLE_ACTOR' };
-  if (remainingMicros(e) < cheapest) return { kind: 'STOP', reason: 'BUDGET_EXHAUSTED' };
+  if (allocatableMicros(e) < cheapest) return { kind: 'STOP', reason: 'BUDGET_EXHAUSTED' };
   const tried = new Set<Pass>(['DIRECT', ...e.passesTried]);
   for (const pass of LADDER) {
     if (tried.has(pass)) continue;
@@ -174,6 +204,8 @@ export interface ProposedAction {
   actorKey: string | null;
   queries: Array<{ language: string; query: string }>;
   urls: string[];
+  /** The AI's run size for every job this action creates; null = the Actor's probe size. */
+  itemsPerRun?: number | null;
   rationale: string;
 }
 
@@ -189,7 +221,7 @@ export const ADAPTIVE_ACTION_SCHEMA = {
         type: 'array', maxItems: 8,
         items: {
           type: 'object', additionalProperties: false,
-          required: ['type', 'stage', 'actorKey', 'queries', 'urls', 'rationale'],
+          required: ['type', 'stage', 'actorKey', 'queries', 'urls', 'itemsPerRun', 'rationale'],
           properties: {
             type: { type: 'string', enum: [...ACTION_TYPES] },
             stage: { type: ['string', 'null'], enum: [...QUERY_STAGES, ...COMMENT_STAGES, null] },
@@ -202,6 +234,7 @@ export const ADAPTIVE_ACTION_SCHEMA = {
               },
             },
             urls: { type: 'array', maxItems: 5, items: { type: 'string', maxLength: 500 } },
+            itemsPerRun: { type: ['integer', 'null'] },
             rationale: { type: 'string', maxLength: 240 },
           },
         },
@@ -220,6 +253,10 @@ export const ADAPTIVE_SYSTEM_PROMPT = [
   'Every search phrase must be what a person who WANTS the property writes — never a seller, owner or agent phrase.',
   'Never repeat a used query or a near copy of one. Prefer the Actor and language with the best qualified-per-dollar.',
   'Stop an Actor that keeps returning nothing or irrelevant output. Use STOP_CAMPAIGN only when more searching is unlikely to pay off.',
+  'You decide where the money goes: which Actor, which query, and itemsPerRun for each action, from each Actor\'s price, its measured yield',
+  'and allocatableUsd (cost of one run = startFeeUsd + itemsPerRun × pricePer1kUsd / 1000). There are no per-Actor caps and no fixed shares:',
+  'move money to what produces qualified people per dollar and away from what does not, and decide how much to keep for the passes still ahead.',
+  'The campaign budget (your own calls included) is the only limit; anything over allocatableUsd is refused.',
 ].join(' ');
 
 /* ── validation ───────────────────────────────────────────────────────── */
@@ -260,7 +297,7 @@ function demandPhraseOk(q: string, transaction: 'SALE' | 'RENT'): boolean {
 /** A premature stop is refused: at least two adaptive passes must have run first, unless the budget is nearly spent. */
 export function stopIsPremature(e: CampaignEvidence, gates: Record<string, ActorGate>): boolean {
   const cheapest = cheapestRun(e, gates);
-  const nearlySpent = cheapest == null || remainingMicros(e) < 2 * cheapest;
+  const nearlySpent = cheapest == null || allocatableMicros(e) < 2 * cheapest;
   return e.passesTried.length < 2 && !nearlySpent;
 }
 
@@ -271,7 +308,7 @@ export function validateActions(actions: ProposedAction[], ctx: ValidationContex
   const used = e.usedQueries.map((u) => ({ language: u.language, query: u.query }));
   const usedTargets = new Set(e.usedTargets.map((t) => t.toLowerCase()));
   const promising = new Map(e.promisingParents.map((p) => [p.url.toLowerCase(), p]));
-  const allowance = Math.floor(remainingMicros(e) * ROUND_BUDGET_SHARE);
+  const allowance = allocatableMicros(e);
   const prioritized = new Set<string>();
   const reject = (a: ProposedAction, detail: string, reason: string) => out.rejected.push({ type: a.type, detail, reason });
 
@@ -314,7 +351,7 @@ export function validateActions(actions: ProposedAction[], ctx: ValidationContex
         usedTargets.add(url.toLowerCase());
         const key = STAGE_ACTOR[p.stage];
         add(a, { stage: p.stage, actorKey: key, language: 'multi', query: null, targetUrl: p.url, sourceId: null,
-          size: gates[key].probeSize, arm: `adaptive:${pass}`, priority: 80, reason: `adaptive_${pass.toLowerCase()}` });
+          size: runSize(gates[key], a.itemsPerRun), arm: `adaptive:${pass}`, priority: 80, reason: `adaptive_${pass.toLowerCase()}` });
       }
       continue;
     }
@@ -337,7 +374,7 @@ export function validateActions(actions: ProposedAction[], ctx: ValidationContex
       if (dup) { reject(a, query, 'REPEATS_A_USED_QUERY'); continue; }
       used.push({ language, query });
       add(a, { stage, actorKey: key, language: language as SearchLanguage, query, targetUrl: null, sourceId: null,
-        size: gates[key].probeSize, arm: `adaptive:${pass}`, priority: prioritized.has(key) ? 75 : 60, reason: `adaptive_${pass.toLowerCase()}` });
+        size: runSize(gates[key], a.itemsPerRun), arm: `adaptive:${pass}`, priority: prioritized.has(key) ? 75 : 60, reason: `adaptive_${pass.toLowerCase()}` });
     }
   }
   /* Best-yielding Actors first within the round. */
@@ -406,7 +443,7 @@ export function fallbackActions(e: CampaignEvidence, pass: Pass): ProposedAction
 }
 
 /** The evidence as the model reads it: numbers, never raw posts. */
-export function evidenceForModel(e: CampaignEvidence, pass: Pass) {
+export function evidenceForModel(e: CampaignEvidence, pass: Pass, gates: Record<string, ActorGate> = {}) {
   return {
     pass, round: e.round + 1, passesTried: e.passesTried,
     property: { transaction: e.transaction, family: e.family, city: e.city, district: e.district,
@@ -414,7 +451,11 @@ export function evidenceForModel(e: CampaignEvidence, pass: Pass) {
     funnel: { sourcesDiscovered: e.sourcesDiscovered, postsInspected: e.postsInspected, signals: e.signals,
       qualified: e.qualified, strong: e.strong, duplicates: e.duplicates, irrelevant: e.irrelevant,
       intentRate: e.postsInspected ? Math.round((100 * e.signals) / e.postsInspected) : null },
-    budget: { remainingUsd: remainingMicros(e) / 1e6, spentUsd: e.spentMicros / 1e6 },
+    budget: { remainingUsd: remainingMicros(e) / 1e6, spentUsd: e.spentMicros / 1e6,
+      modelSpentUsd: (e.aiSpentMicros ?? 0) / 1e6, allocatableUsd: allocatableMicros(e) / 1e6 },
+    /* What each allowed Actor costs and accepts, so the model can size runs itself. */
+    pricing: Object.entries(gates).map(([actorKey, g]) => ({ actorKey, startFeeUsd: g.startFeeMicros / 1e6,
+      pricePer1kUsd: g.pricePer1kMicros / 1e6, defaultItemsPerRun: g.probeSize, maxItemsPerRun: runSize(g, Number.MAX_SAFE_INTEGER) })),
     actors: e.actors.map((a) => ({ actorKey: a.actorKey, runs: a.runs, items: a.items, useful: a.useful, qualified: a.qualified,
       spentUsd: a.spentMicros / 1e6, costPerQualifiedUsd: costPerQualified(a), exhausted: actorExhausted(a),
       allCampaigns: { runs: a.globalRuns, items: a.globalItems, qualified: a.globalQualified } })),

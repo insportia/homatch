@@ -57,7 +57,7 @@ async function actorGates(db: any, maxAgeDays: number): Promise<Record<string, A
 async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, settings: any): Promise<CampaignEvidence> {
   const jobId = campaign.matching_job_id;
   const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
-  const [runsRes, globalRes, queueRes, assessRes, stats] = await Promise.all([
+  const [runsRes, globalRes, queueRes, assessRes, stats, aiRes] = await Promise.all([
     db.from('find_buyers_actor_runs').select('actor_key,status,items_fetched,useful_results,qualified_leads,actual_micros,reserved_micros,cost_booked_at,language,created_at')
       .eq('matching_job_id', jobId).limit(500),
     db.from('find_buyers_actor_runs').select('actor_key,status,items_fetched,qualified_leads,actual_micros,cost_booked_at')
@@ -66,6 +66,9 @@ async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, sett
     db.from('find_buyers_assessments').select('role,match_category,content_kind,similarity,comments_decision,signal_id,rejection_reasons')
       .eq('matching_job_id', jobId).limit(5000),
     campaignStats(db, jobId),
+    /* OpenAI is paid from the same provider budget (same rule as the reserve RPC). */
+    db.from('find_buyers_cost_ledger').select('estimated_micros,actual_micros')
+      .eq('matching_job_id', jobId).eq('provider', 'OPENAI').eq('after_settlement', false).limit(5000),
   ]);
   const runs = ((runsRes.data ?? []) as any[]).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   const cost = (r: any) => Number(r.actual_micros ?? (r.cost_booked_at ? 0 : r.reserved_micros) ?? 0);
@@ -128,7 +131,8 @@ async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, sett
   }
 
   const dna = campaign.dna ?? {};
-  const spentMicros = runs.filter((r) => r.status !== 'RELEASED').reduce((n, r) => n + cost(r), 0);
+  const aiSpentMicros = ((aiRes.data ?? []) as any[]).reduce((n, r) => n + Number(r.actual_micros ?? r.estimated_micros ?? 0), 0);
+  const spentMicros = runs.filter((r) => r.status !== 'RELEASED').reduce((n, r) => n + cost(r), 0) + aiSpentMicros;
   const last = state.rounds[state.rounds.length - 1];
   return {
     transaction: dna.transaction === 'RENT' ? 'RENT' : 'SALE',
@@ -138,6 +142,7 @@ async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, sett
     passesTried: state.rounds.map((r) => r.pass).filter(Boolean) as Pass[],
     budgetMicros: Number(campaign.provider_budget_micros || 0),
     spentMicros,
+    aiSpentMicros,
     sourcesDiscovered: (stats.sourcesExplored ?? []).length + runs.filter((r) => r.actor_key === 'FB_GROUP_SEARCH').reduce((n, r) => n + Number(r.useful_results || 0), 0),
     postsInspected: assess.length,
     signals: assess.filter((x) => x.role === 'BUY_SEEKER' || x.role === 'RENT_SEEKER').length,
@@ -189,7 +194,7 @@ export async function adaptiveRound(db: any, matchingJobId: string): Promise<{ q
   let assessment: string | null = null;
   let source: 'MODEL' | 'FALLBACK' = 'MODEL';
   const res = await openAiJson<{ assessment: string; actions: ProposedAction[] }>(parsePriceBook(settings.priceBook), ADAPTIVE_SYSTEM_PROMPT,
-    { ...evidenceForModel(evidence, step.pass), allowedActors: Object.keys(gates) }, ADAPTIVE_ACTION_SCHEMA as any, { maxTokens: 1200 });
+    { ...evidenceForModel(evidence, step.pass, gates), allowedActors: Object.keys(gates) }, ADAPTIVE_ACTION_SCHEMA as any, { maxTokens: 1200 });
   await recordAiCost(db, { key: `ai:adaptive:${matchingJobId}:${evidence.round + 1}`, matchingJobId, kind: 'AI', operation: 'ADAPTIVE_PLAN', result: res,
     metadata: { pass: step.pass, round: evidence.round + 1 } }).catch(() => undefined);
   if (res.data?.actions?.length) { actions = res.data.actions; assessment = res.data.assessment ?? null; }

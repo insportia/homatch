@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { extractListingMedia, IMPORTED_GALLERY_MAX, mergeGallery } from '../../../src/import/listingMedia.ts';
+import { extractListingMedia, IMPORTED_GALLERY_MAX, mergeGallery, refreshedCover } from '../../../src/import/listingMedia.ts';
 import { resolveListingSource } from '../../../src/import/sourceAdapters.ts';
 import { loadDisabledProviders } from '../_shared/providerSwitch.ts';
 
@@ -1852,10 +1852,17 @@ Deno.serve(async (req) => {
     const existing = Array.isArray(refreshTarget.facts?.gallery_images) ? (refreshTarget.facts!.gallery_images as string[]) : [];
     const merged = mergeGallery(existing, facts.gallery_images ?? []);
     const patch: Record<string, unknown> = { gallery_images: merged, media_last_ok_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-    if (!refreshTarget.facts?.cover_image && merged[0]) patch.cover_image = merged[0];
+    /* The main photo always follows the refresh: same photo at the source's
+       current address, or the source's cover when that photo is gone. An
+       owner-managed cover (private key) is never replaced. */
+    const factsCover = (refreshTarget.facts?.cover_image as string | null | undefined) ?? null;
+    const sourceCover = (facts.cover_image as string | null | undefined) ?? (facts.gallery_images ?? [])[0] ?? null;
+    const nextFactsCover = refreshedCover(factsCover, merged, sourceCover);
+    if (nextFactsCover && nextFactsCover !== factsCover) patch.cover_image = nextFactsCover;
     await supabase.from('property_facts').update(patch).eq('property_id', refreshTarget.propertyId);
-    if (!refreshTarget.cover && merged[0]) {
-      await supabase.from('properties').update({ cover_photo_url: merged[0] }).eq('id', refreshTarget.propertyId);
+    const nextCover = refreshedCover(refreshTarget.cover, merged, sourceCover);
+    if (nextCover && nextCover !== refreshTarget.cover) {
+      await supabase.from('properties').update({ cover_photo_url: nextCover, updated_at: new Date().toISOString() }).eq('id', refreshTarget.propertyId);
     }
     refreshResult = { refreshed: true, before: existing.length, stored: merged.length, sourcePhotos: media.candidates, method: media.method };
   }

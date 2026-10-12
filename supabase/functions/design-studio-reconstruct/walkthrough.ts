@@ -62,6 +62,7 @@ import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
 import { mostlyInferred, WALK_BRIEF_VERSION, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
 import { applyDraft, draftProblems, draftRequest, PLAN_DRAFT_VERSION } from '../../../src/lib/designStudio/walkthrough/planDraft.ts';
+import { architectPlan, PLAN_ARCHITECT_VERSION } from '../../../src/lib/designStudio/walkthrough/planArchitect.ts';
 import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
 import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
 import { PHOTO_SPACE_VERSION, spaceFromReading, type PhotoSpace } from '../../../src/lib/designStudio/walkthrough/photoSpace.ts';
@@ -395,9 +396,18 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
     furnish: selected >= 0 && a.renderId ? (rc, floors) => furnishingFromReading(rc, floors, a.renderId!, selected, lighting) : null,
   });
   const fromDraft = drafted ? spaceOf(drafted.recon) : null;
-  const useDraft = !!fromDraft && !('problems' in fromDraft) && fromDraft.layout === 'READ' && fromDraft.geometryCheck.verdict === 'PASS';
-  const built = useDraft ? fromDraft! : spaceOf(read);
-  const kept = useDraft ? drafted!.recon : read;
+  const asRead = (x: ReturnType<typeof spaceOf> | null) => !!x && !('problems' in x) && x.layout === 'READ' && x.geometryCheck.verdict === 'PASS';
+  const draftSized = !!drafted && !draftProblems(drafted.recon).length;
+  // The architect (planArchitect.ts): when the draft is not a plausible home, the plan is drawn again deterministically
+  // from the draft (or the reading) — every room sized for what it is, the rooms tiling the home where they were read.
+  let architected = draftSized && asRead(fromDraft) ? null : architectPlan(drafted?.recon ?? read);
+  let fromArchitect = architected ? spaceOf(architected.recon) : null;
+  let architectFrom = drafted ? 'DRAFT' : 'READING';
+  if (drafted && architected && !asRead(fromArchitect)) { architected = architectPlan(read); fromArchitect = architected ? spaceOf(architected.recon) : null; architectFrom = 'READING'; }
+  const useArchitect = asRead(fromArchitect);
+  const useDraft = !useArchitect && asRead(fromDraft);
+  const built = useArchitect ? fromArchitect! : useDraft ? fromDraft! : spaceOf(read);
+  const kept = useArchitect ? architected!.recon : useDraft ? drafted!.recon : read;
   if ('problems' in built) return fail(`SPACE_NOT_BUILDABLE:${built.problems.slice(0, 3).join(',')}`, false, paid);
   const { space, geometryCheck, furnishing } = built;
   const made = await recordSpace(admin, { ...a, frameMeasured: !!measured }, built);
@@ -410,7 +420,7 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
       // The validated reading itself (no pictures in it): the space can be rebuilt from it by better code, never bought again.
       // When the architect's draft was used, the drafted reading is the one kept (and rebuilt from).
       reading: kept,
-      planDraft: { version: PLAN_DRAFT_VERSION, asked: !!draftPayload, valid: !!drafted, used: useDraft, split: drafted?.split ?? [], problems: firstProblems, repair, rejected: drafted && !useDraft ? (fromDraft && 'problems' in fromDraft ? 'NOT_BUILDABLE' : `${(fromDraft as Row)?.layout}:${(fromDraft as Row)?.geometryCheck?.verdict}`) : null },
+      planDraft: { version: PLAN_DRAFT_VERSION, asked: !!draftPayload, valid: !!drafted, used: useDraft, split: drafted?.split ?? [], problems: firstProblems, repair, architect: architected ? { version: PLAN_ARCHITECT_VERSION, from: architectFrom, used: useArchitect, rooms: architected.report } : null, rejected: drafted && !useDraft ? (fromDraft && 'problems' in fromDraft ? 'NOT_BUILDABLE' : `${(fromDraft as Row)?.layout}:${(fromDraft as Row)?.geometryCheck?.verdict}`) : null },
       ...(a.renderId ? { renderId: a.renderId, frameMeasured: !!measured, pieces: furnishing ? { read: furnishing.read, traced: furnishing.traced } : null } : {}),
     },
   }).eq('id', a.jobId).eq('status', 'RUNNING');

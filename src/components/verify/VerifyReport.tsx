@@ -84,7 +84,7 @@ import { Reveal } from '@/components/common/Reveal';
 import { VisualExplorer } from './VisualExplorer';
 import { LegalFindings, LegalPosition, IdentityNotice } from './LegalReality';
 import { OfficialDocuments } from './OfficialDocuments';
-import { VerifyJobProvider } from './OfficialLink';
+import { VerifyJobProvider, useVerifyJobId } from './OfficialLink';
 import { PropertyFactsCard } from './PropertyFactsCard';
 import { isRawRecord, RAW_FINDING_WHY } from '@/verify/intelligence/rawText';
 import { sectionsFor, type PropertyKind } from '@/verify/intelligence/propertyKind';
@@ -100,6 +100,8 @@ import { MarketPosition, hasMarketView } from './MarketPosition';
 import { chapterOfSection, identityNotice, legalPosition, documentExplorer, specGroups, teamGroupsV2, SECTION_HEADING_KEY, type ChapterId, type RegisterSourceLike } from '@/verify/reportPresentation';
 import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
 import { splitCitations, hasDistance } from '@/verify/citations';
+import { ReportTranslation } from './ReportTranslation';
+import { collectGeorgianTexts } from '@/verify/translation/textTranslation';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
 export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
@@ -353,7 +355,31 @@ const Prose: React.FC<{ text: string }> = ({ text }) => (
   </>
 );
 
-export function VerifyReport({
+/* What the report's prose will render as, for the translation prefetch. */
+const proseForPrefetch = (report: unknown): string[] => collectGeorgianTexts(report, (s) => paragraphs(s));
+
+/*
+ * THE REPORT, IN THE CUSTOMER'S LANGUAGE (owner P0, 2026-10-12).
+ *
+ * Every rendered text with Georgian letters is translated through
+ * ReportTranslation (keyed on the text, cached for every report); this wrapper
+ * only supplies the job id the `translate` request is authorised against and
+ * the prose worth prefetching. Nothing inside the report needs to know.
+ */
+export function VerifyReport(props: React.ComponentProps<typeof VerifyReportBody>) {
+  const outerJobId = useVerifyJobId();
+  const own = (props.synthesis as { jobId?: unknown }).jobId;
+  const jobId = typeof own === 'string' && own ? own : outerJobId;
+  const report = props.synthesis.report;
+  const prefetch = React.useCallback(() => proseForPrefetch(report), [report]);
+  return (
+    <ReportTranslation jobId={jobId} prefetch={prefetch}>
+      <VerifyReportBody {...props} />
+    </ReportTranslation>
+  );
+}
+
+function VerifyReportBody({
   synthesis,
   evidence,
   contractCaseId,

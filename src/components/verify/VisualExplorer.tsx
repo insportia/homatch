@@ -501,6 +501,7 @@ const Lightbox: React.FC<{
   return createPortal(
     <div
       ref={dialogRef}
+      data-report-portal=""
       role="dialog"
       aria-modal="true"
       aria-labelledby="vx-lightbox-title"

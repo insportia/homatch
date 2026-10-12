@@ -236,3 +236,25 @@ export async function sourceHash(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+/**
+ * Every Georgian string inside a payload subtree (depth-first, de-duplicated,
+ * at most `max`) — what the page prefetches so its prose is translated on the
+ * first paint. `shape` turns a stored string into what is rendered (the
+ * report's clean() and paragraph split).
+ */
+export function collectGeorgianTexts(value: unknown, shape: (s: string) => string[] = (s) => [s], max = 1500): string[] {
+  const out = new Set<string>();
+  const visit = (v: unknown, depth: number): void => {
+    if (out.size >= max || depth > 12 || v == null) return;
+    if (typeof v === 'string') {
+      if (!hasGeorgian(v)) return;
+      for (const p of shape(v)) if (isTranslatable(p) && out.size < max) out.add(normalizeSource(p));
+      return;
+    }
+    if (Array.isArray(v)) { for (const x of v) visit(x, depth + 1); return; }
+    if (typeof v === 'object') for (const x of Object.values(v as Record<string, unknown>)) visit(x, depth + 1);
+  };
+  visit(value, 0);
+  return [...out];
+}

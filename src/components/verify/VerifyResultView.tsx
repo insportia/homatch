@@ -212,7 +212,8 @@ export const VerifyResultView: React.FC<VerifyResultViewProps> = ({
   }
 
   return (
-    <div className="space-y-5">
+    /* The whole result reads in the customer's language (ReportTranslation in VerifyReport). */
+    <div className="space-y-5" data-report-translation-root="">
       {/* Still working, but there is already something to read. */}
       {state === 'PARTIAL' ? (
         <Card className="border-dashed">

@@ -13,6 +13,7 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { NAVY_BAND } from '@/components/findBuyers/brand';
 import { SearchDna } from '@/components/findBuyers/SearchDna';
+import { SearchStartingDialog, type SearchStartPhase } from '@/components/findBuyers/SearchStartingDialog';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
 import { campaignView, currentState } from '@/findBuyers/campaignView';
 import { PropertyReference } from '@/components/owner/ContactPhoneField';
@@ -151,14 +152,20 @@ function QuickActions({ actions }: { actions: QuickAction[] }) {
             key={action.key}
             type="button"
             onClick={action.onClick}
+            /* One premium card style for every action (owner, 2026-10-12: dark navy only
+               in small amounts). The primary action is marked by a gold ring and a gold
+               icon tile, not by a dark fill. */
             className={cn(
-              'flex min-h-[4.5rem] min-w-0 flex-col items-start justify-between gap-2 rounded-xl border p-3 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]',
-              action.primary
-                ? 'border-transparent bg-[#0C1119] text-white hover:bg-[#151d2a]'
-                : 'border-border bg-card text-foreground hover:bg-secondary/60',
+              'group flex min-h-[4.75rem] min-w-0 flex-col items-start justify-between gap-2 rounded-2xl bg-white p-3.5 text-start text-[hsl(218_45%_14%)]',
+              'shadow-[0_8px_22px_-16px_hsl(218_60%_15%/0.45)] ring-1 ring-inset motion-safe:transition-[box-shadow,transform] motion-safe:hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-16px_hsl(218_60%_15%/0.5)]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]',
+              action.primary ? 'ring-[hsl(40_80%_62%)]' : 'ring-[hsl(40_40%_86%)]',
             )}
           >
-            <span className={cn('grid h-7 w-7 place-items-center rounded-lg', action.primary ? 'bg-white/10 text-[hsl(38_92%_60%)]' : 'bg-secondary text-primary')}>
+            <span className={cn('grid h-8 w-8 place-items-center rounded-xl',
+              action.primary
+                ? 'bg-[linear-gradient(135deg,hsl(40_94%_62%),hsl(34_90%_48%))] text-[hsl(218_52%_11%)]'
+                : 'bg-[hsl(42_100%_95%)] text-[hsl(34_90%_36%)] ring-1 ring-inset ring-[hsl(40_80%_84%)]')}>
               {action.icon}
             </span>
             <span className="text-2xs font-semibold leading-snug break-words">{action.label}</span>
@@ -219,6 +226,7 @@ function DiscoverySection({
   /* The server's answer. EXPIRED means not freshly confirmed inventory: history and
      matches stay, a NEW search waits for the (free) renewal. */
   const expired = life?.freshness_state === 'EXPIRED' && !life.archived;
+  const [startPhase, setStartPhase] = useState<SearchStartPhase>(null);
 
   const handleStart = async (
     authorizedMaxCredits: number | null,
@@ -227,14 +235,18 @@ function DiscoverySection({
   ) => {
     setShowBudget(false);
     setLoading(true);
+    setStartPhase('starting');
     try {
       const result = await startMatchingCampaign(
         propertyId, userId, authorizedMaxCredits, searchLanguages ?? null,
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      toast.success(t('matches_campaign_started_toast'));
+      /* Started: say what happens next, then take the owner to the search page. */
+      setStartPhase('started');
+      window.setTimeout(() => { setStartPhase((p) => { if (p === 'started') onNavigateMatches(); return null; }); }, 2600);
     } catch (e) {
+      setStartPhase(null);
       const refused = campaignStartErrorKey(e);
       toast.error(refused ? t(refused.key as never, refused.vars) : t('matches_start_failed'));
     } finally {
@@ -281,6 +293,9 @@ function DiscoverySection({
   const stateLabel = expired ? t('pow_discovery_state_paused_expired') : t(now.headlineKey as never);
 
   return (
+    <>
+    <SearchStartingDialog phase={startPhase} tenant={String(transactionType ?? '').toUpperCase() === 'RENT'}
+      onGo={() => { setStartPhase(null); onNavigateMatches(); }} onClose={() => setStartPhase(null)} />
     <section aria-labelledby="pow-discovery-title" data-testid="pow-discovery" className="hm-owner-panel overflow-hidden">
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
         {/* Left: what this is and where the search stands — the server's state. */}
@@ -431,6 +446,7 @@ function DiscoverySection({
         </AlertDialogContent>
       </AlertDialog>
     </section>
+    </>
   );
 }
 

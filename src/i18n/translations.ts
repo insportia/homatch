@@ -18416,6 +18416,19 @@ const en = {
   im_unlock_contact_price: 'Unlock contact · {{n}} credits',
   im_back_to_matches: 'Back to matches',
   im_profile_gone: 'This match is no longer available.',
+
+  /* ── FIND BUYERS SEARCH START (starting → started → search page) ── */
+  fbs_starting_title: 'Starting your search…',
+  fbs_starting_body: 'We are preparing the search for this property. This takes a few seconds.',
+  fbs_started_title: 'Your search has started',
+  fbs_started_body: 'It runs on its own. You can follow it live and see each potentially interested person as they are found.',
+  fbs_steps_label: 'What happens now',
+  fbs_step_prepare: 'Preparing: your property, budget and languages',
+  fbs_step_search_buyers: 'Searching public posts for people who want to buy a place like yours',
+  fbs_step_search_tenants: 'Searching public posts for people who want to rent a place like yours',
+  fbs_step_results: 'Potentially interested people appear on the search page as they are found',
+  fbs_go_to_search: 'Open the search page',
+  fbs_watch_search: 'Follow the search live',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36746,6 +36759,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   im_unlock_contact_price: 'კონტაქტის გახსნა · {{n}} კრედიტი',
   im_back_to_matches: 'დამთხვევებზე დაბრუნება',
   im_profile_gone: 'ეს დამთხვევა აღარ არის ხელმისაწვდომი.',
+
+  /* ── FIND BUYERS SEARCH START (starting → started → search page) ── */
+  fbs_starting_title: 'ძებნა იწყება…',
+  fbs_starting_body: 'ვამზადებთ ძებნას ამ ქონებისთვის. ეს რამდენიმე წამს გასტანს.',
+  fbs_started_title: 'ძებნა დაიწყო',
+  fbs_started_body: 'ძებნა თავად მიმდინარეობს. შეგიძლიათ პირდაპირ ადევნოთ თვალი და ნახოთ თითოეული პოტენციურად დაინტერესებული ადამიანი, როგორც კი მოიძებნება.',
+  fbs_steps_label: 'რა ხდება ახლა',
+  fbs_step_prepare: 'მომზადება: თქვენი ქონება, ბიუჯეტი და ენები',
+  fbs_step_search_buyers: 'საჯარო პოსტებში ვეძებთ ადამიანებს, ვისაც თქვენნაირი ქონების ყიდვა სურს',
+  fbs_step_search_tenants: 'საჯარო პოსტებში ვეძებთ ადამიანებს, ვისაც თქვენნაირი ქონების ქირაობა სურს',
+  fbs_step_results: 'პოტენციურად დაინტერესებული ადამიანები ძებნის გვერდზე გამოჩნდებიან, როგორც კი მოიძებნებიან',
+  fbs_go_to_search: 'ძებნის გვერდის გახსნა',
+  fbs_watch_search: 'ძებნის პირდაპირ ყურება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55067,6 +55093,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   im_unlock_contact_price: 'Открыть контакт · {{n}} кредитов',
   im_back_to_matches: 'Назад к совпадениям',
   im_profile_gone: 'Это совпадение больше недоступно.',
+
+  /* ── FIND BUYERS SEARCH START (starting → started → search page) ── */
+  fbs_starting_title: 'Запускаем поиск…',
+  fbs_starting_body: 'Готовим поиск для этого объекта. Это займёт несколько секунд.',
+  fbs_started_title: 'Поиск запущен',
+  fbs_started_body: 'Поиск идёт сам. Вы можете следить за ним в реальном времени и видеть каждого потенциально заинтересованного человека, как только он найден.',
+  fbs_steps_label: 'Что происходит сейчас',
+  fbs_step_prepare: 'Подготовка: ваш объект, бюджет и языки',
+  fbs_step_search_buyers: 'Ищем в публичных постах людей, которые хотят купить похожий объект',
+  fbs_step_search_tenants: 'Ищем в публичных постах людей, которые хотят снять похожий объект',
+  fbs_step_results: 'Потенциально заинтересованные люди появляются на странице поиска по мере нахождения',
+  fbs_go_to_search: 'Открыть страницу поиска',
+  fbs_watch_search: 'Следить за поиском',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73386,6 +73425,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   im_unlock_contact_price: 'İletişimi aç · {{n}} kredi',
   im_back_to_matches: 'Eşleşmelere dön',
   im_profile_gone: 'Bu eşleşme artık mevcut değil.',
+
+  /* ── FIND BUYERS SEARCH START (starting → started → search page) ── */
+  fbs_starting_title: 'Aramanız başlıyor…',
+  fbs_starting_body: 'Bu mülk için aramayı hazırlıyoruz. Birkaç saniye sürer.',
+  fbs_started_title: 'Aramanız başladı',
+  fbs_started_body: 'Arama kendi kendine ilerler. Canlı takip edebilir ve her potansiyel ilgili kişiyi bulunduğu anda görebilirsiniz.',
+  fbs_steps_label: 'Şimdi ne oluyor',
+  fbs_step_prepare: 'Hazırlık: mülkünüz, bütçe ve diller',
+  fbs_step_search_buyers: 'Sizinkine benzer bir yer satın almak isteyen kişileri herkese açık gönderilerde arıyoruz',
+  fbs_step_search_tenants: 'Sizinkine benzer bir yeri kiralamak isteyen kişileri herkese açık gönderilerde arıyoruz',
+  fbs_step_results: 'Potansiyel ilgili kişiler bulundukça arama sayfasında görünür',
+  fbs_go_to_search: 'Arama sayfasını aç',
+  fbs_watch_search: 'Aramayı canlı izle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91705,6 +91757,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   im_unlock_contact_price: 'كشف جهة الاتصال · {{n}} رصيد',
   im_back_to_matches: 'العودة إلى المطابقات',
   im_profile_gone: 'لم تعد هذه المطابقة متاحة.',
+
+  /* ── FIND BUYERS SEARCH START (starting → started → search page) ── */
+  fbs_starting_title: 'جارٍ بدء البحث…',
+  fbs_starting_body: 'نُجهّز البحث لهذا العقار. يستغرق ذلك بضع ثوانٍ.',
+  fbs_started_title: 'بدأ البحث',
+  fbs_started_body: 'يعمل البحث تلقائيًا. يمكنك متابعته مباشرة ورؤية كل شخص محتمل الاهتمام فور العثور عليه.',
+  fbs_steps_label: 'ما الذي يحدث الآن',
+  fbs_step_prepare: 'التحضير: عقارك والميزانية واللغات',
+  fbs_step_search_buyers: 'نبحث في المنشورات العامة عن أشخاص يريدون شراء عقار مثل عقارك',
+  fbs_step_search_tenants: 'نبحث في المنشورات العامة عن أشخاص يريدون استئجار عقار مثل عقارك',
+  fbs_step_results: 'يظهر الأشخاص المحتمل اهتمامهم في صفحة البحث فور العثور عليهم',
+  fbs_go_to_search: 'افتح صفحة البحث',
+  fbs_watch_search: 'تابع البحث مباشرة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110024,6 +110089,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   im_unlock_contact_price: 'חשיפת פרטי קשר · {{n}} קרדיטים',
   im_back_to_matches: 'חזרה להתאמות',
   im_profile_gone: 'ההתאמה הזו כבר אינה זמינה.',
+
+  /* ── FIND BUYERS SEARCH START (starting → started → search page) ── */
+  fbs_starting_title: 'החיפוש מתחיל…',
+  fbs_starting_body: 'אנחנו מכינים את החיפוש לנכס הזה. זה לוקח כמה שניות.',
+  fbs_started_title: 'החיפוש התחיל',
+  fbs_started_body: 'החיפוש רץ מעצמו. אפשר לעקוב אחריו בזמן אמת ולראות כל אדם שעשוי להתעניין ברגע שהוא נמצא.',
+  fbs_steps_label: 'מה קורה עכשיו',
+  fbs_step_prepare: 'הכנה: הנכס שלך, התקציב והשפות',
+  fbs_step_search_buyers: 'מחפשים בפוסטים ציבוריים אנשים שרוצים לקנות נכס כמו שלך',
+  fbs_step_search_tenants: 'מחפשים בפוסטים ציבוריים אנשים שרוצים לשכור נכס כמו שלך',
+  fbs_step_results: 'אנשים שעשויים להתעניין מופיעים בדף החיפוש ברגע שהם נמצאים',
+  fbs_go_to_search: 'פתיחת דף החיפוש',
+  fbs_watch_search: 'מעקב אחרי החיפוש בזמן אמת',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

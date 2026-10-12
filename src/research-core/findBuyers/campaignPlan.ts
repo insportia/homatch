@@ -61,6 +61,16 @@ const DAY = 86_400_000;
 /** Known groups/communities checked this recently cover a language's discovery. */
 const DISCOVERY_REUSE_DAYS = 14;
 const MAX_KNOWN_PER_FAMILY = 6;
+/**
+ * Georgian-speaking locals are the primary market (2026-10-12): the first paid
+ * VILLION search read ~770 posts of which only ~120 were Georgian, because known
+ * groups were ranked by past yield (expat English/Russian groups) and Georgian group
+ * discovery was skipped once any three Georgian groups were known. Georgian now gets
+ * reserved known-group slots and always runs its own group discovery.
+ */
+export const PRIMARY_LANGUAGE: SearchLanguage = 'ka';
+const PRIMARY_KNOWN_SLOTS = 3;
+const PRIMARY_DISCOVERY_QUERIES = 2;
 
 /** Languages where a network is a realistic demand channel for Georgia. */
 export const NETWORK_LANGUAGES: Readonly<Record<string, readonly SearchLanguage[]>> = {
@@ -84,10 +94,15 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
   const base = (stage: Stage) => enabledActors[STAGE_ACTOR[stage]]?.priority ?? 50;
   const cityMatch = (s: KnownSource) => !dna.city || !s.city || s.city.toLowerCase() === dna.city.toLowerCase();
   const fresh = (s: KnownSource) => s.lastCheckedAt != null && now - Date.parse(s.lastCheckedAt) < DISCOVERY_REUSE_DAYS * DAY;
-  const known = (platform: KnownSource['platform']) => knownSources
-    .filter((s) => s.platform === platform && cityMatch(s))
-    .sort((a, b) => (b.historicalYield ?? 0) - (a.historicalYield ?? 0))
-    .slice(0, MAX_KNOWN_PER_FAMILY);
+  const known = (platform: KnownSource['platform']) => {
+    const ranked = knownSources
+      .filter((s) => s.platform === platform && cityMatch(s))
+      .sort((a, b) => (b.historicalYield ?? 0) - (a.historicalYield ?? 0));
+    /* Georgian groups first (up to PRIMARY_KNOWN_SLOTS), then the best of the rest. */
+    const primary = ranked.filter((s) => s.languages.includes(PRIMARY_LANGUAGE)).slice(0, PRIMARY_KNOWN_SLOTS);
+    const rest = ranked.filter((s) => !primary.includes(s));
+    return [...primary, ...rest].slice(0, MAX_KNOWN_PER_FAMILY);
+  };
 
   const pushKnown = (stage: Stage, platform: KnownSource['platform'], query: string | null = null, limit = MAX_KNOWN_PER_FAMILY) => {
     if (!has(stage)) return;
@@ -105,15 +120,16 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
   pushKnown('FB_GROUP_POSTS', 'FACEBOOK');
   if (has('FB_GROUP_SEARCH')) {
     for (const lang of NETWORK_LANGUAGES.FACEBOOK) {
+      const primary = lang === PRIMARY_LANGUAGE;
       const covered = known('FACEBOOK').filter((s) => s.languages.includes(lang) && fresh(s)).length >= 3;
-      if (covered) continue;
-      const q = queriesFor(plan, 'community', lang)[0];
-      if (!q) continue;
-      jobs.push({
-        stage: 'FB_GROUP_SEARCH', actorKey: STAGE_ACTOR.FB_GROUP_SEARCH, language: lang, query: q.query, targetUrl: null,
-        sourceId: null, size: probe('FB_GROUP_SEARCH'), arm: `FB_GROUP_SEARCH:${lang}`,
-        priority: armPriority(null, null, base('FB_GROUP_SEARCH')), reason: 'source_discovery',
-      });
+      if (covered && !primary) continue;
+      for (const [i, q] of queriesFor(plan, 'community', lang).slice(0, primary ? PRIMARY_DISCOVERY_QUERIES : 1).entries()) {
+        jobs.push({
+          stage: 'FB_GROUP_SEARCH', actorKey: STAGE_ACTOR.FB_GROUP_SEARCH, language: lang, query: q.query, targetUrl: null,
+          sourceId: null, size: probe('FB_GROUP_SEARCH'), arm: i === 0 ? `FB_GROUP_SEARCH:${lang}` : `FB_GROUP_SEARCH:${lang}:${i}`,
+          priority: armPriority(null, null, base('FB_GROUP_SEARCH') + (primary ? 5 : 0)), reason: 'source_discovery',
+        });
+      }
     }
   }
 

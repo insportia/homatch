@@ -319,7 +319,8 @@ test('live search module: server state, real source nodes only, real counts, the
   assert.match(main, /HOMATCH Matches/, 'internal matches are their own section');
   assert.match(main, /External Leads/, 'external leads are their own section');
   const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
-  assert.equal(net, 'Live search network. Sources: FACEBOOK, VK, REDDIT', 'only sources the campaign queued');
+  /* Only sources really working are drawn; REDDIT is still queued and appears once it starts (2026-10-12). */
+  assert.equal(net, 'Live search network. Sources: FACEBOOK, VK', 'only sources running or finished');
   assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);
   assert.equal(await page.getByRole('button', { name: 'Continue search' }).count(), 0);
   assert.doesNotMatch(main, /75%/, 'no invented percentage');
@@ -490,13 +491,11 @@ test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; RE
   assert.match(main, /Last search \(.+\): Search finished — no new active demand/, 'the last outcome is a dated history line');
   const states = await page.$$eval('svg[role="img"] g[data-state]', (gs) => gs.map((g) => [g.querySelector('text')?.textContent, g.getAttribute('data-state'), !!g.querySelector('[class*="-run"], [class*="-breathe"]')]));
   assert.deepEqual(states.find((x) => x[0] === 'Telegram'), ['Telegram', 'DONE', false]);
+  /* Switched-off sources are not shown to the owner at all (2026-10-12). */
   for (const name of ['Facebook', 'Instagram', 'TikTok', 'Forum']) {
-    const n = states.find((x) => x[0] === name);
-    assert.ok(n, `${name} is shown in the network`);
-    assert.equal(n[1], 'DISABLED', `${name} is shown as switched off`);
-    assert.equal(n[2], false, `${name} never animates`);
+    assert.equal(states.find((x) => x[0] === name), undefined, `${name} (switched off) is not shown`);
   }
-  assert.match(await page.textContent('[data-testid="fbl-network-legend"]'), /Searched.*Available.*Switched off/);
+  assert.equal(await page.locator('[data-testid="fbl-network-legend"]').count(), 0, 'no available / switched-off legend');
 });
 
 /* 2026-10-04 23:50 (job 123bd287): social sources were AVAILABLE, the memo23
@@ -510,20 +509,16 @@ const PLANNER_FAILED = {
     socialPlan: { outcome: 'FAILED', reason: 'PLANNER_ERROR', queued: 0 } },
 };
 
-test('only Telegram ran because the social planner failed: the screen says so, per source, in en/ka/ar at 1440 and 390', opts, async (t) => {
+test('only Telegram ran because the social planner failed: the owner sees what worked, not our failure, in en/ka/ar at 1440 and 390', opts, async (t) => {
   const failures = [];
   for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ar']]) {
     const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED });
     await open(page);
-    await page.waitForSelector('[data-testid="fbl-scope-social-blocked"]', { timeout: 15000 });
-    const only = await page.textContent('[data-testid="fbl-scope-only"]');
-    const blocked = await page.textContent('[data-testid="fbl-scope-social-blocked"]');
+    await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
+    /* 2026-10-12: the planner failure and the sources it stopped stay internal (admin views). */
+    if (await page.locator('[data-testid="fbl-scope-social-blocked"]').count() !== 0) failures.push(`${lang} ${width}: planner failure shown to the owner`);
+    if (await page.locator('[data-testid="fbl-scope-only"]').count() !== 0) failures.push(`${lang} ${width}: "only X was searched" shown`);
     const chips = await page.$$eval('[data-testid="fbl-exec-state"]', (els) => els.map((e) => e.getAttribute('data-state')));
-    if (lang === 'en') {
-      if (!/Only Telegram was searched in this search/.test(only ?? '')) failures.push(`en: scope line "${only}"`);
-      if (!/Social sources did not run in this search: a planning error stopped them — Facebook, Instagram, TikTok/.test(blocked ?? '')) failures.push(`en: blocked line "${blocked}"`);
-    }
-    if (lang === 'ka' && !/ამ ძებნაში მხოლოდ/.test(only ?? '')) failures.push(`ka: scope line "${only}"`);
     if (JSON.stringify(chips) !== JSON.stringify(['COMPLETED'])) failures.push(`${lang} ${width}: chips ${JSON.stringify(chips)}`);
     const text = await page.evaluate(() => document.body.innerText);
     if (/fbl_|undefined|NaN/.test(text)) failures.push(`${lang} ${width}: raw key / undefined / NaN`);

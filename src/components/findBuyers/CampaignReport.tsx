@@ -29,6 +29,7 @@ import {
 const SOFT = 'text-[hsl(218_40%_85%)]';
 const PANEL = 'rounded-xl bg-white/[0.04] p-3.5 ring-1 ring-inset ring-white/10';
 const LIVE_REFRESH_MS = 15_000;
+const HIDDEN_LIMITS = new Set(['SOURCES_FAILED', 'SOURCES_EMPTY']);
 const PASSES = ['DIRECT', 'SEMANTIC', 'FLEXIBLE', 'EXPLORE', 'COMMENTS'];
 const STOPS = ['BUDGET_EXHAUSTED', 'MAX_ROUNDS', 'COVERAGE_COMPLETE', 'NO_USABLE_ACTOR', 'MODEL_DIMINISHING_RETURNS', 'NOTHING_NEW_TO_SEARCH'];
 
@@ -134,8 +135,13 @@ export function CampaignReport({ jobId, live, refreshKey, id }: {
   const rejected = rejectionBreakdown(report);
   const mix = contentMix(report);
   const mixTotal = mix.parts.reduce((a, x) => a + x.count, 0);
-  const limits = report.limitations.map((l) => limitationMessage(l, fmt)).filter((m): m is NonNullable<typeof m> => m !== null);
-  const next = nextSearchOptions(report, fmt);
+  /* The customer sees what worked, not our sources' failures (owner, 2026-10-12):
+     failed / empty sources are left out here and stay visible to admins. */
+  const limits = report.limitations.filter((l) => !HIDDEN_LIMITS.has(String(l.code)))
+    .map((l) => limitationMessage(l, fmt)).filter((m): m is NonNullable<typeof m> => m !== null);
+  const workedPlatforms = cov.platforms.filter((x) => x.state === 'READ' || x.state === 'RUNNING');
+  /* "Retry the sources that were unavailable" names our failures: not for the owner. */
+  const next = nextSearchOptions(report, fmt).filter((m) => m.key !== 'fbr_next_sources');
   const firstVisible = secondsSinceStart(report, report.timing.firstVisibleAt);
   const firstQualified = secondsSinceStart(report, report.timing.firstQualifiedAt);
   const discovery = secondsSinceStart(report, report.timing.phase1EndedAt);
@@ -229,11 +235,11 @@ export function CampaignReport({ jobId, live, refreshKey, id }: {
                   <div className="mt-1 flex flex-wrap gap-1.5">{cov.languages.map((l) => <Chip key={l}>{fmt.languages([l])}</Chip>)}</div>
                 </div>
               )}
-              {cov.platforms.length > 0 && (
+              {workedPlatforms.length > 0 && (
                 <div>
                   <p className={cn('text-2xs', SOFT)}>{t('fbr_cov_platforms')}</p>
                   <ul className="mt-1 flex flex-wrap gap-1.5" data-testid="fbr-platforms">
-                    {cov.platforms.map((x) => (
+                    {workedPlatforms.map((x) => (
                       <li key={x.platform} className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full bg-white/[0.03] py-0.5 pe-2.5 ring-1 ring-inset ring-white/10" data-state={x.state}>
                         <SourceBadge source={x.platform} onDark />
                         <span className={cn('text-2xs', x.state === 'FAILED' ? 'text-[hsl(350_80%_85%)]' : SOFT)}>

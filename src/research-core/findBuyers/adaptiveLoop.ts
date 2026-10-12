@@ -245,6 +245,8 @@ export const ADAPTIVE_ACTION_SCHEMA = {
 
 export const ADAPTIVE_SYSTEM_PROMPT = [
   'You steer a real-estate demand search (people who want to buy or rent) across public social platforms in Georgia.',
+  'Georgian-speaking locals are the primary market and expats are secondary: keep Georgian (ka) well represented —',
+  'when Georgian is under-read in the languages evidence, give it the next searches (Georgian groups, Georgian phrasing).',
   'You receive measured evidence from the runs so far and the pass to run next. Propose the next best actions.',
   'Pass meanings: SEMANTIC = new natural, colloquial phrasings and languages not yet searched (ka, ru, en, ar, he, tr);',
   'FLEXIBLE = the budget band and nearby districts or the whole city (never claim an exact match);',
@@ -403,13 +405,27 @@ const COMMUNITY: Record<SearchLanguage, string[]> = {
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '').replace(/\s+/g, ' ').trim();
 
 /** The pass's actions without the model: new languages, flexible places, new communities, promising comments. */
+/** Georgian should carry at least this share of what was read: locals are the primary market. */
+export const PRIMARY_LANGUAGE_MIN_SHARE = 0.4;
+
+/**
+ * The order in which a fallback pass searches languages: Georgian first whenever it is
+ * under-read (below PRIMARY_LANGUAGE_MIN_SHARE of all items), then the languages never
+ * searched or searched with nothing back, then the rest by fewest items.
+ */
+export function languageOrder(e: Pick<CampaignEvidence, 'languages'>): SearchLanguage[] {
+  const byLanguage = new Map(e.languages.map((l) => [l.language, l]));
+  const total = e.languages.reduce((n, l) => n + (l.items ?? 0), 0);
+  const kaShare = total > 0 ? (byLanguage.get('ka')?.items ?? 0) / total : 0;
+  const rest = [...SEARCH_LANGUAGES].sort((a, b) => (byLanguage.get(a)?.items ?? -1) - (byLanguage.get(b)?.items ?? -1));
+  return kaShare < PRIMARY_LANGUAGE_MIN_SHARE ? ['ka', ...rest.filter((l) => l !== 'ka')] : rest;
+}
+
 export function fallbackActions(e: CampaignEvidence, pass: Pass): ProposedAction[] {
   const actions: ProposedAction[] = [];
   const action = (type: ActionType, stage: string | null, queries: Array<{ language: string; query: string }>, urls: string[] = []): ProposedAction =>
     ({ type, stage, actorKey: null, queries, urls, rationale: `fallback:${pass}` });
-  const byLanguage = new Map(e.languages.map((l) => [l.language, l]));
-  /* Languages that were never searched, or searched and returned nothing, come first. */
-  const order = [...SEARCH_LANGUAGES].sort((a, b) => (byLanguage.get(a)?.items ?? -1) - (byLanguage.get(b)?.items ?? -1));
+  const order = languageOrder(e);
   const cityFor = (lang: SearchLanguage) => {
     const n = placeNamesFor('city', e.city, lang);
     return n.length ? (lang === 'ka' ? n[n.length - 1] : n[0]) : (e.city ?? '');

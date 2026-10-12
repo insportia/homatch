@@ -242,3 +242,15 @@ test('OpenAI spend counts against the same provider budget; there is no fixed pe
   assert.equal(over.jobs.length, 0);
   assert.equal(over.rejected[0].reason, 'OVER_BUDGET');
 });
+
+test('Georgian-speaking locals come first while Georgian is under-read (VILLION read 120 of 770 posts in ka)', async () => {
+  const { languageOrder } = await import('../findBuyers/adaptiveLoop.ts');
+  const villion = [{ language: 'ru', queries: 20, items: 370, qualified: 0 }, { language: 'en', queries: 20, items: 280, qualified: 0 },
+    { language: 'ka', queries: 8, items: 120, qualified: 0 }];
+  assert.equal(languageOrder({ languages: villion })[0], 'ka');
+  const actions = fallbackActions(evidence({ languages: villion }), 'SEMANTIC');
+  assert.equal(actions[0].queries[0].language, 'ka', 'the first fallback search is Georgian');
+  /* Once Georgian carries its share, the least-read languages lead again. */
+  const balanced = [{ language: 'ka', queries: 10, items: 500, qualified: 0 }, { language: 'ru', queries: 5, items: 200, qualified: 0 }];
+  assert.notEqual(languageOrder({ languages: balanced })[0], 'ka');
+});

@@ -175,7 +175,8 @@ test('first tranche: registry reuse before rediscovery, native Telegram first, d
   const jobs = initialSocialJobs({ dna: SALE, plan, knownSources: known, enabledActors: enabled, nativeTelegramActive: true, now });
   assert.equal(jobs.filter((j) => j.stage === 'FB_GROUP_POSTS').length, 3, 'known groups are read first');
   assert.ok(!jobs.some((j) => j.stage === 'FB_GROUP_SEARCH' && j.language === 'ru'), 'a covered language is not rediscovered');
-  assert.equal(jobs.filter((j) => j.stage === 'FB_GROUP_SEARCH').length, 5, 'the other five languages discover');
+  assert.equal(new Set(jobs.filter((j) => j.stage === 'FB_GROUP_SEARCH').map((j) => j.language)).size, 5, 'the other five languages discover');
+  assert.equal(jobs.filter((j) => j.stage === 'FB_GROUP_SEARCH' && j.language === 'ka').length, 2, 'Georgian (primary market) discovers with two queries');
   assert.ok(!jobs.some((j) => j.stage === 'TELEGRAM_CHANNEL'), 'native Telegram is primary');
   assert.ok(!jobs.some((j) => j.stage === 'LINKEDIN_POSTS' || j.stage === 'VK_WALL'), 'disabled actors are never planned');
   assert.ok(new Set(jobs.filter((j) => j.stage === 'TIKTOK_SEARCH').map((j) => j.language)).size === 6, 'TikTok probes all six languages');
@@ -238,4 +239,20 @@ test('an empty comments list is "not fetched" (unknown), never "zero comments"; 
   assert.equal(p({ comments: [], commentsCount: 0 }).engagement.comments, 0);
   assert.equal(p({ commentsCount: 7 }).engagement.comments, 7);
   assert.equal(p({ comments: [{ text: 'ფასი?', id: 'c1' }] }).engagement.comments, 1);
+});
+
+test('the launch plan is Georgian-first: Georgian groups get reserved slots and Georgian group discovery always runs', async () => {
+  const { initialSocialJobs, PRIMARY_LANGUAGE } = await import('../findBuyers/campaignPlan.ts');
+  const now = Date.parse('2026-10-12T10:00:00Z');
+  const fresh = new Date(now - 86_400_000).toISOString();
+  const src = (id, lang, y) => ({ id, platform: 'FACEBOOK', url: `https://www.facebook.com/groups/${id}/`, languages: [lang], city: 'Tbilisi', lastCheckedAt: fresh, historicalYield: y });
+  /* Eight high-yield expat groups and three Georgian ones with lower past yield. */
+  const known = [...Array.from({ length: 8 }, (_, i) => src(`en${i}`, i % 2 ? 'en' : 'ru', 10 - i)), src('ka1', 'ka', 1), src('ka2', 'ka', 1), src('ka3', 'ka', 1)];
+  const dna = SALE;
+  const plan = buildQueryPlan(dna);
+  const enabled = { FB_GROUP_POSTS: { probeSize: 20, priority: 80 }, FB_GROUP_SEARCH: { probeSize: 10, priority: 80 } };
+  const jobs = initialSocialJobs({ dna, plan, knownSources: known, enabledActors: enabled, nativeTelegramActive: true, now });
+  const reads = jobs.filter((j) => j.stage === 'FB_GROUP_POSTS').map((j) => j.sourceId);
+  assert.deepEqual(reads.slice(0, 3), ['ka1', 'ka2', 'ka3'], 'Georgian groups are read first despite lower past yield');
+  assert.ok(jobs.some((j) => j.stage === 'FB_GROUP_SEARCH' && j.language === PRIMARY_LANGUAGE), 'Georgian discovery runs even when 3 Georgian groups are known');
 });

@@ -93,7 +93,25 @@ test('an uncached search plans and queues memo23 Actors with production-shaped b
   const actorsQueued = new Set(queued.map((r) => r.metadata?.actorKey));
   for (const k of ['FB_GROUP_SEARCH', 'TIKTOK', 'LINKEDIN_POSTS', 'BLUESKY']) assert.ok(actorsQueued.has(k), `${k} queued`);
   assert.ok(queued.every((r) => r.metadata?.query || r.metadata?.targetUrl), 'never a job without a query or target');
-  assert.ok(log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'the query cache write is actually sent');
+  /* The model planner is unavailable here (no key, no network): the deterministic
+     plan runs but is NOT cached, so the next campaign still asks the model
+     (2026-10-12; before, a failed planner call pinned the fallback plan). */
+  assert.ok(!log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'a plan without the model is never cached');
+});
+
+test('a plan the model answered is cached', async () => {
+  const env = globalThis.Deno.env.get; const net = globalThis.fetch;
+  globalThis.Deno.env.get = (k) => (k === 'OPENAI_API_KEY' ? 'test-key' : undefined);
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    usage: { prompt_tokens: 10, completion_tokens: 10 },
+    choices: [{ message: { content: JSON.stringify({ queries: [{ language: 'ru', query: 'куплю квартиру в Тбилиси Крцаниси' }] }) } }],
+  }), { status: 200 });
+  try {
+    const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH')] });
+    const out = await startSocialCampaign(db, INPUT, SETTINGS);
+    assert.equal(out.reason, null);
+    assert.ok(log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'the query cache write is actually sent');
+  } finally { globalThis.Deno.env.get = env; globalThis.fetch = net; }
 });
 
 test('a failing cache write never blocks the plan', async () => {

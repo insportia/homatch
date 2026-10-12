@@ -10,13 +10,14 @@
 // optional OpenAI enrichment (mergeModelQueries) may add native phrasings,
 // which are deduplicated and capped exactly like the templates.
 
+import { FAMILY_NOUN, propertyFamily } from './propertyFamily.ts';
 import { SEARCH_LANGUAGES, type SearchLanguage } from './languages.ts';
 import { placeNamesFor } from './places.ts';
 import type { PropertyDna } from './propertyDna.ts';
 import type { BuyerStrategy } from './buyerStrategy.ts';
 
 /* fb-qp-2: property-specific strategy queries; cached generic phrasings of fb-qp-1 are not reused. */
-export const QUERY_PLAN_VERSION = 'fb-qp-2';
+export const QUERY_PLAN_VERSION = 'fb-qp-3';
 
 export type QueryKind = 'community' | 'demand' | 'hashtag';
 export type QueryFamily =
@@ -200,7 +201,10 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
     const city = lang === 'ka' ? cityNames[cityNames.length - 1] : cityNames[0];
     const districtNames = placeNamesFor('district', dna.district, lang);
     const place = districtNames.length ? (lang === 'ka' ? districtNames[districtNames.length - 1] : districtNames[0]) : city;
-    const params = { city, place, type: t.typeWord(dna.propertyType), beds: t.beds(dna.bedrooms, dna.rooms) };
+    /* Not an apartment: the family's own noun, not "ბინა" / "квартира" (2026-10-12). */
+    const family = dna.family ?? propertyFamily(dna.propertyType);
+    const noun = family === 'APARTMENT' ? null : FAMILY_NOUN[family][lang];
+    const params = { city, place, type: noun ?? t.typeWord(dna.propertyType), beds: noun ?? t.beds(dna.bedrooms, dna.rooms) };
     for (const c of t.community) add(lang, 'community', 'COMMUNITY', c({ ...params, city: cityNames[0] }));
     const own = strategy && strategy.transaction === dna.transaction ? strategy.queries.filter((q) => q.language === lang) : [];
     for (const q of own) add(lang, 'demand', q.persona === 'INVESTOR' ? 'INVESTMENT' : q.persona === 'RELOCATING' ? 'RELOCATING' : dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', q.query);

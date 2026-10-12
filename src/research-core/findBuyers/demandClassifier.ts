@@ -21,6 +21,7 @@
 // The model may resolve an UNCLEAR reading but cannot overturn a rule that
 // found job/service/offer evidence (see boundModelReading).
 
+import { isParkingText } from './propertyFamily.ts';
 import { CITY_NAMES, cityMentioned, districtsMentioned } from './places.ts';
 
 export type DemandRole =
@@ -46,7 +47,7 @@ export interface DemandReading {
   transaction: 'BUY' | 'RENT' | null;
   realEstate: boolean;
   residential: boolean;
-  propertyType: 'APARTMENT' | 'HOUSE' | 'LAND' | 'COMMERCIAL' | null;
+  propertyType: 'APARTMENT' | 'HOUSE' | 'LAND' | 'COMMERCIAL' | 'PARKING' | null;
   /** Seeking on someone else's behalf ("for my client"). */
   intermediary: boolean;
   budget: Budget | null;
@@ -77,10 +78,10 @@ const RESIDENTIAL = L([
   'ბინ', 'სახლ', 'უძრავ', 'აპარტამენტ', 'ოთახიან', 'სტუდიო', 'აგარაკ',
   `${B}(daire|konut|emlak|stüdyo|villa|müstakil|rezidans)`, `${B}ev${E}`,
   'شقة', 'شقق', 'منزل', 'بيت', 'فيلا', 'عقار', 'سكن',
-  'דירה', 'דירות', 'נכס', 'נדל', 'וילה', 'פנטהאוז', 'סטודיו',
+  'דירה', 'דירות', 'נכס', 'נדל', 'וילה', 'פנטהאוז', 'סטודיו', `${B}בית${E}`,
 ]);
-const COMMERCIAL_ONLY = L(['офис', 'кабинет', 'магазин', 'склад', 'помещени', 'ოფის', 'კაბინეტ', 'მაღაზი', 'საწყობ', `${B}(office|shop|warehouse|retail|salon space|commercial)`, 'dükkan', 'ofis', 'depo', 'مكتب', 'محل', 'مستودع', 'משרד', 'חנות', 'מחסן']);
-const HOUSE = L([`${B}(house|villa|cottage|townhouse)`, `${B}дом(?![\\p{L}])`, 'коттедж', 'вилл', 'სახლ', 'აგარაკ', `${B}(müstakil|villa)`, 'منزل', 'فيلا', 'וילה', `${B}בית${B}`]);
+const COMMERCIAL_ONLY = L(['офис', 'кабинет', 'магазин', 'склад', 'помещени', 'коммерческ', 'ოფის', 'კაბინეტ', 'მაღაზი', 'საწყობ', 'კომერციულ', `${B}(office|shop|warehouse|retail|salon space|commercial)`, 'dükkan', 'ofis', 'depo', 'işyeri', 'تجاري', 'مكتب', 'محل', 'مستودع', 'משרד', 'חנות', 'מחסן', 'מסחרי']);
+const HOUSE = L([`${B}(house|villa|cottage|townhouse)`, `${B}дом(?![\\p{L}])`, 'коттедж', 'вилл', 'სახლ', 'აგარაკ', `${B}(müstakil|villa)`, 'منزل', 'فيلا', 'וילה', `${B}בית${E}`]);
 const LAND = L([`${B}(land|plot)`, 'участ', 'მიწ', `${B}arsa`, 'أرض', 'מגרש']);
 /** "2 bedroom", "3-room", "1+1", "სამ ოთახიან", "трёхкомнатн". */
 const ROOM_SPEC = L([
@@ -242,7 +243,9 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   const residentialNoun = RESIDENTIAL.test(s);
   const roomSpec = ROOM_SPEC.test(s);
   const commercialOnly = COMMERCIAL_ONLY.test(s) && !residentialNoun;
-  const realEstate = residentialNoun || roomSpec || commercialOnly || LAND.test(s);
+  /* A parking place or garage is real estate too; "apartment with parking" stays an apartment. */
+  const parkingOnly = isParkingText(s) && !residentialNoun && !roomSpec;
+  const realEstate = residentialNoun || roomSpec || commercialOnly || LAND.test(s) || parkingOnly;
 
   /* Job seeking / hiring — the "ищу работу", "ищу нянечку" failure. */
   if (JOB.test(s) && !(residentialNoun && (SALE_OFFER.test(s) || RENT_OFFER.test(s) || BUY.test(s)))) {
@@ -254,7 +257,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   if (SERVICE.test(s) && seekIdx < 0 && !offerMarker && !(residentialNoun && moneyMentions(s).length)) return empty('SERVICE', 'service_offer');
   if (!realEstate) return empty('IRRELEVANT', seekIdx >= 0 ? 'seeking_but_not_real_estate' : 'not_real_estate');
 
-  const propertyType: DemandReading['propertyType'] = LAND.test(s) && !residentialNoun ? 'LAND'
+  const propertyType: DemandReading['propertyType'] = parkingOnly ? 'PARKING' : LAND.test(s) && !residentialNoun ? 'LAND'
     : commercialOnly ? 'COMMERCIAL' : HOUSE.test(s) && !/квартир|ბინ|apartment|flat|daire|شقة|דירה/iu.test(s) ? 'HOUSE' : 'APARTMENT';
 
   /* Constraints, from the text only. */

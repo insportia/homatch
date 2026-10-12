@@ -2,9 +2,13 @@
 // from stored fields. A missing field stays missing (listed in `missing`) and
 // is never guessed; tolerances turn exact facts into comparable bands.
 
+import { propertyFamily, type PropertyFamily } from './propertyFamily.ts';
+
 export interface PropertyFactsInput {
   transactionType?: string | null;
   propertyType?: string | null;
+  /** The listing title: a parking place is stored as OTHER and named in its title. */
+  title?: string | null;
   countryCode?: string | null;
   city?: string | null;
   district?: string | null;
@@ -41,6 +45,8 @@ export interface PropertyDna {
   neighborhood: string | null;
   coordinates: { lat: number; lng: number } | null;
   propertyType: string | null;
+  /** What a seeker asks for: apartment, house, land, commercial space or parking. */
+  family: PropertyFamily;
   bedrooms: number | null;
   rooms: number | null;
   areaSqm: number | null;
@@ -109,6 +115,7 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
     neighborhood: str(f.neighborhood),
     coordinates: lat && lng ? { lat, lng } : null,
     propertyType,
+    family: propertyFamily(propertyType, f.title),
     bedrooms,
     rooms,
     areaSqm,
@@ -128,10 +135,11 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
 }
 
 /** Coarse on purpose: two flats that would be searched identically share a key. */
-export function dnaKeyOf(d: Pick<PropertyDna, 'transaction' | 'countryCode' | 'city' | 'district' | 'propertyType' | 'bedrooms' | 'areaSqm' | 'price'>): string {
+export function dnaKeyOf(d: Pick<PropertyDna, 'transaction' | 'countryCode' | 'city' | 'district' | 'propertyType' | 'bedrooms' | 'areaSqm' | 'price'> & { family?: PropertyFamily }): string {
   const bucket = (v: number | null, step: number) => (v == null ? 'x' : String(Math.round(v / step)));
   return [
     d.transaction, d.countryCode, (d.city ?? 'x').toLowerCase(), (d.district ?? 'x').toLowerCase(),
-    d.propertyType ?? 'x', d.bedrooms ?? 'x', bucket(d.areaSqm, 15), bucket(d.price, d.transaction === 'RENT' ? 200 : 20000),
+    /* A parking place is stored as OTHER: its family keeps it apart from other OTHERs. */
+    d.family === 'PARKING' ? 'PARKING' : d.propertyType ?? 'x', d.bedrooms ?? 'x', bucket(d.areaSqm, 15), bucket(d.price, d.transaction === 'RENT' ? 200 : 20000),
   ].join('|');
 }

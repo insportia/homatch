@@ -65,6 +65,14 @@ test('proof bound: provider exposure ≤ min(caps, budget); customer charge ≤ 
   assert.equal(u.maxProviderMicros, 2000000);
 });
 
+test('no per-Actor cap (NULL): the provider budget from the business math is the only bound', () => {
+  const a = (k) => ({ actor_key: k, enabled: true, price_per_1k_micros: 1500000, start_fee_micros: 8000, probe_size: 20, max_results: 100, campaign_spend_cap_micros: null });
+  const p = proofPlan([a('FB_GROUP_POSTS'), a('FB_GROUP_SEARCH')], { credits: 100, creditsPerUsd: 10, providerShareBps: 5000 });
+  assert.equal(p.maxProviderMicros, 5000000, '100 credits = $10, 50% provider share = $5');
+  assert.ok(p.lines.every((l) => l.capMicros === null && l.maxMicros === 158000));
+  assert.equal(p.maxCustomerChargeCredits, 100);
+});
+
 test('output contract: proven only by real text at a real https URL; empty or URL-less datasets prove nothing', async () => {
   const { provesOutputContract } = await import('../findBuyers/actorCatalog.ts');
   assert.equal(provesOutputContract([]), false);

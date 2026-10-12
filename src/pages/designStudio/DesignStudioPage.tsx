@@ -18,6 +18,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Archive, ArchiveRestore, ArrowRight, Box, FileImage, Home as HomeIcon, Loader2, MoreHorizontal, Pencil, Search, Trash2, X, ImagePlus } from 'lucide-react';
+import { PrivateImage } from '@/components/common/PrivateImage';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { PRODUCT_SURFACE } from '@/components/customer/surface';
@@ -417,7 +418,9 @@ function ProjectRow({
         {thumbUrl ? (
           <img src={thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
         ) : project.property?.cover_photo_url ? (
-          <img src={project.property.cover_photo_url} alt="" className="h-full w-full object-cover opacity-90" loading="lazy" />
+          /* A managed cover is a private storage key; PrivateImage signs it (an imported URL passes through). */
+          <PrivateImage src={project.property.cover_photo_url} alt="" className="h-full w-full object-cover opacity-90"
+            fallback={<RoomSketch className="h-full w-full p-1.5" />} />
         ) : (
           <RoomSketch className="h-full w-full p-1.5" />
         )}
@@ -689,7 +692,7 @@ function PropertyPicker({
                   >
                     <div className="h-12 w-16 shrink-0 overflow-hidden rounded-md bg-secondary">
                       {property.cover_photo_url
-                        ? <img src={property.cover_photo_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                        ? <PrivateImage src={property.cover_photo_url} alt="" className="h-full w-full object-cover" />
                         : null}
                     </div>
                     <div className="min-w-0 flex-1">

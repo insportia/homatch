@@ -78,6 +78,8 @@ export class WalkSounds {
       case 'SIZZLE': this.click(out, t, 4200, 0.3); this.sizzle(out, t + 0.05, key); break;
       case 'SIZZLE_END': break;
       case 'PLATE': this.tone(out, t, 'sine', 2900, 2850, 0.35, 0.05); this.tone(out, t + 0.004, 'sine', 4300, 4250, 0.25, 0.03); this.knock(out, t, 900, 0.2); break;
+      case 'FAN_ON': this.click(out, t, 3000, 0.45); this.fan(out, t + 0.03, key); break;
+      case 'FAN_OFF': this.click(out, t, 3000, 0.45); break;
       case 'MOTOR': this.tone(out, t, 'sawtooth', 75, 82, 1.2, 0.07, 320); break;
       case 'SIT': this.burst(out, t, 0.22, 'lowpass', 260, 0.7, 0.45); break;
       case 'STAND': this.burst(out, t, 0.16, 'lowpass', 320, 0.7, 0.25); break;
@@ -251,6 +253,23 @@ export class WalkSounds {
   }
   private crackle: AudioBuffer | null = null;
   /** Running water: kept until its tap is turned off (stopLoop). */
+  /** A range hood's fan: a low airy rush with a faint motor hum under it, looped while it runs. */
+  private fan(out: AudioNode, t: number, key: string) {
+    const ctx = this.ctx!;
+    this.stopLoop(key);
+    const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.14, t + 0.8);
+    src.connect(lp).connect(g).connect(out);
+    const hum = ctx.createOscillator(); hum.type = 'sine'; hum.frequency.value = 118;
+    const hg = ctx.createGain(); hg.gain.value = 0.18;
+    hum.connect(hg).connect(g);
+    src.start(t); hum.start(t);
+    src.addEventListener('ended', () => { try { hum.stop(); } catch { /* already stopped */ } });
+    this.loops.set(key, { src, gain: g });
+  }
+
   private water(out: AudioNode, t: number, key: string) {
     const ctx = this.ctx!;
     this.stopLoop(key);

@@ -34,7 +34,7 @@ export type InteractionKind = 'HINGED' | 'SLIDING' | 'SWITCH' | 'STATES' | 'SEAT
 export const INTERACTION_ROLES = [
   'DOOR', 'WINDOW', 'BALCONY_DOOR', 'WARDROBE', 'CABINET', 'DRAWER', 'APPLIANCE', 'FREEZER', 'OVEN', 'DISHWASHER',
   'STOVE', 'FAUCET', 'SHOWER', 'TOILET', 'BATH', 'BED', 'SEAT', 'TV', 'LIGHT', 'LAMP', 'CURTAIN', 'BLIND', 'COFFEE',
-  'RECLINER', 'MIRROR', 'WASHER',
+  'RECLINER', 'MIRROR', 'WASHER', 'HOOD',
 ] as const;
 export type InteractionRole = typeof INTERACTION_ROLES[number];
 

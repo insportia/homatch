@@ -32,6 +32,7 @@ import { createWalkthrough, retryWalkthrough, walkthroughHref, walkthroughStatus
 import { quoteRender } from '@/services/designStudio/renders';
 import { priceWords } from '@/lib/designStudio/renders/priceWords';
 import { ShareDialog } from '@/components/designStudio/workspace/ShareDialog';
+import { WalkWaiting } from './WalkWaiting';
 
 // The same game as every long wait: it only watches the walkthrough's real state (this panel keeps following it).
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
@@ -138,6 +139,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
 
   if (!loaded) return null;
   const current = walk?.progress && walk.progress !== 'FAILED' && walk.progress !== 'CANCELLED' ? PROGRESS_STEPS.indexOf(walk.progress) : -1;
+  const steps = PROGRESS_STEPS.filter((st) => st !== 'READY');
   const earlier = history.filter((h) => h.id !== walk?.id && h.state === 'READY' && h.walkVersionId);
 
   return (
@@ -153,15 +155,8 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
       {problem ? <p role="alert" className="mt-3 rounded-2xl bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{problem}</p> : null}
 
       {reconstructing ? (
-        <div className="mt-4" role="status" aria-live="polite" data-testid="walk-reconstructing">
-          <ol className="space-y-2">
-            <li className="flex items-center gap-2 text-[15px] font-semibold text-[#0C1119]" aria-current="step" data-testid="walk-step-space"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('dsx_walk_step_space')}</li>
-            {PROGRESS_STEPS.filter((s) => s !== 'READY').map((s) => (
-              <li key={s} className="flex items-center gap-2 text-[15px] text-[#9AA1AC]"><span className="inline-block h-4 w-4" aria-hidden="true" />{t(STEP_KEY[s])}</li>
-            ))}
-          </ol>
-          <p className="mt-3 text-[13px] text-[#5B6472]">{t('dsx_walk_leave_ok')}</p>
-        </div>
+        <WalkWaiting stage={0} testId="walk-reconstructing" note={t('dsx_walk_leave_ok')}
+          labels={[t('dsx_walk_step_space'), ...steps.map((st) => t(STEP_KEY[st]))]} stepIds={['walk-step-space', ...steps.map((st) => `walk-step-${st.toLowerCase()}`)]} />
       ) : !walk ? (
         <button type="button" onClick={() => { void priced(() => start(false)); }} disabled={asking} className={cn(DARK, 'mt-4')} data-testid="walk-create">
           {asking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('dsx_walk_create')}
@@ -203,18 +198,10 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
           </div>
         </div>
       ) : (
-        <div className="mt-4" role="status" aria-live="polite" data-testid="walk-working">
-          <ol className="space-y-2">
-            {PROGRESS_STEPS.filter((s) => s !== 'READY').map((s, i) => (
-              <li key={s} className={cn('flex items-center gap-2 text-[15px]', i < current ? 'text-[#5B6472]' : i === current ? 'font-semibold text-[#0C1119]' : 'text-[#9AA1AC]')} data-testid={`walk-step-${s.toLowerCase()}`} aria-current={i === current ? 'step' : undefined}>
-                {i < current ? <Check className="h-4 w-4" aria-hidden="true" /> : i === current ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <span className="inline-block h-4 w-4" aria-hidden="true" />}
-                {t(STEP_KEY[s])}
-              </li>
-            ))}
-          </ol>
-          <p className="mt-3 text-[13px] text-[#5B6472]">{t('dsx_walk_leave_ok')}</p>
+        <WalkWaiting stage={Math.max(0, current) + 1} testId="walk-working" note={t('dsx_walk_leave_ok')}
+          labels={[t('dsx_walk_step_space'), ...steps.map((st) => t(STEP_KEY[st]))]} stepIds={['walk-step-space', ...steps.map((st) => `walk-step-${st.toLowerCase()}`)]}>
           <button type="button" onClick={() => setPlaying(true)} className={cn('mt-4 inline-flex h-11 items-center rounded-full bg-[hsl(38_92%_56%)] px-5 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="walk-snake-play">{t('dsx_sn_play')}</button>
-        </div>
+        </WalkWaiting>
       )}
 
       {playing && walk ? (

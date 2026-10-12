@@ -1118,7 +1118,11 @@ async function plan(admin: Row, row: Row): Promise<void> {
   let reviewOps: ReviewOp[] = [];
   let reviewCost: Row | null = null;
   let reviewState: string | null = review?.state ?? null;
-  if (review?.id && row.scene_plan?.rooms) {
+  // The rule build (below): the plan's pieces would not walk or left a room without what makes it that room, so the
+  // same home is furnished again by HOMATCH's own rules alone — on the plan kept with the row, in its own invocation.
+  const rulePending = (row.timings?.ruleFallback as { state?: string } | undefined)?.state === 'PENDING' && !!row.scene_plan?.rooms;
+  if (rulePending) { reused = row.scene_plan as ValidatedScenePlan; reusedFrom = row.id; }
+  if (review?.id && row.scene_plan?.rooms && !rulePending) {
     reused = row.scene_plan as ValidatedScenePlan; reusedFrom = row.id;
     if (!review.state) {
       const key = Deno.env.get('OPENAI_API_KEY');
@@ -1321,7 +1325,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
   };
   const corrected = reviewState === 'APPLYING' && review?.layout ? applyReview(plan0, reviewOps, review.layout, pickFor) : null;
   const built = buildWalkthrough({
-    space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`, plan: corrected?.plan ?? plan0,
+    space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`,
+    plan: rulePending ? { ...plan0, rooms: plan0.rooms.map((r) => ({ ...r, items: [] })) } : corrected?.plan ?? plan0,
   });
   const buildMs = Date.now() - buildStarted;
   // The design's look on the built pieces, and the promotion gate: is this, measurably, the selected design?
@@ -1329,12 +1334,13 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const promotion: Promotion | null = graph ? fidelityOf(graph, walkState, built.report, built.report.gate?.ok !== false) : null;
   // The gates: walkability always (walkthrough/walkability.ts); against the picture when there is one (fidelity.ts)
   // — for a graph build, its own promotion gate replaces the plan-vs-anchor comparison.
-  const fidelity: FidelityReport | null = validated.reference && !graph
+  const fidelity: FidelityReport | null = validated.reference && !graph && !rulePending
     ? referenceFidelity({ space, plan: validated, build: built.report, objects: built.state.objects, assets, aspect: provenance?.aspect ?? null })
     : null;
   // READY only when it is the design too: every room has what makes it that room (a bed, the sofa, the kitchen),
   // and most of what the design shows stands in it (designGraph.ts READY_MIN_RECALL); else it fails, honestly.
-  const unfaithful = promotion && (built.report.gate?.missingEssential?.length || (promotion.metrics?.importantRecall ?? 1) < READY_MIN_RECALL);
+  // A rule build is the design's look on HOMATCH's own furniture: owed every room's essentials, not the picture's pieces.
+  const unfaithful = promotion && (built.report.gate?.missingEssential?.length || (!rulePending && (promotion.metrics?.importantRecall ?? 1) < READY_MIN_RECALL));
   // And only when a person would believe it (plausibility.ts): no wall piece standing free, a sofa that faces its
   // television, an arrival in open floor. A tour that fails is not published; its findings are kept (final.build.gate).
   const implausible = built.report.gate?.implausible?.length ? 'NOT_PLAUSIBLE' : null;
@@ -1362,7 +1368,18 @@ async function plan(admin: Row, row: Row): Promise<void> {
     });
     return true;
   };
-  if ((failing === 'NOT_FAITHFUL' || failing === 'NOT_PLAUSIBLE') && built.report.gate?.ok !== false && !corrected) {
+  // The plan's pieces would not walk, left a room without what makes it that room, or would not be believed (a sofa
+  // turned from its television): before anything else, the same
+  // home is furnished again by HOMATCH's rules alone (rulePending, above), in a fresh invocation — a walkable, complete
+  // tour in the design's look rather than none. Asked once; a rule build that fails too fails as found.
+  if (!rulePending && !corrected && !fidelity && (built.report.gate?.ok === false || built.report.gate?.missingEssential?.length || built.report.gate?.implausible?.length)) {
+    await release(admin, row, {
+      scene_plan: validated, cost, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now()),
+      timings: { ...timings, ruleFallback: { state: 'PENDING', at: iso(Date.now()), planGate: built.report.gate } },
+    });
+    return;
+  }
+  if ((failing === 'NOT_FAITHFUL' || failing === 'NOT_PLAUSIBLE') && built.report.gate?.ok !== false && !corrected && !rulePending) {
     const prog = homeProgramme(space.rooms);
     const problems = [
       ...(built.report.gate?.missingEssential ?? []).map((id: string) => {
@@ -1419,7 +1436,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
     return;
   }
 
-  if (await askReview([])) return;
+  if (rulePending) timings.ruleFallback = { ...(timings.ruleFallback as Row), state: 'USED', usedAt: iso(Date.now()) };
+  else if (await askReview([])) return;
   if (review) {
     // Kept with the tour (without the layout it reviewed): what the review said, and what became of it.
     const { layout: _reviewed, ...kept } = review as Row;

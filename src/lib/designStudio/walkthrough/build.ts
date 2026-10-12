@@ -1136,6 +1136,33 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     p.report.reason = reason;
     if (!report.circulation.repaired.includes(p.roomId)) report.circulation.repaired.push(p.roomId);
   };
+  // 6. The way is held by what is never removed (a bathroom's fittings in front of its door, a bed across the only
+  //    way in): one of them is MOVED — to a clean pose against a wall of its own room — never taken away.
+  const moveFixed = (way: Point[], better: (objects: ObjectInstance[]) => boolean): boolean => {
+    const fixed = standing().filter((p) => p.rank >= 5)
+      .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
+      .filter((e) => e.d < walkRadius + 0.35).sort((a, b) => a.d - b.d).map((e) => e.p).slice(0, 4);
+    for (const p of fixed) {
+      const obj = objectOf(p); const home = rooms.get(p.roomId);
+      if (!obj || !home) continue;
+      const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+      const poses = cleanPoses(space, assets, others, home, p.asset, 24)
+        .sort((a, b) => Math.hypot(a.at.x - obj.position.x, a.at.y - obj.position.z) - Math.hypot(b.at.x - obj.position.x, b.at.y - obj.position.z));
+      // Any clean pose of its room that reopens the way (the way the empty home was walked is only one of the ways:
+      // a bed turned along a narrow room may lie across it and still leave the room walkable).
+      for (const pose of poses) {
+        const at = footprint(p.asset, pose.at, pose.rotation);
+        const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+        if (!better([...others, next])) continue;
+        working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
+        p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(at.cx - p.box.cx, at.cy - p.box.cy));
+        p.box = at; p.lock = undefined; relocated += 1;
+        repairedNow(p, 'DOOR_CLEARED');
+        return true;
+      }
+    }
+    return false;
+  };
   for (let guard = 0; guard < 10 && start; guard += 1) {
     const lost = lostRooms(working.objects);
     const traps = lost.length ? [] : trapsOf(working.objects);
@@ -1159,7 +1186,8 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
       .filter((e) => e.d < walkRadius + 0.35)
       .sort((a, b) => Number(a.p.essential) - Number(b.p.essential) || a.p.rank - b.p.rank || a.d - b.d).map((e) => e.p).slice(0, 8);
-    if (!near.length) break;
+    // Nothing movable near the way: what holds it is never removed, so it is moved (step 6).
+    if (!near.length) { if (moveFixed(way, better)) continue; break; }
     // 1. The smallest push of what narrows the way (a sofa slid 5 cm off the walk beats a sofa elsewhere).
     if (pushAside(way, better, FINAL_PUSH_WALKS)) continue;
     // 2. One piece moved (the nearest acceptable pose in its room) that reopens the way.
@@ -1223,37 +1251,59 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     const best = nearest.map((p) => ({ p, n: opened(working.objects.filter((o) => o.instanceId !== p.instanceId)) }))
       .sort((a, b) => b.n - a.n || a.p.rank - b.p.rank)[0];
     if (!best || best.n <= now) {
-      // 6. The way is held by what is never removed (a bathroom's fittings in front of its door, a bed across the
-      //    only way in): one of them is MOVED — to a clean pose against a wall of its own room — never taken away.
-      const fixed = standing().filter((p) => p.rank >= 5)
-        .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
-        .filter((e) => e.d < walkRadius + 0.35).sort((a, b) => a.d - b.d).map((e) => e.p).slice(0, 4);
-      let moved = false;
-      for (const p of fixed) {
-        const obj = objectOf(p); const home = rooms.get(p.roomId);
-        if (!obj || !home) continue;
-        const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
-        const poses = cleanPoses(space, assets, others, home, p.asset, 16)
-          .sort((a, b) => Math.hypot(a.at.x - obj.position.x, a.at.y - obj.position.z) - Math.hypot(b.at.x - obj.position.x, b.at.y - obj.position.z));
-        for (const pose of poses) {
-          const at = footprint(p.asset, pose.at, pose.rotation);
-          if (way.some((q) => distanceToObb(q, at) < walkRadius)) continue;
-          const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
-          if (!better([...others, next])) continue;
-          working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
-          p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(at.cx - p.box.cx, at.cy - p.box.cy));
-          p.box = at; p.lock = undefined; relocated += 1;
-          repairedNow(p, 'DOOR_CLEARED');
-          moved = true; break;
-        }
-        if (moved) break;
-      }
-      if (moved) continue;
+      if (moveFixed(way, better)) continue;
       break;
     }
     const victim = best.p;
     drop(victim, 'DOOR_CLEARED');
     if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
+  }
+
+  // ── The aisle guarantee, when everything above left a room cut off or a pocket stranded: every door of every room
+  //    is joined to the room's own free floor by an aisle walked on the bare plan, and nothing stands on an aisle.
+  //    A piece on one — any piece, fittings and beds included — is moved to a clean pose of its own room off every
+  //    aisle; when its room has no such pose, the room's lesser pieces make way first; a lesser piece with nowhere to go
+  //    is taken away. Doors are joined to the room through it, so a home whose bare plan is walkable stays walkable.
+  if (start && (lostRooms(working.objects).length || trapsOf(working.objects).length)) {
+    const aisles: Point[] = [];
+    const doorPoints = doorSides(space).map((d) => d.p);
+    for (const room of space.rooms) {
+      const hub = freeInside(empty, room);
+      if (!hub) continue;
+      for (const q of doorPoints.filter((x) => pointInPolygon(x, room.polygon))) {
+        const route = findPath(empty, q, hub, { throughDoors: false, maxCells: 20000 });
+        if (route) aisles.push(...routePoints([q, ...route]));
+      }
+    }
+    const onAisle = (box: Obb) => aisles.some((q) => distanceToObb(q, box) < walkRadius);
+    const moveOff = (p: typeof placedOrder[number]): boolean => {
+      const obj = objectOf(p); const home = rooms.get(p.roomId);
+      if (!obj || !home) return false;
+      const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+      const pose = cleanPoses(space, assets, others, home, p.asset, 40).find((c) => !onAisle(footprint(p.asset, c.at, c.rotation)));
+      if (!pose) return false;
+      const at = footprint(p.asset, pose.at, pose.rotation);
+      const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+      working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
+      p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(at.cx - p.box.cx, at.cy - p.box.cy));
+      p.box = at; p.lock = undefined; relocated += 1;
+      repairedNow(p, 'AISLE_CLEARED');
+      return true;
+    };
+    // The heaviest first: a bed or a kitchen finds its place before the lamps and chairs take the room's free floor.
+    const blockers = standing().filter((p) => onAisle(p.box)).sort((a, b) => b.rank - a.rank || Number(b.essential) - Number(a.essential) || b.area - a.area);
+    for (const p of blockers) {
+      if (p.report.outcome === 'DROPPED' || !onAisle(p.box) || moveOff(p)) continue;
+      // Its room's lesser pieces make way, one at a time, least important first.
+      let placedNow = false;
+      if (p.rank >= 4 || p.essential) {
+        for (const lesser of standingIn(p.roomId).filter((q) => q !== p && !q.essential && q.rank < p.rank).sort((a, b) => a.rank - b.rank || a.area - b.area)) {
+          drop(lesser, 'AISLE_CLEARED');
+          if (moveOff(p)) { placedNow = true; break; }
+        }
+      }
+      if (!placedNow && !p.essential && p.rank < 5) drop(p, 'AISLE_CLEARED');
+    }
   }
 
   // ── The gate: what the walk is left with ──

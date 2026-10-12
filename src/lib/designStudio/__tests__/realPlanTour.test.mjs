@@ -70,7 +70,7 @@ test('a flight\'s approach never reaches through a wall; a door in a shallow roo
 
 test('the server publishes only a walkthrough that is the design too (READY_MIN_RECALL, every room\'s essential piece)', () => {
   const route = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
-  assert.match(route, /const unfaithful = promotion && \(built\.report\.gate\?\.missingEssential\?\.length \|\| \(promotion\.metrics\?\.importantRecall \?\? 1\) < READY_MIN_RECALL\);/);
+  assert.match(route, /const unfaithful = promotion && \(built\.report\.gate\?\.missingEssential\?\.length \|\| \(!rulePending && \(promotion\.metrics\?\.importantRecall \?\? 1\) < READY_MIN_RECALL\)\);/);
   assert.match(route, /'NOT_WALKABLE' : unfaithful \? 'NOT_FAITHFUL' : implausible;/);
   // ... and one a person would believe (plausibility.ts), and that does not contradict the plan (planFidelity.ts).
   assert.match(route, /const implausible = built\.report\.gate\?\.implausible\?\.length \? 'NOT_PLAUSIBLE' : null;/);

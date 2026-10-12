@@ -754,109 +754,8 @@ export const VisualExplorer: React.FC<{
   const ratio = active?.width && active?.height ? `${Math.max(active.width / active.height, 0.8)}` : '16 / 10';
 
   const caseCount = new Set(usable.map((v) => v.documentId).filter(Boolean)).size;
-  return (
-    <div className="space-y-4">
-      {/* How much there is, before the first image. */}
-      <p className="flex items-center gap-2 text-sm font-medium text-foreground/85" data-gallery-count={usable.length}>
-        <Images className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
-        <span className="min-w-0 break-words">
-          {caseCount > 1
-            ? t('verify_p0_gallery_count_cases', { count: String(usable.length), cases: String(caseCount) })
-            : t('verify_p0_gallery_count', { count: String(usable.length) })}
-        </span>
-      </p>
-      {/* No newer verified render than the historical ones: said once, plainly. */}
-      {chrono.noNewerRender ? (
-        <div className="flex items-start gap-3 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4" data-no-newer-render>
-          <History className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
-          <div className="min-w-0 space-y-1">
-            <p className="text-sm font-semibold leading-6 text-foreground break-words">{t('vev_no_newer_title')}</p>
-            <p className="text-sm leading-6 text-foreground/80 break-words">{t('vev_no_newer_body')}</p>
-          </div>
-        </div>
-      ) : null}
-      {/* The latest-photos tab says which case applies, before its image. */}
-      {current === 'LATEST_PHOTOS' && chrono.latestPhotos ? <LatestPhotosNote h={chrono.latestPhotos} /> : null}
-      {/* The stage */}
-      {active && at ? (
-        <figure className="space-y-3">
-          {/* The historical label ABOVE the image (and again on it, below). */}
-          {hist ? <HistoricalBadge h={hist} className="text-xs" /> : null}
-          <button
-            type="button"
-            onClick={() => setLightbox(inTab.findIndex((v) => v.id === active.id))}
-            aria-label={t('verify_ox_visual_open', { title: at.title })}
-            className="group relative block w-full overflow-hidden rounded-2xl bg-[hsl(222_47%_11%)] shadow-[0_18px_50px_-24px_hsl(222_47%_11%/0.55)] ring-1 ring-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)]"
-            style={{ aspectRatio: ratio, maxHeight: '70vh' }}
-          >
-            {!stageLoaded.has(active.id) ? (
-              <span className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-white/[0.10] motion-safe:animate-pulse" aria-hidden="true" />
-            ) : null}
-            <img
-              key={active.id}
-              src={active.url}
-              alt={at.alt}
-              width={active.width ?? undefined}
-              height={active.height ?? undefined}
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              onLoad={() => setStageLoaded((l) => (l.has(active.id) ? l : new Set(l).add(active.id)))}
-              onError={() => onBroken(active.id)}
-              className="relative h-full w-full object-contain motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]"
-            />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
-            {hist ? <HistoricalOverlay h={hist} /> : null}
-            <span className="absolute start-3 end-3 top-3 flex flex-wrap items-center gap-2">
-              <Badge v={active} className="shadow-sm" wrap />
-              <ScopeChip v={active} identityUnresolved={identityUnresolved} className="shadow-sm" />
-              {version ? (
-                <span className="rounded-full bg-[hsl(222_47%_11%/0.85)] px-2.5 py-1 text-2xs font-medium text-[hsl(38_92%_66%)] ring-1 ring-[hsl(38_92%_54%/0.40)]">{version}</span>
-              ) : null}
-              {active.otherBuilding && active.block ? (
-                <span className="rounded-full bg-white/90 px-2.5 py-1 text-2xs font-semibold text-slate-900 ring-1 ring-slate-500/30">
-                  {t('vrx_visual_other_building', { block: active.block })}
-                </span>
-              ) : null}
-            </span>
-            <span className={`absolute end-3 inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-black/55 px-3 text-2xs font-medium text-white opacity-90 motion-safe:transition-opacity group-hover:opacity-100 ${hist ? 'bottom-11' : 'bottom-3'}`}>
-              <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
-              {t('vrx_explore_open')}
-            </span>
-          </button>
-          <figcaption className="space-y-2">
-            {activeChrono ? (
-              <p className="text-sm font-semibold leading-6 text-[hsl(var(--gold-ink))] break-words" data-visual-label>{label(activeChrono)}</p>
-            ) : null}
-            {hist ? <p className="text-sm leading-6 text-foreground/85 break-words" data-historical-note>{t(hist.noteKey, hist.vars)}</p> : null}
-            {notesOf(active).map((n, i) => <p key={i} className="text-sm leading-6 text-foreground/80 break-words" data-date-note>{n}</p>)}
-            {/* Every card: what it shows, when, what kind of picture, what it concerns, why it matters. */}
-            <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(7rem,auto)_1fr]" data-visual-card>
-              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_what')}</dt>
-              <dd className="font-medium leading-6 break-words" dir="auto">{at.title}</dd>
-              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_type')}</dt>
-              <dd className="leading-6 break-words">{activeChrono ? t(activeChrono.typeKey) : at.label}</dd>
-              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_date')}</dt>
-              <dd className="leading-6 break-words">{activeChrono ? dateText(activeChrono) : t('vfv_date_unknown')}</dd>
-              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_scope')}</dt>
-              <dd className="leading-6 break-words">{t(scopeKeyFor(active, identityUnresolved))}{active.block ? ` · ${t(active.otherBuilding ? 'vrx_visual_other_building' : 'vrx_visual_block', { block: active.block })}` : ''}</dd>
-              {why ? (
-                <>
-                  <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_why')}</dt>
-                  <dd className="leading-6 text-foreground/85 break-words" dir="auto">{why}</dd>
-                </>
-              ) : null}
-            </dl>
-            {activeChrono && (activeChrono.type === 'RENDER' || activeChrono.type === 'IMAGE') && !hist ? (
-              <p className="text-xs leading-5 text-muted-foreground break-words">{t(activeChrono.type === 'RENDER' ? 'vfv_render_not_evidence' : 'vfv_image_type_note')}</p>
-            ) : null}
-            <Meta v={active} />
-            <SourceRow v={active} cases={cases} />
-            <FreshCredit v={active} />
-          </figcaption>
-        </figure>
-      ) : null}
-
+  const pickers = (
+    <>
       {/* The story's chapters — only the ones that hold something. The chips
           scroll sideways inside their own box; the page never does. */}
       {tabs.length > 1 ? (
@@ -943,6 +842,116 @@ export const VisualExplorer: React.FC<{
           })}
         </div>
       ) : null}
+    </>
+  );
+  return (
+    <div className="space-y-4">
+      {/* How much there is, before the first image. */}
+      <p className="flex items-center gap-2 text-sm font-medium text-foreground/85" data-gallery-count={usable.length}>
+        <Images className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+        <span className="min-w-0 break-words">
+          {caseCount > 1
+            ? t('verify_p0_gallery_count_cases', { count: String(usable.length), cases: String(caseCount) })
+            : t('verify_p0_gallery_count', { count: String(usable.length) })}
+        </span>
+      </p>
+      {/* No newer verified render than the historical ones: said once, plainly. */}
+      {chrono.noNewerRender ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4" data-no-newer-render>
+          <History className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-semibold leading-6 text-foreground break-words">{t('vev_no_newer_title')}</p>
+            <p className="text-sm leading-6 text-foreground/80 break-words">{t('vev_no_newer_body')}</p>
+          </div>
+        </div>
+      ) : null}
+      {/* The latest-photos tab says which case applies, before its image. */}
+      {current === 'LATEST_PHOTOS' && chrono.latestPhotos ? <LatestPhotosNote h={chrono.latestPhotos} /> : null}
+      {/* The stage */}
+      {active && at ? (
+        <figure className="space-y-3">
+          {/* The historical label ABOVE the image (and again on it, below). */}
+          {hist ? <HistoricalBadge h={hist} className="text-xs" /> : null}
+          <button
+            type="button"
+            onClick={() => setLightbox(inTab.findIndex((v) => v.id === active.id))}
+            aria-label={t('verify_ox_visual_open', { title: at.title })}
+            className="group relative block w-full overflow-hidden rounded-2xl bg-[hsl(222_47%_11%)] shadow-[0_18px_50px_-24px_hsl(222_47%_11%/0.55)] ring-1 ring-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)]"
+            style={{ aspectRatio: ratio, maxHeight: '70vh' }}
+          >
+            {!stageLoaded.has(active.id) ? (
+              <span className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-white/[0.10] motion-safe:animate-pulse" aria-hidden="true" />
+            ) : null}
+            <img
+              key={active.id}
+              src={active.url}
+              alt={at.alt}
+              width={active.width ?? undefined}
+              height={active.height ?? undefined}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onLoad={() => setStageLoaded((l) => (l.has(active.id) ? l : new Set(l).add(active.id)))}
+              onError={() => onBroken(active.id)}
+              className="relative h-full w-full object-contain motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.015]"
+            />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
+            {hist ? <HistoricalOverlay h={hist} /> : null}
+            <span className="absolute start-3 end-3 top-3 flex flex-wrap items-center gap-2">
+              <Badge v={active} className="shadow-sm" wrap />
+              <ScopeChip v={active} identityUnresolved={identityUnresolved} className="shadow-sm" />
+              {version ? (
+                <span className="rounded-full bg-[hsl(222_47%_11%/0.85)] px-2.5 py-1 text-2xs font-medium text-[hsl(38_92%_66%)] ring-1 ring-[hsl(38_92%_54%/0.40)]">{version}</span>
+              ) : null}
+              {active.otherBuilding && active.block ? (
+                <span className="rounded-full bg-white/90 px-2.5 py-1 text-2xs font-semibold text-slate-900 ring-1 ring-slate-500/30">
+                  {t('vrx_visual_other_building', { block: active.block })}
+                </span>
+              ) : null}
+            </span>
+            <span className={`absolute end-3 inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-black/55 px-3 text-2xs font-medium text-white opacity-90 motion-safe:transition-opacity group-hover:opacity-100 ${hist ? 'bottom-11' : 'bottom-3'}`}>
+              <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('vrx_explore_open')}
+            </span>
+          </button>
+          {/* Tabs and thumbnails directly under the image (owner, 2026-10-12):
+              choose, enlarge and compare without scrolling past the text. */}
+          {pickers}
+          <figcaption className="space-y-2">
+            {activeChrono ? (
+              <p className="text-sm font-semibold leading-6 text-[hsl(var(--gold-ink))] break-words" data-visual-label>{label(activeChrono)}</p>
+            ) : null}
+            {hist ? <p className="text-sm leading-6 text-foreground/85 break-words" data-historical-note>{t(hist.noteKey, hist.vars)}</p> : null}
+            {notesOf(active).map((n, i) => <p key={i} className="text-sm leading-6 text-foreground/80 break-words" data-date-note>{n}</p>)}
+            {/* Every card: what it shows, when, what kind of picture, what it concerns, why it matters. */}
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(7rem,auto)_1fr]" data-visual-card>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_what')}</dt>
+              <dd className="font-medium leading-6 break-words" dir="auto">{at.title}</dd>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_type')}</dt>
+              <dd className="leading-6 break-words">{activeChrono ? t(activeChrono.typeKey) : at.label}</dd>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_date')}</dt>
+              <dd className="leading-6 break-words">{activeChrono ? dateText(activeChrono) : t('vfv_date_unknown')}</dd>
+              <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_scope')}</dt>
+              <dd className="leading-6 break-words">{t(scopeKeyFor(active, identityUnresolved))}{active.block ? ` · ${t(active.otherBuilding ? 'vrx_visual_other_building' : 'vrx_visual_block', { block: active.block })}` : ''}</dd>
+              {why ? (
+                <>
+                  <dt className="text-2xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{t('vev_card_why')}</dt>
+                  <dd className="leading-6 text-foreground/85 break-words" dir="auto">{why}</dd>
+                </>
+              ) : null}
+            </dl>
+            {activeChrono && (activeChrono.type === 'RENDER' || activeChrono.type === 'IMAGE') && !hist ? (
+              <p className="text-xs leading-5 text-muted-foreground break-words">{t(activeChrono.type === 'RENDER' ? 'vfv_render_not_evidence' : 'vfv_image_type_note')}</p>
+            ) : null}
+            <Meta v={active} />
+            <SourceRow v={active} cases={cases} />
+            <FreshCredit v={active} />
+          </figcaption>
+        </figure>
+      ) : null}
+
+      {/* Without an image on the stage the tabs and thumbnails still show. */}
+      {active && at ? null : pickers}
 
       <p className="text-2xs leading-relaxed text-muted-foreground break-words">{t('verify_ox_visual_note')}</p>
 

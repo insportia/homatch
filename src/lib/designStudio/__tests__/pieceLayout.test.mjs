@@ -124,12 +124,12 @@ test('the server builds photo spaces through spaceFromReading, rebuilds an old f
   assert.match(route, /await rebuildSpace\(admin, \{ actorId, project, version: root, photoSource: photo, renderId \}, source\)\) \{\s*const again = await designOnPlan\(admin, root, project\.id, renderId\);/);
   assert.equal(PHOTO_SPACE_VERSION, 'ds-photo-space-3');
   // A render walk that is walkable and most of the render is published, recorded as approximate.
-  assert.match(route, /if \(!gate\.ready\) \{/);
-  assert.match(route, /approximate: gate\.approximate/);
+  assert.match(route, /const publishable = gate\.ready \|\| \(lastResort && gate\.lastResort\);[\s\S]*if \(!publishable\) \{/);
+  assert.match(route, /const approximate = publishable && !gate\.promoted;/);
   // A render walk that is not even that is declined, never failed: the walkthrough is planned the usual way instead.
   const fromRender = route.slice(route.indexOf('async function planFromRender'), route.indexOf('// ── SUBMIT'));
-  assert.match(fromRender, /if \(!gate\.ready\) \{[\s\S]{0,600}?return false;\s*\}/);
-  assert.doesNotMatch(fromRender.slice(fromRender.indexOf('if (!gate.ready)'), fromRender.indexOf('return false;')), /await fail\(/);
+  assert.match(fromRender, /if \(!publishable\) \{[\s\S]{0,600}?return false;\s*\}/);
+  assert.doesNotMatch(fromRender.slice(fromRender.indexOf('if (!publishable)'), fromRender.indexOf('return false;')), /await fail\(/);
   assert.match(route, /if \(furnishing && row\.render_id && furnishing\.renderId === String\(row\.render_id\) && !declined\) \{[\s\S]{0,400}?tried: true[\s\S]{0,300}?if \(await planFromRender\(admin, row, design, furnishing, preferences\.style \?\? null\)\) return;/);
   // An attempt killed mid-build (the CPU limit) is never built again: the try is recorded before the build.
   assert.match(route, /const declined = !!row\.timings\?\.renderFurnishing\?\.declined \|\| !!row\.timings\?\.renderFurnishing\?\.tried;/);

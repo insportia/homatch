@@ -54,8 +54,51 @@ export function draftInput(read: Reconstruction) {
   };
 }
 
-/** The request (OpenAI Responses API): the pictures (the plan view first when there is one) and the reading. */
-export function draftRequest(model: string, imageUrls: string[], read: Reconstruction) {
+/**
+ * What makes a drafted plan no home: a room sized against what it is — a bathroom the size of a bedroom, a
+ * kitchen-living room too small for its kitchen and its sofa, a bedroom or a study too narrow for its bed or desk and a
+ * way past it. Generous bounds (real homes vary): only a draft that cannot be the pictures is sent back. English, for
+ * the architect's second attempt; the empty list when the plan is plausible.
+ */
+export function draftProblems(recon: Reconstruction): string[] {
+  const out: string[] = [];
+  const box = (poly: Array<[number, number]>) => {
+    const xs = poly.map((p) => p[0]); const ys = poly.map((p) => p[1]);
+    const w = Math.max(...xs) - Math.min(...xs); const d = Math.max(...ys) - Math.min(...ys);
+    return { area: w * d, short: Math.min(w, d) };
+  };
+  // A room drawn in parts (key, key-2, …) is measured as a whole: its area summed, its short side its widest part's.
+  const base = (key: string) => key.replace(/-\d+$/, '');
+  const rooms = new Map<string, { kind: string; label: string; area: number; short: number; outdoor: boolean; types: Set<string> }>();
+  for (const r of recon.rooms) {
+    const k = recon.rooms.some((x) => x.key === base(r.key)) ? base(r.key) : r.key;
+    const b = box(r.polygon as Array<[number, number]>);
+    const cur = rooms.get(k) ?? { kind: r.kind, label: (r.label ?? '').toLowerCase(), area: 0, short: 0, outdoor: r.outdoor, types: new Set<string>() };
+    cur.area += b.area; cur.short = Math.max(cur.short, b.short);
+    rooms.set(k, cur);
+  }
+  for (const o of recon.objects) if (o.room) rooms.get(rooms.has(o.room) ? o.room : base(o.room))?.types.add(o.type);
+  const has = (t: Set<string>, ...xs: string[]) => xs.some((x) => t.has(x));
+  const m2 = (n: number) => `${Math.round(n * 10) / 10} m²`;
+  const largestDry = Math.max(0, ...[...rooms.values()].filter((r) => !r.outdoor && (r.kind === 'LIVING' || r.kind === 'BEDROOM' || has(r.types, 'SOFA', 'BED_DOUBLE', 'BED_SINGLE'))).map((r) => r.area));
+  for (const [key, r] of rooms) {
+    if (r.outdoor) continue;
+    const wet = r.kind === 'BATHROOM' || r.kind === 'WC' || (has(r.types, 'TOILET', 'SHOWER', 'BATH') && !has(r.types, 'BED_DOUBLE', 'BED_SINGLE', 'SOFA'));
+    const kitchen = r.kind === 'KITCHEN' || /kitchen/.test(r.label) || has(r.types, 'KITCHEN_RUN', 'KITCHEN_ISLAND', 'FRIDGE');
+    const living = r.kind === 'LIVING' || has(r.types, 'SOFA');
+    if (wet && r.area > 10) out.push(`room ${key} (a bathroom) is ${m2(r.area)}; a bathroom is about 3–7 m²`);
+    if (wet && largestDry && r.area > largestDry) out.push(`room ${key} (a bathroom) is larger than every living room and bedroom`);
+    if ((r.kind === 'HALL' || r.kind === 'CORRIDOR') && r.area > 16) out.push(`room ${key} (a hall) is ${m2(r.area)}; a hall is about 3–9 m²`);
+    if (kitchen && living && (r.area < 18 || r.short < 3)) out.push(`room ${key} (a kitchen-living room) is ${m2(r.area)} and ${Math.round(r.short * 10) / 10} m deep; it holds a kitchen run, a dining table and a sofa facing a TV — about 20–40 m², at least 3.2 m deep`);
+    if (has(r.types, 'BED_DOUBLE') && (r.area < 9 || r.short < 2.6)) out.push(`room ${key} (a bedroom with a double bed) is ${m2(r.area)} and ${Math.round(r.short * 10) / 10} m deep; it needs about 10–18 m², at least 2.8 m deep`);
+    if (has(r.types, 'DESK') && !living && r.short < 2) out.push(`room ${key} (a study) is only ${Math.round(r.short * 10) / 10} m deep; a desk with its chair and a way past needs at least 2.2 m`);
+  }
+  return out;
+}
+
+/** The request (OpenAI Responses API): the pictures (the plan view first when there is one) and the reading — and, for a
+ * second attempt, the first draft and what made it no home (draftProblems). */
+export function draftRequest(model: string, imageUrls: string[], read: Reconstruction, previous?: { draft: unknown; problems: string[] }) {
   return {
     model,
     reasoning: { effort: 'medium' },
@@ -64,6 +107,7 @@ export function draftRequest(model: string, imageUrls: string[], read: Reconstru
       { role: 'user', content: [
         ...imageUrls.slice(0, 3).flatMap((url, i) => [{ type: 'input_text', text: `Picture ${i}:` }, { type: 'input_image', image_url: url, detail: 'high' }]),
         { type: 'input_text', text: `READING:\n${JSON.stringify(draftInput(read))}` },
+        ...(previous ? [{ type: 'input_text', text: `YOUR FIRST DRAFT:\n${JSON.stringify(previous.draft)}\nIT IS NOT THIS HOME — fix exactly these, keeping every room's place and neighbours:\n- ${previous.problems.join('\n- ')}` }] : []),
       ] },
     ],
     text: { format: { type: 'json_schema', name: 'ds_plan_draft', strict: true, schema: PLAN_DRAFT_SCHEMA } },

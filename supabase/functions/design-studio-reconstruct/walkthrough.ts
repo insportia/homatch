@@ -61,7 +61,7 @@ import { failure, inBackground, isFresh, kick, readFailure } from './durable.ts'
 import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
 import { mostlyInferred, WALK_BRIEF_VERSION, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
-import { applyDraft, draftRequest, PLAN_DRAFT_VERSION } from '../../../src/lib/designStudio/walkthrough/planDraft.ts';
+import { applyDraft, draftProblems, draftRequest, PLAN_DRAFT_VERSION } from '../../../src/lib/designStudio/walkthrough/planDraft.ts';
 import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
 import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
 import { PHOTO_SPACE_VERSION, spaceFromReading, type PhotoSpace } from '../../../src/lib/designStudio/walkthrough/photoSpace.ts';
@@ -365,7 +365,28 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
   if (draftCost?.aiCents != null && 'cost_cents' in paid) (paid as Row).cost_cents = ((paid as Row).cost_cents ?? 0) + draftCost.aiCents;
   let draftRaw: unknown = null;
   try { draftRaw = draftPayload ? JSON.parse(textOf(draftPayload)) : null; } catch { draftRaw = null; }
-  const drafted = draftRaw ? applyDraft(read, draftRaw) : null;
+  let drafted = draftRaw ? applyDraft(read, draftRaw) : null;
+  // A draft sized against what its rooms are (a bathroom the size of a bedroom, a kitchen-living room too small for
+  // its kitchen and sofa) is sent back once, with exactly what is wrong — while the invocation has the time for it.
+  const firstProblems = drafted ? draftProblems(drafted.recon) : [];
+  let repair: Row = null;
+  const left = 330_000 - (Date.now() - started);
+  if (drafted && firstProblems.length && left > 60_000) {
+    const repairAsked = Date.now();
+    const repairPayload: Row = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(draftRequest(SPACE_MODEL, draftImages, read, { draft: draftRaw, problems: firstProblems })), signal: AbortSignal.timeout(Math.min(150_000, left)),
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const repairCost = repairPayload ? await meterAiCall(admin, { userId: a.actorId, productCode: 'DS_RECONSTRUCT', jobRef: a.jobId, model: SPACE_MODEL, startedAt: repairAsked }, repairPayload,
+      { purpose: 'WALK_SPACE_DRAFT_REPAIR', generator: 'OPENAI_FIRST' }) : null;
+    if (repairCost?.aiCents != null && 'cost_cents' in paid) (paid as Row).cost_cents = ((paid as Row).cost_cents ?? 0) + repairCost.aiCents;
+    let repairRaw: unknown = null;
+    try { repairRaw = repairPayload ? JSON.parse(textOf(repairPayload)) : null; } catch { repairRaw = null; }
+    const second = repairRaw ? applyDraft(read, repairRaw) : null;
+    const remaining = second ? draftProblems(second.recon) : null;
+    repair = { asked: !!repairPayload, valid: !!second, problems: remaining };
+    if (second && remaining && remaining.length < firstProblems.length) { drafted = second; repair.kept = true; }
+  }
   // Squared, completed, built, furnished from the selected render and checked against the evidence — laid out again
   // from its pieces when the read outlines fail that check (photoSpace.ts). Pure: rebuilt later from the kept reading.
   const lighting = measured?.lighting ?? null;
@@ -389,7 +410,7 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
       // The validated reading itself (no pictures in it): the space can be rebuilt from it by better code, never bought again.
       // When the architect's draft was used, the drafted reading is the one kept (and rebuilt from).
       reading: kept,
-      planDraft: { version: PLAN_DRAFT_VERSION, asked: !!draftPayload, valid: !!drafted, used: useDraft, split: drafted?.split ?? [], rejected: drafted && !useDraft ? (fromDraft && 'problems' in fromDraft ? 'NOT_BUILDABLE' : `${(fromDraft as Row)?.layout}:${(fromDraft as Row)?.geometryCheck?.verdict}`) : null },
+      planDraft: { version: PLAN_DRAFT_VERSION, asked: !!draftPayload, valid: !!drafted, used: useDraft, split: drafted?.split ?? [], problems: firstProblems, repair, rejected: drafted && !useDraft ? (fromDraft && 'problems' in fromDraft ? 'NOT_BUILDABLE' : `${(fromDraft as Row)?.layout}:${(fromDraft as Row)?.geometryCheck?.verdict}`) : null },
       ...(a.renderId ? { renderId: a.renderId, frameMeasured: !!measured, pieces: furnishing ? { read: furnishing.read, traced: furnishing.traced } : null } : {}),
     },
   }).eq('id', a.jobId).eq('status', 'RUNNING');
@@ -1003,6 +1024,19 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // A render walk an earlier invocation started and never finished (killed by the CPU limit) counts as declined: it
   // is never built again (it would be killed again, and every kill spends a plan attempt).
   const declined = !!row.timings?.renderFurnishing?.declined || !!row.timings?.renderFurnishing?.tried;
+  // The last resort: the walkthrough planned by rule failed (below) after the render's own pieces were declined only
+  // for how much of the render they are. Those pieces are built once more and published as APPROXIMATE when they walk
+  // with every room what it is (renderGate.ts lastResort) — a walkable tour of the design, never "could not be made"
+  // while one exists. Else the failure stands, as it was found.
+  const resort = row.timings?.renderFurnishing?.lastResort;
+  if (resort?.state === 'TRYING' && furnishing && row.render_id && furnishing.renderId === String(row.render_id)) {
+    const held = { ...row.timings.renderFurnishing, lastResort: { ...resort, state: 'TRIED' } };
+    row.timings = { ...row.timings, renderFurnishing: held };
+    await admin.from('ds_walkthroughs').update({ timings: row.timings }).eq('id', row.id).eq('attempts', row.attempts);
+    if (await planFromRender(admin, row, design, furnishing, preferences.style ?? null, true)) return;
+    await fail(admin, row, String(resort.failing || 'NOT_FAITHFUL'), { timings: { ...row.timings, renderFurnishing: { ...held, lastResort: { ...held.lastResort, state: 'DECLINED', reasons: row.timings?.renderFurnishing?.reasons ?? [] } } } });
+    return;
+  }
   if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && !declined) {
     row.timings = { ...row.timings, renderFurnishing: { ...(row.timings?.renderFurnishing ?? {}), tried: true } };
     await admin.from('ds_walkthroughs').update({ timings: row.timings }).eq('id', row.id).eq('attempts', row.attempts);
@@ -1329,8 +1363,18 @@ async function plan(admin: Row, row: Row): Promise<void> {
       });
       return;
     }
+    const planReport = { ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}), final: summary };
+    // The render's own pieces, declined earlier only for how much of the render they are (they walked), are tried
+    // once more as the last resort, in a fresh invocation (above), before the failure stands.
+    if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && row.timings?.renderFurnishing?.declined === 'NOT_FAITHFUL' && !row.timings?.renderFurnishing?.lastResort) {
+      await release(admin, row, {
+        error: failing, cost, plan_report: planReport, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now()),
+        timings: { ...timings, lastFindings: fidelity ? feedbackOf(fidelity) : [failing], renderFurnishing: { ...row.timings.renderFurnishing, lastResort: { state: 'TRYING', failing, at: iso(Date.now()) } } },
+      });
+      return;
+    }
     await fail(admin, row, failing, {
-      cost, plan_report: { ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}), final: summary },
+      cost, plan_report: planReport,
       timings: { ...timings, lastFindings: fidelity ? feedbackOf(fidelity) : [failing] },
     });
     return;
@@ -1384,7 +1428,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
  * when it is both the render (VISUAL) and walkable (NAVIGATION) — renderGate.ts; published as APPROXIMATE when it is
  * walkable and most of the render (gate.ready). No model call is made here.
  */
-async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: RenderFurnishing, styleCode: string | null): Promise<boolean> {
+async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: RenderFurnishing, styleCode: string | null, lastResort = false): Promise<boolean> {
   const { version, space } = design;
   const started = Date.now();
   const cat = await catalogue(admin);
@@ -1401,14 +1445,17 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
   const gate = renderGate({ space, state: dressed.state, assets, build: built.report, plan: rp, walkRadiusM: RENDER_WALK_RADIUS_M, corrections: dressed.corrections });
   const costLine = { kind: 'RENDER_FURNISHING', model: null, usd: 0, basis: 'NO_MODEL_CALL', tokens: null, ms: Date.now() - started, attempt: row.plan_attempts };
   const cost = [...(Array.isArray(row.cost) ? row.cost : []), costLine];
+  // The last resort (every other plan failed): published, as APPROXIMATE, when walkable with every room what it is.
+  const publishable = gate.ready || (lastResort && gate.lastResort);
+  const approximate = publishable && !gate.promoted;
   const reference = {
-    mode: 'RENDER_FURNISHED', renderId: furnishing.renderId, read: furnishing.read, traced: furnishing.traced, approximate: gate.approximate,
+    mode: 'RENDER_FURNISHED', renderId: furnishing.renderId, read: furnishing.read, traced: furnishing.traced, approximate, ...(lastResort ? { lastResort: true } : {}),
     unmatched: rp.unmatched, unplaced: rp.unplaced, gate, buildMs: Date.now() - started,
   };
   const timings = { ...row.timings, renderFurnishing: { version: furnishing.version, renderId: furnishing.renderId, sourceId: version.source_id } };
   // Published when it is the render, or walkable and approximately the render (renderGate.ts READY_MIN_*) — then
   // recorded as APPROXIMATE, never as the render.
-  if (!gate.ready) {
+  if (!publishable) {
     // Declined, not failed: the caller plans it the usual way; why the render's pieces could not stand is kept.
     row.timings = { ...timings, renderFurnishing: { ...timings.renderFurnishing, declined: !gate.navigation.pass ? 'NOT_WALKABLE' : 'NOT_FAITHFUL', reasons: [...gate.visual.reasons, ...gate.navigation.reasons], metrics: gate.visual.metrics } };
     return false;
@@ -1418,7 +1465,7 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
   const { error: insertErr } = await admin.from('ds_versions').upsert({
     id: walkId, project_id: version.project_id, user_id: version.user_id, source_id: version.source_id, parent_id: version.id,
     name, origin: 'AI', job_id: version.job_id, state: dressed.state, style_tags: version.style_tags ?? [],
-    change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: furnishing.version, renderId: furnishing.renderId, approximate: gate.approximate }],
+    change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: furnishing.version, renderId: furnishing.renderId, approximate }],
     design_dna: version.design_dna ?? null,
   }, { onConflict: 'id', ignoreDuplicates: true });
   if (insertErr) { await release(admin, row, { error: 'VERSION_NOT_RECORDED', cost, timings, next_check_at: iso(Date.now() + 15_000) }); return true; }

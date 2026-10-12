@@ -58,6 +58,8 @@ export interface RenderGate {
   ready: boolean;
   /** Published as approximately the render, not as the render (ready but not promoted). */
   approximate: boolean;
+  /** Publishable as APPROXIMATE only when every other plan failed: walkable, essentials there, important pieces there. */
+  lastResort: boolean;
   visual: { pass: boolean; reasons: string[]; metrics: Record<string, number> };
   navigation: { pass: boolean; reasons: string[]; metrics: Record<string, number>; unreachable: string[]; blockedDoors: string[]; traps: Array<{ roomId: string; areaM2: number }>; spawn: { x: number; y: number } | null };
   facing: FacingFinding[];
@@ -124,8 +126,12 @@ export function renderGate(input: RenderGateInput): RenderGate {
   const roughly = importantRecall >= READY_MIN_IMPORTANT_RECALL && recall >= READY_MIN_RECALL && placeholders <= MAX_PLACEHOLDER_RATIO
     && !facing.some((f) => f.code === 'REVERSED') && !build.gate?.missingEssential?.length;
   const ready = promoted || (navPass && roughly);
+  // The last resort (walkthrough.ts, when the walkthrough planned by rule fails too): walkable, every room what it is,
+  // most of the important pieces of the render standing — fewer of the small ones than READY_MIN_RECALL asks.
+  const lastResort = ready || (navPass && importantRecall >= READY_MIN_IMPORTANT_RECALL && placeholders <= MAX_PLACEHOLDER_RATIO
+    && !facing.some((f) => f.code === 'REVERSED') && !build.gate?.missingEssential?.length);
   return {
-    promoted, ready, approximate: ready && !promoted,
+    promoted, ready, lastResort, approximate: ready && !promoted,
     visual: {
       pass: visualPass, reasons: visualReasons,
       metrics: {

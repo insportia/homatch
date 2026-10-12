@@ -6,7 +6,8 @@
 // this design (its rooms) are one tap away. What the picture does not show
 // stays open rather than invented, and the walk ends where the picture does.
 
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { lazyRoute } from '@/lib/lazyRoute';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, RotateCcw, X } from 'lucide-react';
 import * as THREE from 'three';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -19,7 +20,7 @@ import { signedUrls } from '@/services/designStudio/files';
 export interface WalkPhoto { id: string; url: string; key?: string | null; label: string; kind: 'ROOM' | 'MASTER' }
 
 // The same game as every long wait, watching this one.
-const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+const SnakeGame = lazyRoute(() => import('@/components/games/SnakeGame'));
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
 const ROUND = cn('grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20', RING);

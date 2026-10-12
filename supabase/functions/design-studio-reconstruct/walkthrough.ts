@@ -1386,7 +1386,12 @@ async function plan(admin: Row, row: Row): Promise<void> {
     // The paid plan is kept with the failure: the same picture is never planned (and paid for) twice, and the
     // build can be reproduced exactly.
     const summary = {
-      build: { counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated }, reference: referenceReport, dropped: validated.dropped, scenePlan: validated,
+      // What the build did to each piece it did not keep as planned (dropped, moved, why): a failure is diagnosable.
+      build: {
+        counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated,
+        items: built.report.items.filter((i) => i.outcome !== 'PLANNED').slice(0, 80).map((i) => ({ roomId: i.roomId, code: i.code, outcome: i.outcome, reason: i.reason ?? null, movedM: i.movedM ?? null })),
+      },
+      reference: referenceReport, dropped: validated.dropped, scenePlan: validated,
       designGraph: graph ? { reusedFrom: reusedGraph && reused ? reusedFrom : null, promotion } : { error: designGraphError },
     };
     // One replan, told exactly what failed (codes and numbers made here), in its own invocation; then the failure stands.

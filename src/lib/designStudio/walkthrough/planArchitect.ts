@@ -186,16 +186,16 @@ export function architectPlan(read: Reconstruction): { recon: Reconstruction; re
     // A door joins its room to the nearest room it still touches; a door of a hall or a living room with none is the
     // home's entrance; any other is left out (the build gives an unreached room a door).
     // A bathroom opens onto the hall when it touches one; two rooms get one door between them.
-    const useOf = (r: ReconRoom) => roomUse(r, types.get(r.key) ?? new Set());
-    const wet = useOf(first) === 'BATH' || useOf(first) === 'WC';
-    const halls = wet ? placed.filter((r) => r.key !== first.key && useOf(r) === 'HALL' && !by.some((x) => x.r.key === r.key)).map((r) => ({ r, d: near(boxes.get(r.key)!, p) })) : [];
-    const others = [...by.slice(1), ...halls].map((x, i) => ({ ...x, rank: i - (wet && useOf(x.r) === 'HALL' ? 100 : 0) - (/hall/.test(o.key) && useOf(x.r) === 'HALL' ? 50 : 0) })).sort((m, n) => m.rank - n.rank);
+    const purposeOf = (r: ReconRoom) => roomUse(r, types.get(r.key) ?? new Set());
+    const wet = purposeOf(first) === 'BATH' || purposeOf(first) === 'WC';
+    const halls = wet ? placed.filter((r) => r.key !== first.key && purposeOf(r) === 'HALL' && !by.some((x) => x.r.key === r.key)).map((r) => ({ r, d: near(boxes.get(r.key)!, p) })) : [];
+    const others = [...by.slice(1), ...halls].map((x, i) => ({ ...x, rank: i - (wet && purposeOf(x.r) === 'HALL' ? 100 : 0) - (/hall/.test(o.key) && purposeOf(x.r) === 'HALL' ? 50 : 0) })).sort((m, n) => m.rank - n.rank);
     for (const other of others) {
       if (o.kind === 'BALCONY_DOOR' && !first.outdoor && !other.r.outdoor) continue;
       const pair = [first.key, other.r.key].sort().join('|');
       if (linked.has(pair)) continue;
       // A bathroom has one door.
-      const wetHere = [first, other.r].find((r) => useOf(r) === 'BATH' || useOf(r) === 'WC');
+      const wetHere = [first, other.r].find((r) => purposeOf(r) === 'BATH' || purposeOf(r) === 'WC');
       if (wetHere && [...linked].some((l) => l.split('|').includes(wetHere.key))) continue;
       const at = shared(rects.get(first.key)!, rects.get(other.r.key)!);
       if (at) { linked.add(pair); return [{ ...o, at: [r2(at[0]), r2(at[1])] as [number, number], px: null }]; }

@@ -62,6 +62,8 @@ import { READY_FAST_COLUMNS, canServeStoredFast, readEnrichmentMarkers } from '.
 import { needsMarketRefresh } from '../../../src/verify/marketRefresh.ts';
 import { planStoredTasTexts, applyStoredTasText } from '../../../src/verify/intelligence/tasCaseSources.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
+import { parseTranslateRequest } from '../../../src/verify/translation/textTranslation.ts';
+import { translateTexts } from './translate.ts';
 
 /**
  * GEL/USD context from the National Bank of Georgia.
@@ -141,6 +143,9 @@ const CORS = {
 const VERIFY_SYNTHESIS_MODEL = 'gpt-5.6-luna';
 const SYNTHESIS_MODEL_OVERRIDE = (Deno.env.get('OPENAI_SYNTHESIS_MODEL') ?? '').trim();
 const MODEL = SYNTHESIS_MODEL_OVERRIDE || VERIFY_SYNTHESIS_MODEL;
+/* The report's content in the customer's language (`translate`, translate.ts):
+   the synthesis model unless OPENAI_TRANSLATION_MODEL moves this stage alone. */
+const TRANSLATION_MODEL = (Deno.env.get('OPENAI_TRANSLATION_MODEL') ?? '').trim() || MODEL;
 
 /*
  * WHICH FAILURES DEGRADE QUIETLY, AND WHICH DO NOT.
@@ -1023,6 +1028,21 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const jobId = String(body?.jobId ?? '').trim();
     if (!jobId) return json({ error: 'jobId is required' }, 400);
+
+    /* TRANSLATE (owner P0, 2026-10-12): the report's Georgian content in the
+       customer's language, keyed on the text and cached for every report.
+       Same authorisation as reading the report: the job must be visible
+       through the CALLER's RLS-scoped client, or the answer is 404. The
+       cache, the allowance and the cost row use the service client. */
+    if (body?.action === 'translate') {
+      const parsed = parseTranslateRequest(body);
+      if (!parsed.ok) return json({ error: parsed.error }, parsed.status);
+      const { data: visible, error: visErr } = await supabase.from('research_jobs').select('id').eq('id', jobId).maybeSingle();
+      if (visErr) throw visErr;
+      if (!visible) return json({ error: 'not found' }, 404);
+      const out = await translateTexts(writer, parsed.request, { apiKey: Deno.env.get('OPENAI_API_KEY'), model: TRANSLATION_MODEL, skipped: parsed.skipped });
+      return json(out);
+    }
 
     /* READY FAST PATH (reportReadPath.ts). The row is read WITHOUT
        result_json (1.8 MB for job 8ba97da9); result_json is fetched only when

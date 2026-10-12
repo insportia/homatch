@@ -18429,6 +18429,9 @@ const en = {
   fbs_step_results: 'Potentially interested people appear on the search page as they are found',
   fbs_go_to_search: 'Open the search page',
   fbs_watch_search: 'Follow the search live',
+
+  /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
+  verify_tr_translating: 'Translating the report…',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36772,6 +36775,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbs_step_results: 'პოტენციურად დაინტერესებული ადამიანები ძებნის გვერდზე გამოჩნდებიან, როგორც კი მოიძებნებიან',
   fbs_go_to_search: 'ძებნის გვერდის გახსნა',
   fbs_watch_search: 'ძებნის პირდაპირ ყურება',
+
+  /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
+  verify_tr_translating: 'ანგარიში ითარგმნება…',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55106,6 +55112,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbs_step_results: 'Потенциально заинтересованные люди появляются на странице поиска по мере нахождения',
   fbs_go_to_search: 'Открыть страницу поиска',
   fbs_watch_search: 'Следить за поиском',
+
+  /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
+  verify_tr_translating: 'Переводим отчёт…',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73438,6 +73447,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbs_step_results: 'Potansiyel ilgili kişiler bulundukça arama sayfasında görünür',
   fbs_go_to_search: 'Arama sayfasını aç',
   fbs_watch_search: 'Aramayı canlı izle',
+
+  /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
+  verify_tr_translating: 'Rapor çevriliyor…',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91770,6 +91782,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbs_step_results: 'يظهر الأشخاص المحتمل اهتمامهم في صفحة البحث فور العثور عليهم',
   fbs_go_to_search: 'افتح صفحة البحث',
   fbs_watch_search: 'تابع البحث مباشرة',
+
+  /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
+  verify_tr_translating: 'جارٍ ترجمة التقرير…',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110102,6 +110117,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbs_step_results: 'אנשים שעשויים להתעניין מופיעים בדף החיפוש ברגע שהם נמצאים',
   fbs_go_to_search: 'פתיחת דף החיפוש',
   fbs_watch_search: 'מעקב אחרי החיפוש בזמן אמת',
+
+  /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
+  verify_tr_translating: 'מתרגמים את הדוח…',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

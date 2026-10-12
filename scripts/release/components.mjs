@@ -32,7 +32,7 @@ export const SUITE_CATALOGUE = {
   'mobile:routes': { title: 'Mobile — every customer route', files: ['tests/mobile/routeOverflow.test.mjs', 'tests/mobile/routeHealth.test.mjs', 'tests/mobile/textContrast.test.mjs', 'tests/mobile/formControls.test.mjs', 'tests/mobile/propertyOwnerWorkspace.test.mjs'] },
   'mobile:shell': { title: 'Mobile — shell, motion, composer', files: ['tests/mobile/shellAndMotion.test.mjs', 'tests/mobile/appShell.test.mjs', 'tests/mobile/chatComposer.test.mjs'] },
   'mobile:auth': { title: 'Mobile — auth screens', files: ['tests/mobile/authScreens.test.mjs'] },
-  'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs', 'tests/mobile/verifyReportPremium.test.mjs'] },
+  'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs', 'tests/mobile/verifyReportPremium.test.mjs', 'tests/mobile/verifyReportTranslation.test.mjs'] },
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
   'mobile:mortgage': { title: 'Mobile — mortgage', files: ['tests/mobile/mortgageConsultant.test.mjs', 'tests/mobile/mortgageHuman.test.mjs'] },
   'mobile:expats': { title: 'Mobile — For Expats', files: ['tests/mobile/expatsReadable.test.mjs'] },

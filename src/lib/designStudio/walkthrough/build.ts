@@ -719,7 +719,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       let otherMissing = 0;
       let offZone = 0;
       for (const nd of order) {
-        const have = standingIn(room.id).filter((p) => !used.has(p.instanceId) && nd.serves(p.asset)).slice(0, nd.count);
+        const have = standingIn(room.id).filter((p) => !used.has(p.instanceId) && (nd.metBy ?? nd.serves)(p.asset)).slice(0, nd.count);
         for (const h of have) { used.add(h.instanceId); if (nd.core) h.essential = true; }
         for (let k = have.length; k < nd.count; k += 1) {
           let placed = false;
@@ -798,6 +798,16 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       undo(r.added);
     }
     if (!kept && best) pass(tries[best.i].order, tries[best.i].smallest, tries[best.i].zone);
+    // A core need still unmet in a room the design furnished (its kitchen, its bed): the room's least important pieces
+    // make way, one at a time — a plant or a lamp, never a piece that is itself what makes the room.
+    const meets = (nd: Need, a: CatalogAsset) => (nd.metBy ?? nd.serves)(a);
+    const unmet = () => cores.filter((nd) => !standingIn(room.id).some((p) => meets(nd, p.asset)) && [...assets.values()].some((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)));
+    for (let k = 0; k < 6 && unmet().length; k += 1) {
+      const victim = standingIn(room.id).filter((p) => !p.essential && !cores.some((nd) => meets(nd, p.asset))).sort((a, b) => Number(!!a.lock) - Number(!!b.lock) || a.rank - b.rank || a.area - b.area)[0];
+      if (!victim) break;
+      drop(victim, 'MADE_ROOM_FOR_ESSENTIAL');
+      pass(unmet(), true);
+    }
   }
 
   // ── Circulation: a comfortable walk everywhere it went before, and no narrow trap ──
@@ -1236,7 +1246,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
   }
   // A room missing what defines it (its programme's core needs): the READY gate refuses the home.
   const missingEssential = space.rooms.filter((r) => r.areaM2 >= 1.2)
-    .filter((r) => (programme.get(r.id)?.needs ?? []).some((nd) => nd.core && !standingIn(r.id).some((p) => nd.serves(p.asset))
+    .filter((r) => (programme.get(r.id)?.needs ?? []).some((nd) => nd.core && !standingIn(r.id).some((p) => (nd.metBy ?? nd.serves)(p.asset))
       // Only what the catalogue can provide is owed (a catalogue with no shower cannot fail a bathroom for it).
       && [...assets.values()].some((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)))).map((r) => r.id);
   const furnishedModel = buildWalkModel(space, working.objects, assets);

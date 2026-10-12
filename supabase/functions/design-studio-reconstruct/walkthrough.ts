@@ -1235,6 +1235,36 @@ async function plan(admin: Row, row: Row): Promise<void> {
     camera: validated.reference.camera, cameraNote: validated.reference.cameraNote, facts: validated.reference.facts, fidelity,
     replans: replan ? Number(replan.attempt) || 1 : 0, reusedFrom, reuseRefused, sceneMapElements: reference?.sceneMap.length ?? 0, buildMs,
   } : { mode: 'SPECIFICATION', reusedFrom, reuseRefused, buildMs };
+  // The AI's review of the built layout against the picture (layoutReview.ts): asked once, in the background, when the
+  // tour has a picture — on a tour that passed, to bring it closer to the picture; on one that failed only for what it
+  // lacks or how it reads (NOT_FAITHFUL, NOT_PLAUSIBLE) but walks, to repair it. Its corrections are applied on the
+  // next step and kept only if every gate passes.
+  const askReview = async (problems: string[]): Promise<boolean> => {
+    if (!LAYOUT_REVIEW_ON || review || !reference?.dataUrl || !apiKey) return false;
+    const layout = reviewLayout(space, input.rooms, plan0, built.state, built.report, assets);
+    const made = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...reviewRequest(QA_MODEL, reference.dataUrl, layout, problems), background: true, store: true }),
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (!(made?.id && (made.status === 'queued' || made.status === 'in_progress' || made.status === 'completed'))) return false;
+    await release(admin, row, {
+      scene_plan: validated, cost, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS),
+      timings: { ...timings, layoutReview: { id: made.id, at: iso(Date.now()), version: LAYOUT_REVIEW_VERSION, layout, aiRoomMap, ...(problems.length ? { problems } : {}) } },
+    });
+    return true;
+  };
+  if ((failing === 'NOT_FAITHFUL' || failing === 'NOT_PLAUSIBLE') && built.report.gate?.ok !== false && !corrected) {
+    const prog = homeProgramme(space.rooms);
+    const problems = [
+      ...(built.report.gate?.missingEssential ?? []).map((id: string) => {
+        const lacks = (prog.get(id)?.needs ?? []).filter((nd) => nd.core && !walkState.objects.some((o) => o.roomId === id && assets.get(o.assetId) && (nd.metBy ?? nd.serves)(assets.get(o.assetId)!))).map((nd) => nd.id);
+        return `room ${id} lacks ${lacks.join(', ') || 'what defines it'}`;
+      }),
+      ...(built.report.gate?.implausible ?? []).map((f: Row) => `${f.code} in ${f.roomId}: ${f.detail ?? ''}`),
+      ...(promotion?.metrics?.unresolvedImportant?.length ? [`pieces the picture shows that are missing: ${promotion.metrics.unresolvedImportant.join(', ')}`] : []),
+    ];
+    if (await askReview(problems)) return;
+  }
   if (failing && corrected) {
     // The corrected tour failed a gate the reviewed one passed: the review is set aside, the tour built as it was.
     await release(admin, row, {
@@ -1265,22 +1295,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
     return;
   }
 
-  // The AI's review of the built layout against the picture (layoutReview.ts): asked once, in the background, when the
-  // tour has a picture; its corrections are applied on the next step and kept only if every gate still passes.
-  if (LAYOUT_REVIEW_ON && !review && reference?.dataUrl && apiKey) {
-    const layout = reviewLayout(space, input.rooms, plan0, built.state, built.report, assets);
-    const made = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...reviewRequest(QA_MODEL, reference.dataUrl, layout), background: true, store: true }),
-    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    if (made?.id && (made.status === 'queued' || made.status === 'in_progress' || made.status === 'completed')) {
-      await release(admin, row, {
-        scene_plan: validated, cost, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS),
-        timings: { ...timings, layoutReview: { id: made.id, at: iso(Date.now()), version: LAYOUT_REVIEW_VERSION, layout, aiRoomMap } },
-      });
-      return;
-    }
-  }
+  if (await askReview([])) return;
   if (review) {
     // Kept with the tour (without the layout it reviewed): what the review said, and what became of it.
     const { layout: _reviewed, ...kept } = review as Row;

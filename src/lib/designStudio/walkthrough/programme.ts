@@ -26,6 +26,8 @@ export interface Need {
   id: string;
   /** Whether a catalogue piece serves it. */
   serves: (a: AssetWords) => boolean;
+  /** A piece the design placed that already meets it, though the programme would not choose it (an island is a kitchen). */
+  metBy?: (a: AssetWords) => boolean;
   /** How many the room holds (dining chairs). */
   count: number;
   /** Core: a room without it is not that room — the READY gate refuses it. */
@@ -49,7 +51,8 @@ const outdoorChair = (a: AssetWords) => isOutdoor(a) && pieceRole(a) === 'CHAIR'
 const outdoorTable = (a: AssetWords) => isOutdoor(a) && pieceRole(a) === 'TABLE';
 
 const need = (id: string, serves: Need['serves'], targetM2: number, core = false, count = 1): Need => ({ id, serves, count, core, targetM2 });
-const KITCHEN_NEEDS = [need('KITCHEN_RUN', isRun, 1.8, true), need('FRIDGE', isFridge, 0.5, true)];
+// A kitchen island or peninsula the design shows is that kitchen's counter (the programme itself places a run).
+const KITCHEN_NEEDS = [{ ...need('KITCHEN_RUN', isRun, 1.8, true), metBy: (a: AssetWords) => isRun(a) || isIsland(a) }, need('FRIDGE', isFridge, 0.5, true)];
 
 /** What a room is used as: its kind, read with its label, and with the home around it (`homeHasKitchen`, `habitable`). */
 export function roomUseOf(kind: string, label: string | null, home: { habitableRooms: number; kitchenRoomId: string | null; roomId: string }): Use {

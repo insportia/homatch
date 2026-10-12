@@ -121,3 +121,52 @@ test('a room takes catalogue pieces by its use, not only the kind it was read as
   const src = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
   assert.match(src, /label: r\.label, kinds: roomKinds\.get\(r\.id\)\?\.kinds \}/);
 });
+
+// The shape of a real failure (synthetic): three bands of rooms read small and squeezed from a steep aerial view —
+// bathroom and bedroom, hall and office, kitchen-living — with doors named for the rooms they join. The architect
+// once linked each door to the nearest room at the middle of a shared wall: the office got a door in the middle of
+// every wall (a crossing no desk fits in), the bathroom opened into the office, and splits across the bands
+// rearranged the home.
+const bands = {
+  version: 'ds-recon-3', view: 'AERIAL', scaleConfidence: 0.6, scaleEvidence: null, ceilingHeightM: 2.7, usesPlan: false,
+  rooms: [
+    room('bathroom-1', 'BATHROOM', 'bathroom', [[0, 0], [1.8, 0], [1.8, 2.2], [0, 2.2]]), room('bedroom-1', 'BEDROOM', 'bedroom', [[1.8, 0], [6, 0], [6, 2.2], [1.8, 2.2]]),
+    room('hall-1', 'HALL', 'entrance hall', [[0, 2.2], [2.4, 2.2], [2.4, 3.9], [0, 3.9]]), room('office-1', 'UNKNOWN', 'office', [[2.4, 2.2], [6, 2.2], [6, 3.9], [2.4, 3.9]]),
+    room('living-1', 'LIVING', 'kitchen-living', [[0, 3.9], [6, 3.9], [6, 6.4], [0, 6.4]]), room('balcony-1', 'BALCONY', 'balcony', [[6, 2.2], [7.4, 2.2], [7.4, 6.4], [6, 6.4]]),
+  ],
+  openings: [
+    door('door-entrance', 'DOOR', [0, 3.0]), door('door-hall-living', 'DOOR', [2.3, 3.9]), door('door-living-office', 'DOOR', [2.6, 3.9]),
+    door('door-office-bathroom', 'DOOR', [2.2, 2.2]), door('door-office-balcony', 'BALCONY_DOOR', [6, 3.0]), door('door-living-balcony', 'BALCONY_DOOR', [6, 5.2]),
+  ],
+  surfaces: [], palette: [], styleWords: [], cameras: [], unknowns: [],
+  objects: [obj('bedd', 'BED_DOUBLE', 'bedroom-1', [4, 1], 1.6, 2), obj('sofa', 'SOFA', 'living-1', [4, 5.5], 2.5, 1), obj('run', 'KITCHEN_RUN', 'living-1', [2, 6.1], 3, 0.6), obj('desk', 'DESK', 'office-1', [4, 3], 1.4, 0.7)],
+};
+
+test('the bands of a home stay its bands, each room deep enough for its use, and every door joins the rooms its name gives', () => {
+  const out = architectPlan(bands);
+  const b = Object.fromEntries(out.recon.rooms.map((r) => [r.key, box(r.polygon)]));
+  // The arrangement as read: bathroom and bedroom one band, hall and office the next, the kitchen-living the last.
+  assert.ok(b['bathroom-1'].y1 <= b['hall-1'].y0 + 0.01 && b['bedroom-1'].y1 <= b['office-1'].y0 + 0.01, 'first band');
+  assert.ok(b['hall-1'].y1 <= b['living-1'].y0 + 0.01 && b['office-1'].y1 <= b['living-1'].y0 + 0.01, 'second band');
+  assert.ok(b['bathroom-1'].x1 <= b['bedroom-1'].x0 + 0.01 && b['hall-1'].x1 <= b['office-1'].x0 + 0.01, 'west to east');
+  for (const [key, use] of [['bedroom-1', 'BEDROOM'], ['office-1', 'STUDY'], ['living-1', 'KITCHEN_LIVING']]) {
+    assert.ok(Math.min(b[key].x1 - b[key].x0, b[key].y1 - b[key].y0) >= SIZE_RANGE[use].short - 0.01, `${key} deep enough`);
+  }
+  const joins = (o) => out.recon.rooms.filter((r) => { const x = b[r.key]; return o.at[0] >= x.x0 - 0.03 && o.at[0] <= x.x1 + 0.03 && o.at[1] >= x.y0 - 0.03 && o.at[1] <= x.y1 + 0.03; }).map((r) => r.key).sort().join('+');
+  const doors = Object.fromEntries(out.recon.openings.map((o) => [o.key, joins(o)]));
+  assert.equal(doors['door-hall-living'], 'hall-1+living-1');
+  assert.equal(doors['door-living-office'], 'living-1+office-1');
+  assert.equal(doors['door-office-balcony'], 'balcony-1+office-1');
+  assert.equal(doors['door-living-balcony'], 'balcony-1+living-1');
+  // The bathroom's door, read beside the office, opens onto the hall (a bathroom opens onto circulation).
+  assert.equal(doors['door-office-bathroom'], 'bathroom-1+hall-1');
+  assert.equal(doors['door-entrance'], 'hall-1');
+  // No room is a crossing: doors where they were read along a wall, not all in the middles.
+  for (const r of out.recon.rooms.filter((x) => !x.outdoor)) {
+    const x = b[r.key]; const sides = new Set(out.recon.openings.filter((o) => o.kind !== 'WINDOW' && joins(o).split('+').includes(r.key))
+      .map((o) => (Math.abs(o.at[0] - x.x0) < 0.03 ? 'W' : Math.abs(o.at[0] - x.x1) < 0.03 ? 'E' : Math.abs(o.at[1] - x.y0) < 0.03 ? 'S' : 'N')));
+    assert.ok(sides.size <= 3, `${r.key} has a door on every wall`);
+  }
+  const built = spaceFromReading(out.recon, { sourceKey: 't', expected: [], furnish: null });
+  assert.ok(!('problems' in built), JSON.stringify(built.problems));
+});

@@ -36,7 +36,8 @@ type P = [number, number];
 // 3: the reading is drafted into an orthogonal plan by the architect (planDraft.ts).
 // 4: a draft sized against what its rooms are is sent back once (planDraft.ts draftProblems).
 // 5: a plan still no plausible home is drawn again by the architect (planArchitect.ts).
-export const WALK_BRIEF_VERSION = 'ds-walk-brief-5';
+// 6: the architect keeps the home's bands and each door on the wall between the rooms its name gives.
+export const WALK_BRIEF_VERSION = 'ds-walk-brief-6';
 /** What a walk needs, added to the reconstruction reader's own instructions (server-internal; never shown). */
 export const WALK_SPACE_BRIEF = `PURPOSE OF THIS READING: a navigable 3D walkthrough of this home, built even where the pictures do not show everything.
 - The first pictures are the customer's own SOURCE pictures: the architecture (walls, rooms, doors, windows, balcony) comes primarily from them. The later pictures are GENERATED DESIGNS of the same home: use them for what they show of the layout, surfaces and furniture; where they disagree with the source about architecture, the source wins.

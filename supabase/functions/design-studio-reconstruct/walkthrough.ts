@@ -1075,8 +1075,10 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const provenance = reference ? { ...reference.provenance, sourceId: version.source_id } : null;
   const cat = await catalogue(admin);
   const floorAssets = cat.assets.filter((a) => a.placement === 'FLOOR');
+  // Each room's use (programme.ts): the catalogue kinds it takes pieces from, whatever kind it was read as.
+  const roomKinds = homeProgramme(space.rooms);
   const ctx: PlanContext = {
-    rooms: space.rooms.map((r) => ({ id: r.id, kind: r.kind, areaM2: r.areaM2, label: r.label })),
+    rooms: space.rooms.map((r) => ({ id: r.id, kind: r.kind, areaM2: r.areaM2, label: r.label, kinds: roomKinds.get(r.id)?.kinds })),
     assets: floorAssets.map((a): PlanAssetContext & { heightM: number; colors: string[] } => ({
       code: a.code, name: a.name, category: a.category, subcategory: a.subcategory, roomKinds: a.roomKinds, styleTags: a.styleTags,
       widthM: a.widthM, depthM: a.depthM, heightM: a.heightM, colors: a.dominantColors,
@@ -1099,7 +1101,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const view = provenance ? { kind: provenance.viewKind, roomId: provenance.viewRoomId } : null;
   const replan = row.timings?.replan ?? null;
   // The cache key: the immutable inputs of a reference-locked plan. A plan is never reused for another picture.
-  const planKey = provenance ? await sha256Hex(`ds-walk-plan:v2:${provenance.referenceImageSha256}:${row.spec_job_id ?? '-'}:${version.id}:${version.source_id}`) : null;
+  // v3: pieces matched by each room's use (a plan matched by the read kind alone lacked kitchens and desks).
+  const planKey = provenance ? await sha256Hex(`ds-walk-plan:v3:${provenance.referenceImageSha256}:${row.spec_job_id ?? '-'}:${version.id}:${version.source_id}`) : null;
 
   const started = Date.now();
   let payload: Row = null;
@@ -1314,7 +1317,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
   // The review's corrections, on the same plan it reviewed (built again from the same inputs, so the same pieces).
   const pickFor = (type: string, roomId: string): string | null => {
     const room = roomsById.get(roomId);
-    return room ? matchItem({ type: type as never, assetCode: null }, { kind: room.kind, areaM2: room.areaM2 }, offered.ctx.assets, preferences)?.code ?? null : null;
+    return room ? matchItem({ type: type as never, assetCode: null }, { kind: room.kind, areaM2: room.areaM2, kinds: roomKinds.get(roomId)?.kinds }, offered.ctx.assets, preferences)?.code ?? null : null;
   };
   const corrected = reviewState === 'APPLYING' && review?.layout ? applyReview(plan0, reviewOps, review.layout, pickFor) : null;
   const built = buildWalkthrough({

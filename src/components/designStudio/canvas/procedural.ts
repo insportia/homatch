@@ -790,6 +790,12 @@ function buildPiece(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColor
         const right = part(g, 'burner-r', hx + w * 0.2, H + 0.009, -0.02);
         right.add(new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.008, 6, 32), ringMat()).rotateX(Math.PI / 2));
         specs.push({ id: 'stove', kind: 'SWITCH', role: 'STOVE', durationMs: 900, effects: [{ id: 'heat', type: 'HEAT', part: 'burner-l', color: '#ff4a1c', intensity: 2.2 }] });
+        // The range hood over the hob: a steel canopy on its chimney, its light and fan on one switch (heard as it runs).
+        const steel = material('#9ea3a8', 0.3, 0.85);
+        const hood = part(g, 'hood', hx, H + 0.66, D * 0.05);
+        hood.add(box(Math.min(0.9, w + 0.2), 0.07, D * 0.8, 0, 0, 0, steel));
+        hood.add(box(0.3, 1.0, 0.26, 0, 0.07, D / 2 - 0.19, steel));
+        specs.push({ id: 'hood', kind: 'SWITCH', role: 'HOOD', durationMs: 400, effects: [{ id: 'hood-light', type: 'LIGHT', part: 'hood', color: '#fff1d6', intensity: 1.1, distance: 2.2 }] });
         // A pan on the right ring; a steak appears in it when cooking starts.
         g.add(cylinder(0.11, 0.035, hx + w * 0.2, H + 0.012, -0.02, material('#2b2d31', 0.4, 0.6), 24));
         g.add(box(0.2, 0.012, 0.025, hx + w * 0.2 + 0.2, H + 0.035, -0.02, material('#2b2d31', 0.4, 0.6)));

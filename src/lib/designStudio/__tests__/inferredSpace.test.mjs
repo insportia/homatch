@@ -190,7 +190,8 @@ test('E: an invalid spawn (in a wall, outside, nowhere) is recalculated to free 
 test('F/G: one reading per photo source — a double tap, a refresh or a reopen follows the same job; failures retry a bounded number of times', () => {
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
   // Keyed on the architecture's evidence, and on the selected render when the reading furnishes from it.
-  assert.match(route, /const key = await sha256Hex\(a\.renderId \? `walk-space:v2:\$\{a\.photoSource\.id\}:\$\{a\.renderId\}` : `walk-space:v1:\$\{a\.photoSource\.id\}`\);/, 'keyed on the architecture\'s evidence');
+  // Keyed on the architecture's evidence and on the brief it is read with (a newer brief reads the pictures once more).
+  assert.match(route, /const key = await sha256Hex\(a\.renderId \? `walk-space:v2:\$\{WALK_BRIEF_VERSION\}:\$\{a\.photoSource\.id\}:\$\{a\.renderId\}` : `walk-space:v1:\$\{WALK_BRIEF_VERSION\}:\$\{a\.photoSource\.id\}`\);/, 'keyed on the architecture\'s evidence');
   assert.match(route, /if \(rows\.some\(\(j\) => j\.status === 'SUCCEEDED' && j\.output\?\.sourceId\)\) return \{ state: 'READY' \};/, 'done once, reused');
   assert.match(route, /if \(running && isFresh\(running\.started_at\)\) return \{ state: 'RUNNING' \};/, 'a second tap or a refresh follows it');
   assert.match(route, /Two taps that raced: the earliest job stays/);
@@ -228,5 +229,11 @@ test('I: a project with a measured floor plan walks on it — exact evidence fir
   assert.match(route, /Number\(a\.provenance\?\.inferred === true\) - Number\(b\.provenance\?\.inferred === true\)/);
   assert.match(route, /if \(!source \|\| source\.kind !== 'FLOORPLAN_SCENE' \|\| !source\.canonical\?\.scene\?\.floors\?\.length\)/);
   const create = route.slice(route.indexOf('export async function handleWalkthroughCreate'), route.indexOf('export async function handleWalkthroughStatus'));
-  assert.ok(create.indexOf("source?.kind === 'PHOTO_SET'") > 0 && create.indexOf('reconstructSpace(') > create.indexOf("source?.kind === 'PHOTO_SET'"), 'inference only inside the photo branch');
+  // Every reading of pictures is for a design made from a photo set (its own branch, or its space carried onto the plan).
+  const calls = [...create.matchAll(/reconstructSpace\(/g)].map((m) => m.index);
+  assert.ok(calls.length >= 1);
+  const branch = create.indexOf("source?.kind === 'PHOTO_SET'");
+  assert.ok(branch > 0);
+  // Inside the photo branch, or (before it) guarded by its own photo-set check on the carried space.
+  for (const at of calls) assert.ok(at > branch || /PHOTO_SET/.test(create.slice(Math.max(0, at - 700), at)), 'inference only for a photo design');
 });

@@ -15,10 +15,10 @@ export type SoundCue =
   | 'CABINET_OPEN' | 'CABINET_CLOSE' | 'DRAWER_OPEN' | 'DRAWER_CLOSE' | 'FRIDGE_OPEN' | 'FRIDGE_CLOSE'
   | 'SWITCH' | 'TV_ON' | 'TV_OFF' | 'FLUSH' | 'WATER_ON' | 'WATER_OFF' | 'CURTAIN'
   | 'HOB_CLICK' | 'COFFEE' | 'MOTOR' | 'SIT' | 'STAND'
-  | 'SIZZLE' | 'SIZZLE_END' | 'PLATE' | 'SLURP';
+  | 'SIZZLE' | 'SIZZLE_END' | 'PLATE' | 'SLURP' | 'FAN_ON' | 'FAN_OFF';
 
 /** Cues that keep sounding while their machine stays in the state (running water), until it leaves it. */
-export const LOOPING: ReadonlySet<SoundCue> = new Set(['WATER_ON', 'SIZZLE']);
+export const LOOPING: ReadonlySet<SoundCue> = new Set(['WATER_ON', 'SIZZLE', 'FAN_ON']);
 
 /**
  * The cue for one transition: `active` is whether the state moved into is the machine's "on/open" one
@@ -53,6 +53,8 @@ export function soundFor(role: InteractionRole, active: boolean, to: string): So
       if (/BREW/.test(to)) return 'COFFEE';
       return null;
     case 'RECLINER': return 'MOTOR';
+    // A range hood: its fan hums while it runs.
+    case 'HOOD': return active ? 'FAN_ON' : 'FAN_OFF';
     case 'SEAT': case 'BED': return active ? 'SIT' : 'STAND';
   }
   return null;

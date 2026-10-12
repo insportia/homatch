@@ -802,8 +802,13 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     // make way, one at a time — a plant or a lamp, never a piece that is itself what makes the room.
     const meets = (nd: Need, a: CatalogAsset) => (nd.metBy ?? nd.serves)(a);
     const unmet = () => cores.filter((nd) => !standingIn(room.id).some((p) => meets(nd, p.asset)) && [...assets.values()].some((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)));
+    // First the smallest pieces that serve it, in every order: a compact fridge may fit where a large one does not.
+    if (unmet().length) { const r = pass(unmet(), true); if (r.coreMissing) undo(r.added); }
     for (let k = 0; k < 6 && unmet().length; k += 1) {
-      const victim = standingIn(room.id).filter((p) => !p.essential && !cores.some((nd) => meets(nd, p.asset))).sort((a, b) => Number(!!a.lock) - Number(!!b.lock) || a.rank - b.rank || a.area - b.area)[0];
+      // Only what dresses the room makes way: a plant, a lamp, a side table, a stool, decor — never a table, its
+      // chairs, a sofa, a bed or a storage piece (the room is used through them).
+      const decor = (a: CatalogAsset) => ['PLANT', 'LAMP', 'OTHER'].includes(pieceRole(a)) || /SIDE|STOOL|OTTOMAN|POUF|DECOR|SCULPT|VASE|CONSOLE/.test(`${a.subcategory ?? ''} ${a.category} ${a.code}`.toUpperCase());
+      const victim = standingIn(room.id).filter((p) => !p.essential && decor(p.asset) && !cores.some((nd) => meets(nd, p.asset))).sort((a, b) => Number(!!a.lock) - Number(!!b.lock) || a.rank - b.rank || a.area - b.area)[0];
       if (!victim) break;
       drop(victim, 'MADE_ROOM_FOR_ESSENTIAL');
       pass(unmet(), true);

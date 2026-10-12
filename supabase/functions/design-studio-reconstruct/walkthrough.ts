@@ -60,7 +60,7 @@ import { callerOf, cancelProviderJob, factoryConfig, FACTORY_STAGES, JOB_FIELDS,
 import { failure, inBackground, isFresh, kick, readFailure } from './durable.ts';
 import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
-import { mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
+import { mostlyInferred, WALK_BRIEF_VERSION, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
 import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
 import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
 import { PHOTO_SPACE_VERSION, spaceFromReading, type PhotoSpace } from '../../../src/lib/designStudio/walkthrough/photoSpace.ts';
@@ -204,7 +204,8 @@ async function designOnPlan(admin: Row, version: Row, projectId: string, renderI
 async function reconstructSpace(admin: Row, a: { actorId: string; authorization: string; project: Row; version: Row; photoSource: Row; renderId: string | null; body: Row }):
   Promise<{ state: 'READY' } | { state: 'RUNNING' } | { state: 'FAILED'; code: string }> {
   // A reading of the selected render (its pieces are the walkthrough's furnishing) is its own reading per render.
-  const key = await sha256Hex(a.renderId ? `walk-space:v2:${a.photoSource.id}:${a.renderId}` : `walk-space:v1:${a.photoSource.id}`);
+  // Asked again under a newer brief (WALK_BRIEF_VERSION): the pictures are read once more with it.
+  const key = await sha256Hex(a.renderId ? `walk-space:v2:${WALK_BRIEF_VERSION}:${a.photoSource.id}:${a.renderId}` : `walk-space:v1:${WALK_BRIEF_VERSION}:${a.photoSource.id}`);
   const { data: jobs } = await admin.from('ds_jobs').select('id, status, output, error, started_at, created_at').eq('user_id', a.actorId).eq('project_id', a.project.id)
     .eq('kind', 'RECONSTRUCT').eq('input->>purpose', 'WALK_SPACE').eq('input->>key', key).order('created_at', { ascending: false }).limit(10);
   const rows: Row[] = jobs ?? [];
@@ -377,7 +378,7 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
  * The ESTIMATED floor-plan source of a photo design, marked inferred and used only by the walkthrough: what the
  * reading became (photoSpace.ts), every repair and the geometry check recorded with it. Its id, or null.
  */
-async function recordSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null; jobId: string; frameMeasured: boolean; rebuiltFrom?: string },
+async function recordSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null; jobId: string; frameMeasured: boolean; rebuiltFrom?: string; readBrief?: string | null },
   built: PhotoSpace): Promise<string | null> {
   const { space, recon, furnishing, geometryCheck } = built;
   const { data: made, error } = await admin.from('ds_spatial_sources').insert({
@@ -390,6 +391,8 @@ async function recordSpace(admin: Row, a: { actorId: string; project: Row; versi
       readingRepairs: built.readingRepairs, ...(a.renderId ? { fromRenderId: a.renderId, frameMeasured: a.frameMeasured, frameFidelity: recon.fidelity ?? null } : {}),
       ...(furnishing ? { furnishing } : {}),
       geometryCheck, photoSpace: PHOTO_SPACE_VERSION, layout: built.layout, layoutRepairs: built.layoutRepairs,
+      // The brief the pictures were read with (a space rebuilt from a kept reading keeps its reading's brief).
+      readBrief: a.rebuiltFrom ? (a.readBrief ?? null) : WALK_BRIEF_VERSION,
       ...(a.rebuiltFrom ? { rebuiltFrom: a.rebuiltFrom } : {}),
     },
   }).select('id').single();
@@ -419,7 +422,7 @@ async function rebuildSpace(admin: Row, a: { actorId: string; project: Row; vers
   });
   // Same verdict, same evidence: nothing new to walk.
   if ('problems' in built || built.geometryCheck.verdict !== 'PASS') return false;
-  return !!await recordSpace(admin, { ...a, jobId: String(job.id), frameMeasured: prov.frameMeasured === true, rebuiltFrom: String(source.id) }, built);
+  return !!await recordSpace(admin, { ...a, jobId: String(job.id), frameMeasured: prov.frameMeasured === true, rebuiltFrom: String(source.id), readBrief: prov.readBrief ?? null }, built);
 }
 
 /** The design and every geometry correction of it (newest first): one walkthrough history across them. */
@@ -528,6 +531,15 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
       const again = await designOnPlan(admin, root, project.id, renderId);
       if (again) { ({ version, source } = again); lineage = await lineageOf(admin, version.id); }
     }
+    // A space read with an older brief: the pictures are read once more (walls, partitions, doors, windows, sizes).
+    if (photo?.kind === 'PHOTO_SET' && root && !root.archived_at && String(root.user_id) === actorId && root.source_id === photo.id && source?.provenance?.readBrief !== WALK_BRIEF_VERSION) {
+      const reread = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version: root, photoSource: photo, renderId, body });
+      if (reread.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
+      if (reread.state === 'READY') {
+        const again = await designOnPlan(admin, root, project.id, renderId);
+        if (again) { ({ version, source } = again); lineage = await lineageOf(admin, version.id); }
+      }
+    }
   }
   // A design made from photos: walked on the measured plan this project already has (nothing uploaded again),
   // carrying the design — its DNA and Design Specification — onto that geometry. Without one, its space is
@@ -538,6 +550,13 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
     // A space reconstructed from pictures but not from the selected render: that render is read once (its pieces
     // furnish the walkthrough). Should that reading fail, the space already there is walked as before.
     if (onPlan && renderId && onPlan.source.provenance?.inferred === true && onPlan.source.provenance?.fromRenderId !== renderId) {
+      const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
+      const again = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId, body });
+      if (again.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
+      if (again.state === 'READY') onPlan = await designOnPlan(admin, version, project.id, renderId) ?? onPlan;
+    }
+    // A space read with an older brief: the pictures are read once more with the current one (one paid reading).
+    if (onPlan && onPlan.source.provenance?.inferred === true && onPlan.source.provenance?.readBrief !== WALK_BRIEF_VERSION) {
       const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
       const again = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId, body });
       if (again.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);

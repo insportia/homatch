@@ -254,7 +254,7 @@ test('TEST 14 — the route: the picture reaches the model, its hash keys the pl
   assert.match(route, /const loaded = row\.render_id \? await loadReference\(admin, row\) : null;/);
   assert.match(route, /referenceImageSha256: await sha256Hex\(bytes\)/);
   assert.match(route, /referenceSceneRequest\(MODEL, input, refInput\)/);
-  assert.match(route, /ds-walk-plan:v2:\$\{provenance\.referenceImageSha256\}/);
+  assert.match(route, /ds-walk-plan:v3:\$\{provenance\.referenceImageSha256\}/);
   assert.match(route, /\(w\?\.timings\?\.reference\?\.referenceImageSha256 \?\? null\) === \(provenance\?\.referenceImageSha256 \?\? null\)/);
   // One replan at most, in its own invocation, then the failure stands.
   assert.match(route, /if \(fidelity && !replan && row\.plan_attempts < MAX_PLAN_ATTEMPTS\)/);

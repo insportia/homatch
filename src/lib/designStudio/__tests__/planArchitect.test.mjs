@@ -104,3 +104,20 @@ test('a plan the model never delivers is not waited on again: the walkthrough is
   assert.match(src, /if \(!reused && !ruled && \(!validated \|\| !validated\.rooms\.length\) && \(missed \|\| payload \|\| row\.plan_attempts >= MAX_PLAN_ATTEMPTS\)\) \{\n    ruled = true;\n    validated = validate\(rulePlan\);/);
   assert.match(src, /!String\(x\.plan\.summary \?\? ''\)\.startsWith\('HOMATCH rule plan'\)/);
 });
+
+test('a room takes catalogue pieces by its use, not only the kind it was read as: a kitchen run in a kitchen-living room, a desk in a study read as a hall', async () => {
+  const { matchItem } = await import('../../../../supabase/functions/_shared/designStudio/walkthrough/scenePlan.ts');
+  const { homeProgramme } = await import('../walkthrough/programme.ts');
+  const asset = (code, category, subcategory, roomKinds, w, d) => ({ code, name: code, category, subcategory, roomKinds, styleTags: [], widthM: w, depthM: d });
+  const assets = [asset('dev/kitchen-run', 'KITCHEN', 'KITCHEN_RUN', ['KITCHEN'], 2.4, 0.6), asset('dev/desk', 'TABLE', 'DESK', ['BEDROOM', 'LIVING', 'OFFICE'], 1.2, 0.6)];
+  const prefs = { style: null, furnishing: 'FURNISHED' };
+  const prog = homeProgramme([{ id: 'k', kind: 'LIVING', label: 'kitchen-living', areaM2: 22 }, { id: 'o', kind: 'HALL', label: 'office', areaM2: 10 }]);
+  const run = matchItem({ type: 'KITCHEN_RUN', assetCode: 'dev/kitchen-run' }, { kind: 'LIVING', areaM2: 22, kinds: prog.get('k').kinds }, assets, prefs);
+  const desk = matchItem({ type: 'DESK', assetCode: 'dev/desk' }, { kind: 'HALL', areaM2: 10, kinds: prog.get('o').kinds }, assets, prefs);
+  assert.equal(run?.code, 'dev/kitchen-run');
+  assert.equal(desk?.code, 'dev/desk');
+  // By the read kind alone, both were refused (NO_SAFE_MATCH): the tour lacked its kitchen and its desk.
+  assert.equal(matchItem({ type: 'KITCHEN_RUN', assetCode: 'dev/kitchen-run' }, { kind: 'LIVING', areaM2: 22 }, assets, prefs), null);
+  const src = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
+  assert.match(src, /label: r\.label, kinds: roomKinds\.get\(r\.id\)\?\.kinds \}/);
+});

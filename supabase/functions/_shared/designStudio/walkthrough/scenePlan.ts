@@ -443,11 +443,13 @@ export interface Match {
  */
 export function matchItem(
   item: { type: Role; assetCode: string | null; dims?: { widthM: number; depthM: number } | null },
-  room: { kind: string; areaM2: number },
+  room: { kind: string; areaM2: number; kinds?: string[] },
   assets: PlanAssetContext[],
   prefs: Pick<DesignPreferences, 'style' | 'furnishing'>,
 ): Match | null {
-  const fits = (a: PlanAssetContext) => (!a.roomKinds.length || a.roomKinds.includes(room.kind)) && roleAllowed(roleOf(a), room.kind, prefs.furnishing);
+  // The kinds the room takes pieces from by its use (a kitchen-living room read as LIVING takes the kitchen's).
+  const kinds = room.kinds?.length ? room.kinds : [room.kind];
+  const fits = (a: PlanAssetContext) => (!a.roomKinds.length || a.roomKinds.some((k) => kinds.includes(k))) && kinds.some((k) => roleAllowed(roleOf(a), k, prefs.furnishing));
   const byCode = new Map(assets.map((a) => [a.code, a]));
   const asked = item.assetCode ? byCode.get(item.assetCode) ?? null : null;
   const dims = item.dims ?? null;

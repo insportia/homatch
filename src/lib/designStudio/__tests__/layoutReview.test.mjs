@@ -96,11 +96,39 @@ test('the AI room match only fills rooms left open, with real rooms, each once',
 
 test('premises: the edge function asks once in the background, keeps a correction only when the gates pass, meters both calls', () => {
   const src = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
-  assert.match(src, /reviewRequest\(QA_MODEL, reference\.dataUrl, layout\), background: true, store: true/);
+  assert.match(src, /reviewRequest\(QA_MODEL, reference\.dataUrl, layout, problems\), background: true, store: true/);
+  // A tour that fails only for what it lacks or how it reads, but walks, is given to the review to repair.
+  assert.match(src, /\(failing === 'NOT_FAITHFUL' \|\| failing === 'NOT_PLAUSIBLE'\) && built\.report\.gate\?\.ok !== false && !corrected/);
   assert.match(src, /if \(failing && corrected\) \{[\s\S]{0,400}state: 'REJECTED'/);
   assert.match(src, /step: 'walkthrough_layout_review'/);
   assert.match(src, /step: 'walkthrough_room_match'/);
   assert.match(src, /DS_LAYOUT_REVIEW/);
   // A room the graph could not furnish takes the AI plan's own pieces for it.
   assert.match(src, /aiFilled\.push\(r\.roomId\)/);
+});
+
+test('the problems a failing tour has are put to the reviewer', () => {
+  const { layout } = home();
+  const body = reviewRequest('m', 'data:image/png;base64,AA==', layout, ['room r-kl lacks KITCHEN_RUN, FRIDGE']);
+  const text = body.input[1].content.map((c) => c.text ?? '').join('\n');
+  assert.match(text, /THE TOUR FAILS THESE CHECKS[\s\S]*r-kl lacks KITCHEN_RUN, FRIDGE/);
+  assert.doesNotMatch(reviewRequest('m', 'data:image/png;base64,AA==', layout).input[1].content.map((c) => c.text ?? '').join(''), /FAILS THESE CHECKS/);
+});
+
+test('a kitchen the design drew as an island against the wall is that room\'s kitchen; a crowded designed room makes way for its fridge', () => {
+  const { space, assets, build } = home();
+  const island = [...assets.values()].find((a) => /island/i.test(a.code));
+  const plant = [...assets.values()].find((a) => /plant/i.test(a.code) && a.placement === 'FLOOR');
+  const kl = space.rooms.find((r) => r.id === 'r-kl');
+  const w = kl.bounds.maxX - kl.bounds.minX; const d = kl.bounds.maxY - kl.bounds.minY;
+  // The design: an island along the top wall and plants in every free corner.
+  const items = [
+    { code: island.code, type: 'KITCHEN_OTHER', pose: { x: w / 2, y: d - 0.6, rotationDeg: 180 }, scale: 1, color: null, origin: 'PLANNED' },
+    ...[[0.35, 0.35], [w - 0.35, 0.35], [0.35, d - 0.35], [w - 0.35, d - 0.35]].map(([x, y]) => ({ code: plant.code, type: 'PLANT', pose: { x, y, rotationDeg: 0 }, scale: 1, color: null, origin: 'PLANNED' })),
+  ];
+  const plan = { lighting: { timeOfDay: 'DAY', temperature: 'NEUTRAL', interiorIntensity: 0.7 }, palette: [], styleCode: null,
+    rooms: space.rooms.map((r) => ({ roomId: r.id, floorMaterial: null, floorColor: null, wallMaterial: null, wallColor: null, wallFinish: null, accent: null, ceilingColor: null, items: r.id === 'r-kl' ? items : [] })) };
+  const built = build(plan);
+  assert.deepEqual(built.report.gate.missingEssential, [], JSON.stringify(built.report.gate));
+  assert.ok(built.state.objects.some((o) => o.roomId === 'r-kl' && /fridge/.test(o.assetId)), 'the kitchen-living has its fridge');
 });

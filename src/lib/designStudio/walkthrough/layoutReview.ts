@@ -99,7 +99,7 @@ export const LAYOUT_REVIEW_SCHEMA = {
 } as const;
 
 /** The review request (OpenAI Responses API): the picture and the layout. */
-export function reviewRequest(model: string, imageDataUrl: string, layout: ReviewLayout) {
+export function reviewRequest(model: string, imageDataUrl: string, layout: ReviewLayout, problems: string[] = []) {
   const rooms = layout.rooms.map((r) => ({ id: r.id, kind: r.kind, label: r.label, widthM: r.widthM, depthM: r.depthM, polygon: r.polygon, doors: r.doors, windows: r.windows }));
   return {
     model,
@@ -110,6 +110,7 @@ export function reviewRequest(model: string, imageDataUrl: string, layout: Revie
         { type: 'input_text', text: 'SOURCE (the approved design picture):' },
         { type: 'input_image', image_url: imageDataUrl, detail: 'high' },
         { type: 'input_text', text: `LAYOUT (what HOMATCH built):\n${JSON.stringify({ rooms, pieces: layout.pieces })}` },
+        ...(problems.length ? [{ type: 'input_text', text: `THE TOUR FAILS THESE CHECKS — fix them first (ADD what is missing where it fits against a free wall; MOVE or REMOVE what stands in its way; a kitchen needs its cabinet run and its fridge):\n${problems.map((p) => `- ${p}`).join('\n')}` }] : []),
       ] },
     ],
     text: { format: { type: 'json_schema', name: 'layout_review', strict: true, schema: LAYOUT_REVIEW_SCHEMA } },

@@ -67,7 +67,7 @@ test('A: a generated design with no floor plan starts its walkthrough (no upload
   assert.match(route, /if \(done\) await kick\(a\.authorization, 'walkthrough-create'/);
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
   for (const gone of [/walk-needs-plan/, /walk-add-plan/, /onAddPlan/, /dsx_walk_needs_/, /dsx_walk_missing_/]) assert.doesNotMatch(panel, gone);
-  assert.match(panel, /data-testid="walk-reconstructing"/);
+  assert.match(panel, /testId="walk-reconstructing"/);
   // Shown and followed also when an earlier tour of the design is on the page (a plan read again for a new tour).
   assert.match(panel, /\{reconstructing \? \(/);
   assert.match(panel, /if \(!reconstructing\) return;\s*const timer = setInterval\(\(\) => \{ void start\(false\); \}, SPACE_POLL_MS\);/);

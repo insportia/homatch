@@ -49,7 +49,10 @@ export function __resetNavigationCountForTests(): void {
 const PARENTS: ReadonlyArray<readonly [RegExp, string | ((m: RegExpMatchArray) => string)]> = [
   [/^\/verify\/[^/]+$/, '/verify'],
   [/^\/contracts\/[^/]+$/, '/contracts'],
-  [/^\/property\/([^/]+)\/matches\/demo\/[^/]+$/, (m) => `/property/${m[1]}/matches?profile=demo`],
+  [/^\/property\/([^/]+)\/matches\/demo\/[^/]+$/, (m) => `/property/${m[1]}/buyer/demo`],
+  /* The buyer profile and HOMATCH Leads are pages of the matches page. */
+  [/^\/property\/([^/]+)\/buyer\/[^/]+$/, (m) => `/property/${m[1]}/matches`],
+  [/^\/property\/([^/]+)\/leads$/, (m) => `/property/${m[1]}/matches`],
   [/^\/property\/([^/]+)\/matches$/, (m) => `/property/${m[1]}`],
   [/^\/property\/(?:add|import|create)$/, '/property'],
   /* A property belongs to the owner workspace, not the dashboard — the page's

@@ -69,6 +69,7 @@ const NOT_RESULT_ACCESS = {
   hl_cta_bulk: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
   crm_empty: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
   crm_status_UNLOCKED: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
+  im_unlock_contact_price: 'HOMATCH Matches preview + buyer profile: the same paid per-member contact unlock as HOMATCH Leads, priced in credits on the card (owner request 2026-10-12)',
 };
 
 test('no customer string uses lock or unlock language', () => {

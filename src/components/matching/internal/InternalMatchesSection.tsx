@@ -18,10 +18,9 @@
 // real messaging tables.
 
 import {
-  BadgeCheck, BedDouble, CalendarClock, Coins, Home, Loader2, MapPin, MessageSquare, Phone, Ruler,
-  ShieldCheck, Sparkles, UserRound, X,
+  BadgeCheck, BedDouble, CalendarClock, Coins, Home, Loader2, LockOpen, MapPin, MessageSquare, Phone, Ruler,
+  ShieldCheck, Sparkles, UserRound, Users,
 } from 'lucide-react';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -49,12 +48,17 @@ import {
   type NativeMatchRow,
 } from '@/services/nativeMatches';
 import { getDemoMatch, openDemoConversation, unlockDemoContact } from '@/services/internalMatchDemo';
+import { getLeadFeed, type LeadPrices } from '@/services/homatchLeads';
+import { formatCreditsLabel } from '@/components/leads/LeadCard';
 
 const INK = 'text-[hsl(218_45%_14%)]';
 const MUTED = 'text-[hsl(218_28%_38%)]';
 const NAVY = 'bg-[linear-gradient(135deg,hsl(218_52%_11%)_0%,hsl(220_48%_17%)_55%,hsl(224_44%_22%)_100%)]';
 const GOLD = 'text-[hsl(40_94%_64%)]';
-const DEMO_PARAM = 'demo';
+export const DEMO_PARAM = 'demo';
+/** The matches page previews this many people; the rest are on HOMATCH Leads (/property/:id/leads). */
+export const INTERNAL_PREVIEW_LIMIT = 6;
+const DEFAULT_PRICES: LeadPrices = { STANDARD: 2.5, PREMIUM: 6, active: false };
 
 /* ── badges ─────────────────────────────────────────────────────────────── */
 
@@ -141,10 +145,48 @@ const VERDICT_KEY: Record<string, string> = {
 
 /* ── the section ────────────────────────────────────────────────────────── */
 
-interface PersonCard {
+export interface PersonCard {
   key: string;
   rows: NativeMatchRow[];
   primary: NativeMatchRow;
+}
+
+/** Who this property's HOMATCH matches are (one card per person), the demo buyer when
+ *  the server shows one, and the current contact-unlock prices. Shared by the preview
+ *  section and the buyer profile page so both read exactly the same people. */
+export function useInternalMatches(propertyId: string) {
+  const [people, setPeople] = useState<PersonCard[] | null>(null);
+  const [demo, setDemo] = useState<DemoMatchPayload | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [prices, setPrices] = useState<LeadPrices>(DEFAULT_PRICES);
+
+  const load = useCallback(async () => {
+    const [rowsResult, keysResult, demoResult, feedResult] = await Promise.allSettled([
+      listNativeMatches(propertyId),
+      listNativeMatchCounterparts(propertyId),
+      getDemoMatch(propertyId),
+      getLeadFeed(propertyId, 'ALL', 'BEST', 0),
+    ]);
+    if (feedResult.status === 'fulfilled') setPrices(feedResult.value.prices);
+    const rows = rowsResult.status === 'fulfilled' ? rowsResult.value.filter((row) => row.role === 'OWNER') : [];
+    const keys = keysResult.status === 'fulfilled' ? keysResult.value : new Map<string, string>();
+    const groups = groupByPerson(rows, keys).map((group) => {
+      const primary = group.find((row) => row.kind === 'MATCH') ?? group[0];
+      return { key: `${primary.kind}:${primary.id}`, rows: group, primary };
+    });
+    setFailed(rowsResult.status === 'rejected');
+    setPeople(groups);
+    setDemo(demoResult.status === 'fulfilled' ? demoResult.value : null);
+  }, [propertyId]);
+
+  useEffect(() => { void load(); }, [load]);
+  const demoScore = useMemo<ScoredMatch | null>(() => (demo ? scoreDemoMatch(demo) : null), [demo]);
+  return { people, demo, demoScore, failed, prices, load };
+}
+
+/** The buyer profile is a page of its own: /property/:id/buyer/:key ("demo" for the demo buyer). */
+export function buyerProfilePath(propertyId: string, key: string): string {
+  return `/property/${encodeURIComponent(propertyId)}/buyer/${encodeURIComponent(key)}`;
 }
 
 export function InternalMatchesSection({
@@ -160,44 +202,20 @@ export function InternalMatchesSection({
   className?: string;
 }) {
   const { t } = useLanguage();
-  const [people, setPeople] = useState<PersonCard[] | null>(null);
-  const [demo, setDemo] = useState<DemoMatchPayload | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const openProfile = searchParams.get('profile');
+  const { people, demo, demoScore, failed, prices, load } = useInternalMatches(propertyId);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const legacyProfile = searchParams.get('profile');
 
-  const load = useCallback(async () => {
-    const [rowsResult, keysResult, demoResult] = await Promise.allSettled([
-      listNativeMatches(propertyId),
-      listNativeMatchCounterparts(propertyId),
-      getDemoMatch(propertyId),
-    ]);
-    const rows = rowsResult.status === 'fulfilled' ? rowsResult.value.filter((row) => row.role === 'OWNER') : [];
-    const keys = keysResult.status === 'fulfilled' ? keysResult.value : new Map<string, string>();
-    const groups = groupByPerson(rows, keys).map((group) => {
-      const primary = group.find((row) => row.kind === 'MATCH') ?? group[0];
-      return { key: `${primary.kind}:${primary.id}`, rows: group, primary };
-    });
-    setFailed(rowsResult.status === 'rejected');
-    setPeople(groups);
-    setDemo(demoResult.status === 'fulfilled' ? demoResult.value : null);
-  }, [propertyId]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const demoScore = useMemo<ScoredMatch | null>(() => (demo ? scoreDemoMatch(demo) : null), [demo]);
   const count = (people?.length ?? 0) + (demo ? 1 : 0);
   useEffect(() => { if (people !== null) onCount?.(count); }, [count, people, onCount]);
 
-  const setProfile = useCallback((value: string | null) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (value) next.set('profile', value); else next.delete('profile');
-      return next;
-    });
-  }, [setSearchParams]);
-
-  const openPerson = openProfile && openProfile !== DEMO_PARAM ? people?.find((p) => p.key === openProfile) ?? null : null;
+  /* Opening a profile is navigation to its own page, so Back returns here and never
+     re-opens a profile. An old ?profile= link is moved to that page (replace). */
+  const setProfile = useCallback((value: string) => navigate(buyerProfilePath(propertyId, value)), [navigate, propertyId]);
+  useEffect(() => {
+    if (legacyProfile) navigate(buyerProfilePath(propertyId, legacyProfile), { replace: true });
+  }, [legacyProfile, navigate, propertyId]);
 
   return (
     <section
@@ -226,13 +244,27 @@ export function InternalMatchesSection({
               <DemoMatchCard
                 payload={demo}
                 scored={demoScore}
+                price={prices.STANDARD}
                 onViewProfile={() => setProfile(DEMO_PARAM)}
+                onUnlocked={load}
                 counterpart={counterpart}
               />
             ) : null}
-            {people.map((person) => (
-              <NativePersonCard key={person.key} person={person} onViewProfile={() => setProfile(person.key)} />
+            {/* A preview: the first six people. Everyone, with filters and paid
+                contact unlock, is on HOMATCH Leads. */}
+            {people.slice(0, Math.max(0, INTERNAL_PREVIEW_LIMIT - (demo ? 1 : 0))).map((person) => (
+              <NativePersonCard key={person.key} person={person} price={prices.STANDARD}
+                onViewProfile={() => setProfile(person.key)}
+                onUnlock={() => navigate(`/property/${encodeURIComponent(propertyId)}/leads`)} />
             ))}
+            {count > 0 ? (
+              <button type="button" data-testid="internal-see-all"
+                onClick={() => navigate(`/property/${encodeURIComponent(propertyId)}/leads`)}
+                className={cn('flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.5)]', NAVY)}>
+                <Users className={cn('h-4 w-4', GOLD)} aria-hidden="true" />
+                <span>{t('im_see_all', { n: String(count) })}</span>
+              </button>
+            ) : null}
             {count === 0 ? (
               <p role="status" className={cn('rounded-xl bg-white px-3.5 py-3 text-2xs ring-1 ring-inset ring-[hsl(218_30%_88%)]', MUTED)}>
                 {failed ? t('im_internal_error') : t('im_internal_empty')}
@@ -242,16 +274,6 @@ export function InternalMatchesSection({
         )}
       </div>
 
-      {demo && demoScore ? (
-        <ProfileSheet open={openProfile === DEMO_PARAM} onClose={() => setProfile(null)} counterpart={counterpart}>
-          <DemoProfileBody payload={demo} scored={demoScore} propertyId={propertyId} onUnlocked={load} />
-        </ProfileSheet>
-      ) : null}
-      {openPerson ? (
-        <ProfileSheet open onClose={() => setProfile(null)} counterpart={counterpart}>
-          <NativeProfileBody person={openPerson} />
-        </ProfileSheet>
-      ) : null}
     </section>
   );
 }
@@ -298,10 +320,17 @@ function CardShell({
           <div className="flex min-w-0 flex-wrap gap-1.5">{facts}</div>
         ) : null}
         {fits.length > 0 ? (
-          <p className={cn('text-2xs leading-relaxed', MUTED)}>
-            <BadgeCheck className="me-1 inline h-3.5 w-3.5 align-[-2px] text-[hsl(34_90%_40%)]" aria-hidden="true" />
-            {t('native_fits_on', { list: fits.join(', ') })}
-          </p>
+          <div className="rounded-xl bg-[hsl(42_100%_97%)] px-3 py-2 ring-1 ring-inset ring-[hsl(40_80%_85%)]" data-testid="match-why">
+            <p className={cn('text-2xs font-bold uppercase tracking-[0.12em]', INK)}>{t('im_why_good_match')}</p>
+            <ul className="mt-1 grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
+              {fits.map((f) => (
+                <li key={f} className={cn('flex min-w-0 items-center gap-1.5 text-2xs font-medium', INK)}>
+                  <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[hsl(34_90%_40%)]" aria-hidden="true" />
+                  <span className="min-w-0 truncate">{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
         {notice ? (
           <p className="rounded-lg bg-[hsl(328_70%_97%)] px-2.5 py-1.5 text-2xs leading-relaxed text-[hsl(328_60%_28%)] ring-1 ring-inset ring-[hsl(328_60%_85%)]">
@@ -388,14 +417,17 @@ function demoChips(payload: DemoMatchPayload, lang: string, t: (k: string, v?: R
   return chips;
 }
 
-function DemoMatchCard({ payload, scored, onViewProfile, counterpart: _counterpart }: {
+function DemoMatchCard({ payload, scored, price, onViewProfile, onUnlocked, counterpart: _counterpart }: {
   payload: DemoMatchPayload;
   scored: ScoredMatch;
+  price: number;
   onViewProfile: () => void;
+  onUnlocked: () => void;
   counterpart: 'BUYER' | 'TENANT' | null;
 }) {
   const { t, lang } = useLanguage();
   const message = useDemoMessage(payload);
+  const unlock = useDemoUnlock(payload, onUnlocked);
   const band = bandBadge(scored.band);
   const fits = scored.assessment.agreed
     .filter((d) => !['PARTICIPANTS', 'TRANSACTION'].includes(d))
@@ -412,9 +444,13 @@ function DemoMatchCard({ payload, scored, onViewProfile, counterpart: _counterpa
       notice={t('im_demo_notice')}
       actions={(
         <>
+          {payload.demo_unlocked_at ? null : (
+            <ActionButton testId="demo-unlock" label={t('im_unlock_contact_price', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={unlock.go} busy={unlock.busy} primary />
+          )}
           <ActionButton testId="demo-view-profile" label={t('im_action_view_profile')} icon={UserRound} onClick={onViewProfile} />
-          <ActionButton testId="demo-message" label={t('im_action_message')} icon={MessageSquare} onClick={message.go} busy={message.busy} primary />
-          {message.error ? <p role="alert" className="w-full text-2xs text-destructive">{t('im_error_action')}</p> : null}
+          <ActionButton testId="demo-message" label={t('im_action_message')} icon={MessageSquare} onClick={message.go} busy={message.busy} primary={Boolean(payload.demo_unlocked_at)} />
+          {payload.demo_unlocked_at ? <p role="status" data-testid="demo-unlocked-card" className={cn('w-full text-2xs', INK)}>{t('im_demo_unlocked')}</p> : null}
+          {message.error || unlock.error ? <p role="alert" className="w-full text-2xs text-destructive">{t('im_error_action')}</p> : null}
         </>
       )}
     />
@@ -465,8 +501,8 @@ function ContactLine({ contact }: { contact: NativeContact }) {
   );
 }
 
-function NativePersonCard({ person, onViewProfile }: { person: PersonCard; onViewProfile: () => void }) {
-  const { t } = useLanguage();
+function NativePersonCard({ person, price, onViewProfile, onUnlock }: { person: PersonCard; price: number; onViewProfile: () => void; onUnlock: () => void }) {
+  const { t, lang } = useLanguage();
   const row = person.primary;
   const actions = useNativeActions(row);
   const score = row.match_score !== null && row.match_score !== undefined ? Math.round(Number(row.match_score) * 100) : null;
@@ -491,8 +527,9 @@ function NativePersonCard({ person, onViewProfile }: { person: PersonCard; onVie
       fits={fits}
       actions={(
         <>
+          <ActionButton testId="native-unlock" label={t('im_unlock_contact_price', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={onUnlock} primary />
           <ActionButton label={t('im_action_view_profile')} icon={UserRound} onClick={onViewProfile} />
-          <ActionButton label={t('im_action_message')} icon={MessageSquare} onClick={actions.message} busy={actions.opening} primary />
+          <ActionButton label={t('im_action_message')} icon={MessageSquare} onClick={actions.message} busy={actions.opening} />
           <ActionButton label={t('native_action_call')} icon={Phone} onClick={actions.call} busy={actions.calling} disabled={Boolean(actions.contact)} />
           {actions.contact ? <ContactLine contact={actions.contact} /> : null}
           {actions.error ? <p role="alert" className="w-full text-2xs text-destructive">{t('native_error_action')}</p> : null}
@@ -503,46 +540,6 @@ function NativePersonCard({ person, onViewProfile }: { person: PersonCard; onVie
 }
 
 /* ── the profile view: a drawer on desktop, a full-screen sheet on a phone ── */
-
-function ProfileSheet({ open, onClose, counterpart, children }: {
-  open: boolean;
-  onClose: () => void;
-  counterpart: 'BUYER' | 'TENANT' | null;
-  children: React.ReactNode;
-}) {
-  const { t } = useLanguage();
-  return (
-    <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[hsl(218_52%_8%/0.55)] data-[state=open]:animate-in data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          data-testid="buyer-profile"
-          className={cn(
-            'fixed inset-0 z-50 flex flex-col overflow-hidden bg-[hsl(40_33%_98%)] shadow-2xl outline-none',
-            'sm:inset-y-0 sm:end-0 sm:start-auto sm:w-[30rem] sm:max-w-[92vw] sm:rounded-s-2xl',
-          )}
-        >
-          <div className={cn('flex min-w-0 items-start justify-between gap-3 px-4 py-4 sm:px-5', NAVY)}>
-            <div className="min-w-0">
-              <DialogPrimitive.Title className="font-display text-lg font-bold text-white">
-                {t(counterpart === 'TENANT' ? 'im_profile_title_tenant' : 'im_profile_title')}
-              </DialogPrimitive.Title>
-              <DialogPrimitive.Description className="mt-0.5 text-2xs text-white/75">{t('im_profile_subtitle')}</DialogPrimitive.Description>
-            </div>
-            <DialogPrimitive.Close
-              data-testid="profile-close"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-              <span className="sr-only">{t('im_profile_close')}</span>
-            </DialogPrimitive.Close>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 sm:px-5">{children}</div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
-  );
-}
 
 function FieldRow({ field }: { field: ProfileField }) {
   const { t, lang } = useLanguage();
@@ -624,7 +621,7 @@ function FactorList({ lines, caption }: { lines: FactorLine[]; caption: string }
   );
 }
 
-function ScoreHeader({ badges, name, score }: { badges: MatchBadgeKind[]; name: string; score: number | null }) {
+export function ScoreHeader({ badges, name, score }: { badges: MatchBadgeKind[]; name: string; score: number | null }) {
   const { t, lang } = useLanguage();
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -642,25 +639,31 @@ function ScoreHeader({ badges, name, score }: { badges: MatchBadgeKind[]; name: 
   );
 }
 
-function DemoProfileBody({ payload, scored, propertyId: _propertyId, onUnlocked }: {
-  payload: DemoMatchPayload;
-  scored: ScoredMatch;
-  propertyId: string;
-  onUnlocked: () => void;
-}) {
-  const { t } = useLanguage();
-  const message = useDemoMessage(payload);
-  const [unlocking, setUnlocking] = useState(false);
-  const [unlockError, setUnlockError] = useState(false);
-  const band = bandBadge(scored.band);
-  const unlock = async () => {
-    setUnlocking(true); setUnlockError(false);
+/** The simulated contact reveal: records demo_unlocked_at, charges 0 credits. */
+function useDemoUnlock(payload: DemoMatchPayload, onUnlocked: () => void) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const go = async () => {
+    setBusy(true); setError(false);
     try {
       const id = payload.conversation_id ?? await openDemoConversation(payload.profile.id, payload.property.id);
       await unlockDemoContact(id);
       onUnlocked();
-    } catch { setUnlockError(true); } finally { setUnlocking(false); }
+    } catch { setError(true); } finally { setBusy(false); }
   };
+  return { go, busy, error };
+}
+
+export function DemoProfileBody({ payload, scored, price, onUnlocked }: {
+  payload: DemoMatchPayload;
+  scored: ScoredMatch;
+  price: number;
+  onUnlocked: () => void;
+}) {
+  const { t, lang } = useLanguage();
+  const message = useDemoMessage(payload);
+  const unlock = useDemoUnlock(payload, onUnlocked);
+  const band = bandBadge(scored.band);
   return (
     <div className="min-w-0">
       <ScoreHeader badges={['INTERNAL', ...(band ? [band] : []), 'DEMO']} name={`${t('im_demo_name')} · ${t('im_badge_demo')}`} score={scored.band === 'NONE' ? null : scored.percent} />
@@ -678,19 +681,19 @@ function DemoProfileBody({ payload, scored, propertyId: _propertyId, onUnlocked 
         <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('im_privacy_note')}
       </p>
       <div className="sticky bottom-0 -mx-4 mt-4 flex flex-wrap gap-2 border-t border-[hsl(40_40%_88%)] bg-[hsl(40_33%_98%)] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:-mx-5 sm:px-5">
-        <ActionButton testId="profile-message" label={t('im_action_message')} icon={MessageSquare} onClick={message.go} busy={message.busy} primary />
+        <ActionButton testId="profile-message" label={t('im_action_message')} icon={MessageSquare} onClick={message.go} busy={message.busy} primary={Boolean(payload.demo_unlocked_at)} />
         {payload.demo_unlocked_at ? null : (
-          <ActionButton testId="profile-unlock" label={t('im_demo_unlock')} icon={Phone} onClick={unlock} busy={unlocking} />
+          <ActionButton testId="profile-unlock" label={t('im_unlock_contact_price', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={unlock.go} busy={unlock.busy} primary />
         )}
         {payload.demo_unlocked_at ? <p role="status" data-testid="demo-unlocked" className={cn('w-full text-2xs', INK)}>{t('im_demo_unlocked')}</p> : null}
-        {message.error || unlockError ? <p role="alert" className="w-full text-2xs text-destructive">{t('im_error_action')}</p> : null}
+        {message.error || unlock.error ? <p role="alert" className="w-full text-2xs text-destructive">{t('im_error_action')}</p> : null}
       </div>
     </div>
   );
 }
 
-function NativeProfileBody({ person }: { person: PersonCard }) {
-  const { t } = useLanguage();
+export function NativeProfileBody({ person, price, onUnlock }: { person: PersonCard; price: number; onUnlock: () => void }) {
+  const { t, lang } = useLanguage();
   const row = person.primary;
   const actions = useNativeActions(row);
   const score = row.kind === 'MATCH' && row.match_score !== null ? Math.round(Number(row.match_score) * 100) : null;
@@ -705,7 +708,8 @@ function NativeProfileBody({ person }: { person: PersonCard }) {
         <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('im_privacy_note')}
       </p>
       <div className="sticky bottom-0 -mx-4 mt-4 flex flex-wrap gap-2 border-t border-[hsl(40_40%_88%)] bg-[hsl(40_33%_98%)] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:-mx-5 sm:px-5">
-        <ActionButton label={t('im_action_message')} icon={MessageSquare} onClick={actions.message} busy={actions.opening} primary />
+        <ActionButton testId="profile-native-unlock" label={t('im_unlock_contact_price', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={onUnlock} primary />
+        <ActionButton label={t('im_action_message')} icon={MessageSquare} onClick={actions.message} busy={actions.opening} />
         <ActionButton label={t('native_action_call')} icon={Phone} onClick={actions.call} busy={actions.calling} disabled={Boolean(actions.contact)} />
         {actions.contact ? <ContactLine contact={actions.contact} /> : null}
         {actions.error ? <p role="alert" className="w-full text-2xs text-destructive">{t('native_error_action')}</p> : null}

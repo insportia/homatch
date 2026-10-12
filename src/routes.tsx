@@ -36,6 +36,7 @@ const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListi
 const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
 const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
 const HomatchLeadsPage = lazyRoute(() => import('./pages/property/HomatchLeadsPage'));
+const BuyerProfilePage = lazyRoute(() => import('./pages/property/BuyerProfilePage'));
 const LeadsCrmPage = lazyRoute(() => import('./pages/LeadsCrmPage'));
 const EmailStudioPage = lazyRoute(() => import('./pages/EmailStudioPage'));
 const DemoConversationPage = lazyRoute(() => import('./pages/property/DemoConversationPage'));
@@ -463,6 +464,7 @@ export const routes: RouteConfig[] = [
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
   { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
   { name: 'HOMATCH Leads',     path: '/property/:id/leads',       element: <HomatchLeadsPage /> },
+  { name: 'Buyer profile',     path: '/property/:id/buyer/:key',  element: <BuyerProfilePage /> },
   { name: 'Leads CRM',         path: '/leads',                    element: <LeadsCrmPage /> },
   { name: 'Email Studio',      path: '/email-studio',             element: <EmailStudioPage /> },
   { name: 'Email Campaign',    path: '/email-studio/:campaignId', element: <EmailStudioPage />, visible: false },

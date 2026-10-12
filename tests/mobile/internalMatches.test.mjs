@@ -234,18 +234,22 @@ async function flow(page, state, { lang, prefix, width }) {
   await noOverflow(page, `${prefix} matches`);
   await shot(page, `${prefix}-card`);
 
-  /* Profile. */
+  /* Contact unlock is on the card, priced in credits; "See all" leads to HOMATCH Leads. */
+  assert.match(await demoCard.locator('[data-testid="demo-unlock"]').innerText(), /2[.,]5/, 'unlock shows its credit price');
+  assert.equal(await demoCard.locator('[data-testid="match-why"]').count(), 1, 'why this is a good match');
+  assert.equal(await page.locator('[data-testid="internal-see-all"]').count(), 1, 'see all → HOMATCH Leads');
+
+  /* Profile: a page of its own, not a drawer. */
   await demoCard.locator('[data-testid="demo-view-profile"]').click();
+  await page.waitForURL(/\/buyer\/demo$/, { timeout: 15000 });
   const sheet = page.locator('[data-testid="buyer-profile"]');
-  await sheet.waitFor({ timeout: 10000 });
+  await sheet.locator('[data-field="rooms"]').waitFor({ timeout: 15000 });
   assert.equal(await sheet.locator('[data-field="rooms"][data-state="NOT_PROVIDED"]').count(), 1, 'unstated rooms say so');
   assert.equal(await sheet.locator('[data-field="budget"][data-state="CONFIRMED"]').count(), 1);
   assert.equal(await sheet.locator('[data-field="timeline"][data-state="CONFIRMED"]').count(), 1);
   assert.equal(await sheet.locator('[data-dimension="PRICE"][data-verdict="AGREE"]').count(), 1, 'factor list from the engine');
   assert.ok((await sheet.locator('[data-testid="profile-score"]').innerText()).includes(String(EXPECTED.percent)));
-  const box = await sheet.boundingBox();
-  if (width <= 400) assert.ok(box.width >= width - 1, `phone: full-screen sheet (${box.width} of ${width})`);
-  else assert.ok(box.width < width / 2, 'desktop: a drawer, not a page');
+  assert.equal(await sheet.locator('[data-testid="profile-unlock"]').count(), 1, 'priced unlock on the profile page');
   await noOverflow(page, `${prefix} profile`);
   await shot(page, `${prefix}-profile`);
 
@@ -264,9 +268,9 @@ async function flow(page, state, { lang, prefix, width }) {
   await noOverflow(page, `${prefix} conversation`);
   await shot(page, `${prefix}-conversation`);
 
-  /* Back to the profile: the sheet reopens; then the history is still there. */
+  /* Back to the profile page; then the history is still there. */
   await page.locator('[data-testid="back-to-profile"]').click();
-  await page.waitForURL(/\/matches\?profile=demo/, { timeout: 15000 });
+  await page.waitForURL(/\/buyer\/demo$/, { timeout: 15000 });
   await page.locator('[data-testid="buyer-profile"]').waitFor({ timeout: 15000 });
   await page.locator('[data-testid="profile-message"]').click();
   await page.waitForURL(/\/matches\/demo\//, { timeout: 15000 });
@@ -304,7 +308,7 @@ test('phone 360: the matches page and the profile sheet never scroll sideways', 
   await page.locator('[data-testid="internal-match-card-demo"]').waitFor({ timeout: 30000 });
   await noOverflow(page, '360 ka matches');
   await page.locator('[data-testid="demo-view-profile"]').click();
-  await page.locator('[data-testid="buyer-profile"]').waitFor({ timeout: 10000 });
+  await page.locator('[data-testid="buyer-profile"] [data-field="rooms"]').waitFor({ timeout: 15000 });
   await noOverflow(page, '360 ka profile');
 });
 
@@ -316,3 +320,19 @@ test('a member who is neither admin nor tester sees no demo, and the counts say 
   assert.equal((await sectionCount(page, 'internal')).trim(), '1', 'only the real member');
   assert.equal(await page.locator('[data-badge="DEMO"]').count(), 0, 'no DEMO badge anywhere');
 });
+
+test('Back never re-opens the profile: profile page → Back → matches → Back leaves the matches page', opts, async (t) => {
+  const { page } = await boot(t, { width: 1440, lang: 'en' });
+  await openMatches(page);
+  await page.locator('[data-testid="internal-match-card-demo"]').waitFor({ timeout: 30000 });
+  await page.locator('[data-testid="demo-view-profile"]').click();
+  await page.waitForURL(/\/buyer\/demo$/, { timeout: 15000 });
+  await page.getByRole('button', { name: /^back$/i }).first().click();
+  await page.waitForURL(/\/matches$/, { timeout: 15000 });
+  await page.locator('[data-testid="buyer-profile"]').waitFor({ state: 'detached', timeout: 15000 });
+  await page.locator('[data-testid="internal-match-card-demo"]').waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: /^back$/i }).first().click();
+  await page.waitForTimeout(500);
+  assert.ok(!/\/buyer\//.test(page.url()), `Back did not return to the profile: ${page.url()}`);
+});
+

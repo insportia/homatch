@@ -18409,6 +18409,13 @@ const en = {
   fbr_stop_NO_USABLE_ACTOR: 'The search ended because no further source could be searched right now.',
   fbr_stop_MODEL_DIMINISHING_RETURNS: 'The search ended because further passes were finding nothing new.',
   fbr_stop_NOTHING_NEW_TO_SEARCH: 'The search ended because every useful wording had already been searched.',
+
+  /* ── HOMATCH MATCHES AS PAGES (preview, profile page, priced unlock) ── */
+  im_see_all: 'See all {{n}} HOMATCH matches',
+  im_why_good_match: 'Why this is a good match',
+  im_unlock_contact_price: 'Unlock contact · {{n}} credits',
+  im_back_to_matches: 'Back to matches',
+  im_profile_gone: 'This match is no longer available.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36732,6 +36739,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbr_stop_NO_USABLE_ACTOR: 'ძიება დასრულდა, რადგან ამჟამად სხვა წყაროს მოძიება ვერ ხერხდება.',
   fbr_stop_MODEL_DIMINISHING_RETURNS: 'ძიება დასრულდა, რადგან შემდგომი ეტაპები ახალს აღარაფერს პოულობდა.',
   fbr_stop_NOTHING_NEW_TO_SEARCH: 'ძიება დასრულდა, რადგან ყველა სასარგებლო ფორმულირება უკვე მოძიებული იყო.',
+
+  /* ── HOMATCH MATCHES AS PAGES (preview, profile page, priced unlock) ── */
+  im_see_all: 'ყველა HOMATCH-ის დამთხვევის ნახვა ({{n}})',
+  im_why_good_match: 'რატომ არის ეს კარგი დამთხვევა',
+  im_unlock_contact_price: 'კონტაქტის გახსნა · {{n}} კრედიტი',
+  im_back_to_matches: 'დამთხვევებზე დაბრუნება',
+  im_profile_gone: 'ეს დამთხვევა აღარ არის ხელმისაწვდომი.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55046,6 +55060,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbr_stop_NO_USABLE_ACTOR: 'Поиск завершён: других доступных источников сейчас нет.',
   fbr_stop_MODEL_DIMINISHING_RETURNS: 'Поиск завершён: новые этапы перестали находить что-то новое.',
   fbr_stop_NOTHING_NEW_TO_SEARCH: 'Поиск завершён: все полезные формулировки уже проверены.',
+
+  /* ── HOMATCH MATCHES AS PAGES (preview, profile page, priced unlock) ── */
+  im_see_all: 'Все совпадения HOMATCH ({{n}})',
+  im_why_good_match: 'Почему это хорошее совпадение',
+  im_unlock_contact_price: 'Открыть контакт · {{n}} кредитов',
+  im_back_to_matches: 'Назад к совпадениям',
+  im_profile_gone: 'Это совпадение больше недоступно.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73358,6 +73379,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbr_stop_NO_USABLE_ACTOR: 'Şu anda aranabilecek başka kaynak olmadığı için arama sona erdi.',
   fbr_stop_MODEL_DIMINISHING_RETURNS: 'Sonraki aşamalar yeni bir şey bulamadığı için arama sona erdi.',
   fbr_stop_NOTHING_NEW_TO_SEARCH: 'Tüm faydalı ifadeler zaten arandığı için arama sona erdi.',
+
+  /* ── HOMATCH MATCHES AS PAGES (preview, profile page, priced unlock) ── */
+  im_see_all: 'Tüm HOMATCH eşleşmelerini gör ({{n}})',
+  im_why_good_match: 'Neden iyi bir eşleşme',
+  im_unlock_contact_price: 'İletişimi aç · {{n}} kredi',
+  im_back_to_matches: 'Eşleşmelere dön',
+  im_profile_gone: 'Bu eşleşme artık mevcut değil.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91670,6 +91698,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbr_stop_NO_USABLE_ACTOR: 'انتهى البحث لعدم توفر مصدر آخر يمكن البحث فيه حاليًا.',
   fbr_stop_MODEL_DIMINISHING_RETURNS: 'انتهى البحث لأن المراحل الإضافية لم تعد تجد جديدًا.',
   fbr_stop_NOTHING_NEW_TO_SEARCH: 'انتهى البحث لأن جميع الصياغات المفيدة قد بُحث فيها بالفعل.',
+
+  /* ── HOMATCH MATCHES AS PAGES (preview, profile page, priced unlock) ── */
+  im_see_all: 'عرض كل مطابقات HOMATCH ({{n}})',
+  im_why_good_match: 'لماذا هذه مطابقة جيدة',
+  im_unlock_contact_price: 'كشف جهة الاتصال · {{n}} رصيد',
+  im_back_to_matches: 'العودة إلى المطابقات',
+  im_profile_gone: 'لم تعد هذه المطابقة متاحة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -109982,6 +110017,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbr_stop_NO_USABLE_ACTOR: 'החיפוש הסתיים כי כרגע אין מקור נוסף שניתן לחפש בו.',
   fbr_stop_MODEL_DIMINISHING_RETURNS: 'החיפוש הסתיים כי שלבים נוספים לא מצאו דבר חדש.',
   fbr_stop_NOTHING_NEW_TO_SEARCH: 'החיפוש הסתיים כי כל הניסוחים השימושיים כבר נבדקו.',
+
+  /* ── HOMATCH MATCHES AS PAGES (preview, profile page, priced unlock) ── */
+  im_see_all: 'הצגת כל ההתאמות ב-HOMATCH ({{n}})',
+  im_why_good_match: 'למה זו התאמה טובה',
+  im_unlock_contact_price: 'חשיפת פרטי קשר · {{n}} קרדיטים',
+  im_back_to_matches: 'חזרה להתאמות',
+  im_profile_gone: 'ההתאמה הזו כבר אינה זמינה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

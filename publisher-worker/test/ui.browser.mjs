@@ -215,6 +215,9 @@ test('desktop, tablet, mobile, RTL and reduced-motion visual matrix', async () =
     for (const item of [
       { lang: 'en', width: 1440 },
       { lang: 'ka', width: 768 },
+      { lang: 'ka', width: 390 },
+      { lang: 'ru', width: 390 },
+      { lang: 'tr', width: 390 },
       { lang: 'en', width: 390 },
       { lang: 'ar', width: 390 },
       { lang: 'he', width: 390 },

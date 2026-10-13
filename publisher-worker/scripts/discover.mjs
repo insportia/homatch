@@ -1,7 +1,11 @@
 /** Read-only rendered-DOM discovery. Does not authenticate, enter data or submit any form. */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
-import { chromium } from 'playwright-core';
+import { pathToFileURL } from 'node:url';
+const useToolkit = process.argv.includes('--toolkit');
+const { chromium } = await import(useToolkit
+  ? pathToFileURL(resolve(process.env.HOMATCH_AUTOMATION_ROOT || 'C:/HOMATCH-Automation', 'node_modules/playwright/index.mjs')).href
+  : 'playwright-core');
 
 const domains = [
   'myhome.ge',
@@ -15,13 +19,14 @@ const domains = [
   'binebi.ge',
   'dgiurad.ge',
 ];
-const requested = process.argv.slice(2);
+const requested = process.argv.slice(2).filter(arg => arg !== '--toolkit');
 if (requested.some((domain) => !domains.includes(domain)))
   throw new Error('UNKNOWN_DISCOVERY_DOMAIN');
 const selected = requested.length ? requested : domains;
 const output = resolve('publisher-worker/artifacts/discovery.json');
 const browser = await chromium.launch({
   headless: true,
+  ...(useToolkit ? { channel: 'chrome' } : {}),
   ...(process.env.PUBLISHER_CHROME_PATH
     ? { executablePath: process.env.PUBLISHER_CHROME_PATH }
     : {}),

@@ -17,6 +17,10 @@ import {
   ExpatsStorySection, FindPropertyStorySection, InvestmentStorySection,
 } from '@/components/home/sections/ProductStorySections';
 import { BrokersSection } from '@/components/home/sections/BrokersSection';
+const LazyPublishingShowcase = React.lazy(() => import('@/publishing/PublishingShowcase').then(module => ({ default: module.PublishingShowcase })));
+function PublishingShowcase() {
+  return <React.Suspense fallback={<section id="publishing" className="min-h-[32rem]" aria-busy="true" />}><LazyPublishingShowcase /></React.Suspense>;
+}
 import { CallCenterSection } from '@/components/home/sections/CallCenterSection';
 import { EmailCampaignsSection } from '@/components/home/sections/EmailCampaignsSection';
 import { AISection } from '@/components/home/sections/AISection';
@@ -71,6 +75,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   investment: InvestmentStorySection,
   expats: ExpatsStorySection,
   brokers: BrokersSection,
+  publishing: PublishingShowcase,
   call_center: CallCenterSection,
   email_campaign: EmailCampaignsSection,
   homatch_ai: AISection,

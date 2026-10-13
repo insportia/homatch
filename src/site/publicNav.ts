@@ -108,6 +108,7 @@ export function publicNav({ onHome = false }: { onHome?: boolean } = {}): Public
       target: '',
       children: [
         { key: 'brokers', labelKey: 'pub_nav_brokers', descKey: 'pub_navd_brokers', target: '/brokers' },
+        { key: 'publishing', labelKey: 'pub_title', target: '/#publishing', signedInTarget: '/publishing' },
         { key: 'developers', labelKey: 'mp_nav_developers', descKey: 'pub_navd_developers', target: '/developers' },
         { key: 'partners', labelKey: 'home_nav_partners', descKey: 'pub_navd_partners', target: '/partners' },
       ],

@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>HOMATCH isolated publishing QA</title>
+<style>body{font:18px system-ui;background:#101b29;color:#fff;padding:32px}label{display:block;margin:16px}button{padding:12px;background:#dfc592} .qa-private{border:1px solid #888;padding:10px}</style>
+<h1>Publishing QA — synthetic data only</h1>
+<form id="publishing-form"><label>Property title <input name="title" value="Synthetic QA apartment"></label>
+<label><input type="checkbox" name="myhome">MyHome</label><label><input type="checkbox" name="ss">SS.ge</label>
+<div class="qa-private"><label>OTP <input autocomplete="one-time-code" name="otp"></label><label>Password <input type="password" name="password"></label><p>PRIVATE_CONTACT_CANARY</p></div>
+<button type="submit">Confirm selected portals</button></form><output id="result">No portals selected</output>
+<script>document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();document.querySelector('output').textContent=[...document.querySelectorAll('input[type=checkbox]:checked')].map(x=>x.name).join(',')||'none';});</script></html>

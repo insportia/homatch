@@ -1,0 +1,83 @@
+{
+  "checkedAt": "2026-10-13T10:10:03.235Z",
+  "scope": "Isolated local development probes; zero live portal integrations",
+  "tools": [
+    {
+      "tool": "Playwright",
+      "version": "1.64.0",
+      "status": "PASS",
+      "fixtureForm": true,
+      "upload": true,
+      "contextIsolation": true,
+      "externalPortals": "NOT_VERIFIED",
+      "durationMs": 1454
+    },
+    {
+      "tool": "Stagehand",
+      "version": "4.2.1",
+      "status": "FAIL",
+      "error": "Chrome exited before its debugging port was ready with code 2147483651",
+      "causes": [],
+      "cloud": false,
+      "durationMs": 1039
+    },
+    {
+      "tool": "Browser Use",
+      "version": "0.13.11",
+      "status": "FAIL",
+      "agentInference": "NOT_RUN_NO_MODEL",
+      "errorType": "RuntimeError",
+      "error": "Browser process (PID 27972) exited before CDP became available on port 65332. This usually means Chrome failed to start — check that it is properly installed and all required system dependencies are present (e.g. --no-sandbox may be needed in Docker/headless environments, or a virtual display such as Xvfb on headless Linux).",
+      "durationMs": 2906
+    },
+    {
+      "tool": "Ollama",
+      "status": "PARTIAL",
+      "service": "PASS",
+      "models": [],
+      "inference": "NOT_RUN_REQUIRES_AVAILABLE_MODEL",
+      "durationMs": 37
+    },
+    {
+      "tool": "rrweb",
+      "version": "2.1.7",
+      "status": "PASS",
+      "events": 14,
+      "redactionCanaries": 3,
+      "replayRestored": true,
+      "engine": "repository playwright-core",
+      "installedPlaywright": "1.64.0",
+      "durationMs": 1599
+    }
+  ],
+  "discovery": {
+    "mode": "read_only",
+    "records": [
+      {
+        "domain": "myhome.ge",
+        "checkedAt": "2026-10-13T10:08:33.552Z",
+        "state": "BLOCKED",
+        "code": "ENVIRONMENT_NETWORK_DENIED"
+      },
+      {
+        "domain": "ss.ge",
+        "checkedAt": "2026-10-13T10:08:36.778Z",
+        "state": "BLOCKED",
+        "code": "ENVIRONMENT_NETWORK_DENIED"
+      }
+    ]
+  },
+  "mcp": {
+    "packageVersion": "0.0.83",
+    "serverVersion": "1.64.0-alpha-1790635538000",
+    "status": "FAIL",
+    "nativeToolCount": 0,
+    "listedTools": 26,
+    "actualCall": "browser_navigate about:blank",
+    "error": "Target page, context or browser has been closed",
+    "browserLaunched": true
+  },
+  "ollamaVersion": "0.40.3",
+  "paidCalls": 0,
+  "modelDownloads": 0
+}

@@ -1,0 +1,62 @@
+name: Publishing Center checks
+on:
+  pull_request:
+    paths:
+      - 'publisher-worker/**'
+      - 'src/publishing/**'
+      - 'src/site/**'
+      - 'src/routes.tsx'
+      - 'scripts/publishing-*'
+      - 'supabase/functions/publisher-center/**'
+      - '.github/workflows/publisher-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  publisher:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: publisher_ci_disposable
+          POSTGRES_DB: publisher_test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Foundation and property tests
+        run: node --test publisher-worker/test/*.test.mjs src/publishing/__tests__/*.test.mjs
+      - name: Build isolated CPU worker image
+        run: docker build -f publisher-worker/Dockerfile -t homatch-publisher-worker:ci .
+      - name: Database and RLS tests in disposable Postgres
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: publisher_test
+          PGPASSWORD: publisher_ci_disposable
+          HOMATCH_PUBLISHER_DISPOSABLE_DB: '1'
+        run: |
+          psql -v ON_ERROR_STOP=1 -f publisher-worker/test/fixtures/postgres-bootstrap.sql
+          node publisher-worker/scripts/database-test-sql.mjs | psql -v ON_ERROR_STOP=1
+          node publisher-worker/scripts/database-concurrency-test.mjs
+      - name: Build isolated publishing UI fixture
+        run: node node_modules/vite/bin/vite.js build --config publisher-worker/qa/vite.config.ts
+      - name: Browser and responsive visual checks
+        run: node --test --test-timeout=180000 publisher-worker/test/ui.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publishing-visual-evidence
+          path: publisher-worker/artifacts/screenshots
+          if-no-files-found: ignore

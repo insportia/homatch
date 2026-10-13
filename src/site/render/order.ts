@@ -17,9 +17,9 @@ import type { SitePageContent, SiteSection } from '../model';
  */
 export const DEFAULT_HOME_ORDER: readonly string[] = [
   'hero', 'action_launcher', 'intelligence_layers', 'verify',
-  'contract_intelligence', 'matching', 'find_property', 'mortgage',
+  'contract_intelligence', 'matching', 'mortgage',
   'investment', 'expats', 'call_center',
-  'email_campaign', 'homatch_ai', 'brokers', 'developers', 'closing_cta',
+  'email_campaign', 'homatch_ai', 'brokers', 'publishing', 'find_property', 'developers', 'closing_cta',
 ];
 
 export const DEFAULT_ABOUT_ORDER: readonly string[] = [
@@ -152,5 +152,17 @@ export function resolveSections(
     out.splice(after + 1, 0, { type, section: null });
   }
 
+  // The Publishing Center's placement is a product constraint, including on
+  // previously published Site Studio pages. Preserve every other section's order.
+  if (slug === 'home') {
+    const brokers = out.find(s => s.type === 'brokers');
+    const publishing = out.find(s => s.type === 'publishing');
+    const search = out.find(s => s.type === 'find_property');
+    if (brokers && publishing && search) {
+      const rest = out.filter(s => s !== publishing && s !== search);
+      rest.splice(rest.indexOf(brokers) + 1, 0, publishing, search);
+      return rest;
+    }
+  }
   return out;
 }

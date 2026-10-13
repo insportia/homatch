@@ -60,7 +60,7 @@ test('public site 1: every public navigation target is a real, PUBLIC route — 
 
 test('public site 2: every signed-in target is a real route', () => {
   const targets = navTargets('signedInTarget');
-  assert.deepEqual(targets.sort(), ['/find-property', '/property'].sort());
+  assert.deepEqual(targets.sort(), ['/find-property', '/property', '/publishing'].sort());
   for (const target of targets) assert.ok(resolve(target), `${target} is not a route`);
 });
 

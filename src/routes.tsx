@@ -31,6 +31,8 @@ const DashboardPage = lazyRoute(() => import('./pages/DashboardPage'));
 const ActivityPage = lazyRoute(() => import('./pages/ActivityPage'));
 const NotificationsPage = lazyRoute(() => import('./pages/NotificationsPage'));
 const AddPropertyPage = lazyRoute(() => import('./pages/property/AddPropertyPage'));
+const PublishingCenterPage = lazyRoute(() => import('./publishing/PublishingCenterPage'));
+const PublishingAdminPage = lazyRoute(() => import('./publishing/PublishingAdminPage'));
 const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
 const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
@@ -457,6 +459,11 @@ export const routes: RouteConfig[] = [
    * swallowed by the parameter.
    */
   { name: 'My Properties',     path: '/property',                 element: <MyPropertiesPage /> },
+  { name: 'Publishing Center', path: '/publishing', element: <PublishingCenterPage /> },
+  { name: 'Publishing Administration', path: '/admin/publishing', element: <PublishingAdminPage />, adminOnly: true },
+  { name: 'Publishing Portals', path: '/publishing/portals', element: <PublishingCenterPage view="portals" /> },
+  { name: 'Publishing Activity', path: '/publishing/activity', element: <PublishingCenterPage view="activity" /> },
+  { name: 'Property Publications', path: '/publishing/property/:propertyId', element: <PublishingCenterPage /> },
   { name: 'Add Property',      path: '/property/add',             element: <AddPropertyPage /> },
   { name: 'Import Property',   path: '/property/import',          element: <URLImportPage /> },
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },

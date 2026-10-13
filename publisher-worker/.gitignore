@@ -1,0 +1,9 @@
+artifacts/
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+storage-state*.json
+playwright-report/
+test-results/

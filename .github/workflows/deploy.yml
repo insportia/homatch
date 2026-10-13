@@ -488,6 +488,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           JWT_FUNCTIONS=(
+            # Publishing remains draft until its audited schema and release gates pass.
+            "publisher-center"
             # HOMATCH FOR DEVELOPERS. Both are browser-facing and keep the
             # gateway JWT check on: the anon key is a valid JWT, so the check
             # costs nothing and keeps them off the open internet. The real

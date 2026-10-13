@@ -3,6 +3,13 @@
 PR https://github.com/insportia/homatch/pull/204 — keep **draft; do not merge/deploy**.
 Branch `feat/property-publishing-foundations`. Original commit `1edbffdaf6ea071197dc50d8e6527f4215bb8cc9` preserved. Work remains incomplete; **zero live portal integrations** claimed.
 
+## Latest preservation and CI
+
+- Continuation pushed and branch ref verified at `6dd6feacef0caac5be8d0a0cb10f6a6d34ddc795`. PR remains draft. Comparison: 58 changed files, zero protected-system paths; remote translations preserved with 408 additions and zero deletions. Shared routes/admin/release changes replayed onto newer remote content.
+- [Publishing Center checks run 38379391816](https://github.com/insportia/homatch/actions/runs/38379391816) **passed**, including unit tests, isolated CPU Docker build, disposable Postgres/RLS and parallel claims, UI fixture build and browser/visual checks. Repository-wide PR Checks still require final result review.
+- MCP local-only `about:blank` probe also fails closed-target. Browser debug classifications show launch succeeded, no missing executable or explicit permission denial. This happens before any external website request; do not attribute it to portal restrictions. Native tools remain absent. No repeated external retries performed.
+- Repository CI exposed three publishing regressions: deployment registry omissions, signed-out navigation to an authenticated route, and a 2.04 MB entry bundle over the existing 2 MB limit. Registry/public navigation fixes pass **34 targeted tests**; showcase now uses a separate lazy chunk. Updated CI must verify the bundle threshold; no threshold weakened. Full app built successfully in CI before the size assertion failed.
+
 ## Added implementation
 
 - Authenticated `publisher-center` endpoint: owner-scoped snapshots, selection persistence, normalized immutable versions, enqueue, cancellation, reconciliation retry, disconnect, monitoring/kill switches. Verifies Auth, internal user ID, suspension and read-only impersonation. Unsupported connection requests return explicit errors.

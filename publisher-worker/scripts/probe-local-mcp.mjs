@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const domain = process.argv[2];
-if (domain && !['myhome.ge', 'ss.ge'].includes(domain))
+if (domain && !['myhome.ge', 'ss.ge', 'local'].includes(domain))
   throw new Error('UNKNOWN_PROBE_TARGET');
 const toolkit = process.env.HOMATCH_AUTOMATION_ROOT || 'C:/HOMATCH-Automation';
 const child = spawn(
@@ -21,12 +21,19 @@ const child = spawn(
     '--output-dir',
     resolve('publisher-worker/artifacts/mcp'),
   ],
-  { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
+  {
+    stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
+    env: domain === 'local' ? { ...process.env, DEBUG: 'pw:browser' } : process.env,
+  },
 );
 const pending = new Map();
 let id = 0;
 let buffer = '';
-child.stderr.on('data', () => {}); // Never relay arbitrary browser/server diagnostics.
+let localDiagnostics = '';
+child.stderr.on('data', (chunk) => {
+  // A fresh blank-page probe has no account/session data. Still expose only classifications.
+  if (domain === 'local') localDiagnostics = (localDiagnostics + chunk).slice(-32768);
+});
 child.stdout.on('data', (chunk) => {
   buffer += chunk;
   while (buffer.includes('\n')) {
@@ -121,7 +128,7 @@ try {
   if (domain) {
     const result = await request('tools/call', {
       name: 'browser_navigate',
-      arguments: { url: `https://${domain}` },
+      arguments: { url: domain === 'local' ? 'about:blank' : `https://${domain}` },
     });
     const output = JSON.stringify(result);
     console.log(
@@ -134,8 +141,20 @@ try {
           : result,
       }),
     );
+    if (domain === 'local' && !result.isError) {
+      const snapshot = await request('tools/call', {
+        name: 'browser_snapshot', arguments: {},
+      });
+      console.log(JSON.stringify({ localSnapshotError: Boolean(snapshot.isError) }));
+    }
   }
 } finally {
+  if (domain === 'local') console.log(JSON.stringify({ browserDiagnostics: {
+    launched: /launched.*pid=/i.test(localDiagnostics),
+    permissionDenied: /EACCES|EPERM|access.*denied/i.test(localDiagnostics),
+    processExited: /process did exit|exitCode=/i.test(localDiagnostics),
+    executableMissing: /executable.*doesn.t exist|ENOENT/i.test(localDiagnostics),
+  } }));
   try {
     await request('tools/call', { name: 'browser_close', arguments: {} });
   } catch {}

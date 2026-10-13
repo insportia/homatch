@@ -296,6 +296,7 @@ export const ADMIN_GROUPS: AdminGroup[] = [
     labelKey: 'admin_group_system',
     icon: Server,
     items: [
+      { path: '/admin/publishing', labelKey: 'pub_admin', icon: Server, keywords: ['publishing', 'portal', 'publication', 'worker'] },
       {
         path: '/admin/health', labelKey: 'admin_nav_health', icon: HeartPulse,
         keywords: ['health', 'status', 'uptime', 'system'],

@@ -59,6 +59,12 @@ export const BROWSER = SUITES.filter((s) => SUITE_CATALOGUE[s].files?.length);
 const fn = (...names) => new RegExp(`^supabase/functions/(${names.join('|')})/`);
 
 export const COMPONENTS = {
+  PUBLISHING: {
+    security: true,
+    paths: [/^publisher-worker\//, /^src\/publishing\//, /^supabase\/functions\/publisher-center\//, /^scripts\/publishing-/, /^\.github\/workflows\/publisher-checks\.yml$/],
+    suites: ['mobile:routes', 'mobile:shell', 'a11y'],
+    proofs: ['Publishing: reviewed schema, isolated CPU worker, owner-only publishing routes, actual production artifact'],
+  },
   // The machinery that decides releases. Repository-wide, and it can never
   // certify its own change after merge (see GATEKEEPER).
   RELEASE_ENGINE: {

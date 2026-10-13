@@ -21,4 +21,14 @@ Common status for all candidates: official publishing API availability unknown; 
 
 Web-extracted controls are preliminary discovery evidence, not rendered DOM selector validation. The Place registration page, Binebi login page and TNET creation URL are useful next-session entry points. No invented registration URLs, field limits, free-listing guarantees, external IDs or successful operations have been added to the product.
 
-Only eight candidate websites returned relevant content. This does **not** satisfy the requirement for ten researched integration paths or assisted workflows. None should be exposed as a connected or publishable portal yet.
+The resumed investigation retrieved three additional relevant candidates. These are provisional alternatives to inaccessible targets; failure to fetch does not prove inactivity.
+
+| Additional domain | Verified web entry points | Authentication evidence | Limitations |
+|---|---|---|---|
+| makler.ge | [Official portal](https://www.makler.ge/ka), [registration](https://www.makler.ge/ka/registration), [add listing](https://www.makler.ge/ka/add/) redirects to [login](https://www.makler.ge/ka/login) | Registration/login destinations retrieved; challenges/session behavior unknown | Rendered fields, automation permission, required data, photos, management and live operations unverified |
+| binebi.info | [Official portal](https://binebi.info/ka), add/account link leads to [login](https://binebi.info/ka/login) | Web login shows username/email and password. Official registration link fetched as `/ka/ka/register` and failed; no URL invented | Relevant daily-rental candidate; OTP, actual submission fields, limits and management unverified |
+| gege24.com | [Official Georgian property marketplace](https://gege24.com/) retrieved | Account/registration unverified | Additional candidate only; no adapter or assisted path claimed |
+
+The initial eight plus Makler and Binebi.info form ten registry candidates. `publisher-worker/schema/portal-seed.sql` records ten disabled `DISCOVERED` entries and only verified registration destinations. This is **not** ten working integrations or assisted workflows. None is connected or production ready.
+
+The installed MCP server initialized/listed tools, but navigation returned a closed-target error. No rendered portal form or selector is validated. See [MCP diagnosis](MCP-SETUP.md).

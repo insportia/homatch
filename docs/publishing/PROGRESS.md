@@ -1,5 +1,7 @@
 # Publishing Center progress
 
+**Current continuation checkpoint: [CHECKPOINT.md](CHECKPOINT.md).** The foundation history below is retained; the checkpoint has current implementation, test results, environment diagnosis and exact next actions.
+
 Started 2026-10-13. Implementation incomplete; no live publishing claims.
 
 - Located repository at `C:/Users/User/homatch`; existing branch has unrelated Verify changes. Do not stage or modify these.

@@ -17,6 +17,7 @@ import {
   ExpatsStorySection, FindPropertyStorySection, InvestmentStorySection,
 } from '@/components/home/sections/ProductStorySections';
 import { BrokersSection } from '@/components/home/sections/BrokersSection';
+import { PublishingShowcase } from '@/publishing/PublishingShowcase';
 import { CallCenterSection } from '@/components/home/sections/CallCenterSection';
 import { EmailCampaignsSection } from '@/components/home/sections/EmailCampaignsSection';
 import { AISection } from '@/components/home/sections/AISection';
@@ -71,6 +72,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   investment: InvestmentStorySection,
   expats: ExpatsStorySection,
   brokers: BrokersSection,
+  publishing: PublishingShowcase,
   call_center: CallCenterSection,
   email_campaign: EmailCampaignsSection,
   homatch_ai: AISection,

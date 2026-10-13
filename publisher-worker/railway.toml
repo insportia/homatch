@@ -1,0 +1,10 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "publisher-worker/Dockerfile"
+watchPatterns = ["publisher-worker/**"]
+
+[deploy]
+healthcheckPath = "/ready"
+healthcheckTimeout = 90
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

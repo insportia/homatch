@@ -120,6 +120,7 @@ const f = (
 ): SectionFieldDef => ({ key, labelKey, kind, fallback });
 
 export const SECTION_DEFS: readonly SectionDef[] = [
+  { type: 'publishing', labelKey: 'pub_title', variants: ['default'], themes: [], fields: [], media: [], repeatable: false },
   {
     type: 'hero',
     labelKey: 'studio_sec_hero',

@@ -20,7 +20,7 @@ test('publishing frame permits same-origin embedding while all existing pages re
 test('production extension rejects lookalikes, other routes, other extensions and child frames', async () => {
   let listener;
   const chrome = { runtime: { id: 'owned', onMessage: { addListener: fn => { listener = fn; } } }, tabs: { query: async () => [{ id: 5, url: 'https://statements.myhome.ge/ka/statement/create' }] } };
-  vm.runInNewContext(fs.readFileSync(extension + 'background.js', 'utf8'), { chrome, URL, Set });
+  vm.runInNewContext([fs.readFileSync('publishing-extension/adapters/contract.js','utf8'),fs.readFileSync('publishing-extension/adapters/portals.js','utf8'),fs.readFileSync(extension + 'background.js', 'utf8').replace(/^importScripts.*\n/,'')].join('\n'), { chrome, URL, Set });
   for (const url of ['https://homatch.live.evil.test/property/publish', 'http://homatch.live/property/publish', 'https://homatch.live/property', 'https://evil.test/']) assert.equal(listener({ type: 'CONNECT' }, { id: 'owned', frameId: 0, tab: { url } }, () => assert.fail('Rejected sender received data')), undefined);
   const sender = { id: 'owned', frameId: 0, tab: { url: 'https://homatch.live/property/publish' } };
   assert.equal(listener({ type: 'CONNECT' }, { ...sender, frameId: 1 }, () => assert.fail()), undefined);
@@ -50,9 +50,9 @@ test('bridge checks origin and pathname at message time after SPA navigation', a
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const listingId = '22222222-2222-4222-8222-222222222222';
 const jobId = '33333333-3333-4333-8333-333333333333';
-function setup({ validAuth = true, state = 'FILL_FORM', listingOwner = ownerId } = {}) {
-  const payload = { id: listingId, version: 1, portalTargets: ['myhome'], price: 155000, photos: [] };
-  const rows = { users: [{ id: ownerId, auth_id: 'auth-owner' }], publishing_engine_listings: [{ id: listingId, user_id: listingOwner, payload }], publishing_engine_jobs: [{ id: jobId, user_id: ownerId, revision: 0, payload: { id: jobId, listingId, version: 1, state, revision: 0, events: [] } }] };
+function setup({ validAuth = true, state = 'FILL_FORM', listingOwner = ownerId, portalId = 'myhome' } = {}) {
+  const payload = { id: listingId, version: 1, portalTargets: [portalId], price: 155000, photos: [] };
+  const rows = { users: [{ id: ownerId, auth_id: 'auth-owner' }], publishing_engine_listings: [{ id: listingId, user_id: listingOwner, payload }], publishing_engine_jobs: [{ id: jobId, user_id: ownerId, revision: 0, payload: { id: jobId, listingId, portalId, version: 1, state, revision: 0, events: [] } }] };
   const client = {
     auth: { getUser: async () => ({ data: { user: validAuth ? { id: 'auth-owner' } : null }, error: validAuth ? null : {} }) },
     from(table) {
@@ -65,7 +65,7 @@ function setup({ validAuth = true, state = 'FILL_FORM', listingOwner = ownerId }
   let handler;
   const source = fs.readFileSync('supabase/functions/publishing-engine/index.ts', 'utf8').replace(/^import .*;\r?\n/gm, '').replace('export async function handler', 'async function handler');
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  vm.runInNewContext(compiled, { createClient: () => client, normalizeListing, validateListing, advance, registry: { portals: [] }, parsePhoneNumberFromString: () => null, Deno: { env: { get: () => 'test' }, serve: fn => { handler = fn; } }, Request, Response, URL, Set, Error, JSON, Number, String, Uint8Array, Blob, atob, btoa, crypto: crypto.webcrypto });
+  vm.runInNewContext(compiled, { createClient: () => client, normalizeListing, validateListing, advance, registry: JSON.parse(fs.readFileSync('supabase/functions/publishing-engine/registry.json','utf8')), parsePhoneNumberFromString: () => null, Deno: { env: { get: () => 'test' }, serve: fn => { handler = fn; } }, Request, Response, URL, Set, Error, JSON, Number, String, Uint8Array, Blob, atob, btoa, crypto: crypto.webcrypto });
   const request = (url, body, { origin = 'https://homatch.live', auth = 'Bearer synthetic-test-token' } = {}) => handler(new Request('https://example.test', { method: 'POST', headers: { Origin: origin, Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ url, body }) }));
   return { request, payload, rows };
 }
@@ -87,7 +87,7 @@ test('browser authorization replaces supplied listing data with the saved canoni
   const result = await response.json();
   assert.equal(result.command.payload.price, 155000);
   assert.deepEqual(result.command.payload.portalTargets, ['myhome']);
-  assert.equal((await (await request('/browser', { type: 'EXECUTE', portalId: 'ssge', tabId: 5, action: 'fillListing', listingId, jobId })).json()).code, 'COMMAND_NOT_ALLOWED');
+  assert.equal((await (await request('/browser', { type: 'EXECUTE', portalId: 'ssge', tabId: 5, action: 'fillListing', listingId, jobId })).json()).code, 'JOB_LISTING_MISMATCH');
 });
 test('browser writes require the exact job state and publication confirmation', async () => {
   const command = { type: 'EXECUTE', portalId: 'myhome', tabId: 5, listingId, jobId };
@@ -101,4 +101,14 @@ test('job transition uses revision checks and cannot skip review', async () => {
   assert.equal((await (await request('/jobs/transition', { jobId, revision: 0, state: 'PUBLISHED' })).json()).code, 'INVALID_JOB_TRANSITION');
   assert.equal((await (await request('/jobs/transition', { jobId, revision: 0, state: 'UPLOAD_PHOTOS' })).json()).job.revision, 1);
   assert.equal((await (await request('/jobs/transition', { jobId, revision: 0, state: 'VERIFY_FORM' })).json()).code, 'JOB_REVISION_CONFLICT');
+});
+
+test('SS.ge backend isolates the portal and blocks publication even with confirmation',async()=>{
+ const {request}=setup({portalId:'ssge'});
+ const command={type:'EXECUTE',portalId:'ssge',tabId:5,listingId,jobId};
+ const result=await (await request('/browser',{...command,action:'fillListing',payload:{price:1}})).json();
+ assert.equal(result.command.portalId,'ssge');assert.equal(result.command.payload.price,155000);
+ assert.equal((await (await request('/browser',{...command,portalId:'myhome',action:'fillListing'})).json()).code,'JOB_LISTING_MISMATCH');
+ assert.equal((await (await request('/browser',{...command,action:'publishAfterConfirmation',payload:{confirmed:true,reviewToken:'review'}})).json()).code,'LIVE_BROWSER_VERIFICATION_REQUIRED');
+ for(const state of ['READY_FOR_REVIEW','SUBMITTING','PUBLISHED'])assert.equal((await (await request('/jobs/transition',{jobId,revision:0,state,confirmed:true})).json()).code,'LIVE_BROWSER_VERIFICATION_REQUIRED');
 });

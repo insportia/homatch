@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "HOMATCH Universal Publishing Engine",
+  "version": "0.2.1",
+  "description": "Multi-portal form inspection and controlled autofill",
+  "permissions": [
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://statements.myhome.ge/*",
+    "https://www.myhome.ge/*",
+    "https://myhome.ge/*",
+    "http://127.0.0.1:4177/*",
+    "https://homatch.live/*",
+    "https://www.homatch.live/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:4177/*",
+        "https://homatch.live/*",
+        "https://www.homatch.live/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "HOMATCH Publishing",
+    "default_popup": "popup.html"
+  }
+}

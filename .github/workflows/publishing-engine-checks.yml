@@ -1,0 +1,24 @@
+name: Publishing Engine Checks
+on:
+  push:
+    branches: [feat/publishing-engine-production]
+  pull_request:
+    paths: ['src/publishingEngine/**', 'public/publishing-engine/**', 'publishing-extension/**', 'supabase/functions/publishing-engine/**', 'tests/publishingEngine/**']
+permissions:
+  contents: read
+jobs:
+  publishing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsgo -p tsconfig.check.json
+      - run: node --test tests/publishingEngine/*.test.mjs
+      - run: pnpm run build

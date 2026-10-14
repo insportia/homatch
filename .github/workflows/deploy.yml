@@ -488,6 +488,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           JWT_FUNCTIONS=(
+            "publishing-engine"
             # HOMATCH FOR DEVELOPERS. Both are browser-facing and keep the
             # gateway JWT check on: the anon key is a valid JWT, so the check
             # costs nothing and keeps them off the open internet. The real
@@ -1287,4 +1288,5 @@ jobs:
             fi
           fi
           advance frontend "$frontend_outcome"
+
 

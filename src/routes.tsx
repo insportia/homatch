@@ -30,6 +30,7 @@ const TermsPage = lazyRoute(() => import('./pages/TermsPage'));
 const DashboardPage = lazyRoute(() => import('./pages/DashboardPage'));
 const ActivityPage = lazyRoute(() => import('./pages/ActivityPage'));
 const NotificationsPage = lazyRoute(() => import('./pages/NotificationsPage'));
+const PublishingEnginePage = lazyRoute(() => import('./publishingEngine/PublishingEnginePage'));
 const AddPropertyPage = lazyRoute(() => import('./pages/property/AddPropertyPage'));
 const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
@@ -457,6 +458,7 @@ export const routes: RouteConfig[] = [
    * swallowed by the parameter.
    */
   { name: 'My Properties',     path: '/property',                 element: <MyPropertiesPage /> },
+  { name: 'Publishing Engine', path: '/property/publish', element: <PublishingEnginePage /> },
   { name: 'Add Property',      path: '/property/add',             element: <AddPropertyPage /> },
   { name: 'Import Property',   path: '/property/import',          element: <URLImportPage /> },
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },
@@ -649,3 +651,4 @@ export const routes: RouteConfig[] = [
      write-only for visitors and readable only under is_admin(). */
   { name: 'Admin Engagement',  path: '/admin/engagement',         element: adminWrap(<AdminEngagementPage />),  adminOnly: true },
 ];
+

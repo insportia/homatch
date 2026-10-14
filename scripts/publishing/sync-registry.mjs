@@ -5,5 +5,5 @@ fs.writeFileSync('publishing-extension/adapters/portals.js','globalThis.HOMATCH_
 fs.writeFileSync('supabase/functions/publishing-engine/registry.json',JSON.stringify(registry,null,2)+'\n');
 // TypeScript source maps retain the exact source required by production proof.
 const dir='supabase/functions/publishing-engine/';
-for(const name of ['engine','listing-schema'])fs.writeFileSync(dir+name+'.runtime.ts','// Generated from '+name+'.js; do not edit.\n// @ts-nocheck\n'+fs.readFileSync(dir+name+'.js','utf8'));
+for(const name of ['engine','listing-schema'])fs.writeFileSync(dir+name+'.runtime.ts','// Generated from '+name+'.js; do not edit.\n// @ts-nocheck\n'+fs.readFileSync(dir+name+'.js','utf8').replace(/\r\n/g,'\n'));
 fs.writeFileSync(dir+'registry.runtime.ts','// Generated from registry.json; do not edit.\nexport default '+fs.readFileSync(dir+'registry.json','utf8').trim()+';\n');

@@ -349,17 +349,21 @@ test('launch: all six languages by default; tap to narrow (e.g. Georgian only); 
   }
 });
 
+const publishingCopy=JSON.parse(readFileSync('src/publishingEngine/copy.json','utf8'));
 /* Publishing navigation stays distinct from Add Property and URL import. */
 test('portal publishing: desktop/mobile navigation, six locales and native publishing workspace', opts, async (t) => {
-  const labels = {"en":"Publish on portals","ka":"პორტალებზე გამოქვეყნება","ru":"Публикация на площадках","tr":"İlan sitelerinde yayınla","ar":"النشر على المنصات","he":"פרסום בפלטפורמות"};
+  const labels = {"en":"Property Publishing","ka":"პლატფორმებზე გამოქვეყნება","ru":"Публикация недвижимости","tr":"Gayrimenkul yayınlama","ar":"نشر العقارات","he":"פרסום נכסים"};
   for (const lang of LOCALES) for (const width of [390, 1440]) {
     await t.test(lang + ' publishing ' + width, async (tt) => {
       const { page } = await boot(tt, { route: '/property', lang, width, height: 900, imageWorks: true });
-      const requests = [];
+      const requests = [];let savedDraft=null,revision=0,uploadCount=0;
       await page.route('**/functions/v1/publishing-engine', async route => {
         if (route.request().method() === 'OPTIONS') return route.fulfill({status:204,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}});
         const body = route.request().postDataJSON(); requests.push(body.url);
-        const result = body.url === '/v2/dashboard' ? {listings:[],publications:[],connections:[],operations:[],subscriptions:[],billing:[],media:{},balance:100,settings:{daily_credits:10},portals:[{id:'myhome',name:'MyHome.ge',verifiedOperations:{}},{id:'ssge',name:'SS.ge',verifiedOperations:{}}]} : {};
+        let result = body.url === '/v2/dashboard' ? {listings:savedDraft?[{id:savedDraft.id,version:savedDraft.version,payload:savedDraft,display_id:'HM-2026-000001',desired_state:'DRAFT'}]:[],publications:[],connections:[],operations:[],subscriptions:[],billing:[],media:{},balance:100,settings:{daily_credits:10},portals:[{id:'myhome',name:'MyHome.ge',verifiedOperations:{}},{id:'ssge',name:'SS.ge',verifiedOperations:{}}]} : {};
+        if(body.url==='/v2/save'){savedDraft={...body.body,id:'55555555-5555-4555-8555-555555555555',version:++revision,displayId:'HM-2026-000001'};result={listing:savedDraft,validation:{valid:true,errors:[]}};}
+        if(body.url==='/v2/ai')result={draft:'Synthetic description from supplied facts.',language:body.body.language,requiresApproval:true};
+        if(body.url==='/assets'){uploadCount++;result={assetId:'66666666-6666-4666-8666-666666666666',name:body.body.name,mime:'image/png',bytes:PNG.length};}
         await route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(result)});
       });
       const buttons = page.getByRole('button', {name:labels[lang],exact:true});
@@ -371,6 +375,31 @@ test('portal publishing: desktop/mobile navigation, six locales and native publi
       assert.equal(await page.locator('iframe').count(),0,'publishing uses the shared native application');
       assert.ok(requests.includes('/v2/dashboard'));
       assert.ok(await noOverflow(page),lang+' native publishing fits at '+width);
+      const copy=key=>publishingCopy['pue_'+key][lang];
+      await page.getByRole('button',{name:copy('create'),exact:true}).first().click();
+      await page.getByTestId('publishing-field-title').waitFor();
+      assert.ok(await noOverflow(page),lang+' property editor fits at '+width);
+      if(lang==='en'&&width===390){
+        await page.getByTestId('publishing-field-title').fill('Synthetic publishing draft');
+        const description=page.getByRole('textbox',{name:copy('description'),exact:true});
+        await description.fill('Owner approved details.');
+        await page.getByRole('button',{name:copy('ai_generate'),exact:true}).click();
+        await page.getByRole('region',{name:copy('ai_preview')}).waitFor({timeout:20000});
+        assert.equal(await description.inputValue(),'Owner approved details.','AI never silently replaces owner text');
+        await page.getByRole('button',{name:copy('use_draft'),exact:true}).click();
+        assert.equal(await description.inputValue(),'Synthetic description from supplied facts.');
+        await page.locator('input[type=file]').setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:PNG});
+        await page.getByAltText('fixture.png').waitFor({timeout:20000});
+        await page.getByRole('checkbox',{name:'MyHome.ge',exact:true}).check();
+        await page.getByRole('checkbox',{name:'SS.ge',exact:true}).check();
+        await page.getByRole('button',{name:copy('save'),exact:true}).click();
+        await page.waitForFunction(()=>document.querySelector('[role=status]')?.textContent.includes('Saved'));
+        assert.equal(uploadCount,1,'one canonical upload serves both selected portals');
+        assert.equal(savedDraft.photos.length,1);
+        assert.deepEqual(savedDraft.portalTargets,['myhome','ssge']);
+        assert.ok(!requests.includes('/v2/activate')&&!requests.includes('/v2/queue'),'draft/AI/photo flow never activates or publishes');
+      }
+
       await page.goto(BASE + '/property');
       await page.getByRole('button',{name:labels[lang],exact:true}).last().click();await page.waitForURL('**/property/publish');
       assert.ok(await noOverflow(page));

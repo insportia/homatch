@@ -17,7 +17,8 @@ export function browserCommand(command:unknown,timeoutMs=8000):Promise<any> {
  });
 }
 export async function connectPortal(portalId:string) {
- const hello=await publishingApi('/v2/browser',{type:'HELLO'});await browserCommand(hello.command);
+ const hello=await publishingApi('/v2/browser',{type:'HELLO'});
+ try{const installed=await browserCommand(hello.command);if(!installed.extensionInstalled||installed.contractVersion<2)throw new Error('EXTENSION_REQUIRED');}catch{throw new Error('EXTENSION_REQUIRED');}
  const authorized=await publishingApi('/v2/browser',{type:'CONNECT_PORTAL',portalId});return browserCommand(authorized.command);
 }
 export async function inspectPortal(portalId:string,tabId:number) {

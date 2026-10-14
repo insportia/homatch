@@ -10,7 +10,7 @@ chrome.runtime.onMessage.addListener((m,sender,reply)=>{
    const portal=portals.find(p=>p.id===m.portalId);if(!portal?.browser?.connectUrl)throw Error('COMMAND_NOT_ALLOWED');
    const u=new URL(portal.browser.connectUrl);if(!portal.browser.writeOrigins.includes(u.origin))throw Error('COMMAND_NOT_ALLOWED');
    const matches=await chrome.tabs.query({url:portal.browser.writeOrigins.map(o=>o+'/*')});
-   const tab=matches[0]||await chrome.tabs.create({url:u.href});return {ok:true,tab:{id:tab.id,portalId:portal.id},authenticationRequired:true};
+   const tab=matches[0]||await chrome.tabs.create({url:u.href});if(matches[0])await chrome.tabs.update(tab.id,{active:true});return {ok:true,tab:{id:tab.id,portalId:portal.id},authenticationRequired:true};
   }
   if(m.type==='RUN_OPERATION'){
    const portal=portals.find(p=>p.id===m.portalId),op=m.operation;

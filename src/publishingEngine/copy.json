@@ -447,14 +447,6 @@
     "ar": "إجراءات أخرى",
     "he": "פעולות נוספות"
   },
-  "pue_sqm": {
-    "en": "m²",
-    "ka": "მ²",
-    "ru": "м²",
-    "tr": "m²",
-    "ar": "م²",
-    "he": "מ\"ר"
-  },
   "pue_eyebrow": {
     "en": "Your property, everywhere",
     "ka": "თქვენი ქონება ყველა პლატფორმაზე",
@@ -1614,5 +1606,61 @@
     "tr": "Son güncelleme",
     "ar": "آخر تحديث",
     "he": "עדכון אחרון"
+  },
+  "pue_admin_refund": {
+    "en": "Refund credits",
+    "ka": "კრედიტების დაბრუნება",
+    "ru": "Вернуть кредиты",
+    "tr": "Kredileri iade et",
+    "ar": "استرداد الرصيد",
+    "he": "החזר קרדיטים"
+  },
+  "pue_admin_reason": {
+    "en": "Reason for this adjustment",
+    "ka": "კორექტირების მიზეზი",
+    "ru": "Причина корректировки",
+    "tr": "Düzeltme nedeni",
+    "ar": "سبب التعديل",
+    "he": "סיבת ההתאמה"
+  },
+  "pue_admin_refund_confirm": {
+    "en": "Refund this charge through the audited wallet ledger?",
+    "ka": "დაბრუნდეს ეს თანხა საფულის აუდიტირებულ რეესტრში?",
+    "ru": "Вернуть списание через аудируемый реестр кошелька?",
+    "tr": "Bu ücret denetlenebilir cüzdan defteri üzerinden iade edilsin mi?",
+    "ar": "هل تريد رد هذه الرسوم عبر سجل المحفظة المدقق؟",
+    "he": "להחזיר חיוב זה דרך יומן הארנק המתועד?"
+  },
+  "pue_review": {
+    "en": "Review platform requirements",
+    "ka": "პლატფორმის მოთხოვნების შემოწმება",
+    "ru": "Проверить требования площадок",
+    "tr": "Platform koşullarını incele",
+    "ar": "مراجعة متطلبات المنصات",
+    "he": "בדיקת דרישות הפלטפורמות"
+  },
+  "pue_review_ready": {
+    "en": "Required fields complete",
+    "ka": "სავალდებულო ველები შევსებულია",
+    "ru": "Обязательные поля заполнены",
+    "tr": "Zorunlu alanlar tamamlandı",
+    "ar": "الحقول المطلوبة مكتملة",
+    "he": "שדות החובה מולאו"
+  },
+  "pue_required_for": {
+    "en": "Required for {platform}",
+    "ka": "სავალდებულოა {platform}-სთვის",
+    "ru": "Обязательно для {platform}",
+    "tr": "{platform} için zorunlu",
+    "ar": "مطلوب لـ {platform}",
+    "he": "חובה עבור {platform}"
+  },
+  "pue_field_unsupported": {
+    "en": "This value is not supported on this platform.",
+    "ka": "ეს მნიშვნელობა ამ პლატფორმაზე მხარდაჭერილი არ არის.",
+    "ru": "Это значение не поддерживается на данной площадке.",
+    "tr": "Bu değer bu platformda desteklenmiyor.",
+    "ar": "هذه القيمة غير مدعومة على هذه المنصة.",
+    "he": "ערך זה אינו נתמך בפלטפורמה זו."
   }
 }

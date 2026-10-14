@@ -10,7 +10,7 @@ export async function handleV2(url:string,raw:any,ctx:Context) {
  const rpc=async(name:string,args:any)=>{const {data,error}=await admin.rpc(name,args);check(error,'PUBLISHING_REQUEST_FAILED');return data;};
  const owned=async(table:string,id:string)=>{requireId(id);const {data,error}=await admin.from(table).select('*').eq('id',id).eq('user_id',owner.id).maybeSingle();if(error||!data)throw Error('OWNED_RECORD_REQUIRED');return data;};
  const portal=(id:string)=>{const p=registry.portals.find((p:any)=>p.id===id);if(!p?.browser)throw Error('PORTAL_NOT_IMPLEMENTED');return p;};
- const read=async(table:string,columns='*')=>{const {data,error}=await admin.from(table).select(columns).eq('user_id',owner.id).limit(200);check(error,'PUBLISHING_READ_FAILED');return data||[];};
+ const read=async(table:string,columns='*')=>{let query=admin.from(table).select(columns).eq('user_id',owner.id).limit(200);if(['publishing_engine_listings','publishing_engine_operations','publishing_engine_billing_events'].includes(table))query=query.order('created_at',{ascending:false});const {data,error}=await query;check(error,'PUBLISHING_READ_FAILED');return data||[];};
  if(url==='/v2/dashboard') {
   const [listings,publications,connections,operations,subscriptions,billing,settings,wallet]=await Promise.all([
    read('publishing_engine_listings'),read('publishing_engine_publications'),read('publishing_engine_connections'),
@@ -87,7 +87,7 @@ export async function handleV2(url:string,raw:any,ctx:Context) {
  if(url==='/v2/retry') {
   const op=await owned('publishing_engine_operations',raw.operationId);
   if(!['AUTH_REQUIRED','FAILED','ACTION_REQUIRED'].includes(op.status)||!operationAllowed(op.kind,portal(op.portal_id)))throw Error('RECONCILIATION_REQUIRED');
-  const {error}=await admin.from('publishing_engine_operations').update({status:'QUEUED',error_code:null,available_at:new Date().toISOString()}).eq('id',op.id).eq('user_id',owner.id).eq('status',op.status);check(error,'RETRY_FAILED');return {queued:true};
+  return {operation:await rpc('publishing_engine_retry',{p_actor:owner.id,p_operation:op.id,p_admin:false})};
  }
  if(url==='/v2/archive')return {listing:await rpc('publishing_engine_archive',{p_owner:owner.id,p_listing:requireId(raw.listingId),p_version:raw.version,p_confirmed:raw.confirmed===true})};
  if(url==='/v2/ai') {
@@ -106,6 +106,11 @@ export async function handleV2(url:string,raw:any,ctx:Context) {
  }
  if(url.startsWith('/v2/admin')) {
   const {data:actor,error}=await admin.from('users').select('id,is_admin').eq('id',owner.id).maybeSingle();if(error||!actor?.is_admin)throw Error('ADMIN_REQUIRED');
+  if(url==='/v2/admin/retry'){
+   const {data:op,error}=await admin.from('publishing_engine_operations').select('*').eq('id',requireId(raw.operationId)).maybeSingle();check(error,'ADMIN_READ_FAILED');
+   if(!op||!operationAllowed(op.kind,portal(op.portal_id)))throw Error('CAPABILITY_UNVERIFIED');
+   return {operation:await rpc('publishing_engine_retry',{p_actor:owner.id,p_operation:op.id,p_admin:true})};
+  }
   if(url==='/v2/admin/settings')return {settings:await rpc('publishing_engine_configure',{p_actor:owner.id,p_settings:raw})};
   if(url==='/v2/admin/refund')return {refund:await rpc('publishing_engine_refund',{p_actor:owner.id,p_event:requireId(raw.eventId),p_reason:raw.reason,p_confirmed:raw.confirmed===true})};
   if(url==='/v2/admin/overview'){

@@ -39,14 +39,41 @@ export default {
       "verifiedOperations": {},
       "requirements": {
         "required": [
-          "dealType",
           "propertyType",
+          "dealType",
           "city",
+          "street",
+          "streetNumber",
+          "contactName",
+          "contactPhone",
+          "description.ka",
           "price",
           "area"
         ],
         "verificationStatus": "NOT_LIVE_VERIFIED",
-        "maxPhotos": 16
+        "maxPhotos": 16,
+        "allowedValues": {
+          "propertyType": [
+            "apartment"
+          ],
+          "dealType": [
+            "sale",
+            "rent",
+            "daily_rent"
+          ],
+          "currency": [
+            "USD"
+          ]
+        },
+        "unsupportedFields": [
+          "projectType",
+          "heating",
+          "balconyArea",
+          "ceilingHeight",
+          "livingArea",
+          "yardArea",
+          "landArea"
+        ]
       }
     },
     {
@@ -82,13 +109,36 @@ export default {
       "verifiedOperations": {},
       "requirements": {
         "required": [
-          "dealType",
           "propertyType",
+          "dealType",
           "city",
+          "street",
+          "streetNumber",
+          "contactName",
+          "contactPhone",
+          "description.ka",
           "price",
           "area"
         ],
-        "verificationStatus": "NOT_LIVE_VERIFIED"
+        "verificationStatus": "NOT_LIVE_VERIFIED",
+        "allowedValues": {
+          "propertyType": [
+            "apartment",
+            "house",
+            "land",
+            "commercial",
+            "hotel"
+          ],
+          "dealType": [
+            "sale",
+            "rent",
+            "daily_rent"
+          ],
+          "currency": [
+            "USD",
+            "GEL"
+          ]
+        }
       }
     }
   ]

@@ -31,6 +31,8 @@ export function validatePublication(listing: any, portal: any, kind: string = 'P
       if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) errors.push({field,code:'REQUIRED_FOR_PORTAL'});
     }
     for(const field of ['price','area']) if (!(listing?.[field] > 0)) errors.push({field,code:'POSITIVE_REQUIRED'});
+    for(const [field,values] of Object.entries(portal?.requirements?.allowedValues||{}))if(Array.isArray(values)&&!values.includes(listing?.[field]))errors.push({field,code:'PORTAL_VALUE_UNSUPPORTED'});
+    for(const field of portal?.requirements?.unsupportedFields||[])if(listing?.[field]!=null&&listing[field]!=='')errors.push({field,code:'PORTAL_FIELD_UNSUPPORTED'});
     if (portal?.requirements?.maxPhotos != null && (listing.photos?.length||0) > portal.requirements.maxPhotos) errors.push({field:'photos',code:'PORTAL_PHOTO_LIMIT'});
   }
   return {valid:errors.length===0,errors};
@@ -47,6 +49,7 @@ export function verifyRemoteResult(operation: any, result: any, portal: any): bo
   if (!result.externalId || (operation.external_id && operation.external_id !== result.externalId)) return false;
   try {const u=new URL(result.externalUrl);if(u.protocol!=='https:'||u.username||u.password||u.port||!(portal.domains||[]).some((d:string)=>u.hostname===d||u.hostname.endsWith('.'+d)))return false;}catch{return false;}
   if(['EDIT','PUBLISH','UPDATE_PHOTOS'].includes(operation.kind))return result.readbackHash===operation.payload_hash&&['PUBLISHED','PAUSED','HIDDEN'].includes(result.remoteState);
+  if(operation.kind==='RECONCILE'&&result.remoteState!=='DELETED'&&result.readbackHash!==operation.payload_hash)return false;
   const states:Record<string,string[]>={HIDE:['HIDDEN'],PAUSE:['PAUSED'],RESUME:['PUBLISHED'],DELETE:['DELETED'],REFRESH:['PUBLISHED'],CHECK_STATUS:['PUBLISHED','PAUSED','HIDDEN','DELETED'],RECONCILE:['PUBLISHED','PAUSED','HIDDEN','DELETED']};
   return states[operation.kind]?.includes(result.remoteState)===true;
 }

@@ -14,4 +14,9 @@ const claim="select count(*) from public.publishing_engine_claim('11111111-1111-
 const claims=await Promise.all([sql(claim),sql(claim)]);
 assert.equal(claims.reduce((n,v)=>n+Number(v),0),1,'one browser owns the operation lease');
 assert.equal(await sql("select count(*) from public.publishing_engine_operations where status='RUNNING'"),'1');
+await sql("update public.credit_accounts set balance=0;update public.publishing_engine_subscriptions set next_billing_at=now()-interval '1 minute',paid_until=now()-interval '1 minute'");
+await Promise.all([sql('select public.publishing_engine_bill_due(100)'),sql('select public.publishing_engine_bill_due(100)')]);
+assert.equal(await sql('select count(*) from public.publishing_engine_billing_events'),'1','insufficient balance cannot create a new charge');
+assert.equal(await sql('select count(*) from public.notifications'),'1','one durable low-credit notification');
+assert.equal(await sql('select status from public.publishing_engine_subscriptions'),'INSUFFICIENT_BALANCE');
 console.log('PostgreSQL 17: revision coalescing, tenant isolation, concurrent billing and queue claims passed (synthetic wallet boundary).');

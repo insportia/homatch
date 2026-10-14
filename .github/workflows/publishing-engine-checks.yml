@@ -19,8 +19,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Generate migration filename with the Supabase CLI
-        run: npx --yes supabase@2.117.0 migration new publishing_engine
       - run: pnpm exec tsgo -p tsconfig.check.json
-      - run: node --test tests/publishingEngine/security.test.mjs
+      - run: node --test tests/publishingEngine/*.test.mjs
       - run: pnpm run build

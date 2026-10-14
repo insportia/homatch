@@ -32,7 +32,7 @@ function AddPropertyContent() {
         </div>
 
         <button type="button" onClick={() => navigate('/property/publish')} className={option}>
-          <span className="min-w-0 flex-1"><span className="block font-display text-base font-semibold">{t('dash_add_property')} · MyHome.ge</span><span className="block text-2xs text-muted-foreground">{t('addprop_subtitle')}</span></span><ArrowRight className="h-4 w-4" aria-hidden="true" />
+          <span className="min-w-0 flex-1"><span className="block font-display text-base font-semibold">{t('dash_add_property')}</span><span className="block text-2xs text-muted-foreground">{t('addprop_subtitle')}</span></span><ArrowRight className="h-4 w-4" aria-hidden="true" />
         </button>
         {/* Import from a link */}
         <button type="button" onClick={() => navigate('/property/import')} className={option}>

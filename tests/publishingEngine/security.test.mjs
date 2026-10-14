@@ -8,6 +8,15 @@ import { normalizeListing, validateListing } from '../../supabase/functions/publ
 import { advance } from '../../supabase/functions/publishing-engine/engine.js';
 
 const extension = 'publishing-extension/';
+test('publishing frame permits same-origin embedding while all existing pages retain frame denial',()=>{
+  const config=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+  const root=config.headers.find(x=>x.source==='/(.*)');
+  assert.equal(root.headers.find(x=>x.key==='X-Frame-Options').value,'DENY');
+  const frame=config.headers.at(-1);
+  assert.equal(frame.source,'/publishing-engine/(.*)');
+  assert.equal(frame.headers.find(x=>x.key==='X-Frame-Options').value,'SAMEORIGIN');
+  assert.match(frame.headers.find(x=>x.key==='Content-Security-Policy').value,/frame-ancestors 'self'/);
+});
 test('production extension rejects lookalikes, other routes, other extensions and child frames', async () => {
   let listener;
   const chrome = { runtime: { id: 'owned', onMessage: { addListener: fn => { listener = fn; } } }, tabs: { query: async () => [{ id: 5, url: 'https://statements.myhome.ge/ka/statement/create' }] } };

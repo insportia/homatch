@@ -12,7 +12,8 @@
     "https://myhome.ge/*",
     "http://127.0.0.1:4177/*",
     "https://homatch.live/*",
-    "https://www.homatch.live/*"
+    "https://www.homatch.live/*",
+    "https://home.ss.ge/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -5,7 +5,9 @@
     {
       "id": "myhome",
       "name": "MyHome.ge",
-      "domains": ["myhome.ge"],
+      "domains": [
+        "myhome.ge"
+      ],
       "status": "ADAPTER_IMPLEMENTED_NOT_LIVE_VERIFIED",
       "capabilities": {
         "inspect": true,
@@ -18,19 +20,49 @@
         "resume": false,
         "remove": false,
         "requiresLiveVerification": true
+      },
+      "browser": {
+        "writeOrigins": [
+          "https://statements.myhome.ge"
+        ],
+        "readOrigins": [
+          "https://myhome.ge",
+          "https://www.myhome.ge"
+        ],
+        "script": "adapters/myhome/adapter.js"
+      },
+      "execution": {
+        "publicationBlocked": true
       }
     },
     {
       "id": "ssge",
       "name": "SS.ge",
-      "domains": ["ss.ge"],
-      "status": "planned",
+      "domains": [
+        "ss.ge"
+      ],
+      "status": "ADAPTER_IMPLEMENTED_NOT_LIVE_VERIFIED",
       "capabilities": {
         "inspect": true,
+        "fill": true,
         "create": false,
         "photoUpload": false,
         "publish": false,
-        "edit": false
+        "edit": false,
+        "pause": false,
+        "resume": false,
+        "remove": false,
+        "requiresLiveVerification": true
+      },
+      "browser": {
+        "writeOrigins": [
+          "https://home.ss.ge"
+        ],
+        "readOrigins": [],
+        "script": "adapters/ssge/adapter.js"
+      },
+      "execution": {
+        "publicationBlocked": true
       }
     }
   ]

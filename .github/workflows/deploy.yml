@@ -472,6 +472,13 @@ jobs:
 
       # The reading production gives BEFORE anything is uploaded. Every later
       # claim of success is measured against this file and nothing else.
+      - name: Apply verified publishing migration before publishing API deployment
+        if: steps.owed.outputs.count != '0'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn
+        run: node scripts/publishing/apply-migration.mjs --owed "$RUNNER_TEMP/owed.txt"
+
       - name: Production, before
         if: steps.owed.outputs.count != '0'
         env:

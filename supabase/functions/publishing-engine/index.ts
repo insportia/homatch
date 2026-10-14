@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
-import { normalizeListing, validateListing } from './listing-schema.js';
-import { advance } from './engine.js';
-import registry from './registry.json' with { type: 'json' };
+import { normalizeListing, validateListing } from './listing-schema.runtime.ts';
+import { advance } from './engine.runtime.ts';
+import registry from './registry.runtime.ts';
 
 const origins = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
 const actions = new Set(['checkAuthentication', 'inspect', 'fillListing', 'uploadPhotos', 'verifyForm', 'preparePublish', 'publishAfterConfirmation', 'extractPublishedListing', 'checkStatus']);
@@ -72,7 +72,7 @@ export async function handler(req: Request) {
     if (url === '/photos') return reply({ photos: await photos(raw.photos) });
     if (url === '/listings') {
       const listing = normalizeListing(raw);
-      if (listing.portalTargets.some(p => p !== 'myhome')) fail('PORTAL_NOT_IMPLEMENTED');
+      if (listing.portalTargets.some(id => !registry.portals.find(p => p.id === id)?.capabilities.fill)) fail('PORTAL_NOT_IMPLEMENTED');
       const validation = validateListing(listing);
       if (!validation.valid) return reply({ code: 'LISTING_INVALID', errors: validation.errors }, 422);
       if (listing.photos.reduce((n,p) => n + (p.bytes || 0), 0) > 24000000) fail('TOTAL_PHOTOS_MAX_24MB');
@@ -88,27 +88,31 @@ export async function handler(req: Request) {
     }
     if (url === '/jobs') {
       const record = await owned('publishing_engine_listings', raw.listingId), listing = record.payload;
-      if (raw.portalId !== 'myhome' || !listing.portalTargets.includes('myhome')) fail('PORTAL_NOT_SELECTED');
-      const { data, error } = await admin.rpc('publishing_engine_start_job', { p_owner: owner.id, p_listing: listing.id, p_version: listing.version });
+      if (!registry.portals.find(p => p.id === raw.portalId)?.capabilities.fill || !listing.portalTargets.includes(raw.portalId)) fail('PORTAL_NOT_SELECTED');
+      const { data, error } = await admin.rpc('publishing_engine_start_portal_job', { p_owner: owner.id, p_listing: listing.id, p_version: listing.version, p_portal: raw.portalId });
       if (error) fail(/^[A-Z_]+$/.test(error.message) ? error.message : 'JOB_CREATE_FAILED');
       return reply({ job: data });
     }
     if (url === '/jobs/transition') {
       const record = await owned('publishing_engine_jobs', raw.jobId);
       if (record.revision !== raw.revision) fail('JOB_REVISION_CONFLICT');
-      const next = advance(record.payload, raw.state, { confirmed: raw.confirmed === true, externalId: raw.externalId, externalUrl: raw.externalUrl, code: raw.code, allowedDomains: ['myhome.ge'] });
+      const portal = registry.portals.find(p => p.id === record.payload.portalId);
+      if (portal?.execution?.publicationBlocked !== false && ['READY_FOR_REVIEW','SUBMITTING','PUBLISHED'].includes(raw.state)) fail('LIVE_BROWSER_VERIFICATION_REQUIRED');
+      const next = advance(record.payload, raw.state, { confirmed: raw.confirmed === true, externalId: raw.externalId, externalUrl: raw.externalUrl, code: raw.code, allowedDomains: portal?.domains || [] });
       const { data, error } = await admin.from('publishing_engine_jobs').update({ payload: next, revision: next.revision }).eq('id', record.id).eq('user_id', owner.id).eq('revision', record.revision).select('id').maybeSingle();
       if (error || !data) fail('JOB_REVISION_CONFLICT');
       return reply({ job: next });
     }
     if (url === '/browser') {
       if (raw.type === 'CONNECT') return reply({ command: { type: 'CONNECT' } });
-      if (raw.type !== 'EXECUTE' || raw.portalId !== 'myhome' || !Number.isInteger(raw.tabId) || !actions.has(raw.action)) fail('COMMAND_NOT_ALLOWED');
-      const command: any = { type: 'EXECUTE', portalId: 'myhome', tabId: raw.tabId, action: raw.action };
+      const portal = registry.portals.find(p => p.id === raw.portalId);
+      if (raw.type !== 'EXECUTE' || !portal?.browser || !Number.isInteger(raw.tabId) || !actions.has(raw.action)) fail('COMMAND_NOT_ALLOWED');
+      if (portal.execution?.publicationBlocked !== false && raw.action === 'publishAfterConfirmation') fail('LIVE_BROWSER_VERIFICATION_REQUIRED');
+      const command: any = { type: 'EXECUTE', portalId: raw.portalId, tabId: raw.tabId, action: raw.action };
       if (['checkAuthentication', 'inspect', 'extractPublishedListing', 'checkStatus'].includes(raw.action)) return reply({ command });
       const record = await owned('publishing_engine_listings', raw.listingId);
       const job = await owned('publishing_engine_jobs', raw.jobId);
-      if (job.payload.listingId !== record.id || job.payload.version !== record.payload.version || !record.payload.portalTargets.includes('myhome')) fail('JOB_LISTING_MISMATCH');
+      if (job.payload.listingId !== record.id || job.payload.version !== record.payload.version || job.payload.portalId !== raw.portalId || !record.payload.portalTargets.includes(raw.portalId)) fail('JOB_LISTING_MISMATCH');
       const allowed = { fillListing: ['FILL_FORM'], uploadPhotos: ['UPLOAD_PHOTOS'], verifyForm: ['VERIFY_FORM'], preparePublish: ['VERIFY_FORM', 'READY_FOR_REVIEW', 'WAITING_FOR_USER_OTP'], publishAfterConfirmation: ['SUBMITTING'] };
       if (!allowed[raw.action]?.includes(job.payload.state)) fail('JOB_STATE_MISMATCH');
       command.payload = raw.action === 'uploadPhotos' ? await photos(record.payload.photos) : record.payload;

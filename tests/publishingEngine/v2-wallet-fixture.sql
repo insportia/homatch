@@ -1,4 +1,8 @@
 -- Synthetic wallet boundary for isolated queue/billing concurrency proof; never production.
+create type public.photo_visibility as enum('PUBLIC','PRIVATE','AUTHENTICATED');
+create type public.address_visibility as enum('FULL','CITY_ONLY','HIDDEN');
+alter table public.property_facts alter column photo_visibility type public.photo_visibility using photo_visibility::public.photo_visibility;
+alter table public.property_facts alter column address_visibility type public.address_visibility using address_visibility::public.address_visibility;
 alter table public.users add column is_admin boolean not null default false;
 alter table public.users add column language text not null default 'en';
 create type public.notification_type as enum('LOW_CREDITS');

@@ -44,4 +44,13 @@ reset role;
 -- Activation reserves funds but must not capture or create a billing event.
 select public.publishing_engine_activate('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333',10,true);
 do $$begin if exists(select 1 from public.publishing_engine_billing_events) or (select count(*) from public.fixture_holds where status='SETTLED')<>0 then raise exception 'activation prematurely charged';end if;end$$;
+update public.publishing_engine_settings set daily_credits=15;
+select public.publishing_engine_activate('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333',15,true);
+do $$begin if (select balance from public.credit_accounts)<>85 or (select count(*) from public.fixture_holds where status='RESERVED')<>1 then raise exception 'price reconfirmation leaked a hold';end if;end$$;
+update public.publishing_engine_settings set daily_credits=10;
+select public.publishing_engine_activate('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333',10,true);
+select public.publishing_engine_activate('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333',10,true);
+do $$begin if (select balance from public.credit_accounts)<>90 or (select count(*) from public.fixture_holds where status='RESERVED')<>1 then raise exception 'activation idempotency failed';end if;end$$;
+do $$begin if public.publishing_engine_bill_due(100)<>0 then raise exception 'unsynchronized activation was charged';end if;end$$;
+update public.publishing_engine_publications set synced_revision=3;
 commit;

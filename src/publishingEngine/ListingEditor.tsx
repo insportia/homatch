@@ -8,7 +8,7 @@ const fresh=()=>({title:'',propertyType:'',dealType:'',price:null,currency:'USD'
 const numeric=new Set(['price','area','rooms','bedrooms','floor','totalFloors','balconyArea','ceilingHeight','livingArea','yardArea','landArea']);
 const fieldKeys:Record<string,string>={title:'pue_title',propertyType:'pue_property_type',dealType:'pue_deal_type',price:'pue_price',currency:'pue_currency',area:'pue_area',city:'pue_city',district:'pue_district',street:'pue_street',streetNumber:'pue_street_number',rooms:'pue_rooms',bedrooms:'pue_bedrooms',floor:'pue_floor',totalFloors:'pue_total_floors',buildingType:'pue_building_type',condition:'pue_condition',heating:'pue_heating',contactName:'pue_contact_name',contactPhone:'pue_contact_phone',balconyArea:'pue_balcony_area',ceilingHeight:'pue_ceiling_height',livingArea:'pue_living_area',yardArea:'pue_yard_area',landArea:'pue_land_area'};
 const inputClass='min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500';
-export function ListingEditor({initial,portals,onClose,onSaved,onError}:{initial:any;portals:any[];onClose:()=>void;onSaved:()=>void;onError:(error:unknown)=>void}) {
+export function ListingEditor({initial,portals,onClose,onSaved,onError,onRecovered}:{initial:any;portals:any[];onClose:()=>void;onSaved:()=>void;onError:(error:unknown)=>void;onRecovered:()=>void}) {
  const {t,lang}=useLanguage();const [draft,setDraft]=useState<any>(()=>({...fresh(),...initial,description:{...fresh().description,...initial?.description}}));
  const [dirty,setDirty]=useState(false),[saving,setSaving]=useState(false),[saved,setSaved]=useState(false),[saveError,setSaveError]=useState(false),[locale,setLocale]=useState(lang),[ai,setAi]=useState<any>(null),[aiBusy,setAiBusy]=useState(false),[media,setMedia]=useState<Record<string,string>>({});
  const [checks,setChecks]=useState<any[]>([]);
@@ -19,7 +19,7 @@ export function ListingEditor({initial,portals,onClose,onSaved,onError}:{initial
   if(busy.current)return null;busy.current=true;setSaving(true);const snapshot=latest.current,revision=sequence.current;
   try{const result=await publishingApi('/v2/save',snapshot);if(!result.listing)throw new Error('LISTING_INVALID');
    setDraft((current:any)=>({...current,id:result.listing.id,version:result.listing.version,displayId:result.listing.displayId}));
-   if(sequence.current===revision){setDirty(false);setSaved(true);}return result.listing;
+   onRecovered();if(sequence.current===revision){setDirty(false);setSaved(true);}return result.listing;
   }catch(error){setSaveError(true);onError(error);return null;}finally{busy.current=false;setSaving(false);}
  };
  useEffect(()=>{if(!dirty||saving||saveError)return;const timer=setTimeout(()=>{void save();},1500);return()=>clearTimeout(timer);},[draft,dirty,saving,saveError]);
@@ -29,10 +29,10 @@ export function ListingEditor({initial,portals,onClose,onSaved,onError}:{initial
  const close=()=>{if(!dirty||window.confirm(t('pue_unsaved_confirm')))onClose();};
  const upload=async(files:FileList|null)=>{if(!files)return;try{if(latest.current.photos.length+files.length>50)throw new Error('PHOTO_COUNT_INVALID');
   for(const file of Array.from(files)){if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8000000)throw new Error('INVALID_PHOTO');
-   const bitmap=await createImageBitmap(file);bitmap.close();const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+   try{const bitmap=await createImageBitmap(file);bitmap.close();}catch{throw new Error('INVALID_PHOTO');}const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
    const photo=await publishingApi('/assets',{name:file.name,base64:btoa(binary)});const preview=URL.createObjectURL(file);previewUrls.current.push(preview);setMedia(old=>({...old,[photo.assetId]:preview}));
    const next=[...latest.current.photos,photo];latest.current={...latest.current,photos:next};change('photos',next);
-  }
+  }onRecovered();
  }catch(error){onError(error);}};
  const write=async(mode:string)=>{abort.current?.abort();const controller=new AbortController();abort.current=controller;setAiBusy(true);setAi(null);
   try{const record=dirty||!draft.id?await save():draft;if(!record)return;const result=await publishingApi('/v2/ai',{listingId:record.id,mode,language:locale,source:mode==='translate'?(latest.current.description[locale]||Object.values(latest.current.description).find(value=>typeof value==='string'&&value.trim())||''):latest.current.description[locale]},controller.signal);if(!controller.signal.aborted)setAi(result);

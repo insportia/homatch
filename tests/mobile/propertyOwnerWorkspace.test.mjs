@@ -363,7 +363,7 @@ test('portal publishing: desktop/mobile navigation, six locales and native publi
         let result = body.url === '/v2/dashboard' ? {listings:savedDraft?[{id:savedDraft.id,version:savedDraft.version,payload:savedDraft,display_id:'HM-2026-000001',desired_state:'DRAFT'}]:[],publications:[],connections:[],operations:[],subscriptions:[],billing:[],media:{},balance:100,settings:{daily_credits:10},portals:[{id:'myhome',name:'MyHome.ge',verifiedOperations:{}},{id:'ssge',name:'SS.ge',verifiedOperations:{}}]} : {};
         if(body.url==='/v2/save'){savedDraft={...body.body,id:'55555555-5555-4555-8555-555555555555',version:++revision,displayId:'HM-2026-000001'};result={listing:savedDraft,validation:{valid:true,errors:[]}};}
         if(body.url==='/v2/ai')result={draft:'Synthetic description from supplied facts.',language:body.body.language,requiresApproval:true};
-        if(body.url==='/assets'){uploadCount++;result={assetId:'66666666-6666-4666-8666-666666666666',name:body.body.name,mime:'image/png',bytes:PNG.length};}
+        if(body.url==='/assets'){uploadCount++;result={assetId:'66666666-6666-4666-8666-666666666666',name:body.body.name,mime:'image/png',bytes:Buffer.from(body.body.base64,'base64').length};}
         await route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(result)});
       });
       const buttons = page.getByRole('button', {name:labels[lang],exact:true});
@@ -388,7 +388,11 @@ test('portal publishing: desktop/mobile navigation, six locales and native publi
         assert.equal(await description.inputValue(),'Owner approved details.','AI never silently replaces owner text');
         await page.getByRole('button',{name:copy('use_draft'),exact:true}).click();
         assert.equal(await description.inputValue(),'Synthetic description from supplied facts.');
-        await page.locator('input[type=file]').setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:PNG});
+        await page.locator('input[type=file]').setInputFiles({name:'invalid.png',mimeType:'image/png',buffer:Buffer.from('not an image')});
+        await page.getByRole('alert').filter({hasText:copy('error_photo')}).waitFor();
+        assert.equal(uploadCount,0,'invalid image bytes are rejected before upload');
+        const validPng=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=8;canvas.height=5;const ctx=canvas.getContext('2d');ctx.fillStyle='#c9a34a';ctx.fillRect(0,0,8,5);return canvas.toDataURL('image/png').split(',')[1];});
+        await page.locator('input[type=file]').setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:Buffer.from(validPng,'base64')});
         await page.getByAltText('fixture.png').waitFor({timeout:20000});
         await page.getByRole('checkbox',{name:'MyHome.ge',exact:true}).check();
         await page.getByRole('checkbox',{name:'SS.ge',exact:true}).check();

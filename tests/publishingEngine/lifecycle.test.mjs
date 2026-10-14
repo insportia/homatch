@@ -29,3 +29,9 @@ test('visibility operations verify actual state and never substitute deletion fo
  assert.equal(verifyRemoteResult({...operation,kind:'PAUSE'},{...result,remoteState:'DELETED'},p),false);
 });
 test('retry backoff is bounded',()=>{assert.equal(retryDelay(1),30);assert.equal(retryDelay(2),60);assert.equal(retryDelay(100),3600);});
+test('refresh requires an independently verified free operation with explicit meaning',()=>{
+ const proof={verified:true,evidence:'synthetic free refresh fixture',paidPromotion:false};
+ assert.equal(operationAllowed('REFRESH',{verifiedOperations:{REFRESH:proof}}),false);
+ assert.equal(operationAllowed('REFRESH',{verifiedOperations:{REFRESH:{...proof,meaning:'FREE_RENEWAL'}}}),true);
+ assert.equal(operationAllowed('REFRESH',{verifiedOperations:{REFRESH:{...proof,meaning:'FREE_RENEWAL',paidPromotion:true}}}),false);
+});

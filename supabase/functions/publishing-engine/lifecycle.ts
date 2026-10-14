@@ -12,12 +12,14 @@ export type OperationState = 'QUEUED'|'RUNNING'|'SUCCEEDED'|'FAILED'|'AUTH_REQUI
 export function operationAllowed(kind: string, portal: any): boolean {
   if (!Object.prototype.hasOwnProperty.call(OPERATION_ACTIONS,kind)) return false;
   const proof = portal?.verifiedOperations?.[kind];
+  if(kind==='REFRESH'&&(proof?.paidPromotion!==false||!['FREE_RENEWAL','FREE_DATE_BUMP','FREE_VISIBILITY_REFRESH'].includes(proof?.meaning)))return false;
   return proof?.verified === true && typeof proof.evidence === 'string' && proof.evidence.length > 0 && !proof.paidPromotion && !portal?.maintenance;
 }
 export function validateDraft(listing: any) {
   const errors: {field: string; code: string}[] = [];
   if (!listing || typeof listing !== 'object' || Array.isArray(listing)) return {valid:false,errors:[{field:'listing',code:'INVALID'}]};
-  for (const key of ['price','area','rooms','bedrooms','floor','totalFloors']) if (listing[key] != null && (!Number.isFinite(listing[key]) || (key !== 'floor' && listing[key] < 0))) errors.push({field:key,code:'INVALID_NUMBER'});
+  for (const key of ['price','area','rooms','bedrooms','floor','totalFloors','balconyArea','ceilingHeight','livingArea','yardArea','landArea']) if (listing[key] != null && (!Number.isFinite(listing[key]) || (key !== 'floor' && listing[key] < 0))) errors.push({field:key,code:'INVALID_NUMBER'});
+  for(const key of ['rooms','bedrooms','floor','totalFloors'])if(listing[key]!=null&&!Number.isInteger(listing[key]))errors.push({field:key,code:'INVALID_INTEGER'});
   if (listing.floor != null && listing.totalFloors != null && listing.floor > listing.totalFloors) errors.push({field:'floor',code:'EXCEEDS_TOTAL_FLOORS'});
   if ((listing.photos?.length || 0) > 50) errors.push({field:'photos',code:'CANONICAL_MEDIA_LIMIT'});
   return {valid:errors.length===0,errors};
@@ -48,7 +50,8 @@ export function verifyRemoteResult(operation: any, result: any, portal: any): bo
   if (!operationAllowed(operation.kind,portal)) return false;
   if (!result.externalId || (operation.external_id && operation.external_id !== result.externalId)) return false;
   try {const u=new URL(result.externalUrl);if(u.protocol!=='https:'||u.username||u.password||u.port||!(portal.domains||[]).some((d:string)=>u.hostname===d||u.hostname.endsWith('.'+d)))return false;}catch{return false;}
-  if(['EDIT','PUBLISH','UPDATE_PHOTOS'].includes(operation.kind))return result.readbackHash===operation.payload_hash&&['PUBLISHED','PAUSED','HIDDEN'].includes(result.remoteState);
+  if(operation.kind==='PUBLISH')return result.readbackHash===operation.payload_hash&&result.remoteState==='PUBLISHED';
+  if(['EDIT','UPDATE_PHOTOS'].includes(operation.kind))return result.readbackHash===operation.payload_hash&&['PUBLISHED','PAUSED','HIDDEN'].includes(result.remoteState);
   if(operation.kind==='RECONCILE'&&result.remoteState!=='DELETED'&&result.readbackHash!==operation.payload_hash)return false;
   const states:Record<string,string[]>={HIDE:['HIDDEN'],PAUSE:['PAUSED'],RESUME:['PUBLISHED'],DELETE:['DELETED'],REFRESH:['PUBLISHED'],CHECK_STATUS:['PUBLISHED','PAUSED','HIDDEN','DELETED'],RECONCILE:['PUBLISHED','PAUSED','HIDDEN','DELETED']};
   return states[operation.kind]?.includes(result.remoteState)===true;

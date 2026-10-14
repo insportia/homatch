@@ -9,6 +9,16 @@ permissions:
 jobs:
   publishing:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: migration-proof-only
+          POSTGRES_DB: publishing_proof
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: pnpm/action-setup@v4
@@ -18,6 +28,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - name: Prove publishing migration on isolated PostgreSQL 17
+        env:
+          PGPASSWORD: migration-proof-only
+        run: psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/migration-proof.sql
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsgo -p tsconfig.check.json
       - run: node --test tests/publishingEngine/*.test.mjs

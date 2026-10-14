@@ -575,6 +575,8 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                 />
               </button>
 
+              <Button variant="outline" className="hidden h-10 rounded-full border-white/30 text-white hover:bg-white/10 sm:inline-flex" onClick={() => navigate('/property/publish')} aria-label="Publish on MyHome.ge or SS.ge">Publish to portals</Button>
+              <Button variant="outline" size="icon" className="h-10 w-10 rounded-full border-white/30 text-white hover:bg-white/10 sm:hidden" onClick={() => navigate('/property/publish')} aria-label="Publish on MyHome.ge or SS.ge"><span aria-hidden="true">↗</span></Button>
               <Button className="hidden h-10 gap-2 rounded-full bg-[hsl(38_92%_54%)] px-4 text-sm font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] sm:inline-flex" onClick={() => navigate('/property/add')}>
                 <span className="text-base leading-none" aria-hidden="true">+</span>
                 <span className="hidden md:inline">{t('nav_add_property')}</span>

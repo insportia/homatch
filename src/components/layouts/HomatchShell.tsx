@@ -132,6 +132,7 @@ export const NAV: NavGroup[] = [
        * and it is unmistakable against the search lens one line below at 18px.
        */
       { key: 'nav_owner_workspace', path: '/property', glyph: 'properties' },
+      { key: 'publishing_portals_title', path: '/property/publish', glyph: 'properties' },
       /*
        * FIND PROPERTY: the other journey, and deliberately not this one.
        *

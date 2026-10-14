@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
-import { normalizeListing, validateListing } from './listing-schema.js';
-import { advance } from './engine.js';
-import registry from './registry.json' with { type: 'json' };
+import { normalizeListing, validateListing } from './listing-schema.runtime.ts';
+import { advance } from './engine.runtime.ts';
+import registry from './registry.runtime.ts';
 
 const origins = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
 const actions = new Set(['checkAuthentication', 'inspect', 'fillListing', 'uploadPhotos', 'verifyForm', 'preparePublish', 'publishAfterConfirmation', 'extractPublishedListing', 'checkStatus']);

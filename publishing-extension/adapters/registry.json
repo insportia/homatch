@@ -32,7 +32,7 @@
         "script": "adapters/myhome/adapter.js"
       },
       "execution": {
-        "publicationBlocked": false
+        "publicationBlocked": true
       }
     },
     {

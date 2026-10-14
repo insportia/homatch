@@ -1,13 +1,13 @@
--- Local integration candidate only. Do not apply until the consolidated release is approved.
-alter table public.publishing_engine_jobs drop constraint publishing_engine_jobs_portal_id_check;
-alter table public.publishing_engine_jobs add constraint publishing_engine_jobs_portal_id_check check (portal_id ~ '^[a-z][a-z0-9_]{1,39}$');
+-- Add SS.ge jobs without replacing existing MyHome RPCs, policies or rows.
+alter table public.publishing_engine_jobs drop constraint if exists publishing_engine_jobs_portal_id_check;
+alter table public.publishing_engine_jobs add constraint publishing_engine_jobs_portal_id_check check (portal_id in ('myhome','ssge'));
 
 -- Preserve the original MyHome RPC signature and behavior.
-create function public.publishing_engine_start_portal_job(p_owner uuid,p_listing uuid,p_version integer,p_portal text)
+create or replace function public.publishing_engine_start_portal_job(p_owner uuid,p_listing uuid,p_version integer,p_portal text)
 returns jsonb language plpgsql security invoker set search_path=public,pg_temp as $$
 declare v_listing public.publishing_engine_listings; v_job public.publishing_engine_jobs; v_id uuid:=gen_random_uuid(); v_payload jsonb;
 begin
-  if p_portal is null or p_portal !~ '^[a-z][a-z0-9_]{1,39}$' then raise exception 'PORTAL_NOT_IMPLEMENTED'; end if;
+  if p_portal is null or p_portal not in ('myhome','ssge') then raise exception 'PORTAL_NOT_IMPLEMENTED'; end if;
   select * into v_listing from public.publishing_engine_listings where id=p_listing and user_id=p_owner for update;
   if not found then raise exception 'OWNED_RECORD_REQUIRED'; end if;
   if v_listing.version<>p_version then raise exception 'VERSION_CONFLICT'; end if;

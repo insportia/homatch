@@ -92,13 +92,14 @@ test('browser authorization replaces supplied listing data with the saved canoni
 test('browser writes require the exact job state and publication confirmation', async () => {
   const command = { type: 'EXECUTE', portalId: 'myhome', tabId: 5, listingId, jobId };
   assert.equal((await (await setup({ state: 'CONNECT_BROWSER' }).request('/browser', { ...command, action: 'fillListing' })).json()).code, 'JOB_STATE_MISMATCH');
-  assert.equal((await (await setup({ state: 'READY_FOR_REVIEW' }).request('/browser', { ...command, action: 'publishAfterConfirmation', payload: { confirmed: true, reviewToken: 'review' } })).json()).code, 'JOB_STATE_MISMATCH');
-  assert.equal((await (await setup({ state: 'SUBMITTING' }).request('/browser', { ...command, action: 'publishAfterConfirmation', payload: { reviewToken: 'review' } })).json()).code, 'PUBLICATION_CONFIRMATION_REQUIRED');
+  // Live submission is disabled even with a fabricated review token or confirmation.
+  for(const state of ['READY_FOR_REVIEW','SUBMITTING'])for(const confirmed of [false,true])assert.equal((await (await setup({state}).request('/browser',{...command,action:'publishAfterConfirmation',payload:{confirmed,reviewToken:'review'}})).json()).code,'LIVE_BROWSER_VERIFICATION_REQUIRED');
+  assert.throws(()=>advance({state:'READY_FOR_REVIEW',events:[]},'SUBMITTING',{confirmed:false}),/PUBLICATION_CONFIRMATION_REQUIRED/);
 });
 test('job transition uses revision checks and cannot skip review', async () => {
   const { request } = setup();
   assert.equal((await (await request('/jobs/transition', { jobId, revision: 9, state: 'UPLOAD_PHOTOS' })).json()).code, 'JOB_REVISION_CONFLICT');
-  assert.equal((await (await request('/jobs/transition', { jobId, revision: 0, state: 'PUBLISHED' })).json()).code, 'INVALID_JOB_TRANSITION');
+  assert.equal((await (await request('/jobs/transition', { jobId, revision: 0, state: 'PUBLISHED' })).json()).code, 'LIVE_BROWSER_VERIFICATION_REQUIRED');
   assert.equal((await (await request('/jobs/transition', { jobId, revision: 0, state: 'UPLOAD_PHOTOS' })).json()).job.revision, 1);
   assert.equal((await (await request('/jobs/transition', { jobId, revision: 0, state: 'VERIFY_FORM' })).json()).code, 'JOB_REVISION_CONFLICT');
 });

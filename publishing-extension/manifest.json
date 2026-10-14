@@ -4,9 +4,7 @@
   "version": "0.2.1",
   "description": "Multi-portal form inspection and controlled autofill",
   "permissions": [
-    "activeTab",
-    "scripting",
-    "storage"
+    "scripting"
   ],
   "host_permissions": [
     "https://statements.myhome.ge/*",

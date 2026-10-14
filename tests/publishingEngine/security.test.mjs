@@ -43,7 +43,8 @@ test('bridge checks origin and pathname at message time after SPA navigation', a
   const manifest = JSON.parse(fs.readFileSync(extension + 'manifest.json', 'utf8'));
   assert.ok(manifest.host_permissions.includes('https://homatch.live/*'));
   assert.ok(!JSON.stringify(manifest).includes('<all_urls>'));
-  assert.deepEqual(manifest.permissions, ['activeTab', 'scripting', 'storage']);
+  assert.deepEqual(manifest.permissions, ['scripting']);
+  assert.ok(!fs.readFileSync(extension+'popup.js','utf8').includes('executeScript'));
 });
 
 const ownerId = '11111111-1111-4111-8111-111111111111';

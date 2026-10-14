@@ -17,10 +17,12 @@ function Workspace() {
     const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: number }>();
     const invoke = async (url: string, body?: unknown) => {
       const { data, error } = await supabase.functions.invoke('publishing-engine', { body: { url, body } });
+      if (disposed) throw new Error('WORKSPACE_CLOSED');
       if (error || data?.code) throw new Error(data?.code || 'PUBLISHING_REQUEST_FAILED');
       return data;
     };
     const browser = (command: unknown) => new Promise((resolve, reject) => {
+      if (disposed) { reject(new Error('WORKSPACE_CLOSED')); return; }
       const requestId = crypto.randomUUID();
       const timer = window.setTimeout(() => { pending.delete(requestId); reject(new Error('RELOAD_HOMATCH_EXTENSION')); }, 60000);
       pending.set(requestId, { resolve, reject, timer });
@@ -40,6 +42,7 @@ function Workspace() {
       const reply = (value: object) => { if (!disposed) frame.current?.contentWindow?.postMessage({ source: 'HOMATCH_PUBLISHING_HOST', requestId: m.requestId, ...value }, location.origin); };
       try {
         const { data } = await supabase.auth.getUser();
+        if (disposed) throw new Error('WORKSPACE_CLOSED');
         if (!data.user || data.user.id !== session.user.id || isImpersonating()) throw new Error('AUTH_REQUIRED');
         if (m.kind === 'API') {
           if (m.url === '/session') { reply({ result: { lang } }); return; }

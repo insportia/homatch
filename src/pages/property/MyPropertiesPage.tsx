@@ -709,10 +709,10 @@ export default function MyPropertiesPage() {
                   type="button"
                   onClick={() => navigate('/property/publish')}
                   className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-white/40 bg-white/10 px-3.5 py-1.5 text-2xs font-semibold text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                  aria-label={t('prop_add_cta')}
+                  aria-label={t('publishing_portals_title')}
                 >
                   <span aria-hidden="true">↗</span>
-                  <span className="break-words text-start">{t('prop_add_cta')}</span>
+                  <span className="break-words text-start">{t('publishing_portals_title')}</span>
                 </button>
                 <button
                   type="button"

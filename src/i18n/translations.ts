@@ -5,6 +5,7 @@ import type { SupportedLanguage } from '@/types/types';
 
 // en is the canonical key + fallback bundle. Not const so values aren't literal-typed.
 const en = {
+  publishing_portals_title: "Publish on portals",
   mps_reason_BEDROOM_MATCH: "Matches your bedroom requirement",
   mps_reason_FLOOR_MATCH: "Matches your floor preferences",
   mps_reason_ELEVATOR_CONFIRMED: "Elevator listed by the source",
@@ -18437,6 +18438,7 @@ const en = {
 export type TranslationKey = keyof typeof en;
 
 const ka: Partial<Record<TranslationKey, string>> = {
+  publishing_portals_title: "პორტალებზე გამოქვეყნება",
   mps_reason_BEDROOM_MATCH: "შეესაბამება საძინებლების მოთხოვნას",
   mps_reason_FLOOR_MATCH: "შეესაბამება სართულის მოთხოვნას",
   mps_reason_ELEVATOR_CONFIRMED: "წყაროში მითითებულია ლიფტი",
@@ -36781,6 +36783,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
+  publishing_portals_title: "Публикация на площадках",
   mps_reason_BEDROOM_MATCH: "Соответствует требованию по спальням",
   mps_reason_FLOOR_MATCH: "Соответствует пожеланиям по этажу",
   mps_reason_ELEVATOR_CONFIRMED: "В источнике указан лифт",
@@ -55118,6 +55121,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
+  publishing_portals_title: "İlan sitelerinde yayınla",
   mps_reason_BEDROOM_MATCH: "Yatak odası ihtiyacınıza uygun",
   mps_reason_FLOOR_MATCH: "Kat tercihlerinize uygun",
   mps_reason_ELEVATOR_CONFIRMED: "Kaynakta asansör belirtilmiş",
@@ -73453,6 +73457,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
+  publishing_portals_title: "النشر على المنصات",
   mps_reason_BEDROOM_MATCH: "يطابق عدد غرف النوم المطلوب",
   mps_reason_FLOOR_MATCH: "يطابق تفضيلات الطابق",
   mps_reason_ELEVATOR_CONFIRMED: "المصعد مذكور في المصدر",
@@ -91788,6 +91793,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
+  publishing_portals_title: "פרסום בפלטפורמות",
   mps_reason_BEDROOM_MATCH: "תואם לדרישת חדרי השינה",
   mps_reason_FLOOR_MATCH: "תואם להעדפות הקומה",
   mps_reason_ELEVATOR_CONFIRMED: "מעלית מצוינת במקור",

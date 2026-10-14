@@ -62,7 +62,7 @@ function Workspace() {
     };
   }, [session?.user.id, homatchUser?.id, lang]);
   return <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
-    {session && homatchUser && !isImpersonating() && <iframe key={homatchUser.id} ref={frame} title={t('dash_add_property')} src="/publishing-engine/index.html" className="w-full min-h-[calc(100dvh-5rem)] border-0" style={{ height: 'calc(100dvh - 5rem)' }} />}
+    {session && homatchUser && !isImpersonating() && <iframe key={homatchUser.id} ref={frame} title={t('publishing_portals_title')} src="/publishing-engine/index.html" className="w-full min-h-[calc(100dvh-5rem)] border-0" style={{ height: 'calc(100dvh - 5rem)' }} />}
   </AppLayout>;
 }
 

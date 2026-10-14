@@ -349,7 +349,7 @@ jobs:
   #
   # THE JOB DOES NOT ASK ANOTHER JOB WHETHER IT SHOULD RUN.
   #
-  # It used to: `if: contains(format(' {0} ', needs.scope.outputs.functions), ' publishing-engine ')`, with `needs: [scope]`
+  # It used to: `if: needs.scope.outputs.edge == 'true'`, with `needs: [scope]`
   # to carry the answer. On 2026-09-19 that boundary failed twice in four
   # hours, in both directions, and each failure was silent.
   #
@@ -376,7 +376,7 @@ jobs:
   deploy-functions:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
-    needs: [scope, provenance, validate, prerequisites]
+    needs: [provenance, validate, prerequisites]
     if: >-
       !cancelled() && needs.prerequisites.result == 'success' &&
       (needs.validate.result == 'success' || (needs.validate.result == 'skipped' && needs.provenance.outputs.path == 'FAST'))
@@ -409,13 +409,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Apply verified publishing migration before publishing API deployment
-        if: needs.scope.outputs.edge == 'true'
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn
-        run: node scripts/publishing/apply-migration.mjs
 
       - name: Fetch deployment refs
         run: git fetch origin '+refs/deployed/*:refs/deployed/*' || echo "no deployment refs yet - first run"
@@ -479,6 +472,13 @@ jobs:
 
       # The reading production gives BEFORE anything is uploaded. Every later
       # claim of success is measured against this file and nothing else.
+      - name: Apply verified publishing migration before publishing API deployment
+        if: steps.owed.outputs.count != '0'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn
+        run: node scripts/publishing/apply-migration.mjs --owed "$RUNNER_TEMP/owed.txt"
+
       - name: Production, before
         if: steps.owed.outputs.count != '0'
         env:

@@ -1,6 +1,9 @@
 // One explicitly reviewed migration, applied atomically before its API deployment.
 // Never repair historical ledger entries or replay unrelated pending migrations.
 import fs from 'node:fs';
+// Read the same job-local owed file used by upload and artifact proof.
+const owedAt=process.argv.indexOf('--owed');
+if(owedAt>=0&&!fs.readFileSync(process.argv[owedAt+1],'utf8').trim().split(/\s+/).includes('publishing-engine'))process.exit(0);
 const version='20261014140000',name='publishing_engine_ssge';
 const sql=fs.readFileSync(new URL('../../supabase/migrations/'+version+'_'+name+'.sql',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const quote=value=>"'"+value.replaceAll("'","''")+"'";

@@ -3,7 +3,7 @@ on:
   push:
     branches: [feat/publishing-engine-production]
   pull_request:
-    paths: ['src/publishingEngine/**', 'public/publishing-engine/**', 'publishing-extension/**', 'supabase/functions/publishing-engine/**', 'tests/publishingEngine/**']
+    paths: ['src/publishingEngine/**', 'public/publishing-engine/**', 'publishing-extension/**', 'supabase/functions/publishing-engine/**', 'tests/publishingEngine/**', 'supabase/migrations/*publishing_engine*.sql']
 permissions:
   contents: read
 jobs:
@@ -34,6 +34,13 @@ jobs:
         run: |
           node scripts/publishing/apply-migration.mjs --print > .publishing-migration.sql
           psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/migration-proof.sql
+      - name: Prove V2 tenant isolation and concurrent billing on isolated PostgreSQL 17
+        env:
+          PGPASSWORD: migration-proof-only
+          PUBLISHING_PROOF: isolated-postgres-17
+        run: |
+          psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/v2-proof.sql
+          node tests/publishingEngine/v2-concurrency.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsgo -p tsconfig.check.json
       - run: node --test tests/publishingEngine/*.test.mjs

@@ -1,0 +1,17 @@
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import assert from 'node:assert/strict';
+const exec=promisify(execFile);
+if(process.env.PUBLISHING_PROOF!=='isolated-postgres-17')throw Error('This proof runs only against the existing isolated CI database.');
+const sql=async(query)=>(await exec('psql',['-h','localhost','-U','postgres','-d','publishing_proof','-v','ON_ERROR_STOP=1','-At','-c',query])).stdout.trim();
+const counts=await Promise.all([sql('select public.publishing_engine_bill_due(100)'),sql('select public.publishing_engine_bill_due(100)')]);
+assert.equal(counts.reduce((n,v)=>n+Number(v),0),1,'exactly one concurrent worker charges');
+assert.equal(await sql('select count(*) from public.publishing_engine_billing_events'),'1');
+assert.equal(await sql('select balance from public.credit_accounts'),'90');
+assert.equal(await sql('select public.publishing_engine_bill_due(100)'),'0','retry cannot charge again');
+await sql("insert into public.publishing_engine_connections(user_id,portal_id,status,expires_at) values('11111111-1111-4111-8111-111111111111','myhome','CONNECTED',now()+interval '1 hour')");
+const claim="select count(*) from public.publishing_engine_claim('11111111-1111-4111-8111-111111111111','myhome',array['EDIT'])";
+const claims=await Promise.all([sql(claim),sql(claim)]);
+assert.equal(claims.reduce((n,v)=>n+Number(v),0),1,'one browser owns the operation lease');
+assert.equal(await sql("select count(*) from public.publishing_engine_operations where status='RUNNING'"),'1');
+console.log('PostgreSQL 17: revision coalescing, tenant isolation, concurrent billing and queue claims passed (synthetic wallet boundary).');

@@ -3,6 +3,7 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { normalizeListing, validateListing } from './listing-schema.runtime.ts';
 import { advance } from './engine.runtime.ts';
 import registry from './registry.runtime.ts';
+import { handleV2 } from './v2.ts';
 
 const origins = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
 const actions = new Set(['checkAuthentication', 'inspect', 'fillListing', 'uploadPhotos', 'verifyForm', 'preparePublish', 'publishAfterConfirmation', 'extractPublishedListing', 'checkStatus']);
@@ -58,8 +59,8 @@ export async function handler(req: Request) {
       if (error) fail('PHOTO_UPLOAD_FAILED');
       return reply({ assetId, mime, bytes: bytes.length, name });
     }
-    const photos = async (items: unknown[]) => {
-      if (!Array.isArray(items) || items.length > 16) fail('INVALID_PHOTOS');
+    const photos = async (items: unknown[], max = 16) => {
+      if (!Array.isArray(items) || items.length > max) fail('INVALID_PHOTOS');
       return await Promise.all(items.map(async (p: any) => {
         if (!uuid.test(p.assetId || '')) fail('INVALID_ASSET');
         const { data, error } = await admin.storage.from(bucket).download(`${owner.id}/${p.assetId}`);
@@ -69,6 +70,7 @@ export async function handler(req: Request) {
         return { assetId: p.assetId, name: String(p.name).slice(0, 100), mime: data.type, bytes: bytes.length, base64: btoa(binary) };
       }));
     };
+    if (typeof url === 'string' && url.startsWith('/v2/')) return reply(await handleV2(url,raw,{admin,owner,registry,normalize:normalizeListing,photos}));
     if (url === '/photos') return reply({ photos: await photos(raw.photos) });
     if (url === '/listings') {
       const listing = normalizeListing(raw);

@@ -1,7 +1,7 @@
 // Generated from registry.json; do not edit.
 export default {
   "engine": "HOMATCH",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "portals": [
     {
       "id": "myhome",
@@ -30,10 +30,23 @@ export default {
           "https://myhome.ge",
           "https://www.myhome.ge"
         ],
-        "script": "adapters/myhome/adapter.js"
+        "script": "adapters/myhome/adapter.js",
+        "connectUrl": "https://statements.myhome.ge/ka/statement/create?referrer=myhome"
       },
       "execution": {
         "publicationBlocked": true
+      },
+      "verifiedOperations": {},
+      "requirements": {
+        "required": [
+          "dealType",
+          "propertyType",
+          "city",
+          "price",
+          "area"
+        ],
+        "verificationStatus": "NOT_LIVE_VERIFIED",
+        "maxPhotos": 16
       }
     },
     {
@@ -60,10 +73,22 @@ export default {
           "https://home.ss.ge"
         ],
         "readOrigins": [],
-        "script": "adapters/ssge/adapter.js"
+        "script": "adapters/ssge/adapter.js",
+        "connectUrl": "https://home.ss.ge/"
       },
       "execution": {
         "publicationBlocked": true
+      },
+      "verifiedOperations": {},
+      "requirements": {
+        "required": [
+          "dealType",
+          "propertyType",
+          "city",
+          "price",
+          "area"
+        ],
+        "verificationStatus": "NOT_LIVE_VERIFIED"
       }
     }
   ]

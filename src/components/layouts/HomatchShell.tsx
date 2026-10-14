@@ -148,6 +148,7 @@ export const NAV: NavGroup[] = [
        * which is what a bare magnifier is for.
        */
       { key: 'dnav_find_property', path: '/find-property', glyph: 'find_property' },
+      { key: 'publishing_portals_title', path: '/property/publish', glyph: 'properties' },
       /*
        * THE BROKER DIRECTORY, previously reachable only through the public
        * site. It is a working tool — find a professional for your market and

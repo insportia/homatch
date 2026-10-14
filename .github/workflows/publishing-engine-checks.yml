@@ -31,7 +31,9 @@ jobs:
       - name: Prove publishing migration on isolated PostgreSQL 17
         env:
           PGPASSWORD: migration-proof-only
-        run: psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/migration-proof.sql
+        run: |
+          node scripts/publishing/apply-migration.mjs --print > .publishing-migration.sql
+          psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/migration-proof.sql
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsgo -p tsconfig.check.json
       - run: node --test tests/publishingEngine/*.test.mjs

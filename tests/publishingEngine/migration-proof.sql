@@ -21,6 +21,11 @@ create temp table old_job as select public.publishing_engine_start_job('11111111
 create temp table old_rpc as select pg_get_functiondef('public.publishing_engine_start_job(uuid,uuid,integer)'::regprocedure) source;
 \ir ../../supabase/migrations/20261014140000_publishing_engine_ssge.sql
 \ir ../../supabase/migrations/20261014140000_publishing_engine_ssge.sql
+create schema supabase_migrations;
+create table supabase_migrations.schema_migrations(version text primary key,statements text[],name text);
+\ir ../../.publishing-migration.sql
+\ir ../../.publishing-migration.sql
+do $$begin if (select count(*) from supabase_migrations.schema_migrations)<>1 then raise exception 'migration ledger repeatability failed'; end if; end$$;
 do $$declare owner_id uuid:='11111111-1111-4111-8111-111111111111'; listing_id uuid:='33333333-3333-4333-8333-333333333333'; j jsonb; begin
  if pg_get_functiondef('public.publishing_engine_start_job(uuid,uuid,integer)'::regprocedure)<>(select source from old_rpc) then raise exception 'MyHome RPC changed'; end if;
  if public.publishing_engine_start_job(owner_id,listing_id,1)<>(select payload from old_job) or public.publishing_engine_start_portal_job(owner_id,listing_id,1,'myhome')<>(select payload from old_job) then raise exception 'MyHome job changed'; end if;

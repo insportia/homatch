@@ -1,0 +1,24 @@
+name: Scoped Publishing Release Control
+on:
+  push:
+    branches: [ops/publishing-engine-scoped-release]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  scope-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel broad release and dispatch existing single-function pipeline
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://api.github.com/repos/insportia/homatch';
+          const headers={'Authorization':'Bearer '+process.env.GITHUB_TOKEN,'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'};
+          const cancel=await fetch(base+'/actions/runs/38532391018/cancel',{method:'POST',headers});
+          if(![202,409].includes(cancel.status))throw Error('CANCEL_FAILED_'+cancel.status);
+          const dispatch=await fetch(base+'/actions/workflows/deploy.yml/dispatches',{method:'POST',headers,body:JSON.stringify({ref:'main',inputs:{redeploy:'publishing-engine',run_migrations:false}})});
+          if(dispatch.status!==204)throw Error('SCOPED_DISPATCH_FAILED_'+dispatch.status);
+          console.log('Broad release cancelled; existing pipeline dispatched for publishing-engine only.');
+          NODE

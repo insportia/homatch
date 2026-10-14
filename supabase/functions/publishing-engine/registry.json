@@ -1,0 +1,37 @@
+{
+  "engine": "HOMATCH",
+  "version": "0.2.0",
+  "portals": [
+    {
+      "id": "myhome",
+      "name": "MyHome.ge",
+      "domains": ["myhome.ge"],
+      "status": "ADAPTER_IMPLEMENTED_NOT_LIVE_VERIFIED",
+      "capabilities": {
+        "inspect": true,
+        "fill": true,
+        "create": false,
+        "photoUpload": false,
+        "publish": false,
+        "edit": false,
+        "pause": false,
+        "resume": false,
+        "remove": false,
+        "requiresLiveVerification": true
+      }
+    },
+    {
+      "id": "ssge",
+      "name": "SS.ge",
+      "domains": ["ss.ge"],
+      "status": "planned",
+      "capabilities": {
+        "inspect": true,
+        "create": false,
+        "photoUpload": false,
+        "publish": false,
+        "edit": false
+      }
+    }
+  ]
+}

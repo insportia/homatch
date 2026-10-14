@@ -25,7 +25,7 @@ export function PublishingWorkspace() {
  const connect=(id:string)=>run(async()=>{const result=await connectPortal(id);if(result.tab?.id)setPortalTabs(old=>({...old,[id]:result.tab.id}));setTab('platforms');});
  const queue=(listing:any,kind:string,ids?:string[])=>run(async()=>{
   const targets=ids||listing.payload.portalTargets||[];if(!targets.length)throw new Error('LISTING_INVALID');
-  if(!window.confirm(t('pue_queue_confirm')+'\n'+targets.map(id=>data.portals.find((p:any)=>p.id===id)?.name||'').join(', ')))return;
+  if(!window.confirm(t('pue_queue_confirm')+'\n'+targets.map((id:string)=>data.portals.find((p:any)=>p.id===id)?.name||'').join(', ')))return;
   const result=await publishingApi('/v2/queue',{listingId:listing.id,version:listing.version,portalIds:targets,kind,confirmed:true,requestId:crypto.randomUUID()});if(result.validation&&!result.validation.valid)throw new Error('LISTING_INVALID');setTab('activity');
  });
  const activate=(listing:any)=>run(async()=>{if(!window.confirm(t('pue_activation_confirm',{n:data.settings.daily_credits})))return;

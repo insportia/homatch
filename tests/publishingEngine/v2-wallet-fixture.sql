@@ -1,6 +1,6 @@
 -- Synthetic wallet boundary for isolated queue/billing concurrency proof; never production.
 alter table public.users add column is_admin boolean not null default false;
-create function public.is_admin() returns boolean language sql stable as $$select coalesce((select is_admin from public.users where id=public.get_user_id()),false)$$;
+create function public.is_admin() returns boolean language sql stable security definer set search_path=public,pg_temp as $$select coalesce((select is_admin from public.users where id=public.get_user_id()),false)$$;
 create table public.billable_products(code text primary key,name text,billing_mode text,requires_reservation boolean,standard_retail_cents integer,estimate_strategy text,config jsonb);
 create table public.credit_accounts(user_id uuid primary key,balance numeric not null);
 create table public.fixture_holds(id uuid primary key default gen_random_uuid(),user_id uuid,key text unique,amount numeric,status text default 'RESERVED');

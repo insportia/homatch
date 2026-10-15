@@ -365,7 +365,7 @@ test('phones 320–430px (ka, ar, he): dashboard, external tabs and an opportuni
       const { page } = await boot(t, { width, height: 800, lang, status: IDLE, leads: OPP_LEADS });
       for (const [path, ready] of [['matches', '[data-testid="fb-dashboard"]'], ['buyers/external?tab=opportunities', '[data-testid="fbo-card"]']]) {
         await page.goto(`${BASE}/property/${PROPERTY_ID}/${path}`, { waitUntil: 'domcontentloaded' });
-        await page.waitForSelector(ready, { timeout: 30000 });
+        await page.waitForSelector(ready, { timeout: 60000 }); // nine cold boots in one test: allow a loaded CI runner
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(400);
         const l = await page.evaluate(() => ({ over: document.documentElement.scrollWidth - document.documentElement.clientWidth, dir: document.documentElement.getAttribute('dir'),

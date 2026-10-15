@@ -4,6 +4,7 @@ import { normalizeListing, validateListing } from './listing-schema.runtime.ts';
 import { advance } from './engine.runtime.ts';
 import registry from './registry.runtime.ts';
 import { handleV2 } from './v2.ts';
+import { handleManagedTick } from './server/handler.ts';
 
 const origins = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
 const actions = new Set(['checkAuthentication', 'inspect', 'fillListing', 'uploadPhotos', 'verifyForm', 'preparePublish', 'publishAfterConfirmation', 'extractPublishedListing', 'checkStatus']);
@@ -12,6 +13,10 @@ const bucket = 'publishing-engine-photos';
 const fail = (code: string): never => { throw Error(code); };
 
 export async function handler(req: Request) {
+  if(req.headers.has('x-publishing-worker-token'))return handleManagedTick(req,{
+    expectedToken:Deno.env.get('PUBLISHING_WORKER_TOKEN'),
+    createAdmin:()=>createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}})
+  });
   const origin = req.headers.get('origin') || '';
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Vary': 'Origin', ...(origins.has(origin) ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' } : {}) };
   const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers });

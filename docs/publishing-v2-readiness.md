@@ -15,7 +15,8 @@ V2 customer browser execution, customer session registration and customer-report
 - `server/http.ts` restricts HTTPS origins and fixed paths, refuses redirects, bounds timeouts and classifies uncertain writes conservatively. Raw response bodies and authentication headers are not logged.
 - `server/worker.ts` consumes existing operations only after server authorization and database capability checks. It downloads media from the canonical owner's private object paths and checks size/content. It checkpoints accepted external IDs before readback. Acceptance, moderation and mismatched readback cannot become verified publication or billing.
 - Mutation uncertainty requires reconciliation; it never causes blind repeated publication/deletion. Readback must match the submitted external identity and canonical revision/hash. Billing failure after successful verification cannot replay the portal write.
-- `scripts/publishing/managed-worker.mjs` runs in Node >=22.18, defaults disabled, supports diagnostics and graceful shutdown. It provisions nothing and is not wired into unrelated existing workers. Reviewed hosting attachment remains a release prerequisite.
+- `server/handler.ts` is a machine-only entry hosted by the existing publishing Edge Function. Gateway JWT verification stays enabled; a separate high-entropy worker token, no browser Origin, fixed command and bounded body are required before any service client is created. No customer can submit operation results or arbitrary commands.
+- `scripts/publishing/managed-worker.mjs` runs in Node >=22.18, defaults disabled, supports diagnostics and graceful shutdown. It provisions nothing and is not wired into unrelated existing workers. The existing Edge Function is also a hostable execution path; scheduler/worker secrets must be configured securely before release.
 
 ## Additive database migration
 
@@ -49,4 +50,4 @@ GitHub Actions validates the new additive migration on isolated PostgreSQL17, se
 
 Full PR checks provide TypeScript/lint/i18n/build and application regressions. Latest results must be checked for the exact branch commit. Neither CI nor a connected account establishes live portal support.
 
-Remaining: approved provider bindings and real per-operation verification; production-wallet staging proof; safe worker hosting attachment; authenticated media/AI and customer/admin smoke tests; advanced portfolio pagination/admin search and approved contact routing. No automatic deployment, new Railway service or unrelated-module changes.
+Remaining: approved provider bindings and real per-operation verification; production-wallet staging proof; secure scheduler/worker secret configuration; authenticated media/AI and customer/admin smoke tests; advanced portfolio pagination/admin search and approved contact routing. No automatic deployment, new Railway service or unrelated-module changes.

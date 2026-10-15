@@ -103,6 +103,20 @@ select pg_temp.ok((select count(*) from storage.objects where bucket_id = 'deal-
 select pg_temp.ok((select count(*) from public.deal_room_documents) = 1, 'B''s live contract still readable');
 commit;
 
+-- service-role routes ask the same rule (research-agent status/document_file, homatch-ai, analyze worker)
+select pg_temp.ok(public.retention_access_blocked('VERIFY_REPORT', '10000000-0000-0000-0000-000000000001'), 'service-role guard: expired report is blocked');
+select pg_temp.ok(not public.retention_access_blocked('VERIFY_REPORT', '10000000-0000-0000-0000-000000000002'), 'service-role guard: live report is served');
+select pg_temp.ok(not public.retention_access_blocked('VERIFY_REPORT', '10000000-0000-0000-0000-000000000004'), 'service-role guard: running (unregistered) job is served');
+select pg_temp.ok(public.retention_blocked_ids('VERIFY_REPORT', array['10000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002']::uuid[])
+                  = array['10000000-0000-0000-0000-000000000001']::uuid[], 'batch guard returns exactly the expired ids');
+select pg_temp.ok(public.retention_access_blocked('CONTRACT_DOCUMENT', '30000000-0000-0000-0000-000000000001'), 'service-role guard: expired contract blocked');
+do $$ begin
+  set local role authenticated;
+  perform public.retention_blocked_ids('VERIFY_REPORT', array[]::uuid[]);
+  raise exception 'FAIL: authenticated may enumerate expiry of arbitrary ids';
+exception when insufficient_privilege then raise notice 'ok  batch guard is service-role only';
+end $$;
+
 -- ── 6. Destructive gate off -> nothing claimed ──
 select pg_temp.ok((select count(*) from public.retention_claim(10)) = 0, 'purge disabled: claim returns nothing');
 

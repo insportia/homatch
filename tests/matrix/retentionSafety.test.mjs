@@ -62,20 +62,70 @@ test('the knowledge layer has no user, job, address, URL or listing identifier c
   assert.match(table, /price_kind text not null default 'ASKING' check \(price_kind = 'ASKING'\)/);
 });
 
-test('protected Verify and Contracts execution paths are untouched by this change', () => {
+test('protected Verify and Contracts paths change ONLY by the approved retention guards', () => {
   let base;
   try { base = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { encoding: 'utf8' }).trim(); } catch { return; }
   const changed = execFileSync('git', ['diff', '--name-only', base, '--'], { encoding: 'utf8' }).split('\n').filter(Boolean);
-  const ownChange = changed.some((f) => f.includes('storage_retention_lifecycle'));
-  if (!ownChange) return; // only meaningful on the branch that carries this migration
+  if (!changed.some((f) => f.includes('storage_retention_lifecycle'))) return; // only meaningful on this branch
   const PROTECTED = [
-    /^supabase\/functions\/(research-agent|verify-synthesis|verify-queue|deal-room-document-analyze|deal-room-ai|verification-handoff|jobs-worker)\//,
+    /^supabase\/functions\/(research-agent|verify-synthesis|verify-queue|deal-room-document-analyze|deal-room-ai|verification-handoff|jobs-worker|homatch-ai)\//,
     /^official-worker\//, /^src\/verify\//, /^src\/components\/verify\//, /^src\/pages\/VerifyPage\.tsx$/,
     /^src\/services\/(researchJobs|verifyResult|verifyReportPrefetch|verifyDocumentFile|contracts|dealRoomDocuments|documentWorkspace)\.ts$/,
     /^src\/pages\/Contract(s|Result)Page\.tsx$/, /^src\/components\/(contracts|documents)\//,
   ];
+  // Owner approval (2026-10-15): a minimal server-side expiration guard. These
+  // exact lines and nothing else; any other edit to a protected path fails here.
+  const APPROVED_GUARD_FILES = new Set([
+    'supabase/functions/research-agent/index.ts',
+    'supabase/functions/deal-room-document-analyze/index.ts',
+    'supabase/functions/homatch-ai/index.ts',
+  ]);
+  const APPROVED_LINES = new Set([
+    "+        && /^[0-9a-f-]{36}$/i.test(String(preAuthBody?.jobId || ''))) {",
+    "+      : false;",
+    "+      ? await retentionBlocked(supabase, 'VERIFY_REPORT', room.verify_job_id).catch(() => true)",
+    "+      const expired = await expiredReportRefusalById(gateDb, String(preAuthBody.jobId), json);",
+    "+      const gateDb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');",
+    "+      if (await retentionBlocked(supabase, 'CONTRACT_DOCUMENT', documentId)) return json({ error: 'document_expired' }, 410);",
+    "+      if (expired) return expired;",
+    "+      return json({ error: 'retention_check_unavailable' }, 503);",
+    "+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)",
+    "+      { const expired = await expiredReportRefusalById(sb, jobId, json); if (expired) return expired; } // retention: no signed URL after expiry",
+    "+    // An expired Verify report is not carried into a new analysis (retention).",
+    "+    // RETENTION (20261102090000): an expired report is never refreshed, re-fetched",
+    "+    // Retention (20261102090000): an expired document is never re-analysed —",
+    "+    // or re-pictured on request — by its owner or by an internal caller.",
+    "+    // the worker path reads with the service role, so it asks explicitly.",
+    "+    const expired = await retentionBlockedIds(sb, 'VERIFY_REPORT', liveReports.map((j: any) => j.id));",
+    "+    const reportExpired = room?.verify_job_id",
+    "+    if (['recover_visuals', 'fresh_photos', 'refresh_market'].includes(String(preAuthBody?.action || ''))",
+    "+    if (room?.verify_job_id && !reportExpired) {",
+    "+    liveReports = [];",
+    "+    liveReports = liveReports.filter((j: any) => !expired.has(j.id));",
+    "+    try {",
+    "+    }",
+    "+    } catch {",
+    "+  // Retention (20261102090000): an expired report is not handed to the",
+    "+  // assistant. If expiry cannot be checked, no report context is given.",
+    "+  internal.verifications = liveReports.map((j: any) => {",
+    "+  let liveReports: any[] = v || [];",
+    "+  try {",
+    "+  }",
+    "+  } catch {",
+    "+import { expiredReportRefusal, expiredReportRefusalById } from '../_shared/retentionGuard.ts';",
+    "+import { retentionBlocked } from '../_shared/retentionGuard.ts';",
+    "+import { retentionBlockedIds } from '../_shared/retentionGuard.ts';",
+    "-    if (room?.verify_job_id) {",
+    "-  internal.verifications = (v || []).map((j: any) => {",
+  ]);
   const hit = changed.filter((f) => PROTECTED.some((re) => re.test(f)));
-  assert.deepEqual(hit, [], `protected paths changed: ${hit.join(', ')}`);
+  assert.deepEqual(hit.filter((f) => !APPROVED_GUARD_FILES.has(f)), [], 'a protected path outside the approved guard changed');
+  for (const f of hit) {
+    const lines = execFileSync('git', ['diff', '-U0', base, '--', f], { encoding: 'utf8' }).split('\n')
+      .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
+    const extra = lines.filter((l) => !APPROVED_LINES.has(l));
+    assert.deepEqual(extra, [], `${f}: change beyond the approved retention guard`);
+  }
 });
 
 test('the engine and the tick never read report content', () => {

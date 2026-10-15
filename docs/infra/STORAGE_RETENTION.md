@@ -153,24 +153,48 @@ Not deleted by this system: `verify-official-visuals` and `verify-evidence` (sha
 `verify_tasks` (1.6 MB, a pipeline cache with cross-job reuse), `intelligence_facts` (1.5 MB, Verify's own
 knowledge), and FAILED/CANCELLED jobs.
 
-## 6. Protected-path dependency — STOPPED, needs the owner
+## 6. Access enforcement on every route (owner-approved guard, 2026-10-15)
 
-research-agent's `status` and `document_file` actions read `research_jobs` with the **service role** (`ownedBy`), so
-RLS does not apply to them.
+Expiry is enforced at the moment `expires_at` passes, **independently of cleanup**: no route relies on the purge
+having run. The owner approved a minimal server-side guard in service-role routes. Every guard calls the same rule,
+`retention_access_blocked` or its batch form `retention_blocked_ids`; the shared helper is
+`supabase/functions/_shared/retentionGuard.ts`.
 
-- Between `expires_at` and the purge, an owner who still knows the job id can read the payload through `status`.
-  `verify-synthesis` (RLS) returns 404, so no report is rebuilt and nothing is charged.
-- Anonymous-session jobs are only reachable this way.
+| Path | Client | Enforcement |
+|---|---|---|
+| PostgREST reads of `research_jobs`, `deal_room_documents`, findings (history, `getResearchJob`, active-job recovery, Contracts pages) | user | restrictive RLS policy |
+| Realtime `postgres_changes` on `research_jobs` (in `supabase_realtime`) | user | the same RLS policy |
+| `verify-synthesis` (report read, rebuild, translate) | user | RLS → 404; no rebuild, no charge |
+| `deal-room-ai`, `verification-handoff`, analyze user path | user | RLS |
+| `deal-room-documents` signed URLs (`createSignedUrl` from the browser) | user | restrictive policy on `storage.objects` |
+| R2 copies via `storage-sign` | service | `retention_object_blocked` → 410 |
+| research-agent `status` / `resume` / `skip` / `cancel` / `pause` / `continue` | **service** | guard right after the ownership lookup, before any job body and **before the finished-response memo** → 410 `REPORT_EXPIRED`. Only runs for COMPLETE jobs, so the polling of running jobs is unchanged. |
+| research-agent `document_file` (verify-documents signed URL) | **service** | guard before signing and before any worker re-fetch → 410 |
+| research-agent `recover_visuals` / `fresh_photos` / `refresh_market` (owner or internal) | **service** | guard before the handler → 410; an expired report is never regenerated |
+| `homatch-ai` assistant context (last 5 report summaries) | **service** | expired reports filtered out; if the check fails, no report context is given |
+| `deal-room-document-analyze` worker path | **service** | expired document → 410; an expired linked Verify report is not read into a new analysis |
 
-Once a record is purged, both actions return the tombstone or 404: `ledgerFileFor(null)` → `not_in_report`.
+Failure behaviour:
 
-Two ways to close the gap:
+- Before the migration exists, the RPC is missing and nothing is treated as expired. The guard allows.
+- Any other RPC failure fails **closed** (503) on the report routes.
 
-- **(a)** A 3-line guard in research-agent: `if (await rpc('retention_access_blocked', ...)) return 410`. This
-  touches a protected Verify execution path, so it was not made.
-- **(b)** Run the purge every few minutes after activation, so the window is minutes.
+Residual paths, all documented and none server-reachable by a customer:
 
-(b) needs no Verify change. (a) needs explicit approval.
+- **Admin diagnostics:** the admin-only `verify-admin-diagnostics` still lists job status and query until purge.
+- **Same-user register reuse:** `verify-synthesis` `loadEarlierRegister` can reuse `browserOfficial` from the same
+  user's expired-but-not-yet-purged job inside a new paid report. This is a protected research path and was not
+  changed. Once the payload is purged there is nothing to reuse; recommendation: enable purge soon after
+  `effective_at`.
+- **In-tab cache:** the browser `reportCache` (sessionStorage) can keep an already-delivered report for at most 55
+  minutes in the same tab. No server access is involved.
+
+Tests:
+
+- `supabase/functions/_shared/__tests__/retentionGuard.test.mjs`: behaviour plus exact placement of every gate.
+- `tests/sql/retention`: the rule and the batch form, including service-role only.
+- `tests/matrix/retentionSafety.test.mjs`: protected files may differ from main **only** by the approved guard
+  lines.
 
 ## 7. Legal / policy flags (not edited)
 
@@ -181,7 +205,31 @@ Two ways to close the gap:
 - Terms §6 (licence to use content "solely to provide the Service") should be reviewed against the contract finding
   counters.
 
-## 8. Activation — every step needs explicit owner approval
+## 8. Official document and evidence caches (read-only review, 2026-10-15)
+
+| Bucket | Objects | Size | Referenced by a report / task | Unreferenced |
+|---|---|---|---|---|
+| `verify-documents` (`files/<attachedFileId>.<ext>`) | 10 | 17 MB | all 10, by attachment id | 0 |
+| `verify-evidence` (`sha256/…`) | 87 | 43 MB | 87 (by COMPLETE reports and `verify_tasks`) | 0 |
+| `verify-official-visuals` (`tas/<sha256>.<ext>`) | 165 | 141 MB | 156 | **9 (9.1 MB)** |
+
+All three are content-addressed and shared across reports and users. Recommended policy, **not implemented** (it
+needs no Verify pipeline change, only reference scans by the engine):
+
+- **`verify-documents`:** already handled by the engine as SHARED references. Delete only when no non-purged report
+  names the attachment. Self-healing: research-agent re-fetches through the worker on a miss.
+- **`verify-official-visuals`:** mark-and-sweep with a quarantine. An object is eligible when:
+  - no non-purged `research_jobs` or `verify_tasks` row contains its sha;
+  - it is older than 30 days;
+  - it was found unreferenced in two sweeps at least 7 days apart.
+
+  New jobs re-upload a missing visual (`list` → absent → `upload`), so a wrong deletion costs one re-fetch, never a
+  broken live report. The 9 current candidates would enter quarantine, not deletion.
+- **`verify-evidence`:** tie to report lifecycle. Deletable only once every referencing report is PURGED **and** the
+  referencing `verify_tasks` rows are gone. `verify_tasks` has no retention yet (1.6 MB, a cross-job reuse cache), so
+  this waits for a `verify_tasks` policy decision.
+
+## 9. Activation — every step needs explicit owner approval
 
 1. Merge the PR. CI deploys `storage-retention` and `storage-sign` (dormant) and the frontend. The panels render
    nothing until records have dates.

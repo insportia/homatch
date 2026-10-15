@@ -264,7 +264,24 @@ as $$
               and (r.expires_at is null or r.expires_at > now()))
 $$;
 
+-- The same rule for a list (service-role readers such as the assistant's
+-- report context): the ids among p_ids whose retention has expired.
+create or replace function public.retention_blocked_ids(p_product text, p_ids uuid[])
+returns uuid[]
+language sql
+stable
+security definer
+set search_path to ''
+as $$
+  select coalesce(array_agg(r.source_id), '{}'::uuid[])
+    from public.retention_records r
+   where r.product = p_product and r.source_id = any(p_ids)
+     and r.expires_at is not null and r.expires_at <= now()
+$$;
+
 revoke all on function public.retention_access_blocked(text, uuid) from public, anon;
+revoke all on function public.retention_blocked_ids(text, uuid[]) from public, anon, authenticated;
+grant execute on function public.retention_blocked_ids(text, uuid[]) to service_role;
 revoke all on function public.retention_object_blocked(text, text, text) from public, anon;
 grant execute on function public.retention_access_blocked(text, uuid) to authenticated, service_role;
 grant execute on function public.retention_object_blocked(text, text, text) to authenticated, service_role;

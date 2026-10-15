@@ -10,8 +10,9 @@ MATTERS right now, verify against the live systems, not this file)
 - Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.
 - Migration `20261102090000_storage_retention_lifecycle.sql` is dormant on apply: `admin_settings.storage_retention`
   seeds `effective_at=null`, `purge_enabled=false`, reminders/knowledge off; no cron is scheduled.
-- Verify pipeline untouched. Open dependency: research-agent `status`/`document_file` use the service role and bypass
-  the RLS gate between expiry and purge (doc §6) — needs owner approval to guard, or a frequent purge.
+- Verify analysis untouched. Owner-approved minimal expiry guard (2026-10-15) in service-role routes: research-agent
+  job actions + `document_file` + regeneration actions, `homatch-ai` context, analyze worker path (doc §6). Protected
+  files may differ from main only by those exact lines (`tests/matrix/retentionSafety.test.mjs`).
 - Privacy policy `privacy_s6_body` must gain the 30-day report deletion sentence before `effective_at` is set.
 
 ## Find Buyers adaptive search + all property families + photo fixes (branch claude/nifty-hopper-snzn2d, 2026-10-12)

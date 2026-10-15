@@ -159,7 +159,6 @@ function PrivateListingContent() {
    * number is wrong while they are still writing the third digit of it.
    */
   const [contactPhone, setContactPhone] = useState('');
-  const [phoneShareable, setPhoneShareable] = useState(false);
   const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const set = (key: keyof FormState, value: string | boolean) =>
@@ -274,7 +273,6 @@ function PrivateListingContent() {
         userId: homatchUser.id,
         sourceType: 'PRIVATE_LISTING',
         contact: reading.contact,
-        phoneShareable,
         title: form.title || t('private_default_title', {
           type: t(PROPERTY_TYPE_KEYS[form.propertyType] ?? 'prop_type_other'),
           city: form.city || t('private_default_city_fallback'),
@@ -757,8 +755,6 @@ function PrivateListingContent() {
                   defaultCountry={form.country || 'GE'}
                   accountPhone={homatchUser?.phone ?? null}
                   showProblem={showPhoneProblem}
-                  shareable={phoneShareable}
-                  onShareableChange={setPhoneShareable}
                 />
               </div>
 

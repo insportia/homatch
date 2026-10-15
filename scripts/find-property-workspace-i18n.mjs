@@ -30,6 +30,8 @@ const strings = {
   fpw_remove_criterion: ['Remove {{label}} and edit the search', 'წაშალე „{{label}}“ და შეცვალე ძიება', 'Убрать «{{label}}» и изменить поиск', '{{label}} kaldır ve aramayı düzenle', 'إزالة {{label}} وتعديل البحث', 'הסרת {{label}} ועריכת החיפוש'],
   fpw_edit_note: ['Changing a criterion opens the search builder; nothing runs until you start it.', 'კრიტერიუმის შეცვლა ძიების ფორმას გახსნის; არაფერი დაიწყება, სანამ თავად არ დაიწყებ.', 'Изменение критерия открывает конструктор поиска; ничего не запустится, пока вы не начнёте.', 'Bir kriteri değiştirmek arama oluşturucuyu açar; siz başlatana kadar hiçbir şey çalışmaz.', 'تغيير أي معيار يفتح منشئ البحث؛ لن يبدأ شيء حتى تبدأه بنفسك.', 'שינוי קריטריון פותח את בונה החיפוש; דבר לא יופעל עד שתתחילו.'],
   fpw_seller_any_owner: ['Owner (verified or likely)', 'მესაკუთრე (დადასტურებული ან სავარაუდო)', 'Собственник (подтверждённый или вероятный)', 'Mal sahibi (doğrulanmış veya muhtemel)', 'المالك (موثّق أو محتمل)', 'בעלים (מאומת או סביר)'],
+  fpw_copy_number: ['Copy number', 'ნომრის კოპირება', 'Скопировать номер', 'Numarayı kopyala', 'نسخ الرقم', 'העתקת המספר'],
+  fpw_number_copied: ['Number copied', 'ნომერი დაკოპირდა', 'Номер скопирован', 'Numara kopyalandı', 'تم نسخ الرقم', 'המספר הועתק'],
   fpw_retry: ['Try again', 'ხელახლა ცდა', 'Повторить', 'Tekrar dene', 'حاول مجدداً', 'נסו שוב'],
   fpw_back_results: ['Back to results', 'შედეგებზე დაბრუნება', 'Вернуться к результатам', 'Sonuçlara dön', 'العودة إلى النتائج', 'חזרה לתוצאות'],
   fpw_open_property: ['View property', 'ქონების ნახვა', 'Открыть объект', 'Mülkü görüntüle', 'عرض العقار', 'צפייה בנכס'],

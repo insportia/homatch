@@ -65,7 +65,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { readContactPhone } from '@/lib/propertyContact';
-import { setPropertyContact, setPropertyPhoneSharing, uploadPropertyPhoto } from '@/services/api';
+import { setPropertyContact, uploadPropertyPhoto } from '@/services/api';
 import {
   allPhotos,
   attachPhoto,
@@ -172,7 +172,6 @@ export default function EditPropertyPage() {
    * is what gets stored, and the field says so as they type.
    */
   const [contactPhone, setContactPhone] = useState('');
-  const [phoneShareable, setPhoneShareable] = useState(false);
   const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const deepLink = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
@@ -229,7 +228,6 @@ export default function EditPropertyPage() {
       setAddressVisibility(String(f?.address_visibility ?? 'CITY_ONLY'));
       setDescription(String(f?.description ?? ''));
       setContactPhone(String(row.contact_phone_raw ?? row.contact_phone_e164 ?? ''));
-      setPhoneShareable((row as { contact_phone_shareable?: boolean }).contact_phone_shareable === true);
       setShowPhoneProblem(false);
     } catch (error) {
       setFailed(error instanceof Error ? error.message : String(error));
@@ -339,15 +337,6 @@ export default function EditPropertyPage() {
             reading.problem === 'NO_COUNTRY' ? 'contact_phone_needs_country'
               : 'contact_phone_unreachable',
           ));
-        }
-      }
-
-      /* Phone-sharing consent: saved only when the owner changed it; a refusal is said, not hidden. */
-      if (phoneShareable !== ((property as { contact_phone_shareable?: boolean } | null)?.contact_phone_shareable === true)) {
-        if (!(await setPropertyPhoneSharing(id, phoneShareable))) {
-          toast.error(t('contact_phone_save_failed'));
-          await load();
-          return;
         }
       }
 
@@ -763,8 +752,6 @@ export default function EditPropertyPage() {
               defaultCountry="GE"
               accountPhone={homatchUser?.phone ?? null}
               showProblem={showPhoneProblem}
-              shareable={phoneShareable}
-              onShareableChange={setPhoneShareable}
             />
           </Section>
 

@@ -114,5 +114,12 @@ with per-language loading named as the follow-up. That follow-up is done:
   search sees an arbitrary subset. Production had 1 ACTIVE property on
   2026-10-15, so nothing is missed today. Fix before the inventory nears 500:
   pre-filter by the demand's city/transaction (scoring unchanged) or page.
+  Proposed safe path (not in PR #210): an index on `property_facts (lower(city))`
+  plus `properties (matching_status, transaction_type) where is_deleted = false
+  and archived_at is null`; the native query filters city and transaction before
+  the limit and orders by `updated_at desc`, then keyset-pages in batches of
+  500 until exhausted. `assessMatch` and its scores stay as they are; only the
+  candidate read changes, and a city-name normalization check (თბილისი /
+  Tbilisi) must pass first so the pre-filter never drops a compatible match.
 - Property-mode re-evaluation (a listing created or changed) evaluates up to
   `PROPERTY_MODE_MAX_DEMAND = 600` active native searches per listing.

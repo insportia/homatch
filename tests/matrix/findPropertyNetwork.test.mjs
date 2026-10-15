@@ -7,13 +7,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { createRequire } from 'node:module';
+const require_ = createRequire(import.meta.url);
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const MS = code(read('supabase/functions/marketplace-search/index.ts'));
 const SEEKER = code(read('supabase/functions/_shared/seekerIntent.ts'));
-const CONSENT = read('supabase/migrations/20261102100000_property_phone_share_consent.sql');
+const PIPELINE = read('supabase/migrations/20260928010000_native_intent_pipeline.sql');
 
 test('a Marketplace Search becomes a native demand: intent, SUPPLY subscription, matcher request', () => {
   assert.match(MS, /recordSeekerIntent\(db, userId, toSearchPlanDraft\(brief\), \{ marketplaceSearchId: searchId \}\)/);
@@ -39,25 +41,32 @@ test('no catalogue: the seeker reads member properties only through its own matc
   assert.doesNotMatch(ui, /from\('properties'\)|\.from\("properties"\)/, 'Find Property never lists the properties table');
 });
 
-test('consent: a member\'s number reaches a matched person only when the owner chose to share it', () => {
-  assert.match(CONSENT, /add column if not exists contact_phone_shareable boolean not null default false/);
-  assert.match(CONSENT, /grant update \(contact_phone_shareable\) on public\.properties to authenticated/);
-  const seeker = CONSENT.slice(CONSENT.indexOf('if v_me = v_demand then'), CONSENT.indexOf('/* The owner asking'));
-  const gate = seeker.indexOf("if v_shareable is distinct from true then return jsonb_build_object('phone', null, 'reason', 'NOT_SHARED')");
-  assert.ok(gate > 0, 'the seeker branch refuses without consent');
-  assert.ok(gate < seeker.indexOf('insert into public.contact_disclosures'), 'refused before anything is disclosed or recorded');
-  // The owner branch and the party / anon rules are unchanged.
-  assert.match(CONSENT, /v_me not in \(v_supply, v_demand\)/);
-  assert.match(CONSENT, /from public\.conversation_contact_shares s/);
-  assert.match(CONSENT, /revoke all on function public\.reveal_native_contact\(text, uuid\) from public, anon;/);
+test('calling: a matched person gets that property\'s own listing contact — never an account phone, never another property\'s', () => {
+  const fn = PIPELINE.slice(PIPELINE.indexOf('create or replace function public.reveal_native_contact'), PIPELINE.indexOf('grant execute on function public.reveal_native_contact'));
+  // Resolved from the match row, for its two parties only.
+  assert.match(fn, /from public\.supply_matches\s+where id = p_id and source_kind = 'INTERNAL_HOMATCH' and compatibility = 'COMPATIBLE'/);
+  assert.match(fn, /v_me not in \(v_supply, v_demand\)/);
+  // The seeker reads the listing contact of THAT property (live listings only), and every reveal is recorded.
+  const seeker = fn.slice(fn.indexOf('if v_me = v_demand then'), fn.indexOf('/* The owner asking'));
+  assert.match(seeker, /select contact_phone_e164 into v_phone\s+from public\.properties\s+where id = v_property and is_deleted = false and archived_at is null/);
+  assert.doesNotMatch(seeker, /public\.users|\.phone\b(?!_)/, 'never the account phone');
+  assert.match(seeker, /insert into public\.contact_disclosures/);
+  // The owner sees the seeker\'s number only if the seeker shared it in their conversation.
+  assert.match(fn, /from public\.conversation_contact_shares s/);
+  assert.match(PIPELINE, /revoke all on function public\.reveal_native_contact\(text, uuid\) from public, anon;/);
 });
 
-test('owner forms offer the consent and send it; it is off unless chosen', () => {
-  const api = code(read('src/services/api.ts'));
-  assert.match(api, /contact_phone_shareable: input\.phoneShareable === true/);
-  for (const page of ['PrivateListingPage', 'URLImportPage', 'EditPropertyPage']) {
-    const src = code(read(`src/pages/property/${page}.tsx`));
-    assert.match(src, /useState\(false\)/, page);
-    assert.match(src, /onShareableChange=\{setPhoneShareable\}/, page);
-  }
+test('no migration in this workstream redefines who may be called', () => {
+  const { readdirSync } = require_('node:fs');
+  const later = readdirSync(new URL('../../supabase/migrations/', import.meta.url)).filter((f) => f > '20260928010000_native_intent_pipeline.sql');
+  for (const f of later) assert.doesNotMatch(read(`supabase/migrations/${f}`), /function public\.reveal_native_contact/, f);
+});
+
+test('the listing form says who will call the number; the seeker panel dials and copies it', () => {
+  const field = code(read('src/components/owner/ContactPhoneField.tsx'));
+  assert.match(field, /t\('contact_phone_match_notice'\)/);
+  const panel = code(read('src/components/matching/NativeMatchesPanel.tsx'));
+  assert.match(panel, /href=\{`tel:\$\{contact\.phone\}`\}/);
+  assert.match(panel, /navigator\.clipboard\?\.writeText\(contact\.phone/);
+  assert.match(panel, /revealNativeContact\(row\.kind, row\.id\)/, 'the number comes only from the server, per match');
 });

@@ -18481,9 +18481,12 @@ const en = {
   fpw_edit_note: 'Changing a criterion opens the search builder; nothing runs until you start it.',
   fpw_seller_any_owner: 'Owner (verified or likely)',
 
-  /* ── PROPERTY PHONE SHARING ── */
-  contact_phone_share_label: 'Let HOMATCH members whose search matches this property see and call this number',
-  contact_phone_share_hint: 'Off: your number stays hidden; they can still message you privately on HOMATCH.',
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'People whose search matches this property will be able to call this number and message you on HOMATCH. It is never published publicly.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_copy_number: 'Copy number',
+  fpw_number_copied: 'Number copied',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36879,9 +36882,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpw_edit_note: 'კრიტერიუმის შეცვლა ძიების ფორმას გახსნის; არაფერი დაიწყება, სანამ თავად არ დაიწყებ.',
   fpw_seller_any_owner: 'მესაკუთრე (დადასტურებული ან სავარაუდო)',
 
-  /* ── PROPERTY PHONE SHARING ── */
-  contact_phone_share_label: 'ნება დართე HOMATCH-ის წევრებს, რომელთა ძიებაც ამ ქონებას ემთხვევა, ნახონ ეს ნომერი და დაგირეკონ',
-  contact_phone_share_hint: 'გამორთულია: ნომერი დამალულია; შეუძლიათ HOMATCH-ზე პირადად მოგწერონ.',
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'ამ ნომერზე დაგირეკავენ ის ადამიანები, ვისი ძიებაც ამ ქონებას ემთხვევა; ასევე შეძლებენ HOMATCH-ზე მოგწერონ. ნომერი საჯაროდ არ ქვეყნდება.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_copy_number: 'ნომრის კოპირება',
+  fpw_number_copied: 'ნომერი დაკოპირდა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55268,9 +55274,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpw_edit_note: 'Изменение критерия открывает конструктор поиска; ничего не запустится, пока вы не начнёте.',
   fpw_seller_any_owner: 'Собственник (подтверждённый или вероятный)',
 
-  /* ── PROPERTY PHONE SHARING ── */
-  contact_phone_share_label: 'Разрешить участникам HOMATCH, чей поиск совпадает с этим объектом, видеть этот номер и звонить',
-  contact_phone_share_hint: 'Выключено: номер скрыт; вам всё равно смогут написать лично в HOMATCH.',
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'Люди, чей поиск совпадает с этим объектом, смогут позвонить по этому номеру и написать вам в HOMATCH. Номер никогда не публикуется открыто.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_copy_number: 'Скопировать номер',
+  fpw_number_copied: 'Номер скопирован',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73655,9 +73664,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpw_edit_note: 'Bir kriteri değiştirmek arama oluşturucuyu açar; siz başlatana kadar hiçbir şey çalışmaz.',
   fpw_seller_any_owner: 'Mal sahibi (doğrulanmış veya muhtemel)',
 
-  /* ── PROPERTY PHONE SHARING ── */
-  contact_phone_share_label: 'Araması bu mülkle eşleşen HOMATCH üyelerinin bu numarayı görmesine ve aramasına izin ver',
-  contact_phone_share_hint: 'Kapalı: numaranız gizli kalır; size HOMATCH üzerinden özel mesaj yine de gönderebilirler.',
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'Araması bu mülkle eşleşen kişiler bu numarayı arayabilecek ve size HOMATCH üzerinden mesaj gönderebilecek. Numara asla herkese açık yayımlanmaz.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_copy_number: 'Numarayı kopyala',
+  fpw_number_copied: 'Numara kopyalandı',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -92042,9 +92054,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpw_edit_note: 'تغيير أي معيار يفتح منشئ البحث؛ لن يبدأ شيء حتى تبدأه بنفسك.',
   fpw_seller_any_owner: 'المالك (موثّق أو محتمل)',
 
-  /* ── PROPERTY PHONE SHARING ── */
-  contact_phone_share_label: 'السماح لأعضاء HOMATCH الذين يتطابق بحثهم مع هذا العقار برؤية هذا الرقم والاتصال به',
-  contact_phone_share_hint: 'عند الإيقاف: يبقى رقمك مخفياً؛ ويمكنهم مراسلتك بشكل خاص عبر HOMATCH.',
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'سيتمكن الأشخاص الذين يتطابق بحثهم مع هذا العقار من الاتصال بهذا الرقم ومراسلتك عبر HOMATCH. لا يُنشر الرقم علناً أبداً.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_copy_number: 'نسخ الرقم',
+  fpw_number_copied: 'تم نسخ الرقم',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110429,9 +110444,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpw_edit_note: 'שינוי קריטריון פותח את בונה החיפוש; דבר לא יופעל עד שתתחילו.',
   fpw_seller_any_owner: 'בעלים (מאומת או סביר)',
 
-  /* ── PROPERTY PHONE SHARING ── */
-  contact_phone_share_label: 'לאפשר לחברי HOMATCH שהחיפוש שלהם תואם לנכס הזה לראות את המספר ולהתקשר',
-  contact_phone_share_hint: 'כבוי: המספר שלך מוסתר; עדיין יוכלו לשלוח לך הודעה פרטית ב-HOMATCH.',
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'אנשים שהחיפוש שלהם תואם לנכס הזה יוכלו להתקשר למספר הזה ולשלוח לך הודעה ב-HOMATCH. המספר לעולם אינו מתפרסם בפומבי.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_copy_number: 'העתקת המספר',
+  fpw_number_copied: 'המספר הועתק',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

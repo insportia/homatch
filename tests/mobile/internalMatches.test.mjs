@@ -205,8 +205,10 @@ async function shot(page, name) {
 
 const sectionCount = (page, which) => page.locator(`[data-count="${which}"]`).innerText();
 
+/* Find Buyers 3.0: HOMATCH members have their own results page (the dashboard on
+   /matches only summarises them). */
 async function openMatches(page) {
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/internal`, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-section="internal-matches"]').waitFor({ timeout: 30000 });
   await page.locator('[data-testid="internal-match-card"]').first().waitFor({ timeout: 30000 });
 }
@@ -218,9 +220,8 @@ async function flow(page, state, { lang, prefix, width }) {
   await demoCard.waitFor({ timeout: 30000 });
 
   /* Two sections, two counts. One real member (two rows) + the demo = 2; three leads. */
-  await page.waitForFunction(() => document.querySelector('[data-count="external"]')?.textContent?.trim() === '3', null, { timeout: 30000 });
   assert.equal((await sectionCount(page, 'internal')).trim(), '2', 'internal = one member + the demo, the member counted once');
-  assert.equal((await sectionCount(page, 'external')).trim(), '3', 'external = the three leads, nothing internal added');
+  assert.equal(await page.locator('[data-count="external"]').count(), 0, 'external leads never appear on the internal page');
   assert.equal(await page.locator('[data-testid="internal-match-card"]').count(), 1, 'a MATCH and a RELATIONSHIP for one person are one card');
 
   /* Badges and the engine's score. */
@@ -315,20 +316,20 @@ test('phone 360: the matches page and the profile sheet never scroll sideways', 
 test('a member who is neither admin nor tester sees no demo, and the counts say so', opts, async (t) => {
   const { page } = await boot(t, { width: 1440, lang: 'en', admin: false });
   await openMatches(page);
-  await page.waitForFunction(() => document.querySelector('[data-count="external"]')?.textContent?.trim() === '3', null, { timeout: 30000 });
+  assert.equal(await page.locator('[data-count="external"]').count(), 0, 'external leads never appear on the internal page');
   assert.equal(await page.locator('[data-testid="internal-match-card-demo"]').count(), 0, 'no demo card');
   assert.equal((await sectionCount(page, 'internal')).trim(), '1', 'only the real member');
   assert.equal(await page.locator('[data-badge="DEMO"]').count(), 0, 'no DEMO badge anywhere');
 });
 
-test('Back never re-opens the profile: profile page → Back → matches → Back leaves the matches page', opts, async (t) => {
+test('Back never re-opens the profile: profile page → Back → HOMATCH results → Back leaves them', opts, async (t) => {
   const { page } = await boot(t, { width: 1440, lang: 'en' });
   await openMatches(page);
   await page.locator('[data-testid="internal-match-card-demo"]').waitFor({ timeout: 30000 });
   await page.locator('[data-testid="demo-view-profile"]').click();
   await page.waitForURL(/\/buyer\/demo$/, { timeout: 15000 });
   await page.getByRole('button', { name: /^back$/i }).first().click();
-  await page.waitForURL(/\/matches$/, { timeout: 15000 });
+  await page.waitForURL(/\/buyers\/internal$/, { timeout: 15000 });
   await page.locator('[data-testid="buyer-profile"]').waitFor({ state: 'detached', timeout: 15000 });
   await page.locator('[data-testid="internal-match-card-demo"]').waitFor({ timeout: 30000 });
   await page.getByRole('button', { name: /^back$/i }).first().click();

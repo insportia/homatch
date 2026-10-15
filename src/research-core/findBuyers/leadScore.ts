@@ -28,6 +28,17 @@ export interface LeadSignal {
   language: string | null;
   publishedAt: string | null;
   explanation: string;
+  /* Find Buyers 3.0 — the post this comment was written under, as the source reported it.
+     Absent on leads stored before 2026-10-15; never inferred. */
+  /** Total comments the platform reported for the parent post (null = not reported). */
+  parentCommentCount?: number | null;
+  /** Comments of the parent post read in the run that produced this signal. */
+  parentAnalyzed?: number | null;
+  parentPublishedAt?: string | null;
+  parentFacts?: { price: number | null; currency: string | null; areaSqm: number | null; bedrooms: number | null; district: string | null } | null;
+  /** The intent gate's reading of this signal (buyerIntent.ts). */
+  intent?: string | null;
+  signals?: string[];
 }
 
 export interface ScoredLead {

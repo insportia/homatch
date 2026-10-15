@@ -199,7 +199,12 @@ const ROUTES = [
    * exercises the page's own layout and its empty state rather than a
    * backend.
    */
-  { path: '/property/11111111-1111-4111-8111-111111111111/matches', name: 'property matches', auth: true },
+  { path: '/property/11111111-1111-4111-8111-111111111111/buyers/external', name: 'property external results', auth: true },
+  /* Find Buyers 3.0 (2026-10-15): the compact dashboard now lives on /matches, with the
+     internal results and a post opportunity on their own pages. */
+  { path: '/property/11111111-1111-4111-8111-111111111111/matches', name: 'find buyers dashboard', auth: true },
+  { path: '/property/11111111-1111-4111-8111-111111111111/buyers/internal', name: 'property internal results', auth: true },
+  { path: '/property/11111111-1111-4111-8111-111111111111/buyers/opportunity/abc?job=x', name: 'post opportunity', auth: true },
   /* Homatch for Developers. The workspace shell, the screens a sales floor
      lives in, the sales file, and the buyer-facing shared apartment page.
      These render against the dev_* fixtures below rather than a backend. */
@@ -940,7 +945,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
      it. The second list must stay empty or the coverage above is an illusion. */
   const panelSeen = [];
   const panelMissing = [];
-  const MATCHES = '/property/11111111-1111-4111-8111-111111111111/matches';
+  const MATCHES = '/property/11111111-1111-4111-8111-111111111111/buyers/external';
   const notePanel = (route, label, present) => {
     if (route.path !== MATCHES) return;
     (present ? panelSeen : panelMissing).push(label);
@@ -988,6 +993,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
        * the width most likely to break and the ONLY one measured -- so 360, 390
        * and 430 went unchecked on the screen a seller spends the most time on.
        */
+      '/property/11111111-1111-4111-8111-111111111111/buyers/external',
       '/property/11111111-1111-4111-8111-111111111111/matches',
       /*
        * ADMIN SOCIAL DISCOVERY joins the spread for the same reason the matches

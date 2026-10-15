@@ -206,7 +206,7 @@ const PROVIDER_SETTINGS = [
 ];
 
 async function open(page) {
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(`a[href="${COMMENT_URL}"]`, { timeout: 30000 });
 }
 
@@ -257,25 +257,21 @@ test('the latest search opens first: its 2 weak leads show without paging; earli
   const first = await page.evaluate(() => ({
     selected: document.querySelector('[data-testid="fbx-campaign"][aria-selected="true"]')?.getAttribute('data-job'),
     weakGroup: document.querySelector('[data-testid="fbx-lead-group"][data-category="WEAK"]') !== null,
-    weakExplained: document.querySelector('[data-testid="fbx-weak-explain"]') !== null,
     groups: [...document.querySelectorAll('[data-testid="fbx-lead-group"]')].map((g) => g.getAttribute('data-category')),
   }));
   assert.equal(first.selected, 'job-new', 'the latest search is selected');
-  assert.deepEqual(first.groups, ['WEAK'], 'only the latest search\'s leads, never the older 12');
-  assert.ok(first.weakExplained, 'weak signals say they are not verified buyers');
-  const dash = await page.evaluate(() => ({
-    weak: document.querySelector('[data-testid="fbd-ext-weak"]')?.textContent,
-    strong: document.querySelector('[data-testid="fbd-ext-qualified"]')?.textContent,
-  }));
-  assert.deepEqual(dash, { weak: '2', strong: '0' }, 'the dashboard counts the latest search and never calls weak strong');
+  /* Both leads are questions under a comparable listing: INTEREST, never buyers. */
+  assert.deepEqual(first.groups, ['INTEREST'], 'only the latest search\'s leads, as interest signals');
+  const tabs = await page.evaluate(() => ['direct', 'interest', 'opportunities'].map((k) => document.querySelector(`[data-testid="fbx-tab-${k}"]`)?.textContent?.match(/\d+/)?.[0]));
+  assert.deepEqual(tabs, ['0', '2', '1'], 'two interest signals under one post: one opportunity, zero buyers');
   await page.click('[data-testid="fbx-campaign-all"]');
-  await page.waitForFunction(() => document.querySelector('[data-testid="fbx-lead-group"][data-category="UNCATEGORISED"]'), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbx-campaign-all"][aria-selected="true"]'), null, { timeout: 10000 });
 });
 
 test('a failed results read says so and offers a retry — never "no results"', opts, async (t) => {
   const { page } = await boot(t);
   await page.route('**/rest/v1/find_buyers_current_leads**', (r) => r.fulfill({ status: 500, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"message":"boom"}' }));
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbx-results-error"]', { timeout: 20000 });
 });
 
@@ -292,9 +288,89 @@ test('HOMATCH Match is free and starts only the internal matcher; External Disco
   const started = calls.slice(before);
   assert.ok(started.some((c) => c.startsWith('internal_leads_request_matching')), 'the internal matcher was asked');
   assert.ok(!started.some((c) => /match-campaign|billing_|wallet|reserve/.test(c)), `free matching made no paid call: ${started.join(', ')}`);
+  /* External Discovery's start opens the budget step on its own page; nothing launches. */
   await page.click('[data-testid="fbd-external-start"]');
-  await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
+  await page.waitForURL(/\/buyers\/external/, { timeout: 15000 });
+  await page.waitForSelector('[role="dialog"]', { timeout: 15000 });
   assert.ok(!calls.some((c) => c.startsWith('match-campaign')), 'opening the budget step launches nothing');
+});
+
+/* ── FIND BUYERS 3.0: dashboard → External Discovery → Post Opportunity ── */
+const OPP_POST = 'https://www.facebook.com/groups/77/permalink/185000';
+const oppLead = (n, signals, text) => lead(`opp${n}`, {
+  matching_job_id: 'job-opp', overall_score: 40 + n, strength: 'POSSIBLE', created_at: ago(1), match_category: 'POTENTIAL', author_name: `Person ${n}`,
+  qualification: { resultType: 'INTEREST', intent: signals.includes('VIEWING') ? 'VIEWING_INQUIRY' : 'PRICE_INQUIRY', signals },
+  evidence: [{ signalId: `s${n}`, parentSignalId: 'pp', kind: 'COMMENT', source: 'FACEBOOK', intentClass: 'BUYER_MEDIUM', intentScore: 60, similarity: 84, ageDays: 2,
+    text, url: `${OPP_POST}?comment_id=${n}`, parentUrl: OPP_POST, parentExcerpt: 'იყიდება 2 საძინებლიანი ბინა კრწანისში, 100 კვ.მ, $185 000', language: 'ka', publishedAt: ago(2),
+    parentCommentCount: 240, parentAnalyzed: 40, parentPublishedAt: ago(5), parentFacts: { price: 185000, currency: 'USD', areaSqm: 100, bedrooms: 2, district: 'krtsanisi' }, signals }],
+});
+const OPP_LEADS = [
+  oppLead(1, ['PRICE'], 'ფასი რა არის?'), oppLead(2, ['PRICE', 'VIEWING'], 'რა ღირს და ხვალ ნახვა შეიძლება?'), oppLead(3, ['VIEWING'], 'Can I visit tomorrow?'),
+  oppLead(4, ['FINANCING'], 'Is a mortgage possible?'),
+  lead('direct1', { matching_job_id: 'job-opp', overall_score: 88, strength: 'STRONG', created_at: ago(1), match_category: 'STRONG',
+    qualification: { resultType: 'DIRECT', intent: 'ACTIVE_BUYER', signals: ['EXPLICIT_BUY'] } }),
+];
+
+test('the dashboard is compact: two summaries and recent searches, no lead list; each view opens its own page', opts, async (t) => {
+  const { page } = await boot(t, { status: IDLE, leads: OPP_LEADS });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fb-dashboard"]', { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-ext-interest"]')?.textContent?.includes('4'), null, { timeout: 20000 });
+  const d = await page.evaluate(() => ({
+    direct: document.querySelector('[data-testid="fbd-ext-direct"]')?.textContent?.match(/\d+/)?.[0],
+    opps: document.querySelector('[data-testid="fbd-ext-opportunities"]')?.textContent?.match(/\d+/)?.[0],
+    cards: document.querySelectorAll('article[aria-label] a[href^="https://"]').length,
+    recent: document.querySelectorAll('[data-testid="fbh-recent-item"]').length,
+    edit: document.querySelector('[data-testid="fbh-edit-search"]')?.getAttribute('href'),
+  }));
+  assert.deepEqual({ direct: d.direct, opps: d.opps }, { direct: '1', opps: '1' }, '1 buyer, 4 interest signals, 1 post opportunity — never added together');
+  assert.equal(d.cards, 0, 'no lead cards on the dashboard');
+  assert.equal(d.recent, 1);
+  assert.match(d.edit ?? '', /\/property\/[^/]+\/edit$/, 'Edit search opens the listing, it never starts a search');
+  await page.click('[data-testid="fbd-external-view"]');
+  await page.waitForURL(/\/buyers\/external$/, { timeout: 15000 });
+  await page.waitForSelector('[data-testid="fbx-tab-direct"][aria-selected="true"]', { timeout: 20000 });
+  await page.click('[data-testid="fbx-tab-opportunities"]');
+  await page.waitForSelector('[data-testid="fbo-card"]', { timeout: 15000 });
+  assert.equal(await page.locator('[data-testid="fbo-card"]').count(), 1, 'one post, one opportunity');
+  await page.click('[data-testid="fbo-card"]');
+  await page.waitForSelector('[data-testid="fbo-detail"]', { timeout: 20000 });
+  const o = await page.evaluate(() => Object.fromEntries(['total', 'analyzed', 'people', 'signals'].map((k) => [k, document.querySelector(`[data-testid="fbo-stat-${k}"]`)?.textContent])));
+  assert.deepEqual(o, { total: '240', analyzed: '40', people: '4', signals: '5' }, '240 comments, 40 analyzed, 4 people, 5 signals (one comment asked two things)');
+  assert.ok(await page.locator('[data-testid="fbo-unread"]').count(), 'the 200 unread comments are named, never estimated');
+  assert.match(await page.locator('[data-testid="fbo-comparison"]').innerText(), /65,000|65 000|65.000/, 'owner $120,000 vs comparable $185,000');
+  assert.equal(await page.locator('[data-testid="fbo-open-post"]').getAttribute('href'), OPP_POST);
+  assert.equal(await page.locator('[data-testid="fbo-evidence"] li').count(), 4);
+  await page.getByRole('button', { name: /^back$/i }).first().click();
+  await page.waitForURL(/\/buyers\/external/, { timeout: 15000 });
+});
+
+test('phones 320–430px (ka, ar, he): dashboard, external tabs and an opportunity fit, with RTL for ar/he', opts, async (t) => {
+  const failures = [];
+  for (const width of [320, 390, 430]) {
+    for (const lang of ['ka', 'ar', 'he']) {
+      const { page } = await boot(t, { width, height: 800, lang, status: IDLE, leads: OPP_LEADS });
+      for (const [path, ready] of [['matches', '[data-testid="fb-dashboard"]'], ['buyers/external?tab=opportunities', '[data-testid="fbo-card"]']]) {
+        await page.goto(`${BASE}/property/${PROPERTY_ID}/${path}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector(ready, { timeout: 30000 });
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(400);
+        const l = await page.evaluate(() => ({ over: document.documentElement.scrollWidth - document.documentElement.clientWidth, dir: document.documentElement.getAttribute('dir'),
+          who: [...document.querySelectorAll('main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > document.documentElement.clientWidth + 1 || r.left < -1); })
+            .slice(-3).map((e) => `${e.tagName.toLowerCase()}[${(e.getAttribute('data-testid') ?? e.className ?? '').toString().slice(0, 40)}] ${(e.textContent ?? '').trim().slice(0, 24)}`),
+          small: [...document.querySelectorAll('main button, main a')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.height < 36 && !e.closest('nav'); }).length }));
+        if (l.over > 1) failures.push(`${lang} ${width} ${path}: overflow ${l.over}px — ${l.who.join(' | ')}`);
+        if (['ar', 'he'].includes(lang) && l.dir !== 'rtl') failures.push(`${lang} ${path}: not RTL`);
+      }
+      await page.click('[data-testid="fbo-card"]');
+      await page.waitForSelector('[data-testid="fbo-detail"]', { timeout: 20000 });
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      if (over > 1) failures.push(`${lang} ${width} opportunity: overflow ${over}px`);
+      if (SHOTS && width === 390) { mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: join(SHOTS, `fb3-opportunity-${lang}.png`), fullPage: true }); }
+      await page.context().close();
+    }
+  }
+  assert.deepEqual(failures, []);
 });
 
 test('1440px and 390px, six locales: cards render, RTL for ar/he, no horizontal overflow, 44px actions', opts, async (t) => {
@@ -487,7 +563,7 @@ test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scrol
       if (!l.scrolledToEnd) failures.push(`${where}: page does not scroll to its end`);
       /* The search dialog. */
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('text=Buyer budget, text=მყიდველის ბიუჯეტი, text=ميزانية', { timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(1500);
       const launch = page.locator('section[aria-labelledby="fbl-title"] button').last();

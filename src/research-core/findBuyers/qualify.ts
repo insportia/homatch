@@ -24,7 +24,9 @@ export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'I
 export type RejectionReason =
   | 'NOT_REAL_ESTATE' | 'JOB_SEARCH' | 'SERVICE_AD' | 'SALE_ADVERTISEMENT' | 'RENT_ADVERTISEMENT'
   | 'AGENT_INTERMEDIARY' | 'WRONG_TRANSACTION' | 'UNCLEAR_INTENT' | 'NON_RESIDENTIAL'
-  | 'PROPERTY_TYPE_MISMATCH' | 'BUDGET_INCOMPATIBLE' | 'OTHER_CITY' | 'STALE' | 'UNDATED' | 'DUPLICATE';
+  | 'PROPERTY_TYPE_MISMATCH' | 'BUDGET_INCOMPATIBLE' | 'OTHER_CITY' | 'STALE' | 'UNDATED' | 'DUPLICATE'
+  /** The intent gate (buyerIntent.ts) found no buyer/tenant intent: seller, service, praise … */
+  | 'INTENT_EXCLUDED';
 
 /** Soft limitations recorded on non-rejected leads (why it is not Strong). */
 export type Limitation =
@@ -46,6 +48,10 @@ export interface Qualification {
   components: Record<'intent' | 'location' | 'budget' | 'requirements' | 'recency', number>;
   /** What the text stated, for the customer's explanation. */
   stated: { budget: string | null; places: string[]; rooms: number | null; bedrooms: number | null };
+  /* Find Buyers 3.0 intent gate (absent on older leads). */
+  intent?: string;
+  resultType?: 'DIRECT' | 'INTEREST' | 'EXCLUDED';
+  signals?: string[];
 }
 
 export interface QualifyContext {

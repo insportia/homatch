@@ -1,4 +1,4 @@
-// External leads, one search at a time (owner, 2026-10-15). Read by FindBuyersResults.
+// External leads, one search at a time (owner, 2026-10-15). Read by the External Discovery results (useExternalResults).
 //
 // Kept apart from services/findBuyers (which the application shell imports) so the
 // results list can change without touching the shell. Both reads go through RLS on
@@ -12,7 +12,7 @@ import { indexLeadCampaigns, type LeadCampaign } from '@/findBuyers/leadCampaign
 export type { LeadCampaign };
 
 const LEAD_COLUMNS = 'id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url';
-const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit';
+const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit,qualification';
 
 /** The property's external searches, newest first. Light: three columns per lead. */
 export async function getPropertyLeadCampaigns(propertyId: string): Promise<{ campaigns: LeadCampaign[]; failed: boolean }> {
@@ -46,4 +46,23 @@ export async function getSearchLeadsPage(propertyId: string, page: number, pageS
     total: Number(count ?? 0),
     failed: false,
   };
+}
+
+/**
+ * Every current lead of one search (or of all searches when jobId is null), for the
+ * external results tabs and post opportunities. Bounded: a search never stores
+ * thousands of people, and the cap is stated rather than silently truncated.
+ */
+export const SEARCH_LEADS_CAP = 500;
+export async function getSearchLeads(propertyId: string, jobId: string | null): Promise<{ rows: PotentialLead[]; failed: boolean; capped: boolean }> {
+  const read = (columns: string) => {
+    let q = supabase.from('find_buyers_current_leads').select(columns).eq('property_id', propertyId);
+    if (jobId) q = q.eq('matching_job_id', jobId);
+    return q.order('overall_score', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: true }).limit(SEARCH_LEADS_CAP);
+  };
+  let { data, error } = await read(`${LEAD_COLUMNS},${QUALIFICATION_COLUMNS}`);
+  if (error) ({ data, error } = await read(LEAD_COLUMNS));
+  if (error) return { rows: [], failed: true, capped: false };
+  const rows = ((data ?? []) as unknown as PotentialLead[]).map((l) => ({ ...l, evidence: Array.isArray(l.evidence) ? l.evidence : [] }));
+  return { rows, failed: false, capped: rows.length >= SEARCH_LEADS_CAP };
 }

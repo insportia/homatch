@@ -278,5 +278,52 @@ end $$;
 reset role;
 select pg_temp.ok((select (public.retention_admin_dry_run(now(), null) -> 'verify' ->> 'would_expire')::int >= 1), 'dry run reports what would expire');
 
+
+-- ── 15. Admin control center: one validated way to change retention ──
+-- (a fresh config so the checks below start from "everything off")
+update public.admin_settings set value = '{"effective_at": null, "legacy_grace_until": null, "purge_enabled": false,
+  "reminders_enabled": false, "knowledge_enabled": false, "batch_size": 10, "max_attempts": 5}'::jsonb where key = 'storage_retention';
+create function pg_temp.cfg_err(p jsonb) returns text language plpgsql as $f$
+begin
+  perform public.retention_admin_configure(p, 'test');
+  return 'OK';
+exception when others then return sqlerrm;
+end $f$;
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'cccccccc-0000-0000-0000-00000000000c', false);
+select pg_temp.ok(pg_temp.cfg_err('{"purge_enabled": true}') = 'RETENTION_NOT_STARTED', 'deletion cannot be switched on before the 30-day rule');
+select pg_temp.ok(pg_temp.cfg_err(jsonb_build_object('effective_at', now() - interval '2 days')) = 'RETENTION_START_IN_PAST', 'the rule cannot start in the past');
+select pg_temp.ok(pg_temp.cfg_err(jsonb_build_object('legacy_grace_until', now() + interval '30 days')) = 'RETENTION_NOT_STARTED', 'older records cannot get a date before the rule is on');
+select pg_temp.ok(pg_temp.cfg_err('{"delete_everything": true}') = 'RETENTION_UNKNOWN_SETTING', 'unknown settings are refused');
+select pg_temp.ok(pg_temp.cfg_err('{"purge_enabled": "yes"}') = 'RETENTION_BAD_REQUEST', 'switches must be true/false');
+select pg_temp.ok(pg_temp.cfg_err(jsonb_build_object('effective_at', now())) = 'OK', 'admin switches the 30-day rule on (now)');
+select pg_temp.ok(pg_temp.cfg_err(jsonb_build_object('effective_at', now() - interval '30 minutes')) = 'RETENTION_START_EARLIER', 'the start date cannot be moved earlier');
+select pg_temp.ok(pg_temp.cfg_err(jsonb_build_object('legacy_grace_until', now() + interval '3 days')) = 'RETENTION_GRACE_TOO_SHORT', 'older records get at least 7 days notice');
+select pg_temp.ok(pg_temp.cfg_err(jsonb_build_object('legacy_grace_until', now() + interval '14 days')) = 'OK', 'older records: end date 14 days away accepted');
+select pg_temp.ok(pg_temp.cfg_err(jsonb_build_object('legacy_grace_until', now() + interval '10 days')) = 'RETENTION_GRACE_EARLIER', 'that end date cannot be moved earlier');
+select pg_temp.ok(pg_temp.cfg_err('{"batch_size": 500}') = 'RETENTION_BAD_REQUEST', 'batch size bounded');
+select pg_temp.ok(pg_temp.cfg_err('{"purge_enabled": true, "auto_run": true}') = 'OK', 'deletion + automatic runs switched on');
+select pg_temp.ok((public.retention_admin_status() ->> 'auto_run')::boolean, 'status reports automatic runs on');
+reset role;
+select pg_temp.ok((select count(*) from cron.job where jobname = 'homatch-storage-retention') = 1, 'exactly one cron job scheduled');
+select pg_temp.ok((select command like '%storage-retention%x-cron-token%' from cron.job where jobname = 'homatch-storage-retention'), 'cron calls storage-retention with its token');
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'cccccccc-0000-0000-0000-00000000000c', false);
+select pg_temp.ok(pg_temp.cfg_err('{"auto_run": true}') = 'OK', 'switching automatic runs on twice is harmless');
+select pg_temp.ok(pg_temp.cfg_err('{"effective_at": null, "auto_run": false}') = 'OK', 'admin switches everything off');
+reset role;
+select pg_temp.ok((select count(*) from cron.job where jobname = 'homatch-storage-retention') = 0, 'cron job removed');
+select pg_temp.ok((public.retention_config() ->> 'purge_enabled')::boolean = false, 'switching the rule off switches deletion off too');
+select pg_temp.ok((select count(*) from public.retention_events where event = 'CONFIG_CHANGED') >= 4, 'every change is logged with who and what');
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-00000000000a', false);
+select pg_temp.ok(pg_temp.cfg_err('{"reminders_enabled": true}') = 'forbidden', 'a customer cannot change retention');
+do $$ begin
+  perform public.retention_admin_records('PROBLEMS');
+  raise exception 'FAIL: a customer read the admin lists';
+exception when insufficient_privilege then raise notice 'ok  nor read the admin lists';
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub', '', false);
 \o
 \echo RETENTION SQL: PASS

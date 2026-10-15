@@ -1146,7 +1146,8 @@ end $$;
 -- anything is registered. p_assume_effective_at null = "as if the 30-day
 -- rule had always applied" (the worst case for historical data).
 create or replace function public.retention_admin_dry_run(
-  p_as_of timestamptz default now(), p_assume_effective_at timestamptz default null)
+  p_as_of timestamptz default now(), p_assume_effective_at timestamptz default null,
+  p_assume_legacy_grace timestamptz default null)
 returns jsonb
 language plpgsql
 stable
@@ -1181,7 +1182,9 @@ begin
      where j.status = 'COMPLETE' and j.completed_at is not null and j.lifecycle_state <> 'PURGED'),
   vx as (
     select vj.*, case when p_assume_effective_at is null or vj.av >= p_assume_effective_at
-                      then public.retention_expiry(vj.av) end exp
+                      then public.retention_expiry(vj.av)
+                      when p_assume_legacy_grace is not null
+                      then greatest(public.retention_expiry(vj.av), p_assume_legacy_grace) end exp
       from vj),
   cd as (
     select d.id, d.user_id, d.storage_path, coalesce(d.size_bytes, 0) size_bytes,
@@ -1202,7 +1205,9 @@ begin
        and d.doc_key not like 'expired:%'),
   cx as (
     select cd.*, case when p_assume_effective_at is null or cd.av >= p_assume_effective_at
-                      then public.retention_expiry(cd.av) end exp
+                      then public.retention_expiry(cd.av)
+                      when p_assume_legacy_grace is not null
+                      then greatest(public.retention_expiry(cd.av), p_assume_legacy_grace) end exp
       from cd)
   select jsonb_build_object(
     'mode', 'DRY_RUN_READ_ONLY',
@@ -1255,6 +1260,203 @@ begin
 end $$;
 
 /* ------------------------------------------------------------------ *
+ * 9b. Admin control center: one validated way to change retention     *
+ * ------------------------------------------------------------------ */
+
+-- The automatic run (cron). Internal: only retention_admin_configure calls it.
+create or replace function public.retention_set_schedule(p_on boolean)
+returns boolean
+language plpgsql
+security definer
+set search_path to ''
+as $$
+begin
+  if not exists (select 1 from pg_namespace where nspname = 'cron') then
+    return false;
+  end if;
+  if exists (select 1 from cron.job where jobname = 'homatch-storage-retention') then
+    perform cron.unschedule('homatch-storage-retention');
+  end if;
+  if p_on then
+    perform cron.schedule('homatch-storage-retention', '*/10 * * * *', $cron$
+      select net.http_post(
+        url := 'https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/storage-retention',
+        headers := jsonb_build_object('Content-Type', 'application/json',
+          'x-cron-token', (select value #>> '{}' from public.admin_settings where key = 'storage_retention_cron_token')),
+        body := '{"action":"tick"}'::jsonb,
+        timeout_milliseconds := 55000);
+    $cron$);
+  end if;
+  return p_on;
+end $$;
+
+create or replace function public.retention_scheduled()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path to ''
+as $$
+begin
+  if not exists (select 1 from pg_namespace where nspname = 'cron') then return false; end if;
+  return exists (select 1 from cron.job where jobname = 'homatch-storage-retention');
+end $$;
+
+-- Everything the admin control center shows, in one call. Counts only.
+create or replace function public.retention_admin_status()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path to ''
+as $$
+declare
+  v_cfg jsonb := public.retention_config();
+begin
+  if not public.is_admin() then raise exception 'forbidden' using errcode = 'insufficient_privilege'; end if;
+  return jsonb_build_object(
+    'config', v_cfg,
+    'auto_run', public.retention_scheduled(),
+    'records_total', (select count(*) from public.retention_records),
+    'not_expiring', (select count(*) from public.retention_records where expires_at is null and state <> 'PURGED'),
+    'dated', (select count(*) from public.retention_records where expires_at is not null and state <> 'PURGED'),
+    'expiring_7d', (select count(*) from public.retention_records
+                     where state = 'ACTIVE' and expires_at > now() and expires_at <= now() + interval '7 days'),
+    'expired_waiting', (select count(*) from public.retention_records
+                         where state in ('ACTIVE', 'FAILED', 'PURGING') and expires_at <= now() and not legal_hold),
+    'deleted', (select count(*) from public.retention_records where state = 'PURGED'),
+    'problems', (select count(*) from public.retention_records
+                  where state in ('FAILED', 'DEAD_LETTER') or (state <> 'PURGED' and last_error like 'BLOCKED:%')),
+    'on_hold', (select count(*) from public.retention_records where legal_hold and state <> 'PURGED'),
+    'last_activity', (select max(created_at) from public.retention_events),
+    'last_change', (select jsonb_build_object('at', created_at, 'detail', detail) from public.retention_events
+                     where event = 'CONFIG_CHANGED' order by created_at desc limit 1));
+end $$;
+
+-- THE ONLY way the panel changes retention. Each rule below is a mistake the
+-- owner cannot make by accident from the screen:
+--   * the 30-day rule cannot start in the past, or be moved earlier
+--     (either would expire records retroactively);
+--   * older records can only be given an end date at least 7 days away
+--     (a notice period), never moved earlier, and only once the rule is on;
+--   * deletion cannot be on while the rule is off; switching the rule off
+--     switches deletion off too.
+create or replace function public.retention_admin_configure(p_patch jsonb, p_reason text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  v_old jsonb := public.retention_config();
+  v_new jsonb;
+  k text;
+  v_eff timestamptz;
+  v_old_eff timestamptz := public.retention_cfg_ts(v_old, 'effective_at');
+  v_grace timestamptz;
+  v_old_grace timestamptz := public.retention_cfg_ts(v_old, 'legacy_grace_until');
+begin
+  if not public.is_admin() then raise exception 'forbidden' using errcode = 'insufficient_privilege'; end if;
+  if p_patch is null or jsonb_typeof(p_patch) <> 'object' then raise exception 'RETENTION_BAD_REQUEST'; end if;
+  for k in select jsonb_object_keys(p_patch) loop
+    if k not in ('effective_at', 'legacy_grace_until', 'purge_enabled', 'reminders_enabled', 'knowledge_enabled', 'batch_size', 'auto_run') then
+      raise exception 'RETENTION_UNKNOWN_SETTING' using detail = k;
+    end if;
+    if k in ('purge_enabled', 'reminders_enabled', 'knowledge_enabled', 'auto_run') and jsonb_typeof(p_patch -> k) <> 'boolean' then
+      raise exception 'RETENTION_BAD_REQUEST' using detail = k;
+    end if;
+  end loop;
+
+  v_new := v_old || (p_patch - 'auto_run');
+
+  if p_patch ? 'effective_at' and jsonb_typeof(p_patch -> 'effective_at') <> 'null' then
+    v_eff := public.retention_cfg_ts(p_patch, 'effective_at');
+    if v_eff is null then raise exception 'RETENTION_BAD_REQUEST' using detail = 'effective_at'; end if;
+    if v_eff < now() - interval '1 hour' then raise exception 'RETENTION_START_IN_PAST'; end if;
+    if v_old_eff is not null and v_eff < v_old_eff then raise exception 'RETENTION_START_EARLIER'; end if;
+  end if;
+  v_eff := public.retention_cfg_ts(v_new, 'effective_at');
+
+  if p_patch ? 'legacy_grace_until' and jsonb_typeof(p_patch -> 'legacy_grace_until') <> 'null' then
+    v_grace := public.retention_cfg_ts(p_patch, 'legacy_grace_until');
+    if v_grace is null then raise exception 'RETENTION_BAD_REQUEST' using detail = 'legacy_grace_until'; end if;
+    if v_eff is null then raise exception 'RETENTION_NOT_STARTED'; end if;
+    if v_grace < now() + interval '7 days' then raise exception 'RETENTION_GRACE_TOO_SHORT'; end if;
+    if v_old_grace is not null and v_grace < v_old_grace then raise exception 'RETENTION_GRACE_EARLIER'; end if;
+  end if;
+
+  if v_eff is null then
+    if coalesce((p_patch ->> 'purge_enabled')::boolean, false) then
+      raise exception 'RETENTION_NOT_STARTED';
+    end if;
+    v_new := v_new || '{"purge_enabled": false}'::jsonb;
+  end if;
+
+  if p_patch ? 'batch_size' then
+    if jsonb_typeof(p_patch -> 'batch_size') <> 'number'
+       or (p_patch ->> 'batch_size')::numeric not between 1 and 50 then
+      raise exception 'RETENTION_BAD_REQUEST' using detail = 'batch_size';
+    end if;
+  end if;
+
+  update public.admin_settings set value = v_new where key = 'storage_retention';
+  if not found then raise exception 'RETENTION_NOT_INSTALLED'; end if;
+
+  if p_patch ? 'auto_run' then
+    perform public.retention_set_schedule((p_patch ->> 'auto_run')::boolean);
+  end if;
+
+  insert into public.retention_events (event, detail)
+  values ('CONFIG_CHANGED', jsonb_build_object('by', auth.uid(), 'changed', p_patch,
+          'before', v_old, 'reason', left(p_reason, 200)));
+  return public.retention_admin_status();
+end $$;
+
+-- Lists for the "Needs attention", "On hold" and "Expiring soon" boxes.
+-- Identifiers and states only — never content.
+create or replace function public.retention_admin_records(p_filter text, p_limit integer default 50)
+returns table (id uuid, product text, source_id uuid, owner_user_id uuid, state text,
+               available_at timestamptz, expires_at timestamptz, legal_hold boolean,
+               legal_hold_reason text, attempts integer, last_error text)
+language plpgsql
+stable
+security definer
+set search_path to ''
+as $$
+#variable_conflict use_column
+begin
+  if not public.is_admin() then raise exception 'forbidden' using errcode = 'insufficient_privilege'; end if;
+  return query
+  select r.id, r.product, r.source_id, r.owner_user_id, r.state, r.available_at, r.expires_at,
+         r.legal_hold, r.legal_hold_reason, r.attempts, r.last_error
+    from public.retention_records r
+   where case p_filter
+           when 'PROBLEMS' then r.state in ('FAILED', 'DEAD_LETTER') or (r.state <> 'PURGED' and r.last_error like 'BLOCKED:%')
+           when 'HOLDS' then r.legal_hold and r.state <> 'PURGED'
+           when 'EXPIRING' then r.state = 'ACTIVE' and r.expires_at > now() and r.expires_at <= now() + interval '7 days'
+           else false
+         end
+   order by r.expires_at nulls last
+   limit least(greatest(coalesce(p_limit, 50), 1), 200);
+end $$;
+
+-- Put on hold by what the admin actually has: a report or document id.
+create or replace function public.retention_admin_hold_source(p_source_id uuid, p_hold boolean, p_reason text)
+returns boolean
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  v_id uuid;
+begin
+  if not public.is_admin() then raise exception 'forbidden' using errcode = 'insufficient_privilege'; end if;
+  select id into v_id from public.retention_records where source_id = p_source_id or id = p_source_id limit 1;
+  if v_id is null then raise exception 'RETENTION_NOT_FOUND'; end if;
+  return public.retention_admin_set_hold(v_id, p_hold, p_reason);
+end $$;
+
+/* ------------------------------------------------------------------ *
  * 10. Privileges                                                      *
  * ------------------------------------------------------------------ */
 
@@ -1278,7 +1480,9 @@ begin
     'public.retention_storage_object_exists(text, text)',
     'public.retention_object_outcome(uuid, uuid, uuid, text, text)',
     'public.retention_purge_payload(uuid, uuid)',
-    'public.retention_record_failed(uuid, uuid, text)'
+    'public.retention_record_failed(uuid, uuid, text)',
+    'public.retention_set_schedule(boolean)',
+    'public.retention_scheduled()'
   ] loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
     execute format('grant execute on function %s to service_role', f);
@@ -1287,8 +1491,12 @@ begin
     'public.retention_admin_summary()',
     'public.retention_admin_set_hold(uuid, boolean, text)',
     'public.retention_admin_requeue(uuid)',
-    'public.retention_admin_dry_run(timestamptz, timestamptz)',
-    'public.knowledge_withdraw_observation(bigint, text)'
+    'public.retention_admin_dry_run(timestamptz, timestamptz, timestamptz)',
+    'public.knowledge_withdraw_observation(bigint, text)',
+    'public.retention_admin_status()',
+    'public.retention_admin_configure(jsonb, text)',
+    'public.retention_admin_records(text, integer)',
+    'public.retention_admin_hold_source(uuid, boolean, text)'
   ] loop
     execute format('revoke all on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated, service_role', f);

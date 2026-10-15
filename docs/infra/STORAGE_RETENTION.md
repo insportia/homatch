@@ -229,25 +229,40 @@ needs no Verify pipeline change, only reference scans by the engine):
   referencing `verify_tasks` rows are gone. `verify_tasks` has no retention yet (1.6 MB, a cross-job reuse cache), so
   this waits for a `verify_tasks` policy decision.
 
-## 9. Activation — every step needs explicit owner approval
+## 9. Activation — from Admin → Storage → Data retention
 
-1. Merge the PR. CI deploys `storage-retention` and `storage-sign` (dormant) and the frontend. The panels render
-   nothing until records have dates.
-2. Apply the migration in release order. On apply, nothing is deleted or hidden.
-3. Update the privacy policy and terms (§7).
-4. Schedule the tick, for example every 10 minutes:
-   `net.http_post(.../functions/v1/storage-retention, headers x-cron-token = admin_settings.storage_retention_cron_token, body {"action":"tick"})`.
-   Ticks register only.
-5. Set `storage_retention.effective_at = <activation time>`. New reports then get dates; old ones stay undated.
-   Optionally turn on `reminders_enabled` and `knowledge_enabled`.
-6. Run Admin → Storage → Dry Run, then set `purge_enabled = true` with `batch_size` 5, and verify each batch in
-   `retention_events`.
-7. **Historical data is a separate decision:** a user notice, then `legacy_grace_until` = notice date + grace, then
-   batches.
+Everything is controlled from one panel. Every change goes through `retention_admin_configure`, which refuses unsafe
+combinations on the server and logs who changed what (`retention_events`, `CONFIG_CHANGED`).
+
+| Switch | What it does | Server rule |
+|---|---|---|
+| 30-day rule for new reports | New reports get an end date 30 days after they're ready | Can't start in the past; can't be moved earlier; turning it off also turns deletion off |
+| Reports made before the rule | "Kept with no end date", or an end date you pick | Only when the rule is on; at least 7 days away; can only be moved later |
+| Remind customers | 7-day and 1-day notices through the normal notifications | Needs the rule |
+| Delete expired data | Permanently removes expired reports and files; billing is always kept | Needs the rule; the panel shows the real preview numbers and asks first |
+| Run automatically | Schedules/unschedules the 10-minute job (`homatch-storage-retention`) | Exactly one job; off removes it |
+| Keep anonymous market data | Compact listing-price observations, no personal or address data | — |
+
+The panel also has:
+
+- **Preview what would be deleted:** read-only and uses the current settings.
+- **Run now:** one tick.
+- **Four numbers:** kept with no end date, expiring within 7 days, expired and waiting, deleted.
+- **Needs attention:** with Retry.
+- **Protected (legal hold):** add one by report or document id plus a reason, and release it.
+- **Storage details:** collapsed by default.
+
+Order the owner follows:
+
+1. Merge the PR and apply the migration. Everything is OFF.
+2. Update the privacy policy (§7).
+3. Turn on the 30-day rule.
+4. Optionally turn on reminders and market data.
+5. Use Preview, then turn on "Delete expired data" and "Run automatically".
+6. Older reports, only when ready to give notice: set an end date at least 7 days away.
 
 Rollback:
 
-- `purge_enabled=false` stops all deletion at the next claim.
-- Setting `effective_at=null` stops new dates. Existing dates are immutable by design, so this needs an admin SQL
-  decision.
-- The policies are deny-only and can be dropped without data loss.
+- Turn off "Delete expired data" (stops at the next run), or turn off the rule (also stops deletion).
+- End dates already given are immutable by design.
+- The access policies are deny-only and can be dropped without data loss.

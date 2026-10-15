@@ -16,7 +16,14 @@ test('everything destructive is seeded OFF and nothing is scheduled', () => {
   assert.match(code, /'knowledge_enabled', false/);
   assert.match(code, /'effective_at', null/);
   assert.match(code, /on conflict \(key\) do nothing/, 'an owner-set value is never overwritten by a re-run');
-  assert.ok(!/cron\.schedule/.test(code), 'activation (the cron job) is a separate, approved step');
+  // The cron job exists only inside the admin switch (retention_set_schedule);
+  // applying the migration schedules nothing.
+  const schedFn = code.slice(code.indexOf('function public.retention_set_schedule'), code.indexOf('function public.retention_scheduled'));
+  assert.equal((code.match(/cron\.schedule\(/g) ?? []).length, 1);
+  assert.match(schedFn, /cron\.schedule\(/);
+  const calls = [...code.matchAll(/perform public\.retention_set_schedule\(/g)].map((m) => m.index);
+  const cfg = [code.indexOf('function public.retention_admin_configure'), code.indexOf('function public.retention_admin_records')];
+  assert.ok(calls.length === 1 && calls[0] > cfg[0] && calls[0] < cfg[1], 'only the admin switch can schedule; the migration itself turns nothing on');
 });
 
 test('the claim refuses all work while purge_enabled is false', () => {

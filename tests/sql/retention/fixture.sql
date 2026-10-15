@@ -91,3 +91,11 @@ create table public.storage_objects (id uuid primary key default gen_random_uuid
   object_key text unique not null, byte_size bigint not null default 0, lifecycle text not null default 'ACTIVE',
   source_bucket text, source_path text, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   deleted_at timestamptz);
+
+-- pg_cron stand-in (names and columns the schedule toggle touches).
+create schema cron;
+create table cron.job (jobid bigserial primary key, jobname text unique, schedule text, command text);
+create function cron.schedule(p_name text, p_schedule text, p_command text) returns bigint language sql as $$
+  insert into cron.job (jobname, schedule, command) values (p_name, p_schedule, p_command) returning jobid $$;
+create function cron.unschedule(p_name text) returns boolean language sql as $$
+  delete from cron.job where jobname = p_name returning true $$;

@@ -59,3 +59,20 @@ export function formatBytes(n: number): string {
   const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
 }
+
+/** Server refusal codes the screen explains in words. */
+export const RETENTION_ERRORS = [
+  'RETENTION_START_IN_PAST', 'RETENTION_START_EARLIER', 'RETENTION_NOT_STARTED',
+  'RETENTION_GRACE_TOO_SHORT', 'RETENTION_GRACE_EARLIER', 'RETENTION_NOT_FOUND',
+] as const;
+
+export function retentionErrorCode(message: string | undefined): string {
+  return RETENTION_ERRORS.find((c) => (message ?? '').includes(c)) ?? 'generic';
+}
+
+/** One plain sentence for the state of the whole system. */
+export function retentionMode(s: { config: { effective_at: string | null; purge_enabled: boolean }; auto_run: boolean }): 'OFF' | 'DATING' | 'MANUAL' | 'ON' {
+  if (!s.config.effective_at) return 'OFF';
+  if (!s.config.purge_enabled) return 'DATING';
+  return s.auto_run ? 'ON' : 'MANUAL';
+}

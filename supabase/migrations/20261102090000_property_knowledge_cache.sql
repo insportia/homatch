@@ -3,8 +3,8 @@
 -- One validated extraction per (normalized description hash, schema version).
 -- A repeated description anywhere in any later search costs zero model calls.
 -- Rollback: bump KNOWLEDGE_SCHEMA_VERSION (old rows stop matching) or set
--- invalidated_at. Rows hold no customer data — only public listing text
--- facts — and are service-role only.
+-- invalidated_at. Rows hold facts with short verbatim spans of public listing
+-- text (phone-like digit runs redacted, max 200 chars) and are service-role only.
 
 create table if not exists public.property_knowledge_cache (
   content_hash text not null check (content_hash ~ '^[0-9a-f]{64}$'),

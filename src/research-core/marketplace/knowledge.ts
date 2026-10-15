@@ -51,6 +51,10 @@ export function knowledgeKey(text: string | null | undefined): { contentHash: st
   return { contentHash: sha256Hex(normalized), schemaVersion: KNOWLEDGE_SCHEMA_VERSION };
 }
 
+export const MAX_EVIDENCE_CHARS = 200;
+/** Stored evidence never carries a phone number: listing contact phones are private. */
+export const redactEvidence = (span: string) => span.replace(/\+?\d[\d\s().-]{6,}\d/g, '•••').slice(0, MAX_EVIDENCE_CHARS);
+
 const SELLER_CODES = new Set<DescriptionSignalCode>(['OWNER_CLAIM', 'AGENCY_LANGUAGE']);
 
 export function deterministicExtraction(text: string | null | undefined): KnowledgeExtraction {
@@ -59,7 +63,7 @@ export function deterministicExtraction(text: string | null | undefined): Knowle
     code: s.code,
     value: s.polarity === 'NEGATED' ? 'NO' : 'YES',
     basis: 'EXPLICIT',
-    evidence: s.evidence,
+    evidence: redactEvidence(s.evidence),
     // A negation or a self-declared seller claim is weaker than a plain mention.
     confidence: SELLER_CODES.has(s.code) ? 0.6 : s.polarity === 'NEGATED' ? 0.75 : 0.85,
   }));
@@ -123,9 +127,9 @@ export function validateModelFacts(text: string | null | undefined, raw: unknown
     const f = item as Record<string, unknown>;
     if (typeof f.code !== 'string' || !CODES.has(f.code as DescriptionSignalCode)) continue;
     if (f.value !== 'YES' && f.value !== 'NO') continue;
-    if (typeof f.evidence !== 'string' || f.evidence.trim().length < 3 || !normalized.includes(f.evidence.trim().toLowerCase())) continue;
+    if (typeof f.evidence !== 'string' || f.evidence.trim().length < 3 || f.evidence.length > MAX_EVIDENCE_CHARS || !normalized.includes(f.evidence.trim().toLowerCase())) continue;
     if (typeof f.confidence !== 'number' || !(f.confidence >= 0 && f.confidence <= 1)) continue;
-    accepted.push({ code: f.code as DescriptionSignalCode, value: f.value, basis: f.basis === 'EXPLICIT' ? 'EXPLICIT' : 'INFERRED', evidence: f.evidence.trim(), confidence: Math.min(f.confidence, f.basis === 'EXPLICIT' ? 0.95 : 0.7) });
+    accepted.push({ code: f.code as DescriptionSignalCode, value: f.value, basis: f.basis === 'EXPLICIT' ? 'EXPLICIT' : 'INFERRED', evidence: redactEvidence(f.evidence.trim()), confidence: Math.min(f.confidence, f.basis === 'EXPLICIT' ? 0.95 : 0.7) });
   }
   const byCode = new Map(base.facts.map((f) => [f.code, f]));
   for (const f of accepted) {

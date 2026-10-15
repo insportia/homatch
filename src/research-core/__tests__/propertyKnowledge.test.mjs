@@ -59,3 +59,8 @@ test('untrusted descriptions cannot escape the fence or plant facts without verb
   assert.equal(out.facts.find((f) => f.code === 'VIEW').confidence, 0.7, 'inferred facts are capped below explicit ones');
   assert.equal(out.facts.find((f) => f.code === 'VIEW').basis, 'INFERRED');
 });
+
+test('stored evidence is short and never carries a phone number', () => {
+  const x = deterministicExtraction('Flat with elevator and balcony, call +995 555 12 34 56 now, owner.');
+  for (const f of x.facts) { assert.ok(!/555\s?12/.test(f.evidence), f.evidence); assert.ok(f.evidence.length <= 200); }
+});

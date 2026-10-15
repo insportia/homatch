@@ -38,7 +38,12 @@ async function allowed(url) {
     console.log(`  robots ${u.host}: ${r.status} disallow=${JSON.stringify(dis.slice(0, 25))}`);
   }
   const { dis } = robotsCache.get(u.host);
-  return !dis.some((d) => (u.pathname + u.search).startsWith(d.replace(/\*.*$/, '')));
+  const target = u.pathname + u.search;
+  // RFC 9309: '*' matches any run of characters, '$' anchors the end; rules match from the path start.
+  const rule = (d) => new RegExp('^' + d.replace(/^https?:\/\/[^/]+/, '').replace(/[.+?^{}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\\\$$/, '$'));
+  const hit = dis.find((d) => rule(d).test(target));
+  if (hit) console.log(`  robots rule ${JSON.stringify(hit)} blocks ${target}`);
+  return !hit;
 }
 function structure(page, origin) {
   const b = page.body;
@@ -67,6 +72,25 @@ async function inspect(url) {
   console.log(`  listing-like samples=${JSON.stringify(s.samples)}`);
   for (const [k, n] of s.top) console.log(`    ${String(n).padStart(4)}  ${k}`);
   if (s.next) console.log(`  NEXT_DATA: ${s.next}`);
+  const b = p.body;
+  const ld = [...b.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1].replace(/\s+/g, ' ').slice(0, 900));
+  ld.slice(0, 3).forEach((x, i) => console.log(`  LDJSON[${i}]: ${x}`));
+  const og = [...b.matchAll(/<meta[^>]+property="og:([a-z:_]+)"[^>]+content="([^"]{0,200})"/gi)].map((m) => `${m[1]}=${m[2]}`);
+  console.log(`  OG: ${JSON.stringify(og.slice(0, 8))}`);
+  const text = b.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+  const around = (re, n) => [...text.matchAll(re)].slice(0, n).map((m) => text.slice(Math.max(0, m.index - 50), m.index + m[0].length + 40));
+  console.log(`  PRICE: ${JSON.stringify(around(/[$₾€]\s?[\d,. ]{3,}|[\d,. ]{3,}\s?(?:₾|\$|GEL|USD|ლარი)/g, 5))}`);
+  console.log(`  AREA: ${JSON.stringify(around(/\d+(?:[.,]\d+)?\s?(?:მ²|m²|მ2|m2|კვ\.?\s?მ|sq\.?\s?m)/gi, 4))}`);
+  console.log(`  ROOMS: ${JSON.stringify(around(/\d+\s?(?:ოთახ|საძინებ|room|bed)/gi, 4))}`);
+  const tel = [...b.matchAll(/href="tel:([^"]+)"/g)].length;
+  const phones = (text.match(/(?:\+?995)?\s?5\d{2}[\s-]?\d{2}[\s-]?\d{2}[\s-]?\d{2}/g) ?? []).length;
+  const imgs = [...b.matchAll(/<img[^>]+(?:data-src|src)="([^"]+\.(?:jpe?g|png|webp)[^"]*)"/gi)].map((m) => m[1]);
+  console.log(`  CONTACT: tel-links=${tel} phone-like-in-text=${phones}  IMAGES: ${imgs.length} e.g. ${JSON.stringify(imgs.slice(0, 2))}`);
+  const params = new Map();
+  for (const m of b.matchAll(/href="[^"]*\?([^"#]{3,400})"/g)) for (const kv of m[1].replace(/&amp;/g, '&').split('&')) { const k = kv.split('=')[0]; if (k) params.set(k, (params.get(k) ?? 0) + 1); }
+  console.log(`  QUERY-PARAMS: ${JSON.stringify([...params.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30))}`);
+  const named = [...new Set([...b.matchAll(/<(?:select|input)[^>]+name="([^"]+)"/gi)].map((m) => m[1]))];
+  console.log(`  FIELDS: ${JSON.stringify(named.slice(0, 40))}`);
   return p;
 }
 const only = arg('--portal');

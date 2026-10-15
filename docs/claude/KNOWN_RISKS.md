@@ -106,6 +106,31 @@ with per-language loading named as the follow-up. That follow-up is done:
   Validate job fails, so a failed deploy run can leave a NEW frontend live
   against OLD edge functions. Check both after every main merge.
 
+## Find Property HTML portals (2026-10-15, PR #210)
+
+- Adapters read public HTML that the sites can change at any time. Each parser is
+  pinned by real-page fixtures (`official-worker/test/fixtures/portals/`), and
+  `scripts/portals/live-check.mjs` re-proves them end to end from a network that
+  reaches `.ge` hosts (a GitHub runner; the cloud dev sandbox cannot).
+- Home.ge and Allhome.ge have no usable public search: Home.ge's search pages
+  return an empty body, and Allhome.ge's live under robots-disallowed
+  `/index.php?*`. Both are read from the site's own sitemap, newest id first,
+  with 24 listing pages per index read. The sitemaps are cached for 6 hours in
+  process memory (Home.ge's are about 12 MB each).
+- Price/area filters on Home.ge and Allhome.ge apply only after the listing page
+  is read (shared `contradiction()` in `portals/acquire.mjs`); a narrow budget
+  can therefore yield few results from a large read.
+- Brokeri.ge adds a handful of listings a month; most of its catalogue is older
+  than the platform's 30-day listing-age policy (`freshness.ts`), so most
+  Brokeri results are rejected by the pipeline (correctly). Do not loosen the
+  policy for one source.
+- No portal publishes a contact number on the listing page except Place.ge and
+  Brokeri.ge; Home.ge/Allhome.ge reveal numbers only through a click-through
+  request, which is never automated.
+- Korter.ge is BLOCKED_BY_TERMS (terms §5.3: "You must not use any scraping
+  technology on the Site") and Binebi.ge answers every public page with a
+  Cloudflare challenge. Neither is registered; a test pins that.
+
 ## Find Property → HOMATCH network: native candidate cap (2026-10-15, PR #210)
 
 - A demand-triggered native pass (`supply-matching`, `nativeOnly`) reads at most

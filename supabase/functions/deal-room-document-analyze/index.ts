@@ -45,6 +45,7 @@ import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { crossCheck, toFindingRows } from '../../../src/dealroom/domain/contractCheck.ts';
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
 import { notify } from '../_shared/notify.ts';
+import { retentionBlocked } from '../_shared/retentionGuard.ts';
 import {
   buildAnalysisPrompt,
   parseAnalysis,
@@ -159,6 +160,13 @@ serve(async (req) => {
       .maybeSingle();
     if (docErr) throw docErr;
     if (!doc) return json({ error: 'document not found' }, 404);
+    // Retention (20261102090000): an expired document is never re-analysed —
+    // the worker path reads with the service role, so it asks explicitly.
+    try {
+      if (await retentionBlocked(supabase, 'CONTRACT_DOCUMENT', documentId)) return json({ error: 'document_expired' }, 410);
+    } catch {
+      return json({ error: 'retention_check_unavailable' }, 503);
+    }
     if (!doc.storage_path) return json({ error: 'document has no file' }, 400);
 
     /* ---- PDF and DOCX, by declared type as a first filter ----
@@ -286,7 +294,11 @@ serve(async (req) => {
       .select('id,verify_job_id')
       .eq('id', doc.deal_room_id)
       .maybeSingle();
-    if (room?.verify_job_id) {
+    // An expired Verify report is not carried into a new analysis (retention).
+    const reportExpired = room?.verify_job_id
+      ? await retentionBlocked(supabase, 'VERIFY_REPORT', room.verify_job_id).catch(() => true)
+      : false;
+    if (room?.verify_job_id && !reportExpired) {
       const { data: job } = await supabase
         .from('research_jobs')
         .select('id,result_json')

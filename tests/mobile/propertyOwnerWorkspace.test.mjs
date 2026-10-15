@@ -348,34 +348,3 @@ test('launch: all six languages by default; tap to narrow (e.g. Georgian only); 
     assert.ok(await noOverflow(page), `${lang}@${width}: no horizontal overflow`);
   }
 });
-
-/* Publishing navigation stays distinct from Add Property and URL import. */
-test('portal publishing: desktop/mobile navigation, six locales and authenticated frame transport', opts, async (t) => {
-  const labels = {"en":"Publish on portals","ka":"პორტალებზე გამოქვეყნება","ru":"Публикация на площадках","tr":"İlan sitelerinde yayınla","ar":"النشر على المنصات","he":"פרסום בפלטפורמות"};
-  for (const lang of LOCALES) for (const width of [390, 1440]) {
-    await t.test(lang + ' publishing ' + width, async (tt) => {
-      const { page } = await boot(tt, { route: '/property', lang, width, height: 900, imageWorks: true });
-      const requests = [];
-      await page.route('**/functions/v1/publishing-engine', async route => {
-        if (route.request().method() === 'OPTIONS') return route.fulfill({status:204,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}});
-        const body = route.request().postDataJSON(); requests.push(body.url);
-        const result = body.url === '/portals' ? { portals: [{id:'myhome',name:'MyHome.ge',status:'FIXTURE',capabilities:{fill:true}},{id:'ssge',name:'SS.ge',status:'FIXTURE',capabilities:{fill:true}}] } : body.url === '/listings' ? {listings:[]} : {jobs:[],publications:[]};
-        await route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(result)});
-      });
-      const buttons = page.getByRole('button', {name:labels[lang],exact:true});
-      await buttons.last().waitFor({timeout:20000});
-      assert.equal(await buttons.count(), 2, 'topbar and My Properties both expose publishing');
-      assert.ok(await noOverflow(page), lang + ' publishing labels fit at ' + width);
-      await buttons.first().click(); await page.waitForURL('**/property/publish');
-      const frame = page.frameLocator('iframe');
-      await frame.locator('#status').filter({hasText:'WORKSPACE_READY'}).waitFor({timeout:20000});
-      assert.equal(await page.locator('iframe').getAttribute('title'),labels[lang]);
-      assert.ok(requests.includes('/portals') && requests.includes('/listings') && requests.includes('/jobs'));
-      assert.equal(await frame.locator('[value=myhome]').count(),1);assert.equal(await frame.locator('[value=ssge]').count(),1);
-      assert.equal(await frame.locator('#publish').isDisabled(),true);
-      await page.goto(BASE + '/property');
-      await page.getByRole('button',{name:labels[lang],exact:true}).last().click();await page.waitForURL('**/property/publish');
-      assert.ok(await noOverflow(page));
-    });
-  }
-});

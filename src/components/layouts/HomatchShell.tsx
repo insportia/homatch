@@ -133,6 +133,25 @@ export const NAV: NavGroup[] = [
        */
       { key: 'nav_owner_workspace', path: '/property', glyph: 'properties' },
       /*
+       * THE BROKER DIRECTORY, previously reachable only through the public
+       * site. It is a working tool — find a professional for your market and
+       * language — and a signed-in customer had no way to discover it existed.
+       * This is /brokers the directory, not /partners the marketing page,
+       * which stays public-only (see ALSO GONE above).
+       */
+      { key: 'pub_nav_brokers', path: '/brokers', glyph: 'brokers' },
+      /* THE BROKER DESK: a professional's profile, verification, leads and
+         client searches. Only a broker or agency account sees it. */
+      { key: 'nav_broker_desk', path: '/broker', glyph: 'brokers', professional: true },
+      /*
+       * PUBLISH TO PORTALS, between Broker and Find Property, by the owner's
+       * instruction (2026-10-15). It had been a TOP-BAR button and a button in the
+       * My Properties header pointing at an iframe; neither is a product area, and
+       * the sidebar never listed it. One destination now, here, and nowhere in the
+       * top bar.
+       */
+      { key: 'nav_publishing', path: '/publishing', glyph: 'publishing' },
+      /*
        * FIND PROPERTY: the other journey, and deliberately not this one.
        *
        * I HAVE A PROPERTY -> the workspace above. I NEED A PROPERTY -> here. It pointed
@@ -148,17 +167,6 @@ export const NAV: NavGroup[] = [
        * which is what a bare magnifier is for.
        */
       { key: 'dnav_find_property', path: '/find-property', glyph: 'find_property' },
-      /*
-       * THE BROKER DIRECTORY, previously reachable only through the public
-       * site. It is a working tool — find a professional for your market and
-       * language — and a signed-in customer had no way to discover it existed.
-       * This is /brokers the directory, not /partners the marketing page,
-       * which stays public-only (see ALSO GONE above).
-       */
-      { key: 'pub_nav_brokers', path: '/brokers', glyph: 'brokers' },
-      /* THE BROKER DESK: a professional's profile, verification, leads and
-         client searches. Only a broker or agency account sees it. */
-      { key: 'nav_broker_desk', path: '/broker', glyph: 'brokers', professional: true },
     ],
   },
   /*
@@ -575,8 +583,6 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                 />
               </button>
 
-              <Button variant="ghost" className="hidden h-10 gap-2 rounded-full border border-white/30 bg-[#202936] text-white hover:bg-[#303b4b] hover:text-white sm:inline-flex" onClick={() => navigate('/property/publish')} aria-label={t('publishing_portals_title')}><span aria-hidden="true">↗</span><span className="hidden max-w-[10rem] truncate md:inline">{t('publishing_portals_title')}</span></Button>
-              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full border border-white/30 bg-[#202936] text-white hover:bg-[#303b4b] hover:text-white sm:hidden" onClick={() => navigate('/property/publish')} aria-label={t('publishing_portals_title')}><span aria-hidden="true">↗</span></Button>
               <Button className="hidden h-10 gap-2 rounded-full bg-[hsl(38_92%_54%)] px-4 text-sm font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] sm:inline-flex" onClick={() => navigate('/property/add')}>
                 <span className="text-base leading-none" aria-hidden="true">+</span>
                 <span className="hidden md:inline">{t('nav_add_property')}</span>

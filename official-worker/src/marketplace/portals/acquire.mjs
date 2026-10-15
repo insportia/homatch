@@ -54,6 +54,9 @@ export function toCandidate(adapter, fields, request, page, searchUrl) {
   return c;
 }
 
+/** Detail fields replace list fields only where the detail page actually said something. */
+const defined = (o) => Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined && v !== null && !(Array.isArray(v) && !v.length)));
+
 export async function acquirePortal(adapter, request, { deadlineAt, signal, report, fetcher = fetch, sleep = (ms) => delay(ms, undefined, { signal }), now = Date.now } = {}) {
   const started = now(), deadline = Date.parse(deadlineAt);
   let pagesVisited = 0, actions = 0, bytes = 0, discovered = 0, delivered = 0, rejected = 0;
@@ -102,7 +105,7 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
       for (const item of fresh.slice(0, adapter.detailLimit ?? fresh.length)) {
         let fields = { ...item };
         if (adapter.parseDetail) {
-          try { await sleep(adapter.detailIntervalMs ?? 800); fields = { ...fields, ...adapter.parseDetail(await get(item.url), item.url), detailRead: true }; }
+          try { await sleep(adapter.detailIntervalMs ?? 800); fields = { ...fields, ...defined(adapter.parseDetail(await get(item.url), item.url)), detailRead: true }; }
           catch (error) { if (['BLOCKED', 'DEADLINE'].includes(error.code) || signal?.aborted) throw error; rejected++; continue; }
         }
         if (!fields.title && fields.price == null) { rejected++; continue; }

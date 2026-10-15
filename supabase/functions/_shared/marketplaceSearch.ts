@@ -127,7 +127,6 @@ export const PORTAL_WORKER_SWITCHES: Readonly<Record<string, string>> = {
   'brokeri-agent': 'marketplace_brokeri_enabled',
   'korter-agent': 'marketplace_korter_enabled',
   'allhome-agent': 'marketplace_allhome_enabled',
-  'binebi-agent': 'marketplace_binebi_enabled',
 };
 
 export type MarketplaceSwitches = { enabled: boolean; providersKilled: boolean; myhomeEnabled: boolean; ssgeEnabled: boolean; portals: Record<string, boolean> };
@@ -332,12 +331,12 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
 export const CACHE_FALLBACK: Record<string, string> = {
   'myhome-agent': 'myhome-ge', 'ssge-agent': 'ss-ge',
   'placege-agent': 'place-ge', 'homege-agent': 'home-ge', 'brokeri-agent': 'brokeri-ge',
-  'korter-agent': 'korter-ge', 'allhome-agent': 'allhome-ge', 'binebi-agent': 'binebi-ge',
+  'korter-agent': 'korter-ge', 'allhome-agent': 'allhome-ge',
 };
 /** What the customer reads as the source of a worker's listings. */
 export const WORKER_SOURCE_NAMES: Record<string, string> = {
   'myhome-agent': 'MyHome', 'ssge-agent': 'SS.ge', 'placege-agent': 'Place.ge', 'homege-agent': 'Home.ge',
-  'brokeri-agent': 'Brokeri.ge', 'korter-agent': 'Korter.ge', 'allhome-agent': 'Allhome.ge', 'binebi-agent': 'Binebi.ge',
+  'brokeri-agent': 'Brokeri.ge', 'korter-agent': 'Korter.ge', 'allhome-agent': 'Allhome.ge',
 };
 /** Only listings their source confirmed within this window are served from the
  * pool: an older observation may already be sold, expired or deleted. */

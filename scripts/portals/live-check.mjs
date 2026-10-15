@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-/* TEMPORARY live end-to-end check (PR #210): every portal adapter, real public pages,
- * the production acquisition loop, every report through the platform's own contract
- * validator. Read-only; robots.txt honoured by the loop; nothing is written anywhere. */
+/* Live end-to-end check for the Find Property HTML portals: every adapter in
+ * PORTAL_ADAPTERS, real public pages, the production acquisition loop, every report
+ * through the platform's own contract validator. Read-only; robots.txt honoured by
+ * the loop; nothing is written anywhere. Needs a network that reaches the .ge sites
+ * (a GitHub runner does; the cloud dev sandbox does not).
+ *   node scripts/portals/live-check.mjs     → one LIVECHECK JSON line per portal × case */
 import { acquirePortal } from '../../official-worker/src/marketplace/portals/acquire.mjs';
 import { PORTAL_ADAPTERS } from '../../official-worker/src/marketplace/portals/adapters.mjs';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';

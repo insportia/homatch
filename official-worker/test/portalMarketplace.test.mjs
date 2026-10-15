@@ -1,4 +1,4 @@
-// Find Property HTML portals (place.ge, home.ge, brokeri.ge) against pages the sites
+// Find Property HTML portals (place.ge, home.ge, brokeri.ge, allhome.ge) against pages the sites
 // actually served on 2026-10-15 (test/fixtures/portals/*.html.gz, unmodified), through
 // the shared acquisition loop, with every report checked by the platform's own
 // worker-contract validator.
@@ -12,6 +12,7 @@ import { PORTAL_ADAPTERS } from '../src/marketplace/portals/adapters.mjs';
 import { placege } from '../src/marketplace/portals/adapters/placege.mjs';
 import { brokeri } from '../src/marketplace/portals/adapters/brokeri.mjs';
 import { homege } from '../src/marketplace/portals/adapters/homege.mjs';
+import { allhome } from '../src/marketplace/portals/adapters/allhome.mjs';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { loadMarketplaceSwitches, workerSwitchOn } from '../../supabase/functions/_shared/marketplaceSearch.ts';
 
@@ -176,4 +177,33 @@ test('registry: korter.ge (terms forbid scraping) and binebi.ge (challenge) are 
   assert.ok(!ids.includes('korter-ge') && !ids.includes('binebi-ge'));
   const sql = readFileSync(new URL('../../supabase/migrations/20261103100000_find_property_portal_workers.sql', import.meta.url), 'utf8').replace(/--.*$/gm, '');
   assert.doesNotMatch(sql, /korter|binebi/i);
+});
+
+const ALLHOME_ROBOTS = 'User-agent: *\nAllow: /\nDisallow: /index.php?*\nDisallow: /admin/*\nDisallow: /ajax/*\nDisallow: /uploads/*\nDisallow: /*send*\nDisallow: /*login*\n';
+test('allhome.ge: its sitemap → newest flats for sale, each read from its own page; never an index.php URL', async () => {
+  const urls = [], reports = [];
+  const fetcher = async (url) => { urls.push(String(url)); const u = new URL(url); if (u.pathname === '/robots.txt') return new Response(ALLHOME_ROBOTS);
+    return new Response(u.pathname.startsWith('/sitemaps/') ? page('allhome-sitemap') : page('allhome-detail')); };
+  const outcome = await acquirePortal(allhome, request({ priceMaxUsd: 250000, collectPriceMaxUsd: 275000 }), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
+  const listings = reports.flatMap((r) => r.listings);
+  assert.equal(outcome.status, 'COMPLETE');
+  assert.equal(listings.length, allhome.detailLimit);
+  for (const r of reports) { const v = validateWorkerReport(r, 'allhome-ge'); assert.ok(v.ok, v.reason); assert.equal(v.report.listings.length, r.listings.length); }
+  assert.equal(listings[0].sourceListingId, '166588', 'newest id first');
+  assert.ok(listings.every((l) => /^https:\/\/www\.allhome\.ge\/binebis-(kidva-gakidva|yidva-gayidva)-\d+-10\.html$/.test(l.exactUrl)));
+  const rules = robotsRules(ALLHOME_ROBOTS);
+  assert.ok(urls.every((u) => u.endsWith('/robots.txt') || robotsAllows(rules, u)) && urls.every((u) => !u.includes('index.php')));
+  const l = listings[0];
+  assert.deepEqual({ price: l.price, currency: l.currency, area: l.areaSqm, rooms: l.rooms, floor: l.floor, of: l.totalFloors, city: l.city, district: l.district, building: l.buildingStatus, renovation: l.renovationStatus, published: l.publishedAt, phone: l.seller.publicPhone },
+    { price: 94000, currency: 'USD', area: 58, rooms: 2, floor: 10, of: 15, city: 'თბილისი', district: 'ვაშლიჯვარი', building: 'NEW_BUILD', renovation: 'RENOVATED', published: '2026-10-15T00:00:00.000Z', phone: null });
+  assert.equal(l.images.length, 5);
+});
+
+test('allhome.ge: a listing outside the requested city is dropped after reading (the slug does not state it)', async () => {
+  const reports = [];
+  const fetcher = async (url) => { const u = new URL(url); if (u.pathname === '/robots.txt') return new Response(ALLHOME_ROBOTS); return new Response(u.pathname.startsWith('/sitemaps/') ? page('allhome-sitemap') : page('allhome-detail')); };
+  await acquirePortal(allhome, request({ city: 'Batumi' }), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
+  assert.equal(reports.flatMap((r) => r.listings).length, 0);
+  assert.equal(reports.at(-1).queryApplied.filteredAfterRead, String(allhome.detailLimit));
+  assert.throws(() => allhome.criteria(request({ propertyType: 'LAND' })), /flats/);
 });

@@ -16,16 +16,16 @@ insert into public.discovery_marketplace_workers (
 ) values
   ('placege-agent', 'place-ge', 'Place.ge', 'MARKETPLACE', 'HTTP',
    array['GE','Georgia'], array['ka'], array['APARTMENT','HOUSE','LAND','COMMERCIAL'],
-   array['BUY','MONTHLY_RENT','DAILY_RENT'], array['PRICE','AREA','ROOMS'], 600000, 120, 1, 'PROVEN', false),
+   array['BUY','MONTHLY_RENT'], array['PRICE','AREA','ROOMS'], 600000, 120, 1, 'PROVEN', false),
   ('homege-agent', 'home-ge', 'Home.ge', 'MARKETPLACE', 'HTTP',
    array['GE','Georgia'], array['ka'], array['APARTMENT','HOUSE','LAND','COMMERCIAL'],
-   array['BUY','MONTHLY_RENT','DAILY_RENT'], array[]::text[], 600000, 120, 1, 'PROVEN', false),
+   array['BUY','MONTHLY_RENT','DAILY_RENT'], array['ROOMS'], 600000, 120, 1, 'PROVEN', false),
   ('brokeri-agent', 'brokeri-ge', 'Brokeri.ge', 'AGENCY', 'HTTP',
    array['GE','Georgia'], array['ka'], array['APARTMENT','HOUSE','LAND','COMMERCIAL'],
    array['BUY','MONTHLY_RENT'], array['PRICE','AREA','ROOMS'], 600000, 120, 1, 'PROVEN', false),
   ('allhome-agent', 'allhome-ge', 'Allhome.ge', 'MARKETPLACE', 'HTTP',
-   array['GE','Georgia'], array['ka'], array['APARTMENT','HOUSE','LAND','COMMERCIAL'],
-   array['BUY','MONTHLY_RENT','DAILY_RENT'], array[]::text[], 600000, 120, 1, 'PROVEN', false)
+   array['GE','Georgia'], array['ka'], array['APARTMENT'],
+   array['BUY','MONTHLY_RENT'], array[]::text[], 600000, 120, 1, 'PROVEN', false)
 on conflict (worker_id) do nothing;
 
 insert into public.admin_settings (key, value, description) values

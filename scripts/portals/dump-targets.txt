@@ -1,3 +1,0 @@
-allhome-sitemap https://www.allhome.ge/sitemaps/defs_sitemap_ge.xml RAW
-allhome-sale LASTLOC:https://www.allhome.ge/sitemaps/defs_sitemap_ge.xml|binebis-kidva-gakidva- RAW
-allhome-rent LASTLOC:https://www.allhome.ge/sitemaps/defs_sitemap_ge.xml|qiravdeba-bina- RAW

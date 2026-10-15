@@ -14,7 +14,8 @@
  * Run from a network that can reach .ge hosts (the Claude cloud session
  * cannot). Spends nothing.
  */
-const PORTALS = ['www.myhome.ge', 'home.ss.ge', 'www.place.ge', 'home.ge', 'brokeri.ge', 'binebi.ge', 'korter.ge', 'allhome.ge'];
+// korter.ge is not probed: its terms of service forbid scraping (BLOCKED_BY_TERMS).
+const PORTALS = ['www.myhome.ge', 'home.ss.ge', 'www.place.ge', 'home.ge', 'brokeri.ge', 'binebi.ge', 'allhome.ge'];
 const UA = 'HOMATCH-portal-probe/1.0 (+https://homatch.live; read-only discovery)';
 const TIMEOUT_MS = 15000;
 

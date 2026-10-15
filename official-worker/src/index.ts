@@ -100,7 +100,7 @@ const myhome = startMyHomeRuntime();
 const ssge = startSsgeRuntime();
 process.once('SIGTERM', () => ssge.shutdown());
 app.get('/health/ssge', auth, (_q: any, r: any) => r.json(ssge.status()));
-// Find Property HTML portals (place.ge, home.ge, brokeri.ge, korter.ge, allhome.ge):
+// Find Property HTML portals (place.ge, home.ge, brokeri.ge, allhome.ge):
 // one runtime each on this worker; each idles until its own enable flag and token are set.
 const portals = PORTAL_ADAPTERS.map((adapter: any) => startPortalRuntime(adapter));
 process.once('SIGTERM', () => portals.forEach((p: any) => p.shutdown()));

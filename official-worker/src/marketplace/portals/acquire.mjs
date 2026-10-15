@@ -2,7 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 /*
  * Shared acquisition for the HTML portals (place.ge, home.ge, brokeri.ge,
- * binebi.ge, korter.ge, allhome.ge). Each adapter supplies only:
+ * allhome.ge). Each adapter supplies only:
  *   criteria(request)             → source query, or throws { code: 'UNSUPPORTED_REQUEST' }
  *   searchUrl(criteria, page)     → public search-results URL for that page
  *   parseList(html, url)          → [{ sourceListingId, url, ...partial fields }]

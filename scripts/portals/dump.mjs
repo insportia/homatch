@@ -44,7 +44,11 @@ for (const line of lines) {
   if (parser === 'STRIP') { const t = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>|<!--[\s\S]*?-->/gi, '').replace(/\s+/g, ' ');
     const at = Math.max(0, t.indexOf('<body')); console.log(`STRIPHEAD ${name} status=${res.status} final=${res.url} bytes=${html.length} ld=${(html.match(/ld\+json/g) ?? []).length} tel=${JSON.stringify([...new Set(html.match(/tel:[^"']+/g) ?? [])].slice(0, 5))}`);
     console.log(`HEADMETA ${name} ${(t.match(/<meta[^>]+>/g) ?? []).join(' ').slice(0, 3000)}`);
-    for (let i = 0; i < Math.min(t.length - at, 30000); i += 3000) console.log(`STRIP ${name} ${t.slice(at + i, at + i + 3000)}`);
+    const id = (res.url.match(/-(\d{5,})-\d+\.html/) ?? [])[1];
+    const hits = id ? [...t.matchAll(new RegExp(id, 'g'))].map((m) => m.index) : [];
+    console.log(`IDHITS ${name} id=${id} at=${JSON.stringify(hits)} len=${t.length}`);
+    let last = -1e9; for (const h of hits) { if (h - last < 3000) continue; last = h; console.log(`WIN ${name} ${h} ${t.slice(Math.max(0, h - 1500), h + 4500)}`); }
+    for (const kw of ['ფასი', '$', '₾', 'კვ.მ', 'სართული', 'ოთახ']) { const k = t.indexOf(kw, 40000); if (k > 0) console.log(`KW ${name} ${kw} ${k} ${t.slice(Math.max(0, k - 600), k + 900)}`); }
     continue; }
   const b64 = gzipSync(Buffer.from(html)).toString('base64');
   console.log(`DUMPHEAD ${name} status=${res.status} final=${res.url} bytes=${html.length} chunks=${Math.ceil(b64.length / 6000)}`);

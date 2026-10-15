@@ -1,4 +1,4 @@
-// Find Property HTML portals (place.ge, korter.ge, brokeri.ge) against pages the sites
+// Find Property HTML portals (place.ge, home.ge, brokeri.ge) against pages the sites
 // actually served on 2026-10-15 (test/fixtures/portals/*.html.gz, unmodified), through
 // the shared acquisition loop, with every report checked by the platform's own
 // worker-contract validator.
@@ -10,7 +10,6 @@ import { acquirePortal, contradiction, robotsRules, robotsAllows } from '../src/
 import { startPortalRuntime } from '../src/marketplace/portals/runtime.mjs';
 import { PORTAL_ADAPTERS } from '../src/marketplace/portals/adapters.mjs';
 import { placege } from '../src/marketplace/portals/adapters/placege.mjs';
-import { korter } from '../src/marketplace/portals/adapters/korter.mjs';
 import { brokeri } from '../src/marketplace/portals/adapters/brokeri.mjs';
 import { homege } from '../src/marketplace/portals/adapters/homege.mjs';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
@@ -19,7 +18,6 @@ import { loadMarketplaceSwitches, workerSwitchOn } from '../../supabase/function
 const page = (name) => gunzipSync(readFileSync(new URL(`fixtures/portals/${name}.html.gz`, import.meta.url))).toString('utf8');
 const ROBOTS = {
   'place.ge': 'User-agent: *\nDisallow: /admin*\n',
-  'korter.ge': 'User-agent: *\nDisallow: /redirect\nDisallow: /building/geo\nDisallow: /api/\nDisallow: /pyapi/\nDisallow: /node-api/\n',
   'brokeri.ge': 'User-agent: *\nDisallow:\n',
   'home.ge': 'User-agent: Yandex\nDisallow: /\n\nUser-Agent: *\nAllow: /\nDisallow: /plugins/\nDisallow: /*?sort_by=\nDisallow: /*listing-details.html*\nDisallow: /*print.html*\n',
 };
@@ -45,7 +43,7 @@ async function run(adapter, list, detail, over = {}, opts = {}) {
   return { outcome, reports, urls: s.urls };
 }
 
-for (const [adapter, list, detail, expected] of [[placege, 'place-list', 'place-detail', 16], [korter, 'korter-list', 'korter-detail', 20], [brokeri, 'brokeri-list', 'brokeri-detail', 13]]) {
+for (const [adapter, list, detail, expected] of [[placege, 'place-list', 'place-detail', 16], [brokeri, 'brokeri-list', 'brokeri-detail', 13]]) {
   test(`${adapter.sourceName}: real search page → contract-valid listings, pages capped at 2, robots honoured`, async () => {
     const { outcome, reports, urls } = await run(adapter, page(list), page(detail));
     const listings = reports.flatMap((r) => r.listings);
@@ -87,15 +85,6 @@ test('place.ge: card facts read exactly as the page states them', () => {
   assert.equal(d.buildingStatus, 'NEW_BUILD');
 });
 
-test('korter.ge: results read from the page\'s own state; no phone is claimed', () => {
-  const rows = korter.parseList(page('korter-list'));
-  assert.equal(rows[0].sourceListingId, '964832');
-  assert.equal(rows[0].price, 100000); assert.equal(rows[0].currency, 'USD'); assert.equal(rows[0].areaSqm, 49); assert.equal(rows[0].district, 'გლდანი');
-  assert.ok(rows.every((r) => r.seller.publicPhone === null));
-  const d = korter.parseDetail(page('korter-detail'));
-  assert.equal(d.bedrooms, 3); assert.equal(d.bathrooms, 2); assert.equal(d.images.length, 11);
-});
-
 test('brokeri.ge: structured card cells and the agent number published on the listing', () => {
   const v = brokeri.parseList(page('brokeri-list'), 'https://brokeri.ge/property-search').find((i) => i.sourceListingId === '4931');
   assert.deepEqual({ area: v.areaSqm, floor: v.floor, of: v.totalFloors, rooms: v.rooms, bedrooms: v.bedrooms, city: v.city, district: v.district, price: v.price },
@@ -105,8 +94,8 @@ test('brokeri.ge: structured card cells and the agent number published on the li
 });
 
 test('unsupported requests are refused up front, not searched loosely', async () => {
-  for (const adapter of [placege, korter]) {
-    const { outcome, urls } = await run(adapter, '', '', { city: 'Kutaisi' });
+  for (const adapter of [placege, homege]) {
+    const { outcome, urls } = await run(adapter, '', '', { city: 'Telavi' });
     assert.equal(outcome.code, 'UNSUPPORTED_REQUEST');
     assert.equal(urls.length, 0);
   }
@@ -129,7 +118,8 @@ test('switches: each portal has its own default-off switch; MyHome and SS.ge rul
   assert.equal(workerSwitchOn(s, 'myhome-agent'), true);
   assert.equal(workerSwitchOn(s, 'ssge-agent'), false);
   assert.equal(workerSwitchOn(s, 'placege-agent'), true);
-  assert.equal(workerSwitchOn(s, 'korter-agent'), false, 'unset is off');
+  assert.equal(workerSwitchOn(s, 'homege-agent'), false, 'unset is off');
+  assert.equal(workerSwitchOn(s, 'korter-agent'), false, 'korter.ge is not a Find Property worker (terms forbid scraping)');
   assert.equal(workerSwitchOn(s, 'some-other-agent'), false, 'everything else stays under the global kill switch');
 });
 
@@ -179,4 +169,11 @@ test('shared loop: a listing is dropped only when its own stated deal, USD price
   assert.equal(contradiction({ areaSqm: 30 }, req), 'area');
   assert.equal(contradiction({ transactionType: 'MONTHLY_RENT' }, req), 'deal');
   assert.equal(contradiction({}, req), null, 'unknown values never exclude');
+});
+
+test('registry: korter.ge (terms forbid scraping) and binebi.ge (challenge) are not portal workers', () => {
+  const ids = PORTAL_ADAPTERS.map((a) => a.sourceId);
+  assert.ok(!ids.includes('korter-ge') && !ids.includes('binebi-ge'));
+  const sql = readFileSync(new URL('../../supabase/migrations/20261103100000_find_property_portal_workers.sql', import.meta.url), 'utf8').replace(/--.*$/gm, '');
+  assert.doesNotMatch(sql, /korter|binebi/i);
 });

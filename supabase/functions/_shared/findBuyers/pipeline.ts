@@ -27,6 +27,7 @@ import { cityMentioned, mentionsPlace } from '../../../../src/research-core/find
 import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-core/findBuyers/freshness.ts';
 import { dateProvenance, emptyDispositions, freshnessBucket, hardGate, publicIntent, type DispositionCounts } from '../../../../src/research-core/findBuyers/demandTaxonomy.ts';
 import { classifyDemand, classifyComment, boundModelReading, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
+import { classifyBuyerIntent } from '../../../../src/research-core/findBuyers/buyerIntent.ts';
 import { qualify, legacyIntentClass, QUALIFICATION_VERSION, type Qualification } from '../../../../src/research-core/findBuyers/qualify.ts';
 import { duplicateKey } from '../../../../src/research-core/findBuyers/requalify.ts';
 import { sourceRelevance } from '../../../../src/research-core/findBuyers/sourceRelevance.ts';
@@ -54,6 +55,8 @@ export interface ParentContext {
   ageDays: number | null;
   /** The parent's own date: bounds the age of an undated comment under it. */
   publishedAt?: string | null;
+  /** Total comments the platform reported for this post (null = not reported). */
+  commentCount?: number | null;
 }
 
 export interface FollowUp {
@@ -183,6 +186,8 @@ async function processGroups(ctx: PipelineCtx, groups: NormalizedItem[], out: Pi
 /* ── posts / comments ──────────────────────────────────────────────────── */
 
 interface Assessed {
+  /** Comments of the parent post read in this run (null for posts). */
+  parentAnalyzed?: number | null;
   item: NormalizedItem;
   signalId: string;
   facts: TextFacts;
@@ -314,6 +319,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       postCtx.set(item.externalId, {
         externalId: item.externalId, url: item.url, signalId, similarity, stance: facts.stance, role: reading.role,
         excerpt: clip(item.text, 300), facts, ageDays, publishedAt: item.publishedAt,
+        commentCount: Number.isFinite(item.engagement?.comments) ? Number(item.engagement.comments) : null,
       });
     }
     const verdict: IntentVerdict | null = null;
@@ -354,13 +360,18 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     });
   }
 
+  /* Comments of each parent post read in this run (the post-opportunity "analyzed" count). */
+  const analyzedByParent = new Map<string, number>();
+  for (const a of assessed) if (a.item.kind === 'COMMENT' && a.parent?.externalId) analyzedByParent.set(a.parent.externalId, (analyzedByParent.get(a.parent.externalId) ?? 0) + 1);
+  for (const a of assessed) a.parentAnalyzed = a.parent?.externalId ? analyzedByParent.get(a.parent.externalId) ?? null : null;
+
   /* Qualification: one explicit decision per candidate. The same words from
      the same author, or the same post URL, count once per campaign. */
   const { data: priorLeads } = await db.from('find_buyers_leads').select('qualification').eq('matching_job_id', campaign.matching_job_id).limit(2000);
   const seenKeys = new Set<string>(((priorLeads ?? []) as any[]).flatMap((r) => (Array.isArray(r.qualification?.dupKeys) ? r.qualification.dupKeys : [])));
   for (const a of assessed) {
     const duplicate = a.dupKeys.some((k) => seenKeys.has(k));
-    a.qualification = qualify(a.reading, campaign.dna, { ageDays: a.ageDays, duplicate, fx: ctx.fx });
+    a.qualification = gateIntent(a, qualify(a.reading, campaign.dna, { ageDays: a.ageDays, duplicate, fx: ctx.fx }), campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER');
     if (a.qualification.category !== 'REJECTED') a.dupKeys.forEach((k) => seenKeys.add(k));
     const counterpart = campaign.transaction === 'RENT' ? 'TENANT' : 'BUYER';
     const intentClass = legacyIntentClass(a.qualification, counterpart) as IntentVerdict['intentClass'];
@@ -447,12 +458,38 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       continue;
     }
     const res = await upsertLead(ctx, a);
+    /* An interest signal (a question under a comparable listing) is stored and shown on its
+       own, never counted as a qualified buyer. */
+    if (q.resultType === 'INTEREST' && res !== 'DUPLICATE') { out.weak++; out.dispositions.BELOW_THRESHOLD++; continue; }
     if (res === 'STRONG') { out.qualified++; out.strong++; out.dispositions.QUALIFIED++; }
     else if (res === 'QUALIFIED') { out.qualified++; out.dispositions.QUALIFIED++; }
     else if (res === 'WEAK') { out.weak++; out.dispositions.BELOW_THRESHOLD++; }
     else if (res === 'DUPLICATE') { out.duplicates++; out.dispositions.DUPLICATE++; }
     else out.dispositions.BELOW_THRESHOLD++;
   }
+}
+
+/**
+ * The buyer intent gate (Find Buyers 3.0), after qualification and before any lead is
+ * written: no buyer/tenant intent → REJECTED (INTENT_EXCLUDED), whatever the score; a
+ * meaningful question under a comparable listing → an INTEREST signal (kept, at most
+ * POTENTIAL, never counted as qualified). Exported for tests.
+ */
+export function gateIntent(a: Pick<Assessed, 'item' | 'ctx' | 'parent' | 'similarity' | 'reading'>, q: Qualification, listingRole: DemandRole): Qualification {
+  const parentRole = a.parent ? (a.parent.role ?? (a.parent.stance === 'OFFER' ? listingRole : null)) : null;
+  const intent = classifyBuyerIntent({ text: a.item.text, kind: a.ctx.kind, parent: a.parent ? { role: parentRole, similarity: a.similarity } : null, reading: a.reading });
+  const tagged = { ...q, intent: intent.intent, resultType: intent.resultType, signals: intent.signals };
+  if (intent.resultType === 'EXCLUDED') {
+    return q.category === 'REJECTED' ? tagged : { ...tagged, category: 'REJECTED', reasons: [...q.reasons, 'INTENT_EXCLUDED'] };
+  }
+  if (intent.resultType === 'INTEREST') {
+    /* A bare question ("price?") is undecided for the classifier; as interest it is kept —
+       but never above POTENTIAL, and never for a stale, duplicate or other-market comment. */
+    const onlyUnclear = q.category === 'REJECTED' && q.reasons.every((r) => r === 'UNCLEAR_INTENT');
+    const category = onlyUnclear ? 'WEAK' : q.category === 'STRONG' ? 'POTENTIAL' : q.category;
+    return { ...tagged, category, reasons: onlyUnclear ? [] : q.reasons };
+  }
+  return tagged;
 }
 
 /** The one disposition a rejected candidate counts under (funnel totals). */
@@ -550,6 +587,14 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
        parent post's publication date, never on the time it was observed. */
     language: a.language, publishedAt: a.item.publishedAt ?? (a.item.kind === 'COMMENT' ? a.parent?.publishedAt ?? null : null),
     explanation: JSON.stringify(a.why),
+    ...(a.item.kind === 'COMMENT' && a.parent ? {
+      parentCommentCount: a.parent.commentCount ?? null,
+      parentAnalyzed: a.parentAnalyzed ?? null,
+      parentPublishedAt: a.parent.publishedAt ?? null,
+      parentFacts: a.parent.facts ? { price: a.parent.facts.price, currency: a.parent.facts.currency, areaSqm: a.parent.facts.areaSqm, bedrooms: a.parent.facts.bedrooms, district: a.parent.facts.district } : null,
+    } : {}),
+    intent: a.qualification?.intent ?? null,
+    signals: a.qualification?.signals ?? [],
   };
   const { data: existing } = await db.from('find_buyers_leads').select('id,evidence,match_category,qualification,overall_score').eq('matching_job_id', campaign.matching_job_id).eq('person_id', person.id).maybeSingle();
   const prior: LeadSignal[] = Array.isArray(existing?.evidence) ? existing.evidence : [];

@@ -15,6 +15,28 @@ MATTERS right now, verify against the live systems, not this file)
   files may differ from main only by those exact lines (`tests/matrix/retentionSafety.test.mjs`).
 - Privacy policy `privacy_s6_body` must gain the 30-day report deletion sentence before `effective_at` is set.
 
+## Find Buyers 2.0 — one dashboard, two campaigns, per-search results (branch claude/nifty-hopper-snzn2d, 2026-10-15) — PR, NOT DEPLOYED
+
+- **Invisible-results root cause (campaign d8b69c51)**: its 2 leads (WEAK, 55/47, FACEBOOK) were stored,
+  RLS-visible to the owner (39 current leads for property c5c1a6a4), but the list was one property-wide
+  pool sorted by score, 9/page — the 37 older leads (campaign 70b0d32b, uncategorised) buried them.
+  Fix: `FindBuyersResults` opens on the latest search (`matching_job_id`), with chips for earlier
+  searches and "All"; a failed read shows an error + retry, never "no results"
+  (`src/services/findBuyersLeads.ts`, `src/findBuyers/leadCampaigns.ts`).
+- **Dashboard** (`FindBuyersDashboard`, top of MatchesPage): HOMATCH Match (free; queues
+  `internal_leads_request_matching`, no credits, no Actor; contacts via the existing unlock quote) and
+  External Discovery (paid; its button only opens the existing budget dialog). "Expand search
+  externally" shows when free matching found nobody; it opens the same budget step, never charges.
+  `requestLeadMatching` now throws on an RPC error (was silently swallowed).
+- **FB group batching — evaluated, NOT adopted**: memo23 `apify-facebook-group-scraper` takes
+  `startUrls[]`, but d8b69c51's 16 runs / 15 groups / 320 items cost $0.4805 ≈ 320 × $0.0015 per item;
+  the $0.008 start fee is reserved but barely charged. `maxItems` is total, so batching would let one
+  large group starve the others. Per-group runs kept (no cost benefit, coverage risk).
+- Legacy `getPropertyLeadsPage` in `services/findBuyers.ts` is now unused (left in place: that file
+  reaches the app shell, so editing it plans REPO_FULL). Remove in a later shell-touching release.
+- Not done in this pass: last-matching timestamp on the HOMATCH card (no owner-readable source;
+  native_match_property_queue is not exposed), source memory/caching changes, Admin metrics additions.
+
 ## Find Buyers adaptive search + all property families + photo fixes (branch claude/nifty-hopper-snzn2d, 2026-10-12)
 
 - **Adaptive loop**: `src/research-core/findBuyers/adaptiveLoop.ts` (pure) + `_shared/findBuyers/adaptive.ts`

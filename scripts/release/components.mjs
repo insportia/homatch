@@ -235,6 +235,8 @@ export const DB_OBJECT_OWNERS = [
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
+  // Find Property Knowledge Engine exact cache (service role only).
+  [/^public\.property_knowledge_/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],
   // HOMATCH Internal Matches: the admin/tester DEMO buyer (demo_* tables and RPCs) and the per-person key.
@@ -264,6 +266,8 @@ export const I18N_KEY_OWNERS = [
   [/^(pwa|notif)_/, 'PWA_PUSH'],
   [/^auth_/, 'AUTH_SECURITY'],
   [/^admin_/, 'ADMIN'],
+  // Find Property workspace (history, results, property page; property-scoped AI chat errors).
+  [/^fpw_/, 'DISCOVERY'],
   [/^fbx_/, 'DISCOVERY'],
   [/^fbl_/, 'DISCOVERY'],
   [/^im_/, 'DISCOVERY'],

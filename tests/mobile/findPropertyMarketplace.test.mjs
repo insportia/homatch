@@ -291,6 +291,52 @@ test('V2: a backend missing the history action stays an error; authenticated ret
   assert.ok(state.requests.filter(r => r.action === 'history').every(r => !('user_id' in r)));
 });
 
+test('History cards: title, place, compact criteria, results count; Repeat reopens the builder without starting a search', opts, async (t) => {
+  for (const [width, lang] of [[375, 'ka'], [393, 'he']]) {
+    const { page, state } = await boot(t, { lang, width, height: 844 });
+    await page.goto(`${BASE}/find-property`);
+    const card = page.locator('[data-history-card]').filter({ has: page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]') });
+    await card.waitFor();
+    assert.equal(await card.locator('h3').count(), 1);
+    assert.ok(await card.locator('[data-history-count]').count() === 1);
+    assert.doesNotMatch(await card.textContent(), /\{\{?\w+\}?\}/);
+    assert.ok(await overflow(page) <= 1);
+    if (lang === 'ka') {
+      assert.ok((await card.textContent()).includes('შედეგების ნახვა'));
+      await shot(page, 'history-cards-ka-375');
+    }
+    await card.locator('button').last().click();
+    await page.waitForURL((url) => url.pathname === '/find-property/new');
+    await page.locator('[data-action="mps-start"]').waitFor();
+    assert.equal(state.requests.filter((r) => r.action === 'start').length, 0, 'repeating only prefills the builder');
+  }
+});
+
+test('Search summary: removing a criterion or editing reopens the builder with the saved brief and never starts a search', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', width: 390 });
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  const summary = page.locator('[data-search-summary]');
+  await summary.waitFor();
+  const removable = summary.locator('li[data-criterion] button');
+  assert.ok(await removable.count() >= 1);
+  assert.ok((await removable.first().boundingBox()).height >= 28);
+  const key = await summary.locator('li[data-criterion]:has(button)').first().getAttribute('data-criterion');
+  assert.ok(await overflow(page) <= 1);
+  await removable.first().click();
+  await page.waitForURL((url) => url.pathname === '/find-property/new');
+  // A removed required criterion is asked again; the builder never starts on its own.
+  await page.waitForFunction(() => !!sessionStorage.getItem('homatch.findProperty.draft.v1'));
+  const draft = await page.evaluate(() => JSON.parse(sessionStorage.getItem('homatch.findProperty.draft.v1') ?? 'null'));
+  assert.ok(draft, 'the edited brief is kept as the draft');
+  const field = { location: 'districts', buildingStatus: 'buildingStatuses', renovation: 'renovationPreferences' }[key] ?? key;
+  assert.equal(draft[field], null, `${key} was removed`);
+  await page.goBack();
+  await page.waitForURL((url) => url.pathname.startsWith('/find-property/search/'));
+  await page.locator('[data-action="edit-search"]').click();
+  await page.locator('[data-action="mps-start"]').waitFor();
+  assert.equal(state.requests.filter((r) => r.action === 'start').length, 0);
+});
+
 function fakeSession() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');

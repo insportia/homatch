@@ -18433,6 +18433,17 @@ const en = {
 
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'Translating the report…',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'View results',
+  fpw_repeat_search: 'Repeat search',
+  fpw_card_results: '{{n}} properties found',
+  fpw_card_any_place: 'Any location',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_edit_search: 'Edit search',
+  fpw_remove_criterion: 'Remove {{label}} and edit the search',
+  fpw_edit_note: 'Changing a criterion opens the search builder; nothing runs until you start it.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36780,6 +36791,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'ანგარიში ითარგმნება…',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'შედეგების ნახვა',
+  fpw_repeat_search: 'ძიების გამეორება',
+  fpw_card_results: 'ნაპოვნია {{n}} ქონება',
+  fpw_card_any_place: 'ნებისმიერი ლოკაცია',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_edit_search: 'ძიების რედაქტირება',
+  fpw_remove_criterion: 'წაშალე „{{label}}“ და შეცვალე ძიება',
+  fpw_edit_note: 'კრიტერიუმის შეცვლა ძიების ფორმას გახსნის; არაფერი დაიწყება, სანამ თავად არ დაიწყებ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55118,6 +55140,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'Переводим отчёт…',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'Смотреть результаты',
+  fpw_repeat_search: 'Повторить поиск',
+  fpw_card_results: 'Найдено объектов: {{n}}',
+  fpw_card_any_place: 'Любой район',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_edit_search: 'Изменить поиск',
+  fpw_remove_criterion: 'Убрать «{{label}}» и изменить поиск',
+  fpw_edit_note: 'Изменение критерия открывает конструктор поиска; ничего не запустится, пока вы не начнёте.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73454,6 +73487,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'Rapor çevriliyor…',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'Sonuçları gör',
+  fpw_repeat_search: 'Aramayı tekrarla',
+  fpw_card_results: '{{n}} mülk bulundu',
+  fpw_card_any_place: 'Herhangi bir konum',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_edit_search: 'Aramayı düzenle',
+  fpw_remove_criterion: '{{label}} kaldır ve aramayı düzenle',
+  fpw_edit_note: 'Bir kriteri değiştirmek arama oluşturucuyu açar; siz başlatana kadar hiçbir şey çalışmaz.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91790,6 +91834,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'جارٍ ترجمة التقرير…',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'عرض النتائج',
+  fpw_repeat_search: 'تكرار البحث',
+  fpw_card_results: 'تم العثور على {{n}} عقار',
+  fpw_card_any_place: 'أي موقع',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_edit_search: 'تعديل البحث',
+  fpw_remove_criterion: 'إزالة {{label}} وتعديل البحث',
+  fpw_edit_note: 'تغيير أي معيار يفتح منشئ البحث؛ لن يبدأ شيء حتى تبدأه بنفسك.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110126,6 +110181,17 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'מתרגמים את הדוח…',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'צפייה בתוצאות',
+  fpw_repeat_search: 'חזרה על החיפוש',
+  fpw_card_results: 'נמצאו {{n}} נכסים',
+  fpw_card_any_place: 'כל מיקום',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_edit_search: 'עריכת החיפוש',
+  fpw_remove_criterion: 'הסרת {{label}} ועריכת החיפוש',
+  fpw_edit_note: 'שינוי קריטריון פותח את בונה החיפוש; דבר לא יופעל עד שתתחילו.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

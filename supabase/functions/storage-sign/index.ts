@@ -146,6 +146,15 @@ serve(async (req) => {
       if ((row as { lifecycle?: string } | null)?.lifecycle === 'DELETED') {
         return json({ error: 'NOT_FOUND' }, 404);
       }
+      // Retention: no URL for an object whose every registered reference
+      // has expired (20261102090000). Unregistered keys are unaffected, and
+      // before that migration exists the RPC errors and nothing changes.
+      if (action === 'READ') {
+        const { data: blocked, error: blockErr } = await db.rpc('retention_object_blocked', {
+          p_provider: 'R2', p_bucket: 'homatch-storage', p_key: objectKey,
+        });
+        if (!blockErr && blocked === true) return json({ error: 'EXPIRED' }, 410);
+      }
     }
     if (op === 'sign') {
       const result = await signedUrl({

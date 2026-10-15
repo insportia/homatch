@@ -18,6 +18,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { VerifyCheckList } from '@/components/verify/VerifyCheckList';
 import { listVerifyHistory } from '@/services/researchJobs';
+import { RetentionPanel } from '@/components/retention/RetentionPanel';
 import type { ResearchJobRecord } from '@/types/types';
 
 export default function VerifyHistoryPage() {
@@ -88,6 +89,8 @@ export default function VerifyHistoryPage() {
               {t('vh_free_note')}
             </p>
           ) : null}
+
+          <RetentionPanel product="VERIFY_REPORT" />
         </div>
       </div>
     </AppLayout>

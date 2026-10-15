@@ -1,9 +1,18 @@
 # PROJECT STATE
 
-last_updated: 2026-10-11
+last_updated: 2026-10-15
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Storage retention + cleanup engine + compact market knowledge (branch `ccr-76ef455d-storage-retention`, 2026-10-15) — PR OPEN, NOT APPLIED, NOT ACTIVE
+
+- Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.
+- Migration `20261102090000_storage_retention_lifecycle.sql` is dormant on apply: `admin_settings.storage_retention`
+  seeds `effective_at=null`, `purge_enabled=false`, reminders/knowledge off; no cron is scheduled.
+- Verify pipeline untouched. Open dependency: research-agent `status`/`document_file` use the service role and bypass
+  the RLS gate between expiry and purge (doc §6) — needs owner approval to guard, or a frequent purge.
+- Privacy policy `privacy_s6_body` must gain the 30-day report deletion sentence before `effective_at` is set.
 
 ## Find Buyers adaptive search + all property families + photo fixes (branch claude/nifty-hopper-snzn2d, 2026-10-12)
 

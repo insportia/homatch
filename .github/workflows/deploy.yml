@@ -984,6 +984,12 @@ jobs:
             # same reason as the two workers above it: its callers are
             # background workers holding the service role, not browsers.
             "active-search-notify"
+            # 30-day retention tick (docs/infra/STORAGE_RETENTION.md). Called by
+            # the homatch-storage-retention cron with no user JWT and checked
+            # against x-cron-token, or by an admin JWT checked with is_admin().
+            # Dormant until the owner activates retention: with the seeded
+            # settings a tick only registers records and deletes nothing.
+            "storage-retention"
           )
           FAILED=()
           # The same bytes the verification step reads back.

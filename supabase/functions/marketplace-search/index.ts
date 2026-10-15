@@ -20,6 +20,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { hasCurrentIdentity, resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
 import { ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
+import { requestNativeMatching } from '../_shared/nativeDemand.ts';
+import { recordSeekerIntent } from '../_shared/seekerIntent.ts';
 import {
   SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft,
 } from '../../../src/research-core/marketplace/brief.ts';
@@ -227,6 +229,17 @@ Deno.serve(async (req: Request) => {
         completed_at: eligible.length ? null : now.toISOString(),
       }).select('*').single();
       if (searchErr || !search) throw new Error(`search insert failed: ${searchErr?.message ?? 'no row'}`);
+      /* THE HOMATCH NETWORK: the same requirements are matched against properties members
+         own, through the native matcher (free; never a catalogue). In the background and
+         best effort: it never delays or fails the marketplace search. */
+      const network = (async () => {
+        try {
+          const intentId = await recordSeekerIntent(db, userId, toSearchPlanDraft(brief), { marketplaceSearchId: searchId });
+          if (intentId) await requestNativeMatching([intentId]);
+        } catch (error) { console.error(JSON.stringify({ event: 'native_match_request_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
+      })();
+      const edge = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+      if (edge?.waitUntil) edge.waitUntil(network); else await network;
       /* CONCURRENT DISPATCH: one run per eligible worker, all in ONE insert. Every worker can
          claim its run immediately and independently; nothing waits for another worker. */
       if (eligible.length) {

@@ -7,6 +7,7 @@ import { RESULT_SECTIONS } from '@/research-core/marketplace/result-evidence';
 import { browseSearchResults, MarketplaceError, type PropertyView, type SearchBrowsePage, type SearchSummary } from '@/services/marketplaceSearch';
 import { criteriaChips, removeCriterion, type T } from './format';
 import { PropertyCard } from './PropertyCard';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { ResultFiltersPanel } from './ResultFiltersPanel';
 import { DeepSearchCard } from './SearchModeSelect';
 
@@ -68,6 +69,9 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
       ))}</ul> : null}
       {search.partial ? <div role="status" className="space-y-1"><p className="text-sm font-medium">{t('mps_partial_title')}</p><p className="text-sm text-muted-foreground">{t('mps_partial_body')}</p></div> : null}
     </div>
+    {/* HOMATCH members whose property fits these requirements, from the native matcher.
+        Private messaging; a number only as the server allows. Renders nothing when empty. */}
+    <NativeMatchesPanel role="SEEKER" />
     {data ? <ResultFiltersPanel t={t} filters={filters} facets={data.facets} onChange={update} onReset={reset} /> : null}
     {data && data.facets.duplicates + (data.facets.possibleDuplicates ?? 0) > 0 && !filters.duplicatesOnly ? <div role="note" data-duplicates-banner className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.07)] px-4 py-3">
       <p className="inline-flex items-center gap-2 text-sm font-medium"><Copy className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{data.facets.possibleDuplicates ? t('mps_duplicates_banner_possible', { n: data.facets.duplicates + data.facets.possibleDuplicates }) : t('mps_duplicates_banner', { n: data.facets.duplicates })}</p>

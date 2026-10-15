@@ -2,6 +2,7 @@ import { ArrowRight, CalendarClock, MapPin, Plus, RotateCcw } from 'lucide-react
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { type SearchHistoryItem, searchHistory } from '@/services/marketplaceSearch';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { criteriaChips, type T } from './format';
 
 type SearchIntelligenceBrief = SearchHistoryItem['brief'];
@@ -33,6 +34,8 @@ export function SearchDashboard({ t, onRepeat }: { t: T; onRepeat?: (brief: Sear
         <Plus className="h-5 w-5" aria-hidden="true" />{t('mps_new_search')}
       </Link>
     </div>
+    {/* Where the match notification lands: the member matches across this person's searches. */}
+    <NativeMatchesPanel role="SEEKER" />
     <p className="text-sm text-muted-foreground">{t('fpw_history_note')}</p>
     {failed ? <div role="alert" className="space-y-3 rounded-xl border border-border p-5">
       <p>{t('mps_error_generic')}</p><button type="button" onClick={() => setRetry((v) => v + 1)} className="min-h-11 rounded-lg border border-border px-4">{t('fpw_retry')}</button>

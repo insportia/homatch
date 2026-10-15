@@ -466,6 +466,14 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/find-property-plan/index.ts',
     /*
+     * FIND PROPERTY → HOMATCH NETWORK. A Marketplace Search's brief becomes the same
+     * canonical demand a confirmed plan does, through the same normalisePlan() and
+     * planToIntentProfile() as find-property-plan above — the same reason, the same two
+     * functions, and the same limit: it writes an intent_profiles row and stops.
+     * supply-matching does the matching.
+     */
+    'supabase/functions/_shared/seekerIntent.ts',
+    /*
      * NATIVE INTENT — the newest seam, and the rule it must not reimplement is who a
      * sentence is about.
      *

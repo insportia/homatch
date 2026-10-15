@@ -35,7 +35,7 @@ for (const line of lines) {
     const f = assignedJson(html, 'window.INITIAL_STATE')?.filtersStore?.filters;
     console.log(`PROBE ${name} status=${res.status} n=${items.length} ` + JSON.stringify({ filters: f ? { price: f.price, roomCounts: f.roomCounts, area: f.area } : undefined, rows: items.map((i) => [i.sourceListingId, i.price, i.currency, i.rooms, i.areaSqm]) }));
     await new Promise((r) => setTimeout(r, 1500)); continue; }
-  if (/^\s*<\?xml/.test(html)) { const locs = [...html.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]); console.log(`XMLSUMMARY ${name} status=${res.status} locs=${locs.length}`); for (const l of locs.slice(0, 60)) console.log(`XMLLOC ${name} ${l}`); continue; }
+  if (parser !== 'RAW' && /^\s*<\?xml/.test(html)) { const locs = [...html.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]); console.log(`XMLSUMMARY ${name} status=${res.status} locs=${locs.length}`); for (const l of locs.slice(0, 60)) console.log(`XMLLOC ${name} ${l}`); continue; }
   if (parser === 'TERMS') { const t = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
     const hits = t.split(/(?<=[.;!?։])\s+/).filter((x) => /scrap|robot|automat|crawl|harvest|extract|spider|bot\b|copy|reproduc|commercial use|ავტომატ|პროგრამ|ბოტ|სკრეიპ|კოპირ|გადაწერ|მოპოვებ|გავრცელ|ინფორმაციის გამოყენ|კომერციულ/i.test(x));
     console.log(`TERMSHEAD ${name} status=${res.status} final=${res.url} textLen=${t.length} hits=${hits.length}`);

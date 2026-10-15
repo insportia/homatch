@@ -7,6 +7,8 @@ import { setTimeout as delay } from 'node:timers/promises';
  *   searchUrl(criteria, page)     → public search-results URL for that page
  *   parseList(html, url)          → [{ sourceListingId, url, ...partial fields }]
  *   parseDetail?(html, url)       → partial fields from the listing's own page
+ *   accept?(fields, criteria)     → false drops a read listing on a fact only its own
+ *                                   page states (e.g. the city); counted as filtered
  *   listCacheMs                   → reuse a list document (e.g. a sitemap) for this long
  *   pagesIndependent              → each "page" is its own document; a short page does
  *                                   not end the run
@@ -128,7 +130,7 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
           catch (error) { if (['BLOCKED', 'DEADLINE'].includes(error.code) || signal?.aborted) throw error; rejected++; continue; }
         }
         if (!fields.title && fields.price == null) { rejected++; continue; }
-        if (contradiction(fields, request)) { filtered++; continue; }
+        if (contradiction(fields, request) || (adapter.accept && !adapter.accept(fields, criteria))) { filtered++; continue; }
         candidates.push(toCandidate(adapter, fields, request, page, url));
       }
       if (candidates.length) await emit('RESULTS_RECEIVED', candidates);

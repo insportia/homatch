@@ -87,7 +87,7 @@ export async function handleV2(url:string,raw:any,ctx:Context) {
   if(url==='/v2/admin/settings')return {settings:await rpc('publishing_engine_configure',{p_actor:owner.id,p_settings:raw})};
   if(url==='/v2/admin/refund')return {refund:await rpc('publishing_engine_refund',{p_actor:owner.id,p_event:requireId(raw.eventId),p_reason:raw.reason,p_confirmed:raw.confirmed===true})};
   if(url==='/v2/admin/overview'){
-   const tables=['listings','connections','publications','operations','subscriptions','billing_events','audit','managed_accounts'];const result:any={};const settings=await admin.from('publishing_engine_settings').select('*').single();check(settings.error,'SETTINGS_READ_FAILED');result.settings=settings.data;
+   const tables=['listings','connections','publications','operations','subscriptions','billing_events','audit','managed_accounts'];const result:any={};const settings=await admin.from('publishing_engine_settings').select('*').single();check(settings.error,'SETTINGS_READ_FAILED');result.settings=settings.data;result.portals=registry.portals.map((p:any)=>({id:p.id,name:p.name}));
    await Promise.all(tables.map(async t=>{let query=admin.from('publishing_engine_'+t).select(t==='managed_accounts'?'id,portal_id,enabled,status,authorized_at,authorization_expires_at,last_operation_at,last_error_code,account_listing_limit,min_interval_seconds,updated_at':'*').limit(200);if(raw?.search&&t==='listings')query=query.ilike('display_id','%'+String(raw.search).replace(/[^A-Za-z0-9-]/g,'').slice(0,50)+'%');const {data,error}=await query;check(error,'ADMIN_READ_FAILED');result[t]=data;}));return result;
   }
  }

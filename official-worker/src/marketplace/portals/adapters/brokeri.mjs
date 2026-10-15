@@ -26,6 +26,11 @@ export const brokeri = {
     if (request.areaMaxSqm != null) q.push(['max_space', Math.ceil(request.areaMaxSqm)]);
     if (request.rooms?.min != null) q.push(['min_rooms', request.rooms.min]);
     if (request.rooms?.max != null) q.push(['max_rooms', request.rooms.max]);
+    // Price in USD: max_price/min_price apply only with currency=usd (verified 2026-10-15).
+    const ceiling = request.collectPriceMaxUsd ?? request.priceMaxUsd;
+    if (request.priceMinUsd > 0) q.push(['min_price', Math.floor(request.priceMinUsd)]);
+    if (Number.isFinite(ceiling) && ceiling > 0) q.push(['max_price', Math.ceil(ceiling)]);
+    if (q.some(([k]) => k.endsWith('_price'))) q.push(['currency', 'usd']);
     return q;
   },
   searchUrl(criteria, page) {

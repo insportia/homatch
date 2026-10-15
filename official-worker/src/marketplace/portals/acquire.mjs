@@ -144,7 +144,8 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
   } catch (error) {
     const status = delivered ? 'PARTIAL' : error.code === 'DEADLINE' ? 'TIMED_OUT' : error.code === 'BLOCKED' ? 'BLOCKED' : 'FAILED';
     const code = ['DEADLINE', 'BLOCKED', 'ROBOTS_DISALLOWED', 'UNSUPPORTED_REQUEST'].includes(error.code) ? error.code : 'PORTAL_ACQUISITION_FAILED';
-    await emit(status, [], [{ code, message: `${adapter.sourceName} acquisition stopped (${code}); previously ingested observations are retained.` }],
+    const cause = error.status ? ` HTTP ${error.status}` : error.code && error.code !== code ? ` ${error.code}` : error.name === 'TimeoutError' ? ' timeout' : '';
+    await emit(status, [], [{ code, message: `${adapter.sourceName} acquisition stopped (${code}${cause}); previously ingested observations are retained.` }],
       status === 'FAILED' && (error.transient === true || ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'].includes(error.cause?.code)));
     return { status, delivered, pagesVisited, code };
   }

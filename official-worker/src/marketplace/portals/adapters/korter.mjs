@@ -26,9 +26,17 @@ export const korter = {
     if (!/^(tbilisi|თბილისი)$/i.test(String(request.city ?? '').trim())) throw unsupported('Korter.ge routes are verified for Tbilisi only');
     const route = ROUTES[request.transactionType]?.[request.propertyType === 'VILLA' ? 'HOUSE' : request.propertyType === 'OFFICE' ? 'COMMERCIAL' : request.propertyType];
     if (!route) throw unsupported('Korter.ge has no route for this deal and type');
-    return { route };
+    // Site filters verified 2026-10-15: max_price/min_price (USD) and room_counts (one value).
+    const q = [], ceiling = request.collectPriceMaxUsd ?? request.priceMaxUsd;
+    if (request.priceMinUsd > 0) q.push(['min_price', Math.floor(request.priceMinUsd)]);
+    if (Number.isFinite(ceiling) && ceiling > 0) q.push(['max_price', Math.ceil(ceiling)]);
+    if (request.rooms?.min != null && request.rooms.min === request.rooms.max) q.push(['room_counts', request.rooms.min]);
+    return { route, q };
   },
-  searchUrl(criteria, page) { return `https://korter.ge/${criteria.route}${page > 1 ? `?page=${page}` : ''}`; },
+  searchUrl(criteria, page) {
+    const q = [...(criteria.q ?? []), ...(page > 1 ? [['page', page]] : [])];
+    return `https://korter.ge/${criteria.route}${q.length ? `?${q.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}` : ''}`;
+  },
   parseList(html) {
     const state = assignedJson(html, 'window.INITIAL_STATE');
     const rows = state?.apartmentListingStore?.apartments;

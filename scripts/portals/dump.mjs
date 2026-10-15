@@ -19,7 +19,14 @@ async function allowed(url) {
 }
 const lines = readFileSync(new URL('./dump-targets.txt', import.meta.url), 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 for (const line of lines) {
-  const [name, url, parser] = line.split(/\s+/);
+  let [name, url, parser] = line.split(/\s+/);
+  if (url.startsWith('LASTLOC:')) { // newest listing URL from a sitemap: LASTLOC:<sitemap>|<regex>
+    const [sm, re] = url.slice(8).split('|');
+    const xml = await fetch(sm, { headers: { 'user-agent': UA } }).then((x) => x.text());
+    const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]).filter((l) => new RegExp(re).test(l));
+    console.log(`LASTLOCS ${name} ${locs.slice(-12).join(' ')}`);
+    url = locs.at(-1);
+  }
   if (!(await allowed(url))) { console.log(`DUMPSKIP ${name} robots ${url}`); continue; }
   const res = await fetch(url, { headers: { 'user-agent': UA, accept: 'text/html', 'accept-language': 'ka,en;q=0.8' }, redirect: 'follow', signal: AbortSignal.timeout(25000) }).catch((e) => ({ status: 0, url, text: async () => String(e) }));
   const html = await res.text();
@@ -28,6 +35,11 @@ for (const line of lines) {
     console.log(`PROBE ${name} status=${res.status} n=${items.length} ` + JSON.stringify({ filters: f ? { price: f.price, roomCounts: f.roomCounts, area: f.area } : undefined, rows: items.map((i) => [i.sourceListingId, i.price, i.currency, i.rooms, i.areaSqm]) }));
     await new Promise((r) => setTimeout(r, 1500)); continue; }
   if (/^\s*<\?xml/.test(html)) { const locs = [...html.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]); console.log(`XMLSUMMARY ${name} status=${res.status} locs=${locs.length}`); for (const l of locs.slice(0, 60)) console.log(`XMLLOC ${name} ${l}`); continue; }
+  if (parser === 'STRIP') { const t = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>|<!--[\s\S]*?-->/gi, '').replace(/\s+/g, ' ');
+    const at = Math.max(0, t.indexOf('<body')); console.log(`STRIPHEAD ${name} status=${res.status} final=${res.url} bytes=${html.length} ld=${(html.match(/ld\+json/g) ?? []).length} tel=${JSON.stringify([...new Set(html.match(/tel:[^"']+/g) ?? [])].slice(0, 5))}`);
+    console.log(`HEADMETA ${name} ${(t.match(/<meta[^>]+>/g) ?? []).join(' ').slice(0, 3000)}`);
+    for (let i = 0; i < Math.min(t.length - at, 30000); i += 3000) console.log(`STRIP ${name} ${t.slice(at + i, at + i + 3000)}`);
+    continue; }
   const b64 = gzipSync(Buffer.from(html)).toString('base64');
   console.log(`DUMPHEAD ${name} status=${res.status} final=${res.url} bytes=${html.length} chunks=${Math.ceil(b64.length / 6000)}`);
   for (let i = 0; i < b64.length; i += 6000) console.log(`DUMP ${name} ${i / 6000} ${b64.slice(i, i + 6000)}`);

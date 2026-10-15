@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { allocate, authorizeProviderSpend } from '../marketplace/commercial.ts';
+import { allocate, authorizeProviderSpend } from '../findPropertyCommercial.ts';
 
 test('the owner examples: $5 and $10 split exactly', () => {
   assert.deepEqual(allocate(50), { credits: 50, grossCents: 500, providerCapCents: 225, homatchCents: 275, vatCents: 76, netCents: 199 });

@@ -1,9 +1,10 @@
 import { ArrowRight, CalendarClock, MapPin, Plus, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
 import { type SearchHistoryItem, searchHistory } from '@/services/marketplaceSearch';
 import { criteriaChips, type T } from './format';
+
+type SearchIntelligenceBrief = SearchHistoryItem['brief'];
 
 /** Bounded server metadata; no listing payloads or browser history storage. */
 export function SearchDashboard({ t, onRepeat }: { t: T; onRepeat?: (brief: SearchIntelligenceBrief) => void }) {

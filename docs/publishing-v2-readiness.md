@@ -51,3 +51,22 @@ GitHub Actions validates the new additive migration on isolated PostgreSQL17, se
 Full PR checks provide TypeScript/lint/i18n/build and application regressions. Latest results must be checked for the exact branch commit. Neither CI nor a connected account establishes live portal support.
 
 Remaining: approved provider bindings and real per-operation verification; production-wallet staging proof; secure scheduler/worker secret configuration; authenticated media/AI and customer/admin smoke tests; advanced portfolio pagination/admin search and approved contact routing. No automatic deployment, new Railway service or unrelated-module changes.
+
+
+## Isolated preview release gate — 2026-10-15
+
+- Restored existing `homatch-migration-proof` (`icqzvgbztuuvgmwcyyav`), with no customer rows. A schema-only publishing/wallet subset was captured read-only from production; wallet functions and wallet security/credit-lot triggers are preserved. No unrelated workers, cron jobs or portal credentials were copied.
+- Applied V1, SS.ge, V2, managed-account and draft-compatibility migrations only to staging. Staging gateway JWT verification remains enabled. Its entrypoint refuses a different project; only the named branch preview origin is additionally allowed there.
+- Branch-specific Vercel preview variables now target staging; production variables are unchanged. A dedicated QA account authenticated through real GoTrue. `/v2/dashboard` and incomplete `/v2/save` returned HTTP 200, with a database-generated HOMATCH ID and real blocked portal states.
+- Actual wallet reserve/release/settle/refund/credit-lot, partial-delivery, insufficient-balance/localization, draft revision and RLS proof passed in staging and rolled back. Portal publication rows in the financial proof are transactional fixtures, never live verification. No fixture publications or billing events remain.
+- Production requires phone-bearing `properties` inserts. Compatibility migration lets Publishing canonical drafts exist independently, preserving existing property-backed projections and all existing property constraints/triggers. It also corrects `preferred_language` and nullable property links in billing notifications.
+- `wallet-schema.snapshot.sql` is a test-only schema snapshot, never a production migration. `real-wallet-proof.sql` and eight-process concurrency proof run in a separate PostgreSQL17 CI database against the captured real wallet implementation.
+- Frontend release may proceed with external operations disabled after its own staging/browser/CI gates pass. Real MyHome/SS publishing still requires current partner specifications, server authorization and explicit disposable-property approval.
+
+### Coordinated production order and fallback
+
+1. Confirm latest production ledger, expected publishing FK, wallet signatures, ownership, and backup/PITR; export function versions and existing publishing counts. Do not change historical migrations.
+2. Apply only missing Publishing V2, managed-account, then draft-schema-compatibility migrations. Preserve all existing rows. Keep both provider gates disabled.
+3. Deploy the backward-compatible JWT-protected Publishing function using `index.ts` (never `staging.ts`), then verify authenticated dashboard/draft/admin APIs.
+4. Release the tested frontend through the existing main/Vercel pipeline. Confirm exact SHA, desktop/mobile sidebar-only navigation and API responses.
+5. On frontend failure, restore the prior Vercel deployment; V1 routes/functions remain available. Keep additive schema and existing data intact. On backend failure, restore the saved function bundle; do not drop tables or reverse financial records. Use provider emergency disable and ledger adjustments for any future verified operations.

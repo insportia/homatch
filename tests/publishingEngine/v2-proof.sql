@@ -22,6 +22,7 @@ insert into public.publishing_engine_listings(id,user_id,version,payload) values
 \ir v2-wallet-fixture.sql
 \ir ../../supabase/migrations/20261014162952_publishing_engine_v2.sql
 \ir ../../supabase/migrations/20261015092646_publishing_engine_managed_accounts.sql
+\ir ../../supabase/migrations/20261015114915_publishing_engine_draft_schema_compatibility.sql
 
 insert into public.credit_accounts values('11111111-1111-4111-8111-111111111111',100);
 insert into public.publishing_engine_publications(listing_id,user_id,portal_id,external_id,external_url,observed_state,verified_at)

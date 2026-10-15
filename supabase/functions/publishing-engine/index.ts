@@ -7,6 +7,15 @@ import { handleV2 } from './v2.ts';
 import { handleManagedTick } from './server/handler.ts';
 
 const origins = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
+// This named preview is accepted only by its isolated staging project, never production.
+if (Deno.env.get('SUPABASE_URL') === 'https://icqzvgbztuuvgmwcyyav.supabase.co') origins.add('https://homatch-git-feat-publishing-engine-v2-insportia.vercel.app');
+// Explicit deployment-owned origins only; never trust Origin itself or wildcard preview domains.
+for (const candidate of (Deno.env.get('PUBLISHING_ALLOWED_ORIGINS') || '').split(',')) {
+  try {
+    const url = new URL(candidate.trim());
+    if (url.protocol === 'https:' && url.origin === candidate.trim() && !url.username && !url.password && !url.hostname.includes('*')) origins.add(url.origin);
+  } catch { /* An invalid deployment setting grants no additional origin. */ }
+}
 const actions = new Set(['checkAuthentication', 'inspect', 'fillListing', 'uploadPhotos', 'verifyForm', 'preparePublish', 'publishAfterConfirmation', 'extractPublishedListing', 'checkStatus']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const bucket = 'publishing-engine-photos';

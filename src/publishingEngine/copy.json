@@ -1136,12 +1136,12 @@
     "he": "מחובר"
   },
   "pue_status_disconnected": {
-    "en": "Disconnected",
-    "ka": "გათიშულია",
-    "ru": "Отключено",
-    "tr": "Bağlı değil",
-    "ar": "غير متصل",
-    "he": "מנותק"
+    "en": "Unavailable",
+    "ka": "მიუწვდომელია",
+    "ru": "Недоступно",
+    "tr": "Kullanılamıyor",
+    "ar": "غير متاح",
+    "he": "לא זמין"
   },
   "pue_status_expired": {
     "en": "Session expired",
@@ -1208,12 +1208,12 @@
     "he": "נדרשת פעולה"
   },
   "pue_status_auth": {
-    "en": "Sign-in needed",
-    "ka": "შესვლა საჭიროა",
-    "ru": "Нужен вход",
-    "tr": "Oturum açılmalı",
-    "ar": "يلزم تسجيل الدخول",
-    "he": "נדרשת התחברות"
+    "en": "Service authorization needed",
+    "ka": "სერვისის ავტორიზაცია საჭიროა",
+    "ru": "Требуется авторизация сервиса",
+    "tr": "Hizmet yetkilendirmesi gerekli",
+    "ar": "يلزم تفويض الخدمة",
+    "he": "נדרש אישור לשירות"
   },
   "pue_status_reconcile": {
     "en": "Remote check needed",
@@ -1304,12 +1304,12 @@
     "he": "התקינו או עדכנו את תוסף HOMATCH ורעננו את הדף."
   },
   "pue_error_auth": {
-    "en": "Sign in on the selected platform and check the connection again.",
-    "ka": "შედით არჩეულ პლატფორმაზე და ხელახლა შეამოწმეთ კავშირი.",
-    "ru": "Войдите на выбранной площадке и проверьте подключение снова.",
-    "tr": "Seçilen platformda oturum açın ve bağlantıyı yeniden kontrol edin.",
-    "ar": "سجّل الدخول على المنصة المحددة وافحص الاتصال مجدداً.",
-    "he": "היכנסו לפלטפורמה שנבחרה ובדקו שוב את החיבור."
+    "en": "The publishing service needs to reconnect to this platform. Your listing is saved; contact HOMATCH support.",
+    "ka": "გამოქვეყნების სერვისს პლატფორმასთან ხელახლა დაკავშირება სჭირდება. განცხადება შენახულია; დაუკავშირდით HOMATCH-ის მხარდაჭერას.",
+    "ru": "Сервису публикации нужно восстановить подключение к площадке. Объявление сохранено; обратитесь в поддержку HOMATCH.",
+    "tr": "Yayın hizmetinin platforma yeniden bağlanması gerekiyor. İlanınız kaydedildi; HOMATCH desteğine başvurun.",
+    "ar": "تحتاج خدمة النشر إلى إعادة الاتصال بالمنصة. إعلانك محفوظ؛ تواصل مع دعم HOMATCH.",
+    "he": "שירות הפרסום צריך להתחבר מחדש לפלטפורמה. המודעה נשמרה; פנו לתמיכת HOMATCH."
   },
   "pue_error_capability": {
     "en": "This platform operation is not yet live verified and remains disabled.",

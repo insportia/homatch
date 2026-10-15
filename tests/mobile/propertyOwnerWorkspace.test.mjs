@@ -366,11 +366,16 @@ test('portal publishing: desktop/mobile navigation, six locales and native publi
         if(body.url==='/assets'){uploadCount++;result={assetId:'66666666-6666-4666-8666-666666666666',name:body.body.name,mime:'image/png',bytes:Buffer.from(body.body.base64,'base64').length};}
         await route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(result)});
       });
-      const buttons = page.getByRole('button', {name:labels[lang],exact:true});
-      await buttons.last().waitFor({timeout:20000});
-      assert.ok(await buttons.count() >= 2, 'topbar and My Properties both expose publishing');
+      assert.equal(await page.getByRole('button',{name:labels[lang],exact:true}).count(),0,'publishing has no topbar or My Properties shortcut');
+      if(width<1024)await page.locator('header button').first().click();
+      const link=page.getByRole('link',{name:labels[lang],exact:true});
+      await link.waitFor({timeout:20000});
+      assert.equal(await link.count(),1,'publishing is present only in the main sidebar');
+      const rail=await link.evaluate(el=>Array.from(el.closest('nav').querySelectorAll('a')).map(a=>a.getAttribute('href')));
+      const publishingAt=rail.indexOf('/property/publish');
+      assert.equal(rail[publishingAt-1],'/find-property');assert.equal(rail[publishingAt+1],'/brokers');
       assert.ok(await noOverflow(page), lang + ' publishing labels fit at ' + width);
-      await buttons.first().click(); await page.waitForURL('**/property/publish');
+      await link.click(); await page.waitForURL('**/property/publish');
       await page.getByTestId('publishing-workspace').waitFor({timeout:20000});
       assert.equal(await page.locator('iframe').count(),0,'publishing uses the shared native application');
       assert.ok(requests.includes('/v2/dashboard'));
@@ -405,7 +410,8 @@ test('portal publishing: desktop/mobile navigation, six locales and native publi
       }
 
       await page.goto(BASE + '/property');
-      await page.getByRole('button',{name:labels[lang],exact:true}).last().click();await page.waitForURL('**/property/publish');
+      if(width<1024)await page.locator('header button').first().click();
+      await page.getByRole('link',{name:labels[lang],exact:true}).click();await page.waitForURL('**/property/publish');
       assert.ok(await noOverflow(page));
     });
   }

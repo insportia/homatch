@@ -4,7 +4,7 @@ create type public.address_visibility as enum('FULL','CITY_ONLY','HIDDEN');
 alter table public.property_facts alter column photo_visibility type public.photo_visibility using photo_visibility::public.photo_visibility;
 alter table public.property_facts alter column address_visibility type public.address_visibility using address_visibility::public.address_visibility;
 alter table public.users add column is_admin boolean not null default false;
-alter table public.users add column language text not null default 'en';
+alter table public.users add column preferred_language text not null default 'en';
 create type public.notification_type as enum('LOW_CREDITS');
 create table public.notifications(id uuid primary key default gen_random_uuid(),user_id uuid,type public.notification_type,title text,body text,property_id uuid,metadata jsonb,created_at timestamptz default now());
 create function public.is_admin() returns boolean language sql stable security definer set search_path=public,pg_temp as $$select coalesce((select is_admin from public.users where id=public.get_user_id()),false)$$;

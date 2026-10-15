@@ -102,9 +102,9 @@ export function AdminRetentionPanel() {
           <div className="space-y-1"><div className="text-2xs font-semibold">{t('rt_admin_records')}</div><Pairs data={summary.records} /></div>
           <div className="space-y-1"><div className="text-2xs font-semibold">{t('rt_admin_objects')}</div><Pairs data={summary.objects} /></div>
           <div className="space-y-1"><div className="text-2xs font-semibold">{t('rt_admin_blocked')}</div><Pairs data={summary.blocked} /></div>
-          <div className="space-y-1"><div className="text-2xs font-semibold">Supabase Storage</div><Pairs data={summary.supabase_storage} /></div>
-          <div className="space-y-1"><div className="text-2xs font-semibold">Cloudflare R2</div><Pairs data={summary.r2} /></div>
-          <div className="space-y-1"><div className="text-2xs font-semibold">Postgres</div><Pairs data={summary.postgres} bytes /></div>
+          <div className="space-y-1"><div className="text-2xs font-semibold">{t('rt_admin_supabase')}</div><Pairs data={summary.supabase_storage} /></div>
+          <div className="space-y-1"><div className="text-2xs font-semibold">{t('rt_admin_r2')}</div><Pairs data={summary.r2} /></div>
+          <div className="space-y-1"><div className="text-2xs font-semibold">{t('rt_admin_postgres')}</div><Pairs data={summary.postgres} bytes /></div>
           <div className="space-y-1">
             <div className="text-2xs font-semibold">{t('rt_admin_trend')}</div>
             {(summary.trend_30d ?? []).length === 0
@@ -123,9 +123,9 @@ export function AdminRetentionPanel() {
             {dry ? (
               dry.error ? <p className="text-2xs text-destructive">{String(dry.error)}</p> : (
                 <div className="space-y-1">
-                  <div className="text-2xs font-semibold">Verify</div>
+                  <div className="text-2xs font-semibold">{t('rt_admin_verify')}</div>
                   <Pairs data={Object.fromEntries(Object.entries(dry.verify ?? {}).filter(([k]) => k !== 'ids'))} />
-                  <div className="text-2xs font-semibold">Contracts</div>
+                  <div className="text-2xs font-semibold">{t('rt_admin_contracts')}</div>
                   <Pairs data={Object.fromEntries(Object.entries(dry.contracts ?? {}).filter(([k]) => k !== 'ids'))} />
                   <div className="text-2xs font-semibold">{t('rt_admin_orphans')}</div>
                   <Pairs data={dry.orphans} />

@@ -18471,6 +18471,13 @@ const en = {
   rt_admin_dry_run_hint: 'Read-only: shows what the 30-day rule would remove today. Nothing is changed.',
   rt_admin_orphans: 'Orphans',
   rt_admin_out_of_scope: 'Shared Verify caches (separate policy)',
+
+  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
+  rt_admin_supabase: 'Supabase Storage',
+  rt_admin_r2: 'Cloudflare R2',
+  rt_admin_postgres: 'Database (Postgres)',
+  rt_admin_verify: 'Verify reports',
+  rt_admin_contracts: 'Contracts',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36856,6 +36863,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   rt_admin_dry_run_hint: 'მხოლოდ წაკითხვა: აჩვენებს, რას წაშლიდა 30-დღიანი წესი დღეს. არაფერი იცვლება.',
   rt_admin_orphans: 'ობოლი ობიექტები',
   rt_admin_out_of_scope: 'Verify-ის საერთო ქეში (ცალკე პოლიტიკა)',
+
+  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
+  rt_admin_supabase: 'Supabase საცავი',
+  rt_admin_r2: 'Cloudflare R2 საცავი',
+  rt_admin_postgres: 'მონაცემთა ბაზა (Postgres)',
+  rt_admin_verify: 'Verify ანგარიშები',
+  rt_admin_contracts: 'ხელშეკრულებები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55232,6 +55246,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   rt_admin_dry_run_hint: 'Только чтение: показывает, что удалило бы правило 30 дней сегодня. Ничего не меняется.',
   rt_admin_orphans: 'Осиротевшие объекты',
   rt_admin_out_of_scope: 'Общие кэши Verify (отдельная политика)',
+
+  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
+  rt_admin_supabase: 'Хранилище Supabase',
+  rt_admin_r2: 'Хранилище Cloudflare R2',
+  rt_admin_postgres: 'База данных (Postgres)',
+  rt_admin_verify: 'Отчёты Verify',
+  rt_admin_contracts: 'Договоры',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73606,6 +73627,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   rt_admin_dry_run_hint: 'Salt okunur: 30 gün kuralının bugün neyi sileceğini gösterir. Hiçbir şey değişmez.',
   rt_admin_orphans: 'Sahipsiz nesneler',
   rt_admin_out_of_scope: 'Paylaşılan Verify önbellekleri (ayrı politika)',
+
+  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
+  rt_admin_supabase: 'Supabase Depolama',
+  rt_admin_r2: 'Cloudflare R2 depolama',
+  rt_admin_postgres: 'Veritabanı (Postgres)',
+  rt_admin_verify: 'Verify raporları',
+  rt_admin_contracts: 'Sözleşmeler',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91980,6 +92008,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   rt_admin_dry_run_hint: 'للقراءة فقط: يعرض ما ستحذفه قاعدة الثلاثين يومًا اليوم. لا يتغير شيء.',
   rt_admin_orphans: 'كائنات يتيمة',
   rt_admin_out_of_scope: 'ذاكرات Verify المشتركة (سياسة منفصلة)',
+
+  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
+  rt_admin_supabase: 'تخزين Supabase',
+  rt_admin_r2: 'تخزين Cloudflare R2',
+  rt_admin_postgres: 'قاعدة البيانات (Postgres)',
+  rt_admin_verify: 'تقارير Verify',
+  rt_admin_contracts: 'العقود',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110354,6 +110389,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   rt_admin_dry_run_hint: 'קריאה בלבד: מציג מה כלל 30 הימים היה מוחק היום. דבר אינו משתנה.',
   rt_admin_orphans: 'אובייקטים יתומים',
   rt_admin_out_of_scope: 'מטמוני Verify משותפים (מדיניות נפרדת)',
+
+  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
+  rt_admin_supabase: 'אחסון Supabase',
+  rt_admin_r2: 'אחסון Cloudflare R2',
+  rt_admin_postgres: 'מסד נתונים (Postgres)',
+  rt_admin_verify: 'דוחות Verify',
+  rt_admin_contracts: 'חוזים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -291,4 +291,9 @@ export const RETENTION_STRINGS = {
     'ذاكرات Verify المشتركة (سياسة منفصلة)',
     'מטמוני Verify משותפים (מדיניות נפרדת)',
   ],
+  rt_admin_supabase: ['Supabase Storage', 'Supabase საცავი', 'Хранилище Supabase', 'Supabase Depolama', 'تخزين Supabase', 'אחסון Supabase'],
+  rt_admin_r2: ['Cloudflare R2', 'Cloudflare R2 საცავი', 'Хранилище Cloudflare R2', 'Cloudflare R2 depolama', 'تخزين Cloudflare R2', 'אחסון Cloudflare R2'],
+  rt_admin_postgres: ['Database (Postgres)', 'მონაცემთა ბაზა (Postgres)', 'База данных (Postgres)', 'Veritabanı (Postgres)', 'قاعدة البيانات (Postgres)', 'מסד נתונים (Postgres)'],
+  rt_admin_verify: ['Verify reports', 'Verify ანგარიშები', 'Отчёты Verify', 'Verify raporları', 'تقارير Verify', 'דוחות Verify'],
+  rt_admin_contracts: ['Contracts', 'ხელშეკრულებები', 'Договоры', 'Sözleşmeler', 'العقود', 'חוזים'],
 };

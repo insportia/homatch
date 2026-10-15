@@ -656,12 +656,12 @@
     "he": "יצירת מודעה"
   },
   "pue_tab_platforms": {
-    "en": "Connected platforms",
-    "ka": "დაკავშირებული პლატფორმები",
-    "ru": "Подключённые площадки",
-    "tr": "Bağlı platformlar",
-    "ar": "المنصات المتصلة",
-    "he": "פלטפורמות מחוברות"
+    "en": "Publishing platforms",
+    "ka": "გამოქვეყნების პლატფორმები",
+    "ru": "Площадки публикации",
+    "tr": "Yayın platformları",
+    "ar": "منصات النشر",
+    "he": "פלטפורמות פרסום"
   },
   "pue_tab_activity": {
     "en": "Activity & synchronization",
@@ -912,12 +912,12 @@
     "he": "בדיקת חיבור"
   },
   "pue_connection_hint": {
-    "en": "Sign in directly on the platform. HOMATCH never asks for your password.",
-    "ka": "შედით პირდაპირ პლატფორმაზე. HOMATCH არასოდეს ითხოვს თქვენს პაროლს.",
-    "ru": "Войдите прямо на площадке. HOMATCH никогда не запрашивает ваш пароль.",
-    "tr": "Doğrudan platformda oturum açın. HOMATCH şifrenizi asla istemez.",
-    "ar": "سجّل الدخول على المنصة مباشرة. لا يطلب HOMATCH كلمة مرورك أبداً.",
-    "he": "נכנסים ישירות בפלטפורמה. HOMATCH לעולם לא מבקש את הסיסמה שלך."
+    "en": "HOMATCH manages publishing accounts. You do not need a portal account or browser extension.",
+    "ka": "გამოქვეყნების ანგარიშებს HOMATCH მართავს. პლატფორმის ანგარიში ან ბრაუზერის გაფართოება არ გჭირდებათ.",
+    "ru": "HOMATCH управляет аккаунтами публикации. Вам не нужны аккаунт площадки или расширение браузера.",
+    "tr": "Yayın hesaplarını HOMATCH yönetir. Platform hesabına veya tarayıcı eklentisine ihtiyacınız yoktur.",
+    "ar": "يدير HOMATCH حسابات النشر. لا تحتاج إلى حساب على المنصة أو إضافة للمتصفح.",
+    "he": "HOMATCH מנהלת את חשבונות הפרסום. אין צורך בחשבון בפלטפורמה או בתוסף לדפדפן."
   },
   "pue_last_verified": {
     "en": "Last session check",
@@ -960,12 +960,12 @@
     "he": "ב־Chrome פתחו chrome://extensions, הפעילו Developer mode ובחרו בתיקיית publishing-extension שנבדקה דרך Load unpacked. לעדכון החליפו את התיקייה, לחצו Reload ורעננו את לשוניות HOMATCH והפלטפורמה. היכנסו לפלטפורמה ובדקו את החיבור."
   },
   "pue_browser_required": {
-    "en": "Queued operations wait for your authorized browser session. Remote success is shown only after verification.",
-    "ka": "რიგში მყოფი ოპერაციები თქვენს ავტორიზებულ ბრაუზერს ელოდება. წარმატება მხოლოდ დადასტურების შემდეგ ჩანს.",
-    "ru": "Операции ждут авторизованную сессию браузера. Успех отображается только после проверки.",
-    "tr": "Kuyruktaki işlemler yetkili tarayıcı oturumunuzu bekler. Başarı yalnızca doğrulamadan sonra gösterilir.",
-    "ar": "تنتظر العمليات جلسة متصفحك المصرح بها. لا يظهر النجاح إلا بعد التحقق.",
-    "he": "פעולות בתור ממתינות להתחברות מורשית בדפדפן. הצלחה מוצגת רק לאחר אימות."
+    "en": "Publication status comes from HOMATCH servers. Success is shown only after independent portal verification.",
+    "ka": "გამოქვეყნების სტატუსი HOMATCH-ის სერვერებიდან მიიღება. წარმატება მხოლოდ პლატფორმაზე დამოუკიდებელი შემოწმების შემდეგ ჩანს.",
+    "ru": "Статус публикации поступает с серверов HOMATCH. Успех отображается только после независимой проверки на площадке.",
+    "tr": "Yayın durumu HOMATCH sunucularından alınır. Başarı yalnızca platformda bağımsız doğrulamadan sonra gösterilir.",
+    "ar": "تأتي حالة النشر من خوادم HOMATCH. لا يظهر النجاح إلا بعد تحقق مستقل على المنصة.",
+    "he": "מצב הפרסום מתקבל משרתי HOMATCH. הצלחה מוצגת רק לאחר אימות עצמאי בפלטפורמה."
   },
   "pue_publish": {
     "en": "Activate & publish",

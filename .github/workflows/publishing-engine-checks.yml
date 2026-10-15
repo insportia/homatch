@@ -41,7 +41,17 @@ jobs:
         run: |
           psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/v2-proof.sql
           node tests/publishingEngine/v2-concurrency.mjs
+          node tests/publishingEngine/managed-concurrency.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsgo -p tsconfig.check.json
+      - run: pnpm exec tsc --noEmit --strict --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --allowImportingTsExtensions supabase/functions/publishing-engine/server/http.ts supabase/functions/publishing-engine/server/adapters.ts supabase/functions/publishing-engine/server/worker.ts
+      - run: node scripts/i18n-check.mjs && node scripts/i18n-keys-check.mjs && node scripts/i18n-audit.mjs
+      - run: node scripts/publishing/managed-worker.mjs --diagnostics
       - run: node --test tests/publishingEngine/*.test.mjs
       - run: pnpm run build
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+      - name: Managed HTTP runtime compatibility (Railway Node 22.18)
+        run: node --test tests/publishingEngine/managed-server.test.mjs

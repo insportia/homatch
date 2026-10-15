@@ -1,42 +1,52 @@
-# Publishing V2 release evidence
+# Publishing V2 managed HTTP readiness
 
-This change extends the existing Publishing Engine. It does not authorize a production release or any real portal mutation.
+PR #209 continues the existing unified engine. This branch is not production-ready and must not be merged or deployed without approval.
 
-## Implemented boundaries
+## Reused and replaced
 
-- Existing `/property/publish`, authentication, canonical normalization, legacy jobs and adapters remain available. The route now renders native HOMATCH components instead of an iframe.
-- Incomplete drafts persist through an optimistic version check; display IDs come from a database sequence. Canonical revisions and individual remote observations remain separate.
-- A server-owned operation queue records payload snapshots, revisions, idempotency keys, attempts and expiring fenced leases. Pending edits coalesce. Uncertain remote writes require reconciliation rather than blind retries. Status checks alone do not advance content synchronization.
-- Portal connection records contain only non-sensitive metadata. Merely finding a form does not constitute verified authentication. No cookies, passwords or OTPs are collected.
-- Publication, editing, photo changes and visibility actions require independently verified capability evidence. Both current adapters still have **no verified V2 operations**. Management method names are extension points, not proof of working portal automation.
-- Customers can inspect and queue supported lifecycle operations for selected portals; unverified operations remain action-required. Archiving refuses unresolved external listings. The private photo bucket is accessed through owner-checked publishing APIs.
-- AI uses the existing OpenAI helper and key, with an audited per-owner quota. Suggestions require review and never replace text silently. Provider execution and translation quality have not been tested live.
-- Existing admin authorization protects inspection, publishing pricing, audited retries and confirmed wallet refunds. Uncertain remote mutations cannot be forced through retry. Registry maintenance controls and broader administrative search remain incomplete.
+Canonical listings, display IDs, revisions, ownership checks, private canonical media, durable operations, retry/backoff, wallet reservations/settlement/refunds, draft editor, AI helper, status UI and admin authorization are reused. V1 and legacy MyHome/SS.ge extension files are preserved.
 
-## Billing policy
+V2 customer browser execution, customer session registration and customer-reported remote completion are removed. V2 uses HOMATCH-managed account metadata and a server consumer. Customer UI does not request portal credentials or extension installation. Six-language copy remains in the shared catalogue.
 
-The default price is 10 HOMATCH credits per listing per 24-hour period, shared across destinations. Activation requires explicit consent to the server price and reserves existing wallet credits. Capture waits for verified publication on every selected destination. Failed/unverified activation releases its reservation after the verification window. Drafts are free.
+## Server execution
 
-Billing uses existing `wallet_reserve`, `wallet_settle`, `wallet_release` and `wallet_admin_adjust` functions. Subscription row locks, wallet idempotency keys and unique listing/period billing events prevent duplicate capture. Pricing cannot exceed previously approved daily credits without new consent. UTC timestamps define billing periods; downtime does not trigger historical back-charges.
+- `server/adapters.ts` defines reviewed provider bindings, credential-provider abstraction, authorization expiry, canonical validation/mapping, photos, idempotent create requirement, mutation and independent readback contracts. MyHome remains first in the registry; SS.ge is independent.
+- Both actual bindings are absent and expose **zero executable operations**. No guessed HTTP write endpoints, browser cookies, passwords, scraping wrappers or challenge bypass are substituted.
+- `server/http.ts` restricts HTTPS origins and fixed paths, refuses redirects, bounds timeouts and classifies uncertain writes conservatively. Raw response bodies and authentication headers are not logged.
+- `server/worker.ts` consumes existing operations only after server authorization and database capability checks. It downloads media from the canonical owner's private object paths and checks size/content. It checkpoints accepted external IDs before readback. Acceptance, moderation and mismatched readback cannot become verified publication or billing.
+- Mutation uncertainty requires reconciliation; it never causes blind repeated publication/deletion. Readback must match the submitted external identity and canonical revision/hash. Billing failure after successful verification cannot replay the portal write.
+- `scripts/publishing/managed-worker.mjs` runs in Node >=22.18, defaults disabled, supports diagnostics and graceful shutdown. It provisions nothing and is not wired into unrelated existing workers. Reviewed hosting attachment remains a release prerequisite.
 
-Fully paused listings stop renewing after their paid period. Partial pauses remain billable. Insufficient balance stops new paid operations; it does not claim that remote listings were hidden. Stale remote verification also stops billing pending reconciliation. Existing pg_cron is reused only when already installed; no new service is provisioned.
+## Additive database migration
 
-The isolated PostgreSQL proof uses a **synthetic wallet boundary**. It proves publishing transaction/concurrency behavior, not full production credit-lot allocation or ledger integration. The actual wallet migration must be exercised in a safe Supabase environment before release. No production balance has been changed.
+Apply neither migration to production during this work. `20261015092646_publishing_engine_managed_accounts.sql` depends on the unapplied V2 migration.
 
-## Verification and remaining gates
+Managed accounts hold metadata and secret references only, protected by admin SELECT RLS and service-only mutation/RPC permissions. Secret values belong in existing server secret storage. Customer API responses omit account identity and credential references.
 
-Local publishing tests cover legacy MyHome/SS.ge fixtures, draft/publication validation, capability evidence, stale remote results, authenticated API boundaries and six-language copy coverage. The existing Publishing Engine CI validates PostgreSQL 17 migrations, RLS isolation, revision coalescing, competing browser leases and concurrent daily charging. Existing application CI covers TypeScript, lint, i18n, build and desktop/mobile route regressions; its latest results must be green before review approval.
+One global account lock/rate limit serializes all tenants using a managed portal account. Provider disable, authorization expiry, verified capabilities, explicit destructive-action confirmation, subscription eligibility and canonical revisions gate claims. Legacy personal-account publications are not silently adopted.
 
-A read-only production preflight found zero publishing listings/jobs/external references at implementation time; repeat this check before release. Insufficient-credit events create a durable notification using the existing notification table and the owner?s language.
+External IDs are unique per managed account across tenants. Checkpoints do not advance content synchronization or settle funds. Leases are fenced; idempotent completion and periodic reconciliation reuse the existing operation/attempt/audit tables. Emergency disable is an audited server transaction.
 
-Still required: authenticated portal inspection and independently verified selectors for editing, photos, pause/hide, resume, free refresh, deletion and readback; controlled publish/delete test authorization; actual wallet/ledger staging tests; registry maintenance and broader admin search; portfolio pagination; authenticated end-to-end media and AI testing. Portal capabilities must remain disabled until their individual evidence exists. Paid promotion is never a refresh fallback.
+## Billing
 
-## Extension installation/update
+10 credits per canonical listing per 24 hours, covering all selected portals. Existing wallet functions and refund semantics remain unchanged. Drafts are free; activation requires consent; settlement requires verified service delivery. Fully paused listings stop renewal after their paid period; partial pauses remain billable. Existing unique billing periods, reservation keys and locks protect duplicate capture.
 
-Use the reviewed `publishing-extension` directory from the exact release commit. In Chrome open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select that directory. To update, replace the directory with the reviewed version, click **Reload** on the extension and reload HOMATCH and portal tabs. V2 reports extension version 0.3.0.
+The isolated SQL proof uses a **synthetic wallet boundary**, not actual credit-lot allocation. A safe clone/staging test of the real wallet schema remains required before release. No production wallet or listing was changed.
 
-Connect each portal from Publishing → Connected platforms, authenticate directly there, return to HOMATCH and check the connection. Current adapters may correctly report action-required because authenticated session evidence has not yet been implemented/live verified. Installation is distinct from portal authentication and from capability verification.
+## Portal evidence and external prerequisites
 
-## Coordinated release
+Owner-supplied actual Railway Node22.18 public GET results: MyHome homepage 403; SS.ge homepage 200 after redirect. The MyHome restriction cause remains undetermined and does not establish publishing API accessibility.
 
-Keep this PR draft until implementation gaps and required CI checks are resolved. Review the additive migration against existing production dependencies without applying it there. Validate it in a safe environment together with actual wallet functions. After explicit release approval, use the existing deployment architecture for the migration, publishing function, frontend and matching extension as one coordinated release, then verify the exact production SHA. Do not merge or deploy this draft automatically.
+MyHome/TNET: existing repository marketplace endpoints are read-only references. No current supported publishing/auth contract or partner authorization has been provided. FlatFlow describes browser-side autofill; Apify's inspected actor is a read-only scraper; Mapiko's public cross-posting claims do not establish a supported server API. Next route: obtain current MyHome/TNET business publishing integration approval, auth/scopes, field/media schema, limits and lifecycle documentation.
+
+SS.ge: official 2020 announcement describes publishing/editing/management APIs: https://ss.ge/ru/%D0%B1%D0%BB%D0%BE%D0%B3/ss-ge-api--186 . Current documentation, onboarding, credentials, limits, fees and operation-specific permissions are still required.
+
+No portal operation is live verified. First publication also requires an explicitly authorized disposable property and contact-routing consent compatible with portal phone-verification rules.
+
+## Verification and remaining release work
+
+GitHub Actions validates the new additive migration on isolated PostgreSQL17, service-only grants/RLS, global account concurrency, duplicate external identity, submission checkpoints, fenced leases, revision ordering and existing synthetic-wallet billing concurrency. Focused mocked server tests cover readback mismatch, moderation, auth expiry, uncertain writes, billing outages, secret boundaries and tenant media. They are not live publishing evidence.
+
+Full PR checks provide TypeScript/lint/i18n/build and application regressions. Latest results must be checked for the exact branch commit. Neither CI nor a connected account establishes live portal support.
+
+Remaining: approved provider bindings and real per-operation verification; production-wallet staging proof; safe worker hosting attachment; authenticated media/AI and customer/admin smoke tests; advanced portfolio pagination/admin search and approved contact routing. No automatic deployment, new Railway service or unrelated-module changes.

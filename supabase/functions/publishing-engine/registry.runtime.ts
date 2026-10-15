@@ -74,6 +74,13 @@ export default {
           "yardArea",
           "landArea"
         ]
+      },
+      "server": {
+        "transport": "MANAGED_HTTP",
+        "enabled": false,
+        "status": "BLOCKED",
+        "blockedReason": "PORTAL_API_APPROVAL_REQUIRED",
+        "verifiedOperations": {}
       }
     },
     {
@@ -139,6 +146,13 @@ export default {
             "GEL"
           ]
         }
+      },
+      "server": {
+        "transport": "MANAGED_HTTP",
+        "enabled": false,
+        "status": "BLOCKED",
+        "blockedReason": "PORTAL_API_APPROVAL_REQUIRED",
+        "verifiedOperations": {}
       }
     }
   ]

@@ -1,9 +1,2 @@
-allhome-robots https://www.allhome.ge/robots.txt
-allhome-sitemap https://www.allhome.ge/sitemap.xml
-homege-robots https://www.home.ge/robots.txt
-homege-smindex https://www.home.ge/files/sitemap/sitemap.xml
-homege-sm1 https://www.home.ge/files/sitemap/sitemap_listings1.xml
-place-filtered https://place.ge/ge/ads?type=for_sale&object_type=flat&city_id=1&currency_id=2&mode=list&price_to=220000&rooms_from=2&rooms_to=3
-place-filtered2 https://place.ge/ge/ads/page:2?type=for_sale&object_type=flat&city_id=1&currency_id=2&mode=list&price_to=220000&rooms_from=2&rooms_to=3
-brokeri-filtered https://brokeri.ge/property-search?filter=1&offerType%5B%5D=1&propertyType%5B1%5D=1&municipalityId%5B%5D=1&min_rooms=2&max_rooms=3
-korter-list2 https://korter.ge/binebis-yidva-gayidva-tbilisi?page=2
+allhome-defs https://www.allhome.ge/sitemaps/defs_sitemap_ge.xml
+allhome-menu https://www.allhome.ge/sitemaps/menu_sitemap_ge.xml

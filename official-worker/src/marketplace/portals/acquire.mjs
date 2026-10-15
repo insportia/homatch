@@ -7,6 +7,11 @@ import { setTimeout as delay } from 'node:timers/promises';
  *   searchUrl(criteria, page)     → public search-results URL for that page
  *   parseList(html, url)          → [{ sourceListingId, url, ...partial fields }]
  *   parseDetail?(html, url)       → partial fields from the listing's own page
+ *   accept?(fields, criteria)     → false drops a listing the portal could not filter
+ *                                   server-side (counted as filtered, not as a failure)
+ *   listCacheMs                   → reuse a list document (e.g. a sitemap) for this long
+ *   pagesIndependent              → each "page" is its own document; a short page does
+ *                                   not end the run
  * Everything else — robots.txt, pacing, page cap, refusals, the contract shape,
  * deduplication by source id — is decided here, once.
  *
@@ -15,6 +20,7 @@ import { setTimeout as delay } from 'node:timers/promises';
  */
 export const PORTAL_UA = 'Mozilla/5.0 (compatible; HOMATCH-FindProperty/1.0; +https://homatch.live)';
 const CHALLENGE = /cf-chl|challenge-platform|just a moment\.\.\.|g-recaptcha|hcaptcha/i;
+const listCache = new Map();
 
 export function robotsRules(text) {
   const rules = []; let applies = false;
@@ -59,7 +65,7 @@ const defined = (o) => Object.fromEntries(Object.entries(o ?? {}).filter(([, v])
 
 export async function acquirePortal(adapter, request, { deadlineAt, signal, report, fetcher = fetch, sleep = (ms) => delay(ms, undefined, { signal }), now = Date.now } = {}) {
   const started = now(), deadline = Date.parse(deadlineAt);
-  let pagesVisited = 0, actions = 0, bytes = 0, discovered = 0, delivered = 0, rejected = 0;
+  let pagesVisited = 0, actions = 0, bytes = 0, discovered = 0, delivered = 0, rejected = 0, filtered = 0;
   const errors = [], seen = new Set(), queryApplied = { acquisition: adapter.workerId };
   const remaining = () => {
     signal?.throwIfAborted();
@@ -96,7 +102,9 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
     for (let page = 1; page <= adapter.maxPages; page++) {
       const url = adapter.searchUrl(criteria, page);
       queryApplied[`page${page}`] = url;
-      const items = adapter.parseList(await get(url), url, criteria);
+      let html = adapter.listCacheMs ? listCache.get(url) : null;
+      if (!html || now() - html.at > adapter.listCacheMs) { html = { at: now(), text: await get(url) }; if (adapter.listCacheMs) listCache.set(url, html); }
+      const items = adapter.parseList(html.text, url, criteria);
       pagesVisited++;
       const fresh = items.filter((i) => i.sourceListingId && !seen.has(i.sourceListingId));
       fresh.forEach((i) => seen.add(i.sourceListingId));
@@ -109,12 +117,14 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
           catch (error) { if (['BLOCKED', 'DEADLINE'].includes(error.code) || signal?.aborted) throw error; rejected++; continue; }
         }
         if (!fields.title && fields.price == null) { rejected++; continue; }
+        if (adapter.accept && !adapter.accept(fields, criteria)) { filtered++; continue; }
         candidates.push(toCandidate(adapter, fields, request, page, url));
       }
       if (candidates.length) await emit('RESULTS_RECEIVED', candidates);
-      if (!items.length || items.length < (adapter.pageSize ?? 1)) { complete = true; break; }
+      if (!adapter.pagesIndependent && (!items.length || items.length < (adapter.pageSize ?? 1))) { complete = true; break; }
       if (page < adapter.maxPages) await sleep(adapter.pageIntervalMs ?? 3000);
     }
+    if (filtered) queryApplied.filteredAfterRead = String(filtered);
     if (rejected) errors.push({ code: 'SOURCE_RECORDS_REJECTED', message: `${rejected} listings could not be read from their own pages` });
     if (!complete) errors.push({ code: 'PAGE_CAP_REACHED', message: `${adapter.sourceName}: first ${adapter.maxPages} result pages read` });
     const status = rejected ? 'PARTIAL' : 'COMPLETE';

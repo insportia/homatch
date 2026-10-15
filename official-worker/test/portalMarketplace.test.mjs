@@ -12,6 +12,7 @@ import { PORTAL_ADAPTERS } from '../src/marketplace/portals/adapters.mjs';
 import { placege } from '../src/marketplace/portals/adapters/placege.mjs';
 import { korter } from '../src/marketplace/portals/adapters/korter.mjs';
 import { brokeri } from '../src/marketplace/portals/adapters/brokeri.mjs';
+import { homege } from '../src/marketplace/portals/adapters/homege.mjs';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { loadMarketplaceSwitches, workerSwitchOn } from '../../supabase/functions/_shared/marketplaceSearch.ts';
 
@@ -20,6 +21,7 @@ const ROBOTS = {
   'place.ge': 'User-agent: *\nDisallow: /admin*\n',
   'korter.ge': 'User-agent: *\nDisallow: /redirect\nDisallow: /building/geo\nDisallow: /api/\nDisallow: /pyapi/\nDisallow: /node-api/\n',
   'brokeri.ge': 'User-agent: *\nDisallow:\n',
+  'home.ge': 'User-agent: Yandex\nDisallow: /\n\nUser-Agent: *\nAllow: /\nDisallow: /plugins/\nDisallow: /*?sort_by=\nDisallow: /*listing-details.html*\nDisallow: /*print.html*\n',
 };
 const request = (over = {}) => ({ contract: 'marketplace-worker-1', searchId: '11111111-1111-4111-8111-111111111111', searchPlanId: '33333333-3333-4333-8333-333333333333',
   market: 'GE', country: 'GE', city: 'Tbilisi', districts: [], transactionType: 'BUY', propertyType: 'APARTMENT', priceMinUsd: 0, priceMaxUsd: 1000000, collectPriceMaxUsd: 1100000,
@@ -128,4 +130,39 @@ test('switches: each portal has its own default-off switch; MyHome and SS.ge rul
   assert.equal(workerSwitchOn(s, 'placege-agent'), true);
   assert.equal(workerSwitchOn(s, 'korter-agent'), false, 'unset is off');
   assert.equal(workerSwitchOn(s, 'some-other-agent'), false, 'everything else stays under the global kill switch');
+});
+
+test('home.ge: the public sitemap index → newest matching listings, each read from its own page and contract-valid', async () => {
+  const urls = [], reports = [];
+  const fetcher = async (url) => {
+    urls.push(String(url)); const u = new URL(url);
+    if (u.pathname === '/robots.txt') return new Response(ROBOTS['home.ge']);
+    return new Response(u.pathname.startsWith('/files/sitemap/') ? page('homege-sitemap') : page('homege-detail'));
+  };
+  const outcome = await acquirePortal(homege, request(), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
+  const listings = reports.flatMap((r) => r.listings);
+  assert.ok(['COMPLETE', 'PARTIAL'].includes(outcome.status));
+  assert.equal(listings.length, homege.detailLimit, 'detail reads capped per index page; the second index repeats no listing');
+  for (const r of reports) { const v = validateWorkerReport(r, 'home-ge'); assert.ok(v.ok, v.reason); assert.equal(v.report.listings.length, r.listings.length); }
+  const ids = listings.map((l) => Number(l.sourceListingId));
+  assert.deepEqual(ids, [...ids].sort((a, b) => b - a), 'newest ids first');
+  assert.ok(listings.every((l) => /^https:\/\/www\.home\.ge\/binebi\/iyideba-binebi\/.*-tbilisi-/.test(l.exactUrl) && l.transactionType === 'BUY' && l.propertyType === 'APARTMENT'));
+  const [l] = listings;
+  assert.deepEqual({ price: l.price, currency: l.currency, floor: l.floor, of: l.totalFloors, district: l.district, building: l.buildingStatus, renovation: l.renovationStatus, phone: l.seller.publicPhone },
+    { price: 240300, currency: 'GEL', floor: 4, of: 8, district: 'საბურთალო', building: 'OLD_BUILD', renovation: 'RENOVATED', phone: null });
+  assert.ok(l.images.length >= 1 && l.images.every((u) => u.startsWith('https://www.home.ge/files/')));
+  assert.equal(urls.filter((u) => u.includes('/files/sitemap/')).length, 2, 'each index read once');
+  assert.ok(urls.every((u) => !/sitemap_listings1/.test(u)));
+  const rules = robotsRules(ROBOTS['home.ge']);
+  assert.ok(urls.every((u) => u.endsWith('/robots.txt') || robotsAllows(rules, u)));
+});
+
+test('home.ge: price ceiling applied after reading (₾ converted with the page\'s own USD rate); index cached between searches', async () => {
+  const urls = [], reports = [];
+  const fetcher = async (url) => { urls.push(String(url)); const u = new URL(url); if (u.pathname === '/robots.txt') return new Response(ROBOTS['home.ge']); return new Response(u.pathname.startsWith('/files/sitemap/') ? page('homege-sitemap') : page('homege-detail')); };
+  await acquirePortal(homege, request({ priceMaxUsd: 80000, collectPriceMaxUsd: 88000 }), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
+  assert.equal(reports.flatMap((r) => r.listings).length, 0, '₾240,300 ≈ $92k is above an $88k collection ceiling');
+  assert.ok(Number(reports.at(-1).queryApplied.filteredAfterRead) > 0);
+  assert.equal(urls.filter((u) => u.includes('/files/sitemap/')).length, 0, 'sitemaps served from the 6-hour cache');
+  assert.throws(() => homege.criteria(request({ city: 'Telavi' })), /Tbilisi, Batumi/);
 });

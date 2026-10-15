@@ -205,8 +205,11 @@ const PROVIDER_SETTINGS = [
   { key: 'provider_disabled_list', value: ['APIFY', 'DATAFORSEO', 'ZENROWS', 'SCRAPINGBEE', 'BRIGHTDATA'] },
 ];
 
+/* Find Buyers 3.0: these fixtures are mostly comments under a comparable listing —
+   interest signals — so the shared helper opens the Interest tab (Buyers would hold
+   only the Russian request post). */
 async function open(page) {
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external?tab=interest`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(`a[href="${COMMENT_URL}"]`, { timeout: 30000 });
 }
 
@@ -217,17 +220,17 @@ const anchors = (page) => page.$$eval('article a[href]', (as) => as.map((a) => (
 test('a potential buyer card explains why, keeps the original, links its provenance, translates on request', opts, async (t) => {
   const { page, translateCalls } = await boot(t);
   await open(page);
+  /* Interest tab: the Arabic question under a comparable listing. */
   const body = await page.textContent('main');
-  assert.match(body, /Potential buyers from public conversations/);
-  assert.match(body, /Strong Match/);
+  assert.match(body, /External results/);
+  assert.match(body, /Interest signal/, 'a question under a listing is labelled as interest, never as a buyer');
+  assert.doesNotMatch(body, /Strong Match/, 'interest carries no match-strength pill');
   assert.match(body, /Commented on a recently listed 2-bedroom apartment in Krtsanisi\. Similar size and price range\./);
-  assert.match(body, /Publicly asked for a 2-bedroom apartment in Krtsanisi\./);
   assert.ok(body.includes(AR_TEXT), 'the original Arabic is shown as written');
   assert.match(body, /Original · Arabic/);
-  assert.match(body, /\+1 more public signals from this person/);
   assert.doesNotMatch(body, /memo23|apify|actor/i, 'no provider internals');
-  const links = await anchors(page);
-  for (const href of [COMMENT_URL, POST_URL, PROFILE_URL, 'https://vk.com/wall-123_456', 'https://vk.com/id12345']) {
+  let links = await anchors(page);
+  for (const href of [COMMENT_URL, POST_URL, PROFILE_URL]) {
     const l = links.find((x) => x.href === href);
     assert.ok(l, `link to ${href}`);
     assert.equal(l.target, '_blank');
@@ -240,6 +243,16 @@ test('a potential buyer card explains why, keeps the original, links its provena
   assert.equal(translateCalls[0].targetLang, 'en');
   assert.equal(translateCalls[0].signalId, 's1');
   assert.ok((await page.textContent('main')).includes(AR_TEXT), 'the original stays visible after translation');
+  /* Buyers tab: the Russian request post states its own intent. */
+  await page.click('[data-testid="fbx-tab-direct"]');
+  await page.waitForSelector('a[href="https://vk.com/wall-123_456"]', { timeout: 15000 });
+  const buyers = await page.textContent('main');
+  assert.match(buyers, /Strong Match/);
+  assert.match(buyers, /Publicly asked for a 2-bedroom apartment in Krtsanisi\./);
+  assert.match(buyers, /\+1 more public signals from this person/);
+  links = await anchors(page);
+  for (const href of ['https://vk.com/wall-123_456', 'https://vk.com/id12345']) assert.ok(links.find((x) => x.href === href), `link to ${href}`);
+  for (const l of links) assert.match(l.href, /^https?:\/\//, `never a non-web link: ${l.href}`);
 });
 
 /* ── PRODUCTION REGRESSION (campaign d8b69c51, 2026-10-13): the latest search found 2
@@ -261,7 +274,7 @@ test('the latest search opens first: its 2 weak leads show without paging; earli
   }));
   assert.equal(first.selected, 'job-new', 'the latest search is selected');
   /* Both leads are questions under a comparable listing: INTEREST, never buyers. */
-  assert.deepEqual(first.groups, ['INTEREST'], 'only the latest search\'s leads, as interest signals');
+  assert.deepEqual(first.groups, ['WEAK'], 'only the latest search\'s leads (Weak), never the older 12');
   const tabs = await page.evaluate(() => ['direct', 'interest', 'opportunities'].map((k) => document.querySelector(`[data-testid="fbx-tab-${k}"]`)?.textContent?.match(/\d+/)?.[0]));
   assert.deepEqual(tabs, ['0', '2', '1'], 'two interest signals under one post: one opportunity, zero buyers');
   await page.click('[data-testid="fbx-campaign-all"]');
@@ -449,9 +462,9 @@ test('live search module: server state, real source nodes only, real counts, the
   assert.match(main, /Searching — first results are in/);
   assert.match(main, /sources working/);
   assert.match(main, /signals checked/);
-  /* Stored results are their own sections: HOMATCH members and external leads, never merged. */
-  assert.match(main, /HOMATCH Matches/, 'internal matches are their own section');
-  assert.match(main, /External Leads/, 'external leads are their own section');
+  /* Find Buyers 3.0: HOMATCH members are on their own page, never on the external one. */
+  assert.doesNotMatch(main, /HOMATCH Matches/, 'internal matches never appear on the external results page');
+  assert.match(main, /External results/, 'external results are their own section');
   const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
   /* Only sources really working are drawn; REDDIT is still queued and appears once it starts (2026-10-12). */
   assert.equal(net, 'Live search network. Sources: FACEBOOK, VK', 'only sources running or finished');

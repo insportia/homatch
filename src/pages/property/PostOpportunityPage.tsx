@@ -20,6 +20,7 @@ import { sourceStyle } from '@/components/findBuyers/brand';
 import { useExternalResults } from '@/components/findBuyers/useExternalResults';
 import { daysAgo, ownerFactsOf, type OwnerFacts } from '@/findBuyers/externalResults';
 import { readProperty } from '@/services/propertyManagement';
+import { safeExternalUrl } from '@/lib/safeExternalUrl';
 import type { PropertyFacts } from '@/types/types';
 
 const CARD = 'rounded-2xl bg-white p-4 ring-1 ring-inset ring-[hsl(40_50%_86%)] sm:p-5';
@@ -34,7 +35,7 @@ function OpportunityContent() {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!propertyId) return;
-    readProperty(propertyId).then((p) => setOwner(ownerFactsOf((p as { facts?: PropertyFacts | PropertyFacts[] } | null)?.facts))).catch(() => setOwner(null));
+    readProperty(propertyId).then((p) => setOwner(ownerFactsOf((p as { facts?: PropertyFacts | PropertyFacts[]; transaction_type?: string | null } | null)?.facts, (p as { transaction_type?: string | null } | null)?.transaction_type))).catch(() => setOwner(null));
   }, [propertyId]);
   const r = useExternalResults(propertyId, job ?? undefined, owner);
   const op = useMemo(() => r.opportunities.find((o) => o.key === key) ?? null, [r.opportunities, key]);
@@ -73,10 +74,10 @@ function OpportunityContent() {
                     {op.facts.bedrooms != null && <span className="rounded-full bg-[hsl(40_33%_96%)] px-2 py-0.5">{t('fbo_bedrooms', { n: String(op.facts.bedrooms) })}</span>}
                   </p>
                 )}
-                <a href={op.url} target="_blank" rel="noopener noreferrer" data-testid="fbo-open-post"
+                {safeExternalUrl(op.url) && <a href={safeExternalUrl(op.url)!} target="_blank" rel="noopener noreferrer nofollow" data-testid="fbo-open-post"
                   className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_60%_76%)]">
                   <ExternalLink className="h-4 w-4" aria-hidden="true" />{t('fbo_open_post')}
-                </a>
+                </a>}
               </section>
 
               {/* Post activity: total (as reported) · analyzed · signals */}
@@ -145,8 +146,8 @@ function OpportunityContent() {
                         <p className="mt-1.5 whitespace-pre-line break-words text-sm text-[hsl(218_45%_14%)]" dir="auto">{ev?.text}</p>
                         <p className="mt-1.5 flex flex-wrap items-center gap-2 text-2xs text-[hsl(218_28%_38%)]">
                           <span>{ev?.publishedAt ? fmt(ev.publishedAt) : t('fbo_not_reported')}</span>
-                          {ev?.url && ev.url !== op.url ? (
-                            <a href={ev.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-[hsl(34_90%_32%)]">
+                          {safeExternalUrl(ev?.url) && ev?.url !== op.url ? (
+                            <a href={safeExternalUrl(ev?.url)!} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1 font-semibold text-[hsl(34_90%_32%)]">
                               <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />{t('fbo_open_comment')}
                             </a>
                           ) : <span>{t('fbo_no_comment_link')}</span>}

@@ -18548,6 +18548,9 @@ const en = {
   fbo_sig_FINANCING: 'Financing',
   fbo_sig_EXPLICIT_BUY: 'Wants to buy',
   fbo_sig_EXPLICIT_RENT: 'Wants to rent',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_card_interest: 'Interest signal',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -37010,6 +37013,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'დაფინანსება',
   fbo_sig_EXPLICIT_BUY: 'ყიდვის სურვილი',
   fbo_sig_EXPLICIT_RENT: 'ქირაობის სურვილი',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_card_interest: 'ინტერესის სიგნალი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55463,6 +55469,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'Финансирование',
   fbo_sig_EXPLICIT_BUY: 'Хочет купить',
   fbo_sig_EXPLICIT_RENT: 'Хочет снять',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_card_interest: 'Сигнал интереса',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73914,6 +73923,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'Finansman',
   fbo_sig_EXPLICIT_BUY: 'Almak istiyor',
   fbo_sig_EXPLICIT_RENT: 'Kiralamak istiyor',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_card_interest: 'İlgi sinyali',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -92365,6 +92377,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'التمويل',
   fbo_sig_EXPLICIT_BUY: 'يريد الشراء',
   fbo_sig_EXPLICIT_RENT: 'يريد الاستئجار',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_card_interest: 'إشارة اهتمام',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110816,6 +110831,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'מימון',
   fbo_sig_EXPLICIT_BUY: 'רוצה לקנות',
   fbo_sig_EXPLICIT_RENT: 'רוצה לשכור',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_card_interest: 'אות עניין',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

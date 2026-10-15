@@ -36,7 +36,7 @@ function HomeContent() {
   const [internalStart, setInternalStart] = useState<InternalStart>('idle');
   React.useEffect(() => { if (propertyId) readProperty(propertyId).then(setProperty).catch(() => setProperty(null)); }, [propertyId]);
 
-  const owner = useMemo(() => ownerFactsOf((property as { facts?: PropertyFacts | PropertyFacts[] } | null)?.facts), [property]);
+  const owner = useMemo(() => ownerFactsOf((property as { facts?: PropertyFacts | PropertyFacts[] } | null)?.facts, property?.transaction_type), [property]);
   const { status } = useCampaignStatus(propertyId);
   const internal = useInternalMatches(propertyId);
   const external = useExternalResults(propertyId, undefined, owner);

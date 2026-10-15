@@ -19,6 +19,7 @@ import { PageNav } from '@/components/findBuyers/PageNav';
 import { NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
 import { useExternalResults } from '@/components/findBuyers/useExternalResults';
 import { daysAgo, freshnessOf, type ClassifiedLead, type OwnerFacts, type PostOpportunity } from '@/findBuyers/externalResults';
+import { groupLeads } from '@/findBuyers/campaignReport';
 import type { PotentialLead } from '@/services/findBuyers';
 
 export const RESULTS_PAGE_SIZE = 9;
@@ -129,7 +130,7 @@ export function ExternalResultsView({ propertyId, owner, onTotal }: { propertyId
 
   return (
     <section aria-labelledby="fbx-results-title" className="space-y-3" data-testid="fbx-results">
-      <h2 id="fbx-results-title" className="sr-only">{t('fbx_results_title')}</h2>
+      <h2 id="fbx-results-title" className="font-display text-base font-semibold text-[hsl(218_45%_14%)]">{t('fbx_results_title')}</h2>
       {/* Searches: latest first, then earlier ones, then all. */}
       <div role="tablist" aria-label={t('fbx_campaigns_label')} data-testid="fbx-campaigns" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
         {r.campaigns.map((c, i) => (
@@ -180,8 +181,19 @@ export function ExternalResultsView({ propertyId, owner, onTotal }: { propertyId
           {(shown as PostOpportunity[]).map((op) => <OpportunityCard key={op.key} op={op} propertyId={propertyId} />)}
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3" data-testid="fbx-lead-group" data-category={tab === 'interest' ? 'INTEREST' : 'DIRECT'}>
-          {(shown as ClassifiedLead[]).map((lead) => <PotentialBuyerCard key={lead.id} lead={lead as unknown as PotentialLead} propertyId={propertyId} />)}
+        /* Within a tab: Strong → Potential → Weak, then leads stored before match review. */
+        <div className="space-y-4">
+          {groupLeads(shown as ClassifiedLead[]).map((g) => (
+            <div key={g.category} className="space-y-2" data-testid="fbx-lead-group" data-category={g.category}>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)]">
+                <span>{t(`fbr_cat_${g.category}`)}</span>
+                <span className="rounded-full bg-[hsl(218_70%_96%)] px-2 py-px text-2xs font-bold tabular-nums text-[hsl(220_60%_30%)]">{g.rows.length}</span>
+              </h3>
+              <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                {g.rows.map((lead) => <PotentialBuyerCard key={lead.id} lead={lead as unknown as PotentialLead} propertyId={propertyId} interest={tab === 'interest'} />)}
+              </div>
+            </div>
+          ))}
         </div>
       )}
       <PageNav page={Math.min(page, totalPages)} totalPages={totalPages} onPage={(p) => set({ rp: p === 1 ? null : String(p) }, false)} label={t('fbl_leads_pages')} />

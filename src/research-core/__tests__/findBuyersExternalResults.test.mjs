@@ -77,3 +77,24 @@ test('freshness never assumes fresh without a timestamp', () => {
   assert.equal(postKey(POST), postKey(POST));
   assert.notEqual(postKey(POST), postKey(`${POST}0`));
 });
+
+test('a tenant is never a buyer for a sale listing (and vice versa), on read', () => {
+  const post = (text) => ({ id: 'm', matching_job_id: 'j', source: 'FACEBOOK', overall_score: 75, created_at: '2026-10-01T00:00:00Z', signal_at: null, author_name: null, evidence: [{ kind: 'POST', text }] });
+  const tenant = post('Ищу квартиру в Тбилиси, бюджет 300-400$ в месяц, на длительный срок');
+  const buyer = post('ვიყიდი 2 საძინებლიან ბინას კრწანისში, ბიუჯეტი 160 000$');
+  assert.equal(classifyLead(tenant, 'SALE').resultType, 'EXCLUDED');
+  assert.equal(classifyLead(tenant, 'RENT').resultType, 'DIRECT');
+  assert.equal(classifyLead(buyer, 'RENT').resultType, 'EXCLUDED');
+  assert.equal(classifyLead(buyer, 'SALE').resultType, 'DIRECT');
+  assert.equal(classifyLead(tenant, null).resultType, 'DIRECT', 'an unknown market keeps the reading');
+});
+
+test('a stored, already-qualified lead keeps its decision unless the rules find a definite exclusion', () => {
+  const stored = (text, cat) => ({ id: 'q', matching_job_id: 'j', source: 'FACEBOOK', overall_score: 80, created_at: '', signal_at: null, author_name: null,
+    counterpart: 'BUYER', match_category: cat, evidence: [{ kind: 'POST', text }] });
+  /* the rules alone read this as unknown; the pipeline (with the model) qualified it */
+  assert.equal(classifyLead(stored('Ищу 2-комнатную квартиру в Крцаниси, рассмотрю варианты.', 'STRONG'), 'SALE').resultType, 'DIRECT');
+  assert.equal(classifyLead(stored('Ищу 2-комнатную квартиру в Крцаниси, рассмотрю варианты.', null), 'SALE').resultType, 'EXCLUDED', 'never-qualified legacy: no pass');
+  /* a definite exclusion still wins: the production developer ad was stored as WEAK */
+  assert.equal(classifyLead(stored('ბინის შეძენა გსურთ? გთავაზობთ ბინებს მწვანე კარკასის კონდიციით, გადახდის მოქნილი პირობებით', 'WEAK'), 'SALE').resultType, 'EXCLUDED');
+});

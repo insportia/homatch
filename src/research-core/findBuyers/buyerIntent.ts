@@ -54,7 +54,7 @@ const SIGNAL_RULES: Array<[CommentSignal, RegExp]> = [
   ['POSITIVE', L([`${B}(beautiful|nice|great|amazing|wow|love it|gorgeous|congrats|congratulations)`, 'красив', 'отличн', 'супер', 'класс', 'шикарн', 'ლამაზ', 'მაგარი', 'სუპერ', 'მშვენიერ', 'güzel', 'harika', 'süper', 'جميل', 'رائع', 'ممتاز', 'יפה', 'מהמם', 'מדהים', '😍', '🔥', '👍', '❤'])],
 ];
 
-const SPAM = L([`${B}(earn money|work from home|crypto|bitcoin|forex|casino|bet|click (the )?link|follow me|subscribe)`, 'заработ', 'крипт', 'казино', 'ставк', 'подписывайтесь', 'შემოსავალ', 'კრიპტ', 'კაზინო', 'kazan', 'kripto', 'bahis', 'ربح', 'كازينو', 'עבודה מהבית', 'קזינו']);
+const SPAM = L([`${B}(earn money|work from home|crypto|bitcoin|forex|casino|bet|click (the )?link|follow me|subscribe)`, 'заработок в интернете', 'крипт', 'казино', 'букмекер', 'подписывайтесь', 'შემოსავალ', 'კრიპტ', 'კაზინო', 'kazan', 'kripto', 'bahis', 'ربح', 'كازينو', 'עבודה מהבית', 'קזינו']);
 const LINK_ONLY = /^\s*(https?:\/\/\S+\s*)+$/iu;
 
 /** Every signal in the text (a set): several per comment is normal. */

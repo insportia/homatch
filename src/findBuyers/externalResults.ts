@@ -43,6 +43,7 @@ export interface ResultLead {
   author_name: string | null;
   evidence: EvidenceItem[];
   match_category?: string | null;
+  counterpart?: 'BUYER' | 'TENANT' | null;
   qualification?: { resultType?: ResultType; intent?: string; signals?: string[] } | null;
 }
 
@@ -52,8 +53,19 @@ export interface ClassifiedLead extends ResultLead {
   signals: CommentSignal[];
 }
 
-/** The lead's type: the stored gate result, or the same gate run on its own evidence. */
-export function classifyLead(lead: ResultLead): ClassifiedLead {
+/**
+ * The lead's type: the stored gate result, or the same gate run on its own evidence.
+ * `market` is the owner's listing (SALE / RENT): a tenant is never a buyer for a sale,
+ * nor a buyer a tenant for a rental — such a reading is EXCLUDED (wrong market).
+ */
+export function classifyLead(lead: ResultLead, market: 'SALE' | 'RENT' | null = null): ClassifiedLead {
+  const out = classifyStored(lead);
+  const wrongMarket = out.resultType === 'DIRECT'
+    && ((market === 'SALE' && out.intent === 'ACTIVE_TENANT') || (market === 'RENT' && out.intent === 'ACTIVE_BUYER'));
+  return wrongMarket ? { ...out, resultType: 'EXCLUDED' } : out;
+}
+
+function classifyStored(lead: ResultLead): ClassifiedLead {
   const q = lead.qualification;
   if (q?.resultType) {
     return { ...lead, resultType: q.resultType, intent: q.intent ?? 'UNKNOWN', signals: (q.signals ?? []) as CommentSignal[] };
@@ -62,21 +74,29 @@ export function classifyLead(lead: ResultLead): ClassifiedLead {
   const kind = ev?.kind ?? 'POST';
   const parentRole = ev?.parentExcerpt ? classifyDemand(ev.parentExcerpt).role : null;
   const r = classifyBuyerIntent({ text: ev?.text ?? '', kind, parent: kind === 'COMMENT' ? { role: parentRole, similarity: ev?.similarity ?? 0 } : null });
+  /* A lead the pipeline already qualified (a category, possibly with the model's help)
+     keeps that decision unless the rules find a definite exclusion — the rules alone
+     reading "unknown" never overturns it. Never-qualified legacy leads get no such pass. */
+  const qualified = ['STRONG', 'POTENTIAL', 'WEAK'].includes(String(lead.match_category ?? ''));
+  if (r.resultType === 'EXCLUDED' && r.intent === 'UNKNOWN' && qualified) {
+    return { ...lead, resultType: 'DIRECT', intent: lead.counterpart === 'TENANT' ? 'ACTIVE_TENANT' : 'ACTIVE_BUYER', signals: r.signals };
+  }
   return { ...lead, resultType: r.resultType, intent: r.intent, signals: r.signals };
 }
 
 export interface ResultCounts { direct: number; interest: number; opportunities: number; excluded: number }
 
-export interface OwnerFacts { price: number | null; currency: string | null; areaSqm: number | null; bedrooms: number | null; district: string | null }
+export interface OwnerFacts { price: number | null; currency: string | null; areaSqm: number | null; bedrooms: number | null; district: string | null; market?: 'SALE' | 'RENT' | null }
 
 type FactsRow = { total_price?: number | string | null; currency?: string | null; area?: number | string | null; bedrooms?: number | string | null; district?: string | null };
 
 /** The owner's listing facts (property_facts, embedded as an object or a one-row array). */
-export function ownerFactsOf(facts: FactsRow | FactsRow[] | null | undefined): OwnerFacts | null {
+export function ownerFactsOf(facts: FactsRow | FactsRow[] | null | undefined, transactionType?: string | null): OwnerFacts | null {
   const f = Array.isArray(facts) ? facts[0] : facts;
-  if (!f) return null;
+  const market = /rent|lease/i.test(String(transactionType ?? '')) ? 'RENT' : transactionType ? 'SALE' : null;
+  if (!f) return market ? { price: null, currency: null, areaSqm: null, bedrooms: null, district: null, market } : null;
   const num = (v: unknown) => (v == null || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
-  return { price: num(f.total_price), currency: f.currency ?? null, areaSqm: num(f.area), bedrooms: num(f.bedrooms), district: f.district ?? null };
+  return { price: num(f.total_price), currency: f.currency ?? null, areaSqm: num(f.area), bedrooms: num(f.bedrooms), district: f.district ?? null, market };
 }
 
 export interface PriceComparison {

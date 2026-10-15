@@ -58,7 +58,8 @@ export function useExternalResults(propertyId: string | undefined, chosen: strin
     return () => { alive = false; };
   }, [propertyId, jobId, campaigns, tick]);
 
-  const leads = useMemo(() => (rows ? rows.map(classifyLead) : null), [rows]);
+  const market = owner?.market ?? null;
+  const leads = useMemo(() => (rows ? rows.map((r) => classifyLead(r, market)) : null), [rows, market]);
   const opportunities = useMemo(() => (leads ? buildOpportunities(leads, owner) : []), [leads, owner]);
   const counts = useMemo(() => countResults(leads ?? [], opportunities), [leads, opportunities]);
   return { campaigns, jobId, leads, opportunities, counts, failed, capped, reload };

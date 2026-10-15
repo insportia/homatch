@@ -952,7 +952,7 @@ function MatchesContent() {
   }, []);
   /* External = Find Buyers leads + stored external-demand matches (both read off public
      posts). Internal members are counted only in the HOMATCH section. */
-  const ownerFacts = React.useMemo(() => ownerFactsOf(property?.facts as Parameters<typeof ownerFactsOf>[0]), [property]);
+  const ownerFacts = React.useMemo(() => ownerFactsOf(property?.facts as Parameters<typeof ownerFactsOf>[0], property?.transaction_type), [property]);
   const currentPages = Math.max(1, Math.ceil(currentTotal / MATCHES_PAGE_SIZE));
   const historyPages = Math.max(1, Math.ceil(historyTotal / MATCHES_PAGE_SIZE));
   const dnaFacts = facts ? {

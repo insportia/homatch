@@ -37,6 +37,7 @@ export const FIND_BUYERS_3_STRINGS = {
   fbx_empty_interest: S('No questions about comparable properties in this search.', 'ამ ძებნაში მსგავს ქონებაზე კითხვები არ მოიძებნა.', 'В этом поиске нет вопросов о похожих объектах.', 'Bu aramada benzer mülkler hakkında soru yok.', 'لا توجد أسئلة عن عقارات مشابهة في هذا البحث.', 'אין בחיפוש הזה שאלות על נכסים דומים.'),
   fbx_empty_opportunities: S('No comparable post with audience interest in this search.', 'ამ ძებნაში მსგავსი პოსტი აუდიტორიის ინტერესით არ მოიძებნა.', 'В этом поиске нет похожих публикаций с интересом аудитории.', 'Bu aramada kitle ilgisi olan benzer gönderi yok.', 'لا يوجد منشور مشابه فيه اهتمام من الجمهور في هذا البحث.', 'אין בחיפוש הזה פוסט דומה עם עניין מהקהל.'),
   fbx_see_opportunities: S('See {{n}} post opportunities', '{{n}} პოსტის შესაძლებლობის ნახვა', 'Смотреть возможности в публикациях: {{n}}', '{{n}} gönderi fırsatını gör', 'عرض {{n}} من فرص المنشورات', 'צפייה ב-{{n}} הזדמנויות פוסט'),
+  fbx_card_interest: S('Interest signal', 'ინტერესის სიგნალი', 'Сигнал интереса', 'İlgi sinyali', 'إشارة اهتمام', 'אות עניין'),
   /* opportunity */
   fbo_eyebrow: S('Similar property audience', 'მსგავსი ქონების აუდიტორია', 'Аудитория похожего объекта', 'Benzer mülk kitlesi', 'جمهور عقار مشابه', 'קהל של נכס דומה'),
   fbo_title: S('Post opportunity', 'პოსტის შესაძლებლობა', 'Возможность в публикации', 'Gönderi fırsatı', 'فرصة منشور', 'הזדמנות בפוסט'),

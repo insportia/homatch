@@ -137,3 +137,24 @@ test('the developer ad is rejected (INTENT_EXCLUDED); a price question under a c
   assert.equal(ev.parentFacts.price, 185000);
   assert.ok(ev.signals.includes('PRICE'));
 });
+
+test('adaptive comment sampling: a productive sample of a large post asks for one larger read; a poor one stops', async () => {
+  const at = new Date(NOW - 86400000).toISOString();
+  const parent = { externalId: 'post:big', url: 'https://www.facebook.com/groups/1/permalink/77', signalId: 'sig-big', similarity: 85, stance: 'OFFER', role: 'SALE_OFFER',
+    excerpt: 'იყიდება ბინა კრწანისში', facts: null, ageDays: 2, publishedAt: at, commentCount: 240 };
+  const c = (n, text) => ({ kind: 'COMMENT', network: 'FACEBOOK', externalId: `cc:${n}`, url: `${parent.url}?c=${n}`, parentExternalId: parent.externalId, parentUrl: parent.url,
+    author: { id: `p${n}`, name: `P${n}`, url: null, handle: null }, text, publishedAt: at, engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [] });
+  const productive = [c(1, 'ფასი?'), c(2, 'Can I visit tomorrow?'), c(3, 'How much?'), c(4, 'nice'), c(5, 'Is a mortgage possible here?')];
+  const { db } = campaignDb();
+  const out = await processItems({ ...ctxFor(db, 'FB_COMMENTS'), parent, commentProbe: 5 }, productive);
+  assert.equal(out.commentSampling.decision, 'EXPAND');
+  const exp = out.followUps.find((f) => f.reason === 'EXPAND_COMMENTS');
+  assert.ok(exp && exp.size === 15 && exp.parent.sampleDepth === 1, JSON.stringify(exp));
+  const { db: db2 } = campaignDb();
+  const poor = await processItems({ ...ctxFor(db2, 'FB_COMMENTS'), parent, commentProbe: 5 }, [c(6, 'nice'), c(7, 'wow'), c(8, 'congrats'), c(9, 'ok'), c(10, '👍👍👍 cool')]);
+  assert.equal(poor.commentSampling.decision, 'STOP_LOW_YIELD');
+  assert.ok(!poor.followUps.some((f) => f.reason === 'EXPAND_COMMENTS'));
+  const { db: db3 } = campaignDb();
+  const again = await processItems({ ...ctxFor(db3, 'FB_COMMENTS'), parent: { ...parent, sampleDepth: 1 }, commentProbe: 5 }, productive);
+  assert.equal(again.commentSampling.decision, 'STOP_DEPTH', 'a post is expanded once');
+});

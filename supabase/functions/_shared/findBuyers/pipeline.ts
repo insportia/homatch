@@ -28,6 +28,7 @@ import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-co
 import { dateProvenance, emptyDispositions, freshnessBucket, hardGate, publicIntent, type DispositionCounts } from '../../../../src/research-core/findBuyers/demandTaxonomy.ts';
 import { classifyDemand, classifyComment, boundModelReading, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { classifyBuyerIntent } from '../../../../src/research-core/findBuyers/buyerIntent.ts';
+import { decideCommentSampling } from '../../../../src/research-core/findBuyers/commentSampling.ts';
 import { qualify, legacyIntentClass, QUALIFICATION_VERSION, type Qualification } from '../../../../src/research-core/findBuyers/qualify.ts';
 import { duplicateKey } from '../../../../src/research-core/findBuyers/requalify.ts';
 import { sourceRelevance } from '../../../../src/research-core/findBuyers/sourceRelevance.ts';
@@ -57,6 +58,8 @@ export interface ParentContext {
   publishedAt?: string | null;
   /** Total comments the platform reported for this post (null = not reported). */
   commentCount?: number | null;
+  /** 0 for the first comment sample of this post, 1 after one expansion. */
+  sampleDepth?: number;
 }
 
 export interface FollowUp {
@@ -66,6 +69,8 @@ export interface FollowUp {
   language: string;
   reason: string;
   parent?: ParentContext;
+  /** Requested results (an adaptive comment expansion); default = the configured probe. */
+  size?: number;
 }
 
 export interface PipelineCtx {
@@ -81,6 +86,9 @@ export interface PipelineCtx {
   fx?: FxToUsd;
   /** The parent post when this run fetched one post's comments. */
   parent: ParentContext | null;
+  /** Adaptive comment sampling: the configured first-sample size and the Actor maximum. */
+  commentProbe?: number;
+  commentMaxResults?: number;
   /** The source (group/community/profile) this run read, when known. */
   sourceId: string | null;
   sourceYield: number | null;
@@ -108,6 +116,8 @@ export interface PipelineResult {
   /** One primary disposition per content candidate (groups/communities excluded); sums to candidates. */
   dispositions: DispositionCounts;
   candidates: number;
+  /** The adaptive sampling decision of a comment run (absent for posts). */
+  commentSampling?: { decision: string; analyzed: number; interested: number; total: number | null };
 }
 
 const DAY = 86_400_000;
@@ -466,6 +476,23 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     else if (res === 'WEAK') { out.weak++; out.dispositions.BELOW_THRESHOLD++; }
     else if (res === 'DUPLICATE') { out.duplicates++; out.dispositions.DUPLICATE++; }
     else out.dispositions.BELOW_THRESHOLD++;
+  }
+
+  /* Adaptive comment sampling: read more of this post only when the sample just read
+     proved worth it (interest per comment), once, within the Actor maximum. */
+  if (ctx.stage.endsWith('COMMENTS') && ctx.parent?.url) {
+    const comments = assessed.filter((a) => a.item.kind === 'COMMENT');
+    const interested = comments.filter((a) => a.qualification && a.qualification.category !== 'REJECTED'
+      && (a.qualification.resultType === 'INTEREST' || a.qualification.resultType === 'DIRECT')).length;
+    const plan = decideCommentSampling({
+      analyzed: comments.length, interested, total: ctx.parent.commentCount ?? null, depth: ctx.parent.sampleDepth ?? 0,
+      probe: ctx.commentProbe ?? comments.length, maxResults: ctx.commentMaxResults ?? 1000,
+    });
+    out.commentSampling = { decision: plan.decision, analyzed: comments.length, interested, total: ctx.parent.commentCount ?? null };
+    if (plan.decision === 'EXPAND' && plan.size) {
+      out.followUps.push({ stage: ctx.stage, targetUrl: ctx.parent.url, sourceId: ctx.sourceId, language: ctx.runLanguage ?? 'multi',
+        reason: 'EXPAND_COMMENTS', parent: { ...ctx.parent, sampleDepth: (ctx.parent.sampleDepth ?? 0) + 1 }, size: plan.size });
+    }
   }
 }
 

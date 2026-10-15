@@ -707,15 +707,6 @@ export default function MyPropertiesPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate('/property/publish')}
-                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-white/40 bg-white/10 px-3.5 py-1.5 text-2xs font-semibold text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                  aria-label={t('publishing_portals_title')}
-                >
-                  <span aria-hidden="true">↗</span>
-                  <span className="break-words text-start">{t('publishing_portals_title')}</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => navigate('/property/add')}
                   className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] px-3.5 py-1.5 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                 >

@@ -1,7 +1,8 @@
 /** Direct HTTP only; provider bindings supply reviewed fixed endpoints. */
+const publicCodes=new Set(['PORTAL_ORIGIN_DENIED','PORTAL_TRANSPORT_UNCERTAIN','AUTH_REQUIRED','PORTAL_ACCESS_DENIED','REMOTE_NOT_FOUND','RATE_LIMITED','PORTAL_TEMPORARILY_UNAVAILABLE','PORTAL_REQUEST_REJECTED','PORTAL_BINDING_INVALID','PORTAL_API_APPROVAL_REQUIRED','PORTAL_CREDENTIAL_REQUIRED','CAPABILITY_UNVERIFIED','EXPLICIT_CONFIRMATION_REQUIRED','RECONCILIATION_REQUIRED','REMOTE_REFERENCE_REQUIRED','LISTING_INVALID','SECRET_REFERENCE_DENIED','QUEUE_REQUEST_FAILED','REMOTE_UNVERIFIED','INVALID_PHOTOS','INVALID_ASSET','OWNED_PHOTO_REQUIRED','INVALID_PHOTO','PORTAL_REQUEST_FAILED']);
 export class PortalFailure extends Error {
  code:string; mayHaveWritten:boolean;
- constructor(code:string,mayHaveWritten=false){super(code);this.name='PortalFailure';this.code=code;this.mayHaveWritten=mayHaveWritten;}
+ constructor(code:string,mayHaveWritten=false){const safe=publicCodes.has(code)?code:'PORTAL_REQUEST_FAILED';super(safe);this.name='PortalFailure';this.code=safe;this.mayHaveWritten=mayHaveWritten;}
 }
 export class PortalHttp {
  private origin:string;

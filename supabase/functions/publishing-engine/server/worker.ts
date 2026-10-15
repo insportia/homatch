@@ -3,6 +3,7 @@ import {ManagedPortalAdapter,type ManagedOperation,type CanonicalImage,type Serv
 import {PortalFailure} from './http.ts';
 export interface ManagedQueue {
  authorize(adapter:ManagedPortalAdapter,auth:ServerAuthorization):Promise<void>;
+ authorizationFailed?(portalId:string,code:string):Promise<void>;
  claim(portalId:string,kinds:string[]):Promise<ManagedOperation|null>;
  photos(operation:ManagedOperation):Promise<CanonicalImage[]>;
  checkpoint(operation:ManagedOperation,remote:{externalId:string;externalUrl:string}):Promise<void>;
@@ -18,7 +19,7 @@ export async function processManagedPortal(queue:ManagedQueue,adapter:ManagedPor
  const kinds=Object.keys(adapter.verifiedOperations).filter(k=>adapter.supports(k));
  if(!kinds.length)return {status:'BLOCKED',code:'PORTAL_API_APPROVAL_REQUIRED',portalId:adapter.id};
  let auth:ServerAuthorization;
- try{auth=await adapter.authorize(signal);await queue.authorize(adapter,auth);}catch(e){return {status:'BLOCKED',code:e instanceof PortalFailure?e.code:'AUTH_REQUIRED',portalId:adapter.id};}
+ try{auth=await adapter.authorize(signal);await queue.authorize(adapter,auth);}catch(e){const code=e instanceof PortalFailure?e.code:'AUTH_REQUIRED';try{await queue.authorizationFailed?.(adapter.id,code);}catch{/* Preserve queue intent during a database outage. */}return {status:'BLOCKED',code,portalId:adapter.id};}
  const op=await queue.claim(adapter.id,kinds);if(!op)return {status:'IDLE',portalId:adapter.id};
  let dispatched=false,awaitingReadback=false;
  try{
@@ -46,6 +47,7 @@ export function supabaseManagedQueue(admin:any):ManagedQueue{
  const rpc=async(name:string,args:unknown)=>{const {data,error}=await admin.rpc(name,args);if(error)throw new PortalFailure('QUEUE_REQUEST_FAILED');return data;};
  return {
   authorize:async(adapter,auth)=>{await rpc('publishing_engine_authorize_managed',{p_portal:adapter.id,p_account:auth.accountId,p_expires:new Date(auth.expiresAt).toISOString(),p_evidence:adapter.authorizationEvidence,p_capabilities:adapter.verifiedOperations});},
+  authorizationFailed:async(portal,code)=>{await rpc('publishing_engine_auth_failed_managed',{p_portal:portal,p_error:code});},
   claim:async(portal,kinds)=>(await rpc('publishing_engine_claim_managed',{p_portal:portal,p_verified_kinds:kinds}))?.[0]||null,
   photos:async op=>{
    const items=op.payload.photos;if(items==null)return [];if(!Array.isArray(items)||items.length>50)throw new PortalFailure('INVALID_PHOTOS');

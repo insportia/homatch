@@ -63,3 +63,11 @@ test('server media uses tenant-owned object paths and verifies content signature
  const photos=await q.photos({user_id:'owner',payload:{photos:[{assetId:id,name:'qa.png'}]}});assert.deepEqual(paths,['owner/'+id]);assert.equal(photos[0].mime,'image/png');
  await assert.rejects(q.photos({user_id:'owner',payload:{photos:[{assetId:'https://evil.test/photo'}]}}),/INVALID_ASSET/);
 });
+
+test('authorization failure clears stale connection health without consuming operations',async()=>{
+ const failures=[];const s=setup({binding:{authorize:async()=>{throw new PortalFailure('AUTH_REQUIRED');}},queue:{authorizationFailed:async(id,code)=>failures.push({id,code})}});
+ assert.equal((await processManagedPortal(s.queue,s.adapter)).code,'AUTH_REQUIRED');assert.deepEqual(failures,[{id:'myhome',code:'AUTH_REQUIRED'}]);assert.equal(s.calls.length,0);
+});
+test('provider-supplied error strings cannot enter diagnostic codes or error messages',()=>{
+ const error=new PortalFailure('DO_NOT_LOG_CREDENTIAL_1234');assert.equal(error.code,'PORTAL_REQUEST_FAILED');assert.ok(!JSON.stringify(error).includes('DO_NOT_LOG'));assert.ok(!error.message.includes('DO_NOT_LOG'));
+});

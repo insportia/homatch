@@ -37,6 +37,17 @@ begin
  select * into a from public.publishing_engine_managed_accounts where portal_id=p_portal for update;
  if not found or not a.enabled or a.status not in ('SERVER_ACCESS_VERIFIED','PUBLISH_CAPABLE','MANAGEMENT_CAPABLE') or a.authorization_expires_at is null or a.authorization_expires_at<=now() or coalesce(a.authorization_evidence,'')='' then return;end if;
  update public.publishing_engine_operations set status='RECONCILIATION_REQUIRED',error_code='LEASE_EXPIRED',updated_at=now() where managed_account_id=a.id and status='RUNNING' and lease_until<now();
+ -- Restore explicitly requested, capability-blocked work after approved capabilities become available.
+ with resumed as (
+  update public.publishing_engine_operations o set status='QUEUED',error_code=null,available_at=now(),updated_at=now()
+  where o.portal_id=p_portal and o.status='ACTION_REQUIRED' and o.error_code='CAPABILITY_UNVERIFIED'
+   and o.kind=any(p_verified_kinds) and a.verified_operations->o.kind->>'verified'='true' and coalesce(a.verified_operations->o.kind->>'evidence','')<>''
+   and (o.managed_account_id is null or o.managed_account_id=a.id)
+   and (o.kind not in ('PUBLISH','DELETE','REFRESH') or o.confirmed_at is not null)
+  returning o.*
+ ) insert into public.publishing_engine_audit(user_id,listing_id,operation_id,event,detail)
+ select user_id,listing_id,id,'MANAGED_CAPABILITY_RESUMED',jsonb_build_object('revision',desired_revision,'portalId',portal_id) from resumed;
+
  if exists(select 1 from public.publishing_engine_operations where managed_account_id=a.id and (status='RUNNING' or updated_at>now()-make_interval(secs=>a.min_interval_seconds) and status='SUCCEEDED')) then return;end if;
  select o.* into op from public.publishing_engine_operations o join public.publishing_engine_listings l on l.id=o.listing_id
  where o.portal_id=p_portal and o.status in ('QUEUED','AUTH_REQUIRED') and o.available_at<=now() and o.attempts<o.max_attempts
@@ -125,3 +136,13 @@ begin
 end$$;
 revoke all on function public.publishing_engine_schedule_managed(integer) from public,anon,authenticated;
 grant execute on function public.publishing_engine_schedule_managed(integer) to service_role;
+
+create function public.publishing_engine_auth_failed_managed(p_portal text,p_error text)
+returns void language plpgsql security invoker set search_path=public,pg_temp as $$
+begin
+ if p_error is null or p_error!~'^[A-Z_]{1,80}$' then raise exception 'INVALID_ERROR_CODE';end if;
+ update public.publishing_engine_managed_accounts set status=case when p_error in ('AUTH_REQUIRED','PORTAL_CREDENTIAL_REQUIRED') then 'REAUTH_REQUIRED' else 'BLOCKED' end,
+ authorization_expires_at=null,last_error_code=p_error,updated_at=now() where portal_id=p_portal;
+end$$;
+revoke all on function public.publishing_engine_auth_failed_managed(text,text) from public,anon,authenticated;
+grant execute on function public.publishing_engine_auth_failed_managed(text,text) to service_role;

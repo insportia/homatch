@@ -28,6 +28,7 @@ jobs:
           fi
       - name: Dump pages
         if: hashFiles('scripts/portals/dump-targets.txt') != ''
+        continue-on-error: true
         run: node scripts/portals/dump.mjs
       - name: Live adapter check
         if: hashFiles('scripts/portals/live-check.mjs') != ''

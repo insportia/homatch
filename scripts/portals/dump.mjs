@@ -30,7 +30,8 @@ for (const line of lines) {
   if (!(await allowed(url))) { console.log(`DUMPSKIP ${name} robots ${url}`); continue; }
   const res = await fetch(url, { headers: { 'user-agent': UA, accept: 'text/html', 'accept-language': 'ka,en;q=0.8' }, redirect: 'follow', signal: AbortSignal.timeout(25000) }).catch((e) => ({ status: 0, url, text: async () => String(e) }));
   const html = await res.text();
-  if (parser) { const a = PORTAL_ADAPTERS.find((x) => x.sourceId === parser); const items = a.parseList(html, url, {});
+  const a = parser && PORTAL_ADAPTERS.find((x) => x.sourceId === parser);
+  if (a) { const items = a.parseList(html, url, {});
     const f = assignedJson(html, 'window.INITIAL_STATE')?.filtersStore?.filters;
     console.log(`PROBE ${name} status=${res.status} n=${items.length} ` + JSON.stringify({ filters: f ? { price: f.price, roomCounts: f.roomCounts, area: f.area } : undefined, rows: items.map((i) => [i.sourceListingId, i.price, i.currency, i.rooms, i.areaSqm]) }));
     await new Promise((r) => setTimeout(r, 1500)); continue; }

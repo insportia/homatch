@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Retention lifecycle tests on a THROWAWAY local Postgres 16 — never
+# production, no network, no providers. Applies the real migration (twice, to
+# prove it re-runs) on stand-in fixtures, then runs tests.sql.
+# Usage: tests/sql/retention/run.sh
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"; root="$here/../../.."
+dir="${RETENTION_PG_DIR:-/var/tmp/hm-retention}"; port="${RETENTION_PG_PORT:-54332}"; bin="${PGBIN:-/usr/lib/postgresql/16/bin}"
+M="$root/supabase/migrations/20261102090000_storage_retention_lifecycle.sql"
+
+if ! psql -h "$dir" -p "$port" -U postgres -tAc 'select 1' >/dev/null 2>&1; then
+  rm -rf "$dir"; mkdir -p "$dir"; chown postgres "$dir" 2>/dev/null || true
+  su postgres -c "$bin/initdb -D $dir/data -A trust >/dev/null && $bin/pg_ctl -D $dir/data -o \"-p $port -k $dir\" -l $dir/log start >/dev/null"
+  sleep 2
+fi
+P="env PGOPTIONS=-cclient_min_messages=warning psql -h $dir -p $port -U postgres -v ON_ERROR_STOP=1 -q"
+$P -c "drop database if exists hmret" -c "create database hmret"
+$P -d hmret -f "$here/fixture.sql"
+$P -d hmret -1 -f "$M"
+$P -d hmret -1 -f "$M"
+env PGOPTIONS=-cclient_min_messages=notice psql -h "$dir" -p "$port" -U postgres -d hmret -v ON_ERROR_STOP=1 -q -o /dev/null -f "$here/tests.sql" 2>&1 \
+  | sed -e 's/^psql:[^:]*:[0-9]*: NOTICE:  /  /' -e 's/^NOTICE:  /  /'
+
+# ── Real concurrency: four sessions claim at once, each holding its
+#    transaction open; no record may be handed to two workers.
+Q="psql -h $dir -p $port -U postgres -d hmret -tA -v ON_ERROR_STOP=1 -q"
+$Q -c "update public.admin_settings set value = value || '{\"purge_enabled\": true, \"effective_at\": \"2000-01-01T00:00:00Z\"}'::jsonb where key = 'storage_retention';
+  insert into public.deal_rooms (id, user_id) values ('29999999-0000-0000-0000-000000000000', 'aaaaaaaa-0000-0000-0000-00000000000a');
+  insert into public.deal_room_documents (deal_room_id, user_id, doc_key, label, analysis, analysis_state, analyzed_at, uploaded_at)
+    select '29999999-0000-0000-0000-000000000000', 'aaaaaaaa-0000-0000-0000-00000000000a', 'upload:c' || g, 'x', '{}', 'DONE',
+           now() - interval '40 days', now() - interval '40 days' from generate_series(1, 24) g;
+  select public.retention_register_due(100);" >/dev/null
+out="$dir/claims"; rm -f "$out".*
+for w in 1 2 3 4; do
+  ( $Q -c "begin; select string_agg(record_id::text, E'\n') from public.retention_claim(10); select pg_sleep(1); commit;" > "$out.$w" ) &
+done
+wait
+total=$(cat "$out".* | grep -c . || true); distinct=$(cat "$out".* | grep . | sort -u | wc -l)
+echo "  concurrency: 4 workers claimed $total records, $distinct distinct"
+[ "$total" -eq "$distinct" ] && [ "$total" -ge 24 ] || { echo "  FAIL: duplicate or missing claims"; exit 1; }
+echo "RETENTION CONCURRENCY: PASS"

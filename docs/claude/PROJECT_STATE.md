@@ -34,6 +34,16 @@ MATTERS right now, verify against the live systems, not this file)
   `discovery-queue-worker`; no migration, no Railway. Not verified against live provider data (no
   paid run authorized): totals/analyzed/parent facts appear only on leads written after deploy.
 
+## Storage retention + cleanup engine + compact market knowledge (branch `ccr-76ef455d-storage-retention`, 2026-10-15) — PR OPEN, NOT APPLIED, NOT ACTIVE
+
+- Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.
+- Migration `20261102090000_storage_retention_lifecycle.sql` is dormant on apply: `admin_settings.storage_retention`
+  seeds `effective_at=null`, `purge_enabled=false`, reminders/knowledge off; no cron is scheduled.
+- Verify analysis untouched. Owner-approved minimal expiry guard (2026-10-15) in service-role routes: research-agent
+  job actions + `document_file` + regeneration actions, `homatch-ai` context, analyze worker path (doc §6). Protected
+  files may differ from main only by those exact lines (`tests/matrix/retentionSafety.test.mjs`).
+- Privacy policy `privacy_s6_body` must gain the 30-day report deletion sentence before `effective_at` is set.
+
 ## Find Buyers 2.0 — one dashboard, two campaigns, per-search results (branch claude/nifty-hopper-snzn2d, 2026-10-15) — PR, NOT DEPLOYED
 
 - **Invisible-results root cause (campaign d8b69c51)**: its 2 leads (WEAK, 55/47, FACEBOOK) were stored,

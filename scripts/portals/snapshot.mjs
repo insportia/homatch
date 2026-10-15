@@ -64,7 +64,12 @@ async function inspect(url) {
   const p = await get(url);
   const challenge = /cf-chl|challenge-platform|captcha|just a moment/i.test(p.body.slice(0, 20000));
   console.log(`\n### ${url}\n  status=${p.status} final=${p.url} ${p.ms}ms type=${p.type} server=${p.server}${p.error ? ' error=' + p.error : ''}${challenge ? ' CHALLENGE' : ''}`);
-  if (p.status !== 200 || challenge) return p;
+  if (challenge) {
+    const m = p.body.slice(0, 30000).match(/cf-chl|challenge-platform|captcha|just a moment/i);
+    console.log(`  challenge-marker=${JSON.stringify(m?.[0])} context=${JSON.stringify(p.body.slice(Math.max(0, (m?.index ?? 0) - 200), (m?.index ?? 0) + 200).replace(/\s+/g, ' '))}`);
+    console.log(`  head=${JSON.stringify(p.body.slice(0, 500).replace(/\s+/g, ' '))}`);
+  }
+  if (p.status !== 200) return p;
   const s = structure(p, p.url);
   console.log(`  title=${JSON.stringify(s.title)} bytes=${s.bytes} blobs=${s.blobs.join(',') || '-'}`);
   console.log(`  forms=${JSON.stringify(s.forms)}`);
@@ -91,6 +96,15 @@ async function inspect(url) {
   console.log(`  QUERY-PARAMS: ${JSON.stringify([...params.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30))}`);
   const named = [...new Set([...b.matchAll(/<(?:select|input)[^>]+name="([^"]+)"/gi)].map((m) => m[1]))];
   console.log(`  FIELDS: ${JSON.stringify(named.slice(0, 40))}`);
+  for (const m of [...b.matchAll(/<select[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/select>/gi)].slice(0, 12)) {
+    const opts = [...m[2].matchAll(/<option[^>]*value="([^"]*)"[^>]*>([^<]{0,40})/gi)].map((o) => `${o[1]}:${o[2].trim()}`);
+    console.log(`  SELECT ${m[1]}: ${JSON.stringify(opts.slice(0, 40))}`);
+  }
+  const first = s.samples[0];
+  if (first) {
+    const i = b.indexOf(first.split('?')[0].replace(/^https?:\/\/[^/]+/, ''));
+    if (i > 0) console.log(`  CARD-HTML: ${JSON.stringify(b.slice(Math.max(0, i - 1800), i + 2600).replace(/\s+/g, ' '))}`);
+  }
   return p;
 }
 const only = arg('--portal');

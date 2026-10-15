@@ -1,8 +1,7 @@
-https://place.ge/ge/ads
-https://place.ge/ge/ads/view/1318095
-https://www.home.ge/
-https://brokeri.ge/property-search
-https://brokeri.ge/properties/tbilisi
-https://binebi.ge/
-https://korter.ge/
-https://allhome.ge/
+https://place.ge/ge/ads?type=sale&object_type=flat
+https://www.home.ge/binebi/iyideba-binebi/
+https://www.home.ge/binebi/iyideba-binebi/iyideba-bina-4-otakhiani-dzveli-ashenebuli-tbilisi-saburtalo-26565.html
+https://brokeri.ge/property-search?page=2
+https://korter.ge/binebis-yidva-gayidva-tbilisi
+https://korter.ge/qiravdeba-binebi-tbilisshi/694244
+https://www.allhome.ge/

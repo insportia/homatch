@@ -37,7 +37,7 @@ import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../..
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
-  consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings,
+  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings, workerSwitchOn, WORKER_SOURCE_NAMES,
 
 } from '../_shared/marketplaceSearch.ts';
 
@@ -80,7 +80,7 @@ async function summary(db: Db, search: Record<string, unknown>) {
       const { data: w } = await db.from('discovery_marketplace_workers').select('health').eq('worker_id', r.worker_id).maybeSingle();
       retryAt = decideProviderAccess(readProviderAccess(w?.health), new Date(), false).retryAt;
     }
-    return { source: String(r.worker_id) === 'myhome-agent' ? 'MyHome' : String(r.worker_id) === 'ssge-agent' ? 'SS.ge' : 'OTHER',
+    return { source: WORKER_SOURCE_NAMES[String(r.worker_id)] ?? 'OTHER',
       state, freshListings: Number(r.returned_count) || 0, cachedListings: cachedCount ?? 0, retryAt };
   }));
   return {
@@ -186,7 +186,7 @@ Deno.serve(async (req: Request) => {
       const brief = sanitizeBrief(body.brief);
       const readiness = evaluateReadiness(brief);
       if (readiness.state !== 'READY') return json({ error: 'SEARCH_NOT_READY', readiness }, 422);
-      if (switches.providersKilled && !switches.myhomeEnabled && !switches.ssgeEnabled) return json({ error: 'SOURCES_PAUSED' }, 409);
+      if (!anySourceOn(switches)) return json({ error: 'SOURCES_PAUSED' }, 409);
 
       /* NO DUPLICATE SEARCH. A reconnect, refresh or second tab that lost its idempotency key
          still reaches the customer's open search for the same request instead of a new one. */
@@ -218,8 +218,7 @@ Deno.serve(async (req: Request) => {
         supportedFilters: (w.supported_filters ?? []) as never, executionMode: w.execution_mode as never,
         timeoutMs: Number(w.timeout_ms), maxResults: Number(w.max_results), state: w.state as never, enabled: !!w.enabled, health: w.health as never,
       }));
-      const eligible = eligibleWorkers(workers, request).filter((worker) => worker.workerId === 'myhome-agent'
-        ? switches.myhomeEnabled : worker.workerId === 'ssge-agent' ? switches.ssgeEnabled : !switches.providersKilled);
+      const eligible = eligibleWorkers(workers, request).filter((worker) => workerSwitchOn(switches, worker.workerId));
       const now = new Date();
       const { data: search, error: searchErr } = await db.from('discovery_marketplace_searches').insert({
         id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key,

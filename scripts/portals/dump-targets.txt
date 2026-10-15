@@ -1,0 +1,11 @@
+place-list https://place.ge/ge/ads
+place-list2 https://place.ge/ge/ads/page:2
+place-seo https://place.ge/ge/sakartvelo/bina/iyideba
+place-detail https://place.ge/ge/ads/view/1318095
+homege-list https://www.home.ge/binebi/iyideba-binebi.html
+homege-detail https://www.home.ge/binebi/iyideba-binebi/iyideba-bina-4-otakhiani-dzveli-ashenebuli-tbilisi-saburtalo-26565.html
+brokeri-list https://brokeri.ge/property-search
+brokeri-detail https://brokeri.ge/property/%E1%83%98%E1%83%A7%E1%83%98%E1%83%93%E1%83%94%E1%83%91%E1%83%90%204%20%E1%83%9D%E1%83%97%E1%83%90%E1%83%AE%E1%83%98%E1%83%90%E1%83%9C%E1%83%98%20%E1%83%91%E1%83%98%E1%83%9C%E1%83%90%20%E1%83%95%E1%83%90%E1%83%99%E1%83%94%E1%83%A8%E1%83%98/4931
+korter-list https://korter.ge/binebis-yidva-gayidva-tbilisi
+korter-detail https://korter.ge/qiravdeba-binebi-tbilisshi/694244
+allhome-home https://www.allhome.ge/

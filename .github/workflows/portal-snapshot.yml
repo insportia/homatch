@@ -19,12 +19,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Snapshot
+        if: hashFiles('scripts/portals/targets.txt') != ''
         run: |
           if [ -s scripts/portals/targets.txt ]; then
             node scripts/portals/snapshot.mjs --urls "$(grep -v '^#' scripts/portals/targets.txt | tr '\n' ',' | sed 's/,$//')"
           else
             node scripts/portals/snapshot.mjs
           fi
+      - name: Dump pages
+        if: hashFiles('scripts/portals/dump-targets.txt') != ''
+        run: node scripts/portals/dump.mjs
       - name: Live adapter check
         if: hashFiles('scripts/portals/live-check.mjs') != ''
         run: node scripts/portals/live-check.mjs

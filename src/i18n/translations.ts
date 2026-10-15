@@ -55195,7 +55195,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS DASHBOARD (HOMATCH Match + External Discovery, per-search results) ── */
   fbd_label: 'Поиск покупателей и арендаторов',
-  fbd_internal_title: 'HOMATCH Match',
+  fbd_internal_title: 'Подбор HOMATCH',
   fbd_free_badge: 'Бесплатный подбор',
   fbd_internal_subtitle_buyers: 'Найдите покупателей, которые уже пользуются HOMATCH.',
   fbd_internal_subtitle_tenants: 'Найдите арендаторов, которые уже пользуются HOMATCH.',

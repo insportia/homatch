@@ -2,7 +2,7 @@
 // Order: [en, ka, ru, tr, ar, he].
 export const FIND_BUYERS_DASHBOARD_STRINGS = {
   fbd_label: ['Find buyers and tenants', 'მყიდველების და მოიჯარეების ძებნა', 'Поиск покупателей и арендаторов', 'Alıcı ve kiracı bulun', 'العثور على مشترين ومستأجرين', 'מציאת קונים ושוכרים'],
-  fbd_internal_title: ['HOMATCH Match', 'HOMATCH დამთხვევა', 'HOMATCH Match', 'HOMATCH Eşleşme', 'مطابقة HOMATCH', 'התאמת HOMATCH'],
+  fbd_internal_title: ['HOMATCH Match', 'HOMATCH დამთხვევა', 'Подбор HOMATCH', 'HOMATCH Eşleşme', 'مطابقة HOMATCH', 'התאמת HOMATCH'],
   fbd_free_badge: ['Free matching', 'უფასო დამთხვევა', 'Бесплатный подбор', 'Ücretsiz eşleştirme', 'مطابقة مجانية', 'התאמה חינם'],
   fbd_internal_subtitle_buyers: ['Find buyers already using HOMATCH.', 'იპოვეთ მყიდველები, რომლებიც უკვე იყენებენ HOMATCH-ს.', 'Найдите покупателей, которые уже пользуются HOMATCH.', 'HOMATCH’i zaten kullanan alıcıları bulun.', 'اعثر على مشترين يستخدمون HOMATCH بالفعل.', 'מצאו קונים שכבר משתמשים ב-HOMATCH.'],
   fbd_internal_subtitle_tenants: ['Find tenants already using HOMATCH.', 'იპოვეთ მოიჯარეები, რომლებიც უკვე იყენებენ HOMATCH-ს.', 'Найдите арендаторов, которые уже пользуются HOMATCH.', 'HOMATCH’i zaten kullanan kiracıları bulun.', 'اعثر على مستأجرين يستخدمون HOMATCH بالفعل.', 'מצאו שוכרים שכבר משתמשים ב-HOMATCH.'],

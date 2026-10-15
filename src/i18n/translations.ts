@@ -18447,6 +18447,10 @@ const en = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'Owner (verified or likely)',
+
+  /* ── PROPERTY PHONE SHARING ── */
+  contact_phone_share_label: 'Let HOMATCH members whose search matches this property see and call this number',
+  contact_phone_share_hint: 'Off: your number stays hidden; they can still message you privately on HOMATCH.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36808,6 +36812,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'მესაკუთრე (დადასტურებული ან სავარაუდო)',
+
+  /* ── PROPERTY PHONE SHARING ── */
+  contact_phone_share_label: 'ნება დართე HOMATCH-ის წევრებს, რომელთა ძიებაც ამ ქონებას ემთხვევა, ნახონ ეს ნომერი და დაგირეკონ',
+  contact_phone_share_hint: 'გამორთულია: ნომერი დამალულია; შეუძლიათ HOMATCH-ზე პირადად მოგწერონ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55160,6 +55168,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'Собственник (подтверждённый или вероятный)',
+
+  /* ── PROPERTY PHONE SHARING ── */
+  contact_phone_share_label: 'Разрешить участникам HOMATCH, чей поиск совпадает с этим объектом, видеть этот номер и звонить',
+  contact_phone_share_hint: 'Выключено: номер скрыт; вам всё равно смогут написать лично в HOMATCH.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73510,6 +73522,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'Mal sahibi (doğrulanmış veya muhtemel)',
+
+  /* ── PROPERTY PHONE SHARING ── */
+  contact_phone_share_label: 'Araması bu mülkle eşleşen HOMATCH üyelerinin bu numarayı görmesine ve aramasına izin ver',
+  contact_phone_share_hint: 'Kapalı: numaranız gizli kalır; size HOMATCH üzerinden özel mesaj yine de gönderebilirler.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91860,6 +91876,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'المالك (موثّق أو محتمل)',
+
+  /* ── PROPERTY PHONE SHARING ── */
+  contact_phone_share_label: 'السماح لأعضاء HOMATCH الذين يتطابق بحثهم مع هذا العقار برؤية هذا الرقم والاتصال به',
+  contact_phone_share_hint: 'عند الإيقاف: يبقى رقمك مخفياً؛ ويمكنهم مراسلتك بشكل خاص عبر HOMATCH.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110210,6 +110230,10 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'בעלים (מאומת או סביר)',
+
+  /* ── PROPERTY PHONE SHARING ── */
+  contact_phone_share_label: 'לאפשר לחברי HOMATCH שהחיפוש שלהם תואם לנכס הזה לראות את המספר ולהתקשר',
+  contact_phone_share_hint: 'כבוי: המספר שלך מוסתר; עדיין יוכלו לשלוח לך הודעה פרטית ב-HOMATCH.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

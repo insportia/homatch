@@ -337,6 +337,30 @@ test('Search summary: removing a criterion or editing reopens the builder with t
   assert.equal(state.requests.filter((r) => r.action === 'start').length, 0);
 });
 
+test('HOMATCH network: member matches appear in the workspace and the results; message privately; a number only with consent', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', width: 390, nativeInventory: true });
+  await page.goto(`${BASE}/find-property`);
+  await page.getByText('HOMATCH properties that may fit', { exact: true }).waitFor();
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  const panel = page.locator('section[aria-labelledby="native-matches-title"]');
+  await panel.waitFor();
+  assert.equal(await panel.locator('[data-property-key]').count(), 0, 'member matches are their own section, not mixed into external cards');
+  assert.ok(await page.locator('[data-property-key]').count() > 0, 'external results still render');
+  assert.ok(!/\+995/.test(await panel.textContent()), 'no number before the server allows one');
+  await panel.getByRole('button', { name: 'Call', exact: true }).click();
+  await panel.getByText("They haven't shared a phone number. Send them a message instead.", { exact: true }).waitFor();
+  assert.ok(!/\+995/.test(await panel.textContent()), 'without consent the number never appears');
+  state.phoneShared = true;
+  await page.reload();
+  await panel.waitFor();
+  await panel.getByRole('button', { name: 'Call', exact: true }).click();
+  await panel.locator('a[href="tel:+995555123456"]').waitFor();
+  await panel.getByRole('button', { name: 'Message', exact: true }).click();
+  await page.waitForURL((url) => url.pathname === '/chat' && url.searchParams.get('conversation') === 'conversation-1');
+  assert.deepEqual(state.opened, { p_kind: 'MATCH', p_id: 'native-1' }, 'the server resolves the counterparty from the match, not from the client');
+  assert.ok(await overflow(page) <= 1);
+});
+
 function fakeSession() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -473,6 +497,8 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
       return r.fulfill(json(wantsObject ? state.conversations[0] ?? null : state.conversations));
     }
+    if (url.includes('/rest/v1/rpc/reveal_native_contact')) { state.reveals = (state.reveals ?? 0) + 1; return r.fulfill(json(state.phoneShared ? { phone: '+995555123456', reason: null } : { phone: null, reason: 'NOT_SHARED' })); }
+    if (url.includes('/rest/v1/rpc/open_native_conversation')) { state.opened = JSON.parse(req.postData() || '{}'); return r.fulfill(json('conversation-1')); }
     if (url.includes('/rest/v1/rpc/my_native_matches')) return r.fulfill(json(nativeInventory ? [{ kind: 'MATCH', id: 'native-1', role: 'SEEKER', property_id: 'property-1', property_title: 'Native HOMATCH apartment', homatch_id: 101, agreed: ['CITY', 'PRICE'], preference_misses: [], viewing_requested: false, city: 'Tbilisi', price: 150000, currency: 'USD', area: 85, rooms: 3, bedrooms: 2 }] : []));
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));

@@ -105,3 +105,14 @@ with per-language loading named as the follow-up. That follow-up is done:
 - Watch-out seen during this release: Vercel auto-deploys `main` even when the
   Validate job fails, so a failed deploy run can leave a NEW frontend live
   against OLD edge functions. Check both after every main merge.
+
+## Find Property → HOMATCH network: native candidate cap (2026-10-15, PR #210)
+
+- A demand-triggered native pass (`supply-matching`, `nativeOnly`) reads at most
+  `MAX_CANDIDATES = 500` ACTIVE properties with no city filter and no ordering
+  (`supply-matching/index.ts` native query). Above 500 ACTIVE properties a new
+  search sees an arbitrary subset. Production had 1 ACTIVE property on
+  2026-10-15, so nothing is missed today. Fix before the inventory nears 500:
+  pre-filter by the demand's city/transaction (scoring unchanged) or page.
+- Property-mode re-evaluation (a listing created or changed) evaluates up to
+  `PROPERTY_MODE_MAX_DEMAND = 600` active native searches per listing.

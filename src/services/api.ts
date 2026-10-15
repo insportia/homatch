@@ -126,6 +126,8 @@ export interface CreatePropertyInput {
    * only thing that decides what a typed number means.
    */
   contact: PropertyContact;
+  /** The owner's explicit choice to let matched HOMATCH members see and call the number. Off unless chosen. */
+  phoneShareable?: boolean;
 }
 
 /** The distinct failure the database raises when a property arrives with no number. */
@@ -142,6 +144,7 @@ export async function createProperty(input: CreatePropertyInput): Promise<string
       property_type: input.propertyType ?? null,
       matching_status: 'DRAFT',
       ...input.contact,
+      contact_phone_shareable: input.phoneShareable === true,
       /* homatch_id is deliberately absent. A trigger assigns it and discards anything
          sent — a customer does not choose their own reference. */
     })
@@ -175,6 +178,16 @@ export async function setPropertyContact(
     .update(contact)
     .eq('id', propertyId);
   if (error) console.error('setPropertyContact error:', error.message);
+  return !error;
+}
+
+/**
+ * Whether matched HOMATCH members may see and call this property's number. Required to
+ * list is not consent to be phoned; the server (reveal_native_contact) enforces this.
+ */
+export async function setPropertyPhoneSharing(propertyId: string, shareable: boolean): Promise<boolean> {
+  const { error } = await supabase.from('properties').update({ contact_phone_shareable: shareable }).eq('id', propertyId);
+  if (error) console.error('setPropertyPhoneSharing error:', error.message);
   return !error;
 }
 

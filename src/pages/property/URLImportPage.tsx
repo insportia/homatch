@@ -170,6 +170,7 @@ function URLImportContent() {
      The seller's number on the source page, where there was one, belongs to whoever
      published that listing and is not a commitment by the person importing it. */
   const [contactPhone, setContactPhone] = useState('');
+  const [phoneShareable, setPhoneShareable] = useState(false);
   const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const handleSave = async (facts: ReviewSavePayload, title: string) => {
@@ -198,6 +199,7 @@ function URLImportContent() {
         userId: homatchUser.id,
         sourceType: 'URL_IMPORT',
         contact: reading.contact,
+        phoneShareable,
         title: title || (facts.city ? `Property in ${facts.city}` : 'Imported Property'),
         transactionType: transaction_type,
         propertyType: property_type,
@@ -250,6 +252,8 @@ function URLImportContent() {
               defaultCountry={extractedFacts?.country_code || extractedFacts?.country || 'GE'}
               accountPhone={homatchUser?.phone ?? null}
               showProblem={showPhoneProblem}
+              shareable={phoneShareable}
+              onShareableChange={setPhoneShareable}
             />
           </div>
 

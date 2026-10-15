@@ -51,6 +51,8 @@ export function ContactPhoneField({
   accountPhone,
   showProblem,
   label,
+  shareable,
+  onShareableChange,
 }: {
   /** The raw text, owned by the form. */
   value: string;
@@ -62,6 +64,9 @@ export function ContactPhoneField({
   /** Show the failure. False while the field has not been submitted or blurred yet. */
   showProblem?: boolean;
   label?: string;
+  /** Owner consent for matched HOMATCH members to see and call the number. Shown when both are given. */
+  shareable?: boolean;
+  onShareableChange?: (next: boolean) => void;
 }) {
   const { t } = useLanguage();
   const fieldId = useId();
@@ -148,6 +153,26 @@ export function ContactPhoneField({
           <span className="break-words text-start">{t('contact_phone_use_account')}</span>
           <span dir="ltr" className="font-semibold text-foreground">{offer}</span>
         </button>
+      )}
+
+      {onShareableChange && (
+        /*
+          CONSENT, NEVER ASSUMED. The number is required to list; showing it to matched
+          members is a separate choice, off until the owner makes it. Messaging works
+          either way.
+        */
+        <label className="flex min-h-11 cursor-pointer items-start gap-2.5 pt-1 text-2xs" data-phone-share>
+          <input
+            type="checkbox"
+            checked={shareable === true}
+            onChange={(event) => onShareableChange(event.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
+          />
+          <span className="min-w-0 space-y-0.5">
+            <span className="block break-words text-foreground">{t('contact_phone_share_label')}</span>
+            <span className="block break-words text-muted-foreground">{t('contact_phone_share_hint')}</span>
+          </span>
+        </label>
       )}
     </div>
   );

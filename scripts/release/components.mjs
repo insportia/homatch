@@ -115,9 +115,11 @@ export const COMPONENTS = {
   },
   STORAGE: {
     security: true,
-    paths: [fn('storage-sign', 'storage-inventory', 'storage-migrate', 'storage-selftest'), /^src\/pages\/admin\/AdminStoragePage/],
+    paths: [fn('storage-sign', 'storage-inventory', 'storage-migrate', 'storage-selftest', 'storage-retention'), /^src\/pages\/admin\/AdminStoragePage/,
+      /^supabase\/functions\/_shared\/retention\//, /^src\/(services\/retention|components\/retention\/)/, /^tests\/sql\/retention\//],
     suites: [],
-    proofs: ['storage: storage-selftest PASS in production; storage_authorize allows/denies per namespace as before'],
+    proofs: ['storage: storage-selftest PASS in production; storage_authorize allows/denies per namespace as before',
+      'retention: tests/sql/retention/run.sh PASS; retention_admin_dry_run read-only in production; storage_retention.purge_enabled still false unless the owner approved'],
   },
   DESIGN_STUDIO: {
     paths: [
@@ -224,6 +226,7 @@ export const DB_OBJECT_OWNERS = [
   [/^(auth\.|storage\.objects$|storage\.buckets$|public\.(users|user_roles|profiles|is_admin|has_role|is_staff|current_user_[a-z_]+|handle_new_user)$)/, 'GLOBAL'],
   [/^public\.(ds_|design_studio)/, 'DESIGN_STUDIO'],
   [/^public\.(storage_)/, 'STORAGE'],
+  [/^public\.(retention_|knowledge_|market_observations$|contract_insight_counts$)/, 'STORAGE'],
   [/^public\.(meta_)/, 'META_ADS'],
   [/^public\.(site_|app_content|studio_)/, 'SITE_STUDIO'],
   [/^public\.(dt_|developer_|dev_)/, 'DEVELOPER'],

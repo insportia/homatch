@@ -10,7 +10,7 @@ import { decode, dmy, int, meta, num, strip } from '../html.mjs';
  * and carries the listing's photos. Matching URLs are taken newest id first, and each
  * listing's own page supplies the price (₾, with the site's own USD rate), area,
  * floors, building and renovation status, district, coordinates and the date it was
- * placed. Price and area are filtered after reading, because the index cannot.
+ * placed. Price and area are checked after reading (shared loop), because the index cannot.
  * The contact number is only revealed through a click-through request; none is claimed.
  * Legacy reading rules: src/research-core/adapters/portal/sources.ts (HOME_GE).
  */
@@ -33,12 +33,9 @@ export const homege = {
     if (!city) throw unsupported('Home.ge listing slugs are mapped for Tbilisi, Batumi, Kutaisi and Rustavi only');
     const paths = CATEGORY[request.transactionType]?.[typeKey(request.propertyType)];
     if (!paths) throw unsupported('Home.ge has no category for this deal and type');
-    const ceiling = request.collectPriceMaxUsd ?? request.priceMaxUsd;
     return {
       paths, city, transactionType: request.transactionType, propertyType: typeKey(request.propertyType),
       roomsMin: request.rooms?.min ?? null, roomsMax: request.rooms?.max ?? null,
-      priceMinUsd: request.priceMinUsd > 0 ? request.priceMinUsd : null, priceMaxUsd: Number.isFinite(ceiling) && ceiling > 0 ? ceiling : null,
-      areaMin: request.areaMinSqm ?? null, areaMax: request.areaMaxSqm ?? null,
     };
   },
   searchUrl(_criteria, page) { return SITEMAPS[page - 1]; },
@@ -89,11 +86,5 @@ export const homege = {
       amenities: [['elevator', 'elevator'], ['gas', 'natural gas'], ['balcony_terrace', 'balcony'], ['pool', 'pool'], ['sauna', 'sauna'], ['fireplace', 'fireplace']].filter(([k]) => yes(k)).map(([, label]) => label),
       pricePerSqm: price != null && area > 0 ? Math.round(price / area) : undefined,
     };
-  },
-  accept(fields, criteria) {
-    if (fields._usd != null && ((criteria.priceMinUsd != null && fields._usd < criteria.priceMinUsd) || (criteria.priceMaxUsd != null && fields._usd > criteria.priceMaxUsd))) return false;
-    if (fields.areaSqm != null && ((criteria.areaMin != null && fields.areaSqm < criteria.areaMin) || (criteria.areaMax != null && fields.areaSqm > criteria.areaMax))) return false;
-    if (fields.rooms != null && ((criteria.roomsMin != null && fields.rooms < criteria.roomsMin) || (criteria.roomsMax != null && fields.rooms > criteria.roomsMax))) return false;
-    return true;
   },
 };

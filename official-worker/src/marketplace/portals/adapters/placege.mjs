@@ -3,7 +3,7 @@ import { absolute, decode, dmy, int, meta, num, phones, strip } from '../html.mj
 /*
  * PLACE.GE — public search at /ge/ads with the site's own filter codes (read off its
  * markup: type=for_sale|for_rent, object_type=flat|private_house|land|commercial_estate,
- * city_id=1 for Tbilisi, currency_id=2 USD), pages /ge/ads/page:N, 17 cards a page.
+ * city_id=1 for Tbilisi, currency_id=2 USD), pages /ge/ads/page:N, 15 cards a filtered page (17 unfiltered).
  * Each card states deal, type, rooms, area, floor, place, the USD price
  * (data-price_usd), the publication date, the id and the contact the seller published;
  * the listing page adds full photos, the seller's description and building facts.
@@ -16,7 +16,7 @@ const unsupported = (why) => Object.assign(Error(why), { code: 'UNSUPPORTED_REQU
 
 export const placege = {
   workerId: 'placege-agent', sourceId: 'place-ge', sourceName: 'Place.ge', envPrefix: 'PLACEGE', origin: 'https://place.ge',
-  maxPages: 2, pageSize: 17, detailLimit: 17, detailIntervalMs: 900, pageIntervalMs: 3000,
+  maxPages: 2, pageSize: 15, detailLimit: 17, detailIntervalMs: 900, pageIntervalMs: 3000,
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];
     if (!city) throw unsupported('Place.ge city filter is verified for Tbilisi only');

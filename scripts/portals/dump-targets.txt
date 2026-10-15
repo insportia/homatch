@@ -1,2 +1,10 @@
-allhome-defs https://www.allhome.ge/sitemaps/defs_sitemap_ge.xml
-allhome-menu https://www.allhome.ge/sitemaps/menu_sitemap_ge.xml
+k-maxprice https://korter.ge/binebis-yidva-gayidva-tbilisi?max_price=150000
+k-pricemax https://korter.ge/binebis-yidva-gayidva-tbilisi?price_max=150000
+k-priceMaxC https://korter.ge/binebis-yidva-gayidva-tbilisi?priceMax=150000
+k-pricebr https://korter.ge/binebis-yidva-gayidva-tbilisi?price%5Bmax%5D=150000
+k-rooms https://korter.ge/binebis-yidva-gayidva-tbilisi?room_counts=2
+k-roomsC https://korter.ge/binebis-yidva-gayidva-tbilisi?roomCounts=2
+k-roomsbr https://korter.ge/binebis-yidva-gayidva-tbilisi?room_counts%5B%5D=2&room_counts%5B%5D=3
+b-usd https://brokeri.ge/property-search?filter=1&offerType%5B%5D=1&propertyType%5B1%5D=1&municipalityId%5B%5D=1&min_rooms=2&max_rooms=3&max_price=150000&currency=usd
+b-d https://brokeri.ge/property-search?filter=1&offerType%5B%5D=1&propertyType%5B1%5D=1&municipalityId%5B%5D=1&min_rooms=2&max_rooms=3&max_price=150000&currency=d
+b-gel https://brokeri.ge/property-search?filter=1&offerType%5B%5D=1&propertyType%5B1%5D=1&municipalityId%5B%5D=1&min_rooms=2&max_rooms=3&max_price=150000

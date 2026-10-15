@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { acquirePortal, robotsRules, robotsAllows } from '../src/marketplace/portals/acquire.mjs';
+import { acquirePortal, contradiction, robotsRules, robotsAllows } from '../src/marketplace/portals/acquire.mjs';
 import { startPortalRuntime } from '../src/marketplace/portals/runtime.mjs';
 import { PORTAL_ADAPTERS } from '../src/marketplace/portals/adapters.mjs';
 import { placege } from '../src/marketplace/portals/adapters/placege.mjs';
@@ -45,11 +45,12 @@ async function run(adapter, list, detail, over = {}, opts = {}) {
   return { outcome, reports, urls: s.urls };
 }
 
-for (const [adapter, list, detail, expected] of [[placege, 'place-list', 'place-detail', 17], [korter, 'korter-list', 'korter-detail', 20], [brokeri, 'brokeri-list', 'brokeri-detail', 15]]) {
+for (const [adapter, list, detail, expected] of [[placege, 'place-list', 'place-detail', 16], [korter, 'korter-list', 'korter-detail', 20], [brokeri, 'brokeri-list', 'brokeri-detail', 13]]) {
   test(`${adapter.sourceName}: real search page → contract-valid listings, pages capped at 2, robots honoured`, async () => {
     const { outcome, reports, urls } = await run(adapter, page(list), page(detail));
     const listings = reports.flatMap((r) => r.listings);
-    assert.equal(new Set(listings.map((l) => l.sourceListingId)).size, expected, 'every card of the real page, once');
+    assert.equal(new Set(listings.map((l) => l.sourceListingId)).size, expected, 'every card of the real (unfiltered) page that does not contradict the BUY request, once');
+    assert.ok(listings.every((l) => l.transactionType === 'BUY'), 'a rent listing on an unfiltered page is never delivered for a purchase');
     for (const r of reports) {
       const v = validateWorkerReport(r, adapter.sourceId);
       assert.ok(v.ok, v.reason);
@@ -165,4 +166,17 @@ test('home.ge: price ceiling applied after reading (₾ converted with the page\
   assert.ok(Number(reports.at(-1).queryApplied.filteredAfterRead) > 0);
   assert.equal(urls.filter((u) => u.includes('/files/sitemap/')).length, 0, 'sitemaps served from the 6-hour cache');
   assert.throws(() => homege.criteria(request({ city: 'Telavi' })), /Tbilisi, Batumi/);
+});
+
+test('shared loop: a listing is dropped only when its own stated deal, USD price, rooms or area contradicts the request', () => {
+  const req = { transactionType: 'BUY', priceMinUsd: 50000, priceMaxUsd: 200000, collectPriceMaxUsd: 220000, rooms: { min: 2, max: 3 }, areaMinSqm: 40, areaMaxSqm: null };
+  assert.equal(contradiction({ transactionType: 'BUY', price: 150000, currency: 'USD', rooms: 2, areaSqm: 60 }, req), null);
+  assert.equal(contradiction({ price: 210000, currency: 'USD' }, req), null, 'inside the collection margin');
+  assert.equal(contradiction({ price: 230000, currency: 'USD' }, req), 'price');
+  assert.equal(contradiction({ price: 900000, currency: 'GEL' }, req), null, 'no USD figure → never excluded on price');
+  assert.equal(contradiction({ price: 900000, currency: 'GEL', _usd: 330000 }, req), 'price', "the portal's own USD conversion is used");
+  assert.equal(contradiction({ rooms: 4 }, req), 'rooms');
+  assert.equal(contradiction({ areaSqm: 30 }, req), 'area');
+  assert.equal(contradiction({ transactionType: 'MONTHLY_RENT' }, req), 'deal');
+  assert.equal(contradiction({}, req), null, 'unknown values never exclude');
 });

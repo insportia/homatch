@@ -7,13 +7,13 @@ import { setTimeout as delay } from 'node:timers/promises';
  *   searchUrl(criteria, page)     → public search-results URL for that page
  *   parseList(html, url)          → [{ sourceListingId, url, ...partial fields }]
  *   parseDetail?(html, url)       → partial fields from the listing's own page
- *   accept?(fields, criteria)     → false drops a listing the portal could not filter
- *                                   server-side (counted as filtered, not as a failure)
  *   listCacheMs                   → reuse a list document (e.g. a sitemap) for this long
  *   pagesIndependent              → each "page" is its own document; a short page does
  *                                   not end the run
  * Everything else — robots.txt, pacing, page cap, refusals, the contract shape,
- * deduplication by source id — is decided here, once.
+ * deduplication by source id, and dropping a listing whose own stated deal, USD price,
+ * rooms or area contradicts the request (portals that cannot filter server-side) —
+ * is decided here, once.
  *
  * Public pages only, an honest User-Agent, no cookies, no retry past a refusal,
  * and no CAPTCHA/login/challenge handling: a challenge page ends the run BLOCKED.
@@ -58,6 +58,17 @@ export function toCandidate(adapter, fields, request, page, searchUrl) {
   c.evidence = [{ field: 'sourceIdentity', text: `${adapter.sourceName} listing ${fields.sourceListingId}; read from its public page` }, ...(fields.evidence ?? [])];
   c.retrievalMetadata = { acquisition: `${adapter.workerId.toUpperCase().replace(/-/g, '_')}_PUBLIC_HTML`, page, requestedSearchId: request.searchId, detail: fields.detailRead === true };
   return c;
+}
+
+/** Why a read listing contradicts the request, or null. Unknown values never exclude. */
+export function contradiction(fields, request) {
+  const usd = fields._usd ?? (fields.currency === 'USD' ? fields.price : null), ceiling = request.collectPriceMaxUsd ?? request.priceMaxUsd;
+  if (usd != null && ((request.priceMinUsd > 0 && usd < request.priceMinUsd) || (Number.isFinite(ceiling) && ceiling > 0 && usd > ceiling))) return 'price';
+  const r = request.rooms;
+  if (fields.rooms != null && r && ((r.min != null && fields.rooms < r.min) || (r.max != null && fields.rooms > r.max))) return 'rooms';
+  if (fields.areaSqm != null && ((request.areaMinSqm != null && fields.areaSqm < request.areaMinSqm) || (request.areaMaxSqm != null && fields.areaSqm > request.areaMaxSqm))) return 'area';
+  if (fields.transactionType && request.transactionType && fields.transactionType !== request.transactionType) return 'deal';
+  return null;
 }
 
 /** Detail fields replace list fields only where the detail page actually said something. */
@@ -117,7 +128,7 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
           catch (error) { if (['BLOCKED', 'DEADLINE'].includes(error.code) || signal?.aborted) throw error; rejected++; continue; }
         }
         if (!fields.title && fields.price == null) { rejected++; continue; }
-        if (adapter.accept && !adapter.accept(fields, criteria)) { filtered++; continue; }
+        if (contradiction(fields, request)) { filtered++; continue; }
         candidates.push(toCandidate(adapter, fields, request, page, url));
       }
       if (candidates.length) await emit('RESULTS_RECEIVED', candidates);

@@ -18434,18 +18434,51 @@ const en = {
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'Translating the report…',
 
+  /* ── FIND BUYERS DASHBOARD (HOMATCH Match + External Discovery, per-search results) ── */
+  fbd_label: 'Find buyers and tenants',
+  fbd_internal_title: 'HOMATCH Match',
+  fbd_free_badge: 'Free matching',
+  fbd_internal_subtitle_buyers: 'Find buyers already using HOMATCH.',
+  fbd_internal_subtitle_tenants: 'Find tenants already using HOMATCH.',
+  fbd_internal_count_label: 'matching HOMATCH members',
+  fbd_internal_pricing: 'Free matching. You pay only to open a contact.',
+  fbd_internal_requested: 'Matching started. New matches appear here automatically.',
+  fbd_internal_failed: 'Matching could not start. Please try again.',
+  fbd_internal_start: 'Start Free Matching',
+  fbd_internal_view: 'View matches',
+  fbd_external_title: 'External Discovery',
+  fbd_paid_badge: 'Paid research',
+  fbd_external_subtitle_buyers: 'Discover potential buyers across external sources.',
+  fbd_external_subtitle_tenants: 'Discover potential tenants across external sources.',
+  fbd_ext_qualified: 'Strong',
+  fbd_ext_potential: 'Potential',
+  fbd_ext_weak: 'Weak signals',
+  fbd_external_running: 'A search is running now',
+  fbd_external_searches: 'Latest of {{n}} searches',
+  fbd_external_none: 'No external search yet',
+  fbd_external_pricing: 'You choose the budget; results are not guaranteed.',
+  fbd_external_start: 'Start External Search',
+  fbd_external_view: 'View results',
+  fbd_expand_body_buyers: 'No HOMATCH member matches this property yet. You can search external sources for potential buyers — you choose and confirm the budget first.',
+  fbd_expand_body_tenants: 'No HOMATCH member matches this property yet. You can search external sources for potential tenants — you choose and confirm the budget first.',
+  fbd_expand_cta: 'Expand search externally',
+  fbx_results_failed: 'Your results could not be loaded. They are safe — please try again.',
+  fbx_results_retry: 'Try again',
+  fbx_campaigns_label: 'Your searches',
+  fbx_campaign_latest: 'Latest search · {{date}}',
+  fbx_campaign_earlier: 'Search · {{date}}',
+  fbx_campaign_all: 'All searches',
+  fbx_campaign_empty: 'This search has no current results.',
+  fbr_cat_explain_WEAK: 'Indirect or incomplete signals — worth a look, but not verified buyers or tenants.',
+
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_view_results: 'View results',
   fpw_repeat_search: 'Repeat search',
   fpw_card_results: '{{n}} properties found',
   fpw_card_any_place: 'Any location',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_edit_search: 'Edit search',
   fpw_remove_criterion: 'Remove {{label}} and edit the search',
   fpw_edit_note: 'Changing a criterion opens the search builder; nothing runs until you start it.',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'Owner (verified or likely)',
 
   /* ── PROPERTY PHONE SHARING ── */
@@ -36799,18 +36832,51 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'ანგარიში ითარგმნება…',
 
+  /* ── FIND BUYERS DASHBOARD (HOMATCH Match + External Discovery, per-search results) ── */
+  fbd_label: 'მყიდველების და მოიჯარეების ძებნა',
+  fbd_internal_title: 'HOMATCH დამთხვევა',
+  fbd_free_badge: 'უფასო დამთხვევა',
+  fbd_internal_subtitle_buyers: 'იპოვეთ მყიდველები, რომლებიც უკვე იყენებენ HOMATCH-ს.',
+  fbd_internal_subtitle_tenants: 'იპოვეთ მოიჯარეები, რომლებიც უკვე იყენებენ HOMATCH-ს.',
+  fbd_internal_count_label: 'შესაბამისი HOMATCH წევრი',
+  fbd_internal_pricing: 'დამთხვევა უფასოა. იხდით მხოლოდ კონტაქტის გახსნაში.',
+  fbd_internal_requested: 'დამთხვევის ძებნა დაიწყო. ახალი დამთხვევები აქ ავტომატურად გამოჩნდება.',
+  fbd_internal_failed: 'დამთხვევის ძებნა ვერ დაიწყო. სცადეთ თავიდან.',
+  fbd_internal_start: 'უფასო დამთხვევის დაწყება',
+  fbd_internal_view: 'დამთხვევების ნახვა',
+  fbd_external_title: 'გარე ძიება',
+  fbd_paid_badge: 'ფასიანი კვლევა',
+  fbd_external_subtitle_buyers: 'მოიძიეთ პოტენციური მყიდველები გარე წყაროებში.',
+  fbd_external_subtitle_tenants: 'მოიძიეთ პოტენციური მოიჯარეები გარე წყაროებში.',
+  fbd_ext_qualified: 'ძლიერი',
+  fbd_ext_potential: 'პოტენციური',
+  fbd_ext_weak: 'სუსტი სიგნალები',
+  fbd_external_running: 'ძებნა ახლა მიმდინარეობს',
+  fbd_external_searches: 'ბოლო ძებნა {{n}}-დან',
+  fbd_external_none: 'გარე ძებნა ჯერ არ ჩატარებულა',
+  fbd_external_pricing: 'ბიუჯეტს თქვენ ირჩევთ; შედეგი გარანტირებული არ არის.',
+  fbd_external_start: 'გარე ძებნის დაწყება',
+  fbd_external_view: 'შედეგების ნახვა',
+  fbd_expand_body_buyers: 'ამ ქონებას HOMATCH-ის წევრებს შორის ჯერ დამთხვევა არ აქვს. შეგიძლიათ პოტენციური მყიდველები გარე წყაროებში მოძებნოთ — ჯერ ბიუჯეტს აირჩევთ და დაადასტურებთ.',
+  fbd_expand_body_tenants: 'ამ ქონებას HOMATCH-ის წევრებს შორის ჯერ დამთხვევა არ აქვს. შეგიძლიათ პოტენციური მოიჯარეები გარე წყაროებში მოძებნოთ — ჯერ ბიუჯეტს აირჩევთ და დაადასტურებთ.',
+  fbd_expand_cta: 'ძებნის გაფართოება გარე წყაროებში',
+  fbx_results_failed: 'შედეგები ვერ ჩაიტვირთა. ისინი შენახულია — სცადეთ თავიდან.',
+  fbx_results_retry: 'თავიდან ცდა',
+  fbx_campaigns_label: 'თქვენი ძებნები',
+  fbx_campaign_latest: 'ბოლო ძებნა · {{date}}',
+  fbx_campaign_earlier: 'ძებნა · {{date}}',
+  fbx_campaign_all: 'ყველა ძებნა',
+  fbx_campaign_empty: 'ამ ძებნას მიმდინარე შედეგი არ აქვს.',
+  fbr_cat_explain_WEAK: 'არაპირდაპირი ან არასრული სიგნალები — ღირს ნახვა, მაგრამ ეს არ არის გადამოწმებული მყიდველები ან მოიჯარეები.',
+
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_view_results: 'შედეგების ნახვა',
   fpw_repeat_search: 'ძიების გამეორება',
   fpw_card_results: 'ნაპოვნია {{n}} ქონება',
   fpw_card_any_place: 'ნებისმიერი ლოკაცია',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_edit_search: 'ძიების რედაქტირება',
   fpw_remove_criterion: 'წაშალე „{{label}}“ და შეცვალე ძიება',
   fpw_edit_note: 'კრიტერიუმის შეცვლა ძიების ფორმას გახსნის; არაფერი დაიწყება, სანამ თავად არ დაიწყებ.',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'მესაკუთრე (დადასტურებული ან სავარაუდო)',
 
   /* ── PROPERTY PHONE SHARING ── */
@@ -55155,18 +55221,51 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'Переводим отчёт…',
 
+  /* ── FIND BUYERS DASHBOARD (HOMATCH Match + External Discovery, per-search results) ── */
+  fbd_label: 'Поиск покупателей и арендаторов',
+  fbd_internal_title: 'Подбор HOMATCH',
+  fbd_free_badge: 'Бесплатный подбор',
+  fbd_internal_subtitle_buyers: 'Найдите покупателей, которые уже пользуются HOMATCH.',
+  fbd_internal_subtitle_tenants: 'Найдите арендаторов, которые уже пользуются HOMATCH.',
+  fbd_internal_count_label: 'подходящих участников HOMATCH',
+  fbd_internal_pricing: 'Подбор бесплатный. Оплата только за открытие контактов.',
+  fbd_internal_requested: 'Подбор запущен. Новые совпадения появятся здесь автоматически.',
+  fbd_internal_failed: 'Не удалось запустить подбор. Попробуйте ещё раз.',
+  fbd_internal_start: 'Начать бесплатный подбор',
+  fbd_internal_view: 'Смотреть совпадения',
+  fbd_external_title: 'Внешний поиск',
+  fbd_paid_badge: 'Платное исследование',
+  fbd_external_subtitle_buyers: 'Найдите потенциальных покупателей во внешних источниках.',
+  fbd_external_subtitle_tenants: 'Найдите потенциальных арендаторов во внешних источниках.',
+  fbd_ext_qualified: 'Сильные',
+  fbd_ext_potential: 'Возможные',
+  fbd_ext_weak: 'Слабые сигналы',
+  fbd_external_running: 'Поиск идёт сейчас',
+  fbd_external_searches: 'Последний из {{n}} поисков',
+  fbd_external_none: 'Внешнего поиска ещё не было',
+  fbd_external_pricing: 'Бюджет выбираете вы; результат не гарантирован.',
+  fbd_external_start: 'Начать внешний поиск',
+  fbd_external_view: 'Смотреть результаты',
+  fbd_expand_body_buyers: 'Среди участников HOMATCH пока нет совпадений для этого объекта. Можно поискать потенциальных покупателей во внешних источниках — сначала вы выберете и подтвердите бюджет.',
+  fbd_expand_body_tenants: 'Среди участников HOMATCH пока нет совпадений для этого объекта. Можно поискать потенциальных арендаторов во внешних источниках — сначала вы выберете и подтвердите бюджет.',
+  fbd_expand_cta: 'Расширить поиск вовне',
+  fbx_results_failed: 'Не удалось загрузить результаты. Они сохранены — попробуйте ещё раз.',
+  fbx_results_retry: 'Повторить',
+  fbx_campaigns_label: 'Ваши поиски',
+  fbx_campaign_latest: 'Последний поиск · {{date}}',
+  fbx_campaign_earlier: 'Поиск · {{date}}',
+  fbx_campaign_all: 'Все поиски',
+  fbx_campaign_empty: 'У этого поиска нет актуальных результатов.',
+  fbr_cat_explain_WEAK: 'Косвенные или неполные сигналы — стоит посмотреть, но это не проверенные покупатели или арендаторы.',
+
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_view_results: 'Смотреть результаты',
   fpw_repeat_search: 'Повторить поиск',
   fpw_card_results: 'Найдено объектов: {{n}}',
   fpw_card_any_place: 'Любой район',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_edit_search: 'Изменить поиск',
   fpw_remove_criterion: 'Убрать «{{label}}» и изменить поиск',
   fpw_edit_note: 'Изменение критерия открывает конструктор поиска; ничего не запустится, пока вы не начнёте.',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'Собственник (подтверждённый или вероятный)',
 
   /* ── PROPERTY PHONE SHARING ── */
@@ -73509,18 +73608,51 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'Rapor çevriliyor…',
 
+  /* ── FIND BUYERS DASHBOARD (HOMATCH Match + External Discovery, per-search results) ── */
+  fbd_label: 'Alıcı ve kiracı bulun',
+  fbd_internal_title: 'HOMATCH Eşleşme',
+  fbd_free_badge: 'Ücretsiz eşleştirme',
+  fbd_internal_subtitle_buyers: 'HOMATCH’i zaten kullanan alıcıları bulun.',
+  fbd_internal_subtitle_tenants: 'HOMATCH’i zaten kullanan kiracıları bulun.',
+  fbd_internal_count_label: 'eşleşen HOMATCH üyesi',
+  fbd_internal_pricing: 'Eşleştirme ücretsiz. Yalnızca iletişim bilgisini açmak için ödersiniz.',
+  fbd_internal_requested: 'Eşleştirme başladı. Yeni eşleşmeler burada otomatik olarak görünür.',
+  fbd_internal_failed: 'Eşleştirme başlatılamadı. Lütfen tekrar deneyin.',
+  fbd_internal_start: 'Ücretsiz eşleştirmeyi başlat',
+  fbd_internal_view: 'Eşleşmeleri gör',
+  fbd_external_title: 'Harici keşif',
+  fbd_paid_badge: 'Ücretli araştırma',
+  fbd_external_subtitle_buyers: 'Harici kaynaklarda potansiyel alıcıları keşfedin.',
+  fbd_external_subtitle_tenants: 'Harici kaynaklarda potansiyel kiracıları keşfedin.',
+  fbd_ext_qualified: 'Güçlü',
+  fbd_ext_potential: 'Potansiyel',
+  fbd_ext_weak: 'Zayıf sinyaller',
+  fbd_external_running: 'Şu anda bir arama sürüyor',
+  fbd_external_searches: '{{n}} aramanın sonuncusu',
+  fbd_external_none: 'Henüz harici arama yok',
+  fbd_external_pricing: 'Bütçeyi siz seçersiniz; sonuç garanti edilmez.',
+  fbd_external_start: 'Harici aramayı başlat',
+  fbd_external_view: 'Sonuçları gör',
+  fbd_expand_body_buyers: 'Bu mülk için henüz HOMATCH üyesi eşleşmesi yok. Harici kaynaklarda potansiyel alıcı arayabilirsiniz — önce bütçeyi seçip onaylarsınız.',
+  fbd_expand_body_tenants: 'Bu mülk için henüz HOMATCH üyesi eşleşmesi yok. Harici kaynaklarda potansiyel kiracı arayabilirsiniz — önce bütçeyi seçip onaylarsınız.',
+  fbd_expand_cta: 'Aramayı dışarıya genişlet',
+  fbx_results_failed: 'Sonuçlarınız yüklenemedi. Güvende duruyorlar — lütfen tekrar deneyin.',
+  fbx_results_retry: 'Tekrar dene',
+  fbx_campaigns_label: 'Aramalarınız',
+  fbx_campaign_latest: 'Son arama · {{date}}',
+  fbx_campaign_earlier: 'Arama · {{date}}',
+  fbx_campaign_all: 'Tüm aramalar',
+  fbx_campaign_empty: 'Bu aramanın güncel sonucu yok.',
+  fbr_cat_explain_WEAK: 'Dolaylı ya da eksik sinyaller — göz atmaya değer, ancak doğrulanmış alıcı veya kiracı değil.',
+
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_view_results: 'Sonuçları gör',
   fpw_repeat_search: 'Aramayı tekrarla',
   fpw_card_results: '{{n}} mülk bulundu',
   fpw_card_any_place: 'Herhangi bir konum',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_edit_search: 'Aramayı düzenle',
   fpw_remove_criterion: '{{label}} kaldır ve aramayı düzenle',
   fpw_edit_note: 'Bir kriteri değiştirmek arama oluşturucuyu açar; siz başlatana kadar hiçbir şey çalışmaz.',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'Mal sahibi (doğrulanmış veya muhtemel)',
 
   /* ── PROPERTY PHONE SHARING ── */
@@ -91863,18 +91995,51 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'جارٍ ترجمة التقرير…',
 
+  /* ── FIND BUYERS DASHBOARD (HOMATCH Match + External Discovery, per-search results) ── */
+  fbd_label: 'العثور على مشترين ومستأجرين',
+  fbd_internal_title: 'مطابقة HOMATCH',
+  fbd_free_badge: 'مطابقة مجانية',
+  fbd_internal_subtitle_buyers: 'اعثر على مشترين يستخدمون HOMATCH بالفعل.',
+  fbd_internal_subtitle_tenants: 'اعثر على مستأجرين يستخدمون HOMATCH بالفعل.',
+  fbd_internal_count_label: 'أعضاء HOMATCH مطابقون',
+  fbd_internal_pricing: 'المطابقة مجانية. تدفع فقط لكشف جهات الاتصال.',
+  fbd_internal_requested: 'بدأت المطابقة. ستظهر المطابقات الجديدة هنا تلقائيًا.',
+  fbd_internal_failed: 'تعذّر بدء المطابقة. يُرجى المحاولة مرة أخرى.',
+  fbd_internal_start: 'ابدأ المطابقة المجانية',
+  fbd_internal_view: 'عرض المطابقات',
+  fbd_external_title: 'الاستكشاف الخارجي',
+  fbd_paid_badge: 'بحث مدفوع',
+  fbd_external_subtitle_buyers: 'اكتشف مشترين محتملين عبر مصادر خارجية.',
+  fbd_external_subtitle_tenants: 'اكتشف مستأجرين محتملين عبر مصادر خارجية.',
+  fbd_ext_qualified: 'قوية',
+  fbd_ext_potential: 'محتملة',
+  fbd_ext_weak: 'إشارات ضعيفة',
+  fbd_external_running: 'هناك بحث جارٍ الآن',
+  fbd_external_searches: 'أحدث {{n}} عمليات بحث',
+  fbd_external_none: 'لا يوجد بحث خارجي بعد',
+  fbd_external_pricing: 'أنت تختار الميزانية؛ النتائج غير مضمونة.',
+  fbd_external_start: 'ابدأ البحث الخارجي',
+  fbd_external_view: 'عرض النتائج',
+  fbd_expand_body_buyers: 'لا يوجد عضو في HOMATCH يطابق هذا العقار بعد. يمكنك البحث عن مشترين محتملين في مصادر خارجية — ستختار الميزانية وتؤكدها أولًا.',
+  fbd_expand_body_tenants: 'لا يوجد عضو في HOMATCH يطابق هذا العقار بعد. يمكنك البحث عن مستأجرين محتملين في مصادر خارجية — ستختار الميزانية وتؤكدها أولًا.',
+  fbd_expand_cta: 'وسّع البحث خارجيًا',
+  fbx_results_failed: 'تعذّر تحميل نتائجك. إنها محفوظة — يُرجى المحاولة مرة أخرى.',
+  fbx_results_retry: 'أعد المحاولة',
+  fbx_campaigns_label: 'عمليات البحث الخاصة بك',
+  fbx_campaign_latest: 'أحدث بحث · {{date}}',
+  fbx_campaign_earlier: 'بحث · {{date}}',
+  fbx_campaign_all: 'كل عمليات البحث',
+  fbx_campaign_empty: 'لا توجد نتائج حالية لهذا البحث.',
+  fbr_cat_explain_WEAK: 'إشارات غير مباشرة أو ناقصة — تستحق النظر، لكنها ليست مشترين أو مستأجرين موثَّقين.',
+
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_view_results: 'عرض النتائج',
   fpw_repeat_search: 'تكرار البحث',
   fpw_card_results: 'تم العثور على {{n}} عقار',
   fpw_card_any_place: 'أي موقع',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_edit_search: 'تعديل البحث',
   fpw_remove_criterion: 'إزالة {{label}} وتعديل البحث',
   fpw_edit_note: 'تغيير أي معيار يفتح منشئ البحث؛ لن يبدأ شيء حتى تبدأه بنفسك.',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'المالك (موثّق أو محتمل)',
 
   /* ── PROPERTY PHONE SHARING ── */
@@ -110217,18 +110382,51 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY REPORT CONTENT TRANSLATION (translating status) ── */
   verify_tr_translating: 'מתרגמים את הדוח…',
 
+  /* ── FIND BUYERS DASHBOARD (HOMATCH Match + External Discovery, per-search results) ── */
+  fbd_label: 'מציאת קונים ושוכרים',
+  fbd_internal_title: 'התאמת HOMATCH',
+  fbd_free_badge: 'התאמה חינם',
+  fbd_internal_subtitle_buyers: 'מצאו קונים שכבר משתמשים ב-HOMATCH.',
+  fbd_internal_subtitle_tenants: 'מצאו שוכרים שכבר משתמשים ב-HOMATCH.',
+  fbd_internal_count_label: 'חברי HOMATCH מתאימים',
+  fbd_internal_pricing: 'ההתאמה חינם. משלמים רק על חשיפת פרטי קשר.',
+  fbd_internal_requested: 'ההתאמה התחילה. התאמות חדשות יופיעו כאן אוטומטית.',
+  fbd_internal_failed: 'לא ניתן היה להתחיל את ההתאמה. נסו שוב.',
+  fbd_internal_start: 'התחלת התאמה חינם',
+  fbd_internal_view: 'צפייה בהתאמות',
+  fbd_external_title: 'גילוי חיצוני',
+  fbd_paid_badge: 'מחקר בתשלום',
+  fbd_external_subtitle_buyers: 'גלו קונים פוטנציאליים במקורות חיצוניים.',
+  fbd_external_subtitle_tenants: 'גלו שוכרים פוטנציאליים במקורות חיצוניים.',
+  fbd_ext_qualified: 'חזקים',
+  fbd_ext_potential: 'פוטנציאליים',
+  fbd_ext_weak: 'אותות חלשים',
+  fbd_external_running: 'חיפוש פועל כעת',
+  fbd_external_searches: 'האחרון מתוך {{n}} חיפושים',
+  fbd_external_none: 'עדיין לא בוצע חיפוש חיצוני',
+  fbd_external_pricing: 'אתם בוחרים את התקציב; התוצאות אינן מובטחות.',
+  fbd_external_start: 'התחלת חיפוש חיצוני',
+  fbd_external_view: 'צפייה בתוצאות',
+  fbd_expand_body_buyers: 'עדיין אין חבר HOMATCH שמתאים לנכס הזה. אפשר לחפש קונים פוטנציאליים במקורות חיצוניים — קודם בוחרים ומאשרים תקציב.',
+  fbd_expand_body_tenants: 'עדיין אין חבר HOMATCH שמתאים לנכס הזה. אפשר לחפש שוכרים פוטנציאליים במקורות חיצוניים — קודם בוחרים ומאשרים תקציב.',
+  fbd_expand_cta: 'הרחבת החיפוש החוצה',
+  fbx_results_failed: 'לא ניתן היה לטעון את התוצאות. הן שמורות — נסו שוב.',
+  fbx_results_retry: 'נסו שוב',
+  fbx_campaigns_label: 'החיפושים שלכם',
+  fbx_campaign_latest: 'החיפוש האחרון · {{date}}',
+  fbx_campaign_earlier: 'חיפוש · {{date}}',
+  fbx_campaign_all: 'כל החיפושים',
+  fbx_campaign_empty: 'אין לחיפוש הזה תוצאות עדכניות.',
+  fbr_cat_explain_WEAK: 'אותות עקיפים או חלקיים — שווה להציץ, אבל אלה אינם קונים או שוכרים מאומתים.',
+
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_view_results: 'צפייה בתוצאות',
   fpw_repeat_search: 'חזרה על החיפוש',
   fpw_card_results: 'נמצאו {{n}} נכסים',
   fpw_card_any_place: 'כל מיקום',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_edit_search: 'עריכת החיפוש',
   fpw_remove_criterion: 'הסרת {{label}} ועריכת החיפוש',
   fpw_edit_note: 'שינוי קריטריון פותח את בונה החיפוש; דבר לא יופעל עד שתתחילו.',
-
-  /* ── FIND PROPERTY WORKSPACE ── */
   fpw_seller_any_owner: 'בעלים (מאומת או סביר)',
 
   /* ── PROPERTY PHONE SHARING ── */

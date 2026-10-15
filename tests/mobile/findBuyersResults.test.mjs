@@ -119,7 +119,7 @@ const STATUS_SEARCHING = {
 const withState = (state, over = {}) => ({ ...STATUS_SEARCHING, campaign: { ...STATUS_SEARCHING.campaign, state, ...over } });
 const MATCHES = matchDetailRows(30, PROPERTY_ID).map((m) => ({ ...m, demand_published_at: ago(3) }));
 
-async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, status = STATUS_SEARCHING, matches = [], jobs = [] } = {}) {
+async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, status = STATUS_SEARCHING, matches = [], jobs = [], leads = LEADS } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -152,7 +152,10 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
     if (url.includes('/rpc/admin_discovery_')) return r.fulfill(json({ message: 'not in this fixture' }, 400));
     if (url.includes('/rest/v1/properties')) return r.fulfill(json(wantsObject ? property : [property]));
     if (url.includes('/rest/v1/find_buyers_current_leads')) {
-      return r.fulfill({ ...json(LEADS), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': `0-${LEADS.length - 1}/${LEADS.length}` } });
+      /* One search at a time: honour matching_job_id=eq.<job> like PostgREST does. */
+      const job = new URL(url).searchParams.get('matching_job_id');
+      const rows = job ? leads.filter((l) => `eq.${l.matching_job_id}` === job) : leads;
+      return r.fulfill({ ...json(rows), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': rows.length ? `0-${rows.length - 1}/${rows.length}` : '*/0' } });
     }
     if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json(status));
     if (url.includes('/rest/v1/matches')) {
@@ -237,6 +240,61 @@ test('a potential buyer card explains why, keeps the original, links its provena
   assert.equal(translateCalls[0].targetLang, 'en');
   assert.equal(translateCalls[0].signalId, 's1');
   assert.ok((await page.textContent('main')).includes(AR_TEXT), 'the original stays visible after translation');
+});
+
+/* ── PRODUCTION REGRESSION (campaign d8b69c51, 2026-10-13): the latest search found 2
+   WEAK leads, stored and readable, but they sorted behind 37 older leads in one
+   property-wide list. The list now opens on the latest search, with its own counts. ── */
+test('the latest search opens first: its 2 weak leads show without paging; earlier searches stay one tap away', opts, async (t) => {
+  const older = Array.from({ length: 12 }, (_, i) => lead(`old${i}`, { matching_job_id: 'job-old', overall_score: 90 - i, created_at: ago(9), match_category: null }));
+  const latest = [
+    lead('new1', { matching_job_id: 'job-new', overall_score: 55, strength: 'POSSIBLE', created_at: ago(1), match_category: 'WEAK' }),
+    lead('new2', { matching_job_id: 'job-new', overall_score: 47, strength: 'POSSIBLE', created_at: ago(1), match_category: 'WEAK' }),
+  ];
+  const { page } = await boot(t, { leads: [...older, ...latest] });
+  await open(page);
+  await page.waitForSelector('[data-testid="fbx-campaigns"]', { timeout: 20000 });
+  const first = await page.evaluate(() => ({
+    selected: document.querySelector('[data-testid="fbx-campaign"][aria-selected="true"]')?.getAttribute('data-job'),
+    weakGroup: document.querySelector('[data-testid="fbx-lead-group"][data-category="WEAK"]') !== null,
+    weakExplained: document.querySelector('[data-testid="fbx-weak-explain"]') !== null,
+    groups: [...document.querySelectorAll('[data-testid="fbx-lead-group"]')].map((g) => g.getAttribute('data-category')),
+  }));
+  assert.equal(first.selected, 'job-new', 'the latest search is selected');
+  assert.deepEqual(first.groups, ['WEAK'], 'only the latest search\'s leads, never the older 12');
+  assert.ok(first.weakExplained, 'weak signals say they are not verified buyers');
+  const dash = await page.evaluate(() => ({
+    weak: document.querySelector('[data-testid="fbd-ext-weak"]')?.textContent,
+    strong: document.querySelector('[data-testid="fbd-ext-qualified"]')?.textContent,
+  }));
+  assert.deepEqual(dash, { weak: '2', strong: '0' }, 'the dashboard counts the latest search and never calls weak strong');
+  await page.click('[data-testid="fbx-campaign-all"]');
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbx-lead-group"][data-category="UNCATEGORISED"]'), null, { timeout: 10000 });
+});
+
+test('a failed results read says so and offers a retry — never "no results"', opts, async (t) => {
+  const { page } = await boot(t);
+  await page.route('**/rest/v1/find_buyers_current_leads**', (r) => r.fulfill({ status: 500, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"message":"boom"}' }));
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbx-results-error"]', { timeout: 20000 });
+});
+
+test('HOMATCH Match is free and starts only the internal matcher; External Discovery only opens the budget step', opts, async (t) => {
+  const { page } = await boot(t, { status: IDLE });
+  const calls = [];
+  page.on('request', (req) => { const u = req.url(); if (u.includes('/rpc/') || u.includes('/functions/v1/')) calls.push(u.replace(/^.*\/(rpc|functions\/v1)\//, '')); });
+  await page.route('**/rpc/internal_leads_request_matching', (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: 'true' }));
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbd-internal-start"]', { timeout: 20000 });
+  const before = calls.length;
+  await page.click('[data-testid="fbd-internal-start"]');
+  await page.waitForSelector('[data-testid="fbd-internal-requested"]', { timeout: 10000 });
+  const started = calls.slice(before);
+  assert.ok(started.some((c) => c.startsWith('internal_leads_request_matching')), 'the internal matcher was asked');
+  assert.ok(!started.some((c) => /match-campaign|billing_|wallet|reserve/.test(c)), `free matching made no paid call: ${started.join(', ')}`);
+  await page.click('[data-testid="fbd-external-start"]');
+  await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
+  assert.ok(!calls.some((c) => c.startsWith('match-campaign')), 'opening the budget step launches nothing');
 });
 
 test('1440px and 390px, six locales: cards render, RTL for ar/he, no horizontal overflow, 44px actions', opts, async (t) => {

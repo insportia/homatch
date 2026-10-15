@@ -88,7 +88,8 @@ export async function markLeadsSeen(propertyId: string): Promise<void> {
 
 /** Ask the matcher to evaluate this listing against every active HOMATCH search now. */
 export async function requestLeadMatching(propertyId: string): Promise<void> {
-  await supabase.rpc('internal_leads_request_matching', { p_property_id: propertyId });
+  const { error } = await supabase.rpc('internal_leads_request_matching', { p_property_id: propertyId });
+  if (error) throw new Error(error.message);
 }
 
 export interface UnlockQuote {

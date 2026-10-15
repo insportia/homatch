@@ -207,3 +207,25 @@ test('allhome.ge: a listing outside the requested city is dropped after reading 
   assert.equal(reports.at(-1).queryApplied.filteredAfterRead, String(allhome.detailLimit));
   assert.throws(() => allhome.criteria(request({ propertyType: 'LAND' })), /flats/);
 });
+
+test('results pipeline: real reports from the portals become result properties that name their source; the rest fall only to platform rules', async () => {
+  const { processSearch, publicView } = await import('../../src/research-core/marketplace/pipeline.ts');
+  const serve = { 'place.ge': ['place-list', 'place-detail'], 'brokeri.ge': ['brokeri-list', 'brokeri-detail'], 'www.home.ge': ['homege-sitemap', 'homege-detail'], 'www.allhome.ge': ['allhome-sitemap', 'allhome-detail'] };
+  const candidates = [];
+  for (const adapter of PORTAL_ADAPTERS) {
+    const [list, detail] = serve[new URL(adapter.origin).host];
+    const fetcher = async (url) => { const u = new URL(url); if (u.pathname === '/robots.txt') return new Response('User-agent: *\nDisallow:\n');
+      return new Response(/\/(ads|property-search|files\/sitemap|sitemaps)/.test(u.pathname) ? page(list) : page(detail)); };
+    const reports = [];
+    await acquirePortal(adapter, request({ priceMaxUsd: 1000000, collectPriceMaxUsd: 1100000 }), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
+    for (const r of reports) { const v = validateWorkerReport(r, adapter.sourceId); assert.ok(v.ok, v.reason); for (const candidate of v.report.listings) candidates.push({ workerId: adapter.workerId, candidate }); }
+  }
+  // Fixtures were captured on 2026-10-15; the 30-day listing-age policy is judged as of then.
+  const out = processSearch({ now: new Date('2026-10-15T00:00:00Z'), request: request({ priceMaxUsd: 1000000, collectPriceMaxUsd: 1100000 }), candidates, converter: { name: 'test', convert: (amount, from, to) => (from === 'GEL' && to === 'USD' ? { amount: amount * 0.37, rate: 0.37 } : null) } });
+  const names = new Set(out.properties.map(publicView).flatMap((p) => p.listings.map((l) => l.sourceName)));
+  for (const a of PORTAL_ADAPTERS.filter((x) => x.sourceId !== 'brokeri-ge')) assert.ok(names.has(a.sourceName), `${a.sourceName} listings reach the result set (${[...names].join(', ')})`);
+  // The Brokeri fixture is its unfiltered front page: land, other cities, and one Tbilisi flat
+  // from February. Every one is turned away by the platform's own rules, never by the adapter.
+  const reasons = Object.keys(out.stats.rejected);
+  assert.ok(reasons.every((r) => ['PROPERTY_TYPE_MISMATCH', 'CITY_MISMATCH', 'LISTING_OVER_30_DAYS', 'NO_PRICE'].includes(r)), reasons.join(','));
+});

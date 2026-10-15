@@ -1,0 +1,1666 @@
+{
+  "pue_title": {
+    "en": "Title",
+    "ka": "სათაური",
+    "ru": "Название",
+    "tr": "Başlık",
+    "ar": "العنوان",
+    "he": "כותרת"
+  },
+  "pue_property_type": {
+    "en": "Property type",
+    "ka": "ქონების ტიპი",
+    "ru": "Тип недвижимости",
+    "tr": "Mülk türü",
+    "ar": "نوع العقار",
+    "he": "סוג נכס"
+  },
+  "pue_deal_type": {
+    "en": "Transaction type",
+    "ka": "გარიგების ტიპი",
+    "ru": "Тип сделки",
+    "tr": "İşlem türü",
+    "ar": "نوع المعاملة",
+    "he": "סוג עסקה"
+  },
+  "pue_price": {
+    "en": "Price",
+    "ka": "ფასი",
+    "ru": "Цена",
+    "tr": "Fiyat",
+    "ar": "السعر",
+    "he": "מחיר"
+  },
+  "pue_currency": {
+    "en": "Currency",
+    "ka": "ვალუტა",
+    "ru": "Валюта",
+    "tr": "Para birimi",
+    "ar": "العملة",
+    "he": "מטבע"
+  },
+  "pue_area": {
+    "en": "Area",
+    "ka": "ფართი",
+    "ru": "Площадь",
+    "tr": "Alan",
+    "ar": "المساحة",
+    "he": "שטח"
+  },
+  "pue_city": {
+    "en": "City",
+    "ka": "ქალაქი",
+    "ru": "Город",
+    "tr": "Şehir",
+    "ar": "المدينة",
+    "he": "עיר"
+  },
+  "pue_district": {
+    "en": "District",
+    "ka": "უბანი",
+    "ru": "Район",
+    "tr": "Semt",
+    "ar": "الحي",
+    "he": "שכונה"
+  },
+  "pue_street": {
+    "en": "Street",
+    "ka": "ქუჩა",
+    "ru": "Улица",
+    "tr": "Sokak",
+    "ar": "الشارع",
+    "he": "רחוב"
+  },
+  "pue_street_number": {
+    "en": "Street number",
+    "ka": "ქუჩის ნომერი",
+    "ru": "Номер дома",
+    "tr": "Bina numarası",
+    "ar": "رقم المبنى",
+    "he": "מספר בית"
+  },
+  "pue_rooms": {
+    "en": "Rooms",
+    "ka": "ოთახები",
+    "ru": "Комнаты",
+    "tr": "Oda sayısı",
+    "ar": "الغرف",
+    "he": "חדרים"
+  },
+  "pue_bedrooms": {
+    "en": "Bedrooms",
+    "ka": "საძინებელი",
+    "ru": "Спальни",
+    "tr": "Yatak odası",
+    "ar": "غرف النوم",
+    "he": "חדרי שינה"
+  },
+  "pue_floor": {
+    "en": "Floor",
+    "ka": "სართული",
+    "ru": "Этаж",
+    "tr": "Kat",
+    "ar": "الطابق",
+    "he": "קומה"
+  },
+  "pue_total_floors": {
+    "en": "Total floors",
+    "ka": "სართულების სულ",
+    "ru": "Всего этажей",
+    "tr": "Toplam kat",
+    "ar": "إجمالي الطوابق",
+    "he": "סה\"כ קומות"
+  },
+  "pue_building_type": {
+    "en": "Building type",
+    "ka": "კორპუსის ტიპი",
+    "ru": "Тип здания",
+    "tr": "Bina türü",
+    "ar": "نوع المبنى",
+    "he": "סוג הבניין"
+  },
+  "pue_condition": {
+    "en": "Condition",
+    "ka": "მდგომარეობა",
+    "ru": "Состояние",
+    "tr": "Durum",
+    "ar": "الحالة",
+    "he": "מצב"
+  },
+  "pue_heating": {
+    "en": "Heating",
+    "ka": "გათბობა",
+    "ru": "Отопление",
+    "tr": "Isıtma",
+    "ar": "التدفئة",
+    "he": "חימום"
+  },
+  "pue_contact_name": {
+    "en": "Contact name",
+    "ka": "საკონტაქტო პირი",
+    "ru": "Контактное лицо",
+    "tr": "İlgili kişi",
+    "ar": "اسم جهة الاتصال",
+    "he": "איש קשר"
+  },
+  "pue_contact_phone": {
+    "en": "Phone number",
+    "ka": "ტელეფონის ნომერი",
+    "ru": "Номер телефона",
+    "tr": "Telefon numarası",
+    "ar": "رقم الهاتف",
+    "he": "מספר טלפון"
+  },
+  "pue_balcony_area": {
+    "en": "Balcony area",
+    "ka": "აივნის ფართობი",
+    "ru": "Площадь балкона",
+    "tr": "Balkon alanı",
+    "ar": "مساحة الشرفة",
+    "he": "שטח מרפסת"
+  },
+  "pue_ceiling_height": {
+    "en": "Ceiling height",
+    "ka": "ჭერის სიმაღლე",
+    "ru": "Высота потолка",
+    "tr": "Tavan yüksekliği",
+    "ar": "ارتفاع السقف",
+    "he": "גובה תקרה"
+  },
+  "pue_living_area": {
+    "en": "Living area",
+    "ka": "ძირითადი ზონა",
+    "ru": "Основная зона",
+    "tr": "Kullanım alanı",
+    "ar": "منطقة الاستخدام",
+    "he": "אזור שימוש"
+  },
+  "pue_yard_area": {
+    "en": "Yard area",
+    "ka": "ეზოს ფართობი",
+    "ru": "Площадь двора",
+    "tr": "Bahçe alanı",
+    "ar": "مساحة الفناء",
+    "he": "שטח חצר"
+  },
+  "pue_land_area": {
+    "en": "Land area",
+    "ka": "მიწის ფართობი",
+    "ru": "Площадь участка",
+    "tr": "Arsa alanı",
+    "ar": "مساحة الأرض",
+    "he": "שטח מגרש"
+  },
+  "pue_optional": {
+    "en": "Optional",
+    "ka": "არასავალდებულო",
+    "ru": "Необязательно",
+    "tr": "İsteğe bağlı",
+    "ar": "اختياري",
+    "he": "רשות"
+  },
+  "pue_choose": {
+    "en": "Select",
+    "ka": "აირჩიეთ",
+    "ru": "Выберите",
+    "tr": "Seçin",
+    "ar": "اختر",
+    "he": "בחרו"
+  },
+  "pue_sale": {
+    "en": "Sale",
+    "ka": "გაყიდვა",
+    "ru": "Продажа",
+    "tr": "Satış",
+    "ar": "البيع",
+    "he": "מכירה"
+  },
+  "pue_rent": {
+    "en": "Rent",
+    "ka": "ქირავდება",
+    "ru": "Снять",
+    "tr": "Kirala",
+    "ar": "إيجار",
+    "he": "שכירות"
+  },
+  "pue_daily_rent": {
+    "en": "Daily rent",
+    "ka": "დღიური ქირა",
+    "ru": "Посуточная аренда",
+    "tr": "Günlük kira",
+    "ar": "إيجار يومي",
+    "he": "שכירות יומית"
+  },
+  "pue_apartment": {
+    "en": "Apartment",
+    "ka": "ბინა",
+    "ru": "Квартира",
+    "tr": "Daire",
+    "ar": "شقة",
+    "he": "דירה"
+  },
+  "pue_house": {
+    "en": "House",
+    "ka": "სახლი",
+    "ru": "Дом",
+    "tr": "Ev",
+    "ar": "منزل",
+    "he": "בית"
+  },
+  "pue_land": {
+    "en": "Land",
+    "ka": "მიწის ნაკვეთი",
+    "ru": "Земельный участок",
+    "tr": "Arsa",
+    "ar": "أرض",
+    "he": "מגרש"
+  },
+  "pue_commercial": {
+    "en": "Commercial",
+    "ka": "კომერციული",
+    "ru": "Коммерческая недвижимость",
+    "tr": "Ticari",
+    "ar": "تجاري",
+    "he": "מסחרי"
+  },
+  "pue_hotel": {
+    "en": "Hotel",
+    "ka": "სასტუმრო",
+    "ru": "Отель",
+    "tr": "Otel",
+    "ar": "فندق",
+    "he": "מלון"
+  },
+  "pue_usd": {
+    "en": "USD",
+    "ka": "USD",
+    "ru": "USD",
+    "tr": "USD",
+    "ar": "USD",
+    "he": "USD"
+  },
+  "pue_gel": {
+    "en": "GEL",
+    "ka": "GEL",
+    "ru": "GEL",
+    "tr": "GEL",
+    "ar": "GEL",
+    "he": "GEL"
+  },
+  "pue_eur": {
+    "en": "EUR",
+    "ka": "EUR",
+    "ru": "EUR",
+    "tr": "EUR",
+    "ar": "EUR",
+    "he": "EUR"
+  },
+  "pue_details": {
+    "en": "Property details",
+    "ka": "ქონების დეტალები",
+    "ru": "Характеристики объекта",
+    "tr": "Mülk ayrıntıları",
+    "ar": "تفاصيل العقار",
+    "he": "פרטי הנכס"
+  },
+  "pue_old_building": {
+    "en": "Old building",
+    "ka": "ძველი აშენებული",
+    "ru": "Старый фонд",
+    "tr": "Eski bina",
+    "ar": "مبنى قديم",
+    "he": "בניין ישן"
+  },
+  "pue_new_building": {
+    "en": "New building",
+    "ka": "ახალი აშენებული",
+    "ru": "Новостройка",
+    "tr": "Yeni bina",
+    "ar": "مبنى جديد",
+    "he": "בניין חדש"
+  },
+  "pue_under_construction": {
+    "en": "Under construction",
+    "ka": "მშენებარე",
+    "ru": "Строится",
+    "tr": "İnşaat halinde",
+    "ar": "قيد الإنشاء",
+    "he": "בבנייה"
+  },
+  "pue_new_renovation": {
+    "en": "New renovation",
+    "ka": "ახალი გარემონტებული",
+    "ru": "Новый ремонт",
+    "tr": "Yeni tadilat",
+    "ar": "تشطيب جديد",
+    "he": "שיפוץ חדש"
+  },
+  "pue_old_renovation": {
+    "en": "Old renovation",
+    "ka": "ძველი გარემონტებული",
+    "ru": "Старый ремонт",
+    "tr": "Eski tadilat",
+    "ar": "تشطيب قديم",
+    "he": "שיפוץ ישן"
+  },
+  "pue_needs_renovation": {
+    "en": "Needs renovation",
+    "ka": "საჭიროებს რემონტს",
+    "ru": "Требуется ремонт",
+    "tr": "Tadilat gerekiyor",
+    "ar": "يحتاج إلى تجديد",
+    "he": "דורש שיפוץ"
+  },
+  "pue_description": {
+    "en": "Description",
+    "ka": "აღწერა",
+    "ru": "Описание",
+    "tr": "Açıklama",
+    "ar": "الوصف",
+    "he": "תיאור"
+  },
+  "pue_photos": {
+    "en": "Photos",
+    "ka": "ფოტოები",
+    "ru": "Фотографии",
+    "tr": "Fotoğraflar",
+    "ar": "الصور",
+    "he": "תמונות"
+  },
+  "pue_cancel": {
+    "en": "Cancel",
+    "ka": "გაუქმება",
+    "ru": "Отмена",
+    "tr": "İptal",
+    "ar": "إلغاء",
+    "he": "ביטול"
+  },
+  "pue_save": {
+    "en": "Save changes",
+    "ka": "ცვლილებების შენახვა",
+    "ru": "Сохранить изменения",
+    "tr": "Değişiklikleri kaydet",
+    "ar": "حفظ التغييرات",
+    "he": "שמירת שינויים"
+  },
+  "pue_saved": {
+    "en": "Saved",
+    "ka": "შენახულია",
+    "ru": "Сохранено",
+    "tr": "Kaydedildi",
+    "ar": "تم الحفظ",
+    "he": "נשמר"
+  },
+  "pue_saving": {
+    "en": "Saving…",
+    "ka": "ინახება…",
+    "ru": "Сохранение…",
+    "tr": "Kaydediliyor…",
+    "ar": "جارٍ الحفظ…",
+    "he": "שומר…"
+  },
+  "pue_unsaved": {
+    "en": "Unsaved changes",
+    "ka": "შეუნახავი ცვლილებები",
+    "ru": "Несохранённые изменения",
+    "tr": "Kaydedilmemiş değişiklik",
+    "ar": "تغييرات غير محفوظة",
+    "he": "שינויים שלא נשמרו"
+  },
+  "pue_close": {
+    "en": "Close",
+    "ka": "დახურვა",
+    "ru": "Закрыть",
+    "tr": "Kapat",
+    "ar": "إغلاق",
+    "he": "סגור"
+  },
+  "pue_edit": {
+    "en": "Edit",
+    "ka": "რედაქტირება",
+    "ru": "Редактировать",
+    "tr": "Düzenle",
+    "ar": "تعديل",
+    "he": "עריכה"
+  },
+  "pue_search": {
+    "en": "Search",
+    "ka": "ძიება",
+    "ru": "Поиск",
+    "tr": "Ara",
+    "ar": "بحث",
+    "he": "חפש"
+  },
+  "pue_retry": {
+    "en": "Retry",
+    "ka": "ხელახლა",
+    "ru": "Повторить",
+    "tr": "Tekrar dene",
+    "ar": "إعادة المحاولة",
+    "he": "לנסות שוב"
+  },
+  "pue_more": {
+    "en": "More actions",
+    "ka": "სხვა მოქმედებები",
+    "ru": "Другие действия",
+    "tr": "Diğer işlemler",
+    "ar": "إجراءات أخرى",
+    "he": "פעולות נוספות"
+  },
+  "pue_eyebrow": {
+    "en": "Your property, everywhere",
+    "ka": "თქვენი ქონება ყველა პლატფორმაზე",
+    "ru": "Ваш объект на всех площадках",
+    "tr": "Mülkünüz her platformda",
+    "ar": "عقارك على كل المنصات",
+    "he": "הנכס שלך בכל הפלטפורמות"
+  },
+  "pue_subtitle": {
+    "en": "Create once. Manage every connected platform from one place.",
+    "ka": "შექმენით ერთხელ. მართეთ ყველა დაკავშირებული პლატფორმა ერთი სივრციდან.",
+    "ru": "Создайте один раз. Управляйте подключёнными площадками из одного места.",
+    "tr": "Bir kez oluşturun. Bağlı platformları tek yerden yönetin.",
+    "ar": "أنشئ مرة واحدة وأدر المنصات المتصلة من مكان واحد.",
+    "he": "יוצרים פעם אחת ומנהלים את כל הפלטפורמות המחוברות במקום אחד."
+  },
+  "pue_create": {
+    "en": "Create listing",
+    "ka": "განცხადების შექმნა",
+    "ru": "Создать объявление",
+    "tr": "İlan oluştur",
+    "ar": "إنشاء إعلان",
+    "he": "יצירת מודעה"
+  },
+  "pue_editor": {
+    "en": "Property editor",
+    "ka": "ქონების რედაქტორი",
+    "ru": "Редактор объекта",
+    "tr": "Mülk düzenleyici",
+    "ar": "محرر العقار",
+    "he": "עריכת נכס"
+  },
+  "pue_new_draft": {
+    "en": "New draft",
+    "ka": "ახალი მონახაზი",
+    "ru": "Новый черновик",
+    "tr": "Yeni taslak",
+    "ar": "مسودة جديدة",
+    "he": "טיוטה חדשה"
+  },
+  "pue_draft_hint": {
+    "en": "Save at any stage. Portal requirements are checked before publication.",
+    "ka": "შეინახეთ ნებისმიერ ეტაპზე. პლატფორმის მოთხოვნები გამოქვეყნებამდე მოწმდება.",
+    "ru": "Сохраняйте на любом этапе. Требования площадки проверяются перед публикацией.",
+    "tr": "İstediğiniz aşamada kaydedin. Platform koşulları yayımlamadan önce kontrol edilir.",
+    "ar": "احفظ في أي مرحلة. تُفحص متطلبات المنصة قبل النشر.",
+    "he": "אפשר לשמור בכל שלב. דרישות הפלטפורמה נבדקות לפני הפרסום."
+  },
+  "pue_unsaved_confirm": {
+    "en": "Leave without saving your changes?",
+    "ka": "გახვიდეთ ცვლილებების შენახვის გარეშე?",
+    "ru": "Выйти без сохранения изменений?",
+    "tr": "Değişiklikleri kaydetmeden çıkılsın mı?",
+    "ar": "هل تريد المغادرة دون حفظ التغييرات؟",
+    "he": "לצאת בלי לשמור את השינויים?"
+  },
+  "pue_add_photos": {
+    "en": "Add photos",
+    "ka": "ფოტოების დამატება",
+    "ru": "Добавить фото",
+    "tr": "Fotoğraf ekle",
+    "ar": "أضف صوراً",
+    "he": "הוספת תמונות"
+  },
+  "pue_photos_hint": {
+    "en": "Upload once, reuse across platforms. The first photo is your cover.",
+    "ka": "ატვირთეთ ერთხელ და გამოიყენეთ ყველა პლატფორმაზე. პირველი ფოტო გარეკანია.",
+    "ru": "Загрузите один раз для всех площадок. Первое фото — обложка.",
+    "tr": "Bir kez yükleyin, tüm platformlarda kullanın. İlk fotoğraf kapaktır.",
+    "ar": "ارفع الصور مرة واحدة لكل المنصات. الصورة الأولى هي الغلاف.",
+    "he": "מעלים פעם אחת לכל הפלטפורמות. התמונה הראשונה היא תמונת השער."
+  },
+  "pue_cover": {
+    "en": "Cover photo",
+    "ka": "მთავარი ფოტო",
+    "ru": "Обложка",
+    "tr": "Kapak fotoğrafı",
+    "ar": "صورة الغلاف",
+    "he": "תמונת שער"
+  },
+  "pue_move_up": {
+    "en": "Move earlier",
+    "ka": "წინ გადატანა",
+    "ru": "Переместить раньше",
+    "tr": "Öne taşı",
+    "ar": "نقل للأمام",
+    "he": "להזיז קדימה"
+  },
+  "pue_move_down": {
+    "en": "Move later",
+    "ka": "უკან გადატანა",
+    "ru": "Переместить позже",
+    "tr": "Arkaya taşı",
+    "ar": "نقل للخلف",
+    "he": "להזיז אחורה"
+  },
+  "pue_remove_photo": {
+    "en": "Remove photo",
+    "ka": "ფოტოს წაშლა",
+    "ru": "Убрать фото",
+    "tr": "Fotoğrafı kaldır",
+    "ar": "إزالة الصورة",
+    "he": "הסרת תמונה"
+  },
+  "pue_targets": {
+    "en": "Publication platforms",
+    "ka": "გამოქვეყნების პლატფორმები",
+    "ru": "Площадки публикации",
+    "tr": "Yayımlama platformları",
+    "ar": "منصات النشر",
+    "he": "פלטפורמות לפרסום"
+  },
+  "pue_requirements_hint": {
+    "en": "Required fields depend on the selected platform. Saving a draft is always free.",
+    "ka": "სავალდებულო ველები პლატფორმაზეა დამოკიდებული. მონახაზის შენახვა ყოველთვის უფასოა.",
+    "ru": "Обязательные поля зависят от площадки. Черновики всегда бесплатны.",
+    "tr": "Zorunlu alanlar platforma bağlıdır. Taslak kaydetmek her zaman ücretsizdir.",
+    "ar": "الحقول المطلوبة تختلف حسب المنصة. حفظ المسودة مجاني دائماً.",
+    "he": "שדות החובה תלויים בפלטפורמה. שמירת טיוטה תמיד בחינם."
+  },
+  "pue_ai_generate": {
+    "en": "Generate description",
+    "ka": "აღწერის გენერირება",
+    "ru": "Создать описание",
+    "tr": "Açıklama oluştur",
+    "ar": "إنشاء وصف",
+    "he": "יצירת תיאור"
+  },
+  "pue_ai_improve": {
+    "en": "Improve description",
+    "ka": "აღწერის გაუმჯობესება",
+    "ru": "Улучшить описание",
+    "tr": "Açıklamayı iyileştir",
+    "ar": "تحسين الوصف",
+    "he": "שיפור התיאור"
+  },
+  "pue_ai_shorter": {
+    "en": "Shorten",
+    "ka": "შემოკლება",
+    "ru": "Сократить",
+    "tr": "Kısalt",
+    "ar": "اختصار",
+    "he": "קיצור"
+  },
+  "pue_ai_professional": {
+    "en": "Make professional",
+    "ka": "პროფესიონალური სტილი",
+    "ru": "Профессиональный стиль",
+    "tr": "Profesyonel hale getir",
+    "ar": "صياغة احترافية",
+    "he": "ניסוח מקצועי"
+  },
+  "pue_ai_translate": {
+    "en": "Translate",
+    "ka": "თარგმნა",
+    "ru": "Перевести",
+    "tr": "Çevir",
+    "ar": "ترجمة",
+    "he": "תרגום"
+  },
+  "pue_ai_preview": {
+    "en": "AI writing preview",
+    "ka": "AI ტექსტის გადახედვა",
+    "ru": "Предпросмотр текста ИИ",
+    "tr": "Yapay zekâ metni önizlemesi",
+    "ar": "معاينة نص الذكاء الاصطناعي",
+    "he": "תצוגה מקדימה של טקסט AI"
+  },
+  "pue_ai_review": {
+    "en": "Review and edit this suggestion before applying it.",
+    "ka": "გამოყენებამდე გადახედეთ და შეასწორეთ ტექსტი.",
+    "ru": "Проверьте и отредактируйте текст перед применением.",
+    "tr": "Uygulamadan önce öneriyi inceleyip düzenleyin.",
+    "ar": "راجع الاقتراح وعدّله قبل استخدامه.",
+    "he": "יש לבדוק ולערוך את ההצעה לפני החלתה."
+  },
+  "pue_use_draft": {
+    "en": "Use this text",
+    "ka": "ტექსტის გამოყენება",
+    "ru": "Использовать текст",
+    "tr": "Bu metni kullan",
+    "ar": "استخدام النص",
+    "he": "שימוש בטקסט"
+  },
+  "pue_tab_overview": {
+    "en": "Overview",
+    "ka": "მიმოხილვა",
+    "ru": "Обзор",
+    "tr": "Genel bakış",
+    "ar": "نظرة عامة",
+    "he": "סקירה"
+  },
+  "pue_tab_listings": {
+    "en": "My listings",
+    "ka": "ჩემი განცხადებები",
+    "ru": "Мои объявления",
+    "tr": "İlanlarım",
+    "ar": "إعلاناتي",
+    "he": "המודעות שלי"
+  },
+  "pue_tab_create": {
+    "en": "Create listing",
+    "ka": "განცხადების შექმნა",
+    "ru": "Создать объявление",
+    "tr": "İlan oluştur",
+    "ar": "إنشاء إعلان",
+    "he": "יצירת מודעה"
+  },
+  "pue_tab_platforms": {
+    "en": "Publishing platforms",
+    "ka": "გამოქვეყნების პლატფორმები",
+    "ru": "Площадки публикации",
+    "tr": "Yayın platformları",
+    "ar": "منصات النشر",
+    "he": "פלטפורמות פרסום"
+  },
+  "pue_tab_activity": {
+    "en": "Activity & synchronization",
+    "ka": "აქტივობა და სინქრონიზაცია",
+    "ru": "Активность и синхронизация",
+    "tr": "Etkinlik ve eşitleme",
+    "ar": "النشاط والمزامنة",
+    "he": "פעילות וסנכרון"
+  },
+  "pue_tab_billing": {
+    "en": "Billing",
+    "ka": "ბილინგი",
+    "ru": "Биллинг",
+    "tr": "Fatura",
+    "ar": "الفوترة",
+    "he": "חיוב"
+  },
+  "pue_sections": {
+    "en": "Publishing sections",
+    "ka": "გამოქვეყნების სექციები",
+    "ru": "Разделы публикации",
+    "tr": "Yayımlama bölümleri",
+    "ar": "أقسام النشر",
+    "he": "מדורי פרסום"
+  },
+  "pue_empty_title": {
+    "en": "Your next listing starts here",
+    "ka": "თქვენი შემდეგი განცხადება აქ იწყება",
+    "ru": "Ваше следующее объявление начинается здесь",
+    "tr": "Sonraki ilanınız burada başlar",
+    "ar": "إعلانك التالي يبدأ هنا",
+    "he": "המודעה הבאה שלך מתחילה כאן"
+  },
+  "pue_empty_body": {
+    "en": "Save a draft, add your photos and choose the platforms you want to reach.",
+    "ka": "შეინახეთ მონახაზი, დაამატეთ ფოტოები და აირჩიეთ პლატფორმები.",
+    "ru": "Сохраните черновик, добавьте фото и выберите площадки.",
+    "tr": "Taslak kaydedin, fotoğraf ekleyin ve platformları seçin.",
+    "ar": "احفظ مسودة وأضف الصور واختر المنصات.",
+    "he": "שמרו טיוטה, הוסיפו תמונות ובחרו פלטפורמות."
+  },
+  "pue_untitled": {
+    "en": "Untitled property",
+    "ka": "უსათაურო ქონება",
+    "ru": "Объект без названия",
+    "tr": "Başlıksız mülk",
+    "ar": "عقار بلا عنوان",
+    "he": "נכס ללא שם"
+  },
+  "pue_location_pending": {
+    "en": "Location not added",
+    "ka": "მდებარეობა არ არის დამატებული",
+    "ru": "Местоположение не указано",
+    "tr": "Konum eklenmedi",
+    "ar": "لم يُضف الموقع",
+    "he": "לא נוסף מיקום"
+  },
+  "pue_price_pending": {
+    "en": "Price not added",
+    "ka": "ფასი არ არის დამატებული",
+    "ru": "Цена не указана",
+    "tr": "Fiyat eklenmedi",
+    "ar": "لم يُضف السعر",
+    "he": "לא נוסף מחיר"
+  },
+  "pue_area_pending": {
+    "en": "Area not added",
+    "ka": "ფართობი არ არის დამატებული",
+    "ru": "Площадь не указана",
+    "tr": "Alan eklenmedi",
+    "ar": "لم تُضف المساحة",
+    "he": "לא נוסף שטח"
+  },
+  "pue_select_listing": {
+    "en": "Select listing",
+    "ka": "განცხადების არჩევა",
+    "ru": "Выбрать объявление",
+    "tr": "İlanı seç",
+    "ar": "تحديد الإعلان",
+    "he": "בחירת מודעה"
+  },
+  "pue_selected": {
+    "en": "{n} selected",
+    "ka": "მონიშნულია {n}",
+    "ru": "Выбрано: {n}",
+    "tr": "{n} seçildi",
+    "ar": "تم تحديد {n}",
+    "he": "נבחרו {n}"
+  },
+  "pue_last_sync": {
+    "en": "Last synchronization",
+    "ka": "ბოლო სინქრონიზაცია",
+    "ru": "Последняя синхронизация",
+    "tr": "Son eşitleme",
+    "ar": "آخر مزامنة",
+    "he": "סנכרון אחרון"
+  },
+  "pue_view_portal": {
+    "en": "View on platform",
+    "ka": "პლატფორმაზე ნახვა",
+    "ru": "Открыть на площадке",
+    "tr": "Platformda görüntüle",
+    "ar": "عرض على المنصة",
+    "he": "צפייה בפלטפורמה"
+  },
+  "pue_not_yet": {
+    "en": "Not yet",
+    "ka": "ჯერ არა",
+    "ru": "Пока нет",
+    "tr": "Henüz yok",
+    "ar": "ليس بعد",
+    "he": "עדיין לא"
+  },
+  "pue_history": {
+    "en": "History",
+    "ka": "ისტორია",
+    "ru": "История",
+    "tr": "Geçmiş",
+    "ar": "السجل",
+    "he": "היסטוריה"
+  },
+  "pue_history_event": {
+    "en": "Listing activity recorded",
+    "ka": "განცხადების აქტივობა ჩაიწერა",
+    "ru": "Действие с объявлением записано",
+    "tr": "İlan etkinliği kaydedildi",
+    "ar": "تم تسجيل نشاط الإعلان",
+    "he": "פעילות המודעה תועדה"
+  },
+  "pue_revision": {
+    "en": "Revision {n}",
+    "ka": "ვერსია {n}",
+    "ru": "Версия {n}",
+    "tr": "Sürüm {n}",
+    "ar": "الإصدار {n}",
+    "he": "גרסה {n}"
+  },
+  "pue_no_activity": {
+    "en": "No publishing activity yet.",
+    "ka": "გამოქვეყნების აქტივობა ჯერ არ არის.",
+    "ru": "Действий публикации пока нет.",
+    "tr": "Henüz yayımlama etkinliği yok.",
+    "ar": "لا يوجد نشاط نشر بعد.",
+    "he": "עדיין אין פעילות פרסום."
+  },
+  "pue_refresh_status": {
+    "en": "Refresh status",
+    "ka": "სტატუსის განახლება",
+    "ru": "Обновить статус",
+    "tr": "Durumu yenile",
+    "ar": "تحديث الحالة",
+    "he": "רענון מצב"
+  },
+  "pue_kpi_properties": {
+    "en": "Total properties",
+    "ka": "სულ ქონება",
+    "ru": "Всего объектов",
+    "tr": "Toplam mülk",
+    "ar": "إجمالي العقارات",
+    "he": "סך הנכסים"
+  },
+  "pue_kpi_active": {
+    "en": "Active listings",
+    "ka": "აქტიური განცხადებები",
+    "ru": "Активные объявления",
+    "tr": "Aktif ilanlar",
+    "ar": "الإعلانات النشطة",
+    "he": "מודעות פעילות"
+  },
+  "pue_kpi_drafts": {
+    "en": "Drafts",
+    "ka": "მონახაზები",
+    "ru": "Черновики",
+    "tr": "Taslaklar",
+    "ar": "المسودات",
+    "he": "טיוטות"
+  },
+  "pue_kpi_portals": {
+    "en": "Published platforms",
+    "ka": "გამოქვეყნებული პლატფორმები",
+    "ru": "Площадки с публикациями",
+    "tr": "Yayımlanan platformlar",
+    "ar": "المنصات المنشور عليها",
+    "he": "פלטפורמות עם פרסומים"
+  },
+  "pue_kpi_pending": {
+    "en": "Pending synchronization",
+    "ka": "მომლოდინე სინქრონიზაცია",
+    "ru": "Ожидают синхронизации",
+    "tr": "Bekleyen eşitlemeler",
+    "ar": "مزامنات معلّقة",
+    "he": "סנכרונים ממתינים"
+  },
+  "pue_kpi_failed": {
+    "en": "Failed operations",
+    "ka": "წარუმატებელი ოპერაციები",
+    "ru": "Неудачные операции",
+    "tr": "Başarısız işlemler",
+    "ar": "العمليات الفاشلة",
+    "he": "פעולות שנכשלו"
+  },
+  "pue_kpi_daily": {
+    "en": "Daily credits",
+    "ka": "დღიური კრედიტები",
+    "ru": "Кредиты в день",
+    "tr": "Günlük kredi",
+    "ar": "الرصيد اليومي المستخدم",
+    "he": "קרדיטים ליום"
+  },
+  "pue_kpi_balance": {
+    "en": "Credit balance",
+    "ka": "კრედიტების ბალანსი",
+    "ru": "Баланс кредитов",
+    "tr": "Kredi bakiyesi",
+    "ar": "رصيد الأرصدة",
+    "he": "יתרת קרדיטים"
+  },
+  "pue_connect": {
+    "en": "Connect",
+    "ka": "დაკავშირება",
+    "ru": "Связь",
+    "tr": "Bağlan",
+    "ar": "تواصل",
+    "he": "התחברות"
+  },
+  "pue_reconnect": {
+    "en": "Reconnect",
+    "ka": "ხელახლა დაკავშირება",
+    "ru": "Переподключить",
+    "tr": "Yeniden bağlan",
+    "ar": "إعادة الربط",
+    "he": "חיבור מחדש"
+  },
+  "pue_disconnect": {
+    "en": "Disconnect",
+    "ka": "გათიშვა",
+    "ru": "Отключить",
+    "tr": "Bağlantıyı kes",
+    "ar": "قطع الاتصال",
+    "he": "ניתוק"
+  },
+  "pue_verify_connection": {
+    "en": "Check connection",
+    "ka": "კავშირის შემოწმება",
+    "ru": "Проверить подключение",
+    "tr": "Bağlantıyı kontrol et",
+    "ar": "فحص الاتصال",
+    "he": "בדיקת חיבור"
+  },
+  "pue_connection_hint": {
+    "en": "HOMATCH manages publishing accounts. You do not need a portal account or browser extension.",
+    "ka": "გამოქვეყნების ანგარიშებს HOMATCH მართავს. პლატფორმის ანგარიში ან ბრაუზერის გაფართოება არ გჭირდებათ.",
+    "ru": "HOMATCH управляет аккаунтами публикации. Вам не нужны аккаунт площадки или расширение браузера.",
+    "tr": "Yayın hesaplarını HOMATCH yönetir. Platform hesabına veya tarayıcı eklentisine ihtiyacınız yoktur.",
+    "ar": "يدير HOMATCH حسابات النشر. لا تحتاج إلى حساب على المنصة أو إضافة للمتصفح.",
+    "he": "HOMATCH מנהלת את חשבונות הפרסום. אין צורך בחשבון בפלטפורמה או בתוסף לדפדפן."
+  },
+  "pue_last_verified": {
+    "en": "Last session check",
+    "ka": "სესიის ბოლო შემოწმება",
+    "ru": "Последняя проверка сессии",
+    "tr": "Son oturum kontrolü",
+    "ar": "آخر فحص للجلسة",
+    "he": "בדיקת ההתחברות האחרונה"
+  },
+  "pue_connected_count": {
+    "en": "{n} connected listings",
+    "ka": "{n} დაკავშირებული განცხადება",
+    "ru": "Подключено объявлений: {n}",
+    "tr": "{n} bağlı ilan",
+    "ar": "{n} إعلانات متصلة",
+    "he": "{n} מודעות מחוברות"
+  },
+  "pue_capability_pending": {
+    "en": "Portal operations await independent live verification.",
+    "ka": "პლატფორმის ოპერაციებს ცოცხალი შემოწმება სჭირდება.",
+    "ru": "Операции площадки ожидают независимой проверки в реальной сессии.",
+    "tr": "Platform işlemleri bağımsız canlı doğrulama bekliyor.",
+    "ar": "عمليات المنصة تنتظر تحققاً مستقلاً في جلسة فعلية.",
+    "he": "פעולות הפלטפורמה ממתינות לאימות עצמאי בסביבה חיה."
+  },
+  "pue_troubleshoot": {
+    "en": "Connection help",
+    "ka": "კავშირის დახმარება",
+    "ru": "Помощь с подключением",
+    "tr": "Bağlantı yardımı",
+    "ar": "مساعدة الاتصال",
+    "he": "עזרה בחיבור"
+  },
+  "pue_install_help": {
+    "en": "In Chrome, open chrome://extensions, enable Developer mode and load the reviewed publishing-extension folder using Load unpacked. After an update, replace that folder, click Reload and reload HOMATCH and your portal tabs. Sign in on the portal, then return here and check the connection.",
+    "ka": "Chrome-ში გახსენით chrome://extensions, ჩართეთ Developer mode და Load unpacked-ით აირჩიეთ შემოწმებული publishing-extension საქაღალდე. განახლებისას შეცვალეთ საქაღალდე, დააჭირეთ Reload-ს და გადატვირთეთ HOMATCH და პლატფორმის ჩანართები. შედით პლატფორმაზე და შეამოწმეთ კავშირი.",
+    "ru": "В Chrome откройте chrome://extensions, включите Developer mode и через Load unpacked выберите проверенную папку publishing-extension. При обновлении замените папку, нажмите Reload и перезагрузите вкладки HOMATCH и площадки. Войдите на площадке и проверьте подключение.",
+    "tr": "Chrome’da chrome://extensions açın, Developer mode seçeneğini etkinleştirin ve Load unpacked ile incelenmiş publishing-extension klasörünü seçin. Güncellemede klasörü değiştirip Reload düğmesine basın; HOMATCH ve platform sekmelerini yenileyin. Platformda oturum açıp bağlantıyı kontrol edin.",
+    "ar": "افتح chrome://extensions في Chrome، وفعّل Developer mode، ثم اختر مجلد publishing-extension المراجع عبر Load unpacked. للتحديث استبدل المجلد واضغط Reload وأعد تحميل تبويبات HOMATCH والمنصة. سجّل الدخول على المنصة وافحص الاتصال.",
+    "he": "ב־Chrome פתחו chrome://extensions, הפעילו Developer mode ובחרו בתיקיית publishing-extension שנבדקה דרך Load unpacked. לעדכון החליפו את התיקייה, לחצו Reload ורעננו את לשוניות HOMATCH והפלטפורמה. היכנסו לפלטפורמה ובדקו את החיבור."
+  },
+  "pue_browser_required": {
+    "en": "Publication status comes from HOMATCH servers. Success is shown only after independent portal verification.",
+    "ka": "გამოქვეყნების სტატუსი HOMATCH-ის სერვერებიდან მიიღება. წარმატება მხოლოდ პლატფორმაზე დამოუკიდებელი შემოწმების შემდეგ ჩანს.",
+    "ru": "Статус публикации поступает с серверов HOMATCH. Успех отображается только после независимой проверки на площадке.",
+    "tr": "Yayın durumu HOMATCH sunucularından alınır. Başarı yalnızca platformda bağımsız doğrulamadan sonra gösterilir.",
+    "ar": "تأتي حالة النشر من خوادم HOMATCH. لا يظهر النجاح إلا بعد تحقق مستقل على المنصة.",
+    "he": "מצב הפרסום מתקבל משרתי HOMATCH. הצלחה מוצגת רק לאחר אימות עצמאי בפלטפורמה."
+  },
+  "pue_publish": {
+    "en": "Activate & publish",
+    "ka": "გააქტიურება და გამოქვეყნება",
+    "ru": "Активировать и опубликовать",
+    "tr": "Etkinleştir ve yayımla",
+    "ar": "تفعيل ونشر",
+    "he": "הפעלה ופרסום"
+  },
+  "pue_queue_confirm": {
+    "en": "Queue this operation for the following platforms?",
+    "ka": "დაემატოს ოპერაცია რიგში შემდეგი პლატფორმებისთვის?",
+    "ru": "Поставить операцию в очередь для этих площадок?",
+    "tr": "Bu platformlar için işlem kuyruğa alınsın mı?",
+    "ar": "هل تريد إضافة العملية للطابور لهذه المنصات؟",
+    "he": "להוסיף את הפעולה לתור עבור הפלטפורמות הבאות?"
+  },
+  "pue_remote_confirm": {
+    "en": "Review the listing in the portal tab. Confirm only if you approve this exact remote action.",
+    "ka": "გადახედეთ განცხადებას პლატფორმის ჩანართში. დაადასტურეთ მხოლოდ ამ კონკრეტულ მოქმედებაზე თანხმობისას.",
+    "ru": "Проверьте объявление во вкладке площадки. Подтверждайте только это конкретное действие.",
+    "tr": "İlanı platform sekmesinde inceleyin. Yalnızca bu işlemi onaylıyorsanız doğrulayın.",
+    "ar": "راجع الإعلان في تبويب المنصة، وأكّد فقط إذا وافقت على هذا الإجراء المحدد.",
+    "he": "בדקו את המודעה בלשונית הפלטפורמה. אשרו רק אם אתם מאשרים את הפעולה המסוימת הזו."
+  },
+  "pue_bulk_confirm": {
+    "en": "Confirm the selected operation for {n} listings? Results are tracked separately for each platform.",
+    "ka": "დადასტურდეს არჩეული ოპერაცია {n} განცხადებისთვის? შედეგები თითოეულ პლატფორმაზე ცალ-ცალკე აღირიცხება.",
+    "ru": "Подтвердить операцию для {n} объявлений? Результаты учитываются отдельно по площадкам.",
+    "tr": "{n} ilan için işlem onaylansın mı? Sonuçlar her platform için ayrı izlenir.",
+    "ar": "هل تؤكد العملية لـ {n} إعلانات؟ تُتابع النتائج لكل منصة على حدة.",
+    "he": "לאשר את הפעולה עבור {n} מודעות? התוצאות נרשמות בנפרד לכל פלטפורמה."
+  },
+  "pue_activation_confirm": {
+    "en": "Activate this listing for {n} credits every 24 hours? The first charge follows verified publication. Drafts are free.",
+    "ka": "გააქტიურდეს განცხადება {n} კრედიტად ყოველ 24 საათში? პირველი ჩამოჭრა დადასტურებულ გამოქვეყნებას მოჰყვება. მონახაზები უფასოა.",
+    "ru": "Активировать за {n} кредитов каждые 24 часа? Первое списание — после подтверждённой публикации. Черновики бесплатны.",
+    "tr": "İlan her 24 saatte {n} krediyle etkinleştirilsin mi? İlk ücret doğrulanmış yayından sonra alınır. Taslaklar ücretsizdir.",
+    "ar": "هل تريد التفعيل مقابل {n} رصيداً كل 24 ساعة؟ أول خصم بعد التحقق من النشر. المسودات مجانية.",
+    "he": "להפעיל את המודעה תמורת {n} קרדיטים בכל 24 שעות? החיוב הראשון לאחר פרסום מאומת. טיוטות בחינם."
+  },
+  "pue_archive": {
+    "en": "Archive locally",
+    "ka": "ადგილობრივად დაარქივება",
+    "ru": "Архивировать локально",
+    "tr": "Yerel olarak arşivle",
+    "ar": "أرشفة محلية",
+    "he": "ארכוב מקומי"
+  },
+  "pue_archive_confirm": {
+    "en": "Archive this property? Unresolved remote listings must be managed first.",
+    "ka": "დაარქივდეს ქონება? ჯერ უნდა მოგვარდეს გარე განცხადებების სტატუსი.",
+    "ru": "Архивировать объект? Сначала урегулируйте внешние объявления.",
+    "tr": "Mülk arşivlensin mi? Önce dış platformlardaki çözümlenmemiş ilanları yönetin.",
+    "ar": "هل تريد أرشفة العقار؟ يجب معالجة الإعلانات الخارجية العالقة أولاً.",
+    "he": "לארכב את הנכס? תחילה יש לטפל במודעות חיצוניות שטרם הוסדרו."
+  },
+  "pue_action_CREATE": {
+    "en": "Prepare listing",
+    "ka": "განცხადების მომზადება",
+    "ru": "Подготовить объявление",
+    "tr": "İlanı hazırla",
+    "ar": "تحضير الإعلان",
+    "he": "הכנת מודעה"
+  },
+  "pue_action_PUBLISH": {
+    "en": "Publish",
+    "ka": "გამოქვეყნება",
+    "ru": "Опубликовать",
+    "tr": "Yayımla",
+    "ar": "نشر",
+    "he": "פרסום"
+  },
+  "pue_action_EDIT": {
+    "en": "Synchronize edits",
+    "ka": "ცვლილებების სინქრონიზაცია",
+    "ru": "Синхронизировать изменения",
+    "tr": "Değişiklikleri eşitle",
+    "ar": "مزامنة التعديلات",
+    "he": "סנכרון שינויים"
+  },
+  "pue_action_UPDATE_PHOTOS": {
+    "en": "Synchronize photos",
+    "ka": "ფოტოების სინქრონიზაცია",
+    "ru": "Синхронизировать фото",
+    "tr": "Fotoğrafları eşitle",
+    "ar": "مزامنة الصور",
+    "he": "סנכרון תמונות"
+  },
+  "pue_action_HIDE": {
+    "en": "Hide",
+    "ka": "დამალვა",
+    "ru": "Скрыть",
+    "tr": "Gizle",
+    "ar": "إخفاء",
+    "he": "הסתרה"
+  },
+  "pue_action_PAUSE": {
+    "en": "Pause",
+    "ka": "შეჩერება",
+    "ru": "Пауза",
+    "tr": "Duraklat",
+    "ar": "إيقاف مؤقت",
+    "he": "השהיה"
+  },
+  "pue_action_RESUME": {
+    "en": "Resume",
+    "ka": "გაგრძელება",
+    "ru": "Возобновить",
+    "tr": "Sürdür",
+    "ar": "استئناف",
+    "he": "חידוש"
+  },
+  "pue_action_REFRESH": {
+    "en": "Refresh",
+    "ka": "განახლება",
+    "ru": "Обновить",
+    "tr": "Yenile",
+    "ar": "تحديث",
+    "he": "רענן"
+  },
+  "pue_action_DELETE": {
+    "en": "Delete from platform",
+    "ka": "პლატფორმიდან წაშლა",
+    "ru": "Удалить с площадки",
+    "tr": "Platformdan sil",
+    "ar": "حذف من المنصة",
+    "he": "מחיקה מהפלטפורמה"
+  },
+  "pue_action_CHECK_STATUS": {
+    "en": "Check status",
+    "ka": "სტატუსის შემოწმება",
+    "ru": "Проверить статус",
+    "tr": "Durumu kontrol et",
+    "ar": "فحص الحالة",
+    "he": "בדיקת מצב"
+  },
+  "pue_action_RECONCILE": {
+    "en": "Reconcile",
+    "ka": "მდგომარეობის შეჯერება",
+    "ru": "Сверить состояние",
+    "tr": "Durumu uzlaştır",
+    "ar": "مطابقة الحالة",
+    "he": "התאמת מצב"
+  },
+  "pue_status_draft": {
+    "en": "Draft",
+    "ka": "მონახაზი",
+    "ru": "Черновик",
+    "tr": "Taslak",
+    "ar": "مسودة",
+    "he": "טיוטה"
+  },
+  "pue_status_active": {
+    "en": "Active",
+    "ka": "აქტიური",
+    "ru": "Активен",
+    "tr": "Aktif",
+    "ar": "نشط",
+    "he": "פעיל"
+  },
+  "pue_status_connected": {
+    "en": "Connected",
+    "ka": "მიერთებულია",
+    "ru": "Подключено",
+    "tr": "Bağlı",
+    "ar": "موصول",
+    "he": "מחובר"
+  },
+  "pue_status_disconnected": {
+    "en": "Unavailable",
+    "ka": "მიუწვდომელია",
+    "ru": "Недоступно",
+    "tr": "Kullanılamıyor",
+    "ar": "غير متاح",
+    "he": "לא זמין"
+  },
+  "pue_status_expired": {
+    "en": "Session expired",
+    "ka": "სესიას ვადა გაუვიდა",
+    "ru": "Сессия истекла",
+    "tr": "Oturum süresi doldu",
+    "ar": "انتهت الجلسة",
+    "he": "תוקף ההתחברות פג"
+  },
+  "pue_status_unknown": {
+    "en": "Not verified",
+    "ka": "დაუდასტურებელია",
+    "ru": "Не проверено",
+    "tr": "Doğrulanmadı",
+    "ar": "غير مُتحقق منه",
+    "he": "לא אומת"
+  },
+  "pue_status_published": {
+    "en": "Published",
+    "ka": "გამოქვეყნებული",
+    "ru": "Опубликовано",
+    "tr": "Yayında",
+    "ar": "منشور",
+    "he": "מפורסם"
+  },
+  "pue_status_queued": {
+    "en": "Queued",
+    "ka": "რიგშია",
+    "ru": "В очереди",
+    "tr": "Sırada",
+    "ar": "في قائمة الانتظار",
+    "he": "בתור"
+  },
+  "pue_status_running": {
+    "en": "In progress",
+    "ka": "მიმდინარეობს",
+    "ru": "В процессе",
+    "tr": "Devam ediyor",
+    "ar": "قيد التنفيذ",
+    "he": "בתהליך"
+  },
+  "pue_status_succeeded": {
+    "en": "Verified",
+    "ka": "დადასტურებული",
+    "ru": "Подтверждено",
+    "tr": "Doğrulandı",
+    "ar": "مُتحقَّق",
+    "he": "מאומת"
+  },
+  "pue_status_failed": {
+    "en": "Failed",
+    "ka": "წარუმატებელი",
+    "ru": "Не удался",
+    "tr": "Başarısız",
+    "ar": "فشل",
+    "he": "נכשל"
+  },
+  "pue_status_action": {
+    "en": "Action needed",
+    "ka": "საჭიროა მოქმედება",
+    "ru": "Нужно действие",
+    "tr": "İşlem gerekli",
+    "ar": "يلزم إجراء",
+    "he": "נדרשת פעולה"
+  },
+  "pue_status_auth": {
+    "en": "Service authorization needed",
+    "ka": "სერვისის ავტორიზაცია საჭიროა",
+    "ru": "Требуется авторизация сервиса",
+    "tr": "Hizmet yetkilendirmesi gerekli",
+    "ar": "يلزم تفويض الخدمة",
+    "he": "נדרש אישור לשירות"
+  },
+  "pue_status_reconcile": {
+    "en": "Remote check needed",
+    "ka": "გარე შემოწმება საჭიროა",
+    "ru": "Нужна проверка площадки",
+    "tr": "Uzak durum kontrol edilmeli",
+    "ar": "يلزم فحص الحالة الخارجية",
+    "he": "נדרשת בדיקת מצב חיצוני"
+  },
+  "pue_status_superseded": {
+    "en": "Replaced by newer edit",
+    "ka": "შეიცვალა ახალი ვერსიით",
+    "ru": "Заменено новой версией",
+    "tr": "Yeni sürümle değiştirildi",
+    "ar": "استُبدل بإصدار أحدث",
+    "he": "הוחלף בגרסה חדשה"
+  },
+  "pue_status_cancelled": {
+    "en": "Cancelled",
+    "ka": "გაუქმებულია",
+    "ru": "Отменено",
+    "tr": "İptal edildi",
+    "ar": "أُلغيت",
+    "he": "בוטל"
+  },
+  "pue_status_paused": {
+    "en": "Paused",
+    "ka": "შეჩერებული",
+    "ru": "Приостановлен",
+    "tr": "Duraklatıldı",
+    "ar": "متوقف مؤقتًا",
+    "he": "מושהה"
+  },
+  "pue_status_hidden": {
+    "en": "Hidden",
+    "ka": "დამალული",
+    "ru": "Скрыт",
+    "tr": "Gizli",
+    "ar": "مخفي",
+    "he": "מוסתר"
+  },
+  "pue_status_deleted": {
+    "en": "Deleted",
+    "ka": "წაიშალა",
+    "ru": "Удалён",
+    "tr": "Silindi",
+    "ar": "حُذف",
+    "he": "נמחק"
+  },
+  "pue_status_pending": {
+    "en": "Awaiting activation",
+    "ka": "ელოდება გააქტიურებას",
+    "ru": "Ожидает активации",
+    "tr": "Etkinleştirme bekliyor",
+    "ar": "بانتظار التفعيل",
+    "he": "ממתין להפעלה"
+  },
+  "pue_status_pause_end": {
+    "en": "Pauses at period end",
+    "ka": "შეჩერდება პერიოდის ბოლოს",
+    "ru": "Пауза в конце периода",
+    "tr": "Dönem sonunda duraklatılır",
+    "ar": "يتوقف بنهاية الفترة",
+    "he": "יושהה בסוף התקופה"
+  },
+  "pue_status_balance": {
+    "en": "Insufficient credits",
+    "ka": "კრედიტი არ არის საკმარისი",
+    "ru": "Недостаточно кредитов",
+    "tr": "Yetersiz kredi",
+    "ar": "رصيد غير كافٍ",
+    "he": "קרדיטים לא מספיקים"
+  },
+  "pue_status_archived": {
+    "en": "Archived",
+    "ka": "დაარქივებულია",
+    "ru": "В архиве",
+    "tr": "Arşivlendi",
+    "ar": "مؤرشف",
+    "he": "בארכיון"
+  },
+  "pue_error_extension": {
+    "en": "Install or update the HOMATCH publishing extension, then reload this page.",
+    "ka": "დააყენეთ ან განაახლეთ HOMATCH-ის გაფართოება და გადატვირთეთ გვერდი.",
+    "ru": "Установите или обновите расширение HOMATCH и перезагрузите страницу.",
+    "tr": "HOMATCH yayımlama uzantısını yükleyin veya güncelleyin, sonra sayfayı yenileyin.",
+    "ar": "ثبّت إضافة HOMATCH أو حدّثها ثم أعد تحميل الصفحة.",
+    "he": "התקינו או עדכנו את תוסף HOMATCH ורעננו את הדף."
+  },
+  "pue_error_auth": {
+    "en": "The publishing service needs to reconnect to this platform. Your listing is saved; contact HOMATCH support.",
+    "ka": "გამოქვეყნების სერვისს პლატფორმასთან ხელახლა დაკავშირება სჭირდება. განცხადება შენახულია; დაუკავშირდით HOMATCH-ის მხარდაჭერას.",
+    "ru": "Сервису публикации нужно восстановить подключение к площадке. Объявление сохранено; обратитесь в поддержку HOMATCH.",
+    "tr": "Yayın hizmetinin platforma yeniden bağlanması gerekiyor. İlanınız kaydedildi; HOMATCH desteğine başvurun.",
+    "ar": "تحتاج خدمة النشر إلى إعادة الاتصال بالمنصة. إعلانك محفوظ؛ تواصل مع دعم HOMATCH.",
+    "he": "שירות הפרסום צריך להתחבר מחדש לפלטפורמה. המודעה נשמרה; פנו לתמיכת HOMATCH."
+  },
+  "pue_error_capability": {
+    "en": "This platform operation is not yet live verified and remains disabled.",
+    "ka": "ეს ოპერაცია ცოცხლად ჯერ არ შემოწმებულა და გამორთულია.",
+    "ru": "Эта операция ещё не проверена в реальной сессии и отключена.",
+    "tr": "Bu platform işlemi henüz canlı doğrulanmadığı için devre dışıdır.",
+    "ar": "هذه العملية لم تُتحقق فعلياً بعد وتبقى معطّلة.",
+    "he": "הפעולה עדיין לא אומתה בסביבה חיה ולכן מושבתת."
+  },
+  "pue_error_reconcile": {
+    "en": "The remote result needs checking. Do not repeat the action until it is reconciled.",
+    "ka": "გარე შედეგი შესამოწმებელია. შეჯერებამდე არ გაიმეოროთ მოქმედება.",
+    "ru": "Результат на площадке требует проверки. Не повторяйте действие до сверки.",
+    "tr": "Uzak sonuç kontrol edilmeli. Uzlaştırılmadan işlemi tekrarlamayın.",
+    "ar": "يلزم فحص النتيجة الخارجية. لا تكرر الإجراء قبل المطابقة.",
+    "he": "יש לבדוק את התוצאה החיצונית. אין לחזור על הפעולה לפני התאמת המצב."
+  },
+  "pue_error_conflict": {
+    "en": "This draft changed elsewhere. Reload it before saving again.",
+    "ka": "მონახაზი სხვაგან შეიცვალა. შენახვამდე ხელახლა ჩატვირთეთ.",
+    "ru": "Черновик изменён в другом месте. Перезагрузите его перед сохранением.",
+    "tr": "Taslak başka yerde değişti. Kaydetmeden önce yeniden yükleyin.",
+    "ar": "تغيّرت المسودة في مكان آخر. أعد تحميلها قبل الحفظ.",
+    "he": "הטיוטה השתנתה במקום אחר. טענו אותה מחדש לפני שמירה."
+  },
+  "pue_error_balance": {
+    "en": "Check your credit balance and listing activation before continuing.",
+    "ka": "გაგრძელებამდე შეამოწმეთ კრედიტები და განცხადების აქტივაცია.",
+    "ru": "Проверьте баланс кредитов и активацию объявления.",
+    "tr": "Devam etmeden kredi bakiyenizi ve ilan etkinliğini kontrol edin.",
+    "ar": "افحص رصيدك وتفعيل الإعلان قبل المتابعة.",
+    "he": "בדקו את יתרת הקרדיטים ואת הפעלת המודעה לפני המשך."
+  },
+  "pue_error_price": {
+    "en": "The daily price changed. Review and confirm the current price.",
+    "ka": "დღიური ფასი შეიცვალა. გადახედეთ და დაადასტურეთ ახალი ფასი.",
+    "ru": "Цена за день изменилась. Проверьте и подтвердите новую цену.",
+    "tr": "Günlük fiyat değişti. Güncel fiyatı inceleyip onaylayın.",
+    "ar": "تغيّر السعر اليومي. راجع السعر الحالي وأكّده.",
+    "he": "המחיר היומי השתנה. בדקו ואשרו את המחיר הנוכחי."
+  },
+  "pue_error_validation": {
+    "en": "Complete the selected platform’s required fields before publishing.",
+    "ka": "გამოქვეყნებამდე შეავსეთ არჩეული პლატფორმის სავალდებულო ველები.",
+    "ru": "Заполните обязательные поля выбранной площадки.",
+    "tr": "Yayımlamadan önce platformun zorunlu alanlarını doldurun.",
+    "ar": "أكمل حقول المنصة المطلوبة قبل النشر.",
+    "he": "מלאו את שדות החובה של הפלטפורמה לפני הפרסום."
+  },
+  "pue_error_ai_limit": {
+    "en": "Today’s writing limit has been reached. Try again tomorrow.",
+    "ka": "დღიური ტექსტის ლიმიტი ამოიწურა. სცადეთ ხვალ.",
+    "ru": "Дневной лимит текстов исчерпан. Попробуйте завтра.",
+    "tr": "Günlük metin sınırına ulaşıldı. Yarın tekrar deneyin.",
+    "ar": "تم بلوغ حد الكتابة اليومي. حاول غداً.",
+    "he": "מכסת הכתיבה היומית נוצלה. נסו שוב מחר."
+  },
+  "pue_error_ai": {
+    "en": "The description could not be generated. Your existing text is safe.",
+    "ka": "აღწერა ვერ შეიქმნა. არსებული ტექსტი შენარჩუნებულია.",
+    "ru": "Не удалось создать описание. Ваш текст сохранён.",
+    "tr": "Açıklama oluşturulamadı. Mevcut metniniz korundu.",
+    "ar": "تعذّر إنشاء الوصف. نصك الحالي محفوظ.",
+    "he": "לא ניתן ליצור תיאור. הטקסט הקיים נשמר."
+  },
+  "pue_error_remote": {
+    "en": "Resolve external listings before archiving this property.",
+    "ka": "დაარქივებამდე მოაგვარეთ გარე განცხადებების მდგომარეობა.",
+    "ru": "Урегулируйте внешние объявления перед архивацией.",
+    "tr": "Arşivlemeden önce dış ilanları çözümleyin.",
+    "ar": "عالج الإعلانات الخارجية قبل الأرشفة.",
+    "he": "יש להסדיר מודעות חיצוניות לפני הארכוב."
+  },
+  "pue_error_photo": {
+    "en": "Check the image format, size and photo count, then try again.",
+    "ka": "შეამოწმეთ ფოტოს ფორმატი, ზომა და რაოდენობა და სცადეთ ისევ.",
+    "ru": "Проверьте формат, размер и количество фото и повторите.",
+    "tr": "Resim biçimini, boyutunu ve sayısını kontrol edip tekrar deneyin.",
+    "ar": "افحص تنسيق الصور وحجمها وعددها ثم حاول مجدداً.",
+    "he": "בדקו את פורמט התמונה, גודלה ומספר התמונות ונסו שוב."
+  },
+  "pue_error_generic": {
+    "en": "We could not complete this request. Try again or contact support.",
+    "ka": "მოთხოვნა ვერ შესრულდა. სცადეთ ისევ ან დაუკავშირდით მხარდაჭერას.",
+    "ru": "Не удалось выполнить запрос. Повторите или обратитесь в поддержку.",
+    "tr": "İstek tamamlanamadı. Tekrar deneyin veya destekle iletişime geçin.",
+    "ar": "تعذّر إكمال الطلب. حاول مجدداً أو تواصل مع الدعم.",
+    "he": "לא ניתן להשלים את הבקשה. נסו שוב או פנו לתמיכה."
+  },
+  "pue_billing": {
+    "en": "Billing",
+    "ka": "ბილინგი",
+    "ru": "Биллинг",
+    "tr": "Fatura",
+    "ar": "الفوترة",
+    "he": "חיוב"
+  },
+  "pue_daily_price": {
+    "en": "{n} credits per listing, per day",
+    "ka": "{n} კრედიტი თითო განცხადებაზე დღეში",
+    "ru": "{n} кредитов за объявление в день",
+    "tr": "İlan başına günde {n} kredi",
+    "ar": "{n} رصيداً لكل إعلان يومياً",
+    "he": "{n} קרדיטים למודעה ליום"
+  },
+  "pue_billing_policy": {
+    "en": "Drafts are free. One daily charge covers all selected platforms. Billing begins after verified publication and runs in UTC 24-hour periods. Fully paused listings stop renewing after the paid period. Partial pauses remain billable. Insufficient credits stop new paid actions; external listings remain visible until a portal confirms otherwise.",
+    "ka": "მონახაზები უფასოა. ერთი დღიური ჩამოჭრა ყველა არჩეულ პლატფორმას ფარავს. გადახდა იწყება დადასტურებული გამოქვეყნების შემდეგ, UTC-ის 24-საათიანი პერიოდებით. სრულად შეჩერებული განცხადება გადახდილი პერიოდის შემდეგ აღარ განახლდება; ნაწილობრივი შეჩერება ფასიანია. არასაკმარისი კრედიტები აჩერებს ახალ ფასიან მოქმედებებს. გარე განცხადებები რჩება, სანამ პლატფორმა სხვა მდგომარეობას არ დაადასტურებს.",
+    "ru": "Черновики бесплатны. Одно дневное списание покрывает все площадки. Отсчёт начинается после подтверждённой публикации: периоды по 24 часа в UTC. Полная пауза прекращает продление после оплаченного периода; частичная пауза остаётся платной. Нехватка кредитов блокирует новые платные действия, но не скрывает внешние объявления без подтверждения площадки.",
+    "tr": "Taslaklar ücretsizdir. Tek günlük ücret tüm platformları kapsar. Faturalama doğrulanmış yayından sonra UTC 24 saatlik dönemlerle başlar. Tam duraklatma ödenen dönemden sonra yenilenmez; kısmi duraklatma ücretlidir. Yetersiz kredi yeni ücretli işlemleri durdurur; dış ilanlar platform aksini doğrulayana kadar görünür kalır.",
+    "ar": "المسودات مجانية. خصم يومي واحد يغطي كل المنصات المختارة. يبدأ الفوترة بعد النشر المؤكد بفترات 24 ساعة بتوقيت UTC. التوقف الكامل يمنع التجديد بعد الفترة المدفوعة؛ التوقف الجزئي يبقى مدفوعاً. نقص الرصيد يوقف الإجراءات المدفوعة الجديدة، ولا يخفي الإعلانات الخارجية دون تأكيد المنصة.",
+    "he": "טיוטות בחינם. חיוב יומי אחד מכסה את כל הפלטפורמות שנבחרו. החיוב מתחיל לאחר פרסום מאומת בתקופות של 24 שעות לפי UTC. השהיה מלאה מפסיקה חידוש בתום התקופה ששולמה; השהיה חלקית עדיין מחויבת. מחסור בקרדיטים עוצר פעולות חדשות בתשלום, אך מודעות חיצוניות נשארות גלויות עד לאישור מהפלטפורמה."
+  },
+  "pue_balance": {
+    "en": "Available balance: {n} credits",
+    "ka": "ხელმისაწვდომია: {n} კრედიტი",
+    "ru": "Доступно: {n} кредитов",
+    "tr": "Kullanılabilir bakiye: {n} kredi",
+    "ar": "الرصيد المتاح: {n}",
+    "he": "יתרה זמינה: {n} קרדיטים"
+  },
+  "pue_subscriptions": {
+    "en": "Listing subscriptions",
+    "ka": "განცხადებების გამოწერები",
+    "ru": "Подписки объявлений",
+    "tr": "İlan abonelikleri",
+    "ar": "اشتراكات الإعلانات",
+    "he": "מינויי מודעות"
+  },
+  "pue_no_charges": {
+    "en": "No active listing charges.",
+    "ka": "განცხადების აქტიური გადასახადები არ არის.",
+    "ru": "Активных списаний за объявления нет.",
+    "tr": "Aktif ilan ücreti yok.",
+    "ar": "لا توجد رسوم إعلانات نشطة.",
+    "he": "אין חיובים פעילים למודעות."
+  },
+  "pue_next_charge": {
+    "en": "Next charge",
+    "ka": "შემდეგი ჩამოჭრა",
+    "ru": "Следующее списание",
+    "tr": "Sonraki ücret",
+    "ar": "الخصم التالي",
+    "he": "החיוב הבא"
+  },
+  "pue_charge_history": {
+    "en": "Charge history",
+    "ka": "ჩამოჭრების ისტორია",
+    "ru": "История списаний",
+    "tr": "Ücret geçmişi",
+    "ar": "سجل الخصومات",
+    "he": "היסטוריית חיובים"
+  },
+  "pue_credits": {
+    "en": "{n} credits",
+    "ka": "{n} კრედიტი",
+    "ru": "{n} кредитов",
+    "tr": "{n} kredi",
+    "ar": "{n} رصيداً",
+    "he": "{n} קרדיטים"
+  },
+  "pue_admin_title": {
+    "en": "Publishing control center",
+    "ka": "გამოქვეყნების მართვის ცენტრი",
+    "ru": "Центр управления публикациями",
+    "tr": "Yayımlama kontrol merkezi",
+    "ar": "مركز إدارة النشر",
+    "he": "מרכז בקרת פרסום"
+  },
+  "pue_admin_hint": {
+    "en": "Inspect publishing health, subscriptions and audit history without exposing portal sessions.",
+    "ka": "შეამოწმეთ გამოქვეყნება, გამოწერები და აუდიტი პლატფორმის სესიების გამჟღავნების გარეშე.",
+    "ru": "Проверяйте публикации, подписки и аудит без раскрытия сессий площадок.",
+    "tr": "Portal oturumlarını açığa çıkarmadan yayın durumunu, abonelikleri ve denetimi inceleyin.",
+    "ar": "افحص النشر والاشتراكات وسجل التدقيق دون كشف جلسات المنصات.",
+    "he": "בדקו פרסומים, מינויים ותיעוד ביקורת בלי לחשוף התחברויות לפלטפורמות."
+  },
+  "pue_admin_search": {
+    "en": "Search HOMATCH listing ID",
+    "ka": "ძებნა HOMATCH განცხადების ID-ით",
+    "ru": "Поиск по ID объявления HOMATCH",
+    "tr": "HOMATCH ilan kimliğiyle ara",
+    "ar": "البحث بمعرّف إعلان HOMATCH",
+    "he": "חיפוש לפי מזהה מודעת HOMATCH"
+  },
+  "pue_admin_config": {
+    "en": "Publishing pricing",
+    "ka": "გამოქვეყნების ფასი",
+    "ru": "Стоимость публикации",
+    "tr": "Yayımlama fiyatı",
+    "ar": "تسعير النشر",
+    "he": "תמחור פרסום"
+  },
+  "pue_admin_config_confirm": {
+    "en": "Save these publishing billing settings? Existing price consent remains protected.",
+    "ka": "შეინახოთ გადახდის პარამეტრები? არსებული თანხმობა ფასზე დაცულია.",
+    "ru": "Сохранить настройки? Согласие на прежнюю цену остаётся защищённым.",
+    "tr": "Faturalama ayarları kaydedilsin mi? Mevcut fiyat onayı korunur.",
+    "ar": "هل تريد حفظ إعدادات الفوترة؟ تبقى الموافقة السابقة على السعر محمية.",
+    "he": "לשמור את הגדרות החיוב? ההסכמה הקיימת למחיר נשמרת."
+  },
+  "pue_admin_price": {
+    "en": "Daily credits per listing",
+    "ka": "დღიური კრედიტები თითო განცხადებაზე",
+    "ru": "Кредиты за объявление в день",
+    "tr": "İlan başına günlük kredi",
+    "ar": "الرصيد اليومي لكل إعلان",
+    "he": "קרדיטים ליום למודעה"
+  },
+  "pue_admin_billing_enabled": {
+    "en": "Daily billing enabled",
+    "ka": "დღიური გადახდა ჩართულია",
+    "ru": "Ежедневные списания включены",
+    "tr": "Günlük faturalama etkin",
+    "ar": "الفوترة اليومية مفعّلة",
+    "he": "חיוב יומי פעיל"
+  },
+  "pue_admin_subscriptions": {
+    "en": "Active subscriptions",
+    "ka": "აქტიური გამოწერები",
+    "ru": "Активные подписки",
+    "tr": "Aktif abonelikler",
+    "ar": "الاشتراكات النشطة",
+    "he": "מינויים פעילים"
+  },
+  "pue_admin_listings": {
+    "en": "Listings",
+    "ka": "განცხადებები",
+    "ru": "Объявления",
+    "tr": "İlanlar",
+    "ar": "الإعلانات",
+    "he": "מודעות"
+  },
+  "pue_admin_connections": {
+    "en": "Connections",
+    "ka": "კომუნიკაციები",
+    "ru": "Коммуникации",
+    "tr": "Bağlantılar",
+    "ar": "التوصيلات",
+    "he": "חיבורים"
+  },
+  "pue_admin_operations": {
+    "en": "Operations",
+    "ka": "ოპერაციები",
+    "ru": "Операции",
+    "tr": "İşlemler",
+    "ar": "العمليات",
+    "he": "פעולות"
+  },
+  "pue_admin_billing_events": {
+    "en": "Billing events",
+    "ka": "გადახდის მოვლენები",
+    "ru": "События списаний",
+    "tr": "Faturalama olayları",
+    "ar": "أحداث الفوترة",
+    "he": "אירועי חיוב"
+  },
+  "pue_admin_audit": {
+    "en": "Audit trail",
+    "ka": "აუდიტის ისტორია",
+    "ru": "Журнал аудита",
+    "tr": "Denetim kaydı",
+    "ar": "سجل التدقيق",
+    "he": "יומן ביקורת"
+  },
+  "pue_admin_reference": {
+    "en": "Reference",
+    "ka": "რეგისტრაციის ნომერი",
+    "ru": "Номер регистрации",
+    "tr": "Referans",
+    "ar": "رقم القيد",
+    "he": "מספר רישום"
+  },
+  "pue_admin_owner": {
+    "en": "Owner",
+    "ka": "მფლობელი",
+    "ru": "Владелец",
+    "tr": "Sahibi",
+    "ar": "المالك",
+    "he": "בעלים"
+  },
+  "pue_admin_state": {
+    "en": "State",
+    "ka": "მდგომარეობა",
+    "ru": "Состояние",
+    "tr": "Durum",
+    "ar": "الحالة",
+    "he": "מצב"
+  },
+  "pue_admin_updated": {
+    "en": "Last update",
+    "ka": "ბოლო განახლება",
+    "ru": "Последнее обновление",
+    "tr": "Son güncelleme",
+    "ar": "آخر تحديث",
+    "he": "עדכון אחרון"
+  },
+  "pue_admin_refund": {
+    "en": "Refund credits",
+    "ka": "კრედიტების დაბრუნება",
+    "ru": "Вернуть кредиты",
+    "tr": "Kredileri iade et",
+    "ar": "استرداد الرصيد",
+    "he": "החזר קרדיטים"
+  },
+  "pue_admin_reason": {
+    "en": "Reason for this adjustment",
+    "ka": "კორექტირების მიზეზი",
+    "ru": "Причина корректировки",
+    "tr": "Düzeltme nedeni",
+    "ar": "سبب التعديل",
+    "he": "סיבת ההתאמה"
+  },
+  "pue_admin_refund_confirm": {
+    "en": "Refund this charge through the audited wallet ledger?",
+    "ka": "დაბრუნდეს ეს თანხა საფულის აუდიტირებულ რეესტრში?",
+    "ru": "Вернуть списание через аудируемый реестр кошелька?",
+    "tr": "Bu ücret denetlenebilir cüzdan defteri üzerinden iade edilsin mi?",
+    "ar": "هل تريد رد هذه الرسوم عبر سجل المحفظة المدقق؟",
+    "he": "להחזיר חיוב זה דרך יומן הארנק המתועד?"
+  },
+  "pue_review": {
+    "en": "Review platform requirements",
+    "ka": "პლატფორმის მოთხოვნების შემოწმება",
+    "ru": "Проверить требования площадок",
+    "tr": "Platform koşullarını incele",
+    "ar": "مراجعة متطلبات المنصات",
+    "he": "בדיקת דרישות הפלטפורמות"
+  },
+  "pue_review_ready": {
+    "en": "Required fields complete",
+    "ka": "სავალდებულო ველები შევსებულია",
+    "ru": "Обязательные поля заполнены",
+    "tr": "Zorunlu alanlar tamamlandı",
+    "ar": "الحقول المطلوبة مكتملة",
+    "he": "שדות החובה מולאו"
+  },
+  "pue_required_for": {
+    "en": "Required for {platform}",
+    "ka": "სავალდებულოა {platform}-სთვის",
+    "ru": "Обязательно для {platform}",
+    "tr": "{platform} için zorunlu",
+    "ar": "مطلوب لـ {platform}",
+    "he": "חובה עבור {platform}"
+  },
+  "pue_field_unsupported": {
+    "en": "This value is not supported on this platform.",
+    "ka": "ეს მნიშვნელობა ამ პლატფორმაზე მხარდაჭერილი არ არის.",
+    "ru": "Это значение не поддерживается на данной площадке.",
+    "tr": "Bu değer bu platformda desteklenmiyor.",
+    "ar": "هذه القيمة غير مدعومة على هذه المنصة.",
+    "he": "ערך זה אינו נתמך בפלטפורמה זו."
+  }
+}

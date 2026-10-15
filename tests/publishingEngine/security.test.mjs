@@ -50,7 +50,7 @@ test('bridge checks origin and pathname at message time after SPA navigation', a
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const listingId = '22222222-2222-4222-8222-222222222222';
 const jobId = '33333333-3333-4333-8333-333333333333';
-function setup({ validAuth = true, state = 'FILL_FORM', listingOwner = ownerId, portalId = 'myhome' } = {}) {
+function setup({ validAuth = true, state = 'FILL_FORM', listingOwner = ownerId, portalId = 'myhome', extraOrigins } = {}) {
   const payload = { id: listingId, version: 1, portalTargets: [portalId], price: 155000, photos: [] };
   const rows = { users: [{ id: ownerId, auth_id: 'auth-owner' }], publishing_engine_listings: [{ id: listingId, user_id: listingOwner, payload }], publishing_engine_jobs: [{ id: jobId, user_id: ownerId, revision: 0, payload: { id: jobId, listingId, portalId, version: 1, state, revision: 0, events: [] } }] };
   const client = {
@@ -65,7 +65,7 @@ function setup({ validAuth = true, state = 'FILL_FORM', listingOwner = ownerId, 
   let handler;
   const source = fs.readFileSync('supabase/functions/publishing-engine/index.ts', 'utf8').replace(/^import .*;\r?\n/gm, '').replace('export async function handler', 'async function handler');
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  vm.runInNewContext(compiled, { createClient: () => client, normalizeListing, validateListing, advance, registry: JSON.parse(fs.readFileSync('supabase/functions/publishing-engine/registry.json','utf8')), parsePhoneNumberFromString: () => null, Deno: { env: { get: () => 'test' }, serve: fn => { handler = fn; } }, Request, Response, URL, Set, Error, JSON, Number, String, Uint8Array, Blob, atob, btoa, crypto: crypto.webcrypto });
+  vm.runInNewContext(compiled, { createClient: () => client, normalizeListing, validateListing, advance, registry: JSON.parse(fs.readFileSync('supabase/functions/publishing-engine/registry.json','utf8')), parsePhoneNumberFromString: () => null, Deno: { env: { get: name => name === 'PUBLISHING_ALLOWED_ORIGINS' ? extraOrigins : 'test' }, serve: fn => { handler = fn; } }, Request, Response, URL, Set, Error, JSON, Number, String, Uint8Array, Blob, atob, btoa, crypto: crypto.webcrypto });
   const request = (url, body, { origin = 'https://homatch.live', auth = 'Bearer synthetic-test-token' } = {}) => handler(new Request('https://example.test', { method: 'POST', headers: { Origin: origin, Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ url, body }) }));
   return { request, payload, rows };
 }
@@ -112,4 +112,10 @@ test('SS.ge backend isolates the portal and blocks publication even with confirm
  assert.equal((await (await request('/browser',{...command,portalId:'myhome',action:'fillListing'})).json()).code,'JOB_LISTING_MISMATCH');
  assert.equal((await (await request('/browser',{...command,action:'publishAfterConfirmation',payload:{confirmed:true,reviewToken:'review'}})).json()).code,'LIVE_BROWSER_VERIFICATION_REQUIRED');
  for(const state of ['READY_FOR_REVIEW','SUBMITTING','PUBLISHED'])assert.equal((await (await request('/jobs/transition',{jobId,revision:0,state,confirmed:true})).json()).code,'LIVE_BROWSER_VERIFICATION_REQUIRED');
+});
+
+test('deployment origins allow only explicitly configured HTTPS origins, not wildcards or lookalikes',async()=>{
+ const s=setup({extraOrigins:'https://homatch-preview.vercel.app,https://*.vercel.app,https://bad.test/path,http://insecure.test'});
+ assert.equal((await s.request('/listings',null,{origin:'https://homatch-preview.vercel.app'})).status,200);
+ for(const origin of ['https://another.vercel.app','https://homatch-preview.vercel.app.evil.test','https://bad.test','http://insecure.test'])assert.equal((await s.request('/listings',null,{origin})).status,403);
 });

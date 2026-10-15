@@ -99,6 +99,7 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         path: '/admin/properties', labelKey: 'admin_nav_properties', icon: Building2,
         keywords: ['property', 'listing', 'import', 'inventory'],
       },
+      { path: '/admin/publishing', labelKey: 'publishing_portals_title', icon: Globe, keywords: ['publishing','portals','synchronization','myhome','ssge','billing','queue'] },
       {
         path: '/admin/campaigns', labelKey: 'admin_nav_campaigns', icon: Zap,
         keywords: ['campaign', 'matching run', 'search'],

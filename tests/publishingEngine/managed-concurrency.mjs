@@ -1,0 +1,46 @@
+// Isolated PostgreSQL only. Provider and wallet fixtures are NOT live integration evidence.
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import assert from 'node:assert/strict';
+const exec=promisify(execFile);
+if(process.env.PUBLISHING_PROOF!=='isolated-postgres-17')throw Error('Isolated proof required');
+const sql=async(q)=>(await exec('psql',['-h','localhost','-U','postgres','-d','publishing_proof','-v','ON_ERROR_STOP=1','-At','-c',q])).stdout.trim();
+assert.equal(await sql("select has_function_privilege('authenticated','public.publishing_engine_claim_managed(text,text[])','execute')"),'f');
+assert.equal(await sql("select has_function_privilege('anon','public.publishing_engine_finish_managed(uuid,uuid,boolean,jsonb,text)','execute')"),'f');
+assert.equal(await sql("select count(*) from public.publishing_engine_claim_managed('myhome',array['CHECK_STATUS'])"),'0');
+await sql("update public.publishing_engine_operations set status='SUPERSEDED' where status='RUNNING'");
+await sql("select public.publishing_engine_authorize_managed('myhome','owned-fixture',now()+interval '1 hour','fixture-not-live','{\"CHECK_STATUS\":{\"verified\":true,\"evidence\":\"fixture-only\"},\"RECONCILE\":{\"verified\":true,\"evidence\":\"fixture-only\"}}')");
+assert.equal(await sql("select enabled from public.publishing_engine_managed_accounts where portal_id='myhome'"),'f','authorization cannot enable mutations');
+await sql("update public.publishing_engine_managed_accounts set enabled=true where portal_id='myhome'");
+await sql("select public.publishing_engine_save_draft('11111111-1111-4111-8111-111111111111',null,0,'{\"portalTargets\":[\"myhome\"],\"title\":\"managed-one\"}');select public.publishing_engine_save_draft('22222222-2222-4222-8222-222222222222',null,0,'{\"portalTargets\":[\"myhome\"],\"title\":\"managed-two\"}')");
+await sql("insert into public.publishing_engine_publications(listing_id,user_id,portal_id,managed_account_id,external_id,external_url,observed_state) select l.id,l.user_id,'myhome',a.id,'managed-'||l.user_id,'https://myhome.ge/pr/managed-fixture/','UNKNOWN' from public.publishing_engine_listings l cross join public.publishing_engine_managed_accounts a where l.payload->>'title' like 'managed-%' and a.portal_id='myhome'");
+await sql("insert into public.publishing_engine_operations(listing_id,user_id,portal_id,external_id,kind,desired_revision,payload,payload_hash,idempotency_key) select l.id,l.user_id,'myhome',p.external_id,'CHECK_STATUS',l.version,l.payload,encode(sha256(convert_to(l.payload::text,'UTF8')),'hex'),'managed-proof:'||l.user_id from public.publishing_engine_listings l join public.publishing_engine_publications p on p.listing_id=l.id where l.payload->>'title' like 'managed-%'");
+await sql("update public.publishing_engine_operations set status='ACTION_REQUIRED',error_code='CAPABILITY_UNVERIFIED' where idempotency_key like 'managed-proof:%'");
+const claim="select count(*) from public.publishing_engine_claim_managed('myhome',array['CHECK_STATUS'])";
+const counts=await Promise.all([sql(claim),sql(claim)]);assert.equal(counts.reduce((n,v)=>n+Number(v),0),1,'one account lease across all tenants');assert.equal(await sql(claim),'0');
+assert.equal(await sql("select count(*) from public.publishing_engine_operations where idempotency_key like 'managed-proof:%' and status='ACTION_REQUIRED'"),'0','capability-blocked intent resumes without per-listing manual retry');
+await assert.rejects(sql("select public.publishing_engine_checkpoint_managed(id,gen_random_uuid(),external_id,'https://myhome.ge/pr/managed-fixture/') from public.publishing_engine_operations where managed_account_id is not null and status='RUNNING'"),/LEASE_CONFLICT/);
+await assert.rejects(sql("select public.publishing_engine_checkpoint_managed(id,lease_token,external_id,'https://myhome.ge.evil.test/pr/1') from public.publishing_engine_operations where managed_account_id is not null and status='RUNNING'"),/RESULT_MISMATCH/);
+await sql("select public.publishing_engine_checkpoint_managed(id,lease_token,external_id,'https://myhome.ge/pr/managed-fixture/') from public.publishing_engine_operations where managed_account_id is not null and status='RUNNING'");
+assert.equal(await sql("select count(*) from public.publishing_engine_publications where managed_account_id is not null and observed_state='UNKNOWN' and synced_revision=0 and verified_at is null"),'2','submission checkpoints do not invent success');
+await assert.rejects(sql("update public.publishing_engine_publications set external_id='managed-11111111-1111-4111-8111-111111111111' where managed_account_id is not null and user_id='22222222-2222-4222-8222-222222222222'"),/publishing_managed_remote_identity/);
+await sql("select public.publishing_engine_finish_managed(id,lease_token,true,jsonb_build_object('operationId',id,'revision',desired_revision,'payloadHash',payload_hash,'externalId',external_id,'externalUrl','https://myhome.ge/pr/managed-fixture/','remoteState','PUBLISHED'),null) from public.publishing_engine_operations where managed_account_id is not null and status='RUNNING'");
+assert.equal(await sql("select count(*) from public.publishing_engine_publications where managed_account_id is not null and synced_revision>0"),'0','status checking is not content synchronization');
+await sql("select public.publishing_engine_finish_managed(id,lease_token,true,'{}',null) from public.publishing_engine_operations where managed_account_id is not null and status='SUCCEEDED'");
+await sql("update public.publishing_engine_operations set updated_at=now()-interval '1 minute' where managed_account_id is not null;select count(*) from public.publishing_engine_claim_managed('myhome',array['CHECK_STATUS']);update public.publishing_engine_operations set lease_until=now()-interval '1 second' where managed_account_id is not null and status='RUNNING';select public.publishing_engine_schedule_managed(100)");
+assert.equal(await sql("select count(*) from public.publishing_engine_operations where managed_account_id is not null and status='RECONCILIATION_REQUIRED'"),'1','expired writes require reconciliation');
+assert.equal(await sql("select count(*) from public.publishing_engine_billing_events"),'1','no managed fixture delivery was billed');
+
+await sql("update public.publishing_engine_managed_accounts set verified_operations=verified_operations||'{\"RESUME\":{\"verified\":true,\"evidence\":\"fixture-only\"}}' where portal_id='myhome'");
+await sql("insert into public.publishing_engine_subscriptions(listing_id,user_id,status,authorized_daily_credits,period_start,paid_until,next_billing_at) select listing_id,user_id,'ACTIVE',10,now()-interval '1 day',now()-interval '1 minute',now() from public.publishing_engine_publications where managed_account_id is not null and verified_at is not null");
+await sql("insert into public.publishing_engine_operations(listing_id,user_id,portal_id,external_id,kind,desired_revision,payload,payload_hash,idempotency_key) select l.id,l.user_id,p.portal_id,p.external_id,'RESUME',l.version,l.payload,encode(sha256(convert_to(l.payload::text,'UTF8')),'hex'),'managed-expired-period:'||l.id from public.publishing_engine_publications p join public.publishing_engine_listings l on l.id=p.listing_id where p.managed_account_id is not null and p.verified_at is not null");
+assert.equal(await sql("select count(*) from public.publishing_engine_claim_managed('myhome',array['RESUME'])"),'0','expired paid periods cannot run new paid portal operations before renewal');
+await sql("update public.publishing_engine_subscriptions set paid_until=now()+interval '1 hour' where listing_id in(select listing_id from public.publishing_engine_publications where managed_account_id is not null and verified_at is not null)");
+assert.equal(await sql("select count(*) from public.publishing_engine_claim_managed('myhome',array['RESUME'])"),'1','renewed periods can resume eligible work');
+
+await sql("select public.publishing_engine_auth_failed_managed('myhome','AUTH_REQUIRED')");
+assert.equal(await sql("select status from public.publishing_engine_managed_accounts where portal_id='myhome'"),'REAUTH_REQUIRED');
+assert.equal(await sql("select authorization_expires_at is null from public.publishing_engine_managed_accounts where portal_id='myhome'"),'t','expired/revoked sessions cannot remain connected');
+assert.equal(await sql("select has_function_privilege('authenticated','public.publishing_engine_auth_failed_managed(text,text)','execute')"),'f');
+assert.equal((await sql("set role authenticated;set test.owner='22222222-2222-4222-8222-222222222222';select count(*) from public.publishing_engine_managed_accounts")).split('\n').at(-1),'0','customer RLS cannot read managed account metadata');
+console.log('Managed queue: RLS/service permissions, cross-tenant leases, identity uniqueness, checkpoints, idempotent completion and expiry fencing passed (isolated fixtures).');

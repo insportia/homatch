@@ -217,6 +217,12 @@ export const NAMESPACES: Record<string, NamespaceRules> = {
     legacyBucket: 'property-photos', shape: 'OWNER',
     READ: AUTHED, WRITE: AUTHED, DELETE: AUTHED, content: IMAGE,
   },
+  'publishing-engine-photos': {
+    legacyBucket: 'publishing-engine-photos', shape: 'OWNER',
+    READ: ADMIN, WRITE: ADMIN, DELETE: ADMIN,
+    content: { mime: ['image/jpeg', 'image/png', 'image/webp'], maxBytes: 8_000_000 },
+    note: 'Private Supabase publishing media. Customer access goes exclusively through the publishing API owner checks and signed URLs; this namespace grants no generic customer signing access.',
+  },
   'voice-auditions': {
     legacyBucket: 'voice-auditions', shape: 'FLAT',
     READ: ADMIN, WRITE: ADMIN, DELETE: ADMIN, content: AUDIO,

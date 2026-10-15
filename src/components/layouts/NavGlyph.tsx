@@ -19,7 +19,7 @@ import React from 'react';
  */
 
 export type NavGlyphName =
-  | 'dashboard' | 'properties' | 'find_property' | 'brokers' | 'expats' | 'design_studio'
+  | 'dashboard' | 'properties' | 'publishing' | 'find_property' | 'brokers' | 'expats' | 'design_studio'
   | 'verify' | 'contracts' | 'mortgage' | 'investment'
   | 'calls' | 'whatsapp' | 'email' | 'live_chat' | 'chat' | 'meta_ads'
   | 'ai' | 'activity' | 'notifications' | 'credits' | 'profile';
@@ -30,6 +30,12 @@ const GOLD = 'hsl(38 92% 58%)';
 const S = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
 const GLYPHS: Record<NavGlyphName, React.ReactNode> = {
+  publishing: (
+    <>
+      <path d="M3 11 10 5l7 6M5 10v10h10v-6" {...S} />
+      <path d="M14 4h7v7M21 4l-9 9" fill="none" stroke={GOLD} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
   /* Overview: three quiet panels, the live one gold. */
   dashboard: (
     <>

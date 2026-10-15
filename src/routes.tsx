@@ -31,6 +31,7 @@ const DashboardPage = lazyRoute(() => import('./pages/DashboardPage'));
 const ActivityPage = lazyRoute(() => import('./pages/ActivityPage'));
 const NotificationsPage = lazyRoute(() => import('./pages/NotificationsPage'));
 const PublishingEnginePage = lazyRoute(() => import('./publishingEngine/PublishingEnginePage'));
+const AdminPublishingPage = lazyRoute(() => import('./publishingEngine/AdminPublishingPage'));
 const AddPropertyPage = lazyRoute(() => import('./pages/property/AddPropertyPage'));
 const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
@@ -459,6 +460,7 @@ export const routes: RouteConfig[] = [
    */
   { name: 'My Properties',     path: '/property',                 element: <MyPropertiesPage /> },
   { name: 'Publishing Engine', path: '/property/publish', element: <PublishingEnginePage /> },
+  { name: 'Publishing Operations', path: '/admin/publishing', element: adminWrap(<AdminPublishingPage />), adminOnly: true },
   { name: 'Add Property',      path: '/property/add',             element: <AddPropertyPage /> },
   { name: 'Import Property',   path: '/property/import',          element: <URLImportPage /> },
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },

@@ -3,14 +3,29 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { normalizeListing, validateListing } from './listing-schema.runtime.ts';
 import { advance } from './engine.runtime.ts';
 import registry from './registry.runtime.ts';
+import { handleV2 } from './v2.ts';
+import { handleManagedTick } from './server/handler.ts';
 
 const origins = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
+// This named preview is accepted only by its isolated staging project, never production.
+if (Deno.env.get('SUPABASE_URL') === 'https://icqzvgbztuuvgmwcyyav.supabase.co') origins.add('https://homatch-git-feat-publishing-engine-v2-insportia.vercel.app');
+// Explicit deployment-owned origins only; never trust Origin itself or wildcard preview domains.
+for (const candidate of (Deno.env.get('PUBLISHING_ALLOWED_ORIGINS') || '').split(',')) {
+  try {
+    const url = new URL(candidate.trim());
+    if (url.protocol === 'https:' && url.origin === candidate.trim() && !url.username && !url.password && !url.hostname.includes('*')) origins.add(url.origin);
+  } catch { /* An invalid deployment setting grants no additional origin. */ }
+}
 const actions = new Set(['checkAuthentication', 'inspect', 'fillListing', 'uploadPhotos', 'verifyForm', 'preparePublish', 'publishAfterConfirmation', 'extractPublishedListing', 'checkStatus']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const bucket = 'publishing-engine-photos';
 const fail = (code: string): never => { throw Error(code); };
 
 export async function handler(req: Request) {
+  if(req.headers.has('x-publishing-worker-token'))return handleManagedTick(req,{
+    expectedToken:Deno.env.get('PUBLISHING_WORKER_TOKEN'),
+    createAdmin:()=>createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}})
+  });
   const origin = req.headers.get('origin') || '';
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Vary': 'Origin', ...(origins.has(origin) ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' } : {}) };
   const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers });
@@ -58,8 +73,8 @@ export async function handler(req: Request) {
       if (error) fail('PHOTO_UPLOAD_FAILED');
       return reply({ assetId, mime, bytes: bytes.length, name });
     }
-    const photos = async (items: unknown[]) => {
-      if (!Array.isArray(items) || items.length > 16) fail('INVALID_PHOTOS');
+    const photos = async (items: unknown[], max = 16) => {
+      if (!Array.isArray(items) || items.length > max) fail('INVALID_PHOTOS');
       return await Promise.all(items.map(async (p: any) => {
         if (!uuid.test(p.assetId || '')) fail('INVALID_ASSET');
         const { data, error } = await admin.storage.from(bucket).download(`${owner.id}/${p.assetId}`);
@@ -69,6 +84,7 @@ export async function handler(req: Request) {
         return { assetId: p.assetId, name: String(p.name).slice(0, 100), mime: data.type, bytes: bytes.length, base64: btoa(binary) };
       }));
     };
+    if (typeof url === 'string' && url.startsWith('/v2/')) return reply(await handleV2(url,raw,{admin,owner,registry,normalize:normalizeListing,photos}));
     if (url === '/photos') return reply({ photos: await photos(raw.photos) });
     if (url === '/listings') {
       const listing = normalizeListing(raw);

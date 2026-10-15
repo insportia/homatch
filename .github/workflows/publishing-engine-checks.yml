@@ -3,7 +3,7 @@ on:
   push:
     branches: [feat/publishing-engine-production]
   pull_request:
-    paths: ['src/publishingEngine/**', 'public/publishing-engine/**', 'publishing-extension/**', 'supabase/functions/publishing-engine/**', 'tests/publishingEngine/**']
+    paths: ['src/publishingEngine/**', 'public/publishing-engine/**', 'publishing-extension/**', 'supabase/functions/publishing-engine/**', 'tests/publishingEngine/**', 'supabase/migrations/*publishing_engine*.sql']
 permissions:
   contents: read
 jobs:
@@ -34,7 +34,32 @@ jobs:
         run: |
           node scripts/publishing/apply-migration.mjs --print > .publishing-migration.sql
           psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/migration-proof.sql
+      - name: Prove V2 tenant isolation and concurrent billing on isolated PostgreSQL 17
+        env:
+          PGPASSWORD: migration-proof-only
+          PUBLISHING_PROOF: isolated-postgres-17
+        run: |
+          psql -h localhost -U postgres -d publishing_proof -f tests/publishingEngine/v2-proof.sql
+          node tests/publishingEngine/v2-concurrency.mjs
+          node tests/publishingEngine/managed-concurrency.mjs
+      - name: Prove real production wallet schema and concurrent publishing settlement
+        env:
+          PGPASSWORD: migration-proof-only
+          PUBLISHING_REAL_WALLET_PROOF: isolated-postgres-17
+        run: |
+          createdb -h localhost -U postgres publishing_wallet_proof
+          psql -h localhost -U postgres -d publishing_wallet_proof -f tests/publishingEngine/real-wallet-proof.sql
+          node tests/publishingEngine/real-wallet-concurrency.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsgo -p tsconfig.check.json
+      - run: pnpm exec tsc --noEmit --strict --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --allowImportingTsExtensions supabase/functions/publishing-engine/server/http.ts supabase/functions/publishing-engine/server/adapters.ts supabase/functions/publishing-engine/server/worker.ts supabase/functions/publishing-engine/server/handler.ts
+      - run: node scripts/i18n-check.mjs && node scripts/i18n-keys-check.mjs && node scripts/i18n-audit.mjs
+      - run: node scripts/publishing/managed-worker.mjs --diagnostics
       - run: node --test tests/publishingEngine/*.test.mjs
       - run: pnpm run build
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+      - name: Managed HTTP runtime compatibility (Railway Node 22.18)
+        run: node --test tests/publishingEngine/managed-server.test.mjs tests/publishingEngine/managed-handler.test.mjs

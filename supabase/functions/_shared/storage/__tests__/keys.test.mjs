@@ -144,12 +144,20 @@ test('every live bucket has a namespace, and the system ones have no bucket', ()
     'meta-ads-media',
     'mortgage-offer-documents',
     'property-photos',
+    'publishing-engine-photos',
     'site-assets',
     'voice-auditions',
   ]);
   for (const ns of ['users', 'system', 'research', 'diagnostics']) {
     assert.equal(NAMESPACES[ns].legacyBucket, '', ns);
   }
+});
+
+test('publishing photos grant no generic customer signing access',()=>{
+ const rules=NAMESPACES['publishing-engine-photos'];
+ for(const action of ['READ','WRITE','DELETE'])assert.equal(rules[action].kind,'ADMIN');
+ assert.equal(rules.content.maxBytes,8_000_000);
+ assert.deepEqual(rules.content.mime,['image/jpeg','image/png','image/webp']);
 });
 
 // ── The coarse gate ──────────────────────────────────────────────────────

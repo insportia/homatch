@@ -35,6 +35,11 @@ for (const line of lines) {
     console.log(`PROBE ${name} status=${res.status} n=${items.length} ` + JSON.stringify({ filters: f ? { price: f.price, roomCounts: f.roomCounts, area: f.area } : undefined, rows: items.map((i) => [i.sourceListingId, i.price, i.currency, i.rooms, i.areaSqm]) }));
     await new Promise((r) => setTimeout(r, 1500)); continue; }
   if (/^\s*<\?xml/.test(html)) { const locs = [...html.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]); console.log(`XMLSUMMARY ${name} status=${res.status} locs=${locs.length}`); for (const l of locs.slice(0, 60)) console.log(`XMLLOC ${name} ${l}`); continue; }
+  if (parser === 'TERMS') { const t = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+    const hits = t.split(/(?<=[.;!?։])\s+/).filter((x) => /scrap|robot|automat|crawl|harvest|extract|spider|bot\b|copy|reproduc|commercial use|ავტომატ|პროგრამ|ბოტ|სკრეიპ|კოპირ|გადაწერ|მოპოვებ|გავრცელ|ინფორმაციის გამოყენ|კომერციულ/i.test(x));
+    console.log(`TERMSHEAD ${name} status=${res.status} final=${res.url} textLen=${t.length} hits=${hits.length}`);
+    for (const h of hits.slice(0, 40)) console.log(`TERMS ${name} ${h.slice(0, 600)}`);
+    continue; }
   if (parser === 'STRIP') { const t = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>|<!--[\s\S]*?-->/gi, '').replace(/\s+/g, ' ');
     const at = Math.max(0, t.indexOf('<body')); console.log(`STRIPHEAD ${name} status=${res.status} final=${res.url} bytes=${html.length} ld=${(html.match(/ld\+json/g) ?? []).length} tel=${JSON.stringify([...new Set(html.match(/tel:[^"']+/g) ?? [])].slice(0, 5))}`);
     console.log(`HEADMETA ${name} ${(t.match(/<meta[^>]+>/g) ?? []).join(' ').slice(0, 3000)}`);

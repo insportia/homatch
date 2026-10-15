@@ -1,2 +1,7 @@
 allhome-sale LASTLOC:https://www.allhome.ge/sitemaps/defs_sitemap_ge.xml|binebis-kidva-gakidva- STRIP
 allhome-rent LASTLOC:https://www.allhome.ge/sitemaps/defs_sitemap_ge.xml|qiravdeba-bina- STRIP
+terms-place https://place.ge/ge/terms_of_use TERMS
+terms-homege https://www.home.ge/terms-of-use.html TERMS
+terms-brokeri https://brokeri.ge/instructions/terms-and-conditions TERMS
+terms-allhome https://www.allhome.ge/rule.html TERMS
+terms-korter https://korter.ge/terms-of-service TERMS

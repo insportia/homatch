@@ -49,7 +49,7 @@ begin
  and (o.kind in ('CREATE','PUBLISH') or exists(select 1 from public.publishing_engine_publications p where p.listing_id=o.listing_id and p.user_id=o.user_id and p.portal_id=o.portal_id and p.managed_account_id=a.id and p.external_id=o.external_id))
  and (o.kind in ('CHECK_STATUS','RECONCILE') or not exists(select 1 from public.publishing_engine_operations old where old.listing_id=o.listing_id and old.portal_id=o.portal_id and old.created_at<o.created_at and old.status in ('RUNNING','RECONCILIATION_REQUIRED')))
  and (o.kind not in ('EDIT','UPDATE_PHOTOS','PUBLISH') or o.desired_revision=l.version)
- and (o.kind in ('CHECK_STATUS','RECONCILE','PAUSE','HIDE','DELETE','CREATE') or exists(select 1 from public.publishing_engine_subscriptions s where s.listing_id=o.listing_id and s.status in ('ACTIVE','PENDING','PAUSE_AT_PERIOD_END')))
+ and (o.kind in ('CHECK_STATUS','RECONCILE','PAUSE','HIDE','DELETE','CREATE') or exists(select 1 from public.publishing_engine_subscriptions s where s.listing_id=o.listing_id and (s.status='PENDING' and s.consented_at>now()-interval '1 hour' or s.status in ('ACTIVE','PAUSE_AT_PERIOD_END') and s.paid_until>now())))
  order by o.created_at for update of o skip locked limit 1;
  if not found then return;end if;
  update public.publishing_engine_operations set managed_account_id=a.id,status='RUNNING',attempts=attempts+1,lease_token=gen_random_uuid(),lease_until=now()+interval '5 minutes',updated_at=now() where id=op.id returning * into op;

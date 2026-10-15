@@ -18444,6 +18444,9 @@ const en = {
   fpw_edit_search: 'Edit search',
   fpw_remove_criterion: 'Remove {{label}} and edit the search',
   fpw_edit_note: 'Changing a criterion opens the search builder; nothing runs until you start it.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_any_owner: 'Owner (verified or likely)',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -36802,6 +36805,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpw_edit_search: 'ძიების რედაქტირება',
   fpw_remove_criterion: 'წაშალე „{{label}}“ და შეცვალე ძიება',
   fpw_edit_note: 'კრიტერიუმის შეცვლა ძიების ფორმას გახსნის; არაფერი დაიწყება, სანამ თავად არ დაიწყებ.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_any_owner: 'მესაკუთრე (დადასტურებული ან სავარაუდო)',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55151,6 +55157,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpw_edit_search: 'Изменить поиск',
   fpw_remove_criterion: 'Убрать «{{label}}» и изменить поиск',
   fpw_edit_note: 'Изменение критерия открывает конструктор поиска; ничего не запустится, пока вы не начнёте.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_any_owner: 'Собственник (подтверждённый или вероятный)',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -73498,6 +73507,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpw_edit_search: 'Aramayı düzenle',
   fpw_remove_criterion: '{{label}} kaldır ve aramayı düzenle',
   fpw_edit_note: 'Bir kriteri değiştirmek arama oluşturucuyu açar; siz başlatana kadar hiçbir şey çalışmaz.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_any_owner: 'Mal sahibi (doğrulanmış veya muhtemel)',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -91845,6 +91857,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpw_edit_search: 'تعديل البحث',
   fpw_remove_criterion: 'إزالة {{label}} وتعديل البحث',
   fpw_edit_note: 'تغيير أي معيار يفتح منشئ البحث؛ لن يبدأ شيء حتى تبدأه بنفسك.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_any_owner: 'المالك (موثّق أو محتمل)',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -110192,6 +110207,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpw_edit_search: 'עריכת החיפוש',
   fpw_remove_criterion: 'הסרת {{label}} ועריכת החיפוש',
   fpw_edit_note: 'שינוי קריטריון פותח את בונה החיפוש; דבר לא יופעל עד שתתחילו.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_any_owner: 'בעלים (מאומת או סביר)',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -132,6 +132,11 @@ export function classifyChanges(files, { read, diff, graph, edgeFunctionsFor } =
     if (owner === 'RAILWAY') deploy.railway = true;
     const fnDir = f.match(/^supabase\/functions\/([^_/][^/]*)\//);
     if (fnDir && !/(^|\/)__tests__\//.test(f)) deploy.functions.add(fnDir[1]);
+    // src/ code an edge function imports (research-core is shared with Deno) ships with that
+    // function: deploy-scope.mjs deploys it, so the plan owes its PROVEN_EXACT proof too.
+    if (/^src\//.test(f) && !/(^|\/)__tests__\//.test(f) && edgeFunctionsFor) {
+      try { (edgeFunctionsFor(f) ?? []).forEach((n) => deploy.functions.add(n)); } catch { /* importers unknown: deploy-scope still decides */ }
+    }
 
     // ── Repository-wide by ownership ──
     if (owner && COMPONENTS[owner].scope === 'repo') { escalate(f, `${owner} → REPO_FULL`); continue; }
@@ -241,6 +246,9 @@ export function classifyChanges(files, { read, diff, graph, edgeFunctionsFor } =
   // ── Result ──
   const componentSummary = Object.fromEntries([...comps].map(([n, c]) => [n, { ui: c.ui, security: c.security, why: c.why.slice(0, 8) }]));
   const deployOut = { frontend: deploy.frontend, functions: [...deploy.functions].sort(), migrations: deploy.migrations, railway: deploy.railway };
+  // Deploy proofs are owed whatever the validation tier.
+  if (deployOut.functions.length) proofs.add(`edge: PROVEN_EXACT for ${deployOut.functions.join(', ')}`);
+  if (deployOut.frontend) proofs.add('frontend: Vercel READY at the merge commit, aliased to www.homatch.live, served entry asset belongs to it');
   if (repo.length) {
     return { tier: 'REPO_FULL', suites: [...SUITES], components: componentSummary, reasons: [...repo, ...reasons], files: list, deploy: deployOut, proofs: [...proofs] };
   }
@@ -254,8 +262,6 @@ export function classifyChanges(files, { read, diff, graph, edgeFunctionsFor } =
     if (name === 'RAILWAY') suites.add('worker');
     (def.proofs ?? []).forEach((p) => proofs.add(p));
   }
-  if (deployOut.functions.length) proofs.add(`edge: PROVEN_EXACT for ${deployOut.functions.join(', ')}`);
-  if (deployOut.frontend) proofs.add('frontend: Vercel READY at the merge commit, aliased to www.homatch.live, served entry asset belongs to it');
   return {
     tier: security ? 'COMPONENT_FULL' : 'TARGETED',
     suites: SUITES.filter((s) => suites.has(s)),

@@ -93,7 +93,7 @@ export const FIND_PROPERTY_ADVISOR_STRINGS = {
   fpv_sum_upgrade: ['A little above your budget, with more to offer: {{list}}.', 'ბიუჯეტზე ოდნავ ძვირია, მაგრამ მეტს გთავაზობთ: {{list}}.', 'Чуть дороже бюджета, но предлагает больше: {{list}}.', 'Bütçenizin biraz üzerinde ama daha fazlasını sunuyor: {{list}}.', 'أعلى قليلًا من ميزانيتك، لكنه يقدم أكثر: {{list}}.', 'קצת מעל התקציב, אבל מציע יותר: {{list}}.'],
   fpv_sum_upgrade_plain: ['A little above your budget, with more to offer.', 'ბიუჯეტზე ოდნავ ძვირია, მაგრამ მეტს გთავაზობთ.', 'Чуть дороже бюджета, но предлагает больше.', 'Bütçenizin biraz üzerinde ama daha fazlasını sunuyor.', 'أعلى قليلًا من ميزانيتك، لكنه يقدم أكثر.', 'קצת מעל התקציב, אבל מציע יותר.'],
 
-  fpv_verdict_TOP: ['Great match', 'ძალიან კარგი დამთხვევა', 'Отлично подходит', 'Çok iyi eşleşme', 'مطابقة ممتازة', 'התאמה מצוינת'],
+  fpv_verdict_TOP: ['Best match', 'საუკეთესო დამთხვევა', 'Лучшее совпадение', 'En iyi eşleşme', 'أفضل تطابق', 'ההתאמה הטובה ביותר'],
   fpv_verdict_GOOD: ['Good match', 'კარგი დამთხვევა', 'Хорошо подходит', 'İyi eşleşme', 'مطابقة جيدة', 'התאמה טובה'],
   fpv_verdict_CONSIDER: ['Worth a look', 'ღირს ნახვა', 'Стоит посмотреть', 'Bakmaya değer', 'يستحق النظر', 'שווה הצצה'],
   fpv_verdict_UPGRADE: ['Slightly above budget', 'ბიუჯეტზე ოდნავ ძვირი', 'Чуть дороже бюджета', 'Bütçenin biraz üzerinde', 'أعلى قليلًا من الميزانية', 'קצת מעל התקציב'],
@@ -139,4 +139,21 @@ export const FIND_PROPERTY_ADVISOR_STRINGS = {
   fpv_sources_nav: ['Property sites', 'საიტები', 'Сайты недвижимости', 'Emlak siteleri', 'مواقع العقارات', 'אתרי נדל״ן'],
   fpv_all_sources: ['All sources', 'ყველა წყარო', 'Все источники', 'Tüm kaynaklar', 'جميع المصادر', 'כל המקורות'],
   fpv_and: ['and', 'და', 'и', 've', 'و', 'ו'],
+
+  // Results pages (owner, 2026-10-16): best matches and possible duplicates open as their own pages.
+  fpv_quick_views: ['Quick views', 'სწრაფი ხედები', 'Быстрый просмотр', 'Hızlı görünümler', 'عروض سريعة', 'תצוגות מהירות'],
+  fpv_best_cta: ['Best matches ({{n}})', 'საუკეთესო დამთხვევები ({{n}})', 'Лучшие совпадения ({{n}})', 'En iyi eşleşmeler ({{n}})', 'أفضل التطابقات ({{n}})', 'ההתאמות הטובות ביותר ({{n}})'],
+  fpv_dups_cta: ['Possible duplicates ({{n}})', 'შესაძლო დუბლიკატები ({{n}})', 'Возможные дубликаты ({{n}})', 'Olası kopyalar ({{n}})', 'تكرارات محتملة ({{n}})', 'כפילויות אפשריות ({{n}})'],
+  fpv_best_title: ['Your best matches', 'თქვენი საუკეთესო დამთხვევები', 'Ваши лучшие совпадения', 'En iyi eşleşmeleriniz', 'أفضل التطابقات لك', 'ההתאמות הטובות ביותר עבורכם'],
+  fpv_best_body: ['These homes fit everything you asked for and were checked recently.', 'ეს ბინები ყველაფერში ერგება თქვენს მოთხოვნას და ცოტა ხნის წინ გადავამოწმეთ.', 'Эти квартиры подходят по всем вашим условиям и недавно проверены.', 'Bu evler istediğiniz her şeye uyuyor ve yakın zamanda kontrol edildi.', 'هذه المنازل تطابق كل ما طلبته وتم التحقق منها مؤخرًا.', 'הדירות האלה מתאימות לכל מה שביקשתם ונבדקו לאחרונה.'],
+  fpv_dups_title: ['Homes that may be listed twice', 'ბინები, რომლებიც შეიძლება ორჯერ იყოს გამოქვეყნებული', 'Квартиры, которые могут быть опубликованы дважды', 'İki kez ilan edilmiş olabilecek evler', 'منازل قد تكون معروضة مرتين', 'דירות שאולי פורסמו פעמיים'],
+  fpv_dups_body: ['Each home is shown together with the listings that look like the same flat, so you can compare prices and choose.', 'თითოეულ ბინასთან ერთად ხედავთ განცხადებებს, რომლებიც იგივე ბინას ჰგავს. ასე ფასებს ადვილად შეადარებთ და აირჩევთ.', 'Рядом с каждой квартирой показаны объявления, похожие на ту же квартиру, чтобы вы могли сравнить цены и выбрать.', 'Her ev, aynı daire gibi görünen ilanlarla birlikte gösterilir; fiyatları karşılaştırıp seçebilirsiniz.', 'يظهر كل منزل مع الإعلانات التي تبدو للشقة نفسها، لتتمكن من مقارنة الأسعار والاختيار.', 'כל דירה מוצגת יחד עם המודעות שנראות כמו אותה דירה, כדי שתוכלו להשוות מחירים ולבחור.'],
+  fpv_all_results: ['All results', 'ყველა შედეგი', 'Все результаты', 'Tüm sonuçlar', 'كل النتائج', 'כל התוצאות'],
+  fpv_filter_best: ['Best matches only', 'მხოლოდ საუკეთესო დამთხვევები', 'Только лучшие совпадения', 'Yalnızca en iyi eşleşmeler', 'أفضل التطابقات فقط', 'רק ההתאמות הטובות ביותר'],
+  fpv_filter_dups: ['Possible duplicates', 'შესაძლო დუბლიკატები', 'Возможные дубликаты', 'Olası kopyalar', 'تكرارات محتملة', 'כפילויות אפשריות'],
+  // Live search controls.
+  fpv_play_sub: ['A short game while we search', 'პატარა თამაში, სანამ ვეძებთ', 'Небольшая игра, пока мы ищем', 'Biz ararken kısa bir oyun', 'لعبة قصيرة بينما نبحث', 'משחק קצר בזמן שאנחנו מחפשים'],
+  fpv_stop_confirm: ['Stop this search?', 'შევწყვიტოთ ძიება?', 'Остановить поиск?', 'Arama durdurulsun mu?', 'إيقاف هذا البحث؟', 'לעצור את החיפוש?'],
+  fpv_stop_yes: ['Yes, stop', 'დიახ, შევწყვიტოთ', 'Да, остановить', 'Evet, durdur', 'نعم، أوقف', 'כן, לעצור'],
+  fpv_keep_searching: ['Keep searching', 'ძიების გაგრძელება', 'Продолжить поиск', 'Aramaya devam et', 'متابعة البحث', 'להמשיך לחפש'],
 };

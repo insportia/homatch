@@ -209,12 +209,15 @@ export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.
         // The account: a session check or an authentication failure is the real account's answer.
         if (op.kind === 'CHECK_SESSION' || error === 'AUTH_REQUIRED') {
           const valid = op.kind === 'CHECK_SESSION' && status === 'SUCCEEDED';
-          await db.from('publishing_account_sessions').update({ status: valid ? 'VALID' : 'EXPIRED', verified_at: valid ? deps.now().toISOString() : null }).eq('portal_id', op.portal_id);
+          // Signed out on the portal → expired. Anything else (the page could not tell)
+          // is "not verified", never "connected".
+          const expired = error === 'AUTH_REQUIRED';
+          await db.from('publishing_account_sessions').update({ status: valid ? 'VALID' : expired ? 'EXPIRED' : 'UNVERIFIED', verified_at: valid ? deps.now().toISOString() : null }).eq('portal_id', op.portal_id);
           await db.rpc('publishing_account_write', {
             p_actor: null, p_portal: op.portal_id, p_action: 'SESSION_CHECK',
             p_patch: valid
               ? { status: 'CONNECTED', verified_at: deps.now().toISOString(), verification_result: 'SESSION_VERIFIED_ON_PORTAL', last_error: null }
-              : { status: 'SESSION_EXPIRED', verified_at: null, verification_result: error ?? 'SESSION_CHECK_FAILED', last_error: error },
+              : { status: expired ? 'SESSION_EXPIRED' : 'AUTH_REQUIRED', verified_at: null, verification_result: error ?? 'SESSION_CHECK_FAILED', last_error: error },
           });
           // Waiting publications move to their new route (QUEUED → a CREATE operation each).
           const acct = await account(op.portal_id);

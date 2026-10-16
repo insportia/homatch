@@ -3,7 +3,7 @@
 //
 // The worker (official-worker/src/publishing) runs real Chromium against the
 // portal UI through the HOMATCH account's session. Its adapters carry the same
-// capability table (official-worker/src/publishing/capabilities.json); a parity
+// capability table (official-worker/src/publishing/capabilities.ts); a parity
 // test keeps the two identical.
 //
 // VERIFICATION LEVELS — never upgraded by assertion:
@@ -27,7 +27,7 @@ export type Level = 'NOT_EXPLORED' | 'FIXTURE_TESTED' | 'LIVE_NAVIGATION_VERIFIE
 const NONE: Record<OpKind, Level> = Object.fromEntries(OP_KINDS.map((k) => [k, 'NOT_EXPLORED'])) as Record<OpKind, Level>;
 const RECORDED = { ...NONE, CHECK_SESSION: 'FIXTURE_TESTED', CREATE: 'FIXTURE_TESTED', STATUS: 'FIXTURE_TESTED' } as Record<OpKind, Level>;
 
-/** Mirrors official-worker/src/publishing/capabilities.json (parity-tested). */
+/** Mirrors official-worker/src/publishing/capabilities.ts (parity-tested). */
 export const BROWSER_CAPABILITIES: Record<ProviderId, Record<OpKind, Level>> = {
   myhome: RECORDED,
   ssge: RECORDED,

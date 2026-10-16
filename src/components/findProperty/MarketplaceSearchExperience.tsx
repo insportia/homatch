@@ -2,7 +2,7 @@ import { ArrowLeft, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CustomerSurface, PageHero } from '@/components/customer/surface';
+import { CustomerSurface } from '@/components/customer/surface';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { applyEdit, emptyBrief, type SearchIntelligenceBrief, sanitizeBrief } from '@/research-core/marketplace/brief';
 import type { ComparisonRow } from '@/research-core/marketplace/comparison';
@@ -14,11 +14,16 @@ import { CompareView } from './CompareView';
 import { PropertyIntelligence } from './PropertyIntelligence';
 import { ResultsView } from './ResultsView';
 import { BuilderIntro, SearchBuilder } from './SearchBuilder';
-import { SearchDashboard } from './SearchDashboard';
-import { SearchingView } from './SearchingView';
+import { DeepSearchPanel } from './workspace/DeepSearchPanel';
+import { DiscoveryModeStep } from './workspace/DiscoveryModeStep';
+import { ActivityTab, SavedTab } from './workspace/PersonalTabs';
+import { SearchesTab } from './workspace/SearchesTab';
+import { SearchProgress } from './workspace/SearchProgress';
+import { btn } from './workspace/primitives';
+import { WorkspaceHeader, WorkspaceTabs, WORKSPACE_TABS, type WorkspaceTab } from './workspace/WorkspaceHeader';
 import { SnakeOverlay } from './SnakeThumbnail';
 
-type View = 'LOADING' | 'MODE' | 'INTRO' | 'BUILD' | 'SEARCH' | 'RESULTS' | 'ERROR';
+type View = 'LOADING' | 'MODE' | 'INTRO' | 'BUILD' | 'CHOOSE' | 'SEARCH' | 'RESULTS' | 'ERROR';
 const POLL_MS = 4000;
 const DRAFT_KEY = 'homatch.findProperty.draft.v1';
 const START_KEY = 'homatch.findProperty.startKey.v1';
@@ -44,7 +49,7 @@ const writeDraft = (b: SearchIntelligenceBrief | null) => {
   try { if (b) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(b)); else sessionStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ }
 };
 
-export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearchAvailable: boolean }) {
+export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources = null, sourceNames = [] }: { deepSearchAvailable: boolean; activeSources?: number | null; sourceNames?: string[] }) {
   const { t, isRTL } = useLanguage();
   const [params] = useSearchParams();
   const route = useParams<{ searchId: string; propertyKey: string }>();
@@ -151,7 +156,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
     }
   };
 
-  const doStart = async () => {
+  const doStart = async (deepCredits?: number) => {
     if (!brief) return;
     setBusy(true);
     const criteria = JSON.stringify({ ...brief, originalText: '' });
@@ -160,7 +165,8 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       const r = await startSearch(brief, idempotency.current);
       setSearch(r.search);
       justStartedId.current = r.search.id;
-      navigate(`/find-property/search/${r.search.id}`);
+      /* Deep Search opens on the search it extends; the price is approved there, before anything is held. */
+      navigate(`/find-property/search/${r.search.id}${deepCredits ? `?deep=${deepCredits}` : ''}`);
       writeDraft(null);
       clearStartKey();
       setView('SEARCH');
@@ -194,33 +200,48 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
     setView('INTRO');
   };
 
-  return (
-    <CustomerSurface className="space-y-6">
-      {!route.propertyKey ? <div className="pt-4 sm:pt-6">
-        <PageHero compact title={t('plan_page_title')} subtitle={view === 'MODE' ? null : t('mps_hero_subtitle')} />
-      </div> : null}
-      {!route.propertyKey && view !== 'MODE' && view !== 'ERROR' ? <Link to="/find-property" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-foreground/15 bg-card px-4 text-sm font-semibold shadow-sm transition hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpw_history')}</Link> : null}
+  const tab: WorkspaceTab = (WORKSPACE_TABS as string[]).includes(params.get('tab') ?? '') ? params.get('tab') as WorkspaceTab : 'searches';
+  const [counts, setCounts] = useState<Partial<Record<WorkspaceTab, number | null>>>({});
+  const onSavedCount = useCallback((n: number) => setCounts((c) => ({ ...c, saved: n })), []);
+  const onSearchCount = useCallback((n: number | null) => setCounts((c) => ({ ...c, searches: n })), []);
+  const deepCredits = Number(params.get('deep')) || null;
+  const backToWorkspace = !route.propertyKey && view !== 'MODE' && view !== 'ERROR'
+    ? <Link to="/find-property" className={btn.quiet}><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpx_my_searches')}</Link> : undefined;
 
-      {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl bg-muted/60" aria-busy="true" />}
-      {view === 'MODE' && <SearchDashboard t={t} onRepeat={(b) => {
-        // Repeating reopens the builder with the saved criteria; nothing starts until the customer confirms.
-        setBriefAndDraft(sanitizeBrief(b));
-        navigate('/find-property/new');
-        setSearch(null);
-        setView('BUILD');
-      }} />}
-      {view === 'ERROR' && <div role="alert" className="space-y-4"><p>{t('mps_error_generic')}</p><Link to="/find-property">{t('fpw_history')}</Link></div>}
+  return (
+    <CustomerSurface className="space-y-6 pb-10">
+      {!route.propertyKey ? <div className="pt-4 sm:pt-6">
+        <WorkspaceHeader t={t} compact={view !== 'MODE'} activeSources={activeSources} deepAvailable={deepSearchAvailable} action={backToWorkspace} />
+      </div> : null}
+
+      {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl border border-border bg-card/70" aria-busy="true" />}
+      {view === 'MODE' && <div className="space-y-5">
+        <WorkspaceTabs t={t} active={tab} counts={counts} hrefOf={(next) => (next === 'searches' ? '/find-property' : `/find-property?tab=${next}`)} />
+        {tab === 'searches' ? <SearchesTab t={t} onCount={onSearchCount} onRepeat={(b) => {
+          // Refining reopens the builder with the saved criteria; nothing starts until the customer confirms.
+          setBriefAndDraft(sanitizeBrief(b));
+          navigate('/find-property/new');
+          setSearch(null);
+          setView('BUILD');
+        }} /> : tab === 'saved' ? <SavedTab t={t} onCount={onSavedCount} /> : <ActivityTab t={t} />}
+      </div>}
+      {view === 'ERROR' && <div role="alert" className="space-y-4 rounded-2xl border border-border bg-card p-6"><p>{t('mps_error_generic')}</p><Link to="/find-property" className={btn.quiet}>{t('fpx_my_searches')}</Link></div>}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (
-        <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => void doStart()} starting={busy}
+        <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => setView('CHOOSE')} starting={busy} startLabel={t('fpx_continue_modes')}
           onReset={() => { setBriefAndDraft(null); setView('INTRO'); }} />
       )}
+      {view === 'CHOOSE' && brief && (
+        <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy}
+          onFree={() => void doStart()} onDeep={(credits) => void doStart(credits)} onBack={() => setView('BUILD')} />
+      )}
       {view === 'SEARCH' && search && !route.propertyKey && (
-        <SearchingView t={t} search={search} onViewResults={() => setView('RESULTS')} onPlay={() => setPlaying(true)}
+        <SearchProgress t={t} search={search} onViewResults={() => setView('RESULTS')} onPlay={() => setPlaying(true)}
           onNewSearch={newSearch}
+          deep={deepCredits ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} initialCredits={deepCredits} /> : undefined}
           onCancel={async () => { try { const r = await cancelSearch(search.id); setSearch(r.search); } catch { /* ignore */ } newSearch(); }} />
       )}
-      {view === 'SEARCH' && !playing && search?.terminal && (search.counters.uniqueProperties > 0 || !search.unavailable) ? (
+      {view === 'SEARCH' && !playing && search?.terminal && !deepCredits && (search.counters.uniqueProperties > 0 || !search.unavailable) ? (
         <ResultsRedirect onGo={() => setView('RESULTS')} />
       ) : null}
       {view === 'RESULTS' && search && !route.propertyKey && (

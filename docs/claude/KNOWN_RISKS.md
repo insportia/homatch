@@ -172,3 +172,11 @@ with per-language loading named as the follow-up. That follow-up is done:
   Find Property side only; `find_buyers_reserve_actor_run` (Find Buyers' workstream)
   still counts only its own table, so the combined in-flight total can exceed
   `discovery_provider_concurrency.APIFY_MEMO23` by Find Property's share.
+
+## Find Property: criteria no source publishes (2026-10-16)
+
+SS.ge never publishes a construction year and MyHome almost never does (1 of 385
+recent listings, as ">2000"). A search with a maximum building age therefore cannot
+have strong matches: every result keeps BUILDING_AGE unverified. This is correct
+(strong = every requested fact confirmed); the results header now names the
+missing facts ("why not strong"). Do not relax the rule to hide it.

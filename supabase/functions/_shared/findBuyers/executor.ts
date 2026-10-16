@@ -305,13 +305,13 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     commentProbe: parseSampling(settings.sampling).probe,
   }, normalized);
 
-  await db.from('find_buyers_actor_runs').update({
+  /* Stats once per run: a replayed poll (lease lost after booking) adds nothing twice and,
+     since every item is then a DUPLICATE, must not overwrite the first pass's counters with 0. */
+  const { data: firstApply } = await db.from('find_buyers_actor_runs').update({
+    stats_applied_at: new Date().toISOString(),
     items_fetched: items.length, useful_results: result.useful, qualified_leads: result.qualified, strong_leads: result.strong,
     stale_dropped: result.staleDropped,
-  }).eq('id', run.id);
-  /* Stats once per run: a replayed poll (lease lost after booking) adds nothing twice. */
-  const { data: firstApply } = await db.from('find_buyers_actor_runs').update({ stats_applied_at: new Date().toISOString() })
-    .eq('id', run.id).is('stats_applied_at', null).select('id');
+  }).eq('id', run.id).is('stats_applied_at', null).select('id');
   const applyStats = Array.isArray(firstApply) && firstApply.length === 1;
   if (applyStats && meta.sourceId) {
     const { data: src } = await db.from('source_registry').select('posts_observed,fb_spend_micros,fb_qualified_leads,fb_strong_leads').eq('id', meta.sourceId).maybeSingle();

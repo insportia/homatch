@@ -494,7 +494,7 @@ export async function sweepStaleActorRuns(db: any) {
 export async function campaignStats(db: any, matchingJobId: string) {
   const [runs, leads, assess, queue, camp] = await Promise.all([
     db.from('find_buyers_actor_runs').select('source,language,status,qualified_leads,items_fetched,useful_results,stale_dropped').eq('matching_job_id', matchingJobId),
-    db.from('find_buyers_leads').select('strength,source,signal_count').eq('matching_job_id', matchingJobId),
+    db.from('find_buyers_leads').select('strength,source,signal_count,match_category').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_assessments').select('content_kind').eq('matching_job_id', matchingJobId).limit(5000),
     db.from('discovery_query_queue').select('provider,status,metadata').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_campaigns').select('query_plan').eq('matching_job_id', matchingJobId).maybeSingle(),
@@ -512,7 +512,10 @@ export async function campaignStats(db: any, matchingJobId: string) {
     sourcesProductive: [...productive],
     signalsAnalyzed: ((assess.data ?? []) as any[]).length,
     commentsReviewed: ((assess.data ?? []) as any[]).filter((x) => x.content_kind === 'COMMENT').length,
-    qualified: l.length,
+    /* People-first: only STRONG/POTENTIAL are qualified buyers or tenants; a WEAK lead is an
+       interested person to verify, never counted as qualified (live test 2026-10-16). */
+    qualified: l.filter((x) => x.match_category === 'STRONG' || x.match_category === 'POTENTIAL').length,
+    interested: l.filter((x) => x.match_category !== 'STRONG' && x.match_category !== 'POTENTIAL').length,
     strong: l.filter((x) => x.strength === 'STRONG').length,
     duplicatesRemoved: l.reduce((n, x) => n + Math.max(0, Number(x.signal_count || 1) - 1), 0),
     /* 30-day rule, made visible: older or undated items skipped, never stored. */

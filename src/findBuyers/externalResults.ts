@@ -88,7 +88,8 @@ function classifyStored(lead: ResultLead): ClassifiedLead {
      keeps that decision unless the rules find a definite exclusion — the rules alone
      reading "unknown" never overturns it. Never-qualified legacy leads get no such pass. */
   const qualified = ['STRONG', 'POTENTIAL', 'WEAK'].includes(String(lead.match_category ?? ''));
-  if (r.resultType === 'EXCLUDED' && r.intent === 'UNKNOWN' && qualified) {
+  const undecided = (r.resultType === 'EXCLUDED' && r.intent === 'UNKNOWN') || r.reasons.includes('seeker_transaction_unconfirmed');
+  if (undecided && qualified) {
     return { ...lead, resultType: 'DIRECT', intent: lead.counterpart === 'TENANT' ? 'ACTIVE_TENANT' : 'ACTIVE_BUYER', signals: r.signals };
   }
   return { ...lead, resultType: r.resultType, intent: r.intent, signals: r.signals };

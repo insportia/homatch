@@ -14,6 +14,10 @@ export interface ServiceHistoryEntry {
 
 export interface ServiceCard {
   key: ServiceKey;
+  /** The Admin grouping (service_controls.service_group). */
+  group: string;
+  /** OPEN: keeps running if the controls cannot be read (live products). CLOSED: stays paused. */
+  failMode: 'OPEN' | 'CLOSED';
   frontend: boolean;
   backend: boolean;
   version: number | null;
@@ -52,3 +56,7 @@ export const setService = (service: ServiceKey, frontend: boolean, backend: bool
 
 export const pauseAllServices = (reason: string) =>
   call<{ result: 'CHANGED' | 'UNCHANGED'; changed: ServiceKey[] }>('pause_all', { reason, requestId: requestId() });
+
+/** Pause one group. `confirm` is the group key as the admin typed it; the server checks it again. */
+export const pauseServiceGroup = (group: string, confirm: string, reason: string) =>
+  call<{ result: 'CHANGED' | 'UNCHANGED'; group: string; changed: ServiceKey[] }>('pause_group', { group, confirm, reason, requestId: requestId() });

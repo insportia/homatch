@@ -1,8 +1,9 @@
 // The publishing-engine handler against an in-memory database whose RPCs mirror
-// migration 20261103090000. Proves: origin/auth/ownership, impersonation is read-only,
+// migrations 20261103090000 + 20261105090000. Proves: origin/auth/ownership, impersonation is read-only,
 // drafts never create property rows, idempotent prepare, PUBLISHED only after a live
 // page check, per-portal partial success, and that removing a listing never touches
-// the property.
+// the property; the eight-provider registry, owner-confirmed portals, capability
+// errors, listing duplication and the admin control centre's authorisation.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { register } from 'node:module';
@@ -21,10 +22,12 @@ const PROP = '22222222-2222-4222-8222-222222222222';
 const FOREIGN = '33333333-3333-4333-8333-333333333333';
 const PHOTO = '44444444-4444-4444-8444-444444444444';
 const IMPERSONATED_SESSION = '55555555-5555-4555-8555-555555555555';
+const ADMIN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const SECOND = '77777777-7777-4777-8777-777777777777';
 
 function makeDb() {
   const t = {
-    users: [{ id: OWNER, auth_id: 'auth-owner' }, { id: OTHER, auth_id: 'auth-other' }],
+    users: [{ id: OWNER, auth_id: 'auth-owner' }, { id: OTHER, auth_id: 'auth-other' }, { id: ADMIN, auth_id: 'auth-admin' }],
     properties: [
       { id: PROP, user_id: OWNER, is_deleted: false, contact_phone_e164: '+995599111222' },
       { id: FOREIGN, user_id: OTHER, is_deleted: false, contact_phone_e164: null },
@@ -32,6 +35,11 @@ function makeDb() {
     property_photos: [{ id: PHOTO, property_id: PROP }],
     impersonation_sessions: [{ id: 'i1', auth_session_id: IMPERSONATED_SESSION }],
     publishing_engine_listings: [], publishing_engine_versions: [], publishing_engine_jobs: [], publishing_engine_events: [],
+    publishing_providers: ['myhome', 'ssge', 'placege', 'homege', 'brokeri', 'korter', 'binebi', 'allhome'].map((id, sort) => ({
+      id, enabled: true, sort, create_url: null, logo_url: null, verification: ['korter', 'binebi'].includes(id) ? 'OWNER_CONFIRMED' : 'PAGE_CHECK',
+      max_photos: id === 'myhome' ? 16 : null, description_max: null, required_fields: id === 'myhome' ? ['description.ka'] : [],
+    })),
+    publishing_provider_audit: [],
   };
   const err = (message) => ({ data: null, error: { message } });
   const rpc = {
@@ -70,7 +78,7 @@ function makeDb() {
     publishing_listing_lifecycle({ p_owner, p_listing, p_action }) {
       const row = t.publishing_engine_listings.find((l) => l.id === p_listing && l.user_id === p_owner);
       if (!row) return err('OWNED_RECORD_REQUIRED');
-      if (['ARCHIVE', 'DELETE'].includes(p_action) && t.publishing_engine_jobs.some((j) => j.listing_id === p_listing && ['VERIFYING', 'PUBLISHED', 'UNPUBLISH_REQUESTED'].includes(j.status))) return err('LIVE_PUBLICATIONS_EXIST');
+      if (['ARCHIVE', 'DELETE'].includes(p_action) && t.publishing_engine_jobs.some((j) => j.listing_id === p_listing && ['VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'UNPUBLISH_REQUESTED'].includes(j.status))) return err('LIVE_PUBLICATIONS_EXIST');
       if (p_action === 'DELETE') {
         for (const k of ['publishing_engine_events', 'publishing_engine_jobs', 'publishing_engine_versions']) t[k] = t[k].filter((r) => r.listing_id !== p_listing);
         t.publishing_engine_listings = t.publishing_engine_listings.filter((l) => l.id !== p_listing);
@@ -79,16 +87,25 @@ function makeDb() {
       row.archived_at = p_action === 'ARCHIVE' ? 'now' : null;
       return { data: row, error: null };
     },
+    publishing_provider_update({ p_actor, p_provider, p_patch, p_action }) {
+      const row = t.publishing_providers.find((r) => r.id === p_provider);
+      if (!row) return err('PORTAL_UNKNOWN');
+      const before = { ...row };
+      Object.assign(row, p_patch);
+      t.publishing_provider_audit.push({ id: t.publishing_provider_audit.length + 1, provider_id: p_provider, actor: p_actor, action: p_action, before, after: { ...row }, created_at: 'now' });
+      return { data: row, error: null };
+    },
   };
   const from = (table) => {
     const filters = [];
     const read = () => (t[table] ?? []).filter((row) => filters.every((f) => f(row)));
+    const failing = table === 'publishing_providers' && t.providersUnreadable;
     const q = {
       select: () => q, order: () => q, limit: () => q,
       eq: (k, v) => { filters.push((r) => r[k] === v); return q; },
       in: (k, vs) => { filters.push((r) => vs.includes(r[k])); return q; },
       maybeSingle: async () => ({ data: read()[0] ?? null, error: null }),
-      then: (ok, ko) => Promise.resolve({ data: read(), error: null }).then(ok, ko),
+      then: (ok, ko) => Promise.resolve(failing ? { data: null, error: { code: '42P01', message: 'relation does not exist' } } : { data: read(), error: null }).then(ok, ko),
     };
     return q;
   };
@@ -99,8 +116,12 @@ let db, current;
 globalThis.__createClient = (_url, key, opts) => {
   if (key === 'test-SUPABASE_ANON_KEY') {
     const header = opts.global.headers.Authorization;
-    const user = header.includes('owner') ? 'auth-owner' : header.includes('other') ? 'auth-other' : null;
-    return { auth: { getUser: async () => ({ data: { user: user ? { id: user } : null }, error: user ? null : { message: 'bad' } }) } };
+    const user = header.includes('owner') ? 'auth-owner' : header.includes('other') ? 'auth-other' : header.includes('admin') ? 'auth-admin' : null;
+    return {
+      auth: { getUser: async () => ({ data: { user: user ? { id: user } : null }, error: user ? null : { message: 'bad' } }) },
+      // is_admin() runs with the CALLER's token, so only the admin's own session answers true.
+      rpc: async (name) => (name === 'is_admin' ? { data: user === 'auth-admin', error: null } : { data: null, error: { message: 'unexpected' } }),
+    };
   }
   return { from: (t) => db.from(t), rpc: (n, a) => db.rpc(n, a) };
 };
@@ -108,7 +129,12 @@ const { handler } = await import('../index.ts');
 
 const jwt = (claims) => ['owner', Buffer.from(JSON.stringify(claims)).toString('base64url'), 's'].join('.');
 const pages = new Map();
-const deps = { fetchPage: async (url) => pages.get(url) ?? { status: 'NETWORK' }, now: () => current };
+const fetched = [];
+const deps = {
+  fetchPage: async (url, adapter) => { fetched.push(url); assert.equal(adapter.canCheckPage(), true, 'never fetched for an owner-confirmed portal'); return pages.get(url) ?? { status: 'NETWORK' }; },
+  probe: async (config) => ({ status: config.verification === 'PAGE_CHECK' ? 'REACHABLE' : 'SKIPPED', detail: 'stub' }),
+  now: () => current,
+};
 async function call(action, body = {}, { who = 'owner', origin = 'https://homatch.live', token } = {}) {
   const auth = token ?? `Bearer ${who}`;
   const res = await handler(new Request('https://edge.test', { method: 'POST', headers: { Origin: origin, Authorization: auth }, body: JSON.stringify({ action, ...body }) }), deps);
@@ -116,9 +142,9 @@ async function call(action, body = {}, { who = 'owner', origin = 'https://homatc
 }
 const listing = (over = {}) => ({
   title: 'Apartment in Vake', description: { ka: 'ბინა ვაკეში' }, propertyType: 'APARTMENT', dealType: 'SALE', price: 150000, currency: 'USD',
-  area: 90, city: 'თბილისი', street: 'Chavchavadze', contactName: 'Nino', photos: [PHOTO], portalTargets: ['myhome', 'ssge'], ...over,
+  area: 90, city: 'თბილისი', street: 'Chavchavadze', contactName: 'Nino', contacts: [{ phone: '+995599111222' }], photos: [PHOTO], portalTargets: ['myhome', 'ssge'], ...over,
 });
-const fresh = () => { db = makeDb(); current = new Date('2026-10-15T12:00:00Z'); pages.clear(); };
+const fresh = () => { db = makeDb(); current = new Date('2026-10-15T12:00:00Z'); pages.clear(); fetched.length = 0; };
 
 test('origin, method and authentication are enforced before anything is read', async () => {
   fresh();
@@ -127,13 +153,13 @@ test('origin, method and authentication are enforced before anything is read', a
   assert.equal((await call('workspace', {}, { who: 'nobody' })).status, 401);
 });
 
-test('a draft saves for an owned property without creating any property row; the phone defaults to the private property contact', async () => {
+test('a draft saves for an owned property without creating any property row; the property\'s private number is never copied in without the owner\'s tap', async () => {
   fresh();
   const before = db.t.properties.length;
   const r = await call('listing.save', { propertyId: PROP, version: 0, listing: { title: 'Draft only' } });
   assert.equal(r.status, 200);
   assert.equal(r.body.listing.status, 'DRAFT');
-  assert.equal(r.body.listing.payload.contactPhone, '+995599111222');
+  assert.deepEqual(r.body.listing.payload.contacts, []);
   assert.equal(db.t.properties.length, before);
   // Resubmitting version 0 (a double click) is a conflict, not a second listing.
   assert.equal((await call('listing.save', { propertyId: PROP, version: 0, listing: { title: 'again' } })).status, 409);
@@ -202,7 +228,7 @@ test('PUBLISHED only after the public page proves the listing; partial success i
 
 test('an external listing cannot be claimed by a second HOMATCH publication', async () => {
   fresh();
-  db.t.properties.push({ id: '77777777-7777-4777-8777-777777777777', user_id: OWNER, is_deleted: false, contact_phone_e164: '+995599333444' });
+  db.t.properties.push({ id: SECOND, user_id: OWNER, is_deleted: false, contact_phone_e164: '+995599333444' });
   db.t.property_photos.push({ id: '88888888-8888-4888-8888-888888888888', property_id: '77777777-7777-4777-8777-777777777777' });
   for (const [id, photo] of [[PROP, PHOTO], ['77777777-7777-4777-8777-777777777777', '88888888-8888-4888-8888-888888888888']]) {
     await call('listing.save', { propertyId: id, version: 0, listing: listing({ photos: [photo] }) });
@@ -251,4 +277,130 @@ test('editing a published listing flags the portal copy until it is marked updat
   assert.equal(marked.body.publications[0].listing_version, 2);
   assert.equal(marked.body.publications[0].status, 'PUBLISHED');
   assert.ok(marked.body.events.some((e) => e.kind === 'PORTAL_COPY_UPDATED'));
+});
+
+test('the workspace lists all eight portals; an unreadable registry leaves only the two the old constraint accepts', async () => {
+  fresh();
+  const r = await call('workspace');
+  assert.deepEqual(r.body.portals.map((p) => p.id), ['myhome', 'ssge', 'placege', 'homege', 'brokeri', 'korter', 'binebi', 'allhome']);
+  assert.ok(r.body.portals.every((p) => p.enabled && p.capabilities.accountConnection === false));
+  db.t.providersUnreadable = true;
+  const degraded = await call('workspace');
+  assert.equal(degraded.status, 200);
+  assert.deepEqual(degraded.body.portals.filter((p) => p.enabled).map((p) => p.id), ['myhome', 'ssge']);
+});
+
+test('several contact numbers, each with its own channels, are normalised and saved', async () => {
+  fresh();
+  const r = await call('listing.save', { propertyId: PROP, version: 0, listing: listing({ contacts: [{ phone: '555 12 34 56', whatsapp: true, viber: false }, { phone: '+995577000000', viber: true }] }) });
+  assert.deepEqual(r.body.listing.payload.contacts, [{ phone: '+995555123456', whatsapp: true, viber: false }, { phone: '+995577000000', whatsapp: false, viber: true }]);
+  assert.equal(r.body.listing.status, 'READY');
+  assert.equal('contactPhone' in r.body.listing.payload, false, 'the legacy single field is not written back');
+});
+
+test('a disabled portal cannot be prepared or linked', async () => {
+  fresh();
+  db.t.publishing_providers.find((p) => p.id === 'placege').enabled = false;
+  await call('listing.save', { propertyId: PROP, version: 0, listing: listing() });
+  assert.equal((await call('publication.prepare', { propertyId: PROP, portalId: 'placege' })).body.code, 'PORTAL_DISABLED');
+  assert.equal((await call('publication.link', { propertyId: PROP, portalId: 'placege', externalUrl: 'https://place.ge/ge/ads/view/912345' })).body.code, 'PORTAL_DISABLED');
+  assert.equal((await call('publication.prepare', { propertyId: PROP, portalId: 'homege' })).status, 200);
+});
+
+test('owner-confirmed portals: an explicit statement is required, no page is ever fetched, and it is never PUBLISHED', async () => {
+  fresh();
+  await call('listing.save', { propertyId: PROP, version: 0, listing: listing() });
+  await call('publication.prepare', { propertyId: PROP, portalId: 'korter' });
+  const url = 'https://korter.ge/ka/complex-vake/4521';
+  assert.equal((await call('publication.link', { propertyId: PROP, portalId: 'korter', externalUrl: url })).body.code, 'ATTESTATION_REQUIRED');
+  const r = await call('publication.link', { propertyId: PROP, portalId: 'korter', externalUrl: url, attest: true });
+  const korter = r.body.publications.find((p) => p.portal_id === 'korter');
+  assert.equal(korter.status, 'OWNER_CONFIRMED');
+  assert.equal((await call('publication.check', { propertyId: PROP, portalId: 'korter' })).body.code, 'CHECK_NOT_AVAILABLE');
+  assert.deepEqual(fetched, [], 'HOMATCH made no request to Korter');
+  assert.ok(r.body.events.some((e) => e.kind === 'PUBLICATION_ATTESTED_BY_OWNER'));
+  assert.equal((await call('listing.archive', { propertyId: PROP })).body.code, 'LIVE_PUBLICATIONS_EXIST');
+  await call('publication.unpublish', { propertyId: PROP, portalId: 'korter' });
+  const removed = await call('publication.confirmRemoved', { propertyId: PROP, portalId: 'korter' });
+  assert.equal(removed.body.publications.find((p) => p.portal_id === 'korter').status, 'UNPUBLISHED');
+});
+
+test('API operations answer with an explicit capability error, for every portal', async () => {
+  fresh();
+  for (const portalId of ['myhome', 'binebi']) {
+    for (const operation of ['connectAccount', 'testConnection', 'createListing', 'updateListing', 'deleteListing', 'importListing']) {
+      const r = await call('provider.operation', { portalId, operation });
+      assert.equal(r.status, 409);
+      assert.deepEqual(r.body, { ok: false, code: 'CAPABILITY_NOT_SUPPORTED', capability: operation, provider: portalId });
+    }
+  }
+  assert.equal((await call('provider.operation', { portalId: 'myhome', operation: 'login' })).body.code, 'UNKNOWN_OPERATION');
+});
+
+test('duplicating a listing copies its text to another owned property, never its photos, and leaves the source alone', async () => {
+  fresh();
+  db.t.properties.push({ id: SECOND, user_id: OWNER, is_deleted: false, contact_phone_e164: null });
+  await call('listing.save', { propertyId: PROP, version: 0, listing: listing() });
+  const source = structuredClone(db.t.publishing_engine_listings[0]);
+  const r = await call('listing.duplicate', { propertyId: PROP, targetPropertyId: SECOND });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.listing.id, SECOND);
+  assert.equal(r.body.listing.payload.title, 'Apartment in Vake');
+  assert.deepEqual(r.body.listing.payload.photos, []);
+  assert.deepEqual(db.t.publishing_engine_listings.find((l) => l.id === PROP), source, 'source listing unchanged');
+  assert.equal((await call('listing.duplicate', { propertyId: PROP, targetPropertyId: SECOND })).body.code, 'LISTING_ALREADY_EXISTS');
+  assert.equal((await call('listing.duplicate', { propertyId: PROP, targetPropertyId: FOREIGN })).body.code, 'OWNED_PROPERTY_REQUIRED');
+  assert.equal((await call('listing.duplicate', { propertyId: PROP, targetPropertyId: PROP })).body.code, 'DUPLICATE_TARGET_SAME');
+});
+
+test('admin control centre: is_admin() on the caller\'s own token, validated patches, every change audited', async () => {
+  fresh();
+  for (const action of ['admin.providers', 'admin.publications', 'admin.provider.update', 'admin.provider.recheck']) {
+    const r = await call(action, { portalId: 'myhome', providerId: 'myhome', patch: { enabled: false } });
+    assert.equal(r.status, 403, action);
+    assert.equal(r.body.code, 'ADMIN_REQUIRED');
+  }
+  assert.equal(db.t.publishing_providers.find((p) => p.id === 'myhome').enabled, true);
+  const overview = await call('admin.providers', {}, { who: 'admin' });
+  assert.equal(overview.status, 200);
+  assert.equal(overview.body.providers.length, 8);
+  assert.ok(overview.body.providers.every((p) => Array.isArray(p.evidence) && p.evidence.length > 0));
+  assert.equal((await call('admin.provider.update', { providerId: 'placege', patch: { createUrl: 'https://evil.test/add' } }, { who: 'admin' })).body.code, 'CREATE_URL_MUST_BE_ON_PORTAL');
+  assert.equal((await call('admin.provider.update', { providerId: 'korter', patch: { verification: 'PAGE_CHECK' } }, { who: 'admin' })).body.code, 'PAGE_CHECK_NOT_PERMITTED');
+  assert.equal(db.t.publishing_provider_audit.length, 0, 'refused patches leave no trace in the registry');
+  const ok = await call('admin.provider.update', { providerId: 'placege', patch: { enabled: false, requiredFields: ['area', 'photos'] } }, { who: 'admin' });
+  assert.equal(ok.status, 200);
+  assert.equal(db.t.publishing_provider_audit.length, 1);
+  assert.equal(db.t.publishing_provider_audit[0].actor, ADMIN);
+  const after = await call('workspace');
+  const place = after.body.portals.find((p) => p.id === 'placege');
+  assert.equal(place.enabled, false);
+  assert.deepEqual(place.requiredFields, ['area', 'photos']);
+  const recheck = await call('admin.provider.recheck', { providerId: 'binebi' }, { who: 'admin' });
+  assert.equal(recheck.body.health.status, 'SKIPPED', 'an owner-confirmed portal is never probed');
+  // The admin's publications view carries no listing payloads or phone numbers.
+  await call('listing.save', { propertyId: PROP, version: 0, listing: listing() });
+  await call('publication.prepare', { propertyId: PROP, portalId: 'myhome' });
+  const pubs = await call('admin.publications', { portalId: 'myhome' }, { who: 'admin' });
+  assert.equal(pubs.body.publications.length, 1);
+  assert.doesNotMatch(JSON.stringify(pubs.body), /\+995|payload|contacts/);
+});
+
+test('an admin may retry a failed verification on the owner\'s behalf — and nothing else', async () => {
+  fresh();
+  await call('listing.save', { propertyId: PROP, version: 0, listing: listing() });
+  await call('publication.prepare', { propertyId: PROP, portalId: 'ssge' });
+  const url = 'https://home.ss.ge/ka/udzravi-qoneba/iyideba-bina-31234567';
+  pages.set(url, { status: 404 });
+  await call('publication.link', { propertyId: PROP, portalId: 'ssge', externalUrl: url });
+  const job = db.t.publishing_engine_jobs[0];
+  assert.equal(job.status, 'VERIFICATION_FAILED');
+  assert.equal((await call('admin.publication.retry', { publicationId: job.id }, { who: 'admin' })).body.code, 'INVALID_ID');
+  job.id = '12121212-1212-4121-8121-121212121212';
+  assert.equal((await call('admin.publication.retry', { publicationId: job.id })).status, 403, 'an owner is not an admin');
+  const r = await call('admin.publication.retry', { publicationId: job.id }, { who: 'admin' });
+  assert.equal(r.status, 200);
+  assert.equal(job.status, 'VERIFYING');
+  assert.ok(db.t.publishing_engine_events.some((e) => e.kind === 'RETRY_BY_ADMIN' && e.user_id === OWNER), 'history stays on the owner\'s listing');
+  assert.equal((await call('admin.publication.retry', { publicationId: job.id }, { who: 'admin' })).body.code, 'NOT_FAILED');
 });

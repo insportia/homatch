@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Publishing workspace migration proof on a THROWAWAY local Postgres 16 — never
 # production. Applies the two 2026-10-14 publishing migrations, then
-# 20261103090000_publishing_workspace.sql, on stand-in fixtures; runs tests.sql.
+# 20261103090000_publishing_workspace.sql, on stand-in fixtures; runs tests.sql;
+# then applies 20261105090000_publishing_providers.sql and runs providers.sql.
 # Usage: tests/sql/publishing/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; root="$here/../../.."
@@ -17,5 +18,11 @@ $P -d hmpub -f "$here/fixture.sql"
 for m in 20261014074630_publishing_engine 20261014140000_publishing_engine_ssge 20261103090000_publishing_workspace; do
   $P -d hmpub -1 -f "$root/supabase/migrations/$m.sql"
 done
-env PGOPTIONS=-cclient_min_messages=notice psql -h "$dir" -p "$port" -U postgres -d hmpub -v ON_ERROR_STOP=1 -q -o /dev/null -f "$here/tests.sql" 2>&1 \
-  | sed -e 's/^psql:[^:]*:[0-9]*: NOTICE:  /  /' -e 's/^NOTICE:  /  /'
+run() {
+  env PGOPTIONS=-cclient_min_messages=notice psql -h "$dir" -p "$port" -U postgres -d hmpub -v ON_ERROR_STOP=1 -q -o /dev/null -f "$1" 2>&1 \
+    | sed -e 's/^psql:[^:]*:[0-9]*: NOTICE:  /  /' -e 's/^NOTICE:  /  /'
+  return "${PIPESTATUS[0]}"
+}
+run "$here/tests.sql"
+$P -d hmpub -1 -f "$root/supabase/migrations/20261105090000_publishing_providers.sql"
+run "$here/providers.sql"

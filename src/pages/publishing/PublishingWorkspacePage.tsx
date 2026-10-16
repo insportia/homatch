@@ -20,7 +20,7 @@ import { EmptyState, OWNER_SURFACE, PageHero } from '@/components/customer/surfa
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { MediaWell, OWNER_PRIMARY, OWNER_SECONDARY } from '@/components/owner/portfolio';
-import { Kpi, ListingMark, PortalCapabilities, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
+import { Kpi, ListingMark, PortalCapabilities, PortalLogo, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
@@ -108,9 +108,10 @@ function Workspace() {
       ) : null}
 
       {/* HOW PUBLISHING WORKS — stated up front, because the question owners asked
-          was "where do I connect my MyHome / SS.ge account?". The honest answer is
-          that neither portal offers account linking, so there is no Connect button:
-          the owner signs in on the portal itself and HOMATCH verifies the result. */}
+          was "where do I connect my portal account?". The honest answer is that none
+          of the eight portals offers account linking, so there is no Connect button:
+          the owner signs in on the portal itself and HOMATCH verifies the result.
+          The eight portals show as a logo strip; their capabilities open on request. */}
       <section aria-labelledby="pubw-how" className="min-w-0 space-y-3 rounded-2xl border border-border bg-[hsl(var(--card))] p-4 shadow-card sm:p-5">
         <div className="space-y-1">
           <h2 id="pubw-how" className="font-display text-lg font-semibold text-foreground">{t('pubw_how_title')}</h2>
@@ -125,9 +126,18 @@ function Workspace() {
           ))}
         </ol>
         {state.portals.length ? (
-          <div className="grid gap-2 md:grid-cols-2">
-            {state.portals.map((portal) => <PortalCapabilities key={portal.id} portal={portal} />)}
-          </div>
+          <details className="group rounded-xl border border-border" data-testid="pubw-portal-strip">
+            <summary className="flex min-h-12 cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+              <span className="flex -space-x-1.5 rtl:space-x-reverse">
+                {state.portals.map((portal) => <PortalLogo key={portal.id} portal={portal} size="sm" className="ring-2 ring-[hsl(var(--card))]" />)}
+              </span>
+              <span className="min-w-0 flex-1 text-2xs font-semibold text-foreground">{t('pubw_portals_strip', { n: state.portals.length })}</span>
+              <span className="text-2xs font-semibold text-[hsl(var(--gold-ink))] group-open:hidden">{t('pubw_show_capabilities')}</span>
+            </summary>
+            <div className="grid gap-2 border-t border-border p-3 md:grid-cols-2">
+              {state.portals.map((portal) => <PortalCapabilities key={portal.id} portal={portal} />)}
+            </div>
+          </details>
         ) : null}
       </section>
 
@@ -226,10 +236,11 @@ function ListingRowView({ listing, property, pubs, portals, locale }: {
             {[where, d.price ? formatMoney(d.price, d.currency, locale) : null].filter(Boolean).join(' · ') || '—'}
           </p>
           <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
-            {portals.map((portal) => {
+            {portals.filter((portal) => d.portalTargets?.includes(portal.id) || pubs.some((p) => p.portal_id === portal.id)).map((portal) => {
               const pub = pubs.find((p) => p.portal_id === portal.id);
               return (
                 <span key={portal.id} className="inline-flex min-w-0 items-center gap-1.5">
+                  <PortalLogo portal={portal} size="sm" className="h-6 w-6 rounded-md" />
                   <span className="text-2xs font-semibold text-foreground">{portal.name}</span>
                   <PublicationMark status={pub?.status ?? null} />
                   {pub && isOutdated(pub, listing) ? <span className="text-2xs font-semibold text-amber-700">· {t('pubw_outdated_short')}</span> : null}

@@ -5,19 +5,36 @@
 // overview, the label a status wears, whether a portal copy is behind the listing, and
 // the first draft of a listing built from the owner's existing property.
 
-export type PortalId = 'myhome' | 'ssge';
-export type PublicationStatus =
-  | 'HANDOFF_READY' | 'VERIFYING' | 'PUBLISHED' | 'VERIFICATION_FAILED'
-  | 'UNPUBLISH_REQUESTED' | 'UNPUBLISHED' | 'REMOVED_EXTERNALLY';
+import { type Contact, type FooterLang, withFooter } from './contacts.ts';
 
+export type PortalId = 'myhome' | 'ssge' | 'placege' | 'homege' | 'brokeri' | 'korter' | 'binebi' | 'allhome';
+export type PublicationStatus =
+  | 'HANDOFF_READY' | 'VERIFYING' | 'PUBLISHED' | 'OWNER_CONFIRMED' | 'VERIFICATION_FAILED'
+  | 'UNPUBLISH_REQUESTED' | 'UNPUBLISHED' | 'REMOVED_EXTERNALLY';
+export type Verification = 'PAGE_CHECK' | 'OWNER_CONFIRMED';
+
+/** One portal as the server describes it (publishing-engine/domain.ts publicRegistry). */
 export interface PortalInfo {
   id: PortalId;
   name: string;
   domains: string[];
+  siteUrl: string;
   createUrl: string;
+  /** false: no confirmed create-listing URL, so createUrl is the portal's home page. */
+  createUrlVerified: boolean;
+  logoUrl: string | null;
+  color: string;
+  enabled: boolean;
   maxPhotos: number | null;
+  descriptionMax: number | null;
+  requiredFields: string[];
+  verification: Verification;
+  verificationNote: string | null;
+  capabilities: {
+    accountConnection: false; apiPublishing: false; apiUpdate: false; apiDelete: false; importListing: false;
+    manualHandoff: true; verification: Verification;
+  };
   publishing: 'MANUAL_HANDOFF';
-  verification: 'PUBLIC_PAGE_CHECK';
 }
 
 export interface ListingDraft {
@@ -41,7 +58,8 @@ export interface ListingDraft {
   amenities: string[];
   photos: string[];
   contactName: string;
-  contactPhone: string;
+  /** Up to three numbers. Call is implied by a valid number; WhatsApp / Viber only when switched on. */
+  contacts: Contact[];
   portalTargets: PortalId[];
 }
 
@@ -97,7 +115,7 @@ export const CONDITIONS = ['NEW', 'GOOD', 'NEEDS_RENOVATION', 'UNDER_CONSTRUCTIO
 export type Tone = 'live' | 'pending' | 'problem' | 'quiet';
 export function toneOf(status: PublicationStatus | null): Tone {
   switch (status) {
-    case 'PUBLISHED': return 'live';
+    case 'PUBLISHED': case 'OWNER_CONFIRMED': return 'live';
     case 'HANDOFF_READY': case 'VERIFYING': case 'UNPUBLISH_REQUESTED': return 'pending';
     case 'VERIFICATION_FAILED': case 'REMOVED_EXTERNALLY': return 'problem';
     default: return 'quiet';
@@ -106,7 +124,7 @@ export function toneOf(status: PublicationStatus | null): Tone {
 
 /** The portal copy was published from an older listing version and the owner has edited since. */
 export function isOutdated(p: PublicationRow, listing: Pick<ListingRow, 'version'>): boolean {
-  return p.status === 'PUBLISHED' && p.listing_version != null && p.listing_version < listing.version;
+  return (p.status === 'PUBLISHED' || p.status === 'OWNER_CONFIRMED') && p.listing_version != null && p.listing_version < listing.version;
 }
 
 export function needsAttention(listing: ListingRow, pubs: PublicationRow[]): boolean {
@@ -121,7 +139,7 @@ export function matchesFilter(filter: ListingFilter, listing: ListingRow, pubs: 
   if (listing.archived_at) return false;
   switch (filter) {
     case 'DRAFT': return !listing.validation.ready;
-    case 'PUBLISHED': return pubs.some((p) => p.status === 'PUBLISHED');
+    case 'PUBLISHED': return pubs.some((p) => toneOf(p.status) === 'live');
     case 'PENDING': return pubs.some((p) => toneOf(p.status) === 'pending');
     case 'ATTENTION': return needsAttention(listing, pubs);
     default: return true;
@@ -146,7 +164,7 @@ export function overview(listings: ListingRow[], pubs: PublicationRow[]): Overvi
   return {
     total: live.length,
     drafts: live.filter((l) => !l.validation.ready).length,
-    active: livePubs.filter((p) => p.status === 'PUBLISHED').length,
+    active: livePubs.filter((p) => toneOf(p.status) === 'live').length,
     pending: livePubs.filter((p) => toneOf(p.status) === 'pending').length,
     failed: livePubs.filter((p) => toneOf(p.status) === 'problem').length,
     attention: live.filter((l) => needsAttention(l, by.get(l.id) ?? [])).length,
@@ -171,7 +189,6 @@ interface SourceProperty {
   title?: string | null;
   property_type?: string | null;
   transaction_type?: string | null;
-  contact_phone_e164?: string | null;
   facts?: object | null;
   photos?: Array<{ id: string; is_cover?: boolean; display_order?: number | null }> | null;
 }
@@ -213,43 +230,90 @@ export function draftFromProperty(p: SourceProperty, contactName: string): Listi
     amenities,
     photos,
     contactName: s(contactName),
-    contactPhone: s(p.contact_phone_e164),
-    portalTargets: ['myhome', 'ssge'],
+    // Numbers are never copied in silently: the editor OFFERS the property's
+    // number and the owner adds it with one tap (a listing's numbers go public).
+    contacts: [],
+    portalTargets: [],
   };
 }
 
-/** The plain-text block an owner pastes into a portal's description field. */
-export function handoffText(d: ListingDraft, lang: 'ka' | 'en' | 'ru'): string {
-  const body = d.description[lang] || d.description.ka || d.description.en || d.description.ru;
-  return [d.title, '', body].join('\n').trim();
+/** The language a portal copy is made in: the first description that exists. */
+export function copyLanguage(d: Pick<ListingDraft, 'description'>): FooterLang {
+  return d.description.ka ? 'ka' : d.description.en ? 'en' : d.description.ru ? 'ru' : 'ka';
+}
+
+/** The description a portal receives: the owner's text + the contact footer, exactly once. */
+export function portalDescription(d: Pick<ListingDraft, 'description' | 'contacts'>, lang: FooterLang = copyLanguage(d)): string {
+  return withFooter(d.description[lang] || '', d.contacts, lang);
+}
+
+/** The plain-text block an owner pastes into a portal: title, then the description with its footer. */
+export function handoffText(d: ListingDraft, lang: FooterLang = copyLanguage(d)): string {
+  return [d.title, '', portalDescription(d, lang)].join('\n').trim();
+}
+
+/* ── Required and optional ───────────────────────────────────────────────
+ * Mirrors the server's baseline (domain.ts validateListing): what HOMATCH needs
+ * for any listing. Everything else is optional unless a SELECTED portal's
+ * configured rules require it — and then the form names that portal. */
+export const BASELINE_REQUIRED = ['title', 'description', 'propertyType', 'dealType', 'price', 'city', 'contacts'] as const;
+
+/** field → the selected portals that require it (empty: HOMATCH itself requires it, or nobody does). */
+export function requiredBy(portals: PortalInfo[], targets: PortalId[]): Map<string, PortalInfo[]> {
+  const m = new Map<string, PortalInfo[]>();
+  for (const p of portals) {
+    if (!targets.includes(p.id)) continue;
+    for (const f of p.requiredFields) m.set(f, [...(m.get(f) ?? []), p]);
+  }
+  return m;
+}
+
+export function isRequired(field: string, rules: Map<string, PortalInfo[]>): boolean {
+  return (BASELINE_REQUIRED as readonly string[]).includes(field) || rules.has(field)
+    || (field === 'description' && [...rules.keys()].some((k) => k.startsWith('description.')));
 }
 
 /* ── The guided journey ──────────────────────────────────────────────────
- * Eight steps, each DONE only when the server's own state says so. A step is
- * never ticked because a button was clicked: "published" needs a publication the
- * server verified on the portal's public page.
+ * The fourteen steps of a manual handoff, each DONE only when the server's own
+ * state proves it. Steps the server cannot observe (opening the portal, signing
+ * in, copying, publishing there, coming back) are ticked only by their outcome:
+ * a listing URL pasted back. "Verified" needs a publication the server checked
+ * on the portal's public page — or, on a portal HOMATCH may not fetch, the
+ * owner's explicit confirmation, which is labelled as such everywhere.
  */
-export const JOURNEY = ['select', 'review', 'media', 'portal', 'open', 'publish', 'link', 'verified'] as const;
+export const JOURNEY = [
+  'select', 'required', 'phones', 'description', 'photos', 'portal', 'open',
+  'signin', 'copy', 'publish', 'return', 'paste', 'verify', 'track',
+] as const;
 export type JourneyStep = typeof JOURNEY[number];
 export type StepState = 'done' | 'current' | 'todo';
 
 export function journey(input: {
   saved: boolean;
   validation: Validation | null;
-  draft: Pick<ListingDraft, 'photos' | 'description' | 'portalTargets'>;
+  draft: Pick<ListingDraft, 'photos' | 'description' | 'portalTargets' | 'contacts'>;
   publications: Pick<PublicationRow, 'status' | 'external_url'>[];
 }): Record<JourneyStep, StepState> {
   const { saved, validation, draft, publications } = input;
-  const media = draft.photos.length > 0 && !!(draft.description.ka || draft.description.en || draft.description.ru);
+  const listingProblems = validation?.listing ?? [];
+  const prepared = publications.length > 0;
+  const linked = publications.some((p) => !!p.external_url);
+  const verified = publications.some((p) => p.status === 'PUBLISHED' || p.status === 'OWNER_CONFIRMED');
   const done: Record<JourneyStep, boolean> = {
     select: true,
-    review: saved && !!validation && validation.listing.filter((p) => p.field !== 'photos' && p.field !== 'description').length === 0,
-    media: saved && media,
-    portal: draft.portalTargets.length > 0 && publications.length > 0,
-    open: publications.length > 0,
-    publish: publications.some((p) => !!p.external_url),
-    link: publications.some((p) => !!p.external_url),
-    verified: publications.some((p) => p.status === 'PUBLISHED'),
+    required: saved && !!validation && listingProblems.filter((p) => !p.field.startsWith('contacts') && p.field !== 'description').length === 0,
+    phones: saved && draft.contacts.length > 0 && !listingProblems.some((p) => p.field.startsWith('contacts')),
+    description: saved && !!(draft.description.ka || draft.description.en || draft.description.ru),
+    photos: saved && draft.photos.length > 0,
+    portal: draft.portalTargets.length > 0 && prepared,
+    open: prepared && linked,
+    signin: linked,
+    copy: linked,
+    publish: linked,
+    return: linked,
+    paste: linked,
+    verify: verified,
+    track: verified,
   };
   const out = {} as Record<JourneyStep, StepState>;
   let current = false;

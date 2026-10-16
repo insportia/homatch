@@ -9,9 +9,14 @@
 //     six locales; the TOP BAR carries no publishing control; My Properties' header has none
 //   * the property detail page embeds no publishing UI, only a link to /publishing/<id>
 //   * the legacy /property/publish redirects to /publishing
-//   * journey: empty workspace → choose a property → prefilled draft → save → preview →
-//     prepare MyHome.ge → paste URL → PUBLISHED (live page) while SS.ge stays pending
-//     (portal blocked the check) → refresh keeps it → back/forward between tabs
+//   * journey: empty workspace (eight portals, no Connect) → choose a property → prefilled
+//     draft (optional details collapsed, bathrooms not required) → the property's number
+//     offered, never copied → WhatsApp by explicit choice → contact footer once →
+//     multi-portal selection → MyHome.ge PUBLISHED (live page), SS.ge pending (blocked),
+//     Korter.ge OWNER_CONFIRMED by explicit statement with no page fetched → refresh →
+//     back/forward → overview counts
+//   * admin: Integrations → Property portals, eight cards, a portal's settings saved and
+//     audited, test connection answers with the capability it lacks
 //   * 320 / 375 / 390 / 430 in ka, en and ar/he: no horizontal overflow; ar/he are RTL
 
 import test from 'node:test';
@@ -21,8 +26,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import {
-  classifyCheck, normalizeListing, parseExternalUrl, portalById, publicRegistry, transition, validateListing,
+  classifyCheck, normalizeListing, parseExternalUrl, publicRegistry, transition, validateListing,
 } from '../../supabase/functions/publishing-engine/domain.ts';
+import { adapterFor, configs, sanitizePatch, profileById } from '../../supabase/functions/publishing-engine/providers.ts';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -67,12 +73,13 @@ function fakeSession() {
     user: { id: 'u1', aud: 'authenticated', role: 'authenticated', email: 'owner@example.test', app_metadata: { provider: 'email' }, user_metadata: {}, created_at: new Date().toISOString() },
   };
 }
-const profile = { id: 'u1', auth_id: 'u1', email: 'owner@example.test', is_admin: false, role: 'user', preferred_language: 'en', full_name: 'Nino Owner', plan: 'FREE', account_type: 'OWNER', created_at: new Date().toISOString() };
+const ownerProfile = { id: 'u1', auth_id: 'u1', email: 'owner@example.test', is_admin: false, role: 'user', preferred_language: 'en', full_name: 'Nino Owner', plan: 'FREE', account_type: 'OWNER', created_at: new Date().toISOString() };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAFCAYAAAB4ka1VAAAAHUlEQVR42mNk+M9Qz0AEYBxVSF+FAP5FDvcfRYWgAAAAAElFTkSuQmCC', 'base64');
 const PID = 'c5c1a6a4-6fed-4764-91c2-3cd7ad090407';
 const PHOTO = '6f2b8a1e-3c4d-4e5f-8a9b-0c1d2e3f4a5b';
 const MYHOME_URL = 'https://www.myhome.ge/ka/pr/25805378/iyideba-3-otaxiani-bina';
 const SSGE_URL = 'https://home.ss.ge/ka/udzravi-qoneba/iyideba-3-otaxiani-bina-krwanisshi-31234567';
+const KORTER_URL = 'https://korter.ge/ka/krtsanisi-residence/4521';
 
 const photoRow = { id: PHOTO, property_id: PID, storage_path: 'users/u1/property-photos/cover.png', is_cover: true, display_order: 0, visibility: 'PRIVATE', created_at: '2026-09-01T00:00:00Z' };
 const propertyRow = {
@@ -84,12 +91,14 @@ const propertyRow = {
   photos: [photoRow], search_profile: null, import: [],
 };
 
-/* The server, in memory: the real domain, the same response shapes as index.ts. */
+/* The server, in memory: the real domain and providers, the same response shapes as index.ts. */
 function publishingServer() {
-  const db = { listing: null, pubs: new Map(), events: [] };
+  const db = { listing: null, pubs: new Map(), events: [], rows: [], audit: [], fetched: [] };
+  const providers = () => configs(db.rows);
+  const provider = (id) => providers().find((c) => c.id === id) ?? null;
   const event = (kind, portal = null, detail = {}) => db.events.unshift({ id: db.events.length + 1, kind, portal_id: portal, from_status: null, to_status: null, detail, created_at: new Date().toISOString() });
-  const listingOut = () => db.listing && ({ ...db.listing, validation: validateListing(normalizeListing(db.listing.payload)) });
-  const detail = () => ({ listing: listingOut(), publications: [...db.pubs.values()], events: db.events });
+  const listingOut = () => db.listing && ({ ...db.listing, validation: validateListing(normalizeListing(db.listing.payload), providers()) });
+  const detail = () => ({ portals: publicRegistry(providers()), listing: listingOut(), publications: [...db.pubs.values()], events: db.events });
   const write = (portal, cmd) => {
     const current = db.pubs.get(portal) ?? null;
     const next = transition(current, cmd, new Date());
@@ -99,22 +108,41 @@ function publishingServer() {
     event(next.kind, portal, next.detail ?? {});
     return null;
   };
-  const page = (url) => (url.startsWith('https://www.myhome.ge/') ? { status: 200, body: '<script>{"statement_id":25805378}</script>' } : { status: 403 });
+  const page = (url) => {
+    db.fetched.push(url);
+    return url.startsWith('https://www.myhome.ge/') ? { status: 200, body: '<script>{"statement_id":25805378}</script>' } : { status: 403 };
+  };
   return {
     db,
     handle(body) {
       const { action } = body;
-      if (action === 'workspace') return [200, { portals: publicRegistry(), listings: db.listing ? [listingOut()] : [], publications: [...db.pubs.values()] }];
+      if (action === 'workspace') return [200, { portals: publicRegistry(providers()), listings: db.listing ? [listingOut()] : [], publications: [...db.pubs.values()] }];
       if (action === 'listing.get') return db.listing ? [200, detail()] : [404, { code: 'LISTING_NOT_FOUND' }];
       if (action === 'listing.save') {
         if ((db.listing?.version ?? 0) !== body.version) return [409, { code: 'VERSION_CONFLICT' }];
         const payload = normalizeListing(body.listing);
-        const ready = validateListing(payload).ready;
+        const ready = validateListing(payload, providers()).ready;
         db.listing = { id: PID, version: (db.listing?.version ?? 0) + 1, status: ready ? 'READY' : 'DRAFT', payload, archived_at: null, created_at: db.listing?.created_at ?? new Date().toISOString(), updated_at: new Date().toISOString() };
         event('LISTING_SAVED');
         return [200, detail()];
       }
-      const portal = portalById(body.portalId);
+      if (action === 'provider.operation') return [409, adapterFor(provider(body.portalId)).run(body.operation)];
+      if (action === 'admin.providers') {
+        const stats = {};
+        for (const p of db.pubs.values()) (stats[p.portal_id] ??= {})[p.status] = ((stats[p.portal_id] ?? {})[p.status] ?? 0) + 1;
+        return [200, { providers: providers().map((c) => ({ ...publicRegistry([c])[0], sort: c.sort, evidence: c.evidence, health: c.health, stats: stats[c.id] ?? {}, configured: true })), audit: db.audit, fieldKeys: ['area', 'rooms', 'bedrooms', 'bathrooms', 'photos', 'description.ka'] }];
+      }
+      if (action === 'admin.publications') return [200, { publications: [...db.pubs.values()].filter((p) => p.portal_id === body.portalId) }];
+      if (action === 'admin.provider.update') {
+        const clean = sanitizePatch(profileById(body.providerId), body.patch ?? {});
+        if (clean.error) return [400, { code: clean.error }];
+        const before = db.rows.find((r) => r.id === body.providerId) ?? { id: body.providerId, enabled: true, sort: 0, create_url: null, logo_url: null, verification: null, max_photos: null, description_max: null, required_fields: [] };
+        const after = { ...before, ...clean.patch };
+        db.rows = [...db.rows.filter((r) => r.id !== body.providerId), after];
+        db.audit.unshift({ id: db.audit.length + 1, provider_id: body.providerId, action: 'UPDATE', before, after, created_at: new Date().toISOString() });
+        return [200, { ok: true }];
+      }
+      const portal = provider(body.portalId);
       if (!db.listing || !portal) return [400, { code: 'LISTING_NOT_FOUND' }];
       if (action === 'publication.prepare') {
         const err = write(portal.id, { type: 'PREPARE', listingVersion: db.listing.version });
@@ -126,14 +154,20 @@ function publishingServer() {
         return write(portal.id, { type: 'CHECK', outcome });
       };
       if (action === 'publication.link') {
-        const parsed = parseExternalUrl(portal.id, body.externalUrl);
+        const parsed = parseExternalUrl(portal, body.externalUrl);
         if (parsed.error) return [400, { code: parsed.error }];
+        if (portal.verification === 'OWNER_CONFIRMED') {
+          if (body.attest !== true) return [400, { code: 'ATTESTATION_REQUIRED' }];
+          const err = write(portal.id, { type: 'LINK', url: parsed.url, externalId: parsed.externalId, listingVersion: db.listing.version, verification: 'OWNER_CONFIRMED' });
+          return err ? [400, { code: err }] : [200, detail()];
+        }
         const err = write(portal.id, { type: 'LINK', url: parsed.url, externalId: parsed.externalId, listingVersion: db.listing.version });
         if (err) return [400, { code: err }];
         check();
         return [200, detail()];
       }
       if (action === 'publication.check') {
+        if (portal.verification !== 'PAGE_CHECK') return [400, { code: 'CHECK_NOT_AVAILABLE' }];
         const err = check();
         return err ? [err === 'CHECK_TOO_SOON' ? 429 : 400, { code: err, retryAt: db.pubs.get(portal.id)?.next_check_at }] : [200, detail()];
       }
@@ -142,7 +176,7 @@ function publishingServer() {
   };
 }
 
-async function boot(t, { width = 1440, height = 900, lang = 'en', route = '/publishing', server = publishingServer() } = {}) {
+async function boot(t, { width = 1440, height = 900, lang = 'en', route = '/publishing', server = publishingServer(), profile = ownerProfile } = {}) {
   const { chromium } = resolvePlaywright();
   const preview = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -244,76 +278,122 @@ test('the legacy /property/publish path lands in the new workspace', opts, async
   assert.equal(await page.locator('iframe').count(), 0);
 });
 
-test('journey: choose → prefilled draft → save → preview → MyHome PUBLISHED, SS.ge pending → refresh → back/forward', opts, async (t) => {
+test('journey: eight portals → prefilled draft → numbers and footer → MyHome PUBLISHED, SS.ge pending, Korter owner-confirmed → refresh → back/forward', opts, async (t) => {
   for (const width of [1440, 390]) {
     await t.test(`@${width}`, async (tt) => {
       const { page, server, calls } = await boot(tt, { width });
       await page.getByText('No listings yet').waitFor({ timeout: 20000 });
-      /* The honest capability statement is the first thing explained: no account
-         connection, no automatic publishing, HOMATCH verifies the public page. */
+      /* The honest capability statement comes first: eight portals, no account
+         connection, no automatic publishing; capabilities open on request. */
       await page.getByRole('heading', { name: 'How publishing works' }).waitFor();
-      for (const id of ['myhome', 'ssge']) {
-        const card = page.getByTestId(`pubw-capabilities-${id}`);
-        await card.waitFor();
-        const text = await card.innerText();
-        assert.match(text, /Not offered by (MyHome\.ge|SS\.ge)/);
-        assert.match(text, /Not available — you post the listing yourself/);
-        assert.match(text, /HOMATCH checks the public listing page/);
+      const strip = page.getByTestId('pubw-portal-strip');
+      assert.match(await strip.innerText(), /8 portals/);
+      await strip.locator('summary').click();
+      for (const id of ['myhome', 'ssge', 'placege', 'homege', 'brokeri', 'korter', 'binebi', 'allhome']) {
+        const text = await page.getByTestId(`pubw-capabilities-${id}`).innerText();
+        assert.match(text, /Not offered by/, id);
+        assert.match(text, /Not available — you post the listing yourself/, id);
+        assert.match(text, id === 'korter' || id === 'binebi' ? /You confirm it — .* does not allow automated checks/ : /HOMATCH checks the public listing page/, id);
       }
       assert.equal(await page.getByRole('button', { name: /^connect/i }).count(), 0, 'no fake Connect button');
       await page.getByRole('link', { name: 'Publish a property' }).first().click();
       await page.waitForURL('**/publishing/new');
       await page.getByRole('link', { name: /იყიდება 3 ოთახიანი/ }).click();
       await page.waitForURL(`**/publishing/${PID}`);
-      /* Prefilled from the property: nothing retyped. */
-      const title = page.getByLabel('Listing title');
+      /* Prefilled from the property: nothing retyped. Optional details are collapsed. */
+      const title = page.getByLabel(/^Listing title/);
       await title.waitFor({ timeout: 20000 });
       assert.equal(await title.inputValue(), propertyRow.title);
-      assert.equal(await page.getByLabel('Price', { exact: true }).inputValue(), '213840');
-      assert.equal(await page.getByLabel('Street').inputValue(), 'Kazbegi Ave 12');
-      /* The guided journey: property done, details next; nothing claims publication. */
+      assert.equal(await page.getByLabel(/^Price/).first().inputValue(), '213840');
+      const optional = page.getByTestId('pubw-optional');
+      assert.equal(await optional.getAttribute('open'), null, 'optional details start collapsed');
+      await optional.locator('summary').click();
+      assert.equal(await page.getByLabel('Street', { exact: true }).inputValue(), 'Kazbegi Ave 12');
+      assert.equal(await page.getByLabel('Bathrooms', { exact: true }).inputValue(), '2');
+      assert.equal(await page.getByLabel('Bathrooms', { exact: true }).getAttribute('aria-required'), 'false', 'bathrooms are optional');
+      /* Fourteen steps: property done, required fields next; nothing claims publication. */
       const steps = page.getByRole('navigation', { name: 'Your publishing steps' });
-      await steps.waitFor();
+      assert.equal(await steps.locator('li').count(), 14);
       assert.equal(await steps.locator('[data-state="done"]').count(), 1);
-      assert.equal(await steps.locator('[aria-current="step"]').innerText().then((s) => s.includes('Details')), true);
+      assert.ok((await steps.locator('[aria-current="step"]').innerText()).includes('Required fields'));
       assert.ok(await noOverflow(page), `editor @${width}`);
       await shot(page, `editor-${width}`);
-      /* A missing required field blocks readiness but not a draft save. */
-      await page.getByLabel('Contact name').fill('');
+      /* The property's number is OFFERED, never copied in: saving now is a draft. */
+      assert.equal(await page.getByTestId('pubw-contact-0').count(), 0);
       await page.getByRole('button', { name: 'Save draft' }).click();
       await page.getByText('Draft saved').first().waitFor();
       assert.equal(server.db.listing.status, 'DRAFT');
-      await page.getByLabel('Contact name').fill('Nino');
+      assert.deepEqual(server.db.listing.payload.contacts, []);
+      await page.getByTestId('pubw-contact-use-property').click();
+      const contact = page.getByTestId('pubw-contact-0');
+      assert.equal(await contact.getByRole('button', { name: 'Call' }).getAttribute('aria-pressed'), 'true', 'call is on for a valid number');
+      assert.equal(await contact.getByRole('button', { name: 'WhatsApp' }).getAttribute('aria-pressed'), 'false', 'WhatsApp is never assumed');
+      assert.equal(await contact.getByRole('button', { name: 'Viber' }).getAttribute('aria-pressed'), 'false');
+      await contact.getByRole('button', { name: 'WhatsApp' }).click();
+      assert.equal(await page.getByTestId('pubw-contact-links-0').locator('a[href="https://wa.me/995555123456"]').count(), 1);
+      assert.equal(await page.getByTestId('pubw-contact-links-0').locator('a[href="tel:+995555123456"]').count(), 1);
+      /* A second number, typed the Georgian way, normalised on blur. */
+      await page.getByTestId('pubw-contact-add').click();
+      const second = page.getByTestId('pubw-contact-1').getByRole('textbox');
+      await second.fill('599 12 34 56');
+      await second.blur();
+      await page.getByTestId('pubw-contact-1').getByRole('button', { name: 'Viber' }).click();
+      const footer = await page.getByTestId('pubw-footer-preview').innerText();
+      assert.match(footer, /დაგვიკავშირდით მხოლოდ მითითებულ ნომრებზე:/);
+      assert.match(footer, /📞 \+995 555 12 34 56\n📱 WhatsApp\n📞 \+995 599 12 34 56\n📱 Viber/);
+      /* Several portals at once. */
+      for (const id of ['myhome', 'ssge', 'korter']) await page.getByTestId(`pubw-pick-${id}`).click();
       await page.getByRole('button', { name: 'Save draft' }).click();
       await page.getByText('Saved — ready to publish').first().waitFor();
       assert.equal(server.db.listing.status, 'READY');
-      assert.equal(server.db.listing.version, 2);
-      /* Preview. */
+      assert.deepEqual(server.db.listing.payload.contacts, [{ phone: '+995555123456', whatsapp: true, viber: false }, { phone: '+995599123456', whatsapp: false, viber: true }]);
+      assert.deepEqual(server.db.listing.payload.portalTargets, ['myhome', 'ssge', 'korter']);
+      assert.equal(server.db.listing.payload.description.ka.includes('დაგვიკავშირდით'), false, 'the footer is never stored in the description');
+      /* Preview: the description carries the footer exactly once; contact links are real. */
       await page.getByRole('tab', { name: 'Preview' }).click();
-      await page.getByText('Preview of the portal-ready listing', { exact: false }).waitFor();
+      const desc = await page.getByTestId('pubw-preview-description').innerText();
+      assert.equal((desc.match(/დაგვიკავშირდით/g) ?? []).length, 1);
+      assert.equal(await page.getByTestId('pubw-preview-contacts').locator('a[href^="viber://chat?number=%2B995599123456"]').count(), 1);
       assert.ok(await noOverflow(page), `preview @${width}`);
       await shot(page, `preview-${width}`);
-      /* Portals: prepare MyHome, link, verified. */
+      /* Portals: only the chosen three are cards; the other five wait below. */
       await page.getByRole('tab', { name: 'Portals' }).click();
+      await page.getByText('Other portals (5)').waitFor();
+      assert.equal(await page.locator('[id^="pubw-portal-"]').count(), 3);
       await page.getByRole('button', { name: 'Prepare for MyHome.ge' }).click();
       await page.getByRole('link', { name: 'Open MyHome.ge' }).waitFor();
       assert.equal(await page.getByRole('link', { name: 'Open MyHome.ge' }).getAttribute('target'), '_blank');
-      await page.getByLabel('Publication URL').first().fill('https://evil.example/pr/25805378');
-      await page.getByRole('button', { name: 'Verify' }).first().click();
+      const myhome = page.locator('#pubw-portal-myhome');
+      await myhome.getByRole('button', { name: 'Description', exact: true }).click();
+      const copied = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      if (copied !== null) assert.equal((copied.match(/📞/g) ?? []).length, 2, 'the copy carries each number once');
+      await myhome.getByLabel('Publication URL').fill('https://evil.example/pr/25805378');
+      await myhome.getByRole('button', { name: 'Verify' }).click();
       await page.getByText('This link is not on this portal’s website.').first().waitFor();
-      await page.getByLabel('Publication URL').first().fill(MYHOME_URL);
-      await page.getByRole('button', { name: 'Verify' }).first().click();
-      await page.getByText('Published · verified').first().waitFor({ timeout: 20000 });
+      await myhome.getByLabel('Publication URL').fill(MYHOME_URL);
+      await myhome.getByRole('button', { name: 'Verify' }).click();
+      await myhome.getByText('Published · verified').first().waitFor({ timeout: 20000 });
       assert.equal(server.db.pubs.get('myhome').status, 'PUBLISHED');
-      assert.equal(await steps.locator('[data-state="done"]').count(), 8, 'every step done once MyHome is verified');
+      assert.equal(await steps.locator('[data-state="done"]').count(), 14, 'every step done once MyHome is verified');
       /* SS.ge: the portal blocks the automated check → pending, never PUBLISHED. */
-      await page.getByRole('button', { name: 'Prepare for SS.ge' }).click();
-      await page.getByLabel('Publication URL').last().fill(SSGE_URL);
-      await page.getByRole('button', { name: 'Verify' }).last().click();
-      await page.getByText('Checking publication').first().waitFor({ timeout: 20000 });
+      const ssge = page.locator('#pubw-portal-ssge');
+      await ssge.getByRole('button', { name: 'Prepare for SS.ge' }).click();
+      await ssge.getByLabel('Publication URL').fill(SSGE_URL);
+      await ssge.getByRole('button', { name: 'Verify' }).click();
+      await ssge.getByText('Checking publication').first().waitFor({ timeout: 20000 });
       assert.equal(server.db.pubs.get('ssge').status, 'VERIFYING');
       assert.equal(server.db.pubs.get('myhome').status, 'PUBLISHED', 'partial success keeps the successful portal');
-      await page.getByText('The portal blocked the automatic check', { exact: false }).first().waitFor();
+      /* Korter.ge: automated checks are off, so the owner's explicit statement is required. */
+      const korter = page.locator('#pubw-portal-korter');
+      await korter.getByRole('button', { name: 'Prepare for Korter.ge' }).click();
+      await korter.getByLabel('Publication URL').fill(KORTER_URL);
+      assert.equal(await korter.getByRole('button', { name: 'Confirm' }).isDisabled(), true, 'no confirmation, no submit');
+      await page.getByTestId('pubw-attest-korter').check();
+      await korter.getByRole('button', { name: 'Confirm' }).click();
+      await korter.getByText('Published · confirmed by you').first().waitFor({ timeout: 20000 });
+      assert.equal(server.db.pubs.get('korter').status, 'OWNER_CONFIRMED');
+      assert.equal(server.db.fetched.some((u) => u.includes('korter.ge')), false, 'HOMATCH never fetched a Korter page');
+      assert.equal(await korter.getByRole('button', { name: /Check now|Sync/ }).count(), 0, 'no check button where checks are not allowed');
       assert.ok(await noOverflow(page), `portals @${width}`);
       await shot(page, `portals-${width}`);
       /* Refresh: the state comes back from the server, on the same tab. */
@@ -329,10 +409,48 @@ test('journey: choose → prefilled draft → save → preview → MyHome PUBLIS
       await page.goto(`${BASE}/publishing`);
       await page.locator(`main a[href="/publishing/${PID}"]`).first().waitFor({ timeout: 20000 });
       const kpi = async (label) => Number((await page.getByRole('button', { name: new RegExp(label) }).first().innerText()).match(/\d+/)[0]);
-      assert.equal(await kpi('Active publications'), 1);
+      assert.equal(await kpi('Active publications'), 2, 'MyHome verified + Korter confirmed');
       assert.equal(await kpi('Awaiting publication'), 1);
       await shot(page, `workspace-${width}`);
       assert.ok(calls.includes('publication.link'));
+    });
+  }
+});
+
+test('admin: Integrations → Property portals — eight portals, settings saved and audited, honest test connection', opts, async (t) => {
+  for (const width of [1440, 390]) {
+    await t.test(`@${width}`, async (tt) => {
+      const { page, server } = await boot(tt, { width, route: '/admin/integrations/portals', profile: { ...ownerProfile, is_admin: true } });
+      await page.getByTestId('admin-portals').waitFor({ timeout: 20000 });
+      for (const id of ['myhome', 'ssge', 'placege', 'homege', 'brokeri', 'korter', 'binebi', 'allhome']) await page.getByTestId(`admin-portal-${id}`).waitFor();
+      assert.match(await page.getByTestId('admin-portals').innerText(), /No portal offers one/);
+      assert.equal(await page.getByRole('button', { name: /^connect/i }).count(), 0);
+      assert.ok(await noOverflow(page), `admin overview @${width}`);
+      await shot(page, `admin-portals-${width}`);
+      /* Korter: automated checks are locked off by its terms. */
+      await page.getByTestId('admin-portal-korter').click();
+      await page.getByTestId('admin-portal-page-korter').waitFor({ timeout: 20000 });
+      assert.equal(await page.getByLabel('How publication is confirmed').isDisabled(), true);
+      await page.getByTestId('admin-portal-test-connection').click();
+      await page.getByTestId('admin-portal-test-result').getByText('Not available: this portal offers no authorised connection or API.').waitFor();
+      /* Place.ge: require bathrooms, save — validated, applied, audited. */
+      await page.goto(`${BASE}/admin/integrations/portals/placege`);
+      await page.getByTestId('admin-portal-page-placege').waitFor({ timeout: 20000 });
+      await page.getByTestId('admin-field-bathrooms').click();
+      await page.getByTestId('admin-portal-create-url').fill('https://evil.example/add');
+      await page.getByTestId('admin-portal-save').click();
+      await page.getByText('The link must be https and on the portal’s own domain.').first().waitFor();
+      assert.equal(server.db.audit.length, 0, 'a refused change writes nothing');
+      await page.getByTestId('admin-portal-create-url').fill('https://place.ge/ge/ads/add');
+      await page.getByTestId('admin-portal-save').click();
+      await page.getByText('Settings saved').first().waitFor();
+      assert.deepEqual(server.db.rows.find((r) => r.id === 'placege').required_fields, ['bathrooms']);
+      assert.equal(server.db.audit.length, 1);
+      assert.ok(await noOverflow(page), `admin portal @${width}`);
+      await shot(page, `admin-portal-${width}`);
+      /* What an owner now sees: Place.ge names bathrooms as required. */
+      const owner = server.db;
+      assert.equal(validateListing(normalizeListing({ title: 't' }), configs(owner.rows)).portals.placege.some((p) => p.field === 'bathrooms'), true);
     });
   }
 });
@@ -342,9 +460,9 @@ test('phone widths 320/375/390/430: every publishing screen fits, ar/he right-to
     for (const width of [320, 375, 390, 430]) {
       await t.test(`${lang}@${width}`, async (tt) => {
         const server = publishingServer();
-        server.handle({ action: 'listing.save', version: 0, listing: { ...normalizeListing({ title: propertyRow.title, description: { ka: 'ბინა' }, propertyType: 'APARTMENT', dealType: 'SALE', price: 1, area: 1, city: 'Tbilisi', street: 'Kazbegi', contactName: 'N', contactPhone: '+995555123456', photos: [PHOTO], portalTargets: ['myhome', 'ssge'] }) } });
-        const { page } = await boot(tt, { lang, width, height: 800, server });
-        for (const route of ['/publishing', '/publishing/new', `/publishing/${PID}?tab=listing`, `/publishing/${PID}?tab=preview`, `/publishing/${PID}?tab=portals`]) {
+        server.handle({ action: 'listing.save', version: 0, listing: { ...normalizeListing({ title: propertyRow.title, description: { ka: 'ბინა' }, propertyType: 'APARTMENT', dealType: 'SALE', price: 1, area: 1, city: 'Tbilisi', street: 'Kazbegi', contactName: 'N', contacts: [{ phone: '+995555123456', whatsapp: true, viber: true }], photos: [PHOTO], portalTargets: ['myhome', 'ssge', 'korter'] }) } });
+        const { page } = await boot(tt, { lang, width, height: 800, server, profile: { ...ownerProfile, is_admin: true } });
+        for (const route of ['/publishing', '/publishing/new', `/publishing/${PID}?tab=listing`, `/publishing/${PID}?tab=preview`, `/publishing/${PID}?tab=portals`, ...(lang === 'en' || lang === 'he' ? ['/admin/integrations/portals', '/admin/integrations/portals/myhome'] : [])]) {
           await page.goto(`${BASE}${route}`);
           await page.getByRole('heading', { level: 1 }).first().waitFor({ timeout: 20000 });
           await page.waitForTimeout(150);

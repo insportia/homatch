@@ -32,7 +32,9 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import {
   StorageUnavailable, deleteObject, envReport, getObject, headObject, putObject, signedUrl,
 } from '../_shared/objectStore.ts';
-import { r2KeyFor, readRouted, removeRouted, signRouted, writeRouted } from '../_shared/storage/routed.ts';
+import {
+  ROUTED_BUCKETS, r2KeyFor, readRouted, removeRouted, signRouted, writeRouted,
+} from '../_shared/storage/routed.ts';
 
 declare const Deno: { env: { get(k: string): string | undefined } };
 
@@ -119,6 +121,71 @@ serve(async (req) => {
       .update({ lifecycle: 'DELETED', deleted_at: new Date().toISOString() })
       .eq('object_key', body.cleanupKey);
     return json({ cleaned: body.cleanupKey, still_exists: after.exists }, after.exists ? 500 : 200);
+  }
+
+
+  // ── Verify mode: what a REAL upload put into R2, read back and checked ──
+  // For objects under a routed bucket's namespace (a customer's actual upload
+  // after the bucket's switch moved to R2): GET the bytes from R2 and hash
+  // them, compare size and md5 with R2's HEAD and with the index row, fetch
+  // the object through a fresh signed URL (same sha256) and through the bare
+  // URL (must be refused). Nothing is changed except one thing the browser
+  // commit cannot record: an empty checksum_sha256 is filled in, and only
+  // when size and md5 already agree. The report holds hashes and sizes, never
+  // content and never a URL.
+  if (Array.isArray(body.verifyKeys)) {
+    const keys = body.verifyKeys.filter((k): k is string => typeof k === 'string').slice(0, 20);
+    const results: Record<string, unknown>[] = [];
+    const etagOf = (e: string | null | undefined) => (e ?? '').replace(/"/g, '').toLowerCase();
+    for (const k of keys) {
+      const ns = k.split('/')[0];
+      if (!(ROUTED_BUCKETS as readonly string[]).includes(ns) || k.split('/').some((s) => s === '' || s === '.' || s === '..')) {
+        results.push({ key: k, ok: false, error: 'NOT_A_ROUTED_KEY' });
+        continue;
+      }
+      const { data: idx } = await admin.from('storage_objects')
+        .select('lifecycle, byte_size, checksum_md5, checksum_sha256, owner_user_id, content_type, created_at')
+        .eq('object_key', k).maybeSingle();
+      const head = await headObject(k);
+      const res = await getObject(k);
+      const bytes = res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+      if (!res.ok) await res.body?.cancel();
+      const sha = bytes ? await sha256Hex(bytes) : null;
+      const signed = await signedUrl({ action: 'READ', key: k, expiresIn: 120 });
+      const viaSigned = await fetch(signed.url);
+      const signedSha = viaSigned.ok ? await sha256Hex(new Uint8Array(await viaSigned.arrayBuffer())) : null;
+      if (!viaSigned.ok) await viaSigned.body?.cancel();
+      const bare = new URL(signed.url);
+      bare.search = '';
+      const unsigned = await fetch(bare.toString());
+      await unsigned.body?.cancel();
+      const checks = {
+        indexed_active: idx?.lifecycle === 'ACTIVE',
+        size_matches: !!bytes && head.size === bytes.byteLength && idx?.byte_size === bytes.byteLength,
+        md5_index_matches_r2_etag: !!idx?.checksum_md5 && etagOf(idx.checksum_md5) === etagOf(head.etag),
+        sha256_matches_index: idx?.checksum_sha256 ? idx.checksum_sha256 === sha : null,
+        signed_read_200_same_sha256: viaSigned.status === 200 && signedSha === sha,
+        unsigned_read_refused: unsigned.status === 400 || unsigned.status === 403,
+      };
+      let sha256Recorded = false;
+      if (idx && !idx.checksum_sha256 && sha && checks.size_matches && checks.md5_index_matches_r2_etag) {
+        const now = new Date().toISOString();
+        const { error } = await admin.from('storage_objects')
+          .update({ checksum_sha256: sha, verified_at: now, updated_at: now })
+          .eq('object_key', k).is('checksum_sha256', null);
+        sha256Recorded = !error;
+      }
+      const ok = checks.indexed_active && checks.size_matches && checks.md5_index_matches_r2_etag
+        && checks.sha256_matches_index !== false && checks.signed_read_200_same_sha256 && checks.unsigned_read_refused;
+      results.push({
+        key: k, ok, bytes: bytes?.byteLength ?? null, sha256: sha, content_type: idx?.content_type ?? null,
+        owner_user_id: idx?.owner_user_id ?? null, uploaded_at: idx?.created_at ?? null,
+        signed_status: viaSigned.status, unsigned_status: unsigned.status, checks, sha256_recorded: sha256Recorded,
+      });
+    }
+    const report = { ok: results.length > 0 && results.every((r) => r.ok === true), mode: 'verify', results, finishedAt: new Date().toISOString() };
+    await admin.from('storage_proof_tickets').update({ result: report }).eq('id', ticket.id);
+    return json(report, report.ok ? 200 : 500);
   }
 
   const steps: Step[] = [];
@@ -334,46 +401,50 @@ serve(async (req) => {
     }
 
     // ── 12. Bucket-path routing (_shared/storage/routed.ts), end to end ──
-    // A tiny PNG written through writeRouted to R2 at meta-ads-media/<account>/
-    // must be confirmed, indexed ACTIVE, read back R2-first with the same
-    // sha256, signed, and removed from both stores. A second file that exists
-    // ONLY in Supabase Storage must be read through the Supabase fallback.
-    // Both live under the test account and are gone when the run ends.
+    // For EVERY routed bucket: a tiny PNG written through writeRouted to R2 at
+    // <bucket>/<account>/selftest/ must be confirmed, indexed ACTIVE, read back
+    // R2-first with the same sha256, signed, and removed from both stores. A
+    // second file that exists ONLY in Supabase Storage must be read through the
+    // Supabase fallback. All of them live under the test account's selftest/
+    // folder and are gone when the run ends. (Every routed bucket accepts PNG.)
     if (body.routed === true && accountId) {
       const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
-      const r2Path = `${accountId}/selftest/${crypto.randomUUID()}.png`;
-      const wrote = await writeRouted(admin, 'meta-ads-media', r2Path, png, 'image/png', { ownerUserId: accountId, target: 'R2' });
-      const { data: idx } = await admin.from('storage_objects').select('lifecycle, owner_user_id, checksum_sha256, byte_size')
-        .eq('object_key', r2KeyFor('meta-ads-media', r2Path)).maybeSingle();
-      const back = await readRouted(admin, 'meta-ads-media', r2Path);
-      const signedR2 = await signRouted(admin, 'meta-ads-media', r2Path, 120);
-      const fetched = signedR2 ? await fetch(signedR2.url) : null;
-      const fetchedSha = fetched?.ok ? await sha256Hex(new Uint8Array(await fetched.arrayBuffer())) : null;
       const srcSha = await sha256Hex(png);
-      record('12a_routed_write_to_r2_confirmed_and_indexed', !wrote.error && wrote.source === 'R2'
-        && idx?.lifecycle === 'ACTIVE' && idx?.owner_user_id === accountId && idx?.checksum_sha256 === srcSha && idx?.byte_size === png.byteLength, {
-        key: r2KeyFor('meta-ads-media', r2Path), error: wrote.error?.message ?? null, indexed: idx ?? null,
-      });
-      record('12b_routed_read_r2_first', back?.source === 'R2' && !!back && (await sha256Hex(back.bytes)) === srcSha, { source: back?.source ?? null });
-      record('12c_routed_signed_download', signedR2?.source === 'R2' && fetched?.status === 200 && fetchedSha === srcSha, {
-        source: signedR2?.source ?? null, status: fetched?.status ?? null, sha256_matches: fetchedSha === srcSha,
-      });
-      await removeRouted(admin, 'meta-ads-media', [r2Path]);
-      const goneR2 = await headObject(r2KeyFor('meta-ads-media', r2Path));
-      const { data: idxAfter } = await admin.from('storage_objects').select('lifecycle').eq('object_key', r2KeyFor('meta-ads-media', r2Path)).maybeSingle();
-      record('12d_routed_remove_confirmed', !goneR2.exists && idxAfter?.lifecycle === 'DELETED', { r2_exists: goneR2.exists, index: idxAfter?.lifecycle ?? null });
+      for (const bucket of ROUTED_BUCKETS) {
+        const r2Path = `${accountId}/selftest/${crypto.randomUUID()}.png`;
+        const r2Key = r2KeyFor(bucket, r2Path);
+        const wrote = await writeRouted(admin, bucket, r2Path, png, 'image/png', { ownerUserId: accountId, target: 'R2' });
+        const { data: idx } = await admin.from('storage_objects').select('lifecycle, owner_user_id, checksum_sha256, byte_size')
+          .eq('object_key', r2Key).maybeSingle();
+        const back = await readRouted(admin, bucket, r2Path);
+        const signedR2 = await signRouted(admin, bucket, r2Path, 120);
+        const fetched = signedR2 ? await fetch(signedR2.url) : null;
+        const fetchedSha = fetched?.ok ? await sha256Hex(new Uint8Array(await fetched.arrayBuffer())) : null;
+        record(`12a_${bucket}_routed_write_to_r2_confirmed_and_indexed`, !wrote.error && wrote.source === 'R2'
+          && idx?.lifecycle === 'ACTIVE' && idx?.owner_user_id === accountId && idx?.checksum_sha256 === srcSha && idx?.byte_size === png.byteLength, {
+          key: r2Key, error: wrote.error?.message ?? null, indexed: idx ?? null,
+        });
+        record(`12b_${bucket}_routed_read_r2_first`, back?.source === 'R2' && !!back && (await sha256Hex(back.bytes)) === srcSha, { source: back?.source ?? null });
+        record(`12c_${bucket}_routed_signed_download`, signedR2?.source === 'R2' && fetched?.status === 200 && fetchedSha === srcSha, {
+          source: signedR2?.source ?? null, status: fetched?.status ?? null, sha256_matches: fetchedSha === srcSha,
+        });
+        await removeRouted(admin, bucket, [r2Path]);
+        const goneR2 = await headObject(r2Key);
+        const { data: idxAfter } = await admin.from('storage_objects').select('lifecycle').eq('object_key', r2Key).maybeSingle();
+        record(`12d_${bucket}_routed_remove_confirmed`, !goneR2.exists && idxAfter?.lifecycle === 'DELETED', { r2_exists: goneR2.exists, index: idxAfter?.lifecycle ?? null });
 
-      const supaPath = `${accountId}/selftest/${crypto.randomUUID()}.png`;
-      const up = await admin.storage.from('meta-ads-media').upload(supaPath, png, { contentType: 'image/png', upsert: false });
-      const legacy = up.error ? null : await readRouted(admin, 'meta-ads-media', supaPath);
-      const legacySigned = up.error ? null : await signRouted(admin, 'meta-ads-media', supaPath, 120);
-      await removeRouted(admin, 'meta-ads-media', [supaPath]);
-      const { data: still } = await admin.storage.from('meta-ads-media').list(`${accountId}/selftest`, { search: supaPath.split('/').pop() });
-      record('12e_legacy_file_read_through_supabase_fallback', !up.error && legacy?.source === 'SUPABASE'
-        && legacySigned?.source === 'SUPABASE' && (still ?? []).length === 0, {
-        upload_error: up.error?.message ?? null, read_source: legacy?.source ?? null, signed_source: legacySigned?.source ?? null,
-        removed: (still ?? []).length === 0,
-      });
+        const supaPath = `${accountId}/selftest/${crypto.randomUUID()}.png`;
+        const up = await admin.storage.from(bucket).upload(supaPath, png, { contentType: 'image/png', upsert: false });
+        const legacy = up.error ? null : await readRouted(admin, bucket, supaPath);
+        const legacySigned = up.error ? null : await signRouted(admin, bucket, supaPath, 120);
+        await removeRouted(admin, bucket, [supaPath]);
+        const { data: still } = await admin.storage.from(bucket).list(`${accountId}/selftest`, { search: supaPath.split('/').pop() });
+        record(`12e_${bucket}_legacy_file_read_through_supabase_fallback`, !up.error && legacy?.source === 'SUPABASE'
+          && legacySigned?.source === 'SUPABASE' && (still ?? []).length === 0, {
+          upload_error: up.error?.message ?? null, read_source: legacy?.source ?? null, signed_source: legacySigned?.source ?? null,
+          removed: (still ?? []).length === 0,
+        });
+      }
     }
 
     // ── 11. One object left behind for a LIVE anonymous read ────────────

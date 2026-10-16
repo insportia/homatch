@@ -127,6 +127,13 @@ with per-language loading named as the follow-up. That follow-up is done:
 - No portal publishes a contact number on the listing page except Place.ge and
   Brokeri.ge; Home.ge/Allhome.ge reveal numbers only through a click-through
   request, which is never automated.
+- Districts (2026-10-16): portal sources apply a strict district check in the
+  worker (`portals/places.mjs`) — a listing naming any place other than a requested,
+  known district is dropped; one naming none is kept. Home.ge narrows by sitemap
+  slug; Place.ge by its `region_id`+`district_id` pair (11 observed districts; others
+  read the city); Allhome/Brokeri only after reading, so with a 24-listing read a
+  district search on them often returns nothing (honest empty, not an error). A
+  district outside `normalize/place.ts` disables the narrowing (city read).
 - Korter.ge is BLOCKED_BY_TERMS (terms §5.3: "You must not use any scraping
   technology on the Site") and Binebi.ge answers every public page with a
   Cloudflare challenge. Neither is registered; a test pins that.

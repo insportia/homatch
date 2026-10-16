@@ -2,7 +2,7 @@
  * Admin → Storage → Storage retention: the owner's control center.
  *
  * Only allowlisted, disposable storage objects are ever deleted (migration
- * 20261104090000): a regenerable cache, explicitly temporary generated files,
+ * 20261105090000): a regenerable cache, explicitly temporary generated files,
  * and the self-test's own files. Everything permanent is listed under "Never
  * deleted" and cannot be put in scope from this screen.
  *

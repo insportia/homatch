@@ -1,6 +1,6 @@
 // Retention cleanup engine — object level, allowlisted, idempotent, restart-safe.
 //
-// The DECISIONS live in Postgres (20261104090000_storage_retention_artifacts):
+// The DECISIONS live in Postgres (20261105090000_storage_retention_artifacts):
 // which locations are disposable at all (retention_location_eligible), which
 // category is enabled and since when, the lease, the notice prerequisite, the
 // backoff and the dead letter. This file only does what SQL cannot: ask the

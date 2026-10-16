@@ -126,7 +126,7 @@ test('the engine allowlist matches the migration allowlist exactly', () => {
   assert.ok(eligibleLocation('R2', 'users', 'users/aaaaaaaa-0000-0000-0000-00000000000a/generated-reports/11111111-0000-0000-0000-000000000001.pdf'));
   assert.ok(!eligibleLocation('R2', 'users', 'users/aaaaaaaa-0000-0000-0000-00000000000a/design-studio-thumbnails/x/y.webp'));
   assert.ok(!eligibleLocation('SUPABASE_STORAGE', 'verify-official-visuals', 'tas/abc.jpg'));
-  const sql = readFileSync('supabase/migrations/20261104090000_storage_retention_artifacts.sql', 'utf8');
+  const sql = readFileSync('supabase/migrations/20261105090000_storage_retention_artifacts.sql', 'utf8');
   const fn = sql.slice(sql.indexOf('function public.retention_location_eligible'), sql.indexOf('function public.retention_protected_areas'));
   const sqlPatterns = [...fn.matchAll(/p_key ~ '([^']+)'/g)].map((m) => m[1]).sort();
   const src = readFileSync('supabase/functions/_shared/retention/engine.ts', 'utf8');

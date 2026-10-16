@@ -1,4 +1,4 @@
-// Object-level retention (20261104090000) — the owner's 2026-10-16 decision,
+// Object-level retention (20261105090000) — the owner's 2026-10-16 decision,
 // pinned. Only an explicit allowlist of disposable storage objects can ever be
 // deleted; Verify results, Contracts originals, evidence, report visuals, the
 // Design Studio catalog and every customer upload are out of scope; record-
@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
-const FILE = 'supabase/migrations/20261104090000_storage_retention_artifacts.sql';
+const FILE = 'supabase/migrations/20261105090000_storage_retention_artifacts.sql';
 const code = readFileSync(FILE, 'utf8').replace(/--.*$/gm, '');
 const fnBody = (name, next) => code.slice(code.indexOf(`function public.${name}`), next ? code.indexOf(`function public.${next}`) : undefined);
 

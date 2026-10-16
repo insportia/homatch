@@ -1,4 +1,4 @@
--- Assertions for 20261104090000_storage_retention_artifacts.sql (object-level
+-- Assertions for 20261105090000_storage_retention_artifacts.sql (object-level
 -- retention for an allowlist of disposable storage objects). Runs after the
 -- record-level tests, on the same throwaway database. Each block raises on
 -- failure; run.sh prints RETENTION ARTIFACTS SQL: PASS only if all ran.

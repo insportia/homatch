@@ -68,7 +68,7 @@ MATTERS right now, verify against the live systems, not this file)
 
 - Owner decision 2026-10-16: Verify results, Contracts originals, evidence, report visuals, Design Studio and every
   customer upload are permanent. Only allowlisted disposable storage objects may be deleted (doc §10).
-- Migration `20261104090000_storage_retention_artifacts.sql`: categories + artifacts registry, prospective-only
+- Migration `20261105090000_storage_retention_artifacts.sql`: categories + artifacts registry, prospective-only
   registration, notices, claim/outcome engine, admin RPCs; retires record-level claim/configure. Real categories seed
   DISABLED; settings `storage_retention_artifacts` = not paused, notices off; no cron on apply.
 - Eligible today: `verify_document_cache` (regenerable; worker re-fetch proof before delete). Future:

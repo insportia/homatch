@@ -18969,6 +18969,7 @@ const en = {
   rt_ax_confirm_cat_off_desc: 'Files in this category stop being deleted. Turning it on again later still covers only files created after the first time it was turned on.',
   rt_ax_protected: 'Never deleted',
   rt_ax_protected_design_studio: 'Design Studio catalog (materials, models, lighting) and everyone’s Design Studio files',
+  rt_ax_protected_contracts_originals: 'Contracts uploaded by customers, and their copies',
   rt_ax_protected_verify_evidence: 'Verify evidence — the full source text behind every report',
   rt_ax_protected_verify_official_visuals: 'Verify report images',
   rt_ax_protected_verify_results: 'Verify results and contract analyses',
@@ -19007,9 +19008,6 @@ const en = {
   notif_retention_expiring_title: 'A file will be deleted soon',
   notif_retention_expiring_body: '{{name}} can be downloaded until {{date}}.',
   notif_retention_file: 'Your file',
-
-  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
-  rt_ax_protected_contracts_originals: 'Contracts uploaded by customers, and their copies',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -37893,6 +37891,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   rt_ax_confirm_cat_off_desc: 'ამ კატეგორიის ფაილები აღარ წაიშლება. მოგვიანებით ხელახლა ჩართვაც მხოლოდ პირველი ჩართვის შემდეგ შექმნილ ფაილებს მოიცავს.',
   rt_ax_protected: 'არასოდეს იშლება',
   rt_ax_protected_design_studio: 'Design Studio-ს კატალოგი (მასალები, მოდელები, განათება) და ყველას Design Studio ფაილები',
+  rt_ax_protected_contracts_originals: 'მომხმარებლების მიერ ატვირთული ხელშეკრულებები და მათი ასლები',
   rt_ax_protected_verify_evidence: 'Verify-ის მტკიცებულებები — ყოველი ანგარიშის სრული წყაროს ტექსტი',
   rt_ax_protected_verify_official_visuals: 'Verify ანგარიშების სურათები',
   rt_ax_protected_verify_results: 'Verify-ის შედეგები და ხელშეკრულებების ანალიზი',
@@ -37931,9 +37930,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   notif_retention_expiring_title: 'ფაილი მალე წაიშლება',
   notif_retention_expiring_body: '{{name}} ჩამოტვირთვა შესაძლებელია {{date}}-მდე.',
   notif_retention_file: 'თქვენი ფაილი',
-
-  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
-  rt_ax_protected_contracts_originals: 'მომხმარებლების მიერ ატვირთული ხელშეკრულებები და მათი ასლები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -56808,6 +56804,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   rt_ax_confirm_cat_off_desc: 'Файлы этой категории перестанут удаляться. Повторное включение позже по-прежнему охватит только файлы, созданные после первого включения.',
   rt_ax_protected: 'Никогда не удаляется',
   rt_ax_protected_design_studio: 'Каталог Design Studio (материалы, модели, освещение) и файлы Design Studio всех пользователей',
+  rt_ax_protected_contracts_originals: 'Договоры, загруженные клиентами, и их копии',
   rt_ax_protected_verify_evidence: 'Доказательства Verify — полный исходный текст каждого отчёта',
   rt_ax_protected_verify_official_visuals: 'Изображения отчётов Verify',
   rt_ax_protected_verify_results: 'Результаты Verify и анализы договоров',
@@ -56846,9 +56843,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   notif_retention_expiring_title: 'Файл скоро будет удалён',
   notif_retention_expiring_body: '{{name}} можно скачать до {{date}}.',
   notif_retention_file: 'Ваш файл',
-
-  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
-  rt_ax_protected_contracts_originals: 'Договоры, загруженные клиентами, и их копии',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -75721,6 +75715,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   rt_ax_confirm_cat_off_desc: 'Bu kategorideki dosyalar artık silinmez. Daha sonra yeniden açmak yine yalnızca ilk açılıştan sonra oluşturulan dosyaları kapsar.',
   rt_ax_protected: 'Asla silinmez',
   rt_ax_protected_design_studio: 'Design Studio kataloğu (malzemeler, modeller, aydınlatma) ve herkesin Design Studio dosyaları',
+  rt_ax_protected_contracts_originals: 'Müşterilerin yüklediği sözleşmeler ve kopyaları',
   rt_ax_protected_verify_evidence: 'Verify kanıtları — her raporun arkasındaki tam kaynak metin',
   rt_ax_protected_verify_official_visuals: 'Verify rapor görselleri',
   rt_ax_protected_verify_results: 'Verify sonuçları ve sözleşme analizleri',
@@ -75759,9 +75754,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   notif_retention_expiring_title: 'Bir dosya yakında silinecek',
   notif_retention_expiring_body: '{{name}} {{date}} tarihine kadar indirilebilir.',
   notif_retention_file: 'Dosyanız',
-
-  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
-  rt_ax_protected_contracts_originals: 'Müşterilerin yüklediği sözleşmeler ve kopyaları',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -94634,6 +94626,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   rt_ax_confirm_cat_off_desc: 'تتوقف إزالة ملفات هذه الفئة. إعادة التفعيل لاحقًا تشمل فقط الملفات المُنشأة بعد أول تفعيل.',
   rt_ax_protected: 'لا يُحذف أبدًا',
   rt_ax_protected_design_studio: 'كتالوج Design Studio (المواد والنماذج والإضاءة) وملفات Design Studio لجميع المستخدمين',
+  rt_ax_protected_contracts_originals: 'العقود التي يرفعها العملاء ونسخها',
   rt_ax_protected_verify_evidence: 'أدلة Verify — النص المصدري الكامل وراء كل تقرير',
   rt_ax_protected_verify_official_visuals: 'صور تقارير Verify',
   rt_ax_protected_verify_results: 'نتائج Verify وتحليلات العقود',
@@ -94672,9 +94665,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   notif_retention_expiring_title: 'سيُحذف ملف قريبًا',
   notif_retention_expiring_body: 'يمكن تنزيل {{name}} حتى {{date}}.',
   notif_retention_file: 'ملفك',
-
-  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
-  rt_ax_protected_contracts_originals: 'العقود التي يرفعها العملاء ونسخها',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -113547,6 +113537,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   rt_ax_confirm_cat_off_desc: 'קבצים בקטגוריה הזו יפסיקו להימחק. הפעלה מחדש בהמשך עדיין תחול רק על קבצים שנוצרו אחרי ההפעלה הראשונה.',
   rt_ax_protected: 'לעולם לא נמחק',
   rt_ax_protected_design_studio: 'קטלוג Design Studio (חומרים, מודלים, תאורה) וקובצי Design Studio של כולם',
+  rt_ax_protected_contracts_originals: 'חוזים שהועלו על ידי לקוחות והעותקים שלהם',
   rt_ax_protected_verify_evidence: 'ראיות Verify — טקסט המקור המלא שמאחורי כל דוח',
   rt_ax_protected_verify_official_visuals: 'תמונות דוחות Verify',
   rt_ax_protected_verify_results: 'תוצאות Verify וניתוחי חוזים',
@@ -113585,9 +113576,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   notif_retention_expiring_title: 'קובץ יימחק בקרוב',
   notif_retention_expiring_body: 'אפשר להוריד את {{name}} עד {{date}}.',
   notif_retention_file: 'הקובץ שלך',
-
-  /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
-  rt_ax_protected_contracts_originals: 'חוזים שהועלו על ידי לקוחות והעותקים שלהם',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

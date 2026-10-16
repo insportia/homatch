@@ -91,7 +91,7 @@ test('ttl reads as whole days, hours or minutes', () => {
 test('object-level control center: every dynamically built label exists in all six languages', () => {
   const tr = readFileSync('src/i18n/translations.ts', 'utf8');
   const cats = ['verify_document_cache', 'generated_report', 'selftest_supabase', 'selftest_r2'];
-  const sql = readFileSync('supabase/migrations/20261104090000_storage_retention_artifacts.sql', 'utf8');
+  const sql = readFileSync('supabase/migrations/20261105090000_storage_retention_artifacts.sql', 'utf8');
   const areas = [...sql.slice(sql.indexOf('function public.retention_protected_areas')).matchAll(/'area', '([a-z-]+)'/g)].map((m) => m[1].replace(/-/g, '_'));
   assert.ok(areas.length >= 7);
   const seeded = [...sql.matchAll(/^\s+\('([a-z_0-9]+)', '[^']+', '(REGENERABLE_CACHE|TEMPORARY_ARTIFACT|SELFTEST)'/gm)].map((m) => m[1]);

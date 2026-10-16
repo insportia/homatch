@@ -357,7 +357,7 @@ export const RETENTION_STRINGS = {
   rt_cc_err_RETENTION_NOT_FOUND: ['No report or document with that ID.', 'ამ ID-ით ანგარიში ან დოკუმენტი ვერ მოიძებნა.', 'Отчёт или документ с таким ID не найден.', 'Bu kimliğe sahip rapor veya belge yok.', 'لا يوجد تقرير أو مستند بهذا المعرّف.', 'אין דוח או מסמך עם המזהה הזה.'],
   rt_cc_product_VERIFY_REPORT: ['Verify report', 'Verify ანგარიში', 'Отчёт Verify', 'Verify raporu', 'تقرير Verify', 'דוח Verify'],
   rt_cc_product_CONTRACT_DOCUMENT: ['Contract', 'ხელშეკრულება', 'Договор', 'Sözleşme', 'عقد', 'חוזה'],
-  // ── Object-level retention control center (20261104090000). Order: [en, ka, ru, tr, ar, he].
+  // ── Object-level retention control center (20261105090000). Order: [en, ka, ru, tr, ar, he].
   rt_ax_title: ['Storage retention', 'ფაილების შენახვის ვადა', 'Срок хранения файлов', 'Dosya saklama süresi', 'مدة الاحتفاظ بالملفات', 'שמירת קבצים'],
   rt_ax_status_off: ['Off — nothing is deleted.', 'გამორთულია — არაფერი იშლება.', 'Выключено — ничего не удаляется.', 'Kapalı — hiçbir şey silinmez.', 'متوقف — لا يُحذف شيء.', 'כבוי — שום דבר לא נמחק.'],
   rt_ax_status_paused: ['Paused — deletion is stopped until you resume it.', 'შეჩერებულია — წაშლა გაჩერებულია, სანამ არ განაახლებთ.', 'Приостановлено — удаление остановлено, пока вы его не возобновите.', 'Duraklatıldı — siz devam ettirene kadar silme durdu.', 'متوقف مؤقتًا — الحذف متوقف حتى تستأنفه.', 'מושהה — המחיקה עצורה עד שתחדשו אותה.'],

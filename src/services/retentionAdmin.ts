@@ -1,7 +1,7 @@
 /*
  * Admin → Storage → Storage retention: the calls behind the control center.
  *
- * Object-level retention (migration 20261104090000): only allowlisted,
+ * Object-level retention (migration 20261105090000): only allowlisted,
  * disposable storage objects are ever deleted. Every change goes through a
  * server function that validates it and writes the audit log; the screen is
  * never the only thing between a click and a mistake.

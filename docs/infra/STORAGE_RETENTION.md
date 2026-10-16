@@ -232,7 +232,7 @@ needs no Verify pipeline change, only reference scans by the engine):
 
 ## 9. (Retired 2026-10-16) Record-level activation
 
-> Retired: `retention_admin_configure` now refuses every record-level setting and `retention_claim` returns nothing (migration `20261104090000`). The table below describes the switches that no longer exist.
+> Retired: `retention_admin_configure` now refuses every record-level setting and `retention_claim` returns nothing (migration `20261105090000`). The table below describes the switches that no longer exist.
 
 Everything is controlled from one panel. Every change goes through `retention_admin_configure`, which refuses unsafe
 combinations on the server and logs who changed what (`retention_events`, `CONFIG_CHANGED`).
@@ -271,7 +271,7 @@ Rollback:
 - The access policies are deny-only and can be dropped without data loss.
 
 
-## 10. Object-level retention (owner decision 2026-10-16) — migration `20261104090000`
+## 10. Object-level retention (owner decision 2026-10-16) — migration `20261105090000`
 
 **Rule.** Only storage objects whose location is on a hard-coded allowlist can ever be deleted
 (`public.retention_location_eligible`, mirrored in `engine.ts` `eligibleLocation`, parity pinned by a test).

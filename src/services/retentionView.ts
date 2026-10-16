@@ -78,7 +78,7 @@ export function retentionMode(s: { config: { effective_at: string | null; purge_
   return s.auto_run ? 'ON' : 'MANUAL';
 }
 
-/* ── Object-level retention (20261104090000) ── */
+/* ── Object-level retention (20261105090000) ── */
 
 export interface ArtifactModeInput {
   settings: { paused: boolean };

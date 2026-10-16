@@ -7,7 +7,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; root="$here/../../.."
 dir="${RETENTION_PG_DIR:-/var/tmp/hm-retention}"; port="${RETENTION_PG_PORT:-54332}"; bin="${PGBIN:-/usr/lib/postgresql/16/bin}"
 M="$root/supabase/migrations/20261102090000_storage_retention_lifecycle.sql"
-M2="$root/supabase/migrations/20261104090000_storage_retention_artifacts.sql"
+M2="$root/supabase/migrations/20261105090000_storage_retention_artifacts.sql"
 
 if ! psql -h "$dir" -p "$port" -U postgres -tAc 'select 1' >/dev/null 2>&1; then
   rm -rf "$dir"; mkdir -p "$dir"; chown postgres "$dir" 2>/dev/null || true
@@ -41,7 +41,7 @@ echo "  concurrency: 4 workers claimed $total records, $distinct distinct"
 [ "$total" -eq "$distinct" ] && [ "$total" -ge 24 ] || { echo "  FAIL: duplicate or missing claims"; exit 1; }
 echo "RETENTION CONCURRENCY: PASS"
 
-# ── Object-level retention (20261104090000), applied twice on top. ──
+# ── Object-level retention (20261105090000), applied twice on top. ──
 $P -d hmret -1 -f "$M2"
 $P -d hmret -1 -f "$M2"
 env PGOPTIONS=-cclient_min_messages=notice psql -h "$dir" -p "$port" -U postgres -d hmret -v ON_ERROR_STOP=1 -q -o /dev/null -f "$here/artifacts.sql" 2>&1 \

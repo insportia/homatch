@@ -185,6 +185,18 @@ These four are existing services, unchanged (still OFF). Details: `SERVICE_CONTR
 - **Entry points:** sidebar, public nav, homepage section, About, entry pages, AI action `BROKER_FINDER`.
 - **Backend:** paid listings, first purchases and renewals alike (`broker_listing_purchases` insert guard; the refusal rolls the credit debit back).
 - **Keeps running:** listings already paid, to their expiry; the expiry sweep; a replay of a purchase already made.
+- **While paused, exactly** (current behaviour; the renewal rule is under owner review and is unchanged here). Proof: `bash tests/sql/service_controls_broker/run.sh`, which runs the production `broker_directory_purchase()` verbatim.
+
+  | Case | What happens |
+  |---|---|
+  | New purchase | Refused with `SERVICE_DISABLED`. `broker_directory_purchase()` debits credits and writes the ledger entry *before* it inserts the purchase row; the guard refuses that insert, and the whole call (one statement, no exception handler) rolls back. Balance, ledger, purchase records, listing and audit are exactly as before. The same idempotency key works after resume and is charged once. |
+  | Manual renewal (ACTIVE listing) | The same function, so the same refusal and no charge. `paid_until` and status are untouched. |
+  | Buying back an EXPIRED listing | Refused, no charge; the listing stays EXPIRED. |
+  | Automatic renewal | **None exists.** There is no auto-renew path in the code; renewal is only the manual Buy/Renew in Broker Desk. |
+  | Replay of a purchase already made | Answered from the existing record (`duplicate: true`) before the guarded insert; nothing charged. |
+  | Existing paid listings | Rows, `paid_until`, `broker_listing_purchases` and ledger entries are never modified. The paid period keeps running on the clock, so a pause does not extend it. While the directory is hidden (`/brokers*` and its home section), no listing is shown publicly. |
+  | Expiry sweep | Keeps running (it only updates `broker_directory_listings`): an ACTIVE listing whose period ends becomes EXPIRED and its owner is notified "Renew it from your broker desk", while renewal is refused. |
+  | Broker Desk UI | Its own switch (`broker_desk`). With the directory paused and the desk ON, the Buy/Renew button and its price confirmation still show; confirming returns `SERVICE_DISABLED`, which the desk shows as its generic error (the code is not mapped in `src/components/broker/errors.ts`). Nothing is charged. |
 
 **`broker_desk`: Broker Desk**
 - **Routes:** `/broker`, `/broker/onboarding`

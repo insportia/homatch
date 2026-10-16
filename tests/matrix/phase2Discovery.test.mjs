@@ -81,7 +81,7 @@ test('the Matches screen finds the open search on load, so a refresh keeps progr
   assert.match(page, /useCampaignStatus\(propertyId\)/);
   assert.match(page, /const activeJobId = liveCampaign\?\.jobId \?\? null;/);
   assert.match(page, /onResume=\{\(\) => handleControlJob\('resume'\)\}/);
-  assert.ok(page.indexOf('<LiveSearchModule') < page.indexOf('<FindBuyersResults'), 'the live search comes before the results on every width');
+  assert.ok(page.indexOf('<LiveSearchModule') < page.indexOf('<ExternalResultsView'), 'the live search comes before the results on every width');
 });
 
 // Slice B — FIND PROPERTY

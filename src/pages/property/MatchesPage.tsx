@@ -5,8 +5,6 @@ import {
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ExternalLeadsHeader, InternalMatchesSection } from '@/components/matching/internal/InternalMatchesSection';
-import { sectionCounts } from '@/matching/internalMatch';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
@@ -22,10 +20,8 @@ import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachP
 import { LeadStateControl } from '@/components/broker/LeadStateControl';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
-import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
-import { FindBuyersDashboard, type InternalStart } from '@/components/findBuyers/FindBuyersDashboard';
-import { requestLeadMatching } from '@/services/homatchLeads';
-import type { LeadCampaign } from '@/findBuyers/leadCampaigns';
+import { ExternalResultsView } from '@/components/findBuyers/ExternalResultsView';
+import { ownerFactsOf } from '@/findBuyers/externalResults';
 import { LiveSearchModule, SearchStatusPill } from '@/components/findBuyers/LiveSearchModule';
 import { PageNav } from '@/components/findBuyers/PageNav';
 import { ResearchExtensionDialog } from '@/components/findBuyers/ResearchExtensionDialog';
@@ -352,7 +348,6 @@ function MatchesContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const matchPage = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const historyPage = Math.max(1, Number.parseInt(searchParams.get('hp') ?? '1', 10) || 1);
-  const leadPage = Math.max(1, Number.parseInt(searchParams.get('lp') ?? '1', 10) || 1);
   const setPageParam = useCallback((key: 'page' | 'hp' | 'lp', value: number) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -410,13 +405,15 @@ function MatchesContent() {
   const [startPhase, setStartPhase] = useState<SearchStartPhase>(null);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [leadCount, setLeadCount] = useState(0);
-  /* HOMATCH members (people, demo included when visible) — counted apart from external
-     leads and NEVER added to them. Null until the internal section has loaded. */
-  const [internalCount, setInternalCount] = useState<number | null>(null);
-  /* Free HOMATCH Match: queue the property for the native matcher (no credits, no Actor). */
-  const [internalStart, setInternalStart] = useState<InternalStart>('idle');
-  /* The property's external searches, newest first (from its current leads). */
-  const [leadCampaigns, setLeadCampaigns] = useState<LeadCampaign[] | null>(null);
+  /* "New search" on the dashboard lands here with ?start=1: open the budget step once
+     (nothing is charged until the owner confirms there), then drop the flag. */
+  useEffect(() => {
+    if (searchParams.get('start') !== '1') return;
+    setShowBudget(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('start');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   /* New current-demand matches the live search reported while a page is being read. */
   const [matchesPending, setMatchesPending] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
@@ -955,7 +952,7 @@ function MatchesContent() {
   }, []);
   /* External = Find Buyers leads + stored external-demand matches (both read off public
      posts). Internal members are counted only in the HOMATCH section. */
-  const sectionTotals = sectionCounts({ internalPeople: internalCount ?? 0, demoVisible: false, externalLeads: leadCount + counts.total });
+  const ownerFacts = React.useMemo(() => ownerFactsOf(property?.facts as Parameters<typeof ownerFactsOf>[0], property?.transaction_type), [property]);
   const currentPages = Math.max(1, Math.ceil(currentTotal / MATCHES_PAGE_SIZE));
   const historyPages = Math.max(1, Math.ceil(historyTotal / MATCHES_PAGE_SIZE));
   const dnaFacts = facts ? {
@@ -984,37 +981,9 @@ function MatchesContent() {
             compact
             eyebrow={propertyLabel}
             title={t(titleKey)}
-            subtitle={t('im_count_line', {
-              /* Two numbers, never one: HOMATCH members and external leads are different
-                 kinds of result, and a person is counted in exactly one of them. */
-              internal: String(sectionTotals.internal),
-              external: String(sectionTotals.external),
-            })}
+            subtitle={t('fbx_page_subtitle')}
           />
         </div>
-
-        {/* ── ONE DASHBOARD, TWO CAMPAIGNS: free HOMATCH Match and paid External Discovery.
-            Neither starts the other; the external button only opens the budget step. ── */}
-        {propertyId ? (
-          <div className="mt-4">
-            <FindBuyersDashboard
-              tenant={counterpart === 'TENANT'}
-              internalCount={internalCount}
-              internalStart={internalStart}
-              onStartInternal={() => {
-                setInternalStart('starting');
-                requestLeadMatching(propertyId)
-                  .then(() => setInternalStart('requested'))
-                  .catch(() => setInternalStart('failed'));
-              }}
-              onViewInternal={() => navigate(`/property/${propertyId}/leads`)}
-              campaigns={leadCampaigns}
-              externalRunning={jobRunning}
-              onStartExternal={() => setShowBudget(true)}
-              onViewExternal={() => document.getElementById('fbx-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            />
-          </div>
-        ) : null}
 
         {/* ── LIVE SEARCH: what is being looked for, and what the search is doing now ── */}
         <div ref={moduleRef} className="mt-4">
@@ -1063,33 +1032,12 @@ function MatchesContent() {
             }} />
         ) : null}
 
-        {/* ── HOMATCH LEADS: the internal marketplace workspace for this property. ── */}
-        {propertyId ? (
-          <button type="button" onClick={() => navigate(`/property/${propertyId}/leads`)} data-testid="open-homatch-leads"
-            className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-[#0C1119] p-4 text-start text-white shadow-hover transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 motion-reduce:transition-none">
-            <span className="min-w-0 flex-1">
-              <span className="block text-2xs font-semibold uppercase tracking-[0.16em] text-[hsl(38_92%_62%)]">{t('hl_eyebrow')}</span>
-              <span className="mt-0.5 block font-display text-base font-semibold">{t('hl_headline')}</span>
-              <span className="mt-0.5 block text-sm text-white/75">{t('hl_open_workspace_body')}</span>
-            </span>
-            <span className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-[hsl(38_92%_54%)] px-4 text-sm font-bold text-[#161309]">{t('hl_open_workspace')}</span>
-          </button>
-        ) : null}
+        {/* ── EXTERNAL RESULTS: Buyers / Interest signals / Post opportunities, one search at a
+            time (Find Buyers 3.0). HOMATCH members have their own page. */}
+        <div id="fbx-results" className="mt-4 scroll-mt-20">
+          {propertyId ? <ExternalResultsView propertyId={propertyId} owner={ownerFacts} onTotal={setLeadCount} /> : null}
+        </div>
 
-        {/* ── HOMATCH MATCHES: members whose stated requirements fit this property (and the
-            DEMO buyer, for administrators and testers only). Its own heading, its own count. */}
-        {propertyId ? (
-          <InternalMatchesSection
-            propertyId={propertyId}
-            counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
-            onCount={setInternalCount}
-          />
-        ) : null}
-
-        {/* ── EXTERNAL LEADS: people found outside HOMATCH. Stored results, separate from
-            the live search, under their own heading and count. */}
-        <div id="fbx-results" className="scroll-mt-20" />
-        <ExternalLeadsHeader count={loading ? null : sectionTotals.external} />
         <FilterRail
           options={filters}
           value={filter}
@@ -1099,17 +1047,6 @@ function MatchesContent() {
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-4">
-            {propertyId ? (
-              <FindBuyersResults
-                propertyId={propertyId}
-                counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
-                liveSignal={campaignStatus ? (campaignStatus.campaign?.newLeads ?? 0) : null}
-                page={leadPage}
-                onPage={(p) => setPageParam('lp', p)}
-                onCount={setLeadCount}
-                onCampaigns={setLeadCampaigns}
-              />
-            ) : null}
             {matchesPending && (
               <button type="button" onClick={() => { setPageParam('page', 1); void loadData(); }}
                 className={cn('flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.5)]', NAVY_BAND)}

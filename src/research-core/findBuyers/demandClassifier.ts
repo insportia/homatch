@@ -108,6 +108,54 @@ const AGENT = L([
   `${B}(emlakçı|emlak ofisi|müşterim için)`, 'وسيط عقاري', 'مكتب عقار', 'لعميلي', 'מתווך', 'משרד תיווך', 'ללקוח שלי',
 ]);
 
+/**
+ * An advertiser speaking TO buyers: "ბინის შეძენა გსურთ? … გთავაზობთ", "Want to buy an
+ * apartment? We offer…", "Хотите купить квартиру? Предлагаем…". Second-person address
+ * plus an offer verb is a sales ad — never a buyer (production lead be7d9baa, 2026-10-13).
+ */
+const SECOND_PERSON_ADDRESS = L([
+  'გსურთ', 'გინდათ', 'ეძებთ', 'გაინტერესებთ', 'ხომ არ',
+  `${B}(do you want|want to buy\?|looking to buy\?|are you looking|planning to buy|thinking of buying|dreaming of)`,
+  'хотите', 'ищете', 'мечтаете', 'планируете купить',
+  `${B}(istiyor musunuz|arıyor musunuz|düşünüyor musunuz)`, 'هل تريد', 'هل تبحث', 'تبحث عن', 'רוצים לקנות', 'מחפשים דירה\?', 'מתכננים לקנות',
+]);
+const OFFER_VERB = L([
+  'გთავაზობთ', 'შემოგთავაზებთ', 'გთავაზობს', 'ჩვენთან', 'ჩვენი კომპანი', 'დეველოპერ', 'მწვანე კარკას', 'თეთრი კარკას', 'შავი კარკას', 'გადახდის მოქნილი',
+  `${B}(we offer|we provide|our (company|project|apartments)|developer|flexible payment|payment plan|contact us|call us)`,
+  'предлагаем', 'наша компания', 'застройщик', 'рассрочка от', 'звоните нам',
+  `${B}(sunuyoruz|firmamız|projemiz)`, 'نقدم', 'نوفر', 'شركتنا', 'אנו מציעים', 'אנחנו מציעים', 'החברה שלנו',
+]);
+/** "Want to buy an apartment in Tbilisi? …" — a bare question to the reader, not a first-person statement. */
+const QUESTION_TO_READER = /(?:^|[.!?\n]\s*)(?:want|looking|planning|ready) to (?:buy|rent|purchase)\b[^.!?\n]*\?/iu;
+/** The person already has one: not an active buyer/tenant. */
+const ALREADY_DONE = L([
+  `${B}(already (bought|purchased|rented|found)|we bought|i bought|just bought|found one already)`,
+  'уже купил', 'уже купили', 'уже нашл', 'уже снял', 'уже сняли', 'купил квартиру',
+  'უკვე ვიყიდე', 'უკვე ვიყიდეთ', 'უკვე ვიპოვე', 'უკვე ვიპოვეთ', 'უკვე ვიქირავე', 'ვიყიდე ბინა',
+  `${B}(zaten (aldım|aldık|buldum|bulduk|kiraladım))`, 'اشتريت', 'اشترينا', 'وجدت شقة', 'כבר קניתי', 'כבר קנינו', 'כבר מצאתי', 'כבר שכרנו',
+]);
+/** Negated intent: "not looking", "don't want to buy". */
+const NOT_LOOKING = L([
+  `${B}(not looking|no longer looking|don'?t want to (buy|rent)|do not want to (buy|rent)|not interested|not buying)`,
+  'не ищу', 'не ищем', 'уже не ищ', 'не хочу (покупать|купить|снимать)', 'не интересует', 'не актуально',
+  'აღარ ვეძებ', 'არ ვეძებ', 'არ მინდა (ყიდვა|ყიდვ|შეძენ|ქირ)', 'არ მაინტერესებს', 'აღარ არის აქტუალური',
+  `${B}(aramıyorum|artık aramıyoruz|almak istemiyorum|ilgilenmiyorum)`, 'لا أبحث', 'لم أعد أبحث', 'لا أريد شراء', 'غير مهتم', 'לא מחפש', 'כבר לא מחפשים', 'לא מעוניין',
+]);
+/** Someone who does renovation work: a company, master, contractor, or a request to recommend one. */
+const RENOVATION_PROVIDER = L([
+  `${B}(company|companies|contractor|contractors|builder|builders|master|team|firm|recommend|who can|anyone know)`,
+  'компани', 'фирм', 'мастер', 'бригад', 'подрядчик', 'посоветуйте', 'кто может',
+  'კომპანი', 'ფირმ', 'ხელოსან', 'ოსტატ', 'ბრიგად', 'მირჩიეთ', 'ურჩიეთ', 'ვინ გააკეთებს', 'რომელ კომპანი',
+  `${B}(firma|şirket|usta|tavsiye)`, 'شركة', 'مقاول', 'تنصحوني', 'קבלן', 'חברת', 'ממליצים', 'מי יכול',
+]);
+/** Renovation / repair / finishing work requested for a home — a service request, not demand. */
+const RENOVATION = L([
+  `${B}(renovation|renovate|refurbish|repair|remodel|interior design|contractor|builder|finishing works?)`,
+  'ремонт', 'отделк', 'дизайн интерьер', 'строител', 'бригад',
+  'რემონტ', 'შეკეთებ', 'მოპირკეთებ', 'ხელოსან', 'ბრიგად', 'დიზაინ',
+  `${B}(tadilat|tamirat|dekorasyon|usta)`, 'ترميم', 'تشطيب', 'ديكور', 'مقاول', 'שיפוץ', 'שיפוצניק', 'קבלן',
+]);
+
 /** First-person seeking (never "for those looking for"). */
 const SEEK = L([
   `${B}(i'?m looking|i am looking|we are looking|we're looking|looking for|looking to|searching for|in search of|i need|we need|need an?|needed|want to (buy|rent)|wanted|send me|please send|dm me with options|is looking for|are looking for)`,
@@ -255,6 +303,17 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   /* A listing that mentions its renovation is a listing, not a service ad. */
   const offerMarker = SALE_OFFER.test(s) || RENT_OFFER.test(s);
   if (SERVICE.test(s) && seekIdx < 0 && !offerMarker && !(residentialNoun && moneyMentions(s).length)) return empty('SERVICE', 'service_offer');
+  /* "Looking for a renovation company for my apartment": a service request, unless the
+     same text also states a first-person purchase or rental ("I want to buy … and renovate"). */
+  if (RENOVATION.test(s) && RENOVATION_PROVIDER.test(s) && !offerMarker && !STRONG_SEEK.test(s)) return empty('SERVICE', seekIdx >= 0 ? 'renovation_request' : 'service_offer');
+  /* An advertiser addressing buyers ("Want to buy? We offer…") is a sales ad. */
+  const addressesReader = SECOND_PERSON_ADDRESS.test(s) || QUESTION_TO_READER.test(s);
+  if (addressesReader && OFFER_VERB.test(s) && (!STRONG_SEEK.test(s) || QUESTION_TO_READER.test(s))) {
+    return { ...empty('SALE_OFFER', 'addresses_buyers_with_offer', 0.85), realEstate: realEstate || BUY.test(s), residential: residentialNoun, transaction: 'BUY' };
+  }
+  /* Already bought / found, or explicitly not looking: never an active seeker. */
+  if (ALREADY_DONE.test(s)) return empty('IRRELEVANT', 'already_purchased');
+  if (NOT_LOOKING.test(s)) return empty('IRRELEVANT', 'not_looking');
   if (!realEstate) return empty('IRRELEVANT', seekIdx >= 0 ? 'seeking_but_not_real_estate' : 'not_real_estate');
 
   const propertyType: DemandReading['propertyType'] = parkingOnly ? 'PARKING' : LAND.test(s) && !residentialNoun ? 'LAND'

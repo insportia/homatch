@@ -211,7 +211,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
 }
 
 async function openReport(page) {
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbr-report"]', { timeout: 30000 });
 }
 async function expand(page) {

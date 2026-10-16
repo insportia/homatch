@@ -290,6 +290,9 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     db, campaign: campaign as CampaignRow, stage, runId: run.id, runLanguage: job.language ?? null,
     datasetId, providerRunId: run.provider_run_id, book: parsePriceBook(settings.priceBook), gate: settings.commentGate,
     parent, sourceId: meta.sourceId ?? null, sourceYield,
+    /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
+       row caps an expansion at the Actor's own maximum (followUpRows). */
+    commentProbe: parseSampling(settings.sampling).probe,
   }, normalized);
 
   await db.from('find_buyers_actor_runs').update({
@@ -384,7 +387,7 @@ const FOLLOW_STAGE_ACTOR: Partial<Record<Stage, string>> = {
 
 async function followUpRows(db: any, job: any, campaign: any, followUps: FollowUp[], settings: FindBuyersSettings) {
   if (!followUps.length) return [];
-  const { data: actors } = await db.from('find_buyers_actor_registry').select('actor_key,probe_size,priority,enabled,emergency_disabled');
+  const { data: actors } = await db.from('find_buyers_actor_registry').select('actor_key,probe_size,max_results,priority,enabled,emergency_disabled');
   const byKey = new Map(((actors ?? []) as any[]).map((a) => [a.actor_key, a]));
   const rows: any[] = [];
   for (const f of followUps) {
@@ -394,7 +397,8 @@ async function followUpRows(db: any, job: any, campaign: any, followUps: FollowU
     const sampling = parseSampling(settings.sampling);
     rows.push(socialJobRow({
       stage: f.stage, actorKey: actorKey!, language: (f.language as any) ?? 'multi', query: null, targetUrl: f.targetUrl,
-      sourceId: f.sourceId, size: Math.min(Number(a.probe_size) || sampling.probe, sampling.probe),
+      /* An adaptive comment expansion asks for its own size, never above the Actor maximum. */
+      sourceId: f.sourceId, size: f.size ? Math.min(f.size, Number(a.max_results) || f.size) : Math.min(Number(a.probe_size) || sampling.probe, sampling.probe),
       arm: f.stage.endsWith('COMMENTS') ? `${f.stage}` : `${f.stage}:${f.sourceId ?? f.targetUrl}`,
       priority: armPriority(null, null, Number(a.priority) + (f.stage.endsWith('COMMENTS') ? 10 : 0)), reason: f.reason,
     }, {

@@ -231,6 +231,10 @@ test('the core is consumed only through its deliberate integration points', () =
      * this seam, never the core.
      */
     'src/findBuyers/searchDna.ts',
+    /* Find Buyers 3.0: the owner's external results are classified on read by the same
+       pure intent gate the pipeline stores (research-core/findBuyers/buyerIntent), so a
+       lead stored before the gate is shown by the same rule. */
+    'src/findBuyers/externalResults.ts',
     /* The admin seam onto the Actor catalog: class and lifecycle come from the
        same pure rules the planner and cost bound use. */
     'src/findBuyers/actorCatalog.ts',

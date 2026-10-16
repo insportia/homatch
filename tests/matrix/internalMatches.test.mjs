@@ -82,14 +82,17 @@ test('the simulated reply is a fixed, labelled template in six languages', () =>
 });
 
 test('the owner page counts internal and external apart, never merged', () => {
+  /* Find Buyers 3.0: the dashboard shows two separate summaries; each opens its own page. */
+  const home = read('src', 'pages', 'property', 'FindBuyersHomePage.tsx');
+  assert.match(home, /internalCount=\{internalCount\}/);
+  assert.match(home, /counts=\{external\.leads === null \? null : external\.counts\}/);
+  assert.doesNotMatch(home, /counts\.total \+ /, 'no merged headline');
+  const internal = read('src', 'pages', 'property', 'InternalResultsPage.tsx');
+  assert.match(internal, /<InternalMatchesSection/);
+  assert.doesNotMatch(internal, /ExternalResultsView|find_buyers/, 'nothing external on the internal page');
   const page = read('src', 'pages', 'property', 'MatchesPage.tsx');
-  assert.doesNotMatch(page, /counts\.total \+ leadCount\)/, 'the merged headline is gone');
-  assert.doesNotMatch(page, /matches_count_line/);
-  assert.match(page, /t\('im_count_line', \{[\s\S]*?internal: String\(sectionTotals\.internal\)[\s\S]*?external: String\(sectionTotals\.external\)/);
-  assert.match(page, /<InternalMatchesSection/);
-  assert.match(page, /<ExternalLeadsHeader/);
-  assert.match(page, /<FindBuyersResults\s/, 'external leads still render through the unchanged component');
-  assert.doesNotMatch(page, /NativeMatchesPanel/, 'members render in the HOMATCH section only');
+  assert.match(page, /<ExternalResultsView\s/, 'external leads render on their own page');
+  assert.doesNotMatch(page, /<InternalMatchesSection|NativeMatchesPanel/, 'members render on the HOMATCH page only');
   const section = read('src', 'components', 'matching', 'internal', 'InternalMatchesSection.tsx');
   assert.match(section, /groupByPerson\(/, 'one person, one card');
   assert.doesNotMatch(section, /FindBuyersResults|find_buyers/, 'nothing external is counted internally');

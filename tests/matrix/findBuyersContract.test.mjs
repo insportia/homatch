@@ -19,7 +19,8 @@ const walk = (dir, out = []) => {
 const CARD = read('src/components/findBuyers/PotentialBuyerCard.tsx');
 const BRAND = read('src/components/findBuyers/brand.tsx');
 const PANEL = read('src/components/findBuyers/LiveSearchModule.tsx');
-const RESULTS = read('src/components/findBuyers/FindBuyersResults.tsx');
+/* Find Buyers 3.0: the results list became a tabbed view plus a post-opportunity page. */
+const RESULTS = read('src/components/findBuyers/ExternalResultsView.tsx') + read('src/pages/property/PostOpportunityPage.tsx') + read('src/pages/property/FindBuyersHomePage.tsx');
 const SERVICE = read('src/services/findBuyers.ts');
 const REPORT = read('src/components/findBuyers/CampaignReport.tsx');
 const NOTES = read('src/components/findBuyers/ResearchNotes.tsx');
@@ -61,6 +62,13 @@ test('customer screens never show provider internals, costs or secrets', () => {
   }
   assert.doesNotMatch(SERVICE.slice(0, SERVICE.indexOf('/* ── admin')), /provider_budget_micros|customer_value_micros/, 'owner reads exclude economics');
   assert.match(MIGRATION, /grant select \(matching_job_id, campaign_id, property_id, user_id, transaction, credits_committed, languages,\s*stats/, 'owners get stats columns only');
+});
+
+test('the post opportunity page links only through safeExternalUrl, nofollow, and never sends a message itself', () => {
+  const op = read('src/pages/property/PostOpportunityPage.tsx');
+  assert.ok(!/href=\{(op\.url|ev\.url|ev\?\.url)\}/.test(op), 'no raw external href');
+  assert.equal((op.match(/rel="noopener noreferrer nofollow"/g) ?? []).length, 2);
+  assert.doesNotMatch(op, /supabase\.(rpc|functions)|send-message|outreach-send/, 'outreach is a copied draft, never an automatic send');
 });
 
 test('the result card: provenance via safe links, original text kept, translation on request, RTL and touch safe', () => {

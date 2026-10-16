@@ -109,3 +109,52 @@ test('group discovery: job boards and rental-only groups are not followed for a 
   assert.deepEqual(followed, ['https://www.facebook.com/groups/tbilisirealestate/']);
   assert.ok(tables.source_registry.every((r) => r.relevance && Array.isArray(r.relevance.reasons)));
 });
+
+/* ── Find Buyers 3.0: the intent gate in the live pipeline (campaign d8b69c51) ── */
+test('the developer ad is rejected (INTENT_EXCLUDED); a price question under a comparable listing is an INTEREST signal with its post\'s facts', async () => {
+  const { db, tables } = campaignDb();
+  const at = new Date(NOW - 2 * 86400000).toISOString();
+  const ad = 'ბინის შეძენა გსურთ და ვერ გადაგიწყვეტიათ რომელ\nკომპანიას მიმართოთ?\n\nგთავაზობთ ბინებს მწვანე კარკასის კონდიციით\n\nგადახდის მოქნილი პირობებით\n\nდეტალებზე დაკავშირება ამ ნომერზე შეგიძლიათ: \n591 099 171';
+  await processItems(ctxFor(db), [post({ n: 'ad', url: 'https://www.facebook.com/groups/1/permalink/2', text: ad, at })]);
+  assert.equal(tables.find_buyers_leads.length, 0, 'the ad never becomes a lead');
+  const rejected = tables.find_buyers_assessments.find((r) => r.signal_id);
+  assert.ok(rejected.rejection_reasons.length > 0);
+
+  const parent = { externalId: 'post:listing', url: 'https://www.facebook.com/groups/1/permalink/9', signalId: 'sig-listing', similarity: 82, stance: 'OFFER', role: 'SALE_OFFER',
+    excerpt: 'იყიდება 2 საძინებლიანი ბინა კრწანისში, 100 კვ.მ, $185 000', facts: { transaction: 'SALE', stance: 'OFFER', propertyType: 'APARTMENT', bedrooms: 2, rooms: 3, areaSqm: 100, price: 185000, currency: 'USD', city: 'tbilisi', district: 'krtsanisi', newBuild: null },
+    ageDays: 3, publishedAt: new Date(NOW - 3 * 86400000).toISOString(), commentCount: 240 };
+  const comment = (n, text) => ({ kind: 'COMMENT', network: 'FACEBOOK', externalId: `c:${n}`, url: `${parent.url}?comment_id=${n}`, parentExternalId: parent.externalId, parentUrl: parent.url,
+    author: { id: `a${n}`, name: `Commenter ${n}`, url: null, handle: null }, text, publishedAt: at, engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [] });
+  const { db: db2, tables: t2 } = campaignDb();
+  await processItems({ ...ctxFor(db2, 'FB_COMMENTS'), parent }, [comment(1, 'საძინებელი რამდენი?\nფასი?'), comment(2, 'ლამაზი ბინაა 😍'), comment(3, 'Already bought one, thanks')]);
+  assert.equal(t2.find_buyers_leads.length, 1, JSON.stringify(t2.find_buyers_leads.map((l) => l.qualification?.intent)));
+  const lead = t2.find_buyers_leads[0];
+  assert.equal(lead.qualification.resultType, 'INTEREST');
+  assert.notEqual(lead.match_category, 'STRONG', 'interest is never a strong buyer');
+  const ev = lead.evidence[0];
+  assert.equal(ev.parentCommentCount, 240, 'the platform\'s total is kept as reported');
+  assert.equal(ev.parentAnalyzed, 3, 'three comments of that post were read in this run');
+  assert.equal(ev.parentFacts.price, 185000);
+  assert.ok(ev.signals.includes('PRICE'));
+});
+
+test('adaptive comment sampling: a productive sample of a large post asks for one larger read; a poor one stops', async () => {
+  const at = new Date(NOW - 86400000).toISOString();
+  const parent = { externalId: 'post:big', url: 'https://www.facebook.com/groups/1/permalink/77', signalId: 'sig-big', similarity: 85, stance: 'OFFER', role: 'SALE_OFFER',
+    excerpt: 'იყიდება ბინა კრწანისში', facts: null, ageDays: 2, publishedAt: at, commentCount: 240 };
+  const c = (n, text) => ({ kind: 'COMMENT', network: 'FACEBOOK', externalId: `cc:${n}`, url: `${parent.url}?c=${n}`, parentExternalId: parent.externalId, parentUrl: parent.url,
+    author: { id: `p${n}`, name: `P${n}`, url: null, handle: null }, text, publishedAt: at, engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [] });
+  const productive = [c(1, 'ფასი?'), c(2, 'Can I visit tomorrow?'), c(3, 'How much?'), c(4, 'nice'), c(5, 'Is a mortgage possible here?')];
+  const { db } = campaignDb();
+  const out = await processItems({ ...ctxFor(db, 'FB_COMMENTS'), parent, commentProbe: 5 }, productive);
+  assert.equal(out.commentSampling.decision, 'EXPAND');
+  const exp = out.followUps.find((f) => f.reason === 'EXPAND_COMMENTS');
+  assert.ok(exp && exp.size === 15 && exp.parent.sampleDepth === 1, JSON.stringify(exp));
+  const { db: db2 } = campaignDb();
+  const poor = await processItems({ ...ctxFor(db2, 'FB_COMMENTS'), parent, commentProbe: 5 }, [c(6, 'nice'), c(7, 'wow'), c(8, 'congrats'), c(9, 'ok'), c(10, '👍👍👍 cool')]);
+  assert.equal(poor.commentSampling.decision, 'STOP_LOW_YIELD');
+  assert.ok(!poor.followUps.some((f) => f.reason === 'EXPAND_COMMENTS'));
+  const { db: db3 } = campaignDb();
+  const again = await processItems({ ...ctxFor(db3, 'FB_COMMENTS'), parent: { ...parent, sampleDepth: 1 }, commentProbe: 5 }, productive);
+  assert.equal(again.commentSampling.decision, 'STOP_DEPTH', 'a post is expanded once');
+});

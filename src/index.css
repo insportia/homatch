@@ -1100,6 +1100,16 @@
      objects, so both have a real prefers-reduced-motion answer: the bars
      hold a static mid-height and the ring stops expanding. Nothing else on
      the page animates on its own. */
+  /* Paid campaign progress: a light sweep over a bar whose provider runs are really in
+     flight (rendered only then, and hidden under prefers-reduced-motion). */
+  @keyframes hm-flow {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(400%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [class*="hm-flow"] { animation: none !important; }
+  }
+
   @keyframes hm-wave {
     0%, 100% { transform: scaleY(0.28); }
     50%      { transform: scaleY(1); }

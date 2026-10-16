@@ -120,14 +120,11 @@ Deno.serve(async (req: Request) => {
       unavailableReason: !offerSettings.apifyEnabled ? 'PROVIDER_OFF' : !available ? 'PAID_CAMPAIGNS_OFF' : plan.jobs.length === 0 ? 'NO_SEARCHABLE_SOURCES' : null,
       priceCredits: budget, creditsPerUsd: rate, minCredits, maxCredits: settings.campaignMaxCredits,
       priceUsd: allocation.priceCents / 100,
-      providerBudgetUsd: allocation.providerBudgetCents / 100,
-      homatchShareUsd: allocation.homatchMarginCents / 100,
       policy: allocation.policy,
       charging: 'CONSUMED_DIV_0_63_CAPPED',
       networks,
       plannedRuns: plan.jobs.length,
       plannedByNetwork: Object.fromEntries(OFFER_NETWORKS.map((n) => [n, plan.jobs.filter((j) => j.network === n).length])),
-      estimatedProviderUsd: Math.ceil(plan.estimatedMicros / 10_000) / 100,
       unavailableNetworks: plan.unavailable,
       skippedForBudget: plan.skippedForBudget,
       search: { transaction, city: offerSearch.city, districts: offerSearch.districts, propertyType: offerSearch.propertyType },
@@ -201,7 +198,7 @@ Deno.serve(async (req: Request) => {
     });
 
     return json({ success: true, async: true, runId, status: 'SEARCHING',
-      billing: { creditsAuthorized: grant.authorizedMaxCredits, providerBudgetUsd: preview.providerBudgetUsd } }, 202);
+      billing: { creditsAuthorized: grant.authorizedMaxCredits } }, 202);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     if (grant?.ok) await releaseExecution(db, grant, 'find_property_start_failed').catch(() => undefined);

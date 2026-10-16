@@ -138,7 +138,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={open}
-            className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-[#0C1119] px-5 text-sm font-semibold text-white transition hover:bg-[#151d2a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">
+            className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#0C1119] px-4 text-sm font-semibold text-white transition hover:bg-[#151d2a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">
             {t('mps_view_property')}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
           </button>
           <button type="button" onClick={onToggleCompare} aria-pressed={compareSelected}

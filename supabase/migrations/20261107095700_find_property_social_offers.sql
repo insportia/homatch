@@ -224,8 +224,11 @@ begin
     'networks', coalesce(to_jsonb(v_run.offer_networks), '[]'::jsonb), 'policy', v_run.pricing_policy,
     'creditsAuthorized', (v_run.billing_grant ->> 'authorizedMaxCredits')::numeric,
     'creditsCharged', v_run.credits_charged,
-    'providerBudgetUsd', v_run.provider_budget_micros / 1e6,
-    'providerSpendUsd', public.find_property_committed_micros(v_run.id) / 1e6,
+    /* Credits the work so far would cost (consumed / 0.63, up to the cent, never above the
+       authorised price) — the customer's figure; provider dollars stay in Admin. */
+    'creditsUsed', least(coalesce((v_run.billing_grant ->> 'authorizedMaxCredits')::numeric, 0),
+      round(ceil(ceil(public.find_property_committed_micros(v_run.id) * 10000.0 / public.paid_discovery_provider_share_bps()) / 10000.0)
+            * coalesce(v_run.credits_per_usd, 10) / 100.0, 2)),
     'offersFound', v_run.offers_found, 'resultsFound', v_run.results_found,
     'unavailable', coalesce(v_run.offer_plan -> 'unavailable', '[]'::jsonb),
     'skippedForBudget', coalesce((v_run.offer_plan ->> 'skippedForBudget')::int, 0),

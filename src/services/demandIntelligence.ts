@@ -157,7 +157,17 @@ export interface MyInterestHistory {
   retentionDays: number;
 }
 
-export const getMyInterestHistory = (limit = 100) => call<MyInterestHistory>('my_property_interest_history', { p_limit: limit, p_before: null });
+/* A malformed answer (a proxy, a stub, an older server) is an error, never a half-rendered panel. */
+export async function getMyInterestHistory(limit = 100): Promise<MyInterestHistory> {
+  const d = await call<Partial<MyInterestHistory> | null>('my_property_interest_history', { p_limit: limit, p_before: null });
+  if (!d || typeof d !== 'object' || Array.isArray(d) || !Array.isArray(d.events) || !Array.isArray(d.saved) || !Array.isArray(d.interests)) {
+    throw new Error('UNEXPECTED_HISTORY_SHAPE');
+  }
+  return {
+    events: d.events, interests: d.interests, saved: d.saved,
+    observedTracking: d.observedTracking !== false, retentionDays: Number(d.retentionDays) || 730,
+  };
+}
 export const setMyInterestTracking = (observed: boolean) => call<boolean>('set_my_interest_tracking', { p_observed: observed });
 export const deleteMyInterestHistory = () => call<{ events: number; interests: number; saved: number }>('delete_my_property_interest_history');
 

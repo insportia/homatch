@@ -63,7 +63,10 @@ begin
   -- The customer's view: own run only.
   perform set_config('app.uid', '10000000-0000-0000-0000-0000000000b1', true);
   v := public.my_find_property_campaign(v_run);
-  assert (v->>'providerBudgetUsd')::numeric = 3.15 and (v->>'creditsAuthorized')::numeric = 50, v::text;
+  assert (v->>'creditsAuthorized')::numeric = 50, v::text;
+  -- committed 30000 + 38000 + 79*38000 = 3,070,000 µ$ → /0.63 = $4.873… → $4.88 → 48.8 credits.
+  assert (v->>'creditsUsed')::numeric = 48.8, v::text;
+  assert not (v ? 'providerSpendUsd') and not (v ? 'providerBudgetUsd'), 'no provider dollars for the customer';
   perform set_config('app.uid', '10000000-0000-0000-0000-0000000000b2', true);
   begin perform public.my_find_property_campaign(v_run); assert false, 'foreign run visible';
   exception when insufficient_privilege then null; end;

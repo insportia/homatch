@@ -22,3 +22,4 @@ insert into public.find_buyers_actor_registry (actor_key, actor_id, pricing_veri
   ('TELEGRAM_CHANNEL', 'memo23~telegram-channel-scraper', now(), 250000, 1000, 30, 50),
   ('VK_POSTS_COMMENTS', 'memo23~vk-posts-comments-scraper', null, 3600000, 10000, 20, 2);
 insert into public.admin_settings (key, value) values ('discovery_provider_concurrency', '{"APIFY_MEMO23": 500}'), ('provider_disabled_list', '[]');
+create or replace function public.paid_discovery_provider_share_bps() returns integer language sql immutable as $$ select 6300 $$;

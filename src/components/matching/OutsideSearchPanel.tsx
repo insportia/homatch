@@ -15,13 +15,13 @@
 import { Pause, Play, Search, Square } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { SearchBudgetOffer } from '@/components/billing/SearchBudgetOffer';
+import { PaidCampaignPanel } from '@/components/findProperty/PaidCampaignPanel';
 import { QuietAction } from '@/components/customer/surface';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
   OPEN_OUTSIDE_RUN, type OutsideRun,
-  controlOutsideRun, latestOutsideRun, latestSupplySearchId, outsideRunActivity, startOutsideSearch,
+  controlOutsideRun, latestOutsideRun, latestSupplySearchId, outsideRunActivity,
 } from '@/services/findProperty';
 
 const STAGES = ['UNDERSTANDING', 'CHECKING_HOMATCH', 'SEARCHING_SOURCES', 'VALIDATING', 'MATCHING', 'READY'] as const;
@@ -39,14 +39,6 @@ const GROUP_KEY: Record<string, string> = {
   FORUMS: 'p2d_group_forums',
   HOMATCH: 'p2d_group_homatch',
 };
-const REFUSAL_KEY: Record<string, string> = {
-  DISCOVERY_OFF: 'p2d_refused_off',
-  NO_LIVE_SOURCES: 'p2d_refused_no_sources',
-  PLAN_INCOMPLETE: 'p2d_refused_plan',
-  BELOW_CAMPAIGN_MINIMUM: 'p2d_refused_budget',
-  INSUFFICIENT_CREDITS: 'p2d_refused_credits',
-  BILLING_REQUIRED: 'p2d_refused_credits',
-};
 
 export function OutsideSearchPanel({ onFinished, className }: { onFinished?: () => void; className?: string }) {
   const { t } = useLanguage();
@@ -55,8 +47,6 @@ export function OutsideSearchPanel({ onFinished, className }: { onFinished?: () 
   const [activity, setActivity] = useState<Record<string, number>>({});
   const [choosing, setChoosing] = useState(false);
   const [busy, setBusy] = useState(false);
-  /* One key per decision to start, so a double click or a retry is one run. */
-  const startKey = useRef<string>(crypto.randomUUID());
   const wasOpen = useRef(false);
   /* Held in a ref: an inline callback from the parent must not restart polling. */
   const finished = useRef(onFinished);
@@ -89,24 +79,6 @@ export function OutsideSearchPanel({ onFinished, className }: { onFinished?: () 
   }, [open, refresh]);
 
   if (!subscriptionId) return null;
-
-  const start = async (credits: number | null) => {
-    setBusy(true);
-    try {
-      const outcome = await startOutsideSearch(subscriptionId, credits, startKey.current);
-      if (!outcome.runId) {
-        toast.error(t(REFUSAL_KEY[outcome.reasonCode ?? ''] ?? 'p2d_control_error'));
-        return;
-      }
-      startKey.current = crypto.randomUUID();
-      setChoosing(false);
-      await refresh();
-    } catch {
-      toast.error(t('p2d_control_error'));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const control = async (action: 'pause' | 'resume' | 'stop') => {
     if (!run) return;
@@ -182,7 +154,9 @@ export function OutsideSearchPanel({ onFinished, className }: { onFinished?: () 
         <QuietAction full icon={Search} disabled={busy} onClick={() => setChoosing(true)} label={t(run ? 'p2d_outside_again' : 'p2d_outside_start')} />
       )}
       {!open && choosing && (
-        <SearchBudgetOffer productCode="FIND_PROPERTY" expectedUnits={1} running={busy} onRun={(credits) => { void start(credits); }} />
+        /* The paid campaign is configured, priced by the server and explicitly
+           confirmed in one place (the same panel as on the results page). */
+        <div className="rounded-2xl bg-[#0C1119] p-4"><PaidCampaignPanel t={t as never} subscriptionId={subscriptionId} /></div>
       )}
     </section>
   );

@@ -167,7 +167,8 @@ test('the outside-search panel shows only real server state and never a provider
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.match(panel, /latestOutsideRun\(id\)/, 'the run is read from the server, so a refresh keeps it');
   assert.match(panel, /setInterval\(\(\) => \{ void refresh\(\); \}, 5000\)/);
-  assert.match(panel, /productCode="FIND_PROPERTY"/);
+  /* Starting a paid run goes through the one confirmed, server-priced panel. */
+  assert.match(panel, /<PaidCampaignPanel t=\{t as never\} subscriptionId=\{subscriptionId\} \/>/);
   assert.doesNotMatch(panel, /TELEGRAM|PORTAL'|provider|cost_usd|error_message/, 'no provider names or costs reach the customer');
   assert.match(panel, /controlOutsideRun\(run\.id, action\)/);
   const page = read('src/pages/FindPropertyPage.tsx');

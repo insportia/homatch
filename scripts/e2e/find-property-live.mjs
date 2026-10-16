@@ -65,7 +65,7 @@ try {
     // Answer the follow-up the way a Scenario A user would: rooms are not part of the scenario, so 2–3 is
     // chosen when the UI insists (recorded); an "any / doesn't matter / skip" choice is preferred when offered.
     let clicked = null;
-    for (const name of [/^(any|any number|doesn.t matter|no preference|skip|not important)$/i, /^2 rooms$/i]) {
+    for (const name of [/^(any|any number|doesn.t matter|no preference|skip|not important)$/i, /^2 rooms$/i, /^1 bedrooms$/i]) {
       const b = page.getByRole('button', { name }).first();
       if (await b.isVisible().catch(() => false)) { await b.click(); clicked = String(name); break; }
     }

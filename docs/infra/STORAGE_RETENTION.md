@@ -1,7 +1,8 @@
 # Storage retention, cleanup engine and compact market knowledge
 
-Status (2026-10-15): **implemented and tested locally, NOT applied, NOT deployed, NOT activated.**
-Everything destructive ships off. Nothing in production has been deleted or changed by this work.
+Status (2026-10-16): **record-level retention (§1–§9) is RETIRED by owner decision** — Verify results and Contracts
+originals are permanent. Retention now means **object-level deletion of an explicit allowlist of disposable storage
+objects** — see **§10**. §1–§9 are kept as the history of what was built and audited.
 
 | Piece | Where |
 |---|---|
@@ -229,7 +230,9 @@ needs no Verify pipeline change, only reference scans by the engine):
   referencing `verify_tasks` rows are gone. `verify_tasks` has no retention yet (1.6 MB, a cross-job reuse cache), so
   this waits for a `verify_tasks` policy decision.
 
-## 9. Activation — from Admin → Storage → Data retention
+## 9. (Retired 2026-10-16) Record-level activation
+
+> Retired: `retention_admin_configure` now refuses every record-level setting and `retention_claim` returns nothing (migration `20261105090000`). The table below describes the switches that no longer exist.
 
 Everything is controlled from one panel. Every change goes through `retention_admin_configure`, which refuses unsafe
 combinations on the server and logs who changed what (`retention_events`, `CONFIG_CHANGED`).
@@ -266,3 +269,106 @@ Rollback:
 - Turn off "Delete expired data" (stops at the next run), or turn off the rule (also stops deletion).
 - End dates already given are immutable by design.
 - The access policies are deny-only and can be dropped without data loss.
+
+
+## 10. Object-level retention (owner decision 2026-10-16) — migration `20261105090000`
+
+**Rule.** Only storage objects whose location is on a hard-coded allowlist can ever be deleted
+(`public.retention_location_eligible`, mirrored in `engine.ts` `eligibleLocation`, parity pinned by a test).
+Adding a location needs a reviewed migration; no setting, category or Admin action can widen it.
+
+| Allowlisted location | Category | Kind | Life | Owner notice |
+|---|---|---|---|---|
+| `verify-documents` / `files/<attachedFileId>.(pdf\|jpg\|png)` | `verify_document_cache` | Regenerable cache | 30 days | none — nothing is lost; `research-agent` `document_file` re-fetches on a miss |
+| R2 `users/<uuid>/generated-reports/<uuid>.<ext>` | `generated_report` | Temporary generated file | 30 days | 7 days and 1 day before, with the producer's download link |
+| `verify-documents` / `retention-selftest/<uuid>.pdf` | `selftest_supabase` | Self-test | 2 min | yes (test notice to the admin) |
+| R2 `retention-selftest/<uuid>.txt` | `selftest_r2` | Self-test | 2 min | none |
+
+**Never deleted** (listed on the Admin screen from `retention_protected_areas()`): the Design Studio catalog
+(≈16.8 GB of R2 — 99% of all stored bytes) and users' Design Studio files; Contracts originals and their R2 copies;
+Verify evidence (`verify-evidence`) and report visuals (`verify-official-visuals`); Verify results and Contracts
+analyses; every customer upload; accounts, properties, listings, billing, transactions and audit records.
+
+**Lifecycle.**
+1. **Registration.** Internal caches are discovered by the tick: objects created at or after the category's
+   `active_since`, in its exact location. User-visible temporary files are registered by their producer at creation
+   with `retention_register_artifact(category, key, owner, bytes, label, deep_link, …)`. A user-visible category
+   cannot be discovered without the producer's owner and download path.
+2. **Prospective only.** Enabling a category stamps `active_since` once; it never moves. Historical objects are
+   never registered, so there is no retroactive cleanup.
+3. **Expiry.** `expires_at = object_created_at + ttl`, immutable (guard trigger).
+4. **Notices** (user-visible files, `notifications_enabled`). `notify_emit` with type `RETENTION_EXPIRING` and
+   `metadata.kind = RETENTION_ARTIFACT_EXPIRING`. The app renders it in the reader's language (6 locales) with the
+   exact date. Dedupe keys `retention-artifact:<id>:7d|1d` prevent duplicates. A notice that cannot be queued backs
+   off and retries. A user-visible file is never claimed before at least one notice was queued.
+5. **Deletion.** `retention_artifacts_claim` (SKIP LOCKED lease, bounded batch, refuses everything while
+   `paused`, re-checks the allowlist) → engine re-checks the allowlist → caches only: worker re-fetch proof
+   (`GET {WORKER_URL}/verify/tas-file`, must answer 200 with a pdf/jpeg/png body), else **kept** and rechecked
+   tomorrow → present? → delete at the provider → confirm absent (`storage.objects` / R2 HEAD) → `VERIFIED_DELETED`
+   with the proof. Failures back off `2^n` minutes, then `DEAD_LETTER` (Admin: Retry).
+6. **Audit.** Every step writes `retention_events` (`artifact_id`): REGISTERED, NOTICE_QUEUED/FAILED, CLAIMED,
+   OBJECT_DELETED, KEPT_NOT_REGENERABLE, DELETE_FAILED, PROTECTED_AT_CLAIM, REQUEUED, TICK,
+   ARTIFACT_CONFIG_CHANGED.
+
+**Admin → Storage → Storage retention.**
+- **Status sentence:** Off / Paused / On by hand / On automatically, plus the last run.
+- **Three switches:**
+  - **Run automatically** — the single `homatch-storage-retention` cron, every 10 minutes; asks first.
+  - **Pause all deletion** — the kill switch; one tap, and resuming asks first.
+  - **Expiry notices.**
+- **Per-category switches** with counts. Enabling explains that it covers only files created from now on.
+- **Never deleted** list.
+- **Five numbers:** tracked, expiring within 7 days, deleted, space saved, need attention.
+- **Actions:** **Preview the next run** (read-only), **Run now** (shows the preview, asks first) and **Run self-test**.
+- **Lists:** Due soon, Problems (Retry), Deleted, Notices (queued/read), Activity log.
+
+**Self-test (production E2E).** `POST storage-retention {"action":"selftest"}` (admin JWT, or cron token with
+`owner`) uploads one tiny PDF to Supabase Storage and one text file to R2 under `retention-selftest/`, and registers
+both with a 2-minute life. The next tick queues the test notice, waits for it, deletes both objects and confirms
+they are gone.
+
+**Record-level retention retired.** `retention_claim` returns nothing. `retention_admin_configure` raises
+`RETENTION_RECORD_LEVEL_RETIRED`. The record-level registry is never written by the engine. The access gates from
+§3 stay: they deny nothing, because no record can be dated.
+
+## 11. Storage routing and cache activation (2026-10-16)
+
+### Where files go today (code trace + production counts)
+
+| Category | Destination | Upload path | Notes |
+|---|---|---|---|
+| Design Studio catalog, projects, renders | R2 (`design-studio/catalog/…`, `users/<a>/design-studio-*/…`) — 10,966 objects, 16 GB | browser `uploadObject` (storage-sign: PENDING row → PUT → HEAD-verified commit → ACTIVE); server renders `putObject` | Server renders are R2-acknowledged but have no `storage_objects` row; project delete clears the whole prefix, so no orphan risk |
+| Property photos | R2 `users/<a>/property-photos/…` | `uploadObject` | Reader falls back to the legacy Supabase bucket for old photos |
+| Contracts / Deal Room | Supabase `deal-room-documents` (20 MB); storage-migrate copies to R2 | browser upload, owner storage policies | Protected; moving needs a reviewed cutover |
+| Mortgage, developer docs/media, chat/DM media, broker files, voice | Supabase (≤ 25 MB each) | browser / voice-ai | R2 categories exist for mortgage/developer but are unused |
+| Meta Ads media | Supabase `meta-ads-media` (50 MB, video) — 13 objects, 15 MB | browser + creativeAi | Largest remaining heavy-file gap; needs an R2 category + `storage_authorize` rule (migration) |
+| Verify official-document cache | Supabase `verify-documents/files/<attachedFileId>.<ext>` — 10 objects, 17.5 MB | research-agent `document_file` only | Regenerable; see gate below |
+| Verify evidence / visuals | Supabase, content-addressed | verify-queue / research-agent | Permanent; never in retention scope |
+| Generated reports | R2 `users/<a>/generated-reports/…` allowed | nobody writes it yet | `generated_report` stays disabled |
+
+Moving the remaining Supabase categories to R2 is a per-category cutover (new
+category + `storage_authorize` rule migration, dual-read, checksummed copy,
+owner approval before any source deletion). None is done implicitly; historical
+objects are never moved or deleted blindly.
+
+### Verify cache activation gates
+
+1. **Single reader.** Only research-agent `document_file` reads `files/*`; it
+   signs, and on a miss re-fetches through `WORKER_URL/verify/tas-file`,
+   upserts and signs again. Shared keys (one file per TAS attachment) self-heal
+   for every report that references them.
+2. **Regeneration.** `storage-retention {"action":"cachecheck"}` re-fetches up
+   to five cached files from the source and compares type, size and SHA-256
+   (read-only). The engine repeats the source check before every delete and
+   keeps a file it cannot prove rebuildable (`KEPT_NOT_REGENERABLE`).
+3. **Prospective.** Discovery registers only `storage.objects` rows created at
+   or after the category's `active_since`; the existing cache files are never
+   registered.
+4. **Scope.** Only `verify-documents/files/<digits>.(pdf|jpg|png)` matches; the
+   allowlist cannot reach evidence, visuals, Contracts or customer uploads.
+
+### Engine run budget
+
+Edge Functions stop at 150 s. The tick claims one item at a time and starts
+no new claim after 90 s, so a stopped run leaves at most one lease, which the
+next run reclaims after it expires.

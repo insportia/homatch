@@ -182,6 +182,8 @@ const AdminCreditsPage = lazyRoute(() => import('./pages/admin/AdminCreditsPage'
 const AdminPaymentsPage = lazyRoute(() => import('./pages/admin/AdminPaymentsPage'));
 const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'));
 const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
+const AdminPropertyPortalsPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalsPage'));
+const AdminPropertyPortalPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalPage'));
 const AdminBrokersPage = lazyRoute(() => import('./pages/admin/AdminBrokersPage'));
 const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
@@ -635,6 +637,10 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
+  /* Integrations → Property portals: the eight portals Publishing hands listings to.
+     Every read and write is re-authorised by publishing-engine with is_admin(). */
+  { name: 'Admin Property Portals', path: '/admin/integrations/portals', element: adminWrap(<AdminPropertyPortalsPage />), adminOnly: true },
+  { name: 'Admin Property Portal',  path: '/admin/integrations/portals/:providerId', element: adminWrap(<AdminPropertyPortalPage />), adminOnly: true, visible: false },
   { name: 'Admin Verify COGS', path: '/admin/verify-cogs',        element: adminWrap(<AdminVerifyCogsPage />),  adminOnly: true },
   /*
    * The eleven-tab voice tooling moved into AI & communication. The URL

@@ -24,8 +24,8 @@
  * a Deno URL import is not a mistake, an unbalanced quote is. Type errors are
  * not meaningful without resolution, so only syntax diagnostics are failed on.
  */
-import { readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const ROOT = 'supabase/functions';
@@ -240,6 +240,52 @@ if (miscalled.length) {
   console.error('\n[edge-check] these call something with the wrong number of arguments,' +
     ' so they are not calling what they look like:\n');
   for (const m of miscalled) console.error('  ' + m.trim());
+  process.exit(1);
+}
+
+/*
+ * EVERY IMPORT MUST BE ONE THE BUNDLER CAN RESOLVE.
+ *
+ * The passes above run with --noResolve or against Node's resolution, and
+ * Node finds a bare `@supabase/supabase-js` in node_modules. The Deno bundler
+ * does not: service-control/index.ts imported it bare, every check here was
+ * green, and `supabase functions deploy` stopped with "Relative import path
+ * \"@supabase/supabase-js\" not prefixed with / or ./ or ../" -- after merge,
+ * halfway through the deploy list (run 38932203655).
+ *
+ * So a specifier must be relative, absolute, a URL, or jsr:/npm:/node:/data:,
+ * or be mapped by the importing function's own deno.json "imports" (the
+ * publishing-engine and service-control pattern). Shared files under _*
+ * belong to no single function's map, so they may not import bare at all.
+ */
+const IMPORT_RE = /(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|(?:^|[\s;(])import\s*\(\s*['"]([^'"]+)['"]\s*\)|^\s*import\s*['"]([^'"]+)['"]/gm;
+const RESOLVABLE = /^(\.{1,2}\/|\/|https?:|jsr:|npm:|node:|data:)/;
+const importMaps = new Map();
+const importMapOf = (fnDir) => {
+  if (!importMaps.has(fnDir)) {
+    const denoJson = join(ROOT, fnDir, 'deno.json');
+    let keys = [];
+    try { keys = Object.keys(JSON.parse(readFileSync(denoJson, 'utf8')).imports ?? {}); } catch { /* no map */ }
+    importMaps.set(fnDir, keys);
+  }
+  return importMaps.get(fnDir);
+};
+const unresolvable = [];
+for (const file of [...entries, ...shared]) {
+  if (file.includes(`${sep}__tests__${sep}`)) continue;
+  const fnDir = relative(ROOT, file).split(sep)[0];
+  const source = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const m of source.matchAll(IMPORT_RE)) {
+    const spec = m[1] ?? m[2] ?? m[3];
+    if (RESOLVABLE.test(spec)) continue;
+    const map = fnDir.startsWith('_') ? [] : importMapOf(fnDir);
+    if (map.some((k) => spec === k || (k.endsWith('/') && spec.startsWith(k)))) continue;
+    unresolvable.push(`${file}: "${spec}"`);
+  }
+}
+if (unresolvable.length) {
+  console.error('\n[edge-check] bare import(s) the Deno bundler cannot resolve (use jsr:/npm:, or map it in the function\'s deno.json):\n');
+  for (const u of unresolvable) console.error('  ' + u);
   process.exit(1);
 }
 

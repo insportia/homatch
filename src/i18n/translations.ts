@@ -19292,6 +19292,10 @@ const en = {
   sinv_svc_site: 'Site assets',
   sinv_svc_system: 'System and tests',
   sinv_svc_other: 'Other',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -38498,6 +38502,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   sinv_svc_site: 'საიტის რესურსები',
   sinv_svc_system: 'სისტემა და ტესტები',
   sinv_svc_other: 'სხვა',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2 საცავი',
+  sinv_store_supabase: 'Supabase Storage',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -57695,6 +57703,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   sinv_svc_site: 'Ресурсы сайта',
   sinv_svc_system: 'Система и тесты',
   sinv_svc_other: 'Другое',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -76890,6 +76902,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   sinv_svc_site: 'Site varlıkları',
   sinv_svc_system: 'Sistem ve testler',
   sinv_svc_other: 'Diğer',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -96085,6 +96101,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   sinv_svc_site: 'موارد الموقع',
   sinv_svc_system: 'النظام والاختبارات',
   sinv_svc_other: 'أخرى',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'تخزين Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -115280,6 +115300,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   sinv_svc_site: 'נכסי האתר',
   sinv_svc_system: 'מערכת ובדיקות',
   sinv_svc_other: 'אחר',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'אחסון Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

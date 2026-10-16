@@ -50,6 +50,8 @@ export const STORAGE_INVENTORY_STRINGS = {
     'העלויות אינן מוערכות כאן. החשבוניות של Cloudflare ו-Supabase הן מקור האמת להוצאות האחסון.',
   ],
   sinv_unavailable: ['The storage inventory is not available yet.', 'საცავის ინვენტარი ჯერ ხელმისაწვდომი არ არის.', 'Инвентаризация хранилища пока недоступна.', 'Depolama envanteri henüz kullanılamıyor.', 'جرد التخزين غير متاح بعد.', 'מלאי האחסון עדיין אינו זמין.'],
+  sinv_store_r2: ['Cloudflare R2', 'Cloudflare R2 საცავი', 'Cloudflare R2', 'Cloudflare R2', 'تخزين Cloudflare R2', 'אחסון Cloudflare R2'],
+  sinv_store_supabase: ['Supabase Storage', 'Supabase Storage', 'Supabase Storage', 'Supabase Storage', 'Supabase Storage', 'Supabase Storage'],
   sinv_svc_design_studio: ['Design Studio', 'Design Studio', 'Design Studio', 'Design Studio', 'Design Studio', 'Design Studio'],
   sinv_svc_property: ['Property listings', 'უძრავი ქონების განცხადებები', 'Объявления о недвижимости', 'Emlak ilanları', 'إعلانات العقارات', 'מודעות נכסים'],
   sinv_svc_meta_ads: ['Meta Ads', 'Meta Ads', 'Meta Ads', 'Meta Ads', 'Meta Ads', 'Meta Ads'],

@@ -39,7 +39,7 @@ export function StorageInventoryPanel() {
     setBusy(bucket);
     try {
       await setWriteTarget(bucket, next, 'Admin → Storage');
-      toast.success(t('sinv_switched').replace('{{target}}', next === 'R2' ? 'Cloudflare R2' : 'Supabase Storage'));
+      toast.success(t('sinv_switched').replace('{{target}}', t(next === 'R2' ? 'sinv_store_r2' : 'sinv_store_supabase')));
       await load();
     } catch {
       toast.error(t('sinv_switch_failed'));
@@ -132,7 +132,7 @@ export function StorageInventoryPanel() {
                           onCheckedChange={(on) => void toggle(b.bucket, on ? 'R2' : 'SUPABASE')}
                           aria-label={`${t('sinv_col_new_uploads')} ${b.bucket}`} />
                         <Badge variant={target === 'R2' ? 'default' : 'outline'} className="text-2xs">
-                          {target === 'R2' ? 'Cloudflare R2' : 'Supabase'}
+                          {t(target === 'R2' ? 'sinv_store_r2' : 'sinv_store_supabase')}
                         </Badge>
                       </label>
                     ) : (

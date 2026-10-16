@@ -36,16 +36,78 @@ const loaders: Record<Exclude<SupportedLanguage, 'en'>, () => Promise<{ default:
 
 /** The bundle for a language if it has arrived; undefined means "read English". */
 export function bundleFor(lang: SupportedLanguage): Bundle | undefined {
+  /* In the admin console a language is only "here" with its admin half, so a
+     switch waits for both (LanguageContext loads before it applies). */
+  if (adminWanted && lang !== 'en' && !adminLoaded[lang]) return undefined;
   return loaded[lang];
+}
+
+/*
+ * THE ADMIN CONSOLE'S OWN STRINGS (src/i18n/adminSplit.ts).
+ *
+ * Cut out of every language at build time so a visitor never downloads them.
+ * The admin layout asks for them (loadAdminStrings, in routes.tsx) and does
+ * not render until they are here; from then on every language this tab loads
+ * brings its admin half with it, so a language switch inside the console
+ * waits for both halves rather than flashing English or raw keys.
+ */
+const adminLoaders: Record<SupportedLanguage, () => Promise<{ default: Bundle }>> = {
+  en: () => import('virtual:homatch-i18n/admin-en'),
+  ka: () => import('virtual:homatch-i18n/admin-ka'),
+  ru: () => import('virtual:homatch-i18n/admin-ru'),
+  tr: () => import('virtual:homatch-i18n/admin-tr'),
+  ar: () => import('virtual:homatch-i18n/admin-ar'),
+  he: () => import('virtual:homatch-i18n/admin-he'),
+};
+const adminLoaded: Partial<Record<SupportedLanguage, Bundle>> = {};
+const adminInFlight = new Map<SupportedLanguage, Promise<void>>();
+let adminWanted = false;
+
+/** Put a language's admin half into its bundle once both halves are here. */
+function mergeAdmin(lang: SupportedLanguage): void {
+  const base = loaded[lang];
+  const admin = adminLoaded[lang];
+  if (base && admin) Object.assign(base, admin);
+}
+
+function loadAdminHalf(lang: SupportedLanguage): Promise<void> {
+  if (adminLoaded[lang]) { mergeAdmin(lang); return Promise.resolve(); }
+  const pending = adminInFlight.get(lang);
+  if (pending) return pending;
+  const p = adminLoaders[lang]()
+    .then((m) => { adminLoaded[lang] = m.default; mergeAdmin(lang); })
+    .finally(() => { adminInFlight.delete(lang); });
+  adminInFlight.set(lang, p);
+  return p;
+}
+
+/**
+ * The admin console's strings for every language this tab has (English, the
+ * fallback, and whatever the visitor reads in, which is always loaded or
+ * loading before it is shown). Resolves when they are merged; a failure
+ * rejects, so the layout's chunk recovery (lazyRoute) treats it like any
+ * other missing chunk.
+ */
+export function loadAdminStrings(): Promise<void> {
+  adminWanted = true;
+  const langs = new Set<SupportedLanguage>(['en', ...(Object.keys(loaded) as SupportedLanguage[]), ...inFlight.keys()]);
+  return Promise.all([...langs].map(loadAdminHalf)).then(() => undefined);
 }
 
 /**
  * Fetch a language's bundle. Resolves at once when it is already here; one
  * request per language however many callers ask. A failure is not cached, so
  * the next call (the next switch, a remount) tries again — and until then the
- * page reads English, which is legible, rather than keys.
+ * page reads English, which is legible, rather than keys. Once the admin
+ * console has asked for its strings, a language arrives with its admin half.
  */
 export function loadLanguage(lang: SupportedLanguage): Promise<Bundle> {
+  const base = loadBase(lang);
+  if (!adminWanted) return base;
+  return Promise.all([base, loadAdminHalf(lang)]).then(([bundle]) => bundle);
+}
+
+function loadBase(lang: SupportedLanguage): Promise<Bundle> {
   const have = loaded[lang];
   if (have) return Promise.resolve(have);
   const pending = inFlight.get(lang);
@@ -53,7 +115,7 @@ export function loadLanguage(lang: SupportedLanguage): Promise<Bundle> {
   const load = loaders[lang as Exclude<SupportedLanguage, 'en'>];
   if (!load) return Promise.resolve(english);
   const p = load()
-    .then((m) => { loaded[lang] = m.default; return m.default; })
+    .then((m) => { loaded[lang] = m.default; mergeAdmin(lang); return m.default; })
     .finally(() => { inFlight.delete(lang); });
   inFlight.set(lang, p);
   return p;

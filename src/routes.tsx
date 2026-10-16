@@ -18,6 +18,7 @@ import React from 'react';
 import { ServiceGate } from '@/components/serviceControls/ServiceGate';
 import { serviceForPath } from '@/lib/serviceControls/routes';
 import { lazyRoute } from '@/lib/lazyRoute';
+import { loadAdminStrings } from '@/i18n/bundles';
 import { Navigate } from 'react-router-dom';
 import { FEATURES } from '@/config/features';
 import HomePage from './pages/HomePage';
@@ -167,7 +168,19 @@ const CallsPage = lazyRoute(() => import('./pages/outreach/CallsPage'));
 const CommunicationsBillingPage = lazyRoute(() => import('./pages/outreach/CommunicationsBillingPage'));
 
 // Admin pages
-import AdminLayout from './components/layouts/AdminLayout';
+/*
+ * THE ADMIN LAYOUT IS LAZY, AND BRINGS THE ADMIN STRINGS WITH IT.
+ *
+ * It used to be a static import, which put AdminLayout, admin/navigation,
+ * AdminSearch, adminControl and admin/labels (~24KB) in the entry chunk every
+ * visitor downloads. Now the layout's code and the admin console's strings
+ * (src/i18n/adminSplit.ts) load together, in parallel, and the layout renders
+ * only when both are here, so no admin screen ever reads a missing key. The
+ * app-level Suspense shows the same route fallback it already showed while an
+ * admin page loaded.
+ */
+const AdminLayout = lazyRoute(() =>
+  Promise.all([import('./components/layouts/AdminLayout'), loadAdminStrings()]).then(([mod]) => mod));
 
 const AdminOverviewPage = lazyRoute(() => import('./pages/admin/AdminOverviewPage'));
 const AdminUsersPage = lazyRoute(() => import('./pages/admin/AdminUsersPage'));

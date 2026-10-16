@@ -89,7 +89,7 @@ other owed functions in the same run moved and proved. A single-function dispatc
 (`redeploy=meta-oauth`, runs #846/#849) proved it exact both times. The artifact proof caught it;
 until the cause is known, redeploy meta-oauth on its own when the proof flags it.
 
-## Entry bundle ratchet at 2.25MB (translations split per language, 2026-09-30; raised 2026-10-16)
+## Entry bundle ratchet at 2MB (translations split per language 2026-09-30; admin console split 2026-10-16)
 
 `tests/browser/accessibilityAudit.test.mjs` fails the Validate job — and so
 blocks every edge deploy — when the Vite entry chunk passes its ceiling. The
@@ -112,6 +112,14 @@ with per-language loading named as the follow-up. That follow-up is done:
   admin-only modules already in the entry (AdminLayout, admin/navigation,
   AdminSearch, adminControl, admin/labels, ~24KB) and admin-only English
   strings out of it.
+- 2026-10-16, same day: done, ceiling back to 2MB. `AdminLayout` is lazy in
+  `src/routes.tsx` and loads together with `loadAdminStrings()`; every
+  language's `admin_*` keys (rule: `src/i18n/adminSplit.ts`, minus the
+  customer families `admin_imp_` and `admin_di_event_`) are cut into
+  `virtual:homatch-i18n/admin-<lang>`. Entry 2,105,445 → 1,986,168. Keep
+  customer screens off admin-only keys (`tests/matrix/adminStringSplit.test.mjs`
+  fails if one names one); a new customer-facing `admin_` family goes into
+  `CUSTOMER_ADMIN_PREFIXES`.
 - Keep new runtime code off `@/i18n/translations` and `@/i18n/appContent`
   (value imports): either one puts all six languages back into the entry. Use
   `@/i18n/bundles` or `@/i18n/locales`; type imports are free.

@@ -19245,6 +19245,16 @@ const en = {
   fbx_admin_comment_audit_hint: 'Reads a campaign’s stored Facebook post results (no Actor run, no charge) and shows how comment counts were reported.',
   fbx_admin_comment_audit_job: 'Campaign job ID',
   fbx_admin_comment_audit_run: 'Run audit',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_workspace_read_failed: 'Your publishing workspace could not be loaded. Please try again in a moment.',
+  pubw_err_listing_save_failed: 'The listing could not be saved. Your changes are still on this page — please try again.',
+  pubw_err_listing_update_failed: 'The listing could not be updated. Please try again.',
+  pubw_err_owned_record_required: 'This listing does not exist or is not yours.',
+  pubw_err_owner_required: 'Please finish setting up your HOMATCH account first.',
+  pubw_err_invalid_id: 'This link is not valid. Open the listing again from Publish to Portals.',
+  pubw_err_payload_too_large: 'This listing is too large to save. Shorten the descriptions and try again.',
+  pubw_err_invalid_status: 'That status change is not allowed. Refresh the page and try again.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -38404,6 +38414,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbx_admin_comment_audit_hint: 'კითხულობს კამპანიის შენახულ Facebook-ის პოსტების შედეგებს (Actor არ ეშვება, საფასური არ არის) და აჩვენებს, როგორ იყო მითითებული კომენტარების რაოდენობა.',
   fbx_admin_comment_audit_job: 'კამპანიის job ID',
   fbx_admin_comment_audit_run: 'აუდიტის გაშვება',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_workspace_read_failed: 'გამოქვეყნების სივრცე ვერ ჩაიტვირთა. სცადეთ ცოტა ხანში.',
+  pubw_err_listing_save_failed: 'განცხადება ვერ შეინახა. ცვლილებები ამ გვერდზე რჩება — სცადეთ თავიდან.',
+  pubw_err_listing_update_failed: 'განცხადება ვერ განახლდა. სცადეთ თავიდან.',
+  pubw_err_owned_record_required: 'ეს განცხადება არ არსებობს ან თქვენი არ არის.',
+  pubw_err_owner_required: 'ჯერ დაასრულეთ HOMATCH-ის ანგარიშის მომზადება.',
+  pubw_err_invalid_id: 'ეს ბმული არასწორია. გახსენით განცხადება ხელახლა გამოქვეყნების გვერდიდან.',
+  pubw_err_payload_too_large: 'განცხადება შესანახად ძალიან დიდია. შეამოკლეთ აღწერები და სცადეთ თავიდან.',
+  pubw_err_invalid_status: 'სტატუსის ეს ცვლილება დაუშვებელია. განაახლეთ გვერდი და სცადეთ თავიდან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -57554,6 +57574,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbx_admin_comment_audit_hint: 'Читает сохранённые результаты постов Facebook кампании (без запуска Actor, без оплаты) и показывает, как сообщалось число комментариев.',
   fbx_admin_comment_audit_job: 'ID задания кампании',
   fbx_admin_comment_audit_run: 'Запустить аудит',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_workspace_read_failed: 'Не удалось загрузить раздел публикаций. Попробуйте чуть позже.',
+  pubw_err_listing_save_failed: 'Не удалось сохранить объявление. Изменения остались на странице — попробуйте ещё раз.',
+  pubw_err_listing_update_failed: 'Не удалось обновить объявление. Попробуйте ещё раз.',
+  pubw_err_owned_record_required: 'Это объявление не существует или принадлежит не вам.',
+  pubw_err_owner_required: 'Сначала завершите настройку аккаунта HOMATCH.',
+  pubw_err_invalid_id: 'Эта ссылка недействительна. Откройте объявление заново из раздела публикаций.',
+  pubw_err_payload_too_large: 'Объявление слишком большое для сохранения. Сократите описания и попробуйте снова.',
+  pubw_err_invalid_status: 'Такое изменение статуса недопустимо. Обновите страницу и попробуйте снова.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -76702,6 +76732,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbx_admin_comment_audit_hint: 'Bir kampanyanın kayıtlı Facebook gönderi sonuçlarını okur (Actor çalışmaz, ücret alınmaz) ve yorum sayılarının nasıl bildirildiğini gösterir.',
   fbx_admin_comment_audit_job: 'Kampanya iş kimliği',
   fbx_admin_comment_audit_run: 'Denetimi çalıştır',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_workspace_read_failed: 'Yayın alanınız yüklenemedi. Biraz sonra tekrar deneyin.',
+  pubw_err_listing_save_failed: 'İlan kaydedilemedi. Değişiklikleriniz bu sayfada duruyor — tekrar deneyin.',
+  pubw_err_listing_update_failed: 'İlan güncellenemedi. Tekrar deneyin.',
+  pubw_err_owned_record_required: 'Bu ilan yok ya da size ait değil.',
+  pubw_err_owner_required: 'Önce HOMATCH hesabınızın kurulumunu tamamlayın.',
+  pubw_err_invalid_id: 'Bu bağlantı geçersiz. İlanı Portallarda yayınla bölümünden yeniden açın.',
+  pubw_err_payload_too_large: 'İlan kaydetmek için çok büyük. Açıklamaları kısaltıp tekrar deneyin.',
+  pubw_err_invalid_status: 'Bu durum değişikliğine izin verilmiyor. Sayfayı yenileyip tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -95850,6 +95890,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbx_admin_comment_audit_hint: 'يقرأ نتائج منشورات فيسبوك المخزنة لحملة (دون تشغيل Actor ودون رسوم) ويعرض كيف أُبلغ عن عدد التعليقات.',
   fbx_admin_comment_audit_job: 'معرّف مهمة الحملة',
   fbx_admin_comment_audit_run: 'تشغيل التدقيق',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_workspace_read_failed: 'تعذر تحميل مساحة النشر. حاول مرة أخرى بعد قليل.',
+  pubw_err_listing_save_failed: 'تعذر حفظ الإعلان. ما زالت تغييراتك في هذه الصفحة — حاول مرة أخرى.',
+  pubw_err_listing_update_failed: 'تعذر تحديث الإعلان. حاول مرة أخرى.',
+  pubw_err_owned_record_required: 'هذا الإعلان غير موجود أو ليس لك.',
+  pubw_err_owner_required: 'أكمل إعداد حسابك في HOMATCH أولًا.',
+  pubw_err_invalid_id: 'هذا الرابط غير صالح. افتح الإعلان مجددًا من صفحة النشر على البوابات.',
+  pubw_err_payload_too_large: 'الإعلان أكبر من أن يُحفظ. اختصر الأوصاف وحاول مرة أخرى.',
+  pubw_err_invalid_status: 'تغيير الحالة هذا غير مسموح. حدّث الصفحة وحاول مرة أخرى.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -114998,6 +115048,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbx_admin_comment_audit_hint: 'קורא את תוצאות הפוסטים השמורות מפייסבוק של קמפיין (בלי הרצת Actor ובלי חיוב) ומראה איך דווח מספר התגובות.',
   fbx_admin_comment_audit_job: 'מזהה משימת הקמפיין',
   fbx_admin_comment_audit_run: 'הרצת ביקורת',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_workspace_read_failed: 'לא ניתן היה לטעון את אזור הפרסום. נסו שוב בעוד רגע.',
+  pubw_err_listing_save_failed: 'לא ניתן היה לשמור את המודעה. השינויים עדיין בדף — נסו שוב.',
+  pubw_err_listing_update_failed: 'לא ניתן היה לעדכן את המודעה. נסו שוב.',
+  pubw_err_owned_record_required: 'המודעה הזו לא קיימת או אינה שלכם.',
+  pubw_err_owner_required: 'השלימו קודם את הגדרת חשבון HOMATCH.',
+  pubw_err_invalid_id: 'הקישור אינו תקין. פתחו את המודעה שוב מעמוד הפרסום בפורטלים.',
+  pubw_err_payload_too_large: 'המודעה גדולה מכדי להישמר. קצרו את התיאורים ונסו שוב.',
+  pubw_err_invalid_status: 'שינוי הסטטוס הזה אינו מותר. רעננו את הדף ונסו שוב.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

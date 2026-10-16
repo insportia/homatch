@@ -143,7 +143,8 @@ forbid automated access and Binebi.ge shows a bot challenge on every page — bo
 ## Real-browser dry run (owner, on a computer that can reach the portal)
 
 ```
-cd official-worker && npm ci
+git clone https://github.com/insportia/homatch && cd homatch/official-worker   # or git pull
+npm ci && npx playwright install chromium                                       # once
 npx tsx scripts/publishing-dry-run.ts myhome --photo test1.jpg --photo test2.jpg
 npx tsx scripts/publishing-dry-run.ts ssge --inspect
 ```
@@ -157,7 +158,7 @@ capability level is raised only with that evidence.
 
 ## Turning it on (Phase D — needs the owner)
 
-1. Apply migration `20261108090000_publishing_central_accounts.sql` (SQL Editor; it contains a DROP).
+1. Apply migration `20261108090000_publishing_central_accounts.sql` exactly as in `MIGRATION-20261108090000.md` (pre-checks, one atomic apply, post-checks).
 2. Set the edge secrets `PUBLISHING_CREDENTIALS_KEY` (32 random bytes, base64) and
    `PUBLISHING_WORKER_TOKEN` (≥ 32 random characters, e.g. `openssl rand -hex 32`).
 3. Set Railway variables `PUBLISHING_WORKER_TOKEN` (same value) and

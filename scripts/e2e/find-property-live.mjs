@@ -24,7 +24,9 @@ const page = await ctx.newPage();
 const consoleErrors = [];
 page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
 const calls = [];
-page.on('response', (r) => { const u = r.url(); if (u.includes('/functions/v1/marketplace-search')) calls.push({ status: r.status(), at: new Date().toISOString() }); });
+const failed = [];
+page.on('response', (r) => { const u = r.url(); if (u.includes('/functions/v1/marketplace-search')) calls.push({ status: r.status(), at: new Date().toISOString() });
+  if (r.status() >= 400) { const x = new URL(u); failed.push(`${r.status()} ${r.request().method()} ${x.host}${x.pathname}${x.search.replace(/(access_token|apikey|token)=[^&]+/g, '$1=…').slice(0, 160)}`); } });
 
 try {
   // 1. Sign up (the account must not exist yet), then wait for the operator to confirm it.
@@ -55,7 +57,7 @@ try {
   const t0 = Date.now();
   await page.goto(`${BASE}/find-property/new`, { waitUntil: 'networkidle' });
   await shot(page, '02-new');
-  await page.locator('textarea').first().fill('I want to buy an apartment in Tbilisi, 50 to 120 m², budget $80,000 to $200,000.');
+  await page.locator('textarea').first().fill(process.env.E2E_QUERY);
   await page.locator('form button[type="submit"]').first().click();
   const start = page.locator('[data-action="mps-start"]');
   const answered = [];
@@ -87,10 +89,14 @@ try {
   for (let i = 0; i < 48 && !done; i++) {
     await page.waitForTimeout(10000);
     cards = await page.locator('[data-property-key]').count();
+    const see = page.getByRole('button', { name: 'See results', exact: true }).or(page.getByRole('link', { name: 'See results', exact: true })).first();
+    if (!cards && await see.isVisible().catch(() => false)) { await see.click().catch(() => {}); await page.waitForTimeout(4000); cards = await page.locator('[data-property-key]').count(); }
     const live = (await page.locator('[aria-live="polite"]').allInnerTexts().catch(() => [])).join(' ');
     done = cards > 0 && !/search(ing)? (is )?(running|in progress)|still searching/i.test(live) && i > 5;
   }
   await shot(page, '04-results');
+  const retry = page.getByRole('button', { name: /refresh|retry|search again/i }).first();
+  out('refresh-control', { visible: await retry.isVisible().catch(() => false), label: await retry.innerText().catch(() => null) });
   const cardInfo = await page.locator('[data-property-key]').evaluateAll((els) => els.slice(0, 60).map((el) => ({
     key: el.getAttribute('data-property-key'),
     text: el.innerText.replace(/\s+/g, ' ').slice(0, 220),
@@ -102,8 +108,17 @@ try {
   out('labels', { mentionsHomatchListing: /HOMATCH listing/i.test(body), sourceNamed: /(MyHome|SS\.ge|Place\.ge|Home\.ge|Allhome)/.test(body), excerpt: body.slice(0, 1200) });
 
   // 4. Detail + external link, persistence after reload, history.
-  const firstLink = cardInfo.flatMap((c) => c.links)[0] ?? null;
-  out('external-link', { firstLink });
+  const view = page.getByRole('button', { name: 'View property', exact: true }).or(page.getByRole('link', { name: 'View property', exact: true })).first();
+  let dossier = null;
+  if (await view.isVisible().catch(() => false)) {
+    await view.click(); await page.waitForTimeout(5000); await shot(page, '04b-property');
+    const root = page.locator('[data-property-dossier]').first();
+    dossier = { open: await root.isVisible().catch(() => false), url: page.url(),
+      external: await page.locator('a[href^="http"]').evaluateAll((as) => [...new Set(as.map((a) => a.href))].filter((h) => !/homatch\.live|supabase|google|apple/.test(h)).slice(0, 6)),
+      text: (await root.innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 600) };
+    await page.goBack().catch(() => {}); await page.waitForTimeout(3000);
+  }
+  out('property', dossier ?? { open: false });
   await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(6000);
   out('reload', { cardsAfterReload: await page.locator('[data-property-key]').count() });
   await page.goto(`${BASE}/find-property`, { waitUntil: 'networkidle' }); await page.waitForTimeout(4000);
@@ -120,7 +135,7 @@ try {
     await shot(p, `06-mobile-${lang}`);
     await m.close();
   }
-  out('console', { errors: consoleErrors.slice(0, 15), count: consoleErrors.length });
+  out('console', { errors: consoleErrors.slice(0, 15), count: consoleErrors.length, failedResponses: [...new Set(failed)].slice(0, 20) });
 } catch (error) {
   await shot(page, '99-failure');
   out('error', { message: String(error?.message ?? error).slice(0, 500), url: page.url() });

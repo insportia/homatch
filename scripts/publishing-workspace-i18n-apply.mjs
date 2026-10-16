@@ -9,6 +9,7 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PUBLISHING_PORTALS_STRINGS } from './publishing-portals-i18n-data.mjs';
 import { PUBLISHING_WORKSPACE_STRINGS } from './publishing-workspace-i18n-data.mjs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
@@ -18,14 +19,17 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(here, '..', 'src', 'i18n', 'translations.ts');
 const TAG = 'publishing-workspace-i18n';
 
-const problems = validate(PUBLISHING_WORKSPACE_STRINGS, TAG);
+// The 2026-10-16 eight-portal set is applied on top: where it repeats a key, it wins.
+const STRINGS = { ...PUBLISHING_WORKSPACE_STRINGS, ...PUBLISHING_PORTALS_STRINGS };
+
+const problems = validate(STRINGS, TAG);
 if (problems.length > 0) {
   for (const problem of problems) console.error(problem);
   console.error(`[${TAG}] ${problems.length} problem(s); nothing was written.`);
   process.exit(1);
 }
 
-const result = splice(FILE, PUBLISHING_WORKSPACE_STRINGS, {
+const result = splice(FILE, STRINGS, {
   banner: 'PUBLISH TO PORTALS — the standalone publishing workspace (/publishing)',
   overwrite: process.argv.includes('--overwrite'),
 });

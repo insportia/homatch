@@ -20,7 +20,7 @@ import { EmptyState, OWNER_SURFACE, PageHero } from '@/components/customer/surfa
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { MediaWell, OWNER_PRIMARY, OWNER_SECONDARY } from '@/components/owner/portfolio';
-import { Kpi, ListingMark, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
+import { Kpi, ListingMark, PortalCapabilities, PortalLogo, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
@@ -106,6 +106,40 @@ function Workspace() {
           <button type="button" onClick={() => void load()} className={OWNER_SECONDARY}>{t('pubw_retry')}</button>
         </div>
       ) : null}
+
+      {/* HOW PUBLISHING WORKS — stated up front, because the question owners asked
+          was "where do I connect my portal account?". The honest answer is that none
+          of the eight portals offers account linking, so there is no Connect button:
+          the owner signs in on the portal itself and HOMATCH verifies the result.
+          The eight portals show as a logo strip; their capabilities open on request. */}
+      <section aria-labelledby="pubw-how" className="min-w-0 space-y-3 rounded-2xl border border-border bg-[hsl(var(--card))] p-4 shadow-card sm:p-5">
+        <div className="space-y-1">
+          <h2 id="pubw-how" className="font-display text-lg font-semibold text-foreground">{t('pubw_how_title')}</h2>
+          <p className="max-w-[70ch] text-sm text-muted-foreground">{t('pubw_how_body')}</p>
+        </div>
+        <ol className="grid gap-2 sm:grid-cols-4">
+          {(['prepare', 'post', 'link', 'verify'] as const).map((k, i) => (
+            <li key={k} className="flex min-w-0 items-start gap-2 rounded-lg bg-[hsl(var(--secondary))]/60 p-2.5">
+              <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#0C1119] text-[11px] font-bold text-white">{i + 1}</span>
+              <span className="min-w-0 text-2xs leading-snug text-foreground break-words">{t(`pubw_how_step_${k}`)}</span>
+            </li>
+          ))}
+        </ol>
+        {state.portals.length ? (
+          <details className="group rounded-xl border border-border" data-testid="pubw-portal-strip">
+            <summary className="flex min-h-12 cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+              <span className="flex -space-x-1.5 rtl:space-x-reverse">
+                {state.portals.map((portal) => <PortalLogo key={portal.id} portal={portal} size="sm" className="ring-2 ring-[hsl(var(--card))]" />)}
+              </span>
+              <span className="min-w-0 flex-1 text-2xs font-semibold text-foreground">{t('pubw_portals_strip', { n: state.portals.length })}</span>
+              <span className="text-2xs font-semibold text-[hsl(var(--gold-ink))] group-open:hidden">{t('pubw_show_capabilities')}</span>
+            </summary>
+            <div className="grid gap-2 border-t border-border p-3 md:grid-cols-2">
+              {state.portals.map((portal) => <PortalCapabilities key={portal.id} portal={portal} />)}
+            </div>
+          </details>
+        ) : null}
+      </section>
 
       <section aria-label={t('pubw_overview')} className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi label={t('pubw_kpi_total')} value={stats.total} onClick={() => setFilter('ALL')} active={filter === 'ALL'} />
@@ -202,10 +236,11 @@ function ListingRowView({ listing, property, pubs, portals, locale }: {
             {[where, d.price ? formatMoney(d.price, d.currency, locale) : null].filter(Boolean).join(' · ') || '—'}
           </p>
           <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
-            {portals.map((portal) => {
+            {portals.filter((portal) => d.portalTargets?.includes(portal.id) || pubs.some((p) => p.portal_id === portal.id)).map((portal) => {
               const pub = pubs.find((p) => p.portal_id === portal.id);
               return (
                 <span key={portal.id} className="inline-flex min-w-0 items-center gap-1.5">
+                  <PortalLogo portal={portal} size="sm" className="h-6 w-6 rounded-md" />
                   <span className="text-2xs font-semibold text-foreground">{portal.name}</span>
                   <PublicationMark status={pub?.status ?? null} />
                   {pub && isOutdated(pub, listing) ? <span className="text-2xs font-semibold text-amber-700">· {t('pubw_outdated_short')}</span> : null}

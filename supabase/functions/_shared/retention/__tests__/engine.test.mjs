@@ -20,11 +20,12 @@ const r2File = {
 function fakeRpc({ exists = [true, false], claims = [] } = {}) {
   const calls = [];
   const seen = [...exists];
+  const queue = [...claims];
   const rpc = async (fn, args) => {
     calls.push([fn, args]);
     switch (fn) {
       case 'retention_storage_object_exists': return seen.length ? seen.shift() : false;
-      case 'retention_artifacts_claim': return claims;
+      case 'retention_artifacts_claim': return queue.length ? [queue.shift()] : [];
       case 'retention_register_artifacts': return 0;
       case 'retention_artifact_notices': return { queued: 0 };
       default: return null;
@@ -157,6 +158,27 @@ test('a tick counts each outcome', async () => {
   assert.equal(report.claimed, 2);
   assert.equal(report.deleted, 2);
   assert.equal(report.failed, 0);
+});
+
+test('claims one item at a time, never more than the batch', async () => {
+  const many = Array.from({ length: 5 }, (_, i) => ({ ...r2File, artifact_id: `a${i}`, lease_token: `L${i}` }));
+  const { rpc, calls } = fakeRpc({ claims: many, exists: [] });
+  const report = await tick(rpc, fakeProviders({ r2Present: [true, false, true, false, true, false] }), { batch: 3, sleep: async () => {} });
+  assert.equal(report.claimed, 3);
+  const claimCalls = calls.filter(([f]) => f === 'retention_artifacts_claim');
+  assert.equal(claimCalls.length, 3);
+  assert.ok(claimCalls.every(([, a]) => a.p_limit === 1));
+});
+
+test('no new claim starts after the time budget, so a stopped run strands no leases', async () => {
+  let t = 0;
+  const many = Array.from({ length: 5 }, (_, i) => ({ ...r2File, artifact_id: `a${i}`, lease_token: `L${i}` }));
+  const { rpc, calls } = fakeRpc({ claims: many });
+  // every processed item costs 40 s of the 90 s budget
+  const providers = { ...fakeProviders({ r2Present: Array(10).fill(true).map((_, i) => i % 2 === 0) }), r2Delete: async () => { t += 40_000; } };
+  const report = await tick(rpc, providers, { now: () => t, budgetMs: 90_000, sleep: async () => {} });
+  assert.equal(report.claimed, 3);
+  assert.equal(calls.filter(([f]) => f === 'retention_artifacts_claim').length, 3);
 });
 
 test('the engine has no record-level code path left', () => {

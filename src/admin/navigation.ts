@@ -32,7 +32,7 @@
 import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Boxes,Brain,Building2, CreditCard,Gauge, Globe, Handshake, HardDrive, HeartPulse, 
   Layers, LayoutDashboard, Mail, Megaphone, ScrollText,
   MessageCircle, MessageSquareWarning, 
-  Paintbrush, PhoneCall, Puzzle, Radio, 
+  Paintbrush, PhoneCall, Plug, Puzzle, Radio, 
   Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, Store, 
   Type, UserSearch, Users, Wrench, Zap, 
 } from 'lucide-react';
@@ -288,6 +288,20 @@ export const ADMIN_GROUPS: AdminGroup[] = [
       {
         path: '/admin/engagement', labelKey: 'admin_nav_engagement', icon: Bell,
         keywords: ['engagement', 'push', 'notification', 'pwa', 'reminder'],
+      },
+    ],
+  },
+  {
+    /* Third-party services Publishing hands listings to. Grouped as what an
+       owner wants to do ("manage the portals"), not by the edge function. */
+    id: 'integrations',
+    labelKey: 'admin_group_integrations',
+    icon: Plug,
+    items: [
+      {
+        path: '/admin/integrations/portals', labelKey: 'admin_nav_property_portals', icon: Plug,
+        keywords: ['portal', 'publishing', 'myhome', 'ss.ge', 'place.ge', 'home.ge', 'brokeri', 'korter', 'binebi', 'allhome',
+          'integration', 'listing', 'publish', 'account connection'],
       },
     ],
   },

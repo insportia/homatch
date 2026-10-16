@@ -13,7 +13,7 @@
 // The tab lives in the URL (?tab=), so refresh, back and forward land where they were.
 
 import {
-  AlertTriangle, Archive, ArrowLeft, Check, Copy, ExternalLink, ImagePlus, Loader2, RefreshCw, RotateCcw, Trash2, Upload,
+  AlertTriangle, Archive, ArrowLeft, Check, ChevronDown, Copy, CopyPlus, Download, ExternalLink, ImagePlus, Loader2, Phone, RefreshCw, RotateCcw, Star, Trash2, Upload,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -23,7 +23,8 @@ import { RouteGuard } from '@/components/common/RouteGuard';
 import { OWNER_SURFACE, PageHero } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { MediaWell, OWNER_PRIMARY, OWNER_SECONDARY } from '@/components/owner/portfolio';
-import { ListingMark, Panel, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
+import { ContactsEditor } from '@/components/publishing/ContactsEditor';
+import { JourneySteps, ListingMark, Panel, PortalCapabilities, PortalLogo, PortalPicker, PublicationMark, RequiredMark, dateTime, useErrorText } from '@/components/publishing/parts';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -38,10 +39,11 @@ import { cn } from '@/lib/utils';
 import {
   AMENITIES, CONDITIONS, CURRENCIES, DEAL_TYPES, PROPERTY_TYPES,
   type EventRow, type ListingDraft, type PortalId, type PortalInfo, type Problem, type PublicationRow,
-  draftFromProperty, handoffText, isOutdated,
+  copyLanguage, draftFromProperty, handoffText, isOutdated, isRequired, journey, portalDescription, requiredBy,
 } from '@/publishing/model';
+import { contactFooter, contactLinks, formatPhone, isE164, stripFooter, withFooter } from '@/publishing/contacts';
 import { uploadPropertyPhoto } from '@/services/api';
-import { allPhotos, attachPhoto, readProperty } from '@/services/propertyManagement';
+import { allPhotos, attachPhoto, listPortfolio, readProperty } from '@/services/propertyManagement';
 import * as api from '@/services/publishing';
 import { resolveImageSrc } from '@/services/storage/images';
 import type { Property, PropertyPhoto } from '@/types/types';
@@ -50,6 +52,12 @@ type Tab = 'listing' | 'preview' | 'portals';
 const TABS: Tab[] = ['listing', 'preview', 'portals'];
 const INPUT = 'h-10 w-full min-w-0 rounded-lg border border-border bg-[hsl(var(--card))] px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-[hsl(var(--gold-border))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--gold))]/25 aria-[invalid=true]:border-red-400';
 const MAX_UPLOAD = 20 * 1024 * 1024;
+const LIVE_STATUSES = ['VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'UNPUBLISH_REQUESTED'];
+/** Product names, the same in every language. */
+const APP = { whatsapp: 'WhatsApp', viber: 'Viber' } as const;
+
+/** The label key for a validation field ("contacts.1" → the contacts label). */
+export const fieldLabelKey = (field: string) => (field.startsWith('contacts') ? 'pubw_field_contacts' : `pubw_field_${field.replace('.', '_').toLowerCase()}`);
 
 function Editor() {
   const { propertyId = '' } = useParams();
@@ -73,6 +81,8 @@ function Editor() {
   const [busy, setBusy] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
   const [confirm, setConfirm] = useState<null | { kind: 'archive' | 'delete' } | { kind: 'unpublish'; portal: PortalInfo }>(null);
+  const [duplicateTargets, setDuplicateTargets] = useState<Property[] | null>(null);
+  const [duplicateTo, setDuplicateTo] = useState('');
   const autoChecked = useRef(false);
 
   const tabParam = params.get('tab') as Tab | null;
@@ -81,6 +91,7 @@ function Editor() {
 
   const adopt = useCallback((d: api.ListingDetail | null) => {
     setDetail(d);
+    if (d?.portals) setPortals(d.portals);
     if (d) { setDraft(d.listing.payload); setDirty(false); }
   }, []);
 
@@ -176,9 +187,32 @@ function Editor() {
   };
 
   const problems = detail?.listing.validation;
-  const fieldProblem = (field: string): Problem | undefined => problems?.listing.find((p) => p.field === field);
+  const targets = draft?.portalTargets ?? [];
+  const portalProblems: Record<string, Problem[]> = Object.fromEntries(targets.map((id) => [id, problems?.portals[id] ?? []]));
+  /** A field's first problem: HOMATCH's own, then the first SELECTED portal that needs it, named. */
+  const fieldProblem = (field: string): Problem | undefined => {
+    const own = problems?.listing.find((p) => p.field === field);
+    if (own) return own;
+    for (const id of targets) {
+      const hit = problems?.portals[id]?.find((p) => p.field === field);
+      if (hit) return { ...hit, portalName: portals.find((x) => x.id === id)?.name } as Problem;
+    }
+    return undefined;
+  };
   const pubFor = (id: PortalId) => detail?.publications.find((p) => p.portal_id === id) ?? null;
-  const live = (detail?.publications ?? []).some((p) => ['VERIFYING', 'PUBLISHED', 'UNPUBLISH_REQUESTED'].includes(p.status));
+  const live = (detail?.publications ?? []).some((p) => LIVE_STATUSES.includes(p.status));
+  const rules = requiredBy(portals, targets);
+  const active = portals.filter((p) => targets.includes(p.id) || pubFor(p.id));
+  const others = portals.filter((p) => !active.includes(p));
+  const openDuplicate = async () => {
+    if (!homatchUser?.id) return;
+    try {
+      const [mine, ws] = await Promise.all([listPortfolio({ userId: homatchUser.id, view: 'ACTIVE', limit: 200 }), api.loadWorkspace()]);
+      const listed = new Set(ws.listings.map((l) => l.id));
+      setDuplicateTargets(mine.filter((p) => p.id !== propertyId && !listed.has(p.id)));
+      setDuplicateTo('');
+    } catch (e) { toast.error(errorText(e instanceof api.PublishingError ? e.code : 'NETWORK_ERROR')); }
+  };
 
   if (loading) return <div className="mx-auto w-full max-w-5xl space-y-3 px-4 py-6 sm:px-6"><Skeleton className="h-28 w-full rounded-2xl" /><Skeleton className="h-64 w-full rounded-2xl" /></div>;
   if (loadError || !draft || !property) {
@@ -224,6 +258,11 @@ function Editor() {
         {readOnly ? <span className="text-2xs font-semibold text-amber-700">{t('pubw_read_only')}</span> : null}
       </div>
 
+      <JourneySteps
+        steps={journey({ saved: !!detail, validation: detail?.listing.validation ?? null, draft, publications: detail?.publications ?? [] })}
+        onSelect={(step) => setTab(['select', 'required', 'phones', 'description', 'photos'].includes(step) ? 'listing' : 'portals')}
+      />
+
       <div role="tablist" aria-label={t('pubw_sections')} className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-[hsl(var(--card))] p-1">
         {TABS.map((id) => (
           <button
@@ -246,7 +285,7 @@ function Editor() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-semibold">{t('pubw_missing_title', { n: problems.listing.length })}</p>
           <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-2xs">
-            {problems.listing.map((p) => <li key={`${p.field}-${p.code}`}>{t(`pubw_field_${p.field.replace('.', '_').toLowerCase()}`)}: {t(`pubw_problem_${p.code.toLowerCase()}`)}</li>)}
+            {problems.listing.map((p) => <li key={`${p.field}-${p.code}`}>{t(fieldLabelKey(p.field))}: {t(`pubw_problem_${p.code.toLowerCase()}`)}</li>)}
           </ul>
         </div>
       ) : null}
@@ -254,6 +293,7 @@ function Editor() {
       <div role="tabpanel" id={`pubw-panel-${tab}`} aria-labelledby={`pubw-tab-${tab}`} className="space-y-4">
         {tab === 'listing' ? (
           <ListingForm draft={draft} update={update} photos={photos} fieldProblem={fieldProblem} portals={portals}
+            rules={rules} portalProblems={portalProblems} suggestion={isE164(property.contact_phone_e164) ? property.contact_phone_e164 : null}
             addPhotos={addPhotos} uploading={uploading} readOnly={readOnly || archived} />
         ) : tab === 'preview' ? (
           <Preview draft={draft} photos={photos} locale={locale} />
@@ -261,11 +301,16 @@ function Editor() {
           <div className="space-y-4">
             {!detail ? (
               <Panel><p className="text-sm text-muted-foreground">{t('pubw_save_first')}</p></Panel>
-            ) : portals.map((portal) => (
+            ) : active.length === 0 ? (
+              <Panel title={t('pubw_no_portal_selected_title')}>
+                <p className="mb-3 text-sm text-muted-foreground">{t('pubw_no_portal_selected_body')}</p>
+                <button type="button" className={OWNER_PRIMARY} onClick={() => setTab('listing')}>{t('pubw_choose_portals')}</button>
+              </Panel>
+            ) : active.map((portal) => (
               <PortalCard key={portal.id} portal={portal} pub={pubFor(portal.id)} detail={detail} draft={draft} photos={photos}
                 dirty={dirty} busy={busy} readOnly={readOnly || archived} locale={locale}
                 onPrepare={() => act(`prepare-${portal.id}`, () => api.preparePublication(propertyId, portal.id))}
-                onLink={(url) => act(`link-${portal.id}`, () => api.linkPublication(propertyId, portal.id, url))}
+                onLink={(url, attest) => act(`link-${portal.id}`, () => api.linkPublication(propertyId, portal.id, url, attest))}
                 onCheck={() => act(`check-${portal.id}`, () => api.checkPublication(propertyId, portal.id))}
                 onRetry={() => act(`retry-${portal.id}`, () => api.retryPublication(propertyId, portal.id))}
                 onUnpublish={() => setConfirm({ kind: 'unpublish', portal })}
@@ -274,6 +319,16 @@ function Editor() {
                 onEdit={() => setTab('listing')}
               />
             ))}
+            {detail && others.length ? (
+              <details className="rounded-2xl border border-border bg-[hsl(var(--card))] shadow-card">
+                <summary className="flex min-h-12 cursor-pointer items-center gap-2 px-4 py-3 text-sm font-semibold text-foreground sm:px-5">
+                  {t('pubw_other_portals', { n: others.length })}
+                </summary>
+                <div className="grid gap-2 border-t border-border p-3 sm:grid-cols-2 sm:p-4">
+                  {others.map((p) => <PortalCapabilities key={p.id} portal={p} />)}
+                </div>
+              </details>
+            ) : null}
             {detail ? <History events={detail.events} portals={portals} locale={locale} /> : null}
             {detail && !readOnly ? (
               <Panel title={t('pubw_manage_listing')}>
@@ -288,6 +343,9 @@ function Editor() {
                       <Archive className="h-4 w-4" aria-hidden="true" />{t('pubw_archive')}
                     </button>
                   )}
+                  <button type="button" className={OWNER_SECONDARY} disabled={busy !== null || dirty} onClick={() => void openDuplicate()} data-testid="pubw-duplicate">
+                    <CopyPlus className="h-4 w-4" aria-hidden="true" />{t('pubw_duplicate')}
+                  </button>
                   <button type="button" className={cn(OWNER_SECONDARY, 'text-red-700')} disabled={live || busy !== null} onClick={() => setConfirm({ kind: 'delete' })}>
                     <Trash2 className="h-4 w-4" aria-hidden="true" />{t('pubw_delete')}
                   </button>
@@ -312,6 +370,35 @@ function Editor() {
           </div>
         </div>
       ) : null}
+
+      <AlertDialog open={duplicateTargets !== null} onOpenChange={(open) => { if (!open) setDuplicateTargets(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('pubw_duplicate_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('pubw_duplicate_body')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {duplicateTargets?.length ? (
+            <select className={INPUT} value={duplicateTo} onChange={(e) => setDuplicateTo(e.target.value)} aria-label={t('pubw_duplicate_target')} data-testid="pubw-duplicate-target">
+              <option value="">{t('pubw_duplicate_target')}</option>
+              {duplicateTargets.map((p) => <option key={p.id} value={p.id}>{[p.homatch_id != null ? `#${String(p.homatch_id).padStart(6, '0')}` : null, p.title].filter(Boolean).join(' · ')}</option>)}
+            </select>
+          ) : <p className="text-sm text-muted-foreground">{t('pubw_duplicate_none')}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('pubw_cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!duplicateTo}
+              onClick={async () => {
+                const target = duplicateTo;
+                setDuplicateTargets(null);
+                if (!target) return;
+                try { await api.duplicateListing(propertyId, target); toast.success(t('pubw_duplicated')); navigate(`/publishing/${target}?tab=listing`); } catch (e) { toast.error(errorText(e instanceof api.PublishingError ? e.code : 'NETWORK_ERROR')); }
+              }}
+            >
+              {t('pubw_duplicate')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
         <AlertDialogContent>
@@ -346,50 +433,96 @@ function Editor() {
   );
 }
 
-/* ── The form ─────────────────────────────────────────────────────────── */
+/* ── The form ─────────────────────────────────────────────────────────────
+ * Progressive disclosure: what every listing needs is open; everything else sits
+ * in one collapsed "more details" section. A field leaves that section — and gets
+ * its asterisk — only when HOMATCH or a SELECTED portal's configured rules need
+ * it, and the form names that portal. Bathrooms, area and the address details
+ * are optional unless a portal says otherwise.
+ */
 
-function Field({ label, problem, children, hint, wide }: { label: string; problem?: Problem; children: React.ReactNode; hint?: string; wide?: boolean }) {
+function Field({ label, problem, children, hint, wide, required }: { label: string; problem?: Problem; children: React.ReactNode; hint?: string; wide?: boolean; required?: boolean }) {
   const { t } = useLanguage();
+  const portalName = (problem as (Problem & { portalName?: string }) | undefined)?.portalName;
   return (
     <label className={cn('block min-w-0 space-y-1', wide && 'sm:col-span-2')}>
-      <span className="block text-2xs font-semibold text-foreground">{label}</span>
+      <span className="block text-2xs font-semibold text-foreground">{label}{required ? <RequiredMark /> : null}</span>
       {children}
-      {problem ? <span className="block text-2xs font-medium text-red-700">{t(`pubw_problem_${problem.code.toLowerCase()}`)}</span>
+      {problem ? <span className="block text-2xs font-medium text-red-700">{problem.code === 'REQUIRED_BY_PORTAL' && portalName ? t('pubw_problem_required_by_portal', { portal: portalName }) : t(`pubw_problem_${problem.code.toLowerCase()}`)}</span>
         : hint ? <span className="block text-2xs text-muted-foreground">{hint}</span> : null}
     </label>
   );
 }
 
-function ListingForm({ draft, update, photos, fieldProblem, portals, addPhotos, uploading, readOnly }: {
+type NumKey = 'area' | 'rooms' | 'bedrooms' | 'bathrooms' | 'floor' | 'totalFloors';
+type TextKey = 'district' | 'street' | 'streetNumber' | 'contactName';
+const DETAIL_FIELDS: Array<{ key: NumKey | TextKey | 'condition'; kind: 'num' | 'text' | 'condition'; max?: number }> = [
+  { key: 'area', kind: 'num' }, { key: 'rooms', kind: 'num' }, { key: 'bedrooms', kind: 'num' }, { key: 'bathrooms', kind: 'num' },
+  { key: 'floor', kind: 'num' }, { key: 'totalFloors', kind: 'num' }, { key: 'condition', kind: 'condition' },
+  { key: 'district', kind: 'text', max: 80 }, { key: 'street', kind: 'text', max: 120 }, { key: 'streetNumber', kind: 'text', max: 20 },
+  { key: 'contactName', kind: 'text', max: 80 },
+];
+
+function ListingForm({ draft, update, photos, fieldProblem, portals, rules, portalProblems, suggestion, addPhotos, uploading, readOnly }: {
   draft: ListingDraft;
   update: <K extends keyof ListingDraft>(key: K, value: ListingDraft[K]) => void;
   photos: PropertyPhoto[];
   fieldProblem: (field: string) => Problem | undefined;
   portals: PortalInfo[];
+  rules: Map<string, PortalInfo[]>;
+  portalProblems: Record<string, Problem[]>;
+  suggestion: string | null;
   addPhotos: (files: FileList | null) => void;
   uploading: number;
   readOnly: boolean;
 }) {
   const { t } = useLanguage();
-  const [descLang, setDescLang] = useState<'ka' | 'en' | 'ru'>('ka');
-  const numeric = (key: keyof ListingDraft) => ({
+  const [descLang, setDescLang] = useState<'ka' | 'en' | 'ru'>(copyLanguage(draft));
+  const req = (field: string) => isRequired(field, rules);
+  const reqHint = (field: string) => {
+    const by = rules.get(field);
+    return by?.length ? t('pubw_required_by', { portals: by.map((p) => p.name).join(', ') }) : undefined;
+  };
+  const numeric = (key: NumKey | 'price') => ({
     type: 'number' as const,
     inputMode: 'decimal' as const,
     min: key === 'floor' ? -5 : 0,
-    value: (draft[key] as number | null) ?? '',
-    'aria-invalid': !!fieldProblem(String(key)),
+    value: draft[key] ?? '',
+    'aria-invalid': !!fieldProblem(key),
+    'aria-required': req(key),
     disabled: readOnly,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => update(key, (e.target.value === '' ? null : Number(e.target.value)) as never),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => update(key, e.target.value === '' ? null : Number(e.target.value)),
     className: INPUT,
   });
-  const textInput = (key: keyof ListingDraft, max = 140) => ({
-    value: String(draft[key] ?? ''),
+  const textInput = (key: TextKey | 'title' | 'city', max = 140) => ({
+    value: draft[key] ?? '',
     maxLength: max,
-    'aria-invalid': !!fieldProblem(String(key)),
+    'aria-invalid': !!fieldProblem(key),
+    'aria-required': req(key),
     disabled: readOnly,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => update(key, e.target.value as never),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => update(key, e.target.value),
     className: INPUT,
   });
+  const detail = (f: typeof DETAIL_FIELDS[number]) => {
+    const label = t(`pubw_field_${f.key.toLowerCase()}`);
+    const common = { key: f.key, label, problem: fieldProblem(f.key), required: req(f.key), hint: reqHint(f.key) };
+    if (f.kind === 'num') return <Field {...common}><input {...numeric(f.key as NumKey)} /></Field>;
+    if (f.kind === 'condition') {
+      return (
+        <Field {...common}>
+          <select className={INPUT} value={draft.condition} disabled={readOnly} aria-required={req('condition')} onChange={(e) => update('condition', e.target.value)}>
+            <option value="">—</option>
+            {CONDITIONS.map((v) => <option key={v} value={v}>{t(`prop_condition_${v.toLowerCase()}`)}</option>)}
+          </select>
+        </Field>
+      );
+    }
+    return <Field {...common}><input {...textInput(f.key as TextKey, f.max)} autoComplete={f.key === 'contactName' ? 'name' : undefined} /></Field>;
+  };
+  const promoted = DETAIL_FIELDS.filter((f) => req(f.key));
+  const tucked = DETAIL_FIELDS.filter((f) => !req(f.key));
+  const filledOptional = tucked.filter((f) => draft[f.key] != null && draft[f.key] !== '').length + (draft.amenities.length ? 1 : 0);
+
   const byId = new Map(photos.map((p) => [p.id, p]));
   const selected = draft.photos.filter((id) => byId.has(id));
   const unselected = photos.filter((p) => !selected.includes(p.id));
@@ -400,57 +533,40 @@ function ListingForm({ draft, update, photos, fieldProblem, portals, addPhotos, 
     [next[i], next[j]] = [next[j], next[i]];
     update('photos', next);
   };
-  const myhomeMax = portals.find((p) => p.id === 'myhome')?.maxPhotos ?? null;
+  const photoCap = Math.min(...portals.filter((p) => draft.portalTargets.includes(p.id) && p.maxPhotos).map((p) => p.maxPhotos as number));
+  const footer = contactFooter(draft.contacts, descLang);
+  const limits = portals.filter((p) => draft.portalTargets.includes(p.id) && p.descriptionMax);
+  const strictest = limits.length ? limits.reduce((a, b) => ((a.descriptionMax ?? 0) <= (b.descriptionMax ?? 0) ? a : b)) : null;
+  const copyLength = withFooter(draft.description[descLang], draft.contacts, descLang).length;
+  const contactProblem = (i: number) => !!fieldProblem(`contacts.${i}`);
 
   return (
     <>
-      <Panel title={t('pubw_sec_basics')}>
+      <Panel title={t('pubw_sec_essentials')} aside={<span className="text-2xs text-muted-foreground"><RequiredMark /> {t('pubw_required_legend')}</span>}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t('pubw_field_title')} problem={fieldProblem('title')} wide><input {...textInput('title', 140)} /></Field>
-          <Field label={t('pubw_field_propertytype')} problem={fieldProblem('propertyType')}>
-            <select className={INPUT} value={draft.propertyType} disabled={readOnly} aria-invalid={!!fieldProblem('propertyType')} onChange={(e) => update('propertyType', e.target.value)}>
+          <Field label={t('pubw_field_title')} problem={fieldProblem('title')} required wide><input {...textInput('title', 140)} /></Field>
+          <Field label={t('pubw_field_propertytype')} problem={fieldProblem('propertyType')} required>
+            <select className={INPUT} value={draft.propertyType} disabled={readOnly} aria-required aria-invalid={!!fieldProblem('propertyType')} onChange={(e) => update('propertyType', e.target.value)}>
               <option value="">—</option>
               {PROPERTY_TYPES.map((v) => <option key={v} value={v}>{t(`prop_type_${v.toLowerCase()}`)}</option>)}
             </select>
           </Field>
-          <Field label={t('pubw_field_dealtype')} problem={fieldProblem('dealType')}>
-            <select className={INPUT} value={draft.dealType} disabled={readOnly} aria-invalid={!!fieldProblem('dealType')} onChange={(e) => update('dealType', e.target.value)}>
+          <Field label={t('pubw_field_dealtype')} problem={fieldProblem('dealType')} required>
+            <select className={INPUT} value={draft.dealType} disabled={readOnly} aria-required aria-invalid={!!fieldProblem('dealType')} onChange={(e) => update('dealType', e.target.value)}>
               <option value="">—</option>
               {DEAL_TYPES.map((v) => <option key={v} value={v}>{t(`pubw_deal_${v.toLowerCase()}`)}</option>)}
             </select>
           </Field>
-          <Field label={t('pubw_field_condition')}>
-            <select className={INPUT} value={draft.condition} disabled={readOnly} onChange={(e) => update('condition', e.target.value)}>
-              <option value="">—</option>
-              {CONDITIONS.map((v) => <option key={v} value={v}>{t(`prop_condition_${v.toLowerCase()}`)}</option>)}
-            </select>
-          </Field>
-        </div>
-      </Panel>
-
-      <Panel title={t('pubw_sec_price')}>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Field label={t('pubw_field_price')} problem={fieldProblem('price')}><input {...numeric('price')} /></Field>
-          <Field label={t('pubw_field_currency')}>
-            <select className={INPUT} value={draft.currency} disabled={readOnly} onChange={(e) => update('currency', e.target.value)}>
-              {CURRENCIES.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </Field>
-          <Field label={t('pubw_field_area')} problem={fieldProblem('area')}><input {...numeric('area')} /></Field>
-          <Field label={t('pubw_field_rooms')} problem={fieldProblem('rooms')}><input {...numeric('rooms')} /></Field>
-          <Field label={t('pubw_field_bedrooms')} problem={fieldProblem('bedrooms')}><input {...numeric('bedrooms')} /></Field>
-          <Field label={t('pubw_field_bathrooms')} problem={fieldProblem('bathrooms')}><input {...numeric('bathrooms')} /></Field>
-          <Field label={t('pubw_field_floor')} problem={fieldProblem('floor')}><input {...numeric('floor')} /></Field>
-          <Field label={t('pubw_field_totalfloors')} problem={fieldProblem('totalFloors')}><input {...numeric('totalFloors')} /></Field>
-        </div>
-      </Panel>
-
-      <Panel title={t('pubw_sec_location')}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t('pubw_field_city')} problem={fieldProblem('city')}><input {...textInput('city', 80)} /></Field>
-          <Field label={t('pubw_field_district')}><input {...textInput('district', 80)} /></Field>
-          <Field label={t('pubw_field_street')} problem={fieldProblem('street')}><input {...textInput('street', 120)} /></Field>
-          <Field label={t('pubw_field_streetnumber')}><input {...textInput('streetNumber', 20)} /></Field>
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] gap-2">
+            <Field label={t('pubw_field_price')} problem={fieldProblem('price')} required><input {...numeric('price')} /></Field>
+            <Field label={t('pubw_field_currency')}>
+              <select className={INPUT} value={draft.currency} disabled={readOnly} onChange={(e) => update('currency', e.target.value)}>
+                {CURRENCIES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label={t('pubw_field_city')} problem={fieldProblem('city')} required><input {...textInput('city', 80)} /></Field>
+          {promoted.map(detail)}
         </div>
       </Panel>
 
@@ -461,48 +577,71 @@ function ListingForm({ draft, update, photos, fieldProblem, portals, addPhotos, 
             {(['ka', 'en', 'ru'] as const).map((l) => (
               <button key={l} type="button" role="tab" aria-selected={descLang === l} onClick={() => setDescLang(l)}
                 className={cn('min-h-8 whitespace-nowrap rounded-md border px-2.5 text-2xs font-semibold', descLang === l ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]' : 'border-border text-muted-foreground')}>
-                {t(`pubw_desc_lang_${l}`)}{draft.description[l] ? ' ✓' : ''}
+                {t(`pubw_desc_lang_${l}`)}{req(`description.${l}`) ? <RequiredMark /> : null}{draft.description[l] ? ' ✓' : ''}
               </button>
             ))}
           </div>
         }
       >
+        <p className="mb-1.5 text-2xs font-semibold text-foreground">{t('pubw_desc_label')}<RequiredMark /></p>
         <textarea
           value={draft.description[descLang]}
           onChange={(e) => update('description', { ...draft.description, [descLang]: e.target.value })}
+          // A footer pasted back from an earlier copy is removed: it is generated, never stored.
+          onBlur={(e) => { const clean = stripFooter(e.target.value); if (clean !== e.target.value.replace(/\s+$/, '')) update('description', { ...draft.description, [descLang]: clean }); }}
           rows={7}
           maxLength={6000}
           disabled={readOnly}
-          dir={descLang === 'ka' || descLang === 'en' || descLang === 'ru' ? 'ltr' : undefined}
+          dir="ltr"
           aria-label={t('pubw_sec_description')}
-          aria-invalid={!!fieldProblem('description')}
+          aria-required
+          aria-invalid={!!fieldProblem('description') || !!fieldProblem(`description.${descLang}`)}
           className={cn(INPUT, 'h-auto py-2 leading-relaxed')}
         />
         <p className="mt-1 flex flex-wrap justify-between gap-2 text-2xs text-muted-foreground">
-          <span>{fieldProblem('description') ? <span className="font-medium text-red-700">{t('pubw_problem_required')}</span> : t('pubw_desc_hint')}</span>
-          <span className="tabular-nums">{draft.description[descLang].length}/6000</span>
+          <span>{fieldProblem('description') ? <span className="font-medium text-red-700">{t('pubw_problem_required')}</span> : reqHint(`description.${descLang}`) ?? t('pubw_desc_hint')}</span>
+          <span className={cn('tabular-nums', strictest?.descriptionMax && copyLength > strictest.descriptionMax && 'font-semibold text-red-700')}>
+            {strictest?.descriptionMax ? t('pubw_desc_limit', { n: copyLength, max: strictest.descriptionMax, portal: strictest.name }) : `${draft.description[descLang].length}/6000`}
+          </span>
         </p>
+        <div className="mt-3 rounded-lg border border-dashed border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/40 p-3" data-testid="pubw-footer-preview">
+          <p className="mb-1 text-2xs font-semibold text-[hsl(var(--gold-ink))]">{t('pubw_footer_title')}</p>
+          {footer ? <p dir="ltr" className="whitespace-pre-line text-sm leading-relaxed text-foreground">{footer}</p> : <p className="text-2xs text-muted-foreground">{t('pubw_footer_empty')}</p>}
+        </div>
+      </Panel>
+
+      <Panel title={<>{t('pubw_sec_contact')}<RequiredMark /></>}>
+        {fieldProblem('contacts') ? <p className="mb-2 text-2xs font-medium text-red-700">{t('pubw_problem_valid_phone_required')}</p> : null}
+        <ContactsEditor contacts={draft.contacts} onChange={(next) => update('contacts', next)} suggestion={suggestion} readOnly={readOnly} problemAt={contactProblem} />
+      </Panel>
+
+      <Panel title={t('pubw_sec_portals')} aside={<span className="text-2xs text-muted-foreground">{t('pubw_portals_selected', { n: draft.portalTargets.length })}</span>}>
+        <PortalPicker portals={portals} selected={draft.portalTargets} disabled={readOnly} problems={portalProblems}
+          onToggle={(id) => update('portalTargets', draft.portalTargets.includes(id) ? draft.portalTargets.filter((x) => x !== id) : [...draft.portalTargets, id])} />
+        <p className="mt-2 text-2xs text-muted-foreground">{t('pubw_portals_hint')}</p>
       </Panel>
 
       <Panel
-        title={t('pubw_sec_photos')}
-        aside={<span className="text-2xs text-muted-foreground">{t('pubw_photos_count', { n: selected.length })}{myhomeMax ? ` · ${t('pubw_photos_myhome_max', { n: myhomeMax })}` : ''}</span>}
+        title={<>{t('pubw_sec_photos')}{req('photos') ? <RequiredMark /> : null}</>}
+        aside={<span className="text-2xs text-muted-foreground">{t('pubw_photos_count', { n: selected.length })}{Number.isFinite(photoCap) ? ` · ${t('pubw_photos_cap', { n: photoCap })}` : ''}</span>}
       >
-        {fieldProblem('photos') ? <p className="mb-2 text-2xs font-medium text-red-700">{t('pubw_problem_photo_required')}</p> : null}
+        {fieldProblem('photos') ? <p className="mb-2 text-2xs font-medium text-red-700">{t('pubw_problem_photo_required')}</p> : reqHint('photos') ? <p className="mb-2 text-2xs text-muted-foreground">{reqHint('photos')}</p> : null}
         {selected.length ? (
           <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {selected.map((id, i) => {
               const photo = byId.get(id)!;
               return (
-                <li key={id} className="min-w-0 overflow-hidden rounded-lg border border-border">
+                <li key={id} className="min-w-0 overflow-hidden rounded-lg border border-border motion-safe:animate-in motion-safe:fade-in">
                   <MediaWell hasMedia>
                     <PrivateImage src={photo.storage_path || photo.public_url} alt="" className="absolute inset-0 h-full w-full object-cover" pending={<div className="absolute inset-0 animate-pulse bg-[hsl(var(--secondary))]" />} />
                     {i === 0 ? <span className="absolute start-1.5 top-1.5 rounded bg-[#0C1119]/85 px-1.5 py-0.5 text-2xs font-semibold text-white">{t('pubw_cover')}</span> : null}
+                    {Number.isFinite(photoCap) && i >= photoCap ? <span className="absolute inset-x-0 bottom-0 bg-red-600/85 px-1.5 py-0.5 text-center text-2xs font-semibold text-white">{t('pubw_photo_over_cap')}</span> : null}
                   </MediaWell>
                   <div className="flex items-center justify-between gap-1 p-1">
                     <span className="flex gap-1">
                       <button type="button" disabled={readOnly || i === 0} onClick={() => move(i, -1)} aria-label={t('pubw_photo_earlier')} className="grid h-8 w-8 place-items-center rounded-md border border-border text-sm disabled:opacity-40"><span aria-hidden="true" className="rtl:-scale-x-100">←</span></button>
                       <button type="button" disabled={readOnly || i === selected.length - 1} onClick={() => move(i, 1)} aria-label={t('pubw_photo_later')} className="grid h-8 w-8 place-items-center rounded-md border border-border text-sm disabled:opacity-40"><span aria-hidden="true" className="rtl:-scale-x-100">→</span></button>
+                      {i > 0 ? <button type="button" disabled={readOnly} onClick={() => update('photos', [id, ...selected.filter((x) => x !== id)])} aria-label={t('pubw_photo_make_cover')} className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:text-[hsl(var(--gold-ink))]"><Star className="h-3.5 w-3.5" aria-hidden="true" /></button> : null}
                     </span>
                     <button type="button" disabled={readOnly} onClick={() => update('photos', selected.filter((x) => x !== id))} className="min-h-8 rounded-md px-2 text-2xs font-semibold text-muted-foreground hover:text-red-700">{t('pubw_photo_exclude')}</button>
                   </div>
@@ -510,7 +649,7 @@ function ListingForm({ draft, update, photos, fieldProblem, portals, addPhotos, 
               );
             })}
           </ol>
-        ) : null}
+        ) : <p className="text-2xs text-muted-foreground">{t('pubw_photos_none')}</p>}
         {unselected.length ? (
           <div className="mt-3">
             <p className="mb-1.5 text-2xs font-semibold text-muted-foreground">{t('pubw_photos_not_included')}</p>
@@ -534,47 +673,33 @@ function ListingForm({ draft, update, photos, fieldProblem, portals, addPhotos, 
         <p className="mt-1.5 text-2xs text-muted-foreground">{t('pubw_photos_hint')}</p>
       </Panel>
 
-      <Panel title={t('pubw_sec_amenities')}>
-        <div className="flex flex-wrap gap-2">
-          {AMENITIES.map((a) => {
-            const on = draft.amenities.includes(a);
-            return (
-              <button key={a} type="button" aria-pressed={on} disabled={readOnly}
-                onClick={() => update('amenities', on ? draft.amenities.filter((x) => x !== a) : [...draft.amenities, a])}
-                className={cn('min-h-9 rounded-full border px-3 text-2xs font-semibold transition-colors', on ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]' : 'border-border text-muted-foreground hover:text-foreground')}>
-                {on ? '✓ ' : ''}{t(`pubw_amenity_${a}`)}
-              </button>
-            );
-          })}
+      <details className="group min-w-0 rounded-2xl border border-border bg-[hsl(var(--card))] shadow-card" data-testid="pubw-optional">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 sm:px-5 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0">
+            <span className="block font-display text-base font-semibold text-foreground">{t('pubw_sec_more')}</span>
+            <span className="block text-2xs text-muted-foreground">{t('pubw_sec_more_hint', { n: filledOptional })}</span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="space-y-4 border-t border-border px-4 pb-4 pt-3 sm:px-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{tucked.map(detail)}</div>
+          <div>
+            <p className="mb-1.5 text-2xs font-semibold text-foreground">{t('pubw_sec_amenities')}{req('amenities') ? <RequiredMark /> : null}</p>
+            <div className="flex flex-wrap gap-2">
+              {AMENITIES.map((a) => {
+                const on = draft.amenities.includes(a);
+                return (
+                  <button key={a} type="button" aria-pressed={on} disabled={readOnly}
+                    onClick={() => update('amenities', on ? draft.amenities.filter((x) => x !== a) : [...draft.amenities, a])}
+                    className={cn('min-h-9 rounded-full border px-3 text-2xs font-semibold transition-colors', on ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]' : 'border-border text-muted-foreground hover:text-foreground')}>
+                    {on ? '✓ ' : ''}{t(`pubw_amenity_${a}`)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
-      </Panel>
-
-      <Panel title={t('pubw_sec_contact')}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t('pubw_field_contactname')} problem={fieldProblem('contactName')}><input {...textInput('contactName', 80)} autoComplete="name" /></Field>
-          <Field label={t('pubw_field_contactphone')} problem={fieldProblem('contactPhone')} hint={t('pubw_phone_private')}>
-            <input {...textInput('contactPhone', 32)} type="tel" inputMode="tel" autoComplete="tel" dir="ltr" />
-          </Field>
-        </div>
-      </Panel>
-
-      <Panel title={t('pubw_sec_settings')}>
-        <div className="space-y-2">
-          {portals.map((p) => {
-            const on = draft.portalTargets.includes(p.id);
-            return (
-              <label key={p.id} className="flex min-w-0 items-start gap-3 rounded-lg border border-border p-3">
-                <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(38_92%_50%)]" checked={on} disabled={readOnly}
-                  onChange={() => update('portalTargets', on ? draft.portalTargets.filter((x) => x !== p.id) : [...draft.portalTargets, p.id])} />
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-foreground">{p.name}</span>
-                  <span className="block text-2xs text-muted-foreground">{t('pubw_portal_mode_manual')}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </Panel>
+      </details>
     </>
   );
 }
@@ -634,7 +759,20 @@ function Preview({ draft, photos, locale }: { draft: ListingDraft; photos: Prope
           ) : null}
           <div className="border-t border-border pt-3">
             <p className="text-2xs text-muted-foreground">{t('pubw_sec_contact')}</p>
-            <p className="text-sm font-semibold text-foreground">{draft.contactName || '—'} <span dir="ltr" className="font-normal tabular-nums text-muted-foreground">{draft.contactPhone}</span></p>
+            {draft.contactName ? <p className="text-sm font-semibold text-foreground">{draft.contactName}</p> : null}
+            <ul className="mt-1 space-y-1.5" data-testid="pubw-preview-contacts">
+              {draft.contacts.filter((c) => isE164(c.phone)).map((c) => {
+                const links = contactLinks(c);
+                return (
+                  <li key={c.phone} className="flex flex-wrap items-center gap-1.5">
+                    <a href={links.call} dir="ltr" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border px-3 text-2xs font-semibold tabular-nums text-foreground hover:border-[hsl(var(--gold-border))]"><Phone className="h-3.5 w-3.5" aria-hidden="true" />{formatPhone(c.phone)}</a>
+                    {links.whatsapp ? <a href={links.whatsapp} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center rounded-full border border-emerald-300 bg-emerald-50 px-3 text-2xs font-semibold text-emerald-800">{APP.whatsapp}</a> : null}
+                    {links.viber ? <a href={links.viber} className="inline-flex min-h-9 items-center rounded-full border border-violet-300 bg-violet-50 px-3 text-2xs font-semibold text-violet-800">{APP.viber}</a> : null}
+                  </li>
+                );
+              })}
+            </ul>
+            {!draft.contacts.some((c) => isE164(c.phone)) ? <p className="text-sm text-muted-foreground">—</p> : null}
           </div>
         </div>
       </div>
@@ -647,7 +785,7 @@ function Preview({ draft, photos, locale }: { draft: ListingDraft; photos: Prope
             </button>
           ))}
         </div>
-        <p dir="ltr" className="whitespace-pre-line text-sm leading-relaxed text-foreground break-words">{draft.description[descLang] || t('pubw_no_description')}</p>
+        <p dir="ltr" data-testid="pubw-preview-description" className="whitespace-pre-line text-sm leading-relaxed text-foreground break-words">{draft.description[descLang] ? portalDescription(draft, descLang) : t('pubw_no_description')}</p>
       </div>
     </article>
   );
@@ -675,7 +813,42 @@ function PhotoLinks({ ids, photos }: { ids: string[]; photos: PropertyPhoto[] })
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
     else toast.error(t('pubw_photo_unavailable'));
   };
+  /* Save each photo as a numbered file so the portal upload keeps HOMATCH's order.
+     A host that refuses a cross-origin download falls back to opening the photo. */
+  const [saving, setSaving] = useState(false);
+  const downloadAll = async () => {
+    setSaving(true);
+    const list = ids.map((id) => byId.get(id)).filter(Boolean) as PropertyPhoto[];
+    let saved = 0;
+    for (const [i, p] of list.entries()) {
+      const url = await resolveImageSrc(p.storage_path || p.public_url);
+      if (!url) continue;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `homatch-photo-${String(i + 1).padStart(2, '0')}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        saved += 1;
+      } catch {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    }
+    setSaving(false);
+    if (saved) toast.success(t('pubw_photos_saved', { n: saved }));
+  };
   return (
+    <div className="space-y-2">
+    <button type="button" className={cn(OWNER_SECONDARY, 'min-h-9')} disabled={saving || ids.length === 0} onClick={() => void downloadAll()}>
+      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />}
+      {t('pubw_photos_download_all', { n: ids.length })}
+    </button>
     <ul className="flex flex-wrap gap-1.5">
       {ids.map((id) => byId.get(id)).filter(Boolean).map((p, i) => (
         <li key={p!.id}>
@@ -686,20 +859,23 @@ function PhotoLinks({ ids, photos }: { ids: string[]; photos: PropertyPhoto[] })
         </li>
       ))}
     </ul>
+    </div>
   );
 }
 
 function PortalCard(props: {
   portal: PortalInfo; pub: PublicationRow | null; detail: api.ListingDetail; draft: ListingDraft; photos: PropertyPhoto[];
   dirty: boolean; busy: string | null; readOnly: boolean; locale: string;
-  onPrepare: () => void; onLink: (url: string) => void; onCheck: () => void; onRetry: () => void; onUnpublish: () => void;
+  onPrepare: () => void; onLink: (url: string, attest: boolean) => void; onCheck: () => void; onRetry: () => void; onUnpublish: () => void;
   onConfirmRemoved: () => void; onMarkUpdated: () => void; onEdit: () => void;
 }) {
   const { portal, pub, detail, draft, photos, dirty, busy, readOnly, locale } = props;
   const { t } = useLanguage();
   const errorText = useErrorText();
   const [url, setUrl] = useState(pub?.external_url ?? '');
+  const [attest, setAttest] = useState(false);
   useEffect(() => { setUrl(pub?.external_url ?? ''); }, [pub?.external_url]);
+  const ownerConfirmed = portal.verification === 'OWNER_CONFIRMED';
   const v = detail.listing.validation;
   const blockers = [...v.listing, ...(v.portals[portal.id] ?? [])];
   const status = pub?.status ?? null;
@@ -707,16 +883,29 @@ function PortalCard(props: {
   const canPrepare = !status || ['UNPUBLISHED', 'REMOVED_EXTERNALLY'].includes(status);
   const handoff = status === 'HANDOFF_READY' || status === 'VERIFICATION_FAILED' || status === 'VERIFYING';
   const tooSoon = !!pub?.next_check_at && Date.parse(pub.next_check_at) > Date.now();
-  const copyLang: 'ka' | 'en' | 'ru' = draft.description.ka ? 'ka' : draft.description.en ? 'en' : 'ru';
+  const copyLang = copyLanguage(draft);
   const address = [draft.street, draft.streetNumber].filter(Boolean).join(' ');
   const selected = draft.portalTargets.includes(portal.id);
+  const phones = draft.contacts.filter((c) => isE164(c.phone)).map((c) => formatPhone(c.phone)).join('\n');
+  const facts = [
+    draft.price ? `${t('pubw_field_price')}: ${draft.price} ${draft.currency}` : '',
+    draft.area ? `${t('pubw_field_area')}: ${draft.area} m²` : '',
+    draft.city ? `${t('pubw_field_city')}: ${draft.city}` : '',
+    address ? `${t('pubw_field_street')}: ${address}` : '',
+  ].filter(Boolean);
 
   return (
     <Panel
-      title={portal.name}
+      id={`pubw-portal-${portal.id}`}
+      title={<span className="flex min-w-0 items-center gap-2.5"><PortalLogo portal={portal} size="sm" /><span className="min-w-0 truncate">{portal.name}</span></span>}
       aside={<span className="flex flex-wrap items-center gap-2">{!selected ? <span className="text-2xs text-muted-foreground">{t('pubw_portal_not_selected')}</span> : null}<PublicationMark status={status} /></span>}
     >
-      <p className="-mt-1 mb-3 text-2xs text-muted-foreground">{t('pubw_portal_mode_manual')}</p>
+      <details className="-mt-1 mb-3">
+        <summary className="cursor-pointer text-2xs font-semibold text-muted-foreground hover:text-foreground">{t('pubw_show_capabilities_one', { portal: portal.name })}</summary>
+        <div className="mt-2"><PortalCapabilities portal={portal} compact /></div>
+      </details>
+
+      {!portal.enabled && !status ? <p className="mb-3 rounded-lg bg-[hsl(var(--secondary))] px-3 py-2 text-2xs text-muted-foreground">{t('pubw_portal_unavailable_body', { portal: portal.name })}</p> : null}
 
       {pub?.last_error && status !== 'PUBLISHED' ? (
         <p className={cn('mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-2xs', status === 'VERIFICATION_FAILED' || status === 'REMOVED_EXTERNALLY' ? 'bg-red-50 text-red-800' : 'bg-sky-50 text-sky-900')}>
@@ -743,11 +932,11 @@ function PortalCard(props: {
         </dl>
       ) : null}
 
-      {readOnly ? null : canPrepare ? (
+      {readOnly || !portal.enabled ? null : canPrepare ? (
         blockers.length || dirty ? (
           <div className="space-y-2">
             <p className="text-2xs text-muted-foreground">{dirty ? t('pubw_save_before_publish') : t('pubw_blocked', { n: blockers.length })}</p>
-            {blockers.length ? <ul className="list-inside list-disc text-2xs text-red-700">{blockers.map((p) => <li key={`${p.field}-${p.code}`}>{t(`pubw_field_${p.field.replace('.', '_').toLowerCase()}`)}: {t(`pubw_problem_${p.code.toLowerCase()}`)}</li>)}</ul> : null}
+            {blockers.length ? <ul className="list-inside list-disc text-2xs text-red-700">{blockers.map((p) => <li key={`${p.field}-${p.code}`}>{t(fieldLabelKey(p.field))}: {p.code === 'REQUIRED_BY_PORTAL' ? t('pubw_problem_required_by_portal', { portal: portal.name }) : t(`pubw_problem_${p.code.toLowerCase()}`)}</li>)}</ul> : null}
             <button type="button" className={OWNER_SECONDARY} onClick={props.onEdit}>{t('pubw_fix_in_editor')}</button>
           </div>
         ) : (
@@ -764,11 +953,11 @@ function PortalCard(props: {
             <p className="mb-2 text-2xs font-semibold text-foreground"><span className="me-1.5 text-[hsl(var(--gold-ink))]">1</span>{t('pubw_step_copy')}</p>
             <div className="flex flex-wrap gap-1.5">
               <CopyButton label={t('pubw_copy_title')} value={draft.title} />
-              <CopyButton label={t('pubw_copy_description')} value={handoffText(draft, copyLang).split('\n').slice(2).join('\n')} />
+              <CopyButton label={t('pubw_copy_description')} value={portalDescription(draft, copyLang)} />
               <CopyButton label={t('pubw_copy_price')} value={draft.price ? String(draft.price) : ''} />
-              <CopyButton label={t('pubw_copy_address')} value={address} />
-              <CopyButton label={t('pubw_copy_phone')} value={draft.contactPhone} />
-              <CopyButton label={t('pubw_copy_all')} value={[handoffText(draft, copyLang), '', `${t('pubw_field_price')}: ${draft.price ?? ''} ${draft.currency}`, `${t('pubw_field_area')}: ${draft.area ?? ''} m²`, `${t('pubw_field_city')}: ${draft.city}`, `${t('pubw_field_street')}: ${address}`, `${t('pubw_sec_contact')}: ${draft.contactName} ${draft.contactPhone}`].join('\n')} />
+              {address ? <CopyButton label={t('pubw_copy_address')} value={address} /> : null}
+              <CopyButton label={t('pubw_copy_phone')} value={phones} />
+              <CopyButton label={t('pubw_copy_all')} value={[handoffText(draft, copyLang), '', ...facts].join('\n').trim()} />
             </div>
           </li>
           <li className="rounded-lg border border-border p-3">
@@ -781,23 +970,32 @@ function PortalCard(props: {
               <ExternalLink className="h-4 w-4" aria-hidden="true" />{t('pubw_open_portal', { portal: portal.name })}
             </a>
             <p className="mt-1.5 text-2xs text-muted-foreground">{t('pubw_portal_security_note', { portal: portal.name })}</p>
+            {!portal.createUrlVerified ? <p className="mt-1 text-2xs text-muted-foreground">{t('pubw_create_url_home', { portal: portal.name })}</p> : null}
           </li>
           <li className="rounded-lg border border-border p-3">
             <p className="mb-2 text-2xs font-semibold text-foreground"><span className="me-1.5 text-[hsl(var(--gold-ink))]">4</span>{t('pubw_step_link', { portal: portal.name })}</p>
-            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); if (url.trim()) props.onLink(url.trim()); }}>
-              <input value={url} onChange={(e) => setUrl(e.target.value)} type="url" inputMode="url" dir="ltr" placeholder={portal.id === 'myhome' ? 'https://www.myhome.ge/pr/…' : 'https://home.ss.ge/…'} aria-label={t('pubw_publication_url')} className={INPUT} />
-              <button type="submit" className={cn(OWNER_PRIMARY, 'shrink-0')} disabled={!url.trim() || busy !== null}>
-                {working('link') ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Check className="h-4 w-4" aria-hidden="true" />}{t('pubw_verify')}
-              </button>
+            <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (url.trim() && (!ownerConfirmed || attest)) props.onLink(url.trim(), ownerConfirmed && attest); }}>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input value={url} onChange={(e) => setUrl(e.target.value)} type="url" inputMode="url" dir="ltr" placeholder={`${portal.siteUrl}/…`} aria-label={t('pubw_publication_url')} className={INPUT} />
+                <button type="submit" className={cn(OWNER_PRIMARY, 'shrink-0')} disabled={!url.trim() || busy !== null || (ownerConfirmed && !attest)}>
+                  {working('link') ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Check className="h-4 w-4" aria-hidden="true" />}{t(ownerConfirmed ? 'pubw_confirm_live' : 'pubw_verify')}
+                </button>
+              </div>
+              {ownerConfirmed ? (
+                <label className="flex items-start gap-2 text-2xs text-foreground">
+                  <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(38_92%_50%)]" data-testid={`pubw-attest-${portal.id}`} />
+                  <span>{t('pubw_attest_label', { portal: portal.name })}</span>
+                </label>
+              ) : null}
             </form>
-            <p className="mt-1.5 text-2xs text-muted-foreground">{t('pubw_verify_hint')}</p>
+            <p className="mt-1.5 text-2xs text-muted-foreground">{ownerConfirmed ? t('pubw_owner_confirm_hint', { portal: portal.name }) : t('pubw_verify_hint')}</p>
           </li>
         </ol>
       ) : null}
 
       {!readOnly && status ? (
         <div className="mt-3 flex flex-wrap gap-2">
-          {['VERIFYING', 'PUBLISHED', 'UNPUBLISH_REQUESTED'].includes(status) ? (
+          {!ownerConfirmed && ['VERIFYING', 'PUBLISHED', 'UNPUBLISH_REQUESTED'].includes(status) ? (
             <button type="button" className={OWNER_SECONDARY} disabled={busy !== null || tooSoon} onClick={props.onCheck} title={tooSoon ? t('pubw_err_check_too_soon_at', { when: dateTime(pub?.next_check_at, locale) }) : undefined}>
               {working('check') ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}{t(status === 'PUBLISHED' ? 'pubw_sync' : 'pubw_check_now')}
             </button>
@@ -805,7 +1003,7 @@ function PortalCard(props: {
           {status === 'VERIFICATION_FAILED' ? (
             <button type="button" className={OWNER_SECONDARY} disabled={busy !== null} onClick={props.onRetry}>{working('retry') ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RotateCcw className="h-4 w-4" aria-hidden="true" />}{t('pubw_retry_verification')}</button>
           ) : null}
-          {status === 'PUBLISHED' || status === 'VERIFYING' ? (
+          {status === 'PUBLISHED' || status === 'VERIFYING' || status === 'OWNER_CONFIRMED' ? (
             <button type="button" className={cn(OWNER_SECONDARY, 'text-red-700')} disabled={busy !== null} onClick={props.onUnpublish}>{t('pubw_unpublish')}</button>
           ) : null}
           {status === 'UNPUBLISH_REQUESTED' || status === 'REMOVED_EXTERNALLY' ? (
@@ -813,7 +1011,8 @@ function PortalCard(props: {
           ) : null}
         </div>
       ) : null}
-      {status === 'UNPUBLISH_REQUESTED' ? <p className="mt-2 text-2xs text-muted-foreground">{t('pubw_unpublish_pending_note', { portal: portal.name })}</p> : null}
+      {status === 'UNPUBLISH_REQUESTED' ? <p className="mt-2 text-2xs text-muted-foreground">{t(ownerConfirmed ? 'pubw_unpublish_pending_owner_note' : 'pubw_unpublish_pending_note', { portal: portal.name })}</p> : null}
+      {status === 'OWNER_CONFIRMED' ? <p className="mt-2 text-2xs text-muted-foreground">{t('pubw_owner_confirmed_note', { portal: portal.name })}</p> : null}
     </Panel>
   );
 }

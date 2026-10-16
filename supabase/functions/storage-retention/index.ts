@@ -14,6 +14,10 @@
 //                          them with a two-minute life, and return their ids.
 //                          A later tick deletes them; that is the end-to-end
 //                          proof, run against real storage.
+//   {"action":"cachecheck","limit":3}
+//                          read-only gate for the official-document cache:
+//                          re-fetch up to 5 cached files from their source and
+//                          compare type, size and SHA-256. Changes nothing.
 //
 // Only locations public.retention_location_eligible() accepts can be deleted,
 // and the engine checks the same allowlist again before every delete.
@@ -50,29 +54,68 @@ const VIEWABLE = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const SELFTEST_PDF = '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n'
   + 'trailer<</Root 1 0 R>>\n%%EOF\n';
 
+const sha256Hex = async (bytes: Uint8Array) =>
+  [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+/** One fetch from the source research-agent document_file uses on a cache miss. */
+async function fetchTasSource(id: string): Promise<{ status: number; contentType: string | null; bytes: Uint8Array } | { error: string }> {
+  const worker = Deno.env.get('WORKER_URL') || '';
+  const token = Deno.env.get('WORKER_TOKEN') || '';
+  if (!worker || !token) return { error: 'WORKER_NOT_CONFIGURED' };
+  try {
+    const res = await fetch(`${worker}/verify/tas-file?attachedFileId=${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(55000),
+    });
+    const bytes = res.ok ? new Uint8Array(await res.arrayBuffer()) : (await res.body?.cancel(), new Uint8Array());
+    return { status: res.status, contentType: res.headers.get('content-type'), bytes };
+  } catch (e) {
+    return { error: `source unreachable: ${e instanceof Error ? e.message : e}`.slice(0, 200) };
+  }
+}
+
 /** Can research-agent rebuild this cached official document from its source right now? */
 async function regenerateTasDocument(objectKey: string): Promise<RegenerationProof> {
   const checkedAt = new Date().toISOString();
   const id = tasAttachmentId(objectKey);
   if (!id) return { regenerable: false, method: 'VERIFY_TAS_DOCUMENT', error: 'not a cache key', checkedAt };
-  const worker = Deno.env.get('WORKER_URL') || '';
-  const token = Deno.env.get('WORKER_TOKEN') || '';
-  if (!worker || !token) return { regenerable: false, method: 'VERIFY_TAS_DOCUMENT', error: 'WORKER_NOT_CONFIGURED', checkedAt };
-  try {
-    // The same source document_file uses on a cache miss.
-    const res = await fetch(`${worker}/verify/tas-file?attachedFileId=${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(55000),
+  const src = await fetchTasSource(id);
+  if ('error' in src) return { regenerable: false, method: 'VERIFY_TAS_DOCUMENT', error: src.error, checkedAt };
+  const { status, contentType, bytes } = src;
+  const regenerable = status === 200 && !!contentType && VIEWABLE.has(contentType) && bytes.byteLength > 0;
+  return {
+    regenerable, method: 'VERIFY_TAS_DOCUMENT', status, contentType, bytes: bytes.byteLength, checkedAt,
+    ...(regenerable ? {} : { error: `source answered ${status} ${contentType ?? ''}`.trim() }),
+  };
+}
+
+/**
+ * Read-only regeneration gate for the official-document cache: for up to
+ * `limit` existing cache files, re-fetch from the source and compare with the
+ * cached bytes. Deletes, writes and registers nothing.
+ */
+async function cacheCheck(sb: ReturnType<typeof createClient>, limit: number) {
+  const { data: entries, error } = await sb.storage.from(DOCUMENT_BUCKET).list('files', { limit, sortBy: { column: 'created_at', order: 'desc' } });
+  if (error) return { error: `list: ${error.message}` };
+  const results = [];
+  for (const e of (entries ?? []).slice(0, limit)) {
+    const key = `files/${e.name}`;
+    const id = tasAttachmentId(key);
+    if (!id) { results.push({ key, skipped: 'not a cache key' }); continue; }
+    const { data: blob, error: dlErr } = await sb.storage.from(DOCUMENT_BUCKET).download(key);
+    const cached = blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+    const src = await fetchTasSource(id);
+    const fresh = 'error' in src ? null : src;
+    const [cachedSha, freshSha] = await Promise.all([cached ? sha256Hex(cached) : null, fresh?.bytes.byteLength ? sha256Hex(fresh.bytes) : null]);
+    results.push({
+      key,
+      cached: cached ? { bytes: cached.byteLength, type: blob?.type ?? null, sha256: cachedSha } : { error: dlErr?.message ?? 'missing' },
+      source: fresh ? { status: fresh.status, type: fresh.contentType, bytes: fresh.bytes.byteLength, sha256: freshSha } : { error: (src as { error: string }).error },
+      regenerable: !!fresh && fresh.status === 200 && !!fresh.contentType && VIEWABLE.has(fresh.contentType) && fresh.bytes.byteLength > 0,
+      identical: !!cachedSha && cachedSha === freshSha,
     });
-    const contentType = res.headers.get('content-type');
-    const bytes = res.ok ? (await res.arrayBuffer()).byteLength : (await res.body?.cancel(), 0);
-    const regenerable = res.ok && !!contentType && VIEWABLE.has(contentType) && bytes > 0;
-    return {
-      regenerable, method: 'VERIFY_TAS_DOCUMENT', status: res.status, contentType, bytes, checkedAt,
-      ...(regenerable ? {} : { error: `source answered ${res.status} ${contentType ?? ''}`.trim() }),
-    };
-  } catch (e) {
-    return { regenerable: false, method: 'VERIFY_TAS_DOCUMENT', error: `source unreachable: ${e instanceof Error ? e.message : e}`.slice(0, 200), checkedAt };
   }
+  return { checked: results.length, regenerable: results.filter((r) => 'regenerable' in r && r.regenerable).length,
+    identical: results.filter((r) => 'identical' in r && r.identical).length, results };
 }
 
 serve(async (req) => {
@@ -85,8 +128,8 @@ serve(async (req) => {
   if (!url || !serviceKey || !anonKey) return json({ error: 'UNAVAILABLE' }, 503);
   const sb = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-  const body = await req.json().catch(() => ({})) as { action?: string; owner?: string };
-  if (body.action !== 'tick' && body.action !== 'selftest') return json({ error: 'BAD_REQUEST' }, 400);
+  const body = await req.json().catch(() => ({})) as { action?: string; owner?: string; limit?: number };
+  if (body.action !== 'tick' && body.action !== 'selftest' && body.action !== 'cachecheck') return json({ error: 'BAD_REQUEST' }, 400);
 
   // Caller: the cron token, or an admin JWT. Nothing else.
   const presented = req.headers.get('x-cron-token') ?? '';
@@ -112,6 +155,13 @@ serve(async (req) => {
     if (error) throw new Error(`${fn}: ${error.code ?? ''} ${error.message}`.slice(0, 300));
     return data;
   };
+
+  if (body.action === 'cachecheck') {
+    const report = await cacheCheck(sb, Math.min(Math.max(Number(body.limit) || 3, 1), 5));
+    console.error(JSON.stringify({ scope: 'storage_retention_cachecheck', checked: (report as { checked?: number }).checked ?? 0,
+      regenerable: (report as { regenerable?: number }).regenerable ?? 0, identical: (report as { identical?: number }).identical ?? 0 }));
+    return json(report, 'error' in report ? 500 : 200);
+  }
 
   if (body.action === 'selftest') {
     // The test notice goes to the admin who ran it, or to an explicit test

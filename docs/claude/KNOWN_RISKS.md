@@ -134,6 +134,16 @@ with per-language loading named as the follow-up. That follow-up is done:
   so it, Allhome and Brokeri check districts only after reading — with a 2-page / 24-listing read a
   district search on them often returns nothing (honest empty, not an error). A
   district outside `normalize/place.ts` disables the narrowing (city read).
+- Requested districts are compared under every spelling in `normalize/place.ts`
+  (`districtFit`), so a Latin request ("Krtsanisi") excludes a listing that names a
+  different Georgian neighbourhood instead of keeping it as "district unverified"
+  (found in a live production search, 2026-10-16). A neighbourhood inside a district
+  (Ortachala for a Krtsanisi request) is still a different place; ask for both.
+- SS.ge failed instantly (0 pages) on a production Krtsanisi + Ortachala search
+  (2026-10-16, search 645ba0d0); its own mapping throws on an unknown or ambiguous
+  district. Unproven which; SS.ge adapter left unchanged. Other sources still delivered.
+- Search results reuse recent observations from earlier searches (cache); those are
+  not live results for the new search and must not be counted as such in tests.
 - Prices below 10 (Home.ge's "1 ₾" placeholder) are dropped as no price
   (`withoutPlaceholderPrice`), never shown as in-budget.
 - Korter.ge is BLOCKED_BY_TERMS (terms §5.3: "You must not use any scraping

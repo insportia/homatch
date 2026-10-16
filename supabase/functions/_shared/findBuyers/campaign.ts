@@ -10,6 +10,7 @@
 
 import { buildPropertyDna, type PropertyDna } from '../../../../src/research-core/findBuyers/propertyDna.ts';
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
+import { cappedBudget, decideTestCap, parseTestCap } from '../../../../src/research-core/findBuyers/testCap.ts';
 import { publicSearchPasses } from '../../../../src/research-core/findBuyers/adaptiveLoop.ts';
 import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
 import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
@@ -184,7 +185,7 @@ async function queryStats(db: any): Promise<QueryStat[]> {
 
 async function knownSources(db: any, city: string | null): Promise<KnownSource[]> {
   let q = db.from('source_registry')
-    .select('id,platform,url,languages,language,city,fb_spend_micros,fb_qualified_leads,last_checked_at,last_successful_at,access_state,lifecycle')
+    .select('id,platform,source_type,url,languages,language,city,fb_spend_micros,fb_qualified_leads,last_checked_at,last_successful_at,access_state,lifecycle')
     .in('platform', ['FACEBOOK', 'INSTAGRAM', 'VK', 'TELEGRAM', 'LINKEDIN', 'X', 'THREADS', 'YOUTUBE'])
     .not('url', 'is', null)
     .neq('access_state', 'INACCESSIBLE')
@@ -193,7 +194,7 @@ async function knownSources(db: any, city: string | null): Promise<KnownSource[]
   if (city) q = q.or(`city.is.null,city.ilike.${city}`);
   const { data } = await q;
   return ((data ?? []) as any[]).map((r) => ({
-    id: r.id, platform: r.platform, url: r.url,
+    id: r.id, platform: r.platform, url: r.url, sourceType: r.source_type ?? null,
     languages: Array.isArray(r.languages) && r.languages.length ? r.languages : r.language ? [r.language] : [],
     city: r.city ?? null,
     historicalYield: Number(r.fb_spend_micros) > 0 ? Number(r.fb_qualified_leads) / (Number(r.fb_spend_micros) / 1e6) : null,
@@ -283,9 +284,31 @@ export interface StartSocialInput {
   telegramDiscoveryPlanned?: boolean;
 }
 
+/**
+ * The owner-authorised one-campaign test cap (testCap.ts). Consumed atomically:
+ * only the campaign whose conditional update wins gets it; a retry of that same
+ * campaign keeps it. Any read or write problem means NO cap, never a wider one.
+ */
+async function claimTestCap(db: any, input: StartSocialInput): Promise<number | null> {
+  try {
+    const { data } = await db.from('admin_settings').select('value').eq('key', 'find_buyers_test_cap').maybeSingle();
+    const cap = parseTestCap(data?.value);
+    const d = decideTestCap(cap, { propertyId: input.propertyId, userId: input.userId, matchingJobId: input.matchingJobId });
+    if (!d.applies) return null;
+    if (d.alreadyConsumedByThis) return d.capMicros;
+    const { data: won } = await db.from('admin_settings')
+      .update({ value: { ...cap, consumedBy: input.matchingJobId, consumedAt: new Date().toISOString() }, updated_at: new Date().toISOString() })
+      .eq('key', 'find_buyers_test_cap').filter('value->>consumedBy', 'is', null).select('key');
+    return Array.isArray(won) && won.length === 1 ? d.capMicros : null;
+  } catch { return null; }
+}
+
 export async function startSocialCampaign(db: any, input: StartSocialInput, settings: FindBuyersSettings) {
   const rate = await creditsPerUsd(db);
-  const econ = campaignEconomics(input.credits, rate, settings.providerShareBps);
+  const econ0 = campaignEconomics(input.credits, rate, settings.providerShareBps);
+  const testCapMicros = await claimTestCap(db, input);
+  const econ = testCapMicros == null ? econ0
+    : { ...econ0, providerBudgetMicros: cappedBudget(econ0.providerBudgetMicros, testCapMicros), testCapMicros };
   const f = input.facts ?? {};
   const dna = buildPropertyDna({
     transactionType: input.property.transaction_type, propertyType: input.property.property_type, title: input.property.title,

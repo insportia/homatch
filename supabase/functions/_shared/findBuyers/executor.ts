@@ -7,7 +7,7 @@
 // Correlation on every row and ledger line: matching job (campaign run),
 // queue job, actor run, provider run id, attempt, tranche, arm.
 
-import { buildInput, STAGE_OUTPUT, STAGE_NETWORK, type Stage } from '../../../../src/research-core/findBuyers/actorInputs.ts';
+import { buildInput, essentialMissing, STAGE_OUTPUT, STAGE_NETWORK, type Stage } from '../../../../src/research-core/findBuyers/actorInputs.ts';
 import { normalizeDataset } from '../../../../src/research-core/findBuyers/normalize.ts';
 import { provesOutputContract } from '../../../../src/research-core/findBuyers/actorCatalog.ts';
 import { decideArm, armPriority, parseSampling, type ArmStats } from '../../../../src/research-core/findBuyers/allocator.ts';
@@ -16,7 +16,7 @@ import { sinceFloor } from '../../../../src/research-core/findBuyers/freshness.t
 import { DISCOVERY_STAGES, phase2Category, phase2MayStart, phaseOfStage, probeEstimateMicros, actorBreaker, isEmptyResultMessage } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 /* Stages whose Actor accepts a date floor: never ask for content older than 30 days. */
-const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
+const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'FB_POST_SEARCH', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
 import { abortRun, datasetItems, getRun, Memo23Error, runCost, startRun, TERMINAL_RUN_STATES, scrub } from './memo23Client.ts';
 import { processItems, type CampaignRow, type ParentContext, type FollowUp } from './pipeline.ts';
 import { campaignStats, discoveryCommittedMicros, insertQueueRows, loadFindBuyersSettings, loadPhase1, socialJobRow, type FindBuyersSettings } from './campaign.ts';
@@ -164,6 +164,16 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
   }
   const limit = Math.max(1, Math.min(Number(reservation.requestedLimit) || Number(actor.probe_size) || 1, Number(actor.max_results) || 100));
   const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since }, actor.input_contract ?? null);
+  /* An input the verified schema would reject, or one that lost its query/target
+     in fitting, is never sent: the reservation is released at $0. */
+  const problems = essentialMissing(stage, input, actor.input_contract ?? null);
+  if (problems.length) {
+    await db.rpc('find_buyers_book_run_cost', {
+      p_run_id: runId, p_status: 'RELEASED', p_actual_micros: 0, p_cost_basis: 'NOT_STARTED', p_results_billed: 0,
+      p_items_fetched: 0, p_error: `INPUT_CONTRACT: ${problems.join(', ')}`.slice(0, 500), p_billing: {},
+    });
+    return out({ outcome: 'FAILED', error: `INPUT_CONTRACT: ${problems.join(', ')}` });
+  }
   /* STARTING before the provider call, and only from RESERVED and unbooked:
      a campaign that ended meanwhile has already released this reservation. */
   const { data: starting } = await db.from('find_buyers_actor_runs').update({ status: 'STARTING' })
@@ -381,7 +391,7 @@ async function bumpQueryStats(db: any, source: string, language: string, query: 
 }
 
 const FOLLOW_STAGE_ACTOR: Partial<Record<Stage, string>> = {
-  FB_GROUP_POSTS: 'FB_GROUP_POSTS', FB_COMMENTS: 'FB_COMMENTS', IG_COMMENTS: 'IG_COMMENTS', TIKTOK_COMMENTS: 'TIKTOK',
+  FB_GROUP_POSTS: 'FB_GROUP_POSTS', FB_PAGE_POSTS: 'FB_PAGE_POSTS', FB_COMMENTS: 'FB_COMMENTS', IG_COMMENTS: 'IG_COMMENTS', TIKTOK_COMMENTS: 'TIKTOK',
   REDDIT_COMMENTS: 'REDDIT', YOUTUBE_COMMENTS: 'YOUTUBE_COMMENTS',
 };
 

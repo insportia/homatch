@@ -16,7 +16,7 @@
 // Metadata never proves an Actor works; only a real run does.
 
 export type ActorClass = 'PRIMARY_DISCOVERY' | 'ENRICHMENT' | 'UNSUITABLE';
-export type ActorProduces = 'DEMAND_POSTS' | 'SOURCES' | 'COMMENTS' | 'PROFILE_POSTS' | 'CHANNEL_MESSAGES';
+export type ActorProduces = 'DEMAND_POSTS' | 'LISTING_POSTS' | 'SOURCES' | 'COMMENTS' | 'PROFILE_POSTS' | 'CHANNEL_MESSAGES';
 export type ActorLifecycle = 'REGISTERED' | 'VERIFIED' | 'PROVEN' | 'ACTIVE' | 'DISABLED' | 'BLOCKED';
 
 export interface ActorProfile {
@@ -47,7 +47,11 @@ export const ACTOR_PROFILES: Readonly<Record<string, ActorProfile>> = {
   LINKEDIN_GROUPS: { cls: 'UNSUITABLE', produces: 'SOURCES', needsSeed: false, seededBy: null,
     why: 'Quarantined: the Actor requires a logged-in LinkedIn session (input.cookies), which HOMATCH does not hold (production run refused, HTTP 400).' },
   FB_COMMENTS: { cls: 'ENRICHMENT', produces: 'COMMENTS', needsSeed: true, seededBy: 'FB_GROUP_POSTS',
-    why: 'Comments of qualifying posts already found.' },
+    why: 'Comments of qualifying posts already found (group, Page or searched posts).' },
+  FB_POST_SEARCH: { cls: 'PRIMARY_DISCOVERY', produces: 'LISTING_POSTS', needsSeed: false, seededBy: null,
+    why: 'Public Facebook posts by listing keyword — agency, developer and competitor Pages and individual listings — whose comments are where buyers ask; logged out, so no engagement counts.' },
+  FB_PAGE_POSTS: { cls: 'ENRICHMENT', produces: 'LISTING_POSTS', needsSeed: true, seededBy: 'FB_POST_SEARCH',
+    why: 'Recent posts of a public Page that published a comparable listing, with their visible comments attached (public Pages only, no login).' },
   IG_COMMENTS: { cls: 'ENRICHMENT', produces: 'COMMENTS', needsSeed: true, seededBy: 'IG_PROFILE_POSTS',
     why: 'Comments of qualifying Instagram posts already found.' },
   YOUTUBE_COMMENTS: { cls: 'ENRICHMENT', produces: 'COMMENTS', needsSeed: true, seededBy: null,
@@ -151,3 +155,26 @@ export function provesOutputContract(items: ReadonlyArray<{ text?: string | null
   return items.some((i) => typeof i.text === 'string' && i.text.trim().length >= 3
     && typeof i.url === 'string' && /^https:\/\/[^\s/]+\.[^\s/]+\//.test(i.url));
 }
+
+/**
+ * Actors HOMATCH knows how to use but registers only when an admin verifies
+ * them (Admin → Find Buyers → Actors → Register & verify): the row is written
+ * DISABLED, its price and input schema are then read from Apify, and an
+ * operator enables it separately. Nothing here runs or spends.
+ */
+export interface RegistrySeed {
+  actor_key: string; actor_id: string; source: 'FACEBOOK'; purpose: 'SEARCH' | 'POSTS_AND_COMMENTS';
+  role: 'PRIMARY'; priority: number; probe_size: number; max_results: number; timeout_seconds: number; concurrency: number; notes: string;
+}
+export const REGISTRY_SEEDS: Readonly<Record<string, RegistrySeed>> = {
+  FB_POST_SEARCH: {
+    actor_key: 'FB_POST_SEARCH', actor_id: 'memo23~facebook-search-scraper', source: 'FACEBOOK', purpose: 'SEARCH',
+    role: 'PRIMARY', priority: 55, probe_size: 15, max_results: 60, timeout_seconds: 300, concurrency: 2,
+    notes: 'Public posts by listing keyword (Pages, agencies, developers, individual listings); no engagement counts when logged out',
+  },
+  FB_PAGE_POSTS: {
+    actor_key: 'FB_PAGE_POSTS', actor_id: 'memo23~facebook-page-posts-scraper', source: 'FACEBOOK', purpose: 'POSTS_AND_COMMENTS',
+    role: 'PRIMARY', priority: 50, probe_size: 10, max_results: 40, timeout_seconds: 300, concurrency: 2,
+    notes: 'Feeds of public Pages that published a comparable listing, comments attached (includeComments); public Pages only',
+  },
+};

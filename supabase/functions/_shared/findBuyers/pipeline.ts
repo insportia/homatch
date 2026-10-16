@@ -60,7 +60,32 @@ export interface ParentContext {
   commentCount?: number | null;
   /** 0 for the first comment sample of this post, 1 after one expansion. */
   sampleDepth?: number;
+  /** Where the post was found: a Facebook GROUP, a public PAGE, or a keyword SEARCH. */
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
 }
+
+/** The kind of source a stage reads (Groups and Pages are kept apart in results). */
+export function sourceKindOf(stage: Stage): 'GROUP' | 'PAGE' | 'SEARCH' | null {
+  if (stage === 'FB_GROUP_POSTS') return 'GROUP';
+  if (stage === 'FB_PAGE_POSTS') return 'PAGE';
+  if (stage === 'FB_POST_SEARCH') return 'SEARCH';
+  return null;
+}
+
+/** Post stages whose comparable listings are worth reading the comments of. */
+const LISTING_POST_STAGES: readonly Stage[] = ['FB_GROUP_POSTS', 'FB_POST_SEARCH', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH', 'REDDIT_SEARCH'];
+
+/** The comments stage for a post stage (null: none). */
+export function commentsStageFor(stage: Stage): Stage | null {
+  if (stage === 'FB_GROUP_POSTS' || stage === 'FB_POST_SEARCH' || stage === 'FB_PAGE_POSTS') return 'FB_COMMENTS';
+  if (stage === 'IG_PROFILE_POSTS') return 'IG_COMMENTS';
+  if (stage === 'TIKTOK_SEARCH') return 'TIKTOK_COMMENTS';
+  if (stage === 'REDDIT_SEARCH') return 'REDDIT_COMMENTS';
+  return null;
+}
+
+/** Page feeds a keyword search may open per run (budget-bounded, deduplicated by author). */
+const MAX_PAGE_FOLLOWUPS = 3;
 
 export interface FollowUp {
   stage: Stage;
@@ -191,6 +216,39 @@ async function processGroups(ctx: PipelineCtx, groups: NormalizedItem[], out: Pi
     }
   }
   out.followUps = out.followUps.slice(0, 4);
+}
+
+/** A public Facebook Page URL from a post author link (null for groups, posts or non-Facebook links). */
+export function pageUrlOf(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (!/(^|\.)facebook\.com$/i.test(u.hostname)) return null;
+    const path = u.pathname.replace(/\/+$/, '');
+    if (!path || /^\/(groups|events|photo|photos|watch|reel|story|stories|share|permalink|posts|marketplace|hashtag|search)(\/|$)/i.test(path)) return null;
+    if (/^\/profile\.php$/i.test(path)) {
+      const id = u.searchParams.get('id');
+      return id && /^\d+$/.test(id) ? `https://www.facebook.com/profile.php?id=${id}` : null;
+    }
+    const slug = path.split('/').filter(Boolean)[0];
+    return slug ? `https://www.facebook.com/${slug}` : null;
+  } catch { return null; }
+}
+
+async function registerPageSource(ctx: PipelineCtx, url: string, name: string | null, language: string | null): Promise<string | null> {
+  const { db, campaign } = ctx;
+  const externalId = `page:${url.toLowerCase()}`;
+  const { data: existing } = await db.from('source_registry').select('id').eq('platform', 'FACEBOOK').eq('external_id', externalId).maybeSingle();
+  if (existing?.id) return existing.id;
+  const lang = language && language !== 'multi' ? language : null;
+  const { data: ins } = await db.from('source_registry').insert({
+    platform: 'FACEBOOK', source_type: 'SOCIAL_PROFILE', external_id: externalId, name: clip(name, 200) ?? 'Facebook Page', url,
+    country_code: campaign.dna.countryCode, language: lang, languages: lang ? [lang] : [], city: campaign.dna.city,
+    provider: 'APIFY_MEMO23', discovered_via: `memo23:${ctx.stage}`, source_family: 'OTHER', access_state: 'PUBLIC',
+    /* Discovery registers; it never switches a source on for other collectors. */
+    active: false,
+  }).select('id').maybeSingle();
+  return ins?.id ?? null;
 }
 
 /* ── posts / comments ──────────────────────────────────────────────────── */
@@ -330,6 +388,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
         externalId: item.externalId, url: item.url, signalId, similarity, stance: facts.stance, role: reading.role,
         excerpt: clip(item.text, 300), facts, ageDays, publishedAt: item.publishedAt,
         commentCount: Number.isFinite(item.engagement?.comments) ? Number(item.engagement.comments) : null,
+        sourceKind: sourceKindOf(ctx.stage),
       });
     }
     const verdict: IntentVerdict | null = null;
@@ -338,7 +397,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
        An unknown comment count is not zero (the Actor may not report it). */
     let commentsDecision: string | null = null;
     const listingRole = campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER';
-    if (item.kind === 'POST' && reading.role === listingRole && ['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH', 'REDDIT_SEARCH'].includes(ctx.stage)) {
+    if (item.kind === 'POST' && reading.role === listingRole && LISTING_POST_STAGES.includes(ctx.stage)) {
       commentsDecision = decideComments(similarity, { commentCount: item.engagement.comments, ageDays, sourceYield: ctx.sourceYield }, ctx.gate);
     } else if (item.kind === 'POST') commentsDecision = reading.role === 'BUY_SEEKER' || reading.role === 'RENT_SEEKER' ? 'SKIP_REQUEST' : 'SKIP_NOT_A_LISTING';
     const why = buildWhy(item.kind === 'COMMENT' ? (reading.evidence.includes('interest_under_listing') ? 'COMMENT_ON_SIMILAR' : 'COMMENT_REQUEST') : 'REQUEST_POST',
@@ -412,7 +471,12 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     budget_fit: a.qualification?.budgetFit ?? null,
     location_fit: a.qualification?.locationFit ?? null,
     requirements_fit: a.qualification?.requirementsFit ?? null,
-    qualification: a.qualification ? { ...a.qualification, evidence: a.reading.evidence, confidence: a.reading.confidence } : null,
+    qualification: a.qualification ? {
+      ...a.qualification, evidence: a.reading.evidence, confidence: a.reading.confidence,
+      /* What the platform itself reported for the post (null = not reported), kept so a
+         "0 comments" skip can always be told apart from "count not provided". */
+      ...(a.item.kind === 'POST' ? { reportedComments: a.item.engagement.comments ?? null, inlineComments: a.item.inlineComments.length, sourceKind: sourceKindOf(ctx.stage) } : {}),
+    } : null,
     qualification_version: QUALIFICATION_VERSION,
   }));
   if (assessRows.length) {
@@ -443,11 +507,12 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   out.useful += assessed.filter((a) => a.qualification?.category === 'STRONG' || a.qualification?.category === 'POTENTIAL' || (a.commentsDecision ?? '').startsWith('FETCH')).length;
 
   /* Comments follow-ups for comparable posts, reusing stored comments first. */
-  const commentsStage: Stage | null = ctx.stage === 'FB_GROUP_POSTS' ? 'FB_COMMENTS' : ctx.stage === 'IG_PROFILE_POSTS' ? 'IG_COMMENTS'
-    : ctx.stage === 'TIKTOK_SEARCH' ? 'TIKTOK_COMMENTS' : ctx.stage === 'REDDIT_SEARCH' ? 'REDDIT_COMMENTS' : null;
+  const commentsStage = commentsStageFor(ctx.stage);
   if (commentsStage) {
     const eligible = assessed
       .filter((a) => a.item.kind === 'POST' && (a.commentsDecision === 'FETCH' || a.commentsDecision === 'FETCH_JUSTIFIED') && a.item.url)
+      /* A Page post that arrived with its comments attached was read already: no second, paid comments run. */
+      .filter((a) => !(ctx.stage === 'FB_PAGE_POSTS' && a.item.inlineComments.length > 0))
       .sort((x, y) => y.similarity - x.similarity)
       .slice(0, 5);
     for (const a of eligible) {
@@ -455,6 +520,25 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       const reused = await reuseStoredComments(ctx, parent, out);
       if (reused) continue;
       out.followUps.push({ stage: commentsStage, targetUrl: a.item.url!, sourceId: ctx.sourceId, language: a.language ?? 'multi', reason: a.commentsDecision!, parent });
+    }
+  }
+
+  /* A keyword search found a comparable listing on a public Page (agency,
+     developer, competitor): read that Page's recent posts next, once per author,
+     at most MAX_PAGE_FOLLOWUPS per run. The Page is registered as a FACEBOOK
+     SOCIAL_PROFILE source (never a group), inactive, so later campaigns can reuse it. */
+  if (ctx.stage === 'FB_POST_SEARCH') {
+    const seenPages = new Set<string>();
+    const comparable = assessed
+      .filter((a) => a.item.kind === 'POST' && (a.commentsDecision === 'FETCH' || a.commentsDecision === 'FETCH_JUSTIFIED'))
+      .sort((x, y) => y.similarity - x.similarity);
+    for (const a of comparable) {
+      const page = pageUrlOf(a.item.author.url);
+      if (!page || seenPages.has(page)) continue;
+      seenPages.add(page);
+      const sourceId = await registerPageSource(ctx, page, a.item.author.name, a.language);
+      out.followUps.push({ stage: 'FB_PAGE_POSTS', targetUrl: page, sourceId, language: a.language ?? 'multi', reason: 'comparable_listing_page' });
+      if (seenPages.size >= MAX_PAGE_FOLLOWUPS) break;
     }
   }
 
@@ -561,8 +645,7 @@ async function reuseStoredComments(ctx: PipelineCtx, parent: ParentContext, out:
     text: r.original_text ?? '', publishedAt: r.published_at, engagement: { comments: null, likes: null, shares: null },
     group: null, inlineComments: [],
   }));
-  const commentStage: Stage = ctx.stage === 'FB_GROUP_POSTS' ? 'FB_COMMENTS' : ctx.stage === 'IG_PROFILE_POSTS' ? 'IG_COMMENTS'
-    : ctx.stage === 'TIKTOK_SEARCH' ? 'TIKTOK_COMMENTS' : ctx.stage === 'REDDIT_SEARCH' ? 'REDDIT_COMMENTS' : ctx.stage;
+  const commentStage: Stage = commentsStageFor(ctx.stage) ?? ctx.stage;
   const sub = await processItems({ ...ctx, parent, stage: commentStage, reusing: true }, items);
   out.reused += items.length;
   out.qualified += sub.qualified; out.strong += sub.strong; out.duplicates += sub.duplicates; out.useful += sub.useful;
@@ -606,7 +689,7 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
   const signal: LeadSignal = {
     signalId: a.signalId, parentSignalId: a.parent?.signalId ?? null,
     kind: a.item.kind === 'COMMENT' ? 'COMMENT' : a.ctx.kind === 'MESSAGE' ? 'MESSAGE' : 'POST',
-    source: network, intentClass: a.verdict!.intentClass, intentScore: a.verdict!.score,
+    source: network, sourceKind: a.parent?.sourceKind ?? sourceKindOf(ctx.stage), intentClass: a.verdict!.intentClass, intentScore: a.verdict!.score,
     similarity: Math.round(a.similarity), ageDays: a.ageDays, sourceQuality: ctx.sourceYield != null ? Math.min(1, 0.4 + ctx.sourceYield * 2) : null,
     specific: Boolean(a.facts.bedrooms || a.facts.price || a.facts.district || a.facts.areaSqm),
     text: clip(a.item.text, 600) ?? '', url: a.item.url, parentUrl: a.parent?.url ?? null, parentExcerpt: a.parent?.excerpt ?? null,

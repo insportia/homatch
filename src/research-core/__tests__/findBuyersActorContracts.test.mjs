@@ -7,7 +7,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildInput, STAGE_ACTOR } from '../findBuyers/actorInputs.ts';
+import { buildInput, essentialMissing, STAGE_ACTOR } from '../findBuyers/actorInputs.ts';
+import { REGISTRY_SEEDS } from '../findBuyers/actorCatalog.ts';
 
 const SCHEMA = {
   BLUESKY: { props: 'domain,fromAuthor,handles,hashtags,includeFollowers,includeFollowing,includePosts,lang,maxFollowsPerProfile,maxItems,maxPostsPerProfile,mentionsAuthor,proxy,searchQueries,searchType,since,sort,startUrls,until', required: [] },
@@ -33,6 +34,9 @@ const ENUMS = { TIKTOK: { mode: ['profile', 'videos', 'post', 'hashtag', 'search
 const params = (stage) => ({ query: stage === 'TIKTOK_SEARCH' ? 'ბინა ვაკეში' : 'looking for an apartment in tbilisi', targetUrl: 'https://example.com/source/1', size: 20, since: '2026-09-04T12:00:00.000Z' });
 
 for (const [stage, actorKey] of Object.entries(STAGE_ACTOR)) {
+  /* Actors registered at verification time (REGISTRY_SEEDS) have no recorded
+     schema until an admin verifies them; they are covered by the tests below. */
+  if (REGISTRY_SEEDS[actorKey]) continue;
   test(`${stage} → ${actorKey}: required fields sent, nothing silently dropped, enums valid`, () => {
     const schema = SCHEMA[actorKey];
     assert.ok(schema, `no recorded schema for ${actorKey}`);
@@ -60,4 +64,47 @@ test('TikTok hashtag queries use hashtag mode; comment follow-ups use comments m
   assert.deepEqual(buildInput('TIKTOK_SEARCH', { query: '#tbilisirent', size: 10 }, null).input, { mode: 'hashtag', input: ['tbilisirent'], maxResults: 10 });
   assert.equal(buildInput('TIKTOK_COMMENTS', { targetUrl: 'https://www.tiktok.com/@a/video/1', size: 10 }, null).input.mode, 'comments');
   assert.equal(buildInput('REDDIT_COMMENTS', { targetUrl: 'https://www.reddit.com/r/x/comments/1/t/', size: 10 }, null).input.mode, 'postComments');
+});
+
+/* ── Facebook Pages / public post search (registered at verification) ───── */
+
+const P = { query: 'იყიდება 3-ოთახიანი ბინა კრწანისში', targetUrl: 'https://www.facebook.com/someagency', size: 15, since: '2026-09-16T00:00:00.000Z' };
+
+test('FB_POST_SEARCH keeps its query under whichever spelling the verified schema declares, and is refused when none survives', () => {
+  for (const key of ['searchQueries', 'queries', 'query', 'searchTerms', 'keywords']) {
+    const contract = { schemaProperties: [key, 'maxItems', 'onlyPostsNewerThan'], required: [key] };
+    const { input } = buildInput('FB_POST_SEARCH', P, contract);
+    assert.ok(key in input, key);
+    assert.match(JSON.stringify(input[key]), /კრწანისში/);
+    assert.equal(input.maxItems, 15);
+    assert.equal(input.onlyPostsNewerThan, '2026-09-16');
+    assert.deepEqual(essentialMissing('FB_POST_SEARCH', input, contract), []);
+  }
+  const blind = { schemaProperties: ['startUrls', 'maxItems'], required: [] };
+  const { input } = buildInput('FB_POST_SEARCH', P, blind);
+  assert.deepEqual(essentialMissing('FB_POST_SEARCH', input, blind), ['essential:searchQueries|queries|query|searchTerms|keywords'],
+    'a run that would carry no query is refused (released at $0) rather than started');
+});
+
+test('FB_PAGE_POSTS reads one public Page with comments attached; a schema requirement it cannot meet refuses the run', () => {
+  const contract = { schemaProperties: ['startUrls', 'maxPosts', 'maxItems', 'includeComments', 'onlyPostsNewerThan'], required: ['startUrls'] };
+  const { input, dropped } = buildInput('FB_PAGE_POSTS', P, contract);
+  assert.deepEqual(dropped, []);
+  assert.deepEqual(input.startUrls, [{ url: 'https://www.facebook.com/someagency' }]);
+  assert.equal(input.includeComments, true);
+  assert.equal(input.maxPosts, 15);
+  assert.deepEqual(essentialMissing('FB_PAGE_POSTS', input, contract), []);
+  const needsCookies = { ...contract, schemaProperties: [...contract.schemaProperties, 'cookies'], required: ['startUrls', 'cookies'] };
+  assert.deepEqual(essentialMissing('FB_PAGE_POSTS', buildInput('FB_PAGE_POSTS', P, needsCookies).input, needsCookies), ['required:cookies'],
+    'HOMATCH never logs in: an Actor that requires cookies never runs');
+});
+
+test('every seeded Actor is a memo23 Actor, registered disabled-by-default, on a Facebook stage', () => {
+  for (const [k, seed] of Object.entries(REGISTRY_SEEDS)) {
+    assert.equal(seed.actor_key, k);
+    assert.match(seed.actor_id, /^memo23~[a-z0-9-]+$/);
+    assert.equal(seed.source, 'FACEBOOK');
+    assert.ok(Object.values(STAGE_ACTOR).includes(k), `${k} has a stage`);
+    assert.ok(!('enabled' in seed), 'a seed never carries an enabled flag; the server writes it disabled');
+  }
 });

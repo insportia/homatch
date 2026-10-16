@@ -19224,6 +19224,27 @@ const en = {
   pubw_admin_failures_n: '{{n}} with errors',
   pubw_admin_audit: 'Audit history',
   pubw_admin_audit_empty: 'No changes recorded for this portal.',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_source_group: 'Facebook group',
+  fbx_source_page: 'Facebook Page',
+  fbx_source_search: 'Public Facebook post',
+  fbx_admin_register_verify: 'Register & verify',
+  fbx_admin_not_registered: 'Not registered yet. Registering writes it disabled; verification then reads its price and input schema from Apify (free).',
+  fbx_admin_test_cap_title: 'One-campaign test cap',
+  fbx_admin_test_cap_hint: 'Limits provider spend of the next campaign started for this property, once. Global pricing is unchanged.',
+  fbx_admin_test_cap_property: 'Property ID',
+  fbx_admin_test_cap_usd: 'Provider cap (USD)',
+  fbx_admin_test_cap_hours: 'Valid for (hours)',
+  fbx_admin_test_cap_save: 'Set cap',
+  fbx_admin_test_cap_clear: 'Remove cap',
+  fbx_admin_test_cap_current: '{{usd}} for property {{property}}, valid until {{until}}',
+  fbx_admin_test_cap_consumed: 'Used by campaign {{job}}',
+  fbx_admin_test_cap_none: 'No test cap is set.',
+  fbx_admin_comment_audit_title: 'Comment-count audit',
+  fbx_admin_comment_audit_hint: 'Reads a campaign’s stored Facebook post results (no Actor run, no charge) and shows how comment counts were reported.',
+  fbx_admin_comment_audit_job: 'Campaign job ID',
+  fbx_admin_comment_audit_run: 'Run audit',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -38362,6 +38383,27 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_admin_failures_n: 'შეცდომით: {{n}}',
   pubw_admin_audit: 'აუდიტის ისტორია',
   pubw_admin_audit_empty: 'ამ პორტალისთვის ცვლილებები არ არის აღრიცხული.',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_source_group: 'Facebook-ის ჯგუფი',
+  fbx_source_page: 'Facebook-ის გვერდი',
+  fbx_source_search: 'საჯარო პოსტი Facebook-ზე',
+  fbx_admin_register_verify: 'რეგისტრაცია და შემოწმება',
+  fbx_admin_not_registered: 'ჯერ არ არის რეგისტრირებული. რეგისტრაცია მას გამორთულს ჩაწერს; შემოწმება კი Apify-დან წაიკითხავს ფასს და შეყვანის სქემას (უფასოდ).',
+  fbx_admin_test_cap_title: 'ერთი კამპანიის სატესტო ლიმიტი',
+  fbx_admin_test_cap_hint: 'ზღუდავს პროვაიდერის ხარჯს ამ ქონებისთვის დაწყებულ შემდეგ კამპანიაში, ერთჯერადად. საერთო ფასები არ იცვლება.',
+  fbx_admin_test_cap_property: 'ქონების ID',
+  fbx_admin_test_cap_usd: 'პროვაიდერის ლიმიტი (USD)',
+  fbx_admin_test_cap_hours: 'მოქმედების ვადა (საათი)',
+  fbx_admin_test_cap_save: 'ლიმიტის დაყენება',
+  fbx_admin_test_cap_clear: 'ლიმიტის მოხსნა',
+  fbx_admin_test_cap_current: '{{usd}} ქონებისთვის {{property}}, მოქმედებს {{until}}-მდე',
+  fbx_admin_test_cap_consumed: 'გამოიყენა კამპანიამ {{job}}',
+  fbx_admin_test_cap_none: 'სატესტო ლიმიტი არ არის დაყენებული.',
+  fbx_admin_comment_audit_title: 'კომენტარების რაოდენობის აუდიტი',
+  fbx_admin_comment_audit_hint: 'კითხულობს კამპანიის შენახულ Facebook-ის პოსტების შედეგებს (Actor არ ეშვება, საფასური არ არის) და აჩვენებს, როგორ იყო მითითებული კომენტარების რაოდენობა.',
+  fbx_admin_comment_audit_job: 'კამპანიის job ID',
+  fbx_admin_comment_audit_run: 'აუდიტის გაშვება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -57491,6 +57533,27 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_admin_failures_n: 'с ошибками: {{n}}',
   pubw_admin_audit: 'История изменений',
   pubw_admin_audit_empty: 'Для этого портала изменений нет.',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_source_group: 'Группа Facebook',
+  fbx_source_page: 'Страница Facebook',
+  fbx_source_search: 'Публичный пост в Facebook',
+  fbx_admin_register_verify: 'Зарегистрировать и проверить',
+  fbx_admin_not_registered: 'Ещё не зарегистрирован. Регистрация записывает его выключенным; проверка затем читает цену и схему ввода из Apify (бесплатно).',
+  fbx_admin_test_cap_title: 'Тестовый лимит на одну кампанию',
+  fbx_admin_test_cap_hint: 'Ограничивает расходы на провайдеров следующей кампании этого объекта, один раз. Общие цены не меняются.',
+  fbx_admin_test_cap_property: 'ID объекта',
+  fbx_admin_test_cap_usd: 'Лимит провайдеров (USD)',
+  fbx_admin_test_cap_hours: 'Действует (часов)',
+  fbx_admin_test_cap_save: 'Установить лимит',
+  fbx_admin_test_cap_clear: 'Снять лимит',
+  fbx_admin_test_cap_current: '{{usd}} для объекта {{property}}, действует до {{until}}',
+  fbx_admin_test_cap_consumed: 'Использован кампанией {{job}}',
+  fbx_admin_test_cap_none: 'Тестовый лимит не установлен.',
+  fbx_admin_comment_audit_title: 'Аудит числа комментариев',
+  fbx_admin_comment_audit_hint: 'Читает сохранённые результаты постов Facebook кампании (без запуска Actor, без оплаты) и показывает, как сообщалось число комментариев.',
+  fbx_admin_comment_audit_job: 'ID задания кампании',
+  fbx_admin_comment_audit_run: 'Запустить аудит',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -76618,6 +76681,27 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_admin_failures_n: '{{n}} hatalı',
   pubw_admin_audit: 'Denetim geçmişi',
   pubw_admin_audit_empty: 'Bu portal için kayıtlı değişiklik yok.',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_source_group: 'Facebook grubu',
+  fbx_source_page: 'Facebook sayfası',
+  fbx_source_search: 'Herkese açık Facebook gönderisi',
+  fbx_admin_register_verify: 'Kaydet ve doğrula',
+  fbx_admin_not_registered: 'Henüz kayıtlı değil. Kayıt onu kapalı olarak yazar; doğrulama ardından fiyatını ve giriş şemasını Apify’dan okur (ücretsiz).',
+  fbx_admin_test_cap_title: 'Tek kampanya test limiti',
+  fbx_admin_test_cap_hint: 'Bu mülk için başlatılan sonraki kampanyanın sağlayıcı harcamasını bir kez sınırlar. Genel fiyatlandırma değişmez.',
+  fbx_admin_test_cap_property: 'Mülk kimliği',
+  fbx_admin_test_cap_usd: 'Sağlayıcı limiti (USD)',
+  fbx_admin_test_cap_hours: 'Geçerlilik (saat)',
+  fbx_admin_test_cap_save: 'Limiti ayarla',
+  fbx_admin_test_cap_clear: 'Limiti kaldır',
+  fbx_admin_test_cap_current: '{{property}} mülkü için {{usd}}, {{until}} tarihine kadar geçerli',
+  fbx_admin_test_cap_consumed: '{{job}} kampanyası tarafından kullanıldı',
+  fbx_admin_test_cap_none: 'Test limiti ayarlanmadı.',
+  fbx_admin_comment_audit_title: 'Yorum sayısı denetimi',
+  fbx_admin_comment_audit_hint: 'Bir kampanyanın kayıtlı Facebook gönderi sonuçlarını okur (Actor çalışmaz, ücret alınmaz) ve yorum sayılarının nasıl bildirildiğini gösterir.',
+  fbx_admin_comment_audit_job: 'Kampanya iş kimliği',
+  fbx_admin_comment_audit_run: 'Denetimi çalıştır',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -95745,6 +95829,27 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_admin_failures_n: '{{n}} بها أخطاء',
   pubw_admin_audit: 'سجل التدقيق',
   pubw_admin_audit_empty: 'لا تغييرات مسجلة لهذه البوابة.',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_source_group: 'مجموعة فيسبوك',
+  fbx_source_page: 'صفحة فيسبوك',
+  fbx_source_search: 'منشور عام على فيسبوك',
+  fbx_admin_register_verify: 'تسجيل والتحقق',
+  fbx_admin_not_registered: 'غير مسجل بعد. التسجيل يكتبه معطّلًا، ثم يقرأ التحقق سعره ومخطط الإدخال من Apify (مجانًا).',
+  fbx_admin_test_cap_title: 'حد اختبار لحملة واحدة',
+  fbx_admin_test_cap_hint: 'يحدّ من إنفاق المزوّدين في الحملة التالية لهذا العقار مرة واحدة. لا تتغير الأسعار العامة.',
+  fbx_admin_test_cap_property: 'معرّف العقار',
+  fbx_admin_test_cap_usd: 'حد المزوّدين (USD)',
+  fbx_admin_test_cap_hours: 'صالح لمدة (ساعات)',
+  fbx_admin_test_cap_save: 'تعيين الحد',
+  fbx_admin_test_cap_clear: 'إزالة الحد',
+  fbx_admin_test_cap_current: '{{usd}} للعقار {{property}}، صالح حتى {{until}}',
+  fbx_admin_test_cap_consumed: 'استخدمته الحملة {{job}}',
+  fbx_admin_test_cap_none: 'لا يوجد حد اختبار.',
+  fbx_admin_comment_audit_title: 'تدقيق عدد التعليقات',
+  fbx_admin_comment_audit_hint: 'يقرأ نتائج منشورات فيسبوك المخزنة لحملة (دون تشغيل Actor ودون رسوم) ويعرض كيف أُبلغ عن عدد التعليقات.',
+  fbx_admin_comment_audit_job: 'معرّف مهمة الحملة',
+  fbx_admin_comment_audit_run: 'تشغيل التدقيق',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -114872,6 +114977,27 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_admin_failures_n: '{{n}} עם שגיאות',
   pubw_admin_audit: 'היסטוריית ביקורת',
   pubw_admin_audit_empty: 'לא נרשמו שינויים לפורטל זה.',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbx_source_group: 'קבוצת פייסבוק',
+  fbx_source_page: 'עמוד פייסבוק',
+  fbx_source_search: 'פוסט ציבורי בפייסבוק',
+  fbx_admin_register_verify: 'רישום ואימות',
+  fbx_admin_not_registered: 'עדיין לא רשום. הרישום כותב אותו כשהוא כבוי; האימות קורא אז את המחיר ואת סכמת הקלט מ-Apify (בחינם).',
+  fbx_admin_test_cap_title: 'תקרת בדיקה לקמפיין אחד',
+  fbx_admin_test_cap_hint: 'מגביל פעם אחת את הוצאות הספקים של הקמפיין הבא שיופעל לנכס הזה. התמחור הכללי אינו משתנה.',
+  fbx_admin_test_cap_property: 'מזהה נכס',
+  fbx_admin_test_cap_usd: 'תקרת ספקים (USD)',
+  fbx_admin_test_cap_hours: 'בתוקף למשך (שעות)',
+  fbx_admin_test_cap_save: 'הגדרת תקרה',
+  fbx_admin_test_cap_clear: 'הסרת תקרה',
+  fbx_admin_test_cap_current: '{{usd}} לנכס {{property}}, בתוקף עד {{until}}',
+  fbx_admin_test_cap_consumed: 'נוצל על ידי הקמפיין {{job}}',
+  fbx_admin_test_cap_none: 'לא הוגדרה תקרת בדיקה.',
+  fbx_admin_comment_audit_title: 'ביקורת מספר תגובות',
+  fbx_admin_comment_audit_hint: 'קורא את תוצאות הפוסטים השמורות מפייסבוק של קמפיין (בלי הרצת Actor ובלי חיוב) ומראה איך דווח מספר התגובות.',
+  fbx_admin_comment_audit_job: 'מזהה משימת הקמפיין',
+  fbx_admin_comment_audit_run: 'הרצת ביקורת',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

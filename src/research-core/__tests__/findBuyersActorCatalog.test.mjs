@@ -6,15 +6,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { ACTOR_PROFILES, classifyActor, actorLifecycle, runEstimateMicros, proofPlan } from '../findBuyers/actorCatalog.ts';
+import { ACTOR_PROFILES, REGISTRY_SEEDS, classifyActor, actorLifecycle, runEstimateMicros, proofPlan } from '../findBuyers/actorCatalog.ts';
 import { STAGE_ACTOR } from '../findBuyers/actorInputs.ts';
 
 const seed = readFileSync(new URL('../../../supabase/migrations/20261014100000_find_buyers_social_intelligence.sql', import.meta.url), 'utf8');
 const registered = [...seed.matchAll(/\('([A-Z_]+)', 'memo23~/g)].map((m) => m[1]);
 
-test('all 16 registered Actors are classified, and nothing else is', () => {
+test('all 16 migration-registered Actors and the verification-time seeds are classified, and nothing else is', () => {
   assert.equal(registered.length, 16);
-  assert.deepEqual([...registered].sort(), Object.keys(ACTOR_PROFILES).sort());
+  const seeds = Object.keys(REGISTRY_SEEDS);
+  assert.deepEqual(seeds.filter((k) => registered.includes(k)), [], 'a seed is never also a migration row');
+  assert.deepEqual([...registered, ...seeds].sort(), Object.keys(ACTOR_PROFILES).sort());
   for (const k of registered) assert.ok(['PRIMARY_DISCOVERY', 'ENRICHMENT', 'UNSUITABLE'].includes(classifyActor(k).cls), k);
   assert.equal(classifyActor('NOPE').cls, 'UNSUITABLE');
 });

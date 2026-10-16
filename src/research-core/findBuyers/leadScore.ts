@@ -14,6 +14,8 @@ export interface LeadSignal {
   parentSignalId: string | null;
   kind: 'POST' | 'COMMENT' | 'MESSAGE';
   source: string;
+  /** Where on the network it was found: a GROUP, a public PAGE, or a keyword SEARCH of public posts. */
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
   intentClass: IntentClass;
   intentScore: number;
   similarity: number;

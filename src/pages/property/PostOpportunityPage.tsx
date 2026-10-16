@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { sourceStyle } from '@/components/findBuyers/brand';
 import { useExternalResults } from '@/components/findBuyers/useExternalResults';
-import { daysAgo, ownerFactsOf, type OwnerFacts } from '@/findBuyers/externalResults';
+import { daysAgo, ownerFactsOf, sourceKindKey, type OwnerFacts } from '@/findBuyers/externalResults';
 import { readProperty } from '@/services/propertyManagement';
 import { safeExternalUrl } from '@/lib/safeExternalUrl';
 import type { PropertyFacts } from '@/types/types';
@@ -72,7 +72,7 @@ function OpportunityContent() {
               <section className={CARD}>
                 {(() => { const src = sourceStyle(op.platform); return (
                   <p className="flex items-center gap-1.5 text-2xs font-semibold text-[hsl(218_28%_38%)]">
-                    <span style={{ color: src.color }} aria-hidden="true"><src.Icon className="h-3.5 w-3.5" /></span>{src.label}
+                    <span style={{ color: src.color }} aria-hidden="true"><src.Icon className="h-3.5 w-3.5" /></span><span data-testid="fbo-source-kind" data-kind={op.sourceKind ?? ''}>{sourceKindKey(op.sourceKind) ? t(sourceKindKey(op.sourceKind)!) : src.label}</span>
                     <span className="ms-auto rounded-full bg-[hsl(42_100%_94%)] px-2 py-0.5 text-[hsl(34_90%_30%)]">{t('fbo_score', { n: String(op.opportunityScore) })}</span>
                   </p>); })()}
                 {op.excerpt && <p className="mt-2 whitespace-pre-line break-words text-sm text-[hsl(218_45%_14%)]">{op.excerpt}</p>}

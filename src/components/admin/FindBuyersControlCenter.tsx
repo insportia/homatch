@@ -19,6 +19,7 @@ import {
 import { actorLifecycle, classifyActor } from '@/findBuyers/actorCatalog';
 import { SourceNetworkPanel } from './SourceNetworkPanel';
 import { FindBuyersIntelligencePanel } from './FindBuyersIntelligencePanel';
+import { FindBuyersTestTools } from './FindBuyersTestTools';
 
 type Tab = 'overview' | 'actors' | 'campaigns' | 'network' | 'sources' | 'languages' | 'ledger' | 'intelligence';
 const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'network', 'sources', 'languages', 'ledger', 'intelligence'];
@@ -216,6 +217,7 @@ export function FindBuyersControlCenter() {
 
       {data && tab === 'actors' ? (
         <div className="mt-4 space-y-2">
+          <FindBuyersTestTools registered={data.actors.map((a) => a.actor_key)} onChanged={() => void load()} />
           {data.actors.map((a) => (
             <div key={a.actor_key} className="rounded-xl border border-border p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">

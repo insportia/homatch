@@ -19,6 +19,8 @@ export async function getFindBuyersConfig(): Promise<FindBuyersConfig | null> {
 }
 
 export interface LeadEvidence {
+  /** Facebook: found in a GROUP, on a public PAGE, or by a keyword SEARCH of public posts. */
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
   signalId: string;
   parentSignalId: string | null;
   kind: 'POST' | 'COMMENT' | 'MESSAGE';
@@ -221,6 +223,20 @@ export async function verifyActorFromApify(actorKey: string) {
   const { data, error } = await supabase.functions.invoke('discovery-queue-worker', { body: { mode: 'admin_actor_verify', actorKey } });
   if (error) throw new Error(error.message);
   return data as { success: boolean; error?: string; priced?: boolean; schemaProperties?: string[] };
+}
+
+/** Free: reads a campaign's stored Facebook post datasets and reports only their comment-count shape. */
+export async function auditCommentCounts(matchingJobId: string) {
+  const { data, error } = await supabase.functions.invoke('discovery-queue-worker', { body: { mode: 'admin_comment_audit', matchingJobId } });
+  if (error) throw new Error(error.message);
+  return data as { success: boolean; error?: string; runs?: number; total?: Record<string, number>; counterFields?: Record<string, number>; topKeys?: string[] };
+}
+
+/** The one-campaign test cap (testCap.ts): read and write through admin_settings, admins only (RLS). */
+export async function getFindBuyersTestCap(): Promise<unknown> {
+  const { data, error } = await supabase.from('admin_settings').select('value').eq('key', 'find_buyers_test_cap').maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.value ?? null;
 }
 
 export const FIND_BUYERS_SWITCHES = ['find_buyers_social_enabled'] as const;

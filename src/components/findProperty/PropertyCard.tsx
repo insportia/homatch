@@ -63,10 +63,10 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
   const [dialogOpen, setDialogOpen] = useState(false);
   const confirmedDuplicate = p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
   const showDuplicates = () => setDialogOpen(true);
-  const badge = upgrade ? { key: 'fpx_badge_upgrade', tone: 'border-[hsl(var(--info)/0.3)] bg-[hsl(var(--info)/0.9)] text-white' }
+  const badge = upgrade ? { key: 'fpx_badge_upgrade', tone: 'border-[hsl(var(--info)/0.3)] bg-[hsl(var(--info)/0.1)] text-[hsl(var(--info))]' }
     : intel?.strong ? { key: 'fpx_badge_strong', tone: 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[#0C1119]' }
-      : p.unverified.length ? { key: 'fpx_badge_partial', tone: 'border-white/30 bg-[#0C1119]/80 text-white' }
-        : { key: 'fpx_badge_alternative', tone: 'border-white/30 bg-white/90 text-[#0C1119]' };
+      : p.unverified.length ? { key: 'fpx_badge_partial', tone: 'border-border bg-muted text-foreground/80' }
+        : { key: 'fpx_badge_alternative', tone: 'border-border bg-card text-foreground/70' };
   const primary = p.listings.find((l) => l.listingId === intel?.primaryListingId) ?? p.listings[0];
   const times = listingTimes(primary, t);
   const condition = [f.renovationStatus ? t(`mps_rn_${f.renovationStatus}`) : null, f.buildingStatus ? t(`mps_bs_${f.buildingStatus}`) : null].filter(Boolean).join(' · ');
@@ -75,13 +75,14 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
     <article data-property-key={p.key} data-match={intel?.strong ? 'STRONG' : p.unverified.length ? 'PARTIAL' : 'ALTERNATIVE'}
       className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-card shadow-[0_1px_2px_rgba(12,17,25,0.04),0_12px_32px_-20px_rgba(12,17,25,0.3)] transition hover:border-[hsl(var(--gold-border))] hover:shadow-[0_1px_2px_rgba(12,17,25,0.06),0_22px_44px_-22px_rgba(12,17,25,0.42)] motion-safe:hover:-translate-y-0.5">
       <PropertyGallery images={p.images} t={t} onOpen={onOpen} overlay={<>
-        <span className={`rounded-full border px-2.5 py-1 text-2xs font-semibold shadow-sm backdrop-blur-sm ${badge.tone}`}>{t(badge.key)}</span>
-        {sources.map((name) => <span key={name} dir="auto" className="rounded-full bg-[#0C1119]/75 px-2.5 py-1 text-2xs font-semibold text-white backdrop-blur-sm">{name}</span>)}
+        {sources.slice(0, 2).map((name) => <span key={name} dir="auto" className="rounded-full bg-[#0C1119]/75 px-2.5 py-1 text-2xs font-semibold text-white backdrop-blur-sm">{name}</span>)}
+        {sources.length > 2 ? <span className="rounded-full bg-[#0C1119]/75 px-2.5 py-1 text-2xs font-semibold tabular-nums text-white backdrop-blur-sm" dir="ltr">+{sources.length - 2}</span> : null}
         <DuplicateBadge p={p} t={t} onClick={showDuplicates} />
       </>} />
       <div className="flex flex-1 flex-col gap-3 p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
+            <span className={`mb-2 inline-flex rounded-full border px-2.5 py-1 text-2xs font-semibold ${badge.tone}`} data-match-badge>{t(badge.key)}</span>
             <p className="font-display text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground tabular-nums" dir="ltr">{usd(f.priceUsd)}</p>
             {f.pricePerSqmUsd ? <p className="mt-1 text-xs text-muted-foreground">{t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) })}</p> : null}
           </div>

@@ -1,11 +1,11 @@
-import { ChevronLeft, ChevronRight, Copy, Loader2, Pencil, Search, X } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { BriefEdit } from '@/research-core/marketplace/brief';
 import { filtersFromParams, pageNumbers, type ResultFilters, resultParams } from '@/research-core/marketplace/browse-results';
 import { RESULT_SECTIONS } from '@/research-core/marketplace/result-evidence';
 import { browseSearchResults, MarketplaceError, type PropertyView, type SearchBrowsePage, type SearchSummary } from '@/services/marketplaceSearch';
-import { criteriaChips, removeCriterion, type T } from './format';
+import type { T } from './format';
 import { PropertyCard } from './PropertyCard';
 import { ResultsHeader } from './workspace/ResultsHeader';
 import { DeepSearchPanel } from './workspace/DeepSearchPanel';

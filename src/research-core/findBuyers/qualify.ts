@@ -2,7 +2,7 @@
 //
 //   1 real-estate intent   2 buyer vs tenant   3 seeker vs advertiser
 //   4 location             5 budget            6 property requirements
-//   7 evidence & recency   8 duplicate
+//   7 evidence & recency   8 duplicate    9 financing (when the seeker states it)
 //
 // Each dimension is COMPATIBLE / NEARBY / INCOMPATIBLE / UNKNOWN (and a few
 // specific states). UNKNOWN is never COMPATIBLE: a buyer who did not state a
@@ -16,7 +16,7 @@ import type { DemandReading } from './demandClassifier.ts';
 import { toUsd } from './demandClassifier.ts';
 import { NEARBY_DISTRICTS, normKey, parentDistrict } from './places.ts';
 
-export const QUALIFICATION_VERSION = 3;
+export const QUALIFICATION_VERSION = 4; // 4: financing dimension (2026-10-16)
 
 export type MatchCategory = 'STRONG' | 'POTENTIAL' | 'WEAK' | 'REJECTED';
 export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'INCOMPATIBLE' | 'UNKNOWN';
@@ -31,7 +31,13 @@ export type RejectionReason =
 /** Soft limitations recorded on non-rejected leads (why it is not Strong). */
 export type Limitation =
   | 'BUDGET_UNKNOWN' | 'BUDGET_STRETCH' | 'LOCATION_UNKNOWN' | 'LOCATION_CITY_ONLY' | 'LOCATION_OTHER_AREA'
-  | 'ROOMS_DIFFER' | 'ROOMS_UNKNOWN' | 'AREA_DIFFERS' | 'LOW_CONFIDENCE';
+  | 'ROOMS_DIFFER' | 'ROOMS_UNKNOWN' | 'AREA_DIFFERS' | 'LOW_CONFIDENCE'
+  /** Wants to pay the seller over time; the property does not state that the seller accepts it. */
+  | 'FINANCING_SELLER_INSTALMENTS'
+  /** Buys with a bank mortgage (informational: the seller is paid in full). */
+  | 'FINANCING_MORTGAGE'
+  /** States a down payment under 10% of the price. */
+  | 'DOWN_PAYMENT_LOW';
 
 export interface Qualification {
   version: number;
@@ -43,6 +49,10 @@ export interface Qualification {
   budgetFit: Fit;
   locationFit: Fit;
   requirementsFit: Fit;
+  /** How the seeker's stated way of paying fits the property: UNKNOWN when not stated
+   *  (most buyers do not say), STRETCH when it needs the seller's agreement or a low
+   *  down payment, COMPATIBLE for a mortgage with an adequate (or no stated) down payment. */
+  financingFit?: Fit;
   /** 0–100, from the dimensions above (no constant intent bonus). */
   score: number;
   components: Record<'intent' | 'location' | 'budget' | 'requirements' | 'recency', number>;
@@ -76,6 +86,23 @@ export function budgetFit(r: DemandReading, dna: PropertyDna, fx?: QualifyContex
   if (want >= price * 0.95) return 'COMPATIBLE';
   if (want >= price * 0.85) return 'STRETCH';
   return 'INCOMPATIBLE';
+}
+
+/** A purchase paid over time to the seller needs the seller's consent, which no listing
+ *  field records; a down payment under 10% of the price is not a realistic purchase of it. */
+export function financingFit(r: DemandReading, dna: PropertyDna, fx?: QualifyContext['fx']): { fit: Fit; limitations: Limitation[] } {
+  const limitations: Limitation[] = [];
+  if (dna.transaction === 'RENT') return { fit: 'UNKNOWN', limitations };
+  const price = dna.price == null ? null : dna.currency && dna.currency !== 'USD'
+    ? toUsd({ amount: dna.price, currency: (dna.currency as 'GEL' | 'EUR') }, fx) : dna.price;
+  const down = r.downPayment ? toUsd({ amount: r.downPayment.amount, currency: r.downPayment.currency }, fx) : null;
+  const lowDown = down != null && price != null && down < price * 0.1;
+  if (r.financing === 'INSTALMENTS') limitations.push('FINANCING_SELLER_INSTALMENTS');
+  if (r.financing === 'MORTGAGE') limitations.push('FINANCING_MORTGAGE');
+  if (lowDown) limitations.push('DOWN_PAYMENT_LOW');
+  if (r.financing === 'INSTALMENTS' || lowDown) return { fit: 'STRETCH', limitations };
+  if (r.financing === 'MORTGAGE') return { fit: 'COMPATIBLE', limitations };
+  return { fit: 'UNKNOWN', limitations };
 }
 
 export function locationFit(r: DemandReading, dna: PropertyDna): Fit {
@@ -132,6 +159,7 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   const bFit = budgetFit(r, dna, ctx.fx);
   const lFit = locationFit(r, dna);
   const qFit = requirementsFit(r, dna);
+  const fin = financingFit(r, dna, ctx.fx);
   if (!reasons.length) {
     if (bFit === 'INCOMPATIBLE') reasons.push('BUDGET_INCOMPATIBLE');
     if (lFit === 'INCOMPATIBLE' && r.cities.length && !r.districts.length) reasons.push('OTHER_CITY');
@@ -153,6 +181,7 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   if (qFit === 'UNKNOWN') limitations.push('ROOMS_UNKNOWN');
   if (qFit === 'INCOMPATIBLE' && !reasons.includes('PROPERTY_TYPE_MISMATCH')) limitations.push('ROOMS_DIFFER');
   if (r.confidence < 0.6) limitations.push('LOW_CONFIDENCE');
+  limitations.push(...fin.limitations);
 
   const recency = ctx.ageDays == null ? 0 : ctx.ageDays <= 3 ? 100 : ctx.ageDays <= 7 ? 85 : ctx.ageDays <= 14 ? 65 : ctx.ageDays <= 30 ? 40 : 0;
   const components = {
@@ -170,15 +199,20 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   else {
     const confirmedBudget = bFit === 'COMPATIBLE';
     const goodPlace = lFit === 'COMPATIBLE' || lFit === 'NEARBY' || lFit === 'FLEXIBLE';
-    const softMismatch = lFit === 'INCOMPATIBLE' || qFit === 'INCOMPATIBLE' || bFit === 'STRETCH';
-    if (confirmedBudget && goodPlace && qFit !== 'INCOMPATIBLE' && r.confidence >= 0.7) category = 'STRONG';
+    /* A buyer who must pay the seller over time, or brings under 10% down, is a genuine
+       buyer but not a Potential match for a listing that does not offer that (2026-10-16). */
+    const softMismatch = lFit === 'INCOMPATIBLE' || qFit === 'INCOMPATIBLE' || bFit === 'STRETCH' || fin.fit === 'STRETCH';
+    const strongFit = confirmedBudget && goodPlace && qFit !== 'INCOMPATIBLE' && r.confidence >= 0.7;
+    /* Budget and place confirmed but financing a stretch: a Potential match, never Strong. */
+    if (strongFit && fin.fit !== 'STRETCH') category = 'STRONG';
+    else if (strongFit) category = 'POTENTIAL';
     else if (!softMismatch && (confirmedBudget || goodPlace || lFit === 'CITY')) category = 'POTENTIAL';
     else category = 'WEAK';
   }
 
   return {
     version: QUALIFICATION_VERSION, category, reasons, limitations, role: r.role, transaction: r.transaction,
-    budgetFit: bFit, locationFit: lFit, requirementsFit: qFit, score, components,
+    budgetFit: bFit, locationFit: lFit, requirementsFit: qFit, financingFit: fin.fit, score, components,
     stated: { budget: r.budget?.evidence ?? null, places: [...r.cities, ...r.districts], rooms: r.rooms, bedrooms: r.bedrooms },
   };
 }

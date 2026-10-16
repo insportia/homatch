@@ -33,15 +33,15 @@ const post = (l) => ({
   engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [],
 });
 
-test('VILLION posts through the live pipeline: 2 leads (1 Potential, 1 Weak), 0 Strong, every rejection explained', async () => {
+test('VILLION posts through the live pipeline: 2 leads, both genuine buyers and both Weak matches, 0 Strong, every rejection explained', async () => {
   const { db, tables } = campaignDb();
   const out = await processItems(ctxFor(db), fixture.leads.map(post));
   const leads = tables.find_buyers_leads;
   assert.equal(leads.length, 2, JSON.stringify(leads.map((l) => [l.match_category, l.evidence?.[0]?.text?.slice(0, 40)])));
-  assert.deepEqual(leads.map((l) => l.match_category).sort(), ['POTENTIAL', 'WEAK']);
+  assert.deepEqual(leads.map((l) => l.match_category).sort(), ['WEAK', 'WEAK']);
   assert.equal(out.strong, 0);
-  assert.equal(out.qualified, 1);
-  assert.equal(out.weak, 1);
+  assert.equal(out.qualified, 0);
+  assert.equal(out.weak, 2);
   const assess = tables.find_buyers_assessments;
   assert.equal(assess.length, 37);
   for (const a of assess) {
@@ -52,13 +52,17 @@ test('VILLION posts through the live pipeline: 2 leads (1 Potential, 1 Weak), 0 
   assert.ok(out.rejected.WRONG_TRANSACTION >= 7);
   assert.equal(out.rejected.DUPLICATE, 1);
   /* Unknown budget stays unknown on the customer-facing row. */
-  const potential = leads.find((l) => l.match_category === 'POTENTIAL');
-  assert.equal(potential.budget_fit, 'UNKNOWN');
-  assert.equal(potential.location_fit, 'CITY');
-  assert.ok(Array.isArray(potential.qualification.dupKeys));
+  /* The instalment buyer (lead 12): genuine, but paying the seller over time with ~2% down. */
+  const instalment = leads.find((l) => /ეტაპობრივი/.test(l.evidence?.[0]?.text ?? ''));
+  assert.deepEqual(instalment.qualification.limitations.filter((x) => /FINANCING|DOWN_PAYMENT/.test(x)), ['FINANCING_SELLER_INSTALMENTS', 'DOWN_PAYMENT_LOW']);
+  assert.equal(instalment.budget_fit, 'UNKNOWN');
+  assert.equal(instalment.location_fit, 'CITY');
+  assert.ok(Array.isArray(instalment.qualification.dupKeys));
   /* Time to first visible / qualified result recorded once. */
   const m = tables.find_buyers_campaigns[0].metrics;
-  assert.ok(m.firstVisibleAt && m.firstQualifiedAt);
+  assert.ok(m.firstVisibleAt);
+  /* Weak matches are shown, but none is a qualified (Potential or Strong) match. */
+  assert.equal(m.firstQualifiedAt, undefined);
   assert.equal(m.firstStrongAt, undefined);
 });
 

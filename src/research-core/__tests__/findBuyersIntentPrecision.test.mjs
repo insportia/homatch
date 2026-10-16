@@ -12,6 +12,7 @@ import { buildPropertyDna } from '../findBuyers/propertyDna.ts';
 import { requalifyLeads } from '../findBuyers/requalify.ts';
 import { classifyDemand } from '../findBuyers/demandClassifier.ts';
 import { extractTextFacts } from '../findBuyers/textFacts.ts';
+import { qualify } from '../findBuyers/qualify.ts';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/villionCampaignLeads.json', import.meta.url), 'utf8'));
 const now = Date.parse(fixture.campaign.evaluatedAt);
@@ -92,3 +93,61 @@ for (const [t, ok] of NOT_HOME_SEEKERS) {
 }
 for (const t of BUYERS) test(`buyer, in any language: ${t}`, () => assert.equal(classifyDemand(t, { kind: 'POST' }).role, 'BUY_SEEKER'));
 for (const t of TENANTS) test(`tenant, in any language: ${t}`, () => assert.equal(classifyDemand(t, { kind: 'POST' }).role, 'RENT_SEEKER'));
+
+/* ── buyer intent ≠ property match ─────────────────────────────────────────
+   100% buyer-intent precision is not 100% match precision: the two genuine
+   buyers kept for this property are both WEAK matches, for stated reasons. */
+const keptOf = (rows) => rows.filter((x) => x.r.qualification.category !== 'REJECTED')
+  .map((x) => ({ n: x.n, category: x.r.qualification.category })).sort((a, b) => a.n - b.n);
+
+test('SALE: exactly leads 6 and 12 are kept, both genuine buyers, both WEAK — none Potential or Strong', () => {
+  const rows = shown('SALE');
+  assert.deepEqual(keptOf(rows), [{ n: 6, category: 'WEAK' }, { n: 12, category: 'WEAK' }]);
+  const q = (n) => rows.find((x) => x.n === n).r.qualification;
+  /* 6: 3 rooms as the property, but only districts other than Krtsanisi; no budget. */
+  assert.equal(q(6).requirementsFit, 'COMPATIBLE');
+  assert.equal(q(6).locationFit, 'INCOMPATIBLE');
+  assert.deepEqual(q(6).limitations, ['BUDGET_UNKNOWN', 'LOCATION_OTHER_AREA']);
+  /* 12: pays the seller over time with 10,000 GEL down (~2% of $213,840); city only. */
+  assert.equal(q(12).financingFit, 'STRETCH');
+  assert.deepEqual(q(12).limitations, ['BUDGET_UNKNOWN', 'LOCATION_CITY_ONLY', 'ROOMS_UNKNOWN', 'FINANCING_SELLER_INSTALMENTS', 'DOWN_PAYMENT_LOW']);
+  /* The other genuine buyers: a confirmed budget mismatch, and the repost. */
+  assert.deepEqual(q(7).reasons, ['BUDGET_INCOMPATIBLE']);
+  assert.deepEqual(q(11).reasons, ['BUDGET_INCOMPATIBLE']);
+  assert.deepEqual(q(13).reasons, ['DUPLICATE']);
+});
+
+test('RENT (same texts, $600/month): exactly tenants 4, 10 and 25 are kept, with their limitations', () => {
+  const rows = shown('RENT', { totalPrice: 600 });
+  assert.deepEqual(keptOf(rows), [{ n: 4, category: 'POTENTIAL' }, { n: 10, category: 'WEAK' }, { n: 25, category: 'WEAK' }]);
+});
+
+const SALE_DNA = buildPropertyDna(fixture.property);
+const q1 = (text) => { const r = classifyDemand(text, { kind: 'POST' }); return { r, q: qualify(r, SALE_DNA, { ageDays: 1 }) }; };
+
+test('financing: unstated is unknown (no penalty); a mortgage with a real down payment can be Strong', () => {
+  const plain = q1('Куплю 3-комнатную квартиру в Крцаниси, бюджет 215000$');
+  assert.equal(plain.q.financingFit, 'UNKNOWN');
+  assert.equal(plain.q.category, 'STRONG');
+  const mortgage = q1('ვიყიდი 3 ოთახიან ბინას კრწანისში იპოთეკით, ბიუჯეტი 215000$, პირველადი შენატანი 45000$');
+  assert.equal(mortgage.r.financing, 'MORTGAGE');
+  assert.equal(mortgage.q.financingFit, 'COMPATIBLE');
+  assert.equal(mortgage.q.category, 'STRONG');
+  assert.deepEqual(mortgage.q.limitations, ['FINANCING_MORTGAGE']);
+});
+
+test('financing: a low down payment caps a confirmed budget+place buyer at Potential, never Strong', () => {
+  const low = q1('Куплю 3-комнатную квартиру в Крцаниси в ипотеку, бюджет 215000$, первоначальный взнос 10000$');
+  assert.equal(low.q.financingFit, 'STRETCH');
+  assert.equal(low.q.category, 'POTENTIAL');
+  assert.ok(low.q.limitations.includes('DOWN_PAYMENT_LOW'));
+});
+
+test('financing words are read in every language', () => {
+  for (const t of ['ვიყიდი ბინას განვადებით', 'Куплю квартиру в рассрочку', 'Looking to buy an apartment in installments', "Taksitle daire almak istiyorum", 'أريد شراء شقة بالتقسيط', 'רוצה לקנות דירה בתשלומים']) {
+    assert.equal(classifyDemand(t, { kind: 'POST' }).financing, 'INSTALMENTS', t);
+  }
+  for (const t of ['ვიყიდი ბინას იპოთეკით', 'Куплю квартиру в ипотеку', 'Looking to buy a flat with a mortgage', 'Konut kredisi ile daire almak istiyorum', 'أريد شراء شقة برهن عقاري', 'רוצה לקנות דירה עם משכנתא']) {
+    assert.equal(classifyDemand(t, { kind: 'POST' }).financing, 'MORTGAGE', t);
+  }
+});

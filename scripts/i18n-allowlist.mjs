@@ -295,6 +295,9 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // above already are. Arabic and Hebrew carry their own transliterations for
   // all three of these keys, so none of them can be masking a real gap.
   'comm_channel_whatsapp',
+  // Service Control Center: product brand names, identical in every language.
+  'svc_name_ai_talk',
+  'svc_name_whatsapp',
   'comm_kpi_whatsapp',
   'comm_series_whatsapp',
   // "SMS" — an acronym with no translated form in Georgian, Russian, Turkish

@@ -48,6 +48,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 import { TABLES, FUNCTIONS, harnessSession, OWNER_ID } from './commFixtures.mjs';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from '../mobile/serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -197,6 +198,7 @@ function answer(route, scenario) {
     return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
   }
 
+  if (path.startsWith(SERVICE_CONTROLS_RPC)) return route.fulfill(jsonBody(SERVICES_ALL_ON));
   if (path.startsWith('/auth/v1/user')) return route.fulfill(jsonBody(harnessSession().user));
   if (path.startsWith('/auth/v1/token')) return route.fulfill(jsonBody(harnessSession()));
   if (path.startsWith('/auth/v1/')) return route.fulfill(jsonBody({}));

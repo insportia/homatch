@@ -27,6 +27,7 @@ const SECOND = '77777777-7777-4777-8777-777777777777';
 
 function makeDb() {
   const t = {
+    service_controls: [{ service_key: 'publishing', frontend_enabled: true, backend_enabled: true }],
     users: [{ id: OWNER, auth_id: 'auth-owner' }, { id: OTHER, auth_id: 'auth-other' }, { id: ADMIN, auth_id: 'auth-admin' }],
     properties: [
       { id: PROP, user_id: OWNER, is_deleted: false, contact_phone_e164: '+995599111222' },
@@ -180,6 +181,7 @@ globalThis.__createClient = (_url, key, opts) => {
   return { from: (t) => db.from(t), rpc: (n, a) => db.rpc(n, a), storage: db.storage };
 };
 const { handler } = await import('../index.ts');
+const { resetServiceControlCache } = await import('../../_shared/serviceControl.ts');
 
 const jwt = (claims) => ['owner', Buffer.from(JSON.stringify(claims)).toString('base64url'), 's'].join('.');
 const pages = new Map();
@@ -198,7 +200,7 @@ const listing = (over = {}) => ({
   title: 'Apartment in Vake', description: { ka: 'ბინა ვაკეში' }, propertyType: 'APARTMENT', dealType: 'SALE', price: 150000, currency: 'USD',
   area: 90, city: 'თბილისი', street: 'Chavchavadze', contactName: 'Nino', contacts: [{ phone: '+995599111222' }], photos: [PHOTO], portalTargets: ['myhome', 'ssge'], ...over,
 });
-const fresh = () => { db = makeDb(); current = new Date('2026-10-15T12:00:00Z'); pages.clear(); fetched.length = 0; };
+const fresh = () => { resetServiceControlCache(); db = makeDb(); current = new Date('2026-10-15T12:00:00Z'); pages.clear(); fetched.length = 0; };
 
 test('origin, method and authentication are enforced before anything is read', async () => {
   fresh();
@@ -728,4 +730,26 @@ test('editing a live HOMATCH copy only queues operations the adapter supports (n
   db.t.publishing_operations[0].status = 'SUCCEEDED';
   await call('listing.save', { propertyId: PROP, version: 1, listing: listing({ price: 140000 }) });
   assert.equal(db.t.publishing_operations.length, 1, 'PRICE is NOT_EXPLORED on MyHome: no operation, the admin queue shows the copy as outdated');
+});
+
+test('Service Control Center: paused Publishing refuses every customer action and every admin action that could start work; admins keep read-only views', async () => {
+  fresh();
+  await call('listing.save', { propertyId: PROP, version: 0, listing: listing() });
+  resetServiceControlCache();
+  db.t.service_controls[0] = { service_key: 'publishing', frontend_enabled: false, backend_enabled: false };
+  for (const [action, who] of [['workspace', 'owner'], ['listing.get', 'owner'], ['listing.save', 'owner'], ['publication.prepare', 'owner'], ['publication.publish', 'owner'], ['publication.link', 'owner'], ['admin.account.automation', 'admin'], ['admin.account.session', 'admin'], ['admin.provider.recheck', 'admin'], ['admin.job.claim', 'admin']]) {
+    const r = await call(action, { propertyId: PROP, portalId: 'myhome', portalIds: ['myhome'] }, { who });
+    assert.equal(r.status, 503, action);
+    assert.equal(r.body.code, 'SERVICE_DISABLED', action);
+    assert.equal(r.body.service, 'publishing', action);
+  }
+  assert.equal(db.t.publishing_engine_jobs.length, 0, 'nothing was prepared or queued');
+  assert.equal((db.t.publishing_operations ?? []).length, 0, 'no browser operation was queued');
+  const read = await call('admin.providers', {}, { who: 'admin' });
+  assert.equal(read.status, 200, 'an admin can still read existing records');
+  assert.equal((await call('admin.providers', {}, { who: 'owner' })).status, 403, 'a read-only admin view is still admin-only');
+  // The row missing entirely (e.g. migration not yet applied) fails closed.
+  resetServiceControlCache();
+  db.t.service_controls = [];
+  assert.equal((await call('workspace')).status, 503);
 });

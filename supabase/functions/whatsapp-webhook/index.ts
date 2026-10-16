@@ -35,6 +35,7 @@ import {
   mapMetaMessageStatus, mapMetaMessageKind, isMetaOptOutSignal, isPermanentMetaFailure,
 } from '../_shared/comm/generated/statusMap.ts';
 import { detectsOptOut, detectsHumanRequest } from '../_shared/comm/generated/handoff.ts';
+import { serviceState } from '../_shared/serviceControl.ts';
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
@@ -407,6 +408,10 @@ async function applyOptOut(sb: Sb, ownerId: string, peer: string, conversationId
  * interruption, and the link goes to the inbox where the thread is.
  */
 async function notifyOwner(sb: Sb, userId: string, type: string, title: string, body: string): Promise<void> {
+  // SERVICE CONTROL (key `whatsapp`): while WhatsApp is hidden from customers the
+  // event is still recorded above (history, statuses, opt-outs are never dropped),
+  // but nobody is sent to an inbox they cannot open.
+  if (!(await serviceState(sb, 'whatsapp')).frontend) return;
   // Best effort. A notification that cannot be written must not roll back a
   // message that was genuinely received.
   const id = await notify(sb as never, {

@@ -8,6 +8,7 @@ import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
 import type { TranslationKey } from '@/i18n/translations';
 import { PAGE } from './primitives';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 /**
  * REGION 12 — the footer. Quiet, hairline top, no card anywhere in it.
@@ -70,6 +71,8 @@ function FooterBody() {
   /** The stored override for a field, else the copy the site ships. */
   const label = (key: string) => sf(key, FIELD[key]);
 
+  // A paused service (Admin → Service Control Center) has no footer link.
+  const callsVisible = useServiceVisible('ai_call_center');
   const columns = [
     {
       key: 'product',
@@ -80,7 +83,7 @@ function FooterBody() {
         { key: 'link_mortgage', path: '/mortgage' },
         { key: 'link_investment', path: '/investment' },
         { key: 'link_ai', path: session ? '/ai' : '/auth/signup' },
-        { key: 'link_calls', path: session ? '/outreach/calls' : '/auth/signup' },
+        ...(callsVisible ? [{ key: 'link_calls', path: session ? '/outreach/calls' : '/auth/signup' }] : []),
         { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup' },
       ],
     },

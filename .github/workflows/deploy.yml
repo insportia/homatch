@@ -496,6 +496,9 @@ jobs:
         run: |
           JWT_FUNCTIONS=(
             "publishing-engine"
+            # Admin → Service Control Center: browser-facing, admin-only (is_admin
+            # on the caller's token inside), so the gateway JWT check stays on.
+            "service-control"
             # HOMATCH FOR DEVELOPERS. Both are browser-facing and keep the
             # gateway JWT check on: the anon key is a valid JWT, so the check
             # costs nothing and keeps them off the open internet. The real

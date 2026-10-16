@@ -18,6 +18,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import { isE164 } from './contacts.ts';
 import {
   PENDING_STATES, classifyCheck, isLive, normalizeListing, parseExternalUrl, publicRegistry,
@@ -48,6 +49,12 @@ const V1_PUBLICATION_COLUMNS = 'id,listing_id,portal_id,status,revision,external
 const V1_DEFAULTS = { channel: 'OWNER_HANDOFF', contact_consent_at: null, status_reason: null, admin_claimed_at: null };
 const CENTRAL_ONLY = new Set(['publication.publish', 'publication.cancel', 'admin.accounts', 'admin.account.save', 'admin.account.test', 'admin.account.credential', 'admin.account.disconnect', 'admin.account.session', 'admin.account.automation', 'admin.operations', 'admin.queue', 'admin.job.get', 'admin.job.claim', 'admin.job.release', 'admin.job.complete', 'admin.job.reject', 'admin.job.fail', 'admin.job.confirmRemoved', 'admin.job.markUpdated', 'admin.job.check']);
 /** Statuses the admin action queue shows by default: everything waiting on a person at HOMATCH. */
+/**
+ * SERVICE CONTROL (Admin → Service Control Center, key `publishing`). While its backend
+ * is off, every customer action and every admin action that could start work answers
+ * 503 SERVICE_DISABLED; admins keep these read-only views of existing records.
+ */
+const ADMIN_READS_WHILE_PAUSED = new Set(['admin.providers', 'admin.publications', 'admin.accounts', 'admin.queue', 'admin.job.get', 'admin.operations']);
 const QUEUE_STATUSES = ['ADMIN_ACTION_REQUIRED', 'PUBLISHING', 'AUTH_REQUIRED', 'UNPUBLISH_REQUESTED', 'VERIFICATION_FAILED', 'QUEUED'];
 
 export async function handler(req: Request, deps: { fetchPage: typeof fetchListingPage; probe: typeof probeProvider; now: () => Date; signer?: Signer } = { fetchPage: fetchListingPage, probe: probeProvider, now: () => new Date() }) {
@@ -78,6 +85,9 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
     input = JSON.parse(raw || '{}');
   } catch { return reply({ code: 'INVALID_JSON' }, 400); }
   const action = String(input?.action || '');
+  if (!ADMIN_READS_WHILE_PAUSED.has(action) && !(await serviceBackendEnabled(db, 'publishing'))) {
+    return reply(serviceDisabledBody('publishing'), 503);
+  }
   // Is the central schema there? One column probe; any error means "not yet".
   const { error: schemaError } = await db.from('publishing_engine_jobs').select('channel').limit(1);
   const central = !schemaError;

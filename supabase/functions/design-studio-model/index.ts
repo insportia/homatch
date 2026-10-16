@@ -20,6 +20,7 @@ import { getObject, headObject } from '../_shared/objectStore.ts';
 import { inspectModel, MODEL_INSPECT_VERSION, MODEL_LIMITS } from '../_shared/designStudio/modelInspect.ts';
 import { handleCatalog } from './catalog.ts';
 import { handleCatalogPurge } from './catalogPurge.ts';
+import { serviceBackendEnabled, serviceDisabledResponse } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +50,11 @@ serve(async (req) => {
   // Physical deletion of unreferenced, queued catalogue files (admin only; see catalogPurge.ts).
   if (new URL(req.url).pathname.replace(/\/+$/, '').endsWith('/catalog-purge')) return handleCatalogPurge(req);
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  // SERVICE CONTROL (key `design_studio`): no new model inspection job while paused.
+  // The catalogue importer and the admin purge above are maintenance, not customer work.
+  if (!(await serviceBackendEnabled(createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } }), 'design_studio'))) {
+    return serviceDisabledResponse('design_studio', CORS);
+  }
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return json({ error: 'UNAUTHENTICATED' }, 401);
 

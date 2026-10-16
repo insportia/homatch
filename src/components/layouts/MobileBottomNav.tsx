@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { NavGlyphIcon, type NavGlyphName } from './NavGlyph';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 /*
  * FIVE SLOTS, ORDERED BY WHAT A PHONE IS ACTUALLY FOR.
@@ -38,17 +39,21 @@ import { NavGlyphIcon, type NavGlyphName } from './NavGlyph';
 /* Same drawn glyph family as the sidebar (NavGlyph.tsx) — one semantic
    icon per product across the whole shell, adapted to this bar's own
    geometry and color hierarchy rather than wearing the rail's tile. */
-const items: Array<{ key: string; path: string; glyph: NavGlyphName; highlight?: boolean }> = [
+const items: Array<{ key: string; path: string; glyph: NavGlyphName; highlight?: boolean; gate?: ServiceKey }> = [
   { key: 'nav_dashboard',  path: '/dashboard',  glyph: 'dashboard' },
   { key: 'nav_verify',     path: '/verify',     glyph: 'verify' },
   { key: 'nav_ai',         path: '/ai',         glyph: 'ai', highlight: true },
   { key: 'nav_contracts',  path: '/contracts',  glyph: 'contracts' },
-  { key: 'nav_live_chat',  path: '/live-chat',  glyph: 'live_chat' },
+  /* Hidden while the owner has Live Chat paused (Admin → Service Control Center);
+     the bar's flex items share the space, so no gap is left. */
+  { key: 'nav_live_chat',  path: '/live-chat',  glyph: 'live_chat', gate: 'live_chat' },
 ];
 
 export function MobileBottomNav() {
   const { t } = useLanguage();
   const location = useLocation();
+  const services = useServiceControls().services;
+  const shown = items.filter((item) => !item.gate || services[item.gate].frontend);
 
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/');
@@ -69,7 +74,7 @@ export function MobileBottomNav() {
       className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/10 bg-[#0C1119]/[0.96] backdrop-blur-xl"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="flex items-stretch justify-around h-[3.75rem]">
-        {items.map(item => {
+        {shown.map(item => {
           const active = isActive(item.path);
           return (
             <Link

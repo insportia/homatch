@@ -92,6 +92,7 @@ import { FreshnessChip, MediaUnavailable, SourceChip } from '@/components/proper
 import { coverImage } from '@/property/gallery';
 import { type PropertyLifecycle, needsAttention, safeExternalUrl } from '@/property/lifecycle';
 import { fetchLifecycle } from '@/services/propertyLifecycle';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 /** A price, or nothing. Never a zero standing in for "not priced yet". */
 /*
@@ -249,6 +250,7 @@ function PropertyRow({
   onConfirm: (pending: PendingAction) => void;
 }) {
   const { t, lang } = useLanguage();
+  const publishingVisible = useServiceVisible('publishing');
   const locale = intlLocaleFor(lang);
   const facts = (Array.isArray(property.facts) ? property.facts[0] : property.facts) as
     Record<string, unknown> | null | undefined;
@@ -359,12 +361,14 @@ function PropertyRow({
       </DropdownMenuItem>
       {/* Publishing a property is a different product area (/publishing); this only
           opens it with this property chosen. */}
-      <DropdownMenuItem asChild>
-        <Link to={`/publishing/${id}`} className="gap-2">
-          <NavGlyphIcon name="publishing" className="h-4 w-4 shrink-0" />
-          <span className="break-words">{t('pubw_publish_this_property')}</span>
-        </Link>
-      </DropdownMenuItem>
+      {publishingVisible && (
+        <DropdownMenuItem asChild>
+          <Link to={`/publishing/${id}`} className="gap-2">
+            <NavGlyphIcon name="publishing" className="h-4 w-4 shrink-0" />
+            <span className="break-words">{t('pubw_publish_this_property')}</span>
+          </Link>
+        </DropdownMenuItem>
+      )}
       <DropdownMenuSeparator />
       {!archived && status !== 'ACTIVE' && (
         <DropdownMenuItem className="gap-2" onClick={() => onAct(property, 'PUBLISH')}>

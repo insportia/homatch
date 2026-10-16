@@ -321,6 +321,12 @@ export const ADMIN_GROUPS: AdminGroup[] = [
     icon: Server,
     items: [
       {
+        /* The owner's pause / resume switches for Publishing, AI Call Center, AI TALK,
+           WhatsApp, Live Chat and Design Studio — frontend and backend, audited. */
+        path: '/admin/service-control', labelKey: 'admin_nav_service_control', icon: SlidersHorizontal,
+        keywords: ['service', 'pause', 'resume', 'disable', 'enable', 'kill switch', 'maintenance', 'publishing', 'call center', 'ai talk', 'whatsapp', 'live chat', 'design studio'],
+      },
+      {
         path: '/admin/health', labelKey: 'admin_nav_health', icon: HeartPulse,
         keywords: ['health', 'status', 'uptime', 'system'],
       },

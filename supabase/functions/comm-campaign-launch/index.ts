@@ -31,6 +31,7 @@ import { parsePhone } from '../_shared/comm/generated/phone.ts';
 import { hasSecret } from '../_shared/comm/contracts.ts';
 import { createVapiProvider, vapiPing } from '../_shared/comm/vapi.ts';
 import { buildAgentRuntime } from '../_shared/comm/agentPrompt.ts';
+import { serviceBackendEnabled, serviceDisabledBody, type ServiceKey } from '../_shared/serviceControl.ts';
 
 interface LaunchBody {
   campaignId?: string;
@@ -53,10 +54,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ONE call, to ONE number, through every gate a campaign would pass.
   if (body.action === 'test_call' || body.action === 'test_call_preview') {
+    if (!(await serviceBackendEnabled(sb, 'ai_call_center'))) return json(serviceDisabledBody('ai_call_center'), 503);
     return await testCall(sb, caller.userId, body, body.action === 'test_call');
   }
 
   if (!body?.campaignId) return json({ error: 'campaign_id_required' }, 400);
+  // SERVICE CONTROL: an AI_CALL campaign needs `ai_call_center`, a WHATSAPP campaign
+  // `whatsapp`; e-mail and SMS campaigns are not paused by this. Checked before anything is
+  // queued or reserved. (A campaign without a type is launched as AI_CALL below.)
+  {
+    const { data: typed } = await sb.from('outreach_campaigns').select('campaign_type').eq('id', body.campaignId).maybeSingle();
+    const service: ServiceKey | null = !typed ? null
+      : typed.campaign_type === 'WHATSAPP' ? 'whatsapp'
+      : typed.campaign_type === 'AI_CALL' || !typed.campaign_type ? 'ai_call_center' : null;
+    if (service && !(await serviceBackendEnabled(sb, service))) return json(serviceDisabledBody(service), 503);
+  }
   const isPreview = body.action !== 'launch';
 
   const decision = await decideLaunch({

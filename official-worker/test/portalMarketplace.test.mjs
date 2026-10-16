@@ -213,6 +213,15 @@ test('home.ge: a requested district narrows the sitemap by its slug', () => {
   assert.equal(homege.parseList(xml, '', homege.criteria(request({ ...rent, districts: ['Ortachala', 'Unknownville'] }))).length, all.length, 'unknown name → city read');
 });
 
+test('shared loop: a page that times out is reported as a timeout and retryable, not as a bare DOMException code', async () => {
+  const reports = [];
+  const fetcher = async (url) => { if (String(url).endsWith('/robots.txt')) return new Response('', { status: 200 }); throw new DOMException('The operation timed out.', 'TimeoutError'); };
+  await acquirePortal(placege, request(), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
+  const last = reports.at(-1);
+  assert.equal(last.status, 'FAILED'); assert.equal(last.retryable, true);
+  assert.match(last.errors[0].message, /\(PORTAL_ACQUISITION_FAILED timeout\)/);
+});
+
 test('registry: korter.ge (terms forbid scraping) and binebi.ge (challenge) are not portal workers', () => {
   const ids = PORTAL_ADAPTERS.map((a) => a.sourceId);
   assert.ok(!ids.includes('korter-ge') && !ids.includes('binebi-ge'));

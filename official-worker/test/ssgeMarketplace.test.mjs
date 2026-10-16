@@ -38,7 +38,11 @@ test('live source taxonomy resolves HOMATCH aliases without numeric location con
  assert.equal(c.city,fixture.scenarios[0].detail.address.cityId);
  assert.ok(c.subdistricts.includes(fixture.scenarios[0].detail.address.subdistrictId));
  assert.equal(c.priceMaxUsd,r.collectPriceMaxUsd);
- assert.throws(()=>ssgeCriteria({...r,districts:['not-a-known-place']},fixture.locations),/Unknown/);
+ /* An unresolvable district reads the city (never a partial set) and says so; it no longer fails the source. */
+ const fallback=ssgeCriteria({...r,districts:[...r.districts??[],'not-a-known-place']},fixture.locations);
+ assert.equal(fallback.subdistricts,undefined);
+ assert.deepEqual(fallback.districtFallback,['not-a-known-place']);
+ assert.ok(!JSON.stringify(fallback).includes('districtFallback'),'never sent to SS.ge');
  assert.throws(()=>ssgeCriteria({...r,collectPriceMaxUsd:300000},fixture.locations),/ceiling/);
 });
 test('sale apartment and monthly rent house flow through real authenticated ingest, normalization, canonical persistence and owned history',async()=>{

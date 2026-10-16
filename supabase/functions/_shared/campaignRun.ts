@@ -18,6 +18,7 @@
 
 import { settleExecution, releaseExecution, type ExecutionGrant } from './billing.ts';
 import { finishSocialCampaign } from './findBuyers/campaign.ts';
+import { creditsForSpend, PAID_DISCOVERY_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import {
   judgeActiveDemand,
   type ActiveDemandFreshnessPolicy,
@@ -154,10 +155,19 @@ export async function finalizeCampaignJob(
     if (error) await jobEvent(db, job.id, 'INCLUDE_MARK_FAILED', { message: error.message }).catch(() => undefined);
   }
 
+  /* Campaigns stamped with the paid discovery policy charge consumed ÷ 0.63 (capped by the
+     reservation in wallet_settle); older campaigns keep the quote they started under. */
+  const { data: pricing } = await db.from('find_buyers_campaigns')
+    .select('pricing_policy,credits_per_usd').eq('matching_job_id', job.id).maybeSingle();
+  const priceCredits = pricing?.pricing_policy === PAID_DISCOVERY_POLICY_ID
+    ? creditsForSpend(Math.round(costUsd * 1_000_000), Number(pricing.credits_per_usd) || 10)
+    : undefined;
+
   let creditsCharged = 0;
   if (grant) {
     try {
       const settled = await settleExecution(db, grant, {
+        priceCredits,
         provider: 'homatch_matching',
         providerOperation: 'find_clients_search',
         providerRequestId: job.id,
@@ -169,6 +179,7 @@ export async function finalizeCampaignJob(
           fresh_matches: freshMatches,
           social_leads: socialLeads,
           active_window_days: policy.activeMaxDays,
+          pricing_policy: pricing?.pricing_policy ?? null,
         },
       }, freshMatches + socialLeads > 0 ? 'SUCCESS' : 'PARTIAL');
       creditsCharged = settled.chargedCredits;

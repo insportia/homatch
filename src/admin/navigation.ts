@@ -34,7 +34,7 @@ import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Boxes,Brai
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Plug, Puzzle, Radio, 
   Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, Store, 
-  Type, UserSearch, Users, Wrench, Zap, 
+  TrendingUp, Type, UserSearch, Users, Wrench, Zap, 
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n/translations';
 
@@ -119,6 +119,12 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         /* One summary per HOMATCH buyer or tenant, from explicit requirements only. */
         path: '/admin/buyer-intelligence', labelKey: 'admin_nav_buyer_intelligence', icon: UserSearch,
         keywords: ['buyer', 'tenant', 'demand', 'budget', 'intent level', 'saved search', 'eligible'],
+      },
+      {
+        /* Who wants what: buyers, tenants, sellers, landlords — stated vs observed interest,
+           demand vs supply, paid discovery economics. Profile views and exports are audited. */
+        path: '/admin/demand-intelligence', labelKey: 'admin_nav_demand_intelligence', icon: TrendingUp,
+        keywords: ['demand', 'interest', 'history', 'saved', 'customer', 'profile', 'export', 'profit', 'campaign cost', 'seller', 'landlord'],
       },
       {
         /* PREMIUM / MIDDLE / ECONOMY against the local market, rules with preview and audit. */

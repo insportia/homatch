@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { type SearchHistoryItem, searchHistory } from '@/services/marketplaceSearch';
 import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { criteriaChips, type T } from './format';
+import { MyActivityPanel } from './MyActivityPanel';
 
 type SearchIntelligenceBrief = SearchHistoryItem['brief'];
 
@@ -48,6 +49,7 @@ export function SearchDashboard({ t, onRepeat }: { t: T; onRepeat?: (brief: Sear
       <span aria-current="page">{page}</span>
       <button type="button" disabled={!result.hasMore} onClick={() => changePage(page + 1)} className="min-h-11 rounded-lg border border-border px-4 disabled:opacity-40">{t('fpr_next')}</button>
     </nav> : null}
+    <MyActivityPanel t={t} />
   </section>;
 }
 

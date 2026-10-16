@@ -16,6 +16,7 @@ import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../.
 import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
 import { classifyDemand } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
+import { allocateCampaign, PAID_DISCOVERY_POLICY_ID } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 import { paidTelegramChannels, parseTelegramPreference, type TelegramCommunity, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
@@ -73,11 +74,21 @@ export function minimumCredits(minUsd: number, creditsPerUsd: number): number {
   return Math.ceil(minUsd * creditsPerUsd);
 }
 
-/** customer value and the provider ceiling, integer microdollars. */
+/**
+ * Customer value and the provider ceiling, integer microdollars — the LEGACY split
+ * (find_buyers_provider_share_bps). Campaigns started since the paid discovery
+ * policy use paidDiscoveryEconomics; this stays for campaigns already running.
+ */
 export function campaignEconomics(credits: number, creditsPerUsd: number, providerShareBps: number) {
   const customerValueMicros = Math.floor((credits * 1_000_000) / creditsPerUsd);
   const providerBudgetMicros = Math.floor((customerValueMicros * providerShareBps) / 10_000);
   return { customerValueMicros, providerBudgetMicros };
+}
+
+/** The owner's 37/63 split (HOMATCH 37% / providers 63% of the total price), stamped on new campaigns. */
+export function paidDiscoveryEconomics(credits: number, creditsPerUsd: number) {
+  const a = allocateCampaign(credits, creditsPerUsd);
+  return { customerValueMicros: a.priceMicros, providerBudgetMicros: a.providerBudgetMicros, pricingPolicy: PAID_DISCOVERY_POLICY_ID };
 }
 
 export async function creditsPerUsd(db: any): Promise<number> {
@@ -305,7 +316,7 @@ async function claimTestCap(db: any, input: StartSocialInput): Promise<number | 
 
 export async function startSocialCampaign(db: any, input: StartSocialInput, settings: FindBuyersSettings) {
   const rate = await creditsPerUsd(db);
-  const econ0 = campaignEconomics(input.credits, rate, settings.providerShareBps);
+  const econ0 = paidDiscoveryEconomics(input.credits, rate);
   const testCapMicros = await claimTestCap(db, input);
   const econ = testCapMicros == null ? econ0
     : { ...econ0, providerBudgetMicros: cappedBudget(econ0.providerBudgetMicros, testCapMicros), testCapMicros };
@@ -323,6 +334,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
     matching_job_id: input.matchingJobId, campaign_id: input.campaignId, property_id: input.propertyId,
     user_id: input.userId, transaction: dna.transaction, credits_committed: input.credits, credits_per_usd: rate,
     customer_value_micros: econ.customerValueMicros, provider_budget_micros: econ.providerBudgetMicros,
+    pricing_policy: econ.pricingPolicy,
     languages: input.targetLanguages?.length ? SEARCH_LANGUAGES.filter((l) => input.targetLanguages!.includes(l)) : [...SEARCH_LANGUAGES], dna,
   }, { onConflict: 'matching_job_id', ignoreDuplicates: true });
   if (error) throw error;

@@ -19,7 +19,7 @@ const unsupported = (why) => Object.assign(Error(why), { code: 'UNSUPPORTED_REQU
 
 export const placege = {
   workerId: 'placege-agent', sourceId: 'place-ge', sourceName: 'Place.ge', envPrefix: 'PLACEGE', origin: 'https://place.ge',
-  maxPages: 2, pageSize: 15, detailLimit: 17, detailIntervalMs: 900, pageIntervalMs: 3000,
+  deepMaxPages: 8, maxPages: 2, pageSize: 15, detailLimit: 17, detailIntervalMs: 900, pageIntervalMs: 3000,
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];
     if (!city) throw unsupported('Place.ge city filter is verified for Tbilisi only');

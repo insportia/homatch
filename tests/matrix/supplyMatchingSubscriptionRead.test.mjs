@@ -40,7 +40,7 @@ test('subscriptions are read explicitly by intent_id and attached to each demand
   assert.match(SRC, /\.from\('active_search_subscriptions'\)\s*\.select\('intent_id,user_id,is_active,side,search_criteria'\)\s*\.in\('intent_id', profileIds\)/);
   assert.match(SRC, /subscriptions: subscriptionsByIntent\.get\(String\(row\.id\)\) \?\? \[\]/);
   // A network-only run keeps only demand with an active subscription (was the !inner join).
-  assert.match(SRC, /!nativeOnly \|\| row\.subscriptions\.some\(\(sub\) => sub\.is_active === true\)/);
+  assert.match(SRC, /!\(filter\.requireActive \?\? nativeOnly\) \|\| row\.subscriptions\.some\(\(sub\) => sub\.is_active === true\)/);
 });
 
 test('a PostgrestError is never rendered as [object Object]', () => {

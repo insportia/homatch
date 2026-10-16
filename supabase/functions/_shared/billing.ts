@@ -107,6 +107,12 @@ export interface ActualUsage {
    * earlier work is counted in at most one settlement.
    */
   alreadyLedgeredLandedCents?: number;
+  /**
+   * The price of this work in credits, decided by a product policy (paid discovery: consumed ÷ 0.63, see
+   * src/research-core/billing/paidDiscoveryPolicy.ts). When set, billing_price_quote is NOT consulted; the
+   * reservation still clamps it in wallet_settle.
+   */
+  priceCredits?: number;
 }
 
 export function serviceClient(): SupabaseClient {
@@ -406,13 +412,18 @@ export async function settleExecution(
   // Price the ACTUAL work at the plan the job started under, not the plan the
   // customer is on now. Cancelling Premium mid-search must not reprice a
   // running Maximum search.
-  const pricedLandedCents = landedCogsCents + Math.max(0, n(usage.alreadyLedgeredLandedCents));
-  const { data: quote } = await sb.rpc('billing_price_quote', {
-    p_product_code: grant.productCode,
-    p_plan_code: grant.planCode,
-    p_landed_cogs_cents: pricedLandedCents > 0 ? pricedLandedCents : null,
-  });
-  const actualCredits = n(quote?.[0]?.credits, grant.estimateMaxCredits);
+  let actualCredits: number;
+  if (usage.priceCredits != null && Number.isFinite(usage.priceCredits) && usage.priceCredits >= 0) {
+    actualCredits = usage.priceCredits;
+  } else {
+    const pricedLandedCents = landedCogsCents + Math.max(0, n(usage.alreadyLedgeredLandedCents));
+    const { data: quote } = await sb.rpc('billing_price_quote', {
+      p_product_code: grant.productCode,
+      p_plan_code: grant.planCode,
+      p_landed_cogs_cents: pricedLandedCents > 0 ? pricedLandedCents : null,
+    });
+    actualCredits = n(quote?.[0]?.credits, grant.estimateMaxCredits);
+  }
 
   const { data, error } = await sb.rpc('wallet_settle', {
     p_reservation_id: grant.reservationId,

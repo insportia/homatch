@@ -16,7 +16,7 @@ const unsupported = (why) => Object.assign(Error(why), { code: 'UNSUPPORTED_REQU
 
 export const brokeri = {
   workerId: 'brokeri-agent', sourceId: 'brokeri-ge', sourceName: 'Brokeri.ge', sourceType: 'AGENCY', envPrefix: 'BROKERI', origin: 'https://brokeri.ge',
-  maxPages: 2, pageSize: 15, detailLimit: 15, detailIntervalMs: 900, pageIntervalMs: 3000,
+  deepMaxPages: 6, maxPages: 2, pageSize: 15, detailLimit: 15, detailIntervalMs: 900, pageIntervalMs: 3000,
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];
     if (!city) throw unsupported('Brokeri.ge city not in its municipality list');

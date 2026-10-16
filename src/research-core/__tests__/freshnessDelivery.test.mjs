@@ -334,8 +334,9 @@ test('the matcher reads globally-discovered demand, not only acquired candidates
   const c = code(MATCHER);
   /* By market, in every spelling of the city (structured-gates.ts
      marketCitySpellings): 'Tbilisi' alone never reached 'თბილისი'. */
-  assert.match(c, /from\('intent_profiles'\)[\s\S]{0,160}city\.ilike\./,
+  assert.match(c, /const cityFilter = spellings\.map\(\(name\) => `city\.ilike\./,
     'the matcher never queries the global store by market');
+  assert.match(c, /\.from\('intent_profiles'\)\.select\('id,signal_id'\)\.or\(cityFilter\)/);
   // Both ways in, UNIONED — not the global set replacing the acquired one.
   // The spelling of the union has changed once already; what must hold is
   // that the acquired set and the global set both feed the same candidate id
@@ -344,14 +345,20 @@ test('the matcher reads globally-discovered demand, not only acquired candidates
   assert.match(c, /const globalOnlySignals = new Set<string>\(globalOnly\)/);
 });
 
-test('global demand is bounded and scoped to the property market', () => {
+test('global demand is read whole, page by page, and scoped to the property market', () => {
   /*
-   * The acquired set grows with the research done for one property. The
-   * global set grows with the whole market, so an unbounded read is a
-   * different shape of query wearing the same name.
+   * The global set grows with the whole market. It used to be cut at an
+   * UNORDERED 500 rows, which silently dropped real demand; the owner removed
+   * every such window (2026-10-16). It is now read in bounded keyset pages and
+   * judged under a time budget with a stored resume point — bounded memory and
+   * time per run, nothing truncated across runs.
    */
   const c = code(MATCHER);
-  assert.match(c, /\.limit\(GLOBAL_DEMAND_LIMIT\)/);
+  assert.doesNotMatch(c, /GLOBAL_DEMAND_LIMIT|\.limit\(10000\)|Math\.min\(5000/);
+  assert.match(c, /globalRows = await readAll</);
+  assert.match(c, /pageSize: ID_PAGE/);
+  assert.match(c, /if \(Date\.now\(\) >= deadlineAt\) \{ coverageComplete = false; break; \}/);
+  assert.match(c, /scan_key: checkpointKey, status: 'RUNNING', demand_cursor: cursor/);
   /*
    * AND NO COUNTRY CLAUSE. The first version filtered country.eq.<code> and
    * matched nothing: intent_profiles.country is unnormalised, holding

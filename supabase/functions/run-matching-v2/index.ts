@@ -6,6 +6,7 @@ import { judgeActiveDemand } from '../../../src/research-core/discovery/freshnes
 import { fromDemandSignal } from '../../../src/research-core/discovery/discovery-entity.ts';
 import { dedupe } from '../../../src/research-core/discovery/cross-source-dedupe.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
+import { chunk, scanAll } from '../../../src/research-core/match/exhaustiveScan.ts';
 import {
   bedroomsGate, budgetGate, cityGate, converterFrom, marketCitySpellings, ratesFromPayload, ratesFromTable,
   type GateVerdict,
@@ -21,10 +22,19 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 });
 const DEMAND = new Set(['BUY', 'RENT', 'INVEST', 'RELOCATE_BUY', 'RELOCATE_RENT']);
 
-/* How much globally-discovered demand one campaign tick will read. Bounded
-   because this set grows with the whole market rather than with the paid
-   research done for one property. */
-const GLOBAL_DEMAND_LIMIT = 500;
+/*
+ * NO DEMAND WINDOWS. Every linked and every global demand signal of the market is
+ * read (keyset pages, errors thrown) and judged, in signal-id order. The former
+ * GLOBAL_DEMAND_LIMIT=500 read an UNORDERED 500 of a city's demand, and a
+ * 5,000-profile batch cap and 10,000-row link reads silently dropped the rest.
+ * Profiles are judged in chunks under a time budget; a run that runs out of time
+ * stores its resume point (match_scan_checkpoints v2property:<id>) and the next
+ * run for the property continues there. The response states coverage.
+ */
+const ID_PAGE = 1000;
+const PROFILE_CHUNK = 200;
+const DEFAULT_BUDGET_MS = 110_000;
+const MAX_BUDGET_MS = 140_000;
 // Demand intent_type -> the set of properties.transaction_type values ('sale'|'rent'|'investment',
 // normalized) it can legitimately be satisfied by, used ONLY as a fallback when the signal's own
 // classified transaction_type is missing. Sourced from live intent_profiles data: INVEST demand has
@@ -52,7 +62,28 @@ Deno.serve(async (req: Request) => {
   }
   if (!authorized) return json({ error: 'Internal only' }, 403);
   try {
-    const { propertyId, campaignId, intentProfileBatchSize = 1500, fxRates = null } = await req.json();
+    const started = Date.now();
+    /* intentProfileBatchSize is still accepted from older callers and no longer caps anything. */
+    const { propertyId, campaignId, fxRates = null, budgetMs } = await req.json();
+    const deadlineAt = started + Math.max(5_000, Math.min(MAX_BUDGET_MS, Number(budgetMs) || DEFAULT_BUDGET_MS));
+    /* Every row of a keyset-ordered read, page by page; an error is thrown, never "no rows". */
+    const readAll = async <T extends Record<string, unknown>>(
+      build: () => any, key: string,
+    ): Promise<T[]> => {
+      const rows: T[] = [];
+      await scanAll<T>({
+        pageSize: ID_PAGE, keyOf: (r) => String(r[key]),
+        fetchPage: async (after, size) => {
+          let q = build().order(key, { ascending: true }).limit(size);
+          if (after) q = q.gt(key, after);
+          const { data, error } = await q;
+          if (error) throw error;
+          return (data ?? []) as T[];
+        },
+        onPage: (page) => { rows.push(...page); },
+      });
+      return rows;
+    };
     if (!propertyId) return json({ error: 'propertyId required' }, 400);
 
     const { data: property, error: propertyError } = await db
@@ -66,13 +97,9 @@ Deno.serve(async (req: Request) => {
 
     // property_signal_candidates is the canonical many-to-many acquisition link.
     // raw_signals.property_id is legacy and is intentionally not required.
-    const { data: candidateRows, error: candidateError } = await db
-      .from('property_signal_candidates')
-      .select('signal_id, acquisition_cost_usd')
-      .eq('property_id', propertyId)
-      .order('last_seen_at', { ascending: false })
-      .limit(10000);
-    if (candidateError) throw candidateError;
+    const candidateRows = await readAll<{ signal_id: string; acquisition_cost_usd: number | null }>(
+      () => db.from('property_signal_candidates').select('signal_id, acquisition_cost_usd').eq('property_id', propertyId),
+      'signal_id');
     const acquisitionCostBySignal = new Map<string, number>();
     for (const row of candidateRows || []) {
       if (row.signal_id) acquisitionCostBySignal.set(row.signal_id, Number(row.acquisition_cost_usd || 0));
@@ -126,12 +153,8 @@ Deno.serve(async (req: Request) => {
     const HIGH_SOURCE_QUALITY_THRESHOLD = 7;
     const REAL_COGS_HIGH_THRESHOLD_USD = 0.02;
 
-    const { data: legacyRows, error: legacyError } = await db
-      .from('raw_signals')
-      .select('id')
-      .eq('property_id', propertyId)
-      .limit(10000);
-    if (legacyError) throw legacyError;
+    const legacyRows = await readAll<{ id: string }>(
+      () => db.from('raw_signals').select('id').eq('property_id', propertyId), 'id');
 
     /*
      * HOMATCH'S OWN DEMAND, WHICH NOTHING ELSE BRINGS HERE.
@@ -172,11 +195,7 @@ Deno.serve(async (req: Request) => {
          the market's own languages was invisible to the market. The spellings
          come from the one place table (normalize/place.ts). */
       const spellings = marketCitySpellings(marketCity);
-      let query = db
-        .from('intent_profiles')
-        .select('signal_id')
-        .or(spellings.map((name) => `city.ilike."${name.replace(/"/g, '')}"`).join(','))
-        .limit(GLOBAL_DEMAND_LIMIT);
+      const cityFilter = spellings.map((name) => `city.ilike."${name.replace(/"/g, '')}"`).join(',');
       /*
        * NO COUNTRY CLAUSE, AND THAT IS NOT AN OVERSIGHT.
        *
@@ -195,9 +214,8 @@ Deno.serve(async (req: Request) => {
        * of the pair anyway -- and country is left to whoever normalises the
        * column. Recorded rather than worked around.
        */
-      const { data, error: globalError } = await query;
-      if (globalError) throw globalError;
-      globalRows = data || [];
+      globalRows = await readAll<{ id: string; signal_id: string | null }>(
+        () => db.from('intent_profiles').select('id,signal_id').or(cityFilter), 'id');
     }
 
     const linked = new Set([
@@ -232,19 +250,17 @@ Deno.serve(async (req: Request) => {
     const nbg = ratesFromPayload(fxRates);
     const fx = converterFrom(ratesFromTable((fxRows ?? []) as never), nbg);
 
-    const requested = Math.min(5000, Math.max(1, Number(intentProfileBatchSize) || 1500));
-    const profiles: any[] = [];
-    for (let offset = 0; offset < signalIds.length && profiles.length < requested; offset += 200) {
-      const chunk = signalIds.slice(offset, offset + 200);
-      const { data, error } = await db
-        .from('intent_profiles')
-        .select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,property_id,published_at,source_url,parent_url,external_id,author_public_name,author_public_url,profile_url,content_fingerprint,classification_status,intent_type,original_text,${FRESHNESS_COLUMNS},source:source_registry!source_id(quality_score))`)
-        .in('signal_id', chunk)
-        .order('created_at', { ascending: false });
+    const PROFILE_SELECT = `id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,property_id,published_at,source_url,parent_url,external_id,author_public_name,author_public_url,profile_url,content_fingerprint,classification_status,intent_type,original_text,${FRESHNESS_COLUMNS},source:source_registry!source_id(quality_score))`;
+    /* Only what cross-source dedupe reads. */
+    const DEDUPE_SELECT = 'signal_id,transaction_type,property_types,country,city,district,budget_min,budget_max,currency,bedrooms_min,'
+      + 'signal:raw_signals!signal_id(id,platform,published_at,language,source_url,parent_url,external_id,author_public_name,author_public_url,profile_url,content_fingerprint,original_text)';
+    /* Deterministic order: signal id. Every profile of one signal sits in one chunk. */
+    const orderedSignals = [...new Set(signalIds.map(String))].sort();
+    const loadProfiles = async (ids: string[], select: string) => {
+      const { data, error } = await db.from('intent_profiles').select(select).in('signal_id', ids).order('id', { ascending: true });
       if (error) throw error;
-      profiles.push(...(data || []));
-    }
-    profiles.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      return (data ?? []) as any[];
+    };
 
     /*
      * ONE PERSON, HOWEVER MANY PLACES THEY POSTED (discovery/cross-source-dedupe.ts).
@@ -259,7 +275,9 @@ Deno.serve(async (req: Request) => {
     const personOf = new Map<string, string>();
     {
       const items = [];
-      for (const profile of profiles.slice(0, requested)) {
+      /* Pass one: EVERY demand signal, light columns only, so a person is one person
+         across all of their signals — not only within one chunk. */
+      for (const ids of chunk(orderedSignals, PROFILE_CHUNK)) for (const profile of await loadProfiles(ids, DEDUPE_SELECT)) {
         const signal = Array.isArray(profile.signal) ? profile.signal[0] : profile.signal;
         if (!signal || !profile.signal_id) continue;
         items.push({
@@ -280,10 +298,9 @@ Deno.serve(async (req: Request) => {
     }
     const matchedPeople = new Set<string>();
     {
-      const { data: matchedRows, error: matchedError } = await db.from('matches')
-        .select('signal_id').eq('property_id', property.id).limit(10000);
-      if (matchedError) throw matchedError;
-      for (const row of matchedRows ?? []) {
+      const matchedRows = await readAll<{ id: string; signal_id: string | null }>(
+        () => db.from('matches').select('id,signal_id').eq('property_id', property.id), 'id');
+      for (const row of matchedRows) {
         if (row.signal_id) matchedPeople.add(personOf.get(String(row.signal_id)) ?? String(row.signal_id));
       }
     }
@@ -313,308 +330,331 @@ Deno.serve(async (req: Request) => {
     const errors: string[] = [];
     const buckets: Record<string, number> = { '20-49': 0, '50-79': 0, '80-100': 0 };
 
-    for (const profile of profiles.slice(0, requested)) {
-      const signal = Array.isArray(profile.signal) ? profile.signal[0] : profile.signal;
-      if (!signal) { skipped++; continue; }
-      const profileIntent = String(profile.intent_type || '').toUpperCase();
-      const signalIntent = String(signal.intent_type || profile.intent_type || '').toUpperCase();
-      const text = String(signal.original_text || profile.original_text || profile.translated_text || '');
-      if (
-        signal.classification_status !== 'CLASSIFIED' ||
-        Number(profile.intent_confidence || 0) < 0.65 ||
-        !DEMAND.has(profileIntent) ||
-        !DEMAND.has(signalIntent) ||
-        isSupplyAd(text)
-      ) {
-        skipped++;
-        if (isSupplyAd(text)) rejectedSupply++;
-        continue;
-      }
-
-      /*
-       * THE SEVEN-DAY RULE, ENFORCED WHERE EVIDENCE BECOMES VISIBLE.
-       *
-       * This function is the only thing in Homatch that turns external
-       * evidence into a row a customer sees, so the freshness contract is
-       * enforced here once rather than in every reader.
-       *
-       * A refusal is not a deletion. Evidence that is merely too old to
-       * TRUST is queued for a re-check and will be deliverable on the next
-       * run -- dropping it silently would shrink the corpus every week with
-       * nothing recording why. Evidence we have conclusively established is
-       * REMOVED or INVALID is not queued, because re-reading something we
-       * know is gone is spending money to learn it again.
-       *
-       * Nothing here fetches. The queue is deduplicated per signal, so a
-       * signal wanted by forty campaigns is re-read once, on the worker's
-       * own tick, and never inside a customer's campaign.
-       */
-      const gate = await gateForDelivery(db, profile.signal_id, signal, {
-        policy: freshnessPolicy,
-      });
-      if (!gate.deliverable) {
-        skipped++;
-        rejectedStaleEvidence++;
-        if (gate.queuedJobId) queuedRevalidations++;
-        staleReasons[gate.decision.verdict] = (staleReasons[gate.decision.verdict] || 0) + 1;
-        continue;
-      }
-
-      // Self-sourced guard: raw_signals.property_id is the legacy link recording which
-      // signal a property was originally imported/created FROM. If that signal is the one
-      // under consideration, it is the property's own ad re-appearing as a "demand" row via
-      // re-classification drift, not a third party wanting it — hard reject, never score it.
-      if (signal.property_id && String(signal.property_id) === String(property.id)) {
-        skipped++;
-        rejectedSelfSourced++;
-        continue;
-      }
-
-      // ── Hard gates ──────────────────────────────────────────────────────
-      // Below this point, a KNOWN incompatibility on transaction type, property
-      // type, or district is a hard reject — never just a lower score. Previously
-      // these only capped the score at 49 (still >= the 20 floor), so e.g. a
-      // FOR_SALE property could "match" a RENT-seeking signal, or a Vake property
-      // could match someone who explicitly wants Saburtalo. Unknown/missing data on
-      // either side still falls through to soft scoring in score() below, since we
-      // cannot penalize what was never actually claimed.
-      const propertyTransaction = norm(property.transaction_type);
-      // INVEST is special-cased ahead of the explicit field: live data shows the
-      // classifier records intent_profiles.transaction_type as either 'SALE' or
-      // 'INVESTMENT' for the exact same kind of buy-to-invest demand (classifier
-      // granularity noise, not two different demands) — always both compatible.
-      // Every other demand type trusts its own explicit transaction_type first,
-      // since that's specific per-signal data rather than a static keyword map.
-      const explicitIntentTransaction = norm(profile.transaction_type);
-      const compatTransactions = profileIntent === 'INVEST'
-        ? INTENT_TRANSACTION_FALLBACK.INVEST
-        : explicitIntentTransaction
-        ? [explicitIntentTransaction]
-        : INTENT_TRANSACTION_FALLBACK[profileIntent] || null;
-      if (propertyTransaction && compatTransactions && !compatTransactions.includes(propertyTransaction)) {
-        skipped++;
-        rejectedTransaction++;
-        continue;
-      }
-
-      const propertyTypeNorm = norm(property.property_type);
-      // Only values that resolve into a recognized TYPE_GROUPS family count as a
-      // specific, confident claim worth gating on — a generic "real estate" or an
-      // unmapped free-text phrase is a data gap, not a stated incompatibility.
-      const intentPropertyTypesKnown = (profile.property_types || []).map(norm).filter((v: string) => typeGroupOf(v) !== -1);
-      if (
-        propertyTypeNorm &&
-        typeGroupOf(propertyTypeNorm) !== -1 &&
-        intentPropertyTypesKnown.length &&
-        !intentPropertyTypesKnown.some((value: string) => typeCompatible(propertyTypeNorm, value))
-      ) {
-        skipped++;
-        rejectedPropertyType++;
-        continue;
-      }
-
-      const propertyDistrictNorm = norm(facts?.district || facts?.neighborhood);
-      const intentDistricts = [profile.district, ...(profile.neighborhoods || [])].filter(Boolean);
-      // Only enforce the district gate when the city itself isn't already a known
-      // mismatch (a city-level mismatch is reported separately by score()) — a
-      // district gate on top of an already-wrong city would double-penalize and
-      // obscure which signal actually caused the rejection.
-      const cityVerdict = cityGate(facts?.city, profile.city);
-      const cityKnownMismatch = cityVerdict === 'CONFLICT';
-      if (cityKnownMismatch) {
-        skipped++;
-        rejectedCity++;
-        continue;
-      }
-      if (
-        propertyDistrictNorm &&
-        intentDistricts.length &&
-        !cityKnownMismatch &&
-        !intentDistricts.some((value: string) => similar(propertyDistrictNorm, value) >= 0.5)
-      ) {
-        skipped++;
-        rejectedDistrict++;
-        continue;
-      }
-
-      const budgetVerdict = budgetGate({
-        price: facts?.total_price, priceCurrency: facts?.currency,
-        budgetMin: profile.budget_min, budgetMax: profile.budget_max, budgetCurrency: profile.currency,
-        converter: fx,
-      });
-      if (budgetVerdict === 'CONFLICT') { skipped++; rejectedBudget++; continue; }
-      const bedroomsVerdict = bedroomsGate(facts?.bedrooms ?? facts?.rooms, profile.bedrooms_min, profile.bedrooms_max);
-      if (bedroomsVerdict === 'CONFLICT') { skipped++; rejectedBedrooms++; continue; }
-
-      /*
-       * ONE PERSON, ONE MATCH -- KEYED ON THE SIGNAL, NOT THE PROFILE.
-       *
-       * This tested intent_profile_id, and that id does not survive
-       * re-classification: classify-signals-v2 DELETES the profile for a
-       * signal and inserts a fresh row, so the same forum post comes back
-       * with a new profile id and the guard sees nothing.
-       *
-       * Measured in production on 2026-09-26. forum.ge post 14328580 -- one
-       * buyer, one post -- ended up with two matches on the same property:
-       * 920dcdea at score 84, already UNLOCKED for 35 credits, and ca13d573
-       * at score 78 offered for another 20. The customer was being invited to
-       * buy the same person twice, which is the one thing dedup exists to
-       * prevent.
-       *
-       * The signal is the person. A profile is this week's reading of what
-       * they said, and it is allowed to change; that a re-read scored 78 where
-       * the first scored 84 is a reason to look at the scorer, not a reason to
-       * sell the lead again.
-       */
-      const { data: existing, error: existingError } = await db
-        .from('matches')
-        .select('id')
-        .eq('property_id', property.id)
-        .eq('signal_id', profile.signal_id)
-        .maybeSingle();
-      if (existingError) throw existingError;
-      if (existing) { skipped++; alreadyMatched++; continue; }
-      const person = personOf.get(String(profile.signal_id)) ?? String(profile.signal_id);
-      if (matchedPeople.has(person)) { skipped++; duplicatePerson++; continue; }
-
-      const scored = score(property, facts, profile, { city: cityVerdict, budget: budgetVerdict, bedrooms: bedroomsVerdict });
-      if (scored.score < 20) { skipped++; continue; }
-
-      /* ACTIVE DEMAND — the 30-day rule. judgeDelivery above asks "is our
-         EVIDENCE current?"; this asks "is the DEMAND current?" -- how long ago
-         the person actually posted, judged on the ORIGINAL publication date.
-
-         It is a gate, not a penalty. The old rule kept buyer posts eligible
-         for a year and only multiplied their score down, which is how a 2009
-         forum post became a paid match. Outside the window the signal is not
-         an active match at all; the row itself is untouched and stays in
-         history. Undated demand is ineligible by default -- "we could not
-         read a date" is not "this was posted recently". Inside the window the
-         weight ranks this week's post above last month's. */
-      const demandFreshness = judgeActiveDemand(signal.published_at, {
-        policy: activeDemandPolicy,
-        source: signal.platform ?? null,
-      });
-      if (!demandFreshness.eligible) {
-        skipped++;
-        rejectedAncientDemand++;
-        staleReasons[`DEMAND_${demandFreshness.band}`] = (staleReasons[`DEMAND_${demandFreshness.band}`] || 0) + 1;
-        continue;
-      }
-      const finalScore = Math.max(0, Math.min(100, Math.round(scored.score * demandFreshness.weight)));
-      if (finalScore < 20) { skipped++; continue; }
-
-      const strength = finalScore >= 90 ? 'EXCEPTIONAL' : finalScore >= 80 ? 'VERY_STRONG' : finalScore >= 65 ? 'STRONG' : finalScore >= 50 ? 'GOOD' : 'POTENTIAL';
-      const published = signal.published_at ? new Date(signal.published_at) : null;
-      const publishedMs = published && !Number.isNaN(published.getTime()) ? published.getTime() : null;
-      const recency = publishedMs !== null ? formatRecency((Date.now() - publishedMs) / 3600000) : null;
-
-      // Real measured COGS for THIS signal — replaces the old fake "cogs" that was
-      // always the $0.05 fallback floor (live data: real ai_cost_usd averages
-      // $0.000131, always far below that floor, so it never once actually applied).
-      const realCogs = Number(profile.ai_cost_usd || 0) + (acquisitionCostBySignal.get(profile.signal_id) || 0);
-      const sourceRow = Array.isArray(signal.source) ? signal.source[0] : signal.source;
-      const isFresh = publishedMs !== null && (Date.now() - publishedMs) <= RECENCY_WINDOW_MS;
-      const isHighQualitySource = Number(sourceRow?.quality_score || 0) >= HIGH_SOURCE_QUALITY_THRESHOLD;
-      const isCogsHigh = realCogs >= REAL_COGS_HIGH_THRESHOLD_USD;
-
-      const base = pricing[STRENGTH_BASE_KEY[strength]] ?? pricing.pricing_base_potential;
-      let rawPrice = base;
-      if (isFresh) rawPrice *= pricing.pricing_multiplier_recency;
-      if (isHighQualitySource) rawPrice *= pricing.pricing_multiplier_source_quality;
-      if (isCogsHigh) rawPrice *= pricing.pricing_multiplier_cogs;
-      const price = Math.min(pricing.pricing_max_credits, Math.max(pricing.pricing_min_credits, Math.round(rawPrice * 100) / 100));
-      // Stored as the actual combined multiplier applied (price ÷ base), for
-      // observability — replaces the old, unrelated 10/3/1 score-tier magic number.
-      const appliedMultiplier = base > 0 ? Math.round((price / base) * 100) / 100 : 1;
-
-      /*
-       * RECORD THE ACQUISITION BEFORE CLAIMING THE MATCH.
-       *
-       * reject_non_demand_match() refuses any match whose signal was never
-       * acquired FOR THIS PROPERTY, and it is right to: a match built on a
-       * signal nobody ever went looking for on this property's behalf has no
-       * provenance and no cost attached to it.
-       *
-       * Demand Homatch discovered on its own initiative has no such link,
-       * because no paid query went looking for it. Measured here on
-       * 2026-09-26: eight global profiles reached the scorer, two passed
-       * every gate, and both were refused at insert with
-       * SIGNAL_NOT_SCOPED_TO_PROPERTY -- the pipeline reaching its last step
-       * and a correct guard stopping it.
-       *
-       * So the link is written rather than the guard loosened, and
-       * acquisition_cost_usd is 0 because that is the true incremental cost
-       * of a signal the forum reader had already collected. Writing a
-       * plausible-looking cost instead would put a fabricated number into the
-       * COGS that prices this customer's unlock.
-       */
-      if (globalOnlySignals.has(profile.signal_id)) {
-        const { error: linkError } = await db
-          .from('property_signal_candidates')
-          .upsert({
-            property_id: property.id,
-            signal_id: profile.signal_id,
-            acquisition_cost_usd: 0,
-            metadata: {
-              origin: 'GLOBAL_DEMAND_STORE',
-              detail: 'discovered by Homatch for the market, not acquired for this property',
-              market: { city: marketCity || null },
-            },
-          }, { onConflict: 'property_id,signal_id' });
-        if (linkError) {
-          skipped += 1;
-          errors.push(`LINK_FAILED: ${linkError.message}`);
+    /* Pass two: judge every profile, chunk by chunk, resuming where the last run stopped. */
+    const checkpointKey = `v2property:${property.id}`;
+    const { data: savedPoint, error: savedPointError } = await db.from('match_scan_checkpoints')
+      .select('demand_cursor,status,passes').eq('scan_key', checkpointKey).maybeSingle();
+    if (savedPointError) throw savedPointError;
+    const resumeAfter = savedPoint?.status === 'RUNNING' ? (savedPoint.demand_cursor as string | null) : null;
+    let profilesConsidered = 0;
+    let coverageComplete = true;
+    let cursor = resumeAfter;
+    const pending = resumeAfter ? orderedSignals.filter((id) => id > resumeAfter) : orderedSignals;
+    for (const ids of chunk(pending, PROFILE_CHUNK)) {
+      if (Date.now() >= deadlineAt) { coverageComplete = false; break; }
+      for (const profile of await loadProfiles(ids, PROFILE_SELECT)) {
+        profilesConsidered++;
+        const signal = Array.isArray(profile.signal) ? profile.signal[0] : profile.signal;
+        if (!signal) { skipped++; continue; }
+        const profileIntent = String(profile.intent_type || '').toUpperCase();
+        const signalIntent = String(signal.intent_type || profile.intent_type || '').toUpperCase();
+        const text = String(signal.original_text || profile.original_text || profile.translated_text || '');
+        if (
+          signal.classification_status !== 'CLASSIFIED' ||
+          Number(profile.intent_confidence || 0) < 0.65 ||
+          !DEMAND.has(profileIntent) ||
+          !DEMAND.has(signalIntent) ||
+          isSupplyAd(text)
+        ) {
+          skipped++;
+          if (isSupplyAd(text)) rejectedSupply++;
           continue;
         }
-      }
 
-      const { error: insertError } = await db.from('matches').insert({
-        property_id: property.id,
-        user_id: property.user_id,
-        campaign_id: campaignId || null,
-        signal_id: profile.signal_id,
-        intent_profile_id: profile.id,
-        match_score: finalScore,
-        intent_confidence: Number(profile.intent_confidence || 0),
-        signal_strength: strength,
-        match_reasons: scored.reasons,
-        mismatch_reasons: scored.mismatches,
-        unlock_price_credits: price,
-        estimated_cogs_usd: realCogs,
-        pricing_multiplier: appliedMultiplier,
-        status: 'NEW',
-        mock_mode: false,
-        preview_platform: signal.platform || null,
-        preview_language: profile.language || null,
-        preview_city: profile.city || null,
-        preview_budget_min: profile.budget_min || null,
-        preview_budget_max: profile.budget_max || null,
-        preview_currency: profile.currency || null,
-        preview_bedrooms: profile.bedrooms_min || null,
-        preview_excerpt: redact(text),
-        preview_recency: recency,
         /*
-         * What the freshness contract said AT THE MOMENT this match was
-         * created. Stored rather than re-derived, because the timestamps it
-         * was judged on will have moved on by the time anybody asks.
+         * THE SEVEN-DAY RULE, ENFORCED WHERE EVIDENCE BECOMES VISIBLE.
+         *
+         * This function is the only thing in Homatch that turns external
+         * evidence into a row a customer sees, so the freshness contract is
+         * enforced here once rather than in every reader.
+         *
+         * A refusal is not a deletion. Evidence that is merely too old to
+         * TRUST is queued for a re-check and will be deliverable on the next
+         * run -- dropping it silently would shrink the corpus every week with
+         * nothing recording why. Evidence we have conclusively established is
+         * REMOVED or INVALID is not queued, because re-reading something we
+         * know is gone is spending money to learn it again.
+         *
+         * Nothing here fetches. The queue is deduplicated per signal, so a
+         * signal wanted by forty campaigns is re-read once, on the worker's
+         * own tick, and never inside a customer's campaign.
          */
-        evidence_freshness: gate.decision.verdict,
-        evidence_verified_at: signal.last_verified_at ?? null,
-        /* When the person posted. The screens apply the same 30-day window
-           to this column, so a match that was current when it was made stops
-           being shown as current demand once it ages out. */
-        demand_published_at: signal.published_at ?? null,
-      });
-      if (insertError) {
-        insertErrors++;
-        if (errors.length < 5) errors.push(insertError.message);
-        continue;
+        const gate = await gateForDelivery(db, profile.signal_id, signal, {
+          policy: freshnessPolicy,
+        });
+        if (!gate.deliverable) {
+          skipped++;
+          rejectedStaleEvidence++;
+          if (gate.queuedJobId) queuedRevalidations++;
+          staleReasons[gate.decision.verdict] = (staleReasons[gate.decision.verdict] || 0) + 1;
+          continue;
+        }
+
+        // Self-sourced guard: raw_signals.property_id is the legacy link recording which
+        // signal a property was originally imported/created FROM. If that signal is the one
+        // under consideration, it is the property's own ad re-appearing as a "demand" row via
+        // re-classification drift, not a third party wanting it — hard reject, never score it.
+        if (signal.property_id && String(signal.property_id) === String(property.id)) {
+          skipped++;
+          rejectedSelfSourced++;
+          continue;
+        }
+
+        // ── Hard gates ──────────────────────────────────────────────────────
+        // Below this point, a KNOWN incompatibility on transaction type, property
+        // type, or district is a hard reject — never just a lower score. Previously
+        // these only capped the score at 49 (still >= the 20 floor), so e.g. a
+        // FOR_SALE property could "match" a RENT-seeking signal, or a Vake property
+        // could match someone who explicitly wants Saburtalo. Unknown/missing data on
+        // either side still falls through to soft scoring in score() below, since we
+        // cannot penalize what was never actually claimed.
+        const propertyTransaction = norm(property.transaction_type);
+        // INVEST is special-cased ahead of the explicit field: live data shows the
+        // classifier records intent_profiles.transaction_type as either 'SALE' or
+        // 'INVESTMENT' for the exact same kind of buy-to-invest demand (classifier
+        // granularity noise, not two different demands) — always both compatible.
+        // Every other demand type trusts its own explicit transaction_type first,
+        // since that's specific per-signal data rather than a static keyword map.
+        const explicitIntentTransaction = norm(profile.transaction_type);
+        const compatTransactions = profileIntent === 'INVEST'
+          ? INTENT_TRANSACTION_FALLBACK.INVEST
+          : explicitIntentTransaction
+          ? [explicitIntentTransaction]
+          : INTENT_TRANSACTION_FALLBACK[profileIntent] || null;
+        if (propertyTransaction && compatTransactions && !compatTransactions.includes(propertyTransaction)) {
+          skipped++;
+          rejectedTransaction++;
+          continue;
+        }
+
+        const propertyTypeNorm = norm(property.property_type);
+        // Only values that resolve into a recognized TYPE_GROUPS family count as a
+        // specific, confident claim worth gating on — a generic "real estate" or an
+        // unmapped free-text phrase is a data gap, not a stated incompatibility.
+        const intentPropertyTypesKnown = (profile.property_types || []).map(norm).filter((v: string) => typeGroupOf(v) !== -1);
+        if (
+          propertyTypeNorm &&
+          typeGroupOf(propertyTypeNorm) !== -1 &&
+          intentPropertyTypesKnown.length &&
+          !intentPropertyTypesKnown.some((value: string) => typeCompatible(propertyTypeNorm, value))
+        ) {
+          skipped++;
+          rejectedPropertyType++;
+          continue;
+        }
+
+        const propertyDistrictNorm = norm(facts?.district || facts?.neighborhood);
+        const intentDistricts = [profile.district, ...(profile.neighborhoods || [])].filter(Boolean);
+        // Only enforce the district gate when the city itself isn't already a known
+        // mismatch (a city-level mismatch is reported separately by score()) — a
+        // district gate on top of an already-wrong city would double-penalize and
+        // obscure which signal actually caused the rejection.
+        const cityVerdict = cityGate(facts?.city, profile.city);
+        const cityKnownMismatch = cityVerdict === 'CONFLICT';
+        if (cityKnownMismatch) {
+          skipped++;
+          rejectedCity++;
+          continue;
+        }
+        if (
+          propertyDistrictNorm &&
+          intentDistricts.length &&
+          !cityKnownMismatch &&
+          !intentDistricts.some((value: string) => similar(propertyDistrictNorm, value) >= 0.5)
+        ) {
+          skipped++;
+          rejectedDistrict++;
+          continue;
+        }
+
+        const budgetVerdict = budgetGate({
+          price: facts?.total_price, priceCurrency: facts?.currency,
+          budgetMin: profile.budget_min, budgetMax: profile.budget_max, budgetCurrency: profile.currency,
+          converter: fx,
+        });
+        if (budgetVerdict === 'CONFLICT') { skipped++; rejectedBudget++; continue; }
+        const bedroomsVerdict = bedroomsGate(facts?.bedrooms ?? facts?.rooms, profile.bedrooms_min, profile.bedrooms_max);
+        if (bedroomsVerdict === 'CONFLICT') { skipped++; rejectedBedrooms++; continue; }
+
+        /*
+         * ONE PERSON, ONE MATCH -- KEYED ON THE SIGNAL, NOT THE PROFILE.
+         *
+         * This tested intent_profile_id, and that id does not survive
+         * re-classification: classify-signals-v2 DELETES the profile for a
+         * signal and inserts a fresh row, so the same forum post comes back
+         * with a new profile id and the guard sees nothing.
+         *
+         * Measured in production on 2026-09-26. forum.ge post 14328580 -- one
+         * buyer, one post -- ended up with two matches on the same property:
+         * 920dcdea at score 84, already UNLOCKED for 35 credits, and ca13d573
+         * at score 78 offered for another 20. The customer was being invited to
+         * buy the same person twice, which is the one thing dedup exists to
+         * prevent.
+         *
+         * The signal is the person. A profile is this week's reading of what
+         * they said, and it is allowed to change; that a re-read scored 78 where
+         * the first scored 84 is a reason to look at the scorer, not a reason to
+         * sell the lead again.
+         */
+        const { data: existing, error: existingError } = await db
+          .from('matches')
+          .select('id')
+          .eq('property_id', property.id)
+          .eq('signal_id', profile.signal_id)
+          .maybeSingle();
+        if (existingError) throw existingError;
+        if (existing) { skipped++; alreadyMatched++; continue; }
+        const person = personOf.get(String(profile.signal_id)) ?? String(profile.signal_id);
+        if (matchedPeople.has(person)) { skipped++; duplicatePerson++; continue; }
+
+        const scored = score(property, facts, profile, { city: cityVerdict, budget: budgetVerdict, bedrooms: bedroomsVerdict });
+        if (scored.score < 20) { skipped++; continue; }
+
+        /* ACTIVE DEMAND — the 30-day rule. judgeDelivery above asks "is our
+           EVIDENCE current?"; this asks "is the DEMAND current?" -- how long ago
+           the person actually posted, judged on the ORIGINAL publication date.
+
+           It is a gate, not a penalty. The old rule kept buyer posts eligible
+           for a year and only multiplied their score down, which is how a 2009
+           forum post became a paid match. Outside the window the signal is not
+           an active match at all; the row itself is untouched and stays in
+           history. Undated demand is ineligible by default -- "we could not
+           read a date" is not "this was posted recently". Inside the window the
+           weight ranks this week's post above last month's. */
+        const demandFreshness = judgeActiveDemand(signal.published_at, {
+          policy: activeDemandPolicy,
+          source: signal.platform ?? null,
+        });
+        if (!demandFreshness.eligible) {
+          skipped++;
+          rejectedAncientDemand++;
+          staleReasons[`DEMAND_${demandFreshness.band}`] = (staleReasons[`DEMAND_${demandFreshness.band}`] || 0) + 1;
+          continue;
+        }
+        const finalScore = Math.max(0, Math.min(100, Math.round(scored.score * demandFreshness.weight)));
+        if (finalScore < 20) { skipped++; continue; }
+
+        const strength = finalScore >= 90 ? 'EXCEPTIONAL' : finalScore >= 80 ? 'VERY_STRONG' : finalScore >= 65 ? 'STRONG' : finalScore >= 50 ? 'GOOD' : 'POTENTIAL';
+        const published = signal.published_at ? new Date(signal.published_at) : null;
+        const publishedMs = published && !Number.isNaN(published.getTime()) ? published.getTime() : null;
+        const recency = publishedMs !== null ? formatRecency((Date.now() - publishedMs) / 3600000) : null;
+
+        // Real measured COGS for THIS signal — replaces the old fake "cogs" that was
+        // always the $0.05 fallback floor (live data: real ai_cost_usd averages
+        // $0.000131, always far below that floor, so it never once actually applied).
+        const realCogs = Number(profile.ai_cost_usd || 0) + (acquisitionCostBySignal.get(profile.signal_id) || 0);
+        const sourceRow = Array.isArray(signal.source) ? signal.source[0] : signal.source;
+        const isFresh = publishedMs !== null && (Date.now() - publishedMs) <= RECENCY_WINDOW_MS;
+        const isHighQualitySource = Number(sourceRow?.quality_score || 0) >= HIGH_SOURCE_QUALITY_THRESHOLD;
+        const isCogsHigh = realCogs >= REAL_COGS_HIGH_THRESHOLD_USD;
+
+        const base = pricing[STRENGTH_BASE_KEY[strength]] ?? pricing.pricing_base_potential;
+        let rawPrice = base;
+        if (isFresh) rawPrice *= pricing.pricing_multiplier_recency;
+        if (isHighQualitySource) rawPrice *= pricing.pricing_multiplier_source_quality;
+        if (isCogsHigh) rawPrice *= pricing.pricing_multiplier_cogs;
+        const price = Math.min(pricing.pricing_max_credits, Math.max(pricing.pricing_min_credits, Math.round(rawPrice * 100) / 100));
+        // Stored as the actual combined multiplier applied (price ÷ base), for
+        // observability — replaces the old, unrelated 10/3/1 score-tier magic number.
+        const appliedMultiplier = base > 0 ? Math.round((price / base) * 100) / 100 : 1;
+
+        /*
+         * RECORD THE ACQUISITION BEFORE CLAIMING THE MATCH.
+         *
+         * reject_non_demand_match() refuses any match whose signal was never
+         * acquired FOR THIS PROPERTY, and it is right to: a match built on a
+         * signal nobody ever went looking for on this property's behalf has no
+         * provenance and no cost attached to it.
+         *
+         * Demand Homatch discovered on its own initiative has no such link,
+         * because no paid query went looking for it. Measured here on
+         * 2026-09-26: eight global profiles reached the scorer, two passed
+         * every gate, and both were refused at insert with
+         * SIGNAL_NOT_SCOPED_TO_PROPERTY -- the pipeline reaching its last step
+         * and a correct guard stopping it.
+         *
+         * So the link is written rather than the guard loosened, and
+         * acquisition_cost_usd is 0 because that is the true incremental cost
+         * of a signal the forum reader had already collected. Writing a
+         * plausible-looking cost instead would put a fabricated number into the
+         * COGS that prices this customer's unlock.
+         */
+        if (globalOnlySignals.has(profile.signal_id)) {
+          const { error: linkError } = await db
+            .from('property_signal_candidates')
+            .upsert({
+              property_id: property.id,
+              signal_id: profile.signal_id,
+              acquisition_cost_usd: 0,
+              metadata: {
+                origin: 'GLOBAL_DEMAND_STORE',
+                detail: 'discovered by Homatch for the market, not acquired for this property',
+                market: { city: marketCity || null },
+              },
+            }, { onConflict: 'property_id,signal_id' });
+          if (linkError) {
+            skipped += 1;
+            errors.push(`LINK_FAILED: ${linkError.message}`);
+            continue;
+          }
+        }
+
+        const { error: insertError } = await db.from('matches').insert({
+          property_id: property.id,
+          user_id: property.user_id,
+          campaign_id: campaignId || null,
+          signal_id: profile.signal_id,
+          intent_profile_id: profile.id,
+          match_score: finalScore,
+          intent_confidence: Number(profile.intent_confidence || 0),
+          signal_strength: strength,
+          match_reasons: scored.reasons,
+          mismatch_reasons: scored.mismatches,
+          unlock_price_credits: price,
+          estimated_cogs_usd: realCogs,
+          pricing_multiplier: appliedMultiplier,
+          status: 'NEW',
+          mock_mode: false,
+          preview_platform: signal.platform || null,
+          preview_language: profile.language || null,
+          preview_city: profile.city || null,
+          preview_budget_min: profile.budget_min || null,
+          preview_budget_max: profile.budget_max || null,
+          preview_currency: profile.currency || null,
+          preview_bedrooms: profile.bedrooms_min || null,
+          preview_excerpt: redact(text),
+          preview_recency: recency,
+          /*
+           * What the freshness contract said AT THE MOMENT this match was
+           * created. Stored rather than re-derived, because the timestamps it
+           * was judged on will have moved on by the time anybody asks.
+           */
+          evidence_freshness: gate.decision.verdict,
+          evidence_verified_at: signal.last_verified_at ?? null,
+          /* When the person posted. The screens apply the same 30-day window
+             to this column, so a match that was current when it was made stops
+             being shown as current demand once it ages out. */
+          demand_published_at: signal.published_at ?? null,
+        });
+        if (insertError) {
+          insertErrors++;
+          if (errors.length < 5) errors.push(insertError.message);
+          continue;
+        }
+        created++;
+        matchedPeople.add(person);
+        best = Math.max(best, finalScore);
+        buckets[finalScore >= 80 ? '80-100' : finalScore >= 50 ? '50-79' : '20-49']++;
       }
-      created++;
-      matchedPeople.add(person);
-      best = Math.max(best, finalScore);
-      buckets[finalScore >= 80 ? '80-100' : finalScore >= 50 ? '50-79' : '20-49']++;
+      cursor = ids[ids.length - 1];
+    }
+    {
+      const { error: pointError } = await db.from('match_scan_checkpoints').upsert(coverageComplete
+        ? { scan_key: checkpointKey, status: 'COMPLETE', demand_cursor: null, completed_at: new Date().toISOString(),
+          passes: Number(savedPoint?.passes ?? 0) + 1, updated_at: new Date().toISOString() }
+        : { scan_key: checkpointKey, status: 'RUNNING', demand_cursor: cursor, updated_at: new Date().toISOString() },
+      { onConflict: 'scan_key' });
+      if (pointError) throw pointError;
     }
 
     await db.from('properties').update({ matchability_score: best || null }).eq('id', property.id);
@@ -626,7 +666,9 @@ Deno.serve(async (req: Request) => {
          and rejected them" are different answers and used to look identical. */
       acquiredCandidates: linked.size,
       globalDemandCandidates: globalOnly.length,
-      profilesConsidered: Math.min(profiles.length, requested),
+      profilesConsidered,
+      /* No silent truncation: complete=false means the next run resumes after `cursor`. */
+      coverage: { complete: coverageComplete, resumedAfter: resumeAfter, cursor: coverageComplete ? null : cursor, signals: orderedSignals.length },
       matchesCreated: created,
       matchesSkipped: skipped,
       rejectedSupply,

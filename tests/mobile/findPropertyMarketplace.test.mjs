@@ -408,7 +408,7 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
   };
 }
 
-async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false } = {}) {
+async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false, paid = false } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -433,7 +433,7 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       const body = JSON.parse(req.postData() ?? '{}');
       state.calls.push(body.action);
       state.requests.push(body);
-      if (body.action === 'capabilities') return r.fulfill(json({ marketplaceEnabled: enabled, activeSources: enabled ? 5 : 0, deepSearchAvailable: false }));
+      if (body.action === 'capabilities') return r.fulfill(json({ marketplaceEnabled: enabled, activeSources: enabled ? 5 : 0, deepSearchAvailable: paid }));
       if (body.action === 'history') {
         state.historyAuthenticated = /^Bearer /.test(req.headers().authorization ?? '');
         if (state.historyBackendFailure) return r.fulfill(json({ error: 'UNKNOWN_ACTION' }, 400));
@@ -489,6 +489,40 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       }
       if (body.action === 'cancel') return r.fulfill(json({ search: summary('CANCELLED') }));
       return r.fulfill(json({ error: 'UNKNOWN_ACTION' }, 400));
+    }
+    /* Paid social campaign (find-property-run) and the customer's own activity. */
+    if (url.includes('/functions/v1/find-property-run')) {
+      const body = JSON.parse(req.postData() ?? '{}');
+      if (body.action === 'preview') {
+        const credits = Number(body.authorizedMaxCredits) || 50;
+        return r.fulfill(json({ success: true, preview: { available: true, unavailableReason: null, priceCredits: credits, creditsPerUsd: 10, minCredits: 50, maxCredits: null,
+          priceUsd: credits / 10, policy: 'paid_discovery_37_63_v1', charging: 'CONSUMED_DIV_0_63_CAPPED', networks: body.networks, plannedRuns: 6,
+          plannedByNetwork: { FACEBOOK: 3, INSTAGRAM: 1, TELEGRAM: 2, VK: 0 }, unavailableNetworks: [{ network: 'VK', reason: 'NO_READY_ACTOR' }], skippedForBudget: 4 } }));
+      }
+      if (body.action === 'start') { state.paidStart = body; return r.fulfill(json({ success: true, async: true, runId: 'run-1', status: 'SEARCHING' }, 202)); }
+      if (body.action === 'stop') { state.paidStop = true; return r.fulfill(json({ success: true, runId: body.runId })); }
+      return r.fulfill(json({ error: 'Unknown action' }, 400));
+    }
+    if (url.includes('/rest/v1/active_search_subscriptions')) return r.fulfill(json((req.headers().accept ?? '').includes('pgrst.object') ? { id: 'sub-1' } : [{ id: 'sub-1' }]));
+    if (url.includes('/rest/v1/rpc/my_find_property_campaign')) {
+      const stopped = Boolean(state.paidStop);
+      return r.fulfill(json({ id: 'run-1', status: stopped ? 'CANCELLED' : 'SEARCHING', stage: 'SEARCHING_SOURCES', createdAt: new Date().toISOString(), deadlineAt: null, completedAt: null,
+        failureReason: null, networks: ['FACEBOOK', 'TELEGRAM'], policy: 'paid_discovery_37_63_v1', creditsAuthorized: 50, creditsCharged: stopped ? 12.5 : null,
+        creditsUsed: 12.5, offersFound: 4, resultsFound: 2, unavailable: [], skippedForBudget: 0,
+        sources: [{ network: 'FACEBOOK', planned: 3, done: 1, running: 2, failed: 0, budget: 0 }, { network: 'TELEGRAM', planned: 2, done: 2, running: 0, failed: 0, budget: 0 }] }));
+    }
+    if (url.includes('/rest/v1/rpc/my_property_interest_history')) {
+      if (!paid) return r.fulfill(json([]));
+      return r.fulfill(json(state.erased ? { events: [], interests: [], saved: [], observedTracking: true, retentionDays: 730 } : {
+        events: [{ id: 'e1', event_type: 'SEARCH', intent_basis: 'EXPLICIT', side: 'BUY', city: 'Tbilisi', districts: [], source_host: null, surface: 'find_property', provenance: 'TRIGGER', occurred_at: new Date().toISOString() }],
+        interests: [], saved: [{ listing_key: 'mp:saved-1', property_id: null, snapshot: { title: 'Saved flat in Vake', city: 'Tbilisi', district: 'Vake', price: 150000, url: 'https://myhome.example/1' }, saved_at: new Date().toISOString() }],
+        observedTracking: state.tracking !== false, retentionDays: 730 }));
+    }
+    if (url.includes('/rest/v1/rpc/set_my_interest_tracking')) { state.tracking = JSON.parse(req.postData() || '{}').p_observed; return r.fulfill(json(state.tracking)); }
+    if (url.includes('/rest/v1/rpc/delete_my_property_interest_history')) { state.erased = true; return r.fulfill(json({ events: 1, interests: 0, saved: 1 })); }
+    if (url.includes('/rest/v1/rpc/record_my_property_interest')) {
+      const body = JSON.parse(req.postData() || '{}'); (state.interest ??= []).push(body);
+      return r.fulfill(json({ recorded: true, saved: body.p_event_type === 'SAVED' ? true : body.p_event_type === 'UNSAVED' ? false : null }));
     }
     if (url.includes('/functions/v1/find-property')) return r.fulfill(json({ success: true, searches: 0, state: 'NO_ACTIVE_SEARCH', results: [] }));
     if (url.includes('/functions/v1/homatch-ai')) {
@@ -994,4 +1028,65 @@ test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmati
     }
   }
   assert.deepEqual(failures, []);
+});
+
+test('Deep Search (paid social campaign): server preview, explicit confirmation, real progress, stop — six locales, RTL, no overflow', opts, async (t) => {
+  const failures = [];
+  for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ru'], [390, 'tr'], [393, 'ar'], [393, 'he']]) {
+    const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
+    await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+    const deep = page.locator('article[aria-labelledby="mps-deep-results"]');
+    await deep.waitFor({ timeout: 30000 });
+    await deep.locator('button').first().click();
+    await deep.locator('#fpi-budget').waitFor();
+    await deep.locator('dl').first().waitFor({ timeout: 15000 });
+    const start = deep.getByRole('button').filter({ hasText: '50' }).last();
+    if (!(await start.isDisabled())) failures.push(`${lang}: start enabled before confirmation`);
+    await deep.locator('input[type="checkbox"]').check();
+    await start.click();
+    await deep.locator('[role="progressbar"]').first().waitFor({ timeout: 15000 });
+    if (JSON.stringify(state.paidStart?.confirm) !== JSON.stringify({ priceCredits: 50, acceptedTerms: true })) failures.push(`${lang}: no explicit confirmation sent`);
+    if (state.paidStart?.authorizedMaxCredits !== 50) failures.push(`${lang}: wrong budget`);
+    const text = await deep.textContent();
+    if (/\{\{?\w+\}?\}/.test(text)) failures.push(`${lang}: raw placeholder`);
+    if (await overflow(page) > 1) failures.push(`${lang} ${width}: overflow ${await overflow(page)}px`);
+    if (['ar', 'he'].includes(lang) && (await page.evaluate(() => document.documentElement.getAttribute('dir'))) !== 'rtl') failures.push(`${lang}: not RTL`);
+    await shot(page, `${lang}-${width}-paid-progress`);
+    if (lang === 'en') {
+      await deep.getByRole('button', { name: 'Stop campaign' }).click();
+      await deep.getByText('Returned to balance').waitFor({ timeout: 15000 });
+      if (!state.paidStop) failures.push('stop not sent');
+      if (!(await deep.textContent()).includes('37.5 credits')) failures.push('released credits not shown');
+    }
+    await close();
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('Your activity: saved listings, recent activity, recording switch and erase — and a card can be saved', opts, async (t) => {
+  for (const [width, lang] of [[1440, 'en'], [390, 'he']]) {
+    const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
+    await page.goto(`${BASE}/find-property`);
+    const panel = page.locator('section[aria-labelledby="fpi-activity-title"]');
+    await panel.getByText('Saved flat in Vake').waitFor({ timeout: 30000 });
+    assert.ok(await overflow(page) <= 1, `${lang}: activity overflow`);
+    await panel.getByRole('switch').click();
+    await page.waitForFunction(() => true);
+    for (let i = 0; i < 20 && state.tracking === undefined; i++) await page.waitForTimeout(100);
+    assert.equal(state.tracking, false);
+    if (lang === 'en') {
+      await panel.getByRole('button', { name: 'Erase my activity' }).click();
+      await panel.getByRole('button', { name: 'Erase', exact: true }).click();
+      await panel.getByText('Your activity was erased.').waitFor();
+      assert.equal(state.erased, true);
+      await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+      const card = page.locator('[data-property-key]').first();
+      await card.waitFor({ timeout: 30000 });
+      await card.getByRole('button', { name: 'Save listing' }).click();
+      await card.getByRole('button', { name: 'Remove from saved' }).waitFor();
+      assert.equal(state.interest.find((e) => e.p_event_type === 'SAVED')?.p_listing_key.startsWith('mp:'), true);
+      assert.ok(!JSON.stringify(state.interest).includes('phone'), 'no contact data in the saved snapshot');
+    }
+    await close();
+  }
 });

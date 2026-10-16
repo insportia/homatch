@@ -63,6 +63,7 @@ import {
 import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
 import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
+import { chunk, scanAll, scanStartedAt } from '../../../src/research-core/match/exhaustiveScan.ts';
 import { judgeDelivery } from '../../../src/research-core/discovery/revalidation.ts';
 import { candidateQuality, unifiedScore } from '../../../src/research-core/match/unified-score.ts';
 import { fromObservationRow } from '../../../src/research-core/discovery/discovery-entity.ts';
@@ -84,13 +85,26 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
   headers: { ...CORS, 'Content-Type': 'application/json' },
 });
 
-/** How many candidate listings one demand row is compared against per run. */
-const MAX_CANDIDATES = 500;
-/* Active native searches a property-scoped run evaluates one listing against. */
-const PROPERTY_MODE_MAX_DEMAND = 600;
+/*
+ * NO TOTAL CAPS. Every demand is compared with EVERY candidate and every changed
+ * property with EVERY active search, one bounded page at a time (keyset by id), and
+ * an invocation that runs out of time stores where it stopped
+ * (match_scan_checkpoints / native_match_property_queue.demand_cursor) so the next
+ * tick resumes there. The former MAX_CANDIDATES=500 and PROPERTY_MODE_MAX_DEMAND=600
+ * windows silently ignored — and then RETIRED — everything past them.
+ */
+const PAGE_SIZE = 500;
+/** Demand rows loaded per page of a sweep / property pass (bounded memory, not a cap). */
+const DEMAND_PAGE_SIZE = 100;
+/** Properties judged together in one property-scoped batch. */
+const PROPERTY_BATCH = 50;
+/** Wall-clock budget per invocation; the rest is resumed by the next tick. */
+const DEFAULT_BUDGET_MS = 110_000;
+const MAX_BUDGET_MS = 140_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** How many demand rows a single tick will serve. */
-const MAX_DEMAND = 25;
+type Resume = { phase: 'EXTERNAL' | 'NATIVE'; cursor: string | null; scanStartedAt: string };
+type DemandOutcome = { complete: true } | ({ complete: false } & Resume);
 
 /**
  * The floor for calling a pair a match.
@@ -133,132 +147,114 @@ Deno.serve(async (req: Request) => {
      * supply and writes no external match, so a requirement said in a chat cannot turn
      * into an acquisition of any kind.
      */
-    const onlyProfiles: string[] = Array.isArray(body.intentProfileIds)
-      ? (body.intentProfileIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, MAX_DEMAND)
+    /*
+     * THE REQUEST. Id lists are validated and batched, never truncated: a caller that
+     * names 300 searches gets 300 searches, in pages.
+     */
+    const idList = (value: unknown, max: number) => Array.isArray(value)
+      ? [...new Set((value as unknown[]).map(String).filter((id) => UUID.test(id)))].slice(0, max)
       : [];
+    /*
+     * A TARGETED, NETWORK-ONLY RUN is what native intent asks for: "this person just
+     * stated what they want — is there a Homatch property for it?" It reads no external
+     * supply and writes no external match, so a requirement said in a chat cannot turn
+     * into an acquisition of any kind.
+     */
+    const onlyProfiles = idList(body.intentProfileIds, 1000);
     /*
      * A PROPERTY-SCOPED RUN (HOMATCH Leads fresh matching): a listing was created or
      * changed, or its owner launched a campaign, so THAT property is evaluated against
-     * every active native search — not only the newest few hundred a sweep reaches.
-     * Properties come from the request or from native_match_property_queue, which a
-     * trigger on properties / property_facts fills.
+     * EVERY active native search. Properties come from the request or from
+     * native_match_property_queue (leased, resumable), which a trigger on properties /
+     * property_facts fills.
      */
-    let onlyProperties: string[] = Array.isArray(body.propertyIds)
-      ? (body.propertyIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 50)
-      : [];
-    if (body.drainPropertyQueue === true && !dryRun) {
-      const { data: claimed, error: claimError } = await db.rpc('native_match_claim_properties', { p_limit: 25 });
-      if (claimError) throw claimError;
-      onlyProperties = [...new Set([...onlyProperties, ...((claimed ?? []) as string[])])];
-      if (!onlyProperties.length) return json({ success: true, propertyMode: true, propertiesClaimed: 0 });
-    }
-    const propertyMode = onlyProperties.length > 0;
+    const requestedProperties = idList(body.propertyIds, 1000);
+    const drainQueue = body.drainPropertyQueue === true && !dryRun;
+    const propertyMode = requestedProperties.length > 0 || drainQueue;
     const nativeOnly = body.nativeOnly === true || propertyMode;
-    let limit = Math.max(1, Math.min(nativeOnly ? 200 : MAX_DEMAND, Number(body.maxDemand) || (nativeOnly ? 200 : 10)));
-    let propertyModeDemandIds: string[] = [];
-    if (propertyMode) {
-      const { data: activeSubs, error: activeSubsError } = await db
-        .from('active_search_subscriptions')
-        .select('intent_id')
-        .eq('is_active', true)
-        .not('intent_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(PROPERTY_MODE_MAX_DEMAND);
-      if (activeSubsError) throw activeSubsError;
-      propertyModeDemandIds = [...new Set((activeSubs ?? []).map((r: Record<string, unknown>) => String(r.intent_id)))];
-      if (!propertyModeDemandIds.length) {
-        return json({ success: true, propertyMode: true, properties: onlyProperties, demandConsidered: 0 });
-      }
-      limit = propertyModeDemandIds.length;
-    }
+    const targeted = Boolean(onlySignal) || onlyProfiles.length > 0;
+    const budgetMs = Math.max(5_000, Math.min(MAX_BUDGET_MS, Number(body.budgetMs) || DEFAULT_BUDGET_MS));
+    const deadlineAt = started + budgetMs;
+    const demandPageSize = Math.max(1, Math.min(DEMAND_PAGE_SIZE, Number(body.maxDemand) || DEMAND_PAGE_SIZE));
+    /* Set per property batch; the native pass of a property-scoped run reads only these. */
+    let onlyProperties: string[] = [];
 
-    /*
-     * THE DEMAND SIDE, and only what is already allowed to be shown.
-     *
-     * classification_status CLASSIFIED is the same gate run-matching-v2 enforces: a
-     * PENDING row carries the cheap regex verdict, not the real classification, and a
-     * provisional guess must never reach a customer. This is why the seven live
-     * Telegram rows do not appear here yet, and that is correct rather than a bug.
-     */
-    let demandQuery = db
-      .from('intent_profiles')
-      .select('id,signal_id,intent_type,transaction_type,city,district,property_types,'
-        + 'bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,'
-        + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,'
-        + 'signal:raw_signals!signal_id(id,classification_status,platform)')
-      .not('city', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(limit * 4);
-    if (onlySignal) demandQuery = demandQuery.eq('signal_id', onlySignal);
-    if (onlyProfiles.length) demandQuery = demandQuery.in('id', onlyProfiles);
-    if (propertyMode) demandQuery = demandQuery.in('id', propertyModeDemandIds);
-
-    const { data: profileRows, error: demandError } = await demandQuery;
-    if (demandError) throw demandError;
-
-    /*
-     * WHOSE DEMAND THIS IS, where it is anybody's.
-     *
-     * intent_profiles has no user column — it holds a requirement, not a person —
-     * and the account is on the subscription that watches it
-     * (active_search_subscriptions.intent_id). That column carries NO foreign key,
-     * so PostgREST cannot embed it: the former
-     * PostgREST embed of the subscriptions through intent_id failed every
-     * tick with PGRST200 ("could not find a relationship"), which the catch below
-     * rendered as `{"error":"[object Object]"}` — HTTP 500 every 15 minutes and no
-     * supply_matches written since 2026-09-27. The subscriptions are read in a
-     * second query and attached here, under the same `subscriptions` name the rest
-     * of this function already consumes. An external demand read off a forum
-     * simply has no subscription, which is the honest answer rather than a gap.
-     */
-    const profileIds = (profileRows ?? []).map((row: Record<string, unknown>) => String(row.id));
-    const subscriptionsByIntent = new Map<string, Array<Record<string, unknown>>>();
-    if (profileIds.length) {
-      const { data: subscriptionRows, error: subscriptionError } = await db
-        .from('active_search_subscriptions')
-        .select('intent_id,user_id,is_active,side,search_criteria')
-        .in('intent_id', profileIds);
-      if (subscriptionError) throw subscriptionError;
-      for (const sub of (subscriptionRows ?? []) as Array<Record<string, unknown>>) {
-        const key = String(sub.intent_id);
-        const list = subscriptionsByIntent.get(key) ?? [];
-        list.push(sub);
-        subscriptionsByIntent.set(key, list);
-      }
-    }
-    const demandRows = (profileRows ?? [])
-      .map((row: Record<string, unknown>) => ({ ...row, subscriptions: subscriptionsByIntent.get(String(row.id)) ?? [] }))
-      /* A network-only run is about people with an ACTIVE subscription and nobody else. */
-      .filter((row: { subscriptions: Array<Record<string, unknown>> }) =>
-        !nativeOnly || row.subscriptions.some((sub) => sub.is_active === true));
-
-    const eligible = (demandRows ?? []).filter((row: Record<string, unknown>) => {
+    /* Load demand rows by id (or one signal), attach subscriptions, apply the gates. */
+    const loadEligible = async (filter: { ids?: string[]; signalId?: string; requireActive?: boolean }) => {
       /*
-       * A NATIVE DEMAND HAS NOTHING TO CLASSIFY.
+       * THE DEMAND SIDE, and only what is already allowed to be shown.
        *
-       * The gate below is right for an external row: a classifier's provisional reading
-       * of a stranger's post must not reach a customer. A plan the customer was shown
-       * and confirmed is not a reading of anything — planToIntentProfile writes
-       * intent_confidence 1 for exactly this reason — and applying the external gate to
-       * it made every demand Find Property persists invisible to this worker.
+       * classification_status CLASSIFIED is the same gate run-matching-v2 enforces: a
+       * PENDING row carries the cheap regex verdict, not the real classification, and a
+       * provisional guess must never reach a customer. This is why the seven live
+       * Telegram rows do not appear here yet, and that is correct rather than a bug.
        */
-      if (row.signal_id === null || row.signal_id === undefined) return true;
-      const signal = Array.isArray(row.signal) ? row.signal[0] : row.signal;
-      return String((signal as Record<string, unknown>)?.classification_status ?? '') === 'CLASSIFIED';
-    }).slice(0, limit);
+      let demandQuery = db
+        .from('intent_profiles')
+        .select('id,signal_id,intent_type,transaction_type,city,district,property_types,'
+          + 'bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,'
+          + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,'
+          + 'signal:raw_signals!signal_id(id,classification_status,platform)')
+        .not('city', 'is', null)
+        .order('id', { ascending: true });
+      if (filter.signalId) demandQuery = demandQuery.eq('signal_id', filter.signalId);
+      if (filter.ids) demandQuery = demandQuery.in('id', filter.ids);
 
-    if (!eligible.length) {
-      return json({
-        success: true,
-        demandConsidered: (demandRows ?? []).length,
-        demandEligible: 0,
-        note: (demandRows ?? []).length === 0
-          ? 'no intent_profiles row states a city'
-          : 'every candidate demand row is still awaiting classification; a provisional '
-            + 'verdict must not reach a customer, so none is matched',
-        elapsedMs: Date.now() - started,
+      const { data: profileRows, error: demandError } = await demandQuery;
+      if (demandError) throw demandError;
+
+      /*
+       * WHOSE DEMAND THIS IS, where it is anybody's.
+       *
+       * intent_profiles has no user column — it holds a requirement, not a person —
+       * and the account is on the subscription that watches it
+       * (active_search_subscriptions.intent_id). That column carries NO foreign key,
+       * so PostgREST cannot embed it: the former
+       * PostgREST embed of the subscriptions through intent_id failed every
+       * tick with PGRST200 ("could not find a relationship"), which the catch below
+       * rendered as `{"error":"[object Object]"}` — HTTP 500 every 15 minutes and no
+       * supply_matches written since 2026-09-27. The subscriptions are read in a
+       * second query and attached here, under the same `subscriptions` name the rest
+       * of this function already consumes. An external demand read off a forum
+       * simply has no subscription, which is the honest answer rather than a gap.
+       */
+      const profileIds = (profileRows ?? []).map((row: Record<string, unknown>) => String(row.id));
+      const subscriptionsByIntent = new Map<string, Array<Record<string, unknown>>>();
+      if (profileIds.length) {
+        const { data: subscriptionRows, error: subscriptionError } = await db
+          .from('active_search_subscriptions')
+          .select('intent_id,user_id,is_active,side,search_criteria')
+          .in('intent_id', profileIds);
+        if (subscriptionError) throw subscriptionError;
+        for (const sub of (subscriptionRows ?? []) as Array<Record<string, unknown>>) {
+          const key = String(sub.intent_id);
+          const list = subscriptionsByIntent.get(key) ?? [];
+          list.push(sub);
+          subscriptionsByIntent.set(key, list);
+        }
+      }
+      const demandRows = (profileRows ?? [])
+        .map((row: Record<string, unknown>) => ({ ...row, subscriptions: subscriptionsByIntent.get(String(row.id)) ?? [] }))
+        /* A network-only run is about people with an ACTIVE subscription and nobody else. */
+        .filter((row: { subscriptions: Array<Record<string, unknown>> }) =>
+          !(filter.requireActive ?? nativeOnly) || row.subscriptions.some((sub) => sub.is_active === true));
+
+      const eligible = (demandRows ?? []).filter((row: Record<string, unknown>) => {
+        /*
+         * A NATIVE DEMAND HAS NOTHING TO CLASSIFY.
+         *
+         * The gate below is right for an external row: a classifier's provisional reading
+         * of a stranger's post must not reach a customer. A plan the customer was shown
+         * and confirmed is not a reading of anything — planToIntentProfile writes
+         * intent_confidence 1 for exactly this reason — and applying the external gate to
+         * it made every demand Find Property persists invisible to this worker.
+         */
+        if (row.signal_id === null || row.signal_id === undefined) return true;
+        const signal = Array.isArray(row.signal) ? row.signal[0] : row.signal;
+        return String((signal as Record<string, unknown>)?.classification_status ?? '') === 'CLASSIFIED';
       });
-    }
+      return { considered: demandRows.length, eligible };
+    };
 
     /* The operator's age ceilings, read once for the whole tick. */
     const { data: ceilingRow } = await db
@@ -298,7 +294,18 @@ Deno.serve(async (req: Request) => {
       nativePersisted: 0,
     };
 
-    for (const row of eligible) {
+    /*
+     * ONE DEMAND, AGAINST EVERYTHING. External supply first (unless network-only),
+     * then the HOMATCH network, each a keyset scan of every candidate. Out of time
+     * mid-scan, it returns where it stopped; the caller stores that and the next
+     * tick resumes there. Retirement waits for the complete pass.
+     */
+    const serveDemand = async (
+      row: Record<string, unknown>,
+      resume: Resume | null,
+      opts: { external: boolean },
+    ): Promise<DemandOutcome> => {
+      const startedScan = resume?.scanStartedAt ?? scanStartedAt(Date.now());
       const demandRow = row as Record<string, unknown>;
       const signal = Array.isArray(demandRow.signal) ? demandRow.signal[0] : demandRow.signal;
       const signalId = String((signal as Record<string, unknown>)?.id ?? demandRow.signal_id);
@@ -382,195 +389,221 @@ Deno.serve(async (req: Request) => {
        * has to stop the database hiding rows before the decision is reached.
        */
       const cityFilter = cityNames.map((name) => `city.ilike.${name}`).join(',');
+      let externalRead = 0;
+      let externalCompatible = 0;
+      let best = null as { observationId: string; assessment: ReturnType<typeof assessMatch>; ranked: number } | null;
       /* A network-only run reads no external supply at all. */
-      const { data: candidates } = nativeOnly ? { data: [] as Record<string, unknown>[] } : await db
-        .from('supply_observations')
-        .select('id,city,district,transaction,property_type,sale_amount,sale_currency,'
-          + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,published_at,'
-          + 'first_seen_at,last_seen_at,last_verified_at,content_changed_at,expires_at,'
-          + 'content_fingerprint,validation_state,failed_checks,adapter_id,source_status,'
-          + 'supply_role,broker_id,title,description,canonical_url,external_id,field_origins,country_code,detected_language')
-        .or(cityFilter)
-        /* Newest publications first, undated at the end. With a hard cap of
-           MAX_CANDIDATES rows, an UNORDERED read let ancient rows crowd out
-           this week's listings — the 500 examined were whichever the planner
-           returned, not the freshest supply. */
-        .order('published_at', { ascending: false, nullsFirst: false })
-        .limit(MAX_CANDIDATES);
+      const runExternal = resume ? resume.phase === 'EXTERNAL' : opts.external;
+      const externalScan = !runExternal ? null : await scanAll<Record<string, unknown>>({
+        pageSize: PAGE_SIZE,
+        startAfter: resume?.phase === 'EXTERNAL' ? resume.cursor : null,
+        deadlineAt,
+        keyOf: (r) => String(r.id),
+        fetchPage: async (after, size) => {
+          let q = db
+            .from('supply_observations')
+            .select('id,city,district,transaction,property_type,sale_amount,sale_currency,'
+              + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,published_at,'
+              + 'first_seen_at,last_seen_at,last_verified_at,content_changed_at,expires_at,'
+              + 'content_fingerprint,validation_state,failed_checks,adapter_id,source_status,'
+              + 'supply_role,broker_id,title,description,canonical_url,external_id,field_origins,country_code,detected_language')
+            .or(cityFilter)
+            /* Keyset by id: deterministic, resumable, every row exactly once. The
+               former newest-first read was only there to choose which 500 rows to
+               look at; every row is looked at now and the stored match_score
+               (age-decayed) decides the order the customer sees. */
+            .order('id', { ascending: true })
+            .limit(size);
+          if (after) q = q.gt('id', after);
+          const { data, error } = await q;
+          if (error) throw error;
+          return (data ?? []) as unknown as Record<string, unknown>[];
+        },
+        onPage: async (candidates) => {
+          totals.candidatesRead += candidates.length;
+          totals.reusedFromStore += candidates.length;
+          externalRead += candidates.length;
 
-      totals.candidatesRead += (candidates ?? []).length;
-      totals.reusedFromStore += (candidates ?? []).length;
+          const assessments: Array<{ observationId: string; assessment: ReturnType<typeof assessMatch>; ageDays: number | null; ageBasis: string; freshnessFactor: number; quality: number }> = [];
 
-      const assessments: Array<{ observationId: string; assessment: ReturnType<typeof assessMatch>; ageDays: number | null; ageBasis: string; freshnessFactor: number; quality: number }> = [];
+          for (const candidate of candidates) {
+            const supplyRow = candidate as Record<string, unknown>;
 
-      for (const candidate of candidates ?? []) {
-        const supplyRow = candidate as Record<string, unknown>;
-
-        /*
-         * CLOCK ONE: may this be shown at all? judgeDelivery() answers whether our
-         * OBSERVATION is current, which is a question about us.
-         */
-        const delivery = judgeDelivery({
-          firstSeenAt: String(supplyRow.first_seen_at),
-          lastSeenAt: String(supplyRow.last_seen_at),
-          lastVerifiedAt: (supplyRow.last_verified_at as string | null) ?? null,
-          contentChangedAt: (supplyRow.content_changed_at as string | null) ?? null,
-          expiresAt: (supplyRow.expires_at as string | null) ?? null,
-          contentFingerprint: String(supplyRow.content_fingerprint ?? ''),
-          validationState: String(supplyRow.validation_state ?? 'UNVERIFIED') as never,
-          failedChecks: Number(supplyRow.failed_checks ?? 0),
-        });
-        if (!delivery.deliverable) {
-          totals.rejectedStaleDelivery += 1;
-          continue;
-        }
-
-        /*
-         * CLOCK TWO: is the CLAIM still worth making? A separate question about the
-         * SELLER, and the one a TOUCH cannot answer. Seven 2022 Telegram posts were
-         * "FRESH" by clock one and four years old by this one.
-         */
-        const context = listingContextFrom({
-          transaction: (supplyRow.transaction as string | null) ?? null,
-          propertyType: (supplyRow.property_type as string | null) ?? null,
-        });
-        const ceiling = resolveAgeCeiling(context, {
-          market: (demandRow.country as string | null) ?? null,
-          config: ceilingConfig,
-        });
-        const publishedAt = supplyRow.published_at as string | null;
-        let listingAgeDays: number | null = null;
-        if (publishedAt) {
-          const published = Date.parse(publishedAt);
-          if (Number.isFinite(published)) {
-            if (Date.now() - published > ageCeilingMs(ceiling)) {
-              totals.rejectedPublicationAge += 1;
+            /*
+             * CLOCK ONE: may this be shown at all? judgeDelivery() answers whether our
+             * OBSERVATION is current, which is a question about us.
+             */
+            const delivery = judgeDelivery({
+              firstSeenAt: String(supplyRow.first_seen_at),
+              lastSeenAt: String(supplyRow.last_seen_at),
+              lastVerifiedAt: (supplyRow.last_verified_at as string | null) ?? null,
+              contentChangedAt: (supplyRow.content_changed_at as string | null) ?? null,
+              expiresAt: (supplyRow.expires_at as string | null) ?? null,
+              contentFingerprint: String(supplyRow.content_fingerprint ?? ''),
+              validationState: String(supplyRow.validation_state ?? 'UNVERIFIED') as never,
+              failedChecks: Number(supplyRow.failed_checks ?? 0),
+            });
+            if (!delivery.deliverable) {
+              totals.rejectedStaleDelivery += 1;
               continue;
             }
-            listingAgeDays = Math.max(0, Math.floor((Date.now() - published) / 86_400_000));
-          }
-        }
-        /* Missing date ≠ evidence of age (coverage.ts) — but it is not
-           evidence of freshness either. Undated supply keeps eligibility
-           and takes the same flat decay demand signals take. */
-        const supplyFreshness = judgeDemandFreshness(publishedAt, {
-          transaction: (supplyRow.transaction as string | null) ?? null,
-        });
 
-        /*
-         * THE ROLE COMES FROM THE ROLE COLUMN.
-         *
-         * It used to come from `source_status`, which holds AVAILABLE or null and has
-         * never held a role -- so supplyRoleFrom returned null for every row, every one
-         * of the 25 persisted matches carried supply_role null, and PARTICIPANTS was
-         * UNKNOWN on all of them. BROKER and AGENCY were declared participants that had
-         * never once participated.
-         *
-         * `supply_role` is written by discovery from the listing text. It is still null
-         * far more often than not -- most listings do not say who is offering, and
-         * UNKNOWN remains the honest answer for those -- but now it is null because the
-         * listing was silent, not because the matcher was reading the wrong column.
-         *
-         * The fall back to the text is for rows discovered before that column existed:
-         * re-reading their stored title and description costs no network and no credit,
-         * and the alternative is a year of history permanently roleless.
-         */
-        const storedRole = supplyRoleFrom((supplyRow.supply_role as string | null) ?? null);
-        const role = storedRole ?? attributionFrom({
-          title: (supplyRow.title as string | null) ?? null,
-          description: (supplyRow.description as string | null) ?? null,
-        }).role;
-
-        const supply: SupplySide = {
-          role,
-          transaction: (supplyRow.transaction as string | null) ?? null,
-          city: (supplyRow.city as string | null) ?? null,
-          district: (supplyRow.district as string | null) ?? null,
-          propertyType: (supplyRow.property_type as string | null) ?? null,
-          saleAmount: supplyRow.sale_amount as number | null,
-          saleCurrency: (supplyRow.sale_currency as string | null) ?? null,
-          rentAmount: supplyRow.rent_amount as number | null,
-          rentCurrency: (supplyRow.rent_currency as string | null) ?? null,
-          areaSqm: supplyRow.area_sqm as number | null,
-          bedrooms: supplyRow.bedrooms as number | null,
-          rooms: supplyRow.rooms as number | null,
-        };
-
-        const assessment = assessMatch(demand, supply, { minAgreements: MIN_AGREEMENTS });
-        if (assessment.compatibility === 'COMPATIBLE') totals.compatible += 1;
-        else if (assessment.compatibility === 'INCOMPATIBLE') totals.incompatible += 1;
-        else totals.insufficient += 1;
-
-        if (assessment.compatibility === 'COMPATIBLE') {
-          assessments.push({
-            observationId: String(supplyRow.id),
-            assessment,
-            /* The listing's own age. This column used to be written as the
-               CEILING (the limit, not the fact), which made every row claim
-               the same age. Null means the source carried no readable date. */
-            ageDays: listingAgeDays,
-            ageBasis: ceiling.basis,
-            freshnessFactor: supplyFreshness.factor,
-            /* The unified contract (match/unified-score.ts): the listing's own
-               evidence quality -- recency, completeness, explicitness,
-               contactability, source -- from the same normalized entity Find
-               Buyers uses. Never decides compatibility. */
-            quality: candidateQuality(fromObservationRow(supplyRow as never)).quality,
-          });
-        }
-      }
-
-      /* Rank by compatibility DECAYED BY AGE, so a perfect-fit stale listing
-         sits below a good-fit fresh one, then by the unified evidence quality
-         (recency is part of it). find-property orders by the stored
-         match_score, so the customer sees the same order. */
-      const rankedScore = (e: (typeof assessments)[number]) =>
-        Math.round(unifiedScore(e.assessment.score * e.freshnessFactor, e.quality) * 100) / 100;
-      assessments.sort((a, b) => rankedScore(b) - rankedScore(a));
-
-      /*
-       * PERSIST ONLY THE COMPATIBLE ONES. There is no product reason to store every
-       * pair that failed, and a table full of refusals makes the ones that matter
-       * harder to find. The counters above record how many were considered.
-       */
-      if (!dryRun && writeExternal) {
-        for (const entry of assessments) {
-          const { error: writeError } = await db.from('supply_matches').upsert({
-            intent_profile_id: demandRow.id as string,
-            signal_id: planDemand ? null : signalId,
-            source_kind: planDemand ? 'EXTERNAL_LISTING' : 'EXTERNAL_INTELLIGENCE',
-            ...(planDemand && planSubscription?.user_id ? { demand_user_id: String(planSubscription.user_id) } : {}),
-            observation_id: entry.observationId,
-            campaign_id: campaignId,
-            compatibility: entry.assessment.compatibility,
-            match_score: rankedScore(entry),
-            demand_role: entry.assessment.roles.demand,
-            supply_role: entry.assessment.roles.supply,
-            deal_kind: entry.assessment.deal,
-            agreed: entry.assessment.agreed,
-            conflicted: entry.assessment.conflicted,
-            preference_misses: entry.assessment.preferenceMisses,
-            unknown_dimensions: entry.assessment.unknown,
-            flexible_dimensions: entry.assessment.flexible,
-            rationale: entry.assessment.rationale,
-            dimensions: entry.assessment.dimensions,
-            listing_age_days: entry.ageDays,
-            listing_age_basis: entry.ageBasis,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: planDemand ? 'intent_profile_id,observation_id' : 'signal_id,observation_id' });
-
-          if (writeError) {
-            /* NEVER SWALLOWED. A refused write that increments nothing is
-               indistinguishable from a run that found nothing to write. */
-            totals.persistenceFailures += 1;
-            results.push({
-              signalId, observationId: entry.observationId,
-              error: writeError.message,
+            /*
+             * CLOCK TWO: is the CLAIM still worth making? A separate question about the
+             * SELLER, and the one a TOUCH cannot answer. Seven 2022 Telegram posts were
+             * "FRESH" by clock one and four years old by this one.
+             */
+            const context = listingContextFrom({
+              transaction: (supplyRow.transaction as string | null) ?? null,
+              propertyType: (supplyRow.property_type as string | null) ?? null,
             });
-          } else {
-            totals.persisted += 1;
+            const ceiling = resolveAgeCeiling(context, {
+              market: (demandRow.country as string | null) ?? null,
+              config: ceilingConfig,
+            });
+            const publishedAt = supplyRow.published_at as string | null;
+            let listingAgeDays: number | null = null;
+            if (publishedAt) {
+              const published = Date.parse(publishedAt);
+              if (Number.isFinite(published)) {
+                if (Date.now() - published > ageCeilingMs(ceiling)) {
+                  totals.rejectedPublicationAge += 1;
+                  continue;
+                }
+                listingAgeDays = Math.max(0, Math.floor((Date.now() - published) / 86_400_000));
+              }
+            }
+            /* Missing date ≠ evidence of age (coverage.ts) — but it is not
+               evidence of freshness either. Undated supply keeps eligibility
+               and takes the same flat decay demand signals take. */
+            const supplyFreshness = judgeDemandFreshness(publishedAt, {
+              transaction: (supplyRow.transaction as string | null) ?? null,
+            });
+
+            /*
+             * THE ROLE COMES FROM THE ROLE COLUMN.
+             *
+             * It used to come from `source_status`, which holds AVAILABLE or null and has
+             * never held a role -- so supplyRoleFrom returned null for every row, every one
+             * of the 25 persisted matches carried supply_role null, and PARTICIPANTS was
+             * UNKNOWN on all of them. BROKER and AGENCY were declared participants that had
+             * never once participated.
+             *
+             * `supply_role` is written by discovery from the listing text. It is still null
+             * far more often than not -- most listings do not say who is offering, and
+             * UNKNOWN remains the honest answer for those -- but now it is null because the
+             * listing was silent, not because the matcher was reading the wrong column.
+             *
+             * The fall back to the text is for rows discovered before that column existed:
+             * re-reading their stored title and description costs no network and no credit,
+             * and the alternative is a year of history permanently roleless.
+             */
+            const storedRole = supplyRoleFrom((supplyRow.supply_role as string | null) ?? null);
+            const role = storedRole ?? attributionFrom({
+              title: (supplyRow.title as string | null) ?? null,
+              description: (supplyRow.description as string | null) ?? null,
+            }).role;
+
+            const supply: SupplySide = {
+              role,
+              transaction: (supplyRow.transaction as string | null) ?? null,
+              city: (supplyRow.city as string | null) ?? null,
+              district: (supplyRow.district as string | null) ?? null,
+              propertyType: (supplyRow.property_type as string | null) ?? null,
+              saleAmount: supplyRow.sale_amount as number | null,
+              saleCurrency: (supplyRow.sale_currency as string | null) ?? null,
+              rentAmount: supplyRow.rent_amount as number | null,
+              rentCurrency: (supplyRow.rent_currency as string | null) ?? null,
+              areaSqm: supplyRow.area_sqm as number | null,
+              bedrooms: supplyRow.bedrooms as number | null,
+              rooms: supplyRow.rooms as number | null,
+            };
+
+            const assessment = assessMatch(demand, supply, { minAgreements: MIN_AGREEMENTS });
+            if (assessment.compatibility === 'COMPATIBLE') totals.compatible += 1;
+            else if (assessment.compatibility === 'INCOMPATIBLE') totals.incompatible += 1;
+            else totals.insufficient += 1;
+
+            if (assessment.compatibility === 'COMPATIBLE') {
+              assessments.push({
+                observationId: String(supplyRow.id),
+                assessment,
+                /* The listing's own age. This column used to be written as the
+                   CEILING (the limit, not the fact), which made every row claim
+                   the same age. Null means the source carried no readable date. */
+                ageDays: listingAgeDays,
+                ageBasis: ceiling.basis,
+                freshnessFactor: supplyFreshness.factor,
+                /* The unified contract (match/unified-score.ts): the listing's own
+                   evidence quality -- recency, completeness, explicitness,
+                   contactability, source -- from the same normalized entity Find
+                   Buyers uses. Never decides compatibility. */
+                quality: candidateQuality(fromObservationRow(supplyRow as never)).quality,
+              });
+            }
           }
-        }
+
+          /* Rank by compatibility DECAYED BY AGE, so a perfect-fit stale listing
+             sits below a good-fit fresh one, then by the unified evidence quality
+             (recency is part of it). find-property orders by the stored
+             match_score, so the customer sees the same order. */
+          const rankedScore = (e: (typeof assessments)[number]) =>
+            Math.round(unifiedScore(e.assessment.score * e.freshnessFactor, e.quality) * 100) / 100;
+          assessments.sort((a, b) => rankedScore(b) - rankedScore(a));
+
+          /*
+           * PERSIST ONLY THE COMPATIBLE ONES. There is no product reason to store every
+           * pair that failed, and a table full of refusals makes the ones that matter
+           * harder to find. The counters above record how many were considered.
+           */
+          if (!dryRun && writeExternal) {
+            for (const entry of assessments) {
+              const { error: writeError } = await db.from('supply_matches').upsert({
+                intent_profile_id: demandRow.id as string,
+                signal_id: planDemand ? null : signalId,
+                source_kind: planDemand ? 'EXTERNAL_LISTING' : 'EXTERNAL_INTELLIGENCE',
+                ...(planDemand && planSubscription?.user_id ? { demand_user_id: String(planSubscription.user_id) } : {}),
+                observation_id: entry.observationId,
+                campaign_id: campaignId,
+                compatibility: entry.assessment.compatibility,
+                match_score: rankedScore(entry),
+                demand_role: entry.assessment.roles.demand,
+                supply_role: entry.assessment.roles.supply,
+                deal_kind: entry.assessment.deal,
+                agreed: entry.assessment.agreed,
+                conflicted: entry.assessment.conflicted,
+                preference_misses: entry.assessment.preferenceMisses,
+                unknown_dimensions: entry.assessment.unknown,
+                flexible_dimensions: entry.assessment.flexible,
+                rationale: entry.assessment.rationale,
+                dimensions: entry.assessment.dimensions,
+                listing_age_days: entry.ageDays,
+                listing_age_basis: entry.ageBasis,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: planDemand ? 'intent_profile_id,observation_id' : 'signal_id,observation_id' });
+
+              if (writeError) {
+                /* NEVER SWALLOWED. A refused write that increments nothing is
+                   indistinguishable from a run that found nothing to write. */
+                totals.persistenceFailures += 1;
+                results.push({
+                  signalId, observationId: entry.observationId,
+                  error: writeError.message,
+                });
+              } else {
+                totals.persisted += 1;
+              }
+            }
+          }
+
+          externalCompatible += assessments.length;
+          if (assessments[0] && (!best || rankedScore(assessments[0]) > best.ranked)) {
+            best = { observationId: assessments[0].observationId, assessment: assessments[0].assessment, ranked: rankedScore(assessments[0]) };
+          }
+        },
+      });
+      if (externalScan && !externalScan.complete) {
+        return { complete: false, phase: 'EXTERNAL', cursor: externalScan.cursor, scanStartedAt: startedScan };
       }
 
       /* ── THE HOMATCH NETWORK ──────────────────────────────────────────
@@ -581,183 +614,201 @@ Deno.serve(async (req: Request) => {
        * either side anybody to talk to.
        */
       if (demandUserId) {
-        let nativeQuery = db
-          .from('properties')
-          .select('id,user_id,homatch_id,title,transaction_type,property_type,'
-            + 'matching_status,archived_at,contact_phone_e164,listed_by_role,'
-            + 'facts:property_facts!property_id(city,district,total_price,currency,'
-            + 'area,rooms,bedrooms)')
-          .eq('is_deleted', false)
-          .is('archived_at', null)
-          .eq('matching_status', 'ACTIVE')
-          /*
-           * NOBODY MATCHES THEMSELVES. Filtered here so the work is not done, and
-           * refused again by a CHECK constraint on the table so it cannot be reached by
-           * a path that forgets. An owner who is also searching is an ordinary person,
-           * not an edge case.
-           */
-          .neq('user_id', demandUserId)
-          .limit(MAX_CANDIDATES);
-        if (propertyMode) nativeQuery = nativeQuery.in('id', onlyProperties);
-        const { data: nativeRows } = await nativeQuery;
-
-        totals.nativeCandidatesRead += (nativeRows ?? []).length;
-        /* Which properties still fit, so the ones that no longer do stop being shown. */
+        /* Which properties still fit (a property-scoped pass retires exactly the rest). */
         const compatibleProperties: string[] = [];
+        let nativeWriteFailed = false;
+        const nativeScan = await scanAll<Record<string, unknown>>({
+          pageSize: PAGE_SIZE,
+          startAfter: resume?.phase === 'NATIVE' ? resume.cursor : null,
+          deadlineAt,
+          keyOf: (r) => String(r.id),
+          fetchPage: async (after, size) => {
+            let nativeQuery = db
+              .from('properties')
+              .select('id,user_id,homatch_id,title,transaction_type,property_type,'
+                + 'matching_status,archived_at,contact_phone_e164,listed_by_role,'
+                + 'facts:property_facts!property_id(city,district,total_price,currency,'
+                + 'area,rooms,bedrooms)')
+              .eq('is_deleted', false)
+              .is('archived_at', null)
+              .eq('matching_status', 'ACTIVE')
+              /*
+               * NOBODY MATCHES THEMSELVES. Filtered here so the work is not done, and
+               * refused again by a CHECK constraint on the table so it cannot be reached by
+               * a path that forgets. An owner who is also searching is an ordinary person,
+               * not an edge case.
+               */
+              .neq('user_id', demandUserId)
+              /* Keyset by id (primary key): every property once. */
+              .order('id', { ascending: true })
+              .limit(size);
+            if (after) nativeQuery = nativeQuery.gt('id', after);
+            if (propertyMode) nativeQuery = nativeQuery.in('id', onlyProperties);
+            /* An error is thrown, never read as "no properties": the former silent
+               empty read retired every match this demand had. */
+            const { data, error } = await nativeQuery;
+            if (error) throw error;
+            return (data ?? []) as unknown as Record<string, unknown>[];
+          },
+          onPage: async (nativeRows) => {
+            totals.nativeCandidatesRead += nativeRows.length;
 
-        for (const candidate of nativeRows ?? []) {
-          const propertyRow = candidate as Record<string, unknown>;
-          const propertyFacts = (Array.isArray(propertyRow.facts)
-            ? propertyRow.facts[0]
-            : propertyRow.facts) as Record<string, unknown> | null | undefined;
+            for (const candidate of nativeRows) {
+              const propertyRow = candidate as Record<string, unknown>;
+              const propertyFacts = (Array.isArray(propertyRow.facts)
+                ? propertyRow.facts[0]
+                : propertyRow.facts) as Record<string, unknown> | null | undefined;
 
-          /*
-           * A PROPERTY, SHAPED AS SUPPLY. The same SupplySide the observation path
-           * builds, so assessMatch() cannot treat the two differently. A rent price and
-           * a sale price are the same column on a property and the transaction type
-           * says which, so only one of the two amounts is ever populated — putting the
-           * figure in both would let a rental match a buyer's budget.
-           */
-          const nativeSupply: SupplySide = supplySideFromProperty(
-            propertyRow as PropertyShape,
-            propertyFacts as PropertyFactsShape | null | undefined,
-          );
+              /*
+               * A PROPERTY, SHAPED AS SUPPLY. The same SupplySide the observation path
+               * builds, so assessMatch() cannot treat the two differently. A rent price and
+               * a sale price are the same column on a property and the transaction type
+               * says which, so only one of the two amounts is ever populated — putting the
+               * figure in both would let a rental match a buyer's budget.
+               */
+              const nativeSupply: SupplySide = supplySideFromProperty(
+                propertyRow as PropertyShape,
+                propertyFacts as PropertyFactsShape | null | undefined,
+              );
 
-          const assessment = assessMatch(demand, nativeSupply, { minAgreements: MIN_AGREEMENTS });
-          if (assessment.compatibility !== 'COMPATIBLE') continue;
-          totals.nativeCompatible += 1;
-          if (dryRun) continue;
+              const assessment = assessMatch(demand, nativeSupply, { minAgreements: MIN_AGREEMENTS });
+              if (assessment.compatibility !== 'COMPATIBLE') continue;
+              totals.nativeCompatible += 1;
+              if (dryRun) continue;
 
-          /*
-           * ONE ROW PER RELATIONSHIP, FOREVER. The conflict target is the partial unique
-           * index on (intent_profile_id, property_id): a tick that runs every hour
-           * re-evaluates the pair rather than adding a tenth copy of the same flat to
-           * somebody's list.
-           */
-          /*
-           * ONE ROW PER RELATIONSHIP, FOREVER. Through a SQL function because the identity
-           * is a PARTIAL unique index on (intent_profile_id, property_id), and PostgREST
-           * cannot name a predicate in its conflict target — the upsert this replaced
-           * failed on every call. The function does.
-           */
-          const { data: written, error: nativeError } = await db.rpc('upsert_native_match', {
-            p: {
-              intent_profile_id: demandRow.id as string,
-              property_id: propertyRow.id as string,
-              /* Resolved from the owning rows under the service role. Never from a
-                 client — this table has RLS on and no policies. */
-              supply_user_id: propertyRow.user_id as string,
-              demand_user_id: demandUserId,
-              campaign_id: campaignId,
-              compatibility: assessment.compatibility,
-              match_score: assessment.score,
-              demand_role: assessment.roles.demand,
-              supply_role: assessment.roles.supply,
-              deal_kind: assessment.deal,
-              agreed: assessment.agreed,
-              conflicted: assessment.conflicted,
-              preference_misses: assessment.preferenceMisses,
-              unknown_dimensions: assessment.unknown,
-              flexible_dimensions: assessment.flexible,
-              rationale: assessment.rationale,
-              dimensions: assessment.dimensions,
-            },
-          });
+              /*
+               * ONE ROW PER RELATIONSHIP, FOREVER. The conflict target is the partial unique
+               * index on (intent_profile_id, property_id): a tick that runs every hour
+               * re-evaluates the pair rather than adding a tenth copy of the same flat to
+               * somebody's list.
+               */
+              /*
+               * ONE ROW PER RELATIONSHIP, FOREVER. Through a SQL function because the identity
+               * is a PARTIAL unique index on (intent_profile_id, property_id), and PostgREST
+               * cannot name a predicate in its conflict target — the upsert this replaced
+               * failed on every call. The function does.
+               */
+              const { data: written, error: nativeError } = await db.rpc('upsert_native_match', {
+                p: {
+                  intent_profile_id: demandRow.id as string,
+                  property_id: propertyRow.id as string,
+                  /* Resolved from the owning rows under the service role. Never from a
+                     client — this table has RLS on and no policies. */
+                  supply_user_id: propertyRow.user_id as string,
+                  demand_user_id: demandUserId,
+                  campaign_id: campaignId,
+                  compatibility: assessment.compatibility,
+                  match_score: assessment.score,
+                  demand_role: assessment.roles.demand,
+                  supply_role: assessment.roles.supply,
+                  deal_kind: assessment.deal,
+                  agreed: assessment.agreed,
+                  conflicted: assessment.conflicted,
+                  preference_misses: assessment.preferenceMisses,
+                  unknown_dimensions: assessment.unknown,
+                  flexible_dimensions: assessment.flexible,
+                  rationale: assessment.rationale,
+                  dimensions: assessment.dimensions,
+                },
+              });
 
-          if (nativeError) {
-            totals.persistenceFailures += 1;
-            results.push({ propertyId: propertyRow.id, error: nativeError.message });
-            continue;
-          }
-          totals.nativePersisted += 1;
+              if (nativeError) {
+                nativeWriteFailed = true;
+                totals.persistenceFailures += 1;
+                results.push({ propertyId: propertyRow.id, error: nativeError.message });
+                continue;
+              }
+              totals.nativePersisted += 1;
 
-          /*
-           * BOTH SIDES ARE TOLD, AND NOT THE SAME THING.
-           *
-           * The owner learns there is somebody whose stated requirements fit their
-           * property; the searcher learns there is a property that fits what they
-           * asked for. Neither sentence claims an intention nobody has expressed —
-           * "you have a buyer" is a state that does not exist here.
-           *
-           * The dedupe key is the RELATIONSHIP, so the hourly re-evaluation above tells
-           * nobody a second time; the group key collapses a first sweep that finds nine
-           * into one interruption rather than nine.
-           */
-          const matchId = String(written ?? '');
-          compatibleProperties.push(propertyRow.id as string);
-          if (matchId) {
-            await notify(db, {
-              userId: String(propertyRow.user_id),
-              type: 'MATCH_AVAILABLE',
-              title: 'New Matching Buyers Found',
-              body: 'New buyer requests matching your property have appeared since your last visit. Review the latest opportunities in HOMATCH.',
-              priority: 'NORMAL',
-              deepLink: `/property/${propertyRow.id}/leads`,
-              entityType: 'supply_match',
-              entityId: matchId,
-              dedupeKey: `native-match:${matchId}:supply`,
-              groupKey: `native-match-supply:${propertyRow.id}`,
-              groupWindow: '6 hours',
-              /* A collapsed burst must say how many it collapsed. Without this the
-                 aggregate row keeps the FIRST event's title and the other eight are
-                 invisible — which is worse than nine interruptions, because the
-                 customer does not know there is anything else to look at. */
-              groupTitle: 'New Matching Buyers Found ({n})',
-              metadata: {
-                kind: 'NATIVE_MATCH_SUPPLY',
-                property_id: propertyRow.id,
-                homatch_id: propertyRow.homatch_id ?? null,
-              },
-            });
-            await notify(db, {
-              userId: demandUserId,
-              type: 'MATCH_AVAILABLE',
-              title: 'A Homatch property may fit what you are looking for',
-              body: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0'
-                ? 'It fits the plan you confirmed.'
-                : 'It fits the requirements you described.',
-              priority: 'NORMAL',
-              deepLink: '/find-property',
-              entityType: 'supply_match',
-              entityId: matchId,
-              dedupeKey: `native-match:${matchId}:demand`,
-              groupKey: `native-match-demand:${demandRow.id}`,
-              groupWindow: '6 hours',
-              groupTitle: '{n} Homatch properties match your search',
-              metadata: {
-                kind: 'NATIVE_MATCH_DEMAND',
-                origin: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0' ? 'SEARCH_PLAN' : 'CONVERSATION',
-                property_id: propertyRow.id,
-                homatch_id: propertyRow.homatch_id ?? null,
-              },
-            });
-          }
+              /*
+               * BOTH SIDES ARE TOLD, AND NOT THE SAME THING.
+               *
+               * The owner learns there is somebody whose stated requirements fit their
+               * property; the searcher learns there is a property that fits what they
+               * asked for. Neither sentence claims an intention nobody has expressed —
+               * "you have a buyer" is a state that does not exist here.
+               *
+               * The dedupe key is the RELATIONSHIP, so the hourly re-evaluation above tells
+               * nobody a second time; the group key collapses a first sweep that finds nine
+               * into one interruption rather than nine.
+               */
+              const matchId = String(written ?? '');
+              compatibleProperties.push(propertyRow.id as string);
+              if (matchId) {
+                await notify(db, {
+                  userId: String(propertyRow.user_id),
+                  type: 'MATCH_AVAILABLE',
+                  title: 'New Matching Buyers Found',
+                  body: 'New buyer requests matching your property have appeared since your last visit. Review the latest opportunities in HOMATCH.',
+                  priority: 'NORMAL',
+                  deepLink: `/property/${propertyRow.id}/leads`,
+                  entityType: 'supply_match',
+                  entityId: matchId,
+                  dedupeKey: `native-match:${matchId}:supply`,
+                  groupKey: `native-match-supply:${propertyRow.id}`,
+                  groupWindow: '6 hours',
+                  /* A collapsed burst must say how many it collapsed. Without this the
+                     aggregate row keeps the FIRST event's title and the other eight are
+                     invisible — which is worse than nine interruptions, because the
+                     customer does not know there is anything else to look at. */
+                  groupTitle: 'New Matching Buyers Found ({n})',
+                  metadata: {
+                    kind: 'NATIVE_MATCH_SUPPLY',
+                    property_id: propertyRow.id,
+                    homatch_id: propertyRow.homatch_id ?? null,
+                  },
+                });
+                await notify(db, {
+                  userId: demandUserId,
+                  type: 'MATCH_AVAILABLE',
+                  title: 'A Homatch property may fit what you are looking for',
+                  body: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0'
+                    ? 'It fits the plan you confirmed.'
+                    : 'It fits the requirements you described.',
+                  priority: 'NORMAL',
+                  deepLink: '/find-property',
+                  entityType: 'supply_match',
+                  entityId: matchId,
+                  dedupeKey: `native-match:${matchId}:demand`,
+                  groupKey: `native-match-demand:${demandRow.id}`,
+                  groupWindow: '6 hours',
+                  groupTitle: '{n} Homatch properties match your search',
+                  metadata: {
+                    kind: 'NATIVE_MATCH_DEMAND',
+                    origin: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0' ? 'SEARCH_PLAN' : 'CONVERSATION',
+                    property_id: propertyRow.id,
+                    homatch_id: propertyRow.homatch_id ?? null,
+                  },
+                });
+              }
+            }
+
+          },
+        });
+        if (!nativeScan.complete) {
+          return { complete: false, phase: 'NATIVE', cursor: nativeScan.cursor, scanStartedAt: startedScan };
         }
 
-        /* A property that no longer fits this demand stops being shown as a match. */
-        if (!dryRun) {
-          /* A property-scoped run judged only the queued listings: every other match of
-             this search is kept as it was, and only a queued listing that stopped
-             fitting is retired. */
-          let keep = compatibleProperties;
-          if (propertyMode) {
-            const { data: current } = await db
-              .from('supply_matches')
-              .select('property_id')
-              .eq('intent_profile_id', demandRow.id as string)
-              .eq('source_kind', 'INTERNAL_HOMATCH')
-              .eq('compatibility', 'COMPATIBLE');
-            keep = [...new Set([
-              ...((current ?? []) as Array<{ property_id: string }>)
-                .map((r) => String(r.property_id))
-                .filter((id) => !onlyProperties.includes(id)),
-              ...compatibleProperties,
-            ])];
-          }
-          await db.rpc('retire_native_matches', {
-            p_intent_profile_id: demandRow.id as string,
-            p_keep: keep,
-          });
+        /*
+         * A property that no longer fits this demand stops being shown as a match —
+         * decided only now, after EVERY candidate was judged. A write that failed
+         * leaves the pass unconfirmed, so nothing is retired on its account.
+         */
+        if (!dryRun && !nativeWriteFailed) {
+          const { error: retireError } = propertyMode
+            /* A property-scoped pass judged only its listings: exactly those that no
+               longer fit are retired, and every other match of this search is kept. */
+            ? await db.rpc('retire_native_matches_for_properties', {
+              p_intent_profile_id: demandRow.id as string,
+              p_property_ids: onlyProperties.filter((id) => !compatibleProperties.includes(id)),
+            })
+            /* A full pass: a match not re-confirmed since the pass began no longer fits. */
+            : await db.rpc('retire_native_matches_unconfirmed', {
+              p_intent_profile_id: demandRow.id as string,
+              p_scan_started_at: startedScan,
+              p_property_ids: null,
+            });
+          if (retireError) throw retireError;
         }
       }
 
@@ -767,25 +818,259 @@ Deno.serve(async (req: Request) => {
         intentProfileId: demandRow.id,
         city: demand.city,
         intent: demand.intentType,
-        candidatesConsidered: (candidates ?? []).length,
-        compatible: assessments.length,
-        best: assessments[0]
+        candidatesConsidered: externalRead,
+        compatible: externalCompatible,
+        resumed: resume ? resume.phase : null,
+        best: best
           ? {
-            observationId: assessments[0].observationId,
-            score: assessments[0].assessment.score,
-            deal: assessments[0].assessment.deal,
-            rationale: assessments[0].assessment.rationale,
-            preferenceMisses: assessments[0].assessment.preferenceMisses,
+            observationId: best.observationId,
+            score: best.assessment.score,
+            deal: best.assessment.deal,
+            rationale: best.assessment.rationale,
+            preferenceMisses: best.assessment.preferenceMisses,
           }
           : null,
         ...(dryRun ? { dryRun: true } : {}),
       });
+      return { complete: true };
+    };
+
+    /* ── RESUME POINTS ─────────────────────────────────────────────────── */
+    const checkpoint = {
+      async get(key: string): Promise<Record<string, unknown> | null> {
+        const { data, error } = await db.from('match_scan_checkpoints').select('*').eq('scan_key', key).maybeSingle();
+        if (error) throw error;
+        return (data ?? null) as Record<string, unknown> | null;
+      },
+      async put(key: string, patch: Record<string, unknown>): Promise<void> {
+        if (dryRun) return;
+        const { error } = await db.from('match_scan_checkpoints')
+          .upsert({ scan_key: key, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'scan_key' });
+        if (error) throw error;
+      },
+    };
+    const resumeFrom = (saved: Record<string, unknown> | null | undefined): Resume | null =>
+      saved && saved.status === 'RUNNING' && (saved.phase === 'EXTERNAL' || saved.phase === 'NATIVE') && saved.scan_started_at
+        ? { phase: saved.phase as Resume['phase'], cursor: (saved.supply_cursor as string | null) ?? null, scanStartedAt: String(saved.scan_started_at) }
+        : null;
+    /* A demand that ran out of time mid-scan finishes under its own checkpoint. */
+    const parkDemand = (id: string, outcome: Resume, saved?: Record<string, unknown> | null) => checkpoint.put(`demand:${id}`, {
+      status: 'RUNNING', phase: outcome.phase, supply_cursor: outcome.cursor, scan_started_at: outcome.scanStartedAt,
+      pages: Number(saved?.pages ?? 0) + 1, completed_at: null,
+    });
+    const finishDemand = (id: string, saved: Record<string, unknown>) => checkpoint.put(`demand:${id}`, {
+      status: 'COMPLETE', phase: null, supply_cursor: null, completed_at: new Date().toISOString(),
+      passes: Number(saved.passes ?? 0) + 1,
+    });
+
+    let demandConsidered = 0;
+    let demandEligible = 0;
+    const coverage: Record<string, unknown> = { budgetMs, complete: true };
+    const outOfTime = () => Date.now() >= deadlineAt;
+
+    /*
+     * Serve demand in key order. Returns how many keys were HANDLED, so a walk that
+     * stops at the deadline resumes exactly after the last one — nobody is skipped.
+     * In a property-scoped pass a demand that did not finish is not handled; in a
+     * full pass it is parked under its own checkpoint and the walk moves on.
+     */
+    const servePage = async (keys: string[], scope: 'PROPERTY' | 'FULL'): Promise<number> => {
+      const { considered, eligible } = await loadEligible({ ids: [...new Set(keys)] });
+      demandConsidered += considered;
+      demandEligible += eligible.length;
+      const byId = new Map(eligible.map((r: Record<string, unknown>) => [String(r.id), r]));
+      const served = new Set<string>();
+      for (let i = 0; i < keys.length; i++) {
+        const id = keys[i];
+        if (served.has(id) || !byId.has(id)) continue;
+        if (outOfTime()) return i;
+        const outcome = await serveDemand(byId.get(id)!, null, { external: scope === 'FULL' && !nativeOnly });
+        if (!outcome.complete) {
+          if (scope === 'PROPERTY') return i;
+          await parkDemand(id, outcome);
+        }
+        served.add(id);
+      }
+      return keys.length;
+    };
+
+    /* Every active native search, by intent id (active_search_subscriptions_active_intent_idx). */
+    const activeIntentPage = async (after: string | null, size: number) => {
+      let q = db.from('active_search_subscriptions').select('intent_id')
+        .eq('is_active', true).not('intent_id', 'is', null)
+        .order('intent_id', { ascending: true }).limit(size);
+      if (after) q = q.gt('intent_id', after);
+      const { data, error } = await q;
+      if (error) throw error;
+      return ((data ?? []) as Array<{ intent_id: string }>).map((r) => String(r.intent_id));
+    };
+    /* Every demand with a city (external and native), by id. */
+    const anyDemandPage = async (after: string | null, size: number) => {
+      let q = db.from('intent_profiles').select('id').not('city', 'is', null)
+        .order('id', { ascending: true }).limit(size);
+      if (after) q = q.gt('id', after);
+      const { data, error } = await q;
+      if (error) throw error;
+      return ((data ?? []) as Array<{ id: string }>).map((r) => String(r.id));
+    };
+
+    /* Parked demands (oldest first) finish before anything new starts. */
+    const resumeParked = async () => {
+      const { data, error } = await db.from('match_scan_checkpoints').select('*')
+        .like('scan_key', 'demand:%').eq('status', 'RUNNING').order('updated_at', { ascending: true }).limit(DEMAND_PAGE_SIZE);
+      if (error) throw error;
+      let resumed = 0;
+      for (const saved of (data ?? []) as Array<Record<string, unknown>>) {
+        if (outOfTime()) break;
+        const id = String(saved.scan_key).slice('demand:'.length);
+        const { eligible } = await loadEligible({ ids: [id], requireActive: false });
+        const resume = resumeFrom(saved);
+        if (!eligible.length || !resume) { await finishDemand(id, saved); continue; }
+        const outcome = await serveDemand(eligible[0], resume, { external: resume.phase === 'EXTERNAL' });
+        if (outcome.complete) { await finishDemand(id, saved); resumed += 1; } else await parkDemand(id, outcome, saved);
+      }
+      return resumed;
+    };
+
+    let mode: 'TARGETED' | 'PROPERTY' | 'SWEEP';
+    if (targeted) {
+      /* ── A NAMED DEMAND (or one signal): all of it, or a stated resume point. ── */
+      mode = 'TARGETED';
+      const rows: Array<Record<string, unknown>> = [];
+      if (onlySignal) {
+        const { considered, eligible } = await loadEligible({ signalId: onlySignal });
+        demandConsidered += considered; rows.push(...eligible);
+      }
+      for (const ids of chunk(onlyProfiles, DEMAND_PAGE_SIZE)) {
+        const { considered, eligible } = await loadEligible({ ids });
+        demandConsidered += considered; rows.push(...eligible);
+      }
+      demandEligible = rows.length;
+      const parked: string[] = [];
+      for (const row of rows) {
+        const id = String(row.id);
+        const saved = await checkpoint.get(`demand:${id}`);
+        const resume = resumeFrom(saved);
+        if (outOfTime()) {
+          await parkDemand(id, resume ?? { phase: nativeOnly ? 'NATIVE' : 'EXTERNAL', cursor: null, scanStartedAt: scanStartedAt(Date.now()) }, saved);
+          parked.push(id);
+          continue;
+        }
+        const outcome = await serveDemand(row, resume, { external: resume ? resume.phase === 'EXTERNAL' : !nativeOnly });
+        if (!outcome.complete) { await parkDemand(id, outcome, saved); parked.push(id); } else if (saved?.status === 'RUNNING') await finishDemand(id, saved);
+      }
+      coverage.complete = parked.length === 0;
+      coverage.parkedDemand = parked;
+    } else if (propertyMode) {
+      /* ── CHANGED PROPERTIES, each against EVERY active search. ── */
+      mode = 'PROPERTY';
+      let completed = 0;
+      let checkpointed = 0;
+      let leased = 0;
+      type Item = { property_id: string; enqueued_at: string | null; demand_cursor: string | null; scan_started_at: string | null };
+      const requested: Item[] = requestedProperties.map((id) => ({ property_id: id, enqueued_at: null, demand_cursor: null, scan_started_at: null }));
+      const runBatch = async (items: Item[], fromQueue: boolean) => {
+        onlyProperties = items.map((i) => i.property_id);
+        const cursor = items.some((i) => !i.demand_cursor) ? null
+          : items.map((i) => String(i.demand_cursor)).sort()[0];
+        const queueItems = items.map((i) => ({ property_id: i.property_id, enqueued_at: i.enqueued_at }));
+        try {
+          const walk = await scanAll<string>({
+            pageSize: demandPageSize, startAfter: cursor, deadlineAt, keyOf: (k) => k,
+            fetchPage: activeIntentPage,
+            onPage: (keys) => servePage(keys, 'PROPERTY'),
+          });
+          if (walk.complete) {
+            completed += items.length;
+            if (fromQueue && !dryRun) {
+              const { error } = await db.rpc('native_match_complete_properties', { p_items: queueItems });
+              if (error) throw error;
+            }
+          } else {
+            checkpointed += items.length;
+            coverage.complete = false;
+            if (dryRun) return;
+            if (!fromQueue) {
+              /* Asked for directly and out of time: the queue finishes it, from the start. */
+              const { error } = await db.from('native_match_property_queue')
+                .upsert(items.map((i) => ({ property_id: i.property_id, reason: 'RESUME' })), { onConflict: 'property_id', ignoreDuplicates: true });
+              if (error) throw error;
+            } else {
+              const { error } = await db.rpc('native_match_checkpoint_properties', {
+                p_items: queueItems, p_demand_cursor: walk.cursor, p_scan_started_at: null, p_error: null,
+              });
+              if (error) throw error;
+            }
+          }
+        } catch (error) {
+          /* Kept in the queue with the error and a back-off; never dropped. */
+          if (fromQueue && !dryRun) {
+            await db.rpc('native_match_checkpoint_properties', {
+              p_items: queueItems, p_demand_cursor: cursor, p_scan_started_at: null, p_error: describeError(error),
+            });
+          }
+          throw error;
+        }
+      };
+      for (const batch of chunk(requested, PROPERTY_BATCH)) {
+        if (outOfTime()) { coverage.complete = false; await runBatch(batch, false); continue; }
+        await runBatch(batch, false);
+      }
+      while (drainQueue && !outOfTime()) {
+        const { data: claimed, error: claimError } = await db.rpc('native_match_lease_properties', { p_limit: 25, p_lease_seconds: Math.ceil(budgetMs / 1000) + 30 });
+        if (claimError) throw claimError;
+        const items = ((claimed ?? []) as Item[]).map((r) => ({ ...r, property_id: String(r.property_id) }));
+        if (!items.length) break;
+        leased += items.length;
+        await runBatch(items, true);
+      }
+      coverage.propertiesLeased = leased;
+      coverage.propertiesCompleted = completed;
+      coverage.propertiesCheckpointed = checkpointed;
+      if (!requested.length && !leased) {
+        return json({ success: true, propertyMode: true, propertiesClaimed: 0, coverage, elapsedMs: Date.now() - started });
+      }
+    } else {
+      /* ── THE SWEEP: parked demands first, then a resumable walk over all demand. ── */
+      mode = 'SWEEP';
+      coverage.parkedResumed = await resumeParked();
+      const key = nativeOnly ? 'sweep:native' : 'sweep:all';
+      const state = await checkpoint.get(key);
+      const passRunning = state?.status === 'RUNNING';
+      const startAfter = passRunning ? ((state?.demand_cursor as string | null) ?? null) : null;
+      if (!passRunning) await checkpoint.put(key, { status: 'RUNNING', demand_cursor: null, scan_started_at: new Date().toISOString(), completed_at: null, pages: 0, rows_examined: 0 });
+      let pages = Number(passRunning ? state?.pages ?? 0 : 0);
+      let rowsExamined = Number(passRunning ? state?.rows_examined ?? 0 : 0);
+      const walk = outOfTime() ? { complete: false, cursor: startAfter } : await scanAll<string>({
+        pageSize: demandPageSize, startAfter, deadlineAt, keyOf: (k) => k,
+        fetchPage: nativeOnly ? activeIntentPage : anyDemandPage,
+        onPage: async (keys) => {
+          const handled = await servePage(keys, 'FULL');
+          pages += 1; rowsExamined += handled;
+          if (handled > 0) await checkpoint.put(key, { status: 'RUNNING', demand_cursor: keys[handled - 1], pages, rows_examined: rowsExamined });
+          return handled;
+        },
+      });
+      if (walk.complete) {
+        await checkpoint.put(key, {
+          status: 'COMPLETE', demand_cursor: null, completed_at: new Date().toISOString(), pages, rows_examined: rowsExamined,
+          passes: Number(state?.passes ?? 0) + 1,
+        });
+      } else {
+        await checkpoint.put(key, { status: 'RUNNING', demand_cursor: walk.cursor, pages, rows_examined: rowsExamined });
+      }
+      coverage.complete = walk.complete;
+      coverage.sweep = { key, passComplete: walk.complete, cursor: walk.cursor, demandWalked: rowsExamined };
     }
 
     return json({
       success: true,
-      demandConsidered: (demandRows ?? []).length,
-      demandEligible: eligible.length,
+      mode,
+      ...(propertyMode ? { propertyMode: true, properties: onlyProperties } : {}),
+      demandConsidered,
+      demandEligible,
+      /* No silent truncation: complete=false says exactly what will resume next tick. */
+      coverage,
       totals,
       /*
        * SAID OUT LOUD, because it is the economic claim the whole store rests on: this

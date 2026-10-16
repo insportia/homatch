@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { districtConflict } from './places.mjs';
+import { districtConflict, requestedDistrictKeys } from './places.mjs';
 
 /*
  * Shared acquisition for the HTML portals (place.ge, home.ge, brokeri.ge,
@@ -12,7 +12,12 @@ import { districtConflict } from './places.mjs';
  *                                   page states (e.g. the city); counted as filtered
  *   listCacheMs                   → reuse a list document (e.g. a sitemap) for this long
  *   pagesIndependent              → each "page" is its own document; a short page does
- *                                   not end the run
+ *                                   not end the run (a sitemap read again yields its next
+ *                                   unread window: only listings actually read are marked seen)
+ *   deepMaxPages                  → how far to keep reading when the request can only be
+ *                                   checked AFTER reading (a district the server cannot
+ *                                   filter, or filtersAfterRead) and too few listings fit
+ *   filtersAfterRead / serverDistricts / targetResults / deepReserveMs
  * Everything else — robots.txt, pacing, page cap, refusals, the contract shape,
  * deduplication by source id, and dropping a listing whose own stated deal, USD price,
  * rooms, area or Tbilisi district contradicts the request (portals that cannot filter server-side) —
@@ -124,8 +129,21 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
       rules = robots.ok ? robotsRules(await robots.text()) : [];
     } catch { rules = []; }
     const { maxPages, pagesIndependent: independent } = adapter;
-    let complete = false;
-    for (let page = 1; page <= maxPages; page++) {
+    /*
+     * ADAPTIVE DEPTH. A source that can only check the district (or price/area) after
+     * reading a listing reads further — up to deepMaxPages — while too few listings
+     * fit, the pages keep yielding unread listings, and the deadline leaves room. The
+     * first maxPages are always read; what stopped the read is reported, never hidden.
+     */
+    const postFilter = adapter.filtersAfterRead === true || (requestedDistrictKeys(request) !== null && adapter.serverDistricts !== true);
+    const pageCap = postFilter ? Math.max(maxPages, adapter.deepMaxPages ?? maxPages) : maxPages;
+    const target = adapter.targetResults ?? 24;
+    let complete = false, accepted = 0, depthStop = null;
+    for (let page = 1; page <= pageCap; page++) {
+      if (page > maxPages) {
+        if (accepted >= target) { depthStop = 'ENOUGH_RESULTS'; complete = true; break; }
+        if (now() >= deadline - (adapter.deepReserveMs ?? 60000)) { depthStop = 'TIME_BUDGET'; break; }
+      }
       const url = adapter.searchUrl(criteria, page);
       queryApplied[`page${page}`] = url;
       let html = adapter.listCacheMs ? listCache.get(url) : null;
@@ -133,10 +151,13 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
       const items = adapter.parseList(html.text, url, criteria);
       pagesVisited++;
       const fresh = items.filter((i) => i.sourceListingId && !seen.has(i.sourceListingId));
-      fresh.forEach((i) => seen.add(i.sourceListingId));
-      discovered += fresh.length;
+      const batch = fresh.slice(0, adapter.detailLimit ?? fresh.length);
+      /* Only what is actually read is marked seen, so a re-read index yields its next window. */
+      batch.forEach((i) => seen.add(i.sourceListingId));
+      discovered += batch.length;
+      if (page > maxPages && !batch.length) { depthStop = 'SOURCE_EXHAUSTED'; complete = true; break; }
       const candidates = [];
-      for (const item of fresh.slice(0, adapter.detailLimit ?? fresh.length)) {
+      for (const item of batch) {
         let fields = { ...item };
         if (adapter.parseDetail) {
           try { await sleep(adapter.detailIntervalMs ?? 800); fields = { ...fields, ...defined(adapter.parseDetail(await get(item.url), item.url)), detailRead: true }; }
@@ -147,13 +168,16 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
         if (contradiction(fields, request) || (adapter.accept && !adapter.accept(fields, criteria))) { filtered++; continue; }
         candidates.push(toCandidate(adapter, fields, request, page, url));
       }
+      accepted += candidates.length;
       if (candidates.length) await emit('RESULTS_RECEIVED', candidates);
       if (!independent && (!items.length || items.length < (adapter.pageSize ?? 1))) { complete = true; break; }
-      if (page < maxPages) await sleep(adapter.pageIntervalMs ?? 3000);
+      if (page < pageCap) await sleep(adapter.pageIntervalMs ?? 3000);
     }
     if (filtered) queryApplied.filteredAfterRead = String(filtered);
+    queryApplied.pagesRead = String(pagesVisited);
+    if (pageCap > maxPages) queryApplied.adaptiveDepth = `${pagesVisited}/${pageCap}${depthStop ? ` ${depthStop}` : ''}`;
     if (rejected) errors.push({ code: 'SOURCE_RECORDS_REJECTED', message: `${rejected} listings could not be read from their own pages` });
-    if (!complete) errors.push({ code: 'PAGE_CAP_REACHED', message: `${adapter.sourceName}: first ${maxPages} result pages read` });
+    if (!complete) errors.push({ code: 'PAGE_CAP_REACHED', message: `${adapter.sourceName}: first ${pagesVisited} result pages read${depthStop === 'TIME_BUDGET' ? ' (time budget)' : ''}` });
     const status = rejected ? 'PARTIAL' : 'COMPLETE';
     await emit(status, [], errors);
     return { status, delivered, pagesVisited };

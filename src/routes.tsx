@@ -184,6 +184,7 @@ const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'
 const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
 const AdminPropertyPortalsPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalsPage'));
 const AdminPropertyPortalPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalPage'));
+const AdminPublishingQueuePage = lazyRoute(() => import('./pages/admin/AdminPublishingQueuePage'));
 const AdminBrokersPage = lazyRoute(() => import('./pages/admin/AdminBrokersPage'));
 const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
@@ -643,6 +644,7 @@ export const routes: RouteConfig[] = [
      Every read and write is re-authorised by publishing-engine with is_admin(). */
   { name: 'Admin Property Portals', path: '/admin/integrations/portals', element: adminWrap(<AdminPropertyPortalsPage />), adminOnly: true },
   { name: 'Admin Property Portal',  path: '/admin/integrations/portals/:providerId', element: adminWrap(<AdminPropertyPortalPage />), adminOnly: true, visible: false },
+  { name: 'Admin Publishing Queue', path: '/admin/integrations/publishing', element: adminWrap(<AdminPublishingQueuePage />), adminOnly: true },
   { name: 'Admin Verify COGS', path: '/admin/verify-cogs',        element: adminWrap(<AdminVerifyCogsPage />),  adminOnly: true },
   /*
    * The eleven-tab voice tooling moved into AI & communication. The URL

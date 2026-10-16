@@ -29,6 +29,8 @@ import {
   classifyCheck, normalizeListing, parseExternalUrl, publicRegistry, transition, validateListing,
 } from '../../supabase/functions/publishing-engine/domain.ts';
 import { adapterFor, configs, sanitizePatch, profileById } from '../../supabase/functions/publishing-engine/providers.ts';
+import { accountView, centralCopy, emptyAccount, registeredStatus, routeFor, sanitizeAccountPatch } from '../../supabase/functions/publishing-engine/central.ts';
+import { BROWSER_CAPABILITIES } from '../../supabase/functions/publishing-engine/automation.ts';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -93,17 +95,24 @@ const propertyRow = {
 
 /* The server, in memory: the real domain and providers, the same response shapes as index.ts. */
 function publishingServer() {
-  const db = { listing: null, pubs: new Map(), events: [], rows: [], audit: [], fetched: [] };
+  const db = { listing: null, pubs: new Map(), events: [], rows: [], audit: [], fetched: [], accounts: new Map(), accountAudit: [] };
+  // HOMATCH has registered its MyHome.ge account; every other portal is still unconfigured.
+  db.accounts.set('myhome', { ...emptyAccount('myhome'), status: 'PUBLISHING_RESTRICTED', connection_method: 'MANUAL', account_label: 'listings@homatch.live', contact_phone: '+995322000111' });
   const providers = () => configs(db.rows);
   const provider = (id) => providers().find((c) => c.id === id) ?? null;
   const event = (kind, portal = null, detail = {}) => db.events.unshift({ id: db.events.length + 1, kind, portal_id: portal, from_status: null, to_status: null, detail, created_at: new Date().toISOString() });
   const listingOut = () => db.listing && ({ ...db.listing, validation: validateListing(normalizeListing(db.listing.payload), providers()) });
-  const detail = () => ({ portals: publicRegistry(providers()), listing: listingOut(), publications: [...db.pubs.values()], events: db.events });
+  const account = (id) => db.accounts.get(id) ?? emptyAccount(id);
+  const registry = () => publicRegistry(providers()).map((p) => {
+    const r = routeFor(provider(p.id), account(p.id), new Date());
+    return { ...p, homatch: { route: r.error ? null : r.route, unavailable: r.error ?? null, contactPhone: account(p.id).status === 'NOT_CONFIGURED' ? null : account(p.id).contact_phone } };
+  });
+  const detail = () => ({ portals: registry(), listing: listingOut(), publications: [...db.pubs.values()], events: db.events });
   const write = (portal, cmd) => {
     const current = db.pubs.get(portal) ?? null;
     const next = transition(current, cmd, new Date());
     if (next.error) return next.error;
-    const row = current ?? { id: `pub-${portal}`, listing_id: PID, portal_id: portal, revision: -1, external_id: null, external_url: null, check_attempts: 0, last_checked_at: null, next_check_at: null, published_at: null, last_error: null, created_at: new Date().toISOString() };
+    const row = current ?? { id: `00000000-0000-4000-8000-0000000000${String(db.pubs.size + 10)}`, listing_id: PID, portal_id: portal, revision: -1, channel: 'OWNER_HANDOFF', external_id: null, external_url: null, check_attempts: 0, last_checked_at: null, next_check_at: null, published_at: null, last_error: null, created_at: new Date().toISOString() };
     db.pubs.set(portal, { ...row, ...next.set, revision: row.revision + 1, updated_at: new Date().toISOString() });
     event(next.kind, portal, next.detail ?? {});
     return null;
@@ -116,7 +125,7 @@ function publishingServer() {
     db,
     handle(body) {
       const { action } = body;
-      if (action === 'workspace') return [200, { portals: publicRegistry(providers()), listings: db.listing ? [listingOut()] : [], publications: [...db.pubs.values()] }];
+      if (action === 'workspace') return [200, { portals: registry(), listings: db.listing ? [listingOut()] : [], publications: [...db.pubs.values()] }];
       if (action === 'listing.get') return db.listing ? [200, detail()] : [404, { code: 'LISTING_NOT_FOUND' }];
       if (action === 'listing.save') {
         if ((db.listing?.version ?? 0) !== body.version) return [409, { code: 'VERSION_CONFLICT' }];
@@ -142,6 +151,65 @@ function publishingServer() {
         db.audit.unshift({ id: db.audit.length + 1, provider_id: body.providerId, action: 'UPDATE', before, after, created_at: new Date().toISOString() });
         return [200, { ok: true }];
       }
+      /* The central engine (index.ts publication.publish and admin.account.* / admin.job.*). */
+      if (action === 'publication.publish') {
+        if (body.consent !== true) return [400, { code: 'CONTACT_CONSENT_REQUIRED' }];
+        const results = [];
+        for (const id of body.portalIds ?? []) {
+          const r = routeFor(provider(id), account(id), new Date());
+          if (r.error) { results.push({ portalId: id, code: r.error }); continue; }
+          const err = write(id, { type: 'PUBLISH', listingVersion: db.listing.version, route: r.route, consentAt: new Date().toISOString() });
+          results.push(err && err !== 'NO_CHANGE' ? { portalId: id, code: err } : { portalId: id, status: db.pubs.get(id).status });
+        }
+        return [200, { ...detail(), results }];
+      }
+      if (action === 'admin.accounts') return [200, { accounts: providers().map((c) => ({ portal: publicRegistry([c])[0], account: accountView(account(c.id), c.id), acceptsCredential: false, browser: BROWSER_CAPABILITIES[c.id], session: null })), audit: db.accountAudit }];
+      if (action === 'admin.operations') return [200, { operations: [], artifacts: [] }];
+      if (action === 'admin.account.save') {
+        const clean = sanitizeAccountPatch(body.account ?? {});
+        if (clean.error) return [400, { code: clean.error }];
+        const status = registeredStatus(provider(body.portalId), clean.patch);
+        db.accounts.set(body.portalId, { ...account(body.portalId), ...clean.patch, status });
+        db.accountAudit.unshift({ id: db.accountAudit.length + 1, portal_id: body.portalId, action: 'REGISTER', actor: 'u1', created_at: new Date().toISOString() });
+        let rerouted = 0;
+        for (const [id, pub] of db.pubs) if (id === body.portalId && pub.channel === 'HOMATCH_ACCOUNT' && !write(id, { type: 'REROUTE', route: routeFor(provider(id), account(id), new Date()).route })) rerouted++;
+        return [200, { ok: true, status, rerouted }];
+      }
+      if (action === 'admin.account.test') {
+        const a = account(body.portalId);
+        db.accounts.set(body.portalId, { ...a, verification_result: 'CAPABILITY_NOT_SUPPORTED' });
+        return [200, { ok: false, result: 'CAPABILITY_NOT_SUPPORTED', status: a.status }];
+      }
+      const jobOf = (id) => [...db.pubs.values()].find((p) => p.id === id);
+      if (action === 'admin.queue') {
+        const jobs = [...db.pubs.values()].filter((p) => p.channel === 'HOMATCH_ACCOUNT' && (body.statuses ?? []).includes(p.status));
+        const x = normalizeListing(db.listing?.payload ?? {});
+        return [200, { jobs: jobs.map((j) => ({ ...j, user_id: 'u1', listing: { title: x.title, city: x.city, dealType: x.dealType, propertyType: x.propertyType, price: x.price, currency: x.currency, version: db.listing.version }, outdated: false })) }];
+      }
+      if (action === 'admin.job.get') {
+        const job = jobOf(body.jobId);
+        const x = normalizeListing(db.listing.payload);
+        const cfg = provider(job.portal_id);
+        return [200, { job, portal: publicRegistry([cfg])[0], account: accountView(account(job.portal_id), job.portal_id), listing: { ...x, version: db.listing.version }, copies: { ka: centralCopy(x, cfg, account(job.portal_id), 'ka') }, photos: [], events: db.events.filter((e) => e.portal_id === job.portal_id) }];
+      }
+      if (action.startsWith('admin.job.')) {
+        const job = jobOf(body.jobId);
+        const op = action.slice('admin.job.'.length);
+        const cfg = provider(job.portal_id);
+        let cmd;
+        if (op === 'claim') cmd = { type: 'ADMIN_CLAIM', admin: 'u1' };
+        else if (op === 'reject') cmd = { type: 'ADMIN_REJECT', reason: body.reason ?? '', admin: 'u1' };
+        else if (op === 'complete') {
+          const parsed = parseExternalUrl(cfg, body.externalUrl);
+          if (parsed.error) return [400, { code: parsed.error }];
+          cmd = { type: 'ADMIN_COMPLETE', url: parsed.url, externalId: parsed.externalId, listingVersion: job.listing_version, verification: cfg.verification, admin: 'u1' };
+        } else return [404, { code: 'UNKNOWN_ACTION' }];
+        const err = write(job.portal_id, cmd);
+        if (err) return [400, { code: err }];
+        const now = db.pubs.get(job.portal_id);
+        if (op === 'complete' && now.status === 'VERIFYING') write(job.portal_id, { type: 'CHECK', outcome: classifyCheck({ ...page(now.external_url), externalId: now.external_id }) });
+        return [200, { ok: true, job: db.pubs.get(job.portal_id) }];
+      }
       const portal = provider(body.portalId);
       if (!db.listing || !portal) return [400, { code: 'LISTING_NOT_FOUND' }];
       if (action === 'publication.prepare') {
@@ -165,6 +233,12 @@ function publishingServer() {
         if (err) return [400, { code: err }];
         check();
         return [200, detail()];
+      }
+      if (action === 'publication.unpublish') {
+        const pub = db.pubs.get(portal.id);
+        const pending = pub?.channel === 'HOMATCH_ACCOUNT' && ['QUEUED', 'ADMIN_ACTION_REQUIRED', 'AUTH_REQUIRED'].includes(pub.status);
+        const err = write(portal.id, pending ? { type: 'CANCEL' } : { type: 'REQUEST_UNPUBLISH' });
+        return err ? [400, { code: err }] : [200, detail()];
       }
       if (action === 'publication.check') {
         if (portal.verification !== 'PAGE_CHECK') return [400, { code: 'CHECK_NOT_AVAILABLE' }];
@@ -311,11 +385,11 @@ test('journey: eight portals → prefilled draft → numbers and footer → MyHo
       assert.equal(await page.getByLabel('Street', { exact: true }).inputValue(), 'Kazbegi Ave 12');
       assert.equal(await page.getByLabel('Bathrooms', { exact: true }).inputValue(), '2');
       assert.equal(await page.getByLabel('Bathrooms', { exact: true }).getAttribute('aria-required'), 'false', 'bathrooms are optional');
-      /* Fourteen steps: property done, required fields next; nothing claims publication. */
-      const steps = page.getByRole('navigation', { name: 'Your publishing steps' });
-      assert.equal(await steps.locator('li').count(), 14);
-      assert.equal(await steps.locator('[data-state="done"]').count(), 1);
-      assert.ok((await steps.locator('[aria-current="step"]').innerText()).includes('Required fields'));
+      /* Four steps: create → choose portals → preview → publish; nothing is done before a save. */
+      const steps = page.getByRole('navigation', { name: 'Publishing steps' });
+      assert.equal(await steps.locator('li').count(), 4);
+      assert.equal(await steps.locator('[data-state="done"]').count(), 0);
+      assert.ok((await steps.locator('[aria-current="step"]').innerText()).includes('Create'));
       assert.ok(await noOverflow(page), `editor @${width}`);
       await shot(page, `editor-${width}`);
       /* The property's number is OFFERED, never copied in: saving now is a draft. */
@@ -356,39 +430,56 @@ test('journey: eight portals → prefilled draft → numbers and footer → MyHo
       assert.equal(await page.getByTestId('pubw-preview-contacts').locator('a[href^="viber://chat?number=%2B995599123456"]').count(), 1);
       assert.ok(await noOverflow(page), `preview @${width}`);
       await shot(page, `preview-${width}`);
-      /* Portals: only the chosen three are cards; the other five wait below. */
+      /* Portals: ONE action — Publish to Selected Portals, through HOMATCH's accounts. */
       await page.getByRole('tab', { name: 'Portals' }).click();
-      await page.getByText('Other portals (5)').waitFor();
-      assert.equal(await page.locator('[id^="pubw-portal-"]').count(), 3);
-      await page.getByRole('button', { name: 'Prepare for MyHome.ge' }).click();
-      await page.getByRole('link', { name: 'Open MyHome.ge' }).waitFor();
-      assert.equal(await page.getByRole('link', { name: 'Open MyHome.ge' }).getAttribute('target'), '_blank');
-      const myhome = page.locator('#pubw-portal-myhome');
-      await myhome.getByRole('button', { name: 'Description', exact: true }).click();
-      const copied = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
-      if (copied !== null) assert.equal((copied.match(/📞/g) ?? []).length, 2, 'the copy carries each number once');
-      await myhome.getByLabel('Publication URL').fill('https://evil.example/pr/25805378');
-      await myhome.getByRole('button', { name: 'Verify' }).click();
-      await page.getByText('This link is not on this portal’s website.').first().waitFor();
-      await myhome.getByLabel('Publication URL').fill(MYHOME_URL);
-      await myhome.getByRole('button', { name: 'Verify' }).click();
-      await myhome.getByText('Published · verified').first().waitFor({ timeout: 20000 });
+      const panel = page.getByTestId('pubw-publish');
+      await panel.waitFor();
+      /* The two identities, shown before anything is sent: HOMATCH's number in the
+         portal's contact field, the owner's name and number once at the end. */
+      assert.equal(await page.getByTestId('pubw-publish-homatch-phone').innerText(), '+995 322 00 01 11');
+      const central = await page.getByTestId('pubw-publish-description').innerText();
+      assert.equal((central.match(/ქონების მფლობელი: Nino Owner/g) ?? []).length, 1, 'the owner is named exactly once');
+      assert.equal((central.match(/ტელეფონი: \+995 555 12 34 56/g) ?? []).length, 1, 'the owner phone appears exactly once');
+      assert.ok(central.trim().endsWith('განცხადება გამოქვეყნებულია HOMATCH-ის მეშვეობით.'), 'the footer is at the end');
+      assert.equal(central.includes('+995 322 00 01 11'), false, 'the HOMATCH number is not in the owner footer');
+      assert.equal(central.includes('დაგვიკავშირდით'), false, 'no second footer');
+      /* Korter.ge is left for the owner's own handoff below; consent gates the button. */
+      await page.getByTestId('pubw-pick-korter').click();
+      const publishBtn = page.getByTestId('pubw-publish-button');
+      assert.equal(await publishBtn.innerText(), 'Publish to Selected Portals');
+      assert.equal(await publishBtn.isDisabled(), true, 'no consent, no publish');
+      await page.getByTestId('pubw-publish-consent').check();
+      await publishBtn.click();
+      await page.getByTestId('pubw-status-myhome').waitFor({ timeout: 20000 });
+      assert.match(await page.getByTestId('pubw-status-myhome').innerText(), /Pending HOMATCH action/);
+      assert.match(await page.getByTestId('pubw-status-ssge').innerText(), /Authentication required/);
+      for (const id of ['myhome', 'ssge']) {
+        const pub = server.db.pubs.get(id);
+        assert.equal(pub.channel, 'HOMATCH_ACCOUNT');
+        assert.ok(pub.contact_consent_at);
+        assert.equal(pub.published_at, null, `${id}: nothing claims publication before the portal confirms it`);
+      }
+      assert.equal(server.db.pubs.has('korter'), false);
+      assert.equal(await steps.locator('[data-state="done"]').count(), 4, 'all four steps done once the request is in');
+      /* HOMATCH's specialist posts MyHome.ge and links it; the public page check confirms it. */
+      const myhomeJob = server.db.pubs.get('myhome').id;
+      server.handle({ action: 'admin.job.claim', jobId: myhomeJob });
+      server.handle({ action: 'admin.job.complete', jobId: myhomeJob, externalUrl: MYHOME_URL });
       assert.equal(server.db.pubs.get('myhome').status, 'PUBLISHED');
-      assert.equal(await steps.locator('[data-state="done"]').count(), 14, 'every step done once MyHome is verified');
-      /* SS.ge: the portal blocks the automated check → pending, never PUBLISHED. */
-      const ssge = page.locator('#pubw-portal-ssge');
-      await ssge.getByRole('button', { name: 'Prepare for SS.ge' }).click();
-      await ssge.getByLabel('Publication URL').fill(SSGE_URL);
-      await ssge.getByRole('button', { name: 'Verify' }).click();
-      await ssge.getByText('Checking publication').first().waitFor({ timeout: 20000 });
-      assert.equal(server.db.pubs.get('ssge').status, 'VERIFYING');
-      assert.equal(server.db.pubs.get('myhome').status, 'PUBLISHED', 'partial success keeps the successful portal');
-      /* Korter.ge: automated checks are off, so the owner's explicit statement is required. */
+      await page.reload();
+      await page.getByTestId('pubw-status-myhome').getByText('Published').waitFor({ timeout: 20000 });
+      assert.equal(await page.getByTestId('pubw-status-myhome').getByRole('link', { name: 'Open on portal' }).getAttribute('href'), 'https://www.myhome.ge/ka/pr/25805378/iyideba-3-otaxiani-bina');
+      /* The owner's own handoff still works for a portal HOMATCH is not handling. */
+      const own = page.getByTestId('pubw-own-handoff');
+      if ((await own.getAttribute('open')) === null) await own.locator(':scope > summary').click();
       const korter = page.locator('#pubw-portal-korter');
       await korter.getByRole('button', { name: 'Prepare for Korter.ge' }).click();
-      await korter.getByLabel('Publication URL').fill(KORTER_URL);
-      assert.equal(await korter.getByRole('button', { name: 'Confirm' }).isDisabled(), true, 'no confirmation, no submit');
+      await korter.getByLabel('Publication URL').fill('https://evil.example/ka/x/4521');
       await page.getByTestId('pubw-attest-korter').check();
+      await korter.getByRole('button', { name: 'Confirm' }).click();
+      await page.getByText('This link is not on this portal’s website.').first().waitFor();
+      await korter.getByLabel('Publication URL').fill(KORTER_URL);
+      assert.equal(await korter.getByRole('button', { name: 'Confirm' }).isDisabled(), false);
       await korter.getByRole('button', { name: 'Confirm' }).click();
       await korter.getByText('Published · confirmed by you').first().waitFor({ timeout: 20000 });
       assert.equal(server.db.pubs.get('korter').status, 'OWNER_CONFIRMED');
@@ -398,7 +489,7 @@ test('journey: eight portals → prefilled draft → numbers and footer → MyHo
       await shot(page, `portals-${width}`);
       /* Refresh: the state comes back from the server, on the same tab. */
       await page.reload();
-      await page.getByText('Published · verified').first().waitFor({ timeout: 20000 });
+      await page.getByTestId('pubw-status-myhome').getByText('Published').waitFor({ timeout: 20000 });
       assert.match(page.url(), /tab=portals/);
       /* Back / forward move between tabs. */
       await page.goBack();
@@ -410,14 +501,14 @@ test('journey: eight portals → prefilled draft → numbers and footer → MyHo
       await page.locator(`main a[href="/publishing/${PID}"]`).first().waitFor({ timeout: 20000 });
       const kpi = async (label) => Number((await page.getByRole('button', { name: new RegExp(label) }).first().innerText()).match(/\d+/)[0]);
       assert.equal(await kpi('Active publications'), 2, 'MyHome verified + Korter confirmed');
-      assert.equal(await kpi('Awaiting publication'), 1);
+      assert.equal(await kpi('Awaiting publication'), 1, 'SS.ge waits for the HOMATCH account');
       await shot(page, `workspace-${width}`);
-      assert.ok(calls.includes('publication.link'));
+      assert.ok(calls.includes('publication.publish') && calls.includes('publication.link'));
     });
   }
 });
 
-test('admin: Integrations → Property portals — eight portals, settings saved and audited, honest test connection', opts, async (t) => {
+test('admin: Integrations → Property portals — eight portals, HOMATCH accounts, settings saved and audited, honest test connection', opts, async (t) => {
   for (const width of [1440, 390]) {
     await t.test(`@${width}`, async (tt) => {
       const { page, server } = await boot(tt, { width, route: '/admin/integrations/portals', profile: { ...ownerProfile, is_admin: true } });
@@ -431,8 +522,33 @@ test('admin: Integrations → Property portals — eight portals, settings saved
       await page.getByTestId('admin-portal-korter').click();
       await page.getByTestId('admin-portal-page-korter').waitFor({ timeout: 20000 });
       assert.equal(await page.getByLabel('How publication is confirmed').isDisabled(), true);
-      await page.getByTestId('admin-portal-test-connection').click();
-      await page.getByTestId('admin-portal-test-result').getByText('Not available: this portal offers no authorised connection or API.').waitFor();
+      assert.match(await page.getByTestId('admin-portal-automation').innerText(), /Manual administrator action required/);
+      /* The HOMATCH account: registered with identity and phone — never a password —
+         and never "Connected" without a real verification. */
+      const acct = page.getByTestId('admin-account');
+      assert.equal(await acct.getByTestId('admin-account-status').getAttribute('data-status'), 'NOT_CONFIGURED');
+      assert.equal(await acct.locator('input[type="password"]').count(), 0, 'no password field');
+      await acct.getByTestId('admin-account-label').fill('listings@homatch.live');
+      await acct.getByTestId('admin-account-phone').fill('+995 322 00 01 11');
+      await acct.getByTestId('admin-account-save').click();
+      await page.getByText('Korter.ge account saved.').first().waitFor();
+      await acct.locator('[data-testid="admin-account-status"][data-status="PUBLISHING_RESTRICTED"]').waitFor();
+      await acct.getByTestId('admin-account-test').click();
+      await acct.getByTestId('admin-account-test-result').getByText('Not available: this portal offers no authorised connection or API.').waitFor();
+      assert.equal(await acct.getByTestId('admin-account-status').getAttribute('data-status'), 'PUBLISHING_RESTRICTED', 'a test without a verified mechanism never connects');
+      assert.equal(server.db.accounts.get('korter').verified_at, null);
+      /* Korter has no recorded browser workflow: no automation controls at all. */
+      await page.getByTestId('admin-automation-none').waitFor();
+      /* MyHome: what the worker can do, how it was verified, and the owner's switches (off). */
+      await page.goto(`${BASE}/admin/integrations/portals/myhome`);
+      const auto = page.getByTestId('admin-automation');
+      await auto.waitFor({ timeout: 20000 });
+      assert.match(await auto.getByTestId('admin-auto-level-CREATE').innerText(), /Tested on recorded pages only/);
+      assert.match(await auto.getByTestId('admin-auto-level-PRICE').innerText(), /Not explored/);
+      assert.match(await auto.getByTestId('admin-auto-session').innerText(), /none captured/);
+      assert.match(await auto.getByTestId('admin-auto-session').innerText(), /capture-session\.mjs myhome/);
+      assert.equal(await auto.getByTestId('admin-auto-enabled').getAttribute('aria-checked'), 'false');
+      assert.equal(await auto.getByTestId('admin-auto-live').isDisabled(), true, 'live publishing cannot be approved while automation is off');
       /* Place.ge: require bathrooms, save — validated, applied, audited. */
       await page.goto(`${BASE}/admin/integrations/portals/placege`);
       await page.getByTestId('admin-portal-page-placege').waitFor({ timeout: 20000 });
@@ -455,6 +571,37 @@ test('admin: Integrations → Property portals — eight portals, settings saved
   }
 });
 
+test('admin: Publishing queue — the portal-ready copy, claim, link; published only after the page check', opts, async (t) => {
+  for (const width of [1440, 390]) {
+    await t.test(`@${width}`, async (tt) => {
+      const server = publishingServer();
+      server.handle({ action: 'listing.save', version: 0, listing: { title: 'ბინა კრწანისში', description: { ka: 'მზიანი ბინა.' }, propertyType: 'APARTMENT', dealType: 'SALE', price: 213840, city: 'Tbilisi', contactName: 'Nino Owner', contacts: [{ phone: '+995555123456' }], portalTargets: ['myhome'] } });
+      server.handle({ action: 'publication.publish', portalIds: ['myhome'], consent: true });
+      assert.equal(server.db.pubs.get('myhome').status, 'ADMIN_ACTION_REQUIRED');
+      const { page } = await boot(tt, { width, server, route: '/admin/integrations/publishing', profile: { ...ownerProfile, is_admin: true } });
+      await page.getByTestId('admin-publishing-queue').waitFor({ timeout: 20000 });
+      const job = server.db.pubs.get('myhome').id;
+      await page.getByTestId(`queue-job-${job}`).click();
+      const d = page.getByTestId('queue-job-detail');
+      await d.waitFor();
+      assert.equal(await d.getByTestId('queue-contact-phone').innerText(), '+995 322 00 01 11', 'the HOMATCH number goes in the portal contact field');
+      const copy = await d.getByTestId('queue-copy-ka').innerText();
+      assert.equal((copy.match(/ქონების მფლობელი: Nino Owner/g) ?? []).length, 1);
+      assert.ok(copy.trim().endsWith('განცხადება გამოქვეყნებულია HOMATCH-ის მეშვეობით.'));
+      await d.getByTestId('queue-claim').click();
+      await page.getByText('Started.').first().waitFor();
+      assert.equal(server.db.pubs.get('myhome').status, 'PUBLISHING');
+      await d.getByTestId('queue-url').fill(MYHOME_URL);
+      await d.getByTestId('queue-complete').click();
+      await page.getByText(/Linked\. It shows as published once the portal page confirms it\./).first().waitFor();
+      assert.equal(server.db.pubs.get('myhome').status, 'PUBLISHED', 'the stub portal page carries the listing id');
+      assert.ok(server.db.fetched.includes(MYHOME_URL), 'confirmed by fetching the public page');
+      assert.ok(await noOverflow(page), `queue @${width}`);
+      await shot(page, `admin-queue-${width}`);
+    });
+  }
+});
+
 test('phone widths 320/375/390/430: every publishing screen fits, ar/he right-to-left', opts, async (t) => {
   for (const lang of ['ka', 'en', 'ar', 'he']) {
     for (const width of [320, 375, 390, 430]) {
@@ -462,7 +609,7 @@ test('phone widths 320/375/390/430: every publishing screen fits, ar/he right-to
         const server = publishingServer();
         server.handle({ action: 'listing.save', version: 0, listing: { ...normalizeListing({ title: propertyRow.title, description: { ka: 'ბინა' }, propertyType: 'APARTMENT', dealType: 'SALE', price: 1, area: 1, city: 'Tbilisi', street: 'Kazbegi', contactName: 'N', contacts: [{ phone: '+995555123456', whatsapp: true, viber: true }], photos: [PHOTO], portalTargets: ['myhome', 'ssge', 'korter'] }) } });
         const { page } = await boot(tt, { lang, width, height: 800, server, profile: { ...ownerProfile, is_admin: true } });
-        for (const route of ['/publishing', '/publishing/new', `/publishing/${PID}?tab=listing`, `/publishing/${PID}?tab=preview`, `/publishing/${PID}?tab=portals`, ...(lang === 'en' || lang === 'he' ? ['/admin/integrations/portals', '/admin/integrations/portals/myhome'] : [])]) {
+        for (const route of ['/publishing', '/publishing/new', `/publishing/${PID}?tab=listing`, `/publishing/${PID}?tab=preview`, `/publishing/${PID}?tab=portals`, ...(lang === 'en' || lang === 'he' ? ['/admin/integrations/portals', '/admin/integrations/portals/myhome', '/admin/integrations/publishing'] : [])]) {
           await page.goto(`${BASE}${route}`);
           await page.getByRole('heading', { level: 1 }).first().waitFor({ timeout: 20000 });
           await page.waitForTimeout(150);

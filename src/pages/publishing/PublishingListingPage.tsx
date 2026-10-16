@@ -4,11 +4,12 @@
 // property, id = property id). Photos are the property's own gallery — uploading here
 // adds to that gallery, so nothing is stored twice.
 //
-// THE PUBLICATION FLOW, PER PORTAL, AND WHY IT IS A HANDOFF. MyHome.ge and SS.ge offer
-// no authorized submission API and gate listing creation behind the owner's own login
-// and SMS verification. HOMATCH prepares the copy, the owner posts it on the portal,
-// pastes the listing URL back, and the server checks the public page. Only that check
-// makes a publication PUBLISHED — never a click here.
+// THE PUBLICATION FLOW. The owner presses "Publish to Selected Portals" (PublishPanel):
+// HOMATCH publishes through its OWN portal accounts — by a verified adapter where one
+// exists (none today), otherwise a HOMATCH administrator posts it from the admin queue.
+// The owner may still post it themselves instead (the v1 handoff, collapsed below).
+// Either way the server checks the public page; only that check (or, on a portal
+// HOMATCH may not fetch, an attestation labelled as such) makes it PUBLISHED.
 //
 // The tab lives in the URL (?tab=), so refresh, back and forward land where they were.
 
@@ -24,7 +25,8 @@ import { OWNER_SURFACE, PageHero } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { MediaWell, OWNER_PRIMARY, OWNER_SECONDARY } from '@/components/owner/portfolio';
 import { ContactsEditor } from '@/components/publishing/ContactsEditor';
-import { JourneySteps, ListingMark, Panel, PortalCapabilities, PortalLogo, PortalPicker, PublicationMark, RequiredMark, dateTime, useErrorText } from '@/components/publishing/parts';
+import { PublishPanel } from '@/components/publishing/PublishPanel';
+import { FlowSteps, ListingMark, Panel, PortalCapabilities, PortalLogo, PortalPicker, PublicationMark, RequiredMark, dateTime, useErrorText } from '@/components/publishing/parts';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -39,7 +41,7 @@ import { cn } from '@/lib/utils';
 import {
   AMENITIES, CONDITIONS, CURRENCIES, DEAL_TYPES, PROPERTY_TYPES,
   type EventRow, type ListingDraft, type PortalId, type PortalInfo, type Problem, type PublicationRow,
-  copyLanguage, draftFromProperty, handoffText, isOutdated, isRequired, journey, portalDescription, requiredBy,
+  copyLanguage, draftFromProperty, handoffText, isOutdated, isRequired, portalDescription, requiredBy,
 } from '@/publishing/model';
 import { contactFooter, contactLinks, formatPhone, isE164, stripFooter, withFooter } from '@/publishing/contacts';
 import { uploadPropertyPhoto } from '@/services/api';
@@ -52,7 +54,7 @@ type Tab = 'listing' | 'preview' | 'portals';
 const TABS: Tab[] = ['listing', 'preview', 'portals'];
 const INPUT = 'h-10 w-full min-w-0 rounded-lg border border-border bg-[hsl(var(--card))] px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-[hsl(var(--gold-border))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--gold))]/25 aria-[invalid=true]:border-red-400';
 const MAX_UPLOAD = 20 * 1024 * 1024;
-const LIVE_STATUSES = ['VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'UNPUBLISH_REQUESTED'];
+const LIVE_STATUSES = ['VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'UNPUBLISH_REQUESTED', 'QUEUED', 'PUBLISHING', 'ADMIN_ACTION_REQUIRED', 'AUTH_REQUIRED'];
 /** Product names, the same in every language. */
 const APP = { whatsapp: 'WhatsApp', viber: 'Viber' } as const;
 
@@ -80,7 +82,7 @@ function Editor() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
-  const [confirm, setConfirm] = useState<null | { kind: 'archive' | 'delete' } | { kind: 'unpublish'; portal: PortalInfo }>(null);
+  const [confirm, setConfirm] = useState<null | { kind: 'archive' | 'delete' } | { kind: 'unpublish' | 'withdraw'; portal: PortalInfo }>(null);
   const [duplicateTargets, setDuplicateTargets] = useState<Property[] | null>(null);
   const [duplicateTo, setDuplicateTo] = useState('');
   const autoChecked = useRef(false);
@@ -133,6 +135,16 @@ function Editor() {
       }
     })();
   }, [detail, readOnly, propertyId, adopt]);
+
+  /* While HOMATCH's backend is publishing, keep the statuses live (never over unsaved edits). */
+  useEffect(() => {
+    const working = (detail?.publications ?? []).some((p) => p.channel === 'HOMATCH_ACCOUNT' && ['QUEUED', 'PUBLISHING', 'VERIFYING'].includes(p.status));
+    if (!working || dirty) return;
+    const id = window.setInterval(async () => {
+      try { const d = await api.loadListing(propertyId); if (d) adopt(d); } catch { /* the next tick retries */ }
+    }, 15_000);
+    return () => window.clearInterval(id);
+  }, [detail, dirty, propertyId, adopt]);
 
   const update = <K extends keyof ListingDraft>(key: K, value: ListingDraft[K]) => {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
@@ -202,8 +214,19 @@ function Editor() {
   const pubFor = (id: PortalId) => detail?.publications.find((p) => p.portal_id === id) ?? null;
   const live = (detail?.publications ?? []).some((p) => LIVE_STATUSES.includes(p.status));
   const rules = requiredBy(portals, targets);
-  const active = portals.filter((p) => targets.includes(p.id) || pubFor(p.id));
-  const others = portals.filter((p) => !active.includes(p));
+  const centralIds = new Set((detail?.publications ?? []).filter((p) => p.channel === 'HOMATCH_ACCOUNT').map((p) => p.portal_id));
+  // The do-it-yourself handoff covers the portals HOMATCH is not handling.
+  const active = portals.filter((p) => !centralIds.has(p.id) && (targets.includes(p.id) || pubFor(p.id)));
+  const others = portals.filter((p) => !active.includes(p) && !centralIds.has(p.id));
+  const ownHandoffInUse = (detail?.publications ?? []).some((p) => p.channel !== 'HOMATCH_ACCOUNT');
+  const publish = (ids: PortalId[]) => act('publish', async () => {
+    const r = await api.publishToPortals(propertyId, ids, true);
+    const failed = r.results.filter((x) => x.code);
+    const accepted = r.results.length - failed.length;
+    if (accepted) toast.success(t('pubw_publish_accepted', { n: accepted }));
+    for (const f of failed) toast.error(`${portals.find((p) => p.id === f.portalId)?.name ?? f.portalId}: ${errorText(f.code)}`);
+    return r;
+  });
   const openDuplicate = async () => {
     if (!homatchUser?.id) return;
     try {
@@ -258,9 +281,14 @@ function Editor() {
         {readOnly ? <span className="text-2xs font-semibold text-amber-700">{t('pubw_read_only')}</span> : null}
       </div>
 
-      <JourneySteps
-        steps={journey({ saved: !!detail, validation: detail?.listing.validation ?? null, draft, publications: detail?.publications ?? [] })}
-        onSelect={(step) => setTab(['select', 'required', 'phones', 'description', 'photos'].includes(step) ? 'listing' : 'portals')}
+      <FlowSteps
+        steps={{
+          create: !!detail,
+          portals: draft.portalTargets.length > 0 || centralIds.size > 0,
+          preview: !!detail?.listing.validation.ready && !dirty,
+          publish: centralIds.size > 0,
+        }}
+        onSelect={(step) => setTab(step === 'create' ? 'listing' : step === 'preview' ? 'preview' : 'portals')}
       />
 
       <div role="tablist" aria-label={t('pubw_sections')} className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-[hsl(var(--card))] p-1">
@@ -301,12 +329,19 @@ function Editor() {
           <div className="space-y-4">
             {!detail ? (
               <Panel><p className="text-sm text-muted-foreground">{t('pubw_save_first')}</p></Panel>
-            ) : active.length === 0 ? (
-              <Panel title={t('pubw_no_portal_selected_title')}>
-                <p className="mb-3 text-sm text-muted-foreground">{t('pubw_no_portal_selected_body')}</p>
-                <button type="button" className={OWNER_PRIMARY} onClick={() => setTab('listing')}>{t('pubw_choose_portals')}</button>
-              </Panel>
-            ) : active.map((portal) => (
+            ) : (
+              <PublishPanel portals={portals} listing={detail.listing} publications={detail.publications} draft={draft} dirty={dirty}
+                readOnly={readOnly || archived} busy={busy} locale={locale} onPublish={publish}
+                onWithdraw={(portal) => setConfirm({ kind: 'withdraw', portal })} onEdit={() => setTab('listing')} operations={detail.operations} />
+            )}
+            {detail && active.length ? (
+              <details className="rounded-2xl border border-border bg-[hsl(var(--card))] shadow-card" open={ownHandoffInUse} data-testid="pubw-own-handoff">
+                <summary className="flex min-h-12 cursor-pointer items-center gap-2 px-4 py-3 text-sm font-semibold text-foreground sm:px-5">
+                  {t('pubw_own_handoff_title')}
+                </summary>
+                <div className="space-y-4 border-t border-border p-3 sm:p-4">
+                <p className="text-2xs text-muted-foreground">{t('pubw_own_handoff_body')}</p>
+            {active.map((portal) => (
               <PortalCard key={portal.id} portal={portal} pub={pubFor(portal.id)} detail={detail} draft={draft} photos={photos}
                 dirty={dirty} busy={busy} readOnly={readOnly || archived} locale={locale}
                 onPrepare={() => act(`prepare-${portal.id}`, () => api.preparePublication(propertyId, portal.id))}
@@ -319,6 +354,9 @@ function Editor() {
                 onEdit={() => setTab('listing')}
               />
             ))}
+                </div>
+              </details>
+            ) : null}
             {detail && others.length ? (
               <details className="rounded-2xl border border-border bg-[hsl(var(--card))] shadow-card">
                 <summary className="flex min-h-12 cursor-pointer items-center gap-2 px-4 py-3 text-sm font-semibold text-foreground sm:px-5">
@@ -404,10 +442,10 @@ function Editor() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirm?.kind === 'unpublish' ? t('pubw_unpublish_title', { portal: confirm.portal.name }) : t(confirm?.kind === 'delete' ? 'pubw_delete_title' : 'pubw_archive_title')}
+              {confirm?.kind === 'unpublish' || confirm?.kind === 'withdraw' ? t(confirm.kind === 'withdraw' ? 'pubw_withdraw_title' : 'pubw_unpublish_title', { portal: confirm.portal.name }) : t(confirm?.kind === 'delete' ? 'pubw_delete_title' : 'pubw_archive_title')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirm?.kind === 'unpublish' ? t('pubw_unpublish_body', { portal: confirm.portal.name }) : t(confirm?.kind === 'delete' ? 'pubw_delete_body' : 'pubw_archive_body')}
+              {confirm?.kind === 'unpublish' || confirm?.kind === 'withdraw' ? t(confirm.kind === 'withdraw' ? 'pubw_withdraw_body' : 'pubw_unpublish_body', { portal: confirm.portal.name }) : t(confirm?.kind === 'delete' ? 'pubw_delete_body' : 'pubw_archive_body')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -417,14 +455,14 @@ function Editor() {
                 const c = confirm;
                 setConfirm(null);
                 if (!c) return;
-                if (c.kind === 'unpublish') await act(`unpublish-${c.portal.id}`, () => api.unpublishPublication(propertyId, c.portal.id));
+                if (c.kind === 'unpublish' || c.kind === 'withdraw') await act(`unpublish-${c.portal.id}`, () => api.unpublishPublication(propertyId, c.portal.id));
                 else if (c.kind === 'archive') await act('archive', () => api.archiveListing(propertyId));
                 else {
                   try { await api.deleteListing(propertyId); toast.success(t('pubw_deleted')); navigate('/publishing'); } catch (e) { toast.error(errorText(e instanceof api.PublishingError ? e.code : 'NETWORK_ERROR')); }
                 }
               }}
             >
-              {confirm?.kind === 'unpublish' ? t('pubw_unpublish_confirm') : t(confirm?.kind === 'delete' ? 'pubw_delete' : 'pubw_archive')}
+              {confirm?.kind === 'unpublish' || confirm?.kind === 'withdraw' ? t(confirm.kind === 'withdraw' ? 'pubw_withdraw_confirm' : 'pubw_unpublish_confirm') : t(confirm?.kind === 'delete' ? 'pubw_delete' : 'pubw_archive')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -864,6 +864,12 @@ jobs:
             # time) and answers anything else with 401. Inert until the worker
             # runs with VERIFY_QUEUE_ENABLED=1.
             "verify-queue"
+            # PUBLISHING: the Railway browser worker's door to the publishing
+            # operations queue. Same shape as verify-queue: no user JWT, it
+            # authenticates the WORKER_TOKEN itself (constant-time) and answers
+            # anything else with 401. Inert until the worker runs with
+            # PUBLISHING_AUTOMATION_ENABLED=1.
+            "publishing-worker"
             # The durable-job tick. Same shape as the two workers above: it is
             # called by pg_cron, belongs to no customer, and so cannot present
             # a user JWT — it authenticates on the private jobs_worker_token in

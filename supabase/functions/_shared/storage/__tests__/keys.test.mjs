@@ -144,6 +144,7 @@ test('every live bucket has a namespace, and the system ones have no bucket', ()
     'meta-ads-media',
     'mortgage-offer-documents',
     'property-photos',
+    'publishing-artifacts',
     'site-assets',
     'voice-auditions',
   ]);

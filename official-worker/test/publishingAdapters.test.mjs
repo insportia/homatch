@@ -9,8 +9,9 @@ import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { myhome } from '../.tstest-build/publishing/adapters/myhome.js';
 import { ssge } from '../.tstest-build/publishing/adapters/ssge.js';
-import { PublishingRunner } from '../.tstest-build/publishing/runner.js';
+import { PublishingRunner, captureMasked } from '../.tstest-build/publishing/runner.js';
 import { CAPABILITIES } from '../.tstest-build/publishing/capabilities.js';
+import { inventory } from '../.tstest-build/publishing/form.js';
 import { BROWSER_CAPABILITIES } from '../../supabase/functions/publishing-engine/automation.ts';
 
 const CANDIDATES = [process.env.PLAYWRIGHT_CHROME, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].filter(Boolean);
@@ -23,7 +24,8 @@ async function launch() {
 }
 let available = true;
 try { const b = await launch(); await b.close(); } catch { available = false; }
-const opts = available ? {} : { skip: 'no local Chromium binary available' };
+// In CI a missing browser is a failure, never a silent skip (these tests are the adapters' only proof).
+const opts = available || process.env.CI ? {} : { skip: 'no local Chromium binary available' };
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAFCAYAAAB4ka1VAAAAHUlEQVR42mNk+M9Qz0AEYBxVSF+FAP5FDvcfRYWgAAAAAElFTkSuQmCC', 'base64');
 const FOOTER = 'საკონტაქტო ინფორმაცია\nქონების მფლობელი: Nino\nტელეფონი: +995 599 11 12 22\nგანცხადება გამოქვეყნებულია HOMATCH-ის მეშვეობით.';
@@ -252,4 +254,36 @@ test('runner: an operation for a portal without a recorded adapter is refused wi
   await runner.poll();
   assert.equal(launched, false);
   assert.deepEqual(calls.find((c) => c[0] === 'finish')[1].error, 'NO_ADAPTER');
+});
+
+
+test('screenshots never show a password or one-time code: secret inputs are painted over', opts, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 400, height: 200 } });
+  const shot = async (value) => {
+    await page.setContent(`<body style="margin:0;background:#fff"><input type="password" value="${value}" style="position:absolute;left:10px;top:10px;width:300px;height:60px;font-size:40px"><input autocomplete="one-time-code" value="${value}" style="position:absolute;left:10px;top:100px;width:300px;height:60px;font-size:40px"></body>`);
+    return captureMasked(page, false);
+  };
+  const a = await shot('hunter2');
+  const b = await shot('correct-horse-battery');
+  assert.ok(a.equals(b), 'two different secrets produce the identical (masked) image');
+  const unmasked = async (value) => { await page.setContent(`<body style="margin:0"><input type="text" value="${value}" style="font-size:40px"></body>`); return page.screenshot({ type: 'png' }); };
+  assert.ok(!(await unmasked('aaa')).equals(await unmasked('bbb')), 'control: ordinary text does differ');
+});
+
+
+test('inventory (dry-run evidence): every recorded control by label / name / text — and never a value', opts, async (t) => {
+  const h = await harness(t, [[/statements\.myhome\.ge/, html(myhomeForm())]]);
+  await h.page.goto('https://statements.myhome.ge/ka/statement/create');
+  await h.page.locator('[name=total_price]').fill('987654');
+  await h.page.locator('textarea').fill('SECRET-DESCRIPTION-TEXT');
+  const inv = await inventory(h.page);
+  assert.equal(inv.url, 'https://statements.myhome.ge/ka/statement/create');
+  assert.ok(inv.fields.some((f) => f.name === 'total_price' && f.label === 'ფასი'));
+  assert.ok(inv.fields.some((f) => f.label === 'ტელეფონის ნომერი'));
+  assert.ok(inv.controls.some((c) => c.text === 'გამოქვეყნება'));
+  assert.equal(inv.fileInputs, 1);
+  const raw = JSON.stringify(inv);
+  assert.equal(raw.includes('987654') || raw.includes('SECRET-DESCRIPTION-TEXT'), false, 'no typed value is recorded');
 });

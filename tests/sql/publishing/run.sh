@@ -29,3 +29,4 @@ $P -d hmpub -1 -f "$root/supabase/migrations/20261106090000_publishing_providers
 run "$here/providers.sql"
 $P -d hmpub -1 -f "$root/supabase/migrations/20261108090000_publishing_central_accounts.sql"
 run "$here/central.sql"
+bash "$here/rollback.sh"

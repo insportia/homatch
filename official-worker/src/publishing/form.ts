@@ -105,3 +105,40 @@ export async function waitForUploads(page: Page, markerSelector: string, n: numb
 
 /** Georgian mobile in the national format the portals' phone fields take (995 prefix dropped). */
 export const nationalPhone = (e164: string | null) => (e164 ?? '').replace(/^\+995/, '').replace(/\D/g, '');
+
+/**
+ * The page's controls as EVIDENCE for selectors — labels, names, placeholders,
+ * types, roles, option and button texts, and the URL. Never a value: nothing a
+ * person typed, no hidden field, no password, no cookie.
+ */
+export interface Inventory {
+  url: string; title: string; fileInputs: number;
+  fields: Array<{ tag: string; type: string | null; name: string | null; id: string | null; label: string | null; placeholder: string | null; required: boolean; visible: boolean; autocomplete: string | null; options?: string[]; testid: string | null }>;
+  controls: Array<{ tag: string; role: string | null; text: string; type: string | null; href: string | null; testid: string | null; pressed: string | null }>;
+}
+// In-page code as plain JavaScript (the worker builds without DOM typings).
+const INVENTORY_JS = `(() => {
+  const vis = (e) => !!e.getClientRects().length;
+  const text = (e) => ((e && e.textContent) || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+  const fields = Array.from(document.querySelectorAll('input, textarea, select')).filter((e) => e.type !== 'hidden').map((el) => ({
+    tag: el.tagName.toLowerCase(), type: el.type || null, name: el.name || null, id: el.id || null,
+    label: Array.from(el.labels || []).map(text).join(' | ') || el.getAttribute('aria-label') || null,
+    placeholder: el.placeholder || null, required: !!el.required, visible: vis(el), autocomplete: el.getAttribute('autocomplete'),
+    options: el.tagName === 'SELECT' ? Array.from(el.options).map((o) => (o.textContent || '').trim()).slice(0, 40) : undefined,
+    testid: el.getAttribute('data-testid'),
+  }));
+  const controls = Array.from(document.querySelectorAll('button, [role=button], [role=radio], [role=option], [role=tab], [role=checkbox], a[href]'))
+    .filter(vis).slice(0, 300).map((e) => ({ tag: e.tagName.toLowerCase(), role: e.getAttribute('role'), text: text(e), type: e.type || null,
+      href: e.tagName === 'A' ? e.href.replace(/[?#].*$/, '') : null, testid: e.getAttribute('data-testid'),
+      pressed: e.getAttribute('aria-pressed') || e.getAttribute('aria-checked') || e.getAttribute('aria-selected') }));
+  return { url: location.origin + location.pathname, title: document.title.slice(0, 120), fields, controls, fileInputs: document.querySelectorAll('input[type=file]').length };
+})()`;
+
+/**
+ * The page's controls as EVIDENCE for selectors — labels, names, placeholders,
+ * types, roles, option and button texts, and the URL. Never a value: nothing a
+ * person typed, no hidden field, no password, no cookie.
+ */
+export async function inventory(page: Page): Promise<Inventory> {
+  return page.evaluate(INVENTORY_JS) as Promise<Inventory>;
+}

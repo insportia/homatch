@@ -7,6 +7,7 @@ do $$ begin
 end $$;
 create schema if not exists storage;
 create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
 create table public.users (id uuid primary key, auth_id uuid);
 create table public.properties (id uuid primary key, user_id uuid not null references public.users(id), is_deleted boolean not null default false, title text);
 create function public.get_user_id() returns uuid language sql stable as $$ select nullif(current_setting('app.uid', true), '')::uuid $$;

@@ -86,6 +86,59 @@ SS.ge
 Other six portals: everything (login, form, submission, management). Korter.ge's terms
 forbid automated access and Binebi.ge shows a bot challenge on every page — both stay manual.
 
+## Security model (audited 2026-10-16)
+
+- **Screenshots** go to the private bucket `publishing-artifacts`, registered in
+  `_shared/storage/keys.ts` as an ADMIN-only FLAT namespace. There is no `storage.objects`
+  policy and no `storage_authorize` branch for it, so every browser caller is refused.
+  Only the service role writes them (`publishing-worker`, signed upload) and reads them
+  (`publishing-engine admin.operations`, after `is_admin()` on the caller's own token,
+  10-minute signed URLs). Customers only ever see an operation's status and stage.
+- **No secrets in captures**: nothing is typed into password / OTP fields, and every
+  capture paints those inputs over (`captureMasked`, proven by a byte-identical-image test).
+  Stored errors are codes only — a decrypt/JSON failure can no longer quote session text
+  into `last_error` (found and fixed in this audit; regression-tested).
+- **Retention**: 30 days; a deleted listing's screenshots at once (`operation_id` is set
+  null, not cascaded, so they stay findable). Hourly housekeeping removes the storage
+  object first, then exactly its row; a storage failure forgets nothing.
+- **Worker door**: constant-time `WORKER_TOKEN`, no browser origin; the token is the one
+  `verify-queue` and research already share (a separate publishing token would need a new
+  secret on both sides — owner decision).
+- **Sessions**: AES-256-GCM with the portal id as additional data; decrypted only into the
+  claim of an operation on that portal; refreshed cookies are pinned to the portal's domains
+  before re-sealing; never logged.
+
+## Migration safety (`20261108090000_publishing_central_accounts.sql`)
+
+- **Dropped and recreated**: only the CHECK `publishing_engine_jobs_status_check` (the
+  8 v1 statuses → the same 8 plus 6 central ones). Everything else is additive; the two v1
+  functions are `create or replace` with the same signatures and grants.
+- **Production state measured read-only (2026-10-16)**: 0 rows in `publishing_engine_jobs`;
+  no triggers or views depend on it; its constraints and all four publishing function
+  bodies are byte-identical (md5) to the local test chain.
+- **Proof** (`tests/sql/publishing/rollback.sh`, on that production-identical chain): applies
+  in one transaction; an existing v1 publication keeps its status and becomes an owner
+  handoff; a second apply is refused atomically; `docs/publishing/rollback-20261108090000.sql`
+  restores every function / constraint / column / grant / bucket fingerprint and keeps the
+  publication. The rollback refuses to run once any central publication or operation exists.
+- **Locks**: ALTER TABLE takes ACCESS EXCLUSIVE on `publishing_engine_jobs` for the
+  constraint swap and the metadata-only column adds — milliseconds at 0 rows.
+
+## Real-browser dry run (owner, on a computer that can reach the portal)
+
+```
+cd official-worker && npm ci
+npx tsx scripts/publishing-dry-run.ts myhome --photo test1.jpg --photo test2.jpg
+npx tsx scripts/publishing-dry-run.ts ssge --inspect
+```
+You sign in to the HOMATCH account in the visible window yourself. The dry run runs the
+SAME adapter code as the worker, never presses Publish (live approval false and the submit
+door always closed), and writes masked screenshots, `result.json` and control inventories
+(labels / names / buttons — never values) to a local folder. `--inspect` never clicks: you
+navigate (SS.ge: to the creation form, through photos, to the final publish step) and record
+each page. Send the folder back; the missing selectors are derived from it, and each
+capability level is raised only with that evidence.
+
 ## Turning it on (Phase D — needs the owner)
 
 1. Apply migration `20261108090000_publishing_central_accounts.sql` (SQL Editor; it contains a DROP).

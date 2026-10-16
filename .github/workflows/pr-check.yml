@@ -175,6 +175,11 @@ jobs:
           node-version: 24
       - name: Install worker dependencies
         run: npm install --prefix official-worker --no-audit --no-fund
+      # The publishing adapters' only proof is a real Chromium run against the
+      # recorded-control fixtures (official-worker/test/publishingAdapters.test.mjs),
+      # which fails in CI rather than skipping without a browser.
+      - name: Install Chromium for the browser tests
+        run: cd official-worker && env -u PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD npx playwright install --with-deps chromium
       - name: Worker tests
         run: npm --prefix official-worker test
 

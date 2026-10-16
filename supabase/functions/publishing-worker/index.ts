@@ -12,6 +12,7 @@
 //   finish       {id, token, outcome, result, error, retryable}
 //   session.save {id, token, storageState}           → refreshed cookies, re-sealed
 //   artifact     {id, token, kind, stage, name}      → signed upload URL for a screenshot / log
+//   housekeeping {}                                  → retention: expired / orphaned screenshots removed
 //
 // WHAT THE WORKER NEVER RECEIVES: another portal's session, any password, the
 // sealing key, or a listing it was not leased. A session is decrypted only into
@@ -28,8 +29,6 @@ import { adapterFor, configs, type ProviderRow } from '../publishing-engine/prov
 import { openCredential, sealCredential, type Envelope } from '../publishing-engine/vault.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Worker screenshots / logs: service-role only, no browser path (like verify-queue's verify-evidence). */
-const ARTIFACTS_BUCKET = 'publishing-artifacts';
 const MAX_BODY = 1_000_000;
 const JOB_COLUMNS = 'id,listing_id,user_id,portal_id,status,channel,revision,external_id,external_url,listing_version,check_attempts,last_checked_at,next_check_at,published_at,last_error,contact_consent_at,status_reason';
 
@@ -120,7 +119,10 @@ export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.
           let session: unknown = null;
           try { session = await sessionFor(op.portal_id); } catch (e) {
             // An unreadable session cannot be used: hand the operation back as blocked.
-            await rpc('publishing_op_finish', { p_op: op.id, p_token: op.lease_token, p_outcome: 'BLOCKED', p_result: {}, p_error: e instanceof Error ? e.message : 'CREDENTIAL_UNREADABLE', p_retryable: false });
+            // Only a code is ever stored — a JSON.parse error message quotes the
+            // decrypted text, which is a session cookie.
+            const code = e instanceof Error && /^[A-Z_]+$/.test(e.message) ? e.message : 'CREDENTIAL_UNREADABLE';
+            await rpc('publishing_op_finish', { p_op: op.id, p_token: op.lease_token, p_outcome: 'BLOCKED', p_result: {}, p_error: code, p_retryable: false });
             continue;
           }
           const task: Record<string, unknown> = {
@@ -163,6 +165,18 @@ export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.
         return json({ tasks });
       }
 
+      case 'housekeeping': {
+        // Retention: expired / orphaned screenshots — object first, then the row.
+        const { data: due, error } = await db.rpc('publishing_artifacts_due', { p_limit: 200 });
+        if (error) fail('QUEUE_REQUEST_FAILED');
+        const rows = (due ?? []) as Array<{ id: number; path: string }>;
+        if (!rows.length) return json({ removed: 0 });
+        const { error: re } = await db.storage.from('publishing-artifacts').remove(rows.map((r) => r.path));
+        if (re) return json({ removed: 0, code: 'ARTIFACT_REMOVE_FAILED' });
+        const removed = await rpc('publishing_artifacts_forget', { p_ids: rows.map((r) => r.id) });
+        return json({ removed });
+      }
+
       case 'heartbeat':
         return json({ ok: !!(await rpc('publishing_op_heartbeat', { p_op: input.id, p_token: input.token, p_stage: /^[A-Z_]{2,40}$/.test(String(input.stage)) ? input.stage : null, p_lease_seconds: Number(input.leaseSeconds) || 300 })) });
 
@@ -183,7 +197,7 @@ export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.
         const kind = input.kind === 'LOG' ? 'LOG' : 'SCREENSHOT';
         const name = `${String(input.stage || 'STEP').replace(/[^A-Z_]/g, '').slice(0, 30) || 'STEP'}-${deps.now().getTime()}.${kind === 'LOG' ? 'json' : 'png'}`;
         const path = `${op.id}/${name}`;
-        const { data, error } = await db.storage.from(ARTIFACTS_BUCKET).createSignedUploadUrl(path);
+        const { data, error } = await db.storage.from('publishing-artifacts').createSignedUploadUrl(path);
         if (error || !data) fail('ARTIFACT_UPLOAD_FAILED');
         await db.from('publishing_artifacts').insert({ operation_id: op.id, kind, stage: input.stage ?? null, path });
         return json({ path, uploadUrl: data.signedUrl, token: data.token });

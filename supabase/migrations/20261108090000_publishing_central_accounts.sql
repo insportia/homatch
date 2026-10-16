@@ -41,7 +41,9 @@
 --                              account, and submit_started_at — set once, before the
 --                              portal's publish button is pressed, after which no
 --                              retry ever submits again (RECONCILIATION_REQUIRED).
---   publishing_artifacts       screenshots / diagnostic logs per operation (private bucket).
+--   publishing_artifacts       screenshots per operation (private bucket publishing-artifacts,
+--                              registered in _shared/storage/keys.ts as an ADMIN-only FLAT
+--                              namespace); retained 30 days, removed at once with the listing.
 --
 -- Service-role only (RLS on, no policies). Admins reach it through the
 -- publishing-engine function, which re-checks is_admin() with the caller's own
@@ -305,13 +307,16 @@ grant all on public.publishing_operations to service_role;
 
 create table public.publishing_artifacts (
   id bigint generated always as identity primary key,
-  operation_id uuid not null references public.publishing_operations(id) on delete cascade,
+  -- SET NULL, not CASCADE: a deleted listing's screenshots must still be found by
+  -- housekeeping and removed from storage (an orphan object would outlive its row).
+  operation_id uuid references public.publishing_operations(id) on delete set null,
   kind text not null check (kind in ('SCREENSHOT', 'LOG')),
   stage text,
   path text not null check (path ~ '^[0-9a-f-]{36}/[A-Za-z0-9_.-]{1,80}$'),
   sha256 text check (sha256 is null or sha256 ~ '^[0-9a-f]{64}$'),
   created_at timestamptz not null default now()
 );
+create index publishing_artifacts_due on public.publishing_artifacts(created_at);
 alter table public.publishing_artifacts enable row level security;
 revoke all on public.publishing_artifacts from anon, authenticated;
 grant all on public.publishing_artifacts to service_role;
@@ -423,3 +428,25 @@ grant execute on function public.publishing_op_claim(text, text[], integer) to s
 grant execute on function public.publishing_op_heartbeat(uuid, uuid, text, integer) to service_role;
 grant execute on function public.publishing_op_mark_submitting(uuid, uuid) to service_role;
 grant execute on function public.publishing_op_finish(uuid, uuid, text, jsonb, text, boolean) to service_role;
+
+-- RETENTION: screenshots are kept 30 days, and dropped at once when their listing
+-- is deleted (operation_id set null). Housekeeping (publishing-worker) removes the
+-- storage objects first and then forgets exactly the rows whose object is gone.
+create function public.publishing_artifacts_due(p_limit integer)
+returns table (id bigint, path text) language sql security invoker set search_path = public, pg_temp as $$
+  select a.id, a.path from public.publishing_artifacts a
+   where a.operation_id is null or a.created_at < now() - interval '30 days'
+   order by a.created_at limit least(greatest(coalesce(p_limit, 100), 1), 500);
+$$;
+create function public.publishing_artifacts_forget(p_ids bigint[])
+returns integer language plpgsql security invoker set search_path = public, pg_temp as $$
+declare v integer;
+begin
+  delete from public.publishing_artifacts where id = any(coalesce(p_ids, '{}'));
+  get diagnostics v = row_count;
+  return v;
+end $$;
+revoke all on function public.publishing_artifacts_due(integer) from public, anon, authenticated;
+revoke all on function public.publishing_artifacts_forget(bigint[]) from public, anon, authenticated;
+grant execute on function public.publishing_artifacts_due(integer) to service_role;
+grant execute on function public.publishing_artifacts_forget(bigint[]) to service_role;

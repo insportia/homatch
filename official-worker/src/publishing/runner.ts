@@ -33,6 +33,13 @@ export interface RunnerOptions {
 }
 
 const MAX_PHOTO_BYTES = 8_000_000;
+/** Inputs whose content must never appear in a screenshot. Nothing is typed into them, but a portal may prefill. */
+const SECRET_INPUTS = 'input[type=password], input[autocomplete=one-time-code], input[autocomplete=current-password], input[autocomplete=new-password], input[name*=otp i], input[name*=code i][maxlength="6"]';
+const HOUSEKEEPING_MS = 60 * 60_000;
+
+/** Every capture the worker stores goes through here: secret inputs are painted over. */
+export const captureMasked = (page: import('playwright').Page, fullPage = true) =>
+  page.screenshot({ fullPage, type: 'png', mask: [page.locator(SECRET_INPUTS)], maskColor: '#000' });
 function sniff(b: Buffer): string | null {
   if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg';
   if ([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => b[i] === v)) return 'image/png';
@@ -45,6 +52,7 @@ export class PublishingRunner {
   private running = 0;
   private stopped = false;
   private timer: NodeJS.Timeout | null = null;
+  private lastHousekeeping = 0;
   readonly stats = { claimed: 0, succeeded: 0, prepared: 0, failed: 0, blocked: 0, reconcile: 0, lastError: null as string | null, lastPollAt: null as string | null };
 
   constructor(private o: RunnerOptions) {}
@@ -74,6 +82,11 @@ export class PublishingRunner {
   async poll() {
     const free = (this.o.concurrency ?? 2) - this.running;
     this.stats.lastPollAt = new Date().toISOString();
+    if (Date.now() - this.lastHousekeeping > HOUSEKEEPING_MS) {
+      this.lastHousekeeping = Date.now();
+      // Retention of screenshots (30 days; at once for deleted listings) — best effort.
+      try { await this.o.gateway.call('housekeeping', {}); } catch { /* next hour */ }
+    }
     if (free <= 0) return;
     const { tasks } = await this.o.gateway.call<{ tasks: Task[] }>('claim', { worker: this.o.workerId, portals: this.portals(), leaseSeconds: this.o.leaseSeconds ?? 300 });
     const mine = (tasks ?? []).slice(0, free);
@@ -128,9 +141,9 @@ export class PublishingRunner {
         stage: async (s: string) => { if (leaseLost) throw new StopError('LEASE_LOST', true); stage = s; await beat(); if (leaseLost) throw new StopError('LEASE_LOST', true); },
         screenshot: async (s: string) => {
           try {
-            const png = await page.screenshot({ fullPage: true, type: 'png' });
+            const png = await captureMasked(page);
             const up = await g.call<{ uploadUrl: string }>('artifact', { id: task.id, token: task.leaseToken, kind: 'SCREENSHOT', stage: s });
-            await (this.o.fetcher ?? fetch)(up.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: png });
+            await (this.o.fetcher ?? fetch)(up.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: new Uint8Array(png) });
           } catch { /* evidence is best effort; it never decides an outcome */ }
         },
         markSubmitting: async () => { if (leaseLost) return false; const r = await g.call<{ ok: boolean }>('submitting', { id: task.id, token: task.leaseToken }); return r.ok === true; },
@@ -155,7 +168,7 @@ export class PublishingRunner {
       const transient = !stop && /Timeout|net::ERR_|Target closed|Navigation/i.test(message);
       result = stop ? { outcome: stop.outcome, error: stop.code, retryable: stop.retryable } : { outcome: 'FAILED', error: transient ? 'PORTAL_TIMEOUT' : 'WORKER_ERROR', retryable: transient };
       if (stop?.retryable && stop.outcome === 'BLOCKED') result.outcome = 'FAILED';
-      try { const page = context?.pages()[0]; if (page) { const png = await page.screenshot({ type: 'png' }); const up = await g.call<{ uploadUrl: string }>('artifact', { id: task.id, token: task.leaseToken, kind: 'SCREENSHOT', stage: 'ERROR' }); await (this.o.fetcher ?? fetch)(up.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: png }); } } catch { /* best effort */ }
+      try { const page = context?.pages()[0]; if (page) { const png = await captureMasked(page, false); const up = await g.call<{ uploadUrl: string }>('artifact', { id: task.id, token: task.leaseToken, kind: 'SCREENSHOT', stage: 'ERROR' }); await (this.o.fetcher ?? fetch)(up.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: new Uint8Array(png) }); } } catch { /* best effort */ }
     } finally {
       clearInterval(heart);
       await context?.close().catch(() => undefined);

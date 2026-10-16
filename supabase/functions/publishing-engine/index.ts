@@ -32,8 +32,6 @@ import { FIELD_KEYS, OPERATIONS, adapterFor, configs, profileById, sanitizePatch
 
 const ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Worker screenshots / logs: service-role only, no browser path (like verify-queue's verify-evidence). */
-const ARTIFACTS_BUCKET = 'publishing-artifacts';
 const READS = new Set(['workspace', 'listing.get', 'provider.operation', 'admin.providers', 'admin.publications', 'admin.accounts', 'admin.queue', 'admin.job.get', 'admin.operations']);
 const OP_COLUMNS = 'id,publication_id,portal_id,kind,status,stage,attempts,max_attempts,available_at,submit_started_at,last_error,created_at,updated_at';
 const PROVIDER_COLUMNS = 'id,enabled,sort,create_url,logo_url,verification,max_photos,description_max,required_fields,health_status,health_checked_at,health_detail,updated_at';
@@ -529,7 +527,7 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
         const { data: arts } = opIds.length ? await db.from('publishing_artifacts').select('operation_id,kind,stage,path,created_at').in('operation_id', opIds).order('created_at', { ascending: false }).limit(300) : { data: [] as any[] };
         const artifacts = [];
         for (const a of arts ?? []) {
-          const { data: signed } = await db.storage.from(ARTIFACTS_BUCKET).createSignedUrl(a.path, 600);
+          const { data: signed } = await db.storage.from('publishing-artifacts').createSignedUrl(a.path, 600);
           artifacts.push({ ...a, url: signed?.signedUrl ?? null });
         }
         return reply({ operations: ops ?? [], artifacts });

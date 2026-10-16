@@ -108,6 +108,18 @@ select pg_temp.ok(not has_table_privilege('authenticated', 'public.publishing_op
 select pg_temp.ok(not has_table_privilege('authenticated', 'public.publishing_account_sessions', 'select'), 'authenticated cannot read sessions');
 select pg_temp.ok(not has_function_privilege('authenticated', 'public.publishing_op_claim(text,text[],integer)', 'execute'), 'authenticated cannot claim');
 select pg_temp.ok((select not public from storage.buckets where id = 'publishing-artifacts'), 'artifacts bucket is private');
+-- Retention: fresh screenshots stay; 30-day-old and orphaned ones (listing deleted) are due.
+insert into public.publishing_artifacts(operation_id, kind, stage, path) values
+  ((select id from c4), 'SCREENSHOT', 'FRESH', (select id from c4)::text || '/FRESH-1.png'),
+  ((select id from c4), 'SCREENSHOT', 'OLD', (select id from c4)::text || '/OLD-1.png');
+update public.publishing_artifacts set created_at = now() - interval '31 days' where stage = 'OLD';
+select pg_temp.ok((select string_agg(path, ',') from public.publishing_artifacts_due(100)) like '%OLD-1.png' and (select count(*) from public.publishing_artifacts_due(100)) = 1, 'only the 30-day-old screenshot is due');
+delete from public.publishing_operations where id = (select id from c4);
+select pg_temp.ok((select count(*) from public.publishing_artifacts where operation_id is null) = 2, 'deleting the operation keeps the rows (set null) so their objects can still be removed');
+select pg_temp.ok((select count(*) from public.publishing_artifacts_due(100)) = 2, 'orphaned screenshots are due at once');
+select pg_temp.ok(public.publishing_artifacts_forget((select array_agg(id) from public.publishing_artifacts_due(100))) = 2, 'forget removes exactly the due rows');
+select pg_temp.ok(not exists (select 1 from public.publishing_artifacts), 'nothing left behind');
+select pg_temp.ok(not has_function_privilege('authenticated', 'public.publishing_artifacts_due(integer)', 'execute'), 'authenticated cannot list artifacts');
 
 -- Privileges: no browser role touches accounts, their audit or the RPC.
 select pg_temp.ok(not has_table_privilege('authenticated', 'public.publishing_accounts', 'select'), 'authenticated cannot read accounts');

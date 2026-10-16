@@ -82,6 +82,8 @@ async function makeDb({ session = true } = {}) {
       t.events.push(p_event);
       return { data: row, error: null };
     },
+    publishing_artifacts_due: () => ({ data: t.due ?? [], error: null }),
+    publishing_artifacts_forget: ({ p_ids }) => { t.forgotten = p_ids; return { data: p_ids.length, error: null }; },
     publishing_account_write({ p_portal, p_patch, p_action }) {
       const a = t.publishing_accounts.find((x) => x.portal_id === p_portal);
       Object.assign(a, p_patch);
@@ -110,6 +112,7 @@ async function makeDb({ session = true } = {}) {
   const storage = { from: () => ({
     createSignedUrl: async (path) => ({ data: { signedUrl: `https://signed.test/${path}` } }),
     createSignedUploadUrl: async (path) => ({ data: { signedUrl: `https://upload.test/${path}`, token: 'tok' }, error: null }),
+    remove: async (paths) => { (t.removedObjects ??= []).push(...paths); return { error: t.removeFails ? { message: 'down' } : null }; },
   }) };
   return { t, db: { from, storage, rpc: async (n, a) => rpc[n](a) } };
 }
@@ -247,4 +250,30 @@ test('photo signing: R2 keys through the object store, legacy paths through Supa
   assert.equal(await signPhoto(db, 'https://cdn.example/x.jpg', 900, sign), 'https://cdn.example/x.jpg');
   assert.equal(await signPhoto(db, 'users/u/x.jpg', 900, async () => { throw new Error('R2 down'); }), null);
   assert.equal(await signPhoto(db, '', 900, sign), null);
+});
+
+
+test('housekeeping: the storage object goes first, then exactly its row; a storage failure forgets nothing', async () => {
+  const env = await makeDb();
+  env.t.due = [{ id: 1, path: 'op/OLD-1.png' }, { id: 2, path: 'op/ORPHAN-1.png' }];
+  assert.deepEqual((await call(env.db, 'housekeeping')).body, { removed: 2 });
+  assert.deepEqual(env.t.removedObjects, ['op/OLD-1.png', 'op/ORPHAN-1.png']);
+  assert.deepEqual(env.t.forgotten, [1, 2]);
+  const env2 = await makeDb();
+  env2.t.due = [{ id: 3, path: 'op/X.png' }];
+  env2.t.removeFails = true;
+  assert.equal((await call(env2.db, 'housekeeping')).body.code, 'ARTIFACT_REMOVE_FAILED');
+  assert.equal(env2.t.forgotten, undefined, 'rows stay until their objects are gone');
+});
+
+
+test('a session that decrypts to non-JSON is blocked with a code — the decrypted text never reaches a stored error', async () => {
+  const env = await makeDb();
+  env.t.publishing_account_sessions[0].envelope = await sealCredential('sid=SECRET-COOKIE-VALUE; not json', 'session:myhome', KEY);
+  await enqueueCreate(env);
+  assert.equal((await call(env.db, 'claim', { worker: 'w1', portals: ['myhome'] })).body.tasks.length, 0);
+  const op = env.t.publishing_operations[0];
+  assert.equal(op.status, 'BLOCKED');
+  assert.equal(op.last_error, 'CREDENTIAL_UNREADABLE');
+  assert.equal(JSON.stringify(env.t).includes('SECRET-COOKIE-VALUE'), false);
 });

@@ -155,6 +155,13 @@ MATTERS right now, verify against the live systems, not this file)
   and all other portals NOT_EXPLORED. SS.ge CREATE always stops at PREPARED (publish control not
   recorded). NOTHING has run against a live portal. Needs: migration, `PUBLISHING_CREDENTIALS_KEY`
   edge secret, Railway var, a captured session, then the owner's live-submit approval.
+- **Audit 2026-10-16 (PR #226)**: `publishing-artifacts` registered in the Storage map (ADMIN-only FLAT;
+  browser callers refused by storage_authorize); screenshots mask password/OTP inputs; 30-day retention +
+  immediate removal for deleted listings (housekeeping); a session-text leak into `last_error` fixed;
+  CI worker job now installs Chromium and the adapter tests fail closed (they had been skipped in CI).
+  Migration verdict: only the jobs status CHECK is dropped/recreated; prod has 0 jobs; functions
+  byte-identical to the test chain; apply / re-apply / rollback proven (`tests/sql/publishing/rollback.sh`).
+  Real-browser: still blocked here (portal domains denied); owner-run `official-worker/scripts/publishing-dry-run.ts`.
 
 ## Storage retention v2 — object-level allowlist (PR #216, merged 37cc6900, migration applied 2026-10-16 as ledger 20261016071129)
 

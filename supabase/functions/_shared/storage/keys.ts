@@ -83,6 +83,8 @@ const MEDIA: ContentPolicy = {
   maxBytes: 200 * MB,
 };
 const AUDIO: ContentPolicy = { mime: ['audio/'], maxBytes: 50 * MB };
+// Publishing browser-worker diagnostics: what the publishing-artifacts bucket accepts.
+const PUBLISHING_ARTIFACT: ContentPolicy = { mime: ['image/png', 'image/jpeg', 'application/json', 'text/plain'], maxBytes: 5 * MB };
 // Meta Ads creatives: exactly what the meta-ads-media bucket accepts (its
 // allowed_mime_types and 50 MB file_size_limit), so a creative routed to R2 is
 // held to the same rule as one written to Supabase Storage.
@@ -242,6 +244,17 @@ export const NAMESPACES: Record<string, NamespaceRules> = {
       + 'the live storage policies bind INSERT to the owner prefix and '
       + 'SELECT to owner-or-admin, and the bucket itself caps files at 50MB '
       + 'with image/jpeg,png,webp + video/mp4,quicktime only.',
+  },
+
+  'publishing-artifacts': {
+    legacyBucket: 'publishing-artifacts', shape: 'FLAT',
+    READ: ADMIN, WRITE: ADMIN, DELETE: ADMIN, content: PUBLISHING_ARTIFACT,
+    note: 'Publishing browser-worker screenshots (<operation uuid>/<STAGE>-<ms>.png). Private bucket with NO '
+      + 'storage.objects policy and no storage_authorize branch, so every browser caller is refused '
+      + '(INVALID_KEY); only the service role writes (publishing-worker, signed upload) and reads '
+      + '(publishing-engine admin.operations, after is_admin(), 10-minute signed URLs). Password / OTP '
+      + 'inputs are masked in every capture. Deleted after 30 days, or at once when the listing is deleted '
+      + '(publishing-worker housekeeping).',
   },
 
   // ── System namespaces ─────────────────────────────────────────────────

@@ -180,7 +180,7 @@ function QuickActions({ actions }: { actions: QuickAction[] }) {
 
 function DiscoverySection({
   propertyId, userId, transactionType, matchCounts, creditBalance, life, contactReady,
-  onNavigateMatches, onCountsRefresh, onRenewed, onSearchKnown,
+  onNavigateMatches, onSearchStarted, onCountsRefresh, onRenewed, onSearchKnown,
 }: {
   propertyId: string;
   userId: string;
@@ -191,6 +191,8 @@ function DiscoverySection({
   life: PropertyLifecycle | null | undefined;
   contactReady: boolean;
   onNavigateMatches: () => void;
+  /** A search was accepted: go to its live results page. */
+  onSearchStarted: () => void;
   onCountsRefresh: (counts: { total: number; newCount: number; strongCount: number }) => void;
   onRenewed: () => void;
   /** Tells the page header whether this property already has a search (its results page). */
@@ -227,6 +229,8 @@ function DiscoverySection({
      matches stay, a NEW search waits for the (free) renewal. */
   const expired = life?.freshness_state === 'EXPIRED' && !life.archived;
   const [startPhase, setStartPhase] = useState<SearchStartPhase>(null);
+  const mounted = React.useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const handleStart = async (
     authorizedMaxCredits: number | null,
@@ -236,23 +240,24 @@ function DiscoverySection({
     setShowBudget(false);
     setLoading(true);
     setStartPhase('starting');
+    let started = false;
     try {
       const result = await startMatchingCampaign(
         propertyId, userId, authorizedMaxCredits, searchLanguages ?? null,
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      /* Started: say what happens next, then take the owner to the search page. */
-      setStartPhase('started');
-      window.setTimeout(() => { setStartPhase((p) => { if (p === 'started') onNavigateMatches(); return null; }); }, 2600);
+      started = true;
     } catch (e) {
-      setStartPhase(null);
+      if (mounted.current) setStartPhase(null);
       const refused = campaignStartErrorKey(e);
       toast.error(refused ? t(refused.key as never, refused.vars) : t('matches_start_failed'));
-    } finally {
-      await refresh();
-      setLoading(false);
     }
+    /* Started: land on the live results page at once — no timer, no navigation inside a
+       state update. The results page reads the running search from the server. */
+    if (started) { onSearchStarted(); return; }
+    await refresh();
+    if (mounted.current) setLoading(false);
   };
 
   const control = async (action: 'pause' | 'resume') => {
@@ -295,7 +300,7 @@ function DiscoverySection({
   return (
     <>
     <SearchStartingDialog phase={startPhase} tenant={String(transactionType ?? '').toUpperCase() === 'RENT'}
-      onGo={() => { setStartPhase(null); onNavigateMatches(); }} onClose={() => setStartPhase(null)} />
+      onGo={() => { setStartPhase(null); onSearchStarted(); }} onClose={() => setStartPhase(null)} />
     <section aria-labelledby="pow-discovery-title" data-testid="pow-discovery" className="hm-owner-panel overflow-hidden">
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
         {/* Left: what this is and where the search stands — the server's state. */}
@@ -758,6 +763,7 @@ function PropertyDetailContent() {
             life={life}
             contactReady={contactReady}
             onNavigateMatches={() => navigate(`/property/${id}/matches`)}
+            onSearchStarted={() => navigate(`/property/${id}/buyers/external`, { state: { fbStarted: true } })}
             onCountsRefresh={setMatchCounts}
             onRenewed={onRenewed}
             onSearchKnown={setSearchExists}

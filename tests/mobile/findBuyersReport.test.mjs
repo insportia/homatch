@@ -197,6 +197,9 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
     if (url.includes('/rpc/admin_discovery_')) return r.fulfill(json({ message: 'not in this fixture' }, 400));
     if (url.includes('/rest/v1/properties')) return r.fulfill(json(wantsObject ? property : [property]));
     if (url.includes('/rest/v1/find_buyers_current_leads')) {
+      /* The lead detail reads one row by id=eq.<id>, like PostgREST. */
+      const one = new URL(url).searchParams.get('id');
+      if (one) { const rows = leads.filter((l) => `eq.${l.id}` === one); return r.fulfill(json(rows)); }
       return r.fulfill({ ...json(leads), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': `0-${leads.length - 1}/${leads.length}` } });
     }
     if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json(status));
@@ -210,8 +213,12 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
   return { page, calls };
 }
 
+/* 2026-10-16: the report lives in the live module's collapsed "Search details". */
 async function openReport(page) {
   await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbl-details-toggle"]', { timeout: 30000 });
+  assert.equal(await page.locator('[data-testid="fbr-report"]').count(), 0, 'the technical report is collapsed by default');
+  await page.click('[data-testid="fbl-details-toggle"]');
   await page.waitForSelector('[data-testid="fbr-report"]', { timeout: 30000 });
 }
 async function expand(page) {
@@ -309,17 +316,27 @@ test('live search: a partial report, leads grouped Strong → Potential → Weak
   assert.match(notes[1], /Genuine purchase requests were found \(2\), but none matched both/);
   assert.match(notes[2], /renting, not buying \(78% of requests\)/);
   assert.match(notes[4], /Job-related posts surfaced in property groups \(12\)/);
+  /* Buyers tab: STRONG and POTENTIAL only; the WEAK request is an interested person needing verification. */
   await page.waitForSelector('[data-testid="fbx-lead-group"]', { timeout: 20000 });
   const groups = await page.$$eval('[data-testid="fbx-lead-group"]', (els) => els.map((e) => e.getAttribute('data-category')));
-  assert.deepEqual(groups, ['STRONG', 'POTENTIAL', 'WEAK'], 'category order; REJECTED never shown');
+  assert.deepEqual(groups, ['STRONG', 'POTENTIAL'], 'category order; WEAK is not a buyer; REJECTED never shown');
   const main = await page.textContent('main');
   assert.doesNotMatch(main, /Job Seeker/, 'a rejected lead never renders');
-  const fits = await page.$$eval('[data-testid="fbx-fit-badges"] [data-fit]', (els) => els.map((e) => `${e.getAttribute('data-fit')}:${e.textContent}`));
-  assert.deepEqual(fits, [
-    'COMPATIBLE:Budget fits', 'COMPATIBLE:Location fits',
-    'UNKNOWN:Budget unknown', 'COMPATIBLE:Location fits',
-    'UNKNOWN:Budget unknown', 'UNKNOWN:Location unknown',
-  ], 'UNKNOWN reads unknown, never fits');
+  assert.match(await page.textContent('[data-testid="fbx-tab-direct"]'), /2/);
+  assert.match(await page.textContent('[data-testid="fbx-tab-interest"]'), /1/, 'counts are the cards listed (REJECTED not counted)');
+  await page.click('[data-testid="fbx-tab-interest"]');
+  await page.waitForSelector('[data-testid="fbx-lead-card"][data-verify="true"]', { timeout: 10000 });
+  assert.deepEqual(await page.$$eval('[data-testid="fbx-lead-group"]', (els) => els.map((e) => e.getAttribute('data-category'))), ['WEAK']);
+  /* Fit badges moved to the lead detail page: UNKNOWN reads unknown, never fits. */
+  const fitsOf = async (leadId) => {
+    await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/lead/${leadId}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="fbld-compat"] [data-testid="fbx-fit-badges"] [data-fit]', { timeout: 20000 });
+    return page.$$eval('[data-testid="fbx-fit-badges"] [data-fit]', (els) => els.map((e) => `${e.getAttribute('data-fit')}:${e.textContent}`));
+  };
+  assert.deepEqual(await fitsOf('l1'), ['COMPATIBLE:Budget fits', 'COMPATIBLE:Location fits']);
+  assert.deepEqual(await fitsOf('l2'), ['UNKNOWN:Budget unknown', 'COMPATIBLE:Location fits']);
+  assert.deepEqual(await fitsOf('l3'), ['UNKNOWN:Budget unknown', 'UNKNOWN:Location unknown'], 'UNKNOWN reads unknown, never fits');
+  await openReport(page);
   await expand(page);
   const l = await layout(page);
   assert.match(l.report, /Running for 12 min 22 s/);

@@ -86,7 +86,7 @@ const lead = (id, over) => ({
 const LEADS = [
   lead('l1', {}),
   lead('l2', {
-    source: 'VK', overall_score: 81, strength: 'STRONG', similarity: 84, intent_score: 92, language: 'ru', author_name: 'Дмитрий К.',
+    source: 'VK', overall_score: 81, strength: 'STRONG', match_category: 'STRONG', similarity: 84, intent_score: 92, language: 'ru', author_name: 'Дмитрий К.',
     author_profile_url: 'https://vk.com/id12345', signal_count: 2,
     score_components: { why: { kind: 'REQUEST_POST', bedrooms: 2, propertyType: 'APARTMENT', district: 'krtsanisi', city: null, agreed: ['price'], parentAgeDays: null } },
     evidence: [
@@ -154,7 +154,8 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
     if (url.includes('/rest/v1/find_buyers_current_leads')) {
       /* One search at a time: honour matching_job_id=eq.<job> like PostgREST does. */
       const job = new URL(url).searchParams.get('matching_job_id');
-      const rows = job ? leads.filter((l) => `eq.${l.matching_job_id}` === job) : leads;
+      const one = new URL(url).searchParams.get('id');
+      const rows = (job ? leads.filter((l) => `eq.${l.matching_job_id}` === job) : leads).filter((l) => !one || `eq.${l.id}` === one);
       return r.fulfill({ ...json(rows), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': rows.length ? `0-${rows.length - 1}/${rows.length}` : '*/0' } });
     }
     if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json(status));
@@ -210,31 +211,45 @@ const PROVIDER_SETTINGS = [
    only the Russian request post). */
 async function open(page) {
   await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external?tab=interest`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector(`a[href="${COMMENT_URL}"]`, { timeout: 30000 });
+  await page.waitForSelector('[data-testid="fbx-lead-card"]', { timeout: 30000 });
+}
+/* 2026-10-16: the technical view (tiles, per-source outcomes, profile, report) is one collapsed disclosure. */
+async function openDetails(page) {
+  await page.waitForSelector('[data-testid="fbl-details-toggle"]', { timeout: 30000 });
+  if (await page.locator('[data-testid="fbl-details"]').count() === 0) await page.click('[data-testid="fbl-details-toggle"]');
+  await page.waitForSelector('[data-testid="fbl-details"]', { timeout: 5000 });
 }
 
-const anchors = (page) => page.$$eval('article a[href]', (as) => as.map((a) => ({
+const anchors = (page) => page.$$eval('main a[href^="http"], main a[href^="data:"], main a[href^="javascript:"], main a[href^="signal:"]', (as) => as.map((a) => ({
   href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') ?? '', text: a.textContent?.trim() ?? '',
 })));
 
-test('a potential buyer card explains why, keeps the original, links its provenance, translates on request', opts, async (t) => {
+test('a compact card links only to its detail page; the detail explains why, keeps the original, links provenance, translates on request', opts, async (t) => {
   const { page, translateCalls } = await boot(t);
   await open(page);
-  /* Interest tab: the Arabic question under a comparable listing. */
+  /* Interest tab: the Arabic question under a comparable listing, as a compact card. */
+  const card = page.locator('[data-testid="fbx-lead-card"][data-lead="l1"]');
+  const cardText = await card.innerText();
+  assert.match(cardText, /Potentially interested person/, 'a question under a listing is an interested person, never a buyer');
+  assert.doesNotMatch(cardText, /Qualified buyer|confirmed buyer/i);
+  assert.ok((await card.textContent()).includes(AR_TEXT), 'the original Arabic is shown as written');
+  assert.equal(await card.locator('a[href^="http"]').count(), 0, 'no external link on the list card');
+  assert.match(await page.textContent('main'), /External results/);
+  assert.doesNotMatch(await page.textContent('main'), /memo23|apify|actor/i, 'no provider internals');
+  await card.locator('[data-testid="fbx-lead-details"]').click();
+  await page.waitForURL(/\/buyers\/lead\/l1$/, { timeout: 15000 });
+  await page.waitForSelector('[data-testid="fbld-detail"]', { timeout: 20000 });
   const body = await page.textContent('main');
-  assert.match(body, /External results/);
-  assert.match(body, /Interest signal/, 'a question under a listing is labelled as interest, never as a buyer');
-  assert.doesNotMatch(body, /Strong Match/, 'interest carries no match-strength pill');
   assert.match(body, /Commented on a recently listed 2-bedroom apartment in Krtsanisi\. Similar size and price range\./);
-  assert.ok(body.includes(AR_TEXT), 'the original Arabic is shown as written');
   assert.match(body, /Original · Arabic/);
+  assert.match(body, /Intent confidence/); assert.match(body, /Property compatibility/);
   assert.doesNotMatch(body, /memo23|apify|actor/i, 'no provider internals');
   let links = await anchors(page);
   for (const href of [COMMENT_URL, POST_URL, PROFILE_URL]) {
     const l = links.find((x) => x.href === href);
     assert.ok(l, `link to ${href}`);
     assert.equal(l.target, '_blank');
-    assert.match(l.rel, /noopener/); assert.match(l.rel, /noreferrer/);
+    assert.match(l.rel, /noopener/); assert.match(l.rel, /noreferrer/); assert.match(l.rel, /nofollow/);
   }
   for (const l of links) assert.match(l.href, /^https?:\/\//, `never a non-web link: ${l.href}`);
   assert.ok(links.some((l) => l.href === COMMENT_URL && /View original comment/.test(l.text)));
@@ -243,16 +258,31 @@ test('a potential buyer card explains why, keeps the original, links its provena
   assert.equal(translateCalls[0].targetLang, 'en');
   assert.equal(translateCalls[0].signalId, 's1');
   assert.ok((await page.textContent('main')).includes(AR_TEXT), 'the original stays visible after translation');
-  /* Buyers tab: the Russian request post states its own intent. */
+  /* Back returns to the results page. */
+  await page.getByRole('button', { name: /^back$/i }).first().click();
+  await page.waitForURL(/\/buyers\/external\?tab=interest$/, { timeout: 15000 });
+  /* Buyers tab: the Russian request post (reviewed STRONG) states its own intent. */
   await page.click('[data-testid="fbx-tab-direct"]');
-  await page.waitForSelector('a[href="https://vk.com/wall-123_456"]', { timeout: 15000 });
+  await page.waitForSelector('[data-testid="fbx-lead-card"][data-lead="l2"]', { timeout: 15000 });
   const buyers = await page.textContent('main');
-  assert.match(buyers, /Strong Match/);
-  assert.match(buyers, /Publicly asked for a 2-bedroom apartment in Krtsanisi\./);
-  assert.match(buyers, /\+1 more public signals from this person/);
+  assert.match(buyers, /Qualified buyer/);
+  assert.match(buyers, /Strong match/);
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/lead/l2`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbld-detail"]', { timeout: 20000 });
+  assert.match(await page.textContent('main'), /Publicly asked for a 2-bedroom apartment in Krtsanisi\./);
+  assert.match(await page.textContent('main'), /\+1 more public signals from this person/);
+  assert.equal(await page.locator('[data-testid="fbld-evidence-item"]').count(), 2, 'every piece of evidence');
   links = await anchors(page);
   for (const href of ['https://vk.com/wall-123_456', 'https://vk.com/id12345']) assert.ok(links.find((x) => x.href === href), `link to ${href}`);
+  /* The unsafe lead: none of its stored links render. */
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/lead/l3`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbld-detail"]', { timeout: 20000 });
+  links = await anchors(page);
   for (const l of links) assert.match(l.href, /^https?:\/\//, `never a non-web link: ${l.href}`);
+  assert.equal(await page.locator('[data-testid="fbld-copy"]').count(), 0, 'no copy action for an unsafe link');
+  /* A lead that is not this property's says so. */
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/lead/nope`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbld-missing"]', { timeout: 20000 });
 });
 
 /* ── PRODUCTION REGRESSION (campaign d8b69c51, 2026-10-13): the latest search found 2
@@ -264,11 +294,12 @@ test('the latest search opens first: its 2 weak leads show without paging; earli
     lead('new1', { matching_job_id: 'job-new', overall_score: 55, strength: 'POSSIBLE', created_at: ago(1), match_category: 'WEAK' }),
     lead('new2', { matching_job_id: 'job-new', overall_score: 47, strength: 'POSSIBLE', created_at: ago(1), match_category: 'WEAK' }),
   ];
-  const { page } = await boot(t, { leads: [...older, ...latest] });
+  /* The running search is the latest one (job-new): a running search is the default even before its leads. */
+  const { page } = await boot(t, { leads: [...older, ...latest], status: withState('PARTIAL_RESULTS', { jobId: 'job-new' }) });
   await open(page);
-  await page.waitForSelector('[data-testid="fbx-campaigns"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="fbx-results"]', { timeout: 20000 });
   const first = await page.evaluate(() => ({
-    selected: document.querySelector('[data-testid="fbx-campaign"][aria-selected="true"]')?.getAttribute('data-job'),
+    selected: document.querySelector('[data-testid="fbx-results"]')?.getAttribute('data-job'),
     weakGroup: document.querySelector('[data-testid="fbx-lead-group"][data-category="WEAK"]') !== null,
     groups: [...document.querySelectorAll('[data-testid="fbx-lead-group"]')].map((g) => g.getAttribute('data-category')),
   }));
@@ -277,8 +308,11 @@ test('the latest search opens first: its 2 weak leads show without paging; earli
   assert.deepEqual(first.groups, ['WEAK'], 'only the latest search\'s leads (Weak), never the older 12');
   const tabs = await page.evaluate(() => ['direct', 'interest', 'opportunities'].map((k) => document.querySelector(`[data-testid="fbx-tab-${k}"]`)?.textContent?.match(/\d+/)?.[0]));
   assert.deepEqual(tabs, ['0', '2', '1'], 'two interest signals under one post: one opportunity, zero buyers');
+  /* Earlier searches live in the one Filters control. */
+  await page.click('[data-testid="fbx-filters-open"]');
   await page.click('[data-testid="fbx-campaign-all"]');
-  await page.waitForFunction(() => document.querySelector('[data-testid="fbx-campaign-all"][aria-selected="true"]'), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbx-results"]')?.getAttribute('data-job') === 'all', null, { timeout: 10000 });
+  assert.equal(await page.getAttribute('[data-testid="fbx-campaign-all"]', 'aria-checked'), 'true');
 });
 
 test('a failed results read says so and offers a retry — never "no results"', opts, async (t) => {
@@ -402,16 +436,17 @@ test('1440px and 390px, six locales: cards render, RTL for ar/he, no horizontal 
       const layout = await page.evaluate(() => ({
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         dir: document.documentElement.getAttribute('dir'),
-        cards: document.querySelectorAll('article[aria-label] a[href^="https://www.facebook.com"]').length,
-        small: [...document.querySelectorAll('article footer a')].filter((a) => a.getBoundingClientRect().height < 43).length,
+        cards: document.querySelectorAll('[data-testid="fbx-lead-card"]').length,
+        small: [...document.querySelectorAll('[data-testid="fbx-lead-details"]')].filter((a) => a.getBoundingClientRect().height < 43).length,
+        langs: [...document.querySelectorAll('[data-testid="fbx-card-excerpt"]')].map((p) => p.getAttribute('lang')),
       }));
       if (layout.overflow > 1) failures.push(`${lang} ${width}: horizontal overflow ${layout.overflow}px`);
       if (['ar', 'he'].includes(lang) && layout.dir !== 'rtl') failures.push(`${lang}: not RTL`);
-      if (layout.cards < 2) failures.push(`${lang} ${width}: cards missing`);
-      if (layout.small > 0) failures.push(`${lang} ${width}: ${layout.small} provenance action(s) under 44px`);
+      if (layout.cards < 1) failures.push(`${lang} ${width}: cards missing`);
+      if (layout.small > 0) failures.push(`${lang} ${width}: ${layout.small} Details action(s) under 44px`);
+      if (!layout.langs.includes('ar')) failures.push(`${lang} ${width}: the excerpt lost its source language`);
       const text = await page.textContent('main');
       if (/fbx_/.test(text)) failures.push(`${lang} ${width}: untranslated key`);
-      if (lang !== 'ar' && !/·/.test(text)) failures.push(`${lang} ${width}: original-language label missing`);
       if (SHOTS) {
         mkdirSync(SHOTS, { recursive: true });
         await page.screenshot({ path: join(SHOTS, `find-buyers-${width}-${lang}.png`), fullPage: true });
@@ -464,6 +499,18 @@ test('admin Find Buyers control center: every tab renders at 1440px and 390px (e
 test('live search module: server state, real source nodes only, real counts, the one control that fits', opts, async (t) => {
   const { page } = await boot(t);
   await open(page);
+  /* Primary view: status, elapsed time, real progress, found so far, the duration note — no tiles. */
+  const primary = await page.locator('[data-testid="fbl-module"]').innerText();
+  assert.match(primary, /Searching — first results are in/);
+  assert.match(primary, /10–30 minutes/, 'the duration note');
+  assert.doesNotMatch(primary, /within 30 minutes/i, 'never a completion promise');
+  assert.match(await page.innerText('[data-testid="fbl-progress-value"]'), /^2 \/ 9$/, 'tasks finished of tasks planned, from the queue');
+  assert.match(await page.innerText('[data-testid="fbl-found"]'), /3/);
+  assert.match(await page.innerText('[data-testid="fbl-elapsed-value"]'), /^\d{2}:\d{2}$/);
+  assert.doesNotMatch(primary, /sources working|signals checked/, 'technical tiles are collapsed');
+  assert.equal(await page.getAttribute('[data-testid="fbl-field"]', 'data-mode'), 'searching');
+  assert.equal(await page.getAttribute('[data-testid="fbl-field"]', 'aria-hidden'), 'true');
+  await openDetails(page);
   await page.waitForSelector('text=Buyer budget', { timeout: 15000 });
   const main = await page.textContent('main');
   assert.match(main, /Searching — first results are in/);
@@ -472,9 +519,8 @@ test('live search module: server state, real source nodes only, real counts, the
   /* Find Buyers 3.0: HOMATCH members are on their own page, never on the external one. */
   assert.doesNotMatch(main, /HOMATCH Matches/, 'internal matches never appear on the external results page');
   assert.match(main, /External results/, 'external results are their own section');
-  const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
-  /* Only sources really working are drawn; REDDIT is still queued and appears once it starts (2026-10-12). */
-  assert.equal(net, 'Live search network. Sources: FACEBOOK, VK', 'only sources running or finished');
+  /* Only sources really working are listed; REDDIT is still queued and appears once it starts (2026-10-12). */
+  assert.deepEqual(await page.$$eval('[data-testid="fbl-source-outcomes"] li', (els) => els.map((e) => e.getAttribute('data-source'))), ['FACEBOOK', 'VK'], 'only sources running or finished');
   assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);
   assert.equal(await page.getByRole('button', { name: 'Continue search' }).count(), 0);
   assert.doesNotMatch(main, /75%/, 'no invented percentage');
@@ -537,7 +583,7 @@ test('an Arabic excerpt reads right-to-left inside a left-to-right card (Georgia
   const { page } = await boot(t, { lang: 'ka' });
   await open(page);
   const dirs = await page.evaluate((txt) => {
-    const q = [...document.querySelectorAll('blockquote')].find((b) => b.textContent?.includes(txt.slice(0, 12)));
+    const q = [...document.querySelectorAll('[data-testid="fbx-card-excerpt"]')].find((b) => b.textContent?.includes(txt.slice(0, 12)));
     const card = q?.closest('article');
     return { quote: q ? getComputedStyle(q.querySelector('bdi') ?? q).direction : null, card: card ? getComputedStyle(card).direction : null, html: document.documentElement.dir };
   }, AR_TEXT);
@@ -586,7 +632,7 @@ test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scrol
       await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('text=Buyer budget, text=მყიდველის ბიუჯეტი, text=ميزانية', { timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(1500);
-      const launch = page.locator('section[aria-labelledby="fbl-title"] button').last();
+      const launch = page.locator('[data-testid="fbl-launch"]');
       if (await launch.count()) {
         await launch.click();
         await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
@@ -636,6 +682,7 @@ const REAL_RUN = {
 test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; READY now; Telegram searched, social off', opts, async (t) => {
   const { page } = await boot(t, { status: REAL_RUN });
   await open(page);
+  await openDetails(page);
   await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
   const main = await page.textContent('main');
   assert.match(main, /Telegram\s*Completed · 2 signals checked · 31 new communities found · 0 qualified matches/);
@@ -643,12 +690,12 @@ test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; RE
   assert.doesNotMatch(main.replace(/\d{1,2}:\d{2}/g, ''), /33/, 'raw items and communities are never summed into one number');
   assert.match(main, /Ready to search/, 'the current state is READY, not the last outcome');
   assert.match(main, /Last search \(.+\): Search finished — no new active demand/, 'the last outcome is a dated history line');
-  const states = await page.$$eval('svg[role="img"] g[data-state]', (gs) => gs.map((g) => [g.querySelector('text')?.textContent, g.getAttribute('data-state'), !!g.querySelector('[class*="-run"], [class*="-breathe"]')]));
-  assert.deepEqual(states.find((x) => x[0] === 'Telegram'), ['Telegram', 'DONE', false]);
+  /* A finished search does not move; only the source that ran is listed, completed. */
+  assert.equal(await page.getAttribute('[data-testid="fbl-field"]', 'data-mode'), 'finished');
+  assert.deepEqual(await page.$$eval('[data-testid="fbl-source-outcomes"] li', (els) => els.map((e) => [e.getAttribute('data-source'), e.querySelector('[data-testid="fbl-exec-state"]')?.getAttribute('data-state')])), [['TELEGRAM', 'COMPLETED']]);
   /* Switched-off sources are not shown to the owner at all (2026-10-12). */
-  for (const name of ['Facebook', 'Instagram', 'TikTok', 'Forum']) {
-    assert.equal(states.find((x) => x[0] === name), undefined, `${name} (switched off) is not shown`);
-  }
+  const outcomes = await page.innerText('[data-testid="fbl-source-outcomes"]');
+  for (const name of ['Facebook', 'Instagram', 'TikTok', 'Forum']) assert.doesNotMatch(outcomes, new RegExp(name), `${name} (switched off) is not shown`);
   assert.equal(await page.locator('[data-testid="fbl-network-legend"]').count(), 0, 'no available / switched-off legend');
 });
 
@@ -668,6 +715,7 @@ test('only Telegram ran because the social planner failed: the owner sees what w
   for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ar']]) {
     const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED });
     await open(page);
+    await openDetails(page);
     await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
     /* 2026-10-12: the planner failure and the sources it stopped stay internal (admin views). */
     if (await page.locator('[data-testid="fbl-scope-social-blocked"]').count() !== 0) failures.push(`${lang} ${width}: planner failure shown to the owner`);

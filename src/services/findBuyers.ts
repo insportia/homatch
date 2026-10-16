@@ -72,6 +72,12 @@ export interface PotentialLead {
   location_fit?: string | null;
   /** qualification.limitations (JSON path), read for the financing badges; absent on older leads. */
   qualification_limitations?: string[] | null;
+  /** The full qualification record (results list / detail reads); absent on older leads. */
+  qualification?: { resultType?: string; intent?: string; signals?: string[]; limitations?: string[] | null } & Record<string, unknown> | null;
+  /** Qualification role / market / review version, when the database has those columns. */
+  role?: string | null;
+  transaction?: string | null;
+  qualification_version?: number | string | null;
 }
 
 /** Current leads (30-day rule at read time) for one property, strongest first (RLS: the owner's own rows only). */

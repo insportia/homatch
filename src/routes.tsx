@@ -41,6 +41,7 @@ const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
 const FindBuyersHomePage = lazyRoute(() => import('./pages/property/FindBuyersHomePage'));
 const InternalResultsPage = lazyRoute(() => import('./pages/property/InternalResultsPage'));
 const PostOpportunityPage = lazyRoute(() => import('./pages/property/PostOpportunityPage'));
+const LeadDetailPage = lazyRoute(() => import('./pages/property/LeadDetailPage'));
 const HomatchLeadsPage = lazyRoute(() => import('./pages/property/HomatchLeadsPage'));
 const BuyerProfilePage = lazyRoute(() => import('./pages/property/BuyerProfilePage'));
 const LeadsCrmPage = lazyRoute(() => import('./pages/LeadsCrmPage'));
@@ -483,6 +484,7 @@ export const routes: RouteConfig[] = [
   { name: 'External results',  path: '/property/:id/buyers/external', element: <MatchesPage /> },
   { name: 'Internal results',  path: '/property/:id/buyers/internal', element: <InternalResultsPage /> },
   { name: 'Post opportunity',  path: '/property/:id/buyers/opportunity/:key', element: <PostOpportunityPage /> },
+  { name: 'Lead detail',       path: '/property/:id/buyers/lead/:leadId', element: <LeadDetailPage /> },
   { name: 'HOMATCH Leads',     path: '/property/:id/leads',       element: <HomatchLeadsPage /> },
   { name: 'Buyer profile',     path: '/property/:id/buyer/:key',  element: <BuyerProfilePage /> },
   { name: 'Leads CRM',         path: '/leads',                    element: <LeadsCrmPage /> },

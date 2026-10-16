@@ -13,6 +13,8 @@ import { placege } from '../src/marketplace/portals/adapters/placege.mjs';
 import { brokeri } from '../src/marketplace/portals/adapters/brokeri.mjs';
 import { homege } from '../src/marketplace/portals/adapters/homege.mjs';
 import { allhome } from '../src/marketplace/portals/adapters/allhome.mjs';
+import { TBILISI_DISTRICT_ROWS, districtConflict } from '../src/marketplace/portals/places.mjs';
+import { comparePlaces } from '../../src/research-core/normalize/place.ts';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { loadMarketplaceSwitches, workerSwitchOn } from '../../supabase/functions/_shared/marketplaceSearch.ts';
 
@@ -170,6 +172,43 @@ test('shared loop: a listing is dropped only when its own stated deal, USD price
   assert.equal(contradiction({ areaSqm: 30 }, req), 'area');
   assert.equal(contradiction({ transactionType: 'MONTHLY_RENT' }, req), 'deal');
   assert.equal(contradiction({}, req), null, 'unknown values never exclude');
+});
+
+test('districts: the worker table is the core place table, and only a known, different district excludes', () => {
+  for (const row of TBILISI_DISTRICT_ROWS) for (const name of row) assert.equal(comparePlaces(name, row[0]), 'AGREE', `${name} is one place with ${row[0]} in the core table`);
+  for (const a of TBILISI_DISTRICT_ROWS) for (const b of TBILISI_DISTRICT_ROWS) if (a !== b) assert.equal(comparePlaces(a[1], b[0]), 'CONFLICT');
+  const req = { districts: ['Krtsanisi', 'ორთაჭალა'] };
+  assert.equal(districtConflict('კრწანისი', req), false);
+  assert.equal(districtConflict('Ortachala', req), false);
+  assert.equal(districtConflict('საბურთალო', req), true);
+  assert.equal(contradiction({ district: 'ვაკე' }, req), 'district');
+  assert.equal(districtConflict('ვაშლიჯვარი', req), false, 'a name the table does not know is the pipeline\'s call, never the worker\'s');
+  assert.equal(districtConflict('საბურთალო', { districts: ['Krtsanisi', 'Abanotubani'] }), false, 'a partly unknown request is not narrowed');
+  assert.equal(districtConflict(null, req), false);
+});
+
+test('place.ge: requested districts become its own district_id, one results page each; an unmapped district reads the city', () => {
+  const one = placege.criteria(request({ districts: ['Krtsanisi'] }));
+  assert.deepEqual(one.district_ids, [65]);
+  assert.equal(placege.maxPages(one), 1);
+  assert.match(placege.searchUrl(one, 1), /^https:\/\/place\.ge\/ge\/ads\?.*district_id=65/);
+  const two = placege.criteria(request({ districts: ['ვაკე', 'saburtalo'] }));
+  assert.deepEqual([placege.searchUrl(two, 1), placege.searchUrl(two, 2)].map((u) => new URL(u).searchParams.get('district_id')), ['2', '18']);
+  assert.equal(placege.pagesIndependent(two), true);
+  const unmapped = placege.criteria(request({ districts: ['Krtsanisi', 'Ortachala'] }));
+  assert.equal(unmapped.district_ids, undefined);
+  assert.equal(new URL(placege.searchUrl(unmapped, 1)).searchParams.has('district_id'), false);
+  assert.equal(placege.maxPages(unmapped), 2);
+});
+
+test('home.ge: a requested district narrows the sitemap by its slug', () => {
+  const xml = page('homege-sitemap');
+  const rent = { transactionType: 'MONTHLY_RENT' };
+  const all = homege.parseList(xml, '', homege.criteria(request(rent)));
+  const orta = homege.parseList(xml, '', homege.criteria(request({ ...rent, districts: ['ორთაჭალა'] })));
+  assert.ok(orta.length > 0 && orta.length < all.length);
+  assert.ok(orta.every((i) => /-tbilisi-ortachala-\d+\.html$/.test(i.url)));
+  assert.equal(homege.parseList(xml, '', homege.criteria(request({ ...rent, districts: ['Ortachala', 'Unknownville'] }))).length, all.length, 'unknown name → city read');
 });
 
 test('registry: korter.ge (terms forbid scraping) and binebi.ge (challenge) are not portal workers', () => {

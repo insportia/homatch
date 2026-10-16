@@ -1,0 +1,31 @@
+# TEMPORARY (Find Property portal adapter research, PR #210). Read-only fetches of
+# public portal pages from a GitHub runner; no secrets, read-only token. Removed
+# before the PR leaves draft.
+name: Portal snapshot
+on:
+  pull_request:
+    paths: ['scripts/portals/**', '.github/workflows/portal-snapshot.yml', 'official-worker/src/marketplace/portals/**']
+permissions:
+  contents: read
+concurrency:
+  group: portal-snapshot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Live adapter check
+        if: hashFiles('scripts/portals/live-check.mjs') != ''
+        run: node scripts/portals/live-check.mjs
+      - name: Place.ge district ids
+        if: hashFiles('scripts/portals/place-districts.mjs') != ''
+        run: node scripts/portals/place-districts.mjs
+      - name: Access status of withdrawn portals (status line only)
+        run: |
+          for u in https://korter.ge/ https://korter.ge/robots.txt https://binebi.ge/ https://binebi.ge/robots.txt https://www.myhome.ge/ https://home.ss.ge/; do
+            printf '%s ' "$u"; curl -s -o /tmp/b -w '%{http_code} ' -A 'Mozilla/5.0 (compatible; HOMATCH-FindProperty/1.0; +https://homatch.live)' "$u"; (grep -oiE 'cf-chl|challenge-platform|just a moment' /tmp/b | head -1) || true; echo
+          done

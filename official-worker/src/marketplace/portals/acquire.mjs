@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { districtConflict } from './places.mjs';
 
 /*
  * Shared acquisition for the HTML portals (place.ge, home.ge, brokeri.ge,
@@ -11,10 +12,11 @@ import { setTimeout as delay } from 'node:timers/promises';
  *                                   page states (e.g. the city); counted as filtered
  *   listCacheMs                   → reuse a list document (e.g. a sitemap) for this long
  *   pagesIndependent              → each "page" is its own document; a short page does
- *                                   not end the run
+ *                                   not end the run (a value or a function of criteria)
+ *   maxPages                      → a number, or a function of criteria
  * Everything else — robots.txt, pacing, page cap, refusals, the contract shape,
  * deduplication by source id, and dropping a listing whose own stated deal, USD price,
- * rooms or area contradicts the request (portals that cannot filter server-side) —
+ * rooms, area or Tbilisi district contradicts the request (portals that cannot filter server-side) —
  * is decided here, once.
  *
  * Public pages only, an honest User-Agent, no cookies, no retry past a refusal,
@@ -70,6 +72,7 @@ export function contradiction(fields, request) {
   if (fields.rooms != null && r && ((r.min != null && fields.rooms < r.min) || (r.max != null && fields.rooms > r.max))) return 'rooms';
   if (fields.areaSqm != null && ((request.areaMinSqm != null && fields.areaSqm < request.areaMinSqm) || (request.areaMaxSqm != null && fields.areaSqm > request.areaMaxSqm))) return 'area';
   if (fields.transactionType && request.transactionType && fields.transactionType !== request.transactionType) return 'deal';
+  if (districtConflict(fields.district, request)) return 'district';
   return null;
 }
 
@@ -111,8 +114,10 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
       const robots = await fetcher(new URL('/robots.txt', adapter.origin).href, { headers: { 'user-agent': PORTAL_UA }, signal: AbortSignal.timeout(15000) });
       rules = robots.ok ? robotsRules(await robots.text()) : [];
     } catch { rules = []; }
+    const maxPages = typeof adapter.maxPages === 'function' ? adapter.maxPages(criteria) : adapter.maxPages;
+    const independent = typeof adapter.pagesIndependent === 'function' ? adapter.pagesIndependent(criteria) : adapter.pagesIndependent;
     let complete = false;
-    for (let page = 1; page <= adapter.maxPages; page++) {
+    for (let page = 1; page <= maxPages; page++) {
       const url = adapter.searchUrl(criteria, page);
       queryApplied[`page${page}`] = url;
       let html = adapter.listCacheMs ? listCache.get(url) : null;
@@ -134,12 +139,12 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
         candidates.push(toCandidate(adapter, fields, request, page, url));
       }
       if (candidates.length) await emit('RESULTS_RECEIVED', candidates);
-      if (!adapter.pagesIndependent && (!items.length || items.length < (adapter.pageSize ?? 1))) { complete = true; break; }
-      if (page < adapter.maxPages) await sleep(adapter.pageIntervalMs ?? 3000);
+      if (!independent && (!items.length || items.length < (adapter.pageSize ?? 1))) { complete = true; break; }
+      if (page < maxPages) await sleep(adapter.pageIntervalMs ?? 3000);
     }
     if (filtered) queryApplied.filteredAfterRead = String(filtered);
     if (rejected) errors.push({ code: 'SOURCE_RECORDS_REJECTED', message: `${rejected} listings could not be read from their own pages` });
-    if (!complete) errors.push({ code: 'PAGE_CAP_REACHED', message: `${adapter.sourceName}: first ${adapter.maxPages} result pages read` });
+    if (!complete) errors.push({ code: 'PAGE_CAP_REACHED', message: `${adapter.sourceName}: first ${maxPages} result pages read` });
     const status = rejected ? 'PARTIAL' : 'COMPLETE';
     await emit(status, [], errors);
     return { status, delivered, pagesVisited };

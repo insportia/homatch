@@ -1,4 +1,5 @@
 import { decode, dmy, int, meta, num, strip } from '../html.mjs';
+import { requestedDistrictKeys } from '../places.mjs';
 
 /*
  * HOME.GE — its search and category pages answer with an empty body to a plain
@@ -12,6 +13,8 @@ import { decode, dmy, int, meta, num, strip } from '../html.mjs';
  * floors, building and renovation status, district, coordinates and the date it was
  * placed. Price and area are checked after reading (shared loop), because the index cannot.
  * The contact number is only revealed through a click-through request; none is claimed.
+ * A requested district narrows the index by the same slug (…-tbilisi-krtsanisi-…), but only
+ * when every requested district is in the shared place table; otherwise the city is read.
  * Legacy reading rules: src/research-core/adapters/portal/sources.ts (HOME_GE).
  */
 const CATEGORY = {
@@ -36,6 +39,7 @@ export const homege = {
     return {
       paths, city, transactionType: request.transactionType, propertyType: typeKey(request.propertyType),
       roomsMin: request.rooms?.min ?? null, roomsMax: request.rooms?.max ?? null,
+      districts: city === 'tbilisi' ? requestedDistrictKeys(request)?.map((k) => k.replace(/ /g, '-')) ?? null : null,
     };
   },
   searchUrl(_criteria, page) { return SITEMAPS[page - 1]; },
@@ -46,6 +50,7 @@ export const homege = {
       if (!loc[1] || !criteria.paths.includes(loc[2])) continue; // Georgian URLs only: /en/ and /ru/ copies carry a language prefix
       const slug = loc[3];
       if (!new RegExp(`-${criteria.city}-`).test(slug)) continue;
+      if (criteria.districts && !criteria.districts.some((d) => slug.includes(`-${criteria.city}-${d}-`))) continue;
       const rooms = int((slug.match(/-(\d+)-otakhiani-/) ?? [])[1]);
       if (rooms != null && ((criteria.roomsMin != null && rooms < criteria.roomsMin) || (criteria.roomsMax != null && rooms > criteria.roomsMax))) continue;
       out.push({

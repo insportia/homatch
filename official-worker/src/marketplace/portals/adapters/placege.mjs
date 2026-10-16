@@ -1,4 +1,5 @@
 import { absolute, decode, dmy, int, meta, num, phones, strip } from '../html.mjs';
+import { requestedDistrictKeys } from '../places.mjs';
 
 /*
  * PLACE.GE — public search at /ge/ads with the site's own filter codes (read off its
@@ -7,16 +8,21 @@ import { absolute, decode, dmy, int, meta, num, phones, strip } from '../html.mj
  * Each card states deal, type, rooms, area, floor, place, the USD price
  * (data-price_usd), the publication date, the id and the contact the seller published;
  * the listing page adds full photos, the seller's description and building facts.
+ * Districts: the site's own district_id, read off its cards' "similar" links
+ * (2026-10-15 pages; card place text → id). One results page per requested district;
+ * a district without an observed id sends no district filter at all (city-wide read,
+ * the shared loop and the pipeline then decide the district), never a guessed id.
  */
 const DEAL = { BUY: 'for_sale', MONTHLY_RENT: 'for_rent' };
 const TYPE = { APARTMENT: 'flat', HOUSE: 'private_house', VILLA: 'private_house', LAND: 'land', COMMERCIAL: 'commercial_estate', OFFICE: 'commercial_estate' };
 const TYPE_BACK = { 'ბინა': 'APARTMENT', 'კერძო სახლი': 'HOUSE', 'აგარაკი': 'HOUSE', 'მიწის ნაკვეთი': 'LAND', 'მიწა': 'LAND' };
 const CITY = { 'tbilisi': 1, 'თბილისი': 1 };
+const DISTRICT_ID = { vake: 2, 'didi digomi': 13, saburtalo: 18, gldani: 23, didube: 45, samgori: 60, avlabari: 62, vera: 63, krtsanisi: 65, mtatsminda: 66, sololaki: 67 };
 const unsupported = (why) => Object.assign(Error(why), { code: 'UNSUPPORTED_REQUEST' });
 
 export const placege = {
   workerId: 'placege-agent', sourceId: 'place-ge', sourceName: 'Place.ge', envPrefix: 'PLACEGE', origin: 'https://place.ge',
-  maxPages: 2, pageSize: 15, detailLimit: 17, detailIntervalMs: 900, pageIntervalMs: 3000,
+  maxPages: (c) => (c.district_ids ? Math.min(3, c.district_ids.length) : 2), pagesIndependent: (c) => Boolean(c.district_ids), pageSize: 15, detailLimit: 17, detailIntervalMs: 900, pageIntervalMs: 3000,
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];
     if (!city) throw unsupported('Place.ge city filter is verified for Tbilisi only');
@@ -29,10 +35,14 @@ export const placege = {
     if (request.areaMaxSqm != null) q.living_space_to = Math.ceil(request.areaMaxSqm);
     if (request.rooms?.min != null) q.rooms_from = request.rooms.min;
     if (request.rooms?.max != null) q.rooms_to = request.rooms.max;
+    const ids = requestedDistrictKeys(request)?.map((k) => DISTRICT_ID[k]);
+    if (ids?.length && ids.every(Boolean)) q.district_ids = ids.slice(0, 3);
     return q;
   },
   searchUrl(criteria, page) {
-    const qs = new URLSearchParams(Object.entries(criteria).map(([k, v]) => [k, String(v)])).toString();
+    const { district_ids: ids, ...q } = criteria;
+    if (ids) return `https://place.ge/ge/ads?${new URLSearchParams(Object.entries({ ...q, district_id: ids[page - 1] }).map(([k, v]) => [k, String(v)]))}`;
+    const qs = new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString();
     return `https://place.ge/ge/ads${page > 1 ? `/page:${page}` : ''}?${qs}`;
   },
   parseList(html, url) {

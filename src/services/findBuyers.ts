@@ -20,7 +20,7 @@ export async function getFindBuyersConfig(): Promise<FindBuyersConfig | null> {
 
 export interface LeadEvidence {
   /** Facebook: found in a GROUP, on a public PAGE, or by a keyword SEARCH of public posts. */
-  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | 'AD' | null;
   signalId: string;
   parentSignalId: string | null;
   kind: 'POST' | 'COMMENT' | 'MESSAGE';

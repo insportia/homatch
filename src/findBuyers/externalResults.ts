@@ -32,7 +32,7 @@ export interface EvidenceItem {
   intent?: string | null;
   signals?: string[];
   /** Facebook: found in a GROUP, on a public PAGE, or by a keyword SEARCH of public posts. */
-  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | 'AD' | null;
 }
 
 /** The label key for where a result was found (null: the network name is enough). */

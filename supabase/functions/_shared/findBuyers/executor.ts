@@ -163,7 +163,7 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     since = new Date(Math.max(Date.parse(since), last)).toISOString();
   }
   const limit = Math.max(1, Math.min(Number(reservation.requestedLimit) || Number(actor.probe_size) || 1, Number(actor.max_results) || 100));
-  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since }, actor.input_contract ?? null);
+  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since, country: (campaign as any)?.dna?.countryCode ?? null }, actor.input_contract ?? null);
   /* An input the verified schema would reject, or one that lost its query/target
      in fitting, is never sent: the reservation is released at $0. */
   const problems = essentialMissing(stage, input, actor.input_contract ?? null);

@@ -204,6 +204,7 @@ const AdminHomePage = lazyRoute(() => import('./pages/admin/AdminHomePage'));
 const AdminIntelligencePage = lazyRoute(() => import('./pages/admin/AdminIntelligencePage'));
 const AdminSupplyMatchesPage = lazyRoute(() => import('./pages/admin/AdminSupplyMatchesPage'));
 const AdminBuyerIntelligencePage = lazyRoute(() => import('./pages/admin/AdminBuyerIntelligencePage'));
+const AdminDemandIntelligencePage = lazyRoute(() => import('./pages/admin/AdminDemandIntelligencePage'));
 const AdminMarketSegmentationPage = lazyRoute(() => import('./pages/admin/AdminMarketSegmentationPage'));
 const AdminNotificationsPage = lazyRoute(() => import('./pages/admin/AdminNotificationsPage'));
 const AdminAnnouncementsPage = lazyRoute(() => import('./pages/admin/AdminAnnouncementsPage'));
@@ -627,6 +628,7 @@ export const routes: RouteConfig[] = [
      explicitly asked for; market segmentation: PREMIUM/MIDDLE/ECONOMY against
      the local asking-price distribution, with preview-before-apply rules. */
   { name: 'Admin Buyer Intelligence', path: '/admin/buyer-intelligence', element: adminWrap(<AdminBuyerIntelligencePage />), adminOnly: true },
+  { name: 'Admin Demand Intelligence', path: '/admin/demand-intelligence', element: adminWrap(<AdminDemandIntelligencePage />), adminOnly: true },
   { name: 'Admin Market Segmentation', path: '/admin/market-segmentation', element: adminWrap(<AdminMarketSegmentationPage />), adminOnly: true },
   { name: 'Admin Intelligence', path: '/admin/intelligence',       element: adminWrap(<AdminIntelligencePage />), adminOnly: true },
   { name: 'Admin Notifications', path: '/admin/notifications',     element: adminWrap(<AdminNotificationsPage />), adminOnly: true },

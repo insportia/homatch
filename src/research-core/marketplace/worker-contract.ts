@@ -13,6 +13,7 @@
 // be safe http(s), sizes are bounded, and partial data stays partial (a field
 // a listing did not state is null, never a guess).
 
+import { clipText } from './text-safety.ts';
 import { safeWebUrl } from '../discovery/source-link.ts';
 import {
   type BuildingStatus, type MarketplacePropertyType, type MarketplaceTransaction, type RenovationStatus,
@@ -273,7 +274,7 @@ const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === '
 const str = (v: unknown, cap = 400): string | null => {
   if (typeof v !== 'string') return null;
   const s = v.replace(/\u0000/g, '').trim();
-  return s ? s.slice(0, cap) : null;
+  return s ? clipText(s, 0, cap) : null;
 };
 const finite = (v: unknown, lo = 0, hi = Number.MAX_SAFE_INTEGER): number | null => {
   if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi) return null;

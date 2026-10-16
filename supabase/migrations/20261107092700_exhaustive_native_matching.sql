@@ -12,7 +12,7 @@
 -- Rollback: redeploy the previous supply-matching; the new objects are inert.
 
 create table if not exists public.match_scan_checkpoints (
-  scan_key        text primary key check (scan_key ~ '^(sweep:native|sweep:all|demand:[0-9a-f-]{36})$'),
+  scan_key        text primary key check (scan_key ~ '^(sweep:native|sweep:all|demand:[0-9a-f-]{36}|v2property:[0-9a-f-]{36})$'),
   demand_cursor   text,
   phase           text check (phase is null or phase in ('EXTERNAL', 'NATIVE')),
   supply_cursor   text,
@@ -27,7 +27,7 @@ create table if not exists public.match_scan_checkpoints (
   completed_at    timestamptz
 );
 comment on table public.match_scan_checkpoints is
-  'supply-matching resume points: sweep:native walks every active search, sweep:all every demand with a city; demand:<id> finishes one targeted demand that ran out of time. Service role only.';
+  'supply-matching resume points: sweep:native walks every active search, sweep:all every demand with a city; demand:<id> finishes one targeted demand that ran out of time; v2property:<id> resumes run-matching-v2 for one property. Service role only.';
 alter table public.match_scan_checkpoints enable row level security;
 revoke all on public.match_scan_checkpoints from public, anon, authenticated;
 grant select, insert, update, delete on public.match_scan_checkpoints to service_role;

@@ -30,6 +30,7 @@ official-worker/node_modules/
 src/i18n/translations.ts
 **/__tests__/fixtures/
 tests/fixtures/
+official-worker/test/fixtures/
 pnpm-lock.yaml
 package-lock.json
 deno.lock

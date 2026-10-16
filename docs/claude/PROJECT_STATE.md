@@ -84,7 +84,7 @@ MATTERS right now, verify against the live systems, not this file)
   lifecycle treats OWNER_CONFIRMED as live, RPC `publishing_provider_update` (whitelisted columns +
   audit, one transaction). All service-role only; admin actions re-check `is_admin()` on the caller's
   token in the edge function. Proof: `tests/sql/publishing/run.sh` (33 + 25 checks).
-  Until applied, the edge function falls back to code defaults with only myhome/ssge enabled.
+  (Without the registry table the edge function falls back to code defaults with only myhome/ssge enabled.)
 - **Listing**: baseline required = title, description, type, deal, price, city, ≥1 valid number.
   Everything else (bathrooms, area, address, photos…) optional unless a SELECTED portal's admin rules
   require it (myhome seeds `description.ka` + 16 photos, carried from the previous registry).
@@ -93,6 +93,25 @@ MATTERS right now, verify against the live systems, not this file)
   `src/publishing/contacts.ts`), appended exactly once to every copy, never stored in the description.
   `listing.duplicate` copies text (not photos) to another owned property. 14-step journey.
 - **robots.txt** is honoured before every page check (RFC 9309; unreadable = allowed).
+- **Production state (verified 2026-10-16)**: PR #217 merged as `3c335ce3`; deploy run 1070 green;
+  `publishing-engine` **v4 PROVEN_EXACT** (closure digest `sha256:e1b531d4…`, refs/deployed/edge =
+  `3c335ce3`); frontend live via the later `d7185551` (#220), Publishing files byte-identical.
+  Migration `20261106090000_publishing_providers.sql` (SHA-256 `e3c36ee0…20dd`) applied by the owner
+  (via ChatGPT) as **ledger `20261016085445` `publishing_providers`** — stored statements md5
+  `d4b24d7e…` = the file, byte-exact. DO NOT reapply; do not edit the ledger. The MCP
+  `apply_migration` route cannot pass Supabase's destructive-SQL confirmation from a cloud session
+  (cancelled / 60 s timeout) — owner applies DROP-bearing migrations from the SQL Editor.
+  Verified read-only + rolled-back transactions: 8 providers seeded/enabled; portal FK + 8-status CHECK;
+  RLS on, no policies, service_role-only grants; `publishing_provider_update` writes row + audit and
+  refuses non-whitelisted keys; lifecycle refuses ARCHIVE while OWNER_CONFIRMED is live. The deployed
+  function's exact selects resolve against the registry (no fallback).
+- **NOT TESTED LIVE**: signed-in customer and admin flows on homatch.live (the cloud container cannot
+  reach homatch.live, Supabase or any portal domain; no test account). Proof is CI + local browser
+  suites (70) + server tests, not live traffic. No real portal listing has ever been published.
+- **Still manual / unverified**: official logos (monograms until an admin sets an https logo URL) and
+  create-listing URLs for Place.ge, Home.ge, Brokeri.ge, Korter.ge, Binebi.ge, Allhome.ge (each opens
+  the portal home page, and the UI says so) — neither could be fetched or found in the web index from
+  this environment, so none were invented. No portal has an API, OAuth or account connection.
 
 ## Storage retention v2 — object-level allowlist (PR #216, merged 37cc6900, migration applied 2026-10-16 as ledger 20261016071129)
 
@@ -1638,7 +1657,7 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   - The MyHome engine's own 0-result issue in Verify is resolved by using the runtime's page reader. Production proof is still pending.
   - Developer website and Facebook renders need written rights from the developer.
 
-## Find Property HTML portal workers (PR #210, 2026-10-15) — BUILT, NOT DEPLOYED
+## Find Property HTML portal workers (PR #210 + #221) — DEPLOYED, LIVE 2026-10-16
 
 - Code: `official-worker/src/marketplace/portals/` (shared `acquire.mjs` loop:
   robots.txt, pacing, 2-page cap, BLOCKED on 401/403/429/challenge, no retry
@@ -1659,8 +1678,18 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   Place 1 / 1 (district unstated), Allhome 0 / 0, Brokeri 0.
 - Districts: strict worker-side check (`portals/places.mjs`); Home.ge narrows by
   slug; Place.ge ignores district parameters server-side (probed), so post-read only.
-- To activate (owner approval): apply the migration; deploy the 3 edge functions +
-  frontend; Railway `homatch-official-worker` env `<PREFIX>_WORKER_TOKEN` +
-  `<PREFIX>_MARKETPLACE_ENABLED=true` (PLACEGE/HOMEGE/BROKERI/ALLHOME) with the
-  token hash in `discovery_marketplace_workers.token_hash`; set the row
-  ACTIVE + enabled and the admin switch on, one portal at a time.
+- Production (2026-10-16): #210 merged `fd54bf3`, #221 merged `eff8216`. Migrations
+  applied (ledger `property_knowledge_cache`, `find_property_portal_workers`); edge
+  homatch-ai / marketplace-search / marketplace-worker-ingest PROVEN_EXACT
+  (refs/deployed/edge → eff8216); Vercel READY on www.homatch.live; Railway
+  `homatch-official-worker` deployment a4167298 (commit fd54bf3, worker unchanged since).
+- Enabled: Place.ge, Home.ge, Allhome.ge (row ACTIVE + enabled, token hash, Railway
+  `<PREFIX>_WORKER_TOKEN` + `_MARKETPLACE_ENABLED=true`, admin switch on).
+  Brokeri.ge stays registered PROVEN + disabled (catalogue older than the 30-day policy).
+- Production E2E (GitHub runner → www.homatch.live, dedicated test accounts, all
+  suspended afterwards): search b4454c5c (sale) — MyHome 48, SS.ge 236+, Home.ge 42,
+  Place.ge 30, Allhome 7 listings, all in range and correct deal; b6902b8b (rent) —
+  shown SS.ge 241, MyHome 48, Home.ge 35, Place.ge 25, Allhome 2; 645ba0d0
+  (Krtsanisi/Ortachala) with Place.ge deliberately unauthorised — others delivered,
+  search PARTIAL_COMPLETE, Place run TIMED_OUT; SS.ge FAILED on that district request
+  (see KNOWN_RISKS). Six locales on 390px, ar/he RTL, 0 px overflow.

@@ -44,17 +44,15 @@ Each service below is listed as `key`, product.
 - **Backend (new work refused):**
   - `marketplace-search` `understand` and `start`
   - `find-property-plan` `draft` and `confirm`
-  - `marketplace-worker-ingest` `claim`
-- **Keeps running:** status, results, cancel, worker heartbeat and report.
+  - `homatch-ai` surface `find-property`
+- **Keeps running:** status, results, cancel, and the `marketplace-worker-ingest` claim, heartbeat and report (searches already started finish).
 - **Own settings (unchanged):** `marketplace_search_enabled`, `marketplace_<portal>_enabled`.
 
 **`find_property_deep`: Find Property paid Deep Search / social offer campaign**
 - **Routes:** none of its own.
 - **Entry points:** the Deep Search option, `DeepSearchPanel` and `OutsideSearchPanel`.
-- **Backend (new work refused):**
-  - `find-property-run` `start`
-  - `executeOfferJob` starting a new Actor run
-- **Keeps running:** pause, resume, stop, settlement.
+- **Backend (new work refused):** `find-property-run` `start`.
+- **Keeps running:** pause, resume, stop, settlement, and `executeOfferJob` for a campaign already reserved and paid.
 - **Own settings (unchanged):** `find_property_social_enabled` (OFF today), the APIFY provider switch.
 
 **`find_buyers`: Find Buyers / Tenants**
@@ -65,10 +63,8 @@ Each service below is listed as `key`, product.
   - dashboard match links
   - homepage launcher and matching showcase
   - AI action `FIND_BUYERS_TENANTS`
-- **Backend (new work refused):**
-  - `match-campaign` new campaign and `extend_budget`
-  - `executeSocialJob` starting a new Actor run
-- **Keeps running:** pause, resume, stop, settlement. Property CRUD under `/property` is platform and is never gated.
+- **Backend (new work refused):** `match-campaign` new campaign and `extend_budget`.
+- **Keeps running:** pause, resume, stop, settlement, and `executeSocialJob` for a campaign already reserved and paid. Property CRUD under `/property` is platform and is never gated.
 - **Own settings (unchanged):** `find_buyers_social_enabled`, `campaign_source_discovery_enabled`, the APIFY switch.
 
 ### Property Intelligence
@@ -82,10 +78,11 @@ Each service below is listed as `key`, product.
   - footer, About
   - AI action `VERIFY`
   - links from other pages: property page, expat pages
-- **Backend (new work refused):**
-  - `research-agent` `start`, `continue`, `recover_visuals`, `fresh_photos`, `refresh_market`
-  - `verification-handoff` `mint`
-- **Keeps running:** drive cron, status, cancel, pause, `verify-queue` worker callbacks, `verify-synthesis`.
+- **Backend (new work refused):** `research-agent` new `start` (an idempotent replay of an existing run is still answered) and `continue`.
+- **Keeps running:**
+  - drive cron, status, cancel, pause, `verify-queue` worker callbacks, `verify-synthesis`
+  - `recover_visuals`, `fresh_photos`, `refresh_market`: `verify-synthesis` calls them while it builds a report already paid for
+  - `verification-handoff` `mint` (spends nothing; the run it leads to is refused at `start`)
 - **Own settings (unchanged):** `verify_billing_enabled`, `verify_*`.
 
 **`contracts`: Contract Intelligence**
@@ -95,8 +92,8 @@ Each service below is listed as `key`, product.
   - homepage launcher and section
   - AI action `CONTRACT_INTELLIGENCE`
   - links from Verify and expat pages
-- **Backend (new work refused):** `deal-room-document-analyze` (user starts), `deal-room-ai`.
-- **Keeps running:** an analysis already queued and paid (the jobs-worker path).
+- **Backend (new work refused):** `deal-room-document-analyze` (user starts), `deal-room-ai`; `jobs-worker` does not dispatch new DOCUMENT_ANALYSIS jobs while paused.
+- **Keeps running:** a job already claimed finishes on the worker path; queued jobs wait and run when resumed.
 
 **`mortgage`: Mortgage**
 - **Routes:** `/mortgage`

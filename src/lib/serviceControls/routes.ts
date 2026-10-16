@@ -17,7 +17,6 @@ export const SERVICE_ROUTE_RULES: ReadonlyArray<readonly [RegExp, ServiceKey]> =
   [/^\/find-property(\/|$)/, 'find_property'],
   [/^\/property\/[^/]+\/(matches|buyers|leads|buyer)(\/|$)/, 'find_buyers'],
   [/^\/verify(\/|$)/, 'verify'],
-  [/^\/deal-rooms(\/|$)/, 'verify'],
   [/^\/contracts(\/|$)/, 'contracts'],
   [/^\/mortgage(\/|$)/, 'mortgage'],
   [/^\/investment(\/|$)/, 'investment'],

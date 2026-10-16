@@ -47,7 +47,7 @@ export const SECRETS_CHECKED = [
   'META_WHATSAPP_ACCESS_TOKEN', 'META_WHATSAPP_PHONE_NUMBER_ID', 'META_WHATSAPP_BUSINESS_ACCOUNT_ID',
   'META_WHATSAPP_APP_SECRET', 'META_WHATSAPP_VERIFY_TOKEN',
   'RUNPOD_API_KEY', 'RUNPOD_DS_ENDPOINT_ID',
-  'APIFY_API_TOKEN', 'META_APP_ID', 'META_APP_SECRET', 'RESEND_API_KEY',
+  'META_APP_ID', 'META_APP_SECRET', 'RESEND_API_KEY',
 ] as const;
 // R2 is not checked by name here: exactly one module may read an R2 credential
 // (_shared/objectStore.ts), so its own envReport() answers "is R2 configured" and the
@@ -135,7 +135,9 @@ export function readiness(key: ServiceKey, f: Facts): Readiness {
       break;
     }
     case 'find_property_deep': {
-      missing = [...table(f, 'discovery_runs'), ...secret(f, 'APIFY_API_TOKEN')];
+      // The APIFY credential itself is read by one module only (_shared/findBuyers/memo23Client.ts,
+      // tests/matrix/retiredProviders.test.mjs); what is reported here is its Admin switch.
+      missing = table(f, 'discovery_runs');
       if (!isTrue(f.settings.find_property_social_enabled)) notes.push('FIND_PROPERTY_SOCIAL_SETTING_OFF');
       if (!isTrue(f.settings.find_property_discovery_enabled)) notes.push('FIND_PROPERTY_DISCOVERY_SETTING_OFF');
       if (apifyDisabled(f)) notes.push('PROVIDER_APIFY_DISABLED');

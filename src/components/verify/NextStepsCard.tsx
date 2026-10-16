@@ -47,17 +47,17 @@ export function NextStepsCard({ cadastralCode }: { cadastralCode?: string | null
           {pathAvailable('/investment') && (
             <VerifyActionButton
               to={`/investment${suffix}`}
-              icon={<TrendingUp className="h-5 w-5" />
-          )}}
-            label={t('verify_next_investment')}
-          />
+              icon={<TrendingUp className="h-5 w-5" />}
+              label={t('verify_next_investment')}
+            />
+          )}
           {pathAvailable('/mortgage') && (
             <VerifyActionButton
               to={`/mortgage${suffix}`}
-              icon={<Landmark className="h-5 w-5" />
-          )}}
-            label={t('verify_next_mortgage')}
-          />
+              icon={<Landmark className="h-5 w-5" />}
+              label={t('verify_next_mortgage')}
+            />
+          )}
         </div>
       </CardContent>
     </Card>

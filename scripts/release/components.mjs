@@ -172,9 +172,10 @@ export const COMPONENTS = {
   // customer-side gates that read them and the Admin page that writes them.
   SERVICE_CONTROLS: {
     paths: [/^src\/lib\/serviceControls\//, /^src\/components\/serviceControls\//, /^src\/pages\/admin\/AdminServiceControlPage\.tsx$/, /^src\/services\/serviceControls\.ts$/,
-      fn('service-control'), /^supabase\/functions\/_shared\/serviceControl\.ts$/, /^tests\/sql\/service_controls\//, /^tests\/mobile\/serviceControls(Fixture)?\.(test\.)?mjs$/, /^scripts\/service-controls-i18n/, /^docs\/claude\/SERVICE_CONTROLS\.md$/],
+      fn('service-control'), /^supabase\/functions\/_shared\/serviceControl\.ts$/, /^tests\/sql\/service_controls(_expand)?\//, /^tests\/mobile\/serviceControls[A-Za-z]*\.(test\.)?mjs$/,
+      /^tests\/matrix\/serviceControlsExpand\.test\.mjs$/, /^scripts\/service-controls-(expand-)?i18n/, /^docs\/claude\/SERVICE_CONTROLS(_INVENTORY)?\.md$/],
     suites: ['mobile:routes', 'mobile:shell'],
-    proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six'],
+    proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six', 'service controls expansion: migration 20261110090000 in the ledger; the six unchanged (switches, versions); fourteen new rows ON/ON in their groups; every newly gated function PROVEN_EXACT; customer navigation unchanged while all fourteen are ON'],
   },
   BROKER: { paths: [/^src\/(pages\/(Broker|admin\/AdminBrokersPage)|components\/broker)/, fn('[a-z-]*broker[a-z-]*')], suites: ['mobile:broker', 'mobile:routes'] },
   PUBLIC_HOMEPAGE: {

@@ -164,7 +164,7 @@ test('group pause: one known group, the group name typed as confirmation, never 
 
 test('readiness for a live product names its own switches as notes, never as blockers', async () => {
   const { readiness } = await import('../readiness.ts');
-  const facts = { secrets: { OPENAI_API_KEY: true, APIFY_API_TOKEN: true }, r2Configured: true,
+  const facts = { secrets: { OPENAI_API_KEY: true }, r2Configured: true,
     tables: { discovery_runs: true, outreach_campaigns: true },
     settings: { find_property_social_enabled: false, provider_disabled_list: '["DATAFORSEO"]', outreach_email_sending_enabled: false },
     routes: [], products: [] };

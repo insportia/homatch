@@ -330,3 +330,45 @@ they are gone.
 **Record-level retention retired.** `retention_claim` returns nothing. `retention_admin_configure` raises
 `RETENTION_RECORD_LEVEL_RETIRED`. The record-level registry is never written by the engine. The access gates from
 §3 stay: they deny nothing, because no record can be dated.
+
+## 11. Storage routing and cache activation (2026-10-16)
+
+### Where files go today (code trace + production counts)
+
+| Category | Destination | Upload path | Notes |
+|---|---|---|---|
+| Design Studio catalog, projects, renders | R2 (`design-studio/catalog/…`, `users/<a>/design-studio-*/…`) — 10,966 objects, 16 GB | browser `uploadObject` (storage-sign: PENDING row → PUT → HEAD-verified commit → ACTIVE); server renders `putObject` | Server renders are R2-acknowledged but have no `storage_objects` row; project delete clears the whole prefix, so no orphan risk |
+| Property photos | R2 `users/<a>/property-photos/…` | `uploadObject` | Reader falls back to the legacy Supabase bucket for old photos |
+| Contracts / Deal Room | Supabase `deal-room-documents` (20 MB); storage-migrate copies to R2 | browser upload, owner storage policies | Protected; moving needs a reviewed cutover |
+| Mortgage, developer docs/media, chat/DM media, broker files, voice | Supabase (≤ 25 MB each) | browser / voice-ai | R2 categories exist for mortgage/developer but are unused |
+| Meta Ads media | Supabase `meta-ads-media` (50 MB, video) — 13 objects, 15 MB | browser + creativeAi | Largest remaining heavy-file gap; needs an R2 category + `storage_authorize` rule (migration) |
+| Verify official-document cache | Supabase `verify-documents/files/<attachedFileId>.<ext>` — 10 objects, 17.5 MB | research-agent `document_file` only | Regenerable; see gate below |
+| Verify evidence / visuals | Supabase, content-addressed | verify-queue / research-agent | Permanent; never in retention scope |
+| Generated reports | R2 `users/<a>/generated-reports/…` allowed | nobody writes it yet | `generated_report` stays disabled |
+
+Moving the remaining Supabase categories to R2 is a per-category cutover (new
+category + `storage_authorize` rule migration, dual-read, checksummed copy,
+owner approval before any source deletion). None is done implicitly; historical
+objects are never moved or deleted blindly.
+
+### Verify cache activation gates
+
+1. **Single reader.** Only research-agent `document_file` reads `files/*`; it
+   signs, and on a miss re-fetches through `WORKER_URL/verify/tas-file`,
+   upserts and signs again. Shared keys (one file per TAS attachment) self-heal
+   for every report that references them.
+2. **Regeneration.** `storage-retention {"action":"cachecheck"}` re-fetches up
+   to five cached files from the source and compares type, size and SHA-256
+   (read-only). The engine repeats the source check before every delete and
+   keeps a file it cannot prove rebuildable (`KEPT_NOT_REGENERABLE`).
+3. **Prospective.** Discovery registers only `storage.objects` rows created at
+   or after the category's `active_since`; the existing cache files are never
+   registered.
+4. **Scope.** Only `verify-documents/files/<digits>.(pdf|jpg|png)` matches; the
+   allowlist cannot reach evidence, visuals, Contracts or customer uploads.
+
+### Engine run budget
+
+Edge Functions stop at 150 s. The tick claims one item at a time and starts
+no new claim after 90 s, so a stopped run leaves at most one lease, which the
+next run reclaims after it expires.

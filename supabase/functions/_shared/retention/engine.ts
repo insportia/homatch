@@ -45,6 +45,14 @@ export interface TickOptions {
   batch?: number;
   /** Pause between provider calls (rate limit). */
   pauseMs?: number;
+  /**
+   * Wall-clock budget for the claim loop. Items are claimed ONE AT A TIME and
+   * no new claim starts after the budget, so a run the platform stops (Edge
+   * Functions are killed at 150 s) never strands a batch of PURGING leases
+   * that would each burn an attempt on the way to a false dead letter.
+   */
+  budgetMs?: number;
+  now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -159,9 +167,13 @@ export async function tick(rpc: Rpc, providers: Providers, opts: TickOptions = {
     report.notices = await rpc('retention_artifact_notices', { p_limit: opts.noticeLimit ?? 200 });
   } catch (e) { report.errors.push(`notices: ${message(e)}`); }
 
-  const claims = ((await rpc('retention_artifacts_claim', { p_limit: opts.batch ?? 10, p_lease_seconds: 600 })) ?? []) as ArtifactClaim[];
-  report.claimed = claims.length;
-  for (const c of claims) {
+  const now = opts.now ?? Date.now;
+  const deadline = now() + (opts.budgetMs ?? 90_000);
+  const batch = Math.max(1, opts.batch ?? 10);
+  while (report.claimed < batch && now() < deadline) {
+    const [c] = ((await rpc('retention_artifacts_claim', { p_limit: 1, p_lease_seconds: 600 })) ?? []) as ArtifactClaim[];
+    if (!c) break;
+    report.claimed++;
     const outcome = await processArtifact(rpc, providers, c);
     if (outcome === 'DELETED') report.deleted++;
     else if (outcome === 'GONE') report.alreadyGone++;

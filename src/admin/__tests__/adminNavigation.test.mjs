@@ -57,6 +57,9 @@ const NOT_IN_SIDEBAR = new Set([
   /* Reached from the control centre, from Usage & cost and from the
      sidebar's Overview group under its own name. */
   '/admin/metrics',
+  /* One portal's configuration page, opened from its card on
+     Integrations → Property portals (which is in the sidebar). */
+  '/admin/integrations/portals/:providerId',
   /* The communication sub-pages ARE in the sidebar; these are the old
      URLs kept alive as redirects. */
   ...[

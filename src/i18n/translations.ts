@@ -19392,6 +19392,10 @@ const en = {
   fpi_save: 'Save listing',
   fpi_unsave: 'Remove from saved',
   fpi_save_failed: 'Could not update your saved listings. Try again.',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  p2d_admin_sw_find_property_social_enabled: 'Find Property: paid social-network campaigns',
+  p2d_admin_sw_find_property_social_enabled_d: 'Customers may pay for a campaign over Facebook, Instagram, Telegram and VK posts (memo23). 37% HOMATCH / 63% providers; stopped by the Apify provider switch too.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -38698,6 +38702,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpi_save: 'განცხადების შენახვა',
   fpi_unsave: 'შენახულიდან წაშლა',
   fpi_save_failed: 'შენახული განცხადებების განახლება ვერ მოხერხდა. სცადეთ თავიდან.',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  p2d_admin_sw_find_property_social_enabled: 'ობიექტის ძიება: ფასიანი კამპანიები სოციალურ ქსელებში',
+  p2d_admin_sw_find_property_social_enabled_d: 'მომხმარებლებს შეუძლიათ გადაიხადონ კამპანიაში Facebook-ის, Instagram-ის, Telegram-ისა და VK-ის პოსტებზე (memo23). 37% HOMATCH / 63% პროვაიდერები; Apify-ის გადამრთველიც აჩერებს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -57995,6 +58003,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpi_save: 'Сохранить объявление',
   fpi_unsave: 'Убрать из сохранённых',
   fpi_save_failed: 'Не удалось обновить сохранённые объявления. Попробуйте ещё раз.',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  p2d_admin_sw_find_property_social_enabled: 'Поиск объекта: платные кампании в соцсетях',
+  p2d_admin_sw_find_property_social_enabled_d: 'Клиенты могут оплатить кампанию по постам Facebook, Instagram, Telegram и VK (memo23). 37% HOMATCH / 63% провайдерам; также останавливается переключателем Apify.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -77290,6 +77302,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpi_save: 'İlanı kaydet',
   fpi_unsave: 'Kayıtlılardan çıkar',
   fpi_save_failed: 'Kayıtlı ilanlar güncellenemedi. Tekrar deneyin.',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  p2d_admin_sw_find_property_social_enabled: 'Mülk arama: ücretli sosyal ağ kampanyaları',
+  p2d_admin_sw_find_property_social_enabled_d: 'Müşteriler Facebook, Instagram, Telegram ve VK gönderilerinde bir kampanya için ödeme yapabilir (memo23). %37 HOMATCH / %63 sağlayıcılar; Apify anahtarı da durdurur.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -96585,6 +96601,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpi_save: 'حفظ الإعلان',
   fpi_unsave: 'إزالة من المحفوظات',
   fpi_save_failed: 'تعذّر تحديث الإعلانات المحفوظة. حاول مرة أخرى.',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  p2d_admin_sw_find_property_social_enabled: 'البحث عن عقار: حملات مدفوعة على الشبكات الاجتماعية',
+  p2d_admin_sw_find_property_social_enabled_d: 'يمكن للعملاء الدفع مقابل حملة على منشورات Facebook وInstagram وTelegram وVK (memo23). ‏37% لـ HOMATCH و63% للمزوّدين؛ ويوقفها مفتاح Apify أيضًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -115880,6 +115900,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpi_save: 'שמירת המודעה',
   fpi_unsave: 'הסרה מהשמורים',
   fpi_save_failed: 'לא ניתן לעדכן את המודעות השמורות. נסו שוב.',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  p2d_admin_sw_find_property_social_enabled: 'חיפוש נכס: קמפיינים בתשלום ברשתות חברתיות',
+  p2d_admin_sw_find_property_social_enabled_d: 'לקוחות יכולים לשלם על קמפיין בפוסטים ב-Facebook, Instagram, Telegram ו-VK (memo23). ‏37% ל-HOMATCH ו-63% לספקים; גם מתג Apify עוצר אותו.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

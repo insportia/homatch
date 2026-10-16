@@ -42,7 +42,7 @@ try {
   console.log('AWAITING_CONFIRMATION');
 
   let signedIn = false;
-  for (let i = 0; i < 45 && !signedIn; i++) {
+  for (let i = 0; i < 90 && !signedIn; i++) {
     await page.goto(`${BASE}/auth/login`, { waitUntil: 'networkidle' });
     await page.fill('#email', EMAIL); await page.fill('#password', PASSWORD);
     await page.locator('form button[type="submit"]').first().click();

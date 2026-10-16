@@ -28,6 +28,18 @@
 export type ProviderId = 'myhome' | 'ssge' | 'placege' | 'homege' | 'brokeri' | 'korter' | 'binebi' | 'allhome';
 export type Verification = 'PAGE_CHECK' | 'OWNER_CONFIRMED';
 
+/**
+ * How HOMATCH can publish to a portal through its own account — the four classes
+ * of the central engine. Only a class backed by a verified, permitted mechanism
+ * may be anything but MANUAL_ADMIN or BLOCKED; nothing is upgraded on assumption.
+ *   API                API publishing supported (an authorised, documented API)
+ *   BROWSER_ASSISTED   permitted browser-assisted publishing (terms allow it, no
+ *                      CAPTCHA / MFA / anti-bot control is in the way)
+ *   MANUAL_ADMIN       a HOMATCH administrator posts it by hand in the HOMATCH account
+ *   BLOCKED            publishing blocked or unsupported for HOMATCH
+ */
+export type Automation = 'API' | 'BROWSER_ASSISTED' | 'MANUAL_ADMIN' | 'BLOCKED';
+
 export interface ProviderProfile {
   id: ProviderId;
   name: string;
@@ -43,6 +55,9 @@ export interface ProviderProfile {
   /** Why automated page checks are off, when they are. */
   verificationNote: string | null;
   defaults: { maxPhotos: number | null; descriptionMax: number | null; requiredFields: FieldKey[] };
+  /** The central-engine class and why — see Automation. */
+  automation: Automation;
+  automationNote: string;
   evidence: string[];
   externalId: (url: URL) => string | null;
 }
@@ -63,6 +78,7 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: 'https://statements.myhome.ge/ka/statement/create?referrer=myhome', color: '#F26B1D',
     verification: 'PAGE_CHECK', verificationNote: null,
     defaults: { maxPhotos: 16, descriptionMax: null, requiredFields: ['description.ka'] },
+    automation: 'MANUAL_ADMIN', automationNote: 'NO_AUTHORISED_API',
     evidence: ['No public API, partner programme or OAuth (docs/myhome-partnership-request.md).', 'Listing creation requires the owner\'s own session and SMS confirmation.', 'Public listing URL: /ka/pr/<id>/…'],
     externalId: (url) => url.pathname.match(/\/pr\/(\d{5,12})(?:\/|$)/)?.[1] ?? null,
   },
@@ -71,7 +87,8 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: 'https://home.ss.ge/ka/udzravi-qoneba', color: '#1E5BD8',
     verification: 'PAGE_CHECK', verificationNote: null,
     defaults: { maxPhotos: null, descriptionMax: null, requiredFields: [] },
-    evidence: ['No public API, partner programme or OAuth published.', 'Public listing URL ends with the listing id: …-<id>'],
+    automation: 'MANUAL_ADMIN', automationNote: 'API_ANNOUNCED_NOT_ONBOARDED',
+    evidence: ['A 2020 SS.ge announcement describes publishing/management APIs (ss.ge blog "ss-ge-api"); no current documentation, onboarding or credentials have been provided to HOMATCH.', 'Public listing URL ends with the listing id: …-<id>'],
     externalId: (url) => url.pathname.replace(/\/+$/, '').match(/(?:^|[/-])(\d{6,12})$/)?.[1] ?? null,
   },
   {
@@ -79,6 +96,7 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: null, color: '#0E9F6E',
     verification: 'PAGE_CHECK', verificationNote: null,
     defaults: { maxPhotos: null, descriptionMax: null, requiredFields: [] },
+    automation: 'MANUAL_ADMIN', automationNote: 'NO_AUTHORISED_API',
     evidence: ['No public API, partner programme or OAuth found.', 'Public listing URL: /ge/ads/view/<id> (official-worker placege adapter).'],
     externalId: (url) => url.pathname.match(/\/ads\/view\/(\d{4,12})(?:\/|$)/)?.[1] ?? null,
   },
@@ -87,6 +105,7 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: null, color: '#D6262C',
     verification: 'PAGE_CHECK', verificationNote: null,
     defaults: { maxPhotos: null, descriptionMax: null, requiredFields: [] },
+    automation: 'MANUAL_ADMIN', automationNote: 'NO_AUTHORISED_API',
     evidence: ['No public API, partner programme or OAuth found.', 'Public listing URL: /<deal>/<type>/<slug>-<id>.html (official-worker homege adapter).'],
     externalId: (url) => url.pathname.match(/-(\d{3,12})\.html$/)?.[1] ?? null,
   },
@@ -95,6 +114,7 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: null, color: '#6D28D9',
     verification: 'PAGE_CHECK', verificationNote: null,
     defaults: { maxPhotos: null, descriptionMax: null, requiredFields: [] },
+    automation: 'MANUAL_ADMIN', automationNote: 'NO_AUTHORISED_API',
     evidence: ['No public API, partner programme or OAuth found.', 'Public listing URL: /property/<slug>/<id> (official-worker brokeri adapter).'],
     externalId: (url) => url.pathname.replace(/\/+$/, '').match(/^\/property\/[^/]+\/(\d{2,12})$/)?.[1] ?? null,
   },
@@ -103,6 +123,7 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: null, color: '#111827',
     verification: 'OWNER_CONFIRMED', verificationNote: 'TERMS_FORBID_AUTOMATED_ACCESS',
     defaults: { maxPhotos: null, descriptionMax: null, requiredFields: [] },
+    automation: 'MANUAL_ADMIN', automationNote: 'TERMS_FORBID_AUTOMATED_ACCESS',
     evidence: ['Developer-led new-build catalogue; listings are supplied by developers and moderated by Korter.', 'Terms §5.3 forbid automated access, so HOMATCH never fetches Korter pages (KNOWN_RISKS.md).'],
     externalId: (url) => lastDigits(url, 3) ?? (url.pathname.replace(/\/+$/, '').split('/').pop() || null),
   },
@@ -111,6 +132,7 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: null, color: '#0F766E',
     verification: 'OWNER_CONFIRMED', verificationNote: 'BOT_CHALLENGE_ON_PUBLIC_PAGES',
     defaults: { maxPhotos: null, descriptionMax: null, requiredFields: [] },
+    automation: 'MANUAL_ADMIN', automationNote: 'BOT_CHALLENGE_ON_PUBLIC_PAGES',
     evidence: ['No public API, partner programme or OAuth found.', 'Every public page answers with a Cloudflare challenge; HOMATCH never tries to pass it (KNOWN_RISKS.md).'],
     externalId: (url) => lastDigits(url, 3) ?? (url.pathname.replace(/\/+$/, '').split('/').pop() || null),
   },
@@ -119,6 +141,7 @@ export const PROFILES: ProviderProfile[] = [
     createUrl: null, color: '#E11D48',
     verification: 'PAGE_CHECK', verificationNote: null,
     defaults: { maxPhotos: null, descriptionMax: null, requiredFields: [] },
+    automation: 'MANUAL_ADMIN', automationNote: 'NO_AUTHORISED_API',
     evidence: ['No public API, partner programme or OAuth found.', 'Public listing URL: /<slug>-<id>-<category>.html; robots.txt disallows /index.php (official-worker allhome adapter).'],
     externalId: (url) => url.pathname.match(/-(\d{4,12})-\d{1,3}\.html$/)?.[1] ?? null,
   },
@@ -152,6 +175,10 @@ export interface Capabilities {
   importListing: false;
   manualHandoff: true;
   verification: Verification;
+  /** The central engine: HOMATCH publishes through its own account, by this route. */
+  homatchAccount: true;
+  automation: Automation;
+  automationNote: string;
 }
 
 export interface ProviderConfig {
@@ -196,7 +223,10 @@ export function configFor(profile: ProviderProfile, row?: ProviderRow | null): P
     requiredFields: row ? (row.required_fields ?? []).filter(isFieldKey) : profile.defaults.requiredFields,
     verification,
     verificationNote: verification === 'OWNER_CONFIRMED' ? (profile.verificationNote ?? 'ADMIN_SET_OWNER_CONFIRMATION') : null,
-    capabilities: { accountConnection: false, apiPublishing: false, apiUpdate: false, apiDelete: false, importListing: false, manualHandoff: true, verification },
+    capabilities: {
+      accountConnection: false, apiPublishing: false, apiUpdate: false, apiDelete: false, importListing: false, manualHandoff: true, verification,
+      homatchAccount: true, automation: profile.automation, automationNote: profile.automationNote,
+    },
     evidence: profile.evidence,
     health: { status: row?.health_status ?? null, checkedAt: row?.health_checked_at ?? null, detail: row?.health_detail ?? null },
   };
@@ -224,6 +254,8 @@ export interface ProviderAdapter {
   parseListingUrl(input: unknown): { url: string; externalId: string } | { error: string };
   /** Whether HOMATCH may fetch the public page to verify it. */
   canCheckPage(): boolean;
+  /** Whether a stored account credential would be used by a verified mechanism. None today. */
+  acceptsCredential(): boolean;
   run(operation: Operation): Unsupported;
 }
 
@@ -238,6 +270,7 @@ export function adapterFor(config: ProviderConfig): ProviderAdapter {
     getCapabilities: () => config.capabilities,
     hostAllowed,
     canCheckPage: () => config.verification === 'PAGE_CHECK',
+    acceptsCredential: () => config.capabilities.automation === 'API' || config.capabilities.automation === 'BROWSER_ASSISTED',
     parseListingUrl(input) {
       let url: URL;
       try { url = new URL(String(input ?? '').trim()); } catch { return { error: 'INVALID_URL' }; }

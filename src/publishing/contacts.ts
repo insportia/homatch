@@ -97,3 +97,53 @@ export function withFooter(description: string, contacts: Contact[], lang: Foote
   if (!footer) return body;
   return body ? `${body}\n\n${footer}` : footer;
 }
+
+/* ── The owner-contact footer (HOMATCH-account publications) ─────────────
+ * When HOMATCH publishes through its own portal account, the portal's contact
+ * phone field carries the HOMATCH account's phone, and the property owner's
+ * name and phone go at the END of the description — once, and only with the
+ * owner's consent. The two identities never trade places: this footer is the
+ * only place the owner's number appears in a HOMATCH-account copy. */
+
+export interface OwnerContact { name: string; phone: string }
+
+const OWNER_FOOTER: Record<FooterLang, { header: string; owner: string; phone: string; via: string }> = {
+  ka: { header: 'საკონტაქტო ინფორმაცია', owner: 'ქონების მფლობელი', phone: 'ტელეფონი', via: 'განცხადება გამოქვეყნებულია HOMATCH-ის მეშვეობით.' },
+  en: { header: 'Contact information', owner: 'Property owner', phone: 'Phone', via: 'This listing was published via HOMATCH.' },
+  ru: { header: 'Контактная информация', owner: 'Владелец недвижимости', phone: 'Телефон', via: 'Объявление опубликовано через HOMATCH.' },
+};
+
+/** The owner footer, or '' when the name or the number is missing / invalid. */
+export function ownerFooter(owner: OwnerContact, lang: FooterLang = 'ka'): string {
+  const name = String(owner?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!name || !isE164(owner?.phone)) return '';
+  const f = OWNER_FOOTER[lang] ?? OWNER_FOOTER.ka;
+  return [f.header, `${f.owner}: ${name}`, `${f.phone}: ${formatPhone(owner.phone)}`, f.via].join('\n');
+}
+
+/** Remove trailing owner footers (any language) and v1 number footers. */
+export function stripOwnerFooter(description: string): string {
+  let text = stripFooter(description);
+  for (let guard = 0; guard < 6; guard++) {
+    let changed = false;
+    for (const f of Object.values(OWNER_FOOTER)) {
+      const at = text.lastIndexOf(f.header);
+      if (at < 0) continue;
+      const tail = text.slice(at + f.header.length).split('\n').map((l) => l.trim()).filter(Boolean);
+      if (tail.length && tail.length <= 3 && tail.every((l) => l.startsWith(`${f.owner}:`) || l.startsWith(`${f.phone}:`) || l === f.via)) {
+        text = stripFooter(text.slice(0, at));
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return text.replace(/\s+$/, '');
+}
+
+/** Description + owner footer, exactly once. No footer without a valid name and number. */
+export function withOwnerFooter(description: string, owner: OwnerContact, lang: FooterLang = 'ka'): string {
+  const body = stripOwnerFooter(description);
+  const footer = ownerFooter(owner, lang);
+  if (!footer) return body;
+  return body ? `${body}\n\n${footer}` : footer;
+}

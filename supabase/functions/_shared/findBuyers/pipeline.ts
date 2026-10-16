@@ -109,6 +109,8 @@ export interface PipelineCtx {
   book: PriceBook;
   gate: { skipBelow: number; eligibleFrom: number };
   fx?: FxToUsd;
+  /** DOWN_PAYMENT_LOW risk ratio (admin setting find_buyers_financing); qualify's default when absent. */
+  lowDownPaymentRatio?: number;
   /** The parent post when this run fetched one post's comments. */
   parent: ParentContext | null;
   /** Adaptive comment sampling: the configured first-sample size and the Actor maximum. */
@@ -440,7 +442,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   const seenKeys = new Set<string>(((priorLeads ?? []) as any[]).flatMap((r) => (Array.isArray(r.qualification?.dupKeys) ? r.qualification.dupKeys : [])));
   for (const a of assessed) {
     const duplicate = a.dupKeys.some((k) => seenKeys.has(k));
-    a.qualification = gateIntent(a, qualify(a.reading, campaign.dna, { ageDays: a.ageDays, duplicate, fx: ctx.fx }), campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER');
+    a.qualification = gateIntent(a, qualify(a.reading, campaign.dna, { ageDays: a.ageDays, duplicate, fx: ctx.fx, lowDownPaymentRatio: ctx.lowDownPaymentRatio }), campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER');
     if (a.qualification.category !== 'REJECTED') a.dupKeys.forEach((k) => seenKeys.add(k));
     const counterpart = campaign.transaction === 'RENT' ? 'TENANT' : 'BUYER';
     const intentClass = legacyIntentClass(a.qualification, counterpart) as IntentVerdict['intentClass'];

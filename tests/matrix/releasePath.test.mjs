@@ -358,7 +358,9 @@ test('PR workflow: plan → parallel static, unit, browser matrix, worker → on
   assert.match(PR, /run: pnpm run build:harness/, 'a browser job builds its own harness');
   assert.match(PR, /npm install -g @ast-grep\/cli/);
   assert.match(PR, /run: pnpm exec tsc -p tsconfig\.check\.json --noEmit/);
-  assert.match(PR, /run: npm --prefix official-worker test/);
+  // Under Xvfb, with a real Chromium installed: the worker's real-browser tests run, never skip.
+  assert.match(PR, /run: xvfb-run -a npm --prefix official-worker test/);
+  assert.match(PR, /npx playwright install --with-deps chromium/);
   const v = PR.slice(PR.indexOf('\n  validate:\n'));
   assert.match(v, /name: Validate PR/);
   assert.match(v, /needs: \[plan, static, unit, browser, worker\]/);

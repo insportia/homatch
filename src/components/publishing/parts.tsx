@@ -9,7 +9,7 @@ import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { Check, ExternalLink, Minus } from 'lucide-react';
-import { JOURNEY, type JourneyStep, type PortalInfo, type PublicationStatus, type StepState, type Tone, toneOf } from '@/publishing/model';
+import { type CustomerStatus, JOURNEY, type JourneyStep, type PortalInfo, type PublicationStatus, type StepState, type Tone, toneOf } from '@/publishing/model';
 
 const DOT: Record<Tone, string> = {
   live: 'bg-[hsl(var(--gold))]',
@@ -34,6 +34,23 @@ export function PublicationMark({ status, className }: { status: PublicationStat
       <span className={cn('text-2xs font-semibold break-words', INK[tone])}>
         {t(status ? `pubw_status_${status.toLowerCase()}` : 'pubw_status_not_started')}
       </span>
+    </span>
+  );
+}
+
+const CUSTOMER_TONE: Record<CustomerStatus, Tone> = {
+  DRAFT: 'quiet', READY: 'quiet', QUEUED: 'pending', PUBLISHING: 'pending', PUBLISHED: 'live',
+  PENDING_ADMIN: 'pending', AUTH_REQUIRED: 'pending', REJECTED: 'problem', FAILED: 'problem', DEACTIVATED: 'quiet',
+};
+
+/** One of the ten dashboard statuses (model.ts customerStatus), as a dot and a word. */
+export function CustomerStatusMark({ status, className }: { status: CustomerStatus; className?: string }) {
+  const { t } = useLanguage();
+  const tone = CUSTOMER_TONE[status];
+  return (
+    <span className={cn('inline-flex min-w-0 items-center gap-1.5', className)} data-status={status}>
+      <span aria-hidden="true" className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT[tone])} />
+      <span className={cn('text-2xs font-semibold break-words', INK[tone])}>{t(`pubw_cs_${status.toLowerCase()}`)}</span>
     </span>
   );
 }
@@ -211,7 +228,8 @@ export function PortalPicker({ portals, selected, onToggle, disabled, problems }
                 <span className="block text-2xs text-muted-foreground break-words">
                   {!p.enabled ? t('pubw_portal_unavailable')
                     : on && open ? t('pubw_portal_needs', { n: open })
-                      : p.verification === 'OWNER_CONFIRMED' ? t('pubw_portal_mode_owner') : t('pubw_portal_mode_check')}
+                      : p.homatch ? t(p.homatch.unavailable ? 'pubw_route_unavailable' : `pubw_route_${(p.homatch.route ?? 'auth_required').toLowerCase()}`)
+                        : p.verification === 'OWNER_CONFIRMED' ? t('pubw_portal_mode_owner') : t('pubw_portal_mode_check')}
                 </span>
               </span>
               <span aria-hidden="true" className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors', on ? 'border-transparent bg-[#0C1119] text-white' : 'border-border text-transparent')}>
@@ -256,6 +274,37 @@ export function JourneySteps({ steps, onSelect }: { steps: Record<JourneyStep, S
                   {s === 'done' ? '✓' : i + 1}
                 </span>
                 {t(`pubw_journey_${step}`)}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+/* ── The four-step flow: create → choose portals → preview → publish ─────── */
+export const FLOW = ['create', 'portals', 'preview', 'publish'] as const;
+export type FlowStep = typeof FLOW[number];
+
+export function FlowSteps({ steps, onSelect }: { steps: Record<FlowStep, boolean>; onSelect?: (step: FlowStep) => void }) {
+  const { t } = useLanguage();
+  const current = FLOW.find((s) => !steps[s]) ?? null;
+  return (
+    <nav aria-label={t('pubw_flow_title')} className="min-w-0" data-testid="pubw-flow">
+      <ol className="grid grid-cols-4 gap-1.5">
+        {FLOW.map((step, i) => {
+          const done = steps[step];
+          const now = step === current;
+          return (
+            <li key={step} className="min-w-0">
+              <button type="button" onClick={() => onSelect?.(step)} aria-current={now ? 'step' : undefined} data-state={done ? 'done' : now ? 'current' : 'todo'}
+                className={cn('flex w-full min-w-0 flex-col items-start gap-1 rounded-xl border px-2.5 py-2 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]',
+                  now ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]' : 'border-border bg-[hsl(var(--card))] hover:border-[hsl(var(--gold-border))]')}>
+                <span className={cn('grid h-5 w-5 place-items-center rounded-full text-2xs font-bold', done ? 'bg-[#0C1119] text-white' : now ? 'bg-[hsl(var(--gold))] text-[#0C1119]' : 'bg-secondary text-muted-foreground')}>
+                  {done ? <Check className="h-3 w-3" aria-hidden="true" /> : i + 1}
+                </span>
+                <span className="w-full truncate text-2xs font-semibold text-foreground">{t(`pubw_flow_${step}`)}</span>
               </button>
             </li>
           );

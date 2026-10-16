@@ -5,12 +5,15 @@
 // overview, the label a status wears, whether a portal copy is behind the listing, and
 // the first draft of a listing built from the owner's existing property.
 
-import { type Contact, type FooterLang, withFooter } from './contacts.ts';
+import { type Contact, type FooterLang, stripFooter, withFooter, withOwnerFooter } from './contacts.ts';
 
 export type PortalId = 'myhome' | 'ssge' | 'placege' | 'homege' | 'brokeri' | 'korter' | 'binebi' | 'allhome';
 export type PublicationStatus =
   | 'HANDOFF_READY' | 'VERIFYING' | 'PUBLISHED' | 'OWNER_CONFIRMED' | 'VERIFICATION_FAILED'
-  | 'UNPUBLISH_REQUESTED' | 'UNPUBLISHED' | 'REMOVED_EXTERNALLY';
+  | 'UNPUBLISH_REQUESTED' | 'UNPUBLISHED' | 'REMOVED_EXTERNALLY'
+  | 'QUEUED' | 'PUBLISHING' | 'ADMIN_ACTION_REQUIRED' | 'AUTH_REQUIRED' | 'REJECTED' | 'FAILED';
+export type Channel = 'OWNER_HANDOFF' | 'HOMATCH_ACCOUNT';
+export type Automation = 'API' | 'BROWSER_ASSISTED' | 'MANUAL_ADMIN' | 'BLOCKED';
 export type Verification = 'PAGE_CHECK' | 'OWNER_CONFIRMED';
 
 /** One portal as the server describes it (publishing-engine/domain.ts publicRegistry). */
@@ -33,8 +36,11 @@ export interface PortalInfo {
   capabilities: {
     accountConnection: false; apiPublishing: false; apiUpdate: false; apiDelete: false; importListing: false;
     manualHandoff: true; verification: Verification;
+    homatchAccount?: true; automation?: Automation; automationNote?: string;
   };
   publishing: 'MANUAL_HANDOFF';
+  /** The central engine, for this customer: where a publish request would start, or why it cannot, and the number HOMATCH listings show. */
+  homatch?: { route: 'QUEUED' | 'ADMIN_ACTION_REQUIRED' | 'AUTH_REQUIRED' | null; unavailable: string | null; contactPhone: string | null };
 }
 
 export interface ListingDraft {
@@ -91,6 +97,11 @@ export interface PublicationRow {
   next_check_at: string | null;
   published_at: string | null;
   last_error: string | null;
+  channel?: Channel;
+  contact_consent_at?: string | null;
+  /** Why HOMATCH could not publish it (a portal's rejection, a failure) — written for the owner. */
+  status_reason?: string | null;
+  admin_claimed_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -116,11 +127,46 @@ export type Tone = 'live' | 'pending' | 'problem' | 'quiet';
 export function toneOf(status: PublicationStatus | null): Tone {
   switch (status) {
     case 'PUBLISHED': case 'OWNER_CONFIRMED': return 'live';
-    case 'HANDOFF_READY': case 'VERIFYING': case 'UNPUBLISH_REQUESTED': return 'pending';
-    case 'VERIFICATION_FAILED': case 'REMOVED_EXTERNALLY': return 'problem';
+    case 'HANDOFF_READY': case 'VERIFYING': case 'UNPUBLISH_REQUESTED':
+    case 'QUEUED': case 'PUBLISHING': case 'ADMIN_ACTION_REQUIRED': case 'AUTH_REQUIRED': return 'pending';
+    case 'VERIFICATION_FAILED': case 'REMOVED_EXTERNALLY': case 'REJECTED': case 'FAILED': return 'problem';
     default: return 'quiet';
   }
 }
+
+/**
+ * The ten statuses a customer sees for one portal (the dashboard's vocabulary).
+ * Draft / Ready describe the listing when there is no publication yet; the rest
+ * map the server's publication statuses. "Published" needs a publication the
+ * server confirmed (page check, or an attested portal HOMATCH may not fetch).
+ */
+export type CustomerStatus = 'DRAFT' | 'READY' | 'QUEUED' | 'PUBLISHING' | 'PUBLISHED' | 'PENDING_ADMIN' | 'AUTH_REQUIRED' | 'REJECTED' | 'FAILED' | 'DEACTIVATED';
+export const CUSTOMER_STATUSES: CustomerStatus[] = ['DRAFT', 'READY', 'QUEUED', 'PUBLISHING', 'PUBLISHED', 'PENDING_ADMIN', 'AUTH_REQUIRED', 'REJECTED', 'FAILED', 'DEACTIVATED'];
+
+export function customerStatus(listing: Pick<ListingRow, 'validation'> | null, pub: Pick<PublicationRow, 'status'> | null): CustomerStatus {
+  if (!pub) return listing?.validation.ready ? 'READY' : 'DRAFT';
+  switch (pub.status) {
+    case 'QUEUED': return 'QUEUED';
+    case 'PUBLISHING': case 'VERIFYING': return 'PUBLISHING';
+    case 'PUBLISHED': case 'OWNER_CONFIRMED': return 'PUBLISHED';
+    case 'ADMIN_ACTION_REQUIRED': case 'UNPUBLISH_REQUESTED': return 'PENDING_ADMIN';
+    case 'AUTH_REQUIRED': return 'AUTH_REQUIRED';
+    case 'REJECTED': return 'REJECTED';
+    case 'FAILED': case 'VERIFICATION_FAILED': return 'FAILED';
+    case 'UNPUBLISHED': case 'REMOVED_EXTERNALLY': return 'DEACTIVATED';
+    case 'HANDOFF_READY': return 'READY';
+  }
+  return 'DRAFT';
+}
+
+/** The description HOMATCH posts through its account: the owner's text + the owner footer, exactly once. */
+export function centralDescription(d: Pick<ListingDraft, 'description' | 'contacts' | 'contactName'>, lang: FooterLang = copyLanguage(d)): string {
+  return withOwnerFooter(stripFooter(d.description[lang] || ''), { name: d.contactName, phone: d.contacts[0]?.phone ?? '' }, lang);
+}
+
+/** Statuses a new publish request may start from (mirrors domain.ts RESTARTABLE + pending re-publish). */
+export const canRequestPublish = (p: Pick<PublicationRow, 'status'> | null) =>
+  !p || ['UNPUBLISHED', 'REMOVED_EXTERNALLY', 'HANDOFF_READY', 'VERIFICATION_FAILED', 'REJECTED', 'FAILED', 'QUEUED', 'ADMIN_ACTION_REQUIRED', 'AUTH_REQUIRED'].includes(p.status);
 
 /** The portal copy was published from an older listing version and the owner has edited since. */
 export function isOutdated(p: PublicationRow, listing: Pick<ListingRow, 'version'>): boolean {

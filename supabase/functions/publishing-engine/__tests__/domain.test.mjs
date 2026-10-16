@@ -53,10 +53,10 @@ test('provider field rules come from configuration and default to none', () => {
   const x = { ...complete(), area: null, photos: [] };
   const v = validateListing(x);
   for (const id of ['ssge', 'placege', 'homege', 'brokeri', 'korter', 'binebi', 'allhome']) assert.deepEqual(v.portals[id], [], id);
-  const strict = configs([{ id: 'placege', enabled: true, sort: 2, create_url: null, logo_url: null, verification: null, max_photos: null, description_max: 120, required_fields: ['area', 'photos', 'bathrooms', 'not-a-field'] }]);
+  const strict = configs([{ id: 'placege', enabled: true, sort: 2, create_url: null, logo_url: null, verification: null, max_photos: null, description_max: 160, required_fields: ['area', 'photos', 'bathrooms', 'not-a-field'] }]);
   const ruled = validateListing(x, strict).portals.placege.map((p) => `${p.field}:${p.code}`);
   assert.deepEqual(ruled, ['area:REQUIRED_BY_PORTAL', 'photos:REQUIRED_BY_PORTAL', 'bathrooms:REQUIRED_BY_PORTAL']);
-  // The description limit counts the contact footer that will be appended.
+  // The description limit counts the longer footer that will be appended (the HOMATCH-account owner footer).
   const long = { ...complete(), description: { ka: 'ა'.repeat(80), en: '', ru: '' } };
   assert.ok(validateListing(long, strict).portals.placege.some((p) => p.field === 'description.ka' && p.code === 'DESCRIPTION_TOO_LONG'));
 });

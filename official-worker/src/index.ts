@@ -38,6 +38,7 @@ import { mountTelegramRoutes } from './telegram/routes.js';
 import { createGramJsDriver } from './telegram/GramJsDriver.js';
 import { mountDiscoveryRoutes } from './discovery/routes.js';
 import { mountTasFileRoutes } from './verify/TasFileRoute.js';
+import { startPublishingWorker } from './publishing/start.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -872,6 +873,12 @@ app.get('/health/speech-selftest', async (_q: any, r: any) => {
 // from verify-queue alongside the legacy HTTP job API, which keeps working.
 const verifyQueue = startVerifyQueue({ orchestrator, launchJobBrowser, closeJobBrowser, beforeShutdown });
 app.get('/health/queue', (_q: any, r: any) => r.json(verifyQueue ? verifyQueue.snapshot() : { enabled: false }));
+
+// Publishing browser automation (off unless PUBLISHING_AUTOMATION_ENABLED=1):
+// claims portal operations from the publishing-worker edge function.
+const publishingWorker = startPublishingWorker();
+app.get('/health/publishing', auth, (_q: any, r: any) => r.json(publishingWorker ? publishingWorker.status() : { enabled: false }));
+beforeShutdown(async () => { await publishingWorker?.stop(); });
 
 const server = app.listen(PORT, '0.0.0.0', () =>
   console.log(`homatch-official-worker 2.0.0 (deterministic FSM architecture) listening on ${PORT}`));

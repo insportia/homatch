@@ -6,16 +6,17 @@
 // research behind them — those live in publishing-engine/providers.ts). Every
 // change is validated server-side and written with an audit row.
 //
-// THERE IS NO ACCOUNT CONNECTION TO MANAGE. None of the eight portals publishes
-// an authorised API or OAuth flow, so this page shows that fact and the manual
-// handoff that works, and its "test connection" asks the adapter — which answers
-// CAPABILITY_NOT_SUPPORTED — rather than pretending.
+// THE HOMATCH ACCOUNT on this portal (AdminAccountCard): identity, the HOMATCH
+// contact phone, real status. None of the eight portals publishes an authorised
+// API, so testing the account asks the adapter — which answers
+// CAPABILITY_NOT_SUPPORTED — and listings are posted by hand from the queue.
 
-import { ArrowLeft, ExternalLink, Loader2, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Loader2, RefreshCw, RotateCcw } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ErrorState, LoadingBlock, ScrollTable } from '@/components/communications/primitives';
+import { AdminAccountCard } from '@/components/publishing/AdminAccountCard';
 import { PortalLogo, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -23,7 +24,7 @@ import { intlLocaleFor } from '@/components/workspace/primitives';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
-  type AdminPublication, type ProviderPatch, PublishingError, adminPublications, adminRecheckProvider, adminRetryPublication, adminUpdateProvider, providerOperation,
+  type AdminPublication, type ProviderPatch, PublishingError, adminPublications, adminRecheckProvider, adminRetryPublication, adminUpdateProvider,
 } from '@/services/publishing';
 import { HealthMark, useAdminPortals } from './AdminPropertyPortalsPage';
 
@@ -49,7 +50,6 @@ export default function AdminPropertyPortalPage() {
   const [form, setForm] = useState<ProviderPatch>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [pubs, setPubs] = useState<AdminPublication[] | null>(null);
-  const [testResult, setTestResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (!provider) return;
@@ -99,6 +99,8 @@ export default function AdminPropertyPortalPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title={t('pubw_admin_capabilities')}>
           <ul className="space-y-1.5" data-testid="admin-portal-capabilities">
+            <li className="flex items-center justify-between gap-2 text-sm"><span>{t('pubw_admin_cap_central')}</span><span className="max-w-[55%] text-end text-2xs font-semibold text-sky-800" data-testid="admin-portal-automation">{t(`pubw_automation_${(provider.capabilities.automation ?? 'MANUAL_ADMIN').toLowerCase()}`)}</span></li>
+            {provider.capabilities.automationNote ? <li className="text-2xs text-muted-foreground">{t(`pubw_automation_note_${provider.capabilities.automationNote.toLowerCase()}`)}</li> : null}
             <li className="flex items-center justify-between gap-2 text-sm"><span>{t('pubw_admin_cap_manual')}</span><span className="shrink-0 text-end text-2xs font-semibold text-emerald-700">{t('pubw_admin_supported')}</span></li>
             <li className="flex items-center justify-between gap-2 text-sm"><span>{t('pubw_admin_cap_verify')}</span>
               <span className={cn('max-w-[55%] text-end text-2xs font-semibold', provider.verification === 'PAGE_CHECK' ? 'text-emerald-700' : 'text-[hsl(var(--gold-ink))]')}>{t(provider.verification === 'PAGE_CHECK' ? 'pubw_admin_mode_check' : 'pubw_admin_mode_owner')}</span></li>
@@ -109,19 +111,7 @@ export default function AdminPropertyPortalPage() {
         </Section>
 
         <Section title={t('pubw_admin_accounts')}>
-          <p className="text-sm text-foreground">{t('pubw_admin_accounts_none', { portal: provider.name })}</p>
-          <p className="mt-2 flex items-start gap-2 text-2xs text-muted-foreground"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('pubw_admin_no_credentials')}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" disabled={busy !== null} data-testid="admin-portal-test-connection" onClick={async () => {
-              setBusy('test');
-              // The adapter's own answer, not a client-side guess.
-              setTestResult(await providerOperation(provider.id, 'testConnection'));
-              setBusy(null);
-            }}>
-              {busy === 'test' ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" /> : null}{t('pubw_admin_test_connection')}
-            </Button>
-            {testResult ? <span className="text-2xs font-semibold text-muted-foreground" data-testid="admin-portal-test-result">{errorText(testResult)}</span> : null}
-          </div>
+          <AdminAccountCard portalId={provider.id} portalName={provider.name} />
         </Section>
       </div>
 

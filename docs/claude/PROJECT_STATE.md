@@ -113,6 +113,55 @@ MATTERS right now, verify against the live systems, not this file)
   the portal home page, and the UI says so) — neither could be fetched or found in the web index from
   this environment, so none were invented. No portal has an API, OAuth or account connection.
 
+### Central publishing engine (branch `claude/homatch-property-publishing-g50stw`, 2026-10-16 — NOT YET RELEASED)
+
+- **Model**: HOMATCH publishes through its OWN portal accounts. Customer: create → choose portals →
+  preview → consent → **Publish to Selected Portals** (`publication.publish`, idempotent per portal,
+  per-portal results). Jobs are `publishing_engine_jobs` rows with `channel = HOMATCH_ACCOUNT`; new
+  statuses QUEUED / PUBLISHING / ADMIN_ACTION_REQUIRED / AUTH_REQUIRED / REJECTED / FAILED. Customer
+  vocabulary = 10 statuses (`model.ts customerStatus`). The v1 owner handoff stays, collapsed.
+- **Contacts**: portal contact field = the HOMATCH account phone; owner name + phone ONLY in the
+  footer at the end of the description, once, with consent (`contacts.ts ownerFooter` /
+  `withOwnerFooter`; DB CHECK: central job ⇒ `contact_consent_at`).
+- **Routing** (`central.ts routeFor`): no/expired account → AUTH_REQUIRED (rerouted automatically
+  when an admin registers the account); registered manual account → ADMIN_ACTION_REQUIRED (Admin →
+  Integrations → Publishing queue: claim, copy, post by hand, link URL → public page check →
+  PUBLISHED; Korter/Binebi → admin attestation, labelled). QUEUED (automatic) only for an
+  API/BROWSER_ASSISTED adapter with a verified account — **no portal qualifies**.
+- **Capability classification** (providers.ts `automation`): all eight = MANUAL_ADMIN. Notes:
+  NO_AUTHORISED_API (myhome, placege, homege, brokeri, allhome), API_ANNOUNCED_NOT_ONBOARDED
+  (ssge — 2020 blog announcement, no docs/credentials), TERMS_FORBID_AUTOMATED_ACCESS (korter),
+  BOT_CHALLENGE_ON_PUBLIC_PAGES (binebi). NOT re-verified live: this container's egress proxy rejects
+  every portal domain and homatch.live (connect_rejected).
+- **Accounts** (`publishing_accounts`, `publishing_account_audit`, `publishing_account_write`):
+  service-role only; 8 statuses; CONNECTED/PUBLISHING_AVAILABLE need `verified_at` (CHECK) and come
+  only from a TEST; Test asks the adapter → CAPABILITY_NOT_SUPPORTED. No password is asked for.
+  `vault.ts` (AES-256-GCM, key `PUBLISHING_CREDENTIALS_KEY`, portal-bound AAD) exists, but storing a
+  credential is refused (CREDENTIAL_NOT_ACCEPTED) while no verified mechanism would use it; the key
+  secret is NOT configured.
+- **Migration** `20261108090000_publishing_central_accounts.sql` — NOT APPLIED; DROP-bearing (jobs
+  status CHECK swap); applied only on the owner's authorization per
+  `docs/publishing/MIGRATION-20261108090000.md`. Until then publishing-engine probes the schema per
+  request: v1 owner-handoff workspace unchanged, central actions → 503 PUBLISHING_SETUP_PENDING.
+- **Logos**: still monograms — no logo source reachable from this environment; none invented.
+- **Backend browser automation** (same branch; runbook `docs/publishing/AUTOMATION.md`): Playwright
+  adapters for MyHome.ge / SS.ge in `official-worker/src/publishing/` (inert unless
+  `PUBLISHING_AUTOMATION_ENABLED=1`), edge door `publishing-worker` (verify_jwt=false, its own PUBLISHING_WORKER_TOKEN — never the shared WORKER_TOKEN),
+  `publishing_operations` queue with leases + submit-once door, sealed portal sessions,
+  `scripts/publishing/capture-session.mjs`. Selectors come from the committed distillation of the
+  owner's MCP exploration (`805ec2c5` / `fa1220c7`); the raw SS.ge 317-action recording was never
+  committed. Levels: MyHome/SS CHECK_SESSION, CREATE, STATUS = FIXTURE_TESTED; all management ops
+  and all other portals NOT_EXPLORED. SS.ge CREATE always stops at PREPARED (publish control not
+  recorded). NOTHING has run against a live portal. Needs: migration, `PUBLISHING_CREDENTIALS_KEY`
+  edge secret, Railway var, a captured session, then the owner's live-submit approval.
+- **Audit 2026-10-16 (PR #226)**: `publishing-artifacts` registered in the Storage map (ADMIN-only FLAT;
+  browser callers refused by storage_authorize); screenshots mask password/OTP inputs; 30-day retention +
+  immediate removal for deleted listings (housekeeping); a session-text leak into `last_error` fixed;
+  CI worker job now installs Chromium and the adapter tests fail closed (they had been skipped in CI).
+  Migration verdict: only the jobs status CHECK is dropped/recreated; prod has 0 jobs; functions
+  byte-identical to the test chain; apply / re-apply / rollback proven (`tests/sql/publishing/rollback.sh`).
+  Real-browser: still blocked here (portal domains denied); owner-run `official-worker/scripts/publishing-dry-run.ts`.
+
 ## Cloudflare R2 routing (PR #225 merged 17fffdc9, PR #229 merged 3fa07c14; migration applied 2026-10-16 as ledger 20261016113831 `storage_r2_routing`)
 
 - Design and procedure: `docs/infra/R2_STORAGE_ARCHITECTURE.md`.

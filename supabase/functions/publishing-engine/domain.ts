@@ -21,7 +21,7 @@
 //   is gone (HTTP 404/410). An owner may attest a removal the check cannot see —
 //   that is recorded as owner-attested, never as a portal confirmation.
 
-import { type Contact, type FooterLang, contactFooter, isE164, normalizeContacts, withFooter } from './contacts.ts';
+import { type Contact, type FooterLang, type OwnerContact, contactFooter, isE164, normalizeContacts, withFooter, withOwnerFooter } from './contacts.ts';
 import { type ProviderConfig, type ProviderId, PROVIDER_IDS, adapterFor, configs } from './providers.ts';
 
 export type PortalId = ProviderId;
@@ -115,6 +115,9 @@ export function normalizeListing(raw: Record<string, unknown> | null | undefined
   };
 }
 
+/** The property owner as the HOMATCH-account footer names them: the listing's contact name and first number. */
+export const ownerOf = (x: Listing): OwnerContact => ({ name: x.contactName, phone: x.contacts[0]?.phone ?? '' });
+
 export interface Problem { field: string; code: string; portal?: PortalId }
 
 /**
@@ -153,7 +156,9 @@ export function validateListing(x: Listing, providers: ProviderConfig[] = config
     if (c.maxPhotos != null && x.photos.length > c.maxPhotos) extra.push({ field: 'photos', code: 'TOO_MANY_PHOTOS', portal: c.id });
     if (c.descriptionMax != null) {
       for (const lang of ['ka', 'en', 'ru'] as const) {
-        if (x.description[lang] && withFooter(x.description[lang], x.contacts, lang).length > c.descriptionMax) {
+        // The longer of the two copies: the owner's own (number footer) and HOMATCH's (owner footer).
+        const longest = Math.max(withFooter(x.description[lang], x.contacts, lang).length, withOwnerFooter(x.description[lang], ownerOf(x), lang).length);
+        if (x.description[lang] && longest > c.descriptionMax) {
           extra.push({ field: `description.${lang}`, code: 'DESCRIPTION_TOO_LONG', portal: c.id });
         }
       }
@@ -222,10 +227,22 @@ export function classifyCheck(input: { status: number | 'TIMEOUT' | 'NETWORK' | 
  * check automatically (terms forbid it, or a bot wall stands in front of every
  * page). It is never shown as verified — only PUBLISHED is.
  */
-export type Status = 'HANDOFF_READY' | 'VERIFYING' | 'PUBLISHED' | 'OWNER_CONFIRMED' | 'VERIFICATION_FAILED' | 'UNPUBLISH_REQUESTED' | 'UNPUBLISHED' | 'REMOVED_EXTERNALLY';
+export type Status = 'HANDOFF_READY' | 'VERIFYING' | 'PUBLISHED' | 'OWNER_CONFIRMED' | 'VERIFICATION_FAILED' | 'UNPUBLISH_REQUESTED' | 'UNPUBLISHED' | 'REMOVED_EXTERNALLY'
+  // The central engine (channel HOMATCH_ACCOUNT): HOMATCH posts through its own account.
+  | 'QUEUED' | 'PUBLISHING' | 'ADMIN_ACTION_REQUIRED' | 'AUTH_REQUIRED' | 'REJECTED' | 'FAILED';
+
+/** Who posts the listing: the owner in their own portal session (v1), or HOMATCH through its account. */
+export type Channel = 'OWNER_HANDOFF' | 'HOMATCH_ACCOUNT';
+/** Where a new central publication starts — decided by central.ts routeFor(). */
+export type Route = 'QUEUED' | 'ADMIN_ACTION_REQUIRED' | 'AUTH_REQUIRED';
 
 export interface Publication {
   status: Status;
+  channel?: Channel;
+  contact_consent_at?: string | null;
+  status_reason?: string | null;
+  admin_claimed_by?: string | null;
+  admin_claimed_at?: string | null;
   revision: number;
   external_id: string | null;
   external_url: string | null;
@@ -244,7 +261,24 @@ export type Command =
   | { type: 'RETRY' }
   | { type: 'REQUEST_UNPUBLISH' }
   | { type: 'CONFIRM_REMOVED' }
-  | { type: 'MARK_UPDATED'; listingVersion: number };
+  | { type: 'MARK_UPDATED'; listingVersion: number }
+  // The central engine.
+  | { type: 'PUBLISH'; listingVersion: number; route: Route; consentAt: string }
+  | { type: 'REROUTE'; route: Route }
+  | { type: 'CANCEL' }
+  | { type: 'ADMIN_CLAIM'; admin: string }
+  | { type: 'ADMIN_RELEASE' }
+  | { type: 'ADMIN_COMPLETE'; url: string; externalId: string; listingVersion: number; verification: 'PAGE_CHECK' | 'OWNER_CONFIRMED'; admin: string }
+  | { type: 'ADMIN_REJECT'; reason: string; admin: string }
+  | { type: 'ADMIN_FAIL'; reason: string; admin: string }
+  | { type: 'ADMIN_CONFIRM_REMOVED'; admin: string }
+  | { type: 'ADMIN_MARK_UPDATED'; listingVersion: number; admin: string }
+  // The backend browser worker.
+  | { type: 'AUTO_START' }
+  | { type: 'AUTO_LINKED'; url: string; externalId: string; listingVersion: number }
+  | { type: 'AUTO_FALLBACK'; to: 'ADMIN_ACTION_REQUIRED' | 'AUTH_REQUIRED'; code: string }
+  | { type: 'AUTO_UPDATED'; listingVersion: number }
+  | { type: 'AUTO_REMOVED' };
 
 /** Verification attempts while VERIFYING before the publication is marked failed. */
 export const MAX_VERIFY_ATTEMPTS = 5;
@@ -254,6 +288,11 @@ export function backoffMs(attempts: number): number {
 }
 
 const LIVE_STATES: Status[] = ['VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'UNPUBLISH_REQUESTED'];
+/** Central publications HOMATCH has accepted but not yet posted: nothing is on the portal. */
+export const PENDING_STATES: Status[] = ['QUEUED', 'ADMIN_ACTION_REQUIRED', 'AUTH_REQUIRED'];
+/** States a (re)publish may start from: nothing of this publication is live or in flight. */
+const RESTARTABLE: Array<Status | null> = [null, 'UNPUBLISHED', 'REMOVED_EXTERNALLY', 'HANDOFF_READY', 'VERIFICATION_FAILED', 'REJECTED', 'FAILED'];
+const reason = (v: string) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
 const CHECKABLE: Status[] = ['VERIFYING', 'PUBLISHED', 'UNPUBLISH_REQUESTED'];
 export const isLive = (s: Status | null | undefined) => !!s && LIVE_STATES.includes(s);
 
@@ -264,11 +303,86 @@ export const isLive = (s: Status | null | undefined) => !!s && LIVE_STATES.inclu
 export function transition(current: Publication | null, cmd: Command, now: Date): { set: Partial<Publication>; kind: string; detail?: Record<string, unknown> } | { error: string } {
   const at = now.toISOString();
   const s = current?.status ?? null;
+  const central = current?.channel === 'HOMATCH_ACCOUNT';
+  // A HOMATCH-account publication is HOMATCH's to post and to link: the owner
+  // cannot paste a URL into it or attest its removal.
+  if (central && (cmd.type === 'LINK' || cmd.type === 'CONFIRM_REMOVED' || cmd.type === 'MARK_UPDATED')) return { error: 'HOMATCH_MANAGED' };
   switch (cmd.type) {
+    case 'PUBLISH': {
+      if (!cmd.consentAt) return { error: 'CONTACT_CONSENT_REQUIRED' };
+      if (central && s && PENDING_STATES.includes(s)) {
+        // Publish clicked again: same version is a no-op; a newer version replaces the queued copy.
+        if (current?.listing_version === cmd.listingVersion) return { error: 'NO_CHANGE' };
+        return { kind: 'PUBLISH_REQUEST_UPDATED', detail: { listingVersion: cmd.listingVersion }, set: { listing_version: cmd.listingVersion, contact_consent_at: cmd.consentAt } };
+      }
+      if (!RESTARTABLE.includes(s)) return { error: 'PUBLICATION_ALREADY_ACTIVE' };
+      return {
+        kind: 'PUBLISH_REQUESTED', detail: { route: cmd.route, listingVersion: cmd.listingVersion },
+        set: {
+          status: cmd.route, channel: 'HOMATCH_ACCOUNT', listing_version: cmd.listingVersion, contact_consent_at: cmd.consentAt,
+          external_id: null, external_url: null, check_attempts: 0, next_check_at: null, published_at: null, last_error: null,
+          status_reason: null, admin_claimed_by: null, admin_claimed_at: null,
+        },
+      };
+    }
+    case 'REROUTE':
+      if (!central || !s || !PENDING_STATES.includes(s)) return { error: 'NOT_QUEUED' };
+      if (s === cmd.route) return { error: 'NO_CHANGE' };
+      return { kind: 'PUBLISH_REROUTED', detail: { from: s, route: cmd.route }, set: { status: cmd.route } };
+    case 'CANCEL':
+      if (!central || !s || !PENDING_STATES.includes(s)) return { error: 'NOT_QUEUED' };
+      return { kind: 'PUBLISH_WITHDRAWN', set: { status: 'UNPUBLISHED', next_check_at: null, admin_claimed_by: null, admin_claimed_at: null } };
+    case 'ADMIN_CLAIM':
+      if (!central || s !== 'ADMIN_ACTION_REQUIRED') return { error: 'NOT_AWAITING_ADMIN' };
+      return { kind: 'ADMIN_CLAIMED', detail: { admin: cmd.admin }, set: { status: 'PUBLISHING', admin_claimed_by: cmd.admin, admin_claimed_at: at } };
+    case 'ADMIN_RELEASE':
+      if (!central || s !== 'PUBLISHING') return { error: 'NOT_IN_PROGRESS' };
+      return { kind: 'ADMIN_RELEASED', set: { status: 'ADMIN_ACTION_REQUIRED', admin_claimed_by: null, admin_claimed_at: null } };
+    case 'ADMIN_COMPLETE':
+      if (!central || !s || !['ADMIN_ACTION_REQUIRED', 'PUBLISHING', 'QUEUED', 'VERIFICATION_FAILED'].includes(s)) return { error: 'NOT_AWAITING_ADMIN' };
+      if (cmd.verification === 'OWNER_CONFIRMED') {
+        // A portal HOMATCH may not fetch: the administrator's statement, recorded as theirs — never as a check.
+        return { kind: 'PUBLICATION_ATTESTED_BY_ADMIN', detail: { externalId: cmd.externalId, attestedBy: 'ADMIN', admin: cmd.admin }, set: { status: 'OWNER_CONFIRMED', external_id: cmd.externalId, external_url: cmd.url, listing_version: cmd.listingVersion, check_attempts: 0, next_check_at: null, published_at: at, last_error: null, status_reason: null } };
+      }
+      // Created on the portal, but not shown as published until the public page check finds it.
+      return { kind: 'EXTERNAL_LISTING_LINKED', detail: { externalId: cmd.externalId, linkedBy: 'ADMIN', admin: cmd.admin }, set: { status: 'VERIFYING', external_id: cmd.externalId, external_url: cmd.url, listing_version: cmd.listingVersion, check_attempts: 0, next_check_at: at, last_error: null, status_reason: null } };
+    case 'ADMIN_REJECT':
+    case 'ADMIN_FAIL': {
+      if (!central || !s || !['ADMIN_ACTION_REQUIRED', 'PUBLISHING', 'QUEUED', 'AUTH_REQUIRED', 'VERIFYING', 'VERIFICATION_FAILED'].includes(s)) return { error: 'NOT_AWAITING_ADMIN' };
+      const why = reason(cmd.reason);
+      if (!why) return { error: 'REASON_REQUIRED' };
+      const rejected = cmd.type === 'ADMIN_REJECT';
+      return { kind: rejected ? 'PORTAL_REJECTED' : 'PUBLISH_FAILED', detail: { admin: cmd.admin }, set: { status: rejected ? 'REJECTED' : 'FAILED', status_reason: why, next_check_at: null, admin_claimed_by: null, admin_claimed_at: null } };
+    }
+    case 'AUTO_START':
+      if (!central || (s !== 'QUEUED' && s !== 'PUBLISHING')) return { error: 'NOT_QUEUED' };
+      if (s === 'PUBLISHING') return { error: 'NO_CHANGE' };
+      return { kind: 'AUTOMATION_STARTED', set: { status: 'PUBLISHING' } };
+    case 'AUTO_LINKED':
+      if (!central || !s || !['QUEUED', 'PUBLISHING'].includes(s)) return { error: 'NOT_IN_PROGRESS' };
+      // Created on the portal by the worker; still not "published" until the public page check finds it.
+      return { kind: 'EXTERNAL_LISTING_LINKED', detail: { externalId: cmd.externalId, linkedBy: 'AUTOMATION' }, set: { status: 'VERIFYING', external_id: cmd.externalId, external_url: cmd.url, listing_version: cmd.listingVersion, check_attempts: 0, next_check_at: at, last_error: null, status_reason: null } };
+    case 'AUTO_FALLBACK':
+      if (!central || !s || !['QUEUED', 'PUBLISHING'].includes(s)) return { error: 'NOT_IN_PROGRESS' };
+      return { kind: cmd.to === 'AUTH_REQUIRED' ? 'AUTOMATION_NEEDS_SESSION' : 'AUTOMATION_HANDED_TO_ADMIN', detail: { code: cmd.code }, set: { status: cmd.to, last_error: cmd.code.slice(0, 80) } };
+    case 'AUTO_UPDATED':
+      if (!central || (s !== 'PUBLISHED' && s !== 'OWNER_CONFIRMED')) return { error: 'NOT_PUBLISHED' };
+      if (current?.listing_version === cmd.listingVersion) return { error: 'NO_CHANGE' };
+      return { kind: 'PORTAL_COPY_UPDATED', detail: { listingVersion: cmd.listingVersion, by: 'AUTOMATION' }, set: { listing_version: cmd.listingVersion, ...(s === 'PUBLISHED' ? { next_check_at: at } : {}) } };
+    case 'AUTO_REMOVED':
+      if (!central || s !== 'UNPUBLISH_REQUESTED') return { error: 'NOT_UNPUBLISHING' };
+      return { kind: 'REMOVED_BY_AUTOMATION', set: { next_check_at: at, check_attempts: 0 } };
+    case 'ADMIN_CONFIRM_REMOVED':
+      if (!central || (s !== 'UNPUBLISH_REQUESTED' && s !== 'REMOVED_EXTERNALLY')) return { error: 'NOT_UNPUBLISHING' };
+      return { kind: 'REMOVAL_CONFIRMED_BY_ADMIN', detail: { attestedBy: 'ADMIN', admin: cmd.admin }, set: { status: 'UNPUBLISHED', next_check_at: null, admin_claimed_by: null, admin_claimed_at: null } };
+    case 'ADMIN_MARK_UPDATED':
+      if (!central || (s !== 'PUBLISHED' && s !== 'OWNER_CONFIRMED')) return { error: 'NOT_PUBLISHED' };
+      if (current?.listing_version === cmd.listingVersion) return { error: 'NO_CHANGE' };
+      return { kind: 'PORTAL_COPY_UPDATED', detail: { listingVersion: cmd.listingVersion, admin: cmd.admin }, set: { listing_version: cmd.listingVersion, ...(s === 'PUBLISHED' ? { next_check_at: at } : {}) } };
     case 'PREPARE':
-      if (s && !['UNPUBLISHED', 'REMOVED_EXTERNALLY', 'HANDOFF_READY', 'VERIFICATION_FAILED'].includes(s)) return { error: 'PUBLICATION_ALREADY_ACTIVE' };
+      if (s && !['UNPUBLISHED', 'REMOVED_EXTERNALLY', 'HANDOFF_READY', 'VERIFICATION_FAILED', 'REJECTED', 'FAILED'].includes(s)) return { error: 'PUBLICATION_ALREADY_ACTIVE' };
       if (s === 'HANDOFF_READY' && current?.listing_version === cmd.listingVersion) return { error: 'NO_CHANGE' };
-      return { kind: 'HANDOFF_PREPARED', set: { status: 'HANDOFF_READY', listing_version: cmd.listingVersion, external_id: null, external_url: null, check_attempts: 0, next_check_at: null, published_at: null, last_error: null } };
+      return { kind: 'HANDOFF_PREPARED', set: { status: 'HANDOFF_READY', channel: 'OWNER_HANDOFF', listing_version: cmd.listingVersion, external_id: null, external_url: null, check_attempts: 0, next_check_at: null, published_at: null, last_error: null, status_reason: null } };
     case 'LINK':
       if (!s || !['HANDOFF_READY', 'VERIFICATION_FAILED', 'VERIFYING'].includes(s)) return { error: 'PREPARE_FIRST' };
       if (cmd.verification === 'OWNER_CONFIRMED') {
@@ -298,9 +412,14 @@ export function transition(current: Publication | null, cmd: Command, now: Date)
     }
     case 'RETRY':
       if (s !== 'VERIFICATION_FAILED') return { error: 'NOT_FAILED' };
-      if (!current?.external_url) return { kind: 'RETRY', set: { status: 'HANDOFF_READY', check_attempts: 0, next_check_at: null, last_error: null } };
+      if (!current?.external_url) return { kind: 'RETRY', set: { status: central ? 'ADMIN_ACTION_REQUIRED' : 'HANDOFF_READY', check_attempts: 0, next_check_at: null, last_error: null } };
       return { kind: 'RETRY', set: { status: 'VERIFYING', check_attempts: 0, next_check_at: at, last_error: null } };
     case 'REQUEST_UNPUBLISH':
+      if (central) {
+        // HOMATCH removes it from its account; the admin queue picks the request up.
+        if (s !== 'PUBLISHED' && s !== 'VERIFYING' && s !== 'OWNER_CONFIRMED' && s !== 'PUBLISHING') return { error: 'NOT_PUBLISHED' };
+        return { kind: 'UNPUBLISH_REQUESTED', set: { status: 'UNPUBLISH_REQUESTED', check_attempts: 0, next_check_at: null } };
+      }
       if (s !== 'PUBLISHED' && s !== 'VERIFYING' && s !== 'OWNER_CONFIRMED') return { error: 'NOT_PUBLISHED' };
       // An owner-confirmed portal cannot be checked, so there is no check to schedule.
       return { kind: 'UNPUBLISH_REQUESTED', set: { status: 'UNPUBLISH_REQUESTED', check_attempts: 0, next_check_at: s === 'OWNER_CONFIRMED' ? null : at } };

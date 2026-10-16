@@ -14,6 +14,7 @@ import { safeExternalUrl } from '@/lib/safeExternalUrl';
 export const SELLER_KEY: Record<string, string> = {
   VERIFIED_OWNER: 'fpw_seller_owner', LIKELY_OWNER: 'fpw_seller_likely_owner', AGENCY: 'fpw_seller_broker_agency',
   BROKER: 'fpw_seller_broker_agency', DEVELOPER: 'mps_seller_developer', UNKNOWN: 'mps_seller_unknown',
+  OWNER: 'fpw_seller_any_owner',
 };
 export function sellerLabel(seller: { classification: string; reasonCodes?: string[] }, t: T) {
   const inferred = !seller.reasonCodes?.some((code) => code.startsWith('DECLARED_'));

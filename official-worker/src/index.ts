@@ -15,6 +15,8 @@ import { isCadastralCode } from './workflows/tas/cadastral.js';
 import { startMyHomeRuntime } from './marketplace/MyHomeRuntime.js';
 import { startSsgeRuntime } from './marketplace/ssge/runtime.mjs';
 import { acquireSsge } from './marketplace/ssge/acquire.mjs';
+import { startPortalRuntime } from './marketplace/portals/runtime.mjs';
+import { PORTAL_ADAPTERS } from './marketplace/portals/adapters.mjs';
 import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey } from './verify/VerifyMarketRuntime.js';
 import { korterStatusCache } from './verify/korter/index.js';
 import { chromium } from 'playwright';
@@ -98,6 +100,11 @@ const myhome = startMyHomeRuntime();
 const ssge = startSsgeRuntime();
 process.once('SIGTERM', () => ssge.shutdown());
 app.get('/health/ssge', auth, (_q: any, r: any) => r.json(ssge.status()));
+// Find Property HTML portals (place.ge, home.ge, brokeri.ge, allhome.ge):
+// one runtime each on this worker; each idles until its own enable flag and token are set.
+const portals = PORTAL_ADAPTERS.map((adapter: any) => startPortalRuntime(adapter));
+process.once('SIGTERM', () => portals.forEach((p: any) => p.shutdown()));
+app.get('/health/portals', auth, (_q: any, r: any) => r.json(portals.map((p: any) => p.status())));
 process.once('SIGTERM', () => myhome.shutdown());
 app.get('/health/myhome', auth, (_q: any, r: any) => r.json(myhome.status()));
 

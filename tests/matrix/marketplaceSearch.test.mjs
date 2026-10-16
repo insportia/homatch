@@ -39,8 +39,14 @@ test('server readiness gate: start re-sanitises the brief and refuses before any
   assert.ok(start > 0 && gate > start && firstInsert > gate, 'the gate precedes every insert');
   assert.match(ms, /const brief = sanitizeBrief\(body\.brief\)/);
   assert.match(ms, /SEARCH_NOT_READY/);
-  assert.match(ms, /if \(switches\.providersKilled && !switches\.myhomeEnabled && !switches\.ssgeEnabled\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
-  assert.match(ms, /worker\.workerId === 'myhome-agent'\s*\? switches\.myhomeEnabled : worker\.workerId === 'ssge-agent' \? switches\.ssgeEnabled : !switches\.providersKilled/);
+  // Source gating lives in _shared/marketplaceSearch.ts so start, dispatch and ingest share it:
+  // MyHome and SS.ge keep their own switches, each HTML portal has its own, everything else
+  // stays under the global provider kill switch.
+  assert.match(ms, /if \(!anySourceOn\(switches\)\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
+  assert.match(ms, /eligibleWorkers\(workers, request\)\.filter\(\(worker\) => workerSwitchOn\(switches, worker\.workerId\)\)/);
+  const sh = code(SH);
+  assert.match(sh, /if \(workerId === 'myhome-agent'\) return switches\.myhomeEnabled;\s*if \(workerId === 'ssge-agent'\) return switches\.ssgeEnabled;\s*if \(workerId in PORTAL_WORKER_SWITCHES\) return switches\.portals\[workerId\] === true;\s*return !switches\.providersKilled;/);
+  assert.match(sh, /anySourceOn = \(switches: MarketplaceSwitches\) =>\s*switches\.myhomeEnabled \|\| switches\.ssgeEnabled \|\| Object\.values\(switches\.portals\)\.some\(Boolean\) \|\| !switches\.providersKilled/);
   assert.match(ms, /if \(!switches\.enabled && \(action === 'start' \|\| action === 'understand'\)\) return json\(\{ error: 'MARKETPLACE_SEARCH_OFF' \}, 409\)/,
     'disabled acquisition blocks writes while owned history remains readable');
 });

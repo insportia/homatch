@@ -156,4 +156,6 @@ export const FIND_PROPERTY_ADVISOR_STRINGS = {
   fpv_stop_confirm: ['Stop this search?', 'შევწყვიტოთ ძიება?', 'Остановить поиск?', 'Arama durdurulsun mu?', 'إيقاف هذا البحث؟', 'לעצור את החיפוש?'],
   fpv_stop_yes: ['Yes, stop', 'დიახ, შევწყვიტოთ', 'Да, остановить', 'Evet, durdur', 'نعم، أوقف', 'כן, לעצור'],
   fpv_keep_searching: ['Keep searching', 'ძიების გაგრძელება', 'Продолжить поиск', 'Aramaya devam et', 'متابعة البحث', 'להמשיך לחפש'],
+  fpv_sites_n: ['{{n}} property sites', '{{n}} უძრავი ქონების საიტი', 'Сайтов недвижимости: {{n}}', '{{n}} emlak sitesi', '{{n}} مواقع عقارية', '{{n}} אתרי נדל״ן'],
+  fpv_sites_generic: ["Georgia's leading property sites", 'საქართველოს წამყვანი უძრავი ქონების საიტები', 'Ведущие сайты недвижимости Грузии', "Gürcistan'ın önde gelen emlak siteleri", 'أبرز مواقع العقارات في جورجيا', 'אתרי הנדל״ן המובילים בגאורגיה'],
 };

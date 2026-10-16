@@ -20149,6 +20149,12 @@ const en = {
   fpv_stop_confirm: 'Stop this search?',
   fpv_stop_yes: 'Yes, stop',
   fpv_keep_searching: 'Keep searching',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} property sites',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'Georgia\'s leading property sites',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40212,6 +40218,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpv_stop_confirm: 'შევწყვიტოთ ძიება?',
   fpv_stop_yes: 'დიახ, შევწყვიტოთ',
   fpv_keep_searching: 'ძიების გაგრძელება',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} უძრავი ქონების საიტი',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'საქართველოს წამყვანი უძრავი ქონების საიტები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60266,6 +60278,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpv_stop_confirm: 'Остановить поиск?',
   fpv_stop_yes: 'Да, остановить',
   fpv_keep_searching: 'Продолжить поиск',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: 'Сайтов недвижимости: {{n}}',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'Ведущие сайты недвижимости Грузии',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -80318,6 +80336,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpv_stop_confirm: 'Arama durdurulsun mu?',
   fpv_stop_yes: 'Evet, durdur',
   fpv_keep_searching: 'Aramaya devam et',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} emlak sitesi',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'Gürcistan\'ın önde gelen emlak siteleri',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -100370,6 +100394,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpv_stop_confirm: 'إيقاف هذا البحث؟',
   fpv_stop_yes: 'نعم، أوقف',
   fpv_keep_searching: 'متابعة البحث',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} مواقع عقارية',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'أبرز مواقع العقارات في جورجيا',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -120422,6 +120452,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpv_stop_confirm: 'לעצור את החיפוש?',
   fpv_stop_yes: 'כן, לעצור',
   fpv_keep_searching: 'להמשיך לחפש',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} אתרי נדל״ן',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'אתרי הנדל״ן המובילים בגאורגיה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

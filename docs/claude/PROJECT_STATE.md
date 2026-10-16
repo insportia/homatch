@@ -5,6 +5,35 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Find Buyers 3.0 — intent gate, post opportunities, result pages (branch claude/nifty-hopper-snzn2d, 2026-10-15) — PR, NOT DEPLOYED
+
+- **False buyers fixed at the root** (`research-core/findBuyers/demandClassifier.ts`): an advertiser
+  addressing buyers ("ბინის შეძენა გსურთ? … გთავაზობთ" — prod lead be7d9baa, score 55) is SALE_OFFER;
+  renovation/service-provider requests, "already bought", negated intent are excluded. A bare "price?"
+  under someone else's listing is an INTEREST signal, not a buyer.
+- **Intent gate** (`buyerIntent.ts`, pure): 14 intents, multi-label comment signals, result type
+  DIRECT / INTEREST / EXCLUDED. Pipeline applies it after qualify (`gateIntent`): EXCLUDED →
+  REJECTED `INTENT_EXCLUDED`; INTEREST kept (≤ POTENTIAL), never counted as qualified.
+- **Real-data check (read-only, 39 current VILLION leads)**: 5 buyers, 1 interest, 33 excluded
+  (14 job/service, 9 tenants — wrong market for a SALE —, 6 sellers incl. the developer ad, 2 agents,
+  2 bare listings). Previously all 39 were listed. On read, a lead already qualified by the v3 pipeline
+  keeps its decision unless the rules find a definite exclusion.
+- **Comment evidence** now carries the parent post's reported comment total (null if not reported),
+  comments read in that run, publish date and price/area facts. **Adaptive sampling**
+  (`commentSampling.ts`): one expansion per post (×3, ≤ Actor max), only when interest ≥ 10% of
+  comments read and the platform reported more; otherwise stop. Every run still goes through the
+  campaign reservation (CAMPAIGN_BUDGET).
+- **Post opportunities** are built on read (`src/findBuyers/externalResults.ts`): one post = one
+  opportunity; total / analyzed / people / signals kept apart, nothing extrapolated; price comparison
+  only in the same currency, with a caveat.
+- **Routes**: `/property/:id/matches` = compact dashboard (no lists); `/buyers/external` (MatchesPage:
+  Buyers / Interest / Opportunities tabs, search history, platform + freshness filters, pagination);
+  `/buyers/internal` (HOMATCH members); `/buyers/opportunity/:key?job=` (detail, evidence via
+  safeExternalUrl + nofollow, copyable outreach draft — HOMATCH sends nothing).
+- **Release**: REPO_FULL (routes + back navigation are app-shell). Deploy = frontend + edge
+  `discovery-queue-worker`; no migration, no Railway. Not verified against live provider data (no
+  paid run authorized): totals/analyzed/parent facts appear only on leads written after deploy.
+
 ## Publish to Portals — standalone workspace /publishing (branch claude/homatch-property-publishing-g50stw, 2026-10-15)
 
 - **Why owners kept seeing the old UI**: Codex's PRs #205–#207 WERE merged and deployed
@@ -26,6 +55,7 @@ MATTERS right now, verify against the live systems, not this file)
   properties row per listing). Listing id = property id (one listing per property).
 - Not live-tested against a real portal account: no real listing was published (needs the owner's
   portal account; would create a public listing).
+
 ## Storage retention + cleanup engine + compact market knowledge (branch `ccr-76ef455d-storage-retention`, 2026-10-15) — PR OPEN, NOT APPLIED, NOT ACTIVE
 
 - Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.

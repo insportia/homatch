@@ -97,7 +97,11 @@ function StrengthPill({ strength, score, label }: { strength: string; score: num
   );
 }
 
-export function PotentialBuyerCard({ lead, propertyId }: { lead: PotentialLead; propertyId: string }) {
+/**
+ * `interest`: a question under a comparable listing (Find Buyers 3.0) — labelled as an
+ * interest signal, never as a buyer, and without the match-strength pill.
+ */
+export function PotentialBuyerCard({ lead, propertyId, interest = false }: { lead: PotentialLead; propertyId: string; interest?: boolean }) {
   const { t, lang } = useLanguage();
   const best: LeadEvidence | undefined = lead.evidence[0];
   const tenant = lead.counterpart === 'TENANT';
@@ -124,14 +128,14 @@ export function PotentialBuyerCard({ lead, propertyId }: { lead: PotentialLead; 
   return (
     <article
       className="group/lead min-w-0 overflow-hidden rounded-2xl border border-[hsl(40_70%_80%)] bg-white shadow-[0_10px_30px_-18px_hsl(218_60%_15%/0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[hsl(38_88%_60%)] hover:shadow-[0_22px_44px_-22px_hsl(218_60%_15%/0.55)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300"
-      aria-label={t(tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}
+      aria-label={t(interest ? 'fbx_card_interest' : tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}
     >
       {/* ── identity band: who, how strong, where ─────────────────────── */}
       <header className={cn('relative px-4 pb-3.5 pt-3.5', NAVY_BAND)}>
         <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[hsl(40_94%_60%/0.7)] to-transparent" aria-hidden="true" />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className={cn('text-2xs font-bold uppercase tracking-[0.16em]', GOLD_TEXT)}>{t(tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}</p>
-          <StrengthPill strength={lead.strength} score={lead.overall_score} label={t(`fbx_strength_${lead.strength}`)} />
+          <p className={cn('text-2xs font-bold uppercase tracking-[0.16em]', GOLD_TEXT)}>{t(interest ? 'fbx_card_interest' : tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}</p>
+          {!interest && <StrengthPill strength={lead.strength} score={lead.overall_score} label={t(`fbx_strength_${lead.strength}`)} />}
         </div>
         <div className="mt-2.5 flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-bold text-white ring-2 ring-[hsl(40_94%_60%/0.75)]" aria-hidden="true">

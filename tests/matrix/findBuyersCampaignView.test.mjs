@@ -45,21 +45,38 @@ test('expand externally is offered only after free matching found nobody, and ne
   assert.equal(mod.showExpandOffer(0, false), true);
 });
 
-test('the results list is scoped to one search and a failed read is never shown as empty', () => {
+test('the results are scoped to one search and a failed read is never shown as empty', () => {
   const svc = read('src/services/findBuyersLeads.ts');
   assert.match(svc, /if \(jobId\) q = q\.eq\('matching_job_id', jobId\)/);
   assert.match(svc, /return \{ rows: \[\], total: 0, failed: true \}/);
-  const results = read('src/components/findBuyers/FindBuyersResults.tsx');
-  assert.match(results, /campaigns\?\.\[0\]\?\.jobId/, 'defaults to the latest search');
-  assert.match(results, /data-testid="fbx-results-error"/);
+  const hook = read('src/components/findBuyers/useExternalResults.ts');
+  assert.match(hook, /campaigns\?\.\[0\]\?\.jobId/, 'defaults to the latest search');
+  const view = read('src/components/findBuyers/ExternalResultsView.tsx');
+  assert.match(view, /data-testid="fbx-results-error"/);
 });
 
-test('free matching never starts paid research; the external button only opens the budget step', () => {
-  const page = read('src/pages/property/MatchesPage.tsx');
-  const block = page.slice(page.indexOf('<FindBuyersDashboard'), page.indexOf('/>', page.indexOf('<FindBuyersDashboard')));
+test('Find Buyers 3.0: the dashboard lists no leads; each result kind has its own page', () => {
+  const routes = read('src/routes.tsx');
+  for (const [path, page] of [['/property/:id/matches', 'FindBuyersHomePage'], ['/property/:id/buyers/external', 'MatchesPage'],
+    ['/property/:id/buyers/internal', 'InternalResultsPage'], ['/property/:id/buyers/opportunity/:key', 'PostOpportunityPage']]) {
+    assert.match(routes, new RegExp(`path: '${path.replace(/[/:]/g, (c) => `\\${c}`)}',\\s*element: <${page} />`), path);
+  }
+  const home = read('src/pages/property/FindBuyersHomePage.tsx');
+  for (const list of ['PotentialBuyerCard', 'ExternalResultsView', 'InternalMatchesSection ', '<InternalMatchesSection']) {
+    assert.ok(!home.includes(list), `the dashboard renders no lead list (${list})`);
+  }
+  const external = read('src/pages/property/MatchesPage.tsx');
+  assert.ok(!external.includes('<InternalMatchesSection'), 'external results never include HOMATCH members');
+});
+
+test('free matching never starts paid research; the external buttons only open the budget step', () => {
+  const home = read('src/pages/property/FindBuyersHomePage.tsx');
+  const block = home.slice(home.indexOf('<FindBuyersDashboard'), home.indexOf('/>', home.indexOf('<FindBuyersDashboard')));
   assert.match(block, /onStartInternal=\{\(\) => \{[\s\S]*requestLeadMatching\(propertyId\)/);
-  assert.doesNotMatch(block.slice(block.indexOf('onStartInternal'), block.indexOf('onViewInternal')), /setShowBudget|launch|match-campaign/);
-  assert.match(block, /onStartExternal=\{\(\) => setShowBudget\(true\)\}/);
+  assert.doesNotMatch(block.slice(block.indexOf('onStartInternal'), block.indexOf('internalHref')), /start=1|launch|match-campaign/);
+  assert.match(block, /onStartExternal=\{\(\) => navigate\(`\$\{base\}\/buyers\/external\?start=1`\)\}/);
+  const external = read('src/pages/property/MatchesPage.tsx');
+  assert.match(external, /searchParams\.get\('start'\) !== '1'\) return;\s*setShowBudget\(true\);/, '?start=1 only opens the budget dialog');
   const svc = read('src/services/homatchLeads.ts');
   assert.match(svc, /internal_leads_request_matching[\s\S]{0,120}if \(error\) throw/, 'a refused request is reported');
 });

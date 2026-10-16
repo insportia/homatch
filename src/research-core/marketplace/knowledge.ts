@@ -1,3 +1,4 @@
+import { clipText } from './text-safety.ts';
 /*
  * Property Knowledge Engine — the deterministic-first, cache-first front door
  * for listing-description understanding.
@@ -41,7 +42,7 @@ export interface KnowledgeExtraction {
 }
 
 export function normalizeDescription(text: string | null | undefined): string {
-  return (text ?? '').normalize('NFC').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_DESCRIPTION_CHARS);
+  return clipText((text ?? '').normalize('NFC').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), 0, MAX_DESCRIPTION_CHARS);
 }
 
 /** Same text in any whitespace or markup → same key. Different schema → different key. */
@@ -53,7 +54,7 @@ export function knowledgeKey(text: string | null | undefined): { contentHash: st
 
 export const MAX_EVIDENCE_CHARS = 200;
 /** Stored evidence never carries a phone number: listing contact phones are private. */
-export const redactEvidence = (span: string) => span.replace(/\+?\d[\d\s().-]{6,}\d/g, '•••').slice(0, MAX_EVIDENCE_CHARS);
+export const redactEvidence = (span: string) => clipText(span.replace(/\+?\d[\d\s().-]{6,}\d/g, '•••'), 0, MAX_EVIDENCE_CHARS);
 
 const SELLER_CODES = new Set<DescriptionSignalCode>(['OWNER_CLAIM', 'AGENCY_LANGUAGE']);
 

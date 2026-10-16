@@ -22,7 +22,7 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null
       - name: Live E2E
         env:
-          E2E_EMAIL: claude-e2e-findproperty@homatch.live
+          E2E_EMAIL: claude-e2e-findproperty-${{ github.run_number }}@homatch.live
         run: cp scripts/e2e/find-property-live.mjs /tmp/e2e/ && cd /tmp/e2e && node find-property-live.mjs
       - uses: actions/upload-artifact@v4
         if: always()

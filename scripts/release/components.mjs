@@ -163,10 +163,10 @@ export const COMPONENTS = {
   // PUBLISH TO PORTALS: the standalone listing-publishing workspace (/publishing),
   // its edge function and its publishing_* / publishing_engine_* objects.
   PUBLISHING: {
-    paths: [/^src\/(pages|components)\/publishing\//, /^src\/publishing\//, /^src\/services\/publishing\.ts$/, fn('publishing-engine'), /^scripts\/publishing[/-]/,
+    paths: [/^src\/(pages|components)\/publishing\//, /^src\/publishing\//, /^src\/services\/publishing\.ts$/, fn('publishing-engine', 'publishing-worker'), /^scripts\/publishing[/-]/,
       /^src\/pages\/admin\/AdminPropertyPortals?Page\.tsx$/, /^tests\/sql\/publishing\//, /^tests\/mobile\/publishingWorkspace\.test\.mjs$/],
     suites: ['mobile:routes'],
-    proofs: ['publishing: publishing-engine PROVEN_EXACT; migrations 20261103090000 + 20261106090000 in the ledger; publishing_providers seeded with 8 rows; RLS select-own on publishing_engine_* and no browser access to publishing_provider*'],
+    proofs: ['publishing: publishing-engine + publishing-worker PROVEN_EXACT; migrations 20261103090000 + 20261106090000 + 20261107090000 in the ledger; publishing_providers seeded with 8 rows; RLS select-own on publishing_engine_* and no browser access to publishing_provider*'],
   },
   BROKER: { paths: [/^src\/(pages\/(Broker|admin\/AdminBrokersPage)|components\/broker)/, fn('[a-z-]*broker[a-z-]*')], suites: ['mobile:broker', 'mobile:routes'] },
   PUBLIC_HOMEPAGE: {

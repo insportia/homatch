@@ -272,7 +272,13 @@ export type Command =
   | { type: 'ADMIN_REJECT'; reason: string; admin: string }
   | { type: 'ADMIN_FAIL'; reason: string; admin: string }
   | { type: 'ADMIN_CONFIRM_REMOVED'; admin: string }
-  | { type: 'ADMIN_MARK_UPDATED'; listingVersion: number; admin: string };
+  | { type: 'ADMIN_MARK_UPDATED'; listingVersion: number; admin: string }
+  // The backend browser worker.
+  | { type: 'AUTO_START' }
+  | { type: 'AUTO_LINKED'; url: string; externalId: string; listingVersion: number }
+  | { type: 'AUTO_FALLBACK'; to: 'ADMIN_ACTION_REQUIRED' | 'AUTH_REQUIRED'; code: string }
+  | { type: 'AUTO_UPDATED'; listingVersion: number }
+  | { type: 'AUTO_REMOVED' };
 
 /** Verification attempts while VERIFYING before the publication is marked failed. */
 export const MAX_VERIFY_ATTEMPTS = 5;
@@ -348,6 +354,24 @@ export function transition(current: Publication | null, cmd: Command, now: Date)
       const rejected = cmd.type === 'ADMIN_REJECT';
       return { kind: rejected ? 'PORTAL_REJECTED' : 'PUBLISH_FAILED', detail: { admin: cmd.admin }, set: { status: rejected ? 'REJECTED' : 'FAILED', status_reason: why, next_check_at: null, admin_claimed_by: null, admin_claimed_at: null } };
     }
+    case 'AUTO_START':
+      if (!central || (s !== 'QUEUED' && s !== 'PUBLISHING')) return { error: 'NOT_QUEUED' };
+      if (s === 'PUBLISHING') return { error: 'NO_CHANGE' };
+      return { kind: 'AUTOMATION_STARTED', set: { status: 'PUBLISHING' } };
+    case 'AUTO_LINKED':
+      if (!central || !s || !['QUEUED', 'PUBLISHING'].includes(s)) return { error: 'NOT_IN_PROGRESS' };
+      // Created on the portal by the worker; still not "published" until the public page check finds it.
+      return { kind: 'EXTERNAL_LISTING_LINKED', detail: { externalId: cmd.externalId, linkedBy: 'AUTOMATION' }, set: { status: 'VERIFYING', external_id: cmd.externalId, external_url: cmd.url, listing_version: cmd.listingVersion, check_attempts: 0, next_check_at: at, last_error: null, status_reason: null } };
+    case 'AUTO_FALLBACK':
+      if (!central || !s || !['QUEUED', 'PUBLISHING'].includes(s)) return { error: 'NOT_IN_PROGRESS' };
+      return { kind: cmd.to === 'AUTH_REQUIRED' ? 'AUTOMATION_NEEDS_SESSION' : 'AUTOMATION_HANDED_TO_ADMIN', detail: { code: cmd.code }, set: { status: cmd.to, last_error: cmd.code.slice(0, 80) } };
+    case 'AUTO_UPDATED':
+      if (!central || (s !== 'PUBLISHED' && s !== 'OWNER_CONFIRMED')) return { error: 'NOT_PUBLISHED' };
+      if (current?.listing_version === cmd.listingVersion) return { error: 'NO_CHANGE' };
+      return { kind: 'PORTAL_COPY_UPDATED', detail: { listingVersion: cmd.listingVersion, by: 'AUTOMATION' }, set: { listing_version: cmd.listingVersion, ...(s === 'PUBLISHED' ? { next_check_at: at } : {}) } };
+    case 'AUTO_REMOVED':
+      if (!central || s !== 'UNPUBLISH_REQUESTED') return { error: 'NOT_UNPUBLISHING' };
+      return { kind: 'REMOVED_BY_AUTOMATION', set: { next_check_at: at, check_attempts: 0 } };
     case 'ADMIN_CONFIRM_REMOVED':
       if (!central || (s !== 'UNPUBLISH_REQUESTED' && s !== 'REMOVED_EXTERNALLY')) return { error: 'NOT_UNPUBLISHING' };
       return { kind: 'REMOVAL_CONFIRMED_BY_ADMIN', detail: { attestedBy: 'ADMIN', admin: cmd.admin }, set: { status: 'UNPUBLISHED', next_check_at: null, admin_claimed_by: null, admin_claimed_at: null } };

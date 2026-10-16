@@ -29,6 +29,7 @@
 
 import { type FooterLang, formatPhone, isE164, ownerFooter, stripFooter, withOwnerFooter } from './contacts.ts';
 import { type Listing, type Route, ownerOf } from './domain.ts';
+import { hasBrowserCreate } from './automation.ts';
 import type { ProviderConfig } from './providers.ts';
 
 export const ACCOUNT_STATUSES = [
@@ -54,11 +55,14 @@ export interface AccountRow {
   last_published_at: string | null;
   failure_count: number;
   last_error: string | null;
+  automation_enabled?: boolean;
+  live_submit_approved?: boolean;
+  live_submit_approved_at?: string | null;
   updated_at: string | null;
 }
 
 /** Every column except the credential, which no read path selects. */
-export const ACCOUNT_COLUMNS = 'portal_id,status,connection_method,account_label,contact_phone,credential_set_at,session_expires_at,verified_at,verification_result,last_published_at,failure_count,last_error,updated_at';
+export const ACCOUNT_COLUMNS = 'portal_id,status,connection_method,account_label,contact_phone,credential_set_at,session_expires_at,verified_at,verification_result,last_published_at,failure_count,last_error,automation_enabled,live_submit_approved,live_submit_approved_at,updated_at';
 
 /** The account as an admin sees it: no credential, only whether one is stored. */
 export function accountView(row: AccountRow | null | undefined, portalId: string) {
@@ -71,7 +75,7 @@ export function emptyAccount(portalId: string): AccountRow {
   return {
     portal_id: portalId, status: 'NOT_CONFIGURED', connection_method: null, account_label: null, contact_phone: null,
     credential_set_at: null, session_expires_at: null, verified_at: null, verification_result: null,
-    last_published_at: null, failure_count: 0, last_error: null, updated_at: null,
+    last_published_at: null, failure_count: 0, last_error: null, automation_enabled: false, live_submit_approved: false, live_submit_approved_at: null, updated_at: null,
   };
 }
 
@@ -94,6 +98,10 @@ export function routeFor(config: ProviderConfig, account: AccountRow | null, now
   if (!account || ['NOT_CONFIGURED', 'AUTH_REQUIRED', 'SESSION_EXPIRED'].includes(account.status) || sessionExpired(account, now)) return { route: 'AUTH_REQUIRED' };
   const automatable = config.capabilities.automation === 'API' || config.capabilities.automation === 'BROWSER_ASSISTED';
   if (automatable && account.status === 'PUBLISHING_AVAILABLE' && account.verified_at) return { route: 'QUEUED' };
+  // The backend browser worker: a portal with a browser adapter, an account whose
+  // captured session the worker verified against the real portal, and the owner's
+  // automation switch on.
+  if (hasBrowserCreate(config.id) && account.automation_enabled && account.verified_at && ['CONNECTED', 'PUBLISHING_AVAILABLE'].includes(account.status)) return { route: 'QUEUED' };
   return { route: 'ADMIN_ACTION_REQUIRED' };
 }
 

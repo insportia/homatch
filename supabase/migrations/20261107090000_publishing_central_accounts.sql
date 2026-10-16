@@ -26,6 +26,23 @@
 -- constraint makes "connected without verifying against the real account"
 -- impossible to store, whatever the caller.
 --
+-- BACKEND BROWSER AUTOMATION (same migration, still unapplied):
+--   publishing_accounts.automation_enabled / live_submit_approved_*  — the owner's
+--                              switches: run the browser worker on this portal at all,
+--                              and (separately, audited) let it press the portal's
+--                              final publish button. Both default OFF.
+--   publishing_account_sessions  the portal session (Playwright storageState) the
+--                              owner captured by signing in by hand, sealed with
+--                              AES-GCM by the edge function; ciphertext only.
+--   publishing_operations      durable per-portal browser operations (CREATE, STATUS,
+--                              UPDATE, PRICE, DESCRIPTION, PHOTOS, PAUSE, REACTIVATE,
+--                              DELETE, CHECK_SESSION): leases, fenced heartbeats,
+--                              retries with backoff, one running operation per portal
+--                              account, and submit_started_at — set once, before the
+--                              portal's publish button is pressed, after which no
+--                              retry ever submits again (RECONCILIATION_REQUIRED).
+--   publishing_artifacts       screenshots / diagnostic logs per operation (private bucket).
+--
 -- Service-role only (RLS on, no policies). Admins reach it through the
 -- publishing-engine function, which re-checks is_admin() with the caller's own
 -- token on every request. Owners keep reading their own jobs through the existing
@@ -47,8 +64,13 @@ create table public.publishing_accounts (
   last_published_at timestamptz,
   failure_count integer not null default 0 check (failure_count >= 0),
   last_error text,
+  automation_enabled boolean not null default false,
+  live_submit_approved boolean not null default false,
+  live_submit_approved_by uuid references public.users(id),
+  live_submit_approved_at timestamptz,
   updated_by uuid references public.users(id),
   updated_at timestamptz not null default now(),
+  constraint publishing_accounts_live_submit_approval check (not live_submit_approved or (live_submit_approved_by is not null and live_submit_approved_at is not null)),
   constraint publishing_accounts_verified_status check (status not in ('CONNECTED', 'PUBLISHING_AVAILABLE') or verified_at is not null),
   constraint publishing_accounts_configured_identity check (status = 'NOT_CONFIGURED' or (account_label is not null and contact_phone is not null))
 );
@@ -61,7 +83,7 @@ create table public.publishing_account_audit (
   id bigint generated always as identity primary key,
   portal_id text not null references public.publishing_providers(id),
   actor uuid references public.users(id),
-  action text not null check (action in ('REGISTER', 'UPDATE', 'CREDENTIAL_SET', 'CREDENTIAL_CLEARED', 'TEST', 'DISCONNECT')),
+  action text not null check (action in ('REGISTER', 'UPDATE', 'CREDENTIAL_SET', 'CREDENTIAL_CLEARED', 'TEST', 'DISCONNECT', 'SESSION_SET', 'SESSION_CHECK', 'AUTOMATION')),
   before jsonb not null,
   after jsonb not null,
   created_at timestamptz not null default now()
@@ -185,7 +207,10 @@ begin
     when 'CREDENTIAL_SET'     then array['credential', 'credential_set_at', 'status', 'verified_at', 'session_expires_at']
     when 'CREDENTIAL_CLEARED' then array['credential', 'credential_set_at', 'status', 'verified_at', 'session_expires_at']
     when 'TEST'               then array['status', 'verified_at', 'verification_result', 'session_expires_at', 'last_error', 'failure_count']
-    when 'DISCONNECT'         then array['status', 'connection_method', 'account_label', 'contact_phone', 'credential', 'credential_set_at', 'verified_at', 'session_expires_at', 'verification_result', 'last_error']
+    when 'SESSION_SET'        then array['status', 'connection_method', 'verified_at', 'session_expires_at', 'verification_result', 'last_error']
+    when 'SESSION_CHECK'      then array['status', 'verified_at', 'verification_result', 'session_expires_at', 'last_error']
+    when 'AUTOMATION'         then array['automation_enabled', 'live_submit_approved', 'live_submit_approved_by', 'live_submit_approved_at']
+    when 'DISCONNECT'         then array['status', 'connection_method', 'account_label', 'contact_phone', 'credential', 'credential_set_at', 'verified_at', 'session_expires_at', 'verification_result', 'last_error', 'automation_enabled', 'live_submit_approved', 'live_submit_approved_by', 'live_submit_approved_at']
     when 'ACTIVITY'           then array['last_published_at', 'failure_count', 'last_error']
     else null end;
   if v_allowed is null then raise exception 'INVALID_ACTION'; end if;
@@ -193,7 +218,7 @@ begin
     if not v_key = any(v_allowed) then raise exception 'FIELD_NOT_EDITABLE'; end if;
   end loop;
   -- Only a TEST against the real account (or a credential exchange it performed) may claim a verified status.
-  if p_action not in ('TEST', 'CREDENTIAL_SET') and p_patch->>'status' in ('CONNECTED', 'PUBLISHING_AVAILABLE') then
+  if p_action not in ('TEST', 'CREDENTIAL_SET', 'SESSION_CHECK') and p_patch->>'status' in ('CONNECTED', 'PUBLISHING_AVAILABLE') then
     raise exception 'VERIFICATION_REQUIRED';
   end if;
   select * into v_before from public.publishing_accounts where portal_id = p_portal for update;
@@ -211,6 +236,10 @@ begin
     last_published_at   = case when p_patch ? 'last_published_at' then (p_patch->>'last_published_at')::timestamptz else last_published_at end,
     failure_count       = case when p_patch ? 'failure_count' then (p_patch->>'failure_count')::integer else failure_count end,
     last_error          = case when p_patch ? 'last_error' then p_patch->>'last_error' else last_error end,
+    automation_enabled  = case when p_patch ? 'automation_enabled' then (p_patch->>'automation_enabled')::boolean else automation_enabled end,
+    live_submit_approved    = case when p_patch ? 'live_submit_approved' then (p_patch->>'live_submit_approved')::boolean else live_submit_approved end,
+    live_submit_approved_by = case when p_patch ? 'live_submit_approved_by' then (p_patch->>'live_submit_approved_by')::uuid else live_submit_approved_by end,
+    live_submit_approved_at = case when p_patch ? 'live_submit_approved_at' then (p_patch->>'live_submit_approved_at')::timestamptz else live_submit_approved_at end,
     updated_by          = case when p_action = 'ACTIVITY' then updated_by else p_actor end,
     updated_at          = now()
   where portal_id = p_portal returning * into v_after;
@@ -223,3 +252,174 @@ end $$;
 
 revoke all on function public.publishing_account_write(uuid, text, jsonb, text) from public, anon, authenticated;
 grant execute on function public.publishing_account_write(uuid, text, jsonb, text) to service_role;
+
+/* ── Backend browser automation ─────────────────────────────────────────── */
+
+create table public.publishing_account_sessions (
+  portal_id text primary key references public.publishing_providers(id),
+  -- AES-GCM envelope {v,kid,iv,ct} of the Playwright storageState; never plaintext.
+  envelope jsonb not null check (jsonb_typeof(envelope) = 'object' and envelope ? 'ct' and envelope ? 'iv' and not envelope ? 'cookies'),
+  saved_by uuid references public.users(id),
+  saved_at timestamptz not null default now(),
+  expires_at timestamptz,
+  verified_at timestamptz,
+  status text not null default 'UNVERIFIED' check (status in ('UNVERIFIED', 'VALID', 'EXPIRED'))
+);
+alter table public.publishing_account_sessions enable row level security;
+revoke all on public.publishing_account_sessions from anon, authenticated;
+grant all on public.publishing_account_sessions to service_role;
+
+create table public.publishing_operations (
+  id uuid primary key default gen_random_uuid(),
+  publication_id uuid references public.publishing_engine_jobs(id) on delete cascade,
+  listing_id uuid references public.publishing_engine_listings(id) on delete cascade,
+  user_id uuid references public.users(id),
+  portal_id text not null references public.publishing_providers(id),
+  kind text not null check (kind in ('CREATE', 'STATUS', 'UPDATE', 'PRICE', 'DESCRIPTION', 'PHOTOS', 'PAUSE', 'REACTIVATE', 'DELETE', 'CHECK_SESSION')),
+  listing_version integer,
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'QUEUED' check (status in ('QUEUED', 'RUNNING', 'PREPARED', 'SUCCEEDED', 'FAILED', 'BLOCKED', 'RECONCILIATION_REQUIRED', 'CANCELLED')),
+  stage text check (stage is null or stage ~ '^[A-Z_]{2,40}$'),
+  submit_started_at timestamptz,
+  attempts integer not null default 0 check (attempts >= 0),
+  max_attempts integer not null default 3 check (max_attempts between 1 and 10),
+  available_at timestamptz not null default now(),
+  lease_token uuid,
+  lease_until timestamptz,
+  worker_id text check (worker_id is null or length(worker_id) <= 80),
+  result jsonb not null default '{}'::jsonb,
+  last_error text check (last_error is null or length(last_error) <= 200),
+  idempotency_key text not null unique check (length(idempotency_key) <= 200),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint publishing_operations_target check (kind = 'CHECK_SESSION' or (publication_id is not null and listing_id is not null and user_id is not null))
+);
+-- One queued-or-running operation per publication: a second request waits for the first.
+create unique index publishing_operations_one_active on public.publishing_operations(publication_id)
+  where status in ('QUEUED', 'RUNNING') and publication_id is not null;
+create index publishing_operations_claim on public.publishing_operations(portal_id, available_at) where status = 'QUEUED';
+create index publishing_operations_publication on public.publishing_operations(publication_id, created_at desc);
+alter table public.publishing_operations enable row level security;
+revoke all on public.publishing_operations from anon, authenticated;
+grant all on public.publishing_operations to service_role;
+
+create table public.publishing_artifacts (
+  id bigint generated always as identity primary key,
+  operation_id uuid not null references public.publishing_operations(id) on delete cascade,
+  kind text not null check (kind in ('SCREENSHOT', 'LOG')),
+  stage text,
+  path text not null check (path ~ '^[0-9a-f-]{36}/[A-Za-z0-9_.-]{1,80}$'),
+  sha256 text check (sha256 is null or sha256 ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz not null default now()
+);
+alter table public.publishing_artifacts enable row level security;
+revoke all on public.publishing_artifacts from anon, authenticated;
+grant all on public.publishing_artifacts to service_role;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('publishing-artifacts', 'publishing-artifacts', false, 5000000, array['image/png', 'image/jpeg', 'application/json', 'text/plain'])
+on conflict (id) do nothing;
+
+-- Enqueue one operation; the idempotency key makes a repeat a no-op that returns the first.
+create function public.publishing_op_enqueue(p_publication uuid, p_portal text, p_kind text, p_version integer, p_payload jsonb, p_key text)
+returns public.publishing_operations language plpgsql security invoker set search_path = public, pg_temp as $$
+declare v_job public.publishing_engine_jobs; v_op public.publishing_operations;
+begin
+  select * into v_op from public.publishing_operations where idempotency_key = p_key;
+  if found then return v_op; end if;
+  if p_kind <> 'CHECK_SESSION' then
+    select * into v_job from public.publishing_engine_jobs where id = p_publication;
+    if not found or v_job.portal_id <> p_portal then raise exception 'PUBLICATION_NOT_FOUND'; end if;
+  end if;
+  begin
+    insert into public.publishing_operations(publication_id, listing_id, user_id, portal_id, kind, listing_version, payload, idempotency_key)
+    values (p_publication, v_job.listing_id, v_job.user_id, p_portal, p_kind, p_version, coalesce(p_payload, '{}'::jsonb), p_key)
+    returning * into v_op;
+  exception when unique_violation then
+    -- Another operation is already queued or running for this publication.
+    raise exception 'OPERATION_ALREADY_ACTIVE';
+  end;
+  return v_op;
+end $$;
+
+-- Claim at most one operation per portal account. Expired leases are swept first:
+-- an operation that had started submitting is NEVER re-queued.
+create function public.publishing_op_claim(p_worker text, p_portals text[], p_lease_seconds integer)
+returns setof public.publishing_operations language plpgsql security invoker set search_path = public, pg_temp as $$
+declare v_portal text; v_op public.publishing_operations;
+begin
+  if p_lease_seconds is null or p_lease_seconds < 30 or p_lease_seconds > 900 then raise exception 'INVALID_LEASE'; end if;
+  update public.publishing_operations set
+    status = case when submit_started_at is not null then 'RECONCILIATION_REQUIRED'
+                  when attempts >= max_attempts then 'FAILED' else 'QUEUED' end,
+    last_error = case when submit_started_at is not null then 'LEASE_LOST_AFTER_SUBMIT' else 'LEASE_EXPIRED' end,
+    available_at = now() + make_interval(secs => least(3600, 60 * power(2, attempts)::integer)),
+    lease_token = null, lease_until = null, updated_at = now()
+  where status = 'RUNNING' and lease_until < now();
+  foreach v_portal in array coalesce(p_portals, '{}') loop
+    if not pg_try_advisory_xact_lock(hashtextextended('publishing-account:' || v_portal, 0)) then continue; end if;
+    if exists (select 1 from public.publishing_operations where portal_id = v_portal and status = 'RUNNING') then continue; end if;
+    select o.* into v_op from public.publishing_operations o
+      join public.publishing_accounts a on a.portal_id = o.portal_id
+     where o.portal_id = v_portal and o.status = 'QUEUED' and o.available_at <= now()
+       and (a.automation_enabled or o.kind = 'CHECK_SESSION')
+       and exists (select 1 from public.publishing_account_sessions s where s.portal_id = o.portal_id and s.status <> 'EXPIRED')
+     order by o.available_at, o.created_at
+     for update of o skip locked limit 1;
+    if not found then continue; end if;
+    update public.publishing_operations set status = 'RUNNING', attempts = attempts + 1, worker_id = left(p_worker, 80),
+      lease_token = gen_random_uuid(), lease_until = now() + make_interval(secs => p_lease_seconds), stage = 'CLAIMED', updated_at = now()
+     where id = v_op.id returning * into v_op;
+    return next v_op;
+  end loop;
+end $$;
+
+-- Extend the lease and record progress. False: the lease is gone (stop at once).
+create function public.publishing_op_heartbeat(p_op uuid, p_token uuid, p_stage text, p_lease_seconds integer)
+returns boolean language plpgsql security invoker set search_path = public, pg_temp as $$
+begin
+  update public.publishing_operations set lease_until = now() + make_interval(secs => least(greatest(p_lease_seconds, 30), 900)),
+    stage = coalesce(p_stage, stage), updated_at = now()
+   where id = p_op and lease_token = p_token and status = 'RUNNING' and lease_until >= now();
+  return found;
+end $$;
+
+-- The one-way door before the portal's final publish click. True exactly once.
+create function public.publishing_op_mark_submitting(p_op uuid, p_token uuid)
+returns boolean language plpgsql security invoker set search_path = public, pg_temp as $$
+begin
+  update public.publishing_operations set submit_started_at = now(), stage = 'SUBMITTING', updated_at = now()
+   where id = p_op and lease_token = p_token and status = 'RUNNING' and lease_until >= now() and submit_started_at is null;
+  return found;
+end $$;
+
+-- Finish an operation. A retryable failure before any submit goes back to the queue
+-- with backoff; any failure after submit_started_at needs reconciliation.
+create function public.publishing_op_finish(p_op uuid, p_token uuid, p_outcome text, p_result jsonb, p_error text, p_retryable boolean)
+returns public.publishing_operations language plpgsql security invoker set search_path = public, pg_temp as $$
+declare v_op public.publishing_operations; v_status text;
+begin
+  if p_outcome not in ('SUCCEEDED', 'PREPARED', 'FAILED', 'BLOCKED', 'RECONCILIATION_REQUIRED') then raise exception 'INVALID_OUTCOME'; end if;
+  select * into v_op from public.publishing_operations where id = p_op for update;
+  if not found or v_op.lease_token is distinct from p_token or v_op.status <> 'RUNNING' then raise exception 'LEASE_CONFLICT'; end if;
+  v_status := case
+    when p_outcome = 'FAILED' and v_op.submit_started_at is not null then 'RECONCILIATION_REQUIRED'
+    when p_outcome = 'FAILED' and coalesce(p_retryable, false) and v_op.attempts < v_op.max_attempts then 'QUEUED'
+    else p_outcome end;
+  update public.publishing_operations set status = v_status,
+    result = coalesce(p_result, '{}'::jsonb), last_error = left(p_error, 200),
+    available_at = case when v_status = 'QUEUED' then now() + make_interval(secs => least(3600, 60 * power(2, v_op.attempts)::integer)) else available_at end,
+    lease_token = null, lease_until = null, stage = case when v_status = 'QUEUED' then 'RETRY_WAIT' else stage end, updated_at = now()
+   where id = p_op returning * into v_op;
+  return v_op;
+end $$;
+
+revoke all on function public.publishing_op_enqueue(uuid, text, text, integer, jsonb, text) from public, anon, authenticated;
+revoke all on function public.publishing_op_claim(text, text[], integer) from public, anon, authenticated;
+revoke all on function public.publishing_op_heartbeat(uuid, uuid, text, integer) from public, anon, authenticated;
+revoke all on function public.publishing_op_mark_submitting(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.publishing_op_finish(uuid, uuid, text, jsonb, text, boolean) from public, anon, authenticated;
+grant execute on function public.publishing_op_enqueue(uuid, text, text, integer, jsonb, text) to service_role;
+grant execute on function public.publishing_op_claim(text, text[], integer) to service_role;
+grant execute on function public.publishing_op_heartbeat(uuid, uuid, text, integer) to service_role;
+grant execute on function public.publishing_op_mark_submitting(uuid, uuid) to service_role;
+grant execute on function public.publishing_op_finish(uuid, uuid, text, jsonb, text, boolean) to service_role;

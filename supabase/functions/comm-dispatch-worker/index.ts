@@ -29,6 +29,7 @@ import { buildAgentRuntime } from '../_shared/comm/agentPrompt.ts';
 import { evaluateKillSwitch } from '../_shared/comm/generated/risk.ts';
 import { canDispatchWithinCap } from '../_shared/comm/generated/cost.ts';
 import { evaluateExecutionGate } from '../_shared/comm/generated/executionGate.ts';
+import { serviceBackendEnabled } from '../_shared/serviceControl.ts';
 
 /** A tick does bounded work. The next tick picks up where this one stopped. */
 const CAMPAIGNS_PER_TICK = 5;
@@ -76,6 +77,17 @@ type Sb = ReturnType<typeof serviceClient>;
 type Campaign = Record<string, unknown> & { id: string; owner_id: string; campaign_type: string };
 
 async function runCampaign(sb: Sb, campaign: Campaign): Promise<Record<string, unknown>> {
+  // ── SERVICE CONTROL: a paused service dispatches nothing. ────────────────
+  // AI_CALL needs `ai_call_center`, WHATSAPP needs `whatsapp`; e-mail and SMS are
+  // not paused by this. The campaign is NOT changed: its sends stay PENDING and nothing is
+  // claimed, so on reactivation it resumes exactly where it stopped — the existing
+  // claim/lease protocol keeps every send single-delivery.
+  const service = campaign.campaign_type === 'WHATSAPP' ? 'whatsapp'
+    : campaign.campaign_type === 'AI_CALL' || !campaign.campaign_type ? 'ai_call_center' : null;
+  if (service && !(await serviceBackendEnabled(sb, service))) {
+    return { campaignId: campaign.id, skipped: 'SERVICE_DISABLED', service };
+  }
+
   // ── Is it still allowed to run? ──────────────────────────────────────────
   const health = await campaignHealth(sb, campaign.id, campaign.owner_id);
   const verdict = evaluateKillSwitch(health);

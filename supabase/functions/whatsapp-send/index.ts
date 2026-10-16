@@ -31,6 +31,7 @@ import { createMetaProvider, metaConfigFromEnv, metaCredentialsPresent } from '.
 import { requiresTemplate } from '../_shared/comm/generated/statusMap.ts';
 import { mayAiReply, mayHumanReply } from '../_shared/comm/generated/handoff.ts';
 import { classifyDomain } from '../_shared/comm/generated/domainClassifier.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 interface SendRequest {
   conversationId?: string;
@@ -50,6 +51,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const caller = await authenticate(req);
   if (!caller) return json({ error: 'unauthorized' }, 401);
+
+  // SERVICE CONTROL (key `whatsapp`): no outbound WhatsApp message — human or AI,
+  // new thread or reply — while it is paused. Inbound (whatsapp-webhook) keeps
+  // recording history, delivery statuses and opt-outs.
+  if (!(await serviceBackendEnabled(serviceClient(), 'whatsapp'))) return json(serviceDisabledBody('whatsapp'), 503);
 
   const creds = metaCredentialsPresent();
   if (!creds.ok) {

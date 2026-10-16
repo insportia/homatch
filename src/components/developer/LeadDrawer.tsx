@@ -34,6 +34,7 @@ import {
 import type {
   DevActivity, DevTask, DevViewing, LeadStage, LostReason, DevMember,
 } from '@/services/developer/types';
+import { usePathAvailable } from '@/lib/serviceControls';
 
 /**
  * ONE BUYER, ONE RECORD (§26).
@@ -173,6 +174,7 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
  */
 function ActionBar({ lead, onLogged }: { lead: LeadWithContact; onLogged: () => void }) {
   const { t } = useLanguage();
+  const pathAvailable = usePathAvailable();
   const { workspace } = useDeveloperWorkspace();
   const contact = lead.contact;
   if (!contact || !workspace) return null;
@@ -219,7 +221,7 @@ function ActionBar({ lead, onLogged }: { lead: LeadWithContact; onLogged: () => 
       to: `/outreach/email?contact=${contact.contact_id}`,
       onGo: () => log('EMAIL', t('dev_logged_email')),
     },
-  ];
+  ].filter((item) => !item.to || pathAvailable(item.to)); // a paused service (Service Control Center) offers no action;
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-1.5">

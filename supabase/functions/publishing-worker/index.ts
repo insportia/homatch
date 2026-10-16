@@ -29,6 +29,7 @@ import { fetchListingPage } from '../publishing-engine/net.ts';
 import { type Signer, signPhoto } from '../publishing-engine/photos.ts';
 import { adapterFor, configs, type ProviderRow } from '../publishing-engine/providers.ts';
 import { openCredential, sealCredential, type Envelope } from '../publishing-engine/vault.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BODY = 1_000_000;
@@ -66,6 +67,11 @@ export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.
   let input: Record<string, any>;
   try { input = JSON.parse(raw || '{}'); } catch { return json({ code: 'INVALID_JSON' }, 400); }
   const db = deps.db ?? createClient(deps.env('SUPABASE_URL')!, deps.env('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
+  // SERVICE CONTROL (key `publishing`): paused → nothing new is claimed and the submit
+  // door stays closed, so no listing can reach a portal. In-flight operations may still
+  // heartbeat and finish (they end PREPARED / FAILED, never submitted); housekeeping runs.
+  if (input?.action === 'claim' && !(await serviceBackendEnabled(db, 'publishing'))) return json(serviceDisabledBody('publishing'), 503);
+  if (input?.action === 'submitting' && !(await serviceBackendEnabled(db, 'publishing'))) return json({ ok: false, code: 'SERVICE_DISABLED' });
   const key = deps.env('PUBLISHING_CREDENTIALS_KEY');
   const fail = (code: string): never => { throw new Error(code); };
   const rpc = async (name: string, args: Record<string, unknown>) => {

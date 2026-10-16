@@ -65,6 +65,7 @@ import {
   type VocabularyTerm,
 } from '../_shared/comm/generated/keyterms.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import {
   decideGrant, type UsageTier, grantExpiry, shouldEndSession, hashVisitor,
   DEFAULT_TALK_LIMITS, type TalkLimits,
@@ -506,6 +507,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try { body = await req.json() as TalkRequest; } catch { return json({ error: 'bad_request' }, 400); }
 
   const sb = serviceClient();
+  /*
+   * SERVICE CONTROL (Admin → Service Control Center, key `ai_talk`), in front of the
+   * existing ai_talk_enabled setting. Paused → every action that could start or
+   * continue a voice session (start, listen tokens, converse/LLM/TTS, previews,
+   * heartbeat) answers 503 SERVICE_DISABLED; only `end` is served, so an open
+   * session closes cleanly. A live session therefore stops at its next request.
+   */
+  if (body?.action !== 'end' && !(await serviceBackendEnabled(sb, 'ai_talk'))) {
+    return json(serviceDisabledBody('ai_talk'), 503);
+  }
   const limits = await loadLimits(sb);
   const enabled = await talkEnabled(sb);
 

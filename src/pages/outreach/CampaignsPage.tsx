@@ -30,6 +30,7 @@ import {
 } from '@/components/communications/channel';
 import type { CommCampaign } from '@/types/communications';
 import { isUserResumable } from '@/lib/comm/vocabulary';
+import { useServiceControls } from '@/lib/serviceControls';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -37,6 +38,11 @@ const CHANNEL_TABS = ['ALL', 'AI_CALL', 'WHATSAPP', 'EMAIL', 'SMS'] as const;
 
 export default function CampaignsPage() {
   const { t, lang: language } = useLanguage();
+  // Paused services (Admin → Service Control Center): no tab of their own and no
+  // link into their workspace. Their past campaigns stay listed under ALL.
+  const { services } = useServiceControls();
+  const channelTabs = CHANNEL_TABS.filter((tab) =>
+    (tab !== 'AI_CALL' || services.ai_call_center.frontend) && (tab !== 'WHATSAPP' || services.whatsapp.frontend));
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
@@ -144,7 +150,7 @@ export default function CampaignsPage() {
           {routeChannel ? null : (
             <Tabs value={channel} onValueChange={(v) => setParams({ channel: v }, { replace: true })}>
               <TabsList className="h-8">
-                {CHANNEL_TABS.map((c) => (
+                {channelTabs.map((c) => (
                   <TabsTrigger key={c} value={c} className="h-7 px-2.5 text-xs">
                     {t(c === 'ALL' ? 'comm_filter_all' : `comm_channel_${c.toLowerCase()}` as TKey)}
                   </TabsTrigger>
@@ -249,7 +255,7 @@ export default function CampaignsPage() {
                                   <Play className="me-2 h-3.5 w-3.5" />{t('comm_resume')}
                                 </DropdownMenuItem>
                               ) : null}
-                              {c.campaign_type === 'AI_CALL' ? (
+                              {c.campaign_type === 'AI_CALL' && services.ai_call_center.frontend ? (
                                 <DropdownMenuItem onClick={() => navigate(`/outreach/calls?campaign=${c.id}`)}>
                                   {t('comm_view_calls')}
                                 </DropdownMenuItem>

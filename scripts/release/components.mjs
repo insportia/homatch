@@ -168,6 +168,14 @@ export const COMPONENTS = {
     suites: ['mobile:routes'],
     proofs: ['publishing: publishing-engine + publishing-worker PROVEN_EXACT; migrations 20261103090000 + 20261106090000 + 20261108090000 in the ledger; publishing_providers seeded with 8 rows; RLS select-own on publishing_engine_* and no browser access to publishing_provider*'],
   },
+  // SERVICE CONTROL CENTER: the owner's pause / resume switches for six services, the
+  // customer-side gates that read them and the Admin page that writes them.
+  SERVICE_CONTROLS: {
+    paths: [/^src\/lib\/serviceControls\//, /^src\/components\/serviceControls\//, /^src\/pages\/admin\/AdminServiceControlPage\.tsx$/, /^src\/services\/serviceControls\.ts$/,
+      fn('service-control'), /^supabase\/functions\/_shared\/serviceControl\.ts$/, /^tests\/sql\/service_controls\//, /^scripts\/service-controls-i18n/, /^docs\/claude\/SERVICE_CONTROLS\.md$/],
+    suites: ['mobile:routes', 'mobile:shell'],
+    proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six'],
+  },
   BROKER: { paths: [/^src\/(pages\/(Broker|admin\/AdminBrokersPage)|components\/broker)/, fn('[a-z-]*broker[a-z-]*')], suites: ['mobile:broker', 'mobile:routes'] },
   PUBLIC_HOMEPAGE: {
     paths: [/^src\/pages\/(HomePage|AboutPage|PricingPage|PartnersPage|PrivacyPage|TermsPage|ProductEntryPage|ContactPage)/, /^src\/components\/home\//, /^public\//, /^scripts\/build-sitemap/],

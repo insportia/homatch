@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 import { UnreadBadge } from '@/components/common/UnreadBadge';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 const navItems = [
   { key: 'nav_dashboard',     path: '/dashboard',      icon: LayoutDashboard },
@@ -43,7 +44,7 @@ const navItems = [
   { key: 'nav_investment',    path: '/investment',     icon: TrendingUp },
   { key: 'nav_ai',            path: '/ai',             icon: Bot,         highlight: true },
   { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
-  { key: 'nav_live_chat',     path: '/live-chat',      icon: Radio },
+  { key: 'nav_live_chat',     path: '/live-chat',      icon: Radio, gate: 'live_chat' as ServiceKey },
   { key: 'nav_verify',        path: '/verify',         icon: Shield },
   // CONTRACTS sits next to Verify because that is the pair a buyer uses:
   // check the property, then read the contract for it. It is a product of
@@ -58,6 +59,8 @@ const navItems = [
 ];
 
 export function AppHeader() {
+  const services = useServiceControls().services;
+  const visibleNav = navItems.filter((item) => !('gate' in item) || !item.gate || services[item.gate].frontend);
   const { session, homatchUser, signOut } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -111,7 +114,7 @@ export function AppHeader() {
         {/* Desktop Nav */}
         {session && (
           <nav className="hidden md:flex items-center gap-1 flex-1">
-            {navItems.map(item => (
+            {visibleNav.map(item => (
               <Link key={item.path} to={item.path}>
                 <Button
                   variant="ghost"
@@ -233,7 +236,7 @@ export function AppHeader() {
                       <HomatchLogo size="sm" />
                     </div>
                     <nav className="flex-1 p-3 space-y-1">
-                      {navItems.map(item => {
+                      {visibleNav.map(item => {
                         const highlight = item.key === 'nav_ai';
                         return (
                           <Link

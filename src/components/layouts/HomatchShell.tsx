@@ -43,7 +43,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { designStudioEnabled } from '@/lib/designStudio/access';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 interface NavItem {
   key: string;
@@ -51,9 +51,9 @@ interface NavItem {
   /* The item's glyph in the customer navigation's own drawn family — one
      unified navy/gold language for the rail (see NavGlyph.tsx). */
   glyph: NavGlyphName;
-  /* Presented only while this product is switched on for the viewer (see
-     src/lib/designStudio/access.ts). Absent = always presented. */
-  gate?: 'designStudio';
+  /* Presented only while the owner has this service switched on in Admin →
+     Service Control Center (src/lib/serviceControls). Absent = always presented. */
+  gate?: ServiceKey;
   /* Shown only to broker and agency accounts (users.account_type). */
   professional?: boolean;
 }
@@ -150,7 +150,7 @@ export const NAV: NavGroup[] = [
        * the sidebar never listed it. One destination now, here, and nowhere in the
        * top bar.
        */
-      { key: 'nav_publishing', path: '/publishing', glyph: 'publishing' },
+      { key: 'nav_publishing', path: '/publishing', glyph: 'publishing', gate: 'publishing' },
       /*
        * FIND PROPERTY: the other journey, and deliberately not this one.
        *
@@ -196,7 +196,7 @@ export const NAV: NavGroup[] = [
    */
   {
     key: 'nav_group_design',
-    items: [{ key: 'nav_design_studio', path: '/design-studio', glyph: 'design_studio', gate: 'designStudio' }],
+    items: [{ key: 'nav_design_studio', path: '/design-studio', glyph: 'design_studio', gate: 'design_studio' }],
   },
   {
     key: 'nav_group_intelligence',
@@ -210,11 +210,11 @@ export const NAV: NavGroup[] = [
   {
     key: 'nav_group_comms',
     items: [
-      { key: 'call_center_title', path: '/outreach/calls', glyph: 'calls' },
-      { key: 'comm_channel_whatsapp', path: '/outreach/whatsapp', glyph: 'whatsapp' },
+      { key: 'call_center_title', path: '/outreach/calls', glyph: 'calls', gate: 'ai_call_center' },
+      { key: 'comm_channel_whatsapp', path: '/outreach/whatsapp', glyph: 'whatsapp', gate: 'whatsapp' },
       { key: 'nav_meta_ads', path: '/outreach/meta', glyph: 'meta_ads' },
       { key: 'dnav_email', path: '/outreach/email', glyph: 'email' },
-      { key: 'nav_live_chat', path: '/live-chat', glyph: 'live_chat' },
+      { key: 'nav_live_chat', path: '/live-chat', glyph: 'live_chat', gate: 'live_chat' },
       { key: 'nav_chat', path: '/chat', glyph: 'chat' },
     ],
   },
@@ -291,11 +291,11 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
     };
   }, [drawerOpen]);
 
-  const showDesignStudio = designStudioEnabled(homatchUser);
+  const services = useServiceControls().services;
   const nav = NAV
     .map(group => ({
       ...group,
-      items: group.items.filter(item => item.gate !== 'designStudio' || showDesignStudio),
+      items: group.items.filter(item => !item.gate || services[item.gate].frontend),
     }))
     .filter(group => group.items.length > 0);
 

@@ -19,6 +19,7 @@ register('data:text/javascript,' + encodeURIComponent(`
 globalThis.Deno = { env: { get: () => undefined } };
 const { handler } = await import('../../publishing-worker/index.ts');
 const { sealCredential } = await import('../vault.ts');
+const { resetServiceControlCache } = await import('../../_shared/serviceControl.ts');
 
 const KEY = Buffer.from(new Uint8Array(32).fill(7)).toString('base64');
 const OWNER = '11111111-1111-4111-8111-111111111111';
@@ -27,9 +28,11 @@ const PHOTO = '44444444-4444-4444-8444-444444444444';
 const NOW = new Date('2026-10-16T12:00:00Z');
 const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-async function makeDb({ session = true } = {}) {
+async function makeDb({ session = true, publishing = true } = {}) {
   let seq = 100;
+  resetServiceControlCache();
   const t = {
+    service_controls: [{ service_key: 'publishing', frontend_enabled: publishing, backend_enabled: publishing }],
     publishing_providers: [],
     publishing_accounts: ['myhome', 'ssge'].map((portal_id) => ({ portal_id, status: 'CONNECTED', connection_method: 'BROWSER_SESSION', account_label: `homatch@${portal_id}`, contact_phone: '+995322000111', verified_at: '2026-10-16T00:00:00Z', failure_count: 0, automation_enabled: true, live_submit_approved: false })),
     publishing_account_sessions: session ? [{ portal_id: 'myhome', envelope: await sealCredential(JSON.stringify({ cookies: [{ name: 'sid', value: 'S', domain: '.myhome.ge' }], origins: [] }), 'session:myhome', KEY), status: 'VALID', expires_at: null }] : [],
@@ -298,4 +301,17 @@ test('a session that decrypts to non-JSON is blocked with a code — the decrypt
   assert.equal(op.status, 'BLOCKED');
   assert.equal(op.last_error, 'CREDENTIAL_UNREADABLE');
   assert.equal(JSON.stringify(env.t).includes('SECRET-COOKIE-VALUE'), false);
+});
+
+test('Service Control Center: paused Publishing claims nothing and keeps the submit door shut; in-flight work may still finish', async () => {
+  const { t, db } = await makeDb({ publishing: false });
+  const claim = await call(db, 'claim', { worker: 'w', portals: ['myhome'] });
+  assert.equal(claim.status, 503);
+  assert.deepEqual(claim.body, { code: 'SERVICE_DISABLED', error: 'SERVICE_DISABLED', service: 'publishing' });
+  const door = await call(db, 'submitting', { id: 'op-x', token: 'tok' });
+  assert.equal(door.status, 200);
+  assert.deepEqual(door.body, { ok: false, code: 'SERVICE_DISABLED' }, 'the worker reads a closed door and never presses publish');
+  assert.equal((t.publishing_operations ?? []).filter((o) => o.status === 'RUNNING').length, 0);
+  // Housekeeping (screenshot retention) is not paused.
+  assert.notEqual((await call(db, 'housekeeping', {})).status, 503);
 });

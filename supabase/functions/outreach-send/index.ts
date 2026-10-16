@@ -19,6 +19,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getEmailAdapter, getSmsAdapter, getVoiceAdapter } from '../_shared/outreach_providers.ts';
 import { checkSpendCap } from '../_shared/spend_cap.ts';
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -140,6 +141,11 @@ async function outreachSend(req: Request): Promise<Response> {
     }
     if (!campaign.contact_list_id) {
       return new Response(JSON.stringify({ error: 'Campaign has no contact_list_id' }), { status: 400, headers: corsHeaders });
+    }
+    // SERVICE CONTROL (key `ai_call_center`): AI calls are refused while the AI Call
+    // Center is paused; e-mail and SMS campaigns are not affected.
+    if (campaign.campaign_type === 'AI_CALL' && !(await serviceBackendEnabled(supabase, 'ai_call_center'))) {
+      return new Response(JSON.stringify(serviceDisabledBody('ai_call_center')), { status: 503, headers: corsHeaders });
     }
 
     // ── Safety flags ─────────────────────────────────────────

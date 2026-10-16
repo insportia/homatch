@@ -3,6 +3,7 @@ import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentChips } from '@/components/home/IntentCards';
 import { AiTalkPanel } from '@/components/home/AiTalkPanel';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { PAGE } from './primitives';
 import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
 
@@ -40,6 +41,7 @@ export function HeroSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
   const mp = useMediaProps();
+  const aiTalkVisible = useServiceVisible('ai_talk');
 
   return (
     <section className="relative isolate overflow-hidden bg-[#0D0D0D] text-white">
@@ -166,10 +168,15 @@ export function HeroSection() {
 
           {/* AI TALK. A marketing demonstration of what Homatch understands,
               not a second assistant: HomatchAsk above is still AI Chat, on its
-              own route, unchanged (§26). */}
-          <div className="pb-11 sm:pb-16 xl:pb-20 xl:pt-[9rem]">
-            <AiTalkPanel className="mx-auto max-w-[26rem] xl:mx-0 xl:max-w-none" />
-          </div>
+              own route, unchanged (§26). Rendered only while the owner has AI
+              TALK switched on (Admin → Service Control Center); while it is
+              paused the panel is not mounted at all, so it opens no session, and
+              the hero photo fills the column as it does below xl. */}
+          {aiTalkVisible && (
+            <div className="pb-11 sm:pb-16 xl:pb-20 xl:pt-[9rem]">
+              <AiTalkPanel className="mx-auto max-w-[26rem] xl:mx-0 xl:max-w-none" />
+            </div>
+          )}
         </div>
       </div>
     </section>

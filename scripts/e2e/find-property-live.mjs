@@ -21,6 +21,7 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'en-US' });
 await ctx.addInitScript(() => { try { if (!localStorage.getItem('homatch_lang')) localStorage.setItem('homatch_lang', 'en'); } catch {} });
 const page = await ctx.newPage();
+page.setDefaultTimeout(90000);
 const consoleErrors = [];
 page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
 const calls = [];
@@ -63,7 +64,7 @@ try {
     await start.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
     if (await start.isVisible().catch(() => false)) break;
     let clicked = null;
-    for (const name of [/^(any|any number|doesn.t matter|no preference|skip|not important)$/i, /^2 rooms$/i, /^1 bedrooms$/i]) {
+    for (const name of [/^(any|any number|doesn.t matter|no preference|skip|not important)$/i, /^2 rooms$/i, /^1 bedrooms$/i, /^2$/]) {
       const b = page.getByRole('button', { name }).first();
       if (await b.isVisible().catch(() => false)) { await b.click(); clicked = String(name); break; }
     }
@@ -72,6 +73,11 @@ try {
     await page.waitForTimeout(3000);
   }
   out('answers', { answered });
+  if (!(await start.isVisible().catch(() => false))) {
+    await shot(page, '03-stuck');
+    out('stuck', { url: page.url(), text: (await page.locator('main').innerText().catch(() => '')).slice(0, 2500),
+      buttons: (await page.locator('main button').allInnerTexts().catch(() => [])).slice(0, 40) });
+  }
   await shot(page, '03-confirmation');
   const confirmText = (await page.locator('main').innerText().catch(() => '')).slice(0, 1500);
   out('confirmation', { startVisible: await start.isVisible().catch(() => false), text: confirmText });

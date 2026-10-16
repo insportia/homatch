@@ -97,13 +97,17 @@ test('a Find Property run is PAYG through the wallet, idempotent, one open run p
   assert.match(RUN_FN, /eq\('idempotency_key', idempotencyKey\)/);
   assert.match(RUN_FN, /in\('status', OPEN_RUN_STATES\)/);
   assert.match(RUN_FN, /findPropertyDiscoveryEnabled/, 'off until an operator switches it on');
+  /* Owner decision 2026-10-16: portals and HOMATCH inventory are the FREE search;
+     the paid run is the social OFFER campaign (memo23), reserved only after the
+     customer confirmed the exact price. */
+  const confirmAt = RUN_FN.indexOf('confirm.acceptedTerms !== true');
   const reserve = RUN_FN.indexOf('beginExecution(db');
-  const plan = RUN_FN.indexOf('storePlan(db');
-  const queue = RUN_FN.indexOf('queuePlannedJobs(db');
-  assert.ok(reserve > 0 && plan > reserve && queue > plan, 'reserve, then plan, then queue');
+  const runRow = RUN_FN.indexOf("from('discovery_runs').insert(");
+  const queue = RUN_FN.indexOf('offerQueueRows(runId');
+  assert.ok(confirmAt > 0 && reserve > confirmAt && runRow > reserve && queue > runRow, 'confirm, reserve, then run, then queue');
   assert.match(RUN_FN, /releaseExecution\(db, grant/, 'a failed start releases the reservation');
   assert.match(RUN_FN, /normalisePlan\(draftFromStoredPlan\(/, 'a stored plan is re-validated, not trusted');
-  assert.match(RUN_FN, /livePortalAdaptersFor\(/, 'only adapters the portal runtime executes serve PORTAL jobs');
+  assert.doesNotMatch(RUN_FN, /livePortalAdaptersFor\(/, 'portals are never paid');
   assert.doesNotMatch(RUN_FN, /PORTAL_SOURCES/, 'config ids (home-ss-ge) are not runtime ids (ss-ge)');
 });
 
@@ -129,7 +133,7 @@ test('a run ends by counting only what it delivered, charging only for that, unk
   assert.match(RUN_LIB, /loadDeliveries\(db, run\.intent_profile_id, run\.started_at\)/);
   assert.match(RUN_LIB, /settleFindPropertyRun\(db, grant/);
   assert.doesNotMatch(RUN_LIB, /settleExecution/, 'never the shared work-priced settle');
-  assert.match(RUN_LIB, /provider_cost_usd: costUnknown \? null : providerCostUsd/);
+  assert.match(RUN_LIB, /provider_cost_usd: socialCampaign \? spendMicros \/ 1e6 : costUnknown \? null : providerCostUsd/);
   const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
   assert.match(driver, /advanceRuns\(db/);
   assert.match(driver, /rescueStuckRuns\(db\)/);
@@ -163,7 +167,8 @@ test('the outside-search panel shows only real server state and never a provider
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.match(panel, /latestOutsideRun\(id\)/, 'the run is read from the server, so a refresh keeps it');
   assert.match(panel, /setInterval\(\(\) => \{ void refresh\(\); \}, 5000\)/);
-  assert.match(panel, /productCode="FIND_PROPERTY"/);
+  /* Starting a paid run goes through the one confirmed, server-priced panel. */
+  assert.match(panel, /<PaidCampaignPanel t=\{t as never\} subscriptionId=\{subscriptionId\} \/>/);
   assert.doesNotMatch(panel, /TELEGRAM|PORTAL'|provider|cost_usd|error_message/, 'no provider names or costs reach the customer');
   assert.match(panel, /controlOutsideRun\(run\.id, action\)/);
   const page = read('src/pages/FindPropertyPage.tsx');

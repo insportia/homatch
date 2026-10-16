@@ -1,49 +1,44 @@
 /*
- * Find Property external discovery: the commercial split of one paid run.
+ * Find Property paid external discovery: the commercial split of one campaign.
  *
- * Gross is what the customer pays (10 credits = $1), VAT included. At most 45%
- * of gross may be spent on providers (OpenAI, Actors, portals); HOMATCH keeps
- * at least 55%, and the included VAT is funded from that 55% share.
+ * The split is the owner's single paid discovery policy (37% HOMATCH / 63%
+ * providers of the TOTAL price; src/research-core/billing/paidDiscoveryPolicy.ts).
+ * Statutory VAT is accounted separately and never enters this split.
  *
- *   $5  → provider ≤ $2.25 · HOMATCH $2.75 · VAT $0.76 · net $1.99
- *   $10 → provider ≤ $4.50 · HOMATCH $5.50 · VAT $1.53 · net $3.97
+ *   $5  → provider ≤ $3.15 · HOMATCH $1.85
+ *   $10 → provider ≤ $6.30 · HOMATCH $3.70
  *
- * Pure integer-cent arithmetic. This is a policy calculation only: it reads no
- * production pricing or tax setting and changes neither. The VAT rate is an
- * input so the caller passes the configured value.
+ * Pure integer-cent arithmetic; reads no production setting.
  */
+import {
+  allocateCampaign, minimumCampaignCredits, PAID_DISCOVERY_POLICY_ID,
+} from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
 export const CREDITS_PER_USD = 10;
-export const FIND_PROPERTY_MIN_CREDITS = 50;
-export const PROVIDER_SHARE_BPS = 4500;
-export const DEFAULT_VAT_BPS = 1800;
+export const FIND_PROPERTY_MIN_CREDITS = minimumCampaignCredits(CREDITS_PER_USD); // 50 = $5
 
 export interface CommercialAllocation {
   credits: number;
   grossCents: number;
-  /** Hard ceiling on all provider spending for the run. */
+  /** Hard ceiling on all provider spending for the campaign (63%). */
   providerCapCents: number;
-  /** HOMATCH allocation before VAT (gross − provider cap). */
+  /** HOMATCH share of the price (37%). */
   homatchCents: number;
-  /** VAT contained in the gross price, funded from the HOMATCH share. */
-  vatCents: number;
-  /** HOMATCH after VAT. */
-  netCents: number;
+  /** Provider ceiling in micro-USD, the unit the memo23 reservation RPC uses. */
+  providerCapMicros: number;
+  policy: typeof PAID_DISCOVERY_POLICY_ID;
 }
 
-export type AllocationError = 'BELOW_CAMPAIGN_MINIMUM' | 'INVALID_CREDITS' | 'INVALID_VAT_RATE';
+export type AllocationError = 'BELOW_CAMPAIGN_MINIMUM' | 'INVALID_CREDITS';
 
-export function allocate(credits: number, vatBps = DEFAULT_VAT_BPS): CommercialAllocation | { error: AllocationError } {
+export function allocate(credits: number, creditsPerUsd = CREDITS_PER_USD): CommercialAllocation | { error: AllocationError } {
   if (!Number.isInteger(credits) || credits <= 0) return { error: 'INVALID_CREDITS' };
-  if (credits < FIND_PROPERTY_MIN_CREDITS) return { error: 'BELOW_CAMPAIGN_MINIMUM' };
-  if (!Number.isInteger(vatBps) || vatBps < 0 || vatBps > 5000) return { error: 'INVALID_VAT_RATE' };
-  const grossCents = credits * (100 / CREDITS_PER_USD);
-  // The provider share is a cap: round down so it can never exceed 45%.
-  const providerCapCents = Math.floor((grossCents * PROVIDER_SHARE_BPS) / 10_000);
-  const homatchCents = grossCents - providerCapCents;
-  // VAT included in gross: gross × rate / (1 + rate), rounded half-up to the cent.
-  const vatCents = Math.round((grossCents * vatBps) / (10_000 + vatBps));
-  return { credits, grossCents, providerCapCents, homatchCents, vatCents, netCents: homatchCents - vatCents };
+  if (credits < minimumCampaignCredits(creditsPerUsd)) return { error: 'BELOW_CAMPAIGN_MINIMUM' };
+  const a = allocateCampaign(credits, creditsPerUsd);
+  return {
+    credits, grossCents: a.priceCents, providerCapCents: a.providerBudgetCents, homatchCents: a.homatchMarginCents,
+    providerCapMicros: a.providerBudgetMicros, policy: a.policy,
+  };
 }
 
 export type SpendDecision =

@@ -36,6 +36,7 @@ import {
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
+import { executeOfferJob } from '../_shared/findProperty/socialOffers.ts';
 import { adaptiveRound } from '../_shared/findBuyers/adaptive.ts';
 import { loadPhase1, queueCombinedTelegram, queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
 import { runWorkerPool } from '../../../src/research-core/findBuyers/workerPool.ts';
@@ -209,7 +210,8 @@ async function runSocialJobs(db: any, settings: DiscoverySettings) {
 
 async function runSocialJob(db: any, settings: DiscoverySettings, job: any): Promise<Record<string, unknown>> {
   let outcome;
-  try { outcome = await executeSocialJob(db, job); }
+  /* Find Property paid social offer jobs belong to a discovery_run, not to a Find Buyers campaign. */
+  try { outcome = job.metadata?.offerCampaign === true && job.discovery_run_id ? await executeOfferJob(db, job) : await executeSocialJob(db, job); }
   catch (e) { outcome = { outcome: 'RETRY' as const, resultCount: 0, error: errorText(e).slice(0, 300), retrySeconds: 60, costUsd: null, metadata: {} }; }
   let status: string | null = null;
   if (outcome.outcome === 'WAIT') {

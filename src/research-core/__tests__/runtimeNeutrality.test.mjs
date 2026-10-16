@@ -211,6 +211,15 @@ test('the core is consumed only through its deliberate integration points', () =
      * or flow primitive of the core is reached from here.
      */
     'supabase/functions/_shared/findBuyers/campaign.ts',
+    /* The paid discovery pricing policy (research-core/billing/paidDiscoveryPolicy):
+       pure integer money math shared by Find Buyers and Find Property campaigns. */
+    'supabase/functions/_shared/findPropertyCommercial.ts',
+    /* Find Property paid social OFFER campaign: the pure planner and offer
+       qualifier (research-core/findProperty/offerCampaign), the memo23 input
+       builders and normalizer, and the 37/63 policy for settlement. The network
+       door stays _shared/findBuyers/memo23Client.ts. */
+    'supabase/functions/_shared/findProperty/socialOffers.ts',
+    'supabase/functions/_shared/discoveryRun.ts',
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
     'supabase/functions/_shared/findBuyers/translate.ts',

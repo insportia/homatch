@@ -40,6 +40,7 @@ import {
   anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings, workerSwitchOn, WORKER_SOURCE_NAMES,
 
 } from '../_shared/marketplaceSearch.ts';
+import { paidCampaignAvailable } from '../_shared/findProperty/paidAvailability.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -145,7 +146,9 @@ Deno.serve(async (req: Request) => {
     if (action === 'capabilities') {
       const { count } = await db.from('discovery_marketplace_workers').select('worker_id', { count: 'exact', head: true })
         .eq('state', 'ACTIVE').eq('enabled', true);
-      return json({ marketplaceEnabled: switches.enabled, activeSources: switches.enabled ? Number(count ?? 0) : 0, deepSearchAvailable: false });
+      /* The paid social campaign (find-property-run) is offered only when its switches allow it. */
+      const deepSearchAvailable = await paidCampaignAvailable(db).catch(() => false);
+      return json({ marketplaceEnabled: switches.enabled, activeSources: switches.enabled ? Number(count ?? 0) : 0, deepSearchAvailable });
     }
 
     if (action === 'history') {

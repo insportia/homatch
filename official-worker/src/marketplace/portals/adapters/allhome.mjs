@@ -21,7 +21,7 @@ const unsupported = (why) => Object.assign(Error(why), { code: 'UNSUPPORTED_REQU
 
 export const allhome = {
   workerId: 'allhome-agent', sourceId: 'allhome-ge', sourceName: 'Allhome.ge', envPrefix: 'ALLHOME', origin: 'https://www.allhome.ge',
-  maxPages: 1, pagesIndependent: true, listCacheMs: 6 * 60 * 60 * 1000,
+  deepMaxPages: 6, filtersAfterRead: true, maxPages: 1, pagesIndependent: true, listCacheMs: 6 * 60 * 60 * 1000,
   detailLimit: 24, detailIntervalMs: 900, pageIntervalMs: 1000,
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];

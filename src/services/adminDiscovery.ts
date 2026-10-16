@@ -100,7 +100,7 @@ export async function getDiscoveryIntelligence(): Promise<DiscoveryIntelligence 
   return shaped ? data as DiscoveryIntelligence : null;
 }
 
-export const PHASE2_SWITCHES = ['find_property_discovery_enabled', 'discovery_worker_route_enabled'] as const;
+export const PHASE2_SWITCHES = ['find_property_discovery_enabled', 'find_property_social_enabled', 'discovery_worker_route_enabled'] as const;
 export type Phase2Switch = typeof PHASE2_SWITCHES[number];
 
 export async function setPhase2Switch(key: Phase2Switch, on: boolean): Promise<void> {

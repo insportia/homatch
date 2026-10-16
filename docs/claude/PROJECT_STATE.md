@@ -1585,3 +1585,30 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - **Open items:**
   - The MyHome engine's own 0-result issue in Verify is resolved by using the runtime's page reader. Production proof is still pending.
   - Developer website and Facebook renders need written rights from the developer.
+
+## Find Property HTML portal workers (PR #210, 2026-10-15) — BUILT, NOT DEPLOYED
+
+- Code: `official-worker/src/marketplace/portals/` (shared `acquire.mjs` loop:
+  robots.txt, pacing, 2-page cap, BLOCKED on 401/403/429/challenge, no retry
+  past a refusal, request-contradiction filter; `runtime.mjs` claims runs on the
+  existing marketplace-worker-1 contract). Adapters: Place.ge (search), Home.ge
+  (sitemap + listing pages), Brokeri.ge (search), Allhome.ge (sitemap + listing
+  pages). MyHome.ge / SS.ge untouched (MyHome stays at pages 1–2).
+- Withdrawn: Korter.ge (terms forbid scraping), Binebi.ge (Cloudflare challenge).
+- Registry/switches: migration `20261104100000_find_property_portal_workers.sql`
+  (rows PROVEN + enabled=false; `marketplace_{placege,homege,brokeri,allhome}_enabled`
+  false). Edge: `marketplace-search` / `marketplace-worker-ingest` gate each portal
+  on its own switch (`workerSwitchOn`).
+- Live evidence: GitHub-runner live runs of `scripts/portals/live-check.mjs`
+  (2026-10-15; scenarios A/B/C 2026-10-16 06:07–06:17 UTC, run 38859391158), every
+  report contract-valid. Pipeline-shown — A (Tbilisi sale $80–200k, 50–120 m²):
+  Place 25, Home 33, Allhome 17, Brokeri 0 (all >30 days); B (rent $300–1,500):
+  Place 23, Home 32, Allhome 2, Brokeri 0; C (Krtsanisi / +Ortachala): Home 10 / 14,
+  Place 1 / 1 (district unstated), Allhome 0 / 0, Brokeri 0.
+- Districts: strict worker-side check (`portals/places.mjs`); Home.ge narrows by
+  slug; Place.ge ignores district parameters server-side (probed), so post-read only.
+- To activate (owner approval): apply the migration; deploy the 3 edge functions +
+  frontend; Railway `homatch-official-worker` env `<PREFIX>_WORKER_TOKEN` +
+  `<PREFIX>_MARKETPLACE_ENABLED=true` (PLACEGE/HOMEGE/BROKERI/ALLHOME) with the
+  token hash in `discovery_marketplace_workers.token_hash`; set the row
+  ACTIVE + enabled and the admin switch on, one portal at a time.

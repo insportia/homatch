@@ -1,6 +1,6 @@
 // Find Property — presentation helpers. Pure; every word goes through i18n.
 
-import type { BriefField, NumericRange, SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
+import type { BriefEdit, BriefField, NumericRange, SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
 import type { ListingActivity } from '@/research-core/marketplace/freshness';
 import type { RequirementKey } from '@/research-core/marketplace/readiness';
 
@@ -117,6 +117,19 @@ export function criteriaChips(b: SearchIntelligenceBrief, t: T): CriterionChip[]
   if (b.parking?.value === true) chips.push({ key: 'parking', label: t('mps_amenity_PARKING'), proposed: false });
   if (b.price) chips.push({ key: 'price', label: rangeText(b.price.value, t, 'price'), proposed: status(b.price) });
   return chips;
+}
+
+/** The edit that drops one criterion. City stays: it anchors the market, so the location chip clears districts only. */
+export function removeCriterion(key: string): BriefEdit | null {
+  switch (key) {
+    case 'transactionType': case 'propertyType': return { field: key, value: null };
+    case 'location': return { field: 'districts', value: null };
+    case 'rooms': case 'bedrooms': case 'area': case 'price': return { field: key, value: null };
+    case 'buildingStatus': return { field: 'buildingStatuses', value: null };
+    case 'renovation': return { field: 'renovationPreferences', value: null };
+    case 'parking': return { field: 'parking', value: null };
+    default: return null;
+  }
 }
 
 export function countText(r: NumericRange, t: T, what: 'rooms' | 'bedrooms'): string {

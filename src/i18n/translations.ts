@@ -18911,6 +18911,21 @@ const en = {
   fbo_agree_transaction: 'Same deal type',
   fbo_draft_text_rent: 'Hello! I saw your question about a rental in this area. I am renting out a similar place and would be happy to share details and photos.',
 
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'View results',
+  fpw_repeat_search: 'Repeat search',
+  fpw_card_results: '{{n}} properties found',
+  fpw_card_any_place: 'Any location',
+  fpw_edit_search: 'Edit search',
+  fpw_remove_criterion: 'Remove {{label}} and edit the search',
+  fpw_edit_note: 'Changing a criterion opens the search builder; nothing runs until you start it.',
+  fpw_seller_any_owner: 'Owner (verified or likely)',
+  fpw_copy_number: 'Copy number',
+  fpw_number_copied: 'Number copied',
+
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'People whose search matches this property will be able to call this number and message you on HOMATCH. It is never published publicly.',
+
   /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
   fbx_source_group: 'Facebook group',
   fbx_source_page: 'Facebook Page',
@@ -37756,6 +37771,21 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbo_agree_transaction: 'იგივე გარიგების ტიპი',
   fbo_draft_text_rent: 'გამარჯობა! ვნახე თქვენი კითხვა ამ უბანში ქირავნობის შესახებ. მსგავს ფართს ვაქირავებ და სიამოვნებით გაგიზიარებთ დეტალებს და ფოტოებს.',
 
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'შედეგების ნახვა',
+  fpw_repeat_search: 'ძიების გამეორება',
+  fpw_card_results: 'ნაპოვნია {{n}} ქონება',
+  fpw_card_any_place: 'ნებისმიერი ლოკაცია',
+  fpw_edit_search: 'ძიების რედაქტირება',
+  fpw_remove_criterion: 'წაშალე „{{label}}“ და შეცვალე ძიება',
+  fpw_edit_note: 'კრიტერიუმის შეცვლა ძიების ფორმას გახსნის; არაფერი დაიწყება, სანამ თავად არ დაიწყებ.',
+  fpw_seller_any_owner: 'მესაკუთრე (დადასტურებული ან სავარაუდო)',
+  fpw_copy_number: 'ნომრის კოპირება',
+  fpw_number_copied: 'ნომერი დაკოპირდა',
+
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'ამ ნომერზე დაგირეკავენ ის ადამიანები, ვისი ძიებაც ამ ქონებას ემთხვევა; ასევე შეძლებენ HOMATCH-ზე მოგწერონ. ნომერი საჯაროდ არ ქვეყნდება.',
+
   /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
   fbx_source_group: 'Facebook-ის ჯგუფი',
   fbx_source_page: 'Facebook-ის გვერდი',
@@ -56592,6 +56622,21 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbo_agree_transaction: 'Тот же тип сделки',
   fbo_draft_text_rent: 'Здравствуйте! Я увидел ваш вопрос об аренде в этом районе. Я сдаю похожее жильё и с радостью пришлю детали и фото.',
 
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'Смотреть результаты',
+  fpw_repeat_search: 'Повторить поиск',
+  fpw_card_results: 'Найдено объектов: {{n}}',
+  fpw_card_any_place: 'Любой район',
+  fpw_edit_search: 'Изменить поиск',
+  fpw_remove_criterion: 'Убрать «{{label}}» и изменить поиск',
+  fpw_edit_note: 'Изменение критерия открывает конструктор поиска; ничего не запустится, пока вы не начнёте.',
+  fpw_seller_any_owner: 'Собственник (подтверждённый или вероятный)',
+  fpw_copy_number: 'Скопировать номер',
+  fpw_number_copied: 'Номер скопирован',
+
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'Люди, чей поиск совпадает с этим объектом, смогут позвонить по этому номеру и написать вам в HOMATCH. Номер никогда не публикуется открыто.',
+
   /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
   fbx_source_group: 'Группа Facebook',
   fbx_source_page: 'Страница Facebook',
@@ -75425,6 +75470,21 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbo_agree_price: 'Benzer fiyat',
   fbo_agree_transaction: 'Aynı işlem türü',
   fbo_draft_text_rent: 'Merhaba! Bu bölgedeki kiralık hakkındaki sorunuzu gördüm. Benzer bir yeri kiraya veriyorum, detayları ve fotoğrafları memnuniyetle paylaşırım.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'Sonuçları gör',
+  fpw_repeat_search: 'Aramayı tekrarla',
+  fpw_card_results: '{{n}} mülk bulundu',
+  fpw_card_any_place: 'Herhangi bir konum',
+  fpw_edit_search: 'Aramayı düzenle',
+  fpw_remove_criterion: '{{label}} kaldır ve aramayı düzenle',
+  fpw_edit_note: 'Bir kriteri değiştirmek arama oluşturucuyu açar; siz başlatana kadar hiçbir şey çalışmaz.',
+  fpw_seller_any_owner: 'Mal sahibi (doğrulanmış veya muhtemel)',
+  fpw_copy_number: 'Numarayı kopyala',
+  fpw_number_copied: 'Numara kopyalandı',
+
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'Araması bu mülkle eşleşen kişiler bu numarayı arayabilecek ve size HOMATCH üzerinden mesaj gönderebilecek. Numara asla herkese açık yayımlanmaz.',
 
   /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
   fbx_source_group: 'Facebook grubu',
@@ -94260,6 +94320,21 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbo_agree_transaction: 'نفس نوع الصفقة',
   fbo_draft_text_rent: 'مرحبًا! رأيت سؤالك عن إيجار في هذه المنطقة. أؤجّر مكانًا مشابهًا ويسعدني مشاركة التفاصيل والصور.',
 
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'عرض النتائج',
+  fpw_repeat_search: 'تكرار البحث',
+  fpw_card_results: 'تم العثور على {{n}} عقار',
+  fpw_card_any_place: 'أي موقع',
+  fpw_edit_search: 'تعديل البحث',
+  fpw_remove_criterion: 'إزالة {{label}} وتعديل البحث',
+  fpw_edit_note: 'تغيير أي معيار يفتح منشئ البحث؛ لن يبدأ شيء حتى تبدأه بنفسك.',
+  fpw_seller_any_owner: 'المالك (موثّق أو محتمل)',
+  fpw_copy_number: 'نسخ الرقم',
+  fpw_number_copied: 'تم نسخ الرقم',
+
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'سيتمكن الأشخاص الذين يتطابق بحثهم مع هذا العقار من الاتصال بهذا الرقم ومراسلتك عبر HOMATCH. لا يُنشر الرقم علناً أبداً.',
+
   /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
   fbx_source_group: 'مجموعة فيسبوك',
   fbx_source_page: 'صفحة فيسبوك',
@@ -113093,6 +113168,21 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbo_agree_price: 'מחיר דומה',
   fbo_agree_transaction: 'אותו סוג עסקה',
   fbo_draft_text_rent: 'שלום! ראיתי את השאלה שלך על השכרה באזור. אני משכיר מקום דומה ואשמח לשתף פרטים ותמונות.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_view_results: 'צפייה בתוצאות',
+  fpw_repeat_search: 'חזרה על החיפוש',
+  fpw_card_results: 'נמצאו {{n}} נכסים',
+  fpw_card_any_place: 'כל מיקום',
+  fpw_edit_search: 'עריכת החיפוש',
+  fpw_remove_criterion: 'הסרת {{label}} ועריכת החיפוש',
+  fpw_edit_note: 'שינוי קריטריון פותח את בונה החיפוש; דבר לא יופעל עד שתתחילו.',
+  fpw_seller_any_owner: 'בעלים (מאומת או סביר)',
+  fpw_copy_number: 'העתקת המספר',
+  fpw_number_copied: 'המספר הועתק',
+
+  /* ── PROPERTY CONTACT NOTICE ── */
+  contact_phone_match_notice: 'אנשים שהחיפוש שלהם תואם לנכס הזה יוכלו להתקשר למספר הזה ולשלוח לך הודעה ב-HOMATCH. המספר לעולם אינו מתפרסם בפומבי.',
 
   /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
   fbx_source_group: 'קבוצת פייסבוק',

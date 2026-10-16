@@ -221,3 +221,12 @@ test('duplicate reasons name what a person can check: photos, description, phone
     .find((p) => p.identity?.status === 'CONFIRMED_DUPLICATE');
   if (confirmed) assert.ok(confirmed.identity.reasons.length >= 1);
 });
+
+test('seller filter: OWNER groups verified and likely owners only; unknown is never an owner', async () => {
+  const { sellerMatches } = await import('../marketplace/browse-results.ts');
+  assert.ok(sellerMatches('VERIFIED_OWNER', 'OWNER'));
+  assert.ok(sellerMatches('LIKELY_OWNER', 'OWNER'));
+  for (const c of ['UNKNOWN', 'AGENCY', 'BROKER', 'DEVELOPER']) assert.equal(sellerMatches(c, 'OWNER'), false, c);
+  assert.ok(sellerMatches('BROKER', 'BROKER'));
+  assert.equal(sellerMatches('LIKELY_OWNER', 'VERIFIED_OWNER'), false, 'an exact value stays exact');
+});

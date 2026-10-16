@@ -14,10 +14,10 @@
 // for this pair and property. Call asks the server for a number, which it gives only to a
 // counterparty of a genuine relationship, and records that it did.
 
-import { BedDouble, Coins, Loader2, MapPin, MessageSquare, Phone, Ruler, UserRound } from 'lucide-react';
+import { BedDouble, Check, Coins, Copy, Loader2, MapPin, MessageSquare, Phone, Ruler, UserRound } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Fact, QuietAction } from '@/components/customer/surface';
+import { Fact } from '@/components/customer/surface';
 import { placeName } from '@/lib/placeNames';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { dimensionKey } from '@/matching/presentation';
@@ -101,6 +101,7 @@ function NativeRow({ row }: { row: NativeMatchRow }) {
   const navigate = useNavigate();
   const [opening, setOpening] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [contact, setContact] = useState<NativeContact | null>(null);
   const [error, setError] = useState(false);
 
@@ -181,38 +182,55 @@ function NativeRow({ row }: { row: NativeMatchRow }) {
           </p>
         ) : null}
         {contact ? (
-          <p role="status" className="mt-1.5 text-2xs text-foreground">
-            {contact.phone ? (
-              <>
-                {t('native_call_number_label')}{' '}
-                <a
-                  href={`tel:${contact.phone}`}
-                  dir="ltr"
-                  className="font-semibold text-[hsl(var(--primary))] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                >
-                  {contact.phone}
-                </a>
-              </>
-            ) : contact.reason === 'NOT_SHARED' ? t('native_call_not_shared') : t('native_call_no_number')}
-          </p>
+          contact.phone ? (
+            /* The number this match entitles the caller to: the property's own listing
+               contact, resolved and recorded by the server. tel: dials on a phone; the
+               copy button serves a desktop. */
+            <div role="status" className="mt-2 flex flex-wrap items-center gap-2" data-native-phone>
+              <a
+                href={`tel:${contact.phone}`}
+                dir="ltr"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[hsl(var(--primary))] px-4 text-sm font-semibold text-[hsl(var(--primary-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              >
+                <Phone className="h-4 w-4" aria-hidden="true" />{contact.phone}
+              </a>
+              <button
+                type="button"
+                onClick={() => { void navigator.clipboard?.writeText(contact.phone ?? '').then(() => setCopied(true)).catch(() => undefined); }}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-border px-3 text-2xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              >
+                {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+                {copied ? t('fpw_number_copied') : t('fpw_copy_number')}
+              </button>
+            </div>
+          ) : (
+            <p role="status" className="mt-1.5 text-2xs text-foreground">
+              {contact.reason === 'NOT_SHARED' ? t('native_call_not_shared') : t('native_call_no_number')}
+            </p>
+          )
         ) : null}
         {error ? <p role="alert" className="mt-1.5 text-2xs text-destructive">{t('native_error_action')}</p> : null}
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <QuietAction
-          label={t('native_action_message')}
-          icon={opening ? Loader2 : MessageSquare}
-          busy={opening}
-          onClick={message}
+      {/* The two honest actions of a member match, as real 44px buttons. */}
+      <div className="flex shrink-0 flex-wrap gap-2" data-native-actions>
+        <button
+          type="button"
+          onClick={() => void message()}
           disabled={opening}
-        />
-        <QuietAction
-          label={t('native_action_call')}
-          icon={Phone}
-          busy={calling}
-          onClick={call}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#0C1119] px-4 text-sm font-semibold text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]"
+        >
+          {opening ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <MessageSquare className="h-4 w-4" aria-hidden="true" />}
+          {t('native_action_message')}
+        </button>
+        <button
+          type="button"
+          onClick={() => void call()}
           disabled={calling || Boolean(contact)}
-        />
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.1)] px-4 text-sm font-semibold text-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        >
+          {calling ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Phone className="h-4 w-4" aria-hidden="true" />}
+          {t('native_action_call')}
+        </button>
       </div>
     </li>
   );

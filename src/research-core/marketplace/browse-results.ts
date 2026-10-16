@@ -64,6 +64,11 @@ export interface BrowsePage {
   facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string }>; duplicates: number; possibleDuplicates: number };
 }
 /** One property published as several listings, confirmed by the identity resolver (never inferred). */
+/** OWNER groups the verified and the likely owner; every other value is exact. Unknown is never an owner. */
+export const OWNER_CLASSES = ['VERIFIED_OWNER', 'LIKELY_OWNER'];
+export const sellerMatches = (classification: string, filter: string) =>
+  filter === 'OWNER' ? OWNER_CLASSES.includes(classification) : classification === filter;
+
 export const isConfirmedDuplicate = (p: Pick<CustomerProperty, 'identity' | 'listings'>) =>
   p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
 /** May be the same flat as another result: never merged, shown side by side so a person can judge. */
@@ -91,7 +96,7 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
       && (filters.ageDays === undefined || age !== null && age <= filters.ageDays)
       && (!filters.building || f.buildingStatus === filters.building)
       && (!filters.condition || f.renovationStatus === filters.condition)
-      && (!filters.seller || p.seller.classification === filters.seller)
+      && (!filters.seller || sellerMatches(p.seller.classification, filters.seller))
       && (!filters.source || p.listings.some((l) => l.source === filters.source))
       && (!filters.strongOnly || intel?.strong === true)
       && (!filters.hidePossibleDuplicates || !intel?.warnings.includes('POSSIBLE_DUPLICATE'))

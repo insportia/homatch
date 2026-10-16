@@ -441,3 +441,16 @@ test('evidence: the merged PR, its newest successful pr-check run, and that run\
   assert.deepEqual(ev.record, goodRecord);
   assert.ok(calls.some((u) => u.includes(`head_sha=${'d'.repeat(40)}`)), 'runs are looked up by the PR head commit, never a branch');
 });
+
+test('src code an edge function imports is planned for that function\'s deploy and proof', () => {
+  const r = classifyChanges(['src/research-core/marketplace/browse-results.ts'], ctx({ edgeFunctionsFor: (f) => f.startsWith('src/research-core/') ? ['marketplace-search'] : [] }));
+  assert.deepEqual(r.deploy.functions, ['marketplace-search']);
+  assert.ok(r.proofs.some((p) => p.includes('marketplace-search')));
+  assert.deepEqual(classifyChanges(['src/research-core/__tests__/x.test.mjs'], ctx({ edgeFunctionsFor: () => ['marketplace-search'] })).deploy.functions, [], 'tests never deploy');
+});
+
+test('a repository-wide plan still owes the edge and frontend deploy proofs', () => {
+  const r = classifyChanges(['package.json', 'supabase/functions/marketplace-search/index.ts'], ctx());
+  assert.equal(r.tier, 'REPO_FULL');
+  assert.ok(r.proofs.some((p) => p.startsWith('edge: PROVEN_EXACT for marketplace-search')));
+});

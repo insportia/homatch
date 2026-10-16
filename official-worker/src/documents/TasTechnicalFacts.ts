@@ -62,6 +62,12 @@ interface LabelRule {
 // generic "ორგანიზაცია"/"საიდენტიფიკაციო კოდი" line belongs to.
 const CONTEXT_LABEL_RULES: LabelRule[] = [
   { re: /მთავარი\s+არქიტექტორ(?:ის|ი)?\s*(?:\/?\s*სპეციალისტის)?\s*სახელი\s+და\s+გვარი/i, category: 'ARCHITECT', key: 'mainArchitectName', setsContext: true },
+  // Owner, 2026-10-10: every professional the documents name, not only three.
+  { re: /ლანდშაფტ\S*\s+(?:არქიტექტ|დიზაინ|სპეციალისტ)/i, category: 'LANDSCAPE', key: 'landscapeSpecialist', setsContext: true },
+  { re: /(?:ელექტრომომარაგ|წყალმომარაგ|კანალიზაც|გათბობ|ვენტილაც|ჰაერის\s+კონდიცირ)\S*[\s-]*(?:\S+\s+){0,2}(?:სპეციალისტ|ინჟინერ)/i, category: 'MEP', key: 'mepSpecialist', setsContext: true },
+  { re: /(?:ხანძარსაწინააღმდეგო|სახანძრო)\S*\s+(?:\S+\s+){0,2}(?:სპეციალისტ|ინჟინერ)/i, category: 'MEP', key: 'fireSafetySpecialist', setsContext: true },
+  { re: /ინტერიერ\S*\s+(?:დიზაინ|არქიტექტ)/i, category: 'OTHER', key: 'interiorDesigner', setsContext: true },
+  { re: /(?:მშენებელი|სამშენებლო|მენარდე)\s+(?:კომპანია|ორგანიზაცია)|გენერალური\s+(?:კონტრაქტორ|მენარდე)/i, category: 'OTHER', key: 'contractorCompany', setsContext: true },
   { re: /თანაავტორ(?:ი|ები|თა)?/i, category: 'ARCHITECT', key: 'coAuthors', setsContext: true },
   { re: /არქიტექტურული\s+შესაბამისობის\s+სპეციალისტი/i, category: 'ARCHITECT', key: 'architecturalComplianceSpecialist', setsContext: true },
   { re: /კონსტრუქციული\s+დასკვნის\s+სპეციალისტი/i, category: 'STRUCTURAL', key: 'structuralReviewSpecialist', setsContext: true },
@@ -78,6 +84,18 @@ const STANDALONE_LABEL_RULES: LabelRule[] = [
   { re: /საექსპერტო\s+შეფასების\s+ავტორი/i, category: 'OTHER', key: 'expertAssessmentAuthor' },
   { re: /ზედამხედველობ(?:ა|ას|ის)?\s+(?:ახორციელებს|ახორციელებდა)|ტექნიკური\s+ზედამხედველი/i, category: 'SUPERVISION', key: 'supervisionRole' },
   { re: /საძირკვლის\s+ტიპი/i, category: 'FOUNDATION', key: 'foundationType' },
+  // Construction quantities and grades (owner, 2026-10-10: slab thickness,
+  // concrete, foundation — what shows how solid the building is).
+  { re: /ფილოვან\S*\s+საძირკვ\S*/i, category: 'FOUNDATION', key: 'foundationSlab' },
+  { re: /ხიმინჯ\S*\s+(?:სიგრძე|დიამეტრი|სიღრმე)/i, category: 'FOUNDATION', key: 'pileSize' },
+  { re: /(?:სართულშუა\s+|გადახურვის\s+|იატაკის\s+)?ფილ(?:ის|ების)\s+სისქე/i, category: 'STRUCTURAL', key: 'slabThickness' },
+  { re: /ბეტონის\s+(?:კლასი|მარკა|სიმტკიცის\s+კლასი)/i, category: 'STRUCTURAL', key: 'concreteClass' },
+  { re: /ბეტონის\s+(?:მოცულობა|ხარჯი|საერთო\s+რაოდენობა)/i, category: 'STRUCTURAL', key: 'concreteVolume' },
+  { re: /არმატურ(?:ის|ა)\s+(?:კლასი|მარკა|ფოლადი)/i, category: 'STRUCTURAL', key: 'rebarClass' },
+  { re: /სეისმურ(?:ობა|ი\s+(?:ზონა|ბალი|მედეგობა))/i, category: 'STRUCTURAL', key: 'seismicZone' },
+  { re: /კედლ(?:ის|ების)\s+(?:მასალა|შევსება)/i, category: 'MATERIAL', key: 'wallMaterial' },
+  { re: /ფასადის\s+(?:მოპირკეთება|მასალა|დამუშავება)/i, category: 'MATERIAL', key: 'facadeMaterial' },
+  { re: /თბოიზოლაცი/i, category: 'MATERIAL', key: 'insulation' },
   { re: /ხიმინჯ(?:ი|ები|ების|ისა)?/i, category: 'FOUNDATION', key: 'piles' },
   { re: /საინჟინრო-?\s*გეოლოგიური\s+კვლევა/i, category: 'GEOTECHNICAL', key: 'geologicalSurvey' },
   { re: /\bK1\b/, category: 'PERMIT', key: 'K1' },

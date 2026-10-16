@@ -45,7 +45,7 @@ async function resolveNaprCaptcha(gated:CaptchaRequired,cap:CaptchaContext|undef
 }
 export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,options:MyGovApiOptions={}):Promise<LegacySourceResult>{
  const base=newMyGovApiResult(query);
- const budget=options.budgetMs??(options.captcha?.policy.enabled?180000:45000);const captchaLog:CaptchaResolution[]=[];if(!Number.isFinite(budget)||budget<=0)throw new Error('Invalid My.gov provider budget');
+ const budget=options.budgetMs??(options.captcha?.policy.enabled?420000:45000);const captchaLog:CaptchaResolution[]=[];if(!Number.isFinite(budget)||budget<=0)throw new Error('Invalid My.gov provider budget');
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),budget);const requests:any[]=[];const continuations:any[]=[];const references:DocumentReference[]=[];const records:any[]=[];const failures:any[]=[];
  const transport:typeof fetch=async(input,init)=>{
    if(controller.signal.aborted)throw new Error('Provider deadline');

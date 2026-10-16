@@ -119,19 +119,43 @@ export const searchModel = () =>
 
 const truthy = (v: unknown) => v === true || v === 'true' || (typeof v === 'string' && v.replace(/"/g, '') === 'true');
 
-/** Product and provider switches. MyHome and SS.ge exceptions are explicit and
- * scoped to their marketplace adapters; other providers keep the global switch. */
-export async function loadMarketplaceSwitches(db: Db): Promise<{ enabled: boolean; providersKilled: boolean; myhomeEnabled: boolean; ssgeEnabled: boolean }> {
-  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch', 'marketplace_myhome_enabled', 'marketplace_ssge_enabled']);
+/** Find Property's own HTML portal workers: each has its own admin switch (default off),
+ * like MyHome and SS.ge, so the global provider kill switch does not hold them. */
+export const PORTAL_WORKER_SWITCHES: Readonly<Record<string, string>> = {
+  'placege-agent': 'marketplace_placege_enabled',
+  'homege-agent': 'marketplace_homege_enabled',
+  'brokeri-agent': 'marketplace_brokeri_enabled',
+  'allhome-agent': 'marketplace_allhome_enabled',
+};
+
+export type MarketplaceSwitches = { enabled: boolean; providersKilled: boolean; myhomeEnabled: boolean; ssgeEnabled: boolean; portals: Record<string, boolean> };
+
+/** Product and provider switches. MyHome, SS.ge and the portal workers are explicit
+ * and scoped to Find Property; other providers keep the global switch. */
+export async function loadMarketplaceSwitches(db: Db): Promise<MarketplaceSwitches> {
+  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch', 'marketplace_myhome_enabled', 'marketplace_ssge_enabled', ...Object.values(PORTAL_WORKER_SWITCHES)]);
   const map = new Map((data ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
   return {
     enabled: truthy(map.get(MARKETPLACE_SWITCH)),
     myhomeEnabled: truthy(map.get('marketplace_myhome_enabled')),
     ssgeEnabled: truthy(map.get('marketplace_ssge_enabled')),
+    portals: Object.fromEntries(Object.entries(PORTAL_WORKER_SWITCHES).map(([worker, key]) => [worker, truthy(map.get(key))])),
     /* An unreadable kill switch is treated as ON: dispatching is the thing it guards. */
     providersKilled: map.has('provider_kill_switch') ? truthy(map.get('provider_kill_switch')) : true,
   };
 }
+
+/** May this worker run? One rule for dispatch and for claim. */
+export function workerSwitchOn(switches: MarketplaceSwitches, workerId: string): boolean {
+  if (workerId === 'myhome-agent') return switches.myhomeEnabled;
+  if (workerId === 'ssge-agent') return switches.ssgeEnabled;
+  if (workerId in PORTAL_WORKER_SWITCHES) return switches.portals[workerId] === true;
+  return !switches.providersKilled;
+}
+
+/** Is any source allowed at all? */
+export const anySourceOn = (switches: MarketplaceSwitches) =>
+  switches.myhomeEnabled || switches.ssgeEnabled || Object.values(switches.portals).some(Boolean) || !switches.providersKilled;
 
 /** One strict structured-output call through the Responses API. */
 export async function openaiStructured(args: {
@@ -222,6 +246,7 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
     : { data: [] };
   const attemptsOf = new Map<string, number>((workerRows ?? []).map((w: { worker_id: string; max_attempts: number }) => [w.worker_id, Number(w.max_attempts) || 3] as [string, number]));
   await reapRuns(db, (runRows ?? []) as Array<Record<string, unknown>>, (id) => attemptsOf.get(id) ?? 3, now);
+  await serveCachedListings(db, searchId, search.request as MarketplaceSearchRequest, (runRows ?? []) as Array<Record<string, unknown>>, now);
   const runs: WorkerRunState[] = (runRows ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunStatus, deadlineAt: r.deadline_at as string, returnedCount: Number(r.returned_count) || 0,
   }));
@@ -298,4 +323,128 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
     updated_at: now.toISOString(),
   }).eq('id', searchId).neq('status', 'CANCELLED');
   return { status: derived.status, properties: properties.length, strongMatches };
+}
+
+/** Sources answered instantly from HOMATCH's shared listing pool (what earlier
+ * searches already collected), then refreshed live. */
+export const CACHE_FALLBACK: Record<string, string> = {
+  'myhome-agent': 'myhome-ge', 'ssge-agent': 'ss-ge',
+  'placege-agent': 'place-ge', 'homege-agent': 'home-ge', 'brokeri-agent': 'brokeri-ge',
+  'allhome-agent': 'allhome-ge',
+};
+/** What the customer reads as the source of a worker's listings. */
+export const WORKER_SOURCE_NAMES: Record<string, string> = {
+  'myhome-agent': 'MyHome', 'ssge-agent': 'SS.ge', 'placege-agent': 'Place.ge', 'homege-agent': 'Home.ge',
+  'brokeri-agent': 'Brokeri.ge', 'allhome-agent': 'Allhome.ge',
+};
+/** Only listings their source confirmed within this window are served from the
+ * pool: an older observation may already be sold, expired or deleted. */
+export const CACHE_WINDOW_MS = 72 * 3600_000;
+const CACHE_SCAN_ROWS = 3000;
+
+/**
+ * The shared listing pool. At search start (atStart) every pooled source
+ * answers immediately from listings earlier searches collected; afterwards a
+ * run that could not refresh (cooling down, refused, failed, timed out) or only
+ * partly did falls back to it. Only the listings this search's own pipeline
+ * accepts are added, each with its ORIGINAL observedAt (freshness and "last
+ * checked" stay true) and marked observationLevel CACHED; only observations
+ * within CACHE_WINDOW_MS are used. A fresh row for the same listing replaces
+ * the cached one when the live run reports it; cached rows never overwrite
+ * fresh ones (ignoreDuplicates). Run status and returned_count are unchanged,
+ * so a pooled answer is never reported as a fresh refresh. Runs once per run.
+ */
+export async function serveCachedListings(db: Db, searchId: string, request: MarketplaceSearchRequest,
+  runRows: Array<Record<string, unknown>>, now = new Date(), atStart = false): Promise<number> {
+  let served = 0;
+  for (const run of runRows) {
+    const sourceKey = CACHE_FALLBACK[String(run.worker_id)];
+    // At search start every pooled source answers at once; afterwards only a
+    // run that could not refresh (or only partly) falls back to the pool.
+    if (!sourceKey || (!atStart && !['BLOCKED', 'FAILED', 'TIMED_OUT', 'PARTIAL'].includes(String(run.status)))) continue;
+    const { data: already } = await db.from('discovery_marketplace_listings').select('id')
+      .eq('worker_run_id', run.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED').limit(1);
+    if ((already ?? []).length) continue;
+    const { data: rows } = await db.from('discovery_marketplace_listings')
+      .select('source_listing_id,exact_url,raw,observed_at').eq('source_key', sourceKey).neq('search_id', searchId)
+      .gte('observed_at', new Date(now.getTime() - CACHE_WINDOW_MS).toISOString())
+      .order('observed_at', { ascending: false }).limit(CACHE_SCAN_ROWS);
+    const latest = new Map<string, { source_listing_id: string; exact_url: string; raw: ExternalListingCandidate; observed_at: string }>();
+    for (const r of rows ?? []) if (!latest.has(r.source_listing_id)) latest.set(r.source_listing_id, r);
+    const pool = [...latest.values()].filter((r) => r.raw?.transactionType === request.transactionType && r.raw?.propertyType === request.propertyType);
+    if (!pool.length) continue;
+    // The search's own pipeline decides what matches; nothing is re-implemented here.
+    const accepted = new Set(processSearch({ request, candidates: pool.map((r) => ({ workerId: String(run.worker_id), candidate: r.raw })), converter: await loadConverter(db), now })
+      .properties.flatMap((p) => p.listings.map((l) => l.listingId)));
+    const cached = pool.filter((r) => accepted.has(`${r.raw.source}:${r.raw.sourceListingId}`)).map((r) => ({
+      search_id: searchId, worker_run_id: run.id, source_key: sourceKey, source_listing_id: r.source_listing_id, exact_url: r.exact_url,
+      observed_at: r.observed_at, updated_at: now.toISOString(),
+      raw: { ...r.raw, retrievalMetadata: { ...(r.raw.retrievalMetadata ?? {}), observationLevel: 'CACHED', cachedAt: now.toISOString() } },
+    }));
+    for (const batch of chunk(cached, 500)) {
+      const { error } = await db.from('discovery_marketplace_listings').upsert(batch, { onConflict: 'search_id,source_key,source_listing_id', ignoreDuplicates: true });
+      if (error) throw new Error(error.message);
+    }
+    served += cached.length;
+  }
+  return served;
+}
+
+/** Results of an identical search finished this recently are shared, not refetched. */
+export const SHARE_WINDOW_MS = 30 * 60_000;
+
+/** What a source is asked: the request without its per-search identity. */
+export function requestKey(request: unknown): string {
+  const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v;
+  const { searchId: _s, searchPlanId: _p, requestedAt: _r, maxResults: _m, ...rest } = (request ?? {}) as Record<string, unknown>;
+  return JSON.stringify(canon(rest));
+}
+
+/**
+ * ONE FETCH FOR MANY IDENTICAL SEARCHES. Runs once before every claim: a queued
+ * run whose request equals one this worker finished within SHARE_WINDOW_MS is
+ * answered from that run's fresh listings (their own observedAt, so "last
+ * checked" stays true) instead of asking the source again. Workers take one run
+ * at a time, so identical searches queue behind the first and are answered as
+ * soon as it finishes. The run is closed with the source run's status and errors
+ * (a partly read run stays PARTIAL) and records sharedFromRun.
+ */
+export async function shareRecentResults(db: Db, workerId: string, now = new Date(),
+  process: (db: Db, searchId: string, now: Date) => Promise<unknown> = processAndStore): Promise<number> {
+  const { data: queued } = await db.from('discovery_marketplace_worker_runs').select('id,search_id,request')
+    .eq('worker_id', workerId).eq('status', 'QUEUED').order('created_at', { ascending: true }).limit(50);
+  if (!(queued ?? []).length) return 0;
+  const { data: recent } = await db.from('discovery_marketplace_worker_runs')
+    .select('id,status,request,discovered_count,query_applied,errors,completed_at').eq('worker_id', workerId)
+    .in('status', ['COMPLETE', 'PARTIAL']).gt('returned_count', 0)
+    .gte('completed_at', new Date(now.getTime() - SHARE_WINDOW_MS).toISOString())
+    .order('completed_at', { ascending: false }).limit(50);
+  const byKey = new Map<string, Record<string, unknown>>();
+  for (const r of recent ?? []) { const k = requestKey(r.request); if (!byKey.has(k)) byKey.set(k, r); }
+  let shared = 0;
+  for (const q of queued ?? []) {
+    const source = byKey.get(requestKey(q.request));
+    if (!source) continue;
+    const { data: rows } = await db.from('discovery_marketplace_listings')
+      .select('source_key,source_listing_id,exact_url,raw,observed_at').eq('worker_run_id', source.id).limit(5000);
+    const fresh = (rows ?? []).filter((r: { raw: ExternalListingCandidate }) => r.raw?.retrievalMetadata?.observationLevel !== 'CACHED');
+    if (!fresh.length) continue;
+    // Close first, conditionally: a concurrent claim can never also run it.
+    const { data: closed } = await db.from('discovery_marketplace_worker_runs').update({
+      status: source.status, returned_count: fresh.length, discovered_count: source.discovered_count,
+      query_applied: { ...((source.query_applied ?? {}) as Record<string, unknown>), sharedFromRun: source.id },
+      errors: source.errors ?? [], completed_at: now.toISOString(), updated_at: now.toISOString(),
+    }).eq('id', q.id).eq('status', 'QUEUED').select('id').maybeSingle();
+    if (!closed) continue;
+    for (const batch of chunk(fresh, 500)) {
+      const { error } = await db.from('discovery_marketplace_listings').upsert(batch.map((r: Record<string, unknown>) => ({
+        ...r, search_id: q.search_id, worker_run_id: q.id, updated_at: now.toISOString(),
+      })), { onConflict: 'search_id,source_key,source_listing_id' });
+      if (error) throw new Error(error.message);
+    }
+    await process(db, String(q.search_id), now);
+    shared++;
+  }
+  return shared;
 }

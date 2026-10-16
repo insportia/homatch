@@ -8,8 +8,9 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { GOLD_FILL, GOLD_TEXT, NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
 import { DiscoverySnake } from '@/components/findBuyers/DiscoverySnake';
+import { CampaignReport } from '@/components/findBuyers/CampaignReport';
 import { SearchDna, type DnaFacts } from '@/components/findBuyers/SearchDna';
-import { campaignView, currentState, executionState, networkNodes, searchScope } from '@/findBuyers/campaignView';
+import { campaignView, currentState, customerNetwork, executionState, networkNodes } from '@/findBuyers/campaignView';
 import type { CampaignStatus } from '@/services/findBuyers';
 
 const ON_NAVY_SOFT = 'text-[hsl(218_40%_85%)]';
@@ -49,16 +50,12 @@ export function LiveSearchModule({
   const tenant = counterpart === 'TENANT';
   /* The headline is what is true NOW; a past attempt is its own dated line. */
   const now = currentState(c, readiness);
-  /* The whole discovery network, from the server: what ran, what could, what is off. */
-  const nodes = networkNodes(c?.sources, readiness?.network);
+  /* The customer sees only the sources really working for this search, one by one
+     as they start (customerNetwork); failed, skipped and switched-off sources are
+     not shown. The full truth stays in the admin views. */
+  const nodes = customerNetwork(networkNodes(c?.sources, readiness?.network));
   const showNetwork = nodes.length > 0;
   const ran = nodes.filter((n) => n.executed);
-  /* What actually happened in THIS search: per-source state, and whether only
-     one source ran or the social planner never queued anything. */
-  const scope = c ? searchScope(nodes, c.socialPlan ?? null) : null;
-  const blockedSocial = c ? nodes.filter((n) => !n.executed && executionState(n, c.socialPlan ?? null) === 'BLOCKED') : [];
-  const reasonKey = (r: string | null) => r === 'SOCIAL_DISABLED' ? 'fbl_reason_social_off' : r === 'NO_ACTOR_READY' ? 'fbl_reason_no_actor'
-    : r === 'NO_JOBS' ? 'fbl_reason_no_jobs' : 'fbl_reason_planner_error';
   const lastDate = now.last?.at ? new Date(now.last.at).toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' }) : null;
 
   const button = (o: { label: string; icon: React.ComponentType<{ className?: string }>; onClick?: () => void; primary?: boolean; disabled?: boolean; spinning?: boolean }) => (
@@ -139,11 +136,6 @@ export function LiveSearchModule({
             {ran.length === 0 && live && (
               <p className={cn('px-2 pb-2 text-center text-2xs', ON_NAVY_SOFT)} dir="auto">{t('fbl_preparing_note')}</p>
             )}
-            <p className={cn('flex flex-wrap justify-center gap-x-3 gap-y-1 px-2 pb-1.5 text-2xs', ON_NAVY_SOFT)} data-testid="fbl-network-legend">
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[hsl(40_94%_64%)]" aria-hidden="true" />{t('fbl_net_searched')}</span>
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full border border-[hsl(40_60%_70%/0.7)]" aria-hidden="true" />{t('fbl_net_available')}</span>
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full border border-dashed border-[hsl(218_25%_70%/0.7)]" aria-hidden="true" />{t('fbl_net_off')}</span>
-            </p>
           </div>
         )}
         <div className="min-w-0 space-y-4">
@@ -175,17 +167,6 @@ export function LiveSearchModule({
               ))}
             </ul>
           )}
-          {scope && !live && c?.executed && scope.onlySource && (
-            <p className="text-2xs font-semibold text-white" data-testid="fbl-scope-only">
-              {t('fbl_scope_only', { source: sourceStyle(scope.onlySource).label })}
-            </p>
-          )}
-          {scope?.socialBlocked && (
-            <p className={cn('text-2xs leading-relaxed', ON_NAVY_SOFT)} data-testid="fbl-scope-social-blocked">
-              {t('fbl_scope_social_blocked', { reason: t(reasonKey(scope.socialReason) as never) })}
-              {blockedSocial.length > 0 ? <>{' — '}{blockedSocial.map((n) => sourceStyle(n.source).label).join(', ')}</> : null}
-            </p>
-          )}
           {now.last && (
             <p className="text-2xs font-semibold text-white" data-testid="fbl-last-search">
               {t('fbl_last_search', { state: t(now.last.headlineKey), date: lastDate ?? '—' })}
@@ -204,6 +185,11 @@ export function LiveSearchModule({
           <span className="sr-only">{propertyLabel}</span>
         </div>
       </div>
+
+      {/* ── the search report: live and partial while running, final after ── */}
+      {c?.jobId && (live || c.executed) && (
+        <CampaignReport jobId={c.jobId} live={live} refreshKey={c.lastActivityAt ?? c.state} />
+      )}
     </section>
   );
 }

@@ -198,7 +198,7 @@ Deno.serve(async (req: Request) => {
         campaign,
         /* A campaign reads what it just verified, in the same call: discovery
            is the first stage of the campaign, not a side effect for the next one. */
-        readTarget: campaign ? (targetId: string) => readNow(db, client, settings, targetId, readTotals) : undefined,
+        readTarget: campaign ? (targetId: string) => readNow(db, client, settings, targetId, readTotals, { campaignScoped: true }) : undefined,
       });
       return json({ success: true, mode: client.mode, ...report, messagesRead: readTotals.messagesParsed, readTotals, elapsedMs: Date.now() - started });
     }
@@ -364,10 +364,17 @@ async function readNow(
   settings: DiscoverySettings,
   targetId: string,
   totals: Record<string, number>,
+  opts: { campaignScoped?: boolean } = {},
 ): Promise<Record<string, unknown> | null> {
-  const { data: target } = await db.from('community_targets').select(SYNC_SELECT)
-    .eq('id', targetId).eq('discovery_enabled', true).maybeSingle();
+  const { data: target } = await db.from('community_targets').select(`${SYNC_SELECT},lifecycle,readability`)
+    .eq('id', targetId).maybeSingle();
   if (!target) return null;
+  const t = target as Record<string, unknown>;
+  /* A switched-on community, or — for the campaign that verified it — a
+     community an audit proved public, readable and on-topic. A campaign read
+     never switches it on for anyone else (discovery_enabled is untouched). */
+  const verified = ['AUDITED', 'REACHABLE', 'PRODUCTIVE'].includes(String(t.lifecycle)) && t.readability === 'READABLE';
+  if (!t.discovery_enabled && !(opts.campaignScoped && verified)) return null;
   const cutoff = new Date(Date.now() - COOLDOWN_MINUTES * 60_000).toISOString();
   const { data: claimed } = await db.from('community_targets')
     .update({ last_checked_at: new Date().toISOString() })

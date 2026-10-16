@@ -37,7 +37,7 @@ test('no card invents a conclusion of its own', () => {
   // The component may read verdict / verdictReasons / sections /
   // incompleteSources and nothing else. Anything more would be a second
   // opinion competing with the projection.
-  const reads = [...reportCode.matchAll(/synthesis[.?]*\.([a-zA-Z]+)/g)].map((m) => m[1]);
+  const reads = [...reportCode.matchAll(/synthesis[.?]*\.([a-zA-Z][a-zA-Z0-9]*)/g)].map((m) => m[1]);
   const allowed = new Set([
     // `location`, like `market` and `people`, is computed deterministically in
     // the intelligence bundle and rendered as given. It is not a second
@@ -58,6 +58,13 @@ test('no card invents a conclusion of its own', () => {
     // conclusion of their own. The story and current status the report
     // renders live inside `report`, under the same grounding gate as before.
     'officialVisuals', 'research',
+    // 2026-10 buyer-intelligence refinement (job c80f7237). All three are
+    // computed deterministically server-side and rendered as given:
+    // `propertyRegister` is the unit's NAPR extract parsed in code,
+    // `companyFinance` collects registry checks with their dates, and
+    // `marketContext` is a stored market snapshot's aggregates. None is the
+    // model's opinion, and the component draws no conclusion from them.
+    'propertyRegister', 'companyFinance', 'marketContext',
     // Same standing: the deterministic official history (decided status,
     // milestones, value changes) computed in tasIntelligence.ts.
     'officialHistory',
@@ -67,6 +74,20 @@ test('no card invents a conclusion of its own', () => {
     // reaches no conclusion; the only prose about it is report.advertisingAssessment,
     // under guardAdvertising.
     'developerAds',
+    // Round 3 (owner, 2026-10-10): `projectTeam` lists the professionals the
+    // TAS documents and public research name, merged in reportGaps.ts — a
+    // list of names and roles, no conclusion of its own.
+    'projectTeam',
+    // Report rebuild (owner, 2026-10-10): `identity` says which unit, building
+    // and parcel the records concern (propertyIdentity.ts). Rendered only as
+    // the identity notice, through identityNotice(); no conclusion of its own.
+    'identity',
+    // Verify v3 (owner, 2026-10-10): the discipline-grouped team with each
+    // role in the document's own wording, the documented specifications with
+    // their approval status, the official applications and their files, and
+    // where the register extract came from. All deterministic, rendered as
+    // given through reportPresentation.ts; none is a conclusion of its own.
+    'projectTeamV2', 'technicalSpecs', 'officialDocuments', 'registerSource',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);
@@ -104,13 +125,9 @@ test('an incomplete check is advice, never a warning', () => {
    * was actually protecting: the gaps must come after the findings, never
    * before them.
    */
-  const unconfAt = reportCode.indexOf('<UnconfirmedCard');
-  const findingsAt = reportCode.indexOf('<KeyFindings');
-  assert.ok(unconfAt > 0, 'what remains unconfirmed must be stated somewhere');
-  assert.ok(
-    unconfAt > findingsAt,
-    'the gaps must not open the report — that is the defect v2 removed'
-  );
+  // Owner, 2026-10-09 (supersedes mandate 10): what was not established is
+  // not written at all — a list of gaps read as alarm.
+  assert.ok(!reportCode.includes('<UnconfirmedCard'), 'gaps are not listed to the customer');
 
   const actions = reportCode.slice(reportCode.indexOf('r.buyerActions?.length'));
   const actionsBlock = actions.slice(0, actions.indexOf('</section>'));
@@ -390,7 +407,19 @@ test('"რას გავაკეთებდი ყიდვამდე" is 
 test('participants survive even when the prose does not reach them', () => {
   // The directors regression: people were extracted and then not shown.
   assert.ok(reportCode.includes('CompanyGraph'), 'there is no participant block');
-  assert.ok(/!sections\.some\(\(s\) => s\.key === 'PEOPLE'\)/.test(reportCode),
+  // Since the 2026-10 rebuild the participants have their own place in "The
+  // people behind it", rendered whenever there are any — whatever the prose
+  // wrote. The guard is that nothing makes them depend on a PEOPLE section.
+  const i = reportCode.indexOf('<CompanyGraph');
+  assert.ok(i > 0, 'the participant block is never mounted');
+  // P0 2026-10-11 (owner: no repeated sections): the block also stands down
+  // when the company card already lists the same registered directors —
+  // the participants are still on the page, once.
+  assert.match(reportCode.slice(i - 400, i), /\{people\.length(?: && !companyListsDirectors)? \? \(/,
+    'the participant block is no longer gated on there being participants');
+  assert.match(reportCode, /const companyListsDirectors = companyDirectors\.length > 0;/,
+    'the de-duplication gate must depend only on the company card actually listing directors');
+  assert.ok(!/s\.key === 'PEOPLE' && people\.length/.test(reportCode),
     'people are only shown when the model wrote a PEOPLE section');
 });
 

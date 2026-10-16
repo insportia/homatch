@@ -96,9 +96,20 @@ function idOf(o: unknown, url: string | null, extra: string[] = []): string | nu
   return url;
 }
 
+/* An Actor that did not scrape comments returns `comments: []`: that is
+   "not fetched", not "zero comments" (VILLION: 231 posts were skipped as
+   comment-less this way). Only explicit counters, or a non-empty list, count. */
+function commentCount(o: unknown): number | null {
+  const explicit = count(pick(o, ['commentsCount', 'commentCount', 'comments_count', 'numComments', 'commentsNumber', 'comments.count', 'stats.commentCount']));
+  if (explicit != null) return explicit;
+  const list = pick(o, ['comments']);
+  if (Array.isArray(list)) return list.length > 0 ? list.length : null;
+  return count(list);
+}
+
 function engagement(o: unknown) {
   return {
-    comments: count(pick(o, ['commentsCount', 'commentCount', 'comments_count', 'numComments', 'commentsNumber', 'comments.count', 'stats.commentCount', 'comments'])),
+    comments: commentCount(o),
     likes: count(pick(o, ['likesCount', 'likes', 'likeCount', 'reactionsCount', 'reactions', 'diggCount', 'stats.diggCount'])),
     shares: count(pick(o, ['sharesCount', 'shares', 'shareCount', 'reposts', 'stats.shareCount'])),
   };

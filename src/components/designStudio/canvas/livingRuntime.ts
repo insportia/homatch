@@ -105,6 +105,28 @@ export interface LivingOptions {
   lightParent?: THREE.Object3D;
   onDoor: (doorId: string, blocks: boolean) => void;
   onChange: () => void;
+  /** A machine starts moving into a state a visitor caused (heard: walkSounds), never the time of day's. */
+  onTransition?: (e: LiveEntry, from: string, to: string) => void;
+}
+
+/**
+ * Of a piece's machines, the one with a part within `maxM` of a point on the piece (a kitchen run's tap, hob, coffee
+ * machine and cupboards; a vanity's tap and drawers). A part with nothing drawn yet (a tap's water while it is off)
+ * is where its node is.
+ */
+export function machineNear(entries: LiveEntry[], point: THREE.Vector3, maxM: number): LiveEntry | null {
+  let best: LiveEntry | null = null;
+  let bestD = maxM;
+  const box = new THREE.Box3();
+  const at = new THREE.Vector3();
+  for (const e of entries) {
+    for (const rig of e.parts.values()) {
+      box.setFromObject(rig.node);
+      const d = box.isEmpty() ? rig.node.getWorldPosition(at).distanceTo(point) : box.distanceToPoint(point);
+      if (d < bestD) { bestD = d; best = e; }
+    }
+  }
+  return best;
 }
 
 export class LivingRuntime {
@@ -256,6 +278,11 @@ export class LivingRuntime {
     return actionsFrom(entry.machine, entry.target ?? entry.state).map((t) => t.action);
   }
 
+  /** The state an action leads to from where the entry is heading (null when it cannot take it). */
+  nextState(entry: LiveEntry, action: ActionCode): string | null {
+    return actionsFrom(entry.machine, entry.target ?? entry.state).find((x) => x.action === action)?.to ?? null;
+  }
+
   /** Take an action. Returns false if the entry cannot do it from its current state. */
   act(key: string, action: ActionCode, now = performance.now()): boolean {
     const e = this.entries.get(key);
@@ -271,10 +298,11 @@ export class LivingRuntime {
   force(key: string, state: string, now = performance.now()) {
     const e = this.entries.get(key);
     if (!e || !e.machine.states.has(state) || (e.target ?? e.state) === state) return;
-    this.begin(e, state, now);
+    this.begin(e, state, now, 1, false);
   }
 
-  private begin(e: LiveEntry, to: string, now: number, scale = 1) {
+  private begin(e: LiveEntry, to: string, now: number, scale = 1, heard = true) {
+    const was = e.target ?? e.state;
     const parts = new Map<string, PoseValue>();
     for (const [id, rig] of e.parts) parts.set(id, { p: [...rig.cur.p], r: [...rig.cur.r], s: [...rig.cur.s], tint: rig.cur.tint?.clone() ?? null });
     const effects = new Map<string, number>();
@@ -287,6 +315,7 @@ export class LivingRuntime {
     const def = e.machine.states.get(to);
     // Closing a door blocks at once; opening frees the way as it starts to swing.
     if (e.doorId) this.opts.onDoor(e.doorId, !!def?.blocks);
+    if (heard && was !== to) this.opts.onTransition?.(e, was, to);
     if (e.duration <= 0) this.finish(e, now);
     this.opts.onChange();
   }

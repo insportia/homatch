@@ -32,6 +32,9 @@
 // Function.
 
 import { buildTasIntelligence } from './tasIntelligence.ts';
+import { buildOfficialDossier } from './officialDossier.ts';
+import { scoreComparable } from './marketIntelligence.ts';
+import { isCitableComparable, subjectMarketFacts } from './marketHierarchy.ts';
 
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
@@ -148,6 +151,8 @@ export interface EvidencePackage {
   tasCite?: Record<string, string>;
   /** Developer Advertising Intelligence (Meta Ad Library), when the stage ran. */
   developerAds?: import('../developerAds.ts').DeveloperAdsView;
+  /** Team, specifications, documents and the two priority cases (officialDossier.ts). */
+  dossier?: import('./officialDossier.ts').OfficialDossier;
 }
 
 /* ------------------------------------------------------------------ *
@@ -220,8 +225,14 @@ export const TAS_EVENT_KA: Record<string, string> = {
   REFUSAL: 'უარი', SUSPENSION: 'შეჩერება', INSPECTION: 'შემოწმება', COMMISSIONING: 'ექსპლუატაციაში მიღება', DECISION: 'გადაწყვეტილება', OTHER: 'ჩანაწერი',
 };
 
-export function buildEvidencePackage(report: unknown): EvidencePackage {
+/**
+ * `opts.now` is the job's completion time: dated references later than it
+ * are cited dates, never decisions, and the result must not depend on the
+ * day a report happens to be rebuilt.
+ */
+export function buildEvidencePackage(report: unknown, opts: { now?: string | null } = {}): EvidencePackage {
   const r = obj(report);
+  const nowIso = opts.now && Number.isFinite(Date.parse(opts.now)) ? new Date(Date.parse(opts.now)).toISOString() : new Date().toISOString();
   const items: EvidenceItem[] = [];
   let n = 0;
   const add = (i: Omit<EvidenceItem, 'id'>): void => {
@@ -230,7 +241,7 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
   };
 
   /* ---- TAS: the official project history, consolidated ---- */
-  const tas = buildTasIntelligence(r);
+  const tas = buildTasIntelligence(r, nowIso);
   const tasCite: Record<string, string> = {};
   if (tas.available) {
     const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
@@ -500,7 +511,26 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
 
   const m = obj(r.market);
   const comparables = arr<Record<string, unknown>>(m.comparables);
+  /*
+   * ONLY LISTINGS THE LOCATION HIERARCHY ADMITS ARE CITABLE (2026-10-11, job
+   * 8ba97da9). Every gathered listing used to become a MARKET evidence item,
+   * so Didi Dighomi, Navtlughi and Saburtalo asks sat in the sources under a
+   * Krtsanisi report and the model cited them. An unrelated/unknown district,
+   * an off-band size, a rental or a stale ask is not evidence about this home.
+   */
+  const facts = subjectMarketFacts(r);
+  const marketSubject = {
+    project: subject.project ?? facts.project,
+    address: subject.address ?? facts.address,
+    district: facts.district,
+    area: Number(subject.area) || facts.area,
+    dealType: 'SALE' as const,
+    buildingClass: facts.buildingClass,
+    // v6 (job dbf04e48): a parking space never cites apartment listings.
+    propertyKind: facts.propertyKind,
+  };
   for (const c of comparables) {
+    if (!isCitableComparable(scoreComparable(marketSubject, c as never))) continue;
     const price = nonEmpty(c?.price);
     const per = nonEmpty(c?.pricePerSqm);
     const area = nonEmpty(c?.area);
@@ -684,7 +714,17 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
     truncated,
     ...(tas.available ? { tas, tasCite } : {}),
     ...(adsView ? { developerAds: adsView } : {}),
+    dossier: safeDossier(r, tas, nowIso),
   };
+}
+
+function safeDossier(r: unknown, tas: import('./tasIntelligence.ts').TasIntelligence, nowIso: string): import('./officialDossier.ts').OfficialDossier {
+  try {
+    return buildOfficialDossier(r, tas, nowIso);
+  } catch {
+    // A dossier is an enrichment: a malformed case never costs the report.
+    return { projectTeamV2: [], technicalSpecs: [], officialDocuments: [], priorityCases: [] };
+  }
 }
 
 /** Total evidence weight, used to decide how substantial a report may be. */

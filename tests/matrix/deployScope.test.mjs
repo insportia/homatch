@@ -137,3 +137,29 @@ test('affectedFunctions never invents a function that does not exist', () => {
     assert.ok(names.has(fn), `${fn} is not a deployable function`);
   }
 });
+
+/* ── H: functions whose production artifact comes from an unmerged branch ─*/
+
+test('H: a held function is never in an owed list, and every hold is evidenced', async () => {
+  const { edgeHolds, withoutHeld } = await import('../../scripts/deploy-scope.mjs');
+  const holds = edgeHolds();
+  const names = new Set(edgeFunctionNames());
+  for (const h of holds) {
+    assert.ok(names.has(h.function), `${h.function} is a real edge function`);
+    assert.match(h.sourceCommit ?? '', /^[0-9a-f]{7,40}$/, `${h.function}: names the exact deployed commit`);
+    assert.ok(h.sourceBranch && h.reason && h.release, `${h.function}: says where production came from and how the hold ends`);
+    assert.ok(Number.isInteger(h.pr), `${h.function}: names the PR that will carry the code to main`);
+  }
+  const held = holds.map((h) => h.function);
+  assert.deepEqual(withoutHeld([...held, 'storage-sign']), ['storage-sign'], 'the manual redeploy path drops held functions');
+  const yml = (await import('node:fs')).readFileSync(new URL('../../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+  assert.equal((yml.match(/withoutHeld\(/g) || []).length, 2, 'both redeploy paths filter held functions');
+  assert.match(yml, /::warning::HELD /, 'held functions are reported in the run, never hidden');
+});
+
+test('H: design-studio-reconstruct is released by PR #109, which carries its code to main', async () => {
+  const { edgeHolds } = await import('../../scripts/deploy-scope.mjs');
+  // Held while production ran claude/design-studio-refinement-r34f6c@4ec95ac5 ahead of main; PR #109 merges that
+  // branch, so the first deploy from main is the Design Studio code itself (newer than v55), never an older one.
+  assert.equal(edgeHolds().find((x) => x.function === 'design-studio-reconstruct'), undefined);
+});

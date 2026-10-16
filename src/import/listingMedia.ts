@@ -248,10 +248,18 @@ export function extractListingMedia(html: string, opts: { listingId?: string | n
  * losing anything: existing entries keep their place (owner edits included),
  * newly found source photos are appended in source order, variants of a photo
  * already held are not added twice.
+ *
+ * A held source photo that the source now serves from another address takes
+ * the fresh address in place (2026-10-12: MyHome moved its images from
+ * static-statements.tnet.ge to static-api-statements.tnet.ge; keeping the old
+ * address left the cover broken after a "successful" refresh). Owner uploads
+ * (private keys, not http URLs) are never rewritten.
  */
 export function mergeGallery(existing: string[], fresh: string[], max = IMPORTED_GALLERY_MAX): string[] {
-  const held = new Set(existing.map(photoIdentity));
-  const out = [...existing];
+  const current = new Map<string, string>();
+  for (const u of fresh) if (/^https?:\/\//i.test(u) && !current.has(photoIdentity(u))) current.set(photoIdentity(u), u);
+  const out = existing.map((u) => (/^https?:\/\//i.test(u) ? current.get(photoIdentity(u)) ?? u : u));
+  const held = new Set(out.map(photoIdentity));
   for (const u of fresh) {
     const id = photoIdentity(u);
     if (held.has(id)) continue;
@@ -260,4 +268,21 @@ export function mergeGallery(existing: string[], fresh: string[], max = IMPORTED
     if (out.length >= max) break;
   }
   return out;
+}
+
+/**
+ * The cover after a refresh. An owner-managed cover (a private key) is kept
+ * as is. An imported cover keeps the same photo at the address the source
+ * serves now; if the source no longer has that photo, the source's own cover
+ * (or the first gallery photo) takes over — the listing always has a main photo.
+ */
+export function refreshedCover(cover: string | null, merged: string[], sourceCover: string | null): string | null {
+  if (cover && !/^https?:\/\//i.test(cover)) return cover;
+  if (cover) {
+    const id = photoIdentity(cover);
+    const same = merged.find((u) => photoIdentity(u) === id);
+    if (same && same !== cover) return same;
+    if (same) return cover;
+  }
+  return sourceCover ?? merged[0] ?? cover ?? null;
 }

@@ -39,8 +39,14 @@ test('server readiness gate: start re-sanitises the brief and refuses before any
   assert.ok(start > 0 && gate > start && firstInsert > gate, 'the gate precedes every insert');
   assert.match(ms, /const brief = sanitizeBrief\(body\.brief\)/);
   assert.match(ms, /SEARCH_NOT_READY/);
-  assert.match(ms, /if \(switches\.providersKilled && !switches\.myhomeEnabled && !switches\.ssgeEnabled\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
-  assert.match(ms, /worker\.workerId === 'myhome-agent'\s*\? switches\.myhomeEnabled : worker\.workerId === 'ssge-agent' \? switches\.ssgeEnabled : !switches\.providersKilled/);
+  // Source gating lives in _shared/marketplaceSearch.ts so start, dispatch and ingest share it:
+  // MyHome and SS.ge keep their own switches, each HTML portal has its own, everything else
+  // stays under the global provider kill switch.
+  assert.match(ms, /if \(!anySourceOn\(switches\)\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
+  assert.match(ms, /eligibleWorkers\(workers, request\)\.filter\(\(worker\) => workerSwitchOn\(switches, worker\.workerId\)\)/);
+  const sh = code(SH);
+  assert.match(sh, /if \(workerId === 'myhome-agent'\) return switches\.myhomeEnabled;\s*if \(workerId === 'ssge-agent'\) return switches\.ssgeEnabled;\s*if \(workerId in PORTAL_WORKER_SWITCHES\) return switches\.portals\[workerId\] === true;\s*return !switches\.providersKilled;/);
+  assert.match(sh, /anySourceOn = \(switches: MarketplaceSwitches\) =>\s*switches\.myhomeEnabled \|\| switches\.ssgeEnabled \|\| Object\.values\(switches\.portals\)\.some\(Boolean\) \|\| !switches\.providersKilled/);
   assert.match(ms, /if \(!switches\.enabled && \(action === 'start' \|\| action === 'understand'\)\) return json\(\{ error: 'MARKETPLACE_SEARCH_OFF' \}, 409\)/,
     'disabled acquisition blocks writes while owned history remains readable');
 });
@@ -263,4 +269,35 @@ test('understand: atomic per-user quota checked BEFORE any model call; 429 with 
   assert.match(sql, /pg_advisory_xact_lock\(hashtext\('marketplace_rate_limit:'/);
   assert.match(sql, /insert into public\.rate_limit_events \(user_id, operation\)/);
   assert.match(sql, /revoke all on function public\.consume_marketplace_rate_limit\(uuid, text, integer, integer, integer, integer\) from public, anon, authenticated/);
+});
+
+// MyHome provider protection is a bounded cooldown state machine stored on the
+// worker row, not a permanent circuit derived from historical ACCESS_DENIED
+// runs (every blocked run used to extend the block, and only a manual database
+// clearance released it). Cached listings fill a cooling-down search.
+test('MyHome access uses the bounded provider state machine; no permanent circuit, no manual clearance', () => {
+  const src = code(WI);
+  assert.match(src, /from '\.\.\/\.\.\/\.\.\/src\/research-core\/marketplace\/provider-access\.ts'/);
+  for (const fn of ['decideProviderAccess', 'recordRestriction', 'recordRecovery']) assert.ok(src.includes(fn), fn);
+  assert.ok(!/contains\('errors'/.test(src), 'access is never derived from historical run errors');
+  assert.ok(!/accessClearedAt/.test(src.replace(/accessClearedAt: _legacyClear/, '')), 'no manual clearance field is consulted');
+  assert.match(src, /'access-ok'/);
+  assert.match(src, /health->access->>version/, 'probe lease is compare-and-set');
+  const shared = code(SH);
+  assert.match(shared, /await serveCachedListings\(db, searchId/);
+  assert.match(shared, /observationLevel: 'CACHED'/);
+  assert.match(shared, /ignoreDuplicates: true/, 'cached rows never overwrite fresh ones');
+  assert.ok(!existsSync(join(root, 'supabase/functions/_shared/myHomeAccess.ts')));
+});
+
+// Shared pool at scale: searches answer instantly from listings already
+// collected; identical searches share one fetch; a run's fresh count never
+// includes pooled rows.
+test('marketplace scale: instant pool answer at start, one fetch per identical search, fresh-only run counts', () => {
+  const ms = code(MS), wi = code(WI), sh = code(SH);
+  assert.match(ms, /serveCachedListings\(db, searchId, request, \(inserted \?\? \[\]\) as Array<Record<string, unknown>>, now, true\)/, 'search start answers from the pool');
+  assert.match(wi, /await shareRecentResults\(db, workerId\)[\s\S]{0,400}claim_marketplace_worker_runs/, 'sharing runs before every claim');
+  assert.match(wi, /observationLevel\.is\.null,raw->retrievalMetadata->>observationLevel\.neq\.CACHED/, 'pooled rows are not counted as fresh results');
+  assert.match(sh, /'ssge-agent': 'ss-ge'/);
+  assert.match(sh, /CACHE_WINDOW_MS = 72 \* 3600_000/, 'only listings confirmed within 72 hours are served');
 });

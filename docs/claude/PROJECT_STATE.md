@@ -14,10 +14,263 @@
 - Awaiting owner approval: pgss reset (A1), retention migration (A2), Free→Pro + Nano→Small (A3),
   track_utility off (A4), log_temp_files (A5), Realtime publication trim (A6).
 
-last_updated: 2026-10-08
+last_updated: 2026-10-15
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Find Buyers 3.0 — intent gate, post opportunities, result pages (PR #214, merged be4a0397, 2026-10-16) — DEPLOYED
+
+- **False buyers fixed at the root** (`research-core/findBuyers/demandClassifier.ts`): an advertiser
+  addressing buyers ("ბინის შეძენა გსურთ? … გთავაზობთ" — prod lead be7d9baa, score 55) is SALE_OFFER;
+  renovation/service-provider requests, "already bought", negated intent are excluded. A bare "price?"
+  under someone else's listing is an INTEREST signal, not a buyer.
+- **Intent gate** (`buyerIntent.ts`, pure): 14 intents, multi-label comment signals, result type
+  DIRECT / INTEREST / EXCLUDED. Pipeline applies it after qualify (`gateIntent`): EXCLUDED →
+  REJECTED `INTENT_EXCLUDED`; INTEREST kept (≤ POTENTIAL), never counted as qualified.
+- **Real-data check (read-only, 39 current VILLION leads)**: 5 buyers, 1 interest, 33 excluded
+  (14 job/service, 9 tenants — wrong market for a SALE —, 6 sellers incl. the developer ad, 2 agents,
+  2 bare listings). Previously all 39 were listed. On read, a lead already qualified by the v3 pipeline
+  keeps its decision unless the rules find a definite exclusion.
+- **Comment evidence** now carries the parent post's reported comment total (null if not reported),
+  comments read in that run, publish date and price/area facts. **Adaptive sampling**
+  (`commentSampling.ts`): one expansion per post (×3, ≤ Actor max), only when interest ≥ 10% of
+  comments read and the platform reported more; otherwise stop. Every run still goes through the
+  campaign reservation (CAMPAIGN_BUDGET).
+- **Post opportunities** are built on read (`src/findBuyers/externalResults.ts`): one post = one
+  opportunity; total / analyzed / people / signals kept apart, nothing extrapolated; price comparison
+  only in the same currency, with a caveat.
+- **Routes**: `/property/:id/matches` = compact dashboard (no lists); `/buyers/external` (MatchesPage:
+  Buyers / Interest / Opportunities tabs, search history, platform + freshness filters, pagination);
+  `/buyers/internal` (HOMATCH members); `/buyers/opportunity/:key?job=` (detail, evidence via
+  safeExternalUrl + nofollow, copyable outreach draft — HOMATCH sends nothing).
+- **Release** (2026-10-16): merged be4a0397; deploy run 1065 FAST (PR run validated the tree).
+  Vercel `dpl_ELnMydMj8azSmQ8m8rj7ZjxnqAV2` READY on homatch.live; edge PROVEN_EXACT:
+  discovery-queue-worker v69, match-campaign v82, find-property-run v18 (only via the shared demand
+  classifier). No migration, no Railway. Opportunity page also shows a one-line real-count summary,
+  the similarity dimensions the pipeline stored (`why.agreed`), one commenter per post (profile, else
+  name; placeholder names never merge).
+- **Not verified live**: no paid run authorized (actor runs still 127, last 2026-10-13); parent
+  totals/analyzed exist only on leads written after deploy. Only FB_COMMENTS is a verified comment
+  source (IG/YouTube comments never ran; VK FAILED). Last live campaign: 150 posts reported 0 comments
+  → SKIP_NO_COMMENTS, 1 comment fetch — the similar-post audience yield is unproven until a run.
+  Logged-in E2E on homatch.live not done from the agent: no test account, host blocked by its proxy.
+
+## Publish to Portals — standalone workspace /publishing (branch claude/homatch-property-publishing-g50stw, 2026-10-15)
+
+- **Why owners kept seeing the old UI**: Codex's PRs #205–#207 WERE merged and deployed
+  (prod frontend = main). They never added a sidebar item: publishing was a TOP-BAR button and a
+  My Properties header button to `/property/publish`, an `<iframe>` of static `public/publishing-engine/`.
+  Nothing was lost in deployment; the design itself put it in the wrong places.
+- **Now**: sidebar `nav_publishing` between Broker and Find Property (HomatchShell NAV — the one rail,
+  desktop + mobile drawer); top-bar and My Properties buttons removed; `/property/publish` redirects.
+  Routes `/publishing`, `/publishing/new`, `/publishing/:propertyId` (`src/pages/publishing/`).
+  Property Detail + My Properties row menu link to `/publishing/<id>`.
+- **Portal reality**: MyHome.ge / SS.ge have no authorized submission API; creation needs the owner's
+  own login + SMS. Supported flow = MANUAL HANDOFF + server-side public-page check
+  (`supabase/functions/publishing-engine/domain.ts`). PUBLISHED only after a 200 page that contains
+  the listing id; 404/410 = removed; 403/429/5xx/timeouts = inconclusive (stays pending, backoff,
+  fails after 5). Owner-attested removal is labelled as such. Browser extension + iframe retired.
+- **Schema**: `20261103090000_publishing_workspace.sql` — listing status/archive, publication columns,
+  `publishing_engine_events`, RPCs `publishing_listing_save` / `publishing_publication_write` /
+  `publishing_listing_lifecycle`; drops Codex's `publishing_engine_save` (it inserted a NEW
+  properties row per listing). Listing id = property id (one listing per property).
+- Not live-tested against a real portal account: no real listing was published (needs the owner's
+  portal account; would create a public listing).
+
+## Storage retention v2 — object-level allowlist (branch `ccr-76ef455d-retention-artifacts`, 2026-10-16)
+
+- Owner decision 2026-10-16: Verify results, Contracts originals, evidence, report visuals, Design Studio and every
+  customer upload are permanent. Only allowlisted disposable storage objects may be deleted (doc §10).
+- Migration `20261105090000_storage_retention_artifacts.sql`: categories + artifacts registry, prospective-only
+  registration, notices, claim/outcome engine, admin RPCs; retires record-level claim/configure. Real categories seed
+  DISABLED; settings `storage_retention_artifacts` = not paused, notices off; no cron on apply.
+- Eligible today: `verify_document_cache` (regenerable; worker re-fetch proof before delete). Future:
+  `generated_report` (producer registers with owner + download link). Self-test categories for production E2E.
+- Production audit (2026-10-16): R2 16.85 GB of which 16.8 GB is the Design Studio public catalog (protected);
+  no temporary generated files exist in production yet.
+
+## Storage retention + cleanup engine + compact market knowledge (PR #211, merged d17ca1d3, migration applied 2026-10-16 as ledger 20261016045620) — RECORD-LEVEL PART RETIRED
+
+- Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.
+- Migration `20261102090000_storage_retention_lifecycle.sql` is dormant on apply: `admin_settings.storage_retention`
+  seeds `effective_at=null`, `purge_enabled=false`, reminders/knowledge off; no cron is scheduled.
+- Verify analysis untouched. Owner-approved minimal expiry guard (2026-10-15) in service-role routes: research-agent
+  job actions + `document_file` + regeneration actions, `homatch-ai` context, analyze worker path (doc §6). Protected
+  files may differ from main only by those exact lines (`tests/matrix/retentionSafety.test.mjs`).
+- Privacy policy `privacy_s6_body` must gain the 30-day report deletion sentence before `effective_at` is set.
+
+## Find Buyers 2.0 — one dashboard, two campaigns, per-search results (branch claude/nifty-hopper-snzn2d, 2026-10-15) — PR, NOT DEPLOYED
+
+- **Invisible-results root cause (campaign d8b69c51)**: its 2 leads (WEAK, 55/47, FACEBOOK) were stored,
+  RLS-visible to the owner (39 current leads for property c5c1a6a4), but the list was one property-wide
+  pool sorted by score, 9/page — the 37 older leads (campaign 70b0d32b, uncategorised) buried them.
+  Fix: `FindBuyersResults` opens on the latest search (`matching_job_id`), with chips for earlier
+  searches and "All"; a failed read shows an error + retry, never "no results"
+  (`src/services/findBuyersLeads.ts`, `src/findBuyers/leadCampaigns.ts`).
+- **Dashboard** (`FindBuyersDashboard`, top of MatchesPage): HOMATCH Match (free; queues
+  `internal_leads_request_matching`, no credits, no Actor; contacts via the existing unlock quote) and
+  External Discovery (paid; its button only opens the existing budget dialog). "Expand search
+  externally" shows when free matching found nobody; it opens the same budget step, never charges.
+  `requestLeadMatching` now throws on an RPC error (was silently swallowed).
+- **FB group batching — evaluated, NOT adopted**: memo23 `apify-facebook-group-scraper` takes
+  `startUrls[]`, but d8b69c51's 16 runs / 15 groups / 320 items cost $0.4805 ≈ 320 × $0.0015 per item;
+  the $0.008 start fee is reserved but barely charged. `maxItems` is total, so batching would let one
+  large group starve the others. Per-group runs kept (no cost benefit, coverage risk).
+- Legacy `getPropertyLeadsPage` in `services/findBuyers.ts` is now unused (left in place: that file
+  reaches the app shell, so editing it plans REPO_FULL). Remove in a later shell-touching release.
+- Not done in this pass: last-matching timestamp on the HOMATCH card (no owner-readable source;
+  native_match_property_queue is not exposed), source memory/caching changes, Admin metrics additions.
+
+## Find Buyers adaptive search + all property families + photo fixes (branch claude/nifty-hopper-snzn2d, 2026-10-12)
+
+- **Adaptive loop**: `src/research-core/findBuyers/adaptiveLoop.ts` (pure) + `_shared/findBuyers/adaptive.ts`
+  (I/O). The driver (`discovery-queue-worker/driver.ts` advanceCampaigns) runs one adaptive
+  round when a campaign's queue drains before its deadline, instead of finalizing. Ladder
+  DIRECT → SEMANTIC → FLEXIBLE → EXPLORE → COMMENTS, max 4 rounds × 6 jobs, ≤60% of the
+  remaining budget per round. OpenAI proposes (strict schema, numbers only);
+  `validateActions` enforces allowlist/health/stage/budget/no-repeat/parent gates;
+  `fallbackActions` runs when the model is unavailable. Jobs go through the same
+  executor + atomic reservation + caps. State: `query_plan.adaptive` (admin);
+  owner-safe summary: `stats.searchPasses` (shown in the search report).
+- **Property families** (`propertyFamily.ts`): APARTMENT/HOUSE/LAND/COMMERCIAL/PARKING
+  (parking = OTHER + title keyword). Strategy, planner, model prompt and type gate agree.
+  QUALIFICATION_VERSION 3 (budget: ≥95% COMPATIBLE, ≥85% STRETCH).
+- Model planner failures are no longer cached (`find_buyers_query_cache`).
+- Leads hub "People found on public platforms" lists only STRONG/POTENTIAL leads.
+- **VILLION 37 legacy leads**: local dry-run requalification = 2 POTENTIAL (one person),
+  1 WEAK, 34 REJECTED. Applying (`admin_requalify` apply) awaits owner approval.
+- **Photos**: VILLION's MyHome listing 25805378 is no longer shown publicly (refresh
+  returns LISTING_NOT_AVAILABLE); zero HOMATCH-managed photos platform-wide (owner upload
+  never exercised). Fixed: cover removal now promotes the next photo and keeps
+  `cover_photo_url` valid; Design Studio renders covers via PrivateImage; MediaRefresh
+  offers "Upload your own photos" when the listing is gone.
+- **Demo** migration `20261029090000_owner_demo_lead` is on main, NOT in the prod ledger
+  (the only pending one). Apply via deploy.yml `run_migrations` dispatch.
+- **Budget architecture (owner, 2026-10-12)**: 100-credit minimum and provider budget
+  (credits ÷ credits_per_usd × provider_share_bps) unchanged. Per-Actor daily/campaign caps
+  removed (migration `20261031090000_find_buyers_no_actor_caps`: NULL = none; an admin-set cap
+  still applies). The reserve RPC now counts the campaign's OpenAI ledger rows as committed,
+  so Actor runs + OpenAI never pass the provider budget. Campaign row lock, idempotency
+  replay, per-Actor concurrency, global run slots, release-on-failure unchanged
+  (`tests/sql/find_buyers_no_actor_caps.sql`). The AI chooses Actor, query, itemsPerRun and
+  how much of the allocatable budget (remaining − $0.05 model reserve) to spend; no fixed shares.
+- VILLION live test approved by the owner; it starts only after PR #190 is merged, deployed
+  and production readiness is verified.
+
+## Verify v3 — newest-two TAS full fidelity, professionals, legal position, register reuse, timing (2026-10-11) — PR OPEN
+- Forensic audit of job 220ed087 (read-only SQL): AR11161121 (newest, 2026-09-17) stored with
+  `values:[]` and 21/22 attachments NOT_PROCESSED_BUDGET → professionals/photos never reached
+  storage; 11 Mar 2026 "commissioning" = Res. №255 citation stored as COMMISSIONED (old worker);
+  the job's MyGov task was cancelled (NUL bug) — unit extract exists in earlier same-user jobs
+  e02d4f16 / c80f7237 (BoG apartment mortgage 02/09/2026; termination registered 22/09/2026).
+- Worker (tas-api-2): two newest cases by application date get every attachment processed
+  (UNSUPPORTED_FORMAT / DEFERRED-with-reason, never silent), full text (inline ≤300k chars +
+  content-addressed refs), page render + visual classification, best-effort public form
+  discovery (`TAS_FORM_DISCOVERY`, NOT VERIFIED live), completeness gate, `tasApi.timings`.
+  Queue results are now bounded in UTF-8 BYTES (≤2.0 MB; verify-queue body limit 2.5 MB).
+- Intelligence: tasProfessionals (documented roles, Goga≠Giorgi), technicalSpecs
+  (APPROVED/PROPOSED), officialDocuments, pendingApplications + currentPosition, future-dated
+  refs excluded, register reuse from the same user's earlier job (disclosed), banks never team
+  members, REPORT_LOGIC_VERSION 3 auto-rebuild-once on open (≤21 days).
+- Timing: src/verify/performance.ts; `_stageTimes.official_browser`, task `_exec`, synthesis
+  `_timing` (stripped from customers); Admin → Verify official sources → performance table.
+  research-agent starts synthesis immediately at COMPLETE.
+- Owner runs the final live jobs (2026-10-11 instruction): do not auto-launch paid Verify jobs.
+- Sandbox cannot reach docs.tbilisi.gov.ge (proxy 403); production SQL writes from this session
+  time out (guard hook) — rebuild-on-open replaces manual resynthesis.
+
+## Verify report v2 — accuracy, visuals, market gate, premium UI (PR #150, 2026-10-10) — LIVE (a452ba83)
+- Owner live run (job 220ed087, Villion) exposed: false commissioning (worker read a cited
+  law/banner as an operative act), garbage history, unnamed participants, missing photos
+  (deadline-path gap), no quality section, $900–3000 market range (PEER_PROJECT fallback),
+  and a building-03 request answered with building-01 papers.
+- Deterministic layers: `src/verify/intelligence/legalStatus.ts` (5 claims, operative-only
+  commissioning, kept identical to worker `decisions.ts`), `propertyIdentity.ts`
+  (UNRESOLVED_MISMATCH for same-unit/other-building), `marketIntelligence.ts` headline gate
+  (microlocation tiers, n≥3, IQR trim, else EVIDENCE_LIMITED), `visualAssets.ts` (signed-URL
+  customer contract). Worker: pdf.js-in-Chromium page renderer + visual classification.
+- UI: chapter report (Summary → Explore the property → Story → People → Building → Legal
+  reality → Location → Market → Final); evidence drawer hidden. 186 i18n keys ×6.
+- Private-person naming (owner request) NOT built: auto-mode safety check refused it; the
+  existing professional-roles-only rule stands until the owner authorises it directly.
+- Villion MyGov data was lost to the U+0000 bug (fixed, PR #149); re-synthesis cannot add it —
+  only a fresh paid run can.
+
+## Owner Demo Mode in HOMATCH Leads + Resend probe fix (branch claude/nifty-hopper-snzn2d, 2026-10-10)
+
+- Demo Mode: `/property/:id/leads?demo=1`, owner-only (owns the listing AND `internal_match_demo_allowed()`: admin or a listed tester; never by email).
+- Migration 20261029090000_owner_demo_lead (append-only):
+  - adds columns to `demo_buyer_profiles` and `demo_conversations`;
+  - seeds one fictional buyer, "Alex Morgan", for HOMATCH 244486 (`demo_key owner-demo-lead-alex-morgan`): $140–180k, 2 bedrooms, parking, Krtsanisi/Ortachala, simulated 92%, 2.5 credits simulated, contact on example.com and +995 000;
+  - adds the RPCs `owner_demo_lead_available/open/act/reset`.
+  - Writes only to the `demo_*` tables, so no wallet, lead feed, CRM, conversations, notifications or Email Studio send is ever touched.
+  - Proof: `tests/sql/run-owner-demo-lead.sh`.
+- UI: `src/components/leads/demo/OwnerDemoJourney.tsx` reuses LeadCard, the UnlockDialog (simulated `adapter`), the CRM statuses, the chat ticks, and the Email Studio renderer and preview.
+  - It includes a guided walkthrough (11 steps), Reset and Exit.
+  - Strings: `scripts/owner-demo-i18n-*.mjs`, all six languages.
+  - Browser test: `tests/mobile/ownerDemoLead.test.mjs`.
+- Resend diagnosis (2026-10-10):
+  - RESEND_API_KEY works: a real notification email was SENT on 2026-10-02 from no-reply@auth.homatch.live.
+  - provider_health.RESEND=NOT_CONFIGURED is the 2026-08-28 seed row; `last_tested_at` is null, so it has never been probed.
+  - The old probe (GET /emails) misread sending-only keys as ERROR and 5xx as PASSED.
+  - Fix: `_shared/comm/resendProbe.ts`. It makes one GET /domains (no send) and requires the sender domain to be verified. It also self-checks RESEND_WEBHOOK_SECRET with email-webhook's own verifier.
+  - AdminProvidersPage now shows HEALTHY/DEGRADED/DOWN instead of "Not configured".
+  - No comm_webhook_events have ever been received, so the Resend webhook is not wired (or its secret is missing).
+  - `email_studio_sending_enabled` and `outreach_email_sending_enabled` both stay false.
+
+## Verify go-live (PR #145, main 7c90625d, 2026-10-10) — LIVE IN PRODUCTION
+
+- Migrations applied via the Supabase MCP (no runner), so the ledger carries apply-time
+  versions; release proof matches by NAME, which is the repo convention for MCP applies.
+  Repo `20261026090000_verify_durable_execution.sql` = ledger `20261010103430`;
+  repo `20261026100000_verify_credit_budget.sql` = ledger `20261010132816`.
+  Never re-apply either file and never rename the repo files.
+- Edge: research-agent v195, verify-synthesis v76, verify-queue v1 — all PROVEN_EXACT;
+  refs/deployed/edge → 7c90625d. verify-queue was NOT created by the first deploy run
+  (CLI printed "Deployed", function absent); a single rerun of the failed jobs created it.
+- Vercel: dpl_3BoQnJmrdWHfszX9P3UHLiMh7X8x (READY, production, 7c90625d).
+- Railway `homatch-official-worker`: `VERIFY_QUEUE_ENABLED=1` (2026-10-10 ~13:54 UTC);
+  worker polls verify-queue with 200s.
+- Switches: `verify_execution_mode` = "QUEUE", `verify_billing_enabled` = true (2026-10-10).
+  Kill switch: set them back to "LEGACY" / false (new jobs only; running QUEUE jobs finish in QUEUE).
+- Pricing check on production (`verify_price_for_cost`, input in CENTS): C=$0.45 → 17.11
+  credits completed (floor) / 12.98 partial; C=$1.00 → 28.85.
+
+## Verify credit budget + stop/resume (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — LIVE (see above)
+
+- Migration `20261026100000_verify_credit_budget.sql` (after the queue migration). Applied (ledger 20261010132816).
+- research-agent: reserve at start (anonymous → sign-in when on), live `billing` in status,
+  `pause` / `continue` actions, settlement sweep in the driver, ads stage budget guard.
+- Worker: `POST /research/:id/cancel` (needs the Railway deploy for legacy-mode stop).
+- Production facts used (2026-10-10): credits_per_usd 10, vat_rate_bps 1800,
+  billing_cogs_tax_bps 1800, reservation TTL 60 min (Verify extends to 12 h),
+  all accounts on FREE, fx_rates only USD (no GEL/EUR shown until rates are set),
+  Verify AI COGS p50 $0.446 / p90 $0.581 / max $0.79 → ~15 / ~20 / cap credits.
+- Incremental budget (owner rule 2026-10-10): 25 initial, +25 per explicit approval, max 4 / 100,
+  `verify_billing_authorizations` ledger, `verify_budget_gate` before every chargeable stage
+  (IDENTITY, OFFICIAL, OFFICIAL_COLLECTION, FINANCIAL_ENTITY, PUBLIC_RESEARCH, MARKET,
+  DEVELOPER_ADS, SYNTHESIS+REPORT). Awaiting approval = PAUSED with `_pause.reason` BUDGET
+  (no reservation held); limit = BUDGET_LIMIT. UI: VerifyBudgetExtendDialog / VerifyBudgetLimitCard.
+  Stage p95 estimates imply a full run with ads ≈ 45 credits → most full runs ask once.
+- Tests: tests/sql/run-verify-billing.sh (durable, budget, audit regressions, incremental budget,
+  open/close concurrency, approval races), pauseResume, verifyBudgetUi.
+
+## Verify at scale (branch `claude/dazzling-cray-34t9ur`, 2026-10-10) — LIVE (see Verify go-live)
+
+- Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
+  verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
+  research_jobs.client_request_id + advance lease). NOT applied to production.
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
+  sources as durable tasks; property mode always legacy.
+- Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
+  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+- Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
+  advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
+- CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.
+- Measured on scratch PG16 only (see `scripts/verify-scale/README.md`); no live benchmark yet.
+  10k browser sessions / 10k reports-in-minutes NOT claimed.
+- Rollout/rollback: `scripts/verify-scale/README.md`. Every step needs owner approval.
 
 ## Verify upgrade (branch `claude/dazzling-cray-34t9ur`, 2026-10-08) — IN PROGRESS, NOT DEPLOYED
 
@@ -393,6 +646,62 @@ Owner approvals pending: merge + deploy; apply 20261022090000; set
 `telegram_source_auto_enable=true` (else verified communities wait for an
 operator); optional one-time audit run of the 20 DISCOVERED communities.
 Not done: mirroring imported photos into storage (they die with the source).
+
+## HOMATCH Leads + CRM + property chat + Email Studio (branch claude/homatch-leads-crm-studio, 2026-10-10) — DRAFT PR, NOT merged/deployed
+
+Built on top of PR #137 (claude/nifty-hopper-snzn2d), so it merges after #137. Nothing applied or deployed.
+
+- Migrations (append-only, release order):
+  - 20261028090000 homatch_leads_marketplace: internal leads feed and unlocks (Standard 2.5 / Premium 6 credits, wallet reserve→settle, one entitlement per account per member), consent prefs, Premium rules, CRM, property matching queue (cron every 2 minutes), follow-up cron. `open_native_conversation` now needs an unlock on the owner side of a MATCH.
+  - 20261028100000 property_conversations: message kinds (photo, voice, property card), translations cache, private `dm-media` bucket. Drops `msg_insert` and revokes direct insert/update/delete on `messages`; every send goes through send-message.
+  - 20261028110000 email_studio: `email_studio_*` tables and RPCs. `email_studio_sending_enabled` defaults to false.
+  - 20261028120000 find_buyers_research_budget: credit presets 100–2000 (minimum 100); an extension reserves only the difference.
+- Edge functions (no new ones):
+  - atomic-unlock: `kind=internal_leads`
+  - supply-matching: property mode and queue drain
+  - match-campaign: `extend_budget`
+  - send-message: chat media, cards, AI translate/assist/transcribe
+  - outreach-send: `studio_*` actions
+  - email-webhook: studio events, opens/clicks, one-click unsubscribe
+  - push-send: PROPERTY_OFFER counts as messages
+- Owner switches before going live:
+  - Email Studio sending (admin setting)
+  - the Resend webhook subscribed to opened/clicked
+  - OPENAI_API_KEY for chat AI
+  - price-book rates for CHAT_* (until then shown as UNPRICED)
+
+## Find Buyers intelligence overhaul + Internal Matches + segmentation (branch claude/nifty-hopper-snzn2d, 2026-10-09) — NOT merged/deployed
+
+Baseline: the first paid production campaign (VILLION, job 70b0d32b, HOMATCH 244486,
+2026-10-09): $2.4646 actual, 958 items, 412 analysed, 37 "qualified" leads of which 4
+were genuine purchase requests and 0 compatible with price + place.
+- Classification (research-core/findBuyers/demandClassifier.ts, qualify.ts): roles
+  BUY/RENT seeker, SALE/RENT offer, AGENT, SERVICE, JOB, IRRELEVANT, UNCLEAR; Strong /
+  Potential / Weak / Rejected with explicit reasons; Unknown ≠ Compatible. The 37
+  production leads are regression fixtures (src/research-core/__tests__/fixtures/
+  villionCampaignLeads.json): 37 shown → 2 (1 Potential, 1 Weak), 0 Strong.
+- Root causes fixed: seeker verb ≠ real-estate demand; rent vs buy; "for sale"
+  listings; empty comments[] read as 0 comments (comments never examined);
+  "Tbilisi" matched Lisi; job/rental-only groups paid for; empty Actor results
+  retried; independent searches waited for discovery; reposts not deduped.
+- Orchestration: per-campaign Actor circuit breaker (2 failed/empty runs);
+  LinkedIn group search quarantined (needs login cookies); only source-dependent
+  reads wait for Phase 1; campaign-scoped free Telegram reads of verified
+  communities, paid Actor skips them.
+- Strategy (buyerStrategy.ts): segment (property_market_segments, only with
+  evidence), budget band, district + micro-areas + nearby, personas, explicit-
+  intent queries; depth by budget; bounded query learning.
+- Re-qualification: discovery-queue-worker mode admin_requalify {matchingJobId,
+  apply} — dry run by default; apply keeps rows/evidence/previous verdict.
+- Workstreams merged: market segmentation + Buyer intelligence admin (migrations
+  20261024100000/110000; fixes supply-matching HTTP 500 — missing FK embed),
+  Internal Matches + one DEMO buyer (20261024120000; admin/testers only), campaign
+  report + Research Notes + admin Intelligence tab (20261024130000).
+- Owed on release (owner approval): merge; migrations 20261024090000 → 100000 →
+  110000 → 120000 → 130000; edge deploys (match-campaign, discovery-queue-worker,
+  community-sync, supply-matching, find-property-plan, ingest-live-chat,
+  send-message, viewing-request + any the plan lists); frontend; then
+  admin_requalify dry run → apply for job 70b0d32b; first segmentation apply.
 
 ## Find Buyers — two-phase engine + COMBINED Telegram (same branch/PR #129, 2026-10-08) — NOT merged/deployed
 
@@ -1169,6 +1478,92 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - OWNER-ONLY LIVE TEST: Claude never runs a paid discovery. Deployed state = switches OFF, Actors disabled,
   awaiting the owner's first real campaign (whose results are preserved as normal production data).
 
+## Design Studio whole-home 3D tour correction (branch `claude/design-studio-refinement-r34f6c`, 2026-10-04)
+
+- Root cause of "the 3D tour is a picture / Share disappeared": #100 (7bc52a6) made `WalkthroughPanel`
+  PhotoWalk-primary whenever the design had room pictures (`needsRoomPhotos` always set by DesignResult), so the
+  panel never read or created the server plan walkthrough, and Share (which lives in the walk route) was unreachable.
+  Engine (SceneController, WalkthroughOverlay, navigation, cameraDirector, ShareViewer) unchanged since #96 de55734.
+- Correction: the panel is the server whole-plan walkthrough again (Open + Share on READY via the same ShareDialog,
+  WALKTHROUGH, `/w/<token>`); PhotoWalk is a secondary "step into the picture" chip, never the tour.
+- Whole-home tour: `src/lib/designStudio/tour.ts` (planTour: entry pose, rooms reachable through passable doorways,
+  door navigation points with landing poses), `workspace/TourNavigation.tsx` (doorway names anchored in 3D, plan
+  sheet), WalkthroughOverlay (Back, Plan, reachable room chips, door hint), SceneController `routeTo(pose,
+  { through: true })` ≈ 1.1 s collision-safe route, reduced motion = cut; ambient aim is highlight-only (cards only
+  on explicit click/tap/E). entryShot faces the nearest visible onward doorway. A WALKTHROUGH share auto-enters at
+  the entrance.
+- Tests: `src/lib/designStudio/__tests__/tour.test.mjs` (eight-room fixture `tourApartmentDoc`), browser checkpoint
+  `QA_ONLY=tour node tests/browser/designStudio.qa.mjs`.
+- Rollback: revert the PR's merge commit (frontend only; no migration, no edge/worker change) → back to main 07091d7.
+
+## Design Studio selected render → spatial design graph (same branch, 2026-10-04) — NOT merged, NOT deployed
+
+- Problem: the selected render (e.g. MASTER 7f9e6825 on 32624177) reached the walkthrough only as a text scene plan;
+  every piece was a generic catalogue/procedural item; visual QA 4/10 UNRELIABLE still became READY.
+- Pipeline now (`design-studio-reconstruct/walkthrough.ts` plan step): `designEvidence.ts` (server-side, private
+  storage via service client, nothing signed or exposed) reads the render's legend + id image (`ds_renders.legend`,
+  `map_key`), the SCENE_MAP job and the source-room provenance → `lib/designStudio/walkthrough/regionAppearance.ts`
+  (per-region colours measured from render pixels through the id image) → `designGraph.ts` buildDesignGraph
+  (architecture from the space = truth; design from spec + scene map + legend + pixels) → graphToBuildPlan →
+  buildWalkthrough → applyGraphLook (semantic design forms, colours, PBR materials resolved from the catalogue) →
+  fidelityOf promotion gate (recall ≥ 0.8, generic ≤ 0.2, material ≥ 0.8, regions ≥ 0.8, walkable).
+- Design forms (browser procedural + Runpod factory parity): SHAKER kitchen, CLUB armchair, TV_WALL, UPHOLSTERED bed,
+  BUILT_IN wardrobe, FLUTED vanity, BORDERED rug. `plan_report.designGraph` stores graph + promotion; the public
+  walkthrough carries `fidelity {promoted, reasons}`; the panel shows `dsx_walk_fidelity_note` when not promoted.
+- Local real-project proof (scratchpad, customer data not committed): before generic 25/25, invented 7, materials 0;
+  after important recall 22/22, generic 0, materials 1.0, regions 1.0, promoted. Pixel measurement and textures
+  unprovable locally (sandbox blocks supabase.co) — needs the production re-run.
+- Owed: deploy design-studio-reconstruct + Runpod worker image; re-run walkthrough on 32624177 (approval required:
+  paid OpenAI plan/QA + Runpod GPU, est ≤ $0.10).
+
+### Design Studio photo-project floor plan: geometry before furniture (same branch, 2026-10-08) — NOT deployed
+
+- Failure: project d02e3e62 (render 72361f0e) tour NOT_WALKABLE, 15/46 pieces. Causes: (1) `completeForWalk`
+  deleted the open-plan kitchen-living as a "duplicate" because the hall outline lay inside it (terrace likewise);
+  (2) rooms moved up to 1.2 m "to touch"; (3) pixel-traced corners turned square rooms into diamonds;
+  (4) nothing checked geometry before placement; (5) the raw reading was never stored, so it cannot be re-run free.
+- Fix: `walkthrough/geometryCheck.ts` (expected rooms from the photo reading, ROOM_DROPPED pieces, shape vs the
+  home's wall directions, pieces-in-room, bed fit, reach, measured footprint; CONFIRMED/RECOVERED/UNCERTAIN) → plan()
+  fails GEOMETRY_UNRELIABLE (non-retryable, $0, no GPU) before placement; nested rooms carved
+  (`subtractSquare`), never deleted; room moves only across a wall's thickness (0.35 m); `rightAngleShare` keeps the
+  reader's square outline over a diamond trace; essential pieces placed first, relocated rather than dropped;
+  the validated reading is kept in the WALK_SPACE job output; squared readings carry their measured outline.
+- d02e3e62's stored source: FAIL — kitchen-living + terrace missing (picture 99%), 4 slanted rooms, bedroom pieces
+  outside their rooms, beds do not fit, 4 rooms unreachable. Its kitchen-living outline was never stored: not
+  recoverable without inventing geometry. Next step needs the owner: one bounded second WALK_SPACE reading
+  (first reading $0.0189; estimate ≈ $0.02, cap $0.20).
+
+### Design Studio tour: what the customer walked, fixed at the causes (same branch, 2026-10-09) — NOT deployed
+
+- Diagnosed on the owner's real tour c57a03b9 (project ab2df04c, walk version 23798a66, plan reused, $0.0062 paid:
+  RunPod $0.0037 + QA $0.0025), replayed locally in the harness browser on its exact data (scratch only).
+- Causes (code): gold `Box3Helper` aim box + hover outline (`SceneController` setAim/setHover) drawn while walking;
+  each frame advanced at most 50 ms of walk (`stepWalk`) so a slow GPU (HIGH tier: GTAO + MSAA + shadows) walked in
+  slow motion — the logic itself reaches all 9 rooms and every doorway at speed; balcony doors started CLOSED at
+  runtime though the build plans every door open; `roomShot` started the visitor 0.36 m behind the sofa; evening
+  design lighting on arrival; editor header + walk bar + room chips + hint over the view; placement judged piece by
+  piece (sofa faced away from the TV, coffee table and an armchair dropped, the other pushed against the TV), the
+  ring fallback stood wardrobes free in a room, beds/sofa 0.45–0.85 m off their walls, plants on the centre of the
+  floor, and a room-by-room order let a nightstand win a way over the next room's wardrobe.
+- Fixes: no helper geometry in walk; real-time walking in ≤ 50 ms steps (cap 250 ms) + automatic lightening
+  (fx → shadows → pixel ratio) when frames exceed 40 ms; balcony doors open on entry; arrival in open floor
+  (≥ 0.6 m from pieces, foreground penalty); daylight on arrival; one bar (room · Plan · More · Exit), tour hides the
+  editor header; `walkthrough/seatingGroup.ts` (sofa → TV on the faced wall → table → armchairs, proven walkable,
+  chairs given up first); walkway check as each non-essential piece stands (`closesWalk`), global importance order,
+  wall pieces always wall-backed, plants only in corners; `walkthrough/plausibility.ts` → server gate NOT_PLAUSIBLE;
+  `walkthrough/planFidelity.ts` (BLOCK: opening past its wall, doorway crossed by a wall → GEOMETRY_UNRELIABLE;
+  WARN: enclosed stair, weak-ink wall, dimension mismatch — reported, never "fixed").
+- This plan's ambiguities (WARN, need the original drawing to settle): stair S1 walled on every side while wall I7
+  between it and the living room has 39% ink (likely open stair); I3 40%, I4 31%; porch written 10'×8' vs measured
+  1.52 m deep (37.5%).
+- Furniture assets (no purchase made): production has 47 active assets — 40 `dev/*` procedural placeholders, 7
+  LICENSED GLB (sofa, armchair, coffee table, plant, cabinet, vase, ceiling lamp). Every piece of this tour rendered
+  procedurally; the RunPod pass made 8 pieces and attached 0 (design-bound pieces are never swapped). Plan: (1) let
+  the matcher use the 7 licensed GLBs where category and size fit; (2) add CC0 models (licence recorded per asset)
+  for beds, wardrobes, dining sets, bathroom fixtures and appliances, Draco/meshopt + KTX2, ≤ 1–2 MB per asset;
+  (3) stop paying for the per-tour GPU pass until its output is attached, or attach it to bound pieces. Any paid
+  library needs the owner's approval first.
+
 ### Find Buyers lifecycle truth + UX consolidation (2026-10-04, after the owner's first live test)
 
 - Production case: campaign ee2f0b74 / job 693e6d75 finished 220 ms after creation with 0 queue jobs and
@@ -1187,3 +1582,59 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   (owner/admin; owner uploads untouched). The owner page auto-refreshes once when an imported property holds ≤1 photo.
 - Open owner decision: the 25 credits settled by the failed 693e6d75 campaign (reservation 1a7b4d83) — refund needs
   explicit owner confirmation (money movement).
+
+## Verify P0 .601 recovery (2026-10-11, PR #162)
+- Live job 8ba97da9 (unit 01.18.06.019.055.03.01.601) took 28m34s; critical path cut: market-lane CPU loop checkpointed, ENREG/Debtor/RS.ge start as soon as a primary names a company (RS.ge waits ≤3 min more), older TAS cases bounded (120 s, 20 MB/file), form discovery never calls Administration.*.
+- Report: deterministic unit identity (unitIdentity.ts), mortgage lifecycle + extract-dated legal position (propertyRegister.ts), TAS chronology by filing date (tasChronology.ts), Krtsanisi-first market hierarchy with INSUFFICIENT_EVIDENCE valuation (marketHierarchy.ts), professionals from AcadNusx title blocks/signatures (tasProfessionals.ts), premium report order + people/gallery cards.
+- REPORT_LOGIC_VERSION 4: recent reports rebuild once on open from retained evidence (one model call; no source re-acquisition).
+- Open: Rekhviashvili (Goga/Giorgi) not in stored text beyond the 300k cut (storage sha256/bf/bf0838…); AR11148112 text only in storage; decision 7839183 printed issue date unread; visual dates null; TAS page render failures.
+
+## Verify final polish for .601 (2026-10-11, logic v5)
+
+- Target: job 8ba97da9 (.601 Villion). It rebuilds once on its next open under REPORT_LOGIC_VERSION 5, from stored evidence. No new paid job.
+- **Visual recovery:**
+  - verify-synthesis calls research-agent `recover_visuals`, which fetches the skipped TAS images through the worker's POST `/verify/tas-files`.
+  - Blank images are filtered out (visualQuality.ts).
+  - The gallery is grouped into a dated chronology (visualCatalog.visualChronology).
+- **Market refresh:**
+  - verify-synthesis starts research-agent `refresh_market`.
+  - The worker runs MyHome through Find Property's MyHomeRuntime (`acquireForVerify`, with its own 2-page cap: page 3 draws a Cloudflare challenge that cools MyHome down for everyone; job dbf04e48) and SS.ge for კრწანისი, then ორთაჭალა.
+  - The cron driver (pollMarketRefreshes) folds the listings in and sets `synthesis_json._rebuildRequested`, which triggers exactly one more rebuild.
+- **Documents:**
+  - research-agent `document_file` fetches through the worker's `/verify/tas-file` and caches into the private bucket `verify-documents` (migration 20261030091500), then returns a signed URL.
+  - Raw DownloadServlet links are never rendered.
+- **Fast read path:** READY v5 reports are served from synthesis_json only (reportReadPath.ts), backed by a client sessionStorage cache keyed by logic version.
+- **Neighbourhood:** OpenStreetMap Overpass (neighborhood.ts), with straight-line metres and route numbers from OSM route relations. There is no model fallback, and walking minutes are removed.
+- **Korter:** BLOCKED_BY_TERMS (korter.ge terms §5.3 forbid scraping) and NO_DOCUMENTED_API. The provider (official-worker/src/verify/korter) is OFF and only reads `GET /verify/korter/status`.
+- **Narrative:**
+  - technicalExplained, projectMath (K1/K2/K3 corrected; saleable area never derived), projectStory (three tracks), buyerAssessment (guarded), editorial pass.
+- **Open items:**
+  - The MyHome engine's own 0-result issue in Verify is resolved by using the runtime's page reader. Production proof is still pending.
+  - Developer website and Facebook renders need written rights from the developer.
+
+## Find Property HTML portal workers (PR #210, 2026-10-15) — BUILT, NOT DEPLOYED
+
+- Code: `official-worker/src/marketplace/portals/` (shared `acquire.mjs` loop:
+  robots.txt, pacing, 2-page cap, BLOCKED on 401/403/429/challenge, no retry
+  past a refusal, request-contradiction filter; `runtime.mjs` claims runs on the
+  existing marketplace-worker-1 contract). Adapters: Place.ge (search), Home.ge
+  (sitemap + listing pages), Brokeri.ge (search), Allhome.ge (sitemap + listing
+  pages). MyHome.ge / SS.ge untouched (MyHome stays at pages 1–2).
+- Withdrawn: Korter.ge (terms forbid scraping), Binebi.ge (Cloudflare challenge).
+- Registry/switches: migration `20261104100000_find_property_portal_workers.sql`
+  (rows PROVEN + enabled=false; `marketplace_{placege,homege,brokeri,allhome}_enabled`
+  false). Edge: `marketplace-search` / `marketplace-worker-ingest` gate each portal
+  on its own switch (`workerSwitchOn`).
+- Live evidence: GitHub-runner live runs of `scripts/portals/live-check.mjs`
+  (2026-10-15; scenarios A/B/C 2026-10-16 06:07–06:17 UTC, run 38859391158), every
+  report contract-valid. Pipeline-shown — A (Tbilisi sale $80–200k, 50–120 m²):
+  Place 25, Home 33, Allhome 17, Brokeri 0 (all >30 days); B (rent $300–1,500):
+  Place 23, Home 32, Allhome 2, Brokeri 0; C (Krtsanisi / +Ortachala): Home 10 / 14,
+  Place 1 / 1 (district unstated), Allhome 0 / 0, Brokeri 0.
+- Districts: strict worker-side check (`portals/places.mjs`); Home.ge narrows by
+  slug; Place.ge ignores district parameters server-side (probed), so post-read only.
+- To activate (owner approval): apply the migration; deploy the 3 edge functions +
+  frontend; Railway `homatch-official-worker` env `<PREFIX>_WORKER_TOKEN` +
+  `<PREFIX>_MARKETPLACE_ENABLED=true` (PLACEGE/HOMEGE/BROKERI/ALLHOME) with the
+  token hash in `discovery_marketplace_workers.token_hash`; set the row
+  ACTIVE + enabled and the admin switch on, one portal at a time.

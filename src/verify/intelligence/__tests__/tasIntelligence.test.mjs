@@ -8,6 +8,7 @@ import { buildTasIntelligence, tasDigest, normalizeRole, eventKind, valueIdentit
 import { buildEvidencePackage } from '../evidencePackage.ts';
 import { finalizeReport, deterministicReport, removeRepeatedSentences, validateReport, parseReport } from '../report.ts';
 import { buildIntelligencePrompt } from '../prompt.ts';
+import { isDateList } from '../rawText.ts';
 
 const SHA = (c) => c.repeat(64);
 const kase = (o) => ({ documentId: '1', registrationNumber: 'AR1', title: 't', docType: null, status: null, date: '2016-01-01', parties: [], values: [], technicalFacts: [], motions: [], attachments: [], ...o });
@@ -117,7 +118,7 @@ test('timeline is ordered by real dates, not document ids', () => {
   assert.ok(t.timeline.some((e) => e.kind === 'AMENDMENT' && e.date === '2023-06-01'));
 });
 
-test('participants: exact identity only, applicant never becomes owner, private applicants stay internal', () => {
+test('participants: exact identity only, applicant never becomes owner; verified private applicants are named in their role', () => {
   const t = buildTasIntelligence(report(), '2026-10-08T00:00:00Z');
   const arch = t.participants.filter((p) => p.roles.includes('ARCHITECT'));
   assert.equal(arch.length, 2, 'similar names are NOT merged');
@@ -127,7 +128,8 @@ test('participants: exact identity only, applicant never becomes owner, private 
   assert.equal(arch.find((p) => p.name === 'ნინო კაპანაძე-ბერიძე').current, true);
   const applicant = t.participants.find((p) => p.name === 'გიორგი ბერიძე');
   assert.deepEqual(applicant.roles, ['APPLICANT']);
-  assert.equal(applicant.customerVisible, false);
+  // Owner, 2026-10-10: verified private participants are named — as what the documents say they are.
+  assert.equal(applicant.customerVisible, true);
   assert.ok(!t.participants.some((p) => p.roles.includes('PARCEL_OWNER')));
   const org = t.participants.find((p) => p.organizationId === '405123456');
   assert.deepEqual(org.roles, ['CLIENT']);
@@ -188,9 +190,11 @@ test('report: URLs in customer prose are rejected; visual ids are limited to off
     visualCaptions: [{ visualId: SHA('a'), caption: 'ვიზუალიზაცია', explanation: 'დამტკიცებული პროექტი.', cites: [] }, { visualId: SHA('f'), caption: 'ყალბი', explanation: 'x', cites: [] }],
     attentionPoints: [], nextSteps: [], finalView: '', contractUpload: { recommend: true, text: '' },
   });
+  // v8 (owner, 2026-10-11): the sentence with the URL is removed and the rest
+  // of the model report is kept, instead of throwing the whole report away.
   const bad = finalizeReport(pkg, raw({ key: 'APPROVALS', title: 'ნებართვა', period: '', body: 'იხილეთ https://docs.tbilisi.gov.ge/DownloadServlet?x=1', visualIds: [], cites: [cite] }));
-  assert.equal(bad.mode, 'DETERMINISTIC');
-  assert.ok(bad.rejectedBecause.some((p) => /URL/.test(p)));
+  assert.equal(bad.mode, 'MODEL');
+  assert.doesNotMatch(JSON.stringify([bad.summary, bad.sections, bad.propertyStory, bad.currentStatus]), /https?:|DownloadServlet/);
   const good = finalizeReport(pkg, raw({ key: 'APPROVALS', title: 'ნებართვა', period: '2016', body: 'პროექტი 2016 წელს შეთანხმდა.', visualIds: [SHA('b'), SHA('c')], cites: [cite] }));
   assert.equal(good.mode, 'MODEL');
   assert.deepEqual(good.propertyStory.chapters[0].visualIds, [SHA('b')]);
@@ -201,13 +205,16 @@ test('deterministic fallback still tells the story and the current position, wit
   const pkg = buildEvidencePackage(report());
   const r = deterministicReport(pkg);
   assert.ok(r.currentStatus.items.some((i) => i.value === '31.12.2026'));
-  assert.ok(r.propertyStory.chapters.length >= 2);
+  // v8 (owner, 2026-10-11): a chapter that would only list dates and record
+  // labels is not written; the step-by-step chronology tells those events.
+  for (const c of r.propertyStory?.chapters ?? []) assert.equal(isDateList(c.body), false, c.body);
+  assert.equal(r.keyFindings.length, 0, 'no raw source claims as findings');
   assert.equal(r.visualCaptions.length, 2);
   assert.ok(!r.sections.some((s) => /AR\d{6}|docs\.tbilisi/.test(s.body)), 'TAS items are told as story, not dumped into a section');
   // Prose only: visual ids are structural references the UI resolves, not text.
   const prose = [
     r.currentStatus.statement, ...r.currentStatus.items.flatMap((i) => [i.label, i.value]),
-    ...r.propertyStory.chapters.flatMap((c) => [c.title, c.body]),
+    ...(r.propertyStory?.chapters ?? []).flatMap((c) => [c.title, c.body]),
     ...r.visualCaptions.flatMap((v) => [v.caption, v.explanation]),
   ].join(' ');
   assert.ok(!/https?:|DownloadServlet|[a-f0-9]{64}|405123456|გიორგი ბერიძე/.test(prose));

@@ -10,7 +10,10 @@
 
 import { buildPropertyDna, type PropertyDna } from '../../../../src/research-core/findBuyers/propertyDna.ts';
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
+import { publicSearchPasses } from '../../../../src/research-core/findBuyers/adaptiveLoop.ts';
 import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
+import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
+import { classifyDemand } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
@@ -58,7 +61,7 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     minUsd: Math.max(1, num(m.get('find_buyers_min_usd'), 10)),
     providerShareBps: Math.max(0, Math.min(9000, num(m.get('find_buyers_provider_share_bps'), 5000))),
     pricingMaxAgeDays: num(m.get('find_buyers_pricing_max_age_days'), 30),
-    commentGate: { skipBelow: num(gate.skipBelow, 70), eligibleFrom: num(gate.eligibleFrom, 85) },
+    commentGate: { skipBelow: num(gate.skipBelow, 55), eligibleFrom: num(gate.eligibleFrom, 75) },
     sampling: m.get('find_buyers_sampling') ?? null,
     priceBook: m.get('find_buyers_openai_price_book') ?? null,
   };
@@ -100,23 +103,42 @@ const MODEL_QUERY_SCHEMA = {
 } as const;
 
 /** Cached per DNA key: the same flat is never planned (or paid for) twice. */
-async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, priceBookRaw: unknown): Promise<QueryPlan> {
-  const base = buildQueryPlan(dna);
+async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, priceBookRaw: unknown, strategy: BuyerStrategy | null = null): Promise<QueryPlan> {
+  const base = buildQueryPlan(dna, SEARCH_LANGUAGES, strategy);
+  /* A model phrasing is kept only when it reads as explicit demand of the
+     campaign's own side (a generic "looking for a flat" pulls rentals/jobs). */
+  const wanted = dna.transaction === 'RENT' ? 'RENT_SEEKER' : 'BUY_SEEKER';
+  const onSide = (rows: Array<{ language?: unknown; query?: unknown }>) => rows.filter((r) => classifyDemand(String(r?.query ?? '')).role === wanted);
   const { data: cached } = await db.from('find_buyers_query_cache')
     .select('queries').eq('dna_key', dna.dnaKey).eq('plan_version', QUERY_PLAN_VERSION).maybeSingle();
-  if (cached?.queries) return mergeModelQueries(base, cached.queries as any[]);
+  if (cached?.queries) return mergeModelQueries(base, onSide(cached.queries as any[]));
   const book = parsePriceBook(priceBookRaw);
+  /* The whole property as a seeker would weigh it: what it is, where, for how much
+     and with what — plus the buyer/tenant profiles the strategy expects. The model
+     proposes phrasings; deterministic code validates every one (schema, six
+     languages, on-side demand reading, per-language cap) before any is used. */
+  const family = dna.family ?? 'APARTMENT';
   const ask = {
-    transaction: dna.transaction, propertyType: dna.propertyType, city: dna.city, district: dna.district,
-    bedrooms: dna.bedrooms, areaSqm: dna.areaSqm, price: dna.price, currency: dna.currency,
+    transaction: dna.transaction, family, propertyType: dna.propertyType,
+    city: dna.city, district: dna.district, neighborhood: dna.neighborhood,
+    bedrooms: dna.bedrooms, rooms: dna.rooms, areaSqm: dna.areaSqm, price: dna.price, currency: dna.currency,
+    priceBand: dna.tolerances.price, features: dna.amenities, condition: dna.condition, newBuild: dna.newBuild,
+    likelyProfiles: (strategy?.personas ?? []).map((p) => p.key),
     existing: base.queries.filter((q) => q.kind === 'demand').map((q) => `${q.language}: ${q.query}`),
   };
+  const verb = dna.transaction === 'RENT' ? 'RENT' : 'BUY';
   const res = await openAiJson<{ queries: Array<{ language: string; query: string }> }>(book,
-    'You write short social-media search phrases that real people in Georgia use when they WANT to buy or rent a property like this one. Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording, include the city or district name as people write it. No hashtags, no quotes.',
+    `You write short social-media search phrases that real people in Georgia write when they personally WANT TO ${verb} a ${family.toLowerCase()} like this one (family: ${family}). `
+    + `Think about who realistically wants it (likelyProfiles, budget, area) and how they phrase a request in everyday, colloquial language. `
+    + `Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording, with an explicit ${dna.transaction === 'RENT' ? 'renting' : 'purchase'} verb and the correct noun for a ${family.toLowerCase()}. `
+    + `A request may name the city and a budget without the exact district — that is still a seeker. Never a phrase an owner, seller or agent would write (no "for sale", "selling", "offer"). Never a bare "looking for". No hashtags, no quotes.`,
     ask, MODEL_QUERY_SCHEMA, { maxTokens: 700 });
   await recordAiCost(db, { key: `ai:queries:${matchingJobId}`, matchingJobId, kind: 'AI', operation: 'QUERY_PLAN', result: res, metadata: { dnaKey: dna.dnaKey } })
     .catch(() => undefined);
   const proposed = res.data?.queries ?? [];
+  /* A failed call is NOT cached. Caching its empty result made every later campaign
+     for the same property skip the model for good (2026-10-12 audit). */
+  if (res.error || !res.data) return mergeModelQueries(base, onSide(proposed));
   /* Best-effort cache: never blocks the plan. A PostgREST builder is only
      thenable (no .catch), so it is awaited inside try. The old
      `.upsert(...).catch(...)` threw a TypeError here on every uncached search
@@ -130,7 +152,34 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
   } catch (error) {
     console.warn('find_buyers_query_cache upsert threw', error instanceof Error ? error.message : String(error));
   }
-  return mergeModelQueries(base, proposed);
+  return mergeModelQueries(base, onSide(proposed));
+}
+
+/** The property's market segment when the segmentation layer has evidence; never guessed. */
+async function marketSegment(db: any, propertyId: string): Promise<{ segment: Segment; confidence: number | null } | null> {
+  try {
+    const { data, error } = await db.from('property_market_segments').select('segment,confidence').eq('property_id', propertyId).maybeSingle();
+    if (error || !data?.segment) return null;
+    return { segment: data.segment as Segment, confidence: data.confidence == null ? null : Number(data.confidence) };
+  } catch { return null; }
+}
+
+/** Each Actor's real record over the last 90 days (finished paid runs, qualified leads). */
+async function actorHistory(db: any): Promise<Record<string, { bookedRuns: number; qualified: number }>> {
+  const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+  const { data } = await db.from('find_buyers_actor_runs').select('actor_key,qualified_leads,cost_booked_at,status').gte('created_at', since).limit(5000);
+  const out: Record<string, { bookedRuns: number; qualified: number }> = {};
+  for (const r of (data ?? []) as any[]) {
+    if (!r.cost_booked_at || r.status === 'RELEASED') continue;
+    const h = (out[r.actor_key] ??= { bookedRuns: 0, qualified: 0 });
+    h.bookedRuns += 1; h.qualified += Number(r.qualified_leads || 0);
+  }
+  return out;
+}
+
+async function queryStats(db: any): Promise<QueryStat[]> {
+  const { data } = await db.from('find_buyers_query_stats').select('query,language,runs,items,qualified,spend_micros').limit(2000);
+  return ((data ?? []) as any[]).map((r) => ({ query: String(r.query ?? ''), language: String(r.language ?? ''), runs: Number(r.runs || 0), items: Number(r.items || 0), qualified: Number(r.qualified || 0), spendMicros: Number(r.spend_micros || 0) }));
 }
 
 async function knownSources(db: any, city: string | null): Promise<KnownSource[]> {
@@ -204,13 +253,13 @@ function hashKey(s: string) {
 
 export async function enabledActorMap(db: any, maxAgeDays: number) {
   const { data } = await db.from('find_buyers_actor_registry')
-    .select('actor_key,probe_size,priority,enabled,emergency_disabled,health,pricing_verified_at,pricing_model,price_per_1k_micros,start_fee_micros');
-  const out: Record<string, { probeSize: number; priority: number; startFeeMicros: number; pricePer1kMicros: number }> = {};
+    .select('actor_key,probe_size,max_results,priority,enabled,emergency_disabled,health,pricing_verified_at,pricing_model,price_per_1k_micros,start_fee_micros');
+  const out: Record<string, { probeSize: number; maxResults: number; priority: number; startFeeMicros: number; pricePer1kMicros: number }> = {};
   const cutoff = Date.now() - maxAgeDays * 86_400_000;
   for (const a of (data ?? []) as any[]) {
     if (!a.enabled || a.emergency_disabled || a.health === 'DISABLED') continue;
     if (!a.pricing_verified_at || Date.parse(a.pricing_verified_at) < cutoff || a.pricing_model === 'UNKNOWN' || a.price_per_1k_micros == null) continue;
-    out[a.actor_key] = { probeSize: Number(a.probe_size) || 20, priority: Number(a.priority) || 50,
+    out[a.actor_key] = { probeSize: Number(a.probe_size) || 20, maxResults: Number(a.max_results) || Number(a.probe_size) || 20, priority: Number(a.priority) || 50,
       startFeeMicros: Number(a.start_fee_micros ?? 0), pricePer1kMicros: Number(a.price_per_1k_micros) };
   }
   return out;
@@ -239,7 +288,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const econ = campaignEconomics(input.credits, rate, settings.providerShareBps);
   const f = input.facts ?? {};
   const dna = buildPropertyDna({
-    transactionType: input.property.transaction_type, propertyType: input.property.property_type,
+    transactionType: input.property.transaction_type, propertyType: input.property.property_type, title: input.property.title,
     countryCode: f.country_code, city: f.city, district: f.district, neighborhood: f.neighborhood,
     latitude: f.latitude, longitude: f.longitude, totalPrice: f.total_price, currency: f.currency, area: f.area,
     rooms: f.rooms, bedrooms: f.bedrooms, floor: f.floor, totalFloors: f.total_floors, condition: f.condition,
@@ -259,10 +308,17 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const actors = await enabledActorMap(db, settings.pricingMaxAgeDays);
   if (!Object.keys(actors).length) return { queued: 0, dna, reason: 'NO_ACTOR_READY', economics: econ };
 
-  const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook);
-  await db.from('find_buyers_campaigns').update({ query_plan: plan }).eq('matching_job_id', input.matchingJobId);
+  /* The property-specific strategy first: segment (only with evidence),
+     budget band, places, personas, explicit-intent queries, budget depth.
+     Bounded learning re-orders/retires queries by their real yield. */
+  const segment = await marketSegment(db, input.propertyId);
+  const strategy0 = buildBuyerStrategy({ dna, segment, providerBudgetMicros: econ.providerBudgetMicros, targetLanguages: input.targetLanguages ?? null });
+  const strategy: BuyerStrategy = { ...strategy0, queries: prioritizeQueries(strategy0.queries, await queryStats(db)) };
+  const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook, strategy);
+  await db.from('find_buyers_campaigns').update({ query_plan: plan, strategy }).eq('matching_job_id', input.matchingJobId);
   const sources = await knownSources(db, dna.city);
-  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null });
+  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null,
+    depth: strategy.depth, actorHistory: await actorHistory(db) });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
   /* TWO PHASES (campaignPhases.ts): Phase 1's time box and its spend ceiling,
      planned from this campaign's own probes and the registry's prices. */
@@ -397,11 +453,12 @@ export async function sweepStaleActorRuns(db: any) {
 
 /** Customer-safe counters (no actor ids, no costs). */
 export async function campaignStats(db: any, matchingJobId: string) {
-  const [runs, leads, assess, queue] = await Promise.all([
+  const [runs, leads, assess, queue, camp] = await Promise.all([
     db.from('find_buyers_actor_runs').select('source,language,status,qualified_leads,items_fetched,useful_results,stale_dropped').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_leads').select('strength,source,signal_count').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_assessments').select('content_kind').eq('matching_job_id', matchingJobId).limit(5000),
     db.from('discovery_query_queue').select('provider,status,metadata').eq('matching_job_id', matchingJobId),
+    db.from('find_buyers_campaigns').select('query_plan').eq('matching_job_id', matchingJobId).maybeSingle(),
   ]);
   const r = (runs.data ?? []) as any[];
   const l = (leads.data ?? []) as any[];
@@ -422,6 +479,9 @@ export async function campaignStats(db: any, matchingJobId: string) {
     /* 30-day rule, made visible: older or undated items skipped, never stored. */
     staleSkipped: r.reduce((n, x) => n + Number(x.stale_dropped || 0), 0),
     degradedSources: [...new Set(r.filter((x) => ['FAILED', 'TIMED_OUT'].includes(x.status)).map((x) => x.source))],
+    /* The adaptive search, as the owner may see it (stats is owner-readable;
+       query_plan, which carries the economics, is not). */
+    searchPasses: publicSearchPasses((camp?.data as any)?.query_plan?.adaptive),
   };
 }
 
@@ -449,11 +509,19 @@ export async function queueTelegramFallback(db: any, matchingJobId: string) {
 }
 
 /** Channels a campaign already has a paid Telegram job for (any reason): never queued twice. */
+/** Channels this campaign already covers: paid reads queued, and channels the
+    free reader read for it (TELEGRAM_SOURCES outcome) — never paid for twice. */
 async function queuedTelegramTargets(db: any, matchingJobId: string): Promise<Set<string>> {
-  const { data } = await db.from('discovery_query_queue').select('metadata')
-    .eq('matching_job_id', matchingJobId).eq('provider', 'APIFY_MEMO23');
-  return new Set(((data ?? []) as any[]).filter((r) => r.metadata?.stage === 'TELEGRAM_CHANNEL')
-    .map((r) => String(r.metadata?.targetUrl ?? '').toLowerCase()).filter(Boolean));
+  const { data } = await db.from('discovery_query_queue').select('provider,metadata')
+    .eq('matching_job_id', matchingJobId);
+  const out = new Set<string>();
+  for (const r of (data ?? []) as any[]) {
+    if (r.provider === 'APIFY_MEMO23' && r.metadata?.stage === 'TELEGRAM_CHANNEL' && r.metadata?.targetUrl) out.add(String(r.metadata.targetUrl).toLowerCase());
+    if (r.provider === 'TELEGRAM_SOURCES') {
+      for (const t of (r.metadata?.last_outcome?.readTargets ?? []) as string[]) out.add(`https://t.me/${t}`.toLowerCase());
+    }
+  }
+  return out;
 }
 
 /* Paid channel reads one COMBINED search may add (each still reserved against the caps). */

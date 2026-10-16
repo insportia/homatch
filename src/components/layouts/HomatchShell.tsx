@@ -133,6 +133,25 @@ export const NAV: NavGroup[] = [
        */
       { key: 'nav_owner_workspace', path: '/property', glyph: 'properties' },
       /*
+       * THE BROKER DIRECTORY, previously reachable only through the public
+       * site. It is a working tool — find a professional for your market and
+       * language — and a signed-in customer had no way to discover it existed.
+       * This is /brokers the directory, not /partners the marketing page,
+       * which stays public-only (see ALSO GONE above).
+       */
+      { key: 'pub_nav_brokers', path: '/brokers', glyph: 'brokers' },
+      /* THE BROKER DESK: a professional's profile, verification, leads and
+         client searches. Only a broker or agency account sees it. */
+      { key: 'nav_broker_desk', path: '/broker', glyph: 'brokers', professional: true },
+      /*
+       * PUBLISH TO PORTALS, between Broker and Find Property, by the owner's
+       * instruction (2026-10-15). It had been a TOP-BAR button and a button in the
+       * My Properties header pointing at an iframe; neither is a product area, and
+       * the sidebar never listed it. One destination now, here, and nowhere in the
+       * top bar.
+       */
+      { key: 'nav_publishing', path: '/publishing', glyph: 'publishing' },
+      /*
        * FIND PROPERTY: the other journey, and deliberately not this one.
        *
        * I HAVE A PROPERTY -> the workspace above. I NEED A PROPERTY -> here. It pointed
@@ -148,17 +167,6 @@ export const NAV: NavGroup[] = [
        * which is what a bare magnifier is for.
        */
       { key: 'dnav_find_property', path: '/find-property', glyph: 'find_property' },
-      /*
-       * THE BROKER DIRECTORY, previously reachable only through the public
-       * site. It is a working tool — find a professional for your market and
-       * language — and a signed-in customer had no way to discover it existed.
-       * This is /brokers the directory, not /partners the marketing page,
-       * which stays public-only (see ALSO GONE above).
-       */
-      { key: 'pub_nav_brokers', path: '/brokers', glyph: 'brokers' },
-      /* THE BROKER DESK: a professional's profile, verification, leads and
-         client searches. Only a broker or agency account sees it. */
-      { key: 'nav_broker_desk', path: '/broker', glyph: 'brokers', professional: true },
     ],
   },
   /*

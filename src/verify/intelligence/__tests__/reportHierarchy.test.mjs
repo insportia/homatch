@@ -48,6 +48,9 @@ test('the sections are the buyer hierarchy, in reading order', () => {
   assert.deepEqual([...SECTION_KEYS], [
     'SNAPSHOT',
     'PROJECT',
+    // Owner, 2026-10-10: the building's quality gets its own home (documented /
+    // visible / developer claims / not known), right after the project.
+    'QUALITY',
     'LOCATION',
     'INFRASTRUCTURE',
     'MARKET',
@@ -145,7 +148,7 @@ test('an unclear asset class gets the whole report', () => {
 
 test('relevance preserves reading order rather than inventing a second one', () => {
   const kept = sectionsForAssetClass('LAND');
-  assert.deepEqual(kept, SECTION_KEYS.filter((k) => k !== 'PROJECT'));
+  assert.deepEqual(kept, SECTION_KEYS.filter((k) => k !== 'PROJECT' && k !== 'QUALITY'), 'land has no building and so no building quality');
 });
 
 test('the model is told which sections this property can have', () => {
@@ -154,7 +157,7 @@ test('the model is told which sections this property can have', () => {
   assert.match(land, /THIS IS LAND\. There is no building\./);
 
   const flat = buildIntelligencePrompt(pkg(), undefined, 'APARTMENT_IN_PROJECT').system;
-  assert.match(flat, /"key": "<SNAPSHOT\|PROJECT\|LOCATION\|INFRASTRUCTURE\|MARKET\|PEOPLE>"/);
+  assert.match(flat, /"key": "<SNAPSHOT\|PROJECT\|QUALITY\|LOCATION\|INFRASTRUCTURE\|MARKET\|PEOPLE>"/);
 });
 
 test('commercial space is told not to write family-living filler', () => {

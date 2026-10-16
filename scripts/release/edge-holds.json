@@ -1,0 +1,4 @@
+{
+  "_comment": "Edge functions whose PRODUCTION artifact comes from an unmerged branch. A held function is never uploaded by the deploy workflow (push or manual redeploy) and is never reported as proven: every run prints it as HELD with the reason below. A hold is removed only by a reviewed PR, normally the PR that merges the source branch, in the same change. Evidence for each entry must be the exact deployed artifact, not an assumption.",
+  "holds": []
+}

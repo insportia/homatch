@@ -136,7 +136,12 @@ export const SCHEMA = {
 
 // ── Context ──────────────────────────────────────────────────────────
 
-export interface PlanRoomContext { id: string; kind: string; areaM2: number; label: string | null }
+export interface PlanRoomContext {
+  id: string; kind: string; areaM2: number; label: string | null;
+  /** The catalogue room kinds the room takes pieces from, by its use (programme.ts kindsFor): a kitchen-living room
+   * read as LIVING takes the kitchen's too, a study read as a hall the office's. Absent: its kind alone. */
+  kinds?: string[];
+}
 export interface PlanAssetContext {
   code: string; name: string; category: string; subcategory: string | null;
   roomKinds: string[]; styleTags: string[]; widthM: number; depthM: number;

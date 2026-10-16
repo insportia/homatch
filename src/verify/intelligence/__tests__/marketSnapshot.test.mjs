@@ -407,3 +407,10 @@ test('fresher evidence replaces a stale snapshot even with less of it', async ()
   assert.equal(out.written, true, 'a year-old snapshot was kept because it was deeper');
   assert.equal(out.superseded, true);
 });
+
+test('a three-listing snapshot is topped up, never reused silently (Villion, jobs c80f7237 / e02d4f16)', () => {
+  const plan = planMarket({ snapshot: snapshot({ usable_comparable_count: 3, confidence: 'MEDIUM' }), now: NOW });
+  assert.equal(plan.refresh, true);
+  assert.ok(plan.searchBudget > 0);
+  assert.ok(plan.reasons.includes('TOO_FEW_COMPARABLES'));
+});

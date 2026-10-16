@@ -18,9 +18,10 @@ import {
 } from '@/services/findBuyers';
 import { actorLifecycle, classifyActor } from '@/findBuyers/actorCatalog';
 import { SourceNetworkPanel } from './SourceNetworkPanel';
+import { FindBuyersIntelligencePanel } from './FindBuyersIntelligencePanel';
 
-type Tab = 'overview' | 'actors' | 'campaigns' | 'network' | 'sources' | 'languages' | 'ledger';
-const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'network', 'sources', 'languages', 'ledger'];
+type Tab = 'overview' | 'actors' | 'campaigns' | 'network' | 'sources' | 'languages' | 'ledger' | 'intelligence';
+const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'network', 'sources', 'languages', 'ledger', 'intelligence'];
 const WINDOWS = [1, 7, 30, 0];
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
@@ -69,7 +70,8 @@ function ActorEditor({ actor, onSaved }: { actor: Record<string, any>; onSaved: 
   const [f, setF] = useState(() => ({
     priority: String(actor.priority), maxResults: String(actor.max_results), probeSize: String(actor.probe_size),
     concurrency: String(actor.concurrency), timeoutSeconds: String(actor.timeout_seconds), retryCap: String(actor.retry_cap),
-    dailyCapUsd: String(n(actor.daily_spend_cap_micros) / 1e6), campaignCapUsd: String(n(actor.campaign_spend_cap_micros) / 1e6),
+    dailyCapUsd: actor.daily_spend_cap_micros == null ? '' : String(n(actor.daily_spend_cap_micros) / 1e6),
+    campaignCapUsd: actor.campaign_spend_cap_micros == null ? '' : String(n(actor.campaign_spend_cap_micros) / 1e6),
     pricingModel: String(actor.pricing_model), pricePer1kUsd: actor.price_per_1k_micros == null ? '' : String(n(actor.price_per_1k_micros) / 1e6),
     startFeeUsd: String(n(actor.start_fee_micros) / 1e6), pricingVerified: false,
   }));
@@ -81,7 +83,9 @@ function ActorEditor({ actor, onSaved }: { actor: Record<string, any>; onSaved: 
       const res = await updateActor(actor.actor_key, {
         priority: Number(f.priority), maxResults: Number(f.maxResults), probeSize: Number(f.probeSize),
         concurrency: Number(f.concurrency), timeoutSeconds: Number(f.timeoutSeconds), retryCap: Number(f.retryCap),
-        dailySpendCapMicros: micros(f.dailyCapUsd), campaignSpendCapMicros: micros(f.campaignCapUsd),
+        /* Empty = no per-Actor cap: the field is not sent, so nothing is set. */
+        ...(f.dailyCapUsd !== '' ? { dailySpendCapMicros: micros(f.dailyCapUsd) } : {}),
+        ...(f.campaignCapUsd !== '' ? { campaignSpendCapMicros: micros(f.campaignCapUsd) } : {}),
         pricingModel: f.pricingModel, ...(f.pricePer1kUsd !== '' ? { pricePer1kMicros: micros(f.pricePer1kUsd) } : {}),
         startFeeMicros: micros(f.startFeeUsd), pricingVerified: f.pricingVerified,
       });
@@ -258,7 +262,7 @@ export function FindBuyersControlCenter() {
                 <span>{t('fbx_admin_cpq')}: <b dir="ltr">{per(n(a.spend_micros), n(a.qualified_leads))}</b></span>
                 <span>{t('fbx_admin_latency')}: <b dir="ltr">{a.latency_p50_ms == null ? '—' : `${Math.round(n(a.latency_p50_ms) / 1000)}s`}</b></span>
                 <span>{t('fbx_admin_last_run')}: <b>{when(a.last_run_at)}</b></span>
-                <span className="col-span-2">{t('fbx_admin_caps')}: <b dir="ltr">{`${t('fbx_admin_daily_cap')}: ${usd(a.daily_spend_cap_micros)} · ${t('fbx_admin_campaign_cap')}: ${usd(a.campaign_spend_cap_micros)} · ${t('fbx_admin_probe')}: ${a.probe_size} · ${t('fbx_admin_max_results')}: ${a.max_results}`}</b></span>
+                <span className="col-span-2">{t('fbx_admin_caps')}: <b dir="ltr">{`${t('fbx_admin_daily_cap')}: ${a.daily_spend_cap_micros == null ? '—' : usd(a.daily_spend_cap_micros)} · ${t('fbx_admin_campaign_cap')}: ${a.campaign_spend_cap_micros == null ? '—' : usd(a.campaign_spend_cap_micros)} · ${t('fbx_admin_probe')}: ${a.probe_size} · ${t('fbx_admin_max_results')}: ${a.max_results}`}</b></span>
               </div>
               {a.last_error ? <p className="mt-1.5 break-words text-2xs text-destructive">{t('fbx_admin_last_error')}: {a.last_error}</p> : null}
               {editing === a.actor_key ? <ActorEditor actor={a} onSaved={() => { setEditing(null); void load(); }} /> : null}
@@ -297,6 +301,7 @@ export function FindBuyersControlCenter() {
       ) : null}
 
       {tab === 'network' ? <SourceNetworkPanel days={days} /> : null}
+      {tab === 'intelligence' ? <FindBuyersIntelligencePanel days={days} /> : null}
 
       {data && tab === 'sources' ? (
         <div className="mt-4">

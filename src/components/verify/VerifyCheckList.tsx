@@ -17,7 +17,7 @@
  * cadastral code is the fallback rather than the headline, because people
  * remember "the flat on Krtsanisi" and not twenty-four digits.
  */
-import { ChevronRight, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
+import { ChevronRight, ShieldCheck, Loader2, AlertCircle, Pause } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ResearchJobRecord } from '@/types/types';
@@ -86,6 +86,7 @@ export function VerifyCheckList({
         const status = String(j.status ?? '').toUpperCase();
         const running = RUNNING.has(status);
         const broken = BROKEN.has(status);
+        const paused = status === 'PAUSED';
         const label = checkLabel(j, t('verify_untitled_case_title'));
         const showCode = j.query && j.query.trim() && j.query.trim() !== label;
         return (
@@ -119,6 +120,12 @@ export function VerifyCheckList({
                     <span className="inline-flex items-center gap-1 text-sm text-primary">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                       <span className="break-words">{t('vh_state_running')}</span>
+                    </span>
+                  ) : null}
+                  {paused ? (
+                    <span className="inline-flex items-center gap-1 text-sm text-primary">
+                      <Pause className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span className="break-words">{t('vh_state_paused')}</span>
                     </span>
                   ) : null}
                   {broken ? (

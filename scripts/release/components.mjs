@@ -29,14 +29,14 @@
 export const SUITE_CATALOGUE = {
   static: { title: 'Static checks', always: true },
   unit: { title: 'Unit and matrix tests', always: true },
-  'mobile:routes': { title: 'Mobile — every customer route', files: ['tests/mobile/routeOverflow.test.mjs', 'tests/mobile/routeHealth.test.mjs', 'tests/mobile/textContrast.test.mjs', 'tests/mobile/formControls.test.mjs', 'tests/mobile/propertyOwnerWorkspace.test.mjs'] },
+  'mobile:routes': { title: 'Mobile — every customer route', files: ['tests/mobile/routeOverflow.test.mjs', 'tests/mobile/routeHealth.test.mjs', 'tests/mobile/textContrast.test.mjs', 'tests/mobile/formControls.test.mjs', 'tests/mobile/propertyOwnerWorkspace.test.mjs', 'tests/mobile/publishingWorkspace.test.mjs'] },
   'mobile:shell': { title: 'Mobile — shell, motion, composer', files: ['tests/mobile/shellAndMotion.test.mjs', 'tests/mobile/appShell.test.mjs', 'tests/mobile/chatComposer.test.mjs'] },
   'mobile:auth': { title: 'Mobile — auth screens', files: ['tests/mobile/authScreens.test.mjs'] },
-  'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs'] },
+  'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs', 'tests/mobile/verifyReportPremium.test.mjs', 'tests/mobile/verifyReportTranslation.test.mjs'] },
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
   'mobile:mortgage': { title: 'Mobile — mortgage', files: ['tests/mobile/mortgageConsultant.test.mjs', 'tests/mobile/mortgageHuman.test.mjs'] },
   'mobile:expats': { title: 'Mobile — For Expats', files: ['tests/mobile/expatsReadable.test.mjs'] },
-  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs'] },
+  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs'] },
   'mobile:broker': { title: 'Mobile — broker lifecycle', files: ['tests/mobile/brokerLifecycle.test.mjs'] },
   'mobile:tasks': { title: 'Mobile — tasks and contracts', files: ['tests/mobile/tasksAndContracts.test.mjs'] },
   developer: { title: 'Developer acceptance', script: 'test:developer', files: ['tests/browser/developerAcceptance.test.mjs'] },
@@ -115,9 +115,11 @@ export const COMPONENTS = {
   },
   STORAGE: {
     security: true,
-    paths: [fn('storage-sign', 'storage-inventory', 'storage-migrate', 'storage-selftest'), /^src\/pages\/admin\/AdminStoragePage/],
+    paths: [fn('storage-sign', 'storage-inventory', 'storage-migrate', 'storage-selftest', 'storage-retention'), /^src\/pages\/admin\/AdminStoragePage/,
+      /^supabase\/functions\/_shared\/retention\//, /^src\/(services\/retention|components\/retention\/)/, /^tests\/sql\/retention\//],
     suites: [],
-    proofs: ['storage: storage-selftest PASS in production; storage_authorize allows/denies per namespace as before'],
+    proofs: ['storage: storage-selftest PASS in production; storage_authorize allows/denies per namespace as before',
+      'retention: tests/sql/retention/run.sh PASS; retention_admin_dry_run read-only in production; storage_retention.purge_enabled still false unless the owner approved'],
   },
   DESIGN_STUDIO: {
     paths: [
@@ -144,7 +146,7 @@ export const COMPONENTS = {
     suites: ['studio:editor', 'studio:content', 'mobile:routes', 'a11y'],
   },
   DISCOVERY: {
-    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|matching|research-core)\//, /^src\/services\/findBuyers\.ts$/, /^src\/components\/admin\/FindBuyersControlCenter\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
+    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|homatchLeads|ownerDemoLead)\.ts$/, /^src\/pages\/property\/HomatchLeadsPage\.tsx$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
     suites: ['mobile:discovery', 'mobile:routes'],
   },
   PWA_PUSH: {
@@ -153,11 +155,18 @@ export const COMPONENTS = {
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },
   VERIFY: {
-    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, fn('research-agent', 'verify-synthesis', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
+    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
     suites: ['mobile:verify', 'mobile:routes'],
   },
   MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes'] },
   EXPATS: { paths: [/^src\/(pages\/(ForExpatsPage|Expat)|components\/expats|expats)/, /^scripts\/expat-content\//], suites: ['mobile:expats'] },
+  // PUBLISH TO PORTALS: the standalone listing-publishing workspace (/publishing),
+  // its edge function and its publishing_* / publishing_engine_* objects.
+  PUBLISHING: {
+    paths: [/^src\/(pages|components)\/publishing\//, /^src\/publishing\//, /^src\/services\/publishing\.ts$/, fn('publishing-engine'), /^scripts\/publishing\//],
+    suites: ['mobile:routes'],
+    proofs: ['publishing: publishing-engine PROVEN_EXACT; migration 20261103090000 in the ledger; RLS select-own on publishing_engine_* verified'],
+  },
   BROKER: { paths: [/^src\/(pages\/(Broker|admin\/AdminBrokersPage)|components\/broker)/, fn('[a-z-]*broker[a-z-]*')], suites: ['mobile:broker', 'mobile:routes'] },
   PUBLIC_HOMEPAGE: {
     paths: [/^src\/pages\/(HomePage|AboutPage|PricingPage|PartnersPage|PrivacyPage|TermsPage|ProductEntryPage|ContactPage)/, /^src\/components\/home\//, /^public\//, /^scripts\/build-sitemap/],
@@ -167,7 +176,7 @@ export const COMPONENTS = {
   // Customer product surfaces without a dedicated suite of their own: the
   // route sweeps, the shell and the tasks suite are what render them.
   PRODUCT: {
-    paths: [/^src\/(pages|components|lib|services|campaign|dealroom|documents|import|investment|jobs|property|surfaces)\//],
+    paths: [/^src\/(pages|components|lib|services|campaign|chat|crm|dealroom|documents|emailStudio|import|investment|jobs|property|surfaces)\//],
     suites: ['mobile:routes', 'mobile:shell', 'mobile:tasks'],
   },
   // Edge functions whose consumers reach them only over HTTP and that no
@@ -175,7 +184,7 @@ export const COMPONENTS = {
   EDGE: { paths: [/^supabase\/functions\/[^_/][^/]*\//] },
   // No runtime effect: validated by static + unit.
   TOOLING: {
-    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
+    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/verify-scale\//, /^scripts\/portals\/live-check\.mjs$/, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
   },
   // Unit-run tests, and browser files no CI gate runs (manual suites:
   // test:surfaces, test:pwa, heroMobile) — changing them cannot change what
@@ -227,10 +236,12 @@ export const DB_OBJECT_OWNERS = [
   // service_role only; proven by tests/sql/perf/run-db-bench.sh, not by any suite.
   [/^public\.purge_cron_history$/, 'TOOLING'],
   [/^public\.(storage_)/, 'STORAGE'],
+  [/^public\.(retention_|knowledge_|market_observations$|contract_insight_counts$)/, 'STORAGE'],
   [/^public\.(meta_)/, 'META_ADS'],
   [/^public\.(site_|app_content|studio_)/, 'SITE_STUDIO'],
   [/^public\.(dt_|developer_|dev_)/, 'DEVELOPER'],
   [/^public\.(push_|notification)/, 'PWA_PUSH'],
+  [/^public\.(publishing_)/, 'PUBLISHING'],
   [/^public\.(broker)/, 'BROKER'],
   [/^public\.(mortgage)/, 'MORTGAGE'],
   [/^public\.(expat)/, 'EXPATS'],
@@ -238,8 +249,20 @@ export const DB_OBJECT_OWNERS = [
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
+  // Find Property Knowledge Engine exact cache (service role only).
+  [/^public\.property_knowledge_/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],
+  // HOMATCH Internal Matches: the admin/tester DEMO buyer (demo_* tables and RPCs) and the per-person key.
+  // The owner Demo Mode in HOMATCH Leads (owner_demo_lead_* RPCs) lives on the same demo tables.
+  [/^public\.(demo_|internal_match_demo_|my_native_match_counterparts$|owner_demo_lead_)/, 'DISCOVERY'],
+  // HOMATCH Leads: the internal marketplace (feed, unlock entitlements, segment rules,
+  // saved/seen, the property matching queue) and its admin views.
+  [/^public\.(internal_lead|lead_contact_prefs_of$|lead_contact_preferences|my_lead_contact_preferences$|set_my_lead_contact_preferences$|native_match_|admin_internal_lead|open_native_conversation$)/, 'DISCOVERY'],
+  // The seller's CRM for unlocked leads.
+  [/^public\.(lead_crm_|crm_)/, 'PRODUCT'],
+  // Property conversations (media, translation cache, seen/mute/block RPCs) and Email Studio.
+  [/^public\.(message_translations$|messages_reply_same_conversation$|mark_conversation_seen$|set_conversation_muted$|block_conversation_counterpart$|unblock_conversation_counterpart$|my_conversation_context$|my_message_translations$|conversation_for_participant$|dm_media_object_allowed$|email_studio_)/, 'PRODUCT'],
 ];
 
 /* Translation keys by prefix: a translation change reaches the component
@@ -252,11 +275,17 @@ export const I18N_KEY_OWNERS = [
   [/^(dev|co)_/, 'DEVELOPER'],
   [/^mortgage_/, 'MORTGAGE'],
   [/^expat_/, 'EXPATS'],
+  [/^(pubw|publishing)_/, 'PUBLISHING'],
   [/^broker_/, 'BROKER'],
   [/^(verify|dr)_/, 'VERIFY'],
   [/^(pwa|notif)_/, 'PWA_PUSH'],
   [/^auth_/, 'AUTH_SECURITY'],
   [/^admin_/, 'ADMIN'],
+  // Find Property workspace (history, results, property page; property-scoped AI chat errors).
+  [/^fpw_/, 'DISCOVERY'],
   [/^fbx_/, 'DISCOVERY'],
   [/^fbl_/, 'DISCOVERY'],
+  [/^im_/, 'DISCOVERY'],
+  [/^(hl|rb)_/, 'DISCOVERY'],
+  [/^(crm|pc|es)_/, 'PRODUCT'],
 ];

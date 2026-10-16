@@ -35,13 +35,19 @@ import React, { Suspense, lazy } from 'react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { elapsedMs, formatElapsed, phaseFor } from '@/verify/progress';
-import { messagesFor, PHASE_TAG, extractLiveFacts } from '@/verify/researchNarrative';
+import { messagesFor, extractLiveFacts } from '@/verify/researchNarrative';
 import { networkState, type LiveCounters, type NetworkSection } from '@/verify/researchNetwork';
 import { ResearchNetwork } from '@/components/verify/ResearchNetwork';
 
 // The shared Snake (also offered beside Design Studio renders). Loaded only
 // when someone actually chooses to play.
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+import SnakeLaunchCard from '@/components/games/SnakeLaunchCard';
+
+/** The player's record, kept by the game itself (same key). */
+function snakeBest(): number {
+  try { return Number(window.localStorage.getItem('hm-snake-best')) || 0; } catch { return 0; }
+}
 
 export interface ResearchStreamProps {
   status?: string | null;
@@ -51,6 +57,9 @@ export interface ResearchStreamProps {
   completedAt?: string | null;
   /** research_jobs.updated_at — where a stopped run's clock stops. */
   updatedAt?: string | null;
+  /** research_jobs.synthesis_state / synthesis_at — the clock runs until the report is READY. */
+  synthesisState?: string | null;
+  synthesisAt?: string | null;
   /** True only when a valid report has been persisted. */
   reportReady?: boolean;
   /** The customer-sanitised research result, for the real-fact reveal. */
@@ -76,6 +85,8 @@ export function ResearchStream({
   createdAt,
   completedAt,
   updatedAt,
+  synthesisState,
+  synthesisAt,
   reportReady = false,
   result,
   subject,
@@ -100,6 +111,18 @@ export function ResearchStream({
   const playingChange = React.useRef(onPlayingChange);
   playingChange.current = onPlayingChange;
   React.useEffect(() => () => playingChange.current?.(false), []);
+  // The report is ready: it must never stay hidden behind the full-screen
+  // game (owner, 2026-10-09 — "the full picture opened only after I closed
+  // the notification"). Close the game and bring the report into view.
+  const viewReport = React.useRef(onViewReport);
+  viewReport.current = onViewReport;
+  const playingNow = React.useRef(playing);
+  playingNow.current = playing;
+  React.useEffect(() => {
+    if (!reportReady || !playingNow.current) return;
+    setPlaying(false);
+    viewReport.current?.();
+  }, [reportReady]);
 
   /*
    * One dependency-free interval drives the clock. The value it renders is
@@ -118,7 +141,7 @@ export function ResearchStream({
     return () => clearInterval(id);
   }, []);
 
-  const input = { status, stage, createdAt, completedAt, updatedAt, reportReady };
+  const input = { status, stage, createdAt, completedAt, updatedAt, reportReady, synthesisState, synthesisAt };
   const elapsed = formatElapsed(elapsedMs(input));
   // Synthesis is a real phase of the pipeline, so say so rather than leaving
   // the stream describing research that has already finished.
@@ -218,10 +241,9 @@ export function ResearchStream({
           >
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(38_92%_54%)]" aria-hidden="true" />
             <span className="min-w-0">
+              {/* Plain customer language only: the decorative "PROPERTY_IDENTITY ::
+                  RESOLVING" tag read like a system code and is no longer shown. */}
               <span className="block text-sm break-words">{t(k)}</span>
-              <span aria-hidden="true" className="block text-2xs font-semibold uppercase tracking-wider text-[hsl(var(--gold-ink))]/80 break-words">
-                {PHASE_TAG[phase]}
-              </span>
             </span>
           </li>
         ))}
@@ -249,18 +271,12 @@ export function ResearchStream({
       <p className="text-xs leading-relaxed text-muted-foreground break-words">{t('verify_stream_note')}</p>
 
       {!stopped && !reportReady && (
-        <div className="flex">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setPlaying(true)}
-            className="h-auto min-h-11 whitespace-normal px-4 py-2 text-start leading-snug"
-            data-testid="verify-play-snake"
-          >
-            {t('verify_net_play_snake')}
-          </Button>
-        </div>
+        <SnakeLaunchCard
+          label={t('verify_net_play_snake')}
+          bestLabel={snakeBest() > 0 ? t('dsx_sn_best', { n: String(snakeBest()) }) : null}
+          onOpen={() => setPlaying(true)}
+          testId="verify-play-snake"
+        />
       )}
 
       {/* Rendered at the document root: a fixed overlay inside this spaced
@@ -295,9 +311,14 @@ export function ResearchStream({
         * screen and should not be the loudest element on it.
         */}
       {onStop && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background/60 p-3 sm:p-4">
-          <p className="min-w-0 basis-full text-xs leading-relaxed text-muted-foreground sm:flex-1 sm:basis-auto">
-            {t('verify_controls_hint')}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive/[0.04] p-3 sm:p-4">
+          {/* Owner live run 2026-10-11: "research continues in the background"
+              sat beside this button and read as what stopping does. It is the
+              opposite: stopping ends the research at once, spent credits are
+              not refunded and the report is incomplete. That is said here;
+              leaving the PAGE (which does continue) is said in the note above. */}
+          <p className="min-w-0 basis-full text-xs leading-relaxed text-foreground/80 sm:flex-1 sm:basis-auto">
+            {t('verify_stop_warning')}
           </p>
           <Button
             variant="outline"

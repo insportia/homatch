@@ -27,7 +27,10 @@ import {
   canTransition, validateWorkerReport, type WorkerRunStatus,
 } from '../../../src/research-core/marketplace/worker-contract.ts';
 import { DEFAULT_LEASE_SECONDS, leaseUntil, retryDecision } from '../../../src/research-core/marketplace/dispatch.ts';
-import { loadMarketplaceSwitches, processAndStore, reapRuns } from '../_shared/marketplaceSearch.ts';
+import { loadMarketplaceSwitches, processAndStore, reapRuns, shareRecentResults, workerSwitchOn } from '../_shared/marketplaceSearch.ts';
+import {
+  decideProviderAccess, readProviderAccess, recordRecovery, recordRestriction, type ProviderAccess,
+} from '../../../src/research-core/marketplace/provider-access.ts';
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -63,7 +66,7 @@ Deno.serve(async (req: Request) => {
   const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(workerId) || token.length < 32) return json({ error: 'Unauthorized' }, 401);
   const { data: worker } = await db.from('discovery_marketplace_workers')
-    .select('worker_id,source_key,state,enabled,token_hash,max_attempts').eq('worker_id', workerId).maybeSingle();
+    .select('worker_id,source_key,state,enabled,token_hash,max_attempts,health').eq('worker_id', workerId).maybeSingle();
   const presented = await sha256Hex(token);
   if (!worker?.token_hash || !sameHex(presented, worker.token_hash)) return json({ error: 'Unauthorized' }, 401);
   if (worker.state !== 'ACTIVE' || !worker.enabled) return json({ error: 'WORKER_NOT_ACTIVE' }, 403);
@@ -75,12 +78,48 @@ Deno.serve(async (req: Request) => {
   const action = String(body.action ?? '');
 
   try {
+    /* MyHome access state: a bounded cooldown after a real refusal, then one
+       probe, never a permanent shutdown and never a manual clearance. Writes
+       are compare-and-set on access.version so two runs cannot both take the
+       single post-cooldown probe. `accessRestricted` stays in every answer for
+       workers deployed before this contract. */
+    if (workerId === 'myhome-agent' && ['source-health', 'restrict-access', 'access-ok'].includes(action)) {
+      const now = new Date();
+      const current = readProviderAccess(worker.health);
+      const { accessRestricted: _legacyFlag, accessClearedAt: _legacyClear, ...health } = (worker.health ?? {}) as Record<string, unknown>;
+      const write = async (next: ProviderAccess) => {
+        let q = db.from('discovery_marketplace_workers').update({
+          health: { ...health, status: next.state === 'AVAILABLE' ? 'HEALTHY' : 'DEGRADED', checkedAt: now.toISOString(), access: next },
+        }).eq('worker_id', workerId);
+        q = (worker.health as Record<string, unknown> | null)?.access
+          ? q.eq('health->access->>version', String(current.version)) : q.is('health->access', null);
+        const { data, error } = await q.select('worker_id');
+        if (error) throw error;
+        return (data ?? []).length > 0;
+      };
+      if (action === 'restrict-access') {
+        const next = recordRestriction(current, now, String(body.evidence ?? 'HTTP 401/403 or challenge'));
+        // A concurrent writer already moved the state; one refusal is enough either way.
+        await write(next);
+        return json({ accessRestricted: true, mode: 'CACHE_ONLY', retryAt: next.cooldownUntil });
+      }
+      if (action === 'access-ok') {
+        const next = recordRecovery(current, now);
+        if (next !== current) await write(next);
+        return json({ accessRestricted: false, mode: 'LIVE', retryAt: null });
+      }
+      const decision = decideProviderAccess(current, now, body.purpose !== 'startup');
+      if (decision.next && !(await write(decision.next))) {
+        return json({ accessRestricted: true, mode: 'CACHE_ONLY', retryAt: null });
+      }
+      return json({ accessRestricted: decision.mode === 'CACHE_ONLY', mode: decision.mode, retryAt: decision.retryAt });
+    }
     const leaseSeconds = Math.max(15, Math.min(900, Math.trunc(Number(body.leaseSeconds)) || DEFAULT_LEASE_SECONDS));
     const maxAttempts = Number(worker.max_attempts) || 3;
 
     if (action === 'claim') {
       const switches = await loadMarketplaceSwitches(db);
-      if (!switches.enabled || (workerId === 'myhome-agent' ? !switches.myhomeEnabled : workerId === 'ssge-agent' ? !switches.ssgeEnabled : switches.providersKilled)) return json({ runs: [] });
+      if (!switches.enabled || !workerSwitchOn(switches, workerId)) return json({ runs: [] });
       /* Free this worker's lapsed leases first (retry or close each run on its own), then claim
          within the per-provider and global bounds the SQL enforces atomically. */
       const { data: stale } = await db.from('discovery_marketplace_worker_runs')
@@ -88,12 +127,15 @@ Deno.serve(async (req: Request) => {
         .eq('worker_id', workerId).in('status', ['SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'])
         .lte('lease_expires_at', new Date().toISOString()).limit(200);
       await reapRuns(db, (stale ?? []) as Array<Record<string, unknown>>, () => maxAttempts);
+      /* Identical searches are answered from a run that just finished, not refetched. */
+      await shareRecentResults(db, workerId).catch((e) => console.error(JSON.stringify({ event: 'share_failed', workerId, message: String(e?.message ?? e).slice(0, 200) })));
       const { data, error } = await db.rpc('claim_marketplace_worker_runs', {
         p_worker_id: workerId, p_limit: Number(body.limit) || 5, p_lease_seconds: leaseSeconds,
       });
       if (error) throw new Error(error.message);
       return json({ runs: (data ?? []).map((r: Record<string, unknown>) => ({
         runId: r.id, deadlineAt: r.deadline_at, leaseExpiresAt: r.lease_expires_at, attempt: r.attempts, request: r.request,
+        queryApplied: r.query_applied, returnedCount: r.returned_count,
       })) });
     }
 
@@ -129,11 +171,17 @@ Deno.serve(async (req: Request) => {
         const { error } = await db.from('discovery_marketplace_listings').upsert(rows, { onConflict: 'search_id,source_key,source_listing_id' });
         if (error) throw new Error(error.message);
       }
-      const returned = (Number(run.returned_count) || 0) + report.listings.length;
+      // Replayed batches upsert the same identities; do not inflate run totals.
+      const { count: persisted, error: countError } = await db.from('discovery_marketplace_listings')
+        .select('id', { count: 'exact', head: true }).eq('search_id', run.search_id).eq('worker_run_id', run.id)
+        // Pool (CACHED) rows share the run id but are not this run's fresh results.
+        .or('raw->retrievalMetadata->>observationLevel.is.null,raw->retrievalMetadata->>observationLevel.neq.CACHED');
+      if (countError || persisted === null) throw countError ?? new Error('Missing persisted listing count');
+      const returned = persisted;
       /* A transient failure with budget left goes back to the queue; it never fails the search. */
       const requeue = report.status === 'FAILED'
         && retryDecision({ attempts: Number(run.attempts) || 0, deadlineAt: run.deadline_at, returnedCount: returned }, report.retryable, nowDate, maxAttempts) === 'REQUEUE';
-      await db.from('discovery_marketplace_worker_runs').update({
+      const { data: updated, error: runError } = await db.from('discovery_marketplace_worker_runs').update({
         status: requeue ? 'QUEUED' : report.status,
         discovered_count: Math.max(Number(run.discovered_count) || 0, report.discoveredCount),
         returned_count: returned,
@@ -146,7 +194,8 @@ Deno.serve(async (req: Request) => {
         last_heartbeat_at: now,
         completed_at: report.final && !requeue ? now : null,
         updated_at: now,
-      }).eq('id', run.id).eq('status', run.status);
+      }).eq('id', run.id).eq('status', run.status).select('id').maybeSingle();
+      if (runError || !updated) throw runError ?? new Error('Run changed before acknowledgement');
       /* Results from this worker are processed now, whatever the others are doing. */
       const outcome = await processAndStore(db, run.search_id);
       return json({ accepted: report.listings.length, rejected: report.rejected, requeued: requeue, searchStatus: outcome?.status ?? null });

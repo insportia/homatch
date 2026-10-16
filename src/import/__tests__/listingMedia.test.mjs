@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractListingMedia, orderedGallery, mergeGallery, photoIdentity, isListingPhotoUrl, IMPORTED_GALLERY_MAX } from '../listingMedia.ts';
+import { extractListingMedia, orderedGallery, mergeGallery, refreshedCover, photoIdentity, isListingPhotoUrl, IMPORTED_GALLERY_MAX } from '../listingMedia.ts';
 
 const CDN = 'https://static-statements.tnet.ge/uploads/202608/20260819/statements';
 const OTHER = 'https://static-statements.tnet.ge/uploads/202607/20260702/statements';
@@ -99,4 +99,27 @@ test('V. refresh of an existing property merges: held photos keep their place, o
 
 test('nothing found → NONE, not a guess', () => {
   assert.deepEqual(extractListingMedia('<html><body>no photos</body></html>', { listingId: '5' }), { images: [], candidates: 0, rejected: 0, method: 'NONE' });
+});
+
+test('VILLION 2026-10-12: the source moved its image host — refresh takes the new address and the cover follows', () => {
+  const OLD = 'https://static-statements.tnet.ge/uploads/202608/20260819/statements';
+  const NEW = 'https://static-api-statements.tnet.ge/uploads/202608/20260819/statements';
+  const existing = [`${OLD}/XXB2rD26a8603155deb3.webp`];
+  const fresh = ['A6tt48L6a860410c92c5', 'ADghUcL6a8604466099e', 'XXB2rD26a8603155deb3', 'DIwtogD6a86031560dab'].map((f) => `${NEW}/${f}.webp`);
+  const merged = mergeGallery(existing, fresh);
+  assert.equal(merged[0], `${NEW}/XXB2rD26a8603155deb3.webp`, 'same photo, same place, the address the source serves now');
+  assert.equal(merged.length, 4, 'no duplicate of the moved photo');
+  assert.ok(merged.every((u) => u.startsWith(NEW)), 'nothing left on the dead host');
+  assert.equal(refreshedCover(existing[0], merged, fresh[0]), `${NEW}/XXB2rD26a8603155deb3.webp`, 'the owner\'s cover photo is kept, at its new address');
+});
+
+test('refreshed cover: never empty, never overrides an owner upload', () => {
+  const NEW = 'https://static-api-statements.tnet.ge/uploads/x';
+  const merged = [`${NEW}/a.webp`, `${NEW}/b.webp`];
+  assert.equal(refreshedCover(null, merged, `${NEW}/b.webp`), `${NEW}/b.webp`, 'no cover → the source cover');
+  assert.equal(refreshedCover(null, merged, null), `${NEW}/a.webp`, 'no source cover → the first photo');
+  assert.equal(refreshedCover('https://old.example/gone.webp', merged, `${NEW}/b.webp`), `${NEW}/b.webp`, 'a cover the source no longer has is replaced');
+  assert.equal(refreshedCover(`${NEW}/a.webp`, merged, `${NEW}/b.webp`), `${NEW}/a.webp`, 'a still-valid imported cover is kept');
+  assert.equal(refreshedCover('users/u1/property-photos/p1/me.jpg', merged, `${NEW}/b.webp`), 'users/u1/property-photos/p1/me.jpg', 'an owner-managed cover is never replaced');
+  assert.equal(mergeGallery(['users/u1/property-photos/p1/a.webp'], [`${NEW}/a.webp`])[0], 'users/u1/property-photos/p1/a.webp', 'owner uploads are never rewritten');
 });

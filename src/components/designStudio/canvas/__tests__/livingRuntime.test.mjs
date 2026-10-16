@@ -7,9 +7,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildProcedural, slotColors } from '../procedural.ts';
-import { LivingRuntime } from '../livingRuntime.ts';
+import { LivingRuntime, machineNear } from '../livingRuntime.ts';
 import { validateInteractions } from '../../../../lib/designStudio/interactions.ts';
 import { seedAssets } from '../../../../lib/designStudio/__tests__/seedCatalog.mjs';
+import { prodAssets } from '../../../../lib/designStudio/__tests__/fixtures/devCatalogue.mjs';
 
 const ASSETS = new Map(seedAssets().map((a) => [a.code, a]));
 
@@ -201,4 +202,29 @@ test('the pool lights the sources nearest the visitor', () => {
   rt.setFocus(new THREE.Vector3(1, 1.6, 0));
   rt.step(20);
   assert.equal(rt.poolState()[0].position[0], 0, 'walked over to a: the light follows');
+});
+
+test('a kitchen run and a vanity: looking at the tap\'s spout means the tap (it is not itself a machine part)', () => {
+  const prod = prodAssets();
+  for (const code of ['dev/kitchen-run', 'dev/vanity']) {
+    const a = prod.get(code);
+    assert.ok(a, `${code} in the production catalogue`);
+    const g = buildProcedural(a.procedural.kind, a, slotColors(a, null, null), code === 'dev/kitchen-run' ? 'SHAKER' : null);
+    const rt = new LivingRuntime({ reducedMotion: true, maxLights: 0, onDoor: () => {}, onChange: () => {} });
+    rt.register('obj:x', g, validateInteractions(g.userData.interactions), a.capabilities, { objectId: 'x' });
+    g.updateMatrixWorld(true);
+    const own = rt.entriesOf('x');
+    const tap = own.find((e) => e.machine.role === 'FAUCET');
+    assert.ok(tap, `${code} has a tap`);
+    // The spout: meshes added beside the tap's machine, within a hand of its water.
+    const water = [...tap.parts.values()][0].node.getWorldPosition(new THREE.Vector3());
+    const spout = [];
+    g.traverse((o) => {
+      if (!o.isMesh || rt.entryForPart(o)) return;
+      const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+      if (c.y > water.y - 0.05 && c.distanceTo(water) < 0.3) spout.push(c);
+    });
+    assert.ok(spout.length > 0, `${code} spout found`);
+    for (const c of spout) assert.equal(machineNear(own, c, 0.45)?.machine.role, 'FAUCET', `${code} spout at ${c.toArray()}`);
+  }
 });

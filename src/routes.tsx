@@ -30,11 +30,22 @@ const TermsPage = lazyRoute(() => import('./pages/TermsPage'));
 const DashboardPage = lazyRoute(() => import('./pages/DashboardPage'));
 const ActivityPage = lazyRoute(() => import('./pages/ActivityPage'));
 const NotificationsPage = lazyRoute(() => import('./pages/NotificationsPage'));
+const PublishingWorkspacePage = lazyRoute(() => import('./pages/publishing/PublishingWorkspacePage'));
+const PublishingNewPage = lazyRoute(() => import('./pages/publishing/PublishingNewPage'));
+const PublishingListingPage = lazyRoute(() => import('./pages/publishing/PublishingListingPage'));
 const AddPropertyPage = lazyRoute(() => import('./pages/property/AddPropertyPage'));
 const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
 const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
 const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
+const FindBuyersHomePage = lazyRoute(() => import('./pages/property/FindBuyersHomePage'));
+const InternalResultsPage = lazyRoute(() => import('./pages/property/InternalResultsPage'));
+const PostOpportunityPage = lazyRoute(() => import('./pages/property/PostOpportunityPage'));
+const HomatchLeadsPage = lazyRoute(() => import('./pages/property/HomatchLeadsPage'));
+const BuyerProfilePage = lazyRoute(() => import('./pages/property/BuyerProfilePage'));
+const LeadsCrmPage = lazyRoute(() => import('./pages/LeadsCrmPage'));
+const EmailStudioPage = lazyRoute(() => import('./pages/EmailStudioPage'));
+const DemoConversationPage = lazyRoute(() => import('./pages/property/DemoConversationPage'));
 const CreditsPage = lazyRoute(() => import('./pages/CreditsPage'));
 const ChatPage = lazyRoute(() => import('./pages/ChatPage'));
 const LiveChatPage = lazyRoute(() => import('./pages/LiveChatPage'));
@@ -190,6 +201,8 @@ const AdminLiveChatReportsPage = lazyRoute(() => import('./pages/admin/AdminLive
 const AdminHomePage = lazyRoute(() => import('./pages/admin/AdminHomePage'));
 const AdminIntelligencePage = lazyRoute(() => import('./pages/admin/AdminIntelligencePage'));
 const AdminSupplyMatchesPage = lazyRoute(() => import('./pages/admin/AdminSupplyMatchesPage'));
+const AdminBuyerIntelligencePage = lazyRoute(() => import('./pages/admin/AdminBuyerIntelligencePage'));
+const AdminMarketSegmentationPage = lazyRoute(() => import('./pages/admin/AdminMarketSegmentationPage'));
 const AdminNotificationsPage = lazyRoute(() => import('./pages/admin/AdminNotificationsPage'));
 const AdminAnnouncementsPage = lazyRoute(() => import('./pages/admin/AdminAnnouncementsPage'));
 const AdminAuditLogPage = lazyRoute(() => import('./pages/admin/AdminAuditLogPage'));
@@ -450,12 +463,33 @@ export const routes: RouteConfig[] = [
    * swallowed by the parameter.
    */
   { name: 'My Properties',     path: '/property',                 element: <MyPropertiesPage /> },
+  /*
+   * PUBLISH TO PORTALS lives at /publishing, its own product area in the sidebar.
+   * /property/publish was the first (iframe) version and is kept only as a redirect
+   * so old links and bookmarks land in the new workspace.
+   */
+  { name: 'Publishing (legacy path)', path: '/property/publish', element: <Navigate to="/publishing" replace />, visible: false },
   { name: 'Add Property',      path: '/property/add',             element: <AddPropertyPage /> },
   { name: 'Import Property',   path: '/property/import',          element: <URLImportPage /> },
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },
   { name: 'Edit Property',     path: '/property/:id/edit',        element: <EditPropertyPage /> },
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
-  { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
+  /* Find Buyers 3.0: a compact dashboard, then one page per result kind. */
+  { name: 'Property Matches',  path: '/property/:id/matches',     element: <FindBuyersHomePage /> },
+  { name: 'External results',  path: '/property/:id/buyers/external', element: <MatchesPage /> },
+  { name: 'Internal results',  path: '/property/:id/buyers/internal', element: <InternalResultsPage /> },
+  { name: 'Post opportunity',  path: '/property/:id/buyers/opportunity/:key', element: <PostOpportunityPage /> },
+  { name: 'HOMATCH Leads',     path: '/property/:id/leads',       element: <HomatchLeadsPage /> },
+  { name: 'Buyer profile',     path: '/property/:id/buyer/:key',  element: <BuyerProfilePage /> },
+  { name: 'Leads CRM',         path: '/leads',                    element: <LeadsCrmPage /> },
+  { name: 'Publish to Portals', path: '/publishing',               element: <PublishingWorkspacePage /> },
+  { name: 'Publishing — choose', path: '/publishing/new',          element: <PublishingNewPage /> },
+  { name: 'Publishing — listing', path: '/publishing/:propertyId', element: <PublishingListingPage /> },
+  { name: 'Email Studio',      path: '/email-studio',             element: <EmailStudioPage /> },
+  { name: 'Email Campaign',    path: '/email-studio/:campaignId', element: <EmailStudioPage />, visible: false },
+  /* The internal-match DEMO buyer's simulated conversation. Only an administrator or a
+     listed tester can open one: every RPC behind it refuses anybody else. */
+  { name: 'Demo Conversation', path: '/property/:id/matches/demo/:conversationId', element: <DemoConversationPage />, visible: false },
   // Outreach
   { name: 'Communications',    path: '/outreach',                 element: <CommunicationsOverviewPage /> },
   { name: 'Outreach Hub',      path: '/outreach/hub',             element: <OutreachHubPage />,  visible: false },
@@ -587,6 +621,11 @@ export const routes: RouteConfig[] = [
      SQL function that checks is_admin() itself; adminOnly and AdminLayout
      are the screen's manners, not its authorisation. */
   { name: 'Admin Supply Matches', path: '/admin/supply-matches',   element: adminWrap(<AdminSupplyMatchesPage />), adminOnly: true },
+  /* Buyer intelligence: one derived summary per HOMATCH person from what they
+     explicitly asked for; market segmentation: PREMIUM/MIDDLE/ECONOMY against
+     the local asking-price distribution, with preview-before-apply rules. */
+  { name: 'Admin Buyer Intelligence', path: '/admin/buyer-intelligence', element: adminWrap(<AdminBuyerIntelligencePage />), adminOnly: true },
+  { name: 'Admin Market Segmentation', path: '/admin/market-segmentation', element: adminWrap(<AdminMarketSegmentationPage />), adminOnly: true },
   { name: 'Admin Intelligence', path: '/admin/intelligence',       element: adminWrap(<AdminIntelligencePage />), adminOnly: true },
   { name: 'Admin Notifications', path: '/admin/notifications',     element: adminWrap(<AdminNotificationsPage />), adminOnly: true },
   { name: 'Admin Announcements', path: '/admin/announcements',     element: adminWrap(<AdminAnnouncementsPage />), adminOnly: true },
@@ -629,3 +668,4 @@ export const routes: RouteConfig[] = [
      write-only for visitors and readable only under is_admin(). */
   { name: 'Admin Engagement',  path: '/admin/engagement',         element: adminWrap(<AdminEngagementPage />),  adminOnly: true },
 ];
+

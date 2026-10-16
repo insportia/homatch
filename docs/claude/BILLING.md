@@ -32,6 +32,47 @@ warns when a diff enters this domain.
 - **Find Buyers minimum** is `find_buyers_min_usd` ($10) converted through
   `credits_per_usd` (100 credits at 10/$). It is not a second credit rate.
 
+- **Verify credit budget** (migration `20261026100000`, OFF until
+  `admin_settings.verify_billing_enabled` = true). A Verify reserves its
+  authorised budget (`billable_products.VERIFY.config.verify_budget.max_budget_credits`,
+  25) through `wallet_reserve`, prices its METERED cost live, and settles the
+  cumulative price minus what earlier sessions of the same job charged
+  (stop/resume never charges twice; the total never exceeds the recorded
+  authorisations). Price: net = max((landed + contingency_bps) / (1 − target_margin_bps),
+  landed + min_net_profit_usd $1.00 — COMPLETED reports only); gross = net ×
+  (1 + vat_rate_bps), credits rounded up, capped — a floor, never a fee on top
+  of the margin; stopped/partial sessions are margin-only, system failures
+  release everything. If the cap prevents the floor, the shortfall is recorded
+  (`profit_floor_shortfall`, needs_review), never charged — Verify's own policy, NOT
+  `billing_price_quote()` and NOT a plan's `profit_share_to_customer_bps`.
+  System failure → release all; customer stop → charge incurred. Missing rate
+  → policy `fallback_usd` (FALLBACK) or UNPRICED + `verify_billing.needs_review`.
+  Customer UI shows credits used / available / returned only.
+  **Incremental authorisation (owner rule 2026-10-10):** 25 credits to start,
+  +25 only per explicit customer approval, at most 4 authorisations / 100
+  credits per job, cumulative across every stop and continuation, never
+  reset. Each authorisation is one row in `verify_billing_authorizations`
+  (own id, unique key `verify:<job>:auth<seq>`, unique (job, seq)); an
+  extension names the authorisation count the customer saw
+  (`p_expected_authorizations`), so a double click or stale tab adds nothing.
+  Before each chargeable stage research-agent calls `verify_budget_gate`:
+  the job's cumulative price after the stage at its p95 estimate (policy
+  `stage_estimates_usd`; SYNTHESIS also covers REPORT and is priced as the
+  completed report, floor included) must fit the authorisation. No
+  percentage threshold interrupts a run. GO runs; AWAIT holds the job PAUSED
+  (`_pause.reason = BUDGET`) and closes the session (incurred charged, rest
+  released — nothing held while waiting); LIMIT (100 reached) holds with
+  `BUDGET_LIMIT` and is never extended. Usage above the authorisation is
+  absorbed (wallet_settle caps the charge), recorded as `overrun_credits`
+  and flagged `needs_review` for finance.
+  VAT once (owner rule 2026-10-10): Verify's cost is `verify_cost_cents` —
+  actual provider cost + real fees (`billing_cogs_fee_bps`) + non-recoverable
+  input tax only when a provider genuinely charges it (policy
+  `nonrecoverable_input_tax_bps`, 0). The global `billing_cogs_tax_bps` 18 %
+  uplift is NOT used by Verify (other products unchanged). Output VAT 18 % is
+  applied once, on the customer price; top-ups carry no VAT (payments
+  vat_rate_bps 0).
+
 ## Where it lives
 
 - Edge: `supabase/functions/{billing,credits-topup,payment-webhook,

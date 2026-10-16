@@ -51,7 +51,7 @@ import { uuidFrom } from '../_shared/designStudio/renderKeys.ts';
 import { normalizePreferences, type PlanAssetContext, type PlanContext, type PlanMaterialContext } from '../_shared/designStudio/aiPlan.ts';
 import { offerFor } from '../_shared/designStudio/designIntent.ts';
 import {
-  imageAspect, REFERENCE_QA_SYSTEM, referenceSceneRequest, sceneRequest, validateScenePlan, type ReferenceInput, type SceneInput, type ValidatedScenePlan,
+  imageAspect, matchItem, REFERENCE_QA_SYSTEM, referenceSceneRequest, sceneRequest, validateScenePlan, type ReferenceInput, type SceneInput, type ValidatedScenePlan,
 } from '../_shared/designStudio/walkthrough/scenePlan.ts';
 import { validateScene } from '../_shared/designStudio/sceneMap.ts';
 import { QA_SCHEMA, validateQaReport } from '../_shared/designStudio/hybrid/qa.ts';
@@ -60,7 +60,18 @@ import { callerOf, cancelProviderJob, factoryConfig, FACTORY_STAGES, JOB_FIELDS,
 import { failure, inBackground, isFresh, kick, readFailure } from './durable.ts';
 import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
-import { inferredSpace, mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
+import { mostlyInferred, WALK_BRIEF_VERSION, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
+import { applyDraft, draftProblems, draftRequest, PLAN_DRAFT_VERSION } from '../../../src/lib/designStudio/walkthrough/planDraft.ts';
+import { architectPlan, PLAN_ARCHITECT_VERSION } from '../../../src/lib/designStudio/walkthrough/planArchitect.ts';
+import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
+import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
+import { PHOTO_SPACE_VERSION, spaceFromReading, type PhotoSpace } from '../../../src/lib/designStudio/walkthrough/photoSpace.ts';
+import { planFidelity, type PlanFinding } from '../../../src/lib/designStudio/walkthrough/planFidelity.ts';
+import { dressBuilt, planFromFurnishing, RENDER_WALK_RADIUS_M } from '../../../src/lib/designStudio/walkthrough/renderPlan.ts';
+import { renderGate } from '../../../src/lib/designStudio/walkthrough/renderGate.ts';
+import { NEUTRAL_LIGHTING } from '../../../src/lib/designStudio/walkthrough/renderLighting.ts';
+import { imageSize } from '../_shared/designStudio/floorplanRead.ts';
+import { measureRender } from './renderFrame.ts';
 import { meterAiCall } from './metering.ts';
 import { closeWalkthroughBilling, reserveWalkthrough, WALK_PRODUCT } from './walkthroughBilling.ts';
 import { assetFromRow, materialFromRow, type CatalogAsset, type CatalogMaterial } from '../../../src/lib/designStudio/catalog.ts';
@@ -69,6 +80,10 @@ import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/
 import { buildCanonical } from '../../../src/lib/designStudio/scale.ts';
 import { compileSceneSpec } from '../../../src/lib/designStudio/hybrid/compileSpec.ts';
 import { buildWalkthrough, roomSketches } from '../../../src/lib/designStudio/walkthrough/build.ts';
+import { homeProgramme } from '../../../src/lib/designStudio/walkthrough/programme.ts';
+import { applyReview, LAYOUT_REVIEW_VERSION, readReview, reviewLayout, reviewRequest, type ReviewLayout, type ReviewOp } from '../../../src/lib/designStudio/walkthrough/layoutReview.ts';
+import { applyGraphLook, buildDesignGraph, fidelityOf, GRAPH_VERSION, graphToBuildPlan, mapSourceRooms, READY_MIN_RECALL, readRoomMatch, roomMatchRequest, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
+import { loadDesignEvidence } from './designEvidence.ts';
 import { anchorLock, feedbackOf, homeOrigin, referenceCameraPose, referenceFidelity, visualVerdict, type FidelityReport } from '../../../src/lib/designStudio/walkthrough/fidelity.ts';
 import { buildWalkModel, isFree, nearestFree } from '../../../src/lib/designStudio/navigation.ts';
 import {
@@ -85,6 +100,14 @@ const CORS = {
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** How often a background scene plan is asked for its answer, and how long it is waited for. */
+const PLAN_RESPONSE_POLL_MS = 10_000;
+// A plan takes 2–4 minutes; one not answered in 6 is not waited for again (the rule plan follows: plan() below).
+const PLAN_RESPONSE_MAX_MS = 6 * 60_000;
+/** How long the AI's review of a built layout is waited for before the tour goes on without it. */
+const REVIEW_MAX_MS = 8 * 60_000;
+/** The AI layout review (layoutReview.ts) runs on every tour with a picture unless switched off here. */
+const LAYOUT_REVIEW_ON = (Deno.env.get('DS_LAYOUT_REVIEW') ?? 'on') !== 'off';
 const MODEL = Deno.env.get('OPENAI_DS_WALK_MODEL') || Deno.env.get('OPENAI_DS_DESIGN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 /** The model that compares the factory's reference-view render with the picture. */
 const QA_MODEL = Deno.env.get('OPENAI_DS_QA_MODEL') || MODEL;
@@ -94,6 +117,8 @@ const HOURLY = 6;
 const SPACE_MODEL = Deno.env.get('OPENAI_DS_RECONSTRUCT_MODEL') || Deno.env.get('OPENAI_DS_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 /** Readings of one project's space, at most (each a paid call): a failure is retried automatically up to this. */
 const SPACE_ATTEMPTS = 3;
+/** Readings of the selected render, at most: one. It is the larger paid call, so a failure is reported, never re-bought. */
+const RENDER_SPACE_ATTEMPTS = 1;
 /** Manual retries of one walkthrough after it failed (each resumes from saved work). */
 const MANUAL_RETRIES = 3;
 /** R2 storage, per GB-month (an estimate for the internal cost line, never a charge). */
@@ -129,6 +154,10 @@ function publicOf(row: Row) {
     createdAt: row.created_at, readyAt: row.ready_at ?? null,
     // The space was reconstructed from the pictures (no measured plan): the Result says so, quietly.
     inferred: row.timings?.inferred === true,
+    // Is it, measurably, the selected design (walkthrough/designGraph.ts PROMOTION_RULES)? null: no design to compare.
+    fidelity: row.state === 'READY' && row.plan_report?.designGraph?.promotion
+      ? { promoted: row.plan_report.designGraph.promotion.promoted === true && row.plan_report?.visualQa?.state !== 'FAILED', reasons: row.plan_report.designGraph.promotion.reasons ?? [] }
+      : row.state === 'READY' && row.render_id ? { promoted: false, reasons: ['NO_DESIGN_GRAPH'] } : null,
     summary: row.state === 'READY' && row.plan_report?.build?.counts ? { pieces: (row.plan_report.build.counts.planned ?? 0) + (row.plan_report.build.counts.corrected ?? 0) + (row.plan_report.build.counts.placed ?? 0), rooms: row.plan_report.rooms ?? null } : null,
   };
 }
@@ -145,12 +174,14 @@ const isCorrection = (v: Row) => Array.isArray(v?.change_summary) && v.change_su
  * geometry with the same DNA and Design Specification job (a deterministic id: asked again, the same version; the
  * photo design itself is never touched). Null when the project has no buildable plan.
  */
-async function designOnPlan(admin: Row, version: Row, projectId: string): Promise<{ version: Row; source: Row } | null> {
+async function designOnPlan(admin: Row, version: Row, projectId: string, renderId: string | null = null): Promise<{ version: Row; source: Row } | null> {
   const { data: plans } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical, provenance, created_at').eq('project_id', projectId)
     .eq('kind', 'FLOORPLAN_SCENE').eq('status', 'READY').order('created_at', { ascending: false }).limit(5);
-  // A measured plan always wins over a space reconstructed from pictures.
+  // A measured plan always wins over a space reconstructed from pictures; among those, the one read from the
+  // selected render (it carries that render's furnishing), then the newest.
   const plan = (plans ?? []).filter((p: Row) => p.canonical?.scene?.floors?.length && Array.isArray(p.canonical?.scene?.walls))
-    .sort((a: Row, b: Row) => Number(a.provenance?.inferred === true) - Number(b.provenance?.inferred === true))[0];
+    .sort((a: Row, b: Row) => Number(a.provenance?.inferred === true) - Number(b.provenance?.inferred === true)
+      || Number(!!renderId && b.provenance?.fromRenderId === renderId) - Number(!!renderId && a.provenance?.fromRenderId === renderId))[0];
   if (!plan) return null;
   const { data: original } = await admin.from('ds_versions').select('state').eq('source_id', plan.id).eq('origin', 'ORIGINAL').limit(1).maybeSingle();
   const id = await uuidFrom(`ds-walk-photo-design:${version.id}:${plan.id}`);
@@ -175,7 +206,9 @@ async function designOnPlan(admin: Row, version: Row, projectId: string): Promis
  */
 async function reconstructSpace(admin: Row, a: { actorId: string; authorization: string; project: Row; version: Row; photoSource: Row; renderId: string | null; body: Row }):
   Promise<{ state: 'READY' } | { state: 'RUNNING' } | { state: 'FAILED'; code: string }> {
-  const key = await sha256Hex(`walk-space:v1:${a.photoSource.id}`);
+  // A reading of the selected render (its pieces are the walkthrough's furnishing) is its own reading per render.
+  // Asked again under a newer brief (WALK_BRIEF_VERSION): the pictures are read once more with it.
+  const key = await sha256Hex(a.renderId ? `walk-space:v2:${WALK_BRIEF_VERSION}:${a.photoSource.id}:${a.renderId}` : `walk-space:v1:${WALK_BRIEF_VERSION}:${a.photoSource.id}`);
   const { data: jobs } = await admin.from('ds_jobs').select('id, status, output, error, started_at, created_at').eq('user_id', a.actorId).eq('project_id', a.project.id)
     .eq('kind', 'RECONSTRUCT').eq('input->>purpose', 'WALK_SPACE').eq('input->>key', key).order('created_at', { ascending: false }).limit(10);
   const rows: Row[] = jobs ?? [];
@@ -191,12 +224,12 @@ async function reconstructSpace(admin: Row, a: { actorId: string; authorization:
   const failed = rows.filter((j) => j.status === 'FAILED');
   const terminal = failed.find((j) => readFailure(j.error)?.category === 'TERMINAL');
   if (terminal) return { state: 'FAILED', code: readFailure(terminal.error)?.code ?? 'SPACE_UNAVAILABLE' };
-  if (failed.length + (running ? 1 : 0) >= SPACE_ATTEMPTS) return { state: 'FAILED', code: readFailure(failed[0]?.error)?.code ?? 'SPACE_UNAVAILABLE' };
+  if (failed.length + (running ? 1 : 0) >= (a.renderId ? RENDER_SPACE_ATTEMPTS : SPACE_ATTEMPTS)) return { state: 'FAILED', code: readFailure(failed[0]?.error)?.code ?? 'SPACE_UNAVAILABLE' };
   if (!Deno.env.get('OPENAI_API_KEY')) return { state: 'FAILED', code: 'SPACE_UNAVAILABLE' };
 
   const { data: job } = await admin.from('ds_jobs').insert({
     user_id: a.actorId, project_id: a.project.id, kind: 'RECONSTRUCT', status: 'RUNNING', model: SPACE_MODEL, started_at: new Date().toISOString(),
-    input: { purpose: 'WALK_SPACE', key, photoSourceId: a.photoSource.id, designVersionId: a.version.id, generator: 'OPENAI_FIRST' },
+    input: { purpose: 'WALK_SPACE', key, photoSourceId: a.photoSource.id, designVersionId: a.version.id, renderId: a.renderId, generator: 'OPENAI_FIRST' },
   }).select('id').single();
   const jobId = (job as { id?: string } | null)?.id;
   if (!jobId) return { state: 'FAILED', code: 'JOB_FAILED' };
@@ -254,8 +287,10 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
   // Then the generated designs of this home: the one shown first, then the others and its rooms.
   const { data: renders } = await admin.from('ds_renders').select('id, kind, status, final_key, user_id, created_at').eq('project_id', a.project.id).eq('user_id', a.actorId)
     .eq('status', 'READY').not('final_key', 'is', null).order('created_at', { ascending: false }).limit(12);
-  const designKeys = (renders ?? []).sort((x: Row, y: Row) => Number(y.id === a.renderId) - Number(x.id === a.renderId)).map((r: Row) => String(r.final_key)).slice(0, 3);
-  const images: Array<{ url: string; source: boolean }> = [];
+  const designRows = (renders ?? []).sort((x: Row, y: Row) => Number(y.id === a.renderId) - Number(x.id === a.renderId)).slice(0, 3);
+  const designKeys = designRows.map((r: Row) => String(r.final_key));
+  const selectedKey = a.renderId ? designRows.find((r: Row) => r.id === a.renderId)?.final_key ?? null : null;
+  const images: Array<{ url: string; source: boolean; aspect: number | null; selected: boolean; bytes: Uint8Array }> = [];
   let total = 0;
   for (const [i, key] of [...sourceKeys, ...designKeys].entries()) {
     const res = await getObject(key).catch(() => null);
@@ -264,20 +299,33 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
     const type = sniffImage(bytes);
     if (!type || bytes.length > MAX_SPACE_BYTES || total + bytes.length > MAX_SPACE_TOTAL) continue;
     total += bytes.length;
-    images.push({ url: `data:${type};base64,${b64(bytes)}`, source: i < sourceKeys.length });
+    const size = imageSize(bytes.subarray(0, Math.min(bytes.length, 256 * 1024)));
+    images.push({
+      url: `data:${type};base64,${b64(bytes)}`, source: i < sourceKeys.length, aspect: size && size.height ? size.width / size.height : null,
+      selected: i >= sourceKeys.length && !!selectedKey && key === selectedKey, bytes,
+    });
   }
   // Nothing at all to read the home from: the only honest failure.
   if (!images.length) return fail('NO_PICTURES', true);
   const nSource = images.filter((x) => x.source).length;
+  // The selected render: its own camera measured from its pixels and its plan view (renderFrame.ts), so the rooms
+  // are traced from above and every piece where the render shows it. Without a measurable frame: read as before.
+  const selected = images.findIndex((x) => x.selected);
+  const measured = selected >= 0 ? (() => { try { return measureRender(images[selected].bytes); } catch { return null; } })() : null;
+  const viewIndex = measured ? images.length : null;
   const rooms = (u?.rooms ?? []).map((r: Row) => `${r.label || r.kind} (${r.kind})${r.fixed?.length ? `: ${r.fixed.slice(0, 6).join('; ')}` : ''}`).slice(0, 12);
   const content: Row[] = [{
     type: 'input_text',
-    text: `Here are ${images.length} pictures of the SAME home, numbered 0 to ${images.length - 1}. Pictures 0 to ${Math.max(0, nSource - 1)} are the customer's own source pictures${nSource < images.length ? `; pictures ${nSource} to ${images.length - 1} are generated designs of it` : ''}. Merge them into one home and rebuild it as structured data in the plan frame. Write labels in English; keep every code exactly as listed.\n\n${WALK_SPACE_BRIEF}${rooms.length ? `\n\nHOMATCH already read these rooms from the source pictures:\n- ${rooms.join('\n- ')}` : ''}`,
+    text: `Here are ${images.length} pictures of the SAME home, numbered 0 to ${images.length - 1}. Pictures 0 to ${Math.max(0, nSource - 1)} are the customer's own source pictures${nSource < images.length ? `; pictures ${nSource} to ${images.length - 1} are generated designs of it` : ''}. Merge them into one home and rebuild it as structured data in the plan frame. Write labels in English; keep every code exactly as listed.\n\n${WALK_SPACE_BRIEF}${selected >= 0 ? `\n\n${renderTraceBrief(selected, viewIndex)}` : ''}${rooms.length ? `\n\nHOMATCH already read these rooms from the source pictures:\n- ${rooms.join('\n- ')}` : ''}`,
   }];
   images.forEach((img, i) => {
-    content.push({ type: 'input_text', text: `Picture ${i} (${img.source ? 'source' : 'generated design'}):` });
+    content.push({ type: 'input_text', text: `Picture ${i} (${img.source ? 'source' : i === selected ? 'generated design — THE SELECTED DESIGN' : 'generated design'}):` });
     content.push({ type: 'input_image', image_url: img.url });
   });
+  if (measured && viewIndex != null) {
+    content.push({ type: 'input_text', text: `Plan view ${viewIndex} (${measured.viewWidth} x ${measured.viewHeight} px): picture ${selected} redrawn from directly above, from its measured camera. Trace the rooms here.` });
+    content.push({ type: 'input_image', image_url: `data:image/jpeg;base64,${b64(measured.view)}` });
+  }
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) return fail('SPACE_UNAVAILABLE');
   const started = Date.now();
@@ -300,11 +348,93 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
   if (!text) return fail('SPACE_READING_FAILED', false, paid);
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return fail('SPACE_BAD_SHAPE', false, paid); }
-  const { recon } = validateReconstruction(raw, images.length);
-  const space = inferredSpace(recon, `walk-space:${a.photoSource.id}`);
-  if ('problems' in space) return fail(`SPACE_NOT_BUILDABLE:${space.problems.slice(0, 3).join(',')}`, false, paid);
+  const { recon: read } = validateReconstruction(raw, images.length, {
+    // Each picture's shape (its traced pixels are fractions of it) and the selected render's measured frame.
+    imageAspects: images.map((img) => img.aspect),
+    frames: measured && viewIndex != null ? [{ image: selected, view: viewIndex, frame: measured.frame }] : [],
+  });
+  // The architect's draft (planDraft.ts): the reading redrawn as an orthogonal plan in its own frame, from the plan
+  // view and the selected picture. Used when it is a plan and passes the geometry check as read; else the reading
+  // stands as before (squared, or laid out again from its pieces).
+  const draftImages = [...(measured ? [`data:image/jpeg;base64,${b64(measured.view)}`] : []), ...(selected >= 0 ? [images[selected].url] : []), ...(images[0] ? [images[0].url] : [])];
+  const draftAsked = Date.now();
+  const draftPayload: Row = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(draftRequest(SPACE_MODEL, draftImages, read)), signal: AbortSignal.timeout(150_000),
+  }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const draftCost = draftPayload ? await meterAiCall(admin, { userId: a.actorId, productCode: 'DS_RECONSTRUCT', jobRef: a.jobId, model: SPACE_MODEL, startedAt: draftAsked }, draftPayload,
+    { purpose: 'WALK_SPACE_DRAFT', generator: 'OPENAI_FIRST' }) : null;
+  if (draftCost?.aiCents != null && 'cost_cents' in paid) (paid as Row).cost_cents = ((paid as Row).cost_cents ?? 0) + draftCost.aiCents;
+  let draftRaw: unknown = null;
+  try { draftRaw = draftPayload ? JSON.parse(textOf(draftPayload)) : null; } catch { draftRaw = null; }
+  let drafted = draftRaw ? applyDraft(read, draftRaw) : null;
+  // A draft sized against what its rooms are (a bathroom the size of a bedroom, a kitchen-living room too small for
+  // its kitchen and sofa) is sent back once, with exactly what is wrong — while the invocation has the time for it.
+  const firstProblems = drafted ? draftProblems(drafted.recon) : [];
+  let repair: Row = null;
+  const left = 330_000 - (Date.now() - started);
+  if (drafted && firstProblems.length && left > 60_000) {
+    const repairAsked = Date.now();
+    const repairPayload: Row = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(draftRequest(SPACE_MODEL, draftImages, read, { draft: draftRaw, problems: firstProblems })), signal: AbortSignal.timeout(Math.min(150_000, left)),
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const repairCost = repairPayload ? await meterAiCall(admin, { userId: a.actorId, productCode: 'DS_RECONSTRUCT', jobRef: a.jobId, model: SPACE_MODEL, startedAt: repairAsked }, repairPayload,
+      { purpose: 'WALK_SPACE_DRAFT_REPAIR', generator: 'OPENAI_FIRST' }) : null;
+    if (repairCost?.aiCents != null && 'cost_cents' in paid) (paid as Row).cost_cents = ((paid as Row).cost_cents ?? 0) + repairCost.aiCents;
+    let repairRaw: unknown = null;
+    try { repairRaw = repairPayload ? JSON.parse(textOf(repairPayload)) : null; } catch { repairRaw = null; }
+    const second = repairRaw ? applyDraft(read, repairRaw) : null;
+    const remaining = second ? draftProblems(second.recon) : null;
+    repair = { asked: !!repairPayload, valid: !!second, problems: remaining };
+    if (second && remaining && remaining.length < firstProblems.length) { drafted = second; repair.kept = true; }
+  }
+  // Squared, completed, built, furnished from the selected render and checked against the evidence — laid out again
+  // from its pieces when the read outlines fail that check (photoSpace.ts). Pure: rebuilt later from the kept reading.
+  const lighting = measured?.lighting ?? null;
+  const spaceOf = (recon: typeof read) => spaceFromReading(recon, {
+    sourceKey: `walk-space:${a.photoSource.id}`, expected: expectedOfUnderstanding(u),
+    furnish: selected >= 0 && a.renderId ? (rc, floors) => furnishingFromReading(rc, floors, a.renderId!, selected, lighting) : null,
+  });
+  const fromDraft = drafted ? spaceOf(drafted.recon) : null;
+  const asRead = (x: ReturnType<typeof spaceOf> | null) => !!x && !('problems' in x) && x.layout === 'READ' && x.geometryCheck.verdict === 'PASS';
+  const draftSized = !!drafted && !draftProblems(drafted.recon).length;
+  // The architect (planArchitect.ts): when the draft is not a plausible home, the plan is drawn again deterministically
+  // from the draft (or the reading) — every room sized for what it is, the rooms tiling the home where they were read.
+  let architected = draftSized && asRead(fromDraft) ? null : architectPlan(drafted?.recon ?? read);
+  let fromArchitect = architected ? spaceOf(architected.recon) : null;
+  let architectFrom = drafted ? 'DRAFT' : 'READING';
+  if (drafted && architected && !asRead(fromArchitect)) { architected = architectPlan(read); fromArchitect = architected ? spaceOf(architected.recon) : null; architectFrom = 'READING'; }
+  const useArchitect = asRead(fromArchitect);
+  const useDraft = !useArchitect && asRead(fromDraft);
+  const built = useArchitect ? fromArchitect! : useDraft ? fromDraft! : spaceOf(read);
+  const kept = useArchitect ? architected!.recon : useDraft ? drafted!.recon : read;
+  if ('problems' in built) return fail(`SPACE_NOT_BUILDABLE:${built.problems.slice(0, 3).join(',')}`, false, paid);
+  const { space, geometryCheck, furnishing } = built;
+  const made = await recordSpace(admin, { ...a, frameMeasured: !!measured }, built);
+  if (!made) return fail('SOURCE_NOT_RECORDED', false, paid);
+  await admin.from('ds_jobs').update({
+    status: 'SUCCEEDED', finished_at: new Date().toISOString(), ...paid,
+    output: {
+      kind: 'WALK_SPACE', sourceId: made, rooms: space.reachable.length + space.unreachable.length, repairs: space.repairs.length, basis: space.basis, mostlyInferred: mostlyInferred(space.basis),
+      geometry: geometryCheck.verdict,
+      // The validated reading itself (no pictures in it): the space can be rebuilt from it by better code, never bought again.
+      // When the architect's draft was used, the drafted reading is the one kept (and rebuilt from).
+      reading: kept,
+      planDraft: { version: PLAN_DRAFT_VERSION, asked: !!draftPayload, valid: !!drafted, used: useDraft, split: drafted?.split ?? [], problems: firstProblems, repair, architect: architected ? { version: PLAN_ARCHITECT_VERSION, from: architectFrom, used: useArchitect, rooms: architected.report } : null, rejected: drafted && !useDraft ? (fromDraft && 'problems' in fromDraft ? 'NOT_BUILDABLE' : `${(fromDraft as Row)?.layout}:${(fromDraft as Row)?.geometryCheck?.verdict}`) : null },
+      ...(a.renderId ? { renderId: a.renderId, frameMeasured: !!measured, pieces: furnishing ? { read: furnishing.read, traced: furnishing.traced } : null } : {}),
+    },
+  }).eq('id', a.jobId).eq('status', 'RUNNING');
+  return true;
+}
 
-  // An ESTIMATED floor-plan source of this project, marked inferred, used only by the walkthrough.
+/**
+ * The ESTIMATED floor-plan source of a photo design, marked inferred and used only by the walkthrough: what the
+ * reading became (photoSpace.ts), every repair and the geometry check recorded with it. Its id, or null.
+ */
+async function recordSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null; jobId: string; frameMeasured: boolean; rebuiltFrom?: string; readBrief?: string | null },
+  built: PhotoSpace): Promise<string | null> {
+  const { space, recon, furnishing, geometryCheck } = built;
   const { data: made, error } = await admin.from('ds_spatial_sources').insert({
     project_id: a.project.id, user_id: a.actorId, kind: 'FLOORPLAN_SCENE', status: 'READY', geometry_state: 'ESTIMATED', editability: 'GENERATED',
     canonical: space.canonical, calibration: { metresPerPx: space.canonical.metresPerPx, inferred: true },
@@ -312,14 +442,41 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
     provenance: {
       origin: 'INFERRED_FOR_WALKTHROUGH', inferred: true, verified: false, fromSourceId: a.photoSource.id, designVersionId: a.version.id, jobId: a.jobId,
       repairs: space.repairs, spawn: space.spawn, reachable: space.reachable, unreachable: space.unreachable, basis: space.basis, generator: 'OPENAI_FIRST',
+      readingRepairs: built.readingRepairs, ...(a.renderId ? { fromRenderId: a.renderId, frameMeasured: a.frameMeasured, frameFidelity: recon.fidelity ?? null } : {}),
+      ...(furnishing ? { furnishing } : {}),
+      geometryCheck, photoSpace: PHOTO_SPACE_VERSION, layout: built.layout, layoutRepairs: built.layoutRepairs,
+      // The brief the pictures were read with (a space rebuilt from a kept reading keeps its reading's brief).
+      readBrief: a.rebuiltFrom ? (a.readBrief ?? null) : WALK_BRIEF_VERSION,
+      ...(a.rebuiltFrom ? { rebuiltFrom: a.rebuiltFrom } : {}),
     },
   }).select('id').single();
-  if (error || !made?.id) return fail('SOURCE_NOT_RECORDED', false, paid);
-  await admin.from('ds_jobs').update({
-    status: 'SUCCEEDED', finished_at: new Date().toISOString(), ...paid,
-    output: { kind: 'WALK_SPACE', sourceId: made.id, rooms: space.reachable.length + space.unreachable.length, repairs: space.repairs.length, basis: space.basis, mostlyInferred: mostlyInferred(space.basis) },
-  }).eq('id', a.jobId).eq('status', 'RUNNING');
-  return true;
+  return error || !made?.id ? null : String(made.id);
+}
+
+/**
+ * A photo space built by older code that failed its geometry check, built again from its own kept reading by this
+ * code (photoSpace.ts) — no picture read again, nothing paid. Only its owner's, only once per version of this code:
+ * the new space records PHOTO_SPACE_VERSION, so it is never rebuilt by the same code twice. True when a new space
+ * was recorded (the newest space of the render is the one walked: designOnPlan).
+ */
+async function rebuildSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null }, source: Row): Promise<boolean> {
+  const prov = source?.provenance;
+  // Rebuilt: a space that failed its check, or one laid out from its pieces by older layout rules (rooms now get the
+  // widths and areas their use needs). A space read as it was and passing stays as it is.
+  const stale = prov?.geometryCheck?.verdict === 'FAIL' || prov?.layout === 'FROM_PIECES';
+  if (prov?.inferred !== true || prov.photoSpace === PHOTO_SPACE_VERSION || !stale || !UUID.test(String(prov.jobId ?? ''))) return false;
+  if (String(prov.fromSourceId) !== String(a.photoSource?.id) || (prov.fromRenderId ?? null) !== (a.renderId ?? null)) return false;
+  const { data: job } = await admin.from('ds_jobs').select('id, user_id, project_id, status, output').eq('id', prov.jobId).maybeSingle();
+  if (!job || job.status !== 'SUCCEEDED' || String(job.user_id) !== a.actorId || String(job.project_id) !== String(a.project.id) || !job.output?.reading?.rooms) return false;
+  const image = Number.isInteger(prov.furnishing?.image) ? prov.furnishing.image : -1;
+  const lighting = prov.furnishing?.lighting ?? null;
+  const built = spaceFromReading(job.output.reading, {
+    sourceKey: `walk-space:${a.photoSource.id}`, expected: expectedOfUnderstanding(a.photoSource.canonical?.understanding ?? null),
+    furnish: image >= 0 && a.renderId ? (recon, floors) => furnishingFromReading(recon, floors, a.renderId!, image, lighting) : null,
+  });
+  // Same verdict, same evidence: nothing new to walk.
+  if ('problems' in built || built.geometryCheck.verdict !== 'PASS') return false;
+  return !!await recordSpace(admin, { ...a, jobId: String(job.id), frameMeasured: prov.frameMeasured === true, rebuiltFrom: String(source.id), readBrief: prov.readBrief ?? null }, built);
 }
 
 /** The design and every geometry correction of it (newest first): one walkthrough history across them. */
@@ -417,17 +574,59 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   const { data: project } = await admin.from('ds_projects').select('id, user_id, deleting_at').eq('id', version.project_id).maybeSingle();
   if (!project || project.deleting_at || String(project.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
   let { data: source } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical, provenance').eq('id', version.source_id).maybeSingle();
+  // A photo design already carried onto its reconstructed space (its walkthrough asked again): that space, made by
+  // older code, is built again from its kept reading first (rebuildSpace), and the design walked on the new one.
+  if (source?.kind === 'FLOORPLAN_SCENE' && source.provenance?.inferred === true && version.parent_id && UUID.test(String(source.provenance?.fromSourceId ?? ''))) {
+    const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', source.provenance.fromSourceId).maybeSingle();
+    const { data: root } = await caller.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at, parent_id, name, style_tags').eq('id', version.parent_id).maybeSingle();
+    const renderId = body.renderId ?? null;
+    if (photo?.kind === 'PHOTO_SET' && root && !root.archived_at && String(root.user_id) === actorId && root.source_id === photo.id
+      && await rebuildSpace(admin, { actorId, project, version: root, photoSource: photo, renderId }, source)) {
+      const again = await designOnPlan(admin, root, project.id, renderId);
+      if (again) { ({ version, source } = again); lineage = await lineageOf(admin, version.id); }
+    }
+    // A space read with an older brief: the pictures are read once more (walls, partitions, doors, windows, sizes).
+    if (photo?.kind === 'PHOTO_SET' && root && !root.archived_at && String(root.user_id) === actorId && root.source_id === photo.id && source?.provenance?.readBrief !== WALK_BRIEF_VERSION) {
+      const reread = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version: root, photoSource: photo, renderId, body });
+      if (reread.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
+      if (reread.state === 'READY') {
+        const again = await designOnPlan(admin, root, project.id, renderId);
+        if (again) { ({ version, source } = again); lineage = await lineageOf(admin, version.id); }
+      }
+    }
+  }
   // A design made from photos: walked on the measured plan this project already has (nothing uploaded again),
   // carrying the design — its DNA and Design Specification — onto that geometry. Without one, its space is
   // reconstructed from the pictures the project already has (reconstructSpace): never a request to upload again.
   if (source?.kind === 'PHOTO_SET') {
-    let onPlan = await designOnPlan(admin, version, project.id);
+    const renderId = body.renderId ?? null;
+    let onPlan = await designOnPlan(admin, version, project.id, renderId);
+    // A space reconstructed from pictures but not from the selected render: that render is read once (its pieces
+    // furnish the walkthrough). Should that reading fail, the space already there is walked as before.
+    if (onPlan && renderId && onPlan.source.provenance?.inferred === true && onPlan.source.provenance?.fromRenderId !== renderId) {
+      const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
+      const again = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId, body });
+      if (again.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
+      if (again.state === 'READY') onPlan = await designOnPlan(admin, version, project.id, renderId) ?? onPlan;
+    }
+    // A space read with an older brief: the pictures are read once more with the current one (one paid reading).
+    if (onPlan && onPlan.source.provenance?.inferred === true && onPlan.source.provenance?.readBrief !== WALK_BRIEF_VERSION) {
+      const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
+      const again = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId, body });
+      if (again.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
+      if (again.state === 'READY') onPlan = await designOnPlan(admin, version, project.id, renderId) ?? onPlan;
+    }
+    // A space from these pictures that older code could not make walkable: built again from its kept reading (free).
+    if (onPlan && onPlan.source.provenance?.inferred === true) {
+      const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
+      if (photo && await rebuildSpace(admin, { actorId, project, version, photoSource: photo, renderId }, onPlan.source)) onPlan = await designOnPlan(admin, version, project.id, renderId) ?? onPlan;
+    }
     if (!onPlan) {
       const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
       const space = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId: body.renderId ?? null, body });
       if (space.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
       if (space.state === 'FAILED') return json({ error: 'SPACE_UNAVAILABLE', reason: space.code }, 409);
-      onPlan = await designOnPlan(admin, version, project.id);
+      onPlan = await designOnPlan(admin, version, project.id, renderId);
       if (!onPlan) return json({ walkthrough: null, reconstructing: true }, 202);
     }
     ({ version, source } = onPlan);
@@ -684,10 +883,50 @@ interface Loaded { version: Row; space: SpaceModel; source: Row }
 async function loadDesign(admin: Row, row: Row): Promise<Loaded | null> {
   const { data: version } = await admin.from('ds_versions').select('id, project_id, user_id, source_id, state, design_dna, job_id, revision, style_tags').eq('id', row.design_version_id).maybeSingle();
   if (!version) return null;
-  const { data: source } = await admin.from('ds_spatial_sources').select('id, kind, canonical').eq('id', version.source_id).maybeSingle();
+  const { data: source } = await admin.from('ds_spatial_sources').select('id, kind, floorplan_id, canonical, provenance').eq('id', version.source_id).maybeSingle();
   const scene = source?.canonical?.scene;
   if (!scene?.floors?.length || !Array.isArray(scene.walls)) return null;
   return { version, source, space: buildSpaceModel(scene) };
+}
+
+/**
+ * The geometry check of a space reconstructed from pictures: the one recorded with it, or — for a space recorded
+ * before the check existed — made now from what it holds (its floors, its reading's pieces, the photo reading of the
+ * customer's picture). Null for a measured plan (it is the drawing, not a reading of pictures).
+ */
+/**
+ * A measured plan's 3D against the plan's own reading (planFidelity.ts): openings past their wall or crossed by
+ * another wall stop the tour; enclosed flights, walls the ink barely supports and written dimensions that disagree
+ * are reported as ambiguities (never "fixed"). Null for a space read from pictures (geometryOf judges those).
+ */
+async function planFidelityOf(admin: Row, design: Loaded): Promise<PlanFinding[] | null> {
+  const src = design.source;
+  if (!src || src.kind !== 'FLOORPLAN_SCENE' || src.provenance?.inferred === true) return null;
+  const { data: plan } = src.floorplan_id
+    ? await admin.from('ds_floorplans').select('wallInk:interpretation->fusion->evidence->wallInk, checks:interpretation->understanding->constraints->checks').eq('id', src.floorplan_id).maybeSingle()
+    : { data: null };
+  return planFidelity(src.canonical.scene, {
+    wallInk: plan?.wallInk && typeof plan.wallInk === 'object' ? plan.wallInk : null,
+    dimensionChecks: Array.isArray(plan?.checks) ? plan.checks.filter((c: Row) => typeof c?.elementId === 'string' && typeof c?.residualPct === 'number' && /^R/.test(c.elementId)) : null,
+  });
+}
+
+async function geometryOf(admin: Row, design: Loaded): Promise<GeometryCheck | null> {
+  const prov = design.source?.provenance;
+  if (prov?.inferred !== true) return null;
+  if (prov.geometryCheck?.version === GEOMETRY_CHECK_VERSION) return prov.geometryCheck as GeometryCheck;
+  const { data: photo } = prov.fromSourceId
+    ? await admin.from('ds_spatial_sources').select('canonical').eq('id', prov.fromSourceId).maybeSingle()
+    : { data: null };
+  return checkGeometry({
+    rooms: roomsOfScene(design.source.canonical.scene.floors),
+    pieces: readFurnishing(prov.furnishing)?.objects ?? [],
+    expected: expectedOfUnderstanding(photo?.canonical?.understanding),
+    unreachable: Array.isArray(prov.unreachable) ? prov.unreachable : [],
+    repairs: Array.isArray(prov.repairs) ? prov.repairs : [],
+    // Its measured outline was recorded in the reading's frame, not the scene's: not compared.
+    footprint: null,
+  });
 }
 
 async function catalogue(admin: Row): Promise<{ assets: CatalogAsset[]; materials: CatalogMaterial[] }> {
@@ -708,6 +947,8 @@ interface Reference {
     sourceDesignVersionId: string | null; generationJobId: string | null; sceneMapJobId: string | null; designVersionId: string; loadedAt: string;
   };
   dataUrl: string;
+  /** The render's own bytes (its pixels are measured per region: designEvidence.ts). Never stored. */
+  bytes: Uint8Array;
   sceneMap: ReferenceInput['sceneMap'];
 }
 
@@ -742,6 +983,7 @@ async function loadReference(admin: Row, row: Row): Promise<Reference | { code: 
       sceneMapJobId: job?.id ?? null, designVersionId: row.design_version_id, loadedAt: iso(Date.now()),
     },
     dataUrl: `data:${mime};base64,${b64(bytes)}`,
+    bytes,
     sceneMap,
   };
 }
@@ -760,8 +1002,63 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const design = await loadDesign(admin, row);
   if (!design) { await fail(admin, row, 'NO_SPACE_MODEL'); return; }
   const { version, space } = design;
+  // A space reconstructed from pictures is the home only if its geometry says so: checked before a single piece is
+  // placed or a GPU second is bought. A failed check is final for this space (the same evidence gives the same
+  // verdict), and says exactly what is missing (geometryCheck.ts).
+  const geometry = await geometryOf(admin, design);
+  if (geometry && geometry.verdict === 'FAIL') {
+    await fail(admin, row, 'GEOMETRY_UNRELIABLE', {
+      timings: { ...row.timings, geometryCheck: geometry, lastFindings: [...new Set(geometry.issues.filter((x) => x.blocking).map((x) => x.code))] },
+      plan_report: { final: { geometry } },
+    });
+    return;
+  }
+  // A measured plan: the 3D may not contradict the drawing (a doorway crossed by a wall, an opening past its wall).
+  const planCheck = await planFidelityOf(admin, design);
+  if (planCheck?.some((f) => f.severity === 'BLOCK')) {
+    await fail(admin, row, 'GEOMETRY_UNRELIABLE', {
+      timings: { ...row.timings, lastFindings: [...new Set(planCheck.filter((f) => f.severity === 'BLOCK').map((f) => f.code))] },
+      plan_report: { final: { planFidelity: planCheck } },
+    });
+    return;
+  }
   const dna = version.design_dna?.version === 'ds-dna-1' ? version.design_dna : null;
   const preferences = normalizePreferences(dna?.preferences ?? null);
+  // A space read from the selected render carries that render's pieces: the walkthrough is furnished with exactly
+  // them (no scene-plan call), walked, and published only when walkable and (at least approximately) the render (planFromRender).
+  const furnishing = readFurnishing(design.source?.provenance?.furnishing);
+  // When the render's own pieces cannot make a walkable tour (they contradict one another, or crowd the doors of the
+  // rooms they were read in), the walkthrough is not failed: it is planned as every other one is, below — the
+  // selected design placed by the walkthrough's own rules in the same space. Never a dead end on the render's pieces.
+  // Declined once, never built again: the usual path collects its plan over several invocations, and building the
+  // render's pieces again in each would spend the invocation's CPU before the plan is even read.
+  // A render walk an earlier invocation started and never finished (killed by the CPU limit) counts as declined: it
+  // is never built again (it would be killed again, and every kill spends a plan attempt).
+  const declined = !!row.timings?.renderFurnishing?.declined || !!row.timings?.renderFurnishing?.tried;
+  // The last resort: the walkthrough planned by rule failed (below) after the render's own pieces were declined only
+  // for how much of the render they are. Those pieces are built once more and published as APPROXIMATE when they walk
+  // with every room what it is (renderGate.ts lastResort) — a walkable tour of the design, never "could not be made"
+  // while one exists. Else the failure stands, as it was found.
+  const resort = row.timings?.renderFurnishing?.lastResort;
+  if (resort?.state === 'TRYING' && furnishing && row.render_id && furnishing.renderId === String(row.render_id)) {
+    const held = { ...row.timings.renderFurnishing, lastResort: { ...resort, state: 'TRIED' } };
+    row.timings = { ...row.timings, renderFurnishing: held };
+    await admin.from('ds_walkthroughs').update({ timings: row.timings }).eq('id', row.id).eq('attempts', row.attempts);
+    if (await planFromRender(admin, row, design, furnishing, preferences.style ?? null, true)) return;
+    await fail(admin, row, String(resort.failing || 'NOT_FAITHFUL'), { timings: { ...row.timings, renderFurnishing: { ...held, lastResort: { ...held.lastResort, state: 'DECLINED', reasons: row.timings?.renderFurnishing?.reasons ?? [] } } } });
+    return;
+  }
+  if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && !declined) {
+    row.timings = { ...row.timings, renderFurnishing: { ...(row.timings?.renderFurnishing ?? {}), tried: true } };
+    await admin.from('ds_walkthroughs').update({ timings: row.timings }).eq('id', row.id).eq('attempts', row.attempts);
+    if (await planFromRender(admin, row, design, furnishing, preferences.style ?? null)) return;
+  }
+  // Just declined in this invocation (its CPU spent on the render's pieces): recorded, and the usual plan starts in
+  // a fresh invocation.
+  if (furnishing && row.render_id && !declined && row.timings?.renderFurnishing?.declined) {
+    await release(admin, row, { plan_attempts: Math.max(0, row.plan_attempts - 1), timings: row.timings, next_check_at: iso(Date.now()) });
+    return;
+  }
   let spec: Row = null;
   if (row.spec_job_id) {
     const { data: job } = await admin.from('ds_jobs').select('output, status, user_id').eq('id', row.spec_job_id).maybeSingle();
@@ -778,8 +1075,10 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const provenance = reference ? { ...reference.provenance, sourceId: version.source_id } : null;
   const cat = await catalogue(admin);
   const floorAssets = cat.assets.filter((a) => a.placement === 'FLOOR');
+  // Each room's use (programme.ts): the catalogue kinds it takes pieces from, whatever kind it was read as.
+  const roomKinds = homeProgramme(space.rooms);
   const ctx: PlanContext = {
-    rooms: space.rooms.map((r) => ({ id: r.id, kind: r.kind, areaM2: r.areaM2, label: r.label })),
+    rooms: space.rooms.map((r) => ({ id: r.id, kind: r.kind, areaM2: r.areaM2, label: r.label, kinds: roomKinds.get(r.id)?.kinds })),
     assets: floorAssets.map((a): PlanAssetContext & { heightM: number; colors: string[] } => ({
       code: a.code, name: a.name, category: a.category, subcategory: a.subcategory, roomKinds: a.roomKinds, styleTags: a.styleTags,
       widthM: a.widthM, depthM: a.depthM, heightM: a.heightM, colors: a.dominantColors,
@@ -802,28 +1101,78 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const view = provenance ? { kind: provenance.viewKind, roomId: provenance.viewRoomId } : null;
   const replan = row.timings?.replan ?? null;
   // The cache key: the immutable inputs of a reference-locked plan. A plan is never reused for another picture.
-  const planKey = provenance ? await sha256Hex(`ds-walk-plan:v2:${provenance.referenceImageSha256}:${row.spec_job_id ?? '-'}:${version.id}:${version.source_id}`) : null;
+  // v3: pieces matched by each room's use (a plan matched by the read kind alone lacked kitchens and desks).
+  const planKey = provenance ? await sha256Hex(`ds-walk-plan:v3:${provenance.referenceImageSha256}:${row.spec_job_id ?? '-'}:${version.id}:${version.source_id}`) : null;
 
   const started = Date.now();
   let payload: Row = null;
   let reused: ValidatedScenePlan | null = null;
   let reusedFrom: string | null = null;
+  // The design graph the reused plan was built with (a READY walkthrough keeps it): the same picture, the same plan,
+  // the same graph — never rebuilt from the picture's pixels again (that load can fail, and then the walk silently
+  // fell back to the plan-only path, which is not the design).
+  let reusedGraph: SpatialDesignGraph | null = null;
+  // The AI's review of this tour's first build (layoutReview.ts): asked once, in the background; while it is out, the
+  // plan it reviewed is kept with the row and built again, unchanged but for the review's corrections.
+  const review = (row.timings?.layoutReview ?? null) as { id?: string; at?: string; state?: string; layout?: ReviewLayout; aiRoomMap?: Record<string, string | null> | null } | null;
+  let reviewOps: ReviewOp[] = [];
+  let reviewCost: Row | null = null;
+  let reviewState: string | null = review?.state ?? null;
+  // The rule build (below): the plan's pieces would not walk or left a room without what makes it that room, so the
+  // same home is furnished again by HOMATCH's own rules alone — on the plan kept with the row, in its own invocation.
+  const rulePending = (row.timings?.ruleFallback as { state?: string } | undefined)?.state === 'PENDING' && !!row.scene_plan?.rooms;
+  if (rulePending) { reused = row.scene_plan as ValidatedScenePlan; reusedFrom = row.id; }
+  if (review?.id && row.scene_plan?.rooms && !rulePending) {
+    reused = row.scene_plan as ValidatedScenePlan; reusedFrom = row.id;
+    if (!review.state) {
+      const key = Deno.env.get('OPENAI_API_KEY');
+      const got = key ? await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(review.id)}`, { headers: { Authorization: `Bearer ${key}` } })
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+      const waiting = !got || got.status === 'queued' || got.status === 'in_progress';
+      if (waiting && Date.now() - Date.parse(review.at ?? '') < REVIEW_MAX_MS) {
+        await release(admin, row, { plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS) });
+        return;
+      }
+      if (got?.status === 'completed') {
+        let parsed: unknown = null;
+        try { parsed = JSON.parse(textOf(got)); } catch { parsed = null; }
+        reviewOps = review.layout ? readReview(parsed, review.layout) : [];
+        const askedAt = Date.parse(review.at ?? '') || Date.now();
+        const metered = await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: QA_MODEL, startedAt: askedAt }, got, { step: 'walkthrough_layout_review', walkthrough: row.id, background: true });
+        reviewCost = { kind: 'OPENAI_LAYOUT_REVIEW', model: QA_MODEL, usd: metered?.aiCents == null ? null : metered.aiCents / 100, basis: metered?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: got?.usage ?? null, ms: Date.now() - askedAt };
+        reviewState = reviewOps.length ? 'APPLYING' : 'NO_CHANGES';
+      } else reviewState = 'UNAVAILABLE';
+    }
+  }
+  const graphOf = (report: Row): SpatialDesignGraph | null => {
+    const g = report?.designGraph?.graph;
+    // A graph from older code (its rooms matched by kind alone, a kitchen-living or office left unmatched) is built again.
+    return g && Array.isArray(g.rooms) && g.version === GRAPH_VERSION && String(g.source?.renderId ?? '') === String(row.render_id ?? '') ? g as SpatialDesignGraph : null;
+  };
   let reuseRefused: string | null = null;
   const keepRooms = (plan0: ValidatedScenePlan) => { const ids = new Set(space.rooms.map((r) => r.id)); return { ...plan0, rooms: plan0.rooms.filter((r) => ids.has(r.roomId)) }; };
   if (typeof row.timings?.reusePlanFrom === 'string') {
     // The plan an earlier walkthrough of this design made: the same rooms, the same choices, no new model call —
     // only for the same picture (or, both without one, the same specification). Every pose is placed again below.
-    const { data: w } = await admin.from('ds_walkthroughs').select('scene_plan, project_id, timings').eq('id', row.timings.reusePlanFrom).maybeSingle();
+    const { data: w } = await admin.from('ds_walkthroughs').select('scene_plan, project_id, timings, state, graph:plan_report->designGraph->graph').eq('id', row.timings.reusePlanFrom).maybeSingle();
     const plan0 = w?.project_id === row.project_id ? w?.scene_plan as ValidatedScenePlan | null : null;
-    if (plan0?.rooms && (w?.timings?.reference?.referenceImageSha256 ?? null) === (provenance?.referenceImageSha256 ?? null)) { reused = keepRooms(plan0); reusedFrom = row.timings.reusePlanFrom; }
+    if (plan0?.rooms && (w?.timings?.reference?.referenceImageSha256 ?? null) === (provenance?.referenceImageSha256 ?? null)) {
+      reused = keepRooms(plan0); reusedFrom = row.timings.reusePlanFrom;
+      reusedGraph = w?.state === 'READY' ? graphOf({ designGraph: { graph: w?.graph } }) : null;
+    }
     else if (plan0?.rooms) reuseRefused = 'DIFFERENT_PICTURE';
   }
   if (!reused && planKey && !replan) {
-    // The same picture, the same specification, the same geometry, already reconstructed and READY: reused.
-    const { data: same } = await admin.from('ds_walkthroughs').select('id, scene_plan').eq('project_id', row.project_id).eq('state', 'READY')
-      .eq('timings->>planKey', planKey).neq('id', row.id).order('created_at', { ascending: false }).limit(1);
-    const hit = same?.[0];
-    if (hit?.scene_plan?.rooms && hit.scene_plan.reference) { reused = keepRooms(hit.scene_plan); reusedFrom = hit.id; }
+    // The same picture, the same specification, the same geometry, already planned: reused — the plan of a READY
+    // walkthrough, or the paid plan a failed one kept (it failed after planning; the builder may since be fixed).
+    const { data: same } = await admin.from('ds_walkthroughs').select('id, state, scene_plan, plan_report').eq('project_id', row.project_id).in('state', ['READY', 'FAILED'])
+      .eq('timings->>planKey', planKey).neq('id', row.id).order('created_at', { ascending: false }).limit(6);
+    const hit = (same ?? []).map((w: Row) => ({ id: w.id, plan: w.state === 'READY' ? w.scene_plan : w.plan_report?.final?.scenePlan ?? null, graph: w.state === 'READY' ? graphOf(w.plan_report) : null }))
+      // A rule plan (the model did not answer) is never reused: the next walkthrough asks the model again.
+      .filter((x: Row) => x.plan?.rooms && x.plan.reference && !String(x.plan.summary ?? '').startsWith('HOMATCH rule plan'))
+      // A READY walkthrough with its graph first: its plan was proven buildable as the design, a failed one's was not.
+      .sort((p: Row, q: Row) => Number(!!q.graph) - Number(!!p.graph))[0];
+    if (hit) { reused = keepRooms(hit.plan); reusedFrom = hit.id; reusedGraph = hit.graph; }
   }
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!reused && !apiKey) { await release(admin, row, { error: 'PLAN_UNAVAILABLE', next_check_at: iso(Date.now() + 60_000) }); return; }
@@ -831,26 +1180,68 @@ async function plan(admin: Row, row: Row): Promise<void> {
     imageDataUrl: reference.dataUrl, view, home, aspect: reference.provenance.aspect, sceneMap: reference.sceneMap,
     feedback: Array.isArray(replan?.feedback) ? replan.feedback.filter((f: unknown): f is string => typeof f === 'string') : null,
   } : null;
-  if (!reused) try {
+  // The plan is asked for in OpenAI's background queue and collected on a later step: a reasoning call of two
+  // minutes never races the edge runtime's wall clock, and a paid answer is never lost with a killed invocation.
+  // Waiting for it is not a plan attempt; a model that refuses background mode is asked as before.
+  const pending = row.timings?.planResponse as { id?: string; at?: string } | undefined;
+  // Plans the model never delivered (timed out, failed, cut off), with why: after one, the walkthrough is planned by
+  // HOMATCH's own rules — the design graph and each room's programme place every piece — never waited on again.
+  const misses: Row[] = Array.isArray(row.timings?.planMisses) ? row.timings.planMisses : [];
+  let missed: Row | null = null;
+  let ruled = false;
+  if (!reused && pending?.id) {
+    const got = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(pending.id)}`, { headers: { Authorization: `Bearer ${apiKey}` } })
+      .then(async (r) => (r.ok ? r.json() : { status: `HTTP_${r.status}` })).catch(() => null);
+    const waiting = !got || got.status === 'queued' || got.status === 'in_progress' || /^HTTP_5/.test(String(got.status));
+    if (waiting && Date.now() - Date.parse(pending.at ?? '') < PLAN_RESPONSE_MAX_MS) {
+      await release(admin, row, { plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS) });
+      return;
+    }
+    payload = got?.status === 'completed' ? got : null;
+    if (!payload) missed = { id: pending.id, status: String(got?.status ?? 'NO_ANSWER'), reason: got?.error?.code ?? got?.incomplete_details?.reason ?? null, at: iso(Date.now()) };
+  } else if (!reused && misses.length) {
+    ruled = true;
+  } else if (!reused) try {
     const body = refInput ? referenceSceneRequest(MODEL, input, refInput) : sceneRequest(MODEL, input);
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    const ask = (extra: Row) => fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...extra }),
     });
-    payload = r.ok ? await r.json() : null;
+    const queued = await ask({ background: true, store: true });
+    const made = queued.ok ? await queued.json() : null;
+    if (made?.id && (made.status === 'queued' || made.status === 'in_progress')) {
+      await release(admin, row, { timings: { ...row.timings, planResponse: { id: made.id, at: iso(Date.now()) } }, next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS) });
+      return;
+    }
+    if (made) payload = made.status === 'completed' ? made : null;
+    else if (queued.status === 400) { const r = await ask({}); payload = r.ok ? await r.json() : null; }
   } catch { payload = null; }
   const text = payload ? textOf(payload) : '';
   let raw: unknown = null;
   try { raw = text ? JSON.parse(text) : null; } catch { raw = null; }
-  const validated: ValidatedScenePlan | null = reused ?? (raw ? validateScenePlan(raw, input, refInput ? { reference: { view: refInput.view, home } } : {}) : null);
+  // The rule plan: every room named, no finishes or pieces proposed — the design graph, the room programme and the
+  // default finishes of the design's style fill them (validateScenePlan, buildWalkthrough).
+  const rulePlan = { summary: 'HOMATCH rule plan: the model did not answer', lighting: null, rooms: input.rooms.map((x) => ({ roomId: x.id, floor: null, walls: null, accentWall: null, ceiling: null, furniture: [] })) };
+  if (ruled) raw = rulePlan;
+  const validate = (x: unknown) => validateScenePlan(x, input, refInput ? { reference: { view: refInput.view, home } } : {});
+  let validated: ValidatedScenePlan | null = reused ?? (raw ? validate(raw) : null);
+  // No usable plan — never delivered, unreadable, or the last attempt failed: the rule plan, in this same step, so a
+  // walkthrough never ends for want of the model's plan.
+  if (!reused && !ruled && (!validated || !validated.rooms.length) && (missed || payload || row.plan_attempts >= MAX_PLAN_ATTEMPTS)) {
+    ruled = true;
+    validated = validate(rulePlan);
+  }
   const step = refInput ? (replan ? 'walkthrough_reference_replan' : 'walkthrough_reference_plan') : 'walkthrough_scene_plan';
-  const aiCost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: MODEL, startedAt: started }, payload, { step, walkthrough: row.id }) : null;
+  // Asked in the background: its time runs from when it was asked.
+  const askedAt = pending?.at && !reused ? Date.parse(pending.at) || started : started;
+  const aiCost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: MODEL, startedAt: askedAt }, payload, { step, walkthrough: row.id, ...(pending?.id ? { background: true } : {}) }) : null;
   const costLine = reused
     ? { kind: 'OPENAI_SCENE_PLAN', model: null, usd: 0, basis: 'REUSED', reusedFrom, tokens: null, ms: 0, attempt: row.plan_attempts }
-    : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - started, attempt: row.plan_attempts, step };
-  const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload || reused ? [costLine] : [])];
-  const timings = { ...row.timings, ...(provenance ? { reference: provenance, planKey } : {}) };
+    : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - askedAt, attempt: row.plan_attempts, step };
+  const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload || (reused && reusedFrom !== row.id) ? [costLine] : []), ...(reviewCost ? [reviewCost] : [])];
+  const { planResponse: _answered, ...earlier } = (row.timings ?? {}) as Row;
+  const timings: Row = { ...earlier, ...(provenance ? { reference: provenance, planKey } : {}), ...(missed ? { planMisses: [...misses, missed].slice(-6) } : {}), ...(ruled ? { planRuled: { at: iso(Date.now()), misses: misses.length } } : {}) };
   if (!validated || !validated.rooms.length) {
-    await release(admin, row, { error: payload ? 'PLAN_INVALID' : 'PLAN_UNAVAILABLE', cost, timings, next_check_at: iso(Date.now() + 15_000) });
+    await release(admin, row, { error: payload ? 'PLAN_INVALID' : 'PLAN_UNAVAILABLE', cost, timings, next_check_at: iso(Date.now() + (missed ? 1_000 : 15_000)) });
     return;
   }
 
@@ -861,29 +1252,165 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const base = normalizeDesignState(version.state);
   const roomsById = new Map(space.rooms.map((r) => [r.id, r]));
   const buildStarted = Date.now();
+  // THE SELECTED DESIGN AS A GRAPH (walkthrough/designGraph.ts): the render's scene map, legend and measured
+  // pixels, the specification's words and the plan's poses. With it, the walkthrough is built from what the render
+  // shows — nothing invented, every piece in its design form and colours; without it (no render evidence), the plan.
+  // A reused plan brings its graph (above); otherwise the graph is built from the picture's evidence. A failed load
+  // is recorded (plan_report.designGraphError), never swallowed: the plan-only fallback is not the design.
+  let evidenceError: string | null = null;
+  const evidence = reference && !(reusedGraph && reused)
+    ? await loadDesignEvidence(admin, row, space, version.source_id, reference.bytes).catch((e) => { evidenceError = String((e as Error)?.message ?? e).slice(0, 300); return null; })
+    : null;
+  // Rooms of the picture that kind and use could not match (mapSourceRooms) are matched by the AI: a small text
+  // question, asked only then, metered like every model call; its answer is checked (real, unused rooms only).
+  let aiRoomMap: Record<string, string | null> | null = null;
+  let roomMatchCost: Row | null = null;
+  if (review?.aiRoomMap) aiRoomMap = review.aiRoomMap;
+  else if (evidence && !(reusedGraph && reused) && apiKey) {
+    const det = mapSourceRooms(evidence.sourceRooms, space);
+    const open = evidence.sourceRooms.filter((r) => !det[r.id]);
+    const taken = new Set(Object.values(det).filter(Boolean));
+    const uses = homeProgramme(space.rooms);
+    const free = space.rooms.filter((r) => !taken.has(r.id)).map((r) => ({ id: r.id, kind: r.kind, label: r.label, areaM2: Math.round(r.areaM2 * 10) / 10, use: uses.get(r.id)?.use ?? 'OTHER' }));
+    if (open.length && free.length) {
+      const askedAt = Date.now();
+      const body = roomMatchRequest(MODEL, open.map((r) => ({ ...r, pieces: evidence.sceneMap.filter((e) => e.kind === 'OBJECT' && e.room === r.id).map((e) => String(e.label)).slice(0, 30) })), free);
+      const got = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000),
+      }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (got) {
+        let parsed: unknown = null;
+        try { parsed = JSON.parse(textOf(got)); } catch { parsed = null; }
+        aiRoomMap = readRoomMatch(parsed, open.map((r) => r.id), free.map((r) => r.id));
+        const metered = await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: MODEL, startedAt: askedAt }, got, { step: 'walkthrough_room_match', walkthrough: row.id });
+        roomMatchCost = { kind: 'OPENAI_ROOM_MATCH', model: MODEL, usd: metered?.aiCents == null ? null : metered.aiCents / 100, basis: metered?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: got?.usage ?? null, ms: Date.now() - askedAt };
+        cost.push(roomMatchCost);
+      }
+    }
+  }
+  const graph: SpatialDesignGraph | null = reusedGraph && reused ? reusedGraph : evidence && evidence.sourceRooms.length && evidence.sceneMap.some((e) => e.kind === 'OBJECT')
+    ? buildDesignGraph({
+      space, spec, sceneMap: evidence.sceneMap, legend: evidence.legend, sourceRooms: evidence.sourceRooms, aiRoomMap, scenePlan: validated, appearance: evidence.appearance,
+      source: { renderId: String(row.render_id), sceneMapJobId: provenance?.sceneMapJobId ?? null, specJobId: row.spec_job_id ?? null },
+    })
+    : null;
+  const designGraphError = reference && !graph ? evidenceError ?? (evidence ? 'NO_ROOMS_OR_OBJECTS' : 'NO_EVIDENCE') : null;
+  // The AI's own plan, room by room (the model saw the picture and placed every piece in the measured rooms).
+  const aiRooms = validated.rooms.map((pr) => ({
+    ...pr,
+    items: pr.items.map((it) => ({ ...it, refKey: it.ref?.key ?? null, lock: it.ref?.locked && roomsById.has(pr.roomId) ? anchorLock(roomsById.get(pr.roomId)!) : null })),
+  }));
+  const graphPlan0 = graph ? { ...graphToBuildPlan(graph, space, cat.materials, assets), styleCode: preferences.style } : null;
+  // A room the graph could not furnish from the render (its region unmatched, its pieces unread) is furnished from
+  // the AI's plan of that same room, never left to generic pieces while the model's placement of it exists.
+  const aiFilled: string[] = [];
+  const graphPlan = graphPlan0 ? {
+    ...graphPlan0,
+    rooms: [
+      ...graphPlan0.rooms.map((r) => {
+        const ai = aiRooms.find((x) => x.roomId === r.roomId);
+        if (r.items.length || !ai?.items.length) return r;
+        aiFilled.push(r.roomId);
+        return { ...r, items: ai.items };
+      }),
+      ...aiRooms.filter((ai) => ai.items.length && roomsById.has(ai.roomId) && !graphPlan0.rooms.some((r) => r.roomId === ai.roomId))
+        .map((ai) => { aiFilled.push(ai.roomId); return ai; }),
+    ],
+  } : null;
+  const plan0 = graphPlan ?? { lighting: validated.lighting, palette: validated.palette, styleCode: preferences.style, rooms: aiRooms };
+  // The review's corrections, on the same plan it reviewed (built again from the same inputs, so the same pieces).
+  const pickFor = (type: string, roomId: string): string | null => {
+    const room = roomsById.get(roomId);
+    return room ? matchItem({ type: type as never, assetCode: null }, { kind: room.kind, areaM2: room.areaM2, kinds: roomKinds.get(roomId)?.kinds }, offered.ctx.assets, preferences)?.code ?? null : null;
+  };
+  const corrected = reviewState === 'APPLYING' && review?.layout ? applyReview(plan0, reviewOps, review.layout, pickFor) : null;
   const built = buildWalkthrough({
     space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`,
-    plan: {
-      lighting: validated.lighting, palette: validated.palette, styleCode: preferences.style,
-      rooms: validated.rooms.map((pr) => ({
-        ...pr,
-        items: pr.items.map((it) => ({ ...it, refKey: it.ref?.key ?? null, lock: it.ref?.locked && roomsById.has(pr.roomId) ? anchorLock(roomsById.get(pr.roomId)!) : null })),
-      })),
-    },
+    plan: rulePending ? { ...plan0, rooms: plan0.rooms.map((r) => ({ ...r, items: [] })) } : corrected?.plan ?? plan0,
   });
   const buildMs = Date.now() - buildStarted;
-  // The gates: walkability always (walkthrough/walkability.ts); against the picture when there is one (fidelity.ts).
-  const fidelity: FidelityReport | null = validated.reference
+  // The design's look on the built pieces, and the promotion gate: is this, measurably, the selected design?
+  const walkState: DesignState = graph ? applyGraphLook(graph, space, built.state, built.report, assets) : built.state;
+  const promotion: Promotion | null = graph ? fidelityOf(graph, walkState, built.report, built.report.gate?.ok !== false) : null;
+  // The gates: walkability always (walkthrough/walkability.ts); against the picture when there is one (fidelity.ts)
+  // — for a graph build, its own promotion gate replaces the plan-vs-anchor comparison.
+  const fidelity: FidelityReport | null = validated.reference && !graph && !rulePending
     ? referenceFidelity({ space, plan: validated, build: built.report, objects: built.state.objects, assets, aspect: provenance?.aspect ?? null })
     : null;
-  const failing = fidelity ? fidelity.code : built.report.gate && !built.report.gate.ok ? 'NOT_WALKABLE' : null;
+  // READY only when it is the design too: every room has what makes it that room (a bed, the sofa, the kitchen),
+  // and most of what the design shows stands in it (designGraph.ts READY_MIN_RECALL); else it fails, honestly.
+  // A rule build is the design's look on HOMATCH's own furniture: owed every room's essentials, not the picture's pieces.
+  const unfaithful = promotion && (built.report.gate?.missingEssential?.length || (!rulePending && (promotion.metrics?.importantRecall ?? 1) < READY_MIN_RECALL));
+  // And only when a person would believe it (plausibility.ts): no wall piece standing free, a sofa that faces its
+  // television, an arrival in open floor. A tour that fails is not published; its findings are kept (final.build.gate).
+  const implausible = built.report.gate?.implausible?.length ? 'NOT_PLAUSIBLE' : null;
+  const failing = fidelity ? fidelity.code : built.report.gate && !built.report.gate.ok ? 'NOT_WALKABLE' : unfaithful ? 'NOT_FAITHFUL' : implausible;
   const referenceReport = validated.reference ? {
     mode: 'REFERENCE_LOCKED', view: validated.reference.view, roomId: validated.reference.roomId, visibleRoomIds: validated.reference.visibleRoomIds,
     camera: validated.reference.camera, cameraNote: validated.reference.cameraNote, facts: validated.reference.facts, fidelity,
     replans: replan ? Number(replan.attempt) || 1 : 0, reusedFrom, reuseRefused, sceneMapElements: reference?.sceneMap.length ?? 0, buildMs,
   } : { mode: 'SPECIFICATION', reusedFrom, reuseRefused, buildMs };
+  // The AI's review of the built layout against the picture (layoutReview.ts): asked once, in the background, when the
+  // tour has a picture — on a tour that passed, to bring it closer to the picture; on one that failed only for what it
+  // lacks or how it reads (NOT_FAITHFUL, NOT_PLAUSIBLE) but walks, to repair it. Its corrections are applied on the
+  // next step and kept only if every gate passes.
+  const askReview = async (problems: string[]): Promise<boolean> => {
+    if (!LAYOUT_REVIEW_ON || review || !reference?.dataUrl || !apiKey) return false;
+    const layout = reviewLayout(space, input.rooms, plan0, built.state, built.report, assets);
+    const made = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...reviewRequest(QA_MODEL, reference.dataUrl, layout, problems), background: true, store: true }),
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (!(made?.id && (made.status === 'queued' || made.status === 'in_progress' || made.status === 'completed'))) return false;
+    await release(admin, row, {
+      scene_plan: validated, cost, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now() + PLAN_RESPONSE_POLL_MS),
+      timings: { ...timings, layoutReview: { id: made.id, at: iso(Date.now()), version: LAYOUT_REVIEW_VERSION, layout, aiRoomMap, ...(problems.length ? { problems } : {}) } },
+    });
+    return true;
+  };
+  // The plan's pieces would not walk, left a room without what makes it that room, or would not be believed (a sofa
+  // turned from its television): before anything else, the same
+  // home is furnished again by HOMATCH's rules alone (rulePending, above), in a fresh invocation — a walkable, complete
+  // tour in the design's look rather than none. Asked once; a rule build that fails too fails as found.
+  if (!rulePending && !corrected && !fidelity && (built.report.gate?.ok === false || built.report.gate?.missingEssential?.length || built.report.gate?.implausible?.length)) {
+    await release(admin, row, {
+      scene_plan: validated, cost, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now()),
+      timings: { ...timings, ruleFallback: { state: 'PENDING', at: iso(Date.now()), planGate: built.report.gate } },
+    });
+    return;
+  }
+  if ((failing === 'NOT_FAITHFUL' || failing === 'NOT_PLAUSIBLE') && built.report.gate?.ok !== false && !corrected && !rulePending) {
+    const prog = homeProgramme(space.rooms);
+    const problems = [
+      ...(built.report.gate?.missingEssential ?? []).map((id: string) => {
+        const lacks = (prog.get(id)?.needs ?? []).filter((nd) => nd.core && !walkState.objects.some((o) => o.roomId === id && assets.get(o.assetId) && (nd.metBy ?? nd.serves)(assets.get(o.assetId)!))).map((nd) => nd.id);
+        return `room ${id} lacks ${lacks.join(', ') || 'what defines it'}`;
+      }),
+      ...(built.report.gate?.implausible ?? []).map((f: Row) => `${f.code} in ${f.roomId}: ${f.detail ?? ''}`),
+      ...(promotion?.metrics?.unresolvedImportant?.length ? [`pieces the picture shows that are missing: ${promotion.metrics.unresolvedImportant.join(', ')}`] : []),
+    ];
+    if (await askReview(problems)) return;
+  }
+  if (failing && corrected) {
+    // The corrected tour failed a gate the reviewed one passed: the review is set aside, the tour built as it was.
+    await release(admin, row, {
+      plan_attempts: Math.max(0, row.plan_attempts - 1), cost, next_check_at: iso(Date.now()),
+      timings: { ...timings, layoutReview: { ...review, state: 'REJECTED', rejectedFor: failing, ops: reviewOps.length } },
+    });
+    return;
+  }
   if (failing) {
-    const summary = { build: { counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated }, reference: referenceReport, dropped: validated.dropped };
+    // The paid plan is kept with the failure: the same picture is never planned (and paid for) twice, and the
+    // build can be reproduced exactly.
+    const summary = {
+      // What the build did to each piece it did not keep as planned (dropped, moved, why): a failure is diagnosable.
+      build: {
+        counts: built.report.counts, gate: built.report.gate, relocated: built.report.relocated,
+        items: built.report.items.filter((i) => i.outcome !== 'PLANNED').slice(0, 80).map((i) => ({ roomId: i.roomId, code: i.code, outcome: i.outcome, reason: i.reason ?? null, movedM: i.movedM ?? null })),
+      },
+      reference: referenceReport, dropped: validated.dropped, scenePlan: validated,
+      designGraph: graph ? { reusedFrom: reusedGraph && reused ? reusedFrom : null, promotion } : { error: designGraphError },
+    };
     // One replan, told exactly what failed (codes and numbers made here), in its own invocation; then the failure stands.
     if (fidelity && !replan && row.plan_attempts < MAX_PLAN_ATTEMPTS) {
       await release(admin, row, {
@@ -892,33 +1419,122 @@ async function plan(admin: Row, row: Row): Promise<void> {
       });
       return;
     }
+    const planReport = { ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}), final: summary };
+    // The render's own pieces, declined earlier only for how much of the render they are (they walked), are tried
+    // once more as the last resort, in a fresh invocation (above), before the failure stands.
+    if (furnishing && row.render_id && furnishing.renderId === String(row.render_id) && row.timings?.renderFurnishing?.declined === 'NOT_FAITHFUL' && !row.timings?.renderFurnishing?.lastResort) {
+      await release(admin, row, {
+        error: failing, cost, plan_report: planReport, plan_attempts: Math.max(0, row.plan_attempts - 1), next_check_at: iso(Date.now()),
+        timings: { ...timings, lastFindings: fidelity ? feedbackOf(fidelity) : [failing], renderFurnishing: { ...row.timings.renderFurnishing, lastResort: { state: 'TRYING', failing, at: iso(Date.now()) } } },
+      });
+      return;
+    }
     await fail(admin, row, failing, {
-      cost, plan_report: { ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}), final: summary },
+      cost, plan_report: planReport,
       timings: { ...timings, lastFindings: fidelity ? feedbackOf(fidelity) : [failing] },
     });
     return;
   }
 
+  if (rulePending) timings.ruleFallback = { ...(timings.ruleFallback as Row), state: 'USED', usedAt: iso(Date.now()) };
+  else if (await askReview([])) return;
+  if (review) {
+    // Kept with the tour (without the layout it reviewed): what the review said, and what became of it.
+    const { layout: _reviewed, ...kept } = review as Row;
+    timings.layoutReview = reviewState === 'REJECTED' ? kept : {
+      ...kept, state: reviewState === 'APPLYING' ? 'APPLIED' : reviewState, applied: corrected?.applied ?? 0, skipped: corrected?.skipped ?? 0,
+      ops: reviewOps.map((o) => ({ op: o.op, roomId: o.roomId, reason: o.reason })),
+    };
+  }
   // Saved as its own version of the design (the approved one is never touched); the same id on a re-plan.
   const walkId = await uuidFrom(`ds-walk:${row.id}:version`);
   const name = (typeof row.timings?.name === 'string' && row.timings.name) || `3D ${row.revision}`;
   const { error: insertErr } = await admin.from('ds_versions').upsert({
     id: walkId, project_id: version.project_id, user_id: version.user_id, source_id: version.source_id, parent_id: version.id,
-    name, origin: 'AI', job_id: version.job_id, state: built.state, style_tags: version.style_tags ?? [],
+    name, origin: 'AI', job_id: version.job_id, state: walkState, style_tags: version.style_tags ?? [],
     change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: validated.version, ...(provenance ? { referenceImageId: provenance.referenceImageId, referenceImageSha256: provenance.referenceImageSha256 } : {}) }],
     design_dna: version.design_dna ?? null,
   }, { onConflict: 'id', ignoreDuplicates: true });
   if (insertErr) { await release(admin, row, { error: 'VERSION_NOT_RECORDED', cost, timings, next_check_at: iso(Date.now() + 15_000) }); return; }
-  await admin.from('ds_versions').update({ state: built.state }).eq('id', walkId);
+  await admin.from('ds_versions').update({ state: walkState }).eq('id', walkId);
 
   const report = {
     build: built.report, dropped: validated.dropped, filled: validated.filled, approximations: validated.approximations, omitted: validated.omitted,
     rooms: validated.rooms.length, model: reused ? null : MODEL, offer: offered.offer, planMs: Date.now() - started, reusedFrom,
     reference: referenceReport, ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}),
+    // The plan's own ambiguities, reported with the tour (planFidelity.ts): what the drawing may say differently.
+    planFidelity: planCheck,
+    ...(designGraphError ? { designGraphError } : {}),
+    // The selected design as built: its graph (for audit), what was read, the promotion verdict, and the pieces it
+    // binds (the factory never swaps them for generic models).
+    designGraph: graph ? {
+      version: graph.version, source: graph.source, roomMap: graph.roomMap, evidence: evidence?.report ?? null, promotion, reusedFrom: reusedGraph && reused ? reusedFrom : null,
+      // Only the graph's own pieces are bound (a room furnished from the AI plan has no design form to draw).
+      bound: built.report.items.filter((i) => i.refKey && i.instanceId && !aiFilled.includes(i.roomId)).map((i) => i.instanceId), graph, aiFilledRooms: aiFilled,
+    } : (reference ? { version: null, promotion: { promoted: false, reasons: ['NO_DESIGN_GRAPH'], metrics: null }, evidence: evidence?.report ?? null } : null),
   };
   await release(admin, row, {
     state: 'PLANNING', scene_plan: validated, plan_report: report, walk_version_id: walkId, cost, error: null, next_check_at: iso(Date.now()), timings,
   });
+}
+
+/**
+ * The walkthrough of the selected render, furnished from its own pieces (renderPlan.ts): matched or drawn at their
+ * seen size and form, settled where the render shows them, turned to their context, walked by the walker's body
+ * (pieces in a required way pushed off it as little as clears it, every correction recorded), and promoted only
+ * when it is both the render (VISUAL) and walkable (NAVIGATION) — renderGate.ts; published as APPROXIMATE when it is
+ * walkable and most of the render (gate.ready). No model call is made here.
+ */
+async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: RenderFurnishing, styleCode: string | null, lastResort = false): Promise<boolean> {
+  const { version, space } = design;
+  const started = Date.now();
+  const cat = await catalogue(admin);
+  const assets = new Map(cat.assets.map((a) => [a.code, a]));
+  const materialsByCode = new Map(cat.materials.map((m) => [m.code, m]));
+  const materialsById = new Map(cat.materials.map((m) => [m.id, m]));
+  // Lit as the render is (its measured light); without a measurement, the light every walkthrough had before.
+  const rp = planFromFurnishing(furnishing, space, cat.assets, cat.materials, { lighting: furnishing.lighting ?? NEUTRAL_LIGHTING, styleCode });
+  const built = buildWalkthrough({
+    space, base: normalizeDesignState(version.state), assets, materialsByCode, materialsById, idPrefix: `walk-${row.revision}`, plan: rp.plan,
+    walkRadiusM: RENDER_WALK_RADIUS_M, anchorsAsSeen: true,
+  });
+  const dressed = dressBuilt(built.state, built.report.items, rp, space, assets);
+  const gate = renderGate({ space, state: dressed.state, assets, build: built.report, plan: rp, walkRadiusM: RENDER_WALK_RADIUS_M, corrections: dressed.corrections });
+  const costLine = { kind: 'RENDER_FURNISHING', model: null, usd: 0, basis: 'NO_MODEL_CALL', tokens: null, ms: Date.now() - started, attempt: row.plan_attempts };
+  const cost = [...(Array.isArray(row.cost) ? row.cost : []), costLine];
+  // The last resort (every other plan failed): published, as APPROXIMATE, when walkable with every room what it is.
+  const publishable = gate.ready || (lastResort && gate.lastResort);
+  const approximate = publishable && !gate.promoted;
+  const reference = {
+    mode: 'RENDER_FURNISHED', renderId: furnishing.renderId, read: furnishing.read, traced: furnishing.traced, approximate, ...(lastResort ? { lastResort: true } : {}),
+    unmatched: rp.unmatched, unplaced: rp.unplaced, gate, buildMs: Date.now() - started,
+  };
+  const timings = { ...row.timings, renderFurnishing: { version: furnishing.version, renderId: furnishing.renderId, sourceId: version.source_id } };
+  // Published when it is the render, or walkable and approximately the render (renderGate.ts READY_MIN_*) — then
+  // recorded as APPROXIMATE, never as the render.
+  if (!publishable) {
+    // Declined, not failed: the caller plans it the usual way; why the render's pieces could not stand is kept.
+    row.timings = { ...timings, renderFurnishing: { ...timings.renderFurnishing, declined: !gate.navigation.pass ? 'NOT_WALKABLE' : 'NOT_FAITHFUL', reasons: [...gate.visual.reasons, ...gate.navigation.reasons], metrics: gate.visual.metrics } };
+    return false;
+  }
+  const walkId = await uuidFrom(`ds-walk:${row.id}:version`);
+  const name = (typeof row.timings?.name === 'string' && row.timings.name) || `3D ${row.revision}`;
+  const { error: insertErr } = await admin.from('ds_versions').upsert({
+    id: walkId, project_id: version.project_id, user_id: version.user_id, source_id: version.source_id, parent_id: version.id,
+    name, origin: 'AI', job_id: version.job_id, state: dressed.state, style_tags: version.style_tags ?? [],
+    change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: furnishing.version, renderId: furnishing.renderId, approximate }],
+    design_dna: version.design_dna ?? null,
+  }, { onConflict: 'id', ignoreDuplicates: true });
+  if (insertErr) { await release(admin, row, { error: 'VERSION_NOT_RECORDED', cost, timings, next_check_at: iso(Date.now() + 15_000) }); return true; }
+  await admin.from('ds_versions').update({ state: dressed.state }).eq('id', walkId);
+  await release(admin, row, {
+    state: 'PLANNING',
+    // The plan of record: the render's pieces as built (no camera: the render's own frame is not a perspective view).
+    scene_plan: { version: furnishing.version, renderId: furnishing.renderId, rooms: rp.plan.rooms, reference: null },
+    plan_report: { build: built.report, reference, planMs: Date.now() - started, model: null },
+    walk_version_id: walkId, cost, error: null, next_check_at: iso(Date.now()), timings,
+  });
+  return true;
 }
 
 // ── SUBMIT ──────────────────────────────────────────────────────────────────
@@ -1035,9 +1651,11 @@ async function processResult(admin: Row, row: Row, answer: { http: number | null
   if (!walk) { await fail(admin, row, 'WALK_VERSION_MISSING'); return; }
   const state = normalizeDesignState(walk.state);
   let attached = 0; let missing = 0;
+  // Pieces built from the selected design are drawn by HOMATCH in their design form: never a generic factory model.
+  const bound = new Set<string>(Array.isArray(row.plan_report?.designGraph?.bound) ? row.plan_report.designGraph.bound : []);
   for (const obj of state.objects) {
     const g = groupOf.get(obj.instanceId);
-    if (!g) continue;
+    if (!g || bound.has(obj.instanceId)) continue;
     const ref = pieces[g];
     if (ref?.assetId && ref.key) { obj.generated = { assetId: ref.assetId, key: ref.key, sha256: ref.sha256 ?? null }; attached += 1; } else { delete obj.generated; missing += 1; }
   }

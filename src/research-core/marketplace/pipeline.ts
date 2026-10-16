@@ -56,14 +56,48 @@ export interface ListingView {
   freshness: NormalizedListing['freshness'];
   publishedAt?: string | null;
   updatedAt?: string | null;
-  seller: { classification: SellerAssessment['classification']; name: string | null; publicPhone: string | null; publicEmail: string | null; publicProfile: string | null };
+  seller: { classification: SellerAssessment['classification']; name: string | null; publicPhone: string | null; phoneFromDescription?: boolean; publicEmail: string | null; publicProfile: string | null };
   authorUrl: string | null;
   isLowest: boolean;
   isHighest: boolean;
 }
 
+/** Another property that MAY be the same flat: too uncertain to merge, shown side by side instead. */
+export interface PossibleMatchView {
+  key: string;
+  confidence: number;
+  title: string | null;
+  priceUsd: number | null;
+  areaSqm: number | null;
+  floor: number | null;
+  image: string | null;
+  source: string;
+  sourceName: string | null;
+  exactUrl: string;
+  observedAt: string;
+  /** Why the two may be one flat, in customer vocabulary (see matchReasons). */
+  reasons?: MatchReason[];
+}
+
+export type MatchReason = 'SAME_LISTING' | 'PHOTOS' | 'DESCRIPTION' | 'PHONE' | 'LOCATION' | 'ADDRESS_AND_LAYOUT';
+/** The resolver's evidence strings, translated into reasons a person can check themselves. */
+export function matchReasons(evidence: readonly string[]): MatchReason[] {
+  const out = new Set<MatchReason>();
+  for (const e of evidence) {
+    if (e.startsWith('corroborated')) { out.add('PHOTOS'); out.add('ADDRESS_AND_LAYOUT'); out.add('DESCRIPTION'); }
+    else if (e === 'same canonical url' || e.startsWith('same source')) out.add('SAME_LISTING');
+    else if (e === 'shared listing images' || e === 'shared image') out.add('PHOTOS');
+    else if (e === 'substantial shared description') out.add('DESCRIPTION');
+    else if (e === 'shared public phone') out.add('PHONE');
+    else if (e === 'same coordinates') out.add('LOCATION');
+  }
+  return [...out];
+}
+
 export interface ResultProperty {
-  identity?: { status: 'CONFIRMED_DUPLICATE' | 'INSUFFICIENT_EVIDENCE'; evidence: string[]; version: string };
+  identity?: { status: 'CONFIRMED_DUPLICATE' | 'INSUFFICIENT_EVIDENCE'; evidence: string[]; version: string; reasons?: MatchReason[] };
+  /** POSSIBLE_SAME_PROPERTY partners (never merged); absent on results stored before this field existed. */
+  possibleMatches?: PossibleMatchView[];
   key: string;
   group: ResultGroup;
   rank: number;
@@ -245,6 +279,31 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   });
 
   const possibleKeys = new Set(resolution.possible.flatMap((pair) => [resolution.keyOf.get(pair.a), resolution.keyOf.get(pair.b)]));
+  const workingByKey = new Map(working.map((w) => [w.key, w]));
+  const partners = new Map<string, Map<string, { confidence: number; reasons: Set<MatchReason> }>>();
+  for (const pair of resolution.possible) {
+    const a = resolution.keyOf.get(pair.a), b = resolution.keyOf.get(pair.b);
+    if (!a || !b || a === b) continue;
+    for (const [x, y] of [[a, b], [b, a]] as const) {
+      const m = partners.get(x) ?? new Map<string, { confidence: number; reasons: Set<MatchReason> }>();
+      const prev = m.get(y) ?? { confidence: 0, reasons: new Set<MatchReason>() };
+      for (const r of matchReasons(pair.evidence)) prev.reasons.add(r);
+      m.set(y, { confidence: Math.max(prev.confidence, pair.confidence), reasons: prev.reasons });
+      partners.set(x, m);
+    }
+  }
+  const possibleMatchesOf = (key: string): PossibleMatchView[] => [...(partners.get(key) ?? new Map<string, { confidence: number; reasons: Set<MatchReason> }>())]
+    .flatMap(([k, { confidence, reasons }]) => {
+      const o = workingByKey.get(k);
+      if (!o) return [];
+      return [{
+        key: k, confidence, title: o.rep.title, priceUsd: o.facts.priceUsd, areaSqm: o.facts.areaSqm, floor: o.facts.floor,
+        image: o.rep.images[0] ?? o.members.flatMap((m) => m.images)[0] ?? null,
+        source: o.rep.source, sourceName: o.rep.sourceName, exactUrl: o.rep.exactUrl, observedAt: o.rep.observedAt,
+        reasons: [...reasons],
+      }];
+    })
+    .sort((x, y) => y.confidence - x.confidence || x.key.localeCompare(y.key)).slice(0, 6);
   const descriptions = new Map<string, Set<string>>();
   for (const w of working) {
     const fp = descriptionFingerprint(w.rep.description);
@@ -317,7 +376,9 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     const prices = new Map((w.discrepancy?.prices ?? []).map((p) => [p.listingId, p]));
     properties.push({
       identity: { status: w.members.length > 1 ? 'CONFIRMED_DUPLICATE' : 'INSUFFICIENT_EVIDENCE',
-        evidence: w.cluster.evidence.filter((e) => e.startsWith('corroborated') || e.startsWith('same source') || e === 'same canonical url'), version: 'marketplace-property-entity-2' },
+        evidence: w.cluster.evidence.filter((e) => e.startsWith('corroborated') || e.startsWith('same source') || e === 'same canonical url'), version: 'marketplace-property-entity-2',
+        ...(w.members.length > 1 ? { reasons: matchReasons(w.cluster.evidence) } : {}) },
+      ...(possibleKeys.has(w.key) ? { possibleMatches: possibleMatchesOf(w.key) } : {}),
       key: w.key,
       group,
       rank: i + 1,
@@ -350,7 +411,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
         updatedAt: m.updatedAt,
         seller: {
           classification: w.sellers.get(m.id)!.classification,
-          name: m.seller.name, publicPhone: m.seller.publicPhone, publicEmail: m.seller.publicEmail, publicProfile: m.seller.publicProfile,
+          name: m.seller.name, publicPhone: m.seller.publicPhone, ...(m.seller.phoneFromDescription ? { phoneFromDescription: true } : {}), publicEmail: m.seller.publicEmail, publicProfile: m.seller.publicProfile,
         },
         authorUrl: m.provenance.authorUrl,
         isLowest: prices.get(m.id)?.isLowest ?? false,

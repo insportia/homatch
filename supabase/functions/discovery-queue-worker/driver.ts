@@ -36,6 +36,7 @@ import {
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
+import { adaptiveRound } from '../_shared/findBuyers/adaptive.ts';
 import { loadPhase1, queueCombinedTelegram, queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
 import { runWorkerPool } from '../../../src/research-core/findBuyers/workerPool.ts';
 import { phase2MayStart } from '../../../src/research-core/findBuyers/campaignPhases.ts';
@@ -269,6 +270,27 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
       }).catch(() => undefined);
       results.push({ jobId: row.id, waiting: open.length });
       continue;
+    }
+
+    /* The queue drained before the deadline. A Find Buyers campaign gets an
+       adaptive round first (evidence -> next pass -> validated jobs), so a
+       first batch with nothing qualified does not end the search. The round
+       queues ordinary jobs under the same reservation and caps, or records an
+       honest stop reason and lets the campaign finish below. */
+    if (open.length === 0 && !pastDeadline) {
+      const adaptive = await adaptiveRound(db, row.id).catch(async (error) => {
+        await jobEvent(db, row.id, 'ADAPTIVE_ROUND_FAILED', { message: errorText(error) }).catch(() => undefined);
+        return null;
+      });
+      if (adaptive && adaptive.queued > 0) {
+        await jobEvent(db, row.id, 'ADAPTIVE_ROUND', { pass: adaptive.pass, queued: adaptive.queued }).catch(() => undefined);
+        await updateJob(db, row.id, {
+          progress: 70, current_step: `Refining the search (${String(adaptive.pass ?? '').toLowerCase()} pass)`,
+        }).catch(() => undefined);
+        results.push({ jobId: row.id, adaptive: adaptive.pass, queued: adaptive.queued });
+        continue;
+      }
+      if (adaptive?.stop) await jobEvent(db, row.id, 'ADAPTIVE_STOP', { reason: adaptive.stop }).catch(() => undefined);
     }
 
     /* The reservation must still be held. One that expired was released by

@@ -246,15 +246,26 @@ export async function projectActor(db: Db, actorUserId: string): Promise<Project
 
   const { demands } = resolveEffectiveIntent(((rows ?? []) as Record<string, unknown>[]).map(toSignal));
 
+  /*
+   * Two reads, not an embed: active_search_subscriptions.intent_id carries no
+   * foreign key, so a PostgREST embed through it fails (PGRST200) — and with the
+   * error ignored, `existing` came back null, nothing was recognised as this
+   * person's, and every statement created a fresh demand instead of refining one.
+   */
   const { data: existing } = await db
     .from('active_search_subscriptions')
-    .select('id,intent_id,is_active,intent:intent_profiles!intent_id(id,transaction_type,classifier_version)')
+    .select('id,intent_id,is_active')
     .eq('user_id', actorUserId)
     .limit(100);
+  const existingRows = (existing ?? []) as Record<string, unknown>[];
+  const intentIds = existingRows.map((row) => row.intent_id).filter(Boolean).map(String);
+  const { data: intentRows } = intentIds.length
+    ? await db.from('intent_profiles').select('id,transaction_type,classifier_version').in('id', intentIds)
+    : { data: [] };
+  const intentById = new Map(((intentRows ?? []) as Record<string, unknown>[]).map((r) => [String(r.id), r]));
 
-  const mine = ((existing ?? []) as Record<string, unknown>[]).map((row) => {
-    const joined = row.intent as Record<string, unknown> | Record<string, unknown>[] | null;
-    const intent = Array.isArray(joined) ? joined[0] : joined;
+  const mine = existingRows.map((row) => {
+    const intent = intentById.get(String(row.intent_id)) ?? null;
     return { row, intent };
   }).filter(({ intent }) => intent && OWN_MARKERS.has(String(intent.classifier_version)));
 

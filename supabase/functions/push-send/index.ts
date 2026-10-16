@@ -99,7 +99,7 @@ function categoryOf(eventType: string, metadata?: Record<string, unknown> | null
   /* The kind first: it is more specific than the type, and it is the only
      thing that distinguishes the three meanings of MATCH_FOUND. */
   const kind = typeof metadata?.kind === 'string' ? metadata.kind : '';
-  if (kind === 'NEW_MESSAGE') return 'messages';
+  if (kind === 'NEW_MESSAGE' || kind === 'PROPERTY_OFFER') return 'messages';
   if (kind === 'VIEWING_REQUEST' || kind === 'VIEWING_UPDATE') return 'viewings';
 
   /* META ADS events carry their preference: meta_performance, meta_leads,

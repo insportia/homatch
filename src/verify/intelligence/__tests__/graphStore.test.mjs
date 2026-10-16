@@ -612,3 +612,28 @@ test('a parcel code is not treated as a unit inside itself', async () => {
   const parcel = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030');
   assert.ok(parcel.entityId, 'the parcel itself stopped resolving');
 });
+
+test('a registry reading of fewer directors replaces the stale set instead of re-verifying it', async () => {
+  // Production job e02d4f16: the register named two directors, the graph held
+  // three (a bank's director leaked by an earlier run), and the subset rule
+  // re-verified the three as "the fuller value".
+  const db = makeDb();
+  const withLeak = { ...REPORT, companyProfile: { ...REPORT.companyProfile, directors: ['კობა კვანტალიანი', 'ლევან ჩაჩუა', 'არჩილ გაჩეჩილაძე'] } };
+  await persistHarvest(db, harvestReport(withLeak, POLICIES), 'job-1');
+
+  const corrected = { ...REPORT, companyProfile: { ...REPORT.companyProfile, directors: [{ name: 'კობა კვანტალიანი', representation: 'ერთობლივი' }, { name: 'ლევან ჩაჩუა', representation: 'ერთობლივი' }] } };
+  await persistHarvest(db, harvestReport(corrected, POLICIES), 'job-2');
+
+  const current = currentFacts(db).find((f) => f.fact_key === 'company.directors');
+  assert.deepEqual(current.value_json, ['კობა კვანტალიანი', 'ლევან ჩაჩუა']);
+  const old = db.tables.intelligence_facts.find((f) => f.fact_key === 'company.directors' && f.status === 'SUPERSEDED');
+  assert.ok(old, 'the stale three-name set is kept as history, not deleted');
+});
+
+test('a web-sourced shorter director list still does not overwrite a fuller one', async () => {
+  const db = makeDb();
+  const web = (directors) => ({ ...REPORT, companyProfile: { ...REPORT.companyProfile, sourceBasis: 'WEB', directors } });
+  await persistHarvest(db, harvestReport(web(['ა ბ', 'გ დ']), POLICIES), 'job-1');
+  await persistHarvest(db, harvestReport(web(['ა ბ']), POLICIES), 'job-2');
+  assert.deepEqual(currentFacts(db).find((f) => f.fact_key === 'company.directors').value_json, ['ა ბ', 'გ დ']);
+});

@@ -269,11 +269,22 @@ export async function removePhoto(photo: { id: string; storage_path?: string | n
     .from('property_photos')
     .delete()
     .eq('id', photo.id)
-    .select('id,storage_path');
+    .select('id,storage_path,property_id,is_cover');
   if (error) throw new Error(`Could not remove the photo: ${error.message}`);
   if (!data || data.length === 0) throw new Error('That photo no longer exists.');
 
   const key = data[0]?.storage_path ?? photo.storage_path ?? null;
+  const propertyId = (data[0] as { property_id?: string } | undefined)?.property_id ?? null;
+  /*
+   * Replacing a photo is "remove, then add". Removing the COVER used to leave
+   * properties.cover_photo_url pointing at the deleted key and no row marked
+   * is_cover, so every list kept showing a broken cover until somebody repaired
+   * the row by hand. The next photo in the owner's order becomes the cover; with
+   * none left, the key is cleared so the imported cover (if any) shows again.
+   */
+  if (propertyId && (data[0] as { is_cover?: boolean }).is_cover) {
+    await promoteNextCover(propertyId, key);
+  }
   if (!key) return { rowDeleted: true, objectDeleted: false, note: 'no stored object' };
 
   try {
@@ -287,6 +298,31 @@ export async function removePhoto(photo: { id: string; storage_path?: string | n
       note: error_ instanceof Error ? error_.message : String(error_),
     };
   }
+}
+
+/**
+ * After the cover was removed: the next photo in the owner's order becomes the cover
+ * and properties.cover_photo_url follows it. With no photos left, the cover returns to
+ * the imported listing's own image (property_facts.cover_image) or to none — never to
+ * the key that was just deleted.
+ */
+export async function promoteNextCover(propertyId: string, removedKey: string | null): Promise<string | null> {
+  const remaining = await allPhotos(propertyId);
+  const next = [...remaining].sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0))[0];
+  let cover: string | null = null;
+  if (next) {
+    await supabase.from('property_photos').update({ is_cover: true }).eq('id', next.id).eq('property_id', propertyId);
+    cover = next.storage_path ?? null;
+  } else {
+    const { data: facts } = await supabase.from('property_facts')
+      .select('cover_image').eq('property_id', propertyId).maybeSingle();
+    const imported = (facts as { cover_image?: string | null } | null)?.cover_image ?? null;
+    cover = imported && imported !== removedKey ? imported : null;
+  }
+  await supabase.from('properties')
+    .update({ cover_photo_url: cover, updated_at: new Date().toISOString() })
+    .eq('id', propertyId);
+  return cover;
 }
 
 /**

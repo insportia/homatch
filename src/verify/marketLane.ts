@@ -65,7 +65,18 @@ export interface ReportComparable {
   listingDate: string | null;
   similarity: string | null;
   retrievedAt: string | null;
-  comparableType: 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT';
+  /*
+   * SAME_PROJECT by identity; MICRO_LOCATION only when measured (distanceM)
+   * or stated by the research layer; SAME_DISTRICT when a district filter was
+   * actually applied; WIDER_MARKET otherwise. PEER_PROJECT is only ever a
+   * research-layer label here — marketIntelligence decides whether a named
+   * development is a genuine (nearby, same-segment) peer.
+   */
+  comparableType: 'SAME_PROJECT' | 'MICRO_LOCATION' | 'SAME_DISTRICT' | 'PEER_PROJECT' | 'WIDER_MARKET';
+  /** The neighbourhood the source stated, when it did. */
+  district?: string | null;
+  /** Metres from the subject, only when both had coordinates. */
+  distanceM?: number | null;
   /** How this advert was found. Present so a reader can check the claim. */
   discoveryMethod: 'DETERMINISTIC_PORTAL_SEARCH' | 'MARKETPLACE_WORKER_SEARCH';
   /** Other adverts for the same property, and their prices. */
@@ -151,11 +162,12 @@ function tierFor(property: UniqueProperty, subjectProject: string | null): Repor
   if (subjectProject && project && project.toLowerCase().trim() === subjectProject.toLowerCase().trim()) {
     return 'SAME_PROJECT';
   }
-  // The envelope's district filter is what makes this micro-location rather
-  // than "somewhere in the city", so it is only claimed when the adapter
-  // actually applied a district constraint.
+  // A district filter makes this district context — not micro-location and
+  // not a peer — and it is only claimed when the adapter actually applied
+  // one. Anything else is the wider market: there is no fallback to
+  // PEER_PROJECT (2026-10-10, job 220ed087).
   const usedDistrict = property.primary.matchRationale.includes('same district');
-  return usedDistrict ? 'MICRO_LOCATION' : 'PEER_PROJECT';
+  return usedDistrict ? 'SAME_DISTRICT' : 'WIDER_MARKET';
 }
 
 /**
@@ -233,6 +245,7 @@ function toReportComparable(
     similarity: advert.matchRationale,
     retrievedAt: advert.retrievedAt,
     comparableType: tierFor(property, subjectProject),
+    district: l.district ?? null,
     discoveryMethod: 'DETERMINISTIC_PORTAL_SEARCH',
     ...(alsoListedAt.length ? { alsoListedAt } : {}),
   };

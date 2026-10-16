@@ -53,6 +53,7 @@ import {CustomerSurface, EmptyState, FilterRail,
   OWNER_SURFACE, PageHero, QuietAction,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import {
   FactLine, IntelLine, MediaWell, Money, OWNER_ICON, OWNER_PRIMARY, SourceMark, StatusMark,
 } from '@/components/owner/portfolio';
@@ -354,6 +355,14 @@ function PropertyRow({
         <Link to={`/property/${id}/edit#photos`} className="gap-2">
           <Camera className="h-4 w-4 shrink-0" />
           <span className="break-words">{t('prop_action_photos')}</span>
+        </Link>
+      </DropdownMenuItem>
+      {/* Publishing a property is a different product area (/publishing); this only
+          opens it with this property chosen. */}
+      <DropdownMenuItem asChild>
+        <Link to={`/publishing/${id}`} className="gap-2">
+          <NavGlyphIcon name="publishing" className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('pubw_publish_this_property')}</span>
         </Link>
       </DropdownMenuItem>
       <DropdownMenuSeparator />

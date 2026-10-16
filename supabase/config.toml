@@ -115,6 +115,10 @@ verify_jwt = false
 [functions.research-agent]
 verify_jwt = false
 
+# Worker-facing queue gateway: authenticated by WORKER_TOKEN, not a user JWT.
+[functions.verify-queue]
+verify_jwt = false
+
 [functions.email-webhook]
 verify_jwt = false
 
@@ -208,3 +212,11 @@ verify_jwt = false
 # preserve. It is in the workflow's JWT loop because it answers about every
 # customer's evidence at once and needs a real user identity to check is_admin
 # against; a private token would only establish that the caller knows the token.
+
+# Retention lifecycle tick (docs/infra/STORAGE_RETENTION.md). Called by the
+# homatch-storage-retention cron with no user JWT, authenticated by
+# x-cron-token against admin_settings.storage_retention_cron_token, or by an
+# admin JWT checked with public.is_admin(). The gateway check would reject the
+# cron before the function could authenticate it.
+[functions.storage-retention]
+verify_jwt = false

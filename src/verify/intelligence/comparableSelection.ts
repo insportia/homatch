@@ -19,19 +19,28 @@
 // (same project, same street, same district, peer project, wider market) and
 // this only decides what to DO with those bands:
 //
-//   DIRECT   same project, same street, same district, peer project
-//   CONTEXT  wider market, and only ever labelled as the wider market
+//   DIRECT   hierarchy levels 1–4: same project, same address/street, peer project
+//   CONTEXT  level 5 only (same or adjacent neighbourhood), never the wider city
 //
 // Nothing is promoted to fill a quota. Two strong local comparables beat
 // eight weak ones, and if there are none, the honest output is a market
 // context with no direct comparables rather than six strangers wearing the
 // word "comparable".
 
-import type { ComparableTier, ScoredComparable } from './marketIntelligence.ts';
+// 2026-10-11 (job 8ba97da9): the "context" bucket used to be WIDER_MARKET —
+// Didi Dighomi beside Krtsanisi, labelled as background but still shown. It
+// is now the hierarchy's level 5 (same or ADJACENT neighbourhood stock, with
+// its reason) and only when levels 1–4 are thin. An unrelated or unknown
+// district is never selected, as direct OR as context. Listings that failed
+// the customer gate (size band, deal type, class, condition, expired, stale)
+// are never selected either.
 
-/** The bands a customer may be shown as genuinely comparable. */
+import type { ComparableTier, ScoredComparable } from './marketIntelligence.ts';
+import { MIN_DEFENSIBLE_COMPARABLES } from './marketHierarchy.ts';
+
+/** The bands a customer may be shown as genuinely comparable, hierarchy order. */
 const DIRECT_TIERS: readonly ComparableTier[] = [
-  'SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'PEER_PROJECT',
+  'SAME_PROJECT', 'SAME_STREET', 'PEER_PROJECT',
 ] as const;
 
 /** i18n key for the one-line reason a comparable is relevant. */
@@ -43,6 +52,13 @@ export const TIER_REASON_KEY: Record<ComparableTier, string> = {
   WIDER_MARKET: 'cmp_reason_wider_market',
 };
 
+/** Finer reasons from the hierarchy (keys in scripts/verify-p0-market-i18n-data.mjs). */
+const HIERARCHY_REASON_KEY: Record<string, string> = {
+  SAME_ADDRESS: 'cmp_reason_same_address',
+  STREET_BRANCH: 'cmp_reason_street_branch',
+  ADJACENT_DISTRICT: 'cmp_reason_adjacent_district',
+};
+
 export interface SelectedComparable {
   comparable: ScoredComparable;
   /** Why it is being shown, as an i18n key — never free prose. */
@@ -51,9 +67,9 @@ export interface SelectedComparable {
 }
 
 export interface ComparableSelection {
-  /** What a buyer may read as "similar to yours". Small on purpose. */
+  /** Levels 1–4: what a buyer may read as "similar to yours". Small on purpose. */
   direct: SelectedComparable[];
-  /** Explicitly the wider city, never mixed into `direct`. */
+  /** Level 5 only — the same or an adjacent neighbourhood, never the wider city. */
   context: SelectedComparable[];
   /** Everything the research actually gathered. */
   rawCount: number;
@@ -70,8 +86,31 @@ const EMPTY_COUNTS = (): Record<ComparableTier, number> => ({
   SAME_PROJECT: 0, SAME_STREET: 0, SAME_DISTRICT: 0, PEER_PROJECT: 0, WIDER_MARKET: 0,
 });
 
+const has = (c: ScoredComparable, r: string) => Array.isArray(c.relevanceReasons) && (c.relevanceReasons as string[]).includes(r);
+
+/** Unrelated/unknown district, or failed the customer gate: never shown. */
+function blocked(c: ScoredComparable): boolean {
+  if (c.outlier) return true;
+  if (Array.isArray(c.exclusions) && c.exclusions.length) return true;
+  if (c.level === null) return true;
+  // A legacy-shaped entry (no level): the wider market is unrelated by definition.
+  return c.level === undefined && c.tier === 'WIDER_MARKET';
+}
+
+const isBroaderNearby = (c: ScoredComparable): boolean =>
+  c.level === 5 || (c.level === undefined && c.tier === 'SAME_DISTRICT');
+
+function reasonKeyOf(c: ScoredComparable): string {
+  if (has(c, 'SAME_ADDRESS')) return HIERARCHY_REASON_KEY.SAME_ADDRESS;
+  if (has(c, 'STREET_BRANCH')) return HIERARCHY_REASON_KEY.STREET_BRANCH;
+  if (isBroaderNearby(c) && has(c, 'ADJACENT_DISTRICT')) return HIERARCHY_REASON_KEY.ADJACENT_DISTRICT;
+  if (isBroaderNearby(c)) return TIER_REASON_KEY.SAME_DISTRICT;
+  return TIER_REASON_KEY[c.tier];
+}
+
 /**
- * Splits a scored pool into what a customer sees and what is only context.
+ * Splits a scored pool into what a customer sees as comparable (levels 1–4)
+ * and the broader-nearby stock (level 5) shown only when the first is thin.
  *
  * `maxDirect` is a ceiling, never a target: the function will happily return
  * one comparable, or none.
@@ -81,42 +120,36 @@ export function selectComparables(
   opts: { maxDirect?: number; maxContext?: number } = {}
 ): ComparableSelection {
   const maxDirect = opts.maxDirect ?? 4;
-  const maxContext = opts.maxContext ?? 3;
+  const maxContext = opts.maxContext ?? 2;
 
   const counts = EMPTY_COUNTS();
   for (const c of scored) {
     if (c && counts[c.tier] !== undefined) counts[c.tier] += 1;
   }
 
-  // Band first, then how close within it — the same order the market
-  // analysis itself uses, so the two can never disagree about which listing
-  // is the strongest.
-  const rank = (t: ComparableTier): number => {
-    const i = DIRECT_TIERS.indexOf(t);
-    return i === -1 ? DIRECT_TIERS.length : i;
-  };
+  // Level first (tier order for a legacy entry), then how close within it —
+  // the same order the market analysis itself uses.
+  const rank = (c: ScoredComparable): number =>
+    typeof c.level === 'number' ? c.level : DIRECT_TIERS.indexOf(c.tier) === -1 ? 5 : DIRECT_TIERS.indexOf(c.tier) + 1;
   const byRelevance = (a: ScoredComparable, b: ScoredComparable): number =>
-    rank(a.tier) - rank(b.tier) || (b.relevance ?? 0) - (a.relevance ?? 0);
+    rank(a) - rank(b) || (b.relevance ?? 0) - (a.relevance ?? 0);
 
-  const direct = scored
-    .filter((c) => DIRECT_TIERS.includes(c.tier))
+  const shown = scored.filter((c) => c && !blocked(c));
+  const toSelected = (comparable: ScoredComparable): SelectedComparable => ({
+    comparable,
+    tier: comparable.tier,
+    reasonKey: reasonKeyOf(comparable),
+  });
+
+  const direct = shown
+    .filter((c) => !isBroaderNearby(c) && DIRECT_TIERS.includes(c.tier))
     .sort(byRelevance)
     .slice(0, maxDirect)
-    .map((comparable) => ({
-      comparable,
-      tier: comparable.tier,
-      reasonKey: TIER_REASON_KEY[comparable.tier],
-    }));
+    .map(toSelected);
 
-  const context = scored
-    .filter((c) => c.tier === 'WIDER_MARKET')
-    .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
-    .slice(0, maxContext)
-    .map((comparable) => ({
-      comparable,
-      tier: comparable.tier,
-      reasonKey: TIER_REASON_KEY.WIDER_MARKET,
-    }));
+  const context = direct.length < MIN_DEFENSIBLE_COMPARABLES
+    ? shown.filter(isBroaderNearby).sort(byRelevance).slice(0, maxContext).map(toSelected)
+    : [];
 
   return {
     direct,

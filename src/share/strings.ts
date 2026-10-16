@@ -10,6 +10,12 @@ export type ShareLang = typeof SHARE_LANGS[number];
 
 export const SHARE_STRINGS: Record<ShareLang, Record<string, string>> = {
   en: {
+    ds_walk_go_to: "Go to {{room}}",
+    ds_walk_back: "Back",
+    ds_walk_plan: "Plan",
+    ds_walk_plan_title: "The whole home — choose a room",
+    ds_walk_you_are_here: "You are here",
+    ds_walk_door_hint: "Each doorway shows where it leads — choose one to walk through.",
     ds_room_living: "Living room",
     ds_room_bedroom: "Bedroom",
     ds_room_kitchen: "Kitchen",
@@ -164,6 +170,12 @@ export const SHARE_STRINGS: Record<ShareLang, Record<string, string>> = {
     share_webgl: "This device cannot show 3D."
   },
   ka: {
+    ds_walk_go_to: "გადასვლა: {{room}}",
+    ds_walk_back: "უკან",
+    ds_walk_plan: "გეგმა",
+    ds_walk_plan_title: "მთელი ბინა — აირჩიეთ ოთახი",
+    ds_walk_you_are_here: "თქვენ აქ ხართ",
+    ds_walk_door_hint: "ყოველ კართან წერია, სად მიდის — აირჩიეთ და გაიარეთ.",
     ds_room_living: "მისაღები",
     ds_room_bedroom: "საძინებელი",
     ds_room_kitchen: "სამზარეულო",
@@ -318,6 +330,12 @@ export const SHARE_STRINGS: Record<ShareLang, Record<string, string>> = {
     share_webgl: "ამ მოწყობილობას 3D-ის ჩვენება არ შეუძლია."
   },
   ru: {
+    ds_walk_go_to: "Перейти: {{room}}",
+    ds_walk_back: "Назад",
+    ds_walk_plan: "План",
+    ds_walk_plan_title: "Вся квартира — выберите комнату",
+    ds_walk_you_are_here: "Вы здесь",
+    ds_walk_door_hint: "У каждого дверного проёма указано, куда он ведёт, — выберите и пройдите.",
     ds_room_living: "Гостиная",
     ds_room_bedroom: "Спальня",
     ds_room_kitchen: "Кухня",
@@ -472,6 +490,12 @@ export const SHARE_STRINGS: Record<ShareLang, Record<string, string>> = {
     share_webgl: "Это устройство не может показать 3D."
   },
   tr: {
+    ds_walk_go_to: "{{room}} alanına geç",
+    ds_walk_back: "Geri",
+    ds_walk_plan: "Kat planı",
+    ds_walk_plan_title: "Tüm ev — bir oda seçin",
+    ds_walk_you_are_here: "Buradasınız",
+    ds_walk_door_hint: "Her kapı nereye açıldığını gösterir — geçmek için birini seçin.",
     ds_room_living: "Oturma odası",
     ds_room_bedroom: "Yatak odası",
     ds_room_kitchen: "Mutfak",
@@ -626,6 +650,12 @@ export const SHARE_STRINGS: Record<ShareLang, Record<string, string>> = {
     share_webgl: "Bu cihaz 3B gösteremiyor."
   },
   ar: {
+    ds_walk_go_to: "الانتقال إلى {{room}}",
+    ds_walk_back: "رجوع",
+    ds_walk_plan: "المخطط",
+    ds_walk_plan_title: "المنزل بالكامل — اختر غرفة",
+    ds_walk_you_are_here: "أنت هنا",
+    ds_walk_door_hint: "كل مدخل يبيّن إلى أين يؤدي — اختر واحدًا لتعبره.",
     ds_room_living: "غرفة المعيشة",
     ds_room_bedroom: "غرفة النوم",
     ds_room_kitchen: "المطبخ",
@@ -780,6 +810,12 @@ export const SHARE_STRINGS: Record<ShareLang, Record<string, string>> = {
     share_webgl: "لا يستطيع هذا الجهاز عرض المحتوى ثلاثي الأبعاد."
   },
   he: {
+    ds_walk_go_to: "מעבר אל {{room}}",
+    ds_walk_back: "חזרה",
+    ds_walk_plan: "תוכנית",
+    ds_walk_plan_title: "כל הבית — בחרו חדר",
+    ds_walk_you_are_here: "אתם כאן",
+    ds_walk_door_hint: "כל פתח מראה לאן הוא מוביל — בחרו אחד כדי לעבור דרכו.",
     ds_room_living: "סלון",
     ds_room_bedroom: "חדר שינה",
     ds_room_kitchen: "מטבח",

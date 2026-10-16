@@ -1,17 +1,19 @@
-import { ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Loader2, Pencil, Search, X } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import type { BriefEdit } from '@/research-core/marketplace/brief';
 import { filtersFromParams, pageNumbers, type ResultFilters, resultParams } from '@/research-core/marketplace/browse-results';
 import { RESULT_SECTIONS } from '@/research-core/marketplace/result-evidence';
 import { browseSearchResults, MarketplaceError, type PropertyView, type SearchBrowsePage, type SearchSummary } from '@/services/marketplaceSearch';
-import { criteriaChips, type T } from './format';
+import { criteriaChips, removeCriterion, type T } from './format';
 import { PropertyCard } from './PropertyCard';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { ResultFiltersPanel } from './ResultFiltersPanel';
 import { DeepSearchCard } from './SearchModeSelect';
 
 export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNewSearch, onChangeCriteria, deepSearchAvailable, version }: {
   t: T; search: SearchSummary; onOpen: (p: PropertyView) => void; compare: string[]; onToggleCompare: (p: PropertyView) => void;
-  onNewSearch: () => void; onChangeCriteria: (field: 'price' | 'area') => void; deepSearchAvailable: boolean; version: number;
+  onNewSearch: () => void; onChangeCriteria: (edit: BriefEdit | null) => void; deepSearchAvailable: boolean; version: number;
 }) {
   const [params, setParams] = useSearchParams();
   const filters = filtersFromParams(params), filterKey = JSON.stringify(filters);
@@ -46,20 +48,40 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const sorted = !!filters.sort && filters.sort !== 'RANKED';
   return <div className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <ul className="flex min-w-0 flex-wrap gap-2" aria-label={t('mps_your_search')}>{criteriaChips(search.brief, t).map((c) => <li key={c.key} className="rounded-full border border-border px-3 py-1.5 text-xs" dir="auto">{c.label}</li>)}</ul>
+      <div className="min-w-0 space-y-2" data-search-summary>
+        <ul className="flex min-w-0 flex-wrap gap-2" aria-label={t('mps_your_search')}>{criteriaChips(search.brief, t).map((c) => {
+          const edit = removeCriterion(c.key);
+          return <li key={c.key} data-criterion={c.key} className="inline-flex items-center gap-1 rounded-full border border-border py-1 ps-3 pe-1 text-xs" dir="auto">{c.label}
+            {edit ? <button type="button" onClick={() => onChangeCriteria(edit)} aria-label={t('fpw_remove_criterion', { label: c.label })} className="grid h-7 w-7 place-items-center rounded-full hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-3.5 w-3.5" aria-hidden="true" /></button> : <span className="pe-2" />}</li>;
+        })}</ul>
+        <p className="text-xs text-muted-foreground">{t('fpw_edit_note')}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => onChangeCriteria(null)} data-action="edit-search" className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Pencil className="h-4 w-4" aria-hidden="true" />{t('fpw_edit_search')}</button>
       <button type="button" onClick={onNewSearch} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[hsl(var(--gold))] px-5 text-sm font-semibold text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Search className="h-4 w-4" aria-hidden="true" />{t('mps_new_search')}</button>
+      </div>
     </div>
     <div ref={heading} className="scroll-mt-24 space-y-3 rounded-2xl border border-white/10 bg-[#0C1119] p-5 text-white shadow-sm sm:p-7 [&_.text-muted-foreground]:text-white/75" aria-live="polite">
       {data ? <><p className="font-display text-xl font-semibold sm:text-2xl" data-testid="mps-total">{t('mps_total_found', { n: data.totalCurrent })}</p><p className="text-sm text-muted-foreground">{t('fpa_summary', { strong: data.summary.strong, close: data.summary.close, verify: data.summary.verification })}</p><p className="max-w-[80ch] text-xs leading-relaxed text-muted-foreground">{t('fpr_freshness_policy')}{data.summary.unknownDates ? ` ${t('fpr_unknown_dates', { n: data.summary.unknownDates })}` : ''}</p></> : null}
       {!search.terminal ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('mps_progressive_body')}</p> : null}
+      {search.sources?.length ? <ul className="space-y-1 text-xs text-muted-foreground" data-testid="mps-sources">{search.sources.map((s, i) => (
+        <li key={`${s.source}-${i}`} data-state={s.state}>{t(`mps_source_${s.state}`, { source: s.source })}{s.retryAt && s.state !== 'FRESH' && s.state !== 'REFRESHING' ? ` · ${t('mps_source_retry', { time: new Date(s.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}` : ''}</li>
+      ))}</ul> : null}
       {search.partial ? <div role="status" className="space-y-1"><p className="text-sm font-medium">{t('mps_partial_title')}</p><p className="text-sm text-muted-foreground">{t('mps_partial_body')}</p></div> : null}
     </div>
+    {/* HOMATCH members whose property fits these requirements, from the native matcher.
+        Private messaging; a number only as the server allows. Renders nothing when empty. */}
+    <NativeMatchesPanel role="SEEKER" />
     {data ? <ResultFiltersPanel t={t} filters={filters} facets={data.facets} onChange={update} onReset={reset} /> : null}
+    {data && data.facets.duplicates + (data.facets.possibleDuplicates ?? 0) > 0 && !filters.duplicatesOnly ? <div role="note" data-duplicates-banner className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.07)] px-4 py-3">
+      <p className="inline-flex items-center gap-2 text-sm font-medium"><Copy className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{data.facets.possibleDuplicates ? t('mps_duplicates_banner_possible', { n: data.facets.duplicates + data.facets.possibleDuplicates }) : t('mps_duplicates_banner', { n: data.facets.duplicates })}</p>
+      <button type="button" onClick={() => update({ duplicatesOnly: true }, 1)} className="inline-flex min-h-[44px] items-center rounded-xl bg-[#0C1119] px-4 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">{t('mps_duplicates_show')}</button>
+    </div> : null}
     {changed ? <div className="hm-discovery-panel flex flex-wrap items-center justify-between gap-3 p-4" role="status"><p className="text-sm">{t('fpr_results_changed')}</p><button type="button" onClick={refresh} className="min-h-[44px] rounded-xl border border-border px-4 text-sm font-semibold">{t('fpr_refresh')}</button></div> : null}
     {error && error !== 'RESULTS_CHANGED' ? <div role="alert" className="hm-discovery-panel space-y-3 p-4"><p>{t('mps_error_generic')}</p><button type="button" onClick={() => setRetry((n) => n + 1)} className="min-h-[44px] rounded-xl border px-4">{t('fpr_retry')}</button></div> : null}
     {data ? <div className="flex flex-wrap gap-2" aria-label={t('fpr_sections')}><button type="button" onClick={() => update({ section: undefined })} aria-pressed={!filters.section} className={`min-h-[44px] rounded-xl border px-3 text-sm ${!filters.section ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.1)]' : 'border-border'}`}>{t('fpr_all')}</button>{RESULT_SECTIONS.filter((s) => data.sections[s] > 0).map((section) => <button key={section} type="button" onClick={() => update({ section })} aria-pressed={filters.section === section} className={`min-h-[44px] rounded-xl border px-3 text-sm ${filters.section === section ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.1)]' : 'border-border'}`}>{t(`fpr_section_${section}`)} <span className="text-muted-foreground">{data.sections[section]}</span></button>)}</div> : null}
     {loading ? <div role="status" className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />{t('fpr_loading')}</div> : null}
-    {showItems && data && data.total === 0 && (search.terminal || data.totalCurrent > 0) ? <section className="hm-discovery-panel space-y-3 p-5 sm:p-6" aria-labelledby="mps-empty"><h2 id="mps-empty" className="font-display text-xl font-semibold">{t(data.totalCurrent ? 'fpr_filtered_empty' : 'mps_empty_title')}</h2><p className="max-w-[70ch] text-sm text-muted-foreground">{t(data.totalCurrent ? 'fpr_filtered_empty_body' : 'fpr_empty_hard')}</p><div className="flex flex-wrap gap-2">{data.totalCurrent ? <button type="button" onClick={reset} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('fpr_clear')}</button> : <><button type="button" onClick={() => onChangeCriteria('area')} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_area')}</button><button type="button" onClick={() => onChangeCriteria('price')} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_budget')}</button></>}</div></section> : null}
+    {showItems && data && data.total === 0 && (search.terminal || data.totalCurrent > 0) ? <section className="hm-discovery-panel space-y-3 p-5 sm:p-6" aria-labelledby="mps-empty"><h2 id="mps-empty" className="font-display text-xl font-semibold">{t(data.totalCurrent ? 'fpr_filtered_empty' : 'mps_empty_title')}</h2><p className="max-w-[70ch] text-sm text-muted-foreground">{t(data.totalCurrent ? 'fpr_filtered_empty_body' : 'fpr_empty_hard')}</p><div className="flex flex-wrap gap-2">{data.totalCurrent ? <button type="button" onClick={reset} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('fpr_clear')}</button> : <><button type="button" onClick={() => onChangeCriteria({ field: 'area', value: null })} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_area')}</button><button type="button" onClick={() => onChangeCriteria({ field: 'price', value: null })} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_budget')}</button></>}</div></section> : null}
     {showItems && data && sorted && data.total > 0 ? <section aria-labelledby="mps-g-SORTED" className="space-y-3"><div><h2 id="mps-g-SORTED" className="font-display text-lg font-semibold sm:text-xl">{t(`fpr_sort_${filters.sort}`)}</h2><p className="mt-1 text-xs text-muted-foreground">{t('fpr_sorted_body')}</p></div><div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">{data.items.map((p) => <PropertyCard key={p.key} p={p} t={t} budgetMaxUsd={search.brief.price?.value.max} onOpen={() => onOpen(p)} compareSelected={compare.includes(p.key)} onToggleCompare={() => onToggleCompare(p)} />)}</div></section> : null}
     {showItems && data && !sorted ? RESULT_SECTIONS.map((section) => {
       const items = data.items.filter((p) => (p.intelligence?.section ?? (p.group === 'UPGRADE' ? 'UPGRADE' : p.group === 'BEST' ? 'BEST' : 'CLOSE')) === section);

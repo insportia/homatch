@@ -157,6 +157,7 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
   const [walking, setWalking] = useState(false);
   const [room, setRoom] = useState<string | null>(null);
   const [touring, setTouring] = useState(false);
+  const [ready, setReady] = useState(false);
   // Everything a visitor does inside (opening, switching, sitting) is
   // temporary: it never reaches the shared design, and a reload starts from
   // the frozen state. The overlay and the scene own it.
@@ -201,7 +202,8 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
     controllerRef.current = controller;
     if (import.meta.env.MODE === 'harness') (window as unknown as { __dsScene?: SceneController }).__dsScene = controller;
     walkRef.current = buildWalkModel(space, state.objects, assets);
-    return () => { controller.dispose(); controllerRef.current = null; };
+    setReady(true);
+    return () => { controller.dispose(); controllerRef.current = null; setReady(false); };
   }, [space, state, assets, materials]);
 
   const aspect = () => controllerRef.current?.camera.aspect ?? 16 / 9;
@@ -230,6 +232,14 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
     setWalking(false);
     setTouring(false);
   };
+  // A walkthrough link opens INSIDE the home: at the entrance, at eye level (the overview is one tap away).
+  const autoEntered = useRef(false);
+  useEffect(() => {
+    if (!ready || autoEntered.current || data.shareType !== 'WALKTHROUGH') return;
+    autoEntered.current = true;
+    enter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, data.shareType]);
   const goRoom = (id: string) => {
     const c = controllerRef.current;
     const walk = walkRef.current;
@@ -296,6 +306,8 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
           touring={touring}
           onTour={() => setTouring((v) => !v)}
           onFullscreen={canFullscreen ? () => { void document.documentElement.requestFullscreen?.().catch(() => {}); } : undefined}
+          space={space}
+          walkModel={walkRef.current}
         />
       ) : webgl && isDesign ? (
         <DesignPanel

@@ -75,7 +75,8 @@ test('a pose through a wall is corrected to the nearest clean one, and the move 
   assert.equal(r.outcome, 'CORRECTED');
   assert.ok(r.movedM > 0 && r.movedM < 1.5, String(r.movedM));
   assert.ok(['THROUGH_WALL', 'OUTSIDE_ROOM'].includes(r.reason), r.reason);
-  assert.equal(state.objects.length, 1);
+  // The room the plan furnished holds just its piece (the plan's other rooms are furnished by the room programme).
+  assert.equal(state.objects.filter((o) => o.roomId === 'r-living').length, 1);
 });
 
 test('two pieces asked for the same spot never overlap: the second moves or is dropped', () => {
@@ -90,7 +91,7 @@ test('two pieces asked for the same spot never overlap: the second moves or is d
 
 test('a piece with no safe place anywhere is dropped and reported, never forced in', () => {
   const { state, report } = build([room('r-bath', { items: [item('dev/sofa-xl', { x: 1, y: 1.5, rotationDeg: 0 })] })]);
-  assert.equal(state.objects.length, 0);
+  assert.equal(state.objects.filter((o) => o.assetId === 'dev/sofa-xl').length, 0);
   assert.equal(report.items[0].outcome, 'DROPPED');
   assert.equal(report.items[0].reason, 'NO_SAFE_PLACE');
 });
@@ -145,7 +146,7 @@ test('the floor plan is never touched: the compiled walls, openings and rooms ar
   const a = compile(emptyDesignState()); const b = compile(state);
   assert.deepEqual(b.walls.map((w) => [w.id, w.start, w.end, w.openings]), a.walls.map((w) => [w.id, w.start, w.end, w.openings]));
   assert.deepEqual(b.rooms.map((r) => [r.id, r.polygon]), a.rooms.map((r) => [r.id, r.polygon]));
-  assert.ok(b.objects.length === 1);
+  assert.ok(b.objects.length >= 1 && b.objects.length === state.objects.length);
 });
 
 test('the same plan on the same design builds the same design, byte for byte', () => {
@@ -186,6 +187,8 @@ test('steps follow the saved work: plan → submit → poll → process; a saved
 
 test('bounded retries: plan, submit, result processing and the overall backstop', () => {
   assert.deepEqual(nextStep(row({ plan_attempts: MAX_PLAN_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'PLAN_FAILED' });
+  // A plan asked in the background is always collected, however many attempts were spent getting it asked.
+  assert.deepEqual(nextStep(row({ plan_attempts: MAX_PLAN_ATTEMPTS, timings: { planResponse: { id: 'resp_1' } } }), NOW), { kind: 'PLAN' });
   assert.deepEqual(nextStep(row({ state: 'SUBMITTED', submit_attempts: MAX_SUBMIT_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'SUBMIT_FAILED' });
   assert.deepEqual(nextStep(row({ state: 'PROCESSING_RESULT', factory_job_id: 'f', result_attempts: MAX_RESULT_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'RESULT_PROCESSING_FAILED' });
   assert.deepEqual(nextStep(row({ state: 'RUNNING', factory_job_id: 'f', attempts: MAX_ATTEMPTS }), NOW), { kind: 'FAIL', code: 'TOO_MANY_ATTEMPTS' });
@@ -340,7 +343,9 @@ test('circulation removes the least furniture that frees the way: the corrected 
   // 10 m² kitchen with its run and fridge: with the comfort margin the table gives way (CIRCULATION), never the run.
   assert.deepEqual(where('dev/kitchen-run'), ['r4']);
   const table = report.items.find((i) => i.code === 'dev/dining-table-4');
-  assert.ok(where('dev/dining-table-4').length === 1 || table.reason === 'CIRCULATION', JSON.stringify(table));
+  // Nor may it stand in the floor the run and the fridge are worked from (build.ts blocksUse): with none left it is
+  // not placed at all (NO_SAFE_PLACE).
+  assert.ok(where('dev/dining-table-4').length === 1 || ['CIRCULATION', 'NO_SAFE_PLACE'].includes(table.reason), JSON.stringify(table));
   // Walkability is now judged with a comfort margin (a 0.7 m passage, not a body's 0.44 m): the study's desk and its
   // chair narrowed the only way into r3 below that, and no single clean pose clears it, so they give way — the bed,
   // the room's own piece, never does. Production dropped 31 of 37 pieces here; only small and mid pieces may go.
@@ -360,4 +365,27 @@ test('circulation removes the least furniture that frees the way: the corrected 
   const comfortBefore = roomy([]);
   const comfortAfter = roomy(state.objects);
   for (const id of comfortBefore) assert.ok(comfortAfter.has(id), `${id} not comfortably reachable`);
+});
+
+test('a WC or wash room too small to have floor clear of its door is still reached; furniture never wins over a door', async () => {
+  const fs = await import('node:fs');
+  const { buildSpaceModel } = await import('../space.ts');
+  const { buildWalkModel } = await import('../navigation.ts');
+  const { reachableRooms } = await import('../walkthrough/build.ts');
+  // A real floor plan's geometry (labels removed): a 1.0 × 1.2 m WC and a 1.2 × 1.2 m bath off a 1.9 × 1.3 m wash room.
+  const scene = JSON.parse(fs.readFileSync(new URL('./fixtures/two-bed-small-wet-rooms.scene.json', import.meta.url), 'utf8'));
+  const space = buildSpaceModel(scene);
+  assert.deepEqual([...reachableRooms(space, buildWalkModel(space, [], new Map()))].sort(), ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']);
+  const src = fs.readFileSync(new URL('../walkthrough/build.ts', import.meta.url), 'utf8');
+  // The last word: the smallest push first, then a move anywhere clean in the room (its lock released), then a
+  // removal — and never a removal that opens nothing.
+  assert.match(src, /if \(pushAside\(way, better, FINAL_PUSH_WALKS\)\) continue;/);
+  assert.match(src, /p\.box = box; p\.lock = undefined; relocated \+= 1;/);
+  assert.match(src, /if \(!best \|\| best\.n <= now\) \{/);
+  // And when the way is held by what is never removed (fittings, a bed, the kitchen): one of them is moved, never removed.
+  assert.match(src, /const fixed = standing\(\)\.filter\(\(p\) => p\.rank >= 5\)/);
+  assert.match(src, /if \(!near\.length\) \{ if \(moveFixed\(way, better\)\) continue; break; \}/);
+  assert.match(src, /if \(moveFixed\(way, better\)\) continue;\n      break;/);
+  // And the aisle guarantee: nothing stands on the aisle from any door to its room's free floor.
+  assert.match(src, /const blockers = standing\(\)\.filter\(\(p\) => onAisle\(p\.box\)\)/);
 });

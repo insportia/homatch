@@ -396,7 +396,12 @@ export async function discoverComparables(
               durationMs: now() - began,
             });
           }
-        }, deadline.signal),
+        }, deadline.signal).catch(() => {
+          // Only the permit wait can reject here — the body catches its own
+          // errors. A source still queued when the budget ran out is a
+          // DEADLINE outcome, never a reason to discard what the others found.
+          outcomes.push(emptyOutcome(adapter.id, adapter.sourceFamily, 'DEADLINE', 'budget spent before this source was reached'));
+        }),
       ),
     );
   };

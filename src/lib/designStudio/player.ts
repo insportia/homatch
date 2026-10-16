@@ -23,7 +23,11 @@ export const DECEL_M_S2 = 13.0;
 /** The thumb stick: a small push does nothing (a resting thumb is not a step), and the response is gentle near the centre. */
 export const STICK_DEAD_ZONE = 0.15;
 /** Touch looking turns a little less per pixel than a mouse: a thumb drag is long and coarse. */
-export const TOUCH_LOOK_RAD_PER_PX = 0.0021;
+export const TOUCH_LOOK_RAD_PER_PX = 0.0038;
+/** A phone's stick walks a little faster than a keyboard's step (a thumb covers a home in fewer pushes). */
+export const TOUCH_PACE = 1.2;
+/** A small room seen through its doorway (a WC, a shower room too tight to step into) is used from this close. */
+export const NEIGHBOUR_REACH_M = 1.6;
 export const PITCH_MIN = -1.2;
 export const PITCH_MAX = 1.0;
 /** How far a person reaches to open, switch or sit (metres from the eye). */
@@ -40,9 +44,11 @@ export interface PlayerSettings {
   /** Optional; off by default. Moving right always turns right unless the visitor asks otherwise. */
   invertX: boolean;
   reducedMotion: boolean;
+  /** The home's sounds as it is used (a door, a tap, a switch): on unless the visitor turns them off. */
+  sound: boolean;
 }
 
-export const DEFAULT_SETTINGS: PlayerSettings = { lookSensitivity: 1, speed: 1, invertY: false, invertX: false, reducedMotion: false };
+export const DEFAULT_SETTINGS: PlayerSettings = { lookSensitivity: 1, speed: 1, invertY: false, invertX: false, reducedMotion: false, sound: true };
 
 /** Settings from storage or a form, bounded to what is safe and comfortable. */
 export function normalizeSettings(raw: unknown): PlayerSettings {
@@ -54,6 +60,7 @@ export function normalizeSettings(raw: unknown): PlayerSettings {
     invertY: x.invertY === true,
     invertX: x.invertX === true,
     reducedMotion: x.reducedMotion === true,
+    sound: x.sound !== false,
   };
 }
 
@@ -122,7 +129,42 @@ export function stickInput(x: number, y: number): { x: number; y: number } {
  * a finger is held to a tighter bound than a mouse.
  */
 export function isTap(ms: number, movedPx: number, mouse: boolean): boolean {
-  return mouse ? ms < 450 && movedPx < 8 : ms < 350 && movedPx < 6;
+  // A fingertip rolls a few pixels as it lands and lifts: 12 px and 400 ms still read as a tap.
+  return mouse ? ms < 450 && movedPx < 8 : ms < 400 && movedPx < 12;
+}
+
+/** Two uses closer than this are one (a tap the canvas and the overlay both heard, a key repeat). */
+export const ACTION_COOLDOWN_MS = 350;
+
+export type InteractionRefusal = 'MOVING_STICK' | 'TOO_SOON' | 'OUT_OF_REACH' | 'OTHER_ROOM' | 'WOULD_TRAP';
+
+/**
+ * Whether an explicit use (a tap, a click, E) may act on its target. Never while the thumb is on the stick (that hand
+ * is walking), never twice for one gesture, never beyond reach, never on something in another room (a door between
+ * this room and the next is in both), and never a door closed on the walker standing in it.
+ */
+export function interactionRefusal(a: {
+  now: number; lastActionAt: number; stickActive: boolean; distanceM: number;
+  playerRoom: string | null; targetRoom: string | null; doorTouchesPlayerRoom: boolean; closingOnBody: boolean;
+}): InteractionRefusal | null {
+  if (a.stickActive) return 'MOVING_STICK';
+  if (a.now - a.lastActionAt < ACTION_COOLDOWN_MS) return 'TOO_SOON';
+  if (!(a.distanceM <= REACH_M)) return 'OUT_OF_REACH';
+  // Another room: only what stands within arm's length of the doorway one stands in (the tap in a WC too small to
+  // step into); the ray never passes a wall, so nothing is used through one.
+  if (!a.doorTouchesPlayerRoom && a.playerRoom && a.targetRoom && a.playerRoom !== a.targetRoom && a.distanceM > NEIGHBOUR_REACH_M) return 'OTHER_ROOM';
+  if (a.closingOnBody) return 'WOULD_TRAP';
+  return null;
+}
+
+/**
+ * Of the usable things near a screen point (E or a captured mouse aims at the centre), the one a person means: the
+ * smallest angle off the line of sight first, then the nearer. `offPx` is its distance on screen from the point.
+ */
+export function pickTarget<T extends { offPx: number; distanceM: number }>(candidates: T[], maxOffPx: number): T | null {
+  const fit = candidates.filter((c) => c.offPx <= maxOffPx && c.distanceM <= REACH_M);
+  if (!fit.length) return null;
+  return fit.sort((x, y) => (x.offPx / maxOffPx + x.distanceM / REACH_M * 0.5) - (y.offPx / maxOffPx + y.distanceM / REACH_M * 0.5))[0];
 }
 
 /** Turn the head by a pointer movement (pixels), per the visitor's settings. */

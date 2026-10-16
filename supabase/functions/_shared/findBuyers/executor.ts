@@ -13,7 +13,7 @@ import { provesOutputContract } from '../../../../src/research-core/findBuyers/a
 import { decideArm, armPriority, parseSampling, type ArmStats } from '../../../../src/research-core/findBuyers/allocator.ts';
 import { queryHash } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { sinceFloor } from '../../../../src/research-core/findBuyers/freshness.ts';
-import { DISCOVERY_STAGES, phase2MayStart, phaseOfStage, probeEstimateMicros } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
+import { DISCOVERY_STAGES, phase2Category, phase2MayStart, phaseOfStage, probeEstimateMicros, actorBreaker, isEmptyResultMessage } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 /* Stages whose Actor accepts a date floor: never ask for content older than 30 days. */
 const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
@@ -50,15 +50,25 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
   if (!settings.apifyEnabled) return out({ outcome: 'CANCELLED', error: 'APIFY_DISABLED_BY_ADMIN' });
   if (!settings.socialEnabled) return out({ outcome: 'CANCELLED', error: 'SOCIAL_DISABLED' });
   const phases = (campaign.query_plan?.phases ?? null) as { phase1DeadlineAt?: string; budget?: { discoveryCapMicros?: number } } | null;
-  if (phaseOfStage(stage) === 'PHASE2_EXTRACTION') {
-    /* TWO PHASES: no Phase 2 run starts while Phase 1 is still discovering
-       inside its time box, so what it finds is in the pool Phase 2 reads.
-       WAIT does not consume an attempt; polls of started runs are never held. */
+  /* An Actor that already failed or came back empty twice in THIS campaign
+     is not paid for again here (its remaining jobs are cancelled, unreserved). */
+  const breaker = await campaignActorBreaker(db, job.matching_job_id, String(meta.actorKey));
+  if (breaker.open) return out({ outcome: 'CANCELLED', error: 'ACTOR_UNPRODUCTIVE_IN_CAMPAIGN', metadata: { breaker } });
+  if (phaseOfStage(stage) === 'PHASE2_EXTRACTION' && phase2Category(stage) === 'SOURCE_DEPENDENT') {
+    /* TWO PHASES: a Phase 2 run that READS the discovered pool (group posts,
+       channels, walls) waits while Phase 1 is still discovering inside its
+       time box. Independent searches (TikTok, LinkedIn posts, Bluesky …) do
+       not depend on the pool and start at once — the first results arrive
+       without waiting for unrelated discovery. WAIT consumes no attempt;
+       polls of started runs are never held. */
     const p1 = await loadPhase1(db, job.matching_job_id, phases);
     if (!phase2MayStart(p1.state)) {
       return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { lastWait: 'PHASE1_DISCOVERY', phase1Open: p1.open, phase1DeadlineAt: p1.deadlineAt } });
     }
-  } else if (phases?.budget && typeof phases.budget.discoveryCapMicros === 'number') {
+  } else if (!String(meta.arm ?? '').startsWith('adaptive:') && phases?.budget && typeof phases.budget.discoveryCapMicros === 'number') {
+    /* An adaptive round (adaptive.ts) is not Phase 1: it was budgeted against the
+       campaign's REMAINING provider budget when it was queued, and the campaign-wide
+       hard cap below still applies to it atomically. */
     /* Phase 1's own ceiling (planned from this campaign's prices). The
        campaign-wide hard cap stays atomic in find_buyers_reserve_actor_run. */
     const actor = await actorRow(db, String(meta.actorKey));
@@ -69,6 +79,13 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
     }
   }
   return start(db, job, campaign, settings);
+}
+
+/** This campaign's record for one Actor: consecutive failed/empty runs. */
+async function campaignActorBreaker(db: any, matchingJobId: string, actorKey: string) {
+  const { data } = await db.from('find_buyers_actor_runs').select('status,items_fetched,useful_results,cost_booked_at,created_at')
+    .eq('matching_job_id', matchingJobId).eq('actor_key', actorKey).limit(50);
+  return actorBreaker(((data ?? []) as any[]).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)));
 }
 
 async function actorRow(db: any, key: string) {
@@ -253,7 +270,9 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       p_billing: cost.billing,
     });
     costMicros = micros;
-    await markActorHealth(db, run.actor_key, bookStatus === 'SUCCEEDED', bookStatus === 'SUCCEEDED' ? null : `RUN_${status}`, false);
+    /* "No items for this query" is an answer, not a broken Actor. */
+    const emptyAnswer = bookStatus === 'FAILED' && isEmptyResultMessage(r?.statusMessage);
+    await markActorHealth(db, run.actor_key, bookStatus === 'SUCCEEDED' || emptyAnswer, bookStatus === 'SUCCEEDED' || emptyAnswer ? null : `RUN_${status}`, false);
   }
 
   /* Process. */
@@ -271,6 +290,9 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     db, campaign: campaign as CampaignRow, stage, runId: run.id, runLanguage: job.language ?? null,
     datasetId, providerRunId: run.provider_run_id, book: parsePriceBook(settings.priceBook), gate: settings.commentGate,
     parent, sourceId: meta.sourceId ?? null, sourceYield,
+    /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
+       row caps an expansion at the Actor's own maximum (followUpRows). */
+    commentProbe: parseSampling(settings.sampling).probe,
   }, normalized);
 
   await db.from('find_buyers_actor_runs').update({
@@ -312,6 +334,10 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   }));
 
   const retryCount = Number(meta.retryCount ?? 0);
+  if (bookStatus !== 'SUCCEEDED' && normalized.length === 0 && isEmptyResultMessage(r?.statusMessage)) {
+    /* The query legitimately matched nothing: retrying buys the same empty answer. */
+    return out({ outcome: 'DONE', resultCount: 0, costUsd: Number(costMicros || 0) / 1e6, metadata: { processed: true, items: 0, emptyResult: true } });
+  }
   if (bookStatus !== 'SUCCEEDED' && normalized.length === 0) {
     if (retryCount < Number(actor?.retry_cap ?? 0) && bookStatus !== 'ABORTED') {
       return out({ outcome: 'RETRY', error: `RUN_${status}`, retrySeconds: 90, costUsd: Number(costMicros || 0) / 1e6, metadata: { retryCount: retryCount + 1, retryOf: run.id, actorRunId: null } });
@@ -361,7 +387,7 @@ const FOLLOW_STAGE_ACTOR: Partial<Record<Stage, string>> = {
 
 async function followUpRows(db: any, job: any, campaign: any, followUps: FollowUp[], settings: FindBuyersSettings) {
   if (!followUps.length) return [];
-  const { data: actors } = await db.from('find_buyers_actor_registry').select('actor_key,probe_size,priority,enabled,emergency_disabled');
+  const { data: actors } = await db.from('find_buyers_actor_registry').select('actor_key,probe_size,max_results,priority,enabled,emergency_disabled');
   const byKey = new Map(((actors ?? []) as any[]).map((a) => [a.actor_key, a]));
   const rows: any[] = [];
   for (const f of followUps) {
@@ -371,7 +397,8 @@ async function followUpRows(db: any, job: any, campaign: any, followUps: FollowU
     const sampling = parseSampling(settings.sampling);
     rows.push(socialJobRow({
       stage: f.stage, actorKey: actorKey!, language: (f.language as any) ?? 'multi', query: null, targetUrl: f.targetUrl,
-      sourceId: f.sourceId, size: Math.min(Number(a.probe_size) || sampling.probe, sampling.probe),
+      /* An adaptive comment expansion asks for its own size, never above the Actor maximum. */
+      sourceId: f.sourceId, size: f.size ? Math.min(f.size, Number(a.max_results) || f.size) : Math.min(Number(a.probe_size) || sampling.probe, sampling.probe),
       arm: f.stage.endsWith('COMMENTS') ? `${f.stage}` : `${f.stage}:${f.sourceId ?? f.targetUrl}`,
       priority: armPriority(null, null, Number(a.priority) + (f.stage.endsWith('COMMENTS') ? 10 : 0)), reason: f.reason,
     }, {

@@ -2,7 +2,7 @@
 // bookkeeping, ported from the pre-refactor lib/steps.js's test suite.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps } from '../.tstest-build/orchestrator/ResearchContext.js';
+import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, stepHeartbeat } from '../.tstest-build/orchestrator/ResearchContext.js';
 
 // Order per the 2026-09-06 "Fix Homatch Verify by implementing this exact
 // pipeline in code" mandate: TAS Map -> TAS Document -> NAPR Property.
@@ -107,4 +107,24 @@ test('buildEntitySteps: multiple entities each get their own full enreg->debtor 
     steps.map((s) => `${s.idCode}:${s.source}`),
     ['1:enreg', '1:debtor', '2:enreg', '2:debtor']
   );
+});
+
+// Production job c80f7237 (2026-10-09): a ~320 s rstax step left updatedAt
+// frozen, so research-agent's progress signature never moved mid-step.
+test('stepHeartbeat: each phase moves updatedAt and a fine-grained stage; inert once the job is not RUNNING', () => {
+  let tick = 0;
+  const clock = () => `T${++tick}`;
+  const job = { status: 'RUNNING', stage: 'CHECKING_RSTAX_ENTITY_404000000', updatedAt: 'T0', phase: null };
+  const beat = stepHeartbeat(job, clock);
+  beat('SEARCH1');
+  assert.deepEqual([job.stage, job.phase, job.updatedAt], ['CHECKING_RSTAX_ENTITY_404000000:SEARCH1', 'SEARCH1', 'T1']);
+  beat('SOLVING_ATTEMPT_1');
+  assert.deepEqual([job.stage, job.updatedAt], ['CHECKING_RSTAX_ENTITY_404000000:SOLVING_ATTEMPT_1', 'T2']);
+  // The watchdog abandoned it: never write back.
+  job._abandoned = true;
+  beat('SEARCH2_ATTEMPT_1');
+  assert.deepEqual([job.stage, job.updatedAt], ['CHECKING_RSTAX_ENTITY_404000000:SOLVING_ATTEMPT_1', 'T2']);
+  const parked = { status: 'WAITING_HUMAN', stage: 'CAPTCHA_REQUIRED', updatedAt: 'T9' };
+  stepHeartbeat(parked, clock)('SEARCH1');
+  assert.deepEqual([parked.stage, parked.updatedAt], ['CAPTCHA_REQUIRED', 'T9']);
 });

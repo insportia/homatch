@@ -49,6 +49,13 @@ export function __resetNavigationCountForTests(): void {
 const PARENTS: ReadonlyArray<readonly [RegExp, string | ((m: RegExpMatchArray) => string)]> = [
   [/^\/verify\/[^/]+$/, '/verify'],
   [/^\/contracts\/[^/]+$/, '/contracts'],
+  [/^\/property\/([^/]+)\/matches\/demo\/[^/]+$/, (m) => `/property/${m[1]}/buyer/demo`],
+  /* Find Buyers 3.0: the dashboard (/matches) opens two result pages; a buyer profile and
+     HOMATCH Leads belong to the internal one, a post opportunity to the external one. */
+  [/^\/property\/([^/]+)\/buyers\/opportunity\/[^/]+$/, (m) => `/property/${m[1]}/buyers/external`],
+  [/^\/property\/([^/]+)\/buyers\/(external|internal)$/, (m) => `/property/${m[1]}/matches`],
+  [/^\/property\/([^/]+)\/buyer\/[^/]+$/, (m) => `/property/${m[1]}/buyers/internal`],
+  [/^\/property\/([^/]+)\/leads$/, (m) => `/property/${m[1]}/buyers/internal`],
   [/^\/property\/([^/]+)\/matches$/, (m) => `/property/${m[1]}`],
   [/^\/property\/(?:add|import|create)$/, '/property'],
   /* A property belongs to the owner workspace, not the dashboard — the page's

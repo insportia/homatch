@@ -47,17 +47,18 @@
 
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { EvidenceSources, BuyerChecklist } from './EvidenceSources';
-import { buyerFacingGroups, type EvidenceGroup } from '@/verify/intelligence/evidenceGroups';
+import { BuyerChecklist } from './EvidenceSources';
+import type { EvidenceGroup } from '@/verify/intelligence/evidenceGroups';
 import type { ChecklistItem } from '@/verify/intelligence/buyerChecklist';
 import { ContractUpload } from './ContractUpload';
 import { VerifyLinkedContracts } from './VerifyLinkedContracts';
 import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, MapPin, Users } from 'lucide-react';
+import { NeighborhoodSection, LocationIntro } from './NeighborhoodSection';
+import type { StoredNeighborhood } from '@/verify/intelligence/neighborhood';
 import {
   CurrentStatusBlock,
   PropertyStoryBlock,
-  ResearchTransparency,
   type CurrentStatusView,
   type StoryChapterView,
   type VisualCaptionView,
@@ -66,16 +67,41 @@ import {
   type OfficialHistoryClientView,
 } from './OfficialIntelligence';
 import { readable } from '@/verify/readableText';
-import { buyerOpening, unconfirmedItems } from '@/verify/intelligence/buyerSummary';
-import { stripInternalTerms, marketShape, TIER_LABEL_KEY } from '@/verify/intelligence/marketNarrative';
+import { buyerOpening } from '@/verify/intelligence/buyerSummary';
+import { stripInternalTerms } from '@/verify/intelligence/marketNarrative';
 import { scrubCoverageLanguage } from '@/verify/intelligence/coverageGap';
 import { severitySignals, weighVerdict } from '@/verify/intelligence/severity';
 import { CompanyIntelligenceCard, type CompanyProfileLike } from './CompanyIntelligenceCard';
 import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
-import { UnconfirmedCard } from './UnconfirmedCard';
 import { DeveloperAdvertising, type AdvertisingAssessmentView } from './DeveloperAdvertising';
 import type { DeveloperAdsView } from '@/verify/developerAds';
 import { BuyerBottomLine } from './BuyerBottomLine';
+import { PropertyRegisterCard, CompanyFinanceCard, ReportNav, ResearchScaleBanner } from './BuyerIntelligenceCards';
+import type { PropertyRegister } from '@/verify/intelligence/propertyRegister';
+import type { PropertyIdentity } from '@/verify/intelligence/propertyIdentity';
+import type { MarketIntelligence } from '@/verify/intelligence/marketIntelligence';
+import { Reveal } from '@/components/common/Reveal';
+import { VisualExplorer } from './VisualExplorer';
+import { LegalFindings, LegalPosition, IdentityNotice } from './LegalReality';
+import { OfficialDocuments } from './OfficialDocuments';
+import { VerifyJobProvider, useVerifyJobId } from './OfficialLink';
+import { PropertyFactsCard } from './PropertyFactsCard';
+import { isRawRecord, RAW_FINDING_WHY } from '@/verify/intelligence/rawText';
+import { sectionsFor, type PropertyKind } from '@/verify/intelligence/propertyKind';
+import { copyKindOf, marketPlanForKind } from '@/verify/intelligence/kindGuard';
+import { KIND_LABEL_KEY } from '@/verify/propertyFacts';
+import { LazyMount } from './LazyMount';
+import { BuildingSpecs } from './BuildingSpecs';
+import { TechnicalExplained } from './TechnicalExplained';
+import { ProjectMath } from './ProjectMath';
+import { BuyerAssessment } from './BuyerAssessment';
+import { PeopleBehind } from './PeopleBehind';
+import { MarketPosition, hasMarketView } from './MarketPosition';
+import { chapterOfSection, identityNotice, legalPosition, documentExplorer, specGroups, teamGroupsV2, SECTION_HEADING_KEY, type ChapterId, type RegisterSourceLike } from '@/verify/reportPresentation';
+import type { CompanyFinanceView, MarketContextView, ProjectTeamMember } from '@/verify/intelligence/reportGaps';
+import { splitCitations, hasDistance } from '@/verify/citations';
+import { ReportTranslation } from './ReportTranslation';
+import { collectGeorgianTexts } from '@/verify/translation/textTranslation';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
 export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
@@ -152,8 +178,10 @@ export interface BuyerIntelligence {
   currentStatus?: CurrentStatusView;
   /** Documented history, oldest first. */
   propertyStory?: { chapters: StoryChapterView[] };
-  /** One caption per official TAS visual. */
+  /** One caption per official TAS visual (legacy; visualExplanations supersedes it). */
   visualCaptions?: VisualCaptionView[];
+  /** Per-visual reading: what it shows, what is interesting, what it means, what is uncertain. */
+  visualExplanations?: Array<{ id: string; what: string; interesting: string; buyerMeaning: string; uncertain: string }>;
   keyFindings: KeyFinding[];
   sections: {
     key: string; title: string; body: string;
@@ -164,6 +192,10 @@ export interface BuyerIntelligence {
   nextSteps?: { step: string; why: string; cites: string[] }[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
+  /** Final narrative pass (2026-10-11), all built deterministically in verify-synthesis. */
+  technicalExplained?: unknown;
+  projectSignals?: unknown;
+  buyerAssessment?: unknown;
 }
 
 /**
@@ -188,13 +220,16 @@ export interface LocationBlock {
   profile?: { district: string; character: string; likelyResidents: string[]; context: string[] };
   nearby: NearbyPlaceBlock[];
   minimal: boolean;
+  /* Source-verified OpenStreetMap lookup stored at build time (neighborhood.ts). */
+  neighborhood?: StoredNeighborhood | null;
 }
 
 export interface VerifySynthesis {
   report: BuyerIntelligence | null;
   evidence?: EvidenceRef[];
   snapshot?: PropertySnapshot;
-  market?: MarketBlock | null;
+  /** MarketIntelligence (marketIntelligence.ts) today; MarketBlock in stored older reports. */
+  market?: MarketBlock | MarketIntelligence | null;
   /*
    * THE LAST BROKEN LINK IN LOCATION & LIVING.
    *
@@ -221,6 +256,24 @@ export interface VerifySynthesis {
   officialHistory?: OfficialHistoryClientView | null;
   /** Developer advertising (Meta Ad Library), a marketing signal only. */
   developerAds?: DeveloperAdsView | null;
+  /** The unit's own NAPR extract, parsed (see propertyRegister.ts). */
+  propertyRegister?: PropertyRegister | null;
+  /** The developer's financial position from what was actually checked. */
+  companyFinance?: CompanyFinanceView | null;
+  projectTeam?: ProjectTeamMember[] | null;
+  /** A reused market snapshot, when the run gathered no comparables of its own. */
+  marketContext?: MarketContextView | null;
+  /** Which unit, building and parcel the records actually concern (propertyIdentity.ts). */
+  identity?: PropertyIdentity | null;
+  /* ── Verify v3 contract (optional; older reports lack every one) ── */
+  /** The team grouped by discipline, each role in the document's own words. */
+  projectTeamV2?: unknown[] | null;
+  /** Documented specifications with Approved / Proposed / Unknown status. */
+  technicalSpecs?: unknown[] | null;
+  /** The official applications and their files, newest two first. */
+  officialDocuments?: unknown[] | null;
+  /** Where the register extract came from — reused from an earlier check, or fetched now. */
+  registerSource?: RegisterSourceLike | null;
 }
 
 /**
@@ -230,7 +283,7 @@ export interface VerifySynthesis {
  * is the ORDER that must stay stable here, and this list also has to name
  * keys that module no longer knows about.
  */
-const READING_ORDER = ['SNAPSHOT', 'PROJECT', 'LOCATION', 'INFRASTRUCTURE', 'MARKET', 'PEOPLE'];
+const READING_ORDER = ['SNAPSHOT', 'PROJECT', 'QUALITY', 'LOCATION', 'INFRASTRUCTURE', 'MARKET', 'PEOPLE'];
 
 function orderForReading<T extends { key: string }>(sections: T[]): T[] {
   const rank = (k: string) => {
@@ -288,7 +341,7 @@ const stripEvidenceIds = (text: string): string =>
  */
 const clean = (s: unknown): string =>
   scrubCoverageLanguage(
-    stripInternalTerms(stripEvidenceIds(readable(typeof s === 'string' ? s : '')))
+    stripInternalTerms(stripEvidenceIds(readable(splitCitations(typeof s === 'string' ? s : '').text)))
   );
 
 const paragraphs = (text: string): string[] =>
@@ -297,12 +350,36 @@ const paragraphs = (text: string): string[] =>
 const Prose: React.FC<{ text: string }> = ({ text }) => (
   <>
     {paragraphs(text).map((p, i) => (
-      <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
+      <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words" dir="auto">{p}</p>
     ))}
   </>
 );
 
-export function VerifyReport({
+/* What the report's prose will render as, for the translation prefetch. */
+const proseForPrefetch = (report: unknown): string[] => collectGeorgianTexts(report, (s) => paragraphs(s));
+
+/*
+ * THE REPORT, IN THE CUSTOMER'S LANGUAGE (owner P0, 2026-10-12).
+ *
+ * Every rendered text with Georgian letters is translated through
+ * ReportTranslation (keyed on the text, cached for every report); this wrapper
+ * only supplies the job id the `translate` request is authorised against and
+ * the prose worth prefetching. Nothing inside the report needs to know.
+ */
+export function VerifyReport(props: React.ComponentProps<typeof VerifyReportBody>) {
+  const outerJobId = useVerifyJobId();
+  const own = (props.synthesis as { jobId?: unknown }).jobId;
+  const jobId = typeof own === 'string' && own ? own : outerJobId;
+  const report = props.synthesis.report;
+  const prefetch = React.useCallback(() => proseForPrefetch(report), [report]);
+  return (
+    <ReportTranslation jobId={jobId} prefetch={prefetch}>
+      <VerifyReportBody {...props} />
+    </ReportTranslation>
+  );
+}
+
+function VerifyReportBody({
   synthesis,
   evidence,
   contractCaseId,
@@ -351,43 +428,30 @@ export function VerifyReport({
    * report.ts sorts what it writes, but the database is full of reports
    * written before it did — and a section key it no longer emits at all, like
    * the old standalone LEGAL block. Those are still what their customers were
-   * given, so they are shown rather than dropped: sorted to the end, under
-   * the heading they had. A renderer that silently loses part of an existing
-   * report is worse than one that shows it in a new place. */
-  /*
-   * THE THIRD OPENING.
+   * given, so they are shown rather than dropped: placed by chapterOfSection()
+   * (LEGAL in Legal reality, anything unknown with the final perspective),
+   * under the heading they had.
    *
-   * The model writes a SNAPSHOT section — "დღევანდელი სურათი" — restating
-   * the property facts the Snapshot component renders directly above it as
-   * structured rows. With the verdict and the key findings before that, the
-   * live report introduced itself three times before a reader reached a
-   * single detail.
-   *
-   * Its METRICS are kept: they move into the snapshot block where numbers
-   * belong. Only the repeated prose section is dropped, and only when the
-   * structured snapshot is actually present to carry those facts.
+   * The model's SNAPSHOT prose restates the structured snapshot, so it is
+   * dropped when the snapshot is present; its METRICS are kept and move into
+   * the building chapter where numbers belong.
    */
-  const allSections = (r.sections ?? []).filter((s) => clean(s.body));
+  // Raw "Field: value" record dumps from the no-model template are never shown (owner, 2026-10-11).
+  const allSections = (r.sections ?? []).filter((s) => clean(s.body) && !clean(s.body).split(/(?<=[.!?])\s+/).every((x) => isRawRecord(x)));
   const snapshotSection = allSections.find((s) => s.key === 'SNAPSHOT');
   const sections = orderForReading(
     synthesis.snapshot ? allSections.filter((s) => s.key !== 'SNAPSHOT') : allSections
   );
   const snapshotMetrics = synthesis.snapshot ? (snapshotSection?.metrics ?? []) : [];
+  const inChapter = (c: ChapterId) => sections.filter((s) => chapterOfSection(s.key) === c);
   const people = (synthesis.people?.people ?? []).slice(0, 6);
   /* Which section the evidenced places belong under. LOCATION when the model
      wrote one, otherwise INFRASTRUCTURE, otherwise neither and the block
-     stands on its own below. */
+     stands on its own in the location chapter. */
   const locationHost =
     (['LOCATION', 'INFRASTRUCTURE'] as const).find((k) => sections.some((s) => s.key === k)) ?? null;
-  const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding));
+  const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding) && f.whyItMatters !== RAW_FINDING_WHY && !isRawRecord(f.finding));
 
-  /*
-   * THE OPEN QUESTIONS, GATHERED ONCE.
-   *
-   * Built from what the run stored rather than from what the model wrote
-   * about it, so the missing asking price appears here exactly when it is
-   * genuinely missing — and stops being the first thing anyone reads.
-   */
   /*
    * THE VERDICT, WEIGHED RATHER THAN COUNTED.
    *
@@ -401,223 +465,415 @@ export function VerifyReport({
     highlights: r.summary?.highlights ?? [],
   }));
 
-  const openQuestions = unconfirmedItems({
-    market: synthesis.market as never,
-    snapshot: synthesis.snapshot as never,
-    rights: rights as never,
-    utilities,
-  });
+  const history = synthesis.officialHistory ?? null;
+  const identity = synthesis.identity ?? null;
+  const identityUnresolved = identity?.status === 'UNRESOLVED_MISMATCH';
+  const position = legalPosition(history);
+  const pendingRefs = (position?.pending ?? []).map((p) => p.caseRef).filter((x): x is string => !!x);
+  const hasDocuments = documentExplorer(synthesis.officialDocuments).recent.length > 0;
+  const teamV2Groups = teamGroupsV2(synthesis.projectTeamV2);
+  const companyDirectors = Array.isArray((company as { directors?: unknown } | null | undefined)?.directors)
+    ? ((company as { directors: unknown[] }).directors).map((d) => (typeof d === 'string' ? d : String((d as { name?: unknown })?.name ?? ''))).filter(Boolean)
+    : [];
+  const companyListsDirectors = companyDirectors.length > 0;
+  /* Everyone the register names as running the developer — so the team
+     section can say so, and never seat a director among the architects. */
+  const directors = [
+    ...companyDirectors,
+    ...people.filter((p) => [p.role, ...(p.roles ?? [])].some((r) => String(r).toUpperCase() === 'DIRECTOR')).map((p) => p.name),
+  ];
+  const renderSection = (s: { key: string; title: string; body: string; metrics?: { label: string; value: string }[] }) => (
+    <section key={s.key} className="space-y-3" data-section={s.key}>
+      <h3 className="font-display text-lg font-semibold leading-snug tracking-tight break-words">
+        {clean(s.title) || t(SECTION_HEADING_KEY[s.key] ?? 'vrx_section_more')}
+      </h3>
+      {/* Decision-relevant numbers, pulled out of the paragraph so a
+          scanning reader meets them first. */}
+      {s.metrics?.length ? <Metrics metrics={s.metrics} /> : null}
+      <div className="max-w-[68ch] space-y-4"><Prose text={s.body} /></div>
+      {/* Under whichever of the two location sections the model actually
+          wrote, so the evidenced places sit with the prose about them. */}
+      {s.key === locationHost && synthesis.location ? (
+        ks.livingLocation ? <LocationLiving l={synthesis.location} /> : null
+      ) : null}
+    </section>
+  );
+
+  /* Which chapters this kind of property has (owner, 2026-10-11 v7): the
+     registry's own classification, never the code's length. Unknown, other
+     and ambiguous keep every chapter (propertyKind.ts sectionsFor). */
+  const ks = sectionsFor(((synthesis as { propertyKind?: { kind?: string } }).propertyKind?.kind ?? 'UNKNOWN') as PropertyKind);
+  /* v7: the same report for every kind (kindGuard.ts). The deterministic copy names the
+     registry kind (an apartment's wording is unchanged), and a non-apartment gets a market
+     of its own kind when one was gathered, else one honest sentence: never a silent gap. */
+  const copyKind = copyKindOf(synthesis);
+  const marketPlan = marketPlanForKind((synthesis as { propertyKind?: { kind?: string } }).propertyKind?.kind, synthesis.market);
+  /* What each chapter has to say. A chapter with nothing is not drawn. */
+  const has = {
+    explore: true,
+    story: !!(r.propertyStory?.chapters?.some((c) => clean(c.body)) || history?.milestones?.length || history?.milestoneGroups?.length || history?.evolution?.length),
+    people: ks.projectTeam && !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
+    building: true,
+    legal: !!(position || history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
+    documents: hasDocuments,
+    location: !!(inChapter('location').length || synthesis.location),
+    market: marketPlan.mode === 'NOTE' ? true : marketPlan.mode === 'MARKET' ? hasMarketView(synthesis.market) : ks.apartmentMarket && (inChapter('market').length > 0 || hasMarketView(synthesis.market)),
+    final: true,
+  };
+  /* THE BUYER'S ORDER, IN FIVE GROUPS (owner, 2026-10-11, v6):
+       მთავარი      summary, key findings, the official gallery
+       პროექტი      story, people, building (specs, scale, utilities)
+       უსაფრთხოება   legal reality, ownership/register, decisions in force and pending
+       გარემო და ფასი location, market
+       დოკუმენტები    the official document library
+     then the final perspective, which closes the report under the last group. */
+  const order: ChapterId[] = ['explore', 'story', 'people', 'building', 'legal', 'location', 'market', 'documents', 'final'];
+  const shown = order.filter((c) => has[c as keyof typeof has]);
+  const num = (c: ChapterId) => shown.indexOf(c) + 1;
+
+  /* The groups this report actually has, for the sticky navigation. */
+  const nav = [
+    { id: 'vbi-g-main', labelKey: 'verify_v6_nav_main' },
+    { id: 'vbi-g-project', labelKey: 'verify_v6_nav_project' },
+    ...(has.legal ? [{ id: 'vbi-g-safety', labelKey: 'verify_v6_nav_safety' }] : []),
+    ...(has.location || has.market ? [{ id: 'vbi-g-place', labelKey: 'verify_v6_nav_place' }] : []),
+    ...(has.documents ? [{ id: 'vbi-g-documents', labelKey: 'verify_v6_nav_documents' }] : []),
+  ];
 
   return (
-    <article className="mx-auto max-w-[68ch] space-y-8">
-      <SummaryHero summary={r.summary} weighed={weighed} />
+    /* The job id lets official file links open through the secure viewer (OfficialLink). */
+    <VerifyJobProvider jobId={typeof (synthesis as { jobId?: unknown }).jobId === 'string' ? (synthesis as { jobId?: string }).jobId : null}>
+    <article className="vrx mx-auto w-full max-w-[56rem] space-y-12 pb-8 sm:space-y-16">
+      <ReportNav items={nav} />
 
-      {/* B. THE LATEST CONFIRMED OFFICIAL POSITION — the present tense, once. */}
-      <CurrentStatusBlock status={r.currentStatus} history={synthesis.officialHistory} clean={clean} />
+      {/* ════ NAV GROUP: main ════ */}
+      <div id="vbi-g-main" data-nav-group="main" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
+      {/* ── FIRST IMPRESSION ── what this is, and what to know first. */}
+      <div id="vbi-summary" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-6">
+        <SummaryHero summary={r.summary} weighed={weighed} snapshot={synthesis.snapshot} />
+        {findings.length ? <KeyFindings findings={findings} /> : null}
+        {/* How much was read — told once, compactly, under the verdict. */}
+        <ResearchScaleBanner
+          coverage={synthesis.research}
+          register={synthesis.propertyRegister?.coverage ?? null}
+          adsSeen={synthesis.developerAds ? (synthesis.developerAds.activeCount ?? 0) + (synthesis.developerAds.historicalCount ?? 0) : null}
+          sources={(synthesis.evidenceGroups ?? []).reduce((n: number, g: any) => n + (Array.isArray(g?.items) ? g.items.length : 0), 0) || null}
+        />
+        <PropertyFactsCard synthesis={synthesis} />
+      </div>
 
-      {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
-      {/* The dropped section's own figures, kept where figures belong. */}
-      {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
+      {/* ── EXPLORE THE PROPERTY ── the official visuals, labelled. */}
+      <Chapter id="vbi-explore" n={num('explore')} kicker={t('vrx_explore_kicker')} title={t('vrx_explore_title')} lede={t('vrx_explore_lede')}>
+        <VisualExplorer
+          visuals={synthesis.officialVisuals as unknown[] | undefined}
+          explanations={r.visualExplanations as unknown[] | undefined}
+          captions={r.visualCaptions as unknown[] | undefined}
+          identityUnresolved={identityUnresolved}
+          history={history}
+          docs={synthesis.officialDocuments}
+          freshPhotos={(synthesis as { freshPhotos?: unknown }).freshPhotos}
+          clean={clean}
+        />
+      </Chapter>
 
-      {findings.length ? <KeyFindings findings={findings} /> : null}
+      </div>
 
-      {/* C + D. THE PROPERTY STORY, with the official TAS visuals beside the
-          chapter they explain (original → latest where both exist). */}
-      <PropertyStoryBlock
-        chapters={r.propertyStory?.chapters}
-        visuals={synthesis.officialVisuals}
-        captions={r.visualCaptions}
-        history={synthesis.officialHistory}
-        clean={clean}
-      />
-
-      {/* EVIDENCE, WHERE THE READER IS STILL DECIDING WHETHER TO TRUST IT.
-          This used to sit at the very bottom, below the disclaimer — past the
-          point where anyone was still reading. A due-diligence report is worth
-          what its sources are worth, and the reader needs to know the
-          conclusions are grounded BEFORE they have finished forming an opinion,
-          not after. It stays a closed drawer: the summary line is the promise,
-          the detail is still a deliberate click, and the page above it is
-          unchanged. */}
-      {sections.map((s) => (
-        <section key={s.key} className="space-y-3">
-          <h2 className="text-base font-semibold tracking-tight break-words">{clean(s.title)}</h2>
-          {/* Decision-relevant numbers, pulled out of the paragraph so a
-              scanning reader meets them first. */}
-          {s.metrics?.length ? <Metrics metrics={s.metrics} /> : null}
-          <Prose text={s.body} />
-          {s.key === 'MARKET' && synthesis.market ? <PriceBar m={synthesis.market} /> : null}
-          {s.key === 'PEOPLE' && people.length ? (
-            <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
-          ) : null}
-          {/* Under whichever of the two location sections the model actually
-              wrote, so the evidenced places sit with the prose about them. */}
-          {s.key === locationHost && synthesis.location ? (
-            <LocationLiving l={synthesis.location} />
-          ) : null}
-        </section>
-      ))}
-
-      {/* And on its own when the model wrote neither section. Places a source
-          named are evidence, and evidence must not vanish because the prose
-          did not reach it — the same reasoning as the participants below. */}
-      {synthesis.location && !locationHost ? <LocationLiving l={synthesis.location} /> : null}
-
-      {/* Only when the model had nothing to say about them under PEOPLE —
-          participants are context and must not vanish just because the prose
-          did not reach them. */}
-      {people.length && !sections.some((s) => s.key === 'PEOPLE') ? (
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold tracking-tight break-words flex items-center gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            {t('verify_ir_people_title')}
-          </h2>
-          <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
-          {synthesis.people?.representationNote ? (
-            <p className="text-sm leading-6 text-muted-foreground break-words">
-              {readable(synthesis.people.representationNote)}
-            </p>
-          ) : null}
-        </section>
+      {/* ════ NAV GROUP: project ════ */}
+      <div id="vbi-g-project" data-nav-group="project" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
+      {/* ── THE STORY ── prose first, then the grouped official timeline. */}
+      {has.story ? (
+        <Chapter id="vbi-story" headingId="verify-story" n={num('story')} kicker={t('verify_ox_story_kicker')} title={t('verify_ox_story_title')}>
+          <PropertyStoryBlock chapters={r.propertyStory?.chapters} history={history} clean={clean} signals={r.projectSignals} specs={synthesis.technicalSpecs} unitIdentity={(synthesis as { unitIdentity?: unknown }).unitIdentity} kind={copyKind} />
+        </Chapter>
       ) : null}
 
-      {/* DEVELOPER ADVERTISING — the last research stage, after the evidence
-          and before what to act on: what the developer claims, labelled as a
-          claim. Absent unless the stage completed. */}
-      <DeveloperAdvertising view={synthesis.developerAds} assessment={r.advertisingAssessment} />
-
-      {r.attentionPoints?.length ? (
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold tracking-tight break-words">
-            {t('verify_ir_attention_title')}
-          </h2>
-          <ul className="space-y-4">
-            {r.attentionPoints.map((a, i) => (
-              <li key={i} className="border-s-2 border-amber-400/70 ps-4 space-y-1">
-                <p className="text-[15px] leading-7 font-medium break-words">{clean(a.point)}</p>
-                {a.why ? (
-                  <p className="text-sm leading-6 text-muted-foreground break-words">{clean(a.why)}</p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {/* WHAT TO DO NOW.
-          Sits between the things worth looking at and the official checks a
-          buyer can run themselves, because it is the bridge: attention points
-          say what stood out, this says what to do about it, and Check It
-          Yourself is the part they do at a registry counter. Absent entirely
-          when the report found nothing that needs acting on — an empty plan is
-          how the checklist this replaced got filled with filler. */}
-      {r.nextSteps?.length ? (
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold tracking-tight break-words">
-            {t('verify_ir_next_steps_title')}
-          </h2>
-          <ol className="space-y-4">
-            {r.nextSteps.map((s, i) => (
-              <li key={i} className="flex gap-3">
-                <span
-                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
-                  aria-hidden="true"
-                >
-                  {i + 1}
-                </span>
-                <div className="space-y-1 min-w-0">
-                  <p className="text-[15px] leading-7 font-medium break-words">{stripLeadingOrdinal(clean(s.step))}</p>
-                  {s.why ? (
-                    <p className="text-sm leading-6 text-muted-foreground break-words">{clean(s.why)}</p>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
-
-      {/* ── 6. WHO IS SELLING IT ────────────────────────────────────────
-          Registry-grade and visually distinct, because it is the most
-          trustworthy thing the run produces. It also holds the one
-          distinction this report must never blur: a pledge against the
-          COMPANY is not a mortgage on the FLAT. */}
-      <CompanyIntelligenceCard company={company} rights={rights} />
-
-      {/* ── 8. UTILITIES ───────────────────────────────────────────────
-          Rendered even when the run established nothing, because a missing
-          section reads as "does not apply" while a row saying "not yet
-          verified" reads as the question it actually is. */}
-      <UtilitiesCard utilities={utilities} />
-
-      {/* ── 10. WHAT REMAINS UNCONFIRMED ───────────────────────────────
-          Where the missing price and area live now. */}
-      <UnconfirmedCard items={openQuestions} />
-
-      {/* ── 11. WHAT THIS MEANS FOR THE BUYER ──────────────────────────
-          The model's closing sentence, and then the three questions a reader
-          is actually left with, answered from what the run established rather
-          than from a second paragraph of generated prose. */}
-      <BuyerBottomLine
-        finalView={clean(r.finalView)}
-        highlights={r.summary?.highlights ?? []}
-        openQuestions={openQuestions}
-        clean={clean}
-      />
-
-      {synthesis.selfChecks?.length ? <SelfChecks checks={synthesis.selfChecks} /> : null}
-
-      {/*
-        * THE TWO SECTIONS THAT CLOSE THE REPORT.
-        *
-        * The checklist is what the reader does next; the evidence is what it
-        * all rested on. Both used to depend on the model filling an optional
-        * array — `nextSteps` and `evidenceUsed` were both empty on the live
-        * Villion report, so both sections silently vanished from a report
-        * that demonstrably held the evidence. They are computed in the
-        * bundle now and merely rendered here.
-        */}
-      <BuyerChecklist items={synthesis.checklist ?? []} />
-      <EvidenceSources groups={buyerFacingGroups(synthesis.evidenceGroups ?? [])} />
-
-      {/* H. RESEARCH TRANSPARENCY — what was reviewed, never a link list. */}
-      <ResearchTransparency coverage={synthesis.research} />
-
-      {r.contractUpload?.recommend !== false ? (
-        <section className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">
-          <div className="flex items-start gap-3">
-            <FileText className="h-5 w-5 shrink-0 text-primary mt-0.5" aria-hidden="true" />
-            <p className="text-sm leading-6 break-words min-w-0">
-              {clean(r.contractUpload?.text) || t('verify_ir_upload_body')}
-            </p>
-          </div>
-          {/*
-            * The picker, right here.
-            *
-            * This used to be a button that NAVIGATED to the case's documents
-            * tab and left the customer to find an upload control on the page
-            * it landed on — a contract upload that uploaded nothing. The same
-            * component the Verification Center uses is mounted inline
-            * instead, so choosing the file is the whole interaction.
-            */}
-          {/* What has already been read for this property, then the way to
-              add one. Question first, action second — the reverse offers a
-              customer an upload they may not need. */}
-          <VerifyLinkedContracts
-            roomId={contractCaseId ?? null}
-            cadastralCode={synthesis.snapshot?.cadastralCode ?? null}
-            address={synthesis.snapshot?.address ?? null}
+      {/* ── THE PEOPLE BEHIND IT ── */}
+      {has.people ? (
+        <Chapter id="vbi-people" n={num('people')} kicker={t('vrx_people_kicker')} title={t('verify_v6_people_title')}>
+          <PeopleBehind
+            team={history?.team}
+            projectTeam={synthesis.projectTeam}
+            developer={synthesis.snapshot?.developer ?? (company && typeof company.name === 'string' ? company.name : null)}
+            financingPartner={synthesis.companyFinance?.financingPartner ?? null}
+            teamV2={synthesis.projectTeamV2}
+            directors={directors}
           />
-          <ContractUpload caseId={contractCaseId ?? null} variant="inline" />
-        </section>
+          {/* With the documented team on screen, the model's paragraph about
+              the same people is the third telling of it (team cards, company
+              card, prose) — the owner's "the same thing many times". */}
+          {(teamV2Groups.length ? [] : inChapter('people')).map(renderSection)}
+          {/* The company the people belong to — participants are context and
+              must not vanish just because the prose did not reach them. The
+              company card in the legal chapter already lists the register's
+              directors; the tree is drawn only when that card has none. */}
+          {people.length && !companyListsDirectors ? (
+            <div className="space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold break-words">
+                <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                {t('verify_ir_people_title')}
+              </h3>
+              <CompanyGraph people={people} owner={synthesis.snapshot?.developer} />
+              {synthesis.people?.representationNote ? (
+                <p className="text-sm leading-6 text-muted-foreground break-words">
+                  {readable(synthesis.people.representationNote)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {/* What the developer says about the project — labelled as a claim.
+              Absent unless the stage completed. */}
+          <DeveloperAdvertising view={synthesis.developerAds} assessment={r.advertisingAssessment} />
+        </Chapter>
       ) : null}
 
-      <p className="text-xs text-muted-foreground/80 leading-relaxed break-words">
-        {t('verify_ir_disclaimer')}
-      </p>
+      {/* ── THE BUILDING ── project and quality prose, the basics, utilities. */}
+      <Chapter id="vbi-building" n={num('building')} kicker={t('vrx_building_kicker')} title={t('vrx_building_title')}>
+        {inChapter('building').map(renderSection)}
+        {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
+        {/* The dropped SNAPSHOT section's own figures, kept where figures belong. */}
+        {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
+        {/* The documented specifications, each with its approval status. */}
+        {ks.buildingSpecs && specGroups(synthesis.technicalSpecs).length ? <BuildingSpecs specs={synthesis.technicalSpecs} /> : null}
+        {/* What the technical facts mean, then the project's numbers worked through. */}
+        <TechnicalExplained cards={r.technicalExplained} kind={copyKind} />
+        <ProjectMath specs={synthesis.technicalSpecs} />
+        {/* Rendered even when the run established nothing: a missing section
+            reads as "does not apply", a row saying "not yet verified" reads
+            as the question it actually is. */}
+        {ks.unitUtilities ? <UtilitiesCard utilities={utilities} /> : null}
+      </Chapter>
+
+      </div>
+
+      {/* ════ NAV GROUP: safety ════ */}
+      {has.legal ? (
+      <div id="vbi-g-safety" data-nav-group="safety" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
+      {/* ── LEGAL REALITY ── the five legal states, today's official position,
+          the register, the company — and what deserves attention, once. */}
+      {has.legal ? (
+        <Chapter id="vbi-legal" n={num('legal')} kicker={t('vrx_legal_kicker')} title={t('vrx_legal_title')} lede={t('vrx_legal_lede')}>
+          <IdentityNotice identity={identity} kind={copyKind} />
+          {/* The approved legal introduction, then the dated findings scope by
+              scope (apartment, parcel, building, ownership, mortgages,
+              obligations, applications on file). */}
+          <LegalFindings synthesis={synthesis} signals={r.projectSignals} />
+          {/* Today's position: the decision in force, then what is still
+              under review — never as an approval. */}
+          <LegalPosition history={history} signals={r.projectSignals} />
+          {/* The deterministic position above already states the decision in
+              force; the older status block would repeat it. It stays for
+              reports that carry no reconciled position. */}
+          {(history as { currentPosition?: { effective?: unknown } } | null | undefined)?.currentPosition?.effective ? null : (
+            <CurrentStatusBlock status={r.currentStatus} history={history} clean={clean} />
+          )}
+          <PropertyRegisterCard register={synthesis.propertyRegister} source={synthesis.registerSource ?? null} kind={copyKind} />
+          <div id="vbi-company" className="scroll-mt-[var(--vbi-offset,8rem)]">
+            <CompanyIntelligenceCard company={company} rights={rights} kind={copyKind} />
+          </div>
+          <CompanyFinanceCard finance={synthesis.companyFinance} />
+          {inChapter('legal').map(renderSection)}
+          {r.attentionPoints?.length ? (
+            <section className="space-y-3">
+              <h3 className="font-display text-lg font-semibold leading-snug tracking-tight break-words">
+                {t('verify_ir_attention_title')}
+              </h3>
+              <ul className="space-y-4">
+                {r.attentionPoints.map((a, i) => (
+                  <li key={i} className="border-s-2 border-amber-400/70 ps-4 space-y-1">
+                    <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(a.point)}</p>
+                    {a.why ? (
+                      <p className="text-sm leading-6 text-muted-foreground break-words">{clean(a.why)}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </Chapter>
+      ) : null}
+
+      </div>
+      ) : null}
+
+      {/* ════ NAV GROUP: place ════ */}
+      {(has.location || has.market) ? (
+      <div id="vbi-g-place" data-nav-group="place" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
+      {/* ── LOCATION ── */}
+      {has.location ? (
+        <Chapter id="vbi-location" n={num('location')} kicker={t('vrx_location_kicker')} title={t('vrx_location_title')}>
+          {/* The approved LOCATION introduction (agent D), drawn at once; the measured places below mount on approach. */}
+          <LocationIntro />
+          <LazyMount minHeight="20rem">
+          {inChapter('location').map(renderSection)}
+          {/* And on its own when the model wrote neither section. Places a
+              source named are evidence, and evidence must not vanish because
+              the prose did not reach it. */}
+          {synthesis.location && !locationHost && ks.livingLocation ? <LocationLiving l={synthesis.location} /> : null}
+          </LazyMount>
+        </Chapter>
+      ) : null}
+
+      {/* ── MARKET POSITION ── the prose, then only what the deterministic
+          market intelligence supports (marketPresentation.ts). */}
+      {has.market ? (
+        <Chapter id="vbi-market" n={num('market')} kicker={t('vrx_market_kicker')} title={t('vrx_market_title')}>
+          <LazyMount minHeight="24rem">
+            {marketPlan.mode === 'NOTE' ? (
+              <p className="max-w-[68ch] text-[15px] leading-7 text-foreground/90 break-words" data-market-kind-note={copyKind}>
+                {t(marketPlan.noteKey, { kind: KIND_LABEL_KEY[copyKind] ? t(KIND_LABEL_KEY[copyKind]!) : '' })}
+              </p>
+            ) : (
+              <MarketPosition sections={inChapter('market')} market={synthesis.market} renderSection={renderSection} />
+            )}
+          </LazyMount>
+        </Chapter>
+      ) : null}
+
+      </div>
+      ) : null}
+
+      {/* ════ NAV GROUP: documents ════ */}
+      {has.documents ? (
+      <div id="vbi-g-documents" data-nav-group="documents" className="scroll-mt-[var(--vbi-offset,8rem)] space-y-12 sm:space-y-16">
+      {/* ── OFFICIAL DOCUMENTS ── the applications behind the legal reality,
+          newest two first, each file opening at its official source. */}
+      {has.documents ? (
+        <Chapter id="vbi-documents" n={num('documents')} kicker={t('verify_v3_docs_kicker')} title={t('verify_v3_docs_title')} lede={t('verify_v3_docs_lede')}>
+          <LazyMount>
+            <OfficialDocuments
+              docs={synthesis.officialDocuments}
+              pendingRefs={pendingRefs}
+              visuals={synthesis.officialVisuals as unknown[] | undefined}
+              identityUnresolved={identityUnresolved}
+              clean={clean}
+            />
+          </LazyMount>
+        </Chapter>
+      ) : null}
+
+      </div>
+      ) : null}
+
+      {/* ── FINAL PERSPECTIVE ── what it means, what to do, what to check. */}
+      <Chapter id="vbi-final" n={num('final')} kicker={t('vrx_final_kicker')} title={t('vrx_final_title')}>
+        {inChapter('final').map(renderSection)}
+        {/* The buyer assessment comes right before the final verdict. */}
+        <BuyerAssessment assessment={r.buyerAssessment} clean={clean} kind={copyKind} />
+        <BuyerBottomLine
+          finalView={clean(r.finalView)}
+          // The highlights already open the report; repeating them here was the
+          // owner's "the same thing many times" (2026-10-10).
+          highlights={[]}
+          openQuestions={[]}
+          clean={clean}
+        />
+
+        {/* WHAT TO DO NOW. Absent entirely when the report found nothing that
+            needs acting on — an empty plan is how the checklist this replaced
+            got filled with filler. */}
+        {r.nextSteps?.length ? (
+          <section className="space-y-3">
+            <h3 className="font-display text-lg font-semibold leading-snug tracking-tight break-words">
+              {t('verify_ir_next_steps_title')}
+            </h3>
+            <ol className="space-y-4">
+              {r.nextSteps.map((s, i) => (
+                <li key={i} className="flex gap-3">
+                  <span
+                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[hsl(222_47%_11%)] text-xs font-semibold tabular-nums text-[hsl(38_92%_62%)]"
+                    aria-hidden="true"
+                  >
+                    {i + 1}
+                  </span>
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-[15px] leading-7 font-medium break-words">{stripLeadingOrdinal(clean(s.step))}</p>
+                    {s.why ? (
+                      <p className="text-sm leading-6 text-muted-foreground break-words">{clean(s.why)}</p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+
+        {synthesis.selfChecks?.length ? <SelfChecks checks={synthesis.selfChecks} /> : null}
+
+        {/* The checklist is computed in the bundle and merely rendered here,
+            so a quiet model cannot delete it. */}
+        <div id="vbi-checklist" className="scroll-mt-[var(--vbi-offset,8rem)]">
+          <BuyerChecklist items={synthesis.checklist ?? []} />
+        </div>
+
+        {/* Evidence sources and the research-transparency counts are no
+            longer part of the customer experience (owner, 2026-10-10). Their
+            data is untouched: evidenceGroups and research still arrive. */}
+
+        {r.contractUpload?.recommend !== false ? (
+          <section className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft)/0.50)] p-5 sm:p-6 space-y-3">
+            <div className="flex items-start gap-3">
+              <FileText className="h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))] mt-0.5" aria-hidden="true" />
+              <p className="text-sm leading-6 break-words min-w-0">
+                {clean(r.contractUpload?.text) || t('verify_ir_upload_body')}
+              </p>
+            </div>
+            {/* What has already been read for this property, then the way to
+                add one. The picker is right here: choosing the file is the
+                whole interaction. */}
+            <VerifyLinkedContracts
+              roomId={contractCaseId ?? null}
+              cadastralCode={synthesis.snapshot?.cadastralCode ?? null}
+              address={synthesis.snapshot?.address ?? null}
+            />
+            <ContractUpload caseId={contractCaseId ?? null} variant="inline" />
+          </section>
+        ) : null}
+
+        <p className="text-xs text-muted-foreground/80 leading-relaxed break-words">
+          {t('verify_ir_disclaimer')}
+        </p>
+      </Chapter>
     </article>
+    </VerifyJobProvider>
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * Chapter                                                             *
+ * ------------------------------------------------------------------ */
+
+/**
+ * One chapter of the report: a numbered editorial header (kicker, title,
+ * optional lede, a gold rule) and its content, arriving as the reader
+ * reaches it. Reveal renders plainly under reduced motion.
+ */
+const Chapter: React.FC<{
+  id: string;
+  headingId?: string;
+  n: number;
+  kicker: string;
+  title: string;
+  lede?: string;
+  children: React.ReactNode;
+}> = ({ id, headingId, n, kicker, title, lede, children }) => {
+  const hid = headingId ?? `${id}-title`;
+  return (
+    <Reveal as="section" id={id} aria-labelledby={hid} className="scroll-mt-[var(--vbi-offset,8rem)] space-y-6">
+      <header className="space-y-2.5">
+        <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.1em] text-[hsl(var(--gold-ink))]">
+          <span className="shrink-0 whitespace-nowrap tabular-nums">{String(n).padStart(2, '0')}</span>
+          <span className="h-px w-8 shrink-0 bg-[hsl(var(--gold-border))]" aria-hidden="true" />
+          <span className="min-w-0 break-words">{kicker}</span>
+        </p>
+        <h2 id={hid} className="font-display text-2xl font-semibold leading-tight tracking-tight break-words sm:text-[1.75rem]">
+          {title}
+        </h2>
+        {lede ? <p className="max-w-[60ch] text-[15px] leading-7 text-muted-foreground break-words">{lede}</p> : null}
+      </header>
+      <div className="space-y-8">{children}</div>
+    </Reveal>
+  );
+};
 
 /* ------------------------------------------------------------------ *
  * Buyer Intelligence Summary                                          *
@@ -633,23 +889,34 @@ export function VerifyReport({
 const SummaryHero: React.FC<{
   summary?: BuyerIntelligence['summary'];
   weighed?: { label: OverallLabel } | null;
-}> = ({ summary, weighed }) => {
+  snapshot?: PropertySnapshot;
+}> = ({ summary, weighed, snapshot }) => {
   const { t } = useLanguage();
   if (!summary) return null;
   const opening = buyerOpening(summary, weighed);
   const label = (['POSITIVE', 'BALANCED', 'NEEDS_ATTENTION'] as OverallLabel[]).includes(summary.label)
     ? summary.label
     : 'BALANCED';
+  const identityLine = [snapshot?.project, snapshot?.address || snapshot?.district, snapshot?.area, snapshot?.cadastralCode]
+    .map((v) => readable(String(v ?? '')).trim())
+    .filter(Boolean);
 
   return (
-    <header className="rounded-2xl border border-border bg-card/50 p-5 sm:p-6 space-y-5">
-      <div className="space-y-2">
-        <p className="text-2xs uppercase tracking-wider text-muted-foreground">
+    <header className="relative overflow-hidden rounded-3xl bg-[hsl(222_47%_11%)] px-5 py-7 text-white shadow-[0_24px_60px_-30px_hsl(222_47%_11%/0.7)] sm:px-9 sm:py-10">
+      {/* One warm light source, top-end. Decorative. */}
+      <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_9rem_at_calc(100%_-_3rem)_3rem,hsl(38_92%_56%/0.22),transparent)] rtl:bg-[radial-gradient(circle_9rem_at_3rem_3rem,hsl(38_92%_56%/0.22),transparent)]" aria-hidden="true" />
+      <div className="relative space-y-4">
+        <p className="flex items-center gap-3 text-2xs font-semibold uppercase tracking-[0.1em] text-[hsl(38_92%_66%)]">
+          <span className="h-px w-8 bg-[hsl(38_92%_56%)]" aria-hidden="true" />
           {t('verify_ir_summary_title')}
         </p>
-        <p className="text-xl sm:text-2xl font-semibold leading-tight break-words">
+        {/* What this property is, before what we think of it. */}
+        {identityLine.length ? (
+          <p className="text-sm leading-6 text-white/75 break-words" dir="auto">{identityLine.join(' · ')}</p>
+        ) : null}
+        <h2 className="font-display text-2xl font-semibold leading-tight !text-white break-words sm:text-[2rem]">
           {t(OVERALL_KEY[label])}
-        </p>
+        </h2>
         {/*
           * THE FIRST SENTENCE, AND WHY IT IS NOT ALWAYS THE MODEL'S.
           *
@@ -664,14 +931,14 @@ const SummaryHero: React.FC<{
           * sentence changes, and only when it is about a gap — the gap itself
           * reappears under „რა რჩება დასადასტურებელი" further down.
           */}
-        <p className="text-[15px] leading-7 text-foreground/85 break-words">
+        <p className="max-w-[62ch] text-base leading-7 text-white/90 break-words sm:text-[17px] sm:leading-8">
           {opening.replaced ? t(opening.fallbackKey!) : clean(opening.statement)}
         </p>
 
         {/* A very short second line, built only from what the run actually
             evidenced. No positives found means no line at all. */}
         {opening.support.length ? (
-          <p className="text-sm leading-6 text-muted-foreground break-words">
+          <p className="text-sm leading-6 text-white/70 break-words">
             {opening.support.map((h) => clean(h)).join(' · ')}
           </p>
         ) : null}
@@ -697,7 +964,6 @@ const SummaryHero: React.FC<{
 
 /** A shortlist. Every row answers "why does this matter to me". */
 const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
-  const { t } = useLanguage();
   return (
     /* No heading: this IS the introduction begun by SummaryHero above. A
        second title here is what made the report start for a second time. */
@@ -707,7 +973,7 @@ const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
           const st = SENTIMENT_STYLE[sentimentOf(f.sentiment)];
           return (
             <li key={i} className={`border-s-2 ${st.edge} ps-4 space-y-1`}>
-              <p className="text-[15px] leading-7 font-medium break-words">{clean(f.finding)}</p>
+              <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(f.finding)}</p>
               {f.whyItMatters ? (
                 <p className="text-sm leading-6 text-muted-foreground break-words">
                   {clean(f.whyItMatters)}
@@ -756,7 +1022,7 @@ const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ me
         <span className="block text-2xs uppercase tracking-wide text-muted-foreground break-words">
           {clean(m.label)}
         </span>
-        <span className="block text-sm font-semibold tabular-nums break-words">{clean(m.value)}</span>
+        <span className="block text-sm font-semibold tabular-nums break-words" dir="auto">{clean(m.value)}</span>
       </div>
     ))}
   </div>
@@ -778,7 +1044,9 @@ const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ me
  */
 const CompanyGraph: React.FC<{ people: PersonBlock[]; owner?: string }> = ({ people, owner }) => {
   const { t } = useLanguage();
-  const entity = owner || people.find((p) => p.entity)?.entity;
+  // The tree is the COMPANY the people belong to (the developer). The flat's
+  // owner may be a private person who has nothing to do with these directors.
+  const entity = people.find((p) => p.entity)?.entity || owner;
   const current = people.filter((p) => !p.historical);
   const historical = people.filter((p) => p.historical);
 
@@ -858,7 +1126,8 @@ const Snapshot: React.FC<{ s: PropertySnapshot }> = ({ s }) => {
         {rows.map(([k, v]) => (
           <div key={k} className="min-w-0">
             <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{t(k)}</dt>
-            <dd className="text-sm break-words">{readable(v as string)}</dd>
+            {/* dir="auto": a Georgian value ("83.20 კვ.მ.") keeps its own order inside an RTL page. */}
+            <dd className="text-sm break-words" dir="auto">{readable(v as string)}</dd>
           </div>
         ))}
       </dl>
@@ -895,10 +1164,37 @@ const PLACE_ORDER = [
  * a finding about this property, and is labelled that way rather than being
  * mixed into the evidenced places above it.
  */
+/*
+ * What a source said about reaching a place, in its words and attributed.
+ * A figure ("70 მ და 1 წუთი ფეხით") is no longer shown: measured distances
+ * come only from the OpenStreetMap lookup (NeighborhoodSection).
+ */
+const PlaceNote: React.FC<{ note: string }> = ({ note }) => {
+  const { t } = useLanguage();
+  const { text, sources } = splitCitations(note);
+  const said = clean(text);
+  /* A distance or travel time nobody measured is not shown at all, even in a
+     report stored before the OpenStreetMap lookup existed. */
+  if (!said || hasDistance(said) || /(წუთ|ფეხით|მანქანით|minute|walk)/i.test(said)) return null;
+  const from = sources[0]?.host;
+  /* First-strong isolates: a source's Georgian note inside an Arabic or
+     Hebrew sentence otherwise has its figure and hyphen reordered by bidi. */
+  const iso = (v: string) => `\u2068${v}\u2069`;
+  return (
+    <span className="text-muted-foreground">
+      {' · '}
+      <bdi>{said}</bdi>
+      {from ? <span className="ms-1 text-2xs">({t('vbi_source', { source: iso(from) })})</span> : null}
+    </span>
+  );
+};
+
 const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
   const { t } = useLanguage();
 
-  const places = [...(l.nearby ?? [])]
+  const measured = l.neighborhood ?? null;
+  /* A successful OpenStreetMap lookup replaces the research layer's names. */
+  const places = (measured?.status === 'OK' ? [] : [...(l.nearby ?? [])])
     .filter((p) => p && clean(p.name))
     .sort((a, b) => {
       const rank = (c: string) => {
@@ -913,7 +1209,7 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
   // Nothing resolved and nothing found: silence is the correct output. A
   // heading with no content under it is what gets filled with city
   // description, which is the filler this report structure exists to prevent.
-  if (!places.length && !where.length && !l.profile) return null;
+  if (!places.length && !where.length && !l.profile && !measured) return null;
 
   return (
     <section className="space-y-3">
@@ -931,15 +1227,15 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
             <li key={`${p.category}-${i}`} className="border-s-2 border-border ps-4 space-y-0.5">
               <p className="text-[15px] leading-6 break-words">
                 <span className="font-medium">{clean(p.name)}</span>
-                {p.note ? (
-                  <span className="text-muted-foreground"> — {clean(p.note)}</span>
-                ) : null}
+                {p.note ? <PlaceNote note={p.note} /> : null}
               </p>
               <p className="text-xs leading-5 text-muted-foreground break-words">{t(p.whyKey)}</p>
             </li>
           ))}
         </ul>
       ) : null}
+
+      {measured ? <NeighborhoodSection n={measured} /> : null}
 
       {l.profile ? (
         <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
@@ -955,156 +1251,6 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
         </div>
       ) : null}
     </section>
-  );
-};
-
-/* ------------------------------------------------------------------ *
- * Price position                                                      *
- * ------------------------------------------------------------------ */
-
-/** Where the asking price sits in its micro-market. Rendered only when the
- *  subject actually has a price of its own — Verify runs from a cadastral
- *  code, so most of the time it does not, and a bar with no marker would
- *  imply a measurement we never made. */
-const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
-  const { t } = useLanguage();
-  /*
-   * MICROLOCATION FIRST.
-   *
-   * marketShape reads the tier counts the research core stored and decides
-   * how local the headline figure actually is. For the stored Villion report
-   * the answer is "not local at all" — nothing in the building, nothing on
-   * the street, and a median computed from 37 named developments across the
-   * city. The number still shows; it stops pretending to measure this address.
-   */
-  const shape = marketShape(m);
-  if (!m.count) return null;
-
-  const span = Math.max(1, m.max - m.min);
-  const pos = (v: number): number => Math.max(0, Math.min(100, ((v - m.min) / span) * 100));
-  const medianPos = pos(m.median);
-  const subjectPos = m.subjectPricePerSqm ? pos(m.subjectPricePerSqm) : null;
-
-  return (
-    <div className="rounded-xl border border-border p-4 space-y-3">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          {t('verify_ir_market_title')}
-        </p>
-        {/*
-          * WHAT THIS NUMBER IS MEASURING, SAID HONESTLY.
-          *
-          * This built its key by lower-casing the basis, which for the stored
-          * Villion report produces `verify_basis_peer_project` — a key that is
-          * defined in NO language, so the buyer was shown that literal string.
-          * The label now comes from the tier table, which has an entry for
-          * every band, and the frame sentence below says whether the figure
-          * describes this building or the city.
-          */}
-        <p className="text-xs text-muted-foreground break-words min-w-0">
-          {shape?.basis ? t(TIER_LABEL_KEY[shape.basis]) : t('verify_mkt_wider_market')} · {m.count}
-        </p>
-      </div>
-
-      {shape?.headlineKey ? (
-        <p className="min-w-0 break-words text-sm leading-relaxed text-ink-soft">
-          {t(shape.headlineKey)}
-        </p>
-      ) : null}
-
-      <div className="relative h-2 rounded-full bg-muted">
-        <div
-          className="absolute top-1/2 -translate-y-1/2 h-3 w-0.5 bg-muted-foreground/70"
-          style={{ insetInlineStart: `${medianPos}%` }}
-          aria-hidden="true"
-        />
-        {subjectPos !== null ? (
-          <div
-            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-primary ring-2 ring-background"
-            style={{ insetInlineStart: `calc(${subjectPos}% - 8px)` }}
-            aria-hidden="true"
-          />
-        ) : null}
-      </div>
-
-      <div className="flex justify-between text-2xs text-muted-foreground">
-        <span>{m.min.toLocaleString()}</span>
-        <span>{t('verify_ir_market_median')} {m.median.toLocaleString()}</span>
-        <span>{m.max.toLocaleString()}</span>
-      </div>
-
-      {m.subjectPricePerSqm && m.deltaFromMedianPct !== undefined ? (
-        <p className="text-sm break-words">
-          {m.subjectPricePerSqm.toLocaleString()} {m.currency}/m² ·{' '}
-          {m.deltaFromMedianPct > 0 ? '+' : ''}{m.deltaFromMedianPct}%
-        </p>
-      ) : null}
-
-      {/* THE WHOLE HIERARCHY, not only the band that won.
-          Comparing a project's units to each other answers "what do five
-          flats in this building cost". The buyer asked whether the property
-          is well positioned in its real local market, and that question needs
-          the street, the district and comparable developments beside it.
-          Rows, not a table: at 320px a five-column table has nowhere to go. */}
-      {m.tiers && m.tiers.length > 1 ? (
-        <dl className="divide-y divide-border/60 border-t border-border/60 pt-1">
-          {m.tiers.map((tr) => (
-            <div key={tr.tier} className="flex items-baseline justify-between gap-3 py-1.5 min-w-0">
-              <dt className="text-2xs text-muted-foreground break-words min-w-0">
-                {t(TIER_LABEL_KEY[tr.tier as keyof typeof TIER_LABEL_KEY] ?? 'verify_mkt_wider_market')}
-                <span className="ms-1 opacity-70">
-                  {tr.count} {t('verify_mkt_listings')}
-                </span>
-                {/* Neutral, not a warning: one listing is real information,
-                    it just is not a spread. Saying so is more useful than
-                    hiding the band or dressing it up as a market rate. */}
-                {tr.thin ? (
-                  <span className="ms-1 opacity-70">· {t('verify_mkt_thin')}</span>
-                ) : null}
-              </dt>
-              <dd className="text-xs tabular-nums shrink-0">
-                {tr.median.toLocaleString()}
-                {tr.min !== tr.max ? (
-                  <span className="text-muted-foreground">
-                    {' '}({tr.min.toLocaleString()}–{tr.max.toLocaleString()})
-                  </span>
-                ) : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-
-      {m.basisIsThin ? (
-        <p className="text-2xs leading-5 text-muted-foreground break-words">
-          {t('verify_mkt_thin_note')}
-        </p>
-      ) : null}
-
-      {/* Why a premium or a discount may be RATIONAL. Deliberately no money
-          attached to any of them: the evidence supports the factor, not a
-          number, and "+8% for concierge" would be a fabrication with a
-          decimal point in it. */}
-      {m.qualityFactors?.length ? (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {m.qualityFactors.map((q, i) => (
-            <span
-              key={i}
-              className={`rounded-full border px-2.5 py-0.5 text-2xs font-medium break-words ${
-                q.direction === 'SUPPORTS_PREMIUM'
-                  /* A factor that supports the asking price is a finding,
-                     not furniture: gold-soft, like every other evidence
-                     chip in the system. */
-                  ? 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
-                  : 'border-dashed border-foreground/25 text-foreground/70'
-              }`}
-            >
-              {readable(q.factor)}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
   );
 };
 
@@ -1209,8 +1355,9 @@ const SelfChecks: React.FC<{ checks: SelfCheck[] }> = ({ checks }) => {
 
 const EvidenceDrawer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useLanguage();
+  const [open, setOpen] = React.useState(false);
   return (
-    <details className="group rounded-xl border border-border bg-card">
+    <details className="group rounded-xl border border-border bg-card" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between gap-3">
         <span className="min-w-0">
           <span className="block text-sm font-medium break-words">{t('verify_report_evidence_toggle')}</span>
@@ -1222,7 +1369,7 @@ const EvidenceDrawer: React.FC<{ children: React.ReactNode }> = ({ children }) =
       </summary>
       {/* Children are only mounted while open, so the collapsed report never
           pays for hundreds of rows of document and revision detail. */}
-      <div className="px-5 pb-5 pt-1 space-y-4">{children}</div>
+      <div className="px-5 pb-5 pt-1 space-y-4">{open ? children : null}</div>
     </details>
   );
 };

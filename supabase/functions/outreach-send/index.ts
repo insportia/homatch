@@ -18,6 +18,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getEmailAdapter, getSmsAdapter, getVoiceAdapter } from '../_shared/outreach_providers.ts';
 import { checkSpendCap } from '../_shared/spend_cap.ts';
+import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,7 +41,24 @@ async function signUnsubscribeToken(contactId: string, secret: string): Promise<
 
 const BATCH_SIZE = 40;
 
+/*
+ * ── EMAIL STUDIO, ROUTED HERE ───────────────────────────────────────────
+ *
+ * Production is at the plan's edge-function cap, so Email Studio's actions
+ * (`action: "studio_*"`) share this deployment instead of getting their own.
+ * The router reads a CLONE of the request, so the original body is untouched
+ * and every request without a studio action reaches outreachSend() exactly as
+ * before. All studio logic lives in _shared/emailStudio.ts.
+ */
 serve(async (req) => {
+  if (req.method === 'POST') {
+    const peek = await req.clone().json().catch(() => null);
+    if (isStudioAction(peek)) return handleStudioAction(req, peek as Record<string, unknown>);
+  }
+  return outreachSend(req);
+});
+
+async function outreachSend(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
@@ -403,7 +421,7 @@ serve(async (req) => {
     console.error('[outreach-send] error:', err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: corsHeaders });
   }
-});
+}
 
 async function logCost(supabase: any, provider: string, operation_type: string, cost_usd: number, success: boolean) {
   await supabase.from('cost_events').insert({ provider, operation_type, source: 'outreach-send', cost_usd, success, units: 1, cache_hit: false });

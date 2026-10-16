@@ -245,9 +245,9 @@ function LocationQuestion({ t, brief, onSave }: { t: T; brief: SearchIntelligenc
 }
 
 export function QuestionCard({ t, question, brief, onEdit, onDone }: {
-  t: T; question: Editing; brief: SearchIntelligenceBrief; onEdit: (e: BriefEdit) => void; onDone?: () => void;
+  t: T; question: Editing; brief: SearchIntelligenceBrief; onEdit: (e: BriefEdit | BriefEdit[]) => void; onDone?: () => void;
 }) {
-  const save = (e: BriefEdit) => { onEdit(e); onDone?.(); };
+  const save = (e: BriefEdit | BriefEdit[]) => { onEdit(e); onDone?.(); };
   const tx = brief.transactionType?.value ?? null;
   const per = tx === 'MONTHLY_RENT' ? t('mps_per_month') : tx === 'DAILY_RENT' ? t('mps_per_day') : null;
   const proposedRange = (f: 'price' | 'area' | 'rooms' | 'bedrooms') => (brief[f]?.status === 'PROPOSED' ? brief[f]!.value : null);
@@ -288,7 +288,7 @@ export function QuestionCard({ t, question, brief, onEdit, onDone }: {
         </div>
       )}
       {question === 'location' && (
-        <LocationQuestion t={t} brief={brief} onSave={(city, districts) => { onEdit({ field: 'city', value: city }); save({ field: 'districts', value: districts.length ? districts : null }); }} />
+        <LocationQuestion t={t} brief={brief} onSave={(city, districts) => save([{ field: 'city', value: city }, { field: 'districts', value: districts.length ? districts : null }])} />
       )}
       {question === 'price' && (
         <RangeInputs t={t} unitLabel="USD" initial={brief.price?.value ?? null} onSave={(min, max) => save({ field: 'price', value: { min, max } })} />
@@ -362,7 +362,10 @@ export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset }:
   const [reviewing, setReviewing] = useState(false);
   const question: Editing | null = editing ?? readiness.nextQuestion;
   useEffect(() => { if (readiness.state !== 'READY') setReviewing(false); }, [readiness.state]);
-  const edit = (e: BriefEdit) => onBrief(applyEdit(brief, e));
+  // Several edits from one action apply in order to ONE brief: two separate
+  // onBrief calls would each start from the same stale brief, and the second
+  // (districts) silently erased the first (city), trapping the location step.
+  const edit = (e: BriefEdit | BriefEdit[]) => onBrief((Array.isArray(e) ? e : [e]).reduce(applyEdit, brief));
   const showConfirm = readiness.state === 'READY' && !editing && !reviewing;
   return (
     <div className="space-y-5">

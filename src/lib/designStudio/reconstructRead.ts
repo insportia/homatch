@@ -367,6 +367,26 @@ const uv = (v: unknown): Point2 | null =>
     ? [Math.round(Math.max(0, Math.min(1, v[0])) * 1e4) / 1e4, Math.round(Math.max(0, Math.min(1, v[1])) * 1e4) / 1e4]
     : null;
 
+/**
+ * The share of an outline's corners an architect draws (within 12°): right angles, or — with five corners or more —
+ * a 45° wall's 135°. Four corners are a rectangle's or a mistrace's.
+ */
+export function rightAngleShare(poly: Point2[]): number {
+  const n = poly.length;
+  if (n < 3) return 0;
+  let right = 0;
+  for (let i = 0; i < n; i += 1) {
+    const a = poly[(i - 1 + n) % n]; const b = poly[i]; const c = poly[(i + 1) % n];
+    const u = [a[0] - b[0], a[1] - b[1]]; const v = [c[0] - b[0], c[1] - b[1]];
+    const lu = Math.hypot(u[0], u[1]); const lv = Math.hypot(v[0], v[1]);
+    if (lu < 1e-9 || lv < 1e-9) continue;
+    const cos = (u[0] * v[0] + u[1] * v[1]) / (lu * lv);
+    const deg = (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+    if (Math.abs(deg - 90) <= 12 || (n >= 5 && Math.abs(deg - 135) <= 12)) right += 1;
+  }
+  return right / n;
+}
+
 function signedArea(poly: Point2[]): number {
   let s = 0;
   for (let i = 0; i < poly.length; i += 1) {
@@ -984,6 +1004,9 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
       if (!ring.every((p) => p)) return kept;
       const area = signedArea(ring as Point2[]);
       if (Math.abs(area) < MIN_ROOM_M2) return kept;
+      // A traced outline that is a slanted shape where the reader drew a square-walled room is a mistrace (its
+      // corners clicked out of order or on the wrong walls): the reader's own outline stands, never a diamond.
+      if (rightAngleShare(ring as Point2[]) < 0.75 && rightAngleShare(kept.polygon) >= 0.75) return kept;
       moved.set(r, ring as Point2[]);
       return { ...room, polygon: area < 0 ? [...(ring as Point2[])].reverse() : ring as Point2[], geometry: 'PIXELS' as const };
     });

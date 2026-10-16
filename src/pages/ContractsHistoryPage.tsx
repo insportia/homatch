@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ContractList } from '@/components/contracts/ContractList';
 import { listContracts, type ContractSummary } from '@/services/contracts';
+import { RetentionPanel } from '@/components/retention/RetentionPanel';
 
 export default function ContractsHistoryPage() {
   const { t } = useLanguage();
@@ -75,6 +76,8 @@ export default function ContractsHistoryPage() {
             emptyTitle={q.trim() ? t('ct_history_no_match') : t('ct_empty_title')}
             emptyHint={q.trim() ? t('ct_history_no_match_hint') : t('ct_empty_hint')}
           />
+
+          <RetentionPanel product="CONTRACT_DOCUMENT" />
         </div>
       </div>
     </AppLayout>

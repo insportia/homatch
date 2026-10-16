@@ -159,11 +159,13 @@ export function keyDir(e: { key?: string; code?: string }): Dir | null {
 }
 
 /**
- * Milliseconds per step: an easy, casual opening pace that quickens gently
- * with the score (about a quarter faster after 20 points, never frantic), and
- * calmer still when motion is reduced.
+ * Milliseconds per step: a brisk opening pace that quickens with every
+ * point (twice as fast by 20), capped so it stays playable on a phone, and
+ * calmer when motion is reduced.
  */
 export function tickMs(score: number, reducedMotion: boolean): number {
-  const base = reducedMotion ? 280 : 230;
-  return Math.max(reducedMotion ? 180 : 125, Math.round(base - score * 2.5));
+  if (reducedMotion) return Math.max(150, Math.round(240 - score * 2.5));
+  // Brisk from the first move and properly quick by 20 (owner, 2026-10-10:
+  // "faster and more thrilling, everywhere Snake is used").
+  return Math.max(80, Math.round(165 - score * 4));
 }

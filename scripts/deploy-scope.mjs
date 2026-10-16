@@ -248,8 +248,34 @@ export function deploymentScope({ head = 'HEAD', root = ROOT } = {}) {
     if (component === 'edge' && needed) functions.forEach((n) => fns.add(n));
   }
 
-  scope.functions = [...fns].sort();
+  const holds = edgeHolds(root);
+  scope.held = holds.filter((h) => fns.has(h.function));
+  scope.functions = [...fns].filter((n) => !holds.some((h) => h.function === n)).sort();
   return scope;
+}
+
+/*
+ * FUNCTIONS HELD BECAUSE PRODUCTION RUNS SOMETHING MAIN DOES NOT HAVE.
+ *
+ * scripts/release/edge-holds.json names edge functions whose deployed
+ * artifact was proven to come from an unmerged branch. Deploying one of them
+ * from main would silently replace newer production code with older code --
+ * run 999 attempted exactly that for design-studio-reconstruct and was saved
+ * only by server-side deduplication. A held function is therefore removed
+ * from every owed list (push and manual redeploy alike), never uploaded and
+ * never counted as proven; the workflow prints it as HELD with its reason.
+ */
+export function edgeHolds(root = ROOT) {
+  const file = join(root, 'scripts', 'release', 'edge-holds.json');
+  if (!existsSync(file)) return [];
+  const parsed = JSON.parse(readFileSync(file, 'utf8'));
+  return Array.isArray(parsed.holds) ? parsed.holds : [];
+}
+
+/** `names` without the held ones -- the filter the manual redeploy path uses. */
+export function withoutHeld(names, root = ROOT) {
+  const held = new Set(edgeHolds(root).map((h) => h.function));
+  return names.filter((n) => n && !held.has(n));
 }
 
 if (import.meta.url === `file://${process.argv[1]?.split('\\').join('/')}`
@@ -266,6 +292,9 @@ if (import.meta.url === `file://${process.argv[1]?.split('\\').join('/')}`
     }
     if (scope.functions.length) {
       console.log(`  edge functions (${scope.functions.length}): ${scope.functions.join(' ')}`);
+    }
+    for (const h of scope.held) {
+      console.log(`  HELD ${h.function}: production runs ${h.sourceBranch}@${h.sourceCommit} (PR #${h.pr}); not deployed from main`);
     }
   }
 }

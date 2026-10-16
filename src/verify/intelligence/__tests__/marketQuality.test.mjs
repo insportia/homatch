@@ -137,11 +137,25 @@ test('condition weighs more than room count, because it is the product', () => {
 });
 
 test('a report says plainly when it is comparing different products', () => {
-  const m = buildMarketIntelligence(
+  // Premise (2026-10-11, job 8ba97da9): a comparable two or more rungs away
+  // (green frame vs a renovated flat) is no longer a comparable at all — it is
+  // excluded from the customer set and the valuation (CONDITION_FAR). A
+  // neighbouring rung (white vs green frame) is still compared, and flagged.
+  const far = buildMarketIntelligence(
     { ...SUBJECT, condition: 'ახალი რემონტი', pricePerSqm: 2400 },
-    [comp({ condition: 'მწვანე კარკასი' }), comp({ area: '90', pricePerSqm: '1820', condition: 'green frame' })]
+    [comp({ condition: 'მწვანე კარკასი' }), comp({ area: '90', pricePerSqm: '1820', condition: 'green frame' }),
+      comp({ area: '92', pricePerSqm: '1810', condition: 'green frame' })]
   );
-  assert.equal(m.subjectCondition, 'NEWLY_RENOVATED');
+  assert.equal(far.valuation.state, 'INSUFFICIENT_EVIDENCE', 'a finished flat was valued against shells');
+  assert.equal(far.median, null);
+  assert.ok(far.ranked.every((c) => c.exclusions.includes('CONDITION_FAR')));
+  const m = buildMarketIntelligence(
+    { ...SUBJECT, condition: 'თეთრი კარკასი', pricePerSqm: 2400 },
+    // Three: a headline (and so a delta) needs MIN_RELIABLE_SAMPLE listings.
+    [comp({ condition: 'მწვანე კარკასი' }), comp({ area: '90', pricePerSqm: '1820', condition: 'green frame' }),
+      comp({ area: '92', pricePerSqm: '1810', condition: 'green frame' })]
+  );
+  assert.equal(m.subjectCondition, 'WHITE_FRAME');
   assert.equal(m.conditionMix.dominant, 'GREEN_FRAME');
   assert.equal(m.conditionMismatch, true, 'a finished flat was compared to shells without saying so');
   // The number is still produced. What changes is that it cannot be read as a
@@ -162,10 +176,11 @@ test('a listing that came off the market is not today\'s market', () => {
   const m = buildMarketIntelligence(SUBJECT, [
     comp({ pricePerSqm: '1800', listingStatus: 'active' }),
     comp({ area: '90', pricePerSqm: '1820', listingStatus: 'active' }),
+    comp({ area: '92', pricePerSqm: '1810', listingStatus: 'active' }),
     comp({ area: '88', pricePerSqm: '1200', listingStatus: 'expired' }),
   ]);
   assert.equal(m.expiredExcluded, 1);
-  assert.equal(m.count, 2);
+  assert.equal(m.count, 3);
   assert.equal(m.median, 1810, 'a withdrawn asking price still moved the median');
 });
 
@@ -185,7 +200,14 @@ test('when everything has expired, the old prices are better than nothing', () =
     comp({ area: '90', pricePerSqm: '1820', listingStatus: 'expired' }),
   ]);
   assert.ok(m, 'the market section vanished rather than degrading');
-  assert.equal(m.count, 2);
+  // Premise (2026-10-11, job 8ba97da9): availability is validated. Withdrawn
+  // asks stay in the record (ranked, flagged EXPIRED) but are never shown as
+  // comparables nor counted toward a valuation.
+  assert.equal(m.ranked.length, 2);
+  assert.ok(m.ranked.every((c) => c.exclusions.includes('EXPIRED') && !c.headlineEligible));
+  assert.equal(m.count, 0);
+  assert.equal(m.valuation.state, 'INSUFFICIENT_EVIDENCE');
+  assert.equal(m.hierarchy.comparables.length, 0);
   assert.equal(m.expiredExcluded, 0, 'listings that were kept were reported as excluded');
 });
 

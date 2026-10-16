@@ -5,7 +5,6 @@ import {
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
@@ -21,9 +20,13 @@ import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachP
 import { LeadStateControl } from '@/components/broker/LeadStateControl';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
-import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
+import { ExternalResultsView } from '@/components/findBuyers/ExternalResultsView';
+import { ownerFactsOf } from '@/findBuyers/externalResults';
 import { LiveSearchModule, SearchStatusPill } from '@/components/findBuyers/LiveSearchModule';
 import { PageNav } from '@/components/findBuyers/PageNav';
+import { ResearchExtensionDialog } from '@/components/findBuyers/ResearchExtensionDialog';
+import { SearchStartingDialog, type SearchStartPhase } from '@/components/findBuyers/SearchStartingDialog';
+import { BTN_PRIMARY } from '@/components/leads/kit';
 import { FRAMED_ACTION, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
 import { arrivalAction, parsePage } from '@/findBuyers/campaignView';
@@ -345,7 +348,6 @@ function MatchesContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const matchPage = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const historyPage = Math.max(1, Number.parseInt(searchParams.get('hp') ?? '1', 10) || 1);
-  const leadPage = Math.max(1, Number.parseInt(searchParams.get('lp') ?? '1', 10) || 1);
   const setPageParam = useCallback((key: 'page' | 'hp' | 'lp', value: number) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -392,6 +394,7 @@ function MatchesContent() {
   const liveCampaign = campaignStatus?.campaign?.active ? campaignStatus.campaign : null;
   const activeJobId = liveCampaign?.jobId ?? null;
   const campaignActive = Boolean(liveCampaign);
+  const [showExtend, setShowExtend] = useState(false);
   /* The campaign's resolved search languages, so the coverage panel can
      name a language that has produced nothing yet rather than omitting it. */
   const [campaignLanguages, setCampaignLanguages] = useState<string[]>([]);
@@ -399,8 +402,18 @@ function MatchesContent() {
   /* The search does not begin until the customer has said how much it
      may spend. Wallet balance is not campaign budget. */
   const [showBudget, setShowBudget] = useState(false);
+  const [startPhase, setStartPhase] = useState<SearchStartPhase>(null);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [leadCount, setLeadCount] = useState(0);
+  /* "New search" on the dashboard lands here with ?start=1: open the budget step once
+     (nothing is charged until the owner confirms there), then drop the flag. */
+  useEffect(() => {
+    if (searchParams.get('start') !== '1') return;
+    setShowBudget(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('start');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   /* New current-demand matches the live search reported while a page is being read. */
   const [matchesPending, setMatchesPending] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
@@ -788,14 +801,16 @@ function MatchesContent() {
     if (!propertyId || !homatchUser) return;
     setShowBudget(false);
     setCampaignLoading(true);
+    setStartPhase('starting');
     try {
       const result = await startMatchingCampaign(
         propertyId, homatchUser.id, authorizedMaxCredits, searchLanguages ?? null,
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      toast.success(t('matches_campaign_started_toast'));
+      setStartPhase('started');
     } catch (e) {
+      setStartPhase(null);
       { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
     } finally {
       /* Whatever happened, the server says what the campaign is now. */
@@ -935,6 +950,9 @@ function MatchesContent() {
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  /* External = Find Buyers leads + stored external-demand matches (both read off public
+     posts). Internal members are counted only in the HOMATCH section. */
+  const ownerFacts = React.useMemo(() => ownerFactsOf(property?.facts as Parameters<typeof ownerFactsOf>[0], property?.transaction_type), [property]);
   const currentPages = Math.max(1, Math.ceil(currentTotal / MATCHES_PAGE_SIZE));
   const historyPages = Math.max(1, Math.ceil(historyTotal / MATCHES_PAGE_SIZE));
   const dnaFacts = facts ? {
@@ -963,11 +981,7 @@ function MatchesContent() {
             compact
             eyebrow={propertyLabel}
             title={t(titleKey)}
-            subtitle={t('matches_count_line', {
-              /* HOMATCH matches plus potential buyers/tenants from public conversations. */
-              total: String(counts.total + leadCount),
-              new: String(counts.newCount),
-            })}
+            subtitle={t('fbx_page_subtitle')}
           />
         </div>
 
@@ -995,13 +1009,35 @@ function MatchesContent() {
           />
         )}
 
-        {/* ── RESULTS: everything stored for this property, separate from the live search ── */}
-        <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold text-[hsl(218_45%_14%)]">{t('fbl_results_heading')}</h2>
-            <p className="text-2xs text-[hsl(218_28%_38%)]">{t('fbl_results_caption')}</p>
-          </div>
+        {/* ── TAKE YOUR RESEARCH FURTHER: raise the running campaign's total budget. ── */}
+        {activeJobId && propertyId ? (
+          <section className="mt-3 flex flex-col gap-3 rounded-2xl border border-[hsl(var(--border))] bg-white p-4 shadow-card sm:flex-row sm:items-center sm:justify-between" data-testid="research-extend-card">
+            <div className="min-w-0">
+              <p className="font-display text-base font-semibold">{t('rb_ext_heading')}</p>
+              <p className="mt-0.5 text-sm text-[hsl(224_14%_28%)]">{t('rb_ext_description')}</p>
+            </div>
+            <button type="button" className={BTN_PRIMARY} onClick={() => setShowExtend(true)} data-testid="rb-expand-open">
+              {t('rb_cta_expand')}
+            </button>
+          </section>
+        ) : null}
+        {activeJobId && propertyId ? (
+          <ResearchExtensionDialog open={showExtend} propertyId={propertyId} jobId={activeJobId}
+            onClose={() => setShowExtend(false)}
+            onViewResults={() => setShowExtend(false)}
+            onExtended={(total) => {
+              setShowExtend(false);
+              toast.success(t('rb_ext_done', { n: total.toLocaleString(intlLocaleFor(lang)) }));
+              void refreshStatus();
+            }} />
+        ) : null}
+
+        {/* ── EXTERNAL RESULTS: Buyers / Interest signals / Post opportunities, one search at a
+            time (Find Buyers 3.0). HOMATCH members have their own page. */}
+        <div id="fbx-results" className="mt-4 scroll-mt-20">
+          {propertyId ? <ExternalResultsView propertyId={propertyId} owner={ownerFacts} onTotal={setLeadCount} /> : null}
         </div>
+
         <FilterRail
           options={filters}
           value={filter}
@@ -1009,23 +1045,8 @@ function MatchesContent() {
           ariaLabel={t('matches_filter_all')}
         />
 
-        {/* HOMATCH members whose requirements fit this property, or who asked about it.
-            Two real accounts on both sides — the one kind of result that offers Message
-            and Call. Renders nothing when there is nobody. */}
-        {propertyId ? <NativeMatchesPanel propertyId={propertyId} role="OWNER" className="hm-discovery-panel" /> : null}
-
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-4">
-            {propertyId ? (
-              <FindBuyersResults
-                propertyId={propertyId}
-                counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
-                liveSignal={campaignStatus ? (campaignStatus.campaign?.newLeads ?? 0) : null}
-                page={leadPage}
-                onPage={(p) => setPageParam('lp', p)}
-                onCount={setLeadCount}
-              />
-            ) : null}
             {matchesPending && (
               <button type="button" onClick={() => { setPageParam('page', 1); void loadData(); }}
                 className={cn('flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.5)]', NAVY_BAND)}
@@ -1261,6 +1282,10 @@ function MatchesContent() {
         the customer picks the ceiling from the configured ladder. The figure
         it hands back is what becomes authorized_max_credits.
       */}
+      {/* Already on the search page: "watch it" closes the dialog onto the live search. */}
+      <SearchStartingDialog phase={startPhase} tenant={counterpart === 'TENANT'} goLabelKey="fbs_watch_search"
+        onGo={() => { setStartPhase(null); document.getElementById('fbl-live')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+        onClose={() => setStartPhase(null)} />
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto [&>*]:min-w-0">
           <DialogHeader>

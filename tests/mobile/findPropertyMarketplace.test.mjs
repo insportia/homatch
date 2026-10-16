@@ -122,13 +122,14 @@ test('V2: card gallery, durable dossier, scoped paid chat, insufficient credits 
 test('Advisor: confirmed original listings are explorable; optional floor requirements survive refresh and submission', opts, async (t) => {
   const { page, state } = await boot(t, { lang: 'en', width: 390 });
   await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
-  const duplicates = page.locator('[data-confirmed-duplicates]').first();
-  await duplicates.locator('summary').click();
-  assert.doesNotMatch(await duplicates.locator('summary').textContent(), /\{n\}/);
-  assert.ok(await duplicates.locator('a[target="_blank"]').count() >= 2);
-  await duplicates.getByText('Lowest price', { exact: false }).waitFor({ state: 'visible' });
+  await page.locator('[data-duplicate-badge="confirmed"]').first().click();
+  const duplicates = page.locator('[data-duplicates-dialog="confirmed"]');
+  await duplicates.waitFor();
+  assert.doesNotMatch(await duplicates.textContent(), /\{\{?\w+\}?\}/);
+  assert.ok(await duplicates.locator('a[data-dup-original][target="_blank"]').count() >= 2);
+  await duplicates.getByText('Lowest price', { exact: false }).first().waitFor({ state: 'visible' });
   await page.waitForURL((url) => url.searchParams.get('revision') === state.revision);
-  assert.equal(await duplicates.getAttribute('open'), '', 'recording the result revision preserves an opened disclosure');
+  assert.equal(await duplicates.count(), 1, 'recording the result revision keeps the comparison open');
   assert.equal(state.requests.filter((r) => r.action === 'browse').length, 1, 'initial revision bookkeeping does not refetch and remount the cards');
   await shot(page, 'advisor-mobile-confirmed-duplicates');
   await page.goto(`${BASE}/find-property/new`);
@@ -205,6 +206,52 @@ test('V2 mobile: workspace, touch gallery and property AI composer at 375px and 
   }
 });
 
+test('V2: source photos load on demand, failed photos recover, and dossier thumbnails remain usable', opts, async (t) => {
+  const { page, state } = await boot(t, { resumeStatus: 'PARTIAL_COMPLETE', width: 390 });
+  const property = OUTPUT.properties.find((p) => p.images.length === 3);
+  assert.ok(property, 'fixture includes a three-photo canonical property');
+  const requested = [];
+  // Synthetic image responses only: no source traffic or production credentials.
+  await page.route('https://img.example/**', async (route) => {
+    requested.push(route.request().url());
+    if (route.request().url() === property.images[2]) return route.fulfill({ status: 404, body: '' });
+    return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#23354b"/></svg>' });
+  });
+  await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`);
+  await page.waitForURL((url) => url.searchParams.get('revision') === state.revision);
+  const card = page.locator(`[data-property-key=${JSON.stringify(property.key)}]`);
+  const gallery = card.getByRole('group', { name: 'Photos', exact: true });
+  const loaded = async (container, src) => {
+    await page.waitForFunction(({ selector, src }) => {
+      const img = [...document.querySelectorAll(`${selector} img`)].find((el) => el.getAttribute('src') === src);
+      return img?.complete && img.naturalWidth > 0;
+    }, { selector: container, src });
+  };
+  await gallery.scrollIntoViewIfNeeded();
+  await loaded(`[data-property-key=${JSON.stringify(property.key)}]`, property.images[0]);
+  assert.ok(!requested.includes(property.images[1]) && !requested.includes(property.images[2]), 'cards do not preload inactive photos');
+  const resultsUrl = page.url();
+  await gallery.getByRole('button', { name: 'Next photo', exact: true }).click();
+  await loaded(`[data-property-key=${JSON.stringify(property.key)}]`, property.images[1]);
+  assert.equal(await gallery.locator('[aria-live="polite"]').textContent(), '2/3');
+  await gallery.getByRole('button', { name: 'Next photo', exact: true }).click();
+  await page.waitForFunction((key) => {
+    const card = [...document.querySelectorAll('[data-property-key]')].find((el) => el.getAttribute('data-property-key') === key);
+    return card?.querySelector('[role="group"] button')?.querySelector('svg') && !card.querySelector('[role="group"] img');
+  }, property.key);
+  assert.equal(await gallery.locator('[aria-live="polite"]').textContent(), '3/3', 'failed image has a stable fallback');
+  assert.equal(page.url(), resultsUrl, 'photo controls never navigate');
+  await gallery.getByRole('button', { name: 'Previous photo', exact: true }).click();
+  await loaded(`[data-property-key=${JSON.stringify(property.key)}]`, property.images[1]);
+  await card.getByRole('button', { name: 'View property', exact: true }).click();
+  await page.locator('[data-property-dossier]').waitFor();
+  await page.getByRole('button', { name: 'Photo 2', exact: true }).click();
+  await loaded('[data-property-dossier] [role="group"]', property.images[1]);
+  assert.equal(await page.getByRole('button', { name: 'Photo 2', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.ok(await overflow(page) <= 1);
+  await shot(page, 'v2-mobile-loaded-source-photo');
+});
+
 test('V2: an unavailable dossier cannot be hidden by a later successful search-status response', opts, async (t) => {
   const { page, state } = await boot(t, { resumeStatus: 'COMPLETE' });
   state.statusDelayMs = 100;
@@ -242,6 +289,81 @@ test('V2: a backend missing the history action stays an error; authenticated ret
   await page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]').waitFor();
   assert.ok(state.historyAuthenticated);
   assert.ok(state.requests.filter(r => r.action === 'history').every(r => !('user_id' in r)));
+});
+
+test('History cards: title, place, compact criteria, results count; Repeat reopens the builder without starting a search', opts, async (t) => {
+  for (const [width, lang] of [[375, 'ka'], [393, 'he']]) {
+    const { page, state } = await boot(t, { lang, width, height: 844 });
+    await page.goto(`${BASE}/find-property`);
+    const card = page.locator('[data-history-card]').filter({ has: page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]') });
+    await card.waitFor();
+    assert.equal(await card.locator('h3').count(), 1);
+    assert.ok(await card.locator('[data-history-count]').count() === 1);
+    assert.doesNotMatch(await card.textContent(), /\{\{?\w+\}?\}/);
+    assert.ok(await overflow(page) <= 1);
+    if (lang === 'ka') {
+      assert.ok((await card.textContent()).includes('შედეგების ნახვა'));
+      await shot(page, 'history-cards-ka-375');
+    }
+    await card.locator('button').last().click();
+    await page.waitForURL((url) => url.pathname === '/find-property/new');
+    await page.locator('[data-action="mps-start"]').waitFor();
+    assert.equal(state.requests.filter((r) => r.action === 'start').length, 0, 'repeating only prefills the builder');
+  }
+});
+
+test('Search summary: removing a criterion or editing reopens the builder with the saved brief and never starts a search', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', width: 390 });
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  const summary = page.locator('[data-search-summary]');
+  await summary.waitFor();
+  const removable = summary.locator('li[data-criterion] button');
+  assert.ok(await removable.count() >= 1);
+  assert.ok((await removable.first().boundingBox()).height >= 28);
+  const key = await summary.locator('li[data-criterion]:has(button)').first().getAttribute('data-criterion');
+  assert.ok(await overflow(page) <= 1);
+  await removable.first().click();
+  await page.waitForURL((url) => url.pathname === '/find-property/new');
+  // A removed required criterion is asked again; the builder never starts on its own.
+  await page.waitForFunction(() => !!sessionStorage.getItem('homatch.findProperty.draft.v1'));
+  const draft = await page.evaluate(() => JSON.parse(sessionStorage.getItem('homatch.findProperty.draft.v1') ?? 'null'));
+  assert.ok(draft, 'the edited brief is kept as the draft');
+  const field = { location: 'districts', buildingStatus: 'buildingStatuses', renovation: 'renovationPreferences' }[key] ?? key;
+  assert.equal(draft[field], null, `${key} was removed`);
+  await page.goBack();
+  await page.waitForURL((url) => url.pathname.startsWith('/find-property/search/'));
+  await page.locator('[data-action="edit-search"]').click();
+  await page.locator('[data-action="mps-start"]').waitFor();
+  assert.equal(state.requests.filter((r) => r.action === 'start').length, 0);
+});
+
+test('HOMATCH network: member matches appear in the workspace and the results; Call dials the listing contact, Message opens the private conversation', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', width: 390, nativeInventory: true });
+  await page.goto(`${BASE}/find-property`);
+  await page.getByText('HOMATCH properties that may fit', { exact: true }).waitFor();
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  const panel = page.locator('section[aria-labelledby="native-matches-title"]');
+  await panel.waitFor();
+  assert.equal(await panel.locator('[data-property-key]').count(), 0, 'member matches are their own section, not mixed into external cards');
+  assert.ok(await page.locator('[data-property-key]').count() > 0, 'external results still render');
+  assert.ok(!/\+995/.test(await panel.textContent()), 'no number in the list itself');
+  const call = panel.getByRole('button', { name: 'Call', exact: true });
+  const message = panel.getByRole('button', { name: 'Message', exact: true });
+  for (const b of [call, message]) assert.ok((await b.boundingBox()).height >= 44, 'clearly visible 44px actions');
+  await call.click();
+  await panel.locator('a[href="tel:+995555123456"]').waitFor();
+  assert.equal(state.reveals, 1, 'one server reveal, per match');
+  await panel.getByRole('button', { name: 'Copy number', exact: true }).waitFor();
+  await shot(page, 'network-call-390');
+  await message.click();
+  await page.waitForURL((url) => url.pathname === '/chat' && url.searchParams.get('conversation') === 'conversation-1');
+  assert.deepEqual(state.opened, { p_kind: 'MATCH', p_id: 'native-1' }, 'the server resolves the counterparty from the match, not from the client');
+  state.noNumber = true;
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  await panel.getByRole('button', { name: 'Call', exact: true }).click();
+  await panel.locator('[role="status"]').filter({ hasNotText: '+995' }).first().waitFor();
+  assert.equal(await panel.locator('a[href^="tel:"]').count(), 0, 'no number, no dial link');
+  assert.ok(await overflow(page) <= 1);
 });
 
 function fakeSession() {
@@ -286,7 +408,7 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
   };
 }
 
-async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false } = {}) {
+async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -326,6 +448,7 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       if (body.action === 'understand') {
         const raw = /80/.test(body.text) ? F.COMPLETE_MODEL_OUTPUT : F.INCOMPLETE_MODEL_OUTPUT;
         const brief = briefFromModel(raw, body.text);
+        if (noLocation) { brief.city = null; brief.districts = null; }
         return r.fulfill(json({ understood: true, brief, readiness: evaluateReadiness(brief) }));
       }
       if (body.action === 'start') {
@@ -379,6 +502,8 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
       return r.fulfill(json(wantsObject ? state.conversations[0] ?? null : state.conversations));
     }
+    if (url.includes('/rest/v1/rpc/reveal_native_contact')) { state.reveals = (state.reveals ?? 0) + 1; return r.fulfill(json(state.noNumber ? { phone: null, reason: 'NO_NUMBER' } : { phone: '+995555123456', reason: null })); }
+    if (url.includes('/rest/v1/rpc/open_native_conversation')) { state.opened = JSON.parse(req.postData() || '{}'); return r.fulfill(json('conversation-1')); }
     if (url.includes('/rest/v1/rpc/my_native_matches')) return r.fulfill(json(nativeInventory ? [{ kind: 'MATCH', id: 'native-1', role: 'SEEKER', property_id: 'property-1', property_title: 'Native HOMATCH apartment', homatch_id: 101, agreed: ['CITY', 'PRICE'], preference_misses: [], viewing_requested: false, city: 'Tbilisi', price: 150000, currency: 'USD', area: 85, rooms: 3, bedrooms: 2 }] : []));
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
@@ -446,7 +571,7 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
   await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
-  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'გონივრული გაუმჯობესება · +5–10%', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
+  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'გონივრული გაუმჯობესება · +5–10%', 'რატომ გირჩევს HOMATCH', 'წყარო: SOURCE-A · SOURCE-B · SOURCE-C', 'დუბლიკატი · 3 განცხადება', 'ფასებში სხვაობა',
     '$9,000', 'რატომ ღირს განხილვა', 'გინდა უფრო ფართოდ მოვძებნოთ?']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
@@ -454,8 +579,22 @@ test('ka, 1440: complete request → READY without questions → search → grou
   assert.ok((await page.locator('section[aria-labelledby="mps-g-UPGRADE"]').textContent()).includes('+5.3%'), 'upgrade shows both measured over-budget amount and percentage');
   await shot(page, 'ka-1440-results');
 
-  /* The three-source flat: one card, one property sheet, three exact links. */
-  const card = page.locator('article', { hasText: 'ნაპოვნია 3 წყაროში' }).first();
+  /* The three-source flat: one card, labelled Duplicate; the badge opens all three listings with their prices. */
+  const card = page.locator('article', { hasText: 'დუბლიკატი · 3 განცხადება' }).first();
+  assert.ok((await card.locator('[data-card-source]').textContent()).includes('წყარო: SOURCE-A · SOURCE-B · SOURCE-C'), 'the source is named next to View property / Compare');
+  await card.locator('[data-duplicate-badge]').first().click();
+  const duplicates = page.locator('[data-duplicates-dialog="confirmed"]');
+  await duplicates.waitFor();
+  assert.equal(await duplicates.locator('[data-dup-card]').count(), 3, 'every listing of the property is a small card');
+  assert.equal(await duplicates.locator('a[data-dup-original]').count(), 3, 'each opens its original');
+  for (const s of ['$162,000', '$165,000', '$181,000']) assert.ok((await duplicates.textContent()).includes(s), `duplicate price ${s}`);
+  assert.ok((await duplicates.locator('[data-dup-spread]').textContent()).includes('$19,000'), 'the price gap is spelled out');
+  assert.ok(await duplicates.locator('[data-dup-reasons] li').count() >= 1, 'why HOMATCH is sure it is one flat');
+  assert.match(await duplicates.locator('a[data-dup-full]').getAttribute('href'), /\/find-property\/search\/[^/]+\/property\//);
+  await shot(page, 'ka-1440-duplicates-dialog', { fullPage: false });
+  await page.keyboard.press('Escape');
+  await duplicates.waitFor({ state: 'detached' });
+  assert.ok(await page.locator('[data-duplicates-banner]').count(), 'the results say some properties are listed more than once');
   await card.getByRole('button', { name: 'ქონების ნახვა' }).click();
   await page.locator('#mps-listings').waitFor();
   const sheet = page.locator('[data-property-dossier]');
@@ -509,6 +648,25 @@ test('en, 1440: incomplete request asks only what is missing, one question at a 
   await page.getByRole('button', { name: "Doesn't matter" }).click();
   await page.locator('#mps-ready').waitFor();
   assert.ok((await page.textContent('main')).includes('Everything is ready ✨'));
+});
+
+test('location step: choosing a city and a district advances to the next question (city was erased by the districts edit)', opts, async (t) => {
+  const { page } = await boot(t, { lang: 'en', noLocation: true });
+  await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
+  await page.locator('a[href="/find-property/new"]').waitFor({ timeout: 30000 });
+  await page.locator('a[href="/find-property/new"]').click();
+  await page.locator('textarea').fill(F.INCOMPLETE_TEXT);
+  await page.locator('form button[type="submit"]').click();
+  await page.getByRole('heading', { name: 'What are you looking for?' }).waitFor({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const where = page.getByRole('heading', { name: 'Where are you looking?' });
+  await where.waitFor();
+  await page.getByRole('button', { name: 'თბილისი', exact: true }).click();
+  await page.getByLabel('Districts, separated by commas').fill('Vazisubani');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('heading', { name: 'What price range should we search in?' }).waitFor({ timeout: 5000 });
+  assert.equal(await where.count(), 0, 'the location question is not asked again');
+  assert.ok((await page.textContent('main')).includes('Vazisubani'), 'the chosen district is kept');
 });
 
 test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the search goes on and is never duplicated', opts, async (t) => {
@@ -620,6 +778,100 @@ test('ka: owner can leave a resumed failed search without hiding or retrying it 
   await page.getByRole('button',{name:'ახალი ძიება',exact:true}).click();
   await page.locator('textarea').waitFor();
   assert.equal(state.starts,0);assert.ok(!new URL(page.url()).searchParams.has('search'));
+});
+
+test('duplicates: the banner filters to properties listed more than once; the property page names its sources (en, he RTL)', opts, async (t) => {
+  for (const [lang, width] of [['en', 1280], ['he', 390]]) {
+    const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE' });
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-duplicates-banner]').waitFor({ timeout: 30000 });
+    await page.locator('[data-duplicates-banner] button').click();
+    await page.waitForFunction(() => new URL(location.href).searchParams.has('fp_duplicatesOnly'));
+    const cards = page.locator('main article[data-property-key]');
+    // The pre-filter page can still be on screen for a moment: wait for the
+    // filtered list itself (every card a confirmed duplicate), not any card.
+    await page.waitForFunction(() => {
+      const shown = [...document.querySelectorAll('main article[data-property-key]')];
+      return shown.length > 0 && shown.every((a) => a.querySelector('[data-duplicate-badge]'));
+    }, null, { timeout: 30000 });
+    const n = await cards.count();
+    assert.ok(n >= 1, `${lang}: duplicates are listed`);
+    for (let i = 0; i < n; i++) assert.ok(await cards.nth(i).locator('[data-duplicate-badge]').count(), `${lang}: every shown card is a confirmed duplicate`);
+    assert.equal(await page.locator('[data-duplicates-banner]').count(), 0, `${lang}: the banner gives way to the active filter`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `${lang}: no horizontal overflow (${overflow}px)`);
+    await cards.first().getByRole('button', { name: lang === 'en' ? 'View property' : /./ }).first().click();
+    const band = page.locator('[data-property-band]');
+    await band.waitFor();
+    assert.ok(await band.locator('[data-duplicate-badge]').count(), `${lang}: the property page marks the duplicate`);
+    assert.ok(await page.locator('[data-confirmed-duplicates]').evaluate((d) => d.open), `${lang}: duplicates are open on the property page`);
+    await page.context().close();
+  }
+});
+
+test('possible duplicates, exact listing times and the full-screen photo viewer (ka 390, en 1280, he RTL)', opts, async (t) => {
+  const hoursAgo = (h) => new Date(Date.now() - h * 3600000).toISOString();
+  const images = F.CONFIRMED_IDENTITY.images;
+  const list = [
+    F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'pa', images, publishedAt: hoursAgo(5), observedAt: hoursAgo(0.2) }),
+    F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'pb', images: [images[0]], price: 158000, publishedAt: hoursAgo(30), observedAt: hoursAgo(0.2) }),
+  ];
+  const output = processSearch({ request: F.FIXTURE_REQUEST, candidates: F.fixtureCandidates(list), now: new Date() });
+  assert.equal(output.stats.possibleDuplicates, 1, 'fixture forms one possible pair');
+  for (const [lang, width] of [['ka', 390], ['en', 1280], ['he', 390]]) {
+    const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE', output });
+    await page.route('https://img.example/**', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000"><rect width="1600" height="1000" fill="#23354b"/></svg>' }));
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    const cards = page.locator('main article[data-property-key]');
+    await cards.first().waitFor({ timeout: 30000 });
+    assert.equal(await cards.count(), 2, `${lang}: never merged`);
+    const card = cards.first();
+    // Possible duplicate: an outlined badge that opens both listings side by side.
+    const badge = card.locator('[data-duplicate-badge="possible"]').first();
+    await badge.waitFor();
+    if (lang === 'ka') assert.equal((await badge.textContent()).trim(), 'შესაძლო დუბლიკატი');
+    await badge.click();
+    const panel = page.locator('[data-duplicates-dialog="possible"]');
+    await panel.waitFor();
+    assert.equal(await panel.locator('[data-dup-card]').count(), 2, `${lang}: this listing and the possible match, as small cards`);
+    assert.equal(await panel.locator('a[data-dup-original][target="_blank"]').count(), 2);
+    assert.match(await panel.locator('a[data-dup-more]').getAttribute('href'), /\/find-property\/search\/[^/]+\/property\//, `${lang}: the match opens in full in a new tab`);
+    assert.ok(await panel.locator('[data-dup-reasons] li').count() >= 1, `${lang}: the reason is named`);
+    const dialogOverflow = await panel.evaluate((d) => d.scrollWidth - d.clientWidth);
+    assert.ok(dialogOverflow <= 1, `${lang}: the comparison fits (${dialogOverflow}px)`);
+    await shot(page, `${lang}-${width}-possible-dialog`, { fullPage: false });
+    await page.keyboard.press('Escape');
+    await panel.waitFor({ state: 'detached' });
+    // Exact source time with hours, in Tbilisi time.
+    const times = (await card.locator('[data-card-times]').textContent()) ?? '';
+    if (lang === 'ka') assert.match(times, /დადებულია .*\d{2}:\d{2} \((5|30) საათის წინ|1 დღის წინ\)/);
+    if (lang === 'en') assert.match(times, /Posted .*\d{2}:\d{2} \((5 h ago|1 days ago)\)/);
+    assert.doesNotMatch(times, /\{\{/);
+    // Contact: a call button for a published number, otherwise the way to the source's own "show number".
+    const contact = card.locator('[data-contact]');
+    await contact.waitFor();
+    const call = contact.locator('a[data-contact-call]');
+    if (await call.count()) assert.match(await call.getAttribute('href'), /^tel:\+?\d{9,15}$/);
+    else assert.match(await contact.locator('a[data-contact-source]').getAttribute('href'), /^https:\/\//);
+    // Full-screen viewer: open, zoom, move to the next photo, close with Esc.
+    await card.locator('[data-photo-fullscreen]').click();
+    const viewer = page.locator('[data-photo-viewer]');
+    await viewer.waitFor();
+    const zoom = viewer.locator('[data-photo-zoom]');
+    assert.equal((await zoom.textContent()).trim(), '100%');
+    await viewer.getByRole('button', { name: lang === 'en' ? 'Zoom in' : /./ }).first().waitFor();
+    await viewer.locator('button').nth(1).click();
+    assert.equal((await zoom.textContent()).trim(), '150%', `${lang}: zoom in`);
+    await viewer.locator('[data-photo-viewer-image]').dblclick();
+    assert.equal((await zoom.textContent()).trim(), '100%', `${lang}: double click resets`);
+    const box = await viewer.locator('[data-photo-viewer-image]').boundingBox();
+    assert.ok(box && box.width > width * 0.6, `${lang}: the photo fills the screen (${box?.width}px)`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `${lang}: no horizontal overflow (${overflow}px)`);
+    await page.keyboard.press('Escape');
+    await viewer.waitFor({ state: 'detached' });
+    await page.context().close();
+  }
 });
 
 test('partial and empty results say so, without technical errors', opts, async (t) => {

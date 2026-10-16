@@ -224,14 +224,15 @@ test('only terminal paths close the job browser, and each removes it from the re
   // stops making progress must release its Chromium and profile too, and the
   // step that was in flight when that happened must tear its own handle down
   // without resurrecting the job.
-  for (const reason of ['job_complete', 'job_failed', 'ttl_expired', 'job_watchdog_stalled', 'job_abandoned']) {
+  // 'job_cancelled': the customer stopped the investigation (cancel()).
+  for (const reason of ['job_complete', 'job_failed', 'ttl_expired', 'job_watchdog_stalled', 'job_abandoned', 'job_cancelled']) {
     // Not [^)]* — an argument may itself contain parentheses, e.g.
     // closeJobBrowser(this.jobBrowsers.get(id) ?? null, 'job_watchdog_stalled').
     assert.match(orchestratorSource, new RegExp(`closeJobBrowser\\([\\s\\S]{0,80}?'${reason}'\\)`), `${reason} must close the job browser`);
   }
   // Every close is paired with a registry removal, so nothing can be closed
   // twice or leak a handle.
-  assert.equal((orchestratorSource.match(/this\.jobBrowsers\.delete\(/g) || []).length, 5);
+  assert.equal((orchestratorSource.match(/this\.jobBrowsers\.delete\(/g) || []).length, 6);
 });
 
 test('CAPTCHA preserves the exact Chromium, context and Page — nothing is created or closed', () => {

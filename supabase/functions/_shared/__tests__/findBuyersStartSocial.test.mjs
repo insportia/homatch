@@ -81,7 +81,8 @@ const INPUT = {
 
 test('an uncached search plans and queues memo23 Actors with production-shaped builders (no .catch)', async () => {
   const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH'), PRICED('TIKTOK'), PRICED('LINKEDIN_POSTS'), PRICED('BLUESKY')] });
-  const out = await startSocialCampaign(db, INPUT, SETTINGS);
+  /* 300 credits → a $15 provider budget: the BROAD tier unlocks every platform. */
+  const out = await startSocialCampaign(db, { ...INPUT, credits: 300 }, SETTINGS);
   assert.equal(out.reason, null, `planning stopped: ${out.reason}`);
   assert.ok(out.queued > 0, 'memo23 jobs queued');
   const planWrite = log.updates.find((u) => u.table === 'find_buyers_campaigns' && u.patch.query_plan);
@@ -92,7 +93,25 @@ test('an uncached search plans and queues memo23 Actors with production-shaped b
   const actorsQueued = new Set(queued.map((r) => r.metadata?.actorKey));
   for (const k of ['FB_GROUP_SEARCH', 'TIKTOK', 'LINKEDIN_POSTS', 'BLUESKY']) assert.ok(actorsQueued.has(k), `${k} queued`);
   assert.ok(queued.every((r) => r.metadata?.query || r.metadata?.targetUrl), 'never a job without a query or target');
-  assert.ok(log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'the query cache write is actually sent');
+  /* The model planner is unavailable here (no key, no network): the deterministic
+     plan runs but is NOT cached, so the next campaign still asks the model
+     (2026-10-12; before, a failed planner call pinned the fallback plan). */
+  assert.ok(!log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'a plan without the model is never cached');
+});
+
+test('a plan the model answered is cached', async () => {
+  const env = globalThis.Deno.env.get; const net = globalThis.fetch;
+  globalThis.Deno.env.get = (k) => (k === 'OPENAI_API_KEY' ? 'test-key' : undefined);
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    usage: { prompt_tokens: 10, completion_tokens: 10 },
+    choices: [{ message: { content: JSON.stringify({ queries: [{ language: 'ru', query: 'куплю квартиру в Тбилиси Крцаниси' }] }) } }],
+  }), { status: 200 });
+  try {
+    const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH')] });
+    const out = await startSocialCampaign(db, INPUT, SETTINGS);
+    assert.equal(out.reason, null);
+    assert.ok(log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'the query cache write is actually sent');
+  } finally { globalThis.Deno.env.get = env; globalThis.fetch = net; }
 });
 
 test('a failing cache write never blocks the plan', async () => {
@@ -180,4 +199,35 @@ test('COMBINED Telegram after Phase 1: paid reads the uncovered city channels on
   assert.ok(combined.rows.every((r) => r.provider === 'APIFY_MEMO23' && r.metadata.stage === 'TELEGRAM_CHANNEL' && r.metadata.reason === 'combined_not_covered_by_free_reader'));
   assert.equal((await run([{ key: 'find_buyers_telegram_preference', value: 'NATIVE_FIRST' }])).n, 0);
   assert.equal((await run([{ key: 'provider_disabled_list', value: ['APIFY'] }])).n, 0);
+});
+
+test('COMBINED never pays to read a channel the free reader already read for this campaign', async () => {
+  const targets = [
+    { id: 't2', platform: 'TELEGRAM', external_id: 'crescotbilisi', name: 'Квартиры в Тбилиси', lifecycle: 'AUDITED', readability: 'READABLE', discovery_enabled: false, relevance_score: 0.9, source_registry_id: 'r2', languages: [] },
+  ];
+  const campaign = { matching_job_id: 'job-1', property_id: 'prop-1', dna: { city: 'Tbilisi' }, finalized_at: null, languages: ['ru'] };
+  const freeRead = { matching_job_id: 'job-1', provider: 'TELEGRAM_SOURCES', metadata: { last_outcome: { readTargets: ['crescotbilisi'] } } };
+  const { db, log } = prodLikeDb({ actors: [PRICED('TELEGRAM_CHANNEL', { probe_size: 30 })], extra: {
+    admin_settings: [{ key: 'credits_per_usd', value: 10 }, { key: 'find_buyers_social_enabled', value: true }],
+    find_buyers_campaigns: [campaign], community_targets: targets, discovery_query_queue: [freeRead] } });
+  assert.equal(await queueCombinedTelegram(db, 'job-1'), 0);
+  assert.equal(log.inserts.filter((i) => i.table === 'discovery_query_queue').length, 0);
+});
+
+test('budget-aware depth: a $5 search pays for Facebook discovery and TikTok, not LinkedIn/Bluesky keyword searches; the strategy is stored', async () => {
+  const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH'), PRICED('TIKTOK'), PRICED('LINKEDIN_POSTS'), PRICED('BLUESKY')] });
+  const out = await startSocialCampaign(db, INPUT, SETTINGS);
+  const queued = log.inserts.filter((i) => i.table === 'discovery_query_queue').map((i) => i.row);
+  const actorsQueued = new Set(queued.map((r) => r.metadata?.actorKey));
+  assert.ok(actorsQueued.has('FB_GROUP_SEARCH') && actorsQueued.has('TIKTOK'));
+  assert.ok(!actorsQueued.has('LINKEDIN_POSTS') && !actorsQueued.has('BLUESKY'));
+  assert.ok(out.queued > 0);
+  const write = log.updates.find((u) => u.table === 'find_buyers_campaigns' && u.patch.strategy);
+  assert.ok(write, 'the buyer strategy is persisted with the plan');
+  assert.equal(write.patch.strategy.depth.tier, 'STANDARD');
+  assert.equal(write.patch.strategy.places.district, 'krtsanisi');
+  /* Demand queries carry explicit purchase intent, never a bare "looking for". */
+  const demand = write.patch.query_plan.queries.filter((q) => q.kind === 'demand');
+  assert.ok(demand.length > 0);
+  assert.ok(demand.every((q) => !/^(ищу|looking for|ვეძებ)\b/i.test(q.query)), JSON.stringify(demand.map((q) => q.query)));
 });

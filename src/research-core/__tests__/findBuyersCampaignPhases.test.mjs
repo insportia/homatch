@@ -73,3 +73,24 @@ test('the probe estimate is the reservation\'s formula (start fee + limit × pri
   assert.equal(probeEstimateMicros({ startFeeMicros: 10_000, pricePer1kMicros: 3_600_000 }, 20), 82_000);
   assert.equal(probeEstimateMicros({ pricePer1kMicros: null }, 20), 0);
 });
+
+import { actorBreaker, isEmptyResultMessage } from '../findBuyers/campaignPhases.ts';
+
+test('circuit breaker: two finished failed/empty runs of one Actor in a campaign open it; a productive run resets it', () => {
+  const failed = { status: 'FAILED', items_fetched: 0, cost_booked_at: 'x' };
+  const empty = { status: 'SUCCEEDED', items_fetched: 0, cost_booked_at: 'x' };
+  const good = { status: 'SUCCEEDED', items_fetched: 12, useful_results: 1, cost_booked_at: 'x' };
+  assert.equal(actorBreaker([failed]).open, false);
+  assert.equal(actorBreaker([failed, empty]).open, true);
+  assert.equal(actorBreaker([failed, good, empty]).open, false);
+  assert.equal(actorBreaker([{ status: 'RUNNING' }, { status: 'RESERVED' }]).open, false, 'in-flight runs are not judged');
+  assert.equal(actorBreaker([{ status: 'RELEASED' }, { status: 'RELEASED' }]).open, false, 'released (never started) runs cost nothing and do not count');
+  /* VILLION: Bluesky failed 6 times on empty datasets. */
+  assert.equal(actorBreaker(Array(6).fill(failed)).consecutive, 6);
+});
+
+test('the memo23 "dataset is empty" failure is recognised as an empty answer, not a broken Actor', () => {
+  assert.ok(isEmptyResultMessage('This run produced no items — the dataset is empty, and that is reported as a FAILURE on purpose.'));
+  assert.ok(!isEmptyResultMessage('all 1 target(s) failed and 0 items were saved'), 'a failed target is a failure (VK), not an empty answer');
+  assert.ok(!isEmptyResultMessage('Input is not valid: Field input.cookies is required'));
+});

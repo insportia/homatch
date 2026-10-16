@@ -1,5 +1,6 @@
 import { Pause, Play, RotateCcw } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { tickMs } from '@/lib/games/snake';
 import type { T } from './format';
 
 /*
@@ -9,7 +10,6 @@ import type { T } from './format';
  * so arrow keys never scroll-jack the page; on touch, swipe on the board.
  */
 const CELLS = 18;
-const TICK_MS = 130;
 type Dir = 'U' | 'D' | 'L' | 'R';
 type Cell = { x: number; y: number };
 const OPPOSITE: Record<Dir, Dir> = { U: 'D', D: 'U', L: 'R', R: 'L' };
@@ -83,6 +83,10 @@ export function SnakeGame({ t, autoFocus = false }: { t: T; autoFocus?: boolean 
     return () => el.removeEventListener('touchmove', stop);
   }, []);
 
+  // The same rising pace as every HOMATCH Snake, never slower than this
+  // board's old 130 ms: it quickens with each point.
+  const pace = Math.min(130, tickMs(score, typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
+
   useEffect(() => {
     if (!running) return;
     const id = window.setInterval(() => {
@@ -102,9 +106,9 @@ export function SnakeGame({ t, autoFocus = false }: { t: T; autoFocus?: boolean 
         setScore((v) => v + 1);
       } else s.snake.pop();
       draw();
-    }, TICK_MS);
+    }, pace);
     return () => window.clearInterval(id);
-  }, [running, draw]);
+  }, [running, draw, pace]);
 
   /* Pause when the tab is hidden; the search does not care either way. */
   useEffect(() => {

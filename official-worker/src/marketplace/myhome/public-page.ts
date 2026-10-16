@@ -82,6 +82,12 @@ export async function publicPage(url: string, fetcher: typeof fetch = fetch, sta
     throw new AcquisitionError(url, null, `${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''}`);
   }
   if (!response.ok) throw new AcquisitionError(url, response.status, response.status === 401 || response.status === 403 ? await rejectionDiagnostic(response) : `HTTP ${response.status}; request stopped`);
-  const payload = parsePublicPage(await response.text(), url, statementId);
+  const html = await response.text();
+  // A challenge can be served with HTTP200. Preserve its actual HTTP status.
+  if (!/<script\b[^>]*\bid=["']__NEXT_DATA__["']/i.test(html)
+    && (response.headers.get('cf-mitigated') === 'challenge' || /cf_chl_|challenge-platform/i.test(html))) {
+    throw new AcquisitionError(url, response.status, `HTTP ${response.status}; CHALLENGE_REQUIRED; request stopped`, 'ACCESS_RESTRICTED');
+  }
+  const payload = parsePublicPage(html, url, statementId);
   return {url, status:response.status, payload};
 }

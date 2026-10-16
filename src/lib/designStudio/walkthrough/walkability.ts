@@ -84,6 +84,9 @@ export function redundantPieces<T>(kind: string, areaM2: number, items: Array<{ 
   if (!hasKitchen) keepFirst(isIsland, 0);
   if (kitchenish) {
     keepFirst(isIsland, 1);
+    // One run of base cabinets with its sink and hob per room: a second (the same run read twice) stood facing it
+    // across the room and closed the way between them.
+    keepFirst((a) => isKitchen(a) && /\bRUN\b|CABINET|COUNTER/.test(words(a)), 1);
     keepFirst(table, 1);
     // A table AND an island only where the room has the floor for both.
     if (areaM2 < 22) {
@@ -171,4 +174,6 @@ export interface WalkGate {
   crowded: string[];
   missingEssential: string[];
   spawnValid: boolean;
+  /** What a person would not believe (plausibility.ts): a wall piece standing free, a sofa facing away, a cramped arrival. */
+  implausible?: Array<{ code: string; roomId: string | null; instanceId: string | null; detail: string }>;
 }

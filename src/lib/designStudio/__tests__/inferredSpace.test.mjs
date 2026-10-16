@@ -45,13 +45,21 @@ test('the reconstruction reader is reused with a walk brief: source pictures for
   assert.match(WALK_SPACE_BRIEF, /Never mark a guess OBSERVED/);
   const walkRoute = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
   assert.match(walkRoute, /input: \[\{ role: 'system', content: RECON_SYSTEM \}, \{ role: 'user', content \}\]/, 'the existing reconstruction reader');
-  assert.match(walkRoute, /const \{ recon \} = validateReconstruction\(raw, images\.length\);/);
+  // Read with each picture's shape and the selected render's measured frame, then made buildable (readingRepair.ts).
+  assert.match(walkRoute, /const \{ recon: read \} = validateReconstruction\(raw, images\.length, \{\s*\/\/[^\n]*\n\s*imageAspects: images\.map\(\(img\) => img\.aspect\),\s*frames: measured && viewIndex != null \? \[\{ image: selected, view: viewIndex, frame: measured\.frame \}\] : \[\],/);
+  assert.match(walkRoute, /const spaceOf = \(recon: typeof read\) => spaceFromReading\(recon, \{[\s\S]*const built = useArchitect \? fromArchitect! : useDraft \? fromDraft! : spaceOf\(read\);/);
+  assert.match(code('src/lib/designStudio/walkthrough/photoSpace.ts'), /const repaired = repairReading\(read\);\s*const recon = repaired\.recon;/);
   assert.deepEqual([basisOf('OBSERVED', 0.2), basisOf('INFERRED', 0.8), basisOf('INFERRED', 0.5), basisOf('INFERRED', 0.2)], ['OBSERVED', 'INFERRED_HIGH', 'INFERRED_MEDIUM', 'INFERRED_LOW']);
 });
 
 test('A: a generated design with no floor plan starts its walkthrough (no upload blocker anywhere)', () => {
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(route, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*let onPlan = await designOnPlan\(admin, version, project\.id\);\s*if \(!onPlan\) \{/);
+  assert.match(route, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*const renderId = body\.renderId \?\? null;\s*let onPlan = await designOnPlan\(admin, version, project\.id, renderId\);/);
+  // A space read from other pictures is read once more from the selected render; a failed reading keeps the old one.
+  assert.match(route, /if \(onPlan && renderId && onPlan\.source\.provenance\?\.inferred === true && onPlan\.source\.provenance\?\.fromRenderId !== renderId\) \{/);
+  assert.match(route, /if \(again\.state === 'READY'\) onPlan = await designOnPlan\(admin, version, project\.id, renderId\) \?\? onPlan;\s*\}/);
+  // A space older code could not make walkable is built again from its kept reading (no new reading) before it is walked.
+  assert.match(route, /if \(photo && await rebuildSpace\(admin, \{ actorId, project, version, photoSource: photo, renderId \}, onPlan\.source\)\) onPlan = await designOnPlan\(admin, version, project\.id, renderId\) \?\? onPlan;\s*\}\s*if \(!onPlan\) \{/);
   assert.match(route, /const space = await reconstructSpace\(admin,/);
   assert.match(route, /if \(space\.state === 'RUNNING'\) return json\(\{ walkthrough: null, reconstructing: true \}, 202\);/);
   assert.doesNotMatch(route, /have: \['DESIGN', 'PHOTOS'\]/, 'the "add a plan" answer is gone');
@@ -59,7 +67,10 @@ test('A: a generated design with no floor plan starts its walkthrough (no upload
   assert.match(route, /if \(done\) await kick\(a\.authorization, 'walkthrough-create'/);
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
   for (const gone of [/walk-needs-plan/, /walk-add-plan/, /onAddPlan/, /dsx_walk_needs_/, /dsx_walk_missing_/]) assert.doesNotMatch(panel, gone);
-  assert.match(panel, /data-testid="walk-reconstructing"/);
+  assert.match(panel, /testId="walk-reconstructing"/);
+  // Shown and followed also when an earlier tour of the design is on the page (a plan read again for a new tour).
+  assert.match(panel, /\{reconstructing \? \(/);
+  assert.match(panel, /if \(!reconstructing\) return;\s*const timer = setInterval\(\(\) => \{ void start\(false\); \}, SPACE_POLL_MS\);/);
   assert.doesNotMatch(code('src/components/designStudio/unified/DesignResult.tsx'), /start=floorplan/, 'the Result never sends the customer to upload the property again');
   // The isometric apartment of the reconstruction fixtures: a real navigable scene, every indoor room reached.
   const raw = JSON.parse(code('src/lib/designStudio/__tests__/fixtures/isometric-apartment.recon.json'));
@@ -70,21 +81,55 @@ test('A: a generated design with no floor plan starts its walkthrough (no upload
   assert.equal(out.canonical.geometryState, 'ESTIMATED');
 });
 
-test('B: a room read a little off (a gap, no wall shared) is moved to touch and joined: conservative geometry, no island', () => {
-  const r = reading([
+test('B: a room read across a wall\'s thickness is closed onto it; a wider gap is never closed by moving a wall', () => {
+  // 0.3 m: the two faces of one wall — the room is put on it and joined.
+  const near = reading([
     room('living', 'LIVING', rect(0, 0, 5, 4)),
-    room('bed', 'BEDROOM', rect(5.6, 0.5, 9, 4), { confidence: 0.5, basis: 'INFERRED' }), // 0.6 m gap: a wall read off
+    room('bed', 'BEDROOM', rect(5.3, 0.5, 9, 4), { confidence: 0.5, basis: 'INFERRED' }),
   ], [door('front', [2.5, 0])]);
-  const { recon, repairs } = completeForWalk(r);
+  const { recon, repairs } = completeForWalk(near);
   assert.ok(repairs.some((x) => x.code === 'ROOM_MOVED_TO_TOUCH' && x.element === 'bed'), JSON.stringify(repairs));
   const bed = recon.rooms.find((x) => x.key === 'bed');
   assert.ok(sharedSegments(bed.polygon, recon.rooms[0].polygon)[0].len >= 3, 'now shares a wall');
   assert.ok(repairs.some((x) => x.code === 'DOOR_INFERRED'), 'and is reached through an inferred door');
-  const out = inferredSpace(r, 'k');
+  const out = inferredSpace(near, 'k');
   assert.deepEqual(out.unreachable, []);
   assert.equal(out.reachable.length, 2);
   // A missing ceiling height is the typical one, said as a repair.
   assert.ok(out.repairs.some((x) => x.code === 'CEILING_TYPICAL'));
+  // 0.6 m: not a wall. The room stays where it was read and is reported unreached (geometryCheck.ts stops there).
+  const far = reading([
+    room('living', 'LIVING', rect(0, 0, 5, 4)),
+    room('bed', 'BEDROOM', rect(5.6, 0.5, 9, 4), { confidence: 0.5, basis: 'INFERRED' }),
+  ], [door('front', [2.5, 0])]);
+  const f = completeForWalk(far);
+  assert.ok(!f.repairs.some((x) => x.code === 'ROOM_MOVED_TO_TOUCH'), JSON.stringify(f.repairs));
+  assert.deepEqual(f.recon.rooms.find((x) => x.key === 'bed').polygon, rect(5.6, 0.5, 9, 4));
+  assert.ok(f.repairs.some((x) => x.code === 'ROOM_UNREACHABLE' && x.element === 'bed'));
+});
+
+test('B2: a hall read inside an open-plan kitchen-living is cut out of it — the larger room is never deleted as a "duplicate"', () => {
+  const r = reading([
+    room('kitchen_living', 'LIVING', rect(0, 0, 8, 6), { confidence: 0.7 }),
+    room('hall', 'HALL', rect(6, 0, 8, 2), { confidence: 0.9 }),
+    room('bed', 'BEDROOM', rect(8, 0, 11, 4)),
+  ], [door('entry', [7, 0]), door('hall_bed', [8, 1]), door('hall_living', [6, 1])]);
+  const { recon, repairs } = completeForWalk(r);
+  assert.ok(!repairs.some((x) => x.code === 'DUPLICATE_ROOM_REMOVED'), JSON.stringify(repairs));
+  assert.ok(repairs.some((x) => x.code === 'ROOM_CARVED' && x.element === 'kitchen_living−hall'));
+  assert.deepEqual(recon.rooms.map((x) => x.key).sort(), ['bed', 'hall', 'kitchen_living']);
+  assert.deepEqual(recon.rooms.find((x) => x.key === 'kitchen_living').polygon, [[0, 0], [6, 0], [6, 2], [8, 2], [8, 6], [0, 6]]);
+  const out = inferredSpace(r, 'k');
+  assert.deepEqual(out.unreachable, []);
+  assert.equal(out.reachable.length, 3);
+  // A zone floating inside the open plan (it cannot be cut out as one outline) is part of it; the open plan stays.
+  const floating = completeForWalk(reading([room('living', 'LIVING', rect(0, 0, 8, 6), { confidence: 0.6 }), room('nook', 'HALL', rect(3, 2, 5, 4))], [door('entry', [4, 0])]));
+  assert.deepEqual(floating.recon.rooms.map((x) => x.key), ['living']);
+  assert.ok(floating.repairs.some((x) => x.code === 'ROOM_MERGED_INTO_OPEN_PLAN'));
+  // Two outlines of the same floor are still one room (the less certain goes).
+  const twice = completeForWalk(reading([room('a', 'LIVING', rect(0, 0, 5, 4), { confidence: 0.9 }), room('b', 'LIVING', rect(0.1, 0, 5, 4.1), { confidence: 0.5 })], []));
+  assert.deepEqual(twice.recon.rooms.map((x) => x.key), ['a']);
+  assert.ok(twice.repairs.some((x) => x.code === 'DUPLICATE_ROOM_REMOVED' && x.element === 'b'));
 });
 
 test('C: rooms that touch but were read with no door between them get a plausible door; the home gets an entrance', () => {
@@ -147,11 +192,15 @@ test('E: an invalid spawn (in a wall, outside, nowhere) is recalculated to free 
 
 test('F/G: one reading per photo source — a double tap, a refresh or a reopen follows the same job; failures retry a bounded number of times', () => {
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(route, /const key = await sha256Hex\(`walk-space:v1:\$\{a\.photoSource\.id\}`\);/, 'keyed on the architecture\'s evidence');
+  // Keyed on the architecture's evidence, and on the selected render when the reading furnishes from it.
+  // Keyed on the architecture's evidence and on the brief it is read with (a newer brief reads the pictures once more).
+  assert.match(route, /const key = await sha256Hex\(a\.renderId \? `walk-space:v2:\$\{WALK_BRIEF_VERSION\}:\$\{a\.photoSource\.id\}:\$\{a\.renderId\}` : `walk-space:v1:\$\{WALK_BRIEF_VERSION\}:\$\{a\.photoSource\.id\}`\);/, 'keyed on the architecture\'s evidence');
   assert.match(route, /if \(rows\.some\(\(j\) => j\.status === 'SUCCEEDED' && j\.output\?\.sourceId\)\) return \{ state: 'READY' \};/, 'done once, reused');
   assert.match(route, /if \(running && isFresh\(running\.started_at\)\) return \{ state: 'RUNNING' \};/, 'a second tap or a refresh follows it');
   assert.match(route, /Two taps that raced: the earliest job stays/);
-  assert.match(route, /failed\.length \+ \(running \? 1 : 0\) >= SPACE_ATTEMPTS/, 'never an unbounded number of paid readings');
+  assert.match(route, /failed\.length \+ \(running \? 1 : 0\) >= \(a\.renderId \? RENDER_SPACE_ATTEMPTS : SPACE_ATTEMPTS\)/, 'never an unbounded number of paid readings');
+  // A reading of the selected render is bought once: a failure is reported, never retried automatically.
+  assert.match(route, /const RENDER_SPACE_ATTEMPTS = 1;/, 'the render reading is a single paid call');
   assert.match(route, /Answered: paid whatever the answer turns out to be, so metered before it is judged\./);
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
   assert.match(panel, /if \(asking \|\| inFlight\.current\) return;/);
@@ -183,5 +232,11 @@ test('I: a project with a measured floor plan walks on it — exact evidence fir
   assert.match(route, /Number\(a\.provenance\?\.inferred === true\) - Number\(b\.provenance\?\.inferred === true\)/);
   assert.match(route, /if \(!source \|\| source\.kind !== 'FLOORPLAN_SCENE' \|\| !source\.canonical\?\.scene\?\.floors\?\.length\)/);
   const create = route.slice(route.indexOf('export async function handleWalkthroughCreate'), route.indexOf('export async function handleWalkthroughStatus'));
-  assert.ok(create.indexOf("source?.kind === 'PHOTO_SET'") > 0 && create.indexOf('reconstructSpace(') > create.indexOf("source?.kind === 'PHOTO_SET'"), 'inference only inside the photo branch');
+  // Every reading of pictures is for a design made from a photo set (its own branch, or its space carried onto the plan).
+  const calls = [...create.matchAll(/reconstructSpace\(/g)].map((m) => m.index);
+  assert.ok(calls.length >= 1);
+  const branch = create.indexOf("source?.kind === 'PHOTO_SET'");
+  assert.ok(branch > 0);
+  // Inside the photo branch, or (before it) guarded by its own photo-set check on the carried space.
+  for (const at of calls) assert.ok(at > branch || /PHOTO_SET/.test(create.slice(Math.max(0, at - 700), at)), 'inference only for a photo design');
 });

@@ -174,3 +174,59 @@ test('terminal unavailable history never hijacks bare entry, explicit recovery r
   assert.equal(shouldResumeSearch(failed, 'history', now.getTime()), true);
   assert.equal(shouldResumeSearch({ ...failed, terminal: false }, null, now.getTime()), true);
 });
+test('possible duplicates stay separate, point at each other, and the duplicates filter shows both', () => {
+  const images = F.CONFIRMED_IDENTITY.images;
+  const list = [F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'a', images }), F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: 'b', images: [images[0]], price: 158000 })];
+  const output = process(list);
+  assert.equal(output.properties.length, 2, 'never merged');
+  assert.equal(output.stats.possibleDuplicates, 1);
+  const [x, y] = output.properties.map(publicView);
+  for (const [p, other] of [[x, y], [y, x]]) {
+    assert.ok(p.intelligence.warnings.includes('POSSIBLE_DUPLICATE'));
+    assert.equal(p.identity.status, 'INSUFFICIENT_EVIDENCE');
+    assert.equal(p.possibleMatches.length, 1);
+    assert.equal(p.possibleMatches[0].key, other.key);
+    assert.equal(p.possibleMatches[0].priceUsd, other.facts.priceUsd);
+    assert.equal(p.possibleMatches[0].exactUrl, other.listings[0].exactUrl);
+  }
+  const page = browseResults([x, y], { duplicatesOnly: true }, 1, now);
+  assert.equal(page.total, 2);
+  assert.equal(page.facets.possibleDuplicates, 2);
+  assert.equal(page.facets.duplicates, 0);
+  const single = process([F.listing({ sourceListingId: 'solo' })]).properties.map(publicView)[0];
+  assert.equal('possibleMatches' in single, false, 'only possible duplicates carry partners');
+});
+test('seller type and contact come from what the source and the seller actually published', () => {
+  const agent = normalizeCandidate({ ...F.listing({ sourceListingId: 'ag' }), retrievalMetadata: { userType: 'agent' } }, { now });
+  assert.equal(agent.seller.declaredType, 'BROKER', 'MyHome "agent" is the source declaring an agent');
+  assert.equal(classifySeller(agent, { propertiesPerPhone: new Map() }).classification, 'BROKER');
+  const physical = normalizeCandidate({ ...F.listing({ sourceListingId: 'ph', seller: { declaredType: null, publicPhone: null, sourceListingCount: 1 } }), retrievalMetadata: { userType: 'physical' } }, { now });
+  assert.equal(physical.seller.declaredType, null, 'a private person is not declared an owner');
+  const written = normalizeCandidate(F.listing({ sourceListingId: 'tx', description: 'ბინა იყიდება. დარეკეთ: 599 12 34 56', seller: { declaredType: null, publicPhone: null, sourceListingCount: 1 } }), { now });
+  assert.equal(written.seller.publicPhone, '+995 599 12 34 56');
+  assert.equal(written.seller.phoneFromDescription, true);
+  const view = views([F.listing({ sourceListingId: 'tx', description: 'ბინა იყიდება. დარეკეთ: 599 12 34 56', seller: { declaredType: null, publicPhone: null, sourceListingCount: 1 } })])[0];
+  assert.equal(view.listings[0].seller.publicPhone, '+995 599 12 34 56');
+  assert.equal(view.listings[0].seller.phoneFromDescription, true);
+  const none = normalizeCandidate(F.listing({ sourceListingId: 'np', description: 'No contact here.', seller: { declaredType: null, publicPhone: null, sourceListingCount: 1 } }), { now });
+  assert.equal(none.seller.publicPhone, null); assert.equal(none.seller.phoneFromDescription, false);
+});
+test('duplicate reasons name what a person can check: photos, description, phone, place, address and layout', async () => {
+  const { matchReasons } = await import('../marketplace/pipeline.ts');
+  assert.deepEqual(matchReasons(['shared listing images', 'substantial shared description']).sort(), ['DESCRIPTION', 'PHOTOS']);
+  assert.deepEqual(matchReasons(['same canonical url']), ['SAME_LISTING']);
+  assert.deepEqual(matchReasons(['corroborated photo set, specific address, description and unit configuration']).sort(), ['ADDRESS_AND_LAYOUT', 'DESCRIPTION', 'PHOTOS']);
+  assert.deepEqual(matchReasons(['price within 2%']), [], 'nothing a person could not check is offered as a reason');
+  const confirmed = views(F.fixtureCandidates ? [F.listing({ ...F.CONFIRMED_IDENTITY, source: 'source-a', sourceListingId: 'x1' }), F.listing({ ...F.CONFIRMED_IDENTITY, source: 'source-b', sourceListingId: 'x2' })] : [])
+    .find((p) => p.identity?.status === 'CONFIRMED_DUPLICATE');
+  if (confirmed) assert.ok(confirmed.identity.reasons.length >= 1);
+});
+
+test('seller filter: OWNER groups verified and likely owners only; unknown is never an owner', async () => {
+  const { sellerMatches } = await import('../marketplace/browse-results.ts');
+  assert.ok(sellerMatches('VERIFIED_OWNER', 'OWNER'));
+  assert.ok(sellerMatches('LIKELY_OWNER', 'OWNER'));
+  for (const c of ['UNKNOWN', 'AGENCY', 'BROKER', 'DEVELOPER']) assert.equal(sellerMatches(c, 'OWNER'), false, c);
+  assert.ok(sellerMatches('BROKER', 'BROKER'));
+  assert.equal(sellerMatches('LIKELY_OWNER', 'VERIFIED_OWNER'), false, 'an exact value stays exact');
+});

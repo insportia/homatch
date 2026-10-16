@@ -98,7 +98,7 @@ test('stall decision: only past the total deadline AND silent — progress is ne
   assert.equal(officialStallDecision({ ...base, updatedAt: new Date(t0 + OFFICIAL_BROWSER_DEADLINE_MS).toISOString(), now: t0 + OFFICIAL_BROWSER_DEADLINE_MS + OFFICIAL_STALL_MS - 1 }), 'WAIT', 'written recently');
   assert.equal(officialStallDecision({ ...base, stage: 'OFFICIAL_READY', updatedAt: '2026-10-09T08:12:34Z', now: Date.parse('2026-10-09T09:04:42Z') }), 'WAIT');
   assert.equal(officialStallDecision({ ...base, status: 'WAITING_HUMAN', updatedAt: '2026-10-09T08:12:34Z', now: Date.parse('2026-10-09T09:04:42Z') }), 'WAIT', 'a human wait has its own release');
-  assert.ok(OFFICIAL_BROWSER_DEADLINE_MS <= 10 * 60 * 1000, 'official stage bounded at 10 minutes');
+  assert.ok(OFFICIAL_BROWSER_DEADLINE_MS <= 14 * 60 * 1000, 'official stage bounded at 14 minutes (full TAS attachment read)');
 });
 
 test('stall recovery: conditional, keeps stored evidence, never re-runs; a concurrent write wins', async () => {
@@ -133,9 +133,35 @@ test('research-agent: worker data is sanitized at entry, every official exit is 
   const poll = src.slice(src.indexOf('async function pollBrowser('), src.indexOf('// pickFinancialCandidate()'));
   assert.equal((poll.match(/stage: 'OFFICIAL_READY'/g) || []).length, (poll.match(/return persistOfficialTransition\(sb, j, \{/g) || []).length, 'every OFFICIAL_READY transition is a checked write');
   assert.doesNotMatch(poll, /return sb\s*\.from\('research_jobs'\)\s*\.update\(\{\s*status: 'CREATED'/);
-  assert.match(poll, /const MAX_BROWSER_WAIT_MS = OFFICIAL_BROWSER_DEADLINE_MS;/);
+  // The deadline counts from when the worker started the job, not while it queued.
+  assert.match(poll, /if \(officialPastDeadline\(j, w\)\) \{/);
+  assert.match(src, /function officialPastDeadline[\s\S]{0,600}OFFICIAL_BROWSER_DEADLINE_MS/);
+  assert.match(src, /w\?\.status === 'QUEUED'[\s\S]{0,120}OFFICIAL_QUEUE_MAX_MS/);
   assert.match(poll, /currentSource: currentOfficialSource\(w\)/);
   const drive = src.slice(src.indexOf('async function driveJob('), src.indexOf('async function driveJob(') + 2000);
-  assert.match(drive, /await advance\(sb, key, model, j, jobLanguage\(j\)\);\n[\s\S]{0,300}if \(await recoverStalledOfficial\(sb, j\)\) return;/);
+  // The driver steps through the exclusive wrapper (one advancer per job), then checks for a stall.
+  assert.match(drive, /if \(!\(await advanceExclusive\(sb, key, model, j, jobLanguage\(j\)\)\)\) return;\n[\s\S]{0,300}if \(await recoverStalledOfficial\(sb, j\)\) return;/);
   assert.doesNotMatch(src, /browserAgeMs > 12 \* 60 \* 1000/);
+});
+
+/* ── bounded worker payloads (job 1a70af7d, 2026-10-10: CPU Time exceeded) ── */
+import { boundWorkerJob, TAS_DOC_TEXT_CAP, TAS_TOTAL_TEXT_CAP } from '../officialRecovery.ts';
+
+test('a TAS API_FIRST job is bounded before research-agent touches it', () => {
+  const big = 'ა'.repeat(40_000);
+  const docs = Array.from({ length: 30 }, (_, i) => ({ rawText: big, documentDate: `20${10 + i}-01-01` }));
+  const job = { status: 'COMPLETE', results: [{ source: 'tas', documents: docs }, { source: 'mygov', documents: [{ rawText: big }] }] };
+  boundWorkerJob(job);
+  const tas = job.results[0].documents;
+  assert.ok(tas.every((d) => d.rawText.length <= TAS_DOC_TEXT_CAP));
+  assert.ok(tas.reduce((n, d) => n + d.rawText.length, 0) <= TAS_TOTAL_TEXT_CAP);
+  // Newest case keeps its text; the register extract is untouched.
+  assert.equal(tas[29].rawText.length, TAS_DOC_TEXT_CAP);
+  assert.equal(job.results[1].documents[0].rawText.length, 40_000);
+});
+
+test('research-agent polls the light status view and fetches the full job only when it reads it', () => {
+  const src = readFileSync(new URL('../../../supabase/functions/research-agent/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /\?view=status/);
+  assert.match(src, /boundWorkerJob\(z\)/);
 });

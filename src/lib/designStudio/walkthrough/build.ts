@@ -47,12 +47,17 @@ import { isFlat } from '../catalog.ts';
 import type { DesignState, ObjectInstance } from '../designState.ts';
 import { BODY_RADIUS_M, COMFORT_RADIUS_M, buildWalkModel, distanceToObb, findPath, isFree, nearestFree, type WalkModel } from '../navigation.ts';
 import {
-  DENSITY_MAX, density, densityChecked, essentialRole, redundantPieces, repairRank, servesRole, strandedFloor, type WalkGate,
+  DENSITY_MAX, density, densityChecked, essentialRole, isDesk, isIsland, redundantPieces, repairRank, servesRole, strandedFloor, type WalkGate,
 } from './walkability.ts';
+import { pieceRole } from '../placementSearch.ts';
 import { ANCHOR_FALLBACK_M } from './fidelity.ts';
+import { arrangeSeating, seatRole, type SeatPiece } from './seatingGroup.ts';
+import { homeProgramme, type Need } from './programme.ts';
+import { ZONE_ORDER, type ZoneProposals, zoneVariants } from './zoneLayout.ts';
+import { backGap, plausibility, WALL_BACK_GAP_M } from './plausibility.ts';
 import { type ObjectShape, shapedAsset } from '../objectShape.ts';
 import { applyOperation, type Operation, type OperationContext, validateOperation } from '../operations.ts';
-import { candidatePositions, evaluateInWorld, footprint, type Obb, type PlacementIssue, placementWorld, snapToWall } from '../placement.ts';
+import { candidatePositions, evaluateInWorld as evaluateBase, footprint, frontOf, frontZone, isSeat, isSeatTable, type Obb, type PlacementIssue, type PlacementWorld, placementWorld, snapToWall, type SolidBox, solidBox, solidOverlap, TUCK_M } from '../placement.ts';
 import { ceilingSurfaceId, floorSurfaceId, type Point, pointInPolygon, type SpaceModel, type SpaceRoom, surfacesOfRoom, wallFrame } from '../space.ts';
 
 // ── The rooms, as the model is shown them ────────────────────────────────────
@@ -118,6 +123,8 @@ export interface BuildItem {
   refKey?: string | null;
   /** Reference-locked: how far it may be nudged and turned (fidelity.ts anchorLock); it never moves further. */
   lock?: { maxShiftM: number; maxTurnDeg: number } | null;
+  /** The size and form the piece was seen at (a render-furnished plan): it stands and collides at that, not the catalogue's. */
+  shape?: ObjectShape | null;
 }
 export interface BuildRoom {
   roomId: string;
@@ -152,6 +159,8 @@ export interface ItemReport {
   warnings: string[];
   /** The picture's id for it (reference-locked plans). */
   refKey?: string | null;
+  /** A picture's piece made smaller to open a required way (share of its seen size; recorded, never silent). */
+  resizedTo?: number;
   /** Reference-locked (nudged within its lock only). */
   locked?: boolean;
 }
@@ -177,6 +186,18 @@ export interface BuildInput {
   materialsById: Map<string, CatalogMaterial>;
   /** Deterministic instance ids: `${idPrefix}-${n}`. */
   idPrefix: string;
+  /**
+   * The clearance every route must keep (a body of this radius walks it). Default: the comfortable walk. A plan that
+   * reproduces a real home's furniture (renderPlan.ts) asks for the walker's own body plus a margin instead: a
+   * compact kitchen the picture shows is walked as it is, not emptied to make it roomy.
+   */
+  walkRadiusM?: number;
+  /**
+   * The plan's locked pieces are a picture of a real home (renderPlan.ts): at its pose a piece may leave a tight
+   * front zone, or stand in a door's keep-out beside the passage, as the picture shows it; only a piece in the
+   * passage itself, a collision or a wall moves it. The walk (walkRadiusM) is still proven afterwards.
+   */
+  anchorsAsSeen?: boolean;
 }
 
 const DEG = Math.PI / 180;
@@ -185,10 +206,64 @@ type Verdict = 'CLEAN' | 'TIGHT' | null;
 const verdictOf = (issues: PlacementIssue[]): Verdict =>
   issues.length === 0 ? 'CLEAN' : issues.every((i) => i.code === 'TIGHT_ACCESS') ? 'TIGHT' : null;
 
+/**
+ * Pieces used from their front: a wardrobe's doors, a kitchen run's counter, a dresser's drawers, a fixture stood
+ * at. The floor before them (their catalogue clearance) is theirs.
+ */
+const usedFromFront = (a: CatalogAsset) => a.clearanceM > 0 && !isFlat(a)
+  && USED_FROM_FRONT.test(`${a.category ?? ''} ${a.subcategory ?? ''} ${a.code}`.toUpperCase());
+const USED_FROM_FRONT = /WARDROBE|DRESSER|KITCHEN|FRIDGE|REFRIGERATOR|WASHER|VANITY|TOILET|SHOWER|\bBATH\b|BOOKSHELF|DESK/;
+
+/**
+ * Does a piece take the floor a piece is used from? Standing in front of a wardrobe, a kitchen run or a vanity (the
+ * table pushed against the counter, the wardrobe whose doors meet the bed), or standing used-from-front with another
+ * piece before it. A seat drawn up to its table is how a table is used, never a finding.
+ */
+/** The front zones of a world's standing pieces, made once per world (a placement search judges hundreds of poses). */
+const frontZones = new WeakMap<PlacementWorld, Array<SolidBox | null>>();
+function zonesOf(world: PlacementWorld): Array<SolidBox | null> {
+  let z = frontZones.get(world);
+  if (!z) {
+    z = world.objects.map((o) => (!o.flat && usedFromFront(o.asset) ? frontZone(o.asset, { x: o.object.position.x, y: o.object.position.z }, o.object.rotationY, o.asset.clearanceM) : null));
+    frontZones.set(world, z);
+  }
+  return z;
+}
+function blocksUse(world: PlacementWorld, asset: CatalogAsset, at: Point, rotation: number, instanceId?: string): boolean {
+  if (isFlat(asset) || !world.objects.length) return false;
+  const zones = zonesOf(world);
+  const box = solidBox(footprint(asset, at, rotation));
+  const mine = usedFromFront(asset) ? frontZone(asset, at, rotation, asset.clearanceM) : null;
+  for (let i = 0; i < world.objects.length; i += 1) {
+    const o = world.objects[i];
+    if (o.flat || o.id === instanceId) continue;
+    const zone = zones[i];
+    // A chair in front of its desk or table is how that is used.
+    if (zone && solidOverlap(box, zone) && !(isSeat(asset) && pieceRole(o.asset) === 'TABLE')) return true;
+    if (mine && solidOverlap(mine, o.box) && !((isSeat(asset) && isSeatTable(o.asset)) || (isSeatTable(asset) && isSeat(o.asset)))) return true;
+  }
+  return false;
+}
+
+/** The placement rules (placement.ts) and, for a walkthrough, the floor each piece is used from (blocksUse). */
+function evaluateInWorld(world: PlacementWorld, asset: CatalogAsset, at: Point, rotation: number, instanceId?: string): PlacementIssue[] {
+  const issues = evaluateBase(world, asset, at, rotation, instanceId);
+  if (blocksUse(world, asset, at, rotation, instanceId)) issues.push({ code: 'BLOCKS_USE', severity: 'WARN' });
+  return issues;
+}
+
 /** The shape a scaled piece is drawn and collided at (no shape at scale 1). */
 function shapeAt(asset: CatalogAsset, scale: number): ObjectShape | undefined {
   if (Math.abs(scale - 1) < 0.005) return undefined;
   return { widthM: r3(asset.widthM * scale), depthM: r3(asset.depthM * scale), heightM: r3(asset.heightM * scale), form: null, secondary: null };
+}
+
+/** An item's shape at `scale`: its seen shape (scaled relative to the item's own scale), else the catalogue's. */
+function itemShape(asset: CatalogAsset, item: BuildItem, scale: number): ObjectShape | undefined {
+  if (!item.shape) return shapeAt(asset, scale);
+  const k = scale / (item.scale || 1);
+  if (Math.abs(k - 1) < 0.005) return item.shape;
+  return { ...item.shape, widthM: r3(item.shape.widthM * k), depthM: r3(item.shape.depthM * k), heightM: r3(item.shape.heightM * k) };
 }
 
 export function buildWalkthrough(input: BuildInput): { state: DesignState; report: BuildReport } {
@@ -215,6 +290,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
 
   // ── Finishes, room by room ──
   const rooms = new Map(space.rooms.map((r) => [r.id, r]));
+  const programme = homeProgramme(space.rooms);
   for (const pr of input.plan.rooms) {
     const room = rooms.get(pr.roomId);
     if (!room) continue;
@@ -240,9 +316,64 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
   let n = 0;
   type Placed = { roomId: string; instanceId: string; flat: boolean; area: number; box: Obb; report: ItemReport; asset: CatalogAsset; rank: number; essential: boolean; lock?: { at: Point; rotation: number; maxShiftM: number; maxTurnDeg: number } };
   const placedOrder: Placed[] = [];
-  for (const pr of input.plan.rooms) {
-    const room = rooms.get(pr.roomId);
+  // A living room's seating group is arranged as one (seatingGroup.ts), proven walkable with everything else that
+  // stands: measured from the same fixed way in as the circulation check below.
+  const seatBare = buildWalkModel(space, [], assets);
+  const seatStart = circulationStart(space, seatBare);
+  const seatComfort = (objects: ObjectInstance[], own: Map<string, CatalogAsset>) => { const m = buildWalkModel(space, objects, own); m.radius = input.walkRadiusM ?? COMFORT_RADIUS_M; return m; };
+  const seatRooms = seatStart ? reachableRooms(space, seatComfort([], assets), { start: seatStart }) : new Set<string>();
+  // The group may not take a room from the walk that the pieces already standing leave (the later repair passes
+  // judge the rest): every room reached without the group is reached with it.
+  const groupWalkable = (objects: ObjectInstance[], own: Map<string, CatalogAsset>) => {
+    if (!seatStart) return true;
+    const without = reachableRooms(space, seatComfort(working.objects, own), { start: seatStart, only: seatRooms });
+    const reached = reachableRooms(space, seatComfort([...working.objects, ...objects], own), { start: seatStart, only: seatRooms });
+    return [...without].every((id) => reached.has(id));
+  };
+  // The rooms a comfortable walk reaches with what stands so far; a piece placed may not shrink it.
+  const reachedNow = () => (seatStart ? reachableRooms(space, seatComfort(working.objects, assets), { start: seatStart, only: seatRooms }) : new Set<string>());
+  let walkNow = reachedNow();
+  const closesWalk = () => {
+    if (!seatStart) return false;
+    const after = reachedNow();
+    return [...walkNow].some((id) => !after.has(id));
+  };
+  type Task = { room: SpaceRoom; item: BuildItem; own: CatalogAsset; i: number; roomIndex: number; grouped: Map<BuildItem, number>; isLocked: (item: BuildItem) => boolean; isEssential: (a: CatalogAsset) => boolean };
+  const tasks: Task[] = [];
+  for (const [roomIndex, pr0] of input.plan.rooms.entries()) {
+    const room = rooms.get(pr0.roomId);
     if (!room) continue;
+    // The room's items, own copies (a group's poses replace the plan's here, never in the caller's plan).
+    const pr = { ...pr0, items: pr0.items.map((i) => ({ ...i })) };
+    const grouped = new Map<BuildItem, number>();
+    if (essentialRole(room.kind) === 'SOFA' && !input.anchorsAsSeen) {
+      const seat: Array<SeatPiece<BuildItem>> = [];
+      for (const item of pr.items) {
+        const own = assets.get(item.code);
+        const role = own ? seatRole(item.type, own) : null;
+        if (!own || !role) continue;
+        const planned = item.pose ? { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG } : null;
+        seat.push({ item, role, asset: shapedAsset(own, { shape: itemShape(own, item, item.scale) }), planned });
+      }
+      const arranged = arrangeSeating(space, assets, room, seat, working.objects, groupWalkable);
+      // An armchair the group had no room for is left out (recorded), never squeezed in by the piece-by-piece
+      // repair: it pushed the coffee table out of line and closed the way the group had kept open.
+      if (arranged) {
+        const inGroup = new Set(arranged.poses.map((p) => p.item));
+        for (const piece of seat) {
+          if (piece.role !== 'CHAIR' || inGroup.has(piece.item)) continue;
+          pr.items = pr.items.filter((i) => i !== piece.item);
+          report.items.push({ roomId: room.id, code: piece.item.code, type: piece.item.type, instanceId: null, outcome: 'DROPPED', reason: 'NO_ROOM_IN_GROUP', movedM: null, warnings: [], ...(piece.item.refKey ? { refKey: piece.item.refKey } : {}) });
+        }
+      }
+      for (const p of arranged?.poses ?? []) {
+        const was = p.item.pose ? { x: room.bounds.minX + p.item.pose.x, y: room.bounds.minY + p.item.pose.y } : null;
+        grouped.set(p.item, was ? Math.hypot(p.at.x - was.x, p.at.y - was.y) : -1);
+        p.item.pose = { x: p.at.x - room.bounds.minX, y: p.at.y - room.bounds.minY, rotationDeg: p.rotation / DEG };
+        // The group's poses are proven together: each stands where the group put it (a few centimetres of give).
+        p.item.lock = { maxShiftM: 0.15, maxTurnDeg: 0 };
+      }
+    }
     // Big standing pieces first (they need the walls), rugs and other flat pieces last.
     // One coherent solution: the redundant table, island or duplicated singleton never stands at all.
     const known = pr.items.map((item) => ({ item, asset: assets.get(item.code) })).filter((x): x is { item: BuildItem; asset: CatalogAsset } => !!x.asset);
@@ -254,50 +385,125 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     for (const item of redundant) report.items.push({ roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: 'REDUNDANT', movedM: null, warnings: [], ...(item.refKey ? { refKey: item.refKey } : {}) });
     // The picture's anchors stand first (nothing else takes their place), then big standing pieces, flat ones last.
     const isLocked = (item: BuildItem) => !!(item.lock && item.pose);
+    // What the room is for stands before anything else in it (a bedroom's bed, a living room's sofa): the
+    // secondary pieces never take its place or its attempts.
+    const role = essentialRole(room.kind);
+    const isEssential = (a: CatalogAsset) => !!role && servesRole(a, role);
     const order = pr.items.filter((item) => !redundant.has(item)).map((item, i) => ({ item, i, asset: assets.get(item.code) }))
       .filter((x): x is { item: BuildItem; i: number; asset: CatalogAsset } => !!x.asset)
-      .sort((a, b) => Number(isLocked(b.item)) - Number(isLocked(a.item)) || Number(isFlat(a.asset)) - Number(isFlat(b.asset)) || b.asset.widthM * b.asset.depthM - a.asset.widthM * a.asset.depthM || a.i - b.i);
-    for (const { item, asset: own } of order) {
-      let shape = shapeAt(own, item.scale);
-      let asset = shapedAsset(own, { shape });
-      const entry: ItemReport = {
-        roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: null, movedM: null, warnings: [],
-        ...(item.refKey ? { refKey: item.refKey } : {}), ...(isLocked(item) ? { locked: true } : {}),
-      };
-      report.items.push(entry);
-      // A locked piece: its candidates in repair order, each tried until the design accepts one (the operation
-      // validator is the final word; a pose it refuses never ends the search).
-      const options: Array<NonNullable<ReturnType<typeof findPose>> & { scale?: number }> = isLocked(item)
-        ? lockedOptions(space, assets, working.objects, room, own, item)
-        : [findPose(space, assets, working.objects, room, asset, item)].filter((x): x is NonNullable<ReturnType<typeof findPose>> => !!x);
-      if (!options.length) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
-      let found: (typeof options)[number] | null = null;
-      let object: ObjectInstance | null = null;
-      for (const option of options) {
-        const s1 = option.scale != null ? shapeAt(own, option.scale) : shape;
-        const candidate: ObjectInstance = {
-          instanceId: `${input.idPrefix}-${n + 1}`, assetId: item.code, roomId: room.id,
-          position: { x: r3(option.at.x), y: 0, z: r3(option.at.y) }, rotationY: Math.round(option.rotation * 1e6) / 1e6,
-          materialVariant: null, colorOverride: item.color, locked: false,
-          ...(s1 ? { shape: s1 } : {}),
-        };
-        const why = apply({ type: 'ADD_OBJECT', object: candidate });
-        if (why) { entry.reason = why; continue; }
-        found = option; object = candidate; shape = s1; asset = shapedAsset(own, { shape });
-        break;
+      .sort((a, b) => Number(isEssential(b.asset)) - Number(isEssential(a.asset)) || Number(isLocked(b.item)) - Number(isLocked(a.item))
+        || Number(isFlat(a.asset)) - Number(isFlat(b.asset)) || b.asset.widthM * b.asset.depthM - a.asset.widthM * a.asset.depthM || a.i - b.i);
+    for (const { item, i, asset: own } of order) tasks.push({ room, item, own, i, roomIndex, grouped, isLocked, isEssential });
+  }
+  // Placement, across the whole home, most important first: what each room is for, then the design's anchors, then
+  // standing pieces by how much they matter (a wardrobe before a nightstand, whichever room they are in), flat
+  // pieces last. The walk is guarded as they stand (closesWalk), so a small piece in one room never wins a way over
+  // a large one in the next.
+  tasks.sort((a, b) => Number(b.isEssential(b.own)) - Number(a.isEssential(a.own)) || Number(b.isLocked(b.item)) - Number(a.isLocked(a.item))
+    || Number(isFlat(a.own)) - Number(isFlat(b.own)) || repairRank(b.own) - repairRank(a.own)
+    || b.own.widthM * b.own.depthM - a.own.widthM * a.own.depthM || a.roomIndex - b.roomIndex || a.i - b.i);
+  for (const { room, item, own, grouped, isLocked, isEssential } of tasks) {
+    let shape = itemShape(own, item, item.scale);
+    let asset = shapedAsset(own, { shape });
+    const entry: ItemReport = {
+      roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: null, movedM: null, warnings: [],
+      ...(item.refKey ? { refKey: item.refKey } : {}), ...(isLocked(item) ? { locked: true } : {}),
+    };
+    report.items.push(entry);
+    // A locked piece: its candidates in repair order, each tried until the design accepts one (the operation
+    // validator is the final word; a pose it refuses never ends the search).
+    const options: Array<NonNullable<ReturnType<typeof findPose>> & { scale?: number; relocated?: boolean }> = isLocked(item)
+      ? lockedOptions(space, assets, working.objects, room, own, item, 8, !!input.anchorsAsSeen)
+      : [findPose(space, assets, working.objects, room, asset, item)].filter((x): x is NonNullable<ReturnType<typeof findPose>> => !!x);
+    // A piece that is not what the room is for gets other clean places to try, should its first close a way.
+    if (!isLocked(item) && !isEssential(own) && !isFlat(own) && options.length) {
+      const first = options[0];
+      for (const c of cleanPoses(space, assets, working.objects, room, asset, 6)) {
+        if (Math.hypot(c.at.x - first.at.x, c.at.y - first.at.y) < 0.05 && Math.abs(c.rotation - first.rotation) < 1e-3) continue;
+        options.push({ ...c, kept: false, why: 'WOULD_BLOCK_WALK', movedM: first.movedM, verdict: 'CLEAN', relocated: false });
       }
-      if (!found || !object) continue;
-      n += 1;
-      entry.instanceId = object.instanceId;
-      entry.outcome = item.pose ? (found.kept ? 'PLANNED' : 'CORRECTED') : 'PLACED';
-      entry.reason = found.kept || !item.pose ? null : found.why;
-      entry.movedM = found.movedM;
-      entry.warnings = found.verdict === 'TIGHT' ? ['TIGHT_ACCESS'] : [];
-      const lock = isLocked(item) && item.lock && item.pose
-        ? { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG, maxShiftM: item.lock.maxShiftM, maxTurnDeg: item.lock.maxTurnDeg }
-        : undefined;
-      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: false, ...(lock ? { lock } : {}) });
     }
+    // A picture's piece that cannot stand where it was seen stands at the room's best free place instead (doors
+    // and passages kept clear by the same search): the room keeps what the picture shows while it has space.
+    if (isLocked(item)) {
+      // At its own size, else a little smaller (a 0.8 m shower tray where a 0.9 m one does not fit), never less
+      // than FALLBACK_SCALES allows — a shower down to the smallest tray made (SHOWER_TRAY_MIN_M): it is built to
+      // the room, and a 1.2 m bath whose door needs its half metre takes a 0.7 m tray.
+      for (const k of fallbackScales(own, item.scale || 1)) {
+        const sized = shapedAsset(own, { shape: itemShape(own, item, (item.scale || 1) * k) });
+        const free = findPose(space, assets, working.objects, room, sized, { ...item, pose: null, lock: null });
+        if (free) { options.push({ ...free, relocated: true, ...(k !== 1 ? { scale: (item.scale || 1) * k } : {}) }); break; }
+      }
+    }
+    // A wall piece (a bed, a wardrobe, a sofa, a cabinet) stands with its back to a wall: a pose a little off the
+    // wall is pushed back onto it, and a pose with no wall behind it is not offered while one with a wall is.
+    if ((own.anchor === 'WALL' || own.anchor === 'CORNER') && !isFlat(own) && options.length) {
+      const world = placementWorld({ space, assets, objects: working.objects }, room);
+      const backed: typeof options = [];
+      for (const o of options) {
+        const shaped = o.scale != null ? shapedAsset(own, { shape: itemShape(own, item, o.scale) }) : asset;
+        if (backGap(space, shaped, o.at, o.rotation) <= WALL_BACK_GAP_M) { backed.push(o); continue; }
+        const sn = snapToWall({ space, assets, objects: working.objects }, shaped, o.at, o.rotation, room.id, 0.8);
+        if (sn.snapped && pointInPolygon(sn.at, room.polygon) && verdictOf(evaluateInWorld(world, shaped, sn.at, sn.rotation)) === 'CLEAN') {
+          backed.push({ ...o, at: sn.at, rotation: sn.rotation, kept: false, why: o.why ?? 'WALL_SNAPPED', movedM: o.movedM != null ? r3(o.movedM + Math.hypot(sn.at.x - o.at.x, sn.at.y - o.at.y)) : null });
+        }
+      }
+      if (backed.length) options.splice(0, options.length, ...backed);
+      else if (!isEssential(own)) options.length = 0;
+    }
+    // A dining chair stands drawn up to its table, or not at all: a chair left where the render showed it, its table
+    // moved off the counter's floor, stood alone in the kitchen.
+    const table = isSeat(own) && !isLocked(item)
+      ? placedOrder.find((p) => p.roomId === room.id && p.report.outcome !== 'DROPPED' && !p.flat && isSeatTable(p.asset)) : undefined;
+    if (table) {
+      const world = placementWorld({ space, assets, objects: working.objects }, room);
+      const seen = item.pose ? { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y } : null;
+      const slots = tableSlots(table.box, asset).filter((c) => pointInPolygon(c.at, room.polygon) && !onStairs(space, asset, c.at, c.rotation)
+        && verdictOf(evaluateInWorld(world, asset, c.at, c.rotation)) === 'CLEAN')
+        .map((c) => ({ ...c, kept: false, why: 'AT_TABLE', movedM: seen ? r3(Math.hypot(c.at.x - seen.x, c.at.y - seen.y)) : null, verdict: 'CLEAN' as Verdict }))
+        .sort((a, b) => (a.movedM ?? 0) - (b.movedM ?? 0));
+      options.splice(0, options.length, ...slots);
+      if (!slots.length) { entry.reason = 'NO_PLACE_AT_TABLE'; continue; }
+    }
+    if (!options.length) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
+    let found: (typeof options)[number] | null = null;
+    let object: ObjectInstance | null = null;
+    for (const option of options) {
+      const s1 = option.scale != null ? itemShape(own, item, option.scale) : shape;
+      const candidate: ObjectInstance = {
+        instanceId: `${input.idPrefix}-${n + 1}`, assetId: item.code, roomId: room.id,
+        position: { x: r3(option.at.x), y: 0, z: r3(option.at.y) }, rotationY: Math.round(option.rotation * 1e6) / 1e6,
+        materialVariant: null, colorOverride: item.color, locked: false,
+        ...(s1 ? { shape: s1 } : {}),
+      };
+      const why = apply({ type: 'ADD_OBJECT', object: candidate });
+      if (why) { entry.reason = why; continue; }
+      // Walkways first: a piece that is not what the room is for never takes a room from the walk where it stands
+      // (it tries its next place, else it is left out) — the repair passes below are for what cannot move.
+      if (!isEssential(own) && !isFlat(own) && closesWalk()) {
+        apply({ type: 'REMOVE_OBJECT', instanceId: candidate.instanceId });
+        entry.reason = 'WOULD_BLOCK_WALK';
+        continue;
+      }
+      found = option; object = candidate; shape = s1; asset = shapedAsset(own, { shape });
+      walkNow = reachedNow();
+      break;
+    }
+    if (!found || !object) continue;
+    n += 1;
+    entry.instanceId = object.instanceId;
+    entry.outcome = item.pose ? (found.kept && !found.relocated ? 'PLANNED' : 'CORRECTED') : 'PLACED';
+    entry.reason = found.relocated ? (isEssential(own) ? 'ESSENTIAL_RELOCATED' : 'RELOCATED_IN_ROOM') : found.kept || !item.pose ? null : found.why;
+    entry.movedM = found.movedM;
+    const regrouped = grouped.get(item);
+    if (regrouped != null && !found.relocated && (regrouped < 0 || regrouped > 0.05)) {
+      entry.outcome = 'CORRECTED'; entry.reason = 'GROUP_ARRANGED'; entry.movedM = regrouped < 0 ? null : r3(regrouped);
+    }
+    entry.warnings = found.verdict === 'TIGHT' ? ['TIGHT_ACCESS'] : [];
+    const lock = isLocked(item) && item.lock && item.pose && !found.relocated
+      ? { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG, maxShiftM: item.lock.maxShiftM, maxTurnDeg: item.lock.maxTurnDeg }
+      : undefined;
+    placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: false, ...(lock ? { lock } : {}) });
   }
 
   // ── Balance: crowded rooms give up their least important pieces; a room missing its piece gets one ──
@@ -316,39 +522,303 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       drop(victim, 'OVERFURNISHED');
     }
   }
-  for (const pr of input.plan.rooms) {
-    const room = rooms.get(pr.roomId);
-    const role = room ? essentialRole(room.kind) : null;
-    if (!room || !role || room.areaM2 < 5) continue;
-    const have = standingIn(room.id).find((p) => servesRole(p.asset, role));
-    if (have) { have.essential = true; continue; }
-    // The catalogue's best piece for the role: the design's style first, then the size that suits the room.
-    const target = role === 'BED' ? (room.areaM2 >= 10 ? 3.2 : 2.0) : role === 'SOFA' ? (room.areaM2 >= 18 ? 2.0 : 1.5) : role === 'TABLE' ? 1.4 : 1.8;
-    const options = [...assets.values()].filter((a) => a.active !== false && a.placement === 'FLOOR' && servesRole(a, role)
-      && (!a.roomKinds?.length || a.roomKinds.includes(room.kind)))
-      .sort((a, b) => Number(b.styleTags?.includes(input.plan.styleCode ?? '')) - Number(a.styleTags?.includes(input.plan.styleCode ?? ''))
-        || Math.abs(a.widthM * a.depthM - target) - Math.abs(b.widthM * b.depthM - target) || (a.code < b.code ? -1 : 1))
+  // The room programme (programme.ts): every room holds what makes it that room — the kitchen its cabinetry and
+  // fridge, the bathroom its toilet, basin and shower, the bedroom its bed and wardrobe, the living room its sofa,
+  // table and television — whatever the plan left out, placed by the walkthrough's own rules. A piece serving a core
+  // need is never given way for a walk.
+  // A small room is solved as a set: when the core needs do not all fit in one order (a toilet taking the shower's
+  // corner), the room's own additions are taken back and other orders and smaller pieces are tried.
+  // Where a programme piece may stand, beyond being clean: a television only where a sofa of the room faces it (the
+  // plausibility gate's own test), a sofa facing the television when there is one, and on a balcony or terrace
+  // against its edge (a chair in the middle of a narrow balcony is taken away again for the walk).
+  const faces = (sofa: { at: Point; rotation: number }, tv: { at: Point; rotation: number }) => {
+    const f = frontOf(sofa.rotation);
+    const rel = { x: tv.at.x - sofa.at.x, y: tv.at.y - sofa.at.y };
+    const along = rel.x * f.x + rel.y * f.y;
+    const lateral = Math.abs(rel.x * f.y - rel.y * f.x);
+    const turned = Math.abs(Math.atan2(Math.sin(tv.rotation - sofa.rotation - Math.PI), Math.cos(tv.rotation - sofa.rotation - Math.PI)));
+    return along >= 1.2 && lateral <= 1.0 && turned < 0.6;
+  };
+  const posed = (roomId: string, role: 'SOFA' | 'TV') => working.objects.filter((o) => o.roomId === roomId && assets.get(o.assetId) && seatRole('', assets.get(o.assetId)!) === role)
+    .map((o) => ({ at: { x: o.position.x, y: o.position.z }, rotation: o.rotationY }));
+  const toEdge = (room: SpaceRoom, at: Point) => Math.min(...room.polygon.map((p, i) => {
+    const q = room.polygon[(i + 1) % room.polygon.length];
+    const dx = q.x - p.x; const dy = q.y - p.y; const l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((at.x - p.x) * dx + (at.y - p.y) * dy) / l2));
+    return Math.hypot(at.x - (p.x + t * dx), at.y - (p.y + t * dy));
+  }));
+  const poseRules = (nd: Need, room: SpaceRoom, asset: CatalogAsset) => {
+    const role = seatRole('', asset);
+    if (role === 'TV') {
+      const sofas = posed(room.id, 'SOFA');
+      return sofas.length ? { accept: (c: { at: Point; rotation: number }) => sofas.some((s) => faces(s, c)) } : {};
+    }
+    if (role === 'SOFA') {
+      const tvs = posed(room.id, 'TV');
+      if (tvs.length) return { prefer: (c: { at: Point; rotation: number }) => (tvs.some((t) => faces(c, t)) ? 0 : 1) };
+      // A television still to come: the sofa looks across the room at a wall 2.2–4.2 m away, where it will stand.
+      const tvNeed = programme.get(room.id)?.needs.find((x) => x.id === 'TV');
+      const tv = tvNeed ? [...assets.values()].find((a) => a.active !== false && a.placement === 'FLOOR' && tvNeed.serves(a)) : undefined;
+      if (tv) {
+        const world = placementWorld({ space, assets, objects: working.objects }, room);
+        return { prefer: (c: { at: Point; rotation: number }) => {
+          const t = reach(room, c.at, frontOf(c.rotation));
+          const far = t >= 2.2 && t <= 4.2 ? 0 : 1 + Math.min(5, Math.abs(t - 3));
+          // Best: a wall at a comfortable distance where the television can actually stand.
+          const fits = Number.isFinite(t) && t >= 2.0 && t <= 4.6 && tvSlotsFrom(c.at, c.rotation, t, tv).some((sl) => pointInPolygon(sl.at, room.polygon) && !evaluateInWorld(world, tv, sl.at, sl.rotation).length);
+          return far + (fits ? 0 : 3);
+        } };
+      }
+      return {};
+    }
+    if (nd.id === 'KITCHEN_RUN') {
+      // A run that leaves its fridge a free end on the same wall (a run in the middle of a short wall leaves none).
+      const fridgeNeed = programme.get(room.id)?.needs.find((x) => x.id === 'FRIDGE');
+      const fridge = fridgeNeed ? [...assets.values()].find((a) => a.active !== false && a.placement === 'FLOOR' && fridgeNeed.serves(a)) : undefined;
+      if (!fridge) return {};
+      const world = placementWorld({ space, assets, objects: working.objects }, room);
+      return { prefer: (c: { at: Point; rotation: number }) => {
+        const box = footprint(asset, c.at, c.rotation);
+        const f = frontOf(c.rotation);
+        const side = { x: f.y, y: -f.x };
+        const back = -box.hd + fridge.depthM / 2;
+        const free = [1, -1].some((k) => {
+          const lat = k * (box.hw + fridge.widthM / 2 + 0.02);
+          const at = { x: box.cx + f.x * back + side.x * lat, y: box.cy + f.y * back + side.y * lat };
+          return pointInPolygon(at, room.polygon) && !evaluateInWorld(world, fridge, at, c.rotation).length;
+        });
+        return free ? 0 : 1;
+      } };
+    }
+    if (nd.id === 'DESK') {
+      // A desk only where its chair can be drawn up to it.
+      const chair = [...assets.values()].find((a) => a.active !== false && a.placement === 'FLOOR' && programme.get(room.id)?.needs.find((x) => x.id === 'OFFICE_CHAIR')?.serves(a));
+      if (!chair) return {};
+      return { accept: (c: { at: Point; rotation: number }) => {
+        const box = footprint(asset, c.at, c.rotation);
+        const f = frontOf(c.rotation);
+        const back = box.hd + chair.depthM / 2 - CHAIR_TUCK_M;
+        const at = { x: box.cx + f.x * back, y: box.cy + f.y * back };
+        const got = findPose(space, assets, working.objects, room, chair, { code: chair.code, type: 'OFFICE_CHAIR', pose: { x: at.x - room.bounds.minX, y: at.y - room.bounds.minY, rotationDeg: ((c.rotation + Math.PI) * 180) / Math.PI }, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem);
+        return !!got && (got.movedM ?? 0) <= 0.15;
+      } };
+    }
+    if (nd.id === 'COFFEE_TABLE') {
+      const spots = coffeeSpot(room);
+      return spots.length ? { prefer: (c: { at: Point; rotation: number }) => Math.min(...spots.map((q) => Math.hypot(c.at.x - q.x, c.at.y - q.y))), accept: (c: { at: Point; rotation: number }) => spots.some((q) => Math.hypot(c.at.x - q.x, c.at.y - q.y) <= 0.8) } : {};
+    }
+    if (room.outdoor && nd.id.startsWith('OUTDOOR')) return { prefer: (c: { at: Point; rotation: number }) => toEdge(room, c.at) };
+    return {};
+  };
+  // Where a piece that belongs to another stands: a dining chair at its table's places, a desk chair at the desk,
+  // a coffee table in front of the sofa. Null: the piece has no partner rule (the engine's own candidates).
+  const objectsIn = (roomId: string, pred: (a: CatalogAsset) => boolean) => working.objects.filter((o) => o.roomId === roomId && assets.get(o.assetId) && pred(assets.get(o.assetId)!))
+    .map((o) => ({ o, a: assets.get(o.assetId)!, box: footprint(assets.get(o.assetId)!, { x: o.position.x, y: o.position.z }, o.rotationY) }));
+  const isDiningTable = (a: CatalogAsset) => pieceRole(a) === 'TABLE' && !isDesk(a) && !isIsland(a) && !/COFFEE|SIDE|OUTDOOR/.test(`${a.subcategory ?? ''} ${a.category} ${a.code}`.toUpperCase());
+  const slotsFor = (nd: Need, room: SpaceRoom, asset: CatalogAsset): Array<{ at: Point; rotation: number }> | null => {
+    if (nd.id === 'DINING_CHAIR') return objectsIn(room.id, isDiningTable).flatMap((t) => tableSlots(t.box, asset));
+    if (nd.id === 'TV' || nd.id === 'COFFEE_TABLE' || nd.id === 'ARMCHAIR' || nd.id === 'FRIDGE') { const g = groupSlots(nd, room, asset); return g.length ? g : null; }
+    if (nd.id === 'OFFICE_CHAIR') {
+      return objectsIn(room.id, isDesk).map((d) => {
+        const f = frontOf(d.o.rotationY);
+        const back = d.box.hd + asset.depthM / 2 - CHAIR_TUCK_M;
+        return { at: { x: d.box.cx + f.x * back, y: d.box.cy + f.y * back }, rotation: d.o.rotationY + Math.PI };
+      });
+    }
+    return null;
+  };
+  const coffeeSpot = (room: SpaceRoom) => posed(room.id, 'SOFA').map((s) => { const f = frontOf(s.rotation); return { x: s.at.x + f.x * 1.0, y: s.at.y + f.y * 1.0 }; });
+  // How far a piece at `at` looks forward before it meets the room's outline (Infinity when it never does).
+  const reach = (room: SpaceRoom, at: Point, dir: Point) => {
+    let best = Infinity;
+    for (let i = 0; i < room.polygon.length; i += 1) {
+      const p = room.polygon[i]; const q = room.polygon[(i + 1) % room.polygon.length];
+      const ex = q.x - p.x; const ey = q.y - p.y;
+      const den = dir.x * ey - dir.y * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((p.x - at.x) * ey - (p.y - at.y) * ex) / den;
+      const u = ((p.x - at.x) * dir.y - (p.y - at.y) * dir.x) / den;
+      if (t > 1e-6 && u >= -1e-6 && u <= 1 + 1e-6) best = Math.min(best, t);
+    }
+    return best;
+  };
+  // Along the wall a seat looks at (the room outline is the wall's centre line: the piece stands inside its face),
+  // straight ahead first, then to either side as far as the seat still faces it.
+  const tvSlotsFrom = (at: Point, rotation: number, t: number, asset: CatalogAsset) => {
+    const f = frontOf(rotation);
+    return [0, 0.35, -0.35, 0.7, -0.7, 0.95, -0.95].flatMap((off) => [0.12, 0.2].map((inset) => {
+      const d = t - asset.depthM / 2 - inset;
+      return { at: { x: at.x + f.x * d + f.y * off, y: at.y + f.y * d - f.x * off }, rotation: rotation + Math.PI };
+    }));
+  };
+  const facingRotation = (from: Point, to: Point) => Math.atan2(-(to.x - from.x), to.y - from.y);
+  const sofasIn = (roomId: string) => objectsIn(roomId, (a) => seatRole('', a) === 'SOFA');
+  /** The places a piece takes from its partner: strict ones it stands on exactly, and the spot a looser one prefers. */
+  const groupSlots = (nd: Need, room: SpaceRoom, asset: CatalogAsset): Array<{ at: Point; rotation: number }> => {
+    if (nd.id === 'TV') {
+      // On the wall the sofa looks at, facing it back (a television placed where no seat faces it is no living room).
+      return sofasIn(room.id).flatMap((s) => {
+        const f = frontOf(s.o.rotationY);
+        const t = reach(room, { x: s.box.cx, y: s.box.cy }, f);
+        // Never across the room beyond a comfortable view (a television past the dining table is no living room).
+        if (!Number.isFinite(t) || t < 2.0 || t > 4.6) return [];
+        return tvSlotsFrom({ x: s.box.cx, y: s.box.cy }, s.o.rotationY, t, asset);
+      });
+    }
+    if (nd.id === 'COFFEE_TABLE') {
+      return sofasIn(room.id).flatMap((s) => {
+        const f = frontOf(s.o.rotationY);
+        return [0.45, 0.4, 0.55].map((gap) => { const d = s.box.hd + gap + asset.depthM / 2; return { at: { x: s.box.cx + f.x * d, y: s.box.cy + f.y * d }, rotation: s.o.rotationY }; });
+      });
+    }
+    if (nd.id === 'FRIDGE') {
+      // Beside the kitchen run, on its wall, backs in line: at either end of it.
+      return objectsIn(room.id, (a) => pieceRole(a) === 'STORAGE' && /\bRUN\b|CABINET|COUNTER/.test(`${a.subcategory ?? ''} ${a.category} ${a.code}`.toUpperCase().replace(/[^A-Z0-9]+/g, ' ')) && !nd.serves(a)).flatMap((r) => {
+        const f = frontOf(r.o.rotationY);
+        const side = { x: f.y, y: -f.x };
+        const back = -r.box.hd + asset.depthM / 2;
+        return [1, -1].map((k) => { const lat = k * (r.box.hw + asset.widthM / 2 + 0.02); return { at: { x: r.box.cx + f.x * back + side.x * lat, y: r.box.cy + f.y * back + side.y * lat }, rotation: r.o.rotationY }; });
+      });
+    }
+    if (nd.id === 'ARMCHAIR') {
+      // At the end of the sofa, a little forward, turned to the coffee table between them.
+      return sofasIn(room.id).flatMap((s) => {
+        const f = frontOf(s.o.rotationY);
+        const side = { x: f.y, y: -f.x };
+        const centre = { x: s.box.cx + f.x * (s.box.hd + 0.7), y: s.box.cy + f.y * (s.box.hd + 0.7) };
+        return [1, -1].flatMap((k) => [0.25, 0.4].map((gap) => {
+          const lat = s.box.hw + gap + asset.depthM / 2;
+          const at = { x: s.box.cx + f.x * (s.box.hd + 0.55) + side.x * k * lat, y: s.box.cy + f.y * (s.box.hd + 0.55) + side.y * k * lat };
+          return { at, rotation: facingRotation(at, centre) };
+        }));
+      });
+    }
+    return [];
+  };
+  const permutations = <T,>(xs: T[]): T[][] => (xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest])));
+  for (const room of space.rooms) {
+    const prog = programme.get(room.id);
+    // A picture's home is furnished with what the picture shows: nothing is added to it.
+    if (!prog || room.areaM2 < 1.2 || input.anchorsAsSeen) continue;
+    const cores = prog.needs.filter((nd) => nd.core).sort((a, b) => b.targetM2 - a.targetM2);
+    // A room the design furnished keeps the design: only what defines the room is added to it (a bathroom the plan
+    // left without a toilet). A room the design left empty is furnished by the whole programme.
+    const designed = (input.plan.rooms.find((pr) => pr.roomId === room.id)?.items.length ?? 0) > 0;
+    const rest = designed ? [] : prog.needs.filter((nd) => !nd.core);
+    const optionsFor = (nd: Need, smallest: boolean) => [...assets.values()].filter((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)
+      && (!a.roomKinds?.length || a.roomKinds.some((k) => prog.kinds.includes(k))))
+      .sort((a, b) => (smallest ? a.widthM * a.depthM - b.widthM * b.depthM : 0)
+        || Number(b.styleTags?.includes(input.plan.styleCode ?? '')) - Number(a.styleTags?.includes(input.plan.styleCode ?? ''))
+        || Math.abs(a.widthM * a.depthM - nd.targetM2) - Math.abs(b.widthM * b.depthM - nd.targetM2) || (a.code < b.code ? -1 : 1))
       .slice(0, 5);
-    for (const asset of options) {
-      const found = findPose(space, assets, working.objects, room, asset, { code: asset.code, type: role, pose: null, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem);
-      if (!found) continue;
-      n += 1;
-      const object: ObjectInstance = {
-        instanceId: `${input.idPrefix}-${n}`, assetId: asset.code, roomId: room.id,
-        position: { x: r3(found.at.x), y: 0, z: r3(found.at.y) }, rotationY: Math.round(found.rotation * 1e6) / 1e6,
-        materialVariant: null, colorOverride: null, locked: false,
-      };
-      if (apply({ type: 'ADD_OBJECT', object })) continue;
-      const entry: ItemReport = { roomId: room.id, code: asset.code, type: role, instanceId: object.instanceId, outcome: 'PLACED', reason: 'ESSENTIAL', movedM: null, warnings: [] };
-      report.items.push(entry);
-      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: false, area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: true });
-      break;
+    /** One pass in this order; returns the pieces it added and the needs (core, other) it could not meet. */
+    const pass = (order: Need[], smallest: boolean, zone: ZoneProposals | null = null) => {
+      const added: Array<typeof placedOrder[number]> = [];
+      const used = new Set<string>();
+      let coreMissing = 0;
+      let otherMissing = 0;
+      let offZone = 0;
+      for (const nd of order) {
+        const have = standingIn(room.id).filter((p) => !used.has(p.instanceId) && (nd.metBy ?? nd.serves)(p.asset)).slice(0, nd.count);
+        for (const h of have) { used.add(h.instanceId); if (nd.core) h.essential = true; }
+        for (let k = have.length; k < nd.count; k += 1) {
+          let placed = false;
+          for (const asset of optionsFor(nd, smallest)) {
+            const slots = slotsFor(nd, room, asset);
+            const zoned = !slots && zone ? zone(nd.id, asset) : [];
+            const inZone = zoned.map((z) => findPose(space, assets, working.objects, room, asset, { code: asset.code, type: nd.id, pose: { x: z.at.x - room.bounds.minX, y: z.at.y - room.bounds.minY, rotationDeg: (z.rotation * 180) / Math.PI }, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem))
+              .find((f) => !!f && (f.movedM ?? 0) <= 0.6) ?? null;
+            if (zoned.length && !inZone) offZone += 1;
+            // A piece that belongs to another stands at one of its places, or not at all (no chair without its table).
+            const found = inZone ?? (slots
+              ? slots.map((sl) => findPose(space, assets, working.objects, room, asset, { code: asset.code, type: nd.id, pose: { x: sl.at.x - room.bounds.minX, y: sl.at.y - room.bounds.minY, rotationDeg: (sl.rotation * 180) / Math.PI }, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem))
+                .find((f) => !!f && (f.movedM ?? 0) <= 0.15) ?? null
+              : findPose(space, assets, working.objects, room, asset, { code: asset.code, type: nd.id, pose: null, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem, poseRules(nd, room, asset)))
+              // A fridge with no free end of its run stands as near the run as it can (a kitchen is never without one).
+              ?? (slots && nd.id === 'FRIDGE' ? findPose(space, assets, working.objects, room, asset, { code: asset.code, type: nd.id, pose: null, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem, { prefer: (c) => Math.min(...slots.map((sl) => Math.hypot(c.at.x - sl.at.x, c.at.y - sl.at.y))) }) : null);
+            if (!found) continue;
+            n += 1;
+            const object: ObjectInstance = {
+              instanceId: `${input.idPrefix}-${n}`, assetId: asset.code, roomId: room.id,
+              position: { x: r3(found.at.x), y: 0, z: r3(found.at.y) }, rotationY: Math.round(found.rotation * 1e6) / 1e6,
+              materialVariant: null, colorOverride: null, locked: false,
+            };
+            if (apply({ type: 'ADD_OBJECT', object })) continue;
+            const entry: ItemReport = { roomId: room.id, code: asset.code, type: nd.id, instanceId: object.instanceId, outcome: 'PLACED', reason: nd.core ? 'ESSENTIAL' : 'PROGRAMME', movedM: null, warnings: [] };
+            const p = { roomId: room.id, instanceId: object.instanceId, flat: false, area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: nd.core };
+            report.items.push(entry);
+            placedOrder.push(p);
+            added.push(p);
+            used.add(object.instanceId);
+            placed = true;
+            break;
+          }
+          if (!placed) { if (nd.core) coreMissing += nd.count - k; else otherMissing += nd.count - k; break; }
+        }
+      }
+      return { added, coreMissing, otherMissing, offZone };
+    };
+    const undo = (added: Array<typeof placedOrder[number]>) => {
+      for (const p of added) {
+        apply({ type: 'REMOVE_OBJECT', instanceId: p.instanceId });
+        placedOrder.splice(placedOrder.indexOf(p), 1);
+        report.items.splice(report.items.indexOf(p.report), 1);
+      }
+    };
+    // Orders tried: the core needs in each order (largest first leads), the rest after; with few needs, every order
+    // of all of them (a wardrobe placed before the bed leaves the bed a wall, the other way round it may not). The
+    // first order that meets everything stands; else the one that met the most.
+    const all = [...cores, ...rest];
+    // A television is placed after the sofa it must face (never a sofa turned to suit a television placed first).
+    const before = (o: Need[], first: string, then: string) => { const i = o.findIndex((nd) => nd.id === first); const j = o.findIndex((nd) => nd.id === then); return i < 0 || j < 0 || i < j; };
+    // A television after the sofa it must face, a coffee table after the sofa, chairs after their table and desk.
+    const sofaFirst = (o: Need[]) => before(o, 'SOFA', 'TV') && before(o, 'SOFA', 'COFFEE_TABLE') && before(o, 'SOFA', 'ARMCHAIR') && before(o, 'COFFEE_TABLE', 'ARMCHAIR') && before(o, 'DINING_TABLE', 'DINING_CHAIR') && before(o, 'DESK', 'OFFICE_CHAIR') && before(o, 'KITCHEN_RUN', 'FRIDGE');
+    const orders = (all.length <= 4 ? permutations(all) : permutations(cores).slice(0, 6).map((o) => [...o, ...rest])).filter(sofaFirst);
+    // An open room the design left empty is zoned first (zoneLayout.ts): kitchen, living group and table each in
+    // their own part of the room, every variant tried, in the zones' order; the engine's own orders after them.
+    const zones = designed ? [] : zoneVariants(room, prog.use);
+    const zoneOrder = [...all].sort((a, b) => (ZONE_ORDER.indexOf(a.id) + 1 || 99) - (ZONE_ORDER.indexOf(b.id) + 1 || 99));
+    const tries: Array<{ order: Need[]; smallest: boolean; zone: ZoneProposals | null }> = [
+      ...[false, true].flatMap((smallest) => zones.map((zone) => ({ order: zoneOrder, smallest, zone }))),
+      ...[false, true].flatMap((smallest) => orders.slice(0, 24).map((order) => ({ order, smallest, zone: null }))),
+    ];
+    let best: { i: number; score: number } | null = null;
+    let kept = false;
+    // An arrangement that cuts the walk off from a room it reached before is a bad one, however complete.
+    const reachBefore = zones.length ? reachedNow() : new Set<string>();
+    const cutsWalk = () => { if (!zones.length) return 0; const after = reachedNow(); return [...reachBefore].filter((id) => !after.has(id)).length; };
+    for (const [i, t] of tries.entries()) {
+      // An unzoned order cannot beat a zoned arrangement that met every need with a piece or two off its zone.
+      if (!t.zone && zones.length && best && best.score <= 3) break;
+      const r = pass(t.order, t.smallest, t.zone);
+      // A zoned arrangement that meets the same needs is preferred to an unzoned one.
+      const score = cutsWalk() * 500 + r.coreMissing * 1000 + r.otherMissing * 10 + r.offZone + (zones.length && !t.zone ? 3 : 0);
+      if (score === (zones.length && !t.zone ? 3 : 0) && (!best || score <= best.score)) { kept = true; break; }
+      if (!best || score < best.score) best = { i, score };
+      undo(r.added);
+    }
+    if (!kept && best) pass(tries[best.i].order, tries[best.i].smallest, tries[best.i].zone);
+    // A core need still unmet in a room the design furnished (its kitchen, its bed): the room's least important pieces
+    // make way, one at a time — a plant or a lamp, never a piece that is itself what makes the room.
+    const meets = (nd: Need, a: CatalogAsset) => (nd.metBy ?? nd.serves)(a);
+    const unmet = () => cores.filter((nd) => !standingIn(room.id).some((p) => meets(nd, p.asset)) && [...assets.values()].some((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)));
+    // First the smallest pieces that serve it, in every order: a compact fridge may fit where a large one does not.
+    if (unmet().length) { const r = pass(unmet(), true); if (r.coreMissing) undo(r.added); }
+    for (let k = 0; k < 6 && unmet().length; k += 1) {
+      // Only what dresses the room makes way: a plant, a lamp, a side table, a stool, decor — never a table, its
+      // chairs, a sofa, a bed or a storage piece (the room is used through them).
+      const decor = (a: CatalogAsset) => ['PLANT', 'LAMP', 'OTHER'].includes(pieceRole(a)) || /SIDE|STOOL|OTTOMAN|POUF|DECOR|SCULPT|VASE|CONSOLE/.test(`${a.subcategory ?? ''} ${a.category} ${a.code}`.toUpperCase());
+      const victim = standingIn(room.id).filter((p) => !p.essential && decor(p.asset) && !cores.some((nd) => meets(nd, p.asset))).sort((a, b) => Number(!!a.lock) - Number(!!b.lock) || a.rank - b.rank || a.area - b.area)[0];
+      if (!victim) break;
+      drop(victim, 'MADE_ROOM_FOR_ESSENTIAL');
+      pass(unmet(), true);
     }
   }
 
   // ── Circulation: a comfortable walk everywhere it went before, and no narrow trap ──
   // Measured from one fixed way in (found on the bare plan), so a piece standing there cannot move the question.
-  const comfortModel = (objects: ObjectInstance[]) => { const m = buildWalkModel(space, objects, assets); m.radius = COMFORT_RADIUS_M; return m; };
+  const walkRadius = input.walkRadiusM ?? COMFORT_RADIUS_M;
+  const comfortModel = (objects: ObjectInstance[]) => { const m = buildWalkModel(space, objects, assets); m.radius = walkRadius; return m; };
   const empty = buildWalkModel(space, [], assets);
   const emptyComfort = comfortModel([]);
   const start = circulationStart(space, empty);
@@ -363,33 +833,52 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
   const lostRooms = (objects: ObjectInstance[], only?: string) => {
     const lost: string[] = [];
     const check = only ? [only] : [...before];
+    // Only the rooms asked about are looked inside (the flood is the same; the other rooms' interiors are not needed).
+    const asked = new Set(check);
     if (check.some((id) => comfortBefore.has(id))) {
-      const comfort = reachableRooms(space, comfortModel(objects), { start });
+      const comfort = reachableRooms(space, comfortModel(objects), { start, only: asked });
       for (const id of check) if (comfortBefore.has(id) && !comfort.has(id)) lost.push(id);
     }
     if (check.some((id) => bodyOnly.includes(id))) {
-      const body = reachableRooms(space, buildWalkModel(space, objects, assets), { start });
+      const body = reachableRooms(space, buildWalkModel(space, objects, assets), { start, only: asked });
       for (const id of check) if (bodyOnly.includes(id) && !body.has(id)) lost.push(id);
     }
     return lost.sort();
   };
-  const bareReach = start ? bareComfortReach(space, assets, start) : undefined;
-  const trapsOf = (objects: ObjectInstance[], only?: string) => stranded(space, objects, assets, start, only, bareReach);
+  const bareReach = start ? bareComfortReach(space, assets, start, walkRadius) : undefined;
+  const trapsOf = (objects: ObjectInstance[], only?: string) => stranded(space, objects, assets, start, only, bareReach, walkRadius);
   const standing = () => placedOrder.filter((p) => !p.flat && p.report.outcome !== 'DROPPED');
   const objectOf = (p: typeof placedOrder[number]) => working.objects.find((o) => o.instanceId === p.instanceId)!;
   let relocated = 0;
+  const apart = (a: typeof placedOrder[number], b: typeof placedOrder[number]) => Math.hypot(a.box.cx - b.box.cx, a.box.cy - b.box.cy);
+  /** The pieces that stand together: a seat at its table or desk, the sofa's coffee table, armchair and television. */
+  const partnersOf = (p: typeof placedOrder[number]) => {
+    const here = standing().filter((q) => q.roomId === p.roomId && q !== p);
+    const role = pieceRole(p.asset);
+    const seatAt = (t: typeof placedOrder[number]) => here.filter((q) => isSeat(q.asset) && !/OUTDOOR/.test(q.asset.code.toUpperCase()) && apart(q, t) <= Math.max(t.box.hw, t.box.hd) + 0.8);
+    if (role === 'TABLE' && !isIsland(p.asset)) return seatAt(p);
+    if (role === 'SOFA') return here.filter((q) => ['COFFEE_TABLE', 'TV', 'ARMCHAIR'].includes(pieceRole(q.asset)) && apart(q, p) <= 4.5);
+    if (isSeat(p.asset)) return here.filter((q) => pieceRole(q.asset) === 'TABLE' && !isIsland(q.asset) && apart(p, q) <= Math.max(q.box.hw, q.box.hd) + 0.8);
+    if (['COFFEE_TABLE', 'TV', 'ARMCHAIR'].includes(role)) return here.filter((q) => pieceRole(q.asset) === 'SOFA' && apart(q, p) <= 4.5);
+    return [];
+  };
+  const inGroup = (p: typeof placedOrder[number]) => !input.anchorsAsSeen && partnersOf(p).length > 0;
   /** Move a piece to another clean pose in its room for which `fixes` holds; true when it moved. */
-  const relocate = (p: typeof placedOrder[number], fixes: (objects: ObjectInstance[]) => boolean, avoid: Point[] = []): boolean => {
+  const relocate = (p: typeof placedOrder[number], fixes: (objects: ObjectInstance[]) => boolean, avoid: Point[] = [], widen = false): boolean => {
     const room = rooms.get(p.roomId);
     const obj = objectOf(p);
     if (!room || !obj) return false;
+    // A piece of a group (a sofa with its table and television, a table with its chairs, a desk with its chair) is
+    // never moved away from the others: the walk is fixed another way, or the group gives up a piece.
+    if (inGroup(p)) return false;
     const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
     // A reference-locked piece is only nudged within its lock, never sent elsewhere in the room.
-    const poses = p.lock ? lockedPoses(space, assets, others, room, p.asset, p.lock) : cleanPoses(space, assets, others, room, p.asset, 5);
+    const lock = p.lock && widen ? { ...p.lock, maxShiftM: Math.max(p.lock.maxShiftM, WIDE_SHIFT_M) } : p.lock;
+    const poses = lock ? lockedPoses(space, assets, others, room, p.asset, lock, 6, !!input.anchorsAsSeen) : cleanPoses(space, assets, others, room, p.asset, 5);
     for (const pose of poses) {
       if (Math.hypot(pose.at.x - obj.position.x, pose.at.y - obj.position.z) < 0.1) continue;
       // Still on the way it blocks: cannot be the fix (no walk is needed to know).
-      if (avoid.length) { const box = footprint(p.asset, pose.at, pose.rotation); if (avoid.some((q) => distanceToObb(q, box) < COMFORT_RADIUS_M)) continue; }
+      if (avoid.length && !input.anchorsAsSeen) { const box = footprint(p.asset, pose.at, pose.rotation); if (avoid.some((q) => distanceToObb(q, box) < walkRadius)) continue; }
       const moved: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
       const trial = [...others, moved];
       if (!fixes(trial)) continue;
@@ -432,22 +921,156 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       }
     }
     for (const p of candidates.filter((x) => !movers.includes(x)).slice(0, 2)) if (relocate(p, fixes, avoid)) return true;
+    // A picture's piece in the way (its lock allowed no fix): moved further, at most WIDE_SHIFT_M, never removed.
+    if (input.anchorsAsSeen) {
+      // The pieces that stand on the way first (nearest to it), not the most expendable.
+      const onWay = candidates.filter((x) => x.lock).map((x) => ({ x, d: avoid.length ? Math.min(...avoid.map((q) => distanceToObb(q, x.box))) : 0 }))
+        .filter((e) => e.d < walkRadius).sort((a, b) => a.d - b.d).map((e) => e.x);
+      for (const p of onWay.slice(0, 4)) {
+        if (relocate(p, fixes, avoid, true)) { p.report.reason = 'CIRCULATION_MOVED'; return true; }
+      }
+    }
     return false;
   };
   const byRank = (list: Array<typeof placedOrder[number]>) => [...list].sort((a, b) => Number(a.essential) - Number(b.essential) || a.rank - b.rank || a.area - b.area);
+  /**
+   * A picture's home (anchorsAsSeen): the piece that narrows the way is pushed straight off it, by the least that
+   * clears it (never through a wall, never into another piece, the way it faces kept); only when no push does,
+   * it is made a little smaller where it stands. Each step must clear part of the way and lose no room.
+   */
+  const pushAside = (route: Point[], fixes: (objects: ObjectInstance[]) => boolean, budget = Infinity): boolean => {
+    if (!route.length) return false;
+    // How many trial walks this call may take (each walks the home).
+    let walks = 0;
+    const m = comfortModel(working.objects);
+    // Only what furniture blocks (a way squeezed past a wall's end stays as the wall leaves it).
+    const bare = comfortModel([]);
+    const blocked = route.filter((q) => !isFree(m, q) && (isFree(bare, q) || m.furniture.some((o) => distanceToObb(q, o) < walkRadius)));
+    if (!blocked.length) return false;
+    const pieces = standing().map((p) => ({ p, q: blocked.map((b) => ({ b, d: distanceToObb(b, p.box) })).sort((x, y) => x.d - y.d)[0] }))
+      .filter((e) => e.q && e.q.d < walkRadius + 0.02).sort((x, y) => x.q.d - y.q.d);
+    /** A dining set moves as one: a table with the seats drawn up to it, a seat with its table and the others. */
+    const setOf = (p: typeof placedOrder[number]) => {
+      const tableOf = (x: typeof placedOrder[number]) => (isSeatTable(x.asset) ? x : isSeat(x.asset)
+        ? standing().filter((t) => t.roomId === x.roomId && isSeatTable(t.asset)).map((t) => ({ t, d: distanceToObb({ x: x.box.cx, y: x.box.cy }, t.box) })).filter((e) => e.d <= TUCK_M + 0.35).sort((a, b) => a.d - b.d)[0]?.t ?? null
+        : null);
+      const table = tableOf(p);
+      if (!table) return [p];
+      return [table, ...standing().filter((x) => x !== table && isSeat(x.asset) && tableOf(x) === table)];
+    };
+    // Every piece is pushed before any is made smaller (a sofa slid 5 cm beats an armchair shrunk).
+    for (const resizing of [false, true]) for (const { p, q } of pieces.slice(0, 6)) {
+      const room = rooms.get(p.roomId);
+      if (!room) continue;
+      for (const group of p.lock ? [[p], setOf(p)] : [[p]]) {
+        if (group.length === 1 && group[0] !== p) continue;
+        const ids = new Set(group.map((x) => x.instanceId));
+        const members = group.map((x) => ({ x, obj: objectOf(x), own: assets.get(objectOf(x)?.assetId ?? '') })).filter((e) => e.obj && e.own);
+        if (members.length !== group.length) continue;
+        const others = working.objects.filter((o) => !ids.has(o.instanceId));
+        const world = placementWorld({ space, assets, objects: others }, room);
+        const lead = objectOf(p)!;
+        const at0 = { x: lead.position.x, y: lead.position.z };
+        // Away from the way: from the blocked point to the piece's centre, and the piece's own two axes nearest to it.
+        let dx = at0.x - q.b.x; let dy = at0.y - q.b.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+        const ax = [{ x: Math.cos(lead.rotationY), y: Math.sin(lead.rotationY) }, { x: -Math.sin(lead.rotationY), y: Math.cos(lead.rotationY) }]
+          .map((a) => (a.x * dx + a.y * dy >= 0 ? a : { x: -a.x, y: -a.y }));
+        // A piece that stands against a wall slides along it (never off it); a free piece moves any way.
+        const leadOwn = assets.get(lead.assetId);
+        const onWall = group.length === 1 && !!leadOwn && leadOwn.anchor !== 'CENTRE' && leadOwn.anchor !== 'FREE';
+        const dirs = onWall ? ax.slice(0, 1).flatMap((a) => [a, { x: -a.x, y: -a.y }]) : [{ x: dx, y: dy }, ...ax];
+        // How much smaller than seen it already is (each resize is of the seen size, never compounded).
+        const already = p.report.resizedTo ?? 1;
+        const tryMove = (v: Point, k: number | null): ObjectInstance[] | null => {
+          if ((p.report.movedM ?? 0) + Math.hypot(v.x, v.y) > WIDE_SHIFT_M + 0.05) return null;
+          const moved: ObjectInstance[] = [];
+          for (const { obj, own } of members) {
+            const rel = k ? k / already : 1;
+            const shape = k && obj!.instanceId === lead.instanceId
+              ? { ...(obj!.shape ?? { widthM: own!.widthM, depthM: own!.depthM, heightM: own!.heightM, form: null, secondary: null }), widthM: r3((obj!.shape?.widthM ?? own!.widthM) * rel), depthM: r3((obj!.shape?.depthM ?? own!.depthM) * rel) }
+              : obj!.shape;
+            const at = { x: obj!.position.x + v.x, y: obj!.position.z + v.y };
+            const asset = shapedAsset(own!, { shape });
+            if (!pointInPolygon(at, room.polygon)) return null;
+            if (seenIssues(space, evaluateInWorld(world, asset, at, obj!.rotationY), asset, at, obj!.rotationY).length) return null;
+            moved.push({ ...obj!, position: { x: r3(at.x), y: 0, z: r3(at.y) }, ...(shape ? { shape } : {}) });
+          }
+          // A push that frees none of the blocked points this piece narrowed cannot be the fix: no walk is needed.
+          const leadMoved = moved.find((o) => o.instanceId === lead.instanceId);
+          const leadAsset = leadMoved ? shapedAsset(leadOwn!, leadMoved) : null;
+          if (leadMoved && leadAsset) {
+            const box = footprint(leadAsset, { x: leadMoved.position.x, y: leadMoved.position.z }, leadMoved.rotationY);
+            const narrowed = blocked.filter((b) => distanceToObb(b, p.box) < walkRadius + 0.02);
+            if (narrowed.length && narrowed.every((b) => distanceToObb(b, box) < walkRadius + 0.02)) return null;
+          }
+          if (walks >= budget) return null;
+          walks += 1;
+          return fixes([...others, ...moved]) ? moved : null;
+        };
+        const accept = (moved: ObjectInstance[], k: number | null) => {
+          const byId = new Map(moved.map((o) => [o.instanceId, o]));
+          working = { ...working, objects: working.objects.map((o) => byId.get(o.instanceId) ?? o) };
+          for (const { x, own } of members) {
+            const o = byId.get(x.instanceId)!;
+            const prev = x.box;
+            x.asset = shapedAsset(own!, o);
+            x.box = footprint(x.asset, { x: o.position.x, y: o.position.z }, o.rotationY);
+            if (x.report.outcome === 'PLANNED') x.report.outcome = 'CORRECTED';
+            x.report.reason = k && x === p ? 'CIRCULATION_RESIZED' : 'CIRCULATION_MOVED';
+            x.report.movedM = r3((x.report.movedM ?? 0) + Math.hypot(x.box.cx - prev.cx, x.box.cy - prev.cy));
+            if (k && x === p) x.report.resizedTo = k;
+            if (!report.circulation.repaired.includes(x.roomId)) report.circulation.repaired.push(x.roomId);
+          }
+          relocated += 1;
+          return true;
+        };
+        if (!resizing) {
+          for (const step of PUSH_STEPS_M) {
+            for (const d of dirs) {
+              const moved = tryMove({ x: d.x * step, y: d.y * step }, null);
+              if (moved) return accept(moved, null);
+            }
+          }
+          continue;
+        }
+        if (group.length > 1) continue;
+        for (const k of RESIZE_STEPS.filter((x) => x < already - 1e-6)) {
+          for (const step of [0, ...PUSH_STEPS_M]) {
+            for (const d of step ? dirs : dirs.slice(0, 1)) {
+              const moved = tryMove({ x: d.x * step, y: d.y * step }, k);
+              if (moved) return accept(moved, k);
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
 
   for (let guard = 0; guard < 30 && start; guard += 1) {
     const lost = lostRooms(working.objects);
     if (lost.length) {
-      const id = lost[0];
+      // The nearest lost room first (a room reached through another lost room is opened after it).
+      const id = [...lost].sort((a, b) => doorHops(space, start, a) - doorHops(space, start, b) || (a < b ? -1 : 1))[0];
       const room = space.rooms.find((r) => r.id === id);
       const goal = room ? freeInside(empty, room) : null;
-      const route = goal ? findPath(empty, start, goal, { throughDoors: true, maxCells: 20000 }) : null;
-      const pts = route ? routePoints([start, ...route]) : [];
+      // The way to open: for a picture's home the bare plan's comfortable way (through the middle of each door),
+      // else the body's.
+      const route = goal ? (input.anchorsAsSeen ? findPath(emptyComfort, start, nearestFree(emptyComfort, goal) ?? goal, { throughDoors: true, maxCells: 20000 }) : null)
+        ?? findPath(empty, start, goal, { throughDoors: true, maxCells: 20000 }) : null;
+      // A room is entered through a door: where a body stands on its side of each door is part of the way too.
+      const pts = [...(route ? routePoints([start, ...route]) : []), ...(input.anchorsAsSeen && room ? doorSides(space).map((d) => d.p).filter((q) => pointInPolygon(q, room.polygon)) : [])];
       const near = standing().map((p) => ({ p, d: pts.length ? Math.min(...pts.map((q) => distanceToObb(q, p.box))) : (p.roomId === id ? 0 : Infinity) }))
         .filter((x) => x.d < 1.5).map((x) => x.p);
-      const fixes = (objects: ObjectInstance[]) => !lostRooms(objects, id).length;
+      // A picture's home: the way is opened piece by piece (each move clears some of the route, none loses a room),
+      // since two pieces in one doorway are never fixed by moving either alone.
+      const onRoute = input.anchorsAsSeen ? pts : [];
+      const intrusions = (objects: ObjectInstance[]) => { const m = comfortModel(objects); return onRoute.filter((q) => !isFree(m, q)).length; };
+      const blockedNow = onRoute.length ? intrusions(working.objects) : 0;
+      const fixes = (objects: ObjectInstance[]) => !lostRooms(objects, id).length
+        || (blockedNow > 0 && intrusions(objects) < blockedNow && lostRooms(objects).length <= lost.length);
       // Small and mid pieces give way first; a large one (a wardrobe, a sofa) only when none of them can.
+      if (input.anchorsAsSeen && pushAside(pts, fixes)) continue;
       if (repairWith(byRank(near), fixes, (p) => !p.essential && p.rank <= 3, pts)) continue;
       if (repairWith(byRank(near).filter((p) => p.rank <= 4), fixes, (p) => !p.essential && p.rank <= 4, pts)) continue;
       // Nothing near the route alone does it: the least important standing piece of the cut-off room goes.
@@ -459,13 +1082,33 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     if (!traps.length) break;
     const t = traps[0];
     // The pieces that make the strip narrow: within reach of it.
-    const near = standing().filter((p) => t.cells.some((c) => distanceToObb(c, p.box) < COMFORT_RADIUS_M + 0.1));
+    const near = standing().filter((p) => t.cells.some((c) => distanceToObb(c, p.box) < walkRadius + 0.1));
     const fixes = (objects: ObjectInstance[]) => {
       const left = trapsOf(objects, t.roomId).reduce((s, x) => s + x.areaM2, 0);
       return left < t.areaM2 - 0.05 && !lostRooms(objects, t.roomId).length;
     };
+    if (input.anchorsAsSeen && start && t.cells.length) {
+      // The way into the strip, as the furniture narrowly leaves it: the piece narrowing it is pushed off it.
+      const squeeze = buildWalkModel(space, working.objects, assets); squeeze.radius = SQUEEZE_RADIUS_M;
+      const c = t.cells[Math.floor(t.cells.length / 2)];
+      const way = findPath(squeeze, start, nearestFree(squeeze, c) ?? c, { throughDoors: true, maxCells: 20000 });
+      if (way && pushAside(routePoints([start, ...way]), fixes)) continue;
+    }
     // A trap is never fixed by dropping a bed, a sofa or the kitchen: only small and mid pieces may go.
     if (!repairWith(byRank(near), fixes, (p) => !p.essential && p.rank <= 3, t.cells)) break;
+  }
+
+  // ── A picture's home: every doorway usable from both sides (a piece standing where one steps through is pushed
+  //    off that spot, as little as clears it) ──
+  if (input.anchorsAsSeen && start) {
+    for (let guard = 0; guard < 12; guard += 1) {
+      const m = comfortModel(working.objects);
+      const blockedSide = doorSides(space).find((d) => space.rooms.some((r) => pointInPolygon(d.p, r.polygon)) && !isFree(m, d.p) && !nearestFree(m, d.p, DOOR_SIDE_SLACK_M));
+      if (!blockedSide) break;
+      const lostNow = lostRooms(working.objects).length;
+      const fixes = (objects: ObjectInstance[]) => { const mm = comfortModel(objects); return (isFree(mm, blockedSide.p) || !!nearestFree(mm, blockedSide.p, DOOR_SIDE_SLACK_M)) && lostRooms(objects).length <= lostNow; };
+      if (!pushAside([blockedSide.p], fixes)) break;
+    }
   }
 
   // ── Last resort (bounded): a room still cut off, or a trap still there, loses what stands in it or by it —
@@ -476,11 +1119,191 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     if (!lost.length && !traps.length) break;
     const where = lost[0] ?? traps[0].roomId;
     const cells = traps[0]?.cells ?? [];
-    const victim = byRank(standing().filter((p) => p.rank < 5 && !p.lock && (p.roomId === where || cells.some((c) => distanceToObb(c, p.box) < COMFORT_RADIUS_M + 0.1))))
+    const victim = byRank(standing().filter((p) => p.rank < 5 && !p.lock && (p.roomId === where || cells.some((c) => distanceToObb(c, p.box) < walkRadius + 0.1))))
       .sort((a, b) => Number(a.essential) - Number(b.essential) || a.rank - b.rank)[0];
     if (!victim) break;
     drop(victim, 'CIRCULATION');
     if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
+  }
+
+  // ── The guarantee, for any plan and any picture: furniture never wins over a door. While a room the bare plan
+  //    reaches is cut off (or a trap remains), the piece whose move reopens it is moved — anywhere clean in its own
+  //    room, a picture's locked piece included — the fewest and least important first. Only when no single move
+  //    reopens it is a piece removed: a non-essential one whose removal does, else the least important near the way.
+  //    Sanitary fittings and the kitchen (fixed to their walls) stay; a room's essential piece is the last to go.
+  const repairedNow = (p: typeof placedOrder[number], reason: string) => {
+    if (p.report.outcome === 'PLANNED') p.report.outcome = 'CORRECTED';
+    p.report.reason = reason;
+    if (!report.circulation.repaired.includes(p.roomId)) report.circulation.repaired.push(p.roomId);
+  };
+  // 6. The way is held by what is never removed (a bathroom's fittings in front of its door, a bed across the only
+  //    way in): one of them is MOVED — to a clean pose against a wall of its own room — never taken away.
+  const moveFixed = (way: Point[], better: (objects: ObjectInstance[]) => boolean): boolean => {
+    const fixed = standing().filter((p) => p.rank >= 5)
+      .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
+      .filter((e) => e.d < walkRadius + 0.35).sort((a, b) => a.d - b.d).map((e) => e.p).slice(0, 4);
+    for (const p of fixed) {
+      const obj = objectOf(p); const home = rooms.get(p.roomId);
+      if (!obj || !home) continue;
+      const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+      const poses = cleanPoses(space, assets, others, home, p.asset, 24)
+        .sort((a, b) => Math.hypot(a.at.x - obj.position.x, a.at.y - obj.position.z) - Math.hypot(b.at.x - obj.position.x, b.at.y - obj.position.z));
+      // Any clean pose of its room that reopens the way (the way the empty home was walked is only one of the ways:
+      // a bed turned along a narrow room may lie across it and still leave the room walkable).
+      for (const pose of poses) {
+        const at = footprint(p.asset, pose.at, pose.rotation);
+        const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+        if (!better([...others, next])) continue;
+        working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
+        p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(at.cx - p.box.cx, at.cy - p.box.cy));
+        p.box = at; p.lock = undefined; relocated += 1;
+        repairedNow(p, 'DOOR_CLEARED');
+        return true;
+      }
+    }
+    return false;
+  };
+  for (let guard = 0; guard < 10 && start; guard += 1) {
+    const lost = lostRooms(working.objects);
+    const traps = lost.length ? [] : trapsOf(working.objects);
+    if (!lost.length && !traps.length) break;
+    // The nearest cut-off room first: a room reached through another cut-off room opens with it.
+    const where = lost.length ? [...lost].sort((a, b) => doorHops(space, start, a) - doorHops(space, start, b) || (a < b ? -1 : 1))[0] : traps[0].roomId;
+    const room = space.rooms.find((r) => r.id === where);
+    let way: Point[] = traps[0]?.cells ?? [];
+    if (lost.length && room) {
+      const goal = freeInside(empty, room);
+      const route = goal ? findPath(empty, start, goal, { throughDoors: true, maxCells: 20000 }) : null;
+      way = [...(route ? routePoints([start, ...route]) : []), ...doorSides(space).map((d) => d.p).filter((q) => pointInPolygon(q, room.polygon))];
+    }
+    if (!way.length) break;
+    // Asked about the cut-off room alone (one flood each); a room the change loses is found on the next round.
+    const better = (objects: ObjectInstance[]) => lost.length
+      ? !lostRooms(objects, where).length
+      : trapsOf(objects, where).reduce((a, x) => a + x.areaM2, 0) < traps.reduce((a, x) => a + (x.roomId === where ? x.areaM2 : 0), 0) - 0.05 && !lostRooms(objects).length;
+    // The pieces near the way: least important first, essentials last, then nearest.
+    const near = standing().filter((p) => p.rank < 5)
+      .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
+      .filter((e) => e.d < walkRadius + 0.35)
+      .sort((a, b) => Number(a.p.essential) - Number(b.p.essential) || a.p.rank - b.p.rank || a.d - b.d).map((e) => e.p).slice(0, 8);
+    // Nothing movable near the way: what holds it is never removed, so it is moved (step 6).
+    if (!near.length) { if (moveFixed(way, better)) continue; break; }
+    // 1. The smallest push of what narrows the way (a sofa slid 5 cm off the walk beats a sofa elsewhere).
+    if (pushAside(way, better, FINAL_PUSH_WALKS)) continue;
+    // 2. One piece moved (the nearest acceptable pose in its room) that reopens the way.
+    const moveOne = (groups: boolean): boolean => {
+      let done = false;
+      for (const p of near) {
+        const obj = objectOf(p); const home = rooms.get(p.roomId);
+        // A piece of a group is not sent elsewhere alone (its group would be broken): a lesser piece goes instead.
+        if (!obj || !home || (!groups && inGroup(p))) continue;
+        const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+        const poses = cleanPoses(space, assets, others, home, p.asset, 12)
+          .sort((a, b) => Math.hypot(a.at.x - obj.position.x, a.at.y - obj.position.z) - Math.hypot(b.at.x - obj.position.x, b.at.y - obj.position.z));
+        for (const pose of poses) {
+          // Still standing on the way: cannot be the fix (no walk is needed to know).
+          const at = footprint(p.asset, pose.at, pose.rotation);
+          if (way.some((q) => distanceToObb(q, at) < walkRadius)) continue;
+          const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+          if (!better([...others, next])) continue;
+          working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
+          const box = footprint(p.asset, pose.at, pose.rotation);
+          p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(box.cx - p.box.cx, box.cy - p.box.cy));
+          p.box = box; p.lock = undefined; relocated += 1;
+          repairedNow(p, 'DOOR_CLEARED');
+          done = true; break;
+        }
+        if (done) break;
+      }
+      return done;
+    };
+    if (moveOne(false)) continue;
+    // 3. One non-essential piece removed that reopens it (an armchair of the sofa's group before the sofa is moved).
+    const removable = near.filter((p) => !p.essential);
+    const alone = removable.find((p) => better(working.objects.filter((o) => o.instanceId !== p.instanceId)));
+    if (alone) { drop(alone, 'DOOR_CLEARED'); repairedNow(alone, 'DOOR_CLEARED'); continue; }
+    // 3b. Only then a piece of a group moved alone (its orphaned partners are taken away at the end).
+    if (moveOne(true)) continue;
+    // 4. One non-essential piece removed together with the smallest push of what is left (an armchair in the way
+    //    and the sofa slid a few centimetres, rather than the coffee table and both armchairs).
+    let paired = false;
+    // The three pieces standing nearest the way (bounded: each trial walks the home).
+    const nearest = [...removable].sort((a, b) => Math.min(...way.map((q) => distanceToObb(q, a.box))) - Math.min(...way.map((q) => distanceToObb(q, b.box)))).slice(0, 3);
+    for (const p of nearest) {
+      const before = working;
+      const outcome = p.report.outcome;
+      working = { ...working, objects: working.objects.filter((o) => o.instanceId !== p.instanceId) };
+      p.report.outcome = 'DROPPED';
+      if (pushAside(way, better, FINAL_PUSH_WALKS)) {
+        p.report.reason = 'DOOR_CLEARED'; p.report.instanceId = null;
+        if (!report.circulation.repaired.includes(p.roomId)) report.circulation.repaired.push(p.roomId);
+        paired = true; break;
+      }
+      p.report.outcome = outcome;
+      working = before;
+    }
+    if (paired) continue;
+    // 5. Nothing smaller does: of the pieces nearest the way, the one whose removal opens the most floor to the walk
+    //    goes (ties: the least important), and the search goes on.
+    //    A piece whose removal opens nothing is never removed: then the room stays cut off and the gate says so.
+    const opened = (objects: ObjectInstance[]) => walkableFrom(comfortModel(objects), start).size;
+    const now = opened(working.objects);
+    const best = nearest.map((p) => ({ p, n: opened(working.objects.filter((o) => o.instanceId !== p.instanceId)) }))
+      .sort((a, b) => b.n - a.n || a.p.rank - b.p.rank)[0];
+    if (!best || best.n <= now) {
+      if (moveFixed(way, better)) continue;
+      break;
+    }
+    const victim = best.p;
+    drop(victim, 'DOOR_CLEARED');
+    if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
+  }
+
+  // ── The aisle guarantee, when everything above left a room cut off or a pocket stranded: every door of every room
+  //    is joined to the room's own free floor by an aisle walked on the bare plan, and nothing stands on an aisle.
+  //    A piece on one — any piece, fittings and beds included — is moved to a clean pose of its own room off every
+  //    aisle; when its room has no such pose, the room's lesser pieces make way first; a lesser piece with nowhere to go
+  //    is taken away. Doors are joined to the room through it, so a home whose bare plan is walkable stays walkable.
+  if (start && (lostRooms(working.objects).length || trapsOf(working.objects).length)) {
+    const aisles: Point[] = [];
+    const doorPoints = doorSides(space).map((d) => d.p);
+    for (const room of space.rooms) {
+      const hub = freeInside(empty, room);
+      if (!hub) continue;
+      for (const q of doorPoints.filter((x) => pointInPolygon(x, room.polygon))) {
+        const route = findPath(empty, q, hub, { throughDoors: false, maxCells: 20000 });
+        if (route) aisles.push(...routePoints([q, ...route]));
+      }
+    }
+    const onAisle = (box: Obb) => aisles.some((q) => distanceToObb(q, box) < walkRadius);
+    const moveOff = (p: typeof placedOrder[number]): boolean => {
+      const obj = objectOf(p); const home = rooms.get(p.roomId);
+      if (!obj || !home) return false;
+      const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+      const pose = cleanPoses(space, assets, others, home, p.asset, 40).find((c) => !onAisle(footprint(p.asset, c.at, c.rotation)));
+      if (!pose) return false;
+      const at = footprint(p.asset, pose.at, pose.rotation);
+      const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+      working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? next : o)) };
+      p.report.movedM = r3((p.report.movedM ?? 0) + Math.hypot(at.cx - p.box.cx, at.cy - p.box.cy));
+      p.box = at; p.lock = undefined; relocated += 1;
+      repairedNow(p, 'AISLE_CLEARED');
+      return true;
+    };
+    // The heaviest first: a bed or a kitchen finds its place before the lamps and chairs take the room's free floor.
+    const blockers = standing().filter((p) => onAisle(p.box)).sort((a, b) => b.rank - a.rank || Number(b.essential) - Number(a.essential) || b.area - a.area);
+    for (const p of blockers) {
+      if (p.report.outcome === 'DROPPED' || !onAisle(p.box) || moveOff(p)) continue;
+      // Its room's lesser pieces make way, one at a time, least important first.
+      let placedNow = false;
+      if (p.rank >= 4 || p.essential) {
+        for (const lesser of standingIn(p.roomId).filter((q) => q !== p && !q.essential && q.rank < p.rank).sort((a, b) => a.rank - b.rank || a.area - b.area)) {
+          drop(lesser, 'AISLE_CLEARED');
+          if (moveOff(p)) { placedNow = true; break; }
+        }
+      }
+      if (!placedNow && !p.essential && p.rank < 5) drop(p, 'AISLE_CLEARED');
+    }
   }
 
   // ── The gate: what the walk is left with ──
@@ -488,14 +1311,37 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
   const unreachable = start ? lostRooms(working.objects) : [];
   report.circulation.reachableAfter = start ? [...reachableRooms(space, buildWalkModel(space, working.objects, assets), { start })].sort() : [];
   const crowded = space.rooms.filter((r) => planned.has(r.id) && densityChecked(r.kind) && density(r, standingIn(r.id).map((p) => p.area)) > DENSITY_MAX + 0.08).map((r) => r.id);
-  const missingEssential = input.plan.rooms.map((pr) => rooms.get(pr.roomId)).filter((r): r is SpaceRoom => !!r && r.areaM2 >= 5)
-    .filter((r) => { const role = essentialRole(r.kind); return !!role && !standingIn(r.id).some((p) => servesRole(p.asset, role)); }).map((r) => r.id);
+  // A television the programme added that the walk's repairs left facing no sofa: taken away again (no television
+  // is better than one the sofa turns its back on — the plausibility gate would refuse the home for it).
+  for (const f of plausibility(space, working.objects, assets, buildWalkModel(space, working.objects, assets)).filter((x) => x.code === 'SOFA_FACES_AWAY')) {
+    if (!f.roomId) continue;
+    for (const p of standingIn(f.roomId).filter((q) => q.report.reason === 'PROGRAMME' && seatRole('', q.asset) === 'TV')) drop(p, 'NOT_FACED');
+  }
+  // A piece the programme added whose partner the walk's repairs took away is taken away with it: a chair with no
+  // table or desk to sit at, a coffee table or armchair with no sofa beside it.
+  for (const room of space.rooms) {
+    for (const p of standingIn(room.id).filter((q) => q.report.reason === 'PROGRAMME')) {
+      const near = (pred: (a: CatalogAsset) => boolean, m: number) => standingIn(room.id).some((q) => q !== p && pred(q.asset) && apart(p, q) <= m);
+      const seatGone = (p.report.type === 'DINING_CHAIR' || p.report.type === 'OFFICE_CHAIR') && !near((a) => pieceRole(a) === 'TABLE' && !/OUTDOOR/.test(a.code.toUpperCase()), 1.6);
+      const sofaGone = (p.report.type === 'COFFEE_TABLE' && !near((a) => pieceRole(a) === 'SOFA', 1.8)) || (p.report.type === 'ARMCHAIR' && !near((a) => pieceRole(a) === 'SOFA', 2.8));
+      if (seatGone || sofaGone) drop(p, 'PARTNER_GONE');
+    }
+  }
+  // A room missing what defines it (its programme's core needs): the READY gate refuses the home.
+  // A study without its desk is still a study a person walks through (a room with a door on every wall has no wall
+  // for one): what makes a home's other rooms what they are is owed, a study's desk is furnished when it fits.
+  const missingEssential = space.rooms.filter((r) => r.areaM2 >= 1.2 && programme.get(r.id)?.use !== 'OFFICE')
+    .filter((r) => (programme.get(r.id)?.needs ?? []).some((nd) => nd.core && !standingIn(r.id).some((p) => (nd.metBy ?? nd.serves)(p.asset))
+      // Only what the catalogue can provide is owed (a catalogue with no shower cannot fail a bathroom for it).
+      && [...assets.values()].some((a) => a.active !== false && a.placement === 'FLOOR' && nd.serves(a)))).map((r) => r.id);
   const furnishedModel = buildWalkModel(space, working.objects, assets);
   const spawn = circulationStart(space, furnishedModel);
   report.relocated = relocated;
   report.gate = {
     ok: !unreachable.length && !finalTraps.length && !!spawn,
     unreachable, traps: finalTraps.map((t) => ({ roomId: t.roomId, areaM2: t.areaM2 })), crowded, missingEssential, spawnValid: !!spawn && isFree(furnishedModel, spawn),
+    // What a person would not believe (plausibility.ts): the READY gate refuses on it (NOT_PLAUSIBLE).
+    implausible: plausibility(space, working.objects, assets, furnishedModel),
   };
 
   for (const it of report.items) {
@@ -528,13 +1374,18 @@ function cleanPoses(space: SpaceModel, assets: Map<string, CatalogAsset>, object
  * Clean poses within a reference lock: rings around the picture's pose up to its radius, at its rotation, then
  * turned by up to its angle; nearest first. Bounded (a few dozen judgements).
  */
-function lockedPoses(space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, asset: CatalogAsset, lock: { at: Point; rotation: number; maxShiftM: number; maxTurnDeg: number }, max = 6): Array<{ at: Point; rotation: number }> {
+function lockedPoses(space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, asset: CatalogAsset, lock: { at: Point; rotation: number; maxShiftM: number; maxTurnDeg: number }, max = 6, asSeen = false): Array<{ at: Point; rotation: number }> {
   const ctx = { space, assets, objects };
   const world = placementWorld(ctx, room);
   const out: Array<{ at: Point; rotation: number }> = [];
-  for (const c of lockCandidates(lock)) {
+  for (const c0 of lockCandidates(lock)) {
+    // A picture's wall piece stays against a wall wherever it is moved (see lockedOptions).
+    const s0 = asSeen ? snapToWall(ctx, asset, c0.at, c0.rotation, room.id, 0.35) : null;
+    const c = s0?.snapped ? { at: s0.at, rotation: s0.rotation } : c0;
+    if (out.some((o) => Math.hypot(o.at.x - c.at.x, o.at.y - c.at.y) < 0.02 && Math.abs(o.rotation - c.rotation) < 1e-3)) continue;
     if (!pointInPolygon(c.at, room.polygon) || onStairs(space, asset, c.at, c.rotation)) continue;
-    if (verdictOf(evaluateInWorld(world, asset, c.at, c.rotation)) !== 'CLEAN') continue;
+    const issues = evaluateInWorld(world, asset, c.at, c.rotation);
+    if (verdictOf(asSeen ? seenIssues(space, issues, asset, c.at, c.rotation) : issues) !== 'CLEAN') continue;
     out.push(c);
     if (out.length >= max) break;
   }
@@ -566,7 +1417,7 @@ function lockCandidates(lock: { at: Point; rotation: number; maxShiftM: number; 
  * from pictures is an estimate, and a piece a few decimetres off is the picture, a piece missing is not.
  */
 function lockedOptions(
-  space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, own: CatalogAsset, item: BuildItem, max = 8,
+  space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, own: CatalogAsset, item: BuildItem, max = 8, asSeen = false,
 ): Array<{ at: Point; rotation: number; kept: boolean; why: string | null; movedM: number | null; verdict: Verdict; scale: number }> {
   if (!item.pose || !item.lock) return [];
   const lock = { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG, maxShiftM: item.lock.maxShiftM, maxTurnDeg: item.lock.maxTurnDeg };
@@ -576,9 +1427,10 @@ function lockedOptions(
   const out: ReturnType<typeof lockedOptions> = [];
   let firstIssue: string | null = null;
   const consider = (at: Point, rotation: number, scale: number, turn: number) => {
-    const asset = shapedAsset(own, { shape: shapeAt(own, scale) });
+    const asset = shapedAsset(own, { shape: itemShape(own, item, scale) });
     if (!pointInPolygon(at, room.polygon) || onStairs(space, asset, at, rotation)) return;
-    const issues = evaluateInWorld(world, asset, at, rotation);
+    const all = evaluateInWorld(world, asset, at, rotation);
+    const issues = asSeen ? seenIssues(space, all, asset, at, rotation) : all;
     if (!firstIssue && issues.length) firstIssue = issues.find((i) => i.code !== 'TIGHT_ACCESS')?.code ?? 'TIGHT_ACCESS';
     if (verdictOf(issues) !== 'CLEAN') return;
     const movedM = r3(Math.hypot(at.x - lock.at.x, at.y - lock.at.y));
@@ -606,18 +1458,27 @@ function lockedOptions(
     ];
     const home = cell(lock.at);
     const reach = Math.max(ANCHOR_FALLBACK_M, 0.25 * Math.hypot(room.bounds.maxX - room.bounds.minX, room.bounds.maxY - room.bounds.minY));
-    const snapped = snapToWall(ctx, own, lock.at, lock.rotation, room.id, 0.9);
+    const snapped = snapToWall(ctx, shapedAsset(own, { shape: itemShape(own, item, item.scale) }), lock.at, lock.rotation, room.id, 0.9);
     const ring: Array<{ at: Point; rotation: number }> = snapped.snapped ? [{ at: snapped.at, rotation: snapped.rotation }] : [];
     for (let r = lock.maxShiftM + 0.15; r <= reach + 1e-9; r += 0.15) {
       const k = Math.max(12, Math.round((2 * Math.PI * r) / 0.2));
       for (let i = 0; i < k; i += 1) {
         const a = (i / k) * Math.PI * 2;
         const at = { x: lock.at.x + Math.cos(a) * r, y: lock.at.y + Math.sin(a) * r };
-        ring.push({ at, rotation: lock.rotation }, { at, rotation: lock.rotation + Math.PI / 2 });
+        // A picture's piece keeps the way it faces (its facing is evidence); a planned one may take a quarter turn.
+        ring.push({ at, rotation: lock.rotation }, ...(asSeen ? [] : [{ at, rotation: lock.rotation + Math.PI / 2 }]));
       }
     }
-    for (const c of ring) {
+    const shaped = shapedAsset(own, { shape: itemShape(own, item, item.scale) });
+    for (const c0 of ring) {
       if (out.length >= max) break;
+      // A wall piece moved along the room stands against the wall it reaches, facing away from it (the walk is then
+      // proven with the way it will face, never turned after); where no wall is within reach it does not stand at
+      // all — a wardrobe or a bed free-standing in the middle of a room, its back to nothing, is never a design.
+      const wallPiece = own.anchor === 'WALL' || own.anchor === 'CORNER';
+      const s0 = asSeen || wallPiece ? snapToWall(ctx, shaped, c0.at, c0.rotation, room.id, asSeen ? 0.35 : 0.6) : null;
+      if (wallPiece && !asSeen && !s0?.snapped) continue;
+      const c = s0?.snapped ? { at: s0.at, rotation: s0.rotation } : c0;
       const cc = cell(c.at);
       if (Math.abs(cc[0] - home[0]) > 1 || Math.abs(cc[1] - home[1]) > 1) continue;
       for (const scale of scales.slice(0, 2)) {
@@ -630,6 +1491,77 @@ function lockedOptions(
   return out;
 }
 
+/** A door side counts as usable when a body fits within this of it (renderGate.ts uses the same). */
+export const DOOR_SIDE_SLACK_M = 0.25;
+/** How far a picture's piece is pushed off a way, step by step (the least that clears it wins). */
+const PUSH_STEPS_M = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6];
+/** How much smaller a picture's piece may be made, last, to open a required way. */
+const RESIZE_STEPS = [0.92, 0.85];
+/** The body a too-tight way is looked for with (the gaps furniture leaves that a move could widen). */
+const SQUEEZE_RADIUS_M = 0.1;
+/** A picture's piece with no place where it was seen is placed elsewhere in its room at these sizes, in turn. */
+const FALLBACK_SCALES = [1, 0.9, 0.85];
+/** How far a chair drawn up to a table slides under its top (m). */
+const CHAIR_TUCK_M = 0.12;
+/**
+ * The places at a table a chair is drawn up to, facing it: two along each long side of a table 1.2 m or longer
+ * (one along a shorter one), one at each end.
+ */
+function tableSlots(table: Obb, chair: Pick<CatalogAsset, 'depthM'>): Array<{ at: Point; rotation: number }> {
+  const u = { x: Math.cos(table.angle), y: Math.sin(table.angle) };
+  const v = { x: -Math.sin(table.angle), y: Math.cos(table.angle) };
+  const facing = (d: Point) => Math.atan2(d.x, -d.y);
+  const out: Array<{ at: Point; rotation: number }> = [];
+  const back = chair.depthM / 2 - CHAIR_TUCK_M;
+  const along = table.hw * 2 >= 1.2 ? [-table.hw / 2, table.hw / 2] : [0];
+  for (const side of [1, -1]) {
+    for (const t of along) {
+      const at = { x: table.cx + u.x * t + v.x * side * (table.hd + back), y: table.cy + u.y * t + v.y * side * (table.hd + back) };
+      out.push({ at, rotation: facing({ x: v.x * side, y: v.y * side }) });
+    }
+    const end = { x: table.cx + u.x * side * (table.hw + back), y: table.cy + u.y * side * (table.hw + back) };
+    out.push({ at: end, rotation: facing({ x: u.x * side, y: u.y * side }) });
+  }
+  return out;
+}
+
+/** The smallest shower tray made (m): a shower is fitted to its room down to this, never below. */
+const SHOWER_TRAY_MIN_M = 0.7;
+function fallbackScales(own: CatalogAsset, scale: number): number[] {
+  if (!/SHOWER/.test([own.subcategory, own.code].filter(Boolean).join(' ').toUpperCase())) return FALLBACK_SCALES;
+  const least = SHOWER_TRAY_MIN_M / Math.max(0.01, Math.min(own.widthM, own.depthM) * scale);
+  return least >= FALLBACK_SCALES[FALLBACK_SCALES.length - 1] ? FALLBACK_SCALES : [...FALLBACK_SCALES, 0.8, least].filter((k) => k >= least - 1e-9);
+}
+/** Trial walks one push of the final door pass may take (the plan step has one edge invocation's CPU). */
+const FINAL_PUSH_WALKS = 20;
+/** How far a picture's piece may be moved, last, to open a required route (recorded as CIRCULATION_MOVED). */
+const WIDE_SHIFT_M = 1.0;
+
+/** A door's passage: its opening (at most 1 m of it, centred) and half a metre either side. */
+const PASSAGE_HALF_M = 0.5;
+const PASSAGE_DEPTH_M = 0.5;
+/** A piece's edge within this of the opening's edge is beside the passage, not in it (a frame, a reading's centimetres). */
+const PASSAGE_TOLERANCE_M = 0.05;
+/**
+ * The findings that still move a piece standing where a picture of the real home shows it: not a tight front
+ * zone, and not a door's keep-out unless it stands in the passage itself (see BuildInput.anchorsAsSeen).
+ */
+function seenIssues(space: SpaceModel, issues0: PlacementIssue[], asset: CatalogAsset, at: Point, rotation: number): PlacementIssue[] {
+  // Where a photo of the real home shows a piece, the floor before another is what the home has (never a reason).
+  const issues = issues0.filter((i) => i.code !== 'BLOCKS_USE');
+  if (!issues.some((i) => i.code === 'TIGHT_ACCESS' || i.code === 'BLOCKS_DOOR')) return issues;
+  const box = solidBox(footprint(asset, at, rotation));
+  return issues.filter((i) => {
+    if (i.code === 'TIGHT_ACCESS') return false;
+    if (i.code !== 'BLOCKS_DOOR') return true;
+    const door = space.doors.find((d) => d.id === i.relatedId);
+    const wall = door ? space.walls.find((w) => w.id === door.wallId) : null;
+    if (!door || !wall) return true;
+    const passage = solidBox({ cx: door.centre.x, cy: door.centre.y, hw: Math.min(door.widthM / 2 - PASSAGE_TOLERANCE_M, PASSAGE_HALF_M), hd: PASSAGE_DEPTH_M, angle: wallFrame(wall.mesh).angle });
+    return solidOverlap(box, passage);
+  });
+}
+
 /** A locked piece is never scaled below this share of its catalogue size to fit (scenePlan SCALE_MIN). */
 const SCALE_FLOOR = 0.85;
 
@@ -640,6 +1572,7 @@ const SCALE_FLOOR = 0.85;
  */
 function findPose(
   space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, asset: CatalogAsset, item: BuildItem,
+  opts: { prefer?: (c: { at: Point; rotation: number }) => number; accept?: (c: { at: Point; rotation: number }) => boolean } = {},
 ): { at: Point; rotation: number; kept: boolean; why: string | null; movedM: number | null; verdict: Verdict } | null {
   const ctx = { space, assets, objects };
   const world = placementWorld(ctx, room);
@@ -679,7 +1612,9 @@ function findPose(
     const turn = Math.abs(Math.atan2(Math.sin(c.rotation - proposal.rotation), Math.cos(c.rotation - proposal.rotation)));
     return Math.hypot(c.at.x - proposal.at.x, c.at.y - proposal.at.y) + turn * 0.25;
   };
-  const ordered = proposal ? cands.map((c, i) => ({ c, i, k: cost(c) })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.c) : cands;
+  const preferred = opts.prefer ? cands.map((c, i) => ({ c, i, k: opts.prefer!(c) })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.c) : cands;
+  const ordered = (proposal ? cands.map((c, i) => ({ c, i, k: cost(c) })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.c) : preferred)
+    .filter((c) => !opts.accept || opts.accept(c));
   let tight: { at: Point; rotation: number } | null = null;
   for (const c of ordered) {
     const v = judge(c.at, c.rotation);
@@ -692,27 +1627,48 @@ function findPose(
 
 // ── Reachability ─────────────────────────────────────────────────────────────
 
+/** How many doors a room is from the room `start` stands in (rooms joined by their doors; unknown: a large number). */
+function doorHops(space: SpaceModel, start: Point, roomId: string): number {
+  const from = space.rooms.find((r) => pointInPolygon(start, r.polygon))?.id;
+  if (!from) return 99;
+  const links = new Map<string, Set<string>>();
+  for (const d of space.doors) {
+    const wall = space.walls.find((w) => w.id === d.wallId);
+    if (!wall) continue;
+    const { dir } = wallFrame(wall.mesh);
+    const ids = [1, -1].map((k) => space.rooms.find((r) => pointInPolygon({ x: d.centre.x - dir.y * 0.3 * k, y: d.centre.y + dir.x * 0.3 * k }, r.polygon))?.id)
+      .filter((x): x is string => !!x);
+    for (const a of ids) for (const b of ids) if (a !== b) { if (!links.has(a)) links.set(a, new Set()); links.get(a)!.add(b); }
+  }
+  const seen = new Map([[from, 0]]); const queue = [from];
+  while (queue.length) {
+    const r = queue.shift()!;
+    for (const n of links.get(r) ?? []) if (!seen.has(n)) { seen.set(n, seen.get(r)! + 1); queue.push(n); }
+  }
+  return seen.get(roomId) ?? 99;
+}
+
 /**
  * The comfortable floor a comfortable walk from `start` does not reach, room by room (walkability.ts
  * strandedFloor on the furnished space at the comfort margin): the trap a bed and a wardrobe make together.
  */
-export function stranded(space: SpaceModel, objects: ObjectInstance[], assets: Map<string, CatalogAsset>, start: Point | null, only?: string, bare?: (p: Point) => boolean) {
+export function stranded(space: SpaceModel, objects: ObjectInstance[], assets: Map<string, CatalogAsset>, start: Point | null, only?: string, bare?: (p: Point) => boolean, radius = COMFORT_RADIUS_M) {
   if (!start) return [];
   const roomy = buildWalkModel(space, objects, assets);
-  roomy.radius = COMFORT_RADIUS_M;
-  const before = bare ?? bareComfortReach(space, assets, start);
+  roomy.radius = radius;
+  const before = bare ?? bareComfortReach(space, assets, start, radius);
   return strandedFloor(space, roomy, walkableFrom(roomy, start), only, before);
 }
 
 /** Where the comfortable walk goes with no furniture at all (the plan's own reach). */
-export function bareComfortReach(space: SpaceModel, assets: Map<string, CatalogAsset>, start: Point): (p: Point) => boolean {
+export function bareComfortReach(space: SpaceModel, assets: Map<string, CatalogAsset>, start: Point, radius = COMFORT_RADIUS_M): (p: Point) => boolean {
   const bare = buildWalkModel(space, [], assets);
-  bare.radius = COMFORT_RADIUS_M;
+  bare.radius = radius;
   return walkableFrom(bare, start);
 }
 
 /** Points just either side of every door (where a body stands to walk through it). */
-function doorSides(space: SpaceModel): Array<{ doorId: string; p: Point }> {
+export function doorSides(space: SpaceModel): Array<{ doorId: string; p: Point }> {
   const out: Array<{ doorId: string; p: Point }> = [];
   const walls = new Map(space.walls.map((w) => [w.id, w]));
   for (const d of space.doors) {
@@ -803,7 +1759,7 @@ export function reachableRooms(space: SpaceModel, model: WalkModel, opts: { star
  * corner rule the route finder walks (so a room check is a lookup, not a search). A point counts as reached when
  * a reached cell is within one cell of it, as a route's goal does.
  */
-function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Point) => boolean {
+function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): ((p: Point) => boolean) & { size: number } {
   const G = 0.15;
   // Cells by number (i, j within ±2^15 cells: 4.9 km): no strings in the hot loop.
   const K = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
@@ -818,6 +1774,11 @@ function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Poi
     return v;
   };
   const seen = new Set<number>([K(0, 0)]);
+  const reached = (p: Point) => {
+    const ci = Math.round((p.x - start.x) / G); const cj = Math.round((p.y - start.y) / G);
+    for (let di = -1; di <= 1; di += 1) for (let dj = -1; dj <= 1; dj += 1) if (seen.has(K(ci + di, cj + dj))) return true;
+    return false;
+  };
   try {
     const qi: number[] = [0]; const qj: number[] = [0];
     for (let q = 0; q < qi.length && seen.size < maxCells; q += 1) {
@@ -836,11 +1797,7 @@ function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Poi
   } finally {
     model.closedDoors = closed;
   }
-  return (p: Point) => {
-    const ci = Math.round((p.x - start.x) / G); const cj = Math.round((p.y - start.y) / G);
-    for (let di = -1; di <= 1; di += 1) for (let dj = -1; dj <= 1; dj += 1) if (seen.has(K(ci + di, cj + dj))) return true;
-    return false;
-  };
+  return Object.assign(reached, { size: seen.size });
 }
 
 /** Up to eight free spots inside the room at least 0.6 m from its door sides, spread from its centre outwards. */
@@ -851,6 +1808,15 @@ function insideGoals(model: WalkModel, room: SpaceRoom, doorSides: Point[]): Poi
     for (let y = Math.min(...ys) + 0.15; y < Math.max(...ys); y += 0.3) {
       const q = { x, y };
       if (pointInPolygon(q, room.polygon) && isFree(model, q) && doorSides.every((d) => Math.hypot(d.x - x, d.y - y) > 0.6)) free.push(q);
+    }
+  }
+  // A room too small to have floor clear of its doorway (a WC, a wash room) is entered by standing in it at all.
+  if (!free.length) {
+    for (let x = Math.min(...xs) + 0.1; x < Math.max(...xs); x += 0.15) {
+      for (let y = Math.min(...ys) + 0.1; y < Math.max(...ys); y += 0.15) {
+        const q = { x, y };
+        if (pointInPolygon(q, room.polygon) && isFree(model, q) && doorSides.every((d) => Math.hypot(d.x - x, d.y - y) > 0.25)) free.push(q);
+      }
     }
   }
   const c = room.centroid;

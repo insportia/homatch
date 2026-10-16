@@ -12,6 +12,8 @@ export interface Service176Fact {
     documentUrl: string; sourceReference: string; sha256: string;
   };
 }
+import { redactRegisterText } from './propertyRegister.ts';
+
 const fields = [
   ['CADCODE', 'Cadastral code', 'PROPERTY'],
   ['ADDRESS', 'Registered property address', 'PROPERTY'],
@@ -92,8 +94,10 @@ export function service176PromptEvidence(browserOfficial: any): string {
     .filter((r: any) => r.source === 'mygov' && r.adapter === 'service176-public-api')
     .flatMap((r: any) => (r.traversal?.records ?? []).flatMap((record: any) => matchingDocuments(r, record)));
   const uniqueDocuments = [...new Map(documents.map((d: any) => [d.url, d])).values()]
-    .slice(0, 6).map((d: any) => ({document: d.url, title: d.title,
-      text: d.rawText.slice(0, 12000), textTruncated: d.rawText.length > 12000}));
+    // Extract PDFs are legacy-encoded Georgian: decoded here so the model can
+    // read them, with private names and personal numbers withheld.
+    .slice(0, 6).map((d: any) => { const text = redactRegisterText(d.rawText); return {document: d.url, title: d.title,
+      text: text.slice(0, 12000), textTruncated: text.length > 12000}; });
   return '\nADDITIONAL VALIDATED REGISTRY RECORD FACTS: ' + JSON.stringify(facts.map(f => ({
     claim: f.claim, record: f.provenance.recordUrl, document: f.provenance.documentUrl,
   }))) + '\nVALIDATED SOURCE DOCUMENT TEXT: ' + JSON.stringify(uniqueDocuments) +

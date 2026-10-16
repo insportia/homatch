@@ -49,7 +49,12 @@ export function deriveSearchStatus(current: SearchStatus, runs: readonly WorkerR
   const terminal = runs.every((r) => isTerminalWorkerStatus(r.status));
   if (terminal) {
     const succeeded = runs.filter((r) => r.status === 'COMPLETE' || r.status === 'PARTIAL');
-    if (!succeeded.length) return { status: 'FAILED', failureReason: 'ALL_WORKERS_FAILED' };
+    // No source refreshed, but previously collected listings still match: show
+    // them as a partial answer (each card carries its own last-checked time),
+    // never as a failure and never as a fresh completion.
+    if (!succeeded.length) return counts.properties > 0
+      ? { status: 'PARTIAL_COMPLETE', failureReason: 'NO_FRESH_SOURCES' }
+      : { status: 'FAILED', failureReason: 'ALL_WORKERS_FAILED' };
     const allComplete = runs.every((r) => r.status === 'COMPLETE');
     return { status: allComplete ? 'COMPLETE' : 'PARTIAL_COMPLETE', failureReason: null };
   }

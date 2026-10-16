@@ -36,6 +36,7 @@ import {
   Building2, Users, ShieldCheck, FileText, Landmark, History, MapPin,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { kindT } from '@/verify/intelligence/kindGuard';
 import { VerifySection } from '@/components/verify/ui';
 
 /** Directors arrive as strings on older runs and as objects on newer ones. */
@@ -57,6 +58,8 @@ export interface CompanyProfileLike {
   encumbrances?: unknown;
   sourceBasis?: unknown;
   extractNumber?: unknown;
+  extractPreparedAt?: unknown;
+  registryFields?: unknown;
   liquidationRegistered?: unknown;
 }
 
@@ -65,6 +68,15 @@ const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 const directorName = (d: DirectorLike): string =>
   typeof d === 'string' ? d.trim() : str((d as { name?: unknown })?.name);
+/* A register CODE ("JOINT") is never printed as English inside a Georgian
+   page; free text the register itself wrote ("ერთობლივი") passes through. */
+const REPRESENTATION_CODE_KEY: Record<string, string> = {
+  JOINT: 'verify_p0_rep_joint',
+  SOLE: 'verify_p0_rep_sole',
+  INDIVIDUAL: 'verify_p0_rep_sole',
+  SEPARATE: 'verify_p0_rep_separate',
+  MIXED: 'verify_p0_rep_separate',
+};
 const directorRole = (d: DirectorLike): string =>
   typeof d === 'string' ? '' : str((d as { representation?: unknown })?.representation);
 
@@ -74,6 +86,24 @@ const directorRole = (d: DirectorLike): string =>
  * Matching is on the trimmed, case-folded name because the two shapes differ
  * only in structure, never in spelling.
  */
+/*
+ * ONLY THE REGISTER'S OWN DIRECTORS.
+ *
+ * When the company's extract was parsed (registryFields names "directors"),
+ * the structured entries ARE the directorate. A bare-string name beside them
+ * came from a looser text scan — on job c80f7237 that scan read the pledge
+ * creditor's extract and put Bank of Georgia's general director on the
+ * developer's card with no role. Such a name is not shown as a director.
+ */
+export function registerDirectors(company: { directors?: unknown; registryFields?: unknown }): DirectorLike[] {
+  const all = arr(company.directors) as DirectorLike[];
+  const parsed = arr(company.registryFields).includes('directors');
+  const structured = all.filter((d) => typeof d !== 'string' && directorName(d));
+  if (!parsed || !structured.length) return all;
+  const known = new Set(structured.map((d) => directorName(d).toLocaleLowerCase()));
+  return all.filter((d) => typeof d !== 'string' || known.has(directorName(d).toLocaleLowerCase()));
+}
+
 function dedupeByName(list: DirectorLike[]): DirectorLike[] {
   const seen = new Map<string, DirectorLike>();
   for (const entry of list) {
@@ -109,9 +139,12 @@ export function CompanyIntelligenceCard({
   company,
   /** result_json.rightsAndRestrictions — the PROPERTY-level picture. */
   rights,
+  kind,
 }: {
   company?: CompanyProfileLike | null;
   rights?: { status?: unknown; items?: unknown; statement?: unknown } | null;
+  /** The registry kind (kindGuard.copyKindOf); the apartment copy is unchanged without it. */
+  kind?: string;
 }) {
   const { t } = useLanguage();
   if (!company) return null;
@@ -130,7 +163,7 @@ export function CompanyIntelligenceCard({
    * company has four directors. Deduplicated by name, keeping whichever entry
    * actually states a role.
    */
-  const directors = dedupeByName(arr(company.directors) as DirectorLike[]);
+  const directors = dedupeByName(registerDirectors(company));
   const shareholders = arr(company.shareholders) as {
     name?: unknown; percentage?: unknown;
   }[];
@@ -158,6 +191,7 @@ export function CompanyIntelligenceCard({
           <Fact icon={MapPin} label={t('verify_co_address')} value={str(company.registeredAddress)} />
           <Fact icon={ShieldCheck} label={t('verify_co_governance')} value={str(company.governanceBody)} />
           <Fact icon={FileText} label={t('verify_co_extract')} value={str(company.extractNumber)} />
+          <Fact icon={History} label={t('vbi_co_extract_date')} value={str(company.extractPreparedAt).replace(/\//g, '.')} />
         </div>
 
         {/* ---- who may sign ---- */}
@@ -175,7 +209,7 @@ export function CompanyIntelligenceCard({
                   <li key={i} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span className="min-w-0 break-words text-sm text-foreground">{n}</span>
                     {role ? (
-                      <span className="text-2xs text-muted-foreground break-words">{role}</span>
+                      <span className="text-2xs text-muted-foreground break-words">{REPRESENTATION_CODE_KEY[role.toUpperCase()] ? t(REPRESENTATION_CODE_KEY[role.toUpperCase()]) : role}</span>
                     ) : null}
                   </li>
                 );
@@ -255,7 +289,7 @@ export function CompanyIntelligenceCard({
             {/* The sentence that stops a company pledge being read as a
                 mortgage on the flat. */}
             <p className="min-w-0 break-words text-2xs leading-relaxed text-muted-foreground">
-              {t('verify_co_company_scope_note')}
+              {kindT(t, 'verify_co_company_scope_note', kind)}
             </p>
           </div>
         ) : null}

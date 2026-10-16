@@ -16,11 +16,20 @@
 import type { CatalogAsset } from './catalog.ts';
 import { OBJECT_FORMS, type ObjectForm } from './reconstructRead.ts';
 
+/**
+ * Forms a DESIGN gives a piece (walkthrough/designGraph.ts), beyond what a reading of a picture names: a framed
+ * shaker kitchen, a deep club chair, a built-in television wall, an upholstered bed, a built-in wardrobe, a fluted
+ * vanity, a bordered rug. Drawn by procedural.ts (and the factory's furniture.py) as their own geometry.
+ */
+export const DESIGN_FORMS = ['SHAKER', 'CLUB', 'TV_WALL', 'UPHOLSTERED', 'BUILT_IN', 'FLUTED', 'BORDERED'] as const;
+export type DesignForm = typeof DESIGN_FORMS[number];
+const ALL_FORMS: readonly string[] = [...OBJECT_FORMS, ...DESIGN_FORMS];
+
 export interface ObjectShape {
   widthM: number;
   depthM: number;
   heightM: number;
-  form: ObjectForm | null;
+  form: ObjectForm | DesignForm | null;
   /** The second colour that defines it (#rrggbb): bedding, a worktop, a pot, a frame. */
   secondary: string | null;
 }
@@ -38,7 +47,7 @@ export function normalizeShape(raw: unknown): ObjectShape | undefined {
   if (widthM === null || depthM === null || heightM === null) return undefined;
   return {
     widthM, depthM, heightM,
-    form: (OBJECT_FORMS as readonly string[]).includes(String(o.form)) ? o.form as ObjectForm : null,
+    form: ALL_FORMS.includes(String(o.form)) ? o.form as ObjectForm | DesignForm : null,
     secondary: typeof o.secondary === 'string' && HEX.test(o.secondary) ? o.secondary.toLowerCase() : null,
   };
 }
@@ -98,6 +107,7 @@ export const COLOUR_SLOTS: Record<string, { main: string; second: string | null 
   SOFA: { main: 'body', second: 'cushion' },
   ARMCHAIR: { main: 'body', second: 'legs' },
   CHAIR: { main: 'body', second: 'legs' },
+  RUG: { main: 'body', second: 'accent' },
 };
 
 /** The slot colours a piece is drawn in, with what was seen applied to the right parts. */

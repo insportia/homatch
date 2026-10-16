@@ -10,6 +10,7 @@ import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import {
   assessFinancialEntityWait, beginWait, unavailableEntityResult,
   type WatchdogState,
+  stallLimitsFor,
 } from '../_shared/verifyWatchdog.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import { notify } from '../_shared/notify.ts';
@@ -18,6 +19,10 @@ import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/in
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
+import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
+import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
+import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
+import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -25,9 +30,18 @@ import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 // _shared/providerSwitch.ts, exactly as Find Buyers reads it.
 import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
 import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
-import { pgSafe, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
+import { parseCadastral } from '../../../src/verify/intelligence/propertyIdentity.ts';
+import { officialUnitOverlay, unitVerification } from '../../../src/verify/intelligence/unitIdentity.ts';
+import { pgSafe, boundWorkerJob, currentOfficialSource, persistOfficialTransition as persistOfficialTransitionWith, recoverStalledOfficial as recoverStalledOfficialWith, OFFICIAL_BROWSER_DEADLINE_MS, OFFICIAL_STRAGGLER_GRACE_MS, type PgSafeStats } from '../../../src/verify/officialRecovery.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
+import { VISUAL_ASSET_MAX } from '../../../src/verify/intelligence/visualAssets.ts';
+import { applyVisualRecovery, needsVisualRecovery, recoverableAttachments, recoveryMarker, storedUnpersistedVisuals, storedVisualRecord, tasApiOf, VISUAL_RECOVERY_SOURCE, type WorkerFileOutcome } from '../../../src/verify/intelligence/visualRecovery.ts';
+import { assessVisualQuality } from '../../../src/verify/intelligence/visualQuality.ts';
+import { freshPhotoAddress, freshPhotoCenter, freshPhotoSubject, freshPhotosDue, freshPhotosNeeded, notRunSearch, officialPhotoDates, type FreshPhotoSearch } from '../../../src/verify/freshPhotos.ts';
+import { geocodeAddress } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
+import { runFreshPhotoSearch } from '../_shared/freshPhotos/search.ts';
+import { ledgerFileFor, documentCachePath, DOCUMENT_BUCKET, DOCUMENT_URL_TTL_SECONDS } from '../../../src/verify/officialDocumentLibrary.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
 import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -47,12 +61,14 @@ import { summariseSources } from '../../../src/verify/intelligence/sourceVersion
 import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
 import { foldMarketplaceIntoLane, marketProfileFromSeed } from '../../../src/verify/marketplaceComparables.ts';
+import { MARKET_REFRESH_MAX_WAIT_MS, failedMarker, foldMarketRefresh, needsMarketRefresh, rebuildRequest, refreshProfile, startedMarker } from '../../../src/verify/marketRefresh.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { subjectGeoFromSeed } from '../../../src/verify/search/subjectGeo.ts';
 import { httpCrawlFetcher } from '../../../src/verify/search/httpCrawlFetcher.ts';
 import { buildCodeDiscoverySeeds } from '../../../src/research-core/market/codeDiscoveryTargets.ts';
 import { SEED_DOMAINS } from '../../../src/research-core/market/discoverySources.ts';
 import { computeSections } from '../../../src/verify/sections.ts';
+import { expiredReportRefusal, expiredReportRefusalById } from '../_shared/retentionGuard.ts';
 import { portalHealthUpdates, mergeSourceRow } from '../../../src/verify/sourceHealth.ts';
 import {
   consumptionFromUsage,
@@ -1070,7 +1086,13 @@ async function resolveSourceUrls(list: any[]): Promise<any[]> {
   return dedupe(resolved.filter((s: any) => !isLoginPageUrl(s?.url)), (x) => x.url);
 }
 
-const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT']);
+// SAME_DISTRICT / WIDER_MARKET (2026-10-10 market gate): the deterministic
+// lane and the MyHome/SS.ge fold now label district context and citywide
+// stock honestly; without these here every one of them was relabelled
+// PEER_PROJECT on the way into the report. A PEER_PROJECT label alone is no
+// longer trusted downstream (marketIntelligence.scoreComparable requires a
+// nearby, same-segment named development).
+const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT', 'SAME_DISTRICT', 'WIDER_MARKET']);
 // normalizeComparableTier() (2026-09-07 market-comparable model, Verify
 // mandate item 7): the MARKET prompt asks the model for a mandatory
 // three-tier "comparableType" per comparable (see prompt() 'MARKET') —
@@ -1086,7 +1108,7 @@ const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_
 // rerun cost") must still show a sensible tier rather than silently
 // defaulting every historical comparable to PEER_PROJECT, so
 // sameProject === true maps to SAME_PROJECT for those legacy records.
-function normalizeComparableTier(c: any): 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT' {
+function normalizeComparableTier(c: any): 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT' | 'SAME_DISTRICT' | 'WIDER_MARKET' {
   if (VALID_COMPARABLE_TIERS.has(c?.comparableType)) return c.comparableType;
   if (c?.sameProject === true) return 'SAME_PROJECT';
   return 'PEER_PROJECT';
@@ -1343,6 +1365,10 @@ interface AggregatedTasFact {
   // never invented when the project is genuinely a single building.
   block: string | null;
 }
+function buildingFromCode(code: string | null): { parcel: string; building: string; section: string | null; unit: string | null; source: 'CADASTRAL_CODE' } | null {
+  const p = parseCadastral(code);
+  return p && p.building ? { parcel: p.parcel, building: p.building, section: p.section, unit: p.unit, source: 'CADASTRAL_CODE' } : null;
+}
 function aggregateTasTechnicalFacts(browserOfficial: any): AggregatedTasFact[] {
   const out: AggregatedTasFact[] = [];
   for (const r of browserOfficial?.results || []) {
@@ -1559,7 +1585,10 @@ function searchBudgetFor(j: any, s: Stage): string {
     if (stage === 'market') {
       const mp = j?.result_json?._reusePlan?.marketPlan;
       if (mp && typeof mp.searchBudget === 'number') {
-        if (!mp.refresh && mp.searchBudget === 0) {
+        // No listing reached this job (lane failed or off): a snapshot band
+        // is not a substitute for comparables the buyer can read.
+        const haveComparables = Array.isArray(j?.result_json?._marketComparables) && j.result_json._marketComparables.length > 0;
+        if (!mp.refresh && mp.searchBudget === 0 && haveComparables) {
           return [
             '',
             'SEARCH BUDGET: none needed for this step.',
@@ -1573,8 +1602,8 @@ function searchBudgetFor(j: any, s: Stage): string {
         return searchBudgetInstruction({
           stage: 'market',
           level: 'TARGETED',
-          searchBudget: mp.searchBudget,
-          reason: String(mp.summary ?? ''),
+          searchBudget: haveComparables ? mp.searchBudget : Math.max(4, Number(mp.searchBudget) || 0),
+          reason: haveComparables ? String(mp.summary ?? '') : 'no comparable listings reached this verification yet; find current ones',
         } as any);
       }
     }
@@ -1611,10 +1640,12 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `ASSET CLASS (v28): from the actual evidence gathered, classify this property's assetClass as one of APARTMENT_IN_PROJECT / PRIVATE_RESALE / PRIVATE_HOUSE / LAND / COMMERCIAL / RENTAL / UNDER_CONSTRUCTION / COMPANY_OWNED / MIXED_OR_UNKNOWN — never assume every property has the same evidence shape (a private resale apartment has no developer/company research to do; a land parcel has no utilities/commissioning; a company-owned unit may). Use MIXED_OR_UNKNOWN rather than guessing when the evidence does not clearly indicate one category. This classification only shapes how deep/which categories of research make sense — it never itself becomes a customer-facing risk statement. ` +
       `Also research the marketed PROJECT/DEVELOPMENT this property likely belongs to (its public name, developer, physical building/complex) as thoroughly as public web evidence allows — this is a separate concept from the bare cadastral/unit identity. ` +
       `For construction/completion, keep THREE separate concepts and never merge them: declaredCompletionTarget (a developer/marketing target date, labeled as declared, never as actual), observedConstructionStatus (what current public evidence — photos, posts, listings — shows about physical progress right now), and commissioningStatus (ONLY "OFFICIALLY_CONFIRMED" with an evidenceUrl when a specific authoritative document/act says the building was put into exploitation — otherwise always "NOT_INDEPENDENTLY_VERIFIED", regardless of how complete the building looks). ` +
+      `BRAND AND SOCIAL PAGES: search the web for the developer's and the project's OFFICIAL Facebook page (and Instagram). Return facebookPage.url exactly as found (https://www.facebook.com/...) and facebookPage.name exactly as the page title appears on Facebook — that name is what its ads run under. brandName is the short consumer brand the project is marketed under (e.g. "Villion"), not the legal entity. Only pages that clearly belong to this developer/project; null otherwise. ` +
+      `DESIGN TEAM: every professional or firm publicly credited on the project — architect, architectural bureau, structural engineer/constructor, builder/general contractor, landscape designer, interior designer, technical supervision — as designTeam [{role,name}] in the answer language; omit roles nobody is credited for. ` +
       `If you find publicly evidenced information that a specific bank offers mortgage/financing for this exact project or developer (e.g. a bank's own published partner-project list, a developer page naming a partner bank), add it to project.facts as an ordinary evidenced fact (bank name + program if known) — never invent or assume standard bank financing exists just because a project is common practice; omit it entirely if unevidenced. ` +
       `UTILITIES MATRIX: from the listing text, project page, or any document you actually read, report whether electricity/water/gas/sewage/internet connections are explicitly mentioned for this exact unit/property. Each utility's status may be "CONFIRMED_CONNECTED" or "CONFIRMED_NOT_CONNECTED" ONLY when the source explicitly states that; otherwise it MUST be "NOT_MENTIONED" — never infer a utility is connected merely because the building looks complete or other units mention it. If nothing at all discusses utilities, return utilitiesMatrix as null rather than five NOT_MENTIONED entries. ` +
       `Return {"entity":{"name":string,"type":string,"confidence":"HIGH"|"MEDIUM"|"LOW"},"assetClass":"APARTMENT_IN_PROJECT"|"PRIVATE_RESALE"|"PRIVATE_HOUSE"|"LAND"|"COMMERCIAL"|"RENTAL"|"UNDER_CONSTRUCTION"|"COMPANY_OWNED"|"MIXED_OR_UNKNOWN","identifiedParent":object|null,"exactUnit":{"code":string|null,"verified":boolean,"note":string}|null,"building":object|null,` +
-      `"project":{"name":string|null,"aliases":string[],"address":string|null,"developer":string|null,"developerCompany":string|null,"website":string|null,"buildings":string|null,"floors":string|null,"unitCounts":string|null,"declaredCompletionTarget":string|null,"observedConstructionStatus":string|null,"commissioningStatus":{"status":"OFFICIALLY_CONFIRMED"|"NOT_INDEPENDENTLY_VERIFIED","evidenceUrl":string|null},"architect":string|null,"contractors":string[],"amenities":string[],"facts":string[]}|null,` +
+      `"project":{"name":string|null,"aliases":string[],"address":string|null,"developer":string|null,"developerCompany":string|null,"website":string|null,"brandName":string|null,"facebookPage":{"url":string|null,"name":string|null}|null,"instagramUrl":string|null,"designTeam":[{"role":string,"name":string}],"buildings":string|null,"floors":string|null,"unitCounts":string|null,"declaredCompletionTarget":string|null,"observedConstructionStatus":string|null,"commissioningStatus":{"status":"OFFICIALLY_CONFIRMED"|"NOT_INDEPENDENTLY_VERIFIED","evidenceUrl":string|null},"architect":string|null,"contractors":string[],"amenities":string[],"facts":string[]}|null,` +
       `"utilitiesMatrix":{"electricity":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"water":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"gas":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"sewage":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null},"internet":{"status":"CONFIRMED_CONNECTED"|"CONFIRMED_NOT_CONNECTED"|"NOT_MENTIONED","note":string|null}}|null,` +
       `"facts":string[],"expansionTerms":string[],"unverified":string[]}.`
     );
@@ -1718,10 +1749,17 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
      * portal blocked — this is empty and the stage behaves exactly as it
      * always did. The fallback is the previous behaviour, not a gap.
      */
-    const laneBrief = p._marketComparables && p._marketLane
+    // Comparables can arrive without a lane summary (the portal lane threw
+    // after the MyHome/SS.ge listings were folded in): brief them anyway.
+    const laneComparables = Array.isArray(p._marketComparables) ? p._marketComparables : [];
+    const laneBrief = laneComparables.length || (p._marketComparables && p._marketLane)
       ? marketLaneBrief({
-          comparables: p._marketComparables,
-          summary: p._marketLane,
+          comparables: laneComparables,
+          summary: p._marketLane || {
+            advertisements: laneComparables.length, uniqueProperties: laneComparables.length, crossPosted: 0, uncertainDuplicates: 0,
+            independentSourceCount: new Set(laneComparables.map((c: any) => c?.source ?? c?.sourceFamily ?? c?.url?.split('/')[2])).size,
+            portals: [], widened: false,
+          },
           conflicts: p._marketConflicts || [],
         } as any) + '\n\n'
       : '';
@@ -1765,11 +1803,11 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `WHEN TO STOP SEARCHING: the analysis downstream needs at least 2 priced, ACTIVE, residential comparables in a band before that band can be used at all. Once you hold at least 3 such comparables spread over at least 2 bands - including the most specific band you were able to populate - you have what the report needs, and further searching has measurably NOT improved these reports. Stop there and write up what you found. This is a stopping condition, not a quota: if a band you have already searched is genuinely thin, or something you found contradicts what you were told, keep going. Being right still outranks being cheap. ` +
       `RELEVANCE STILL BOUNDS IT: never pad a band with listings that are not actually comparable, never invent a listing you cannot support with a specific deep URL, and never describe a band you did not search. If a band genuinely has nothing findable, return nothing for it — an honestly empty band is correct, a fabricated one is not. ` +
       `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt. If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
-      `COMPARABLE TIER (mandatory per comparable, 2026-09-07 market-comparable model): classify "comparableType" as exactly one of "SAME_PROJECT" (literally the same building/project/complex as the subject — if the project has named blocks/phases/buildings and you can tell the comparable is a DIFFERENT block/phase than the subject's own, prefer "MICRO_LOCATION" instead, since a different block of the same complex is not the same physical structure), "MICRO_LOCATION" (a different project but the same street/immediate neighborhood/walking-distance area), or "PEER_PROJECT" (a comparable development elsewhere in the city included only for broader market context). This is a REQUIRED classification, never omitted or left to infer downstream — when genuinely uncertain between MICRO_LOCATION and PEER_PROJECT, use PEER_PROJECT (the more conservative, less specific claim). ` +
+      `COMPARABLE TIER (mandatory per comparable, 2026-09-07 market-comparable model): classify "comparableType" as exactly one of "SAME_PROJECT" (literally the same building/project/complex as the subject — if the project has named blocks/phases/buildings and you can tell the comparable is a DIFFERENT block/phase than the subject's own, prefer "MICRO_LOCATION" instead, since a different block of the same complex is not the same physical structure), "MICRO_LOCATION" (a different project but the same street/immediate neighborhood/walking-distance area), "PEER_PROJECT" (a genuinely comparable named development in the SAME or an ADJACENT neighbourhood, in a similar segment and price class), or "WIDER_MARKET" (anything elsewhere in the city — background context only, never a valuation basis). This is a REQUIRED classification, never omitted or left to infer downstream — when genuinely uncertain, use the WIDER tier (WIDER_MARKET over PEER_PROJECT, PEER_PROJECT over MICRO_LOCATION): the less specific claim is the conservative one. ` +
       `LISTING STATUS (mandatory per comparable — market price MUST reflect what is on the market NOW, never a stale figure): set "listingStatus" from what the page/evidence actually shows — "ACTIVE" only when the listing itself currently reads as available/on the market (no "sold"/"removed"/"no longer available"/"archived" marker, and not a stale page you cannot confirm is still live), "EXPIRED" or "REMOVED" or "SOLD" when the evidence itself says so, otherwise "UNKNOWN" (the safe default when you genuinely cannot tell — never guess ACTIVE just because a page loaded). Also set "propertyType" ("RESIDENTIAL","COMMERCIAL","LAND","OTHER") whenever the evidence supports it. Only ACTIVE + RESIDENTIAL comparables may ever be used for a *current* price range — everything else exists only for historical/contextual reference, so do not skip this field to save effort. ` +
       `SUBJECT PROPERTY'S OWN PRICE (separate from comparables): if — and only if — you find the subject property's own price/price-per-sqm specifically evidenced (its own listing, an official document, or public reporting), return it in "subject" below with the exact evidence URL, AND classify it with "priceType": "STARTING" when this is a developer's marketing "starting from" / "from" price for the project (never a specific unit's actual price), "CURRENT_LISTING" when it is a specific unit's own live asking price, "SOLD" when evidence shows it already sold at this price, or "OFFICIAL_DOCUMENT" when it comes from a registry/permit/contract document rather than a marketplace listing. A "STARTING" price must never be presented or treated as the property's current median/typical price — keep it a distinct, separately labeled figure. Never estimate or infer any of this from comparables; leave every field null when no such evidence exists for THIS specific property. ` +
       `PRICE-DRIVER EVIDENCE (mandatory, qualitative only — you do NOT compute a median, a percentage, or a CHEAPER/NORMAL/PREMIUM classification; a deterministic step downstream does that arithmetic from the numeric comparables/subject fields above): list the concrete, evidence-backed factors relevant to how this property's price compares to its market, grounded only in evidence already gathered this run (Identity/Official/PublicResearch above, or your own comparables): construction completion stage, remaining inventory/scarcity, availability of internal/developer installment financing, construction materials and structural system, architecture/design and architect reputation, developer reputation, parking availability, floor/view/layout, amenities, location/micro-location, bank financing availability, and current supply of comparable listings. Never state a price driver you cannot support with evidence gathered this run — omit it instead. ` +
-      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"comparableType":"SAME_PROJECT"|"MICRO_LOCATION"|"PEER_PROJECT","listingStatus":"ACTIVE"|"EXPIRED"|"REMOVED"|"SOLD"|"UNKNOWN","propertyType":"RESIDENTIAL"|"COMMERCIAL"|"LAND"|"OTHER"|null}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null,"priceType":"STARTING"|"CURRENT_LISTING"|"SOLD"|"OFFICIAL_DOCUMENT"|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
+      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"comparableType":"SAME_PROJECT"|"MICRO_LOCATION"|"PEER_PROJECT"|"WIDER_MARKET","listingStatus":"ACTIVE"|"EXPIRED"|"REMOVED"|"SOLD"|"UNKNOWN","propertyType":"RESIDENTIAL"|"COMMERCIAL"|"LAND"|"OTHER"|null}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null,"priceType":"STARTING"|"CURRENT_LISTING"|"SOLD"|"OFFICIAL_DOCUMENT"|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
     );
   }
 
@@ -1835,6 +1873,9 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
   // Worker text (extracted documents above all) may hold characters Postgres
   // cannot store: one NUL in a NAPR record froze job c80f7237 for an hour.
   // Made storable here, at the one place worker data enters this function.
+  // Bounded first: a TAS API_FIRST job can carry megabytes of case text, and
+  // scanning all of it on every poll exhausted the edge CPU budget.
+  if (path.startsWith('/research/')) z = boundWorkerJob(z);
   const stats: PgSafeStats = { nul: 0, surrogates: 0 };
   z = pgSafe(z, stats);
   if (stats.nul || stats.surrogates) console.warn(`research-agent: worker ${path} returned ${stats.nul} NUL / ${stats.surrogates} lone-surrogate character(s); removed before storage`);
@@ -1846,7 +1887,7 @@ async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string
   const p = await createOpenAIResponse(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
   return sb
     .from('research_jobs')
-    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai' }, error: null, updated_at: now() })
+    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai', startedAt: now() }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
 /** A jsonb admin setting, as the value it holds (adminSetting() stringifies). */
@@ -1877,6 +1918,136 @@ async function tasImplementationFor(sb: any): Promise<{ active: string; fallback
 }
 
 /*
+ * EXECUTION MODE (Admin setting verify_execution_mode).
+ *
+ * "LEGACY" (default): one in-memory worker job per Verify, as before.
+ * "QUEUE": each official source is a durable verify_tasks row (migration
+ * 20261026090000) that any worker replica claims under a lease — survives
+ * restarts and deploys, is retried with backoff, and is shared between jobs
+ * asking the same question. Cadastral jobs only; property-mode jobs keep the
+ * legacy path. Switching back to LEGACY affects new jobs only: a job started
+ * in QUEUE mode finishes in QUEUE mode (its result_json carries the marker).
+ */
+async function verifyExecutionMode(sb: any): Promise<'LEGACY' | 'QUEUE'> {
+  const v = await adminSettingJson(sb, 'verify_execution_mode');
+  return v === 'QUEUE' || v?.mode === 'QUEUE' ? 'QUEUE' : 'LEGACY';
+}
+
+/** Enqueue planned tasks; idempotent per (job, dedupe key). */
+async function enqueueTasks(sb: any, jobId: string, plans: TaskPlan[]): Promise<any[]> {
+  const out: any[] = [];
+  for (const t of plans) {
+    const { data, error } = await sb.rpc('verify_task_enqueue', {
+      p_job_id: jobId, p_source: t.source, p_dedupe_key: t.dedupeKey, p_scope_key: t.scopeKey, p_input: t.input, p_priority: t.priority,
+    });
+    if (error) throw new Error(`verify_task_enqueue ${t.source}: ${error.message}`);
+    out.push(data);
+  }
+  return out;
+}
+
+const QUEUE_TASK_COLUMNS = 'id,source,dedupe_key,state,input,result,error,reused,attempts,created_at,started_at,finished_at,updated_at';
+async function jobTasks(sb: any, jobId: string): Promise<QueueTaskRow[]> {
+  const { data, error } = await sb.from('verify_tasks').select(QUEUE_TASK_COLUMNS).eq('job_id', jobId).order('created_at', { ascending: true });
+  if (error) throw new Error(`verify_tasks read: ${error.message}`);
+  return data ?? [];
+}
+
+/** Stop this job's queued work (shared producers other jobs wait on keep running). */
+async function cancelJobTasks(sb: any, jobId: string, taskId: string | null = null): Promise<void> {
+  try {
+    await sb.rpc('verify_job_cancel_tasks', { p_job_id: jobId, p_task_id: taskId });
+  } catch {
+    /* best effort: the tasks' results are simply not read */
+  }
+}
+
+/*
+ * VERIFY CREDIT BUDGET (migration 20261026100000).
+ *
+ * admin_settings.verify_billing_enabled switches it on. The money itself is
+ * decided in SQL (verify_billing_open / _state / _close over the existing
+ * wallet): this file only says WHEN — at start, on every status read (live
+ * usage, keeps a long reservation alive), on stop, and when a job ends.
+ */
+async function verifyBillingEnabled(sb: any): Promise<boolean> {
+  const v = await adminSettingJson(sb, 'verify_billing_enabled');
+  return v === true || v === 'true';
+}
+async function billingStateFor(sb: any, jobId: string): Promise<any | null> {
+  try {
+    const { data, error } = await sb.rpc('verify_billing_state', { p_job_id: jobId });
+    return error ? null : data ?? null;
+  } catch {
+    return null;
+  }
+}
+async function closeBilling(sb: any, jobId: string, outcome: 'COMPLETE' | 'STOPPED' | 'PARTIAL' | 'SYSTEM_FAILED'): Promise<any | null> {
+  try {
+    const { data, error } = await sb.rpc('verify_billing_close', { p_job_id: jobId, p_outcome: outcome });
+    if (error) {
+      console.error(`research-agent: verify_billing_close ${jobId} ${outcome}`, error.message);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.error(`research-agent: verify_billing_close ${jobId} ${outcome}`, e);
+    return null;
+  }
+}
+/** Credits an optional paid stage could cost at most, priced the Verify way. */
+async function stageCeilingCredits(sb: any, maxProviderUsd: number): Promise<number> {
+  try {
+    const { data: landed } = await sb.rpc('verify_cost_cents', { p_raw_cents: Math.round(maxProviderUsd * 10000) / 100 });
+    const { data: price } = await sb.rpc('verify_price_for_cost', { p_landed_cents: landed });
+    const credits = Number(price?.credits);
+    return Number.isFinite(credits) ? credits : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/*
+ * INCREMENTAL BUDGET GATE (owner rule 2026-10-10).
+ *
+ * Before each chargeable stage the server asks verify_budget_gate whether the
+ * stage's estimated maximum still fits what the customer authorised. GO runs
+ * it. AWAIT (another +25 is possible) and LIMIT (the 100-credit maximum is
+ * reached) hold the job instead: progress is kept, the job is PAUSED with the
+ * reason, and the open session is closed — what was incurred is charged and
+ * the rest released, so nothing is held while the customer decides. Only the
+ * customer's explicit approval (action 'continue' with extend) authorises
+ * more. No billing (feature off, legacy job) or an unreadable gate never
+ * blocks: the stage runs as before, and wallet_settle still caps the charge.
+ */
+async function budgetGate(sb: any, jobId: string, stage: string): Promise<'GO' | 'AWAIT' | 'LIMIT' | 'NONE'> {
+  try {
+    const { data, error } = await sb.rpc('verify_budget_gate', { p_job_id: jobId, p_stage: stage });
+    if (error) return 'NONE';
+    const d = data?.decision;
+    return d === 'GO' || d === 'AWAIT' || d === 'LIMIT' ? d : 'NONE';
+  } catch {
+    return 'NONE';
+  }
+}
+/** True when the job was held for the customer's budget decision (nothing launched). */
+async function holdForBudget(sb: any, j: any, gateStage: string, resume?: { stage: string; status?: string }): Promise<boolean> {
+  const decision = await budgetGate(sb, j.id, gateStage);
+  if (decision !== 'AWAIT' && decision !== 'LIMIT') return false;
+  const p = j.result_json || {};
+  p._pause = {
+    status: resume?.status ?? j.status, stage: resume?.stage ?? j.stage, at: now(),
+    reason: decision === 'AWAIT' ? 'BUDGET' : 'BUDGET_LIMIT', gateStage,
+    queue: !!(p._worker?.queue || p._queueMode),
+  };
+  const { data: held } = await sb.from('research_jobs')
+    .update({ status: 'PAUSED', stage: 'PAUSED', paused_at: now(), pause_requested_at: null, driver_claimed_at: null, result_json: p, progress: { ...(j.progress || {}), phase: decision === 'AWAIT' ? 'awaiting_budget' : 'budget_limit' }, updated_at: now() })
+    .eq('id', j.id).eq('status', j.status).eq('stage', j.stage).select('id');
+  if (held?.length) await closeBilling(sb, j.id, 'STOPPED');
+  return true;
+}
+
+/*
  * AUTOMATIC CAPTCHA POLICY (Admin setting verify_captcha_auto_solve).
  *
  * Forwarded to the official worker with every job; the worker's shared
@@ -1892,7 +2063,7 @@ async function captchaPolicyFor(sb: any): Promise<{ enabled: boolean; providers:
     enabled: o.enabled !== false,
     providers: { mygov: o.providers?.mygov !== false, rstax: o.providers?.rstax !== false },
     maxAttemptsPerProvider: n(o.maxAttemptsPerProvider, 1, 3, 2),
-    maxSolvesPerJob: n(o.maxSolvesPerJob, 1, 6, 3),
+    maxSolvesPerJob: n(o.maxSolvesPerJob, 1, 24, 12),
   };
 }
 
@@ -1975,6 +2146,17 @@ async function advanceDeveloperAds(sb: any, j: any): Promise<boolean> {
         p.developerAds = view;
         p._developerAds = { state: 'CACHED', done: true, cacheKey, cachedFrom: cached[0].id, finishedAt: now(), ads: hit.ads };
         return false;
+      }
+      // Inside the customer's authorised budget only: when what is left could
+      // not cover this stage at its own ceiling, it is not run, and the report
+      // says advertising was not checked (BUDGET_LIMIT) — never silently.
+      // Another +25 possible → the customer decides (held); at the 100-credit
+      // maximum the stage is skipped and disclosed.
+      const gate = await budgetGate(sb, j.id, 'DEVELOPER_ADS');
+      if (gate === 'AWAIT' && await holdForBudget(sb, j, 'DEVELOPER_ADS')) return true;
+      const budget = await billingStateFor(sb, j.id);
+      if (gate === 'LIMIT' || (budget && budget.state === 'ACTIVE' && !optionalStageFits(budget, await stageCeilingCredits(sb, policy.maxChargeUsd)))) {
+        return finishDeveloperAds(p, 'BUDGET_LIMIT', { cacheKey }, [], identity, policy);
       }
       // Exactly one paid run per job: claim the stage atomically before spending.
       // A concurrent advance (client poll vs background driver) loses the claim and waits.
@@ -2069,6 +2251,15 @@ async function recordDeveloperAdsCost(db: any, job: any, run: any, billedItems: 
 async function startBrowser(sb: any, j: any): Promise<any> {
   const tasImplementation = await tasImplementationFor(sb);
   const captchaPolicy = await captchaPolicyFor(sb);
+  if (j.mode === 'cadastral' && (await verifyExecutionMode(sb)) === 'QUEUE') {
+    const plans = officialTaskPlan({ mode: j.mode, query: j.query }, { tasImplementation, captchaPolicy });
+    await enqueueTasks(sb, j.id, plans);
+    const p = j.result_json || {};
+    // `_worker` keeps the shape every deadline/stall guard already reads;
+    // `queue: true` routes polling to the task rows instead of the worker.
+    p._worker = { jobId: `queue:${j.id}`, queue: true, startedAt: new Date().toISOString(), tasImplementation };
+    return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'BROWSER_WAITING', result_json: p, progress: { phase: 'official_browser', percent: 34, provider: 'queue', sourcesCompleted: 0, sourcesTotal: plans.length }, updated_at: now() }).eq('id', j.id);
+  }
   const r = await wf('/research', 'POST', { query: j.query, mode: j.mode, tasImplementation, captchaPolicy });
   const p = j.result_json || {};
   p._worker = {
@@ -2188,15 +2379,51 @@ async function startVerifyMarketplace(db: any, p: any, seed: any): Promise<void>
 
 const VERIFY_MARKET_MAX_WAIT_MS = 6 * 60 * 1000;
 
+/*
+ * THE SUBJECT AS IT IS KNOWN AT FOLD TIME (2026-10-10 market gate).
+ *
+ * The worker search starts at the top of pollBrowser, often before identity,
+ * TAS or public research have named the project, its district or its
+ * coordinates. Tiering the adverts against that early, empty subject is how
+ * nearby adverts lost their distance. So at fold time — including the
+ * MARKET_READY re-run — any field still missing is filled from a fresh seed
+ * of the job as it stands now. Values known at start are never replaced, and
+ * stage order is unchanged. The headline itself is still only computed at
+ * synthesis (marketIntelligence.buildMarketIntelligence).
+ */
+function marketSubjectNow(j: any, p: any, started: any): { project: string | null; latitude: number | null; longitude: number | null; district: string | null } {
+  const base = { project: null, latitude: null, longitude: null, district: null, ...(started ?? {}) };
+  if (!j) return base;
+  try {
+    const seed: any = buildResearchSeed({
+      jobId: String(j.id),
+      query: j.query,
+      mode: (j.mode ?? j.type) === 'cadastral' ? 'cadastral' : 'property',
+      result: p,
+      knownFacts: {},
+    });
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const coord = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    return {
+      project: base.project ?? str(seed?.project?.name?.value),
+      latitude: base.latitude ?? coord(seed?.location?.latitude?.value),
+      longitude: base.longitude ?? coord(seed?.location?.longitude?.value),
+      district: base.district ?? str(seed?.location?.subDistrict?.value) ?? str(seed?.location?.district?.value),
+    };
+  } catch {
+    return base;
+  }
+}
+
 /** Poll once; fold when finished. Returns true while still waiting. */
-async function pollVerifyMarketplace(p: any): Promise<boolean> {
+async function pollVerifyMarketplace(p: any, j: any = null): Promise<boolean> {
   const m = p?._verifyMarket;
   if (!m || m.done || !m.jobId) return false;
   try {
     const r = await wf(`/verify/market/${m.jobId}`);
     if (r.code === 200 && r.data?.status === 'COMPLETE') {
       const lane = Array.isArray(p._marketComparables) ? p._marketComparables : [];
-      const folded = foldMarketplaceIntoLane(lane, r.data, m.subject ?? { project: null, latitude: null, longitude: null, district: null }, now());
+      const folded = foldMarketplaceIntoLane(lane, r.data, marketSubjectNow(j, p, m.subject), now());
       p._marketComparables = folded.comparables;
       p._marketplaceLedger = { ...folded.ledger, profile: m.profile, durationMs: Date.now() - Date.parse(m.startedAt) };
       p._verifyMarket = { ...m, state: 'FOLDED', done: true };
@@ -2223,50 +2450,336 @@ const lane0 = (p: any) => (Array.isArray(p?._marketComparables) ? p._marketCompa
 /*
  * OFFICIAL TAS VISUALS → PRIVATE STORAGE, KEYED BY CONTENT HASH.
  *
- * The worker selects ≤ 6 genuine visuals from TAS attachments and holds the
- * bytes briefly. They are copied once into the private bucket under their
- * sha256, so an unchanged visual is never re-uploaded or re-analysed for a
- * later job (the hash IS the cache key). The customer only ever receives a
- * short-lived signed URL, minted by verify-synthesis at read time.
- * Marketplace photographs never pass through here.
+ * The worker selects a bounded, diverse set of official visuals from TAS
+ * attachments (≤ VISUAL_ASSET_MAX: renders, photos, rendered drawing pages)
+ * and holds the bytes briefly. They are copied once into the private bucket
+ * under their sha256, so an unchanged visual is never re-uploaded or
+ * re-analysed for a later job (the hash IS the cache key). The customer only
+ * ever receives a short-lived signed URL, minted by verify-synthesis at read
+ * time. Provenance, classification and identity hints travel with each
+ * record; the customer-facing scope is decided in tasIntelligence against
+ * the requested unit. Marketplace photographs never pass through here.
  */
 const VISUAL_BUCKET = 'verify-official-visuals';
+/** Legacy (non-queue) copy budget: never let visuals starve the poll. */
+const VISUAL_COLLECT_BUDGET_MS = 60_000;
+const VISUAL_COLLECT_BYTES_MAX = 96 * 1024 * 1024;
 async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
   try {
     const tas = (w?.results || []).find((r: any) => r?.source === 'tas' && r?.tasApi);
-    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 6) : [];
+    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, VISUAL_ASSET_MAX) : [];
     if (!visuals.length) return;
+    const t0 = Date.now();
+    let bytesCopied = 0;
     const out: any[] = [];
+    const failures: string[] = [];
+    const inBucket = async (id: string) => {
+      const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: id, limit: 1 });
+      return Array.isArray(data) && data.length > 0;
+    };
     for (const v of visuals) {
       if (!/^[a-f0-9]{64}$/.test(String(v?.id || ''))) continue;
       const ext = v.mime === 'image/png' ? 'png' : 'jpg';
       const path = `tas/${v.id}.${ext}`;
       let stored = false;
-      try {
+      if (w?.view === 'queue') {
+        // Queue mode: the worker replica that read TAS stored the bytes itself
+        // and says so; only an unconfirmed record costs a listing.
+        stored = v.stored === true || (await inBucket(v.id));
+      } else if (Date.now() - t0 > VISUAL_COLLECT_BUDGET_MS || bytesCopied > VISUAL_COLLECT_BYTES_MAX) {
+        stored = await inBucket(v.id);
+      } else try {
         const res = await fetch(`${WORKER}/research/visual/${v.id}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(20000) });
         if (res.ok) {
           const bytes = new Uint8Array(await res.arrayBuffer());
+          bytesCopied += bytes.length;
           const up = await sb.storage.from(VISUAL_BUCKET).upload(path, bytes, { contentType: v.mime, upsert: false });
           stored = !up.error || /exist|duplicate/i.test(String(up.error?.message || ''));
+          if (!stored) failures.push(`${String(v.id).slice(0, 12)}:${String(up.error?.message || 'upload').slice(0, 60)}`);
         } else if (res.status === 404) {
           // Evicted from the worker's cache: the bucket may still hold it from an earlier job.
-          const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: v.id });
-          stored = Array.isArray(data) && data.length > 0;
+          stored = await inBucket(v.id);
         }
-      } catch {
+      } catch (e) {
+        failures.push(`${String(v.id).slice(0, 12)}:${String((e as any)?.message || e).slice(0, 60)}`);
         stored = false;
       }
       if (!stored) continue;
       out.push({
-        id: v.id, role: v.role, kind: v.kind, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null,
-        mime: v.mime, extraction: v.extraction, storagePath: path,
+        id: v.id, role: v.role, kind: v.kind, category: v.category ?? null, confidence: v.confidence ?? null,
+        classificationBasis: v.classificationBasis ?? null, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null,
+        mime: v.mime, extraction: v.extraction, page: v.page ?? null, storagePath: path,
         documentId: v.documentId, attachedFileId: v.attachedFileId, motionId: v.motionId ?? null, fileName: v.fileName ?? null,
+        identity: v.identity ?? null, source: 'TAS', usage: 'OFFICIAL_RECORD_REFERENCE',
       });
     }
     if (out.length) p.officialVisuals = out;
+    if (failures.length) {
+      console.warn(JSON.stringify({ scope: 'official_visuals', event: 'visual_copy_failed', count: failures.length, sample: failures.slice(0, 3) }));
+      p._officialVisualsError = `copy failed for ${failures.length} visual(s)`;
+    }
   } catch (e) {
     p._officialVisualsError = String((e as any)?.message || e).slice(0, 160);
   }
+}
+
+/*
+ * REFRESH A FINISHED JOB'S MARKET EVIDENCE, ONCE (action `refresh_market`,
+ * owner 2026-10-11). Pure parts: src/verify/marketRefresh.ts.
+ *
+ * Starts the worker's /verify/market search (MyHome through Find Property's
+ * own runtime, SS.ge by its portal district names) with the profile the
+ * original search recorded, and marks result_json._marketRefresh RUNNING.
+ * The cron driver (pollMarketRefreshes) folds the listings in when the
+ * worker finishes and asks verify-synthesis for one rebuild. Free public
+ * sources, no model call, charges nothing.
+ */
+async function startJobMarketRefresh(sb: any, jobId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { data: j, error } = await sb.from('research_jobs').select('id,status,result_json').eq('id', jobId).maybeSingle();
+  if (error) return { status: 500, body: { error: 'read_failed' } };
+  if (!j) return { status: 404, body: { error: 'Job not found' } };
+  if (j.status !== 'COMPLETE') return { status: 409, body: { error: 'job_not_complete' } };
+  const rj = j.result_json && typeof j.result_json === 'object' ? j.result_json : null;
+  if (!rj) return { status: 409, body: { error: 'no_result' } };
+  if (!needsMarketRefresh(rj)) return { status: 200, body: { skipped: true, marker: rj._marketRefresh ?? null } };
+  const enabled = await adminSettingJson(sb, 'verify_marketplace_market_enabled');
+  if (enabled === false || enabled === 'false') return { status: 200, body: { skipped: true, reason: 'disabled' } };
+  const profile = refreshProfile(rj);
+  if (!profile) return { status: 200, body: { skipped: true, reason: 'no_profile' } };
+  const r = await wf('/verify/market', 'POST', { profile });
+  const at = now();
+  const marker = r.code === 202 && r.data?.jobId
+    ? startedMarker(rj._marketRefresh, String(r.data.jobId), profile, at)
+    : { ...failedMarker(rj._marketRefresh, 'FAILED', at, `START_${r.code}`), attempts: (Number(rj._marketRefresh?.attempts) || 0) + 1 };
+  const { error: we } = await sb.from('research_jobs').update({ result_json: { ...rj, _marketRefresh: marker } }).eq('id', jobId).eq('status', 'COMPLETE');
+  if (we) return { status: 500, body: { error: 'write_failed' } };
+  return { status: 202, body: { started: marker.state === 'RUNNING', marker } };
+}
+
+/** Cron step: fold finished market refreshes and request one rebuild each. */
+async function pollMarketRefreshes(sb: any): Promise<void> {
+  try {
+    const { data: jobs, error } = await sb
+      .from('research_jobs')
+      .select('id,query,mode,result_json,synthesis_json,synthesis_state')
+      .eq('status', 'COMPLETE')
+      .eq('result_json->_marketRefresh->>state', 'RUNNING')
+      .limit(3);
+    if (error) { console.error('research-agent drive: market-refresh sweep failed', error); return; }
+    for (const j of jobs ?? []) {
+      const rj = j.result_json ?? {};
+      const m = rj._marketRefresh ?? {};
+      let next: any = null;
+      try {
+        const r = await wf(`/verify/market/${m.workerJobId}`);
+        if (r.code === 200 && r.data?.status === 'COMPLETE') {
+          next = foldMarketRefresh(rj, r.data, marketSubjectNow(j, rj, null), now());
+        } else if (r.code === 404) next = { ...rj, _marketRefresh: failedMarker(m, 'LOST', now()) };
+      } catch { /* transient: next tick */ }
+      if (!next && Date.now() - Date.parse(String(m.startedAt)) > MARKET_REFRESH_MAX_WAIT_MS) next = { ...rj, _marketRefresh: failedMarker(m, 'TIMED_OUT', now()) };
+      if (!next) continue;
+      const { error: we } = await sb.from('research_jobs').update({ result_json: next }).eq('id', j.id).eq('result_json->_marketRefresh->>state', 'RUNNING');
+      if (we) { console.error('research-agent drive: market-refresh write failed', we); continue; }
+      // A refresh the worker lost (restart/deploy) or that timed out starts
+      // again at once while attempts remain — not only on the next rebuild.
+      if (next._marketRefresh?.state !== 'FOLDED' && needsMarketRefresh(next)) {
+        const again = await startJobMarketRefresh(sb, j.id);
+        console.log(JSON.stringify({ scope: 'verify_market_refresh', jobId: j.id, state: 'RESTARTED', status: again.status }));
+      }
+      const folded = next._marketRefresh?.state === 'FOLDED';
+      console.log(JSON.stringify({ scope: 'verify_market_refresh', jobId: j.id, state: next._marketRefresh?.state, before: next._marketRefresh?.before ?? null, after: next._marketRefresh?.after ?? null }));
+      // Only new comparables are worth a rebuild; the report asks for it once.
+      if (folded && Number(next._marketRefresh.after) > Number(next._marketRefresh.before) && j.synthesis_state === 'READY' && j.synthesis_json) {
+        await sb.from('research_jobs')
+          .update({ synthesis_json: { ...j.synthesis_json, _rebuildRequested: rebuildRequest('MARKET_REFRESH', now()) } })
+          .eq('id', j.id).eq('synthesis_state', 'READY');
+      }
+    }
+  } catch (e) {
+    console.error('research-agent drive: market-refresh step failed', e);
+  }
+}
+
+/*
+ * RECOVER SKIPPED OFFICIAL PICTURES (action `recover_visuals`, 2026-10-11).
+ *
+ * A finished job whose TAS run accounted native images as
+ * NOT_PROCESSED_BUDGET (older-case clock) or kept the newest cases' stored
+ * pictures out of its 24-asset gallery gets them back, once, without a new
+ * paid job: the stored ones are appended directly; the skipped attachments
+ * are fetched by id through the worker's POST /verify/tas-files and copied
+ * into the private bucket exactly as collectOfficialVisuals copies them
+ * (GET /research/visual/:sha → upload under tas/<sha>). Records are
+ * APPENDED with provenance; ledger entries become RECOVERED with the
+ * original outcome kept; result_json is written once, guarded by the
+ * `_visualRecovery` marker (compare-and-set). Charges nothing. Pure parts:
+ * src/verify/intelligence/visualRecovery.ts.
+ */
+const VISUAL_RECOVERY_BUDGET_MS = 50_000;
+async function recoverJobVisuals(sb: any, jobId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const t0 = Date.now();
+  const { data: j, error } = await sb.from('research_jobs').select('id,status,result_json').eq('id', jobId).maybeSingle();
+  if (error) return { status: 500, body: { error: 'read_failed' } };
+  if (!j) return { status: 404, body: { error: 'Job not found' } };
+  if (j.status !== 'COMPLETE' || !j.result_json) return { status: 409, body: { error: 'job_not_complete' } };
+  const rj = j.result_json;
+  const prev = recoveryMarker(rj);
+  if (!needsVisualRecovery(rj)) return { status: 200, body: { ok: true, skipped: true, marker: prev } };
+  const at = new Date().toISOString();
+  const stored = storedUnpersistedVisuals(rj, at);
+  const candidates = recoverableAttachments(rj, { exclude: stored.records.map((r: any) => String(r.attachedFileId ?? '')) });
+  const byFile = new Map(candidates.map((c) => [c.attachedFileId, c]));
+  const api = tasApiOf(rj);
+  const records: any[] = [...stored.records];
+  const outcomes: WorkerFileOutcome[] = [];
+  let skippedQuality = stored.skippedQuality;
+  let failure: string | null = null;
+  let incomplete = false;
+  if (candidates.length) {
+    try {
+      const res = await fetch(`${WORKER}/verify/tas-files`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${WT}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parcel: api?.searchCadastralCode ?? null,
+          budgetMs: 32_000,
+          files: candidates.map((c) => ({ attachedFileId: c.attachedFileId, documentId: c.documentId, motionId: c.motionId, fileName: c.fileName, context: c.context, caseCadastralCodes: c.caseCadastralCodes })),
+        }),
+        signal: AbortSignal.timeout(40_000),
+      });
+      if (!res.ok) throw new Error(`worker_http_${res.status}`);
+      const w = await res.json();
+      const visualsById = new Map<string, any>((Array.isArray(w?.visuals) ? w.visuals : []).map((v: any) => [String(v?.id), v]));
+      const copy = async (v: any): Promise<boolean> => {
+        const rec = storedVisualRecord(v, { recoveredAt: at, recoveredFrom: VISUAL_RECOVERY_SOURCE });
+        if (!rec) return false;
+        const r = await fetch(`${WORKER}/research/visual/${rec.id}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(20000) });
+        if (r.ok) {
+          const up = await sb.storage.from(VISUAL_BUCKET).upload(rec.storagePath, new Uint8Array(await r.arrayBuffer()), { contentType: rec.mime, upsert: false });
+          if (up.error && !/exist|duplicate/i.test(String(up.error?.message || ''))) return false;
+        } else {
+          const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: rec.id, limit: 1 });
+          if (!(Array.isArray(data) && data.length)) return false;
+        }
+        const c = byFile.get(String(v.attachedFileId));
+        records.push({ ...rec, exifDate: v.exifDate ?? null, caseDate: c?.caseDate ?? null });
+        return true;
+      };
+      for (const f of Array.isArray(w?.files) ? w.files : []) {
+        const id = String(f?.attachedFileId ?? '');
+        if (!byFile.has(id)) continue;
+        if (f.outcome !== 'RECOVERED') {
+          if (f.outcome === 'DEADLINE' || f.outcome === 'DOWNLOAD_FAILED') incomplete = true;
+          outcomes.push({ attachedFileId: id, outcome: String(f.outcome), reason: f.reason ?? null });
+          continue;
+        }
+        let kept = 0;
+        for (const vid of Array.isArray(f.visualIds) ? f.visualIds : []) {
+          const v = visualsById.get(String(vid));
+          if (!v) continue;
+          if (!assessVisualQuality(v).usable) {
+            skippedQuality++;
+            continue;
+          }
+          if (Date.now() - t0 > VISUAL_RECOVERY_BUDGET_MS) {
+            incomplete = true;
+            break;
+          }
+          if (await copy(v).catch(() => false)) kept++;
+          else incomplete = true;
+        }
+        outcomes.push({ attachedFileId: id, outcome: kept ? 'RECOVERED' : 'NO_VISUAL', visualIds: f.visualIds ?? [] });
+      }
+    } catch (e) {
+      failure = String((e as any)?.message || e).slice(0, 160);
+      incomplete = true;
+    }
+  }
+  const apply = { at, records, outcomes, requested: candidates.length, storedAppended: stored.records.length, skippedQuality, complete: !incomplete, error: failure };
+  const marker = applyVisualRecovery(rj, apply);
+  // Compare-and-set on the marker: a concurrent recovery never writes twice.
+  let q = sb.from('research_jobs').update({ result_json: rj }).eq('id', jobId);
+  q = prev ? q.eq('result_json->_visualRecovery->>at', prev.at) : q.is('result_json->_visualRecovery', null);
+  const { data: wrote, error: werr } = await q.select('id');
+  if (werr) return { status: 500, body: { error: 'write_failed' } };
+  if (!Array.isArray(wrote) || !wrote.length) return { status: 200, body: { ok: true, skipped: true, reason: 'concurrent_recovery' } };
+  console.log(JSON.stringify({ scope: 'official_visuals', event: 'visual_recovery', jobId, ms: Date.now() - t0, ...marker.counts, complete: marker.complete, error: failure }));
+  return { status: 200, body: { ok: true, marker, apply } };
+}
+
+/*
+ * FRESH PHOTOGRAPHS OF THE BUILDING (action `fresh_photos`, 2026-10-11).
+ *
+ * When the official photographs are old, undated or only document-dated,
+ * one or two authentic, recent photographs of the exact building are looked
+ * for in public sources whose reuse is permitted (Wikimedia Commons; Mapillary
+ * when MAPILLARY_ACCESS_TOKEN is set), judged by src/verify/freshPhotos.ts
+ * (distance, heading, names, capture date, licence), copied into the private
+ * bucket under <jobId>/fresh/, and recorded as result_json._freshPhotos
+ * (FreshPhotoSearch). verify-synthesis carries it into the report as
+ * `freshPhotos` and signs the paths at read time. Centre: what the report
+ * already resolved (stored neighbourhood centre, map traversal, cadastral
+ * plan), else a house-precision geocode. At most once per 24 h per job unless
+ * the service role forces it; written once per run (compare-and-set on
+ * checkedAt). Free APIs: a cost row of 0 (ZERO_REAL) is recorded.
+ */
+async function freshJobPhotos(sb: any, jobId: string, force: boolean): Promise<{ status: number; body: Record<string, unknown> }> {
+  const t0 = Date.now();
+  const { data: j, error } = await sb.from('research_jobs').select('id,status,result_json,synthesis_json').eq('id', jobId).maybeSingle();
+  if (error) return { status: 500, body: { error: 'read_failed' } };
+  if (!j) return { status: 404, body: { error: 'Job not found' } };
+  if (j.status !== 'COMPLETE' || !j.result_json) return { status: 409, body: { error: 'job_not_complete' } };
+  const rj = j.result_json;
+  const sj = j.synthesis_json ?? {};
+  const prev = rj._freshPhotos ?? null;
+  const nowD = new Date();
+  if (!freshPhotosDue(prev, nowD.getTime(), force)) return { status: 200, body: { ok: true, skipped: true, freshPhotos: prev } };
+  const checkedAt = nowD.toISOString();
+  let result: FreshPhotoSearch;
+  if (!force && !freshPhotosNeeded(sj, nowD)) {
+    result = notRunSearch('OFFICIAL_PHOTOS_RECENT', checkedAt);
+  } else {
+    let center = freshPhotoCenter(sj, rj);
+    if (!center) {
+      const g = await geocodeAddress(freshPhotoAddress(sj, rj)).catch(() => null);
+      // A street-precision geocode is the street, not the building.
+      if (g && g.precision === 'HOUSE') center = { lat: g.lat, lng: g.lng, basis: 'GEOCODED_ADDRESS' };
+    }
+    result = await runFreshPhotoSearch({
+      jobId,
+      center,
+      subject: freshPhotoSubject(sj, rj),
+      newestOfficialPhotoDate: officialPhotoDates(sj)[0]?.date ?? null,
+      mapillaryToken: Deno.env.get('MAPILLARY_ACCESS_TOKEN') || null,
+      store: async (path, bytes, mime) => {
+        const up = await sb.storage.from(VISUAL_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
+        return !up.error || /exist|duplicate/i.test(String(up.error?.message || ''));
+      },
+    });
+    result.checkedAt = checkedAt;
+  }
+  rj._freshPhotos = result;
+  let q = sb.from('research_jobs').update({ result_json: rj }).eq('id', jobId);
+  q = prev?.checkedAt ? q.eq('result_json->_freshPhotos->>checkedAt', prev.checkedAt) : prev ? q.eq('result_json->_freshPhotos->>searchedAt', String(prev.searchedAt ?? '')) : q.is('result_json->_freshPhotos', null);
+  const { data: wrote, error: werr } = await q.select('id');
+  if (werr) return { status: 500, body: { error: 'write_failed' } };
+  if (!Array.isArray(wrote) || !wrote.length) return { status: 200, body: { ok: true, skipped: true, reason: 'concurrent_search' } };
+  if (result.status !== 'NOT_RUN' && result.status !== 'NO_LOCATION') {
+    const { error: cerr } = await sb.from('cost_events').insert([{
+      provider: 'WIKIMEDIA_COMMONS',
+      operation_type: 'FRESH_PHOTOS_VERIFY',
+      source: `fresh_photos;status=${result.status};sources=${result.sources.filter((s) => s.status === 'SEARCHED').map((s) => s.source).join('+') || 'none'}`,
+      units: result.photos.length,
+      cost_usd: 0,
+      pricing_state: 'ZERO_REAL',
+      success: result.status !== 'FAILED',
+      cache_hit: false,
+      job_id: jobId,
+    }]);
+    if (cerr) console.error(`research-agent: could not record fresh photos cost for ${jobId}: ${cerr.message ?? cerr}`);
+  }
+  console.log(JSON.stringify({ scope: 'fresh_photos', event: 'fresh_photo_search', jobId, ms: Date.now() - t0, status: result.status, photos: result.photos.length, sources: result.sources.map((s) => `${s.source}:${s.status}:${s.candidates}/${s.accepted}`) }));
+  return { status: 200, body: { ok: true, freshPhotos: result } };
 }
 
 /*
@@ -2301,11 +2814,15 @@ function liveCountersFor(j: any): Record<string, number | string | null> {
   };
 }
 
-async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
+async function ensureMarketLane(sb: any, j: any, p: any, checkpoint?: () => Promise<void>): Promise<boolean> {
   if (p._marketLaneAttempted) return false;
+  // Marked as started, not attempted: the flag is stored before the lane
+  // runs, so a tick killed inside it is recognised by the next one.
+  p._marketLaneStartedAt = now();
+  if (checkpoint) await checkpoint().catch(() => {});
   p._marketLaneAttempted = true;
   try {
-    const lane = await runVerifyMarketLane(sb, j, p);
+    const lane = await runVerifyMarketLane(sb, j, p, checkpoint);
     if (lane) {
       p._marketLane = lane.summary;
       p._marketComparables = lane.comparables;
@@ -2331,14 +2848,108 @@ async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
  */
 const persistOfficialTransition = (sb: any, j: any, patch: Record<string, any>) => persistOfficialTransitionWith(sb, j, patch);
 
+/*
+ * THE OFFICIAL DEADLINE COUNTS FROM WHEN THE WORKER STARTED THE JOB.
+ *
+ * The worker admits a bounded number of jobs at once and queues the rest. A
+ * job waiting in line is not slow, it is waiting its turn: its 14 minutes
+ * start at runStartedAt. The wait itself is capped (OFFICIAL_QUEUE_MAX_MS) so
+ * a stuck queue still ends in a report built from the other sources.
+ */
+const OFFICIAL_QUEUE_MAX_MS = 45 * 60 * 1000;
+function officialPastDeadline(j: any, w: any): boolean {
+  const launched = Date.parse(j.result_json?._worker?.startedAt || '');
+  if (w?.status === 'QUEUED') return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_MAX_MS;
+  const started = Date.parse(w?.runStartedAt || '') || launched;
+  if (w?.view === 'queue' && w.stragglersRetrying) {
+    const last = Date.parse(w.lastFinishedAt || '');
+    if (Number.isFinite(last) && Date.now() - last > OFFICIAL_STRAGGLER_GRACE_MS) return true;
+  }
+  return Number.isFinite(started) && started > 0 && Date.now() - started > OFFICIAL_BROWSER_DEADLINE_MS;
+}
+
+/*
+ * OFFICIAL STAGE SPAN (internal, src/verify/performance.ts).
+ *
+ * `_worker` is deleted on every way out of BROWSER_WAITING, and with it the
+ * only record of when the official stage began. The span is kept in
+ * _stageTimes next to the model stages, stamped from server clocks: launch
+ * (startBrowser), the worker's own run start (admission wait in LEGACY mode)
+ * and this transition.
+ */
+function stampOfficialStage(p: any, launch: { startedAt: string | null; queue: boolean }, w: any, outcome: string): void {
+  p._stageTimes = {
+    ...(p._stageTimes || {}),
+    official_browser: { startedAt: launch.startedAt, runStartedAt: typeof w?.runStartedAt === 'string' ? w.runStartedAt : null, finishedAt: now(), outcome, mode: launch.queue ? 'QUEUE' : 'LEGACY' },
+  };
+}
+
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
-  const w = (await wf(`/research/${id}`)).data;
+  const launch = { startedAt: j.result_json?._worker?.startedAt ?? null, queue: !!j.result_json?._worker?.queue };
+  let w: any;
+  let live: ReturnType<typeof officialLiveOf> | null = null;
+  if (j.result_json?._worker?.queue) {
+    /*
+     * QUEUE MODE: the job's task rows ARE the official job. Follow-ups the
+     * rows call for (registry lookups for companies the documents named, the
+     * TAS legacy fallback) are enqueued first, then the rows are read back as
+     * the worker view every branch below already understands.
+     */
+    let rows = await jobTasks(sb, j.id);
+    const more = followUpTasks(rows, {
+      tasImplementation: j.result_json._worker.tasImplementation ?? null,
+      // RS.ge starts in parallel with the slower official sources only when
+      // a company has actually been named (one CAPTCHA lookup, first company).
+      captchaPolicy: rows.some((r) => r.state === 'SUCCEEDED') && !rows.some((r) => r.source === 'rstax') ? await captchaPolicyFor(sb) : null,
+    });
+    if (more.length) {
+      await enqueueTasks(sb, j.id, more);
+      rows = await jobTasks(sb, j.id);
+    }
+    w = queueWorkerView(rows);
+    live = officialLiveOf(rows);
+    // Leaving the official stage unfinished: stop this job's remaining work.
+    if (w.status !== 'COMPLETE' && officialPastDeadline(j, w)) await cancelJobTasks(sb, j.id);
+  } else {
+    /*
+     * Poll the light status view; fetch the full job (documents included) only
+     * when this tick will actually read it: finished, failed, or past the
+     * deadline. An older worker ignores ?view and answers in full.
+     */
+    w = (await wf(`/research/${id}?view=status`)).data;
+    if (w?.view === 'status') {
+      if (w.status === 'COMPLETE' || w.status === 'FAILED' || officialPastDeadline(j, w)) w = (await wf(`/research/${id}`)).data;
+    }
+  }
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
-  await ensureMarketLane(sb, j, j.result_json);
-  await pollVerifyMarketplace(j.result_json);
+  if (live) j.result_json._officialLive = live;
+  /*
+   * CHECKPOINT BEFORE THE MARKET LANE (owner live run 2026-10-11, job
+   * 8ba97da9). The lane is the heaviest thing a tick does; when it ran past
+   * the edge CPU limit the invocation was killed before any write, so its
+   * "attempted once" flag was never stored, the next tick ran it again, and
+   * the row stayed frozen at sourcesCompleted:0 for fourteen minutes while
+   * every official source had already finished. The flag and the live
+   * progress are now stored first: a lane that dies costs one tick, never
+   * the job, and the page sees real progress from the first tick.
+   */
+  const checkpoint = async () => {
+    const patch: Record<string, any> = { result_json: j.result_json, updated_at: now() };
+    if (w?.status !== 'COMPLETE') patch.progress = officialWaitProgress(w);
+    const { error } = await sb.from('research_jobs').update(patch).eq('id', j.id);
+    if (error) console.error('research-agent: official checkpoint failed', error.message);
+  };
+  if (!j.result_json._marketLaneAttempted && j.result_json._marketLaneStartedAt) {
+    // A lane that started on an earlier tick and never reported back was
+    // killed mid-flight. Recorded, and never run again for this job.
+    j.result_json._marketLaneAttempted = true;
+    j.result_json._marketLaneError = 'LANE_INTERRUPTED';
+  }
+  await ensureMarketLane(sb, j, j.result_json, checkpoint);
+  await pollVerifyMarketplace(j.result_json, j);
   if (w.status === 'WAITING_HUMAN') {
     const p = j.result_json || {};
     p._captchaReturnStage = 'BROWSER_WAITING';
@@ -2355,6 +2966,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     };
 
     delete p._worker;
+    stampOfficialStage(p, launch, w, 'FAILED');
 
     const ev = dedupe(
       [...(j.evidence_bundle || []), ...bev(w)],
@@ -2377,13 +2989,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       });
   }
   if (w.status !== 'COMPLETE') {
-    const startedAt = Date.parse(j.result_json?._worker?.startedAt || '');
-    const workerAgeMs = Number.isFinite(startedAt)
-      ? Date.now() - startedAt
-      : 0;
-    const MAX_BROWSER_WAIT_MS = OFFICIAL_BROWSER_DEADLINE_MS;
-
-    if (startedAt && workerAgeMs > MAX_BROWSER_WAIT_MS) {
+    if (officialPastDeadline(j, w)) {
       const p = j.result_json || {};
       const partialResults = Array.isArray(w.results) ? w.results : [];
 
@@ -2394,6 +3000,11 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
       };
 
       delete p._worker;
+      stampOfficialStage(p, launch, w, 'DEADLINE');
+      // Official photos the finished sources already stored still belong in
+      // the report when another source ran out of time (live run 2026-10-10:
+      // tas stored 2 visuals, mygov straggled, the report showed none).
+      await collectOfficialVisuals(sb, w, p);
 
       const ev = dedupe(
         [...(j.evidence_bundle || []), ...bev(w)],
@@ -2427,9 +3038,6 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // FSM transition happens here, only progress/updated_at, computed from
     // the worker's own step bookkeeping (sourceIndex/steps/results) so the
     // frontend's poll sees real, moving progress instead of a frozen value.
-    const total = Array.isArray(w.steps) && w.steps.length ? w.steps.length : null;
-    const done = Array.isArray(w.results) ? w.results.length : 0;
-    const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
 
     /*
      * THE OFFICIAL REGISTRY IS NO LONGER A MUTEX.
@@ -2448,7 +3056,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     // have just filled it in and this branch is the one that repeats.
     return sb.from('research_jobs').update({
       result_json: j.result_json,
-      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null },
+      progress: officialWaitProgress(w),
       updated_at: now(),
     }).eq('id', j.id);
   }
@@ -2466,8 +3074,17 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   p.browserOfficial = { results: w.results || [], completedAt: w.completedAt || now(), historicalComparison: w.historicalComparison || null, discoveredEntities: w.discoveredEntities || [] };
   // Admin diagnostics: which TAS implementation actually produced the result.
   if (w.tasExecution) p._tasExecution = w.tasExecution;
+  stampOfficialStage(p, launch, w, 'COMPLETE');
   await collectOfficialVisuals(sb, w, p);
   return persistOfficialTransition(sb, j, { status: 'CREATED', stage: 'OFFICIAL_READY', result_json: p, evidence_bundle: dedupe([...(j.evidence_bundle || []), ...bev(w)], (x) => x.url), captcha: {}, progress: { phase: 'official_browser_complete', percent: 44, provider: 'playwright' }, updated_at: now() });
+}
+
+/** The row's progress while the official stage runs, from the worker's (or queue's) own bookkeeping. */
+function officialWaitProgress(w: any): Record<string, any> {
+  const total = Array.isArray(w?.steps) && w.steps.length ? w.steps.length : null;
+  const done = Array.isArray(w?.results) ? w.results.length : 0;
+  const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
+  return { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null };
 }
 
 // pickFinancialCandidate() / startFinancialEntity() / pollFinancialEntity() /
@@ -2648,13 +3265,57 @@ function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'
 // reconciliation-stage trigger. Persisted once per chain run so each
 // individual source's CAPTCHA pause/resume doesn't need to re-derive it.
 async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
-  const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  /*
+   * CLAIM BEFORE STARTING THE WORKER.
+   *
+   * The status/resume path and the background driver can both advance the
+   * same row. Both used to call the worker first and write second, so job
+   * c80f7237 started TWO rstax worker jobs 6 ms apart (6570a2ad and an
+   * orphan, d367ab14) — two paid CAPTCHA solves each, one browser never
+   * released. The row now moves to FINANCIAL_ENTITY_WAITING only if it is
+   * still the row this tick read; a tick that loses the claim starts nothing.
+   */
   const p = j.result_json || {};
+  p._financialEntityRequestedFor = { source, name, idCode };
+  p._financialReturnStage = returnStage;
+  let claimedAt: string | null = null;
+  if (j.updated_at) {
+    // The claim carries the remaining queue and return stage, so even a tick
+    // that dies right after it leaves a row the next tick can continue.
+    claimedAt = now();
+    const { data: claimed, error: claimError } = await sb
+      .from('research_jobs')
+      .update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, updated_at: claimedAt })
+      .eq('id', j.id)
+      .eq('updated_at', j.updated_at)
+      .select('id');
+    if (claimError) throw claimError;
+    if (!claimed?.length) return null;
+  }
+  let r: any;
+  try {
+    if (j.mode === 'cadastral' && (j.result_json?._queueMode === true || (await verifyExecutionMode(sb)) === 'QUEUE')) {
+      // QUEUE MODE: the lookup is a durable task, shared with any other job
+      // asking about the same company inside the registry's freshness window.
+      const [task] = await enqueueTasks(sb, j.id, [entityTask(source, { idCode, name }, source === 'rstax' ? await captchaPolicyFor(sb) : null)]);
+      p._queueMode = true;
+      p._worker = { jobId: `task:${task?.id}`, queueTaskId: task?.id ?? null, startedAt: new Date().toISOString() };
+      return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'queue' }, updated_at: now() }).eq('id', j.id);
+    }
+    r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  } catch (e) {
+    // Nothing started: hand the row back exactly as it was, so the caller's
+    // retry handling sees the same stage it always did.
+    if (claimedAt) {
+      await sb.from('research_jobs')
+        .update({ status: j.status, stage: j.stage, result_json: j.result_json, updated_at: now() })
+        .eq('id', j.id).eq('updated_at', claimedAt);
+    }
+    throw e;
+  }
   // The watchdog's clock starts with the job, not with the first poll: a
   // worker that never reports anything at all must still time out.
   p._worker = { jobId: r.data.jobId, wait: beginWait(Date.now()) };
-  p._financialEntityRequestedFor = { source, name, idCode };
-  p._financialReturnStage = returnStage;
   return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
 }
 // processFinancialQueue() (v28, NEW): drives `_financialQueue` (initialized
@@ -2675,6 +3336,10 @@ async function processFinancialQueue(sb: any, j: any): Promise<any> {
     const source = queue.shift()!;
     const cand = pickFinancialCandidate(prior, source);
     if (cand) {
+      // Held for the budget: the lookup goes back to the front of its queue
+      // and continues from there (pollFinancialEntity with no worker job).
+      prior._financialQueue = [source, ...queue];
+      if (await holdForBudget(sb, { ...j, result_json: prior }, 'FINANCIAL_ENTITY', { status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING' })) return;
       prior._financialQueue = queue;
       return startFinancialEntity(sb, { ...j, result_json: prior }, source, cand.name, cand.idCode, returnStage);
     }
@@ -2682,10 +3347,54 @@ async function processFinancialQueue(sb: any, j: any): Promise<any> {
   prior._financialQueue = [];
   return sb.from('research_jobs').update({ status: 'CREATED', stage: returnStage, result_json: prior, updated_at: now() }).eq('id', j.id);
 }
+const QUEUE_ENTITY_MAX_WAIT_MS = 20 * 60 * 1000;
+/*
+ * RS.ge runs 2–7 minutes end to end (production 2026-10-10..11: 124–412 s —
+ * Search #1, a 2Captcha solve, Search #2, RS.ge's answer). A three-minute cap
+ * gave up on runs that were about to succeed. Eight minutes covers the
+ * slowest observed run; RS.ge no longer holds the official stage open
+ * (queueWorkerView), so this wait is spent only after the other official
+ * sources are already in.
+ */
+const QUEUE_RSTAX_MAX_WAIT_MS = 8 * 60 * 1000;
 async function pollFinancialEntity(sb: any, j: any): Promise<any> {
   const prior = j.result_json || {};
   const id = prior?._worker?.jobId;
   if (!id) return processFinancialQueue(sb, j);
+  if (prior._worker?.queueTaskId !== undefined) {
+    // QUEUE MODE. The task carries its own lease, retries and dead-letter, so
+    // the only bound needed here is a generous total one.
+    const taskId = prior._worker.queueTaskId;
+    const { data: row } = taskId ? await sb.from('verify_tasks').select(QUEUE_TASK_COLUMNS).eq('id', taskId).maybeSingle() : { data: null };
+    const v = singleTaskView(row ?? null);
+    const waited = Date.now() - (Date.parse(prior._worker.startedAt || '') || Date.now());
+    if (v.status === 'QUEUED' || v.status === 'RUNNING') {
+      // RS.ge is a CAPTCHA lookup that already had the whole official stage
+      // to run in parallel; the report waits on it at most
+      // QUEUE_RSTAX_MAX_WAIT_MS from here, then records it as temporarily
+      // unavailable (never as a finding).
+      const limit = prior._financialEntityRequestedFor?.source === 'rstax' ? QUEUE_RSTAX_MAX_WAIT_MS : QUEUE_ENTITY_MAX_WAIT_MS;
+      if (waited < limit) return;
+      const requested = prior._financialEntityRequestedFor || {};
+      prior.browserOfficial = prior.browserOfficial || { results: [] };
+      prior.browserOfficial.results = [...(prior.browserOfficial.results || []), unavailableEntityResult({
+        source: requested.source || 'enreg', name: requested.name ?? null, idCode: requested.idCode ?? null,
+        reason: 'GIVE_UP_MAX_WAIT', waitedMs: waited, workerJobId: id, atIso: new Date().toISOString(),
+      })];
+      delete prior._worker;
+      if (taskId) await cancelJobTasks(sb, j.id, taskId);
+      await sb.from('research_jobs').update({ result_json: prior, captcha: {}, updated_at: now() }).eq('id', j.id);
+      return processFinancialQueue(sb, { ...j, result_json: prior });
+    }
+    if (v.results[0]) {
+      prior.browserOfficial = prior.browserOfficial || { results: [] };
+      prior.browserOfficial.results = [...(prior.browserOfficial.results || []), v.results[0]];
+    }
+    delete prior._worker;
+    const ev = dedupe([...(j.evidence_bundle || []), ...bev(v)], (x: any) => x.url);
+    await sb.from('research_jobs').update({ result_json: prior, evidence_bundle: ev, captcha: {}, updated_at: now() }).eq('id', j.id);
+    return processFinancialQueue(sb, { ...j, result_json: prior, evidence_bundle: ev });
+  }
   const w = (await wf(`/research/${id}`)).data;
   if (w.status === 'WAITING_HUMAN') {
     prior._captchaReturnStage = 'FINANCIAL_ENTITY_WAITING';
@@ -2705,6 +3414,7 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
      */
     const assessment = assessFinancialEntityWait(
       prior._worker?.wait as WatchdogState | undefined, w, Date.now(),
+      stallLimitsFor(prior._financialEntityRequestedFor?.source),
     );
     if (!assessment.giveUp) {
       // Persist the clock so the next tick can tell movement from stillness.
@@ -2745,7 +3455,8 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
   // enrichment step, never a reason to fail the whole job — on FAILED, just
   // move on to whatever else remains in the queue.
   if (w.status === 'COMPLETE') {
-    const entityResult = (w.results || [])[0] || null;
+    // RS.ge's raw answer stays in the worker's log/evidence, never in the job row.
+    const entityResult = (w.results || [])[0] ? withoutRsRaw((w.results || [])[0]) : null;
     if (entityResult) {
       prior.browserOfficial = prior.browserOfficial || { results: [] };
       prior.browserOfficial.results = [...(prior.browserOfficial.results || []), entityResult];
@@ -3030,7 +3741,7 @@ function classifyOfficialDocumentKind(doc: { title?: string | null; type?: strin
 }
 function buildLegalStatusMatrix(
   officialStatus: any,
-  opts: { officialDocs: any[]; companyLiquidationSuspected: boolean; debtorRecordFound: boolean; rightsAndRestrictionsStatus: string },
+  opts: { officialDocs: any[]; companyLiquidationSuspected: boolean; debtorRecordFound: boolean; rightsAndRestrictionsStatus: string; taxpayerStatus?: LegalStatusValue },
   lang: string
 ): LegalStatusMatrix {
   const outcome = (source: string) => sourceOutcome(officialStatus, source);
@@ -3046,8 +3757,12 @@ function buildLegalStatusMatrix(
   const debtorRegistryStatus: LegalStatusValue =
     debtorOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : debtorOutcome === 'FOUND' ? 'CONFIRMED_ATTENTION' : debtorOutcome === 'NO_RESULT' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
 
+  // RS.ge: from its own results when the caller has them (rsTaxpayerLegalStatus:
+  // a record → positive, or ATTENTION for a liquidated/suspended status;
+  // pending → human verification; no record / unavailable / failed → not
+  // confirmed — never positive without a record RS.ge returned).
   const rstaxOutcome = outcome('rstax');
-  const taxpayerStatusValue: LegalStatusValue = rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  const taxpayerStatusValue: LegalStatusValue = opts.taxpayerStatus ?? (rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED');
 
   // Property encumbrances draws on rightsAndRestrictions (the more precise,
   // already-evidence-gated signal — see prompt() OFFICIAL_COLLECTION) rather
@@ -3477,6 +4192,28 @@ function applyEvidenceGate(result: any, identity: any, official: any, reconciled
   return result;
 }
 
+/*
+ * The finished job keeps its own task timeline (QUEUE mode): enqueue, first
+ * claim, finish, attempts and the worker's final-attempt stamp per official
+ * task — timing columns only, never inputs or results. One light read at
+ * completion; a failed read keeps the stage times as they were.
+ */
+async function stageTimesWithTasks(sb: any, jobId: string, stageTimes: any): Promise<any> {
+  const base = stageTimes && typeof stageTimes === 'object' ? { ...stageTimes } : null;
+  try {
+    const { data, error } = await sb
+      .from('verify_tasks')
+      .select('id,source,dedupe_key,state,attempts,reused,created_at,started_at,finished_at,exec:result->_exec')
+      .eq('job_id', jobId)
+      .order('created_at', { ascending: true })
+      .limit(60);
+    if (error || !data?.length) return base;
+    return { ...(base || {}), tasks: taskTimeline(data) };
+  } catch {
+    return base;
+  }
+}
+
 async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any> {
   const z = parse(extractOpenAIText(p));
   const sources = extractOpenAISources(p);
@@ -3484,6 +4221,10 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
   prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
+  // STAGE TIMINGS (internal). Each model stage's own span; the gaps between
+  // consecutive spans are the browser, financial-queue and marketplace waits.
+  // Measured, so performance work is argued from data. Stripped for customers.
+  prior._stageTimes = { ...(prior._stageTimes || {}), [s.toLowerCase()]: { startedAt: j.progress?.startedAt ?? null, finishedAt: now() } };
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -3727,7 +4468,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // `requiresManualVerification: false` below with a real, per-category
   // evidence matrix plus one concrete action card for every category that
   // did not reach a confirmed state.
-  const legalStatus = buildLegalStatusMatrix(officialStatus, { officialDocs, companyLiquidationSuspected: companyLiquidation.suspected, debtorRecordFound, rightsAndRestrictionsStatus: rrStatus }, l);
+  const legalStatus = buildLegalStatusMatrix(officialStatus, { officialDocs, companyLiquidationSuspected: companyLiquidation.suspected, debtorRecordFound, rightsAndRestrictionsStatus: rrStatus, taxpayerStatus: rsTaxpayerLegalStatus(prior.browserOfficial?.results) }, l);
   const manualVerificationActions = await applyLinkValidation(buildManualVerificationActions(legalStatus, l));
 
   // overallAssessment (v30): keyStrengths/itemsToVerify are the model's own
@@ -3802,8 +4543,12 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // regression: 01.18.06.019.055.03.01.603 must never become
     // 01.18.06.019.055 in the report merely because evidence was easier to
     // find for the parent).
-    exactUnit: j.mode === 'cadastral' ? { code: j.query, verified: !!i.exactUnit?.verified, note: i.exactUnit?.note || null } : i.exactUnit || null,
-    building: i.building || null,
+    // Verified from the OFFICIAL register for this exact code (unitIdentity.ts), not only the model's
+    // identity answer written before the registry was read (8ba97da9). Never downgraded.
+    exactUnit: j.mode === 'cadastral' ? { code: j.query, verified: !!i.exactUnit?.verified || unitVerification({ browserOfficial: prior.browserOfficial }, j.query).verified, note: i.exactUnit?.note || null } : i.exactUnit || null,
+    // A null model answer must not erase what the code itself states: the
+    // building group of a unit code (…055 · 03 · 01 · 503) is a fact.
+    building: i.building || buildingFromCode(j.mode === 'cadastral' ? j.query : null),
     // v25: reconciledIdentity (see reconcileIdentity() above) enriches the
     // IDENTITY-stage project profile with whatever MARKET corroborated,
     // WITHOUT overwriting a field IDENTITY itself already stated — this is
@@ -3929,6 +4674,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * by reading it mid-run and then finding it gone from the finished row.
      */
     _reusePlan: prior._reusePlan ?? null,
+    _stageTimes: await stageTimesWithTasks(sb, j.id, prior._stageTimes),
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
     // every customer response by sanitizeForCustomer().
@@ -3948,6 +4694,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   };
   result = applyEvidenceGate(result, i, o, reconciledIdentity);
   const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  // The report starts NOW, in parallel with the bookkeeping below, instead of
+  // on the driver's next sweep (see startSynthesisNow).
+  if (!finished?.error) await startSynthesisNow(sb, j.id);
   // The job is already saved. Bookkeeping runs after it and separately, so a
   // failure here can cost us a number but never a customer's report.
   await recordVerificationCost(sb, { id: j.id, result_json: result });
@@ -3991,10 +4740,156 @@ async function notifyVerificationReady(sb: any, j: any): Promise<void> {
   });
 }
 
+/*
+ * ONE ADVANCER PER JOB AT A TIME.
+ *
+ * The status poll and the background driver both step jobs. Their writes
+ * were individually guarded, but two concurrent steps could still both
+ * launch the same stage. A short row lease (research_job_advance_acquire)
+ * makes stepping exclusive: whoever holds it steps, everyone else just reads.
+ * A crashed holder's lease expires on its own. Before the migration is
+ * applied the RPC does not exist; stepping then proceeds exactly as before.
+ */
+const ADVANCE_LEASE_SECONDS = 120;
+async function freshJob(sb: any, id: string): Promise<any | null> {
+  const { data } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+  return data ?? null;
+}
+async function pauseRequested(sb: any, id: string): Promise<boolean> {
+  try {
+    const { data, error } = await sb.from('research_jobs').select('pause_requested_at,status').eq('id', id).maybeSingle();
+    return !error && !!data?.pause_requested_at && isPausable(data.status);
+  } catch {
+    return false; // before the migration: no durable stop intent
+  }
+}
+
+/*
+ * STOP — no new chargeable work, abort what can be aborted, keep everything.
+ *
+ *   AI stage   the background response is cancelled; one that had already
+ *              finished is KEPT (re-read on resume, never paid twice); the
+ *              usage of a cancelled one is recorded, because it was incurred.
+ *   official   queue mode: the job's tasks are cancelled (RUNNING tasks see
+ *              CANCEL at their next heartbeat; shared work other jobs wait on
+ *              keeps running for them). Legacy: the worker job is cancelled
+ *              and what it collected so far is kept for the partial report.
+ *   registry   the interrupted lookup goes back to the front of its queue.
+ * Then the job is PAUSED (conditional on still being live) and the budget
+ * session settles what was incurred and releases the rest.
+ */
+async function applyPause(sb: any, k: string, j: any): Promise<void> {
+  if (!isPausable(j.status)) return;
+  const p = j.result_json || {};
+  const pause: any = {
+    status: j.status, stage: j.stage, at: now(),
+    queue: !!(p._worker?.queue || p._queueMode),
+    captchaReturnStage: p._captchaReturnStage ?? null,
+    tasImplementation: p._worker?.tasImplementation ?? null,
+  };
+  const ai = String(j.stage || '').match(/^(IDENTITY|OFFICIAL_COLLECTION|PUBLIC_RESEARCH|MARKET|SYNTHESIS)_WAITING$/);
+  if (ai && j.response_id) {
+    try {
+      await openaiFetch(`https://api.openai.com/v1/responses/${encodeURIComponent(j.response_id)}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${k}` } });
+    } catch {
+      /* already finished or not cancellable */
+    }
+    try {
+      const r = await getOpenAIResponse(k, j.response_id);
+      if (r?.status === 'completed') pause.responseKept = true;
+      else if (r?.usage) p._cost = { ...(p._cost || {}), [`${ai[1].toLowerCase()}_stopped`]: r.usage };
+    } catch {
+      /* usage unknown: the stage's cost is not recorded rather than invented */
+    }
+  }
+  const official = ['BROWSER_WAITING', 'FINANCIAL_ENTITY_WAITING', 'CAPTCHA_REQUIRED'].includes(j.stage) || j.status === 'WAITING_HUMAN';
+  if (official) {
+    const wid = p._worker?.jobId;
+    if (pause.queue || p._worker?.queueTaskId !== undefined) await cancelJobTasks(sb, j.id);
+    else if (wid) {
+      try {
+        await wf(`/research/${wid}/cancel`, 'POST', {});
+      } catch {
+        /* an older worker without the route: its watchdog reaps the job */
+      }
+      if (j.stage === 'BROWSER_WAITING') {
+        try {
+          const w = (await wf(`/research/${wid}`)).data;
+          if (Array.isArray(w?.results) && w.results.length) p.browserOfficial = { ...(p.browserOfficial || {}), results: w.results, partial: true };
+        } catch {
+          /* keep what is already stored */
+        }
+      }
+    }
+    if (j.stage === 'FINANCIAL_ENTITY_WAITING' || p._captchaReturnStage === 'FINANCIAL_ENTITY_WAITING') {
+      const req = p._financialEntityRequestedFor?.source;
+      if (req) p._financialQueue = [req, ...(Array.isArray(p._financialQueue) ? p._financialQueue.filter((x: string) => x !== req) : [])];
+      pause.stage = 'FINANCIAL_ENTITY_WAITING';
+    }
+    delete p._worker;
+  }
+  // A running paid advertising Actor is aborted; what it already billed is recorded and charged.
+  const ads = p._developerAds;
+  if (ads?.state === 'RUNNING' && ads.runId) {
+    try {
+      await apifyAbortRun(ads.runId);
+      const run = await apifyGetRun(ads.runId).catch(() => null);
+      const partial = ads.datasetId ? await apifyDatasetItems(ads.datasetId, Number(ads.policy?.maxItems) || 50).catch(() => null) : null;
+      await recordDeveloperAdsCost(sb, j, run, partial ? partial.items.length : null);
+    } catch {
+      /* recorded as unknown by the Actor's own accounting */
+    }
+    await finishDeveloperAds(p, 'STOPPED', {}, [], undefined, undefined);
+  }
+  p._pause = pause;
+  const { data: paused } = await sb.from('research_jobs')
+    .update({ status: 'PAUSED', stage: 'PAUSED', paused_at: now(), pause_requested_at: null, driver_claimed_at: null, captcha: {}, result_json: p, progress: { ...(j.progress || {}), phase: 'paused' }, updated_at: now() })
+    .eq('id', j.id).in('status', [...PAUSABLE_STATUSES]).select('id');
+  if (paused?.length) await closeBilling(sb, j.id, 'STOPPED');
+}
+async function advanceExclusive(sb: any, k: string, m: string, j: any, l: string): Promise<boolean> {
+  let token: string | null = null;
+  try {
+    const { data, error } = await sb.rpc('research_job_advance_acquire', { p_job_id: j.id, p_seconds: ADVANCE_LEASE_SECONDS });
+    if (!error && data === null) return false; // another invocation is stepping this job
+    if (!error) token = data;
+  } catch {
+    /* lease unavailable: proceed unguarded, as before */
+  }
+  try {
+    // A stop requested while no one held the job is applied here, before any
+    // new work starts; one requested during the step, right after it.
+    if (await pauseRequested(sb, j.id)) {
+      await applyPause(sb, k, await freshJob(sb, j.id) ?? j);
+      return true;
+    }
+    await advance(sb, k, m, j, l);
+    if (await pauseRequested(sb, j.id)) {
+      const fresh = await freshJob(sb, j.id);
+      if (fresh && isPausable(fresh.status)) await applyPause(sb, k, fresh);
+    }
+    return true;
+  } finally {
+    if (token) {
+      try {
+        await sb.rpc('research_job_advance_release', { p_job_id: j.id, p_token: token });
+      } catch {
+        /* expires on its own */
+      }
+    }
+  }
+}
+
 async function advance(sb: any, k: string, m: string, j: any, l: string): Promise<any> {
   try {
-    if (j.status === 'CREATED' && j.stage === 'QUEUED') return await launch(sb, k, m, j, 'IDENTITY', l);
-    if (j.status === 'CREATED' && j.stage === 'BROWSER_READY') return await startBrowser(sb, j);
+    if (j.status === 'CREATED' && j.stage === 'QUEUED') {
+      if (await holdForBudget(sb, j, 'IDENTITY')) return;
+      return await launch(sb, k, m, j, 'IDENTITY', l);
+    }
+    if (j.status === 'CREATED' && j.stage === 'BROWSER_READY') {
+      if (await holdForBudget(sb, j, 'OFFICIAL')) return;
+      return await startBrowser(sb, j);
+    }
     if (j.stage === 'BROWSER_WAITING') return await pollBrowser(sb, j);
     // Production execution path (2026-09-06 "Fix Homatch Verify by
     // implementing this exact pipeline in code" mandate): the browser-worker
@@ -4010,7 +4905,10 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // REAL stage) -> PUBLIC_RESEARCH's OWN enreg/rstax/debtor chain for a
     // NEW company IT found -> MARKET -> MARKET's reconciliation chain -> ONE
     // final SYNTHESIS (no web_search — see launch()'s `s !== 'SYNTHESIS'`).
-    if (j.status === 'CREATED' && j.stage === 'OFFICIAL_READY') return await launch(sb, k, m, j, 'OFFICIAL_COLLECTION', l);
+    if (j.status === 'CREATED' && j.stage === 'OFFICIAL_READY') {
+      if (await holdForBudget(sb, j, 'OFFICIAL_COLLECTION')) return;
+      return await launch(sb, k, m, j, 'OFFICIAL_COLLECTION', l);
+    }
     // ENREG_CHECK_PENDING seeds the generalized financial queue (enreg ->
     // rstax -> debtor, see processFinancialQueue) for OFFICIAL_COLLECTION's
     // own discovered company. Destination is now PUBLIC_RESEARCH_READY, not
@@ -4022,7 +4920,10 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
     if (j.stage === 'FINANCIAL_ENTITY_WAITING') return await pollFinancialEntity(sb, j);
-    if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_READY') return await launch(sb, k, m, j, 'PUBLIC_RESEARCH', l);
+    if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_READY') {
+      if (await holdForBudget(sb, j, 'PUBLIC_RESEARCH')) return;
+      return await launch(sb, k, m, j, 'PUBLIC_RESEARCH', l);
+    }
     // PUBLIC_RESEARCH_CHECK_PENDING (2026-09-06 mandate): "If PublicResearch
     // finds ONE new strongly-supported company ID not already checked:
     // ENREG -> RS -> DEBTOR once only, then continue to MARKET." Same
@@ -4049,11 +4950,12 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       // MyHome.ge / SS.ge comparables must be folded BEFORE MARKET reads the
       // set. Still running → hold this stage for the next tick (bounded by
       // VERIFY_MARKET_MAX_WAIT_MS from its start; never indefinitely).
-      const stillWaiting = await pollVerifyMarketplace(j.result_json);
+      const stillWaiting = await pollVerifyMarketplace(j.result_json, j);
       if (laneRan || stillWaiting || j.result_json._verifyMarket?.done) {
         await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       }
       if (stillWaiting) return;
+      if (await holdForBudget(sb, j, 'MARKET')) return;
       return await launch(sb, k, m, j, 'MARKET', l);
     }
     // v25 (enreg-only) / v28 (generalized): the reconciliation-driven
@@ -4077,6 +4979,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
         await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       }
       if (waiting) return;
+      if (await holdForBudget(sb, j, 'SYNTHESIS')) return;
       return await launch(sb, k, m, j, 'SYNTHESIS', l);
     }
     const a = String(j.stage || '').match(/^(IDENTITY|OFFICIAL_COLLECTION|PUBLIC_RESEARCH|MARKET|SYNTHESIS)_WAITING$/);
@@ -4714,6 +5617,21 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
        * find it. Never shown to a customer; stripped at the boundary with the
        * rest of _reusePlan. */
       brief: snapshotBrief(decided),
+      /* The figures as STRUCTURE, so a reused snapshot reaches the report's
+       * market section instead of only the model's brief (c80f7237 lost its
+       * market section this way). Aggregates only — no listing data. */
+      snapshot: decided.snapshot && !decided.refresh
+        ? {
+            scope_type: decided.snapshot.scope_type,
+            currency: decided.snapshot.currency,
+            median_price_per_sqm: decided.snapshot.median_price_per_sqm,
+            lower_price_per_sqm: decided.snapshot.lower_price_per_sqm,
+            upper_price_per_sqm: decided.snapshot.upper_price_per_sqm,
+            usable_comparable_count: decided.snapshot.usable_comparable_count,
+            confidence: decided.snapshot.confidence,
+            last_refreshed_at: decided.snapshot.last_refreshed_at,
+          }
+        : null,
     };
   } catch (e) {
     console.error('research-agent: market plan threw', e instanceof Error ? e.message : String(e));
@@ -4786,7 +5704,7 @@ function discoveryInputsFor(_db: any, seed: any) {
   };
 }
 
-async function runVerifyMarketLane(db: any, job: any, result: any): Promise<MarketLaneResult | null> {
+async function runVerifyMarketLane(db: any, job: any, result: any, checkpoint?: () => Promise<void>): Promise<MarketLaneResult | null> {
   /*
    * Everything already known about this subject, as fact_key -> value.
    *
@@ -4813,7 +5731,7 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
   const seed = buildResearchSeed({
     jobId: String(job.id),
     query: job.query,
-    mode: job.type === 'cadastral' ? 'cadastral' : 'property',
+    mode: (job.mode ?? job.type) === 'cadastral' ? 'cadastral' : 'property',
     result,
     knownFacts,
   });
@@ -4821,6 +5739,9 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
   // Started first, so MyHome.ge / SS.ge search in parallel with the portal
   // lane and the official sources. Never fatal.
   await startVerifyMarketplace(db, result, seed);
+  // The MyHome/SS.ge job id is stored before the portal lane runs, so a
+  // tick killed inside the lane still folds that search in later.
+  if (checkpoint) await checkpoint().catch(() => {});
 
   const runtime = createPortalRuntime();
   const discovery = discoveryInputsFor(db, seed);
@@ -5086,7 +6007,7 @@ async function learnFromVerification(db: any, jobId: string, report: any): Promi
      * Names and a representation mode are what a buyer needs; the numbers are
      * not their business and are certainly not shared intelligence.
      */
-    const control = extractControlStructure((report as any)?.browserOfficial);
+    const control = extractControlStructure((report as any)?.browserOfficial, (report as any)?.companyProfile?.idCode ?? null);
     const forHarvest = (control.directors.length || control.representation)
       ? {
           ...report,
@@ -5249,7 +6170,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -5264,6 +6185,12 @@ function stripInternalInProgress(result: any): any {
 }
 
 function sanitizeForCustomer(job: any): any {
+  // The persisted report's internal bookkeeping (model usage, build timing)
+  // never rides along on a status read; verify-synthesis strips the same keys.
+  if (job?.synthesis_json && typeof job.synthesis_json === 'object' && ('_usage' in job.synthesis_json || '_timing' in job.synthesis_json)) {
+    const { _usage: _u, _timing: _t, ...synthesis } = job.synthesis_json;
+    job = { ...job, synthesis_json: synthesis };
+  }
   // v32 (P0 fix): `research_jobs.error` also carries the last TRANSIENT
   // retry's message while a job is still actively being retried (see
   // advance()'s catch — a retriable classification leaves status:'CREATED'
@@ -5321,11 +6248,23 @@ function sanitizeForCustomer(job: any): any {
   // Applied on READ, so the reports already in the database are classified by
   // the same rule as new ones rather than staying permanently unknown.
   r.assetClass = resolveAssetClass(r);
+  // Identity and rights from the OFFICIAL register, on READ (unitIdentity.ts): the exact unit is
+  // verified by its NAPR extract, and the rights statement is dated by that extract and scoped to the
+  // unit — never by when the job finished (8ba97da9). Persisted reports are corrected without a rerun.
+  try {
+    Object.assign(r, officialUnitOverlay(job.result_json, job.query ?? null));
+  } catch {
+    /* the stored fields stand */
+  }
   // The control structure is read from the UNSANITIZED evidence, which only
   // exists on this side, and merged in as names plus a representation mode.
   // Done on read, so the reports already in the database gain it too.
-  const control = extractControlStructure((job.result_json as any)?.browserOfficial);
-  if (control.directors.length || control.representation) {
+  // Only the developer's own extract, by its identification code — never the
+  // pledge creditor's (c80f7237 showed the bank's director as the developer's).
+  // When the registry overlay already supplied the directors, they stand.
+  const control = extractControlStructure((job.result_json as any)?.browserOfficial, r.companyProfile?.idCode ?? null);
+  const overlaid = Array.isArray(r.companyProfile?.registryFields) && r.companyProfile.registryFields.includes('directors');
+  if (!overlaid && (control.directors.length || control.representation)) {
     const existing = Array.isArray(r.companyProfile?.directors) ? r.companyProfile.directors : [];
     const merged = [...existing];
     for (const d of control.directors.map((x) => sanitizeCustomerString(x)).filter(Boolean)) {
@@ -5360,6 +6299,7 @@ function sanitizeForCustomer(job: any): any {
   // internal economics. A customer buys the current state of their property,
   // not a description of how cheaply we assembled it.
   delete r._reusePlan;
+  delete r._stageTimes;
   delete r._worker;
   delete r._cost;
   delete r._searches;
@@ -5386,6 +6326,9 @@ function sanitizeForCustomer(job: any): any {
   delete r._marketConflicts;
   delete r._marketLaneAttempted;
   delete r._marketLaneError;
+  delete r._marketLaneStartedAt;
+  // Per-source official states: read by computeSections before this runs.
+  delete r._officialLive;
   delete r._enregEntityRequestedFor;
   // v28: the generalized financial-queue bookkeeping (enreg/rstax/debtor) —
   // same reasoning as _enregEntityRequestedFor above, kept alongside it
@@ -5493,6 +6436,15 @@ function jobLanguage(j: any): string {
   return LANG[stored] ? stored : 'ka';
 }
 
+/* Finished-job status bodies, per isolate, bounded (oldest evicted first). */
+const FINISHED_MEMO_MAX = 200;
+const finishedResponseMemo = new Map<string, string>();
+function rememberFinishedResponse(key: string, body: string): void {
+  if (body.length > 4_000_000) return;
+  finishedResponseMemo.set(key, body);
+  while (finishedResponseMemo.size > FINISHED_MEMO_MAX) finishedResponseMemo.delete(finishedResponseMemo.keys().next().value as string);
+}
+
 async function claimJob(sb: any, id: string): Promise<boolean> {
   const cutoff = new Date(Date.now() - DRIVE_CLAIM_TTL_MS).toISOString();
   const { data } = await sb
@@ -5528,7 +6480,8 @@ async function driveJob(sb: any, key: string, model: string, id: string): Promis
       // Terminal, cancelled, or now waiting on a human: the driver's job here
       // is done and re-ticking would be wrong, not merely wasteful.
       if (!j || j.cancelled_at || !DRIVE_LIVE_STATUSES.includes(j.status)) return;
-      await advance(sb, key, model, j, jobLanguage(j));
+      // Another invocation (a client poll) is stepping it right now: done here.
+      if (!(await advanceExclusive(sb, key, model, j, jobLanguage(j)))) return;
       // A step that wrote nothing on a long-silent official stage is a stall,
       // whatever caused it: move on with what is stored instead of reclaiming
       // the same job every tick.
@@ -5647,6 +6600,64 @@ async function driveSynthesis(sb: any): Promise<void> {
       console.error(`research-agent drive: synthesis failed for ${j.id}`, e);
       await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', j.id);
     }
+  }
+}
+
+/*
+ * THE REPORT STARTS THE MOMENT RESEARCH COMPLETES.
+ *
+ * Before: COMPLETE was written and the report waited for whoever came
+ * first — the page (which built it inside its own request, raced a 45 s
+ * timeout, and left synthesis_state NONE so the driver's next sweep could
+ * start a SECOND build of the same report), or the driver, which reaches
+ * driveSynthesis only after it has stepped every live job (pg_cron every
+ * 30 s, up to ~55 s per live job). Measured as `report_wait` in
+ * src/verify/performance.ts.
+ *
+ * After: the same claim driveSynthesis makes (PENDING, attempt counted,
+ * synthesis_at = start), taken conditionally so only one caller wins, then
+ * the same internal call, kept alive past this response. The page finds
+ * PENDING and waits for this build instead of starting its own; the driver
+ * leaves a fresh PENDING alone and retries a stale one exactly as before.
+ * Same build, same model, same attempt budget — earlier, and exactly once.
+ */
+async function startSynthesisNow(sb: any, jobId: string): Promise<void> {
+  try {
+    const { data: row } = await sb.from('research_jobs').select('synthesis_state,synthesis_attempts').eq('id', jobId).maybeSingle();
+    const state = String(row?.synthesis_state ?? '');
+    const attempts = Number(row?.synthesis_attempts ?? 0);
+    if (!row || (state !== 'NONE' && state !== 'FAILED') || attempts >= MAX_SYNTHESIS_ATTEMPTS) return;
+    const { data: claimed } = await sb
+      .from('research_jobs')
+      .update({ synthesis_state: 'PENDING', synthesis_attempts: attempts + 1, synthesis_at: now() })
+      .eq('id', jobId)
+      .eq('synthesis_state', state)
+      .eq('synthesis_attempts', attempts)
+      .select('id');
+    if (!claimed?.length) return;
+    const call = fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/verify-synthesis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'x-internal-driver': '1',
+      },
+      body: JSON.stringify({ jobId, internal: true, trigger: 'research' }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`verify-synthesis ${res.status}`);
+      })
+      .catch(async (e) => {
+        // Exactly what the driver does on failure: FAILED is swept again.
+        console.error(`research-agent: immediate synthesis failed for ${jobId}`, e);
+        await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', jobId).eq('synthesis_state', 'PENDING');
+      });
+    const rt = (globalThis as any).EdgeRuntime;
+    if (rt?.waitUntil) rt.waitUntil(call);
+    else await call;
+  } catch (e) {
+    // The driver's sweep remains the safety net.
+    console.error(`research-agent: could not start synthesis for ${jobId}`, e);
   }
 }
 
@@ -5790,7 +6801,33 @@ async function driveLiveJobs(sb: any, key: string, model: string): Promise<void>
   // Runs even if the sweep threw: a COMPLETE job still owes its customer a
   // report, and that is independent of whatever went wrong above.
   await driveSynthesis(sb);
+  await pollMarketRefreshes(sb);
+  await settleVerifyBudgets(sb);
   await retireAbandonedJobs(sb);
+}
+
+/*
+ * Close every open Verify budget whose job has ended: charged when the
+ * customer received the report (or stopped), released when the system
+ * failed them. Idempotent in SQL; a crash between a job ending and this
+ * sweep only delays the release.
+ */
+const SYNTHESIS_SETTLE_GRACE_MS = 2 * 60 * 60 * 1000;
+async function settleVerifyBudgets(sb: any): Promise<void> {
+  try {
+    const { data: open, error } = await sb.from('verify_billing').select('job_id').eq('state', 'ACTIVE').order('updated_at', { ascending: true }).limit(25);
+    if (error || !open?.length) return;
+    const ids = open.map((x: any) => x.job_id);
+    const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at,paused_at').in('id', ids);
+    const { data: sessions } = await sb.from('verify_billing_sessions').select('job_id,created_at').in('job_id', ids).eq('state', 'RESERVED');
+    const openedAt = new Map((sessions ?? []).map((x: any) => [x.job_id, x.created_at]));
+    for (const job of jobs ?? []) {
+      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS, openSessionAt: openedAt.get(job.id) ?? null });
+      if (outcome) await closeBilling(sb, job.id, outcome);
+    }
+  } catch (e) {
+    console.error('research-agent drive: budget settlement sweep failed', e);
+  }
 }
 
 /*
@@ -5877,6 +6914,77 @@ Deno.serve(async (req) => {
     // shared secret held in admin_settings, exactly as the existing
     // continuous-matching-worker cron is. Same shape, same blast radius.
     const preAuthBody = req.method === 'POST' ? await req.clone().json().catch(() => ({})) : {};
+    // RETENTION (20261102090000): an expired report is never refreshed, re-fetched
+    // or re-pictured on request — by its owner or by an internal caller.
+    if (['recover_visuals', 'fresh_photos', 'refresh_market'].includes(String(preAuthBody?.action || ''))
+        && /^[0-9a-f-]{36}$/i.test(String(preAuthBody?.jobId || ''))) {
+      const gateDb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+      const expired = await expiredReportRefusalById(gateDb, String(preAuthBody.jobId), json);
+      if (expired) return expired;
+    }
+    /*
+     * RECOVER SKIPPED OFFICIAL PICTURES — the job's owner, or verify-synthesis
+     * server-to-server with the service-role key compared in full (the same
+     * trust model verify-synthesis uses for its driver). See recoverJobVisuals.
+     */
+    if (String(preAuthBody?.action || '') === 'recover_visuals') {
+      const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', svcKey);
+      const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+      let same = !!svcKey && bearer.length === svcKey.length;
+      for (let i = 0; same && i < svcKey.length; i++) if (bearer.charCodeAt(i) !== svcKey.charCodeAt(i)) same = false;
+      const jobId = String(preAuthBody?.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'jobId required' }, 400);
+      if (!same) {
+        const { data: { user } } = await svc.auth.getUser(bearer);
+        if (!user) return json({ error: 'Invalid session' }, 401);
+        const { data: own } = await svc.from('research_jobs').select('id').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+        if (!own) return json({ error: 'Job not found' }, 404);
+      }
+      if (!WORKER || !WT) return json({ error: 'not configured' }, 503);
+      const r = await recoverJobVisuals(svc, jobId);
+      return json(r.body, r.status);
+    }
+
+    // FRESH PHOTOGRAPHS — same callers and trust model as recover_visuals; only the service role may force.
+    if (String(preAuthBody?.action || '') === 'fresh_photos') {
+      const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', svcKey);
+      const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+      let same = !!svcKey && bearer.length === svcKey.length;
+      for (let i = 0; same && i < svcKey.length; i++) if (bearer.charCodeAt(i) !== svcKey.charCodeAt(i)) same = false;
+      const jobId = String(preAuthBody?.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'jobId required' }, 400);
+      if (!same) {
+        const { data: { user } } = await svc.auth.getUser(bearer);
+        if (!user) return json({ error: 'Invalid session' }, 401);
+        const { data: own } = await svc.from('research_jobs').select('id').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+        if (!own) return json({ error: 'Job not found' }, 404);
+      }
+      const r = await freshJobPhotos(svc, jobId, same && preAuthBody?.force === true);
+      return json(r.body, r.status);
+    }
+
+    // REFRESH MARKET EVIDENCE — same callers and trust model as recover_visuals.
+    if (String(preAuthBody?.action || '') === 'refresh_market') {
+      const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', svcKey);
+      const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+      let same = !!svcKey && bearer.length === svcKey.length;
+      for (let i = 0; same && i < svcKey.length; i++) if (bearer.charCodeAt(i) !== svcKey.charCodeAt(i)) same = false;
+      const jobId = String(preAuthBody?.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'jobId required' }, 400);
+      if (!same) {
+        const { data: { user } } = await svc.auth.getUser(bearer);
+        if (!user) return json({ error: 'Invalid session' }, 401);
+        const { data: own } = await svc.from('research_jobs').select('id').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+        if (!own) return json({ error: 'Job not found' }, 404);
+      }
+      if (!WORKER || !WT) return json({ error: 'not configured' }, 503);
+      const r = await startJobMarketRefresh(svc, jobId);
+      return json(r.body, r.status);
+    }
+
     if (String(preAuthBody?.action || '') === 'drive') {
       const svc = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
       const expected = await adminSetting(svc, 'verify_driver_token');
@@ -6062,7 +7170,16 @@ Deno.serve(async (req) => {
         } catch (e) {
           worker = { unavailable: true, error: String((e as any)?.message || e).slice(0, 160) };
         }
-        return json({ policy, worker });
+        // Durable ledger (QUEUE mode): every solve, per source, with its cost —
+        // the in-memory worker counters reset on every deploy.
+        let queue: any = null;
+        try {
+          const { data, error } = await sb.rpc('verify_queue_metrics');
+          queue = error ? { unavailable: true } : data;
+        } catch {
+          queue = { unavailable: true };
+        }
+        return json({ policy, worker, queue, executionMode: await verifyExecutionMode(sb) });
       }
 
       // Developer Advertising Intelligence (Verify's own memo23 stage): policy,
@@ -6137,9 +7254,39 @@ Deno.serve(async (req) => {
       const limit = Math.min(Math.max(Number(b.limit) || 20, 1), 50);
       const { data: rows } = await sb
         .from('research_jobs')
-        .select('id,status,stage,mode,query,created_at,completed_at,result_json,synthesis_json,synthesis_state')
+        .select('id,status,stage,mode,query,created_at,completed_at,updated_at,result_json,synthesis_json,synthesis_state,synthesis_at')
         .order('created_at', { ascending: false })
         .limit(limit);
+      /*
+       * PERFORMANCE (src/verify/performance.ts): Start → report READY with
+       * stage spans, queue wait, retries and bottleneck. Task rows and the
+       * CAPTCHA ledger are read live (timing columns only) and fall back to
+       * the timeline the job kept in _stageTimes.tasks.
+       */
+      const ids = (rows || []).map((j: any) => j.id);
+      const [{ data: taskRows }, { data: captchaRows }] = ids.length
+        ? await Promise.all([
+            sb.from('verify_tasks').select('id,job_id,source,dedupe_key,state,attempts,reused,created_at,started_at,finished_at,exec:result->_exec').in('job_id', ids).limit(1000),
+            sb.from('verify_captcha_events').select('job_id,task_id,source,solve_ms,outcome').in('job_id', ids).limit(2000),
+          ])
+        : [{ data: [] }, { data: [] }];
+      const byJob = (list: any[] | null) => {
+        const m = new Map<string, any[]>();
+        for (const x of list ?? []) m.set(x.job_id, [...(m.get(x.job_id) ?? []), x]);
+        return m;
+      };
+      const tasksByJob = byJob(taskRows);
+      const captchaByJob = byJob(captchaRows);
+      const performanceOf = (j: any) => {
+        try {
+          const r = j.result_json || {};
+          const live = tasksByJob.get(j.id);
+          const tasks = live?.length ? live : Array.isArray(r._stageTimes?.tasks) ? r._stageTimes.tasks : [];
+          return buildVerifyPerformance(j, tasks, r, j.synthesis_json?._timing ?? null, { captcha: captchaByJob.get(j.id) ?? [], now: now() });
+        } catch {
+          return null;
+        }
+      };
       const jobs = (rows || []).map((j: any) => {
         const r = j.result_json || {};
         const tas = (r.browserOfficial?.results || []).find((x: any) => x?.source === 'tas') || null;
@@ -6186,9 +7333,70 @@ Deno.serve(async (req) => {
           // Automatic verification attempts per source (outcome, attempts, latency — no tokens).
           captcha: (r.browserOfficial?.results || []).flatMap((x: any) => (Array.isArray(x?.captchaResolution) ? x.captchaResolution : []).map((c: any) => ({ source: x.source, type: c.type ?? null, attempts: c.attempts ?? 0, outcome: c.outcome ?? null, latencyMs: c.latencyMs ?? 0 }))),
           ai: { researchTokens: tokens, synthesis: usage, synthesisState: j.synthesis_state ?? null, searches: r.webSearchCalls ?? r._searches ?? null },
+          performance: performanceOf(j),
         };
       });
       return json({ jobs });
+    }
+    /*
+     * SECURE DOCUMENT VIEWER (document_file) — no charge.
+     *
+     * TAS's DownloadServlet answers many customer browsers with "Access
+     * Denied", so a report file is opened through HOMATCH instead: the caller
+     * must own the job (or be an admin) and the attachedFileId must be a
+     * viewable file in THAT job's own document ledger (officialDocumentLibrary
+     * ledgerFileFor — the same rule the page uses to show the button). The
+     * worker fetches it once (/verify/tas-file, token-only, bounded, polite);
+     * it is cached privately in verify-documents/files/<id>.<ext> and every
+     * request gets a fresh short-lived signed URL. Anonymous sessions are
+     * refused: their report is withheld until sign-in anyway.
+     */
+    if (b?.action === 'document_file') {
+      if (!user) return json({ error: 'sign_in_required' }, 401);
+      const jobId = String(b.jobId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ error: 'bad_request' }, 400);
+      let { data: row } = await sb.from('research_jobs').select('id,docs:synthesis_json->officialDocuments').eq('id', jobId).eq('user_id', user.id).maybeSingle();
+      if (!row) {
+        const { data: me } = await sb.from('users').select('is_admin').eq('auth_id', user.id).maybeSingle();
+        if (me?.is_admin) ({ data: row } = await sb.from('research_jobs').select('id,docs:synthesis_json->officialDocuments').eq('id', jobId).maybeSingle());
+      }
+      if (!row) return json({ error: 'not_found' }, 404);
+      { const expired = await expiredReportRefusalById(sb, jobId, json); if (expired) return expired; } // retention: no signed URL after expiry
+      const gate = ledgerFileFor((row as any).docs, b.attachedFileId);
+      if (!gate.ok) return json({ error: gate.reason }, gate.reason === 'not_in_report' ? 404 : gate.reason === 'bad_id' ? 400 : 403);
+      const id = String(b.attachedFileId);
+      const path = documentCachePath(id, gate.format);
+      const bucket = sb.storage.from(DOCUMENT_BUCKET);
+      const sign = async () => {
+        const { data, error } = await bucket.createSignedUrl(path, DOCUMENT_URL_TTL_SECONDS);
+        return error ? null : data?.signedUrl ?? null;
+      };
+      let url = await sign();
+      let cached = !!url;
+      if (!url) {
+        if (!WORKER || !WT) return json({ error: 'unavailable' }, 503);
+        let res: Response;
+        try {
+          res = await fetch(`${WORKER}/verify/tas-file?attachedFileId=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(55000) });
+        } catch {
+          return json({ error: 'source_unavailable' }, 502);
+        }
+        if (!res.ok) {
+          const reason = res.status === 413 ? 'too_large' : 'source_unavailable';
+          console.warn(JSON.stringify({ scope: 'verify_document_file', jobId, attachedFileId: id, workerStatus: res.status }));
+          return json({ error: reason }, res.status === 413 ? 413 : 502);
+        }
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        const contentType = res.headers.get('content-type') || 'application/octet-stream';
+        // Only a real pdf/jpeg/png is cached and served (the worker sniffs the bytes).
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(contentType)) return json({ error: 'not_viewable' }, 415);
+        const { error: upErr } = await bucket.upload(path, bytes, { contentType, upsert: true });
+        if (upErr) console.warn(JSON.stringify({ scope: 'verify_document_file', jobId, attachedFileId: id, upload: String(upErr.message ?? upErr) }));
+        url = await sign();
+        cached = false;
+      }
+      if (!url) return json({ error: 'source_unavailable' }, 502);
+      return json({ url, expiresIn: DOCUMENT_URL_TTL_SECONDS, fileName: gate.item.fileName, format: gate.format, cached });
     }
     /** The last thing every job response passes through. */
     /*
@@ -6269,16 +7477,20 @@ Deno.serve(async (req) => {
       const id = String(b.jobId || '');
       const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
       // Already finished one way or another: cancelling is a no-op, not an
       // error, and must never overwrite a report the customer already has.
       if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status)) return json(forCaller(j));
       const wid = j.result_json?._worker?.jobId;
-      if (wid) {
+      // Queue mode: stop this job's queued and running tasks (shared work
+      // other jobs depend on keeps running for them).
+      if (j.result_json?._worker?.queue || j.result_json?._queueMode) await cancelJobTasks(sb, j.id);
+      else if (wid) {
         // Best effort only. The worker has no cancel route and adding one
         // would force a Railway deploy for no gain: the DB row is the
         // authority, the driver skips cancelled jobs, and the orphaned
         // browser session is reaped by the worker's own watchdog.
-        try { await wf(`/research/${wid}/skip`, 'POST', {}); } catch { /* already gone */ }
+        try { await wf(`/research/${wid}/cancel`, 'POST', {}); } catch { /* an older worker: its watchdog reaps the job */ }
       }
       await sb.from('research_jobs').update({
         status: 'CANCELLED',
@@ -6289,14 +7501,119 @@ Deno.serve(async (req) => {
         progress: { ...(j.progress || {}), phase: 'cancelled' },
         updated_at: now(),
       }).eq('id', id);
+      // What was legitimately incurred is charged; the rest goes back.
+      await closeBilling(sb, id, 'STOPPED');
       const { data: after } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
       return json(forCaller(after || { ...j, status: 'CANCELLED', stage: 'CANCELLED' }));
+    }
+
+    /* STOP (pause) — the customer can come back to it.
+     *
+     * The intent is written first (durable), then applied by whoever holds the
+     * job: this request when the job is idle, or the step in progress at its
+     * next checkpoint (advanceExclusive). Either way no new chargeable work
+     * starts after this returns. */
+    if (action === 'pause') {
+      const id = String(b.jobId || '');
+      const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+      if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
+      if (j.status === 'PAUSED' || !isPausable(j.status)) {
+        return json({ ...forCaller(j), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id), j.result_json?._pause) });
+      }
+      await sb.from('research_jobs').update({ pause_requested_at: now() }).eq('id', id).in('status', [...PAUSABLE_STATUSES]);
+      let token: string | null = null;
+      let held = false;
+      try {
+        const { data, error } = await sb.rpc('research_job_advance_acquire', { p_job_id: id, p_seconds: ADVANCE_LEASE_SECONDS });
+        if (error) held = false;
+        else if (data === null) held = true;
+        else token = data;
+      } catch {
+        held = false;
+      }
+      try {
+        if (!held) {
+          const fresh = await freshJob(sb, id);
+          if (fresh && isPausable(fresh.status)) await applyPause(sb, key, fresh);
+        }
+      } finally {
+        if (token) await sb.rpc('research_job_advance_release', { p_job_id: id, p_token: token }).then(() => {}, () => {});
+      }
+      const after = (await freshJob(sb, id)) ?? j;
+      return json({ ...forCaller(after), pausing: after.status !== 'PAUSED', billing: anonSession ? null : publicBilling(await billingStateFor(sb, id), after.result_json?._pause) });
+    }
+
+    /* CONTINUE a paused investigation: same job, same evidence.
+     *
+     * Only the unused part of the authorised budget is reserved again (never a
+     * fresh 25), completed stages are not repeated, the official sources that
+     * did not finish are queued again through the cache, and a second request
+     * for the same continuation is the same continuation. */
+    if (action === 'continue') {
+      const id = String(b.jobId || '');
+      const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+      if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
+      if (j.status !== 'PAUSED') return json({ ...forCaller(j), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id), j.result_json?._pause) });
+      const n = Number(j.resume_count) || 0;
+      const held = j.result_json?._pause?.reason;
+      const { data: hasBilling } = await sb.from('verify_billing').select('job_id').eq('job_id', id).maybeSingle();
+      if (hasBilling) {
+        // More budget is authorised ONLY by the customer's explicit approval of
+        // the screen they saw: expectedAuthorizations is the count that screen
+        // showed, so a double click or a stale tab cannot add a second +25.
+        const extend = b.extend === true;
+        const expected = Number.isInteger(Number(b.expectedAuthorizations)) ? Number(b.expectedAuthorizations) : null;
+        if (held === 'BUDGET_LIMIT') {
+          return json({ error: 'BUDGET_LIMIT', code: 'BUDGET_LIMIT', billing: publicBilling(await billingStateFor(sb, id), j.result_json?._pause) }, 409);
+        }
+        if (held === 'BUDGET' && !extend) {
+          return json({ error: 'BUDGET_APPROVAL_REQUIRED', code: 'BUDGET_APPROVAL_REQUIRED', billing: publicBilling(await billingStateFor(sb, id), j.result_json?._pause) }, 409);
+        }
+        if (extend && expected === null) return json({ error: 'STALE_REQUEST', code: 'STALE_REQUEST' }, 409);
+        // One key per continuation attempt: a duplicate request shares it; an
+        // attempt whose budget was already closed gets a fresh one.
+        const seq = Number((await billingStateFor(sb, id))?.sessions) || 0;
+        const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: id, p_user_id: j.user_id, p_idempotency_key: `verify:${id}:r${n + 1}:s${seq + 1}`, p_extend: extend, p_expected_authorizations: extend ? expected : null });
+        if (oe) {
+          console.error('research-agent: verify_billing_open on continue', oe.message);
+          return json({ error: 'BILLING_UNAVAILABLE', code: 'BILLING_UNAVAILABLE' }, 503);
+        }
+        // A continuation never runs without an open budget.
+        if (!o?.ok) {
+          return json({ error: o?.reason ?? 'BILLING_UNAVAILABLE', code: o?.reason ?? 'BILLING_UNAVAILABLE', requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, billing: publicBilling(await billingStateFor(sb, id), j.result_json?._pause) }, o?.reason === 'INSUFFICIENT_CREDITS' || o?.reason === 'BUDGET_EXHAUSTED' ? 402 : 409);
+        }
+      }
+      const pause = j.result_json?._pause || { status: 'CREATED', stage: 'QUEUED' };
+      const target = resumeTarget(pause);
+      const p = { ...(j.result_json || {}) };
+      p._pauseHistory = [...(Array.isArray(p._pauseHistory) ? p._pauseHistory : []), { ...pause, resumedAt: now() }].slice(-20);
+      delete p._pause;
+      if (target.requeueOfficial) {
+        await sb.rpc('verify_job_requeue_unfinished', { p_job_id: id });
+        const tasImplementation = pause.tasImplementation ?? (await tasImplementationFor(sb));
+        await enqueueTasks(sb, id, officialTaskPlan({ mode: j.mode, query: j.query }, { tasImplementation, captchaPolicy: await captchaPolicyFor(sb) }));
+        p._worker = { jobId: `queue:${id}`, queue: true, startedAt: now(), tasImplementation };
+      }
+      const { data: resumed } = await sb.from('research_jobs')
+        .update({ status: target.status, stage: target.stage, resume_count: n + 1, paused_at: null, pause_requested_at: null, cancelled_at: null, result_json: p, progress: { ...(j.progress || {}), phase: 'resuming' }, updated_at: now() })
+        .eq('id', id).eq('status', 'PAUSED').eq('resume_count', n).select('*');
+      const row = resumed?.[0] ?? (await freshJob(sb, id)) ?? j;
+      if (resumed?.length) {
+        const next = advanceExclusive(sb, key, model, row, lang).catch((e) => console.error('research-agent: first continued step failed', e));
+        const rt = (globalThis as any).EdgeRuntime;
+        if (rt?.waitUntil) rt.waitUntil(next);
+        else await next;
+      }
+      return json({ ...forCaller(row), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id), row.result_json?._pause) });
     }
 
     if (action === 'status' || action === 'resume' || action === 'skip') {
       const id = String(b.jobId || '');
       let { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
 
       if (action === 'resume' && j.status === 'WAITING_HUMAN') {
         const wid = j.result_json?._worker?.jobId;
@@ -6345,8 +7662,8 @@ Deno.serve(async (req) => {
       if (action === 'skip' && j.status === 'WAITING_HUMAN') {
         j = await skipHumanWait(sb, j);
       }
-      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED'].includes(j.status)) {
-        await advance(sb, key, model, j, lang);
+      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED', 'PAUSED'].includes(j.status)) {
+        await advanceExclusive(sb, key, model, j, lang);
         const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
         j = r.data || j;
       }
@@ -6354,13 +7671,49 @@ Deno.serve(async (req) => {
       // (see sanitizeForCustomer above). The DB row itself is left untouched —
       // full browserOfficial/cost/provider diagnostics remain queryable there
       // for admin support/debugging, only the customer-facing HTTP body changes.
-      return json({ ...forCaller(j), liveCounters: liveCountersFor(j) });
+      // A finished job's answer only changes when its row does: serve it from
+      // memory instead of re-sanitising the whole report on every poll.
+      // The customer's budget: used, remaining, returned — never a cost or rate.
+      const billing = anonSession ? null : publicBilling(await billingStateFor(sb, j.id), j.result_json?._pause);
+      const settled = ['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status) && (!billing || billing.state !== 'ACTIVE');
+      const memoKey = settled ? `${j.id}|${j.updated_at}|${j.synthesis_state ?? ''}|${j.synthesis_at ?? ''}|${anonSession ? 'a' : 'u'}|${billing?.state ?? ''}|${billing?.charged ?? ''}` : null;
+      const memo = memoKey ? finishedResponseMemo.get(memoKey) : undefined;
+      if (memo) return new Response(memo, { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      const body = JSON.stringify({ ...forCaller(j), liveCounters: liveCountersFor(j), ...(billing ? { billing } : {}) });
+      if (memoKey) rememberFinishedResponse(memoKey, body);
+      return new Response(body, { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
 
     const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
     const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
     if (!q) return json({ error: 'Query required' }, 400);
     if (mode === 'cadastral' && !CAD.test(q)) return json({ error: 'Invalid cadastral code' }, 400);
+    /*
+     * IDEMPOTENT START. The client sends one id per submission; a repeat of
+     * the same submission (retry after a dropped response, double click)
+     * returns the job it already created instead of starting — and paying
+     * for — a second one. Unique per caller in the database
+     * (research_jobs_client_request_unique), so a race resolves there too.
+     */
+    const clientRequestId = /^[A-Za-z0-9_-]{8,80}$/.test(String(b.clientRequestId || '')) ? String(b.clientRequestId) : null;
+    const existingStart = async () => {
+      if (!clientRequestId) return null;
+      try {
+        let qb = sb.from('research_jobs').select('id').eq('client_request_id', clientRequestId);
+        qb = anonSession ? qb.eq('anon_session_id', anonSession.id) : qb.eq('user_id', user!.id);
+        const { data, error } = await qb.maybeSingle();
+        return error ? null : data;
+      } catch {
+        return null;
+      }
+    };
+    {
+      const twin = await existingStart();
+      if (twin) return json({ accepted: true, jobId: twin.id, duplicate: true }, 202);
+    }
+    // A budget belongs to a wallet: with Verify billing on, a visitor signs in first.
+    const billingOn = await verifyBillingEnabled(sb);
+    if (billingOn && anonSession) return json({ error: 'sign in to start a verification', code: 'SIGN_IN_REQUIRED' }, 402);
     // `_lang` is what lets a job that finishes with NOBODY WATCHING still be
     // written in the language the customer chose. Without it the driver would
     // have to guess, and the report would silently change language whenever
@@ -6412,9 +7765,45 @@ Deno.serve(async (req) => {
      * name is kept because it is what the whole pipeline reads.
      */
     const reusePlan = await shadowReusePlan(sb, q);
-    const { data: j, error } = await sb.from('research_jobs').insert({ ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
-    if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
-    await advance(sb, key, model, j, lang);
+    const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
+    let { data: j, error } = await sb.from('research_jobs').insert({ ...row, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }).select('*').single();
+    // Before migration 20261026090000 the column does not exist: start as before.
+    if (error?.code === '42703' && clientRequestId) ({ data: j, error } = await sb.from('research_jobs').insert(row).select('*').single());
+    if (error || !j) {
+      // The same request arriving twice (double click, network retry) lost
+      // the race to its twin: answer with the job the twin created.
+      if (clientRequestId && error?.code === '23505') {
+        const twin = await existingStart();
+        if (twin) return json({ accepted: true, jobId: twin.id, duplicate: true }, 202);
+      }
+      console.error('research-agent: could not create research job', error?.message);
+      return json({ error: 'Could not create research job' }, 500);
+    }
+    /*
+     * RESERVE BEFORE ANY BILLABLE WORK. The authorised budget (25 credits) is
+     * held through the wallet; nothing has run yet, so a refusal removes the
+     * empty job and the customer keeps every credit.
+     */
+    if (billingOn && user) {
+      const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: j.id, p_user_id: user.id, p_idempotency_key: `verify:${j.id}:s1` });
+      if (oe || !o?.ok) {
+        await sb.from('research_jobs').delete().eq('id', j.id);
+        if (oe) console.error('research-agent: verify_billing_open', oe.message);
+        const reason = o?.reason ?? 'BILLING_UNAVAILABLE';
+        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null }, reason === 'INSUFFICIENT_CREDITS' ? 402 : 503);
+      }
+    }
+    /*
+     * The job id is the answer; the first step is not part of it. A slow
+     * first step (identity research) used to hold this response open until
+     * the browser gave up — "Failed to send a request to the Edge Function"
+     * on a job that had in fact started. It now runs after the response, and
+     * the driver/status polls continue it regardless.
+     */
+    const first = advanceExclusive(sb, key, model, j, lang).catch((e) => console.error('research-agent: first step failed', e));
+    const rt = (globalThis as any).EdgeRuntime;
+    if (rt?.waitUntil) rt.waitUntil(first);
+    else await first;
     return json({ accepted: true, jobId: j.id }, 202);
   } catch (e) {
     console.error('research-agent: unhandled exception reached the top-level handler', e);

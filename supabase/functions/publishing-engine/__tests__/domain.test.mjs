@@ -1,0 +1,154 @@
+// The publishing domain: listing validation, portal URL linking, the page-check
+// classification and the publication state machine. Pure — no network, no database.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  MAX_VERIFY_ATTEMPTS, backoffMs, classifyCheck, normalizeListing, parseExternalUrl, publicRegistry,
+  transition, validateListing,
+} from '../domain.ts';
+
+const PHOTO = '0b5c1e44-4f3a-4b8e-9a51-0e7d6c2b9f10';
+const complete = () => normalizeListing({
+  title: '3-room apartment in Vake', description: { ka: 'სამოთახიანი ბინა ვაკეში' }, propertyType: 'apartment', dealType: 'sale',
+  price: '155,000', currency: 'usd', area: 97.5, rooms: 3, bedrooms: 2, floor: 4, totalFloors: 9,
+  city: 'თბილისი', street: 'Chavchavadze Ave', contactName: 'Nino', contactPhone: '+995599123456',
+  photos: [PHOTO, PHOTO, 'not-a-uuid'], amenities: ['balcony', 'jacuzzi'], portalTargets: ['myhome', 'ssge', 'evil'], injected: 'x',
+});
+const NOW = new Date('2026-10-15T12:00:00Z');
+const pub = (over = {}) => ({ status: 'HANDOFF_READY', revision: 0, external_id: null, external_url: null, listing_version: 1, check_attempts: 0, last_checked_at: null, next_check_at: null, published_at: null, last_error: null, ...over });
+
+test('normalize drops unknown keys, unknown amenities/portals, duplicate and malformed photo ids', () => {
+  const x = complete();
+  assert.equal(x.price, 155000);
+  assert.equal(x.currency, 'USD');
+  assert.equal(x.propertyType, 'APARTMENT');
+  assert.deepEqual(x.photos, [PHOTO]);
+  assert.deepEqual(x.amenities, ['balcony']);
+  assert.deepEqual(x.portalTargets, ['myhome', 'ssge']);
+  assert.equal('injected' in x, false);
+});
+
+test('a complete listing is ready; every missing requirement is named, not just the first', () => {
+  assert.equal(validateListing(complete()).ready, true);
+  const empty = validateListing(normalizeListing({}));
+  assert.equal(empty.ready, false);
+  const fields = empty.listing.map((p) => p.field);
+  for (const f of ['title', 'description', 'propertyType', 'dealType', 'price', 'area', 'city', 'street', 'contactName', 'contactPhone', 'photos']) assert.ok(fields.includes(f), f);
+});
+
+test('inconsistent facts are refused', () => {
+  const x = { ...complete(), floor: 12, totalFloors: 9, bedrooms: 4, rooms: 3 };
+  const codes = validateListing(x).listing.map((p) => p.code);
+  assert.ok(codes.includes('EXCEEDS_TOTAL_FLOORS'));
+  assert.ok(codes.includes('EXCEEDS_ROOMS'));
+});
+
+test('portal-specific limits: MyHome photo ceiling and Georgian description', () => {
+  const many = { ...complete(), photos: Array.from({ length: 17 }, (_, i) => `0b5c1e44-4f3a-4b8e-9a51-0e7d6c2b9f${String(i).padStart(2, '0')}`) };
+  const v = validateListing(many);
+  assert.equal(v.ready, true);
+  assert.deepEqual(v.portals.myhome.map((p) => p.code), ['TOO_MANY_PHOTOS']);
+  assert.deepEqual(v.portals.ssge, []);
+  const english = validateListing({ ...complete(), description: { ka: '', en: 'Apartment', ru: '' } });
+  assert.deepEqual(english.portals.myhome.map((p) => p.code), ['GEORGIAN_DESCRIPTION_REQUIRED']);
+});
+
+test('the registry never claims an API or automated submission', () => {
+  for (const p of publicRegistry()) {
+    assert.equal(p.api, false);
+    assert.equal(p.publishing, 'MANUAL_HANDOFF');
+    assert.equal('externalId' in p, false);
+  }
+});
+
+test('external URLs: portal domain, https, and a listing id are all required', () => {
+  assert.deepEqual(parseExternalUrl('myhome', 'https://www.myhome.ge/ka/pr/18234567/iyideba-bina?utm=1#x'), { url: 'https://www.myhome.ge/ka/pr/18234567/iyideba-bina', externalId: '18234567' });
+  assert.equal(parseExternalUrl('ssge', 'https://home.ss.ge/ka/udzravi-qoneba/iyideba-3-otaxiani-bina-vakeshi-31234567').externalId, '31234567');
+  assert.equal(parseExternalUrl('myhome', 'http://www.myhome.ge/pr/18234567').error, 'HTTPS_PORTAL_URL_REQUIRED');
+  assert.equal(parseExternalUrl('myhome', 'https://myhome.ge.evil.test/pr/18234567').error, 'URL_NOT_ON_PORTAL');
+  assert.equal(parseExternalUrl('myhome', 'https://evilmyhome.ge/pr/18234567').error, 'URL_NOT_ON_PORTAL');
+  assert.equal(parseExternalUrl('myhome', 'https://user:pw@www.myhome.ge/pr/18234567').error, 'HTTPS_PORTAL_URL_REQUIRED');
+  assert.equal(parseExternalUrl('myhome', 'https://www.myhome.ge/ka/s/').error, 'LISTING_ID_NOT_FOUND_IN_URL');
+  assert.equal(parseExternalUrl('ssge', 'https://www.myhome.ge/pr/18234567').error, 'URL_NOT_ON_PORTAL');
+  assert.equal(parseExternalUrl('myhome', 'not a url').error, 'INVALID_URL');
+});
+
+test('only a 200 that contains the listing id is LIVE; only 404/410 is GONE', () => {
+  assert.deepEqual(classifyCheck({ status: 200, body: '<div>18234567</div>', externalId: '18234567' }), { result: 'LIVE' });
+  assert.equal(classifyCheck({ status: 200, body: '<h1>Search results</h1>', externalId: '18234567' }).result, 'UNKNOWN');
+  assert.equal(classifyCheck({ status: 404, externalId: '1' }).result, 'GONE');
+  assert.equal(classifyCheck({ status: 410, externalId: '1' }).result, 'GONE');
+  for (const status of [403, 429, 500, 'TIMEOUT', 'NETWORK', 'REDIRECT_OFF_PORTAL', 302]) assert.equal(classifyCheck({ status, externalId: '1' }).result, 'UNKNOWN', String(status));
+});
+
+test('PUBLISHED is reachable only through LINK followed by a LIVE check', () => {
+  const prepared = transition(null, { type: 'PREPARE', listingVersion: 1 }, NOW);
+  assert.equal(prepared.set.status, 'HANDOFF_READY');
+  // No command other than CHECK(LIVE) from VERIFYING produces PUBLISHED.
+  for (const status of ['HANDOFF_READY', 'VERIFICATION_FAILED', 'UNPUBLISHED', 'REMOVED_EXTERNALLY', 'UNPUBLISH_REQUESTED']) {
+    for (const cmd of [{ type: 'PREPARE', listingVersion: 2 }, { type: 'RETRY' }, { type: 'REQUEST_UNPUBLISH' }, { type: 'CONFIRM_REMOVED' }, { type: 'MARK_UPDATED', listingVersion: 2 }]) {
+      const r = transition(pub({ status, external_id: '1', external_url: 'https://www.myhome.ge/pr/1' }), cmd, NOW);
+      assert.notEqual(r.set?.status, 'PUBLISHED', `${status} + ${cmd.type}`);
+    }
+  }
+  const linked = transition(pub(), { type: 'LINK', url: 'https://www.myhome.ge/pr/18234567', externalId: '18234567', listingVersion: 1 }, NOW);
+  assert.equal(linked.set.status, 'VERIFYING');
+  const verifying = pub({ ...linked.set });
+  assert.equal(transition(verifying, { type: 'CHECK', outcome: { result: 'UNKNOWN', code: 'PORTAL_BLOCKED_CHECK' } }, NOW).set.status, undefined, 'inconclusive stays VERIFYING');
+  const live = transition(verifying, { type: 'CHECK', outcome: { result: 'LIVE' } }, NOW);
+  assert.equal(live.set.status, 'PUBLISHED');
+  assert.equal(live.set.published_at, NOW.toISOString());
+});
+
+test('LINK requires a prepared handoff', () => {
+  assert.equal(transition(null, { type: 'LINK', url: 'u', externalId: '1', listingVersion: 1 }, NOW).error, 'PREPARE_FIRST');
+  assert.equal(transition(pub({ status: 'PUBLISHED' }), { type: 'LINK', url: 'u', externalId: '1', listingVersion: 1 }, NOW).error, 'PREPARE_FIRST');
+});
+
+test('repeat clicks are idempotent and a live publication cannot be re-prepared', () => {
+  assert.equal(transition(pub(), { type: 'PREPARE', listingVersion: 1 }, NOW).error, 'NO_CHANGE');
+  for (const status of ['VERIFYING', 'PUBLISHED', 'UNPUBLISH_REQUESTED']) {
+    assert.equal(transition(pub({ status }), { type: 'PREPARE', listingVersion: 2 }, NOW).error, 'PUBLICATION_ALREADY_ACTIVE');
+  }
+});
+
+test('checks are rate-limited with exponential backoff and give up after the attempt limit', () => {
+  assert.equal(backoffMs(0), 60_000);
+  assert.equal(backoffMs(3), 480_000);
+  assert.equal(backoffMs(30), 6 * 3_600_000);
+  const soon = pub({ status: 'VERIFYING', external_id: '1', next_check_at: new Date(NOW.getTime() + 1000).toISOString() });
+  assert.equal(transition(soon, { type: 'CHECK', outcome: { result: 'LIVE' } }, NOW).error, 'CHECK_TOO_SOON');
+  const last = pub({ status: 'VERIFYING', external_id: '1', check_attempts: MAX_VERIFY_ATTEMPTS - 1 });
+  const failed = transition(last, { type: 'CHECK', outcome: { result: 'UNKNOWN', code: 'PORTAL_TIMEOUT' } }, NOW);
+  assert.equal(failed.set.status, 'VERIFICATION_FAILED');
+  assert.equal(failed.set.last_error, 'PORTAL_TIMEOUT');
+  const retried = transition(pub({ ...last, ...failed.set, external_url: 'https://www.myhome.ge/pr/1' }), { type: 'RETRY' }, NOW);
+  assert.equal(retried.set.status, 'VERIFYING');
+  assert.equal(retried.set.check_attempts, 0);
+});
+
+test('sync: an inconclusive check never demotes a confirmed publication; a 404 marks it removed', () => {
+  const live = pub({ status: 'PUBLISHED', external_id: '1' });
+  assert.equal(transition(live, { type: 'CHECK', outcome: { result: 'UNKNOWN', code: 'PORTAL_ERROR' } }, NOW).set.status, undefined);
+  assert.equal(transition(live, { type: 'CHECK', outcome: { result: 'GONE', code: 'HTTP_404' } }, NOW).set.status, 'REMOVED_EXTERNALLY');
+});
+
+test('unpublish is confirmed by the portal page disappearing, or attested by the owner — labelled as such', () => {
+  const req = transition(pub({ status: 'PUBLISHED', external_id: '1' }), { type: 'REQUEST_UNPUBLISH' }, NOW);
+  assert.equal(req.set.status, 'UNPUBLISH_REQUESTED');
+  const pending = pub({ status: 'UNPUBLISH_REQUESTED', external_id: '1' });
+  assert.equal(transition(pending, { type: 'CHECK', outcome: { result: 'LIVE' } }, NOW).set.status, undefined);
+  assert.equal(transition(pending, { type: 'CHECK', outcome: { result: 'GONE', code: 'HTTP_404' } }, NOW).set.status, 'UNPUBLISHED');
+  const attested = transition(pending, { type: 'CONFIRM_REMOVED' }, NOW);
+  assert.equal(attested.set.status, 'UNPUBLISHED');
+  assert.equal(attested.kind, 'REMOVAL_ATTESTED_BY_OWNER');
+  assert.equal(transition(pub({ status: 'PUBLISHED' }), { type: 'CONFIRM_REMOVED' }, NOW).error, 'NOT_UNPUBLISHING');
+});
+
+test('editing after publication: the portal copy is flagged until marked updated', () => {
+  const live = pub({ status: 'PUBLISHED', external_id: '1', listing_version: 1 });
+  assert.equal(transition(live, { type: 'MARK_UPDATED', listingVersion: 1 }, NOW).error, 'NO_CHANGE');
+  const updated = transition(live, { type: 'MARK_UPDATED', listingVersion: 3 }, NOW);
+  assert.equal(updated.set.listing_version, 3);
+  assert.equal(updated.set.status, undefined, 'stays PUBLISHED, re-checked next');
+});

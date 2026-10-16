@@ -21,7 +21,8 @@
 // follows it. A floor-plan design also offers its 3D walkthrough
 // (WalkthroughPanel): made by the server, it carries on with the page closed.
 
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyRoute } from '@/lib/lazyRoute';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronDown, Columns2, Download, Expand, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,7 +46,7 @@ import { WalkthroughPanel } from './WalkthroughPanel';
 import { findPhotoRooms } from '@/services/designStudio/photoRooms';
 import { priceWords } from '@/lib/designStudio/renders/priceWords';
 
-const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+const SnakeGame = lazyRoute(() => import('@/components/games/SnakeGame'));
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F4EF]';
 const ACTIVE: ReadonlySet<RenderRecord['status']> = new Set(['QUOTED', 'QUEUED', 'RENDERING', 'FINISHING']);
@@ -572,7 +573,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
         {/* ── The 3D walkthrough of the design shown: always from this project (a photo design's space is reconstructed by the server) ── */}
         {hero ? (
-          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} needsRoomPhotos />
+          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}

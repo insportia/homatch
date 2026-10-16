@@ -27,6 +27,14 @@
 // Everything here is internal. Document ids, attachment ids and hashes stay
 // in this structure for audit; none of it is customer prose.
 
+import { revalidateDecision, legalClaims, type LegalClaim } from './legalStatus.ts';
+import { buildCaseChronology, latestCasesByFiling, permitTerm, plausibleBlock, type CaseStage, type ChronologyCase } from './tasChronology.ts';
+import { readCaseSources, caseDecisionState, caseIsClosed, caseSubject, redactPersonal } from './tasCaseSources.ts';
+import {
+  VISUAL_ASSET_MAX, categoryForScope, normalizeVisualCategory, normalizeVisualKind, correctVisualKind, resolveVisualScope, visualSubject,
+  type VisualAssetKind, type VisualCategory, type VisualScope,
+} from './visualAssets.ts';
+
 export type FactStatus = 'CURRENT' | 'SUPERSEDED' | 'HISTORICAL' | 'CONFLICTING';
 export type Materiality = 'HIGH' | 'MEDIUM' | 'LOW';
 export type FactBasis = 'DOCUMENTED_SPECIFICATION' | 'OFFICIAL_DECISION' | 'OFFICIAL_RECORD';
@@ -125,6 +133,8 @@ export interface TasFunnel {
   retainedEvents: number;
   milestones: number;
   visualsSelected: number;
+  /** Official visuals withheld because their case names a different parcel. */
+  visualsHidden?: number;
   incomplete: boolean;
   incompleteReasons: string[];
 }
@@ -146,6 +156,7 @@ export type ParticipantRole =
   | 'LANDSCAPE_ARCHITECT'
   | 'FIRE_SAFETY'
   | 'SURVEYOR'
+  | 'INTERIOR_DESIGNER'
   | 'OTHER';
 
 export interface Participant {
@@ -160,10 +171,15 @@ export interface Participant {
   /** Appears in the most recent case that names anyone in this role. */
   current: boolean;
   /**
-   * Private individuals named only as applicants/owners/clients are kept
-   * internal; professionals and organisations may be named to a buyer.
+   * Owner, 2026-10-10: every VERIFIED participant is named to the buyer —
+   * private landowners and applicants included — with the documented role,
+   * building and dates. Only a name that fails cleaning is kept internal.
+   * Personal ID numbers and contact details never travel (stripped at the
+   * door by cleanParticipantName).
    */
   customerVisible: boolean;
+  /** Buildings/blocks of the cases that name this participant (when stated). */
+  blocks: string[];
 }
 
 export interface StoryChapter {
@@ -177,7 +193,19 @@ export interface StoryChapter {
 export interface VisualRef {
   id: string;
   role: 'LATEST_RENDER' | 'EARLIEST_RENDER' | 'SUPPORTING';
-  kind: string;
+  kind: VisualAssetKind;
+  /** Gallery tab. */
+  category: VisualCategory;
+  /** Identity against the requested unit (visualAssets.ts). Never UNRELATED_SUSPECT here: those are withheld. */
+  scope: Exclude<VisualScope, 'UNRELATED_SUSPECT'>;
+  block: string | null;
+  matchBasis: string;
+  /** 1-based page of a rendered drawing. */
+  page: number | null;
+  fileName: string | null;
+  mime: string | null;
+  confidence: number;
+  extraction: string | null;
   date: string | null;
   /** The chapter this visual explains, so the UI places it beside the story. */
   chapter: StoryChapter['key'] | null;
@@ -204,11 +232,51 @@ export interface TasCoverage {
   officialResponses: number;
   attachmentsAccounted: number;
   attachmentsRead: number;
+  /** Pages of the attachments actually read (the worker's own page counts). */
+  pagesRead?: number;
   scanOnly: number;
   unsupportedFormats: number;
   notProcessed: number;
   earliestDate: string | null;
   latestDate: string | null;
+}
+
+/**
+ * An application on file without a decision: what was asked, when, and by
+ * when the authority must answer. Never an approval, and never a reason to
+ * set aside the latest effective decision.
+ */
+export interface PendingApplication {
+  caseRef: string | null;
+  date: string | null;
+  deadline: string | null;
+  subject: string | null;
+  status: 'UNDER_REVIEW';
+  /** The case's own displayed status, e.g. „განხილვის პროცესში“. */
+  statusText: string | null;
+  applicant: string | null;
+  /**
+   * The procedural stage the record shows (tasChronology.ts): SUBMITTED (no
+   * response yet), UNDER_REVIEW (deficiency notices only) or RESPONSE_UNREAD
+   * (a response exists whose outcome could not be read) — never an approval.
+   */
+  stage?: CaseStage;
+  /** The latest published response, when one exists. */
+  lastResponse?: { number: string | null; publishedOn: string | null } | null;
+}
+
+/**
+ * A dated reference later than the job's own completion: a date the papers
+ * cite (a hearing, a planned step), never an issued decision. Kept out of the
+ * timeline, the status and the legal claims.
+ */
+export interface FutureDatedReference {
+  flag: 'FUTURE_DATED_REFERENCE';
+  date: string;
+  caseRef: string | null;
+  title: string;
+  decisionNumber: string | null;
+  citedOutcome: string | null;
 }
 
 export interface TasIntelligence {
@@ -226,6 +294,14 @@ export interface TasIntelligence {
   /** The 5–10 events a buyer needs, chosen by relevance; never drops a negative decision. */
   milestoneIds: string[];
   funnel: TasFunnel;
+  /** Distinct legal states, each CONFIRMED / … / NOT_VERIFIED on its own evidence. */
+  legalClaims: LegalClaim[];
+  /** Applications on file without a decision (newest first). */
+  pendingApplications?: PendingApplication[];
+  /** References dated after the job completed — never issued decisions. */
+  futureDatedReferences?: FutureDatedReference[];
+  /** Every case in FILING order with its stage and legal effect (tasChronology.ts). */
+  caseChronology?: ChronologyCase[];
 }
 
 // ─────────────────────────────── helpers ───────────────────────────────
@@ -292,7 +368,17 @@ const KEY_RULES: KeyRule[] = [
   { key: 'foundationType', category: 'FOUNDATION', materiality: 'MEDIUM', single: true, re: /საძირკვ|ფუნდამენტ|foundation|фундамент/i },
   { key: 'piles', category: 'FOUNDATION', materiality: 'MEDIUM', single: true, re: /ხიმინჯ|piles?|сва/i },
   { key: 'geologicalSurvey', category: 'GEOTECHNICAL', materiality: 'LOW', single: false, re: /გეოლოგ|geolog|геолог/i },
+  { key: 'slabThickness', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /ფილ(?:ის|ების)\s+სისქე|slab\s+thickness|толщина\s+плит/i },
+  { key: 'concreteClass', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /ბეტონის\s+(?:კლასი|მარკა|სიმტკიცის)|concrete\s+(?:class|grade)|класс\s+бетона/i },
+  { key: 'concreteVolume', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /ბეტონის\s+(?:მოცულობა|ხარჯი|საერთო)|concrete\s+volume|объ[её]м\s+бетона/i },
+  { key: 'rebarClass', category: 'STRUCTURAL', materiality: 'LOW', single: true, re: /არმატურ|rebar|арматур/i },
+  { key: 'foundationSlab', category: 'FOUNDATION', materiality: 'MEDIUM', single: true, re: /ფილოვან\S*\s+საძირკვ|raft|mat\s+foundation|плитн/i },
+  { key: 'pileSize', category: 'FOUNDATION', materiality: 'LOW', single: true, re: /ხიმინჯ\S*\s+(?:სიგრძე|დიამეტრი|სიღრმე)|pile\s+(?:length|diameter)/i },
+  { key: 'wallMaterial', category: 'MATERIAL', materiality: 'LOW', single: true, re: /კედლ(?:ის|ების)\s+(?:მასალა|შევსება)|wall\s+material/i },
+  { key: 'facadeMaterial', category: 'MATERIAL', materiality: 'LOW', single: true, re: /ფასადის\s+(?:მოპირკეთება|მასალა|დამუშავება)|facade\s+(?:cladding|material)/i },
+  { key: 'insulation', category: 'MATERIAL', materiality: 'LOW', single: true, re: /თბოიზოლაცი|insulation|утепл/i },
   { key: 'seismic', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /სეისმ|seismic|сейсм/i },
+  { key: 'seismicZone', category: 'STRUCTURAL', materiality: 'MEDIUM', single: true, re: /სეისმურ(?:ობა|ი\s+(?:ზონა|ბალი|მედეგობა))|seismic\s+(?:zone|intensity)/i },
   { key: 'energyEfficiency', category: 'MEP', materiality: 'LOW', single: true, re: /ენერგოეფექტ|energy/i },
   { key: 'fireSafety', category: 'MEP', materiality: 'MEDIUM', single: true, re: /ხანძარ|fire|пожар/i },
   { key: 'elevator', category: 'MEP', materiality: 'LOW', single: true, re: /ლიფტ|elevator|лифт/i },
@@ -314,8 +400,98 @@ const PERSON_FACT_ROLES: Record<string, ParticipantRole> = {
   supervisionRole: 'TECHNICAL_SUPERVISOR',
   applicant: 'APPLICANT',
   parcelOwner: 'PARCEL_OWNER',
+  landscapeSpecialist: 'LANDSCAPE_ARCHITECT',
+  mepSpecialist: 'MEP_ENGINEER',
+  fireSafetySpecialist: 'FIRE_SAFETY',
+  contractorCompany: 'CONTRACTOR',
+  interiorDesigner: 'INTERIOR_DESIGNER',
 };
 const NON_FACT_KEYS = new Set(['organization', 'idCode', 'buildingBlock', 'buildingLiter']);
+/** Form labels whose value is a person or organisation in a role, not a specification. */
+const PERSON_LABEL = /არქიტექტორ|თანაავტორ|^ავტორ|სპეციალისტ|^ექსპერტ|კონსტრუქტორ|ინჟინერ|გეოლოგი$|დეველოპერ|დამკვეთ|განმცხადებ|მესაკუთრ|ორგანიზაცია$|შემსრულებელ|სახელი|გვარი|architect|co-?author|specialist|engineer|developer|applicant/iu;
+
+/*
+ * VALUES THAT ARE NOT VALUES OF THEIR MATTER.
+ *
+ * Job c80f7237 rendered "building function: ფართობი → არასასოფლო სამეურნეო".
+ * Neither is a building function: "ფართობი" (area) is a table header the form
+ * reader took for a value, and "არასასოფლო სამეურნეო" (non-agricultural) is
+ * the LAND category of the plot. A history built from them invents a change
+ * of purpose that never happened, so they are refused at the door.
+ */
+const HEADER_WORD = /^(ფართობი|ფართი|რაოდენობა|მნიშვნელობა|დასახელება|ერთეული|სულ|area|value|name|unit|total|площадь|значение)$/i;
+const LAND_CATEGORY = /^(არა)?სასოფლო[\s-]*სამეურნეო$|^(non-?)?agricultural$|^(не)?сельскохозяйственн/i;
+export function acceptableValue(key: string, value: string): boolean {
+  return cleanValue(key, value) !== null;
+}
+
+/*
+ * A FORM VALUE, CLEANED — OR NOTHING.
+ *
+ * The worker reads values out of scanned and layered PDFs. Owner live run
+ * 2026-10-10 (job 220ed087) showed what reaches a report unfiltered:
+ * "....ქმედებები: 1662.0", ";", "ან/და გაბარიტები." as building function and
+ * floors, and text printed twice by the PDF's own layers
+ * ("საცხოვრებელი ობიექტებისაცხოვრებელი ობიექტები"). A value is cleaned once
+ * (doubling, leaked label, stray punctuation) and must then look like a value
+ * of ITS matter; anything else is dropped rather than shown as history.
+ */
+const NUMERIC_KEYS = new Set(['floors', 'undergroundFloors', 'height', 'landArea', 'footprintArea', 'totalArea', 'residentialArea', 'commercialArea', 'units', 'K1', 'K2', 'K3', 'slabThickness', 'concreteVolume', 'maxStructuralSpan']);
+const BUILDING_USE = /საცხოვრებ|კომერცი|სავაჭრ|საოფის|ოფის|სასტუმრ|მრავალბინ|ერთბინ|შერეულ|ადმინისტრაც|საწარმო|სასაწყობ|სპორტ|საგანმანათლ|სამედიცინ|საზოგადოებრივ|residential|commercial|office|hotel|mixed|retail|warehouse|industrial|жил|коммерч|офис/i;
+const SENTENCE = /(?:^|\s)(?:უნდა|იქნას|შეიძლება|გაითვალისწინ|რადგან|რომელიც|თუ|ან\/და|წარმოადგენს|მეტი|ნაკლები)(?:\s|$|[.,;])/u;
+/** "XYZXYZ" or "XYZ XYZ" printed twice by a layered PDF → "XYZ". */
+export function undouble(v: string): string {
+  const t = v.replace(/\s+/g, ' ').trim();
+  for (const sep of ['', ' ']) {
+    const half = (t.length - sep.length) / 2;
+    if (Number.isInteger(half) && half >= 3 && t.slice(0, half) === t.slice(half + sep.length)) return t.slice(0, half);
+  }
+  // Word-level: "წარმოადგენსწარმოადგენს" inside a phrase.
+  return t.replace(/(\S{5,})\1/gu, "$1");
+}
+export function cleanValue(key: string, value: string): string | null {
+  let v = undouble(s(value)).replace(/^[>\s.…;:,·-]+/, '').replace(/[\s.:;,·-]+$/, '').trim();
+  // A label leaked in front ("მიზნობრივი დანიშნულება: X") — keep the value part only.
+  const leaked = /^[^:]{3,60}:\s*(.+)$/u.exec(v);
+  if (leaked && !/\d:\d/.test(v)) v = leaked[1].trim();
+  if (!v || (v.length < 2 && !(NUMERIC_KEYS.has(key) && /\d/.test(v))) || HEADER_WORD.test(v)) return null;
+  if (/[.…]{3,}|\t/.test(value) && v.length < 4) return null;
+  if (v.length > 90 || SENTENCE.test(` ${v} `)) return null;
+  if (NUMERIC_KEYS.has(key) && !/\d/.test(v)) return null;
+  if (key === 'buildingFunction') {
+    if (LAND_CATEGORY.test(v) || /მიზნობრივ|სასოფლო/i.test(v) || !BUILDING_USE.test(v) || /\d/.test(v)) return null;
+  }
+  if (key === 'buildingClass' && !/(?:^|\s|[^a-z])(I{1,3}|IV|V)(?:$|\s|[^a-z])|[1-5]/i.test(v)) return null;
+  return v;
+}
+
+/*
+ * A PARTICIPANT NAME, OR NOTHING.
+ *
+ * Form readers hand over whatever sat in the name cell: "დავით ლოსაბერიძე პ/ნ
+ * 0100…", a CV line ('"იმკ-91" მშენებელ-ინჟინერი. 2018 წლიდან …'), a fragment
+ * of a notarial clause ("ს - დავით ხ… სანოტარო წესით"). The report showed them
+ * as the project team (owner live run 2026-10-10). A name is kept only when it
+ * reads as a person (2–4 words, letters only) or an organisation in a legal
+ * form; personal ID numbers are never carried.
+ */
+const ORG_FORM = /(?:^|\s|[„"«])(შპს|სს|ი\/მ|ააიპ|სსიპ|ა\(ა\)იპ|კს|სპს|llc|ltd|jsc|inc|gmbh|ооо|ао)(?:\s|$|[„"«.])/iu;
+export function cleanParticipantName(raw: string): string | null {
+  let v = undouble(s(raw))
+    .replace(/\s*(?:პ\/ნ|პ\.ნ\.?|p\/n|ს\/კ|ს\.კ\.?|id)\s*:?\s*\d{8,11}/giu, '')
+    .replace(/\s*\(\d{9,11}\)\s*/g, ' ')
+    .replace(/[\t\s]+/g, ' ')
+    .replace(/^[\s\-–—:;,.]+|[\s\-–—:;,.]+$/g, '')
+    .trim();
+  if (!v || v.length < 4 || v.length > 70) return null;
+  if (SENTENCE.test(` ${v} `) || /წლიდან|დარგში|წესით|ექსპერტი|სპეციალისტი|სერტიფიკატ|\d{4}/u.test(v)) return null;
+  if (ORG_FORM.test(v)) return v;
+  // A person: 2–4 words of letters (Georgian, Latin or Cyrillic), each ≥ 2 letters.
+  const words = v.split(' ');
+  if (words.length < 2 || words.length > 4) return null;
+  if (!words.every((w) => /^[\p{L}][\p{L}'’-]{1,}$/u.test(w))) return null;
+  return v;
+}
 
 export function ruleFor(label: string): KeyRule | null {
   const t = s(label);
@@ -334,6 +510,7 @@ export function normalizeRole(raw: string): ParticipantRole {
   if (/დეველოპ|developer|девелоп|застройщик/.test(t)) return 'DEVELOPER';
   if (/მესაკუთრ|owner|собственник/.test(t)) return 'PARCEL_OWNER';
   if (/ლანდშაფტ|landscape/.test(t)) return 'LANDSCAPE_ARCHITECT';
+  if (/ინტერიერ|interior/.test(t)) return 'INTERIOR_DESIGNER';
   if (/თანაავტორ|co-?author/.test(t)) return 'CO_ARCHITECT';
   if (/არქიტექტ|architect|архитект/.test(t)) return 'ARCHITECT';
   if (/კონსტრუქტ|კონსტრუქციულ|structural|конструкт/.test(t)) return 'STRUCTURAL_ENGINEER';
@@ -412,7 +589,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
   if (api) {
     for (const c of arr<any>(api.cases)) {
       const tf = arr<any>(c.technicalFacts);
-      const block = s(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value) || null;
+      const block = plausibleBlock(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value);
       cases.push({
         documentId: s(c.documentId) || null,
         caseRef: s(c.registrationNumber) || null,
@@ -421,9 +598,9 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
         status: s(c.status) || null,
         date: day(c.date),
         parties: arr<any>(c.parties).map((p) => ({ role: s(p?.role), name: s(p?.name), kind: s(p?.kind), organizationId: p?.organizationId ?? null })),
-        values: arr<any>(c.values).map((v) => ({ key: s(v?.key), label: s(v?.label) || null, value: s(v?.value) })),
+        values: arr<any>(c.values).map((v) => ({ key: s(v?.key) || s(v?.path), label: s(v?.label) || null, value: s(redactPersonal(s(v?.value))) })),
         technicalFacts: tf.map((f) => ({ category: s(f?.category), key: s(f?.key), value: s(f?.value) })),
-        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? m.decision : null })),
+        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? revalidateDecision(m.decision) : null })),
         block,
       });
     }
@@ -433,7 +610,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
   for (const r of results)
     for (const d of arr<any>(r.documents)) {
       const tf = arr<any>(d.technicalFacts);
-      const block = s(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value) || null;
+      const block = plausibleBlock(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value);
       cases.push({
         documentId: s(d.tasDocumentId ?? d.id) || null,
         caseRef: null,
@@ -465,6 +642,9 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     facts: [], timeline: [], participants: [], story: [], visuals: [], conflicts: [], currentFactIds: [],
     officialStatus: { state: 'NOT_ESTABLISHED', since: null, basis: null, validUntil: null, pending: [], conclusive: false, caveats: ['NO_DECISIONS_READ'] },
     milestoneIds: [],
+    legalClaims: legalClaims([]),
+    pendingApplications: [],
+    futureDatedReferences: [],
     funnel: { discoveredDocuments: 0, discoveredMotions: 0, discoveredAttachments: 0, processedResponses: 0, processedAttachments: 0, deferredAttachments: 0, retainedFacts: 0, retainedEvents: 0, milestones: 0, visualsSelected: 0, incomplete: false, incompleteReasons: [] },
   };
   if (!cases.length) return empty;
@@ -472,31 +652,40 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── facts: collect occurrences, then group by matter (key + block) ──
   type Occ = { rule: KeyRule | null; key: string; label: string; value: string; block: string | null; src: FactSource; category: TasFact['category']; materiality: Materiality; single: boolean };
   const occ: Occ[] = [];
-  const participantsRaw: Array<{ name: string; kind: string; organizationId: string | null; role: ParticipantRole; date: string | null; documentId: string | null }> = [];
+  const participantsRaw: Array<{ name: string; kind: string; organizationId: string | null; role: ParticipantRole; date: string | null; documentId: string | null; block?: string | null }> = [];
 
   for (const c of cases) {
     const src: FactSource = { documentId: c.documentId, caseRef: c.caseRef, date: c.date, label: c.title };
     for (const v of c.values) {
       if (!v.value) continue;
+      // A form row that names a PERSON in a role is a participant, never a project fact (and never a "conflict").
+      if (PERSON_LABEL.test(v.label ?? v.key)) {
+        participantsRaw.push({ name: v.value, kind: 'UNKNOWN', organizationId: null, role: normalizeRole(v.label ?? v.key), date: c.date, documentId: c.documentId, block: c.block });
+        continue;
+      }
       const rule = ruleFor(v.label ?? v.key) ?? ruleFor(v.key);
       const key = rule?.key ?? `field:${valueIdentity(v.label ?? v.key).slice(0, 60)}`;
-      occ.push({ rule, key, label: v.label ?? v.key, value: v.value, block: c.block, src, category: rule?.category ?? 'OTHER', materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
+      const cleaned = cleanValue(key, v.value);
+      if (cleaned === null) continue;
+      occ.push({ rule, key, label: v.label ?? v.key, value: cleaned, block: c.block, src, category: rule?.category ?? 'OTHER', materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const f of c.technicalFacts) {
       if (!f.value || NON_FACT_KEYS.has(f.key)) continue;
       const role = PERSON_FACT_ROLES[f.key];
       if (role) {
         // Values like "ნინო კაპანაძე" or "შპს X (405...)" — one participant per value.
-        participantsRaw.push({ name: f.value, kind: /შპს|სს|llc|ltd|jsc|ооо/i.test(f.value) ? 'ORGANIZATION' : 'UNKNOWN', organizationId: /\b(\d{9})\b/.exec(f.value)?.[1] ?? null, role, date: c.date, documentId: c.documentId });
+        participantsRaw.push({ name: f.value, kind: /შპს|სს|llc|ltd|jsc|ооо/i.test(f.value) ? 'ORGANIZATION' : 'UNKNOWN', organizationId: /\b(\d{9})\b/.exec(f.value)?.[1] ?? null, role, date: c.date, documentId: c.documentId, block: c.block });
         continue;
       }
       const rule = KEY_RULES.find((r) => r.key === f.key) ?? ruleFor(f.key);
       const key = rule?.key ?? `tf:${f.key}`;
-      occ.push({ rule, key, label: rule?.key ?? f.key, value: f.value, block: c.block, src, category: rule?.category ?? (['PROJECT', 'PERMIT', 'STRUCTURAL', 'FOUNDATION', 'GEOTECHNICAL', 'MEP', 'LANDSCAPE', 'MATERIAL', 'REVISION'].includes(f.category) ? (f.category as TasFact['category']) : 'OTHER'), materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
+      const cleanedTf = cleanValue(key, f.value);
+      if (cleanedTf === null) continue;
+      occ.push({ rule, key, label: rule?.key ?? f.key, value: cleanedTf, block: c.block, src, category: rule?.category ?? (['PROJECT', 'PERMIT', 'STRUCTURAL', 'FOUNDATION', 'GEOTECHNICAL', 'MEP', 'LANDSCAPE', 'MATERIAL', 'REVISION'].includes(f.category) ? (f.category as TasFact['category']) : 'OTHER'), materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const p of c.parties) {
       if (!p.name) continue;
-      participantsRaw.push({ name: p.name, kind: p.kind || 'UNKNOWN', organizationId: p.organizationId ?? null, role: normalizeRole(p.role), date: c.date, documentId: c.documentId });
+      participantsRaw.push({ name: p.name, kind: p.kind || 'UNKNOWN', organizationId: p.organizationId ?? null, role: normalizeRole(p.role), date: c.date, documentId: c.documentId, block: c.block });
     }
   }
 
@@ -567,12 +756,20 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
 
   // ── timeline: cases and their motions, by real date ──
   const timeline: TimelineEvent[] = [];
+  const futureDatedReferences: FutureDatedReference[] = [];
+  const nowDay = String(nowIso).slice(0, 10);
   let eid = 0;
   const seenEvents = new Set<string>();
   const pushEvent = (date: string | null, title: string, c: CaseInput, status: string | null, decision: any = null) => {
     const d = decision && OUTCOMES.has(decision.outcome) ? decision : null;
-    const when = (d?.issueDate as string | null) ?? date;
+    const when = day(d?.issueDate as string | null) ?? date;
     if (!when || (!title && !d)) return;
+    // A date after the job completed is a cited date, not an issued act (job 220ed087: 2026-11-03 in a September 2026 case).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(nowDay) && when > nowDay) {
+      if (!futureDatedReferences.some((f) => f.date === when && f.caseRef === c.caseRef && f.decisionNumber === (d?.number ?? null)))
+        futureDatedReferences.push({ flag: 'FUTURE_DATED_REFERENCE', date: when, caseRef: c.caseRef, title: title || (d?.number ? `№ ${d.number}` : ''), decisionNumber: d?.number ?? null, citedOutcome: d?.outcome ?? null });
+      return;
+    }
     // A read decision's legal effect outranks the wording of the step's name.
     const kind = d && d.outcome !== 'UNDETERMINED' && d.outcome !== 'INFORMATIONAL' ? KIND_FOR_OUTCOME[d.outcome as DecisionOutcome] : eventKind(`${title} ${status ?? ''}`);
     const k = `${when}|${kind}|${valueIdentity(title)}|${c.documentId ?? ''}|${d?.number ?? ''}`;
@@ -581,7 +778,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     timeline.push({
       id: `te${++eid}`, date: when, kind, title: title || (d?.number ? `№ ${d.number}` : ''), caseRef: c.caseRef, documentId: c.documentId, status,
       materiality: d && OUTCOME_MATERIAL.has(d.outcome) ? 'HIGH' : EVENT_MATERIALITY[kind],
-      decision: d ? { number: d.number ?? null, outcome: d.outcome, evidence: d.evidence ? String(d.evidence).slice(0, 240) : null, validUntil: d.validUntil ?? null } : null,
+      decision: d ? { number: d.number ?? null, outcome: d.outcome, evidence: d.evidence ? String(d.evidence).slice(0, 240) : null, validUntil: d.validUntil ?? (d.outcome === 'PERMIT_ISSUED' || d.outcome === 'AMENDMENT_APPROVED' || d.outcome === 'DEADLINE_EXTENDED' ? permitTerm(d.evidence)?.until ?? null : null) } : null,
       relevance: 0,
     });
   };
@@ -599,33 +796,37 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── participants: exact identity only ──
   const byIdentity = new Map<string, Participant & { _docs: Set<string> }>();
   let pid = 0;
-  for (const p of participantsRaw) {
+  for (const raw of participantsRaw) {
+    const name = cleanParticipantName(raw.name);
+    if (!name) continue;
+    const p = { ...raw, name, kind: raw.kind === 'UNKNOWN' && ORG_FORM.test(name) ? 'ORGANIZATION' : raw.kind };
     const n = normName(p.name);
     if (!n || n.length < 3) continue;
     const id = p.organizationId ? `org:${p.organizationId}` : `name:${n}`;
     let e = byIdentity.get(id);
     if (!e) {
       const kind = p.kind === 'ORGANIZATION' || p.organizationId ? 'ORGANIZATION' : p.kind === 'PERSON' ? 'PERSON' : 'UNKNOWN';
-      e = { id: `tp${++pid}`, name: p.name.replace(/\s*\(\d{9}\)\s*$/, '').trim(), kind, organizationId: p.organizationId, roles: [], firstSeen: p.date, lastSeen: p.date, cases: 0, current: false, customerVisible: true, _docs: new Set() };
+      e = { id: `tp${++pid}`, name: p.name.replace(/\s*\(\d{9}\)\s*$/, '').trim(), kind, organizationId: p.organizationId, roles: [], firstSeen: p.date, lastSeen: p.date, cases: 0, current: false, customerVisible: true, blocks: [], _docs: new Set() };
       byIdentity.set(id, e);
     }
     if (!e.roles.includes(p.role)) e.roles.push(p.role);
     if (p.date && (!e.firstSeen || p.date < e.firstSeen)) e.firstSeen = p.date;
     if (p.date && (!e.lastSeen || p.date > e.lastSeen)) e.lastSeen = p.date;
     if (p.documentId) e._docs.add(p.documentId);
+    if (p.block && !e.blocks.includes(p.block)) e.blocks.push(p.block);
   }
   const participants: Participant[] = [];
   const latestByRole = new Map<ParticipantRole, string>();
   for (const e of byIdentity.values())
     for (const r of e.roles) if (e.lastSeen && (!latestByRole.get(r) || e.lastSeen > latestByRole.get(r)!)) latestByRole.set(r, e.lastSeen);
-  const PRIVATE_ONLY: ParticipantRole[] = ['APPLICANT', 'CO_APPLICANT', 'PARCEL_OWNER', 'CLIENT', 'OTHER'];
   for (const e of byIdentity.values()) {
     const { _docs, ...rest } = e;
     participants.push({
       ...rest,
       cases: _docs.size,
       current: e.roles.some((r) => !!e.lastSeen && latestByRole.get(r) === e.lastSeen),
-      customerVisible: !(e.kind !== 'ORGANIZATION' && e.roles.every((r) => PRIVATE_ONLY.includes(r))),
+      // A name that survived cleaning is a verified name; only an unknown-role person stays internal.
+      customerVisible: !(e.kind !== 'ORGANIZATION' && e.roles.every((r) => r === 'OTHER')),
     });
   }
   participants.sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '') || a.name.localeCompare(b.name));
@@ -638,23 +839,62 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   // ── story chapters ──
   const story = buildStory(timeline, facts, nowIso);
 
-  // ── visuals: linked to the nearest dated event and its chapter ──
-  const visuals: VisualRef[] = arr<any>(r0.officialVisuals ?? api?.visuals).slice(0, 6).map((v) => {
+  // ── visuals: identity against the requested unit, then linked to the
+  //    nearest dated event and its chapter. Bounded (VISUAL_ASSET_MAX). ──
+  const apiVisuals = new Map<string, any>(arr<any>(api?.visuals).filter((v) => v && v.id).map((v) => [s(v.id), v]));
+  const unit = obj(r0.exactUnit);
+  const tasRes = tasResults(report).find((t) => t?.tasApi) ?? tasResults(report)[0];
+  const subject = visualSubject(
+    s(unit.cadastralCode ?? unit.code) || s(tasRes?.originalCadastralCode) || s(api?.requestedCadastralCode) || s(api?.searchCadastralCode),
+    { unitNumber: unit.unitNumber ?? unit.apartmentNumber, floor: unit.floor },
+  );
+  let visualsHidden = 0;
+  const visuals: VisualRef[] = [];
+  for (const v0 of arr<any>(r0.officialVisuals ?? api?.visuals)) {
+    if (visuals.length >= VISUAL_ASSET_MAX) break;
+    const id = s(v0?.id);
+    if (!/^[a-f0-9]{64}$/.test(id)) continue;
+    // Stored records may predate the identity fields: the worker record fills them.
+    const v = { ...(apiVisuals.get(id) ?? {}), ...v0, identity: v0?.identity ?? apiVisuals.get(id)?.identity ?? null };
+    const kind = correctVisualKind(normalizeVisualKind(v.kind), v.fileName);
+    const { scope, block, matchBasis } = resolveVisualScope(kind, v.identity, subject);
+    if (scope === 'UNRELATED_SUSPECT') {
+      visualsHidden++;
+      continue;
+    }
     const d = day(v?.date);
+    // The case's filing date links an undated picture to its chapter (v7 sweep:
+    // a 2013 render was filed under TODAY because it had no date of its own).
+    const linkDate = d ?? (s(v?.documentId) ? cases.find((c) => c.documentId === s(v?.documentId))?.date ?? null : null);
     let nearest: TimelineEvent | null = null;
-    if (d)
+    if (linkDate)
       for (const e of timeline) {
-        const gap = Math.abs(Date.parse(e.date) - Date.parse(d));
-        if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(d)))) nearest = e;
+        const gap = Math.abs(Date.parse(e.date) - Date.parse(linkDate));
+        if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(linkDate)))) nearest = e;
       }
-    const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' ? 'TODAY' : null;
-    return {
-      id: s(v?.id), role: v?.role ?? 'SUPPORTING', kind: s(v?.kind) || 'OTHER_DRAWING', date: d, chapter, eventId: nearest?.id ?? null,
+    const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' && !linkDate ? 'TODAY' : null;
+    visuals.push({
+      id, role: v?.role === 'LATEST_RENDER' || v?.role === 'EARLIEST_RENDER' ? v.role : 'SUPPORTING', kind,
+      category: categoryForScope(kind, normalizeVisualCategory(v.category, kind), scope),
+      scope, block, matchBasis,
+      page: Number(v.page) > 0 ? Number(v.page) : null,
+      fileName: s(v.fileName) || null,
+      mime: s(v.mime) || null,
+      confidence: Number.isFinite(Number(v.confidence)) ? Number(v.confidence) : 0.5,
+      extraction: s(v.extraction) || null,
+      date: d, chapter, eventId: nearest?.id ?? null,
       width: v?.width ?? null, height: v?.height ?? null,
       versionStatus: visualVersionStatus(s(v?.documentId) || null, timeline),
       documentId: s(v?.documentId) || null, attachedFileId: s(v?.attachedFileId) || null,
-    };
-  }).filter((v) => /^[a-f0-9]{64}$/.test(v.id));
+    });
+  }
+
+  // ── render roles from dates (owner, 2026-10-11 v7, job eeefada9): the worker
+  //    names a "latest render" before later recovery adds newer ones, and
+  //    stored visuals carry no date — so a 2013 render was called the latest
+  //    and the model wrote "უახლესი რენდერი". The roles are re-derived here
+  //    from each render's own date, else its case filing date. ──
+  assignRenderRoles(visuals, new Map(cases.filter((c) => c.documentId && c.date).map((c) => [c.documentId!, c.date!])));
 
   // ── coverage (truthful, from the worker's own accounting) ──
   const acc = obj(api?.accounting);
@@ -669,6 +909,8 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     officialResponses: Number(obj(acc.responses).PDF || 0) + Number(obj(acc.responses).HTML || 0),
     attachmentsAccounted: Number(acc.attachments) || 0,
     attachmentsRead: Number(outcomes.READ_TEXT || 0) + Number(outcomes.LOW_TEXT || 0),
+    pagesRead: arr<any>(api?.cases).reduce((n, c) => n + arr<any>(c?.attachments).reduce((m, a) =>
+      m + ((a?.outcome === 'READ_TEXT' || a?.outcome === 'LOW_TEXT') && Number(a?.pages) > 0 ? Number(a.pages) : 0), 0), 0),
     scanOnly: Number(outcomes.SCAN_OR_IMAGE_ONLY || 0),
     unsupportedFormats: Number(outcomes.UNSUPPORTED_FORMAT || 0),
     notProcessed: Number(outcomes.NOT_PROCESSED_BUDGET || 0) + Number(outcomes.DOWNLOAD_FAILED || 0) + Number(outcomes.FAILED || 0),
@@ -676,8 +918,35 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     latestDate: dates[dates.length - 1] ?? null,
   };
 
+  // ── applications on file without a decision ──
+  const pendingApplications: PendingApplication[] = [];
+  const effectiveDate = officialStatus.basis?.date ?? '';
+  const yearAgo = new Date(Date.parse(nowIso) - 365 * 864e5).toISOString().slice(0, 10);
+  for (const c of readCaseSources(report)) {
+    const st = caseDecisionState(c, nowDay);
+    const open = st === 'UNDER_REVIEW' || (st === 'UNDECIDED' && !caseIsClosed(c) && !!c.date && c.date > effectiveDate && c.date >= yearAgo && c.date <= nowDay);
+    if (!open) continue;
+    const applicantParty = c.parties.find((p) => normalizeRole(p.role) === 'APPLICANT');
+    pendingApplications.push({
+      caseRef: c.caseRef, date: c.date, deadline: c.deadline, subject: caseSubject(c), status: 'UNDER_REVIEW', statusText: c.status,
+      applicant: applicantParty ? cleanParticipantName(applicantParty.name) : null,
+    });
+  }
+  pendingApplications.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+  const caseChronology = buildCaseChronology(report, nowIso);
+  for (const a of pendingApplications) {
+    const c = caseChronology.find((x) => x.caseRef && x.caseRef === a.caseRef);
+    if (!c) continue;
+    a.stage = c.stage === 'DECIDED' ? 'UNDER_REVIEW' : c.stage;
+    const last = [...c.unreadResponses].sort((x, y) => String(x.publishedOn ?? '').localeCompare(String(y.publishedOn ?? ''))).pop() ?? null;
+    a.lastResponse = last;
+  }
+
   return {
     available: true,
+    pendingApplications,
+    futureDatedReferences,
+    caseChronology,
     coverage,
     facts,
     timeline,
@@ -688,6 +957,14 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     currentFactIds: facts.filter((f) => f.status === 'CURRENT' || f.status === 'CONFLICTING').map((f) => f.id),
     officialStatus,
     milestoneIds,
+    legalClaims: legalClaims(timeline.map((e) => {
+      const kc = cases.find((c) => c.documentId === e.documentId);
+      return {
+        date: e.date, caseRef: e.caseRef, block: kc?.block ?? null,
+        decision: e.decision ? { number: e.decision.number, outcome: e.decision.outcome, evidence: e.decision.evidence } : null,
+        serviceText: kc ? [kc.docType, kc.title].filter(Boolean).join(' · ') : null,
+      };
+    })),
     funnel: {
       discoveredDocuments: Number(obj(api?.ledger).discovered?.documents ?? cases.length) || cases.length,
       discoveredMotions: Number(obj(api?.ledger).discovered?.motions ?? coverage.motions) || 0,
@@ -699,6 +976,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       retainedEvents: timeline.length,
       milestones: milestoneIds.length,
       visualsSelected: visuals.length,
+      visualsHidden,
       incomplete: obj(api?.ledger).incomplete === true,
       incompleteReasons: arr<string>(obj(api?.ledger).incompleteReasons).map(String),
     },
@@ -778,9 +1056,10 @@ export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso
     arr<any>(c?.motions).some((m) => {
       const kind = s(m?.response);
       if (kind !== 'PDF' && kind !== 'HTML' && kind !== 'OTHER') return false;
-      const outcome = s(obj(m?.decision).outcome);
+      const outcome = s(obj(revalidateDecision(obj(m?.decision))).outcome);
       if (outcome && outcome !== 'UNDETERMINED') return false;
       const d = day(m?.date);
+      if (d && d > nowIso.slice(0, 10)) return false;
       return !b || !d || d > b.date;
     }));
   if (b && (unreadLater || timeline.some((e) => e.date > b.date && e.decision && e.decision.outcome === 'UNDETERMINED'))) caveats.push('LATER_UNDETERMINED_DECISION');
@@ -794,7 +1073,7 @@ export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso
   const blockOf = new Map<string, string>();
   for (const c of arr<any>(api?.cases)) {
     const tf = arr<any>(c?.technicalFacts);
-    const blk = s(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value);
+    const blk = plausibleBlock(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value) ?? '';
     if (blk) blockOf.set(s(c?.documentId), blk.toLowerCase());
   }
   const finalByCase = new Map<string, { outcome: string; block: string | null }>();
@@ -936,6 +1215,10 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
   push(`Coverage: ${intel.coverage.cases} case(s), ${intel.coverage.motions} recorded steps, earliest ${intel.coverage.earliestDate ?? 'n/a'}, latest ${intel.coverage.latestDate ?? 'n/a'}.`, true);
   const st = intel.officialStatus;
   push(`CURRENT OFFICIAL STATUS (deterministic, from decisions): ${st.state}${st.since ? ` since ${st.since}` : ''}${st.basis?.caseRef ? ` — case ${st.basis.caseRef}` : ''}${st.basis?.decisionNumber ? `, decision № ${st.basis.decisionNumber}` : ''}${st.validUntil ? `, valid until ${st.validUntil}` : ''}. ${st.conclusive ? 'CONCLUSIVE.' : `NOT CONCLUSIVE (${st.caveats.join(', ') || 'no controlling decision read'}) — say so plainly, never upgrade it.`}${st.pending.length ? ` Pending later applications: ${st.pending.map((p) => `${p.caseRef ?? '?'} (${p.date}, ${p.outcome})`).join('; ')}.` : ''}`, true);
+  for (const a of intel.pendingApplications ?? [])
+    push(`PENDING APPLICATION (UNDER REVIEW — NO DECISION; never an approval, never overrides the effective decision above): case ${a.caseRef ?? '?'} filed ${a.date ?? 'n/a'}${a.deadline ? `, answer due ${a.deadline}` : ''}${a.statusText ? `, displayed status „${a.statusText}“` : ''}${a.subject ? ` — ${a.subject}` : ''}${a.applicant ? `; applicant ${a.applicant}` : ''}.`, true);
+  if (intel.futureDatedReferences?.length)
+    push(`FUTURE-DATED REFERENCES (dated after this check; cited dates, NOT issued decisions — never state them as decided): ${intel.futureDatedReferences.slice(0, 8).map((f) => `${f.date} in case ${f.caseRef ?? '?'}`).join('; ')}.`, true);
   if (intel.funnel.incomplete) push(`PROCESSING INCOMPLETE: ${intel.funnel.incompleteReasons.join(', ')} — conclusions that depend on unread material must be stated as provisional.`, true);
   push('CURRENT DOCUMENTED POSITION:', true);
   const current = intel.facts.filter((f) => f.status === 'CURRENT' || f.status === 'CONFLICTING').sort((a, b) => rank[a.materiality] - rank[b.materiality]);
@@ -965,7 +1248,7 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
   const team = intel.participants.filter((p) => p.customerVisible);
   if (team.length) {
     push('PROJECT PARTICIPANTS (roles as the documents state them; applicant ≠ owner):', true);
-    for (const p of team) push(`- ${p.name}: ${p.roles.join(', ')}${p.current ? ' (latest documents)' : ` (historical, last ${p.lastSeen ?? 'n/a'})`}`, false);
+    for (const p of team) push(`- ${p.name}: ${p.roles.join(', ')}${p.blocks.length ? ` [building ${p.blocks.join('/')}]` : ''}${p.current ? ' (latest documents)' : ` (historical, last ${p.lastSeen ?? 'n/a'})`}`, false);
   }
   if (arcF || arcE) push(`ARCHIVED (lower-importance, available on request): ${arcF} fact(s), ${arcE} event(s). Archived ≠ absent.`, true);
   return { text: lines.join('\n'), includedFacts: incF, archivedFacts: arcF, includedEvents: incE, archivedEvents: arcE };
@@ -988,6 +1271,76 @@ export interface OfficialHistoryView {
   evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
   funnel: TasFunnel;
   visuals: Array<{ id: string; versionStatus: VisualRef['versionStatus'] }>;
+  team?: Array<{ name: string; kind: Participant['kind']; roles: ParticipantRole[]; firstSeen: string | null; lastSeen: string | null; blocks: string[] }>;
+  /**
+   * Related milestones told as one step ("the design was amended four times,
+   * 2022–2024") — the individual records stay in `milestones` for the
+   * expandable timeline.
+   */
+  milestoneGroups?: Array<{ kind: EventKind; outcome: DecisionOutcome | null; firstDate: string; lastDate: string; count: number; decisionNumbers: string[] }>;
+  /** Distinct legal states and what establishes each. */
+  legal?: LegalClaim[];
+  /** Applications on file without a decision — UNDER_REVIEW, never approvals. */
+  pendingApplications?: PendingApplication[];
+  /** References dated after the check completed — never issued decisions. */
+  futureDatedReferences?: FutureDatedReference[];
+  /**
+   * Every case in FILING order, each with its procedural stage and legal
+   * effect; the scope is the parent parcel the cases were filed for.
+   */
+  caseChronology?: ChronologyCaseView[];
+  /** The two newest cases by filing date, newest first. */
+  latestCases?: ChronologyCaseView[];
+  /**
+   * The present, in reading order: the latest EFFECTIVE decision first, then
+   * applications still under review, then unresolved conflicts.
+   */
+  currentPosition?: CurrentPosition;
+}
+
+/** A case as the customer report may show it: no applicant identity, no internal ids. */
+export type ChronologyCaseView = Omit<ChronologyCase, 'metrics'> & { metrics: ChronologyCase['metrics'] };
+
+export interface CurrentPosition {
+  effective: {
+    state: OfficialState;
+    outcome: DecisionOutcome;
+    caseRef: string | null;
+    decisionNumber: string | null;
+    date: string | null;
+    validUntil: string | null;
+    /** The latest permit / approval itself, when the controlling decision is a later extension. */
+    permit: { caseRef: string | null; decisionNumber: string | null; date: string; outcome: DecisionOutcome } | null;
+  } | null;
+  pending: PendingApplication[];
+  conflicts: Array<{ label: string; block: string | null; values: Array<{ value: string; date: string | null }> }>;
+  conclusive: boolean;
+}
+
+/** The present, ordered: effective decision → pending amendments → conflicts. */
+export function currentPositionOf(intel: TasIntelligence): CurrentPosition {
+  const st = intel.officialStatus;
+  const permits = intel.timeline.filter((e) => e.decision && ['PERMIT_ISSUED', 'AMENDMENT_APPROVED', 'APPROVED', 'COMMISSIONED'].includes(e.decision.outcome));
+  const permit = permits.length ? permits[permits.length - 1] : null;
+  return {
+    effective: st.basis
+      ? {
+          state: st.state, outcome: st.basis.outcome, caseRef: st.basis.caseRef, decisionNumber: st.basis.decisionNumber, date: st.basis.date, validUntil: st.validUntil,
+          permit: permit && (permit.caseRef !== st.basis.caseRef || permit.date !== st.basis.date)
+            ? { caseRef: permit.caseRef, decisionNumber: permit.decision!.number, date: permit.date, outcome: permit.decision!.outcome }
+            : null,
+        }
+      : null,
+    pending: [
+      ...(intel.pendingApplications ?? []),
+      // An application answered only with an intermediate step / deficiency notice is still pending.
+      ...st.pending
+        .filter((p) => !(intel.pendingApplications ?? []).some((a) => a.caseRef && a.caseRef === p.caseRef))
+        .map((p): PendingApplication => ({ caseRef: p.caseRef, date: p.date, deadline: null, subject: null, status: 'UNDER_REVIEW', statusText: null, applicant: null })),
+    ],
+    conflicts: intel.conflicts.map((c) => ({ label: c.label, block: c.block, values: c.values })),
+    conclusive: st.conclusive,
+  };
 }
 
 /**
@@ -1008,17 +1361,84 @@ export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView
     })
     .slice(0, 8);
   const st = intel.officialStatus;
+  // A milestone must SAY something: an unread or undetermined decision with no
+  // step name is a reference number, not a step of the story (owner live run
+  // 2026-10-10: ten rows of "№ 6030016AR1897963 · № 6030016").
+  const milestones = intel.milestoneIds.map((id) => byId.get(id)).filter(Boolean)
+    .map((e) => ({
+      date: e!.date, kind: e!.kind, title: e!.title.slice(0, 160), caseRef: e!.caseRef, decisionNumber: e!.decision?.number ?? null,
+      outcome: e!.decision && e!.decision.outcome !== 'UNDETERMINED' && e!.decision.outcome !== 'INFORMATIONAL' ? e!.decision.outcome : null,
+    }))
+    .filter((m) => m.outcome || m.kind !== 'OTHER');
   return {
     status: {
       state: st.state, since: st.since, caseRef: st.basis?.caseRef ?? null, decisionNumber: st.basis?.decisionNumber ?? null,
       validUntil: st.validUntil, conclusive: st.conclusive, caveats: st.caveats, pendingCount: st.pending.length,
     },
-    milestones: intel.milestoneIds.map((id) => byId.get(id)).filter(Boolean).map((e) => ({
-      date: e!.date, kind: e!.kind, title: e!.title.slice(0, 160), caseRef: e!.caseRef, decisionNumber: e!.decision?.number ?? null,
-      outcome: e!.decision && e!.decision.outcome !== 'UNDETERMINED' ? e!.decision.outcome : null,
-    })),
+    milestones,
+    milestoneGroups: groupMilestones(milestones),
+    legal: intel.legalClaims,
+    pendingApplications: intel.pendingApplications ?? [],
+    futureDatedReferences: intel.futureDatedReferences ?? [],
+    caseChronology: intel.caseChronology ?? [],
+    latestCases: latestCasesByFiling(intel.caseChronology ?? [], 2),
+    currentPosition: currentPositionOf(intel),
     evolution,
     funnel: intel.funnel,
     visuals: intel.visuals.map((v) => ({ id: v.id, versionStatus: v.versionStatus })),
+    // The professionals the municipal documents name — never applicants or
+    // private parcel owners (owner, 2026-10-10: "who designed and built it").
+    // Everyone the documents name in a verified role — professionals, the
+    // developer, AND landowners / applicants / clients by name (owner,
+    // 2026-10-10) — with the building and dates their role applies to.
+    team: intel.participants
+      .filter((p) => p.customerVisible && (p.roles.some((r) => TEAM_ROLES.has(r) || OWNERSHIP_ROLES.has(r)) || (p.kind === 'ORGANIZATION' && p.roles.includes('OTHER'))))
+      .slice(0, 30)
+      .map((p) => {
+        const roles = p.roles.filter((r) => TEAM_ROLES.has(r) || OWNERSHIP_ROLES.has(r));
+        return { name: p.name, kind: p.kind, roles: roles.length ? roles : (['OTHER'] as ParticipantRole[]), firstSeen: p.firstSeen, lastSeen: p.lastSeen, blocks: p.blocks };
+      }),
   };
+}
+
+/** Consecutive milestones of the same kind and outcome, as one step of the story. */
+export function groupMilestones(ms: Array<{ date: string; kind: EventKind; outcome: DecisionOutcome | null; decisionNumber: string | null }>): NonNullable<OfficialHistoryView['milestoneGroups']> {
+  const out: NonNullable<OfficialHistoryView['milestoneGroups']> = [];
+  for (const m of [...ms].sort((a, b) => a.date.localeCompare(b.date))) {
+    const last = out[out.length - 1];
+    if (last && last.kind === m.kind && last.outcome === m.outcome) {
+      last.lastDate = m.date;
+      last.count++;
+      if (m.decisionNumber && !last.decisionNumbers.includes(m.decisionNumber)) last.decisionNumbers.push(m.decisionNumber);
+    } else {
+      out.push({ kind: m.kind, outcome: m.outcome, firstDate: m.date, lastDate: m.date, count: 1, decisionNumbers: m.decisionNumber ? [m.decisionNumber] : [] });
+    }
+  }
+  return out;
+}
+
+const OWNERSHIP_ROLES = new Set<ParticipantRole>(['PARCEL_OWNER', 'APPLICANT', 'CO_APPLICANT', 'CLIENT']);
+
+const TEAM_ROLES = new Set<ParticipantRole>([
+  'DEVELOPER', 'ARCHITECT', 'CO_ARCHITECT', 'STRUCTURAL_ENGINEER', 'GEOTECHNICAL_SPECIALIST', 'EXPERT_REVIEW',
+  'TECHNICAL_SUPERVISOR', 'CONTRACTOR', 'MEP_ENGINEER', 'LANDSCAPE_ARCHITECT', 'FIRE_SAFETY', 'SURVEYOR', 'INTERIOR_DESIGNER',
+]);
+
+/**
+ * LATEST_RENDER = the newest dated render (own date, else its case's filing
+ * date); EARLIEST_RENDER = the oldest when at least 90 days older; every
+ * other render SUPPORTING. Undated renders never take a role while a dated
+ * one exists. Mutates in place; returns the list for convenience.
+ */
+export function assignRenderRoles<T extends { role: string; kind: string; date: string | null; documentId: string | null }>(visuals: T[], caseDates: Map<string, string>): T[] {
+  const dateOf = (v: T): string | null => v.date ?? (v.documentId ? caseDates.get(v.documentId) ?? null : null);
+  const renders = visuals.filter((v) => v.kind === 'RENDER');
+  const dated = renders.filter((v) => dateOf(v)).sort((a, b) => dateOf(a)!.localeCompare(dateOf(b)!));
+  if (!dated.length) return visuals;
+  for (const v of renders) (v as { role: string }).role = 'SUPPORTING';
+  const latest = dated[dated.length - 1];
+  (latest as { role: string }).role = 'LATEST_RENDER';
+  const earliest = dated[0];
+  if (earliest !== latest && Date.parse(dateOf(latest)!) - Date.parse(dateOf(earliest)!) >= 90 * 864e5) (earliest as { role: string }).role = 'EARLIEST_RENDER';
+  return visuals;
 }

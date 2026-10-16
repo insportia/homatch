@@ -149,6 +149,11 @@ export function ContactPhoneField({
           <span dir="ltr" className="font-semibold text-foreground">{offer}</span>
         </button>
       )}
+
+      {/* WHO WILL CALL IT, SAID WHERE IT IS ENTERED: matched people only, never published. */}
+      <p className="break-words text-2xs text-muted-foreground" data-contact-match-notice>
+        {t('contact_phone_match_notice')}
+      </p>
     </div>
   );
 }

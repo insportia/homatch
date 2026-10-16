@@ -1,3 +1,4 @@
+import { READY_FAST_COLUMNS } from '../reportReadPath.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -32,7 +33,8 @@ const code = SYNTH.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 test('a forced rebuild is refused while a recent one exists', () => {
   assert.match(code, /FORCE_COOLDOWN_MS/, 'the cooldown must exist');
-  const guard = code.slice(code.indexOf('const FORCE_COOLDOWN_MS'), code.indexOf('const projection'));
+  // The build moved into buildReport(); the guard ends where the read/upgrade branches begin.
+  const guard = code.slice(code.indexOf('const FORCE_COOLDOWN_MS'), code.indexOf('const upgrade ='));
 
   // Only forced rebuilds are affected; a normal read is untouched.
   assert.match(guard, /if \(body\?\.force && !internal\)/);
@@ -43,16 +45,22 @@ test('a forced rebuild is refused while a recent one exists', () => {
   assert.match(guard, /retryAfterSeconds/);
   // It is keyed on when the report was actually built.
   assert.match(guard, /job\.synthesis_at/);
-  assert.match(code, /select\('id,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at'\)/);
+  // user_id is read too: the register fallback scopes earlier jobs to the SAME user (registerReuse.ts).
+  // The READY open reads every column but result_json (reportReadPath.ts); result_json is loaded on demand.
+  assert.match(code, /\.select\(READY_FAST_COLUMNS\)/);
+  assert.equal(READY_FAST_COLUMNS, 'id,user_id,query,status,completed_at,synthesis_json,synthesis_state,synthesis_at', 'synthesis_at is read (and query, for the unit identity check)');
+  assert.match(code, /select\('result_json'\)\.eq\('id', jobId\)/, 'result_json is no longer loaded for rebuilds and full reads');
 });
 
 test('a cached read is not affected by the guard', () => {
   // The persisted-report branch must still return without any rebuild.
+  // The only exception is the one-time logic-version upgrade (reportVersion.ts), gated by shouldAutoUpgrade.
   assert.match(
     code,
-    /if \(job\.synthesis_state === 'READY' && job\.synthesis_json && !body\?\.force\)/,
+    /if \(job\.synthesis_state === 'READY' && job\.synthesis_json && !body\?\.force && !upgrade\)/,
     'returning to a finished case must remain a read'
   );
+  assert.match(code, /const upgrade = !body\?\.force && shouldAutoUpgrade\(/, 'only the version gate may turn a read into a rebuild');
 });
 
 test('cross-user protection stays where it belongs', () => {
@@ -92,7 +100,10 @@ test('the shortlist never drops a stronger band for a weaker one', () => {
   assert.equal(m.ranked[0].tier, 'SAME_PROJECT', 'and it carries the same ordering');
 });
 
-test('selection reads the full pool, so city context can exist at all', () => {
+// Premise (2026-10-11, job 8ba97da9): the full pool is still what selection
+// reads, but Didi Dighomi beside Krtsanisi is never context any more — only
+// same/adjacent-neighbourhood stock is, and only when levels 1-4 are thin.
+test('selection reads the full pool, and the city never reaches the customer', () => {
   const m = buildMarketIntelligence(
     { project: 'Villion', address: 'კრწანისის ქუჩა 6', area: 60 },
     [
@@ -108,8 +119,9 @@ test('selection reads the full pool, so city context can exist at all', () => {
   // are local. From the ranked pool it can.
   const fromShortlist = selectComparables(m.closest);
   const fromPool = selectComparables(m.ranked);
-  assert.equal(fromShortlist.context.length, 0, 'the shortlist cannot describe the wider market');
-  assert.ok(fromPool.context.length > 0, 'the ranked pool can');
+  assert.equal(fromShortlist.context.length, 0);
+  assert.equal(fromPool.context.length, 0, 'a Didi Dighomi listing was shown beside a Krtsanisi flat');
+  assert.equal(fromPool.counts.WIDER_MARKET, 6, 'the wider pool is still counted, just never shown');
   assert.ok(fromPool.rawCount > fromShortlist.rawCount, 'and reports the real basis');
 });
 

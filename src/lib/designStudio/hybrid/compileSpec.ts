@@ -15,7 +15,7 @@ import type { SpecView as PlannedView } from '../renders/contract.ts';
 import type { Point, SpaceModel } from '../space.ts';
 import { ceilingSurfaceId, floorSurfaceId } from '../space.ts';
 import {
-  objectGroup, RUNTIME_KINDS, SPEC_FORMS, SPEC_KINDS, SPEC_LEAVES, SPEC_LIMITS, SPEC_PATTERNS, SPEC_VERSION,
+  FACTORY_FORMS, objectGroup, RUNTIME_KINDS, SPEC_FORMS, SPEC_KINDS, SPEC_LEAVES, SPEC_LIMITS, SPEC_PATTERNS, SPEC_VERSION,
   type Provenance, type SceneBuildSpec, type SpecCamera, type SpecKind, type SpecLeaf, type SpecMaterial, type SpecObject,
   type SpecOpening, type SpecStair, type SpecSurface, type SpecView, type XY,
 } from './sceneSpec.ts';
@@ -181,14 +181,18 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
     const asset = shapedAsset(own, { shape: obj.shape });
     const kind = (own.procedural ? own.procedural.kind : 'MODEL') as SpecKind;
     if (!(SPEC_KINDS as readonly string[]).includes(kind)) continue;
-    const form = obj.shape?.form && (SPEC_FORMS as readonly string[]).includes(obj.shape.form) ? obj.shape.form : null;
+    const seen = obj.shape?.form && (SPEC_FORMS as readonly string[]).includes(obj.shape.form) ? obj.shape.form : null;
+    // A form the deployed factory cannot build is not sent to it (its validator would fail the whole pass), and the
+    // piece is left to the walkthrough, which draws it in that form.
+    const factoryCanBuild = !seen || FACTORY_FORMS.includes(seen);
+    const form = factoryCanBuild ? seen : null;
     const provenance: Provenance = obj.provenance ? (obj.provenance.basis === 'OBSERVED' || obj.provenance.confirmed ? 'OBSERVED' : 'INFERRED') : 'DESIGN';
     const piece: SpecObject = {
       id: obj.instanceId, kind, model: kind === 'MODEL' ? own.code : null, form,
       size: { w: r3(Math.max(0.02, asset.widthM)), d: r3(Math.max(0.02, asset.depthM)), h: r3(Math.max(0.005, asset.heightM)) },
       at: [r3(obj.position.x), r3(obj.position.z)], elevationM: r3(Math.max(0, obj.position.y)), rotation: r3(obj.rotationY),
       colors: own.procedural ? pieceColors(own, obj) : {}, provenance,
-      runtime: input.outputs.objects && RUNTIME_KINDS.has(kind), group: null,
+      runtime: input.outputs.objects && RUNTIME_KINDS.has(kind) && factoryCanBuild, group: null,
     };
     if (piece.runtime) piece.group = objectGroup(piece);
     objects.push(piece);

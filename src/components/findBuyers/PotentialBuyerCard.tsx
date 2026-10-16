@@ -20,6 +20,7 @@ import { translateLeadSignal, type LeadEvidence, type PotentialLead, type WhyMat
 import {
   FRAMED_ACTION, GOLD_FILL, GOLD_TEXT, INK, INK_SOFT, IconChip, NAVY_BAND, PRIMARY_ACTION, RingMeter, SourceBadge,
 } from '@/components/findBuyers/brand';
+import { fitTone } from '@/findBuyers/campaignReport';
 
 const LANGS = new Set(['ka', 'ru', 'en', 'ar', 'he', 'tr']);
 
@@ -59,6 +60,30 @@ function Outbound({ href, label, icon: Icon, primary = false }: { href: string |
   );
 }
 
+/** Budget / location fit, once qualification recorded it. UNKNOWN is shown as unknown, never as a fit. */
+function FitBadges({ lead, t }: { lead: PotentialLead; t: (k: string, v?: Record<string, string>) => string }) {
+  if (!lead.match_category) return null;
+  const tones = {
+    good: 'bg-[hsl(152_60%_94%)] text-[hsl(152_70%_22%)] ring-[hsl(152_45%_75%)]',
+    near: 'bg-[hsl(42_100%_94%)] text-[hsl(34_90%_30%)] ring-[hsl(40_80%_78%)]',
+    bad: 'bg-[hsl(350_80%_96%)] text-[hsl(350_65%_35%)] ring-[hsl(350_60%_82%)]',
+    unknown: 'bg-white text-[hsl(218_28%_38%)] ring-[hsl(218_40%_85%)] italic',
+  } as const;
+  const items = [
+    { kind: 'budget', ...fitTone(lead.budget_fit) },
+    { kind: 'location', ...fitTone(lead.location_fit) },
+  ];
+  return (
+    <div className="flex flex-wrap gap-1.5" data-testid="fbx-fit-badges">
+      {items.map((x) => (
+        <span key={x.kind} data-fit={x.fit} className={cn('rounded-full px-2.5 py-0.5 text-2xs font-semibold ring-1 ring-inset', tones[x.tone])}>
+          {t(`fbr_fit_${x.kind}_${x.fit}`)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function StrengthPill({ strength, score, label }: { strength: string; score: number; label: string }) {
   const strong = strength === 'STRONG';
   return (
@@ -72,7 +97,11 @@ function StrengthPill({ strength, score, label }: { strength: string; score: num
   );
 }
 
-export function PotentialBuyerCard({ lead, propertyId }: { lead: PotentialLead; propertyId: string }) {
+/**
+ * `interest`: a question under a comparable listing (Find Buyers 3.0) — labelled as an
+ * interest signal, never as a buyer, and without the match-strength pill.
+ */
+export function PotentialBuyerCard({ lead, propertyId, interest = false }: { lead: PotentialLead; propertyId: string; interest?: boolean }) {
   const { t, lang } = useLanguage();
   const best: LeadEvidence | undefined = lead.evidence[0];
   const tenant = lead.counterpart === 'TENANT';
@@ -99,14 +128,14 @@ export function PotentialBuyerCard({ lead, propertyId }: { lead: PotentialLead; 
   return (
     <article
       className="group/lead min-w-0 overflow-hidden rounded-2xl border border-[hsl(40_70%_80%)] bg-white shadow-[0_10px_30px_-18px_hsl(218_60%_15%/0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[hsl(38_88%_60%)] hover:shadow-[0_22px_44px_-22px_hsl(218_60%_15%/0.55)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300"
-      aria-label={t(tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}
+      aria-label={t(interest ? 'fbx_card_interest' : tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}
     >
       {/* ── identity band: who, how strong, where ─────────────────────── */}
       <header className={cn('relative px-4 pb-3.5 pt-3.5', NAVY_BAND)}>
         <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[hsl(40_94%_60%/0.7)] to-transparent" aria-hidden="true" />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className={cn('text-2xs font-bold uppercase tracking-[0.16em]', GOLD_TEXT)}>{t(tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}</p>
-          <StrengthPill strength={lead.strength} score={lead.overall_score} label={t(`fbx_strength_${lead.strength}`)} />
+          <p className={cn('text-2xs font-bold uppercase tracking-[0.16em]', GOLD_TEXT)}>{t(interest ? 'fbx_card_interest' : tenant ? 'fbx_card_tenant' : 'fbx_card_buyer')}</p>
+          {!interest && <StrengthPill strength={lead.strength} score={lead.overall_score} label={t(`fbx_strength_${lead.strength}`)} />}
         </div>
         <div className="mt-2.5 flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-bold text-white ring-2 ring-[hsl(40_94%_60%/0.75)]" aria-hidden="true">
@@ -125,6 +154,7 @@ export function PotentialBuyerCard({ lead, propertyId }: { lead: PotentialLead; 
       </header>
 
       <div className="space-y-3.5 p-4">
+        <FitBadges lead={lead} t={t} />
         {/* ── why ───────────────────────────────────────────────────── */}
         {why ? (
           <section className="flex gap-3 rounded-xl bg-[linear-gradient(135deg,hsl(43_100%_96%),hsl(40_100%_92%))] p-3 ring-1 ring-inset ring-[hsl(40_80%_80%)]">

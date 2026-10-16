@@ -29,6 +29,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, RotateCw, AlertTriangle, Ban } from 'lucide-react';
 import { SectionBoundary } from '@/components/common/SectionBoundary';
+import { VerifyJobProvider } from '@/components/verify/OfficialLink';
 import {
   VerifyReport,
   type VerifySynthesis,
@@ -51,9 +52,19 @@ import type { NormalizedVerifyResult, NormalVerifyResult } from '@/verify/result
  * structurally because it is a pure module and must not import a component.
  * Naming the real types here — at the boundary where they are defined — is
  * what keeps that cast honest and local instead of spread through the page.
+ *
+ * EVERY FIELD PASSES THROUGH. This used to list fields one by one and so
+ * silently dropped propertyRegister, companyFinance, projectTeam,
+ * marketContext, evidenceGroups, checklist and identity: the same job read
+ * differently on the case page than on /verify. Spreading the normalised
+ * result means a block added to the synthesis reaches the report from both
+ * doors without anyone remembering to add it here.
  */
 export function toVerifySynthesis(r: NormalVerifyResult): VerifySynthesis {
+  // Fields the report has no use for; everything else is the shared type.
+  const { participants: _participants, incompleteSources: _incomplete, propertyType: _type, ...rest } = r;
   return {
+    ...(rest as unknown as Omit<VerifySynthesis, 'report'>),
     report: r.report as unknown as BuyerIntelligence | null,
     evidence: r.evidence as unknown as EvidenceRef[],
     snapshot: (r.snapshot ?? undefined) as PropertySnapshot | undefined,
@@ -61,12 +72,8 @@ export function toVerifySynthesis(r: NormalVerifyResult): VerifySynthesis {
     location: r.location as unknown as LocationBlock | null,
     people: (r.people ?? undefined) as { people?: PersonBlock[]; representationNote?: string } | undefined,
     selfChecks: r.selfChecks as unknown as SelfCheck[],
-    mode: r.mode,
-    empty: r.empty,
     officialVisuals: (r.officialVisuals ?? []) as unknown as VerifySynthesis['officialVisuals'],
     research: (r.research ?? undefined) as unknown as VerifySynthesis['research'],
-    officialHistory: (r.officialHistory ?? null) as unknown as VerifySynthesis['officialHistory'],
-    developerAds: (r.developerAds ?? null) as unknown as VerifySynthesis['developerAds'],
   };
 }
 
@@ -205,7 +212,8 @@ export const VerifyResultView: React.FC<VerifyResultViewProps> = ({
   }
 
   return (
-    <div className="space-y-5">
+    /* The whole result reads in the customer's language (ReportTranslation in VerifyReport). */
+    <div className="space-y-5" data-report-translation-root="">
       {/* Still working, but there is already something to read. */}
       {state === 'PARTIAL' ? (
         <Card className="border-dashed">
@@ -251,11 +259,14 @@ export const VerifyResultView: React.FC<VerifyResultViewProps> = ({
           name="VerifyReport"
           context={{ subjectType: 'RESEARCH_JOB', subjectId, payloadVersion: normalized.payloadVersion }}
         >
-          <VerifyReport
-            synthesis={toVerifySynthesis(result)}
-            evidence={evidence}
-            contractCaseId={contractCaseId}
-          />
+          {/* The case's job id: official files open through the secure viewer. */}
+          <VerifyJobProvider jobId={subjectId}>
+            <VerifyReport
+              synthesis={toVerifySynthesis(result)}
+              evidence={evidence}
+              contractCaseId={contractCaseId}
+            />
+          </VerifyJobProvider>
         </SectionBoundary>
       ) : null}
 

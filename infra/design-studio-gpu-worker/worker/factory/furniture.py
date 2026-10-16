@@ -321,6 +321,185 @@ def _blind(p: Parts, lib, kind, W, D, H, colors):
         p.add(geo.box_bm(W, max(0.02, D), 0.006, 0, 0, H * i / n), mat)
 
 
+# ── Design forms (walkthrough/designGraph.ts DESIGN_FORMS): the selected design's own geometry ──────────────────
+# Mirrors src/components/designStudio/canvas/procedural.ts, so the reference render the visual check judges shows the
+# same pieces the walkthrough draws. Hardware is aged brass.
+
+BRASS = "#b08a55"
+
+
+def _framed(p: Parts, mat, W, H, z0, y, cols, rows=1, handle=None):
+    """Framed (shaker) fronts: a panel per door with a raised frame round it, a slim bar pull."""
+    pw, ph = W / cols, H / rows
+    for c in range(cols):
+        for r in range(rows):
+            x = -W / 2 + pw * (c + 0.5)
+            z = z0 + ph * r
+            p.add(geo.box_bm(pw - 0.006, 0.02, ph - 0.006, x, y, z + 0.003, bevel=0.003), mat)
+            rail = min(0.06, pw * 0.14)
+            for dz in (0.003, ph - rail - 0.003):
+                p.add(geo.box_bm(pw - 0.01, 0.012, rail, x, y + 0.016, z + dz, bevel=0.002), mat)
+            for dx in (-1, 1):
+                p.add(geo.box_bm(rail, 0.012, ph - 2 * rail - 0.006, x + dx * (pw / 2 - rail / 2 - 0.004), y + 0.016, z + rail + 0.003, bevel=0.002), mat)
+            if handle is not None:
+                hx = x + (pw / 2 - 0.06) * (1 if c % 2 == 0 else -1)
+                hh = min(0.16, ph * 0.22)
+                hz = z + ph * 0.45 if ph > 1.2 else z + ph - hh - 0.06
+                p.add(geo.box_bm(0.012, 0.03, hh, hx, y + 0.035, hz), handle)
+
+
+def _shaker_kitchen(p: Parts, lib, kind, W, D, H, colors):
+    """A shaker kitchen run: framed fronts, brass pulls, a stone worktop and splashback, framed wall cabinets with a
+    warm light line beneath (H is the top of the wall cabinets)."""
+    body = lib.slot(kind, "body", _c(colors, "body", "#4b3022"))
+    top = lib.slot(kind, "top", _c(colors, "top", "#c7b59b"))
+    brass = lib.plain("brass", BRASS, 0.32, 0.85)
+    base_h = 0.9
+    p.add(geo.box_bm(W - 0.02, D - 0.08, 0.1, 0, -0.05, 0.0), lib.dark())
+    p.add(geo.box_bm(W, D - 0.04, base_h - 0.14, 0, -0.02, 0.1, bevel=0.003), body)
+    _framed(p, body, W, base_h - 0.14, 0.1, D / 2 - 0.03, max(1, round(W / 0.6)), handle=brass)
+    p.add(geo.box_bm(W + 0.01, D + 0.02, 0.04, 0, 0, base_h - 0.04, bevel=0.004), top)
+    if W > 1.5:
+        p.add(geo.box_bm(0.56, 0.48, 0.006, -W * 0.22, 0.02, base_h), lib.plain("hob", "#111214", 0.1, 0.2))
+        p.add(geo.box_bm(0.5, 0.4, 0.008, W * 0.22, 0.02, base_h - 0.004), lib.chrome())
+        p.add(geo.cylinder_bm(0.012, 0.012, 0.28, W * 0.22, -D / 2 + 0.08, base_h, 10), brass)
+    wy = base_h + 0.55
+    if H > wy + 0.3:
+        wh = H - wy
+        wd = min(0.36, D * 0.6)
+        p.add(geo.box_bm(W, 0.012, wy - base_h, 0, -D / 2 + 0.006, base_h), top)  # splashback
+        p.add(geo.box_bm(W, wd, wh, 0, -D / 2 + wd / 2, wy, bevel=0.003), body)
+        _framed(p, body, W, wh, wy, -D / 2 + wd, max(1, round(W / 0.5)), handle=brass)
+        p.add(geo.box_bm(W - 0.06, 0.03, 0.01, 0, -D / 2 + wd - 0.05, wy - 0.012), lib.plain("under-light", "#ffe2b8", 0.5, emission=("#ffcf94", 3.0)))
+
+
+def _fluted_vanity(p: Parts, lib, kind, W, D, H, colors):
+    """A vanity with vertical flutes across its fronts, a honed stone top, a basin and a brass tap."""
+    body = lib.slot(kind, "body", _c(colors, "body", "#4b3022"))
+    top = lib.slot(kind, "top", _c(colors, "top", "#c7b59b"))
+    base_h = min(0.86, H)
+    p.add(geo.box_bm(W - 0.02, D - 0.08, 0.1, 0, -0.05, 0.0), lib.dark())
+    p.add(geo.box_bm(W, D - 0.04, base_h - 0.14, 0, -0.02, 0.1, bevel=0.003), body)
+    n = max(4, round(W / 0.035))
+    for i in range(n):
+        p.add(geo.cylinder_bm(0.012, 0.012, base_h - 0.16, -W / 2 + W * (i + 0.5) / n, D / 2 - 0.015, 0.11, 8), body)
+    p.add(geo.box_bm(W, D, 0.04, 0, 0, base_h - 0.04, bevel=0.006), top)
+    p.add(geo.cylinder_bm(min(W, D) * 0.28, min(W, D) * 0.24, 0.06, 0, 0.02, base_h - 0.01, 32), lib.ceramic())
+    p.add(geo.cylinder_bm(0.012, 0.012, 0.18, 0, -D / 2 + 0.08, base_h, 10), lib.plain("brass", BRASS, 0.32, 0.85))
+
+
+def _club_chair(p: Parts, lib, kind, W, D, H, colors):
+    """A deep club chair: upholstered base, thick seat cushion, curved back, rolled arms, tapered wooden legs."""
+    body = lib.slot(kind, "body", _c(colors, "body", "#4d5842"))
+    leg = lib.slot(kind, "legs", _c(colors, "legs", "#4b3022"))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            p.add(geo.cylinder_bm(0.022, 0.014, 0.12, sx * (W / 2 - 0.08), sy * (D / 2 - 0.08), 0.0, 10), leg)
+    p.add(geo.box_bm(W, D, 0.22, 0, 0, 0.12, bevel=0.08), body)
+    p.add(geo.box_bm(W - 0.26, D - 0.2, 0.16, 0, 0.05, 0.32, bevel=0.07), body)
+    p.add(geo.box_bm(W - 0.06, 0.2, H - 0.3, 0, -D / 2 + 0.1, 0.3, bevel=0.09), body)
+    for sx in (-1, 1):
+        p.add(geo.box_bm(0.15, D - 0.04, 0.3, sx * (W / 2 - 0.075), 0, 0.3, bevel=0.07), body)
+        roll = geo.cylinder_bm(0.085, 0.085, D - 0.06, 0, 0, 0.0, 20)
+        geo.transform(roll, Matrix.Rotation(math.pi / 2, 4, "X"))
+        bmesh.ops.translate(roll, vec=Vector((sx * (W / 2 - 0.075), (D - 0.06) / 2, 0.6)), verts=roll.verts)
+        p.add(roll, body)
+
+
+def _tv_wall(p: Parts, lib, kind, W, D, H, colors):
+    """A built-in television wall: framed full-height panelling (H tall), a cornice, a framed console, the screen in
+    a recessed niche, shelves either side, a warm light line under the cornice."""
+    body = lib.slot(kind, "body", _c(colors, "body", "#4b3022"))
+    brass = lib.plain("brass", BRASS, 0.32, 0.85)
+    back = -D / 2 + 0.02
+    p.add(geo.box_bm(W, 0.04, H, 0, back, 0.0), body)
+    panels = max(3, round(W / 0.5))
+    pw = W / panels
+    for i in range(panels):
+        xc = -W / 2 + pw * (i + 0.5)
+        z0, ph = 1.02, H - 1.02 - 0.12
+        for dz in (z0, z0 + ph):
+            p.add(geo.box_bm(pw - 0.06, 0.015, 0.03, xc, back + 0.025, dz), body)
+        for dx in (-1, 1):
+            p.add(geo.box_bm(0.03, 0.015, ph, xc + dx * (pw / 2 - 0.045), back + 0.025, z0), body)
+    p.add(geo.box_bm(W + 0.04, 0.08, 0.06, 0, back + 0.02, H - 0.06), body)
+    ch = 0.55
+    p.add(geo.box_bm(W - 0.04, D - 0.12, 0.06, 0, 0.02, 0.0), lib.dark())
+    p.add(geo.box_bm(W, D - 0.04, ch - 0.08, 0, 0, 0.06), body)
+    p.add(geo.box_bm(W + 0.02, D, 0.03, 0, 0, ch - 0.02), body)
+    _framed(p, body, W, ch - 0.12, 0.08, D / 2 - 0.02, max(2, round(W / 0.55)), handle=brass)
+    sw = min(1.5, W * 0.6)
+    sh = sw * 0.5625
+    sz = ch + 0.22
+    p.add(geo.box_bm(sw + 0.16, 0.02, sh + 0.16, 0, back + 0.03, sz - 0.08), lib.plain("niche", "#2a211b", 0.85))
+    p.add(geo.box_bm(sw + 0.02, 0.03, sh + 0.02, 0, back + 0.055, sz), lib.plain("screen", "#0e0f11", 0.08, 0.2))
+    for sx in (-1, 1):
+        x = sx * (sw / 2 + min(0.32, (W - sw) / 4) + 0.06)
+        if abs(x) + 0.2 > W / 2:
+            continue
+        for z in (sz + 0.05, sz + sh * 0.6):
+            p.add(geo.box_bm(0.36, 0.22, 0.025, x, back + 0.13, z), body)
+    p.add(geo.box_bm(W - 0.1, 0.02, 0.012, 0, back + 0.06, H - 0.085), lib.plain("tv-light", "#ffd9a8", 0.5, emission=("#ffc98a", 3.0)))
+
+
+def _built_in_wardrobe(p: Parts, lib, kind, W, D, H, colors):
+    """A built-in wardrobe: floor to ceiling on a plinth, framed doors with brass pulls, a cornice."""
+    body = lib.slot(kind, "body", _c(colors, "body", "#4b3022"))
+    plinth = 0.08
+    p.add(geo.box_bm(W - 0.04, D - 0.08, plinth, 0, -0.04, 0.0), lib.dark())
+    p.add(geo.box_bm(W, D - 0.02, H - plinth, 0, -0.01, plinth, bevel=0.004), body)
+    p.add(geo.box_bm(W + 0.04, D + 0.02, 0.06, 0, 0, H - 0.06), body)
+    _framed(p, body, W, H - plinth - 0.08, plinth, D / 2 - 0.01, max(2, round(W / 0.6)), handle=lib.plain("brass", BRASS, 0.32, 0.85))
+
+
+def _upholstered_bed(p: Parts, lib, kind, W, D, H, colors):
+    """A fully upholstered bed: the frame in the upholstery, the bedding, pillows, and a tall channel-tufted
+    headboard (H tall) of separate soft ribs."""
+    body = lib.slot(kind, "body", _c(colors, "body", "#cbbba3"))
+    linen = lib.slot(kind, "linen", _c(colors, "linen", "#f1e9dc"))
+    mattress = lib.plain("mattress", "#f4f2ee", 0.9, sheen=0.4)
+    base_top = 0.32
+    p.add(geo.box_bm(W, D, base_top - 0.04, 0, 0, 0.04, bevel=0.04), body)
+    p.add(geo.box_bm(W - 0.06, D - 0.12, 0.22, 0, 0.03, base_top, bevel=0.05), mattress)
+    top = base_top + 0.22
+    p.add(geo.box_bm(W - 0.02, D * 0.64, 0.07, 0, D / 2 - D * 0.32 - 0.01, top - 0.04, bevel=0.035), linen)
+    n = 1 if W < 1.2 else 2
+    pw = (W - 0.2) / n
+    for i in range(n):
+        p.add(geo.box_bm(pw - 0.06, 0.38, 0.13, -W / 2 + 0.1 + pw * (i + 0.5), -D / 2 + 0.32, top - 0.01, bevel=0.06), linen)
+    hw = W + 0.12
+    p.add(geo.box_bm(hw, 0.12, H, 0, -D / 2 - 0.02, 0.0, bevel=0.05), body)
+    ribs = max(5, round((W + 0.08) / 0.18))
+    rw = (W + 0.08) / ribs
+    for i in range(ribs):
+        p.add(geo.box_bm(rw - 0.012, 0.05, H - 0.16, -(W + 0.08) / 2 + rw * (i + 0.5), -D / 2 + 0.06, 0.16, bevel=0.022), body)
+
+
+def _bordered_rug(p: Parts, lib, kind, W, D, H, colors):
+    """A hand-knotted rug: a border in its second colour, the field, a fine inner line."""
+    h = max(0.008, min(H, 0.02))
+    border = lib.plain(f"rug-border-{_c(colors, 'accent', '#b88768')}", _c(colors, "accent", "#b88768"), 0.98, sheen=0.5)
+    field = lib.plain(f"rug-{_c(colors, 'body', '#d8c2a5')}", _c(colors, "body", "#d8c2a5"), 0.98, sheen=0.5)
+    b = min(0.16, min(W, D) * 0.08)
+    p.add(geo.box_bm(W, D, h, 0, 0, 0.0), border)
+    p.add(geo.box_bm(W - 2 * b, D - 2 * b, h + 0.002, 0, 0, 0.0), field)
+    for sy in (-1, 1):
+        p.add(geo.box_bm(W - 2 * b - 0.08, 0.02, h + 0.004, 0, sy * (D / 2 - b - 0.06), 0.0), border)
+    for sx in (-1, 1):
+        p.add(geo.box_bm(0.02, D - 2 * b - 0.1, h + 0.004, sx * (W / 2 - b - 0.06), 0, 0.0), border)
+
+
+DESIGN_BUILDERS = {
+    ("KITCHEN_RUN", "SHAKER"): _shaker_kitchen,
+    ("VANITY", "FLUTED"): _fluted_vanity,
+    ("ARMCHAIR", "CLUB"): _club_chair,
+    ("TV_UNIT", "TV_WALL"): _tv_wall,
+    ("WARDROBE", "BUILT_IN"): _built_in_wardrobe,
+    ("BED", "UPHOLSTERED"): _upholstered_bed,
+    ("RUG", "BORDERED"): _bordered_rug,
+}
+
+
 BUILDERS = {
     "SOFA": lambda p, l, k, W, D, H, c, f, key: _sofa(p, l, k, W, D, H, c),
     "ARMCHAIR": lambda p, l, k, W, D, H, c, f, key: _shell(p, l, k, W, D, H, c) if f == "SHELL" else _sofa(p, l, k, W, D, H, c, seats=1),
@@ -370,6 +549,8 @@ def build_piece(o: dict, lib, collection):
         body = lib.slot(kind, "body", _c(o["colors"], "body", "#cfc6b8"))
         p.add(geo.box_bm(chaise, D - main_d + 0.1, 0.2, W / 2 - chaise / 2, D / 2 - (D - main_d + 0.1) / 2, 0.08, bevel=0.03), body)
         p.add(geo.box_bm(chaise - 0.02, D - main_d + 0.08, 0.16, W / 2 - chaise / 2, D / 2 - (D - main_d + 0.08) / 2, 0.28, bevel=0.06), cushion)
+    elif (kind, form) in DESIGN_BUILDERS:
+        DESIGN_BUILDERS[(kind, form)](p, lib, kind, W, D, H, o["colors"])
     else:
         BUILDERS.get(kind, BUILDERS["CABINET"])(p, lib, kind, W, D, H, o["colors"], form, o["id"])
     mats: list = []

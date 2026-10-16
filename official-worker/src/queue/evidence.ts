@@ -1,0 +1,140 @@
+// evidence.ts — complete evidence kept, compact results sent.
+//
+// A source result can carry megabytes of document text (TAS reads every
+// attachment of every case). Sending it through the queue and every poll is
+// what exhausted the edge CPU (2026-10-10). Here, before completion:
+//   * every document's COMPLETE text is uploaded once, content-addressed, to
+//     the private verify-evidence bucket (never truncated);
+//   * the result keeps a bounded excerpt per document plus a fullTextRef
+//     pointing at the stored original, with textTruncated set honestly;
+//   * TAS's two newest ("priority") cases keep their complete text INLINE
+//     (sized by the source, ≤ 400k chars across both) AND stored whole, with
+//     textRef / textSha256 / textComplete;
+//   * an oversized structured payload is stored whole and trimmed in place
+//     (priority cases' structure is never trimmed; their inline text gives
+//     way last, flagged textComplete:false, the stored ref intact).
+// Nothing is discarded: every byte read is in storage and traceable.
+
+import { createHash } from 'node:crypto';
+import type { EvidenceRef } from './gateway.js';
+
+export const DOC_EXCERPT_CHARS = 8_000;
+export const TOTAL_EXCERPT_CHARS = 120_000;
+/*
+ * The bound is in UTF-8 BYTES, not characters: verify-queue refuses a body
+ * over 2.5 MB (MAX_BODY_BYTES) and Georgian text is 3 bytes per character,
+ * so a 1.2M-character result could be a 3.6 MB request and fail with 413.
+ * 2.0 MB leaves room for evidenceRefs and the request envelope.
+ */
+export const MAX_RESULT_BYTES = 2_000_000;
+/** @deprecated kept for callers that still import it; the bound is MAX_RESULT_BYTES. */
+export const MAX_RESULT_CHARS = MAX_RESULT_BYTES;
+const utf8 = new TextEncoder();
+const bytesOf = (s: string) => utf8.encode(s).length;
+
+export type Uploader = (sha256: string, contentType: EvidenceRef['contentType'], body: string) => Promise<string>;
+
+export const sha256 = (s: string) => createHash('sha256').update(Buffer.from(s, 'utf8')).digest('hex');
+
+export interface Compacted {
+  result: any;
+  evidenceRefs: EvidenceRef[];
+  contentHash: string;
+  stats: { documents: number; storedDocuments: number; storedChars: number; excerptChars: number; trimmedStructure: boolean };
+}
+
+export async function compactResult(raw: any, upload: Uploader): Promise<Compacted> {
+  const result = raw && typeof raw === 'object' ? raw : { value: raw };
+  const docs: any[] = Array.isArray(result.documents) ? result.documents : [];
+  const refs: EvidenceRef[] = [];
+  const stats = { documents: docs.length, storedDocuments: 0, storedChars: 0, excerptChars: 0, trimmedStructure: false };
+
+  // Newest documents keep their excerpt first, as the receiving side expects.
+  const order = [...docs].sort((a, b) => String(b?.documentDate ?? '').localeCompare(String(a?.documentDate ?? '')));
+  let remaining = TOTAL_EXCERPT_CHARS;
+  for (const d of order) {
+    if (!d || typeof d !== 'object') continue;
+    const full = typeof d.fullText === 'string' && d.fullText.length ? d.fullText : typeof d.rawText === 'string' ? d.rawText : '';
+    delete d.fullText;
+    if (!full) continue;
+    if (d.priority) {
+      // TAS "two newest cases": the complete text stays INLINE (already sized
+      // by the source, ≤ PRIORITY_INLINE_TEXT_MAX across both) and is ALSO
+      // stored whole, so a later size trim can never lose it.
+      const inline = typeof d.rawText === 'string' ? d.rawText : full;
+      const hash = sha256(full);
+      const path = await upload(hash, 'text/plain', full);
+      refs.push({ sha256: hash, path, chars: full.length, contentType: 'text/plain', documentId: d.id ?? null, title: d.title ?? null });
+      d.fullTextRef = { sha256: hash, path, chars: full.length };
+      d.textRef = d.fullTextRef;
+      d.textSha256 = hash;
+      d.rawText = inline;
+      d.textComplete = inline.length >= full.length;
+      d.textTruncated = !d.textComplete;
+      stats.storedDocuments++;
+      stats.storedChars += full.length;
+      stats.excerptChars += inline.length;
+      continue;
+    }
+    const keep = Math.max(0, Math.min(DOC_EXCERPT_CHARS, remaining));
+    const excerpt = full.slice(0, keep);
+    if (excerpt.length < full.length || full.length > DOC_EXCERPT_CHARS) {
+      const hash = sha256(full);
+      const path = await upload(hash, 'text/plain', full);
+      const ref: EvidenceRef = { sha256: hash, path, chars: full.length, contentType: 'text/plain', documentId: d.id ?? null, title: d.title ?? null };
+      refs.push(ref);
+      d.fullTextRef = { sha256: hash, path, chars: full.length };
+      stats.storedDocuments++;
+      stats.storedChars += full.length;
+    }
+    d.rawText = excerpt;
+    d.textTruncated = excerpt.length < full.length || d.textTruncated === true;
+    remaining -= excerpt.length;
+    stats.excerptChars += excerpt.length;
+  }
+
+  let serialized = JSON.stringify(result);
+  if (bytesOf(serialized) > MAX_RESULT_BYTES) {
+    // The complete structured result is preserved in storage first.
+    const hash = sha256(serialized);
+    const path = await upload(hash, 'application/json', serialized);
+    refs.push({ sha256: hash, path, chars: serialized.length, contentType: 'application/json', title: 'complete source result' });
+    result.fullResultRef = { sha256: hash, path, chars: serialized.length };
+    trimStructure(result);
+    stats.trimmedStructure = true;
+    serialized = JSON.stringify(result);
+    // Still too large: the priority texts give way (largest first); each
+    // keeps its stored ref and says it is no longer complete inline.
+    let over = bytesOf(serialized) - MAX_RESULT_BYTES;
+    if (over > 0) {
+      for (const d of docs.filter((x) => x?.priority && typeof x.rawText === 'string').sort((a, b) => b.rawText.length - a.rawText.length)) {
+        if (over <= 0) break;
+        // `over` is bytes; a Georgian character is up to 3 bytes, so cutting
+        // `over` characters always frees at least `over` bytes.
+        const cut = Math.min(d.rawText.length, over + 1024);
+        d.rawText = d.rawText.slice(0, d.rawText.length - cut);
+        d.textComplete = false;
+        d.textTruncated = true;
+        d.inlineTrimmedForSize = true;
+        over -= cut;
+      }
+      serialized = JSON.stringify(result);
+    }
+  }
+  return { result, evidenceRefs: refs, contentHash: sha256(serialized), stats };
+}
+
+/** In-place trim of the bulky structured parts (originals are in storage). */
+function trimStructure(r: any): void {
+  if (Array.isArray(r.traversal?.records)) r.traversal.records = r.traversal.records.slice(0, 60);
+  for (const k of ['documentReferences', 'requests', 'continuations']) if (Array.isArray(r.traversal?.[k])) r.traversal[k] = r.traversal[k].slice(0, 50);
+  const cases = r.tasApi?.cases;
+  if (Array.isArray(cases)) {
+    for (const c of cases) {
+      if (c?.priority) continue; // the two newest cases keep their complete structure
+      if (Array.isArray(c?.attachments)) c.attachments = c.attachments.slice(0, 80);
+      if (Array.isArray(c?.motions)) c.motions = c.motions.slice(0, 120);
+    }
+  }
+  if (Array.isArray(r.discoveredEntities)) r.discoveredEntities = r.discoveredEntities.slice(0, 200);
+}

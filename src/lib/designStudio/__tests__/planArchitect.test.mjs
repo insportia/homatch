@@ -1,0 +1,172 @@
+// THE ARCHITECT (walkthrough/planArchitect.ts): every plan, whatever it was read from, a plausible home.
+//
+// The shape of a real failure: a reading with a bathroom of 13 m², an entrance hall of 16 m², a kitchen-living room
+// of 14 m², a study drawn as a slanted strip — and pieces read in a frame that does not quite match the rooms. The
+// architect keeps the rooms, their kinds, their arrangement and their pieces, and redraws sizes and walls. Synthetic
+// data: no customer reading is committed.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { architectPlan, SIZE_RANGE, roomUse } from '../walkthrough/planArchitect.ts';
+import { spaceFromReading } from '../walkthrough/photoSpace.ts';
+
+const room = (key, kind, label, polygon, outdoor = false) => ({ key, kind, label, polygon, outdoor: outdoor || kind === 'BALCONY', confidence: 0.8, basis: 'OBSERVED', geometry: 'ESTIMATE' });
+const obj = (key, type, roomKey, at, w, d) => ({ key, type, label: type, room: roomKey, at, facingDeg: 0, widthM: w, depthM: d, heightM: 0.8, color: null, material: null, style: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0] });
+const door = (key, kind, at) => ({ key, kind, at, widthM: 0.9, heightM: 2.1, sillM: 0, confidence: 0.7, basis: 'OBSERVED' });
+const reading = {
+  version: 'ds-recon-3', view: 'AERIAL', scaleConfidence: 0.6, scaleEvidence: null, ceilingHeightM: 2.7, usesPlan: false,
+  rooms: [
+    room('bath', 'BATHROOM', 'bathroom', [[0, 0], [4, 0], [4, 3.3], [0, 3.3]]),
+    room('bed', 'BEDROOM', 'bedroom', [[4, 0], [9, 0], [9, 3.3], [4, 3.3]]),
+    room('study', 'HALL', 'office', [[4.2, 3.3], [8.8, 3.3], [9, 5.1], [4, 5.2]]),
+    room('hall', 'HALL', 'entry hall', [[0, 3.3], [4, 3.3], [4, 7.3], [0, 7.3]]),
+    room('living', 'LIVING', 'kitchen-living', [[4, 5.2], [9, 5.2], [9, 8], [4, 8]]),
+    room('balcony', 'BALCONY', 'balcony', [[9, 2], [11, 2], [11, 8], [9, 8]]),
+  ],
+  openings: [
+    door('entry', 'DOOR', [0.2, 6]), door('bath_hall', 'DOOR', [2, 2.4]), door('hall_living', 'DOOR', [3.6, 6.5]),
+    door('study_bed', 'DOOR', [6, 3.5]), door('living_balcony', 'BALCONY_DOOR', [8.9, 6.5]),
+    { ...door('bed_window', 'WINDOW', [6.5, 0.1]), sillM: 0.9, heightM: 1.4 },
+  ],
+  surfaces: [], palette: [], styleWords: [], cameras: [], unknowns: [],
+  objects: [
+    obj('run', 'KITCHEN_RUN', 'living', [6, 7.6], 2.8, 0.6), obj('sofa', 'SOFA', 'living', [6, 5.6], 2.2, 0.9),
+    obj('bedd', 'BED_DOUBLE', 'bed', [6.5, 1.5], 1.6, 2.0), obj('desk', 'DESK', 'study', [6, 4.3], 1.4, 0.7),
+    obj('wc', 'TOILET', 'bath', [1, 0.6], 0.4, 0.7), obj('shower', 'SHOWER', 'bath', [3, -0.6], 0.9, 0.9),
+    obj('chair', 'OUTDOOR_CHAIR', 'balcony', [10, 5], 0.6, 0.6),
+  ],
+};
+const box = (poly) => ({ x0: Math.min(...poly.map((p) => p[0])), y0: Math.min(...poly.map((p) => p[1])), x1: Math.max(...poly.map((p) => p[0])), y1: Math.max(...poly.map((p) => p[1])) });
+
+test('every room is sized for what it is, the rooms tile the home, and the plan builds as drawn', () => {
+  const out = architectPlan(reading);
+  assert.ok(out);
+  const types = new Map();
+  for (const o of reading.objects) { if (!types.has(o.room)) types.set(o.room, new Set()); types.get(o.room).add(o.type); }
+  for (const r of out.recon.rooms.filter((x) => !x.outdoor)) {
+    const b = box(r.polygon); const area = (b.x1 - b.x0) * (b.y1 - b.y0);
+    const range = SIZE_RANGE[roomUse(r, types.get(r.key) ?? new Set())];
+    assert.ok(area >= range.min - 0.05 && area <= range.max + 0.05, `${r.key} ${area.toFixed(1)} m²`);
+    assert.ok(Math.min(b.x1 - b.x0, b.y1 - b.y0) >= range.short - 0.01, `${r.key} too narrow`);
+  }
+  const indoor = out.recon.rooms.filter((x) => !x.outdoor).map((r) => box(r.polygon));
+  for (let i = 0; i < indoor.length; i += 1) for (let j = i + 1; j < indoor.length; j += 1) {
+    const a = indoor[i]; const b = indoor[j];
+    assert.ok(Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)) < 1e-6, 'rooms overlap');
+  }
+  const built = spaceFromReading(out.recon, { sourceKey: 't', expected: [], furnish: null });
+  assert.ok(!('problems' in built), JSON.stringify(built.problems));
+  assert.equal(built.layout, 'READ');
+  assert.equal(built.geometryCheck.verdict, 'PASS');
+});
+
+test('the arrangement is kept: the bathroom west of the bedroom, the hall below it, the balcony on the east', () => {
+  const out = architectPlan(reading);
+  const at = (k) => box(out.recon.rooms.find((r) => r.key === k).polygon);
+  const c = (b) => [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+  assert.ok(c(at('bath'))[0] < c(at('bed'))[0]);
+  assert.ok(c(at('hall'))[1] > c(at('bath'))[1]);
+  assert.ok(at('balcony').x0 >= Math.max(...out.recon.rooms.filter((r) => !r.outdoor).map((r) => at(r.key).x1)) - 0.01);
+  // Pieces stay in their rooms.
+  for (const o of out.recon.objects) {
+    const b = at(o.room);
+    assert.ok(o.at[0] >= b.x0 - 1e-6 && o.at[0] <= b.x1 + 1e-6 && o.at[1] >= b.y0 - 1e-6 && o.at[1] <= b.y1 + 1e-6, o.key);
+  }
+});
+
+test('doors keep the rooms they join: the bathroom opens once, onto the hall; the entrance stays the hall\'s', () => {
+  const out = architectPlan(reading);
+  const at = (k) => box(out.recon.rooms.find((r) => r.key === k).polygon);
+  const onEdge = (b, p) => (Math.abs(p[0] - b.x0) < 0.02 || Math.abs(p[0] - b.x1) < 0.02 || Math.abs(p[1] - b.y0) < 0.02 || Math.abs(p[1] - b.y1) < 0.02)
+    && p[0] >= b.x0 - 0.02 && p[0] <= b.x1 + 0.02 && p[1] >= b.y0 - 0.02 && p[1] <= b.y1 + 0.02;
+  const bathDoors = out.recon.openings.filter((o) => o.kind === 'DOOR' && onEdge(at('bath'), o.at));
+  assert.equal(bathDoors.length, 1);
+  assert.ok(onEdge(at('hall'), bathDoors[0].at));
+  const entry = out.recon.openings.find((o) => o.key === 'entry');
+  assert.ok(entry && onEdge(at('hall'), entry.at));
+});
+
+test('the edge function draws the plan again with the architect when the draft is no plausible home', () => {
+  const src = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
+  assert.match(src, /architectPlan\(drafted\?\.recon \?\? read\)/);
+  assert.match(src, /const built = useArchitect \? fromArchitect! : useDraft \? fromDraft! : spaceOf\(read\);/);
+  assert.match(src, /const kept = useArchitect \? architected!\.recon/);
+});
+
+test('a plan the model never delivers is not waited on again: the walkthrough is planned by rule, and that plan is never reused', () => {
+  const src = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
+  assert.match(src, /const PLAN_RESPONSE_MAX_MS = 6 \* 60_000;/);
+  assert.match(src, /if \(!payload\) missed = \{ id: pending\.id, status:/);
+  assert.match(src, /\} else if \(!reused && misses\.length\) \{\n    ruled = true;/);
+  assert.match(src, /const rulePlan = \{ summary: 'HOMATCH rule plan: the model did not answer'/);
+  // No usable plan on a miss, an unreadable answer or the last attempt: the rule plan in the same step.
+  assert.match(src, /if \(!reused && !ruled && \(!validated \|\| !validated\.rooms\.length\) && \(missed \|\| payload \|\| row\.plan_attempts >= MAX_PLAN_ATTEMPTS\)\) \{\n    ruled = true;\n    validated = validate\(rulePlan\);/);
+  assert.match(src, /!String\(x\.plan\.summary \?\? ''\)\.startsWith\('HOMATCH rule plan'\)/);
+});
+
+test('a room takes catalogue pieces by its use, not only the kind it was read as: a kitchen run in a kitchen-living room, a desk in a study read as a hall', async () => {
+  const { matchItem } = await import('../../../../supabase/functions/_shared/designStudio/walkthrough/scenePlan.ts');
+  const { homeProgramme } = await import('../walkthrough/programme.ts');
+  const asset = (code, category, subcategory, roomKinds, w, d) => ({ code, name: code, category, subcategory, roomKinds, styleTags: [], widthM: w, depthM: d });
+  const assets = [asset('dev/kitchen-run', 'KITCHEN', 'KITCHEN_RUN', ['KITCHEN'], 2.4, 0.6), asset('dev/desk', 'TABLE', 'DESK', ['BEDROOM', 'LIVING', 'OFFICE'], 1.2, 0.6)];
+  const prefs = { style: null, furnishing: 'FURNISHED' };
+  const prog = homeProgramme([{ id: 'k', kind: 'LIVING', label: 'kitchen-living', areaM2: 22 }, { id: 'o', kind: 'HALL', label: 'office', areaM2: 10 }]);
+  const run = matchItem({ type: 'KITCHEN_RUN', assetCode: 'dev/kitchen-run' }, { kind: 'LIVING', areaM2: 22, kinds: prog.get('k').kinds }, assets, prefs);
+  const desk = matchItem({ type: 'DESK', assetCode: 'dev/desk' }, { kind: 'HALL', areaM2: 10, kinds: prog.get('o').kinds }, assets, prefs);
+  assert.equal(run?.code, 'dev/kitchen-run');
+  assert.equal(desk?.code, 'dev/desk');
+  // By the read kind alone, both were refused (NO_SAFE_MATCH): the tour lacked its kitchen and its desk.
+  assert.equal(matchItem({ type: 'KITCHEN_RUN', assetCode: 'dev/kitchen-run' }, { kind: 'LIVING', areaM2: 22 }, assets, prefs), null);
+  const src = fs.readFileSync(new URL('../../../../supabase/functions/design-studio-reconstruct/walkthrough.ts', import.meta.url), 'utf8');
+  assert.match(src, /label: r\.label, kinds: roomKinds\.get\(r\.id\)\?\.kinds \}/);
+});
+
+// The shape of a real failure (synthetic): three bands of rooms read small and squeezed from a steep aerial view —
+// bathroom and bedroom, hall and office, kitchen-living — with doors named for the rooms they join. The architect
+// once linked each door to the nearest room at the middle of a shared wall: the office got a door in the middle of
+// every wall (a crossing no desk fits in), the bathroom opened into the office, and splits across the bands
+// rearranged the home.
+const bands = {
+  version: 'ds-recon-3', view: 'AERIAL', scaleConfidence: 0.6, scaleEvidence: null, ceilingHeightM: 2.7, usesPlan: false,
+  rooms: [
+    room('bathroom-1', 'BATHROOM', 'bathroom', [[0, 0], [1.8, 0], [1.8, 2.2], [0, 2.2]]), room('bedroom-1', 'BEDROOM', 'bedroom', [[1.8, 0], [6, 0], [6, 2.2], [1.8, 2.2]]),
+    room('hall-1', 'HALL', 'entrance hall', [[0, 2.2], [2.4, 2.2], [2.4, 3.9], [0, 3.9]]), room('office-1', 'UNKNOWN', 'office', [[2.4, 2.2], [6, 2.2], [6, 3.9], [2.4, 3.9]]),
+    room('living-1', 'LIVING', 'kitchen-living', [[0, 3.9], [6, 3.9], [6, 6.4], [0, 6.4]]), room('balcony-1', 'BALCONY', 'balcony', [[6, 2.2], [7.4, 2.2], [7.4, 6.4], [6, 6.4]]),
+  ],
+  openings: [
+    door('door-entrance', 'DOOR', [0, 3.0]), door('door-hall-living', 'DOOR', [2.3, 3.9]), door('door-living-office', 'DOOR', [2.6, 3.9]),
+    door('door-office-bathroom', 'DOOR', [2.2, 2.2]), door('door-office-balcony', 'BALCONY_DOOR', [6, 3.0]), door('door-living-balcony', 'BALCONY_DOOR', [6, 5.2]),
+  ],
+  surfaces: [], palette: [], styleWords: [], cameras: [], unknowns: [],
+  objects: [obj('bedd', 'BED_DOUBLE', 'bedroom-1', [4, 1], 1.6, 2), obj('sofa', 'SOFA', 'living-1', [4, 5.5], 2.5, 1), obj('run', 'KITCHEN_RUN', 'living-1', [2, 6.1], 3, 0.6), obj('desk', 'DESK', 'office-1', [4, 3], 1.4, 0.7)],
+};
+
+test('the bands of a home stay its bands, each room deep enough for its use, and every door joins the rooms its name gives', () => {
+  const out = architectPlan(bands);
+  const b = Object.fromEntries(out.recon.rooms.map((r) => [r.key, box(r.polygon)]));
+  // The arrangement as read: bathroom and bedroom one band, hall and office the next, the kitchen-living the last.
+  assert.ok(b['bathroom-1'].y1 <= b['hall-1'].y0 + 0.01 && b['bedroom-1'].y1 <= b['office-1'].y0 + 0.01, 'first band');
+  assert.ok(b['hall-1'].y1 <= b['living-1'].y0 + 0.01 && b['office-1'].y1 <= b['living-1'].y0 + 0.01, 'second band');
+  assert.ok(b['bathroom-1'].x1 <= b['bedroom-1'].x0 + 0.01 && b['hall-1'].x1 <= b['office-1'].x0 + 0.01, 'west to east');
+  for (const [key, use] of [['bedroom-1', 'BEDROOM'], ['office-1', 'STUDY'], ['living-1', 'KITCHEN_LIVING']]) {
+    assert.ok(Math.min(b[key].x1 - b[key].x0, b[key].y1 - b[key].y0) >= SIZE_RANGE[use].short - 0.01, `${key} deep enough`);
+  }
+  const joins = (o) => out.recon.rooms.filter((r) => { const x = b[r.key]; return o.at[0] >= x.x0 - 0.03 && o.at[0] <= x.x1 + 0.03 && o.at[1] >= x.y0 - 0.03 && o.at[1] <= x.y1 + 0.03; }).map((r) => r.key).sort().join('+');
+  const doors = Object.fromEntries(out.recon.openings.map((o) => [o.key, joins(o)]));
+  assert.equal(doors['door-hall-living'], 'hall-1+living-1');
+  assert.equal(doors['door-living-office'], 'living-1+office-1');
+  assert.equal(doors['door-office-balcony'], 'balcony-1+office-1');
+  assert.equal(doors['door-living-balcony'], 'balcony-1+living-1');
+  // The bathroom's door, read beside the office, opens onto the hall (a bathroom opens onto circulation).
+  assert.equal(doors['door-office-bathroom'], 'bathroom-1+hall-1');
+  assert.equal(doors['door-entrance'], 'hall-1');
+  // No room is a crossing: doors where they were read along a wall, not all in the middles.
+  for (const r of out.recon.rooms.filter((x) => !x.outdoor)) {
+    const x = b[r.key]; const sides = new Set(out.recon.openings.filter((o) => o.kind !== 'WINDOW' && joins(o).split('+').includes(r.key))
+      .map((o) => (Math.abs(o.at[0] - x.x0) < 0.03 ? 'W' : Math.abs(o.at[0] - x.x1) < 0.03 ? 'E' : Math.abs(o.at[1] - x.y0) < 0.03 ? 'S' : 'N')));
+    assert.ok(sides.size <= 3, `${r.key} has a door on every wall`);
+  }
+  const built = spaceFromReading(out.recon, { sourceKey: 't', expected: [], furnish: null });
+  assert.ok(!('problems' in built), JSON.stringify(built.problems));
+});

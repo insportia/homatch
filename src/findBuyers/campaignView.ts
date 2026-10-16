@@ -171,6 +171,20 @@ export function networkNodes(
   return nodes.sort((a, b) => rank(a) - rank(b) || (a.executed ? 0 : a.source.localeCompare(b.source)));
 }
 
+/**
+ * What the CUSTOMER sees of the network (owner, 2026-10-12): only sources that are
+ * really working for this search — running or finished — appearing one by one as
+ * they start. A source that failed, was cancelled, was not selected or is switched
+ * off is not shown at all (admin views keep the full truth from networkNodes).
+ * Before a search has run anything, the sources it can use are shown (never the
+ * switched-off ones).
+ */
+export function customerNetwork(nodes: NetworkNode[]): NetworkNode[] {
+  const executed = nodes.filter((n) => n.executed);
+  if (executed.length === 0) return nodes.filter((n) => n.state === 'AVAILABLE');
+  return executed.filter((n) => n.state === 'RUNNING' || n.state === 'DONE');
+}
+
 /*
  * SOURCE EXECUTION TRUTH (owner, 2026-10-04): every source of a search is
  * shown in exactly one of six states, from what actually happened — never

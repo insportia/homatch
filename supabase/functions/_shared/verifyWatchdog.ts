@@ -51,6 +51,24 @@ export const FINANCIAL_ENTITY_STALL_MS = 180_000;
 /** Total patience, however busy it looks. */
 export const FINANCIAL_ENTITY_MAX_WAIT_MS = 600_000;
 
+/*
+ * RS.ge IS ONE LONG STEP, NOT A STALLED ONE.
+ *
+ * The worker only reports progress when a whole step finishes, and one RS.ge
+ * taxpayer step can legitimately take ~320 s: page load (<=46.5 s), a first
+ * search (<=11 s), then up to two reCAPTCHA solves (<=120 s each, 2Captcha
+ * timeout) each followed by a search (<=11 s). Job c80f7237 gave up at 186 s
+ * while the worker was mid-solve, so the 3-minute stall rule could never let
+ * RS.ge finish. Its own stall limit covers that worst case; the 10-minute
+ * total cap still applies.
+ */
+export const RSTAX_STALL_MS = 360_000;
+
+/** The watchdog limits for one financial source. */
+export function stallLimitsFor(source: string | null | undefined): WatchdogLimits {
+  return source === 'rstax' ? { stallMs: RSTAX_STALL_MS } : {};
+}
+
 export interface WorkerSnapshot {
   status?: string | null;
   stage?: string | null;

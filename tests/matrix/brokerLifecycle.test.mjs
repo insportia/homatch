@@ -113,7 +113,10 @@ test('broker posts go to Broker Review, never into demand', () => {
 test('a native professional listing is matched as that role, and rentals as landlord', () => {
   const participants = read('src/research-core/match/participants.ts');
   assert.match(participants, /export function nativeSupplyRole/);
-  assert.match(read('supabase/functions/supply-matching/index.ts'), /nativeSupplyRole\(transaction, \(?propertyRow\.listed_by_role/);
+  /* The property→supply mapping moved verbatim into the shared pure helper (native-pair.ts),
+     which the worker now calls for every native candidate. */
+  assert.match(read('src/research-core/match/native-pair.ts'), /nativeSupplyRole\(transaction, \(?property\.listed_by_role/);
+  assert.match(read('supabase/functions/supply-matching/index.ts'), /supplySideFromProperty\(\s*propertyRow as PropertyShape/);
   assert.match(fnBody('properties_set_listed_by'), /new\.listed_by_role := v_type/);
 });
 

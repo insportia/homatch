@@ -504,3 +504,22 @@ test('the worker\'s Python spec reader accepts what the browser compiles (shared
   assert.doesNotThrow(() => validateSceneSpec(fixture));
   assert.equal(fixture.version, 'hm-scene-1');
 });
+
+test('the factory is sent only the forms the deployed worker builds; a design form stays the walkthrough\'s to draw', async () => {
+  const { FACTORY_FORMS, SPEC_FORMS, validateSceneSpec } = await import('../hybrid/sceneSpec.ts');
+  const { state } = assemble(traced());
+  const runtime = state.objects.filter((o) => compile(state, { render: false, scene: false, objects: true }).objects.find((p) => p.id === o.instanceId)?.runtime);
+  assert.ok(runtime.length >= 2, 'the fixture has runtime pieces');
+  const [a, b] = runtime;
+  const shaped = { ...state, objects: state.objects.map((o) => (o === a ? { ...o, shape: { ...(o.shape ?? {}), form: 'CLUB' } } : o === b ? { ...o, shape: { ...(o.shape ?? {}), form: 'ROUND' } } : o)) };
+  const spec = validateSceneSpec(JSON.parse(JSON.stringify(compile(shaped, { render: false, scene: false, objects: true }))));
+  const pa = spec.objects.find((p) => p.id === a.instanceId); const pb = spec.objects.find((p) => p.id === b.instanceId);
+  assert.equal(pa.form, null, 'a design form is never sent to a factory that refuses it');
+  assert.equal(pa.runtime, false, '…and the piece is not built there (the walkthrough draws it in its form)');
+  assert.equal(pb.form, 'ROUND'); assert.equal(pb.runtime, true);
+  assert.ok(spec.objects.every((p) => p.form == null || FACTORY_FORMS.includes(p.form)));
+  // The worker's own list (infra/design-studio-gpu-worker/worker/spec.py FORMS) accepts every form we send.
+  const py = fs.readFileSync(path.resolve('infra/design-studio-gpu-worker/worker/spec.py'), 'utf8');
+  const workerForms = new Set([...py.match(/^FORMS = \{([^}]*)\}/m)[1].matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]));
+  for (const f of FACTORY_FORMS) assert.ok(workerForms.has(f) && SPEC_FORMS.includes(f), f);
+});

@@ -28,7 +28,7 @@ test('every Actor the plan can stage is in the catalog; seeded Actors name a rea
 });
 
 test('group discovery that yields no post text is never primary on its own; native Telegram duplicate is unsuitable', () => {
-  assert.equal(classifyActor('LINKEDIN_GROUPS').cls, 'ENRICHMENT');
+  assert.equal(classifyActor('LINKEDIN_GROUPS').cls, 'UNSUITABLE', 'needs login cookies HOMATCH does not hold');
   assert.equal(classifyActor('TELEGRAM_CHANNEL').cls, 'UNSUITABLE');
   for (const k of ['FB_COMMENTS', 'IG_COMMENTS', 'YOUTUBE_COMMENTS']) assert.equal(classifyActor(k).cls, 'ENRICHMENT');
 });
@@ -63,6 +63,14 @@ test('proof bound: provider exposure ≤ min(caps, budget); customer charge ≤ 
   assert.equal(u.estimatedProviderMicros, null);
   assert.deepEqual(u.unpriced, ['TIKTOK']);
   assert.equal(u.maxProviderMicros, 2000000);
+});
+
+test('no per-Actor cap (NULL): the provider budget from the business math is the only bound', () => {
+  const a = (k) => ({ actor_key: k, enabled: true, price_per_1k_micros: 1500000, start_fee_micros: 8000, probe_size: 20, max_results: 100, campaign_spend_cap_micros: null });
+  const p = proofPlan([a('FB_GROUP_POSTS'), a('FB_GROUP_SEARCH')], { credits: 100, creditsPerUsd: 10, providerShareBps: 5000 });
+  assert.equal(p.maxProviderMicros, 5000000, '100 credits = $10, 50% provider share = $5');
+  assert.ok(p.lines.every((l) => l.capMicros === null && l.maxMicros === 158000));
+  assert.equal(p.maxCustomerChargeCredits, 100);
 });
 
 test('output contract: proven only by real text at a real https URL; empty or URL-less datasets prove nothing', async () => {

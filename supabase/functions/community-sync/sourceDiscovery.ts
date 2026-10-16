@@ -21,7 +21,7 @@ const AUDITS_PER_RUN = 6;
    recent messages per community), bounded by Telegram's read limits. */
 const AUDITS_PER_CAMPAIGN = 10;
 /* Freshly verified communities a campaign reads in the same call. */
-const READS_PER_CAMPAIGN = 4;
+const READS_PER_CAMPAIGN = 6;
 /* The campaign's call to community-sync is given 150 s; audits and reads
    stop starting after this, so the answer (and the registered work) is never
    lost to the edge timeout. What is left is picked up by the next campaign. */
@@ -42,6 +42,7 @@ export async function discoverTelegramSources(
     city?: string | null;
     campaign?: boolean;
     /** Reads one enabled community now (community-sync's cooldown-locked read). */
+    /** A campaign-scoped read of a verified community (never switches it on). */
     readTarget?: (targetId: string) => Promise<Record<string, unknown> | null>;
   },
 ): Promise<Record<string, unknown>> {
@@ -139,7 +140,10 @@ export async function discoverTelegramSources(
            source_id). Without it revalidate-evidence answers "unregistered;
            not requested" and the evidence stays UNKNOWN forever. */
         await registerSource(db, target, market);
-        if (enable) { activated += 1; verifiedIds.push(String(target.id)); }
+        if (enable) activated += 1;
+        /* Verified for this campaign: read once now, whether or not Admin
+           allows automatic switch-on (the read does not switch it on). */
+        if (audit.qualifies) verifiedIds.push(String(target.id));
         audits.push({ target: target.external_id, qualifies: audit.qualifies, relevance: audit.relevance, reason: audit.reason, demandInSample: audit.demandMessages });
       } catch (error) {
         const kind = error instanceof TelegramError ? error.kind : 'NETWORK_ERROR';
@@ -162,6 +166,20 @@ export async function discoverTelegramSources(
      not allowed to be enabled automatically). */
   const reads: Array<Record<string, unknown>> = [];
   if (options.campaign && options.readTarget && !stoppedBy) {
+    /* Plus communities verified by earlier audits but not switched on: this
+       city's (and country-wide) first. The free reader covers them here, so
+       the paid Telegram Actor never pays to read the same channel. */
+    if (verifiedIds.length < READS_PER_CAMPAIGN) {
+      const { data: idle } = await db.from('community_targets')
+        .select('id,external_id,name,metadata,relevance_score')
+        .eq('platform', 'TELEGRAM').eq('discovery_enabled', false).eq('readability', 'READABLE').in('lifecycle', ['AUDITED', 'REACHABLE'])
+        .order('relevance_score', { ascending: false }).limit(50);
+      const fits = ((idle ?? []) as Array<{ id: string; external_id?: string; name?: string; metadata?: Record<string, unknown> }>)
+        .map((t) => ({ id: String(t.id), fit: communityFitFor(t, options.city ?? null) }))
+        .filter((t) => t.fit !== 'OTHER' && !verifiedIds.includes(t.id))
+        .sort((a, b) => (a.fit === 'MATCH' ? 0 : 1) - (b.fit === 'MATCH' ? 0 : 1));
+      for (const t of fits) if (verifiedIds.length < READS_PER_CAMPAIGN) verifiedIds.push(t.id);
+    }
     for (const id of verifiedIds.slice(0, READS_PER_CAMPAIGN)) {
       if (outOfTime()) break;
       try {
@@ -181,6 +199,8 @@ export async function discoverTelegramSources(
     activated,
     timeBudgetReached,
     readNow: reads.filter((r) => r.outcome === 'OK').length,
+    /* Channels the free reader read for this campaign (the paid Actor skips them). */
+    readTargets: reads.filter((r) => r.outcome === 'OK').map((r) => String(r.target ?? '')).filter(Boolean),
     reads,
     communitiesFound: found.size,
     newlyRegistered: registered,

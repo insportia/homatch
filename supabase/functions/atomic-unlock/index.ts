@@ -10,6 +10,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
+import { parseUnlockRequest, unlockErrorCode } from '../_shared/internalLeads.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -35,7 +36,14 @@ serve(async (req) => {
   );
 
   try {
-    const { matchId } = await req.json();
+    const body = await req.json().catch(() => null);
+    /* HOMATCH Leads (internal members): a separate product with its own entitlement
+       table and prices, routed here rather than through a new function because the
+       project is at its edge-function cap. Nothing below changes for external matches. */
+    if (body && (body as { kind?: unknown }).kind === 'internal_leads') {
+      return await unlockInternalLeads(req, supabaseUser, supabaseAdmin, authHeader, body);
+    }
+    const { matchId } = (body ?? {}) as { matchId?: string };
     if (!matchId) return json({ error: 'matchId required' }, 400);
 
     // Verify session
@@ -258,6 +266,34 @@ serve(async (req) => {
     return json({ error: err instanceof Error ? err.message : 'Unknown error' }, 500);
   }
 });
+
+/*
+ * HOMATCH Leads unlock — internal_leads_unlock() is all-or-nothing, idempotent on the
+ * caller's key, serialised per account, and never charges an already-unlocked member.
+ * The wallet refuses any caller but the service role, which is why this runs here.
+ */
+// deno-lint-ignore no-explicit-any
+async function unlockInternalLeads(req: Request, supabaseUser: any, supabaseAdmin: any, authHeader: string, body: unknown) {
+  const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
+  if (authErr || !user) return json({ error: 'UNAUTHORIZED' }, 401);
+  const impersonating = await refuseIfImpersonating(supabaseAdmin, authHeader, CORS);
+  if (impersonating) return impersonating;
+  const { data: hmUser } = await supabaseAdmin.from('users').select('id,suspended_at').eq('auth_id', user.id).maybeSingle();
+  if (!hmUser) return json({ error: 'USER_NOT_FOUND' }, 404);
+  if (hmUser.suspended_at) return json({ error: 'ACCOUNT_SUSPENDED' }, 403);
+  const parsed = parseUnlockRequest({ ...(body as Record<string, unknown>), kind: undefined, action: 'unlock' });
+  if (!parsed.ok) return json({ error: parsed.error }, 400);
+  const { data, error } = await supabaseAdmin.rpc('internal_leads_unlock', {
+    p_user_id: hmUser.id, p_match_ids: parsed.matchIds, p_idempotency_key: parsed.idempotencyKey,
+  });
+  if (error) {
+    const code = unlockErrorCode(error.message);
+    if (code === 'INTERNAL') console.error('[atomic-unlock:internal_leads]', error.message);
+    return json({ error: code }, code === 'INSUFFICIENT_CREDITS' ? 402 : code === 'INTERNAL' ? 500 : 409);
+  }
+  void req;
+  return json({ success: true, ...(data as Record<string, unknown>) });
+}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

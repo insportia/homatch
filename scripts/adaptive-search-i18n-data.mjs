@@ -1,0 +1,66 @@
+// Adaptive search (2026-10-12): the search passes a Find Buyers / Find Tenants
+// campaign tried and why it ended, shown in the search report.
+// Order: [en, ka, ru, tr, ar, he].
+export const ADAPTIVE_SEARCH_STRINGS = {
+  fbr_cov_passes: [
+    'Search passes tried',
+    'ძიების გამოყენებული ეტაპები',
+    'Выполненные этапы поиска',
+    'Denenen arama aşamaları',
+    'مراحل البحث التي جُرّبت',
+    'שלבי החיפוש שנוסו',
+  ],
+  fbr_pass_DIRECT: ['Direct requests', 'პირდაპირი მოთხოვნები', 'Прямые запросы', 'Doğrudan talepler', 'طلبات مباشرة', 'בקשות ישירות'],
+  fbr_pass_SEMANTIC: ['Other wordings and languages', 'სხვა ფორმულირებები და ენები', 'Другие формулировки и языки', 'Farklı ifadeler ve diller', 'صياغات ولغات أخرى', 'ניסוחים ושפות נוספים'],
+  fbr_pass_FLEXIBLE: ['Nearby areas and close budgets', 'მეზობელი უბნები და ახლო ბიუჯეტები', 'Соседние районы и близкий бюджет', 'Yakın bölgeler ve yakın bütçeler', 'مناطق قريبة وميزانيات متقاربة', 'אזורים סמוכים ותקציבים קרובים'],
+  fbr_pass_EXPLORE: ['New groups and platforms', 'ახალი ჯგუფები და პლატფორმები', 'Новые группы и платформы', 'Yeni gruplar ve platformlar', 'مجموعات ومنصات جديدة', 'קבוצות ופלטפורמות חדשות'],
+  fbr_pass_COMMENTS: ['Comments under relevant posts', 'კომენტარები შესაბამის პოსტებზე', 'Комментарии под подходящими постами', 'İlgili gönderilerin altındaki yorumlar', 'التعليقات على المنشورات ذات الصلة', 'תגובות מתחת לפוסטים רלוונטיים'],
+  fbr_stop_BUDGET_EXHAUSTED: [
+    'The search ended when its research budget was used.',
+    'ძიება დასრულდა, როცა კვლევის ბიუჯეტი ამოიწურა.',
+    'Поиск завершён: исследовательский бюджет израсходован.',
+    'Araştırma bütçesi kullanıldığında arama sona erdi.',
+    'انتهى البحث عند استخدام ميزانية البحث.',
+    'החיפוש הסתיים כשתקציב המחקר נוצל.',
+  ],
+  fbr_stop_MAX_ROUNDS: [
+    'The search ended after every planned pass was tried.',
+    'ძიება დასრულდა ყველა დაგეგმილი ეტაპის შემდეგ.',
+    'Поиск завершён после всех запланированных этапов.',
+    'Planlanan tüm aşamalar denendikten sonra arama sona erdi.',
+    'انتهى البحث بعد تجربة جميع المراحل المخطط لها.',
+    'החיפוש הסתיים לאחר שכל השלבים המתוכננים נוסו.',
+  ],
+  fbr_stop_COVERAGE_COMPLETE: [
+    'The search ended after covering every available source and wording.',
+    'ძიება დასრულდა ყველა ხელმისაწვდომი წყაროსა და ფორმულირების დაფარვის შემდეგ.',
+    'Поиск завершён: охвачены все доступные источники и формулировки.',
+    'Mevcut tüm kaynaklar ve ifadeler tarandıktan sonra arama sona erdi.',
+    'انتهى البحث بعد تغطية جميع المصادر والصياغات المتاحة.',
+    'החיפוש הסתיים לאחר כיסוי כל המקורות והניסוחים הזמינים.',
+  ],
+  fbr_stop_NO_USABLE_ACTOR: [
+    'The search ended because no further source could be searched right now.',
+    'ძიება დასრულდა, რადგან ამჟამად სხვა წყაროს მოძიება ვერ ხერხდება.',
+    'Поиск завершён: других доступных источников сейчас нет.',
+    'Şu anda aranabilecek başka kaynak olmadığı için arama sona erdi.',
+    'انتهى البحث لعدم توفر مصدر آخر يمكن البحث فيه حاليًا.',
+    'החיפוש הסתיים כי כרגע אין מקור נוסף שניתן לחפש בו.',
+  ],
+  fbr_stop_MODEL_DIMINISHING_RETURNS: [
+    'The search ended because further passes were finding nothing new.',
+    'ძიება დასრულდა, რადგან შემდგომი ეტაპები ახალს აღარაფერს პოულობდა.',
+    'Поиск завершён: новые этапы перестали находить что-то новое.',
+    'Sonraki aşamalar yeni bir şey bulamadığı için arama sona erdi.',
+    'انتهى البحث لأن المراحل الإضافية لم تعد تجد جديدًا.',
+    'החיפוש הסתיים כי שלבים נוספים לא מצאו דבר חדש.',
+  ],
+  fbr_stop_NOTHING_NEW_TO_SEARCH: [
+    'The search ended because every useful wording had already been searched.',
+    'ძიება დასრულდა, რადგან ყველა სასარგებლო ფორმულირება უკვე მოძიებული იყო.',
+    'Поиск завершён: все полезные формулировки уже проверены.',
+    'Tüm faydalı ifadeler zaten arandığı için arama sona erdi.',
+    'انتهى البحث لأن جميع الصياغات المفيدة قد بُحث فيها بالفعل.',
+    'החיפוש הסתיים כי כל הניסוחים השימושיים כבר נבדקו.',
+  ],
+};

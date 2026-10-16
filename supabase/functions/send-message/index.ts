@@ -1,8 +1,26 @@
-// send-message Edge Function
-// POST { conversation_id?, property_id?, recipient_id, body }
+// send-message Edge Function — Property Conversations.
+//
+// POST { conversation_id?, property_id?, recipient_id, body, kind?, media_path?, media_meta?,
+//        reply_to_id?, card_property_id?, original_body?, original_lang?, translated_to?,
+//        client_message_id? }                                   → send (the default)
+// POST { action: 'translate_draft' | 'translate_message' | 'assist' | 'transcribe', ... }
+//                                                              → AI help (_shared/propertyChatAi.ts)
+//
+// The AI actions live behind this function rather than a new one: production sits at the
+// plan's edge-function cap. The send path stays here because it is what the notification,
+// intent and impersonation guards (src/lib/notifications, tests/matrix) read; its rules
+// are the pure functions in _shared/propertyChat.ts.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { notify } from '../_shared/notify.ts';
+import { sendNotificationEmail, renderNotificationEmail } from '../_shared/notifyEmail.ts';
+import {
+  SEND_RATE_LIMIT, buildPropertyCard, cardRefusal, emailEnabledFrom, isDuplicateBody, notificationPlan,
+  offerCapDecision, parseSendRequest, validateMedia, type StoredObject,
+} from '../_shared/propertyChat.ts';
+import { handleChatAi, isChatAiAction } from '../_shared/propertyChatAi.ts';
+import { chatLang, chatString } from '../../../src/chat/templates.ts';
+import { DM_MEDIA_BUCKET } from '../../../src/chat/conversation.ts';
 import { recordIntent } from '../_shared/intent.ts';
 import {
   projectActor,
@@ -13,6 +31,8 @@ import {
 import {
   attributionOf, readingsOf,
 } from '../../../src/research-core/intent/interpret.ts';
+
+const APP_URL = 'https://www.homatch.live';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,11 +70,48 @@ Deno.serve(async (req) => {
       .or(`id.eq.${user.id},auth_id.eq.${user.id}`).maybeSingle();
     if (!sender) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: corsHeaders });
 
-    const { conversation_id, property_id, recipient_id, body } = await req.json();
-    if (!body?.trim()) return new Response(JSON.stringify({ error: 'Message body required' }), { status: 400, headers: corsHeaders });
+    const raw = await req.json().catch(() => ({}));
+    const reply = (status: number, payload: Record<string, unknown>) =>
+      new Response(JSON.stringify(payload), { status, headers: corsHeaders });
+
+    /* AI help: translate, assist, transcribe. Never sends anything. */
+    if (raw?.action && raw.action !== 'send') {
+      if (!isChatAiAction(raw.action)) return reply(400, { error: 'Unknown action' });
+      const result = await handleChatAi(supabase, sender.id, raw.action, raw as Record<string, unknown>);
+      return reply(result.status, result.body);
+    }
+
+    const parsed = parseSendRequest(raw);
+    if (!parsed.ok) return reply(400, { error: parsed.error });
+    const request = parsed.value;
+    const { conversationId: conversation_id, propertyId: property_id, body } = request;
+    const recipient_id = request.recipientId;
     if (!recipient_id || recipient_id === sender.id) return new Response(JSON.stringify({ error: 'Valid recipient_id required' }), { status: 400, headers: corsHeaders });
 
-    const { data: recipient } = await supabase.from('users').select('id').eq('id', recipient_id).maybeSingle();
+    /* A retried send (dropped response, double tap) returns the first row, not a second message. */
+    if (request.clientMessageId) {
+      const { data: existing } = await supabase.from('messages').select('*')
+        .eq('sender_id', sender.id).eq('client_message_id', request.clientMessageId).maybeSingle();
+      if (existing) return reply(200, { message: existing, conversation_id: existing.conversation_id, first_contact: false, duplicate: true });
+    }
+
+    /* Per-sender burst and daily ceilings, atomically in Postgres. An unreachable limiter
+       does not stop people talking (logged); a reached one does. */
+    try {
+      const { data: rate, error: rateErr } = await supabase.rpc('consume_marketplace_rate_limit', {
+        p_user_id: sender.id, p_operation: SEND_RATE_LIMIT.operation,
+        p_burst_limit: SEND_RATE_LIMIT.burstLimit, p_burst_seconds: SEND_RATE_LIMIT.burstSeconds,
+        p_daily_limit: SEND_RATE_LIMIT.dailyLimit, p_daily_seconds: SEND_RATE_LIMIT.dailySeconds,
+      });
+      if (rateErr) console.error('send-message rate limiter unavailable', rateErr);
+      else if (rate && rate.allowed === false) {
+        return reply(429, { error: 'RATE_LIMITED', retry_after_seconds: Math.max(1, Math.trunc(Number(rate.retry_after_seconds)) || 10) });
+      }
+    } catch (rateThrow) {
+      console.error('send-message rate limiter threw', rateThrow);
+    }
+
+    const { data: recipient } = await supabase.from('users').select('id,preferred_language').eq('id', recipient_id).maybeSingle();
     if (!recipient) return new Response(JSON.stringify({ error: 'Recipient not found' }), { status: 404, headers: corsHeaders });
 
     const { data: block } = await supabase.from('conversation_blocks').select('id')
@@ -103,17 +160,105 @@ Deno.serve(async (req) => {
      * be attaching somebody's words to a listing they never mentioned.
      */
     const { data: conversationRow } = await supabase
-      .from('conversations').select('property_id,property:properties!property_id(user_id)')
+      .from('conversations').select('property_id,initiator_id,initiator_muted,recipient_muted,property:properties!property_id(user_id)')
       .eq('id', convId).maybeSingle();
     const propertyContext = (conversationRow?.property_id as string | null) ?? null;
     const propertyJoin = conversationRow?.property as { user_id?: string } | Array<{ user_id?: string }> | null;
     const propertyOwner = (Array.isArray(propertyJoin) ? propertyJoin[0] : propertyJoin)?.user_id ?? null;
+    const recipientMuted = conversationRow?.initiator_id === recipient_id
+      ? !!conversationRow?.initiator_muted : !!conversationRow?.recipient_muted;
+
+    /*
+     * THE ANTI-FLOOD RULES, from the conversation's own history.
+     *
+     * An owner writing to a member about their own listing is an OFFER until the member
+     * answers. Until then: the member's "receive property offers" choice is honoured
+     * (internal leads), and the owner may send three messages, not thirty.
+     */
+    const senderOwnsProperty = !!propertyOwner && propertyOwner === sender.id;
+    const [{ count: theirCount }, { count: myCount }, { data: recentMine }] = await Promise.all([
+      supabase.from('messages').select('id', { count: 'exact', head: true }).eq('conversation_id', convId).eq('sender_id', recipient_id),
+      supabase.from('messages').select('id', { count: 'exact', head: true }).eq('conversation_id', convId).eq('sender_id', sender.id),
+      supabase.from('messages').select('body,created_at,client_message_id').eq('conversation_id', convId).eq('sender_id', sender.id)
+        .gte('created_at', new Date(Date.now() - 60_000).toISOString()).order('created_at', { ascending: false }).limit(20),
+    ]);
+    const counterpartReplies = Number(theirCount ?? 0);
+    let isLeadOffer = false;
+    if (senderOwnsProperty) {
+      const [{ data: unlock }, { data: crm }] = await Promise.all([
+        supabase.from('internal_lead_unlocks').select('id').eq('account_user_id', sender.id).eq('lead_user_id', recipient_id).limit(1).maybeSingle(),
+        supabase.from('lead_crm_entries').select('id').eq('owner_user_id', sender.id).eq('lead_user_id', recipient_id).limit(1).maybeSingle(),
+      ]);
+      isLeadOffer = !!(unlock || crm);
+    }
+    if (isLeadOffer && counterpartReplies === 0) {
+      const { data: prefs } = await supabase.rpc('lead_contact_prefs_of', { p_user_id: recipient_id });
+      const pref = Array.isArray(prefs) ? prefs[0] : prefs;
+      if (pref && pref.accept_property_offers === false) {
+        return reply(403, { error: 'RECIPIENT_NOT_ACCEPTING_OFFERS' });
+      }
+    }
+    const cap = offerCapDecision({ senderOwnsProperty, counterpartMessages: counterpartReplies, senderMessages: Number(myCount ?? 0) });
+    if (!cap.allowed) return reply(429, { error: 'OFFER_CAP_REACHED' });
+    if (request.kind === 'TEXT' && isDuplicateBody((recentMine ?? []) as never, body, new Date(), request.clientMessageId)) {
+      return reply(409, { error: 'DUPLICATE_MESSAGE' });
+    }
+
+    if (request.replyToId) {
+      const { data: quoted } = await supabase.from('messages').select('id')
+        .eq('id', request.replyToId).eq('conversation_id', convId).maybeSingle();
+      if (!quoted) return reply(400, { error: 'INVALID_REPLY' });
+    }
+
+    /* Media: checked against the object storage actually holds, not the client's claims. */
+    let mediaMeta: Record<string, unknown> | null = null;
+    if (request.kind === 'PHOTO' || request.kind === 'VOICE') {
+      let stored: StoredObject | null = null;
+      const path = request.mediaPath ?? '';
+      const slash = path.lastIndexOf('/');
+      if (slash > 0) {
+        const { data: listed } = await supabase.storage.from(DM_MEDIA_BUCKET)
+          .list(path.slice(0, slash), { search: path.slice(slash + 1), limit: 5 });
+        const hit = (listed ?? []).find((o: { name: string }) => o.name === path.slice(slash + 1)) as
+          { metadata?: { size?: number; mimetype?: string } } | undefined;
+        if (hit) stored = { size: hit.metadata?.size ?? null, mimetype: hit.metadata?.mimetype ?? null };
+      }
+      const media = validateMedia(request.kind, request.mediaPath, request.mediaMeta, stored, sender.id, convId);
+      if (!media.ok) return reply(400, { error: media.error });
+      mediaMeta = media.value;
+    }
+
+    /* A property card is the SENDER's own live listing, snapshotted from its rows here.
+       Whatever listing fields a client sent are never read. */
+    let propertyCard: Record<string, unknown> | null = null;
+    if (request.kind === 'PROPERTY' && request.cardPropertyId) {
+      const { data: cardProperty } = await supabase.from('properties')
+        .select('id,user_id,homatch_id,title,is_deleted,archived_at,cover_photo_url,transaction_type,property_type')
+        .eq('id', request.cardPropertyId).maybeSingle();
+      const refusal = cardRefusal(cardProperty, sender.id);
+      if (refusal) return reply(403, { error: refusal });
+      const { data: cardFacts } = await supabase.from('property_facts')
+        .select('city,district,total_price,currency,bedrooms,area,photo_visibility')
+        .eq('property_id', request.cardPropertyId).limit(1).maybeSingle();
+      propertyCard = buildPropertyCard(cardProperty, cardFacts) as unknown as Record<string, unknown>;
+    }
 
     const now = new Date().toISOString();
     const { data: message, error: msgErr } = await supabase.from('messages').insert({
-      conversation_id: convId, sender_id: sender.id, body: body.trim(), status: 'SENT',
+      conversation_id: convId, sender_id: sender.id, body, status: 'SENT',
+      kind: request.kind, media_path: request.mediaPath, media_meta: mediaMeta, reply_to_id: request.replyToId,
+      property_card: propertyCard, original_body: request.originalBody, original_lang: request.originalLang,
+      translated_to: request.translatedTo, client_message_id: request.clientMessageId,
     }).select('*').single();
-    if (msgErr) throw msgErr;
+    if (msgErr) {
+      /* Two concurrent retries of one send: the loser returns the winner's row. */
+      if ((msgErr as { code?: string }).code === '23505' && request.clientMessageId) {
+        const { data: winner } = await supabase.from('messages').select('*')
+          .eq('sender_id', sender.id).eq('client_message_id', request.clientMessageId).maybeSingle();
+        if (winner) return reply(200, { message: winner, conversation_id: convId, first_contact: false, duplicate: true });
+      }
+      throw msgErr;
+    }
 
     await supabase.from('conversations').update({ last_message_at: now, ...(isFirstContact ? { first_contact_email_sent: true } : {}) }).eq('id', convId);
     await supabase.from('message_receipts').upsert({ message_id: message.id, user_id: recipient_id, status: 'DELIVERED' }, { onConflict: 'message_id,user_id' });
@@ -137,7 +282,9 @@ Deno.serve(async (req) => {
      */
     /* The owner writing about their own property is answering, not expressing interest. */
     const intentWork: Promise<unknown>[] = [];
-    if (propertyContext && propertyOwner !== sender.id) {
+    if (!body) {
+      /* A photo, voice note or card with no caption says nothing to read. */
+    } else if (propertyContext && propertyOwner !== sender.id) {
       const readings = readingsOf(body);
       const attribution = attributionOf(body);
       for (const reading of readings) {
@@ -215,12 +362,33 @@ Deno.serve(async (req) => {
      * The sender is never told about their own message: notify() is called with
      * recipient_id and nothing else.
      */
-    await notify(supabase, {
+    /*
+     * WHICH NOTICE, AND HOW LOUD.
+     *
+     * The first message of a conversation an owner opened with an internal lead is a
+     * PROPERTY OFFER: the approved copy, in the member's own language. Everything else is
+     * NEW_MESSAGE as before. Neither ever carries the message text — a push lands on a
+     * lock screen. A conversation the recipient muted is still written in-app but at LOW
+     * priority, which push-send never pushes.
+     */
+    let emailRow: { email_enabled?: boolean | null; categories?: Record<string, unknown> | null } | null = null;
+    if (isLeadOffer && isFirstContact) {
+      const { data: prefRow } = await supabase.from('notification_preferences')
+        .select('email_enabled,categories').eq('user_id', recipient_id).maybeSingle();
+      emailRow = prefRow ?? null;
+    }
+    const plan = notificationPlan({ isLeadOffer, isFirstContact, recipientMuted, emailEnabled: emailEnabledFrom(emailRow) });
+    const recipientLang = chatLang(recipient.preferred_language);
+    const notice = plan.kind === 'PROPERTY_OFFER'
+      ? { title: chatString('pc_notif_offer_title', recipientLang), body: chatString('pc_notif_offer_body', recipientLang) }
+      : { title: 'New message', body: 'You have a new message from a Homatch user.' };
+
+    const notificationId = await notify(supabase, {
       userId: recipient_id,
       type: 'NEW_MESSAGE',
-      title: 'New message',
-      body: 'You have a new message from a Homatch user.',
-      priority: 'HIGH',
+      title: notice.title,
+      body: notice.body,
+      priority: recipientMuted ? 'LOW' : 'HIGH',
       deepLink: `/chat?conversation=${convId}`,
       entityType: 'conversation',
       entityId: convId,
@@ -235,10 +403,31 @@ Deno.serve(async (req) => {
       metadata: {
         conversation_id: convId,
         sender_id: sender.id,
-        property_id: property_id || null,
-        kind: 'NEW_MESSAGE',
+        property_id: property_id || propertyContext || null,
+        kind: plan.kind === 'PROPERTY_OFFER' ? 'PROPERTY_OFFER' : 'NEW_MESSAGE',
+        message_kind: request.kind,
       },
     });
+
+    /* The one transactional email for a property offer: first message only (the
+       first_contact flag was set above, so never twice), and only when the member has
+       email notifications on. Logged in notification_deliveries either way. */
+    if (plan.sendEmail) {
+      const rtl = recipientLang === 'ar' || recipientLang === 'he';
+      const content = renderNotificationEmail({
+        rtl, lang: recipientLang,
+        title: chatString('pc_email_offer_heading', recipientLang),
+        body: chatString('pc_email_offer_body', recipientLang),
+        whyLabel: '', why: '', analysisLabel: '', analysis: null, nextLabel: '', next: null,
+        ctaLabel: chatString('pc_email_offer_cta', recipientLang),
+        ctaUrl: `${APP_URL}/chat?conversation=${convId}`,
+        footer: chatString('pc_email_offer_footer', recipientLang),
+      });
+      await sendNotificationEmail(supabase, {
+        userId: recipient_id, notificationId, eventKey: `property_offer:${convId}`, source: 'property_chat',
+        content: { ...content, subject: chatString('pc_email_offer_subject', recipientLang) },
+      }).catch((err) => console.error('send-message offer email failed', err));
+    }
 
     return new Response(JSON.stringify({ message: { ...message, status: 'DELIVERED', delivered_at: now }, conversation_id: convId, first_contact: isFirstContact }), { headers: corsHeaders });
   } catch (err) {

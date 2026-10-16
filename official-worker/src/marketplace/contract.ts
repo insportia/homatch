@@ -36,6 +36,9 @@ export interface MarketplaceSearchRequest {
   exclusions: string[];
   /** Source-independent floor choices; vague choices are never converted to numeric floors. */
   floorPreferences?: string[];
+  /** Optional post-acquisition constraints; older persisted requests remain valid. */
+  floorRange?: { min: number | null; max: number | null } | null;
+  maxBuildingAge?: number | null;
   searchLanguages: string[];
   /**
    * The hard ceiling a worker may collect up to. Workers collect slightly above

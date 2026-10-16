@@ -6,6 +6,7 @@ import { buildQueries, candidateFromMyHome } from '../.tstest-build/marketplace/
 import { parsePagination, AcquisitionError } from '../.tstest-build/marketplace/myhome/api.js';
 import { publicSearchUrl, parsePublicPage, publicPage } from '../.tstest-build/marketplace/myhome/public-page.js';
 import { startMyHomeRuntime } from '../.tstest-build/marketplace/MyHomeRuntime.js';
+import { MyHomeEngine } from '../.tstest-build/marketplace/myhome/engine.js';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { processSearch } from '../../src/research-core/marketplace/pipeline.ts';
 import { sanitizeBrief, emptyBrief } from '../../src/research-core/marketplace/brief.ts';
@@ -35,14 +36,19 @@ test('owner start canonicalization maps Varketili through proven multilingual My
   }
   assert.deepEqual(req.districts,['Varketili']);assert.ok(!JSON.stringify(buildQueries(req,liveShape,filters)).includes('სუხიშვილის'));
 });
-function simulated({ lastPage = 6, total = 139, repeated = false, failPage = null, duplicate = false, emptyPage = null, missingUrlId = null } = {}) {
-  const pages = [], reports = []; let listCalls = 0;
+function simulated({ lastPage = 6, total = 139, repeated = false, failPage = null, duplicate = false, emptyPage = null, missingUrlId = null, detailFailure = null, detailPrice = null } = {}) {
+  const pages = [], reports = [], details = []; let listCalls = 0;
   const fetcher = async (input) => {
     const url = new URL(input); let payload;
     if(url.hostname.includes('locations')) payload = locations;
     else if(url.pathname.endsWith('statement-parameters')) payload = filters;
     else if(url.pathname.endsWith('/count')) payload = { result:true,data:{page:1,last_page:lastPage,total} };
-    else if(url.hostname === 'www.myhome.ge' && /-\d+\/$/.test(url.pathname)) { const id = Number(url.pathname.match(/-(\d+)\/$/)[1]); payload = {result:true,data:{statement:{...row(id),room_type_id:11}}}; }
+    else if(url.hostname === 'www.myhome.ge' && /-\d+\/$/.test(url.pathname)) {
+      const id = Number(url.pathname.match(/-(\d+)\/$/)[1]); details.push(id);
+      if (detailFailure === 403) return new Response('CHALLENGE_REQUIRED', {status:403,headers:{server:'cloudflare'}});
+      if (detailFailure === 'parser') return new Response('<html>not structured data</html>');
+      payload = {result:true,data:{statement:{...row(id),room_type_id:11,...(detailPrice === null ? {} : {price:{2:{price_total:detailPrice}}})}}};
+    }
     else { const page = Number(url.searchParams.get('page')); pages.push(page);listCalls++;
       if(failPage===page) return new Response('Denied',{status:403});
       const size = total === 0 || emptyPage===page ? 0 : page===lastPage ? total-(lastPage-1)*24 : 24;
@@ -60,8 +66,81 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
     }
     return Response.json(payload);
   };
-  return { pages,reports,fetcher,run: (overrides={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r)}) };
+  return { pages,reports,details,fetcher,run: (overrides={},options={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r),...options}) };
 }
+
+test('search-first acquisition never opens details by default and preserves all budgeted pages', async () => {
+  const s = simulated({detailFailure:403});
+  const result = await s.run({}, { maxPages: 50 });
+  assert.equal(result.status,'COMPLETE'); assert.equal(result.delivered,139);
+  assert.deepEqual(s.details,[]); assert.deepEqual(s.pages,[1,2,3,4,5,6]);
+  const candidate = s.reports.find(r=>r.listings.length).listings[0];
+  assert.equal(candidate.retrievalMetadata.observationLevel,'SEARCH_RESULT');
+  assert.equal(candidate.retrievalMetadata.detailEnrichment,'NOT_REQUESTED');
+  assert.equal(candidate.retrievalMetadata.detailVerifiedAt,null);
+  assert.equal(candidate.retrievalMetadata.availability,'UNKNOWN');
+});
+
+test('optional detail restriction persists the valid search page and never retries or visits page 2', async () => {
+  const s=simulated({detailFailure:403});
+  const result=await s.run({}, {enrichDetails:true});
+  assert.equal(result.status,'PARTIAL'); assert.equal(result.delivered,24);
+  assert.deepEqual(s.pages,[1]); assert.deepEqual(s.details,[1]);
+  assert.equal(s.reports.at(-1).errors[0].code,'ACCESS_DENIED');
+  const candidates=s.reports.flatMap(r=>r.listings);
+  assert.equal(candidates.length,24);
+  assert.equal(candidates[0].retrievalMetadata.detailEnrichment,'ACCESS_RESTRICTED');
+  assert.equal(candidates[1].retrievalMetadata.detailEnrichment,'SKIPPED');
+  for(const c of candidates) assert.equal(c.retrievalMetadata.detailVerifiedAt,null);
+});
+
+test('optional malformed detail preserves summaries with explicit incomplete evidence', async () => {
+  const s=simulated({lastPage:1,total:3,detailFailure:'parser'});
+  const result=await s.run({}, {enrichDetails:true});
+  assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,3);
+  assert.deepEqual(s.details,[1,2,3]);
+  assert.ok(s.reports.flatMap(r=>r.listings).every(c=>c.retrievalMetadata.detailEnrichment==='FAILED'));
+});
+
+test('optional detail enrichment succeeds, but known budget contradictions never fall back to old summaries', async () => {
+  const ok=simulated({lastPage:1,total:3});await ok.run({}, {enrichDetails:true});
+  assert.ok(ok.reports.flatMap(r=>r.listings).every(c=>c.retrievalMetadata.observationLevel==='DETAIL' && c.retrievalMetadata.detailVerifiedAt===c.observedAt));
+  const changed=simulated({lastPage:1,total:3,detailPrice:300000});
+  const result=await changed.run({}, {enrichDetails:true});
+  assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,0);
+  assert.equal(changed.reports.at(-1).errors[0].code,'DETAIL_FILTER_MISMATCH');
+});
+
+test('authentic retained search observation alone normalizes into existing ingress and customer properties', async () => {
+  const fixture=JSON.parse(readFileSync(new URL('./fixtures/myhome-public-next.json',import.meta.url),'utf8'));
+  const raw=fixture.search.props.pageProps.dehydratedState.queries[0].state.data.data.data[0];
+  // Replay the retained source query's 176000 collection ceiling as this test's
+  // hard budget. Original 160000-budget ranking is covered independently.
+  const historicalRequest={...request,districts:['Vake'],priceMinUsd:120000,priceMaxUsd:176000,collectPriceMaxUsd:176000,areaMinSqm:80,areaMaxSqm:110,rooms:null,bedrooms:null};
+  const dictionaries={data:[{id:raw.city_id,display_name:'Tbilisi',districts:[{id:raw.district_id,display_name:'Vake-Saburtalo',urbans:[{id:raw.urban_id,display_name:'Vake'}]}]}]};
+  const reports=[];let details=0;
+  const fetcher=async input=>{
+    const url=new URL(input);
+    if(url.hostname.includes('locations')) return Response.json(dictionaries);
+    if(url.pathname.endsWith('statement-parameters')) return Response.json(filters);
+    if(url.pathname.endsWith('/count')) return Response.json({result:true,data:{page:1,last_page:1,total:1}});
+    if(url.pathname.match(/-\d+\/$/)){details++;return new Response('CHALLENGE_REQUIRED',{status:403});}
+    return new Response(`<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(fixture.search)}</script>`);
+  };
+  const result=await acquireMyHome(historicalRequest,{fetcher,deadlineAt:new Date(Date.now()+900000).toISOString(),report:async r=>reports.push(r)});
+  assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,1);assert.equal(details,0);
+  const validated=validateWorkerReport(reports.find(r=>r.listings.length),'myhome-ge');assert.equal(validated.ok,true);
+  const c=validated.report.listings[0];
+  assert.equal(c.sourceListingId,'25610778');assert.equal(c.price,165000);assert.equal(c.currency,'USD');
+  assert.equal(c.areaSqm,101);assert.equal(c.rooms,4);assert.equal(c.bedrooms,3);
+  assert.equal(c.description,raw.comment);assert.equal(c.address,raw.address.trim());assert.equal(c.floor,4);assert.equal(c.totalFloors,8);
+  assert.deepEqual(c.images,raw.images.map(i=>i.large));assert.equal(c.images.length,15);
+  assert.equal(c.seller.publicPhone,null);assert.equal(c.parking,null);assert.equal(c.renovationStatus,null);assert.equal(c.publishedAt,null);
+  assert.equal(c.retrievalMetadata.detailVerifiedAt,null);assert.ok(c.updatedAt.startsWith('2026-10-06'));
+  const output=processSearch({request:historicalRequest,candidates:[{candidate:c}],now:new Date('2026-10-09T08:00:00Z')});
+  assert.equal(output.properties.length,1);assert.equal(output.properties[0].listings[0].sourceListingId,c.sourceListingId);
+  assert.deepEqual(output.properties[0].images,c.images.slice(0,12), 'canonical summaries retain the existing 12-photo cap and original URLs');
+});
 
 test('public Next fixtures confirm exact filters, pagination and detail identity', () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/myhome-public-next.json',import.meta.url),'utf8'));
@@ -138,6 +217,13 @@ test('proven central heating and positive attributes resolve dynamic IDs, with e
   assert.throws(()=>buildQueries({...request,mustHave:['CENTRAL_HEATING']},locations,filters),/Dictionary mapping unavailable/);
 });
 
+test('MyHome user_type: agent and broker are declared agents; a private person is not called an owner',()=>{
+  const map=(type)=>candidateFromMyHome({...row(1),user_type:type===null?null:{type}},filters,'https://api-statements.tnet.ge/v1/statements');
+  assert.equal(map('agent').seller.declaredType,'BROKER');assert.equal(map('broker').seller.declaredType,'BROKER');
+  assert.equal(map('physical').seller.declaredType,null);assert.equal(map(null).seller.declaredType,null);
+  assert.equal(map('agent').retrievalMetadata.userType,'agent');
+});
+
 test('unproven detail criteria are not invented; source years and exact detail counts stay truthful',()=>{
   const c=candidateFromMyHome({...row(1),room:'10+',room_type_id:10,build_year:'1955-2000'},filters,'https://api-statements.tnet.ge/v1/statements');
   assert.equal(c.rooms,9,'detail dictionary ID wins over an inherited list label');assert.equal(c.constructionYear,null);assert.equal(c.retrievalMetadata.buildYearSource,'1955-2000');
@@ -160,20 +246,51 @@ test('detail dictionary shape, coordinates and source URL survive mapping',()=>{
   assert.equal(c.latitude,41.67);assert.equal(c.district,'კრწანისი');assert.equal(c.renovationStatus,'WHITE_FRAME');assert.equal(c.updatedAt,'2026-10-06T12:48:54.000Z');assert.equal(c.images.length,1);
 });
 test('production processes all six pages, all 139 unique IDs and progressive batches',async()=>{
-  const s=simulated({duplicate:true});const result=await s.run();
+  const s=simulated({duplicate:true});const result=await s.run({},{maxPages:50});
   assert.deepEqual(s.pages,[1,2,3,4,5,6]);assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,139);
   assert.equal(s.reports.filter(r=>r.status==='RESULTS_RECEIVED').length,6);assert.equal(new Set(s.reports.flatMap(r=>r.listings.map(l=>l.sourceListingId))).size,139);
   assert.equal(s.reports.at(-1).status,'COMPLETE');assert.equal(s.reports.at(-1).listings.length,0);
 });
-test('production can traverse 50 pages without an arbitrary small cap',async()=>{const s=simulated({lastPage:50,total:1200});const result=await s.run();assert.equal(result.delivered,1200);assert.equal(s.pages.length,50);});
+test('an explicit page budget can traverse 50 pages',async()=>{const s=simulated({lastPage:50,total:1200});const result=await s.run({},{maxPages:50});assert.equal(result.delivered,1200);assert.equal(s.pages.length,50);});
+test('owner page cap: by default only the first 2 result pages are requested and the full count is still reported',async()=>{
+  const s=simulated();const result=await s.run();
+  assert.deepEqual(s.pages,[1,2]);assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,48);
+  const last=s.reports.at(-1);assert.equal(last.discoveredCount,139);assert.equal(last.queryApplied.pageCap,2);assert.equal(last.queryApplied.pagesCapped,true);
+});
+test('pages are paced: a fixed pause precedes every page after the first',async()=>{
+  const s=simulated();const started=Date.now();await s.run({},{pageIntervalMs:40,maxPages:3});
+  assert.ok(Date.now()-started>=80,'two pauses before pages 2 and 3');assert.deepEqual(s.pages,[1,2,3]);
+});
 test('a live record with no canonical URL does not truncate pagination or invent a URL',async()=>{
-  const s=simulated({missingUrlId:38});const result=await s.run();
+  const s=simulated({missingUrlId:38});const result=await s.run({},{maxPages:50});
   assert.deepEqual(s.pages,[1,2,3,4,5,6]);assert.equal(result.delivered,138);assert.equal(result.status,'PARTIAL');
   assert.equal(s.reports.at(-1).errors[0].code,'SOURCE_URL_UNAVAILABLE');assert.match(s.reports.at(-1).errors[0].message,/38/);
   assert.ok(s.reports.flatMap(r=>r.listings).every(l=>l.sourceListingId!=='38' && !l.exactUrl.includes('null')));
 });
 test('repeated pages report PARTIAL and preserve ingested results',async()=>{const s=simulated({repeated:true});const result=await s.run();assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,24);assert.equal(s.reports.at(-1).errors[0].code,'REPEATED_PAGE');});
 test('unexpected empty page cannot be reported as complete',async()=>{const s=simulated({emptyPage:2});assert.equal((await s.run()).status,'PARTIAL');assert.equal(s.reports.at(-1).errors[0].code,'EMPTY_PAGE');});
+test('restart resumes only an acknowledged page for the exact same source queries', async () => {
+  const interrupted = simulated({ emptyPage: 2 });
+  await interrupted.run();
+  const first = interrupted.reports.find((r) => r.status === 'RESULTS_RECEIVED');
+  assert.equal(first.queryApplied.nextPage, 2);
+  const validated = validateWorkerReport(first, 'myhome-ge');
+  assert.equal(validated.ok, true);
+  const persisted = validated.report.queryApplied;
+  assert.equal(persisted.requests[0].length, 80, 'exercise the production ingress sanitizer');
+  assert.match(persisted.queryFingerprint, /^[a-f0-9]{64}$/);
+  const resumed = simulated();
+  const result = await resumed.run({}, { maxPages: 50, checkpoint: { queryApplied: persisted, returnedCount: 24 } });
+  assert.deepEqual(resumed.pages, [2,3,4,5,6]);
+  assert.equal(result.delivered, 139); assert.equal(result.status, 'COMPLETE');
+  const changed = simulated();
+  await changed.run({}, { maxPages: 50, checkpoint: { queryApplied: { ...persisted, queryFingerprint: '0'.repeat(64) }, returnedCount: 24 } });
+  assert.deepEqual(changed.pages, [1,2,3,4,5,6], 'changed dictionaries/criteria never reuse a stale cursor');
+  const legacy = simulated();
+  await legacy.run({}, { maxPages: 50, checkpoint: { queryApplied: { ...persisted, queryFingerprint: undefined }, returnedCount: 24 } });
+  assert.deepEqual(legacy.pages, [1,2,3,4,5,6], 'truncated legacy URLs cannot prove query identity');
+});
+
 test('access denied is not bypassed or silently converted into empty success',async()=>{const s=simulated({failPage:1});assert.equal((await s.run()).status,'BLOCKED');assert.deepEqual(s.pages,[1]);});
 test('zero inventory is a legitimate complete result',async()=>{const s=simulated({lastPage:0,total:0});assert.equal((await s.run()).status,'COMPLETE');assert.equal(s.reports.at(-1).returnedCount,0);});
 test('count metadata must be authoritative and sane',()=>{assert.throws(()=>parsePagination({result:true,data:{page:2,last_page:6,total:139}},1));assert.throws(()=>parsePagination({result:true,data:{page:1,last_page:0,total:3}},1));});
@@ -205,6 +322,7 @@ test('runtime uses authenticated claim, heartbeat and result report without a se
     if(!String(input).includes('/functions/v1/')) return source.fetcher(input,init);
     assert.equal(init.headers.Authorization,'Bearer '+'x'.repeat(40));assert.equal(init.headers['x-homatch-worker'],'myhome-agent');
     const body=JSON.parse(init.body);bodies.push(body);
+    if(body.action==='source-health') return Response.json({accessRestricted:false});
     if(body.action==='claim'){const runs=claimed?[]:[{runId:'00000000-0000-4000-8000-000000000003',attempt:1,deadlineAt:new Date(Date.now()+900000).toISOString(),request}];claimed=true;return Response.json({runs});}
     if(body.action==='report'){assert.equal(body.report,undefined);assert.equal(validateWorkerReport(body.result,'myhome-ge').ok,true);completed=body.result.status==='COMPLETE';return Response.json({accepted:body.result.listings.length,rejected:[],searchStatus:'RESULTS_AVAILABLE'});}
     return Response.json({leaseExpiresAt:new Date().toISOString()});
@@ -214,6 +332,26 @@ test('runtime uses authenticated claim, heartbeat and result report without a se
   finally{runtime.shutdown();}
 });
 
+test('runtime startup connectivity check reads search and count but opens no detail page by default',async()=>{
+  const source=simulated({lastPage:1,total:3});const sourceUrls=[];
+  const fetcher=async(input,init)=>{
+    if(!String(input).includes('/functions/v1/')){sourceUrls.push(new URL(String(input)));return source.fetcher(input,init);}
+    const body=JSON.parse(init.body);
+    if(body.action==='source-health') return Response.json({accessRestricted:false});
+    if(body.action==='claim') return Response.json({runs:[]});
+    return Response.json({});
+  };
+  const runtime=startMyHomeRuntime({SUPABASE_URL:'https://example.supabase.co',MYHOME_WORKER_TOKEN:'x'.repeat(40),MYHOME_MARKETPLACE_ENABLED:'true'},fetcher);
+  try {
+    for(let i=0;i<100&&!runtime.status().connectivity;i++) await new Promise(resolve=>setTimeout(resolve,10));
+    const smoke=runtime.status().connectivity;
+    assert.ok(smoke,'startup connectivity check completed');
+    assert.equal(smoke.listStatus,200);assert.equal(smoke.detailStatus,'NOT_REQUESTED');
+    const pages=sourceUrls.filter(url=>url.hostname==='www.myhome.ge');
+    assert.ok(pages.length>=1);
+    assert.ok(pages.every(url=>url.pathname==='/udzravi-qoneba/'),'only the search page is opened: '+pages.map(url=>url.pathname).join(','));
+  } finally{runtime.shutdown();}
+});
 test('access diagnostics distinguish explicit CAPTCHA, managed challenge and unknown rejection without leaking response data', async () => {
   for (const [body,headers,category] of [
     ['<div class="cf-turnstile">SECRET_CHALLENGE_TOKEN</div>',{'server':'cloudflare'},'CAPTCHA_REQUIRED'],
@@ -242,4 +380,114 @@ test('public hydration preserves repeated attribute filters rather than dropping
   assert.equal(parsePublicPage(html(),url).data.data[0].id,25610778);
   applied['attrs[feature][]']=['106'];
   assert.throws(()=>parsePublicPage(html(),url),/does not confirm/);
+});
+
+test('district names resolve with or without a "district"/„რაიონი“ suffix', async () => {
+  const { resolveLocation, districtKey } = await import('../.tstest-build/marketplace/myhome/api.js');
+  assert.equal(districtKey('ვაკის რაიონი'), districtKey('ვაკე'));
+  assert.equal(districtKey('Vake district'), districtKey('Vake'));
+  const dict = { data: [{ id: 1, display_name: 'Tbilisi', districts: [
+    { id: 3, display_name: 'Vake', translations: { ka: { display_name: 'ვაკე' } }, urbans: [] },
+    { id: 6, display_name: 'Old Tbilisi', urbans: [{ id: 65, display_name: 'Krtsanisi' }] },
+  ] }] };
+  assert.equal(resolveLocation({ city: 'Tbilisi', district: 'ვაკის რაიონი' }, dict).districtId, 3);
+  assert.equal(resolveLocation({ city: 'Tbilisi', district: 'Vake district' }, dict).districtId, 3);
+  const k = resolveLocation({ city: 'თბილისი', district: 'კრწანისი' }, dict);
+  assert.equal(k.urbanId, 65);
+});
+
+for (const transport of ['http', 'crawlee']) test(`runtime ${transport} honors a durable cooldown without contacting MyHome and closes only its own run`, async () => {
+  let sourceRequests = 0, completed = false, claimed = false;
+  const reports = [];
+  const fetcher = async (input, init) => {
+    if (!String(input).includes('/functions/v1/')) { sourceRequests++; throw Error('restricted source must not be contacted'); }
+    assert.equal(init.headers.Authorization, 'Bearer ' + 'x'.repeat(40));
+    assert.equal(init.headers['x-homatch-worker'], 'myhome-agent');
+    const body = JSON.parse(init.body);
+    if (body.action === 'source-health') return Response.json({ accessRestricted: true });
+    if (body.action === 'claim') {
+      const runs = claimed ? [] : [{ runId: '00000000-0000-4000-8000-000000000004', attempt: 1, deadlineAt: new Date(Date.now()+900000).toISOString(), request }];
+      claimed = true; return Response.json({ runs });
+    }
+    if (body.action === 'report') {
+      reports.push(body.result); completed = true;
+      return Response.json({ accepted: 0, rejected: [], searchStatus: 'PARTIAL_COMPLETE' });
+    }
+    throw Error('unexpected action ' + body.action);
+  };
+  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true', MYHOME_PUBLIC_PAGE_TRANSPORT: transport }, fetcher);
+  try {
+    for (let i=0;i<100&&!completed;i++) await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(completed, true);
+    assert.equal(sourceRequests, 0);
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].status, 'BLOCKED');
+    assert.equal(reports[0].errors[0].code, 'PROVIDER_COOLDOWN');
+    assert.equal(reports[0].retryable, false);
+    assert.equal(runtime.status().pageTransport, transport === 'crawlee' ? 'CRAWLEE' : 'HTTP');
+  } finally { runtime.shutdown(); }
+});
+
+/* ── Provider recovery: protection without a customer-facing shutdown ── */
+const accessStore = (mode, { failDecide = false } = {}) => {
+  const calls = { restrict: [], recovered: 0 };
+  return { calls, decide: async () => { if (failDecide) throw new Error('Marketplace ingest HTTP 500'); return { mode, retryAt: mode === 'CACHE_ONLY' ? '2026-10-10T21:00:00.000Z' : null }; },
+    restrict: async (e) => { calls.restrict.push(e); }, recovered: async () => { calls.recovered++; } };
+};
+const counted = (s) => { let n = 0; const fetcher = async (i, init) => { n++; return s.fetcher(i, init); }; return { fetcher, count: () => n }; };
+
+test('cooldown: the run is answered without a single source request and is never a fresh success', async () => {
+  const s = simulated(), c = counted(s), st = accessStore('CACHE_ONLY'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { fetcher: c.fetcher, engine });
+  assert.equal(c.count(), 0); assert.equal(result.status, 'BLOCKED');
+  const last = s.reports.at(-1);
+  assert.equal(last.errors[0].code, 'PROVIDER_COOLDOWN'); assert.match(last.errors[0].message, /2026-10-10T21:00:00/);
+  assert.equal(last.retryable, false); assert.equal(last.returnedCount, 0);
+});
+
+test('ingress 500 while reading access state: transient, retryable, MyHome not contacted, no cooldown', async () => {
+  const s = simulated(), c = counted(s), st = accessStore('LIVE', { failDecide: true }), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { fetcher: c.fetcher, engine });
+  assert.equal(c.count(), 0); assert.equal(result.status, 'FAILED');
+  assert.equal(s.reports.at(-1).errors[0].code, 'ACCESS_STATE_UNAVAILABLE'); assert.equal(s.reports.at(-1).retryable, true);
+  assert.equal(st.calls.restrict.length, 0);
+});
+
+test('probe after cooldown: the first page read reopens MyHome exactly once', async () => {
+  const s = simulated(), st = accessStore('PROBE'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { engine });
+  assert.equal(result.status, 'COMPLETE'); assert.equal(st.calls.recovered, 1); assert.equal(st.calls.restrict.length, 0);
+  assert.equal(s.reports.at(-1).queryApplied.accessMode, 'PROBE');
+});
+
+test('probe refused again: one request, cooldown recorded, no recovery, nothing retried', async () => {
+  const s = simulated({ failPage: 1 }), st = accessStore('PROBE'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { engine });
+  assert.equal(result.status, 'BLOCKED'); assert.deepEqual(s.pages, [1]);
+  assert.equal(st.calls.recovered, 0); assert.equal(st.calls.restrict.length, 1);
+  assert.equal(s.reports.at(-1).errors[0].code, 'ACCESS_DENIED');
+});
+
+test('a refusal mid-run keeps the pages already read and cools down', async () => {
+  const s = simulated({ failPage: 3 }), st = accessStore('LIVE'), engine = new MyHomeEngine(); engine.configure(st);
+  const result = await s.run({}, { engine, maxPages: 3 });
+  assert.equal(result.status, 'PARTIAL'); assert.equal(result.delivered, 48); assert.deepEqual(s.pages, [1, 2, 3]);
+  assert.equal(st.calls.restrict.length, 1);
+});
+
+test('runtime claims one MyHome run at a time; further searches wait in the durable queue', async () => {
+  const limits = [];
+  const fetcher = async (input, init) => {
+    if (!String(input).includes('/functions/v1/')) throw Error('no source contact expected');
+    const body = JSON.parse(init.body);
+    if (body.action === 'source-health') return Response.json({ accessRestricted: true, mode: 'CACHE_ONLY', retryAt: null });
+    if (body.action === 'claim') { limits.push(body.limit); return Response.json({ runs: [] }); }
+    return Response.json({});
+  };
+  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true' }, fetcher);
+  try {
+    for (let i = 0; i < 100 && !limits.length; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(limits.slice(0, 1), [1]);
+    assert.equal(runtime.status().connectivity.skipped, 'CACHE_ONLY', 'startup check skipped, probe not spent');
+  } finally { runtime.shutdown(); }
 });

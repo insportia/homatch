@@ -32,6 +32,12 @@ import type { CanonicalSpace } from '../types.ts';
 
 type P = [number, number];
 
+/** The version of WALK_SPACE_BRIEF a reading was asked with: a space read with an older brief is read once again. */
+// 3: the reading is drafted into an orthogonal plan by the architect (planDraft.ts).
+// 4: a draft sized against what its rooms are is sent back once (planDraft.ts draftProblems).
+// 5: a plan still no plausible home is drawn again by the architect (planArchitect.ts).
+// 6: the architect keeps the home's bands and each door on the wall between the rooms its name gives.
+export const WALK_BRIEF_VERSION = 'ds-walk-brief-6';
 /** What a walk needs, added to the reconstruction reader's own instructions (server-internal; never shown). */
 export const WALK_SPACE_BRIEF = `PURPOSE OF THIS READING: a navigable 3D walkthrough of this home, built even where the pictures do not show everything.
 - The first pictures are the customer's own SOURCE pictures: the architecture (walls, rooms, doors, windows, balcony) comes primarily from them. The later pictures are GENERATED DESIGNS of the same home: use them for what they show of the layout, surfaces and furniture; where they disagree with the source about architecture, the source wins.
@@ -39,20 +45,34 @@ export const WALK_SPACE_BRIEF = `PURPOSE OF THIS READING: a navigable 3D walkthr
 - Return EVERY room the pictures show or clearly imply, each a closed outline that shares its walls exactly with its neighbours (no gaps, no overlaps), plus the floor between them (a hall or corridor) when the home needs it to connect.
 - Every room must be reachable: give the door or opening between connected rooms, and the entrance door of the home, even when it is only implied (basis INFERRED, lower confidence). Doors are at least 0.8 m wide.
 - Where a wall, a room boundary or a size cannot be seen, infer the most conservative plausible value from perspective, visible edges, ordinary objects (doors ~2.1 m high, beds ~2 m long, worktops ~0.9 m high) and ordinary apartment layouts, and mark it INFERRED with an honest confidence. Never mark a guess OBSERVED.
-- Give the ceiling height when it can be judged; otherwise leave it null.`;
+- Give the ceiling height when it can be judged; otherwise leave it null.
+DRAW THE PLAN EXACTLY, as an architect would trace it from the pictures:
+- Use ONE home frame for every room and every piece: walls axis-aligned (square corners) unless the pictures clearly show a slanted wall; one consistent scale in metres.
+- Each room's size must agree with what stands in it: a double bed (~1.6 × 2.0 m) with walking space on both sides and a wardrobe needs a bedroom of at least ~3.0 × 3.4 m; a sofa group facing a TV needs ~3.2 m between the TV wall and the back of the sofa; a kitchen run is ~0.6 m deep; a shower ~0.9 × 0.9 m; a toilet needs ~0.8 m width. Never draw a room smaller than the furniture the pictures show in it.
+- An open-plan kitchen with living (and dining) is ONE room, kind LIVING labelled "kitchen-living" (or "studio" when the bed is in it too; an office nook with its own walls is a room labelled "office"): give it as one outline, never split by the counter. A bar, peninsula or island counter is a piece inside it, not a wall. A low partition or a half-height wall is a piece, not a room boundary.
+- A full-height partition or wall that separates rooms (bathroom, bedroom, office nook with its own wall) IS a room boundary: draw it where it stands, and give its door or opening.
+- Give every interior door between rooms you can see or infer, at its real position on the shared wall, and the entrance door of the home on its outside wall (usually into the hall or the kitchen-living room).
+- Give every window and glazed door (BALCONY_DOOR) you can see, on the exterior wall where it is. Every bedroom, living room and kitchen-living room has at least one window on an exterior wall; when one is not visible, infer it (INFERRED) on that room's longest exterior wall. A wall of glass to a balcony is a glazed door plus windows on that wall.
+- A balcony or terrace is its own room (kind BALCONY or TERRACE, outdoor true) outside the exterior wall, with its true shape: a balcony that wraps around a corner is drawn wrapping around it, with its depth (usually 1.2–2.0 m) along each side.
+- Place every piece you see at the position the pictures show, in the same home frame as the rooms, with its real size and the wall it stands against: kitchen cabinets, fridge, hob, sink, counters, sofa, armchairs, coffee table, TV unit, dining or bar table and its chairs, desk and chair, bed, wardrobe, dresser, bath, shower, toilet, washbasin, balcony furniture.
+- Check before answering: the outlines tile the home without gaps or overlaps, every room is reachable through doors, every piece stands inside its own room, and the overall footprint matches the building outline the pictures show.`;
 
 export type Basis = 'OBSERVED' | 'INFERRED_HIGH' | 'INFERRED_MEDIUM' | 'INFERRED_LOW';
 /** The four-level basis an element carries internally. */
 export const basisOf = (basis: 'OBSERVED' | 'INFERRED', confidence: number): Basis =>
   (basis === 'OBSERVED' ? 'OBSERVED' : confidence >= 0.7 ? 'INFERRED_HIGH' : confidence >= 0.45 ? 'INFERRED_MEDIUM' : 'INFERRED_LOW');
 
-export interface Repair { code: 'DUPLICATE_ROOM_REMOVED' | 'ROOM_MOVED_TO_TOUCH' | 'DOOR_INFERRED' | 'ENTRANCE_INFERRED' | 'DOOR_WIDENED' | 'CEILING_TYPICAL' | 'RECTANGLES_USED' | 'ROOM_UNREACHABLE'; element: string }
+export interface Repair { code: 'DUPLICATE_ROOM_REMOVED' | 'ROOM_CARVED' | 'ROOM_MERGED_INTO_OPEN_PLAN' | 'ROOM_MOVED_TO_TOUCH' | 'DOOR_INFERRED' | 'ENTRANCE_INFERRED' | 'DOOR_WIDENED' | 'CEILING_TYPICAL' | 'RECTANGLES_USED' | 'ROOM_UNREACHABLE'; element: string }
 
 const TYPICAL_CEILING_M = 2.7;
 const MIN_DOOR_M = 0.8;
 const TOUCH_TOL = 0.25;
 const MIN_SHARED_M = 0.9;
-const MAX_MOVE_M = 1.2;
+/** A room is moved to touch only across a wall's own thickness (rooms read on the two faces of one wall). A wider
+ *  gap is a fact of the reading, never closed by moving a wall: the room stays where it was read, and an
+ *  unreached room is reported (geometryCheck.ts), not made reachable. */
+export const WALL_GAP_M = 0.35;
+const MAX_MOVE_M = WALL_GAP_M;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 function area(poly: P[]): number {
@@ -185,6 +205,115 @@ function exteriorPoint(room: ReconRoom, rooms: ReconRoom[]): P | null {
   return best?.at ?? null;
 }
 
+// ── Rooms inside rooms ───────────────────────────────────────────────────────
+
+/** The share of a polygon's perimeter running along the axes (within 3°): 1 for a square-walled room. */
+export function axisShare(poly: P[]): number {
+  let on = 0; let all = 0;
+  for (const [p, q] of edgesOf(poly)) {
+    const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    all += L;
+    const deg = Math.abs((Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI) % 90;
+    if (Math.min(deg, 90 - deg) <= 3) on += L;
+  }
+  return all ? on / all : 0;
+}
+
+/**
+ * `outer` minus the `holes`, exactly, for square-walled outlines: the plane is cut on every vertex coordinate
+ * (a compressed grid), each cell kept when its centre is in `outer` and in none of the holes, and the largest
+ * connected piece's boundary traced (collinear corners dropped). Null when the result is not one simple outline
+ * of the same room (a hole floating inside, nothing left, or the outlines not square).
+ */
+export function subtractSquare(outer: P[], holes: P[][]): P[] | null {
+  if ([outer, ...holes].some((p) => axisShare(p) < 0.98)) return null;
+  const snap = (v: number) => Math.round(v * 1000) / 1000;
+  const xs = [...new Set([outer, ...holes].flatMap((p) => p.map((q) => snap(q[0]))))].sort((a, b) => a - b);
+  const ys = [...new Set([outer, ...holes].flatMap((p) => p.map((q) => snap(q[1]))))].sort((a, b) => a - b);
+  const nx = xs.length - 1; const ny = ys.length - 1;
+  if (nx < 1 || ny < 1) return null;
+  const cell = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j += 1) {
+    for (let i = 0; i < nx; i += 1) {
+      const c: P = [(xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2];
+      if (inside(c, outer) && !holes.some((h) => inside(c, h))) cell[j * nx + i] = 1;
+    }
+  }
+  // The largest connected piece (by area).
+  const comp = new Int32Array(nx * ny).fill(-1);
+  let best = -1; let bestArea = 0; let id = 0;
+  for (let s = 0; s < cell.length; s += 1) {
+    if (!cell[s] || comp[s] >= 0) continue;
+    const stack = [s]; comp[s] = id; let a = 0;
+    while (stack.length) {
+      const k = stack.pop()!; const i = k % nx; const j = Math.floor(k / nx);
+      a += (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j]);
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const u = i + di; const v = j + dj; const n = v * nx + u;
+        if (u >= 0 && v >= 0 && u < nx && v < ny && cell[n] && comp[n] < 0) { comp[n] = id; stack.push(n); }
+      }
+    }
+    if (a > bestArea) { bestArea = a; best = id; }
+    id += 1;
+  }
+  if (best < 0) return null;
+  const on = (i: number, j: number) => i >= 0 && j >= 0 && i < nx && j < ny && comp[j * nx + i] === best;
+  // Boundary edges, counter-clockwise around the kept cells (grid-index corners).
+  const next = new Map<string, Array<[number, number]>>();
+  const add = (a: [number, number], b: [number, number]) => { const k = `${a[0]},${a[1]}`; next.set(k, [...(next.get(k) ?? []), b]); };
+  let edges = 0;
+  for (let j = 0; j < ny; j += 1) {
+    for (let i = 0; i < nx; i += 1) {
+      if (!on(i, j)) continue;
+      if (!on(i, j - 1)) { add([i, j], [i + 1, j]); edges += 1; }
+      if (!on(i + 1, j)) { add([i + 1, j], [i + 1, j + 1]); edges += 1; }
+      if (!on(i, j + 1)) { add([i + 1, j + 1], [i, j + 1]); edges += 1; }
+      if (!on(i - 1, j)) { add([i, j + 1], [i, j]); edges += 1; }
+    }
+  }
+  // One loop must use every boundary edge: anything else is a hole (a room floating inside this one).
+  const startKey = [...next.keys()].sort()[0];
+  const loop: Array<[number, number]> = [];
+  let at = startKey.split(',').map(Number) as [number, number];
+  for (let guard = 0; guard <= edges; guard += 1) {
+    loop.push(at);
+    const outs = next.get(`${at[0]},${at[1]}`);
+    if (!outs?.length) return null;
+    at = outs.shift()!;
+    if (`${at[0]},${at[1]}` === startKey) break;
+  }
+  if (loop.length !== edges || [...next.values()].some((v) => v.length)) return null;
+  const pts = loop.map(([i, j]) => [xs[i], ys[j]] as P);
+  const simple = pts.filter((p, k) => {
+    const a = pts[(k - 1 + pts.length) % pts.length]; const b = pts[(k + 1) % pts.length];
+    return Math.abs((p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0])) > 1e-9;
+  });
+  return simple.length >= 4 ? simple : null;
+}
+
+/** Each room lying inside a larger one is cut out of it (or, when it cannot be, is a zone of that open plan). */
+function separateNested<R extends ReconRoom>(rooms: R[], repairs: Repair[]): R[] {
+  let out = [...rooms];
+  for (const host of [...rooms].sort((a, b) => area(b.polygon) - area(a.polygon))) {
+    const current = out.find((r) => r.key === host.key);
+    if (!current) continue;
+    const nested = out.filter((r) => r.key !== host.key && area(r.polygon) < area(current.polygon) && r.outdoor === current.outdoor
+      && sharedFloor(r.polygon, current.polygon) > 0.6);
+    if (!nested.length) continue;
+    const carved = subtractSquare(current.polygon, nested.map((r) => r.polygon));
+    if (carved && area(carved) >= 0.25 * area(current.polygon)) {
+      out = out.map((r) => (r.key === host.key ? { ...r, polygon: carved } : r));
+      for (const r of nested) repairs.push({ code: 'ROOM_CARVED', element: `${host.key}−${r.key}` });
+    } else {
+      // Not separable: the open plan stays whole, and the zone read inside it is part of it.
+      const gone = new Set(nested.map((r) => r.key));
+      out = out.filter((r) => !gone.has(r.key));
+      for (const r of nested) repairs.push({ code: 'ROOM_MERGED_INTO_OPEN_PLAN', element: `${r.key}→${host.key}` });
+    }
+  }
+  return out;
+}
+
 /**
  * The deterministic completion pass on the reading (metres): what a walkable scene needs and the pictures did not
  * settle. Every repair is recorded; nothing is added that a walk does not need.
@@ -194,14 +323,17 @@ export function completeForWalk(input: Reconstruction): { recon: Reconstruction;
   let rooms = input.rooms.map((r) => ({ ...r, polygon: r.polygon.map((p) => [p[0], p[1]] as P) }));
   let openings = input.openings.map((o) => ({ ...o }));
 
-  // 1. A room read twice (two outlines over the same floor): the less certain one goes. Measured on the outlines
-  //    themselves (a small room beside an L-shaped one is not inside it).
+  // 1. A room read twice (two outlines over the same floor, each mostly the other): the less certain one goes.
+  //    A room lying INSIDE a larger one (a hall drawn within an open-plan living's outline) is not a duplicate:
+  //    the larger room is never deleted for it — the smaller is cut out of it (ROOM_CARVED), or, when it cannot
+  //    be (it floats inside, or the outlines are not square), it is a zone of the open plan (ROOM_MERGED_INTO_OPEN_PLAN).
   const keep: typeof rooms = [];
   for (const r of [...rooms].sort((a, b) => b.confidence - a.confidence || area(b.polygon) - area(a.polygon))) {
-    const dup = keep.find((k) => Math.max(sharedFloor(r.polygon, k.polygon), sharedFloor(k.polygon, r.polygon)) > 0.6);
+    const dup = keep.find((k) => Math.min(sharedFloor(r.polygon, k.polygon), sharedFloor(k.polygon, r.polygon)) > 0.6);
     if (dup) repairs.push({ code: 'DUPLICATE_ROOM_REMOVED', element: r.key }); else keep.push(r);
   }
   rooms = rooms.filter((r) => keep.some((k) => k.key === r.key));
+  rooms = separateNested(rooms, repairs);
 
   // 2. Doors wide enough to walk through.
   openings = openings.map((o) => {

@@ -30,6 +30,8 @@
 // function, so there is no reason for this one to be duplicated. Both the
 // edge function and the archetype regression tests now import THIS file.
 
+import { registryAssetClass } from './intelligence/propertyKind.ts';
+
 export const PUBLIC_RESEARCH_TARGETS = [
   'architect',
   'architecture studio',
@@ -193,19 +195,49 @@ export const NARROWED_ASSET_CLASSES = ['PRIVATE_RESALE', 'RENTAL', 'PRIVATE_HOUS
 const DIRECTORATE_RE =
   /([\u10A0-\u10FF][\u10A0-\u10FF ]{2,60}?),\s*\d{11}\s*,\s*(ერთობლივი|ერთპიროვნულ[ია]?[და]?|დამოუკიდებლად)/gu;
 
-export function extractControlStructure(browserOfficial: unknown): {
+/*
+ * ONE COMPANY'S EXTRACT, NEVER THE WHOLE PAYLOAD.
+ *
+ * Job c80f7237 (2026-10-09) also read the registry extract of the developer's
+ * pledge CREDITOR, Bank of Georgia. Scanning every extract put the bank's
+ * general director on the developer's card as a third "director" with no
+ * role. When the company's identification code is known, only the
+ * entrepreneur-registry results for that code are read; if none match,
+ * nothing is read. Without a code (older callers) a single ENREG entity is
+ * still unambiguous; several are not, and yield nothing.
+ */
+function registryTextFor(browserOfficial: unknown, companyId?: string | null): string | null {
+  if (typeof browserOfficial === 'string') return companyId ? null : browserOfficial;
+  const results = Array.isArray((browserOfficial as any)?.results) ? (browserOfficial as any).results : null;
+  if (!results) {
+    try {
+      return companyId ? null : JSON.stringify(browserOfficial);
+    } catch {
+      return null;
+    }
+  }
+  const enreg = results.filter((r: any) => r?.source === 'enreg');
+  const idOf = (r: any): string | null =>
+    String(r?.forEntity?.idCode ?? (r?.documents ?? []).find((d: any) => d?.registryExtract?.idCode)?.registryExtract?.idCode ?? r?.queryEntered ?? '').trim() || null;
+  let chosen = enreg;
+  if (companyId) chosen = enreg.filter((r: any) => idOf(r) === String(companyId).trim());
+  else if (new Set(enreg.map(idOf)).size > 1) return null;
+  if (!chosen.length) return null;
+  try {
+    return JSON.stringify(chosen);
+  } catch {
+    return null;
+  }
+}
+
+export function extractControlStructure(browserOfficial: unknown, companyId?: string | null): {
   directors: string[];
   representation: 'JOINT' | 'SOLE' | null;
 } {
   const empty = { directors: [] as string[], representation: null as 'JOINT' | 'SOLE' | null };
   if (!browserOfficial) return empty;
 
-  let text: string;
-  try {
-    text = typeof browserOfficial === 'string' ? browserOfficial : JSON.stringify(browserOfficial);
-  } catch {
-    return empty;
-  }
+  const text = registryTextFor(browserOfficial, companyId);
   if (!text) return empty;
 
   const directors: string[] = [];
@@ -227,6 +259,11 @@ export function extractControlStructure(browserOfficial: unknown): {
 
 export function resolveAssetClass(r: any): string {
   const declared = typeof r?.assetClass === 'string' ? r.assetClass : null;
+  // v7 (eeefada9): the official register's own wording ("ბინა N4", a parcel-only
+  // extract, "ოფისი"…) decides when the declared class is unknown or contradicts it
+  // (propertyKind.ts). Never from the cadastral code's shape.
+  const registry = registryAssetClass(r, declared);
+  if (registry) return registry;
   if (declared && declared !== 'MIXED_OR_UNKNOWN') return declared;
 
   const projectName = r?.projectProfile?.name || r?.reconciledIdentity?.project || null;

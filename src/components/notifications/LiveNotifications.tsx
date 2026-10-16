@@ -170,6 +170,18 @@ export function LiveNotifications() {
           }
         }
 
+        /*
+         * Already on this verification's own screen: the page itself shows
+         * the report the moment it exists. A "ready" toast here fired before
+         * the report was built and read as a pop-up standing in front of it
+         * (owner, 2026-10-09). Other pages still get the toast.
+         */
+        if (notif.type === 'VERIFY_COMPLETE') {
+          const jobId = (notif.metadata as Record<string, unknown> | null)?.job_id;
+          const here = new URLSearchParams(where.current.search).get('job');
+          if (where.current.pathname.startsWith('/verify') && jobId && here === String(jobId)) return;
+        }
+
         const href = notificationHref(notif);
         toast.custom((id) => (
           <LiveCard

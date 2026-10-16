@@ -20,6 +20,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { hasCurrentIdentity, resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
 import { ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
+import { requestNativeMatching } from '../_shared/nativeDemand.ts';
+import { recordSeekerIntent } from '../_shared/seekerIntent.ts';
 import {
   SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft,
 } from '../../../src/research-core/marketplace/brief.ts';
@@ -31,10 +33,11 @@ import {
   isTerminalSearch, progressOf, stagesOf, type SearchStatus, type WorkerRunState,
 } from '../../../src/research-core/marketplace/lifecycle.ts';
 import { compareProperties } from '../../../src/research-core/marketplace/comparison.ts';
+import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../../../src/research-core/marketplace/provider-access.ts';
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
-  consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage,
+  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings, workerSwitchOn, WORKER_SOURCE_NAMES,
 
 } from '../_shared/marketplaceSearch.ts';
 
@@ -56,7 +59,7 @@ type Db = any;
 /** The customer-safe summary of a search: no cost, no internals, no worker errors. */
 async function summary(db: Db, search: Record<string, unknown>) {
   const { data: runs } = await db.from('discovery_marketplace_worker_runs')
-    .select('worker_id,status,deadline_at,returned_count').eq('search_id', search.id);
+    .select('id,worker_id,status,deadline_at,returned_count').eq('search_id', search.id);
   const states: WorkerRunState[] = (runs ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunState['status'], deadlineAt: String(r.deadline_at), returnedCount: Number(r.returned_count) || 0,
   }));
@@ -66,6 +69,20 @@ async function summary(db: Db, search: Record<string, unknown>) {
   for (const p of catalogue) counts[p.group] += 1;
   const stats = (search.stats ?? {}) as Record<string, number>;
   const status = search.status as SearchStatus;
+  /* Per source: fresh, partly refreshed, previously collected (cached),
+     unavailable, or still refreshing — from real run state and stored rows. */
+  const sources = await Promise.all((runs ?? []).map(async (r: Record<string, unknown>) => {
+    const { count: cachedCount } = await db.from('discovery_marketplace_listings').select('id', { count: 'exact', head: true })
+      .eq('worker_run_id', r.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED');
+    const state = sourceFreshness({ status: String(r.status), freshCount: Number(r.returned_count) || 0, cachedCount: cachedCount ?? 0 });
+    let retryAt: string | null = null;
+    if (state === 'CACHED' || state === 'UNAVAILABLE' || state === 'PARTIAL') {
+      const { data: w } = await db.from('discovery_marketplace_workers').select('health').eq('worker_id', r.worker_id).maybeSingle();
+      retryAt = decideProviderAccess(readProviderAccess(w?.health), new Date(), false).retryAt;
+    }
+    return { source: WORKER_SOURCE_NAMES[String(r.worker_id)] ?? 'OTHER',
+      state, freshListings: Number(r.returned_count) || 0, cachedListings: cachedCount ?? 0, retryAt };
+  }));
   return {
     id: search.id,
     status,
@@ -91,6 +108,7 @@ async function summary(db: Db, search: Record<string, unknown>) {
     totalProperties: Object.values(counts).reduce((a, b) => a + b, 0),
     /* Partial: some sources could not be checked. Which ones, and why, is Admin's business. */
     partial: status === 'PARTIAL_COMPLETE',
+    sources,
     unavailable: status === 'FAILED' ? (search.failure_reason === 'NO_ELIGIBLE_WORKERS' ? 'NO_SOURCES' : 'FAILED') : null,
   };
 }
@@ -168,7 +186,7 @@ Deno.serve(async (req: Request) => {
       const brief = sanitizeBrief(body.brief);
       const readiness = evaluateReadiness(brief);
       if (readiness.state !== 'READY') return json({ error: 'SEARCH_NOT_READY', readiness }, 422);
-      if (switches.providersKilled && !switches.myhomeEnabled && !switches.ssgeEnabled) return json({ error: 'SOURCES_PAUSED' }, 409);
+      if (!anySourceOn(switches)) return json({ error: 'SOURCES_PAUSED' }, 409);
 
       /* NO DUPLICATE SEARCH. A reconnect, refresh or second tab that lost its idempotency key
          still reaches the customer's open search for the same request instead of a new one. */
@@ -200,8 +218,7 @@ Deno.serve(async (req: Request) => {
         supportedFilters: (w.supported_filters ?? []) as never, executionMode: w.execution_mode as never,
         timeoutMs: Number(w.timeout_ms), maxResults: Number(w.max_results), state: w.state as never, enabled: !!w.enabled, health: w.health as never,
       }));
-      const eligible = eligibleWorkers(workers, request).filter((worker) => worker.workerId === 'myhome-agent'
-        ? switches.myhomeEnabled : worker.workerId === 'ssge-agent' ? switches.ssgeEnabled : !switches.providersKilled);
+      const eligible = eligibleWorkers(workers, request).filter((worker) => workerSwitchOn(switches, worker.workerId));
       const now = new Date();
       const { data: search, error: searchErr } = await db.from('discovery_marketplace_searches').insert({
         id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key,
@@ -211,13 +228,34 @@ Deno.serve(async (req: Request) => {
         completed_at: eligible.length ? null : now.toISOString(),
       }).select('*').single();
       if (searchErr || !search) throw new Error(`search insert failed: ${searchErr?.message ?? 'no row'}`);
+      /* THE HOMATCH NETWORK: the same requirements are matched against properties members
+         own, through the native matcher (free; never a catalogue). In the background and
+         best effort: it never delays or fails the marketplace search. */
+      const network = (async () => {
+        try {
+          const intentId = await recordSeekerIntent(db, userId, toSearchPlanDraft(brief), { marketplaceSearchId: searchId });
+          if (intentId) await requestNativeMatching([intentId]);
+        } catch (error) { console.error(JSON.stringify({ event: 'native_match_request_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
+      })();
+      const edge = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+      if (edge?.waitUntil) edge.waitUntil(network); else await network;
       /* CONCURRENT DISPATCH: one run per eligible worker, all in ONE insert. Every worker can
          claim its run immediately and independently; nothing waits for another worker. */
       if (eligible.length) {
-        await db.from('discovery_marketplace_worker_runs').insert(eligible.map((w) => ({
+        const { data: inserted } = await db.from('discovery_marketplace_worker_runs').insert(eligible.map((w) => ({
           search_id: searchId, worker_id: w.workerId, request: { ...request, maxResults: w.maxResults },
           deadline_at: new Date(now.getTime() + w.timeoutMs).toISOString(),
-        })));
+        }))).select('id,worker_id,status');
+        /* INSTANT ANSWER: matching listings the shared pool already holds are shown at
+           once, with their own last-checked time; live runs then add fresh ones. Best
+           effort: a pool failure never blocks the search itself. */
+        try {
+          if (await serveCachedListings(db, searchId, request, (inserted ?? []) as Array<Record<string, unknown>>, now, true) > 0) {
+            await processAndStore(db, searchId);
+            const { data: refreshed } = await db.from('discovery_marketplace_searches').select('*').eq('id', searchId).maybeSingle();
+            if (refreshed) return json({ search: await summary(db, refreshed) }, 202);
+          }
+        } catch (error) { console.error(JSON.stringify({ event: 'pool_answer_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
       }
       return json({ search: await summary(db, search) }, 202);
     }

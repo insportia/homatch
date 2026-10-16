@@ -324,7 +324,7 @@ export function harvestReport(
     // never the personal identification numbers that sit beside them in the
     // registry extract.
     const directors = Array.isArray(companyProfile.directors)
-      ? companyProfile.directors.map((d: unknown) => text(d)).filter(Boolean)
+      ? companyProfile.directors.map((d: any) => text(typeof d === 'string' ? d : d?.name)).filter(Boolean)
       : [];
     if (directors.length) {
       fact({

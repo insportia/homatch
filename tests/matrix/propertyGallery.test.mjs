@@ -170,3 +170,29 @@ test('the campaign CTA says what this property is looking for', () => {
   /* And the engine is untouched: the same product code still launches the campaign. */
   assert.match(body, /productCode="FIND_CLIENTS"/);
 });
+
+/*
+ * REPLACING A PHOTO UPDATES THE LISTING (2026-10-12, VILLION).
+ *
+ * Replacing a photo is "remove, then add". Removing the cover used to delete the row
+ * and leave properties.cover_photo_url on the deleted key with no row marked
+ * is_cover, so every list showed a broken cover until the row was repaired by hand.
+ */
+test('removing the cover promotes the next photo and keeps cover_photo_url in step', () => {
+  const svc = code(read('src', 'services', 'propertyManagement.ts'));
+  const remove = svc.slice(svc.indexOf('export async function removePhoto'), svc.indexOf('export async function promoteNextCover'));
+  assert.match(remove, /select\('id,storage_path,property_id,is_cover'\)/);
+  assert.match(remove, /is_cover\)\s*\{\s*await promoteNextCover\(propertyId, key\)/);
+  const promote = svc.slice(svc.indexOf('export async function promoteNextCover'), svc.indexOf('export async function attachPhoto'));
+  assert.match(promote, /update\(\{ is_cover: true \}\)/, 'the next photo becomes the cover');
+  assert.match(promote, /cover_photo_url: cover/, 'the property row follows it');
+  assert.match(promote, /cover_image/, 'with no photos left, the imported cover returns');
+  assert.match(promote, /imported !== removedKey/, 'never the key that was just deleted');
+});
+
+test('every cover_photo_url rendered as an image goes through PrivateImage (a managed cover is a private key)', () => {
+  for (const file of [['src', 'pages', 'designStudio', 'DesignStudioPage.tsx'], ['src', 'pages', 'DashboardPage.tsx']]) {
+    const src = code(read(...file));
+    assert.doesNotMatch(src, /<img[^>]*src=\{[^}]*cover_photo_url/, `${file.at(-1)}: raw <img> on cover_photo_url`);
+  }
+});

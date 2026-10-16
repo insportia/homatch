@@ -18,17 +18,25 @@ import { stripFalseScarcity } from '../report.ts';
  * suggestion.
  */
 
-const comps = (n, price) =>
+/*
+ * Premise (2026-10-10 market gate): only same-project, same-street and strict
+ * peer listings may carry a headline. These 32 sit on the subject's street, so
+ * they do; an unlocated set is context only (see the EVIDENCE_LIMITED tests
+ * below).
+ */
+const STREET = 'თბილისი, კრწანისის ქუჩა 6';
+const comps = (n, price, address = 'თბილისი, კრწანისის ქუჩა 10') =>
   Array.from({ length: n }, (_, i) => ({
     pricePerSqm: price + i * 10,
     currency: 'USD',
     area: 60,
+    address,
     reasons: ['same district'],
     state: 'ACTIVE',
   }));
 
 test('a real comparable set is market context even when the subject has no price', () => {
-  const m = buildMarketIntelligence({ area: 60 }, comps(32, 1700));
+  const m = buildMarketIntelligence({ area: 60, address: STREET }, comps(32, 1700));
   assert.ok(m, 'a market with 32 comparables must produce intelligence');
   assert.equal(m.contextAvailable, true, 'MARKET CONTEXT = AVAILABLE');
   assert.equal(m.subjectValuation, 'NO_SUBJECT_PRICE', 'SUBJECT VALUATION = NOT CALCULABLE');
@@ -37,11 +45,30 @@ test('a real comparable set is market context even when the subject has no price
 });
 
 test('a subject with its own price is positioned, and both answers are AVAILABLE', () => {
-  const m = buildMarketIntelligence({ area: 60, pricePerSqm: 2200 }, comps(32, 1700));
+  const m = buildMarketIntelligence({ area: 60, address: STREET, pricePerSqm: 2200 }, comps(32, 1700));
   assert.equal(m.contextAvailable, true);
   assert.equal(m.subjectValuation, 'AVAILABLE');
   assert.ok(typeof m.deltaFromMedianPct === 'number');
   assert.ok(m.positioning);
+});
+
+test('a citywide-only set is context, but EVIDENCE_LIMITED — never a valuation', () => {
+  const m = buildMarketIntelligence({ area: 60, address: STREET, pricePerSqm: 2200 }, comps(32, 1700, 'თბილისი, საბურთალო'));
+  assert.equal(m.contextAvailable, true, 'there is still a market to describe');
+  assert.equal(m.basis, 'EVIDENCE_LIMITED');
+  assert.equal(m.subjectValuation, 'EVIDENCE_LIMITED');
+  assert.equal(m.median, null);
+  assert.equal(m.positioning, undefined, 'a unit was positioned against a citywide spread');
+});
+
+test('an honest "local evidence is limited" sentence survives when the market IS evidence-limited', () => {
+  const phrase = 'There is insufficient market data for this property.';
+  const out = stripFalseScarcity(reportWith(phrase, phrase), {
+    market: { contextAvailable: true, basis: 'EVIDENCE_LIMITED' },
+    company: null,
+  });
+  assert.equal(out.summary.statement, phrase);
+  assert.equal(out.keyFindings.length, 1);
 });
 
 test('no comparables is the only case that is genuinely insufficient', () => {

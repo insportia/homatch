@@ -1,0 +1,93 @@
+{
+  "_source": "find_buyers_campaign_report body run READ-ONLY against production for matching_job_id 70b0d32b-028b-4b8b-8adf-3f177e573bb3 on 2026-10-09 (before 20261024090000 was applied: a legacy campaign, every lead uncategorised). firstVisibleAt is the same instant in the ISO form the fixed body returns.",
+  "live": false,
+  "jobId": "70b0d32b-028b-4b8b-8adf-3f177e573bb3",
+  "notes": [
+    { "code": "LEGACY_UNCATEGORISED", "params": { "leads": 37 } },
+    { "code": "SUPPLY_DOMINANT", "params": { "basis": "INTENT", "share": 60 } },
+    { "code": "SOURCES_FAILED", "params": { "list": ["BLUESKY", "VK"] } },
+    { "code": "BUDGET_LIMITED", "params": { "usedPct": 88, "stoppedJobs": 5 } },
+    { "code": "TIME_LIMITED", "params": { "stoppedJobs": 7 } },
+    { "code": "COMMENTS_NOT_EXAMINED", "params": { "posts": 322 } },
+    { "code": "TELEGRAM_COVERAGE", "params": { "free": 0, "paid": 130, "activated": 0, "discovered": 31, "freeChannels": 4, "paidChannels": 8 } },
+    { "code": "EXPANSION_OPTIONS", "params": { "sources": ["BLUESKY", "VK"], "languages": ["ar", "he", "ka", "ru", "tr"], "groupsUnread": 3, "telegramUnread": 31 } }
+  ],
+  "budget": { "usedPct": 88, "exhausted": false, "creditsCommitted": 100 },
+  "legacy": true,
+  "timing": {
+    "createdAt": "2026-10-09T05:28:24.117745+00:00",
+    "stopReason": "FINALIZE",
+    "finalizedAt": "2026-10-09T05:58:54.412+00:00",
+    "phase1EndedAt": "2026-10-09T05:32:15.847292+00:00",
+    "firstVisibleAt": "2026-10-09T05:33:30.348672+00:00",
+    "durationSeconds": 1830,
+    "firstQualifiedAt": null,
+    "phase1DeadlineAt": "2026-10-09T05:38:28.228Z"
+  },
+  "results": {
+    "weak": 0, "strong": 0, "expired": 0, "visible": 37, "rejected": 0, "potential": 0, "uncategorised": 37, "genuineSeekers": 0,
+    "budgetFit": {}, "locationFit": {},
+    "signalRoles": { "UNCATEGORISED": 37 },
+    "candidateRoles": { "UNCATEGORISED": 37 },
+    "intentClasses": { "AGENT": 4, "NOISE": 33, "SELLER": 242, "QUESTION": 6, "UNCERTAIN": 32, "BUYER_HIGH": 58, "BUYER_MEDIUM": 17, "SERVICE_PROVIDER": 20 },
+    "rejectionReasons": {},
+    "signalRejectionReasons": {}
+  },
+  "coverage": {
+    "languages": ["ar", "en", "he", "ka", "ru", "tr"],
+    "locations": ["Krtsanisi", "Tbilisi"],
+    "platforms": [
+      { "runs": 65, "items": 744, "state": "READ", "platform": "FACEBOOK", "qualified": 0, "uncategorised": 37 },
+      { "runs": 10, "items": 150, "state": "READ", "platform": "TIKTOK", "qualified": 0, "uncategorised": 0 },
+      { "runs": 10, "items": 130, "state": "READ", "platform": "TELEGRAM", "qualified": 0, "uncategorised": 0 },
+      { "runs": 1, "items": 1, "state": "READ", "platform": "INSTAGRAM", "qualified": 0, "uncategorised": 0 },
+      { "runs": 6, "items": 0, "state": "FAILED", "platform": "BLUESKY", "qualified": 0, "uncategorised": 0 },
+      { "runs": 3, "items": 0, "state": "EMPTY", "platform": "LINKEDIN", "qualified": 0, "uncategorised": 0 },
+      { "runs": 2, "items": 0, "state": "FAILED", "platform": "VK", "qualified": 0, "uncategorised": 0 }
+    ],
+    "groupsFound": 67,
+    "staleSkipped": 103,
+    "postsAnalysed": 322,
+    "postsRetrieved": 958,
+    "telegramNative": true,
+    "communitiesRead": 22,
+    "signalsAnalysed": 412,
+    "commentDecisions": { "NOT_DECIDED": 46, "SKIP_NO_COMMENTS": 231, "SKIP_WEAK_SIGNALS": 1, "SKIP_LOW_SIMILARITY": 44 },
+    "commentsExamined": 0,
+    "messagesAnalysed": 90,
+    "duplicatesRemoved": 7,
+    "communitiesDiscovered": 98,
+    "telegramCommunitiesDiscovered": 31
+  },
+  "property": {
+    "city": "Tbilisi", "price": 213840, "rooms": 3, "areaSqm": 97.2, "bedrooms": 2, "currency": "USD", "district": "Krtsanisi",
+    "counterpart": "BUYER", "transaction": "SALE", "neighborhood": null, "propertyType": "APARTMENT"
+  },
+  "economics": null,
+  "bestSources": [
+    { "weak": 0, "platform": "FACEBOOK", "community": "facebook.com/groups/jobingeorgia", "postsRead": 100, "qualified": 0, "uncategorised": 14, "budgetSharePct": 9.9 },
+    { "weak": 0, "platform": "FACEBOOK", "community": "facebook.com/groups/613549196206051", "postsRead": 100, "qualified": 0, "uncategorised": 7, "budgetSharePct": 6.9 },
+    { "weak": 0, "platform": "FACEBOOK", "community": "facebook.com/groups/583951125698448", "postsRead": 102, "qualified": 0, "uncategorised": 5, "budgetSharePct": 6.7 },
+    { "weak": 0, "platform": "FACEBOOK", "community": "facebook.com/groups/1776131272409385", "postsRead": 20, "qualified": 0, "uncategorised": 4, "budgetSharePct": 17.7 },
+    { "weak": 0, "platform": "FACEBOOK", "community": "facebook.com/groups/175357289696998", "postsRead": 103, "qualified": 0, "uncategorised": 3, "budgetSharePct": 6.5 },
+    { "weak": 0, "platform": "FACEBOOK", "community": "facebook.com/groups/rentapartmentintbilisi", "postsRead": 50, "qualified": 0, "uncategorised": 2, "budgetSharePct": 7.3 }
+  ],
+  "generatedAt": "2026-10-09T08:19:38.624291+00:00",
+  "limitations": [
+    { "code": "SOURCES_FAILED", "platforms": ["BLUESKY", "VK"] },
+    { "code": "SOURCES_EMPTY", "platforms": ["LINKEDIN"] },
+    { "code": "DISCOVERY_BUDGET_CAP", "jobs": 5 },
+    { "code": "TIME_LIMIT", "jobs": 7 },
+    { "code": "COMMENTS_NOT_EXAMINED", "posts": 322 },
+    { "code": "LEGACY_UNCATEGORISED", "leads": 37 }
+  ],
+  "buyerProfile": {
+    "area": { "max": 117, "min": 78 }, "basis": "PROPERTY", "places": ["Krtsanisi", "Tbilisi"], "bedrooms": { "max": 3, "min": 1 },
+    "personas": [], "budgetBand": { "max": 256608, "min": 171072, "currency": "USD" }
+  },
+  "coveragePlan": {
+    "queue": { "done": 89, "open": 0, "total": 106, "failed": 5, "cancelled": 12 },
+    "planned": { "phase1": 7, "phase2SourceDependent": 5, "phase2IndependentSearch": 15 },
+    "cancelledBy": { "PHASE1_BUDGET": 5, "CAMPAIGN_DEADLINE": 7 }
+  }
+}

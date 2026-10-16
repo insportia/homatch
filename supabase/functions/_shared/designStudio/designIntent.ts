@@ -321,7 +321,7 @@ export function offerFor(ctx: PlanContext, prefs: DesignPreferences): { ctx: Pla
   const keep = new Set([...chosen, ...wet, ...walls].map((m) => m.code));
   const materials = ctx.materials.filter((m) => keep.has(m.code)).sort(byCode);
 
-  const kinds = [...new Set(ctx.rooms.map((r) => r.kind))];
+  const kinds = [...new Set(ctx.rooms.flatMap((r) => (r.kinds?.length ? r.kinds : [r.kind])))];
   const assets = prefs.furnishing === 'UNFURNISHED' ? [] : ctx.assets.filter((a) => {
     const role = roleOf(a);
     return kinds.some((k) => fitsKind(a, k) && roleAllowed(role, k, prefs.furnishing));

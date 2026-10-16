@@ -29,6 +29,11 @@ import type { EvidenceGroup } from './evidenceGroups.ts';
 import { buildBuyerChecklist } from './buyerChecklist.ts';
 import type { ChecklistItem } from './buyerChecklist.ts';
 import { selectComparables } from './comparableSelection.ts';
+import { subjectMarketFacts } from './marketHierarchy.ts';
+import { buildPropertyRegister } from './propertyRegister.ts';
+import { livingDensityFrom, type LivingDensity } from './livingDensity.ts';
+import { companyFinanceFrom, type CompanyFinanceView } from './reportGaps.ts';
+import type { PropertyRegister } from './propertyRegister.ts';
 import type { ComparableSelection } from './comparableSelection.ts';
 
 export interface PropertySnapshot {
@@ -78,6 +83,16 @@ export interface IntelligenceBundle {
   people: PeopleIntelligence;
   participants: ParticipantModel;
   fx: FxContext | null;
+  /** Homes per floor and land per household, computed from the documented scale. */
+  livingDensity: LivingDensity | null;
+  /** The developer's checked financial position (debtors, tax, liquidation, bank financing). */
+  finance: CompanyFinanceView | null;
+  /*
+   * THE UNIT'S OWN REGISTER (Service 176 extracts, parsed). Null when the
+   * provider returned nothing usable. Authoritative over every prose claim
+   * about owner and mortgages — see propertyRegister.ts.
+   */
+  register: PropertyRegister | null;
   /** Official checks the BUYER can run themselves, framed as next steps. */
   selfChecks: SelfCheck[];
 }
@@ -169,12 +184,17 @@ export function buildIntelligenceBundle(
   const company = obj(r.companyProfile);
   const reconciled = obj(r.reconciledIdentity);
 
+  // v6 (job eeefada9): the subject's own address by provenance. A reconciled
+  // address copied from a marketplace listing ("…საბურთალო") is not it.
+  const marketFacts = subjectMarketFacts(report);
   const address =
-    pkg.subject.address ?? nonEmpty(reconciled.address) ?? nonEmpty(unit.address);
+    pkg.subject.address ?? marketFacts.address ?? nonEmpty(reconciled.address) ?? nonEmpty(unit.address);
+
+  const register = buildPropertyRegister(r.browserOfficial);
 
   const location = buildLocationIntelligence([
     address,
-    nonEmpty(reconciled.address),
+    marketFacts.address === address ? undefined : nonEmpty(reconciled.address),
     ...arr<unknown>(pr.facts).map(clean),
   ], pr.nearbyPlaces);
 
@@ -189,7 +209,9 @@ export function buildIntelligenceBundle(
     rooms: nonEmpty(unit.rooms),
     unitNumber: pkg.subject.unitNumber,
     condition: nonEmpty(unit.condition ?? project.handoverCondition),
-    owner: nonEmpty(company.name) ?? pkg.subject.legalCompany,
+    // The extract decides the owner. A private owner is never named, and the
+    // developer is not the owner merely because it built the flat.
+    owner: ownerFromRegister(register) ?? nonEmpty(company.name) ?? pkg.subject.legalCompany,
     developer: pkg.subject.developer,
     constructionStatus: nonEmpty(pr.currentPhysicalStatus ?? project.constructionStatus),
     parking: nonEmpty(pr.parking),
@@ -199,11 +221,45 @@ export function buildIntelligenceBundle(
   /* ---- market ---- */
 
   const m = obj(r.market);
+  const quality = qualityFactorsFrom(
+    snapshot.amenities,
+    snapshot.condition,
+    snapshot.constructionStatus,
+    snapshot.parking
+  );
+  /*
+   * THE PROJECT'S OWN ASKS, KEPT AS ASKS (2026-10-10 market gate).
+   *
+   * The developer's marketing "from" price is an asking level for the
+   * project. It anchors the peer price band and travels as ASKING evidence;
+   * it is never a transaction and never a headline on its own.
+   */
+  const startingPpsm = Number(m.startingPricePerSqm);
+  const projectAsking: NonNullable<Subject['projectAsking']> =
+    Number.isFinite(startingPpsm) && startingPpsm > 0
+      ? [{ pricePerSqm: startingPpsm, origin: 'DEVELOPER_MARKETING', currency: nonEmpty(unit.currency) ?? 'USD' }]
+      : [];
+  // v6 (job eeefada9): the subject's OWN address/neighbourhood/kind by
+  // provenance — never a marketplace listing's address that leaked into
+  // reconciledIdentity (marketHierarchy.subjectMarketFacts).
   const subject: Subject = {
     project: snapshot.project,
-    address,
-    area: Number(pkg.subject.area) || undefined,
+    address: marketFacts.address ?? address,
+    // The resolved neighbourhood beats a street NAMED after one.
+    district: marketFacts.district ?? location.district,
+    propertyKind: marketFacts.propertyKind,
+    // Three or more evidenced premium signals: a peer must sit in a tighter band.
+    segment: quality.filter((q) => q.direction === 'SUPPORTS_PREMIUM').length >= 3 ? 'PREMIUM' : undefined,
+    projectAsking,
+    // Fit-out state, when the research established one: a segment signal.
+    condition: snapshot.condition,
+    // The register's unit area when exactUnit has none — no area, no size band
+    // (2026-10-11 location hierarchy, job 8ba97da9).
+    area: Number(pkg.subject.area) || register?.latest?.unitAreaSqm || marketFacts.area || undefined,
     rooms: Number(snapshot.rooms) || undefined,
+    // Verify is a purchase; a development (or a unit under construction) is a new build.
+    dealType: 'SALE',
+    buildingClass: marketFacts.buildingClass,
     floor: Number(pkg.subject.floor) || undefined,
     // Verify runs from a cadastral code, so the subject usually has NO asking
     // price of its own. That is why positioning is optional downstream: we
@@ -222,16 +278,9 @@ export function buildIntelligenceBundle(
    * traces to recorded evidence — and none of them carries a monetary
    * adjustment, because the data does not support one.
    */
-  const market = buildMarketIntelligence(
-    subject,
-    arr<RawComparable>(m.comparables),
-    qualityFactorsFrom(
-      snapshot.amenities,
-      snapshot.condition,
-      snapshot.constructionStatus,
-      snapshot.parking
-    )
-  );
+  // The ONE place the market headline is computed, at synthesis, after every
+  // acquisition lane has finished and been folded into m.comparables.
+  const market = buildMarketIntelligence(subject, arr<RawComparable>(m.comparables), quality);
 
   /* ---- people ---- */
 
@@ -259,6 +308,7 @@ export function buildIntelligenceBundle(
   const checklist = buildBuyerChecklist({
     cadastralCode: snapshot.cadastralCode ?? null,
     company: companyIntel,
+    register,
     market,
     parkingMentioned: !!snapshot.parking,
     subjectPriceKnown: typeof market?.subjectPricePerSqm === 'number',
@@ -276,7 +326,7 @@ export function buildIntelligenceBundle(
     });
   }
   const companyId = pkg.subject.companyId;
-  if (companyId && snapshot.owner) {
+  if (companyId && snapshot.owner && !ownerIsPrivate(register)) {
     selfChecks.push({
       kind: 'TAXPAYER_REGISTRY',
       url: RS_TAXPAYER_REGISTRY,
@@ -288,6 +338,25 @@ export function buildIntelligenceBundle(
 
   return {
     snapshot, market, company: companyIntel, location, people, participants, fx, selfChecks,
-    evidenceGroups, checklist, comparables,
+    evidenceGroups, checklist, comparables, register,
+    livingDensity: livingDensityFrom(project, register?.latest?.landAreaSqm ?? null),
+    finance: companyFinanceFrom(report, companyIntel),
   };
 }
+
+/*
+ * The snapshot's owner line, from the extract: the owners as the public
+ * extract names them (owner, 2026-10-10); "ფიზიკური პირი" only when a
+ * person's name could not be read. Undefined when there is no extract, so
+ * the older sources still decide.
+ */
+export function ownerFromRegister(reg: PropertyRegister | null): string | undefined {
+  const owners = reg?.latest?.owners ?? [];
+  if (!owners.length) return undefined;
+  return owners.map((o) => o.name ?? (o.kind === 'PERSON' ? 'ფიზიკური პირი' : '')).filter(Boolean).join(', ') || undefined;
+}
+
+const ownerIsPrivate = (reg: PropertyRegister | null) => {
+  const owners = reg?.latest?.owners ?? [];
+  return owners.length > 0 && owners.every((o) => o.kind === 'PERSON');
+};

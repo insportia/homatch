@@ -386,3 +386,39 @@ test('a thin result widens the envelope and records that it did', async () => {
   assert.equal(seen.length, 2);
   assert.match(seen[1], /widened/);
 });
+
+test('a source still queued when the budget runs out does not discard what the others found', async () => {
+  // Production job e02d4f16: two portals held both permits past the 20 s
+  // budget, the third's permit wait was aborted, and that rejection took the
+  // whole lane down ("Semaphore acquisition aborted") with every advert lost.
+  const slow = (id) => stubPortal({
+    id,
+    async search(query) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return {
+        ok: true,
+        value: {
+          listings: [advert({ id, url: `https://${id}.test/1`, family: `${id}.test` })].map((a) => ({ ...a, queryId: query.id })),
+          totalAvailable: 1,
+          truncated: false,
+          appliedFilters: { server: [], client: [], unsupported: [] },
+          pagesFetched: 1,
+          networkRequests: 1,
+        },
+      };
+    },
+  });
+  const registry = new PortalRegistry().register(slow('a')).register(slow('b')).register(slow('queued'));
+
+  const evidence = await discoverComparables(subjectSeed(), registry, {
+    fetchDocument: async () => ({}),
+    authenticatedSession: false,
+    now: () => Date.now(),
+  }, { budgetMs: 40, concurrency: 2, sufficientUniqueProperties: 1 });
+
+  assert.ok(evidence, 'the lane returns instead of throwing');
+  assert.equal(evidence.advertisements.length, 2, 'the two sources that ran keep their adverts');
+  const queued = evidence.portals.find((p) => p.portalId === 'queued');
+  assert.equal(queued.state, 'DEADLINE');
+  assert.equal(evidence.truncatedByDeadline, true);
+});

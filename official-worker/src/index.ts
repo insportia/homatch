@@ -10,16 +10,20 @@ import express from 'express';
 import { parseTasConfig, tasHealth } from './workflows/tas/implementation.js';
 import { runTasApiStep, tasApiOptionsFromEnv } from './workflows/tas/api/TasApiStep.js';
 import { getCachedVisual, TAS_API_VERSION } from './workflows/tas/api/TasApiWorkflow.js';
+import { parseTasFileRequest, recoverTasFiles } from './workflows/tas/api/tasFileRecovery.js';
 import { isCadastralCode } from './workflows/tas/cadastral.js';
 import { startMyHomeRuntime } from './marketplace/MyHomeRuntime.js';
 import { startSsgeRuntime } from './marketplace/ssge/runtime.mjs';
-import { acquireMyHome } from './marketplace/myhome/adapter.js';
 import { acquireSsge } from './marketplace/ssge/acquire.mjs';
+import { startPortalRuntime } from './marketplace/portals/runtime.mjs';
+import { PORTAL_ADAPTERS } from './marketplace/portals/adapters.mjs';
 import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey } from './verify/VerifyMarketRuntime.js';
+import { korterStatusCache } from './verify/korter/index.js';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
-import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrowserLifecycle, redactSecrets } from './browser/LocalBrowserRuntime.js';
+import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrowserLifecycle, redactSecrets, beforeShutdown, launchJobBrowser, closeJobBrowser } from './browser/LocalBrowserRuntime.js';
+import { startVerifyQueue } from './queue/startVerifyQueue.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 import { attachSpeechGateway } from './speech/SpeechGateway.js';
 import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
@@ -33,6 +37,7 @@ import { probeLanguageConfigs } from './speech/SpeechLanguageProbe.js';
 import { mountTelegramRoutes } from './telegram/routes.js';
 import { createGramJsDriver } from './telegram/GramJsDriver.js';
 import { mountDiscoveryRoutes } from './discovery/routes.js';
+import { mountTasFileRoutes } from './verify/TasFileRoute.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -88,10 +93,18 @@ process.once('SIGTERM', () => { void telegram.shutdown(); });
 // Phase 2 discovery: one SSRF-guarded, address-pinned fetch hop for portal
 // jobs routed through the worker. Token-only; see discovery/routes.ts.
 mountDiscoveryRoutes(app, { token: TOKEN });
+// Verify secure document viewer: ONE TAS attachment by attachedFileId, token-only
+// (research-agent `document_file` caches it privately and signs it). See verify/TasFileRoute.ts.
+mountTasFileRoutes(app, { token: TOKEN });
 const myhome = startMyHomeRuntime();
 const ssge = startSsgeRuntime();
 process.once('SIGTERM', () => ssge.shutdown());
 app.get('/health/ssge', auth, (_q: any, r: any) => r.json(ssge.status()));
+// Find Property HTML portals (place.ge, home.ge, brokeri.ge, allhome.ge):
+// one runtime each on this worker; each idles until its own enable flag and token are set.
+const portals = PORTAL_ADAPTERS.map((adapter: any) => startPortalRuntime(adapter));
+process.once('SIGTERM', () => portals.forEach((p: any) => p.shutdown()));
+app.get('/health/portals', auth, (_q: any, r: any) => r.json(portals.map((p: any) => p.status())));
 process.once('SIGTERM', () => myhome.shutdown());
 app.get('/health/myhome', auth, (_q: any, r: any) => r.json(myhome.status()));
 
@@ -99,6 +112,8 @@ app.get('/health', (_q: any, r: any) =>
   r.json({
     ok: true,
     service: 'homatch-official-worker',
+    // Verify capacity: running jobs vs the cap, and how many wait in line.
+    admission: orchestrator.admission(),
     // Presence facts only. Session health is at /health/telegram (token-only).
     telegram: { configured: telegram.status().configured, enabled: telegram.status().enabled },
     // Deployed is not the same as able. Two Railway services run this image
@@ -214,7 +229,7 @@ app.post('/tas/test', auth, async (req: any, res: any) => {
     reconciliation: api?.reconciliation ?? null,
     accounting: api?.accounting ?? null,
     http: api?.http ?? null,
-    visuals: (api?.visuals ?? []).map((v: any) => ({ role: v.role, kind: v.kind, date: v.date, width: v.width, height: v.height, extraction: v.extraction })),
+    visuals: (api?.visuals ?? []).map((v: any) => ({ role: v.role, kind: v.kind, category: v.category, confidence: v.confidence, page: v.page ?? null, date: v.date, width: v.width, height: v.height, extraction: v.extraction, blocks: v.identity?.blocks ?? [] })),
   });
 });
 
@@ -223,10 +238,13 @@ app.post('/tas/test', auth, async (req: any, res: any) => {
 // VERIFY_MARKET_ENABLED=false switches the route off without a deploy of
 // research-agent; research-agent's own admin setting gates the caller side.
 const verifyMarket = new VerifyMarketRuntime({
-  acquireMyHome: (request, options) => acquireMyHome(request, options as any),
+  // MyHome goes through Find Property's own runtime (reader, engine, pacing,
+  // one run at a time) AND its page cap: page 3 draws MyHome's Cloudflare
+  // challenge (job dbf04e48, 2026-10-11), which cools MyHome down for everyone.
+  acquireMyHome: (request, options) => myhome.acquireForVerify(request, options as any),
   acquireSsge: (request, options) => acquireSsge(request, options as any),
-  maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 80,
-  sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 150000,
+  maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 300,
+  sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 300000,
 });
 app.post('/verify/market', auth, (req: any, res: any) => {
   if (process.env.VERIFY_MARKET_ENABLED === 'false') return res.status(503).json({ error: 'verify market disabled' });
@@ -239,6 +257,18 @@ app.post('/verify/market', auth, (req: any, res: any) => {
 app.get('/verify/market/:id', auth, (req: any, res: any) => {
   const j = verifyMarket.get(String(req.params.id));
   return j ? res.json(j) : res.status(404).json({ error: 'not found' });
+});
+
+// Verify Korter provider: access status only (robots.txt + public terms, two
+// plain GETs, cached 1 h). Extraction exists only behind a licensed feed
+// (KORTER_FEED_URL + KORTER_FEED_KEY); nothing in the paid job flow calls it.
+const korterStatus = korterStatusCache();
+app.get('/verify/korter/status', auth, async (req: any, res: any) => {
+  try {
+    res.json(await korterStatus(req.query?.refresh === '1'));
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error)?.message ?? e).slice(0, 160) });
+  }
 });
 
 // Official TAS visuals chosen during a job, held in a bounded in-process
@@ -254,10 +284,44 @@ app.get('/research/visual/:sha', auth, (req: any, res: any) => {
   return res.status(200).send(Buffer.from(v.bytes as any));
 });
 
+// POST /verify/tas-files — fetch ONLY the named TAS attachments (≤ 40, by
+// attachedFileId) that an earlier run's older-case budget skipped, through
+// the same polite TasApiClient and the same visual classification; the
+// pictures land in the visual cache above (GET /research/visual/:sha) for
+// research-agent's `recover_visuals` to copy. Synchronous and bounded
+// (≤ 40 s); a file not reached says DEADLINE and is asked for again later.
+app.post('/verify/tas-files', auth, async (req: any, res: any) => {
+  const parsed = parseTasFileRequest(req.body);
+  if (!parsed) return res.status(400).json({ error: 'files[].attachedFileId required' });
+  try {
+    const budgetMs = Math.max(5_000, Math.min(Number(req.body?.budgetMs) || 40_000, 50_000));
+    const out = await recoverTasFiles(parsed.files, { parcel: parsed.parcel, budgetMs });
+    return res.json(out);
+  } catch (e) {
+    return res.status(500).json({ error: String((e as Error)?.message ?? e).slice(0, 160) });
+  }
+});
+
 app.get('/research/:id', auth, (req: any, res: any) => {
   const j = orchestrator.getJob(req.params.id);
-  return j ? res.json(j) : res.status(404).json({ error: 'not found' });
+  if (!j) return res.status(404).json({ error: 'not found' });
+  // ?view=status — what a poller needs while the job runs, without the
+  // documents: re-sending megabytes of text every 30 s exhausted the edge
+  // function's CPU budget (2026-10-10).
+  if (req.query?.view === 'status') return res.json(statusView(j));
+  return res.json(j);
 });
+
+function statusView(j: any) {
+  return {
+    id: j.id, status: j.status, stage: j.stage, sourceIndex: j.sourceIndex,
+    steps: j.steps, humanVerification: j.humanVerification, error: j.error,
+    createdAt: j.createdAt, updatedAt: j.updatedAt, completedAt: j.completedAt,
+    results: (Array.isArray(j.results) ? j.results : []).map((r: any) => ({ source: r?.source, status: r?.status, sourceName: r?.sourceName })),
+    queuePosition: j.queuePosition ?? null, queuedAt: j.queuedAt ?? null, runStartedAt: j.runStartedAt ?? null,
+    view: 'status',
+  };
+}
 
 // POST /research/enreg-entity — the closed-loop fix for a confirmed gap:
 // a legal entity (developer/owner company) discovered by research-agent's
@@ -399,6 +463,13 @@ function humanActionResponse(res: any, jobId: string, r: any, extra: Record<stri
 app.post('/research/:id/resume', auth, async (req: any, res: any) => {
   const r = await orchestrator.resume(req.params.id);
   return humanActionResponse(res, req.params.id, r);
+});
+
+// The customer stopped the investigation: stop starting sources, abort the
+// browser, keep what was collected (GET /research/:id still returns it).
+app.post('/research/:id/cancel', auth, async (req: any, res: any) => {
+  const r = await orchestrator.cancel(req.params.id);
+  res.status(r.ok ? 200 : 404).json(r);
 });
 
 app.post('/research/:id/skip', auth, async (req: any, res: any) => {
@@ -796,6 +867,11 @@ app.get('/health/speech-selftest', async (_q: any, r: any) => {
     selfTestRunning = false;
   }
 });
+
+// Durable Verify queue (off unless VERIFY_QUEUE_ENABLED=1): claims tasks
+// from verify-queue alongside the legacy HTTP job API, which keeps working.
+const verifyQueue = startVerifyQueue({ orchestrator, launchJobBrowser, closeJobBrowser, beforeShutdown });
+app.get('/health/queue', (_q: any, r: any) => r.json(verifyQueue ? verifyQueue.snapshot() : { enabled: false }));
 
 const server = app.listen(PORT, '0.0.0.0', () =>
   console.log(`homatch-official-worker 2.0.0 (deterministic FSM architecture) listening on ${PORT}`));

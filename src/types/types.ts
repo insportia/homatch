@@ -100,6 +100,7 @@ export type NotificationType =
   | 'RESEARCH_PRODUCT_PURCHASED'
   | 'VERIFY_COMPLETE'
   | 'DOCUMENT_ANALYZED'
+  | 'RETENTION_EXPIRING'
   /*
    * THE FOUR THAT WERE BEING BORROWED. A message emitted MATCH_FOUND, and so did a
    * viewing request — the type is what a client keys an icon, a route and a translation

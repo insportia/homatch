@@ -226,3 +226,27 @@ test('the abandoned record is shaped so the dedupe guard recognises it', () => {
   assert.equal(sameSource.length, 1);
   assert.equal(String(sameSource[0].forEntity.idCode).trim(), '404670272');
 });
+
+/*
+ * RS.ge (job c80f7237): the worker reports progress only between steps, and
+ * one RS.ge step (page load + search + up to two reCAPTCHA solves of <=120 s
+ * each) can run ~320 s. The generic 3-minute stall rule abandoned it at 186 s
+ * while it was still solving. RS.ge gets a stall limit that covers that.
+ */
+test('rstax gets a stall limit longer than its worst-case single step; others keep the default', async () => {
+  const { stallLimitsFor, RSTAX_STALL_MS, FINANCIAL_ENTITY_STALL_MS, FINANCIAL_ENTITY_MAX_WAIT_MS, assessFinancialEntityWait, beginWait } =
+    await import('../verifyWatchdog.ts');
+  const worstCaseStepMs = 46_500 + 11_000 + 2 * (120_000 + 11_000);
+  assert.ok(RSTAX_STALL_MS > worstCaseStepMs);
+  assert.ok(RSTAX_STALL_MS < FINANCIAL_ENTITY_MAX_WAIT_MS, 'the total cap still bounds it');
+  assert.deepEqual(stallLimitsFor('enreg'), {});
+  assert.deepEqual(stallLimitsFor('rstax'), { stallMs: RSTAX_STALL_MS });
+
+  // A worker frozen on one step for 186 s: abandoned under the default, kept for rstax.
+  const t0 = 1_000_000;
+  const w = { status: 'RUNNING', stage: 'rstax', sourceIndex: 0, results: [], steps: [], updatedAt: 'x' };
+  let s = assessFinancialEntityWait(beginWait(t0), w, t0).next;
+  const later = t0 + 186_000;
+  assert.equal(assessFinancialEntityWait(s, w, later).giveUp, later - t0 >= FINANCIAL_ENTITY_STALL_MS);
+  assert.equal(assessFinancialEntityWait(s, w, later, stallLimitsFor('rstax')).giveUp, false);
+});

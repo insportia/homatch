@@ -1,18 +1,27 @@
 // HOMATCH Verify — the official-history blocks of the report.
 //
 //   CurrentStatusBlock     the latest confirmed official position, with dates
-//   PropertyStoryBlock     the documented history, oldest first, with the
-//                          official TAS visuals placed beside the chapter they
-//                          explain (never an unrelated gallery)
+//   PropertyStoryBlock     the documented history: the introduction, the
+//                          readable chapters (always visible), the four status
+//                          cards, then the step-by-step chronology with case
+//                          numbers in one disclosure; older reports keep the
+//                          grouped timeline.
+//                          The official visuals moved to VisualExplorer.
 //   ResearchTransparency   what was reviewed, in counts — never links
 //
-// Every visual here is an official TAS attachment delivered as a short-lived
-// signed URL. Marketplace photos never reach these components. A visual that
-// fails to load is removed; the text stands on its own.
+// Official TAS visuals are rendered by VisualExplorer.tsx, whose signed-URL
+// guard lives in src/verify/visualCatalog.ts. Nothing here renders an image
+// or links anywhere.
 
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
+import { ChevronDown } from 'lucide-react';
+import { timelineGroups, yearSpan } from '@/verify/reportPresentation';
+import { projectStory } from '@/verify/intelligence/projectStory';
+import { ProjectStory, StoryIntro } from './ProjectStory';
+import { isDateList } from '@/verify/intelligence/rawText';
+import { guardStoryContinuity, evolutionOf, stripListMarkers, periodLabel } from '@/verify/intelligence/storyGuard';
+import { guardKindText } from '@/verify/intelligence/kindGuard';
 
 export interface CurrentStatusView {
   statement: string;
@@ -30,10 +39,22 @@ export interface VisualCaptionView {
   caption: string;
   explanation: string;
 }
+/**
+ * An official visual as the customer payload carries it. Both shapes are
+ * tolerated (see src/verify/visualCatalog.ts): the original
+ * { id, role, kind, date, width, height, url } and the rebuilt one with
+ * category / scope / block / page / mime / confidence.
+ */
 export interface OfficialVisualView {
   id: string;
-  role: 'LATEST_RENDER' | 'EARLIEST_RENDER' | 'SUPPORTING' | string;
-  kind: string;
+  role?: 'LATEST_RENDER' | 'EARLIEST_RENDER' | 'SUPPORTING' | string;
+  kind?: string;
+  category?: string;
+  scope?: string;
+  block?: string | null;
+  page?: number | null;
+  mime?: string;
+  confidence?: number;
   date?: string | null;
   width?: number | null;
   height?: number | null;
@@ -53,6 +74,12 @@ export interface OfficialHistoryClientView {
   milestones: Array<{ date: string; kind: string; title: string; caseRef: string | null; decisionNumber: string | null; outcome: string | null }>;
   evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
   visuals?: Array<{ id: string; versionStatus: string }>;
+  /** Related milestones as one step; the records stay in `milestones`. */
+  milestoneGroups?: Array<{ kind: string; outcome: string | null; firstDate: string; lastDate: string; count: number; decisionNumbers: string[] }>;
+  /** The professionals the municipal documents name. */
+  team?: Array<{ name: string; kind: string; roles: string[]; lastSeen: string | null }>;
+  /** Distinct legal states and what establishes each (legalStatus.ts). */
+  legal?: Array<{ key: string; status: string; basis: Array<{ caseRef: string | null; decisionNumber: string | null; date: string | null; block: string | null }> }>;
 }
 
 const KNOWN_STATES = ['COMMISSIONED', 'PERMITTED', 'PROJECT_APPROVED', 'SUSPENDED', 'CANCELLED', 'APPLICATION_PENDING', 'APPLICATION_REFUSED', 'NOT_ESTABLISHED'];
@@ -96,13 +123,12 @@ const day = (iso?: string | null): string | null => {
 
 const KNOWN_CAVEATS = new Set(['RESPONSES_UNREAD', 'LATER_UNDETERMINED_DECISION', 'PROCESSING_INCOMPLETE', 'PROCESSING_UNVERIFIED', 'CASES_DISAGREE', 'NO_DECISIONS_READ', 'VALIDITY_PASSED']);
 
-/* Only signed storage URLs are rendered — a guard, not a style choice. */
-const safeVisualUrl = (u: unknown): string | null =>
-  typeof u === 'string' && /^https:\/\/[^/]+\/storage\/v1\/object\/sign\//.test(u) ? u : null;
-
 const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> = ({ h }) => {
   const { t } = useLanguage();
   const state = KNOWN_STATES.includes(h.state) ? h.state : 'NOT_ESTABLISHED';
+  // "We could not establish a status" is not a finding about the property.
+  // The dated items below carry what IS known; no headline about our process.
+  if (state === 'NOT_ESTABLISHED') return null;
   // A permit whose own validity date has passed is not "in force" — say so in the headline.
   const expired = state === 'PERMITTED' && h.caveats?.includes('VALIDITY_PASSED');
   // "Provisional: not every document could be read" is only true when a caveat other than an expired date applies.
@@ -121,7 +147,7 @@ const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> =
           day(h.validUntil) ? t('verify_ox_valid_until_date', { date: isolate(day(h.validUntil)!) }) : null,
         ].filter(Boolean).join(' · ')}
       </p>
-      {!h.conclusive && unreadCaveats.length ? <p className="text-xs leading-5 text-amber-700 dark:text-amber-400 break-words">{t('verify_ox_not_conclusive')}</p> : null}
+      {!h.conclusive && unreadCaveats.length ? <p className="text-xs leading-5 text-muted-foreground break-words">{t('verify_ox_not_conclusive')}</p> : null}
       {!h.conclusive && h.caveats?.length ? (
         <ul className="list-disc ps-4 space-y-0.5 text-xs leading-5 text-muted-foreground">
           {h.caveats.filter((c) => KNOWN_CAVEATS.has(c)).map((c) => <li key={c} className="break-words">{t(`verify_ox_caveat_${c.toLowerCase()}`)}</li>)}
@@ -140,9 +166,9 @@ export const CurrentStatusBlock: React.FC<{ status?: CurrentStatusView | null; h
     <section aria-labelledby="verify-current-status" className="rounded-2xl border border-border bg-card/50 p-5 sm:p-6 space-y-4">
       <div className="space-y-1">
         <p className="text-2xs uppercase tracking-wider text-[hsl(var(--gold-ink))]">{t('verify_ox_current_kicker')}</p>
-        <h2 id="verify-current-status" className="text-base font-semibold tracking-tight break-words">
+        <h3 id="verify-current-status" className="text-base font-semibold tracking-tight break-words">
           {t('verify_ox_current_title')}
-        </h2>
+        </h3>
       </div>
       {hasHistory ? <OfficialStateBadge h={history!.status} /> : null}
       {status && clean(status.statement) ? <p className="text-[15px] leading-7 text-foreground/90 break-words">{clean(status.statement)}</p> : null}
@@ -165,105 +191,114 @@ export const CurrentStatusBlock: React.FC<{ status?: CurrentStatusView | null; h
   );
 };
 
-const VisualFigure: React.FC<{
-  v: OfficialVisualView;
-  caption?: VisualCaptionView;
-  badge?: string;
-  clean: (s: string) => string;
-  onBroken: (id: string) => void;
-}> = ({ v, caption, badge, clean, onBroken }) => {
-  const { t } = useLanguage();
-  const [open, setOpen] = React.useState(false);
-  const url = safeVisualUrl(v.url);
-  if (!url) return null;
-  const ratio = v.width && v.height ? `${v.width} / ${v.height}` : '16 / 10';
-  const label = caption ? clean(caption.caption) : t('verify_ox_visual_default');
-  return (
-    <figure className="min-w-0 space-y-2">
-      {/* A real dialog trigger, so closing returns keyboard focus to this thumbnail. */}
-      <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-      <button
-        type="button"
-        aria-label={t('verify_ox_visual_open', { title: label })}
-        className="group relative block w-full overflow-hidden rounded-xl border border-border bg-[hsl(222_47%_11%)] transition-colors hover:border-[hsl(38_92%_54%)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)]"
-        style={{ aspectRatio: ratio }}
-      >
-        <img
-          src={url}
-          alt={label}
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          className="h-full w-full object-contain transition-transform duration-300 motion-safe:group-hover:scale-[1.02]"
-          onError={() => onBroken(v.id)}
-        />
-        {badge ? (
-          <span className="absolute start-3 top-3 rounded-full bg-[hsl(222_47%_11%)]/85 px-2.5 py-1 text-2xs font-medium text-[hsl(38_92%_64%)] ring-1 ring-[hsl(38_92%_54%)]/40">
-            {badge}
-          </span>
-        ) : null}
-      </button>
-      </DialogTrigger>
-        {/* Navy stage for the drawing: its own light text tokens, never the page theme's. */}
-        <DialogContent className="max-w-[min(96vw,1200px)] border-[hsl(222_30%_22%)] bg-[hsl(222_47%_8%)] p-3 text-[hsl(0_0%_96%)] sm:p-4 [&>button]:text-[hsl(0_0%_96%)] [&>button]:opacity-90">
-          <DialogTitle className="pe-8 text-sm font-medium text-[hsl(0_0%_96%)] break-words">{label}</DialogTitle>
-          <DialogDescription className="text-xs text-[hsl(220_14%_76%)] break-words">{caption?.explanation ? clean(caption.explanation) : t('verify_ox_visual_note')}</DialogDescription>
-          <img src={url} alt={label} referrerPolicy="no-referrer" className="max-h-[78vh] w-full rounded-lg object-contain" />
-        </DialogContent>
-      </Dialog>
-      <figcaption className="space-y-0.5">
-        <p className="text-sm font-medium break-words">
-          {label}
-          {day(v.date) ? <span className="text-2xs font-normal text-muted-foreground tabular-nums"> · <Ltr>{day(v.date)}</Ltr></span> : null}
-        </p>
-        {caption?.explanation ? <p className="text-xs leading-5 text-muted-foreground break-words">{clean(caption.explanation)}</p> : null}
-      </figcaption>
-    </figure>
-  );
-};
+const OUTCOMES = ['PERMIT_ISSUED', 'APPROVED', 'AMENDMENT_APPROVED', 'DEADLINE_EXTENDED', 'COMMISSIONED', 'INTERMEDIATE', 'DEFICIENCY', 'REFUSED', 'SUSPENDED', 'CANCELLED'];
+const kindKey = (k: string) => `verify_ox_kind_${(KNOWN_KINDS.includes(k) ? k : 'OTHER').toLowerCase()}`;
+const refOf = (m: { caseRef?: string | null; decisionNumber?: string | null }) =>
+  [m.caseRef, m.decisionNumber ? `№ ${m.decisionNumber}` : null].filter(Boolean).join(' · ');
 
-const MilestoneList: React.FC<{ items: OfficialHistoryClientView['milestones']; clean: (s: string) => string }> = ({ items, clean }) => {
+/**
+ * The official steps as a story line: related records told as one step
+ * ("Approved change ×4 · 2022–2025"), each expandable to its own records.
+ */
+const Timeline: React.FC<{ history: OfficialHistoryClientView; clean: (s: string) => string }> = ({ history, clean }) => {
   const { t } = useLanguage();
-  if (!items.length) return null;
+  const groups = timelineGroups(history.milestones, history.milestoneGroups);
+  const [open, setOpen] = React.useState<Set<number>>(() => new Set());
+  const [showAll, setShowAll] = React.useState(false);
+  if (!groups.length) return null;
+  const visible = showAll ? groups : groups.slice(0, MAX_MILESTONES);
+  const toggle = (i: number) => setOpen((o) => { const n = new Set(o); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   return (
-    <div className="space-y-2">
-      <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_milestones')}</p>
-      <ol className="space-y-2">
-        {items.slice(0, MAX_MILESTONES).map((m, i) => (
-          <li key={`${m.date}-${i}`} className="grid grid-cols-[6.75rem_1fr] gap-3 text-sm">
-            <Ltr className="whitespace-nowrap tabular-nums text-muted-foreground">{day(m.date)}</Ltr>
-            <span className="min-w-0 break-words">
-              <span className="font-medium">{t(`verify_ox_kind_${(KNOWN_KINDS.includes(m.kind) ? m.kind : 'OTHER').toLowerCase()}`)}</span>
-              {m.title ? <span className="text-foreground/80"> — {clean(m.title)}</span> : null}
-              {m.caseRef || m.decisionNumber ? (
-                <Ltr className="block text-2xs text-muted-foreground">{[m.caseRef, m.decisionNumber ? `№ ${m.decisionNumber}` : null].filter(Boolean).join(' · ')}</Ltr>
+    <div className="space-y-3">
+      <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('verify_ox_milestones')}</p>
+      <ol className="relative space-y-1 before:absolute before:inset-y-3 before:start-[7px] before:w-px before:bg-[hsl(38_92%_54%)]/35">
+        {visible.map((g, i) => {
+          const expandable = g.records.length > 1 || (g.records.length === 1 && !!(g.records[0].title || refOf(g.records[0])));
+          const isOpen = open.has(i);
+          const span = g.count > 1 ? yearSpan(g.firstDate, g.lastDate) : day(g.firstDate);
+          const outcome = g.outcome && OUTCOMES.includes(g.outcome) ? t(`vrx_outcome_${g.outcome.toLowerCase()}`) : null;
+          const head = (
+            <>
+              <span className="absolute start-0 top-[13px] h-[15px] w-[15px] rounded-full border-2 border-[hsl(38_92%_54%)] bg-background" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold leading-6 break-words">
+                  {t(kindKey(g.kind))}
+                  {g.count > 1 ? <span className="ms-1.5 rounded-full bg-[hsl(var(--gold-soft))] px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-[hsl(var(--gold-ink))]">×{g.count}</span> : null}
+                </span>
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  {span ? <bdi dir="ltr" className="tabular-nums">{span}</bdi> : null}
+                  {outcome ? <span>{span ? ' · ' : ''}{outcome}</span> : null}
+                </span>
+              </span>
+            </>
+          );
+          return (
+            <li key={`${g.kind}-${g.firstDate}-${i}`} className="relative">
+              {expandable ? (
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  onClick={() => toggle(i)}
+                  className="relative flex min-h-[44px] w-full items-start gap-3 rounded-xl py-1.5 ps-7 pe-2 text-start transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] motion-reduce:transition-none"
+                >
+                  {head}
+                  <ChevronDown className={`mt-1.5 h-4 w-4 shrink-0 text-muted-foreground motion-safe:transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                </button>
+              ) : (
+                <div className="relative flex min-h-[44px] items-start gap-3 py-1.5 ps-7 pe-2">{head}</div>
+              )}
+              {expandable && isOpen ? (
+                <ul className="mb-2 ms-7 space-y-2 border-s border-dashed border-border ps-4 pt-1">
+                  {g.records.map((m, n) => (
+                    <li key={`${m.date}-${n}`} className="text-sm">
+                      <bdi dir="ltr" className="block text-2xs tabular-nums text-muted-foreground">{day(m.date)}</bdi>
+                      {m.title ? <span className="block break-words text-foreground/85" dir="auto">{clean(m.title)}</span> : null}
+                      {refOf(m) ? <bdi dir="ltr" className="block text-2xs text-muted-foreground">{refOf(m)}</bdi> : null}
+                    </li>
+                  ))}
+                </ul>
               ) : null}
-            </span>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
+      {groups.length > MAX_MILESTONES ? (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="min-h-[44px] rounded-full px-3 text-xs font-medium text-[hsl(var(--gold-ink))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))]"
+        >
+          {showAll ? t('vrx_timeline_fewer') : t('vrx_timeline_all', { count: String(groups.length) })}
+        </button>
+      ) : null}
     </div>
   );
 };
 
+/** What changed between versions of the design — only when there is a change. */
 const EvolutionList: React.FC<{ items: OfficialHistoryClientView['evolution']; clean: (s: string) => string }> = ({ items, clean }) => {
   const { t } = useLanguage();
-  if (!items.length) return null;
+  // Only real figures: a short value with a number in it. Extraction fragments
+  // ("(შესაბამისად სართულიანობა) და ფართობი აკმაყოფილებს 503") are never a change.
+  const figure = (v: string) => v.length <= 24 && /\d/.test(v) && !/ნაც(?:ვ)?ლად|შეესაბამება|აკმაყოფილებს/u.test(v);
+  const rows = (items ?? []).filter((e) => figure(clean(e.from)) && figure(clean(e.to)) && clean(e.from) !== clean(e.to));
+  if (!rows.length) return null;
   return (
-    <div className="space-y-2">
-      <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_changed')}</p>
-      <ul className="space-y-1.5">
-        {items.slice(0, MAX_CHANGES).map((e, i) => (
-          <li key={`${e.key}-${i}`} className="text-sm break-words">
-            <span className="font-medium">{KNOWN_FACTS.includes(e.key) ? t(`verify_ox_fact_${e.key.toLowerCase()}`) : clean(e.label)}</span>
-            {e.block ? <span className="text-muted-foreground"> ({clean(e.block)})</span> : null}
-            {': '}
-            <span className="tabular-nums">{clean(e.from)}</span>
-            <span aria-hidden="true"> → </span>
-            <span className="sr-only">{t('verify_ox_changed_to')}</span>
-            <span className="tabular-nums font-medium">{clean(e.to)}</span>
-            {day(e.toDate) ? <span className="text-2xs text-muted-foreground"> · <Ltr>{day(e.toDate)}</Ltr></span> : null}
+    <div className="space-y-3">
+      <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('verify_ox_changed')}</p>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {rows.slice(0, MAX_CHANGES).map((e, i) => (
+          <li key={`${e.key}-${i}`} className="min-w-0 rounded-xl border border-border bg-card px-4 py-3">
+            <p className="text-2xs uppercase tracking-wide text-muted-foreground break-words">
+              {KNOWN_FACTS.includes(e.key) ? t(`verify_ox_fact_${e.key.toLowerCase()}`) : clean(e.label)}
+              {e.block ? ` · ${clean(e.block)}` : ''}
+            </p>
+            <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-sm">
+              <span className="tabular-nums text-muted-foreground line-through decoration-muted-foreground/40" dir="auto">{clean(e.from)}</span>
+              <span className="inline-block text-[hsl(var(--gold-ink))] rtl:rotate-180" role="img" aria-label={t('verify_ox_changed_to')}>→</span>
+              <span className="font-semibold tabular-nums" dir="auto">{clean(e.to)}</span>
+            </p>
+            {day(e.toDate) ? <p className="mt-0.5 text-2xs text-muted-foreground"><Ltr>{day(e.toDate)}</Ltr></p> : null}
           </li>
         ))}
       </ul>
@@ -273,114 +308,94 @@ const EvolutionList: React.FC<{ items: OfficialHistoryClientView['evolution']; c
 
 export const PropertyStoryBlock: React.FC<{
   chapters?: StoryChapterView[] | null;
-  visuals?: OfficialVisualView[] | null;
-  captions?: VisualCaptionView[] | null;
   history?: OfficialHistoryClientView | null;
   clean: (s: string) => string;
-}> = ({ chapters, visuals, captions, history, clean }) => {
-  const { t } = useLanguage();
-  const [broken, setBroken] = React.useState<Set<string>>(() => new Set());
-  const onBroken = React.useCallback((id: string) => setBroken((b) => new Set(b).add(id)), []);
-  const story = (chapters ?? []).filter((c) => clean(c.body));
-  const usable = (visuals ?? []).filter((v) => safeVisualUrl(v.url) && !broken.has(v.id)).slice(0, 6);
-  const milestones = history?.milestones ?? [];
-  const evolution = history?.evolution ?? [];
-  if (!story.length && !usable.length && !milestones.length && !evolution.length) return null;
-  // A render is "the latest APPROVED design" only when its own case carries
-  // the latest approving decision; otherwise it is the latest submitted one.
-  const versionOf = (id: string) => history?.visuals?.find((v) => v.id === id)?.versionStatus ?? 'UNDETERMINED';
+  /** report.projectSignals: what the record says about the works (projectStory.ts). */
+  signals?: unknown;
+  /** technicalSpecs, so a pending application's figures can be compared with the approved ones. */
+  specs?: unknown;
+  /** synthesis.unitIdentity (optional): the register's "under construction" mark and its date. */
+  unitIdentity?: unknown;
+  /** The registry kind (kindGuard.copyKindOf): a non-apartment story never calls the subject an apartment. */
+  kind?: string;
+}> = ({ chapters, history, clean, signals, specs, unitIdentity, kind }) => {
+  /* The model's chapters, kept to what the records connect (storyGuard.ts):
+     the owner's editorial baseline, minus unsupported continuity between an
+     earlier project on the parcel and the current development. */
+  const story = React.useMemo(
+    () => guardStoryContinuity(chapters ?? [], evolutionOf(signals)).map((c) => ({ ...c, body: guardKindText(stripListMarkers(clean(c.body)), kind) })).filter((c) => c.body && !isDateList(c.body)),
+    [chapters, signals, clean, kind],
+  );
+  /* The project's evolution, step by step (projectStory.ts). */
+  const events = React.useMemo(() => projectStory({ history, signals, specs, unitIdentity, kind }), [history, signals, specs, unitIdentity, kind]);
+  const hasTimeline = !!(events || history?.milestones?.length || history?.milestoneGroups?.length);
+  // The step-by-step evolution already tells every change, with its figures.
+  const hasEvolution = !!history?.evolution?.length && !events?.evolution;
+  if (!story.length && !hasTimeline && !hasEvolution) return null;
 
-  const captionFor = (id: string) => (captions ?? []).find((c) => c.visualId === id);
-  const latest = usable.find((v) => v.role === 'LATEST_RENDER');
-  const earliest = usable.find((v) => v.role === 'EARLIEST_RENDER');
-  const comparison = latest && earliest ? { latest, earliest } : null;
-
-  // Each visual appears ONCE: where the story placed it, else by its own
-  // chapter hint, else after the last chapter. The two renders of a
-  // comparison are shown together, in the chapter of the earlier one.
-  const placed = new Map<string, string[]>();
-  const used = new Set<string>();
-  const place = (chapterKey: string, id: string) => {
-    if (used.has(id)) return;
-    used.add(id);
-    placed.set(chapterKey, [...(placed.get(chapterKey) ?? []), id]);
-  };
-  if (comparison && story.length) {
-    const host = story.find((c) => c.visualIds?.includes(comparison.earliest.id))?.key ?? story[0].key;
-    used.add(comparison.latest.id);
-    used.add(comparison.earliest.id);
-    placed.set(host, ['__comparison__']);
-  }
-  for (const c of story) for (const id of c.visualIds ?? []) if (usable.some((v) => v.id === id)) place(c.key, id);
-  const lastKey = story.length ? story[story.length - 1].key : '__none__';
-  for (const v of usable) if (!used.has(v.id)) place(lastKey, v.id);
-
-  const renderVisuals = (key: string) =>
-    (placed.get(key) ?? []).map((id) =>
-      id === '__comparison__' && comparison ? (
-        <div key="cmp" className="space-y-2">
-          <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_evolution_title')}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <VisualFigure v={comparison.earliest} caption={captionFor(comparison.earliest.id)} badge={t('verify_ox_original')} clean={clean} onBroken={onBroken} />
-            <VisualFigure
-              v={comparison.latest}
-              caption={captionFor(comparison.latest.id)}
-              badge={t(versionOf(comparison.latest.id) === 'CURRENT_APPROVED' ? 'verify_ox_latest' : 'verify_ox_latest_submitted')}
-              clean={clean}
-              onBroken={onBroken}
-            />
+  /* THE READABLE STORY LEADS (owner, 2026-10-11 v7): the chapters are always
+     visible, in order, without numbers; the step list, case numbers and
+     decision references move into one disclosure below them. */
+  const chaptersList = story.length ? (
+    <div className="space-y-7" data-story-chapters>
+      {story.map((c) => (
+        <section key={c.key} className="space-y-2" data-story-chapter={c.key}>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 className="font-display text-lg font-semibold leading-snug break-words">{clean(c.title)}</h3>
+            {periodLabel(c.period) ? <Ltr className="text-2xs font-medium tabular-nums text-[hsl(var(--gold-ink))]">{periodLabel(c.period)}</Ltr> : null}
           </div>
-        </div>
-      ) : (
-        (() => {
-          const v = usable.find((x) => x.id === id);
-          return v ? <VisualFigure key={id} v={v} caption={captionFor(id)} clean={clean} onBroken={onBroken} /> : null;
-        })()
-      ),
-    );
-
-  return (
-    <section aria-labelledby="verify-story" className="space-y-5">
-      <div className="space-y-1">
-        <p className="text-2xs uppercase tracking-wider text-[hsl(var(--gold-ink))]">{t('verify_ox_story_kicker')}</p>
-        <h2 id="verify-story" className="text-base font-semibold tracking-tight break-words">{t('verify_ox_story_title')}</h2>
-      </div>
-      <MilestoneList items={milestones} clean={clean} />
-      <EvolutionList items={evolution} clean={clean} />
-      {story.length ? (
-        <ol className="relative space-y-6 border-s border-[hsl(38_92%_54%)]/30 ps-5">
-          {story.map((c) => (
-            <li key={c.key} className="relative space-y-3">
-              <span aria-hidden="true" className="absolute -start-[25px] top-1.5 h-2.5 w-2.5 rounded-full bg-[hsl(38_92%_54%)] ring-4 ring-background" />
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h3 className="text-sm font-semibold break-words">{clean(c.title)}</h3>
-                {c.period ? <Ltr className="text-2xs text-muted-foreground tabular-nums">{c.period}</Ltr> : null}
-              </div>
-              {clean(c.body).split(/\n{2,}/).map((p, i) => (
-                <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
-              ))}
-              {renderVisuals(c.key)}
-            </li>
+          {c.body.split(/\n{2,}/).map((p, i) => (
+            <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
           ))}
-        </ol>
-      ) : (
-        <div className="space-y-4">{renderVisuals('__none__')}</div>
-      )}
-      <p className="text-2xs leading-relaxed text-muted-foreground break-words">{t('verify_ox_visual_note')}</p>
-    </section>
+        </section>
+      ))}
+    </div>
+  ) : null;
+  const details = events ? <ProjectStory view={events} clean={clean} part="details" kind={kind} /> : history && hasTimeline ? <Timeline history={history} clean={clean} /> : null;
+  return (
+    <div className="space-y-8">
+      {/* The introduction first: the approved copy, or the concrete discoveries
+          the records establish. Never behind an accordion. */}
+      <StoryIntro discoveries={events?.evolution?.discoveries ?? null} clean={clean} kind={kind} />
+      {chaptersList}
+      {/* Where it stands today: physical works, permit, completion and
+          commissioning, never merged. Visible. */}
+      {events ? <ProjectStory view={events} clean={clean} part="status" kind={kind} /> : null}
+      {/* Without chapters, the chronology is the story and stays in the flow. */}
+      {chaptersList ? (details ? <StoryDetailsDisclosure>{details}</StoryDetailsDisclosure> : null) : details}
+      {history && hasEvolution ? <EvolutionList items={history.evolution} clean={clean} /> : null}
+    </div>
   );
 };
 
-const PROVIDERS = ['tas', 'mygov', 'enreg', 'debtor', 'rstax', 'myhome', 'ssge'];
-const LIMITED_STATES = ['PARTIAL', 'CAPTCHA_REQUIRED', 'CAPTCHA_FAILED', 'SOURCE_CHANGED', 'TEMPORARILY_UNAVAILABLE', 'TIMEOUT', 'FAILED', 'NOT_VERIFIED'];
+const StoryDetailsDisclosure: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useLanguage();
+  return (
+    <details className="group rounded-2xl border border-border bg-card px-4 py-1 sm:px-5" data-story-details>
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-ink))] [&::-webkit-details-marker]:hidden">
+        {t('verify_v7_story_details')}
+        <ChevronDown className="h-4 w-4 shrink-0 motion-safe:transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="pb-4 pt-2">{children}</div>
+    </details>
+  );
+};
 
-export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | null }> = ({ coverage }) => {
+export const ResearchTransparency: React.FC<{
+  coverage?: ResearchCoverageView | null;
+  /** The unit's register coverage, which replaces the registry's raw state. */
+  register?: { found: number; read: number } | null;
+}> = ({ coverage, register }) => {
   const { t } = useLanguage();
   if (!coverage) return null;
   const chips: Array<{ label: string; value: string }> = [];
   const add = (label: string, n?: number) => {
     if (n) chips.push({ label: t(label), value: String(n) });
   };
+  // Everything the run actually read, in one number first: case files,
+  // their attachments, the unit's register extracts and market listings.
+  const total = (coverage.officialCasesReviewed ?? 0) + (coverage.officialAttachmentsRead ?? 0) + (register?.read ?? 0) + (coverage.marketListingsAnalyzed ?? 0);
+  if (total > 0) chips.push({ label: t('verify_ox_rx_total'), value: String(total) });
   if (day(coverage.researchedAt)) chips.push({ label: t('verify_ox_rx_date'), value: day(coverage.researchedAt)! });
   if (day(coverage.latestOfficialDocumentDate)) chips.push({ label: t('verify_ox_rx_latest_doc'), value: day(coverage.latestOfficialDocumentDate)! });
   // The funnel, in order: found → reviewed → read → weighed → shown.
@@ -391,14 +406,14 @@ export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | 
   add('verify_ox_rx_selected', coverage.officialEvidenceSelectedForSynthesis);
   add('verify_ox_rx_milestones_shown', coverage.officialMilestonesShown);
   add('verify_ox_rx_listings', coverage.marketListingsAnalyzed);
-  const limits = (coverage.providers ?? []).filter((p) => PROVIDERS.includes(p.provider) && LIMITED_STATES.includes(p.state));
+  // The registry is described by what was read from it, when anything was.
+  const registerRead = !!register && register.read > 0;
+  // No "limits" list (owner, 2026-10-09): what was not read is not written.
   const official = !!coverage.officialCasesReviewed;
   const market = !!coverage.marketListingsAnalyzed;
-  if (!official && !market && !chips.length && !limits.length) return null;
-  // Only describes checks that actually completed — and never calls an incomplete run complete.
-  const sentence = coverage.officialProcessingIncomplete
-    ? t('verify_ox_rx_incomplete')
-    : official && market ? t('verify_ox_rx_both') : official ? t('verify_ox_rx_official') : market ? t('verify_ox_rx_market') : '';
+  if (!official && !market && !chips.length) return null;
+  // Describes what was done — never what was not.
+  const sentence = official && market ? t('verify_ox_rx_both') : official ? t('verify_ox_rx_official') : market ? t('verify_ox_rx_market') : '';
   return (
     <section aria-labelledby="verify-transparency" className="rounded-2xl border border-border bg-card/40 p-5 space-y-3">
       <h2 id="verify-transparency" className="text-sm font-semibold tracking-tight">{t('verify_ox_rx_title')}</h2>
@@ -413,19 +428,10 @@ export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | 
           ))}
         </dl>
       ) : null}
-      {limits.length ? (
-        <div className="space-y-1.5 border-t border-border pt-3">
-          <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_rx_limits_title')}</p>
-          <ul className="space-y-1">
-            {limits.map((p) => (
-              <li key={p.provider} className="flex flex-wrap gap-x-1.5 text-xs leading-5 break-words">
-                <span className="font-medium">{t(`verify_ox_prov_${p.provider}`)}:</span>
-                <span className="text-muted-foreground">{t(`verify_ox_pstate_${p.state.toLowerCase()}`)}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="text-2xs leading-relaxed text-muted-foreground break-words">{t('verify_ox_rx_limits_note')}</p>
-        </div>
+      {registerRead ? (
+        <p className="text-xs leading-5 text-muted-foreground break-words">
+          {t('vbi_rx_registry', { found: String(register!.found), read: String(register!.read) })}
+        </p>
       ) : null}
     </section>
   );

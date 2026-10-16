@@ -20,7 +20,7 @@
 import { type Candidate, rank as rankAssets } from './catalogResolver.ts';
 import type { CatalogAsset, CatalogMaterial } from './catalog.ts';
 import { emptyDesignState, type DesignState, type ObjectInstance, type ObjectProvenance } from './designState.ts';
-import { blocks, evaluatePlacement, rotationFacing, type PlacementContext } from './placement.ts';
+import { blocks, evaluateInWorld, evaluatePlacement, placementWorld, rotationFacing, type PlacementContext, type PlacementWorld } from './placement.ts';
 import { shapedAsset, type ObjectShape } from './objectShape.ts';
 import { buildWalkModel, findPath, isFree } from './navigation.ts';
 import { pointInPolygon, roomContaining, wallFrame, type Point, type SpaceModel } from './space.ts';
@@ -289,12 +289,20 @@ function legalSpot(
   passable: (p: Point, roomId: string, doorIds: string[]) => boolean = () => true,
 ): { at: Point; roomId: string } | null {
   const own = stayIn ? ctx.space.rooms.find((r) => r.id === stayIn) ?? null : null;
+  // One world per room for the whole search (the context does not change while it spirals): the same answers as
+  // evaluatePlacement, without rebuilding every wall and piece at every 5 cm step.
+  const worlds = new Map<string, PlacementWorld | null>();
+  const worldOf = (id: string) => {
+    if (!worlds.has(id)) { const r = ctx.space.rooms.find((x) => x.id === id); worlds.set(id, r ? placementWorld(ctx, r) : null); }
+    return worlds.get(id)!;
+  };
   const tryAt = (p: Point) => {
     // A piece the reader put in a room stays in that room.
     if (own && !pointInPolygon(p, own.polygon)) return null;
     const room = own ? own.id : roomContaining(ctx.space, p) ?? roomId;
     if (!room) return null;
-    const issues = evaluatePlacement(ctx, asset, p, rotation, room);
+    const world = worldOf(room);
+    const issues = world ? evaluateInWorld(world, asset, p, rotation) : evaluatePlacement(ctx, asset, p, rotation, room);
     if (blocks(issues)) return null;
     if (give !== 'TOUCH' && issues.some((i) => i.code === 'OVERLAPS_OBJECT')) return null;
     // A rebuilt home stays walkable: a piece read in front of a door is shifted clear of it when it can
@@ -378,6 +386,9 @@ export function nearestInside(poly: Point[], p: Point, margin: number): Point {
   return best.q;
 }
 
+/** How far a piece of a picture of the finished home is moved here at most to stand legally (as seen). */
+const AS_SEEN_REACH_M = 0.25;
+
 const ORDER: ObjectType[] = [
   // Big fixed things first, so smaller pieces find their place around them.
   'KITCHEN_RUN', 'KITCHEN_ISLAND', 'FRIDGE', 'WARDROBE', 'SHOWER', 'BATH', 'VANITY', 'TOILET', 'BED_DOUBLE', 'BED_SINGLE',
@@ -392,7 +403,15 @@ const rank = (t: ObjectType) => { const i = ORDER.indexOf(t); return i < 0 ? ORD
  */
 export function buildDesign(
   recon: Reconstruction, corrections: ReconCorrections, space: SpaceModel, assets: CatalogAsset[],
-  materials: CatalogMaterial[], options: { scale?: number; roomIdOf?: (key: string) => string; referenceImageIds?: string[] } = {},
+  materials: CatalogMaterial[], options: {
+    scale?: number; roomIdOf?: (key: string) => string; referenceImageIds?: string[];
+    /**
+     * A picture of the finished home (the selected render, walkthrough renderPlan.ts): a piece stands where it was
+     * seen even in a door's zone or a few centimetres into a neighbour, and the walk is proven afterwards by the
+     * walkability build (which moves only what really blocks a way). Without it, every door's zone is kept clear here.
+     */
+    asSeen?: boolean;
+  } = {},
 ): { state: DesignState; report: BuildReport } {
   const scale = options.scale ?? 1;
   const roomIdOf = options.roomIdOf ?? ((k: string) => `r-${k}`);
@@ -437,7 +456,14 @@ export function buildDesign(
     const probe = (rot: number) => (p: Point, roomId: string, doors: string[]) => doorsPassable(space, byCode, [...state.objects, {
       instanceId: '__probe', assetId: own.code, roomId, position: { x: p.x, y: 0, z: p.y }, rotationY: rot, materialVariant: null, colorOverride: null, locked: false, shape,
     }], doors);
-    for (const turn of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
+    if (options.asSeen) {
+      const pose = settle(space, asset, o.type, hintInSpace, seen0, read);
+      const roomFor = hintInSpace ?? nearestRoom(space, pose.at);
+      spot = legalSpot(ctx, asset, pose.at, pose.rotation, roomFor, hintInSpace, 'DOORWAY', AS_SEEN_REACH_M)
+        ?? legalSpot(ctx, asset, pose.at, pose.rotation, roomFor, hintInSpace, 'TOUCH', AS_SEEN_REACH_M);
+      rotation = pose.rotation;
+    }
+    for (const turn of spot ? [] : [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
       const pose = settle(space, asset, o.type, hintInSpace, seen0, read + turn);
       const roomFor = hintInSpace ?? nearestRoom(space, pose.at);
       spot = legalSpot(ctx, asset, pose.at, pose.rotation, roomFor, hintInSpace, 'CLEAR', 0.35)

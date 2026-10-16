@@ -34,6 +34,15 @@ export function memoryDatabase(tables, { user = 'owner-auth' } = {}) {
         neq(k,v) { rows = rows.filter(r => r[k] !== v); return query; }, in(k,v) { rows = rows.filter(r => v.includes(r[k])); return query; },
         is(k,v) { rows = rows.filter(r => (r[k] ?? null) === v); return query; }, lte(k,v) { rows = rows.filter(r => r[k] != null && r[k] <= v); return query; },
         order(k, {ascending = true} = {}) { orders.push([k,ascending]); rows.sort((a,b) => { for(const [key,asc] of orders){const n=String(a[key]).localeCompare(String(b[key]));if(n)return n*(asc?1:-1);}return 0; }); return query; },
+        // PostgREST or(): comma-separated `path.op.value`; path may use ->/->> into JSON
+        // (ingest counts only fresh rows: observationLevel is null or not CACHED).
+        or(expr) {
+          const at = (r, path) => path.split(/->>?/).reduce((v, k) => (v == null ? v : v[k]), r);
+          const terms = String(expr).split(',').map(t => { const m = t.match(/^(.+)\.(is|eq|neq)\.(.*)$/); return m && { path: m[1], op: m[2], val: m[3] }; });
+          rows = rows.filter(r => terms.some(t => t && (t.op === 'is' ? (at(r, t.path) ?? null) === (t.val === 'null' ? null : t.val)
+            : t.op === 'eq' ? String(at(r, t.path)) === t.val : (at(r, t.path) ?? null) !== null && String(at(r, t.path)) !== t.val)));
+          return query;
+        },
         limit(n) { rows = rows.slice(0,n); return query; }, range(a,b) { rows = rows.slice(a,b+1); return query; },
         update(value) { update = value; return query; }, delete() { remove = true; return query; },
         async upsert(batch, {onConflict}) {

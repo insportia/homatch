@@ -136,6 +136,9 @@ export type ValueComparison =
  * fuller value with the thinner one would make the graph worse every time it
  * was re-verified, which is the opposite of the point.
  */
+/** Facts whose registry value is the complete membership, so a shorter list is a change. */
+const EXHAUSTIVE_REGISTRY_SETS = new Set(['company.directors']);
+
 export function compareValues(
   next: { valueText?: string | null; valueNumber?: number | null; valueJson?: unknown },
   prev: { valueText?: string | null; valueNumber?: number | null; valueJson?: unknown }
@@ -334,7 +337,15 @@ async function writeFact(
       valueJson: current.value_json,
     });
 
-    if (verdict === 'SAME' || verdict === 'LESS_SPECIFIC') {
+    /*
+     * A registry reading of a company's directors is the WHOLE set, not a
+     * thinner description of it. Production job e02d4f16 read two directors
+     * from the register, and the subset rule kept — and re-verified — a stale
+     * third name (another company's director, leaked by an earlier run).
+     * Fewer registered directors is a change, never missing detail.
+     */
+    const exhaustive = EXHAUSTIVE_REGISTRY_SETS.has(f.factKey) && f.sourceKind === 'OFFICIAL_REGISTRY';
+    if (verdict === 'SAME' || (verdict === 'LESS_SPECIFIC' && !exhaustive)) {
       /*
        * KNOWN AND STILL TRUE. The cheapest outcome there is: no new row, and
        * the clock on the existing one moves forward so the next verification

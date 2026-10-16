@@ -1,4 +1,6 @@
 // Conservative multilingual text evidence, never promoted into structured facts.
+import { clipText } from './text-safety.ts';
+
 export type DescriptionSignalCode = 'RENOVATED' | 'NEW_BUILD' | 'UNDER_CONSTRUCTION' | 'PARKING' | 'FURNISHED' | 'APPLIANCES' | 'BALCONY' | 'VIEW' | 'CENTRAL_HEATING' | 'ELEVATOR' | 'OWNER_CLAIM' | 'AGENCY_LANGUAGE' | 'URGENT' | 'NEGOTIABLE';
 export interface DescriptionSignal { code: DescriptionSignalCode; evidence: string; basis: 'DESCRIPTION'; polarity: 'MENTIONED' | 'NEGATED' }
 const PATTERNS: Array<[DescriptionSignalCode, RegExp]> = [
@@ -18,18 +20,18 @@ const PATTERNS: Array<[DescriptionSignalCode, RegExp]> = [
   ['NEGOTIABLE', /ფასზე.{0,20}შეთანხმ|ფასი.{0,15}შეთანხმ|\bnegotiable\b|торг/iu],
 ];
 export function descriptionSignals(description: string | null | undefined): DescriptionSignal[] {
-  const text = (description ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 12000);
+  const text = clipText((description ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), 0, 12000);
   const result: DescriptionSignal[] = [];
   // \b and \w are ASCII-only even with /u: Cyrillic and Georgian negations need \p{L} boundaries.
   for (const [code, pattern] of PATTERNS) {
     const match = pattern.exec(text);
     if (!match) continue;
-    const before = text.slice(Math.max(0, match.index - 32), match.index);
-    const after = text.slice(match.index + match[0].length, match.index + match[0].length + 32);
+    const before = clipText(text, match.index - 32, match.index);
+    const after = clipText(text, match.index + match[0].length, match.index + match[0].length + 32);
     const negated = /(?:\bno\b|\bnot\b|\bwithout\b|\bunfurnished\b|(?<!\p{L})(?:без|нет|не)|არ არის|არ აქვს)\s*(?:[\p{L}\p{N}]+\s*)?$/iu.test(before)
       || /^(?:\S*\s*)?(?:არ აქვს|არ არის|გარეშე|нет)/iu.test(after) || /^unfurnished$/i.test(match[0]);
     result.push({ code, basis: 'DESCRIPTION', polarity: negated ? 'NEGATED' : 'MENTIONED',
-      evidence: text.slice(Math.max(0, match.index - 35), Math.min(text.length, match.index + match[0].length + 45)).trim() });
+      evidence: clipText(text, match.index - 35, match.index + match[0].length + 45).trim() });
   }
   return result;
 }

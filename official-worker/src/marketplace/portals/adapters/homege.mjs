@@ -31,6 +31,19 @@ export const homege = {
   workerId: 'homege-agent', sourceId: 'home-ge', sourceName: 'Home.ge', envPrefix: 'HOMEGE', origin: 'https://www.home.ge',
   deepMaxPages: 6, filtersAfterRead: true, serverDistricts: true, maxPages: SITEMAPS.length, pagesIndependent: true, listCacheMs: 6 * 60 * 60 * 1000,
   detailLimit: 24, detailIntervalMs: 900, pageIntervalMs: 1000,
+  /* Worker-local index (../index/PortalIndex.mjs): flats for sale and for rent, Tbilisi
+     first, then the other mapped cities; 6,000 listings at most. */
+  indexed: true,
+  indexSegments: [
+    { transactionType: 'BUY', propertyType: 'APARTMENT', city: 'Tbilisi', cap: 2000 },
+    { transactionType: 'MONTHLY_RENT', propertyType: 'APARTMENT', city: 'Tbilisi', cap: 1500 },
+    { transactionType: 'BUY', propertyType: 'APARTMENT', city: 'Batumi', cap: 600 },
+    { transactionType: 'MONTHLY_RENT', propertyType: 'APARTMENT', city: 'Batumi', cap: 400 },
+    { transactionType: 'BUY', propertyType: 'APARTMENT', city: 'Kutaisi', cap: 250 },
+    { transactionType: 'MONTHLY_RENT', propertyType: 'APARTMENT', city: 'Kutaisi', cap: 250 },
+    { transactionType: 'BUY', propertyType: 'APARTMENT', city: 'Rustavi', cap: 250 },
+    { transactionType: 'MONTHLY_RENT', propertyType: 'APARTMENT', city: 'Rustavi', cap: 250 },
+  ],
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];
     if (!city) throw unsupported('Home.ge listing slugs are mapped for Tbilisi, Batumi, Kutaisi and Rustavi only');

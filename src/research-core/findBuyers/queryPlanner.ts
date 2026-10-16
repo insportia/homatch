@@ -19,10 +19,12 @@ import type { BuyerStrategy } from './buyerStrategy.ts';
 /* fb-qp-2: property-specific strategy queries; cached generic phrasings of fb-qp-1 are not reused. */
 export const QUERY_PLAN_VERSION = 'fb-qp-3';
 
-export type QueryKind = 'community' | 'demand' | 'hashtag';
+/** listing: how a comparable property is ADVERTISED ("for sale: 3-room flat in X"), used to
+    find competitor / agency / developer listing posts whose comments hold the buyers. */
+export type QueryKind = 'community' | 'demand' | 'hashtag' | 'listing';
 export type QueryFamily =
   | 'COMMUNITY' | 'WANT_BUY' | 'LOOKING_FOR' | 'NEED' | 'RELOCATING' | 'INVESTMENT' | 'TYPE_IN_PLACE'
-  | 'WANT_RENT' | 'HASHTAG' | 'MODEL';
+  | 'WANT_RENT' | 'HASHTAG' | 'MODEL' | 'LISTING';
 
 export interface PlannedQuery {
   language: SearchLanguage;
@@ -38,7 +40,7 @@ export interface QueryPlan {
   queries: PlannedQuery[];
 }
 
-export const PER_LANGUAGE_CAPS: Readonly<Record<QueryKind, number>> = { community: 2, demand: 4, hashtag: 1 };
+export const PER_LANGUAGE_CAPS: Readonly<Record<QueryKind, number>> = { community: 2, demand: 4, hashtag: 1, listing: 2 };
 
 type T = (p: { city: string; place: string; type: string; beds: string }) => string;
 interface LangTemplates {
@@ -163,6 +165,22 @@ const TEMPLATES: Record<SearchLanguage, LangTemplates> = {
   },
 };
 
+/** Listing phrasing per language: the words an agency or owner uses to ADVERTISE. */
+const LISTING: Record<SearchLanguage, { sale: T[]; rent: T[] }> = {
+  ka: {
+    sale: [({ beds, place }) => `იყიდება ${beds} ${place}`, ({ city }) => `იყიდება ბინა ${city}`],
+    rent: [({ beds, place }) => `ქირავდება ${beds} ${place}`, ({ city }) => `ქირავდება ბინა ${city}`],
+  },
+  ru: {
+    sale: [({ beds, place }) => `продается ${beds} ${place}`, ({ city }) => `продажа квартир ${city}`],
+    rent: [({ beds, place }) => `сдается ${beds} ${place}`, ({ city }) => `аренда квартир ${city}`],
+  },
+  en: { sale: [({ beds, place }) => `${beds} for sale ${place}`], rent: [({ beds, place }) => `${beds} for rent ${place}`] },
+  ar: { sale: [({ place }) => `شقة للبيع ${place}`], rent: [({ place }) => `شقة للإيجار ${place}`] },
+  he: { sale: [({ place }) => `דירה למכירה ב${place}`], rent: [({ place }) => `דירה להשכרה ב${place}`] },
+  tr: { sale: [({ place }) => `${place} satılık daire`], rent: [({ place }) => `${place} kiralık daire`] },
+};
+
 export const normalizeQuery = (q: string) =>
   q.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}#\s"'-]/gu, ' ').replace(/\s+/g, ' ').trim();
 
@@ -210,6 +228,7 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
     for (const q of own) add(lang, 'demand', q.persona === 'INVESTOR' ? 'INVESTMENT' : q.persona === 'RELOCATING' ? 'RELOCATING' : dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', q.query);
     if (!own.length) for (const [family, f] of dna.transaction === 'RENT' ? t.rent : t.sale) add(lang, 'demand', family, f(params));
     add(lang, 'hashtag', 'HASHTAG', t.hashtag({ cityLatin, city: cityNames[0] }));
+    for (const f of dna.transaction === 'RENT' ? LISTING[lang].rent : LISTING[lang].sale) add(lang, 'listing', 'LISTING', f(params));
   }
   return { version: QUERY_PLAN_VERSION, dnaKey: dna.dnaKey, languages: [...languages], queries: out };
 }

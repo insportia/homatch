@@ -219,6 +219,7 @@ test('the core is consumed only through its deliberate integration points', () =
        no provider call. */
     'supabase/functions/_shared/findBuyers/admin.ts',
     'supabase/functions/_shared/__tests__/findBuyersPipelineQualification.test.mjs',
+    'supabase/functions/_shared/__tests__/findBuyersFacebookPages.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
     /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */
     'supabase/functions/_shared/findBuyers/readiness.ts',
@@ -238,6 +239,8 @@ test('the core is consumed only through its deliberate integration points', () =
     /* The admin seam onto the Actor catalog: class and lifecycle come from the
        same pure rules the planner and cost bound use. */
     'src/findBuyers/actorCatalog.ts',
+    // The admin's one-campaign test cap reads the same parser the server applies.
+    'src/findBuyers/testCap.ts',
     /* The admin seam onto the place gazetteer (research-core/findBuyers/places):
        buyer intelligence and market segmentation resolve any-script place names
        through the same names the Find Buyers planner searches with. */

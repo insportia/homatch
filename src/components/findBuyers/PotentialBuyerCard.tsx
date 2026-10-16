@@ -21,6 +21,7 @@ import {
   FRAMED_ACTION, GOLD_FILL, GOLD_TEXT, INK, INK_SOFT, IconChip, NAVY_BAND, PRIMARY_ACTION, RingMeter, SourceBadge,
 } from '@/components/findBuyers/brand';
 import { fitTone } from '@/findBuyers/campaignReport';
+import { sourceKindKey } from '@/findBuyers/externalResults';
 
 const LANGS = new Set(['ka', 'ru', 'en', 'ar', 'he', 'tr']);
 
@@ -232,6 +233,9 @@ export function PotentialBuyerCard({ lead, propertyId, interest = false }: { lea
             <div className="min-w-0">
               <p className="truncate text-2xs font-semibold text-[hsl(220_55%_32%)]">{t('fbx_source')}</p>
               <SourceBadge source={lead.source} className="mt-1" />
+              {sourceKindKey(best?.sourceKind) ? (
+                <p className="mt-0.5 truncate text-2xs text-[hsl(220_55%_32%)]" data-testid="fbx-card-source-kind">{t(sourceKindKey(best?.sourceKind)!)}</p>
+              ) : null}
             </div>
           </div>
         </div>

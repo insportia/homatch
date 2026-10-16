@@ -128,6 +128,7 @@ export async function actorDefinition(actorId: string): Promise<{
   title: string | null;
   pricing: { model: 'PAY_PER_RESULT' | 'PAY_PER_EVENT' | 'UNKNOWN'; pricePer1kMicros: number | null; startFeeMicros: number; raw: unknown };
   schemaProperties: string[];
+  required: string[];
 }> {
   const id = assertMemo23ActorId(actorId);
   const act = (await call('GET', `/acts/${id}`))?.data ?? {};
@@ -138,14 +139,16 @@ export async function actorDefinition(actorId: string): Promise<{
     .sort((a, b) => Date.parse(b.startedAt ?? 0) - Date.parse(a.startedAt ?? 0))[0] ?? null;
   const pricing = pricingFromInfo(current);
   let schemaProperties: string[] = [];
+  let required: string[] = [];
   const buildId = act?.taggedBuilds?.latest?.buildId;
   if (buildId) {
     const build = (await call('GET', `/actor-builds/${encodeURIComponent(buildId)}`).catch(() => null))?.data ?? null;
     let schema: any = build?.actorDefinition?.input ?? build?.inputSchema ?? null;
     if (typeof schema === 'string') { try { schema = JSON.parse(schema); } catch { schema = null; } }
     if (schema?.properties && typeof schema.properties === 'object') schemaProperties = Object.keys(schema.properties);
+    if (Array.isArray(schema?.required)) required = schema.required.filter((k: unknown) => typeof k === 'string');
   }
-  return { title: act.title ?? null, pricing: { ...pricing, raw: current }, schemaProperties };
+  return { title: act.title ?? null, pricing: { ...pricing, raw: current }, schemaProperties, required };
 }
 
 const usdToMicros = (usd: unknown) => {

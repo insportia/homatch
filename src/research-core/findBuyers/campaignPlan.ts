@@ -14,6 +14,8 @@ export interface KnownSource {
   id: string;
   platform: 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'VK' | 'TELEGRAM' | 'LINKEDIN' | 'X' | 'THREADS' | 'YOUTUBE';
   url: string;
+  /** source_registry.source_type: FACEBOOK_GROUP vs a public Page (SOCIAL_PROFILE), etc. */
+  sourceType?: string | null;
   languages: string[];
   city: string | null;
   /** qualified leads per provider dollar seen historically (null = no history). */
@@ -71,6 +73,8 @@ const MAX_KNOWN_PER_FAMILY = 6;
 export const PRIMARY_LANGUAGE: SearchLanguage = 'ka';
 const PRIMARY_KNOWN_SLOTS = 3;
 const PRIMARY_DISCOVERY_QUERIES = 2;
+/** Listing-post search: the languages Georgian listings are actually advertised in. */
+export const LISTING_SEARCH_LANGUAGES: readonly SearchLanguage[] = ['ka', 'ru', 'en'];
 
 /** Languages where a network is a realistic demand channel for Georgia. */
 export const NETWORK_LANGUAGES: Readonly<Record<string, readonly SearchLanguage[]>> = {
@@ -94,9 +98,13 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
   const base = (stage: Stage) => enabledActors[STAGE_ACTOR[stage]]?.priority ?? 50;
   const cityMatch = (s: KnownSource) => !dna.city || !s.city || s.city.toLowerCase() === dna.city.toLowerCase();
   const fresh = (s: KnownSource) => s.lastCheckedAt != null && now - Date.parse(s.lastCheckedAt) < DISCOVERY_REUSE_DAYS * DAY;
-  const known = (platform: KnownSource['platform']) => {
+  /* A Facebook GROUP and a Facebook PAGE are different sources read by different
+     Actors: a Page URL must never reach the group reader, nor a group the Page reader. */
+  const kindOk = (s: KnownSource, kind: 'GROUP' | 'PAGE' | null) =>
+    kind === null || (kind === 'PAGE' ? s.sourceType === 'SOCIAL_PROFILE' : s.sourceType !== 'SOCIAL_PROFILE');
+  const known = (platform: KnownSource['platform'], kind: 'GROUP' | 'PAGE' | null = null) => {
     const ranked = knownSources
-      .filter((s) => s.platform === platform && cityMatch(s))
+      .filter((s) => s.platform === platform && cityMatch(s) && kindOk(s, kind))
       .sort((a, b) => (b.historicalYield ?? 0) - (a.historicalYield ?? 0));
     /* Georgian groups first (up to PRIMARY_KNOWN_SLOTS), then the best of the rest. */
     const primary = ranked.filter((s) => s.languages.includes(PRIMARY_LANGUAGE)).slice(0, PRIMARY_KNOWN_SLOTS);
@@ -104,9 +112,9 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
     return [...primary, ...rest].slice(0, MAX_KNOWN_PER_FAMILY);
   };
 
-  const pushKnown = (stage: Stage, platform: KnownSource['platform'], query: string | null = null, limit = MAX_KNOWN_PER_FAMILY) => {
+  const pushKnown = (stage: Stage, platform: KnownSource['platform'], query: string | null = null, limit = MAX_KNOWN_PER_FAMILY, kind: 'GROUP' | 'PAGE' | null = null) => {
     if (!has(stage)) return;
-    for (const s of known(platform).slice(0, limit)) {
+    for (const s of known(platform, kind).slice(0, limit)) {
       jobs.push({
         stage, actorKey: STAGE_ACTOR[stage], language: (s.languages[0] as SearchLanguage) ?? 'multi', query,
         targetUrl: s.url, sourceId: s.id, size: probe(stage), arm: `${stage}:${s.id}`,
@@ -117,11 +125,11 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
 
   /* FACEBOOK: known groups first; group search only where the registry does
      not already cover the language. */
-  pushKnown('FB_GROUP_POSTS', 'FACEBOOK');
+  pushKnown('FB_GROUP_POSTS', 'FACEBOOK', null, MAX_KNOWN_PER_FAMILY, 'GROUP');
   if (has('FB_GROUP_SEARCH')) {
     for (const lang of NETWORK_LANGUAGES.FACEBOOK) {
       const primary = lang === PRIMARY_LANGUAGE;
-      const covered = known('FACEBOOK').filter((s) => s.languages.includes(lang) && fresh(s)).length >= 3;
+      const covered = known('FACEBOOK', 'GROUP').filter((s) => s.languages.includes(lang) && fresh(s)).length >= 3;
       if (covered && !primary) continue;
       for (const [i, q] of queriesFor(plan, 'community', lang).slice(0, primary ? PRIMARY_DISCOVERY_QUERIES : 1).entries()) {
         jobs.push({
@@ -132,6 +140,24 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
       }
     }
   }
+
+  /* FACEBOOK beyond groups: public listing posts by keyword (agency, developer and
+     competitor Pages, individual listings). Their comments are where buyers ask
+     about a comparable flat. Georgian first (two phrasings), then RU/EN. Pages
+     that published a comparable listing before are read again directly. */
+  if (has('FB_POST_SEARCH')) {
+    for (const lang of LISTING_SEARCH_LANGUAGES) {
+      const primary = lang === PRIMARY_LANGUAGE;
+      for (const [i, q] of queriesFor(plan, 'listing', lang).slice(0, primary ? 2 : 1).entries()) {
+        jobs.push({
+          stage: 'FB_POST_SEARCH', actorKey: STAGE_ACTOR.FB_POST_SEARCH, language: lang, query: q.query, targetUrl: null,
+          sourceId: null, size: probe('FB_POST_SEARCH'), arm: i === 0 ? `FB_POST_SEARCH:${lang}` : `FB_POST_SEARCH:${lang}:${i}`,
+          priority: armPriority(null, null, base('FB_POST_SEARCH') + (primary ? 5 : 0)), reason: 'comparable_listing_search',
+        });
+      }
+    }
+  }
+  pushKnown('FB_PAGE_POSTS', 'FACEBOOK', null, 3, 'PAGE');
 
   /* TIKTOK: search per language; hashtags where they are used. */
   if (has('TIKTOK_SEARCH')) {

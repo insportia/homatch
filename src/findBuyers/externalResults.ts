@@ -31,6 +31,13 @@ export interface EvidenceItem {
   parentFacts?: { price: number | null; currency: string | null; areaSqm: number | null; bedrooms: number | null; district: string | null } | null;
   intent?: string | null;
   signals?: string[];
+  /** Facebook: found in a GROUP, on a public PAGE, or by a keyword SEARCH of public posts. */
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
+}
+
+/** The label key for where a result was found (null: the network name is enough). */
+export function sourceKindKey(kind: EvidenceItem['sourceKind']): string | null {
+  return kind === 'GROUP' ? 'fbx_source_group' : kind === 'PAGE' ? 'fbx_source_page' : kind === 'SEARCH' ? 'fbx_source_search' : null;
 }
 
 export interface ResultLead {
@@ -115,6 +122,8 @@ export interface PostOpportunity {
   jobId: string;
   url: string;
   platform: string;
+  /** Where the post was found (GROUP / PAGE / SEARCH); null when not recorded. */
+  sourceKind: EvidenceItem['sourceKind'];
   excerpt: string | null;
   /** Total comments the platform reported for the post; null when it did not report one. */
   totalComments: number | null;
@@ -178,7 +187,7 @@ export function buildOpportunities(leads: ClassifiedLead[], owner: OwnerFacts | 
       if (!ev.parentUrl) continue;
       const key = postKey(ev.parentUrl);
       const op = byPost.get(key) ?? {
-        key, jobId: lead.matching_job_id, url: ev.parentUrl, platform: ev.source ?? lead.source, excerpt: ev.parentExcerpt ?? null,
+        key, jobId: lead.matching_job_id, url: ev.parentUrl, platform: ev.source ?? lead.source, sourceKind: ev.sourceKind ?? null, excerpt: ev.parentExcerpt ?? null,
         totalComments: null, analyzedComments: null, interestedPeople: 0, signalTotal: 0, breakdown: {},
         latestCommentAt: null, postPublishedAt: null, similarity: 0, agreed: [], facts: null, comparison: null, opportunityScore: 0, intentScore: 0, leads: [],
       };

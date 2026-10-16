@@ -18,7 +18,7 @@ import { PotentialBuyerCard } from '@/components/findBuyers/PotentialBuyerCard';
 import { PageNav } from '@/components/findBuyers/PageNav';
 import { NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
 import { useExternalResults } from '@/components/findBuyers/useExternalResults';
-import { daysAgo, freshnessOf, type ClassifiedLead, type OwnerFacts, type PostOpportunity } from '@/findBuyers/externalResults';
+import { daysAgo, freshnessOf, sourceKindKey, type ClassifiedLead, type OwnerFacts, type PostOpportunity } from '@/findBuyers/externalResults';
 import { groupLeads } from '@/findBuyers/campaignReport';
 import type { PotentialLead } from '@/services/findBuyers';
 
@@ -48,7 +48,7 @@ export function OpportunityCard({ op, propertyId }: { op: PostOpportunity; prope
       className="flex min-w-0 flex-col gap-2.5 rounded-2xl bg-white p-4 shadow-[0_10px_28px_-22px_hsl(218_60%_15%/0.5)] ring-1 ring-inset ring-[hsl(40_60%_84%)] transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)] motion-reduce:transition-none">
       <div className="flex items-center gap-2 text-2xs font-semibold text-[hsl(218_28%_38%)]">
         <span style={{ color: src.color }} aria-hidden="true"><src.Icon className="h-3.5 w-3.5" /></span>
-        <span>{src.label}</span>
+        <span data-testid="fbo-card-source" data-kind={op.sourceKind ?? ''}>{sourceKindKey(op.sourceKind) ? t(sourceKindKey(op.sourceKind)!) : src.label}</span>
         <span aria-hidden="true">·</span>
         <span>{latest == null ? t('fbo_fresh_unknown') : t('fbo_latest_days', { n: String(latest) })}</span>
         <span className="ms-auto rounded-full bg-[hsl(42_100%_94%)] px-2 py-0.5 tabular-nums text-[hsl(34_90%_30%)]">{op.opportunityScore}</span>

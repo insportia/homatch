@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { APIFY_ONLY_VIA_MEMO23, isRetiredProvider, retiredReason, RETIRED_PROVIDERS } from '../_shared/retiredProviders.ts';
 import { providerConfigured as apifyConfigured } from '../_shared/findBuyers/memo23Client.ts';
 import { drive, adminStop, adminRetry } from './driver.ts';
-import { verifyActor, requalifyCampaign } from '../_shared/findBuyers/admin.ts';
+import { auditCommentCounts, verifyActor, requalifyCampaign } from '../_shared/findBuyers/admin.ts';
 
 // DATAFORSEO AND APIFY ARE RETIRED, AND THIS WORKER CAN NO LONGER REACH THEM.
 //
@@ -94,6 +94,11 @@ Deno.serve(async (req: Request) => {
     if (mode === 'admin_requalify') {
       if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
       return json(await requalifyCampaign(db, String(body.matchingJobId || ''), body.apply === true));
+    }
+    /* Why were a campaign's comments skipped? Reads stored datasets only (no run, no charge). */
+    if (mode === 'admin_comment_audit') {
+      if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
+      return json(await auditCommentCounts(db, String(body.matchingJobId || '')));
     }
     if (mode === 'admin_actor_verify') {
       if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);

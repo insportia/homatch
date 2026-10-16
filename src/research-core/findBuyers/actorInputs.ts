@@ -10,6 +10,9 @@
 
 export type Stage =
   | 'FB_GROUP_SEARCH' | 'FB_GROUP_POSTS' | 'FB_COMMENTS'
+  /* Facebook beyond groups (2026-10-16): public posts found by keyword (Pages,
+     agencies, developers, individual listings) and the feeds of public Pages. */
+  | 'FB_POST_SEARCH' | 'FB_PAGE_POSTS'
   | 'IG_PROFILE_POSTS' | 'IG_COMMENTS'
   | 'TIKTOK_SEARCH' | 'TIKTOK_COMMENTS'
   | 'VK_WALL'
@@ -28,6 +31,8 @@ export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
   FB_GROUP_SEARCH: 'FB_GROUP_SEARCH',
   FB_GROUP_POSTS: 'FB_GROUP_POSTS',
   FB_COMMENTS: 'FB_COMMENTS',
+  FB_POST_SEARCH: 'FB_POST_SEARCH',
+  FB_PAGE_POSTS: 'FB_PAGE_POSTS',
   IG_PROFILE_POSTS: 'IG_PROFILE_POSTS',
   IG_COMMENTS: 'IG_COMMENTS',
   TIKTOK_SEARCH: 'TIKTOK',
@@ -48,6 +53,7 @@ export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
 /** What the normalizer should expect from a stage. */
 export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'COMMENTS'>> = {
   FB_GROUP_SEARCH: 'GROUP_SEARCH', FB_GROUP_POSTS: 'POSTS', FB_COMMENTS: 'COMMENTS',
+  FB_POST_SEARCH: 'POSTS', FB_PAGE_POSTS: 'POSTS',
   IG_PROFILE_POSTS: 'POSTS', IG_COMMENTS: 'COMMENTS',
   TIKTOK_SEARCH: 'POSTS', TIKTOK_COMMENTS: 'COMMENTS',
   VK_WALL: 'POSTS', TELEGRAM_CHANNEL: 'POSTS',
@@ -58,6 +64,7 @@ export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'CO
 
 export const STAGE_NETWORK: Readonly<Record<Stage, Network>> = {
   FB_GROUP_SEARCH: 'FACEBOOK', FB_GROUP_POSTS: 'FACEBOOK', FB_COMMENTS: 'FACEBOOK',
+  FB_POST_SEARCH: 'FACEBOOK', FB_PAGE_POSTS: 'FACEBOOK',
   IG_PROFILE_POSTS: 'INSTAGRAM', IG_COMMENTS: 'INSTAGRAM',
   TIKTOK_SEARCH: 'TIKTOK', TIKTOK_COMMENTS: 'TIKTOK',
   VK_WALL: 'VK', TELEGRAM_CHANNEL: 'TELEGRAM',
@@ -96,6 +103,25 @@ export function defaultInput(stage: Stage, p: StageParams): Record<string, unkno
       return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}) };
     case 'FB_COMMENTS':
       return { startUrls: urls(p.targetUrl), maxItems: p.size, commentsMode: 'NEWEST' };
+    /* memo23~facebook-search-scraper (posts by keyword, logged out: no engagement
+       counts). Its input field names are confirmed only by the schema an admin
+       verification reads from Apify; every documented spelling is offered and
+       fitToSchema keeps only the declared ones (essentialMissing refuses a run
+       in which no query field survived). */
+    case 'FB_POST_SEARCH':
+      return {
+        searchQueries: [q], queries: [q], query: q, searchTerms: [q], keywords: [q],
+        searchType: 'posts', type: 'posts', maxItems: p.size,
+        ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}),
+      };
+    /* memo23~facebook-page-posts-scraper: a public Page's feed (or one post URL);
+       includeComments attaches the visible comments (topComments) to each post,
+       so they are analysed without a second, separately charged comments run. */
+    case 'FB_PAGE_POSTS':
+      return {
+        startUrls: urls(p.targetUrl), maxPosts: p.size, maxItems: p.size, includeComments: true,
+        ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}),
+      };
     case 'IG_PROFILE_POSTS':
       return { startUrls: urls(p.targetUrl), maxItems: p.size };
     case 'IG_COMMENTS':
@@ -137,6 +163,8 @@ export function defaultInput(stage: Stage, p: StageParams): Record<string, unkno
 export interface InputContract {
   /** properties of the Actor's input schema, as fetched from Apify. */
   schemaProperties?: string[];
+  /** required properties of that schema (verification records them). */
+  required?: string[];
   defaults?: Record<string, unknown>;
   /** our key → the Actor's key */
   rename?: Record<string, string>;
@@ -159,4 +187,23 @@ export function fitToSchema(input: Record<string, unknown>, properties: string[]
   const dropped: string[] = [];
   for (const [k, v] of Object.entries(input)) (allowed.has(k) ? (out[k] = v) : dropped.push(k));
   return { input: out, dropped };
+}
+
+/** For each stage, groups of keys of which at least one must reach the Actor. */
+const ESSENTIAL: Partial<Record<Stage, string[][]>> = {
+  FB_POST_SEARCH: [['searchQueries', 'queries', 'query', 'searchTerms', 'keywords']],
+  FB_PAGE_POSTS: [['startUrls']],
+};
+
+/**
+ * Why a built input must NOT be sent (empty = it may): a key the verified
+ * schema requires is absent, or nothing that carries the stage's essential
+ * value (its query, its target) survived fitting. A run refused here is
+ * released before the provider is called, so it costs nothing.
+ */
+export function essentialMissing(stage: Stage, input: Record<string, unknown>, contract: InputContract | null | undefined): string[] {
+  const problems: string[] = [];
+  for (const k of contract?.required ?? []) if (!(k in input)) problems.push(`required:${k}`);
+  for (const group of ESSENTIAL[stage] ?? []) if (!group.some((k) => k in input)) problems.push(`essential:${group.join('|')}`);
+  return problems;
 }

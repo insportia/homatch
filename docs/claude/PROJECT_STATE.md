@@ -5,7 +5,7 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
-## Find Buyers 3.0 — intent gate, post opportunities, result pages (branch claude/nifty-hopper-snzn2d, 2026-10-15) — PR, NOT DEPLOYED
+## Find Buyers 3.0 — intent gate, post opportunities, result pages (PR #214, merged be4a0397, 2026-10-16) — DEPLOYED
 
 - **False buyers fixed at the root** (`research-core/findBuyers/demandClassifier.ts`): an advertiser
   addressing buyers ("ბინის შეძენა გსურთ? … გთავაზობთ" — prod lead be7d9baa, score 55) is SALE_OFFER;
@@ -30,9 +30,17 @@ MATTERS right now, verify against the live systems, not this file)
   Buyers / Interest / Opportunities tabs, search history, platform + freshness filters, pagination);
   `/buyers/internal` (HOMATCH members); `/buyers/opportunity/:key?job=` (detail, evidence via
   safeExternalUrl + nofollow, copyable outreach draft — HOMATCH sends nothing).
-- **Release**: REPO_FULL (routes + back navigation are app-shell). Deploy = frontend + edge
-  `discovery-queue-worker`; no migration, no Railway. Not verified against live provider data (no
-  paid run authorized): totals/analyzed/parent facts appear only on leads written after deploy.
+- **Release** (2026-10-16): merged be4a0397; deploy run 1065 FAST (PR run validated the tree).
+  Vercel `dpl_ELnMydMj8azSmQ8m8rj7ZjxnqAV2` READY on homatch.live; edge PROVEN_EXACT:
+  discovery-queue-worker v69, match-campaign v82, find-property-run v18 (only via the shared demand
+  classifier). No migration, no Railway. Opportunity page also shows a one-line real-count summary,
+  the similarity dimensions the pipeline stored (`why.agreed`), one commenter per post (profile, else
+  name; placeholder names never merge).
+- **Not verified live**: no paid run authorized (actor runs still 127, last 2026-10-13); parent
+  totals/analyzed exist only on leads written after deploy. Only FB_COMMENTS is a verified comment
+  source (IG/YouTube comments never ran; VK FAILED). Last live campaign: 150 posts reported 0 comments
+  → SKIP_NO_COMMENTS, 1 comment fetch — the similar-post audience yield is unproven until a run.
+  Logged-in E2E on homatch.live not done from the agent: no test account, host blocked by its proxy.
 
 ## Publish to Portals — standalone workspace /publishing (branch claude/homatch-property-publishing-g50stw, 2026-10-15)
 

@@ -67,6 +67,8 @@ const property = {
 };
 const ago = (d) => new Date(Date.now() - d * 86_400_000).toISOString();
 const agoSec = (s) => new Date(Date.now() - s * 1000).toISOString();
+/** Two marks from ONE clock reading: their difference is exact (separate agoSec calls drift by the ms between them). */
+const atSec = (base, s) => new Date(base - s * 1000).toISOString();
 
 const POST = 'https://www.facebook.com/groups/tbilisiapartments/posts/9911/';
 const lead = (id, over = {}) => ({
@@ -231,7 +233,8 @@ test('elapsed time: from server timestamps, survives a reload, frozen while paus
   await page.waitForSelector('[data-testid="fbl-elapsed-value"]', { timeout: 30000 });
   const reloaded = secs(await page.innerText('[data-testid="fbl-elapsed-value"]'));
   assert.ok(reloaded >= later, `a reload does not restart the clock (${reloaded} ≥ ${later})`);
-  setStatus({ readiness: READY, campaign: campaign('PAUSED', { pausedAt: agoSec(300), runs: { inFlight: 0, succeeded: 3, failed: 0 } }) });
+  const pausedBase = Date.now();
+  setStatus({ readiness: READY, campaign: campaign('PAUSED', { startedAt: atSec(pausedBase, 605), pausedAt: atSec(pausedBase, 300), runs: { inFlight: 0, succeeded: 3, failed: 0 } }) });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbl-elapsed-value"]', { timeout: 30000 });
   const paused = await page.innerText('[data-testid="fbl-elapsed-value"]');
@@ -239,7 +242,8 @@ test('elapsed time: from server timestamps, survives a reload, frozen while paus
   await page.waitForTimeout(1500);
   assert.equal(await page.innerText('[data-testid="fbl-elapsed-value"]'), paused, 'no tick while paused');
   assert.equal(await page.getAttribute('[data-testid="fbl-field"]', 'data-mode'), 'paused');
-  setStatus({ readiness: READY, campaign: campaign('COMPLETED_WITH_RESULTS', { completedAt: agoSec(5), active: false }) });
+  const doneBase = Date.now();
+  setStatus({ readiness: READY, campaign: campaign('COMPLETED_WITH_RESULTS', { startedAt: atSec(doneBase, 605), completedAt: atSec(doneBase, 5), active: false }) });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbl-elapsed-value"]', { timeout: 30000 });
   assert.equal(secs(await page.innerText('[data-testid="fbl-elapsed-value"]')), 600);

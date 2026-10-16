@@ -29,7 +29,7 @@ const typeKey = (t) => (t === 'VILLA' ? 'HOUSE' : t === 'OFFICE' ? 'COMMERCIAL' 
 
 export const homege = {
   workerId: 'homege-agent', sourceId: 'home-ge', sourceName: 'Home.ge', envPrefix: 'HOMEGE', origin: 'https://www.home.ge',
-  maxPages: SITEMAPS.length, pagesIndependent: true, listCacheMs: 6 * 60 * 60 * 1000,
+  deepMaxPages: 6, filtersAfterRead: true, serverDistricts: true, maxPages: SITEMAPS.length, pagesIndependent: true, listCacheMs: 6 * 60 * 60 * 1000,
   detailLimit: 24, detailIntervalMs: 900, pageIntervalMs: 1000,
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];
@@ -42,7 +42,8 @@ export const homege = {
       districts: city === 'tbilisi' ? requestedDistrictKeys(request)?.map((k) => k.replace(/ /g, '-')) ?? null : null,
     };
   },
-  searchUrl(_criteria, page) { return SITEMAPS[page - 1]; },
+  /* Past the last sitemap, the indexes are read again: each re-read yields its next unread window. */
+  searchUrl(_criteria, page) { return SITEMAPS[(page - 1) % SITEMAPS.length]; },
   parseList(xml, _url, criteria) {
     const out = [];
     for (const block of String(xml).split('<url>').slice(1)) {

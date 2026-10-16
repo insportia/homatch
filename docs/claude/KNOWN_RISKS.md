@@ -131,17 +131,25 @@ with per-language loading named as the follow-up. That follow-up is done:
   worker (`portals/places.mjs`) — a listing naming any place other than a requested,
   known district is dropped; one naming none is kept. Home.ge narrows by sitemap
   slug; Place.ge's server ignores every district parameter (live probe 2026-10-16),
-  so it, Allhome and Brokeri check districts only after reading — with a 2-page / 24-listing read a
-  district search on them often returns nothing (honest empty, not an error). A
-  district outside `normalize/place.ts` disables the narrowing (city read).
+  so it, Allhome and Brokeri check districts only after reading. Adaptive depth
+  (2026-10-16, `acquire.mjs`): when a request can only be checked after reading,
+  a source keeps reading (Place.ge to 8 pages, Brokeri/Allhome/Home.ge to 6
+  windows; a re-read sitemap yields its next unread window) until 24 listings fit,
+  the source runs out, or the job's time budget (60 s reserve) — the report's
+  `queryApplied.adaptiveDepth` says which. An honest empty result is still possible
+  for a small district. A district outside `normalize/place.ts` disables the
+  narrowing (city read).
 - Requested districts are compared under every spelling in `normalize/place.ts`
   (`districtFit`), so a Latin request ("Krtsanisi") excludes a listing that names a
   different Georgian neighbourhood instead of keeping it as "district unverified"
   (found in a live production search, 2026-10-16). A neighbourhood inside a district
   (Ortachala for a Krtsanisi request) is still a different place; ask for both.
-- SS.ge failed instantly (0 pages) on a production Krtsanisi + Ortachala search
-  (2026-10-16, search 645ba0d0); its own mapping throws on an unknown or ambiguous
-  district. Unproven which; SS.ge adapter left unchanged. Other sources still delivered.
+- SS.ge (2026-10-16): a district SS.ge's own location list cannot resolve used to
+  fail the whole source with 0 pages (production search 645ba0d0, Krtsanisi +
+  Ortachala). It now reads the city instead (never a partial district set) and
+  reports `queryApplied.districtFallback`; the results pipeline checks districts per
+  listing. Which of the two names SS.ge misses is still unproven offline (its
+  location list is fetched live).
 - Search results reuse recent observations from earlier searches (cache); those are
   not live results for the new search and must not be counted as such in tests.
 - Prices below 10 (Home.ge's "1 ₾" placeholder) are dropped as no price
@@ -150,20 +158,17 @@ with per-language loading named as the follow-up. That follow-up is done:
   technology on the Site") and Binebi.ge answers every public page with a
   Cloudflare challenge. Neither is registered; a test pins that.
 
-## Find Property → HOMATCH network: native candidate cap (2026-10-15, PR #210)
+## Find Property → HOMATCH network: native matching scale (2026-10-16)
 
-- A demand-triggered native pass (`supply-matching`, `nativeOnly`) reads at most
-  `MAX_CANDIDATES = 500` ACTIVE properties with no city filter and no ordering
-  (`supply-matching/index.ts` native query). Above 500 ACTIVE properties a new
-  search sees an arbitrary subset. Production had 1 ACTIVE property on
-  2026-10-15, so nothing is missed today. Fix before the inventory nears 500:
-  pre-filter by the demand's city/transaction (scoring unchanged) or page.
-  Proposed safe path (not in PR #210): an index on `property_facts (lower(city))`
-  plus `properties (matching_status, transaction_type) where is_deleted = false
-  and archived_at is null`; the native query filters city and transaction before
-  the limit and orders by `updated_at desc`, then keyset-pages in batches of
-  500 until exhausted. `assessMatch` and its scores stay as they are; only the
-  candidate read changes, and a city-name normalization check (თბილისი /
-  Tbilisi) must pass first so the pre-filter never drops a compatible match.
-- Property-mode re-evaluation (a listing created or changed) evaluates up to
-  `PROPERTY_MODE_MAX_DEMAND = 600` active native searches per listing.
+- The 500-property / 600-search windows are gone: `supply-matching` and
+  `run-matching-v2` read every candidate in keyset pages and resume from
+  `match_scan_checkpoints` / the leased `native_match_property_queue` when an
+  invocation runs out of time; matches are retired only after a complete pass.
+- Throughput: scoring is ~6 µs per pair (`scripts/bench/nativeMatching.mjs`,
+  100k properties ≈ 0.6 s CPU per demand); at scale the cost is database I/O and
+  one `upsert_native_match` RPC per compatible pair, so a very large pass spans
+  several 15-minute sweeps — the response's `coverage` says how far it got.
+- The global memo23 lane counts Find Property runs and Find Buyers runs from the
+  Find Property side only; `find_buyers_reserve_actor_run` (Find Buyers' workstream)
+  still counts only its own table, so the combined in-flight total can exceed
+  `discovery_provider_concurrency.APIFY_MEMO23` by Find Property's share.

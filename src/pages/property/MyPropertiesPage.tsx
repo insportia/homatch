@@ -53,6 +53,7 @@ import {CustomerSurface, EmptyState, FilterRail,
   OWNER_SURFACE, PageHero, QuietAction,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import {
   FactLine, IntelLine, MediaWell, Money, OWNER_ICON, OWNER_PRIMARY, SourceMark, StatusMark,
 } from '@/components/owner/portfolio';
@@ -354,6 +355,14 @@ function PropertyRow({
         <Link to={`/property/${id}/edit#photos`} className="gap-2">
           <Camera className="h-4 w-4 shrink-0" />
           <span className="break-words">{t('prop_action_photos')}</span>
+        </Link>
+      </DropdownMenuItem>
+      {/* Publishing a property is a different product area (/publishing); this only
+          opens it with this property chosen. */}
+      <DropdownMenuItem asChild>
+        <Link to={`/publishing/${id}`} className="gap-2">
+          <NavGlyphIcon name="publishing" className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('pubw_publish_this_property')}</span>
         </Link>
       </DropdownMenuItem>
       <DropdownMenuSeparator />
@@ -704,15 +713,6 @@ export default function MyPropertiesPage() {
                 >
                   <Upload className="h-3.5 w-3.5 shrink-0" />
                   <span className="break-words text-start">{t('prop_import_cta')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/property/publish')}
-                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-white/40 bg-white/10 px-3.5 py-1.5 text-2xs font-semibold text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                  aria-label={t('publishing_portals_title')}
-                >
-                  <span aria-hidden="true">↗</span>
-                  <span className="break-words text-start">{t('publishing_portals_title')}</span>
                 </button>
                 <button
                   type="button"

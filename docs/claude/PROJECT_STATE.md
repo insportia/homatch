@@ -5,6 +5,27 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Publish to Portals — standalone workspace /publishing (branch claude/homatch-property-publishing-g50stw, 2026-10-15)
+
+- **Why owners kept seeing the old UI**: Codex's PRs #205–#207 WERE merged and deployed
+  (prod frontend = main). They never added a sidebar item: publishing was a TOP-BAR button and a
+  My Properties header button to `/property/publish`, an `<iframe>` of static `public/publishing-engine/`.
+  Nothing was lost in deployment; the design itself put it in the wrong places.
+- **Now**: sidebar `nav_publishing` between Broker and Find Property (HomatchShell NAV — the one rail,
+  desktop + mobile drawer); top-bar and My Properties buttons removed; `/property/publish` redirects.
+  Routes `/publishing`, `/publishing/new`, `/publishing/:propertyId` (`src/pages/publishing/`).
+  Property Detail + My Properties row menu link to `/publishing/<id>`.
+- **Portal reality**: MyHome.ge / SS.ge have no authorized submission API; creation needs the owner's
+  own login + SMS. Supported flow = MANUAL HANDOFF + server-side public-page check
+  (`supabase/functions/publishing-engine/domain.ts`). PUBLISHED only after a 200 page that contains
+  the listing id; 404/410 = removed; 403/429/5xx/timeouts = inconclusive (stays pending, backoff,
+  fails after 5). Owner-attested removal is labelled as such. Browser extension + iframe retired.
+- **Schema**: `20261103090000_publishing_workspace.sql` — listing status/archive, publication columns,
+  `publishing_engine_events`, RPCs `publishing_listing_save` / `publishing_publication_write` /
+  `publishing_listing_lifecycle`; drops Codex's `publishing_engine_save` (it inserted a NEW
+  properties row per listing). Listing id = property id (one listing per property).
+- Not live-tested against a real portal account: no real listing was published (needs the owner's
+  portal account; would create a public listing).
 ## Storage retention + cleanup engine + compact market knowledge (branch `ccr-76ef455d-storage-retention`, 2026-10-15) — PR OPEN, NOT APPLIED, NOT ACTIVE
 
 - Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.

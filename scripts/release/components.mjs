@@ -29,7 +29,7 @@
 export const SUITE_CATALOGUE = {
   static: { title: 'Static checks', always: true },
   unit: { title: 'Unit and matrix tests', always: true },
-  'mobile:routes': { title: 'Mobile — every customer route', files: ['tests/mobile/routeOverflow.test.mjs', 'tests/mobile/routeHealth.test.mjs', 'tests/mobile/textContrast.test.mjs', 'tests/mobile/formControls.test.mjs', 'tests/mobile/propertyOwnerWorkspace.test.mjs'] },
+  'mobile:routes': { title: 'Mobile — every customer route', files: ['tests/mobile/routeOverflow.test.mjs', 'tests/mobile/routeHealth.test.mjs', 'tests/mobile/textContrast.test.mjs', 'tests/mobile/formControls.test.mjs', 'tests/mobile/propertyOwnerWorkspace.test.mjs', 'tests/mobile/publishingWorkspace.test.mjs'] },
   'mobile:shell': { title: 'Mobile — shell, motion, composer', files: ['tests/mobile/shellAndMotion.test.mjs', 'tests/mobile/appShell.test.mjs', 'tests/mobile/chatComposer.test.mjs'] },
   'mobile:auth': { title: 'Mobile — auth screens', files: ['tests/mobile/authScreens.test.mjs'] },
   'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs', 'tests/mobile/verifyReportPremium.test.mjs', 'tests/mobile/verifyReportTranslation.test.mjs'] },
@@ -160,6 +160,13 @@ export const COMPONENTS = {
   },
   MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes'] },
   EXPATS: { paths: [/^src\/(pages\/(ForExpatsPage|Expat)|components\/expats|expats)/, /^scripts\/expat-content\//], suites: ['mobile:expats'] },
+  // PUBLISH TO PORTALS: the standalone listing-publishing workspace (/publishing),
+  // its edge function and its publishing_* / publishing_engine_* objects.
+  PUBLISHING: {
+    paths: [/^src\/(pages|components)\/publishing\//, /^src\/publishing\//, /^src\/services\/publishing\.ts$/, fn('publishing-engine'), /^scripts\/publishing\//],
+    suites: ['mobile:routes'],
+    proofs: ['publishing: publishing-engine PROVEN_EXACT; migration 20261103090000 in the ledger; RLS select-own on publishing_engine_* verified'],
+  },
   BROKER: { paths: [/^src\/(pages\/(Broker|admin\/AdminBrokersPage)|components\/broker)/, fn('[a-z-]*broker[a-z-]*')], suites: ['mobile:broker', 'mobile:routes'] },
   PUBLIC_HOMEPAGE: {
     paths: [/^src\/pages\/(HomePage|AboutPage|PricingPage|PartnersPage|PrivacyPage|TermsPage|ProductEntryPage|ContactPage)/, /^src\/components\/home\//, /^public\//, /^scripts\/build-sitemap/],
@@ -231,6 +238,7 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(site_|app_content|studio_)/, 'SITE_STUDIO'],
   [/^public\.(dt_|developer_|dev_)/, 'DEVELOPER'],
   [/^public\.(push_|notification)/, 'PWA_PUSH'],
+  [/^public\.(publishing_)/, 'PUBLISHING'],
   [/^public\.(broker)/, 'BROKER'],
   [/^public\.(mortgage)/, 'MORTGAGE'],
   [/^public\.(expat)/, 'EXPATS'],
@@ -264,6 +272,7 @@ export const I18N_KEY_OWNERS = [
   [/^(dev|co)_/, 'DEVELOPER'],
   [/^mortgage_/, 'MORTGAGE'],
   [/^expat_/, 'EXPATS'],
+  [/^(pubw|publishing)_/, 'PUBLISHING'],
   [/^broker_/, 'BROKER'],
   [/^(verify|dr)_/, 'VERIFY'],
   [/^(pwa|notif)_/, 'PWA_PUSH'],

@@ -1,131 +1,254 @@
+// PUBLISHING-ENGINE — the backend of the standalone Publishing workspace (/publishing).
+//
+// One POST endpoint, `{ action, ...params }`. Every request is authenticated, every
+// row is owner-scoped, every write refuses an impersonation session, and every
+// publication change goes through domain.ts's state machine and one transactional
+// RPC (publishing_publication_write) with a revision compare-and-set.
+//
+// WHAT THIS FUNCTION NEVER DOES: submit a listing to a portal, hold a portal
+// password / cookie / OTP, or mark anything PUBLISHED without its own check of the
+// public listing page (see domain.ts for why portal publishing is a manual handoff).
+// The only outbound request is a GET of a listing URL on the portal's own domain.
+
 import { createClient } from '@supabase/supabase-js';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
-import { normalizeListing, validateListing } from './listing-schema.runtime.ts';
-import { advance } from './engine.runtime.ts';
-import registry from './registry.runtime.ts';
+import { refuseIfImpersonating } from '../_shared/impersonation.ts';
+import {
+  classifyCheck, hostAllowed, isLive, normalizeListing, parseExternalUrl, portalById, publicRegistry,
+  transition, validateListing, type Command, type Publication, type PortalId,
+} from './domain.ts';
 
-const origins = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
-const actions = new Set(['checkAuthentication', 'inspect', 'fillListing', 'uploadPhotos', 'verifyForm', 'preparePublish', 'publishAfterConfirmation', 'extractPublishedListing', 'checkStatus']);
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const bucket = 'publishing-engine-photos';
-const fail = (code: string): never => { throw Error(code); };
+const ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const READS = new Set(['workspace', 'listing.get']);
+const fail = (code: string): never => { throw new Error(code); };
+const PUBLICATION_COLUMNS = 'id,listing_id,portal_id,status,revision,external_id,external_url,listing_version,check_attempts,last_checked_at,next_check_at,published_at,last_error,created_at,updated_at';
 
-export async function handler(req: Request) {
+/** GET the public listing page: portal domains only, at most 3 same-portal redirects, 10 s, 2 MB. */
+async function fetchListingPage(url: string, portalId: PortalId) {
+  const portal = portalById(portalId)!;
+  let current = url;
+  for (let hop = 0; hop < 4; hop++) {
+    let response: Response;
+    try {
+      response = await fetch(current, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(10_000),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HOMATCH-ListingCheck/1.0; +https://homatch.live)', Accept: 'text/html' },
+      });
+    } catch (e) {
+      return { status: (e instanceof DOMException && e.name === 'TimeoutError') ? 'TIMEOUT' as const : 'NETWORK' as const };
+    }
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      const next = response.headers.get('location');
+      if (!next) return { status: response.status };
+      const target = new URL(next, current);
+      if (target.protocol !== 'https:' || !hostAllowed(portal, target.hostname)) return { status: 'REDIRECT_OFF_PORTAL' as const };
+      current = target.toString();
+      continue;
+    }
+    if (response.status !== 200) { await response.body?.cancel(); return { status: response.status }; }
+    const reader = response.body?.getReader();
+    let body = '', size = 0;
+    const decoder = new TextDecoder();
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      body += decoder.decode(value, { stream: true });
+      if (size > 2_000_000) { await reader.cancel(); break; }
+    }
+    return { status: 200, body };
+  }
+  return { status: 'REDIRECT_OFF_PORTAL' as const };
+}
+
+export async function handler(req: Request, deps = { fetchPage: fetchListingPage, now: () => new Date() }) {
   const origin = req.headers.get('origin') || '';
-  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Vary': 'Origin', ...(origins.has(origin) ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' } : {}) };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin',
+    ...(ORIGINS.has(origin) ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' } : {}),
+  };
   const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers });
-  if (!origins.has(origin)) return reply({ code: 'ORIGIN_DENIED' }, 403);
+  if (!ORIGINS.has(origin)) return reply({ code: 'ORIGIN_DENIED' }, 403);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (req.method !== 'POST') return reply({ code: 'METHOD_DENIED' }, 405);
   const auth = req.headers.get('authorization') || '';
   if (!auth.startsWith('Bearer ')) return reply({ code: 'AUTH_REQUIRED' }, 401);
-  const client = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: user, error: authError } = await client.auth.getUser();
-  if (authError || !user.user) return reply({ code: 'AUTH_REQUIRED' }, 401);
-  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: owner } = await admin.from('users').select('id').eq('auth_id', user.user.id).maybeSingle();
+
+  const url = Deno.env.get('SUPABASE_URL')!;
+  const caller = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: who, error: authError } = await caller.auth.getUser();
+  if (authError || !who?.user) return reply({ code: 'AUTH_REQUIRED' }, 401);
+  const db = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: owner } = await db.from('users').select('id').eq('auth_id', who.user.id).maybeSingle();
   if (!owner) return reply({ code: 'OWNER_REQUIRED' }, 403);
-  const owned = async (table: string, id: string) => {
-    if (!uuid.test(id || '')) fail('INVALID_ID');
-    const { data, error } = await admin.from(table).select('*').eq('id', id).eq('user_id', owner.id).maybeSingle();
-    if (error || !data) fail('OWNED_RECORD_REQUIRED');
+
+  let input: Record<string, any>;
+  try {
+    const raw = await req.text();
+    if (raw.length > 200_000) return reply({ code: 'PAYLOAD_TOO_LARGE' }, 413);
+    input = JSON.parse(raw || '{}');
+  } catch { return reply({ code: 'INVALID_JSON' }, 400); }
+  const action = String(input?.action || '');
+  if (!READS.has(action)) {
+    const refused = await refuseIfImpersonating(db, auth, headers);
+    if (refused) return refused;
+  }
+
+  const ownedProperty = async (id: unknown) => {
+    if (!UUID.test(String(id || ''))) fail('INVALID_ID');
+    const { data } = await db.from('properties').select('id,contact_phone_e164').eq('id', id).eq('user_id', owner.id).eq('is_deleted', false).maybeSingle();
+    return data ?? fail('OWNED_PROPERTY_REQUIRED');
+  };
+  const ownedListing = async (id: unknown) => {
+    if (!UUID.test(String(id || ''))) fail('INVALID_ID');
+    const { data } = await db.from('publishing_engine_listings').select('id,version,status,payload,archived_at,created_at,updated_at').eq('id', id).eq('user_id', owner.id).maybeSingle();
+    return data ?? fail('LISTING_NOT_FOUND');
+  };
+  const publicationFor = async (listingId: string, portalId: string) => {
+    const { data } = await db.from('publishing_engine_jobs').select(PUBLICATION_COLUMNS).eq('listing_id', listingId).eq('portal_id', portalId).eq('user_id', owner.id).maybeSingle();
+    return data as (Publication & { id: string; portal_id: PortalId }) | null;
+  };
+  const write = async (listingId: string, portalId: PortalId, current: Publication | null, cmd: Command) => {
+    const next = transition(current, cmd, deps.now());
+    if ('error' in next) fail(next.error);
+    const { data, error } = await db.rpc('publishing_publication_write', {
+      p_owner: owner.id, p_listing: listingId, p_portal: portalId, p_revision: current ? current.revision : -1,
+      p_set: next.set, p_event: { kind: next.kind, detail: next.detail ?? {} },
+    });
+    if (error) fail(/^[A-Z_]+$/.test(error.message) ? error.message : 'PUBLICATION_WRITE_FAILED');
     return data;
   };
+  const check = async (listingId: string, pub: Publication & { portal_id: PortalId }) => {
+    const page = await deps.fetchPage(pub.external_url!, pub.portal_id);
+    const outcome = classifyCheck({ status: page.status as any, body: (page as any).body, externalId: pub.external_id! });
+    return await write(listingId, pub.portal_id, pub, { type: 'CHECK', outcome });
+  };
+  const detail = async (listingId: string) => {
+    const listing = await ownedListing(listingId);
+    const [{ data: publications }, { data: events }] = await Promise.all([
+      db.from('publishing_engine_jobs').select(PUBLICATION_COLUMNS).eq('listing_id', listingId).eq('user_id', owner.id),
+      db.from('publishing_engine_events').select('id,kind,portal_id,from_status,to_status,detail,created_at').eq('listing_id', listingId).eq('user_id', owner.id).order('created_at', { ascending: false }).limit(100),
+    ]);
+    return { listing: { ...listing, validation: validateListing(normalizeListing(listing.payload)) }, publications: publications ?? [], events: events ?? [] };
+  };
+
   try {
-    if (Number(req.headers.get('content-length')) > 12000000) return reply({ code: 'PAYLOAD_TOO_LARGE' }, 413);
-    const text = await req.text();
-    if (text.length > 12000000) return reply({ code: 'PAYLOAD_TOO_LARGE' }, 413);
-    const { url, body: raw } = JSON.parse(text);
-    if (url === '/portals') return reply(registry);
-    if (url === '/listings' && !raw) {
-      const { data, error } = await admin.from('publishing_engine_listings').select('payload').eq('user_id', owner.id).order('created_at', { ascending: false }).limit(100);
-      if (error) fail('LISTINGS_READ_FAILED');
-      return reply({ listings: data.map(x => x.payload) });
-    }
-    if (url === '/jobs' && !raw) {
-      const { data, error } = await admin.from('publishing_engine_jobs').select('payload').eq('user_id', owner.id).order('created_at', { ascending: false }).limit(100);
-      if (error) fail('JOBS_READ_FAILED');
-      return reply({ jobs: data.map(x => x.payload), publications: data.filter(x => x.payload.state === 'PUBLISHED').map(x => x.payload) });
-    }
-    if (url === '/assets') {
-      if (typeof raw.base64 !== 'string' || raw.base64.length > 11000000) fail('INVALID_PHOTO');
-      const bytes = Uint8Array.from(atob(raw.base64), c => c.charCodeAt(0));
-      if (bytes.length < 12 || bytes.length > 8000000) fail('INVALID_PHOTO');
-      const mime = bytes[0] === 255 && bytes[1] === 216 ? 'image/jpeg' : [137,80,78,71,13,10,26,10].every((v,i)=>bytes[i]===v) ? 'image/png' : String.fromCharCode(...bytes.slice(0,4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8,12)) === 'WEBP' ? 'image/webp' : null;
-      if (!mime) fail('INVALID_IMAGE_FORMAT');
-      const assetId = crypto.randomUUID(), name = String(raw.name || 'photo').replace(/[^\p{L}\p{N}._-]/gu, '').slice(0, 100);
-      const { error } = await admin.storage.from(bucket).upload(`${owner.id}/${assetId}`, bytes, { contentType: mime, upsert: false });
-      if (error) fail('PHOTO_UPLOAD_FAILED');
-      return reply({ assetId, mime, bytes: bytes.length, name });
-    }
-    const photos = async (items: unknown[]) => {
-      if (!Array.isArray(items) || items.length > 16) fail('INVALID_PHOTOS');
-      return await Promise.all(items.map(async (p: any) => {
-        if (!uuid.test(p.assetId || '')) fail('INVALID_ASSET');
-        const { data, error } = await admin.storage.from(bucket).download(`${owner.id}/${p.assetId}`);
-        if (error || !data) fail('OWNED_PHOTO_REQUIRED');
-        const bytes = new Uint8Array(await data.arrayBuffer());
-        let binary = ''; for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-        return { assetId: p.assetId, name: String(p.name).slice(0, 100), mime: data.type, bytes: bytes.length, base64: btoa(binary) };
-      }));
-    };
-    if (url === '/photos') return reply({ photos: await photos(raw.photos) });
-    if (url === '/listings') {
-      const listing = normalizeListing(raw);
-      if (listing.portalTargets.some(id => !registry.portals.find(p => p.id === id)?.capabilities.fill)) fail('PORTAL_NOT_IMPLEMENTED');
-      const validation = validateListing(listing);
-      if (!validation.valid) return reply({ code: 'LISTING_INVALID', errors: validation.errors }, 422);
-      if (listing.photos.reduce((n,p) => n + (p.bytes || 0), 0) > 24000000) fail('TOTAL_PHOTOS_MAX_24MB');
-      const phone = parsePhoneNumberFromString(listing.contactPhone, 'GE');
-      if (!phone?.isValid()) fail('VALID_CONTACT_PHONE_REQUIRED');
-      listing.contactPhone = phone.number;
-      listing.contactPhoneCountry = phone.country || null;
-      const ownedPhotos = await photos(listing.photos); // Ownership and image existence, never a supplied URL.
-      if (ownedPhotos.reduce((n,p) => n + p.bytes, 0) > 24000000) fail('TOTAL_PHOTOS_MAX_24MB');
-      const { data, error } = await admin.rpc('publishing_engine_save', { p_owner: owner.id, p_id: raw.id || null, p_version: raw.version || 0, p_listing: listing });
-      if (error) fail(/^[A-Z_]+$/.test(error.message) ? error.message : 'PROPERTY_SAVE_FAILED');
-      return reply({ listing: data, validation });
-    }
-    if (url === '/jobs') {
-      const record = await owned('publishing_engine_listings', raw.listingId), listing = record.payload;
-      if (!registry.portals.find(p => p.id === raw.portalId)?.capabilities.fill || !listing.portalTargets.includes(raw.portalId)) fail('PORTAL_NOT_SELECTED');
-      const { data, error } = await admin.rpc('publishing_engine_start_portal_job', { p_owner: owner.id, p_listing: listing.id, p_version: listing.version, p_portal: raw.portalId });
-      if (error) fail(/^[A-Z_]+$/.test(error.message) ? error.message : 'JOB_CREATE_FAILED');
-      return reply({ job: data });
-    }
-    if (url === '/jobs/transition') {
-      const record = await owned('publishing_engine_jobs', raw.jobId);
-      if (record.revision !== raw.revision) fail('JOB_REVISION_CONFLICT');
-      const portal = registry.portals.find(p => p.id === record.payload.portalId);
-      if (portal?.execution?.publicationBlocked !== false && ['READY_FOR_REVIEW','SUBMITTING','PUBLISHED'].includes(raw.state)) fail('LIVE_BROWSER_VERIFICATION_REQUIRED');
-      const next = advance(record.payload, raw.state, { confirmed: raw.confirmed === true, externalId: raw.externalId, externalUrl: raw.externalUrl, code: raw.code, allowedDomains: portal?.domains || [] });
-      const { data, error } = await admin.from('publishing_engine_jobs').update({ payload: next, revision: next.revision }).eq('id', record.id).eq('user_id', owner.id).eq('revision', record.revision).select('id').maybeSingle();
-      if (error || !data) fail('JOB_REVISION_CONFLICT');
-      return reply({ job: next });
-    }
-    if (url === '/browser') {
-      if (raw.type === 'CONNECT') return reply({ command: { type: 'CONNECT' } });
-      const portal = registry.portals.find(p => p.id === raw.portalId);
-      if (raw.type !== 'EXECUTE' || !portal?.browser || !Number.isInteger(raw.tabId) || !actions.has(raw.action)) fail('COMMAND_NOT_ALLOWED');
-      if (portal.execution?.publicationBlocked !== false && raw.action === 'publishAfterConfirmation') fail('LIVE_BROWSER_VERIFICATION_REQUIRED');
-      const command: any = { type: 'EXECUTE', portalId: raw.portalId, tabId: raw.tabId, action: raw.action };
-      if (['checkAuthentication', 'inspect', 'extractPublishedListing', 'checkStatus'].includes(raw.action)) return reply({ command });
-      const record = await owned('publishing_engine_listings', raw.listingId);
-      const job = await owned('publishing_engine_jobs', raw.jobId);
-      if (job.payload.listingId !== record.id || job.payload.version !== record.payload.version || job.payload.portalId !== raw.portalId || !record.payload.portalTargets.includes(raw.portalId)) fail('JOB_LISTING_MISMATCH');
-      const allowed = { fillListing: ['FILL_FORM'], uploadPhotos: ['UPLOAD_PHOTOS'], verifyForm: ['VERIFY_FORM'], preparePublish: ['VERIFY_FORM', 'READY_FOR_REVIEW', 'WAITING_FOR_USER_OTP'], publishAfterConfirmation: ['SUBMITTING'] };
-      if (!allowed[raw.action]?.includes(job.payload.state)) fail('JOB_STATE_MISMATCH');
-      command.payload = raw.action === 'uploadPhotos' ? await photos(record.payload.photos) : record.payload;
-      if (raw.action === 'publishAfterConfirmation') {
-        if (raw.payload?.confirmed !== true || typeof raw.payload.reviewToken !== 'string' || raw.payload.reviewToken.length > 100) fail('PUBLICATION_CONFIRMATION_REQUIRED');
-        command.payload = { listing: record.payload, confirmed: true, reviewToken: raw.payload.reviewToken };
+    switch (action) {
+      case 'workspace': {
+        const [{ data: listings, error: le }, { data: publications, error: pe }] = await Promise.all([
+          db.from('publishing_engine_listings').select('id,version,status,payload,archived_at,created_at,updated_at').eq('user_id', owner.id).order('updated_at', { ascending: false }).limit(500),
+          db.from('publishing_engine_jobs').select(PUBLICATION_COLUMNS).eq('user_id', owner.id).limit(2000),
+        ]);
+        if (le || pe) fail('WORKSPACE_READ_FAILED');
+        return reply({
+          portals: publicRegistry(),
+          listings: (listings ?? []).map((l) => ({ ...l, validation: validateListing(normalizeListing(l.payload)) })),
+          publications: publications ?? [],
+        });
       }
-      return reply({ command });
+      case 'listing.get':
+        return reply(await detail(String(input.propertyId)));
+
+      case 'listing.save': {
+        const property = await ownedProperty(input.propertyId);
+        const listing = normalizeListing(input.listing);
+        if (listing.contactPhone) {
+          const phone = parsePhoneNumberFromString(listing.contactPhone, 'GE');
+          listing.contactPhone = phone?.isValid() ? phone.number : listing.contactPhone;
+        } else if (property.contact_phone_e164) {
+          listing.contactPhone = property.contact_phone_e164;
+        }
+        if (listing.photos.length) {
+          const { data: photos } = await db.from('property_photos').select('id').eq('property_id', property.id).in('id', listing.photos);
+          const mine = new Set((photos ?? []).map((p) => p.id));
+          listing.photos = listing.photos.filter((id) => mine.has(id));
+        }
+        const validation = validateListing(listing);
+        const version = Number.isInteger(input.version) ? input.version : 0;
+        const { error } = await db.rpc('publishing_listing_save', { p_owner: owner.id, p_property: property.id, p_version: version, p_payload: listing, p_status: validation.ready ? 'READY' : 'DRAFT' });
+        if (error) fail(/^[A-Z_]+$/.test(error.message) ? error.message : 'LISTING_SAVE_FAILED');
+        return reply(await detail(property.id));
+      }
+
+      case 'listing.archive':
+      case 'listing.restore':
+      case 'listing.delete': {
+        const listing = await ownedListing(input.propertyId);
+        const op = action.split('.')[1].toUpperCase();
+        const { error } = await db.rpc('publishing_listing_lifecycle', { p_owner: owner.id, p_listing: listing.id, p_action: op });
+        if (error) fail(/^[A-Z_]+$/.test(error.message) ? error.message : 'LISTING_UPDATE_FAILED');
+        return reply(op === 'DELETE' ? { deleted: true, id: listing.id } : await detail(listing.id));
+      }
+
+      case 'publication.prepare': {
+        const listing = await ownedListing(input.propertyId);
+        const portal = portalById(input.portalId) ?? fail('PORTAL_UNKNOWN');
+        if (listing.archived_at) fail('LISTING_ARCHIVED');
+        const validation = validateListing(normalizeListing(listing.payload));
+        if (!validation.ready || validation.portals[portal.id].length) return reply({ code: 'LISTING_NOT_READY', validation }, 422);
+        const current = await publicationFor(listing.id, portal.id);
+        try {
+          await write(listing.id, portal.id, current, { type: 'PREPARE', listingVersion: listing.version });
+        } catch (e) {
+          // A repeated click on an already-prepared handoff is a no-op, not an error.
+          if (!(e instanceof Error && e.message === 'NO_CHANGE')) throw e;
+        }
+        return reply(await detail(listing.id));
+      }
+
+      case 'publication.link': {
+        const listing = await ownedListing(input.propertyId);
+        const portal = portalById(input.portalId) ?? fail('PORTAL_UNKNOWN');
+        const parsed = parseExternalUrl(portal.id, input.externalUrl);
+        if ('error' in parsed) fail(parsed.error);
+        const current = await publicationFor(listing.id, portal.id);
+        if (current?.external_id === parsed.externalId && current.status === 'VERIFYING') {
+          // Same URL pasted twice: re-use the pending verification instead of re-linking.
+        } else {
+          await write(listing.id, portal.id, current, { type: 'LINK', url: parsed.url, externalId: parsed.externalId, listingVersion: listing.version });
+        }
+        const linked = await publicationFor(listing.id, portal.id);
+        if (linked && isLive(linked.status) && (!linked.next_check_at || Date.parse(linked.next_check_at) <= deps.now().getTime())) await check(listing.id, linked);
+        return reply(await detail(listing.id));
+      }
+
+      case 'publication.check': {
+        const listing = await ownedListing(input.propertyId);
+        const portal = portalById(input.portalId) ?? fail('PORTAL_UNKNOWN');
+        const current = await publicationFor(listing.id, portal.id) ?? fail('PUBLICATION_NOT_FOUND');
+        if (current.next_check_at && Date.parse(current.next_check_at) > deps.now().getTime()) {
+          return reply({ code: 'CHECK_TOO_SOON', retryAt: current.next_check_at }, 429);
+        }
+        await check(listing.id, current);
+        return reply(await detail(listing.id));
+      }
+
+      case 'publication.retry':
+      case 'publication.unpublish':
+      case 'publication.confirmRemoved':
+      case 'publication.markUpdated': {
+        const listing = await ownedListing(input.propertyId);
+        const portal = portalById(input.portalId) ?? fail('PORTAL_UNKNOWN');
+        const current = await publicationFor(listing.id, portal.id) ?? fail('PUBLICATION_NOT_FOUND');
+        const cmd: Command = action === 'publication.retry' ? { type: 'RETRY' }
+          : action === 'publication.unpublish' ? { type: 'REQUEST_UNPUBLISH' }
+          : action === 'publication.confirmRemoved' ? { type: 'CONFIRM_REMOVED' }
+          : { type: 'MARK_UPDATED', listingVersion: listing.version };
+        await write(listing.id, portal.id, current, cmd);
+        return reply(await detail(listing.id));
+      }
     }
-    return reply({ code: 'NOT_FOUND' }, 404);
+    return reply({ code: 'UNKNOWN_ACTION' }, 404);
   } catch (e) {
     const code = e instanceof Error && /^[A-Z_]+$/.test(e.message) ? e.message : 'REQUEST_FAILED';
-    return reply({ code }, code.includes('CONFLICT') ? 409 : 400);
+    if (code === 'REQUEST_FAILED') console.error('publishing-engine', action, e instanceof Error ? e.message : 'unknown');
+    const status = code.includes('CONFLICT') || code === 'EXTERNAL_LISTING_ALREADY_LINKED' ? 409
+      : code.endsWith('NOT_FOUND') || code.endsWith('_REQUIRED') && code.startsWith('OWNED') ? 404 : 400;
+    return reply({ code }, status);
   }
 }
-Deno.serve(handler);
+
+if (typeof Deno !== 'undefined' && typeof Deno.serve === 'function') Deno.serve((req) => handler(req));

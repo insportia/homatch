@@ -1,3 +1,7 @@
+> **HISTORICAL (2026-10-15).** The browser-extension adapters and the iframe workspace described here
+> were retired. Publishing now lives at `/publishing` (manual handoff + server-verified public page);
+> see `supabase/functions/publishing-engine/domain.ts` and docs/claude/PROJECT_STATE.md.
+
 # SS.ge adapter integration — draft, not deployment-ready
 
 Branch: `feat/ssge-adapter-isolated`. Base: `51d022a07c506143a9a89e47cfe3137ecf2d8660` (PR #205).

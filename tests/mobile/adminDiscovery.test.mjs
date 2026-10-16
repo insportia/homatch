@@ -182,6 +182,39 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, 
       calls.driver.push(JSON.parse(req.postData() || '{}'));
       return r.fulfill(json({ success: true }));
     }
+    /* Admin → Demand intelligence (2026-10-16 shapes). */
+    if (url.includes('/rest/v1/rpc/admin_demand_customers')) {
+      calls.demandFilters = JSON.parse(req.postData() || '{}');
+      return r.fulfill(json({ total: 1, rows: [{ user_id: 'b1', email: 'buyer1@example.test', full_name: 'Layla Buyer', registered_at: ago(30), last_seen_at: ago(0),
+        sides: ['BUY'], cities: ['tbilisi'], property_types: ['APARTMENT'], interests: 2, top_strength: 61, events: 7, searches: 3, views: 2, saves: 1,
+        contacts: 1, viewings: 0, paid_campaigns: 0, listings: 0, explicit_events: 4, observed_events: 3, budget_min: 80000, budget_max: 250000 }] }));
+    }
+    if (url.includes('/rest/v1/rpc/admin_demand_analytics')) {
+      return r.fulfill(json({ windowDays: 90, city: null,
+        people: { buyers: 3, tenants: 1, sellers: 1, landlords: 0, explicit: 4, observedOnly: 1 },
+        byDistrict: [], byCity: [{ label: 'tbilisi', value: 3 }, { label: 'batumi', value: 1 }], byType: [{ label: 'APARTMENT', value: 4 }],
+        byBudget: [{ label: 'buy_200k_400k', value: 2 }, { label: 'rent_500_1000', value: 1 }],
+        trend: [{ week: '2026-10-12', buy: 6, rent: 1, sell: 1, let: 0 }],
+        demandVsSupply: [{ label: 'tbilisi', demand: 3, nativeSupply: 1, portalSupply: 220 }],
+        searches: { free: 24, freeCreditsCharged: 0, paidFindProperty: 0, findBuyersCampaigns: 1 },
+        campaignEconomics: { policy: { id: 'paid_discovery_37_63_v1', providerShareBps: 6300, homatchShareBps: 3700 },
+          findBuyers: [{ policy: 'paid_discovery_37_63_v1', campaigns: 1, running: 0, chargedUsd: 5, providerSpendUsd: 3.15, providerBudgetUsd: 3.15, homatchProfitUsd: 1.85 }],
+          findProperty: { runs: 0, chargedUsd: null, providerSpendUsd: null, homatchProfitUsd: null } } }));
+    }
+    if (url.includes('/rest/v1/rpc/admin_demand_customer_profile')) {
+      calls.profileOpened = true;
+      return r.fulfill(json({ identity: { id: 'b1', email: 'buyer1@example.test', fullName: 'Layla Buyer', phone: '+971500000001', language: 'ar', registeredAt: ago(30), suspendedAt: null },
+        lastActivityAt: ago(0), eventsTotal: 1, observedTracking: true, credits: { balance: 40, reserved: 0 }, matches: { asSeeker: 2, asOwner: 0 },
+        interests: [{ interest_key: 'BUY|tbilisi|APARTMENT|buy_200k_400k', side: 'BUY', city: 'tbilisi', property_type: 'APARTMENT', budget_band: 'buy_200k_400k', districts: ['krtsanisi'],
+          budget_min: 80000, budget_max: 250000, currency: 'USD', bedrooms_min: 1, bedrooms_max: 2, rooms_min: null, rooms_max: null, area_min: 50, area_max: 120,
+          explicit_events: 3, observed_events: 2, inferred_events: 0, searches: 2, declarations: 1, preference_changes: 0, views: 2, saves: 0, contacts: 1, viewings: 0,
+          paid_campaigns: 0, listings: 0, withdrawn_at: null, first_seen_at: ago(10), last_seen_at: ago(0),
+          strength: { score: 61, basis: 'EXPLICIT', freshness: 'ACTIVE', components: { stated: 30, refined: 0, viewed: 4, saved: 0, contacted: 10, committed: 0 } } }],
+        timeline: [{ id: 'e1', event_type: 'SEARCH', intent_basis: 'EXPLICIT', side: 'BUY', property_id: null, listing_key: null, search_id: null, city: 'თბილისი', districts: [],
+          property_type: 'APARTMENT', budget_min: 80000, budget_max: 250000, currency: 'USD', source_host: null, surface: 'find_property', provenance: 'TRIGGER', occurred_at: ago(0) }],
+        saved: [], contacts: [], freeSearches: [{ id: 's1', status: 'COMPLETE', at: ago(0), properties: 12, strong: 3, city: 'Tbilisi', transaction: 'BUY', propertyType: 'APARTMENT' }],
+        paidDiscovery: [], findBuyersCampaigns: [], listings: [] }));
+    }
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
@@ -345,4 +378,26 @@ test('Find Buyers source network: discovered, verified, active and read stay apa
     assert.ok(layout.overflow <= 1, `${lang}@${width}: no page-level horizontal scroll (${layout.overflow}px)`);
     if (lang === 'ar') assert.equal(layout.dir, 'rtl');
   }
+});
+
+const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+test('Admin → Demand intelligence: customers, combinable filters, audited profile, analytics with 37/63 money — six locales, no overflow', opts, async (t) => {
+  const failures = [];
+  for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ru'], [390, 'tr'], [393, 'ar'], [393, 'he']]) {
+    const { page, calls } = await boot(t, { width, height: width < 700 ? 844 : 900, lang });
+    await page.goto(`${BASE}/admin/demand-intelligence`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('Layla Buyer').first().waitFor({ timeout: 30000 });
+    if (await overflow(page) > 1) failures.push(`${lang} ${width}: customers overflow ${await overflow(page)}px`);
+    if (/\{\{?\w+\}?\}/.test(await page.locator('main').textContent())) failures.push(`${lang}: raw placeholder`);
+    await page.getByText('Layla Buyer').first().click();
+    await page.getByText('+971500000001').waitFor({ timeout: 15000 });
+    if (!calls.profileOpened) failures.push(`${lang}: profile not loaded`);
+    await page.keyboard.press('Escape');
+    await page.goto(`${BASE}/admin/demand-intelligence?tab=analytics`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('$1.85').first().waitFor({ timeout: 15000 });
+    if (await overflow(page) > 1) failures.push(`${lang} ${width}: analytics overflow ${await overflow(page)}px`);
+    if (['ar', 'he'].includes(lang) && (await page.evaluate(() => document.documentElement.getAttribute('dir'))) !== 'rtl') failures.push(`${lang}: not RTL`);
+  }
+  assert.deepEqual(failures, []);
 });

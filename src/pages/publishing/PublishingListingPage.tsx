@@ -13,7 +13,7 @@
 // The tab lives in the URL (?tab=), so refresh, back and forward land where they were.
 
 import {
-  AlertTriangle, Archive, ArrowLeft, Check, Copy, ExternalLink, ImagePlus, Loader2, RefreshCw, RotateCcw, Trash2, Upload,
+  AlertTriangle, Archive, ArrowLeft, Check, Copy, Download, ExternalLink, ImagePlus, Loader2, RefreshCw, RotateCcw, Trash2, Upload,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -23,7 +23,7 @@ import { RouteGuard } from '@/components/common/RouteGuard';
 import { OWNER_SURFACE, PageHero } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { MediaWell, OWNER_PRIMARY, OWNER_SECONDARY } from '@/components/owner/portfolio';
-import { ListingMark, Panel, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
+import { JourneySteps, ListingMark, Panel, PortalCapabilities, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 import {
   AMENITIES, CONDITIONS, CURRENCIES, DEAL_TYPES, PROPERTY_TYPES,
   type EventRow, type ListingDraft, type PortalId, type PortalInfo, type Problem, type PublicationRow,
-  draftFromProperty, handoffText, isOutdated,
+  draftFromProperty, handoffText, isOutdated, journey,
 } from '@/publishing/model';
 import { uploadPropertyPhoto } from '@/services/api';
 import { allPhotos, attachPhoto, readProperty } from '@/services/propertyManagement';
@@ -223,6 +223,11 @@ function Editor() {
         {detail ? <span className="text-2xs text-muted-foreground">{t('pubw_version', { n: detail.listing.version })} · {t('pubw_updated', { when: dateTime(detail.listing.updated_at, locale) })}</span> : null}
         {readOnly ? <span className="text-2xs font-semibold text-amber-700">{t('pubw_read_only')}</span> : null}
       </div>
+
+      <JourneySteps
+        steps={journey({ saved: !!detail, validation: detail?.listing.validation ?? null, draft, publications: detail?.publications ?? [] })}
+        onSelect={(step) => setTab(['select', 'review', 'media'].includes(step) ? 'listing' : 'portals')}
+      />
 
       <div role="tablist" aria-label={t('pubw_sections')} className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-[hsl(var(--card))] p-1">
         {TABS.map((id) => (
@@ -675,7 +680,42 @@ function PhotoLinks({ ids, photos }: { ids: string[]; photos: PropertyPhoto[] })
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
     else toast.error(t('pubw_photo_unavailable'));
   };
+  /* Save each photo as a numbered file so the portal upload keeps HOMATCH's order.
+     A host that refuses a cross-origin download falls back to opening the photo. */
+  const [saving, setSaving] = useState(false);
+  const downloadAll = async () => {
+    setSaving(true);
+    const list = ids.map((id) => byId.get(id)).filter(Boolean) as PropertyPhoto[];
+    let saved = 0;
+    for (const [i, p] of list.entries()) {
+      const url = await resolveImageSrc(p.storage_path || p.public_url);
+      if (!url) continue;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `homatch-photo-${String(i + 1).padStart(2, '0')}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        saved += 1;
+      } catch {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    }
+    setSaving(false);
+    if (saved) toast.success(t('pubw_photos_saved', { n: saved }));
+  };
   return (
+    <div className="space-y-2">
+    <button type="button" className={cn(OWNER_SECONDARY, 'min-h-9')} disabled={saving || ids.length === 0} onClick={() => void downloadAll()}>
+      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />}
+      {t('pubw_photos_download_all', { n: ids.length })}
+    </button>
     <ul className="flex flex-wrap gap-1.5">
       {ids.map((id) => byId.get(id)).filter(Boolean).map((p, i) => (
         <li key={p!.id}>
@@ -686,6 +726,7 @@ function PhotoLinks({ ids, photos }: { ids: string[]; photos: PropertyPhoto[] })
         </li>
       ))}
     </ul>
+    </div>
   );
 }
 
@@ -716,7 +757,7 @@ function PortalCard(props: {
       title={portal.name}
       aside={<span className="flex flex-wrap items-center gap-2">{!selected ? <span className="text-2xs text-muted-foreground">{t('pubw_portal_not_selected')}</span> : null}<PublicationMark status={status} /></span>}
     >
-      <p className="-mt-1 mb-3 text-2xs text-muted-foreground">{t('pubw_portal_mode_manual')}</p>
+      <div className="-mt-1 mb-3"><PortalCapabilities portal={portal} compact /></div>
 
       {pub?.last_error && status !== 'PUBLISHED' ? (
         <p className={cn('mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-2xs', status === 'VERIFICATION_FAILED' || status === 'REMOVED_EXTERNALLY' ? 'bg-red-50 text-red-800' : 'bg-sky-50 text-sky-900')}>

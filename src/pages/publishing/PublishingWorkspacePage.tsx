@@ -20,7 +20,7 @@ import { EmptyState, OWNER_SURFACE, PageHero } from '@/components/customer/surfa
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { MediaWell, OWNER_PRIMARY, OWNER_SECONDARY } from '@/components/owner/portfolio';
-import { Kpi, ListingMark, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
+import { Kpi, ListingMark, PortalCapabilities, PublicationMark, dateTime, useErrorText } from '@/components/publishing/parts';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
@@ -106,6 +106,30 @@ function Workspace() {
           <button type="button" onClick={() => void load()} className={OWNER_SECONDARY}>{t('pubw_retry')}</button>
         </div>
       ) : null}
+
+      {/* HOW PUBLISHING WORKS — stated up front, because the question owners asked
+          was "where do I connect my MyHome / SS.ge account?". The honest answer is
+          that neither portal offers account linking, so there is no Connect button:
+          the owner signs in on the portal itself and HOMATCH verifies the result. */}
+      <section aria-labelledby="pubw-how" className="min-w-0 space-y-3 rounded-2xl border border-border bg-[hsl(var(--card))] p-4 shadow-card sm:p-5">
+        <div className="space-y-1">
+          <h2 id="pubw-how" className="font-display text-lg font-semibold text-foreground">{t('pubw_how_title')}</h2>
+          <p className="max-w-[70ch] text-sm text-muted-foreground">{t('pubw_how_body')}</p>
+        </div>
+        <ol className="grid gap-2 sm:grid-cols-4">
+          {(['prepare', 'post', 'link', 'verify'] as const).map((k, i) => (
+            <li key={k} className="flex min-w-0 items-start gap-2 rounded-lg bg-[hsl(var(--secondary))]/60 p-2.5">
+              <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#0C1119] text-[11px] font-bold text-white">{i + 1}</span>
+              <span className="min-w-0 text-2xs leading-snug text-foreground break-words">{t(`pubw_how_step_${k}`)}</span>
+            </li>
+          ))}
+        </ol>
+        {state.portals.length ? (
+          <div className="grid gap-2 md:grid-cols-2">
+            {state.portals.map((portal) => <PortalCapabilities key={portal.id} portal={portal} />)}
+          </div>
+        ) : null}
+      </section>
 
       <section aria-label={t('pubw_overview')} className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi label={t('pubw_kpi_total')} value={stats.total} onClick={() => setFilter('ALL')} active={filter === 'ALL'} />

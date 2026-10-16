@@ -223,3 +223,39 @@ export function handoffText(d: ListingDraft, lang: 'ka' | 'en' | 'ru'): string {
   const body = d.description[lang] || d.description.ka || d.description.en || d.description.ru;
   return [d.title, '', body].join('\n').trim();
 }
+
+/* ── The guided journey ──────────────────────────────────────────────────
+ * Eight steps, each DONE only when the server's own state says so. A step is
+ * never ticked because a button was clicked: "published" needs a publication the
+ * server verified on the portal's public page.
+ */
+export const JOURNEY = ['select', 'review', 'media', 'portal', 'open', 'publish', 'link', 'verified'] as const;
+export type JourneyStep = typeof JOURNEY[number];
+export type StepState = 'done' | 'current' | 'todo';
+
+export function journey(input: {
+  saved: boolean;
+  validation: Validation | null;
+  draft: Pick<ListingDraft, 'photos' | 'description' | 'portalTargets'>;
+  publications: Pick<PublicationRow, 'status' | 'external_url'>[];
+}): Record<JourneyStep, StepState> {
+  const { saved, validation, draft, publications } = input;
+  const media = draft.photos.length > 0 && !!(draft.description.ka || draft.description.en || draft.description.ru);
+  const done: Record<JourneyStep, boolean> = {
+    select: true,
+    review: saved && !!validation && validation.listing.filter((p) => p.field !== 'photos' && p.field !== 'description').length === 0,
+    media: saved && media,
+    portal: draft.portalTargets.length > 0 && publications.length > 0,
+    open: publications.length > 0,
+    publish: publications.some((p) => !!p.external_url),
+    link: publications.some((p) => !!p.external_url),
+    verified: publications.some((p) => p.status === 'PUBLISHED'),
+  };
+  const out = {} as Record<JourneyStep, StepState>;
+  let current = false;
+  for (const step of JOURNEY) {
+    if (done[step]) out[step] = 'done';
+    else if (!current) { out[step] = 'current'; current = true; } else out[step] = 'todo';
+  }
+  return out;
+}

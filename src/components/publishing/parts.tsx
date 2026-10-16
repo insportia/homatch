@@ -8,7 +8,8 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { type PublicationStatus, type Tone, toneOf } from '@/publishing/model';
+import { Check, ExternalLink, Minus } from 'lucide-react';
+import { JOURNEY, type JourneyStep, type PortalInfo, type PublicationStatus, type StepState, type Tone, toneOf } from '@/publishing/model';
 
 const DOT: Record<Tone, string> = {
   live: 'bg-[hsl(var(--gold))]',
@@ -108,4 +109,86 @@ export function dateTime(value: string | null | undefined, locale: string): stri
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+}
+
+/* ── Honest portal capabilities ──────────────────────────────────────────
+ * What each portal actually offers, stated as facts rather than implied by
+ * buttons. MyHome.ge and SS.ge publish no account-linking (OAuth) and no
+ * listing-submission API, so there is NO "Connect" button: an owner signs in on
+ * the portal's own site. HOMATCH's part is preparing the copy and verifying the
+ * public page afterwards. See supabase/functions/publishing-engine/domain.ts.
+ */
+
+function Fact({ ok, label, value }: { ok: boolean | null; label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      <span aria-hidden="true" className={cn('mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full',
+        ok === true ? 'bg-emerald-100 text-emerald-700' : ok === false ? 'bg-[hsl(var(--secondary))] text-muted-foreground' : 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]')}>
+        {ok === false ? <Minus className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-2xs font-semibold text-foreground">{label}</span>
+        <span className="block text-2xs text-muted-foreground break-words">{value}</span>
+      </span>
+    </div>
+  );
+}
+
+/** One portal's capabilities, as four facts and the real link to its own listing form. */
+export function PortalCapabilities({ portal, compact = false }: { portal: PortalInfo; compact?: boolean }) {
+  const { t } = useLanguage();
+  return (
+    <div className={cn('min-w-0 rounded-xl border border-border bg-[hsl(var(--card))]', compact ? 'p-3' : 'p-4')} data-testid={`pubw-capabilities-${portal.id}`}>
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+        {compact ? <span /> : <p className="font-display text-sm font-semibold text-foreground">{portal.name}</p>}
+        <span className="rounded-full bg-[hsl(var(--gold-soft))] px-2 py-0.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]">{t('pubw_cap_badge_manual')}</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Fact ok={false} label={t('pubw_cap_account')} value={t('pubw_cap_account_value', { portal: portal.name })} />
+        <Fact ok={false} label={t('pubw_cap_auto')} value={t('pubw_cap_auto_value')} />
+        <Fact ok={true} label={t('pubw_cap_prepare')} value={t('pubw_cap_prepare_value')} />
+        <Fact ok={true} label={t('pubw_cap_verify')} value={t('pubw_cap_verify_value')} />
+      </div>
+      {portal.maxPhotos ? <p className="mt-2 text-2xs text-muted-foreground">{t('pubw_photos_myhome_max', { n: portal.maxPhotos })}</p> : null}
+      {!compact ? (
+        <a href={portal.createUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:underline">
+          {t('pubw_open_portal', { portal: portal.name })}<ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+/** The eight-step journey, each step ticked only by server state (see model.ts `journey`). */
+export function JourneySteps({ steps, onSelect }: { steps: Record<JourneyStep, StepState>; onSelect?: (step: JourneyStep) => void }) {
+  const { t } = useLanguage();
+  return (
+    <nav aria-label={t('pubw_journey_title')} className="min-w-0 rounded-xl border border-border bg-[hsl(var(--card))] p-3">
+      <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('pubw_journey_title')}</p>
+      <ol className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        {JOURNEY.map((step, i) => {
+          const s = steps[step];
+          return (
+            <li key={step} className="shrink-0">
+              <button
+                type="button"
+                onClick={() => onSelect?.(step)}
+                aria-current={s === 'current' ? 'step' : undefined}
+                data-state={s}
+                className={cn('flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-2xs font-semibold whitespace-nowrap transition-colors',
+                  s === 'done' ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : s === 'current' ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                      : 'border-border text-muted-foreground')}
+              >
+                <span aria-hidden="true" className={cn('grid h-4 w-4 place-items-center rounded-full text-[10px]', s === 'done' ? 'bg-emerald-600 text-white' : s === 'current' ? 'bg-[#0C1119] text-white' : 'bg-[hsl(var(--secondary))]')}>
+                  {s === 'done' ? '✓' : i + 1}
+                </span>
+                {t(`pubw_journey_${step}`)}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
 }

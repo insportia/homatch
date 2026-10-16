@@ -249,6 +249,18 @@ test('journey: choose → prefilled draft → save → preview → MyHome PUBLIS
     await t.test(`@${width}`, async (tt) => {
       const { page, server, calls } = await boot(tt, { width });
       await page.getByText('No listings yet').waitFor({ timeout: 20000 });
+      /* The honest capability statement is the first thing explained: no account
+         connection, no automatic publishing, HOMATCH verifies the public page. */
+      await page.getByRole('heading', { name: 'How publishing works' }).waitFor();
+      for (const id of ['myhome', 'ssge']) {
+        const card = page.getByTestId(`pubw-capabilities-${id}`);
+        await card.waitFor();
+        const text = await card.innerText();
+        assert.match(text, /Not offered by (MyHome\.ge|SS\.ge)/);
+        assert.match(text, /Not available — you post the listing yourself/);
+        assert.match(text, /HOMATCH checks the public listing page/);
+      }
+      assert.equal(await page.getByRole('button', { name: /^connect/i }).count(), 0, 'no fake Connect button');
       await page.getByRole('link', { name: 'Publish a property' }).first().click();
       await page.waitForURL('**/publishing/new');
       await page.getByRole('link', { name: /იყიდება 3 ოთახიანი/ }).click();
@@ -259,6 +271,11 @@ test('journey: choose → prefilled draft → save → preview → MyHome PUBLIS
       assert.equal(await title.inputValue(), propertyRow.title);
       assert.equal(await page.getByLabel('Price', { exact: true }).inputValue(), '213840');
       assert.equal(await page.getByLabel('Street').inputValue(), 'Kazbegi Ave 12');
+      /* The guided journey: property done, details next; nothing claims publication. */
+      const steps = page.getByRole('navigation', { name: 'Your publishing steps' });
+      await steps.waitFor();
+      assert.equal(await steps.locator('[data-state="done"]').count(), 1);
+      assert.equal(await steps.locator('[aria-current="step"]').innerText().then((s) => s.includes('Details')), true);
       assert.ok(await noOverflow(page), `editor @${width}`);
       await shot(page, `editor-${width}`);
       /* A missing required field blocks readiness but not a draft save. */
@@ -288,6 +305,7 @@ test('journey: choose → prefilled draft → save → preview → MyHome PUBLIS
       await page.getByRole('button', { name: 'Verify' }).first().click();
       await page.getByText('Published · verified').first().waitFor({ timeout: 20000 });
       assert.equal(server.db.pubs.get('myhome').status, 'PUBLISHED');
+      assert.equal(await steps.locator('[data-state="done"]').count(), 8, 'every step done once MyHome is verified');
       /* SS.ge: the portal blocks the automated check → pending, never PUBLISHED. */
       await page.getByRole('button', { name: 'Prepare for SS.ge' }).click();
       await page.getByLabel('Publication URL').last().fill(SSGE_URL);
@@ -312,7 +330,7 @@ test('journey: choose → prefilled draft → save → preview → MyHome PUBLIS
       await page.locator(`main a[href="/publishing/${PID}"]`).first().waitFor({ timeout: 20000 });
       const kpi = async (label) => Number((await page.getByRole('button', { name: new RegExp(label) }).first().innerText()).match(/\d+/)[0]);
       assert.equal(await kpi('Active publications'), 1);
-      assert.equal(await kpi('Pending'), 1);
+      assert.equal(await kpi('Awaiting publication'), 1);
       await shot(page, `workspace-${width}`);
       assert.ok(calls.includes('publication.link'));
     });

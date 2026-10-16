@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 import { SYNTHESIS, STATUS_RESPONSE } from './fixture.mjs';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -388,6 +389,7 @@ test('the verification report has no horizontal overflow at real phone widths', 
       if (route.request().method() === 'OPTIONS') {
         return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
       }
+      if (url.includes(SERVICE_CONTROLS_RPC)) return route.fulfill(json(SERVICES_ALL_ON));
       if (url.includes('/functions/v1/verify-synthesis')) return route.fulfill(json(SYNTHESIS));
       if (url.includes('/functions/v1/research-agent')) return route.fulfill(json(STATUS_RESPONSE));
       if (url.includes('/auth/v1/user')) return route.fulfill(json(fakeSession().user));

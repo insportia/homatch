@@ -354,14 +354,17 @@ returns jsonb language sql immutable set search_path = public as $$
 $$;
 
 /* A confirmed plan's subscription criteria (Find Property search_criteria) as interest criteria. */
+/* Two shapes exist: a confirmed Find Property plan ({city:{value}}, goal/deal, budget.value)
+   and the /active-search form ({city, transaction, property_type, budget_max}). */
 create or replace function public.interest_criteria_from_subscription(p_criteria jsonb, p_owner boolean)
 returns jsonb language sql immutable set search_path = public as $$
   select jsonb_strip_nulls(jsonb_build_object(
-    'side', public.interest_side_from(coalesce(p_criteria->>'goal', p_criteria->>'deal'), p_owner),
-    'city', coalesce(p_criteria#>>'{city,value}', p_criteria->>'city'),
+    'side', public.interest_side_from(coalesce(p_criteria->>'goal', p_criteria->>'deal', p_criteria->>'transaction'), p_owner),
+    'city', case when jsonb_typeof(p_criteria->'city') = 'object' then p_criteria#>>'{city,value}' else p_criteria->>'city' end,
     'districts', case when jsonb_typeof(p_criteria#>'{districts,value}') = 'array' then p_criteria#>'{districts,value}' end,
-    'property_type', p_criteria#>>'{propertyTypes,value,0}',
-    'budget_min', p_criteria#>>'{budget,value,min}', 'budget_max', p_criteria#>>'{budget,value,max}',
+    'property_type', coalesce(p_criteria#>>'{propertyTypes,value,0}', p_criteria->>'property_type'),
+    'budget_min', coalesce(p_criteria#>>'{budget,value,min}', p_criteria->>'budget_min'),
+    'budget_max', coalesce(p_criteria#>>'{budget,value,max}', p_criteria->>'budget_max'),
     'currency', p_criteria#>>'{budget,value,currency}',
     'bedrooms_min', p_criteria#>>'{bedrooms,value,min}', 'bedrooms_max', p_criteria#>>'{bedrooms,value,max}',
     'area_min', p_criteria#>>'{areaSqm,value,min}', 'area_max', p_criteria#>>'{areaSqm,value,max}'))
@@ -406,8 +409,10 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare v_owner boolean; v_type text; v_crit jsonb;
 begin
   begin
-    v_owner := new.side = 'DEMAND';
-    v_crit := case when v_owner and new.property_id is not null
+    /* An owner's subscription carries their property (side differs by surface:
+       /active-search writes SUPPLY+property_id, HOMATCH Leads DEMAND+property_id). */
+    v_owner := new.property_id is not null;
+    v_crit := case when v_owner
                    then public.interest_criteria_from_property(new.property_id, true)
                    else public.interest_criteria_from_subscription(coalesce(new.search_criteria, '{}'::jsonb), false) end;
     if tg_op = 'INSERT' then
@@ -542,7 +547,12 @@ begin
     return jsonb_build_object('recorded', false, 'reason', 'TRACKING_OFF');
   end if;
 
-  v_crit := case when p_property_id is not null then public.interest_criteria_from_property(p_property_id, false)
+  /* Facts of a HOMATCH property are copied only when it is publicly matchable: a draft,
+     archived or deleted listing's facts are owner-only and never reach another account. */
+  v_crit := case when p_property_id is not null and exists (
+                   select 1 from public.properties p where p.id = p_property_id and not p.is_deleted
+                      and p.archived_at is null and p.matching_status::text = 'ACTIVE')
+                 then public.interest_criteria_from_property(p_property_id, false)
     else jsonb_strip_nulls(jsonb_build_object(
       'side', public.interest_side_from(v_snap->>'transaction'), 'city', v_snap->>'city',
       'districts', case when v_snap->>'district' is not null then jsonb_build_array(v_snap->>'district') end,
@@ -657,12 +667,15 @@ select a.user_id, 'DEMAND_DECLARED', 'EXPLICIT', c->>'side', a.id, a.property_id
        case when (c->>'bedrooms_max') ~ '^[0-9]{1,2}$' then (c->>'bedrooms_max')::int end,
        case when (c->>'area_min') ~ '^[0-9]+(\.[0-9]+)?$' then (c->>'area_min')::numeric end,
        case when (c->>'area_max') ~ '^[0-9]+(\.[0-9]+)?$' then (c->>'area_max')::numeric end,
-       case when a.side = 'DEMAND' then 'homatch_leads' else 'find_property' end, 'BACKFILL', 'subscription:' || a.id, a.created_at
+       case when a.property_id is not null then 'homatch_leads' else 'find_property' end, 'BACKFILL', 'subscription:' || a.id, a.created_at
   from public.active_search_subscriptions a
-  cross join lateral (select case when a.side = 'DEMAND' and a.property_id is not null
+  cross join lateral (select case when a.property_id is not null
                                   then public.interest_criteria_from_property(a.property_id, true)
                                   else public.interest_criteria_from_subscription(coalesce(a.search_criteria, '{}'::jsonb), false) end c) x
  where a.user_id is not null
+   /* No FK on active_search_subscriptions.property_id: a deleted property must not abort the backfill. */
+   and (a.property_id is null or exists (select 1 from public.properties p where p.id = a.property_id))
+   and exists (select 1 from public.users u where u.id = a.user_id)
 on conflict (dedupe_key) do nothing;
 
 insert into public.property_interest_events (user_id, event_type, intent_basis, side, property_id, property_type, listing_key,
@@ -670,5 +683,5 @@ insert into public.property_interest_events (user_id, event_type, intent_basis, 
 select p.user_id, 'PROPERTY_LISTED', 'EXPLICIT', public.interest_side_from(p.transaction_type::text, true), p.id,
        p.property_type::text, 'property:' || p.id, 'owner', 'BACKFILL', 'listed:' || p.id, p.created_at
   from public.properties p
- where p.user_id is not null and not p.is_deleted
+ where p.user_id is not null and not p.is_deleted and exists (select 1 from public.users u where u.id = p.user_id)
 on conflict (dedupe_key) do nothing;

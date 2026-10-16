@@ -49,6 +49,14 @@ begin
     assert false, 'a search cannot be merely observed';
   exception when check_violation then null; end;
 
+  -- /active-search shapes: an owner subscription carries a property (SUPPLY side there);
+  -- a seeker's carries {city, transaction, property_type, budget_max}.
+  insert into public.active_search_subscriptions (user_id, side, property_id, search_criteria) values
+    (a1, 'SUPPLY', f1, null),
+    (b2, 'DEMAND', null, '{"city":"Batumi","transaction":"RENT","property_type":"APARTMENT","budget_max":900}');
+  assert exists (select 1 from public.property_interest_events where user_id = a1 and event_type = 'DEMAND_DECLARED' and side = 'SELL' and surface = 'homatch_leads'), 'owner with a property is a seller';
+  assert exists (select 1 from public.property_interest_events where user_id = b2 and event_type = 'DEMAND_DECLARED' and side = 'RENT' and city = 'Batumi' and budget_max = 900), 'seeker form read';
+
   -- Customer RPCs as b1.
   perform set_config('app.uid', '10000000-0000-0000-0000-0000000000b1', true);
   v := public.record_my_property_interest('VIEWED', 'ext:myhome.ge/1', null, null,
@@ -56,6 +64,13 @@ begin
   assert (v->>'recorded')::boolean, v::text;
   v := public.record_my_property_interest('VIEWED', 'ext:myhome.ge/1', null, null, '{"city":"Tbilisi"}');
   assert not (v->>'recorded')::boolean, 'a re-render within the hour is not a second view';
+  -- A non-public property's facts never reach another account through its id.
+  perform set_config('app.uid', '', true);
+  update public.properties set archived_at = now() where id = f1;
+  perform set_config('app.uid', '10000000-0000-0000-0000-0000000000b1', true);
+  v := public.record_my_property_interest('VIEWED', 'property:' || f1, f1, null, '{}');
+  assert (select city is null and budget_max is null from public.property_interest_events where user_id = b1 and listing_key = 'property:' || f1 and event_type = 'VIEWED'), 'archived facts not copied';
+  update public.properties set archived_at = null where id = f1;
   v := public.record_my_property_interest('SAVED', 'ext:myhome.ge/1', null, null, '{"title":"Flat","city":"Tbilisi","url":"https://myhome.ge/1","phone":"+995555"}');
   assert (v->>'saved')::boolean;
   assert not ((select snapshot from public.saved_property_listings where user_id = b1) ? 'phone'), 'snapshot minimised';

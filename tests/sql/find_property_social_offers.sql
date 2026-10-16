@@ -55,6 +55,17 @@ begin
   assert (select count(*) from public.cost_events where request_id = v_run::text) = 2, 'cost events for the two runs that reached the provider';
   assert (select offers_found from public.discovery_runs where id = v_run) = 3;
 
+  -- An admin per-Actor daily cap holds across both products.
+  update public.find_buyers_actor_registry set daily_spend_cap_micros = 100000 where actor_key = 'TELEGRAM_CHANNEL';
+  insert into public.find_buyers_actor_runs (actor_key, status, reserved_micros) values ('TELEGRAM_CHANNEL', 'RUNNING', 95000);
+  insert into public.discovery_runs (user_id, status, billing_grant, pricing_policy, credits_per_usd, customer_value_micros, provider_budget_micros)
+  values (b1, 'SEARCHING', '{"authorizedMaxCredits": 50}', 'paid_discovery_37_63_v1', 10, 5000000, 3150000) returning id into v_first;
+  v := public.find_property_reserve_actor_run(v_first, 'TELEGRAM_CHANNEL', 'k-cap', null, 'TELEGRAM_CHANNEL', 'TELEGRAM', null, 30);
+  assert v->>'reason' = 'ACTOR_DAILY_CAP', v::text;
+  update public.find_buyers_actor_registry set daily_spend_cap_micros = null where actor_key = 'TELEGRAM_CHANNEL';
+  v := public.find_property_reserve_actor_run(v_first, 'TELEGRAM_CHANNEL', 'k-cap2', null, 'TELEGRAM_CHANNEL', 'TELEGRAM', null, 30);
+  assert (v->>'ok')::boolean, v::text;
+
   -- Not searching any more: no new reservations.
   update public.discovery_runs set status = 'MATCHING' where id = v_run;
   v := public.find_property_reserve_actor_run(v_run, 'TELEGRAM_CHANNEL', 'k-late', null, 'TELEGRAM_CHANNEL', 'TELEGRAM', null, 30);

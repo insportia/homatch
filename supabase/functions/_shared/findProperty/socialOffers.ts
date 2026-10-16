@@ -289,12 +289,13 @@ export async function finishOfferCampaign(db: any, runId: string): Promise<numbe
   const { data: open } = await db.from('find_property_actor_runs').select('*').eq('discovery_run_id', runId).is('cost_booked_at', null);
   for (const ar of (open ?? []) as any[]) {
     if (!ar.provider_run_id) {
-      await db.from('find_property_actor_runs').update({ status: 'RESERVED' }).eq('id', ar.id).eq('status', 'STARTING');
-      const { error } = await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: 'RELEASED', p_actual_micros: 0,
-        p_cost_basis: 'NOT_STARTED', p_results_billed: 0, p_items_fetched: 0, p_offers: 0, p_error: 'CAMPAIGN_ENDED' });
-      /* A STARTING run may have reached the provider: book it UNKNOWN instead. */
-      if (error) await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: 'ABORTED', p_actual_micros: null,
-        p_cost_basis: 'UNKNOWN', p_results_billed: null, p_items_fetched: 0, p_offers: 0, p_error: 'CAMPAIGN_ENDED_DURING_START' });
+      /* RESERVED never reached the provider: released at $0. STARTING may have reached it
+         before its run id was stored: booked UNKNOWN, which counts at its reservation. */
+      const reachedProvider = ar.status !== 'RESERVED';
+      await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: reachedProvider ? 'ABORTED' : 'RELEASED',
+        p_actual_micros: reachedProvider ? null : 0, p_cost_basis: reachedProvider ? 'UNKNOWN' : 'NOT_STARTED',
+        p_results_billed: reachedProvider ? null : 0, p_items_fetched: 0, p_offers: 0,
+        p_error: reachedProvider ? 'CAMPAIGN_ENDED_DURING_START' : 'CAMPAIGN_ENDED' });
       continue;
     }
     await abortRun(ar.provider_run_id).catch(() => undefined);

@@ -18,7 +18,7 @@ begin
   insert into public.matching_jobs (id, billing_grant, started_at, completed_at) values (v_job, jsonb_build_object('reservationId', v_res), now() - interval '2 hours', now());
   insert into public.find_buyers_campaigns (matching_job_id, property_id, user_id, credits_committed, credits_per_usd, customer_value_micros, provider_budget_micros, finalized_at, pricing_policy)
   values (v_job, f1, a1, 50, 10, 5000000, 3150000, now(), 'paid_discovery_37_63_v1');
-  insert into public.cost_events (property_id, cost_usd, timestamp) values (f1, 2.00, now() - interval '1 hour'), (f1, 1.15, now() - interval '30 minutes');
+  insert into public.cost_events (property_id, job_id, cost_usd, pricing_state, timestamp) values (f1, v_job, 2.00, 'ACTUAL', now() - interval '1 hour'), (f1, v_job, 1.15, 'ESTIMATED', now() - interval '30 minutes');
 
   -- Not an admin.
   perform set_config('app.uid', '10000000-0000-0000-0000-0000000000b1', true);
@@ -61,6 +61,11 @@ begin
   assert (select (g->>'chargedUsd')::numeric = 5.00 and (g->>'providerSpendUsd')::numeric = 3.15 and (g->>'homatchProfitUsd')::numeric = 1.85
             from jsonb_array_elements(v#>'{campaignEconomics,findBuyers}') g where g->>'policy' = 'paid_discovery_37_63_v1'), v#>>'{campaignEconomics}';
   assert (v#>>'{campaignEconomics,policy,homatchShareBps}')::int = 3700;
+  -- An unpriced provider run makes the spend (and the profit) unknown, never $0.
+  insert into public.cost_events (property_id, job_id, cost_usd, pricing_state) values (f1, v_job, 0.20, 'UNPRICED');
+  v := public.admin_demand_analytics(90, null);
+  assert (select g->'providerSpendUsd' = 'null'::jsonb and g->'homatchProfitUsd' = 'null'::jsonb and (g->>'unknownCostCampaigns')::int = 1
+            from jsonb_array_elements(v#>'{campaignEconomics,findBuyers}') g where g->>'policy' = 'paid_discovery_37_63_v1'), v#>>'{campaignEconomics}';
   v := public.admin_demand_analytics(90, 'თბილისი');
   assert v->>'city' = 'tbilisi';
   assert exists (select 1 from jsonb_array_elements(v->'demandVsSupply') d where d->>'label' = 'krtsanisi' and (d->>'demand')::int >= 1 and (d->>'portalSupply')::int = 1), v->>'demandVsSupply';

@@ -162,6 +162,28 @@ begin
                               'estimateMicros', v_estimate, 'budgetMicros', v_run.provider_budget_micros);
   end if;
 
+  /* Admin-set per-Actor caps (NULL = none) apply here exactly as for Find Buyers:
+     per campaign, and per day across BOTH products. */
+  if v_a.campaign_spend_cap_micros is not null and coalesce((
+       select sum(case when status in ('RESERVED','STARTING','RUNNING') then reserved_micros when status = 'RELEASED' then 0
+                       else coalesce(actual_micros, reserved_micros) end)
+         from public.find_property_actor_runs where discovery_run_id = p_run_id and actor_key = p_actor_key), 0) + v_estimate
+     > v_a.campaign_spend_cap_micros then
+    return jsonb_build_object('ok', false, 'reason', 'ACTOR_CAMPAIGN_CAP');
+  end if;
+  if v_a.daily_spend_cap_micros is not null and coalesce((
+       select sum(x) from (
+         select case when status in ('RESERVED','STARTING','RUNNING') then reserved_micros when status = 'RELEASED' then 0
+                     else coalesce(actual_micros, reserved_micros) end x
+           from public.find_property_actor_runs where actor_key = p_actor_key and created_at >= date_trunc('day', now())
+         union all
+         select case when status in ('RESERVED','STARTING','RUNNING') then reserved_micros when status = 'RELEASED' then 0
+                     else coalesce(actual_micros, reserved_micros) end
+           from public.find_buyers_actor_runs where actor_key = p_actor_key and created_at >= date_trunc('day', now())) d), 0) + v_estimate
+     > v_a.daily_spend_cap_micros then
+    return jsonb_build_object('ok', false, 'reason', 'ACTOR_DAILY_CAP');
+  end if;
+
   insert into public.find_property_actor_runs (idempotency_key, discovery_run_id, queue_job_id, actor_key, actor_id, stage, network,
     source_id, requested_limit, status, reserved_micros)
   values (p_idempotency_key, p_run_id, p_queue_job_id, v_a.actor_key, v_a.actor_id, p_stage, p_network, p_source_id, v_limit, 'RESERVED', v_estimate)

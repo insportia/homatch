@@ -15,8 +15,10 @@ create table public.discovery_query_queue (id uuid primary key default gen_rando
 create table public.find_buyers_actor_registry (actor_key text primary key, actor_id text not null, enabled boolean not null default true,
   emergency_disabled boolean not null default false, health text not null default 'HEALTHY', pricing_model text not null default 'PRICE_PER_DATASET_ITEM',
   pricing_verified_at timestamptz, price_per_1k_micros bigint, start_fee_micros bigint not null default 0, probe_size int not null default 20,
-  max_results int not null default 100, timeout_seconds int not null default 300, concurrency int not null default 2, input_contract jsonb);
-create table public.find_buyers_actor_runs (id uuid primary key default gen_random_uuid(), actor_key text, status text, cost_booked_at timestamptz, created_at timestamptz default now());
+  max_results int not null default 100, timeout_seconds int not null default 300, concurrency int not null default 2, input_contract jsonb,
+  campaign_spend_cap_micros bigint, daily_spend_cap_micros bigint);
+create table public.find_buyers_actor_runs (id uuid primary key default gen_random_uuid(), actor_key text, status text, cost_booked_at timestamptz, created_at timestamptz default now(),
+  reserved_micros bigint default 0, actual_micros bigint);
 insert into public.find_buyers_actor_registry (actor_key, actor_id, pricing_verified_at, price_per_1k_micros, start_fee_micros, probe_size, concurrency) values
   ('FB_GROUP_POSTS', 'memo23~apify-facebook-group-scraper', now(), 1500000, 8000, 20, 500),
   ('TELEGRAM_CHANNEL', 'memo23~telegram-channel-scraper', now(), 250000, 1000, 30, 50),

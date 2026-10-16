@@ -182,10 +182,16 @@ begin
     select i.* from public.customer_demand_interests i
      where i.last_seen_at >= v_since and (v_city is null or i.city = v_city)
   ), camp as (
+    /* Money per campaign. Charged = settled credits of the original reservation plus
+       every settled budget extension. Provider spend = cost_events booked for the
+       matching job of the campaign; a run whose cost was never priced (UNPRICED) makes
+       the spend of the campaign UNKNOWN (null), never zero dollars. */
     select c.matching_job_id, c.pricing_policy, c.finalized_at, c.provider_budget_micros, c.credits_per_usd,
-           (select r.settled_credits from public.usage_reservations r where r.id::text = j.billing_grant->>'reservationId') settled_credits,
-           (select sum(ce.cost_usd) from public.cost_events ce where ce.property_id = c.property_id
-             and ce.timestamp >= coalesce(j.started_at, c.created_at) and ce.timestamp <= coalesce(j.completed_at, now())) spend_usd
+           (select r.settled_credits from public.usage_reservations r where r.id::text = j.billing_grant->>'reservationId')
+             + coalesce((select sum(e.settled_credits) from public.find_buyers_budget_extensions e
+                          where e.matching_job_id = c.matching_job_id and e.status = 'SETTLED'), 0) settled_credits,
+           case when exists (select 1 from public.cost_events ce where ce.job_id = c.matching_job_id and ce.pricing_state = 'UNPRICED') then null
+                else (select coalesce(sum(ce.cost_usd), 0) from public.cost_events ce where ce.job_id = c.matching_job_id) end spend_usd
       from public.find_buyers_campaigns c left join public.matching_jobs j on j.id = c.matching_job_id
      where c.created_at >= v_since
   )
@@ -231,6 +237,7 @@ begin
     'searches', jsonb_build_object(
       'free', (select count(*) from public.discovery_marketplace_searches s where s.created_at >= v_since
                  and (v_city is null or public.interest_canonical_place(s.request->>'city') = v_city)),
+      /* Free search has no reservation path at all (marketplace-search never calls the wallet). */
       'freeCreditsCharged', 0,
       'paidFindProperty', (select count(*) from public.discovery_runs r where r.created_at >= v_since),
       'findBuyersCampaigns', (select count(*) from camp)),
@@ -240,16 +247,23 @@ begin
       'findBuyers', (select jsonb_agg(jsonb_build_object(
           'policy', coalesce(pricing_policy, 'legacy'), 'campaigns', n, 'running', running,
           'chargedUsd', charged_usd, 'providerSpendUsd', spend_usd, 'providerBudgetUsd', budget_usd,
+          'unknownCostCampaigns', unknown_cost,
           'homatchProfitUsd', case when charged_usd is not null and spend_usd is not null then round(charged_usd - spend_usd, 2) end))
         from (select pricing_policy, count(*) n, count(*) filter (where finalized_at is null) running,
-                     round(sum(settled_credits / nullif(credits_per_usd, 0)) filter (where finalized_at is not null), 2) charged_usd,
-                     round(sum(coalesce(spend_usd, 0)) filter (where finalized_at is not null), 2) spend_usd,
+                     count(*) filter (where finalized_at is not null and spend_usd is null) unknown_cost,
+                     /* A group with any unknown cost or unsettled charge has no honest total. */
+                     case when bool_and(settled_credits is not null) filter (where finalized_at is not null) is false then null
+                          else round(sum(settled_credits / nullif(credits_per_usd, 0)) filter (where finalized_at is not null), 2) end charged_usd,
+                     case when bool_or(spend_usd is null) filter (where finalized_at is not null) then null
+                          else round(sum(spend_usd) filter (where finalized_at is not null), 2) end spend_usd,
                      round(sum(provider_budget_micros) / 1e6, 2) budget_usd
                 from camp group by pricing_policy) g),
       'findProperty', (select jsonb_build_object('runs', count(*),
-          'chargedUsd', round(sum(credits_charged) / nullif(v_rate, 0), 2),
-          'providerSpendUsd', round(sum(provider_cost_usd), 2),
-          'homatchProfitUsd', round(sum(credits_charged) / nullif(v_rate, 0) - sum(provider_cost_usd), 2))
+          'unknownCostRuns', count(*) filter (where provider_cost_usd is null),
+          'chargedUsd', round(sum(credits_charged / nullif(coalesce(credits_per_usd, v_rate), 0)), 2),
+          'providerSpendUsd', case when bool_or(provider_cost_usd is null) then null else round(sum(provider_cost_usd), 2) end,
+          'homatchProfitUsd', case when bool_or(provider_cost_usd is null) or bool_or(credits_charged is null) then null
+                                   else round(sum(credits_charged / nullif(coalesce(credits_per_usd, v_rate), 0)) - sum(provider_cost_usd), 2) end)
         from public.discovery_runs where created_at >= v_since and status in ('COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED', 'BUDGET_REACHED'))))
   into v;
   return v;

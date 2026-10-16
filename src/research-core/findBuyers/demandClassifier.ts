@@ -75,7 +75,8 @@ const E = '(?![\\p{L}\\p{N}])';
 const RESIDENTIAL = L([
   `${B}(apartment|apartments|appartment|flat|flats|condo|studio|penthouse|duplex|house|villa|cottage|townhouse|home to buy|property|real estate)`,
   'квартир', 'жиль', 'недвижим', `${B}дом(?![\\p{L}])`, `${B}дома${E}`, 'коттедж', 'студи', 'пентхаус', 'однушк', 'двушк', 'трешк', 'трёшк', 'комнатн',
-  'ბინ', 'სახლ', 'უძრავ', 'აპარტამენტ', 'ოთახიან', 'სტუდიო', 'აგარაკ',
+  /* ბინა only at a word start: კაბინეტი (an office room) contains ბინ (VILLION lead 37, 2026-10-16). */
+  `${B}ბინ(?!ძ)`, 'სახლ', 'უძრავ', 'აპარტამენტ', 'ოთახიან', 'სტუდიო', 'აგარაკ',
   `${B}(daire|konut|emlak|stüdyo|villa|müstakil|rezidans)`, `${B}ev${E}`,
   'شقة', 'شقق', 'منزل', 'بيت', 'فيلا', 'عقار', 'سكن',
   'דירה', 'דירות', 'נכס', 'נדל', 'וילה', 'פנטהאוז', 'סטודיו', `${B}בית${E}`,
@@ -92,8 +93,8 @@ const ROOM_SPEC = L([
 const JOB = L([
   'работ', 'ваканси', 'подработк', 'резюме', 'трудоустро', 'ищу работу', 'няня', 'нянечк', 'нянь', 'сиделк', 'гувернант', 'домработниц',
   `${B}(job|jobs|vacancy|vacancies|hiring|resume|cv|employment|babysitter|nanny|caregiver|work permit)`,
-  'სამუშაო', 'ვაკანსი', 'დასაქმ', 'ძიძ', 'მომვლელ', 'რეზიუმე',
-  `${B}(iş arıyorum|iş ilanı|eleman|bakıcı|özgeçmiş)`, 'وظيفة', 'وظائف', 'توظيف', 'مربية', 'עבודה', 'משרה', 'מטפלת', 'בייביסיטר',
+  'სამუშაო', 'ვაკანსი', 'დასაქმ', 'ძიძ', 'მომვლელ', 'რეზიუმე', 'ვეძებ სამსახურ', 'სამსახურს ვეძებ', 'სამსახური მჭირდება',
+  `${B}(iş arıyorum|iş ilanı|eleman|bakıcı|özgeçmiş)`, 'وظيفة', 'وظائف', 'توظيف', 'مربية', '(أبحث|ابحث|نبحث) عن عمل', 'עבודה', 'משרה', 'מטפלת', 'בייביסיטר',
 ]);
 const SERVICE = L([
   'ремонт', 'мебел', 'перевоз', 'грузчик', 'уборк', 'клининг', 'юрист', 'нотариус', 'дизайн интерьер', 'массаж', 'маникюр', 'ипотечн брокер',
@@ -168,6 +169,22 @@ const SEEK = L([
 const STRONG_SEEK = L([
   `${B}(want to buy|looking to buy|we want to buy|i want to buy|looking to rent|want to rent)`, 'хочу купить', 'хотим купить', 'куплю', 'сниму', 'хочу снять',
   'ვიყიდი', 'შევიძენ', 'ვყიდულობ', 'ვიქირავებ', 'almak istiyorum', 'satın almak istiyorum', 'kiralamak istiyorum', 'أريد شراء', 'أريد استئجار', 'רוצה לקנות', 'רוצה לשכור',
+]);
+/** Seeking a property that is for sale is a purchase: "Tiflis'te satılık daire arıyorum",
+ *  "ищу квартиру на продажу", "looking for an apartment for sale" (2026-10-16). The seek
+ *  verb comes first; "for sale, looking for a buyer" is a seller (BUYER_WANTED). */
+const SEEK_FOR_SALE = L([
+  `${B}(i'?m looking for|i am looking for|we are looking for|looking for|searching for|i need|we need)[^.!?\n]{0,60}${B}for sale`,
+  '(ищу|ищем)[^.!?\n]{0,60}(на продажу|в продаже|под покупку)', `satılık[^.!?\n]{0,40}arıyor`,
+  '(أبحث|ابحث|نبحث)[^.!?\n]{0,40}للبيع', '(מחפש|מחפשת|מחפשים)[^.!?\n]{0,40}למכירה',
+]);
+const BUYER_WANTED = L([`${B}(looking for|searching for|need) (a |an )?(serious |real )?buyers?`, '(ищу|ищем) покупател', 'alıcı arıyor', 'مشتري', '(מחפש|מחפשים) קונה', 'მყიდველ']);
+/** "Looking for a cleaner / plumber / electrician" is a service request, not a home seeker. */
+const SERVICE_REQUEST = L([
+  `${B}(looking for|searching for|need|i need|we need) (a |an )?(good |reliable )?(cleaner|cleaning lady|housekeeper|plumber|electrician|handyman|painter|locksmith)`,
+  '(ищу|ищем|нужен|нужна) (хорошего |хорошую )?(уборщиц|сантехник|электрик|мастер|маляр|домработниц)',
+  '(ვეძებ|ვეძებთ|მჭირდება) (კარგ |სანდო )?(დამლაგებ|სანტექნიკოს|ელექტრიკოს|ხელოსან|მღებავ)',
+  `${B}(temizlikçi|tesisatçı|elektrikçi|boyacı) (arıyorum|arıyoruz|lazım)`, '(أبحث|ابحث|نبحث) عن (سباك|كهربائي|عامل نظافة|عاملة نظافة)', '(מחפש|מחפשת|מחפשים|צריך) (אינסטלטור|חשמלאי|מנקה|הנדימן)',
 ]);
 /** A stated budget is a seeker's word; a seller states a price. */
 const BUDGET_WORD = L([`${B}budget`, 'бюджет', 'ბიუჯეტ', 'bütçe', 'ميزانية', 'תקציב']);
@@ -303,6 +320,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   /* A listing that mentions its renovation is a listing, not a service ad. */
   const offerMarker = SALE_OFFER.test(s) || RENT_OFFER.test(s);
   if (SERVICE.test(s) && seekIdx < 0 && !offerMarker && !(residentialNoun && moneyMentions(s).length)) return empty('SERVICE', 'service_offer');
+  if (SERVICE_REQUEST.test(s) && !STRONG_SEEK.test(s)) return empty('SERVICE', 'service_request');
   /* "Looking for a renovation company for my apartment": a service request, unless the
      same text also states a first-person purchase or rental ("I want to buy … and renovate"). */
   if (RENOVATION.test(s) && RENOVATION_PROVIDER.test(s) && !offerMarker && !STRONG_SEEK.test(s)) return empty('SERVICE', seekIdx >= 0 ? 'renovation_request' : 'service_offer');
@@ -317,7 +335,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   if (!realEstate) return empty('IRRELEVANT', seekIdx >= 0 ? 'seeking_but_not_real_estate' : 'not_real_estate');
 
   const propertyType: DemandReading['propertyType'] = parkingOnly ? 'PARKING' : LAND.test(s) && !residentialNoun ? 'LAND'
-    : commercialOnly ? 'COMMERCIAL' : HOUSE.test(s) && !/квартир|ბინ|apartment|flat|daire|شقة|דירה/iu.test(s) ? 'HOUSE' : 'APARTMENT';
+    : commercialOnly ? 'COMMERCIAL' : HOUSE.test(s) && !/квартир|(?<![\p{L}])ბინ|apartment|flat|daire|شقة|דירה/iu.test(s) ? 'HOUSE' : 'APARTMENT';
 
   /* Constraints, from the text only. */
   const money = moneyMentions(s);
@@ -333,7 +351,8 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
     budget = { min, max, currency: cur, period: null, evidence: budgetHits.filter((m) => m.currency === cur).map((m) => m.text.trim()).join(' · ') };
   }
   const rentWords = RENT.test(s);
-  const buyWords = BUY.test(s);
+  const seeksForSale = SEEK_FOR_SALE.test(s) && !BUYER_WANTED.test(s) && !LISTING_CUES.test(s);
+  const buyWords = BUY.test(s) || seeksForSale;
   const maxUsd = budget ? toUsd({ amount: budget.max ?? 0, currency: budget.currency }) : null;
   const scale: 'RENT' | 'BUY' | null = maxUsd == null ? null : maxUsd <= RENT_SCALE_MAX_USD ? 'RENT' : maxUsd >= BUY_SCALE_MIN_USD ? 'BUY' : null;
   if (budget) budget.period = scale === 'RENT' || (rentWords && !buyWords) ? 'MONTHLY' : scale === 'BUY' || buyWords ? 'TOTAL' : null;
@@ -362,6 +381,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   if (seekIdx >= 0 && (offerIdx < 0 || seekIdx < offerIdx)) { direction = 'SEEK'; evidence.push('first_person_seeking'); }
   else if (offerIdx >= 0) { direction = 'OFFER'; evidence.push(saleIdx === offerIdx ? 'sale_offer_marker' : 'rent_offer_marker'); }
   if (direction === 'OFFER' && STRONG_SEEK.test(s) && !LISTING_CUES.test(s)) { direction = 'SEEK'; evidence.push('first_person_purchase_phrase'); }
+  if (seeksForSale && direction !== 'SEEK') { direction = 'SEEK'; evidence.push('seeks_property_for_sale'); }
   /* "if you have one for sale, message me" is a seeker asking sellers. */
   if (direction === 'OFFER' && /(თუ გაქვთ|если у вас есть|if you have|eğer varsa|إذا كان لديك|אם יש לכם)/iu.test(s)) { direction = 'SEEK'; evidence.push('asks_sellers'); }
   if (!direction && (BUY.test(s) || /(снять|to rent|kiralamak|استئجار|לשכור)/iu.test(s) || BUDGET_WORD.test(s)) && !LISTING_CUES.test(s)) {

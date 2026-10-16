@@ -26,7 +26,8 @@ const REQUEST = /(looking for|looking to|i need|need an?|want to (buy|rent)|sear
 const HOUSE = /(house|villa|cottage|дом|коттедж|вилла|სახლ|აგარაკ|\bev\b|villa|منزل|فيلا|بيت|בית|וילה)/i;
 const LAND = /(\bland\b|plot|участ|მიწ|arsa|أرض|מגרש)/i;
 const COMMERCIAL = /(commercial|office|shop|офис|коммерч|ოფის|კომერც|ofis|dükkan|مكتب|محل|משרד)/i;
-const APARTMENT = /(apartment|\bflat\b|condo|квартир|ბინ|daire|شقة|شقق|דירה|דירות|studio|студи)/i;
+/* ბინა only at a word start: კაბინეტი (an office room) contains ბინ. */
+const APARTMENT = /(apartment|\bflat\b|condo|квартир|(?<![ა-ჰ])ბინ(?!ძ)|daire|شقة|شقق|דירה|דירות|studio|студи)/i;
 const NEW_BUILD = /(new build|newly built|novostroy|новостро|ახალ(ი)? აშენებ|ახალაშენ|yeni bina|sıfır|جديد البناء|בנייה חדשה)/i;
 
 function firstNumber(re: RegExp, s: string): number | null {

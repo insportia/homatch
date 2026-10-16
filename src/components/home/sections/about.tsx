@@ -16,7 +16,7 @@ import { IntentCards } from '@/components/home/IntentCards';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { useSectionField, useFieldProps } from '@/site/content';
 import { PAGE, SECTION_Y } from './primitives';
-import { useServiceVisible } from '@/lib/serviceControls';
+import { usePathAvailable, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 /** The property kinds the platform is built to work across. */
 const MARKET = [
@@ -107,9 +107,13 @@ export function AboutWhatSection() {
     { key: 'brokers', field: 'cap_brokers', glyph: 'matching' as const, icon: UserSearch, title: 'broker_page_title', desc: 'about_cap_brokers', to: '/brokers' },
     { key: 'expat', field: 'cap_expat', glyph: 'expat' as const, icon: Search, title: 'mp_tile_expat_t', desc: 'about_cap_expat', to: '/for-expats/georgia' },
   ] as const;
-  // A paused service (Admin → Service Control Center) is not offered here.
-  const callsVisible = useServiceVisible('ai_call_center');
-  const capabilities = CAPABILITIES.filter((c) => c.key !== 'calls' || callsVisible);
+  // A paused service (Admin → Service Control Center) is not offered here: by its address,
+  // and by name for the two tiles whose address is shared (contract → /verify, match →
+  // /property/add, which is property management, not the matching product itself).
+  const { services } = useServiceControls();
+  const pathAvailable = usePathAvailable();
+  const NAMED: Record<string, ServiceKey> = { contract: 'contracts', match: 'find_buyers', calls: 'ai_call_center' };
+  const capabilities = CAPABILITIES.filter((c) => pathAvailable(c.to) && (!NAMED[c.key] || services[NAMED[c.key]].frontend));
 
   return (
     <section id="what" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>

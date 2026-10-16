@@ -59,7 +59,20 @@ import { SiteHeaderBlock } from './ShellBlocks';
  */
 
 /** Sections that are, in themselves, one of the owner's pausable services. */
-const SECTION_SERVICES: Partial<Record<string, ServiceKey>> = { call_center: 'ai_call_center' };
+const SECTION_SERVICES: Partial<Record<string, ServiceKey>> = {
+  call_center: 'ai_call_center',
+  verify: 'verify',
+  contract_intelligence: 'contracts',
+  matching: 'find_buyers',
+  find_property: 'find_property',
+  mortgage: 'mortgage',
+  investment: 'investment',
+  expats: 'for_expats',
+  brokers: 'brokers_directory',
+  email_campaign: 'email_campaigns',
+  homatch_ai: 'ai_assistant',
+  developers: 'developers',
+};
 
 /** The one place a section type becomes running code. */
 const COMPONENTS: Record<string, React.ComponentType> = {

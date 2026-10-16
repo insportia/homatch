@@ -46,6 +46,23 @@
 import type { TranslationKey } from '@/i18n/translations';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { HeaderLink } from '@/components/home/PublicHeader';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
+
+/*
+ * Which pausable product each link offers (Admin → Service Control Center). A link of a
+ * paused product is not offered; a group left empty goes with it. Keyed by link, not by
+ * address: the find-property and find-client links point at public entry pages.
+ */
+export const PUBLIC_NAV_SERVICES: Record<string, ServiceKey> = {
+  find_property: 'find_property',
+  find_client: 'find_buyers',
+  verify: 'verify',
+  mortgage: 'mortgage',
+  investment: 'investment',
+  expat: 'for_expats',
+  brokers: 'brokers_directory',
+  developers: 'developers',
+};
 
 export interface PublicNavLink {
   key: string;
@@ -159,6 +176,15 @@ export function destinationFor(link: Pick<PublicNavLink, 'target' | 'signedInTar
  */
 export function usePublicNavLinks({ onHome = false }: { onHome?: boolean } = {}): HeaderLink[] {
   const { t } = useLanguage();
+  const { services } = useServiceControls();
+  const offered = (link: PublicNavLink) => {
+    const service = PUBLIC_NAV_SERVICES[link.key];
+    return !service || services[service].frontend;
+  };
+  const prune = (links: PublicNavLink[]): PublicNavLink[] => links
+    .filter(offered)
+    .map((link) => (link.children ? { ...link, children: prune(link.children) } : link))
+    .filter((link) => !link.children || link.children.length > 0);
   const toLink = (link: PublicNavLink): HeaderLink => ({
     key: link.key,
     label: t(link.labelKey),
@@ -167,5 +193,5 @@ export function usePublicNavLinks({ onHome = false }: { onHome?: boolean } = {})
     ...(link.descKey ? { description: t(link.descKey) } : {}),
     ...(link.children ? { children: link.children.map(toLink) } : {}),
   });
-  return publicNav({ onHome }).map(toLink);
+  return prune(publicNav({ onHome })).map(toLink);
 }

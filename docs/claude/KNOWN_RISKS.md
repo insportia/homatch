@@ -15,6 +15,12 @@ Things that have already bitten a session once. Read before they bite twice.
   no-ops). Only the CI run advances them.
 - **`ezbr_sha256` is not reproducible** and is never proof. The eszip module
   diff is.
+- **Node resolves what Deno will not.** A bare `@supabase/supabase-js` import
+  passes every Node-run test (node_modules has it) and fails the Deno bundler
+  after merge; a failed function also stops its deploy list, so later
+  functions (and the no-JWT step) stay owed (run 38932203655). `check:edge`
+  now refuses any import that is not relative / URL / `jsr:` / `npm:` /
+  `node:` unless the function's own `deno.json` maps it.
 - **Hand-deploy pair**: `impersonate-user`, `unlock-external-contact` are
   excluded from CI's owed set; changing them means hand-deploying them and
   proving the artifact.

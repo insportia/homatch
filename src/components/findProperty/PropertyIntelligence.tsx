@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Check, ExternalLink, FileSearch, GitCompare, Info, Landmark, LineChart, Mail, Phone, ShieldCheck, Sparkles, User, Users } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, CircleHelp, ExternalLink, FileSearch, FileText, GitCompare, Info, Landmark, LineChart, Mail, MinusCircle, Phone, ShieldCheck, Sparkles, Star, User, Users } from 'lucide-react';
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -7,7 +7,11 @@ import { investmentHandoff, mortgageHandoff } from '@/research-core/marketplace/
 import type { ResultProperty } from '@/research-core/marketplace/pipeline';
 import type { PropertyView } from '@/services/marketplaceSearch';
 import { checkedAgo, listingActivity, listingAgeText, listingTimes, num, pct, type T, usd } from './format';
-import { advantageText, missingRequirements, reasonText, SELLER_KEY, sellerLabel } from './PropertyCard';
+import { advantageText, reasonText, sellerLabel, VERDICT_TONE } from './PropertyCard';
+import { fitText, highlightText, missText, summaryText, unknownText } from './advisorText';
+import { assessProperty } from '@/research-core/marketplace/advisor';
+import type { SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { PropertyGallery } from './PropertyGallery';
 import { DuplicateBadge, DuplicateListings } from './DuplicateListings';
 import { DuplicatesDialog } from './DuplicatesDialog';
@@ -56,8 +60,10 @@ function factValue(k: keyof PropertyView['facts'], v: unknown, t: T, p: Property
  * evidence in progressive layers. Every listing keeps its exact, clickable
  * source link; public contacts are shown as published.
  */
-export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, propertyType, onCompare, compareSelected, fullPage = false, budgetMaxUsd }: {
+export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, propertyType, onCompare, compareSelected, fullPage = false, budgetMaxUsd, brief }: {
   t: T; p: PropertyView | null; open: boolean; onOpenChange: (o: boolean) => void; isRTL: boolean; propertyType: string | null;
+  /** The customer's request: the assessment reads the property against it. */
+  brief?: SearchIntelligenceBrief | null;
   onCompare: () => void; compareSelected: boolean;
   fullPage?: boolean;
   budgetMaxUsd?: number | null;
@@ -109,17 +115,17 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
               ) : null;
             })}
           </dl>
+          {p.description ? <OriginalDescription t={t} text={p.description} source={(p.listings.find((l) => l.listingId === p.intelligence?.primaryListingId) ?? p.listings[0])?.sourceName ?? null} /> : null}
+          {brief ? <Assessment t={t} p={p} brief={brief} /> : null}
           <p className="text-sm text-muted-foreground">{t(f.elevator === true || f.amenities.includes('ELEVATOR') ? 'fpa_elevator_yes' : f.elevator === false || f.amenities.includes('NO_ELEVATOR') ? 'fpa_elevator_no' : 'fpa_elevator_unknown')}</p>
           <div ref={duplicatesRef}><DuplicateListings p={p} t={t} open={duplicatesOpen} onOpenChange={setDuplicatesOpen} /></div>
           {dialogOpen ? <DuplicatesDialog p={p} t={t} open={dialogOpen} onOpenChange={setDialogOpen} confirmed={p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1} /> : null}
 
           {p.intelligence ? <Section icon={FileSearch} title={t('fpr_evidence_title')} id="mps-evidence">
-            {p.unverified.length > 0 ? <p className="text-sm text-muted-foreground">{t('mps_not_stated')}: {missingRequirements(p.unverified, t)}</p> : null}
             <p className="text-sm leading-relaxed text-foreground/80">{t(p.seller.reasonCodes.some((c) => c.startsWith('DECLARED_')) ? 'fpr_seller_source' : p.seller.reasonCodes.includes('CONTACT_ON_MANY_PROPERTIES') ? 'fpr_seller_contact' : p.seller.classification === 'LIKELY_OWNER' ? 'fpr_seller_owner' : 'fpr_seller_unclear')}</p>
             {p.intelligence.warnings.length ? <ul className="space-y-1.5">{p.intelligence.warnings.map((code) => <li key={code} className="flex items-start gap-2 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.06)] px-3 py-2 text-sm text-foreground/85"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t(`fpr_warning_${code}`)}</li>)}</ul> : null}
             {p.intelligence.signals.map((signal) => <div key={signal.code} className="rounded-xl border border-foreground/10 border-s-2 border-s-[hsl(var(--gold))] bg-background p-3"><p className="text-sm font-medium">{t(signal.polarity === 'NEGATED' ? 'fpr_description_negates' : 'fpr_description_mentions', { feature: t(`fpr_signal_${signal.code}`) })}</p><q dir="auto" className="mt-1 block break-words text-sm italic text-muted-foreground">{signal.evidence}</q></div>)}
             <p className="text-xs text-muted-foreground">{t('fpr_text_evidence_note')}</p>
-            {p.description ? <details className="group rounded-xl border border-foreground/10 bg-background"><summary className="flex min-h-[44px] cursor-pointer items-center justify-between gap-2 px-3.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">{t('fpr_description_evidence')}<ArrowRight className="h-4 w-4 text-[hsl(var(--gold-ink))] transition group-open:rotate-90 rtl:rotate-180" aria-hidden="true" /></summary><p dir="auto" className="whitespace-pre-wrap break-words border-t border-foreground/10 px-3.5 py-3 text-sm leading-relaxed text-foreground/80">{p.description}</p></details> : null}
           </Section> : null}
 
           {p.reasons.length || p.upgrade ? (
@@ -229,5 +235,51 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
           </section>
         </div>
     </IntelligenceFrame>
+  );
+}
+
+/** The listing's own words, in their own language, first; long text folds after a few lines. */
+function OriginalDescription({ t, text, source }: { t: T; text: string; source: string | null }) {
+  const [more, setMore] = useState(false);
+  const long = text.length > 420;
+  return (
+    <section aria-labelledby="fpv-desc" data-original-description className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+      <h3 id="fpv-desc" className="flex items-center gap-2 font-display text-lg font-semibold"><FileText className="h-[18px] w-[18px] text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('fpv_desc_title')}</h3>
+      {source ? <p className="mt-0.5 text-xs text-muted-foreground">{t('fpv_desc_note', { source })}</p> : null}
+      <p dir="auto" className={`mt-3 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-foreground/90 ${long && !more ? 'line-clamp-6' : ''}`}>{text}</p>
+      {long ? <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="mt-2 min-h-[44px] text-sm font-semibold text-[hsl(var(--gold-ink))] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">{t(more ? 'fpv_desc_less' : 'fpv_desc_more')}</button> : null}
+    </section>
+  );
+}
+
+/** The advisor's reading: what fits, what differs, what the listing does not say, and the short verdict. */
+function Assessment({ t, p, brief }: { t: T; p: PropertyView; brief: SearchIntelligenceBrief }) {
+  const { lang } = useLanguage();
+  const a = assessProperty(p, brief);
+  const unknown = unknownText(a, t, lang);
+  const group = (title: string, icon: typeof Check, tone: string, lines: string[], key: string) => lines.length ? (
+    <div data-assessment-group={key}>
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{title}</p>
+      <ul className="mt-1.5 space-y-1.5">
+        {lines.map((line) => { const Icon = icon; return <li key={line} className="flex items-start gap-2 text-[15px] leading-relaxed text-foreground/90"><Icon className={`mt-1 h-4 w-4 shrink-0 ${tone}`} aria-hidden="true" /><span dir="auto">{line}</span></li>; })}
+      </ul>
+    </div>
+  ) : null;
+  return (
+    <section aria-labelledby="fpv-assess" data-assessment className="space-y-4 rounded-2xl border border-[hsl(var(--gold-border)/0.7)] bg-[hsl(var(--gold)/0.04)] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id="fpv-assess" className="flex items-center gap-2 font-display text-lg font-semibold"><Sparkles className="h-[18px] w-[18px] text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('fpv_assess_title')}</h3>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${VERDICT_TONE[a.verdict]}`}>{t(`fpv_verdict_${a.verdict}`)}</span>
+      </div>
+      {group(t('fpv_g_fits'), Check, 'text-[hsl(var(--success))]', a.fits.map((x) => fitText(x, t)), 'fits')}
+      {group(t('fpv_g_misses'), MinusCircle, 'text-[hsl(var(--gold-ink))]', a.misses.map((x) => missText(x, t)), 'misses')}
+      {unknown ? group(t('fpv_g_unknown'), CircleHelp, 'text-muted-foreground', [unknown], 'unknown') : null}
+      {group(t('fpv_g_highlights'), Star, 'text-[hsl(var(--gold-ink))]', a.highlights.map((x) => highlightText(x, t)), 'highlights')}
+      <div className="rounded-xl bg-card px-3.5 py-3 shadow-sm" data-assessment-group="summary">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('fpv_g_summary')}</p>
+        <p dir="auto" className="mt-1 text-[15px] font-medium leading-relaxed text-foreground">{summaryText(a, t, lang)}</p>
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">{t('fpv_assess_note')}</p>
+    </section>
   );
 }

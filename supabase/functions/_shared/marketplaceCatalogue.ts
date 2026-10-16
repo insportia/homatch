@@ -12,7 +12,13 @@ type Db = any;
 export async function resultCatalogue(db: Db, search: Record<string, unknown>): Promise<CustomerProperty[]> {
   const rows = await readAll<{ view: CustomerProperty }>((from, to) => db.from('discovery_marketplace_properties')
     .select('view').eq('search_id', search.id).order('property_key').range(from, to));
-  if (rows.length && rows.every((row) => hasCurrentIdentity(row.view))) return rows.map((row) => row.view);
+  /* Stored rows are used only when they are the WHOLE catalogue. A search whose rows
+     were partly refused at write time (2026-10-16: a split emoji made whole batches fail,
+     unchecked) is rebuilt
+     from its own stored listings, so no source silently disappears from results. */
+  const expected = Number(search.properties_count);
+  const complete = !Number.isFinite(expected) || expected <= 0 || rows.length >= expected;
+  if (rows.length && complete && rows.every((row) => hasCurrentIdentity(row.view))) return rows.map((row) => row.view);
   const raw = await readAll<{ raw: ExternalListingCandidate }>((from, to) => db.from('discovery_marketplace_listings')
     .select('raw').eq('search_id', search.id).order('id').range(from, to));
   if (!raw.length) return rows.map((row) => row.view);

@@ -1832,3 +1832,25 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Sources live: MyHome, SS.ge, Place.ge, Home.ge, Allhome.ge (registry-driven list in
   `capabilities.sources`). Brokeri.ge registered but disabled (stale catalogue);
   Korter.ge (terms) and Binebi.ge (Cloudflare) excluded.
+
+## Find Property advisor results + free source evidence (2026-10-16, branch `claude/dreamy-johnson-a1kwjv`)
+
+- Free search sources (owner: five are sufficient): MyHome.ge, SS.ge, Place.ge, Home.ge,
+  Allhome.ge. Production searches through the real UI (runner, test accounts 8 to 11):
+  b7a5af37, 94b8a1cf, 067b46c0. All five workers dispatched and returned listings every
+  time (067b46c0: SS.ge 377, MyHome 158, Home.ge 47, Place.ge 30, Allhome 27 stored
+  listings; 629 unique properties). SS.ge ends PARTIAL at the 15 minute deadline (reads
+  ~4,800 discovered). Brokeri.ge stays disabled (>95% of its catalogue older than 30 days).
+- Defect found: result rows were upserted in unchecked 500-row batches; a description
+  snippet cut through an emoji (lone surrogate) made Postgres refuse whole batches
+  (gateway `PostgREST; error=22P02`), so customers saw only a remainder (067b46c0: 118 of
+  618 rows, only SS.ge / Place.ge / MyHome). Write-side fix is PR #237 (other session);
+  this branch adds the read guard: stored rows serve only when complete, otherwise the
+  catalogue is rebuilt from the search's own stored listings.
+- Customer UI: advisor reading per property (research-core/marketplace/advisor.ts:
+  fits / differs / not stated / worth knowing; silence is never "no"), compact cards,
+  Recommended / Also worth a look, plain found line, quiet source status with Search
+  again, original description first on the property page, discovery field (copy of
+  Verify's motion engine in findProperty/workspace/fieldMotion.ts; Verify untouched),
+  elapsed time from the server start + 10 to 30 minutes note, source chips with counts.
+- Not deployed. Paid Extended Search untouched by this branch (see PR #237 for paid fixes).

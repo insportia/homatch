@@ -291,6 +291,81 @@ test('V2: a backend missing the history action stays an error; authenticated ret
   assert.ok(state.requests.filter(r => r.action === 'history').every(r => !('user_id' in r)));
 });
 
+test('History cards: title, place, compact criteria, results count; Repeat reopens the builder without starting a search', opts, async (t) => {
+  for (const [width, lang] of [[375, 'ka'], [393, 'he']]) {
+    const { page, state } = await boot(t, { lang, width, height: 844 });
+    await page.goto(`${BASE}/find-property`);
+    const card = page.locator('[data-history-card]').filter({ has: page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]') });
+    await card.waitFor();
+    assert.equal(await card.locator('h3').count(), 1);
+    assert.ok(await card.locator('[data-history-count]').count() === 1);
+    assert.doesNotMatch(await card.textContent(), /\{\{?\w+\}?\}/);
+    assert.ok(await overflow(page) <= 1);
+    if (lang === 'ka') {
+      assert.ok((await card.textContent()).includes('შედეგების ნახვა'));
+      await shot(page, 'history-cards-ka-375');
+    }
+    await card.locator('button').last().click();
+    await page.waitForURL((url) => url.pathname === '/find-property/new');
+    await page.locator('[data-action="mps-start"]').waitFor();
+    assert.equal(state.requests.filter((r) => r.action === 'start').length, 0, 'repeating only prefills the builder');
+  }
+});
+
+test('Search summary: removing a criterion or editing reopens the builder with the saved brief and never starts a search', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', width: 390 });
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  const summary = page.locator('[data-search-summary]');
+  await summary.waitFor();
+  const removable = summary.locator('li[data-criterion] button');
+  assert.ok(await removable.count() >= 1);
+  assert.ok((await removable.first().boundingBox()).height >= 28);
+  const key = await summary.locator('li[data-criterion]:has(button)').first().getAttribute('data-criterion');
+  assert.ok(await overflow(page) <= 1);
+  await removable.first().click();
+  await page.waitForURL((url) => url.pathname === '/find-property/new');
+  // A removed required criterion is asked again; the builder never starts on its own.
+  await page.waitForFunction(() => !!sessionStorage.getItem('homatch.findProperty.draft.v1'));
+  const draft = await page.evaluate(() => JSON.parse(sessionStorage.getItem('homatch.findProperty.draft.v1') ?? 'null'));
+  assert.ok(draft, 'the edited brief is kept as the draft');
+  const field = { location: 'districts', buildingStatus: 'buildingStatuses', renovation: 'renovationPreferences' }[key] ?? key;
+  assert.equal(draft[field], null, `${key} was removed`);
+  await page.goBack();
+  await page.waitForURL((url) => url.pathname.startsWith('/find-property/search/'));
+  await page.locator('[data-action="edit-search"]').click();
+  await page.locator('[data-action="mps-start"]').waitFor();
+  assert.equal(state.requests.filter((r) => r.action === 'start').length, 0);
+});
+
+test('HOMATCH network: member matches appear in the workspace and the results; Call dials the listing contact, Message opens the private conversation', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', width: 390, nativeInventory: true });
+  await page.goto(`${BASE}/find-property`);
+  await page.getByText('HOMATCH properties that may fit', { exact: true }).waitFor();
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  const panel = page.locator('section[aria-labelledby="native-matches-title"]');
+  await panel.waitFor();
+  assert.equal(await panel.locator('[data-property-key]').count(), 0, 'member matches are their own section, not mixed into external cards');
+  assert.ok(await page.locator('[data-property-key]').count() > 0, 'external results still render');
+  assert.ok(!/\+995/.test(await panel.textContent()), 'no number in the list itself');
+  const call = panel.getByRole('button', { name: 'Call', exact: true });
+  const message = panel.getByRole('button', { name: 'Message', exact: true });
+  for (const b of [call, message]) assert.ok((await b.boundingBox()).height >= 44, 'clearly visible 44px actions');
+  await call.click();
+  await panel.locator('a[href="tel:+995555123456"]').waitFor();
+  assert.equal(state.reveals, 1, 'one server reveal, per match');
+  await panel.getByRole('button', { name: 'Copy number', exact: true }).waitFor();
+  await shot(page, 'network-call-390');
+  await message.click();
+  await page.waitForURL((url) => url.pathname === '/chat' && url.searchParams.get('conversation') === 'conversation-1');
+  assert.deepEqual(state.opened, { p_kind: 'MATCH', p_id: 'native-1' }, 'the server resolves the counterparty from the match, not from the client');
+  state.noNumber = true;
+  await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
+  await panel.getByRole('button', { name: 'Call', exact: true }).click();
+  await panel.locator('[role="status"]').filter({ hasNotText: '+995' }).first().waitFor();
+  assert.equal(await panel.locator('a[href^="tel:"]').count(), 0, 'no number, no dial link');
+  assert.ok(await overflow(page) <= 1);
+});
+
 function fakeSession() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -427,6 +502,8 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
       return r.fulfill(json(wantsObject ? state.conversations[0] ?? null : state.conversations));
     }
+    if (url.includes('/rest/v1/rpc/reveal_native_contact')) { state.reveals = (state.reveals ?? 0) + 1; return r.fulfill(json(state.noNumber ? { phone: null, reason: 'NO_NUMBER' } : { phone: '+995555123456', reason: null })); }
+    if (url.includes('/rest/v1/rpc/open_native_conversation')) { state.opened = JSON.parse(req.postData() || '{}'); return r.fulfill(json('conversation-1')); }
     if (url.includes('/rest/v1/rpc/my_native_matches')) return r.fulfill(json(nativeInventory ? [{ kind: 'MATCH', id: 'native-1', role: 'SEEKER', property_id: 'property-1', property_title: 'Native HOMATCH apartment', homatch_id: 101, agreed: ['CITY', 'PRICE'], preference_misses: [], viewing_requested: false, city: 'Tbilisi', price: 150000, currency: 'USD', area: 85, rooms: 3, bedrooms: 2 }] : []));
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));

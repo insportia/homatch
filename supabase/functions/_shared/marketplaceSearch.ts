@@ -119,19 +119,43 @@ export const searchModel = () =>
 
 const truthy = (v: unknown) => v === true || v === 'true' || (typeof v === 'string' && v.replace(/"/g, '') === 'true');
 
-/** Product and provider switches. MyHome and SS.ge exceptions are explicit and
- * scoped to their marketplace adapters; other providers keep the global switch. */
-export async function loadMarketplaceSwitches(db: Db): Promise<{ enabled: boolean; providersKilled: boolean; myhomeEnabled: boolean; ssgeEnabled: boolean }> {
-  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch', 'marketplace_myhome_enabled', 'marketplace_ssge_enabled']);
+/** Find Property's own HTML portal workers: each has its own admin switch (default off),
+ * like MyHome and SS.ge, so the global provider kill switch does not hold them. */
+export const PORTAL_WORKER_SWITCHES: Readonly<Record<string, string>> = {
+  'placege-agent': 'marketplace_placege_enabled',
+  'homege-agent': 'marketplace_homege_enabled',
+  'brokeri-agent': 'marketplace_brokeri_enabled',
+  'allhome-agent': 'marketplace_allhome_enabled',
+};
+
+export type MarketplaceSwitches = { enabled: boolean; providersKilled: boolean; myhomeEnabled: boolean; ssgeEnabled: boolean; portals: Record<string, boolean> };
+
+/** Product and provider switches. MyHome, SS.ge and the portal workers are explicit
+ * and scoped to Find Property; other providers keep the global switch. */
+export async function loadMarketplaceSwitches(db: Db): Promise<MarketplaceSwitches> {
+  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch', 'marketplace_myhome_enabled', 'marketplace_ssge_enabled', ...Object.values(PORTAL_WORKER_SWITCHES)]);
   const map = new Map((data ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
   return {
     enabled: truthy(map.get(MARKETPLACE_SWITCH)),
     myhomeEnabled: truthy(map.get('marketplace_myhome_enabled')),
     ssgeEnabled: truthy(map.get('marketplace_ssge_enabled')),
+    portals: Object.fromEntries(Object.entries(PORTAL_WORKER_SWITCHES).map(([worker, key]) => [worker, truthy(map.get(key))])),
     /* An unreadable kill switch is treated as ON: dispatching is the thing it guards. */
     providersKilled: map.has('provider_kill_switch') ? truthy(map.get('provider_kill_switch')) : true,
   };
 }
+
+/** May this worker run? One rule for dispatch and for claim. */
+export function workerSwitchOn(switches: MarketplaceSwitches, workerId: string): boolean {
+  if (workerId === 'myhome-agent') return switches.myhomeEnabled;
+  if (workerId === 'ssge-agent') return switches.ssgeEnabled;
+  if (workerId in PORTAL_WORKER_SWITCHES) return switches.portals[workerId] === true;
+  return !switches.providersKilled;
+}
+
+/** Is any source allowed at all? */
+export const anySourceOn = (switches: MarketplaceSwitches) =>
+  switches.myhomeEnabled || switches.ssgeEnabled || Object.values(switches.portals).some(Boolean) || !switches.providersKilled;
 
 /** One strict structured-output call through the Responses API. */
 export async function openaiStructured(args: {
@@ -303,7 +327,16 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
 
 /** Sources answered instantly from HOMATCH's shared listing pool (what earlier
  * searches already collected), then refreshed live. */
-export const CACHE_FALLBACK: Record<string, string> = { 'myhome-agent': 'myhome-ge', 'ssge-agent': 'ss-ge' };
+export const CACHE_FALLBACK: Record<string, string> = {
+  'myhome-agent': 'myhome-ge', 'ssge-agent': 'ss-ge',
+  'placege-agent': 'place-ge', 'homege-agent': 'home-ge', 'brokeri-agent': 'brokeri-ge',
+  'allhome-agent': 'allhome-ge',
+};
+/** What the customer reads as the source of a worker's listings. */
+export const WORKER_SOURCE_NAMES: Record<string, string> = {
+  'myhome-agent': 'MyHome', 'ssge-agent': 'SS.ge', 'placege-agent': 'Place.ge', 'homege-agent': 'Home.ge',
+  'brokeri-agent': 'Brokeri.ge', 'allhome-agent': 'Allhome.ge',
+};
 /** Only listings their source confirmed within this window are served from the
  * pool: an older observation may already be sold, expired or deleted. */
 export const CACHE_WINDOW_MS = 72 * 3600_000;

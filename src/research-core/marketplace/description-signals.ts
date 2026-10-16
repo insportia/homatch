@@ -20,12 +20,13 @@ const PATTERNS: Array<[DescriptionSignalCode, RegExp]> = [
 export function descriptionSignals(description: string | null | undefined): DescriptionSignal[] {
   const text = (description ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 12000);
   const result: DescriptionSignal[] = [];
+  // \b and \w are ASCII-only even with /u: Cyrillic and Georgian negations need \p{L} boundaries.
   for (const [code, pattern] of PATTERNS) {
     const match = pattern.exec(text);
     if (!match) continue;
     const before = text.slice(Math.max(0, match.index - 32), match.index);
     const after = text.slice(match.index + match[0].length, match.index + match[0].length + 32);
-    const negated = /(?:\bno\b|\bnot\b|\bwithout\b|\bunfurnished\b|\bбез\b|не|არ არის|არ აქვს)\s*(?:\w+\s*)?$/iu.test(before)
+    const negated = /(?:\bno\b|\bnot\b|\bwithout\b|\bunfurnished\b|(?<!\p{L})(?:без|нет|не)|არ არის|არ აქვს)\s*(?:[\p{L}\p{N}]+\s*)?$/iu.test(before)
       || /^(?:\S*\s*)?(?:არ აქვს|არ არის|გარეშე|нет)/iu.test(after) || /^unfurnished$/i.test(match[0]);
     result.push({ code, basis: 'DESCRIPTION', polarity: negated ? 'NEGATED' : 'MENTIONED',
       evidence: text.slice(Math.max(0, match.index - 35), Math.min(text.length, match.index + match[0].length + 45)).trim() });

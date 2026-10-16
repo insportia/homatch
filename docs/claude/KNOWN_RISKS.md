@@ -105,3 +105,55 @@ with per-language loading named as the follow-up. That follow-up is done:
 - Watch-out seen during this release: Vercel auto-deploys `main` even when the
   Validate job fails, so a failed deploy run can leave a NEW frontend live
   against OLD edge functions. Check both after every main merge.
+
+## Find Property HTML portals (2026-10-15, PR #210)
+
+- Adapters read public HTML that the sites can change at any time. Each parser is
+  pinned by real-page fixtures (`official-worker/test/fixtures/portals/`), and
+  `scripts/portals/live-check.mjs` re-proves them end to end from a network that
+  reaches `.ge` hosts (a GitHub runner; the cloud dev sandbox cannot).
+- Home.ge and Allhome.ge have no usable public search: Home.ge's search pages
+  return an empty body, and Allhome.ge's live under robots-disallowed
+  `/index.php?*`. Both are read from the site's own sitemap, newest id first,
+  with 24 listing pages per index read. The sitemaps are cached for 6 hours in
+  process memory (Home.ge's are about 12 MB each).
+- Price/area filters on Home.ge and Allhome.ge apply only after the listing page
+  is read (shared `contradiction()` in `portals/acquire.mjs`); a narrow budget
+  can therefore yield few results from a large read.
+- Brokeri.ge adds a handful of listings a month; most of its catalogue is older
+  than the platform's 30-day listing-age policy (`freshness.ts`), so most
+  Brokeri results are rejected by the pipeline (correctly). Do not loosen the
+  policy for one source.
+- No portal publishes a contact number on the listing page except Place.ge and
+  Brokeri.ge; Home.ge/Allhome.ge reveal numbers only through a click-through
+  request, which is never automated.
+- Districts (2026-10-16): portal sources apply a strict district check in the
+  worker (`portals/places.mjs`) — a listing naming any place other than a requested,
+  known district is dropped; one naming none is kept. Home.ge narrows by sitemap
+  slug; Place.ge's server ignores every district parameter (live probe 2026-10-16),
+  so it, Allhome and Brokeri check districts only after reading — with a 2-page / 24-listing read a
+  district search on them often returns nothing (honest empty, not an error). A
+  district outside `normalize/place.ts` disables the narrowing (city read).
+- Prices below 10 (Home.ge's "1 ₾" placeholder) are dropped as no price
+  (`withoutPlaceholderPrice`), never shown as in-budget.
+- Korter.ge is BLOCKED_BY_TERMS (terms §5.3: "You must not use any scraping
+  technology on the Site") and Binebi.ge answers every public page with a
+  Cloudflare challenge. Neither is registered; a test pins that.
+
+## Find Property → HOMATCH network: native candidate cap (2026-10-15, PR #210)
+
+- A demand-triggered native pass (`supply-matching`, `nativeOnly`) reads at most
+  `MAX_CANDIDATES = 500` ACTIVE properties with no city filter and no ordering
+  (`supply-matching/index.ts` native query). Above 500 ACTIVE properties a new
+  search sees an arbitrary subset. Production had 1 ACTIVE property on
+  2026-10-15, so nothing is missed today. Fix before the inventory nears 500:
+  pre-filter by the demand's city/transaction (scoring unchanged) or page.
+  Proposed safe path (not in PR #210): an index on `property_facts (lower(city))`
+  plus `properties (matching_status, transaction_type) where is_deleted = false
+  and archived_at is null`; the native query filters city and transaction before
+  the limit and orders by `updated_at desc`, then keyset-pages in batches of
+  500 until exhausted. `assessMatch` and its scores stay as they are; only the
+  candidate read changes, and a city-name normalization check (თბილისი /
+  Tbilisi) must pass first so the pre-filter never drops a compatible match.
+- Property-mode re-evaluation (a listing created or changed) evaluates up to
+  `PROPERTY_MODE_MAX_DEMAND = 600` active native searches per listing.

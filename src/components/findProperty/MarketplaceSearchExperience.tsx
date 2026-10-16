@@ -202,7 +202,13 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       {!route.propertyKey && view !== 'MODE' && view !== 'ERROR' ? <Link to="/find-property" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-foreground/15 bg-card px-4 text-sm font-semibold shadow-sm transition hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpw_history')}</Link> : null}
 
       {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl bg-muted/60" aria-busy="true" />}
-      {view === 'MODE' && <SearchDashboard t={t} />}
+      {view === 'MODE' && <SearchDashboard t={t} onRepeat={(b) => {
+        // Repeating reopens the builder with the saved criteria; nothing starts until the customer confirms.
+        setBriefAndDraft(sanitizeBrief(b));
+        navigate('/find-property/new');
+        setSearch(null);
+        setView('BUILD');
+      }} />}
       {view === 'ERROR' && <div role="alert" className="space-y-4"><p>{t('mps_error_generic')}</p><Link to="/find-property">{t('fpw_history')}</Link></div>}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (
@@ -220,9 +226,9 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       {view === 'RESULTS' && search && !route.propertyKey && (
         <ResultsView t={t} search={search} onOpen={(p) => void openProperty(p)} compare={compare} onToggleCompare={toggleCompare}
           onNewSearch={newSearch} deepSearchAvailable={deepSearchAvailable} version={resultsVersion}
-          onChangeCriteria={(f) => {
+          onChangeCriteria={(edit) => {
             const base = sanitizeBrief(search.brief);
-            setBriefAndDraft(applyEdit(base, { field: f, value: null }));
+            setBriefAndDraft(edit ? applyEdit(base, edit) : base);
             navigate('/find-property/new');
             setSearch(null);
             setView('BUILD');

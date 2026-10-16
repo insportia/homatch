@@ -343,6 +343,10 @@ export const FIND_BUYERS_REPORT_STRINGS = {
   fbr_fit_location_NEARBY: ['Location nearby', 'ლოკაცია ახლოსაა', 'Район рядом', 'Konum yakın', 'الموقع قريب', 'המיקום קרוב'],
   fbr_fit_location_INCOMPATIBLE: ['Location doesn’t fit', 'ლოკაცია არ შეესაბამება', 'Район не подходит', 'Konum uygun değil', 'الموقع غير مناسب', 'המיקום לא מתאים'],
   fbr_fit_location_UNKNOWN: ['Location unknown', 'ლოკაცია უცნობია', 'Район неизвестен', 'Konum bilinmiyor', 'الموقع غير معروف', 'המיקום לא ידוע'],
+  /* Financing as the buyer stated it (2026-10-16): things to confirm, never a rejection. */
+  fbr_financing_instalments: ['Seller instalments — to confirm', 'განვადება გამყიდველთან — დასადასტურებელია', 'Рассрочка от продавца — уточнить', 'Satıcıya taksit — teyit edilmeli', 'تقسيط للبائع — يحتاج تأكيدًا', 'תשלומים למוכר — לבירור'],
+  fbr_financing_low_down: ['Low down payment', 'დაბალი პირველადი შენატანი', 'Небольшой первоначальный взнос', 'Düşük peşinat', 'دفعة أولى منخفضة', 'הון עצמי נמוך'],
+  fbr_financing_mortgage: ['Buying with a mortgage', 'ყიდულობს იპოთეკით', 'Покупка в ипотеку', 'Konut kredisiyle alım', 'شراء بقرض عقاري', 'רכישה במשכנתא'],
 
   /* ── admin: Intelligence tab ── */
   fbx_admin_tab_intelligence: ['Intelligence', 'ანალიტიკა', 'Аналитика', 'Analitik', 'التحليلات', 'מודיעין'],

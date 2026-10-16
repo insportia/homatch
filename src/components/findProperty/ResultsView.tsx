@@ -1,15 +1,16 @@
-import { ChevronLeft, ChevronRight, Copy, Loader2, Pencil, Search, X } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { BriefEdit } from '@/research-core/marketplace/brief';
 import { filtersFromParams, pageNumbers, type ResultFilters, resultParams } from '@/research-core/marketplace/browse-results';
 import { RESULT_SECTIONS } from '@/research-core/marketplace/result-evidence';
 import { browseSearchResults, MarketplaceError, type PropertyView, type SearchBrowsePage, type SearchSummary } from '@/services/marketplaceSearch';
-import { criteriaChips, removeCriterion, type T } from './format';
+import type { T } from './format';
 import { PropertyCard } from './PropertyCard';
+import { ResultsHeader } from './workspace/ResultsHeader';
+import { DeepSearchPanel } from './workspace/DeepSearchPanel';
 import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { ResultFiltersPanel } from './ResultFiltersPanel';
-import { DeepSearchCard } from './SearchModeSelect';
 
 export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNewSearch, onChangeCriteria, deepSearchAvailable, version }: {
   t: T; search: SearchSummary; onOpen: (p: PropertyView) => void; compare: string[]; onToggleCompare: (p: PropertyView) => void;
@@ -47,28 +48,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const showItems = !loading && !error;
   const sorted = !!filters.sort && filters.sort !== 'RANKED';
   return <div className="space-y-6">
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0 space-y-2" data-search-summary>
-        <ul className="flex min-w-0 flex-wrap gap-2" aria-label={t('mps_your_search')}>{criteriaChips(search.brief, t).map((c) => {
-          const edit = removeCriterion(c.key);
-          return <li key={c.key} data-criterion={c.key} className="inline-flex items-center gap-1 rounded-full border border-border py-1 ps-3 pe-1 text-xs" dir="auto">{c.label}
-            {edit ? <button type="button" onClick={() => onChangeCriteria(edit)} aria-label={t('fpw_remove_criterion', { label: c.label })} className="grid h-7 w-7 place-items-center rounded-full hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-3.5 w-3.5" aria-hidden="true" /></button> : <span className="pe-2" />}</li>;
-        })}</ul>
-        <p className="text-xs text-muted-foreground">{t('fpw_edit_note')}</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => onChangeCriteria(null)} data-action="edit-search" className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Pencil className="h-4 w-4" aria-hidden="true" />{t('fpw_edit_search')}</button>
-      <button type="button" onClick={onNewSearch} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[hsl(var(--gold))] px-5 text-sm font-semibold text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Search className="h-4 w-4" aria-hidden="true" />{t('mps_new_search')}</button>
-      </div>
-    </div>
-    <div ref={heading} className="scroll-mt-24 space-y-3 rounded-2xl border border-white/10 bg-[#0C1119] p-5 text-white shadow-sm sm:p-7 [&_.text-muted-foreground]:text-white/75" aria-live="polite">
-      {data ? <><p className="font-display text-xl font-semibold sm:text-2xl" data-testid="mps-total">{t('mps_total_found', { n: data.totalCurrent })}</p><p className="text-sm text-muted-foreground">{t('fpa_summary', { strong: data.summary.strong, close: data.summary.close, verify: data.summary.verification })}</p><p className="max-w-[80ch] text-xs leading-relaxed text-muted-foreground">{t('fpr_freshness_policy')}{data.summary.unknownDates ? ` ${t('fpr_unknown_dates', { n: data.summary.unknownDates })}` : ''}</p></> : null}
-      {!search.terminal ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('mps_progressive_body')}</p> : null}
-      {search.sources?.length ? <ul className="space-y-1 text-xs text-muted-foreground" data-testid="mps-sources">{search.sources.map((s, i) => (
-        <li key={`${s.source}-${i}`} data-state={s.state}>{t(`mps_source_${s.state}`, { source: s.source })}{s.retryAt && s.state !== 'FRESH' && s.state !== 'REFRESHING' ? ` · ${t('mps_source_retry', { time: new Date(s.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}` : ''}</li>
-      ))}</ul> : null}
-      {search.partial ? <div role="status" className="space-y-1"><p className="text-sm font-medium">{t('mps_partial_title')}</p><p className="text-sm text-muted-foreground">{t('mps_partial_body')}</p></div> : null}
-    </div>
+    <ResultsHeader t={t} search={search} data={data} onNewSearch={onNewSearch} onChangeCriteria={onChangeCriteria} headingRef={heading} />
     {/* HOMATCH members whose property fits these requirements, from the native matcher.
         Private messaging; a number only as the server allows. Renders nothing when empty. */}
     <NativeMatchesPanel role="SEEKER" />
@@ -89,6 +69,6 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     }) : null}
     {showItems && data && data.total > 0 ? <div className="space-y-3 border-t border-border pt-5"><p className="text-center text-xs text-muted-foreground" role="status">{t('fpr_page_status', { from: (data.page - 1) * data.pageSize + 1, to: Math.min(data.page * data.pageSize, data.total), total: data.total })}</p><nav aria-label={t('fpr_pagination')} className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr"><button type="button" disabled={data.page === 1} onClick={() => update({}, data.page - 1)} aria-label={t('fpr_previous')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>{pageNumbers(data.page, data.pages).map((p, i) => p === 'gap' ? <span key={`gap-${i}`} className="px-1 text-muted-foreground" aria-hidden="true">…</span> : <button type="button" key={p} aria-label={t('fpr_go_page', { n: p })} aria-current={p === data.page ? 'page' : undefined} onClick={() => update({}, p)} className={`h-11 min-w-11 rounded-xl border px-2 text-sm font-semibold ${p === data.page ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]' : 'border-border hover:bg-muted'}`}>{p}</button>)}<button type="button" disabled={data.page === data.pages} onClick={() => update({}, data.page + 1)} aria-label={t('fpr_next')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></nav></div> : null}
     {showItems && data && search.terminal && !data.sections.UPGRADE && !filters.section ? <section className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.04)] p-5"><h2 className="font-display text-lg font-semibold">{t('fpr_section_UPGRADE')}</h2><p className="mt-2 max-w-[75ch] text-sm leading-relaxed text-muted-foreground">{t('fpa_no_upgrades')}</p></section> : null}
-    {search.terminal ? <DeepSearchCard t={t} available={deepSearchAvailable} variant="results" searchId={search.id} /> : null}
+    {search.terminal ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
   </div>;
 }

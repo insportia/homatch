@@ -12,7 +12,7 @@
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
   // Find Property paid campaign: social-network brand names, the same in Latin-script locales.
-  'fpi_network_facebook', 'fpi_network_instagram', 'fpi_network_telegram',
+  'fpi_network_facebook', 'fpi_network_instagram', 'fpi_network_telegram', 'fpx_eyebrow',
   // Admin → Storage inventory: product and provider names, the same in every locale.
   'sinv_supabase_total', 'sinv_svc_design_studio', 'sinv_svc_meta_ads', 'sinv_svc_verify',
   'sinv_store_r2', 'sinv_store_supabase',

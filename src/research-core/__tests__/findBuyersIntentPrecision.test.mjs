@@ -12,6 +12,8 @@ import { buildPropertyDna } from '../findBuyers/propertyDna.ts';
 import { requalifyLeads } from '../findBuyers/requalify.ts';
 import { classifyDemand } from '../findBuyers/demandClassifier.ts';
 import { extractTextFacts } from '../findBuyers/textFacts.ts';
+import { qualify } from '../findBuyers/qualify.ts';
+import { financingBadges } from '../../findBuyers/campaignReport.ts';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/villionCampaignLeads.json', import.meta.url), 'utf8'));
 const now = Date.parse(fixture.campaign.evaluatedAt);
@@ -92,3 +94,114 @@ for (const [t, ok] of NOT_HOME_SEEKERS) {
 }
 for (const t of BUYERS) test(`buyer, in any language: ${t}`, () => assert.equal(classifyDemand(t, { kind: 'POST' }).role, 'BUY_SEEKER'));
 for (const t of TENANTS) test(`tenant, in any language: ${t}`, () => assert.equal(classifyDemand(t, { kind: 'POST' }).role, 'RENT_SEEKER'));
+
+/* ── buyer intent ≠ property match ─────────────────────────────────────────
+   100% buyer-intent precision is not 100% match precision: neither genuine
+   buyer kept for this property is a Strong match, each for stated reasons. */
+const keptOf = (rows) => rows.filter((x) => x.r.qualification.category !== 'REJECTED')
+  .map((x) => ({ n: x.n, category: x.r.qualification.category })).sort((a, b) => a.n - b.n);
+
+test('SALE: exactly leads 6 (WEAK) and 12 (POTENTIAL, financing to confirm) are kept — none Strong', () => {
+  const rows = shown('SALE');
+  assert.deepEqual(keptOf(rows), [{ n: 6, category: 'WEAK' }, { n: 12, category: 'POTENTIAL' }]);
+  const q = (n) => rows.find((x) => x.n === n).r.qualification;
+  /* 6: 3 rooms as the property, but only districts other than Krtsanisi; no budget. */
+  assert.equal(q(6).requirementsFit, 'COMPATIBLE');
+  assert.equal(q(6).locationFit, 'INCOMPATIBLE');
+  assert.deepEqual(q(6).limitations, ['BUDGET_UNKNOWN', 'LOCATION_OTHER_AREA']);
+  /* 12: pays the seller over time with 10,000 GEL down (~2% of $213,840); city only. The seller's
+     agreement is not assumed refused: Potential, never Strong, both risks shown. */
+  assert.equal(q(12).financingFit, 'STRETCH');
+  assert.deepEqual(q(12).limitations, ['BUDGET_UNKNOWN', 'LOCATION_CITY_ONLY', 'ROOMS_UNKNOWN', 'FINANCING_SELLER_INSTALMENTS', 'DOWN_PAYMENT_LOW']);
+  /* The other genuine buyers: a confirmed budget mismatch, and the repost. */
+  assert.deepEqual(q(7).reasons, ['BUDGET_INCOMPATIBLE']);
+  assert.deepEqual(q(11).reasons, ['BUDGET_INCOMPATIBLE']);
+  assert.deepEqual(q(13).reasons, ['DUPLICATE']);
+});
+
+test('RENT (same texts, $600/month): exactly tenants 4, 10 and 25 are kept, with their limitations', () => {
+  const rows = shown('RENT', { totalPrice: 600 });
+  assert.deepEqual(keptOf(rows), [{ n: 4, category: 'POTENTIAL' }, { n: 10, category: 'WEAK' }, { n: 25, category: 'WEAK' }]);
+});
+
+const SALE_DNA = buildPropertyDna(fixture.property);
+const q1 = (text) => { const r = classifyDemand(text, { kind: 'POST' }); return { r, q: qualify(r, SALE_DNA, { ageDays: 1 }) }; };
+
+test('financing: unstated is unknown (no penalty); a mortgage with a real down payment can be Strong', () => {
+  const plain = q1('Куплю 3-комнатную квартиру в Крцаниси, бюджет 215000$');
+  assert.equal(plain.q.financingFit, 'UNKNOWN');
+  assert.equal(plain.q.category, 'STRONG');
+  const mortgage = q1('ვიყიდი 3 ოთახიან ბინას კრწანისში იპოთეკით, ბიუჯეტი 215000$, პირველადი შენატანი 45000$');
+  assert.equal(mortgage.r.financing, 'MORTGAGE');
+  assert.equal(mortgage.q.financingFit, 'COMPATIBLE');
+  assert.equal(mortgage.q.category, 'STRONG');
+  assert.deepEqual(mortgage.q.limitations, ['FINANCING_MORTGAGE']);
+});
+
+test('financing: a low down payment caps a confirmed budget+place buyer at Potential, never Strong', () => {
+  const low = q1('Куплю 3-комнатную квартиру в Крцаниси в ипотеку, бюджет 215000$, первоначальный взнос 10000$');
+  assert.equal(low.q.financingFit, 'STRETCH');
+  assert.equal(low.q.category, 'POTENTIAL');
+  assert.ok(low.q.limitations.includes('DOWN_PAYMENT_LOW'));
+});
+
+test('financing words are read in every language', () => {
+  for (const t of ['ვიყიდი ბინას განვადებით', 'Куплю квартиру в рассрочку', 'Looking to buy an apartment in installments', "Taksitle daire almak istiyorum", 'أريد شراء شقة بالتقسيط', 'רוצה לקנות דירה בתשלומים']) {
+    assert.equal(classifyDemand(t, { kind: 'POST' }).financing, 'INSTALMENTS', t);
+  }
+  for (const t of ['ვიყიდი ბინას იპოთეკით', 'Куплю квартиру в ипотеку', 'Looking to buy a flat with a mortgage', 'Konut kredisi ile daire almak istiyorum', 'أريد شراء شقة برهن عقاري', 'רוצה לקנות דירה עם משכנתא']) {
+    assert.equal(classifyDemand(t, { kind: 'POST' }).financing, 'MORTGAGE', t);
+  }
+});
+
+/* ── financing is a risk to show, not a verdict (2026-10-16 review) ─────── */
+const STRONG_TEXT = 'Куплю 3-комнатную квартиру в Крцаниси, бюджет 215000$';
+const qr = (text, ratio) => qualify(classifyDemand(text, { kind: 'POST' }), SALE_DNA, { ageDays: 1, ...(ratio == null ? {} : { lowDownPaymentRatio: ratio }) });
+
+test('seller instalments are UNCONFIRMED, not refused: an otherwise Strong buyer is Potential, never Weak', () => {
+  const base = qr(STRONG_TEXT);
+  const inst = qr(`${STRONG_TEXT}, в рассрочку`);
+  assert.equal(inst.financingFit, 'UNCONFIRMED');
+  assert.equal(inst.category, 'POTENTIAL');
+  assert.deepEqual(inst.limitations, ['FINANCING_SELLER_INSTALMENTS']);
+  assert.ok(inst.score < base.score, `${inst.score} < ${base.score}`);
+});
+
+test('bank financing is not seller financing: a mortgage with a real down payment stays Strong at full score', () => {
+  const base = qr(STRONG_TEXT);
+  const m = qr(`${STRONG_TEXT}, ипотека, первоначальный взнос 50000$`);
+  assert.equal(m.financingFit, 'COMPATIBLE');
+  assert.equal(m.category, 'STRONG');
+  assert.equal(m.score, base.score);
+});
+
+test('the down-payment ratio is a configurable heuristic: off at 0, stricter or looser by setting', () => {
+  const text = `${STRONG_TEXT}, ипотека, первоначальный взнос 30000$`; // ~14% of $213,840
+  assert.equal(qr(text).category, 'STRONG', 'default 10%: 14% is not low');
+  assert.equal(qr(text, 0.2).category, 'POTENTIAL', '20%: 14% is low');
+  assert.ok(qr(text, 0.2).limitations.includes('DOWN_PAYMENT_LOW'));
+  assert.equal(qr(`${STRONG_TEXT}, ипотека, первоначальный взнос 10000$`, 0).category, 'STRONG', '0 turns the flag off');
+});
+
+test('score and category agree: a financing risk never raises the score or the category, and never alone makes a lead Weak', () => {
+  const rank = { REJECTED: 0, WEAK: 1, POTENTIAL: 2, STRONG: 3 };
+  const bases = [STRONG_TEXT, 'Куплю квартиру в Тбилиси', 'Куплю 3-комнатную квартиру в Ваке, бюджет 100000$'];
+  for (const b of bases) {
+    const base = qr(b);
+    for (const add of [', в рассрочку', ', ипотека, первоначальный взнос 5000$', ', в рассрочку, первоначальный взнос 5000$']) {
+      const q = qr(b + add);
+      assert.ok(q.score <= base.score, `${b + add}: ${q.score} > ${base.score}`);
+      assert.ok(rank[q.category] <= rank[base.category], `${b + add}: ${q.category} above ${base.category}`);
+      if (base.category !== 'WEAK') assert.notEqual(q.category, 'WEAK', `${b + add}: financing alone made it Weak`);
+      if (q.category === 'STRONG') assert.ok(!['UNCONFIRMED', 'STRETCH'].includes(q.financingFit));
+    }
+  }
+});
+
+test('the lead card shows each financing limitation as a badge, in a fixed order; nothing when not stated', () => {
+  assert.deepEqual(financingBadges(['BUDGET_UNKNOWN', 'DOWN_PAYMENT_LOW', 'FINANCING_SELLER_INSTALMENTS']).map((b) => b.key),
+    ['fbr_financing_instalments', 'fbr_financing_low_down']);
+  assert.deepEqual(financingBadges(['FINANCING_MORTGAGE']).map((b) => b.key), ['fbr_financing_mortgage']);
+  assert.deepEqual(financingBadges(null), []);
+  assert.deepEqual(financingBadges(['BUDGET_UNKNOWN']), []);
+});

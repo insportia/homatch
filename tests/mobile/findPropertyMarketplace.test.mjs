@@ -146,6 +146,7 @@ test('Advisor: confirmed original listings are explorable; optional floor requir
   assert.equal(await page.getByLabel('Minimum floor', { exact: true }).inputValue(), '2');
   assert.equal(await page.getByLabel('Maximum floor', { exact: true }).inputValue(), '8');
   await shot(page, 'advisor-mobile-advanced-preferences');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await page.waitForFunction(() => !!document.querySelector('[data-property-key]'));
   const started = state.requests.find((r) => r.action === 'start');
@@ -307,7 +308,7 @@ test('History cards: title, place, compact criteria, results count; Repeat reope
     }
     await card.locator('button').last().click();
     await page.waitForURL((url) => url.pathname === '/find-property/new');
-    await page.locator('[data-action="mps-start"]').waitFor();
+    await page.locator('[data-action="mps-continue"]').waitFor();
     assert.equal(state.requests.filter((r) => r.action === 'start').length, 0, 'repeating only prefills the builder');
   }
 });
@@ -333,7 +334,7 @@ test('Search summary: removing a criterion or editing reopens the builder with t
   await page.goBack();
   await page.waitForURL((url) => url.pathname.startsWith('/find-property/search/'));
   await page.locator('[data-action="edit-search"]').click();
-  await page.locator('[data-action="mps-start"]').waitFor();
+  await page.locator('[data-action="mps-continue"]').waitFor();
   assert.equal(state.requests.filter((r) => r.action === 'start').length, 0);
 });
 
@@ -554,6 +555,12 @@ async function shot(page, name, { fullPage = true } = {}) {
 }
 
 /** Mode → intro → complete request → confirmation. */
+/** Confirmed criteria → the Free / Deep choice → Free Search (the redesigned flow, 2026-10-16). */
+async function startFree(page, how = 'click') {
+  await page.locator('[data-action="mps-continue"]').click();
+  await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
+  await page.locator('[data-action="mps-start"]')[how]();
+}
 async function toConfirm(page, modeShot = null) {
   await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
   await page.locator('a[href="/find-property/new"]').waitFor({ timeout: 30000 });
@@ -585,17 +592,20 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('form button[type="submit"]').click();
   await page.locator('#mps-ready').waitFor({ timeout: 15000 });
   const ready = await page.textContent('main');
-  for (const s of ['ყველაფერი მზადაა ✨', 'ყიდვა', 'ბინა', 'ვაკე', '3 ოთახი', '2 საძინებელი', '80 დან 110 მ² მდე', '$120,000 დან $160,000 მდე', 'ძიების დაწყება', 'შეცვლა']) {
+  for (const s of ['ყველაფერი მზადაა ✨', 'ყიდვა', 'ბინა', 'ვაკე', '3 ოთახი', '2 საძინებელი', '80 დან 110 მ² მდე', '$120,000 დან $160,000 მდე', 'გაგრძელება', 'შეცვლა']) {
     assert.ok(ready.includes(s), `confirmation shows ${s}`);
   }
   assert.ok(!(await page.locator('[aria-labelledby$="-q"]').count()), 'no question was asked');
   await shot(page, 'ka-1440-confirm');
 
+  await page.getByRole('button', { name: 'გაგრძელება' }).click();
+  for (const s of ['უფასო ძიება', 'ვრცელი ძიება', 'MyHome.ge']) assert.ok((await page.textContent('main')).includes(s), `mode step shows ${s}`);
+  await shot(page, 'ka-1440-mode');
   await page.getByRole('button', { name: 'ძიების დაწყება' }).click();
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
   assert.ok(state.calls.includes('start'));
   const searching = await page.textContent('main');
-  for (const s of ['HOMATCH უკვე ეძებს შენთვის', 'შედეგები გამოჩნდება ეტაპობრივად, როგორც კი სხვადასხვა წყაროდან მივიღებთ.', 'ვეძებთ მიმდინარე განცხადებებს', 'ძიება გრძელდება...']) {
+  for (const s of ['ვეძებთ', 'ვეძებთ მიმდინარე განცხადებებს', 'HOMATCH-ის წევრები']) {
     assert.ok(searching.includes(s), s);
   }
   assert.ok(!searching.includes('ითამაშე სანამ HOMATCH ეძებს'), 'the old Snake text block is gone');
@@ -605,8 +615,8 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
   await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
-  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'გონივრული გაუმჯობესება · +5–10%', 'რატომ გირჩევს HOMATCH', 'წყარო: SOURCE-A · SOURCE-B · SOURCE-C', 'დუბლიკატი · 3 განცხადება', 'ფასებში სხვაობა',
-    '$9,000', 'რატომ ღირს განხილვა', 'გინდა უფრო ფართოდ მოვძებნოთ?']) {
+  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'ცოტა ძვირი, მაგრამ უკეთესი · +5-დან 10%-მდე', 'რატომ გირჩევს HOMATCH', 'წყარო: SOURCE-A · SOURCE-B · SOURCE-C', 'დუბლიკატი · 3 განცხადება', 'ფასებში სხვაობა',
+    '$9,000', 'რატომ ღირს განხილვა', 'ვრცელი ძიება']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
   assert.ok(!results.includes('$188,000'), 'nothing above the 10% ceiling is shown');
@@ -707,7 +717,7 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
   const { page, state } = await boot(t, { lang: 'ka', width: 390, height: 844, timeline: ['SEARCHING', 'SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'] });
   await toConfirm(page);
   /* A double click starts ONE search. */
-  await page.locator('[data-action="mps-start"]').dblclick();
+  await startFree(page, 'dblclick');
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
   assert.equal(state.starts, 1, 'one search for a double click');
   await shot(page, 'ka-390-searching');
@@ -765,7 +775,8 @@ test('800 properties use bounded numbered pages; filters reset and Back/Forward 
   const { page, state } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE', output: big });
   await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('mps-total').waitFor({ timeout: 30000 });
-  assert.equal(await page.getByTestId('mps-total').textContent(), '800 matching properties found');
+  assert.equal(await page.getByTestId('mps-total').textContent(), '800');
+  assert.ok((await page.textContent('main')).includes('800 matching properties found'));
   const cards = page.locator('[data-property-key]');
   await cards.first().waitFor();
   const first = await cards.evaluateAll((els) => els.map((el) => el.dataset.propertyKey));
@@ -1012,6 +1023,10 @@ test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmati
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: confirm overflow`);
       const dir = await page.evaluate(() => document.documentElement.getAttribute('dir'));
       if (['ar', 'he'].includes(lang) && dir !== 'rtl') failures.push(`${lang}: not RTL`);
+      await page.locator('[data-action="mps-continue"]').click();
+      await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
+      if (await overflow(page) > 1) failures.push(`${lang} ${width}: mode step overflow`);
+      await shot(page, `${lang}-${width}-free-deep`);
       await page.locator('[data-action="mps-start"]').click();
       await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: results overflow ${await overflow(page)}px`);
@@ -1035,9 +1050,8 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
   for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ru'], [390, 'tr'], [393, 'ar'], [393, 'he']]) {
     const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
     await page.goto(`${BASE}/find-property/search/22222222-2222-4222-8222-222222222222`);
-    const deep = page.locator('article[aria-labelledby="mps-deep-results"]');
+    const deep = page.locator('section[data-deep-panel]');
     await deep.waitFor({ timeout: 30000 });
-    await deep.locator('button').first().click();
     await deep.locator('#fpi-budget').waitFor();
     await deep.locator('dl').first().waitFor({ timeout: 15000 });
     const start = deep.getByRole('button').filter({ hasText: '50' }).last();
@@ -1066,9 +1080,14 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
 test('Your activity: saved listings, recent activity, recording switch and erase — and a card can be saved', opts, async (t) => {
   for (const [width, lang] of [[1440, 'en'], [390, 'he']]) {
     const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
-    await page.goto(`${BASE}/find-property`);
-    const panel = page.locator('section[aria-labelledby="fpi-activity-title"]');
-    await panel.getByText('Saved flat in Vake').waitFor({ timeout: 30000 });
+    await page.goto(`${BASE}/find-property?tab=saved`);
+    await page.locator('[data-tab-panel="saved"]').getByText('Saved flat in Vake').waitFor({ timeout: 30000 });
+    assert.ok(await overflow(page) <= 1, `${lang}: saved overflow`);
+    await shot(page, `${lang}-${width}-saved`);
+    await page.locator('a[data-tab="activity"]').click();
+    const panel = page.locator('[data-tab-panel="activity"]');
+    await panel.locator('#fpi-activity-title').waitFor({ timeout: 30000 });
+    await shot(page, `${lang}-${width}-activity`);
     assert.ok(await overflow(page) <= 1, `${lang}: activity overflow`);
     await panel.getByRole('switch').click();
     await page.waitForFunction(() => true);

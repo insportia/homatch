@@ -19,7 +19,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { hasCurrentIdentity, resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
-import { ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
+import { historyExtras, ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
 import { requestNativeMatching } from '../_shared/nativeDemand.ts';
 import { recordSeekerIntent } from '../_shared/seekerIntent.ts';
 import {
@@ -81,7 +81,11 @@ async function summary(db: Db, search: Record<string, unknown>) {
       const { data: w } = await db.from('discovery_marketplace_workers').select('health').eq('worker_id', r.worker_id).maybeSingle();
       retryAt = decideProviderAccess(readProviderAccess(w?.health), new Date(), false).retryAt;
     }
-    return { source: WORKER_SOURCE_NAMES[String(r.worker_id)] ?? 'OTHER',
+    /* `run` is the worker run's own status, so the customer sees waiting / searching / no results /
+       failed / timed out as it really is; a search that already ended never shows a source as running. */
+    const runStatus = String(r.status);
+    const run = isTerminalSearch(status) && !['COMPLETE', 'PARTIAL', 'FAILED', 'TIMED_OUT', 'BLOCKED', 'CANCELLED'].includes(runStatus) ? 'TIMED_OUT' : runStatus;
+    return { source: WORKER_SOURCE_NAMES[String(r.worker_id)] ?? 'OTHER', workerId: String(r.worker_id), run,
       state, freshListings: Number(r.returned_count) || 0, cachedListings: cachedCount ?? 0, retryAt };
   }));
   return {
@@ -144,18 +148,30 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (action === 'capabilities') {
-      const { count } = await db.from('discovery_marketplace_workers').select('worker_id', { count: 'exact', head: true })
+      /* The live source list comes from the registry and its switches, so a portal that is
+         enabled in Admin appears to customers without a code change. */
+      const { data: live } = await db.from('discovery_marketplace_workers').select('worker_id,source_name')
         .eq('state', 'ACTIVE').eq('enabled', true);
+      const sources = (live ?? []).filter((w: Record<string, unknown>) => workerSwitchOn(switches, String(w.worker_id)))
+        .map((w: Record<string, unknown>) => String(w.source_name ?? WORKER_SOURCE_NAMES[String(w.worker_id)] ?? w.worker_id)).sort();
       /* The paid social campaign (find-property-run) is offered only when its switches allow it. */
       const deepSearchAvailable = await paidCampaignAvailable(db).catch(() => false);
-      return json({ marketplaceEnabled: switches.enabled, activeSources: switches.enabled ? Number(count ?? 0) : 0, deepSearchAvailable });
+      return json({ marketplaceEnabled: switches.enabled, activeSources: switches.enabled ? sources.length : 0,
+        sources: switches.enabled ? sources : [], deepSearchAvailable });
     }
 
     if (action === 'history') {
       // History remains readable when acquisition is disabled. Ownership comes
       // exclusively from the authenticated profile, never from a client user id.
       const history = await ownedSearchHistory(db, userId, body.page);
-      return json({ ...history, items: history.items.map((item) => ({ ...item, brief: sanitizeBrief(item.brief) })) });
+      /* Card extras are best effort: history itself never fails because of them. */
+      let extras: Record<string, { strongMatches: number | null; deepSearch: boolean }> = {};
+      try { extras = await historyExtras(db, userId, history.items.map((item: { id: string }) => item.id)); } catch { /* counts stay as saved */ }
+      return json({ ...history, items: history.items.map((item) => {
+        const extra = extras[item.id];
+        return { ...item, brief: sanitizeBrief(item.brief),
+          ...(extra ? { strongMatches: extra.strongMatches ?? item.strongMatches, deepSearch: extra.deepSearch } : {}) };
+      }) });
     }
 
     if (!switches.enabled && (action === 'start' || action === 'understand')) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);

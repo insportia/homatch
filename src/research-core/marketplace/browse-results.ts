@@ -60,7 +60,9 @@ export async function catalogueRevision(properties: readonly CustomerProperty[],
 export interface BrowsePage {
   items: CustomerProperty[]; page: number; pageSize: number; pages: number; total: number; totalCurrent: number;
   sections: Record<ResultSection, number>;
-  summary: { strong: number; close: number; verification: number; unknownDates: number; excludedOld: number };
+  summary: { strong: number; close: number; verification: number; unknownDates: number; excludedOld: number;
+    /** Why results are not strong: each requested fact the sources left unconfirmed, with how many results it holds back. */
+    unconfirmed: Array<{ code: string; count: number }> };
   facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string }>; duplicates: number; possibleDuplicates: number };
 }
 /** One property published as several listings, confirmed by the identity resolver (never inferred). */
@@ -119,12 +121,20 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
   return {
     items: ranked.slice((page - 1) * RESULT_PAGE_SIZE, page * RESULT_PAGE_SIZE), page, pageSize: RESULT_PAGE_SIZE, pages, total: ranked.length, totalCurrent: current.length, sections,
     summary: { strong: matches.filter((p) => p.intelligence?.strong).length, close: sections.CLOSE, verification: sections.VERIFY,
-      unknownDates: current.filter((p) => currentActivity(p, now).at === null).length, excludedOld: unique.length - current.length },
+      unknownDates: current.filter((p) => currentActivity(p, now).at === null).length, excludedOld: unique.length - current.length,
+      unconfirmed: unconfirmedRequirements(matches.filter((p) => !p.intelligence?.strong)) },
     facets: { districts: distinct(current.map((p) => p.facts.district)), buildings: distinct(current.map((p) => p.facts.buildingStatus)),
       conditions: distinct(current.map((p) => p.facts.renovationStatus)), sellers: distinct(current.map((p) => p.seller.classification)),
       sources: [...sources].sort(([a], [b]) => a.localeCompare(b)).map(([key, name]) => ({ key, name })),
       duplicates: current.filter(isConfirmedDuplicate).length, possibleDuplicates: current.filter(isPossibleDuplicate).length },
   };
+}
+
+/** Requested facts no source confirmed, most frequent first. A count, never a judgement about the listing. */
+export function unconfirmedRequirements(properties: readonly Pick<CustomerProperty, 'unverified'>[]): Array<{ code: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const p of properties) for (const code of new Set(p.unverified ?? [])) counts.set(code, (counts.get(code) ?? 0) + 1);
+  return [...counts].map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
 }
 
 /** Bounded numbered control, including both ends and gaps, for mobile as well as desktop. */

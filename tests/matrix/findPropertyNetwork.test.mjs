@@ -36,7 +36,7 @@ test('the network pass is free and never starts broker or external discovery', (
 });
 
 test('no catalogue: the seeker reads member properties only through its own matches', () => {
-  const ui = ['src/components/findProperty/ResultsView.tsx', 'src/components/findProperty/SearchDashboard.tsx'].map((p) => code(read(p))).join('\n');
+  const ui = ['src/components/findProperty/ResultsView.tsx', 'src/components/findProperty/workspace/SearchesTab.tsx'].map((p) => code(read(p))).join('\n');
   assert.match(ui, /<NativeMatchesPanel role="SEEKER" \/>/);
   assert.doesNotMatch(ui, /from\('properties'\)|\.from\("properties"\)/, 'Find Property never lists the properties table');
 });

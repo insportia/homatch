@@ -41,12 +41,14 @@ test('Design Studio sits directly below For Expats and above Intelligence', () =
   const intelligence = nav.indexOf('nav_group_intelligence');
   assert.ok(expats > -1 && design > -1 && intelligence > -1);
   assert.ok(expats < design && design < intelligence, 'Design Studio is not between For Expats and Intelligence');
-  assert.match(nav, /\{ key: 'nav_design_studio', path: '\/design-studio', glyph: 'design_studio', gate: 'designStudio' \}/);
+  // Gated by the owner's Service Control Center switch (service key design_studio).
+  assert.match(nav, /\{ key: 'nav_design_studio', path: '\/design-studio', glyph: 'design_studio', gate: 'design_studio' \}/);
 });
 
 test('the rail hides gated items and any group left empty', () => {
   const shell = read('src/components/layouts/HomatchShell.tsx');
-  assert.match(shell, /designStudioEnabled\(homatchUser\)/);
+  assert.match(shell, /useServiceControls\(\)\.services/);
+  assert.match(shell, /items: group\.items\.filter\(item => !item\.gate \|\| services\[item\.gate\]\.frontend\)/);
   assert.match(shell, /\.filter\(group => group\.items\.length > 0\)/);
   assert.match(shell, /\{nav\.map\(\(group, gi\) =>/, 'the rail still renders the unfiltered NAV');
 });
@@ -61,10 +63,17 @@ test('Design Studio has its own drawn glyph, not a generic icon', () => {
 /* ── Feature flag ───────────────────────────────────────────────── */
 
 test('the feature is OFF by default and every entry point is gated', () => {
-  assert.match(read('src/config/features.ts'), /designStudio: false,/);
+  // OFF is the database seed of the Service Control Center (owner decision 2026-10-16),
+  // not a build flag: switching it on must not need a deploy.
+  const seed = read('supabase/migrations/20261109090000_service_controls.sql');
+  assert.match(seed, /\('design_studio', 'Initial state: paused by the owner'\)/);
+  assert.match(seed, /frontend_enabled boolean not null default false/);
   const access = read('src/lib/designStudio/access.ts');
-  assert.match(access, /FEATURES\.designStudio/);
-  assert.match(access, /VITE_FEATURE_DESIGN_STUDIO === 'on'/);
+  assert.match(access, /export function designStudioEnabled\(serviceVisible: boolean\): boolean/);
+  assert.doesNotMatch(access, /is_admin|VITE_FEATURE_DESIGN_STUDIO === 'on'/, 'no bypass may show a paused studio');
+  const gate = read('src/components/designStudio/DesignStudioGate.tsx');
+  assert.match(gate, /useServiceControls\(\)/);
+  assert.match(gate, /<ServiceUnavailable service="design_studio" \/>/);
   for (const page of ['src/pages/designStudio/DesignStudioPage.tsx', 'src/pages/designStudio/DesignStudioWorkspacePage.tsx']) {
     const src = read(page);
     assert.match(src, /<RouteGuard>/, `${page} is not signed-in only`);

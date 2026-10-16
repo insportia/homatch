@@ -24,6 +24,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from '../mobile/serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -175,6 +176,7 @@ test('the pages this pass touched can be used without a mouse', opts, async (t) 
           },
         });
       }
+      if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
       if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
       if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
       if (url.includes('/rest/v1/rpc/')) return r.fulfill(json(null));
@@ -297,6 +299,7 @@ test('the content editor can be typed into with the whole registry loaded', opts
     if (r.request().method() === 'OPTIONS') {
       return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
     }
+    if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/rpc/')) return r.fulfill(json([]));
@@ -377,8 +380,34 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
    *
    * The App Content editor still loads all six languages: it genuinely edits
    * all six, and it is an admin-only lazy route.
+   *
+   * RAISED TO 2.25MB, 2026-10-16, on the owner's approval (Service Control
+   * Center). main had grown to 2,095,069 bytes (2,083 under 2MB, 599,713
+   * gzip / 481,749 brotli). The Service Control Center added 10,376 bytes
+   * (+3,590 gzip, +2,313 brotli), measured per module from source maps:
+   * 6,018 English strings (English ships whole in the entry, by design
+   * above), 3,073 the gate every route needs (src/lib/serviceControls,
+   * ServiceGate), 777 the route table, nav item and one icon. The Admin page
+   * itself is its own lazy chunk. Admin-only modules that were ALREADY in
+   * the entry (AdminLayout, admin/navigation, AdminSearch, adminControl,
+   * admin/labels: ~24KB) and admin-only English strings are the known way
+   * back down; that is an i18n/route split, deliberately not done here.
+   *
+   * BACK TO 2MB, 2026-10-16: that split is done. AdminLayout is lazy and loads
+   * with the admin console's strings (src/i18n/adminSplit.ts → admin-<lang>
+   * chunks). Entry 2,105,445 → 1,986,168 bytes (gzip 603,303 → 569,236,
+   * brotli 484,062 → 458,540); every non-English bundle a visitor waits for
+   * before first render lost its admin strings too (ka 2.20MB → 2.04MB).
    */
   const CEILING = 2 * 1024 * 1024;
   assert.ok(bytes < CEILING,
     `the entry chunk is ${(bytes / 1024 / 1024).toFixed(2)}MB, past the ${CEILING / 1024 / 1024}MB ceiling`);
+
+  /* The split, measured on the build rather than assumed from the source: the
+     entry carries no admin-only string and the customer families it keeps,
+     and the admin English chunk exists to carry the rest. */
+  const code = readFileSync(join(dir, entry[0]), 'utf8');
+  assert.ok(!code.includes('admin_nav_service_control'), 'an admin-only string is back in the entry chunk');
+  assert.ok(code.includes('admin_imp_banner_exit'), 'the impersonation banner\'s strings must stay in the entry');
+  assert.ok(readdirSync(dir).some((f) => /^admin-en-.*\.js$/.test(f)), 'no admin-en chunk was emitted');
 });

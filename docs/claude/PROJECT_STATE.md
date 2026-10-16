@@ -1,9 +1,18 @@
 # PROJECT STATE
 
-last_updated: 2026-10-15
+last_updated: 2026-10-16
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Service Control Center — six services paused from Admin (branch claude/homatch-property-publishing-g50stw, 2026-10-16)
+
+- Owner decision 2026-10-16: **Publishing, AI Call Center, AI TALK, WhatsApp, Live Chat, Design Studio** paused (all six OFF), not deleted. Runbook and full entry-point map: `docs/claude/SERVICE_CONTROLS.md`.
+- Admin → System → Service Control Center (`/admin/service-control`): per service **Backend execution** + **Frontend visibility** (visible ⇒ running, CHECK), readiness (blocking gaps by name; NOT_READY refusal audited), running work, history, Pause / Pause all six; optimistic `version`.
+- Migration `20261109090000_service_controls.sql` (additive): `service_controls` + `service_controls_public()` + `service_control_set` / `service_control_pause_all` (audited in `admin_audit_log`) + `service_control_guard` trigger on `live_chat_messages`, `live_chat_reactions`, `ds_projects`.
+- Server enforcement: `_shared/serviceControl.ts` (fail closed, 10 s cache, 503 `SERVICE_DISABLED`) at every start boundary of the six; webhooks, completion/settle routes and history stay open (see the runbook).
+- **Publishing activation is stopped** (owner, 2026-10-16): migration `20261108090000` stays UNAPPLIED (the 2026-10-16 apply attempt timed out and was verified not applied: no ledger row, no objects); `PUBLISHING_WORKER_TOKEN` / `PUBLISHING_CREDENTIALS_KEY` not configured; `PUBLISHING_AUTOMATION_ENABLED` unset; no live portal workflow verified. The code stays as a dormant module (a future official-API integration may replace the browser path).
+- Railway: only `homatch-official-worker` is used; `homatch-official-worker-v2` exists in the project (pre-existing, untouched).
 
 ## Find Buyers 3.0 — intent gate, post opportunities, result pages (PR #214, merged be4a0397, 2026-10-16) — DEPLOYED
 

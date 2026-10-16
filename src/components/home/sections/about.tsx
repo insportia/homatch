@@ -16,6 +16,7 @@ import { IntentCards } from '@/components/home/IntentCards';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { useSectionField, useFieldProps } from '@/site/content';
 import { PAGE, SECTION_Y } from './primitives';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 /** The property kinds the platform is built to work across. */
 const MARKET = [
@@ -106,6 +107,9 @@ export function AboutWhatSection() {
     { key: 'brokers', field: 'cap_brokers', glyph: 'matching' as const, icon: UserSearch, title: 'broker_page_title', desc: 'about_cap_brokers', to: '/brokers' },
     { key: 'expat', field: 'cap_expat', glyph: 'expat' as const, icon: Search, title: 'mp_tile_expat_t', desc: 'about_cap_expat', to: '/for-expats/georgia' },
   ] as const;
+  // A paused service (Admin → Service Control Center) is not offered here.
+  const callsVisible = useServiceVisible('ai_call_center');
+  const capabilities = CAPABILITIES.filter((c) => c.key !== 'calls' || callsVisible);
 
   return (
     <section id="what" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
@@ -121,7 +125,7 @@ export function AboutWhatSection() {
 
       {/* The eight things that are normally eight separate errands. */}
       <ul className="mt-8 grid gap-3.5 sm:mt-10 sm:grid-cols-2 lg:grid-cols-4">
-        {CAPABILITIES.map(cap => (
+        {capabilities.map(cap => (
           <li key={cap.key}>
             <button
               type="button"

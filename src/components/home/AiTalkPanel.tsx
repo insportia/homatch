@@ -1184,7 +1184,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
   }, [muted]);
 
   return (
-    <div className={cn('flex w-full flex-col', className)}>
+    <div className={cn('flex w-full flex-col', className)} data-testid="ai-talk-panel">
       <section
         className={cn(
           // A fixed height reserves the space §133 asks for and is not hostage

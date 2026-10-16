@@ -25,6 +25,7 @@ import {
 } from '../_shared/comm/cartesia.ts';
 import { callLlm } from '../_shared/comm/llm.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 interface AgentRequest {
   action: 'generate' | 'publish' | 'preview' | 'test' | 'turn' | 'transcribe';
@@ -53,6 +54,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try { body = await req.json() as AgentRequest; } catch { return json({ error: 'bad_request' }, 400); }
 
   const sb = serviceClient();
+  // SERVICE CONTROL (key `ai_call_center`): call agents exist only for AI calling, so
+  // every agent action (LLM copy, voice test grants, turns, transcription) is refused
+  // while it is paused. Agent rows stay readable through their own RLS.
+  if (!(await serviceBackendEnabled(sb, 'ai_call_center'))) return json(serviceDisabledBody('ai_call_center'), 503);
 
   switch (body.action) {
     case 'generate': return await generate(sb, caller.userId, body);

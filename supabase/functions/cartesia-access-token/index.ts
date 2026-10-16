@@ -27,6 +27,7 @@ import {
   createCartesiaProvider, cartesiaCredentialsPresent, listCartesiaVoices, synthesizePreview,
   cloneCartesiaVoice, deleteCartesiaVoice, clipRejectionReason,
 } from '../_shared/comm/cartesia.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 /**
  * Enough for a live test of an agent, short enough that a leaked token is
@@ -84,6 +85,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     source?: string; description?: string;
   } = {};
   try { body = await req.json(); } catch { /* an empty body means "the defaults" */ }
+
+  // SERVICE CONTROL (key `ai_call_center`): these voices exist for the AI Call Center's
+  // agents, so previews, clones and token grants are refused while it is paused. A
+  // customer may always delete their own cloned voice.
+  if (body.action !== 'delete_voice' && !(await serviceBackendEnabled(sb, 'ai_call_center'))) {
+    return json(serviceDisabledBody('ai_call_center'), 503);
+  }
 
   /*
    * VOICE PREVIEW.

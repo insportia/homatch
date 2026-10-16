@@ -41,9 +41,35 @@ import { handleRenderEdit, handleRenderQuote, handleRenderStart, handleRenderSta
 import { handleReconstruct } from './reconstruct.ts';
 import { handleDesignSpec, handleRenderGenerate, handleRenderGenerateStep } from './generate.ts';
 import { handleWalkthroughCreate, handleWalkthroughGeometry, handleWalkthroughRetry, handleWalkthroughStatus, handleWalkthroughTick } from './walkthrough.ts';
+import { serviceClient } from '../_shared/billing.ts';
+import { serviceBackendEnabled, serviceDisabledResponse } from '../_shared/serviceControl.ts';
 
-serve((req) => {
-  const route = new URL(req.url).pathname.replace(/\/+$/, '').split('/').pop();
+/*
+ * SERVICE CONTROL (Admin → Service Control Center, key `design_studio`).
+ *
+ * Paused → every route that STARTS work answers 503 SERVICE_DISABLED: AI readings,
+ * designs, specs, quotes, renders, edits, GPU factory passes, QA, walkthroughs,
+ * retries and geometry writes — and the self-invoked chain steps that would start
+ * a new paid render (design-spec). Only these stay open, because they finish,
+ * settle or release work that was already started and reserved, or delete the
+ * customer's own data:
+ */
+const OPEN_WHILE_PAUSED = new Set([
+  'render-status',        // finishes Blender renders and settles / releases their reservation
+  'render-generate-step', // advances an already-reserved OpenAI-first render and settles it
+  'factory-status',       // settles a running GPU pass
+  'factory-discard',      // deletes a pass's outputs
+  'walkthrough-status',   // drives already-started walkthrough steps
+  'walkthrough-tick',     // pg_cron: drives due walkthroughs, reconciles orphaned RunPod jobs
+  'project-delete',       // a customer can always delete their project
+]);
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
+
+serve(async (req) => {
+  const route = new URL(req.url).pathname.replace(/\/+$/, '').split('/').pop() ?? '';
+  if (req.method !== 'OPTIONS' && !OPEN_WHILE_PAUSED.has(route) && !(await serviceBackendEnabled(serviceClient(), 'design_studio'))) {
+    return serviceDisabledResponse('design_studio', CORS);
+  }
   if (route === 'design') return handleDesign(req);
   if (route === 'floorplan') return handleFloorplan(req);
   if (route === 'photos') return handlePhotos(req);

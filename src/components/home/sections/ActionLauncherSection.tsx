@@ -7,6 +7,7 @@ import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
 import { useSectionField, useFieldProps, useSectionIconName } from '@/site/content';
 import { iconFor } from '@/site/icons';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 /**
  * REGION 02 — the action launcher.
@@ -64,6 +65,7 @@ export function ActionLauncherSection() {
    * shipped with — so an untouched page is byte for byte what it was.
    */
   const iconName = useSectionIconName();
+  const callsVisible = useServiceVisible('ai_call_center');
   const tileIcon = (key: string) => {
     const chosen = iconName(`tile_${key}`);
     return chosen ? iconFor(chosen, Sparkles) : undefined;
@@ -199,15 +201,18 @@ export function ActionLauncherSection() {
           action={sf('tile_mortgage_a', 'mp_mortgage_cta')}
         />
 
-        <Tile
-          glyph="calls"
-          field="tile_calls"
-          icon={tileIcon('calls')}
-          title={sf('tile_calls_t', 'call_center_title')}
-          desc={sf('tile_calls_d', 'mp_tile_calls_d')}
-          onClick={gated('/outreach/calls')}
-          action={sf('tile_calls_a', 'mp_calls_cta')}
-        />
+        {/* Hidden while the owner has the AI Call Center paused; the grid reflows. */}
+        {callsVisible && (
+          <Tile
+            glyph="calls"
+            field="tile_calls"
+            icon={tileIcon('calls')}
+            title={sf('tile_calls_t', 'call_center_title')}
+            desc={sf('tile_calls_d', 'mp_tile_calls_d')}
+            onClick={gated('/outreach/calls')}
+            action={sf('tile_calls_a', 'mp_calls_cta')}
+          />
+        )}
 
         <Tile
           glyph="email"

@@ -19,6 +19,7 @@ import { listLedger } from '@/services/developer/sales';
 import type { SalesLedgerRow } from '@/services/developer/types';
 import { AdConnectionsPanel } from '@/components/developer/AdConnectionsPanel';
 import { BrokerPanel } from '@/components/developer/BrokerPanel';
+import { usePathAvailable } from '@/lib/serviceControls';
 
 /**
  * MARKETING (§54, §55, §97).
@@ -37,6 +38,7 @@ import { BrokerPanel } from '@/components/developer/BrokerPanel';
  * developer context attached.
  */
 export default function DeveloperMarketingPage() {
+  const pathAvailable = usePathAvailable();
   const { t, lang: language } = useLanguage();
   const { workspace } = useDeveloperWorkspace();
 
@@ -158,7 +160,7 @@ export default function DeveloperMarketingPage() {
               <GoldRule className="mt-2" />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {channels.map((channel) => {
+              {channels.filter((channel) => pathAvailable(channel.to)).map((channel) => {
                 const Icon = channel.icon;
                 return (
                   <Link

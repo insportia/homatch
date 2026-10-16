@@ -39,6 +39,7 @@ import {
 } from '../_shared/comm/elevenlabs.ts';
 import { selectKeyterms, type VocabularyTerm } from '../_shared/comm/generated/keyterms.ts';
 import { syncVoiceLibrary } from '../_shared/comm/voiceLibrary.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import {
   speechSocketUrl, mintSpeechGrant, googleSpeechDiagnosis, GRANT_TTL_MS,
 } from '../_shared/comm/speechGrant.ts';
@@ -71,7 +72,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const sb = serviceClient();
     switch (action) {
       case 'voices':  return await customerVoices(sb);
-      case 'preview': return await voicePreview(sb, caller.userId, body);
+      // Paid TTS preview, used only by the AI Call Center agent builder.
+      case 'preview': return (await serviceBackendEnabled(sb, 'ai_call_center')) ? await voicePreview(sb, caller.userId, body) : json(serviceDisabledBody('ai_call_center'), 503);
       default:        return json({ error: 'unknown_action' }, 400);
     }
   }
@@ -112,7 +114,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'usage':                return await usage(sb, body);
     case 'talk-cogs':            return await talkCogs(sb, body);
     case 'talk-session-cogs':    return await talkSessionCogs(sb, body);
-    case 'speech-probe':         return await speechProbe(body);
+    // The AI TALK speech path's own diagnostic mints a real worker grant: paused with AI TALK.
+    case 'speech-probe':         return (await serviceBackendEnabled(sb, 'ai_talk')) ? await speechProbe(body) : json(serviceDisabledBody('ai_talk'), 503);
     case 'voice-languages':      return await voiceLanguageProbe(body);
     case 'cartesia-voices':      return await cartesiaVoiceCatalogue();
     default:                     return json({ error: 'unknown_action' }, 400);

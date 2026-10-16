@@ -113,6 +113,41 @@ MATTERS right now, verify against the live systems, not this file)
   the portal home page, and the UI says so) — neither could be fetched or found in the web index from
   this environment, so none were invented. No portal has an API, OAuth or account connection.
 
+## Cloudflare R2 routing (PR #225 merged 17fffdc9, PR #229 merged 3fa07c14; migration applied 2026-10-16 as ledger 20261016113831 `storage_r2_routing`)
+
+- Design and procedure: `docs/infra/R2_STORAGE_ARCHITECTURE.md`.
+- Pre-flight before apply:
+  - name not in the ledger and version unique;
+  - production `storage_authorize` md5 6ea98b22 (the restated base);
+  - dependencies present (`is_admin`, `admin_settings`, `admin_audit_log`, `storage_objects` FK owner → users.id).
+- After apply:
+  - `storage_authorize` md5 1feff9bf equals the file body;
+  - new functions are SECURITY DEFINER with `search_path ''`, and `anon` has no execute on them;
+  - seed row had all four buckets on SUPABASE.
+- Edge deploys PROVEN_EXACT: 11 functions at 17fffdc9, `storage-selftest` at 3fa07c14. storage-retention stayed v3.
+- Production proof (2026-10-16):
+  - `storage_authorize` matrix 35/35 (owner, other user, admin, anon × 4 routed buckets + invalid/traversal + regressions), rolled back;
+  - non-admin `storage_admin_inventory` / `storage_admin_set_write_target` are `forbidden`; bad target and non-routable bucket refused;
+  - storage-selftest ticket 8f5d5a33 19/19, then ticket 09091c8f 34/34 (routed cycle for all four buckets: R2 write indexed ACTIVE + sha256, R2-first read, signed download, remove → DELETED, Supabase-only file through the fallback);
+  - verifyKeys ticket 06b660b1: 20/20 existing migrated objects (17.2 MB) — size, md5 vs ETag, sha256 vs index, signed 200 same sha256, unsigned 400.
+- Write switches (audited `STORAGE_WRITE_TARGET_CHANGED`):
+  - meta-ads-media → R2 at 11:50:46Z;
+  - deal-room-documents → R2 at 12:13:40Z;
+  - mortgage-offer-documents → R2 at 12:15:31Z;
+  - developer-documents → R2 at 12:15:41Z.
+- Supabase originals untouched: 292 objects, digest (id‖bucket‖name) cd8d67460aa64ba6ed075d36e377688a. Nothing deleted; source cleanup needs explicit owner approval.
+- Rollback per bucket: `storage_admin_set_write_target(bucket, 'SUPABASE', reason)` as an admin; reads keep working (R2-first, Supabase fallback).
+- Backend re-upload test (PR #231 merged 5cbbfec6, `storage-reupload-proof` PROVEN_EXACT). The new function reads an existing file with readRouted and writes the same bytes to a new key with writeRouted, with no target override.
+  - **Meta Ads: PASS.** Source `f2719f3b-….jpg` (149,841 B, sha256 49e69af6…). Test storage_objects cde305fb.
+  - **Contracts: PASS.** Source `1b78b413-….pdf` (360,456 B, sha256 51d5744c…). Test storage_objects e8683f5c.
+  - Both tickets: upload 4359ec47, cleanup dff8465e.
+  - Checks: R2 object exists; index row ACTIVE with provider R2, owner, size and sha256; md5 equals ETag; R2-first read and signed URL (200) return the same sha256; unsigned URL refused (400); nothing written to Supabase.
+  - Access: storage_authorize on the test keys 10/10.
+  - No business rows created: meta_creatives 4, meta_campaigns 7, deal_room_documents 12, deal_rooms 12.
+  - Cleanup through removeRouted: R2 objects gone, index DELETED, originals intact in both stores; storage.objects digest cd8d6746 unchanged.
+  - Mortgage and Developer documents: NOT TESTED (no existing files in either store).
+- Still open: a REAL browser upload per service (needs a signed-in user; the agent cannot authenticate, and test accounts would trigger the signup welcome-credit grant) verified with `storage-selftest {"verifyKeys":[...]}` + an authorize check on that key.
+
 ## Storage retention v2 — object-level allowlist (PR #216, merged 37cc6900, migration applied 2026-10-16 as ledger 20261016071129)
 
 - PRODUCTION E2E PASSED 2026-10-16 (disposable self-test objects only):

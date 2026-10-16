@@ -84,7 +84,7 @@ MATTERS right now, verify against the live systems, not this file)
   lifecycle treats OWNER_CONFIRMED as live, RPC `publishing_provider_update` (whitelisted columns +
   audit, one transaction). All service-role only; admin actions re-check `is_admin()` on the caller's
   token in the edge function. Proof: `tests/sql/publishing/run.sh` (33 + 25 checks).
-  Until applied, the edge function falls back to code defaults with only myhome/ssge enabled.
+  (Without the registry table the edge function falls back to code defaults with only myhome/ssge enabled.)
 - **Listing**: baseline required = title, description, type, deal, price, city, ≥1 valid number.
   Everything else (bathrooms, area, address, photos…) optional unless a SELECTED portal's admin rules
   require it (myhome seeds `description.ka` + 16 photos, carried from the previous registry).
@@ -93,6 +93,25 @@ MATTERS right now, verify against the live systems, not this file)
   `src/publishing/contacts.ts`), appended exactly once to every copy, never stored in the description.
   `listing.duplicate` copies text (not photos) to another owned property. 14-step journey.
 - **robots.txt** is honoured before every page check (RFC 9309; unreadable = allowed).
+- **Production state (verified 2026-10-16)**: PR #217 merged as `3c335ce3`; deploy run 1070 green;
+  `publishing-engine` **v4 PROVEN_EXACT** (closure digest `sha256:e1b531d4…`, refs/deployed/edge =
+  `3c335ce3`); frontend live via the later `d7185551` (#220), Publishing files byte-identical.
+  Migration `20261106090000_publishing_providers.sql` (SHA-256 `e3c36ee0…20dd`) applied by the owner
+  (via ChatGPT) as **ledger `20261016085445` `publishing_providers`** — stored statements md5
+  `d4b24d7e…` = the file, byte-exact. DO NOT reapply; do not edit the ledger. The MCP
+  `apply_migration` route cannot pass Supabase's destructive-SQL confirmation from a cloud session
+  (cancelled / 60 s timeout) — owner applies DROP-bearing migrations from the SQL Editor.
+  Verified read-only + rolled-back transactions: 8 providers seeded/enabled; portal FK + 8-status CHECK;
+  RLS on, no policies, service_role-only grants; `publishing_provider_update` writes row + audit and
+  refuses non-whitelisted keys; lifecycle refuses ARCHIVE while OWNER_CONFIRMED is live. The deployed
+  function's exact selects resolve against the registry (no fallback).
+- **NOT TESTED LIVE**: signed-in customer and admin flows on homatch.live (the cloud container cannot
+  reach homatch.live, Supabase or any portal domain; no test account). Proof is CI + local browser
+  suites (70) + server tests, not live traffic. No real portal listing has ever been published.
+- **Still manual / unverified**: official logos (monograms until an admin sets an https logo URL) and
+  create-listing URLs for Place.ge, Home.ge, Brokeri.ge, Korter.ge, Binebi.ge, Allhome.ge (each opens
+  the portal home page, and the UI says so) — neither could be fetched or found in the web index from
+  this environment, so none were invented. No portal has an API, OAuth or account connection.
 
 ## Storage retention v2 — object-level allowlist (PR #216, merged 37cc6900, migration applied 2026-10-16 as ledger 20261016071129)
 

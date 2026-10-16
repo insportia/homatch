@@ -33,7 +33,7 @@ const post = (l) => ({
   engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [],
 });
 
-test('VILLION posts through the live pipeline: 2 leads (1 Potential, 1 Weak), 0 Strong, every rejection explained', async () => {
+test('VILLION posts through the live pipeline: 2 leads (1 Potential with financing to confirm, 1 Weak), 0 Strong, every rejection explained', async () => {
   const { db, tables } = campaignDb();
   const out = await processItems(ctxFor(db), fixture.leads.map(post));
   const leads = tables.find_buyers_leads;
@@ -52,10 +52,13 @@ test('VILLION posts through the live pipeline: 2 leads (1 Potential, 1 Weak), 0 
   assert.ok(out.rejected.WRONG_TRANSACTION >= 7);
   assert.equal(out.rejected.DUPLICATE, 1);
   /* Unknown budget stays unknown on the customer-facing row. */
-  const potential = leads.find((l) => l.match_category === 'POTENTIAL');
-  assert.equal(potential.budget_fit, 'UNKNOWN');
-  assert.equal(potential.location_fit, 'CITY');
-  assert.ok(Array.isArray(potential.qualification.dupKeys));
+  /* The instalment buyer (lead 12): genuine; paying the seller over time with ~2% down is shown
+     as financing to confirm, not assumed refused (the listing records nothing either way). */
+  const instalment = leads.find((l) => /ეტაპობრივი/.test(l.evidence?.[0]?.text ?? ''));
+  assert.deepEqual(instalment.qualification.limitations.filter((x) => /FINANCING|DOWN_PAYMENT/.test(x)), ['FINANCING_SELLER_INSTALMENTS', 'DOWN_PAYMENT_LOW']);
+  assert.equal(instalment.budget_fit, 'UNKNOWN');
+  assert.equal(instalment.location_fit, 'CITY');
+  assert.ok(Array.isArray(instalment.qualification.dupKeys));
   /* Time to first visible / qualified result recorded once. */
   const m = tables.find_buyers_campaigns[0].metrics;
   assert.ok(m.firstVisibleAt && m.firstQualifiedAt);

@@ -52,6 +52,9 @@ export interface DemandReading {
   intermediary: boolean;
   budget: Budget | null;
   downPayment: Money | null;
+  /** How the seeker says they will pay, when they say it: paying the seller over time
+   *  ("ეტაპობრივი გადახდით", "рассрочка") or a bank mortgage. Absent = not stated. */
+  financing?: 'INSTALMENTS' | 'MORTGAGE' | null;
   cities: string[];
   districts: string[];
   /** "district doesn't matter" / "any area". */
@@ -216,6 +219,9 @@ const RENT_OFFER = L([
 /** Listing-like structure: price + a spec line, with contact or hashtag cues. */
 const LISTING_CUES = L(['📍', '📐', '💰', '🛏', '#', 'price:', 'цена:', 'ფასი:', `${B}(size|floor|rooms|bedrooms)\\s*:`, 'этаж', 'სართულ', 'call me', 'for more details', 'details in dm', 'звоните', 'დარეკეთ', 'დამირეკეთ', 'whatsapp', 'viber', 'вотсап', 'ватсап']);
 const FLEX_LOCATION = L(['район не имеет значения', 'любой район', 'any (area|district|location)', 'location (is )?flexible', 'district doesn\'t matter', 'ნებისმიერ (ადგილ|უბან)', 'უბანს არ აქვს მნიშვნელობა', 'herhangi bir (semt|bölge)', 'أي منطقة', 'כל אזור']);
+/** Paying the seller over time vs a bank loan — a purchase either way, but not the same buyer. */
+const INSTALMENTS = L(['рассрочк', 'ეტაპობრივი გადახდ', 'ეტაპობრივად', 'განვადებ', `${B}(installments?|instalments?|payment plan|pay in parts)`, 'taksit', 'تقسيط', 'בתשלומים', 'פריסת תשלומים']);
+const MORTGAGE = L(['ипотек', 'იპოთეკ', `${B}(mortgage|bank loan)`, 'konut kredisi', `${B}kredi`, 'رهن عقاري', 'قرض سكني', 'משכנתא']);
 const DOWN_PAYMENT = L(['первоначальн', 'взнос', 'პირველადი შენატან', 'წინასწარ შენატან', `${B}(down payment|deposit|first payment)`, 'peşinat', 'دفعة أولى', 'מקדמה', 'הון עצמי']);
 
 /* ── money ─────────────────────────────────────────────────────────────── */
@@ -370,6 +376,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   const base = {
     realEstate: true, residential: propertyType === 'APARTMENT' || propertyType === 'HOUSE', propertyType,
     intermediary: AGENT.test(s), budget, downPayment: downHit ? { amount: downHit.amount, currency: downHit.currency } : null,
+    financing: INSTALMENTS.test(s) ? 'INSTALMENTS' as const : MORTGAGE.test(s) ? 'MORTGAGE' as const : null,
     cities, districts, locationFlexible, rooms, bedrooms, areaSqm,
   };
 

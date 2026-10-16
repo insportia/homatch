@@ -298,7 +298,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   const sourceYield = await sourceYieldOf(db, meta.sourceId ?? null);
   const result = await processItems({
     db, campaign: campaign as CampaignRow, stage, runId: run.id, runLanguage: job.language ?? null,
-    datasetId, providerRunId: run.provider_run_id, book: parsePriceBook(settings.priceBook), gate: settings.commentGate,
+    datasetId, providerRunId: run.provider_run_id, book: parsePriceBook(settings.priceBook), gate: settings.commentGate, lowDownPaymentRatio: settings.lowDownPaymentRatio,
     parent, sourceId: meta.sourceId ?? null, sourceYield,
     /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
        row caps an expansion at the Actor's own maximum (followUpRows). */

@@ -20,7 +20,7 @@ import { translateLeadSignal, type LeadEvidence, type PotentialLead, type WhyMat
 import {
   FRAMED_ACTION, GOLD_FILL, GOLD_TEXT, INK, INK_SOFT, IconChip, NAVY_BAND, PRIMARY_ACTION, RingMeter, SourceBadge,
 } from '@/components/findBuyers/brand';
-import { fitTone } from '@/findBuyers/campaignReport';
+import { financingBadges, fitTone } from '@/findBuyers/campaignReport';
 import { sourceKindKey } from '@/findBuyers/externalResults';
 
 const LANGS = new Set(['ka', 'ru', 'en', 'ar', 'he', 'tr']);
@@ -74,11 +74,18 @@ function FitBadges({ lead, t }: { lead: PotentialLead; t: (k: string, v?: Record
     { kind: 'budget', ...fitTone(lead.budget_fit) },
     { kind: 'location', ...fitTone(lead.location_fit) },
   ];
+  /* How the buyer says they will pay, only when they said it (most do not). */
+  const financing = financingBadges(lead.qualification_limitations);
   return (
     <div className="flex flex-wrap gap-1.5" data-testid="fbx-fit-badges">
       {items.map((x) => (
         <span key={x.kind} data-fit={x.fit} className={cn('rounded-full px-2.5 py-0.5 text-2xs font-semibold ring-1 ring-inset', tones[x.tone])}>
           {t(`fbr_fit_${x.kind}_${x.fit}`)}
+        </span>
+      ))}
+      {financing.map((x) => (
+        <span key={x.code} data-financing={x.code} className={cn('rounded-full px-2.5 py-0.5 text-2xs font-semibold ring-1 ring-inset', tones[x.tone])}>
+          {t(x.key)}
         </span>
       ))}
     </div>

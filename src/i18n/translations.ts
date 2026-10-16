@@ -19806,6 +19806,11 @@ const en = {
   pubw_event_automation_handed_to_admin: 'Handed to a HOMATCH specialist',
   pubw_event_automation_needs_session: 'Waiting for the HOMATCH account to sign in again',
   pubw_event_removed_by_automation: 'Removed from the portal by HOMATCH',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'Seller instalments — to confirm',
+  fbr_financing_low_down: 'Low down payment',
+  fbr_financing_mortgage: 'Buying with a mortgage',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -39526,6 +39531,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'გადაეცა HOMATCH-ის სპეციალისტს',
   pubw_event_automation_needs_session: 'ელოდება HOMATCH-ის ანგარიშზე ხელახლა შესვლას',
   pubw_event_removed_by_automation: 'HOMATCH-მა მოხსნა პორტალიდან',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'განვადება გამყიდველთან — დასადასტურებელია',
+  fbr_financing_low_down: 'დაბალი პირველადი შენატანი',
+  fbr_financing_mortgage: 'ყიდულობს იპოთეკით',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -59237,6 +59247,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'Передано специалисту HOMATCH',
   pubw_event_automation_needs_session: 'Ждёт повторного входа в аккаунт HOMATCH',
   pubw_event_removed_by_automation: 'Снято с портала HOMATCH',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'Рассрочка от продавца — уточнить',
+  fbr_financing_low_down: 'Небольшой первоначальный взнос',
+  fbr_financing_mortgage: 'Покупка в ипотеку',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -78946,6 +78961,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'Bir HOMATCH uzmanına devredildi',
   pubw_event_automation_needs_session: 'HOMATCH hesabının yeniden girişi bekleniyor',
   pubw_event_removed_by_automation: 'HOMATCH tarafından portaldan kaldırıldı',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'Satıcıya taksit — teyit edilmeli',
+  fbr_financing_low_down: 'Düşük peşinat',
+  fbr_financing_mortgage: 'Konut kredisiyle alım',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -98655,6 +98675,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'سُلّم إلى مختص من HOMATCH',
   pubw_event_automation_needs_session: 'بانتظار تسجيل دخول حساب HOMATCH مجددًا',
   pubw_event_removed_by_automation: 'أزاله HOMATCH من البوابة',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'تقسيط للبائع — يحتاج تأكيدًا',
+  fbr_financing_low_down: 'دفعة أولى منخفضة',
+  fbr_financing_mortgage: 'شراء بقرض عقاري',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -118364,6 +118389,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'הועבר למומחה של HOMATCH',
   pubw_event_automation_needs_session: 'ממתין להתחברות מחדש של חשבון HOMATCH',
   pubw_event_removed_by_automation: 'הוסר מהפורטל על ידי HOMATCH',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'תשלומים למוכר — לבירור',
+  fbr_financing_low_down: 'הון עצמי נמוך',
+  fbr_financing_mortgage: 'רכישה במשכנתא',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

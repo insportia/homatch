@@ -70,6 +70,8 @@ export interface PotentialLead {
   match_category?: 'STRONG' | 'POTENTIAL' | 'WEAK' | null;
   budget_fit?: string | null;
   location_fit?: string | null;
+  /** qualification.limitations (JSON path), read for the financing badges; absent on older leads. */
+  qualification_limitations?: string[] | null;
 }
 
 /** Current leads (30-day rule at read time) for one property, strongest first (RLS: the owner's own rows only). */
@@ -331,7 +333,7 @@ export async function getCampaignStatus(propertyId: string): Promise<CampaignSta
 }
 
 const LEAD_COLUMNS = 'id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url';
-const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit';
+const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit,qualification_limitations:qualification->limitations';
 
 /** One page of leads, strongest first, stable order (server-side range). */
 export async function getPropertyLeadsPage(propertyId: string, page: number, pageSize: number): Promise<{ rows: PotentialLead[]; total: number }> {

@@ -102,7 +102,7 @@ export function FindBuyersTestTools({ registered, onChanged }: { registered: str
               await loadCap();
             })}>{t('fbx_admin_test_cap_save')}</Button>
           <Button size="sm" variant="ghost" disabled={!cap || busy !== null}
-            onClick={() => run('cap-clear', async () => { await setFindBuyersSetting('find_buyers_test_cap', null); await loadCap(); })}>
+            onClick={() => run('cap-clear', async () => { /* value is NOT NULL: {} is "no cap" (parseTestCap). */ await setFindBuyersSetting('find_buyers_test_cap', {}); await loadCap(); })}>
             {t('fbx_admin_test_cap_clear')}
           </Button>
         </div>

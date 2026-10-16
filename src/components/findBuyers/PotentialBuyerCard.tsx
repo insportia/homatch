@@ -20,7 +20,7 @@ import { INK, INK_SOFT, sourceStyle } from '@/components/findBuyers/brand';
 import { LEAD_LANGS, ageLabel, leadHref } from '@/components/findBuyers/leadText';
 import type { TabPlacement } from '@/findBuyers/externalResults';
 
-const CHIP = 'min-w-0 rounded-full px-2 py-0.5 text-2xs font-semibold ring-1 ring-inset';
+const CHIP = 'min-w-0 rounded-full px-1.5 py-0.5 text-2xs font-semibold ring-1 ring-inset';
 const KIND_TONE = {
   qualified: 'bg-[hsl(218_70%_96%)] text-[hsl(220_60%_28%)] ring-[hsl(218_50%_84%)]',
   interested: 'bg-[hsl(200_70%_96%)] text-[hsl(205_70%_26%)] ring-[hsl(200_50%_82%)]',
@@ -95,14 +95,14 @@ export function PotentialBuyerCard({ lead, propertyId, placement, tenant }: {
       {/* line 4: one classification, one relevance, one action */}
       <div className="flex min-w-0 items-center gap-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-          <span data-testid="fbx-card-kind" className={cn(CHIP, 'block truncate', KIND_TONE[kind.tone])}>{t(kind.key)}</span>
-          <span data-testid="fbx-card-relevance" data-category={rel} className={cn(CHIP, 'inline-flex items-center gap-1', REL_TONE[rel])}>
+          <span data-testid="fbx-card-kind" title={t(kind.key)} className={cn(CHIP, 'block truncate', KIND_TONE[kind.tone])}>{t(kind.key)}</span>
+          <span data-testid="fbx-card-relevance" data-category={rel} title={t(`fbx_rel_${rel}`)} className={cn(CHIP, 'inline-flex items-center gap-1', REL_TONE[rel])}>
             <span className="truncate">{t(`fbx_rel_${rel}`)}</span>
-            {rel !== 'UNCATEGORISED' ? <span className="shrink-0 tabular-nums opacity-80" dir="ltr">{Math.round(lead.overall_score)}</span> : null}
+            {rel !== 'UNCATEGORISED' ? <span className="hidden shrink-0 tabular-nums opacity-80 sm:inline" dir="ltr">{Math.round(lead.overall_score)}</span> : null}
           </span>
         </div>
         <Link to={leadHref(propertyId, lead.id)} data-testid="fbx-lead-details"
-          className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl px-3 text-sm font-semibold text-[hsl(34_90%_30%)] ring-1 ring-inset ring-[hsl(40_80%_62%)] transition-colors hover:bg-[hsl(42_100%_96%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
+          className="inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-xl px-2.5 text-sm font-semibold text-[hsl(34_90%_30%)] ring-1 ring-inset ring-[hsl(40_80%_62%)] transition-colors hover:bg-[hsl(42_100%_96%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
           {t('fbx_card_details')}<ChevronRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
         </Link>
       </div>

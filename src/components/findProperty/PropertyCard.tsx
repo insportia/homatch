@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, BedDouble, Check, Clock, DoorOpen, Globe2, MapPin, Ruler, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BedDouble, Bookmark, BookmarkCheck, Check, Clock, DoorOpen, Globe2, MapPin, Ruler, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import type { PropertyView } from '@/services/marketplaceSearch';
 import { listingTimes, num, pct, type T, usd } from './format';
@@ -6,6 +6,7 @@ import { PropertyGallery } from './PropertyGallery';
 import { DuplicateBadge } from './DuplicateListings';
 import { DuplicatesDialog } from './DuplicatesDialog';
 import { ContactLine } from './ContactLine';
+import { listingKeyOf, listingSnapshot, noteListingInterest, useSavedListing } from '@/services/savedListings';
 
 /** Every source this property was found on, by its public name. */
 export const sourceNames = (p: PropertyView) => [...new Set(p.listings.map((l) => l.sourceName ?? l.source).filter(Boolean))];
@@ -41,10 +42,14 @@ export function missingRequirements(codes: string[], t: T): string {
   return [...new Set(codes.map((code) => t(labels[code] ?? (code.startsWith('REQUIRED_') ? `mps_amenity_${code.slice(9)}` : 'mps_not_stated'))))].join(' · ');
 }
 
-export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, budgetMaxUsd }: {
+export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, budgetMaxUsd, searchId, transaction }: {
   p: PropertyView; t: T; onOpen: () => void; compareSelected: boolean; onToggleCompare: () => void;
   budgetMaxUsd?: number | null;
+  /** For the customer's own interest history (views and saves); optional. */
+  searchId?: string | null; transaction?: string | null;
 }) {
+  const save = useSavedListing(listingKeyOf(p));
+  const open = () => { noteListingInterest('VIEWED', p, { searchId, transaction }); onOpen(); };
   const f = p.facts;
   const place = [f.district, f.city].filter(Boolean).join(', ');
   const upgrade = p.group === 'UPGRADE' ? p.upgrade : null;
@@ -132,7 +137,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
           <Globe2 className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" aria-hidden="true" /><span dir="auto">{t('mps_card_source', { source: sources.join(' · ') })}</span>
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={onOpen}
+          <button type="button" onClick={open}
             className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-[#0C1119] px-5 text-sm font-semibold text-white transition hover:bg-[#151d2a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">
             {t('mps_view_property')}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
           </button>
@@ -140,8 +145,14 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
             className={`inline-flex min-h-[44px] items-center justify-center rounded-xl border px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${compareSelected ? 'border-[#0C1119] bg-[#0C1119]/5 text-foreground' : 'border-border text-foreground/80 hover:bg-muted'}`}>
             {compareSelected ? <Check className="me-1 h-4 w-4" aria-hidden="true" /> : null}{t('mps_compare')}
           </button>
+          <button type="button" onClick={() => void save.toggle(listingSnapshot(p, transaction))} aria-pressed={save.saved} disabled={save.busy}
+            aria-label={save.saved ? t('fpi_unsave') : t('fpi_save')} title={save.saved ? t('fpi_unsave') : t('fpi_save')}
+            className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] disabled:opacity-60 ${save.saved ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.12)] text-[hsl(var(--gold-ink))]' : 'border-border text-foreground/80 hover:bg-muted'}`}>
+            {save.saved ? <BookmarkCheck className="h-4 w-4" aria-hidden="true" /> : <Bookmark className="h-4 w-4" aria-hidden="true" />}
+          </button>
         </div>
-        {original ? <a href={original} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center justify-center text-xs font-medium text-muted-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring">{t('mps_open_original')}</a> : null}
+        {save.failed ? <p role="alert" className="text-xs text-destructive">{t('fpi_save_failed')}</p> : null}
+        {original ? <a href={original} target="_blank" rel="noopener noreferrer" onClick={() => noteListingInterest('RESULT_OPENED', p, { searchId, transaction })} className="inline-flex min-h-11 items-center justify-center text-xs font-medium text-muted-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring">{t('mps_open_original')}</a> : null}
       </div>
     </article>
   );

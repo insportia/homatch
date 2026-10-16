@@ -286,6 +286,8 @@ export const I18N_KEY_OWNERS = [
   // Find Property workspace (history, results, property page; property-scoped AI chat errors).
   [/^fpw_/, 'DISCOVERY'],
   [/^fbx_/, 'DISCOVERY'],
+  // Find Property saved listings, activity history and the paid social campaign.
+  [/^fpi_/, 'DISCOVERY'],
   [/^fbl_/, 'DISCOVERY'],
   [/^im_/, 'DISCOVERY'],
   [/^(hl|rb)_/, 'DISCOVERY'],

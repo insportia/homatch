@@ -19387,6 +19387,11 @@ const en = {
   admin_di_event_viewing_requested: 'Viewing requested',
   admin_di_event_paid_campaign_started: 'Paid campaign',
   admin_di_event_property_listed: 'Listed a property',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  fpi_save: 'Save listing',
+  fpi_unsave: 'Remove from saved',
+  fpi_save_failed: 'Could not update your saved listings. Try again.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -38688,6 +38693,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_di_event_viewing_requested: 'დათვალიერება მოთხოვნილია',
   admin_di_event_paid_campaign_started: 'ფასიანი კამპანია',
   admin_di_event_property_listed: 'ქონება განათავსა',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  fpi_save: 'განცხადების შენახვა',
+  fpi_unsave: 'შენახულიდან წაშლა',
+  fpi_save_failed: 'შენახული განცხადებების განახლება ვერ მოხერხდა. სცადეთ თავიდან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -57980,6 +57990,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_di_event_viewing_requested: 'Запрошен просмотр',
   admin_di_event_paid_campaign_started: 'Платная кампания',
   admin_di_event_property_listed: 'Разместил объект',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  fpi_save: 'Сохранить объявление',
+  fpi_unsave: 'Убрать из сохранённых',
+  fpi_save_failed: 'Не удалось обновить сохранённые объявления. Попробуйте ещё раз.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -77270,6 +77285,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_di_event_viewing_requested: 'Görüntüleme istendi',
   admin_di_event_paid_campaign_started: 'Ücretli kampanya',
   admin_di_event_property_listed: 'Mülk listeledi',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  fpi_save: 'İlanı kaydet',
+  fpi_unsave: 'Kayıtlılardan çıkar',
+  fpi_save_failed: 'Kayıtlı ilanlar güncellenemedi. Tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -96560,6 +96580,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_di_event_viewing_requested: 'طُلبت معاينة',
   admin_di_event_paid_campaign_started: 'حملة مدفوعة',
   admin_di_event_property_listed: 'أدرج عقارًا',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  fpi_save: 'حفظ الإعلان',
+  fpi_unsave: 'إزالة من المحفوظات',
+  fpi_save_failed: 'تعذّر تحديث الإعلانات المحفوظة. حاول مرة أخرى.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -115850,6 +115875,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_di_event_viewing_requested: 'התבקש סיור',
   admin_di_event_paid_campaign_started: 'קמפיין בתשלום',
   admin_di_event_property_listed: 'פרסם נכס',
+
+  /* ── FIND PROPERTY — SAVED LISTINGS, ACTIVITY HISTORY, PAID SOCIAL CAMPAIGN ── */
+  fpi_save: 'שמירת המודעה',
+  fpi_unsave: 'הסרה מהשמורים',
+  fpi_save_failed: 'לא ניתן לעדכן את המודעות השמורות. נסו שוב.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

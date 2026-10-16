@@ -51,6 +51,7 @@ import {
   looksLikePromptInjection,
 } from '../../../src/dealroom/domain/documentExtract.ts';
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
+import { readRouted } from '../_shared/storage/routed.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -58,7 +59,7 @@ const CORS = {
 };
 
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
-const DOCUMENT_BUCKET = 'developer-documents';
+const DOCUMENT_BUCKET = 'developer-documents' as const;
 const MAX_BYTES = 25 * 1024 * 1024;
 
 /** Only these document types carry fields worth proposing. */
@@ -245,15 +246,16 @@ serve(async (req) => {
     .eq('id', documentId);
 
   /* ---- the private object, through the same RLS ---- */
-  const dl = await supabase.storage.from(DOCUMENT_BUCKET).download(doc.storage_path);
-  if (dl.error || !dl.data) {
+  // R2 first, then the caller's own RLS-bound download (_shared/storage/routed.ts).
+  const dl = await readRouted(supabase, DOCUMENT_BUCKET, doc.storage_path);
+  if (!dl) {
     await supabase.from('dev_documents').update({
       status: 'FAILED', extraction_error: 'The file could not be read.',
     }).eq('id', documentId);
     return json({ state: 'FAILED', reason: 'DOWNLOAD_FAILED' });
   }
 
-  const buf = await dl.data.arrayBuffer();
+  const buf = dl.bytes.slice().buffer as ArrayBuffer;
   if (buf.byteLength === 0 || buf.byteLength > MAX_BYTES) {
     await supabase.from('dev_documents').update({
       status: 'FAILED', extraction_error: 'The file is empty or too large to read.',

@@ -37,7 +37,7 @@ async function makeDb({ session = true } = {}) {
     publishing_engine_jobs: [
       { id: uuid(1), listing_id: LISTING, user_id: OWNER, portal_id: 'myhome', status: 'QUEUED', channel: 'HOMATCH_ACCOUNT', revision: 0, listing_version: 3, external_id: null, external_url: null, check_attempts: 0, next_check_at: null, published_at: null, last_error: null, contact_consent_at: 'x' },
     ],
-    publishing_operations: [], property_photos: [{ id: PHOTO, property_id: LISTING, storage_path: 'property-photos/u/a.jpg' }],
+    publishing_operations: [], property_photos: [{ id: PHOTO, property_id: LISTING, storage_path: 'users/u1/property-photos/p/a.jpg' }],
     events: [], accountWrites: [], artifacts: [],
   };
   const err = (message) => ({ data: null, error: { message } });
@@ -120,6 +120,8 @@ async function call(db, action, body = {}, token = 'worker-secret') {
     env: (k) => ({ WORKER_TOKEN: 'worker-secret', PUBLISHING_CREDENTIALS_KEY: KEY })[k],
     db, now: () => NOW,
     fetchPage: async (url) => pages.get(url) ?? { status: 'NETWORK' },
+    // Property photos live in R2: signed by the object store, not the legacy Supabase bucket.
+    signer: async ({ key, expiresIn }) => ({ url: `https://r2.test/${key}?ttl=${expiresIn}` }),
   };
   const res = await handler(new Request('https://edge.test', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ action, ...body }) }), deps);
   return { status: res.status, body: await res.json() };
@@ -144,7 +146,7 @@ test('claim: the leased operation, its listing copy with the owner footer, signe
   assert.equal(task.account.liveSubmitApproved, false);
   assert.ok(task.copies.ka.description.endsWith('განცხადება გამოქვეყნებულია HOMATCH-ის მეშვეობით.'));
   assert.equal(task.copies.ka.contactPhone, '+995322000111');
-  assert.deepEqual(task.photos, [{ id: PHOTO, url: 'https://signed.test/u/a.jpg' }]);
+  assert.deepEqual(task.photos, [{ id: PHOTO, url: 'https://r2.test/users/u1/property-photos/p/a.jpg?ttl=900' }], 'R2 photo signed through the object store');
   assert.equal(env.t.publishing_engine_jobs[0].status, 'PUBLISHING', 'the customer sees Publishing');
   assert.equal(JSON.stringify(r.body).includes('"envelope"'), false, 'the sealed envelope never leaves');
 });
@@ -234,4 +236,15 @@ test('artifacts: a signed upload path under the operation, recorded', async () =
   const r = await call(env.db, 'artifact', { id: task.id, token: task.leaseToken, kind: 'SCREENSHOT', stage: 'FILLED' });
   assert.match(r.body.path, new RegExp(`^${task.id}/FILLED-\\d+\\.png$`));
   assert.equal(env.t.artifacts.length, 1);
+});
+
+test('photo signing: R2 keys through the object store, legacy paths through Supabase, failures give no URL', async () => {
+  const { signPhoto } = await import('../photos.ts');
+  const db = { storage: { from: (b) => ({ createSignedUrl: async (p) => ({ data: { signedUrl: `https://supa.test/${b}/${p}` } }) }) } };
+  const sign = async ({ key }) => ({ url: `https://r2.test/${key}` });
+  assert.equal(await signPhoto(db, 'users/u/property-photos/x.jpg', 900, sign), 'https://r2.test/users/u/property-photos/x.jpg');
+  assert.equal(await signPhoto(db, 'property-photos/p/x.jpg', 900, sign), 'https://supa.test/property-photos/p/x.jpg');
+  assert.equal(await signPhoto(db, 'https://cdn.example/x.jpg', 900, sign), 'https://cdn.example/x.jpg');
+  assert.equal(await signPhoto(db, 'users/u/x.jpg', 900, async () => { throw new Error('R2 down'); }), null);
+  assert.equal(await signPhoto(db, '', 900, sign), null);
 });

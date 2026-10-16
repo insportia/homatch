@@ -11,6 +11,9 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Admin → Storage inventory: product and provider names, the same in every locale.
+  'sinv_supabase_total', 'sinv_svc_design_studio', 'sinv_svc_meta_ads', 'sinv_svc_verify',
+  'sinv_store_r2', 'sinv_store_supabase',
   // HOMATCH Leads: "Premium" and "villa" are the Turkish words too; an area range is
   // digits and the m² unit in every Latin-script locale; "HOMATCH ID" is a column code.
   'hl_filter_premium', 'hl_segment_premium', 'hl_type_villa', 'hl_req_area_range', 'crm_csv_homatch_id', 'pc_property_ref', 'pc_feat_area', 'es_property_id',

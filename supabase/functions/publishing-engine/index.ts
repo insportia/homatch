@@ -26,6 +26,7 @@ import {
 import { ACCOUNT_COLUMNS, type AccountRow, accountView, centralCopy, emptyAccount, ownerFooterReady, registeredStatus, routeFor, sanitizeAccountPatch } from './central.ts';
 import { type OpKind, BROWSER_CAPABILITIES, cleanStorageState, runnable, sessionExpiry, syncKind } from './automation.ts';
 import { fetchListingPage, probeProvider } from './net.ts';
+import { type Signer, signPhoto } from './photos.ts';
 import { sealCredential } from './vault.ts';
 import { FIELD_KEYS, OPERATIONS, adapterFor, configs, profileById, sanitizePatch, type Operation, type ProviderConfig, type ProviderRow } from './providers.ts';
 
@@ -42,7 +43,7 @@ const ADMIN_JOB_COLUMNS = `${PUBLICATION_COLUMNS},user_id,admin_claimed_by`;
 /** Statuses the admin action queue shows by default: everything waiting on a person at HOMATCH. */
 const QUEUE_STATUSES = ['ADMIN_ACTION_REQUIRED', 'PUBLISHING', 'AUTH_REQUIRED', 'UNPUBLISH_REQUESTED', 'VERIFICATION_FAILED', 'QUEUED'];
 
-export async function handler(req: Request, deps = { fetchPage: fetchListingPage, probe: probeProvider, now: () => new Date() }) {
+export async function handler(req: Request, deps: { fetchPage: typeof fetchListingPage; probe: typeof probeProvider; now: () => Date; signer?: Signer } = { fetchPage: fetchListingPage, probe: probeProvider, now: () => new Date() }) {
   const origin = req.headers.get('origin') || '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin',
@@ -577,9 +578,7 @@ export async function handler(req: Request, deps = { fetchPage: fetchListingPage
         for (const id of photoIds) {
           const p = (photoRows ?? []).find((r) => r.id === id);
           if (!p) continue;
-          const path = p.storage_path.replace(/^property-photos\//, '');
-          const { data: signed } = await db.storage.from('property-photos').createSignedUrl(path, 3600);
-          photos.push({ id, url: signed?.signedUrl ?? p.public_url ?? null });
+          photos.push({ id, url: (await signPhoto(db, p.storage_path, 900, deps.signer)) ?? p.public_url ?? null });
         }
         const { data: events } = await db.from('publishing_engine_events').select('id,kind,from_status,to_status,detail,created_at').eq('publication_id', job.id).order('created_at', { ascending: false }).limit(50);
         return reply({

@@ -19256,6 +19256,47 @@ const en = {
   pubw_err_payload_too_large: 'This listing is too large to save. Shorten the descriptions and try again.',
   pubw_err_invalid_status: 'That status change is not allowed. Refresh the page and try again.',
 
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_title: 'Storage by service',
+  sinv_subtitle: 'Where every HOMATCH file lives: Cloudflare R2 (primary) and Supabase Storage (legacy and justified exceptions). Counts come from the database indexes.',
+  sinv_r2_total: 'Cloudflare R2 (active)',
+  sinv_supabase_total: 'Supabase Storage',
+  sinv_files: '{{count}} files',
+  sinv_r2_by_service: 'Cloudflare R2 by service',
+  sinv_supabase_buckets: 'Supabase Storage buckets',
+  sinv_col_service: 'Service',
+  sinv_col_prefix: 'R2 prefix',
+  sinv_col_files: 'Files',
+  sinv_col_size: 'Size',
+  sinv_col_bucket: 'Bucket',
+  sinv_col_copied: 'Verified copies in R2',
+  sinv_col_new_uploads: 'New uploads go to',
+  sinv_not_routable: 'Stays in Supabase',
+  sinv_confirm_r2: 'Send NEW {{bucket}} uploads to Cloudflare R2? Existing files are not moved or deleted, and reads keep working from either store.',
+  sinv_confirm_supabase: 'Send NEW {{bucket}} uploads back to Supabase Storage? Files already in R2 stay readable.',
+  sinv_switched: 'New uploads now go to {{target}}.',
+  sinv_switch_failed: 'The upload destination could not be changed.',
+  sinv_cost_note: 'Costs are not estimated here. Cloudflare and Supabase invoices are the source of truth for storage spend.',
+  sinv_unavailable: 'The storage inventory is not available yet.',
+  sinv_svc_design_studio: 'Design Studio',
+  sinv_svc_property: 'Property listings',
+  sinv_svc_meta_ads: 'Meta Ads',
+  sinv_svc_contracts: 'Contracts',
+  sinv_svc_mortgage: 'Mortgages',
+  sinv_svc_developer: 'Developer projects',
+  sinv_svc_voice: 'AI TALK voice',
+  sinv_svc_reports: 'Generated reports',
+  sinv_svc_verify: 'Verify',
+  sinv_svc_communications: 'Communications',
+  sinv_svc_brokers: 'Brokers',
+  sinv_svc_site: 'Site assets',
+  sinv_svc_system: 'System and tests',
+  sinv_svc_other: 'Other',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
+
   /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_flow_title: 'Publishing steps',
   pubw_flow_create: 'Create',
@@ -19340,6 +19381,7 @@ const en = {
   pubw_err_owner_contact_required: 'Add your name and a valid phone number first.',
   pubw_err_portal_unsupported: 'HOMATCH cannot publish on this portal.',
   pubw_err_homatch_managed: 'HOMATCH handles this portal copy — use Withdraw or Remove instead.',
+  pubw_err_portal_rejected: 'The portal rejected the listing.',
   pubw_err_not_queued: 'This request is no longer waiting.',
   pubw_err_not_awaiting_admin: 'This publication is not waiting for HOMATCH.',
   pubw_err_not_in_progress: 'Nobody is publishing this right now.',
@@ -19444,11 +19486,6 @@ const en = {
   pubw_queue_done_confirmremoved: 'Removal recorded.',
   pubw_queue_done_markupdated: 'Update recorded.',
   pubw_queue_done_check: 'Checked.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_err_portal_rejected: 'The portal rejected the listing.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_auto_title: 'Backend automation',
   pubw_auto_no_adapter: 'No browser workflow has been recorded for this portal yet, so HOMATCH does not automate it. Requests go to the Publishing queue.',
   pubw_auto_levels: 'What the worker can do here, and how it was verified',
@@ -19479,6 +19516,12 @@ const en = {
   pubw_auto_live_note: 'Off: the worker fills and checks everything, stops before publishing, and hands the listing to the queue. On: it presses the portal’s free publish button.',
   pubw_auto_live_since: 'Approved {{when}}',
   pubw_auto_live_confirm: 'Approve live publishing? The worker will create REAL public listings on this portal with the HOMATCH account, for every customer request. Only free publication is ever used.',
+  pubw_auto_screenshot: 'Screenshot',
+  pubw_stage_ready_to_submit: 'Ready to submit',
+  pubw_stage_created: 'Created on the portal',
+  pubw_stage_no_result_url: 'No result page',
+  pubw_stage_session: 'Session',
+  pubw_stage_error: 'Error',
   pubw_auto_saved: 'Automation settings saved.',
   pubw_auto_operations: 'Recent operations',
   pubw_auto_no_operations: 'No operations yet.',
@@ -19551,14 +19594,6 @@ const en = {
   pubw_event_automation_handed_to_admin: 'Handed to a HOMATCH specialist',
   pubw_event_automation_needs_session: 'Waiting for the HOMATCH account to sign in again',
   pubw_event_removed_by_automation: 'Removed from the portal by HOMATCH',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_auto_screenshot: 'Screenshot',
-  pubw_stage_ready_to_submit: 'Ready to submit',
-  pubw_stage_created: 'Created on the portal',
-  pubw_stage_no_result_url: 'No result page',
-  pubw_stage_session: 'Session',
-  pubw_stage_error: 'Error',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -38729,6 +38764,47 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_err_payload_too_large: 'განცხადება შესანახად ძალიან დიდია. შეამოკლეთ აღწერები და სცადეთ თავიდან.',
   pubw_err_invalid_status: 'სტატუსის ეს ცვლილება დაუშვებელია. განაახლეთ გვერდი და სცადეთ თავიდან.',
 
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_title: 'საცავი სერვისების მიხედვით',
+  sinv_subtitle: 'სად ინახება HOMATCH-ის ყველა ფაილი: Cloudflare R2 (ძირითადი) და Supabase Storage (ძველი და დასაბუთებული გამონაკლისები). რაოდენობები მონაცემთა ბაზის ინდექსებიდანაა.',
+  sinv_r2_total: 'Cloudflare R2 (აქტიური)',
+  sinv_supabase_total: 'Supabase Storage',
+  sinv_files: '{{count}} ფაილი',
+  sinv_r2_by_service: 'Cloudflare R2 სერვისების მიხედვით',
+  sinv_supabase_buckets: 'Supabase Storage-ის ბაკეტები',
+  sinv_col_service: 'სერვისი',
+  sinv_col_prefix: 'R2 პრეფიქსი',
+  sinv_col_files: 'ფაილები',
+  sinv_col_size: 'ზომა',
+  sinv_col_bucket: 'ბაკეტი',
+  sinv_col_copied: 'დადასტურებული ასლები R2-ში',
+  sinv_col_new_uploads: 'ახალი ატვირთვები მიდის',
+  sinv_not_routable: 'რჩება Supabase-ში',
+  sinv_confirm_r2: 'გავგზავნოთ ახალი {{bucket}} ატვირთვები Cloudflare R2-ში? არსებული ფაილები არ გადაიტანება და არ წაიშლება, ხოლო წაკითხვა ორივე საცავიდან იმუშავებს.',
+  sinv_confirm_supabase: 'დავაბრუნოთ ახალი {{bucket}} ატვირთვები Supabase Storage-ში? R2-ში არსებული ფაილები ხელმისაწვდომი დარჩება.',
+  sinv_switched: 'ახალი ატვირთვები ახლა მიდის: {{target}}.',
+  sinv_switch_failed: 'ატვირთვის მიმართულების შეცვლა ვერ მოხერხდა.',
+  sinv_cost_note: 'ხარჯები აქ არ ფასდება. საცავის ხარჯების წყარო Cloudflare-ისა და Supabase-ის ინვოისებია.',
+  sinv_unavailable: 'საცავის ინვენტარი ჯერ ხელმისაწვდომი არ არის.',
+  sinv_svc_design_studio: 'Design Studio',
+  sinv_svc_property: 'უძრავი ქონების განცხადებები',
+  sinv_svc_meta_ads: 'Meta Ads',
+  sinv_svc_contracts: 'ხელშეკრულებები',
+  sinv_svc_mortgage: 'იპოთეკა',
+  sinv_svc_developer: 'დეველოპერის პროექტები',
+  sinv_svc_voice: 'AI TALK ხმა',
+  sinv_svc_reports: 'შექმნილი ანგარიშები',
+  sinv_svc_verify: 'Verify',
+  sinv_svc_communications: 'კომუნიკაცია',
+  sinv_svc_brokers: 'ბროკერები',
+  sinv_svc_site: 'საიტის რესურსები',
+  sinv_svc_system: 'სისტემა და ტესტები',
+  sinv_svc_other: 'სხვა',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2 საცავი',
+  sinv_store_supabase: 'Supabase Storage',
+
   /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_flow_title: 'გამოქვეყნების ეტაპები',
   pubw_flow_create: 'შექმნა',
@@ -38813,6 +38889,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_err_owner_contact_required: 'ჯერ მიუთითეთ სახელი და სწორი ტელეფონის ნომერი.',
   pubw_err_portal_unsupported: 'HOMATCH ამ პორტალზე ვერ გამოაქვეყნებს.',
   pubw_err_homatch_managed: 'ამ ასლს HOMATCH მართავს — გამოიყენეთ „გაუქმება“ ან „მოხსნა“.',
+  pubw_err_portal_rejected: 'პორტალმა განცხადება უარყო.',
   pubw_err_not_queued: 'ეს მოთხოვნა უკვე აღარ ელოდება.',
   pubw_err_not_awaiting_admin: 'ეს გამოქვეყნება HOMATCH-ს არ ელოდება.',
   pubw_err_not_in_progress: 'ამას ახლა არავინ აქვეყნებს.',
@@ -38917,11 +38994,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_queue_done_confirmremoved: 'მოხსნა აღირიცხა.',
   pubw_queue_done_markupdated: 'განახლება აღირიცხა.',
   pubw_queue_done_check: 'შემოწმდა.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_err_portal_rejected: 'პორტალმა განცხადება უარყო.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_auto_title: 'ბექენდის ავტომატიზაცია',
   pubw_auto_no_adapter: 'ამ პორტალისთვის ბრაუზერის სამუშაო პროცესი ჯერ არ არის ჩაწერილი, ამიტომ HOMATCH მას არ ავტომატიზირებს. მოთხოვნები გამოქვეყნების რიგში ხვდება.',
   pubw_auto_levels: 'რა შეუძლია აქ ვორკერს და როგორ გადამოწმდა',
@@ -38952,6 +39024,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_auto_live_note: 'გამორთული: ვორკერი ყველაფერს ავსებს და ამოწმებს, გამოქვეყნებამდე ჩერდება და განცხადებას რიგს გადასცემს. ჩართული: ის პორტალის უფასო გამოქვეყნების ღილაკს აჭერს.',
   pubw_auto_live_since: 'დამტკიცდა {{when}}',
   pubw_auto_live_confirm: 'დაამტკიცოთ ცოცხალი გამოქვეყნება? ვორკერი ამ პორტალზე HOMATCH-ის ანგარიშით რეალურ საჯარო განცხადებებს შექმნის ყველა მოთხოვნაზე. გამოიყენება მხოლოდ უფასო გამოქვეყნება.',
+  pubw_auto_screenshot: 'ეკრანის ანაბეჭდი',
+  pubw_stage_ready_to_submit: 'მზადაა გასაგზავნად',
+  pubw_stage_created: 'შეიქმნა პორტალზე',
+  pubw_stage_no_result_url: 'შედეგის გვერდი არ არის',
+  pubw_stage_session: 'სესია',
+  pubw_stage_error: 'შეცდომა',
   pubw_auto_saved: 'ავტომატიზაციის პარამეტრები შენახულია.',
   pubw_auto_operations: 'ბოლო ოპერაციები',
   pubw_auto_no_operations: 'ოპერაციები ჯერ არ არის.',
@@ -39024,14 +39102,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'გადაეცა HOMATCH-ის სპეციალისტს',
   pubw_event_automation_needs_session: 'ელოდება HOMATCH-ის ანგარიშზე ხელახლა შესვლას',
   pubw_event_removed_by_automation: 'HOMATCH-მა მოხსნა პორტალიდან',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_auto_screenshot: 'ეკრანის ანაბეჭდი',
-  pubw_stage_ready_to_submit: 'მზადაა გასაგზავნად',
-  pubw_stage_created: 'შეიქმნა პორტალზე',
-  pubw_stage_no_result_url: 'შედეგის გვერდი არ არის',
-  pubw_stage_session: 'სესია',
-  pubw_stage_error: 'შეცდომა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -58193,6 +58263,47 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_err_payload_too_large: 'Объявление слишком большое для сохранения. Сократите описания и попробуйте снова.',
   pubw_err_invalid_status: 'Такое изменение статуса недопустимо. Обновите страницу и попробуйте снова.',
 
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_title: 'Хранилище по сервисам',
+  sinv_subtitle: 'Где хранятся все файлы HOMATCH: Cloudflare R2 (основное) и Supabase Storage (старые и обоснованные исключения). Данные из индексов базы данных.',
+  sinv_r2_total: 'Cloudflare R2 (активные)',
+  sinv_supabase_total: 'Supabase Storage',
+  sinv_files: 'файлов: {{count}}',
+  sinv_r2_by_service: 'Cloudflare R2 по сервисам',
+  sinv_supabase_buckets: 'Бакеты Supabase Storage',
+  sinv_col_service: 'Сервис',
+  sinv_col_prefix: 'Префикс R2',
+  sinv_col_files: 'Файлы',
+  sinv_col_size: 'Размер',
+  sinv_col_bucket: 'Бакет',
+  sinv_col_copied: 'Проверенные копии в R2',
+  sinv_col_new_uploads: 'Новые загрузки идут в',
+  sinv_not_routable: 'Остаётся в Supabase',
+  sinv_confirm_r2: 'Отправлять НОВЫЕ загрузки {{bucket}} в Cloudflare R2? Существующие файлы не переносятся и не удаляются, чтение работает из обоих хранилищ.',
+  sinv_confirm_supabase: 'Вернуть НОВЫЕ загрузки {{bucket}} в Supabase Storage? Файлы, уже находящиеся в R2, останутся доступны.',
+  sinv_switched: 'Новые загрузки теперь идут в {{target}}.',
+  sinv_switch_failed: 'Не удалось изменить место загрузки.',
+  sinv_cost_note: 'Стоимость здесь не оценивается. Источник данных о расходах на хранение — счета Cloudflare и Supabase.',
+  sinv_unavailable: 'Инвентаризация хранилища пока недоступна.',
+  sinv_svc_design_studio: 'Design Studio',
+  sinv_svc_property: 'Объявления о недвижимости',
+  sinv_svc_meta_ads: 'Meta Ads',
+  sinv_svc_contracts: 'Договоры',
+  sinv_svc_mortgage: 'Ипотека',
+  sinv_svc_developer: 'Проекты застройщиков',
+  sinv_svc_voice: 'Голос AI TALK',
+  sinv_svc_reports: 'Созданные отчёты',
+  sinv_svc_verify: 'Verify',
+  sinv_svc_communications: 'Коммуникации',
+  sinv_svc_brokers: 'Брокеры',
+  sinv_svc_site: 'Ресурсы сайта',
+  sinv_svc_system: 'Система и тесты',
+  sinv_svc_other: 'Другое',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
+
   /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_flow_title: 'Этапы публикации',
   pubw_flow_create: 'Создать',
@@ -58277,6 +58388,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_err_owner_contact_required: 'Сначала укажите имя и правильный номер телефона.',
   pubw_err_portal_unsupported: 'HOMATCH не может публиковать на этом портале.',
   pubw_err_homatch_managed: 'Этой копией управляет HOMATCH — используйте «Отозвать» или «Снять».',
+  pubw_err_portal_rejected: 'Портал отклонил объявление.',
   pubw_err_not_queued: 'Этот запрос больше не ожидает.',
   pubw_err_not_awaiting_admin: 'Эта публикация не ожидает HOMATCH.',
   pubw_err_not_in_progress: 'Сейчас это никто не публикует.',
@@ -58381,11 +58493,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_queue_done_confirmremoved: 'Снятие записано.',
   pubw_queue_done_markupdated: 'Обновление записано.',
   pubw_queue_done_check: 'Проверено.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_err_portal_rejected: 'Портал отклонил объявление.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_auto_title: 'Автоматизация на сервере',
   pubw_auto_no_adapter: 'Для этого портала ещё не записан сценарий браузера, поэтому HOMATCH его не автоматизирует. Запросы попадают в очередь публикаций.',
   pubw_auto_levels: 'Что здесь умеет воркер и как это проверено',
@@ -58416,6 +58523,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_auto_live_note: 'Выкл.: воркер всё заполняет и проверяет, останавливается перед публикацией и передаёт объявление в очередь. Вкл.: нажимает бесплатную кнопку публикации портала.',
   pubw_auto_live_since: 'Одобрено {{when}}',
   pubw_auto_live_confirm: 'Одобрить реальную публикацию? Воркер будет создавать НАСТОЯЩИЕ публичные объявления на этом портале под аккаунтом HOMATCH по каждому запросу. Используется только бесплатная публикация.',
+  pubw_auto_screenshot: 'Скриншот',
+  pubw_stage_ready_to_submit: 'Готово к отправке',
+  pubw_stage_created: 'Создано на портале',
+  pubw_stage_no_result_url: 'Нет страницы результата',
+  pubw_stage_session: 'Сессия',
+  pubw_stage_error: 'Ошибка',
   pubw_auto_saved: 'Настройки автоматизации сохранены.',
   pubw_auto_operations: 'Последние операции',
   pubw_auto_no_operations: 'Операций пока нет.',
@@ -58488,14 +58601,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'Передано специалисту HOMATCH',
   pubw_event_automation_needs_session: 'Ждёт повторного входа в аккаунт HOMATCH',
   pubw_event_removed_by_automation: 'Снято с портала HOMATCH',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_auto_screenshot: 'Скриншот',
-  pubw_stage_ready_to_submit: 'Готово к отправке',
-  pubw_stage_created: 'Создано на портале',
-  pubw_stage_no_result_url: 'Нет страницы результата',
-  pubw_stage_session: 'Сессия',
-  pubw_stage_error: 'Ошибка',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -77655,6 +77760,47 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_err_payload_too_large: 'İlan kaydetmek için çok büyük. Açıklamaları kısaltıp tekrar deneyin.',
   pubw_err_invalid_status: 'Bu durum değişikliğine izin verilmiyor. Sayfayı yenileyip tekrar deneyin.',
 
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_title: 'Hizmete göre depolama',
+  sinv_subtitle: 'HOMATCH dosyalarının tümü nerede: Cloudflare R2 (birincil) ve Supabase Storage (eski ve gerekçeli istisnalar). Sayılar veritabanı dizinlerinden gelir.',
+  sinv_r2_total: 'Cloudflare R2 (etkin)',
+  sinv_supabase_total: 'Supabase Storage',
+  sinv_files: '{{count}} dosya',
+  sinv_r2_by_service: 'Hizmete göre Cloudflare R2',
+  sinv_supabase_buckets: 'Supabase Storage klasörleri',
+  sinv_col_service: 'Hizmet',
+  sinv_col_prefix: 'R2 öneki',
+  sinv_col_files: 'Dosyalar',
+  sinv_col_size: 'Boyut',
+  sinv_col_bucket: 'Klasör',
+  sinv_col_copied: 'R2\'deki doğrulanmış kopyalar',
+  sinv_col_new_uploads: 'Yeni yüklemeler nereye',
+  sinv_not_routable: 'Supabase\'de kalır',
+  sinv_confirm_r2: 'YENİ {{bucket}} yüklemeleri Cloudflare R2\'ye gönderilsin mi? Mevcut dosyalar taşınmaz veya silinmez; okuma her iki depodan da çalışır.',
+  sinv_confirm_supabase: 'YENİ {{bucket}} yüklemeleri Supabase Storage\'a geri gönderilsin mi? R2\'deki dosyalar okunabilir kalır.',
+  sinv_switched: 'Yeni yüklemeler artık {{target}} hedefine gidiyor.',
+  sinv_switch_failed: 'Yükleme hedefi değiştirilemedi.',
+  sinv_cost_note: 'Maliyetler burada tahmin edilmez. Depolama harcamaları için esas kaynak Cloudflare ve Supabase faturalarıdır.',
+  sinv_unavailable: 'Depolama envanteri henüz kullanılamıyor.',
+  sinv_svc_design_studio: 'Design Studio',
+  sinv_svc_property: 'Emlak ilanları',
+  sinv_svc_meta_ads: 'Meta Ads',
+  sinv_svc_contracts: 'Sözleşmeler',
+  sinv_svc_mortgage: 'Konut kredisi',
+  sinv_svc_developer: 'Geliştirici projeleri',
+  sinv_svc_voice: 'AI TALK sesi',
+  sinv_svc_reports: 'Oluşturulan raporlar',
+  sinv_svc_verify: 'Verify',
+  sinv_svc_communications: 'İletişim',
+  sinv_svc_brokers: 'Emlakçılar',
+  sinv_svc_site: 'Site varlıkları',
+  sinv_svc_system: 'Sistem ve testler',
+  sinv_svc_other: 'Diğer',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
+
   /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_flow_title: 'Yayın adımları',
   pubw_flow_create: 'Oluştur',
@@ -77739,6 +77885,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_err_owner_contact_required: 'Önce adınızı ve geçerli bir telefon numarası ekleyin.',
   pubw_err_portal_unsupported: 'HOMATCH bu portalda yayınlayamaz.',
   pubw_err_homatch_managed: 'Bu kopyayı HOMATCH yönetiyor — Geri çek veya Kaldır’ı kullanın.',
+  pubw_err_portal_rejected: 'Portal ilanı reddetti.',
   pubw_err_not_queued: 'Bu istek artık beklemiyor.',
   pubw_err_not_awaiting_admin: 'Bu yayın HOMATCH’i beklemiyor.',
   pubw_err_not_in_progress: 'Şu anda bunu kimse yayınlamıyor.',
@@ -77843,11 +77990,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_queue_done_confirmremoved: 'Kaldırma kaydedildi.',
   pubw_queue_done_markupdated: 'Güncelleme kaydedildi.',
   pubw_queue_done_check: 'Kontrol edildi.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_err_portal_rejected: 'Portal ilanı reddetti.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_auto_title: 'Sunucu otomasyonu',
   pubw_auto_no_adapter: 'Bu portal için henüz bir tarayıcı akışı kaydedilmedi; HOMATCH otomatikleştirmez. İstekler Yayın kuyruğuna düşer.',
   pubw_auto_levels: 'Çalışan burada ne yapabilir ve nasıl doğrulandı',
@@ -77878,6 +78020,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_auto_live_note: 'Kapalı: çalışan her şeyi doldurup kontrol eder, yayından önce durur ve ilanı kuyruğa verir. Açık: portalın ücretsiz yayın düğmesine basar.',
   pubw_auto_live_since: 'Onaylandı {{when}}',
   pubw_auto_live_confirm: 'Canlı yayın onaylansın mı? Çalışan, her müşteri isteği için bu portalda HOMATCH hesabıyla GERÇEK herkese açık ilanlar oluşturacak. Yalnızca ücretsiz yayın kullanılır.',
+  pubw_auto_screenshot: 'Ekran görüntüsü',
+  pubw_stage_ready_to_submit: 'Göndermeye hazır',
+  pubw_stage_created: 'Portalda oluşturuldu',
+  pubw_stage_no_result_url: 'Sonuç sayfası yok',
+  pubw_stage_session: 'Oturum',
+  pubw_stage_error: 'Hata',
   pubw_auto_saved: 'Otomasyon ayarları kaydedildi.',
   pubw_auto_operations: 'Son işlemler',
   pubw_auto_no_operations: 'Henüz işlem yok.',
@@ -77950,14 +78098,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'Bir HOMATCH uzmanına devredildi',
   pubw_event_automation_needs_session: 'HOMATCH hesabının yeniden girişi bekleniyor',
   pubw_event_removed_by_automation: 'HOMATCH tarafından portaldan kaldırıldı',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_auto_screenshot: 'Ekran görüntüsü',
-  pubw_stage_ready_to_submit: 'Göndermeye hazır',
-  pubw_stage_created: 'Portalda oluşturuldu',
-  pubw_stage_no_result_url: 'Sonuç sayfası yok',
-  pubw_stage_session: 'Oturum',
-  pubw_stage_error: 'Hata',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -97117,6 +97257,47 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_err_payload_too_large: 'الإعلان أكبر من أن يُحفظ. اختصر الأوصاف وحاول مرة أخرى.',
   pubw_err_invalid_status: 'تغيير الحالة هذا غير مسموح. حدّث الصفحة وحاول مرة أخرى.',
 
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_title: 'التخزين حسب الخدمة',
+  sinv_subtitle: 'أين تُحفظ كل ملفات HOMATCH: ‏Cloudflare R2 (الأساسي) و‏Supabase Storage (القديم والاستثناءات المبررة). الأعداد مأخوذة من فهارس قاعدة البيانات.',
+  sinv_r2_total: 'Cloudflare R2 (نشط)',
+  sinv_supabase_total: 'Supabase Storage',
+  sinv_files: '{{count}} ملف',
+  sinv_r2_by_service: 'Cloudflare R2 حسب الخدمة',
+  sinv_supabase_buckets: 'حاويات Supabase Storage',
+  sinv_col_service: 'الخدمة',
+  sinv_col_prefix: 'بادئة R2',
+  sinv_col_files: 'الملفات',
+  sinv_col_size: 'الحجم',
+  sinv_col_bucket: 'الحاوية',
+  sinv_col_copied: 'نسخ موثقة في R2',
+  sinv_col_new_uploads: 'تذهب التحميلات الجديدة إلى',
+  sinv_not_routable: 'يبقى في Supabase',
+  sinv_confirm_r2: 'إرسال التحميلات الجديدة لـ {{bucket}} إلى Cloudflare R2؟ لا تُنقل الملفات الحالية ولا تُحذف، وتستمر القراءة من أي من المخزنين.',
+  sinv_confirm_supabase: 'إعادة التحميلات الجديدة لـ {{bucket}} إلى Supabase Storage؟ تبقى الملفات الموجودة في R2 قابلة للقراءة.',
+  sinv_switched: 'تذهب التحميلات الجديدة الآن إلى {{target}}.',
+  sinv_switch_failed: 'تعذر تغيير وجهة التحميل.',
+  sinv_cost_note: 'لا تُقدَّر التكاليف هنا. فواتير Cloudflare و‏Supabase هي المرجع لتكاليف التخزين.',
+  sinv_unavailable: 'جرد التخزين غير متاح بعد.',
+  sinv_svc_design_studio: 'Design Studio',
+  sinv_svc_property: 'إعلانات العقارات',
+  sinv_svc_meta_ads: 'Meta Ads',
+  sinv_svc_contracts: 'العقود',
+  sinv_svc_mortgage: 'الرهن العقاري',
+  sinv_svc_developer: 'مشاريع المطورين',
+  sinv_svc_voice: 'صوت AI TALK',
+  sinv_svc_reports: 'التقارير المُنشأة',
+  sinv_svc_verify: 'Verify',
+  sinv_svc_communications: 'الاتصالات',
+  sinv_svc_brokers: 'الوسطاء',
+  sinv_svc_site: 'موارد الموقع',
+  sinv_svc_system: 'النظام والاختبارات',
+  sinv_svc_other: 'أخرى',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'تخزين Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
+
   /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_flow_title: 'خطوات النشر',
   pubw_flow_create: 'إنشاء',
@@ -97201,6 +97382,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_err_owner_contact_required: 'أضف اسمك ورقم هاتف صالحًا أولًا.',
   pubw_err_portal_unsupported: 'لا يستطيع HOMATCH النشر على هذه البوابة.',
   pubw_err_homatch_managed: 'يدير HOMATCH هذه النسخة — استخدم «سحب» أو «إزالة».',
+  pubw_err_portal_rejected: 'رفضت البوابة الإعلان.',
   pubw_err_not_queued: 'لم يعد هذا الطلب قيد الانتظار.',
   pubw_err_not_awaiting_admin: 'هذا النشر لا ينتظر HOMATCH.',
   pubw_err_not_in_progress: 'لا أحد ينشر هذا الآن.',
@@ -97305,11 +97487,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_queue_done_confirmremoved: 'سُجّلت الإزالة.',
   pubw_queue_done_markupdated: 'سُجّل التحديث.',
   pubw_queue_done_check: 'تم الفحص.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_err_portal_rejected: 'رفضت البوابة الإعلان.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_auto_title: 'الأتمتة في الخادم',
   pubw_auto_no_adapter: 'لم يُسجَّل بعد سير عمل للمتصفح لهذه البوابة، لذا لا يؤتمتها HOMATCH. تذهب الطلبات إلى قائمة النشر.',
   pubw_auto_levels: 'ما يستطيعه العامل هنا وكيف تم التحقق',
@@ -97340,6 +97517,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_auto_live_note: 'إيقاف: يملأ العامل كل شيء ويفحصه ويتوقف قبل النشر ويسلّم الإعلان للقائمة. تشغيل: يضغط زر النشر المجاني في البوابة.',
   pubw_auto_live_since: 'موافق عليه {{when}}',
   pubw_auto_live_confirm: 'الموافقة على النشر الفعلي؟ سينشئ العامل إعلانات عامة حقيقية على هذه البوابة بحساب HOMATCH لكل طلب. يُستخدم النشر المجاني فقط.',
+  pubw_auto_screenshot: 'لقطة شاشة',
+  pubw_stage_ready_to_submit: 'جاهز للإرسال',
+  pubw_stage_created: 'أُنشئ على البوابة',
+  pubw_stage_no_result_url: 'لا صفحة نتيجة',
+  pubw_stage_session: 'الجلسة',
+  pubw_stage_error: 'خطأ',
   pubw_auto_saved: 'حُفظت إعدادات الأتمتة.',
   pubw_auto_operations: 'آخر العمليات',
   pubw_auto_no_operations: 'لا عمليات بعد.',
@@ -97412,14 +97595,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'سُلّم إلى مختص من HOMATCH',
   pubw_event_automation_needs_session: 'بانتظار تسجيل دخول حساب HOMATCH مجددًا',
   pubw_event_removed_by_automation: 'أزاله HOMATCH من البوابة',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_auto_screenshot: 'لقطة شاشة',
-  pubw_stage_ready_to_submit: 'جاهز للإرسال',
-  pubw_stage_created: 'أُنشئ على البوابة',
-  pubw_stage_no_result_url: 'لا صفحة نتيجة',
-  pubw_stage_session: 'الجلسة',
-  pubw_stage_error: 'خطأ',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -116579,6 +116754,47 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_err_payload_too_large: 'המודעה גדולה מכדי להישמר. קצרו את התיאורים ונסו שוב.',
   pubw_err_invalid_status: 'שינוי הסטטוס הזה אינו מותר. רעננו את הדף ונסו שוב.',
 
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_title: 'אחסון לפי שירות',
+  sinv_subtitle: 'היכן נשמרים כל קובצי HOMATCH: ‏Cloudflare R2 (ראשי) ו-Supabase Storage (ישן וחריגים מוצדקים). הספירות מגיעות מאינדקסי מסד הנתונים.',
+  sinv_r2_total: 'Cloudflare R2 (פעיל)',
+  sinv_supabase_total: 'Supabase Storage',
+  sinv_files: '{{count}} קבצים',
+  sinv_r2_by_service: 'Cloudflare R2 לפי שירות',
+  sinv_supabase_buckets: 'דליים ב-Supabase Storage',
+  sinv_col_service: 'שירות',
+  sinv_col_prefix: 'קידומת R2',
+  sinv_col_files: 'קבצים',
+  sinv_col_size: 'גודל',
+  sinv_col_bucket: 'דלי',
+  sinv_col_copied: 'עותקים מאומתים ב-R2',
+  sinv_col_new_uploads: 'העלאות חדשות נשמרות ב',
+  sinv_not_routable: 'נשאר ב-Supabase',
+  sinv_confirm_r2: 'לשלוח העלאות חדשות של {{bucket}} ל-Cloudflare R2? קבצים קיימים אינם מועברים או נמחקים, והקריאה ממשיכה לעבוד משני המאגרים.',
+  sinv_confirm_supabase: 'להחזיר העלאות חדשות של {{bucket}} ל-Supabase Storage? קבצים שכבר נמצאים ב-R2 יישארו זמינים.',
+  sinv_switched: 'העלאות חדשות נשמרות כעת ב-{{target}}.',
+  sinv_switch_failed: 'לא ניתן היה לשנות את יעד ההעלאה.',
+  sinv_cost_note: 'העלויות אינן מוערכות כאן. החשבוניות של Cloudflare ו-Supabase הן מקור האמת להוצאות האחסון.',
+  sinv_unavailable: 'מלאי האחסון עדיין אינו זמין.',
+  sinv_svc_design_studio: 'Design Studio',
+  sinv_svc_property: 'מודעות נכסים',
+  sinv_svc_meta_ads: 'Meta Ads',
+  sinv_svc_contracts: 'חוזים',
+  sinv_svc_mortgage: 'משכנתאות',
+  sinv_svc_developer: 'פרויקטים של יזמים',
+  sinv_svc_voice: 'קול AI TALK',
+  sinv_svc_reports: 'דוחות שנוצרו',
+  sinv_svc_verify: 'Verify',
+  sinv_svc_communications: 'תקשורת',
+  sinv_svc_brokers: 'מתווכים',
+  sinv_svc_site: 'נכסי האתר',
+  sinv_svc_system: 'מערכת ובדיקות',
+  sinv_svc_other: 'אחר',
+
+  /* ── ADMIN STORAGE INVENTORY (R2) ── */
+  sinv_store_r2: 'אחסון Cloudflare R2',
+  sinv_store_supabase: 'Supabase Storage',
+
   /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_flow_title: 'שלבי הפרסום',
   pubw_flow_create: 'יצירה',
@@ -116663,6 +116879,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_err_owner_contact_required: 'הוסיפו קודם שם ומספר טלפון תקין.',
   pubw_err_portal_unsupported: 'HOMATCH לא יכול לפרסם בפורטל זה.',
   pubw_err_homatch_managed: 'HOMATCH מנהל עותק זה — השתמשו ב״ביטול״ או ״הסרה״.',
+  pubw_err_portal_rejected: 'הפורטל דחה את המודעה.',
   pubw_err_not_queued: 'הבקשה כבר לא ממתינה.',
   pubw_err_not_awaiting_admin: 'פרסום זה לא ממתין ל־HOMATCH.',
   pubw_err_not_in_progress: 'כרגע אף אחד לא מפרסם את זה.',
@@ -116767,11 +116984,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_queue_done_confirmremoved: 'ההסרה נרשמה.',
   pubw_queue_done_markupdated: 'העדכון נרשם.',
   pubw_queue_done_check: 'נבדק.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_err_portal_rejected: 'הפורטל דחה את המודעה.',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
   pubw_auto_title: 'אוטומציה בשרת',
   pubw_auto_no_adapter: 'עדיין לא הוקלט תהליך דפדפן לפורטל זה, ולכן HOMATCH לא מבצע בו אוטומציה. הבקשות עוברות לתור הפרסום.',
   pubw_auto_levels: 'מה העובד יכול לעשות כאן ואיך זה אומת',
@@ -116802,6 +117014,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_auto_live_note: 'כבוי: העובד ממלא ובודק הכול, עוצר לפני הפרסום ומעביר את המודעה לתור. דלוק: הוא לוחץ על כפתור הפרסום החינמי בפורטל.',
   pubw_auto_live_since: 'אושר {{when}}',
   pubw_auto_live_confirm: 'לאשר פרסום חי? העובד ייצור מודעות ציבוריות אמיתיות בפורטל זה עם חשבון HOMATCH לכל בקשה. נעשה שימוש בפרסום חינמי בלבד.',
+  pubw_auto_screenshot: 'צילום מסך',
+  pubw_stage_ready_to_submit: 'מוכן לשליחה',
+  pubw_stage_created: 'נוצר בפורטל',
+  pubw_stage_no_result_url: 'אין עמוד תוצאה',
+  pubw_stage_session: 'התחברות',
+  pubw_stage_error: 'שגיאה',
   pubw_auto_saved: 'הגדרות האוטומציה נשמרו.',
   pubw_auto_operations: 'פעולות אחרונות',
   pubw_auto_no_operations: 'אין עדיין פעולות.',
@@ -116874,14 +117092,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'הועבר למומחה של HOMATCH',
   pubw_event_automation_needs_session: 'ממתין להתחברות מחדש של חשבון HOMATCH',
   pubw_event_removed_by_automation: 'הוסר מהפורטל על ידי HOMATCH',
-
-  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
-  pubw_auto_screenshot: 'צילום מסך',
-  pubw_stage_ready_to_submit: 'מוכן לשליחה',
-  pubw_stage_created: 'נוצר בפורטל',
-  pubw_stage_no_result_url: 'אין עמוד תוצאה',
-  pubw_stage_session: 'התחברות',
-  pubw_stage_error: 'שגיאה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -23,6 +23,7 @@ import { type OpKind, cleanStorageState, publicationEffect, sessionExpiry } from
 import { ACCOUNT_COLUMNS, type AccountRow, centralCopy, emptyAccount, routeFor } from '../publishing-engine/central.ts';
 import { classifyCheck, normalizeListing, transition, type Command, type Publication } from '../publishing-engine/domain.ts';
 import { fetchListingPage } from '../publishing-engine/net.ts';
+import { type Signer, signPhoto } from '../publishing-engine/photos.ts';
 import { adapterFor, configs, type ProviderRow } from '../publishing-engine/providers.ts';
 import { openCredential, sealCredential, type Envelope } from '../publishing-engine/vault.ts';
 
@@ -46,6 +47,7 @@ export interface Deps {
   db?: any;
   fetchPage: typeof fetchListingPage;
   now: () => Date;
+  signer?: Signer;
 }
 
 export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.get(k), fetchPage: fetchListingPage, now: () => new Date() }) {
@@ -142,8 +144,8 @@ export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.
             for (const id of ids) {
               const p = (photoRows ?? []).find((r: { id: string }) => r.id === id);
               if (!p) continue;
-              const { data: signed } = await db.storage.from('property-photos').createSignedUrl(String(p.storage_path).replace(/^property-photos\//, ''), 900);
-              if (signed?.signedUrl) photos.push({ id, url: signed.signedUrl });
+              const url = await signPhoto(db, p.storage_path, 900, deps.signer);
+              if (url) photos.push({ id, url });
             }
             task.listing = {
               version: l.version, propertyType: x.propertyType, dealType: x.dealType, price: x.price, currency: x.currency,

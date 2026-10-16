@@ -430,7 +430,7 @@ export async function requestNativeMatching(intentProfileIds: string[]): Promise
     const response = await fetch(`${baseUrl}/functions/v1/supply-matching`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
-      body: JSON.stringify({ intentProfileIds: intentProfileIds.slice(0, 25), nativeOnly: true }),
+      body: JSON.stringify({ intentProfileIds: intentProfileIds.slice(0, 1000), nativeOnly: true }),
     });
     return await response.json().catch(() => null);
   } catch {

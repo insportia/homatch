@@ -136,7 +136,11 @@ test('home.ge: the public sitemap index → newest matching listings, each read 
   const outcome = await acquirePortal(homege, request(), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
   const listings = reports.flatMap((r) => r.listings);
   assert.ok(['COMPLETE', 'PARTIAL'].includes(outcome.status));
-  assert.equal(listings.length, homege.detailLimit, 'detail reads capped per index page; the second index repeats no listing');
+  /* Each index read yields its next unread window (2026-10-16): the second index adds
+     listings instead of repeating the first window; enough fit, so no deeper read. */
+  assert.equal(listings.length, 2 * homege.detailLimit, 'two windows of detail reads; the second repeats no listing');
+  assert.equal(new Set(listings.map((x) => x.sourceListingId)).size, listings.length, 'no listing twice');
+  assert.match(reports.at(-1).queryApplied.adaptiveDepth, /^2\/6 ENOUGH_RESULTS$/);
   for (const r of reports) { const v = validateWorkerReport(r, 'home-ge'); assert.ok(v.ok, v.reason); assert.equal(v.report.listings.length, r.listings.length); }
   const ids = listings.map((l) => Number(l.sourceListingId));
   assert.deepEqual(ids, [...ids].sort((a, b) => b - a), 'newest ids first');
@@ -254,7 +258,10 @@ test('allhome.ge: a listing outside the requested city is dropped after reading 
   const fetcher = async (url) => { const u = new URL(url); if (u.pathname === '/robots.txt') return new Response(ALLHOME_ROBOTS); return new Response(u.pathname.startsWith('/sitemaps/') ? page('allhome-sitemap') : page('allhome-detail')); };
   await acquirePortal(allhome, request({ city: 'Batumi' }), { deadlineAt: new Date(Date.now() + 600000).toISOString(), fetcher, sleep: async () => {}, report: async (r) => { reports.push(r); } });
   assert.equal(reports.flatMap((r) => r.listings).length, 0);
-  assert.equal(reports.at(-1).queryApplied.filteredAfterRead, String(allhome.detailLimit));
+  /* Nothing fits after the first window, so the reader goes deeper — window by window,
+     never re-reading a listing — up to deepMaxPages, and says how far it went. */
+  assert.equal(reports.at(-1).queryApplied.filteredAfterRead, String(allhome.detailLimit * allhome.deepMaxPages));
+  assert.equal(reports.at(-1).queryApplied.adaptiveDepth, `${allhome.deepMaxPages}/${allhome.deepMaxPages}`);
   assert.throws(() => allhome.criteria(request({ propertyType: 'LAND' })), /flats/);
 });
 
@@ -278,4 +285,15 @@ test('results pipeline: real reports from the portals become result properties t
   // from February. Every one is turned away by the platform's own rules, never by the adapter.
   const reasons = Object.keys(out.stats.rejected);
   assert.ok(reasons.every((r) => ['PROPERTY_TYPE_MISMATCH', 'CITY_MISMATCH', 'LISTING_OVER_30_DAYS', 'NO_PRICE'].includes(r)), reasons.join(','));
+});
+
+test('adaptive depth stops on the time budget and reports it; a server that filters districts is not read deeper', async () => {
+  const reports = [];
+  let clock = Date.now();
+  const deadline = clock + 200000;
+  const fetcher = async (url) => { const u = new URL(url); clock += 20000; if (u.pathname === '/robots.txt') return new Response(ALLHOME_ROBOTS); return new Response(u.pathname.startsWith('/sitemaps/') ? page('allhome-sitemap') : page('allhome-detail')); };
+  await acquirePortal({ ...allhome, detailLimit: 2 }, request({ city: 'Batumi' }), { deadlineAt: new Date(deadline).toISOString(), fetcher, now: () => clock, sleep: async () => {}, report: async (r) => { reports.push(r); } });
+  const last = reports.at(-1);
+  assert.match(last.queryApplied.adaptiveDepth, /TIME_BUDGET$/);
+  assert.ok(last.errors.some((e) => e.code === 'PAGE_CAP_REACHED' && /time budget/.test(e.message)));
 });

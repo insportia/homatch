@@ -19,26 +19,39 @@ export function ssgeCriteria(request, locations) {
   const rows = flattenLocations(locations);
   const cities = rows.filter(r => r.kind === 'city' && matches(r.title, request.city));
   if (cities.length !== 1) throw Error('Unknown or ambiguous SS.ge city');
-  const city = cities[0], subdistricts = new Set();
+  const city = cities[0], subdistricts = new Set(), unresolved = [];
+  /*
+   * A district SS.ge does not know (or one with no child locations) no longer ends
+   * the whole source with nothing (production search 645ba0d0, 2026-10-16): the city
+   * is read instead and the results pipeline checks the district per listing, exactly
+   * as for the portals that cannot filter districts. A partial set is never sent —
+   * it would silently drop listings in the district SS.ge could not resolve.
+   * A name that is both a district and a neighbourhood is the same place: the district
+   * (with all its neighbourhoods) wins.
+   */
   for (const name of request.districts ?? []) {
-    const selected = rows.filter(r => r.cityId === city.id && ['district', 'subdistrict'].includes(r.kind) && matches(r.title, name));
-    if (selected.length !== 1) throw Error('Unknown or ambiguous SS.ge district/neighborhood');
-    const r = selected[0];
-    if (r.kind === 'subdistrict') subdistricts.add(r.id);
-    else {
+    let selected = rows.filter(r => r.cityId === city.id && ['district', 'subdistrict'].includes(r.kind) && matches(r.title, name));
+    if (selected.length > 1 && selected.some(r => r.kind === 'district')) selected = selected.filter(r => r.kind === 'district');
+    if (!selected.length) { unresolved.push(name); continue; }
+    for (const r of selected) {
+      if (r.kind === 'subdistrict') { subdistricts.add(r.id); continue; }
       const children = rows.filter(s => s.kind === 'subdistrict' && s.parentId === r.id && s.cityId === city.id);
-      if (!children.length) throw Error('SS.ge district has no supported child locations');
+      if (!children.length) { unresolved.push(name); continue; }
       children.forEach(s => subdistricts.add(s.id));
     }
   }
+  if (unresolved.length) subdistricts.clear();
   const ceiling = request.collectPriceMaxUsd ?? request.priceMaxUsd;
   if (!Number.isFinite(ceiling) || ceiling > request.priceMaxUsd * 1.1 + 0.01) throw Error('Invalid acquisition budget ceiling');
-  return { transactionType: deals[request.transactionType], propertyType: types[request.propertyType], city: city.id,
+  const criteria = { transactionType: deals[request.transactionType], propertyType: types[request.propertyType], city: city.id,
     ...(subdistricts.size ? { subdistricts: [...subdistricts] } : {}), priceMinUsd: request.priceMinUsd, priceMaxUsd: ceiling,
     ...(request.areaMinSqm != null ? { areaMinSqm: request.areaMinSqm } : {}),
     ...(request.areaMaxSqm != null ? { areaMaxSqm: request.areaMaxSqm } : {}),
     ...(request.rooms ? { rooms: counts(request.rooms) } : {}), ...(request.bedrooms ? { bedrooms: counts(request.bedrooms) } : {}),
     ...(request.furnished === true ? { furnished: true } : {}) };
+  /* Not sent to SS.ge (non-enumerable): which districts it could not resolve, for the report. */
+  if (unresolved.length) Object.defineProperty(criteria, 'districtFallback', { value: unresolved, enumerable: false });
+  return criteria;
   // Unproven source filters are not invented. All hard constraints and preferences
   // still go through HOMATCH's authoritative downstream evidence/filter pipeline.
 }

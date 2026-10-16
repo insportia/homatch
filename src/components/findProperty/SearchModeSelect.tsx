@@ -1,5 +1,7 @@
 import { ArrowRight, Layers, Telescope } from 'lucide-react';
+import { useState } from 'react';
 import type { T } from './format';
+import { PaidCampaignPanel } from './PaidCampaignPanel';
 
 /**
  * Two searches, side by side. Marketplace Search is the primary, complete,
@@ -57,8 +59,9 @@ export function SearchModeSelect({ t, onMarketplace, deepSearchAvailable }: {
 }
 
 /** Deep Search, in the mode selection and after results. Never a paywall. */
-export function DeepSearchCard({ t, available, variant }: { t: T; available: boolean; variant: 'mode' | 'results' }) {
+export function DeepSearchCard({ t, available, variant, searchId }: { t: T; available: boolean; variant: 'mode' | 'results'; searchId?: string | null }) {
   const mode = variant === 'mode';
+  const [configuring, setConfiguring] = useState(false);
   return (
     <article
       aria-labelledby={`mps-deep-${variant}`}
@@ -80,19 +83,27 @@ export function DeepSearchCard({ t, available, variant }: { t: T; available: boo
         {mode ? t('mps_deep_supporting') : t('mps_deep_results_secondary')}
       </p>
       <div className="relative mt-5 sm:mt-6 sm:flex-1" />
-      <div className="relative flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={!available}
-          aria-describedby={available ? undefined : `mps-deep-state-${variant}`}
-          className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-[hsl(38_92%_60%/0.6)] px-6 text-[15px] font-semibold text-[hsl(38_92%_66%)] transition enabled:hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)]"
-        >
-          {t('mps_deep_cta')}
-        </button>
-        {!available && (
-          <span id={`mps-deep-state-${variant}`} className="text-sm text-white/60">{t('mps_deep_unavailable')}</span>
-        )}
-      </div>
+      {configuring && available && searchId ? (
+        <div className="relative mt-2"><PaidCampaignPanel t={t} searchId={searchId} /></div>
+      ) : (
+        <div className="relative flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={!available || (!mode && !searchId)}
+            onClick={() => setConfiguring(true)}
+            aria-describedby={available ? undefined : `mps-deep-state-${variant}`}
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-[hsl(38_92%_60%/0.6)] px-6 text-[15px] font-semibold text-[hsl(38_92%_66%)] transition enabled:hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)]"
+            hidden={available && mode}
+          >
+            {t('mps_deep_cta')}
+          </button>
+          {!available ? (
+            <span id={`mps-deep-state-${variant}`} className="text-sm text-white/60">{t('mps_deep_unavailable')}</span>
+          ) : mode ? (
+            <span className="text-sm text-white/70">{t('fpi_paid_after_free')}</span>
+          ) : null}
+        </div>
+      )}
     </article>
   );
 }

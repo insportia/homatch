@@ -29,6 +29,35 @@ warns when a diff enters this domain.
   `cost_events` row `provider=APIFY_MEMO23`, `operation_type=DEVELOPER_ADS_VERIFY`
   (ACTUAL / ESTIMATED / UNPRICED — never a silent 0), inside the Verify
   job's existing price; it never touches the Find Buyers ledger or budget.
+- **Paid discovery pricing policy `paid_discovery_37_63_v1`** (owner,
+  2026-10-16). One policy for every paid discovery campaign started since:
+  Find Buyers / Find Tenants (`find_buyers_campaigns.pricing_policy`) and the
+  Find Property paid social OFFER campaign (`discovery_runs.pricing_policy`).
+  - HOMATCH profit = 37% of the TOTAL price P; provider budget = 63% of P
+    (55% − 18%·P / 45% + 18%·P). $5 → $1.85 / $3.15, $10 → $3.70 / $6.30,
+    $30 → $11.10 / $18.90, $100 → $37.00 / $63.00. Never VAT-inclusive (no
+    $2.745); statutory VAT is accounted separately.
+  - Provider budget = floor(P_micros × 6300 / 10000), integer micro-USD; SQL
+    twin `paid_discovery_provider_share_bps()` = 6300. Every provider run is
+    reserved against it (`find_buyers_reserve_actor_run` /
+    `find_property_reserve_actor_run`), and capped at Apify by
+    maxTotalChargeUsd = its reservation, so a $5 campaign never spends more
+    than $3.15.
+  - Charge = provider spend consumed ÷ 0.63, rounded UP to the cent, capped
+    at the reservation (`creditsForSpend` → `settleExecution({ priceCredits })`
+    / `settlePaidSocialRun` → `wallet_settle`); the rest is released. Unknown
+    run cost counts at its reservation, never 0. Nothing consumed → full
+    release. A customer stop charges what was consumed; a HOMATCH-side failure
+    releases everything (HOMATCH carries the spend).
+  - Prospective: campaigns without `pricing_policy` keep the terms they
+    started under (Find Buyers' `find_buyers_provider_share_bps` split and
+    `billing_price_quote`). No historical transaction is rewritten.
+  - Find Property paid minimum: max(50 credits = $5, `campaign_min_credits`);
+    explicit confirmation of the exact price (`confirm.priceCredits`,
+    `acceptedTerms`) before `wallet_reserve`. Free search (HOMATCH + portals)
+    never reserves or charges.
+  - Admin → Demand intelligence → Analytics shows charged (wallet), provider
+    spend (booked cost) and HOMATCH profit per policy.
 - **Find Buyers minimum** is `find_buyers_min_usd` ($10) converted through
   `credits_per_usd` (100 credits at 10/$). It is not a second credit rate.
 

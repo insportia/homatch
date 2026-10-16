@@ -32,6 +32,7 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
     source.locations ??= await source.locationChain();
     const criteria = ssgeCriteria(request, source.locations);
     queryApplied.criteria = JSON.stringify(criteria);
+    if (criteria.districtFallback) queryApplied.districtFallback = `city read; SS.ge does not resolve: ${criteria.districtFallback.join(', ')}`;
     for await (const page of new SsgeAdapter({ client: source }).search(criteria, { retries: 0, onStop: value => { stop = value; } })) {
       remaining(); pagesVisited++;
       discoveredCount = Math.max(discoveredCount, page.total ?? 0);

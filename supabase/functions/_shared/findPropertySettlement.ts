@@ -38,6 +38,7 @@
 // is no longer RESERVED.
 
 import type { ExecutionGrant } from './billing.ts';
+import { creditsForSpend, PAID_DISCOVERY_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import { fromObservationRow } from '../../../src/research-core/discovery/discovery-entity.ts';
 import { dedupe } from '../../../src/research-core/discovery/cross-source-dedupe.ts';
 
@@ -247,4 +248,41 @@ export async function settleFindPropertyRun(
     unitCredits: plan.unitCredits,
     capped: plan.capped || row.clamped === true,
   };
+}
+
+/**
+ * A paid SOCIAL OFFER campaign (paid_discovery_37_63_v1): the customer pays the
+ * provider spend the campaign consumed ÷ 0.63, rounded up to the cent, never more
+ * than the reservation (wallet_settle clamps). Nothing consumed → everything
+ * released. Unknown run costs are already counted at their reservation in
+ * spendMicros (find_property_committed_micros), never as zero.
+ */
+export async function settlePaidSocialRun(
+  db: any,
+  grant: ExecutionGrant | null,
+  usage: { runId: string; spendMicros: number; creditsPerUsd: number; durationMs: number; offers: number; delivered: number },
+  release: (grant: ExecutionGrant, reason: string, usage?: any) => Promise<void>,
+): Promise<SettlementOutcome & { priceCredits: number }> {
+  if (!grant) return { action: 'NONE', creditsCharged: 0, priceCredits: 0 };
+  const priceCredits = creditsForSpend(Math.max(0, Math.round(usage.spendMicros)), usage.creditsPerUsd || 10);
+  const rawCents = usage.spendMicros / 10_000;
+  if (!grant.reservationId || priceCredits <= 0) {
+    await release(grant, 'no_provider_spend', { provider: 'homatch_discovery', providerOperation: 'find_property_social', providerRequestId: usage.runId, rawProviderCostCents: rawCents });
+    return { action: 'RELEASE', creditsCharged: 0, priceCredits };
+  }
+  const credits = Math.min(priceCredits, Number(grant.authorizedMaxCredits));
+  const { data, error } = await db.rpc('wallet_settle', {
+    p_reservation_id: grant.reservationId,
+    p_actual_credits: credits,
+    p_usage: {
+      provider: 'homatch_discovery', provider_operation: 'find_property_social', provider_request_id: usage.runId,
+      provider_units: usage.offers, duration_ms: usage.durationMs, raw_provider_cost_cents: rawCents, ai_cost_cents: 0,
+      metadata: { pricing: PAID_DISCOVERY_POLICY_ID, provider_spend_micros: usage.spendMicros, price_credits: priceCredits,
+                  offers_found: usage.offers, delivered_listings: usage.delivered },
+    },
+    p_outcome: usage.delivered > 0 ? 'SUCCESS' : 'PARTIAL',
+  });
+  if (error) throw new Error(`wallet_settle failed: ${error.message}`);
+  const row = (Array.isArray(data) ? data[0] : data) ?? {};
+  return { action: 'SETTLE', creditsCharged: Number(row.settled_credits ?? credits), capped: priceCredits > credits || row.clamped === true, priceCredits };
 }

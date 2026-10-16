@@ -23,7 +23,7 @@ jobs:
       - name: Live E2E
         env:
           E2E_EMAIL: claude-e2e-findproperty-${{ github.run_number }}@homatch.live
-          E2E_QUERY: I want to rent a 2-room apartment in Tbilisi, 40 to 100 m², budget $300 to $1,500 per month.
+          E2E_QUERY: I want to buy a 2-room apartment in Krtsanisi or Ortachala, Tbilisi, 50 to 120 m², budget $80,000 to $250,000.
         run: cp scripts/e2e/find-property-live.mjs /tmp/e2e/ && cd /tmp/e2e && node find-property-live.mjs
       - uses: actions/upload-artifact@v4
         if: always()

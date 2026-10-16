@@ -78,7 +78,17 @@ MATTERS right now, verify against the live systems, not this file)
 - Not live-tested against a real portal account: no real listing was published (needs the owner's
   portal account; would create a public listing).
 
-## Storage retention v2 — object-level allowlist (branch `ccr-76ef455d-retention-artifacts`, 2026-10-16)
+## Storage retention v2 — object-level allowlist (PR #216, merged 37cc6900, migration applied 2026-10-16 as ledger 20261016071129)
+
+- PRODUCTION E2E PASSED 2026-10-16 (disposable self-test objects only):
+  - Self-test pair #1 deleted by a manual cron-token tick and pair #2 by cron job 37 at 07:30 UTC.
+  - Each deletion was provider-confirmed: storage.objects gone, R2 HEAD absent.
+  - Kill switch (paused) claimed 0. Retry/backoff to DEAD_LETTER, stale lease and requeue were tested in rolled-back transactions.
+  - Owner notice queued as an in-app notification. Push was not observed (pushed_at null).
+  - Anon RPCs and table access were refused (401/42501). Function without a valid token returned 403.
+  - Protected digests unchanged (research_jobs, deal_room_documents, storage.objects, R2 index 11,604).
+- Safe configuration restored after the test: notices off, auto_run off (no cron job), not paused.
+- verify_document_cache and generated_report are still DISABLED and await explicit owner approval.
 
 - Owner decision 2026-10-16: Verify results, Contracts originals, evidence, report visuals, Design Studio and every
   customer upload are permanent. Only allowlisted disposable storage objects may be deleted (doc §10).

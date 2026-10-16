@@ -70,14 +70,63 @@ test('control center: every dynamically built label exists in all six languages'
   }
 });
 
-test('control center: every change goes through the validated server function', () => {
+import { artifactsMode, ttlParts } from '../retentionView.ts';
+
+test('object-level control center: one plain state; self-tests never count as "on"', () => {
+  const s = (paused, auto_run, cats) => artifactsMode({ settings: { paused }, auto_run, categories: cats });
+  const cache = (enabled) => ({ kind: 'REGENERABLE_CACHE', enabled });
+  const test_ = { kind: 'SELFTEST', enabled: true };
+  assert.equal(s(false, true, [cache(false), test_]), 'OFF', 'only self-tests enabled is still off');
+  assert.equal(s(true, true, [cache(true)]), 'PAUSED', 'the kill switch wins over everything');
+  assert.equal(s(false, false, [cache(true)]), 'MANUAL');
+  assert.equal(s(false, true, [cache(true)]), 'ON');
+});
+
+test('ttl reads as whole days, hours or minutes', () => {
+  assert.deepEqual(ttlParts(30 * 86_400), { n: 30, unit: 'days' });
+  assert.deepEqual(ttlParts(120), { n: 2, unit: 'minutes' });
+  assert.deepEqual(ttlParts(7_200), { n: 2, unit: 'hours' });
+});
+
+test('object-level control center: every dynamically built label exists in all six languages', () => {
+  const tr = readFileSync('src/i18n/translations.ts', 'utf8');
+  const cats = ['verify_document_cache', 'generated_report', 'selftest_supabase', 'selftest_r2'];
+  const sql = readFileSync('supabase/migrations/20261105090000_storage_retention_artifacts.sql', 'utf8');
+  const areas = [...sql.slice(sql.indexOf('function public.retention_protected_areas')).matchAll(/'area', '([a-z-]+)'/g)].map((m) => m[1].replace(/-/g, '_'));
+  assert.ok(areas.length >= 7);
+  const seeded = [...sql.matchAll(/^\s+\('([a-z_0-9]+)', '[^']+', '(REGENERABLE_CACHE|TEMPORARY_ARTIFACT|SELFTEST)'/gm)].map((m) => m[1]);
+  assert.deepEqual(seeded.sort(), [...cats].sort(), 'every seeded category has a label below');
+  const keys = [
+    ...['off', 'paused', 'manual', 'on'].map((m) => `rt_ax_status_${m}`),
+    ...['days', 'hours', 'minutes'].map((u) => `rt_ax_ttl_${u}`),
+    ...['REGENERABLE_CACHE', 'TEMPORARY_ARTIFACT', 'SELFTEST'].map((k) => `rt_ax_kind_${k}`),
+    ...cats.flatMap((c) => [`rt_ax_cat_${c}`, `rt_ax_cat_${c}_desc`]),
+    ...areas.map((a) => `rt_ax_protected_${a}`),
+    ...['pending', 'problems', 'deleted', 'notices', 'log'].map((k) => `rt_ax_tab_${k}`),
+    ...[...RETENTION_ERRORS, 'generic'].map((c) => `rt_cc_err_${c}`),
+    'notif_retention_expiring_title', 'notif_retention_expiring_body', 'notif_retention_file',
+  ];
+  for (const k of keys) {
+    const n = (tr.match(new RegExp(`\\b${k}:`, 'g')) ?? []).length;
+    assert.equal(n, 6, `${k} is in ${n} of 6 languages`);
+  }
+});
+
+test('control center: every change goes through the validated server functions, and deletion asks first', () => {
   const panel = readFileSync('src/components/retention/AdminRetentionPanel.tsx', 'utf8');
   const svc = readFileSync('src/services/retentionAdmin.ts', 'utf8');
-  assert.ok(!/admin_set_setting|from\('admin_settings'\)/.test(panel + svc), 'no direct settings write');
-  assert.match(svc, /rpc\('retention_admin_configure'/);
-  // deleting and the rule itself always ask first
-  assert.match(panel, /askDelete\(\)/);
-  assert.match(panel, /rt_cc_confirm_delete_title/);
-  assert.match(panel, /rt_cc_confirm_rule_on_title/);
-  assert.match(panel, /rt_cc_confirm_rule_off_title/);
+  assert.ok(!/admin_set_setting|from\('admin_settings'\)|from\('retention_/.test(panel + svc), 'no direct table write');
+  assert.match(svc, /rpc\('retention_artifacts_configure'/);
+  assert.match(svc, /rpc\('retention_category_set'/);
+  // the record-level switches are gone from the screen
+  for (const gone of ['purge_enabled', 'effective_at', 'legacy_grace_until', 'reminders_enabled', 'knowledge_enabled', 'retention_admin_configure']) {
+    assert.ok(!(panel + svc).includes(gone), `${gone} is still on the admin screen`);
+  }
+  // turning on automatic deletion, resuming, enabling a category and running now all confirm first
+  assert.match(panel, /rt_ax_confirm_auto_title/);
+  assert.match(panel, /rt_ax_confirm_resume_title/);
+  assert.match(panel, /rt_ax_confirm_cat_on_title/);
+  assert.match(panel, /rt_ax_confirm_run_title/);
+  // pausing never asks: the emergency stop is one tap
+  assert.match(panel, /\? apply\(\{ paused: true \}\)/);
 });

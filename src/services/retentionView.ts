@@ -64,6 +64,7 @@ export function formatBytes(n: number): string {
 export const RETENTION_ERRORS = [
   'RETENTION_START_IN_PAST', 'RETENTION_START_EARLIER', 'RETENTION_NOT_STARTED',
   'RETENTION_GRACE_TOO_SHORT', 'RETENTION_GRACE_EARLIER', 'RETENTION_NOT_FOUND',
+  'RETENTION_RECORD_LEVEL_RETIRED', 'RETENTION_UNKNOWN_CATEGORY', 'RETENTION_NOT_INSTALLED',
 ] as const;
 
 export function retentionErrorCode(message: string | undefined): string {
@@ -75,4 +76,31 @@ export function retentionMode(s: { config: { effective_at: string | null; purge_
   if (!s.config.effective_at) return 'OFF';
   if (!s.config.purge_enabled) return 'DATING';
   return s.auto_run ? 'ON' : 'MANUAL';
+}
+
+/* ── Object-level retention (20261105090000) ── */
+
+export interface ArtifactModeInput {
+  settings: { paused: boolean };
+  auto_run: boolean;
+  categories: Array<{ kind: string; enabled: boolean }>;
+}
+
+/**
+ * One plain state for the whole system. Self-test categories do not count as
+ * "on": they only ever match files the self-test itself creates.
+ * OFF: no real category is enabled. PAUSED: the kill switch is on.
+ * MANUAL: enabled, runs only when an admin presses Run now. ON: automatic.
+ */
+export function artifactsMode(s: ArtifactModeInput): 'OFF' | 'PAUSED' | 'MANUAL' | 'ON' {
+  if (s.settings.paused) return 'PAUSED';
+  if (!s.categories.some((c) => c.enabled && c.kind !== 'SELFTEST')) return 'OFF';
+  return s.auto_run ? 'ON' : 'MANUAL';
+}
+
+/** How long a category keeps a file, as {n, unit} for a translated sentence. */
+export function ttlParts(seconds: number): { n: number; unit: 'days' | 'hours' | 'minutes' } {
+  if (seconds >= 86_400 && seconds % 86_400 === 0) return { n: seconds / 86_400, unit: 'days' };
+  if (seconds >= 3_600 && seconds % 3_600 === 0) return { n: seconds / 3_600, unit: 'hours' };
+  return { n: Math.max(1, Math.round(seconds / 60)), unit: 'minutes' };
 }

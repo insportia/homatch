@@ -1,0 +1,46 @@
+{
+  "_about": "Read-only pg_stat_statements snapshot taken BEFORE any reset (A1). No query text and no literals are stored here on purpose: utility statements can carry secrets. queryids lost precision in JSON transport and are approximate. The full-text in-database snapshot is step A1.1 of docs/infra/SCALABILITY_AUDIT.md §6.",
+  "captured_at": "2026-10-09T11:19:47Z",
+  "project": "ptxajsjhobhvsfhmutjn",
+  "pg_stat_statements": {
+    "stats_reset": "2026-08-28T08:22:27Z",
+    "dealloc": 38,
+    "entries": 4948,
+    "max": 5000,
+    "track": "top",
+    "track_utility": "on",
+    "calls": 10248222,
+    "exec_hours": 11.64,
+    "temp_blks_written": 124987
+  },
+  "pg_stat_database_temp": [
+    { "at": "2026-10-09T09:06:46Z", "temp_files": 98582, "temp_bytes": 343554414606, "note": "includes audit reads" },
+    { "at": "2026-10-09T09:16:29Z", "temp_files": 98607, "temp_bytes": 343659314112 },
+    { "at": "2026-10-09T11:16:27Z", "temp_files": 98840, "temp_bytes": 344611390225, "note": "2 h with no pgss read by the audit: +233 files, +952 MB = ~11.4 GB/day, one ~4.1 MB file every ~31 s" }
+  ],
+  "by_role": {
+    "supabase_admin": { "entries": 203, "calls": 4308191, "exec_s": 25330, "temp_blks": 0 },
+    "service_role": { "entries": 1112, "calls": 3742700, "exec_s": 7887, "temp_blks": 0 },
+    "postgres": { "entries": 2858, "calls": 1033898, "exec_s": 4254, "temp_blks": 27106 },
+    "authenticator": { "entries": 22, "calls": 571698, "exec_s": 2024, "temp_blks": 97763 },
+    "authenticated": { "entries": 631, "calls": 436599, "exec_s": 2227, "temp_blks": 0 },
+    "supabase_auth_admin": { "entries": 58, "calls": 128564, "exec_s": 80, "temp_blks": 0 },
+    "anon": { "entries": 41, "calls": 17642, "exec_s": 35, "temp_blks": 0 },
+    "pgbouncer": { "entries": 2, "calls": 8124, "exec_s": 7, "temp_blks": 0 },
+    "supabase_storage_admin": { "entries": 16, "calls": 762, "exec_s": 0, "temp_blks": 0 },
+    "supabase_read_only_user": { "entries": 5, "calls": 44, "exec_s": 62, "temp_blks": 118 }
+  },
+  "top_by_time": [
+    { "role": "supabase_admin", "calls": 2986810, "total_ms": 23901399, "mean_ms": 8.0, "shared_blks_hit": 6352016041, "what": "Realtime WAL poll (realtime.list_changes)" },
+    { "role": "postgres", "calls": 186184, "total_ms": 2026222, "mean_ms": 10.88, "what": "cron net.http_post (admin_settings header)" },
+    { "role": "service_role", "calls": 36346, "total_ms": 1472865, "mean_ms": 40.52, "what": "queue claim RPC (p_limit, p_lease_seconds, p_max_attempts, p_executor, p_providers)" },
+    { "role": "authenticated", "calls": 105875, "total_ms": 1112225, "mean_ms": 10.51, "what": "RPC (p_recent_hours, p_limit)" },
+    { "role": "service_role", "calls": 79042, "total_ms": 1099729, "mean_ms": 13.91, "what": "RPC (p_stale_minutes, p_limit)" },
+    { "role": "authenticator", "calls": 3072, "total_ms": 1052880, "mean_ms": 342.73, "what": "PostgREST: SELECT name FROM pg_timezone_names" },
+    { "role": "authenticator", "calls": 3072, "total_ms": 603939, "mean_ms": 196.59, "temp_blks_written": 97763, "what": "PostgREST schema-cache type introspection" }
+  ],
+  "supabase_admin_untracked_reader": {
+    "evidence": "SET pg_stat_statements.track = none executed 1,044 times by supabase_admin; persistent remote session application_name=postgres_exporter (supabase_admin) since 2026-09-08",
+    "status": "INFERRED — confirm with log_temp_files (A5)"
+  }
+}

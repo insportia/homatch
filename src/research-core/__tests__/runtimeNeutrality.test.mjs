@@ -211,6 +211,9 @@ test('the core is consumed only through its deliberate integration points', () =
      * or flow primitive of the core is reached from here.
      */
     'supabase/functions/_shared/findBuyers/campaign.ts',
+    /* The paid discovery pricing policy (research-core/billing/paidDiscoveryPolicy):
+       pure integer money math shared by Find Buyers and Find Property campaigns. */
+    'supabase/functions/_shared/findPropertyCommercial.ts',
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
     'supabase/functions/_shared/findBuyers/translate.ts',

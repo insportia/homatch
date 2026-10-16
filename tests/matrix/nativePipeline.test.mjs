@@ -39,8 +39,9 @@ test('the reader is woken by a committed message and by a schedule', () => {
 test('the scheduled matcher runs against the Homatch network only', () => {
   assert.match(migration, /"nativeOnly":true/, 'the schedule starts external matching');
   assert.match(pipeline, /nativeOnly: true/, 'a chat requirement asks for external matching');
-  assert.match(matcher, /nativeOnly \? \{ data: \[\] as Record<string, unknown>\[\] \} : await db/,
+  assert.match(matcher, /const externalScan = !runExternal \? null : await scanAll/,
     'a network-only run still reads external supply');
+  assert.match(matcher, /external: scope === 'FULL' && !nativeOnly/, 'the sweep reads external supply');
 });
 
 test('reading a conversation calls no model and charges nothing', () => {

@@ -104,8 +104,11 @@ test('run-matching v1 no longer invents a 72-hour age for undated posts', () => 
   assert.match(v1, /Number\.isFinite\(recencyHours\) \? formatRecency\(recencyHours\) : null/);
 });
 
-test('supply-matching reads newest first, records real age, and decays rank', () => {
-  assert.match(supply, /\.order\('published_at', \{ ascending: false, nullsFirst: false \}\)/);
+test('supply-matching reads every candidate (keyset), records real age, and decays rank', () => {
+  /* It no longer needs newest-first: that order only chose WHICH 500 rows were seen.
+     Every row is seen now and the stored, age-decayed match_score orders the results. */
+  assert.match(supply, /\.from\('supply_observations'\)[\s\S]{0,900}\.order\('id', \{ ascending: true \}\)/);
+  assert.doesNotMatch(supply, /MAX_CANDIDATES\)/);
   assert.match(supply, /ageDays: listingAgeDays/);
   assert.match(supply, /rankedScore/);
   assert.ok(!/ageDays: ceiling\.days/.test(supply), 'the ceiling is a limit, not the listing age');

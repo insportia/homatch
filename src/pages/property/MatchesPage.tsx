@@ -1069,12 +1069,15 @@ function MatchesContent() {
             refreshKey={campaignStatus?.campaign ? `${campaignStatus.campaign.state}:${campaignStatus.campaign.newResults}` : null} /> : null}
         </div>
 
-        <FilterRail
-          options={filters}
-          value={filter}
-          onChange={(next) => { setFilter(next); setPageParam('page', 1); setPageParam('hp', 1); }}
-          ariaLabel={t('matches_filter_all')}
-        />
+        {/* The internal-match filter only when there are internal matches to filter (no "All 0 · New 0"). */}
+        {counts.total > 0 ? (
+          <FilterRail
+            options={filters}
+            value={filter}
+            onChange={(next) => { setFilter(next); setPageParam('page', 1); setPageParam('hp', 1); }}
+            ariaLabel={t('matches_filter_all')}
+          />
+        ) : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-4">

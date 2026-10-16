@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from '../mobile/serviceControlsFixture.mjs';
 
 const createHashSync = (text) => createHash('sha256').update(text).digest('hex');
 const randomToken = () => randomBytes(32).toString('base64url');
@@ -402,6 +403,7 @@ export async function wire(page, store, errors) {
       store.db.ds_jobs.push(job);
       return json({ state: 'READY', jobId: job.id, plan, billing: 'NOT_CHARGED' });
     }
+    if (url.pathname.includes(SERVICE_CONTROLS_RPC)) return json(SERVICES_ALL_ON);
     if (url.pathname.includes('/auth/v1/user')) return json(fakeSession().user);
     if (url.pathname.includes('/auth/v1/token')) return json(fakeSession());
     const rpc = url.pathname.match(/\/rest\/v1\/rpc\/([a-z0-9_]+)/i);

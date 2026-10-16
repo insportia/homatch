@@ -41,6 +41,7 @@ import { createRequire } from 'node:module';
 
 import { SYNTHESIS, STATUS_RESPONSE } from './fixture.mjs';
 import { propertyRows, matchRows } from './propertyFixture.mjs';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -385,6 +386,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
       }
       if (url.includes('/functions/v1/verify-synthesis')) return r.fulfill(json(SYNTHESIS));
       if (url.includes('/functions/v1/research-agent')) return r.fulfill(json(STATUS_RESPONSE));
+      if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
       if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
       if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
       /*

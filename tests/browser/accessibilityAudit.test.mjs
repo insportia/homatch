@@ -24,6 +24,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from '../mobile/serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -175,6 +176,7 @@ test('the pages this pass touched can be used without a mouse', opts, async (t) 
           },
         });
       }
+      if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
       if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
       if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
       if (url.includes('/rest/v1/rpc/')) return r.fulfill(json(null));
@@ -297,6 +299,7 @@ test('the content editor can be typed into with the whole registry loaded', opts
     if (r.request().method() === 'OPTIONS') {
       return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
     }
+    if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/rpc/')) return r.fulfill(json([]));

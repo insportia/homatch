@@ -16,6 +16,11 @@ test('only a service that can also run is visible; malformed rows stay hidden', 
   assert.deepEqual(s.services.whatsapp, { frontend: false, backend: false }, 'visible-without-backend is never trusted');
   assert.deepEqual(s.services.design_studio, { frontend: false, backend: true }, 'a non-boolean is not "on"');
   assert.equal(Object.keys(s.services).length, 6, 'unrelated keys are ignored');
+  for (const junk of [null, {}, 'x', 42]) {
+    const j = toSnapshot(junk);
+    assert.equal(j.loaded, true, 'a malformed answer still ends the wait');
+    assert.ok(SERVICE_KEYS.every((k) => !j.services[k].frontend), 'and keeps all six hidden');
+  }
 });
 
 test('the store: one shared fetch, subscribers notified, errors keep everything hidden', async () => {

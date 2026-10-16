@@ -30,7 +30,7 @@ export const SUITE_CATALOGUE = {
   static: { title: 'Static checks', always: true },
   unit: { title: 'Unit and matrix tests', always: true },
   'mobile:routes': { title: 'Mobile — every customer route', files: ['tests/mobile/routeOverflow.test.mjs', 'tests/mobile/routeHealth.test.mjs', 'tests/mobile/textContrast.test.mjs', 'tests/mobile/formControls.test.mjs', 'tests/mobile/propertyOwnerWorkspace.test.mjs', 'tests/mobile/publishingWorkspace.test.mjs'] },
-  'mobile:shell': { title: 'Mobile — shell, motion, composer', files: ['tests/mobile/shellAndMotion.test.mjs', 'tests/mobile/appShell.test.mjs', 'tests/mobile/chatComposer.test.mjs'] },
+  'mobile:shell': { title: 'Mobile — shell, motion, composer', files: ['tests/mobile/shellAndMotion.test.mjs', 'tests/mobile/appShell.test.mjs', 'tests/mobile/chatComposer.test.mjs', 'tests/mobile/serviceControls.test.mjs'] },
   'mobile:auth': { title: 'Mobile — auth screens', files: ['tests/mobile/authScreens.test.mjs'] },
   'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs', 'tests/mobile/verifyReportPremium.test.mjs', 'tests/mobile/verifyReportTranslation.test.mjs'] },
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
@@ -172,7 +172,7 @@ export const COMPONENTS = {
   // customer-side gates that read them and the Admin page that writes them.
   SERVICE_CONTROLS: {
     paths: [/^src\/lib\/serviceControls\//, /^src\/components\/serviceControls\//, /^src\/pages\/admin\/AdminServiceControlPage\.tsx$/, /^src\/services\/serviceControls\.ts$/,
-      fn('service-control'), /^supabase\/functions\/_shared\/serviceControl\.ts$/, /^tests\/sql\/service_controls\//, /^scripts\/service-controls-i18n/, /^docs\/claude\/SERVICE_CONTROLS\.md$/],
+      fn('service-control'), /^supabase\/functions\/_shared\/serviceControl\.ts$/, /^tests\/sql\/service_controls\//, /^tests\/mobile\/serviceControls(Fixture)?\.(test\.)?mjs$/, /^scripts\/service-controls-i18n/, /^docs\/claude\/SERVICE_CONTROLS\.md$/],
     suites: ['mobile:routes', 'mobile:shell'],
     proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six'],
   },

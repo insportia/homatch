@@ -33,7 +33,9 @@ export function toSnapshot(rows: unknown): ServiceSnapshot {
       services[r.service_key] = { backend, frontend: backend && r.frontend_enabled === true };
     }
   }
-  return { loaded: Array.isArray(rows), services };
+  // Any answer is an answer: a malformed one leaves everything hidden, but loaded, so a
+  // gated page shows "unavailable" rather than waiting forever.
+  return { loaded: true, services };
 }
 
 type Fetcher = () => Promise<{ data: unknown; error: unknown }>;

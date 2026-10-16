@@ -1,0 +1,24 @@
+# TEMPORARY (Find Property sixth-portal survey + live check of the HTML adapters).
+# Read-only fetches of public portal pages from a GitHub runner; no secrets,
+# read-only token, nothing written anywhere. Removed before the PR leaves draft.
+name: Portal snapshot
+on:
+  pull_request:
+    paths: ['scripts/portals/**', '.github/workflows/portal-snapshot.yml', 'official-worker/src/marketplace/portals/**']
+permissions:
+  contents: read
+concurrency:
+  group: portal-snapshot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Candidate portal survey (robots, sitemaps, freshness, terms)
+        run: node scripts/portals/candidate-probe.mjs
+      - name: Live adapter check
+        run: node scripts/portals/live-check.mjs

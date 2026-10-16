@@ -77,7 +77,7 @@ set search_path to ''
 as $$
   select jsonb_build_array(
     jsonb_build_object('area', 'design-studio', 'what', 'Design Studio catalog (HDRIs, materials, models) and users'' Design Studio files'),
-    jsonb_build_object('area', 'deal-room-documents', 'what', 'Contracts originals uploaded by customers, and their R2 copies'),
+    jsonb_build_object('area', 'contracts-originals', 'what', 'Contracts originals uploaded by customers, and their R2 copies'),
     jsonb_build_object('area', 'verify-evidence', 'what', 'Verify evidence: complete source text behind reports'),
     jsonb_build_object('area', 'verify-official-visuals', 'what', 'Verify report galleries'),
     jsonb_build_object('area', 'verify-results', 'what', 'Verify structured results and Contracts analyses (database)'),

@@ -23,6 +23,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { deleteObject, headObject, putObject } from '../_shared/objectStore.ts';
 import { tasAttachmentId, tick, type Providers, type RegenerationProof, type Rpc } from '../_shared/retention/engine.ts';
+// The same private, service-role-only bucket research-agent caches official documents in.
+import { DOCUMENT_BUCKET } from '../../../src/verify/officialDocumentLibrary.ts';
 
 declare const Deno: { env: { get(k: string): string | undefined } };
 
@@ -122,7 +124,7 @@ serve(async (req) => {
     const pdf = new TextEncoder().encode(SELFTEST_PDF);
     const text = new TextEncoder().encode(`HOMATCH retention self-test ${id} ${new Date().toISOString()}\n`);
     try {
-      const { error: upErr } = await sb.storage.from('verify-documents').upload(supaKey, pdf, { contentType: 'application/pdf' });
+      const { error: upErr } = await sb.storage.from(DOCUMENT_BUCKET).upload(supaKey, pdf, { contentType: 'application/pdf' });
       if (upErr) throw new Error(`supabase upload: ${upErr.message}`);
       await putObject(r2Key, text, 'text/plain');
       if (!(await headObject(r2Key)).exists) throw new Error('r2 object not visible after upload');

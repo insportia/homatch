@@ -1557,7 +1557,7 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   (sitemap + listing pages), Brokeri.ge (search), Allhome.ge (sitemap + listing
   pages). MyHome.ge / SS.ge untouched (MyHome stays at pages 1–2).
 - Withdrawn: Korter.ge (terms forbid scraping), Binebi.ge (Cloudflare challenge).
-- Registry/switches: migration `20261103100000_find_property_portal_workers.sql`
+- Registry/switches: migration `20261104100000_find_property_portal_workers.sql`
   (rows PROVEN + enabled=false; `marketplace_{placege,homege,brokeri,allhome}_enabled`
   false). Edge: `marketplace-search` / `marketplace-worker-ingest` gate each portal
   on its own switch (`workerSwitchOn`).

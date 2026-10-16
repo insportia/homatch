@@ -214,7 +214,7 @@ test('home.ge: a requested district narrows the sitemap by its slug', () => {
 test('registry: korter.ge (terms forbid scraping) and binebi.ge (challenge) are not portal workers', () => {
   const ids = PORTAL_ADAPTERS.map((a) => a.sourceId);
   assert.ok(!ids.includes('korter-ge') && !ids.includes('binebi-ge'));
-  const sql = readFileSync(new URL('../../supabase/migrations/20261103100000_find_property_portal_workers.sql', import.meta.url), 'utf8').replace(/--.*$/gm, '');
+  const sql = readFileSync(new URL('../../supabase/migrations/20261104100000_find_property_portal_workers.sql', import.meta.url), 'utf8').replace(/--.*$/gm, '');
   assert.doesNotMatch(sql, /korter|binebi/i);
 });
 

@@ -155,6 +155,19 @@ export function notificationText(
   if (notif.type === 'VERIFY_COMPLETE') {
     return { title: t('notif_verify_complete_title'), body: t('notif_verify_complete_body') };
   }
+  /* A temporary file the owner can still download, and until when (storage retention). */
+  if (kind === 'RETENTION_ARTIFACT_EXPIRING' || notif.type === 'RETENTION_EXPIRING') {
+    const label = metaString(notif, 'label');
+    const at = metaString(notif, 'expires_at');
+    let date = at;
+    try {
+      date = new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(at));
+    } catch { /* keep the ISO text */ }
+    return {
+      title: t('notif_retention_expiring_title'),
+      body: t('notif_retention_expiring_body', { name: label || t('notif_retention_file'), date }),
+    };
+  }
   if (notif.type === 'DOCUMENT_ANALYZED') {
     return { title: t('notif_document_analyzed_title'), body: t('notif_document_analyzed_body') };
   }
@@ -252,6 +265,7 @@ export function notificationMark(notif: Notification): NotificationMark {
 
   /* The few that want something from you, or went wrong, earn a role. */
   if (kind === 'CRM_FOLLOW_UP_DUE') return { icon: CalendarClock, tone: 'accent' };
+  if (notif.type === 'RETENTION_EXPIRING') return { icon: CalendarClock, tone: 'accent' };
   if (kind === 'PROPERTY_OFFER') return { icon: MessageSquare, tone: 'accent' };
   if (category === 'MESSAGE') return { icon: MessageSquare, tone: 'accent' };
   if (kind.startsWith('VIEWING_')) return { icon: CalendarDays, tone: 'plain' };

@@ -189,6 +189,33 @@ test('every dynamic mps_ key used by the interface exists in all six bundles', a
   for (const k of want) assert.equal((tr.match(new RegExp(`^ {2}${k}: `, 'gm')) ?? []).length, 6, `${k} in six bundles`);
 });
 
+test('every requirement or amenity code the server can name has natural words in all six bundles (never a raw key)', async () => {
+  const { requirementKey, OTHER_REQUIREMENT_KEY } = await import(pathToFileURL(join(root, 'src/findProperty/requirementLabels.ts')).href);
+  const ranking = read('src/research-core/marketplace/ranking.ts');
+  const hard = ranking.slice(ranking.indexOf('export function hardFilter'), ranking.indexOf('return { fits:', ranking.indexOf('export function hardFilter')));
+  const codes = new Set([
+    ...[...hard.matchAll(/check\('([A-Z_]+)'/g)].map((m) => m[1]),
+    ...[...hard.matchAll(/(?:unverified|violations)\.push\('([A-Z_]+)'\)/g)].map((m) => m[1]),
+  ]);
+  assert.match(hard, /unverified\.push\(`REQUIRED_\$\{must\}`\)/, 'required amenities are reported as REQUIRED_<amenity>');
+  const amenities = read('src/research-core/marketplace/taxonomy.ts').match(/export const AMENITIES[^=]*=\s*\[([^\]]+)\]/)[1].match(/'([A-Z_]+)'/g).map((x) => x.slice(1, -1));
+  for (const a of amenities) codes.add(a).add(`REQUIRED_${a}`);
+  assert.ok(codes.size >= 30, `enumerated ${codes.size} codes`);
+  const tr = read('src/i18n/translations.ts');
+  const missing = [];
+  for (const c of codes) {
+    const key = requirementKey(c);
+    if (!key) { missing.push(`${c}: no label`); continue; }
+    if ((tr.match(new RegExp(`^ {2}${key}: `, 'gm')) ?? []).length !== 6) missing.push(`${c} → ${key}: not in six bundles`);
+  }
+  assert.equal((tr.match(new RegExp(`^ {2}${OTHER_REQUIREMENT_KEY}: `, 'gm')) ?? []).length, 6);
+  assert.deepEqual(missing, []);
+  // Card, property page and summary all speak through the one label function.
+  for (const f of ['src/components/findProperty/PropertyCard.tsx', 'src/components/findProperty/PropertyIntelligence.tsx', 'src/components/findProperty/workspace/ResultsHeader.tsx']) {
+    assert.doesNotMatch(code(f), /`mps_amenity_\$\{|mps_filter_district/, `${f} builds no label key by hand`);
+  }
+});
+
 test('Snake is optional, self-contained and never touches the search', () => {
   for (const f of ['src/components/findProperty/SnakeGame.tsx', 'src/components/findProperty/SnakeThumbnail.tsx']) {
     assert.doesNotMatch(code(f), /services\/|supabase|searchStatus|startSearch|cancelSearch|understand\(/, f);

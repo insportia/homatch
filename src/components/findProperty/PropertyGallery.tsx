@@ -4,7 +4,7 @@ import React, { useRef, useState } from 'react';
 import type { T } from './format';
 
 /** Only the active photo loads on cards. Controls never activate the property. */
-export function PropertyGallery({ images, t, onOpen, full = false, overlay }: { images: string[]; t: T; onOpen?: () => void; full?: boolean; overlay?: React.ReactNode }) {
+export function PropertyGallery({ images, t, onOpen, full = false, overlay, frame }: { images: string[]; t: T; onOpen?: () => void; full?: boolean; overlay?: React.ReactNode; /** Card frame classes (aspect); defaults to 16/10. */ frame?: string }) {
   const photos = [...new Set(images.filter(Boolean))];
   const [index, setIndex] = useState(0);
   const [broken, setBroken] = useState<Set<string>>(() => new Set());
@@ -18,7 +18,7 @@ export function PropertyGallery({ images, t, onOpen, full = false, overlay }: { 
   // The full page has no other target for a photo click: it opens the viewer.
   const activate = onOpen ?? (full ? openViewer : undefined);
   return <div className="space-y-2">
-    <div role="group" aria-label={t('mps_photos')} className={`group relative touch-pan-y overflow-hidden bg-[#0C1119] ${full ? 'aspect-[16/9] rounded-2xl' : 'aspect-[16/10]'}`}
+    <div role="group" aria-label={t('mps_photos')} className={`group relative touch-pan-y overflow-hidden bg-[#0C1119] ${full ? 'aspect-[16/9] rounded-2xl' : frame ?? 'aspect-[16/10]'}`}
       onKeyDown={(event) => { if (photos.length > 1 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); change(event.key === 'ArrowRight' ? 1 : -1); } }}
       onTouchStart={(event) => { const start = event.touches[0]; touch.current = start ? { x: start.clientX, y: start.clientY } : null; suppressClick.current = false; }}
       onTouchEnd={(event) => {

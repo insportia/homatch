@@ -10,11 +10,22 @@ type Listing = PropertyView['listings'][number];
  * source published it or the seller wrote it in the listing text (labelled so);
  * otherwise the source keeps it behind its own "show number", and we say so.
  */
-export function ContactLine({ listing, t, className = '' }: { listing: Listing | undefined; t: T; className?: string }) {
+export function ContactLine({ listing, t, className = '', compact = false }: { listing: Listing | undefined; t: T; className?: string; compact?: boolean }) {
   if (!listing) return null;
   const phone = listing.seller.publicPhone;
   const source = listing.sourceName ?? listing.source;
   const url = safeExternalUrl(listing.exactUrl);
+  /* The card's version: one quiet action, the same two truths (a published number, or the source's own "show number"). */
+  if (compact) {
+    const look = `inline-flex min-h-[40px] min-w-0 items-center gap-1.5 rounded-xl border border-border px-3 text-xs font-semibold text-foreground transition hover:border-[hsl(var(--gold-border))] hover:bg-[hsl(var(--gold)/0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${className}`;
+    return <div data-contact className="min-w-0">
+      {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} data-contact-call title={phone} className={look}>
+        <Phone className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" /><span className="truncate">{t('mps_contact_call')}</span>
+      </a> : url ? <a href={url} target="_blank" rel="noopener noreferrer" data-contact-source title={t('mps_contact_source_only', { source })} className={look}>
+        <Phone className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" /><span dir="auto" className="truncate">{t('fpp_contact_source_short', { source })}</span>
+      </a> : null}
+    </div>;
+  }
   return <div data-contact className={`space-y-1.5 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.06)] p-3 ${className}`}>
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--gold-ink))]">
       {t('mps_contact_title')}

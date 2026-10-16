@@ -9,7 +9,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Check, Copy, ExternalLink, MessageCircle, Sparkles } from 'lucide-react';
+import { Check, CheckCircle2, Copy, ExternalLink, MessageCircle, Sparkles } from 'lucide-react';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { CustomerSurface, DISCOVERY_SURFACE, EmptyState } from '@/components/customer/surface';
@@ -23,6 +23,8 @@ import { readProperty } from '@/services/propertyManagement';
 import { safeExternalUrl } from '@/lib/safeExternalUrl';
 import type { PropertyFacts } from '@/types/types';
 
+/** Similarity dimensions, in the order the owner reads them (pipeline `why.agreed`). */
+const AGREED = ['location', 'propertyType', 'rooms', 'area', 'price', 'transaction'] as const;
 const CARD = 'rounded-2xl bg-white p-4 ring-1 ring-inset ring-[hsl(40_50%_86%)] sm:p-5';
 
 
@@ -45,7 +47,14 @@ function OpportunityContent() {
   const loading = r.leads === null && !r.failed;
   const latest = op ? daysAgo(op.latestCommentAt) : null;
   const analyzedAt = op ? op.leads.map((l) => l.created_at).sort().at(-1) ?? null : null;
-  const draft = t('fbo_draft_text');
+  const draft = t(owner?.market === 'RENT' ? 'fbo_draft_text_rent' : 'fbo_draft_text');
+  /* One line, real numbers only: what was read, what people asked, how recently. */
+  const summary = op ? [
+    op.analyzedComments != null ? t('fbo_summary_analyzed', { n: String(op.analyzedComments) }) : null,
+    Object.entries(op.breakdown).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0)).slice(0, 3)
+      .map(([s, n]) => `${t(`fbo_sig_${s}`)}: ${n}`).join(' · ') || null,
+    latest != null ? t('fbo_summary_latest', { n: String(latest) }) : null,
+  ].filter(Boolean).join(' — ') : '';
 
   return (
     <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
@@ -83,6 +92,7 @@ function OpportunityContent() {
               {/* Post activity: total (as reported) · analyzed · signals */}
               <section className={CARD} aria-label={t('fbo_activity')}>
                 <h2 className="text-sm font-semibold text-[hsl(218_45%_14%)]">{t('fbo_activity')}</h2>
+                {summary && <p className="mt-1 text-sm font-medium text-[hsl(218_45%_14%)]" data-testid="fbo-summary">{summary}</p>}
                 <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="fbo-stats">
                   {([['fbo_stat_comments', op.totalComments, 'total'], ['fbo_stat_analyzed', op.analyzedComments, 'analyzed'],
                     ['fbo_stat_people', op.interestedPeople, 'people'], ['fbo_stat_signals', op.signalTotal, 'signals']] as const).map(([k, v, id]) => (
@@ -113,6 +123,15 @@ function OpportunityContent() {
               <section className={CARD}>
                 <h2 className="text-sm font-semibold text-[hsl(218_45%_14%)]">{t('fbo_why')}</h2>
                 <p className="mt-1 text-sm text-[hsl(218_45%_14%)]">{t('fbo_why_similar', { n: String(Math.round(op.similarity)) })}</p>
+                {op.agreed.length > 0 && (
+                  <ul className="mt-2 flex flex-wrap gap-1.5" data-testid="fbo-agreed" aria-label={t('fbo_agree_title')}>
+                    {AGREED.filter((d) => op.agreed.includes(d)).map((d) => (
+                      <li key={d} data-dim={d} className="inline-flex items-center gap-1 rounded-full bg-[hsl(150_45%_95%)] px-2 py-0.5 text-2xs font-semibold text-[hsl(150_45%_24%)]">
+                        <CheckCircle2 className="h-3 w-3" aria-hidden="true" />{t(`fbo_agree_${d}`)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {op.comparison && (
                   <p className="mt-1 text-sm text-[hsl(218_45%_14%)]" data-testid="fbo-comparison">
                     {op.comparison.difference < 0 ? t('fbo_cheaper', { amount: money(-op.comparison.difference, op.comparison.currency) })

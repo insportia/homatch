@@ -41,7 +41,10 @@ export interface ResultLead {
   created_at: string;
   signal_at: string | null;
   author_name: string | null;
+  author_profile_url?: string | null;
   evidence: EvidenceItem[];
+  /** `why.agreed`: the similarity dimensions that agreed with the owner's listing (pipeline). */
+  score_components?: { why?: { agreed?: string[] | null } | null } | null;
   match_category?: string | null;
   counterpart?: 'BUYER' | 'TENANT' | null;
   qualification?: { resultType?: ResultType; intent?: string; signals?: string[] } | null;
@@ -125,6 +128,8 @@ export interface PostOpportunity {
   latestCommentAt: string | null;
   postPublishedAt: string | null;
   similarity: number;
+  /** Dimensions the pipeline found in agreement (location, rooms, area, price, propertyType, transaction). */
+  agreed: string[];
   facts: EvidenceItem['parentFacts'];
   comparison: PriceComparison | null;
   /** 0–100: similarity and the strength of the interest shown, both visible. */
@@ -144,6 +149,13 @@ export function postKey(url: string): string {
   return h.toString(36);
 }
 
+/** Placeholder names some platforms return for hidden profiles: never a way to merge people. */
+const GENERIC_NAME = /^(facebook user|instagram user|anonymous|unknown|user|deleted account|участник|аноним|მომხმარებელი)$/iu;
+const personKey = (l: ResultLead): string | null => {
+  if (l.author_profile_url) return `p:${l.author_profile_url.toLowerCase()}`;
+  const name = l.author_name?.trim().toLowerCase();
+  return name && !GENERIC_NAME.test(name) ? `n:${l.source}:${name}` : null;
+};
 const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : a > b ? a : b);
 
 export function comparePrice(owner: OwnerFacts | null, facts: EvidenceItem['parentFacts']): PriceComparison | null {
@@ -168,9 +180,16 @@ export function buildOpportunities(leads: ClassifiedLead[], owner: OwnerFacts | 
       const op = byPost.get(key) ?? {
         key, jobId: lead.matching_job_id, url: ev.parentUrl, platform: ev.source ?? lead.source, excerpt: ev.parentExcerpt ?? null,
         totalComments: null, analyzedComments: null, interestedPeople: 0, signalTotal: 0, breakdown: {},
-        latestCommentAt: null, postPublishedAt: null, similarity: 0, facts: null, comparison: null, opportunityScore: 0, intentScore: 0, leads: [],
+        latestCommentAt: null, postPublishedAt: null, similarity: 0, agreed: [], facts: null, comparison: null, opportunityScore: 0, intentScore: 0, leads: [],
       };
-      if (!op.leads.includes(lead)) { op.leads.push(lead); op.interestedPeople += 1; }
+      if (!op.leads.includes(lead)) {
+        /* One person, once per post: the same commenter stored twice (profile, else name on that
+           platform) is never two people. Without either, the lead is its own person. */
+        const who = personKey(lead);
+        if (!who || !op.leads.some((l) => personKey(l) === who)) op.interestedPeople += 1;
+        op.leads.push(lead);
+        for (const d of lead.score_components?.why?.agreed ?? []) if (!op.agreed.includes(d)) op.agreed.push(d);
+      }
       const sigs = ((ev.signals?.length ? ev.signals : lead.signals) as CommentSignal[]).filter((s) => s !== 'IRRELEVANT' && s !== 'POSITIVE');
       for (const s of sigs) { op.breakdown[s] = (op.breakdown[s] ?? 0) + 1; op.signalTotal += 1; }
       if (ev.parentCommentCount != null) op.totalComments = Math.max(op.totalComments ?? 0, ev.parentCommentCount);

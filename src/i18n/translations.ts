@@ -18652,6 +18652,18 @@ const en = {
   fbo_sig_FINANCING: 'Financing',
   fbo_sig_EXPLICIT_BUY: 'Wants to buy',
   fbo_sig_EXPLICIT_RENT: 'Wants to rent',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbo_summary_analyzed: '{{n}} comments analyzed',
+  fbo_summary_latest: 'latest relevant activity {{n}} days ago',
+  fbo_agree_title: 'What matches your property',
+  fbo_agree_location: 'Same area',
+  fbo_agree_propertyType: 'Same property type',
+  fbo_agree_rooms: 'Same number of rooms',
+  fbo_agree_area: 'Similar size',
+  fbo_agree_price: 'Similar price',
+  fbo_agree_transaction: 'Same deal type',
+  fbo_draft_text_rent: 'Hello! I saw your question about a rental in this area. I am renting out a similar place and would be happy to share details and photos.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -37218,6 +37230,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'დაფინანსება',
   fbo_sig_EXPLICIT_BUY: 'ყიდვის სურვილი',
   fbo_sig_EXPLICIT_RENT: 'ქირაობის სურვილი',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbo_summary_analyzed: 'გაანალიზდა {{n}} კომენტარი',
+  fbo_summary_latest: 'ბოლო რელევანტური აქტივობა {{n}} დღის წინ',
+  fbo_agree_title: 'რა ემთხვევა თქვენს ქონებას',
+  fbo_agree_location: 'იგივე უბანი',
+  fbo_agree_propertyType: 'იგივე ტიპის ქონება',
+  fbo_agree_rooms: 'ოთახების იგივე რაოდენობა',
+  fbo_agree_area: 'მსგავსი ფართი',
+  fbo_agree_price: 'მსგავსი ფასი',
+  fbo_agree_transaction: 'იგივე გარიგების ტიპი',
+  fbo_draft_text_rent: 'გამარჯობა! ვნახე თქვენი კითხვა ამ უბანში ქირავნობის შესახებ. მსგავს ფართს ვაქირავებ და სიამოვნებით გაგიზიარებთ დეტალებს და ფოტოებს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -55775,6 +55799,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'Финансирование',
   fbo_sig_EXPLICIT_BUY: 'Хочет купить',
   fbo_sig_EXPLICIT_RENT: 'Хочет снять',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbo_summary_analyzed: 'Проанализировано комментариев: {{n}}',
+  fbo_summary_latest: 'последняя активность {{n}} дн. назад',
+  fbo_agree_title: 'Что совпадает с вашим объектом',
+  fbo_agree_location: 'Тот же район',
+  fbo_agree_propertyType: 'Тот же тип объекта',
+  fbo_agree_rooms: 'Столько же комнат',
+  fbo_agree_area: 'Похожая площадь',
+  fbo_agree_price: 'Похожая цена',
+  fbo_agree_transaction: 'Тот же тип сделки',
+  fbo_draft_text_rent: 'Здравствуйте! Я увидел ваш вопрос об аренде в этом районе. Я сдаю похожее жильё и с радостью пришлю детали и фото.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -74330,6 +74366,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'Finansman',
   fbo_sig_EXPLICIT_BUY: 'Almak istiyor',
   fbo_sig_EXPLICIT_RENT: 'Kiralamak istiyor',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbo_summary_analyzed: '{{n}} yorum incelendi',
+  fbo_summary_latest: 'son ilgili etkinlik {{n}} gün önce',
+  fbo_agree_title: 'Mülkünüzle eşleşenler',
+  fbo_agree_location: 'Aynı bölge',
+  fbo_agree_propertyType: 'Aynı mülk türü',
+  fbo_agree_rooms: 'Aynı oda sayısı',
+  fbo_agree_area: 'Benzer büyüklük',
+  fbo_agree_price: 'Benzer fiyat',
+  fbo_agree_transaction: 'Aynı işlem türü',
+  fbo_draft_text_rent: 'Merhaba! Bu bölgedeki kiralık hakkındaki sorunuzu gördüm. Benzer bir yeri kiraya veriyorum, detayları ve fotoğrafları memnuniyetle paylaşırım.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -92885,6 +92933,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'التمويل',
   fbo_sig_EXPLICIT_BUY: 'يريد الشراء',
   fbo_sig_EXPLICIT_RENT: 'يريد الاستئجار',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbo_summary_analyzed: 'تم تحليل {{n}} تعليق',
+  fbo_summary_latest: 'آخر نشاط ذي صلة قبل {{n}} يوم',
+  fbo_agree_title: 'ما يطابق عقارك',
+  fbo_agree_location: 'نفس المنطقة',
+  fbo_agree_propertyType: 'نفس نوع العقار',
+  fbo_agree_rooms: 'نفس عدد الغرف',
+  fbo_agree_area: 'مساحة مشابهة',
+  fbo_agree_price: 'سعر مشابه',
+  fbo_agree_transaction: 'نفس نوع الصفقة',
+  fbo_draft_text_rent: 'مرحبًا! رأيت سؤالك عن إيجار في هذه المنطقة. أؤجّر مكانًا مشابهًا ويسعدني مشاركة التفاصيل والصور.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -111440,6 +111500,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbo_sig_FINANCING: 'מימון',
   fbo_sig_EXPLICIT_BUY: 'רוצה לקנות',
   fbo_sig_EXPLICIT_RENT: 'רוצה לשכור',
+
+  /* ── FIND BUYERS 3.0 (dashboard, result pages, post opportunities) ── */
+  fbo_summary_analyzed: 'נותחו {{n}} תגובות',
+  fbo_summary_latest: 'פעילות רלוונטית אחרונה לפני {{n}} ימים',
+  fbo_agree_title: 'מה תואם לנכס שלכם',
+  fbo_agree_location: 'אותו אזור',
+  fbo_agree_propertyType: 'אותו סוג נכס',
+  fbo_agree_rooms: 'אותו מספר חדרים',
+  fbo_agree_area: 'גודל דומה',
+  fbo_agree_price: 'מחיר דומה',
+  fbo_agree_transaction: 'אותו סוג עסקה',
+  fbo_draft_text_rent: 'שלום! ראיתי את השאלה שלך על השכרה באזור. אני משכיר מקום דומה ואשמח לשתף פרטים ותמונות.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

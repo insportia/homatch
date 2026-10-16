@@ -98,3 +98,24 @@ test('a stored, already-qualified lead keeps its decision unless the rules find 
   /* a definite exclusion still wins: the production developer ad was stored as WEAK */
   assert.equal(classifyLead(stored('ბინის შეძენა გსურთ? გთავაზობთ ბინებს მწვანე კარკასის კონდიციით, გადახდის მოქნილი პირობებით', 'WEAK'), 'SALE').resultType, 'EXCLUDED');
 });
+
+test('the same commenter stored twice under one post is one person; their signals still count', () => {
+  const a = { ...interest(1, ['PRICE']), author_profile_url: 'https://facebook.com/u/77' };
+  const b = { ...interest(2, ['VIEWING']), author_profile_url: 'https://FACEBOOK.com/u/77' };
+  const c = { ...interest(3, ['PRICE']), author_name: 'A1' }; // same name as `a`, no profile: a different key
+  const op = buildOpportunities([a, b, c].map(classifyLead), null)[0];
+  assert.equal(op.interestedPeople, 2, 'profile 77 once, plus A1 by name');
+  assert.equal(op.signalTotal, 3);
+  const noName = { ...interest(4, ['PRICE']), author_name: null };
+  const op2 = buildOpportunities([noName, { ...noName, id: 'l5' }].map(classifyLead), null)[0];
+  assert.equal(op2.interestedPeople, 2, 'without a profile or a name, nobody is merged');
+  const hidden = { ...interest(6, ['PRICE']), author_name: 'Facebook user' };
+  assert.equal(buildOpportunities([hidden, { ...hidden, id: 'l7' }].map(classifyLead), null)[0].interestedPeople, 2, 'a placeholder name merges nobody');
+});
+
+test('why the audience is relevant: only the dimensions the pipeline found in agreement', () => {
+  const lead = { ...interest(1, ['PRICE']), score_components: { why: { agreed: ['location', 'area'] } } };
+  const other = { ...interest(2, ['VIEWING']), score_components: { why: { agreed: ['area', 'price'] } } };
+  assert.deepEqual(buildOpportunities([lead, other].map(classifyLead), null)[0].agreed.sort(), ['area', 'location', 'price']);
+  assert.deepEqual(buildOpportunities([classifyLead(interest(3, ['PRICE']))], null)[0].agreed, [], 'nothing stored, nothing claimed');
+});

@@ -311,7 +311,8 @@ test('HOMATCH Match is free and starts only the internal matcher; External Disco
 /* ── FIND BUYERS 3.0: dashboard → External Discovery → Post Opportunity ── */
 const OPP_POST = 'https://www.facebook.com/groups/77/permalink/185000';
 const oppLead = (n, signals, text) => lead(`opp${n}`, {
-  matching_job_id: 'job-opp', overall_score: 40 + n, strength: 'POSSIBLE', created_at: ago(1), match_category: 'POTENTIAL', author_name: `Person ${n}`,
+  matching_job_id: 'job-opp', overall_score: 40 + n, strength: 'POSSIBLE', created_at: ago(1), match_category: 'POTENTIAL', author_name: `Person ${n}`, author_profile_url: `https://www.facebook.com/person.${n}`,
+  score_components: { why: { kind: 'COMMENT_ON_SIMILAR', agreed: ['location', 'area'] } },
   qualification: { resultType: 'INTEREST', intent: signals.includes('VIEWING') ? 'VIEWING_INQUIRY' : 'PRICE_INQUIRY', signals },
   evidence: [{ signalId: `s${n}`, parentSignalId: 'pp', kind: 'COMMENT', source: 'FACEBOOK', intentClass: 'BUYER_MEDIUM', intentScore: 60, similarity: 84, ageDays: 2,
     text, url: `${OPP_POST}?comment_id=${n}`, parentUrl: OPP_POST, parentExcerpt: 'იყიდება 2 საძინებლიანი ბინა კრწანისში, 100 კვ.მ, $185 000', language: 'ka', publishedAt: ago(2),
@@ -351,6 +352,12 @@ test('the dashboard is compact: two summaries and recent searches, no lead list;
   const o = await page.evaluate(() => Object.fromEntries(['total', 'analyzed', 'people', 'signals'].map((k) => [k, document.querySelector(`[data-testid="fbo-stat-${k}"]`)?.textContent])));
   assert.deepEqual(o, { total: '240', analyzed: '40', people: '4', signals: '5' }, '240 comments, 40 analyzed, 4 people, 5 signals (one comment asked two things)');
   assert.ok(await page.locator('[data-testid="fbo-unread"]').count(), 'the 200 unread comments are named, never estimated');
+  const summary = await page.locator('[data-testid="fbo-summary"]').innerText();
+  assert.match(summary, /40 comments analyzed/, 'what was actually read');
+  assert.match(summary, /Price: 2 · Viewing: 2 · Financing: 1/, 'what people asked, from real comments');
+  assert.match(summary, /2 days ago/, 'how recently');
+  assert.doesNotMatch(summary, /240/, 'the platform total is never presented as analyzed or as people');
+  assert.deepEqual(await page.locator('[data-testid="fbo-agreed"] li').evaluateAll((els) => els.map((e) => e.getAttribute('data-dim'))), ['location', 'area'], 'only stored agreements');
   assert.match(await page.locator('[data-testid="fbo-comparison"]').innerText(), /65,000|65 000|65.000/, 'owner $120,000 vs comparable $185,000');
   assert.equal(await page.locator('[data-testid="fbo-open-post"]').getAttribute('href'), OPP_POST);
   assert.equal(await page.locator('[data-testid="fbo-evidence"] li').count(), 4);

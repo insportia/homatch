@@ -84,4 +84,15 @@ export const FIND_BUYERS_3_STRINGS = {
   fbo_sig_FINANCING: S('Financing', 'დაფინანსება', 'Финансирование', 'Finansman', 'التمويل', 'מימון'),
   fbo_sig_EXPLICIT_BUY: S('Wants to buy', 'ყიდვის სურვილი', 'Хочет купить', 'Almak istiyor', 'يريد الشراء', 'רוצה לקנות'),
   fbo_sig_EXPLICIT_RENT: S('Wants to rent', 'ქირაობის სურვილი', 'Хочет снять', 'Kiralamak istiyor', 'يريد الاستئجار', 'רוצה לשכור'),
+  /* 3.0 audit: one-line summary, agreed dimensions, rental draft */
+  fbo_summary_analyzed: S('{{n}} comments analyzed', 'გაანალიზდა {{n}} კომენტარი', 'Проанализировано комментариев: {{n}}', '{{n}} yorum incelendi', 'تم تحليل {{n}} تعليق', 'נותחו {{n}} תגובות'),
+  fbo_summary_latest: S('latest relevant activity {{n}} days ago', 'ბოლო რელევანტური აქტივობა {{n}} დღის წინ', 'последняя активность {{n}} дн. назад', 'son ilgili etkinlik {{n}} gün önce', 'آخر نشاط ذي صلة قبل {{n}} يوم', 'פעילות רלוונטית אחרונה לפני {{n}} ימים'),
+  fbo_agree_title: S('What matches your property', 'რა ემთხვევა თქვენს ქონებას', 'Что совпадает с вашим объектом', 'Mülkünüzle eşleşenler', 'ما يطابق عقارك', 'מה תואם לנכס שלכם'),
+  fbo_agree_location: S('Same area', 'იგივე უბანი', 'Тот же район', 'Aynı bölge', 'نفس المنطقة', 'אותו אזור'),
+  fbo_agree_propertyType: S('Same property type', 'იგივე ტიპის ქონება', 'Тот же тип объекта', 'Aynı mülk türü', 'نفس نوع العقار', 'אותו סוג נכס'),
+  fbo_agree_rooms: S('Same number of rooms', 'ოთახების იგივე რაოდენობა', 'Столько же комнат', 'Aynı oda sayısı', 'نفس عدد الغرف', 'אותו מספר חדרים'),
+  fbo_agree_area: S('Similar size', 'მსგავსი ფართი', 'Похожая площадь', 'Benzer büyüklük', 'مساحة مشابهة', 'גודל דומה'),
+  fbo_agree_price: S('Similar price', 'მსგავსი ფასი', 'Похожая цена', 'Benzer fiyat', 'سعر مشابه', 'מחיר דומה'),
+  fbo_agree_transaction: S('Same deal type', 'იგივე გარიგების ტიპი', 'Тот же тип сделки', 'Aynı işlem türü', 'نفس نوع الصفقة', 'אותו סוג עסקה'),
+  fbo_draft_text_rent: S('Hello! I saw your question about a rental in this area. I am renting out a similar place and would be happy to share details and photos.', 'გამარჯობა! ვნახე თქვენი კითხვა ამ უბანში ქირავნობის შესახებ. მსგავს ფართს ვაქირავებ და სიამოვნებით გაგიზიარებთ დეტალებს და ფოტოებს.', 'Здравствуйте! Я увидел ваш вопрос об аренде в этом районе. Я сдаю похожее жильё и с радостью пришлю детали и фото.', 'Merhaba! Bu bölgedeki kiralık hakkındaki sorunuzu gördüm. Benzer bir yeri kiraya veriyorum, detayları ve fotoğrafları memnuniyetle paylaşırım.', 'مرحبًا! رأيت سؤالك عن إيجار في هذه المنطقة. أؤجّر مكانًا مشابهًا ويسعدني مشاركة التفاصيل والصور.', 'שלום! ראיתי את השאלה שלך על השכרה באזור. אני משכיר מקום דומה ואשמח לשתף פרטים ותמונות.'),
 };

@@ -25,7 +25,8 @@ page.setDefaultTimeout(90000);
 const consoleErrors = [];
 page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
 const calls = [];
-page.on('response', (r) => { const u = r.url(); if (u.includes('/functions/v1/marketplace-search')) calls.push({ status: r.status(), at: new Date().toISOString() }); });
+const failed = [];
+page.on('response', (r) => { const u = r.url(); if (u.includes('/functions/v1/marketplace-search')) calls.push({ status: r.status(), at: new Date().toISOString() }); if (r.status() >= 400) failed.push(`${r.status()} ${r.request().method()} ${u.split('?')[0]}`); });
 
 try {
   // 1. Sign up (the account must not exist yet), then wait for the operator to confirm it.
@@ -93,13 +94,24 @@ try {
   const searchUrl = page.url();
   out('started', { searchUrl, searchId: searchUrl.split('/search/')[1]?.split(/[?#]/)[0] });
 
-  // 3. Results: wait up to 8 minutes for the search to finish (portal workers are paced).
-  let cards = 0, done = false;
-  for (let i = 0; i < 48 && !done; i++) {
+  // 3. Results: open the progressive results as soon as they are offered, then wait (up to 20 min)
+  // until the search is finished and the results page shows cards.
+  let cards = 0, done = false, progressive = null;
+  for (let i = 0; i < 120 && !done; i++) {
     await page.waitForTimeout(10000);
+    const cta = page.getByRole('button', { name: /^See results/ }).first();
+    if (!progressive && await cta.isVisible().catch(() => false)) {
+      await shot(page, '03c-progress');
+      await cta.click();
+      await page.waitForTimeout(5000);
+      progressive = { afterSec: (i + 1) * 10, cards: await page.locator('[data-property-key]').count() };
+      out('progressive', progressive);
+      await shot(page, '03d-progressive-results');
+    }
     cards = await page.locator('[data-property-key]').count();
-    const live = (await page.locator('[aria-live="polite"]').allInnerTexts().catch(() => [])).join(' ');
-    done = cards > 0 && !/search(ing)? (is )?(running|in progress)|still searching/i.test(live) && i > 5;
+    const searching = await page.locator('[data-testid="mps-sources"] [data-state="SEARCHING"], [data-testid="mps-sources"] [data-state="WAITING"]').count();
+    done = cards > 0 && searching === 0;
+    if (!done && i % 12 === 11) { await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(5000); }
   }
   await page.evaluate(() => document.querySelectorAll('details').forEach((d) => { if (d.querySelector('[data-testid="mps-sources"]')) d.open = true; })).catch(() => {});
   await shot(page, '04-results');
@@ -134,7 +146,7 @@ try {
     await shot(p, `06-mobile-${lang}`);
     await m.close();
   }
-  out('console', { errors: consoleErrors.slice(0, 15), count: consoleErrors.length });
+  out('console', { errors: consoleErrors.slice(0, 15), count: consoleErrors.length, failedRequests: failed.slice(0, 20) });
 } catch (error) {
   await shot(page, '99-failure');
   out('error', { message: String(error?.message ?? error).slice(0, 500), url: page.url() });

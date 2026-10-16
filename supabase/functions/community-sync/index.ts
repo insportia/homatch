@@ -159,6 +159,10 @@ Deno.serve(async (req: Request) => {
     const targetIds: string[] = Array.isArray(body.targetIds) ? body.targetIds.map(String).slice(0, 10) : [];
     /** A Find Buyers campaign's property city: reads keep to its communities. */
     const campaignCity = body.city ? String(body.city) : null;
+    /* A Find Buyers (DEMAND) campaign also reads the verified communities discovery found
+       for it — audited and readable, not yet switched on — as the campaign-scoped
+       discover read does (readNow). Scoped to this call: discovery_enabled is never changed. */
+    const includeVerified = body.includeVerified === true && body.source === 'campaign' && campaignCity != null;
     const action = String(body.action || 'sync');
     const trace = String(body.trace || crypto.randomUUID()).slice(0, 64);
 
@@ -213,7 +217,7 @@ Deno.serve(async (req: Request) => {
       .from('community_targets')
       .select(SYNC_SELECT)
       .eq('platform', 'TELEGRAM')
-      .eq('discovery_enabled', true)
+      .or(includeVerified ? 'discovery_enabled.eq.true,and(lifecycle.in.(AUDITED,REACHABLE,PRODUCTIVE),readability.eq.READABLE)' : 'discovery_enabled.eq.true')
       .not('lifecycle', 'in', '(BLOCKED,RETIRED)')
       .or(`rate_limited_until.is.null,rate_limited_until.lt.${new Date().toISOString()}`)
       .order('last_checked_at', { ascending: true, nullsFirst: true })

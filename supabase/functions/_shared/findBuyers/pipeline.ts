@@ -123,6 +123,9 @@ export interface PipelineCtx {
   now?: number;
   /** Judging comments HOMATCH already stored: read them, never re-write them. */
   reusing?: boolean;
+  /** The items ARE stored rows of another collector (native Telegram): their external ids are
+   *  used verbatim (no m23: prefix) and, with `reusing`, nothing is upserted or re-written. */
+  verbatimIds?: boolean;
 }
 
 export interface PipelineResult {
@@ -302,7 +305,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     }
   }
   if (!flat.length) return;
-  const extId = (i: NormalizedItem) => `m23:${i.externalId}`.slice(0, 500);
+  const extId = (i: NormalizedItem) => (ctx.verbatimIds ? i.externalId : `m23:${i.externalId}`).slice(0, 500);
 
   /* What HOMATCH already knows (content reuse, no reclassification). */
   const ids = flat.map((f) => extId(f.item));
@@ -485,7 +488,9 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   if (assessRows.length) {
     await db.from('find_buyers_assessments').upsert(assessRows, { onConflict: 'matching_job_id,signal_id', ignoreDuplicates: true });
   }
-  for (const a of assessed) {
+  /* Another collector's stored rows (native Telegram) keep their own classification:
+     internal matching reads it, so Find Buyers never re-writes it. */
+  for (const a of ctx.verbatimIds ? [] : assessed) {
     if (!a.verdict || a.verdict.method === 'UNDECIDED') continue;
     const qualifying = a.qualification != null && a.qualification.category !== 'REJECTED';
     const prior = knownMap.get(extId(a.item))?.intent_json ?? {};

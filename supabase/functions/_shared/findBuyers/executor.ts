@@ -419,6 +419,20 @@ async function followUpRows(db: any, job: any, campaign: any, followUps: FollowU
   return rows;
 }
 
+/** Searches whose first probe in each language must run before any of them deepens. */
+const COVERAGE_FIRST_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_SEARCH', 'FB_POST_SEARCH', 'FB_AD_LIBRARY']);
+
+/**
+ * Language coverage before depth: a productive Georgian group search must not deepen
+ * ahead of the first Arabic, Turkish or Hebrew search (production 2026-10-13/16: deepening
+ * at priority ~99 used the Phase 1 discovery budget and the ar/he/tr probes, queued at the
+ * actor's base priority, were cancelled as PHASE1_BUDGET). A deepening step of a search
+ * stage stays just below every first probe (base priority); other stages are unchanged.
+ */
+export function deepenPriority(stage: string, measured: number, basePriority: number): number {
+  return COVERAGE_FIRST_STAGES.has(stage) ? Math.max(1, Math.min(measured, basePriority - 1)) : measured;
+}
+
 /** The arm's measured economics → deepen (next tranche) or stop. */
 async function deepenRow(db: any, job: any, campaign: any, settings: FindBuyersSettings, groupsFound: number): Promise<{ row: Record<string, unknown> | null; decision: ReturnType<typeof decideArm> } | null> {
   const meta = job.metadata as Record<string, any>;
@@ -454,7 +468,7 @@ async function deepenRow(db: any, job: any, campaign: any, settings: FindBuyersS
     row: socialJobRow({
       stage: meta.stage, actorKey: meta.actorKey, language: job.language ?? 'multi', query: meta.query ?? null, targetUrl: meta.targetUrl ?? null,
       sourceId: meta.sourceId ?? null, size: Math.min(decision.nextSize, Number(actor?.max_results ?? 100)), arm,
-      priority: armPriority(stats, null, Number(actor?.priority ?? 50)), reason: `deepen:${decision.reason}`,
+      priority: deepenPriority(String(meta.stage), armPriority(stats, null, Number(actor?.priority ?? 50)), Number(actor?.priority ?? 50)), reason: `deepen:${decision.reason}`,
     }, { matchingJobId: job.matching_job_id, propertyId: campaign.property_id, planId: job.search_plan_id ?? null, tranche: Number(meta.tranche ?? 0) + 1, step }),
   };
 }

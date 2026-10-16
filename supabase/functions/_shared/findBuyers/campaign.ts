@@ -18,6 +18,7 @@ import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QuerySt
 import { classifyDemand } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
 import { allocateCampaign, PAID_DISCOVERY_POLICY_ID } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { languageOutcomes } from '../../../../src/research-core/findBuyers/languageOutcomes.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 import { paidTelegramChannels, parseTelegramPreference, type TelegramCommunity, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
@@ -494,9 +495,9 @@ export async function sweepStaleActorRuns(db: any) {
 export async function campaignStats(db: any, matchingJobId: string) {
   const [runs, leads, assess, queue, camp] = await Promise.all([
     db.from('find_buyers_actor_runs').select('source,language,status,qualified_leads,items_fetched,useful_results,stale_dropped').eq('matching_job_id', matchingJobId),
-    db.from('find_buyers_leads').select('strength,source,signal_count,match_category').eq('matching_job_id', matchingJobId),
+    db.from('find_buyers_leads').select('strength,source,signal_count,match_category,language').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_assessments').select('content_kind').eq('matching_job_id', matchingJobId).limit(5000),
-    db.from('discovery_query_queue').select('provider,status,metadata').eq('matching_job_id', matchingJobId),
+    db.from('discovery_query_queue').select('provider,status,metadata,language,result_count,cancel_reason').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_campaigns').select('query_plan').eq('matching_job_id', matchingJobId).maybeSingle(),
   ]);
   const r = (runs.data ?? []) as any[];
@@ -520,6 +521,8 @@ export async function campaignStats(db: any, matchingJobId: string) {
     duplicatesRemoved: l.reduce((n, x) => n + Math.max(0, Number(x.signal_count || 1) - 1), 0),
     /* 30-day rule, made visible: older or undated items skipped, never stored. */
     staleSkipped: r.reduce((n, x) => n + Number(x.stale_dropped || 0), 0),
+    /* Per language: not planned / not run (why) / unavailable / no results / filtered / results. */
+    languageOutcomes: languageOutcomes(q.filter((x) => x.provider === 'APIFY_MEMO23'), l),
     degradedSources: [...new Set(r.filter((x) => ['FAILED', 'TIMED_OUT'].includes(x.status)).map((x) => x.source))],
     /* The adaptive search, as the owner may see it (stats is owner-readable;
        query_plan, which carries the economics, is not). */

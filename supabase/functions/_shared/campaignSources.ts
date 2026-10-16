@@ -117,7 +117,9 @@ export async function executeSourceJob(
   try {
     if (provider === 'TELEGRAM') {
       const { data } = await invokeFunction(baseUrl, serviceKey, 'community-sync',
-        { action: 'sync', source: 'campaign', maxTargets: 10, city: job.metadata?.city ?? null, trace }, 150_000);
+        { action: 'sync', source: 'campaign', maxTargets: 10, city: job.metadata?.city ?? null, trace,
+          /* Find Buyers reads the verified communities found for it too (Find Property unchanged). */
+          includeVerified: job.metadata?.direction === 'DEMAND' }, 150_000);
       if (data?.skipped) return cancelled(String(data.skipped));
       const failure = data?.integrationFailure as { kind?: string; detail?: string; retryAfterSeconds?: number | null } | null;
       if (failure?.kind) {

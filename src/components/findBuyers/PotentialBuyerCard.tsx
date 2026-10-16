@@ -64,16 +64,16 @@ export function PotentialBuyerCard({ lead, propertyId, placement, tenant }: {
     <article
       data-testid="fbx-lead-card" data-lead={lead.id} data-tab={placement.tab} data-verify={placement.needsVerification ? 'true' : 'false'}
       aria-label={t(kind.key)}
-      className="flex min-w-0 flex-col gap-1.5 rounded-2xl bg-white p-3 shadow-[0_8px_24px_-20px_hsl(218_60%_15%/0.5)] ring-1 ring-inset ring-[hsl(40_60%_84%)] transition-shadow hover:shadow-[0_14px_30px_-20px_hsl(218_60%_15%/0.6)] motion-reduce:transition-none"
+      className="flex min-w-0 flex-col gap-1 rounded-2xl bg-white p-3 shadow-[0_8px_24px_-20px_hsl(218_60%_15%/0.5)] ring-1 ring-inset ring-[hsl(40_60%_84%)] transition-shadow hover:shadow-[0_14px_30px_-20px_hsl(218_60%_15%/0.6)] motion-reduce:transition-none"
     >
       {/* line 1: where, who, when, evidence */}
-      <div className="flex min-w-0 items-center gap-2 text-2xs">
+      <div className="flex h-5 min-w-0 items-center gap-2 text-2xs leading-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white" style={{ backgroundColor: src.color }} title={src.label}>
           <src.Icon className="h-3 w-3" aria-hidden="true" />
           <span className="sr-only">{src.label}</span>
         </span>
         {lead.author_name ? null : <UserRound className={cn('h-3.5 w-3.5 shrink-0', INK_SOFT)} aria-hidden="true" />}
-        <p dir="auto" className={cn('min-w-0 flex-1 truncate text-sm font-semibold', INK)}>{who}</p>
+        <p dir="auto" className={cn('min-w-0 flex-1 truncate text-sm font-semibold leading-5', INK)}>{who}</p>
         {age ? <span className={cn('shrink-0 whitespace-nowrap', INK_SOFT)}>{age}</span> : null}
         {evidence > 0 ? (
           <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-[hsl(42_100%_95%)] px-1.5 py-px font-semibold tabular-nums text-[hsl(34_90%_30%)]"

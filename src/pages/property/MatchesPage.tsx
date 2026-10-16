@@ -964,13 +964,19 @@ function MatchesContent() {
   const jobRunning = Boolean(activeJobId);
   const moduleRef = React.useRef<HTMLDivElement | null>(null);
   const [moduleVisible, setModuleVisible] = useState(true);
+  /* The compact status pill stands in for the live status itself (elapsed, found, progress):
+     it appears once THAT block is scrolled away, not only when the last pixels of the whole
+     module are (a short results list left the status off screen with no pill). Without a
+     live search the whole module is watched. */
+  const hasLiveStatus = Boolean(campaignStatus?.campaign);
   useEffect(() => {
-    const el = moduleRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const root = moduleRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') return undefined;
+    const el = (root.querySelector('[data-testid="fbl-primary"]') as HTMLElement | null) ?? root;
     const io = new IntersectionObserver(([entry]) => setModuleVisible(entry.isIntersecting), { threshold: 0.05 });
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [hasLiveStatus]);
   /* After a start, once the server reports the search, bring the live module into view. */
   useEffect(() => {
     if (!revealLive.current || !moduleRef.current) return;

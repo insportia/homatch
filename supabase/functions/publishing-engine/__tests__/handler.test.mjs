@@ -32,7 +32,7 @@ function makeDb() {
       { id: PROP, user_id: OWNER, is_deleted: false, contact_phone_e164: '+995599111222' },
       { id: FOREIGN, user_id: OTHER, is_deleted: false, contact_phone_e164: null },
     ],
-    property_photos: [{ id: PHOTO, property_id: PROP }],
+    property_photos: [{ id: PHOTO, property_id: PROP, storage_path: `property-photos/${PROP}/a.jpg`, public_url: null }],
     impersonation_sessions: [{ id: 'i1', auth_session_id: IMPERSONATED_SESSION }],
     publishing_engine_listings: [], publishing_engine_versions: [], publishing_engine_jobs: [], publishing_engine_events: [],
     publishing_providers: ['myhome', 'ssge', 'placege', 'homege', 'brokeri', 'korter', 'binebi', 'allhome'].map((id, sort) => ({
@@ -40,6 +40,11 @@ function makeDb() {
       max_photos: id === 'myhome' ? 16 : null, description_max: null, required_fields: id === 'myhome' ? ['description.ka'] : [],
     })),
     publishing_provider_audit: [],
+    publishing_accounts: ['myhome', 'ssge', 'placege', 'homege', 'brokeri', 'korter', 'binebi', 'allhome'].map((portal_id) => ({
+      portal_id, status: 'NOT_CONFIGURED', connection_method: null, account_label: null, contact_phone: null, credential: null, credential_set_at: null,
+      session_expires_at: null, verified_at: null, verification_result: null, last_published_at: null, failure_count: 0, last_error: null, updated_at: null,
+    })),
+    publishing_account_audit: [],
   };
   const err = (message) => ({ data: null, error: { message } });
   const rpc = {
@@ -65,20 +70,21 @@ function makeDb() {
       const from = row?.status ?? null;
       if (!row) {
         if (p_revision !== -1) return err('REVISION_CONFLICT');
-        row = { id: `job-${p_portal}`, listing_id: p_listing, user_id: p_owner, portal_id: p_portal, revision: 0, status: p_set.status, listing_version: p_set.listing_version, external_id: null, external_url: null, check_attempts: 0, last_checked_at: null, next_check_at: null, published_at: null, last_error: null };
+        if (p_set.channel === 'HOMATCH_ACCOUNT' && !p_set.contact_consent_at) return err('publishing_engine_jobs_central_consent');
+        row = { id: `00000000-0000-4000-8000-${String(t.publishing_engine_jobs.length + 1).padStart(12, "0")}`, listing_id: p_listing, user_id: p_owner, portal_id: p_portal, revision: 0, status: p_set.status, channel: p_set.channel ?? 'OWNER_HANDOFF', contact_consent_at: p_set.contact_consent_at ?? null, listing_version: p_set.listing_version, external_id: null, external_url: null, check_attempts: 0, last_checked_at: null, next_check_at: null, published_at: null, last_error: null, status_reason: null, admin_claimed_by: null, admin_claimed_at: null };
         t.publishing_engine_jobs.push(row);
       } else {
         if (row.revision !== p_revision) return err('REVISION_CONFLICT');
         if (p_set.external_id && t.publishing_engine_jobs.some((j) => j !== row && j.portal_id === p_portal && j.external_id === p_set.external_id)) return err('EXTERNAL_LISTING_ALREADY_LINKED');
         Object.assign(row, p_set, { revision: row.revision + 1 });
       }
-      t.publishing_engine_events.push({ id: t.publishing_engine_events.length + 1, listing_id: p_listing, user_id: p_owner, kind: p_event.kind, portal_id: p_portal, from_status: from, to_status: row.status, created_at: String(Date.now()) });
+      t.publishing_engine_events.push({ id: t.publishing_engine_events.length + 1, listing_id: p_listing, publication_id: row.id, user_id: p_owner, kind: p_event.kind, portal_id: p_portal, from_status: from, to_status: row.status, detail: p_event.detail ?? {}, created_at: String(Date.now()) });
       return { data: row, error: null };
     },
     publishing_listing_lifecycle({ p_owner, p_listing, p_action }) {
       const row = t.publishing_engine_listings.find((l) => l.id === p_listing && l.user_id === p_owner);
       if (!row) return err('OWNED_RECORD_REQUIRED');
-      if (['ARCHIVE', 'DELETE'].includes(p_action) && t.publishing_engine_jobs.some((j) => j.listing_id === p_listing && ['VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'UNPUBLISH_REQUESTED'].includes(j.status))) return err('LIVE_PUBLICATIONS_EXIST');
+      if (['ARCHIVE', 'DELETE'].includes(p_action) && t.publishing_engine_jobs.some((j) => j.listing_id === p_listing && ['VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'UNPUBLISH_REQUESTED', 'QUEUED', 'PUBLISHING', 'ADMIN_ACTION_REQUIRED', 'AUTH_REQUIRED'].includes(j.status))) return err('LIVE_PUBLICATIONS_EXIST');
       if (p_action === 'DELETE') {
         for (const k of ['publishing_engine_events', 'publishing_engine_jobs', 'publishing_engine_versions']) t[k] = t[k].filter((r) => r.listing_id !== p_listing);
         t.publishing_engine_listings = t.publishing_engine_listings.filter((l) => l.id !== p_listing);
@@ -86,6 +92,30 @@ function makeDb() {
       }
       row.archived_at = p_action === 'ARCHIVE' ? 'now' : null;
       return { data: row, error: null };
+    },
+    // Mirrors 20261107090000 publishing_account_write: per-action key whitelist,
+    // verified statuses only from a TEST, the verified-status CHECK, credential never echoed.
+    publishing_account_write({ p_actor, p_portal, p_patch, p_action }) {
+      const allowed = {
+        REGISTER: ['status', 'connection_method', 'account_label', 'contact_phone', 'verification_result', 'last_error'],
+        UPDATE: ['status', 'connection_method', 'account_label', 'contact_phone', 'verification_result', 'last_error'],
+        CREDENTIAL_SET: ['credential', 'credential_set_at', 'status', 'verified_at', 'session_expires_at'],
+        TEST: ['status', 'verified_at', 'verification_result', 'session_expires_at', 'last_error', 'failure_count'],
+        DISCONNECT: ['status', 'connection_method', 'account_label', 'contact_phone', 'credential', 'credential_set_at', 'verified_at', 'session_expires_at', 'verification_result', 'last_error'],
+        ACTIVITY: ['last_published_at', 'failure_count', 'last_error'],
+      }[p_action];
+      if (!allowed) return err('INVALID_ACTION');
+      if (Object.keys(p_patch).some((k) => !allowed.includes(k))) return err('FIELD_NOT_EDITABLE');
+      if (!['TEST', 'CREDENTIAL_SET'].includes(p_action) && ['CONNECTED', 'PUBLISHING_AVAILABLE'].includes(p_patch.status)) return err('VERIFICATION_REQUIRED');
+      const row = t.publishing_accounts.find((r) => r.portal_id === p_portal);
+      if (!row) return err('PORTAL_UNKNOWN');
+      const next = { ...row, ...p_patch };
+      if (['CONNECTED', 'PUBLISHING_AVAILABLE'].includes(next.status) && !next.verified_at) return err('publishing_accounts_verified_status');
+      const { credential: _b, ...before } = row;
+      Object.assign(row, p_patch);
+      const { credential: _a, ...after } = row;
+      if (p_action !== 'ACTIVITY') t.publishing_account_audit.push({ id: t.publishing_account_audit.length + 1, portal_id: p_portal, actor: p_actor, action: p_action, before, after, created_at: 'now' });
+      return { data: after, error: null };
     },
     publishing_provider_update({ p_actor, p_provider, p_patch, p_action }) {
       const row = t.publishing_providers.find((r) => r.id === p_provider);
@@ -99,17 +129,23 @@ function makeDb() {
   const from = (table) => {
     const filters = [];
     const read = () => (t[table] ?? []).filter((row) => filters.every((f) => f(row)));
-    const failing = table === 'publishing_providers' && t.providersUnreadable;
+    const failing = (table === 'publishing_providers' && t.providersUnreadable) || (table === 'publishing_accounts' && t.accountsUnreadable);
+    // Column lists are honoured, so a test can prove a column is never selected.
+    const project = (row) => {
+      if (!row || !q.cols || q.cols === '*') return row ? { ...row } : row;
+      return Object.fromEntries(q.cols.split(',').map((c) => c.trim()).filter((c) => c in row).map((c) => [c, row[c]]));
+    };
     const q = {
-      select: () => q, order: () => q, limit: () => q,
+      select: (cols) => { q.cols = cols; return q; }, order: () => q, limit: () => q,
       eq: (k, v) => { filters.push((r) => r[k] === v); return q; },
       in: (k, vs) => { filters.push((r) => vs.includes(r[k])); return q; },
-      maybeSingle: async () => ({ data: read()[0] ?? null, error: null }),
-      then: (ok, ko) => Promise.resolve(failing ? { data: null, error: { code: '42P01', message: 'relation does not exist' } } : { data: read(), error: null }).then(ok, ko),
+      maybeSingle: async () => ({ data: project(read()[0] ?? null), error: null }),
+      then: (ok, ko) => Promise.resolve(failing ? { data: null, error: { code: '42P01', message: 'relation does not exist' } } : { data: read().map(project), error: null }).then(ok, ko),
     };
     return q;
   };
-  return { t, from, rpc: async (name, args) => rpc[name](args) };
+  const storage = { from: () => ({ createSignedUrl: async (path) => ({ data: { signedUrl: `https://signed.test/${path}` }, error: null }) }) };
+  return { t, from, storage, rpc: async (name, args) => rpc[name](args) };
 }
 
 let db, current;
@@ -123,7 +159,7 @@ globalThis.__createClient = (_url, key, opts) => {
       rpc: async (name) => (name === 'is_admin' ? { data: user === 'auth-admin', error: null } : { data: null, error: { message: 'unexpected' } }),
     };
   }
-  return { from: (t) => db.from(t), rpc: (n, a) => db.rpc(n, a) };
+  return { from: (t) => db.from(t), rpc: (n, a) => db.rpc(n, a), storage: db.storage };
 };
 const { handler } = await import('../index.ts');
 
@@ -395,7 +431,7 @@ test('an admin may retry a failed verification on the owner\'s behalf — and no
   await call('publication.link', { propertyId: PROP, portalId: 'ssge', externalUrl: url });
   const job = db.t.publishing_engine_jobs[0];
   assert.equal(job.status, 'VERIFICATION_FAILED');
-  assert.equal((await call('admin.publication.retry', { publicationId: job.id }, { who: 'admin' })).body.code, 'INVALID_ID');
+  assert.equal((await call('admin.publication.retry', { publicationId: 'job-ssge' }, { who: 'admin' })).body.code, 'INVALID_ID');
   job.id = '12121212-1212-4121-8121-121212121212';
   assert.equal((await call('admin.publication.retry', { publicationId: job.id })).status, 403, 'an owner is not an admin');
   const r = await call('admin.publication.retry', { publicationId: job.id }, { who: 'admin' });
@@ -403,4 +439,157 @@ test('an admin may retry a failed verification on the owner\'s behalf — and no
   assert.equal(job.status, 'VERIFYING');
   assert.ok(db.t.publishing_engine_events.some((e) => e.kind === 'RETRY_BY_ADMIN' && e.user_id === OWNER), 'history stays on the owner\'s listing');
   assert.equal((await call('admin.publication.retry', { publicationId: job.id }, { who: 'admin' })).body.code, 'NOT_FAILED');
+});
+
+/* ── The central engine: HOMATCH publishes through its own accounts ──────── */
+
+const ready = async () => { await call('listing.save', { propertyId: PROP, version: 0, listing: listing() }); };
+const registerAccount = (portalId, over = {}) => call('admin.account.save', { portalId, account: { accountLabel: `homatch@${portalId}`, contactPhone: '+995322000111', ...over } }, { who: 'admin' });
+
+test('publish to selected portals: consent required, per-portal results, nothing reported published', async () => {
+  fresh(); await ready();
+  assert.equal((await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'] })).body.code, 'CONTACT_CONSENT_REQUIRED');
+  assert.equal(db.t.publishing_engine_jobs.length, 0);
+  await registerAccount('myhome');
+  const r = await call('publication.publish', { propertyId: PROP, portalIds: ['myhome', 'ssge', 'zillow'], consent: true });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.results, [
+    { portalId: 'myhome', status: 'ADMIN_ACTION_REQUIRED' },
+    { portalId: 'ssge', status: 'AUTH_REQUIRED' },
+    { portalId: 'zillow', code: 'PORTAL_UNKNOWN' },
+  ]);
+  for (const j of db.t.publishing_engine_jobs) {
+    assert.equal(j.channel, 'HOMATCH_ACCOUNT');
+    assert.ok(j.contact_consent_at);
+    assert.equal(j.published_at, null);
+  }
+  // A double click is idempotent: no second job, no status change.
+  const again = await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true });
+  assert.deepEqual(again.body.results, [{ portalId: 'myhome', status: 'ADMIN_ACTION_REQUIRED' }]);
+  assert.equal(db.t.publishing_engine_jobs.length, 2);
+  // The customer sees which number HOMATCH listings show, never the account identity.
+  const myhome = r.body.portals.find((p) => p.id === 'myhome');
+  assert.equal(myhome.homatch.contactPhone, '+995322000111');
+  assert.equal(JSON.stringify(r.body).includes('homatch@myhome'), false);
+});
+
+test('publish needs the owner name and number for the footer', async () => {
+  fresh();
+  await call('listing.save', { propertyId: PROP, version: 0, listing: listing({ contactName: '' }) });
+  assert.equal((await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true })).body.code, 'OWNER_CONTACT_REQUIRED');
+});
+
+test('registering an account reroutes waiting publications; disconnecting sends them back to wait', async () => {
+  fresh(); await ready();
+  await call('publication.publish', { propertyId: PROP, portalIds: ['ssge'], consent: true });
+  assert.equal(db.t.publishing_engine_jobs[0].status, 'AUTH_REQUIRED');
+  const saved = await registerAccount('ssge');
+  assert.equal(saved.body.status, 'PUBLISHING_RESTRICTED');
+  assert.equal(saved.body.rerouted, 1);
+  assert.equal(db.t.publishing_engine_jobs[0].status, 'ADMIN_ACTION_REQUIRED');
+  await call('admin.account.disconnect', { portalId: 'ssge' }, { who: 'admin' });
+  assert.equal(db.t.publishing_engine_jobs[0].status, 'AUTH_REQUIRED');
+  assert.equal(db.t.publishing_accounts.find((a) => a.portal_id === 'ssge').status, 'NOT_CONFIGURED');
+  assert.deepEqual(db.t.publishing_account_audit.map((a) => a.action), ['REGISTER', 'DISCONNECT']);
+});
+
+test('accounts: admin only, never "connected" without a real verification, no credential stored or shown', async () => {
+  fresh();
+  assert.equal((await call('admin.accounts')).status, 403);
+  assert.equal((await registerAccount('myhome', {}, 'owner')).status, 200 /* admin call */);
+  assert.equal((await call('admin.account.save', { portalId: 'myhome', account: { accountLabel: 'x', contactPhone: '+995322000111' } })).status, 403);
+  const test1 = await call('admin.account.test', { portalId: 'myhome' }, { who: 'admin' });
+  assert.equal(test1.body.ok, false);
+  assert.equal(test1.body.result, 'CAPABILITY_NOT_SUPPORTED');
+  const acct = db.t.publishing_accounts.find((a) => a.portal_id === 'myhome');
+  assert.equal(acct.status, 'PUBLISHING_RESTRICTED');
+  assert.equal(acct.verified_at, null);
+  assert.equal(acct.verification_result, 'CAPABILITY_NOT_SUPPORTED');
+  // The database refuses a verified status from anything but a test.
+  assert.equal((await db.rpc('publishing_account_write', { p_actor: ADMIN, p_portal: 'myhome', p_action: 'UPDATE', p_patch: { status: 'CONNECTED' } })).error.message, 'VERIFICATION_REQUIRED');
+  assert.equal((await db.rpc('publishing_account_write', { p_actor: ADMIN, p_portal: 'myhome', p_action: 'TEST', p_patch: { status: 'CONNECTED' } })).error.message, 'publishing_accounts_verified_status');
+  // No verified mechanism would use a credential, so none is accepted.
+  const cred = await call('admin.account.credential', { portalId: 'myhome', secret: 'hunter2' }, { who: 'admin' });
+  assert.equal(cred.body.code, 'CREDENTIAL_NOT_ACCEPTED');
+  assert.equal(acct.credential, null);
+  const list = await call('admin.accounts', {}, { who: 'admin' });
+  assert.equal(list.status, 200);
+  assert.equal(list.body.accounts.length, 8);
+  assert.equal(JSON.stringify(list.body).includes('credential"'), false);
+  assert.equal(list.body.accounts.find((a) => a.portal.id === 'myhome').account.account_label, 'homatch@myhome');
+  assert.equal(list.body.accounts.every((a) => a.acceptsCredential === false), true);
+});
+
+test('the admin queue: claim, post by hand, link — published only after the public page check', async () => {
+  fresh(); await ready();
+  await registerAccount('myhome');
+  await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true });
+  assert.equal((await call('admin.queue')).status, 403);
+  const q = await call('admin.queue', {}, { who: 'admin' });
+  assert.equal(q.body.jobs.length, 1);
+  const job = q.body.jobs[0];
+  assert.equal(job.listing.title, 'Apartment in Vake');
+  assert.equal(JSON.stringify(q.body).includes('+995599111222'), false, 'no owner phone in the queue list');
+  // The job view: HOMATCH number for the contact field, the owner in the footer, once.
+  const view = await call('admin.job.get', { jobId: job.id }, { who: 'admin' });
+  assert.equal(view.body.copies.ka.contactPhone, '+995322000111');
+  assert.ok(view.body.copies.ka.description.endsWith('განცხადება გამოქვეყნებულია HOMATCH-ის მეშვეობით.'));
+  assert.equal(view.body.copies.ka.description.split('ქონების მფლობელი: Nino').length - 1, 1);
+  assert.equal(view.body.photos[0].url, `https://signed.test/${PROP}/a.jpg`);
+  assert.equal(JSON.stringify(view.body).includes('credential"'), false);
+  assert.equal((await call('admin.job.claim', { jobId: job.id }, { who: 'admin' })).body.job.status, 'PUBLISHING');
+  // The portal page does not show the listing yet: linked, still verifying, not published.
+  const url = 'https://www.myhome.ge/ka/pr/23456789/apartment';
+  pages.set('https://www.myhome.ge/ka/pr/23456789/apartment', { status: 200, body: '<html>search page</html>' });
+  const done = await call('admin.job.complete', { jobId: job.id, externalUrl: url }, { who: 'admin' });
+  assert.equal(done.body.job.status, 'VERIFYING');
+  assert.equal(done.body.job.published_at, null);
+  // Once the page carries the listing id, the check confirms it.
+  pages.set('https://www.myhome.ge/ka/pr/23456789/apartment', { status: 200, body: '<html>ID 23456789</html>' });
+  current = new Date(current.getTime() + 120_000);
+  await call('admin.job.check', { jobId: job.id }, { who: 'admin' });
+  const j = db.t.publishing_engine_jobs[0];
+  assert.equal(j.status, 'PUBLISHED');
+  assert.equal(j.external_id, '23456789');
+  assert.ok(db.t.publishing_engine_events.some((e) => e.kind === 'EXTERNAL_LISTING_LINKED' && e.detail.admin === ADMIN));
+  assert.ok(db.t.publishing_accounts.find((a) => a.portal_id === 'myhome').last_published_at);
+  // The owner cannot link or attest on HOMATCH's copy.
+  assert.equal((await call('publication.link', { propertyId: PROP, portalId: 'myhome', externalUrl: url })).body.code, 'HOMATCH_MANAGED');
+});
+
+test('rejections carry a reason the owner sees; the owner can withdraw before posting and republish after', async () => {
+  fresh(); await ready();
+  await registerAccount('placege');
+  await call('publication.publish', { propertyId: PROP, portalIds: ['placege'], consent: true });
+  const jobId = db.t.publishing_engine_jobs[0].id;
+  assert.equal((await call('admin.job.reject', { jobId, reason: '' }, { who: 'admin' })).body.code, 'REASON_REQUIRED');
+  await call('admin.job.reject', { jobId, reason: 'Portal moderation refused the photos' }, { who: 'admin' });
+  const seen = (await call('listing.get', { propertyId: PROP })).body.publications[0];
+  assert.equal(seen.status, 'REJECTED');
+  assert.equal(seen.status_reason, 'Portal moderation refused the photos');
+  assert.equal(db.t.publishing_accounts.find((a) => a.portal_id === 'placege').failure_count, 1);
+  await call('publication.publish', { propertyId: PROP, portalIds: ['placege'], consent: true });
+  assert.equal(db.t.publishing_engine_jobs[0].status, 'ADMIN_ACTION_REQUIRED');
+  await call('publication.unpublish', { propertyId: PROP, portalId: 'placege' });
+  assert.equal(db.t.publishing_engine_jobs[0].status, 'UNPUBLISHED');
+  assert.ok(db.t.publishing_engine_events.some((e) => e.kind === 'PUBLISH_WITHDRAWN'));
+});
+
+test('a queued publication blocks archiving; owner-confirmed portals are attested by the admin, never fetched', async () => {
+  fresh(); await ready();
+  await registerAccount('korter');
+  await call('publication.publish', { propertyId: PROP, portalIds: ['korter'], consent: true });
+  assert.equal((await call('listing.archive', { propertyId: PROP })).body.code, 'LIVE_PUBLICATIONS_EXIST');
+  const jobId = db.t.publishing_engine_jobs[0].id;
+  const r = await call('admin.job.complete', { jobId, externalUrl: 'https://korter.ge/en/project/4521' }, { who: 'admin' });
+  assert.equal(r.body.job.status, 'OWNER_CONFIRMED');
+  assert.equal(fetched.length, 0);
+  assert.ok(db.t.publishing_engine_events.some((e) => e.kind === 'PUBLICATION_ATTESTED_BY_ADMIN'));
+});
+
+test('the HOMATCH accounts being unreadable leaves publishing waiting, not failing', async () => {
+  fresh(); await ready();
+  db.t.accountsUnreadable = true;
+  const r = await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true });
+  assert.deepEqual(r.body.results, [{ portalId: 'myhome', status: 'AUTH_REQUIRED' }]);
 });

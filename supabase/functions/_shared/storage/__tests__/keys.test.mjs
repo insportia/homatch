@@ -227,6 +227,14 @@ function bucketsReferencedInSource() {
       for (const m of src.matchAll(/storage\s*\n?\s*\.from\(\s*['"]([a-z0-9-]+)['"]/g)) {
         found.add(m[1]);
       }
+      // Routed calls (storage/routed.ts) name the bucket as their first
+      // argument, or second after the database client on the server.
+      for (const m of src.matchAll(/\b(?:uploadRouted|signedRoutedUrl|removeRouted)\(\s*['"]([a-z0-9-]+)['"]/g)) {
+        found.add(m[1]);
+      }
+      for (const m of src.matchAll(/\b(?:readRouted|signRouted|writeRouted|removeRouted)\(\s*\w+\s*,\s*['"]([a-z0-9-]+)['"]/g)) {
+        found.add(m[1]);
+      }
     }
   };
   walk('src');
@@ -314,4 +322,32 @@ test('design-studio catalogue: the delivery class in the key decides who reads; 
     k('public', 'secrets'),
     k('public', 'models', 'a/b/c/d/e.jpg'),
   ]) assert.throws(() => parseKey(bad), KeyError, bad);
+});
+
+test('meta-ads-media keys hold exactly what the bucket accepts', () => {
+  const p = parseKey(`meta-ads-media/${ACC}/${ENT}.mp4`);
+  assert.equal(p.namespace, 'meta-ads-media');
+  assert.ok(checkContent(p, 'video/quicktime', 10 * 1024 * 1024).ok, 'quicktime is a bucket type');
+  assert.ok(checkContent(p, 'image/webp', 1024).ok);
+  assert.equal(checkContent(p, 'text/html', 10).reason, 'MIME_NOT_ALLOWED');
+  assert.equal(checkContent(p, 'video/mp4', 51 * 1024 * 1024).reason, 'TOO_LARGE', 'the bucket caps files at 50 MB');
+  // the nested shapes the product writes: covers/, ai/<job>/<n>.png, composed/
+  for (const rest of [`covers/${ENT}.jpg`, `ai/${ENT}/1.png`, `composed/${ENT}.png`]) {
+    assert.equal(parseKey(`meta-ads-media/${ACC}/${rest}`).rest, `${ACC}/${rest}`);
+  }
+  assert.throws(() => parseKey('meta-ads-media/not-a-uuid/x.png'), KeyError, 'scope must be the owner uuid');
+  assert.equal(keyForLegacyObject('meta-ads-media', `${ACC}/${ENT}.png`), `meta-ads-media/${ACC}/${ENT}.png`);
+});
+
+test('routed legacy namespaces accept what their Supabase bucket accepts', () => {
+  const dev = parseKey(`developer-documents/${ACC}/documents/${OBJ}.csv`);
+  assert.ok(checkContent(dev, 'text/csv', 1024).ok, 'developer CSV imports keep working on R2');
+  assert.ok(checkContent(dev, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 1024).ok);
+  assert.equal(checkContent(dev, 'video/mp4', 10).reason, 'MIME_NOT_ALLOWED');
+  const deal = parseKey(`deal-room-documents/${ACC}/${ENT}/${OBJ}.pdf`);
+  assert.ok(checkContent(deal, 'application/pdf', 1024).ok);
+  assert.ok(checkContent(deal, 'application/msword', 1024).ok);
+  const mort = parseKey(`mortgage-offer-documents/${ACC}/${OBJ}.pdf`);
+  assert.ok(checkContent(mort, 'application/pdf', 1024).ok);
+  assert.ok(checkContent(mort, 'image/webp', 1024).ok);
 });

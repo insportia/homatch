@@ -39,6 +39,7 @@ import {
 } from '../../../src/lib/metaAds/payload.ts';
 import { CLAIM_FLAG, claimText, claimFingerprint, approvedClaim, openClaimCase, type ModerationCaseRow } from '../../../src/lib/metaAds/moderation.ts';
 import { classifyDomainScope, domainFingerprint, DOMAIN_CASE_REASON, type DomainVerdict } from '../../../src/lib/metaAds/domainScope.ts';
+import { readRouted, signRouted } from '../_shared/storage/routed.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
   REQUIRED_SCOPES_BY_GOAL, INSTANT_FORM_SCOPES, type MetaMode,
@@ -654,9 +655,10 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
       let videoId: string | null = null;
       let thumbnailUrl: string | null = null;
       if (isVideo) {
-        const { data: signed } = await sb.storage.from('meta-ads-media').createSignedUrl(m0.path, 3600);
-        if (!signed?.signedUrl) throw new MetaApiError(500, { error: { message: 'MEDIA_UNAVAILABLE', code: 100 } });
-        const v = await uploadVideo(acct.external_id, signed.signedUrl, { token, audit: auditCtx });
+        // R2 first, Supabase Storage for a file that was never copied (_shared/storage/routed.ts).
+        const signed = await signRouted(sb, 'meta-ads-media', m0.path, 3600);
+        if (!signed?.url) throw new MetaApiError(500, { error: { message: 'MEDIA_UNAVAILABLE', code: 100 } });
+        const v = await uploadVideo(acct.external_id, signed.url, { token, audit: auditCtx });
         videoId = v.videoId;
         thumbnailUrl = v.thumbnailUrl;
         /* The cover the customer chose (a frame they picked, or HOMATCH's pick) —
@@ -664,17 +666,17 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
            Sent as the thumbnail's image_hash in place of Meta's own frame. */
         const coverPath = typeof m0.cover?.path === 'string' && m0.cover.path.startsWith(`${uid}/`) ? m0.cover.path : null;
         if (coverPath) {
-          const { data: cov } = await sb.storage.from('meta-ads-media').download(coverPath);
+          const cov = await readRouted(sb, 'meta-ads-media', coverPath);
           if (cov) {
-            imageHash = await uploadImage(acct.external_id, new Uint8Array(await cov.arrayBuffer()), coverPath.split('/').pop() ?? 'cover.jpg', { token, audit: auditCtx });
+            imageHash = await uploadImage(acct.external_id, cov.bytes, coverPath.split('/').pop() ?? 'cover.jpg', { token, audit: auditCtx });
             thumbnailUrl = null;
           }
         }
         if (!v.ready || (!thumbnailUrl && !imageHash)) throw new MetaApiError(400, { error: { message: 'VIDEO_STILL_PROCESSING', code: 2 } });
       } else {
-        const { data: blob } = await sb.storage.from('meta-ads-media').download(m0.path);
+        const blob = await readRouted(sb, 'meta-ads-media', m0.path);
         if (!blob) throw new MetaApiError(500, { error: { message: 'MEDIA_UNAVAILABLE', code: 100 } });
-        imageHash = await uploadImage(acct.external_id, new Uint8Array(await blob.arrayBuffer()), m0.path.split('/').pop() ?? 'image', { token, audit: auditCtx });
+        imageHash = await uploadImage(acct.external_id, blob.bytes, m0.path.split('/').pop() ?? 'image', { token, audit: auditCtx });
       }
       launchCreatives.set(cr.id, {
         id: cr.id, kind: isVideo ? 'VIDEO' : 'IMAGE', imageHash, videoId, thumbnailUrl,

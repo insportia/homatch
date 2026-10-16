@@ -4,6 +4,7 @@
 import type { BriefUnderstanding } from '@/lib/metaAds/audienceGuide';
 import type { ComposeSpec } from '@/lib/metaAds/creativeLayout';
 import { supabase } from '@/db/supabase';
+import { removeRouted, signedRoutedUrl, uploadRouted } from '@/services/storage/routed';
 
 const FN = 'meta-ads-api';
 
@@ -308,8 +309,7 @@ export async function addCreative(userId: string, campaignId: string, file: File
   const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp'
     : file.type === 'video/quicktime' ? 'mov' : file.type.startsWith('video') ? 'mp4' : 'jpg';
   const path = `${userId}/${crypto.randomUUID()}.${ext}`;
-  const { error: upErr } = await supabase.storage.from('meta-ads-media')
-    .upload(path, file, { contentType: file.type, upsert: false });
+  const { error: upErr } = await uploadRouted('meta-ads-media', path, file, { contentType: file.type });
   if (upErr) throw upErr;
   const { data, error } = await supabase.from('meta_creatives').insert({
     user_id: userId, campaign_id: campaignId, sort,
@@ -323,7 +323,7 @@ export async function addCreative(userId: string, campaignId: string, file: File
   }).select('*').single();
   if (error) {
     // Never leave an orphaned file when the row could not be written.
-    await supabase.storage.from('meta-ads-media').remove([path]).catch(() => undefined);
+    await removeRouted('meta-ads-media', [path]).catch(() => undefined);
     throw error;
   }
   return data as MetaCreativeRow;
@@ -356,19 +356,18 @@ export async function saveVideoCover(userId: string, creative: MetaCreativeRow, 
   const m0 = creative.media[0];
   if (!m0) throw new Error('media');
   const path = `${userId}/covers/${crypto.randomUUID()}.jpg`;
-  const { error: upErr } = await supabase.storage.from('meta-ads-media').upload(path, still, { contentType: 'image/jpeg', upsert: false });
+  const { error: upErr } = await uploadRouted('meta-ads-media', path, still, { contentType: 'image/jpeg' });
   if (upErr) throw upErr;
   const media = [{ ...m0, cover: { path, t: Math.round(t * 100) / 100, auto } }, ...creative.media.slice(1)];
   const { error } = await supabase.from('meta_creatives').update({ media }).eq('id', creative.id);
-  if (error) { await supabase.storage.from('meta-ads-media').remove([path]).catch(() => undefined); throw error; }
-  if (m0.cover?.path) void supabase.storage.from('meta-ads-media').remove([m0.cover.path]).catch(() => undefined);
+  if (error) { await removeRouted('meta-ads-media', [path]).catch(() => undefined); throw error; }
+  if (m0.cover?.path) void removeRouted('meta-ads-media', [m0.cover.path]).catch(() => undefined);
   return { ...creative, media };
 }
 
 export async function creativeMediaUrl(path: string): Promise<string> {
-  const { data, error } = await supabase.storage.from('meta-ads-media').createSignedUrl(path, 3600);
-  if (error || !data?.signedUrl) throw (error ?? new Error('media'));
-  return data.signedUrl;
+  // R2 first, Supabase Storage for a file that was never copied (storage/routed.ts).
+  return signedRoutedUrl('meta-ads-media', path, 3600);
 }
 
 /* ── HOMATCH AI CREATIVES (explicit, cached, billed — meta-ads-api/creativeAi.ts) ── */

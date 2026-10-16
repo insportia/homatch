@@ -154,6 +154,12 @@ serve(async (req) => {
           p_provider: 'R2', p_bucket: 'homatch-storage', p_key: objectKey,
         });
         if (!blockErr && blocked === true) return json({ error: 'EXPIRED' }, 410);
+        // A routed reader (services/storage/routed.ts) asks for a URL only if
+        // the object is really in R2, so it can fall back to Supabase Storage
+        // for a file that was never copied. A presigned GET does not check.
+        if (body.requireExists === true && !(await headObject(objectKey)).exists) {
+          return json({ error: 'NOT_FOUND' }, 404);
+        }
       }
     }
     if (op === 'sign') {
@@ -173,7 +179,10 @@ serve(async (req) => {
           namespace: parsed.namespace,
           category: parsed.category ?? parsed.namespace,
           object_key: objectKey,
-          owner_user_id: parsed.accountId,
+          // meta-ads-media keys begin with the writer's users.id, which
+          // storage_authorize has just matched to the caller.
+          owner_user_id: parsed.accountId
+            ?? (parsed.namespace === 'meta-ads-media' ? parsed.rest.split('/')[0] : null),
           entity_type: parsed.entityType,
           entity_id: parsed.entityId,
           purpose: typeof body.purpose === 'string' ? body.purpose.slice(0, 64) : null,

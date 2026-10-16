@@ -37,6 +37,7 @@ import {
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AdminRetentionPanel } from '@/components/retention/AdminRetentionPanel';
+import { StorageInventoryPanel } from '@/components/storage/StorageInventoryPanel';
 import { toast } from 'sonner';
 import {
   Kpi, KpiRow, LoadingBlock, EmptyState, ErrorState, ScrollTable,
@@ -328,6 +329,8 @@ export default function AdminStoragePage() {
           </CardContent>
         </Card>
       )}
+
+      <StorageInventoryPanel />
 
       <AdminRetentionPanel />
 

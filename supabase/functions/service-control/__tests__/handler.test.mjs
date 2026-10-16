@@ -6,12 +6,19 @@ import assert from 'node:assert/strict';
 globalThis.Deno = { env: { get: () => undefined } };
 const { handler } = await import('../index.ts');
 
-const KEYS = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'];
+const SIX = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'];
+// The live products added by the expansion (migration 20261110090000), seeded ON as in production.
+const LIVE = ['find_property', 'find_property_deep', 'find_buyers', 'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
+  'meta_ads', 'email_campaigns', 'ai_assistant', 'brokers_directory', 'broker_desk', 'developers'];
+const KEYS = [...SIX, ...LIVE];
 const SECRET_VALUE = 'sk-live-super-secret-value';
 
 function world({ admin = true, secrets = {}, killTelephony = true } = {}) {
   const t = {
-    service_controls: KEYS.map((k) => ({ service_key: k, frontend_enabled: false, backend_enabled: false, version: 1, reason: 'Initial state', updated_by: null, updated_at: 'then' })),
+    service_controls: KEYS.map((k) => {
+      const on = LIVE.includes(k);
+      return { service_key: k, frontend_enabled: on, backend_enabled: on, version: 1, reason: 'Initial state', updated_by: null, updated_at: 'then' };
+    }),
     admin_audit_log: [],
     users: [{ id: 'u-admin', auth_id: 'auth-admin', full_name: 'Owner', email: 'o@h.test' }],
     admin_settings: [{ key: 'ai_talk_enabled', value: true }],
@@ -44,10 +51,16 @@ function world({ admin = true, secrets = {}, killTelephony = true } = {}) {
       t.admin_audit_log.push({ admin_id: 'u-admin', action: 'SERVICE_CONTROL_SET', entity_type: 'service_controls', entity_id: p_key, metadata: { result, request_id: p_request_id }, created_at: 'now' });
       return { data: { result, control: { ...row } }, error: null };
     },
+    // Same reach as the SQL: the original six only.
     service_control_pause_all() {
-      const changed = t.service_controls.filter((r) => r.backend_enabled || r.frontend_enabled).map((r) => r.service_key);
-      for (const r of t.service_controls) Object.assign(r, { frontend_enabled: false, backend_enabled: false });
+      const six = t.service_controls.filter((r) => SIX.includes(r.service_key));
+      const changed = six.filter((r) => r.backend_enabled || r.frontend_enabled).map((r) => r.service_key);
+      for (const r of six) Object.assign(r, { frontend_enabled: false, backend_enabled: false });
       return { data: { result: changed.length ? 'CHANGED' : 'UNCHANGED', changed }, error: null };
+    },
+    service_control_pause_group({ p_group, p_confirm }) {
+      t.pauseGroupCalls = [...(t.pauseGroupCalls ?? []), { p_group, p_confirm }];
+      return { data: { result: 'CHANGED', group: p_group, changed: [] }, error: null };
     },
   };
   const caller = (authorization) => ({
@@ -72,15 +85,20 @@ test('only an administrator, from the HOMATCH origin, with a valid session', asy
   assert.equal(customer.body.code, 'ADMIN_REQUIRED');
   assert.equal((await call(w, 'set', { service: 'ai_talk', frontend: false, backend: true, expectedVersion: 1 }, 'customer')).status, 403);
   assert.equal((await call(w, 'pause_all', {}, 'customer')).status, 403);
-  assert.equal(w.t.service_controls.every((r) => !r.backend_enabled), true, 'nothing changed for a non-admin');
+  assert.equal(w.t.service_controls.every((r) => r.backend_enabled === LIVE.includes(r.service_key) && r.version === 1), true, 'nothing changed for a non-admin');
 });
 
-test('overview: six services, effective state, readiness by NAME, never a secret value', async () => {
+test('overview: every service, effective state, readiness by NAME, never a secret value', async () => {
   const w = world();
   const r = await call(w, 'overview');
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.services.map((s) => s.key), KEYS);
-  assert.ok(r.body.services.every((s) => s.effective === 'PAUSED' && s.frontend === false && s.backend === false));
+  const six = r.body.services.filter((s) => SIX.includes(s.key));
+  assert.ok(six.every((s) => s.effective === 'PAUSED' && s.frontend === false && s.backend === false && s.failMode === 'CLOSED'), 'the six stay paused and fail closed');
+  const live = r.body.services.filter((s) => LIVE.includes(s.key));
+  assert.ok(live.every((s) => s.frontend === true && s.backend === true && s.failMode === 'OPEN'), 'the live products are on and fail open');
+  assert.equal(r.body.services.find((s) => s.key === 'verify').group, 'intelligence');
+  assert.equal(r.body.services.find((s) => s.key === 'meta_ads').group, 'marketing');
   const talk = r.body.services.find((s) => s.key === 'ai_talk');
   assert.equal(talk.readiness.ready, true);
   const calls = r.body.services.find((s) => s.key === 'ai_call_center');
@@ -125,7 +143,36 @@ test('pause all switches off only the six and reports what changed; bad input is
   Object.assign(w.t.service_controls.find((x) => x.service_key === 'live_chat'), { backend_enabled: true, frontend_enabled: true });
   const r = await call(w, 'pause_all', { reason: 'owner pause', requestId: 'req-bbbbbbbb' });
   assert.deepEqual(r.body, { result: 'CHANGED', changed: ['live_chat'] });
-  assert.equal((await call(w, 'set', { service: 'find_property', frontend: false, backend: false, expectedVersion: 1 })).body.code, 'SERVICE_UNKNOWN');
+  assert.ok(LIVE.every((k) => w.t.service_controls.find((x) => x.service_key === k).backend_enabled), 'pause all never reaches a live product');
+  assert.equal((await call(w, 'set', { service: 'billing', frontend: false, backend: false, expectedVersion: 1 })).body.code, 'SERVICE_UNKNOWN');
   assert.equal((await call(w, 'set', { service: 'ai_talk', frontend: 'yes', backend: false, expectedVersion: 1 })).body.code, 'INVALID_ARGUMENT');
   assert.equal((await call(w, 'nope')).body.code, 'UNKNOWN_ACTION');
+});
+
+test('group pause: one known group, the group name typed as confirmation, never a global switch', async () => {
+  const w = world();
+  assert.equal((await call(w, 'pause_group', { group: 'marketing' })).body.code, 'CONFIRMATION_REQUIRED');
+  assert.equal((await call(w, 'pause_group', { group: 'marketing', confirm: 'yes' })).body.code, 'CONFIRMATION_REQUIRED');
+  assert.equal((await call(w, 'pause_group', { group: 'everything', confirm: 'everything' })).body.code, 'GROUP_UNKNOWN');
+  assert.equal((await call(w, 'pause_group', { group: 'other', confirm: 'other' })).body.code, 'GROUP_UNKNOWN');
+  assert.equal((await call(w, 'pause_group', { group: 'marketing', confirm: 'marketing' }, 'customer')).status, 403);
+  assert.equal(w.t.pauseGroupCalls, undefined, 'nothing reached the database before a valid confirmation');
+  const ok = await call(w, 'pause_group', { group: 'marketing', confirm: 'marketing', reason: 'drill', requestId: 'req-cccccccc' });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(w.t.pauseGroupCalls, [{ p_group: 'marketing', p_confirm: 'marketing' }], 'the confirmation is passed through for the database to check again');
+});
+
+test('readiness for a live product names its own switches as notes, never as blockers', async () => {
+  const { readiness } = await import('../readiness.ts');
+  const facts = { secrets: { OPENAI_API_KEY: true, APIFY_API_TOKEN: true }, r2Configured: true,
+    tables: { discovery_runs: true, outreach_campaigns: true },
+    settings: { find_property_social_enabled: false, provider_disabled_list: '["DATAFORSEO"]', outreach_email_sending_enabled: false },
+    routes: [], products: [] };
+  const deep = readiness('find_property_deep', facts);
+  assert.equal(deep.ready, true, 'a dormant own setting does not block');
+  assert.ok(deep.notes.includes('FIND_PROPERTY_SOCIAL_SETTING_OFF'));
+  const email = readiness('email_campaigns', facts);
+  assert.equal(email.ready, true);
+  assert.ok(email.notes.includes('EMAIL_SENDING_SETTING_OFF'));
+  assert.equal(readiness('verify', { ...facts, secrets: {} }).ready, false, 'Verify cannot run without its AI key');
 });

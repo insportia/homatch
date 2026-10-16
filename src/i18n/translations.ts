@@ -19594,6 +19594,9 @@ const en = {
   pubw_event_automation_handed_to_admin: 'Handed to a HOMATCH specialist',
   pubw_event_automation_needs_session: 'Waiting for the HOMATCH account to sign in again',
   pubw_event_removed_by_automation: 'Removed from the portal by HOMATCH',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_publishing_setup_pending: 'Publishing through HOMATCH accounts is being set up and is not available yet. You can still publish yourself with the prepared copy.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -39102,6 +39105,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'გადაეცა HOMATCH-ის სპეციალისტს',
   pubw_event_automation_needs_session: 'ელოდება HOMATCH-ის ანგარიშზე ხელახლა შესვლას',
   pubw_event_removed_by_automation: 'HOMATCH-მა მოხსნა პორტალიდან',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_publishing_setup_pending: 'HOMATCH-ის ანგარიშებით გამოქვეყნება ჯერ მზადდება და ჯერ არ არის ხელმისაწვდომი. შეგიძლიათ თავად გამოაქვეყნოთ მომზადებული ტექსტით.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -58601,6 +58607,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'Передано специалисту HOMATCH',
   pubw_event_automation_needs_session: 'Ждёт повторного входа в аккаунт HOMATCH',
   pubw_event_removed_by_automation: 'Снято с портала HOMATCH',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_publishing_setup_pending: 'Публикация через аккаунты HOMATCH ещё настраивается и пока недоступна. Вы можете опубликовать сами с подготовленным текстом.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -78098,6 +78107,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'Bir HOMATCH uzmanına devredildi',
   pubw_event_automation_needs_session: 'HOMATCH hesabının yeniden girişi bekleniyor',
   pubw_event_removed_by_automation: 'HOMATCH tarafından portaldan kaldırıldı',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_publishing_setup_pending: 'HOMATCH hesaplarıyla yayın henüz kuruluyor ve şu an kullanılamıyor. Hazırlanan metinle kendiniz yayınlayabilirsiniz.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -97595,6 +97607,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'سُلّم إلى مختص من HOMATCH',
   pubw_event_automation_needs_session: 'بانتظار تسجيل دخول حساب HOMATCH مجددًا',
   pubw_event_removed_by_automation: 'أزاله HOMATCH من البوابة',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_publishing_setup_pending: 'النشر عبر حسابات HOMATCH قيد الإعداد وغير متاح بعد. يمكنك النشر بنفسك باستخدام النص المُعدّ.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -117092,6 +117107,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   pubw_event_automation_handed_to_admin: 'הועבר למומחה של HOMATCH',
   pubw_event_automation_needs_session: 'ממתין להתחברות מחדש של חשבון HOMATCH',
   pubw_event_removed_by_automation: 'הוסר מהפורטל על ידי HOMATCH',
+
+  /* ── PUBLISH TO PORTALS — the standalone publishing workspace (/publishing) ── */
+  pubw_err_publishing_setup_pending: 'פרסום דרך חשבונות HOMATCH עדיין בהקמה ואינו זמין כרגע. אפשר לפרסם בעצמכם עם הנוסח שהוכן.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

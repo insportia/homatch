@@ -140,6 +140,12 @@ function makeDb() {
   const from = (table) => {
     const filters = [];
     const read = () => (t[table] ?? []).filter((row) => filters.every((f) => f(row)));
+    // t.v1Schema: production before migration 20261108090000 — no central tables, and
+    // the jobs table without its central columns (a select naming one is error 42703).
+    const CENTRAL_TABLES = ['publishing_accounts', 'publishing_account_sessions', 'publishing_account_audit', 'publishing_operations', 'publishing_artifacts'];
+    const CENTRAL_COLUMNS = ['channel', 'contact_consent_at', 'status_reason', 'admin_claimed_at', 'admin_claimed_by'];
+    const v1Missing = () => t.v1Schema && (CENTRAL_TABLES.includes(table)
+      || (table === 'publishing_engine_jobs' && String(q.cols || '').split(',').some((c) => CENTRAL_COLUMNS.includes(c.trim()))));
     const failing = (table === 'publishing_providers' && t.providersUnreadable) || (table === 'publishing_accounts' && t.accountsUnreadable);
     // Column lists are honoured, so a test can prove a column is never selected.
     const project = (row) => {
@@ -150,9 +156,9 @@ function makeDb() {
       select: (cols) => { q.cols = cols; return q; }, order: () => q, limit: () => q,
       eq: (k, v) => { filters.push((r) => r[k] === v); return q; },
       in: (k, vs) => { filters.push((r) => vs.includes(r[k])); return q; },
-      maybeSingle: async () => ({ data: project(read()[0] ?? null), error: null }),
+      maybeSingle: async () => (v1Missing() ? { data: null, error: { code: '42703', message: 'column does not exist' } } : { data: project(read()[0] ?? null), error: null }),
       upsert: async (row) => { const list = (t[table] ??= []); const at = list.findIndex((r) => r.portal_id === row.portal_id); if (at >= 0) list[at] = row; else list.push(row); return { error: null }; },
-      then: (ok, ko) => Promise.resolve(failing ? { data: null, error: { code: '42P01', message: 'relation does not exist' } } : { data: read().map(project), error: null }).then(ok, ko),
+      then: (ok, ko) => Promise.resolve(v1Missing() ? { data: null, error: { code: '42703', message: 'column does not exist' } } : failing ? { data: null, error: { code: '42P01', message: 'relation does not exist' } } : { data: read().map(project), error: null }).then(ok, ko),
     };
     return q;
   };
@@ -249,6 +255,35 @@ test('prepare requires a ready listing and is idempotent', async () => {
   assert.equal(b.status, 200);
   assert.equal(db.t.publishing_engine_jobs.length, 1);
   assert.equal(db.t.publishing_engine_jobs[0].status, 'HANDOFF_READY');
+});
+
+test('before the central migration: the v1 owner-handoff workspace works unchanged and everything central answers PUBLISHING_SETUP_PENDING', async () => {
+  fresh();
+  db.t.v1Schema = true;
+  const ops = () => db.t.publishing_operations.length;
+  const opsBefore = ops();
+  assert.equal((await call('listing.save', { propertyId: PROP, version: 0, listing: listing() })).status, 200);
+  const prep = await call('publication.prepare', { propertyId: PROP, portalId: 'myhome' });
+  assert.equal(prep.status, 200);
+  assert.equal(prep.body.publications[0].status, 'HANDOFF_READY');
+  assert.equal(prep.body.publications[0].channel, 'OWNER_HANDOFF');
+  const myhome = 'https://www.myhome.ge/ka/pr/18234567/iyideba-bina';
+  pages.set(myhome, { status: 200, body: '<script>{"statement_id":18234567}</script>' });
+  const linked = await call('publication.link', { propertyId: PROP, portalId: 'myhome', externalUrl: myhome });
+  assert.equal(linked.status, 200);
+  assert.equal(linked.body.publications[0].status, 'PUBLISHED');
+  const ws = await call('workspace');
+  assert.equal(ws.status, 200);
+  assert.equal(ws.body.publications.length, 1);
+  // An edit of a published listing never reaches for operations that do not exist yet.
+  assert.equal((await call('listing.save', { propertyId: PROP, version: 1, listing: listing({ price: 140000 }) })).status, 200);
+  assert.equal(ops(), opsBefore);
+  for (const [action, who] of [['publication.publish', 'owner'], ['publication.cancel', 'owner'], ['admin.accounts', 'admin'], ['admin.queue', 'admin'], ['admin.operations', 'admin'], ['admin.account.automation', 'admin']]) {
+    const r = await call(action, { propertyId: PROP, portalIds: ['myhome'], portalId: 'myhome' }, { who });
+    assert.equal(r.status, 503, action);
+    assert.deepEqual(r.body, { code: 'PUBLISHING_SETUP_PENDING' }, action);
+  }
+  assert.equal(db.t.publishing_engine_jobs.every((j) => ['HANDOFF_READY', 'VERIFYING', 'PUBLISHED', 'OWNER_CONFIRMED', 'VERIFICATION_FAILED', 'UNPUBLISH_REQUESTED', 'UNPUBLISHED', 'REMOVED_EXTERNALLY'].includes(j.status)), true, 'only the 8 v1 statuses are written');
 });
 
 test('PUBLISHED only after the public page proves the listing; partial success is kept per portal', async () => {

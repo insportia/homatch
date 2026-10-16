@@ -38,6 +38,15 @@ const PROVIDER_COLUMNS = 'id,enabled,sort,create_url,logo_url,verification,max_p
 const fail = (code: string): never => { throw new Error(code); };
 const PUBLICATION_COLUMNS = 'id,listing_id,portal_id,status,channel,revision,external_id,external_url,listing_version,check_attempts,last_checked_at,next_check_at,published_at,last_error,contact_consent_at,status_reason,admin_claimed_at,created_at,updated_at';
 const ADMIN_JOB_COLUMNS = `${PUBLICATION_COLUMNS},user_id,admin_claimed_by`;
+/**
+ * Before migration 20261108090000 is applied, production has only the v1 jobs
+ * table: no channel / consent / reason / claim columns, the 8 v1 statuses, no
+ * accounts or operations. The engine then serves the v1 owner-handoff workspace
+ * unchanged and answers PUBLISHING_SETUP_PENDING for everything central.
+ */
+const V1_PUBLICATION_COLUMNS = 'id,listing_id,portal_id,status,revision,external_id,external_url,listing_version,check_attempts,last_checked_at,next_check_at,published_at,last_error,created_at,updated_at';
+const V1_DEFAULTS = { channel: 'OWNER_HANDOFF', contact_consent_at: null, status_reason: null, admin_claimed_at: null };
+const CENTRAL_ONLY = new Set(['publication.publish', 'publication.cancel', 'admin.accounts', 'admin.account.save', 'admin.account.test', 'admin.account.credential', 'admin.account.disconnect', 'admin.account.session', 'admin.account.automation', 'admin.operations', 'admin.queue', 'admin.job.get', 'admin.job.claim', 'admin.job.release', 'admin.job.complete', 'admin.job.reject', 'admin.job.fail', 'admin.job.confirmRemoved', 'admin.job.markUpdated', 'admin.job.check']);
 /** Statuses the admin action queue shows by default: everything waiting on a person at HOMATCH. */
 const QUEUE_STATUSES = ['ADMIN_ACTION_REQUIRED', 'PUBLISHING', 'AUTH_REQUIRED', 'UNPUBLISH_REQUESTED', 'VERIFICATION_FAILED', 'QUEUED'];
 
@@ -69,6 +78,12 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
     input = JSON.parse(raw || '{}');
   } catch { return reply({ code: 'INVALID_JSON' }, 400); }
   const action = String(input?.action || '');
+  // Is the central schema there? One column probe; any error means "not yet".
+  const { error: schemaError } = await db.from('publishing_engine_jobs').select('channel').limit(1);
+  const central = !schemaError;
+  if (!central && CENTRAL_ONLY.has(action)) return reply({ code: 'PUBLISHING_SETUP_PENDING' }, 503);
+  const pubCols = central ? PUBLICATION_COLUMNS : V1_PUBLICATION_COLUMNS;
+  const v1 = <T,>(row: T): T => (central || !row ? row : { ...V1_DEFAULTS, ...row });
   if (!READS.has(action)) {
     const refused = await refuseIfImpersonating(db, auth, headers);
     if (refused) return refused;
@@ -113,8 +128,8 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
     return data ?? fail('LISTING_NOT_FOUND');
   };
   const publicationFor = async (listingId: string, portalId: string) => {
-    const { data } = await db.from('publishing_engine_jobs').select(PUBLICATION_COLUMNS).eq('listing_id', listingId).eq('portal_id', portalId).eq('user_id', owner.id).maybeSingle();
-    return data as (Publication & { id: string; portal_id: PortalId }) | null;
+    const { data } = await db.from('publishing_engine_jobs').select(pubCols).eq('listing_id', listingId).eq('portal_id', portalId).eq('user_id', owner.id).maybeSingle();
+    return v1(data) as (Publication & { id: string; portal_id: PortalId }) | null;
   };
   const write = async (listingId: string, portalId: PortalId, current: Publication | null, cmd: Command) => {
     const next = transition(current, cmd, deps.now());
@@ -135,10 +150,11 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
   };
   const detail = async (listingId: string) => {
     const listing = await ownedListing(listingId);
-    const [{ data: publications }, { data: events }] = await Promise.all([
-      db.from('publishing_engine_jobs').select(PUBLICATION_COLUMNS).eq('listing_id', listingId).eq('user_id', owner.id),
+    const [{ data: pubRows }, { data: events }] = await Promise.all([
+      db.from('publishing_engine_jobs').select(pubCols).eq('listing_id', listingId).eq('user_id', owner.id),
       db.from('publishing_engine_events').select('id,kind,portal_id,from_status,to_status,detail,created_at').eq('listing_id', listingId).eq('user_id', owner.id).order('created_at', { ascending: false }).limit(100),
     ]);
+    const publications = (pubRows ?? []).map(v1);
     // Real progress from the backend worker: the latest operation per publication (stage and status only).
     const ids = (publications ?? []).filter((p: any) => p.channel === 'HOMATCH_ACCOUNT').map((p: any) => p.id);
     const { data: ops } = ids.length
@@ -146,7 +162,7 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
       : { data: [] as any[] };
     const latest = new Map<string, unknown>();
     for (const o of ops ?? []) if (!latest.has(o.publication_id)) latest.set(o.publication_id, o);
-    return { portals: customerRegistry(), listing: { ...listing, validation: validateListing(normalizeListing(listing.payload), providers) }, publications: publications ?? [], events: events ?? [], operations: [...latest.values()] };
+    return { portals: customerRegistry(), listing: { ...listing, validation: validateListing(normalizeListing(listing.payload), providers) }, publications, events: events ?? [], operations: [...latest.values()] };
   };
 
   const adminJob = async (id: unknown) => {
@@ -198,13 +214,13 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
       case 'workspace': {
         const [{ data: listings, error: le }, { data: publications, error: pe }] = await Promise.all([
           db.from('publishing_engine_listings').select('id,version,status,payload,archived_at,created_at,updated_at').eq('user_id', owner.id).order('updated_at', { ascending: false }).limit(500),
-          db.from('publishing_engine_jobs').select(PUBLICATION_COLUMNS).eq('user_id', owner.id).limit(2000),
+          db.from('publishing_engine_jobs').select(pubCols).eq('user_id', owner.id).limit(2000),
         ]);
         if (le || pe) fail('WORKSPACE_READ_FAILED');
         return reply({
           portals: customerRegistry(),
           listings: (listings ?? []).map((l) => ({ ...l, validation: validateListing(normalizeListing(l.payload), providers) })),
-          publications: publications ?? [],
+          publications: (publications ?? []).map(v1),
         });
       }
       case 'listing.get':
@@ -231,7 +247,7 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
         // through the browser worker where that operation is supported; otherwise the
         // admin queue shows the copy as outdated.
         const kind = syncKind((before?.payload ?? null) as Record<string, unknown> | null, listing as unknown as Record<string, unknown>);
-        if (kind && saved && before) {
+        if (central && kind && saved && before) {
           const { data: live } = await db.from('publishing_engine_jobs').select('id,portal_id,revision,status,channel').eq('listing_id', property.id).eq('channel', 'HOMATCH_ACCOUNT').in('status', ['PUBLISHED', 'OWNER_CONFIRMED']);
           for (const pub of live ?? []) {
             if (validation.portals[pub.portal_id]?.length) continue;
@@ -675,7 +691,8 @@ export async function handler(req: Request, deps: { fetchPage: typeof fetchListi
         // the owner has, recorded with the admin as its source. Never anything else.
         await requireAdmin();
         if (!UUID.test(String(input.publicationId || ''))) fail('INVALID_ID');
-        const { data: job } = await db.from('publishing_engine_jobs').select(`${PUBLICATION_COLUMNS},user_id`).eq('id', input.publicationId).maybeSingle();
+        const { data: row } = await db.from('publishing_engine_jobs').select(`${pubCols},user_id`).eq('id', input.publicationId).maybeSingle();
+        const job = v1(row);
         if (!job) fail('PUBLICATION_NOT_FOUND');
         const next = transition(job as Publication, { type: 'RETRY' }, deps.now());
         if ('error' in next) fail(next.error);

@@ -1638,7 +1638,7 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   - The MyHome engine's own 0-result issue in Verify is resolved by using the runtime's page reader. Production proof is still pending.
   - Developer website and Facebook renders need written rights from the developer.
 
-## Find Property HTML portal workers (PR #210, 2026-10-15) — BUILT, NOT DEPLOYED
+## Find Property HTML portal workers (PR #210 + #221) — DEPLOYED, LIVE 2026-10-16
 
 - Code: `official-worker/src/marketplace/portals/` (shared `acquire.mjs` loop:
   robots.txt, pacing, 2-page cap, BLOCKED on 401/403/429/challenge, no retry
@@ -1659,8 +1659,18 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   Place 1 / 1 (district unstated), Allhome 0 / 0, Brokeri 0.
 - Districts: strict worker-side check (`portals/places.mjs`); Home.ge narrows by
   slug; Place.ge ignores district parameters server-side (probed), so post-read only.
-- To activate (owner approval): apply the migration; deploy the 3 edge functions +
-  frontend; Railway `homatch-official-worker` env `<PREFIX>_WORKER_TOKEN` +
-  `<PREFIX>_MARKETPLACE_ENABLED=true` (PLACEGE/HOMEGE/BROKERI/ALLHOME) with the
-  token hash in `discovery_marketplace_workers.token_hash`; set the row
-  ACTIVE + enabled and the admin switch on, one portal at a time.
+- Production (2026-10-16): #210 merged `fd54bf3`, #221 merged `eff8216`. Migrations
+  applied (ledger `property_knowledge_cache`, `find_property_portal_workers`); edge
+  homatch-ai / marketplace-search / marketplace-worker-ingest PROVEN_EXACT
+  (refs/deployed/edge → eff8216); Vercel READY on www.homatch.live; Railway
+  `homatch-official-worker` deployment a4167298 (commit fd54bf3, worker unchanged since).
+- Enabled: Place.ge, Home.ge, Allhome.ge (row ACTIVE + enabled, token hash, Railway
+  `<PREFIX>_WORKER_TOKEN` + `_MARKETPLACE_ENABLED=true`, admin switch on).
+  Brokeri.ge stays registered PROVEN + disabled (catalogue older than the 30-day policy).
+- Production E2E (GitHub runner → www.homatch.live, dedicated test accounts, all
+  suspended afterwards): search b4454c5c (sale) — MyHome 48, SS.ge 236+, Home.ge 42,
+  Place.ge 30, Allhome 7 listings, all in range and correct deal; b6902b8b (rent) —
+  shown SS.ge 241, MyHome 48, Home.ge 35, Place.ge 25, Allhome 2; 645ba0d0
+  (Krtsanisi/Ortachala) with Place.ge deliberately unauthorised — others delivered,
+  search PARTIAL_COMPLETE, Place run TIMED_OUT; SS.ge FAILED on that district request
+  (see KNOWN_RISKS). Six locales on 390px, ar/he RTL, 0 px overflow.

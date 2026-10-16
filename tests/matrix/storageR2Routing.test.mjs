@@ -60,3 +60,13 @@ test('no routed bucket is read or signed from Supabase Storage directly any more
   const ai = readFileSync('supabase/functions/meta-ads-api/creativeAi.ts', 'utf8');
   assert.ok(!/storage\.from\(BUCKET\)/.test(ai), 'creativeAi still uses Supabase Storage directly');
 });
+
+test('a browser read never renders nothing: a missing URL or any signer failure falls back to Supabase', () => {
+  const src = readFileSync('src/services/storage/routed.ts', 'utf8');
+  const fn = src.slice(src.indexOf('export async function signedRoutedUrl'), src.indexOf('export async function removeRouted'));
+  // Found in CI (mobile:meta-ads): a signer answering 200 with no url made a creative render as nothing.
+  assert.match(fn, /if \(typeof url === 'string' && url\.length > 0\) return url;/);
+  assert.match(fn, /\} catch \{/, 'every signer failure falls through');
+  assert.match(fn, /supabase\.storage\.from\(bucket\)\s*\.createSignedUrl\(path, expiresIn/);
+  assert.ok(!/throw e;/.test(fn), 'no signer error escapes before the Supabase fallback');
+});

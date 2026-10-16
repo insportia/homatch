@@ -62,11 +62,13 @@ export async function signedRoutedUrl(
     const { url } = await signedReadUrl(routedKey(bucket, path), {
       expiresIn: Math.min(expiresIn, 900), downloadAs: downloadName, requireExists: true,
     });
-    return url;
-  } catch (e) {
+    // Only a real URL counts: a malformed answer from the signer falls back
+    // rather than handing the caller something that renders as nothing.
+    if (typeof url === 'string' && url.length > 0) return url;
+  } catch {
     // NOT_FOUND: not in R2 (never copied). Anything else (R2 unavailable,
-    // signer down): Supabase Storage is still the source of truth for it.
-    if (!(e instanceof StorageError)) throw e;
+    // signer down, network): Supabase Storage, under its own policies, is
+    // still the source of truth for it.
   }
   const { data, error } = await supabase.storage.from(bucket)
     .createSignedUrl(path, expiresIn, opts.downloadAs ? { download: opts.downloadAs } : undefined);

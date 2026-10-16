@@ -206,7 +206,8 @@ test('a buyer can only reach a document on their own token', () => {
     path.join(ROOT, 'supabase/functions/developer-buyer-document/index.ts'), 'utf8',
   );
   assert.match(edge, /rpc\('dev_buyer_room_document'/);
-  assert.match(edge, /createSignedUrl\(path, SIGNED_URL_SECONDS\)/);
+  // R2-first with Supabase fallback (20261107090000); still only the SQL path.
+  assert.match(edge, /signRouted\(admin, DOCUMENT_BUCKET, path, SIGNED_URL_SECONDS\)/);
   assert.ok(!/body\?\.(path|storagePath)/.test(edge),
     'the caller cannot name a storage path');
 });

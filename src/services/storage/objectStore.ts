@@ -85,7 +85,7 @@ export async function storageConfigured(): Promise<boolean> {
  * header rather than in the key.
  */
 export async function signedReadUrl(
-  key: string, options?: { expiresIn?: number; downloadAs?: string },
+  key: string, options?: { expiresIn?: number; downloadAs?: string; requireExists?: boolean },
 ): Promise<{ url: string; expiresAt: string }> {
   const res = await callSigner<SignResponse>({
     op: 'sign',
@@ -93,6 +93,8 @@ export async function signedReadUrl(
     key,
     expiresIn: options?.expiresIn,
     downloadAs: options?.downloadAs,
+    // NOT_FOUND instead of a URL that would 404 (routed readers fall back).
+    requireExists: options?.requireExists,
   });
   return { url: res.url, expiresAt: res.expiresAt };
 }

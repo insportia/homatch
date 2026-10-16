@@ -15,9 +15,10 @@
 
 import { run, runList, supabase, rpc } from './client';
 import type { DevDocument, DocumentType, DocumentExtraction } from './types';
+import { signedRoutedUrl, uploadRouted } from '@/services/storage/routed';
 
 export const MEDIA_BUCKET = 'developer-media';
-export const DOCUMENT_BUCKET = 'developer-documents';
+export const DOCUMENT_BUCKET = 'developer-documents' as const;
 
 /** Twenty-five megabytes, matching the bucket, checked before the upload starts. */
 export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
@@ -77,9 +78,13 @@ async function uploadTo(
   }
 
   const path = `${workspaceId}/${folder}/${randomKey()}.${safeExtension(file.name, file.type)}`;
-  const { error } = await supabase.storage.from(bucket).upload(path, file, {
-    cacheControl: '3600', upsert: false, contentType: file.type,
-  });
+  // Private documents follow the bucket's R2 switch (services/storage/routed.ts);
+  // marketing media stays in its public Supabase bucket (live pages link to it).
+  const { error } = bucket === DOCUMENT_BUCKET
+    ? await uploadRouted(DOCUMENT_BUCKET, path, file, { contentType: file.type, originalFilename: file.name })
+    : await supabase.storage.from(bucket).upload(path, file, {
+      cacheControl: '3600', upsert: false, contentType: file.type,
+    });
   if (error) {
     const { toDevError } = await import('./client');
     throw toDevError(error, { op: 'upload', subjectId: workspaceId });
@@ -175,13 +180,13 @@ export async function listReviewQueue(workspaceId: string): Promise<DevDocument[
  * before it arrives.
  */
 export async function signedDocumentUrl(storagePath: string, seconds = 60): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from(DOCUMENT_BUCKET).createSignedUrl(storagePath, seconds);
-  if (error) {
+  // R2 first, Supabase Storage for a file that was never copied (storage/routed.ts).
+  try {
+    return await signedRoutedUrl(DOCUMENT_BUCKET, storagePath, seconds);
+  } catch (error) {
     const { toDevError } = await import('./client');
-    throw toDevError(error, { op: 'signedDocumentUrl' });
+    throw toDevError(error instanceof Error ? error : new Error(String(error)), { op: 'signedDocumentUrl' });
   }
-  return data.signedUrl;
 }
 
 export async function updateDocument(

@@ -5,6 +5,7 @@
 // Supabase; every number shown to a user is produced by
 // src/mortgage/calculations (DETERMINISTIC MATH ONLY, see that folder).
 import { supabase } from '@/db/supabase';
+import { uploadRouted } from '@/services/storage/routed';
 import type { ReferenceRateRuleData } from '@/mortgage/rules/subsidy';
 import type {
   MortgageRule,
@@ -273,9 +274,16 @@ export async function saveMortgageOffer(params: {
   return mapOfferRow(data as MortgageOfferRow);
 }
 
+const OFFER_EXT: Record<string, string> = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+
 export async function uploadMortgageOfferDocument(userId: string, file: File): Promise<string | null> {
-  const path = `${userId}/${Date.now()}_${file.name}`;
-  const { error } = await supabase.storage.from('mortgage-offer-documents').upload(path, file);
+  // An opaque name: the customer's own filename never goes into a storage key
+  // (keys end up in logs and dashboards). R2 or Supabase per the bucket's
+  // switch (services/storage/routed.ts).
+  const path = `${userId}/${crypto.randomUUID()}.${OFFER_EXT[file.type] ?? 'bin'}`;
+  const { error } = await uploadRouted('mortgage-offer-documents', path, file, {
+    contentType: file.type, originalFilename: file.name,
+  });
   if (error) {
     console.error('mortgageApi.uploadMortgageOfferDocument failed', error);
     return null;

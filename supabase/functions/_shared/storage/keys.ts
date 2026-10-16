@@ -83,6 +83,19 @@ const MEDIA: ContentPolicy = {
   maxBytes: 200 * MB,
 };
 const AUDIO: ContentPolicy = { mime: ['audio/'], maxBytes: 50 * MB };
+// Meta Ads creatives: exactly what the meta-ads-media bucket accepts (its
+// allowed_mime_types and 50 MB file_size_limit), so a creative routed to R2 is
+// held to the same rule as one written to Supabase Storage.
+// Developer workspace documents: what the developer-documents bucket accepts
+// (incl. CSV and spreadsheets), so a document routed to R2 keeps working.
+const DEV_DOCUMENTS: ContentPolicy = {
+  mime: [...DOCUMENT.mime, 'text/csv', 'image/jpg'],
+  maxBytes: 25 * MB,
+};
+const META_ADS_MEDIA: ContentPolicy = {
+  mime: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'],
+  maxBytes: 50 * MB,
+};
 // HOMATCH Design Studio. A customer floor plan (drawing or PDF), a customer
 // 3D model (glTF only: other formats would need a conversion service that
 // does not exist), and small version thumbnails.
@@ -202,7 +215,7 @@ export const NAMESPACES: Record<string, NamespaceRules> = {
   },
   'developer-documents': {
     legacyBucket: 'developer-documents', shape: 'WORKSPACE',
-    READ: AUTHED, WRITE: AUTHED, DELETE: AUTHED, content: DOCUMENT,
+    READ: AUTHED, WRITE: AUTHED, DELETE: AUTHED, content: DEV_DOCUMENTS,
   },
   'developer-media': {
     legacyBucket: 'developer-media', shape: 'WORKSPACE',
@@ -224,7 +237,7 @@ export const NAMESPACES: Record<string, NamespaceRules> = {
   },
   'meta-ads-media': {
     legacyBucket: 'meta-ads-media', shape: 'OWNER',
-    READ: AUTHED, WRITE: AUTHED, DELETE: AUTHED, content: MEDIA,
+    READ: AUTHED, WRITE: AUTHED, DELETE: AUTHED, content: META_ADS_MEDIA,
     note: 'Ad creatives, sender-prefixed (userId/uuid.ext). Private bucket; '
       + 'the live storage policies bind INSERT to the owner prefix and '
       + 'SELECT to owner-or-admin, and the bucket itself caps files at 50MB '

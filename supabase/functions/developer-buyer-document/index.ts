@@ -23,6 +23,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { signRouted } from '../_shared/storage/routed.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,7 +31,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const DOCUMENT_BUCKET = 'developer-documents';
+const DOCUMENT_BUCKET = 'developer-documents' as const;
 // Long enough to start a download on a slow phone, short enough that a URL
 // pasted into a group chat has stopped working by the time anyone opens it.
 const SIGNED_URL_SECONDS = 120;
@@ -91,13 +92,13 @@ serve(async (req) => {
     return json({ error: 'NOT_FOUND' }, 404);
   }
 
-  const signed = await admin.storage.from(DOCUMENT_BUCKET)
-    .createSignedUrl(path, SIGNED_URL_SECONDS);
+  // R2 first, Supabase Storage for a file that was never copied (_shared/storage/routed.ts).
+  const signed = await signRouted(admin, DOCUMENT_BUCKET, path, SIGNED_URL_SECONDS);
 
-  if (signed.error || !signed.data?.signedUrl) {
-    console.error('developer-buyer-document: sign failed', signed.error?.message);
+  if (!signed?.url) {
+    console.error('developer-buyer-document: sign failed');
     return json({ error: 'UNAVAILABLE' }, 503);
   }
 
-  return json({ url: signed.data.signedUrl, expires_in: SIGNED_URL_SECONDS });
+  return json({ url: signed.url, expires_in: SIGNED_URL_SECONDS });
 });

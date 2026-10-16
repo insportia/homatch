@@ -361,5 +361,7 @@ test('video: a real player with controls, a chosen cover, and the cover sent to 
   assert.match(svc, /covers\/\$\{crypto\.randomUUID\(\)\}\.jpg/);
   const eng = read('supabase/functions/meta-ads-api/engine.ts');
   assert.match(eng, /m0\.cover\?\.path/);
-  assert.match(eng, /imageHash = await uploadImage\(acct\.external_id, new Uint8Array\(await cov\.arrayBuffer\(\)\)/);
+  // The cover still: read R2-first (20261107090000), its bytes sent as the thumbnail.
+  assert.match(eng, /const cov = await readRouted\(sb, 'meta-ads-media', coverPath\)/);
+  assert.match(eng, /imageHash = await uploadImage\(acct\.external_id, cov\.bytes/);
 });

@@ -47,12 +47,13 @@ import { CREATIVE_ENGINE_VERSION, normalizeSpec } from '../../../src/lib/metaAds
 import type { ExecutionGrant } from '../_shared/billing.ts';
 import { estimatedProviderCost } from '../_shared/providerCost.ts';
 import { scrubText } from '../_shared/metaAds.ts';
+import { readRouted, signRouted, writeRouted } from '../_shared/storage/routed.ts';
 import type { ActionCtx } from './actions.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 type Sb = any;
-const BUCKET = 'meta-ads-media';
+const BUCKET = 'meta-ads-media' as const;
 const PRODUCT = 'META_AD_IMAGE_GEN';
 const IMAGE_MODEL = Deno.env.get('OPENAI_META_IMAGE_MODEL') || 'gpt-image-1';
 const VISION_MODEL = Deno.env.get('OPENAI_META_CREATIVE_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
@@ -127,16 +128,15 @@ async function contextOf(sb: Sb, uid: string, cr: any, locale: string): Promise<
   return ctx;
 }
 
+// R2 first, Supabase Storage for a file that was never copied (_shared/storage/routed.ts).
 async function download(sb: Sb, path: string): Promise<Uint8Array | null> {
-  const { data, error } = await sb.storage.from(BUCKET).download(path);
-  if (error || !data) return null;
-  const buf = new Uint8Array(await data.arrayBuffer());
-  return buf.length && buf.length <= MAX_SOURCE_BYTES ? buf : null;
+  const got = await readRouted(sb, BUCKET, path);
+  if (!got) return null;
+  return got.bytes.length && got.bytes.length <= MAX_SOURCE_BYTES ? got.bytes : null;
 }
 
 async function signed(sb: Sb, path: string): Promise<string | null> {
-  const { data } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
-  return data?.signedUrl ?? null;
+  return (await signRouted(sb, BUCKET, path, 3600))?.url ?? null;
 }
 
 /** The customer-safe view of a job: no prompt, no reservation id, no provider detail. */
@@ -307,7 +307,7 @@ async function exportComposite(sb: Sb, uid: string, src: ComposeSource, spec: un
   if (!composed.composition.ok) return { error: 'COMPOSITION_INVALID' as const, record: composed.record };
   const out = await exportPng(composed);
   const path = `${uid}/composed/${crypto.randomUUID()}.png`;
-  const { error } = await sb.storage.from(BUCKET).upload(path, out.png, { contentType: 'image/png', upsert: false });
+  const { error } = await writeRouted(sb, BUCKET, path, out.png, 'image/png', { ownerUserId: uid });
   if (error) return { error: 'SAVE_FAILED' as const };
   return {
     media: {
@@ -380,7 +380,7 @@ async function runGeneration(sb: Sb, args: {
     for (const g of good) {
       const index = images.length + 1;
       const path = `${uid}/ai/${jobId}/${index}.png`;
-      const { error } = await sb.storage.from(BUCKET).upload(path, g.bytes, { contentType: 'image/png', upsert: false });
+      const { error } = await writeRouted(sb, BUCKET, path, g.bytes, 'image/png', { ownerUserId: uid });
       if (error) continue;
       images.push({ index, path, width: w, height: h, size: g.bytes.length, layout: g.layout, textArtifacts: g.textArtifacts });
       usage.inputTokens += g.inTok; usage.outputTokens += g.outTok; usage.estimated ||= g.estimated;

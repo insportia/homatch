@@ -57,7 +57,7 @@ try {
   await shot(page, '02-new');
   await page.locator('textarea').first().fill('I want to buy an apartment in Tbilisi, 50 to 120 m², budget $80,000 to $200,000.');
   await page.locator('form button[type="submit"]').first().click();
-  const start = page.getByRole('button', { name: 'Start search', exact: true });
+  const start = page.locator('[data-action="mps-start"]');
   const answered = [];
   for (let q = 0; q < 6; q++) {
     await start.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
@@ -65,12 +65,10 @@ try {
     // Answer the follow-up the way a Scenario A user would: rooms are not part of the scenario, so 2–3 is
     // chosen when the UI insists (recorded); an "any / doesn't matter / skip" choice is preferred when offered.
     let clicked = null;
-    for (const name of [/^(any|doesn't matter|skip|not important)$/i, /^2 rooms$/i, /^3 rooms$/i]) {
+    for (const name of [/^(any|any number|doesn.t matter|no preference|skip|not important)$/i, /^2 rooms$/i]) {
       const b = page.getByRole('button', { name }).first();
       if (await b.isVisible().catch(() => false)) { await b.click(); clicked = String(name); break; }
     }
-    const ok = page.getByRole('button', { name: 'OK', exact: true });
-    if (await ok.isVisible().catch(() => false)) await ok.click();
     answered.push(clicked);
     if (!clicked) break;
     await page.waitForTimeout(3000);

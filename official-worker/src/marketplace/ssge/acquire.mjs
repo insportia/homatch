@@ -6,7 +6,19 @@ import { compareDetail, validateCriteria } from './vendor/validation.mjs';
 import { verifyIndividualPage } from './vendor/page-proof.mjs';
 import { ssgeCriteria, ssgeCandidate } from './mapping.mjs';
 
-export async function acquireSsge(request, { deadlineAt, signal, report, client, fetcher, sleep = ms => delay(ms, undefined, { signal }), verifyPage = verifyIndividualPage } = {}) {
+/*
+ * Owner decision (2026-10-16): SS.ge reads ONLY its first 3 result pages (16 cards
+ * each). Production search 72050455 read 21 pages / 696 actions in 12.7 minutes and
+ * ran into the 15-minute deadline while the next search's SS.ge run sat QUEUED. Each
+ * page costs one search request plus, per card, a 500 ms pause, one detail request
+ * and one individual-page proof (~36 s per page in production), so a capped run is
+ * ~2 minutes. Reaching the cap is a normal completion reported like the portals
+ * (PAGE_CAP_REACHED + pagesRead), never a failure.
+ */
+export const SSGE_PAGE_CAP = 3;
+
+export async function acquireSsge(request, { deadlineAt, signal, report, client, fetcher, sleep = ms => delay(ms, undefined, { signal }), verifyPage = verifyIndividualPage, pageCap = SSGE_PAGE_CAP } = {}) {
+  if (!Number.isInteger(pageCap) || pageCap < 1 || pageCap > SSGE_PAGE_CAP) throw Error('Invalid SS.ge page cap');
   const started = Date.now(), deadline = Date.parse(deadlineAt);
   let pagesVisited = 0, discoveredCount = 0, delivered = 0, rejected = 0, stop = null, actions = 0;
   const errors = [], queryApplied = { acquisition: 'SSGE_ACCEPTED_STANDALONE_HTTP2' };
@@ -33,7 +45,7 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
     const criteria = ssgeCriteria(request, source.locations);
     queryApplied.criteria = JSON.stringify(criteria);
     if (criteria.districtFallback) queryApplied.districtFallback = `city read; SS.ge does not resolve: ${criteria.districtFallback.join(', ')}`;
-    for await (const page of new SsgeAdapter({ client: source }).search(criteria, { retries: 0, onStop: value => { stop = value; } })) {
+    for await (const page of new SsgeAdapter({ client: source }).search(criteria, { retries: 0, maxPages: pageCap, onStop: value => { stop = value; } })) {
       remaining(); pagesVisited++;
       discoveredCount = Math.max(discoveredCount, page.total ?? 0);
       rejected += page.excluded.length;
@@ -55,7 +67,12 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
       if (candidates.length) await emit('RESULTS_RECEIVED', candidates);
       await sleep(500);
     }
-    const complete = ['last-page', 'total-count'].includes(stop?.reason) || stop?.reason === 'empty-page' && discoveredCount === 0;
+    queryApplied.pagesRead = String(pagesVisited);
+    queryApplied.pageCap = String(pageCap);
+    // paginate() reports 'safety-limit' exactly when maxPages (the cap) was read in full.
+    const capped = stop?.reason === 'safety-limit';
+    const complete = capped || ['last-page', 'total-count'].includes(stop?.reason) || stop?.reason === 'empty-page' && discoveredCount === 0;
+    if (capped) errors.push({ code: 'PAGE_CAP_REACHED', message: `SS.ge: first ${pagesVisited} result pages read` });
     if (!complete) errors.push({ code: 'PAGINATION_INCOMPLETE', message: `SS.ge traversal stopped: ${stop?.reason ?? 'unknown'}` });
     if (rejected) errors.push({ code: 'SOURCE_RECORDS_REJECTED', message: `${rejected} source records failed identity, detail or criteria checks` });
     const status = complete && !rejected ? 'COMPLETE' : 'PARTIAL';

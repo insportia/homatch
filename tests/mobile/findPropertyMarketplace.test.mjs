@@ -611,15 +611,18 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await shot(page, 'ka-1440-confirm');
 
   await page.getByRole('button', { name: 'გაგრძელება' }).click();
-  for (const s of ['უფასო ძიება', 'ვრცელი ძიება', 'MyHome.ge']) assert.ok((await page.textContent('main')).includes(s), `mode step shows ${s}`);
+  { const modeText = await page.textContent('main'); for (const s of ['უფასო ძიება', 'ვრცელი ძიება', 'უძრავი ქონების საიტ']) assert.ok(modeText.includes(s), `mode step shows ${s}: ${modeText.slice(0, 600)}`); }
+  assert.ok(!(await page.textContent('main')).includes('MyHome.ge'), 'the mode step never names the sites');
   await shot(page, 'ka-1440-mode');
   await page.getByRole('button', { name: 'ძიების დაწყება' }).click();
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
   assert.ok(state.calls.includes('start'));
   const searching = await page.textContent('main');
-  for (const s of ['ვეძებთ', 'ვეძებთ მიმდინარე განცხადებებს', 'HOMATCH-ის წევრები']) {
+  for (const s of ['ვეძებთ', 'ვეძებთ მიმდინარე განცხადებებს']) {
     assert.ok(searching.includes(s), s);
   }
+  // While a search runs the sites are never named (owner, 2026-10-16).
+  assert.doesNotMatch(searching, /MyHome|SS\.ge|Home\.ge|Place\.ge|Allhome/, 'no site names while searching');
   assert.ok(!searching.includes('ითამაშე სანამ HOMATCH ეძებს'), 'the old Snake text block is gone');
   assert.doesNotMatch(searching, /\d+%/, 'no percentage is shown');
   await page.locator('[data-discovery-field]').waitFor();

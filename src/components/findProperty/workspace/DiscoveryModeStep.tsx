@@ -8,7 +8,7 @@
  * (credits) and their wallet balance. Provider costs and margins never appear.
  * While Deep Search is switched off it says so and cannot be chosen.
  */
-import { Check, CircleSlash, Facebook, Instagram, Layers, Loader2, Lock, Send, Telescope, Wallet } from 'lucide-react';
+import { Check, CircleSlash, Layers, Loader2, Lock, Telescope, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,9 +16,6 @@ import { getCreditAccount } from '@/services/api';
 import type { T } from '../format';
 import { btn, cx, Eyebrow, Pill } from './primitives';
 
-const NETWORKS = [
-  { key: 'facebook', Icon: Facebook }, { key: 'instagram', Icon: Instagram }, { key: 'telegram', Icon: Send }, { key: 'vk', Icon: Telescope },
-] as const;
 export const DEEP_PRESETS = [50, 100, 300, 1000];
 export const DEEP_MIN_CREDITS = 50;
 const CREDITS_PER_USD = 10;
@@ -65,7 +62,7 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
           </div>
           <ul className="space-y-2 text-sm">
             <Li>{t('fpx_free_inc_homatch')}</Li>
-            <Li>{activeSources ? t('fpx_free_inc_portals_n', { n: activeSources }) : t('fpx_free_inc_portals')}</Li>
+            <Li>{activeSources ? t('fpv_sites_n', { n: activeSources }) : t('fpv_sites_generic')}</Li>
             <Li>{t('fpx_free_inc_dedupe')}</Li>
           </ul>
           {sourceNames.length ? (
@@ -73,7 +70,8 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
               <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('fpx_live_sources')}</p>
               <ul className="flex flex-wrap gap-1.5" data-live-sources>
                 <li className="rounded-full bg-[#0C1119] px-2.5 py-1 text-xs font-semibold text-white">HOMATCH</li>
-                {sourceNames.map((name) => <li key={name} dir="ltr" className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-semibold text-foreground">{name}</li>)}
+                {/* The sites are never named before or during a search (owner, 2026-10-16); only how many. */}
+                <li className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-semibold text-foreground" data-live-source-count={sourceNames.length}>{t('fpv_sites_n', { n: sourceNames.length })}</li>
               </ul>
             </div>
           ) : null}
@@ -95,11 +93,6 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
             <p className="flex flex-wrap items-center gap-2 font-display text-xl font-semibold">{t('fpx_deep_title')}<span className="rounded-full bg-[hsl(var(--gold)/0.18)] px-2 py-0.5 text-xs font-semibold text-[hsl(var(--gold))]">{t('fpx_deep_from')}</span></p>
             <p className="text-sm leading-relaxed text-white/75">{t('fpx_deep_body')}</p>
           </div>
-          <ul className="relative flex flex-wrap gap-2" aria-label={t('fpi_paid_networks')}>
-            {NETWORKS.map(({ key, Icon }) => (
-              <li key={key} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold"><Icon className="h-3.5 w-3.5 text-[hsl(var(--gold))]" aria-hidden="true" />{t(`fpi_network_${key}`)}</li>
-            ))}
-          </ul>
           <ul className="relative space-y-1.5 text-xs leading-relaxed text-white/70">
             <li>{t('fpx_deep_finds')}</li>
             <li>{t('fpx_deep_charge')}</li>

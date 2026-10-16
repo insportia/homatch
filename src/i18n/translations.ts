@@ -20094,7 +20094,7 @@ const en = {
   fpv_sum_consider: 'Fits on {{list}}. One difference: {{miss}}',
   fpv_sum_upgrade: 'A little above your budget, with more to offer: {{list}}.',
   fpv_sum_upgrade_plain: 'A little above your budget, with more to offer.',
-  fpv_verdict_TOP: 'Great match',
+  fpv_verdict_TOP: 'Best match',
   fpv_verdict_GOOD: 'Good match',
   fpv_verdict_CONSIDER: 'Worth a look',
   fpv_verdict_UPGRADE: 'Slightly above budget',
@@ -20133,6 +20133,28 @@ const en = {
   fpv_sources_nav: 'Property sites',
   fpv_all_sources: 'All sources',
   fpv_and: 'and',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_quick_views: 'Quick views',
+  fpv_best_cta: 'Best matches ({{n}})',
+  fpv_dups_cta: 'Possible duplicates ({{n}})',
+  fpv_best_title: 'Your best matches',
+  fpv_best_body: 'These homes fit everything you asked for and were checked recently.',
+  fpv_dups_title: 'Homes that may be listed twice',
+  fpv_dups_body: 'Each home is shown together with the listings that look like the same flat, so you can compare prices and choose.',
+  fpv_all_results: 'All results',
+  fpv_filter_best: 'Best matches only',
+  fpv_filter_dups: 'Possible duplicates',
+  fpv_play_sub: 'A short game while we search',
+  fpv_stop_confirm: 'Stop this search?',
+  fpv_stop_yes: 'Yes, stop',
+  fpv_keep_searching: 'Keep searching',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} property sites',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'Georgia\'s leading property sites',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40141,7 +40163,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpv_sum_consider: 'ემთხვევა: {{list}}. ერთი განსხვავება: {{miss}}',
   fpv_sum_upgrade: 'ბიუჯეტზე ოდნავ ძვირია, მაგრამ მეტს გთავაზობთ: {{list}}.',
   fpv_sum_upgrade_plain: 'ბიუჯეტზე ოდნავ ძვირია, მაგრამ მეტს გთავაზობთ.',
-  fpv_verdict_TOP: 'ძალიან კარგი დამთხვევა',
+  fpv_verdict_TOP: 'საუკეთესო დამთხვევა',
   fpv_verdict_GOOD: 'კარგი დამთხვევა',
   fpv_verdict_CONSIDER: 'ღირს ნახვა',
   fpv_verdict_UPGRADE: 'ბიუჯეტზე ოდნავ ძვირი',
@@ -40180,6 +40202,28 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'საიტები',
   fpv_all_sources: 'ყველა წყარო',
   fpv_and: 'და',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_quick_views: 'სწრაფი ხედები',
+  fpv_best_cta: 'საუკეთესო დამთხვევები ({{n}})',
+  fpv_dups_cta: 'შესაძლო დუბლიკატები ({{n}})',
+  fpv_best_title: 'თქვენი საუკეთესო დამთხვევები',
+  fpv_best_body: 'ეს ბინები ყველაფერში ერგება თქვენს მოთხოვნას და ცოტა ხნის წინ გადავამოწმეთ.',
+  fpv_dups_title: 'ბინები, რომლებიც შეიძლება ორჯერ იყოს გამოქვეყნებული',
+  fpv_dups_body: 'თითოეულ ბინასთან ერთად ხედავთ განცხადებებს, რომლებიც იგივე ბინას ჰგავს. ასე ფასებს ადვილად შეადარებთ და აირჩევთ.',
+  fpv_all_results: 'ყველა შედეგი',
+  fpv_filter_best: 'მხოლოდ საუკეთესო დამთხვევები',
+  fpv_filter_dups: 'შესაძლო დუბლიკატები',
+  fpv_play_sub: 'პატარა თამაში, სანამ ვეძებთ',
+  fpv_stop_confirm: 'შევწყვიტოთ ძიება?',
+  fpv_stop_yes: 'დიახ, შევწყვიტოთ',
+  fpv_keep_searching: 'ძიების გაგრძელება',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} უძრავი ქონების საიტი',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'საქართველოს წამყვანი უძრავი ქონების საიტები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60179,7 +60223,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpv_sum_consider: 'Подходит: {{list}}. Одно отличие: {{miss}}',
   fpv_sum_upgrade: 'Чуть дороже бюджета, но предлагает больше: {{list}}.',
   fpv_sum_upgrade_plain: 'Чуть дороже бюджета, но предлагает больше.',
-  fpv_verdict_TOP: 'Отлично подходит',
+  fpv_verdict_TOP: 'Лучшее совпадение',
   fpv_verdict_GOOD: 'Хорошо подходит',
   fpv_verdict_CONSIDER: 'Стоит посмотреть',
   fpv_verdict_UPGRADE: 'Чуть дороже бюджета',
@@ -60218,6 +60262,28 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'Сайты недвижимости',
   fpv_all_sources: 'Все источники',
   fpv_and: 'и',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_quick_views: 'Быстрый просмотр',
+  fpv_best_cta: 'Лучшие совпадения ({{n}})',
+  fpv_dups_cta: 'Возможные дубликаты ({{n}})',
+  fpv_best_title: 'Ваши лучшие совпадения',
+  fpv_best_body: 'Эти квартиры подходят по всем вашим условиям и недавно проверены.',
+  fpv_dups_title: 'Квартиры, которые могут быть опубликованы дважды',
+  fpv_dups_body: 'Рядом с каждой квартирой показаны объявления, похожие на ту же квартиру, чтобы вы могли сравнить цены и выбрать.',
+  fpv_all_results: 'Все результаты',
+  fpv_filter_best: 'Только лучшие совпадения',
+  fpv_filter_dups: 'Возможные дубликаты',
+  fpv_play_sub: 'Небольшая игра, пока мы ищем',
+  fpv_stop_confirm: 'Остановить поиск?',
+  fpv_stop_yes: 'Да, остановить',
+  fpv_keep_searching: 'Продолжить поиск',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: 'Сайтов недвижимости: {{n}}',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'Ведущие сайты недвижимости Грузии',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -80215,7 +80281,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpv_sum_consider: 'Uyuyor: {{list}}. Bir fark var: {{miss}}',
   fpv_sum_upgrade: 'Bütçenizin biraz üzerinde ama daha fazlasını sunuyor: {{list}}.',
   fpv_sum_upgrade_plain: 'Bütçenizin biraz üzerinde ama daha fazlasını sunuyor.',
-  fpv_verdict_TOP: 'Çok iyi eşleşme',
+  fpv_verdict_TOP: 'En iyi eşleşme',
   fpv_verdict_GOOD: 'İyi eşleşme',
   fpv_verdict_CONSIDER: 'Bakmaya değer',
   fpv_verdict_UPGRADE: 'Bütçenin biraz üzerinde',
@@ -80254,6 +80320,28 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'Emlak siteleri',
   fpv_all_sources: 'Tüm kaynaklar',
   fpv_and: 've',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_quick_views: 'Hızlı görünümler',
+  fpv_best_cta: 'En iyi eşleşmeler ({{n}})',
+  fpv_dups_cta: 'Olası kopyalar ({{n}})',
+  fpv_best_title: 'En iyi eşleşmeleriniz',
+  fpv_best_body: 'Bu evler istediğiniz her şeye uyuyor ve yakın zamanda kontrol edildi.',
+  fpv_dups_title: 'İki kez ilan edilmiş olabilecek evler',
+  fpv_dups_body: 'Her ev, aynı daire gibi görünen ilanlarla birlikte gösterilir; fiyatları karşılaştırıp seçebilirsiniz.',
+  fpv_all_results: 'Tüm sonuçlar',
+  fpv_filter_best: 'Yalnızca en iyi eşleşmeler',
+  fpv_filter_dups: 'Olası kopyalar',
+  fpv_play_sub: 'Biz ararken kısa bir oyun',
+  fpv_stop_confirm: 'Arama durdurulsun mu?',
+  fpv_stop_yes: 'Evet, durdur',
+  fpv_keep_searching: 'Aramaya devam et',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} emlak sitesi',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'Gürcistan\'ın önde gelen emlak siteleri',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -100251,7 +100339,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpv_sum_consider: 'يناسب في: {{list}}. فرق واحد: {{miss}}',
   fpv_sum_upgrade: 'أعلى قليلًا من ميزانيتك، لكنه يقدم أكثر: {{list}}.',
   fpv_sum_upgrade_plain: 'أعلى قليلًا من ميزانيتك، لكنه يقدم أكثر.',
-  fpv_verdict_TOP: 'مطابقة ممتازة',
+  fpv_verdict_TOP: 'أفضل تطابق',
   fpv_verdict_GOOD: 'مطابقة جيدة',
   fpv_verdict_CONSIDER: 'يستحق النظر',
   fpv_verdict_UPGRADE: 'أعلى قليلًا من الميزانية',
@@ -100290,6 +100378,28 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'مواقع العقارات',
   fpv_all_sources: 'جميع المصادر',
   fpv_and: 'و',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_quick_views: 'عروض سريعة',
+  fpv_best_cta: 'أفضل التطابقات ({{n}})',
+  fpv_dups_cta: 'تكرارات محتملة ({{n}})',
+  fpv_best_title: 'أفضل التطابقات لك',
+  fpv_best_body: 'هذه المنازل تطابق كل ما طلبته وتم التحقق منها مؤخرًا.',
+  fpv_dups_title: 'منازل قد تكون معروضة مرتين',
+  fpv_dups_body: 'يظهر كل منزل مع الإعلانات التي تبدو للشقة نفسها، لتتمكن من مقارنة الأسعار والاختيار.',
+  fpv_all_results: 'كل النتائج',
+  fpv_filter_best: 'أفضل التطابقات فقط',
+  fpv_filter_dups: 'تكرارات محتملة',
+  fpv_play_sub: 'لعبة قصيرة بينما نبحث',
+  fpv_stop_confirm: 'إيقاف هذا البحث؟',
+  fpv_stop_yes: 'نعم، أوقف',
+  fpv_keep_searching: 'متابعة البحث',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} مواقع عقارية',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'أبرز مواقع العقارات في جورجيا',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -120287,7 +120397,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpv_sum_consider: 'מתאים ב: {{list}}. הבדל אחד: {{miss}}',
   fpv_sum_upgrade: 'קצת מעל התקציב, אבל מציע יותר: {{list}}.',
   fpv_sum_upgrade_plain: 'קצת מעל התקציב, אבל מציע יותר.',
-  fpv_verdict_TOP: 'התאמה מצוינת',
+  fpv_verdict_TOP: 'ההתאמה הטובה ביותר',
   fpv_verdict_GOOD: 'התאמה טובה',
   fpv_verdict_CONSIDER: 'שווה הצצה',
   fpv_verdict_UPGRADE: 'קצת מעל התקציב',
@@ -120326,6 +120436,28 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'אתרי נדל״ן',
   fpv_all_sources: 'כל המקורות',
   fpv_and: 'ו',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_quick_views: 'תצוגות מהירות',
+  fpv_best_cta: 'ההתאמות הטובות ביותר ({{n}})',
+  fpv_dups_cta: 'כפילויות אפשריות ({{n}})',
+  fpv_best_title: 'ההתאמות הטובות ביותר עבורכם',
+  fpv_best_body: 'הדירות האלה מתאימות לכל מה שביקשתם ונבדקו לאחרונה.',
+  fpv_dups_title: 'דירות שאולי פורסמו פעמיים',
+  fpv_dups_body: 'כל דירה מוצגת יחד עם המודעות שנראות כמו אותה דירה, כדי שתוכלו להשוות מחירים ולבחור.',
+  fpv_all_results: 'כל התוצאות',
+  fpv_filter_best: 'רק ההתאמות הטובות ביותר',
+  fpv_filter_dups: 'כפילויות אפשריות',
+  fpv_play_sub: 'משחק קצר בזמן שאנחנו מחפשים',
+  fpv_stop_confirm: 'לעצור את החיפוש?',
+  fpv_stop_yes: 'כן, לעצור',
+  fpv_keep_searching: 'להמשיך לחפש',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_n: '{{n}} אתרי נדל״ן',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_sites_generic: 'אתרי הנדל״ן המובילים בגאורגיה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

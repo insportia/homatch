@@ -5,7 +5,8 @@ import { assessProperty } from '@/research-core/marketplace/advisor';
 import type { SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
 import type { PropertyView } from '@/services/marketplaceSearch';
 import { listingTimes, num, pct, type T, usd } from './format';
-import { amenityLabel, summaryText } from './advisorText';
+import { summaryText } from './advisorText';
+import { requirementKey } from './requirementKeys';
 import { PropertyGallery } from './PropertyGallery';
 import { DuplicateBadge } from './DuplicateListings';
 import { DuplicatesDialog } from './DuplicatesDialog';
@@ -36,12 +37,7 @@ export function advantageText(a: { code: string; delta: number | null }, t: T) {
   return t(`mps_adv_${a.code}`, { n: a.delta !== null ? Math.abs(a.delta) : 0 });
 }
 
-const REQUIREMENT_LABELS: Record<string, string> = { AREA: 'mps_fact_area', ROOMS: 'mps_fact_rooms', BEDROOMS: 'mps_fact_bedrooms',
-  BATHROOMS: 'mps_fact_bathrooms', FLOOR_NOT_FIRST: 'fpa_NOT_FIRST', FLOOR_NOT_LAST: 'fpa_NOT_LAST', FLOOR_RANGE: 'mps_fact_floor',
-  BUILDING_AGE: 'fpa_building_age', BUILDING_STATUS: 'mps_fact_building', DISTRICT: 'mps_filter_district',
-  PARKING: 'mps_fact_parking', FURNISHED: 'fpv_amenity_FURNISHED' };
-export const requirementLabel = (code: string, t: T) =>
-  REQUIREMENT_LABELS[code] ? t(REQUIREMENT_LABELS[code]) : code.startsWith('REQUIRED_') ? amenityLabel(code.slice(9), t) : t('fpv_amenity_OTHER');
+export const requirementLabel = (code: string, t: T) => t(requirementKey(code));
 
 export function missingRequirements(codes: string[], t: T): string {
   return [...new Set(codes.map((code) => requirementLabel(code, t)))].join(' · ');

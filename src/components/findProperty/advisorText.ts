@@ -4,13 +4,10 @@
  */
 import type { AdvisorAssessment, AdvisorPoint } from '@/research-core/marketplace/advisor';
 import { num, type T, usd } from './format';
-
-export const AMENITY_CODES = ['PARKING', 'BALCONY', 'TERRACE', 'ELEVATOR', 'GARDEN', 'POOL', 'FURNISHED',
-  'CENTRAL_HEATING', 'VIEW', 'PET_FRIENDLY', 'STORAGE', 'AIR_CONDITIONING'] as const;
+import { amenityKey } from './requirementKeys';
 
 /** A human label for any amenity code; unknown codes fall back to a neutral word, never the code. */
-export const amenityLabel = (code: string, t: T) =>
-  (AMENITY_CODES as readonly string[]).includes(code) ? t(`fpv_amenity_${code}`) : t('fpv_amenity_OTHER');
+export const amenityLabel = (code: string, t: T) => t(amenityKey(code));
 
 function params(point: AdvisorPoint, t: T): Record<string, string | number> {
   const p = point.params ?? {};

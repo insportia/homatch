@@ -69,6 +69,8 @@ export interface PlannedOfferJob {
   actorKey: string;
   network: OfferNetwork;
   query: string | null;
+  /** The search language (keyword search); null for a known community (any language). */
+  language?: string | null;
   targetUrl: string | null;
   sourceId: string | null;
   size: number;
@@ -137,7 +139,7 @@ export function planOfferJobs(input: {
       const size = Math.max(1, fbSearch.probeSize);
       candidates.push({
         stage: 'FB_POST_SEARCH', actorKey: fbSearch.actorKey, network: 'FACEBOOK', sourceId: null, targetUrl: null,
-        query: `${SEARCH_WORDS[lang][input.search.transaction]} ${place}`.trim(), size,
+        query: `${SEARCH_WORDS[lang][input.search.transaction]} ${place}`.trim(), language: lang, size,
         estimateMicros: estimateMicros(fbSearch, size), priority: 100 - candidates.length,
       });
     }

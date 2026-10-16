@@ -25,6 +25,7 @@ import { converterFrom, ratesFromTable } from '../../../src/research-core/match/
 import type { AiUsage, SearchTelemetry } from '../../../src/research-core/marketplace/telemetry.ts';
 import { type RunLease, reapDecision } from '../../../src/research-core/marketplace/dispatch.ts';
 import { estimatedProviderCost } from './providerCost.ts';
+import { wellFormedDeep } from '../../../src/research-core/marketplace/text-safety.ts';
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -77,6 +78,25 @@ export const PAGE_ROWS = 1000;
  * the server's row cap, which would drop listings and so hide valid results.
  */
 // deno-lint-ignore no-explicit-any
+const RESULT_WRITE_BATCH = 100;
+
+/** Upsert result rows in checked batches; a rejected batch is retried row by row. */
+export async function writeResultRows(db: any, rows: Array<{ property_key: string } & Record<string, unknown>>): Promise<{ written: number; failedKeys: string[]; error: string | null }> {
+  let written = 0;
+  const failedKeys: string[] = [];
+  let lastError: string | null = null;
+  for (const batch of chunk(rows, RESULT_WRITE_BATCH)) {
+    const { error } = await db.from('discovery_marketplace_properties').upsert(batch, { onConflict: 'search_id,property_key' });
+    if (!error) { written += batch.length; continue; }
+    lastError = String(error.message ?? error).slice(0, 300);
+    for (const row of batch) {
+      const { error: rowError } = await db.from('discovery_marketplace_properties').upsert([row], { onConflict: 'search_id,property_key' });
+      if (rowError) { failedKeys.push(row.property_key); lastError = String(rowError.message ?? rowError).slice(0, 300); } else written += 1;
+    }
+  }
+  return { written, failedKeys, error: lastError };
+}
+
 export async function readAll<T>(query: (from: number, to: number) => any): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE_ROWS) {
@@ -292,16 +312,24 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
     search_id: searchId, property_key: p.key, result_group: p.group, rank: p.rank, score: p.score,
     view: publicView(p), internal: p.internal,
   }));
-  for (const batch of chunk(rows, 500)) {
-    await db.from('discovery_marketplace_properties').upsert(batch, { onConflict: 'search_id,property_key' });
+  /* Results are written so that one bad row can never erase the others (production
+     2026-10-16: an emoji split by a clip made every 500-row batch fail with "invalid input
+     syntax for type json", unchecked, and the customer saw only the tail of the ranking).
+     Every string is made well-formed, batches are small and checked, a failing batch is
+     retried row by row, and older rows are removed only after every write succeeded. */
+  const write = await writeResultRows(db, rows.map((r) => wellFormedDeep(r)));
+  if (write.failedKeys.length) {
+    telemetry.writeFailures = [...(telemetry.writeFailures ?? []), { at: new Date(now).toISOString(), failed: write.failedKeys.length, sample: write.failedKeys.slice(0, 5), error: write.error }].slice(-10);
   }
-  const keep = rows.map((r) => r.property_key);
-  const existing = await readAll<{ property_key: string }>((from, to) =>
-    db.from('discovery_marketplace_properties').select('property_key').eq('search_id', searchId).order('property_key').range(from, to));
-  const keepSet = new Set(keep);
-  const stale = existing.map((e) => e.property_key).filter((k) => !keepSet.has(k));
-  for (const batch of chunk(stale, 200)) {
-    await db.from('discovery_marketplace_properties').delete().eq('search_id', searchId).in('property_key', batch);
+  if (!write.failedKeys.length) {
+    const keepSet = new Set(rows.map((r) => r.property_key));
+    const existing = await readAll<{ property_key: string }>((from, to) =>
+      db.from('discovery_marketplace_properties').select('property_key').eq('search_id', searchId).order('property_key').range(from, to));
+    const stale = existing.map((e) => e.property_key).filter((k) => !keepSet.has(k));
+    for (const batch of chunk(stale, 200)) {
+      const { error } = await db.from('discovery_marketplace_properties').delete().eq('search_id', searchId).in('property_key', batch);
+      if (error) throw new Error(`stale result cleanup failed: ${error.message}`);
+    }
   }
 
   telemetry.processingMs = [...(telemetry.processingMs ?? []), Date.now() - started].slice(-50);

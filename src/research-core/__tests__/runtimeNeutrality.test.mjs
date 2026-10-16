@@ -219,6 +219,8 @@ test('the core is consumed only through its deliberate integration points', () =
        builders and normalizer, and the 37/63 policy for settlement. The network
        door stays _shared/findBuyers/memo23Client.ts. */
     'supabase/functions/_shared/findProperty/socialOffers.ts',
+    // Its offer-queue contract test (language on every queued row, Facebook Pages planned).
+    'supabase/functions/_shared/__tests__/findPropertyOfferQueue.test.mjs',
     'supabase/functions/_shared/discoveryRun.ts',
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
@@ -653,6 +655,11 @@ test('the core is consumed only through its deliberate integration points', () =
     'src/components/findProperty/ResultsView.tsx',
     'src/components/findProperty/SearchBuilder.tsx',
     'src/components/findProperty/format.ts',
+    // The advisor's reading of a result against the request (research-core/
+    // marketplace/advisor: pure, deterministic, no fetch) on each result card,
+    // and its point types for the sentences.
+    'src/components/findProperty/PropertyCard.tsx',
+    'src/components/findProperty/advisorText.ts',
     /*
      * PHASE 2 — UNIVERSAL DISCOVERY (docs/claude/PHASE2_DISCOVERY.md).
      *

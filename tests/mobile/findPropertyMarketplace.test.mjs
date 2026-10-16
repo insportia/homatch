@@ -76,7 +76,7 @@ test('V2: card gallery, durable dossier, scoped paid chat, insufficient credits 
   assert.notEqual(await card.locator('[aria-live="polite"]').textContent(), counter, 'focused gallery supports arrow keys');
   assert.equal(page.url(), before, 'gallery controls do not navigate');
   const key = await card.getAttribute('data-property-key');
-  await card.getByRole('button', { name: 'View property', exact: true }).last().click();
+  await card.locator('[data-action="open-assessment"]').last().click();
   await page.locator('[data-property-dossier]').waitFor();
   assert.equal(await page.getByRole('dialog').count(), 0, 'ordinary property details are a page');
   assert.ok(new URL(page.url()).pathname.endsWith(`/property/${encodeURIComponent(key)}`));
@@ -244,7 +244,7 @@ test('V2: source photos load on demand, failed photos recover, and dossier thumb
   assert.equal(page.url(), resultsUrl, 'photo controls never navigate');
   await gallery.getByRole('button', { name: 'Previous photo', exact: true }).click();
   await loaded(`[data-property-key=${JSON.stringify(property.key)}]`, property.images[1]);
-  await card.getByRole('button', { name: 'View property', exact: true }).click();
+  await card.locator('[data-action="open-assessment"]').click();
   await page.locator('[data-property-dossier]').waitFor();
   await page.getByRole('button', { name: 'Photo 2', exact: true }).click();
   await loaded('[data-property-dossier] [role="group"]', property.images[1]);
@@ -406,6 +406,12 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
       strongMatches: processed && !empty ? s.strongMatches : 0, sourcesCompleted: terminal ? 5 : processed ? 3 : 1, sourcesTotal: 5,
     },
     groups, totalProperties: Object.values(groups).reduce((a, b) => a + b, 0), partial: status === 'PARTIAL_COMPLETE', unavailable: status === 'FAILED' ? 'FAILED' : null,
+    // One row per dispatched worker run, as the API returns them; in a partial search the last one timed out.
+    sources: ['SOURCE-A', 'SOURCE-B', 'SOURCE-C'].map((source, i) => ({
+      source, workerId: `worker-${i}`, state: processed ? 'FRESH' : 'REFRESHING', retryAt: null, cachedListings: 0,
+      freshListings: processed && !(status === 'PARTIAL_COMPLETE' && i === 2) ? 4 : 0,
+      run: !terminal ? (processed && i === 0 ? 'COMPLETE' : 'RUNNING') : status === 'PARTIAL_COMPLETE' && i === 2 ? 'TIMED_OUT' : 'COMPLETE',
+    })),
   };
 }
 
@@ -548,6 +554,12 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
 }
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+/** Filters and sorting sit in one collapsed row; open it (and its advanced part) like a customer would. */
+async function openFilters(page) {
+  await page.locator('[data-filters]').waitFor({ timeout: 30000 });
+  await page.evaluate(() => document.querySelectorAll('[data-filters], [data-filters] details').forEach((d) => { d.open = true; }));
+}
+
 async function shot(page, name, { fullPage = true } = {}) {
   if (!SHOTS) return;
   mkdirSync(SHOTS, { recursive: true });
@@ -610,17 +622,21 @@ test('ka, 1440: complete request → READY without questions → search → grou
   }
   assert.ok(!searching.includes('ითამაშე სანამ HOMATCH ეძებს'), 'the old Snake text block is gone');
   assert.doesNotMatch(searching, /\d+%/, 'no percentage is shown');
+  await page.locator('[data-discovery-field]').waitFor();
+  assert.equal(await page.locator('[data-discovery-field]').getAttribute('aria-hidden'), 'true', 'the field is decorative; the source list carries the states');
+  assert.match(await page.locator('[data-elapsed]').textContent(), /\d+:\d{2}/, 'elapsed time from the server start');
+  assert.ok((await page.locator('[data-duration-note]').textContent()).includes('10-დან 30 წუთამდე'), 'the 10 to 30 minutes note');
   await shot(page, 'ka-1440-searching');
 
-  await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
-  await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
+  await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
+  await page.locator('article[data-verdict="UPGRADE"]').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
-  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'ცოტა ძვირი, მაგრამ უკეთესი · +5-დან 10%-მდე', 'რატომ გირჩევს HOMATCH', 'წყარო: SOURCE-A · SOURCE-B · SOURCE-C', 'დუბლიკატი · 3 განცხადება', 'ფასებში სხვაობა',
-    '$9,000', 'რატომ ღირს განხილვა', 'ვრცელი ძიება']) {
+  for (const s of [`ვიპოვეთ ${OUTPUT.properties.length} ბინა.`, 'თქვენთვის შერჩეული', 'ბიუჯეტზე ოდნავ ძვირი', 'ნახეთ ჩვენი შეფასება', 'წყარო: SOURCE-A · SOURCE-B · SOURCE-C', 'დუბლიკატი · 3 განცხადება',
+    '$9,000', 'ვრცელი ძიება']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
   assert.ok(!results.includes('$188,000'), 'nothing above the 10% ceiling is shown');
-  assert.ok((await page.locator('section[aria-labelledby="mps-g-UPGRADE"]').textContent()).includes('+5.3%'), 'upgrade shows both measured over-budget amount and percentage');
+  assert.ok((await page.locator('article[data-verdict="UPGRADE"]').first().textContent()).includes('+5.3%'), 'upgrade shows both measured over-budget amount and percentage');
   await shot(page, 'ka-1440-results');
 
   /* The three-source flat: one card, labelled Duplicate; the badge opens all three listings with their prices. */
@@ -638,8 +654,8 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await shot(page, 'ka-1440-duplicates-dialog', { fullPage: false });
   await page.keyboard.press('Escape');
   await duplicates.waitFor({ state: 'detached' });
-  assert.ok(await page.locator('[data-duplicates-banner]').count(), 'the results say some properties are listed more than once');
-  await card.getByRole('button', { name: 'ქონების ნახვა' }).click();
+  assert.ok(await card.locator('[data-duplicate-badge]').count(), 'the card says this property is listed more than once');
+  await card.locator('[data-action="open-assessment"]').click();
   await page.locator('#mps-listings').waitFor();
   const sheet = page.locator('[data-property-dossier]');
   const text = await sheet.textContent();
@@ -753,12 +769,12 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
 
   await page.getByRole('button', { name: 'თამაშის დახურვა' }).click();
   assert.equal(await page.getByRole('dialog').count(), 0);
-  await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
+  await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
   assert.match(page.url(), /\/search\/11111111-1111-4111-8111-111111111111/, 'closing returns to the same search');
 
   /* Refresh: the same search is restored, nothing is restarted. */
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
+  await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
   assert.equal(state.starts, 1, 'refresh never duplicates the search');
   assert.ok(await overflow(page) <= 1);
   await shot(page, 'ka-390-results');
@@ -776,7 +792,7 @@ test('800 properties use bounded numbered pages; filters reset and Back/Forward 
   await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('mps-total').waitFor({ timeout: 30000 });
   assert.equal(await page.getByTestId('mps-total').textContent(), '800');
-  assert.ok((await page.textContent('main')).includes('800 matching properties found'));
+  assert.ok((await page.textContent('main')).includes('We found 800 homes.'), 'the exact total, in words');
   const cards = page.locator('[data-property-key]');
   await cards.first().waitFor();
   const first = await cards.evaluateAll((els) => els.map((el) => el.dataset.propertyKey));
@@ -791,7 +807,7 @@ test('800 properties use bounded numbered pages; filters reset and Back/Forward 
   await page.getByRole('button', { name: 'Page 67', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('nav button[aria-current="page"]')?.textContent === '67');
   assert.equal(await cards.count(), 8, 'final numbered page reaches the tail without appending DOM');
-  await page.getByText('Price, space and listing evidence', { exact: true }).click();
+  await openFilters(page);
   await page.getByLabel('Maximum price ($)', { exact: true }).fill('135000');
   await page.waitForURL(/fp_priceMax=135000/);
   assert.equal(new URL(page.url()).searchParams.get('page'), '1');
@@ -825,12 +841,12 @@ test('ka: owner can leave a resumed failed search without hiding or retrying it 
   assert.equal(state.starts,0);assert.ok(!new URL(page.url()).searchParams.has('search'));
 });
 
-test('duplicates: the banner filters to properties listed more than once; the property page names its sources (en, he RTL)', opts, async (t) => {
+test('duplicates: the filter shows properties listed more than once; the property page names its sources (en, he RTL)', opts, async (t) => {
   for (const [lang, width] of [['en', 1280], ['he', 390]]) {
     const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE' });
     await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
-    await page.locator('[data-duplicates-banner]').waitFor({ timeout: 30000 });
-    await page.locator('[data-duplicates-banner] button').click();
+    await openFilters(page);
+    await page.locator('[data-filters] label:has(input[type="checkbox"])').nth(1).click();
     await page.waitForFunction(() => new URL(location.href).searchParams.has('fp_duplicatesOnly'));
     const cards = page.locator('main article[data-property-key]');
     // The pre-filter page can still be on screen for a moment: wait for the
@@ -842,10 +858,9 @@ test('duplicates: the banner filters to properties listed more than once; the pr
     const n = await cards.count();
     assert.ok(n >= 1, `${lang}: duplicates are listed`);
     for (let i = 0; i < n; i++) assert.ok(await cards.nth(i).locator('[data-duplicate-badge]').count(), `${lang}: every shown card is a confirmed duplicate`);
-    assert.equal(await page.locator('[data-duplicates-banner]').count(), 0, `${lang}: the banner gives way to the active filter`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 1, `${lang}: no horizontal overflow (${overflow}px)`);
-    await cards.first().getByRole('button', { name: lang === 'en' ? 'View property' : /./ }).first().click();
+    await cards.first().locator('[data-action="open-assessment"]').click();
     const band = page.locator('[data-property-band]');
     await band.waitFor();
     assert.ok(await band.locator('[data-duplicate-badge]').count(), `${lang}: the property page marks the duplicate`);
@@ -892,12 +907,8 @@ test('possible duplicates, exact listing times and the full-screen photo viewer 
     if (lang === 'ka') assert.match(times, /დადებულია .*\d{2}:\d{2} \((5|30) საათის წინ|1 დღის წინ\)/);
     if (lang === 'en') assert.match(times, /Posted .*\d{2}:\d{2} \((5 h ago|1 days ago)\)/);
     assert.doesNotMatch(times, /\{\{/);
-    // Contact: a call button for a published number, otherwise the way to the source's own "show number".
-    const contact = card.locator('[data-contact]');
-    await contact.waitFor();
-    const call = contact.locator('a[data-contact-call]');
-    if (await call.count()) assert.match(await call.getAttribute('href'), /^tel:\+?\d{9,15}$/);
-    else assert.match(await contact.locator('a[data-contact-source]').getAttribute('href'), /^https:\/\//);
+    // Contacts live on the property's assessment page; the result card stays compact.
+    assert.equal(await card.locator('[data-contact]').count(), 0);
     // Full-screen viewer: open, zoom, move to the next photo, close with Esc.
     await card.locator('[data-photo-fullscreen]').click();
     const viewer = page.locator('[data-photo-viewer]');
@@ -923,11 +934,15 @@ test('partial and empty results say so, without technical errors', opts, async (
   {
     const { page } = await boot(t, { lang: 'ka', resumeStatus: 'PARTIAL_COMPLETE' });
     await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
-    await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
+    await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
     const text = await page.textContent('main');
-    assert.ok(text.includes('ძიება ნაწილობრივ დასრულდა'));
-    assert.ok(text.includes('შედეგები უკვე მზადაა. რამდენიმე წყაროს შემოწმება ამჯერად ვერ მოხერხდა.'));
-    assert.doesNotMatch(text, /TIMED_OUT|FAILED|Error/);
+    // A partial search is one quiet status line, not a warning box; the detail and a way to search again sit behind it.
+    const status = page.locator('[data-source-status]');
+    assert.match(await status.locator('summary').textContent(), /საიტიდან \d+მა უპასუხა/);
+    assert.ok(!text.includes('ძიება ნაწილობრივ დასრულდა'), 'no large partial warning');
+    await status.locator('summary').click();
+    await status.locator('[data-action="search-again"]').waitFor();
+    assert.doesNotMatch(await page.textContent('main'), /TIMED_OUT|FAILED|Error|mps_|fpv_|fpr_/);
     await page.context().close();
   }
   {
@@ -965,6 +980,7 @@ test('catalogue changes require explicit refresh; request failures retry without
   await page.locator('[data-property-key]').first().waitFor({ timeout: 30000 });
   await page.waitForFunction(() => new URL(location.href).searchParams.has('revision'));
   state.revision = 'changed-revision';
+  await openFilters(page);
   await page.getByLabel('Sort', { exact: true }).selectOption('FRESHEST');
   await page.getByRole('button', { name: 'Refresh results', exact: true }).waitFor();
   assert.equal(await page.locator('#mps-empty').count(), 0);
@@ -993,9 +1009,9 @@ test('catalogue changes require explicit refresh; request failures retry without
 test('comparison: two properties side by side, factual rows, no winner', opts, async (t) => {
   const { page } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE' });
   await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
-  await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
-  await page.locator('section[aria-labelledby="mps-g-BEST"]').getByRole('button', { name: 'Compare' }).first().click();
-  await page.locator('section[aria-labelledby="mps-g-UPGRADE"]').getByRole('button', { name: 'Compare' }).first().click();
+  await page.locator('article[data-verdict="UPGRADE"]').first().waitFor({ timeout: 30000 });
+  await page.locator('section[aria-labelledby="mps-g-REC"]').getByRole('button', { name: 'Compare' }).first().click();
+  await page.locator('article[data-verdict="UPGRADE"]').first().getByRole('button', { name: 'Compare' }).click();
   await page.getByRole('region', { name: 'Compare' }).getByRole('button', { name: 'Compare' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByText('Known facts only. The decision is yours.').waitFor();
@@ -1028,13 +1044,13 @@ test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmati
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: mode step overflow`);
       await shot(page, `${lang}-${width}-free-deep`);
       await page.locator('[data-action="mps-start"]').click();
-      await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
+      await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: results overflow ${await overflow(page)}px`);
       await shot(page, `${lang}-${width}-results`);
-      await page.locator('details').filter({ has: page.locator('input[type="number"]') }).locator('summary').click();
+      await openFilters(page);
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: expanded filters overflow`);
       await shot(page, `${lang}-${width}-filters`);
-      await page.locator('section[aria-labelledby="mps-g-BEST"]').locator('article').first().locator('button').first().click();
+      await page.locator('section[aria-labelledby="mps-g-REC"]').locator('article').first().locator('button').first().click();
       await page.locator('#mps-listings').waitFor();
       const sheetOverflow = await page.locator('[data-property-dossier]').evaluate((el) => el.scrollWidth - el.clientWidth);
       if (sheetOverflow > 1) failures.push(`${lang} ${width}: property sheet overflow ${sheetOverflow}px`);
@@ -1107,5 +1123,40 @@ test('Your activity: saved listings, recent activity, recording switch and erase
       assert.ok(!JSON.stringify(state.interest).includes('phone'), 'no contact data in the saved snapshot');
     }
     await close();
+  }
+});
+
+test('sources: All sources and each site filter the results; the assessment shows the original description and our reading', opts, async (t) => {
+  for (const [lang, width] of [['en', 1280], ['ka', 390]]) {
+    const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE' });
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    const chips = page.locator('[data-source-chips] [data-source-chip]');
+    await chips.first().waitFor({ timeout: 30000 });
+    assert.ok(await chips.count() >= 3, `${lang}: All sources plus every site that returned homes`);
+    assert.equal(await chips.first().getAttribute('aria-pressed'), 'true', `${lang}: All sources is the default`);
+    assert.equal(await page.locator('select[aria-label]').filter({ hasText: 'SOURCE-A' }).count(), 0, `${lang}: no raw source dropdown`);
+    const site = chips.nth(1);
+    const name = (await site.locator('span').first().textContent()).trim();
+    const count = Number((await site.locator('span').nth(1).textContent()).trim());
+    await site.click();
+    await page.waitForFunction(() => new URL(location.href).searchParams.has('fp_source'));
+    await page.waitForFunction((n) => { const shown = [...document.querySelectorAll('main article[data-property-key]')];
+      return shown.length > 0 && shown.every((a) => a.querySelector('[data-card-source]')?.textContent.includes(n)); }, name, { timeout: 30000 });
+    assert.equal(await page.locator('main article[data-property-key]').count(), Math.min(count, 12), `${lang}: ${name} shows exactly its homes`);
+    await chips.first().click();
+    await page.waitForFunction(() => !new URL(location.href).searchParams.has('fp_source'));
+    assert.ok(await overflow(page) <= 1, `${lang}: chips never widen the page`);
+    await shot(page, `${lang}-${width}-source-chips`, { fullPage: false });
+    // The assessment: advisor reading, original description, no raw keys anywhere.
+    const withText = page.locator('main article[data-property-key]').first();
+    assert.match(await withText.locator('[data-advisor-summary]').textContent(), /\S/);
+    await withText.locator('[data-action="open-assessment"]').click();
+    const assessment = page.locator('[data-assessment]');
+    await assessment.waitFor({ timeout: 30000 });
+    assert.ok(await assessment.locator('[data-assessment-group="fits"] li').count() >= 1, `${lang}: what fits is listed`);
+    assert.ok(await assessment.locator('[data-assessment-group="summary"]').count(), `${lang}: a short verdict`);
+    const dossier = await page.textContent('main');
+    assert.doesNotMatch(dossier, /fpv_|mps_amenity_|fpr_unconfirmed|REQUIRED_|\{\{/, `${lang}: no raw keys or codes`);
+    await page.context().close();
   }
 });

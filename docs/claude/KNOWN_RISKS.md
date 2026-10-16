@@ -141,6 +141,10 @@ with per-language loading named as the follow-up. That follow-up is done:
 - Price/area filters on Home.ge and Allhome.ge apply only after the listing page
   is read (shared `contradiction()` in `portals/acquire.mjs`); a narrow budget
   can therefore yield few results from a large read.
+- Find Property result rows (2026-10-16): text cut by UTF-16 offset can split an emoji;
+  Postgres jsonb refuses a lone surrogate (22P02) and an unchecked batch write then loses
+  every row in the batch. Clip text with a surrogate-safe helper and check every write;
+  `resultCatalogue` serves stored rows only when their count equals `properties_count`.
 - Brokeri.ge adds a handful of listings a month; most of its catalogue is older
   than the platform's 30-day listing-age policy (`freshness.ts`), so most
   Brokeri results are rejected by the pipeline (correctly). Do not loosen the

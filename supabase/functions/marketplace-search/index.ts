@@ -156,7 +156,11 @@ Deno.serve(async (req: Request) => {
       const sources = (live ?? []).filter((w: Record<string, unknown>) => workerSwitchOn(switches, String(w.worker_id)))
         .map((w: Record<string, unknown>) => String(w.source_name ?? WORKER_SOURCE_NAMES[String(w.worker_id)] ?? w.worker_id)).sort();
       /* The paid social campaign (find-property-run) is offered only when its switches allow it. */
-      const deepSearchAvailable = await paidCampaignAvailable(db).catch(() => false);
+      /* An availability read that fails is reported, never passed off as "switched off". */
+      const deepSearchAvailable = await paidCampaignAvailable(db).catch((error: unknown) => {
+        console.error(JSON.stringify({ event: 'find_property_paid_availability_failed', error: String((error as Error)?.message ?? error).slice(0, 300) }));
+        return false;
+      });
       return json({ marketplaceEnabled: switches.enabled, activeSources: switches.enabled ? sources.length : 0,
         sources: switches.enabled ? sources : [], deepSearchAvailable });
     }

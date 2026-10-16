@@ -30,6 +30,8 @@ export interface SearchTelemetry {
   ai: AiUsage[];
   workers: WorkerUsage[];
   processingMs: number[];
+  /** Result rows the database refused (kept for diagnosis; the rest of the results still land). */
+  writeFailures?: Array<{ at: string; failed: number; sample: string[]; error: string | null }>;
 }
 
 export const emptyTelemetry = (): SearchTelemetry => ({ ai: [], workers: [], processingMs: [] });

@@ -29,12 +29,12 @@ import {
   SUGGESTED_REPLIES_INSTRUCTION,
 } from '../../../src/lib/ai/identity.ts';
 import { parseSuggestedReplies } from '../../../src/lib/ai/suggestedReplies.ts';
-import { parseServiceActions, SERVICE_ACTIONS_INSTRUCTION } from '../../../src/lib/ai/serviceActions.ts';
+import { parseServiceActions, SERVICE_ACTION_SERVICE, SERVICE_ACTIONS_INSTRUCTION } from '../../../src/lib/ai/serviceActions.ts';
 import {
   beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant,
 } from '../_shared/billing.ts';
 import { retentionBlockedIds } from '../_shared/retentionGuard.ts';
-import { serviceBackendEnabled, serviceDisabledBody, type ServiceKey } from '../_shared/serviceControl.ts';
+import { serviceBackendEnabled, serviceDisabledBody, serviceState, type ServiceKey } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -760,7 +760,11 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   const routingRaw = (lead?.routing ?? null) as { intent?: unknown; web_mode?: unknown; internal_used?: unknown } | null;
   const webMode = typeof routingRaw?.web_mode === 'string' && WEB_MODES.has(routingRaw.web_mode)
     ? routingRaw.web_mode : (searchCount > 0 ? 'REQUIRED_LIVE_WEB' : 'NO_WEB');
-  const actionsOut = parseServiceActions(lead?.suggested_actions);
+  /* A chip for a paused product (Admin → Service Control Center) is never offered. */
+  const actionsOut = [];
+  for (const action of parseServiceActions(lead?.suggested_actions)) {
+    if ((await serviceState(sb, SERVICE_ACTION_SERVICE[action.id] as ServiceKey)).frontend) actionsOut.push(action);
+  }
   await sb.from('ai_routing_events').insert({
     user_id: uid ?? null,
     conversation_id: conversationId ?? null,

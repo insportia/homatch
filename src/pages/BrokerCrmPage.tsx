@@ -23,6 +23,7 @@ import {
   MousePointerClick, Pause, Phone, Play, Plus, Search, ShieldAlert, Store, Upload, UserRound, Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { Link, useSearchParams } from 'react-router-dom';
 import { LeadsBoard } from '@/components/broker/workspace/LeadsBoard';
 import { NotificationsPanel } from '@/components/broker/workspace/NotificationsPanel';
@@ -169,6 +170,7 @@ const TAB_ICON: Record<Tab, React.ReactNode> = {
 
 export default function BrokerCrmPage() {
   const { t } = useLanguage();
+  const pathAvailable = usePathAvailable(); // paused products offer no link (Service Control Center)
   const { session } = useAuth();
   const authId = session?.user?.id ?? null;
 
@@ -544,9 +546,9 @@ export default function BrokerCrmPage() {
                         </div>
                       </dl>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Link to={`/property/${p.id}/matches`} className={btn}>{t('broker_desk_open_leads')}</Link>
+                        {pathAvailable(`/property/${p.id}/matches`) && <Link to={`/property/${p.id}/matches`} className={btn}>{t('broker_desk_open_leads')}</Link>}
                         <Link to={`/property/${p.id}`} className={btn}>{t('broker_desk_open_property')}</Link>
-                        {p.homatch_id && !p.archived_at && (
+                        {p.homatch_id && !p.archived_at && pathAvailable('/outreach/meta/create') && (
                           <Link to={`/outreach/meta/create?property=${encodeURIComponent(p.homatch_id)}`} className={btn}>{t('broker_desk_promote_meta')}</Link>
                         )}
                       </div>

@@ -619,7 +619,11 @@ function PropertyDetailContent() {
       key: 'design', icon: <NavGlyphIcon name="design_studio" className="h-4 w-4" />, label: t('ds_open_in_design_studio'),
       onClick: () => navigate(`/design-studio?property=${encodeURIComponent(id)}`),
     }] : []),
-  ];
+  ].filter((a) => {
+    // A paused product (Admin → Service Control Center) offers no quick action.
+    const service = ({ ai: 'ai_assistant', improve: 'ai_assistant', verify: 'verify', investment: 'investment', mortgage: 'mortgage' } as const)[a.key as 'ai'];
+    return !service || services[service].frontend;
+  });
 
   const unavailable = (
     <MediaUnavailable imported={imported} sourceUrl={sourceUrl} propertyId={String(id)} sourceStatus={life?.source_status ?? null} />
@@ -712,14 +716,14 @@ function PropertyDetailContent() {
 
             {/* The one primary action, then the owner's management controls. */}
             <div className="flex flex-wrap items-center gap-2">
-              <Link
+              {services.find_buyers.frontend && <Link
                 to={contactReady || hasSearch ? `/property/${id}/matches` : `/property/${id}/edit#contact`}
                 data-testid="property-results-link"
                 className="inline-flex min-h-10 min-w-0 basis-full items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] sm:basis-0 sm:flex-1 px-4 py-2 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               >
                 {!contactReady && !hasSearch && <Phone className="h-3.5 w-3.5 shrink-0" />}
                 <span className="break-words text-center leading-snug">{contactReady || hasSearch ? ownerAction : t('contact_phone_add')}</span>
-              </Link>
+              </Link>}
               <Link to={`/property/${id}/edit`} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
                 <Pencil className="h-3.5 w-3.5 shrink-0" />
                 <span className="break-words">{t('prop_action_edit')}</span>
@@ -735,9 +739,11 @@ function PropertyDetailContent() {
                 </Link>
               )}
               {/* PATH A into Meta Ads: this property, already selected. */}
-              <Link to={`/outreach/meta/create?property=${id}`} className={OWNER_ICON} aria-label={t('mads_property_cta')} title={t('mads_property_cta')}>
-                <Megaphone className="h-3.5 w-3.5" />
-              </Link>
+              {services.meta_ads.frontend && (
+                <Link to={`/outreach/meta/create?property=${id}`} className={OWNER_ICON} aria-label={t('mads_property_cta')} title={t('mads_property_cta')}>
+                  <Megaphone className="h-3.5 w-3.5" />
+                </Link>
+              )}
             </div>
 
             {isOwner && id && (
@@ -751,8 +757,8 @@ function PropertyDetailContent() {
         {/* ── 2. QUICK ACTIONS ── */}
         <QuickActions actions={quickActions} />
 
-        {/* ── 3. BUYER / TENANT DISCOVERY ── */}
-        {homatchUser && id && (
+        {/* ── 3. BUYER / TENANT DISCOVERY ── (not offered while Find Buyers is paused) */}
+        {homatchUser && id && services.find_buyers.frontend && (
           <DiscoverySection
             propertyId={id}
             userId={homatchUser.id}

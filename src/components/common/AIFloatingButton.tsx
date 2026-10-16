@@ -4,6 +4,7 @@ import { Bot } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAssistant } from '@/components/assistant/AssistantContext';
 import { shouldShowFloatingAiShortcut } from '@/lib/floatingAiShortcut';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 /**
  * Floating "Ask Homatch AI" shortcut.
@@ -31,8 +32,10 @@ export function AIFloatingButton() {
   const location = useLocation();
   const { t, isRTL } = useLanguage();
   const { setOpen } = useAssistant();
+  // Not offered while the assistant is paused (Admin → Service Control Center).
+  const assistantVisible = useServiceVisible('ai_assistant');
 
-  if (!shouldShowFloatingAiShortcut(location.pathname)) return null;
+  if (!assistantVisible || !shouldShowFloatingAiShortcut(location.pathname)) return null;
 
   return (
     <button

@@ -17,6 +17,7 @@
 // whoever writes the copy next.
 
 import React from 'react';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Lock, Undo2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -48,6 +49,7 @@ export function PlanBoard({
   onChanged: () => void | Promise<void>;
 }) {
   const { t } = useLanguage();
+  const pathAvailable = usePathAvailable(); // a paused product is not offered as a hand-off
   const [busy, setBusy] = React.useState<string | null>(null);
 
   const blockedBy = React.useMemo(() => {
@@ -176,7 +178,7 @@ export function PlanBoard({
                         </Link>
                       ) : null}
 
-                      {task.handoff && HANDOFF_ROUTE[task.handoff] ? (
+                      {task.handoff && HANDOFF_ROUTE[task.handoff] && pathAvailable(HANDOFF_ROUTE[task.handoff]) ? (
                         <Link
                           to={HANDOFF_ROUTE[task.handoff]}
                           data-expat-handoff={task.handoff}

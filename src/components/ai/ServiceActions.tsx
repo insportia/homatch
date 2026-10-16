@@ -12,7 +12,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { routeForAction, type ServiceAction } from '@/lib/ai/serviceActions';
+import { routeForAction, SERVICE_ACTION_SERVICE, type ServiceAction } from '@/lib/ai/serviceActions';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 export function ServiceActions({ actions, className, context }: {
   actions: ServiceAction[];
@@ -24,6 +25,10 @@ export function ServiceActions({ actions, className, context }: {
 }) {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  // A paused product (Admin → Service Control Center) offers no chip, even one already
+  // in the conversation from before the pause.
+  const { services } = useServiceControls();
+  actions = actions.filter((a) => services[SERVICE_ACTION_SERVICE[a.id] as ServiceKey]?.frontend !== false);
   if (actions.length === 0) return null;
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>

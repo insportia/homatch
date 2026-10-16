@@ -15,6 +15,7 @@
  * next step nobody takes.
  */
 import { Card, CardContent } from '@/components/ui/card';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { TrendingUp, Landmark } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifyActionButton } from './VerifyActionButton';
@@ -26,6 +27,10 @@ export function NextStepsCard({ cadastralCode }: { cadastralCode?: string | null
   const code = (cadastralCode ?? '').trim();
   const suffix = code ? `?code=${encodeURIComponent(code)}` : '';
 
+  // A paused product (Admin → Service Control Center) is not offered as a next step; with
+  // neither left, the card is not shown.
+  const pathAvailable = usePathAvailable();
+  if (!pathAvailable('/investment') && !pathAvailable('/mortgage')) return null;
   return (
     <Card className="border-[hsl(var(--primary))]/35">
       <CardContent className="space-y-3 pt-5">
@@ -39,14 +44,18 @@ export function NextStepsCard({ cadastralCode }: { cadastralCode?: string | null
         {/* Stacked on a phone, side by side from sm. Each button sizes to its
             own translated label rather than to a width chosen for English. */}
         <div className="flex flex-wrap gap-2">
-          <VerifyActionButton
-            to={`/investment${suffix}`}
-            icon={<TrendingUp className="h-5 w-5" />}
+          {pathAvailable('/investment') && (
+            <VerifyActionButton
+              to={`/investment${suffix}`}
+              icon={<TrendingUp className="h-5 w-5" />
+          )}}
             label={t('verify_next_investment')}
           />
-          <VerifyActionButton
-            to={`/mortgage${suffix}`}
-            icon={<Landmark className="h-5 w-5" />}
+          {pathAvailable('/mortgage') && (
+            <VerifyActionButton
+              to={`/mortgage${suffix}`}
+              icon={<Landmark className="h-5 w-5" />
+          )}}
             label={t('verify_next_mortgage')}
           />
         </div>

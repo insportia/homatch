@@ -45,6 +45,7 @@ import {
   Pause, Pencil, Phone, Play, Plus, Trash2, Upload,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PrivateImage } from '@/components/common/PrivateImage';
@@ -250,6 +251,7 @@ function PropertyRow({
   onConfirm: (pending: PendingAction) => void;
 }) {
   const { t, lang } = useLanguage();
+  const pathAvailable = usePathAvailable(); // paused products offer no link (Service Control Center)
   const publishingVisible = useServiceVisible('publishing');
   const locale = intlLocaleFor(lang);
   const facts = (Array.isArray(property.facts) ? property.facts[0] : property.facts) as
@@ -423,7 +425,7 @@ function PropertyRow({
    */
   const actions = (
     <div className="flex flex-col gap-1.5">
-      {!archived && (
+      {!archived && pathAvailable(`/property/${id}/matches`) && (
         <Link to={`/property/${id}/matches`} className={cn(OWNER_PRIMARY, 'w-full')} data-testid="portfolio-results-link">
           <span className="break-words text-center leading-snug">{primaryLabel}</span>
         </Link>

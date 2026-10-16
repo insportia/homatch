@@ -83,7 +83,7 @@ other owed functions in the same run moved and proved. A single-function dispatc
 (`redeploy=meta-oauth`, runs #846/#849) proved it exact both times. The artifact proof caught it;
 until the cause is known, redeploy meta-oauth on its own when the proof flags it.
 
-## Entry bundle ratchet at 2MB (translations split per language, 2026-09-30)
+## Entry bundle ratchet at 2.25MB (translations split per language, 2026-09-30; raised 2026-10-16)
 
 `tests/browser/accessibilityAudit.test.mjs` fails the Validate job — and so
 blocks every edge deploy — when the Vite entry chunk passes its ceiling. The
@@ -99,6 +99,13 @@ with per-language loading named as the follow-up. That follow-up is done:
   failed chunk renders English), and a switch loads before it switches, so no
   flash of English. `tests/browser/languageChunks.test.mjs` holds both.
 - Entry 6.21MB → 1.62MB; ceiling 6.5MB → 2MB.
+- 2026-10-16: ceiling 2MB → 2.25MB on the owner's approval. main had reached
+  2,095,069 bytes (gzip 599,713 / brotli 481,749); the Service Control Center
+  added 10,376 (+3,590 gzip / +2,313 brotli): 6,018 English strings, 3,073 the
+  route gate, 777 routes/nav/icon. Way back down (follow-up, not done): move
+  admin-only modules already in the entry (AdminLayout, admin/navigation,
+  AdminSearch, adminControl, admin/labels, ~24KB) and admin-only English
+  strings out of it.
 - Keep new runtime code off `@/i18n/translations` and `@/i18n/appContent`
   (value imports): either one puts all six languages back into the entry. Use
   `@/i18n/bundles` or `@/i18n/locales`; type imports are free.

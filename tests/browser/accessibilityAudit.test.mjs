@@ -380,8 +380,20 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
    *
    * The App Content editor still loads all six languages: it genuinely edits
    * all six, and it is an admin-only lazy route.
+   *
+   * RAISED TO 2.25MB, 2026-10-16, on the owner's approval (Service Control
+   * Center). main had grown to 2,095,069 bytes (2,083 under 2MB, 599,713
+   * gzip / 481,749 brotli). The Service Control Center added 10,376 bytes
+   * (+3,590 gzip, +2,313 brotli), measured per module from source maps:
+   * 6,018 English strings (English ships whole in the entry, by design
+   * above), 3,073 the gate every route needs (src/lib/serviceControls,
+   * ServiceGate), 777 the route table, nav item and one icon. The Admin page
+   * itself is its own lazy chunk. Admin-only modules that were ALREADY in
+   * the entry (AdminLayout, admin/navigation, AdminSearch, adminControl,
+   * admin/labels: ~24KB) and admin-only English strings are the known way
+   * back down; that is an i18n/route split, deliberately not done here.
    */
-  const CEILING = 2 * 1024 * 1024;
+  const CEILING = 2.25 * 1024 * 1024;
   assert.ok(bytes < CEILING,
     `the entry chunk is ${(bytes / 1024 / 1024).toFixed(2)}MB, past the ${CEILING / 1024 / 1024}MB ceiling`);
 });

@@ -113,6 +113,39 @@ MATTERS right now, verify against the live systems, not this file)
   the portal home page, and the UI says so) — neither could be fetched or found in the web index from
   this environment, so none were invented. No portal has an API, OAuth or account connection.
 
+### Central publishing engine (branch `claude/homatch-property-publishing-g50stw`, 2026-10-16 — NOT YET RELEASED)
+
+- **Model**: HOMATCH publishes through its OWN portal accounts. Customer: create → choose portals →
+  preview → consent → **Publish to Selected Portals** (`publication.publish`, idempotent per portal,
+  per-portal results). Jobs are `publishing_engine_jobs` rows with `channel = HOMATCH_ACCOUNT`; new
+  statuses QUEUED / PUBLISHING / ADMIN_ACTION_REQUIRED / AUTH_REQUIRED / REJECTED / FAILED. Customer
+  vocabulary = 10 statuses (`model.ts customerStatus`). The v1 owner handoff stays, collapsed.
+- **Contacts**: portal contact field = the HOMATCH account phone; owner name + phone ONLY in the
+  footer at the end of the description, once, with consent (`contacts.ts ownerFooter` /
+  `withOwnerFooter`; DB CHECK: central job ⇒ `contact_consent_at`).
+- **Routing** (`central.ts routeFor`): no/expired account → AUTH_REQUIRED (rerouted automatically
+  when an admin registers the account); registered manual account → ADMIN_ACTION_REQUIRED (Admin →
+  Integrations → Publishing queue: claim, copy, post by hand, link URL → public page check →
+  PUBLISHED; Korter/Binebi → admin attestation, labelled). QUEUED (automatic) only for an
+  API/BROWSER_ASSISTED adapter with a verified account — **no portal qualifies**.
+- **Capability classification** (providers.ts `automation`): all eight = MANUAL_ADMIN. Notes:
+  NO_AUTHORISED_API (myhome, placege, homege, brokeri, allhome), API_ANNOUNCED_NOT_ONBOARDED
+  (ssge — 2020 blog announcement, no docs/credentials), TERMS_FORBID_AUTOMATED_ACCESS (korter),
+  BOT_CHALLENGE_ON_PUBLIC_PAGES (binebi). NOT re-verified live: this container's egress proxy rejects
+  every portal domain and homatch.live (connect_rejected).
+- **Accounts** (`publishing_accounts`, `publishing_account_audit`, `publishing_account_write`):
+  service-role only; 8 statuses; CONNECTED/PUBLISHING_AVAILABLE need `verified_at` (CHECK) and come
+  only from a TEST; Test asks the adapter → CAPABILITY_NOT_SUPPORTED. No password is asked for.
+  `vault.ts` (AES-256-GCM, key `PUBLISHING_CREDENTIALS_KEY`, portal-bound AAD) exists, but storing a
+  credential is refused (CREDENTIAL_NOT_ACCEPTED) while no verified mechanism would use it; the key
+  secret is NOT configured.
+- **Worker**: no browser automation is permitted/verified, so `official-worker/` is untouched (no
+  Railway deploy).
+- **Migration** `20261107090000_publishing_central_accounts.sql` — DROP-bearing (jobs status CHECK
+  swap) → owner applies via SQL Editor after merge. Edge function tolerates it missing (accounts
+  unreadable → AUTH_REQUIRED, not failure).
+- **Logos**: still monograms — no logo source reachable from this environment; none invented.
+
 ## Storage retention v2 — object-level allowlist (PR #216, merged 37cc6900, migration applied 2026-10-16 as ledger 20261016071129)
 
 - PRODUCTION E2E PASSED 2026-10-16 (disposable self-test objects only):

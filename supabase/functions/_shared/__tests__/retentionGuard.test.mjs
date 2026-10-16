@@ -104,7 +104,8 @@ test('homatch-ai: expired reports never reach the assistant context; failure giv
 test('document analysis: expired document refused; an expired linked report is not read', () => {
   const src = readFileSync(join('supabase', 'functions', 'deal-room-document-analyze', 'index.ts'), 'utf8');
   const docGate = src.indexOf("retentionBlocked(supabase, 'CONTRACT_DOCUMENT', documentId)");
-  assert.ok(docGate > 0 && docGate < src.indexOf(".download(doc.storage_path)"));
+  // The file is read R2-first since 20261107090000; the gate still comes first.
+  assert.ok(docGate > 0 && docGate < src.indexOf("readRouted(supabase, 'deal-room-documents', doc.storage_path)"));
   assert.match(src, /if \(room\?\.verify_job_id && !reportExpired\)/);
 });
 

@@ -55,7 +55,7 @@ export const STORAGE_INVENTORY_STRINGS = {
   sinv_svc_design_studio: ['Design Studio', 'Design Studio', 'Design Studio', 'Design Studio', 'Design Studio', 'Design Studio'],
   sinv_svc_property: ['Property listings', 'უძრავი ქონების განცხადებები', 'Объявления о недвижимости', 'Emlak ilanları', 'إعلانات العقارات', 'מודעות נכסים'],
   sinv_svc_meta_ads: ['Meta Ads', 'Meta Ads', 'Meta Ads', 'Meta Ads', 'Meta Ads', 'Meta Ads'],
-  sinv_svc_contracts: ['Contracts / Deal Room', 'ხელშეკრულებები / Deal Room', 'Договоры / Deal Room', 'Sözleşmeler / Deal Room', 'العقود / Deal Room', 'חוזים / Deal Room'],
+  sinv_svc_contracts: ['Contracts', 'ხელშეკრულებები', 'Договоры', 'Sözleşmeler', 'العقود', 'חוזים'],
   sinv_svc_mortgage: ['Mortgages', 'იპოთეკა', 'Ипотека', 'Konut kredisi', 'الرهن العقاري', 'משכנתאות'],
   sinv_svc_developer: ['Developer projects', 'დეველოპერის პროექტები', 'Проекты застройщиков', 'Geliştirici projeleri', 'مشاريع المطورين', 'פרויקטים של יזמים'],
   sinv_svc_voice: ['AI TALK voice', 'AI TALK ხმა', 'Голос AI TALK', 'AI TALK sesi', 'صوت AI TALK', 'קול AI TALK'],

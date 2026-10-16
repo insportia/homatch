@@ -33,6 +33,7 @@ import { parseServiceActions, SERVICE_ACTIONS_INSTRUCTION } from '../../../src/l
 import {
   beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant,
 } from '../_shared/billing.ts';
+import { retentionBlockedIds } from '../_shared/retentionGuard.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -420,7 +421,16 @@ serve(async (req) => {
     .is('deleted_at', null)
     .order('completed_at', { ascending: false })
     .limit(5);
-  internal.verifications = (v || []).map((j: any) => {
+  // Retention (20261102090000): an expired report is not handed to the
+  // assistant. If expiry cannot be checked, no report context is given.
+  let liveReports: any[] = v || [];
+  try {
+    const expired = await retentionBlockedIds(sb, 'VERIFY_REPORT', liveReports.map((j: any) => j.id));
+    liveReports = liveReports.filter((j: any) => !expired.has(j.id));
+  } catch {
+    liveReports = [];
+  }
+  internal.verifications = liveReports.map((j: any) => {
     const r = j.synthesis_json?.report;
     return {
       jobId: j.id,

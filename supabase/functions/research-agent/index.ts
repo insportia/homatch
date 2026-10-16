@@ -68,6 +68,7 @@ import { httpCrawlFetcher } from '../../../src/verify/search/httpCrawlFetcher.ts
 import { buildCodeDiscoverySeeds } from '../../../src/research-core/market/codeDiscoveryTargets.ts';
 import { SEED_DOMAINS } from '../../../src/research-core/market/discoverySources.ts';
 import { computeSections } from '../../../src/verify/sections.ts';
+import { expiredReportRefusal, expiredReportRefusalById } from '../_shared/retentionGuard.ts';
 import { portalHealthUpdates, mergeSourceRow } from '../../../src/verify/sourceHealth.ts';
 import {
   consumptionFromUsage,
@@ -6913,6 +6914,14 @@ Deno.serve(async (req) => {
     // shared secret held in admin_settings, exactly as the existing
     // continuous-matching-worker cron is. Same shape, same blast radius.
     const preAuthBody = req.method === 'POST' ? await req.clone().json().catch(() => ({})) : {};
+    // RETENTION (20261102090000): an expired report is never refreshed, re-fetched
+    // or re-pictured on request — by its owner or by an internal caller.
+    if (['recover_visuals', 'fresh_photos', 'refresh_market'].includes(String(preAuthBody?.action || ''))
+        && /^[0-9a-f-]{36}$/i.test(String(preAuthBody?.jobId || ''))) {
+      const gateDb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+      const expired = await expiredReportRefusalById(gateDb, String(preAuthBody.jobId), json);
+      if (expired) return expired;
+    }
     /*
      * RECOVER SKIPPED OFFICIAL PICTURES — the job's owner, or verify-synthesis
      * server-to-server with the service-role key compared in full (the same
@@ -7352,6 +7361,7 @@ Deno.serve(async (req) => {
         if (me?.is_admin) ({ data: row } = await sb.from('research_jobs').select('id,docs:synthesis_json->officialDocuments').eq('id', jobId).maybeSingle());
       }
       if (!row) return json({ error: 'not_found' }, 404);
+      { const expired = await expiredReportRefusalById(sb, jobId, json); if (expired) return expired; } // retention: no signed URL after expiry
       const gate = ledgerFileFor((row as any).docs, b.attachedFileId);
       if (!gate.ok) return json({ error: gate.reason }, gate.reason === 'not_in_report' ? 404 : gate.reason === 'bad_id' ? 400 : 403);
       const id = String(b.attachedFileId);
@@ -7467,6 +7477,7 @@ Deno.serve(async (req) => {
       const id = String(b.jobId || '');
       const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
       // Already finished one way or another: cancelling is a no-op, not an
       // error, and must never overwrite a report the customer already has.
       if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status)) return json(forCaller(j));
@@ -7506,6 +7517,7 @@ Deno.serve(async (req) => {
       const id = String(b.jobId || '');
       const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
       if (j.status === 'PAUSED' || !isPausable(j.status)) {
         return json({ ...forCaller(j), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id), j.result_json?._pause) });
       }
@@ -7542,6 +7554,7 @@ Deno.serve(async (req) => {
       const id = String(b.jobId || '');
       const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
       if (j.status !== 'PAUSED') return json({ ...forCaller(j), billing: anonSession ? null : publicBilling(await billingStateFor(sb, id), j.result_json?._pause) });
       const n = Number(j.resume_count) || 0;
       const held = j.result_json?._pause?.reason;
@@ -7600,6 +7613,7 @@ Deno.serve(async (req) => {
       const id = String(b.jobId || '');
       let { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
+      { const expired = await expiredReportRefusal(sb, j, json); if (expired) return expired; } // retention (20261102090000)
 
       if (action === 'resume' && j.status === 'WAITING_HUMAN') {
         const wid = j.result_json?._worker?.jobId;

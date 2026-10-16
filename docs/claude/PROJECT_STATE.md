@@ -20,12 +20,21 @@ MATTERS right now, verify against the live systems, not this file)
   (`supabase/functions/publishing-engine/domain.ts`). PUBLISHED only after a 200 page that contains
   the listing id; 404/410 = removed; 403/429/5xx/timeouts = inconclusive (stays pending, backoff,
   fails after 5). Owner-attested removal is labelled as such. Browser extension + iframe retired.
-- **Schema**: `20261102090000_publishing_workspace.sql` — listing status/archive, publication columns,
+- **Schema**: `20261103090000_publishing_workspace.sql` — listing status/archive, publication columns,
   `publishing_engine_events`, RPCs `publishing_listing_save` / `publishing_publication_write` /
   `publishing_listing_lifecycle`; drops Codex's `publishing_engine_save` (it inserted a NEW
   properties row per listing). Listing id = property id (one listing per property).
 - Not live-tested against a real portal account: no real listing was published (needs the owner's
   portal account; would create a public listing).
+## Storage retention + cleanup engine + compact market knowledge (branch `ccr-76ef455d-storage-retention`, 2026-10-15) — PR OPEN, NOT APPLIED, NOT ACTIVE
+
+- Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.
+- Migration `20261102090000_storage_retention_lifecycle.sql` is dormant on apply: `admin_settings.storage_retention`
+  seeds `effective_at=null`, `purge_enabled=false`, reminders/knowledge off; no cron is scheduled.
+- Verify analysis untouched. Owner-approved minimal expiry guard (2026-10-15) in service-role routes: research-agent
+  job actions + `document_file` + regeneration actions, `homatch-ai` context, analyze worker path (doc §6). Protected
+  files may differ from main only by those exact lines (`tests/matrix/retentionSafety.test.mjs`).
+- Privacy policy `privacy_s6_body` must gain the 30-day report deletion sentence before `effective_at` is set.
 
 ## Find Buyers 2.0 — one dashboard, two campaigns, per-search results (branch claude/nifty-hopper-snzn2d, 2026-10-15) — PR, NOT DEPLOYED
 

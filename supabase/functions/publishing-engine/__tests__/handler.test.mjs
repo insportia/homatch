@@ -93,7 +93,7 @@ function makeDb() {
       row.archived_at = p_action === 'ARCHIVE' ? 'now' : null;
       return { data: row, error: null };
     },
-    // Mirrors 20261107090000 publishing_account_write: per-action key whitelist,
+    // Mirrors 20261108090000 publishing_account_write: per-action key whitelist,
     // verified statuses only from a TEST, the verified-status CHECK, credential never echoed.
     publishing_account_write({ p_actor, p_portal, p_patch, p_action }) {
       const allowed = {

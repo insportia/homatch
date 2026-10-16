@@ -21,7 +21,7 @@ const SOURCES = [
   'official-worker/src/publishing/adapters/ssge.ts',
   'supabase/migrations/20261103090000_publishing_workspace.sql',
   'supabase/migrations/20261106090000_publishing_providers.sql',
-  'supabase/migrations/20261107090000_publishing_central_accounts.sql',
+  'supabase/migrations/20261108090000_publishing_central_accounts.sql',
 ].map(read).join('\n');
 
 /* Not errors a person reads on a Publishing screen: transport refusals the browser

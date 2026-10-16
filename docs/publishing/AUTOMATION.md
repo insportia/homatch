@@ -88,7 +88,7 @@ forbid automated access and Binebi.ge shows a bot challenge on every page — bo
 
 ## Turning it on (Phase D — needs the owner)
 
-1. Apply migration `20261107090000_publishing_central_accounts.sql` (SQL Editor; it contains a DROP).
+1. Apply migration `20261108090000_publishing_central_accounts.sql` (SQL Editor; it contains a DROP).
 2. Set the edge secret `PUBLISHING_CREDENTIALS_KEY` (32 random bytes, base64).
 3. Set Railway variable `PUBLISHING_AUTOMATION_ENABLED=1` on `homatch-official-worker`.
 4. Admin → Integrations → Property portals → MyHome.ge: register the HOMATCH account

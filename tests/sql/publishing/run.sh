@@ -3,7 +3,7 @@
 # production. Applies the two 2026-10-14 publishing migrations, then
 # 20261103090000_publishing_workspace.sql, on stand-in fixtures; runs tests.sql;
 # then applies 20261106090000_publishing_providers.sql and runs providers.sql;
-# then applies 20261107090000_publishing_central_accounts.sql and runs central.sql.
+# then applies 20261108090000_publishing_central_accounts.sql and runs central.sql.
 # Usage: tests/sql/publishing/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; root="$here/../../.."
@@ -27,5 +27,5 @@ run() {
 run "$here/tests.sql"
 $P -d hmpub -1 -f "$root/supabase/migrations/20261106090000_publishing_providers.sql"
 run "$here/providers.sql"
-$P -d hmpub -1 -f "$root/supabase/migrations/20261107090000_publishing_central_accounts.sql"
+$P -d hmpub -1 -f "$root/supabase/migrations/20261108090000_publishing_central_accounts.sql"
 run "$here/central.sql"

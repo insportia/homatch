@@ -1,5 +1,5 @@
 // publishing-worker (the Railway browser worker's door) against an in-memory
-// database whose RPCs mirror migration 20261107090000's publishing_op_*. Proves:
+// database whose RPCs mirror migration 20261108090000's publishing_op_*. Proves:
 // WORKER_TOKEN auth; a claim hands over only the leased operation's listing copy,
 // photos and decrypted session; a created listing is linked only from a URL on the
 // portal's own domains and shown PUBLISHED only after the public page check; an

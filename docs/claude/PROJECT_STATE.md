@@ -141,7 +141,7 @@ MATTERS right now, verify against the live systems, not this file)
   secret is NOT configured.
 - **Worker**: no browser automation is permitted/verified, so `official-worker/` is untouched (no
   Railway deploy).
-- **Migration** `20261107090000_publishing_central_accounts.sql` — DROP-bearing (jobs status CHECK
+- **Migration** `20261108090000_publishing_central_accounts.sql` — DROP-bearing (jobs status CHECK
   swap) → owner applies via SQL Editor after merge. Edge function tolerates it missing (accounts
   unreadable → AUTH_REQUIRED, not failure).
 - **Logos**: still monograms — no logo source reachable from this environment; none invented.

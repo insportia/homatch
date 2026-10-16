@@ -3,7 +3,7 @@
 // Same model as verify-queue: the worker holds no database credential. Every call
 // is a POST {action, ...} with the shared WORKER_TOKEN; locking, leases, retries
 // and the submit-once door live in Postgres (publishing_op_* in migration
-// 20261107090000); this function adds what the worker may see for one claimed
+// 20261108090000); this function adds what the worker may see for one claimed
 // operation and turns its outcome into publication / account transitions.
 //
 //   claim        {worker, portals[], leaseSeconds?}  → {tasks[]} (listing copy, photos, decrypted session)

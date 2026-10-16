@@ -1,4 +1,4 @@
--- Proof for 20261107090000_publishing_central_accounts.sql, applied after
+-- Proof for 20261108090000_publishing_central_accounts.sql, applied after
 -- providers.sql left publications in place on listing P2.
 \set A '''aaaaaaaa-0000-0000-0000-00000000000a'''
 \set B '''bbbbbbbb-0000-0000-0000-00000000000b'''

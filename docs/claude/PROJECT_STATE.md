@@ -94,7 +94,19 @@ MATTERS right now, verify against the live systems, not this file)
   `listing.duplicate` copies text (not photos) to another owned property. 14-step journey.
 - **robots.txt** is honoured before every page check (RFC 9309; unreadable = allowed).
 
-## Storage retention + cleanup engine + compact market knowledge (branch `ccr-76ef455d-storage-retention`, 2026-10-15) — PR OPEN, NOT APPLIED, NOT ACTIVE
+## Storage retention v2 — object-level allowlist (branch `ccr-76ef455d-retention-artifacts`, 2026-10-16)
+
+- Owner decision 2026-10-16: Verify results, Contracts originals, evidence, report visuals, Design Studio and every
+  customer upload are permanent. Only allowlisted disposable storage objects may be deleted (doc §10).
+- Migration `20261105090000_storage_retention_artifacts.sql`: categories + artifacts registry, prospective-only
+  registration, notices, claim/outcome engine, admin RPCs; retires record-level claim/configure. Real categories seed
+  DISABLED; settings `storage_retention_artifacts` = not paused, notices off; no cron on apply.
+- Eligible today: `verify_document_cache` (regenerable; worker re-fetch proof before delete). Future:
+  `generated_report` (producer registers with owner + download link). Self-test categories for production E2E.
+- Production audit (2026-10-16): R2 16.85 GB of which 16.8 GB is the Design Studio public catalog (protected);
+  no temporary generated files exist in production yet.
+
+## Storage retention + cleanup engine + compact market knowledge (PR #211, merged d17ca1d3, migration applied 2026-10-16 as ledger 20261016045620) — RECORD-LEVEL PART RETIRED
 
 - Full design, dependency map, inventory, Dry Run, activation steps: `docs/infra/STORAGE_RETENTION.md`.
 - Migration `20261102090000_storage_retention_lifecycle.sql` is dormant on apply: `admin_settings.storage_retention`

@@ -28,6 +28,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -140,6 +141,7 @@ async function stub(page) {
         },
       });
     }
+    if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
     if (url.includes('/rest/v1/rpc/')) return r.fulfill(json(null));
     if (url.includes('/rest/v1/')) return r.fulfill(json([]));
     return r.fulfill(json({}));

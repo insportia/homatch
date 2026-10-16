@@ -58,6 +58,9 @@ import { SiteHeaderBlock } from './ShellBlocks';
  * built from the data. The data only ever adjusts it.
  */
 
+/** Sections that are, in themselves, one of the owner's pausable services. */
+const SECTION_SERVICES: Partial<Record<string, ServiceKey>> = { call_center: 'ai_call_center' };
+
 /** The one place a section type becomes running code. */
 const COMPONENTS: Record<string, React.ComponentType> = {
   hero: HeroSection,
@@ -98,6 +101,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
 export {
   DEFAULT_HOME_ORDER, DEFAULT_ABOUT_ORDER, defaultOrderFor, resolveSections,
 } from './order';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 export interface SitePageProps {
   slug: string;
@@ -147,7 +151,12 @@ export function SitePage({
   // onSelect is set only by the editor, so it doubles as the signal that
   // hidden sections should still be drawn.
   const all = resolveSections(slug, content, Boolean(onSelect));
+  const { services } = useServiceControls();
   const resolved = all.filter(({ type }) => {
+    // A section that IS a paused service (Admin → Service Control Center) is not
+    // rendered on the public site; the editor still draws it so it can be arranged.
+    const service = SECTION_SERVICES[type];
+    if (service && !onSelect && !services[service].frontend) return false;
     if (only) return only.includes(type);
     if (except) return !except.includes(type);
     return true;

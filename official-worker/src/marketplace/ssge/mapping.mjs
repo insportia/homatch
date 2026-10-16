@@ -57,6 +57,12 @@ export function ssgeCriteria(request, locations) {
 }
 const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const text = value => typeof value === 'string' && value.trim() ? value.trim() : null;
+/* SS.ge prints status and condition as Georgian labels. Mirrors src/research-core/marketplace/source-labels.ts
+   (the platform also reads the labels from retrievalMetadata); an unlisted label stays unknown. */
+const BUILDING = { 'ძველი აშენებული': 'OLD_BUILD', 'ახალი აშენებული': 'NEW_BUILD', 'მშენებარე': 'UNDER_CONSTRUCTION' };
+const CONDITION = { 'ახალი რემონტით': 'RENOVATED', 'ძველი რემონტით': 'RENOVATED', 'გარემონტებული': 'RENOVATED',
+  'თეთრი კარკასი': 'WHITE_FRAME', 'მწვანე კარკასი': 'GREEN_FRAME', 'შავი კარკასი': 'BLACK_FRAME', 'სარემონტო': 'NEEDS_RENOVATION' };
+const label = (map, value) => map[text(value)?.replace(/\s+/g, ' ') ?? ''] ?? null;
 export function ssgeCandidate(listing, detail, request, page) {
   const n = detail, raw = n.raw;
   const coords = number(n.latitude) !== null && number(n.longitude) !== null && Math.abs(n.latitude) <= 90 && Math.abs(n.longitude) <= 180;
@@ -68,7 +74,7 @@ export function ssgeCandidate(listing, detail, request, page) {
     propertyType: Object.entries(types).find(([, value]) => value === n.propertyType)?.[0] ?? null,
     transactionType: Object.entries(deals).find(([, value]) => value === n.transactionType)?.[0] ?? null,
     areaSqm: number(n.area), rooms: number(n.rooms), bedrooms: number(n.bedrooms), bathrooms: null,
-    floor: number(n.floor), totalFloors: number(n.totalFloors), buildingStatus: null, renovationStatus: null, constructionYear: null,
+    floor: number(n.floor), totalFloors: number(n.totalFloors), buildingStatus: label(BUILDING, n.buildingStatus), renovationStatus: label(CONDITION, n.condition), constructionYear: null,
     furnished: typeof n.furnished === 'boolean' ? n.furnished : null, parking: null,
     amenities: Object.entries(n.amenities ?? {}).filter(([key, value]) => value === true && ['balcony', 'elevator', 'garage', 'storage'].includes(key)).map(([key]) => key),
     images: [...new Set([...(listing.images ?? []), ...(n.images ?? [])])].slice(0, 24), imageHashes: [],

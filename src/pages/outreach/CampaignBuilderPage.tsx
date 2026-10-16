@@ -38,6 +38,7 @@ import {
   listAgents, listTemplates, listChannelAccounts,
 } from '@/services/communications';
 import type { CommCampaign, LaunchPreview, AgentListRow, CommTemplate, CommChannelAccount } from '@/types/communications';
+import { useServiceControls } from '@/lib/serviceControls';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -81,6 +82,11 @@ type Step = typeof ALL_STEPS[number];
 interface ContactListRow { id: string; name: string; total_rows: number; valid_rows: number }
 
 export default function CampaignBuilderPage() {
+  // A paused service (Admin → Service Control Center) is not offered as a channel;
+  // the server refuses its launch on its own (comm-campaign-launch).
+  const { services } = useServiceControls();
+  const channelChoices = CHANNEL_CHOICES.filter((c) =>
+    (c.code !== 'AI_CALL' || services.ai_call_center.frontend) && (c.code !== 'WHATSAPP' || services.whatsapp.frontend));
   const { t, lang: language } = useLanguage();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -126,7 +132,8 @@ export default function CampaignBuilderPage() {
        default. A path cannot be edited by a stale link the way a param can. */
     if (lockedChannel) return lockedChannel;
     const c = (params.get('channel') ?? '').toUpperCase();
-    return CHANNEL_CHOICES.some((x) => x.code === c) ? c : 'AI_CALL';
+    if (channelChoices.some((x) => x.code === c)) return c;
+    return channelChoices.some((x) => x.code === 'AI_CALL') ? 'AI_CALL' : (channelChoices[0]?.code ?? 'SMS');
   })();
   const [draft, setDraft] = useState<Partial<CommCampaign>>({
     campaign_type: initialChannel as CommCampaign['campaign_type'],
@@ -331,7 +338,7 @@ export default function CampaignBuilderPage() {
               <div className="space-y-2">
                 <Label className="text-xs">{t('comms_cb_choose_channel')}</Label>
                 <div className="grid gap-2 lg:grid-cols-3">
-                  {CHANNEL_CHOICES.map(({ code, icon: Icon, titleKey, bodyKey, secondary }) => {
+                  {channelChoices.map(({ code, icon: Icon, titleKey, bodyKey, secondary }) => {
                     const on = draft.campaign_type === code;
                     return (
                       <button

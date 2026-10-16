@@ -34,6 +34,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
+import { useServiceControls } from '@/lib/serviceControls';
+import { serviceForPath } from '@/lib/serviceControls/routes';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -159,9 +161,15 @@ function isActive(pathname: string, item: NavEntry): boolean {
 function NavItems({ product, onNavigate }: { product: CommsProduct; onNavigate?: () => void }) {
   const { t } = useLanguage();
   const { pathname } = useLocation();
+  const { services } = useServiceControls();
+  // A paused service (Admin → Service Control Center) leaves every rail.
+  const items = PRODUCT_NAV[product].filter((item) => {
+    const service = serviceForPath(item.to);
+    return !service || services[service].frontend;
+  });
   return (
     <>
-      {PRODUCT_NAV[product].map((item) => {
+      {items.map((item) => {
         const active = isActive(pathname, item);
         return (
           <NavLink

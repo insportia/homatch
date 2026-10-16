@@ -4,6 +4,7 @@ import svgr from "vite-plugin-svgr";
 import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
+import { isAdminOnlyKey } from "./src/i18n/adminSplit";
 
 /**
  * THE DIGITAL TWIN’S DECODERS, SERVED FROM OUR OWN ORIGIN.
@@ -157,14 +158,21 @@ function i18nLanguageChunks(): Plugin {
     const merged = mod.translations as Record<string, Record<string, string>>;
     /* English whole; every other language only where it differs, so a chunk
        carries no copy of English (t() already falls back to English). */
+    /* Then every language is cut in two: the admin console's own strings
+       (src/i18n/adminSplit.ts) go to admin-<lang>, loaded with the admin
+       layout; everything else stays where it was. */
     const en = merged.en;
-    const out: Record<string, Record<string, string>> = { en };
+    const out: Record<string, Record<string, string>> = {};
     for (const lang of LANGS) {
       if (!merged[lang] || typeof merged[lang] !== 'object') throw new Error(`[i18n] translations.ts has no "${lang}" bundle`);
-      if (lang === 'en') continue;
       const own: Record<string, string> = {};
-      for (const [k, v] of Object.entries(merged[lang])) if (v !== en[k]) own[k] = v;
+      const admin: Record<string, string> = {};
+      for (const [k, v] of Object.entries(merged[lang])) {
+        if (lang !== 'en' && v === en[k]) continue;
+        (isAdminOnlyKey(k) ? admin : own)[k] = v;
+      }
       out[lang] = own;
+      out[`admin-${lang}`] = admin;
     }
     cached = { mtimeMs, bundles: out };
     return out;
@@ -173,7 +181,8 @@ function i18nLanguageChunks(): Plugin {
   return {
     name: 'homatch:i18n-language-chunks',
     resolveId(id) {
-      if (id.startsWith(PREFIX) && LANGS.includes(id.slice(PREFIX.length))) return `\0${id}`;
+      const name = id.startsWith(PREFIX) ? id.slice(PREFIX.length) : '';
+      if (LANGS.includes(name) || LANGS.includes(name.replace(/^admin-/, ''))) return `\0${id}`;
       return null;
     },
     async load(id) {
@@ -188,8 +197,10 @@ function i18nLanguageChunks(): Plugin {
     handleHotUpdate({ file, server }) {
       if (path.resolve(file) !== SOURCE) return;
       for (const lang of LANGS) {
-        const mod = server.moduleGraph.getModuleById(`\0${PREFIX}${lang}`);
-        if (mod) server.moduleGraph.invalidateModule(mod);
+        for (const name of [lang, `admin-${lang}`]) {
+          const mod = server.moduleGraph.getModuleById(`\0${PREFIX}${name}`);
+          if (mod) server.moduleGraph.invalidateModule(mod);
+        }
       }
       server.ws.send({ type: 'full-reload' });
       return [];

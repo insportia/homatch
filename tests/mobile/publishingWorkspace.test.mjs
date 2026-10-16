@@ -31,6 +31,7 @@ import {
 import { adapterFor, configs, sanitizePatch, profileById } from '../../supabase/functions/publishing-engine/providers.ts';
 import { accountView, centralCopy, emptyAccount, registeredStatus, routeFor, sanitizeAccountPatch } from '../../supabase/functions/publishing-engine/central.ts';
 import { BROWSER_CAPABILITIES } from '../../supabase/functions/publishing-engine/automation.ts';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -275,6 +276,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', route = '/publ
       return r.fulfill(json(out, status));
     }
     if (url.includes('/functions/v1/storage-sign')) return r.fulfill(json({ url: `${BASE}/managed-photo.png`, expiresIn: 600 }));
+    if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/users')) return r.fulfill(json(profile));

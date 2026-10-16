@@ -5,6 +5,15 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Service Control Center — six services paused from Admin (branch claude/homatch-property-publishing-g50stw, 2026-10-16)
+
+- Owner decision 2026-10-16: **Publishing, AI Call Center, AI TALK, WhatsApp, Live Chat, Design Studio** paused (all six OFF), not deleted. Runbook and full entry-point map: `docs/claude/SERVICE_CONTROLS.md`.
+- Admin → System → Service Control Center (`/admin/service-control`): per service **Backend execution** + **Frontend visibility** (visible ⇒ running, CHECK), readiness (blocking gaps by name; NOT_READY refusal audited), running work, history, Pause / Pause all six; optimistic `version`.
+- Migration `20261109090000_service_controls.sql` (additive): `service_controls` + `service_controls_public()` + `service_control_set` / `service_control_pause_all` (audited in `admin_audit_log`) + `service_control_guard` trigger on `live_chat_messages`, `live_chat_reactions`, `ds_projects`.
+- Server enforcement: `_shared/serviceControl.ts` (fail closed, 10 s cache, 503 `SERVICE_DISABLED`) at every start boundary of the six; webhooks, completion/settle routes and history stay open (see the runbook).
+- **Publishing activation is stopped** (owner, 2026-10-16): migration `20261108090000` stays UNAPPLIED (the 2026-10-16 apply attempt timed out and was verified not applied: no ledger row, no objects); `PUBLISHING_WORKER_TOKEN` / `PUBLISHING_CREDENTIALS_KEY` not configured; `PUBLISHING_AUTOMATION_ENABLED` unset; no live portal workflow verified. The code stays as a dormant module (a future official-API integration may replace the browser path).
+- Railway: only `homatch-official-worker` is used; `homatch-official-worker-v2` exists in the project (pre-existing, untouched).
+
 ## Find Buyers 4.0 — people-first discovery + live-test findings (branch claude/nifty-hopper-snzn2d, 2026-10-16) — IN PROGRESS, NOT RELEASED
 
 Controlled live test 2026-10-16 (campaign 46dcaf3f, VILLION 244486, owner-approved $1.45 cap):
@@ -20,7 +29,7 @@ stage (seed only — owner registers in Admin; competitor ad → its Page feed w
 comments run when comments arrived inline; native Telegram judged by the Find Buyers pipeline at
 campaign close (free, stored rows not rewritten); Find Buyers Telegram sync also reads verified
 communities for that call; search deepening never outranks another language's first probe (ar/he/tr
-were cancelled as PHASE1_BUDGET). Migration 20261109090000 adds find_buyers_research_opportunities(job).
+were cancelled as PHASE1_BUDGET). Migration 20261109100000 adds find_buyers_research_opportunities(job).
 UX (worktree /home/user/wt-fb-ux, branch claude/fb-ux-wt): start redirect, server-time timer, new live
 animation, compact cards, 3 tabs + filter sheet, lead detail route — to be merged into this branch.
 
@@ -1800,3 +1809,26 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   (Krtsanisi/Ortachala) with Place.ge deliberately unauthorised — others delivered,
   search PARTIAL_COMPLETE, Place run TIMED_OUT; SS.ge FAILED on that district request
   (see KNOWN_RISKS). Six locales on 390px, ar/he RTL, 0 px overflow.
+
+## Find Property workspace redesign + live 56/0 case (2026-10-16)
+
+- PR #230 released: migrations 091700…095700 in the ledger (exact SQL from main;
+  versions 20261016130557 / 131050 / 132211 / 132225 / 132232), edge PROVEN_EXACT
+  via deploy run 1082 (`94ecf66d`), Vercel `dpl_9SsBZn9d98…` READY at `65e6fad6`,
+  Railway `eb0b8efa` SUCCESS at `65e6fad6`. `find_property_social_enabled` = false.
+- Owner's "56 alternatives, 0 strong, only MyHome/SS.ge" = search `f5121176` of
+  2026-10-11 (5 days old; only 2 workers then). Causes: (1) the request asked
+  `maxBuildingAge 15` and no source publishes a build year → every result had
+  BUILDING_AGE unverified → none strong (correct, now explained on screen);
+  (2) the SS.ge adapter dropped building status / condition labels (fixed in
+  `ssge/mapping.mjs` + normaliser fallback `research-core/marketplace/source-labels.ts`);
+  (3) stored `strong_matches` used a looser rule than the cards (pipeline now
+  counts `intelligence.strong`; history recomputes it per card).
+- Redesign (`src/components/findProperty/workspace/`): light header + tabs
+  (searches / saved / activity), Free vs Deep choice step (Deep honestly off while
+  the switch is off), per-source live states from worker runs, results summary with
+  "why not strong", new cards, grouped activity. Georgian copy names the paid mode
+  "ვრცელი ძიება"; customer copy has no dashes (owner).
+- Sources live: MyHome, SS.ge, Place.ge, Home.ge, Allhome.ge (registry-driven list in
+  `capabilities.sources`). Brokeri.ge registered but disabled (stale catalogue);
+  Korter.ge (terms) and Binebi.ge (Cloudflare) excluded.

@@ -14,6 +14,7 @@ import { comparePlaces, resolvePlace } from '../normalize/place.ts';
 import { safeWebUrl } from '../discovery/source-link.ts';
 import { listingActivity } from './freshness.ts';
 import { descriptionSignals } from './description-signals.ts';
+import { buildingStatusFromLabel, renovationStatusFromLabel } from './source-labels.ts';
 import { publicContactsIn, phoneKey } from '../discovery/public-contacts.ts';
 import type { ExternalListingCandidate, MarketplaceSearchRequest } from './worker-contract.ts';
 import {
@@ -130,7 +131,10 @@ export function normalizeCandidate(
   const userType = typeof c.retrievalMetadata?.userType === 'string' ? c.retrievalMetadata.userType.toLowerCase() : null;
   const declaredType = c.seller.declaredType
     ?? (userType === 'agent' || userType === 'broker' ? 'BROKER' : userType === 'developer' ? 'DEVELOPER' : null);
-  const fields = [c.price, c.areaSqm, c.rooms, c.bedrooms, c.floor, c.district, c.city, c.buildingStatus, c.renovationStatus, c.images[0]];
+  // A source that printed the status only as a label (SS.ge) still states it.
+  const buildingStatus = c.buildingStatus ?? buildingStatusFromLabel(c.retrievalMetadata?.buildingStatusSource);
+  const renovationStatus = c.renovationStatus ?? renovationStatusFromLabel(c.retrievalMetadata?.conditionSource);
+  const fields = [c.price, c.areaSqm, c.rooms, c.bedrooms, c.floor, c.district, c.city, buildingStatus, renovationStatus, c.images[0]];
   return {
     id: `${c.source}:${c.sourceListingId}`,
     source: c.source,
@@ -160,8 +164,8 @@ export function normalizeCandidate(
     bathrooms: c.bathrooms,
     floor: c.floor,
     totalFloors: c.totalFloors,
-    buildingStatus: c.buildingStatus,
-    renovationStatus: c.renovationStatus,
+    buildingStatus,
+    renovationStatus,
     constructionYear: c.constructionYear,
     furnished: c.furnished,
     elevator: amenityCodes(c.amenities).includes('ELEVATOR') ? true

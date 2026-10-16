@@ -63,7 +63,7 @@ export function BuilderIntro({ t, text, onText, onSubmit, busy }: {
             </button>
           </form>
         </div>
-        <aside className="space-y-4 border-t border-white/10 bg-[#0C1119] p-6 sm:p-8 lg:border-s lg:border-t-0 [&_p]:text-white/80">
+        <aside className="space-y-4 border-t border-border bg-[linear-gradient(160deg,hsl(42_55%_98%),hsl(40_40%_94%))] p-6 sm:p-8 lg:border-s lg:border-t-0">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mps_intro_example_label')}</p>
             <button
@@ -316,8 +316,8 @@ export function QuestionCard({ t, question, brief, onEdit, onDone }: {
 
 /* ────────────────────────── Ready ────────────────────────── */
 
-export function ConfirmCard({ t, brief, onStart, onChange, onAddCondition, starting }: {
-  t: T; brief: SearchIntelligenceBrief; onStart: () => void; onChange: () => void; onAddCondition: () => void; starting: boolean;
+export function ConfirmCard({ t, brief, onStart, onChange, onAddCondition, starting, startLabel }: {
+  t: T; brief: SearchIntelligenceBrief; onStart: () => void; onChange: () => void; onAddCondition: () => void; starting: boolean; startLabel?: string;
 }) {
   const lines = criteriaChips(brief, t);
   return (
@@ -341,9 +341,9 @@ export function ConfirmCard({ t, brief, onStart, onChange, onAddCondition, start
           </button>
         ) : null}
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button type="button" className={primary} onClick={onStart} disabled={starting} data-action="mps-start">
+          <button type="button" className={primary} onClick={onStart} disabled={starting} data-action={startLabel ? 'mps-continue' : 'mps-start'}>
             {starting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            {t('mps_ready_start')}
+            {startLabel ?? t('mps_ready_start')}
           </button>
           <button type="button" className={quiet} onClick={onChange}>{t('mps_ready_change')}</button>
         </div>
@@ -354,8 +354,8 @@ export function ConfirmCard({ t, brief, onStart, onChange, onAddCondition, start
 
 /* ────────────────────────── The builder ────────────────────────── */
 
-export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset }: {
-  t: T; brief: SearchIntelligenceBrief; onBrief: (b: SearchIntelligenceBrief) => void; onStart: () => void; starting: boolean; onReset: () => void;
+export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset, startLabel }: {
+  t: T; brief: SearchIntelligenceBrief; onBrief: (b: SearchIntelligenceBrief) => void; onStart: () => void; starting: boolean; onReset: () => void; startLabel?: string;
 }) {
   const readiness = useMemo(() => evaluateReadiness(brief), [brief]);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -371,13 +371,13 @@ export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset }:
     <div className="space-y-5">
       {brief.originalText ? (
         <div className="flex max-w-3xl items-start gap-3">
-          <p dir="auto" className="min-w-0 flex-1 rounded-2xl rounded-ss-md bg-[#0C1119] px-4 py-3 text-[15px] leading-relaxed text-white/90">{brief.originalText}</p>
+          <p dir="auto" className="min-w-0 flex-1 rounded-2xl rounded-ss-md border border-[hsl(var(--gold-border))] bg-card px-4 py-3 text-[15px] leading-relaxed text-foreground shadow-sm">{brief.originalText}</p>
         </div>
       ) : null}
       <UnderstoodPanel t={t} brief={brief} readiness={readiness} editing={editing} onEdit={(k) => { setEditing(k); setReviewing(false); }} />
       <AdvancedPropertyPreferences brief={brief} onAdvanced={(value) => edit({ field: 'advanced', value: { ...value, floorRange: value.floorRange ?? null } })} onOlderBuildings={(acceptable) => edit({ field: 'buildingStatuses', value: acceptable ? ['ANY'] : ['NEW_BUILD', 'UNDER_CONSTRUCTION'] })} t={t} />
       {showConfirm ? (
-        <ConfirmCard t={t} brief={brief} onStart={onStart} starting={starting}
+        <ConfirmCard t={t} brief={brief} onStart={onStart} starting={starting} startLabel={startLabel}
           onChange={() => setReviewing(true)} onAddCondition={() => setEditing('renovation')} />
       ) : question ? (
         <QuestionCard key={question} t={t} question={question} brief={brief} onEdit={edit} onDone={() => setEditing(null)} />

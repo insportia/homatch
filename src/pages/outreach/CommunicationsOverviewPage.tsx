@@ -50,6 +50,7 @@ import type {
   AttentionItem, ChannelStatusCard, CommCampaign, CommOverviewStats, AgentListRow, CommContact,
 } from '@/types/communications';
 import { cn } from '@/lib/utils';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 type Range = '1d' | '7d' | '30d' | '90d';
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -68,6 +69,8 @@ function toChannelState(card: ChannelStatusCard | undefined): { state: ChannelSt
 }
 
 export default function CommunicationsOverviewPage() {
+  const callsVisible = useServiceVisible('ai_call_center');
+  const whatsappVisible = useServiceVisible('whatsapp');
   const { t, lang: language } = useLanguage();
   const { supaUser: user } = useAuth();
   const navigate = useNavigate();
@@ -120,11 +123,12 @@ export default function CommunicationsOverviewPage() {
 
   /* Setup progress, read from real account state. Nothing is assumed done. */
   const steps: SetupStep[] = [
-    {
+    // Call agents are an AI Call Center concept: no setup step while it is paused.
+    ...(callsVisible ? [{
       titleKey: 'comms_step_agent', bodyKey: 'comms_step_agent_body',
       done: agents.length > 0,
       action: { label: t('comms_create_agent'), onClick: () => navigate('/outreach/agents') },
-    },
+    }] : []),
     {
       titleKey: 'comms_step_contacts', bodyKey: 'comms_step_contacts_body',
       done: contacts.length > 0,
@@ -192,9 +196,12 @@ export default function CommunicationsOverviewPage() {
 
       {/* ── THE THREE DIRECTIONS ──────────────────────────────────────────
           Equal weight, each independent. This is the page's whole point. */}
+      {/* Paused services (Admin → Service Control Center) have no module here; with
+          both paused the section itself is not drawn. */}
+      {(callsVisible || whatsappVisible) && (
       <Section titleKey="comms_channels_title" sub={t('comms_channels_sub')}>
         <div className="grid gap-3 lg:grid-cols-3">
-          <ChannelModule
+          {callsVisible && <ChannelModule
             featured
             icon={PhoneCall}
             titleKey="comms_ch_calls"
@@ -212,9 +219,9 @@ export default function CommunicationsOverviewPage() {
               { label: t('comm_new_campaign'), onClick: () => navigate('/outreach/campaigns/new?channel=AI_CALL') },
               { label: t('comms_nav_agents'), onClick: () => navigate('/outreach/agents') },
             ]}
-          />
+          />}
 
-          <ChannelModule
+          {whatsappVisible && <ChannelModule
             featured
             icon={MessageCircle}
             titleKey="comms_ch_wa"
@@ -232,7 +239,7 @@ export default function CommunicationsOverviewPage() {
               { label: t('comms_wa_new_campaign'), onClick: () => navigate('/outreach/campaigns/new?channel=WHATSAPP') },
               { label: t('comms_nav_inbox'), onClick: () => navigate('/outreach/whatsapp/inbox') },
             ]}
-          />
+          />}
 
           {/*
            * WhatsApp Calling is its own direction, not a phone campaign that
@@ -240,16 +247,17 @@ export default function CommunicationsOverviewPage() {
            * because a product a customer cannot see is a product they cannot
            * ask for — and its state says so honestly rather than hiding it.
            */}
-          <ChannelModule
+          {whatsappVisible && <ChannelModule
             icon={PhoneForwarded}
             titleKey="comms_ch_wacall"
             purposeKey="comms_ch_wacall_purpose"
             state="NOT_ACTIVATED"
             stateDetailKey="comms_ch_wacall_detail"
             primary={{ label: t('comms_open_whatsapp'), onClick: () => navigate('/outreach/whatsapp') }}
-          />
+          />}
         </div>
       </Section>
+      )}
 
       {/* ── Shared across the channels ─────────────────────────────────── */}
       <Section titleKey="comms_activity_title" sub={t('comms_activity_sub')}>
@@ -265,7 +273,7 @@ export default function CommunicationsOverviewPage() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Section
-          className="xl:col-span-2"
+          className={callsVisible ? 'xl:col-span-2' : 'xl:col-span-3'}
           titleKey="comms_recent_campaigns"
           sub={activeCount ? t('comms_campaigns_active', { n: activeCount }) : null}
           action={{ label: t('comms_see_all'), onClick: () => navigate('/outreach/campaigns') }}
@@ -309,7 +317,7 @@ export default function CommunicationsOverviewPage() {
           )}
         </Section>
 
-        <Section
+        {callsVisible && <Section
           titleKey="comms_your_agents"
           action={{ label: t('comms_see_all'), onClick: () => navigate('/outreach/agents') }}
         >
@@ -349,7 +357,7 @@ export default function CommunicationsOverviewPage() {
             <QuickAction icon={Users} labelKey="comms_nav_contacts" onClick={() => navigate('/outreach/contacts')} />
             <QuickAction icon={Wallet} labelKey="comms_nav_billing" onClick={() => navigate('/outreach/billing')} />
           </div>
-        </Section>
+        </Section>}
       </div>
     </CommsWorkspace>
   );

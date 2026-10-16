@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -88,6 +89,9 @@ test('the home page hero has no horizontal overflow at real phone widths', async
       const page = await context.newPage();
       const pageErrors = [];
       page.on('pageerror', (e) => pageErrors.push(String(e?.message ?? e)));
+      // The hero's AI TALK column is drawn only while the owner has AI TALK on
+      // (Service Control Center); this suite measures the hero with it present.
+      await page.route(`**${SERVICE_CONTROLS_RPC}*`, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(SERVICES_ALL_ON) }));
 
       await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30_000 });
 

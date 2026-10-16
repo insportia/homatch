@@ -13,6 +13,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { makeBackend } from './devBackend.mjs';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from '../mobile/serviceControlsFixture.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const PORT = 4191;
@@ -153,6 +154,7 @@ async function wire(page) {
         },
       });
     }
+    if (url.includes(SERVICE_CONTROLS_RPC)) return route.fulfill(json(SERVICES_ALL_ON));
     if (url.includes('/auth/v1/user')) return route.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return route.fulfill(json(fakeSession()));
     if (url.includes('/storage/v1/')) return route.fulfill(json({ Key: 'stub/path', path: 'stub/path' }));

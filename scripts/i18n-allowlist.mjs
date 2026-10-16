@@ -12,7 +12,7 @@
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
   // Find Property paid campaign: social-network brand names, the same in Latin-script locales.
-  'fpi_network_facebook', 'fpi_network_instagram', 'fpi_network_telegram',
+  'fpi_network_facebook', 'fpi_network_instagram', 'fpi_network_telegram', 'fpx_eyebrow',
   // Admin → Storage inventory: product and provider names, the same in every locale.
   'sinv_supabase_total', 'sinv_svc_design_studio', 'sinv_svc_meta_ads', 'sinv_svc_verify',
   'sinv_store_r2', 'sinv_store_supabase',
@@ -295,6 +295,9 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // above already are. Arabic and Hebrew carry their own transliterations for
   // all three of these keys, so none of them can be masking a real gap.
   'comm_channel_whatsapp',
+  // Service Control Center: product brand names, identical in every language.
+  'svc_name_ai_talk',
+  'svc_name_whatsapp',
   'comm_kpi_whatsapp',
   'comm_series_whatsapp',
   // "SMS" — an acronym with no translated form in Georgian, Russian, Turkish

@@ -471,7 +471,8 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       priceDiscrepancies: working.filter((w) => w.discrepancy?.significant).length,
       excludedByFilter: excluded.length,
       inBudget: normal.length,
-      strongMatches: strong.length,
+      // The customer's definition (every requested fact confirmed), so saved counts never disagree with the cards.
+      strongMatches: properties.filter((p) => p.intelligence?.strong).length,
       upgrades: upgrades.length,
       stale: working.filter((w) => w.freshness === 'STALE').length,
     },

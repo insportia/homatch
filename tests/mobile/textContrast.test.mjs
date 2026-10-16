@@ -38,6 +38,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -222,6 +223,7 @@ test('no customer route carries text below the contrast floor', opts, async (t) 
         },
       });
     }
+    if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(json(SERVICES_ALL_ON));
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/users')) return r.fulfill(json(PROFILE));

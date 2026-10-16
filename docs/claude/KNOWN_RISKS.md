@@ -15,6 +15,12 @@ Things that have already bitten a session once. Read before they bite twice.
   no-ops). Only the CI run advances them.
 - **`ezbr_sha256` is not reproducible** and is never proof. The eszip module
   diff is.
+- **Node resolves what Deno will not.** A bare `@supabase/supabase-js` import
+  passes every Node-run test (node_modules has it) and fails the Deno bundler
+  after merge; a failed function also stops its deploy list, so later
+  functions (and the no-JWT step) stay owed (run 38932203655). `check:edge`
+  now refuses any import that is not relative / URL / `jsr:` / `npm:` /
+  `node:` unless the function's own `deno.json` maps it.
 - **Hand-deploy pair**: `impersonate-user`, `unlock-external-contact` are
   excluded from CI's owed set; changing them means hand-deploying them and
   proving the artifact.
@@ -83,7 +89,7 @@ other owed functions in the same run moved and proved. A single-function dispatc
 (`redeploy=meta-oauth`, runs #846/#849) proved it exact both times. The artifact proof caught it;
 until the cause is known, redeploy meta-oauth on its own when the proof flags it.
 
-## Entry bundle ratchet at 2MB (translations split per language, 2026-09-30)
+## Entry bundle ratchet at 2MB (translations split per language 2026-09-30; admin console split 2026-10-16)
 
 `tests/browser/accessibilityAudit.test.mjs` fails the Validate job — and so
 blocks every edge deploy — when the Vite entry chunk passes its ceiling. The
@@ -99,6 +105,21 @@ with per-language loading named as the follow-up. That follow-up is done:
   failed chunk renders English), and a switch loads before it switches, so no
   flash of English. `tests/browser/languageChunks.test.mjs` holds both.
 - Entry 6.21MB → 1.62MB; ceiling 6.5MB → 2MB.
+- 2026-10-16: ceiling 2MB → 2.25MB on the owner's approval. main had reached
+  2,095,069 bytes (gzip 599,713 / brotli 481,749); the Service Control Center
+  added 10,376 (+3,590 gzip / +2,313 brotli): 6,018 English strings, 3,073 the
+  route gate, 777 routes/nav/icon. Way back down (follow-up, not done): move
+  admin-only modules already in the entry (AdminLayout, admin/navigation,
+  AdminSearch, adminControl, admin/labels, ~24KB) and admin-only English
+  strings out of it.
+- 2026-10-16, same day: done, ceiling back to 2MB. `AdminLayout` is lazy in
+  `src/routes.tsx` and loads together with `loadAdminStrings()`; every
+  language's `admin_*` keys (rule: `src/i18n/adminSplit.ts`, minus the
+  customer families `admin_imp_` and `admin_di_event_`) are cut into
+  `virtual:homatch-i18n/admin-<lang>`. Entry 2,105,445 → 1,986,168. Keep
+  customer screens off admin-only keys (`tests/matrix/adminStringSplit.test.mjs`
+  fails if one names one); a new customer-facing `admin_` family goes into
+  `CUSTOMER_ADMIN_PREFIXES`.
 - Keep new runtime code off `@/i18n/translations` and `@/i18n/appContent`
   (value imports): either one puts all six languages back into the entry. Use
   `@/i18n/bundles` or `@/i18n/locales`; type imports are free.
@@ -172,3 +193,11 @@ with per-language loading named as the follow-up. That follow-up is done:
   Find Property side only; `find_buyers_reserve_actor_run` (Find Buyers' workstream)
   still counts only its own table, so the combined in-flight total can exceed
   `discovery_provider_concurrency.APIFY_MEMO23` by Find Property's share.
+
+## Find Property: criteria no source publishes (2026-10-16)
+
+SS.ge never publishes a construction year and MyHome almost never does (1 of 385
+recent listings, as ">2000"). A search with a maximum building age therefore cannot
+have strong matches: every result keeps BUILDING_AGE unverified. This is correct
+(strong = every requested fact confirmed); the results header now names the
+missing facts ("why not strong"). Do not relax the rule to hide it.

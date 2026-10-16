@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { usePathAvailable } from '@/lib/serviceControls';
 
 const channels = [
   { icon: Users, labelKey: 'outreach_channel_contacts', descKey: 'outreach_channel_contacts_desc', path: '/outreach/contact-lists', badge: null },
@@ -18,6 +19,7 @@ const channels = [
 
 export default function OutreachHubPage() {
   const { t } = useLanguage();
+  const pathAvailable = usePathAvailable();
   const navigate = useNavigate();
 
   return (
@@ -54,7 +56,7 @@ export default function OutreachHubPage() {
           </Card>
 
           <div className="grid grid-cols-1 gap-3">
-            {channels.map(({ icon: Icon, labelKey, descKey, path, badge }) => (
+            {channels.filter((c) => pathAvailable(c.path)).map(({ icon: Icon, labelKey, descKey, path, badge }) => (
               <Card key={path} className="cursor-pointer hover:border-foreground/25 transition-colors"
                 onClick={() => navigate(path)}>
                 <CardContent className="p-4">

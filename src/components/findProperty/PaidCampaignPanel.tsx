@@ -24,12 +24,12 @@ const NETWORK_ICON: Record<OfferNetwork, typeof Facebook> = { FACEBOOK: Facebook
 const QUICK = [50, 100, 300, 1000];
 const usd = (v: number | null | undefined) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
 
-export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscription }: { t: T; searchId?: string | null; subscriptionId?: string | null }) {
+export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscription, initialCredits }: { t: T; searchId?: string | null; subscriptionId?: string | null; initialCredits?: number }) {
   const [subscriptionId, setSubscriptionId] = useState<string | null>(givenSubscription ?? null);
   const [run, setRun] = useState<CampaignState | null>(null);
   const [mode, setMode] = useState<'LOADING' | 'CONFIGURE' | 'RUN' | 'NO_SEARCH'>('LOADING');
   const [networks, setNetworks] = useState<OfferNetwork[]>([...OFFER_NETWORKS]);
-  const [credits, setCredits] = useState(50);
+  const [credits, setCredits] = useState(initialCredits && initialCredits >= 50 ? Math.round(initialCredits) : 50);
   const [preview, setPreview] = useState<CampaignPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -41,7 +41,12 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
   useEffect(() => {
     let live = true;
     (async () => {
-      const sub = givenSubscription ?? (searchId ? await subscriptionForSearch(searchId) : null);
+      /* A search started a moment ago registers its subscription in the background: wait for it briefly. */
+      let sub = givenSubscription ?? (searchId ? await subscriptionForSearch(searchId) : null);
+      for (let i = 0; !sub && searchId && !givenSubscription && i < 8 && live; i += 1) {
+        await new Promise((r) => setTimeout(r, 2500));
+        sub = await subscriptionForSearch(searchId);
+      }
       if (!live) return;
       setSubscriptionId(sub);
       if (!sub) { setMode('NO_SEARCH'); return; }

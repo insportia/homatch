@@ -29,6 +29,7 @@ import {
   getContact, getContactTimeline, setDoNotCall, suppressContact,
 } from '@/services/communications';
 import type { CommContact } from '@/types/communications';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -39,6 +40,9 @@ interface TimelineEvent {
 export default function ContactProfilePage() {
   const { t, lang: language } = useLanguage();
   const navigate = useNavigate();
+  // Paused services (Admin → Service Control Center) offer no action here.
+  const callsVisible = useServiceVisible('ai_call_center');
+  const whatsappVisible = useServiceVisible('whatsapp');
   const { id } = useParams<{ id: string }>();
 
   const [contact, setContact] = useState<CommContact | null>(null);
@@ -157,20 +161,24 @@ export default function ContactProfilePage() {
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm" variant="outline"
-              disabled={blocked || Boolean(contact.do_not_call) || !contact.phone_valid}
-              onClick={() => navigate(`/outreach/campaigns/new?contact=${contact.id}`)}
-            >
-              <Phone className="me-1.5 h-3.5 w-3.5" />{t('comm_action_call')}
-            </Button>
-            <Button
-              size="sm" variant="outline"
-              disabled={blocked || contact.whatsapp_opted_out}
-              onClick={() => navigate(`/outreach/whatsapp/inbox?phone=${encodeURIComponent(contact.phone ?? '')}`)}
-            >
-              <MessageSquare className="me-1.5 h-3.5 w-3.5" />{t('comm_action_whatsapp')}
-            </Button>
+            {callsVisible && (
+              <Button
+                size="sm" variant="outline"
+                disabled={blocked || Boolean(contact.do_not_call) || !contact.phone_valid}
+                onClick={() => navigate(`/outreach/campaigns/new?contact=${contact.id}`)}
+              >
+                <Phone className="me-1.5 h-3.5 w-3.5" />{t('comm_action_call')}
+              </Button>
+            )}
+            {whatsappVisible && (
+              <Button
+                size="sm" variant="outline"
+                disabled={blocked || contact.whatsapp_opted_out}
+                onClick={() => navigate(`/outreach/whatsapp/inbox?phone=${encodeURIComponent(contact.phone ?? '')}`)}
+              >
+                <MessageSquare className="me-1.5 h-3.5 w-3.5" />{t('comm_action_whatsapp')}
+              </Button>
+            )}
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void onDoNotCall()}>
               <PhoneOff className="me-1.5 h-3.5 w-3.5" />
               {t(contact.do_not_call ? 'comm_action_allow_calls' : 'comm_action_do_not_call')}

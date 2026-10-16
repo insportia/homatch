@@ -48,6 +48,7 @@ import {
 } from '@/services/api';
 import { fetchLifecycle, renewProperty } from '@/services/propertyLifecycle';
 import type { CreditAccount, Property } from '@/types/types';
+import { useServiceControls } from '@/lib/serviceControls';
 
 // ── THE OWNER'S PROPERTY WORKSPACE ─────────────────────────────────────────────
 //
@@ -460,6 +461,7 @@ function DiscoverySection({
 function PropertyDetailContent() {
   const { id } = useParams<{ id: string }>();
   const { homatchUser } = useAuth();
+  const { services } = useServiceControls();
   const { t, lang, isRTL } = useLanguage();
   const navigate = useNavigate();
   const [property, setProperty] = useState<Property | null>(null);
@@ -618,7 +620,7 @@ function PropertyDetailContent() {
       key: 'mortgage', icon: <Landmark className="h-4 w-4" />, label: t('dash_calculate_mortgage_property'),
       onClick: () => navigate('/mortgage', { state: { context: { propertyId: id, price: Number(facts.total_price), currency: facts.currency } } }),
     }] : []),
-    ...(id && homatchUser && isOwner && designStudioEnabled(homatchUser) ? [{
+    ...(id && homatchUser && isOwner && designStudioEnabled(services.design_studio.frontend) ? [{
       key: 'design', icon: <NavGlyphIcon name="design_studio" className="h-4 w-4" />, label: t('ds_open_in_design_studio'),
       onClick: () => navigate(`/design-studio?property=${encodeURIComponent(id)}`),
     }] : []),
@@ -732,9 +734,11 @@ function PropertyDetailContent() {
               </Link>
               {/* Publish to Portals with this property already chosen — the workspace
                   itself is the standalone /publishing area, not a panel here. */}
-              <Link to={`/publishing/${id}`} className={OWNER_ICON} aria-label={t('pubw_publish_this_property')} title={t('pubw_publish_this_property')}>
-                <NavGlyphIcon name="publishing" className="h-3.5 w-3.5" />
-              </Link>
+              {services.publishing.frontend && (
+                <Link to={`/publishing/${id}`} className={OWNER_ICON} aria-label={t('pubw_publish_this_property')} title={t('pubw_publish_this_property')}>
+                  <NavGlyphIcon name="publishing" className="h-3.5 w-3.5" />
+                </Link>
+              )}
               {/* PATH A into Meta Ads: this property, already selected. */}
               <Link to={`/outreach/meta/create?property=${id}`} className={OWNER_ICON} aria-label={t('mads_property_cta')} title={t('mads_property_cta')}>
                 <Megaphone className="h-3.5 w-3.5" />

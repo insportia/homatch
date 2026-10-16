@@ -15,7 +15,10 @@
 
 import type { ReactNode } from 'react';
 import React from 'react';
+import { ServiceGate } from '@/components/serviceControls/ServiceGate';
+import { serviceForPath } from '@/lib/serviceControls/routes';
 import { lazyRoute } from '@/lib/lazyRoute';
+import { loadAdminStrings } from '@/i18n/bundles';
 import { Navigate } from 'react-router-dom';
 import { FEATURES } from '@/config/features';
 import HomePage from './pages/HomePage';
@@ -166,7 +169,19 @@ const CallsPage = lazyRoute(() => import('./pages/outreach/CallsPage'));
 const CommunicationsBillingPage = lazyRoute(() => import('./pages/outreach/CommunicationsBillingPage'));
 
 // Admin pages
-import AdminLayout from './components/layouts/AdminLayout';
+/*
+ * THE ADMIN LAYOUT IS LAZY, AND BRINGS THE ADMIN STRINGS WITH IT.
+ *
+ * It used to be a static import, which put AdminLayout, admin/navigation,
+ * AdminSearch, adminControl and admin/labels (~24KB) in the entry chunk every
+ * visitor downloads. Now the layout's code and the admin console's strings
+ * (src/i18n/adminSplit.ts) load together, in parallel, and the layout renders
+ * only when both are here, so no admin screen ever reads a missing key. The
+ * app-level Suspense shows the same route fallback it already showed while an
+ * admin page loaded.
+ */
+const AdminLayout = lazyRoute(() =>
+  Promise.all([import('./components/layouts/AdminLayout'), loadAdminStrings()]).then(([mod]) => mod));
 
 const AdminOverviewPage = lazyRoute(() => import('./pages/admin/AdminOverviewPage'));
 const AdminUsersPage = lazyRoute(() => import('./pages/admin/AdminUsersPage'));
@@ -186,6 +201,7 @@ const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersP
 const AdminPropertyPortalsPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalsPage'));
 const AdminPropertyPortalPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalPage'));
 const AdminPublishingQueuePage = lazyRoute(() => import('./pages/admin/AdminPublishingQueuePage'));
+const AdminServiceControlPage = lazyRoute(() => import('./pages/admin/AdminServiceControlPage'));
 const AdminBrokersPage = lazyRoute(() => import('./pages/admin/AdminBrokersPage'));
 const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
@@ -230,7 +246,7 @@ export interface RouteConfig {
 
 const adminWrap = (page: ReactNode) => <AdminLayout>{page}</AdminLayout>;
 
-export const routes: RouteConfig[] = [
+const routeTable: RouteConfig[] = [
   // Public
   { name: 'Home',              path: '/',                         element: <HomePage />,          public: true },
   // What Homatch is, for somebody who arrived here without seeing the home
@@ -647,6 +663,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Property Portals', path: '/admin/integrations/portals', element: adminWrap(<AdminPropertyPortalsPage />), adminOnly: true },
   { name: 'Admin Property Portal',  path: '/admin/integrations/portals/:providerId', element: adminWrap(<AdminPropertyPortalPage />), adminOnly: true, visible: false },
   { name: 'Admin Publishing Queue', path: '/admin/integrations/publishing', element: adminWrap(<AdminPublishingQueuePage />), adminOnly: true },
+  { name: 'Admin Service Control Center', path: '/admin/service-control', element: adminWrap(<AdminServiceControlPage />), adminOnly: true },
   { name: 'Admin Verify COGS', path: '/admin/verify-cogs',        element: adminWrap(<AdminVerifyCogsPage />),  adminOnly: true },
   /*
    * The eleven-tab voice tooling moved into AI & communication. The URL
@@ -680,4 +697,16 @@ export const routes: RouteConfig[] = [
      write-only for visitors and readable only under is_admin(). */
   { name: 'Admin Engagement',  path: '/admin/engagement',         element: adminWrap(<AdminEngagementPage />),  adminOnly: true },
 ];
+
+/*
+ * SERVICE CONTROL CENTER: every address of a pausable service (publishing, AI Call
+ * Center, WhatsApp, Live Chat, Design Studio — src/lib/serviceControls/routes.ts) is
+ * wrapped in <ServiceGate>. While the owner has it paused, a direct visit shows
+ * "currently unavailable" and the page itself is never mounted. Admin pages are not
+ * gated. (AI TALK has no route of its own; its homepage panel is gated in place.)
+ */
+export const routes: RouteConfig[] = routeTable.map((route) => {
+  const service = serviceForPath(route.path);
+  return service ? { ...route, element: <ServiceGate service={service}>{route.element}</ServiceGate> } : route;
+});
 

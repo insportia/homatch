@@ -235,7 +235,7 @@ test('results are never capped: exact counts, a real total, every group pages to
   assert.doesNotMatch(rv, /IntersectionObserver/);
   assert.match(rv, /browseSearchResults/);
   assert.match(rv, /pageNumbers/);
-  assert.match(rv, /mps_total_found/);
+  assert.match(rv, /fpv_found_line[^\n]{0,60}total: num\(data\.totalCurrent\)/, 'the exact total, in words');
   assert.match(rv, /fpr_page_status/);
 });
 
@@ -244,6 +244,9 @@ test('no fake progress: the searching view renders only server counters', () => 
   assert.doesNotMatch(view, /%\s*\}|Math\.random|setInterval/);
   assert.match(view, /c\.listingsDiscovered/);
   assert.match(view, /search\.stages\.map/);
+  // The running clock is the one timer, in its own module, counting from the server's start time.
+  assert.match(view, /useElapsed\(search\.createdAt, !search\.terminal\)/);
+  assert.match(code('src/components/findProperty/workspace/elapsed.ts'), /Date\.parse\(since\)/);
 });
 
 test('source-level: new paths are owned by the DISCOVERY component', () => {
@@ -301,4 +304,41 @@ test('marketplace scale: instant pool answer at start, one fetch per identical s
   assert.match(wi, /observationLevel\.is\.null,raw->retrievalMetadata->>observationLevel\.neq\.CACHED/, 'pooled rows are not counted as fresh results');
   assert.match(sh, /'ssge-agent': 'ss-ge'/);
   assert.match(sh, /CACHE_WINDOW_MS = 72 \* 3600_000/, 'only listings confirmed within 72 hours are served');
+});
+
+test('stored results are served only when complete; an incomplete catalogue is rebuilt from its own listings', () => {
+  // Write-side safety (well-formed text, checked batches) is PR #237's; this guards searches already stored incomplete.
+  const cat = code('supabase/functions/_shared/marketplaceCatalogue.ts');
+  assert.match(cat, /rows\.length >= expected/, 'stored rows serve only when they are the whole catalogue');
+  assert.match(cat, /processSearch\(/, 'otherwise the catalogue is rebuilt from the stored listings');
+});
+
+test('every requirement or amenity code the server can name has natural words in all six bundles (never a raw key)', async () => {
+  // Ported from the preserved WIP branch claude/fp-ux-wt; adapted to requirementKeys.ts.
+  const { requirementKey, OTHER_REQUIREMENT_KEY } = await import(pathToFileURL(join(root, 'src/components/findProperty/requirementKeys.ts')).href);
+  const ranking = read('src/research-core/marketplace/ranking.ts');
+  const hard = ranking.slice(ranking.indexOf('export function hardFilter'), ranking.indexOf('return { fits:', ranking.indexOf('export function hardFilter')));
+  const codes = new Set([
+    ...[...hard.matchAll(/check\('([A-Z_]+)'/g)].map((m) => m[1]),
+    ...[...hard.matchAll(/(?:unverified|violations)\.push\('([A-Z_]+)'\)/g)].map((m) => m[1]),
+  ]);
+  assert.match(hard, /unverified\.push\(`REQUIRED_\$\{must\}`\)/, 'required amenities are reported as REQUIRED_<amenity>');
+  const amenities = read('src/research-core/marketplace/taxonomy.ts').match(/export const AMENITIES[^=]*=\s*\[([^\]]+)\]/)[1].match(/'([A-Z_]+)'/g).map((x) => x.slice(1, -1));
+  for (const a of amenities) codes.add(a).add(`REQUIRED_${a}`).add(`EXCLUDED_${a}`);
+  assert.ok(codes.size >= 30, `enumerated ${codes.size} codes`);
+  const tr = read('src/i18n/translations.ts');
+  const missing = [];
+  for (const c of codes) {
+    const key = requirementKey(c);
+    if (key === OTHER_REQUIREMENT_KEY && !c.startsWith('REQUIRED_') && !c.startsWith('EXCLUDED_') && !amenities.includes(c)) missing.push(`${c}: no specific label`);
+    if (key === OTHER_REQUIREMENT_KEY && (c.startsWith('REQUIRED_') || c.startsWith('EXCLUDED_') || amenities.includes(c))) missing.push(`${c}: amenity without its own label`);
+    if ((tr.match(new RegExp(`^ {2}${key}: `, 'gm')) ?? []).length !== 6) missing.push(`${c} → ${key}: not in six bundles`);
+  }
+  assert.equal((tr.match(new RegExp(`^ {2}${OTHER_REQUIREMENT_KEY}: `, 'gm')) ?? []).length, 6);
+  assert.deepEqual(missing, []);
+  assert.equal(requirementKey('DISTRICT'), 'fpr_location', 'mps_filter_district never existed: district used to leak as a raw key');
+  // Card, property page and summary speak through the one key function; nobody builds a label key by hand.
+  for (const f of ['src/components/findProperty/PropertyCard.tsx', 'src/components/findProperty/PropertyIntelligence.tsx', 'src/components/findProperty/workspace/ResultsHeader.tsx', 'src/components/findProperty/advisorText.ts']) {
+    assert.doesNotMatch(code(f), /`mps_amenity_\$\{/, `${f} builds no label key by hand`);
+  }
 });

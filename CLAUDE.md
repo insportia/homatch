@@ -37,6 +37,10 @@ An index is never proof of production state.
 
 - **PAYG only.** 10 credits = $1. No Free/Premium/VIP gating, ever.
   Reserve → settle → release; unknown COGS never silently zero.
+  Paid discovery (Find Buyers/Tenants and Find Property social campaigns
+  started since 2026-10-16): HOMATCH 37% / providers 63% of the TOTAL price,
+  charge = provider spend consumed ÷ 0.63, capped at the reservation —
+  `src/research-core/billing/paidDiscoveryPolicy.ts` (docs/claude/BILLING.md).
 - **Protected surfaces**: Verify, the black/gold public homepage identity
   (incl. AI TALK), the single Admin shell, Owner dark navy, dark Discovery.
   Functional/a11y/RTL fixes yes; redesigns only on explicit instruction.
@@ -58,6 +62,13 @@ An index is never proof of production state.
   `verify_developer_ads` (Admin switch), budget and `DEVELOPER_ADS_VERIFY` cost
   rows — separate from Find Buyers orchestration, and stopped by the same
   APIFY switch. No other Verify use of Apify.
+  Third scope (owner, 2026-10-16): Find Property's paid social OFFER campaign
+  (Facebook / Instagram / Telegram / VK posts offering a property, for one
+  buyer's or tenant's confirmed search) runs memo23 Actors through the same
+  client (`_shared/findProperty/socialOffers.ts`), with its own switch
+  `find_property_social_enabled` (default OFF), reserved per run against the
+  campaign's 63% provider budget (`find_property_reserve_actor_run`), and is
+  stopped by the same APIFY switch. Portals and HOMATCH inventory stay free.
 - **Railway**: the only worker is `homatch-official-worker`
   (`3e7f132b-d0be-4804-9bc0-0b6ad368ad15`). Never `-v2`, never create
   another. Railway deploys only when `official-worker/` changed —

@@ -16,7 +16,9 @@
 
 import { releaseExecution, type ExecutionGrant } from './billing.ts';
 import { errorText } from './campaignRun.ts';
-import { claimSettlement, loadDeliveries, settleFindPropertyRun } from './findPropertySettlement.ts';
+import { claimSettlement, loadDeliveries, settleFindPropertyRun, settlePaidSocialRun } from './findPropertySettlement.ts';
+import { finishOfferCampaign } from './findProperty/socialOffers.ts';
+import { PAID_DISCOVERY_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
 type Json = Record<string, unknown>;
 
@@ -83,19 +85,29 @@ export async function finalizeDiscoveryRun(
   const costUnknown = finished.some((j) => j.actual_cost_usd === null);
   const providerCostUsd = finished.reduce((sum, j) => sum + Number(j.actual_cost_usd ?? 0), 0);
 
+  /* A paid social offer campaign settles on what its providers consumed (37/63). */
+  const { data: pricing } = await db.from('discovery_runs')
+    .select('pricing_policy,credits_per_usd,offers_found').eq('id', run.id).maybeSingle();
+  const socialCampaign = pricing?.pricing_policy === PAID_DISCOVERY_POLICY_ID;
+  let spendMicros = 0;
+  if (socialCampaign) spendMicros = await finishOfferCampaign(db, run.id);
+
   /* null only when neither a settle nor a release could be recorded: the
      reservation is still held and the run says so rather than claiming 0. */
   let creditsCharged: number | null = 0;
   let billing: string = grant ? 'NONE' : 'NO_GRANT';
   try {
-    const settled = await settleFindPropertyRun(db, grant, {
+    const settled = socialCampaign ? await settlePaidSocialRun(db, grant, {
+      runId: run.id, spendMicros, creditsPerUsd: Number(pricing?.credits_per_usd) || 10,
+      durationMs: now - new Date(run.started_at).getTime(), offers: Number(pricing?.offers_found ?? 0), delivered,
+    }, (g, reason, usage) => releaseExecution(db, g, reason, usage)) : await settleFindPropertyRun(db, grant, {
       runId: run.id,
       searchCount: finished.length,
       durationMs: now - new Date(run.started_at).getTime(),
       providerCostUsd,
       providerCostUnknown: costUnknown,
       deliveries,
-    }, releaseExecution);
+    }, (g, reason, usage) => releaseExecution(db, g, reason, usage));
     creditsCharged = settled.creditsCharged;
     billing = settled.action;
   } catch (error) {
@@ -122,7 +134,7 @@ export async function finalizeDiscoveryRun(
     stage: 'READY',
     progress: 100,
     results_found: delivered,
-    provider_cost_usd: costUnknown ? null : providerCostUsd,
+    provider_cost_usd: socialCampaign ? spendMicros / 1e6 : costUnknown ? null : providerCostUsd,
     credits_charged: creditsCharged,
     failure_reason: delivered > 0 ? null : (context.noResultsReason ?? 'NO_MATCHING_LISTINGS_FOUND'),
     completed_at: new Date().toISOString(),
@@ -140,6 +152,9 @@ export async function failDiscoveryRun(
   db: any, runId: string, grant: ExecutionGrant | null, reason: string, detail: string,
   status: 'FAILED' | 'CANCELLED' | 'BUDGET_REACHED' = 'FAILED',
 ) {
+  /* Paid social runs still in flight are aborted and booked first: a run that
+     failed on HOMATCH's side is released in full, and HOMATCH carries the spend. */
+  await finishOfferCampaign(db, runId).catch(() => undefined);
   if (grant) await releaseExecution(db, grant, reason.toLowerCase()).catch(() => undefined);
   await db.from('discovery_query_queue')
     .update({ status: 'CANCELLED', cancel_reason: reason, finished_at: new Date().toISOString(), lease_expires_at: null })

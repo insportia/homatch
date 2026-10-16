@@ -20,11 +20,18 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { beginExecution, releaseExecution } from '../_shared/billing.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
-import { queuePlannedJobs, storePlan } from '../_shared/campaignSources.ts';
 import { OPEN_RUN_STATES, runEvent, updateRun } from '../_shared/discoveryRun.ts';
-import { compileSupplyPlan, draftFromStoredPlan, sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
-import { normalisePlan, type SearchPlan } from '../../../src/research-core/discovery/search-plan.ts';
-import { livePortalAdaptersFor } from '../../../src/research-core/discovery/portal-selection.ts';
+import { draftFromStoredPlan } from '../../../src/research-core/discovery/discovery-plan.ts';
+import { normalisePlan } from '../../../src/research-core/discovery/search-plan.ts';
+import { allocateCampaign, minimumCampaignCredits } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { OFFER_NETWORKS, type OfferNetwork, type OfferSearch } from '../../../src/research-core/findProperty/offerCampaign.ts';
+import { loadOfferSettings, offerQueueRows, planOfferCampaign } from '../_shared/findProperty/socialOffers.ts';
+
+async function walletRate(db: any): Promise<number> {
+  const { data } = await db.from('admin_settings').select('value').eq('key', 'credits_per_usd').maybeSingle();
+  const n = Number(typeof data?.value === 'string' ? JSON.parse(data.value) : data?.value);
+  return Number.isFinite(n) && n > 0 ? n : 10;
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,7 +73,7 @@ Deno.serve(async (req: Request) => {
         .catch(() => undefined);
       return json({ success: true, runId: body.runId, ...outcome });
     }
-    if (action !== 'start') return json({ error: 'Unknown action' }, 400);
+    if (action !== 'start' && action !== 'preview') return json({ error: 'Unknown action' }, 400);
 
     const subscriptionId = String(body.subscriptionId || '');
     const { data: subscription } = await db.from('active_search_subscriptions')
@@ -80,8 +87,63 @@ Deno.serve(async (req: Request) => {
     if (!searchPlan?.city) return json({ error: 'This search needs a city first.', reasonCode: 'PLAN_INCOMPLETE' }, 409);
 
     const settings = await loadDiscoverySettings(db);
-    if (!settings.findPropertyDiscoveryEnabled) {
-      return json({ error: 'Searching outside HOMATCH is not available right now.', reasonCode: 'DISCOVERY_OFF' }, 409);
+    const offerSettings = await loadOfferSettings(db);
+    const rate = await walletRate(db);
+    const minCredits = Math.max(minimumCampaignCredits(rate), settings.campaignMinCredits);
+    const budget = Math.round(Number(body.authorizedMaxCredits ?? Math.max(minCredits, settings.campaignDefaultCredits)));
+    const transaction = searchPlan.deal === 'RENT' ? 'RENT' : 'SALE';
+    const offerSearch: OfferSearch = {
+      transaction, city: searchPlan.city.value,
+      districts: searchPlan.districts?.value ?? [],
+      propertyType: searchPlan.propertyTypes?.value?.[0] ?? null,
+      languages: ['ka', 'ru', 'en'],
+    };
+    const requested = (Array.isArray(body.networks) ? body.networks : offerSettings.networks)
+      .map((n: unknown) => String(n).toUpperCase())
+      .filter((n: string): n is OfferNetwork => (OFFER_NETWORKS as readonly string[]).includes(n));
+    const networks = [...new Set(requested)] as OfferNetwork[];
+    if (!Number.isFinite(budget) || budget < minCredits) {
+      return json({ error: `A campaign starts at ${minCredits} Credits.`, reasonCode: 'BELOW_CAMPAIGN_MINIMUM', minBudgetCredits: minCredits }, 400);
+    }
+    if (settings.campaignMaxCredits != null && budget > settings.campaignMaxCredits) {
+      return json({ error: 'Above the campaign maximum.', reasonCode: 'ABOVE_CAMPAIGN_MAXIMUM', maxBudgetCredits: settings.campaignMaxCredits }, 400);
+    }
+    if (!networks.length) return json({ error: 'Choose at least one network.', reasonCode: 'NO_NETWORKS' }, 400);
+    const allocation = allocateCampaign(budget, rate);
+    const plan = await planOfferCampaign(db, {
+      search: offerSearch, networks, providerBudgetMicros: allocation.providerBudgetMicros,
+      countryCode: String(searchPlan.countryCode || 'GE').toUpperCase(),
+    });
+    const available = settings.findPropertyDiscoveryEnabled && offerSettings.enabled;
+    const preview = {
+      available,
+      unavailableReason: !offerSettings.apifyEnabled ? 'PROVIDER_OFF' : !available ? 'PAID_CAMPAIGNS_OFF' : plan.jobs.length === 0 ? 'NO_SEARCHABLE_SOURCES' : null,
+      priceCredits: budget, creditsPerUsd: rate, minCredits, maxCredits: settings.campaignMaxCredits,
+      priceUsd: allocation.priceCents / 100,
+      providerBudgetUsd: allocation.providerBudgetCents / 100,
+      homatchShareUsd: allocation.homatchMarginCents / 100,
+      policy: allocation.policy,
+      charging: 'CONSUMED_DIV_0_63_CAPPED',
+      networks,
+      plannedRuns: plan.jobs.length,
+      plannedByNetwork: Object.fromEntries(OFFER_NETWORKS.map((n) => [n, plan.jobs.filter((j) => j.network === n).length])),
+      estimatedProviderUsd: Math.ceil(plan.estimatedMicros / 10_000) / 100,
+      unavailableNetworks: plan.unavailable,
+      skippedForBudget: plan.skippedForBudget,
+      search: { transaction, city: offerSearch.city, districts: offerSearch.districts, propertyType: offerSearch.propertyType },
+    };
+    if (action === 'preview') return json({ success: true, preview });
+
+    if (!available) {
+      return json({ error: 'Paid campaigns are not available right now.', reasonCode: 'DISCOVERY_OFF', preview }, 409);
+    }
+    /* Explicit confirmation of exactly this price and these terms; nothing is reserved without it. */
+    const confirm = body.confirm ?? {};
+    if (confirm.acceptedTerms !== true || Number(confirm.priceCredits) !== budget) {
+      return json({ error: 'Confirm the price to start.', reasonCode: 'CONFIRMATION_REQUIRED', preview }, 409);
+    }
+    if (!plan.jobs.length) {
+      return json({ error: 'No network can be searched for this market right now.', reasonCode: 'NO_LIVE_SOURCES', preview }, 409);
     }
 
     const idempotencyKey = String(body.idempotencyKey || '').slice(0, 120);
@@ -93,40 +155,6 @@ Deno.serve(async (req: Request) => {
       .eq('subscription_id', subscription.id).in('status', OPEN_RUN_STATES).limit(1).maybeSingle();
     if (open) return json({ success: true, idempotent: true, alreadyRunning: true, runId: open.id, status: open.status });
 
-    /* Which portals are live for this market: the registry decides. */
-    const market = String(searchPlan.countryCode || 'GE').toUpperCase();
-    const { data: liveRows } = await db.from('source_registry').select('adapter_id')
-      .eq('active', true).in('lifecycle', ['LIVE_TESTED', 'PRODUCTIVE'])
-      .eq('country_code', market).not('adapter_id', 'is', null)
-      .order('priority_tier', { ascending: true, nullsFirst: false });
-    /* Only adapters the portal runtime executes (the ids a portal-job looks up),
-       so ss.ge is planned as `ss-ge`; forum and Telegram rows drop out. */
-    const livePortalAdapters = livePortalAdaptersFor(((liveRows ?? []) as Array<{ adapter_id: string }>)
-      .map((r) => r.adapter_id));
-
-    const budget = body.authorizedMaxCredits != null ? Number(body.authorizedMaxCredits) : settings.campaignDefaultCredits;
-    if (!Number.isFinite(budget) || budget < settings.campaignMinCredits) {
-      return json({ error: `A search budget starts at ${settings.campaignMinCredits} Credits.`,
-        reasonCode: 'BELOW_CAMPAIGN_MINIMUM', minBudgetCredits: settings.campaignMinCredits }, 400);
-    }
-
-    const plan = compileSupplyPlan({
-      plan: searchPlan as SearchPlan,
-      switches: {
-        telegram: settings.telegramEnabled, forum: false, portals: true, livePortalAdapters,
-        workerRoutedAdapters: settings.workerRouteEnabled ? settings.workerRoutedAdapters : [],
-      },
-      limits: {
-        maxCredits: budget,
-        deadlineMinutes: settings.campaignDiscoveryMinutes,
-        targetResults: 5,
-        activeDemandMaxDays: settings.freshness.activeMaxDays,
-      },
-    });
-    if (!plan.tranches.some((t) => t.tranche > 0)) {
-      return json({ error: 'No live source can be searched for this market right now.', reasonCode: 'NO_LIVE_SOURCES' }, 409);
-    }
-
     grant = await beginExecution(db, {
       userId: me.id,
       productCode: 'FIND_PROPERTY',
@@ -136,10 +164,10 @@ Deno.serve(async (req: Request) => {
       allowIncluded: false,
       budgetIsCeiling: true,
       requireFullBudget: true,
-      metadata: { subscriptionId: subscription.id, budgetCredits: budget },
+      metadata: { subscriptionId: subscription.id, budgetCredits: budget, pricing: allocation.policy, networks },
     });
     if (!grant.ok) {
-      return json({ error: 'This search needs Credits to continue.', reasonCode: grant.reason ?? 'BILLING_REQUIRED',
+      return json({ error: 'This campaign needs Credits to continue.', reasonCode: grant.reason ?? 'BILLING_REQUIRED',
         minViableBudgetCredits: grant.minViableBudgetCredits }, 402);
     }
 
@@ -150,33 +178,30 @@ Deno.serve(async (req: Request) => {
       intent_profile_id: subscription.intent_id,
       idempotency_key: idempotencyKey,
       status: 'SEARCHING',
-      stage: 'UNDERSTANDING',
-      progress: 5,
+      stage: 'SEARCHING_SOURCES',
+      progress: 10,
       billing_grant: grant,
       deadline_at: deadline,
+      pricing_policy: allocation.policy,
+      credits_per_usd: rate,
+      customer_value_micros: allocation.priceMicros,
+      provider_budget_micros: allocation.providerBudgetMicros,
+      offer_networks: networks,
+      offer_plan: { version: plan.version, estimatedMicros: plan.estimatedMicros, unavailable: plan.unavailable, skippedForBudget: plan.skippedForBudget, jobs: plan.jobs.length },
     }).select('id,started_at').single();
     if (runError) throw runError;
     runId = String(run.id);
 
-    const planId = await storePlan(db, { plan, userId: me.id, discoveryRunId: runId });
-    await updateRun(db, runId, { search_plan_id: planId, stage: 'CHECKING_HOMATCH', progress: 10 });
-    await runEvent(db, runId, 'SEARCH_PLAN_READY', {
-      planId, direction: plan.direction, hardConstraints: plan.hardConstraints,
-      sourceGroups: [...new Set(plan.tranches.flatMap((t) => t.providers).map(sourceGroupOf))],
-    });
-
-    const queued = await queuePlannedJobs(db, {
-      plan, planId, runKey: runId, discoveryRunId: runId, propertyId: null,
-    });
-    await updateRun(db, runId, { stage: 'SEARCHING_SOURCES', progress: 20 });
+    const rows = offerQueueRows(runId, null, plan, offerSearch);
+    const { error: queueError } = await db.from('discovery_query_queue').insert(rows);
+    if (queueError) throw queueError;
     await runEvent(db, runId, 'SOURCES_QUEUED', {
-      count: queued.length,
-      sourceGroups: [...new Set(queued.map((q) => sourceGroupOf(q.provider)))],
-      deadline,
+      count: rows.length, networks, providerBudgetMicros: allocation.providerBudgetMicros, deadline,
+      unavailable: plan.unavailable, skippedForBudget: plan.skippedForBudget,
     });
 
     return json({ success: true, async: true, runId, status: 'SEARCHING',
-      billing: { creditsAuthorized: grant.authorizedMaxCredits } }, 202);
+      billing: { creditsAuthorized: grant.authorizedMaxCredits, providerBudgetUsd: preview.providerBudgetUsd } }, 202);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     if (grant?.ok) await releaseExecution(db, grant, 'find_property_start_failed').catch(() => undefined);

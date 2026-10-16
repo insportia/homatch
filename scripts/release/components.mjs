@@ -248,7 +248,7 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
   // The paid discovery pricing policy (37/63) and native matching's resumable retirement.
-  [/^public\.(paid_discovery_|retire_native_matches)/, 'DISCOVERY'],
+  [/^public\.(paid_discovery_|retire_native_matches|find_property_|my_find_property_campaign$)/, 'DISCOVERY'],
   // Customer property-interest history, demand interests and saved listings (Demand Intelligence).
   [/^public\.(property_interest_|customer_demand_interests$|saved_property_listings$|interest_|record_interest_event$|record_my_property_interest$|my_property_interest_history$|set_my_interest_tracking$|delete_my_property_interest_history$|purge_expired_property_interest$|demand_interest_strength$|admin_demand_)/, 'DISCOVERY'],
   // Find Property Knowledge Engine exact cache (service role only).

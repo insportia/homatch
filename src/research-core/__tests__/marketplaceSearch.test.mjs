@@ -17,7 +17,7 @@ import { normalizeCandidate, validateListing } from '../marketplace/normalize.ts
 import { classifyPair, resolveProperties } from '../marketplace/property-entity.ts';
 import { classifySeller } from '../marketplace/seller.ts';
 import { localComparison, priceDiscrepancy } from '../marketplace/price-intel.ts';
-import { budgetBand, hardFilter } from '../marketplace/ranking.ts';
+import { budgetBand, districtFit, hardFilter } from '../marketplace/ranking.ts';
 import { MAX_UPGRADE_RECOMMENDATIONS, isMeaningful, selectUpgrades, whatYouGain } from '../marketplace/upgrade.ts';
 import { pageResults, processSearch, publicView } from '../marketplace/pipeline.ts';
 import {
@@ -639,4 +639,19 @@ test('cost telemetry: unknown cost stays unknown, never zero', () => {
   assert.equal(s.totalCostUsd, null);
   assert.equal(s.processingMs, 60);
   assert.equal(s.aiInputTokens, 900);
+});
+
+test('district fit does not depend on the alphabet the customer typed (live search 2026-10-16)', () => {
+  const latin = ['Krtsanisi', 'Ortachala'], georgian = ['კრწანისი', 'ორთაჭალა'];
+  for (const wanted of [latin, georgian]) {
+    assert.equal(districtFit('კრწანისი', wanted), 'MATCH');
+    assert.equal(districtFit('Ortachala', wanted), 'MATCH');
+    assert.equal(districtFit('დიღმის მასივი', wanted), 'OTHER', 'a Georgian neighbourhood outside the request is a different place, whichever script the request used');
+    assert.equal(districtFit('საბურთალო', wanted), 'OTHER');
+  }
+  assert.equal(districtFit('Dighmis Masivi', ['კრწანისი']), 'OTHER');
+  assert.equal(districtFit('Мухиани', ['Krtsanisi']), 'OTHER', 'Russian spelling of the requested district is known, so a different Russian name conflicts');
+  assert.equal(districtFit('Мухиани', ['Unknownville']), 'UNKNOWN', 'a request the table does not know is never translated');
+  assert.equal(districtFit(null, latin), 'UNKNOWN');
+  assert.equal(districtFit('ვაკე', []), 'NA');
 });

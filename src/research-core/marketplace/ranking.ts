@@ -13,7 +13,7 @@
 import type { MarketplaceSearchRequest } from './worker-contract.ts';
 import type { FreshnessState } from './normalize.ts';
 import type { SellerClass } from './seller.ts';
-import { comparePlaces } from '../normalize/place.ts';
+import { comparePlaces, placeNamesFor } from '../normalize/place.ts';
 import { type LocalComparison, vsComparable } from './price-intel.ts';
 
 export const RANKING_VERSION = 'marketplace-ranking-1';
@@ -72,11 +72,19 @@ const inRange = (v: number | null, r: { min: number | null; max: number | null }
   return 'IN';
 };
 
+/**
+ * A requested district is compared under every spelling the place table knows for it, so
+ * the answer does not depend on the alphabet the customer typed in: "Krtsanisi" is also
+ * checked as "კრწანისი", and a listing that names "დიღმის მასივი" is then a different
+ * place in the source's own script (live production search, 2026-10-16), not "unknown".
+ * A name the table does not know keeps its single spelling, so nothing new is inferred.
+ */
 export function districtFit(district: string | null, wanted: readonly string[]): 'MATCH' | 'OTHER' | 'UNKNOWN' | 'NA' {
   if (!wanted.length) return 'NA';
   if (!district) return 'UNKNOWN';
-  if (wanted.some((w) => comparePlaces(district, w) === 'AGREE')) return 'MATCH';
-  if (wanted.every((w) => comparePlaces(district, w) === 'CONFLICT')) return 'OTHER';
+  const verdicts = wanted.map((w) => placeNamesFor(w).map((name) => comparePlaces(district, name)));
+  if (verdicts.some((v) => v.includes('AGREE'))) return 'MATCH';
+  if (verdicts.every((v) => v.includes('CONFLICT'))) return 'OTHER';
   return 'UNKNOWN';
 }
 

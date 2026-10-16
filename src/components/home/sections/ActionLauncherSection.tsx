@@ -91,10 +91,16 @@ export function ActionLauncherSection() {
   const entry = (signedInPath: string, publicEntry: string) => () =>
     navigate(signedIn ? signedInPath : publicEntry);
 
+  /* Every tile paused: no heading over an empty grid; the next section moves up. */
+  const TILE_SERVICES: ServiceKey[] = ['find_property', 'verify', 'contracts', 'find_buyers', 'mortgage', 'email_campaigns', 'investment', 'for_expats'];
+  const anyTile = callsVisible || TILE_SERVICES.some(show);
+
   const openVerify = () => {
     const value = code.trim();
     navigate(value ? `/verify?code=${encodeURIComponent(value)}` : '/verify');
   };
+
+  if (!anyTile) return null;
 
   return (
     <section id="start" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>

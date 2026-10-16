@@ -79,7 +79,7 @@ MATTERS right now, verify against the live systems, not this file)
   (`createUrlVerified=false`) until an admin sets one (https, on the portal's own domain).
 - **Logos**: no logo files were fetchable from this environment; a brand-colour monogram is shown
   until an admin sets an https logo URL (Admin → portal → Logo image link). Never a favicon service.
-- **Schema** `20261105090000_publishing_providers.sql`: `publishing_providers` (8 seeded rows, code
+- **Schema** `20261106090000_publishing_providers.sql`: `publishing_providers` (8 seeded rows, code
   defaults) + `publishing_provider_audit`, jobs `portal_id` CHECK → FK, status CHECK + OWNER_CONFIRMED,
   lifecycle treats OWNER_CONFIRMED as live, RPC `publishing_provider_update` (whitelisted columns +
   audit, one transaction). All service-role only; admin actions re-check `is_admin()` on the caller's

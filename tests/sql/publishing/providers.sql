@@ -1,4 +1,4 @@
--- Proof for 20261105090000_publishing_providers.sql, applied after tests.sql left
+-- Proof for 20261106090000_publishing_providers.sql, applied after tests.sql left
 -- publications in place (P2: HANDOFF_READY on myhome, VERIFYING on ssge).
 \set A '''aaaaaaaa-0000-0000-0000-00000000000a'''
 \set P1 '''11111111-0000-0000-0000-000000000001'''

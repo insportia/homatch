@@ -1,5 +1,5 @@
 // The publishing-engine handler against an in-memory database whose RPCs mirror
-// migrations 20261103090000 + 20261105090000. Proves: origin/auth/ownership, impersonation is read-only,
+// migrations 20261103090000 + 20261106090000. Proves: origin/auth/ownership, impersonation is read-only,
 // drafts never create property rows, idempotent prepare, PUBLISHED only after a live
 // page check, per-portal partial success, and that removing a listing never touches
 // the property; the eight-provider registry, owner-confirmed portals, capability

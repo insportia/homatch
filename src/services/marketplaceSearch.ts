@@ -31,6 +31,8 @@ export interface SearchSummary {
   brief: SearchIntelligenceBrief;
   createdAt: string;
   resultsAvailableAt: string | null;
+  /** When the search reached a terminal state, if the server supplies it (the elapsed clock stops there). */
+  completedAt?: string | null;
   progress: { sourcesTotal: number; sourcesCompleted: number; sourcesFailed: number; fraction: number | null };
   stages: Array<{ stage: SearchStage; state: 'DONE' | 'ACTIVE' | 'PENDING' }>;
   counters: {

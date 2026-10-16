@@ -146,7 +146,7 @@ export const COMPONENTS = {
     suites: ['studio:editor', 'studio:content', 'mobile:routes', 'a11y'],
   },
   DISCOVERY: {
-    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|homatchLeads|ownerDemoLead)\.ts$/, /^src\/pages\/property\/HomatchLeadsPage\.tsx$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
+    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|homatchLeads|ownerDemoLead)\.ts$/, /^src\/pages\/property\/HomatchLeadsPage\.tsx$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
     suites: ['mobile:discovery', 'mobile:routes'],
   },
   PWA_PUSH: {
@@ -296,6 +296,8 @@ export const I18N_KEY_OWNERS = [
   [/^fbx_/, 'DISCOVERY'],
   // Find Property saved listings, activity history and the paid social campaign.
   [/^fpi_/, 'DISCOVERY'],
+  // Find Property premium results: requirement labels, recommendation, status, live search.
+  [/^fpp_/, 'DISCOVERY'],
   [/^fbl_/, 'DISCOVERY'],
   [/^im_/, 'DISCOVERY'],
   [/^(hl|rb)_/, 'DISCOVERY'],

@@ -19,7 +19,7 @@ import { NEARBY_DISTRICTS, normKey, parentDistrict } from './places.ts';
 export const QUALIFICATION_VERSION = 4; // 4: financing dimension (2026-10-16)
 
 export type MatchCategory = 'STRONG' | 'POTENTIAL' | 'WEAK' | 'REJECTED';
-export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'INCOMPATIBLE' | 'UNKNOWN';
+export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'UNCONFIRMED' | 'INCOMPATIBLE' | 'UNKNOWN';
 
 export type RejectionReason =
   | 'NOT_REAL_ESTATE' | 'JOB_SEARCH' | 'SERVICE_AD' | 'SALE_ADVERTISEMENT' | 'RENT_ADVERTISEMENT'
@@ -32,11 +32,13 @@ export type RejectionReason =
 export type Limitation =
   | 'BUDGET_UNKNOWN' | 'BUDGET_STRETCH' | 'LOCATION_UNKNOWN' | 'LOCATION_CITY_ONLY' | 'LOCATION_OTHER_AREA'
   | 'ROOMS_DIFFER' | 'ROOMS_UNKNOWN' | 'AREA_DIFFERS' | 'LOW_CONFIDENCE'
-  /** Wants to pay the seller over time; the property does not state that the seller accepts it. */
+  /** Wants to pay the seller over time. Not a rejection: the property records nothing
+   *  either way, so the seller's agreement is UNCONFIRMED, not assumed refused. */
   | 'FINANCING_SELLER_INSTALMENTS'
-  /** Buys with a bank mortgage (informational: the seller is paid in full). */
+  /** Buys with a bank mortgage (informational: the seller is paid in full by the bank). */
   | 'FINANCING_MORTGAGE'
-  /** States a down payment under 10% of the price. */
+  /** States a down payment below the configured risk ratio of the price (default 10%).
+   *  A risk heuristic, not a lender's eligibility rule. */
   | 'DOWN_PAYMENT_LOW';
 
 export interface Qualification {
@@ -50,8 +52,9 @@ export interface Qualification {
   locationFit: Fit;
   requirementsFit: Fit;
   /** How the seeker's stated way of paying fits the property: UNKNOWN when not stated
-   *  (most buyers do not say), STRETCH when it needs the seller's agreement or a low
-   *  down payment, COMPATIBLE for a mortgage with an adequate (or no stated) down payment. */
+   *  (most buyers do not say); UNCONFIRMED for seller instalments (needs the seller's
+   *  agreement, which no listing field records); STRETCH for a down payment below the
+   *  risk ratio; COMPATIBLE for a mortgage without that flag. */
   financingFit?: Fit;
   /** 0–100, from the dimensions above (no constant intent bonus). */
   score: number;
@@ -68,6 +71,16 @@ export interface QualifyContext {
   ageDays: number | null;
   duplicate?: boolean;
   fx?: Partial<Record<string, number>>;
+  /** Down payment / price below which DOWN_PAYMENT_LOW is flagged (admin setting
+   *  find_buyers_financing.lowDownPaymentRatio); 0 turns the flag off. */
+  lowDownPaymentRatio?: number;
+}
+
+/** Default risk ratio for DOWN_PAYMENT_LOW: a heuristic, configurable, never a rejection. */
+export const DEFAULT_LOW_DOWN_PAYMENT_RATIO = 0.1;
+export function lowDownPaymentRatio(raw: unknown): number {
+  const n = Number((raw as { lowDownPaymentRatio?: unknown } | null)?.lowDownPaymentRatio);
+  return Number.isFinite(n) ? Math.max(0, Math.min(0.5, n)) : DEFAULT_LOW_DOWN_PAYMENT_RATIO;
 }
 
 const MAX_AGE_DAYS = 30;
@@ -88,19 +101,22 @@ export function budgetFit(r: DemandReading, dna: PropertyDna, fx?: QualifyContex
   return 'INCOMPATIBLE';
 }
 
-/** A purchase paid over time to the seller needs the seller's consent, which no listing
- *  field records; a down payment under 10% of the price is not a realistic purchase of it. */
-export function financingFit(r: DemandReading, dna: PropertyDna, fx?: QualifyContext['fx']): { fit: Fit; limitations: Limitation[] } {
+/** Financing never rejects and never by itself makes a lead WEAK: seller instalments need
+ *  the seller's agreement (UNCONFIRMED: no listing field records it either way); a down
+ *  payment below the risk ratio is a STRETCH. Either only keeps the lead below STRONG and
+ *  lowers its budget component. A mortgage is the bank's decision, not ours. */
+export function financingFit(r: DemandReading, dna: PropertyDna, fx?: QualifyContext['fx'], ratio = DEFAULT_LOW_DOWN_PAYMENT_RATIO): { fit: Fit; limitations: Limitation[] } {
   const limitations: Limitation[] = [];
   if (dna.transaction === 'RENT') return { fit: 'UNKNOWN', limitations };
   const price = dna.price == null ? null : dna.currency && dna.currency !== 'USD'
     ? toUsd({ amount: dna.price, currency: (dna.currency as 'GEL' | 'EUR') }, fx) : dna.price;
   const down = r.downPayment ? toUsd({ amount: r.downPayment.amount, currency: r.downPayment.currency }, fx) : null;
-  const lowDown = down != null && price != null && down < price * 0.1;
+  const lowDown = ratio > 0 && down != null && price != null && down < price * ratio;
   if (r.financing === 'INSTALMENTS') limitations.push('FINANCING_SELLER_INSTALMENTS');
   if (r.financing === 'MORTGAGE') limitations.push('FINANCING_MORTGAGE');
   if (lowDown) limitations.push('DOWN_PAYMENT_LOW');
-  if (r.financing === 'INSTALMENTS' || lowDown) return { fit: 'STRETCH', limitations };
+  if (lowDown) return { fit: 'STRETCH', limitations };
+  if (r.financing === 'INSTALMENTS') return { fit: 'UNCONFIRMED', limitations };
   if (r.financing === 'MORTGAGE') return { fit: 'COMPATIBLE', limitations };
   return { fit: 'UNKNOWN', limitations };
 }
@@ -134,7 +150,7 @@ export function requirementsFit(r: DemandReading, dna: PropertyDna): Fit {
   return 'INCOMPATIBLE';
 }
 
-const POINTS: Record<Fit, number> = { COMPATIBLE: 100, NEARBY: 80, FLEXIBLE: 70, CITY: 55, STRETCH: 55, UNKNOWN: 35, INCOMPATIBLE: 0 };
+const POINTS: Record<Fit, number> = { COMPATIBLE: 100, NEARBY: 80, FLEXIBLE: 70, CITY: 55, STRETCH: 55, UNCONFIRMED: 55, UNKNOWN: 35, INCOMPATIBLE: 0 };
 
 export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext): Qualification {
   const reasons: RejectionReason[] = [];
@@ -159,7 +175,8 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   const bFit = budgetFit(r, dna, ctx.fx);
   const lFit = locationFit(r, dna);
   const qFit = requirementsFit(r, dna);
-  const fin = financingFit(r, dna, ctx.fx);
+  const fin = financingFit(r, dna, ctx.fx, ctx.lowDownPaymentRatio ?? DEFAULT_LOW_DOWN_PAYMENT_RATIO);
+  const financingRisk = fin.fit === 'STRETCH' || fin.fit === 'UNCONFIRMED';
   if (!reasons.length) {
     if (bFit === 'INCOMPATIBLE') reasons.push('BUDGET_INCOMPATIBLE');
     if (lFit === 'INCOMPATIBLE' && r.cities.length && !r.districts.length) reasons.push('OTHER_CITY');
@@ -187,7 +204,8 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   const components = {
     intent: Math.round(100 * (reasons.length ? 0 : r.confidence)),
     location: POINTS[lFit],
-    budget: POINTS[bFit],
+    /* Ability to pay: a stated financing risk lowers it to that risk's points, never raises it. */
+    budget: financingRisk ? Math.min(POINTS[bFit], POINTS[fin.fit]) : POINTS[bFit],
     requirements: POINTS[qFit],
     recency,
   };
@@ -199,12 +217,10 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   else {
     const confirmedBudget = bFit === 'COMPATIBLE';
     const goodPlace = lFit === 'COMPATIBLE' || lFit === 'NEARBY' || lFit === 'FLEXIBLE';
-    /* A buyer who must pay the seller over time, or brings under 10% down, is a genuine
-       buyer but not a Potential match for a listing that does not offer that (2026-10-16). */
-    const softMismatch = lFit === 'INCOMPATIBLE' || qFit === 'INCOMPATIBLE' || bFit === 'STRETCH' || fin.fit === 'STRETCH';
+    const softMismatch = lFit === 'INCOMPATIBLE' || qFit === 'INCOMPATIBLE' || bFit === 'STRETCH';
     const strongFit = confirmedBudget && goodPlace && qFit !== 'INCOMPATIBLE' && r.confidence >= 0.7;
-    /* Budget and place confirmed but financing a stretch: a Potential match, never Strong. */
-    if (strongFit && fin.fit !== 'STRETCH') category = 'STRONG';
+    /* Budget and place confirmed but financing unconfirmed or a stretch: Potential, never Strong. */
+    if (strongFit && !financingRisk) category = 'STRONG';
     else if (strongFit) category = 'POTENTIAL';
     else if (!softMismatch && (confirmedBudget || goodPlace || lFit === 'CITY')) category = 'POTENTIAL';
     else category = 'WEAK';

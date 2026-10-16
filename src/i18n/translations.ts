@@ -19296,6 +19296,11 @@ const en = {
   /* ── ADMIN STORAGE INVENTORY (R2) ── */
   sinv_store_r2: 'Cloudflare R2',
   sinv_store_supabase: 'Supabase Storage',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'Seller instalments — to confirm',
+  fbr_financing_low_down: 'Low down payment',
+  fbr_financing_mortgage: 'Buying with a mortgage',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -38506,6 +38511,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── ADMIN STORAGE INVENTORY (R2) ── */
   sinv_store_r2: 'Cloudflare R2 საცავი',
   sinv_store_supabase: 'Supabase Storage',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'განვადება გამყიდველთან — დასადასტურებელია',
+  fbr_financing_low_down: 'დაბალი პირველადი შენატანი',
+  fbr_financing_mortgage: 'ყიდულობს იპოთეკით',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -57707,6 +57717,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── ADMIN STORAGE INVENTORY (R2) ── */
   sinv_store_r2: 'Cloudflare R2',
   sinv_store_supabase: 'Supabase Storage',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'Рассрочка от продавца — уточнить',
+  fbr_financing_low_down: 'Небольшой первоначальный взнос',
+  fbr_financing_mortgage: 'Покупка в ипотеку',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -76906,6 +76921,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── ADMIN STORAGE INVENTORY (R2) ── */
   sinv_store_r2: 'Cloudflare R2',
   sinv_store_supabase: 'Supabase Storage',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'Satıcıya taksit — teyit edilmeli',
+  fbr_financing_low_down: 'Düşük peşinat',
+  fbr_financing_mortgage: 'Konut kredisiyle alım',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -96105,6 +96125,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── ADMIN STORAGE INVENTORY (R2) ── */
   sinv_store_r2: 'تخزين Cloudflare R2',
   sinv_store_supabase: 'Supabase Storage',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'تقسيط للبائع — يحتاج تأكيدًا',
+  fbr_financing_low_down: 'دفعة أولى منخفضة',
+  fbr_financing_mortgage: 'شراء بقرض عقاري',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -115304,6 +115329,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── ADMIN STORAGE INVENTORY (R2) ── */
   sinv_store_r2: 'אחסון Cloudflare R2',
   sinv_store_supabase: 'Supabase Storage',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_financing_instalments: 'תשלומים למוכר — לבירור',
+  fbr_financing_low_down: 'הון עצמי נמוך',
+  fbr_financing_mortgage: 'רכישה במשכנתא',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

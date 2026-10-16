@@ -336,3 +336,15 @@ export function fitTone(fit: string | null | undefined): { fit: Fit; tone: 'good
     default: return { fit: 'UNKNOWN', tone: 'unknown' };
   }
 }
+
+/** Financing limitations recorded by qualification, in display order. Seller instalments and a
+ *  low down payment are things to confirm with the buyer, not rejections. */
+const FINANCING_BADGES = [
+  { code: 'FINANCING_SELLER_INSTALMENTS', key: 'fbr_financing_instalments', tone: 'near' },
+  { code: 'DOWN_PAYMENT_LOW', key: 'fbr_financing_low_down', tone: 'near' },
+  { code: 'FINANCING_MORTGAGE', key: 'fbr_financing_mortgage', tone: 'unknown' },
+] as const;
+export function financingBadges(limitations: unknown) {
+  const set = new Set(Array.isArray(limitations) ? limitations.map(String) : []);
+  return FINANCING_BADGES.filter((b) => set.has(b.code));
+}

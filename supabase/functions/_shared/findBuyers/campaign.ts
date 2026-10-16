@@ -11,6 +11,7 @@
 import { buildPropertyDna, type PropertyDna } from '../../../../src/research-core/findBuyers/propertyDna.ts';
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { cappedBudget, decideTestCap, parseTestCap } from '../../../../src/research-core/findBuyers/testCap.ts';
+import { lowDownPaymentRatio } from '../../../../src/research-core/findBuyers/qualify.ts';
 import { publicSearchPasses } from '../../../../src/research-core/findBuyers/adaptiveLoop.ts';
 import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
 import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
@@ -34,12 +35,14 @@ export interface FindBuyersSettings {
   commentGate: { skipBelow: number; eligibleFrom: number };
   sampling: unknown;
   priceBook: unknown;
+  /** find_buyers_financing.lowDownPaymentRatio: the DOWN_PAYMENT_LOW risk heuristic (default 0.1). */
+  lowDownPaymentRatio: number;
 }
 
 const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
-  'provider_disabled_list', 'find_buyers_telegram_preference',
+  'provider_disabled_list', 'find_buyers_telegram_preference', 'find_buyers_financing',
 ];
 
 /** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
@@ -65,6 +68,7 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     commentGate: { skipBelow: num(gate.skipBelow, 55), eligibleFrom: num(gate.eligibleFrom, 75) },
     sampling: m.get('find_buyers_sampling') ?? null,
     priceBook: m.get('find_buyers_openai_price_book') ?? null,
+    lowDownPaymentRatio: lowDownPaymentRatio(m.get('find_buyers_financing') ?? null),
   };
 }
 

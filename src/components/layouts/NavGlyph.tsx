@@ -19,7 +19,7 @@ import React from 'react';
  */
 
 export type NavGlyphName =
-  | 'dashboard' | 'properties' | 'find_property' | 'brokers' | 'expats' | 'design_studio'
+  | 'dashboard' | 'properties' | 'find_property' | 'brokers' | 'publishing' | 'expats' | 'design_studio'
   | 'verify' | 'contracts' | 'mortgage' | 'investment'
   | 'calls' | 'whatsapp' | 'email' | 'live_chat' | 'chat' | 'meta_ads'
   | 'ai' | 'activity' | 'notifications' | 'credits' | 'profile';
@@ -63,6 +63,14 @@ const GLYPHS: Record<NavGlyphName, React.ReactNode> = {
       <circle cx="16.6" cy="9.6" r="2.2" {...S} />
       <path d="M14 18.4a3.9 3.9 0 0 1 6.4-1.8" {...S} />
       <circle cx="12.4" cy="13.4" r="1.5" fill={GOLD} stroke="none" />
+    </>
+  ),
+  /* Publish to Portals: the listing sheet, sent outward — the gold arrow is the publication. */
+  publishing: (
+    <>
+      <path d="M13.5 4H6.4A1.4 1.4 0 0 0 5 5.4v13.2A1.4 1.4 0 0 0 6.4 20h11.2a1.4 1.4 0 0 0 1.4-1.4V12" {...S} />
+      <path d="M8.5 9.5h4M8.5 13h6M8.5 16.5h6" {...S} />
+      <path d="M15.6 7.4 20.4 3.6M17 3.4h3.6V7" fill="none" stroke={GOLD} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
   /* For Expats: the globe, the destination pinned. */

@@ -725,6 +725,11 @@ function PropertyDetailContent() {
               <Link to={`/property/${id}/edit#photos`} className={OWNER_ICON} aria-label={t('prop_action_photos')}>
                 <Camera className="h-3.5 w-3.5" />
               </Link>
+              {/* Publish to Portals with this property already chosen — the workspace
+                  itself is the standalone /publishing area, not a panel here. */}
+              <Link to={`/publishing/${id}`} className={OWNER_ICON} aria-label={t('pubw_publish_this_property')} title={t('pubw_publish_this_property')}>
+                <NavGlyphIcon name="publishing" className="h-3.5 w-3.5" />
+              </Link>
               {/* PATH A into Meta Ads: this property, already selected. */}
               <Link to={`/outreach/meta/create?property=${id}`} className={OWNER_ICON} aria-label={t('mads_property_cta')} title={t('mads_property_cta')}>
                 <Megaphone className="h-3.5 w-3.5" />

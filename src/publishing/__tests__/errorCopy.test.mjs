@@ -11,8 +11,11 @@ const SOURCES = [
   'supabase/functions/publishing-engine/index.ts',
   'supabase/functions/publishing-engine/domain.ts',
   'supabase/functions/publishing-engine/providers.ts',
+  'supabase/functions/publishing-engine/central.ts',
+  'supabase/functions/publishing-engine/vault.ts',
   'supabase/migrations/20261103090000_publishing_workspace.sql',
   'supabase/migrations/20261106090000_publishing_providers.sql',
+  'supabase/migrations/20261107090000_publishing_central_accounts.sql',
 ].map(read).join('\n');
 
 /* Not errors a person reads on a Publishing screen: transport refusals the browser

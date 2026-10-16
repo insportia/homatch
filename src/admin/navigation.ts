@@ -303,6 +303,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         keywords: ['portal', 'publishing', 'myhome', 'ss.ge', 'place.ge', 'home.ge', 'brokeri', 'korter', 'binebi', 'allhome',
           'integration', 'listing', 'publish', 'account connection'],
       },
+      {
+        path: '/admin/integrations/publishing', labelKey: 'admin_nav_publishing_queue', icon: Plug,
+        keywords: ['publishing', 'queue', 'portal', 'publish', 'admin action', 'listing', 'homatch account'],
+      },
     ],
   },
   {

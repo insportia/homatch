@@ -52,6 +52,12 @@ export const unpublishPublication = (propertyId: string, portalId: PortalId) => 
 export const confirmRemoved = (propertyId: string, portalId: PortalId) => call<ListingDetail>('publication.confirmRemoved', { propertyId, portalId });
 export const markPortalUpdated = (propertyId: string, portalId: PortalId) => call<ListingDetail>('publication.markUpdated', { propertyId, portalId });
 
+/* ── The central engine: HOMATCH publishes through its own accounts ───────── */
+export interface PublishResult { portalId: string; status?: PublicationRow['status']; code?: string }
+/** Publish to the selected portals. `consent`: the owner agreed to their name and number at the end of the description. */
+export const publishToPortals = (propertyId: string, portalIds: PortalId[], consent: boolean) =>
+  call<ListingDetail & { results: PublishResult[] }>('publication.publish', { propertyId, portalIds, consent });
+
 /** A copy of this listing for another of the owner's properties (text only; photos stay with their property). */
 export const duplicateListing = (propertyId: string, targetPropertyId: string) =>
   call<ListingDetail>('listing.duplicate', { propertyId, targetPropertyId });
@@ -79,6 +85,42 @@ export const adminPublications = (portalId: PortalId) => call<{ publications: Ad
 export const adminUpdateProvider = (providerId: PortalId, patch: ProviderPatch) => call<{ ok: true }>('admin.provider.update', { providerId, patch });
 export const adminRecheckProvider = (providerId: PortalId) => call<{ health: { status: string; detail: string } }>('admin.provider.recheck', { providerId });
 export const adminRetryPublication = (publicationId: string) => call<{ ok: true }>('admin.publication.retry', { publicationId });
+
+/* ── Admin → HOMATCH portal accounts and the publishing queue ─────────────── */
+export type AccountStatus = 'NOT_CONFIGURED' | 'CONNECTED' | 'AUTH_REQUIRED' | 'SESSION_EXPIRED' | 'PUBLISHING_AVAILABLE' | 'PUBLISHING_RESTRICTED' | 'TEMPORARILY_UNAVAILABLE' | 'UNSUPPORTED';
+export interface AdminAccount {
+  portal_id: PortalId; status: AccountStatus; connection_method: 'API' | 'BROWSER_SESSION' | 'MANUAL' | null;
+  account_label: string | null; contact_phone: string | null; credential_set_at: string | null; hasCredential: boolean;
+  session_expires_at: string | null; verified_at: string | null; verification_result: string | null;
+  last_published_at: string | null; failure_count: number; last_error: string | null; updated_at: string | null;
+}
+export interface AdminAccountsView {
+  accounts: Array<{ portal: PortalInfo; account: AdminAccount; acceptsCredential: boolean }>;
+  audit: Array<{ id: number; portal_id: PortalId; action: string; actor: string | null; created_at: string }>;
+}
+export interface AdminJob extends PublicationRow {
+  user_id: string; admin_claimed_by: string | null;
+  listing?: { title: string; city: string; dealType: string; propertyType: string; price: number | null; currency: string; version: number | null };
+  outdated?: boolean;
+}
+export interface CentralCopy { title: string; description: string; footer: string; contactPhone: string | null; contactPhoneDisplay: string | null; photos: string[] }
+export interface AdminJobView {
+  job: AdminJob; portal: PortalInfo; account: AdminAccount;
+  listing: Record<string, unknown> & { version: number; title: string };
+  copies: Partial<Record<'ka' | 'en' | 'ru', CentralCopy>>;
+  photos: Array<{ id: string; url: string | null }>;
+  events: EventRow[];
+}
+export const adminAccounts = () => call<AdminAccountsView>('admin.accounts');
+export const adminSaveAccount = (portalId: PortalId, account: { accountLabel: string; contactPhone: string; connectionMethod?: string }) =>
+  call<{ ok: true; status: AccountStatus; rerouted: number }>('admin.account.save', { portalId, account });
+export const adminTestAccount = (portalId: PortalId) => call<{ ok: boolean; result: string; status: AccountStatus }>('admin.account.test', { portalId });
+export const adminDisconnectAccount = (portalId: PortalId) => call<{ ok: true; rerouted: number }>('admin.account.disconnect', { portalId });
+export const adminQueue = (filter: { statuses?: string[]; portalId?: PortalId } = {}) => call<{ jobs: AdminJob[] }>('admin.queue', filter);
+export const adminJob = (jobId: string) => call<AdminJobView>('admin.job.get', { jobId });
+export type AdminJobAction = 'claim' | 'release' | 'complete' | 'reject' | 'fail' | 'confirmRemoved' | 'markUpdated' | 'check';
+export const adminJobAction = (jobId: string, op: AdminJobAction, extra: { externalUrl?: string; reason?: string } = {}) =>
+  call<{ ok: true; job?: AdminJob }>(`admin.job.${op}`, { jobId, ...extra });
 
 /** Ask a portal's adapter to run an API operation. Today every adapter answers with the capability it lacks. */
 export async function providerOperation(portalId: PortalId, operation: 'connectAccount' | 'testConnection' | 'createListing' | 'updateListing' | 'deleteListing' | 'importListing'): Promise<string> {

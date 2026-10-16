@@ -17,6 +17,7 @@
 // document that is not theirs even if an id were guessed (§57).
 
 import { supabase } from '@/db/supabase';
+import { removeRouted, signedRoutedUrl } from '@/services/storage/routed';
 import { SIGNED_URL_TTL_SECONDS } from './uploadValidation';
 import {
   normalizeDocumentAnalysis, documentStatus, suggestCategory,
@@ -291,7 +292,7 @@ export async function restoreDocument(doc: WorkspaceDocument): Promise<void> {
  */
 export async function deleteDocumentPermanently(doc: WorkspaceDocument): Promise<void> {
   if (doc.storagePath) {
-    const { error } = await supabase.storage.from('deal-room-documents').remove([doc.storagePath]);
+    const { error } = await removeRouted('deal-room-documents', [doc.storagePath]);
     if (error) throw error;
   }
   const { error } = await supabase.from('deal_room_documents').delete().eq('id', doc.id);
@@ -302,13 +303,10 @@ export async function deleteDocumentPermanently(doc: WorkspaceDocument): Promise
  *  private and has no public URL, so this is the only way to reach it. */
 export async function downloadUrlFor(doc: WorkspaceDocument): Promise<string | null> {
   if (!doc.storagePath) return null;
-  const { data, error } = await supabase.storage
-    .from('deal-room-documents')
-    .createSignedUrl(doc.storagePath, SIGNED_URL_TTL_SECONDS, {
-      download: doc.originalFilename ?? true,
-    });
-  if (error) throw error;
-  return data?.signedUrl ?? null;
+  // R2 first, Supabase Storage for a file that was never copied (storage/routed.ts).
+  return signedRoutedUrl('deal-room-documents', doc.storagePath, SIGNED_URL_TTL_SECONDS, {
+    downloadAs: doc.originalFilename ?? true,
+  });
 }
 
 export async function reorderDocuments(docs: WorkspaceDocument[]): Promise<void> {

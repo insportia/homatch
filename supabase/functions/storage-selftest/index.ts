@@ -32,6 +32,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import {
   StorageUnavailable, deleteObject, envReport, getObject, headObject, putObject, signedUrl,
 } from '../_shared/objectStore.ts';
+import { r2KeyFor, readRouted, removeRouted, signRouted, writeRouted } from '../_shared/storage/routed.ts';
 
 declare const Deno: { env: { get(k: string): string | undefined } };
 
@@ -329,6 +330,49 @@ serve(async (req) => {
       }).eq('object_key', acctKey);
       record('10_account_scoped_object_removed', !acctGone.exists, {
         key: acctKey, still_exists: acctGone.exists,
+      });
+    }
+
+    // ── 12. Bucket-path routing (_shared/storage/routed.ts), end to end ──
+    // A tiny PNG written through writeRouted to R2 at meta-ads-media/<account>/
+    // must be confirmed, indexed ACTIVE, read back R2-first with the same
+    // sha256, signed, and removed from both stores. A second file that exists
+    // ONLY in Supabase Storage must be read through the Supabase fallback.
+    // Both live under the test account and are gone when the run ends.
+    if (body.routed === true && accountId) {
+      const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
+      const r2Path = `${accountId}/selftest/${crypto.randomUUID()}.png`;
+      const wrote = await writeRouted(admin, 'meta-ads-media', r2Path, png, 'image/png', { ownerUserId: accountId, target: 'R2' });
+      const { data: idx } = await admin.from('storage_objects').select('lifecycle, owner_user_id, checksum_sha256, byte_size')
+        .eq('object_key', r2KeyFor('meta-ads-media', r2Path)).maybeSingle();
+      const back = await readRouted(admin, 'meta-ads-media', r2Path);
+      const signedR2 = await signRouted(admin, 'meta-ads-media', r2Path, 120);
+      const fetched = signedR2 ? await fetch(signedR2.url) : null;
+      const fetchedSha = fetched?.ok ? await sha256Hex(new Uint8Array(await fetched.arrayBuffer())) : null;
+      const srcSha = await sha256Hex(png);
+      record('12a_routed_write_to_r2_confirmed_and_indexed', !wrote.error && wrote.source === 'R2'
+        && idx?.lifecycle === 'ACTIVE' && idx?.owner_user_id === accountId && idx?.checksum_sha256 === srcSha && idx?.byte_size === png.byteLength, {
+        key: r2KeyFor('meta-ads-media', r2Path), error: wrote.error?.message ?? null, indexed: idx ?? null,
+      });
+      record('12b_routed_read_r2_first', back?.source === 'R2' && !!back && (await sha256Hex(back.bytes)) === srcSha, { source: back?.source ?? null });
+      record('12c_routed_signed_download', signedR2?.source === 'R2' && fetched?.status === 200 && fetchedSha === srcSha, {
+        source: signedR2?.source ?? null, status: fetched?.status ?? null, sha256_matches: fetchedSha === srcSha,
+      });
+      await removeRouted(admin, 'meta-ads-media', [r2Path]);
+      const goneR2 = await headObject(r2KeyFor('meta-ads-media', r2Path));
+      const { data: idxAfter } = await admin.from('storage_objects').select('lifecycle').eq('object_key', r2KeyFor('meta-ads-media', r2Path)).maybeSingle();
+      record('12d_routed_remove_confirmed', !goneR2.exists && idxAfter?.lifecycle === 'DELETED', { r2_exists: goneR2.exists, index: idxAfter?.lifecycle ?? null });
+
+      const supaPath = `${accountId}/selftest/${crypto.randomUUID()}.png`;
+      const up = await admin.storage.from('meta-ads-media').upload(supaPath, png, { contentType: 'image/png', upsert: false });
+      const legacy = up.error ? null : await readRouted(admin, 'meta-ads-media', supaPath);
+      const legacySigned = up.error ? null : await signRouted(admin, 'meta-ads-media', supaPath, 120);
+      await removeRouted(admin, 'meta-ads-media', [supaPath]);
+      const { data: still } = await admin.storage.from('meta-ads-media').list(`${accountId}/selftest`, { search: supaPath.split('/').pop() });
+      record('12e_legacy_file_read_through_supabase_fallback', !up.error && legacy?.source === 'SUPABASE'
+        && legacySigned?.source === 'SUPABASE' && (still ?? []).length === 0, {
+        upload_error: up.error?.message ?? null, read_source: legacy?.source ?? null, signed_source: legacySigned?.source ?? null,
+        removed: (still ?? []).length === 0,
       });
     }
 

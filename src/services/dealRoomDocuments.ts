@@ -16,6 +16,7 @@
 // short-lived signed URL minted for a user who already passed the check.
 
 import { supabase } from '@/db/supabase';
+import { removeRouted, signedRoutedUrl, uploadRouted } from '@/services/storage/routed';
 import { validateUpload, storagePathFor, SIGNED_URL_TTL_SECONDS } from './uploadValidation';
 
 // Validation and object naming live in a dependency-free module so they can
@@ -72,9 +73,9 @@ export async function uploadDocument(args: {
   if (insErr) throw insErr;
 
   const path = storagePathFor(userId, args.roomId, row.id as string, args.file.name);
-  const { error: upErr } = await supabase.storage
-    .from('deal-room-documents')
-    .upload(path, args.file, { contentType: args.file.type, upsert: false });
+  const { error: upErr } = await uploadRouted('deal-room-documents', path, args.file, {
+    contentType: args.file.type, originalFilename: args.file.name,
+  });
 
   if (upErr) {
     // Do not leave a row pointing at an object that does not exist.
@@ -94,16 +95,13 @@ export async function uploadDocument(args: {
 /** Mints a short-lived signed URL. Never returns a public URL, because the
  * bucket has none. */
 export async function signedUrlFor(storagePath: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from('deal-room-documents')
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
-  if (error) throw error;
-  return data.signedUrl;
+  // R2 first, Supabase Storage for a file that was never copied (storage/routed.ts).
+  return signedRoutedUrl('deal-room-documents', storagePath, SIGNED_URL_TTL_SECONDS);
 }
 
 export async function deleteDocument(documentId: string, storagePath: string | null): Promise<void> {
   if (storagePath) {
-    const { error } = await supabase.storage.from('deal-room-documents').remove([storagePath]);
+    const { error } = await removeRouted('deal-room-documents', [storagePath]);
     if (error) throw error;
   }
   const { error } = await supabase.from('deal_room_documents').delete().eq('id', documentId);

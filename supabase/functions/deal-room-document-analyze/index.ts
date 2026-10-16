@@ -46,6 +46,7 @@ import { crossCheck, toFindingRows } from '../../../src/dealroom/domain/contract
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
 import { notify } from '../_shared/notify.ts';
 import { retentionBlocked } from '../_shared/retentionGuard.ts';
+import { readRouted } from '../_shared/storage/routed.ts';
 import {
   buildAnalysisPrompt,
   parseAnalysis,
@@ -202,8 +203,10 @@ serve(async (req) => {
     } catch { /* history is bookkeeping, not the result */ }
 
     /* ---- the private object, via the same RLS ---- */
-    const dl = await supabase.storage.from('deal-room-documents').download(doc.storage_path);
-    if (dl.error || !dl.data) {
+    // R2 first, then the caller's own RLS-bound download (_shared/storage/routed.ts);
+    // the row above was read through that same client, so the path is theirs.
+    const dl = await readRouted(supabase, 'deal-room-documents', doc.storage_path);
+    if (!dl) {
       await supabase
         .from('deal_room_documents')
         .update({ analysis_state: 'FAILED', analysis_error: 'file could not be read', analyzed_at: new Date().toISOString() })
@@ -211,7 +214,7 @@ serve(async (req) => {
       return json({ state: 'FAILED', reason: 'DOWNLOAD_FAILED' }, 200);
     }
 
-    const buf = await dl.data.arrayBuffer();
+    const buf = dl.bytes.slice().buffer as ArrayBuffer;
     if (buf.byteLength === 0 || buf.byteLength > MAX_BYTES) {
       await supabase
         .from('deal_room_documents')

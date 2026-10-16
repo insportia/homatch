@@ -29,6 +29,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { assembleContext, buildAskPrompt, groundingRefs } from '../../../src/dealroom/domain/aiContext.ts';
 import type { ContextItem } from '../../../src/dealroom/domain/aiContext.ts';
+import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -67,6 +68,9 @@ serve(async (req) => {
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth?.user?.id;
     if (!userId) return json({ error: 'unauthorized' }, 401);
+
+    // SERVICE CONTROL (key `contracts`): no new contract question while paused.
+    if (!(await serviceBackendEnabledForCaller(supabase, 'contracts'))) return json(serviceDisabledBody('contracts'), 503);
 
     const body = await req.json().catch(() => ({}));
     const dealRoomId = String(body?.dealRoomId ?? '').trim();

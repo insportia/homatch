@@ -34,6 +34,7 @@ import { afterTerms, instantFormsState, isTermsRefusal, leadCheckOf, leadTermsEv
 import { readManagedState, setApproved, LifecycleError, assertNotSuspended } from './lifecycle.ts';
 import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport, statusChangeNotice } from './monitor.ts';
 import { safeReturnPath } from '../../../src/lib/metaAds/oauth.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -75,6 +76,9 @@ function ownUrl(v: unknown, fallback: string): string {
   } catch { return fallback; }
 }
 
+/** Meta Ads actions that keep working while the service is paused (see SERVICE CONTROL below). */
+const META_OPEN_WHILE_PAUSED = new Set(['status', 'disconnect', 'archive', 'pause', 'resume', 'sync', 'leads_export', 'funnel']);
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -106,6 +110,17 @@ Deno.serve(async (req) => {
   const settings = await loadSettings(sb);
 
   if (!settings.enabled && !me.is_admin) return json({ error: 'META_ADS_DISABLED', code: 'META_ADS_DISABLED' }, 503);
+
+  /*
+   * SERVICE CONTROL (key `meta_ads`): while paused nothing new starts — no connect, no
+   * launch, no AI copy, no lead form, no audience, no deposit, no import. What stays open
+   * is what a customer needs to look at, stop or take out what already exists, plus the
+   * admin tools; the cron branch above and meta-oauth / meta-webhooks are untouched.
+   */
+  if (!META_OPEN_WHILE_PAUSED.has(action) && !String(action).startsWith('admin_')
+      && !(await serviceBackendEnabled(sb, 'meta_ads'))) {
+    return json(serviceDisabledBody('meta_ads'), 503);
+  }
 
   try {
     const handled = await handleAction({ sb, userClient, uid, me, body, action, settings, mode, json, audit });

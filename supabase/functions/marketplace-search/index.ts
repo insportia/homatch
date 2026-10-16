@@ -41,6 +41,7 @@ import {
 
 } from '../_shared/marketplaceSearch.ts';
 import { paidCampaignAvailable } from '../_shared/findProperty/paidAvailability.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -175,6 +176,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!switches.enabled && (action === 'start' || action === 'understand')) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);
+    // SERVICE CONTROL (key `find_property`): no new search or interpretation while paused;
+    // status, results, history and cancel keep working for searches already made.
+    if ((action === 'start' || action === 'understand') && !(await serviceBackendEnabled(db, 'find_property'))) {
+      return json(serviceDisabledBody('find_property'), 503);
+    }
 
     if (action === 'understand') {
       const text = String(body.text ?? '').trim().slice(0, 2000);

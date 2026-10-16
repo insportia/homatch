@@ -51,12 +51,14 @@ begin
   select case when c.transaction = 'RENT' then 'RENT_OFFER' else 'SALE_OFFER' end
     into v_listing_role from public.find_buyers_campaigns c where c.matching_job_id = p_job_id;
   /* The pipeline's own comment gate floor (find_buyers_comment_gate.skipBelow, default 55). */
-  select coalesce((select (s.value ->> 'skipBelow')::int from public.admin_settings s where s.key = 'find_buyers_comment_gate'), 55)
+  select coalesce((select round((s.value ->> 'skipBelow')::numeric)::int from public.admin_settings s
+                     where s.key = 'find_buyers_comment_gate' and (s.value ->> 'skipBelow') ~ '^\d+(\.\d+)?$'), 55)
     into v_skip_below;
 
   return query
   with posts as (
-    select a.signal_id, a.similarity, a.qualification
+    select a.signal_id, a.similarity, a.qualification,
+           case when (a.qualification ->> 'reportedComments') ~ '^\d+$' then (a.qualification ->> 'reportedComments')::int end as reported
       from public.find_buyers_assessments a
      where a.matching_job_id = p_job_id
        and a.content_kind = 'POST'
@@ -72,17 +74,19 @@ begin
     select l.parent_signal_id, count(*)::int as n
       from public.find_buyers_leads l
      where l.matching_job_id = p_job_id and l.parent_signal_id is not null
-       and coalesce(l.match_category, '') <> 'REJECTED'
+       /* the same people the owner's lead list shows: current and not rejected */
+       and public.find_buyers_signal_is_current(l.signal_at)
+       and coalesce(l.match_category, 'POTENTIAL') <> 'REJECTED'
      group by l.parent_signal_id
   )
   select p.signal_id,
          r.source_url,
-         left(r.original_text, 400),
+         left(r.original_text, 300),
          r.author_public_name,
          r.published_at,
          r.language,
          p.similarity,
-         nullif(p.qualification ->> 'reportedComments', '')::int,
+         p.reported,
          case when cm.n is not null then 'INSPECTED' else 'NOT_INSPECTED' end,
          coalesce(pe.n, 0),
          r.platform::text,
@@ -95,8 +99,8 @@ begin
    where r.source_url is not null
      and public.find_buyers_signal_is_current(r.published_at)
      /* the platform said "no comments": nothing to review */
-     and coalesce(nullif(p.qualification ->> 'reportedComments', '')::int, -1) <> 0
-   order by (cm.n is not null) desc, coalesce(nullif(p.qualification ->> 'reportedComments', '')::int, 0) desc, p.similarity desc
+     and coalesce(p.reported, -1) <> 0
+   order by (cm.n is not null) desc, coalesce(p.reported, 0) desc, p.similarity desc
    limit 60;
 end;
 $function$;

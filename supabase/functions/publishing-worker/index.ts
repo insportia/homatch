@@ -1,7 +1,9 @@
 // PUBLISHING-WORKER — the Railway browser worker's door to the publishing queue.
 //
 // Same model as verify-queue: the worker holds no database credential. Every call
-// is a POST {action, ...} with the shared WORKER_TOKEN; locking, leases, retries
+// is a POST {action, ...} with PUBLISHING_WORKER_TOKEN — a secret of its own, never
+// the WORKER_TOKEN that verify-queue and research share, so a leaked queue token
+// cannot reach portal sessions and vice versa; locking, leases, retries
 // and the submit-once door live in Postgres (publishing_op_* in migration
 // 20261108090000); this function adds what the worker may see for one claimed
 // operation and turns its outcome into publication / account transitions.
@@ -34,6 +36,8 @@ const JOB_COLUMNS = 'id,listing_id,user_id,portal_id,status,channel,revision,ext
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
+const MIN_SECRET = 32;
+
 function sameSecret(a: string, b: string): boolean {
   if (!a || !b || a.length !== b.length) return false;
   let diff = 0;
@@ -52,7 +56,11 @@ export interface Deps {
 export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.get(k), fetchPage: fetchListingPage, now: () => new Date() }) {
   if (req.method !== 'POST') return json({ code: 'METHOD_DENIED' }, 405);
   const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!sameSecret(token, deps.env('WORKER_TOKEN') || '')) return json({ code: 'WORKER_AUTH_REQUIRED' }, 401);
+  // Publishing's own secret only. Unset (or too short to be a real secret) the door
+  // stays shut for everyone — it never falls back to the shared WORKER_TOKEN.
+  const secret = deps.env('PUBLISHING_WORKER_TOKEN') || '';
+  if (secret.length < MIN_SECRET) return json({ code: 'PUBLISHING_WORKER_NOT_CONFIGURED' }, 503);
+  if (!sameSecret(token, secret)) return json({ code: 'WORKER_AUTH_REQUIRED' }, 401);
   const raw = await req.text();
   if (raw.length > MAX_BODY) return json({ code: 'PAYLOAD_TOO_LARGE' }, 413);
   let input: Record<string, any>;

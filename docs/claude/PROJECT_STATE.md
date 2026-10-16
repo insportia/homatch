@@ -147,7 +147,7 @@ MATTERS right now, verify against the live systems, not this file)
 - **Logos**: still monograms — no logo source reachable from this environment; none invented.
 - **Backend browser automation** (same branch; runbook `docs/publishing/AUTOMATION.md`): Playwright
   adapters for MyHome.ge / SS.ge in `official-worker/src/publishing/` (inert unless
-  `PUBLISHING_AUTOMATION_ENABLED=1`), edge door `publishing-worker` (verify_jwt=false, WORKER_TOKEN),
+  `PUBLISHING_AUTOMATION_ENABLED=1`), edge door `publishing-worker` (verify_jwt=false, its own PUBLISHING_WORKER_TOKEN — never the shared WORKER_TOKEN),
   `publishing_operations` queue with leases + submit-once door, sealed portal sessions,
   `scripts/publishing/capture-session.mjs`. Selectors come from the committed distillation of the
   owner's MCP exploration (`805ec2c5` / `fa1220c7`); the raw SS.ge 317-action recording was never

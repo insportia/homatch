@@ -118,9 +118,11 @@ async function makeDb({ session = true } = {}) {
 }
 
 const pages = new Map();
-async function call(db, action, body = {}, token = 'worker-secret') {
+const PUB_SECRET = 'publishing-secret-0123456789abcdef0123';
+const SHARED_SECRET = 'shared-queue-secret-0123456789abcdef';
+async function call(db, action, body = {}, token = PUB_SECRET, env = { PUBLISHING_WORKER_TOKEN: PUB_SECRET, WORKER_TOKEN: SHARED_SECRET }) {
   const deps = {
-    env: (k) => ({ WORKER_TOKEN: 'worker-secret', PUBLISHING_CREDENTIALS_KEY: KEY })[k],
+    env: (k) => ({ ...env, PUBLISHING_CREDENTIALS_KEY: KEY })[k],
     db, now: () => NOW,
     fetchPage: async (url) => pages.get(url) ?? { status: 'NETWORK' },
     // Property photos live in R2: signed by the object store, not the legacy Supabase bucket.
@@ -135,6 +137,26 @@ test('the worker token is required, compared exactly', async () => {
   const { db } = await makeDb();
   assert.equal((await call(db, 'claim', {}, 'nope')).status, 401);
   assert.equal((await call(db, 'claim', {}, '')).status, 401);
+  assert.equal((await call(db, 'claim', {}, PUB_SECRET.slice(0, -1) + 'x')).status, 401);
+  assert.equal((await call(db, 'claim', {}, PUB_SECRET + 'x')).status, 401);
+  assert.equal((await call(db, 'claim', {}, PUB_SECRET)).status, 200);
+});
+
+test('publishing has its own secret: the shared verify / research WORKER_TOKEN never opens it', async () => {
+  const { db } = await makeDb();
+  const denied = await call(db, 'claim', {}, SHARED_SECRET);
+  assert.equal(denied.status, 401);
+  assert.deepEqual(denied.body, { code: 'WORKER_AUTH_REQUIRED' });
+  // Not configured (or a weak value): shut for everyone, never a fallback to WORKER_TOKEN.
+  for (const env of [{ WORKER_TOKEN: SHARED_SECRET }, { PUBLISHING_WORKER_TOKEN: 'short', WORKER_TOKEN: SHARED_SECRET }]) {
+    for (const token of [SHARED_SECRET, env.PUBLISHING_WORKER_TOKEN ?? '', '']) {
+      const r = await call(db, 'claim', {}, token, env);
+      assert.equal(r.status, 503);
+      assert.deepEqual(r.body, { code: 'PUBLISHING_WORKER_NOT_CONFIGURED' });
+    }
+  }
+  // Nothing about either secret is echoed back.
+  assert.doesNotMatch(JSON.stringify(denied.body), /secret/);
 });
 
 test('claim: the leased operation, its listing copy with the owner footer, signed photos and the decrypted session — and the publication starts', async () => {

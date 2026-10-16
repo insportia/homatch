@@ -43,13 +43,27 @@ a claimed operation, keeps it in memory, and sends refreshed cookies back to be 
 DESCRIPTION / PHOTOS / UPDATE where the portal's adapter supports that operation; otherwise
 the admin queue shows the copy as outdated. Unpublish queues DELETE where supported.
 
-## Verification matrix (2026-10-16)
+## Capability matrix (2026-10-16)
 
-| Portal | CHECK_SESSION | CREATE | STATUS | UPDATE / PRICE / DESCRIPTION / PHOTOS | PAUSE / REACTIVATE | DELETE |
-|---|---|---|---|---|---|---|
-| MyHome.ge | fixture-tested | fixture-tested (fills, verifies, free-publication check, submits only with live approval) | fixture-tested | not explored | not explored | not explored |
-| SS.ge | fixture-tested | fixture-tested (fills and verifies; **always stops at PREPARED**) | fixture-tested | not explored | not explored | not explored |
-| Place.ge, Home.ge, Brokeri.ge, Allhome.ge, Korter.ge, Binebi.ge | — | not explored | — | — | — | — |
+VERIFIED = performed on the live portal · IMPLEMENTED BUT UNVERIFIED = adapter code exists and
+passed real-Chromium fixture tests only · NOT IMPLEMENTED = no recorded workflow, the worker refuses
+it (`OPERATION_NOT_EXPLORED`) and the copy goes to the admin queue — **the manual admin fallback is
+not automation**.
+
+| Operation | MyHome.ge | SS.ge |
+|---|---|---|
+| Session check | IMPLEMENTED BUT UNVERIFIED | IMPLEMENTED BUT UNVERIFIED |
+| Create | IMPLEMENTED BUT UNVERIFIED (fills, verifies, free-publication check; submits only with live approval) | IMPLEMENTED BUT UNVERIFIED (fills and verifies; **always stops at PREPARED** — publish control not recorded) |
+| Status (public page check) | IMPLEMENTED BUT UNVERIFIED | IMPLEMENTED BUT UNVERIFIED |
+| Edit | NOT IMPLEMENTED | NOT IMPLEMENTED |
+| Price update | NOT IMPLEMENTED | NOT IMPLEMENTED |
+| Description update | NOT IMPLEMENTED | NOT IMPLEMENTED |
+| Photo replacement | NOT IMPLEMENTED | NOT IMPLEMENTED |
+| Pause | NOT IMPLEMENTED | NOT IMPLEMENTED |
+| Reactivate | NOT IMPLEMENTED | NOT IMPLEMENTED |
+| Delete | NOT IMPLEMENTED | NOT IMPLEMENTED |
+
+Place.ge, Home.ge, Brokeri.ge, Allhome.ge, Korter.ge, Binebi.ge: every operation NOT IMPLEMENTED.
 
 "Fixture-tested" = the adapter ran in real Chromium against local pages rebuilt from the
 recorded controls (`official-worker/test/publishingAdapters.test.mjs`). **No operation has
@@ -101,9 +115,11 @@ forbid automated access and Binebi.ge shows a bot challenge on every page — bo
 - **Retention**: 30 days; a deleted listing's screenshots at once (`operation_id` is set
   null, not cascaded, so they stay findable). Hourly housekeeping removes the storage
   object first, then exactly its row; a storage failure forgets nothing.
-- **Worker door**: constant-time `WORKER_TOKEN`, no browser origin; the token is the one
-  `verify-queue` and research already share (a separate publishing token would need a new
-  secret on both sides — owner decision).
+- **Worker door**: its own secret `PUBLISHING_WORKER_TOKEN` (edge secret + the same value as a
+  Railway variable), compared in constant time. The `WORKER_TOKEN` that `verify-queue` and
+  research share is never accepted and was not changed; while the publishing secret is unset
+  (or shorter than 32 characters) the door answers 503 `PUBLISHING_WORKER_NOT_CONFIGURED` to
+  everyone and the Railway runner refuses to start. Regression-tested on both sides.
 - **Sessions**: AES-256-GCM with the portal id as additional data; decrypted only into the
   claim of an operation on that portal; refreshed cookies are pinned to the portal's domains
   before re-sealing; never logged.
@@ -142,8 +158,10 @@ capability level is raised only with that evidence.
 ## Turning it on (Phase D — needs the owner)
 
 1. Apply migration `20261108090000_publishing_central_accounts.sql` (SQL Editor; it contains a DROP).
-2. Set the edge secret `PUBLISHING_CREDENTIALS_KEY` (32 random bytes, base64).
-3. Set Railway variable `PUBLISHING_AUTOMATION_ENABLED=1` on `homatch-official-worker`.
+2. Set the edge secrets `PUBLISHING_CREDENTIALS_KEY` (32 random bytes, base64) and
+   `PUBLISHING_WORKER_TOKEN` (≥ 32 random characters, e.g. `openssl rand -hex 32`).
+3. Set Railway variables `PUBLISHING_WORKER_TOKEN` (same value) and
+   `PUBLISHING_AUTOMATION_ENABLED=1` on `homatch-official-worker`.
 4. Admin → Integrations → Property portals → MyHome.ge: register the HOMATCH account
    (identity + phone; the phone must already be verified on MyHome), then run
    `capture-session.mjs myhome` and wait for "verified on the portal".

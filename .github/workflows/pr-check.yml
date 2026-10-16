@@ -178,10 +178,14 @@ jobs:
       # The publishing adapters' only proof is a real Chromium run against the
       # recorded-control fixtures (official-worker/test/publishingAdapters.test.mjs),
       # which fails in CI rather than skipping without a browser.
+      # Production runs Chromium headed under Xvfb (docker-entrypoint.sh); the
+      # real-Chromium smoke tests launch it the same way, so they get a display too.
       - name: Install Chromium for the browser tests
-        run: cd official-worker && env -u PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD npx playwright install --with-deps chromium
+        run: |
+          cd official-worker && env -u PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD npx playwright install --with-deps chromium
+          command -v xvfb-run || sudo apt-get install -y xvfb
       - name: Worker tests
-        run: npm --prefix official-worker test
+        run: xvfb-run -a npm --prefix official-worker test
 
   # The required check. Green only when the plan ran and every suite it
   # planned passed; a planned suite that was skipped, cancelled or failed is

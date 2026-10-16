@@ -185,7 +185,7 @@ export const COMPONENTS = {
   EDGE: { paths: [/^supabase\/functions\/[^_/][^/]*\//] },
   // No runtime effect: validated by static + unit.
   TOOLING: {
-    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/verify-scale\//, /^scripts\/portals\/live-check\.mjs$/, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
+    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/verify-scale\//, /^scripts\/bench\//, /^scripts\/portals\/live-check\.mjs$/, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
   },
   // Unit-run tests, and browser files no CI gate runs (manual suites:
   // test:surfaces, test:pwa, heroMobile) — changing them cannot change what
@@ -247,6 +247,8 @@ export const DB_OBJECT_OWNERS = [
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
+  // The paid discovery pricing policy (37/63) and native matching's resumable retirement.
+  [/^public\.(paid_discovery_|retire_native_matches)/, 'DISCOVERY'],
   // Find Property Knowledge Engine exact cache (service role only).
   [/^public\.property_knowledge_/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.

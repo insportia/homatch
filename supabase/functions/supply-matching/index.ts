@@ -639,7 +639,7 @@ Deno.serve(async (req: Request) => {
                * not an edge case.
                */
               .neq('user_id', demandUserId)
-              /* Keyset by id on properties_native_matchable_idx: every property once. */
+              /* Keyset by id (primary key): every property once. */
               .order('id', { ascending: true })
               .limit(size);
             if (after) nativeQuery = nativeQuery.gt('id', after);

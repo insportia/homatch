@@ -52,5 +52,4 @@ test('migration: additive, service-role only, indexed', () => {
   }
   assert.doesNotMatch(MIGRATION, /\bdrop table\b|\bdelete from public\.supply_matches\b|truncate/i);
   assert.match(MIGRATION, /active_search_subscriptions_active_intent_idx/);
-  assert.match(MIGRATION, /properties_native_matchable_idx/);
 });

@@ -156,11 +156,9 @@ end $$;
 revoke all on function public.retire_native_matches_for_properties(uuid, uuid[]) from public, anon, authenticated;
 grant execute on function public.retire_native_matches_for_properties(uuid, uuid[]) to service_role;
 
-/* Indexed keyset walks: active searches by intent, matchable properties by id. */
+/* Indexed keyset walks: active searches by intent (properties walk their primary key). */
 create index if not exists active_search_subscriptions_active_intent_idx
   on public.active_search_subscriptions (intent_id) where is_active and intent_id is not null;
-create index if not exists properties_native_matchable_idx
-  on public.properties (id) where is_deleted = false and archived_at is null and matching_status = 'ACTIVE';
 create index if not exists supply_matches_native_retire_idx
   on public.supply_matches (intent_profile_id, updated_at)
   where source_kind = 'INTERNAL_HOMATCH' and compatibility = 'COMPATIBLE';

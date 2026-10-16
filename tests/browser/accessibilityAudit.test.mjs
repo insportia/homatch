@@ -392,8 +392,22 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
    * the entry (AdminLayout, admin/navigation, AdminSearch, adminControl,
    * admin/labels: ~24KB) and admin-only English strings are the known way
    * back down; that is an i18n/route split, deliberately not done here.
+   *
+   * BACK TO 2MB, 2026-10-16: that split is done. AdminLayout is lazy and loads
+   * with the admin console's strings (src/i18n/adminSplit.ts → admin-<lang>
+   * chunks). Entry 2,105,445 → 1,986,168 bytes (gzip 603,303 → 569,236,
+   * brotli 484,062 → 458,540); every non-English bundle a visitor waits for
+   * before first render lost its admin strings too (ka 2.20MB → 2.04MB).
    */
-  const CEILING = 2.25 * 1024 * 1024;
+  const CEILING = 2 * 1024 * 1024;
   assert.ok(bytes < CEILING,
     `the entry chunk is ${(bytes / 1024 / 1024).toFixed(2)}MB, past the ${CEILING / 1024 / 1024}MB ceiling`);
+
+  /* The split, measured on the build rather than assumed from the source: the
+     entry carries no admin-only string and the customer families it keeps,
+     and the admin English chunk exists to carry the rest. */
+  const code = readFileSync(join(dir, entry[0]), 'utf8');
+  assert.ok(!code.includes('admin_nav_service_control'), 'an admin-only string is back in the entry chunk');
+  assert.ok(code.includes('admin_imp_banner_exit'), 'the impersonation banner\'s strings must stay in the entry');
+  assert.ok(readdirSync(dir).some((f) => /^admin-en-.*\.js$/.test(f)), 'no admin-en chunk was emitted');
 });

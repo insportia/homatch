@@ -115,7 +115,7 @@ export const COMPONENTS = {
   },
   STORAGE: {
     security: true,
-    paths: [fn('storage-sign', 'storage-inventory', 'storage-migrate', 'storage-selftest', 'storage-retention'), /^src\/pages\/admin\/AdminStoragePage/,
+    paths: [fn('storage-sign', 'storage-inventory', 'storage-migrate', 'storage-selftest', 'storage-retention', 'storage-reupload-proof'), /^src\/pages\/admin\/AdminStoragePage/,
       /^supabase\/functions\/_shared\/retention\//, /^src\/(services\/retention|components\/retention\/)/, /^tests\/sql\/retention\//],
     suites: [],
     proofs: ['storage: storage-selftest PASS in production; storage_authorize allows/denies per namespace as before',

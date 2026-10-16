@@ -557,6 +557,10 @@ jobs:
             # reaches production.
             "storage-migrate"
             "storage-inventory"
+            # Production re-upload proof for the R2-routed buckets: reads an
+            # existing file and writes it to a NEW r2-reupload-test/ key through
+            # the product's own routed write path. Ticket-gated like its siblings.
+            "storage-reupload-proof"
             "atomic-unlock"
             "credits-topup"
             # Stores a reusable payment method and grants the one-time

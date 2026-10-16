@@ -121,8 +121,10 @@ end $$;
 revoke all on function public.service_control_pause_group(text, text, text, text) from public, anon;
 grant execute on function public.service_control_pause_group(text, text, text, text) to authenticated, service_role;
 
--- 6. BROKERS DIRECTORY: a new paid listing is written by broker_directory_purchase() in one
--- statement, so refusing the row rolls the whole purchase back, credits included.
--- Existing listings, renewals already paid, and the expiry sweep are untouched.
+-- 6. BROKERS DIRECTORY: a paid listing (a first purchase OR a renewal; both go through
+-- broker_directory_purchase(), which debits credits and inserts here in one statement) is
+-- refused while paused, and the refusal rolls the debit back. An idempotent replay of a
+-- purchase already made returns before the insert. Listings already running keep running
+-- to their paid expiry; the expiry sweep only updates broker_directory_listings.
 create trigger trg_0_service_control_guard before insert on public.broker_listing_purchases
   for each row execute function public.service_control_guard('brokers_directory');

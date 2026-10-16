@@ -183,7 +183,8 @@ These four are existing services, unchanged (still OFF). Details: `SERVICE_CONTR
 **`brokers_directory`: Brokers directory**
 - **Routes:** `/brokers*`
 - **Entry points:** sidebar, public nav, homepage section, About, entry pages, AI action `BROKER_FINDER`.
-- **Backend:** new paid listings (`broker_listing_purchases` insert guard).
+- **Backend:** paid listings, first purchases and renewals alike (`broker_listing_purchases` insert guard; the refusal rolls the credit debit back).
+- **Keeps running:** listings already paid, to their expiry; the expiry sweep; a replay of a purchase already made.
 
 **`broker_desk`: Broker Desk**
 - **Routes:** `/broker`, `/broker/onboarding`

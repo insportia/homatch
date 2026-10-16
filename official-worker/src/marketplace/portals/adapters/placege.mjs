@@ -8,7 +8,7 @@ import { requestedDistrictKeys } from '../places.mjs';
  * Each card states deal, type, rooms, area, floor, place, the USD price
  * (data-price_usd), the publication date, the id and the contact the seller published;
  * the listing page adds full photos, the seller's description and building facts.
- * Districts: the site's own district_id, read off its cards' "similar" links
+ * Districts: the site's own region_id + district_id pair, read off its cards' "similar" links
  * (2026-10-15 pages; card place text → id). One results page per requested district;
  * a district without an observed id sends no district filter at all (city-wide read,
  * the shared loop and the pipeline then decide the district), never a guessed id.
@@ -17,7 +17,8 @@ const DEAL = { BUY: 'for_sale', MONTHLY_RENT: 'for_rent' };
 const TYPE = { APARTMENT: 'flat', HOUSE: 'private_house', VILLA: 'private_house', LAND: 'land', COMMERCIAL: 'commercial_estate', OFFICE: 'commercial_estate' };
 const TYPE_BACK = { 'ბინა': 'APARTMENT', 'კერძო სახლი': 'HOUSE', 'აგარაკი': 'HOUSE', 'მიწის ნაკვეთი': 'LAND', 'მიწა': 'LAND' };
 const CITY = { 'tbilisi': 1, 'თბილისი': 1 };
-const DISTRICT_ID = { vake: 2, 'didi digomi': 13, saburtalo: 18, gldani: 23, didube: 45, samgori: 60, avlabari: 62, vera: 63, krtsanisi: 65, mtatsminda: 66, sololaki: 67 };
+/* [region_id, district_id] as the site's own links pair them; district_id alone is ignored by its server (live probe 2026-10-16). */
+const DISTRICT_ID = { vake: [1, 2], 'didi digomi': [1, 13], saburtalo: [1, 18], gldani: [2, 23], didube: [4, 45], samgori: [5, 60], avlabari: [6, 62], vera: [6, 63], krtsanisi: [6, 65], mtatsminda: [6, 66], sololaki: [6, 67] };
 const unsupported = (why) => Object.assign(Error(why), { code: 'UNSUPPORTED_REQUEST' });
 
 export const placege = {
@@ -41,7 +42,7 @@ export const placege = {
   },
   searchUrl(criteria, page) {
     const { district_ids: ids, ...q } = criteria;
-    if (ids) return `https://place.ge/ge/ads?${new URLSearchParams(Object.entries({ ...q, district_id: ids[page - 1] }).map(([k, v]) => [k, String(v)]))}`;
+    if (ids) { const [region_id, district_id] = ids[page - 1]; return `https://place.ge/ge/ads?${new URLSearchParams(Object.entries({ ...q, region_id, district_id }).map(([k, v]) => [k, String(v)]))}`; }
     const qs = new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString();
     return `https://place.ge/ge/ads${page > 1 ? `/page:${page}` : ''}?${qs}`;
   },

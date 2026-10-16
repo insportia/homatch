@@ -174,7 +174,7 @@ test('shared loop: a listing is dropped only when its own stated deal, USD price
   assert.equal(contradiction({}, req), null, 'unknown values never exclude');
 });
 
-test('districts: the worker table is the core place table, and only a known, different district excludes', () => {
+test('districts: the worker table is the core place table; a listing naming another place is dropped, one naming none is kept', () => {
   for (const row of TBILISI_DISTRICT_ROWS) for (const name of row) assert.equal(comparePlaces(name, row[0]), 'AGREE', `${name} is one place with ${row[0]} in the core table`);
   for (const a of TBILISI_DISTRICT_ROWS) for (const b of TBILISI_DISTRICT_ROWS) if (a !== b) assert.equal(comparePlaces(a[1], b[0]), 'CONFLICT');
   const req = { districts: ['Krtsanisi', 'ორთაჭალა'] };
@@ -182,16 +182,16 @@ test('districts: the worker table is the core place table, and only a known, dif
   assert.equal(districtConflict('Ortachala', req), false);
   assert.equal(districtConflict('საბურთალო', req), true);
   assert.equal(contradiction({ district: 'ვაკე' }, req), 'district');
-  assert.equal(districtConflict('ვაშლიჯვარი', req), false, 'a name the table does not know is the pipeline\'s call, never the worker\'s');
+  assert.equal(districtConflict('ვაშლიჯვარი', req), true, 'a named neighbourhood that is not a requested district is dropped (live run 2026-10-16)');
   assert.equal(districtConflict('საბურთალო', { districts: ['Krtsanisi', 'Abanotubani'] }), false, 'a partly unknown request is not narrowed');
   assert.equal(districtConflict(null, req), false);
 });
 
 test('place.ge: requested districts become its own district_id, one results page each; an unmapped district reads the city', () => {
   const one = placege.criteria(request({ districts: ['Krtsanisi'] }));
-  assert.deepEqual(one.district_ids, [65]);
+  assert.deepEqual(one.district_ids, [[6, 65]]);
   assert.equal(placege.maxPages(one), 1);
-  assert.match(placege.searchUrl(one, 1), /^https:\/\/place\.ge\/ge\/ads\?.*district_id=65/);
+  assert.match(placege.searchUrl(one, 1), /^https:\/\/place\.ge\/ge\/ads\?.*region_id=6&district_id=65/);
   const two = placege.criteria(request({ districts: ['ვაკე', 'saburtalo'] }));
   assert.deepEqual([placege.searchUrl(two, 1), placege.searchUrl(two, 2)].map((u) => new URL(u).searchParams.get('district_id')), ['2', '18']);
   assert.equal(placege.pagesIndependent(two), true);

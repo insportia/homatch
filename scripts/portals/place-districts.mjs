@@ -3,8 +3,10 @@
  * Read-only, one results page per id, paced; removed before merge. */
 import { PORTAL_UA, robotsRules, robotsAllows } from '../../official-worker/src/marketplace/portals/acquire.mjs';
 const rules = robotsRules(await (await fetch('https://place.ge/robots.txt', { headers: { 'user-agent': PORTAL_UA } })).text());
-for (const id of [1, 3, 5, 7, 9, 11, 15, 20, 25, 30, 35, 40, 46, 48, 52, 55, 58, 64, 65, 68, 69, 70, 71, 72]) {
-  const url = `https://place.ge/ge/ads?type=for_sale&object_type=flat&city_id=1&mode=list&district_id=${id}`;
+const probes = [['region_id=6&district_id=65'], ['region_id=6&district_id=64'], ['region_id=6&district_id=68'], ['region_id=6&district_id=69'], ['region_id=6&district_id=70'], ['region_id=6'], ['region_id=1&district_id=2'], ['region_id=4&district_id=44'],
+  ['selected_places=' + encodeURIComponent(JSON.stringify(['d65']))], ['district_id%5B%5D=65&region_id%5B%5D=6']];
+for (const [id] of probes) {
+  const url = `https://place.ge/ge/ads?type=for_sale&object_type=flat&city_id=1&mode=list&${id}`;
   if (!robotsAllows(rules, url)) { console.log('PLACEDIST', id, 'robots'); continue; }
   const res = await fetch(url, { headers: { 'user-agent': PORTAL_UA, 'accept-language': 'ka' } });
   const html = await res.text();

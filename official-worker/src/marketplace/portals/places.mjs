@@ -3,8 +3,15 @@
  * src/research-core/normalize/place.ts (the worker image is built from
  * official-worker/ alone and cannot import the core). A test pins every row here
  * to that table, so the two vocabularies cannot drift: a lookup, not a
- * transliterator. A name not in the table resolves to null, and null is never a
- * conflict — the pipeline decides those listings, not the worker.
+ * transliterator.
+ *
+ * District check (portal sources only): MyHome and SS.ge filter districts on their
+ * own servers; these portals cannot (Place.ge, Allhome, Brokeri) or only by slug
+ * (Home.ge). So when every requested district is known, a listing that names a
+ * district which is not one of them is dropped here — including a neighbourhood the
+ * table does not know ("ვაშლიჯვარი" for a Krtsanisi search, 2026-10-16 live run),
+ * which the results pipeline would otherwise keep as "district unverified" whenever
+ * the request was typed in Latin. A listing that names no district is kept.
  */
 const DISTRICTS = [
   ['saburtalo', 'საბურთალო', 'сабуртало'],
@@ -40,8 +47,8 @@ export function requestedDistrictKeys(request) {
   return keys.every(Boolean) ? [...new Set(keys)] : null;
 }
 
-/** True only when the listing names a known district and every requested one is a known, different district. */
+/** True when every requested district is known and the listing names a different place. */
 export function districtConflict(listingDistrict, request) {
-  const have = districtKey(listingDistrict), wanted = requestedDistrictKeys(request);
-  return Boolean(have && wanted && !wanted.includes(have));
+  const wanted = requestedDistrictKeys(request), stated = norm(listingDistrict);
+  return Boolean(wanted && stated && !wanted.includes(districtKey(stated)));
 }

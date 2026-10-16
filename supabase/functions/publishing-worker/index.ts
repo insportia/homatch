@@ -27,6 +27,8 @@ import { adapterFor, configs, type ProviderRow } from '../publishing-engine/prov
 import { openCredential, sealCredential, type Envelope } from '../publishing-engine/vault.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Worker screenshots / logs: service-role only, no browser path (like verify-queue's verify-evidence). */
+const ARTIFACTS_BUCKET = 'publishing-artifacts';
 const MAX_BODY = 1_000_000;
 const JOB_COLUMNS = 'id,listing_id,user_id,portal_id,status,channel,revision,external_id,external_url,listing_version,check_attempts,last_checked_at,next_check_at,published_at,last_error,contact_consent_at,status_reason';
 
@@ -179,7 +181,7 @@ export async function handler(req: Request, deps: Deps = { env: (k) => Deno.env.
         const kind = input.kind === 'LOG' ? 'LOG' : 'SCREENSHOT';
         const name = `${String(input.stage || 'STEP').replace(/[^A-Z_]/g, '').slice(0, 30) || 'STEP'}-${deps.now().getTime()}.${kind === 'LOG' ? 'json' : 'png'}`;
         const path = `${op.id}/${name}`;
-        const { data, error } = await db.storage.from('publishing-artifacts').createSignedUploadUrl(path);
+        const { data, error } = await db.storage.from(ARTIFACTS_BUCKET).createSignedUploadUrl(path);
         if (error || !data) fail('ARTIFACT_UPLOAD_FAILED');
         await db.from('publishing_artifacts').insert({ operation_id: op.id, kind, stage: input.stage ?? null, path });
         return json({ path, uploadUrl: data.signedUrl, token: data.token });

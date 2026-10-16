@@ -30,6 +30,7 @@ import {
 } from '../../supabase/functions/publishing-engine/domain.ts';
 import { adapterFor, configs, sanitizePatch, profileById } from '../../supabase/functions/publishing-engine/providers.ts';
 import { accountView, centralCopy, emptyAccount, registeredStatus, routeFor, sanitizeAccountPatch } from '../../supabase/functions/publishing-engine/central.ts';
+import { BROWSER_CAPABILITIES } from '../../supabase/functions/publishing-engine/automation.ts';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -162,7 +163,8 @@ function publishingServer() {
         }
         return [200, { ...detail(), results }];
       }
-      if (action === 'admin.accounts') return [200, { accounts: providers().map((c) => ({ portal: publicRegistry([c])[0], account: accountView(account(c.id), c.id), acceptsCredential: false })), audit: db.accountAudit }];
+      if (action === 'admin.accounts') return [200, { accounts: providers().map((c) => ({ portal: publicRegistry([c])[0], account: accountView(account(c.id), c.id), acceptsCredential: false, browser: BROWSER_CAPABILITIES[c.id], session: null })), audit: db.accountAudit }];
+      if (action === 'admin.operations') return [200, { operations: [], artifacts: [] }];
       if (action === 'admin.account.save') {
         const clean = sanitizeAccountPatch(body.account ?? {});
         if (clean.error) return [400, { code: clean.error }];
@@ -535,6 +537,18 @@ test('admin: Integrations → Property portals — eight portals, HOMATCH accoun
       await acct.getByTestId('admin-account-test-result').getByText('Not available: this portal offers no authorised connection or API.').waitFor();
       assert.equal(await acct.getByTestId('admin-account-status').getAttribute('data-status'), 'PUBLISHING_RESTRICTED', 'a test without a verified mechanism never connects');
       assert.equal(server.db.accounts.get('korter').verified_at, null);
+      /* Korter has no recorded browser workflow: no automation controls at all. */
+      await page.getByTestId('admin-automation-none').waitFor();
+      /* MyHome: what the worker can do, how it was verified, and the owner's switches (off). */
+      await page.goto(`${BASE}/admin/integrations/portals/myhome`);
+      const auto = page.getByTestId('admin-automation');
+      await auto.waitFor({ timeout: 20000 });
+      assert.match(await auto.getByTestId('admin-auto-level-CREATE').innerText(), /Tested on recorded pages only/);
+      assert.match(await auto.getByTestId('admin-auto-level-PRICE').innerText(), /Not explored/);
+      assert.match(await auto.getByTestId('admin-auto-session').innerText(), /none captured/);
+      assert.match(await auto.getByTestId('admin-auto-session').innerText(), /capture-session\.mjs myhome/);
+      assert.equal(await auto.getByTestId('admin-auto-enabled').getAttribute('aria-checked'), 'false');
+      assert.equal(await auto.getByTestId('admin-auto-live').isDisabled(), true, 'live publishing cannot be approved while automation is off');
       /* Place.ge: require bathrooms, save — validated, applied, audited. */
       await page.goto(`${BASE}/admin/integrations/portals/placege`);
       await page.getByTestId('admin-portal-page-placege').waitFor({ timeout: 20000 });

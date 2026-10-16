@@ -44,7 +44,7 @@ function makeDb() {
       portal_id, status: 'NOT_CONFIGURED', connection_method: null, account_label: null, contact_phone: null, credential: null, credential_set_at: null,
       session_expires_at: null, verified_at: null, verification_result: null, last_published_at: null, failure_count: 0, last_error: null, updated_at: null,
     })),
-    publishing_account_audit: [],
+    publishing_account_audit: [], publishing_account_sessions: [], publishing_operations: [], publishing_artifacts: [],
   };
   const err = (message) => ({ data: null, error: { message } });
   const rpc = {
@@ -100,13 +100,16 @@ function makeDb() {
         REGISTER: ['status', 'connection_method', 'account_label', 'contact_phone', 'verification_result', 'last_error'],
         UPDATE: ['status', 'connection_method', 'account_label', 'contact_phone', 'verification_result', 'last_error'],
         CREDENTIAL_SET: ['credential', 'credential_set_at', 'status', 'verified_at', 'session_expires_at'],
+        SESSION_SET: ['status', 'connection_method', 'verified_at', 'session_expires_at', 'verification_result', 'last_error'],
+        SESSION_CHECK: ['status', 'verified_at', 'verification_result', 'session_expires_at', 'last_error'],
+        AUTOMATION: ['automation_enabled', 'live_submit_approved', 'live_submit_approved_by', 'live_submit_approved_at'],
         TEST: ['status', 'verified_at', 'verification_result', 'session_expires_at', 'last_error', 'failure_count'],
         DISCONNECT: ['status', 'connection_method', 'account_label', 'contact_phone', 'credential', 'credential_set_at', 'verified_at', 'session_expires_at', 'verification_result', 'last_error'],
         ACTIVITY: ['last_published_at', 'failure_count', 'last_error'],
       }[p_action];
       if (!allowed) return err('INVALID_ACTION');
       if (Object.keys(p_patch).some((k) => !allowed.includes(k))) return err('FIELD_NOT_EDITABLE');
-      if (!['TEST', 'CREDENTIAL_SET'].includes(p_action) && ['CONNECTED', 'PUBLISHING_AVAILABLE'].includes(p_patch.status)) return err('VERIFICATION_REQUIRED');
+      if (!['TEST', 'CREDENTIAL_SET', 'SESSION_CHECK'].includes(p_action) && ['CONNECTED', 'PUBLISHING_AVAILABLE'].includes(p_patch.status)) return err('VERIFICATION_REQUIRED');
       const row = t.publishing_accounts.find((r) => r.portal_id === p_portal);
       if (!row) return err('PORTAL_UNKNOWN');
       const next = { ...row, ...p_patch };
@@ -116,6 +119,14 @@ function makeDb() {
       const { credential: _a, ...after } = row;
       if (p_action !== 'ACTIVITY') t.publishing_account_audit.push({ id: t.publishing_account_audit.length + 1, portal_id: p_portal, actor: p_actor, action: p_action, before, after, created_at: 'now' });
       return { data: after, error: null };
+    },
+    publishing_op_enqueue({ p_publication, p_portal, p_kind, p_version, p_key }) {
+      const dup = t.publishing_operations.find((o) => o.idempotency_key === p_key);
+      if (dup) return { data: dup, error: null };
+      if (p_publication && t.publishing_operations.some((o) => o.publication_id === p_publication && ['QUEUED', 'RUNNING'].includes(o.status))) return err('OPERATION_ALREADY_ACTIVE');
+      const op = { id: `op-${t.publishing_operations.length + 1}`, publication_id: p_publication, portal_id: p_portal, kind: p_kind, listing_version: p_version, status: 'QUEUED', idempotency_key: p_key, created_at: String(Date.now()) };
+      t.publishing_operations.push(op);
+      return { data: op, error: null };
     },
     publishing_provider_update({ p_actor, p_provider, p_patch, p_action }) {
       const row = t.publishing_providers.find((r) => r.id === p_provider);
@@ -140,6 +151,7 @@ function makeDb() {
       eq: (k, v) => { filters.push((r) => r[k] === v); return q; },
       in: (k, vs) => { filters.push((r) => vs.includes(r[k])); return q; },
       maybeSingle: async () => ({ data: project(read()[0] ?? null), error: null }),
+      upsert: async (row) => { const list = (t[table] ??= []); const at = list.findIndex((r) => r.portal_id === row.portal_id); if (at >= 0) list[at] = row; else list.push(row); return { error: null }; },
       then: (ok, ko) => Promise.resolve(failing ? { data: null, error: { code: '42P01', message: 'relation does not exist' } } : { data: read().map(project), error: null }).then(ok, ko),
     };
     return q;
@@ -592,4 +604,93 @@ test('the HOMATCH accounts being unreadable leaves publishing waiting, not faili
   db.t.accountsUnreadable = true;
   const r = await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true });
   assert.deepEqual(r.body.results, [{ portalId: 'myhome', status: 'AUTH_REQUIRED' }]);
+});
+
+
+/* ── Backend browser automation: sessions, switches, the queue ────────────── */
+
+const KEY = Buffer.from(new Uint8Array(32).fill(9)).toString('base64');
+const withKey = async (fn) => {
+  const get = globalThis.Deno.env.get;
+  globalThis.Deno.env.get = (k) => (k === 'PUBLISHING_CREDENTIALS_KEY' ? KEY : get(k));
+  try { return await fn(); } finally { globalThis.Deno.env.get = get; }
+};
+const COOKIES = { cookies: [{ name: 'sid', value: 'SECRET-COOKIE', domain: '.myhome.ge' }, { name: 'track', value: 'x', domain: '.ads.example' }], origins: [] };
+
+test('a captured session: admin only, portal cookies only, sealed, and NOT connected until the worker checks it', async () => withKey(async () => {
+  fresh();
+  await registerAccount('myhome');
+  assert.equal((await call('admin.account.session', { portalId: 'myhome', storageState: COOKIES })).status, 403);
+  assert.equal((await call('admin.account.session', { portalId: 'placege', storageState: COOKIES }, { who: 'admin' })).body.code, 'BROWSER_ADAPTER_NOT_AVAILABLE');
+  assert.equal((await call('admin.account.session', { portalId: 'myhome', storageState: { cookies: [{ name: 'a', value: 'b', domain: '.evil.example' }], origins: [] } }, { who: 'admin' })).body.code, 'SESSION_HAS_NO_PORTAL_COOKIES');
+  const r = await call('admin.account.session', { portalId: 'myhome', storageState: COOKIES }, { who: 'admin' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.cookies, 1, 'the off-portal cookie is dropped');
+  const row = db.t.publishing_account_sessions[0];
+  assert.equal(JSON.stringify(row).includes('SECRET-COOKIE'), false, 'only ciphertext is stored');
+  assert.equal(row.status, 'UNVERIFIED');
+  const acct = db.t.publishing_accounts.find((a) => a.portal_id === 'myhome');
+  assert.equal(acct.status, 'AUTH_REQUIRED', 'never connected by upload alone');
+  assert.equal(acct.verified_at, null);
+  assert.ok(db.t.publishing_operations.some((o) => o.kind === 'CHECK_SESSION' && o.portal_id === 'myhome'), 'the worker is asked to check it');
+  const list = await call('admin.accounts', {}, { who: 'admin' });
+  assert.equal(JSON.stringify(list.body).includes('SECRET-COOKIE') || JSON.stringify(list.body).includes('"envelope"'), false);
+  assert.equal(list.body.accounts.find((a) => a.portal.id === 'myhome').browser.CREATE, 'FIXTURE_TESTED');
+}));
+
+test('the sealing key missing: the session is refused, nothing stored', async () => {
+  fresh();
+  await registerAccount('myhome');
+  const get = globalThis.Deno.env.get;
+  globalThis.Deno.env.get = (k) => (k === 'PUBLISHING_CREDENTIALS_KEY' ? undefined : get(k));
+  try {
+    assert.equal((await call('admin.account.session', { portalId: 'myhome', storageState: COOKIES }, { who: 'admin' })).body.code, 'CREDENTIAL_KEY_NOT_CONFIGURED');
+  } finally { globalThis.Deno.env.get = get; }
+  assert.equal(db.t.publishing_account_sessions.length, 0);
+});
+
+test('automation switches: live submit needs the words of approval; portals without a browser adapter refuse', async () => {
+  fresh();
+  await registerAccount('myhome');
+  assert.equal((await call('admin.account.automation', { portalId: 'myhome', enabled: true }, { who: 'owner' })).status, 403);
+  assert.equal((await call('admin.account.automation', { portalId: 'brokeri', enabled: true }, { who: 'admin' })).body.code, 'BROWSER_ADAPTER_NOT_AVAILABLE');
+  assert.equal((await call('admin.account.automation', { portalId: 'myhome', liveSubmit: true }, { who: 'admin' })).body.code, 'LIVE_SUBMIT_CONFIRMATION_REQUIRED');
+  await call('admin.account.automation', { portalId: 'myhome', enabled: true, liveSubmit: true, confirm: 'APPROVE_LIVE_PUBLISHING' }, { who: 'admin' });
+  const acct = db.t.publishing_accounts.find((a) => a.portal_id === 'myhome');
+  assert.equal(acct.automation_enabled, true);
+  assert.equal(acct.live_submit_approved, true);
+  assert.equal(acct.live_submit_approved_by, ADMIN);
+  assert.ok(db.t.publishing_account_audit.some((a) => a.action === 'AUTOMATION'));
+});
+
+test('publish with automation on and a verified session: QUEUED with a CREATE operation; a double click queues nothing more', async () => {
+  fresh(); await ready();
+  await registerAccount('myhome');
+  Object.assign(db.t.publishing_accounts.find((a) => a.portal_id === 'myhome'), { status: 'CONNECTED', verified_at: '2026-10-15T00:00:00Z', automation_enabled: true });
+  const r = await call('publication.publish', { propertyId: PROP, portalIds: ['myhome', 'placege'], consent: true });
+  assert.deepEqual(r.body.results.map((x) => [x.portalId, x.status]), [['myhome', 'QUEUED'], ['placege', 'AUTH_REQUIRED']]);
+  assert.deepEqual(db.t.publishing_operations.map((o) => [o.portal_id, o.kind]), [['myhome', 'CREATE']]);
+  await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true });
+  assert.equal(db.t.publishing_operations.length, 1, 'idempotent');
+  assert.ok(Array.isArray(r.body.operations), 'progress is part of the listing view');
+});
+
+test('automation off: the same publish goes to the admin queue and no browser operation is created', async () => {
+  fresh(); await ready();
+  await registerAccount('myhome');
+  Object.assign(db.t.publishing_accounts.find((a) => a.portal_id === 'myhome'), { status: 'CONNECTED', verified_at: '2026-10-15T00:00:00Z', automation_enabled: false });
+  const r = await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true });
+  assert.equal(r.body.results[0].status, 'ADMIN_ACTION_REQUIRED');
+  assert.equal(db.t.publishing_operations.length, 0);
+});
+
+test('editing a live HOMATCH copy only queues operations the adapter supports (none are recorded yet)', async () => {
+  fresh(); await ready();
+  await registerAccount('myhome');
+  Object.assign(db.t.publishing_accounts.find((a) => a.portal_id === 'myhome'), { status: 'CONNECTED', verified_at: '2026-10-15T00:00:00Z', automation_enabled: true });
+  await call('publication.publish', { propertyId: PROP, portalIds: ['myhome'], consent: true });
+  Object.assign(db.t.publishing_engine_jobs[0], { status: 'PUBLISHED' });
+  db.t.publishing_operations[0].status = 'SUCCEEDED';
+  await call('listing.save', { propertyId: PROP, version: 1, listing: listing({ price: 140000 }) });
+  assert.equal(db.t.publishing_operations.length, 1, 'PRICE is NOT_EXPLORED on MyHome: no operation, the admin queue shows the copy as outdated');
 });

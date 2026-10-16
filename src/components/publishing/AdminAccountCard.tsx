@@ -16,6 +16,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { formatPhone } from '@/publishing/contacts';
 import type { PortalId } from '@/publishing/model';
+import { AdminAutomationPanel } from '@/components/publishing/AdminAutomationPanel';
 import { type AdminAccount, PublishingError, adminAccounts, adminDisconnectAccount, adminSaveAccount, adminTestAccount } from '@/services/publishing';
 
 const INPUT = 'h-10 w-full min-w-0 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-[hsl(var(--gold-border))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--gold))]/25';
@@ -97,6 +98,7 @@ export function AdminAccountCard({ portalId, portalName }: { portalId: PortalId;
           {testResult ? <span className="self-center text-2xs font-semibold text-muted-foreground" data-testid="admin-account-test-result">{errorText(testResult)}</span> : null}
         </div>
       </form>
+      <div className="border-t border-border pt-3"><h3 className="mb-2 text-sm font-semibold">{t('pubw_auto_title')}</h3><AdminAutomationPanel portalId={portalId} entry={entry!} onChanged={reload} /></div>
     </div>
   );
 }

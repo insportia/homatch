@@ -13,6 +13,12 @@ const SOURCES = [
   'supabase/functions/publishing-engine/providers.ts',
   'supabase/functions/publishing-engine/central.ts',
   'supabase/functions/publishing-engine/vault.ts',
+  'supabase/functions/publishing-engine/automation.ts',
+  'supabase/functions/publishing-worker/index.ts',
+  'official-worker/src/publishing/runner.ts',
+  'official-worker/src/publishing/form.ts',
+  'official-worker/src/publishing/adapters/myhome.ts',
+  'official-worker/src/publishing/adapters/ssge.ts',
   'supabase/migrations/20261103090000_publishing_workspace.sql',
   'supabase/migrations/20261106090000_publishing_providers.sql',
   'supabase/migrations/20261107090000_publishing_central_accounts.sql',
@@ -26,11 +32,14 @@ const NOT_SCREEN_ERRORS = new Set([
   'REQUIRED', 'POSITIVE_REQUIRED', 'VALID_PHONE_REQUIRED', 'INVALID_PHONE', 'INVALID_INTEGER',
   'EXCEEDS_TOTAL_FLOORS', 'EXCEEDS_ROOMS', 'REQUIRED_BY_PORTAL', 'TOO_MANY_PHOTOS', 'DESCRIPTION_TOO_LONG',
   'PORTAL_COPY_UPDATED', 'LISTING_SAVED',
+  // Worker transport: the worker talks to publishing-worker, never a person's screen.
+  'WORKER_AUTH_REQUIRED', 'QUEUE_REQUEST_FAILED', 'LEASE_CONFLICT', 'LEASE_LOST', 'INVALID_OUTCOME', 'INVALID_LEASE', 'ARTIFACT_UPLOAD_FAILED', 'SUBMIT_DOOR_CLOSED', 'UNSAFE_SUBMIT_CONTROL',
+  'MISSING_FIELD', 'AMBIGUOUS_FIELD', 'LOCATION_SELECTION_REQUIRED', 'AMBIGUOUS_LOCATION', 'LOCATION_NOT_VERIFIED',
 ]);
 
 test('every publishing error code a screen can show has its own text in all six languages', () => {
   const codes = new Set();
-  for (const m of SOURCES.matchAll(/(?:fail\('|error: '|code: '|raise exception '|\{ error: ')([A-Z][A-Z_]{3,})'/g)) codes.add(m[1]);
+  for (const m of SOURCES.matchAll(/(?:fail\('|error: '|code: '|raise exception '|\{ error: '|blocked\('|StopError\(')([A-Z][A-Z_]{3,})['`:]/g)) codes.add(m[1]);
   for (const m of SOURCES.matchAll(/'((?:PORTAL|ROBOTS|LISTING|REDIRECTED)_[A-Z_]+)'/g)) codes.add(m[1]);
   assert.ok(codes.size > 40, `only ${codes.size} codes parsed — the extraction broke`);
   const bundle = read('src/i18n/translations.ts');

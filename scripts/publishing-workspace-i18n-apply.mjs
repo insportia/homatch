@@ -9,6 +9,7 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PUBLISHING_AUTOMATION_STRINGS } from './publishing-automation-i18n-data.mjs';
 import { PUBLISHING_CENTRAL_STRINGS } from './publishing-central-i18n-data.mjs';
 import { PUBLISHING_PORTALS_STRINGS } from './publishing-portals-i18n-data.mjs';
 import { PUBLISHING_WORKSPACE_STRINGS } from './publishing-workspace-i18n-data.mjs';
@@ -22,7 +23,7 @@ const TAG = 'publishing-workspace-i18n';
 
 // The 2026-10-16 eight-portal set is applied on top, then the central-engine set:
 // where a later set repeats a key, it wins.
-const STRINGS = { ...PUBLISHING_WORKSPACE_STRINGS, ...PUBLISHING_PORTALS_STRINGS, ...PUBLISHING_CENTRAL_STRINGS };
+const STRINGS = { ...PUBLISHING_WORKSPACE_STRINGS, ...PUBLISHING_PORTALS_STRINGS, ...PUBLISHING_CENTRAL_STRINGS, ...PUBLISHING_AUTOMATION_STRINGS };
 
 const problems = validate(STRINGS, TAG);
 if (problems.length > 0) {

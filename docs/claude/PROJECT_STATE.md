@@ -145,6 +145,16 @@ MATTERS right now, verify against the live systems, not this file)
   swap) → owner applies via SQL Editor after merge. Edge function tolerates it missing (accounts
   unreadable → AUTH_REQUIRED, not failure).
 - **Logos**: still monograms — no logo source reachable from this environment; none invented.
+- **Backend browser automation** (same branch; runbook `docs/publishing/AUTOMATION.md`): Playwright
+  adapters for MyHome.ge / SS.ge in `official-worker/src/publishing/` (inert unless
+  `PUBLISHING_AUTOMATION_ENABLED=1`), edge door `publishing-worker` (verify_jwt=false, WORKER_TOKEN),
+  `publishing_operations` queue with leases + submit-once door, sealed portal sessions,
+  `scripts/publishing/capture-session.mjs`. Selectors come from the committed distillation of the
+  owner's MCP exploration (`805ec2c5` / `fa1220c7`); the raw SS.ge 317-action recording was never
+  committed. Levels: MyHome/SS CHECK_SESSION, CREATE, STATUS = FIXTURE_TESTED; all management ops
+  and all other portals NOT_EXPLORED. SS.ge CREATE always stops at PREPARED (publish control not
+  recorded). NOTHING has run against a live portal. Needs: migration, `PUBLISHING_CREDENTIALS_KEY`
+  edge secret, Railway var, a captured session, then the owner's live-submit approval.
 
 ## Storage retention v2 — object-level allowlist (PR #216, merged 37cc6900, migration applied 2026-10-16 as ledger 20261016071129)
 

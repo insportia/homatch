@@ -136,6 +136,16 @@ function Editor() {
     })();
   }, [detail, readOnly, propertyId, adopt]);
 
+  /* While HOMATCH's backend is publishing, keep the statuses live (never over unsaved edits). */
+  useEffect(() => {
+    const working = (detail?.publications ?? []).some((p) => p.channel === 'HOMATCH_ACCOUNT' && ['QUEUED', 'PUBLISHING', 'VERIFYING'].includes(p.status));
+    if (!working || dirty) return;
+    const id = window.setInterval(async () => {
+      try { const d = await api.loadListing(propertyId); if (d) adopt(d); } catch { /* the next tick retries */ }
+    }, 15_000);
+    return () => window.clearInterval(id);
+  }, [detail, dirty, propertyId, adopt]);
+
   const update = <K extends keyof ListingDraft>(key: K, value: ListingDraft[K]) => {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
     setDirty(true);
@@ -322,7 +332,7 @@ function Editor() {
             ) : (
               <PublishPanel portals={portals} listing={detail.listing} publications={detail.publications} draft={draft} dirty={dirty}
                 readOnly={readOnly || archived} busy={busy} locale={locale} onPublish={publish}
-                onWithdraw={(portal) => setConfirm({ kind: 'withdraw', portal })} onEdit={() => setTab('listing')} />
+                onWithdraw={(portal) => setConfirm({ kind: 'withdraw', portal })} onEdit={() => setTab('listing')} operations={detail.operations} />
             )}
             {detail && active.length ? (
               <details className="rounded-2xl border border-border bg-[hsl(var(--card))] shadow-card" open={ownHandoffInUse} data-testid="pubw-own-handoff">

@@ -30,9 +30,11 @@ export interface PublishPanelProps {
   onPublish: (portalIds: PortalId[]) => void;
   onWithdraw: (portal: PortalInfo) => void;
   onEdit: () => void;
+  /** The backend worker's latest operation per publication (real progress). */
+  operations?: Array<{ publication_id: string; status: string; stage: string | null }>;
 }
 
-export function PublishPanel({ portals, listing, publications, draft, dirty, readOnly, busy, locale, onPublish, onWithdraw, onEdit }: PublishPanelProps) {
+export function PublishPanel({ portals, listing, publications, draft, dirty, readOnly, busy, locale, onPublish, onWithdraw, onEdit, operations = [] }: PublishPanelProps) {
   const { t } = useLanguage();
   const pubFor = (id: PortalId) => publications.find((p) => p.portal_id === id) ?? null;
   const central = publications.filter((p) => p.channel === 'HOMATCH_ACCOUNT');
@@ -121,7 +123,8 @@ export function PublishPanel({ portals, listing, publications, draft, dirty, rea
                       <CustomerStatusMark status={status} />
                     </span>
                     <span className="block text-2xs text-muted-foreground break-words">
-                      {pub.status_reason && (status === 'REJECTED' || status === 'FAILED') ? pub.status_reason : t(`pubw_cs_${status.toLowerCase()}_note`)}
+                      {pub.status_reason && (status === 'REJECTED' || status === 'FAILED') ? pub.status_reason
+                        : (() => { const op = operations.find((o) => o.publication_id === pub.id && o.status === 'RUNNING' && o.stage); return op ? t(`pubw_stage_${op.stage!.toLowerCase()}`) : t(`pubw_cs_${status.toLowerCase()}_note`); })()}
                       {' · '}{dateTime(pub.updated_at, locale)}
                     </span>
                     {pub.status === 'OWNER_CONFIRMED' ? <span className="mt-0.5 inline-flex items-center gap-1 text-2xs text-muted-foreground"><ShieldCheck className="h-3 w-3" aria-hidden="true" />{t('pubw_publish_attested')}</span> : null}

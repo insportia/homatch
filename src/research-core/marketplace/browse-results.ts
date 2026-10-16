@@ -63,7 +63,7 @@ export interface BrowsePage {
   summary: { strong: number; close: number; verification: number; unknownDates: number; excludedOld: number;
     /** Why results are not strong: each requested fact the sources left unconfirmed, with how many results it holds back. */
     unconfirmed: Array<{ code: string; count: number }> };
-  facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string }>; duplicates: number; possibleDuplicates: number };
+  facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string; count: number }>; duplicates: number; possibleDuplicates: number };
 }
 /** One property published as several listings, confirmed by the identity resolver (never inferred). */
 /** OWNER groups the verified and the likely owner; every other value is exact. Unknown is never an owner. */
@@ -116,8 +116,14 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
   const pages = Math.max(1, Math.ceil(ranked.length / RESULT_PAGE_SIZE));
   const page = Math.min(pages, Math.max(1, Math.trunc(Number(requestedPage)) || 1));
   const distinct = (values: Array<string | null>) => [...new Set(values.filter((v): v is string => !!v))].sort();
-  const sources = new Map<string, string>();
-  for (const p of current) for (const l of p.listings) sources.set(l.source, l.sourceName ?? l.source);
+  // Every source with the homes it holds (a home listed on two sites counts once for each).
+  const sources = new Map<string, { name: string; count: number }>();
+  for (const p of current) {
+    for (const key of new Set(p.listings.map((l) => l.source))) {
+      const name = p.listings.find((l) => l.source === key)?.sourceName ?? key;
+      sources.set(key, { name, count: (sources.get(key)?.count ?? 0) + 1 });
+    }
+  }
   return {
     items: ranked.slice((page - 1) * RESULT_PAGE_SIZE, page * RESULT_PAGE_SIZE), page, pageSize: RESULT_PAGE_SIZE, pages, total: ranked.length, totalCurrent: current.length, sections,
     summary: { strong: matches.filter((p) => p.intelligence?.strong).length, close: sections.CLOSE, verification: sections.VERIFY,
@@ -125,7 +131,7 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
       unconfirmed: unconfirmedRequirements(matches.filter((p) => !p.intelligence?.strong)) },
     facets: { districts: distinct(current.map((p) => p.facts.district)), buildings: distinct(current.map((p) => p.facts.buildingStatus)),
       conditions: distinct(current.map((p) => p.facts.renovationStatus)), sellers: distinct(current.map((p) => p.seller.classification)),
-      sources: [...sources].sort(([a], [b]) => a.localeCompare(b)).map(([key, name]) => ({ key, name })),
+      sources: [...sources].sort(([, a], [, b]) => b.count - a.count || a.name.localeCompare(b.name)).map(([key, v]) => ({ key, name: v.name, count: v.count })),
       duplicates: current.filter(isConfirmedDuplicate).length, possibleDuplicates: current.filter(isPossibleDuplicate).length },
   };
 }

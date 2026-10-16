@@ -4,11 +4,16 @@
  * so and moves to results — nothing here can keep "searching" after the server
  * marked the search terminal.
  */
-import { ArrowRight, ChevronDown, Gamepad2, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, Clock3, Gamepad2, X } from 'lucide-react';
 import type { SearchSummary } from '@/services/marketplaceSearch';
 import type { T } from '../format';
-import { btn, cx, Eyebrow, naturalDate, Pill, searchBudget, searchPlace, searchTitle, Surface } from './primitives';
+import { btn, cx, Eyebrow, naturalDate, Pill, searchBudget, searchPlace, searchTitle, sourceState, Surface } from './primitives';
 import { SourceStates, sourceProgress } from './SourceStates';
+import { DiscoveryField, type FieldNode } from './DiscoveryField';
+import { useElapsed } from './elapsed';
+
+const FIELD_STATE = { WAITING: 'IDLE', SEARCHING: 'ACTIVE', FOUND: 'DONE', NONE: 'DONE', UNAVAILABLE: 'UNAVAILABLE', FAILED: 'UNAVAILABLE', TIMED_OUT: 'UNAVAILABLE' } as const;
+
 
 const STAGE_KEY: Record<string, string> = {
   SEARCHING_LISTINGS: 'mps_stage_searching', CHECKING_DETAILS: 'mps_stage_details', MERGING: 'mps_stage_merging',
@@ -23,6 +28,8 @@ export function SearchProgress({ t, search, onViewResults, onCancel, onPlay, onN
   const ready = (search.status === 'RESULTS_AVAILABLE' || search.terminal) && (search.totalProperties ?? c.uniqueProperties) > 0;
   const progress = sourceProgress(search);
   const pct = Math.round(progress.fraction * 100);
+  const elapsed = useElapsed(search.createdAt, !search.terminal);
+  const fieldNodes: FieldNode[] = (search.sources ?? []).map((src, i) => ({ key: `${src.workerId ?? src.source}-${i}`, label: src.source, state: FIELD_STATE[sourceState(src, search.terminal)] }));
 
   if (search.unavailable) {
     return (
@@ -47,6 +54,19 @@ export function SearchProgress({ t, search, onViewResults, onCancel, onPlay, onN
             </div>
             <Pill tone={search.terminal ? 'success' : 'live'} pulse={!search.terminal}>{t(`fpw_status_${search.status}`)}</Pill>
           </div>
+
+          {fieldNodes.length ? (
+            <figure className="space-y-2">
+              <DiscoveryField nodes={fieldNodes} terminal={search.terminal} />
+              <figcaption className="sr-only">{t('fpv_field_label')}</figcaption>
+            </figure>
+          ) : null}
+          {!search.terminal ? (
+            <div className="space-y-1">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground" data-elapsed><Clock3 className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('fpv_elapsed', { time: elapsed })}</p>
+              <p className="max-w-[70ch] text-xs leading-relaxed text-muted-foreground" data-duration-note>{t('fpv_duration_note')}</p>
+            </div>
+          ) : null}
 
           <div className="space-y-2" aria-live="polite">
             <div className="text-sm">

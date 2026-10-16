@@ -235,7 +235,7 @@ test('results are never capped: exact counts, a real total, every group pages to
   assert.doesNotMatch(rv, /IntersectionObserver/);
   assert.match(rv, /browseSearchResults/);
   assert.match(rv, /pageNumbers/);
-  assert.match(rv, /mps_total_found/);
+  assert.match(rv, /fpv_found_line[^\n]{0,60}total: num\(data\.totalCurrent\)/, 'the exact total, in words');
   assert.match(rv, /fpr_page_status/);
 });
 
@@ -244,6 +244,9 @@ test('no fake progress: the searching view renders only server counters', () => 
   assert.doesNotMatch(view, /%\s*\}|Math\.random|setInterval/);
   assert.match(view, /c\.listingsDiscovered/);
   assert.match(view, /search\.stages\.map/);
+  // The running clock is the one timer, in its own module, counting from the server's start time.
+  assert.match(view, /useElapsed\(search\.createdAt, !search\.terminal\)/);
+  assert.match(code('src/components/findProperty/workspace/elapsed.ts'), /Date\.parse\(since\)/);
 });
 
 test('source-level: new paths are owned by the DISCOVERY component', () => {
@@ -301,4 +304,11 @@ test('marketplace scale: instant pool answer at start, one fetch per identical s
   assert.match(wi, /observationLevel\.is\.null,raw->retrievalMetadata->>observationLevel\.neq\.CACHED/, 'pooled rows are not counted as fresh results');
   assert.match(sh, /'ssge-agent': 'ss-ge'/);
   assert.match(sh, /CACHE_WINDOW_MS = 72 \* 3600_000/, 'only listings confirmed within 72 hours are served');
+});
+
+test('stored results are served only when complete; an incomplete catalogue is rebuilt from its own listings', () => {
+  // Write-side safety (well-formed text, checked batches) is PR #237's; this guards searches already stored incomplete.
+  const cat = code('supabase/functions/_shared/marketplaceCatalogue.ts');
+  assert.match(cat, /rows\.length >= expected/, 'stored rows serve only when they are the whole catalogue');
+  assert.match(cat, /processSearch\(/, 'otherwise the catalogue is rebuilt from the stored listings');
 });

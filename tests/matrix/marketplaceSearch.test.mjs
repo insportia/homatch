@@ -202,8 +202,9 @@ test('Snake is optional, self-contained and never touches the search', () => {
   assert.match(exp, /const \[playing, setPlaying\] = useState\(false\)/, 'not playing by default');
   assert.match(exp, /<SnakeOverlay t=\{t\} open=\{playing\}/, 'the game lives at page level, above the search');
   assert.match(exp, /view === 'SEARCH' && !playing && search\?\.terminal/, 'the search finishing never closes the game');
-  const view = code('src/components/findProperty/SearchingView.tsx');
-  assert.match(view, /<SnakeThumbnail t=\{t\} onOpen=\{onPlay\}/);
+  /* 2026-10-16 redesign: the live progress view offers the game as one quiet button. */
+  const view = code('src/components/findProperty/workspace/SearchProgress.tsx');
+  assert.match(view, /onClick=\{onPlay\} data-action="mps-snake-open"/);
   assert.doesNotMatch(view, /mps_snake_cta|mps_snake_optional/);
 });
 
@@ -230,7 +231,7 @@ test('results are never capped: exact counts, a real total, every group pages to
   assert.match(ms, /resultCatalogue\(db, search\)\)\.filter\(\(p\) => isCurrentResult\(p\)\)/);
   assert.match(ms, /totalProperties:/);
   assert.doesNotMatch(ms, /select\('result_group'\)/, 'no row-capped counting');
-  const rv = code('src/components/findProperty/ResultsView.tsx');
+  const rv = code('src/components/findProperty/ResultsView.tsx') + code('src/components/findProperty/workspace/ResultsHeader.tsx');
   assert.doesNotMatch(rv, /IntersectionObserver/);
   assert.match(rv, /browseSearchResults/);
   assert.match(rv, /pageNumbers/);
@@ -239,7 +240,7 @@ test('results are never capped: exact counts, a real total, every group pages to
 });
 
 test('no fake progress: the searching view renders only server counters', () => {
-  const view = code('src/components/findProperty/SearchingView.tsx');
+  const view = code('src/components/findProperty/workspace/SearchProgress.tsx') + code('src/components/findProperty/workspace/SourceStates.tsx');
   assert.doesNotMatch(view, /%\s*\}|Math\.random|setInterval/);
   assert.match(view, /c\.listingsDiscovered/);
   assert.match(view, /search\.stages\.map/);

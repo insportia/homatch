@@ -19,6 +19,8 @@ export type PropertyView = Omit<ResultProperty, 'internal'> & { tradeoffs?: stri
 export interface MarketplaceCapabilities {
   marketplaceEnabled: boolean;
   activeSources: number;
+  /** Public names of the portals searched live right now (registry + switches). */
+  sources?: string[];
   deepSearchAvailable: boolean;
 }
 
@@ -40,7 +42,11 @@ export interface SearchSummary {
   totalProperties: number;
   partial: boolean;
   /** Per source: fresh, partly refreshed, previously collected, unavailable or still refreshing. */
-  sources?: Array<{ source: string; state: 'REFRESHING' | 'FRESH' | 'PARTIAL' | 'CACHED' | 'UNAVAILABLE'; freshListings: number; cachedListings: number; retryAt: string | null }>;
+  sources?: Array<{
+    source: string; state: 'REFRESHING' | 'FRESH' | 'PARTIAL' | 'CACHED' | 'UNAVAILABLE'; freshListings: number; cachedListings: number; retryAt: string | null;
+    /** The worker run's own status (QUEUED, SEARCHING, RESULTS_RECEIVED, PROCESSING, COMPLETE, PARTIAL, FAILED, TIMED_OUT, BLOCKED). */
+    run?: string; workerId?: string;
+  }>;
   unavailable: 'NO_SOURCES' | 'FAILED' | null;
 }
 
@@ -90,6 +96,8 @@ export interface SearchHistoryItem {
   sourcesTotal: number | null;
   sourcesTerminal: number | null;
   rawListings: number | null;
+  /** A paid social campaign ran for this search (server). */
+  deepSearch?: boolean;
 }
 
 export const searchHistory = async (page = 1) => {

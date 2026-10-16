@@ -27,7 +27,7 @@ const usd = (v: number | null | undefined) => (v == null ? '—' : `$${Number(v)
 export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscription, initialCredits }: { t: T; searchId?: string | null; subscriptionId?: string | null; initialCredits?: number }) {
   const [subscriptionId, setSubscriptionId] = useState<string | null>(givenSubscription ?? null);
   const [run, setRun] = useState<CampaignState | null>(null);
-  const [mode, setMode] = useState<'LOADING' | 'CONFIGURE' | 'RUN' | 'NO_SEARCH'>('LOADING');
+  const [mode, setMode] = useState<'LOADING' | 'CONFIGURE' | 'RUN' | 'NO_SEARCH' | 'LOAD_FAILED'>('LOADING');
   const [networks, setNetworks] = useState<OfferNetwork[]>([...OFFER_NETWORKS]);
   const [credits, setCredits] = useState(initialCredits && initialCredits >= 50 ? Math.round(initialCredits) : 50);
   const [preview, setPreview] = useState<CampaignPreview | null>(null);
@@ -59,7 +59,8 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
         setRun(state);
       }
       setMode('CONFIGURE');
-    })().catch(() => { if (live) setMode('NO_SEARCH'); });
+    /* A failed read is not "no search": say it could not be loaded. */
+    })().catch(() => { if (live) setMode('LOAD_FAILED'); });
     return () => { live = false; };
   }, [searchId, givenSubscription]);
 
@@ -98,22 +99,28 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
       if (!r.runId) { setRefusal(r.reasonCode); return; }
       startKey.current = crypto.randomUUID();
       setRun(await campaignState(r.runId)); setMode('RUN');
-    } finally { setBusy(false); }
+    } catch { setRefusal('START_FAILED'); } finally { setBusy(false); }
   };
 
   const stop = async () => {
     if (!run) return;
     setBusy(true);
-    try { await stopCampaign(run.id); await refresh(); } finally { setBusy(false); }
+    try { await stopCampaign(run.id); await refresh(); } catch { setRefusal('STOP_FAILED'); } finally { setBusy(false); }
   };
 
   const toggleNetwork = (n: OfferNetwork) => setNetworks((cur) => (cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n]));
   const minCredits = preview?.minCredits ?? 50;
 
   if (mode === 'LOADING') return <div aria-busy="true" className="h-40 animate-pulse rounded-2xl bg-white/5" />;
+  if (mode === 'LOAD_FAILED') return <p role="alert" className="text-sm text-white/70">{t('fpi_paid_refused_generic')}</p>;
   if (mode === 'NO_SEARCH') return <p className="text-sm text-white/70">{t('fpi_paid_needs_search')}</p>;
 
-  if (mode === 'RUN' && run) return <CampaignProgress t={t} run={run} busy={busy} onStop={() => void stop()} onAgain={() => { setRun(null); setMode('CONFIGURE'); }} />;
+  if (mode === 'RUN' && run) return (
+    <>
+      {refusal === 'STOP_FAILED' ? <p role="alert" className="mb-3 text-sm text-[hsl(38_92%_66%)]">{t('fpi_paid_refused_generic')}</p> : null}
+      <CampaignProgress t={t} run={run} busy={busy} onStop={() => void stop()} onAgain={() => { setRefusal(null); setRun(null); setMode('CONFIGURE'); }} />
+    </>
+  );
 
   return (
     <div className="space-y-5 text-white">

@@ -79,6 +79,18 @@ export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Reco
 const SOURCE_NETWORK: Record<string, OfferNetwork> = {
   FACEBOOK_GROUP: 'FACEBOOK', TELEGRAM_GROUP: 'TELEGRAM', INSTAGRAM_PROFILE: 'INSTAGRAM', VK_COMMUNITY: 'VK', SOCIAL_PROFILE: 'FACEBOOK',
 };
+const PLATFORM_NETWORK: Record<string, OfferNetwork> = { FACEBOOK: 'FACEBOOK', INSTAGRAM: 'INSTAGRAM', TELEGRAM: 'TELEGRAM', VK: 'VK' };
+
+/** A registry row as an offer source. A SOCIAL_PROFILE is a public profile on its own
+ *  platform: on Facebook it is a Page (planned as Page posts), elsewhere that network's profile. */
+export function offerSourceFromRegistry(r: any): KnownOfferSource | null {
+  const type = String(r.source_type ?? '');
+  if (!SOURCE_NETWORK[type]) return null;
+  const network = type === 'SOCIAL_PROFILE' ? PLATFORM_NETWORK[String(r.platform ?? '')] : SOURCE_NETWORK[type];
+  if (!network) return null;
+  const kind = type === 'SOCIAL_PROFILE' && network === 'FACEBOOK' ? 'FACEBOOK_PAGE' : type;
+  return { id: String(r.id), network, kind, url: String(r.url), city: r.city ?? null, priority: Number(r.priority ?? 5) };
+}
 
 /** Known public communities of the market (registry rows that are not retired, blocked or behind a login). */
 export async function loadOfferSources(db: any, countryCode: string): Promise<KnownOfferSource[]> {
@@ -87,9 +99,7 @@ export async function loadOfferSources(db: any, countryCode: string): Promise<Kn
     .eq('country_code', countryCode).in('source_type', Object.keys(SOURCE_NETWORK))
     .not('lifecycle', 'in', '(BLOCKED,RETIRED)').eq('access_state', 'PUBLIC');
   if (error) throw error;
-  return ((data ?? []) as any[])
-    .filter((r) => SOURCE_NETWORK[r.source_type] && (r.platform !== 'FACEBOOK' || r.source_type !== 'SOCIAL_PROFILE'))
-    .map((r) => ({ id: String(r.id), network: SOURCE_NETWORK[r.source_type], kind: String(r.source_type), url: String(r.url), city: r.city ?? null, priority: Number(r.priority ?? 5) }));
+  return ((data ?? []) as any[]).map(offerSourceFromRegistry).filter((s): s is KnownOfferSource => s != null);
 }
 
 export async function planOfferCampaign(db: any, input: {
@@ -107,7 +117,7 @@ export async function planOfferCampaign(db: any, input: {
 export function offerQueueRows(runId: string, planId: string | null, plan: OfferPlan, search: OfferSearch) {
   return plan.jobs.map((j, i) => ({
     property_id: null, matching_job_id: null, discovery_run_id: runId, search_plan_id: planId,
-    platform: j.network, language: null, query: j.query ?? j.targetUrl ?? j.stage, status: 'PENDING',
+    platform: j.network, language: j.language ?? 'multi', query: j.query ?? j.targetUrl ?? j.stage, status: 'PENDING',
     priority: Math.max(1, 100 - i), provider: 'APIFY_MEMO23', query_kind: 'OFFER_SEARCH', executor: 'EDGE',
     search_direction: 'SUPPLY', tranche: 1,
     dedupe_key: `fpoffer:${runId}:${j.stage}:${j.sourceId ?? j.query}`.slice(0, 300),
@@ -252,7 +262,7 @@ async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[]
     sourceId = fallback?.id ?? null;
   }
   if (!sourceId) return 0;
-  let stored = 0;
+  let stored = 0; let failed = 0; let firstError: string | null = null;
   const now = new Date().toISOString();
   for (const item of normalized) {
     if (item.kind !== 'POST' || !item.url || !/^https:\/\//.test(item.url)) continue;
@@ -276,7 +286,10 @@ async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[]
     };
     const { error } = await db.from('supply_observations').upsert(row, { onConflict: 'source_id,external_id' });
     if (!error) stored += 1;
+    else { failed += 1; firstError ??= scrub(String(error.message ?? error)); }
   }
+  /* A paid-for offer that could not be stored is a loss, never silent. */
+  if (failed) console.error(JSON.stringify({ event: 'find_property_offer_store_failed', actorRunId: ar.id, failed, stored, error: firstError }));
   return stored;
 }
 
@@ -300,10 +313,24 @@ export async function finishOfferCampaign(db: any, runId: string): Promise<numbe
     }
     await abortRun(ar.provider_run_id).catch(() => undefined);
     const r = await getRun(ar.provider_run_id).catch(() => null);
-    const cost = r ? runCost(r, Number(r?.stats?.datasetItems ?? 0)) : { micros: null, basis: 'UNKNOWN' };
+    /* What the provider already delivered is paid for: read it and keep its offers. */
+    let items: unknown[] = []; let total: number | null = null;
+    const datasetId = ar.dataset_id ?? r?.defaultDatasetId ?? null;
+    if (datasetId) ({ items, total } = await datasetItems(String(datasetId), Number(ar.requested_limit) + 10).catch(() => ({ items: [] as unknown[], total: null })));
+    const offers = items.length
+      ? await storeOffers(db, ar, ar.stage as OfferStage, items, await offerSearchFor(db, ar)).catch(() => 0) : 0;
+    const billed = total ?? (items.length || Number(r?.stats?.datasetItems ?? 0));
+    const cost = r ? runCost(r, billed) : { micros: null, basis: 'UNKNOWN' };
     await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: 'ABORTED', p_actual_micros: cost.micros,
-      p_cost_basis: cost.micros == null ? 'UNKNOWN' : cost.basis, p_results_billed: null, p_items_fetched: 0, p_offers: 0, p_error: 'CAMPAIGN_ENDED' });
+      p_cost_basis: cost.micros == null ? 'UNKNOWN' : cost.basis, p_results_billed: null, p_items_fetched: items.length, p_offers: offers, p_error: 'CAMPAIGN_ENDED' });
   }
   const { data: committed } = await db.rpc('find_property_committed_micros', { p_run_id: runId });
   return Number(committed ?? 0);
+}
+
+/** The searched transaction and city of an actor run, from the queue job that started it. */
+async function offerSearchFor(db: any, ar: any): Promise<{ transaction?: string; city?: string }> {
+  if (!ar.queue_job_id) return {};
+  const { data } = await db.from('discovery_query_queue').select('metadata').eq('id', ar.queue_job_id).maybeSingle();
+  return (data?.metadata?.search ?? {}) as { transaction?: string; city?: string };
 }

@@ -7,7 +7,7 @@
  * fine particles drifting through the field. It is atmosphere, not data:
  *
  *   - its INTENSITY is the only thing the server decides — searching (full),
- *     pausing (slowing), paused (still), finished (a calm, slow rest);
+ *     pausing (slowing), paused and finished (a still, dimmed frame);
  *   - it draws no counts, no percentages, no completed tasks and no source
  *     names — nothing in it can be read as a claim about results.
  *
@@ -31,7 +31,8 @@ export function fieldModeFor(state: string | null | undefined): FieldMode {
 
 /** How fast the field moves in a mode: 0 is a still frame. */
 export function intensityFor(mode: FieldMode): number {
-  return mode === 'searching' ? 1 : mode === 'pausing' ? 0.35 : mode === 'finished' ? 0.12 : 0;
+  /* A finished search is at rest, like a paused one: nothing is happening, so nothing moves. */
+  return mode === 'searching' ? 1 : mode === 'pausing' ? 0.35 : 0;
 }
 
 /** Small, fast, seeded PRNG (mulberry32). */

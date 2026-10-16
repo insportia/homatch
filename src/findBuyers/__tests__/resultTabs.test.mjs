@@ -83,3 +83,8 @@ test('url normalisation: host case, www, trailing slash and fragment', () => {
   assert.equal(normalizeUrl('https://WWW.Facebook.com/groups/1/#x'), normalizeUrl('https://facebook.com/groups/1'));
   assert.notEqual(normalizeUrl('https://facebook.com/groups/1?id=2'), normalizeUrl('https://facebook.com/groups/1?id=3'));
 });
+
+test('a seeker who never said buy or rent is an interested person needing verification, never a qualified buyer', () => {
+  const l = lead('tu', { match_category: 'STRONG', qualification: { resultType: 'DIRECT', intent: 'ACTIVE_BUYER', signals: [], limitations: ['TRANSACTION_UNCONFIRMED'] } });
+  assert.deepEqual(placeLead(classifyLead(l)), { tab: 'interest', needsVerification: true, reason: 'TRANSACTION_UNCONFIRMED' });
+});

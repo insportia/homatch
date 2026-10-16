@@ -15,8 +15,9 @@ test('motion follows the real lifecycle only', () => {
   assert.equal(fieldModeFor('PAUSED'), 'paused');
   for (const s of ['COMPLETED_WITH_RESULTS', 'COMPLETED_NO_RESULTS', 'FAILED', 'CANCELLED', null]) assert.equal(fieldModeFor(s), 'finished');
   assert.ok(intensityFor('searching') > intensityFor('pausing'));
-  assert.ok(intensityFor('pausing') > intensityFor('finished'));
+  assert.ok(intensityFor('pausing') > 0, 'pausing still moves, slower');
   assert.equal(intensityFor('paused'), 0, 'paused is a still frame');
+  assert.equal(intensityFor('finished'), 0, 'a finished search does not pretend to work');
 });
 
 test('deterministic: the same seed and steps draw the same field; no Math.random, no timers', () => {

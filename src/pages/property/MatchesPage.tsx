@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
@@ -414,6 +414,17 @@ function MatchesContent() {
     next.delete('start');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
+  /* A search started from another screen (the property page) arrives here with
+     state.fbStarted: show the live module, then forget the flag so a refresh or Back
+     does not replay it. */
+  const location = useLocation();
+  const revealLive = React.useRef(false);
+  useEffect(() => {
+    const st = location.state as { fbStarted?: boolean } | null;
+    if (!st?.fbStarted) return;
+    revealLive.current = true;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.state, location.pathname, location.search, navigate]);
   /* New current-demand matches the live search reported while a page is being read. */
   const [matchesPending, setMatchesPending] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
@@ -808,7 +819,17 @@ function MatchesContent() {
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      setStartPhase('started');
+      /* Started: this IS the live results page — close the dialog, drop any one-shot or
+         stale-search params (the new search is the one to show) and bring the live module
+         into view. No extra click, no timer. */
+      setStartPhase(null);
+      toast.success(t('fbs_started_title'));
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        for (const k of ['start', 'job', 'rp']) next.delete(k);
+        return next;
+      }, { replace: true });
+      revealLive.current = true;
     } catch (e) {
       setStartPhase(null);
       { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
@@ -950,6 +971,14 @@ function MatchesContent() {
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  /* After a start, once the server reports the search, bring the live module into view. */
+  useEffect(() => {
+    if (!revealLive.current || !moduleRef.current) return;
+    if (!campaignStatus?.campaign) return;
+    revealLive.current = false;
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    moduleRef.current.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }, [campaignStatus]);
   /* External = Find Buyers leads + stored external-demand matches (both read off public
      posts). Internal members are counted only in the HOMATCH section. */
   const ownerFacts = React.useMemo(() => ownerFactsOf(property?.facts as Parameters<typeof ownerFactsOf>[0], property?.transaction_type), [property]);
@@ -1035,7 +1064,9 @@ function MatchesContent() {
         {/* ── EXTERNAL RESULTS: Buyers / Interest signals / Post opportunities, one search at a
             time (Find Buyers 3.0). HOMATCH members have their own page. */}
         <div id="fbx-results" className="mt-4 scroll-mt-20">
-          {propertyId ? <ExternalResultsView propertyId={propertyId} owner={ownerFacts} onTotal={setLeadCount} /> : null}
+          {propertyId ? <ExternalResultsView propertyId={propertyId} owner={ownerFacts} onTotal={setLeadCount}
+            liveJobId={liveCampaign?.jobId ?? null} liveStartedAt={liveCampaign?.startedAt ?? liveCampaign?.createdAt ?? null}
+            refreshKey={campaignStatus?.campaign ? `${campaignStatus.campaign.state}:${campaignStatus.campaign.newResults}` : null} /> : null}
         </div>
 
         <FilterRail

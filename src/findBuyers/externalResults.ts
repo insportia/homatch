@@ -32,7 +32,7 @@ export interface EvidenceItem {
   intent?: string | null;
   signals?: string[];
   /** Facebook: found in a GROUP, on a public PAGE, or by a keyword SEARCH of public posts. */
-  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | 'AD' | null;
 }
 
 /** The label key for where a result was found (null: the network name is enough). */
@@ -95,7 +95,7 @@ function classifyStored(lead: ResultLead): ClassifiedLead {
      keeps that decision unless the rules find a definite exclusion — the rules alone
      reading "unknown" never overturns it. Never-qualified legacy leads get no such pass. */
   const qualified = ['STRONG', 'POTENTIAL', 'WEAK'].includes(String(lead.match_category ?? ''));
-  if (r.resultType === 'EXCLUDED' && r.intent === 'UNKNOWN' && qualified) {
+  if (r.resultType === 'EXCLUDED' && (r.intent === 'UNKNOWN' || r.reasons.includes('seeker_transaction_unconfirmed')) && qualified) {
     return { ...lead, resultType: 'DIRECT', intent: lead.counterpart === 'TENANT' ? 'ACTIVE_TENANT' : 'ACTIVE_BUYER', signals: r.signals };
   }
   return { ...lead, resultType: r.resultType, intent: r.intent, signals: r.signals };
@@ -265,7 +265,12 @@ export function daysAgo(iso: string | null | undefined, now = Date.now()): numbe
  * Sellers, brokers, developers, services and job posts never appear: the gate
  * EXCLUDES them, match review REJECTS them, and a stored offer role drops them. */
 export type ResultTab = 'direct' | 'interest' | 'opportunities';
-export interface TabPlacement { tab: 'direct' | 'interest'; needsVerification: boolean }
+export interface TabPlacement {
+  tab: 'direct' | 'interest';
+  needsVerification: boolean;
+  /** Why verification is needed, when the qualification recorded it (a seeker who never said buy or rent). */
+  reason?: 'TRANSACTION_UNCONFIRMED';
+}
 
 const OFFER_ROLES = new Set(['SALE_OFFER', 'RENT_OFFER', 'AGENT', 'SERVICE', 'JOB']);
 
@@ -275,6 +280,9 @@ export function placeLead(l: ClassifiedLead): TabPlacement | null {
   if (l.role && OFFER_ROLES.has(String(l.role).toUpperCase())) return null;
   const cat = l.match_category ?? null;
   if (cat === 'REJECTED') return null;
+  /* A seeker who never said whether they buy or rent is never a qualified buyer or tenant. */
+  const limits = Array.isArray(l.qualification?.limitations) ? l.qualification!.limitations!.map(String) : [];
+  if (limits.includes('TRANSACTION_UNCONFIRMED')) return { tab: 'interest', needsVerification: true, reason: 'TRANSACTION_UNCONFIRMED' };
   if (l.resultType === 'DIRECT') {
     return cat === 'STRONG' || cat === 'POTENTIAL' ? { tab: 'direct', needsVerification: false } : { tab: 'interest', needsVerification: true };
   }

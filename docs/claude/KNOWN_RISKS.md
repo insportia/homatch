@@ -130,10 +130,12 @@ with per-language loading named as the follow-up. That follow-up is done:
 - Districts (2026-10-16): portal sources apply a strict district check in the
   worker (`portals/places.mjs`) — a listing naming any place other than a requested,
   known district is dropped; one naming none is kept. Home.ge narrows by sitemap
-  slug; Place.ge by its `region_id`+`district_id` pair (11 observed districts; others
-  read the city); Allhome/Brokeri only after reading, so with a 24-listing read a
+  slug; Place.ge's server ignores every district parameter (live probe 2026-10-16),
+  so it, Allhome and Brokeri check districts only after reading — with a 2-page / 24-listing read a
   district search on them often returns nothing (honest empty, not an error). A
   district outside `normalize/place.ts` disables the narrowing (city read).
+- Prices below 10 (Home.ge's "1 ₾" placeholder) are dropped as no price
+  (`withoutPlaceholderPrice`), never shown as in-budget.
 - Korter.ge is BLOCKED_BY_TERMS (terms §5.3: "You must not use any scraping
   technology on the Site") and Binebi.ge answers every public page with a
   Cloudflare challenge. Neither is registered; a test pins that.

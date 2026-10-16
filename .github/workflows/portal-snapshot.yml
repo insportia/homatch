@@ -21,9 +21,6 @@ jobs:
       - name: Live adapter check
         if: hashFiles('scripts/portals/live-check.mjs') != ''
         run: node scripts/portals/live-check.mjs
-      - name: Place.ge district ids
-        if: hashFiles('scripts/portals/place-districts.mjs') != ''
-        run: node scripts/portals/place-districts.mjs
       - name: Access status of withdrawn portals (status line only)
         run: |
           for u in https://korter.ge/ https://korter.ge/robots.txt https://binebi.ge/ https://binebi.ge/robots.txt https://www.myhome.ge/ https://home.ss.ge/; do

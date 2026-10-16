@@ -187,18 +187,20 @@ test('districts: the worker table is the core place table; a listing naming anot
   assert.equal(districtConflict(null, req), false);
 });
 
-test('place.ge: requested districts become its own district_id, one results page each; an unmapped district reads the city', () => {
-  const one = placege.criteria(request({ districts: ['Krtsanisi'] }));
-  assert.deepEqual(one.district_ids, [[6, 65]]);
-  assert.equal(placege.maxPages(one), 1);
-  assert.match(placege.searchUrl(one, 1), /^https:\/\/place\.ge\/ge\/ads\?.*region_id=6&district_id=65/);
-  const two = placege.criteria(request({ districts: ['ვაკე', 'saburtalo'] }));
-  assert.deepEqual([placege.searchUrl(two, 1), placege.searchUrl(two, 2)].map((u) => new URL(u).searchParams.get('district_id')), ['2', '18']);
-  assert.equal(placege.pagesIndependent(two), true);
-  const unmapped = placege.criteria(request({ districts: ['Krtsanisi', 'Ortachala'] }));
-  assert.equal(unmapped.district_ids, undefined);
-  assert.equal(new URL(placege.searchUrl(unmapped, 1)).searchParams.has('district_id'), false);
-  assert.equal(placege.maxPages(unmapped), 2);
+test('place.ge: its server ignores district parameters, so none is sent; the city is read and each card checked', () => {
+  const c = placege.criteria(request({ districts: ['Krtsanisi'] }));
+  const u = new URL(placege.searchUrl(c, 1));
+  assert.equal(['district_id', 'region_id', 'selected_places'].some((k) => u.searchParams.has(k)), false);
+  assert.equal(contradiction({ district: 'საბურთალო' }, request({ districts: ['Krtsanisi'] })), 'district');
+  assert.equal(contradiction({ district: 'კრწანისი' }, request({ districts: ['Krtsanisi'] })), null);
+});
+
+test('shared loop: a placeholder price ("1 ₾") is removed, never shown as an in-budget price', async () => {
+  const { withoutPlaceholderPrice } = await import('../src/marketplace/portals/acquire.mjs');
+  const f = withoutPlaceholderPrice({ title: 't', price: 1, currency: 'GEL', _usd: 0.37, pricePerSqm: 0 });
+  assert.equal(f.price, undefined); assert.equal(f.currency, undefined); assert.equal(f._usd, undefined);
+  assert.match(f.evidence.at(-1).text, /placeholder price 1 GEL/);
+  assert.equal(withoutPlaceholderPrice({ price: 450, currency: 'USD' }).price, 450);
 });
 
 test('home.ge: a requested district narrows the sitemap by its slug', () => {

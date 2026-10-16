@@ -12,8 +12,7 @@ import { districtConflict } from './places.mjs';
  *                                   page states (e.g. the city); counted as filtered
  *   listCacheMs                   → reuse a list document (e.g. a sitemap) for this long
  *   pagesIndependent              → each "page" is its own document; a short page does
- *                                   not end the run (a value or a function of criteria)
- *   maxPages                      → a number, or a function of criteria
+ *                                   not end the run
  * Everything else — robots.txt, pacing, page cap, refusals, the contract shape,
  * deduplication by source id, and dropping a listing whose own stated deal, USD price,
  * rooms, area or Tbilisi district contradicts the request (portals that cannot filter server-side) —
@@ -76,6 +75,16 @@ export function contradiction(fields, request) {
   return null;
 }
 
+/**
+ * A price below 10 (₾/$/€) is a portal's "price on request" placeholder (Home.ge shows "1 ₾",
+ * live run 2026-10-16), never a real sale or rent figure: it is removed, not shown as a bargain.
+ */
+export function withoutPlaceholderPrice(fields) {
+  if (fields.price == null || fields.price >= 10) return fields;
+  const { price, currency, _usd, pricePerSqm, ...rest } = fields;
+  return { ...rest, evidence: [...(fields.evidence ?? []), { field: 'price', text: `placeholder price ${price} ${currency ?? ''} not treated as a price`.trim() }] };
+}
+
 /** Detail fields replace list fields only where the detail page actually said something. */
 const defined = (o) => Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined && v !== null && !(Array.isArray(v) && !v.length)));
 
@@ -114,8 +123,7 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
       const robots = await fetcher(new URL('/robots.txt', adapter.origin).href, { headers: { 'user-agent': PORTAL_UA }, signal: AbortSignal.timeout(15000) });
       rules = robots.ok ? robotsRules(await robots.text()) : [];
     } catch { rules = []; }
-    const maxPages = typeof adapter.maxPages === 'function' ? adapter.maxPages(criteria) : adapter.maxPages;
-    const independent = typeof adapter.pagesIndependent === 'function' ? adapter.pagesIndependent(criteria) : adapter.pagesIndependent;
+    const { maxPages, pagesIndependent: independent } = adapter;
     let complete = false;
     for (let page = 1; page <= maxPages; page++) {
       const url = adapter.searchUrl(criteria, page);
@@ -134,6 +142,7 @@ export async function acquirePortal(adapter, request, { deadlineAt, signal, repo
           try { await sleep(adapter.detailIntervalMs ?? 800); fields = { ...fields, ...defined(adapter.parseDetail(await get(item.url), item.url)), detailRead: true }; }
           catch (error) { if (['BLOCKED', 'DEADLINE'].includes(error.code) || signal?.aborted) throw error; rejected++; continue; }
         }
+        fields = withoutPlaceholderPrice(fields);
         if (!fields.title && fields.price == null) { rejected++; continue; }
         if (contradiction(fields, request) || (adapter.accept && !adapter.accept(fields, criteria))) { filtered++; continue; }
         candidates.push(toCandidate(adapter, fields, request, page, url));

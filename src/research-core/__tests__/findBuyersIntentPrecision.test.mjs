@@ -218,6 +218,11 @@ test('live test 2026-10-16: sellers and agencies recruiting sellers are supply, 
     '🏡 თქვენ გაქვთ გასაყიდი უძრავი ქონება? ჩვენ გვყავს გუნდი, რომელიც მის გაყიდვაზე იმუშავებს! 📌 ვიღებთ უძრავ ქონებას ექსკლუზიურ გაყიდვაში!',
     'Хотите продать квартиру? Поможем продать быстро, найдем покупателя.',
     'Do you have an apartment to sell? We will sell your property fast — exclusive listing, no stress.',
+    /* stored history, 2026-10-09/13 campaigns: a broker collecting owners' listings, a broker
+       offering help, a sale ad addressed to readers */
+    'გასაყიდი ბინები გამომიგზავნეთ მეპატრონეებმა..დაგეხმარებით♥️ გამომიგზავნეთ ვაცაპზე ზუსტი მისამართი..კვადრატი..ფასი',
+    'ვისაც გაქვთ სურვილი რომ, უძრავი ქონების ყიდვა-გაყიდვაში დაგეხმაროთ სტაჟიანი და მოწესრიგებული ბროკერი დამირეკეთ',
+    '🚨 ბათუმში 42 კვადრატი 42 000 დოლარად! ხალხო, ვისაც ბათუმში ბინის ყიდვა გინდათ და არ გსურთ უზარმაზარი თანხის გადახდა, ეს ვარიანტი ნახეთ!',
   ];
   for (const text of supply) {
     const r = classifyDemand(text);
@@ -234,6 +239,10 @@ test('live test 2026-10-16: real buyers stay buyers, including one who asks whoe
     'Кто продает 3-комнатную квартиру в Крцаниси? Напишите в личку.',
     /* a buyer asking sellers with no service promise is still a buyer */
     'თუ გაქვთ ბინა გასაყიდი კრწანისში, მომწერეთ',
+    /* stored history: genuine buyers HOMATCH had already read */
+    'მეპატრონედან ვიყიდი სამ ოთახიან ბინას განიხილება დიღომი თემქა მუხიანი და გლდანი',
+    'Ищу квартиру для покупки в районе Ортачала. Рассматриваю студию или однокомнатную квартиру',
+    'შევიძენ სარემონტო ბინას ან კარკასს შესახლებულ კორპუსში, 40მ²-80მ² მდე. ვარ რეალური მყიდველი.',
   ]) {
     const r = classifyDemand(text);
     assert.equal(r.role, 'BUY_SEEKER', `${text.slice(0, 40)} → ${r.role} ${r.evidence}`);

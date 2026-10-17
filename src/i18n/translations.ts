@@ -20311,6 +20311,25 @@ const en = {
   fbl_duration_title: 'How long it takes',
   fbl_duration_body: 'Finding buyers and tenants may take 10–30 minutes. The time depends on the scale of the search and the sources available.',
   fbl_details_title: 'Search details',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'Play Snake while the search runs',
+  fpv_results_wait: 'Your results open as soon as every site has finished. You can stay here or come back later.',
+  fpv_done_title: 'Your search is complete',
+  fpv_done_body: 'Every site answered. Your results are ready.',
+  fpv_done_partial: '{{n}} of {{total}} sites did not answer in time. Your results come from the others.',
+  fpv_done_cancelled_title: 'Search stopped',
+  fpv_done_cancelled_body: 'You stopped this search, so it did not finish. The homes found until then are kept.',
+  fpv_view_results: 'View results ({{n}})',
+  fpv_photos_unavailable: 'Photos are not available from the source',
+  fpv_result_views: 'Result views',
+  fpv_tab_all: 'All',
+  fpv_tab_best: 'Best',
+  fpv_tab_favorites: 'Saved',
+  fpv_filters_apply: 'Show {{n}}',
+  fpv_fav_empty_title: 'No saved homes yet',
+  fpv_fav_empty_body: 'Tap the bookmark on any home to keep it here.',
+  fpv_photo_unavailable: 'This photo did not load',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40536,6 +40555,25 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'რამდენ ხანს გრძელდება',
   fbl_duration_body: 'მყიდველებისა და მოიჯარეების მოძიებას შესაძლოა 10–30 წუთი დასჭირდეს. დრო დამოკიდებულია ძებნის მასშტაბსა და ხელმისაწვდომ წყაროებზე.',
   fbl_details_title: 'ძებნის დეტალები',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'გაერთე Snake-ით სანამ ძიება მიმდინარეობს',
+  fpv_results_wait: 'შედეგები გაიხსნება, როგორც კი ყველა საიტი დაასრულებს. შეგიძლიათ აქ დარჩეთ ან მოგვიანებით დაბრუნდეთ.',
+  fpv_done_title: 'ძიება დასრულდა',
+  fpv_done_body: 'ყველა საიტმა უპასუხა. შედეგები მზადაა.',
+  fpv_done_partial: '{{total}} საიტიდან {{n}} დროულად არ გვიპასუხა. შედეგები დანარჩენი საიტებიდანაა.',
+  fpv_done_cancelled_title: 'ძიება შეწყდა',
+  fpv_done_cancelled_body: 'ეს ძიება თქვენ შეწყვიტეთ, ამიტომ ბოლომდე არ დასრულებულა. მანამდე ნაპოვნი ბინები შენახულია.',
+  fpv_view_results: 'შედეგების ნახვა ({{n}})',
+  fpv_photos_unavailable: 'წყაროდან ფოტოები ვერ ჩაიტვირთა',
+  fpv_result_views: 'შედეგების ხედები',
+  fpv_tab_all: 'ყველა',
+  fpv_tab_best: 'საუკეთესო',
+  fpv_tab_favorites: 'შენახული',
+  fpv_filters_apply: 'ჩვენება ({{n}})',
+  fpv_fav_empty_title: 'შენახული ბინები ჯერ არ გაქვთ',
+  fpv_fav_empty_body: 'დააჭირეთ სანიშნეს ნებისმიერ ბინაზე და ის აქ შეინახება.',
+  fpv_photo_unavailable: 'ეს ფოტო ვერ ჩაიტვირთა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60752,6 +60790,25 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'Сколько это длится',
   fbl_duration_body: 'Поиск покупателей и арендаторов может занять 10–30 минут. Время зависит от масштаба поиска и доступных источников.',
   fbl_details_title: 'Подробности поиска',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'Сыграйте в Snake, пока идёт поиск',
+  fpv_results_wait: 'Результаты откроются, как только все сайты закончат. Можете остаться здесь или вернуться позже.',
+  fpv_done_title: 'Поиск завершён',
+  fpv_done_body: 'Все сайты ответили. Результаты готовы.',
+  fpv_done_partial: 'Сайтов, не ответивших вовремя: {{n}} из {{total}}. Результаты собраны с остальных.',
+  fpv_done_cancelled_title: 'Поиск остановлен',
+  fpv_done_cancelled_body: 'Вы остановили поиск, поэтому он не завершился. Найденные до этого квартиры сохранены.',
+  fpv_view_results: 'Смотреть результаты ({{n}})',
+  fpv_photos_unavailable: 'Фото недоступны на источнике',
+  fpv_result_views: 'Виды результатов',
+  fpv_tab_all: 'Все',
+  fpv_tab_best: 'Лучшие',
+  fpv_tab_favorites: 'Избранное',
+  fpv_filters_apply: 'Показать {{n}}',
+  fpv_fav_empty_title: 'Пока нет сохранённых квартир',
+  fpv_fav_empty_body: 'Нажмите на закладку у любой квартиры, чтобы сохранить её здесь.',
+  fpv_photo_unavailable: 'Это фото не загрузилось',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -80966,6 +81023,25 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'Ne kadar sürer',
   fbl_duration_body: 'Alıcı ve kiracı bulmak 10–30 dakika sürebilir. Süre, aramanın kapsamına ve erişilebilir kaynaklara bağlıdır.',
   fbl_details_title: 'Arama ayrıntıları',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'Arama sürerken Snake oynayın',
+  fpv_results_wait: 'Sonuçlar tüm siteler bitirir bitirmez açılır. Burada kalabilir ya da daha sonra dönebilirsiniz.',
+  fpv_done_title: 'Aramanız tamamlandı',
+  fpv_done_body: 'Tüm siteler yanıt verdi. Sonuçlarınız hazır.',
+  fpv_done_partial: '{{total}} siteden {{n}} tanesi zamanında yanıt vermedi. Sonuçlar diğerlerinden geliyor.',
+  fpv_done_cancelled_title: 'Arama durduruldu',
+  fpv_done_cancelled_body: 'Bu aramayı durdurdunuz, bu yüzden tamamlanmadı. O ana kadar bulunan evler saklandı.',
+  fpv_view_results: 'Sonuçları gör ({{n}})',
+  fpv_photos_unavailable: 'Fotoğraflar kaynaktan alınamadı',
+  fpv_result_views: 'Sonuç görünümleri',
+  fpv_tab_all: 'Tümü',
+  fpv_tab_best: 'En iyi',
+  fpv_tab_favorites: 'Kaydedilen',
+  fpv_filters_apply: '{{n}} sonucu göster',
+  fpv_fav_empty_title: 'Henüz kaydedilmiş ev yok',
+  fpv_fav_empty_body: 'Burada tutmak için herhangi bir evdeki yer imine dokunun.',
+  fpv_photo_unavailable: 'Bu fotoğraf yüklenmedi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101180,6 +101256,25 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'كم يستغرق',
   fbl_duration_body: 'قد يستغرق العثور على المشترين والمستأجرين من 10 إلى 30 دقيقة. يعتمد الوقت على نطاق البحث والمصادر المتاحة.',
   fbl_details_title: 'تفاصيل البحث',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'العب Snake أثناء البحث',
+  fpv_results_wait: 'تفتح النتائج فور انتهاء جميع المواقع. يمكنك البقاء هنا أو العودة لاحقًا.',
+  fpv_done_title: 'اكتمل بحثك',
+  fpv_done_body: 'استجابت جميع المواقع. نتائجك جاهزة.',
+  fpv_done_partial: 'لم يرد {{n}} من أصل {{total}} مواقع في الوقت المناسب. نتائجك من المواقع الأخرى.',
+  fpv_done_cancelled_title: 'تم إيقاف البحث',
+  fpv_done_cancelled_body: 'أوقفت هذا البحث، لذلك لم يكتمل. المنازل التي وُجدت حتى تلك اللحظة محفوظة.',
+  fpv_view_results: 'عرض النتائج ({{n}})',
+  fpv_photos_unavailable: 'الصور غير متاحة من المصدر',
+  fpv_result_views: 'طرق عرض النتائج',
+  fpv_tab_all: 'الكل',
+  fpv_tab_best: 'الأفضل',
+  fpv_tab_favorites: 'المحفوظة',
+  fpv_filters_apply: 'عرض {{n}}',
+  fpv_fav_empty_title: 'لا توجد منازل محفوظة بعد',
+  fpv_fav_empty_body: 'اضغط على الإشارة المرجعية في أي منزل لحفظه هنا.',
+  fpv_photo_unavailable: 'تعذّر تحميل هذه الصورة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -121394,6 +121489,25 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'כמה זמן זה לוקח',
   fbl_duration_body: 'איתור קונים ושוכרים עשוי להימשך 10–30 דקות. הזמן תלוי בהיקף החיפוש ובמקורות הזמינים.',
   fbl_details_title: 'פרטי החיפוש',
+
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'שחקו Snake בזמן שהחיפוש רץ',
+  fpv_results_wait: 'התוצאות ייפתחו ברגע שכל האתרים יסיימו. אפשר להישאר כאן או לחזור מאוחר יותר.',
+  fpv_done_title: 'החיפוש הסתיים',
+  fpv_done_body: 'כל האתרים ענו. התוצאות מוכנות.',
+  fpv_done_partial: '{{n}} מתוך {{total}} אתרים לא ענו בזמן. התוצאות מגיעות מהשאר.',
+  fpv_done_cancelled_title: 'החיפוש נעצר',
+  fpv_done_cancelled_body: 'עצרתם את החיפוש, ולכן הוא לא הושלם. הדירות שנמצאו עד אז נשמרו.',
+  fpv_view_results: 'לצפייה בתוצאות ({{n}})',
+  fpv_photos_unavailable: 'התמונות אינן זמינות מהמקור',
+  fpv_result_views: 'תצוגות תוצאות',
+  fpv_tab_all: 'הכול',
+  fpv_tab_best: 'הטובות',
+  fpv_tab_favorites: 'שמורות',
+  fpv_filters_apply: 'הצגת {{n}}',
+  fpv_fav_empty_title: 'עדיין אין דירות שמורות',
+  fpv_fav_empty_body: 'הקישו על הסימנייה בכל דירה כדי לשמור אותה כאן.',
+  fpv_photo_unavailable: 'התמונה לא נטענה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

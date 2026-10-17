@@ -12,6 +12,12 @@
 // capped at Apify by maxTotalChargeUsd = that reservation. Its cost is booked
 // once (find_property_book_actor_cost); an unknown cost counts at its reservation.
 // finishOfferCampaign aborts and books whatever is still open before settlement.
+//
+// The customer pays only for CONFIRMED provider work (owner, 2026-10-17): no
+// campaign is offered without a provider token (loadOfferSettings.configured), and
+// a run whose start is ambiguous (5xx / network error, or the campaign ended
+// mid-start) is booked START_AMBIGUOUS — HOMATCH cost of goods at its reservation,
+// never part of the customer's charge (find_property_customer_micros).
 
 import { buildInput, essentialMissing, STAGE_OUTPUT, type Stage } from '../../../../src/research-core/findBuyers/actorInputs.ts';
 import { normalizeDataset } from '../../../../src/research-core/findBuyers/normalize.ts';
@@ -20,7 +26,8 @@ import {
   type OfferPlan, type OfferSearch, type OfferStage,
 } from '../../../../src/research-core/findProperty/offerCampaign.ts';
 import { COMMUNITY_LISTING_PARSER_VERSION } from '../../../../src/research-core/discovery/community-listing.ts';
-import { abortRun, datasetItems, getRun, Memo23Error, runCost, scrub, startRun, TERMINAL_RUN_STATES } from '../findBuyers/memo23Client.ts';
+import { abortRun, datasetItems, getRun, Memo23Error, providerConfigured, runCost, scrub, startRun, TERMINAL_RUN_STATES } from '../findBuyers/memo23Client.ts';
+import { offerImages, SOCIAL_ADAPTER_VERSION } from '../../../../src/research-core/marketplace/socialListings.ts';
 import { providerDisabledByAdmin } from '../providerSwitch.ts';
 import { listingFingerprint } from '../communitySupply.ts';
 
@@ -39,7 +46,7 @@ const POLL_SECONDS = 10;
 const FALLBACK_SEARCH_SOURCE = 'homatch:fp-fb-post-search';
 const val = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
 
-export interface OfferSettings { enabled: boolean; apifyEnabled: boolean; networks: OfferNetwork[]; pricingMaxAgeDays: number }
+export interface OfferSettings { enabled: boolean; apifyEnabled: boolean; configured: boolean; networks: OfferNetwork[]; pricingMaxAgeDays: number }
 
 export async function loadOfferSettings(db: any): Promise<OfferSettings> {
   const { data } = await db.from('admin_settings').select('key,value')
@@ -49,9 +56,11 @@ export async function loadOfferSettings(db: any): Promise<OfferSettings> {
   const networks = Array.isArray(m.get('find_property_social_networks'))
     ? (m.get('find_property_social_networks') as string[]).filter((n): n is OfferNetwork => ['FACEBOOK', 'INSTAGRAM', 'TELEGRAM', 'VK'].includes(n))
     : ['FACEBOOK', 'INSTAGRAM', 'TELEGRAM', 'VK'] as OfferNetwork[];
+  /* No token, no campaign: nothing is offered, reserved or charged (a missing token must never look like a run). */
+  const configured = providerConfigured();
   return {
-    enabled: m.get('find_property_social_enabled') === true && apifyEnabled,
-    apifyEnabled, networks,
+    enabled: m.get('find_property_social_enabled') === true && apifyEnabled && configured,
+    apifyEnabled, configured, networks,
     pricingMaxAgeDays: Number.isFinite(Number(m.get('find_buyers_pricing_max_age_days'))) ? Number(m.get('find_buyers_pricing_max_age_days')) : 30,
   };
 }
@@ -139,7 +148,7 @@ export async function executeOfferJob(db: any, job: any): Promise<OfferOutcome> 
   if (meta.actorRunId) return poll(db, job, run);
   if (run.status !== 'SEARCHING') return out({ outcome: 'CANCELLED', error: `RUN_${run.status}` });
   const settings = await loadOfferSettings(db);
-  if (!settings.enabled) return out({ outcome: 'CANCELLED', error: settings.apifyEnabled ? 'SOCIAL_DISABLED' : 'APIFY_DISABLED_BY_ADMIN' });
+  if (!settings.enabled) return out({ outcome: 'CANCELLED', error: !settings.apifyEnabled ? 'APIFY_DISABLED_BY_ADMIN' : !settings.configured ? 'PROVIDER_NOT_CONFIGURED' : 'SOCIAL_DISABLED' });
   return start(db, job, run);
 }
 
@@ -192,8 +201,9 @@ async function start(db: any, job: any, run: any): Promise<OfferOutcome> {
   } catch (error) {
     const e = error instanceof Memo23Error ? error : new Memo23Error(scrub(String(error)), 0, true);
     if (e.status === 0 || e.status >= 500) {
-      /* Ambiguous: the run may exist. Booked UNKNOWN, which counts at its reservation. */
-      await db.rpc('find_property_book_actor_cost', { p_actor_run_id: runId, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'UNKNOWN',
+      /* Ambiguous: the run may exist. Booked START_AMBIGUOUS: counted against the provider
+         budget and as HOMATCH cost at its reservation, never charged to the customer. */
+      await db.rpc('find_property_book_actor_cost', { p_actor_run_id: runId, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'START_AMBIGUOUS',
         p_results_billed: null, p_items_fetched: 0, p_offers: 0, p_error: `START_AMBIGUOUS: ${e.message}` });
       return out({ outcome: 'FAILED', error: e.message });
     }
@@ -251,7 +261,10 @@ async function poll(db: any, job: any, run: any): Promise<OfferOutcome> {
 
 async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[], search: { transaction?: string; city?: string }): Promise<number> {
   if (search.transaction !== 'SALE' && search.transaction !== 'RENT') return 0;
-  const normalized = normalizeDataset(STAGE_OUTPUT[stage as Stage], OFFER_STAGE_NETWORK[stage], items, null);
+  /* Normalized one raw item at a time so each post keeps its own photos (normalize.ts carries none). */
+  const normalized = items.flatMap((raw) => normalizeDataset(STAGE_OUTPUT[stage as Stage], OFFER_STAGE_NETWORK[stage], [raw], null)
+    .map((n) => Object.assign(n, { images: offerImages(raw) })));
+  const seen = new Set<string>();
   let sourceId: string | null = ar.source_id ?? null;
   let sourceCity: string | null = null;
   if (sourceId) {
@@ -265,7 +278,8 @@ async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[]
   let stored = 0; let failed = 0; let firstError: string | null = null;
   const now = new Date().toISOString();
   for (const item of normalized) {
-    if (item.kind !== 'POST' || !item.url || !/^https:\/\//.test(item.url)) continue;
+    if (item.kind !== 'POST' || !item.url || !/^https:\/\//.test(item.url) || seen.has(item.externalId)) continue;
+    seen.add(item.externalId);
     const verdict = qualifyOffer(item.text, { transaction: search.transaction as 'SALE' | 'RENT', city: String(search.city ?? '') }, { sourceCity, publishedAt: item.publishedAt });
     if (!verdict.offer) continue;
     const l = verdict.listing;
@@ -280,8 +294,9 @@ async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[]
       area_sqm: l.areaSqm, rooms: l.rooms, bedrooms: l.bedrooms, floor: l.floor, total_floors: l.totalFloors,
       title: item.text.split('\n').find((line) => line.trim())?.trim().slice(0, 160) ?? null,
       description: item.text.slice(0, 4000), published_at: item.publishedAt, content_fingerprint: listingFingerprint(item.text),
-      last_seen_at: now, field_origins: { ...l.origins, rawSignalId: null, memo23ActorRunId: ar.id, network: item.network },
-      structured_quality: l.quality, parser_version: COMMUNITY_LISTING_PARSER_VERSION, adapter_version: 'fp-social-offers-1',
+      last_seen_at: now, image_urls: item.images,
+      field_origins: { ...l.origins, rawSignalId: null, memo23ActorRunId: ar.id, network: item.network, authorUrl: item.author?.url ?? null },
+      structured_quality: l.quality, parser_version: COMMUNITY_LISTING_PARSER_VERSION, adapter_version: SOCIAL_ADAPTER_VERSION,
       updated_at: now,
     };
     const { error } = await db.from('supply_observations').upsert(row, { onConflict: 'source_id,external_id' });
@@ -296,17 +311,18 @@ async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[]
 /**
  * Before settlement (or on failure): nothing may stay open. Reservations that never
  * reached the provider are released; started runs are aborted and booked with their
- * real cost (UNKNOWN → counted at the reservation). Returns the committed micros.
+ * real cost (UNKNOWN → counted at the reservation). Returns the micros the customer
+ * pays for: confirmed provider work only (START_AMBIGUOUS starts are HOMATCH's cost).
  */
 export async function finishOfferCampaign(db: any, runId: string): Promise<number> {
   const { data: open } = await db.from('find_property_actor_runs').select('*').eq('discovery_run_id', runId).is('cost_booked_at', null);
   for (const ar of (open ?? []) as any[]) {
     if (!ar.provider_run_id) {
       /* RESERVED never reached the provider: released at $0. STARTING may have reached it
-         before its run id was stored: booked UNKNOWN, which counts at its reservation. */
+         before its run id was stored: booked START_AMBIGUOUS (HOMATCH cost, not the customer's). */
       const reachedProvider = ar.status !== 'RESERVED';
       await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: reachedProvider ? 'ABORTED' : 'RELEASED',
-        p_actual_micros: reachedProvider ? null : 0, p_cost_basis: reachedProvider ? 'UNKNOWN' : 'NOT_STARTED',
+        p_actual_micros: reachedProvider ? null : 0, p_cost_basis: reachedProvider ? 'START_AMBIGUOUS' : 'NOT_STARTED',
         p_results_billed: reachedProvider ? null : 0, p_items_fetched: 0, p_offers: 0,
         p_error: reachedProvider ? 'CAMPAIGN_ENDED_DURING_START' : 'CAMPAIGN_ENDED' });
       continue;
@@ -324,8 +340,10 @@ export async function finishOfferCampaign(db: any, runId: string): Promise<numbe
     await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: 'ABORTED', p_actual_micros: cost.micros,
       p_cost_basis: cost.micros == null ? 'UNKNOWN' : cost.basis, p_results_billed: null, p_items_fetched: items.length, p_offers: offers, p_error: 'CAMPAIGN_ENDED' });
   }
-  const { data: committed } = await db.rpc('find_property_committed_micros', { p_run_id: runId });
-  return Number(committed ?? 0);
+  /* What the CUSTOMER pays for: confirmed provider work only (find_property_customer_micros). */
+  const { data: customer, error } = await db.rpc('find_property_customer_micros', { p_run_id: runId });
+  if (error) throw new Error(`find_property_customer_micros failed: ${error.message}`);
+  return Number(customer ?? 0);
 }
 
 /** The searched transaction and city of an actor run, from the queue job that started it. */

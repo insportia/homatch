@@ -10,14 +10,16 @@
  * percentage; a network that cannot be searched says so; the animated flow runs
  * only while work is really in flight and never under prefers-reduced-motion.
  */
-import { Check, Facebook, Instagram, Loader2, Send, Square, Telescope } from 'lucide-react';
+import { ArrowRight, Check, Facebook, Gamepad2, Instagram, Loader2, Send, Square, Telescope } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
   OFFER_NETWORKS, OPEN_CAMPAIGN, campaignState, latestCampaignId, previewCampaign, startCampaign, stopCampaign,
   subscriptionForSearch, type CampaignPreview, type CampaignState, type OfferNetwork,
 } from '@/services/paidCampaign';
 import type { T } from './format';
+import { SnakeOverlay } from './SnakeThumbnail';
 
 const POLL_MS = 5000;
 const NETWORK_ICON: Record<OfferNetwork, typeof Facebook> = { FACEBOOK: Facebook, INSTAGRAM: Instagram, TELEGRAM: Send, VK: Telescope };
@@ -36,6 +38,7 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const startKey = useRef<string>(crypto.randomUUID());
+  const { lang } = useLanguage();
 
   /* Which search, and is a campaign already running for it? */
   useEffect(() => {
@@ -69,7 +72,7 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
     if (mode !== 'CONFIGURE' || !subscriptionId) return;
     let live = true;
     const id = window.setTimeout(() => {
-      previewCampaign(subscriptionId, credits, networks).then((r) => {
+      previewCampaign(subscriptionId, credits, networks, lang).then((r) => {
         if (!live) return;
         setPreview(r.preview); setPreviewError(r.preview ? null : r.reasonCode);
         if (!r.preview && r.minCredits && credits < r.minCredits) setCredits(r.minCredits);
@@ -77,7 +80,7 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
     }, 400);
     setAgreed(false);
     return () => { live = false; window.clearTimeout(id); };
-  }, [mode, subscriptionId, credits, networks]);
+  }, [mode, subscriptionId, credits, networks, lang]);
 
   /* Progress: polled from the server while the campaign is open. */
   const refresh = useCallback(async () => {
@@ -95,7 +98,7 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
     if (!subscriptionId || !preview || !agreed) return;
     setBusy(true); setRefusal(null);
     try {
-      const r = await startCampaign(subscriptionId, credits, networks, startKey.current);
+      const r = await startCampaign(subscriptionId, credits, networks, startKey.current, lang);
       if (!r.runId) { setRefusal(r.reasonCode); return; }
       startKey.current = crypto.randomUUID();
       setRun(await campaignState(r.runId)); setMode('RUN');
@@ -118,7 +121,7 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
   if (mode === 'RUN' && run) return (
     <>
       {refusal === 'STOP_FAILED' ? <p role="alert" className="mb-3 text-sm text-[hsl(38_92%_66%)]">{t('fpi_paid_refused_generic')}</p> : null}
-      <CampaignProgress t={t} run={run} busy={busy} onStop={() => void stop()} onAgain={() => { setRefusal(null); setRun(null); setMode('CONFIGURE'); }} />
+      <CampaignProgress t={t} run={run} searchId={searchId ?? null} busy={busy} onStop={() => void stop()} onAgain={() => { setRefusal(null); setRun(null); setMode('CONFIGURE'); }} />
     </>
   );
 
@@ -198,7 +201,7 @@ export function PaidCampaignPanel({ t, searchId, subscriptionId: givenSubscripti
 }
 
 function refusalKey(code: string): string {
-  const known = ['DISCOVERY_OFF', 'PAID_CAMPAIGNS_OFF', 'PROVIDER_OFF', 'NO_SEARCHABLE_SOURCES', 'NO_LIVE_SOURCES', 'BELOW_CAMPAIGN_MINIMUM',
+  const known = ['DISCOVERY_OFF', 'PAID_CAMPAIGNS_OFF', 'PROVIDER_OFF', 'PROVIDER_NOT_CONFIGURED', 'NO_SEARCHABLE_SOURCES', 'NO_LIVE_SOURCES', 'BELOW_CAMPAIGN_MINIMUM',
     'ABOVE_CAMPAIGN_MAXIMUM', 'NO_NETWORKS', 'INSUFFICIENT_CREDITS', 'BILLING_REQUIRED', 'PLAN_INCOMPLETE', 'UNKNOWN_SEARCH', 'CONFIRMATION_REQUIRED'];
   return known.includes(code) ? code.toLowerCase() : 'generic';
 }
@@ -212,13 +215,48 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   );
 }
 
-function CampaignProgress({ t, run, busy, onStop, onAgain }: { t: T; run: CampaignState; busy: boolean; onStop: () => void; onAgain: () => void }) {
+/** Real elapsed time of the campaign, from the server's start (and end, once it has one). */
+function useElapsed(from: string, to: string | null, ticking: boolean): string {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [ticking]);
+  const ms = Math.max(0, (to ? Date.parse(to) : now) - Date.parse(from));
+  const total = Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
+  return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+type NetState = 'done' | 'running' | 'failed' | 'waiting';
+/** One network's state from its real job counts: searching while any job runs, then done or failed. */
+function networkState(s: CampaignState['sources'][number], open: boolean): NetState {
+  const finished = s.done + s.failed + s.budget;
+  if (open && (s.running > 0 || finished < s.planned)) return s.running > 0 ? 'running' : 'waiting';
+  return s.done > 0 || s.budget > 0 ? 'done' : s.failed > 0 ? 'failed' : 'done';
+}
+
+function CampaignProgress({ t, run, searchId, busy, onStop, onAgain }: { t: T; run: CampaignState; searchId: string | null; busy: boolean; onStop: () => void; onAgain: () => void }) {
   const open = OPEN_CAMPAIGN.includes(run.status);
+  const navigate = useNavigate();
+  const elapsed = useElapsed(run.createdAt, open ? null : run.completedAt, open);
   const totals = useMemo(() => run.sources.reduce((a, s) => ({ planned: a.planned + s.planned, finished: a.finished + s.done + s.failed + s.budget }), { planned: 0, finished: 0 }), [run.sources]);
+  const [playing, setPlaying] = useState(false);
+  const viewResults = () => {
+    if (open || !searchId) return;
+    setPlaying(false);
+    navigate(`/find-property/search/${encodeURIComponent(searchId)}?page=1`); window.scrollTo({ top: 0 });
+  };
+  const searched = new Set(run.sources.map((s) => s.network));
+  const unavailable = (run.unavailable ?? []).filter((u) => !searched.has(u.network));
   return (
-    <div className="space-y-4 text-white">
+    <div className="space-y-4 text-white" data-campaign-progress={open ? 'open' : 'ended'}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold">{t(`fpi_paid_status_${run.status.toLowerCase()}`)}</p>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{t(`fpi_paid_status_${run.status.toLowerCase()}`)}</p>
+          <p className="text-xs tabular-nums text-white/60" data-campaign-elapsed>{t('fpi_paid_elapsed', { time: elapsed })}</p>
+        </div>
         {open && run.status !== 'MATCHING' ? (
           <button type="button" onClick={onStop} disabled={busy}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)]">
@@ -232,11 +270,12 @@ function CampaignProgress({ t, run, busy, onStop, onAgain }: { t: T; run: Campai
           const finished = s.done + s.failed + s.budget;
           const pct = s.planned ? Math.round((finished / s.planned) * 100) : 0;
           const n = (['FACEBOOK', 'INSTAGRAM', 'TELEGRAM', 'VK'].includes(s.network) ? s.network : 'FACEBOOK').toLowerCase();
+          const state = networkState(s, open);
           return (
-            <li key={s.network} className="space-y-1">
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-medium">{t(`fpi_network_${n}`)}</span>
-                <span className="tabular-nums text-white/70">{t('fpi_paid_runs_progress', { done: finished, total: s.planned })}{s.failed ? ` · ${t('fpi_paid_runs_failed', { n: s.failed })}` : ''}</span>
+            <li key={s.network} className="space-y-1" data-network={s.network} data-network-state={state}>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 text-xs">
+                <span className="min-w-0 font-medium">{t(`fpi_network_${n}`)} <span className={`ms-1 ${state === 'failed' ? 'text-[hsl(38_92%_66%)]' : 'text-white/60'}`}>· {t(`fpi_paid_net_${state}`)}</span></span>
+                <span className="whitespace-nowrap tabular-nums text-white/70">{t('fpi_paid_runs_progress', { done: finished, total: s.planned })}{s.failed ? ` · ${t('fpi_paid_runs_failed', { n: s.failed })}` : ''}</span>
               </div>
               <div className="relative h-1.5 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={s.planned} aria-valuenow={finished}>
                 <div className="h-1.5 rounded-full bg-[hsl(38_92%_56%)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
@@ -245,6 +284,12 @@ function CampaignProgress({ t, run, busy, onStop, onAgain }: { t: T; run: Campai
             </li>
           );
         })}
+        {unavailable.map((u) => (
+          <li key={`u-${u.network}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 text-xs" data-network={u.network} data-network-state="unavailable">
+            <span className="min-w-0 font-medium">{t(`fpi_network_${String(u.network).toLowerCase()}`)}</span>
+            <span className="whitespace-nowrap text-white/60">{t('fpi_paid_net_unavailable')}</span>
+          </li>
+        ))}
       </ul>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
         <Row k={t('fpi_paid_offers_found')} v={String(run.offersFound)} strong />
@@ -255,9 +300,27 @@ function CampaignProgress({ t, run, busy, onStop, onAgain }: { t: T; run: Campai
       {!open ? (
         <>
           <CampaignSummary t={t} run={run} />
-          <button type="button" onClick={onAgain} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-white/20 px-4 text-sm font-semibold hover:bg-white/5">{t('fpi_paid_again')}</button>
+          <div className="flex flex-wrap gap-2">
+            {/* One way to the results, only after the campaign has ended: its listings joined them then. */}
+            {searchId && run.offersFound > 0 ? (
+              <button type="button" data-action="campaign-view-results" onClick={viewResults}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[hsl(38_92%_56%)] px-4 text-sm font-semibold text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                {t('fpi_paid_view_results')}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+              </button>
+            ) : null}
+            <button type="button" onClick={onAgain} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-white/20 px-4 text-sm font-semibold hover:bg-white/5">{t('fpi_paid_again')}</button>
+          </div>
         </>
-      ) : <p className="text-xs text-white/60">{t('fpi_paid_running_note')}</p>}
+      ) : <>
+        <p className="text-xs text-white/60">{t('fpi_paid_running_note')}</p>
+        <p className="text-xs text-white/60" data-campaign-results-wait>{t('fpi_paid_results_wait')}</p>
+        {/* The same Snake as the free search, while the campaign runs; it never ends the wait early. */}
+        <button type="button" onClick={() => setPlaying(true)} data-action="campaign-play-snake"
+          className="inline-flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-[hsl(38_92%_60%/0.5)] bg-white/5 px-4 text-start text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)] sm:w-auto">
+          <Gamepad2 className="h-4 w-4 shrink-0 text-[hsl(38_92%_60%)]" aria-hidden="true" /><span className="min-w-0 leading-tight">{t('fpv_play_snake')}</span>
+        </button>
+      </>}
+      <SnakeOverlay t={t} open={playing} onClose={() => setPlaying(false)} resultsReady={!open && !!searchId && run.offersFound > 0} onViewResults={viewResults} />
     </div>
   );
 }

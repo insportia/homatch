@@ -71,6 +71,8 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
   const assessment = useMemo(() => assessProperty(p, brief), [p, brief]);
   const summary = summaryText(assessment, t, lang);
   const sources = sourceNames(p);
+  /* Known only from social posts: unverified content, said on the card itself. */
+  const socialOnly = p.listings.length > 0 && p.listings.every((l) => l.social);
   const [dialogOpen, setDialogOpen] = useState(false);
   const confirmedDuplicate = p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
   const primary = p.listings.find((l) => l.listingId === p.intelligence?.primaryListingId) ?? p.listings[0];
@@ -96,6 +98,7 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
             {save.saved ? <BookmarkCheck className="h-[18px] w-[18px]" aria-hidden="true" /> : <Bookmark className="h-[18px] w-[18px]" aria-hidden="true" />}
           </button>
         </div>
+        {socialOnly ? <p className="inline-flex w-fit max-w-full items-center rounded-full border border-dashed border-[hsl(var(--gold-border))] px-2.5 py-0.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]" data-social-badge>{t('fps_social_badge')}</p> : null}
         {size || floor || f.pricePerSqmUsd ? <p className="text-sm text-muted-foreground">{[size, floor, f.pricePerSqmUsd ? t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) }) : null].filter(Boolean).join(' · ')}</p> : null}
         <p className="line-clamp-2 text-sm leading-relaxed text-foreground/90" data-advisor-summary>
           {assessment.verdict === 'TOP'

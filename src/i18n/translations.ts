@@ -20330,6 +20330,19 @@ const en = {
   fpv_fav_empty_title: 'No saved homes yet',
   fpv_fav_empty_body: 'Tap the bookmark on any home to keep it here.',
   fpv_photo_unavailable: 'This photo did not load',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Social post · unverified',
+  fps_social_note: 'This listing comes from a public social media post. HOMATCH has not verified its price, photos or availability: confirm them with the person who posted it.',
+  fpi_paid_refused_provider_not_configured: 'Extended search is temporarily unavailable. Nothing has been reserved or charged.',
+  fpi_paid_elapsed: 'Elapsed {{time}}',
+  fpi_paid_net_done: 'Completed',
+  fpi_paid_net_running: 'Searching',
+  fpi_paid_net_failed: 'Could not be searched',
+  fpi_paid_net_waiting: 'Waiting',
+  fpi_paid_net_unavailable: 'Unavailable right now',
+  fpi_paid_results_wait: 'Listings from social networks join your results when the search has finished.',
+  fpi_paid_view_results: 'View results',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40574,6 +40587,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpv_fav_empty_title: 'შენახული ბინები ჯერ არ გაქვთ',
   fpv_fav_empty_body: 'დააჭირეთ სანიშნეს ნებისმიერ ბინაზე და ის აქ შეინახება.',
   fpv_photo_unavailable: 'ეს ფოტო ვერ ჩაიტვირთა',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'სოციალური პოსტი · გადაუმოწმებელი',
+  fps_social_note: 'ეს განცხადება საჯარო სოციალური ქსელის პოსტიდანაა. HOMATCH-ს მისი ფასი, ფოტოები და ხელმისაწვდომობა არ გადაუმოწმებია: დააზუსტეთ ისინი პოსტის ავტორთან.',
+  fpi_paid_refused_provider_not_configured: 'გაფართოებული ძიება დროებით მიუწვდომელია. არაფერი დაჯავშნილა და არაფერი ჩამოგეჭრათ.',
+  fpi_paid_elapsed: 'გასული დრო {{time}}',
+  fpi_paid_net_done: 'დასრულდა',
+  fpi_paid_net_running: 'მიმდინარეობს',
+  fpi_paid_net_failed: 'ძიება ვერ მოხერხდა',
+  fpi_paid_net_waiting: 'რიგშია',
+  fpi_paid_net_unavailable: 'ახლა მიუწვდომელია',
+  fpi_paid_results_wait: 'სოციალური ქსელების განცხადებები შედეგებს ძიების დასრულების შემდეგ დაემატება.',
+  fpi_paid_view_results: 'შედეგების ნახვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60809,6 +60835,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpv_fav_empty_title: 'Пока нет сохранённых квартир',
   fpv_fav_empty_body: 'Нажмите на закладку у любой квартиры, чтобы сохранить её здесь.',
   fpv_photo_unavailable: 'Это фото не загрузилось',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Пост в соцсети · не проверено',
+  fps_social_note: 'Это объявление взято из публичного поста в соцсети. HOMATCH не проверял цену, фото и актуальность: уточните их у автора поста.',
+  fpi_paid_refused_provider_not_configured: 'Расширенный поиск временно недоступен. Ничего не зарезервировано и не списано.',
+  fpi_paid_elapsed: 'Прошло {{time}}',
+  fpi_paid_net_done: 'Завершено',
+  fpi_paid_net_running: 'Идёт поиск',
+  fpi_paid_net_failed: 'Не удалось проверить',
+  fpi_paid_net_waiting: 'В очереди',
+  fpi_paid_net_unavailable: 'Сейчас недоступно',
+  fpi_paid_results_wait: 'Объявления из соцсетей появятся в результатах после завершения поиска.',
+  fpi_paid_view_results: 'Посмотреть результаты',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81042,6 +81081,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpv_fav_empty_title: 'Henüz kaydedilmiş ev yok',
   fpv_fav_empty_body: 'Burada tutmak için herhangi bir evdeki yer imine dokunun.',
   fpv_photo_unavailable: 'Bu fotoğraf yüklenmedi',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Sosyal medya gönderisi · doğrulanmadı',
+  fps_social_note: 'Bu ilan herkese açık bir sosyal medya gönderisinden geliyor. HOMATCH fiyatını, fotoğraflarını ve güncelliğini doğrulamadı: bunları gönderiyi paylaşan kişiyle teyit edin.',
+  fpi_paid_refused_provider_not_configured: 'Genişletilmiş arama geçici olarak kullanılamıyor. Hiçbir şey ayrılmadı veya tahsil edilmedi.',
+  fpi_paid_elapsed: 'Geçen süre {{time}}',
+  fpi_paid_net_done: 'Tamamlandı',
+  fpi_paid_net_running: 'Aranıyor',
+  fpi_paid_net_failed: 'Aranamadı',
+  fpi_paid_net_waiting: 'Bekliyor',
+  fpi_paid_net_unavailable: 'Şu anda kullanılamıyor',
+  fpi_paid_results_wait: 'Sosyal ağlardan gelen ilanlar arama bittiğinde sonuçlarınıza eklenir.',
+  fpi_paid_view_results: 'Sonuçları görüntüle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101275,6 +101327,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpv_fav_empty_title: 'لا توجد منازل محفوظة بعد',
   fpv_fav_empty_body: 'اضغط على الإشارة المرجعية في أي منزل لحفظه هنا.',
   fpv_photo_unavailable: 'تعذّر تحميل هذه الصورة',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'منشور على وسائل التواصل · غير موثّق',
+  fps_social_note: 'هذا الإعلان مأخوذ من منشور عام على وسائل التواصل. لم تتحقق HOMATCH من سعره أو صوره أو توفره: تأكد منها مع ناشر المنشور.',
+  fpi_paid_refused_provider_not_configured: 'البحث الموسّع غير متاح مؤقتًا. لم يتم حجز أو خصم أي شيء.',
+  fpi_paid_elapsed: 'الوقت المنقضي {{time}}',
+  fpi_paid_net_done: 'اكتمل',
+  fpi_paid_net_running: 'جارٍ البحث',
+  fpi_paid_net_failed: 'تعذّر البحث',
+  fpi_paid_net_waiting: 'في الانتظار',
+  fpi_paid_net_unavailable: 'غير متاح الآن',
+  fpi_paid_results_wait: 'تنضم إعلانات وسائل التواصل إلى نتائجك عند انتهاء البحث.',
+  fpi_paid_view_results: 'عرض النتائج',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -121508,6 +121573,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpv_fav_empty_title: 'עדיין אין דירות שמורות',
   fpv_fav_empty_body: 'הקישו על הסימנייה בכל דירה כדי לשמור אותה כאן.',
   fpv_photo_unavailable: 'התמונה לא נטענה',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'פוסט ברשת חברתית · לא מאומת',
+  fps_social_note: 'מודעה זו לקוחה מפוסט ציבורי ברשת חברתית. HOMATCH לא אימתה את המחיר, התמונות או הזמינות: ודאו אותם מול מי שפרסם את הפוסט.',
+  fpi_paid_refused_provider_not_configured: 'החיפוש המורחב אינו זמין כרגע. דבר לא הוזמן ודבר לא חויב.',
+  fpi_paid_elapsed: 'זמן שחלף {{time}}',
+  fpi_paid_net_done: 'הושלם',
+  fpi_paid_net_running: 'מחפשים',
+  fpi_paid_net_failed: 'לא ניתן היה לחפש',
+  fpi_paid_net_waiting: 'ממתין',
+  fpi_paid_net_unavailable: 'לא זמין כרגע',
+  fpi_paid_results_wait: 'מודעות מהרשתות החברתיות יצטרפו לתוצאות כשהחיפוש יסתיים.',
+  fpi_paid_view_results: 'צפייה בתוצאות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -133,7 +133,10 @@ test('a run ends by counting only what it delivered, charging only for that, unk
   assert.match(RUN_LIB, /loadDeliveries\(db, run\.intent_profile_id, run\.started_at\)/);
   assert.match(RUN_LIB, /settleFindPropertyRun\(db, grant/);
   assert.doesNotMatch(RUN_LIB, /settleExecution/, 'never the shared work-priced settle');
-  assert.match(RUN_LIB, /provider_cost_usd: socialCampaign \? spendMicros \/ 1e6 : costUnknown \? null : providerCostUsd/);
+  /* A paid social run records everything it committed at the provider (HOMATCH's cost);
+     the customer is charged on the confirmed-work sum (spendMicros, find_property_customer_micros). */
+  assert.match(RUN_LIB, /provider_cost_usd: socialCampaign \? committedMicros \/ 1e6 : costUnknown \? null : providerCostUsd/);
+  assert.match(RUN_LIB, /find_property_committed_micros', \{ p_run_id: run\.id \}/);
   const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
   assert.match(driver, /advanceRuns\(db/);
   assert.match(driver, /rescueStuckRuns\(db\)/);

@@ -219,6 +219,9 @@ test('the core is consumed only through its deliberate integration points', () =
        builders and normalizer, and the 37/63 policy for settlement. The network
        door stays _shared/findBuyers/memo23Client.ts. */
     'supabase/functions/_shared/findProperty/socialOffers.ts',
+    /* The same campaign's stored offers as marketplace candidates of its search
+       (research-core/marketplace/socialListings: pure conversion, no network). */
+    'supabase/functions/_shared/findProperty/socialListings.ts',
     // Its offer-queue contract test (language on every queued row, Facebook Pages planned).
     'supabase/functions/_shared/__tests__/findPropertyOfferQueue.test.mjs',
     'supabase/functions/_shared/discoveryRun.ts',

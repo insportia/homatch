@@ -180,23 +180,25 @@ These four are existing services, unchanged (still OFF). Details: `SERVICE_CONTR
 
 ### Professionals
 
-**`brokers_directory`: Brokers directory**
-- **Routes:** `/brokers*`
-- **Entry points:** sidebar, public nav, homepage section, About, entry pages, AI action `BROKER_FINDER`.
-- **Backend:** paid listings, first purchases and renewals alike (`broker_listing_purchases` insert guard; the refusal rolls the credit debit back).
-- **Keeps running:** listings already paid, to their expiry; the expiry sweep; a replay of a purchase already made.
-- **While paused, exactly** (current behaviour; the renewal rule is under owner review and is unchanged here). Proof: `bash tests/sql/service_controls_broker/run.sh`, which runs the production `broker_directory_purchase()` verbatim.
+**`brokers_directory`: Brokers directory SALES** (owner decision 2026-10-17, Option A: the switch pauses commercial operations, not the public directory)
+- **Routes:** none. `/brokers` and `/brokers/:id` are never gated: listings already paid stay public until their paid date.
+- **What the switch hides:** the Buy/Renew action and its price confirmation in Broker Desk, replaced by a localized notice ("Buying and renewing listings is paused. Nothing is charged…", with the listing's paid date when it is public). The sidebar, public nav, homepage section, About, entry pages and the AI chip to the directory all stay.
+- **Backend:** paid listings, first purchases and renewals alike (`broker_listing_purchases` insert guard; the refusal rolls the credit debit back). A refusal that races the pause is shown as "…paused right now. Nothing was charged." (`SERVICE_DISABLED` → `broker_err_sales_paused`).
+- **Public read path:** unchanged. `broker_directory_public` emits only `status = 'ACTIVE' and paid_until > now()`, so an expired listing is never public, paused or not.
+- **Keeps running:** listings already paid, to their original paid date; the expiry sweep; a replay of a purchase already made.
+- **While paused, exactly.** Proof: `bash tests/sql/service_controls_broker/run.sh`, which runs the production `broker_directory_purchase()`, `broker_directory_public` and `broker_directory_expiry_sweep()` verbatim with Supabase-style grants and the production row-level security.
 
   | Case | What happens |
   |---|---|
   | New purchase | Refused with `SERVICE_DISABLED`. `broker_directory_purchase()` debits credits and writes the ledger entry *before* it inserts the purchase row; the guard refuses that insert, and the whole call (one statement, no exception handler) rolls back. Balance, ledger, purchase records, listing and audit are exactly as before. The same idempotency key works after resume and is charged once. |
   | Manual renewal (ACTIVE listing) | The same function, so the same refusal and no charge. `paid_until` and status are untouched. |
-  | Buying back an EXPIRED listing | Refused, no charge; the listing stays EXPIRED. |
-  | Automatic renewal | **None exists.** There is no auto-renew path in the code; renewal is only the manual Buy/Renew in Broker Desk. |
+  | Buying back an EXPIRED listing | Refused, no charge; the listing stays EXPIRED and not public. |
+  | Automatic renewal | **None exists**, and none is added. Renewal is only the manual Buy/Renew in Broker Desk. |
   | Replay of a purchase already made | Answered from the existing record (`duplicate: true`) before the guarded insert; nothing charged. |
-  | Existing paid listings | Rows, `paid_until`, `broker_listing_purchases` and ledger entries are never modified. The paid period keeps running on the clock, so a pause does not extend it. While the directory is hidden (`/brokers*` and its home section), no listing is shown publicly. |
-  | Expiry sweep | Keeps running (it only updates `broker_directory_listings`): an ACTIVE listing whose period ends becomes EXPIRED and its owner is notified "Renew it from your broker desk", while renewal is refused. |
-  | Broker Desk UI | Its own switch (`broker_desk`). With the directory paused and the desk ON, the Buy/Renew button and its price confirmation still show; confirming returns `SERVICE_DISABLED`, which the desk shows as its generic error (the code is not mapped in `src/components/broker/errors.ts`). Nothing is charged. |
+  | Existing paid listings | **Stay public** until their original `paid_until`. Rows, `paid_until`, `broker_listing_purchases` and ledger entries are never modified; a pause neither extends nor resets a paid period. |
+  | A paid period ending during the pause | The listing leaves the public directory at that instant (the view's own test); the expiry sweep marks it EXPIRED and tells its owner, and writes no purchase and no charge. |
+  | Alternate routes | None reach a purchase: the tables have read policies only, so a broker cannot write a purchase row, a status or a paid date directly; and the guard refuses any purchase row from any writer while paused. Admin's `admin_set_broker_listing_status` (admin-only, audited, requires a stated payment basis) is the owner's own manual tool, not a customer route. |
+  | Broker Desk UI | Its own switch (`broker_desk`). With sales paused and the desk ON: no Buy/Renew, no price dialog, the notice instead; "View public listing" still works because the listing is still public. |
 
 **`broker_desk`: Broker Desk**
 - **Routes:** `/broker`, `/broker/onboarding`

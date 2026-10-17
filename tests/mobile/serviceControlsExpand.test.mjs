@@ -54,17 +54,19 @@ function fakeSession() {
 }
 const profile = { id: 'u1', auth_id: 'u1', email: 'owner@example.test', is_admin: false, role: 'user', preferred_language: 'en', full_name: 'Nino Owner', plan: 'FREE', account_type: 'OWNER', created_at: new Date().toISOString() };
 
-// One customer address per live product (find_property_deep has none of its own).
+// One customer address per live product (find_property_deep has none of its own; brokers_directory
+// pauses sales only, and its public directory stays open: owner decision, Option A).
 const DIRECT = {
   '/find-property': 'find_property', '/property/123456/matches': 'find_buyers', '/verify': 'verify', '/contracts': 'contracts',
   '/mortgage': 'mortgage', '/investment': 'investment', '/for-expats/georgia': 'for_expats', '/outreach/meta': 'meta_ads',
-  '/outreach/email': 'email_campaigns', '/email-studio': 'email_campaigns', '/ai': 'ai_assistant', '/brokers': 'brokers_directory',
+  '/outreach/email': 'email_campaigns', '/email-studio': 'email_campaigns', '/ai': 'ai_assistant',
   '/broker': 'broker_desk', '/developers': 'developers',
 };
 const LIVE_PREFIXES = ['/find-property', '/verify', '/contracts', '/mortgage', '/investment', '/for-expats', '/outreach/meta',
-  '/outreach/email', '/email-studio', '/brokers', '/broker', '/developers'];
-const isLivePath = (p) => p === '/ai' || /^\/property\/[^/]+\/(matches|buyers|leads|buyer)(\/|$)/.test(p)
-  || LIVE_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
+  '/outreach/email', '/email-studio', '/broker', '/developers'];
+// /broker (the desk) is a live product; /brokers (the public directory) never hides.
+const isLivePath = (p) => p !== '/brokers' && !p.startsWith('/brokers/') && (p === '/ai' || /^\/property\/[^/]+\/(matches|buyers|leads|buyer)(\/|$)/.test(p)
+  || LIVE_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`)));
 // Backends a mounted live page would call for NEW work; while paused, none may be called.
 const LIVE_BACKENDS = ['marketplace-search', 'find-property-plan', 'find-property-run', 'match-campaign', 'research-agent',
   'deal-room-ai', 'investment-research', 'investment-consultant', 'meta-ads-api', 'outreach-send', 'homatch-ai'];
@@ -96,11 +98,17 @@ async function open(t, { route, services, width = 1440, height = 900, signedIn =
   }, ['sb-stubproj-auth-token', fakeSession(), signedIn, remembered]);
   const page = await ctx.newPage();
   const serviceCalls = [];
+  const directoryReads = [];
   await page.route('**', async (r) => {
     const req = r.request();
     const url = req.url();
     if (url.startsWith(BASE)) return r.continue();
     if (req.method() === 'OPTIONS') return r.fulfill(preflight);
+    if (url.includes('/rest/v1/broker_directory_public')) {
+      directoryReads.push(url);
+      // What the public view returns: only ACTIVE listings still inside their paid period.
+      return r.fulfill(json((req.headers().accept ?? '').includes('vnd.pgrst.object') ? PAID_LISTING : [PAID_LISTING]));
+    }
     if (LIVE_BACKENDS.some((s) => url.includes(`/functions/v1/${s}`))) serviceCalls.push({ url, action: (() => { try { return req.postDataJSON()?.action ?? null; } catch { return null; } })() });
     if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(services === 'unreadable' ? json({ message: 'down' }, 500) : json(services));
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
@@ -110,12 +118,19 @@ async function open(t, { route, services, width = 1440, height = 900, signedIn =
     return r.fulfill(json(object ? null : []));
   });
   await page.goto(`${BASE}${route}`);
-  return { page, serviceCalls };
+  return { page, serviceCalls, directoryReads };
 }
 const hrefs = (page) => page.evaluate(() => [...document.querySelectorAll('a[href]')].map((a) => new URL(a.href, location.href).pathname));
 const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
 
 const ALL_LIVE_OFF = liveState(false);
+const PAID_LISTING = {
+  id: '11111111-1111-1111-1111-111111111111', broker_id: '22222222-2222-2222-2222-222222222222', display_name: 'Vake Homes Agency',
+  role: 'AGENCY', country_code: 'GE', cities: ['Tbilisi'], languages: ['ka', 'en'], contact_phone: null, contact_email: null, website: null,
+  paid_until: new Date(Date.now() + 20 * 86_400_000).toISOString(), about: 'Apartments in Vake.', contact_person: null, logo_url: null,
+  property_types: ['APARTMENT'], deal_kinds: ['SALE'], districts: ['Vake'], experience_years: 9, whatsapp: null, telegram: null,
+  segments: ['RESIDENTIAL'], verified: true,
+};
 const ALL_LIVE_ON = liveState(true);
 
 test('paused live products: the desktop sidebar offers none of them, and the platform stays', opts, async (t) => {
@@ -125,6 +140,7 @@ test('paused live products: the desktop sidebar offers none of them, and the pla
   const links = await hrefs(page);
   assert.deepEqual(links.filter(isLivePath), [], 'a link to a paused product is still offered');
   for (const platform of ['/dashboard', '/property', '/chat']) assert.ok(links.includes(platform), `${platform} must stay reachable`);
+  assert.ok(links.includes('/brokers'), 'the public brokers directory stays in the navigation while its sales are paused');
   assert.equal(await page.getByTestId('service-unavailable').count(), 0, 'the dashboard itself is never gated');
   assert.equal(await noOverflow(page), true);
 });
@@ -175,6 +191,23 @@ const homeShape = (page) => page.evaluate(() => ({
   text: document.body.innerText,
   empty: [...document.querySelectorAll('main section')].filter((s) => s.getBoundingClientRect().height > 0 && !s.textContent.trim()).length,
 }));
+test('Option A: with Brokers directory sales paused, the public directory and its profiles stay open', opts, async (t) => {
+  for (const path of ['/brokers', '/brokers/11111111-1111-1111-1111-111111111111']) {
+    for (const signedIn of [false, true]) {
+      const { page, directoryReads } = await open(t, { route: path, services: ALL_LIVE_OFF, signedIn });
+      await page.getByText('Vake Homes Agency').first().waitFor({ timeout: 30_000 });
+      assert.equal(await page.getByTestId('service-unavailable').count(), 0, `${path} (${signedIn ? 'signed in' : 'visitor'}) is gated, but only sales are paused`);
+      assert.ok(directoryReads.length > 0, `${path} no longer reads the public directory`);
+      assert.equal(await noOverflow(page), true, `${path} overflows`);
+    }
+  }
+  const home = await open(t, { route: '/', services: ALL_LIVE_OFF, signedIn: false });
+  await home.page.waitForSelector('section', { timeout: 30_000 });
+  await home.page.waitForTimeout(1200);
+  assert.ok(await home.page.locator('#brokers').count() + (await hrefs(home.page)).filter((p) => p === '/brokers').length > 0,
+    'the home page still leads to the brokers directory');
+});
+
 test('paused live products: the public home page drops their tiles and sections, with no gap or overflow', opts, async (t) => {
   for (const width of [1440, 390]) {
     const on = await open(t, { route: '/', services: ALL_LIVE_ON, signedIn: false, width, height: 900 });

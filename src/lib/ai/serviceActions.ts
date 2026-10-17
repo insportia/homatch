@@ -60,14 +60,14 @@ export type ServiceActionId = keyof typeof SERVICE_ACTION_CATALOGUE;
  * paused product is never offered: the function drops it, and the browser drops it again
  * from its own switches. Plain strings, so the edge function needs no frontend import.
  */
-export const SERVICE_ACTION_SERVICE: Readonly<Record<ServiceActionId, string>> = Object.freeze({
+export const SERVICE_ACTION_SERVICE: Readonly<Partial<Record<ServiceActionId, string>>> = Object.freeze({
   VERIFY: 'verify',
   CONTRACT_INTELLIGENCE: 'contracts',
   INVESTMENT: 'investment',
   MORTGAGE: 'mortgage',
   FIND_PROPERTY: 'find_property',
   FIND_BUYERS_TENANTS: 'find_buyers',
-  BROKERS: 'brokers_directory',
+  // BROKERS has no switch: the public directory stays readable while its sales are paused.
   META_ADS: 'meta_ads',
 });
 

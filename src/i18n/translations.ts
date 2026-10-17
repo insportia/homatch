@@ -20047,7 +20047,7 @@ const en = {
   svc_desc_meta_ads: 'Creating and launching Meta ad campaigns. Live campaigns keep syncing; its own Meta Ads switches still apply.',
   svc_desc_email_campaigns: 'Email and SMS campaigns and Email Studio. Sending also needs its own sending switches.',
   svc_desc_ai_assistant: 'The HOMATCH AI assistant, its ask boxes and suggestions. Admin tools that use it keep working.',
-  svc_desc_brokers_directory: 'The public brokers directory and new paid listings. Listings already paid for stay.',
+  svc_desc_brokers_directory: 'Brokers directory sales: new paid listings and renewals. While paused, nothing is sold or charged, and listings already paid stay public until their paid date.',
   svc_desc_broker_desk: 'The broker and agency workspace. Its paid actions follow Find Buyers and the directory.',
   svc_desc_developers: 'The developer workspace and its document and floor-plan reading. Links buyers already received keep working.',
   svc_group_discovery: 'Discovery',
@@ -20208,6 +20208,12 @@ const en = {
   fpv_sources_nav: 'Property sites',
   fpv_all_sources: 'All sources',
   fpv_and: 'and',
+
+  /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
+  broker_desk_sales_paused_title: 'Buying and renewing listings is paused',
+  broker_desk_sales_paused_public: 'Nothing is charged while this is paused. Your listing stays public in the directory until {{date}}, the date you paid for.',
+  broker_desk_sales_paused_body: 'Nothing is charged while this is paused. You can buy a listing again as soon as sales resume.',
+  broker_err_sales_paused: 'Buying and renewing listings is paused right now. Nothing was charged.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40169,7 +40175,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   svc_desc_meta_ads: 'Meta-ს სარეკლამო კამპანიების შექმნა და გაშვება. აქტიური კამპანიები სინქრონიზაციას აგრძელებს; მისი საკუთარი Meta Ads გადამრთველებიც მოქმედებს.',
   svc_desc_email_campaigns: 'ელფოსტისა და SMS კამპანიები და Email Studio. გაგზავნას მისი საკუთარი გაგზავნის გადამრთველებიც სჭირდება.',
   svc_desc_ai_assistant: 'HOMATCH AI ასისტენტი, მისი კითხვის ველები და შემოთავაზებები. ადმინისტრატორის ინსტრუმენტები, რომლებიც მას იყენებს, მუშაობას აგრძელებს.',
-  svc_desc_brokers_directory: 'ბროკერების საჯარო კატალოგი და ახალი ფასიანი განცხადებები. უკვე გადახდილი განცხადებები რჩება.',
+  svc_desc_brokers_directory: 'ბროკერების კატალოგის გაყიდვები: ახალი ფასიანი განთავსებები და განახლებები. შეჩერებისას არაფერი იყიდება და არაფერი ჩამოიჭრება, ხოლო უკვე გადახდილი განთავსებები საჯაროდ რჩება გადახდილ თარიღამდე.',
   svc_desc_broker_desk: 'ბროკერისა და სააგენტოს სამუშაო სივრცე. მისი ფასიანი მოქმედებები მყიდველების ძიებასა და კატალოგს მიჰყვება.',
   svc_desc_developers: 'დეველოპერის სამუშაო სივრცე და მისი დოკუმენტებისა და გეგმების წაკითხვა. მყიდველებისთვის უკვე გაგზავნილი ბმულები მუშაობს.',
   svc_group_discovery: 'ძიება',
@@ -40330,6 +40336,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'საიტები',
   fpv_all_sources: 'ყველა წყარო',
   fpv_and: 'და',
+
+  /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
+  broker_desk_sales_paused_title: 'განთავსების ყიდვა და განახლება შეჩერებულია',
+  broker_desk_sales_paused_public: 'შეჩერების დროს არაფერი ჩამოიჭრება. თქვენი განთავსება კატალოგში საჯაროდ რჩება {{date}}-მდე — თქვენ მიერ გადახდილ თარიღამდე.',
+  broker_desk_sales_paused_body: 'შეჩერების დროს არაფერი ჩამოიჭრება. განთავსების ყიდვას კვლავ შეძლებთ, როგორც კი გაყიდვები განახლდება.',
+  broker_err_sales_paused: 'განთავსების ყიდვა და განახლება ამჟამად შეჩერებულია. არაფერი ჩამოჭრილა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60282,7 +60294,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   svc_desc_meta_ads: 'Создание и запуск рекламных кампаний Meta. Активные кампании продолжают синхронизироваться; собственные переключатели Meta Ads по-прежнему действуют.',
   svc_desc_email_campaigns: 'Email- и SMS-кампании и Email Studio. Для отправки нужны и собственные переключатели отправки.',
   svc_desc_ai_assistant: 'ИИ-ассистент HOMATCH, его поля вопросов и подсказки. Инструменты администратора, которые его используют, продолжают работать.',
-  svc_desc_brokers_directory: 'Публичный каталог брокеров и новые платные размещения. Уже оплаченные размещения сохраняются.',
+  svc_desc_brokers_directory: 'Продажи каталога брокеров: новые платные размещения и продления. На время паузы ничего не продаётся и не списывается, а уже оплаченные размещения остаются публичными до оплаченной даты.',
   svc_desc_broker_desk: 'Кабинет брокера и агентства. Его платные действия подчиняются поиску покупателей и каталогу.',
   svc_desc_developers: 'Кабинет застройщика и распознавание документов и планировок. Ссылки, уже отправленные покупателям, продолжают работать.',
   svc_group_discovery: 'Поиск',
@@ -60443,6 +60455,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'Сайты недвижимости',
   fpv_all_sources: 'Все источники',
   fpv_and: 'и',
+
+  /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
+  broker_desk_sales_paused_title: 'Покупка и продление размещений приостановлены',
+  broker_desk_sales_paused_public: 'Пока действует пауза, ничего не списывается. Ваше размещение остаётся в каталоге до {{date}} — оплаченной вами даты.',
+  broker_desk_sales_paused_body: 'Пока действует пауза, ничего не списывается. Купить размещение снова можно будет сразу после возобновления продаж.',
+  broker_err_sales_paused: 'Покупка и продление размещений сейчас приостановлены. Ничего не списано.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -80393,7 +80411,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   svc_desc_meta_ads: 'Meta reklam kampanyaları oluşturma ve başlatma. Canlı kampanyalar senkronize olmaya devam eder; kendi Meta Ads anahtarları da geçerlidir.',
   svc_desc_email_campaigns: 'E-posta ve SMS kampanyaları ile Email Studio. Gönderim için kendi gönderim anahtarları da gerekir.',
   svc_desc_ai_assistant: 'HOMATCH AI asistanı, soru kutuları ve önerileri. Onu kullanan yönetici araçları çalışmaya devam eder.',
-  svc_desc_brokers_directory: 'Herkese açık emlakçı rehberi ve yeni ücretli kayıtlar. Ödemesi yapılmış kayıtlar kalır.',
+  svc_desc_brokers_directory: 'Emlakçı rehberi satışları: yeni ücretli kayıtlar ve yenilemeler. Duraklatıldığında hiçbir şey satılmaz veya ücretlendirilmez; ödemesi yapılmış kayıtlar ödenen tarihe kadar herkese açık kalır.',
   svc_desc_broker_desk: 'Emlakçı ve ajans çalışma alanı. Ücretli işlemleri Alıcı Bul ve rehbere bağlıdır.',
   svc_desc_developers: 'Geliştirici çalışma alanı ve belge ile kat planı okuma. Alıcılara gönderilmiş bağlantılar çalışmaya devam eder.',
   svc_group_discovery: 'Keşif',
@@ -80554,6 +80572,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'Emlak siteleri',
   fpv_all_sources: 'Tüm kaynaklar',
   fpv_and: 've',
+
+  /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
+  broker_desk_sales_paused_title: 'Kayıt satın alma ve yenileme duraklatıldı',
+  broker_desk_sales_paused_public: 'Duraklatma süresince hiçbir ücret alınmaz. Kaydınız, ödediğiniz tarih olan {{date}} tarihine kadar rehberde herkese açık kalır.',
+  broker_desk_sales_paused_body: 'Duraklatma süresince hiçbir ücret alınmaz. Satışlar yeniden başladığında tekrar kayıt satın alabilirsiniz.',
+  broker_err_sales_paused: 'Kayıt satın alma ve yenileme şu anda duraklatıldı. Hiçbir ücret alınmadı.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -100504,7 +100528,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   svc_desc_meta_ads: 'إنشاء حملات إعلانات Meta وإطلاقها. تواصل الحملات الجارية المزامنة؛ وتبقى مفاتيح Meta Ads الخاصة بها سارية.',
   svc_desc_email_campaigns: 'حملات البريد الإلكتروني والرسائل القصيرة وEmail Studio. يحتاج الإرسال أيضًا إلى مفاتيح الإرسال الخاصة به.',
   svc_desc_ai_assistant: 'مساعد HOMATCH الذكي وخانات الأسئلة والاقتراحات. تستمر أدوات المسؤول التي تستخدمه في العمل.',
-  svc_desc_brokers_directory: 'دليل الوسطاء العام والإدراجات المدفوعة الجديدة. تبقى الإدراجات المدفوعة مسبقًا.',
+  svc_desc_brokers_directory: 'مبيعات دليل الوسطاء: الإدراجات المدفوعة الجديدة والتجديدات. أثناء الإيقاف لا يُباع شيء ولا يُخصم شيء، وتبقى الإدراجات المدفوعة مسبقًا ظاهرة للعامة حتى تاريخها المدفوع.',
   svc_desc_broker_desk: 'مساحة عمل الوسطاء والوكالات. تتبع إجراءاتها المدفوعة خدمة البحث عن مشترين والدليل.',
   svc_desc_developers: 'مساحة عمل المطوّرين وقراءة المستندات والمخططات. تستمر الروابط التي استلمها المشترون في العمل.',
   svc_group_discovery: 'الاكتشاف',
@@ -100665,6 +100689,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'مواقع العقارات',
   fpv_all_sources: 'جميع المصادر',
   fpv_and: 'و',
+
+  /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
+  broker_desk_sales_paused_title: 'شراء الإدراجات وتجديدها متوقف مؤقتًا',
+  broker_desk_sales_paused_public: 'لا يُخصم أي مبلغ أثناء الإيقاف. يبقى إدراجك ظاهرًا في الدليل حتى {{date}}، وهو التاريخ الذي دفعت مقابله.',
+  broker_desk_sales_paused_body: 'لا يُخصم أي مبلغ أثناء الإيقاف. يمكنك شراء إدراج مجددًا فور استئناف المبيعات.',
+  broker_err_sales_paused: 'شراء الإدراجات وتجديدها متوقف مؤقتًا الآن. لم يُخصم أي مبلغ.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -120615,7 +120645,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   svc_desc_meta_ads: 'יצירה והשקה של קמפיינים ב-Meta. קמפיינים פעילים ממשיכים להסתנכרן; מתגי Meta Ads שלו עדיין חלים.',
   svc_desc_email_campaigns: 'קמפיינים בדוא"ל וב-SMS ו-Email Studio. השליחה דורשת גם את מתגי השליחה שלה.',
   svc_desc_ai_assistant: 'עוזר ה-AI של HOMATCH, תיבות השאלה וההצעות שלו. כלי הניהול שמשתמשים בו ממשיכים לעבוד.',
-  svc_desc_brokers_directory: 'מדריך המתווכים הציבורי ורישומים חדשים בתשלום. רישומים ששולמו נשארים.',
+  svc_desc_brokers_directory: 'מכירות מדריך המתווכים: רישומים חדשים בתשלום וחידושים. בזמן ההשהיה דבר אינו נמכר או מחויב, ורישומים ששולמו נשארים ציבוריים עד התאריך ששולם.',
   svc_desc_broker_desk: 'סביבת העבודה של מתווכים וסוכנויות. הפעולות בתשלום שלה כפופות לחיפוש הקונים ולמדריך.',
   svc_desc_developers: 'סביבת העבודה ליזמים וקריאת המסמכים והתוכניות שלה. קישורים שקונים כבר קיבלו ממשיכים לעבוד.',
   svc_group_discovery: 'גילוי',
@@ -120776,6 +120806,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpv_sources_nav: 'אתרי נדל״ן',
   fpv_all_sources: 'כל המקורות',
   fpv_and: 'ו',
+
+  /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
+  broker_desk_sales_paused_title: 'רכישה וחידוש של רישומים מושהים',
+  broker_desk_sales_paused_public: 'דבר אינו מחויב בזמן ההשהיה. הרישום שלכם נשאר ציבורי במדריך עד {{date}}, התאריך ששילמתם עליו.',
+  broker_desk_sales_paused_body: 'דבר אינו מחויב בזמן ההשהיה. תוכלו לרכוש רישום שוב ברגע שהמכירות יתחדשו.',
+  broker_err_sales_paused: 'רכישה וחידוש של רישומים מושהים כרגע. דבר לא חויב.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

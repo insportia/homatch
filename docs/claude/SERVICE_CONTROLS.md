@@ -25,6 +25,15 @@ pause may mount a paused product's page for a moment before the answer arrives, 
 read its own state (`capabilities`, `history`, `status`); anything that starts work is refused
 by the backend.
 
+## Commercial pause vs. public visibility (Brokers directory)
+
+`brokers_directory` is the one service whose switch pauses **commercial operations only** (owner
+decision 2026-10-17, Option A). Pausing it refuses new listing purchases and renewals at the database
+(no charge for a refused call) and replaces Broker Desk's Buy/Renew with a localized notice. It does
+**not** hide the public directory: `/brokers` and `/brokers/:id` are never gated, and the public read
+path (`broker_directory_public`) keeps emitting exactly the ACTIVE listings whose paid period has
+not ended. Nothing is extended, reset or auto-renewed. Details and proof: the inventory.
+
 ## Groups
 
 `service_group`: discovery, intelligence, marketing, communications, assistant,

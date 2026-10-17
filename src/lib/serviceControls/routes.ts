@@ -25,7 +25,8 @@ export const SERVICE_ROUTE_RULES: ReadonlyArray<readonly [RegExp, ServiceKey]> =
   [/^\/outreach\/email(\/|$)/, 'email_campaigns'],
   [/^\/email-studio(\/|$)/, 'email_campaigns'],
   [/^\/ai$/, 'ai_assistant'],
-  [/^\/brokers(\/|$)/, 'brokers_directory'],
+  // /brokers and /brokers/:id are NOT listed: pausing the Brokers directory stops commercial
+  // operations (new listings, renewals) while listings already paid stay public (owner, Option A).
   [/^\/broker(\/|$)/, 'broker_desk'],
   [/^\/developers(\/|$)/, 'developers'],
 ];

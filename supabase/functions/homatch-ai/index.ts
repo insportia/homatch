@@ -763,7 +763,8 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   /* A chip for a paused product (Admin → Service Control Center) is never offered. */
   const actionsOut = [];
   for (const action of parseServiceActions(lead?.suggested_actions)) {
-    if ((await serviceState(sb, SERVICE_ACTION_SERVICE[action.id] as ServiceKey)).frontend) actionsOut.push(action);
+    const key = SERVICE_ACTION_SERVICE[action.id];
+    if (!key || (await serviceState(sb, key as ServiceKey)).frontend) actionsOut.push(action);
   }
   await sb.from('ai_routing_events').insert({
     user_id: uid ?? null,

@@ -60,7 +60,6 @@ export const PUBLIC_NAV_SERVICES: Record<string, ServiceKey> = {
   mortgage: 'mortgage',
   investment: 'investment',
   expat: 'for_expats',
-  brokers: 'brokers_directory',
   developers: 'developers',
 };
 

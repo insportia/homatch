@@ -43,7 +43,9 @@ test('platform addresses are never gated', () => {
   for (const path of ['/', '/dashboard', '/profile', '/credits', '/pricing', '/notifications', '/activity', '/chat', '/leads',
     '/property', '/property/add', '/property/123', '/property/123/edit', '/outreach', '/outreach/campaigns', '/outreach/billing',
     '/auth/login', '/about', '/for-buyers', '/for-owners', '/partners', '/admin/verify', '/admin/service-control',
-    '/s/token', '/projects/acme/tower', '/buyer/token', '/p/ws/proj', '/embed/ws/proj', '/w/token', '/d/token']) {
+    '/s/token', '/projects/acme/tower', '/buyer/token', '/p/ws/proj', '/embed/ws/proj', '/w/token', '/d/token',
+    // Option A (owner): the public brokers directory stays readable while its sales are paused.
+    '/brokers', '/brokers/9']) {
     assert.equal(serviceForPath(path), null, `${path} must never be gated`);
   }
 });
@@ -55,7 +57,7 @@ test('each product address belongs to its own service', () => {
     '/verify': 'verify', '/verify/history': 'verify', '/contracts': 'contracts', '/mortgage': 'mortgage', '/investment': 'investment',
     '/for-expats/georgia': 'for_expats', '/outreach/meta': 'meta_ads', '/outreach/meta/create': 'meta_ads',
     '/outreach/email': 'email_campaigns', '/email-studio': 'email_campaigns', '/ai': 'ai_assistant',
-    '/brokers': 'brokers_directory', '/brokers/9': 'brokers_directory', '/broker': 'broker_desk', '/broker/onboarding': 'broker_desk',
+    '/broker': 'broker_desk', '/broker/onboarding': 'broker_desk',
     '/developers': 'developers', '/developers/home': 'developers',
     '/live-chat': 'live_chat', '/design-studio': 'design_studio', '/publishing': 'publishing', '/outreach/calls': 'ai_call_center',
   };
@@ -109,4 +111,28 @@ test('there is no global switch: group pause needs a typed confirmation, pause-a
   const page = read('src/pages/admin/AdminServiceControlPage.tsx');
   assert.doesNotMatch(page, /pauseAllServices/, 'the Admin page offers no pause-everything button');
   assert.match(page, /disabled=\{pending\?\.kind === 'pause_group' && typed\.trim\(\) !== pending\.group\}/);
+});
+
+test('Option A: pausing Brokers directory sales never hides the public directory', () => {
+  // The switch governs commercial operations only; listings already paid stay public (owner decision).
+  assert.doesNotMatch(read('src/lib/serviceControls/routes.ts'), /\[\/\^\\\/brokers/, 'no route rule for /brokers');
+  assert.doesNotMatch(read('src/site/publicNav.ts'), /brokers: 'brokers_directory'/, 'the public nav keeps the directory');
+  assert.doesNotMatch(read('src/site/render/SitePage.tsx'), /brokers: 'brokers_directory'/, 'the home section stays');
+  assert.doesNotMatch(read('src/lib/ai/serviceActions.ts'), /BROKERS: 'brokers_directory'/, 'the AI chip to the directory stays');
+  // What stays public is exactly the paid, current set: the view's own test, unchanged by this PR.
+  assert.match(read('supabase/migrations/20261001120000_workstream_b_final_hardening.sql'),
+    /where l\.status = 'ACTIVE' and l\.paid_until is not null and l\.paid_until > now\(\)/);
+});
+
+test('Broker Desk while sales are paused: no Buy/Renew, a localized notice, a mapped refusal', () => {
+  const desk = read('src/pages/BrokerCrmPage.tsx');
+  assert.match(desk, /const salesOpen = useServiceVisible\('brokers_directory'\)/);
+  assert.match(desk, /PURCHASABLE\.includes\(listing\.status\) && !suspended && price != null && salesOpen && \(/, 'the buy/renew button needs open sales');
+  assert.match(desk, /<AlertDialog open=\{confirmBuy && salesOpen\}/, 'the price confirmation cannot open while paused');
+  assert.match(desk, /data-testid="broker-sales-paused"/);
+  assert.match(read('src/components/broker/errors.ts'), /SERVICE_DISABLED: 'broker_err_sales_paused'/, 'a refusal racing the pause reads clearly');
+  for (const key of ['broker_desk_sales_paused_title', 'broker_desk_sales_paused_public', 'broker_desk_sales_paused_body', 'broker_err_sales_paused']) {
+    for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) assert.ok(translations[lang][key], `${key} in ${lang}`);
+  }
+  for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) assert.match(translations[lang].broker_desk_sales_paused_public, /\{\{date\}\}/, `date placeholder in ${lang}`);
 });

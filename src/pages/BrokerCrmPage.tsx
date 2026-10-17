@@ -23,7 +23,7 @@ import {
   MousePointerClick, Pause, Phone, Play, Plus, Search, ShieldAlert, Store, Upload, UserRound, Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { usePathAvailable } from '@/lib/serviceControls';
+import { usePathAvailable, useServiceVisible } from '@/lib/serviceControls';
 import { Link, useSearchParams } from 'react-router-dom';
 import { LeadsBoard } from '@/components/broker/workspace/LeadsBoard';
 import { NotificationsPanel } from '@/components/broker/workspace/NotificationsPanel';
@@ -171,6 +171,9 @@ const TAB_ICON: Record<Tab, React.ReactNode> = {
 export default function BrokerCrmPage() {
   const { t } = useLanguage();
   const pathAvailable = usePathAvailable(); // paused products offer no link (Service Control Center)
+  /* Brokers directory sales (Service Control Center). While paused, buying and renewing are not
+     offered and the server refuses them (no charge); listings already paid stay public. */
+  const salesOpen = useServiceVisible('brokers_directory');
   const { session } = useAuth();
   const authId = session?.user?.id ?? null;
 
@@ -633,7 +636,7 @@ export default function BrokerCrmPage() {
                     {t('broker_desk_submit_review')}
                   </button>
                 )}
-                {PURCHASABLE.includes(listing.status) && !suspended && price != null && (
+                {PURCHASABLE.includes(listing.status) && !suspended && price != null && salesOpen && (
                   <button type="button" className={primaryBtn} disabled={busy !== null}
                     onClick={() => { purchaseKey.current = purchaseKey.current ?? newIdempotencyKey('broker-listing'); setConfirmBuy(true); }}
                   >
@@ -642,6 +645,17 @@ export default function BrokerCrmPage() {
                   </button>
                 )}
               </div>
+              {PURCHASABLE.includes(listing.status) && !suspended && !salesOpen && (
+                <div role="status" data-testid="broker-sales-paused"
+                  className="mt-3 rounded-lg border border-[hsl(var(--gold-border))] bg-card p-3 text-sm leading-relaxed text-foreground">
+                  <p className="font-semibold">{t('broker_desk_sales_paused_title')}</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {isPublic && listing.paid_until
+                      ? t('broker_desk_sales_paused_public', { date: new Date(listing.paid_until).toLocaleDateString() })
+                      : t('broker_desk_sales_paused_body')}
+                  </p>
+                </div>
+              )}
               {listing.status === 'PENDING_REVIEW' && (
                 <p className="mt-3 text-2xs text-muted-foreground">{t('broker_desk_pending_note')}</p>
               )}
@@ -727,7 +741,7 @@ export default function BrokerCrmPage() {
               <NotificationsPanel />
             </section>
             </>)}
-            <AlertDialog open={confirmBuy} onOpenChange={setConfirmBuy}>
+            <AlertDialog open={confirmBuy && salesOpen} onOpenChange={setConfirmBuy}>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>{t('broker_desk_buy_title')}</AlertDialogTitle>

@@ -119,11 +119,7 @@ begin
         'NORMAL', v_link, 'matching_jobs', new.id, 'matching-job-started:' || new.id::text);
       if v_notice is not null and new.property_id is not null then
         begin
-          begin
-        update public.notifications set property_id = new.property_id where id = v_notice and property_id is null;
-      exception when others then
-        raise warning 'matching_jobs_notify_finished property_id: %', sqlerrm;
-      end;
+          update public.notifications set property_id = new.property_id where id = v_notice and property_id is null;
         exception when others then
           raise warning 'matching_jobs_notify_finished property_id: %', sqlerrm;
         end;

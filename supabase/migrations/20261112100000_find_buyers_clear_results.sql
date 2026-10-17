@@ -96,6 +96,7 @@ begin
   return jsonb_build_object(
     'leads', (select count(*) from public.find_buyers_leads l
                where l.property_id = p_property_id and l.owner_cleared_at is null
+                 and public.find_buyers_signal_is_current(l.signal_at)
                  and coalesce(l.match_category, 'POTENTIAL') <> 'REJECTED' and not (l.matching_job_id = any (v_active))),
     'legacyMatches', (select count(*) from public.matches m
                where m.property_id = p_property_id and m.owner_cleared_at is null
@@ -107,7 +108,11 @@ begin
 end;
 $function$;
 
-/* The clear itself: hides, never deletes; idempotent (already-cleared rows are left as they are). */
+/* The clear itself: hides, never deletes; idempotent (already-cleared rows are left as they are).
+   Only the property's owner (or the service role) may clear: an admin can preview, never hide
+   another user's results. leadsCleared / legacyMatchesCleared count what the owner could see —
+   the same rows the preview counted; already-hidden rows (rejected, older than 30 days) are
+   stamped too but not counted. */
 create or replace function public.find_buyers_clear_results(p_property_id uuid)
 returns jsonb
 language plpgsql
@@ -121,17 +126,23 @@ declare
   v_leads integer;
   v_matches integer;
 begin
-  if not public.find_buyers_may_clear_results(p_property_id) then
+  if not (coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', current_setting('request.jwt.claim.role', true), '') = 'service_role'
+          or exists (select 1 from public.properties p where p.id = p_property_id and p.user_id = public.auth_user_id() and coalesce(p.is_deleted, false) = false)) then
     raise exception 'FORBIDDEN';
   end if;
   select coalesce(array_agg(j.id), '{}') into v_active from public.matching_jobs j
    where j.property_id = p_property_id and j.status not in ('completed', 'partially_completed', 'failed', 'cancelled', 'budget_reached');
-  update public.find_buyers_leads l set owner_cleared_at = v_now
-   where l.property_id = p_property_id and l.owner_cleared_at is null and not (l.matching_job_id = any (v_active));
-  get diagnostics v_leads = row_count;
-  update public.matches m set owner_cleared_at = v_now
-   where m.property_id = p_property_id and m.owner_cleared_at is null and coalesce(m.status, '') <> 'UNLOCKED';
-  get diagnostics v_matches = row_count;
+  with u as (
+    update public.find_buyers_leads l set owner_cleared_at = v_now
+     where l.property_id = p_property_id and l.owner_cleared_at is null and not (l.matching_job_id = any (v_active))
+    returning l.signal_at, l.match_category)
+  select count(*) filter (where public.find_buyers_signal_is_current(u.signal_at) and coalesce(u.match_category, 'POTENTIAL') <> 'REJECTED')
+    into v_leads from u;
+  with u as (
+    update public.matches m set owner_cleared_at = v_now
+     where m.property_id = p_property_id and m.owner_cleared_at is null and coalesce(m.status, '') <> 'UNLOCKED'
+    returning m.status)
+  select count(*) filter (where coalesce(u.status, '') <> 'REJECTED') into v_matches from u;
   update public.find_buyers_campaigns c set owner_cleared_at = v_now
    where c.property_id = p_property_id and c.owner_cleared_at is null and not (c.matching_job_id = any (v_active));
   return jsonb_build_object('leadsCleared', v_leads, 'legacyMatchesCleared', v_matches, 'clearedAt', v_now);

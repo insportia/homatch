@@ -10,7 +10,7 @@ declare
   prop2 uuid := 'aaaaaaaa-0000-0000-0000-00000000c1eb';
   done_job uuid := 'bbbbbbbb-0000-0000-0000-00000000d0e1';
   run_job uuid := 'bbbbbbbb-0000-0000-0000-00000000d0e2';
-  p1 uuid; p2 uuid; p3 uuid;
+  p1 uuid; p2 uuid; p3 uuid; p4 uuid;
 begin
   insert into public.properties (id, user_id, transaction_type) values (prop, owner, 'SALE'), (prop2, stranger, 'SALE') on conflict do nothing;
   insert into public.matching_jobs (id, user_id, property_id, idempotency_key, status) values
@@ -20,10 +20,12 @@ begin
   insert into public.find_buyers_persons (network, person_key) values ('FACEBOOK', 'clear-fx-1') returning id into p1;
   insert into public.find_buyers_persons (network, person_key) values ('FACEBOOK', 'clear-fx-2') returning id into p2;
   insert into public.find_buyers_persons (network, person_key) values ('FACEBOOK', 'clear-fx-3') returning id into p3;
+  insert into public.find_buyers_persons (network, person_key) values ('FACEBOOK', 'clear-fx-4') returning id into p4;
   insert into public.find_buyers_leads (matching_job_id, property_id, user_id, person_id, counterpart, source, intent_class, overall_score, strength, signal_at, match_category) values
     (done_job, prop, owner, p1, 'BUYER', 'FACEBOOK', 'BUYER_MEDIUM', 60, 'POSSIBLE', now() - interval '2 days', 'WEAK'),
     (done_job, prop, owner, p2, 'BUYER', 'FACEBOOK', 'BUYER_MEDIUM', 70, 'GOOD', now() - interval '2 days', 'POTENTIAL'),
     (done_job, prop, owner, p3, 'BUYER', 'FACEBOOK', 'NOISE', 10, 'POSSIBLE', now() - interval '2 days', 'REJECTED'),
+    (done_job, prop, owner, p4, 'BUYER', 'FACEBOOK', 'BUYER_MEDIUM', 70, 'GOOD', now() - interval '40 days', 'POTENTIAL'),
     (run_job, prop, owner, p1, 'BUYER', 'FACEBOOK', 'BUYER_MEDIUM', 60, 'POSSIBLE', now() - interval '1 hour', 'WEAK');
   insert into public.matches (property_id, status) values (prop, 'NEW'), (prop, 'UNLOCKED'), (prop, 'REJECTED'), (prop2, 'NEW');
 end $$;

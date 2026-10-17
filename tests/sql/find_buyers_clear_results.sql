@@ -15,7 +15,7 @@ begin
 
   perform set_config('app.uid', '11111111-1111-1111-1111-111111111111', true);
   pv := public.find_buyers_clear_results_preview(prop);
-  if (pv->>'leads')::int <> 2 then raise exception 'preview leads %', pv; end if;            -- finished search, not rejected
+  if (pv->>'leads')::int <> 2 then raise exception 'preview leads %', pv; end if;            -- finished search, current, not rejected
   if (pv->>'legacyMatches')::int <> 1 then raise exception 'preview legacy %', pv; end if;   -- NEW only (UNLOCKED kept, REJECTED not shown)
   if (pv->>'legacyUnlockedKept')::int <> 1 then raise exception 'preview unlocked %', pv; end if;
   if not (pv->>'activeCampaign')::boolean then raise exception 'preview active %', pv; end if;
@@ -24,8 +24,13 @@ begin
   if n <> 0 then raise exception 'preview wrote'; end if;
 
   res := public.find_buyers_clear_results(prop);
-  if (res->>'leadsCleared')::int <> 3 then raise exception 'cleared leads %', res; end if;    -- incl. the rejected one of the finished search
-  if (res->>'legacyMatchesCleared')::int <> 2 then raise exception 'cleared legacy %', res; end if; -- NEW + REJECTED, never UNLOCKED
+  /* the counts are what the preview showed; the rejected and the stale lead are stamped, not counted */
+  if (res->>'leadsCleared')::int <> (pv->>'leads')::int then raise exception 'cleared leads % vs preview %', res, pv; end if;
+  if (res->>'legacyMatchesCleared')::int <> (pv->>'legacyMatches')::int then raise exception 'cleared legacy % vs preview %', res, pv; end if;
+  select count(*) into n from public.find_buyers_leads where property_id = prop and owner_cleared_at is not null;
+  if n <> 4 then raise exception 'stamped leads: %', n; end if;                              -- 2 shown + rejected + stale; not the running search's
+  select count(*) into n from public.matches where property_id = prop and owner_cleared_at is not null;
+  if n <> 2 then raise exception 'stamped legacy: %', n; end if;                             -- NEW + REJECTED, never UNLOCKED
   /* the running search's lead is untouched and still current */
   select count(*) into n from public.find_buyers_current_leads where property_id = prop;
   if n <> 1 then raise exception 'current leads after clear: %', n; end if;
@@ -35,7 +40,7 @@ begin
   select count(*) into n from public.matches where property_id = prop2 and owner_cleared_at is null;
   if n <> 1 then raise exception 'other property touched'; end if;
   select count(*) into n from public.find_buyers_leads where property_id = prop;
-  if n <> 4 then raise exception 'rows deleted: %', n; end if;
+  if n <> 5 then raise exception 'rows deleted: %', n; end if;
   /* the finished search is marked; the running one is not; its opportunities stay hidden */
   select owner_cleared_at is not null into ok from public.find_buyers_campaigns where matching_job_id = 'bbbbbbbb-0000-0000-0000-00000000d0e1';
   if not ok then raise exception 'finished campaign not marked'; end if;

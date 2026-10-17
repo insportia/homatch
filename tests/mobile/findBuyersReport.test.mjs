@@ -162,7 +162,8 @@ const INTEL = {
     queueStates: { DONE: 93, FAILED: 5, CANCELLED: 12 }, phase1AvgSeconds: 151 },
 };
 
-async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, status = FINAL_STATUS, report = PROD_REPORT, leads = LEGACY_LEADS } = {}) {
+/* The search report is an operator diagnostic since 2026-10-17 (owner): admins see it, owners do not. */
+async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, status = FINAL_STATUS, report = PROD_REPORT, leads = LEGACY_LEADS } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -377,4 +378,16 @@ test('admin: the Intelligence tab renders the cross-campaign view (en 1440, ar 3
     await page.context().close();
   }
   assert.deepEqual(failures, []);
+});
+
+test('owners do not see the search report, research notes, per-language or per-source lists (owner, 2026-10-17)', opts, async (t) => {
+  const { page } = await boot(t, { admin: false });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbl-details-toggle"]', { timeout: 30000 });
+  await page.click('[data-testid="fbl-details-toggle"]');
+  await page.waitForSelector('[data-testid="fbl-details"]', { timeout: 15000 });
+  await page.waitForTimeout(1500);
+  for (const id of ['fbr-report', 'fbl-source-outcomes', 'fbl-language-outcomes']) {
+    assert.equal(await page.locator(`[data-testid="${id}"]`).count(), 0, `${id} hidden from the owner`);
+  }
 });

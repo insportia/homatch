@@ -17,11 +17,22 @@ type Dim = keyof typeof SIMILARITY_WEIGHTS;
 
 const UNKNOWN_CREDIT = 0.4;
 const CONFLICT_CAP = 30;
+/* A listing in another market — a stated price more than half away, a stated area more than
+   40% away, or a named district that is neither the owner's nor next to it — is not
+   comparable, however well the rest reads (owner, 2026-10-17: a 36 m² $42k Avlabari flat and
+   a 52 m² $74k Varketili flat scored 55–58 against a 97 m² $214k Krtsanisi flat). Capped
+   under the comment gate's floor, so it is neither mined for comments nor shown as a
+   research opportunity. Unstated dimensions never trigger it. */
+export const MARKET_CAP = 45;
+const PRICE_FAR = 0.5;
+const AREA_FAR = 0.4;
 
 export interface SimilarityResult {
   score: number;
   components: Record<Dim, { points: number; max: number; reason: string }>;
   conflicts: string[];
+  /** Stated facts that put the post in another market (price / area / district); capped at MARKET_CAP. */
+  farFrom: string[];
   /** Short, factual: which dimensions agreed. */
   agreed: string[];
 }
@@ -42,6 +53,7 @@ export function scoreSimilarity(
 ): SimilarityResult {
   const comp = {} as SimilarityResult['components'];
   const conflicts: string[] = [];
+  const farFrom: string[] = [];
   const agreed: string[] = [];
   const set = (d: Dim, ratio: number, reason: string) => {
     comp[d] = { points: Math.round(SIMILARITY_WEIGHTS[d] * Math.max(0, Math.min(1, ratio))), max: SIMILARITY_WEIGHTS[d], reason };
@@ -55,7 +67,7 @@ export function scoreSimilarity(
   } else if (facts.district && dnaDistrict) {
     if (facts.district === dnaDistrict) set('location', 1, 'same district');
     else if ((NEARBY_DISTRICTS[dnaDistrict] ?? []).includes(facts.district)) set('location', 0.75, 'nearby district');
-    else set('location', facts.city || dnaCity ? 0.45 : 0.3, 'same city, other district');
+    else { set('location', facts.city || dnaCity ? 0.45 : 0.3, 'same city, other district'); farFrom.push('district'); }
   } else if (facts.city && facts.city === dnaCity) {
     set('location', 0.6, 'same city');
   } else if (facts.district && !dnaDistrict) {
@@ -89,6 +101,7 @@ export function scoreSimilarity(
   if (facts.areaSqm != null && dna.areaSqm != null) {
     const r = Math.abs(facts.areaSqm - dna.areaSqm) / dna.areaSqm;
     set('area', r <= 0.1 ? 1 : r <= 0.2 ? 0.75 : r <= 0.35 ? 0.35 : 0, `area ${Math.round(r * 100)}% apart`);
+    if (r > AREA_FAR) farFrom.push('area');
   } else set('area', UNKNOWN_CREDIT, 'area not stated');
 
   const a = toUsd(facts.price, facts.currency, opts.fxToUsd);
@@ -96,6 +109,7 @@ export function scoreSimilarity(
   if (a != null && b != null && b > 0) {
     const r = Math.abs(a - b) / b;
     set('price', r <= 0.1 ? 1 : r <= 0.2 ? 0.75 : r <= 0.35 ? 0.35 : 0, `price ${Math.round(r * 100)}% apart`);
+    if (r > PRICE_FAR) farFrom.push('price');
   } else set('price', UNKNOWN_CREDIT, 'price not comparable');
 
   const age = opts.ageDays;
@@ -104,7 +118,8 @@ export function scoreSimilarity(
 
   let score = Object.values(comp).reduce((s, c) => s + c.points, 0);
   if (conflicts.length) score = Math.min(score, CONFLICT_CAP);
-  return { score: Math.max(0, Math.min(100, score)), components: comp, conflicts, agreed };
+  else if (farFrom.length) score = Math.min(score, MARKET_CAP);
+  return { score: Math.max(0, Math.min(100, score)), components: comp, conflicts, farFrom, agreed };
 }
 
 export interface CommentGateConfig { skipBelow: number; eligibleFrom: number }

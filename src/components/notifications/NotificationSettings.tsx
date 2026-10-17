@@ -117,10 +117,15 @@ export function NotificationSettings() {
   };
 
   return (
-    <section className="rounded-xl border border-border bg-card">
-      <header className="border-b border-border px-5 py-4">
-        <h2 className="text-base font-semibold text-foreground">{t('notif_prefs_title')}</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">{t('notif_prefs_sub')}</p>
+    <section className="overflow-hidden rounded-2xl bg-white shadow-[0_14px_34px_-22px_hsl(218_60%_15%/0.55)] ring-1 ring-inset ring-[hsl(40_60%_84%)]">
+      <header className="flex items-start gap-3 bg-[linear-gradient(135deg,hsl(218_52%_11%),hsl(218_48%_17%))] px-5 py-4">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,hsl(40_94%_62%),hsl(34_90%_48%))] text-[hsl(218_52%_11%)]" aria-hidden="true">
+          <Bell className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-pretty font-display text-base font-semibold text-white">{t('notif_prefs_title')}</h2>
+          <p className="mt-0.5 text-pretty text-sm leading-relaxed text-[hsl(218_40%_84%)]">{t('notif_prefs_sub')}</p>
+        </div>
       </header>
 
       {/* ── Push ─────────────────────────────────────────────────────── */}
@@ -135,19 +140,22 @@ export function NotificationSettings() {
             <span className="min-w-0">{t('notif_push_denied')}</span>
           </p>
         ) : subscribed ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-foreground">
-              <Bell className="h-4 w-4 shrink-0 text-gold-ink" aria-hidden="true" />
-              <span className="min-w-0">{t('notif_push_on')}</span>
+          /* Status on its own line, the two actions under it (owner, 2026-10-17): side by side
+             the long Georgian status and the buttons overlapped, and the "off" button read the
+             status sentence "notifications are off" while they were on — it now says "Turn off". */
+          <div className="space-y-3">
+            <p className="flex min-w-0 items-start gap-2.5 rounded-xl bg-[hsl(150_45%_96%)] px-3 py-2.5 text-sm font-semibold text-[hsl(150_45%_22%)] ring-1 ring-inset ring-[hsl(150_40%_80%)]" data-testid="notif-push-status">
+              <Bell className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 text-pretty">{t('notif_push_on')}</span>
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-stretch gap-2">
               {/* A system nobody has seen work is a system nobody trusts. It
                   can only ever reach this caller's own devices. */}
-              <Button variant="outline" size="sm" className="gap-1.5" disabled={busy} onClick={() => void sendTest()}>
-                <Send className="h-3.5 w-3.5" /> {t('notif_push_test')}
+              <Button variant="outline" size="sm" className="h-auto min-h-10 gap-1.5 whitespace-normal rounded-full border-[hsl(40_60%_76%)] px-4 py-2 text-start" disabled={busy} onClick={() => void sendTest()}>
+                <Send className="h-3.5 w-3.5 shrink-0 text-[hsl(34_90%_40%)]" /> <span className="min-w-0">{t('notif_push_test')}</span>
               </Button>
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void disablePush()}>
-                {t('notif_push_off')}
+              <Button variant="ghost" size="sm" className="h-auto min-h-10 whitespace-normal rounded-full px-4 py-2 text-start" disabled={busy} onClick={() => void disablePush()} data-testid="notif-push-turn-off">
+                <BellOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> <span className="min-w-0">{t('notif_push_turn_off')}</span>
               </Button>
             </div>
           </div>

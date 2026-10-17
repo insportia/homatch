@@ -124,6 +124,22 @@ export async function clearOldResults(propertyId: string): Promise<ClearOutcome 
   }
 }
 
+/**
+ * Hides the contacts the owner already opened (paid UNLOCKED legacy matches) from the match
+ * lists — a separate, explicitly ticked choice in the clear dialog. Hides only: the payment,
+ * the contact record and the audit stay. null = failed or not deployed yet.
+ */
+export async function hideOpenedContacts(propertyId: string): Promise<number | null> {
+  try {
+    const { data, error } = await supabase.rpc('find_buyers_hide_opened_contacts', { p_property_id: propertyId });
+    if (error) return null;
+    const n = Number((data as { openedHidden?: unknown } | null)?.openedHidden);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return null;
+  }
+}
+
 /** One page of leads, strongest first, stable order. `jobId` scopes it to one search; null reads all. */
 export async function getSearchLeadsPage(propertyId: string, page: number, pageSize: number, jobId: string | null): Promise<{ rows: PotentialLead[]; total: number; failed: boolean }> {
   const from = Math.max(0, page - 1) * pageSize;

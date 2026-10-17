@@ -120,6 +120,42 @@ export function planDiscoveryBudget(input: {
   return { discoveryCapMicros: oneProbe <= budget ? oneProbe : 0, extractionReserveMicros: reserve, discoveryNeedMicros: need, rationale: 'ONE_DISCOVERY_PROBE' };
 }
 
+/**
+ * May this discovery (Phase 1) job start a paid run now? First probes of every planned
+ * language come before any deepening: the cap is the sum of the planned probes, so a
+ * deepening step may only use what is left after the first probes still waiting to run
+ * (production 2026-10-17, campaign 719a57ac: ka/ru deepening spent the $0.168 ceiling
+ * and the en/ar/he/tr probes were cancelled while $5.55 of the budget was unspent).
+ * A deepening step that would crowd out a probe WAITS (it may run once they have),
+ * a probe that does not fit is cancelled.
+ */
+export function phase1Admission(input: {
+  isDeepen: boolean; committedMicros: number; estimateMicros: number; capMicros: number; pendingFirstProbesMicros: number;
+}): { decision: 'START' | 'WAIT' | 'CANCEL'; reason: string | null } {
+  const used = input.committedMicros + input.estimateMicros;
+  if (used > input.capMicros) return { decision: input.isDeepen && input.pendingFirstProbesMicros > 0 ? 'WAIT' : 'CANCEL', reason: 'PHASE1_BUDGET' };
+  if (input.isDeepen && used + input.pendingFirstProbesMicros > input.capMicros) return { decision: 'WAIT', reason: 'PHASE1_COVERAGE_FIRST' };
+  return { decision: 'START', reason: null };
+}
+
+/** Known communities read again ("known_source_reuse") do not depend on this campaign's
+ *  discovery: holding them behind Phase 1 only delays the first results (719a57ac: six
+ *  such reads waited ~6 minutes for nothing). */
+export function waitsForPhase1(reason: string | null | undefined): boolean {
+  return String(reason ?? '') !== 'known_source_reuse';
+}
+
+/**
+ * A deepening step is worth paying for only if it asks for MORE items than the arm already
+ * bought: memo23 search/read Actors have no offset, so the same query at the same or a
+ * smaller size returns the items already paid for (719a57ac: TikTok "second_probe" re-bought
+ * 15 identical items; group-search deepens of 4, 2 and 1 items after a 10-item probe).
+ */
+export function deepenBuysNewItems(nextSize: number, previousSizes: readonly number[]): boolean {
+  const prev = previousSizes.filter((n) => Number.isFinite(n) && n > 0);
+  return !prev.length || nextSize > Math.max(...prev);
+}
+
 /** Same formula as find_buyers_reserve_actor_run: start fee + limit × price/1k. */
 export function probeEstimateMicros(a: { startFeeMicros?: number | null; pricePer1kMicros?: number | null }, size: number): number {
   if (a.pricePer1kMicros == null) return 0;

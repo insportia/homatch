@@ -133,7 +133,7 @@ Deno.serve(async (req: Request) => {
       // country_code decides which languages this market is written in, so a
       // campaign cannot resolve its search languages without it.
       .select('id,user_id,title,matching_status,transaction_type,property_type,'
-        + 'facts:property_facts!property_id(country_code,city,district,neighborhood,latitude,longitude,total_price,currency,'
+        + 'facts:property_facts!property_id(country_code,city,district,neighborhood,address,latitude,longitude,total_price,currency,'
         + 'bedrooms,rooms,area,floor,total_floors,condition,building_type,new_build,parking,balcony,terrace,elevator,furnished,view)')
       .eq('id', propertyId)
       .eq('is_deleted', false)

@@ -33,7 +33,9 @@ test('baseline comparison: 37 shown before → only genuine buyers shown after, 
   const s = summarize(rows);
   assert.equal(fixture.campaign.displayedBefore, 37);
   assert.equal(s.byCategory.STRONG, 0);
-  assert.equal(s.shown, 2, JSON.stringify(s));
+  /* v6 (owner, 2026-10-17): lead 6 names only other districts (rejected, OTHER_AREA); the
+     instalment buyer (12) is shown but only as interest to qualify (city only, no budget). */
+  assert.equal(s.shown, 1, JSON.stringify(s));
   const genuine = fixture.leads.filter((l) => l.expected.genuineBuyer).map((l) => l.n);
   for (const r of rows) {
     if (r.qualification.category !== 'REJECTED') assert.ok(genuine.includes(Number(r.id)), `non-genuine lead shown: ${r.id}`);

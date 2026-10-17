@@ -101,27 +101,32 @@ for (const t of TENANTS) test(`tenant, in any language: ${t}`, () => assert.equa
 const keptOf = (rows) => rows.filter((x) => x.r.qualification.category !== 'REJECTED')
   .map((x) => ({ n: x.n, category: x.r.qualification.category })).sort((a, b) => a.n - b.n);
 
-test('SALE: exactly leads 6 (WEAK) and 12 (POTENTIAL, financing to confirm) are kept — none Strong', () => {
+test('SALE: exactly lead 12 (WEAK, financing to confirm) is kept — none Strong; lead 6 is another area', () => {
   const rows = shown('SALE');
-  assert.deepEqual(keptOf(rows), [{ n: 6, category: 'WEAK' }, { n: 12, category: 'POTENTIAL' }]);
+  assert.deepEqual(keptOf(rows), [{ n: 12, category: 'WEAK' }]);
   const q = (n) => rows.find((x) => x.n === n).r.qualification;
-  /* 6: 3 rooms as the property, but only districts other than Krtsanisi; no budget. */
+  /* 6: 3 rooms as the property, but only districts other than Krtsanisi (Digomi, Temka, Mukhiani,
+     Gldani) and no stated flexibility: not this property's buyer (v6, owner 2026-10-17). */
   assert.equal(q(6).requirementsFit, 'COMPATIBLE');
-  assert.equal(q(6).locationFit, 'INCOMPATIBLE');
-  assert.deepEqual(q(6).limitations, ['BUDGET_UNKNOWN', 'LOCATION_OTHER_AREA']);
-  /* 12: pays the seller over time with 10,000 GEL down (~2% of $213,840); city only. The seller's
-     agreement is not assumed refused: Potential, never Strong, both risks shown. */
+  assert.equal(q(6).locationLevel, 'OTHER_DISTRICT');
+  assert.deepEqual(q(6).reasons, ['OTHER_AREA']);
+  /* 12: pays the seller over time with 10,000 GEL down (~2% of $213,840); city only, no budget.
+     The seller's agreement is not assumed refused, but nothing about the fit is confirmed: an
+     interested person to qualify (WEAK), never Potential or Strong, both risks shown. */
   assert.equal(q(12).financingFit, 'STRETCH');
   assert.deepEqual(q(12).limitations, ['BUDGET_UNKNOWN', 'LOCATION_CITY_ONLY', 'ROOMS_UNKNOWN', 'FINANCING_SELLER_INSTALMENTS', 'DOWN_PAYMENT_LOW']);
   /* The other genuine buyers: a confirmed budget mismatch, and the repost. */
-  assert.deepEqual(q(7).reasons, ['BUDGET_INCOMPATIBLE']);
-  assert.deepEqual(q(11).reasons, ['BUDGET_INCOMPATIBLE']);
+  /* (v6: a buyer who also names another area carries OTHER_AREA as well) */
+  assert.ok(q(7).reasons.includes('BUDGET_INCOMPATIBLE'), String(q(7).reasons));
+  assert.ok(q(11).reasons.includes('BUDGET_INCOMPATIBLE'), String(q(11).reasons));
   assert.deepEqual(q(13).reasons, ['DUPLICATE']);
 });
 
-test('RENT (same texts, $600/month): exactly tenants 4, 10 and 25 are kept, with their limitations', () => {
+test('RENT (same texts, $600/month): exactly tenants 4 and 10 are kept, with their limitations', () => {
   const rows = shown('RENT', { totalPrice: 600 });
-  assert.deepEqual(keptOf(rows), [{ n: 4, category: 'POTENTIAL' }, { n: 10, category: 'WEAK' }, { n: 25, category: 'WEAK' }]);
+  /* v6: 4 states a budget far above a $600 rent (another segment) → WEAK; 25 names only
+     Saburtalo / the University area (another area) → REJECTED. */
+  assert.deepEqual(keptOf(rows), [{ n: 4, category: 'WEAK' }, { n: 10, category: 'WEAK' }]);
 });
 
 const SALE_DNA = buildPropertyDna(fixture.property);
@@ -252,7 +257,9 @@ test('live test 2026-10-16: real buyers stay buyers, including one who asks whoe
 test('live test 2026-10-16: a seeker who never said buy or rent is an interested person to verify', async () => {
   const { boundModelReading } = await import('../findBuyers/demandClassifier.ts');
   const { classifyBuyerIntent } = await import('../findBuyers/buyerIntent.ts');
-  const text = 'ვეძებ ბინას 3ოთახიანს ვარკეთილში';
+  /* (the production text named Varketili — another area for this Krtsanisi flat since v6, see
+     below; the district is left out here so the transaction rule alone is under test) */
+  const text = 'ვეძებ ბინას 3ოთახიანს';
   const rule = classifyDemand(text);
   for (const model of [null, { role: 'RENT_SEEKER', transaction: 'RENT' }, { role: 'BUY_SEEKER', transaction: 'BUY' }]) {
     const r = model ? boundModelReading(rule, model) : rule;
@@ -262,5 +269,8 @@ test('live test 2026-10-16: a seeker who never said buy or rent is an interested
     assert.equal(classifyBuyerIntent({ text, kind: 'POST', reading: r }).resultType, 'INTEREST', 'never a confirmed buyer, never dropped');
   }
   /* a generic question with no listing context is not a buyer */
-  assert.notEqual(classifyBuyerIntent({ text: 'საძინებელი რამდენი?\nფასი?', kind: 'COMMENT', parent: null }).resultType, 'DIRECT');
+  assert.notEqual(classifyBuyerIntent({ text: 'საძინებელი რამდენი?\nფასი?', kind: 'COMMENT', parent: null }).resultType, 'DIRECT');  /* the production text itself names Varketili: another area for this Krtsanisi flat */
+  const varketili = qualify(classifyDemand('ვეძებ ბინას 3ოთახიანს ვარკეთილში'), SALE_DNA, { ageDays: 1, duplicate: false });
+  assert.equal(varketili.category, 'REJECTED');
+  assert.deepEqual(varketili.reasons, ['OTHER_AREA']);
 });

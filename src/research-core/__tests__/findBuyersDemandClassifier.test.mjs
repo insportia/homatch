@@ -82,16 +82,23 @@ test('a down payment is not a budget', () => {
 
 const dna = buildPropertyDna({ transactionType: 'SALE', propertyType: 'APARTMENT', countryCode: 'GE', city: 'Tbilisi', district: 'Krtsanisi', totalPrice: 213840, currency: 'USD', area: 97.2, rooms: 3, bedrooms: 2 });
 
-test('Strong needs a confirmed budget AND a compatible place; unknowns cap at Potential', () => {
-  const strong = qualify(classifyDemand('ვიყიდი 2 საძინებლიან ბინას ორთაჭალაში, ბიუჯეტი 220 000$'), dna, { ageDays: 1 });
+test('Strong needs a confirmed budget AND the property\'s own place; unknowns and nearby places cap at Potential', () => {
+  const strong = qualify(classifyDemand('ვიყიდი 2 საძინებლიან ბინას კრწანისში, ბიუჯეტი 220 000$'), dna, { ageDays: 1 });
   assert.equal(strong.category, 'STRONG', JSON.stringify(strong));
-  assert.equal(strong.locationFit, 'COMPATIBLE'); /* Ortachala is in Krtsanisi */
+  assert.equal(strong.locationLevel, 'SAME_DISTRICT');
+  /* Ortachala is a micro-area OF Krtsanisi, but this property's micro-area is not recorded:
+     nearby, to check — never an exact match (v6, owner 2026-10-17). */
+  const micro = qualify(classifyDemand('ვიყიდი 2 საძინებლიან ბინას ორთაჭალაში, ბიუჯეტი 220 000$'), dna, { ageDays: 1 });
+  assert.equal(micro.locationLevel, 'MICRO_AREA_OF_DISTRICT');
+  assert.equal(micro.locationFit, 'NEARBY');
+  assert.equal(micro.category, 'POTENTIAL');
+  assert.ok(micro.limitations.includes('LOCATION_MICRO_AREA_UNCONFIRMED'));
   const noBudget = qualify(classifyDemand('Куплю квартиру в Крцаниси'), dna, { ageDays: 1 });
   assert.equal(noBudget.category, 'POTENTIAL');
   assert.equal(noBudget.budgetFit, 'UNKNOWN');
   const nearby = qualify(classifyDemand('Looking to buy a 2 bedroom apartment in Sololaki, budget $210,000'), dna, { ageDays: 2 });
   assert.equal(nearby.locationFit, 'NEARBY');
-  assert.equal(nearby.category, 'STRONG');
+  assert.equal(nearby.category, 'POTENTIAL');
   const otherCity = qualify(classifyDemand('Куплю квартиру в Батуми до 220 000$'), dna, { ageDays: 2 });
   assert.equal(otherCity.category, 'REJECTED');
   assert.ok(otherCity.reasons.includes('OTHER_CITY'));

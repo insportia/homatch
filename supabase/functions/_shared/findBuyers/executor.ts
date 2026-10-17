@@ -13,12 +13,14 @@ import { provesOutputContract } from '../../../../src/research-core/findBuyers/a
 import { decideArm, armPriority, parseSampling, type ArmStats } from '../../../../src/research-core/findBuyers/allocator.ts';
 import { queryHash } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { sinceFloor } from '../../../../src/research-core/findBuyers/freshness.ts';
-import { DISCOVERY_STAGES, phase2Category, phase2MayStart, phaseOfStage, probeEstimateMicros, actorBreaker, isEmptyResultMessage } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
+import { DISCOVERY_STAGES, phase2Category, phase2MayStart, phaseOfStage, probeEstimateMicros, actorBreaker, isEmptyResultMessage, phase1Admission, waitsForPhase1, deepenBuysNewItems } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 /* Stages whose Actor accepts a date floor: never ask for content older than 30 days. */
 const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'FB_POST_SEARCH', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
 import { abortRun, datasetItems, getRun, Memo23Error, runCost, startRun, TERMINAL_RUN_STATES, scrub } from './memo23Client.ts';
-import { processItems, type CampaignRow, type ParentContext, type FollowUp } from './pipeline.ts';
+import { processItems, mergeResults, type CampaignRow, type ParentContext, type FollowUp } from './pipeline.ts';
+import { attributeBatchItems, batchSourceReads, type BatchEntry } from '../../../../src/research-core/findBuyers/batching.ts';
+import type { PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
 import { campaignStats, discoveryCommittedMicros, insertQueueRows, loadFindBuyersSettings, loadPhase1, socialJobRow, type FindBuyersSettings } from './campaign.ts';
 import { parsePriceBook } from './openai.ts';
 
@@ -54,7 +56,7 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
      is not paid for again here (its remaining jobs are cancelled, unreserved). */
   const breaker = await campaignActorBreaker(db, job.matching_job_id, String(meta.actorKey));
   if (breaker.open) return out({ outcome: 'CANCELLED', error: 'ACTOR_UNPRODUCTIVE_IN_CAMPAIGN', metadata: { breaker } });
-  if (phaseOfStage(stage) === 'PHASE2_EXTRACTION' && phase2Category(stage) === 'SOURCE_DEPENDENT') {
+  if (phaseOfStage(stage) === 'PHASE2_EXTRACTION' && phase2Category(stage) === 'SOURCE_DEPENDENT' && waitsForPhase1(meta.reason)) {
     /* TWO PHASES: a Phase 2 run that READS the discovered pool (group posts,
        channels, walls) waits while Phase 1 is still discovering inside its
        time box. Independent searches (TikTok, LinkedIn posts, Bluesky …) do
@@ -65,7 +67,7 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
     if (!phase2MayStart(p1.state)) {
       return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { lastWait: 'PHASE1_DISCOVERY', phase1Open: p1.open, phase1DeadlineAt: p1.deadlineAt } });
     }
-  } else if (!String(meta.arm ?? '').startsWith('adaptive:') && phases?.budget && typeof phases.budget.discoveryCapMicros === 'number') {
+  } else if (phaseOfStage(stage) === 'PHASE1_DISCOVERY' && !String(meta.arm ?? '').startsWith('adaptive:') && phases?.budget && typeof phases.budget.discoveryCapMicros === 'number') {
     /* An adaptive round (adaptive.ts) is not Phase 1: it was budgeted against the
        campaign's REMAINING provider budget when it was queued, and the campaign-wide
        hard cap below still applies to it atomically. */
@@ -74,11 +76,31 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
     const actor = await actorRow(db, String(meta.actorKey));
     const estimate = actor ? probeEstimateMicros({ startFeeMicros: actor.start_fee_micros, pricePer1kMicros: actor.price_per_1k_micros }, Number(meta.size ?? actor.probe_size)) : 0;
     const committed = await discoveryCommittedMicros(db, job.matching_job_id, [...DISCOVERY_STAGES]);
-    if (committed + estimate > phases.budget.discoveryCapMicros) {
-      return out({ outcome: 'CANCELLED', error: 'PHASE1_BUDGET', metadata: { committedMicros: committed, estimateMicros: estimate, discoveryCapMicros: phases.budget.discoveryCapMicros } });
-    }
+    const isDeepen = Number(meta.step ?? 0) > 0;
+    const pending = isDeepen ? await pendingFirstProbesMicros(db, job) : 0;
+    const admit = phase1Admission({ isDeepen, committedMicros: committed, estimateMicros: estimate, capMicros: phases.budget.discoveryCapMicros, pendingFirstProbesMicros: pending });
+    const budgetMeta = { committedMicros: committed, estimateMicros: estimate, discoveryCapMicros: phases.budget.discoveryCapMicros, pendingFirstProbesMicros: pending };
+    if (admit.decision === 'WAIT') return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { lastWait: admit.reason, ...budgetMeta } });
+    if (admit.decision === 'CANCEL') return out({ outcome: 'CANCELLED', error: 'PHASE1_BUDGET', metadata: budgetMeta });
   }
   return start(db, job, campaign, settings);
+}
+
+/** What the discovery first probes still waiting to start will cost (other jobs of this campaign). */
+async function pendingFirstProbesMicros(db: any, job: any): Promise<number> {
+  const { data } = await db.from('discovery_query_queue').select('id,status,metadata')
+    .eq('matching_job_id', job.matching_job_id).in('status', ['PENDING', 'RETRY_WAIT', 'PROCESSING']).limit(200);
+  const waiting = ((data ?? []) as any[]).filter((r) => r.id !== job.id && DISCOVERY_STAGES.has(String(r.metadata?.stage ?? ''))
+    && Number(r.metadata?.step ?? 0) === 0 && !r.metadata?.actorRunId);
+  let sum = 0;
+  const prices = new Map<string, any>();
+  for (const r of waiting) {
+    const key = String(r.metadata?.actorKey ?? '');
+    if (!prices.has(key)) prices.set(key, await actorRow(db, key));
+    const a = prices.get(key);
+    if (a) sum += probeEstimateMicros({ startFeeMicros: a.start_fee_micros, pricePer1kMicros: a.price_per_1k_micros }, Number(r.metadata?.size ?? a.probe_size));
+  }
+  return sum;
 }
 
 /** This campaign's record for one Actor: consecutive failed/empty runs. */
@@ -157,13 +179,16 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
   /* Incremental reading: only content newer than the source's last check (≤30 days). */
   /* 30-day floor always; tighter (since the last check, minus 6 h overlap) for a known source. */
   let since: string | null = DATE_STAGES.has(stage) ? sinceFloor() : null;
-  if (since && meta.sourceId) {
-    const { data: src } = await db.from('source_registry').select('last_checked_at').eq('id', meta.sourceId).maybeSingle();
-    const last = src?.last_checked_at ? Date.parse(src.last_checked_at) - 6 * 3_600_000 : 0;
-    since = new Date(Math.max(Date.parse(since), last)).toISOString();
+  const batch = (Array.isArray(meta.batch) ? meta.batch : []) as BatchEntry[];
+  const sourceIds = batch.length ? batch.map((b) => b.sourceId) : [meta.sourceId ?? null];
+  if (since && sourceIds.every(Boolean)) {
+    /* A batched read starts from the OLDEST check among its communities, so none misses posts. */
+    const { data: srcs } = await db.from('source_registry').select('id,last_checked_at').in('id', sourceIds);
+    const lasts = sourceIds.map((id) => ((srcs ?? []) as any[]).find((s) => s.id === id)?.last_checked_at).map((t) => (t ? Date.parse(t) - 6 * 3_600_000 : 0));
+    since = new Date(Math.max(Date.parse(since), Math.min(...lasts))).toISOString();
   }
   const limit = Math.max(1, Math.min(Number(reservation.requestedLimit) || Number(actor.probe_size) || 1, Number(actor.max_results) || 100));
-  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since, country: (campaign as any)?.dna?.countryCode ?? null }, actor.input_contract ?? null);
+  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, targetUrls: batch.length ? batch.map((b) => b.targetUrl) : null, size: limit, since, country: (campaign as any)?.dna?.countryCode ?? null }, actor.input_contract ?? null);
   /* An input the verified schema would reject, or one that lost its query/target
      in fitting, is never sent: the reservation is released at $0. */
   const problems = essentialMissing(stage, input, actor.input_contract ?? null);
@@ -295,15 +320,27 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     const at = new Date().toISOString();
     await db.from('find_buyers_actor_registry').update({ output_contract_verified_at: at, last_verified_at: at }).eq('actor_key', run.actor_key);
   }
-  const sourceYield = await sourceYieldOf(db, meta.sourceId ?? null);
-  const result = await processItems({
-    db, campaign: campaign as CampaignRow, stage, runId: run.id, runLanguage: job.language ?? null,
-    datasetId, providerRunId: run.provider_run_id, book: parsePriceBook(settings.priceBook), gate: settings.commentGate, lowDownPaymentRatio: settings.lowDownPaymentRatio,
-    parent, sourceId: meta.sourceId ?? null, sourceYield,
-    /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
-       row caps an expansion at the Actor's own maximum (followUpRows). */
-    commentProbe: parseSampling(settings.sampling).probe,
-  }, normalized);
+  /* A batched read (batching.ts) is processed per community: each slice carries its own
+     source, so yield, statistics and early stopping stay per source. */
+  const batchEntries = (Array.isArray(meta.batch) ? meta.batch : []) as BatchEntry[];
+  const slices = batchEntries.length > 1 ? attributeBatchItems(normalized, batchEntries)
+    : [{ entry: null as BatchEntry | null, items: normalized }];
+  let result: Awaited<ReturnType<typeof processItems>> | null = null;
+  const perSource: Array<{ sourceId: string | null; items: number; qualified: number; strong: number }> = [];
+  for (const slice of slices) {
+    const sliceSource = slice.entry ? slice.entry.sourceId : batchEntries.length > 1 ? null : meta.sourceId ?? null;
+    const r1 = await processItems({
+      db, campaign: campaign as CampaignRow, stage, runId: run.id, runLanguage: job.language ?? null,
+      datasetId, providerRunId: run.provider_run_id, book: parsePriceBook(settings.priceBook), gate: settings.commentGate, lowDownPaymentRatio: settings.lowDownPaymentRatio,
+      parent, sourceId: sliceSource, sourceYield: await sourceYieldOf(db, sliceSource),
+      /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
+         row caps an expansion at the Actor's own maximum (followUpRows). */
+      commentProbe: parseSampling(settings.sampling).probe,
+    }, slice.items);
+    perSource.push({ sourceId: sliceSource, items: slice.items.length, qualified: r1.qualified, strong: r1.strong });
+    result = result ? mergeResults(result, r1) : r1;
+  }
+  result = result!;
 
   /* Stats once per run: a replayed poll (lease lost after booking) adds nothing twice and,
      since every item is then a DUPLICATE, must not overwrite the first pass's counters with 0. */
@@ -313,17 +350,22 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     stale_dropped: result.staleDropped,
   }).eq('id', run.id).is('stats_applied_at', null).select('id');
   const applyStats = Array.isArray(firstApply) && firstApply.length === 1;
-  if (applyStats && meta.sourceId) {
-    const { data: src } = await db.from('source_registry').select('posts_observed,fb_spend_micros,fb_qualified_leads,fb_strong_leads').eq('id', meta.sourceId).maybeSingle();
+  /* Per source; a batched run's cost is shared by the items each community returned
+     (equally when nothing came back). */
+  const totalItems = perSource.reduce((n, p) => n + p.items, 0);
+  for (const p of applyStats ? perSource : []) {
+    if (!p.sourceId) continue;
+    const share = perSource.length <= 1 ? 1 : totalItems > 0 ? p.items / totalItems : 1 / perSource.length;
+    const { data: src } = await db.from('source_registry').select('posts_observed,fb_spend_micros,fb_qualified_leads,fb_strong_leads').eq('id', p.sourceId).maybeSingle();
     if (src) await db.from('source_registry').update({
-      posts_observed: Number(src.posts_observed || 0) + normalized.length,
-      fb_spend_micros: Number(src.fb_spend_micros || 0) + Number(costMicros || 0),
-      fb_qualified_leads: Number(src.fb_qualified_leads || 0) + result.qualified,
-      fb_strong_leads: Number(src.fb_strong_leads || 0) + result.strong,
+      posts_observed: Number(src.posts_observed || 0) + p.items,
+      fb_spend_micros: Number(src.fb_spend_micros || 0) + Math.round(Number(costMicros || 0) * share),
+      fb_qualified_leads: Number(src.fb_qualified_leads || 0) + p.qualified,
+      fb_strong_leads: Number(src.fb_strong_leads || 0) + p.strong,
       /* The read window advances only after a successful read. */
       ...(bookStatus === 'SUCCEEDED' ? { last_checked_at: new Date().toISOString(), last_successful_at: new Date().toISOString() } : {}),
-      ...(result.qualified > 0 ? { last_useful_at: new Date().toISOString() } : {}),
-    }).eq('id', meta.sourceId);
+      ...(p.qualified > 0 ? { last_useful_at: new Date().toISOString() } : {}),
+    }).eq('id', p.sourceId);
   }
   if (applyStats && meta.query && ['FB_GROUP_SEARCH', 'TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'LINKEDIN_GROUPS', 'VK_WALL', 'REDDIT_SEARCH', 'QUORA_SEARCH', 'BLUESKY_SEARCH'].includes(stage)) {
     await bumpQueryStats(db, network, job.language ?? 'multi', String(meta.query), Number(costMicros || 0), normalized.length, result);
@@ -399,23 +441,28 @@ async function followUpRows(db: any, job: any, campaign: any, followUps: FollowU
   if (!followUps.length) return [];
   const { data: actors } = await db.from('find_buyers_actor_registry').select('actor_key,probe_size,max_results,priority,enabled,emergency_disabled');
   const byKey = new Map(((actors ?? []) as any[]).map((a) => [a.actor_key, a]));
+  const ctx = { matchingJobId: job.matching_job_id, propertyId: campaign.property_id, planId: job.search_plan_id ?? null, tranche: Math.min(2, Number(job.metadata?.tranche ?? 0) + 1), step: 0 };
   const rows: any[] = [];
+  const plain: PlannedSocialJob[] = [];
   for (const f of followUps) {
     const actorKey = FOLLOW_STAGE_ACTOR[f.stage];
     const a = actorKey ? byKey.get(actorKey) : null;
     if (!a || !a.enabled || a.emergency_disabled) continue;
     const sampling = parseSampling(settings.sampling);
-    rows.push(socialJobRow({
+    const planned: PlannedSocialJob = {
       stage: f.stage, actorKey: actorKey!, language: (f.language as any) ?? 'multi', query: null, targetUrl: f.targetUrl,
       /* An adaptive comment expansion asks for its own size, never above the Actor maximum. */
       sourceId: f.sourceId, size: f.size ? Math.min(f.size, Number(a.max_results) || f.size) : Math.min(Number(a.probe_size) || sampling.probe, sampling.probe),
       arm: f.stage.endsWith('COMMENTS') ? `${f.stage}` : `${f.stage}:${f.sourceId ?? f.targetUrl}`,
       priority: armPriority(null, null, Number(a.priority) + (f.stage.endsWith('COMMENTS') ? 10 : 0)), reason: f.reason,
-    }, {
-      matchingJobId: job.matching_job_id, propertyId: campaign.property_id, planId: job.search_plan_id ?? null,
-      tranche: Math.min(2, Number(job.metadata?.tranche ?? 0) + 1), step: 0, parent: f.parent ? { parent: f.parent } : undefined,
-    }));
+    };
+    /* A comment run belongs to its post (parent context): never batched. */
+    if (f.parent) rows.push(socialJobRow(planned, { ...ctx, parent: { parent: f.parent } }));
+    else plain.push(planned);
   }
+  /* Community reads found by the same search run go out as one run per batch. */
+  const maxResults = Object.fromEntries([...byKey.values()].map((a: any) => [a.actor_key, Number(a.max_results) || 100]));
+  for (const planned of batchSourceReads(plain, { maxResults })) rows.push(socialJobRow(planned, ctx));
   return rows;
 }
 
@@ -462,12 +509,17 @@ async function deepenRow(db: any, job: any, campaign: any, settings: FindBuyersS
   const actor = await actorRow(db, String(meta.actorKey));
   const decision = decideArm(stats, parseSampling({ ...(settings.sampling as any ?? {}), probe: actor?.probe_size ?? undefined }), remaining, Number(actor?.price_per_1k_micros ?? 1_000_000));
   if (decision.action !== 'DEEPEN' || decision.reason === 'probe') return { row: null, decision };
+  /* No offset on these Actors: a step that does not ask for more than was bought re-buys it. */
+  if (!deepenBuysNewItems(Math.min(decision.nextSize, Number(actor?.max_results ?? 100)), mine.map((r) => Number(r.requested_limit ?? 0)))) {
+    return { row: null, decision: { ...decision, action: 'STOP', reason: 'no_new_items_at_this_size' } as ReturnType<typeof decideArm> };
+  }
   const step = Number(meta.step ?? 0) + 1;
   return {
     decision,
     row: socialJobRow({
       stage: meta.stage, actorKey: meta.actorKey, language: job.language ?? 'multi', query: meta.query ?? null, targetUrl: meta.targetUrl ?? null,
       sourceId: meta.sourceId ?? null, size: Math.min(decision.nextSize, Number(actor?.max_results ?? 100)), arm,
+      ...(Array.isArray(meta.batch) && meta.batch.length ? { batch: meta.batch } : {}),
       priority: deepenPriority(String(meta.stage), armPriority(stats, null, Number(actor?.priority ?? 50)), Number(actor?.priority ?? 50)), reason: `deepen:${decision.reason}`,
     }, { matchingJobId: job.matching_job_id, propertyId: campaign.property_id, planId: job.search_plan_id ?? null, tranche: Number(meta.tranche ?? 0) + 1, step }),
   };

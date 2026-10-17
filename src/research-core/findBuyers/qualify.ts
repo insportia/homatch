@@ -13,10 +13,10 @@
 import { propertyFamily, type PropertyFamily } from './propertyFamily.ts';
 import type { PropertyDna } from './propertyDna.ts';
 import type { DemandReading } from './demandClassifier.ts';
-import { toUsd } from './demandClassifier.ts';
+import { toUsd, transactionUnconfirmed } from './demandClassifier.ts';
 import { NEARBY_DISTRICTS, normKey, parentDistrict } from './places.ts';
 
-export const QUALIFICATION_VERSION = 4; // 4: financing dimension (2026-10-16)
+export const QUALIFICATION_VERSION = 5; // 4: financing dimension; 5: people-first — brokers soliciting sellers, unconfirmed buy/rent (2026-10-16)
 
 export type MatchCategory = 'STRONG' | 'POTENTIAL' | 'WEAK' | 'REJECTED';
 export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'UNCONFIRMED' | 'INCOMPATIBLE' | 'UNKNOWN';
@@ -32,6 +32,8 @@ export type RejectionReason =
 export type Limitation =
   | 'BUDGET_UNKNOWN' | 'BUDGET_STRETCH' | 'LOCATION_UNKNOWN' | 'LOCATION_CITY_ONLY' | 'LOCATION_OTHER_AREA'
   | 'ROOMS_DIFFER' | 'ROOMS_UNKNOWN' | 'AREA_DIFFERS' | 'LOW_CONFIDENCE'
+  /** A home seeker who did not say whether they buy or rent: interested, needs verification. */
+  | 'TRANSACTION_UNCONFIRMED'
   /** Wants to pay the seller over time. Not a rejection: the property records nothing
    *  either way, so the seller's agreement is UNCONFIRMED, not assumed refused. */
   | 'FINANCING_SELLER_INSTALMENTS'
@@ -158,8 +160,11 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   const wanted = dna.transaction === 'RENT' ? 'RENT' : 'BUY';
   const seekerRole = wanted === 'BUY' ? 'BUY_SEEKER' : 'RENT_SEEKER';
 
-  /* 1–3: what is this, and is it the right side of the right market? */
-  switch (r.role) {
+  /* 1–3: what is this, and is it the right side of the right market? A seeker whose
+     buy-or-rent is unconfirmed is neither rejected nor confirmed: WEAK, needs verification. */
+  const txUnconfirmed = transactionUnconfirmed(r);
+  if (txUnconfirmed) limitations.push('TRANSACTION_UNCONFIRMED');
+  else switch (r.role) {
     case 'JOB': reasons.push('JOB_SEARCH'); break;
     case 'SERVICE': reasons.push('SERVICE_AD'); break;
     case 'IRRELEVANT': reasons.push('NOT_REAL_ESTATE'); break;
@@ -220,7 +225,8 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
     const softMismatch = lFit === 'INCOMPATIBLE' || qFit === 'INCOMPATIBLE' || bFit === 'STRETCH';
     const strongFit = confirmedBudget && goodPlace && qFit !== 'INCOMPATIBLE' && r.confidence >= 0.7;
     /* Budget and place confirmed but financing unconfirmed or a stretch: Potential, never Strong. */
-    if (strongFit && !financingRisk) category = 'STRONG';
+    if (txUnconfirmed) category = 'WEAK';
+    else if (strongFit && !financingRisk) category = 'STRONG';
     else if (strongFit) category = 'POTENTIAL';
     else if (!softMismatch && (confirmedBudget || goodPlace || lFit === 'CITY')) category = 'POTENTIAL';
     else category = 'WEAK';

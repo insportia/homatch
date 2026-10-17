@@ -16,7 +16,7 @@ import { ArrowRight, CheckCircle2, Globe2, Loader2, MessageCircle, Search, Shiel
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { showExpandOffer } from '@/findBuyers/leadCampaigns';
-import type { ResultCounts } from '@/findBuyers/externalResults';
+import type { TabCounts } from '@/findBuyers/externalResults';
 
 const CARD = 'flex min-w-0 flex-col gap-3 rounded-2xl bg-white p-4 shadow-[0_10px_28px_-22px_hsl(218_60%_15%/0.5)] ring-1 ring-inset ring-[hsl(40_60%_84%)]';
 const ICON = 'grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)]';
@@ -38,7 +38,7 @@ export function FindBuyersDashboard({
   onStartInternal: () => void;
   internalHref: string;
   /** The latest external search's results; null while loading. */
-  counts: ResultCounts | null;
+  counts: TabCounts | null;
   externalRunning: boolean;
   /** Opens the paid budget selection (no charge until confirmed there). */
   onStartExternal: () => void;
@@ -92,7 +92,7 @@ export function FindBuyersDashboard({
                 <dd className="flex items-center justify-center gap-1 font-display text-lg font-semibold tabular-nums text-[hsl(218_45%_14%)]" data-testid={`fbd-ext-${k}`}>
                   <Icon className="h-3.5 w-3.5 text-[hsl(34_90%_40%)]" aria-hidden="true" />{n ?? '—'}
                 </dd>
-                <dt className="truncate text-2xs text-[hsl(218_28%_38%)]">{t(`fbx_tab_${k}`)}</dt>
+                <dt className="truncate text-2xs text-[hsl(218_28%_38%)]">{t(k === 'direct' ? (tenant ? 'fbx_tab3_direct_tenants' : 'fbx_tab3_direct_buyers') : `fbx_tab3_${k}`)}</dt>
               </div>
             ))}
           </dl>

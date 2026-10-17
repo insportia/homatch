@@ -13,6 +13,10 @@ export type Stage =
   /* Facebook beyond groups (2026-10-16): public posts found by keyword (Pages,
      agencies, developers, individual listings) and the feeds of public Pages. */
   | 'FB_POST_SEARCH' | 'FB_PAGE_POSTS'
+  /* Competitor advertising (2026-10-16): active property ads in the Meta Ad Library.
+     An ad is never a buyer and its comments are not in the Library; its Page is the
+     way in — a comparable ad queues that Page's feed (FB_PAGE_POSTS, comments attached). */
+  | 'FB_AD_LIBRARY'
   | 'IG_PROFILE_POSTS' | 'IG_COMMENTS'
   | 'TIKTOK_SEARCH' | 'TIKTOK_COMMENTS'
   | 'VK_WALL'
@@ -33,6 +37,7 @@ export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
   FB_COMMENTS: 'FB_COMMENTS',
   FB_POST_SEARCH: 'FB_POST_SEARCH',
   FB_PAGE_POSTS: 'FB_PAGE_POSTS',
+  FB_AD_LIBRARY: 'FB_AD_LIBRARY',
   IG_PROFILE_POSTS: 'IG_PROFILE_POSTS',
   IG_COMMENTS: 'IG_COMMENTS',
   TIKTOK_SEARCH: 'TIKTOK',
@@ -51,9 +56,9 @@ export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
 };
 
 /** What the normalizer should expect from a stage. */
-export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'COMMENTS'>> = {
+export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'COMMENTS' | 'ADS'>> = {
   FB_GROUP_SEARCH: 'GROUP_SEARCH', FB_GROUP_POSTS: 'POSTS', FB_COMMENTS: 'COMMENTS',
-  FB_POST_SEARCH: 'POSTS', FB_PAGE_POSTS: 'POSTS',
+  FB_POST_SEARCH: 'POSTS', FB_PAGE_POSTS: 'POSTS', FB_AD_LIBRARY: 'ADS',
   IG_PROFILE_POSTS: 'POSTS', IG_COMMENTS: 'COMMENTS',
   TIKTOK_SEARCH: 'POSTS', TIKTOK_COMMENTS: 'COMMENTS',
   VK_WALL: 'POSTS', TELEGRAM_CHANNEL: 'POSTS',
@@ -64,7 +69,7 @@ export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'CO
 
 export const STAGE_NETWORK: Readonly<Record<Stage, Network>> = {
   FB_GROUP_SEARCH: 'FACEBOOK', FB_GROUP_POSTS: 'FACEBOOK', FB_COMMENTS: 'FACEBOOK',
-  FB_POST_SEARCH: 'FACEBOOK', FB_PAGE_POSTS: 'FACEBOOK',
+  FB_POST_SEARCH: 'FACEBOOK', FB_PAGE_POSTS: 'FACEBOOK', FB_AD_LIBRARY: 'FACEBOOK',
   IG_PROFILE_POSTS: 'INSTAGRAM', IG_COMMENTS: 'INSTAGRAM',
   TIKTOK_SEARCH: 'TIKTOK', TIKTOK_COMMENTS: 'TIKTOK',
   VK_WALL: 'VK', TELEGRAM_CHANNEL: 'TELEGRAM',
@@ -79,6 +84,8 @@ export interface StageParams {
   size: number;
   /** ISO date: only content newer than this (incremental collection). */
   since?: string | null;
+  /** ISO-3166 alpha-2 market (Ad Library country filter). */
+  country?: string | null;
 }
 
 const urls = (u: string | null | undefined) => (u ? [{ url: u }] : []);
@@ -122,6 +129,11 @@ export function defaultInput(stage: Stage, p: StageParams): Record<string, unkno
         startUrls: urls(p.targetUrl), maxPosts: p.size, maxItems: p.size, includeComments: true,
         ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}),
       };
+    /* memo23~facebook-ads-library-scraper-ppe (the Actor Verify already uses): ads whose
+       text matches a listing phrase, in the property's country. Active and past ads both
+       come back; each ad's own is_active/start/end decides whether it is current. */
+    case 'FB_AD_LIBRARY':
+      return { searchTerms: strings(q), searchCountries: [String(p.country || 'GE').toUpperCase()], maxItems: p.size };
     case 'IG_PROFILE_POSTS':
       return { startUrls: urls(p.targetUrl), maxItems: p.size };
     case 'IG_COMMENTS':
@@ -193,6 +205,7 @@ export function fitToSchema(input: Record<string, unknown>, properties: string[]
 const ESSENTIAL: Partial<Record<Stage, string[][]>> = {
   FB_POST_SEARCH: [['searchQueries', 'queries', 'query', 'searchTerms', 'keywords']],
   FB_PAGE_POSTS: [['startUrls']],
+  FB_AD_LIBRARY: [['searchTerms']],
 };
 
 /**

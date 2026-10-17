@@ -17,6 +17,8 @@ const walk = (dir, out = []) => {
 };
 
 const CARD = read('src/components/findBuyers/PotentialBuyerCard.tsx');
+/* 2026-10-16: the card became a compact list row; provenance links and translation moved to the lead detail page. */
+const DETAIL = read('src/pages/property/LeadDetailPage.tsx');
 const BRAND = read('src/components/findBuyers/brand.tsx');
 const PANEL = read('src/components/findBuyers/LiveSearchModule.tsx');
 /* Find Buyers 3.0: the results list became a tabbed view plus a post-opportunity page. */
@@ -57,7 +59,7 @@ test('Verify is untouched: no Verify file reaches Find Buyers, and Find Buyers r
 });
 
 test('customer screens never show provider internals, costs or secrets', () => {
-  for (const [name, src] of [['card', CARD], ['panel', PANEL], ['results', RESULTS], ['report', REPORT], ['notes', NOTES], ['report view-model', REPORT_VM]]) {
+  for (const [name, src] of [['card', CARD], ['lead detail', DETAIL], ['panel', PANEL], ['results', RESULTS], ['report', REPORT], ['notes', NOTES], ['report view-model', REPORT_VM]]) {
     assert.doesNotMatch(src, /actor_?id|actorKey|memo23|apify|_micros|costUsd|APIFY_API_TOKEN/i, `${name} leaks internals`);
   }
   assert.doesNotMatch(SERVICE.slice(0, SERVICE.indexOf('/* ── admin')), /provider_budget_micros|customer_value_micros/, 'owner reads exclude economics');
@@ -71,18 +73,36 @@ test('the post opportunity page links only through safeExternalUrl, nofollow, an
   assert.doesNotMatch(op, /supabase\.(rpc|functions)|send-message|outreach-send/, 'outreach is a copied draft, never an automatic send');
 });
 
-test('the result card: provenance via safe links, original text kept, translation on request, RTL and touch safe', () => {
-  assert.match(CARD, /safeExternalUrl\(href\)/);
-  assert.match(CARD, /rel="noopener noreferrer nofollow"/);
-  assert.match(CARD, /dir="auto" lang=\{srcLang \?\? undefined\}/, 'the original keeps its own direction and language');
-  assert.match(CARD, /translateLeadSignal\(propertyId, lead\.id, best\.signalId, lang\)/, 'translation targets the UI language');
-  assert.match(CARD, /fbx_original_lang/);
+test('the result card: compact, original text kept in its own direction, one Details action, RTL and touch safe', () => {
+  assert.match(CARD, /dir="auto" lang=\{srcLang \?\? undefined\}/, 'the excerpt keeps its own direction and language');
+  assert.match(CARD, /line-clamp-2/, 'the excerpt is clamped');
+  assert.match(CARD, /leadHref\(propertyId, lead\.id\)/, 'Details opens the lead detail page');
+  assert.doesNotMatch(CARD, /href=\{|<a\s/, 'the card itself links nowhere outside HOMATCH');
+  assert.doesNotMatch(CARD, /RingMeter/, 'no ring meters on the list card');
+  assert.match(CARD, /min-h-11/, 'a 44px Details target');
   assert.doesNotMatch(CARD, /\b(ml|mr|pl|pr)-\d|text-left|text-right|left-\d|right-\d/, 'logical properties only (RTL)');
-  assert.ok((BRAND.match(/min-h-11/g) ?? []).length >= 2, '44px-class targets for framed and primary actions');
-  assert.match(CARD, /FRAMED_ACTION/); assert.match(CARD, /PRIMARY_ACTION/);
   assert.doesNotMatch(CARD + BRAND, /text-muted-foreground|text-gray-|text-slate-|bg-gray-|bg-slate-/, 'no neutral greys on the premium card');
   assert.match(CARD, /min-w-0/, 'no horizontal overflow from long words');
   assert.match(CARD, /break-words/);
+});
+
+test('the lead detail page: provenance via safe links, original text kept, translation on request, RTL and touch safe', () => {
+  assert.match(DETAIL, /safeExternalUrl\(href\)/);
+  assert.match(DETAIL, /rel="noopener noreferrer nofollow"/);
+  /* Only <Outbound> renders an anchor, and only from safeExternalUrl(href). */
+  assert.equal((DETAIL.match(/<a\s/g) ?? []).length, 1, 'one anchor, inside Outbound');
+  assert.match(DETAIL, /<a href=\{safe\}/);
+  assert.match(DETAIL, /dir="auto" lang=\{srcLang \?\? undefined\}/, 'the original keeps its own direction and language');
+  assert.match(DETAIL, /translateLeadSignal\(propertyId, lead\.id, ev\.signalId, lang\)/, 'translation targets the UI language, per evidence item');
+  assert.match(DETAIL, /fbx_original_lang/);
+  assert.match(DETAIL, /financingBadges\(/, 'financing limitations shown');
+  assert.match(DETAIL, /data-testid="fbld-intent"[\s\S]*data-testid="fbld-compat"/, 'intent and compatibility are separate sections');
+  assert.doesNotMatch(DETAIL, /supabase\.(rpc|functions)|send-message|outreach-send/, 'HOMATCH never contacts anyone from here');
+  assert.doesNotMatch(DETAIL, /\b(ml|mr|pl|pr)-\d|text-left|text-right|left-\d|right-\d/, 'logical properties only (RTL)');
+  assert.doesNotMatch(DETAIL, /text-muted-foreground|text-gray-|text-slate-|bg-gray-|bg-slate-/, 'no neutral greys');
+  assert.ok((BRAND.match(/min-h-11/g) ?? []).length >= 2, '44px-class targets for framed and primary actions');
+  assert.match(DETAIL, /FRAMED_ACTION/); assert.match(DETAIL, /PRIMARY_ACTION/);
+  assert.match(DETAIL, /min-w-0/); assert.match(DETAIL, /break-words/);
 });
 
 test('translation is cached by content hash + languages + model version and costed as TRANSLATION', () => {
@@ -219,7 +239,12 @@ test('owner screens read the server lifecycle, never infer it from stored matche
   assert.doesNotMatch(PAGE, /matches_load_more/, 'numbered pages, no "show more"');
   assert.match(PAGE, /getMatchesPaged\(propertyId, \{ page: matchPage/);
   assert.doesNotMatch(DETAIL, /initialActive=\{property\.matching_status === 'ACTIVE'\}/);
-  assert.doesNotMatch(read('src/components/findBuyers/DiscoverySnake.tsx'), /setInterval|Math\.random/, 'the network animates server facts, no scripted loop');
+  /* 2026-10-16: the SVG snake became the canvas search field; its motion is the server state, seeded, never random. */
+  for (const f of ['src/components/findBuyers/SearchNetworkField.tsx', 'src/findBuyers/motion/searchField.ts']) {
+    assert.doesNotMatch(read(f), /setInterval|Math\.random/, `${f}: the animation follows server state, no scripted loop or randomness`);
+  }
+  assert.match(read('src/components/findBuyers/SearchNetworkField.tsx'), /aria-hidden="true"/, 'the animation is decorative');
+  assert.match(PANEL, /<SearchNetworkField state=\{c\.state\}/, 'motion is driven by the lifecycle state');
 });
 
 test('T/W. the importer keeps every listing photo and records media health', () => {

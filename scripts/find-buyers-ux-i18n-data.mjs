@@ -1,0 +1,212 @@
+/*
+ * FIND BUYERS / FIND TENANTS — customer UX (owner, 2026-10-16): the three result
+ * tabs, the compact card, the single Filters control, research opportunities,
+ * the lead detail page, the live search's elapsed time, its duration note and
+ * the "Search details" disclosure.
+ *
+ * Terminology: match = დამთხვევა, tenant = მოიჯარე; never "confirmed buyer" —
+ * an interested person is a "potentially interested person". The duration note
+ * gives a range and never promises completion within 30 minutes. Counts follow
+ * a colon (no plural agreement needed). Order is en, ka, ru, tr, ar, he —
+ * LANGS in lib/i18nSplice.mjs.
+ */
+export const FIND_BUYERS_UX_STRINGS = {
+  /* ── the three tabs ── */
+  fbx_tab3_direct_buyers: ['Buyers', 'მყიდველები', 'Покупатели', 'Alıcılar', 'المشترون', 'קונים'],
+  fbx_tab3_direct_tenants: ['Tenants', 'მოიჯარეები', 'Арендаторы', 'Kiracılar', 'المستأجرون', 'שוכרים'],
+  fbx_tab3_interest: ['Interested people', 'დაინტერესებული ადამიანები', 'Заинтересованные', 'İlgilenen kişiler', 'أشخاص مهتمون', 'מתעניינים'],
+  fbx_tab3_opportunities: ['Research opportunities', 'საკვლევი შესაძლებლობები', 'Возможности для изучения', 'Araştırma fırsatları', 'فرص للبحث', 'הזדמנויות לבדיקה'],
+
+  /* ── the compact card ── */
+  fbx_kind_qualified_buyer: ['Qualified buyer', 'შერჩეული მყიდველი', 'Отобранный покупатель', 'Nitelikli alıcı', 'مشترٍ مؤهَّل', 'קונה מתאים'],
+  fbx_kind_qualified_tenant: ['Qualified tenant', 'შერჩეული მოიჯარე', 'Отобранный арендатор', 'Nitelikli kiracı', 'مستأجر مؤهَّل', 'שוכר מתאים'],
+  fbx_kind_interested: ['Potentially interested person', 'პოტენციურად დაინტერესებული პირი', 'Возможно заинтересованный человек', 'Potansiyel olarak ilgilenen kişi', 'شخص قد يكون مهتمًا', 'אדם שעשוי להתעניין'],
+  fbx_kind_needs_verification: ['Needs verification', 'საჭიროებს გადამოწმებას', 'Требует проверки', 'Doğrulama gerekiyor', 'يحتاج إلى تحقق', 'דורש אימות'],
+  fbx_rel_STRONG: ['Strong match', 'ძლიერი დამთხვევა', 'Сильное совпадение', 'Güçlü eşleşme', 'تطابق قوي', 'התאמה חזקה'],
+  fbx_rel_POTENTIAL: ['Potential match', 'შესაძლო დამთხვევა', 'Возможное совпадение', 'Olası eşleşme', 'تطابق محتمل', 'התאמה אפשרית'],
+  fbx_rel_WEAK: ['Weak match', 'სუსტი დამთხვევა', 'Слабое совпадение', 'Zayıf eşleşme', 'تطابق ضعيف', 'התאמה חלשה'],
+  fbx_rel_UNCATEGORISED: ['Not yet reviewed', 'ჯერ არ გადამოწმებულა', 'Ещё не проверено', 'Henüz incelenmedi', 'لم تُراجع بعد', 'טרם נבדק'],
+  fbx_card_evidence: ['Evidence: {{n}}', 'მტკიცებულება: {{n}}', 'Доказательства: {{n}}', 'Kanıt: {{n}}', 'الأدلة: {{n}}', 'ראיות: {{n}}'],
+  fbx_card_details: ['Details', 'დეტალები', 'Подробнее', 'Ayrıntılar', 'التفاصيل', 'פרטים'],
+  fbx_verify_note: [
+    'People marked “Needs verification” stated their own intent, but match review rated the fit weak or has not reviewed it yet. Read their own words before relying on them.',
+    '„საჭიროებს გადამოწმებას“ ნიშნავს, რომ ადამიანმა თავად დააფიქსირა სურვილი, თუმცა დამთხვევის შემოწმებამ შესაბამისობა სუსტად შეაფასა ან ჯერ არ შეუფასებია. სანამ დაეყრდნობით, წაიკითხეთ მისი სიტყვები.',
+    '«Требует проверки» — человек сам заявил о намерении, но проверка совпадения оценила соответствие как слабое или ещё не оценила. Прочтите его слова, прежде чем на них полагаться.',
+    '“Doğrulama gerekiyor” işaretli kişiler niyetlerini kendileri belirtti, ancak eşleşme incelemesi uyumu zayıf buldu ya da henüz incelemedi. Güvenmeden önce kendi sözlerini okuyun.',
+    'الأشخاص الموسومون بـ«يحتاج إلى تحقق» أعلنوا نيتهم بأنفسهم، لكن مراجعة التطابق قيّمت الملاءمة بأنها ضعيفة أو لم تراجعها بعد. اقرأ كلماتهم قبل الاعتماد عليها.',
+    'אנשים המסומנים „דורש אימות” הצהירו בעצמם על כוונתם, אך בדיקת ההתאמה דירגה את ההתאמה כחלשה או טרם בדקה אותה. קראו את דבריהם לפני שתסתמכו עליהם.',
+  ],
+
+  /* ── one Filters control ── */
+  fbx_filters: ['Filters', 'ფილტრები', 'Фильтры', 'Filtreler', 'عوامل التصفية', 'מסננים'],
+  fbx_filter_search: ['Search', 'ძებნა', 'Поиск', 'Arama', 'البحث', 'חיפוש'],
+  fbx_filter_source: ['Source', 'წყარო', 'Источник', 'Kaynak', 'المصدر', 'מקור'],
+  fbx_filter_language: ['Language', 'ენა', 'Язык', 'Dil', 'اللغة', 'שפה'],
+  fbx_filter_all_languages: ['All languages', 'ყველა ენა', 'Все языки', 'Tüm diller', 'كل اللغات', 'כל השפות'],
+  fbx_filter_freshness: ['Freshness', 'სიახლე', 'Свежесть', 'Güncellik', 'الحداثة', 'עדכניות'],
+  fbx_filters_clear: ['Clear', 'გასუფთავება', 'Сбросить', 'Temizle', 'مسح', 'ניקוי'],
+  fbx_filters_done: ['Done', 'მზადაა', 'Готово', 'Tamam', 'تم', 'סיום'],
+  fbx_empty_filtered: ['No results match these filters.', 'ამ ფილტრებით შედეგი ვერ მოიძებნა.', 'Нет результатов с этими фильтрами.', 'Bu filtrelerle eşleşen sonuç yok.', 'لا توجد نتائج تطابق عوامل التصفية هذه.', 'אין תוצאות שתואמות למסננים האלה.'],
+
+  /* ── research opportunities ── */
+  fbx_source_ad: ['Advertisement', 'რეკლამა', 'Реклама', 'Reklam', 'إعلان', 'מודעה'],
+  fbx_opp_comments_note: [
+    'People interested in a similar type of apartment may be in the comments on this post. Review the discussion to find potential buyers.',
+    'ამ პოსტის კომენტარებში შესაძლოა იყვნენ ადამიანები, რომლებიც მსგავსი ტიპის ბინით ინტერესდებიან. გადახედეთ განხილვას პოტენციური მყიდველების აღმოსაჩენად.',
+    'В комментариях к этому посту могут быть люди, которых интересует похожая квартира. Просмотрите обсуждение, чтобы найти потенциальных покупателей.',
+    'Bu gönderinin yorumlarında benzer tipte bir daireyle ilgilenen kişiler olabilir. Potansiyel alıcıları bulmak için tartışmayı inceleyin.',
+    'قد يكون في تعليقات هذا المنشور أشخاص مهتمون بشقة من نوع مشابه. راجع النقاش للعثور على مشترين محتملين.',
+    'ייתכן שבתגובות לפוסט הזה יש אנשים שמתעניינים בדירה מסוג דומה. עברו על הדיון כדי למצוא קונים פוטנציאליים.',
+  ],
+  fbx_opp_competitor_note: [
+    'A post published about a competitor’s apartment. Potential buyers may be in the comments.',
+    'კონკურენტის ბინის შესახებ გამოქვეყნებული პოსტი. კომენტარებში შესაძლოა იყვნენ პოტენციური მყიდველები.',
+    'Пост о квартире конкурента. В комментариях могут быть потенциальные покупатели.',
+    'Bir rakibin dairesi hakkında yayımlanmış gönderi. Yorumlarda potansiyel alıcılar olabilir.',
+    'منشور عن شقة لمنافس. قد يكون في التعليقات مشترون محتملون.',
+    'פוסט שפורסם על דירה של מתחרה. ייתכן שבתגובות יש קונים פוטנציאליים.',
+  ],
+  fbx_opp_interested_found: [
+    'Potentially interested people found in the comments: {{n}}',
+    'კომენტარებში ნაპოვნი პოტენციურად დაინტერესებული ადამიანები: {{n}}',
+    'Возможно заинтересованных людей в комментариях: {{n}}',
+    'Yorumlarda bulunan potansiyel olarak ilgilenen kişiler: {{n}}',
+    'أشخاص قد يكونون مهتمين وُجدوا في التعليقات: {{n}}',
+    'אנשים שעשויים להתעניין שנמצאו בתגובות: {{n}}',
+  ],
+  fbx_opp_competitor_badge: ['Competitor listing', 'კონკურენტის განცხადება', 'Объявление конкурента', 'Rakip ilanı', 'إعلان منافس', 'מודעה של מתחרה'],
+  fbx_opp_open_post: ['Open on {{platform}}', '{{platform}}-ზე გახსნა', 'Открыть в {{platform}}', '{{platform}} üzerinde aç', 'فتح على {{platform}}', 'פתיחה ב-{{platform}}'],
+  fbx_opp_external_explain: [
+    'Opens the original post on its platform. HOMATCH sends no message.',
+    'ორიგინალი პოსტი თავის პლატფორმაზე გაიხსნება. HOMATCH შეტყობინებას არ აგზავნის.',
+    'Откроется исходный пост на его платформе. HOMATCH не отправляет сообщений.',
+    'Orijinal gönderi kendi platformunda açılır. HOMATCH mesaj göndermez.',
+    'يفتح المنشور الأصلي على منصته. لا يرسل HOMATCH أي رسالة.',
+    'הפוסט המקורי נפתח בפלטפורמה שלו. HOMATCH לא שולח הודעות.',
+  ],
+
+  /* ── lead detail page ── */
+  fbx_lead_eyebrow_buyer: ['Find Buyers · person', 'მყიდველების ძიება · პირი', 'Поиск покупателей · человек', 'Alıcı bul · kişi', 'البحث عن مشترين · شخص', 'חיפוש קונים · אדם'],
+  fbx_lead_eyebrow_tenant: ['Find Tenants · person', 'მოიჯარეების ძიება · პირი', 'Поиск арендаторов · человек', 'Kiracı bul · kişi', 'البحث عن مستأجرين · شخص', 'חיפוש שוכרים · אדם'],
+  fbx_lead_open_original: ['Open original', 'ორიგინალის გახსნა', 'Открыть оригинал', 'Orijinali aç', 'فتح الأصل', 'פתיחת המקור'],
+  fbx_lead_copy_link: ['Copy link', 'ბმულის კოპირება', 'Копировать ссылку', 'Bağlantıyı kopyala', 'نسخ الرابط', 'העתקת קישור'],
+  fbx_lead_copied: ['Link copied', 'ბმული დაკოპირდა', 'Ссылка скопирована', 'Bağlantı kopyalandı', 'تم نسخ الرابط', 'הקישור הועתק'],
+  fbx_lead_classification: ['Classification', 'კლასიფიკაცია', 'Классификация', 'Sınıflandırma', 'التصنيف', 'סיווג'],
+  fbx_lead_explain_direct: [
+    'Stated their own purchase or rental intent, and match review rated the fit with your property strong or potential.',
+    'თავად დააფიქსირა ყიდვის ან ქირაობის სურვილი, ხოლო დამთხვევის შემოწმებამ თქვენს ქონებასთან შესაბამისობა ძლიერად ან შესაძლოდ შეაფასა.',
+    'Сам заявил о намерении купить или снять, и проверка совпадения оценила соответствие вашему объекту как сильное или возможное.',
+    'Satın alma veya kiralama niyetini kendisi belirtti; eşleşme incelemesi mülkünüzle uyumu güçlü veya olası buldu.',
+    'أعلن بنفسه نية الشراء أو الاستئجار، وقيّمت مراجعة التطابق ملاءمته لعقارك بأنها قوية أو محتملة.',
+    'הצהיר בעצמו על כוונת קנייה או שכירות, ובדיקת ההתאמה דירגה את ההתאמה לנכס שלכם כחזקה או אפשרית.',
+  ],
+  fbx_lead_explain_interest: [
+    'Asked about a comparable property. That is interest, not a stated decision: read the evidence before contacting them.',
+    'იკითხა მსგავსი ქონების შესახებ. ეს ინტერესია და არა გამოცხადებული გადაწყვეტილება: დაკავშირებამდე გადახედეთ მტკიცებულებას.',
+    'Спрашивал о похожем объекте. Это интерес, а не заявленное решение: прочтите доказательства, прежде чем связываться.',
+    'Benzer bir mülk hakkında soru sordu. Bu bir karar değil, ilgidir: iletişime geçmeden önce kanıtları okuyun.',
+    'سأل عن عقار مشابه. هذا اهتمام وليس قرارًا معلنًا: اقرأ الأدلة قبل التواصل معه.',
+    'שאל על נכס דומה. זו התעניינות ולא החלטה מוצהרת: קראו את הראיות לפני שתיצרו קשר.',
+  ],
+  fbx_lead_explain_verify: [
+    'Stated their own intent, but match review rated the fit weak or has not reviewed it yet — needs verification before you rely on it.',
+    'თავად დააფიქსირა სურვილი, თუმცა დამთხვევის შემოწმებამ შესაბამისობა სუსტად შეაფასა ან ჯერ არ შეუფასებია — დაყრდნობამდე საჭიროებს გადამოწმებას.',
+    'Сам заявил о намерении, но проверка совпадения оценила соответствие как слабое или ещё не оценила — требует проверки.',
+    'Niyetini kendisi belirtti, ancak eşleşme incelemesi uyumu zayıf buldu ya da henüz incelemedi — güvenmeden önce doğrulama gerekiyor.',
+    'أعلن نيته بنفسه، لكن مراجعة التطابق قيّمت الملاءمة بأنها ضعيفة أو لم تراجعها بعد — يحتاج إلى تحقق قبل الاعتماد عليه.',
+    'הצהיר בעצמו על כוונתו, אך בדיקת ההתאמה דירגה את ההתאמה כחלשה או טרם בדקה — דורש אימות לפני שתסתמכו עליו.',
+  ],
+  fbx_lead_explain_excluded: [
+    'Match review set this reading aside, so it is not listed in your results.',
+    'დამთხვევის შემოწმებამ ეს ჩანაწერი გამორიცხა, ამიტომ ის თქვენს შედეგებში არ ჩანს.',
+    'Проверка совпадения отсеяла эту запись, поэтому её нет в ваших результатах.',
+    'Eşleşme incelemesi bu kaydı eledi; bu yüzden sonuçlarınızda listelenmiyor.',
+    'استبعدت مراجعة التطابق هذه القراءة، لذلك لا تظهر في نتائجك.',
+    'בדיקת ההתאמה פסלה את הרשומה הזו, ולכן היא לא מופיעה בתוצאות שלכם.',
+  ],
+  fbx_lead_intent_title: ['Intent confidence', 'განზრახვის სანდოობა', 'Уверенность в намерении', 'Niyet güveni', 'الثقة في النية', 'ודאות הכוונה'],
+  fbx_lead_intent_body: [
+    'How clearly this person stated their own intent, read from their own words.',
+    'რამდენად ნათლად დააფიქსირა ამ ადამიანმა საკუთარი სურვილი — მისივე სიტყვებიდან.',
+    'Насколько ясно человек заявил о своём намерении — по его собственным словам.',
+    'Bu kişinin niyetini ne kadar açık belirttiği — kendi sözlerinden.',
+    'مدى وضوح إعلان هذا الشخص عن نيته، استنادًا إلى كلماته.',
+    'עד כמה האדם הצהיר בבירור על כוונתו — מתוך דבריו שלו.',
+  ],
+  fbx_lead_compat_title: ['Property compatibility', 'ქონებასთან შესაბამისობა', 'Соответствие объекту', 'Mülk uyumu', 'الملاءمة مع العقار', 'התאמה לנכס'],
+  fbx_lead_compat_body: [
+    'How well what they asked about fits this property: budget, location, rooms and type.',
+    'რამდენად შეესაბამება მისი მოთხოვნა ამ ქონებას: ბიუჯეტი, მდებარეობა, ოთახები და ტიპი.',
+    'Насколько их запрос подходит этому объекту: бюджет, район, комнаты и тип.',
+    'Sorduklarının bu mülke ne kadar uyduğu: bütçe, konum, oda sayısı ve tür.',
+    'مدى ملاءمة ما سأل عنه لهذا العقار: الميزانية والموقع والغرف والنوع.',
+    'עד כמה מה שביקשו מתאים לנכס הזה: תקציב, מיקום, חדרים וסוג.',
+  ],
+  fbx_lead_limitations: ['Limitations', 'შეზღუდვები', 'Ограничения', 'Sınırlamalar', 'القيود', 'מגבלות'],
+  fbx_lead_no_limitations: ['No limitation recorded.', 'შეზღუდვა არ დაფიქსირებულა.', 'Ограничений не зафиксировано.', 'Kayıtlı sınırlama yok.', 'لم يُسجَّل أي قيد.', 'לא נרשמה מגבלה.'],
+  fbx_lead_evidence_title: ['Evidence: {{n}}', 'მტკიცებულება: {{n}}', 'Доказательства: {{n}}', 'Kanıtlar: {{n}}', 'الأدلة: {{n}}', 'ראיות: {{n}}'],
+  fbx_lead_no_evidence: ['No public evidence is stored for this person.', 'ამ პირისთვის საჯარო მტკიცებულება შენახული არ არის.', 'Для этого человека не сохранено публичных доказательств.', 'Bu kişi için saklanan herkese açık kanıt yok.', 'لا توجد أدلة عامة محفوظة لهذا الشخص.', 'לא נשמרו ראיות ציבוריות עבור אדם זה.'],
+  fbx_lead_contact_note: [
+    'Contact happens on the original platform, by you. HOMATCH never messages anyone on your behalf.',
+    'დაკავშირება ხდება ორიგინალ პლატფორმაზე, თქვენ მიერ. HOMATCH თქვენი სახელით არავის წერს.',
+    'Связь — на исходной платформе, вами лично. HOMATCH никому не пишет от вашего имени.',
+    'İletişim orijinal platformda, sizin tarafınızdan kurulur. HOMATCH sizin adınıza kimseye mesaj göndermez.',
+    'يتم التواصل على المنصة الأصلية، من قِبلك. لا يراسل HOMATCH أحدًا نيابةً عنك.',
+    'יצירת הקשר נעשית בפלטפורמה המקורית, על ידיכם. HOMATCH לא שולח הודעות לאיש בשמכם.',
+  ],
+  fbx_lead_missing_title: ['This person is not in your current results', 'ეს პირი თქვენს მიმდინარე შედეგებში არ არის', 'Этого человека нет в текущих результатах', 'Bu kişi güncel sonuçlarınızda yok', 'هذا الشخص ليس ضمن نتائجك الحالية', 'האדם הזה לא נמצא בתוצאות הנוכחיות שלכם'],
+  fbx_lead_missing_body: [
+    'The signal may be older than 30 days, or the link belongs to another property.',
+    'შესაძლოა სიგნალი 30 დღეზე ძველია, ან ბმული სხვა ქონებას ეკუთვნის.',
+    'Возможно, сигнал старше 30 дней или ссылка относится к другому объекту.',
+    'Sinyal 30 günden eski olabilir ya da bağlantı başka bir mülke ait olabilir.',
+    'قد تكون الإشارة أقدم من 30 يومًا، أو أن الرابط يخص عقارًا آخر.',
+    'ייתכן שהאות ישן מ-30 יום, או שהקישור שייך לנכס אחר.',
+  ],
+  fbx_lead_back_results: ['Back to results', 'შედეგებზე დაბრუნება', 'Назад к результатам', 'Sonuçlara dön', 'العودة إلى النتائج', 'חזרה לתוצאות'],
+  fbx_ev_kind_post: ['Post', 'პოსტი', 'Пост', 'Gönderi', 'منشور', 'פוסט'],
+  fbx_ev_kind_comment: ['Comment', 'კომენტარი', 'Комментарий', 'Yorum', 'تعليق', 'תגובה'],
+  fbx_ev_kind_message: ['Message', 'შეტყობინება', 'Сообщение', 'Mesaj', 'رسالة', 'הודעה'],
+
+  fbx_kind_verify_transaction: [
+    'Needs verification — buy or rent not stated',
+    'საჭიროებს გადამოწმებას — ყიდვა თუ ქირაობა, არ არის მითითებული',
+    'Требует проверки — не указано, покупка или аренда',
+    'Doğrulama gerekiyor — satın alma mı kiralama mı belirtilmedi',
+    'يحتاج إلى تحقق — لم يُذكر الشراء أو الاستئجار',
+    'דורש אימות — לא צוין אם קנייה או שכירות',
+  ],
+  fbx_opp_ad_comments: [
+    'Comments are not accessible from the ad; review the advertiser’s Page.',
+    'რეკლამიდან კომენტარები ხელმისაწვდომი არ არის; გადახედეთ რეკლამის განმთავსებლის გვერდს.',
+    'Комментарии из рекламы недоступны; просмотрите страницу рекламодателя.',
+    'Reklamdan yorumlara erişilemez; reklamverenin Sayfasını inceleyin.',
+    'لا يمكن الوصول إلى التعليقات من الإعلان؛ راجع صفحة المعلن.',
+    'אין גישה לתגובות מתוך המודעה; עברו על הדף של המפרסם.',
+  ],
+  fbx_opp_open_ad: ['Open in Ad Library', 'რეკლამების ბიბლიოთეკაში გახსნა', 'Открыть в Библиотеке рекламы', 'Reklam Kütüphanesi’nde aç', 'فتح في مكتبة الإعلانات', 'פתיחה בספריית המודעות'],
+  fbl_lang_outcomes_title: ['By language', 'ენების მიხედვით', 'По языкам', 'Dillere göre', 'حسب اللغة', 'לפי שפה'],
+  fbl_lang_outcome_NOT_PLANNED: ['Not planned', 'არ იგეგმებოდა', 'Не планировался', 'Planlanmadı', 'غير مخطط', 'לא תוכנן'],
+  fbl_lang_outcome_NOT_RUN: ['Not searched', 'ძებნა არ ჩატარებულა', 'Поиск не проводился', 'Aranmadı', 'لم يُبحث', 'לא נערך חיפוש'],
+  fbl_lang_outcome_SOURCE_UNAVAILABLE: ['No source available', 'წყარო მიუწვდომელია', 'Нет доступного источника', 'Erişilebilir kaynak yok', 'لا يوجد مصدر متاح', 'אין מקור זמין'],
+  fbl_lang_outcome_SEARCHED_NO_RESULTS: ['Searched — nothing found', 'მოძებნილია — შედეგი არ არის', 'Искали — ничего не найдено', 'Arandı — sonuç yok', 'تم البحث — لا نتائج', 'נערך חיפוש — לא נמצא דבר'],
+  fbl_lang_outcome_RESULTS_FILTERED: ['Searched — results set aside', 'მოძებნილია — შედეგები გამოირიცხა', 'Искали — результаты отсеяны', 'Arandı — sonuçlar elendi', 'تم البحث — استُبعدت النتائج', 'נערך חיפוש — התוצאות נפסלו'],
+  fbl_lang_outcome_RESULTS: ['People found: {{n}}', 'ნაპოვნი ადამიანები: {{n}}', 'Найдено людей: {{n}}', 'Bulunan kişi: {{n}}', 'أشخاص وُجدوا: {{n}}', 'אנשים שנמצאו: {{n}}'],
+
+  /* ── the live search: elapsed, real progress, duration note, details ── */
+  fbl_elapsed_running: ['Searching for', 'ძებნა მიმდინარეობს', 'Поиск идёт', 'Arama süresi', 'مدة البحث', 'זמן חיפוש'],
+  fbl_elapsed_paused: ['Paused after', 'შეჩერდა', 'Приостановлен через', 'Duraklatıldı', 'أُوقف مؤقتًا بعد', 'הושהה אחרי'],
+  fbl_elapsed_total: ['Total time', 'ჯამური დრო', 'Общее время', 'Toplam süre', 'الوقت الإجمالي', 'זמן כולל'],
+  fbl_found_so_far: ['Found so far', 'ნაპოვნია ჯერჯერობით', 'Найдено пока', 'Şimdiye kadar bulunan', 'ما وُجد حتى الآن', 'נמצאו עד כה'],
+  fbl_progress_tasks: ['Search tasks finished', 'დასრულებული საძიებო ამოცანები', 'Завершено задач поиска', 'Tamamlanan arama görevleri', 'مهام البحث المنتهية', 'משימות חיפוש שהסתיימו'],
+  fbl_duration_title: ['How long it takes', 'რამდენ ხანს გრძელდება', 'Сколько это длится', 'Ne kadar sürer', 'كم يستغرق', 'כמה זמן זה לוקח'],
+  fbl_duration_body: [
+    'Finding buyers and tenants may take 10–30 minutes. The time depends on the scale of the search and the sources available.',
+    'მყიდველებისა და მოიჯარეების მოძიებას შესაძლოა 10–30 წუთი დასჭირდეს. დრო დამოკიდებულია ძებნის მასშტაბსა და ხელმისაწვდომ წყაროებზე.',
+    'Поиск покупателей и арендаторов может занять 10–30 минут. Время зависит от масштаба поиска и доступных источников.',
+    'Alıcı ve kiracı bulmak 10–30 dakika sürebilir. Süre, aramanın kapsamına ve erişilebilir kaynaklara bağlıdır.',
+    'قد يستغرق العثور على المشترين والمستأجرين من 10 إلى 30 دقيقة. يعتمد الوقت على نطاق البحث والمصادر المتاحة.',
+    'איתור קונים ושוכרים עשוי להימשך 10–30 דקות. הזמן תלוי בהיקף החיפוש ובמקורות הזמינים.',
+  ],
+  fbl_details_title: ['Search details', 'ძებნის დეტალები', 'Подробности поиска', 'Arama ayrıntıları', 'تفاصيل البحث', 'פרטי החיפוש'],
+};

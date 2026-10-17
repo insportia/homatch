@@ -157,6 +157,18 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
       }
     }
   }
+  /* Competitor advertising: the same listing phrases searched in the Meta Ad Library.
+     One ad search per listing language; a comparable ad queues its Page's feed. */
+  if (has('FB_AD_LIBRARY')) {
+    for (const lang of LISTING_SEARCH_LANGUAGES) {
+      const q = queriesFor(plan, 'listing', lang)[0];
+      if (q) jobs.push({
+        stage: 'FB_AD_LIBRARY', actorKey: STAGE_ACTOR.FB_AD_LIBRARY, language: lang, query: q.query, targetUrl: null,
+        sourceId: null, size: probe('FB_AD_LIBRARY'), arm: `FB_AD_LIBRARY:${lang}`,
+        priority: armPriority(null, null, base('FB_AD_LIBRARY') + (lang === PRIMARY_LANGUAGE ? 5 : 0)), reason: 'competitor_ads',
+      });
+    }
+  }
   pushKnown('FB_PAGE_POSTS', 'FACEBOOK', null, 3, 'PAGE');
 
   /* TIKTOK: search per language; hashtags where they are used. */

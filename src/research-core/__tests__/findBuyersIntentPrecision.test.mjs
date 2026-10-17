@@ -205,3 +205,62 @@ test('the lead card shows each financing limitation as a badge, in a fixed order
   assert.deepEqual(financingBadges(null), []);
   assert.deepEqual(financingBadges(['BUDGET_UNKNOWN']), []);
 });
+
+/* ── live test 2026-10-16 (campaign 46dcaf3f, VILLION SALE): every stored lead, judged by
+   hand against its original post, must land in its people-first class ───────────── */
+test('live test 2026-10-16: sellers and agencies recruiting sellers are supply, never buyers', () => {
+  const supply = [
+    /* a seller's listing opening with a question to readers ("Ищете …?") */
+    'Ищете жилье «для себя», а не типовой ремонт под сдачу? Продается эксклюзивная угловая квартира в элитном комплексе «Your Home on Lisi».',
+    /* a broker offering to sell other people's homes */
+    'თუ გაქვთ ბინა, სახლი ან კომერციული ფართი გასაყიდი ან გასაქირავებელი, სიამოვნებით დაგეხმარებით. პირადად მოვალ, გადავიღებ ფოტოებს და ვიპოვო რეალური მყიდველი ან დამქირავებელი.',
+    /* an agency taking exclusive listings */
+    '🏡 თქვენ გაქვთ გასაყიდი უძრავი ქონება? ჩვენ გვყავს გუნდი, რომელიც მის გაყიდვაზე იმუშავებს! 📌 ვიღებთ უძრავ ქონებას ექსკლუზიურ გაყიდვაში!',
+    'Хотите продать квартиру? Поможем продать быстро, найдем покупателя.',
+    'Do you have an apartment to sell? We will sell your property fast — exclusive listing, no stress.',
+    /* stored history, 2026-10-09/13 campaigns: a broker collecting owners' listings, a broker
+       offering help, a sale ad addressed to readers */
+    'გასაყიდი ბინები გამომიგზავნეთ მეპატრონეებმა..დაგეხმარებით♥️ გამომიგზავნეთ ვაცაპზე ზუსტი მისამართი..კვადრატი..ფასი',
+    'ვისაც გაქვთ სურვილი რომ, უძრავი ქონების ყიდვა-გაყიდვაში დაგეხმაროთ სტაჟიანი და მოწესრიგებული ბროკერი დამირეკეთ',
+    '🚨 ბათუმში 42 კვადრატი 42 000 დოლარად! ხალხო, ვისაც ბათუმში ბინის ყიდვა გინდათ და არ გსურთ უზარმაზარი თანხის გადახდა, ეს ვარიანტი ნახეთ!',
+  ];
+  for (const text of supply) {
+    const r = classifyDemand(text);
+    assert.ok(['SALE_OFFER', 'RENT_OFFER', 'AGENT'].includes(r.role), `${text.slice(0, 40)} → ${r.role}`);
+    const q = qualify(r, SALE_DNA, { ageDays: 1, duplicate: false });
+    assert.equal(q.category, 'REJECTED', text.slice(0, 40));
+  }
+});
+
+test('live test 2026-10-16: real buyers stay buyers, including one who asks whoever sells', () => {
+  for (const text of [
+    'სალამი, მეგობრებო! ვეძებ ბინას იპოთეკით, 2 საძინებლით, რომლის შეძენასაც შევძლებ საბანკო დაფინანსებით.',
+    'ბენდუქიძეში თუ ყიდით ვინმე ბინას მომწერეთ პირადში ან დამირეკეთ',
+    'Кто продает 3-комнатную квартиру в Крцаниси? Напишите в личку.',
+    /* a buyer asking sellers with no service promise is still a buyer */
+    'თუ გაქვთ ბინა გასაყიდი კრწანისში, მომწერეთ',
+    /* stored history: genuine buyers HOMATCH had already read */
+    'მეპატრონედან ვიყიდი სამ ოთახიან ბინას განიხილება დიღომი თემქა მუხიანი და გლდანი',
+    'Ищу квартиру для покупки в районе Ортачала. Рассматриваю студию или однокомнатную квартиру',
+    'შევიძენ სარემონტო ბინას ან კარკასს შესახლებულ კორპუსში, 40მ²-80მ² მდე. ვარ რეალური მყიდველი.',
+  ]) {
+    const r = classifyDemand(text);
+    assert.equal(r.role, 'BUY_SEEKER', `${text.slice(0, 40)} → ${r.role} ${r.evidence}`);
+  }
+});
+
+test('live test 2026-10-16: a seeker who never said buy or rent is an interested person to verify', async () => {
+  const { boundModelReading } = await import('../findBuyers/demandClassifier.ts');
+  const { classifyBuyerIntent } = await import('../findBuyers/buyerIntent.ts');
+  const text = 'ვეძებ ბინას 3ოთახიანს ვარკეთილში';
+  const rule = classifyDemand(text);
+  for (const model of [null, { role: 'RENT_SEEKER', transaction: 'RENT' }, { role: 'BUY_SEEKER', transaction: 'BUY' }]) {
+    const r = model ? boundModelReading(rule, model) : rule;
+    const q = qualify(r, SALE_DNA, { ageDays: 1, duplicate: false });
+    assert.equal(q.category, 'WEAK', JSON.stringify(model));
+    assert.ok(q.limitations.includes('TRANSACTION_UNCONFIRMED'));
+    assert.equal(classifyBuyerIntent({ text, kind: 'POST', reading: r }).resultType, 'INTEREST', 'never a confirmed buyer, never dropped');
+  }
+  /* a generic question with no listing context is not a buyer */
+  assert.notEqual(classifyBuyerIntent({ text: 'საძინებელი რამდენი?\nფასი?', kind: 'COMMENT', parent: null }).resultType, 'DIRECT');
+});

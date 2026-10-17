@@ -14,7 +14,7 @@
 // Pure and deterministic: the edge pipeline stores the result, and the owner's page
 // recomputes it on read for leads stored before this gate existed.
 
-import { classifyComment, classifyDemand, type DemandReading, type DemandRole } from './demandClassifier.ts';
+import { classifyComment, classifyDemand, transactionUnconfirmed, type DemandReading, type DemandRole } from './demandClassifier.ts';
 
 export type BuyerIntent =
   | 'ACTIVE_BUYER' | 'ACTIVE_TENANT' | 'PRICE_INQUIRY' | 'VIEWING_INQUIRY' | 'PROPERTY_INTEREST'
@@ -91,6 +91,9 @@ export function classifyBuyerIntent(input: IntentInput): IntentReading {
   if (reading.role === 'SERVICE' || reading.role === 'JOB') return out('SERVICE_REQUEST', 'EXCLUDED', 'service');
   if (reading.role === 'AGENT') return out('REAL_ESTATE_AGENT', 'EXCLUDED', 'agent');
   if (reading.role === 'SALE_OFFER' || reading.role === 'RENT_OFFER') return out('SELLER', 'EXCLUDED', 'seller');
+
+  /* A home seeker who never said buy or rent: an interested person to verify, not a buyer. */
+  if (transactionUnconfirmed(reading)) return out(reading.role === 'RENT_SEEKER' ? 'ACTIVE_TENANT' : 'ACTIVE_BUYER', 'INTEREST', 'seeker_transaction_unconfirmed');
 
   /* Someone stating their own purchase / rental intent. */
   const ownIntent = (reading.role === 'BUY_SEEKER' || reading.role === 'RENT_SEEKER') && !has(reading, 'interest_under_listing');

@@ -60,6 +60,8 @@ test('Find Buyers 3.0: result pages go back to the dashboard, details to their r
   assert.equal(parentRouteFor('/property/p1/buyers/external'), '/property/p1/matches');
   assert.equal(parentRouteFor('/property/p1/buyers/internal'), '/property/p1/matches');
   assert.equal(parentRouteFor('/property/p1/buyers/opportunity/abc'), '/property/p1/buyers/external');
+  assert.equal(parentRouteFor('/property/p1/buyers/lead/l-42'), '/property/p1/buyers/external', 'a lead detail returns to the live results page');
+  assert.equal(parentRouteFor('/property/p1/buyers/lead/l-42/'), '/property/p1/buyers/external');
   assert.equal(parentRouteFor('/property/p1/buyer/demo'), '/property/p1/buyers/internal');
   assert.equal(parentRouteFor('/property/p1/leads'), '/property/p1/buyers/internal');
   assert.equal(parentRouteFor('/property/p1/matches'), '/property/p1');

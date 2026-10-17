@@ -94,7 +94,9 @@ test('a stored, already-qualified lead keeps its decision unless the rules find 
     counterpart: 'BUYER', match_category: cat, evidence: [{ kind: 'POST', text }] });
   /* the rules alone read this as unknown; the pipeline (with the model) qualified it */
   assert.equal(classifyLead(stored('Ищу 2-комнатную квартиру в Крцаниси, рассмотрю варианты.', 'STRONG'), 'SALE').resultType, 'DIRECT');
-  assert.equal(classifyLead(stored('Ищу 2-комнатную квартиру в Крцаниси, рассмотрю варианты.', null), 'SALE').resultType, 'EXCLUDED', 'never-qualified legacy: no pass');
+  /* never-qualified legacy: no pass to DIRECT. Since v5 a seeker who never said buy or
+     rent is an interested person to verify (people-first), not excluded and not a buyer. */
+  assert.equal(classifyLead(stored('Ищу 2-комнатную квартиру в Крцаниси, рассмотрю варианты.', null), 'SALE').resultType, 'INTEREST', 'never-qualified legacy: no pass');
   /* a definite exclusion still wins: the production developer ad was stored as WEAK */
   assert.equal(classifyLead(stored('ბინის შეძენა გსურთ? გთავაზობთ ბინებს მწვანე კარკასის კონდიციით, გადახდის მოქნილი პირობებით', 'WEAK'), 'SALE').resultType, 'EXCLUDED');
 });

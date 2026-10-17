@@ -584,6 +584,8 @@ test('numbered server pages: page 2 is a server request, kept in the URL; paging
   await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
   await open(page);
   const entries = await page.evaluate(() => history.length);
+  /* Earlier internal matches start closed (owner, 2026-10-17): open them first. */
+  await page.click('[data-testid="fbx-legacy-toggle"]');
   await page.waitForSelector('nav[aria-label="Match pages"]');
   assert.equal(await page.locator('nav[aria-label="Match pages"] [aria-current="page"]').textContent(), '1');
   /* The current-page marker follows the URL at once; the page-2 fetch fires a

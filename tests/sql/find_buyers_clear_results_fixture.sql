@@ -2,6 +2,17 @@
 -- finished search (2 visible leads, 1 rejected), a running search (1 lead), legacy
 -- matches (NEW, UNLOCKED, REJECTED), and a stranger's property.
 alter table public.properties add column if not exists is_deleted boolean default false;
+/* matches.status as production has it: the match_status enum, NOT NULL (20260827205525). Earlier
+   suites' placeholder 'LOCKED' rows become NEW; they have already run. */
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'match_status' and typnamespace = 'public'::regnamespace) then
+    create type public.match_status as enum ('NEW', 'PREVIEWED', 'UNLOCKED', 'ARCHIVED', 'REJECTED');
+  end if;
+end $$;
+alter table public.matches alter column status drop default;
+alter table public.matches alter column status type public.match_status
+  using (case when status::text in ('NEW', 'PREVIEWED', 'UNLOCKED', 'ARCHIVED', 'REJECTED') then status::text else 'NEW' end)::public.match_status;
+alter table public.matches alter column status set default 'NEW', alter column status set not null;
 do $$
 declare
   owner uuid := '11111111-1111-1111-1111-111111111111';
@@ -28,4 +39,6 @@ begin
     (done_job, prop, owner, p4, 'BUYER', 'FACEBOOK', 'BUYER_MEDIUM', 70, 'GOOD', now() - interval '40 days', 'POTENTIAL'),
     (run_job, prop, owner, p1, 'BUYER', 'FACEBOOK', 'BUYER_MEDIUM', 60, 'POSSIBLE', now() - interval '1 hour', 'WEAK');
   insert into public.matches (property_id, status) values (prop, 'NEW'), (prop, 'UNLOCKED'), (prop, 'REJECTED'), (prop2, 'NEW');
+  /* a legacy match of the running search: never cleared while it runs */
+  insert into public.matches (property_id, job_id, status) values (prop, run_job, 'NEW');
 end $$;

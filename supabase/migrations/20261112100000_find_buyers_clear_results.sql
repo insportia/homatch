@@ -100,9 +100,10 @@ begin
                  and coalesce(l.match_category, 'POTENTIAL') <> 'REJECTED' and not (l.matching_job_id = any (v_active))),
     'legacyMatches', (select count(*) from public.matches m
                where m.property_id = p_property_id and m.owner_cleared_at is null
-                 and coalesce(m.status, '') not in ('UNLOCKED', 'REJECTED')),
+                 and m.status::text not in ('UNLOCKED', 'REJECTED')
+                 and (m.job_id is null or not (m.job_id = any (v_active)))),
     'legacyUnlockedKept', (select count(*) from public.matches m
-               where m.property_id = p_property_id and m.owner_cleared_at is null and m.status = 'UNLOCKED'),
+               where m.property_id = p_property_id and m.owner_cleared_at is null and m.status::text = 'UNLOCKED'),
     'activeCampaign', cardinality(v_active) > 0
   );
 end;
@@ -140,9 +141,10 @@ begin
     into v_leads from u;
   with u as (
     update public.matches m set owner_cleared_at = v_now
-     where m.property_id = p_property_id and m.owner_cleared_at is null and coalesce(m.status, '') <> 'UNLOCKED'
-    returning m.status)
-  select count(*) filter (where coalesce(u.status, '') <> 'REJECTED') into v_matches from u;
+     where m.property_id = p_property_id and m.owner_cleared_at is null and m.status::text <> 'UNLOCKED'
+       and (m.job_id is null or not (m.job_id = any (v_active)))
+    returning m.status::text as status)
+  select count(*) filter (where u.status <> 'REJECTED') into v_matches from u;
   update public.find_buyers_campaigns c set owner_cleared_at = v_now
    where c.property_id = p_property_id and c.owner_cleared_at is null and not (c.matching_job_id = any (v_active));
   return jsonb_build_object('leadsCleared', v_leads, 'legacyMatchesCleared', v_matches, 'clearedAt', v_now);

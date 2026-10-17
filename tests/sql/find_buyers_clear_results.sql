@@ -34,6 +34,8 @@ begin
   /* the running search's lead is untouched and still current */
   select count(*) into n from public.find_buyers_current_leads where property_id = prop;
   if n <> 1 then raise exception 'current leads after clear: %', n; end if;
+  select count(*) into n from public.matches where property_id = prop and job_id = 'bbbbbbbb-0000-0000-0000-00000000d0e2' and owner_cleared_at is null;
+  if n <> 1 then raise exception 'running search legacy match cleared'; end if;
   select count(*) into n from public.matches where property_id = prop and status = 'UNLOCKED' and owner_cleared_at is null;
   if n <> 1 then raise exception 'unlocked contact hidden'; end if;
   /* the stranger's rows are untouched; nothing was deleted */

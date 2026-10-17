@@ -76,6 +76,7 @@ import {
   priceVerification,
   totalVerificationCost,
 } from '../../../src/verify/cogs.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 // v28 (2026-09-06, "HOMATCH VERIFY — FINAL PRE-PUSH CONSOLIDATION / ADAPTIVE
 // RESEARCH ENGINE / RECORDED OFFICIAL WORKFLOWS" — the FINANCIAL/COMPANY
@@ -7551,6 +7552,8 @@ Deno.serve(async (req) => {
      * did not finish are queued again through the cache, and a second request
      * for the same continuation is the same continuation. */
     if (action === 'continue') {
+      // SERVICE CONTROL (key `verify`): continuing a paused report authorises new spend.
+      if (!(await serviceBackendEnabled(sb, 'verify'))) return json(serviceDisabledBody('verify'), 503);
       const id = String(b.jobId || '');
       const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
@@ -7711,6 +7714,9 @@ Deno.serve(async (req) => {
       const twin = await existingStart();
       if (twin) return json({ accepted: true, jobId: twin.id, duplicate: true }, 202);
     }
+    // SERVICE CONTROL (key `verify`): no NEW verification while paused. Status, cancel,
+    // pause, the driver and every report already made keep working.
+    if (!(await serviceBackendEnabled(sb, 'verify'))) return json(serviceDisabledBody('verify'), 503);
     // A budget belongs to a wallet: with Verify billing on, a visitor signs in first.
     const billingOn = await verifyBillingEnabled(sb);
     if (billingOn && anonSession) return json({ error: 'sign in to start a verification', code: 'SIGN_IN_REQUIRED' }, 402);

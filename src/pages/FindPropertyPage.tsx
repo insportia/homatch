@@ -39,6 +39,7 @@
 // reserves its space rather than reflowing around it.
 
 import { ArrowLeft, Building2, Check, Loader2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { useServiceVisible } from '@/lib/serviceControls';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -263,6 +264,7 @@ function ResultCard({ result }: { result: FindPropertyResult }) {
 }
 
 function LegacyFindPropertyPage() {
+  const deepVisible = useServiceVisible('find_property_deep');
   const { t, lang } = useLanguage();
   const [stage, setStage] = useState<Stage>('DESCRIBE');
   const [text, setText] = useState('');
@@ -954,7 +956,8 @@ function LegacyFindPropertyPage() {
 
               {/* Searching OUTSIDE HOMATCH: a budgeted run over live portals and
                   communities, with real stages. Renders nothing without a search. */}
-              <OutsideSearchPanel className="w-full max-w-3xl" onFinished={() => { void load(); }} />
+              {/* Not offered while paid Deep Search is paused (Admin → Service Control Center). */}
+              {deepVisible && <OutsideSearchPanel className="w-full max-w-3xl" onFinished={() => { void load(); }} />}
 
               {loadingResults && (
                 <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
@@ -1029,6 +1032,7 @@ function LegacyFindPropertyPage() {
  * as before, so shipping this code changes nothing a customer sees.
  */
 export default function FindPropertyPage() {
+  const deepVisible = useServiceVisible('find_property_deep');
   const location = useLocation();
   const [caps, setCaps] = useState<MarketplaceCapabilities | null>(null);
   useEffect(() => {
@@ -1050,7 +1054,7 @@ export default function FindPropertyPage() {
   return (
     <RouteGuard>
       <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
-        <MarketplaceSearchExperience deepSearchAvailable={caps.deepSearchAvailable} activeSources={caps.activeSources} sourceNames={caps.sources ?? []} />
+        <MarketplaceSearchExperience deepSearchAvailable={caps.deepSearchAvailable && deepVisible} activeSources={caps.activeSources} sourceNames={caps.sources ?? []} />
       </AppLayout>
     </RouteGuard>
   );

@@ -20,6 +20,7 @@ import {
   planExpansion,
   type ExpansionPlan,
 } from '../../../src/research-core/discovery/search-expansion.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -179,6 +180,8 @@ Deno.serve(async (req: Request) => {
      * Settled with the campaign at finalize; unused credits are released.
      */
     if (controlAction === 'extend_budget') {
+      // SERVICE CONTROL (key `find_buyers`): a budget extension is a new reservation.
+      if (!(await serviceBackendEnabled(db, 'find_buyers'))) return json(serviceDisabledBody('find_buyers'), 503);
       const extendJobId = String(body.jobId || '');
       const totalCredits = Math.floor(Number(body.totalCredits));
       const extendKey = String(body.idempotencyKey || '');
@@ -217,6 +220,12 @@ Deno.serve(async (req: Request) => {
       });
       return json(out, out.ok ? 200 : out.error === 'NOT_FOUND' ? 404 : 422);
     }
+
+    /*
+     * SERVICE CONTROL (key `find_buyers`): no NEW search while paused. Pause, resume,
+     * stop and translation above, and campaigns already running, keep working.
+     */
+    if (!(await serviceBackendEnabled(db, 'find_buyers'))) return json(serviceDisabledBody('find_buyers'), 503);
 
     /*
      * FRESHNESS. A property its owner has not confirmed for 30 days is not freshly

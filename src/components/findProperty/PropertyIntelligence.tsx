@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowRight, Check, CircleHelp, ExternalLink, FileSearch, FileText, GitCompare, Info, Landmark, LineChart, Mail, MinusCircle, Phone, ShieldCheck, Sparkles, Star, User, Users } from 'lucide-react';
+import { usePathAvailable } from '@/lib/serviceControls';
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -69,6 +70,8 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
   budgetMaxUsd?: number | null;
 }) {
   const navigate = useNavigate();
+  // A paused product (Admin → Service Control Center) offers no hand-off button.
+  const pathAvailable = usePathAvailable();
   const listingsRef = useRef<HTMLDivElement>(null);
   const duplicatesRef = useRef<HTMLDivElement>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(true);
@@ -220,11 +223,13 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
           </Section></div>
 
           <section data-property-actions className="grid gap-2.5 rounded-2xl bg-[#0C1119] p-3 shadow-[0_20px_40px_-24px_rgba(12,17,25,0.6)] sm:grid-cols-3">
+            {pathAvailable('/investment') && (
             <button type="button" onClick={() => navigate('/investment', { state: { findProperty: investmentHandoff(p as ResultProperty, propertyType) } })}
               className="group inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-[hsl(var(--gold))] px-4 text-sm font-semibold text-[#0C1119] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0C1119]">
               <LineChart className="h-4 w-4" aria-hidden="true" />{t('mps_investment_cta')}<ArrowRight className="h-4 w-4 transition motion-safe:group-hover:translate-x-0.5 rtl:rotate-180" aria-hidden="true" />
             </button>
-            {mortgage ? (
+            )}
+            {mortgage && pathAvailable('/mortgage') ? (
               <button type="button" onClick={() => navigate('/mortgage', { state: { context: mortgage } })}
                 className="group inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[hsl(var(--gold)/0.7)] bg-white/[0.04] px-4 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">
                 <Landmark className="h-4 w-4 text-[hsl(var(--gold))]" aria-hidden="true" />{t('mps_mortgage_cta')}

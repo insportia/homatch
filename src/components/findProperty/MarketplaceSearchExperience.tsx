@@ -112,19 +112,32 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchId, route.searchId, location.pathname.endsWith('/new')]);
 
+  /* Completion gate (owner, 2026-10-17): a property page of a search that is still running
+     goes back to the progress screen; results open only after every source job has ended. */
+  useEffect(() => {
+    if (route.propertyKey && search && search.id === searchId && !search.terminal) {
+      navigate(`/find-property/search/${encodeURIComponent(search.id)}`, { replace: true });
+      setView('SEARCH');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.propertyKey, search?.id, search?.terminal]);
+
+  // Only a known-running search blocks the dossier; the status arriving for a finished one must not refetch it.
+  const gated = !!search && search.id === searchId && !search.terminal;
   useEffect(() => {
     if (!route.propertyKey || !searchId) { setOpen(null); return; }
+    if (gated) return;
     let alive = true;
     setOpen(null);
     setPropertyError(false);
     void propertyDetail(searchId, route.propertyKey).then((r) => { if (alive) setOpen(r.property); })
       .catch(() => { if (alive) setPropertyError(true); });
     return () => { alive = false; };
-  }, [searchId, route.propertyKey, propertyRetry]);
+  }, [searchId, route.propertyKey, propertyRetry, gated]);
 
   /* Real polling while the search is open; paused while the tab is hidden. */
   useEffect(() => {
-    if (!search || search.terminal || (view !== 'SEARCH' && view !== 'RESULTS')) return;
+    if (!search || search.terminal || view !== 'SEARCH') return;
     let alive = true;
     const id = window.setInterval(async () => {
       if (document.hidden) return;
@@ -236,14 +249,11 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
           onFree={() => void doStart()} onDeep={(credits) => void doStart(credits)} onBack={() => setView('BUILD')} />
       )}
       {view === 'SEARCH' && search && !route.propertyKey && (
-        <SearchProgress t={t} search={search} onViewResults={() => setView('RESULTS')} onPlay={() => setPlaying(true)}
+        <SearchProgress t={t} search={search} onViewResults={() => { if (search.terminal) setView('RESULTS'); }} onPlay={() => setPlaying(true)}
           onNewSearch={newSearch}
           deep={deepCredits ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} initialCredits={deepCredits} /> : undefined}
           onCancel={async () => { try { const r = await cancelSearch(search.id); setSearch(r.search); } catch { /* ignore */ } newSearch(); }} />
       )}
-      {view === 'SEARCH' && !playing && search?.terminal && !deepCredits && (search.counters.uniqueProperties > 0 || !search.unavailable) ? (
-        <ResultsRedirect onGo={() => setView('RESULTS')} />
-      ) : null}
       {view === 'RESULTS' && search && !route.propertyKey && (
         <ResultsView t={t} search={search} onOpen={(p) => void openProperty(p)} compare={compare} onToggleCompare={toggleCompare}
           onNewSearch={newSearch} deepSearchAvailable={deepSearchAvailable} version={resultsVersion}
@@ -270,8 +280,8 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
       {/* The game lives at page level: the search keeps polling underneath, and the search
           finishing never closes it. Only the customer closes it. */}
       <SnakeOverlay t={t} open={playing} onClose={() => setPlaying(false)}
-        resultsReady={!!search && search.totalProperties > 0}
-        onViewResults={() => { setPlaying(false); setView('RESULTS'); }} />
+        resultsReady={!!search && search.terminal && search.totalProperties > 0}
+        onViewResults={() => { if (!search?.terminal) return; setPlaying(false); setView('RESULTS'); }} />
       {route.propertyKey && !open && !propertyError && view !== 'ERROR' ? <div aria-busy="true" className="h-64 animate-pulse rounded-xl bg-muted/60" /> : null}
       {route.propertyKey && propertyError ? <div role="alert" className="space-y-3"><p>{t('fpw_property_unavailable')}</p><button type="button" onClick={() => setPropertyRetry((value) => value + 1)} className="min-h-11 rounded-xl bg-[#0C1119] px-4 font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">{t('fpw_retry')}</button></div> : null}
       {route.propertyKey && search ? <Link to={`/find-property/search/${search.id}${location.search}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-foreground/15 bg-card px-4 text-sm font-semibold shadow-sm transition hover:border-[hsl(var(--gold-border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpw_back_results')}</Link> : null}
@@ -286,8 +296,4 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
   );
 }
 
-/* A finished search moves on to its results by itself. */
-function ResultsRedirect({ onGo }: { onGo: () => void }) {
-  useEffect(() => { const id = window.setTimeout(onGo, 600); return () => window.clearTimeout(id); }, [onGo]);
-  return null;
-}
+

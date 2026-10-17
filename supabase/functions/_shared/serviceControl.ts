@@ -1,23 +1,37 @@
-// SERVICE CONTROL CENTER — the server-side kill switch for the six pausable services.
+// SERVICE CONTROL CENTER — the server-side switch for every manageable HOMATCH service.
 //
-// Every execution boundary of publishing, ai_call_center, ai_talk, whatsapp,
-// live_chat and design_studio asks `serviceBackendEnabled(db, key)` before it
-// starts NEW work: a job, a session, a send, a paid provider call, a credit
+// Every execution boundary of a controlled service asks `serviceBackendEnabled(db, key)`
+// before it starts NEW work: a job, a session, a send, a paid provider call, a credit
 // reservation, a retry. Off → refuse with SERVICE_DISABLED; nothing else runs.
+// Inventory of services and boundaries: docs/claude/SERVICE_CONTROLS_INVENTORY.md.
 //
-// Source of truth: public.service_controls (migration 20261109090000), read with
-// the service role. This is an extra gate IN FRONT of each service's own settings
-// (ai_talk_enabled, outreach_calling_enabled, …) — those are never changed here.
+// Source of truth: public.service_controls (migrations 20261109090000, 20261110090000),
+// read with the service role. This is an extra gate IN FRONT of each service's own
+// settings (ai_talk_enabled, find_property_social_enabled, meta_ads_*, …) — those are
+// never changed here.
 //
-// FAIL CLOSED: if the row cannot be read (missing table, network, bad value) the
-// service counts as disabled. Only the six services above are ever gated, so a
-// failed read never affects another product.
+// TWO FAIL MODES, because the services are in two different situations:
+//   * PAUSED_BY_DEFAULT (the original six, paused by the owner): FAIL CLOSED. If the
+//     row cannot be read the service counts as disabled.
+//   * every other service is a live product: FAIL OPEN. If the control table cannot be
+//     read, or the row is missing (code deployed before its migration), it keeps
+//     running, so an outage of this table never takes Verify or Find Property down.
+// An explicit OFF row is honoured in both modes.
 //
 // PROPAGATION: one query per warm isolate at most every CACHE_MS (10 s); an Admin
 // change is honoured everywhere within that window. A failed read is retried
 // after ERROR_CACHE_MS so an outage is not a query storm.
 
-export const SERVICE_KEYS = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'] as const;
+/** Paused by the owner when the Service Control Center shipped: fail closed. */
+export const PAUSED_BY_DEFAULT = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'] as const;
+/** Live products added with the expansion: fail open. */
+export const LIVE_BY_DEFAULT = [
+  'find_property', 'find_property_deep', 'find_buyers',
+  'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
+  'meta_ads', 'email_campaigns', 'ai_assistant',
+  'brokers_directory', 'broker_desk', 'developers',
+] as const;
+export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];
 export const SERVICE_DISABLED = 'SERVICE_DISABLED';
 export const CACHE_MS = 10_000;
@@ -52,15 +66,41 @@ async function load(db: any, now: number): Promise<Snapshot> {
   return snapshot;
 }
 
-/** The effective state of one service. Unreadable or unknown → both OFF. */
-export async function serviceState(db: any, key: ServiceKey, now = Date.now()): Promise<ServiceState> {
-  const s = await load(db, now);
-  return s.rows.get(key) ?? { frontend: false, backend: false };
+const LIVE = new Set<string>(LIVE_BY_DEFAULT);
+/** What a service counts as when its row cannot be read: OFF for the six, ON for a live product. */
+export function defaultState(key: ServiceKey): ServiceState {
+  return LIVE.has(key) ? { frontend: true, backend: true } : { frontend: false, backend: false };
 }
 
-/** May this service start new work right now? Fails closed. */
+/** The effective state of one service. Unreadable or missing → its default (see above). */
+export async function serviceState(db: any, key: ServiceKey, now = Date.now()): Promise<ServiceState> {
+  const s = await load(db, now);
+  return s.rows.get(key) ?? defaultState(key);
+}
+
+/** May this service start new work right now? */
 export async function serviceBackendEnabled(db: any, key: ServiceKey, now = Date.now()): Promise<boolean> {
   return (await serviceState(db, key, now)).backend;
+}
+
+/**
+ * The same question for a function that holds only the CALLER's client (no service
+ * role, by design): read through the public RPC service_controls_public(), which every
+ * signed-in user may call. Same defaults as above; no shared cache (one small read).
+ */
+export async function serviceBackendEnabledForCaller(db: any, key: ServiceKey): Promise<boolean> {
+  try {
+    const { data, error } = await db.rpc('service_controls_public');
+    if (!error && Array.isArray(data)) {
+      const row = data.find((r: any) => r?.service_key === key);
+      if (row) return row.backend_enabled === true;
+    } else {
+      console.error('service-control', 'state unreadable', error?.code ?? 'unknown');
+    }
+  } catch {
+    console.error('service-control', 'state unreadable', 'exception');
+  }
+  return defaultState(key).backend;
 }
 
 /** The machine-readable refusal; the frontend maps the code to localized copy. */

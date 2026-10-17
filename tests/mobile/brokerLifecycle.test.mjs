@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { liveState } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -286,6 +287,70 @@ test('the directory purchase is confirmed, keyed, and a retry after a refusal re
   assert.ok(keys[0] && keys[0].length >= 8, 'no idempotency key');
   assert.equal(keys[0], keys[1], 'a retry of the same purchase used a new key');
   assert.match(await page.evaluate(() => document.body.innerText), /in the public directory/);
+});
+
+/* ── Brokers directory SALES paused (Service Control Center; owner decision, Option A) ─────── */
+const SALES_PAUSED = liveState(true).map((r) => (r.service_key === 'brokers_directory' ? { ...r, frontend_enabled: false, backend_enabled: false } : r));
+const SALES_OPEN = liveState(true);
+const ACTIVE_PAID = { ...LISTING, status: 'ACTIVE', paid_until: ago(-20) };
+
+test('sales paused: no Buy/Renew, the paid date is stated, nothing is sent; the listing stays public', opts, async (t) => {
+  if (skipReason) assert.fail(`broker gate could not run: ${skipReason}`);
+  for (const [profile, expect] of [[ACTIVE_PAID, /Your listing stays public in the directory until/], [{ ...LISTING, status: 'EXPIRED', paid_until: ago(2) }, /You can buy a listing again as soon as sales resume/], [LISTING, /You can buy a listing again/]]) {
+    const { page, calls } = await boot(t, { summary: desk({ profile }), rpc: { service_controls_public: () => SALES_PAUSED } });
+    await page.goto(`${BASE}/broker?tab=listing`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#desk-listing', { timeout: 20000 });
+    const notice = page.getByTestId('broker-sales-paused');
+    await notice.waitFor({ timeout: 10000 });
+    const text = await notice.innerText();
+    assert.match(text, /Buying and renewing listings is paused/, profile.status);
+    assert.match(text, /Nothing is charged/, profile.status);
+    assert.match(text, expect, profile.status);
+    for (const name of ['Buy directory listing', 'Extend directory listing']) {
+      assert.equal(await page.getByRole('button', { name }).count(), 0, `${profile.status}: "${name}" is offered while sales are paused`);
+    }
+    assert.equal(await page.getByRole('alertdialog').count(), 0, 'no price confirmation can open');
+    assert.equal(calls.filter((c) => c.name === 'broker_directory_purchase').length, 0, 'a purchase was sent while paused');
+    if (profile === ACTIVE_PAID) {
+      // Option A: the paid listing is still public, and the desk says so and links to it.
+      assert.equal(await page.locator(`a[href="/brokers/${LISTING.id}"]`).count(), 1, 'the link to the public listing is gone');
+    }
+  }
+});
+
+test('sales paused: the notice speaks all six languages, right-to-left where it should, at phone width', opts, async (t) => {
+  if (skipReason) assert.fail(`broker gate could not run: ${skipReason}`);
+  const seen = new Set();
+  for (const lang of LOCALES) {
+    const { page } = await boot(t, { lang, width: 390, height: 844, summary: desk({ profile: ACTIVE_PAID }), rpc: { service_controls_public: () => SALES_PAUSED } });
+    await page.goto(`${BASE}/broker?tab=listing`, { waitUntil: 'domcontentloaded' });
+    const notice = page.getByTestId('broker-sales-paused');
+    await notice.waitFor({ timeout: 20000 });
+    const text = (await notice.innerText()).trim();
+    assert.ok(text.length > 30, `${lang}: notice is empty`);
+    assert.doesNotMatch(text, /broker_desk_|\{\{|\}\}/, `${lang}: a raw key or placeholder is on screen`);
+    seen.add(text);
+    const layout = await page.evaluate(LAYOUT);
+    assert.equal(layout.dir, ['ar', 'he'].includes(lang) ? 'rtl' : 'ltr', `${lang} direction`);
+    assert.ok(layout.overflow <= 1, `${lang} overflows by ${layout.overflow}px`);
+  }
+  assert.equal(seen.size, LOCALES.length, 'every language has its own words');
+});
+
+test('sales paused between page load and confirmation: the refusal says nothing was charged', opts, async (t) => {
+  if (skipReason) assert.fail(`broker gate could not run: ${skipReason}`);
+  // The page loaded with sales open; the owner paused them before the click. The server refuses.
+  const { page, calls } = await boot(t, { summary: desk({ profile: ACTIVE_PAID }), rpc: {
+    service_controls_public: () => SALES_OPEN,
+    broker_directory_purchase: () => ({ __error: 'SERVICE_DISABLED' }),
+  } });
+  await page.goto(`${BASE}/broker?tab=listing`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#desk-listing', { timeout: 20000 });
+  await page.getByRole('button', { name: 'Extend directory listing' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Pay and publish' }).click();
+  await page.waitForTimeout(600);
+  assert.equal(calls.filter((c) => c.name === 'broker_directory_purchase').length, 1);
+  assert.match(await page.evaluate(() => document.body.innerText), /Buying and renewing listings is paused right now\. Nothing was charged\./);
 });
 
 test('empty, error, loading and suspended desks each say so', opts, async (t) => {

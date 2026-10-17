@@ -61,3 +61,22 @@ test('the refusal is a 503 SERVICE_DISABLED naming the service, never cached', a
   assert.equal(res.headers.get('access-control-allow-origin'), 'https://homatch.live');
   assert.deepEqual(await res.json(), { code: 'SERVICE_DISABLED', error: 'SERVICE_DISABLED', service: 'publishing' });
 });
+
+test('the six fail closed, the live products fail open — and an explicit OFF is honoured by both', async () => {
+  const { PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT } = await import('../serviceControl.ts');
+  assert.equal(PAUSED_BY_DEFAULT.length, 6);
+  assert.equal(new Set([...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT]).size, SERVICE_KEYS.length, 'every key is in exactly one mode');
+  const quiet = console.error; console.error = () => {};
+  try {
+    for (const unreadable of [{ data: null, error: { code: '42P01' } }, () => { throw new Error('network'); }, { data: [], error: null }]) {
+      resetServiceControlCache();
+      const db = dbWith(unreadable);
+      for (const k of PAUSED_BY_DEFAULT) assert.equal(await serviceBackendEnabled(db, k, 1000), false, `${k} must fail closed`);
+      for (const k of LIVE_BY_DEFAULT) assert.equal(await serviceBackendEnabled(db, k, 1000), true, `${k} must keep running when the control is unreadable`);
+    }
+  } finally { console.error = quiet; }
+  resetServiceControlCache();
+  const db = dbWith({ data: [{ service_key: 'verify', frontend_enabled: false, backend_enabled: false }], error: null });
+  assert.equal(await serviceBackendEnabled(db, 'verify', 1000), false, 'an explicit OFF row stops a live product');
+  assert.equal(await serviceBackendEnabled(db, 'find_property', 1000), true, 'a live product without a row keeps running');
+});

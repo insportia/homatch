@@ -40,6 +40,7 @@ import {
 } from '../../../src/emailStudio/templates.ts';
 import { checkDraft, DRAFT_SYSTEM_PROMPT } from '../../../src/emailStudio/copyGuard.ts';
 import { galleryImages } from '../../../src/property/gallery.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from './serviceControl.ts';
 
 type Sb = ReturnType<typeof serviceClient>;
 
@@ -224,6 +225,12 @@ export async function handleStudioAction(req: Request, body: Record<string, unkn
     const sb = serviceClient();
     const owner = await loadOwner(sb, caller.userId);
     if (!owner) return json({ ok: false, error: 'ACCOUNT_UNAVAILABLE' }, 403);
+    // SERVICE CONTROL (key `email_campaigns`): AI drafting, tests and sends wait while
+    // paused; rendering a preview and reviewing a draft cost nothing and stay open.
+    if ((body.action === 'studio_generate' || body.action === 'studio_test' || body.action === 'studio_send')
+        && !(await serviceBackendEnabled(sb, 'email_campaigns'))) {
+      return json({ ok: false, ...serviceDisabledBody('email_campaigns') }, 503);
+    }
 
     switch (body.action) {
       case 'studio_render': return await actionRender(sb, owner, body);

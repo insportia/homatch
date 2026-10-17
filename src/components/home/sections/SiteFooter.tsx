@@ -8,7 +8,7 @@ import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
 import type { TranslationKey } from '@/i18n/translations';
 import { PAGE } from './primitives';
-import { useServiceVisible } from '@/lib/serviceControls';
+import { usePathAvailable, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 /**
  * REGION 12 — the footer. Quiet, hairline top, no card anywhere in it.
@@ -71,21 +71,26 @@ function FooterBody() {
   /** The stored override for a field, else the copy the site ships. */
   const label = (key: string) => sf(key, FIELD[key]);
 
-  // A paused service (Admin → Service Control Center) has no footer link.
-  const callsVisible = useServiceVisible('ai_call_center');
+  // A paused service (Admin → Service Control Center) has no footer link. Each link names
+  // its product, because a signed-out visitor's link points at sign-up, not at the product;
+  // the address is checked as well, so a link never lands on a paused page.
+  const { services } = useServiceControls();
+  const pathAvailable = usePathAvailable();
+  const offered = (link: { service?: ServiceKey; path: string }) =>
+    (!link.service || services[link.service].frontend) && pathAvailable(link.path);
   const columns = [
     {
       key: 'product',
       field: 'heading_product',
       links: [
-        { key: 'link_verify', path: '/verify' },
-        { key: 'link_contract', path: session ? '/verify' : '/auth/signup' },
-        { key: 'link_mortgage', path: '/mortgage' },
-        { key: 'link_investment', path: '/investment' },
-        { key: 'link_ai', path: session ? '/ai' : '/auth/signup' },
-        ...(callsVisible ? [{ key: 'link_calls', path: session ? '/outreach/calls' : '/auth/signup' }] : []),
-        { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup' },
-      ],
+        { key: 'link_verify', path: '/verify', service: 'verify' as ServiceKey },
+        { key: 'link_contract', path: session ? '/verify' : '/auth/signup', service: 'contracts' as ServiceKey },
+        { key: 'link_mortgage', path: '/mortgage', service: 'mortgage' as ServiceKey },
+        { key: 'link_investment', path: '/investment', service: 'investment' as ServiceKey },
+        { key: 'link_ai', path: session ? '/ai' : '/auth/signup', service: 'ai_assistant' as ServiceKey },
+        { key: 'link_calls', path: session ? '/outreach/calls' : '/auth/signup', service: 'ai_call_center' as ServiceKey },
+        { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup', service: 'email_campaigns' as ServiceKey },
+      ].filter(offered),
     },
     {
       key: 'company',
@@ -94,8 +99,8 @@ function FooterBody() {
         { key: 'link_about', path: '/about' },
         { key: 'link_contact', path: '/contact' },
         { key: 'link_partners', path: '/partners' },
-        { key: 'link_developers', path: '/developers' },
-      ],
+        { key: 'link_developers', path: '/developers', service: 'developers' as ServiceKey },
+      ].filter(offered),
     },
     {
       key: 'legal',

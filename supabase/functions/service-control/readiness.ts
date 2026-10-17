@@ -28,6 +28,17 @@ const table = (f: Facts, name: string) => (f.tables[name] ? [] : [`SCHEMA_${name
 const route = (f: Facts, role: string, provider: string) => f.routes.find((r) => r.role === role && r.provider === provider);
 const product = (f: Facts, code: string) => f.products.find((p) => p.code === code);
 const isFalse = (v: unknown) => v === false || v === 'false';
+const isTrue = (v: unknown) => v === true || v === 'true';
+/** A note when a priced product is switched off, has no live price, or is killed. */
+const priced = (f: Facts, code: string, note: string) => {
+  const p = product(f, code);
+  return p && (!p.enabled || p.kill_switch || p.pricing_active === false) ? [note] : [];
+};
+const apifyDisabled = (f: Facts) => {
+  const list = f.settings.provider_disabled_list;
+  const arr = Array.isArray(list) ? list : (() => { try { return JSON.parse(String(list ?? '[]')); } catch { return []; } })();
+  return Array.isArray(arr) && arr.map(String).includes('APIFY');
+};
 
 export const SECRETS_CHECKED = [
   'PUBLISHING_WORKER_TOKEN', 'PUBLISHING_CREDENTIALS_KEY',
@@ -36,6 +47,7 @@ export const SECRETS_CHECKED = [
   'META_WHATSAPP_ACCESS_TOKEN', 'META_WHATSAPP_PHONE_NUMBER_ID', 'META_WHATSAPP_BUSINESS_ACCOUNT_ID',
   'META_WHATSAPP_APP_SECRET', 'META_WHATSAPP_VERIFY_TOKEN',
   'RUNPOD_API_KEY', 'RUNPOD_DS_ENDPOINT_ID',
+  'META_APP_ID', 'META_APP_SECRET', 'RESEND_API_KEY',
 ] as const;
 // R2 is not checked by name here: exactly one module may read an R2 credential
 // (_shared/objectStore.ts), so its own envReport() answers "is R2 configured" and the
@@ -44,6 +56,23 @@ export const SECRETS_CHECKED = [
 export const TABLES_CHECKED = [
   'publishing_engine_listings', 'publishing_accounts', 'comm_talk_sessions', 'outreach_campaigns',
   'comm_conversations', 'live_chat_messages', 'ds_projects',
+  'discovery_marketplace_searches', 'discovery_runs', 'matching_jobs', 'research_jobs', 'deal_room_documents',
+  'mortgage_offers', 'expat_topics', 'meta_campaigns', 'email_studio_campaigns', 'broker_listing_purchases', 'dev_documents',
+] as const;
+
+/** Each live product's own admin_settings switches, read for the notes below (never written). */
+export const SETTINGS_CHECKED = [
+  'ai_talk_enabled', 'design_studio_billing_enabled',
+  'marketplace_search_enabled', 'find_property_social_enabled', 'find_property_discovery_enabled', 'provider_disabled_list',
+  'find_buyers_social_enabled', 'campaign_source_discovery_enabled', 'verify_billing_enabled',
+  'meta_ads_enabled', 'meta_ads_publishing_enabled',
+  'outreach_email_sending_enabled', 'outreach_sms_sending_enabled', 'email_studio_sending_enabled',
+] as const;
+
+/** billable_products rows whose pricing the notes below report on. */
+export const PRODUCTS_CHECKED = [
+  'AI_CALL', 'WHATSAPP', 'VERIFY', 'FIND_CLIENTS', 'FIND_PROPERTY', 'CONTRACT_INTELLIGENCE', 'EMAIL_CAMPAIGN',
+  'BROKER_DIRECTORY_LISTING', 'AI_CHAT_RESPONSE',
 ] as const;
 
 export function readiness(key: ServiceKey, f: Facts): Readiness {
@@ -96,6 +125,84 @@ export function readiness(key: ServiceKey, f: Facts): Readiness {
         ...(f.r2Configured ? [] : ['STORAGE_R2_NOT_CONFIGURED']),
       ];
       if (!(f.settings.design_studio_billing_enabled === true || f.settings.design_studio_billing_enabled === 'true')) notes.push('DESIGN_STUDIO_BILLING_OFF');
+      break;
+    }
+    /* ── Live products (seeded ON). A note never blocks; it says which of the
+       product's OWN switches still holds part of it back. ───────────────── */
+    case 'find_property': {
+      missing = [...table(f, 'discovery_marketplace_searches'), ...secret(f, 'OPENAI_API_KEY')];
+      if (isFalse(f.settings.marketplace_search_enabled)) notes.push('FIND_PROPERTY_MARKETPLACE_SETTING_OFF');
+      break;
+    }
+    case 'find_property_deep': {
+      // The APIFY credential itself is read by one module only (_shared/findBuyers/memo23Client.ts,
+      // tests/matrix/retiredProviders.test.mjs); what is reported here is its Admin switch.
+      missing = table(f, 'discovery_runs');
+      if (!isTrue(f.settings.find_property_social_enabled)) notes.push('FIND_PROPERTY_SOCIAL_SETTING_OFF');
+      if (!isTrue(f.settings.find_property_discovery_enabled)) notes.push('FIND_PROPERTY_DISCOVERY_SETTING_OFF');
+      if (apifyDisabled(f)) notes.push('PROVIDER_APIFY_DISABLED');
+      notes.push(...priced(f, 'FIND_PROPERTY', 'PRODUCT_FIND_PROPERTY_NOT_PRICED'));
+      break;
+    }
+    case 'find_buyers': {
+      missing = [...table(f, 'matching_jobs'), ...secret(f, 'OPENAI_API_KEY')];
+      if (!isTrue(f.settings.find_buyers_social_enabled)) notes.push('FIND_BUYERS_SOCIAL_SETTING_OFF');
+      if (apifyDisabled(f)) notes.push('PROVIDER_APIFY_DISABLED');
+      notes.push(...priced(f, 'FIND_CLIENTS', 'PRODUCT_FIND_CLIENTS_NOT_PRICED'));
+      break;
+    }
+    case 'verify': {
+      missing = [...table(f, 'research_jobs'), ...secret(f, 'OPENAI_API_KEY')];
+      notes.push(...priced(f, 'VERIFY', 'PRODUCT_VERIFY_NOT_PRICED'));
+      break;
+    }
+    case 'contracts': {
+      missing = [...table(f, 'deal_room_documents'), ...secret(f, 'OPENAI_API_KEY')];
+      notes.push(...priced(f, 'CONTRACT_INTELLIGENCE', 'PRODUCT_CONTRACTS_NOT_PRICED'));
+      break;
+    }
+    case 'mortgage': {
+      missing = table(f, 'mortgage_offers');
+      if (!f.secrets.OPENAI_API_KEY) notes.push('MORTGAGE_CONSULTANT_NO_AI');
+      break;
+    }
+    case 'investment': {
+      missing = secret(f, 'OPENAI_API_KEY');
+      break;
+    }
+    case 'for_expats': {
+      missing = table(f, 'expat_topics');
+      break;
+    }
+    case 'meta_ads': {
+      missing = [...table(f, 'meta_campaigns'), ...secret(f, 'META_APP_ID'), ...secret(f, 'META_APP_SECRET')];
+      if (isFalse(f.settings.meta_ads_enabled)) notes.push('META_ADS_SETTING_OFF');
+      if (isFalse(f.settings.meta_ads_publishing_enabled)) notes.push('META_ADS_PUBLISHING_SETTING_OFF');
+      break;
+    }
+    case 'email_campaigns': {
+      missing = table(f, 'outreach_campaigns');
+      if (!isTrue(f.settings.outreach_email_sending_enabled)) notes.push('EMAIL_SENDING_SETTING_OFF');
+      if (!isTrue(f.settings.outreach_sms_sending_enabled)) notes.push('SMS_SENDING_SETTING_OFF');
+      if (!isTrue(f.settings.email_studio_sending_enabled)) notes.push('EMAIL_STUDIO_SENDING_SETTING_OFF');
+      if (!f.secrets.RESEND_API_KEY) notes.push('EMAIL_PROVIDER_KEY_NOT_SET');
+      break;
+    }
+    case 'ai_assistant': {
+      missing = secret(f, 'OPENAI_API_KEY');
+      break;
+    }
+    case 'brokers_directory': {
+      missing = table(f, 'broker_listing_purchases');
+      notes.push(...priced(f, 'BROKER_DIRECTORY_LISTING', 'PRODUCT_BROKER_LISTING_NOT_PRICED'));
+      break;
+    }
+    case 'broker_desk': {
+      notes.push('BROKER_DESK_USES_FIND_BUYERS_AND_DIRECTORY');
+      break;
+    }
+    case 'developers': {
+      missing = table(f, 'dev_documents');
       break;
     }
   }

@@ -142,10 +142,14 @@ async function outreachSend(req: Request): Promise<Response> {
     if (!campaign.contact_list_id) {
       return new Response(JSON.stringify({ error: 'Campaign has no contact_list_id' }), { status: 400, headers: corsHeaders });
     }
-    // SERVICE CONTROL (key `ai_call_center`): AI calls are refused while the AI Call
-    // Center is paused; e-mail and SMS campaigns are not affected.
-    if (campaign.campaign_type === 'AI_CALL' && !(await serviceBackendEnabled(supabase, 'ai_call_center'))) {
-      return new Response(JSON.stringify(serviceDisabledBody('ai_call_center')), { status: 503, headers: corsHeaders });
+    // SERVICE CONTROL: AI calls need `ai_call_center`; e-mail and SMS campaigns need
+    // `email_campaigns`. Refused before anything is sent or reserved; the campaign keeps its
+    // status, so a scheduled one simply goes out on the first run after resume.
+    {
+      const service = campaign.campaign_type === 'AI_CALL' ? 'ai_call_center' : 'email_campaigns';
+      if (!(await serviceBackendEnabled(supabase, service))) {
+        return new Response(JSON.stringify(serviceDisabledBody(service)), { status: 503, headers: corsHeaders });
+      }
     }
 
     // ── Safety flags ─────────────────────────────────────────

@@ -21,6 +21,7 @@
 // broke. One line, at the top, and then the English.
 
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { usePathAvailable } from '@/lib/serviceControls';
 import React from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
@@ -52,6 +53,7 @@ const DOMAIN_HANDOFF: Record<string, { to: string; key: string }[]> = {
 export default function ExpatTopicPage() {
   const { slug } = useParams<{ slug: string }>();
   const { t, lang } = useLanguage();
+  const pathAvailable = usePathAvailable(); // a paused product is not offered as a hand-off
   /* At the top, never after an early return: this component returns a
      redirect and two placeholder states above, and a hook called past one
      of them changes the hook order between renders. */
@@ -126,7 +128,7 @@ export default function ExpatTopicPage() {
     { name: content.title, path },
   ];
   const freshness = judgeFreshness(topic.lastVerifiedAt, topic.factClass);
-  const handoffs = DOMAIN_HANDOFF[topic.domain] ?? [];
+  const handoffs = (DOMAIN_HANDOFF[topic.domain] ?? []).filter((h) => pathAvailable(h.to));
 
 
   return (

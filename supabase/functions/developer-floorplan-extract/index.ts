@@ -44,6 +44,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { serviceClient } from '../_shared/billing.ts';
+import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -340,6 +341,8 @@ serve(async (req) => {
 
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) return json({ error: 'unauthorized' }, 401);
+  // SERVICE CONTROL (key `developers`): no new floor-plan reading while paused.
+  if (!(await serviceBackendEnabledForCaller(supabase, 'developers'))) return json(serviceDisabledBody('developers'), 503);
 
   let body: { floorplanId?: string; imageUrl?: string; imageWidth?: number; imageHeight?: number };
   try { body = await req.json(); } catch { return json({ error: 'bad_request' }, 400); }

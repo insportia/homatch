@@ -41,6 +41,7 @@ import {
 
 } from '../_shared/marketplaceSearch.ts';
 import { paidCampaignAvailable } from '../_shared/findProperty/paidAvailability.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -179,6 +180,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!switches.enabled && (action === 'start' || action === 'understand')) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);
+    // SERVICE CONTROL (key `find_property`): no new search or interpretation while paused;
+    // status, results, history and cancel keep working for searches already made.
+    if ((action === 'start' || action === 'understand') && !(await serviceBackendEnabled(db, 'find_property'))) {
+      return json(serviceDisabledBody('find_property'), 503);
+    }
 
     if (action === 'understand') {
       const text = String(body.text ?? '').trim().slice(0, 2000);
@@ -318,6 +324,8 @@ Deno.serve(async (req: Request) => {
     if (action === 'browse') {
       const search = await ownSearch(body.searchId);
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
+      // Completion gate (owner, 2026-10-17): results open only once every source job has ended.
+      if (!isTerminalSearch(search.status as SearchStatus)) return json({ error: 'SEARCH_ACTIVE' }, 409);
       const now = new Date();
       const properties = await resultCatalogue(db, search);
       const revision = await catalogueRevision(properties, now);
@@ -328,6 +336,8 @@ Deno.serve(async (req: Request) => {
     if (action === 'results') {
       const search = await ownSearch(body.searchId);
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
+      // Completion gate (owner, 2026-10-17): results open only once every source job has ended.
+      if (!isTerminalSearch(search.status as SearchStatus)) return json({ error: 'SEARCH_ACTIVE' }, 409);
       const group = String(body.group ?? 'BEST') as ResultGroup;
       if (!RESULT_GROUPS.includes(group)) return json({ error: 'BAD_GROUP' }, 400);
       const offset = Math.max(0, Math.trunc(Number(body.offset) || 0));
@@ -341,6 +351,8 @@ Deno.serve(async (req: Request) => {
     if (action === 'property' || action === 'compare') {
       const search = await ownSearch(body.searchId);
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
+      // Completion gate (owner, 2026-10-17): results open only once every source job has ended.
+      if (!isTerminalSearch(search.status as SearchStatus)) return json({ error: 'SEARCH_ACTIVE' }, 409);
       const keys = action === 'compare' ? [body.a, body.b] : [body.key];
       if (keys.some((k) => typeof k !== 'string' || k.length > 240)) return json({ error: 'BAD_KEY' }, 400);
       // Fetch only the requested dossier(s), never every property's details.

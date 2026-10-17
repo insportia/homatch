@@ -6,6 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { useSectionField, useSectionMedia, useFieldProps , useIsEditing , useMediaProps} from '@/site/content';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 /**
  * REGION 11 — the closing image.
@@ -24,6 +25,7 @@ export function ClosingCTASection() {
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
+  const verifyVisible = useServiceVisible('verify');
 
   return (
     <section className="relative isolate overflow-hidden">
@@ -72,13 +74,16 @@ export function ClosingCTASection() {
             </span>
             <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
           </Button>
-          <Button
-            variant="outline"
-            className="h-[3.25rem] rounded-full border-white/30 bg-transparent px-8 text-[17px] text-white hover:bg-white/10 hover:text-white"
-            onClick={() => navigate('/verify')}
-          >
-            <span {...fp('cta_secondary')}>{sf('cta_secondary', 'mp_verify_capability_cta')}</span>
-          </Button>
+          {/* Not offered while Verify is paused (Admin → Service Control Center). */}
+          {verifyVisible && (
+            <Button
+              variant="outline"
+              className="h-[3.25rem] rounded-full border-white/30 bg-transparent px-8 text-[17px] text-white hover:bg-white/10 hover:text-white"
+              onClick={() => navigate('/verify')}
+            >
+              <span {...fp('cta_secondary')}>{sf('cta_secondary', 'mp_verify_capability_cta')}</span>
+            </Button>
+          )}
         </div>
       </div>
     </section>

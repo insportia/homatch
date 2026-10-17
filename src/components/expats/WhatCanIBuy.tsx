@@ -22,6 +22,7 @@
 // found nothing worth reporting.
 
 import React from 'react';
+import { ServiceLink } from '@/components/serviceControls/ServiceLink';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Layers, ShieldCheck, TrendingUp } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -253,30 +254,30 @@ function AffordabilityCard({
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
-        <Link
+        <ServiceLink
           to="/verify"
           data-expat-handoff="VERIFY"
           className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-2xs text-foreground transition-colors hover:border-[hsl(var(--gold-border))]"
         >
           <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
           {t('expat_handoff_verify')}
-        </Link>
-        <Link
+        </ServiceLink>
+        <ServiceLink
           to="/investment"
           data-expat-handoff="INVESTMENT"
           className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-2xs text-foreground transition-colors hover:border-[hsl(var(--gold-border))]"
         >
           <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
           {t('expat_handoff_investment')}
-        </Link>
-        <Link
+        </ServiceLink>
+        <ServiceLink
           to="/mortgage"
           data-expat-handoff="MORTGAGE"
           className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-2xs text-foreground transition-colors hover:border-[hsl(var(--gold-border))]"
         >
           <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden="true" />
           {t('expat_handoff_mortgage')}
-        </Link>
+        </ServiceLink>
       </div>
     </li>
   );

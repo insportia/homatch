@@ -48,6 +48,7 @@ import { notify } from '../_shared/notify.ts';
 import { dueReminders, DEFAULT_REMINDER_PREFERENCES } from '../../../src/expats/plan/reminders.ts';
 import type { PlanTask, TaskStatus } from '../../../src/expats/plan/tasks.ts';
 import type { DeadlineBasis, PlanStage, TaskCategory } from '../../../src/expats/plan/roadmap.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -271,6 +272,9 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
  * tab is irrelevant (§40).
  */
 async function driveDocuments(sb: Sb, baseUrl: string, serviceKey: string): Promise<number> {
+  // SERVICE CONTROL (key `contracts`): while paused nothing new is dispatched. Queued
+  // analyses stay QUEUED (unclaimed, unbilled) and start on the first tick after resume.
+  if (!(await serviceBackendEnabled(sb, 'contracts'))) return 0;
   const { data: queued } = await sb
     .from('background_jobs')
     .select('id,subject_id,cancel_deadline_at,committed_at')

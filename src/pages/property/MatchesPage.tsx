@@ -344,7 +344,9 @@ function MatchesContent() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const MATCHES_PAGE_SIZE = 12;
-  /* NUMBERED PAGES IN THE URL: refresh keeps the page, Back/Forward walk pages. */
+  /* NUMBERED PAGES IN THE URL: refresh keeps the page. Paging REPLACES the entry: a page
+     number is a view of this screen, not a screen, so Back (in-app or the phone's) leaves
+     the screen instead of stepping through pages to the same place. */
   const [searchParams, setSearchParams] = useSearchParams();
   const matchPage = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const historyPage = Math.max(1, Number.parseInt(searchParams.get('hp') ?? '1', 10) || 1);
@@ -353,7 +355,7 @@ function MatchesContent() {
       const next = new URLSearchParams(prev);
       if (value <= 1) next.delete(key); else next.set(key, String(value));
       return next;
-    });
+    }, { replace: true });
   }, [setSearchParams]);
   const [currentTotal, setCurrentTotal] = useState(0);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -962,6 +964,7 @@ function MatchesContent() {
   /* A live campaign (running, pausing or paused) — from the server, never inferred
      from whether old matches exist. */
   const jobRunning = Boolean(activeJobId);
+  const viewedJob = searchParams.get('job');
   const moduleRef = React.useRef<HTMLDivElement | null>(null);
   const [moduleVisible, setModuleVisible] = useState(true);
   /* The compact status pill stands in for the live status itself (elapsed, found, progress):
@@ -1021,6 +1024,12 @@ function MatchesContent() {
         </div>
 
         {/* ── LIVE SEARCH: what is being looked for, and what the search is doing now ── */}
+        {/* ?job= names another search than the one running: the module is labelled as the
+            search running NOW, separate from the results being viewed below. */}
+        {liveCampaign && viewedJob && viewedJob !== 'all' && viewedJob !== liveCampaign.jobId ? (
+          <p className="mt-4 break-words rounded-xl bg-[hsl(42_100%_96%)] px-3 py-2 text-xs leading-relaxed text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_80%_80%)]"
+            data-testid="fbx-viewing-other" role="note">{t('fbrx_viewing_other')}</p>
+        ) : null}
         <div ref={moduleRef} className="mt-4">
           <LiveSearchModule
             id="fbl-live"
@@ -1071,7 +1080,8 @@ function MatchesContent() {
             time (Find Buyers 3.0). HOMATCH members have their own page. */}
         <div id="fbx-results" className="mt-4 scroll-mt-20">
           {propertyId ? <ExternalResultsView propertyId={propertyId} owner={ownerFacts} onTotal={setLeadCount}
-            liveJobId={liveCampaign?.jobId ?? null} liveStartedAt={liveCampaign?.startedAt ?? liveCampaign?.createdAt ?? null}
+            liveJobId={liveCampaign?.jobId ?? null} liveStartedAt={liveCampaign?.startedAt ?? liveCampaign?.createdAt ?? null} liveState={liveCampaign?.state ?? null}
+            statusJob={campaignStatus?.campaign ? { jobId: campaignStatus.campaign.jobId, state: campaignStatus.campaign.state, createdAt: campaignStatus.campaign.createdAt, startedAt: campaignStatus.campaign.startedAt, completedAt: campaignStatus.campaign.completedAt } : null}
             refreshKey={campaignStatus?.campaign ? `${campaignStatus.campaign.state}:${campaignStatus.campaign.newResults}` : null} /> : null}
         </div>
 
@@ -1100,12 +1110,10 @@ function MatchesContent() {
                   <div key={i} className="hm-discovery-panel h-[15rem] animate-pulse p-3.5" />
                 ))}
               </div>
-            ) : currentTotal === 0 && historyTotal === 0 && leadCount > 0 ? null : currentTotal === 0 && historyTotal === 0 ? (
-              <EmptyState
-                icon={Search}
-                title={t('matches_empty')}
-                body={t('matches_empty_desc')}
-              />
+            ) : currentTotal === 0 && historyTotal === 0 ? (
+              /* No earlier internal matches: the extended research above has its own honest
+                 empty states (a search with zero results shows zero), so nothing is repeated here. */
+              null
             ) : (
               /*
                * TWO COLUMNS FROM md, THREE FROM 2xl. Numbered server pages of 12 in a
@@ -1113,6 +1121,10 @@ function MatchesContent() {
                * its own pages and never counts as current demand.
                */
               <div className="space-y-4">
+                {/* Legacy matches (the `matches` table), reachable only while they exist and are not cleared. */}
+                <h2 className="break-words text-sm font-semibold text-[hsl(218_45%_14%)]" data-testid="fbx-legacy-heading">
+                  {t('fbrx_legacy_matches', { n: String(currentTotal + historyTotal) })}
+                </h2>
                 {currentMatches.length > 0 && (
                   <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
                     {currentMatches.map((match) => renderMatchCard(match, false))}

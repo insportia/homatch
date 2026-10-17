@@ -182,7 +182,11 @@ export function noteMessage(note: ReportNote, counterpart: 'BUYER' | 'TENANT' | 
     case 'COMMENTS_NOT_EXAMINED': return { key: 'fbr_note_comments', vars: { n: n('posts') } };
     case 'TELEGRAM_COVERAGE': {
       const free = num(p.free); const paid = num(p.paid);
-      const vars = { free: n('free'), paid: n('paid'), freeChannels: n('freeChannels'), paidChannels: n('paidChannels'), discovered: n('discovered') };
+      /* The customer report never splits Telegram into free vs paid access (owner, 2026-10-17):
+         the copy reads one combined count; the split stays for the admin views. */
+      const vars = { free: n('free'), paid: n('paid'), freeChannels: n('freeChannels'), paidChannels: n('paidChannels'), discovered: n('discovered'),
+        messages: String(Math.max(0, Math.round(free)) + Math.max(0, Math.round(paid))),
+        channels: String(Math.max(0, Math.round(num(p.freeChannels))) + Math.max(0, Math.round(num(p.paidChannels)))) };
       if (free > 0 && paid > 0) return { key: 'fbr_note_tg_both', vars };
       if (paid > 0) return { key: 'fbr_note_tg_paid_only', vars };
       if (free > 0) return { key: 'fbr_note_tg_free_only', vars };

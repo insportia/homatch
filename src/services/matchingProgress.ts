@@ -1,5 +1,5 @@
 import { supabase } from '@/db/supabase';
-import { isHistoryMatch, selectWithDemandDate } from '@/matching/currentDemand';
+import { isHistoryMatch, readUncleared, selectWithDemandDate } from '@/matching/currentDemand';
 import { MATCHING_JOB_TERMINAL_STATUSES } from '@/components/matching/MatchingJobProgress';
 
 // Live matching-run status, sourced from the real `matching_jobs` table (the
@@ -61,7 +61,7 @@ export async function getUserMatchSummary(propertyIds: string[]) {
   /* Current demand only (matching/currentDemand.ts): history is not a new
      opportunity on the dashboard any more than it is on the Matches page. */
   const all = await selectWithDemandDate<{ id: string; status: string; match_score: number; property_id: string; demand_published_at?: string | null }>(
-    (columns) => supabase.from('matches').select(columns).in('property_id', propertyIds).neq('status', 'REJECTED'),
+    (columns) => readUncleared((hideCleared) => { const q = supabase.from('matches').select(columns).in('property_id', propertyIds).neq('status', 'REJECTED'); return hideCleared ? q.is('owner_cleared_at', null) : q; }),
     'id,status,match_score,property_id',
   );
   const rows = all.filter((row) => !isHistoryMatch(row));

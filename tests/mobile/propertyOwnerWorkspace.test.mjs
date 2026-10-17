@@ -216,7 +216,8 @@ test('expired: discovery is paused (no start), matches kept, renewal restores it
   assert.match(await page.getByTestId('pow-freshness-panel').innerText(), /ინფორმაციის შეცვლა/);
   assert.match(await page.getByTestId('pow-discovery-state').innerText(), /შეჩერებულია/);
   assert.equal(await page.getByRole('button', { name: /მყიდველების|Find/ }).count(), 0, 'no start while expired');
-  assert.match(await page.getByTestId('pow-discovery-counts').innerText(), /12/, 'existing matches are kept and counted');
+  /* The saved results are the Find Buyers searches' own; the 12 legacy matches stay reachable as earlier internal matches. */
+  assert.match(await page.getByTestId('pow-legacy-matches').innerText(), /12/, 'existing matches are kept and counted');
   await shot(page, 'detail-1440-ka-expired');
   await blocked.getByRole('button').click();
   await page.getByTestId('pow-discovery-blocked').waitFor({ state: 'detached', timeout: 15000 });

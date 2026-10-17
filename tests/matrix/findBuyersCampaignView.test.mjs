@@ -69,12 +69,14 @@ test('Find Buyers 3.0: the dashboard lists no leads; each result kind has its ow
   assert.ok(!external.includes('<InternalMatchesSection'), 'external results never include HOMATCH members');
 });
 
-test('free matching never starts paid research; the external buttons only open the budget step', () => {
+test('internal matches never start research; the one start action only opens the budget step', () => {
+  /* Recovery UX (owner, 2026-10-17): one primary action; opening the internal matches only
+     queues the free native matcher; the start opens the budget step and launches nothing. */
   const home = read('src/pages/property/FindBuyersHomePage.tsx');
   const block = home.slice(home.indexOf('<FindBuyersDashboard'), home.indexOf('/>', home.indexOf('<FindBuyersDashboard')));
-  assert.match(block, /onStartInternal=\{\(\) => \{[\s\S]*requestLeadMatching\(propertyId\)/);
-  assert.doesNotMatch(block.slice(block.indexOf('onStartInternal'), block.indexOf('internalHref')), /start=1|launch|match-campaign/);
-  assert.match(block, /onStartExternal=\{\(\) => navigate\(`\$\{base\}\/buyers\/external\?start=1`\)\}/);
+  assert.match(block, /onOpenInternal=\{\(\) => \{ requestLeadMatching\(propertyId\)/);
+  assert.doesNotMatch(block.slice(block.indexOf('onOpenInternal'), block.indexOf('canClear')), /start=1|launch|match-campaign/);
+  assert.match(block, /onStart=\{\(\) => navigate\(`\$\{base\}\/buyers\/external\?start=1`\)\}/);
   const external = read('src/pages/property/MatchesPage.tsx');
   assert.match(external, /searchParams\.get\('start'\) !== '1'\) return;\s*setShowBudget\(true\);/, '?start=1 only opens the budget dialog');
   const svc = read('src/services/homatchLeads.ts');

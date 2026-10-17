@@ -3,7 +3,7 @@
 
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { supabase } from '@/db/supabase';
-import { isHistoryMatch, selectWithDemandDate } from '@/matching/currentDemand';
+import { isHistoryMatch, readUncleared, selectWithDemandDate } from '@/matching/currentDemand';
 import { keysetOrFilter, type FeedCursor } from '@/lib/notifications/feed';
 import { signalNotificationsChanged } from '@/lib/notifications/signals';
 import type { PropertyContact } from '@/lib/propertyContact';
@@ -569,11 +569,14 @@ async function getMatchesPage(
   cursor: string | undefined,
   limit: number,
 ): Promise<{ rows: Match[]; error: string | null }> {
+  const build = (hideCleared: boolean) => {
   let q = supabase
     .from('matches')
     .select(columns)
     .eq('property_id', propertyId)
-    .neq('status', 'REJECTED')
+    .neq('status', 'REJECTED');
+  if (hideCleared) q = q.is('owner_cleared_at', null);
+  q = q
     .order('match_score', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -593,8 +596,10 @@ async function getMatchesPage(
       q = q.or(`match_score.lt.${cursorScore},and(match_score.eq.${cursorScore},created_at.lt.${cursorCreatedAt})`);
     }
   }
+  return q;
+  };
 
-  const { data, error } = await q;
+  const { data, error } = await readUncleared(build);
   if (error) return { rows: [], error: error.message };
   return { rows: Array.isArray(data) ? (data as unknown as Match[]) : [], error: null };
 }
@@ -630,21 +635,24 @@ export async function getMatchesPaged(propertyId: string, opts: {
   const from = new Date(now - 30 * 86_400_000).toISOString();
   const until = new Date(now + 24 * 3_600_000).toISOString();
   const start = Math.max(0, opts.page - 1) * opts.pageSize;
-  let q = supabase
-    .from('matches')
-    .select(MATCH_COLUMNS_WITH_DEMAND_DATE, { count: 'exact' })
-    .eq('property_id', propertyId)
-    .neq('status', 'REJECTED');
-  q = opts.scope === 'current'
-    ? q.or(`status.eq.UNLOCKED,and(demand_published_at.gte.${from},demand_published_at.lte.${until})`)
-    : q.neq('status', 'UNLOCKED').or(`demand_published_at.is.null,demand_published_at.lt.${from},demand_published_at.gt.${until}`);
-  if (opts.filter === 'new') q = q.eq('status', 'NEW');
-  if (opts.filter === 'strong') q = q.in('signal_strength', ['STRONG', 'VERY_STRONG', 'EXCEPTIONAL']);
-  const { data, error, count } = await q
-    .order('match_score', { ascending: false })
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: true })
-    .range(start, start + opts.pageSize - 1);
+  const { data, error, count } = await readUncleared((hideCleared) => {
+    let q = supabase
+      .from('matches')
+      .select(MATCH_COLUMNS_WITH_DEMAND_DATE, { count: 'exact' })
+      .eq('property_id', propertyId)
+      .neq('status', 'REJECTED');
+    if (hideCleared) q = q.is('owner_cleared_at', null);
+    q = opts.scope === 'current'
+      ? q.or(`status.eq.UNLOCKED,and(demand_published_at.gte.${from},demand_published_at.lte.${until})`)
+      : q.neq('status', 'UNLOCKED').or(`demand_published_at.is.null,demand_published_at.lt.${from},demand_published_at.gt.${until}`);
+    if (opts.filter === 'new') q = q.eq('status', 'NEW');
+    if (opts.filter === 'strong') q = q.in('signal_strength', ['STRONG', 'VERY_STRONG', 'EXCEPTIONAL']);
+    return q
+      .order('match_score', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(start, start + opts.pageSize - 1);
+  });
   if (error) return { rows: [], total: 0 };
   return { rows: Array.isArray(data) ? (data as unknown as Match[]) : [], total: Number(count ?? 0) };
 }
@@ -658,7 +666,10 @@ export async function getMatchCounts(propertyId: string): Promise<{
      window is history (matching/currentDemand.ts) and is not counted as a
      new or strong opportunity. */
   const all = await selectWithDemandDate<{ id: string; status: string; signal_strength: string; demand_published_at?: string | null }>(
-    (columns) => supabase.from('matches').select(columns).eq('property_id', propertyId).neq('status', 'REJECTED'),
+    (columns) => readUncleared((hideCleared) => {
+      const q = supabase.from('matches').select(columns).eq('property_id', propertyId).neq('status', 'REJECTED');
+      return hideCleared ? q.is('owner_cleared_at', null) : q;
+    }),
     'id, status, signal_strength',
   );
   const rows = all.filter((row) => !isHistoryMatch(row));
@@ -1167,10 +1178,11 @@ async function registerFindClientsJob(jobId: string, propertyId: string): Promis
     subjectType: 'MATCHING_JOB',
     subjectId: jobId,
     idempotencyKey: `matching:${jobId}`,
-    // `/property/`, singular — the registered route is /property/:id/matches.
-    // The plural spelling shipped for months and sent every finished client
-    // search to the 404 page (jobs/destination.ts rewrites the stored ones).
-    resultRef: `/property/${propertyId}/matches`,
+    // `/property/`, singular (the plural spelling shipped for months and sent
+    // every finished client search to the 404 page; jobs/destination.ts
+    // rewrites the stored ones). THIS search's results, not the dashboard:
+    // ?job= is what ExternalResultsView reads to show this job.
+    resultRef: `/property/${propertyId}/buyers/external?job=${encodeURIComponent(jobId)}`,
   });
 }
 /**

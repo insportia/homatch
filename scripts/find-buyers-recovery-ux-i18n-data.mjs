@@ -1,0 +1,218 @@
+/*
+ * FIND BUYERS — recovery UX (owner, 2026-10-17).
+ *
+ * Customer-facing wording: HOMATCH never claims "buyers" were found. The two result
+ * categories are "Potentially interested people" and "Research opportunities"; inside the
+ * people, "strong evidence of interest" vs "needs more qualification". The internal engine
+ * is "Internal matches" (შიდა დამთხვევები), the external one "Extended research"
+ * (გაფართოებული ძიება) — no "free vs paid" labels, real credit disclosures kept. Rent
+ * properties use the same neutral words (people interested in renting).
+ *
+ * Terminology: match = დამთხვევა, tenant = მოიჯარე, never "confirmed buyer". Counts follow
+ * a colon (no plural agreement). Order is en, ka, ru, tr, ar, he (LANGS in lib/i18nSplice.mjs).
+ *
+ * REPLACED holds existing keys whose values change (applied with overwrite); ADDED holds new keys.
+ */
+export const FIND_BUYERS_RECOVERY_REPLACED = {
+  /* ── result categories ── */
+  fbx_tab3_direct_buyers: ['Strong evidence', 'ძლიერი მტკიცებულება', 'Явные признаки', 'Güçlü kanıt', 'دلائل قوية', 'ראיות חזקות'],
+  fbx_tab3_direct_tenants: ['Strong evidence', 'ძლიერი მტკიცებულება', 'Явные признаки', 'Güçlü kanıt', 'دلائل قوية', 'ראיות חזקות'],
+  fbx_tab3_interest: ['Needs more qualification', 'საჭიროებს დაზუსტებას', 'Нужно уточнить', 'Netleştirilmeli', 'يحتاج إلى تأهيل إضافي', 'דורש בירור נוסף'],
+  fbx_tab_direct: ['Strong evidence', 'ძლიერი მტკიცებულება', 'Явные признаки', 'Güçlü kanıt', 'دلائل قوية', 'ראיות חזקות'],
+  fbx_kind_qualified_buyer: ['Strong interest', 'ძლიერი ინტერესი', 'Явный интерес', 'Güçlü ilgi', 'اهتمام قوي', 'עניין מובהק'],
+  fbx_kind_qualified_tenant: ['Strong rental interest', 'ქირაობის ძლიერი ინტერესი', 'Явный интерес к аренде', 'Kiralamaya güçlü ilgi', 'اهتمام قوي بالاستئجار', 'עניין מובהק בשכירות'],
+  fbx_card_buyer: ['Potentially interested person', 'პოტენციურად დაინტერესებული პირი', 'Возможно заинтересованный человек', 'Potansiyel olarak ilgilenen kişi', 'شخص قد يكون مهتمًا', 'אדם שעשוי להתעניין'],
+  fbx_card_tenant: ['Person possibly interested in renting', 'ქირაობით პოტენციურად დაინტერესებული პირი', 'Возможно заинтересован в аренде', 'Kiralamayla ilgilenebilecek kişi', 'شخص قد يهتم بالاستئجار', 'אדם שעשוי להתעניין בשכירות'],
+
+  /* ── titles: interested people, never "buyers found" ── */
+  fbh_title_buyers: ['Find potentially interested people', 'პოტენციურად დაინტერესებული ადამიანების ძიება', 'Поиск заинтересованных людей', 'İlgilenebilecek kişileri bul', 'البحث عن أشخاص قد يكونون مهتمين', 'חיפוש אנשים שעשויים להתעניין'],
+  fbh_title_tenants: ['Find people interested in renting', 'ქირაობით დაინტერესებული ადამიანების ძიება', 'Поиск людей, заинтересованных в аренде', 'Kiralamayla ilgilenen kişileri bul', 'البحث عن أشخاص مهتمين بالاستئجار', 'חיפוש אנשים שמתעניינים בשכירות'],
+  fbd_label: ['Find potentially interested people', 'პოტენციურად დაინტერესებული ადამიანების ძიება', 'Поиск заинтересованных людей', 'İlgilenebilecek kişileri bul', 'البحث عن أشخاص قد يكونون مهتمين', 'חיפוש אנשים שעשויים להתעניין'],
+  fbx_find_buyers: ['Find interested people', 'დაინტერესებული ადამიანების ძიება', 'Найти заинтересованных людей', 'İlgilenen kişileri bul', 'ابحث عن أشخاص مهتمين', 'מצאו אנשים מתעניינים'],
+  fbx_find_tenants: ['Find people interested in renting', 'ქირაობით დაინტერესებული ადამიანების ძიება', 'Найти желающих арендовать', 'Kiralamak isteyenleri bul', 'ابحث عن مهتمين بالاستئجار', 'מצאו מתעניינים בשכירות'],
+  fbl_eyebrow_buyers: ['Search for interested people', 'დაინტერესებული ადამიანების ძიება', 'Поиск заинтересованных людей', 'İlgilenen kişi araması', 'البحث عن أشخاص مهتمين', 'חיפוש מתעניינים'],
+  fbl_eyebrow_tenants: ['Search for people interested in renting', 'ქირაობით დაინტერესებულების ძიება', 'Поиск желающих арендовать', 'Kiralamak isteyenler araması', 'البحث عن مهتمين بالاستئجار', 'חיפוש מתעניינים בשכירות'],
+  fbl_pill_running_buyers: ['Search running', 'ძიება მიმდინარეობს', 'Поиск идёт', 'Arama sürüyor', 'البحث جارٍ', 'החיפוש פועל'],
+  fbl_pill_running_tenants: ['Search running', 'ძიება მიმდინარეობს', 'Поиск идёт', 'Arama sürüyor', 'البحث جارٍ', 'החיפוש פועל'],
+  fbl_duration_body: [
+    'A search for interested people may take 10–30 minutes. The time depends on the scale of the search and the sources available.',
+    'დაინტერესებული ადამიანების ძიებას შესაძლოა 10–30 წუთი დასჭირდეს. დრო დამოკიდებულია ძებნის მასშტაბსა და ხელმისაწვდომ წყაროებზე.',
+    'Поиск заинтересованных людей может занять 10–30 минут. Время зависит от масштаба поиска и доступных источников.',
+    'İlgilenen kişileri aramak 10–30 dakika sürebilir. Süre, aramanın kapsamına ve erişilebilir kaynaklara bağlıdır.',
+    'قد يستغرق البحث عن أشخاص مهتمين من 10 إلى 30 دقيقة. يعتمد الوقت على نطاق البحث والمصادر المتاحة.',
+    'חיפוש אנשים מתעניינים עשוי להימשך 10–30 דקות. הזמן תלוי בהיקף החיפוש ובמקורות הזמינים.',
+  ],
+  fbx_lead_eyebrow_buyer: ['Extended research · person', 'გაფართოებული ძიება · პირი', 'Расширенный поиск · человек', 'Genişletilmiş araştırma · kişi', 'البحث الموسّع · شخص', 'מחקר מורחב · אדם'],
+  fbx_lead_eyebrow_tenant: ['Extended research · person', 'გაფართოებული ძიება · პირი', 'Расширенный поиск · человек', 'Genişletilmiş araştırma · kişi', 'البحث الموسّع · شخص', 'מחקר מורחב · אדם'],
+  fbl_nav_results_buyers: ['Interested people and requests', 'დაინტერესებული ადამიანები და მოთხოვნები', 'Заинтересованные люди и запросы', 'İlgilenen kişiler ve talepler', 'المهتمون والطلبات', 'מתעניינים ובקשות'],
+  fbl_nav_results_tenants: ['Interested people and requests', 'დაინტერესებული ადამიანები და მოთხოვნები', 'Заинтересованные люди и запросы', 'İlgilenen kişiler ve talepler', 'المهتمون والطلبات', 'מתעניינים ובקשות'],
+  fbl_leads_pages: ['Pages of interested people', 'დაინტერესებული ადამიანების გვერდები', 'Страницы заинтересованных людей', 'İlgilenen kişi sayfaları', 'صفحات الأشخاص المهتمين', 'עמודי מתעניינים'],
+  fbl_dna_budget_sale: ['Expected budget {{range}}', 'მოსალოდნელი ბიუჯეტი {{range}}', 'Ожидаемый бюджет {{range}}', 'Beklenen bütçe {{range}}', 'الميزانية المتوقعة {{range}}', 'תקציב צפוי {{range}}'],
+  fbl_dna_budget_rent: ['Expected rent budget {{range}}', 'მოსალოდნელი ქირის ბიუჯეტი {{range}}', 'Ожидаемый бюджет аренды {{range}}', 'Beklenen kira bütçesi {{range}}', 'ميزانية الإيجار المتوقعة {{range}}', 'תקציב שכירות צפוי {{range}}'],
+  pow_discovery_title: ['Potentially interested people', 'პოტენციურად დაინტერესებული ადამიანები', 'Возможно заинтересованные люди', 'Potansiyel olarak ilgilenen kişiler', 'أشخاص قد يكونون مهتمين', 'אנשים שעשויים להתעניין'],
+  fbl_results_heading: ['Latest search results', 'ბოლო ძიების შედეგები', 'Результаты последнего поиска', 'Son arama sonuçları', 'نتائج آخر بحث', 'תוצאות החיפוש האחרון'],
+  fbx_results_title: ['Extended research results', 'გაფართოებული ძიების შედეგები', 'Результаты расширенного поиска', 'Genişletilmiş araştırma sonuçları', 'نتائج البحث الموسّع', 'תוצאות המחקר המורחב'],
+  fbx_page_subtitle: [
+    'Potentially interested people and research opportunities found by extended research.',
+    'გაფართოებული ძიებით ნაპოვნი პოტენციურად დაინტერესებული ადამიანები და საკვლევი შესაძლებლობები.',
+    'Возможно заинтересованные люди и возможности для изучения, найденные расширенным поиском.',
+    'Genişletilmiş araştırmanın bulduğu potansiyel ilgili kişiler ve araştırma fırsatları.',
+    'أشخاص قد يكونون مهتمين وفرص للبحث وجدها البحث الموسّع.',
+    'אנשים שעשויים להתעניין והזדמנויות לבדיקה שנמצאו במחקר המורחב.',
+  ],
+
+  /* ── internal matches (HOMATCH's own members): no "free" label ── */
+  fbd_internal_title: ['Internal matches', 'შიდა დამთხვევები', 'Внутренние совпадения', 'İç eşleşmeler', 'التطابقات الداخلية', 'התאמות פנימיות'],
+  fbd_free_badge: ['Internal sources', 'შიდა წყაროები', 'Внутренние источники', 'İç kaynaklar', 'مصادر داخلية', 'מקורות פנימיים'],
+  fbd_internal_pricing: [
+    'Opening a contact costs credits; you see the price before you confirm.',
+    'კონტაქტის გახსნა კრედიტებით ხდება; ფასს დადასტურებამდე ნახავთ.',
+    'Открытие контакта стоит кредиты; цену вы видите до подтверждения.',
+    'Bir kişiyi açmak kredi gerektirir; fiyatı onaylamadan önce görürsünüz.',
+    'فتح جهة اتصال يكلّف أرصدة؛ ترى السعر قبل التأكيد.',
+    'פתיחת איש קשר עולה קרדיטים; המחיר מוצג לפני האישור.',
+  ],
+  fbd_internal_start: ['Find internal matches', 'შიდა დამთხვევების ძიება', 'Найти внутренние совпадения', 'İç eşleşmeleri bul', 'ابحث عن تطابقات داخلية', 'חיפוש התאמות פנימיות'],
+  fbd_internal_view: ['View matches', 'დამთხვევების ნახვა', 'Смотреть совпадения', 'Eşleşmeleri gör', 'عرض التطابقات', 'הצגת התאמות'],
+  fbd_internal_count_buyers: ['matching HOMATCH members', 'შესაბამისი წევრი HOMATCH-ზე', 'подходящих участников HOMATCH', 'eşleşen HOMATCH üyesi', 'أعضاء مطابقون على HOMATCH', 'חברי HOMATCH מתאימים'],
+  fbd_internal_count_tenants: ['matching HOMATCH members', 'შესაბამისი წევრი HOMATCH-ზე', 'подходящих участников HOMATCH', 'eşleşen HOMATCH üyesi', 'أعضاء مطابقون على HOMATCH', 'חברי HOMATCH מתאימים'],
+  fbd_expand_short_buyers: ['No internal matches yet.', 'შიდა დამთხვევები ჯერ არ არის.', 'Внутренних совпадений пока нет.', 'Henüz iç eşleşme yok.', 'لا توجد تطابقات داخلية بعد.', 'עדיין אין התאמות פנימיות.'],
+  fbd_expand_short_tenants: ['No internal matches yet.', 'შიდა დამთხვევები ჯერ არ არის.', 'Внутренних совпадений пока нет.', 'Henüz iç eşleşme yok.', 'لا توجد تطابقات داخلية بعد.', 'עדיין אין התאמות פנימיות.'],
+  fbi_title_buyers: ['HOMATCH members who may be interested in your property', 'HOMATCH-ის წევრები, რომლებიც შესაძლოა დაინტერესდნენ თქვენი ქონებით', 'Участники HOMATCH, которых может заинтересовать ваш объект', 'Mülkünüzle ilgilenebilecek HOMATCH üyeleri', 'أعضاء HOMATCH الذين قد يهتمون بعقارك', 'חברי HOMATCH שעשויים להתעניין בנכס שלכם'],
+  fbi_title_tenants: ['HOMATCH members who may want to rent your property', 'HOMATCH-ის წევრები, რომლებიც შესაძლოა დაინტერესდნენ თქვენი ქონების ქირაობით', 'Участники HOMATCH, которые могут захотеть арендовать ваш объект', 'Mülkünüzü kiralamak isteyebilecek HOMATCH üyeleri', 'أعضاء HOMATCH الذين قد يرغبون في استئجار عقارك', 'חברי HOMATCH שעשויים לרצות לשכור את הנכס שלכם'],
+  hl_bulk_already: ['{{n}} already opened earlier', '{{n}} უკვე გახსნილია ადრე', '{{n}} уже открыты ранее', '{{n}} daha önce açıldı', '{{n}} فُتحت سابقًا', '{{n}} כבר נפתחו בעבר'],
+  hl_open_workspace_body: [
+    'HOMATCH members whose search fits this property.',
+    'HOMATCH-ის წევრები, რომელთა ძიებაც ამ ქონებას ემთხვევა.',
+    'Участники HOMATCH, чей поиск подходит этому объекту.',
+    'Araması bu mülke uyan HOMATCH üyeleri.',
+    'أعضاء HOMATCH الذين يتوافق بحثهم مع هذا العقار.',
+    'חברי HOMATCH שהחיפוש שלהם מתאים לנכס הזה.',
+  ],
+
+  /* ── extended research (external): no "paid research" label ── */
+  fbd_paid_badge: ['Extended research', 'გაფართოებული ძიება', 'Расширенный поиск', 'Genişletilmiş araştırma', 'البحث الموسّع', 'מחקר מורחב'],
+  fbd_external_title: ['Extended research', 'გაფართოებული ძიება', 'Расширенный поиск', 'Genişletilmiş araştırma', 'البحث الموسّع', 'מחקר מורחב'],
+  fbd_external_start: ['Start extended research', 'გაფართოებული ძიების დაწყება', 'Начать расширенный поиск', 'Genişletilmiş araştırmayı başlat', 'ابدأ البحث الموسّع', 'התחלת מחקר מורחב'],
+
+  /* ── the customer report never splits Telegram into free vs paid access ── */
+  fbr_note_tg_both: ['Telegram: messages read for this search: {{messages}}.', 'Telegram: ამ ძიებისთვის წაკითხული შეტყობინებები: {{messages}}.', 'Telegram: прочитано сообщений для этого поиска: {{messages}}.', 'Telegram: bu arama için okunan mesajlar: {{messages}}.', 'Telegram: الرسائل المقروءة لهذا البحث: {{messages}}.', 'Telegram: הודעות שנקראו עבור החיפוש: {{messages}}.'],
+  fbr_note_tg_free_only: ['Telegram: messages read for this search: {{messages}}.', 'Telegram: ამ ძიებისთვის წაკითხული შეტყობინებები: {{messages}}.', 'Telegram: прочитано сообщений для этого поиска: {{messages}}.', 'Telegram: bu arama için okunan mesajlar: {{messages}}.', 'Telegram: الرسائل المقروءة لهذا البحث: {{messages}}.', 'Telegram: הודעות שנקראו עבור החיפוש: {{messages}}.'],
+  fbr_note_tg_paid_only: ['Telegram: messages read for this search: {{messages}}.', 'Telegram: ამ ძიებისთვის წაკითხული შეტყობინებები: {{messages}}.', 'Telegram: прочитано сообщений для этого поиска: {{messages}}.', 'Telegram: bu arama için okunan mesajlar: {{messages}}.', 'Telegram: الرسائل المقروءة لهذا البحث: {{messages}}.', 'Telegram: הודעות שנקראו עבור החיפוש: {{messages}}.'],
+  /* ── remaining customer strings that claimed buyers (lead sweep, 2026-10-17) ── */
+  fbx_start_buyers: ['Start the search', 'ძიების დაწყება', 'Начать поиск', 'Aramayı başlat', 'ابدأ البحث', 'התחלת החיפוש'],
+  fbx_running_buyers: ['Searching for potentially interested people', 'მიმდინარეობს პოტენციურად დაინტერესებული ადამიანების ძიება', 'Идёт поиск заинтересованных людей', 'İlgilenebilecek kişiler aranıyor', 'جارٍ البحث عن أشخاص قد يكونون مهتمين', 'מחפשים אנשים שעשויים להתעניין'],
+  fbx_stage_rank_buyers: ['Ranking the evidence of interest', 'ინტერესის მტკიცებულებების შეფასება', 'Оцениваем признаки интереса', 'İlgi kanıtları değerlendiriliyor', 'تقييم دلائل الاهتمام', 'מדרגים את סימני העניין'],
+  fbx_stat_qualified_buyers: ['Potentially interested people', 'პოტენციურად დაინტერესებული ადამიანები', 'Возможно заинтересованные люди', 'İlgilenebilecek kişiler', 'أشخاص قد يكونون مهتمين', 'אנשים שעשויים להתעניין'],
+  fbx_results_title_buyers: ['Potentially interested people from public conversations', 'პოტენციურად დაინტერესებული ადამიანები საჯარო საუბრებიდან', 'Возможно заинтересованные люди из публичных обсуждений', 'Herkese açık sohbetlerden ilgilenebilecek kişiler', 'أشخاص قد يكونون مهتمين من محادثات عامة', 'אנשים שעשויים להתעניין משיחות פומביות'],
+  fbx_empty_title_buyers: ['No strong evidence of interest yet', 'ინტერესის ძლიერი მტკიცებულება ჯერ არ მოიძებნა', 'Явных признаков интереса пока нет', 'Henüz güçlü bir ilgi kanıtı yok', 'لا توجد دلائل قوية على الاهتمام بعد', 'עדיין אין ראיות חזקות לעניין'],
+  fbx_intent_score: ['Evidence of interest', 'ინტერესის მტკიცებულება', 'Признаки интереса', 'İlgi kanıtı', 'دلائل الاهتمام', 'סימני עניין'],
+  fbr_sec_profile: ['Who the search looks for', 'ვის ეძებს ძიება', 'Кого ищет поиск', 'Arama kimi arıyor', 'من يبحث عنه البحث', 'את מי החיפוש מחפש'],
+  rb_eyebrow: ['Extended research', 'გაფართოებული ძიება', 'Расширенный поиск', 'Genişletilmiş arama', 'البحث الموسّع', 'חיפוש מורחב'],
+  rb_headline: ['Research who may be interested in this property.', 'გამოიკვლიეთ, ვის შეიძლება აინტერესებდეს ეს ქონება.', 'Узнайте, кого может заинтересовать этот объект.', 'Bu mülkle kimin ilgilenebileceğini araştırın.', 'ابحث عمّن قد يهتم بهذا العقار.', 'בדקו מי עשוי להתעניין בנכס הזה.'],
+  fbd_internal_subtitle_buyers: ['HOMATCH members whose searches match this property.', 'HOMATCH-ის წევრები, რომელთა ძიებაც ამ ქონებას ემთხვევა.', 'Участники HOMATCH, чьи запросы совпадают с этим объектом.', 'Aramaları bu mülkle eşleşen HOMATCH üyeleri.', 'أعضاء HOMATCH الذين تتطابق طلباتهم مع هذا العقار.', 'חברי HOMATCH שהחיפוש שלהם תואם לנכס הזה.'],
+  fbd_external_subtitle_buyers: ['Research public sources for people who may be interested.', 'გამოიკვლიეთ საჯარო წყაროები პოტენციურად დაინტერესებული ადამიანებისთვის.', 'Поиск возможно заинтересованных людей в открытых источниках.', 'İlgilenebilecek kişiler için herkese açık kaynakları araştırın.', 'ابحث في المصادر العامة عن أشخاص قد يكونون مهتمين.', 'חפשו במקורות פומביים אנשים שעשויים להתעניין.'],
+  fbd_expand_body_buyers: ['No HOMATCH member matches this property yet. Extended research looks for potentially interested people in public sources.', 'ამ ქონებას HOMATCH-ის წევრებს შორის ჯერ დამთხვევა არ აქვს. გაფართოებული ძიება საჯარო წყაროებში პოტენციურად დაინტერესებულ ადამიანებს მოიძიებს.', 'Среди участников HOMATCH совпадений пока нет. Расширенный поиск ищет возможно заинтересованных людей в открытых источниках.', 'Bu mülk için henüz bir HOMATCH üyesi eşleşmesi yok. Genişletilmiş arama, herkese açık kaynaklarda ilgilenebilecek kişileri arar.', 'لا يوجد عضو في HOMATCH يطابق هذا العقار بعد. يبحث البحث الموسّع عن أشخاص قد يكونون مهتمين في المصادر العامة.', 'עדיין אין חבר HOMATCH שתואם לנכס הזה. החיפוש המורחב מחפש אנשים שעשויים להתעניין במקורות פומביים.'],
+  fbx_opp_competitor_note: ['A post about someone else\'s comparable property. People interested in this kind of property may be in its comments.', 'სხვისი მსგავსი ქონების შესახებ გამოქვეყნებული პოსტი. კომენტარებში შესაძლოა იყვნენ ამ ტიპის ქონებით დაინტერესებული ადამიანები.', 'Публикация о похожем объекте другого продавца. В комментариях могут быть люди, интересующиеся таким жильём.', 'Başkasına ait benzer bir mülk hakkında gönderi. Yorumlarda bu tür mülkle ilgilenen kişiler olabilir.', 'منشور عن عقار مشابه لشخص آخر. قد يكون في تعليقاته أشخاص مهتمون بهذا النوع من العقارات.', 'פוסט על נכס דומה של מישהו אחר. בתגובות עשויים להיות אנשים שמתעניינים בנכס מסוג זה.'],
+};
+
+export const FIND_BUYERS_RECOVERY_ADDED = {
+  /* ── dashboard: one journey ── */
+  fbrx_criteria: ['What the search looks for', 'რას ეძებს ძიება', 'Что ищет поиск', 'Aramanın aradığı', 'ما يبحث عنه البحث', 'מה החיפוש מחפש'],
+  fbrx_primary_start: ['Start a search', 'ძიების დაწყება', 'Начать поиск', 'Aramayı başlat', 'ابدأ البحث', 'התחלת חיפוש'],
+  fbrx_primary_start_new: ['Start a new search', 'ახალი ძიების დაწყება', 'Начать новый поиск', 'Yeni arama başlat', 'ابدأ بحثًا جديدًا', 'התחלת חיפוש חדש'],
+  fbrx_primary_live: ['View live progress', 'მიმდინარე ძიების ნახვა', 'Смотреть ход поиска', 'Canlı ilerlemeyi gör', 'متابعة التقدّم المباشر', 'צפייה בהתקדמות'],
+  fbrx_primary_resume: ['Continue the paused search', 'შეჩერებული ძიების გაგრძელება', 'Продолжить приостановленный поиск', 'Duraklatılan aramaya devam et', 'متابعة البحث المتوقف', 'המשך החיפוש המושהה'],
+  fbrx_primary_live_note: ['A search is running. Found so far: {{n}}', 'ძიება მიმდინარეობს. ჯერჯერობით ნაპოვნია: {{n}}', 'Поиск идёт. Найдено на данный момент: {{n}}', 'Arama sürüyor. Şu ana kadar bulunan: {{n}}', 'البحث جارٍ. ما وُجد حتى الآن: {{n}}', 'החיפוש פועל. נמצאו עד כה: {{n}}'],
+  fbrx_primary_paused_note: ['The search is paused. Its results so far are kept.', 'ძიება შეჩერებულია. აქამდე ნაპოვნი შედეგები შენახულია.', 'Поиск приостановлен. Найденное сохранено.', 'Arama duraklatıldı. Şimdiye kadarki sonuçlar korunuyor.', 'البحث متوقف مؤقتًا. النتائج حتى الآن محفوظة.', 'החיפוש מושהה. התוצאות עד כה נשמרות.'],
+  fbrx_primary_start_note: ['You choose the budget in the next step. Nothing is charged before you confirm.', 'ბიუჯეტს შემდეგ ეტაპზე აირჩევთ. დადასტურებამდე არაფერი ჩამოიჭრება.', 'Бюджет вы выберете на следующем шаге. До подтверждения ничего не списывается.', 'Bütçeyi bir sonraki adımda seçersiniz. Onaylamadan önce hiçbir ücret alınmaz.', 'تختار الميزانية في الخطوة التالية. لا يُخصم شيء قبل تأكيدك.', 'את התקציב בוחרים בשלב הבא. דבר אינו מחויב לפני האישור.'],
+  fbrx_latest_title: ['Latest search', 'ბოლო ძიება', 'Последний поиск', 'Son arama', 'آخر بحث', 'החיפוש האחרון'],
+  fbrx_latest_none: ['No search has been run for this property yet.', 'ამ ქონებისთვის ძიება ჯერ არ ჩატარებულა.', 'Для этого объекта поиск ещё не проводился.', 'Bu mülk için henüz arama yapılmadı.', 'لم يُجرَ أي بحث لهذا العقار بعد.', 'עדיין לא בוצע חיפוש עבור הנכס הזה.'],
+  fbrx_latest_line: ['Latest search: {{date}} · {{state}}', 'ბოლო ძიება: {{date}} · {{state}}', 'Последний поиск: {{date}} · {{state}}', 'Son arama: {{date}} · {{state}}', 'آخر بحث: {{date}} · {{state}}', 'החיפוש האחרון: {{date}} · {{state}}'],
+  fbrx_no_search_yet: ['No search yet', 'ძიება ჯერ არ ჩატარებულა', 'Поиска ещё не было', 'Henüz arama yok', 'لا يوجد بحث بعد', 'עדיין אין חיפוש'],
+  fbrx_state_RUNNING: ['In progress', 'მიმდინარეობს', 'Идёт', 'Sürüyor', 'جارٍ', 'בתהליך'],
+  fbrx_state_PAUSED: ['Paused', 'შეჩერებულია', 'Приостановлен', 'Duraklatıldı', 'متوقف مؤقتًا', 'מושהה'],
+  fbrx_state_COMPLETED: ['Completed', 'დასრულებულია', 'Завершён', 'Tamamlandı', 'اكتمل', 'הושלם'],
+  fbrx_state_FAILED: ['Did not finish', 'ვერ დასრულდა', 'Не завершился', 'Tamamlanamadı', 'لم يكتمل', 'לא הושלם'],
+  fbrx_state_CANCELLED: ['Stopped', 'შეწყვეტილია', 'Остановлен', 'Durduruldu', 'أُوقف', 'הופסק'],
+  fbrx_state_UNKNOWN: ['Status not available', 'სტატუსი მიუწვდომელია', 'Статус недоступен', 'Durum bilgisi yok', 'الحالة غير متاحة', 'הסטטוס אינו זמין'],
+  fbrx_stat_people: ['Potentially interested people', 'პოტენციურად დაინტერესებული ადამიანები', 'Возможно заинтересованные люди', 'Potansiyel olarak ilgilenen kişiler', 'أشخاص قد يكونون مهتمين', 'אנשים שעשויים להתעניין'],
+  fbrx_stat_new: ['Newly found', 'ახლად ნაპოვნი', 'Найдены впервые', 'Yeni bulunan', 'وُجدوا حديثًا', 'נמצאו לראשונה'],
+  fbrx_stat_again: ['Found again', 'ხელახლა ნაპოვნი', 'Найдены повторно', 'Yeniden bulunan', 'وُجدوا مجددًا', 'נמצאו שוב'],
+  fbrx_stat_strong: ['Strong evidence', 'ძლიერი მტკიცებულება', 'Явные признаки', 'Güçlü kanıt', 'دلائل قوية', 'ראיות חזקות'],
+  fbrx_open_results: ['Open results', 'შედეგების გახსნა', 'Открыть результаты', 'Sonuçları aç', 'فتح النتائج', 'פתיחת התוצאות'],
+  fbrx_zero_note: [
+    'This search found no potentially interested people. That is its real result, not an error.',
+    'ამ ძიებამ პოტენციურად დაინტერესებული ადამიანები ვერ იპოვა. ეს მისი რეალური შედეგია და არა შეცდომა.',
+    'Этот поиск не нашёл заинтересованных людей. Это его реальный результат, а не ошибка.',
+    'Bu arama ilgilenebilecek kimseyi bulmadı. Bu bir hata değil, gerçek sonucudur.',
+    'لم يجد هذا البحث أشخاصًا قد يكونون مهتمين. هذه نتيجته الفعلية وليست خطأ.',
+    'החיפוש הזה לא מצא אנשים שעשויים להתעניין. זו התוצאה האמיתית שלו, לא תקלה.',
+  ],
+  fbrx_failed_note: [
+    'This search did not finish. Anything it found before stopping is shown.',
+    'ეს ძიება ვერ დასრულდა. შეჩერებამდე ნაპოვნი ყველაფერი ნაჩვენებია.',
+    'Этот поиск не завершился. Показано всё, что он нашёл до остановки.',
+    'Bu arama tamamlanamadı. Durmadan önce bulduğu her şey gösteriliyor.',
+    'لم يكتمل هذا البحث. يُعرض كل ما وجده قبل توقفه.',
+    'החיפוש הזה לא הושלם. כל מה שנמצא לפני העצירה מוצג.',
+  ],
+  fbrx_internal_desc: ['Opportunities found in HOMATCH’s internal sources', 'შიდა წყაროებიდან მოძიებული შესაძლებლობები', 'Возможности из внутренних источников HOMATCH', 'HOMATCH iç kaynaklarında bulunan fırsatlar', 'فرص وُجدت في مصادر HOMATCH الداخلية', 'הזדמנויות שנמצאו במקורות הפנימיים של HOMATCH'],
+  fbrx_external_desc: ['Potentially interested people and research opportunities from public sources', 'პოტენციურად დაინტერესებული ადამიანები და საკვლევი შესაძლებლობები საჯარო წყაროებიდან', 'Возможно заинтересованные люди и возможности для изучения из открытых источников', 'Açık kaynaklardan potansiyel ilgili kişiler ve araştırma fırsatları', 'أشخاص قد يكونون مهتمين وفرص للبحث من مصادر عامة', 'אנשים שעשויים להתעניין והזדמנויות לבדיקה ממקורות ציבוריים'],
+  fbrx_previous_title: ['Previous searches', 'წინა ძიებები', 'Предыдущие поиски', 'Önceki aramalar', 'عمليات البحث السابقة', 'חיפושים קודמים'],
+  fbrx_previous_people: ['People: {{n}}', 'ადამიანები: {{n}}', 'Люди: {{n}}', 'Kişi: {{n}}', 'الأشخاص: {{n}}', 'אנשים: {{n}}'],
+  fbrx_all_people: ['All searches, each person once: {{n}}', 'ყველა ძიება, თითო ადამიანი ერთხელ: {{n}}', 'Все поиски, каждый человек один раз: {{n}}', 'Tüm aramalar, her kişi bir kez: {{n}}', 'كل عمليات البحث، كل شخص مرة واحدة: {{n}}', 'כל החיפושים, כל אדם פעם אחת: {{n}}'],
+  fbrx_selected_search: ['Search · {{date}} · {{state}}', 'ძიება · {{date}} · {{state}}', 'Поиск · {{date}} · {{state}}', 'Arama · {{date}} · {{state}}', 'بحث · {{date}} · {{state}}', 'חיפוש · {{date}} · {{state}}'],
+  fbrx_stage_line: ['Running: {{running}} · Waiting: {{queued}} · Finished: {{done}}', 'მიმდინარე: {{running}} · რიგში: {{queued}} · დასრულებული: {{done}}', 'Выполняется: {{running}} · В очереди: {{queued}} · Завершено: {{done}}', 'Çalışan: {{running}} · Bekleyen: {{queued}} · Biten: {{done}}', 'قيد التشغيل: {{running}} · في الانتظار: {{queued}} · منتهية: {{done}}', 'פועלות: {{running}} · ממתינות: {{queued}} · הסתיימו: {{done}}'],
+  fbrx_viewing_other: [
+    'You are viewing an earlier search. The panel below shows the search running now.',
+    'თქვენ ათვალიერებთ წინა ძიებას. ქვემოთ მოცემული პანელი ახლა მიმდინარე ძიებას აჩვენებს.',
+    'Вы смотрите предыдущий поиск. Панель ниже показывает поиск, который идёт сейчас.',
+    'Önceki bir aramayı görüntülüyorsunuz. Aşağıdaki panel şu an süren aramayı gösteriyor.',
+    'أنت تعرض بحثًا سابقًا. تعرض اللوحة أدناه البحث الجاري الآن.',
+    'אתם צופים בחיפוש קודם. הלוח למטה מציג את החיפוש שפועל כעת.',
+  ],
+  fbrx_legacy_matches: ['Earlier internal matches: {{n}}', 'ადრინდელი შიდა დამთხვევები: {{n}}', 'Прежние внутренние совпадения: {{n}}', 'Önceki iç eşleşmeler: {{n}}', 'تطابقات داخلية سابقة: {{n}}', 'התאמות פנימיות קודמות: {{n}}'],
+
+  /* ── clear old results ── */
+  fbrx_clear_open: ['Clear old results', 'ძველი შედეგების გასუფთავება', 'Очистить старые результаты', 'Eski sonuçları temizle', 'مسح النتائج القديمة', 'ניקוי תוצאות ישנות'],
+  fbrx_clear_title: ['Clear old results?', 'გავასუფთაოთ ძველი შედეგები?', 'Очистить старые результаты?', 'Eski sonuçlar temizlensin mi?', 'مسح النتائج القديمة؟', 'לנקות תוצאות ישנות?'],
+  fbrx_clear_body: [
+    'The results of this property’s completed searches will be hidden from your lists. This cannot be undone.',
+    'ამ ქონების დასრულებული ძიებების შედეგები თქვენს სიებში აღარ გამოჩნდება. ამ მოქმედების გაუქმება შეუძლებელია.',
+    'Результаты завершённых поисков этого объекта будут скрыты из ваших списков. Это действие нельзя отменить.',
+    'Bu mülkün tamamlanan aramalarının sonuçları listelerinizden gizlenecek. Bu işlem geri alınamaz.',
+    'ستُخفى نتائج عمليات البحث المكتملة لهذا العقار من قوائمك. لا يمكن التراجع عن ذلك.',
+    'התוצאות של החיפושים שהושלמו עבור הנכס יוסתרו מהרשימות שלכם. לא ניתן לבטל פעולה זו.',
+  ],
+  fbrx_clear_count_leads: ['People from completed searches: {{n}}', 'დასრულებული ძიებების ადამიანები: {{n}}', 'Люди из завершённых поисков: {{n}}', 'Tamamlanan aramalardaki kişiler: {{n}}', 'أشخاص من عمليات بحث مكتملة: {{n}}', 'אנשים מחיפושים שהושלמו: {{n}}'],
+  fbrx_clear_count_matches: ['Earlier internal matches: {{n}}', 'ადრინდელი შიდა დამთხვევები: {{n}}', 'Прежние внутренние совпадения: {{n}}', 'Önceki iç eşleşmeler: {{n}}', 'تطابقات داخلية سابقة: {{n}}', 'התאמות פנימיות קודמות: {{n}}'],
+  fbrx_clear_unlocked_kept: [
+    'Contacts you already opened stay available: {{n}}',
+    'უკვე გახსნილი კონტაქტები ხელმისაწვდომი დარჩება: {{n}}',
+    'Уже открытые контакты остаются доступными: {{n}}',
+    'Daha önce açtığınız kişiler erişilebilir kalır: {{n}}',
+    'جهات الاتصال التي فتحتها تبقى متاحة: {{n}}',
+    'אנשי קשר שכבר פתחתם נשארים זמינים: {{n}}',
+  ],
+  fbrx_clear_kept_title: ['Not deleted', 'არ წაიშლება', 'Не удаляется', 'Silinmeyenler', 'لا يُحذف', 'לא נמחק'],
+  fbrx_clear_kept_property: ['The property and its listing', 'ქონება და მისი განცხადება', 'Объект и его объявление', 'Mülk ve ilanı', 'العقار وإعلانه', 'הנכס והמודעה שלו'],
+  fbrx_clear_kept_active: ['A search running now and its results', 'ახლა მიმდინარე ძიება და მისი შედეგები', 'Идущий сейчас поиск и его результаты', 'Şu an süren arama ve sonuçları', 'البحث الجاري الآن ونتائجه', 'חיפוש שפועל כעת והתוצאות שלו'],
+  fbrx_clear_kept_credits: ['Credits, charges and payments', 'კრედიტები, ჩამოჭრები და გადახდები', 'Кредиты, списания и платежи', 'Krediler, ücretler ve ödemeler', 'الأرصدة والرسوم والمدفوعات', 'קרדיטים, חיובים ותשלומים'],
+  fbrx_clear_kept_history: ['Search history and audit records', 'ძიების ისტორია და აუდიტის ჩანაწერები', 'История поисков и записи аудита', 'Arama geçmişi ve denetim kayıtları', 'سجل البحث وسجلات التدقيق', 'היסטוריית החיפושים ורישומי הביקורת'],
+  fbrx_clear_active_note: [
+    'A search is running now: only completed searches are cleared; the running one keeps its results.',
+    'ახლა ძიება მიმდინარეობს: სუფთავდება მხოლოდ დასრულებული ძიებები; მიმდინარე ძიების შედეგები რჩება.',
+    'Сейчас идёт поиск: очищаются только завершённые поиски; текущий сохраняет свои результаты.',
+    'Şu an bir arama sürüyor: yalnızca tamamlanan aramalar temizlenir; süren arama sonuçlarını korur.',
+    'يجري بحث الآن: تُمسح عمليات البحث المكتملة فقط؛ ويحتفظ البحث الجاري بنتائجه.',
+    'חיפוש פועל כעת: רק חיפושים שהושלמו מנוקים; החיפוש הפעיל שומר על התוצאות שלו.',
+  ],
+  fbrx_clear_nothing: ['There are no old results to clear.', 'გასასუფთავებელი ძველი შედეგები არ არის.', 'Старых результатов для очистки нет.', 'Temizlenecek eski sonuç yok.', 'لا توجد نتائج قديمة لمسحها.', 'אין תוצאות ישנות לניקוי.'],
+  fbrx_clear_loading: ['Checking what would be cleared…', 'ვამოწმებთ, რა გასუფთავდება…', 'Проверяем, что будет очищено…', 'Neyin temizleneceği kontrol ediliyor…', 'جارٍ التحقق مما سيُمسح…', 'בודקים מה ינוקה…'],
+  fbrx_clear_unavailable: ['Clearing is not available right now. Please try again later.', 'გასუფთავება ახლა მიუწვდომელია. სცადეთ მოგვიანებით.', 'Очистка сейчас недоступна. Попробуйте позже.', 'Temizleme şu anda kullanılamıyor. Lütfen daha sonra deneyin.', 'المسح غير متاح الآن. يُرجى المحاولة لاحقًا.', 'הניקוי אינו זמין כרגע. נסו שוב מאוחר יותר.'],
+  fbrx_clear_confirm: ['Clear results', 'შედეგების გასუფთავება', 'Очистить результаты', 'Sonuçları temizle', 'مسح النتائج', 'ניקוי התוצאות'],
+  fbrx_clear_cancel: ['Cancel', 'გაუქმება', 'Отмена', 'Vazgeç', 'إلغاء', 'ביטול'],
+  fbrx_clear_done: ['Old results cleared: {{n}}', 'ძველი შედეგები გასუფთავდა: {{n}}', 'Старые результаты очищены: {{n}}', 'Eski sonuçlar temizlendi: {{n}}', 'تم مسح النتائج القديمة: {{n}}', 'תוצאות ישנות נוקו: {{n}}'],
+  fbrx_clear_failed: ['The results could not be cleared. Nothing was changed.', 'შედეგების გასუფთავება ვერ მოხერხდა. არაფერი შეცვლილა.', 'Не удалось очистить результаты. Ничего не изменено.', 'Sonuçlar temizlenemedi. Hiçbir şey değişmedi.', 'تعذّر مسح النتائج. لم يتغيّر شيء.', 'לא ניתן היה לנקות את התוצאות. דבר לא השתנה.'],
+};

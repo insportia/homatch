@@ -40,7 +40,7 @@
 // therefore has two halves — the row and the object — and they are done in that
 // order on purpose: see removePhoto.
 
-import { isHistoryMatch, selectWithDemandDate } from '@/matching/currentDemand';
+import { isHistoryMatch, readUncleared, selectWithDemandDate } from '@/matching/currentDemand';
 import { supabase } from '@/db/supabase';
 import type { Property, PropertyPhoto } from '@/types/types';
 
@@ -154,7 +154,7 @@ export async function portfolioIntelligence(
      person posted outside the active window is history and is never counted
      as a match, a new match or a strong match here. */
   const rows = await selectWithDemandDate<{ property_id: string; status: string; signal_strength: string | null; demand_published_at?: string | null }>(
-    (columns) => supabase.from('matches').select(columns).in('property_id', propertyIds).neq('status', 'REJECTED').limit(5000),
+    (columns) => readUncleared((hideCleared) => { const q = supabase.from('matches').select(columns).in('property_id', propertyIds).neq('status', 'REJECTED'); return (hideCleared ? q.is('owner_cleared_at', null) : q).limit(5000); }),
     'property_id,status,signal_strength',
   );
 

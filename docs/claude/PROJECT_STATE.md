@@ -5,7 +5,13 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
-## Service Control Center EXPANSION — every manageable product (branch claude/homatch-property-publishing-g50stw, 2026-10-16) — PR OPEN, NOT MERGED, NOT DEPLOYED
+## Service Control Center EXPANSION — every manageable product (PR #240 + release fix #247, 2026-10-17) — MERGED, DEPLOYED, MIGRATION APPLIED
+
+- **Release:** #240 merged 32f2622f; release fix #247 merged c4caa2bf (a failed first read is retried after 1.5/4/10 s; a gate-local error boundary keeps "currently unavailable" in front of a paused page that crashes before the first answer).
+- **Frontend:** Vercel `dpl_52cgQ3Do17Q3z2TUAdWC7QwBt87e` READY at c4caa2bf, aliased to www.homatch.live.
+- **Edge:** #240's functions deployed and PROVEN_EXACT (28/28) by deploy run 39023282840 (#244's merge, whose tree carried #240); `refs/deployed/edge` later advanced to 250ad195. #240's own deploy run 39021696556 stopped at validation and deployed nothing.
+- **Migration:** `20261110090000_service_controls_expand` applied alone with the Supabase migration tool (never `db push`, issue #243); ledger version `20261017140958`. Verified: the six unchanged (OFF; live_chat v4), fourteen rows ON v1 in their groups, `service_control_pause_group` admin-only definer (authenticated + service_role), broker guard `trg_0_service_control_guard` on `broker_listing_purchases`, no audit row written, `publishing_central` still unapplied.
+- **Brokers Directory (owner, Option A):** the switch pauses sales only. The public directory stays public. Broker Desk shows a localized "paused, nothing is charged" notice instead of Buy/Renew. Proof: `tests/sql/service_controls_broker`.
 
 - Fourteen live products are added to the same `service_controls` table, in groups:
   - discovery: find_property, find_property_deep, find_buyers;
@@ -14,7 +20,7 @@ MATTERS right now, verify against the live systems, not this file)
   - assistant: ai_assistant;
   - professionals: brokers_directory, broker_desk, developers.
 - Inventory: `docs/claude/SERVICE_CONTROLS_INVENTORY.md`. Runbook: `docs/claude/SERVICE_CONTROLS.md`.
-- Migration `20261110090000_service_controls_expand.sql` is **UNAPPLIED; owner approval required**. When applied, it:
+- Migration `20261110090000_service_controls_expand.sql` (applied 2026-10-17, see above):
   - leaves the six rows untouched;
   - seeds the fourteen ON/ON;
   - adds `service_group`;

@@ -79,9 +79,27 @@ export function initialSnapshot(remembered: unknown): ServiceSnapshot {
 type Fetcher = () => Promise<{ data: unknown; error: unknown }>;
 
 /** A tiny store: one fetch shared by every subscriber, refreshed on demand and on a timer. */
-export function createServiceControlStore(fetcher: Fetcher, opts: { initial?: ServiceSnapshot; remember?: (s: ServiceSnapshot) => void } = {}) {
+/* After an unreadable answer the store asks again soon, then leaves it to the regular
+   refresh: a transient error on page load must not keep a paused live product mounted
+   until the 60-second refresh (seen in CI, 2026-10-17). */
+export const RETRY_AFTER_UNREADABLE_MS: readonly number[] = [1_500, 4_000, 10_000];
+
+export function createServiceControlStore(fetcher: Fetcher, opts: {
+  initial?: ServiceSnapshot;
+  remember?: (s: ServiceSnapshot) => void;
+  /** Injected for tests; defaults to setTimeout. */
+  schedule?: (fn: () => void, ms: number) => void;
+} = {}) {
   let snapshot: ServiceSnapshot = opts.initial ?? HIDDEN_SNAPSHOT;
   let inflight: Promise<void> | null = null;
+  let failures = 0;
+  const schedule = opts.schedule ?? ((fn: () => void, ms: number) => { setTimeout(fn, ms); });
+  const failed = () => {
+    snapshot = unreadable();
+    const delay = RETRY_AFTER_UNREADABLE_MS[failures];
+    failures += 1;
+    if (delay !== undefined) schedule(() => { void refresh(); }, delay);
+  };
   const listeners = new Set<() => void>();
   const emit = () => listeners.forEach((l) => l());
   // An unreadable answer: the six go (or stay) hidden; a live product keeps what was last
@@ -94,11 +112,12 @@ export function createServiceControlStore(fetcher: Fetcher, opts: { initial?: Se
     if (inflight) return inflight;
     inflight = fetcher()
       .then(({ data, error }) => {
-        if (error) { snapshot = unreadable(); return; }
+        if (error) { failed(); return; }
+        failures = 0;
         snapshot = toSnapshot(data);
         opts.remember?.(snapshot);
       })
-      .catch(() => { snapshot = unreadable(); })
+      .catch(() => { failed(); })
       .finally(() => { inflight = null; emit(); });
     return inflight;
   };

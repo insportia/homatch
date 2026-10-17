@@ -24,7 +24,7 @@ import { OPEN_RUN_STATES, runEvent, updateRun } from '../_shared/discoveryRun.ts
 import { draftFromStoredPlan } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { normalisePlan } from '../../../src/research-core/discovery/search-plan.ts';
 import { allocateCampaign, minimumCampaignCredits } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
-import { OFFER_NETWORKS, type OfferNetwork, type OfferSearch } from '../../../src/research-core/findProperty/offerCampaign.ts';
+import { OFFER_NETWORKS, offerSearchLanguages, type OfferNetwork, type OfferSearch } from '../../../src/research-core/findProperty/offerCampaign.ts';
 import { loadOfferSettings, offerQueueRows, planOfferCampaign } from '../_shared/findProperty/socialOffers.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
       transaction, city: searchPlan.city.value,
       districts: searchPlan.districts?.value ?? [],
       propertyType: searchPlan.propertyTypes?.value?.[0] ?? null,
-      languages: ['ka', 'ru', 'en'],
+      languages: offerSearchLanguages(typeof body.language === 'string' ? body.language : null),
     };
     const requested = (Array.isArray(body.networks) ? body.networks : offerSettings.networks)
       .map((n: unknown) => String(n).toUpperCase())
@@ -123,7 +123,7 @@ Deno.serve(async (req: Request) => {
     const available = settings.findPropertyDiscoveryEnabled && offerSettings.enabled;
     const preview = {
       available,
-      unavailableReason: !offerSettings.apifyEnabled ? 'PROVIDER_OFF' : !available ? 'PAID_CAMPAIGNS_OFF' : plan.jobs.length === 0 ? 'NO_SEARCHABLE_SOURCES' : null,
+      unavailableReason: !offerSettings.apifyEnabled ? 'PROVIDER_OFF' : !offerSettings.configured ? 'PROVIDER_NOT_CONFIGURED' : !available ? 'PAID_CAMPAIGNS_OFF' : plan.jobs.length === 0 ? 'NO_SEARCHABLE_SOURCES' : null,
       priceCredits: budget, creditsPerUsd: rate, minCredits, maxCredits: settings.campaignMaxCredits,
       priceUsd: allocation.priceCents / 100,
       policy: allocation.policy,

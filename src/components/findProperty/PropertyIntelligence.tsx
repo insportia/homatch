@@ -192,6 +192,8 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
                       <span dir="auto" className="rounded-full bg-[#0C1119] px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.08em] text-white">{l.sourceName ?? l.source}</span>
                       <p className="font-display text-2xl font-semibold tracking-[-0.02em]">{usd(l.priceUsd)}</p>
                     </div>
+                    {l.social ? <p className="rounded-xl border border-dashed border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.06)] p-3 text-sm leading-relaxed text-foreground/85" data-social-note>
+                      <span className="me-1 font-semibold">{t('fps_social_badge')}.</span>{t('fps_social_note')}</p> : null}
                     <div className="flex flex-wrap gap-2">
                       {l.seller.classification !== 'UNKNOWN' ? <Chip>{sellerLabel(l.seller, t)}</Chip> : null}
                       <Chip>{listingAgeText(listingActivity(l.publishedAt, l.updatedAt), t)}</Chip>

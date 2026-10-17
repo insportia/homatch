@@ -32,7 +32,8 @@ export function SearchProgress({ t, search, onViewResults, onCancel, onPlay, onN
   deep?: React.ReactNode;
 }) {
   const c = search.counters;
-  const ready = (search.status === 'RESULTS_AVAILABLE' || search.terminal) && (search.totalProperties ?? c.uniqueProperties) > 0;
+  const ready = search.terminal && (search.totalProperties ?? c.uniqueProperties) > 0;
+  const answered = (search.sources ?? []).filter((src) => sourceState(src, true) === 'FOUND' || sourceState(src, true) === 'NONE').length;
   const progress = sourceProgress(search);
   const width = search.terminal ? 1 : Math.max(progress.fraction, 0.04);
   const elapsed = useElapsed(search.createdAt, !search.terminal);
@@ -90,9 +91,11 @@ export function SearchProgress({ t, search, onViewResults, onCancel, onPlay, onN
           ) : null}
 
           <div className="space-y-2.5" aria-live="polite">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="font-semibold text-white/90">{t('mps_sources_progress', { done: progress.done, total: progress.total })}</span>
-              {!search.terminal ? <span className="text-xs text-white/50" data-duration-note>{t('fpv_duration_note')}</span> : null}
+            {/* Stacked, never side by side: a long note beside a short label squeezed the label
+                into a one-word column on phones (owner screenshot, 2026-10-17). */}
+            <div className="space-y-1 text-sm" data-progress-copy>
+              <p className="font-semibold text-white/90">{t('mps_sources_progress', { done: progress.done, total: progress.total })}</p>
+              {!search.terminal ? <p className="text-xs leading-relaxed text-white/55" data-duration-note>{t('fpv_duration_note')}</p> : null}
             </div>
             <div className="relative h-1.5 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} aria-label={t('fpx_sources_label')}>
               <div className="h-full origin-left rounded-full bg-[linear-gradient(90deg,hsl(var(--gold)/0.55),hsl(var(--gold)))] transition-transform duration-700 rtl:origin-right" style={{ transform: `scaleX(${width})` }} />
@@ -103,32 +106,40 @@ export function SearchProgress({ t, search, onViewResults, onCancel, onPlay, onN
           <dl className="grid grid-cols-3 gap-2 sm:gap-3">
             {([['fpx_counter_found', c.listingsDiscovered], ['fpx_counter_unique', c.uniqueProperties], ['fpx_counter_strong', c.strongMatches]] as const).map(([k, v]) => (
               <div key={k} className="min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-3 sm:p-4">
-                <dt className="truncate text-2xs font-medium uppercase tracking-[0.08em] text-white/50">{t(k)}</dt>
+                <dt className="text-2xs font-medium leading-snug text-white/55 break-words">{t(k)}</dt>
                 <dd className="mt-1 font-display text-2xl font-semibold tabular-nums text-white sm:text-3xl">{v}</dd>
               </div>
             ))}
           </dl>
 
-          {ready ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--gold)/0.4)] bg-[hsl(var(--gold)/0.1)] p-4" role="status">
-              <div className="min-w-0">
-                <p className="font-semibold text-white">{t('mps_progressive_title')}</p>
-                <p className="text-sm text-white/70">{t('fpx_results_ready_body')}</p>
-              </div>
-              <button type="button" onClick={onViewResults} className={btn.gold}>{t('mps_progressive_cta')}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" /></button>
+          {/* Completion gate (owner, 2026-10-17): results open only when the server marks the
+              search terminal, every source job ended. Never redirected; the customer chooses. */}
+          {search.terminal ? (
+            <div className="space-y-3 rounded-2xl border border-[hsl(var(--gold)/0.4)] bg-[hsl(var(--gold)/0.1)] p-4 sm:p-5" role="status" data-search-done={search.status}>
+              <p className="font-display text-lg font-semibold text-white">{t(search.status === 'CANCELLED' ? 'fpv_done_cancelled_title' : 'fpv_done_title')}</p>
+              <p className="text-sm leading-relaxed text-white/75">
+                {search.status === 'CANCELLED' ? t('fpv_done_cancelled_body')
+                  : search.partial ? t('fpv_done_partial', { n: Math.max(0, progress.total - answered), total: progress.total })
+                    : t('fpv_done_body')}
+              </p>
+              {ready ? <button type="button" onClick={onViewResults} data-action="view-results" className={`${btn.gold} w-full sm:w-auto`}>
+                {t('fpv_view_results', { n: search.totalProperties ?? c.uniqueProperties })}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+              </button> : null}
             </div>
-          ) : null}
+          ) : (
+            <p className="text-xs leading-relaxed text-white/55" data-results-wait>{t('fpv_results_wait')}</p>
+          )}
 
           <details className="group rounded-2xl border border-white/[0.08] px-4 py-3 text-sm">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-medium text-white/60"><span>{t('fpx_diagnostics')}</span><ChevronDown className="h-4 w-4 transition group-open:rotate-180" aria-hidden="true" /></summary>
             <ol className="mt-3 space-y-1.5" aria-label={t('mps_stages_label')}>
               {search.stages.map((s) => (
-                <li key={s.stage} className="flex items-center justify-between gap-3">
+                <li key={s.stage} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3">
                   <span className={s.state === 'PENDING' ? 'text-white/45' : 'text-white/90'}>{t(STAGE_KEY[s.stage])}</span>
-                  <span className="text-xs text-white/50">{t(`mps_stage_state_${s.state}`)}</span>
+                  <span className="whitespace-nowrap text-xs text-white/50">{t(`mps_stage_state_${s.state}`)}</span>
                 </li>
               ))}
-              <li className="flex items-center justify-between gap-3 border-t border-white/10 pt-1.5 text-white/80"><span>{t('mps_counter_validated')}</span><span className="tabular-nums">{c.listingsValidated}</span></li>
+              <li className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-t border-white/10 pt-1.5 text-white/80"><span>{t('mps_counter_validated')}</span><span className="tabular-nums">{c.listingsValidated}</span></li>
             </ol>
           </details>
 
@@ -153,10 +164,7 @@ export function SearchProgress({ t, search, onViewResults, onCancel, onPlay, onN
                 className={`group relative inline-flex min-h-[52px] items-center justify-center gap-3 overflow-hidden rounded-full bg-[linear-gradient(135deg,hsl(var(--gold)),hsl(38_70%_62%))] ps-2 pe-6 text-start text-[#0C1119] shadow-[0_12px_32px_-12px_hsl(var(--gold)/0.9)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-12px_hsl(var(--gold)/1)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${focus}`}>
                 <span className="pointer-events-none absolute inset-y-0 -start-1/3 w-1/3 skew-x-[-20deg] bg-white/40 opacity-0 transition group-hover:opacity-100 motion-safe:group-hover:animate-[hm-flow_1.2s_ease-in-out]" aria-hidden="true" />
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-[#0C1119] text-[hsl(var(--gold))]" aria-hidden="true"><Gamepad2 className="h-[18px] w-[18px]" /></span>
-                <span className="leading-tight">
-                  <span className="block text-sm font-bold">{t('fpx_play_while')}</span>
-                  <span className="block text-2xs font-medium opacity-75">{t('fpv_play_sub')}</span>
-                </span>
+                <span className="min-w-0 text-sm font-bold leading-tight">{t('fpv_play_snake')}</span>
               </button>
             </div>
           ) : null}

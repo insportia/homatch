@@ -155,5 +155,5 @@ function Radio({ on, dark }: { on: boolean; dark?: boolean }) {
   );
 }
 function Li({ children }: { children: React.ReactNode }) {
-  return <li className="flex items-start gap-2 text-foreground/85"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" /><span>{children}</span></li>;
+  return <li className="flex min-w-0 items-start gap-2 text-foreground/85"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" /><span className="min-w-0 flex-1">{children}</span></li>;
 }

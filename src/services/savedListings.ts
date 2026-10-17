@@ -67,6 +67,18 @@ export function useSavedListing(key: string): { saved: boolean; busy: boolean; f
   return { saved: isSaved, busy, failed, toggle };
 }
 
+/** Every saved listing key, kept in step with every toggle (for the Favorites view and its count). */
+export function useSavedKeys(): { keys: ReadonlySet<string>; ready: boolean } {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const l = () => force((n) => n + 1);
+    listeners.add(l);
+    void load();
+    return () => { listeners.delete(l); };
+  }, []);
+  return { keys: saved ?? new Set<string>(), ready: saved !== null };
+}
+
 /** A view or an open at the source. Never throws, never awaited by the UI. */
 export function noteListingInterest(kind: 'VIEWED' | 'RESULT_OPENED', p: PropertyView, ctx: { searchId?: string | null; transaction?: string | null } = {}): void {
   void recordListingInterest(kind, listingKeyOf(p), { searchId: ctx.searchId ?? null, snapshot: listingSnapshot(p, ctx.transaction) })

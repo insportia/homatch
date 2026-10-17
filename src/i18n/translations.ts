@@ -20312,6 +20312,38 @@ const en = {
   fbl_duration_body: 'A search for interested people may take 10–30 minutes. The time depends on the scale of the search and the sources available.',
   fbl_details_title: 'Search details',
 
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'Play Snake while the search runs',
+  fpv_results_wait: 'Your results open as soon as every site has finished. You can stay here or come back later.',
+  fpv_done_title: 'Your search is complete',
+  fpv_done_body: 'Every site answered. Your results are ready.',
+  fpv_done_partial: '{{n}} of {{total}} sites did not answer in time. Your results come from the others.',
+  fpv_done_cancelled_title: 'Search stopped',
+  fpv_done_cancelled_body: 'You stopped this search, so it did not finish. The homes found until then are kept.',
+  fpv_view_results: 'View results ({{n}})',
+  fpv_photos_unavailable: 'Photos are not available from the source',
+  fpv_result_views: 'Result views',
+  fpv_tab_all: 'All',
+  fpv_tab_best: 'Best',
+  fpv_tab_favorites: 'Saved',
+  fpv_filters_apply: 'Show {{n}}',
+  fpv_fav_empty_title: 'No saved homes yet',
+  fpv_fav_empty_body: 'Tap the bookmark on any home to keep it here.',
+  fpv_photo_unavailable: 'This photo did not load',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Social post · unverified',
+  fps_social_note: 'This listing comes from a public social media post. HOMATCH has not verified its price, photos or availability: confirm them with the person who posted it.',
+  fpi_paid_refused_provider_not_configured: 'Extended search is temporarily unavailable. Nothing has been reserved or charged.',
+  fpi_paid_elapsed: 'Elapsed {{time}}',
+  fpi_paid_net_done: 'Completed',
+  fpi_paid_net_running: 'Searching',
+  fpi_paid_net_failed: 'Could not be searched',
+  fpi_paid_net_waiting: 'Waiting',
+  fpi_paid_net_unavailable: 'Unavailable right now',
+  fpi_paid_results_wait: 'Listings from social networks join your results when the search has finished.',
+  fpi_paid_view_results: 'View results',
+
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
   fbrx_criteria: 'What the search looks for',
   fbrx_primary_start: 'Start a search',
@@ -20345,12 +20377,14 @@ const en = {
   fbrx_all_people: 'All searches, each person once: {{n}}',
   fbrx_selected_search: 'Search · {{date}} · {{state}}',
   fbrx_stage_line: 'Running: {{running}} · Waiting: {{queued}} · Finished: {{done}}',
+  fbrx_viewing_other: 'You are viewing an earlier search. The panel below shows the search running now.',
   fbrx_legacy_matches: 'Earlier internal matches: {{n}}',
   fbrx_clear_open: 'Clear old results',
   fbrx_clear_title: 'Clear old results?',
   fbrx_clear_body: 'The results of this property’s completed searches will be hidden from your lists. This cannot be undone.',
   fbrx_clear_count_leads: 'People from completed searches: {{n}}',
   fbrx_clear_count_matches: 'Earlier internal matches: {{n}}',
+  fbrx_clear_unlocked_kept: 'Contacts you already opened stay available: {{n}}',
   fbrx_clear_kept_title: 'Not deleted',
   fbrx_clear_kept_property: 'The property and its listing',
   fbrx_clear_kept_active: 'A search running now and its results',
@@ -20364,12 +20398,6 @@ const en = {
   fbrx_clear_cancel: 'Cancel',
   fbrx_clear_done: 'Old results cleared: {{n}}',
   fbrx_clear_failed: 'The results could not be cleared. Nothing was changed.',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_clear_unlocked_kept: 'Contacts you already opened stay available: {{n}}',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_viewing_other: 'You are viewing an earlier search. The panel below shows the search running now.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40596,6 +40624,38 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbl_duration_body: 'დაინტერესებული ადამიანების ძიებას შესაძლოა 10–30 წუთი დასჭირდეს. დრო დამოკიდებულია ძებნის მასშტაბსა და ხელმისაწვდომ წყაროებზე.',
   fbl_details_title: 'ძებნის დეტალები',
 
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'გაერთე Snake-ით სანამ ძიება მიმდინარეობს',
+  fpv_results_wait: 'შედეგები გაიხსნება, როგორც კი ყველა საიტი დაასრულებს. შეგიძლიათ აქ დარჩეთ ან მოგვიანებით დაბრუნდეთ.',
+  fpv_done_title: 'ძიება დასრულდა',
+  fpv_done_body: 'ყველა საიტმა უპასუხა. შედეგები მზადაა.',
+  fpv_done_partial: '{{total}} საიტიდან {{n}} დროულად არ გვიპასუხა. შედეგები დანარჩენი საიტებიდანაა.',
+  fpv_done_cancelled_title: 'ძიება შეწყდა',
+  fpv_done_cancelled_body: 'ეს ძიება თქვენ შეწყვიტეთ, ამიტომ ბოლომდე არ დასრულებულა. მანამდე ნაპოვნი ბინები შენახულია.',
+  fpv_view_results: 'შედეგების ნახვა ({{n}})',
+  fpv_photos_unavailable: 'წყაროდან ფოტოები ვერ ჩაიტვირთა',
+  fpv_result_views: 'შედეგების ხედები',
+  fpv_tab_all: 'ყველა',
+  fpv_tab_best: 'საუკეთესო',
+  fpv_tab_favorites: 'შენახული',
+  fpv_filters_apply: 'ჩვენება ({{n}})',
+  fpv_fav_empty_title: 'შენახული ბინები ჯერ არ გაქვთ',
+  fpv_fav_empty_body: 'დააჭირეთ სანიშნეს ნებისმიერ ბინაზე და ის აქ შეინახება.',
+  fpv_photo_unavailable: 'ეს ფოტო ვერ ჩაიტვირთა',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'სოციალური პოსტი · გადაუმოწმებელი',
+  fps_social_note: 'ეს განცხადება საჯარო სოციალური ქსელის პოსტიდანაა. HOMATCH-ს მისი ფასი, ფოტოები და ხელმისაწვდომობა არ გადაუმოწმებია: დააზუსტეთ ისინი პოსტის ავტორთან.',
+  fpi_paid_refused_provider_not_configured: 'გაფართოებული ძიება დროებით მიუწვდომელია. არაფერი დაჯავშნილა და არაფერი ჩამოგეჭრათ.',
+  fpi_paid_elapsed: 'გასული დრო {{time}}',
+  fpi_paid_net_done: 'დასრულდა',
+  fpi_paid_net_running: 'მიმდინარეობს',
+  fpi_paid_net_failed: 'ძიება ვერ მოხერხდა',
+  fpi_paid_net_waiting: 'რიგშია',
+  fpi_paid_net_unavailable: 'ახლა მიუწვდომელია',
+  fpi_paid_results_wait: 'სოციალური ქსელების განცხადებები შედეგებს ძიების დასრულების შემდეგ დაემატება.',
+  fpi_paid_view_results: 'შედეგების ნახვა',
+
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
   fbrx_criteria: 'რას ეძებს ძიება',
   fbrx_primary_start: 'ძიების დაწყება',
@@ -40629,12 +40689,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbrx_all_people: 'ყველა ძიება, თითო ადამიანი ერთხელ: {{n}}',
   fbrx_selected_search: 'ძიება · {{date}} · {{state}}',
   fbrx_stage_line: 'მიმდინარე: {{running}} · რიგში: {{queued}} · დასრულებული: {{done}}',
+  fbrx_viewing_other: 'თქვენ ათვალიერებთ წინა ძიებას. ქვემოთ მოცემული პანელი ახლა მიმდინარე ძიებას აჩვენებს.',
   fbrx_legacy_matches: 'ადრინდელი შიდა დამთხვევები: {{n}}',
   fbrx_clear_open: 'ძველი შედეგების გასუფთავება',
   fbrx_clear_title: 'გავასუფთაოთ ძველი შედეგები?',
   fbrx_clear_body: 'ამ ქონების დასრულებული ძიებების შედეგები თქვენს სიებში აღარ გამოჩნდება. ამ მოქმედების გაუქმება შეუძლებელია.',
   fbrx_clear_count_leads: 'დასრულებული ძიებების ადამიანები: {{n}}',
   fbrx_clear_count_matches: 'ადრინდელი შიდა დამთხვევები: {{n}}',
+  fbrx_clear_unlocked_kept: 'უკვე გახსნილი კონტაქტები ხელმისაწვდომი დარჩება: {{n}}',
   fbrx_clear_kept_title: 'არ წაიშლება',
   fbrx_clear_kept_property: 'ქონება და მისი განცხადება',
   fbrx_clear_kept_active: 'ახლა მიმდინარე ძიება და მისი შედეგები',
@@ -40648,12 +40710,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'გაუქმება',
   fbrx_clear_done: 'ძველი შედეგები გასუფთავდა: {{n}}',
   fbrx_clear_failed: 'შედეგების გასუფთავება ვერ მოხერხდა. არაფერი შეცვლილა.',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_clear_unlocked_kept: 'უკვე გახსნილი კონტაქტები ხელმისაწვდომი დარჩება: {{n}}',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_viewing_other: 'თქვენ ათვალიერებთ წინა ძიებას. ქვემოთ მოცემული პანელი ახლა მიმდინარე ძიებას აჩვენებს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60871,6 +60927,38 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbl_duration_body: 'Поиск заинтересованных людей может занять 10–30 минут. Время зависит от масштаба поиска и доступных источников.',
   fbl_details_title: 'Подробности поиска',
 
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'Сыграйте в Snake, пока идёт поиск',
+  fpv_results_wait: 'Результаты откроются, как только все сайты закончат. Можете остаться здесь или вернуться позже.',
+  fpv_done_title: 'Поиск завершён',
+  fpv_done_body: 'Все сайты ответили. Результаты готовы.',
+  fpv_done_partial: 'Сайтов, не ответивших вовремя: {{n}} из {{total}}. Результаты собраны с остальных.',
+  fpv_done_cancelled_title: 'Поиск остановлен',
+  fpv_done_cancelled_body: 'Вы остановили поиск, поэтому он не завершился. Найденные до этого квартиры сохранены.',
+  fpv_view_results: 'Смотреть результаты ({{n}})',
+  fpv_photos_unavailable: 'Фото недоступны на источнике',
+  fpv_result_views: 'Виды результатов',
+  fpv_tab_all: 'Все',
+  fpv_tab_best: 'Лучшие',
+  fpv_tab_favorites: 'Избранное',
+  fpv_filters_apply: 'Показать {{n}}',
+  fpv_fav_empty_title: 'Пока нет сохранённых квартир',
+  fpv_fav_empty_body: 'Нажмите на закладку у любой квартиры, чтобы сохранить её здесь.',
+  fpv_photo_unavailable: 'Это фото не загрузилось',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Пост в соцсети · не проверено',
+  fps_social_note: 'Это объявление взято из публичного поста в соцсети. HOMATCH не проверял цену, фото и актуальность: уточните их у автора поста.',
+  fpi_paid_refused_provider_not_configured: 'Расширенный поиск временно недоступен. Ничего не зарезервировано и не списано.',
+  fpi_paid_elapsed: 'Прошло {{time}}',
+  fpi_paid_net_done: 'Завершено',
+  fpi_paid_net_running: 'Идёт поиск',
+  fpi_paid_net_failed: 'Не удалось проверить',
+  fpi_paid_net_waiting: 'В очереди',
+  fpi_paid_net_unavailable: 'Сейчас недоступно',
+  fpi_paid_results_wait: 'Объявления из соцсетей появятся в результатах после завершения поиска.',
+  fpi_paid_view_results: 'Посмотреть результаты',
+
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
   fbrx_criteria: 'Что ищет поиск',
   fbrx_primary_start: 'Начать поиск',
@@ -60904,12 +60992,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbrx_all_people: 'Все поиски, каждый человек один раз: {{n}}',
   fbrx_selected_search: 'Поиск · {{date}} · {{state}}',
   fbrx_stage_line: 'Выполняется: {{running}} · В очереди: {{queued}} · Завершено: {{done}}',
+  fbrx_viewing_other: 'Вы смотрите предыдущий поиск. Панель ниже показывает поиск, который идёт сейчас.',
   fbrx_legacy_matches: 'Прежние внутренние совпадения: {{n}}',
   fbrx_clear_open: 'Очистить старые результаты',
   fbrx_clear_title: 'Очистить старые результаты?',
   fbrx_clear_body: 'Результаты завершённых поисков этого объекта будут скрыты из ваших списков. Это действие нельзя отменить.',
   fbrx_clear_count_leads: 'Люди из завершённых поисков: {{n}}',
   fbrx_clear_count_matches: 'Прежние внутренние совпадения: {{n}}',
+  fbrx_clear_unlocked_kept: 'Уже открытые контакты остаются доступными: {{n}}',
   fbrx_clear_kept_title: 'Не удаляется',
   fbrx_clear_kept_property: 'Объект и его объявление',
   fbrx_clear_kept_active: 'Идущий сейчас поиск и его результаты',
@@ -60923,12 +61013,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'Отмена',
   fbrx_clear_done: 'Старые результаты очищены: {{n}}',
   fbrx_clear_failed: 'Не удалось очистить результаты. Ничего не изменено.',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_clear_unlocked_kept: 'Уже открытые контакты остаются доступными: {{n}}',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_viewing_other: 'Вы смотрите предыдущий поиск. Панель ниже показывает поиск, который идёт сейчас.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81144,6 +81228,38 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbl_duration_body: 'İlgilenen kişileri aramak 10–30 dakika sürebilir. Süre, aramanın kapsamına ve erişilebilir kaynaklara bağlıdır.',
   fbl_details_title: 'Arama ayrıntıları',
 
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'Arama sürerken Snake oynayın',
+  fpv_results_wait: 'Sonuçlar tüm siteler bitirir bitirmez açılır. Burada kalabilir ya da daha sonra dönebilirsiniz.',
+  fpv_done_title: 'Aramanız tamamlandı',
+  fpv_done_body: 'Tüm siteler yanıt verdi. Sonuçlarınız hazır.',
+  fpv_done_partial: '{{total}} siteden {{n}} tanesi zamanında yanıt vermedi. Sonuçlar diğerlerinden geliyor.',
+  fpv_done_cancelled_title: 'Arama durduruldu',
+  fpv_done_cancelled_body: 'Bu aramayı durdurdunuz, bu yüzden tamamlanmadı. O ana kadar bulunan evler saklandı.',
+  fpv_view_results: 'Sonuçları gör ({{n}})',
+  fpv_photos_unavailable: 'Fotoğraflar kaynaktan alınamadı',
+  fpv_result_views: 'Sonuç görünümleri',
+  fpv_tab_all: 'Tümü',
+  fpv_tab_best: 'En iyi',
+  fpv_tab_favorites: 'Kaydedilen',
+  fpv_filters_apply: '{{n}} sonucu göster',
+  fpv_fav_empty_title: 'Henüz kaydedilmiş ev yok',
+  fpv_fav_empty_body: 'Burada tutmak için herhangi bir evdeki yer imine dokunun.',
+  fpv_photo_unavailable: 'Bu fotoğraf yüklenmedi',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Sosyal medya gönderisi · doğrulanmadı',
+  fps_social_note: 'Bu ilan herkese açık bir sosyal medya gönderisinden geliyor. HOMATCH fiyatını, fotoğraflarını ve güncelliğini doğrulamadı: bunları gönderiyi paylaşan kişiyle teyit edin.',
+  fpi_paid_refused_provider_not_configured: 'Genişletilmiş arama geçici olarak kullanılamıyor. Hiçbir şey ayrılmadı veya tahsil edilmedi.',
+  fpi_paid_elapsed: 'Geçen süre {{time}}',
+  fpi_paid_net_done: 'Tamamlandı',
+  fpi_paid_net_running: 'Aranıyor',
+  fpi_paid_net_failed: 'Aranamadı',
+  fpi_paid_net_waiting: 'Bekliyor',
+  fpi_paid_net_unavailable: 'Şu anda kullanılamıyor',
+  fpi_paid_results_wait: 'Sosyal ağlardan gelen ilanlar arama bittiğinde sonuçlarınıza eklenir.',
+  fpi_paid_view_results: 'Sonuçları görüntüle',
+
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
   fbrx_criteria: 'Aramanın aradığı',
   fbrx_primary_start: 'Aramayı başlat',
@@ -81177,12 +81293,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbrx_all_people: 'Tüm aramalar, her kişi bir kez: {{n}}',
   fbrx_selected_search: 'Arama · {{date}} · {{state}}',
   fbrx_stage_line: 'Çalışan: {{running}} · Bekleyen: {{queued}} · Biten: {{done}}',
+  fbrx_viewing_other: 'Önceki bir aramayı görüntülüyorsunuz. Aşağıdaki panel şu an süren aramayı gösteriyor.',
   fbrx_legacy_matches: 'Önceki iç eşleşmeler: {{n}}',
   fbrx_clear_open: 'Eski sonuçları temizle',
   fbrx_clear_title: 'Eski sonuçlar temizlensin mi?',
   fbrx_clear_body: 'Bu mülkün tamamlanan aramalarının sonuçları listelerinizden gizlenecek. Bu işlem geri alınamaz.',
   fbrx_clear_count_leads: 'Tamamlanan aramalardaki kişiler: {{n}}',
   fbrx_clear_count_matches: 'Önceki iç eşleşmeler: {{n}}',
+  fbrx_clear_unlocked_kept: 'Daha önce açtığınız kişiler erişilebilir kalır: {{n}}',
   fbrx_clear_kept_title: 'Silinmeyenler',
   fbrx_clear_kept_property: 'Mülk ve ilanı',
   fbrx_clear_kept_active: 'Şu an süren arama ve sonuçları',
@@ -81196,12 +81314,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'Vazgeç',
   fbrx_clear_done: 'Eski sonuçlar temizlendi: {{n}}',
   fbrx_clear_failed: 'Sonuçlar temizlenemedi. Hiçbir şey değişmedi.',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_clear_unlocked_kept: 'Daha önce açtığınız kişiler erişilebilir kalır: {{n}}',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_viewing_other: 'Önceki bir aramayı görüntülüyorsunuz. Aşağıdaki panel şu an süren aramayı gösteriyor.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101417,6 +101529,38 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbl_duration_body: 'قد يستغرق البحث عن أشخاص مهتمين من 10 إلى 30 دقيقة. يعتمد الوقت على نطاق البحث والمصادر المتاحة.',
   fbl_details_title: 'تفاصيل البحث',
 
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'العب Snake أثناء البحث',
+  fpv_results_wait: 'تفتح النتائج فور انتهاء جميع المواقع. يمكنك البقاء هنا أو العودة لاحقًا.',
+  fpv_done_title: 'اكتمل بحثك',
+  fpv_done_body: 'استجابت جميع المواقع. نتائجك جاهزة.',
+  fpv_done_partial: 'لم يرد {{n}} من أصل {{total}} مواقع في الوقت المناسب. نتائجك من المواقع الأخرى.',
+  fpv_done_cancelled_title: 'تم إيقاف البحث',
+  fpv_done_cancelled_body: 'أوقفت هذا البحث، لذلك لم يكتمل. المنازل التي وُجدت حتى تلك اللحظة محفوظة.',
+  fpv_view_results: 'عرض النتائج ({{n}})',
+  fpv_photos_unavailable: 'الصور غير متاحة من المصدر',
+  fpv_result_views: 'طرق عرض النتائج',
+  fpv_tab_all: 'الكل',
+  fpv_tab_best: 'الأفضل',
+  fpv_tab_favorites: 'المحفوظة',
+  fpv_filters_apply: 'عرض {{n}}',
+  fpv_fav_empty_title: 'لا توجد منازل محفوظة بعد',
+  fpv_fav_empty_body: 'اضغط على الإشارة المرجعية في أي منزل لحفظه هنا.',
+  fpv_photo_unavailable: 'تعذّر تحميل هذه الصورة',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'منشور على وسائل التواصل · غير موثّق',
+  fps_social_note: 'هذا الإعلان مأخوذ من منشور عام على وسائل التواصل. لم تتحقق HOMATCH من سعره أو صوره أو توفره: تأكد منها مع ناشر المنشور.',
+  fpi_paid_refused_provider_not_configured: 'البحث الموسّع غير متاح مؤقتًا. لم يتم حجز أو خصم أي شيء.',
+  fpi_paid_elapsed: 'الوقت المنقضي {{time}}',
+  fpi_paid_net_done: 'اكتمل',
+  fpi_paid_net_running: 'جارٍ البحث',
+  fpi_paid_net_failed: 'تعذّر البحث',
+  fpi_paid_net_waiting: 'في الانتظار',
+  fpi_paid_net_unavailable: 'غير متاح الآن',
+  fpi_paid_results_wait: 'تنضم إعلانات وسائل التواصل إلى نتائجك عند انتهاء البحث.',
+  fpi_paid_view_results: 'عرض النتائج',
+
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
   fbrx_criteria: 'ما يبحث عنه البحث',
   fbrx_primary_start: 'ابدأ البحث',
@@ -101450,12 +101594,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbrx_all_people: 'كل عمليات البحث، كل شخص مرة واحدة: {{n}}',
   fbrx_selected_search: 'بحث · {{date}} · {{state}}',
   fbrx_stage_line: 'قيد التشغيل: {{running}} · في الانتظار: {{queued}} · منتهية: {{done}}',
+  fbrx_viewing_other: 'أنت تعرض بحثًا سابقًا. تعرض اللوحة أدناه البحث الجاري الآن.',
   fbrx_legacy_matches: 'تطابقات داخلية سابقة: {{n}}',
   fbrx_clear_open: 'مسح النتائج القديمة',
   fbrx_clear_title: 'مسح النتائج القديمة؟',
   fbrx_clear_body: 'ستُخفى نتائج عمليات البحث المكتملة لهذا العقار من قوائمك. لا يمكن التراجع عن ذلك.',
   fbrx_clear_count_leads: 'أشخاص من عمليات بحث مكتملة: {{n}}',
   fbrx_clear_count_matches: 'تطابقات داخلية سابقة: {{n}}',
+  fbrx_clear_unlocked_kept: 'جهات الاتصال التي فتحتها تبقى متاحة: {{n}}',
   fbrx_clear_kept_title: 'لا يُحذف',
   fbrx_clear_kept_property: 'العقار وإعلانه',
   fbrx_clear_kept_active: 'البحث الجاري الآن ونتائجه',
@@ -101469,12 +101615,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'إلغاء',
   fbrx_clear_done: 'تم مسح النتائج القديمة: {{n}}',
   fbrx_clear_failed: 'تعذّر مسح النتائج. لم يتغيّر شيء.',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_clear_unlocked_kept: 'جهات الاتصال التي فتحتها تبقى متاحة: {{n}}',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_viewing_other: 'أنت تعرض بحثًا سابقًا. تعرض اللوحة أدناه البحث الجاري الآن.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -121690,6 +121830,38 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbl_duration_body: 'חיפוש אנשים מתעניינים עשוי להימשך 10–30 דקות. הזמן תלוי בהיקף החיפוש ובמקורות הזמינים.',
   fbl_details_title: 'פרטי החיפוש',
 
+  /* ── FIND PROPERTY — ADVISOR (RECOMMENDATIONS, ASSESSMENT, ORIGINAL DESCRIPTION, SEARCH FIELD, CAMPAIGN POSTS) ── */
+  fpv_play_snake: 'שחקו Snake בזמן שהחיפוש רץ',
+  fpv_results_wait: 'התוצאות ייפתחו ברגע שכל האתרים יסיימו. אפשר להישאר כאן או לחזור מאוחר יותר.',
+  fpv_done_title: 'החיפוש הסתיים',
+  fpv_done_body: 'כל האתרים ענו. התוצאות מוכנות.',
+  fpv_done_partial: '{{n}} מתוך {{total}} אתרים לא ענו בזמן. התוצאות מגיעות מהשאר.',
+  fpv_done_cancelled_title: 'החיפוש נעצר',
+  fpv_done_cancelled_body: 'עצרתם את החיפוש, ולכן הוא לא הושלם. הדירות שנמצאו עד אז נשמרו.',
+  fpv_view_results: 'לצפייה בתוצאות ({{n}})',
+  fpv_photos_unavailable: 'התמונות אינן זמינות מהמקור',
+  fpv_result_views: 'תצוגות תוצאות',
+  fpv_tab_all: 'הכול',
+  fpv_tab_best: 'הטובות',
+  fpv_tab_favorites: 'שמורות',
+  fpv_filters_apply: 'הצגת {{n}}',
+  fpv_fav_empty_title: 'עדיין אין דירות שמורות',
+  fpv_fav_empty_body: 'הקישו על הסימנייה בכל דירה כדי לשמור אותה כאן.',
+  fpv_photo_unavailable: 'התמונה לא נטענה',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'פוסט ברשת חברתית · לא מאומת',
+  fps_social_note: 'מודעה זו לקוחה מפוסט ציבורי ברשת חברתית. HOMATCH לא אימתה את המחיר, התמונות או הזמינות: ודאו אותם מול מי שפרסם את הפוסט.',
+  fpi_paid_refused_provider_not_configured: 'החיפוש המורחב אינו זמין כרגע. דבר לא הוזמן ודבר לא חויב.',
+  fpi_paid_elapsed: 'זמן שחלף {{time}}',
+  fpi_paid_net_done: 'הושלם',
+  fpi_paid_net_running: 'מחפשים',
+  fpi_paid_net_failed: 'לא ניתן היה לחפש',
+  fpi_paid_net_waiting: 'ממתין',
+  fpi_paid_net_unavailable: 'לא זמין כרגע',
+  fpi_paid_results_wait: 'מודעות מהרשתות החברתיות יצטרפו לתוצאות כשהחיפוש יסתיים.',
+  fpi_paid_view_results: 'צפייה בתוצאות',
+
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
   fbrx_criteria: 'מה החיפוש מחפש',
   fbrx_primary_start: 'התחלת חיפוש',
@@ -121723,12 +121895,14 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbrx_all_people: 'כל החיפושים, כל אדם פעם אחת: {{n}}',
   fbrx_selected_search: 'חיפוש · {{date}} · {{state}}',
   fbrx_stage_line: 'פועלות: {{running}} · ממתינות: {{queued}} · הסתיימו: {{done}}',
+  fbrx_viewing_other: 'אתם צופים בחיפוש קודם. הלוח למטה מציג את החיפוש שפועל כעת.',
   fbrx_legacy_matches: 'התאמות פנימיות קודמות: {{n}}',
   fbrx_clear_open: 'ניקוי תוצאות ישנות',
   fbrx_clear_title: 'לנקות תוצאות ישנות?',
   fbrx_clear_body: 'התוצאות של החיפושים שהושלמו עבור הנכס יוסתרו מהרשימות שלכם. לא ניתן לבטל פעולה זו.',
   fbrx_clear_count_leads: 'אנשים מחיפושים שהושלמו: {{n}}',
   fbrx_clear_count_matches: 'התאמות פנימיות קודמות: {{n}}',
+  fbrx_clear_unlocked_kept: 'אנשי קשר שכבר פתחתם נשארים זמינים: {{n}}',
   fbrx_clear_kept_title: 'לא נמחק',
   fbrx_clear_kept_property: 'הנכס והמודעה שלו',
   fbrx_clear_kept_active: 'חיפוש שפועל כעת והתוצאות שלו',
@@ -121742,12 +121916,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'ביטול',
   fbrx_clear_done: 'תוצאות ישנות נוקו: {{n}}',
   fbrx_clear_failed: 'לא ניתן היה לנקות את התוצאות. דבר לא השתנה.',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_clear_unlocked_kept: 'אנשי קשר שכבר פתחתם נשארים זמינים: {{n}}',
-
-  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
-  fbrx_viewing_other: 'אתם צופים בחיפוש קודם. הלוח למטה מציג את החיפוש שפועל כעת.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

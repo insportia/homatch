@@ -71,6 +71,8 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
   const assessment = useMemo(() => assessProperty(p, brief), [p, brief]);
   const summary = summaryText(assessment, t, lang);
   const sources = sourceNames(p);
+  /* Known only from social posts: unverified content, said on the card itself. */
+  const socialOnly = p.listings.length > 0 && p.listings.every((l) => l.social);
   const [dialogOpen, setDialogOpen] = useState(false);
   const confirmedDuplicate = p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
   const primary = p.listings.find((l) => l.listingId === p.intelligence?.primaryListingId) ?? p.listings[0];
@@ -96,8 +98,9 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
             {save.saved ? <BookmarkCheck className="h-[18px] w-[18px]" aria-hidden="true" /> : <Bookmark className="h-[18px] w-[18px]" aria-hidden="true" />}
           </button>
         </div>
+        {socialOnly ? <p className="inline-flex w-fit max-w-full items-center rounded-full border border-dashed border-[hsl(var(--gold-border))] px-2.5 py-0.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]" data-social-badge>{t('fps_social_badge')}</p> : null}
         {size || floor || f.pricePerSqmUsd ? <p className="text-sm text-muted-foreground">{[size, floor, f.pricePerSqmUsd ? t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) }) : null].filter(Boolean).join(' · ')}</p> : null}
-        <p className="text-sm leading-relaxed text-foreground/90" data-advisor-summary>
+        <p className="line-clamp-2 text-sm leading-relaxed text-foreground/90" data-advisor-summary>
           {assessment.verdict === 'TOP'
             // The best-match label opens the page that lists every best match of this search.
             ? <Link to={{ search: '?view=best&fp_strongOnly=true&page=1' }} data-match-badge data-action="open-best-from-card"
@@ -108,21 +111,22 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
         {p.upgrade && p.upgrade.overMaxPct !== null && f.priceUsd != null && brief.price?.value.max != null ? (
           <p className="text-sm font-semibold text-[hsl(var(--gold-ink))]">{t('fpw_over_budget', { amount: usd(Math.max(0, f.priceUsd - brief.price.value.max)), pct: pct(p.upgrade.overMaxPct) })}</p>
         ) : null}
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-1">
-          <p className="min-w-0 truncate text-xs text-muted-foreground" data-card-source>
-            <span dir="auto">{t('mps_card_source', { source: sources.join(' · ') })}</span>
-            {times.published || times.updated ? <span data-card-times> · {times.updated ?? times.published}</span> : null}
-          </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button type="button" onClick={onToggleCompare} aria-pressed={compareSelected}
-              className={`inline-flex min-h-[40px] items-center gap-1 rounded-xl px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${compareSelected ? 'bg-[#0C1119]/5 text-foreground' : 'text-foreground/70 hover:bg-muted hover:text-foreground'}`}>
-              {compareSelected ? <Check className="h-4 w-4" aria-hidden="true" /> : null}{t('mps_compare')}
-            </button>
-            <button type="button" onClick={open} data-action="open-assessment"
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-[#0C1119] px-3.5 text-sm font-semibold text-white transition hover:bg-[#1A2331] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">
-              {t('fpv_see_assessment')}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
-            </button>
-          </div>
+        {/* Source on its own line, then the actions on a row that always fits the card:
+            the primary action takes the remaining width and wraps its words instead of
+            pushing past the card edge (owner screenshot, 390 px, 2026-10-17). */}
+        <p className="min-w-0 truncate text-xs text-muted-foreground" data-card-source>
+          <span dir="auto">{t('mps_card_source', { source: sources.join(' · ') })}</span>
+          {times.published || times.updated ? <span data-card-times> · {times.updated ?? times.published}</span> : null}
+        </p>
+        <div className="mt-auto grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-stretch gap-2 pt-1" data-card-actions>
+          <button type="button" onClick={onToggleCompare} aria-pressed={compareSelected}
+            className={`inline-flex min-h-[44px] items-center gap-1 rounded-xl border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${compareSelected ? 'border-[#0C1119]/20 bg-[#0C1119]/5 text-foreground' : 'border-border text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
+            {compareSelected ? <Check className="h-4 w-4" aria-hidden="true" /> : null}{t('mps_compare')}
+          </button>
+          <button type="button" onClick={open} data-action="open-assessment"
+            className="inline-flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0C1119] px-3.5 py-2 text-center text-sm font-semibold leading-tight text-white transition hover:bg-[#1A2331] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">
+            <span className="min-w-0">{t('fpv_see_assessment')}</span><ArrowRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
+          </button>
         </div>
         {save.failed ? <p role="alert" className="text-xs text-destructive">{t('fpi_save_failed')}</p> : null}
         {dialogOpen ? <DuplicatesDialog p={p} t={t} open={dialogOpen} onOpenChange={setDialogOpen} confirmed={confirmedDuplicate} /> : null}

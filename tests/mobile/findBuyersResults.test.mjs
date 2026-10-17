@@ -534,7 +534,8 @@ test('live search module: server state, real source nodes only, real counts, the
   assert.doesNotMatch(main, /HOMATCH Matches/, 'internal matches never appear on the external results page');
   assert.match(main, /Extended research results/, 'external results are their own section');
   /* Only sources really working are listed; REDDIT is still queued and appears once it starts (2026-10-12). */
-  assert.deepEqual(await page.$$eval('[data-testid="fbl-source-outcomes"] li', (els) => els.map((e) => e.getAttribute('data-source'))), ['FACEBOOK', 'VK'], 'only sources running or finished');
+  /* The per-source list is an operator diagnostic since 2026-10-17 (owner): an owner never sees it. */
+  assert.equal(await page.locator('[data-testid="fbl-source-outcomes"]').count(), 0, 'no source list for the owner');
   assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);
   assert.equal(await page.getByRole('button', { name: 'Continue search' }).count(), 0);
   assert.doesNotMatch(main, /75%/, 'no invented percentage');

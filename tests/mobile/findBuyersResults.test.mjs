@@ -331,8 +331,11 @@ test('internal matches never start research; the one start action only opens the
   await page.waitForSelector('[data-testid="fbd-internal-view"]', { timeout: 20000 });
   assert.equal(await page.locator('[data-testid="fbd-internal-start"]').count(), 0, 'one button for internal matches');
   const before = calls.length;
+  /* The RPC first awaits the auth session, so wait for the request itself, not a fixed delay. */
+  const asked = page.waitForRequest((req) => req.url().includes('/rpc/internal_leads_request_matching'), { timeout: 15000 });
   await page.click('[data-testid="fbd-internal-view"]');
   await page.waitForURL(/\/buyers\/internal$/, { timeout: 15000 });
+  await asked;
   await page.waitForTimeout(300);
   const opened = calls.slice(before);
   assert.ok(opened.some((c) => c.startsWith('internal_leads_request_matching')), 'the internal matcher was asked');

@@ -302,7 +302,7 @@ test('three tabs, real counts; sellers, brokers and rejected readings never list
   assert.equal(cards.length, 3);
   assert.deepEqual(cards.find((c) => c.src === 'leads'), { src: 'leads', note: 'Potentially interested people found in the comments: 2', state: 'INSPECTED' });
   assert.ok(cards.some((c) => c.src === 'research' && /People interested in a similar type of apartment may be in the comments/.test(c.note)), 'not-inspected copy, no count');
-  assert.ok(cards.some((c) => /competitor’s apartment.*not accessible from the ad/.test(c.note ?? '')), 'the ad: competitor copy + comments not accessible');
+  assert.ok(cards.some((c) => /someone else's comparable property.*not accessible from the ad/.test(c.note ?? '')), 'the ad: competitor copy + comments not accessible');
   for (const a of await page.$$eval('[data-testid="fbo-card-open"]', (as) => as.map((x) => ({ href: x.getAttribute('href'), rel: x.getAttribute('rel') })))) {
     assert.match(a.href, /^https:\/\//); assert.match(a.rel, /nofollow/);
   }

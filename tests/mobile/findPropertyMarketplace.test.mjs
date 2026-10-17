@@ -63,11 +63,14 @@ const opts = skipReason && !process.env.CI ? { skip: skipReason } : { timeout: 1
 
 test('V2: card gallery, durable dossier, scoped paid chat, insufficient credits and exact result Back state', opts, async (t) => {
   const { page, state } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE' });
+  // Synthetic photos that really display: a gallery whose every photo failed has no arrows by design.
+  await page.route('https://img.example/**', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#23354b"/></svg>' }));
   await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111?fp_sort=FRESHEST&page=1`);
   const cards = page.locator('[data-property-key]');
   await cards.first().waitFor();
-  const card = cards.filter({ has: page.getByRole('button', { name: 'Next photo', exact: true }) }).first();
-  await card.waitFor();
+  const first = cards.filter({ has: page.getByRole('button', { name: 'Next photo', exact: true }) }).first();
+  await first.waitFor();
+  const card = page.locator(`[data-property-key=${JSON.stringify(await first.getAttribute('data-property-key'))}]`);
   const before = page.url();
   await card.getByRole('button', { name: 'Next photo', exact: true }).click();
   const counter = await card.locator('[aria-live="polite"]').textContent();
@@ -148,6 +151,7 @@ test('Advisor: confirmed original listings are explorable; optional floor requir
   await shot(page, 'advisor-mobile-advanced-preferences');
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: 'Start search', exact: true }).click();
+  await viewResults(page);
   await page.waitForFunction(() => !!document.querySelector('[data-property-key]'));
   const started = state.requests.find((r) => r.action === 'start');
   assert.deepEqual(started.brief.floorRange, { min: 2, max: 8 });
@@ -473,7 +477,14 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
         if (resumeStatus) return r.fulfill(json({ search: summary(resumeStatus, { empty, output }) }));
         const i = Math.min(state.polls, timeline.length - 1);
         state.polls += 1;
+        state.lastStatus = timeline[i];
         return r.fulfill(json({ search: summary(timeline[i], { empty, output }) }));
+      }
+      // The server's completion gate (marketplace-search): no result read for a running search.
+      if (['browse', 'results', 'property', 'compare'].includes(body.action) && body.searchId === '11111111-1111-4111-8111-111111111111'
+        && !['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED', 'CANCELLED'].includes(resumeStatus ?? state.lastStatus ?? 'SEARCHING')) {
+        (state.gated ??= []).push(body.action);
+        return r.fulfill(json({ error: 'SEARCH_ACTIVE' }, 409));
       }
       if (body.action === 'browse') {
         if (state.browseFailure) return r.fulfill(json({ error: 'REQUEST_FAILED' }, 503));
@@ -527,8 +538,11 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
     }
     if (url.includes('/rest/v1/rpc/set_my_interest_tracking')) { state.tracking = JSON.parse(req.postData() || '{}').p_observed; return r.fulfill(json(state.tracking)); }
     if (url.includes('/rest/v1/rpc/delete_my_property_interest_history')) { state.erased = true; return r.fulfill(json({ events: 1, interests: 0, saved: 1 })); }
+    if (url.includes('/rest/v1/saved_property_listings')) return r.fulfill(json([...(state.saved ??= new Set())].map((listing_key) => ({ listing_key }))));
     if (url.includes('/rest/v1/rpc/record_my_property_interest')) {
       const body = JSON.parse(req.postData() || '{}'); (state.interest ??= []).push(body);
+      if (body.p_event_type === 'SAVED') (state.saved ??= new Set()).add(body.p_listing_key);
+      if (body.p_event_type === 'UNSAVED') (state.saved ??= new Set()).delete(body.p_listing_key);
       return r.fulfill(json({ recorded: true, saved: body.p_event_type === 'SAVED' ? true : body.p_event_type === 'UNSAVED' ? false : null }));
     }
     if (url.includes('/functions/v1/find-property')) return r.fulfill(json({ success: true, searches: 0, state: 'NO_ACTIVE_SEARCH', results: [] }));
@@ -556,8 +570,15 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 /** Filters and sorting sit in one collapsed row; open it (and its advanced part) like a customer would. */
 async function openFilters(page) {
+  // One compact Filters button opens the panel (owner, 2026-10-17).
+  if (!(await page.locator('[data-filters]').count())) await page.locator('[data-action="toggle-filters"]').click({ timeout: 30000 });
   await page.locator('[data-filters]').waitFor({ timeout: 30000 });
   await page.evaluate(() => document.querySelectorAll('[data-filters], [data-filters] details').forEach((d) => { d.open = true; }));
+}
+
+/** Completion gate: results open only from the finished search's one "View results" action. */
+async function viewResults(page) {
+  await page.locator('[data-action="view-results"]').click({ timeout: 30000 });
 }
 
 async function shot(page, name, { fullPage = true } = {}) {
@@ -631,6 +652,7 @@ test('ka, 1440: complete request → READY without questions → search → grou
   assert.ok((await page.locator('[data-duration-note]').textContent()).includes('10-დან 30 წუთამდე'), 'the 10 to 30 minutes note');
   await shot(page, 'ka-1440-searching');
 
+  await viewResults(page);
   await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
   await page.locator('article[data-verdict="UPGRADE"]').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
@@ -772,6 +794,8 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
 
   await page.getByRole('button', { name: 'თამაშის დახურვა' }).click();
   assert.equal(await page.getByRole('dialog').count(), 0);
+  assert.equal(await page.locator('section[aria-labelledby="mps-g-REC"]').count(), 0, 'never redirected to results by itself');
+  await viewResults(page);
   await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
   assert.match(page.url(), /\/search\/11111111-1111-4111-8111-111111111111/, 'closing returns to the same search');
 
@@ -849,7 +873,8 @@ test('duplicates: the filter shows properties listed more than once; the propert
     const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE' });
     await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
     await openFilters(page);
-    await page.locator('[data-filters] label:has(input[type="checkbox"])').nth(1).click();
+    // Possible duplicates is a secondary action inside the filters, never the primary navigation.
+    await page.locator('[data-action="open-duplicates"]').click();
     await page.waitForFunction(() => new URL(location.href).searchParams.has('fp_duplicatesOnly'));
     const cards = page.locator('main article[data-property-key]');
     // The pre-filter page can still be on screen for a moment: wait for the
@@ -1047,6 +1072,9 @@ test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmati
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: mode step overflow`);
       await shot(page, `${lang}-${width}-free-deep`);
       await page.locator('[data-action="mps-start"]').click();
+      await page.locator('#mps-searching').waitFor({ timeout: 15000 });
+      if (await overflow(page) > 1) failures.push(`${lang} ${width}: search screen overflow`);
+      await viewResults(page);
       await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: results overflow ${await overflow(page)}px`);
       await shot(page, `${lang}-${width}-results`);
@@ -1133,6 +1161,7 @@ test('sources: All sources and each site filter the results; the assessment show
   for (const [lang, width] of [['en', 1280], ['ka', 390]]) {
     const { page } = await boot(t, { lang, width, height: 900, resumeStatus: 'COMPLETE' });
     await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    await openFilters(page);
     const chips = page.locator('[data-source-chips] [data-source-chip]');
     await chips.first().waitFor({ timeout: 30000 });
     assert.ok(await chips.count() >= 3, `${lang}: All sources plus every site that returned homes`);
@@ -1162,4 +1191,151 @@ test('sources: All sources and each site filter the results; the assessment show
     assert.doesNotMatch(dossier, /fpv_|mps_amenity_|fpr_unconfirmed|REQUIRED_|\{\{/, `${lang}: no raw keys or codes`);
     await page.context().close();
   }
+});
+
+/* ── Owner review 2026-10-17: completion gate, one-tap result views, favorites, photos, phone widths ── */
+
+test('completion gate: a running search shows progress only; results open from one action after every source ends', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'ka', width: 390, height: 844, timeline: ['SEARCHING', 'RESULTS_AVAILABLE', 'RESULTS_AVAILABLE', 'COMPLETE'] });
+  await toConfirm(page);
+  await startFree(page);
+  await page.locator('#mps-searching').waitFor({ timeout: 15000 });
+  /* Active (also RESULTS_AVAILABLE: some sources done, others still running). */
+  await page.locator('[data-results-wait]').waitFor();
+  assert.equal(await page.locator('[data-action="view-results"]').count(), 0, 'no results action while the search runs');
+  assert.equal(await page.locator('section[aria-labelledby="mps-g-REC"]').count(), 0);
+  /* A direct property URL of the running search returns to the progress screen. */
+  const key = OUTPUT.properties[0].key;
+  await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111/property/${encodeURIComponent(key)}`);
+  await page.locator('#mps-searching').waitFor({ timeout: 15000 });
+  await page.waitForURL((url) => !url.pathname.includes('/property/'));
+  assert.equal(await page.locator('[data-property-dossier]').count(), 0, 'no dossier of a running search');
+  /* Resumed: a reload restores progress, never incomplete results. */
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('#mps-searching').waitFor({ timeout: 15000 });
+  assert.equal(await page.locator('section[aria-labelledby="mps-g-REC"]').count(), 0);
+  assert.ok(!state.calls.includes('browse') || (state.gated ?? []).includes('browse'), 'no ungated browse while active');
+  /* Complete: one prominent action, no redirect. */
+  await page.locator('[data-search-done="COMPLETE"]').waitFor({ timeout: 30000 });
+  await page.waitForTimeout(1500);
+  assert.equal(await page.locator('section[aria-labelledby="mps-g-REC"]').count(), 0, 'never redirected by itself');
+  assert.match(await page.locator('[data-action="view-results"]').textContent(), /შედეგების ნახვა \(\d+\)/);
+  await viewResults(page);
+  await page.locator('section[aria-labelledby="mps-g-REC"] article').first().waitFor({ timeout: 30000 });
+  await shot(page, 'ka-390-gate-complete');
+});
+
+test('completion gate: partial, cancelled and failed searches end honestly', opts, async (t) => {
+  {
+    const { page } = await boot(t, { lang: 'en', width: 390, timeline: ['SEARCHING', 'PARTIAL_COMPLETE'] });
+    await toConfirm(page);
+    await startFree(page);
+    await page.locator('[data-search-done="PARTIAL_COMPLETE"]').waitFor({ timeout: 30000 });
+    assert.match(await page.locator('[data-search-done]').textContent(), /did not answer in time/);
+    assert.equal(await page.locator('[data-action="view-results"]').count(), 1, 'partial results open only after every job ended');
+    await page.context().close();
+  }
+  {
+    const { page } = await boot(t, { lang: 'en', width: 390, resumeStatus: 'CANCELLED' });
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-source-status] summary').waitFor({ timeout: 30000 });
+    assert.match(await page.locator('[data-source-status] summary').textContent(), /Search stopped/, 'a cancelled search is not shown as completed');
+    await page.context().close();
+  }
+  {
+    const { page } = await boot(t, { lang: 'en', width: 390, resumeStatus: 'FAILED', empty: true });
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+    await page.locator('#mps-searching, [role="status"], [role="alert"]').first().waitFor({ timeout: 30000 });
+    assert.equal(await page.locator('[data-action="view-results"]').count(), 0, 'a failed search offers no results');
+    await page.context().close();
+  }
+});
+
+test('result views: All | Best | Saved stay in one place, one tap each; favorites update at once', opts, async (t) => {
+  const { page } = await boot(t, { lang: 'en', width: 390, height: 844, resumeStatus: 'COMPLETE' });
+  await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+  const tabs = page.locator('[data-result-views]');
+  await tabs.waitFor({ timeout: 30000 });
+  await page.locator('[data-property-key]').first().waitFor({ timeout: 30000 });
+  assert.equal(await page.locator('[data-filters]').count(), 0, 'advanced filters are collapsed by default');
+  await tabs.locator('[data-view-tab="best"]').click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('view') === 'best');
+  await page.locator('[data-results-group="best"] article').first().waitFor({ timeout: 30000 });
+  assert.equal(await tabs.isVisible(), true, 'Best never hides its own navigation');
+  assert.equal(await tabs.locator('[data-view-tab="best"]').getAttribute('aria-selected'), 'true');
+  assert.ok(await page.locator('[data-results-group="best"] article').evaluateAll((els) => els.every((a) => a.getAttribute('data-match') === 'STRONG')), 'only best matches');
+  await tabs.locator('[data-view-tab="all"]').click();
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has('view'));
+  /* Favorites, inside the results page. */
+  const saveTab = tabs.locator('[data-view-tab="favorites"]');
+  assert.match(await saveTab.textContent(), /Saved\s*0/);
+  const first = page.locator('[data-property-key]').first();
+  const key = await first.getAttribute('data-property-key');
+  await first.getByRole('button', { name: 'Save listing', exact: true }).click();
+  await page.waitForFunction(() => /Saved\s*1/.test(document.querySelector('[data-view-tab="favorites"]')?.textContent ?? ''));
+  await saveTab.click();
+  await page.locator(`[data-results-group="favorites"] [data-property-key=${JSON.stringify(key)}]`).waitFor({ timeout: 30000 });
+  /* Property page and Back keep the view. */
+  await page.locator('[data-results-group="favorites"] [data-action="open-assessment"]').first().click();
+  await page.locator('[data-property-dossier]').waitFor();
+  await page.goBack();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('view') === 'favorites');
+  await page.locator('[data-results-group="favorites"] [data-property-key]').first().waitFor({ timeout: 30000 });
+  await page.locator('[data-results-group="favorites"] [data-property-key]').first().getByRole('button', { name: 'Remove from saved', exact: true }).click().catch(async () => {
+    await page.locator('[data-results-group="favorites"] [data-property-key] button[aria-pressed="true"]').first().click();
+  });
+  await page.locator('[data-favorites-empty]').waitFor({ timeout: 30000 });
+  assert.match(await saveTab.textContent(), /Saved\s*0/);
+  assert.ok(await overflow(page) <= 1);
+  await shot(page, 'en-390-views');
+});
+
+test('photos: a source answering with a placeholder or an error never leaves a black gallery with a false counter', opts, async (t) => {
+  const { page } = await boot(t, { lang: 'en', width: 390, height: 844, resumeStatus: 'COMPLETE' });
+  // Hotlink protection answers 200 with a 1x1 image instead of the photo.
+  await page.route('https://img.example/**', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' }));
+  const property = OUTPUT.properties.find((p) => p.images.length >= 2);
+  await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111/property/${encodeURIComponent(property.key)}`);
+  await page.locator('[data-property-dossier]').waitFor({ timeout: 30000 });
+  const gallery = page.locator('[data-property-dossier] [role="group"]').first();
+  await gallery.locator('[data-gallery-empty="all"]').waitFor({ timeout: 30000 });
+  assert.match(await gallery.textContent(), /Photos are not available from the source/);
+  assert.equal(await gallery.locator('[aria-live="polite"]').count(), 0, 'no counter for photos that cannot be shown');
+  assert.equal(await gallery.getByRole('button', { name: 'Next photo', exact: true }).count(), 0);
+  assert.ok(await overflow(page) <= 1);
+});
+
+test('phone widths 320–430, six locales: progress copy, stages, cards and buttons fit without broken words', opts, async (t) => {
+  const failures = [];
+  const plan = [...LOCALES.map((lang) => [lang, 320]), ...LOCALES.map((lang) => [lang, 360]), ['ka', 390], ['ka', 430]];
+  for (const [lang, width] of plan) {
+    const { page, close } = await boot(t, { width, height: 844, lang, timeline: ['SEARCHING', 'SEARCHING', 'COMPLETE'] });
+    await toConfirm(page);
+    await startFree(page);
+    await page.locator('#mps-searching').waitFor({ timeout: 15000 });
+    await page.locator('[data-search-stage] details summary').click();
+    const layout = await page.evaluate(() => {
+      const box = document.querySelector('[data-search-stage]').getBoundingClientRect();
+      const copy = document.querySelector('[data-progress-copy] p')?.getBoundingClientRect();
+      // A stage state ("Done", "დასრულდა") must stay on one line.
+      const states = [...document.querySelectorAll('[data-search-stage] ol li > span:last-child')].map((el) => {
+        const lh = parseFloat(getComputedStyle(el).lineHeight) || 20; return el.getBoundingClientRect().height / lh; });
+      return { stage: box.width, copy: copy?.width ?? 0, maxStateLines: Math.max(0, ...states) };
+    });
+    if (layout.copy < layout.stage * 0.6) failures.push(`${lang} ${width}: progress copy squeezed to ${Math.round(layout.copy)}px`);
+    if (layout.maxStateLines > 1.6) failures.push(`${lang} ${width}: a stage state wraps (${layout.maxStateLines.toFixed(1)} lines)`);
+    if (await overflow(page) > 1) failures.push(`${lang} ${width}: search overflow`);
+    await viewResults(page);
+    await page.locator('[data-property-key]').first().waitFor({ timeout: 30000 });
+    const cards = await page.locator('article[data-property-key]').evaluateAll((els) => els.slice(0, 6).map((a) => {
+      const c = a.getBoundingClientRect();
+      const outside = [...a.querySelectorAll('button, a')].filter((b) => { const r = b.getBoundingClientRect(); return r.width && (r.right > c.right + 1 || r.left < c.left - 1); }).length;
+      return { outside };
+    }));
+    if (cards.some((c) => c.outside)) failures.push(`${lang} ${width}: a card action leaves its card`);
+    if (await overflow(page) > 1) failures.push(`${lang} ${width}: results overflow`);
+    await shot(page, `${lang}-${width}-phone-results`, { fullPage: false });
+    await close();
+  }
+  assert.deepEqual(failures, []);
 });

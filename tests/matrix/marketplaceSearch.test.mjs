@@ -201,7 +201,11 @@ test('Snake is optional, self-contained and never touches the search', () => {
   const exp = code('src/components/findProperty/MarketplaceSearchExperience.tsx');
   assert.match(exp, /const \[playing, setPlaying\] = useState\(false\)/, 'not playing by default');
   assert.match(exp, /<SnakeOverlay t=\{t\} open=\{playing\}/, 'the game lives at page level, above the search');
-  assert.match(exp, /view === 'SEARCH' && !playing && search\?\.terminal/, 'the search finishing never closes the game');
+  // Completion gate (owner, 2026-10-17): nothing moves to results by itself; the game's
+  // results action works only once the server marks the search terminal.
+  assert.doesNotMatch(exp, /ResultsRedirect/, 'a finished search never redirects by itself');
+  assert.match(exp, /resultsReady=\{!!search && search\.terminal && search\.totalProperties > 0\}/);
+  assert.match(exp, /onViewResults=\{\(\) => \{ if \(!search\?\.terminal\) return;/);
   /* 2026-10-16 redesign: the live progress view offers the game as one quiet button. */
   const view = code('src/components/findProperty/workspace/SearchProgress.tsx');
   assert.match(view, /onClick=\{onPlay\} data-action="mps-snake-open"/);
@@ -341,4 +345,19 @@ test('every requirement or amenity code the server can name has natural words in
   for (const f of ['src/components/findProperty/PropertyCard.tsx', 'src/components/findProperty/PropertyIntelligence.tsx', 'src/components/findProperty/workspace/ResultsHeader.tsx', 'src/components/findProperty/advisorText.ts']) {
     assert.doesNotMatch(code(f), /`mps_amenity_\$\{/, `${f} builds no label key by hand`);
   }
+});
+
+test('completion gate: results, property and compare reads refuse a search that is still running', () => {
+  const ms = code(MS);
+  for (const action of ["if (action === 'browse')", "if (action === 'results')", "if (action === 'property' || action === 'compare')"]) {
+    const at = ms.indexOf(action);
+    assert.ok(at > 0, action);
+    const block = ms.slice(at, at + 600);
+    assert.match(block, /if \(!isTerminalSearch\(search\.status as SearchStatus\)\) return json\(\{ error: 'SEARCH_ACTIVE' \}, 409\);/, `${action} is gated`);
+  }
+  const progress = code('src/components/findProperty/workspace/SearchProgress.tsx');
+  assert.match(progress, /const ready = search\.terminal && /, 'the View results action exists only for a finished search');
+  assert.doesNotMatch(progress, /mps_progressive_cta/, 'no partial-results shortcut while searching');
+  const exp = code('src/components/findProperty/MarketplaceSearchExperience.tsx');
+  assert.match(exp, /if \(route\.propertyKey && search && search\.id === searchId && !search\.terminal\)/, 'a property URL of a running search returns to progress');
 });

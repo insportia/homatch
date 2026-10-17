@@ -68,7 +68,7 @@ export function ResultsHeader({ t, search, data, onNewSearch, onChangeCriteria, 
           <summary className="flex min-h-[44px] cursor-pointer list-none flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2 text-sm text-foreground/85">
               <span className={cx('h-2 w-2 rounded-full', !search.terminal ? 'bg-[hsl(var(--gold))] motion-safe:animate-pulse' : search.partial ? 'bg-[hsl(var(--gold-ink))]' : 'bg-[hsl(var(--success))]')} aria-hidden="true" />
-              {!search.terminal ? t('fpv_status_running', { n: sources.length - finished }) : search.partial ? t('fpv_status_partial', { done: answered, n: sources.length }) : t('fpv_status_done', { n: sources.length })}
+              {!search.terminal ? t('fpv_status_running', { n: sources.length - finished }) : search.status === 'CANCELLED' ? t('fpv_done_cancelled_title') : search.partial ? t('fpv_status_partial', { done: answered, n: sources.length }) : t('fpv_status_done', { n: sources.length })}
             </span>
             <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">{t('fpv_status_details')}<ChevronDown className="h-4 w-4 transition group-open:rotate-180" aria-hidden="true" /></span>
           </summary>

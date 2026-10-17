@@ -356,13 +356,14 @@ function DiscoveryFieldImpl({ nodes, terminal }: { nodes: FieldNode[]; terminal:
     return () => { stop(); ro.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', onVisibility); redraw.current = () => {}; };
   }, []);
 
-  const active = nodes.filter((n) => n.state === 'ACTIVE');
+  const active = nodes.filter((n) => n.state === 'ACTIVE' && n.label);
   return (
     <div ref={host} aria-hidden="true" data-formation={formation} data-discovery-field
       className="relative w-full overflow-hidden rounded-2xl ring-1 ring-black/5"
       style={{ height: 'clamp(220px, 42vw, 340px)', background: PALETTE.ground }}>
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" />
       {nodes.map((node, i) => {
+        if (!node.label) return null;
         const pos = ringPercent(i, nodes.length);
         const side = Math.abs(pos.cos) > 0.35 ? (pos.cos > 0 ? 'end' : 'start') : pos.sin < 0 ? 'top' : 'bottom';
         const transform = side === 'end' ? 'translate(12px, -50%)' : side === 'start' ? 'translate(calc(-100% - 12px), -50%)'

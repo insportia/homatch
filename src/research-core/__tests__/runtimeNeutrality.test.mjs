@@ -237,6 +237,9 @@ test('the core is consumed only through its deliberate integration points', () =
     /* The adaptive search round: the pure ladder, validation and evidence
        shaping (research-core/findBuyers/adaptiveLoop) around queue I/O. */
     'supabase/functions/_shared/findBuyers/adaptive.ts',
+    /* Native Telegram into Find Buyers: stored messages shaped as the core's NormalizedItem
+       (type only) for the same pipeline; no network, no provider. */
+    'supabase/functions/_shared/findBuyers/nativeTelegram.ts',
     /*
      * The one UI seam onto the Find Buyers core: owner screens show what a search
      * looks for through the same Property DNA the search uses. Components import

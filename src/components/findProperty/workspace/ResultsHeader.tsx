@@ -8,7 +8,6 @@ import type { RefObject } from 'react';
 import type { SearchBrowsePage, SearchSummary } from '@/services/marketplaceSearch';
 import { criteriaChips, num, removeCriterion, type T } from '../format';
 import { btn, cx, Eyebrow, naturalDate, Pill, searchTitle, sourceState, Surface } from './primitives';
-import { SourceStates } from './SourceStates';
 
 export function ResultsHeader({ t, search, data, onNewSearch, onChangeCriteria, headingRef }: {
   t: T; search: SearchSummary; data: SearchBrowsePage | null; onNewSearch: () => void; onChangeCriteria: (edit: ReturnType<typeof removeCriterion>) => void;
@@ -74,7 +73,6 @@ export function ResultsHeader({ t, search, data, onNewSearch, onChangeCriteria, 
             <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">{t('fpv_status_details')}<ChevronDown className="h-4 w-4 transition group-open:rotate-180" aria-hidden="true" /></span>
           </summary>
           <div className="space-y-3 pb-4 pt-2">
-            <SourceStates t={t} search={search} compact />
             <p className="text-xs leading-relaxed text-muted-foreground">{t('fpr_freshness_policy')}{data?.summary.unknownDates ? ` ${t('fpr_unknown_dates', { n: data.summary.unknownDates })}` : ''}</p>
             {search.terminal && search.partial ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/60 px-3.5 py-2.5">

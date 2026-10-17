@@ -163,7 +163,7 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     since = new Date(Math.max(Date.parse(since), last)).toISOString();
   }
   const limit = Math.max(1, Math.min(Number(reservation.requestedLimit) || Number(actor.probe_size) || 1, Number(actor.max_results) || 100));
-  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since }, actor.input_contract ?? null);
+  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since, country: (campaign as any)?.dna?.countryCode ?? null }, actor.input_contract ?? null);
   /* An input the verified schema would reject, or one that lost its query/target
      in fitting, is never sent: the reservation is released at $0. */
   const problems = essentialMissing(stage, input, actor.input_contract ?? null);
@@ -305,13 +305,13 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     commentProbe: parseSampling(settings.sampling).probe,
   }, normalized);
 
-  await db.from('find_buyers_actor_runs').update({
+  /* Stats once per run: a replayed poll (lease lost after booking) adds nothing twice and,
+     since every item is then a DUPLICATE, must not overwrite the first pass's counters with 0. */
+  const { data: firstApply } = await db.from('find_buyers_actor_runs').update({
+    stats_applied_at: new Date().toISOString(),
     items_fetched: items.length, useful_results: result.useful, qualified_leads: result.qualified, strong_leads: result.strong,
     stale_dropped: result.staleDropped,
-  }).eq('id', run.id);
-  /* Stats once per run: a replayed poll (lease lost after booking) adds nothing twice. */
-  const { data: firstApply } = await db.from('find_buyers_actor_runs').update({ stats_applied_at: new Date().toISOString() })
-    .eq('id', run.id).is('stats_applied_at', null).select('id');
+  }).eq('id', run.id).is('stats_applied_at', null).select('id');
   const applyStats = Array.isArray(firstApply) && firstApply.length === 1;
   if (applyStats && meta.sourceId) {
     const { data: src } = await db.from('source_registry').select('posts_observed,fb_spend_micros,fb_qualified_leads,fb_strong_leads').eq('id', meta.sourceId).maybeSingle();
@@ -419,6 +419,20 @@ async function followUpRows(db: any, job: any, campaign: any, followUps: FollowU
   return rows;
 }
 
+/** Searches whose first probe in each language must run before any of them deepens. */
+const COVERAGE_FIRST_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_SEARCH', 'FB_POST_SEARCH', 'FB_AD_LIBRARY']);
+
+/**
+ * Language coverage before depth: a productive Georgian group search must not deepen
+ * ahead of the first Arabic, Turkish or Hebrew search (production 2026-10-13/16: deepening
+ * at priority ~99 used the Phase 1 discovery budget and the ar/he/tr probes, queued at the
+ * actor's base priority, were cancelled as PHASE1_BUDGET). A deepening step of a search
+ * stage stays just below every first probe (base priority); other stages are unchanged.
+ */
+export function deepenPriority(stage: string, measured: number, basePriority: number): number {
+  return COVERAGE_FIRST_STAGES.has(stage) ? Math.max(1, Math.min(measured, basePriority - 1)) : measured;
+}
+
 /** The arm's measured economics → deepen (next tranche) or stop. */
 async function deepenRow(db: any, job: any, campaign: any, settings: FindBuyersSettings, groupsFound: number): Promise<{ row: Record<string, unknown> | null; decision: ReturnType<typeof decideArm> } | null> {
   const meta = job.metadata as Record<string, any>;
@@ -454,7 +468,7 @@ async function deepenRow(db: any, job: any, campaign: any, settings: FindBuyersS
     row: socialJobRow({
       stage: meta.stage, actorKey: meta.actorKey, language: job.language ?? 'multi', query: meta.query ?? null, targetUrl: meta.targetUrl ?? null,
       sourceId: meta.sourceId ?? null, size: Math.min(decision.nextSize, Number(actor?.max_results ?? 100)), arm,
-      priority: armPriority(stats, null, Number(actor?.priority ?? 50)), reason: `deepen:${decision.reason}`,
+      priority: deepenPriority(String(meta.stage), armPriority(stats, null, Number(actor?.priority ?? 50)), Number(actor?.priority ?? 50)), reason: `deepen:${decision.reason}`,
     }, { matchingJobId: job.matching_job_id, propertyId: campaign.property_id, planId: job.search_plan_id ?? null, tranche: Number(meta.tranche ?? 0) + 1, step }),
   };
 }

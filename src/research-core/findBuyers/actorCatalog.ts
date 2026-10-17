@@ -52,6 +52,8 @@ export const ACTOR_PROFILES: Readonly<Record<string, ActorProfile>> = {
     why: 'Public Facebook posts by listing keyword — agency, developer and competitor Pages and individual listings — whose comments are where buyers ask; logged out, so no engagement counts.' },
   FB_PAGE_POSTS: { cls: 'ENRICHMENT', produces: 'LISTING_POSTS', needsSeed: true, seededBy: 'FB_POST_SEARCH',
     why: 'Recent posts of a public Page that published a comparable listing, with their visible comments attached (public Pages only, no login).' },
+  FB_AD_LIBRARY: { cls: 'PRIMARY_DISCOVERY', produces: 'LISTING_POSTS', needsSeed: false, seededBy: null,
+    why: 'Active property ads in the Meta Ad Library (competitor developments, agencies). An ad is never a buyer and the Library has no comments; a comparable ad leads to its Page, whose feed is read with comments attached.' },
   IG_COMMENTS: { cls: 'ENRICHMENT', produces: 'COMMENTS', needsSeed: true, seededBy: 'IG_PROFILE_POSTS',
     why: 'Comments of qualifying Instagram posts already found.' },
   YOUTUBE_COMMENTS: { cls: 'ENRICHMENT', produces: 'COMMENTS', needsSeed: true, seededBy: null,
@@ -176,5 +178,10 @@ export const REGISTRY_SEEDS: Readonly<Record<string, RegistrySeed>> = {
     actor_key: 'FB_PAGE_POSTS', actor_id: 'memo23~facebook-page-posts-scraper', source: 'FACEBOOK', purpose: 'POSTS_AND_COMMENTS',
     role: 'PRIMARY', priority: 50, probe_size: 10, max_results: 40, timeout_seconds: 300, concurrency: 2,
     notes: 'Feeds of public Pages that published a comparable listing, comments attached (includeComments); public Pages only',
+  },
+  FB_AD_LIBRARY: {
+    actor_key: 'FB_AD_LIBRARY', actor_id: 'memo23~facebook-ads-library-scraper-ppe', source: 'FACEBOOK', purpose: 'SEARCH',
+    role: 'PRIMARY', priority: 52, probe_size: 20, max_results: 50, timeout_seconds: 240, concurrency: 1,
+    notes: 'Competitor property ads by listing phrase and country (Meta Ad Library); no comments — comparable ads queue their Page feed',
   },
 };

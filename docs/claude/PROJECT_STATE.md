@@ -33,6 +33,29 @@ MATTERS right now, verify against the live systems, not this file)
 - **Publishing activation is stopped** (owner, 2026-10-16): migration `20261108090000` stays UNAPPLIED (the 2026-10-16 apply attempt timed out and was verified not applied: no ledger row, no objects); `PUBLISHING_WORKER_TOKEN` / `PUBLISHING_CREDENTIALS_KEY` not configured; `PUBLISHING_AUTOMATION_ENABLED` unset; no live portal workflow verified. The code stays as a dormant module (a future official-API integration may replace the browser path).
 - Railway: only `homatch-official-worker` is used; `homatch-official-worker-v2` exists in the project (pre-existing, untouched).
 
+## Find Buyers 4.0 — people-first discovery + live-test findings (branch claude/nifty-hopper-snzn2d, 2026-10-16) — IN PROGRESS, NOT RELEASED
+
+Controlled live test 2026-10-16 (campaign 46dcaf3f, VILLION 244486, owner-approved $1.45 cap):
+22 Apify runs, provider+OpenAI $0.6346, charged 10.1 credits (÷0.63, policy paid_discovery_37_63_v1),
+released 89.9; 5 leads stored, 2 genuine buyers (40%). Test Actors were restored exactly from the
+snapshot; test cap consumed (find_buyers_test_cap.consumedBy = 46dcaf3f). No other paid run approved.
+
+Backend (this branch): QUALIFICATION_VERSION 5 — brokers recruiting sellers / reader-addressed sale
+ads are supply; buyers asking whoever sells are buyers; buy-or-rent unstated = TRANSACTION_UNCONFIRMED
+(WEAK, INTEREST); stats.qualified = STRONG+POTENTIAL only, stats.interested, stats.languageOutcomes;
+replayed runs no longer zero their counters; adaptive comment runs carry their parent; FB_AD_LIBRARY
+stage (seed only — owner registers in Admin; competitor ad → its Page feed with comments); no paid
+comments run when comments arrived inline; native Telegram judged by the Find Buyers pipeline at
+campaign close (free, stored rows not rewritten); Find Buyers Telegram sync also reads verified
+communities for that call; search deepening never outranks another language's first probe (ar/he/tr
+were cancelled as PHASE1_BUDGET). Migration 20261109100000 adds find_buyers_research_opportunities(job).
+UX (worktree /home/user/wt-fb-ux, branch claude/fb-ux-wt): start redirect, server-time timer, new live
+animation, compact cards, 3 tabs + filter sheet, lead detail route — to be merged into this branch.
+
+Evidence audit (read-only): 996 items assessed across 3 spending campaigns; 2 comments ever retrieved;
+14 posts reported any comments; 88 comparable listings never had comments read; 131 Telegram communities
+known, 5 read. Owner actions still open: Register & verify FB_POST_SEARCH, FB_PAGE_POSTS, FB_AD_LIBRARY.
+
 ## Find Buyers 3.0 — intent gate, post opportunities, result pages (PR #214, merged be4a0397, 2026-10-16) — DEPLOYED
 
 - **False buyers fixed at the root** (`research-core/findBuyers/demandClassifier.ts`): an advertiser

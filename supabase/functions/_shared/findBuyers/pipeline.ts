@@ -61,19 +61,20 @@ export interface ParentContext {
   /** 0 for the first comment sample of this post, 1 after one expansion. */
   sampleDepth?: number;
   /** Where the post was found: a Facebook GROUP, a public PAGE, or a keyword SEARCH. */
-  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | null;
+  sourceKind?: 'GROUP' | 'PAGE' | 'SEARCH' | 'AD' | null;
 }
 
 /** The kind of source a stage reads (Groups and Pages are kept apart in results). */
-export function sourceKindOf(stage: Stage): 'GROUP' | 'PAGE' | 'SEARCH' | null {
+export function sourceKindOf(stage: Stage): 'GROUP' | 'PAGE' | 'SEARCH' | 'AD' | null {
   if (stage === 'FB_GROUP_POSTS') return 'GROUP';
   if (stage === 'FB_PAGE_POSTS') return 'PAGE';
+  if (stage === 'FB_AD_LIBRARY') return 'AD';
   if (stage === 'FB_POST_SEARCH') return 'SEARCH';
   return null;
 }
 
 /** Post stages whose comparable listings are worth reading the comments of. */
-const LISTING_POST_STAGES: readonly Stage[] = ['FB_GROUP_POSTS', 'FB_POST_SEARCH', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH', 'REDDIT_SEARCH'];
+const LISTING_POST_STAGES: readonly Stage[] = ['FB_GROUP_POSTS', 'FB_POST_SEARCH', 'FB_PAGE_POSTS', 'FB_AD_LIBRARY', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH', 'REDDIT_SEARCH'];
 
 /** The comments stage for a post stage (null: none). */
 export function commentsStageFor(stage: Stage): Stage | null {
@@ -122,6 +123,9 @@ export interface PipelineCtx {
   now?: number;
   /** Judging comments HOMATCH already stored: read them, never re-write them. */
   reusing?: boolean;
+  /** The items ARE stored rows of another collector (native Telegram): their external ids are
+   *  used verbatim (no m23: prefix) and, with `reusing`, nothing is upserted or re-written. */
+  verbatimIds?: boolean;
 }
 
 export interface PipelineResult {
@@ -301,7 +305,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     }
   }
   if (!flat.length) return;
-  const extId = (i: NormalizedItem) => `m23:${i.externalId}`.slice(0, 500);
+  const extId = (i: NormalizedItem) => (ctx.verbatimIds ? i.externalId : `m23:${i.externalId}`).slice(0, 500);
 
   /* What HOMATCH already knows (content reuse, no reclassification). */
   const ids = flat.map((f) => extId(f.item));
@@ -484,7 +488,9 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   if (assessRows.length) {
     await db.from('find_buyers_assessments').upsert(assessRows, { onConflict: 'matching_job_id,signal_id', ignoreDuplicates: true });
   }
-  for (const a of assessed) {
+  /* Another collector's stored rows (native Telegram) keep their own classification:
+     internal matching reads it, so Find Buyers never re-writes it. */
+  for (const a of ctx.verbatimIds ? [] : assessed) {
     if (!a.verdict || a.verdict.method === 'UNDECIDED') continue;
     const qualifying = a.qualification != null && a.qualification.category !== 'REJECTED';
     const prior = knownMap.get(extId(a.item))?.intent_json ?? {};
@@ -513,8 +519,11 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   if (commentsStage) {
     const eligible = assessed
       .filter((a) => a.item.kind === 'POST' && (a.commentsDecision === 'FETCH' || a.commentsDecision === 'FETCH_JUSTIFIED') && a.item.url)
-      /* A Page post that arrived with its comments attached was read already: no second, paid comments run. */
-      .filter((a) => !(ctx.stage === 'FB_PAGE_POSTS' && a.item.inlineComments.length > 0))
+      /* A post that arrived with its comments attached was read already: no second, paid
+         comments run — for a Page post always, for any other post when the attached comments
+         cover what the platform reported (an unknown count is covered by what came). */
+      .filter((a) => !(a.item.inlineComments.length > 0 && (ctx.stage === 'FB_PAGE_POSTS'
+        || a.item.engagement.comments == null || a.item.inlineComments.length >= Number(a.item.engagement.comments))))
       .sort((x, y) => y.similarity - x.similarity)
       .slice(0, 5);
     for (const a of eligible) {
@@ -529,7 +538,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
      developer, competitor): read that Page's recent posts next, once per author,
      at most MAX_PAGE_FOLLOWUPS per run. The Page is registered as a FACEBOOK
      SOCIAL_PROFILE source (never a group), inactive, so later campaigns can reuse it. */
-  if (ctx.stage === 'FB_POST_SEARCH') {
+  if (ctx.stage === 'FB_POST_SEARCH' || ctx.stage === 'FB_AD_LIBRARY') {
     const seenPages = new Set<string>();
     const comparable = assessed
       .filter((a) => a.item.kind === 'POST' && (a.commentsDecision === 'FETCH' || a.commentsDecision === 'FETCH_JUSTIFIED'))

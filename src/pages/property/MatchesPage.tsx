@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
@@ -414,6 +414,17 @@ function MatchesContent() {
     next.delete('start');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
+  /* A search started from another screen (the property page) arrives here with
+     state.fbStarted: show the live module, then forget the flag so a refresh or Back
+     does not replay it. */
+  const location = useLocation();
+  const revealLive = React.useRef(false);
+  useEffect(() => {
+    const st = location.state as { fbStarted?: boolean } | null;
+    if (!st?.fbStarted) return;
+    revealLive.current = true;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.state, location.pathname, location.search, navigate]);
   /* New current-demand matches the live search reported while a page is being read. */
   const [matchesPending, setMatchesPending] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
@@ -808,7 +819,17 @@ function MatchesContent() {
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      setStartPhase('started');
+      /* Started: this IS the live results page — close the dialog, drop any one-shot or
+         stale-search params (the new search is the one to show) and bring the live module
+         into view. No extra click, no timer. */
+      setStartPhase(null);
+      toast.success(t('fbs_started_title'));
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        for (const k of ['start', 'job', 'rp']) next.delete(k);
+        return next;
+      }, { replace: true });
+      revealLive.current = true;
     } catch (e) {
       setStartPhase(null);
       { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
@@ -943,13 +964,27 @@ function MatchesContent() {
   const jobRunning = Boolean(activeJobId);
   const moduleRef = React.useRef<HTMLDivElement | null>(null);
   const [moduleVisible, setModuleVisible] = useState(true);
+  /* The compact status pill stands in for the live status itself (elapsed, found, progress):
+     it appears once THAT block is scrolled away, not only when the last pixels of the whole
+     module are (a short results list left the status off screen with no pill). Without a
+     live search the whole module is watched. */
+  const hasLiveStatus = Boolean(campaignStatus?.campaign);
   useEffect(() => {
-    const el = moduleRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const root = moduleRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') return undefined;
+    const el = (root.querySelector('[data-testid="fbl-primary"]') as HTMLElement | null) ?? root;
     const io = new IntersectionObserver(([entry]) => setModuleVisible(entry.isIntersecting), { threshold: 0.05 });
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [hasLiveStatus]);
+  /* After a start, once the server reports the search, bring the live module into view. */
+  useEffect(() => {
+    if (!revealLive.current || !moduleRef.current) return;
+    if (!campaignStatus?.campaign) return;
+    revealLive.current = false;
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    moduleRef.current.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }, [campaignStatus]);
   /* External = Find Buyers leads + stored external-demand matches (both read off public
      posts). Internal members are counted only in the HOMATCH section. */
   const ownerFacts = React.useMemo(() => ownerFactsOf(property?.facts as Parameters<typeof ownerFactsOf>[0], property?.transaction_type), [property]);
@@ -1035,15 +1070,20 @@ function MatchesContent() {
         {/* ── EXTERNAL RESULTS: Buyers / Interest signals / Post opportunities, one search at a
             time (Find Buyers 3.0). HOMATCH members have their own page. */}
         <div id="fbx-results" className="mt-4 scroll-mt-20">
-          {propertyId ? <ExternalResultsView propertyId={propertyId} owner={ownerFacts} onTotal={setLeadCount} /> : null}
+          {propertyId ? <ExternalResultsView propertyId={propertyId} owner={ownerFacts} onTotal={setLeadCount}
+            liveJobId={liveCampaign?.jobId ?? null} liveStartedAt={liveCampaign?.startedAt ?? liveCampaign?.createdAt ?? null}
+            refreshKey={campaignStatus?.campaign ? `${campaignStatus.campaign.state}:${campaignStatus.campaign.newResults}` : null} /> : null}
         </div>
 
-        <FilterRail
-          options={filters}
-          value={filter}
-          onChange={(next) => { setFilter(next); setPageParam('page', 1); setPageParam('hp', 1); }}
-          ariaLabel={t('matches_filter_all')}
-        />
+        {/* The internal-match filter only when there are internal matches to filter (no "All 0 · New 0"). */}
+        {counts.total > 0 ? (
+          <FilterRail
+            options={filters}
+            value={filter}
+            onChange={(next) => { setFilter(next); setPageParam('page', 1); setPageParam('hp', 1); }}
+            ariaLabel={t('matches_filter_all')}
+          />
+        ) : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-4">

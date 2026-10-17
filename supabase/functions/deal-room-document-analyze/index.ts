@@ -54,6 +54,7 @@ import {
   normalizeDocumentText,
   looksLikePromptInjection,
 } from '../../../src/dealroom/domain/documentExtract.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -143,6 +144,11 @@ serve(async (req) => {
       }
       userId = job.user_id as string;
     } else {
+      // SERVICE CONTROL (key `contracts`): the browser's own kick waits while paused; its
+      // durable job stays queued for jobs-worker (which also waits) instead.
+      if (serviceKey && !(await serviceBackendEnabled(createClient(Deno.env.get('SUPABASE_URL')!, serviceKey), 'contracts'))) {
+        return json(serviceDisabledBody('contracts'), 503);
+      }
       supabase = createClient(
         Deno.env.get('SUPABASE_URL')!,
         Deno.env.get('SUPABASE_ANON_KEY')!,

@@ -1,11 +1,16 @@
 // SERVICE-CONTROL — the Admin → Service Control Center backend.
 //
 // Admin only (is_admin() on the caller's OWN token, every request). One POST door:
-//   overview    the six services: switches, who/when/why, readiness, running work, audit
+//   overview    every service: group, switches, who/when/why, readiness, running work, audit
 //   set         one service's two switches, compare-and-set on `version`
-//   pause_all   both switches of all six off, in one transaction
+//   pause_group both switches of one GROUP off, with the group's name typed as confirmation
+//   pause_all   both switches of the ORIGINAL six off (its old reach, unchanged)
 //
-// Writes go through the SECURITY DEFINER functions of migration 20261109090000 with the
+// There is deliberately no action that pauses every service: a global switch could take
+// essential HOMATCH products down by accident (docs/claude/SERVICE_CONTROLS_INVENTORY.md).
+//
+// Writes go through the SECURITY DEFINER functions of migrations 20261109090000 and
+// 20261110090000 with the
 // caller's token, so the database itself checks the admin and writes the audit row.
 // Turning a backend ON is refused (NOT_READY, audited) while its readiness lists a
 // blocking gap: an ON switch must never claim a service that cannot run.
@@ -13,8 +18,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { envReport } from '../_shared/objectStore.ts';
-import { SERVICE_KEYS, type ServiceKey, resetServiceControlCache } from '../_shared/serviceControl.ts';
-import { type Facts, readiness, SECRETS_CHECKED, TABLES_CHECKED } from './readiness.ts';
+import { LIVE_BY_DEFAULT, SERVICE_KEYS, type ServiceKey, resetServiceControlCache } from '../_shared/serviceControl.ts';
+import { type Facts, PRODUCTS_CHECKED, readiness, SECRETS_CHECKED, SETTINGS_CHECKED, TABLES_CHECKED } from './readiness.ts';
 
 const ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live', 'http://localhost:5173', 'http://127.0.0.1:5173']);
 const MAX_BODY = 20_000;
@@ -45,7 +50,55 @@ const RUNNING: Record<ServiceKey, Array<{ label: string; table: string; build: (
     { label: 'walkthroughs_open', table: 'ds_walkthroughs', build: (q) => q.not('state', 'in', '(READY,FAILED,CANCELLED)') },
     { label: 'gpu_jobs_open', table: 'ds_factory_jobs', build: (q) => q.not('state', 'in', '(COMPLETED,FAILED,CANCELLED)') },
   ],
+  find_property: [
+    { label: 'searches_running', table: 'discovery_marketplace_searches', build: (q) => q.in('status', ['CREATED', 'READY', 'DISPATCHING', 'SEARCHING', 'PROCESSING']) },
+    { label: 'worker_runs_open', table: 'discovery_marketplace_worker_runs', build: (q) => q.in('status', ['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING']) },
+  ],
+  find_property_deep: [
+    { label: 'campaigns_running', table: 'discovery_runs', build: (q) => q.in('status', ['QUEUED', 'SEARCHING', 'PAUSED', 'MATCHING']) },
+    { label: 'actor_runs_open', table: 'find_property_actor_runs', build: (q) => q.in('status', ['RESERVED', 'STARTING', 'RUNNING']) },
+  ],
+  find_buyers: [
+    { label: 'searches_running', table: 'matching_jobs', build: (q) => q.in('status', ['queued', 'analysing_property', 'generating_queries', 'searching_sources', 'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking', 'paused']) },
+    { label: 'actor_runs_open', table: 'find_buyers_actor_runs', build: (q) => q.in('status', ['RESERVED', 'STARTING', 'RUNNING']) },
+  ],
+  verify: [
+    { label: 'reports_running', table: 'research_jobs', build: (q) => q.in('status', ['CREATED', 'RUNNING', 'WAITING_HUMAN', 'PAUSED']) },
+    { label: 'worker_tasks_open', table: 'verify_tasks', build: (q) => q.in('state', ['QUEUED', 'RUNNING', 'WAITING_SHARED']) },
+  ],
+  contracts: [
+    { label: 'analyses_open', table: 'background_jobs', build: (q) => q.eq('product_type', 'DOCUMENT_ANALYSIS').in('state', ['QUEUED', 'STARTING', 'CANCELLABLE', 'COMMITTED', 'PROCESSING', 'PARTIAL']) },
+  ],
+  mortgage: [],
+  investment: [],
+  for_expats: [],
+  meta_ads: [
+    { label: 'campaigns_live', table: 'meta_campaigns', build: (q) => q.in('status', ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED']) },
+  ],
+  email_campaigns: [
+    { label: 'campaigns_running', table: 'outreach_campaigns', build: (q) => q.in('campaign_type', ['EMAIL', 'SMS']).in('status', ['SCHEDULED', 'RUNNING', 'PAUSED', 'APPROVED']) },
+    { label: 'studio_sending', table: 'email_studio_campaigns', build: (q) => q.eq('status', 'SENDING') },
+  ],
+  ai_assistant: [
+    { label: 'messages_last_hour', table: 'ai_messages', build: (q) => q.gt('created_at', new Date(Date.now() - 3_600_000).toISOString()) },
+  ],
+  brokers_directory: [],
+  broker_desk: [],
+  developers: [],
 };
+
+/** The Admin page's grouping. Mirrors service_controls.service_group (migration 20261110090000). */
+export const SERVICE_GROUPS: Record<ServiceKey, string> = {
+  publishing: 'publishing', design_studio: 'design',
+  ai_call_center: 'communications', ai_talk: 'communications', whatsapp: 'communications', live_chat: 'communications',
+  find_property: 'discovery', find_property_deep: 'discovery', find_buyers: 'discovery',
+  verify: 'intelligence', contracts: 'intelligence', mortgage: 'intelligence', investment: 'intelligence', for_expats: 'intelligence',
+  meta_ads: 'marketing', email_campaigns: 'marketing',
+  ai_assistant: 'assistant',
+  brokers_directory: 'professionals', broker_desk: 'professionals', developers: 'professionals',
+};
+const GROUP_KEYS = new Set(Object.values(SERVICE_GROUPS));
+const LIVE = new Set<string>(LIVE_BY_DEFAULT);
 
 export interface Deps {
   env: (k: string) => string | undefined;
@@ -94,9 +147,9 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
       tables[t] = !error;
     }));
     const [{ data: settingRows }, { data: routes }, { data: products }] = await Promise.all([
-      db.from('admin_settings').select('key,value').in('key', ['ai_talk_enabled', 'design_studio_billing_enabled']),
+      db.from('admin_settings').select('key,value').in('key', [...SETTINGS_CHECKED]),
       db.from('comm_provider_routes').select('role,provider,enabled,kill_switch').in('role', ['TELEPHONY', 'MESSAGING']),
-      db.from('billable_products').select('code,enabled,pricing_active,kill_switch').in('code', ['AI_CALL', 'WHATSAPP']),
+      db.from('billable_products').select('code,enabled,pricing_active,kill_switch').in('code', [...PRODUCTS_CHECKED]),
     ]);
     let r2Configured = false;
     try { r2Configured = envReport().allPresent; } catch { r2Configured = false; }
@@ -142,6 +195,9 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
           const frontend = backend && row?.frontend_enabled === true;
           return {
             key,
+            group: SERVICE_GROUPS[key],
+            // Live products fail OPEN if this table is unreadable; the original six fail closed.
+            failMode: LIVE.has(key) ? 'OPEN' : 'CLOSED',
             frontend, backend,
             version: row?.version ?? null,
             reason: row?.reason ?? null,
@@ -191,6 +247,20 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
         resetServiceControlCache();
         if (data?.result === 'CONFLICT') return reply({ code: 'VERSION_CONFLICT', control: data.control }, 409);
         return reply({ result: data?.result, control: data?.control, readiness: readiness(key, await facts()) });
+      }
+
+      case 'pause_group': {
+        const group = typeof input.group === 'string' ? input.group : '';
+        if (!GROUP_KEYS.has(group)) return reply({ code: 'GROUP_UNKNOWN' }, 400);
+        // The typed confirmation is checked again in the database; it is passed through as typed.
+        const confirm = typeof input.confirm === 'string' ? input.confirm.trim() : '';
+        if (confirm !== group) return reply({ code: 'CONFIRMATION_REQUIRED' }, 400);
+        const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 500) : null;
+        const requestId = typeof input.requestId === 'string' && /^[A-Za-z0-9-]{8,100}$/.test(input.requestId) ? input.requestId : null;
+        const { data, error } = await caller.rpc('service_control_pause_group', { p_group: group, p_confirm: confirm, p_reason: reason, p_request_id: requestId });
+        if (error) return rpcError(error);
+        resetServiceControlCache();
+        return reply(data);
       }
 
       case 'pause_all': {

@@ -62,6 +62,7 @@ import {
   buildOpenQuestions,
   parseUnderstandResponse,
 } from '../../../src/investment/consultant/prompt.ts';
+import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -173,6 +174,8 @@ serve(async (req) => {
     );
     const { data: auth } = await supabase.auth.getUser();
     if (!auth?.user?.id) return json({ error: 'unauthorized' }, 401);
+    // SERVICE CONTROL (key `investment`): no new consultant answer while paused.
+    if (!(await serviceBackendEnabledForCaller(supabase, 'investment'))) return json(serviceDisabledBody('investment'), 503);
 
     const body = await req.json().catch(() => ({}));
     const locale = resolveLocaleFromBody(body);

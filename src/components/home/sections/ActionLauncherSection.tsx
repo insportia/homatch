@@ -7,7 +7,7 @@ import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
 import { useSectionField, useFieldProps, useSectionIconName } from '@/site/content';
 import { iconFor } from '@/site/icons';
-import { useServiceVisible } from '@/lib/serviceControls';
+import { useServiceControls, useServiceVisible, type ServiceKey } from '@/lib/serviceControls';
 
 /**
  * REGION 02 — the action launcher.
@@ -66,6 +66,9 @@ export function ActionLauncherSection() {
    */
   const iconName = useSectionIconName();
   const callsVisible = useServiceVisible('ai_call_center');
+  /* A paused product (Admin → Service Control Center) has no tile; the grid reflows. */
+  const { services } = useServiceControls();
+  const show = (service: ServiceKey) => services[service].frontend;
   const tileIcon = (key: string) => {
     const chosen = iconName(`tile_${key}`);
     return chosen ? iconFor(chosen, Sparkles) : undefined;
@@ -88,10 +91,16 @@ export function ActionLauncherSection() {
   const entry = (signedInPath: string, publicEntry: string) => () =>
     navigate(signedIn ? signedInPath : publicEntry);
 
+  /* Every tile paused: no heading over an empty grid; the next section moves up. */
+  const TILE_SERVICES: ServiceKey[] = ['find_property', 'verify', 'contracts', 'find_buyers', 'mortgage', 'email_campaigns', 'investment', 'for_expats'];
+  const anyTile = callsVisible || TILE_SERVICES.some(show);
+
   const openVerify = () => {
     const value = code.trim();
     navigate(value ? `/verify?code=${encodeURIComponent(value)}` : '/verify');
   };
+
+  if (!anyTile) return null;
 
   return (
     <section id="start" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
@@ -117,89 +126,99 @@ export function ActionLauncherSection() {
         {/* Find Property — describe what you want, confirm the plan, and the
             matching runs. The first tile because it is the first question a
             visitor arrives with. */}
-        <Tile
-          glyph="findprop"
-          field="tile_findprop"
-          icon={tileIcon('findprop')}
-          title={sf('tile_findprop_t', 'mp_tile_findprop_t')}
-          desc={sf('tile_findprop_d', 'mp_tile_findprop_d')}
-          onClick={entry('/find-property', '/for-buyers')}
-          action={sf('tile_findprop_a', 'mp_tile_findprop_a')}
-        />
+        {show('find_property') && (
+          <Tile
+            glyph="findprop"
+            field="tile_findprop"
+            icon={tileIcon('findprop')}
+            title={sf('tile_findprop_t', 'mp_tile_findprop_t')}
+            desc={sf('tile_findprop_d', 'mp_tile_findprop_d')}
+            onClick={entry('/find-property', '/for-buyers')}
+            action={sf('tile_findprop_a', 'mp_tile_findprop_a')}
+          />
+        )}
 
         {/* Verify — the one tile with a live field, because it is the one
             capability whose entry point is public and takes a single value. */}
-        <Tile
-          glyph="verify"
-          field="tile_verify"
-          icon={tileIcon('verify')}
-          title={sf('tile_verify_t', 'mp_tile_verify_t')}
-          desc={sf('tile_verify_d', 'mp_tile_verify_d')}
-          as="div"
-        >
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              openVerify();
-            }}
-            className="flex flex-col gap-2"
+        {show('verify') && (
+          <Tile
+            glyph="verify"
+            field="tile_verify"
+            icon={tileIcon('verify')}
+            title={sf('tile_verify_t', 'mp_tile_verify_t')}
+            desc={sf('tile_verify_d', 'mp_tile_verify_d')}
+            as="div"
           >
-            <input
-              value={code}
-              onChange={e => setCode(e.target.value)}
-              placeholder={t('mp_verify_code_placeholder')}
-              aria-label={t('mp_verify_code_label')}
-              inputMode="numeric"
-              className="h-11 w-full min-w-0 rounded-[0.6rem] border border-foreground/[0.22] bg-card px-3.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/80 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/25"
-            />
-            <button
-              type="submit"
-              className="group/go inline-flex h-11 w-full items-center justify-center gap-2 rounded-[0.6rem] bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                openVerify();
+              }}
+              className="flex flex-col gap-2"
             >
-              <span {...fp('tile_verify_a')}>{sf('tile_verify_a', 'mp_launch_verify_go')}</span>
-              <ArrowRight
-                className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover/go:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover/go:-translate-x-0.5' : ''}`}
-                strokeWidth={2}
-                aria-hidden="true"
+              <input
+                value={code}
+                onChange={e => setCode(e.target.value)}
+                placeholder={t('mp_verify_code_placeholder')}
+                aria-label={t('mp_verify_code_label')}
+                inputMode="numeric"
+                className="h-11 w-full min-w-0 rounded-[0.6rem] border border-foreground/[0.22] bg-card px-3.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/80 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/25"
               />
-            </button>
-          </form>
-        </Tile>
+              <button
+                type="submit"
+                className="group/go inline-flex h-11 w-full items-center justify-center gap-2 rounded-[0.6rem] bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
+              >
+                <span {...fp('tile_verify_a')}>{sf('tile_verify_a', 'mp_launch_verify_go')}</span>
+                <ArrowRight
+                  className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover/go:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover/go:-translate-x-0.5' : ''}`}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              </button>
+            </form>
+          </Tile>
+        )}
 
-        <Tile
-          glyph="contract"
-          field="tile_contract"
-          icon={tileIcon('contract')}
-          title={sf('tile_contract_t', 'mp_contract_title')}
-          desc={sf('tile_contract_d', 'mp_tile_contract_d')}
-          onClick={gated('/contracts')}
-          action={
-            <span className="inline-flex items-center gap-2">
-              <Upload className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-              <span {...fp('tile_contract_a')}>{sf('tile_contract_a', 'mp_contract_cta')}</span>
-            </span>
-          }
-        />
+        {show('contracts') && (
+          <Tile
+            glyph="contract"
+            field="tile_contract"
+            icon={tileIcon('contract')}
+            title={sf('tile_contract_t', 'mp_contract_title')}
+            desc={sf('tile_contract_d', 'mp_tile_contract_d')}
+            onClick={gated('/contracts')}
+            action={
+              <span className="inline-flex items-center gap-2">
+                <Upload className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+                <span {...fp('tile_contract_a')}>{sf('tile_contract_a', 'mp_contract_cta')}</span>
+              </span>
+            }
+          />
+        )}
 
-        <Tile
-          glyph="matching"
-          field="tile_match"
-          icon={tileIcon('match')}
-          title={sf('tile_match_t', 'mp_tile_match_t')}
-          desc={sf('tile_match_d', 'mp_tile_match_d')}
-          onClick={entry('/property', '/for-owners')}
-          action={sf('tile_match_a', 'mp_match_cta')}
-        />
+        {show('find_buyers') && (
+          <Tile
+            glyph="matching"
+            field="tile_match"
+            icon={tileIcon('match')}
+            title={sf('tile_match_t', 'mp_tile_match_t')}
+            desc={sf('tile_match_d', 'mp_tile_match_d')}
+            onClick={entry('/property', '/for-owners')}
+            action={sf('tile_match_a', 'mp_match_cta')}
+          />
+        )}
 
-        <Tile
-          glyph="mortgage"
-          field="tile_mortgage"
-          icon={tileIcon('mortgage')}
-          title={sf('tile_mortgage_t', 'mp_mortgage_title')}
-          desc={sf('tile_mortgage_d', 'mp_tile_mortgage_d')}
-          onClick={() => navigate('/mortgage')}
-          action={sf('tile_mortgage_a', 'mp_mortgage_cta')}
-        />
+        {show('mortgage') && (
+          <Tile
+            glyph="mortgage"
+            field="tile_mortgage"
+            icon={tileIcon('mortgage')}
+            title={sf('tile_mortgage_t', 'mp_mortgage_title')}
+            desc={sf('tile_mortgage_d', 'mp_tile_mortgage_d')}
+            onClick={() => navigate('/mortgage')}
+            action={sf('tile_mortgage_a', 'mp_mortgage_cta')}
+          />
+        )}
 
         {/* Hidden while the owner has the AI Call Center paused; the grid reflows. */}
         {callsVisible && (
@@ -214,38 +233,44 @@ export function ActionLauncherSection() {
           />
         )}
 
-        <Tile
-          glyph="email"
-          field="tile_email"
-          icon={tileIcon('email')}
-          title={sf('tile_email_t', 'mp_email_title')}
-          desc={sf('tile_email_d', 'mp_tile_email_d')}
-          onClick={gated('/outreach/email')}
-          action={sf('tile_email_a', 'mp_email_cta')}
-        />
+        {show('email_campaigns') && (
+          <Tile
+            glyph="email"
+            field="tile_email"
+            icon={tileIcon('email')}
+            title={sf('tile_email_t', 'mp_email_title')}
+            desc={sf('tile_email_d', 'mp_tile_email_d')}
+            onClick={gated('/outreach/email')}
+            action={sf('tile_email_a', 'mp_email_cta')}
+          />
+        )}
 
         {/* Investment — the analytics workspace. Public page; the analysis
             itself runs signed in. */}
-        <Tile
-          glyph="invest"
-          field="tile_invest"
-          icon={tileIcon('invest')}
-          title={sf('tile_invest_t', 'mp_tile_invest_t')}
-          desc={sf('tile_invest_d', 'mp_tile_invest_d')}
-          onClick={() => navigate('/investment')}
-          action={sf('tile_invest_a', 'mp_tile_invest_a')}
-        />
+        {show('investment') && (
+          <Tile
+            glyph="invest"
+            field="tile_invest"
+            icon={tileIcon('invest')}
+            title={sf('tile_invest_t', 'mp_tile_invest_t')}
+            desc={sf('tile_invest_d', 'mp_tile_invest_d')}
+            onClick={() => navigate('/investment')}
+            action={sf('tile_invest_a', 'mp_tile_invest_a')}
+          />
+        )}
 
         {/* For Expats — buying and settling in Georgia from abroad. */}
-        <Tile
-          glyph="expat"
-          field="tile_expat"
-          icon={tileIcon('expat')}
-          title={sf('tile_expat_t', 'mp_tile_expat_t')}
-          desc={sf('tile_expat_d', 'mp_tile_expat_d')}
-          onClick={() => navigate('/for-expats/georgia')}
-          action={sf('tile_expat_a', 'mp_tile_expat_a')}
-        />
+        {show('for_expats') && (
+          <Tile
+            glyph="expat"
+            field="tile_expat"
+            icon={tileIcon('expat')}
+            title={sf('tile_expat_t', 'mp_tile_expat_t')}
+            desc={sf('tile_expat_d', 'mp_tile_expat_d')}
+            onClick={() => navigate('/for-expats/georgia')}
+            action={sf('tile_expat_a', 'mp_tile_expat_a')}
+          />
+        )}
       </div>
     </section>
   );

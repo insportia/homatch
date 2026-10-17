@@ -21,6 +21,7 @@
 // something — a plan that remembers — and nowhere else.
 
 import { ArrowRight, CircleDollarSign, FileSignature, Search, ShieldCheck, TrendingUp } from 'lucide-react';
+import { usePathAvailable } from '@/lib/serviceControls';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import LocalSectionNav from '@/components/common/LocalSectionNav';
@@ -225,6 +226,7 @@ const ECOSYSTEM = [
 
 function Ecosystem() {
   const { t } = useLanguage();
+  const pathAvailable = usePathAvailable(); // a paused product is not suggested
   return (
     <section data-expat-ecosystem>
       <h2 className="font-display text-2xl font-semibold text-foreground sm:text-3xl">
@@ -235,7 +237,7 @@ function Ecosystem() {
       </p>
 
       <div className="mt-6 overflow-hidden rounded-2xl border border-border">
-        {ECOSYSTEM.map((item, i) => (
+        {ECOSYSTEM.filter((item) => pathAvailable(item.to)).map((item, i) => (
           <Link
             key={item.key}
             to={item.to}

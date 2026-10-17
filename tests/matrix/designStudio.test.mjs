@@ -48,7 +48,9 @@ test('Design Studio sits directly below For Expats and above Intelligence', () =
 test('the rail hides gated items and any group left empty', () => {
   const shell = read('src/components/layouts/HomatchShell.tsx');
   assert.match(shell, /useServiceControls\(\)\.services/);
-  assert.match(shell, /items: group\.items\.filter\(item => !item\.gate \|\| services\[item\.gate\]\.frontend\)/);
+  // An item goes when its gate is off OR its address belongs to a paused service
+  // (src/lib/serviceControls/routes.ts) — the Service Control Center expansion.
+  assert.match(shell, /items: group\.items\.filter\(item => \(!item\.gate \|\| services\[item\.gate\]\.frontend\) && pathAvailable\(item\.path\)\)/);
   assert.match(shell, /\.filter\(group => group\.items\.length > 0\)/);
   assert.match(shell, /\{nav\.map\(\(group, gi\) =>/, 'the rail still renders the unfiltered NAV');
 });

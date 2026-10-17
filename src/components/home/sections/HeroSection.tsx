@@ -42,6 +42,9 @@ export function HeroSection() {
   const fp = useFieldProps();
   const mp = useMediaProps();
   const aiTalkVisible = useServiceVisible('ai_talk');
+  // The hero's ask box and its starter questions open the assistant; while the assistant
+  // is paused (Admin → Service Control Center) they are not offered and the column closes up.
+  const assistantVisible = useServiceVisible('ai_assistant');
 
   return (
     <section className="relative isolate overflow-hidden bg-[#0D0D0D] text-white">
@@ -143,6 +146,7 @@ export function HeroSection() {
               What remains is the assistant, and three questions underneath
               it so nobody has to invent one. Each goes straight into the
               conversation. */}
+          {assistantVisible && (<>
           <HomatchAsk
             className="mt-7 max-w-[34rem] sm:mt-9"
             variant="card"
@@ -164,6 +168,7 @@ export function HeroSection() {
             text={intent => sf(HERO_Q[intent.key] ?? 'ask_q1', intent.prompt)}
             mark={intent => fp(HERO_Q[intent.key] ?? 'ask_q1')}
           />
+          </>)}
           </div>
 
           {/* AI TALK. A marketing demonstration of what Homatch understands,

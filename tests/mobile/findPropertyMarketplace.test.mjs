@@ -1110,6 +1110,10 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
     if (state.paidStart?.authorizedMaxCredits !== 50) failures.push(`${lang}: wrong budget`);
     const text = await deep.textContent();
     if (/\{\{?\w+\}?\}/.test(text)) failures.push(`${lang}: raw placeholder`);
+    /* Snake while the campaign runs, labelled exactly as the owner asked in Georgian. */
+    const snake = deep.locator('[data-action="campaign-play-snake"]');
+    if (!(await snake.isVisible())) failures.push(`${lang}: no Snake while the campaign runs`);
+    if (lang === 'ka' && ((await snake.textContent()) ?? '').trim() !== 'გაერთე Snake-ით სანამ ძიება მიმდინარეობს') failures.push('ka: Snake label differs');
     if (await overflow(page) > 1) failures.push(`${lang} ${width}: overflow ${await overflow(page)}px`);
     if (['ar', 'he'].includes(lang) && (await page.evaluate(() => document.documentElement.getAttribute('dir'))) !== 'rtl') failures.push(`${lang}: not RTL`);
     await shot(page, `${lang}-${width}-paid-progress`);

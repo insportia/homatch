@@ -10,7 +10,7 @@
  * percentage; a network that cannot be searched says so; the animated flow runs
  * only while work is really in flight and never under prefers-reduced-motion.
  */
-import { ArrowRight, Check, Facebook, Instagram, Loader2, Send, Square, Telescope } from 'lucide-react';
+import { ArrowRight, Check, Facebook, Gamepad2, Instagram, Loader2, Send, Square, Telescope } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -19,6 +19,7 @@ import {
   subscriptionForSearch, type CampaignPreview, type CampaignState, type OfferNetwork,
 } from '@/services/paidCampaign';
 import type { T } from './format';
+import { SnakeOverlay } from './SnakeThumbnail';
 
 const POLL_MS = 5000;
 const NETWORK_ICON: Record<OfferNetwork, typeof Facebook> = { FACEBOOK: Facebook, INSTAGRAM: Instagram, TELEGRAM: Send, VK: Telescope };
@@ -241,6 +242,12 @@ function CampaignProgress({ t, run, searchId, busy, onStop, onAgain }: { t: T; r
   const navigate = useNavigate();
   const elapsed = useElapsed(run.createdAt, open ? null : run.completedAt, open);
   const totals = useMemo(() => run.sources.reduce((a, s) => ({ planned: a.planned + s.planned, finished: a.finished + s.done + s.failed + s.budget }), { planned: 0, finished: 0 }), [run.sources]);
+  const [playing, setPlaying] = useState(false);
+  const viewResults = () => {
+    if (open || !searchId) return;
+    setPlaying(false);
+    navigate(`/find-property/search/${encodeURIComponent(searchId)}?page=1`); window.scrollTo({ top: 0 });
+  };
   const searched = new Set(run.sources.map((s) => s.network));
   const unavailable = (run.unavailable ?? []).filter((u) => !searched.has(u.network));
   return (
@@ -296,7 +303,7 @@ function CampaignProgress({ t, run, searchId, busy, onStop, onAgain }: { t: T; r
           <div className="flex flex-wrap gap-2">
             {/* One way to the results, only after the campaign has ended: its listings joined them then. */}
             {searchId && run.offersFound > 0 ? (
-              <button type="button" data-action="campaign-view-results" onClick={() => { navigate(`/find-property/search/${encodeURIComponent(searchId)}?page=1`); window.scrollTo({ top: 0 }); }}
+              <button type="button" data-action="campaign-view-results" onClick={viewResults}
                 className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[hsl(38_92%_56%)] px-4 text-sm font-semibold text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
                 {t('fpi_paid_view_results')}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
               </button>
@@ -304,7 +311,16 @@ function CampaignProgress({ t, run, searchId, busy, onStop, onAgain }: { t: T; r
             <button type="button" onClick={onAgain} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-white/20 px-4 text-sm font-semibold hover:bg-white/5">{t('fpi_paid_again')}</button>
           </div>
         </>
-      ) : <><p className="text-xs text-white/60">{t('fpi_paid_running_note')}</p><p className="text-xs text-white/60" data-campaign-results-wait>{t('fpi_paid_results_wait')}</p></>}
+      ) : <>
+        <p className="text-xs text-white/60">{t('fpi_paid_running_note')}</p>
+        <p className="text-xs text-white/60" data-campaign-results-wait>{t('fpi_paid_results_wait')}</p>
+        {/* The same Snake as the free search, while the campaign runs; it never ends the wait early. */}
+        <button type="button" onClick={() => setPlaying(true)} data-action="campaign-play-snake"
+          className="inline-flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-[hsl(38_92%_60%/0.5)] bg-white/5 px-4 text-start text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)] sm:w-auto">
+          <Gamepad2 className="h-4 w-4 shrink-0 text-[hsl(38_92%_60%)]" aria-hidden="true" /><span className="min-w-0 leading-tight">{t('fpv_play_snake')}</span>
+        </button>
+      </>}
+      <SnakeOverlay t={t} open={playing} onClose={() => setPlaying(false)} resultsReady={!open && !!searchId && run.offersFound > 0} onViewResults={viewResults} />
     </div>
   );
 }

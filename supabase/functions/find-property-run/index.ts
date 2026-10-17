@@ -26,6 +26,7 @@ import { normalisePlan } from '../../../src/research-core/discovery/search-plan.
 import { allocateCampaign, minimumCampaignCredits } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import { OFFER_NETWORKS, type OfferNetwork, type OfferSearch } from '../../../src/research-core/findProperty/offerCampaign.ts';
 import { loadOfferSettings, offerQueueRows, planOfferCampaign } from '../_shared/findProperty/socialOffers.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 async function walletRate(db: any): Promise<number> {
   const { data } = await db.from('admin_settings').select('value').eq('key', 'credits_per_usd').maybeSingle();
@@ -74,6 +75,11 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, runId: body.runId, ...outcome });
     }
     if (action !== 'start' && action !== 'preview') return json({ error: 'Unknown action' }, 400);
+    // SERVICE CONTROL (key `find_property_deep`): no new paid Deep Search while paused. Pause,
+    // resume and stop above, and campaigns already paid for, keep running to their end.
+    if (action === 'start' && !(await serviceBackendEnabled(db, 'find_property_deep'))) {
+      return json(serviceDisabledBody('find_property_deep'), 503);
+    }
 
     const subscriptionId = String(body.subscriptionId || '');
     const { data: subscription } = await db.from('active_search_subscriptions')

@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { NavGlyphIcon, type NavGlyphName } from './NavGlyph';
-import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
+import { usePathAvailable, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 /*
  * FIVE SLOTS, ORDERED BY WHAT A PHONE IS ACTUALLY FOR.
@@ -53,7 +53,9 @@ export function MobileBottomNav() {
   const { t } = useLanguage();
   const location = useLocation();
   const services = useServiceControls().services;
-  const shown = items.filter((item) => !item.gate || services[item.gate].frontend);
+  const pathAvailable = usePathAvailable();
+  // A paused service's slot goes (by gate or by address); the others share the width.
+  const shown = items.filter((item) => (!item.gate || services[item.gate].frontend) && pathAvailable(item.path));
 
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/');

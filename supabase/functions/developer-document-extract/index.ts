@@ -52,6 +52,7 @@ import {
 } from '../../../src/dealroom/domain/documentExtract.ts';
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
 import { readRouted } from '../_shared/storage/routed.ts';
+import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -214,6 +215,8 @@ serve(async (req) => {
   const { data: auth } = await supabase.auth.getUser();
   const authUserId = auth?.user?.id;
   if (!authUserId) return json({ error: 'unauthorized' }, 401);
+  // SERVICE CONTROL (key `developers`): no new document reading while paused.
+  if (!(await serviceBackendEnabledForCaller(supabase, 'developers'))) return json(serviceDisabledBody('developers'), 503);
 
   /* ---- the document, via the caller's own RLS ---- */
   const { data: doc, error: docErr } = await supabase

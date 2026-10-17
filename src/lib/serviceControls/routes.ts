@@ -12,6 +12,23 @@ export const SERVICE_ROUTE_RULES: ReadonlyArray<readonly [RegExp, ServiceKey]> =
   [/^\/outreach\/whatsapp(\/|$)/, 'whatsapp'],
   [/^\/live-chat(\/|$)/, 'live_chat'],
   [/^\/design-studio(\/|$)/, 'design_studio'],
+  // Live products (docs/claude/SERVICE_CONTROLS_INVENTORY.md). Never a platform address:
+  // /property itself, /chat, /credits, /leads, /outreach (the shared hub) stay ungated.
+  [/^\/find-property(\/|$)/, 'find_property'],
+  [/^\/property\/[^/]+\/(matches|buyers|leads|buyer)(\/|$)/, 'find_buyers'],
+  [/^\/verify(\/|$)/, 'verify'],
+  [/^\/contracts(\/|$)/, 'contracts'],
+  [/^\/mortgage(\/|$)/, 'mortgage'],
+  [/^\/investment(\/|$)/, 'investment'],
+  [/^\/for-expats(\/|$)/, 'for_expats'],
+  [/^\/outreach\/meta(\/|$)/, 'meta_ads'],
+  [/^\/outreach\/email(\/|$)/, 'email_campaigns'],
+  [/^\/email-studio(\/|$)/, 'email_campaigns'],
+  [/^\/ai$/, 'ai_assistant'],
+  // /brokers and /brokers/:id are NOT listed: pausing the Brokers directory stops commercial
+  // operations (new listings, renewals) while listings already paid stay public (owner, Option A).
+  [/^\/broker(\/|$)/, 'broker_desk'],
+  [/^\/developers(\/|$)/, 'developers'],
 ];
 
 export function serviceForPath(path: string): ServiceKey | null {

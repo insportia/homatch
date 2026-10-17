@@ -50,6 +50,7 @@ import {
   subjectSupportsResearch,
   type LaneSubject,
 } from '../../../src/investment/evidence/lane.ts';
+import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -99,6 +100,8 @@ serve(async (req) => {
       .maybeSingle();
     const uid = profile?.id as string | undefined;
     if (!uid) return json({ error: 'profile_not_found' }, 404);
+    // SERVICE CONTROL (key `investment`): no new market sweep while paused.
+    if (!(await serviceBackendEnabledForCaller(supabase, 'investment'))) return json(serviceDisabledBody('investment'), 503);
 
     const body = await req.json().catch(() => ({}));
 

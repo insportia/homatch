@@ -56,6 +56,7 @@ import type { ActivityEvent, Property } from '@/types/types';
 import { activityLabelKey } from '@/lib/activityPresentation';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { toast } from 'sonner';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 /* ------------------------------------------------------------------ *
  * Presentational primitives                                           *
@@ -404,6 +405,9 @@ function DashboardContent() {
   const { homatchUser } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
+  /* A paused product (Admin → Service Control Center) offers no shortcut here. */
+  const { services } = useServiceControls();
+  const shown = (service: ServiceKey) => services[service].frontend;
 
   const [data, setData] = useState<DashboardSummary>(EMPTY_DASHBOARD_SUMMARY);
   const [loading, setLoading] = useState(true);
@@ -475,7 +479,9 @@ function DashboardContent() {
     { key: 'client', icon: UserSearch, title: t('db_qa_client_title'), desc: t('db_qa_client_desc'), path: '/property' },
     { key: 'property', icon: Search, title: t('db_qa_property_title'), desc: t('db_qa_property_desc'), path: '/find-property' },
     { key: 'verify', icon: ShieldCheck, title: t('db_qa_verify_title'), desc: t('db_qa_verify_desc'), path: '/verify' },
-  ];
+  ].filter((action) => shown(({ ai: 'ai_assistant', client: 'find_buyers', property: 'find_property', verify: 'verify' } as const)[action.key as 'ai' | 'client' | 'property' | 'verify']));
+  /* Columns follow what is left, so a paused product leaves no hole. */
+  const actionCols = ['', 'xl:grid-cols-1', 'xl:grid-cols-2', 'xl:grid-cols-3', 'xl:grid-cols-4'][primaryActions.length] ?? 'xl:grid-cols-4';
 
   const askActions: AskAction[] = [
     { key: '1', icon: Sparkles, label: t('db_ai_sugg_1') },
@@ -582,7 +588,7 @@ function DashboardContent() {
 
         {/* ── 2. The four primary actions, as one group ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
-          <div className="grid divide-y divide-foreground/[0.12] sm:grid-cols-2 sm:divide-x sm:divide-foreground/[0.12] rtl:sm:divide-x-reverse xl:grid-cols-4 xl:divide-y-0">
+          <div className={`grid divide-y divide-foreground/[0.12] sm:grid-cols-2 sm:divide-x sm:divide-foreground/[0.12] rtl:sm:divide-x-reverse ${actionCols} xl:divide-y-0`}>
             {primaryActions.map(action => (
               <ActionTile
                 key={action.key}
@@ -616,13 +622,15 @@ function DashboardContent() {
                     {t('nav_add_property')}
                     <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="h-11 gap-2 rounded-full border-border bg-transparent px-6 text-sm"
-                    onClick={() => navigate('/find-property')}
-                  >
-                    {t('db_qa_property_title')}
-                  </Button>
+                  {shown('find_property') && (
+                    <Button
+                      variant="outline"
+                      className="h-11 gap-2 rounded-full border-border bg-transparent px-6 text-sm"
+                      onClick={() => navigate('/find-property')}
+                    >
+                      {t('db_qa_property_title')}
+                    </Button>
+                  )}
                 </div>
               </Card>
             ) : (
@@ -632,7 +640,7 @@ function DashboardContent() {
                 <CardHead
                   title={t('db_matches_title')}
                   action={
-                    data.matchTotals.topPropertyId
+                    data.matchTotals.topPropertyId && shown('find_buyers')
                       ? <LinkAction label={t('db_matches_view_all')} onClick={() => navigate(`/property/${data.matchTotals.topPropertyId}/matches`)} />
                       : undefined
                   }
@@ -647,7 +655,7 @@ function DashboardContent() {
                       <MatchRow
                         key={entry.match.id}
                         entry={entry}
-                        onOpen={() => navigate(`/property/${entry.match.property_id}/matches`)}
+                        onOpen={() => navigate(shown('find_buyers') ? `/property/${entry.match.property_id}/matches` : `/property/${entry.match.property_id}`)}
                       />
                     ))}
                   </div>
@@ -719,8 +727,8 @@ function DashboardContent() {
 
         {/* ── 4. Verification, financing and activity, as one group ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
-          <div className="grid divide-y divide-foreground/[0.12] rtl:lg:divide-x-reverse lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-            <div className="min-w-0">
+          <div className={`grid divide-y divide-foreground/[0.12] rtl:lg:divide-x-reverse ${['lg:grid-cols-1', 'lg:grid-cols-1', 'lg:grid-cols-2', 'lg:grid-cols-3'][1 + Number(shown('verify')) + Number(shown('mortgage'))]} lg:divide-x lg:divide-y-0`}>
+            {shown('verify') && <div className="min-w-0">
               <CardHead title={t('db_verify_title')} action={<LinkAction label={t('db_verify_start')} onClick={() => navigate('/verify')} />} />
               {loading ? (
                 <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
@@ -733,9 +741,9 @@ function DashboardContent() {
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
 
-            <div className="flex min-w-0 flex-col items-center justify-center p-6 text-center sm:p-8">
+            {shown('mortgage') && <div className="flex min-w-0 flex-col items-center justify-center p-6 text-center sm:p-8">
               <span className="grid h-12 w-12 place-items-center rounded-full bg-[hsl(var(--gold))]/10 ring-1 ring-inset ring-[hsl(var(--gold))]/25 text-[hsl(var(--gold-ink))]" aria-hidden="true">
                 <CircleDollarSign className="h-5 w-5" strokeWidth={1.6} />
               </span>
@@ -745,7 +753,7 @@ function DashboardContent() {
                 {t('db_mortgage_cta')}
                 <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
               </Button>
-            </div>
+            </div>}
 
             <div className="min-w-0">
               <CardHead title={t('db_activity_title')} action={<LinkAction label={t('nav_activity')} onClick={() => navigate('/activity')} />} />
@@ -768,13 +776,15 @@ function DashboardContent() {
             <h2 className="text-balance text-lg font-semibold tracking-tight sm:text-xl">{t('db_footer_title')}</h2>
             <p className="mt-1.5 max-w-xl text-pretty text-sm leading-relaxed text-primary-foreground/75">{t('db_footer_body')}</p>
           </div>
-          <Button
-            className="h-11 shrink-0 gap-2 rounded-full bg-gold px-6 text-sm text-primary hover:bg-gold/90"
-            onClick={() => navigate('/verify')}
-          >
-            {t('mp_verify_capability_cta')}
-            <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
-          </Button>
+          {shown('verify') && (
+            <Button
+              className="h-11 shrink-0 gap-2 rounded-full bg-gold px-6 text-sm text-primary hover:bg-gold/90"
+              onClick={() => navigate('/verify')}
+            >
+              {t('mp_verify_capability_cta')}
+              <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </Button>
+          )}
         </div>
       </div>
       </div>

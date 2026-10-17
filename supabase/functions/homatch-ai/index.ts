@@ -29,11 +29,12 @@ import {
   SUGGESTED_REPLIES_INSTRUCTION,
 } from '../../../src/lib/ai/identity.ts';
 import { parseSuggestedReplies } from '../../../src/lib/ai/suggestedReplies.ts';
-import { parseServiceActions, SERVICE_ACTIONS_INSTRUCTION } from '../../../src/lib/ai/serviceActions.ts';
+import { parseServiceActions, SERVICE_ACTION_SERVICE, SERVICE_ACTIONS_INSTRUCTION } from '../../../src/lib/ai/serviceActions.ts';
 import {
   beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant,
 } from '../_shared/billing.ts';
 import { retentionBlockedIds } from '../_shared/retentionGuard.ts';
+import { serviceBackendEnabled, serviceDisabledBody, serviceState, type ServiceKey } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -204,6 +205,28 @@ serve(async (req) => {
     .slice(-30)
     .map((m: any) => ({ role: m.role, content: m.content.slice(0, 12000) }));
   if (!msgs.length) return json({ error: 'messages array required' }, 400);
+
+  /*
+   * SERVICE CONTROL. One function, several products, so the switch follows the surface:
+   *   find-property        → `find_property`
+   *   mortgage-consultant  → `mortgage`
+   *   agent-builder        → `ai_call_center` (its agents are that product's)
+   *   anything else        → `ai_assistant`, except for an administrator, whose general
+   *                          calls are admin tools (Site Studio translation suggestions).
+   */
+  {
+    const surface = String((body?.context as any)?.surface ?? '');
+    const key: ServiceKey | null = surface === 'find-property' ? 'find_property'
+      : surface === 'mortgage-consultant' ? 'mortgage'
+      : surface === 'agent-builder' ? 'ai_call_center'
+      : 'ai_assistant';
+    let gated = true;
+    if (key === 'ai_assistant' && user) {
+      const { data: me } = await sb.from('users').select('is_admin').eq('auth_id', user.id).maybeSingle();
+      gated = me?.is_admin !== true;
+    }
+    if (gated && !(await serviceBackendEnabled(sb, key))) return json(serviceDisabledBody(key), 503);
+  }
 
   const lang = resolveLocaleFromBody(body);
   let conversationId = body.conversationId ? String(body.conversationId) : null;
@@ -737,7 +760,12 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   const routingRaw = (lead?.routing ?? null) as { intent?: unknown; web_mode?: unknown; internal_used?: unknown } | null;
   const webMode = typeof routingRaw?.web_mode === 'string' && WEB_MODES.has(routingRaw.web_mode)
     ? routingRaw.web_mode : (searchCount > 0 ? 'REQUIRED_LIVE_WEB' : 'NO_WEB');
-  const actionsOut = parseServiceActions(lead?.suggested_actions);
+  /* A chip for a paused product (Admin → Service Control Center) is never offered. */
+  const actionsOut = [];
+  for (const action of parseServiceActions(lead?.suggested_actions)) {
+    const key = SERVICE_ACTION_SERVICE[action.id];
+    if (!key || (await serviceState(sb, key as ServiceKey)).frontend) actionsOut.push(action);
+  }
   await sb.from('ai_routing_events').insert({
     user_id: uid ?? null,
     conversation_id: conversationId ?? null,

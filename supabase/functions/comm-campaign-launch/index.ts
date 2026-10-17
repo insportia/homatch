@@ -66,7 +66,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { data: typed } = await sb.from('outreach_campaigns').select('campaign_type').eq('id', body.campaignId).maybeSingle();
     const service: ServiceKey | null = !typed ? null
       : typed.campaign_type === 'WHATSAPP' ? 'whatsapp'
-      : typed.campaign_type === 'AI_CALL' || !typed.campaign_type ? 'ai_call_center' : null;
+      : typed.campaign_type === 'AI_CALL' || !typed.campaign_type ? 'ai_call_center'
+      : typed.campaign_type === 'EMAIL' || typed.campaign_type === 'SMS' ? 'email_campaigns' : null;
     if (service && !(await serviceBackendEnabled(sb, service))) return json(serviceDisabledBody(service), 503);
   }
   const isPreview = body.action !== 'launch';

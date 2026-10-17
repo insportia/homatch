@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
-import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
+import { isLiveByDefault, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 export const SERVICE_NAME_KEYS: Record<ServiceKey, TranslationKey> = {
   publishing: 'svc_name_publishing',
@@ -15,6 +15,20 @@ export const SERVICE_NAME_KEYS: Record<ServiceKey, TranslationKey> = {
   whatsapp: 'svc_name_whatsapp',
   live_chat: 'svc_name_live_chat',
   design_studio: 'svc_name_design_studio',
+  find_property: 'svc_name_find_property',
+  find_property_deep: 'svc_name_find_property_deep',
+  find_buyers: 'svc_name_find_buyers',
+  verify: 'svc_name_verify',
+  contracts: 'svc_name_contracts',
+  mortgage: 'svc_name_mortgage',
+  investment: 'svc_name_investment',
+  for_expats: 'svc_name_for_expats',
+  meta_ads: 'svc_name_meta_ads',
+  email_campaigns: 'svc_name_email_campaigns',
+  ai_assistant: 'svc_name_ai_assistant',
+  brokers_directory: 'svc_name_brokers_directory',
+  broker_desk: 'svc_name_broker_desk',
+  developers: 'svc_name_developers',
 };
 
 /**
@@ -49,12 +63,14 @@ export function ServiceUnavailable({ service }: { service: ServiceKey }) {
 }
 
 /**
- * Renders its children only while the service is visible. Until the switches are
- * known nothing is mounted (no flash of a paused service, no request made by it).
+ * Renders its children only while the service is visible. For the six paused-by-default
+ * services nothing is mounted until the switches are known (no flash of a paused service,
+ * no request made by it). A live product renders at once from what this browser last
+ * knew, so Verify or Find Property never wait on this check.
  */
 export function ServiceGate({ service, children }: { service: ServiceKey; children: React.ReactNode }) {
   const snapshot = useServiceControls();
-  if (!snapshot.loaded) return <div className="min-h-[50vh]" aria-busy="true" />;
+  if (!snapshot.loaded && !isLiveByDefault(service)) return <div className="min-h-[50vh]" aria-busy="true" />;
   if (!snapshot.services[service].frontend) return <ServiceUnavailable service={service} />;
   return <>{children}</>;
 }

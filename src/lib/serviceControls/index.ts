@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { supabase } from '@/db/supabase';
-import { createServiceControlStore, type ServiceKey, type ServiceSnapshot } from './core';
+import { createServiceControlStore, initialSnapshot, liveVisibility, type ServiceKey, type ServiceSnapshot } from './core';
 import { serviceForPath } from './routes';
 
 export * from './core';
@@ -8,9 +8,21 @@ export * from './core';
 /** How often an open tab re-reads the switches (plus on focus). */
 export const REFRESH_MS = 60_000;
 
+/* The live products as this browser last saw them, so a paused one is not flashed in
+   before the first answer. Per-visitor convenience only; never a source of truth. */
+const MEMORY_KEY = 'homatch-service-visibility';
+function remembered(): unknown {
+  try { return JSON.parse(window.localStorage.getItem(MEMORY_KEY) ?? 'null'); } catch { return null; }
+}
+
 export const serviceControlStore = createServiceControlStore(async () => {
   const { data, error } = await supabase.rpc('service_controls_public');
   return { data, error };
+}, {
+  initial: initialSnapshot(typeof window === 'undefined' ? null : remembered()),
+  remember: (s) => {
+    try { window.localStorage.setItem(MEMORY_KEY, JSON.stringify(liveVisibility(s))); } catch { /* storage unavailable */ }
+  },
 });
 
 let started = false;

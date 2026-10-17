@@ -18,6 +18,7 @@
 // sign up: the same button opens the product.
 
 import React from 'react';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { Link } from 'react-router-dom';
 import { Globe2, Landmark, ShieldCheck, TrendingUp, Users } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -82,6 +83,8 @@ const COPY: Record<ProductKey, EntryCopy> = {
 };
 
 export default function ProductEntryPage({ product }: { product: ProductKey }) {
+  // A related product that is paused (Admin → Service Control Center) is not suggested.
+  const pathAvailable = usePathAvailable();
   useSurfaceTheme('light');
   const { t } = useLanguage();
   const headerLinks = usePublicNavLinks();
@@ -132,7 +135,7 @@ export default function ProductEntryPage({ product }: { product: ProductKey }) {
           <div className={`${PAGE} py-12 sm:py-16`}>
             <h2 className="hm-pub-h3 text-foreground">{t('pub_entry_related')}</h2>
             <ul className="mt-5 grid gap-3 sm:grid-cols-3">
-              {copy.related.map(item => (
+              {copy.related.filter(item => pathAvailable(item.to)).map(item => (
                 <li key={item.to}>
                   <Link to={item.to} className="hm-pub-card bg-card hm-pub-card--link group flex h-full items-start gap-3.5 p-4">
                     <span className="hm-pub-icon" aria-hidden="true"><item.icon className="h-5 w-5" strokeWidth={1.8} /></span>

@@ -1,11 +1,15 @@
 // HOMATCH — Admin → Service Control Center.
 //
-// The owner's pause / resume switches for six services: Publishing, AI Call Center,
-// AI TALK, WhatsApp, Live Chat and Design Studio. Each has two switches —
+// The owner's pause / resume switches for every manageable HOMATCH service, grouped by
+// product area (inventory: docs/claude/SERVICE_CONTROLS_INVENTORY.md). Each has two switches —
 //   Backend execution   may the server start new work for it
 //   Frontend visibility does it appear in its customer-facing places
 // — and the second can only be on while the first is. Nothing is deleted by a
 // pause: records, conversations, projects, credentials and settings stay.
+//
+// There is no "pause everything" button: a group is paused at most, and only after the
+// admin types the group's name (checked again by the database). Platform pieces —
+// sign-in, wallet, billing, property management, messages, Admin itself — have no switch.
 //
 // ACCESS CONTROL IS NOT THIS FILE'S JOB. The service-control function re-checks
 // is_admin() on the caller's own token on every request; the database writes the
@@ -21,6 +25,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ErrorState, Kpi, KpiRow, LoadingBlock, PageHeader } from '@/components/communications/primitives';
@@ -31,7 +36,7 @@ import { serviceControlStore } from '@/lib/serviceControls';
 import { cn } from '@/lib/utils';
 import {
   type Effective, type ServiceCard, ServiceControlError, type ServiceOverview,
-  pauseAllServices, serviceOverview, setService,
+  pauseServiceGroup, serviceOverview, setService,
 } from '@/services/serviceControls';
 
 const POLL_MS = 20_000;
@@ -43,7 +48,25 @@ const DESCRIPTION_KEYS: Record<ServiceCard['key'], TranslationKey> = {
   whatsapp: 'svc_desc_whatsapp',
   live_chat: 'svc_desc_live_chat',
   design_studio: 'svc_desc_design_studio',
+  find_property: 'svc_desc_find_property',
+  find_property_deep: 'svc_desc_find_property_deep',
+  find_buyers: 'svc_desc_find_buyers',
+  verify: 'svc_desc_verify',
+  contracts: 'svc_desc_contracts',
+  mortgage: 'svc_desc_mortgage',
+  investment: 'svc_desc_investment',
+  for_expats: 'svc_desc_for_expats',
+  meta_ads: 'svc_desc_meta_ads',
+  email_campaigns: 'svc_desc_email_campaigns',
+  ai_assistant: 'svc_desc_ai_assistant',
+  brokers_directory: 'svc_desc_brokers_directory',
+  broker_desk: 'svc_desc_broker_desk',
+  developers: 'svc_desc_developers',
 };
+
+/** The order the groups are shown in; a group the server names but this list does not goes last. */
+const GROUP_ORDER = ['discovery', 'intelligence', 'marketing', 'communications', 'assistant', 'professionals', 'design', 'publishing', 'other'];
+const groupName = (group: string): TranslationKey => `svc_group_${GROUP_ORDER.includes(group) ? group : 'other'}` as TranslationKey;
 
 const EFFECTIVE: Record<Effective, { key: TranslationKey; tone: string; Icon: typeof CheckCircle2 }> = {
   PAUSED: { key: 'svc_effective_paused', tone: 'border-muted-foreground/30 text-muted-foreground', Icon: PauseCircle },
@@ -64,7 +87,7 @@ function useCodeText() {
 
 type Pending =
   | { kind: 'set'; card: ServiceCard; frontend: boolean; backend: boolean }
-  | { kind: 'pause_all' };
+  | { kind: 'pause_group'; group: string; count: number };
 
 export default function AdminServiceControlPage() {
   const { t, lang } = useLanguage();
@@ -75,6 +98,7 @@ export default function AdminServiceControlPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [reason, setReason] = useState('');
+  const [typed, setTyped] = useState('');
   const [notReady, setNotReady] = useState<{ key: ServiceCard['key']; missing: string[] } | null>(null);
   const mounted = useRef(true);
 
@@ -104,12 +128,14 @@ export default function AdminServiceControlPage() {
     const job = pending;
     setPending(null);
     const why = reason.trim();
+    const confirmation = typed.trim();
     setReason('');
-    if (job.kind === 'pause_all') {
-      setBusy('all');
+    setTyped('');
+    if (job.kind === 'pause_group') {
+      setBusy(`group:${job.group}`);
       try {
-        const r = await pauseAllServices(why);
-        toast.success(r.result === 'CHANGED' ? t('svc_toast_paused_all', { n: r.changed.length }) : t('svc_toast_unchanged'));
+        const r = await pauseServiceGroup(job.group, confirmation, why);
+        toast.success(r.result === 'CHANGED' ? t('svc_toast_paused_group', { n: r.changed.length, group: t(groupName(job.group)) }) : t('svc_toast_unchanged'));
       } catch (e) {
         toast.error(t('svc_toast_failed', { code: e instanceof ServiceControlError ? e.code : 'NETWORK_ERROR' }));
       } finally {
@@ -143,7 +169,11 @@ export default function AdminServiceControlPage() {
   const services = data?.services ?? [];
   const paused = services.filter((s) => s.effective === 'PAUSED').length;
   const notReadyCount = services.filter((s) => !s.readiness.ready).length;
-  const anyOn = services.some((s) => s.backend || s.frontend);
+  // Every job, session and campaign the cards report, summed (unknown counts are skipped).
+  const runningWork = services.reduce((sum, s) => sum + Object.values(s.running).reduce<number>((a, n) => a + (typeof n === 'number' ? n : 0), 0), 0);
+  const groups = [...new Set(services.map((s) => s.group ?? 'other'))]
+    .sort((a, b) => (GROUP_ORDER.indexOf(a) + 100 * Number(!GROUP_ORDER.includes(a))) - (GROUP_ORDER.indexOf(b) + 100 * Number(!GROUP_ORDER.includes(b))))
+    .map((group) => ({ group, cards: services.filter((s) => (s.group ?? 'other') === group) }));
 
   return (
     <div className="space-y-6" data-testid="service-control-center">
@@ -160,71 +190,95 @@ export default function AdminServiceControlPage() {
 
       {data ? (
         <>
-          <KpiRow cols={3}>
+          <KpiRow cols={4}>
             <Kpi labelKey="svc_kpi_paused" icon={PauseCircle} value={`${paused} / ${services.length}`} />
-            <Kpi labelKey="svc_kpi_live" icon={PlayCircle} value={services.length - paused} accent={services.length - paused > 0} />
+            <Kpi labelKey="svc_kpi_live" icon={PlayCircle} value={`${services.length - paused} / ${services.length}`} accent={services.length - paused > 0} />
             <Kpi labelKey="svc_kpi_not_ready" icon={ShieldAlert} value={notReadyCount} />
+            <Kpi labelKey="svc_kpi_running_work" icon={RefreshCw} value={runningWork} />
           </KpiRow>
 
-          <Card className="border-destructive/30">
-            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="font-semibold">{t('svc_pause_all_title')}</p>
-                <p className="text-sm text-muted-foreground">{t('svc_pause_all_body')}</p>
-              </div>
-              <Button
-                variant="destructive"
-                disabled={busy !== null || !anyOn}
-                onClick={() => setPending({ kind: 'pause_all' })}
-                className="shrink-0"
-              >
-                {busy === 'all' ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <PauseCircle className="me-2 h-4 w-4" />}
-                {t('svc_pause_all_action')}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            {services.map((card) => (
-              <ServiceCardView
-                key={card.key}
-                card={card}
-                busy={busy === card.key}
-                locked={busy !== null}
-                when={when}
-                codeText={codeText}
-                onChange={(frontend, backend) => setPending({ kind: 'set', card, frontend, backend })}
-              />
-            ))}
-          </div>
+          {groups.map(({ group, cards }) => {
+            const running = cards.filter((c) => c.effective !== 'PAUSED').length;
+            const anyOn = cards.some((c) => c.backend || c.frontend);
+            return (
+              <section key={group} data-testid={`service-group-${group}`} className="space-y-3">
+                <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-2">
+                  <div className="min-w-0">
+                    <h2 className="font-display text-xl font-semibold">{t(groupName(group))}</h2>
+                    <p className="text-sm text-muted-foreground">{t('svc_group_count', { live: running, total: cards.length })}</p>
+                  </div>
+                  {group !== 'other' ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={busy !== null || !anyOn}
+                      onClick={() => setPending({ kind: 'pause_group', group, count: cards.length })}
+                      data-testid={`svc-pause-group-${group}`}
+                    >
+                      {busy === `group:${group}` ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <PauseCircle className="me-2 h-4 w-4" />}
+                      {t('svc_group_pause_action')}
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {cards.map((card) => (
+                    <ServiceCardView
+                      key={card.key}
+                      card={card}
+                      busy={busy === card.key}
+                      locked={busy !== null}
+                      when={when}
+                      codeText={codeText}
+                      onChange={(frontend, backend) => setPending({ kind: 'set', card, frontend, backend })}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
           <p className="text-xs text-muted-foreground">{t('svc_checked_at', { at: when(data.checkedAt) })}</p>
         </>
       ) : null}
 
-      <AlertDialog open={pending !== null} onOpenChange={(open) => { if (!open) { setPending(null); setReason(''); } }}>
+      <AlertDialog open={pending !== null} onOpenChange={(open) => { if (!open) { setPending(null); setReason(''); setTyped(''); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {pending?.kind === 'pause_all' ? t('svc_confirm_pause_all_title')
+              {pending?.kind === 'pause_group' ? t('svc_group_pause_title', { group: t(groupName(pending.group)) })
                 : pending ? t('svc_confirm_title', { service: t(SERVICE_NAME_KEYS[pending.card.key]) }) : ''}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {pending?.kind === 'pause_all' ? t('svc_confirm_pause_all_body')
+              {pending?.kind === 'pause_group' ? t('svc_group_pause_body')
                 : pending ? (
                   <>
                     {t(pending.backend ? 'svc_confirm_backend_on' : 'svc_confirm_backend_off')}{' '}
                     {t(pending.frontend ? 'svc_confirm_frontend_on' : 'svc_confirm_frontend_off')}
+                    {/* Turning a live product off is the one change customers notice at once. */}
+                    {!pending.backend && pending.card.effective !== 'PAUSED' && pending.card.failMode === 'OPEN'
+                      ? <span className="mt-2 block font-medium text-destructive">{t('svc_confirm_live_warning')}</span> : null}
                   </>
                 ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pending?.kind === 'pause_group' ? (
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">{t('svc_group_confirm_label', { token: pending.group })}</span>
+              <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false}
+                dir="ltr" className="font-mono" data-testid="svc-group-confirm-input" aria-describedby="svc-group-token" />
+              <span id="svc-group-token" className="sr-only">{pending.group}</span>
+            </label>
+          ) : null}
           <label className="block space-y-1.5 text-sm">
             <span className="font-medium">{t('svc_reason_label')}</span>
             <Textarea value={reason} maxLength={500} rows={3} onChange={(e) => setReason(e.target.value)} placeholder={t('svc_reason_placeholder')} />
           </label>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('svc_cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={(e) => { e.preventDefault(); void confirm(); }}>{t('svc_confirm_action')}</AlertDialogAction>
+            <AlertDialogAction
+              disabled={pending?.kind === 'pause_group' && typed.trim() !== pending.group}
+              onClick={(e) => { e.preventDefault(); void confirm(); }}
+            >{t('svc_confirm_action')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -268,6 +322,9 @@ function ServiceCardView({ card, busy, locked, when, codeText, onChange }: {
           <div className="min-w-0">
             <h2 className="font-display text-lg font-semibold">{t(SERVICE_NAME_KEYS[card.key])}</h2>
             <p className="text-sm text-muted-foreground">{t(DESCRIPTION_KEYS[card.key])}</p>
+            <p className="mt-1 text-xs text-muted-foreground" data-testid={`svc-failmode-${card.key}`}>
+              {t(card.failMode === 'OPEN' ? 'svc_failmode_open' : 'svc_failmode_closed')}
+            </p>
           </div>
           <Badge variant="outline" className={cn('shrink-0 gap-1.5', effective.tone)}>
             <effective.Icon className="h-3.5 w-3.5" aria-hidden="true" />{t(effective.key)}

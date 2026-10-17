@@ -99,6 +99,7 @@ async function open(t, { route, services, width = 1440, height = 900, signedIn =
   const page = await ctx.newPage();
   const serviceCalls = [];
   const directoryReads = [];
+  let rpcCalls = 0;
   await page.route('**', async (r) => {
     const req = r.request();
     const url = req.url();
@@ -110,7 +111,11 @@ async function open(t, { route, services, width = 1440, height = 900, signedIn =
       return r.fulfill(json((req.headers().accept ?? '').includes('vnd.pgrst.object') ? PAID_LISTING : [PAID_LISTING]));
     }
     if (LIVE_BACKENDS.some((s) => url.includes(`/functions/v1/${s}`))) serviceCalls.push({ url, action: (() => { try { return req.postDataJSON()?.action ?? null; } catch { return null; } })() });
-    if (url.includes(SERVICE_CONTROLS_RPC)) return r.fulfill(services === 'unreadable' ? json({ message: 'down' }, 500) : json(services));
+    if (url.includes(SERVICE_CONTROLS_RPC)) {
+      rpcCalls += 1;
+      const answer = typeof services === 'function' ? services(rpcCalls) : services;
+      return r.fulfill(answer === 'unreadable' ? json({ message: 'down' }, 500) : json(answer));
+    }
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/users')) return r.fulfill(json(profile));
@@ -165,13 +170,23 @@ test('paused live products: every direct URL shows "currently unavailable" and s
     for (const remembered of [null, pausedMemory]) {
       const { page, serviceCalls } = await open(t, { route: path, services: ALL_LIVE_OFF, remembered });
       const box = page.getByTestId('service-unavailable');
-      await box.waitFor({ timeout: 30_000 });
+      await box.waitFor({ timeout: 30_000 }).catch(async (e) => {
+        throw new Error(`${path} (${remembered ? 'remembered paused' : 'fresh browser'}): no "currently unavailable" after 30s; on screen: ${JSON.stringify((await page.evaluate(() => document.body.innerText)).slice(0, 200))}`, { cause: e });
+      });
       assert.equal(await box.getAttribute('data-service'), key, path);
       await page.waitForTimeout(500);
       if (remembered) assert.deepEqual(serviceCalls, [], `${path} called a backend although this browser knew it was paused`);
       else assert.deepEqual(serviceCalls.filter((c) => !READ_ONLY.has(c.action)), [], `${path} started work while paused`);
     }
   }
+});
+
+test('a first read that fails is retried within seconds, so a paused product does not linger', opts, async (t) => {
+  // Production CI, 2026-10-17: a transient error on the very first read left a paused live
+  // product mounted until the 60-second refresh. One failure, then the real (paused) answer.
+  const { page } = await open(t, { route: '/verify', services: (n) => (n === 1 ? 'unreadable' : ALL_LIVE_OFF) });
+  await page.getByTestId('service-unavailable').waitFor({ timeout: 15_000 });
+  assert.equal(await page.getByTestId('service-unavailable').getAttribute('data-service'), 'verify');
 });
 
 test('paused live products: the platform pages around them still open', opts, async (t) => {

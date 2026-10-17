@@ -134,11 +134,11 @@ function NotifRow({
   return (
     <li
       className={cn(
-        'group relative flex items-stretch border-b border-border/70 last:border-0',
+        'group relative flex items-stretch border-b border-[hsl(40_30%_90%)] last:border-0',
         'transition-colors motion-reduce:transition-none',
         /* Unread is a ground AND a rule at the leading edge. A tint alone is a colour
            cue, and colour alone is not an accessible state. */
-        unread ? 'bg-[hsl(var(--gold-soft))]/40' : 'bg-card',
+        unread ? 'bg-[hsl(42_100%_97%)]' : 'bg-white',
       )}
     >
       {unread && (
@@ -151,19 +151,21 @@ function NotifRow({
         type="button"
         onClick={() => onOpen(notif)}
         className={cn(
-          'flex min-w-0 flex-1 items-start gap-3 py-3.5 ps-4 pe-2 text-start',
-          'hover:bg-[hsl(var(--secondary))]/50 motion-reduce:transition-none',
+          'flex min-w-0 flex-1 items-start gap-3.5 py-4 ps-4 pe-2 text-start',
+          'hover:bg-[hsl(42_100%_98%)] motion-reduce:transition-none',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]',
         )}
       >
         <span
           className={cn(
-            'mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ring-1 ring-inset',
-            tone === 'accent'
-              ? 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] ring-[hsl(var(--gold-border))]'
-              : tone === 'alert'
-                ? 'bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))] ring-[hsl(var(--destructive))]/25'
-                : 'bg-[hsl(var(--secondary))] text-foreground/70 ring-border',
+            /* The HOMATCH mark's grammar (owner, 2026-10-17: premium, not grey): a navy tile
+               with a gold glyph; a failure keeps its destructive tone. */
+            'mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl ring-1 ring-inset',
+            tone === 'alert'
+              ? 'bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))] ring-[hsl(var(--destructive))]/25'
+              : tone === 'accent'
+                ? 'bg-[linear-gradient(135deg,hsl(218_52%_11%),hsl(218_48%_19%))] text-[hsl(40_94%_64%)] ring-[hsl(40_80%_55%/0.45)] shadow-[0_8px_18px_-12px_hsl(218_60%_15%/0.7)]'
+                : 'bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)] ring-transparent shadow-[0_8px_18px_-12px_hsl(218_60%_15%/0.7)]',
           )}
           aria-hidden="true"
         >
@@ -171,8 +173,8 @@ function NotifRow({
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs leading-5 text-muted-foreground">
-            <span className="min-w-0 truncate font-medium">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs leading-5 text-[hsl(218_28%_40%)]">
+            <span className="min-w-0 truncate font-semibold uppercase tracking-[0.04em] text-[hsl(34_90%_34%)]">
               {t((meta ? meta.categoryKey : CATEGORY_META[category].labelKey) as Parameters<typeof t>[0])}
             </span>
             <span aria-hidden="true">·</span>
@@ -199,14 +201,14 @@ function NotifRow({
           </span>
           <span
             className={cn(
-              'mt-0.5 block break-words font-display text-sm leading-snug',
-              unread ? 'font-semibold text-foreground' : 'font-medium text-foreground/85',
+              'mt-1 block text-pretty font-display text-[15px] leading-snug text-[hsl(218_45%_14%)] [overflow-wrap:anywhere]',
+              unread ? 'font-semibold' : 'font-medium',
             )}
           >
             {title}
           </span>
           {body ? (
-            <span className="mt-0.5 line-clamp-2 block break-words text-2xs leading-relaxed text-muted-foreground">
+            <span className="mt-1 line-clamp-3 block text-pretty text-xs leading-relaxed text-[hsl(218_28%_34%)] [overflow-wrap:anywhere]">
               {body}
             </span>
           ) : null}
@@ -436,8 +438,12 @@ function NotificationsContent() {
       <div className="hm-customer -mx-4 -my-6 min-h-[calc(100dvh-4rem)] bg-background px-4 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:-mx-6 md:-my-8 md:px-6 md:py-8">
         <div className="mx-auto w-full max-w-2xl space-y-5">
           <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-            <div className="min-w-0 flex-1 basis-56 space-y-1">
-              <h1 className="flex flex-wrap items-center gap-2 break-words font-display text-2xl font-semibold tracking-[-0.015em] text-foreground">
+            <div className="flex min-w-0 flex-1 basis-56 items-start gap-3.5">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,hsl(218_52%_11%),hsl(218_48%_19%))] text-[hsl(40_94%_64%)] shadow-[0_12px_26px_-16px_hsl(218_60%_15%/0.8)] ring-1 ring-inset ring-[hsl(40_80%_55%/0.45)]" aria-hidden="true">
+                <Bell className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1 space-y-1">
+              <h1 className="flex flex-wrap items-center gap-2 text-pretty font-display text-2xl font-semibold tracking-[-0.015em] text-[hsl(218_45%_14%)]">
                 {t('notif_title')}
                 {unreadTotal > 0 && (
                   <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-2 text-2xs font-semibold tabular-nums text-[hsl(var(--gold-ink))]">
@@ -446,9 +452,11 @@ function NotificationsContent() {
                   </span>
                 )}
               </h1>
-              <p className="max-w-prose break-words text-2xs leading-relaxed text-muted-foreground">
+              <p className="max-w-prose text-pretty text-xs leading-relaxed text-[hsl(218_28%_36%)]">
                 {t('notif_page_sub')}
               </p>
+              <span className="mt-2 block h-[3px] w-12 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
+              </div>
             </div>
             {hasUnread && (
               <button
@@ -469,7 +477,7 @@ function NotificationsContent() {
             )}
           </header>
 
-          <div role="group" aria-label={t('notif_filter_label')} className="inline-flex rounded-full border border-border bg-card p-1">
+          <div role="group" aria-label={t('notif_filter_label')} className="inline-flex rounded-full bg-white p-1 shadow-[0_6px_16px_-12px_hsl(218_60%_15%/0.5)] ring-1 ring-inset ring-[hsl(40_60%_82%)]">
             {(['ALL', 'UNREAD'] as const).map((value) => (
               <button
                 key={value}
@@ -480,8 +488,8 @@ function NotificationsContent() {
                   'inline-flex min-h-9 items-center rounded-full px-4 text-2xs font-semibold transition-colors motion-reduce:transition-none',
                   FOCUS,
                   filter === value
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground',
+                    ? 'bg-[hsl(218_52%_11%)] text-[hsl(40_94%_70%)]'
+                    : 'text-[hsl(218_28%_38%)] hover:text-[hsl(218_45%_14%)]',
                 )}
               >
                 {t(value === 'ALL' ? 'notif_filter_all' : 'notif_filter_unread')}
@@ -503,8 +511,8 @@ function NotificationsContent() {
                     'inline-flex min-h-9 max-w-full items-center rounded-full border px-3 text-2xs font-semibold transition-colors motion-reduce:transition-none',
                     FOCUS,
                     metaCategory === value
-                      ? 'border-foreground bg-foreground text-background'
-                      : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                      ? 'border-[hsl(218_52%_11%)] bg-[hsl(218_52%_11%)] text-[hsl(40_94%_70%)]'
+                      : 'border-[hsl(40_60%_82%)] bg-white text-[hsl(218_28%_38%)] hover:border-[hsl(38_92%_56%)] hover:text-[hsl(218_45%_14%)]',
                   )}
                 >
                   <span className="min-w-0 break-words text-start">
@@ -521,7 +529,7 @@ function NotificationsContent() {
           <section
             aria-label={t('notif_list_label')}
             aria-busy={loading}
-            className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_hsl(var(--foreground)/0.04)]"
+            className="overflow-hidden rounded-2xl bg-white shadow-[0_14px_34px_-22px_hsl(218_60%_15%/0.55)] ring-1 ring-inset ring-[hsl(40_60%_84%)]"
           >
             {loading ? (
               <SkeletonRows />
@@ -544,7 +552,7 @@ function NotificationsContent() {
             ) : rows.length === 0 ? (
               <div className="flex flex-col items-start gap-2 px-5 py-9">
                 <span
-                  className="grid h-10 w-10 place-items-center rounded-full bg-[hsl(var(--secondary))] text-foreground/70 ring-1 ring-inset ring-border"
+                  className="grid h-11 w-11 place-items-center rounded-xl bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)] shadow-[0_8px_18px_-12px_hsl(218_60%_15%/0.7)]"
                   aria-hidden="true"
                 >
                   <Bell className="h-4 w-4" />

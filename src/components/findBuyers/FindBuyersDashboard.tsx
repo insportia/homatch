@@ -198,11 +198,17 @@ export function FindBuyersDashboard({
             {previous.slice(0, 10).map((c) => (
               <li key={c.jobId}>
                 <Link to={resultsHref(c.jobId)} data-testid="fbd-previous-item" data-job={c.jobId}
-                  className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_50%)]">
-                  <span className="min-w-0 flex-1 break-words font-medium text-[hsl(218_45%_14%)]" dir="auto">{fmt(c.createdAt)}</span>
-                  <StateChip state={c.state} />
-                  <span className={cn('shrink-0 text-2xs', SOFT)}>{t('fbrx_previous_people', { n: String(c.total) })}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-[hsl(218_28%_50%)] rtl:rotate-180" aria-hidden="true" />
+                  className="flex min-h-12 items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-[hsl(42_100%_98%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_50%)]">
+                  {/* Date on its own line, status and people under it (owner, 2026-10-17): in one
+                      wrapping row the date was squeezed to zero width and broke per character. */}
+                  <span className="min-w-0 flex-1">
+                    <span className="block whitespace-nowrap font-medium tabular-nums text-[hsl(218_45%_14%)]" dir="auto">{fmt(c.createdAt)}</span>
+                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <StateChip state={c.state} />
+                      <span className={cn('text-2xs font-semibold', SOFT)}>{t('fbrx_previous_people', { n: String(c.total) })}</span>
+                    </span>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-[hsl(34_90%_40%)] rtl:rotate-180" aria-hidden="true" />
                 </Link>
               </li>
             ))}

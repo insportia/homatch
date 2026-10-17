@@ -20420,6 +20420,15 @@ const en = {
   fbx_admin_requalify_done: 'Results re-checked with the current rules',
   fbx_admin_requalify_shown_now: 'Shown now',
   fbx_admin_requalify_shown_after: 'Shown after (strong/potential/weak)',
+
+  /* ── PANEL POLISH — earlier matches band, opened contacts choice, push turn off ── */
+  notif_push_turn_off: 'Turn off',
+  fbrx_legacy_hint: 'From earlier internal searches. The current search’s people are above.',
+  fbrx_legacy_expand: 'Show them',
+  fbrx_legacy_collapse: 'Hide the list',
+  fbrx_legacy_hide: 'Remove from my lists',
+  fbrx_clear_include_opened: 'Also hide the contacts you already opened: {{n}}',
+  fbrx_clear_include_opened_hint: 'They leave these lists only. Nothing is deleted, and the payment and contact record stay.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40754,6 +40763,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbx_admin_requalify_done: 'შედეგები თავიდან შემოწმდა მიმდინარე წესებით',
   fbx_admin_requalify_shown_now: 'ახლა ჩანს',
   fbx_admin_requalify_shown_after: 'შემდეგ ჩანს (ძლიერი/პოტენციური/სუსტი)',
+
+  /* ── PANEL POLISH — earlier matches band, opened contacts choice, push turn off ── */
+  notif_push_turn_off: 'გამორთვა',
+  fbrx_legacy_hint: 'ადრინდელი შიდა ძიებებიდან. მიმდინარე ძიების ადამიანები ზემოთაა.',
+  fbrx_legacy_expand: 'ნახვა',
+  fbrx_legacy_collapse: 'სიის დაკეცვა',
+  fbrx_legacy_hide: 'სიებიდან მოშორება',
+  fbrx_clear_include_opened: 'ასევე დაიმალოს უკვე გახსნილი კონტაქტები: {{n}}',
+  fbrx_clear_include_opened_hint: 'ისინი მხოლოდ ამ სიებიდან გაქრება. არაფერი იშლება — გადახდა და კონტაქტის ჩანაწერი რჩება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61079,6 +61097,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbx_admin_requalify_done: 'Результаты перепроверены по текущим правилам',
   fbx_admin_requalify_shown_now: 'Показано сейчас',
   fbx_admin_requalify_shown_after: 'Будет показано (сильные/возможные/слабые)',
+
+  /* ── PANEL POLISH — earlier matches band, opened contacts choice, push turn off ── */
+  notif_push_turn_off: 'Выключить',
+  fbrx_legacy_hint: 'Из прежних внутренних поисков. Люди из текущего поиска — выше.',
+  fbrx_legacy_expand: 'Показать',
+  fbrx_legacy_collapse: 'Свернуть список',
+  fbrx_legacy_hide: 'Убрать из моих списков',
+  fbrx_clear_include_opened: 'Скрыть и уже открытые контакты: {{n}}',
+  fbrx_clear_include_opened_hint: 'Они исчезнут только из этих списков. Ничего не удаляется — оплата и запись контакта сохраняются.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81402,6 +81429,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbx_admin_requalify_done: 'Sonuçlar güncel kurallarla yeniden denetlendi',
   fbx_admin_requalify_shown_now: 'Şu an gösterilen',
   fbx_admin_requalify_shown_after: 'Sonra gösterilecek (güçlü/olası/zayıf)',
+
+  /* ── PANEL POLISH — earlier matches band, opened contacts choice, push turn off ── */
+  notif_push_turn_off: 'Kapat',
+  fbrx_legacy_hint: 'Önceki iç aramalardan. Güncel aramanın kişileri yukarıda.',
+  fbrx_legacy_expand: 'Göster',
+  fbrx_legacy_collapse: 'Listeyi kapat',
+  fbrx_legacy_hide: 'Listelerimden kaldır',
+  fbrx_clear_include_opened: 'Daha önce açtığınız kişileri de gizle: {{n}}',
+  fbrx_clear_include_opened_hint: 'Yalnızca bu listelerden kalkar. Hiçbir şey silinmez; ödeme ve kişi kaydı kalır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101725,6 +101761,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbx_admin_requalify_done: 'تمت إعادة فحص النتائج بالقواعد الحالية',
   fbx_admin_requalify_shown_now: 'المعروض الآن',
   fbx_admin_requalify_shown_after: 'المعروض بعدها (قوي/محتمل/ضعيف)',
+
+  /* ── PANEL POLISH — earlier matches band, opened contacts choice, push turn off ── */
+  notif_push_turn_off: 'إيقاف',
+  fbrx_legacy_hint: 'من عمليات بحث داخلية سابقة. أشخاص البحث الحالي في الأعلى.',
+  fbrx_legacy_expand: 'عرضها',
+  fbrx_legacy_collapse: 'طيّ القائمة',
+  fbrx_legacy_hide: 'إزالتها من قوائمي',
+  fbrx_clear_include_opened: 'إخفاء جهات الاتصال التي فتحتها أيضًا: {{n}}',
+  fbrx_clear_include_opened_hint: 'تختفي من هذه القوائم فقط. لا يُحذف شيء، ويبقى الدفع وسجل جهة الاتصال.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -122048,6 +122093,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbx_admin_requalify_done: 'התוצאות נבדקו מחדש לפי הכללים הנוכחיים',
   fbx_admin_requalify_shown_now: 'מוצג עכשיו',
   fbx_admin_requalify_shown_after: 'יוצג אחרי (חזק/אפשרי/חלש)',
+
+  /* ── PANEL POLISH — earlier matches band, opened contacts choice, push turn off ── */
+  notif_push_turn_off: 'כיבוי',
+  fbrx_legacy_hint: 'מחיפושים פנימיים קודמים. האנשים מהחיפוש הנוכחי מופיעים למעלה.',
+  fbrx_legacy_expand: 'הצגה',
+  fbrx_legacy_collapse: 'סגירת הרשימה',
+  fbrx_legacy_hide: 'הסרה מהרשימות שלי',
+  fbrx_clear_include_opened: 'להסתיר גם אנשי קשר שכבר פתחתם: {{n}}',
+  fbrx_clear_include_opened_hint: 'הם יוסרו רק מהרשימות האלה. דבר אינו נמחק — התשלום ורשומת איש הקשר נשמרים.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

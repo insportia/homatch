@@ -71,10 +71,12 @@ function CardHead({ title, action }: { title: string; action?: React.ReactNode }
     /* A fixed header height, not a truncated title: a two-line group name
        (Georgian and Russian both run long) wraps inside the same 3.5rem band,
        so the header rules of adjacent columns still line up. */
-    <div className="flex min-h-[3.5rem] items-center justify-between gap-3 border-b border-border px-5 py-3">
-      <h2 className="flex min-w-0 items-center gap-2.5 text-balance text-[16px] font-semibold uppercase leading-tight tracking-[0.08em] text-foreground">
+    <div className="flex min-h-[3.5rem] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-border px-5 py-3">
+      {/* The title keeps whole words (owner, 2026-10-17: no letter-by-letter wrapping on a
+          phone); the action moves under it instead of squeezing it. */}
+      <h2 className="flex min-w-0 flex-[1_1_11rem] items-center gap-2.5 text-pretty text-[15px] font-semibold uppercase leading-snug tracking-[0.04em] text-foreground sm:text-[16px] sm:tracking-[0.08em]">
         <span className="h-4 w-1 shrink-0 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
-        <span className="min-w-0 break-words">{title}</span>
+        <span className="min-w-0 [overflow-wrap:anywhere] [word-break:normal]">{title}</span>
       </h2>
       {action}
     </div>
@@ -126,12 +128,14 @@ function Count({ icon: Icon, label, value, note, loading, onClick, testId }: {
 }) {
   const body = (
     <>
-      <span className="flex min-w-0 items-start gap-2.5">
+      {/* Icon above the label (owner, 2026-10-17): beside it, a two-column phone cell left the
+          label ~80px and long Georgian words broke letter by letter. */}
+      <span className="flex min-w-0 flex-col items-start gap-2.5">
         {/* Premium, not grey: the navy disc and gold glyph of the HOMATCH mark. */}
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)] shadow-[0_8px_18px_-12px_hsl(218_60%_15%/0.7)]" aria-hidden="true">
           <Icon className="h-[17px] w-[17px]" strokeWidth={1.8} />
         </span>
-        <span className="min-w-0 break-words pt-0.5 text-2xs font-semibold uppercase leading-snug tracking-[0.08em] text-[hsl(218_28%_38%)]">
+        <span className="block w-full min-w-0 text-pretty text-2xs font-semibold uppercase leading-snug tracking-[0.03em] text-[hsl(218_28%_38%)] [overflow-wrap:anywhere] [word-break:normal] sm:tracking-[0.06em]">
           {label}
         </span>
       </span>
@@ -149,7 +153,7 @@ function Count({ icon: Icon, label, value, note, loading, onClick, testId }: {
       )}
     </>
   );
-  const cls = 'relative block h-full w-full min-w-0 px-5 py-5 text-start sm:px-6 sm:py-6';
+  const cls = 'relative block h-full w-full min-w-0 px-4 py-5 text-start sm:px-6 sm:py-6';
   return onClick ? (
     <button type="button" onClick={onClick} data-testid={testId}
       className={`${cls} transition-colors hover:bg-[hsl(40_60%_97%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_50%)]`}>
@@ -780,9 +784,9 @@ function DashboardContent() {
               </span>
               <h2 className="mt-4 text-sm font-semibold text-foreground">{t('db_mortgage_title')}</h2>
               <p className="mt-2 max-w-xs text-pretty text-xs leading-relaxed text-muted-foreground">{t('db_mortgage_body')}</p>
-              <Button className="mt-5 h-10 gap-2 rounded-full px-5 text-sm" onClick={() => navigate('/mortgage')}>
-                {t('db_mortgage_cta')}
-                <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+              <Button className="mt-5 h-auto min-h-11 max-w-full gap-2 whitespace-normal rounded-full px-5 py-2.5 text-center text-sm leading-snug" onClick={() => navigate('/mortgage')}>
+                <span className="min-w-0 text-pretty">{t('db_mortgage_cta')}</span>
+                <ArrowRight className={`h-4 w-4 shrink-0 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
               </Button>
             </div>}
 

@@ -156,6 +156,7 @@ async function boot(t, { width = 390, height = 844, lang = 'en', status = { read
     if (url.includes('/rest/v1/matching_jobs') && req.method() === 'GET' && url.includes('id=in.')) return r.fulfill(json(jobs));
     if (url.includes('/rest/v1/matching_jobs')) return r.fulfill(json(wantsObject ? { id: 'job-new' } : [{ id: 'job-new' }]));
     if (url.includes('/rpc/find_buyers_clear_results_preview')) { calls.clearPreview += 1; return r.fulfill(json(clearPreview)); }
+    if (url.includes('/rpc/find_buyers_hide_opened_contacts')) { calls.hideOpened = (calls.hideOpened ?? 0) + 1; return r.fulfill(json({ openedHidden: 14 })); }
     if (url.includes('/rpc/find_buyers_clear_results')) {
       calls.clear += 1;
       /* The server hides the completed searches' leads: the view no longer returns them. */
@@ -478,7 +479,8 @@ test('clear old results: preview → explicit confirm → RPC → every list re-
   assert.equal(await page.getAttribute('[data-testid="fbd-clear-leads"]', 'data-n'), '14');
   assert.equal(await page.getAttribute('[data-testid="fbd-clear-matches"]', 'data-n'), '74');
   assert.equal(await page.locator('[data-testid="fbd-clear-kept"] li').count(), 4, 'what is NOT deleted is listed');
-  assert.equal(await page.getAttribute('[data-testid="fbd-clear-unlocked-kept"]', 'data-n'), '14', 'paid-for contacts stay available, and the dialog says so');
+  assert.equal(await page.getAttribute('[data-testid="fbd-clear-opened"]', 'data-n'), '14', 'paid-for contacts are offered as a separate choice');
+  assert.equal(await page.isChecked('[data-testid="fbd-clear-opened-box"]'), false, 'hiding opened contacts is never the default here');
   await page.click('[data-testid="fbd-clear-cancel"]');
   await page.waitForSelector('[data-testid="fbd-clear-dialog"]', { state: 'detached', timeout: 10000 });
   assert.equal(calls.clear, 0, 'cancel clears nothing');
@@ -487,6 +489,7 @@ test('clear old results: preview → explicit confirm → RPC → every list re-
   await page.click('[data-testid="fbd-clear-confirm"]');
   await page.waitForSelector('[data-testid="fbd-clear-dialog"]', { state: 'detached', timeout: 15000 });
   assert.equal(calls.clear, 1);
+  assert.equal(calls.hideOpened ?? 0, 0, 'opened contacts stay unless the owner ticks the box');
   await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest-people"]')?.textContent?.trim() === '0', null, { timeout: 15000 });
   assert.equal(await textOf(page, '[data-testid="fbd-latest-opportunities"]'), '0');
   await page.click('[data-testid="fbd-latest-open"]');

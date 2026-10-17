@@ -43,6 +43,7 @@ import {
   Globe, Languages, LayoutDashboard, Mail, MapPin, Phone, Radar, Search, Store, X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { Link, useNavigate } from 'react-router-dom';
 import { listMyDiscoveredBrokers, listMyDiscoveredBrokerEvidence, recordBrokerProfileEvent, type DiscoveredBroker } from '@/services/brokers';
 import { brokerDeskSummary, type BrokerProfile } from '@/services/brokerDesk';
@@ -221,6 +222,7 @@ function ProfessionalBar() {
   const signedIn = status === 'AUTHENTICATED';
   const professional = homatchUser?.account_type === 'BROKER' || homatchUser?.account_type === 'AGENCY';
   const [mine, setMine] = useState<BrokerProfile | null | undefined>(undefined);
+  const deskVisible = useServiceVisible('broker_desk');
 
   useEffect(() => {
     if (!signedIn) { setMine(null); return; }
@@ -229,6 +231,9 @@ function ProfessionalBar() {
     return () => { live = false; };
   }, [signedIn]);
 
+  // The bar leads into the Broker Desk; while the desk is paused (Admin → Service
+  // Control Center) it is not shown, and the directory reads as before without it.
+  if (!deskVisible) return null;
   if (mine === undefined) return <Skeleton className="h-20 rounded-2xl" />;
   const arrow = <ArrowRight className={cn('h-4 w-4', isRTL && 'rotate-180')} aria-hidden="true" />;
   const primary = 'inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';

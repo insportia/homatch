@@ -5,6 +5,25 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Service Control Center EXPANSION — every manageable product (branch claude/homatch-property-publishing-g50stw, 2026-10-16) — PR OPEN, NOT MERGED, NOT DEPLOYED
+
+- Fourteen live products are added to the same `service_controls` table, in groups:
+  - discovery: find_property, find_property_deep, find_buyers;
+  - intelligence: verify, contracts, mortgage, investment, for_expats;
+  - marketing: meta_ads, email_campaigns;
+  - assistant: ai_assistant;
+  - professionals: brokers_directory, broker_desk, developers.
+- Inventory: `docs/claude/SERVICE_CONTROLS_INVENTORY.md`. Runbook: `docs/claude/SERVICE_CONTROLS.md`.
+- Migration `20261110090000_service_controls_expand.sql` is **UNAPPLIED; owner approval required**. When applied, it:
+  - leaves the six rows untouched;
+  - seeds the fourteen ON/ON;
+  - adds `service_group`;
+  - adds `service_control_pause_group` (typed confirmation);
+  - narrows `pause_all` to the six;
+  - adds the broker listing insert guard.
+- Live products **fail open**, and a missing row means ON, so the code is safe to deploy before the migration. Their own settings (`find_property_social_enabled`, the email/SMS sending switches, `meta_ads_*`) are unchanged.
+- No global kill switch: the Admin page shows per-group pause only.
+
 ## Service Control Center — six services paused from Admin (branch claude/homatch-property-publishing-g50stw, 2026-10-16)
 
 - Owner decision 2026-10-16: **Publishing, AI Call Center, AI TALK, WhatsApp, Live Chat, Design Studio** paused (all six OFF), not deleted. Runbook and full entry-point map: `docs/claude/SERVICE_CONTROLS.md`.

@@ -43,7 +43,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
+import { usePathAvailable, useServiceControls, useServiceVisible, type ServiceKey } from '@/lib/serviceControls';
 
 interface NavItem {
   key: string;
@@ -292,10 +292,13 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
   }, [drawerOpen]);
 
   const services = useServiceControls().services;
+  /* Every item whose address belongs to a paused service goes, whether or not it names a
+     gate (src/lib/serviceControls/routes.ts); a group left empty goes with it. */
+  const pathAvailable = usePathAvailable();
   const nav = NAV
     .map(group => ({
       ...group,
-      items: group.items.filter(item => !item.gate || services[item.gate].frontend),
+      items: group.items.filter(item => (!item.gate || services[item.gate].frontend) && pathAvailable(item.path)),
     }))
     .filter(group => group.items.length > 0);
 
@@ -627,6 +630,8 @@ function TopbarAsk() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [value, setValue] = useState('');
+  // The box asks the assistant; while the assistant is paused it is not offered.
+  if (!useServiceVisible('ai_assistant')) return null;
 
   return (
     <form

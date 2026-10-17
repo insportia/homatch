@@ -27,6 +27,8 @@ export function brokerErrorKey(code: string): TranslationKey {
     VERIFICATION_CLOSED: 'broker_err_verification_closed',
     INVALID_TRANSITION: 'broker_err_invalid_transition',
     MATCH_CLOSED: 'broker_err_match_closed',
+    // Brokers directory sales paused (Service Control Center): nothing was charged.
+    SERVICE_DISABLED: 'broker_err_sales_paused',
   };
   return known[code] ?? 'broker_apply_err_generic';
 }

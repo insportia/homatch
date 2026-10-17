@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 import { UnreadBadge } from '@/components/common/UnreadBadge';
-import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
+import { usePathAvailable, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 const navItems = [
   { key: 'nav_dashboard',     path: '/dashboard',      icon: LayoutDashboard },
@@ -60,7 +60,9 @@ const navItems = [
 
 export function AppHeader() {
   const services = useServiceControls().services;
-  const visibleNav = navItems.filter((item) => !('gate' in item) || !item.gate || services[item.gate].frontend);
+  const pathAvailable = usePathAvailable();
+  // A paused service's item goes, by gate or by address (src/lib/serviceControls/routes.ts).
+  const visibleNav = navItems.filter((item) => (!('gate' in item) || !item.gate || services[item.gate].frontend) && pathAvailable(item.path));
   const { session, homatchUser, signOut } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -158,8 +160,8 @@ export function AppHeader() {
                 />
               </Button>
 
-              {/* Ask AI shortcut */}
-              <Button
+              {/* Ask AI shortcut (not offered while the assistant is paused) */}
+              {pathAvailable('/ai') && <Button
                 variant="ghost"
                 size="sm"
                 className="hidden md:flex gap-1.5 text-primary hover:text-primary h-8"
@@ -167,7 +169,7 @@ export function AppHeader() {
               >
                 <Bot className="h-4 w-4" />
                 <span className="text-xs font-medium">{t('nav_ask_ai_short')}</span>
-              </Button>
+              </Button>}
 
               {/* Add property */}
               <Button

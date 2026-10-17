@@ -49,6 +49,7 @@ import {
   planReadiness,
   planToIntentProfile,
 } from '../../../src/research-core/discovery/search-plan.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -194,6 +195,10 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const mode = String(body.mode ?? 'draft');
+    // SERVICE CONTROL (key `find_property`): no new plan or saved search while paused.
+    if ((mode === 'draft' || mode === 'confirm') && !(await serviceBackendEnabled(db, 'find_property'))) {
+      return json(serviceDisabledBody('find_property'), 503);
+    }
 
     /* ── DRAFT: read the sentence, propose a plan, run nothing ───────────── */
     if (mode === 'draft') {

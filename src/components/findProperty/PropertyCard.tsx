@@ -1,5 +1,6 @@
 import { ArrowRight, Bookmark, BookmarkCheck, Check, MapPin } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { assessProperty } from '@/research-core/marketplace/advisor';
 import type { SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
@@ -97,7 +98,11 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
         </div>
         {size || floor || f.pricePerSqmUsd ? <p className="text-sm text-muted-foreground">{[size, floor, f.pricePerSqmUsd ? t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) }) : null].filter(Boolean).join(' · ')}</p> : null}
         <p className="text-sm leading-relaxed text-foreground/90" data-advisor-summary>
-          <span className={`me-2 inline-flex rounded-full px-2 py-0.5 align-[1px] text-2xs font-semibold ${VERDICT_TONE[assessment.verdict]}`} data-match-badge>{t(`fpv_verdict_${assessment.verdict}`)}</span>
+          {assessment.verdict === 'TOP'
+            // The best-match label opens the page that lists every best match of this search.
+            ? <Link to={{ search: '?view=best&fp_strongOnly=true&page=1' }} data-match-badge data-action="open-best-from-card"
+              className={`me-2 inline-flex rounded-full px-2 py-0.5 align-[1px] text-2xs font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0C1119] ${VERDICT_TONE.TOP}`}>{t('fpv_verdict_TOP')}</Link>
+            : <span className={`me-2 inline-flex rounded-full px-2 py-0.5 align-[1px] text-2xs font-semibold ${VERDICT_TONE[assessment.verdict]}`} data-match-badge>{t(`fpv_verdict_${assessment.verdict}`)}</span>}
           <span dir="auto">{summary}</span>
         </p>
         {p.upgrade && p.upgrade.overMaxPct !== null && f.priceUsd != null && brief.price?.value.max != null ? (

@@ -23,6 +23,13 @@ export const allhome = {
   workerId: 'allhome-agent', sourceId: 'allhome-ge', sourceName: 'Allhome.ge', envPrefix: 'ALLHOME', origin: 'https://www.allhome.ge',
   deepMaxPages: 6, filtersAfterRead: true, maxPages: 1, pagesIndependent: true, listCacheMs: 6 * 60 * 60 * 1000,
   detailLimit: 24, detailIntervalMs: 900, pageIntervalMs: 1000,
+  /* Worker-local index (../index/PortalIndex.mjs): the sitemap does not state the city, so
+     one window per deal serves every mapped city; the city is checked after reading. */
+  indexed: true, indexCityAgnostic: true,
+  indexSegments: [
+    { transactionType: 'BUY', propertyType: 'APARTMENT', city: 'Tbilisi', cap: 3000 },
+    { transactionType: 'MONTHLY_RENT', propertyType: 'APARTMENT', city: 'Tbilisi', cap: 3000 },
+  ],
   criteria(request) {
     const city = CITY[String(request.city ?? '').trim().toLowerCase()];
     if (!city) throw unsupported('Allhome.ge is mapped for Tbilisi, Batumi, Kutaisi and Rustavi only');

@@ -12,6 +12,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CalendarCheck2, ChevronDown, Loader2, Pause, Play, Radar, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { GOLD_FILL, GOLD_TEXT, NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
 import { SearchNetworkField } from '@/components/findBuyers/SearchNetworkField';
@@ -99,6 +100,10 @@ export function LiveSearchModule({
   id?: string;
 }) {
   const { t, lang } = useLanguage();
+  /* The per-source list, per-language outcomes and the search report (with its research
+     notes) are operator diagnostics: shown to admins only (owner, 2026-10-17). */
+  const { homatchUser } = useAuth();
+  const operator = Boolean(homatchUser?.is_admin);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const c = status?.campaign ?? null;
   const view = c ? campaignView({
@@ -253,7 +258,7 @@ export function LiveSearchModule({
               </div>
             )}
             {/* Per source, in words: what was READ is never what was FOUND. */}
-            {ran.length > 0 && (
+            {operator && ran.length > 0 && (
               <ul className="space-y-1.5" data-testid="fbl-source-outcomes">
                 {ran.map((n) => (
                   <li key={n.source} data-source={n.source} className="rounded-xl bg-white/[0.04] px-3 py-2 text-2xs leading-relaxed ring-1 ring-inset ring-white/10">
@@ -271,13 +276,13 @@ export function LiveSearchModule({
               </ul>
             )}
             {ran.length === 0 && live && <p className={cn('text-2xs', ON_NAVY_SOFT)} dir="auto">{t('fbl_preparing_note')}</p>}
-            {c?.jobId && engaged && <LanguageOutcomes jobId={c.jobId} refreshKey={`${c.state}:${c.newResults}`} />}
+            {operator && c?.jobId && engaged && <LanguageOutcomes jobId={c.jobId} refreshKey={`${c.state}:${c.newResults}`} />}
             <SearchDna facts={facts} onDark />
             <p className={cn('flex items-center gap-1.5 text-2xs', ON_NAVY_SOFT)}>
               <CalendarCheck2 className={cn('h-3.5 w-3.5 shrink-0', GOLD_TEXT)} aria-hidden="true" />{t('fbx_fresh_rule')}
             </p>
             {/* the search report: live and partial while running, final after */}
-            {c?.jobId && engaged && <CampaignReport jobId={c.jobId} live={live} refreshKey={c.lastActivityAt ?? c.state} />}
+            {operator && c?.jobId && engaged && <CampaignReport jobId={c.jobId} live={live} refreshKey={c.lastActivityAt ?? c.state} />}
           </div>
         )}
       </div>

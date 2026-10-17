@@ -275,7 +275,10 @@ test('primary view is simple; technical detail is one collapsed disclosure; the 
   assert.equal(await page.locator('[data-testid="fbr-report"]').count(), 0, 'report collapsed');
   assert.equal(await page.getAttribute('[data-testid="fbl-details-toggle"]', 'aria-expanded'), 'false');
   await page.click('[data-testid="fbl-details-toggle"]');
-  await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 5000 });
+  await page.waitForSelector('[data-testid="fbl-details"]', { timeout: 5000 });
+  /* Owner, 2026-10-17: no per-source / per-language lists and no search report for owners. */
+  assert.equal(await page.locator('[data-testid="fbl-source-outcomes"]').count(), 0);
+  assert.equal(await page.locator('[data-testid="fbr-report"]').count(), 0);
 });
 
 test('three tabs, real counts; sellers, brokers and rejected readings never listed; weak and unconfirmed need verification', opts, async (t) => {

@@ -700,7 +700,7 @@ const REAL_RUN = {
 };
 
 test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; READY now; Telegram searched, social off', opts, async (t) => {
-  const { page } = await boot(t, { status: REAL_RUN });
+  const { page } = await boot(t, { status: REAL_RUN, admin: true });
   await open(page);
   await openDetails(page);
   await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
@@ -733,7 +733,7 @@ const PLANNER_FAILED = {
 test('only Telegram ran because the social planner failed: the owner sees what worked, not our failure, in en/ka/ar at 1440 and 390', opts, async (t) => {
   const failures = [];
   for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ar']]) {
-    const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED });
+    const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED, admin: true });
     await open(page);
     await openDetails(page);
     await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });

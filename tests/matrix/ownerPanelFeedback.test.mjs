@@ -51,3 +51,11 @@ test('the broker add-on is a premium switch with its price stated, never a liter
   assert.match(panel, /campaign_broker_opt_price/);
   assert.doesNotMatch(panel, /type="checkbox"[\s\S]{0,120}discoverBrokers/);
 });
+
+test('admins can re-check stored results with the current rules: preview, then an explicit apply', () => {
+  const tools = read('src/components/admin/FindBuyersTestTools.tsx');
+  assert.match(tools, /requalifyProperty\(id, false\)/, 'preview is a dry run');
+  assert.match(tools, /disabled=\{!rqPreview \|\| rqPreview\.propertyId !== rqProperty\.trim\(\) \|\| busy !== null\} data-testid="fbx-requalify-apply"/, 'apply only after a preview of the same property');
+  const svc = read('src/services/findBuyers.ts');
+  assert.match(svc, /mode: 'admin_requalify', matchingJobId: c\.matching_job_id, apply/);
+});

@@ -240,6 +240,30 @@ export async function auditCommentCounts(matchingJobId: string) {
   return data as { success: boolean; error?: string; runs?: number; total?: Record<string, number>; counterFields?: Record<string, number>; topKeys?: string[] };
 }
 
+/**
+ * Re-judge every stored lead of a property's searches with the CURRENT qualification
+ * (admin_requalify per campaign; no provider call, no charge). Dry run unless `apply`:
+ * applying rewrites only the category/reasons/fit columns, keeps the previous reading in
+ * qualification.before and deletes nothing; REJECTED rows leave the owner's lists.
+ */
+export interface RequalifySummary { jobId: string; before: number; after: Record<string, number>; error?: string }
+export async function requalifyProperty(propertyId: string, apply: boolean): Promise<RequalifySummary[]> {
+  const { data: campaigns, error } = await supabase.from('find_buyers_campaigns').select('matching_job_id,created_at')
+    .eq('property_id', propertyId).order('created_at', { ascending: false }).limit(50);
+  if (error) throw new Error(error.message);
+  const out: RequalifySummary[] = [];
+  for (const c of (campaigns ?? []) as Array<{ matching_job_id: string }>) {
+    const { data, error: e } = await supabase.functions.invoke('discovery-queue-worker', { body: { mode: 'admin_requalify', matchingJobId: c.matching_job_id, apply } });
+    /* after = summarize(): { candidates, shown, byCategory, byRole, byReason } (requalify.ts). */
+    const d = (data ?? {}) as { success?: boolean; error?: string; before?: number; after?: { byCategory?: Record<string, number> } };
+    const cats = d.after?.byCategory ?? {};
+    const after: Record<string, number> = {};
+    for (const k of ['STRONG', 'POTENTIAL', 'WEAK', 'REJECTED']) if (typeof cats[k] === 'number') after[k] = cats[k];
+    out.push({ jobId: c.matching_job_id, before: Number(d.before ?? 0), after, error: e ? e.message : d.success === false ? d.error ?? 'FAILED' : undefined });
+  }
+  return out;
+}
+
 /** The one-campaign test cap (testCap.ts): read and write through admin_settings, admins only (RLS). */
 export async function getFindBuyersTestCap(): Promise<unknown> {
   const { data, error } = await supabase.from('admin_settings').select('value').eq('key', 'find_buyers_test_cap').maybeSingle();

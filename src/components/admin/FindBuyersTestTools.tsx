@@ -9,13 +9,16 @@
 //                       and every other owner are untouched.
 //   Comment audit       how a campaign's Facebook post results reported comment counts,
 //                       read from stored datasets (no Actor run, no charge, no text shown).
+//   Re-check results    every stored lead of a property's searches judged again with the
+//                       current qualification: preview first, then apply (no charge; nothing
+//                       deleted — the previous reading stays in qualification.before).
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { auditCommentCounts, getFindBuyersTestCap, setFindBuyersSetting, usd, verifyActorFromApify } from '@/services/findBuyers';
+import { auditCommentCounts, getFindBuyersTestCap, requalifyProperty, setFindBuyersSetting, usd, verifyActorFromApify, type RequalifySummary } from '@/services/findBuyers';
 import { REGISTRY_SEEDS } from '@/findBuyers/actorCatalog';
 import { parseTestCap, TEST_CAP_MAX_USD } from '@/findBuyers/testCap';
 
@@ -31,6 +34,9 @@ export function FindBuyersTestTools({ registered, onChanged }: { registered: str
   const [hours, setHours] = useState('48');
   const [jobId, setJobId] = useState('');
   const [audit, setAudit] = useState<unknown>(null);
+  const [rqProperty, setRqProperty] = useState('');
+  const [rqPreview, setRqPreview] = useState<{ propertyId: string; rows: RequalifySummary[] } | null>(null);
+  const [rqApplied, setRqApplied] = useState<RequalifySummary[] | null>(null);
 
   const loadCap = useCallback(async () => {
     try { setCap(parseTestCap(await getFindBuyersTestCap())); } catch { setCap(null); }
@@ -121,6 +127,51 @@ export function FindBuyersTestTools({ registered, onChanged }: { registered: str
           </Button>
         </div>
         {audit ? <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted/40 p-2 text-2xs" dir="ltr">{JSON.stringify(audit, null, 2)}</pre> : null}
+      </div>
+
+      {/* Re-check stored results with the current rules: a preview, then an explicit apply. */}
+      <div className="rounded-xl border border-border p-3" data-testid="fbx-requalify">
+        <p className="text-sm font-semibold">{t('fbx_admin_requalify_title')}</p>
+        <p className="mt-0.5 text-2xs text-muted-foreground">{t('fbx_admin_requalify_hint')}</p>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-2xs">{t('fbx_admin_requalify_property')}
+            <input className={FIELD} dir="ltr" value={rqProperty} data-testid="fbx-requalify-property"
+              onChange={(e) => { setRqProperty(e.target.value); setRqPreview(null); setRqApplied(null); }} />
+          </label>
+          <Button size="sm" variant="outline" disabled={!UUID.test(rqProperty.trim()) || busy !== null} data-testid="fbx-requalify-preview"
+            onClick={() => run('rq-preview', async () => {
+              const id = rqProperty.trim();
+              setRqApplied(null);
+              setRqPreview({ propertyId: id, rows: await requalifyProperty(id, false) });
+            })}>
+            {busy === 'rq-preview' ? <Loader2 className="me-1 h-3.5 w-3.5 motion-safe:animate-spin" /> : null}{t('fbx_admin_requalify_preview')}
+          </Button>
+          <Button size="sm" disabled={!rqPreview || rqPreview.propertyId !== rqProperty.trim() || busy !== null} data-testid="fbx-requalify-apply"
+            onClick={() => run('rq-apply', async () => {
+              const rows = await requalifyProperty(rqPreview!.propertyId, true);
+              setRqApplied(rows);
+              toast.success(t('fbx_admin_requalify_done'));
+            })}>
+            {busy === 'rq-apply' ? <Loader2 className="me-1 h-3.5 w-3.5 motion-safe:animate-spin" /> : null}{t('fbx_admin_requalify_apply')}
+          </Button>
+        </div>
+        {(rqApplied ?? rqPreview?.rows) && (
+          <table className="mt-2 w-full text-2xs" data-testid="fbx-requalify-table">
+            <thead><tr className="text-start text-muted-foreground"><th className="py-1 text-start">{t('fbx_admin_comment_audit_job')}</th><th className="text-end">{t('fbx_admin_requalify_shown_now')}</th><th className="text-end">{t('fbx_admin_requalify_shown_after')}</th></tr></thead>
+            <tbody>
+              {(rqApplied ?? rqPreview!.rows).map((r) => {
+                const shown = (r.after.STRONG ?? 0) + (r.after.POTENTIAL ?? 0) + (r.after.WEAK ?? 0);
+                return (
+                  <tr key={r.jobId} className="border-t border-border">
+                    <td className="py-1 font-mono" dir="ltr">{r.jobId.slice(0, 8)}{r.error ? ` · ${r.error}` : ''}</td>
+                    <td className="text-end tabular-nums">{r.before}</td>
+                    <td className="text-end tabular-nums">{shown} <span className="text-muted-foreground">({r.after.STRONG ?? 0}/{r.after.POTENTIAL ?? 0}/{r.after.WEAK ?? 0})</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

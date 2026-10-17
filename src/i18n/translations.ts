@@ -20410,6 +20410,16 @@ const en = {
   dash_stat_searching: 'Searches running now',
   dash_live_title: 'Searching for potentially interested people',
   dash_live_open: 'View live progress',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbx_admin_requalify_title: 'Re-check results with the current rules',
+  fbx_admin_requalify_hint: 'Judges every stored result of the property’s searches again (size, rooms, budget, location). Preview first; applying only relabels — nothing is deleted and no Actor runs.',
+  fbx_admin_requalify_property: 'Property ID',
+  fbx_admin_requalify_preview: 'Preview',
+  fbx_admin_requalify_apply: 'Apply',
+  fbx_admin_requalify_done: 'Results re-checked with the current rules',
+  fbx_admin_requalify_shown_now: 'Shown now',
+  fbx_admin_requalify_shown_after: 'Shown after (strong/potential/weak)',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40734,6 +40744,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dash_stat_searching: 'მიმდინარე ძიებები',
   dash_live_title: 'მიმდინარეობს პოტენციურად დაინტერესებული ადამიანების ძიება',
   dash_live_open: 'მიმდინარე პროგრესის ნახვა',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbx_admin_requalify_title: 'შედეგების ხელახალი შემოწმება მიმდინარე წესებით',
+  fbx_admin_requalify_hint: 'ქონების ყველა ძიების შენახულ შედეგს თავიდან აფასებს (ფართი, ოთახები, ბიუჯეტი, ლოკაცია). ჯერ გადახედეთ; გამოყენება მხოლოდ ხელახლა აკატეგორიებს — არაფერი იშლება და Actor არ ეშვება.',
+  fbx_admin_requalify_property: 'ქონების ID',
+  fbx_admin_requalify_preview: 'წინასწარი ნახვა',
+  fbx_admin_requalify_apply: 'გამოყენება',
+  fbx_admin_requalify_done: 'შედეგები თავიდან შემოწმდა მიმდინარე წესებით',
+  fbx_admin_requalify_shown_now: 'ახლა ჩანს',
+  fbx_admin_requalify_shown_after: 'შემდეგ ჩანს (ძლიერი/პოტენციური/სუსტი)',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61049,6 +61069,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dash_stat_searching: 'Идущие сейчас поиски',
   dash_live_title: 'Идёт поиск потенциально заинтересованных людей',
   dash_live_open: 'Смотреть ход поиска',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbx_admin_requalify_title: 'Перепроверить результаты по текущим правилам',
+  fbx_admin_requalify_hint: 'Заново оценивает все сохранённые результаты поисков объекта (площадь, комнаты, бюджет, район). Сначала просмотр; применение только меняет категории — ничего не удаляется, Actor не запускается.',
+  fbx_admin_requalify_property: 'ID объекта',
+  fbx_admin_requalify_preview: 'Предпросмотр',
+  fbx_admin_requalify_apply: 'Применить',
+  fbx_admin_requalify_done: 'Результаты перепроверены по текущим правилам',
+  fbx_admin_requalify_shown_now: 'Показано сейчас',
+  fbx_admin_requalify_shown_after: 'Будет показано (сильные/возможные/слабые)',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81362,6 +81392,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dash_stat_searching: 'Şu an süren aramalar',
   dash_live_title: 'Potansiyel olarak ilgilenen kişiler aranıyor',
   dash_live_open: 'Canlı ilerlemeyi gör',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbx_admin_requalify_title: 'Sonuçları güncel kurallarla yeniden denetle',
+  fbx_admin_requalify_hint: 'Mülkün aramalarının kayıtlı tüm sonuçlarını yeniden değerlendirir (alan, oda, bütçe, konum). Önce önizleme; uygulama yalnızca yeniden etiketler — hiçbir şey silinmez, Actor çalışmaz.',
+  fbx_admin_requalify_property: 'Mülk kimliği',
+  fbx_admin_requalify_preview: 'Önizle',
+  fbx_admin_requalify_apply: 'Uygula',
+  fbx_admin_requalify_done: 'Sonuçlar güncel kurallarla yeniden denetlendi',
+  fbx_admin_requalify_shown_now: 'Şu an gösterilen',
+  fbx_admin_requalify_shown_after: 'Sonra gösterilecek (güçlü/olası/zayıf)',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101675,6 +101715,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dash_stat_searching: 'عمليات البحث الجارية الآن',
   dash_live_title: 'جارٍ البحث عن أشخاص قد يكونون مهتمين',
   dash_live_open: 'عرض التقدّم المباشر',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbx_admin_requalify_title: 'إعادة فحص النتائج بالقواعد الحالية',
+  fbx_admin_requalify_hint: 'يعيد تقييم كل النتائج المحفوظة لعمليات بحث العقار (المساحة، الغرف، الميزانية، الموقع). المعاينة أولًا؛ التطبيق يعيد التصنيف فقط — لا يُحذف شيء ولا يعمل أي Actor.',
+  fbx_admin_requalify_property: 'معرّف العقار',
+  fbx_admin_requalify_preview: 'معاينة',
+  fbx_admin_requalify_apply: 'تطبيق',
+  fbx_admin_requalify_done: 'تمت إعادة فحص النتائج بالقواعد الحالية',
+  fbx_admin_requalify_shown_now: 'المعروض الآن',
+  fbx_admin_requalify_shown_after: 'المعروض بعدها (قوي/محتمل/ضعيف)',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -121988,6 +122038,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   dash_stat_searching: 'חיפושים שפועלים עכשיו',
   dash_live_title: 'מחפשים אנשים שעשויים להתעניין',
   dash_live_open: 'צפייה בהתקדמות',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbx_admin_requalify_title: 'בדיקה מחדש של התוצאות לפי הכללים הנוכחיים',
+  fbx_admin_requalify_hint: 'בוחן מחדש כל תוצאה שמורה של חיפושי הנכס (שטח, חדרים, תקציב, מיקום). קודם תצוגה מקדימה; ההחלה רק מסווגת מחדש — דבר אינו נמחק ואף Actor אינו רץ.',
+  fbx_admin_requalify_property: 'מזהה נכס',
+  fbx_admin_requalify_preview: 'תצוגה מקדימה',
+  fbx_admin_requalify_apply: 'החלה',
+  fbx_admin_requalify_done: 'התוצאות נבדקו מחדש לפי הכללים הנוכחיים',
+  fbx_admin_requalify_shown_now: 'מוצג עכשיו',
+  fbx_admin_requalify_shown_after: 'יוצג אחרי (חזק/אפשרי/חלש)',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

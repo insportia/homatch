@@ -198,6 +198,25 @@ export function categoryOf(row: FeedRow): NotificationCategory {
  * reads `conversation`. Rows written before the fix still carry the old form, so it is
  * rewritten here rather than left to open the inbox instead of the conversation.
  */
+/**
+ * A Find Buyers notice opens THE search it is about.
+ *
+ * Rows written before 20261112090000 linked every Find Buyers notice to the
+ * property's dashboard (/property/<id>/matches) while already naming the job
+ * in entity_type='matching_jobs' / entity_id. Such a row is sent to that
+ * search's results (/property/<id>/buyers/external?job=<job>); a link that is
+ * not the old generic one is the producer's decision and is kept.
+ */
+export function findBuyersSearchLink(
+  link: string | null, entityType: unknown, entityId: unknown,
+): string | null {
+  if (!link || entityType !== 'matching_jobs' || typeof entityId !== 'string') return link;
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(entityId)) return link;
+  const m = link.match(/^\/property\/([^/?#]+)\/matches\/?$/);
+  if (!m) return link;
+  return `/property/${m[1]}/buyers/external?job=${encodeURIComponent(entityId)}`;
+}
+
 export function safeDeepLink(link: unknown): string | null {
   if (typeof link !== 'string') return null;
   if (!link.startsWith('/') || link.startsWith('//')) return null;

@@ -46,7 +46,8 @@ import {
   Loader2, MapPin, Save, Star, Trash2, Upload,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { currentHistoryIndex, previousScreen, safeReturnPath } from '@/lib/backNavigation';
 import { toast } from 'sonner';
 import { renewProperty } from '@/services/propertyLifecycle';
 import { PrivateImage } from '@/components/common/PrivateImage';
@@ -135,7 +136,25 @@ export default function EditPropertyPage() {
   const { t } = useLanguage();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { homatchUser } = useAuth();
+  /*
+   * WHERE THIS EDIT WAS OPENED FROM. "Edit search" on Find Buyers, the property page and
+   * the portfolio all open this screen; the opener hands its own path as router state
+   * `from` (or `?returnTo=` for a link that cannot carry state). Only a same-app
+   * /property/... path is accepted. Back itself is the shell's SmartBack (it walks
+   * history to the previous screen, else this return path, else /property/:id); a
+   * successful save returns here too, so the owner lands where they started.
+   */
+  const returnTo = safeReturnPath((location.state as { from?: unknown } | null)?.from)
+    ?? safeReturnPath(new URLSearchParams(location.search).get('returnTo'));
+  const returnToCaller = useCallback(() => {
+    if (!returnTo) return;
+    const prev = previousScreen(currentHistoryIndex(), location.pathname);
+    const targetPath = returnTo.split(/[?#]/)[0].replace(/\/+$/, '');
+    if (prev && prev.pathname === targetPath) navigate(-prev.steps);
+    else navigate(returnTo, { replace: true });
+  }, [returnTo, location.pathname, navigate]);
 
   const [property, setProperty] = useState<Property | null>(null);
   const [photos, setPhotos] = useState<PropertyPhoto[]>([]);
@@ -318,6 +337,8 @@ export default function EditPropertyPage() {
        */
       const typed = contactPhone.trim();
       const stored = String(property?.contact_phone_raw ?? property?.contact_phone_e164 ?? '').trim();
+      /* A number the owner still has to fix keeps them on this screen. */
+      let phoneNeedsFix = false;
       if (typed !== stored) {
         const reading = readContactPhone(typed, city.trim() ? undefined : 'GE');
         if (reading.contact) {
@@ -332,6 +353,7 @@ export default function EditPropertyPage() {
             return;
           }
         } else if (typed) {
+          phoneNeedsFix = true;
           setShowPhoneProblem(true);
           toast.error(t(
             reading.problem === 'NO_COUNTRY' ? 'contact_phone_needs_country'
@@ -347,6 +369,7 @@ export default function EditPropertyPage() {
        */
       const renewed = await renewProperty(id).then((r) => r.ok && r.renewed === true).catch(() => false);
       toast.success(renewed ? t('pow_saved_and_renewed') : t('prop_saved'));
+      if (returnTo && !phoneNeedsFix) { returnToCaller(); return; }
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -493,10 +516,8 @@ export default function EditPropertyPage() {
                   owner can do to this number, which is the point of it. */}
               <PropertyReference id={property.homatch_id} />
             </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/property')}>
-              <ArrowLeft className="h-4 w-4 me-1.5 shrink-0" />
-              <span className="break-words">{t('prop_back_to_portfolio')}</span>
-            </Button>
+            {/* No page-level Back here: the shell renders SmartBack for /property/:id/edit,
+                and it returns to the screen this edit was opened from. */}
           </div>
 
           {/*

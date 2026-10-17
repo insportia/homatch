@@ -912,6 +912,9 @@ export interface Notification {
    * being clickable when property_id stopped being written.
    */
   deep_link?: string | null;
+  /** What the notice is about, as notify_emit stored it — e.g. 'matching_jobs' + the job id. */
+  entity_type?: string | null;
+  entity_id?: string | null;
   metadata?: Record<string, unknown>;
   created_at: string;
 }

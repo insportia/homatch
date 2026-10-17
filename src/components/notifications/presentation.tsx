@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import type React from 'react';
 import {
-  announcementText, categoryOf, kindOf as feedKindOf, metaCategoryOf, metaSeverityOf, safeDeepLink,
+  announcementText, categoryOf, kindOf as feedKindOf, metaCategoryOf, metaSeverityOf, safeDeepLink, findBuyersSearchLink,
   type MetaCategory, type MetaSeverity, type NotificationCategory,
 } from '@/lib/notifications/feed';
 import type { Notification } from '@/types/types';
@@ -296,7 +296,7 @@ export function notificationMark(notif: Notification): NotificationMark {
 export function notificationHref(notif: Notification): string | null {
   /* A single leading slash — "//evil.example" is a protocol-relative URL, not a path —
      and the chat's real parameter. See safeDeepLink in lib/notifications/feed.ts. */
-  const link = safeDeepLink(notif.deep_link);
+  const link = findBuyersSearchLink(safeDeepLink(notif.deep_link), notif.entity_type, notif.entity_id);
   if (link) return link;
 
   const kind = kindOf(notif);
@@ -314,7 +314,7 @@ export function notificationHref(notif: Notification): string | null {
   }
   if (notif.type === 'MATCH_AVAILABLE' || notif.type === 'MATCH_FOUND') {
     const propertyId = notif.property_id ?? metaString(notif, 'property_id');
-    return propertyId ? `/property/${propertyId}/matches` : null;
+    return propertyId ? findBuyersSearchLink(`/property/${propertyId}/matches`, notif.entity_type, notif.entity_id) : null;
   }
   if (
     notif.type === 'CREDITS_TOPPED_UP'

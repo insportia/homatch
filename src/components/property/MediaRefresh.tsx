@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Images, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { returnState } from '@/lib/backNavigation';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { refreshPropertyMedia } from '@/services/propertyLifecycle';
@@ -62,7 +63,7 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
       </button>
       {note && !busy ? <p className="mt-1.5 text-2xs text-[hsl(218_20%_40%)]" role="status" data-testid="media-refresh-note">{note}</p> : null}
       {gone && !busy ? (
-        <Link to={`/property/${propertyId}/edit#section-photos`} data-testid="media-add-own"
+        <Link to={`/property/${propertyId}/edit#section-photos`} state={returnState()} data-testid="media-add-own"
           className="mt-1.5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[hsl(38_92%_54%)] px-3 text-2xs font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
           <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />{t('fbl_media_add_own')}
         </Link>

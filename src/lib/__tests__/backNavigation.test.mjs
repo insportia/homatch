@@ -7,7 +7,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parentRouteFor, canGoBackInApp, noteInAppNavigation, __resetNavigationCountForTests,
+  noteHistoryEntry, stepsToPreviousScreen, previousScreen, safeReturnPath,
 } from '../backNavigation.ts';
+import { findBuyersSearchLink } from '../notifications/feed.ts';
 
 test('the counter: nothing behind us until a real in-app navigation happens', () => {
   __resetNavigationCountForTests();
@@ -65,4 +67,73 @@ test('Find Buyers 3.0: result pages go back to the dashboard, details to their r
   assert.equal(parentRouteFor('/property/p1/buyer/demo'), '/property/p1/buyers/internal');
   assert.equal(parentRouteFor('/property/p1/leads'), '/property/p1/buyers/internal');
   assert.equal(parentRouteFor('/property/p1/matches'), '/property/p1');
+});
+
+/* ── Back means the previous SCREEN, not the previous history entry ─────── */
+
+test('same-screen entries (a page number, a fragment) are skipped', () => {
+  __resetNavigationCountForTests();
+  noteHistoryEntry(0, '/property/p1/matches');
+  noteHistoryEntry(1, '/property/p1/buyers/external');
+  noteHistoryEntry(2, '/property/p1/buyers/external'); // ?rp=2 pushed by an older build
+  noteHistoryEntry(3, '/property/p1/buyers/external/'); // trailing slash is the same screen
+  assert.equal(stepsToPreviousScreen(3, '/property/p1/buyers/external'), 3);
+  assert.deepEqual(previousScreen(3, '/property/p1/buyers/external'), { steps: 3, pathname: '/property/p1/matches' });
+  assert.equal(stepsToPreviousScreen(1, '/property/p1/buyers/external'), 1);
+  __resetNavigationCountForTests();
+});
+
+test('unknown history answers null, so the caller falls back to the parent', () => {
+  __resetNavigationCountForTests();
+  assert.equal(stepsToPreviousScreen(0, '/property/p1'), null, 'first entry: nothing behind');
+  assert.equal(stepsToPreviousScreen(null, '/property/p1'), null, 'no router index');
+  assert.equal(stepsToPreviousScreen(5, '/property/p1'), null, 'reload: entries never seen');
+  noteHistoryEntry(3, '/property/p1/matches');
+  noteHistoryEntry(4, '/property/p1/edit');
+  assert.equal(stepsToPreviousScreen(4, '/property/p1/edit'), 1);
+  noteHistoryEntry(4, '/property/p1/matches'); // replaced in place
+  assert.equal(stepsToPreviousScreen(4, '/property/p1/matches'), null, 'a gap below is unknown, not guessed');
+  __resetNavigationCountForTests();
+});
+
+test('no loops: only same-screen entries behind → null, never 0 steps', () => {
+  __resetNavigationCountForTests();
+  noteHistoryEntry(0, '/property/p1/buyers/external');
+  noteHistoryEntry(1, '/property/p1/buyers/external');
+  noteHistoryEntry(2, '/property/p1/buyers/external');
+  assert.equal(stepsToPreviousScreen(2, '/property/p1/buyers/external'), null);
+  noteHistoryEntry(-1, '/x');
+  noteHistoryEntry(1.5, '/x');
+  noteHistoryEntry(undefined, '/x');
+  assert.equal(stepsToPreviousScreen(2, '/property/p1/buyers/external'), null, 'bad indexes are ignored');
+  __resetNavigationCountForTests();
+});
+
+test('editing a property returns to that property', () => {
+  assert.equal(parentRouteFor('/property/p1/edit'), '/property/p1');
+  assert.equal(parentRouteFor('/property/p1/edit/'), '/property/p1');
+});
+
+test('a handed return path is accepted only inside the app', () => {
+  assert.equal(safeReturnPath('/property/p1/matches'), '/property/p1/matches');
+  assert.equal(safeReturnPath('/property/p1/buyers/external?job=j1'), '/property/p1/buyers/external?job=j1');
+  assert.equal(safeReturnPath('/property'), '/property');
+  assert.equal(safeReturnPath('/property?view=grid'), '/property?view=grid');
+  for (const bad of ['//evil.example/property/p1', 'https://evil.example/property/p1', 'javascript:alert(1)',
+    '/\\evil.example', '/dashboard', '/propertyx', '', null, 42, '/property/p1\n']) {
+    assert.equal(safeReturnPath(bad), null, `${String(bad)} is refused`);
+  }
+});
+
+/* ── Notifications open THE search ─────────────────────────────────────── */
+
+test('an old Find Buyers notice (generic /matches link) opens its own search', () => {
+  assert.equal(findBuyersSearchLink('/property/p1/matches', 'matching_jobs', 'j-1'), '/property/p1/buyers/external?job=j-1');
+  assert.equal(findBuyersSearchLink('/property/p1/matches/', 'matching_jobs', 'j-1'), '/property/p1/buyers/external?job=j-1');
+  assert.equal(findBuyersSearchLink('/property/p1/buyers/external?job=j-2', 'matching_jobs', 'j-1'),
+    '/property/p1/buyers/external?job=j-2', 'a specific link is the producer\'s decision');
+  assert.equal(findBuyersSearchLink('/property/p1/matches', 'properties', 'j-1'), '/property/p1/matches', 'other entities keep the link');
+  assert.equal(findBuyersSearchLink('/property/p1/matches', 'matching_jobs', null), '/property/p1/matches');
+  assert.equal(findBuyersSearchLink('/property/p1/matches', 'matching_jobs', '../x'), '/property/p1/matches', 'odd ids are not spliced in');
+  assert.equal(findBuyersSearchLink(null, 'matching_jobs', 'j-1'), null);
 });

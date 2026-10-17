@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { canGoBackInApp, parentRouteFor } from '@/lib/backNavigation';
+import { currentHistoryIndex, parentRouteFor, previousScreen, safeReturnPath } from '@/lib/backNavigation';
 
 /**
  * The back affordance. Its RULES live in lib/backNavigation.ts, with no React
@@ -30,13 +30,26 @@ export function SmartBack({ fallback, label, className = '' }: SmartBackProps) {
   const location = useLocation();
   const { t, isRTL } = useLanguage();
 
+  /*
+   * Back means the previous SCREEN. History is used when we know how many
+   * entries back that screen is (entries of this same screen — a page
+   * number, a dialog step — are skipped, so Back never lands where it
+   * stands and only scrolls). Unknown — a deep link, a reload — falls back
+   * deterministically: the return path the opener handed over, else the
+   * screen that contains this one. Replace, so the fallback cannot loop.
+   */
   const onClick = useCallback(() => {
-    if (canGoBackInApp()) {
-      navigate(-1);
+    const prev = previousScreen(currentHistoryIndex(), location.pathname);
+    if (prev) {
+      navigate(-prev.steps);
       return;
     }
-    navigate(fallback ?? parentRouteFor(location.pathname) ?? '/', { replace: true });
-  }, [navigate, fallback, location.pathname]);
+    const params = new URLSearchParams(location.search);
+    const handed = safeReturnPath((location.state as { from?: unknown } | null)?.from)
+      ?? safeReturnPath(params.get('returnTo'));
+    const target = fallback ?? handed ?? parentRouteFor(location.pathname) ?? '/';
+    navigate(target, { replace: true });
+  }, [navigate, fallback, location.pathname, location.search, location.state]);
 
   const text = label ?? t('general_back');
 

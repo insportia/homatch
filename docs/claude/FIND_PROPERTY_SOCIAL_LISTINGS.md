@@ -44,13 +44,13 @@ A buyer's or tenant's paid social OFFER campaign runs memo23 Actors on public so
 | FB_GROUP_POSTS | `memo23~apify-facebook-group-scraper` | enabled, HEALTHY, $1.50/1k, pricing verified 2026-10-04 | Yes: Georgian real-estate groups carry owner and agent offers with price, area and photos. 44 public GE groups, 41 with a city. | **Yes** |
 | TELEGRAM_CHANNEL | `memo23~telegram-channel-scraper` | enabled, HEALTHY, $0.25/1k | Yes: listing channels. Text-rich; photos depend on the post. 51 channels, none with a city (city read from the post). | **Yes** |
 | IG_PROFILE_POSTS | `memo23~apify-instagram-profile-scraper` | enabled, HEALTHY, $0.80/1k | Partly: captions and photos, but the price is often missing (posts without a price are dropped). 1 profile registered. | **Yes** |
-| FB_POST_SEARCH | `memo23~facebook-search-scraper` (catalog seed) | **not registered** in production | Yes, for keyword search | No: becomes ready only after Admin verifies it and confirms its price |
-| FB_PAGE_POSTS | `memo23~facebook-page-posts-scraper` (seed) | **not registered** | Yes, for agency pages | No (no registered Page sources either) |
+| FB_POST_SEARCH | `memo23~facebook-search-scraper` | registered 2026-10-17 08:58, **disabled, unpriced** (pricing UNKNOWN) | Yes, for keyword search | No: ready only after the owner verifies it (free) and enables it (separate approval) |
+| FB_PAGE_POSTS | `memo23~facebook-page-posts-scraper` | registered 2026-10-17 08:58, **disabled, unpriced** | Yes, for agency pages | No (same; no registered Page sources either) |
 | VK_POSTS_COMMENTS | `memo23~vk-posts-comments-scraper` | **disabled, FAILED** | Rare in Georgia | No |
 | FB_GROUP_SEARCH, LINKEDIN_GROUPS | group finders | — | No: they find communities, not posts | No |
 | FB_COMMENTS, IG_COMMENTS, YOUTUBE_COMMENTS | comments | — | No: comments are the demand side (Find Buyers) | No |
 | TIKTOK, X_PROFILE, THREADS_PROFILE, LINKEDIN_POSTS, REDDIT, QUORA, BLUESKY | — | — | No structured Georgian listing market | No |
-| FB_AD_LIBRARY | `memo23~facebook-ads-library-scraper-ppe` | Verify developer-ads scope only | — | No (not allowed here) |
+| FB_AD_LIBRARY | `memo23~facebook-ads-library-scraper-ppe` | registered 2026-10-17, disabled, unpriced; Verify developer-ads scope | Possible later (ads are offers; its normaliser emits POST items) | No: not in CLAUDE.md's Find Property scope without owner approval |
 
 Nothing is activated by this change. Any Actor that is not registered, not enabled, emergency-disabled, health DISABLED, or not freshly priced is `ready = false`, and the planner skips it.
 

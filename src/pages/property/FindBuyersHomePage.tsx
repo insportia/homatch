@@ -45,7 +45,7 @@ function HomeContent() {
   const internal = useInternalMatches(propertyId);
   const c = status?.campaign ?? null;
   const live = c?.active ? c : null;
-  /* The dashboard shows the newest FINISHED search; a running one is the primary action. */
+  /* The dashboard shows the newest search, a running one included, with its own counts. */
   const [featuredId, setFeaturedId] = useState<string | undefined>(undefined);
   const external = useExternalResults(propertyId, featuredId, owner, {
     liveJobId: live?.jobId ?? null, liveStartedAt: live?.startedAt ?? live?.createdAt ?? null, liveState: live?.state ?? null,

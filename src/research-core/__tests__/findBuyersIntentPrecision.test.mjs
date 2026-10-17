@@ -122,11 +122,14 @@ test('SALE: exactly lead 12 (WEAK, financing to confirm) is kept — none Strong
   assert.deepEqual(q(13).reasons, ['DUPLICATE']);
 });
 
-test('RENT (same texts, $600/month): exactly tenants 4 and 10 are kept, with their limitations', () => {
+test('RENT (same texts, $600/month): exactly tenant 4 is kept, with its limitations', () => {
   const rows = shown('RENT', { totalPrice: 600 });
   /* v6: 4 states a budget far above a $600 rent (another segment) → WEAK; 25 names only
-     Saburtalo / the University area (another area) → REJECTED. */
-  assert.deepEqual(keptOf(rows), [{ n: 4, category: 'WEAK' }, { n: 10, category: 'WEAK' }]);
+     Saburtalo / the University area (another area) → REJECTED.
+     v7 (owner, 2026-10-17): 10 wants a one-bedroom for a two-bedroom flat — a smaller home,
+     not this property's tenant → REJECTED (ROOMS_MISMATCH). */
+  assert.deepEqual(keptOf(rows), [{ n: 4, category: 'WEAK' }]);
+  assert.ok(rows.find((x) => x.n === 10).r.qualification.reasons.includes('ROOMS_MISMATCH'));
 });
 
 const SALE_DNA = buildPropertyDna(fixture.property);

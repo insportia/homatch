@@ -42,7 +42,8 @@ test('real paid-campaign leads: supply and agents are rejected, wrong budget/are
     }
     assert.notEqual(q.category, 'STRONG');
   }
-  assert.deepEqual(Q(REAL.cf934be7[1]).reasons, ['BUDGET_INCOMPATIBLE']);
+  /* v7: two rooms for a three-room flat is a smaller home as well — both reasons stand. */
+  assert.deepEqual(Q(REAL.cf934be7[1]).reasons, ['BUDGET_INCOMPATIBLE', 'ROOMS_MISMATCH']);
   assert.ok(Q(REAL['292b511c'][1]).reasons.includes('OTHER_AREA'));
 });
 

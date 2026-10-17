@@ -1,6 +1,6 @@
 import {
   AlertCircle, ArrowLeft, Bath, BedDouble, Bot, Building2, Calculator, Camera, CheckCircle2, ChevronRight,
-  ExternalLink, Landmark, Layers, Loader2, Lock, MapPin, Megaphone, Pause, Pencil, Phone, Play, RefreshCcw,
+  Eraser, ExternalLink, Landmark, Layers, Loader2, Lock, MapPin, Megaphone, Pause, Pencil, Phone, Play, RefreshCcw,
   Shield, Trash2, TrendingDown, Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -14,6 +14,7 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { NAVY_BAND } from '@/components/findBuyers/brand';
 import { SearchDna } from '@/components/findBuyers/SearchDna';
+import { ClearResultsDialog } from '@/components/findBuyers/ClearResultsDialog';
 import { useFindBuyersSummary } from '@/components/findBuyers/useFindBuyersSummary';
 import { SearchStartingDialog, type SearchStartPhase } from '@/components/findBuyers/SearchStartingDialog';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
@@ -207,6 +208,8 @@ function DiscoverySection({
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   /* Nothing is spent until the customer names the ceiling. */
   const [showBudget, setShowBudget] = useState(false);
+  /* Old results can be cleared from here too, where their count is shown (owner, 2026-10-17). */
+  const [clearOpen, setClearOpen] = useState(false);
   /* THE SEARCH STATE IS THE SERVER'S (find_buyers_campaign_status), never the
      property's standing matching flag: a property can be "ACTIVE" with nothing
      running, and a paused search is not a stopped one. */
@@ -373,6 +376,20 @@ function DiscoverySection({
           {matchCounts.total > 0 && (
             <p className="text-2xs text-[hsl(218_28%_38%)] break-words" data-testid="pow-legacy-matches">{t('fbrx_legacy_matches', { n: String(matchCounts.total) })}</p>
           )}
+          {(matchCounts.total > 0 || (fb.campaigns?.length ?? 0) > 0) && (
+            <button type="button" onClick={() => setClearOpen(true)} data-testid="pow-clear-open"
+              className={cn(OWNER_SECONDARY, 'min-h-11 w-full justify-center gap-2 whitespace-normal text-center min-[420px]:w-auto')}>
+              <Eraser className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words">{t('fbrx_clear_open')}</span>
+            </button>
+          )}
+          <ClearResultsDialog open={clearOpen} propertyId={propertyId} onClose={() => setClearOpen(false)}
+            onCleared={(o) => {
+              setClearOpen(false);
+              toast.success(t('fbrx_clear_done', { n: String(o.leadsCleared + o.legacyMatchesCleared) }));
+              /* Every count here re-reads from the server. */
+              fb.reload();
+              getMatchCounts(propertyId).then(onCountsRefresh).catch(() => undefined);
+            }} />
 
           {expired && (
             <div data-testid="pow-discovery-blocked" className="rounded-xl border border-red-600/30 bg-red-50 p-3.5 text-red-950 dark:bg-red-500/10 dark:text-red-100">

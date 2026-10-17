@@ -70,6 +70,11 @@ export interface DemandReading {
   rooms: number | null;
   bedrooms: number | null;
   areaSqm: number | null;
+  /**
+   * The stated size as a range (v7): "60 კვადრატამდე" → max 60, "от 60 до 70 м²" → 60–70,
+   * "50კვ/მ ზე მეტი" → min 50, "about 80 square meters" → 80–80 (approximate). null = not stated.
+   */
+  area?: { min: number | null; max: number | null; approx: boolean } | null;
   /** Rule ids that decided the reading (explainable). */
   evidence: string[];
   confidence: number;
@@ -142,7 +147,7 @@ const ADDRESSES_SELLERS = L([
 ]);
 /** A buyer asking whoever sells: "ბენდუქიძეში თუ ყიდით ვინმე ბინას მომწერეთ", "кто продаёт квартиру", "anyone selling". */
 const ASKS_SELLERS = L([
-  'თუ (ვინმე )?ყიდით', 'თუ ვინმე ყიდის', 'ვინმე ყიდის', 'ვინ ყიდის', 'кто (-то |нибудь )?прода[её]т', 'кто-то прода[её]т',
+  'თუ (ვინმე )?ყიდით', 'ვინც ყიდით', 'ვინც ყიდის', 'თუ ვინმე ყიდის', 'ვინმე ყიდის', 'ვინ ყიდის', 'кто (-то |нибудь )?прода[её]т', 'кто-то прода[её]т',
   `${B}(anyone selling|is anyone selling|who is selling|who's selling)`, `${B}(satan var mı|satan varsa)`, 'من يبيع', 'מישהו מוכר',
 ]);
 
@@ -355,6 +360,38 @@ function numberNear(re: RegExp, s: string): number | null {
   const n = Number(m[1]);
   return Number.isFinite(n) && n > 0 && n < 20 ? n : null;
 }
+/** Size units, every language the campaigns read (v7: "კვადრატ…", "square meters" were missed). */
+const AREA_UNIT = '(?:m2|m²|sq\\.?\\s?m(?:eters?|etres?)?|sqm|square\\s*met(?:er|re)s?|кв\\.?\\s?м\\S*|квадрат\\S*|м2|м²|კვ\\.?\\s?მ\\S*|კვ\\/მ\\S*|კვმ\\S*|კვადრატ\\S*|metrekare|متر\\s*مربع|م2|מ"ר|מטר|metr\\S*)';
+const AREA_N = '(\\d{2,4}(?:[.,]\\d+)?)';
+const AREA_RANGE = new RegExp(`(?:от\\s*|from\\s*|between\\s*)?${AREA_N}\\s*(?:-|–|—|до|to|and|-დან)\\s*${AREA_N}\\s*-?\\s*${AREA_UNIT}`, 'iu');
+const AREA_MAX = new RegExp(`(?:(?:до|up to|under|max(?:imum)?|не более|less than|below)\\s*${AREA_N}\\s*${AREA_UNIT})|(?:${AREA_N}\\s*-?\\s*${AREA_UNIT}?\\s*-?მდე)`, 'iu');
+const AREA_MIN = new RegExp(`(?:(?:от|from|at least|min(?:imum)?|не менее|more than|over|above|больше)\\s*${AREA_N}\\s*${AREA_UNIT})|(?:${AREA_N}\\s*-?\\s*${AREA_UNIT}\\s*-?\\s*(?:ზე\\s*მეტ|და\\s*მეტ|\\+))`, 'iu');
+const AREA_ONE = new RegExp(`${AREA_N}\\s*-?\\s*${AREA_UNIT}`, 'iu');
+
+/** The size a writer states, as a range. A bare number with no unit is never a size. */
+export function statedArea(s: string): { min: number | null; max: number | null; approx: boolean } | null {
+  const n = (x: string | undefined) => (x == null ? null : Number(x.replace(',', '.')));
+  const ok = (v: number | null) => v != null && v >= 10 && v <= 2000;
+  const range = s.match(AREA_RANGE);
+  if (range && ok(n(range[1])) && ok(n(range[2]))) {
+    const a = n(range[1])!, b = n(range[2])!;
+    return { min: Math.min(a, b), max: Math.max(a, b), approx: false };
+  }
+  const max = s.match(AREA_MAX);
+  /* "-მდე" right after a number+unit ("60 კვადრატამდე", "40 კვ.მ-მდე") only counts when a unit
+     is present — "60 ათასამდე" is money. */
+  if (max) {
+    const v = n(max[1] ?? max[2]);
+    const unitSeen = max[1] != null || new RegExp(AREA_UNIT, 'iu').test(max[0]);
+    if (ok(v) && unitSeen) return { min: null, max: v, approx: false };
+  }
+  const min = s.match(AREA_MIN);
+  if (min && ok(n(min[1] ?? min[2]))) return { min: n(min[1] ?? min[2]), max: null, approx: false };
+  const one = s.match(AREA_ONE);
+  if (one && ok(n(one[1]))) return { min: n(one[1]), max: n(one[1]), approx: true };
+  return null;
+}
+
 const WORD_ROOMS: Array<[RegExp, number]> = [
   [/(one|single)[- ]?(room|bedroom)|одно(комнат)|однушк|ერთ\s*ოთახ/iu, 1],
   [/two[- ]?(room|bedroom)|двух(комнат)|двушк|ორ\s*ოთახ/iu, 2],
@@ -458,17 +495,19 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   const streets = places.filter((p) => p.kind === 'STREET' && !p.negated).map((p) => p.key);
   const excludedPlaces = places.filter((p) => p.negated).map((p) => (p.kind === 'STREET' ? `street:${p.key}` : p.key));
   const locationFlexible = FLEX_LOCATION.test(s);
-  const bedrooms = numberNear(/(\d{1,2})\s*-?\s*(?:bed(?:room)?s?\b|br\b|спальн|საძინებ|yatak odası|غرف? نوم|חדרי שינה)/iu, s);
+  const bedrooms = numberNear(/(\d{1,2})\s*-?\s*(?:bed(?:room)?s?\b|br\b|bhk\b|спальн|საძინებ|yatak odası|غرف? نوم|חדרי שינה)/iu, s)
+    /* "one-bedroom", "1+1 / 1 спальня", "studio": a stated bedroom count (v7: "1bhk" was missed). */
+    ?? (/(?<![\p{L}])(one|single)[- ]?bed(room)?|односпальн/iu.test(s) ? 1 : /(?<![\p{L}])(studio|студи|სტუდიო)/iu.test(s) ? 0 : null);
   const rooms = numberNear(/(\d{1,2})\s*-?\s*(?:rooms?\b|комн|к\.|ოთახ|oda\b|غرف|חדרים|חד')/iu, s)
     ?? numberNear(/(\d)\s*\+\s*1\b/u, s) ?? (WORD_ROOMS.find(([re]) => re.test(s))?.[1] ?? null);
-  const area = s.match(/(\d{2,4}(?:[.,]\d+)?)\s*(?:m2|m²|sq\.?\s?m|sqm|кв\.?\s?м|м2|м²|კვ\.?\s?მ|კვმ|metrekare|متر مربع|م2|מ"ר|מטר|metr)/iu);
-  const areaSqm = area ? Number(area[1].replace(',', '.')) : null;
+  const area = statedArea(s);
+  const areaSqm = area ? area.max ?? area.min : null;
 
   const base = {
     realEstate: true, residential: propertyType === 'APARTMENT' || propertyType === 'HOUSE', propertyType,
     intermediary: AGENT.test(s), budget, downPayment: downHit ? { amount: downHit.amount, currency: downHit.currency } : null,
     financing: INSTALMENTS.test(s) ? 'INSTALMENTS' as const : MORTGAGE.test(s) ? 'MORTGAGE' as const : null,
-    cities, districts, streets, excludedPlaces, locationFlexible, rooms, bedrooms, areaSqm,
+    cities, districts, streets, excludedPlaces, locationFlexible, rooms, bedrooms, areaSqm, area,
   };
 
   /* Direction: who is speaking — someone seeking, or someone offering. */
@@ -610,6 +649,12 @@ export function boundModelReading(rule: DemandReading, model: { role?: unknown; 
   if (maxUsd != null && maxUsd >= BUY_SCALE_MIN_USD) transaction = 'BUY';
   let finalRole = role;
   if ((role === 'BUY_SEEKER' || role === 'RENT_SEEKER') && !rule.realEstate) finalRole = 'IRRELEVANT';
+  /* v7: a text in which the rules found no wish to buy or rent at all (no first-person
+     seeking, no purchase verb, no budget — e.g. a developer's article, production lead
+     b74a01b8, 2026-10-17) is never made a seeker by the model; it stays undecided. */
+  if ((finalRole === 'BUY_SEEKER' || finalRole === 'RENT_SEEKER') && rule.evidence.includes('no_direction')) {
+    return { ...rule, role: 'UNCLEAR', needsModel: false, evidence: [...rule.evidence, 'model_seeker_without_direction'] };
+  }
   if (role === 'BUY_SEEKER' && transaction === 'RENT') finalRole = 'RENT_SEEKER';
   if (role === 'RENT_SEEKER' && transaction === 'BUY') finalRole = 'BUY_SEEKER';
   if ((finalRole === 'BUY_SEEKER' || finalRole === 'RENT_SEEKER') && !transaction) transaction = finalRole === 'BUY_SEEKER' ? 'BUY' : 'RENT';

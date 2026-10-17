@@ -213,14 +213,21 @@ export function FindBuyersDashboard({
         </section>
       )}
 
-      {/* ── Clear old results: secondary, explicit confirmation ── */}
+      {/* ── Clear old results: a findable card (owner, 2026-10-17), explicit confirmation in the dialog ── */}
       {canClear && (
-        <div className="flex justify-end">
-          <button type="button" onClick={onClear} data-testid="fbd-clear-open"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold text-[hsl(218_28%_34%)] hover:bg-white hover:text-[hsl(218_45%_14%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
+        <section aria-labelledby="fbd-clear-title" data-testid="fbd-clear"
+          className={cn(CARD, 'sm:flex-row sm:items-center sm:justify-between')}>
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className={ICON}><Eraser className="h-[18px] w-[18px]" aria-hidden="true" /></span>
+            <div className="min-w-0">
+              <h2 id="fbd-clear-title" className={H2}>{t('fbrx_clear_open')}</h2>
+              <p className={cn('break-words text-xs leading-relaxed', SOFT)}>{t('fbrx_clear_card_desc')}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClear} data-testid="fbd-clear-open" className={cn(LINE_BTN, 'shrink-0 sm:max-w-[16rem]')}>
             <Eraser className="h-4 w-4 shrink-0" aria-hidden="true" /><span className={LABEL}>{t('fbrx_clear_open')}</span>
           </button>
-        </div>
+        </section>
       )}
     </section>
   );

@@ -14,6 +14,7 @@
 import { getActivityEvents, getMatches, getProperties } from '@/services/api';
 import { getLatestProgressForProperties, getUserMatchSummary, type LiveMatchingJob } from '@/services/matchingProgress';
 import { listVerifyHistory } from '@/services/researchJobs';
+import { getPortfolioPeople } from '@/services/findBuyersLeads';
 import { isHistoryMatch } from '@/matching/currentDemand';
 import type { ActivityEvent, Match, Property, ResearchJobRecord } from '@/types/types';
 
@@ -28,6 +29,12 @@ export interface DashboardSummary {
   /** Keyed by property id — the latest matching job for each. */
   progress: Record<string, LiveMatchingJob>;
   matchTotals: { total: number; newCount: number; bestScore: number; topPropertyId: string | null };
+  /*
+   * The headline count: potentially interested people the Find Buyers searches found, as the
+   * results page lists them (owner, 2026-10-17: the legacy matches table kept showing old,
+   * already-unlocked contacts as "total matches" while a new search ran). null = unreadable.
+   */
+  people: { total: number; newCount: number } | null;
   /** Highest-scoring matches across every property the user owns. */
   topMatches: DashboardMatch[];
   /*
@@ -48,6 +55,7 @@ export const EMPTY_DASHBOARD_SUMMARY: DashboardSummary = {
   properties: [],
   progress: {},
   matchTotals: { total: 0, newCount: 0, bestScore: 0, topPropertyId: null },
+  people: { total: 0, newCount: 0 },
   topMatches: [],
   verifications: [],
   activity: [],
@@ -109,9 +117,10 @@ export async function loadDashboardSummary(userId: string): Promise<DashboardSum
   const ids = properties.map(p => p.id);
   const sinceMs = Date.now() - WEEK_MS;
 
-  const [progress, matchTotals, verifications, activity] = await Promise.all([
+  const [progress, matchTotals, people, verifications, activity] = await Promise.all([
     getLatestProgressForProperties(ids),
     getUserMatchSummary(ids),
+    getPortfolioPeople(ids).catch(() => null),
     // Owner-only under RLS, and a read can still fail (offline, a transient
     // 5xx). One failing card must not blank the whole dashboard, so each
     // optional read degrades to empty on its own.
@@ -125,6 +134,7 @@ export async function loadDashboardSummary(userId: string): Promise<DashboardSum
     properties,
     progress,
     matchTotals,
+    people,
     topMatches,
     verifications,
     activity,

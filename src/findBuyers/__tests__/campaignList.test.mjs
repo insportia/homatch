@@ -45,8 +45,8 @@ test('the live search outranks a stale stored status and is listed before its fi
     live: { jobId: 'run', state: 'SEARCHING', createdAt: '2026-10-17T08:00:00Z' },
   });
   assert.deepEqual(list.map((c) => [c.jobId, c.state]), [['run', 'RUNNING'], ['done', 'COMPLETED']]);
-  /* The dashboard features the newest FINISHED search while another runs. */
-  assert.equal(featuredCampaign(list).jobId, 'done');
+  /* The dashboard features the newest search, the running one included: never the previous search's numbers. */
+  assert.equal(featuredCampaign(list).jobId, 'run');
   /* A stored running job that the live status reports finished reads finished. */
   const after = buildCampaignList({ campaigns: [{ matching_job_id: 'run', created_at: '2026-10-17T08:00:00Z' }], jobs: [{ id: 'run', status: 'searching_sources' }],
     live: { jobId: 'run', state: 'COMPLETED_NO_RESULTS' } });

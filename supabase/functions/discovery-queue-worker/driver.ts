@@ -38,7 +38,8 @@ import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-pl
 import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
 import { executeOfferJob } from '../_shared/findProperty/socialOffers.ts';
 import { adaptiveRound } from '../_shared/findBuyers/adaptive.ts';
-import { loadPhase1, queueCombinedTelegram, queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
+import { loadFindBuyersSettings, loadPhase1, queueCombinedTelegram, queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
+import { assessNativeTelegram } from '../_shared/findBuyers/nativeTelegram.ts';
 import { runWorkerPool } from '../../../src/research-core/findBuyers/workerPool.ts';
 import { phase2MayStart } from '../../../src/research-core/findBuyers/campaignPhases.ts';
 
@@ -353,6 +354,11 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
         await markLanguagesDiscovered(db, row.campaign_id, row.search_languages).catch(() => undefined);
       }
 
+      /* FIND BUYERS: the free native Telegram messages go through the same people-first
+         pipeline as every Actor result (a no-op for campaigns without a Find Buyers row). */
+      await loadFindBuyersSettings(db).then((fb) => assessNativeTelegram(db, row.id, fb))
+        .then((r) => r && jobEvent(db, row.id, 'NATIVE_TELEGRAM_ASSESSED', { items: r.items, qualified: r.qualified, weak: r.weak, duplicates: r.duplicates, aiCalls: r.aiCalls }))
+        .catch((e) => jobEvent(db, row.id, 'NATIVE_TELEGRAM_ASSESS_FAILED', { message: errorText(e) }).catch(() => undefined));
       const result = await finalizeCampaignJob(db, job, grant, settings.freshness, {
         sourceJobs: summary,
         internal: {

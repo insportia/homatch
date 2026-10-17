@@ -53,6 +53,8 @@ const PARENTS: ReadonlyArray<readonly [RegExp, string | ((m: RegExpMatchArray) =
   /* Find Buyers 3.0: the dashboard (/matches) opens two result pages; a buyer profile and
      HOMATCH Leads belong to the internal one, a post opportunity to the external one. */
   [/^\/property\/([^/]+)\/buyers\/opportunity\/[^/]+$/, (m) => `/property/${m[1]}/buyers/external`],
+  /* One potentially interested person (lead detail) belongs to the live results page. */
+  [/^\/property\/([^/]+)\/buyers\/lead\/[^/]+$/, (m) => `/property/${m[1]}/buyers/external`],
   [/^\/property\/([^/]+)\/buyers\/(external|internal)$/, (m) => `/property/${m[1]}/matches`],
   [/^\/property\/([^/]+)\/buyer\/[^/]+$/, (m) => `/property/${m[1]}/buyers/internal`],
   [/^\/property\/([^/]+)\/leads$/, (m) => `/property/${m[1]}/buyers/internal`],

@@ -24,6 +24,11 @@ import {
 import { propertyFamily } from '../../../../src/research-core/findBuyers/propertyFamily.ts';
 import { campaignStats, enabledActorMap, insertQueueRows, loadFindBuyersSettings, socialJobRow } from './campaign.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
+import type { ParentContext } from './pipeline.ts';
+import { extractTextFacts } from '../../../../src/research-core/findBuyers/textFacts.ts';
+
+/** The parent post of each promising comment target, kept beside (not inside) the evidence the model sees. */
+const PARENTS = new WeakMap<object, Map<string, ParentContext>>();
 
 export interface AdaptiveRoundRecord {
   version: string;
@@ -63,7 +68,7 @@ async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, sett
     db.from('find_buyers_actor_runs').select('actor_key,status,items_fetched,qualified_leads,actual_micros,cost_booked_at')
       .gte('created_at', since).limit(5000),
     db.from('discovery_query_queue').select('status,language,result_count,metadata').eq('matching_job_id', jobId).limit(1000),
-    db.from('find_buyers_assessments').select('role,match_category,content_kind,similarity,comments_decision,signal_id,rejection_reasons')
+    db.from('find_buyers_assessments').select('role,match_category,content_kind,similarity,comments_decision,signal_id,parent_signal_id,rejection_reasons,reported:qualification->reportedComments,source_kind:qualification->sourceKind')
       .eq('matching_job_id', jobId).limit(5000),
     campaignStats(db, jobId),
     /* OpenAI is paid from the same provider budget (same rule as the reserve RPC). */
@@ -118,23 +123,41 @@ async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, sett
   }
 
   const assess = (assessRes.data ?? []) as any[];
-  /* Parent posts that earned their comments (the pipeline's own comment gate) and were not read yet. */
-  const parentIds = assess.filter((x) => x.content_kind !== 'COMMENT' && Number(x.similarity) >= Number(settings.commentGate?.eligibleFrom ?? 75)
-    && x.comments_decision !== 'FETCHED' && x.comments_decision !== 'REUSED' && x.signal_id).map((x) => x.signal_id).slice(0, 20);
+  /* Parent posts that earned their comments (the pipeline's own comment gate) and were not read
+     yet: comparable LISTINGS of the campaign's market (buyers comment under listings, not under
+     requests), not reported comment-less, and with no comment of theirs assessed already. */
+  const listingRole = campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER';
+  const commented = new Set(assess.filter((x) => x.content_kind === 'COMMENT' && x.parent_signal_id).map((x) => x.parent_signal_id));
+  const parentRows = assess.filter((x) => x.content_kind !== 'COMMENT' && x.role === listingRole && Number(x.similarity) >= Number(settings.commentGate?.eligibleFrom ?? 75)
+    && x.signal_id && !commented.has(x.signal_id) && Number(x.reported) !== 0).slice(0, 20);
   let promisingParents: CampaignEvidence['promisingParents'] = [];
-  if (parentIds.length) {
-    const { data: sig } = await db.from('raw_signals').select('id,source_url,platform').in('id', parentIds);
-    const sim = new Map(assess.map((x) => [x.signal_id, Number(x.similarity)]));
-    promisingParents = ((sig ?? []) as any[]).filter((s) => s.source_url && ['FACEBOOK', 'INSTAGRAM'].includes(String(s.platform).toUpperCase()))
-      .map((s) => ({ url: String(s.source_url), stage: String(s.platform).toUpperCase() === 'INSTAGRAM' ? 'IG_COMMENTS' as const : 'FB_COMMENTS' as const, similarity: sim.get(s.id) ?? 0 }))
-      .filter((p) => !usedTargets.some((t) => t.toLowerCase() === p.url.toLowerCase()));
+  /* The parent each adaptive comment job reads under: without it every comment is judged
+     context-free (UNCLEAR) and nothing links back to the post. */
+  const parentContexts = new Map<string, ParentContext>();
+  if (parentRows.length) {
+    const { data: sig } = await db.from('raw_signals').select('id,source_url,platform,external_id,original_text,published_at').in('id', parentRows.map((x) => x.signal_id));
+    const byId = new Map(parentRows.map((x) => [x.signal_id, x]));
+    for (const s of ((sig ?? []) as any[])) {
+      if (!s.source_url || !['FACEBOOK', 'INSTAGRAM'].includes(String(s.platform).toUpperCase())) continue;
+      const a = byId.get(s.id);
+      const published = s.published_at ? Date.parse(String(s.published_at)) : NaN;
+      parentContexts.set(String(s.source_url).toLowerCase(), {
+        externalId: String(s.external_id ?? s.id), url: String(s.source_url), signalId: String(s.id), similarity: Number(a?.similarity ?? 0),
+        stance: 'OFFER', role: listingRole, excerpt: s.original_text ? String(s.original_text).slice(0, 300) : null,
+        facts: s.original_text ? extractTextFacts(String(s.original_text)) : null,
+        ageDays: Number.isFinite(published) ? (Date.now() - published) / 86_400_000 : null, publishedAt: s.published_at ?? null,
+        commentCount: a?.reported == null ? null : Number(a.reported), sampleDepth: 0, sourceKind: a?.source_kind ?? null,
+      });
+      promisingParents.push({ url: String(s.source_url), stage: String(s.platform).toUpperCase() === 'INSTAGRAM' ? 'IG_COMMENTS' : 'FB_COMMENTS', similarity: Number(a?.similarity ?? 0) });
+    }
+    promisingParents = promisingParents.filter((p) => !usedTargets.some((t) => t.toLowerCase() === p.url.toLowerCase()));
   }
 
   const dna = campaign.dna ?? {};
   const aiSpentMicros = ((aiRes.data ?? []) as any[]).reduce((n, r) => n + Number(r.actual_micros ?? r.estimated_micros ?? 0), 0);
   const spentMicros = runs.filter((r) => r.status !== 'RELEASED').reduce((n, r) => n + cost(r), 0) + aiSpentMicros;
   const last = state.rounds[state.rounds.length - 1];
-  return {
+  const evidence: CampaignEvidence = {
     transaction: dna.transaction === 'RENT' ? 'RENT' : 'SALE',
     family: dna.family ?? propertyFamily(dna.propertyType),
     city: dna.city ?? null, district: dna.district ?? null, price: dna.price ?? null, currency: dna.currency ?? null, areaSqm: dna.areaSqm ?? null,
@@ -155,6 +178,8 @@ async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, sett
     languages: [...languages.values()],
     usedQueries, usedTargets, promisingParents,
   };
+  PARENTS.set(evidence, parentContexts);
+  return evidence;
 }
 
 /**
@@ -163,7 +188,7 @@ async function gatherEvidence(db: any, campaign: any, state: AdaptiveState, sett
  */
 export async function adaptiveRound(db: any, matchingJobId: string): Promise<{ queued: number; stop: StopReason | null; pass: Pass | null }> {
   const { data: campaign } = await db.from('find_buyers_campaigns')
-    .select('matching_job_id,property_id,provider_budget_micros,dna,query_plan,finalized_at')
+    .select('matching_job_id,property_id,transaction,provider_budget_micros,dna,query_plan,finalized_at')
     .eq('matching_job_id', matchingJobId).maybeSingle();
   if (!campaign || campaign.finalized_at) return { queued: 0, stop: null, pass: null };
   const state = stateOf(campaign.query_plan);
@@ -173,6 +198,7 @@ export async function adaptiveRound(db: any, matchingJobId: string): Promise<{ q
 
   const gates = await actorGates(db, settings.pricingMaxAgeDays);
   const evidence = await gatherEvidence(db, campaign, state, settings);
+  const parents = PARENTS.get(evidence) ?? new Map<string, ParentContext>();
   const step = nextStep(evidence, gates);
   const now = new Date().toISOString();
   const summary = { qualified: evidence.qualified, spentUsd: evidence.spentMicros / 1e6, remainingUsd: Math.max(0, evidence.budgetMicros - evidence.spentMicros) / 1e6, postsInspected: evidence.postsInspected };
@@ -212,7 +238,8 @@ export async function adaptiveRound(db: any, matchingJobId: string): Promise<{ q
     const { data: anyRow } = await db.from('discovery_query_queue').select('search_plan_id').eq('matching_job_id', matchingJobId).limit(1).maybeSingle();
     const rows = v.jobs.map((job, i) => socialJobRow(job, {
       matchingJobId, propertyId: campaign.property_id, planId: anyRow?.search_plan_id ?? null, tranche: 2, step: 100 + (evidence.round + 1) * 10 + i,
-      parent: { adaptivePass: step.pass, adaptiveRound: evidence.round + 1 },
+      parent: { adaptivePass: step.pass, adaptiveRound: evidence.round + 1,
+        ...(job.targetUrl && parents.has(job.targetUrl.toLowerCase()) ? { parent: parents.get(job.targetUrl.toLowerCase()) } : {}) },
     }));
     queued = await insertQueueRows(db, rows);
   }

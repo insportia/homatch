@@ -229,6 +229,36 @@ export function normalizeComment(network: NormalizedItem['network'], o: unknown,
 }
 
 /** One dataset → normalized items, by the stage that produced it. */
+/**
+ * One Meta Ad Library ad as a POST by its advertiser's Page: the ad text, the public
+ * Library link (verifiable evidence) and the Page as author — the Page is what a
+ * comparable ad leads to. No comments: the Library does not expose them. An active ad
+ * is current today; an ended one dates from its end. No archive id = not an ad.
+ */
+export function normalizeAdItem(network: NormalizedItem['network'], o: unknown): NormalizedItem | null {
+  const id = str(pick(o, ['ad_archive_id', 'adArchiveID', 'adArchiveId', 'adId']));
+  if (!id || !/^\d{5,25}$/.test(id)) return null;
+  const snap = pick(o, ['snapshot']);
+  const bodyRaw = pick(snap, ['body']);
+  const body = typeof bodyRaw === 'string' ? bodyRaw : str(pick(bodyRaw, ['text', 'markup.__html']))?.replace(/<[^>]+>/g, ' ') ?? null;
+  const title = str(pick(snap, ['title']));
+  const text = [title, body].filter(Boolean).join('\n').trim();
+  if (!text) return null;
+  const pageId = str(pick(o, ['page_id', 'pageID', 'pageId']));
+  const pageUrl = safeHttpUrl(pick(snap, ['page_profile_uri'])) ?? (pageId ? `https://www.facebook.com/${pageId}` : null);
+  const activeRaw = pick(o, ['is_active', 'isActive']);
+  const active = activeRaw === true || activeRaw === 'true' || activeRaw === 1;
+  const ended = isoDate(pick(o, ['end_date', 'endDate', 'end_date_formatted']));
+  const started = isoDate(pick(o, ['start_date', 'startDate', 'start_date_formatted']));
+  return {
+    kind: 'POST', network, externalId: `ad:${id}`, url: `https://www.facebook.com/ads/library/?id=${id}`,
+    parentExternalId: pageUrl ? `page:${pageUrl.toLowerCase()}` : null, parentUrl: pageUrl,
+    author: { id: pageId, name: str(pick(o, ['page_name', 'pageName'])) ?? str(pick(snap, ['page_name'])), url: pageUrl, handle: null },
+    text: text.slice(0, 4000), publishedAt: active ? new Date().toISOString() : ended ?? started,
+    engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [],
+  };
+}
+
 export function normalizeDataset(
   stage: string,
   network: NormalizedItem['network'],
@@ -243,7 +273,8 @@ export function normalizeDataset(
     if (pick(raw, ['error', 'errorMessage']) && !pick(raw, TEXT)) continue;
     const kind = stage === 'GROUP_SEARCH' ? 'GROUP' : stage === 'COMMENTS' ? 'COMMENT' : 'POST';
     const shaped = adapt(network, raw);
-    const n = kind === 'GROUP' ? normalizeGroup(network, shaped)
+    const n = stage === 'ADS' ? normalizeAdItem(network, raw)
+      : kind === 'GROUP' ? normalizeGroup(network, shaped)
       : kind === 'COMMENT' ? normalizeComment(network, shaped, parent)
       : normalizePost(network, shaped, parent);
     if (!n || seen.has(n.externalId)) continue;

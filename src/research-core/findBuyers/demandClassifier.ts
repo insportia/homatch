@@ -113,6 +113,32 @@ const AGENT = L([
 ]);
 
 /**
+ * A broker or agency recruiting SELLERS: "თუ გაქვთ ბინა გასაყიდი … დაგეხმარებით … ვიპოვო მყიდველი",
+ * "თქვენ გაქვთ გასაყიდი უძრავი ქონება? … ვიღებთ ექსკლუზიურ გაყიდვაში", "помогу продать".
+ * Supply-side, never a buyer (production leads 7bfc19dd, d205058f, 2026-10-16). A buyer asking
+ * sellers ("თუ გაქვთ ბინა გასაყიდი, მომწერეთ") has no service promise and stays a seeker.
+ */
+const SELLER_SERVICE = L([
+  'დაგეხმარებით', 'დაგეხმარებათ', 'დაგეხმაროთ', 'ბროკერი', 'ვიპოვო (რეალური |სანდო )?(მყიდველ|დამქირავებ)', 'მოგიძებნით (მყიდველ|დამქირავებ)', 'ექსკლუზიურ',
+  'ჩაგვაბარეთ', 'გავყიდით', 'მომსახურების საფასურ', 'მაკლერი ვარ', 'ვარ მაკლერი', 'ვარ აგენტი',
+  '(помогу|поможем) (вам )?(продать|сдать)', 'найд(у|ем) покупател', 'эксклюзивн(ый|ую|ое) (договор|продаж)', 'примем (вашу )?недвижимость',
+  `${B}(help you (sell|rent out)|we('ll| will)? sell your|find (you )?a buyer for|exclusive listing|list your (property|apartment|home))`,
+  `${B}(satmanıza yardımcı|alıcı buluyoruz|portföyümüze)`, 'نساعدك (في|على) بيع', 'نبيع عقارك', 'נעזור לכם (למכור|להשכיר)', 'נמכור את הנכס',
+]);
+/** Speaking to owners who sell: "თქვენ გაქვთ გასაყიდი …?", "თუ … გაყიდვა გსურთ", "хотите продать". */
+const ADDRESSES_SELLERS = L([
+  '(თუ |თქვენ )?გაქვთ[^.!?\n]{0,80}(გასაყიდ|გასაქირავებ)', '(გაყიდვა|გაქირავება) გსურთ', 'გსურთ (გაყიდვა|გაქირავება)',
+  'მეპატრონეებ', 'მესაკუთრეებ', '(გასაყიდი|გასაქირავებელი) ბინები გამომიგზავნეთ', 'собственник(ам|и,)', `${B}(owners|landlords),`,
+  '(если )?(у вас есть|хотите (продать|сдать))', `${B}(do you have (a |an )?(property|apartment|house|flat)[^.!?\n]{0,40}(to sell|for sale|to rent)|want to sell your)`,
+  `${B}(satmak istiyorsanız|evinizi satmak)`, 'هل تريد بيع', 'רוצים למכור',
+]);
+/** A buyer asking whoever sells: "ბენდუქიძეში თუ ყიდით ვინმე ბინას მომწერეთ", "кто продаёт квартиру", "anyone selling". */
+const ASKS_SELLERS = L([
+  'თუ (ვინმე )?ყიდით', 'თუ ვინმე ყიდის', 'ვინმე ყიდის', 'ვინ ყიდის', 'кто (-то |нибудь )?прода[её]т', 'кто-то прода[её]т',
+  `${B}(anyone selling|is anyone selling|who is selling|who's selling)`, `${B}(satan var mı|satan varsa)`, 'من يبيع', 'מישהו מוכר',
+]);
+
+/**
  * An advertiser speaking TO buyers: "ბინის შეძენა გსურთ? … გთავაზობთ", "Want to buy an
  * apartment? We offer…", "Хотите купить квартиру? Предлагаем…". Second-person address
  * plus an offer verb is a sales ad — never a buyer (production lead be7d9baa, 2026-10-13).
@@ -124,7 +150,7 @@ const SECOND_PERSON_ADDRESS = L([
   `${B}(istiyor musunuz|arıyor musunuz|düşünüyor musunuz)`, 'هل تريد', 'هل تبحث', 'تبحث عن', 'רוצים לקנות', 'מחפשים דירה\?', 'מתכננים לקנות',
 ]);
 const OFFER_VERB = L([
-  'გთავაზობთ', 'შემოგთავაზებთ', 'გთავაზობს', 'ჩვენთან', 'ჩვენი კომპანი', 'დეველოპერ', 'მწვანე კარკას', 'თეთრი კარკას', 'შავი კარკას', 'გადახდის მოქნილი',
+  'გთავაზობთ', 'შემოგთავაზებთ', 'გთავაზობს', 'ეს ვარიანტი', 'ვარიანტი ნახეთ', 'შეთავაზება თქვენთვის', 'ეს შეთავაზება', 'ჩვენთან', 'ჩვენი კომპანი', 'დეველოპერ', 'მწვანე კარკას', 'თეთრი კარკას', 'შავი კარკას', 'გადახდის მოქნილი',
   `${B}(we offer|we provide|our (company|project|apartments)|developer|flexible payment|payment plan|contact us|call us)`,
   'предлагаем', 'наша компания', 'застройщик', 'рассрочка от', 'звоните нам',
   `${B}(sunuyoruz|firmamız|projemiz)`, 'نقدم', 'نوفر', 'شركتنا', 'אנו מציעים', 'אנחנו מציעים', 'החברה שלנו',
@@ -164,7 +190,7 @@ const RENOVATION = L([
 const SEEK = L([
   `${B}(i'?m looking|i am looking|we are looking|we're looking|looking for|looking to|searching for|in search of|i need|we need|need an?|needed|want to (buy|rent)|wanted|send me|please send|dm me with options|is looking for|are looking for)`,
   'ищу', 'ищем', 'нужн[аоы]', 'нужен', 'хочу (купить|снять)', 'куплю', 'сниму', 'присмотр', 'пришлите', 'предложите варианты',
-  'ვეძებ', 'ვეძებთ', 'ეძებს', 'ищет', 'ищут', 'arıyor', 'يبحث', 'მჭირდება', 'გვჭირდება', 'მინდა', 'გამომიგზავნეთ', 'შემომთავაზეთ', 'ვიყიდი', 'შევიძენ', 'ვყიდულობ', 'ვიქირავებ', 'ვქირაობ',
+  'ვეძებ', 'ვეძებთ', 'ეძებს', 'ищет(?!е)', 'ищут', 'arıyor', 'يبحث', 'მჭირდება', 'გვჭირდება', 'მინდა', 'გამომიგზავნეთ', 'შემომთავაზეთ', 'ვიყიდი', 'შევიძენ', 'ვყიდულობ', 'ვიქირავებ', 'ვქირაობ',
   `${B}(arıyorum|arıyoruz|almak istiyorum|kiralamak istiyorum|lazım)`, 'أبحث', 'ابحث', 'نبحث', 'أريد', 'اريد', 'محتاج', 'مطلوب',
   'מחפש', 'מחפשת', 'מחפשים', 'רוצה לקנות', 'רוצה לשכור', 'צריך', 'צריכה',
 ]);
@@ -335,6 +361,10 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   if (addressesReader && OFFER_VERB.test(s) && (!STRONG_SEEK.test(s) || QUESTION_TO_READER.test(s))) {
     return { ...empty('SALE_OFFER', 'addresses_buyers_with_offer', 0.85), realEstate: realEstate || BUY.test(s), residential: residentialNoun, transaction: 'BUY' };
   }
+  /* A broker or agency recruiting sellers is supply, whatever buyer words it uses. */
+  if (SELLER_SERVICE.test(s) && (ADDRESSES_SELLERS.test(s) || seekIdx < 0) && !STRONG_SEEK.test(s)) {
+    return { ...empty('AGENT', 'solicits_sellers', 0.85), realEstate: realEstate || BUY.test(s), residential: residentialNoun, intermediary: true };
+  }
   /* Already bought / found, or explicitly not looking: never an active seeker. */
   if (ALREADY_DONE.test(s)) return empty('IRRELEVANT', 'already_purchased');
   if (NOT_LOOKING.test(s)) return empty('IRRELEVANT', 'not_looking');
@@ -358,7 +388,8 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   }
   const rentWords = RENT.test(s);
   const seeksForSale = SEEK_FOR_SALE.test(s) && !BUYER_WANTED.test(s) && !LISTING_CUES.test(s);
-  const buyWords = BUY.test(s) || seeksForSale;
+  const asksSellers = ASKS_SELLERS.test(s) && !SELLER_SERVICE.test(s);
+  const buyWords = BUY.test(s) || seeksForSale || asksSellers;
   const maxUsd = budget ? toUsd({ amount: budget.max ?? 0, currency: budget.currency }) : null;
   const scale: 'RENT' | 'BUY' | null = maxUsd == null ? null : maxUsd <= RENT_SCALE_MAX_USD ? 'RENT' : maxUsd >= BUY_SCALE_MIN_USD ? 'BUY' : null;
   if (budget) budget.period = scale === 'RENT' || (rentWords && !buyWords) ? 'MONTHLY' : scale === 'BUY' || buyWords ? 'TOTAL' : null;
@@ -391,6 +422,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   if (seeksForSale && direction !== 'SEEK') { direction = 'SEEK'; evidence.push('seeks_property_for_sale'); }
   /* "if you have one for sale, message me" is a seeker asking sellers. */
   if (direction === 'OFFER' && /(თუ გაქვთ|если у вас есть|if you have|eğer varsa|إذا كان لديك|אם יש לכם)/iu.test(s)) { direction = 'SEEK'; evidence.push('asks_sellers'); }
+  if (!direction && asksSellers) { direction = 'SEEK'; evidence.push('asks_sellers'); }
   if (!direction && (BUY.test(s) || /(снять|to rent|kiralamak|استئجار|לשכור)/iu.test(s) || BUDGET_WORD.test(s)) && !LISTING_CUES.test(s)) {
     /* "купить квартиру …", "buy apartment …", "שراء شقة": an explicit purchase/rent
        verb or a stated budget, with no listing cues, is someone who wants one. */
@@ -432,6 +464,13 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   }
   return { ...base, role: transaction === 'BUY' ? 'BUY_SEEKER' : 'RENT_SEEKER', transaction, evidence,
     confidence: buyWords || rentWords ? 0.9 : 0.7, needsModel: false };
+}
+
+/** A home seeker whose buy-or-rent was never stated (or only guessed by the model). */
+export function transactionUnconfirmed(r: Pick<DemandReading, 'role' | 'evidence' | 'realEstate'>): boolean {
+  if (!r.realEstate) return false;
+  if (r.evidence.includes('transaction_inferred')) return r.role === 'BUY_SEEKER' || r.role === 'RENT_SEEKER';
+  return r.role === 'UNCLEAR' && r.evidence.includes('first_person_seeking') && r.evidence.includes('transaction_unknown');
 }
 
 /* ── comments in context ───────────────────────────────────────────────── */
@@ -499,7 +538,12 @@ export function boundModelReading(rule: DemandReading, model: { role?: unknown; 
   if (role === 'BUY_SEEKER' && transaction === 'RENT') finalRole = 'RENT_SEEKER';
   if (role === 'RENT_SEEKER' && transaction === 'BUY') finalRole = 'BUY_SEEKER';
   if ((finalRole === 'BUY_SEEKER' || finalRole === 'RENT_SEEKER') && !transaction) transaction = finalRole === 'BUY_SEEKER' ? 'BUY' : 'RENT';
-  return { ...rule, role: finalRole, transaction, needsModel: false, confidence: Math.min(0.75, rule.confidence + 0.3), evidence: [...rule.evidence, 'model_resolved'] };
+  /* A first-person seeker who never said buy or rent: the model's transaction is a guess,
+     kept as such so the person is "interested, needs verification", never a confirmed buyer
+     or a dropped tenant (production signal "ვეძებ ბინას 3ოთახიანს ვარკეთილში", 2026-10-16). */
+  const inferred = rule.evidence.includes('transaction_unknown') && maxUsd == null && (finalRole === 'BUY_SEEKER' || finalRole === 'RENT_SEEKER');
+  return { ...rule, role: finalRole, transaction, needsModel: false, confidence: Math.min(0.75, rule.confidence + 0.3),
+    evidence: [...rule.evidence, 'model_resolved', ...(inferred ? ['transaction_inferred'] : [])] };
 }
 
 export const DEMAND_MODEL_SCHEMA = {

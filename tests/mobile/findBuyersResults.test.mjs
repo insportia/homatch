@@ -234,7 +234,7 @@ test('a compact card links only to its detail page; the detail explains why, kee
   assert.doesNotMatch(cardText, /Qualified buyer|confirmed buyer/i);
   assert.ok((await card.textContent()).includes(AR_TEXT), 'the original Arabic is shown as written');
   assert.equal(await card.locator('a[href^="http"]').count(), 0, 'no external link on the list card');
-  assert.match(await page.textContent('main'), /External results/);
+  assert.match(await page.textContent('main'), /Extended research results/);
   assert.doesNotMatch(await page.textContent('main'), /memo23|apify|actor/i, 'no provider internals');
   await card.locator('[data-testid="fbx-lead-details"]').click();
   await page.waitForURL(/\/buyers\/lead\/l1$/, { timeout: 15000 });
@@ -265,7 +265,7 @@ test('a compact card links only to its detail page; the detail explains why, kee
   await page.click('[data-testid="fbx-tab-direct"]');
   await page.waitForSelector('[data-testid="fbx-lead-card"][data-lead="l2"]', { timeout: 15000 });
   const buyers = await page.textContent('main');
-  assert.match(buyers, /Qualified buyer/);
+  assert.match(buyers, /Strong interest/);
   assert.match(buyers, /Strong match/);
   await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/lead/l2`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbld-detail"]', { timeout: 20000 });
@@ -322,21 +322,30 @@ test('a failed results read says so and offers a retry — never "no results"', 
   await page.waitForSelector('[data-testid="fbx-results-error"]', { timeout: 20000 });
 });
 
-test('HOMATCH Match is free and starts only the internal matcher; External Discovery only opens the budget step', opts, async (t) => {
+test('internal matches never start research; the one start action only opens the budget step', opts, async (t) => {
   const { page } = await boot(t, { status: IDLE });
   const calls = [];
   page.on('request', (req) => { const u = req.url(); if (u.includes('/rpc/') || u.includes('/functions/v1/')) calls.push(u.replace(/^.*\/(rpc|functions\/v1)\//, '')); });
   await page.route('**/rpc/internal_leads_request_matching', (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: 'true' }));
   await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-testid="fbd-internal-start"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="fbd-internal-view"]', { timeout: 20000 });
+  assert.equal(await page.locator('[data-testid="fbd-internal-start"]').count(), 0, 'one button for internal matches');
   const before = calls.length;
-  await page.click('[data-testid="fbd-internal-start"]');
-  await page.waitForSelector('[data-testid="fbd-internal-requested"]', { timeout: 10000 });
-  const started = calls.slice(before);
-  assert.ok(started.some((c) => c.startsWith('internal_leads_request_matching')), 'the internal matcher was asked');
-  assert.ok(!started.some((c) => /match-campaign|billing_|wallet|reserve/.test(c)), `free matching made no paid call: ${started.join(', ')}`);
-  /* External Discovery's start opens the budget step on its own page; nothing launches. */
-  await page.click('[data-testid="fbd-external-start"]');
+  /* The RPC first awaits the auth session, so wait for the request itself, not a fixed delay. */
+  const asked = page.waitForRequest((req) => req.url().includes('/rpc/internal_leads_request_matching'), { timeout: 15000 });
+  await page.click('[data-testid="fbd-internal-view"]');
+  await page.waitForURL(/\/buyers\/internal$/, { timeout: 15000 });
+  await asked;
+  await page.waitForTimeout(300);
+  const opened = calls.slice(before);
+  assert.ok(opened.some((c) => c.startsWith('internal_leads_request_matching')), 'the internal matcher was asked');
+  assert.ok(!opened.some((c) => /match-campaign|billing_|wallet|reserve/.test(c)), `internal matches made no charging call: ${opened.join(', ')}`);
+  /* The one primary action opens the budget step on the results page; nothing launches. */
+  await page.goBack();
+  await page.waitForSelector('[data-testid="fbd-primary-action"]', { timeout: 20000 });
+  /* Once the searches are read, the property has one: "start a new search". */
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-primary"]')?.getAttribute('data-mode') === 'start_new', null, { timeout: 15000 });
+  await page.click('[data-testid="fbd-primary-action"]');
   await page.waitForURL(/\/buyers\/external/, { timeout: 15000 });
   await page.waitForSelector('[role="dialog"]', { timeout: 15000 });
   assert.ok(!calls.some((c) => c.startsWith('match-campaign')), 'opening the budget step launches nothing');
@@ -359,23 +368,28 @@ const OPP_LEADS = [
     qualification: { resultType: 'DIRECT', intent: 'ACTIVE_BUYER', signals: ['EXPLICIT_BUY'] } }),
 ];
 
-test('the dashboard is compact: two summaries and recent searches, no lead list; each view opens its own page', opts, async (t) => {
+test('the dashboard is one journey: criteria, one action, the latest search with its own counts, no lead list', opts, async (t) => {
   const { page } = await boot(t, { status: IDLE, leads: OPP_LEADS });
   await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fb-dashboard"]', { timeout: 20000 });
-  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-ext-interest"]')?.textContent?.includes('4'), null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest-people"]')?.textContent?.includes('5'), null, { timeout: 20000 });
   const d = await page.evaluate(() => ({
-    direct: document.querySelector('[data-testid="fbd-ext-direct"]')?.textContent?.match(/\d+/)?.[0],
-    opps: document.querySelector('[data-testid="fbd-ext-opportunities"]')?.textContent?.match(/\d+/)?.[0],
+    people: document.querySelector('[data-testid="fbd-latest-people"]')?.textContent,
+    opps: document.querySelector('[data-testid="fbd-latest-opportunities"]')?.textContent,
+    fresh: document.querySelector('[data-testid="fbd-latest-new"]')?.textContent,
+    again: document.querySelector('[data-testid="fbd-latest-again"]')?.textContent,
     cards: document.querySelectorAll('article[aria-label] a[href^="https://"]').length,
-    recent: document.querySelectorAll('[data-testid="fbh-recent-item"]').length,
+    previous: document.querySelectorAll('[data-testid="fbd-previous-item"]').length,
     edit: document.querySelector('[data-testid="fbh-edit-search"]')?.getAttribute('href'),
+    criteria: document.querySelector('[data-testid="fbh-criteria"]')?.textContent ?? '',
   }));
-  assert.deepEqual({ direct: d.direct, opps: d.opps }, { direct: '1', opps: '1' }, '1 buyer, 4 interest signals, 1 post opportunity — never added together');
+  assert.deepEqual({ people: d.people, opps: d.opps, fresh: d.fresh, again: d.again }, { people: '5', opps: '1', fresh: '5', again: '0' },
+    '1 strong + 4 needing qualification = 5 people, 1 post opportunity — never added together');
   assert.equal(d.cards, 0, 'no lead cards on the dashboard');
-  assert.equal(d.recent, 1);
+  assert.equal(d.previous, 0, 'one search: nothing previous');
   assert.match(d.edit ?? '', /\/property\/[^/]+\/edit$/, 'Edit search opens the listing, it never starts a search');
-  await page.click('[data-testid="fbd-external-view"]');
+  assert.match(d.criteria, /Expected budget/, 'the search criteria are the property\'s own');
+  await page.click('[data-testid="fbd-latest-open"]');
   await page.waitForURL(/\/buyers\/external$/, { timeout: 15000 });
   await page.waitForSelector('[data-testid="fbx-tab-direct"][aria-selected="true"]', { timeout: 20000 });
   await page.click('[data-testid="fbx-tab-opportunities"]');
@@ -511,21 +525,21 @@ test('live search module: server state, real source nodes only, real counts, the
   assert.equal(await page.getAttribute('[data-testid="fbl-field"]', 'data-mode'), 'searching');
   assert.equal(await page.getAttribute('[data-testid="fbl-field"]', 'aria-hidden'), 'true');
   await openDetails(page);
-  await page.waitForSelector('text=Buyer budget', { timeout: 15000 });
+  await page.waitForSelector('text=Expected budget', { timeout: 15000 });
   const main = await page.textContent('main');
   assert.match(main, /Searching — first results are in/);
   assert.match(main, /sources working/);
   assert.match(main, /signals checked/);
   /* Find Buyers 3.0: HOMATCH members are on their own page, never on the external one. */
   assert.doesNotMatch(main, /HOMATCH Matches/, 'internal matches never appear on the external results page');
-  assert.match(main, /External results/, 'external results are their own section');
+  assert.match(main, /Extended research results/, 'external results are their own section');
   /* Only sources really working are listed; REDDIT is still queued and appears once it starts (2026-10-12). */
   assert.deepEqual(await page.$$eval('[data-testid="fbl-source-outcomes"] li', (els) => els.map((e) => e.getAttribute('data-source'))), ['FACEBOOK', 'VK'], 'only sources running or finished');
   assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);
   assert.equal(await page.getByRole('button', { name: 'Continue search' }).count(), 0);
   assert.doesNotMatch(main, /75%/, 'no invented percentage');
   assert.doesNotMatch(main, /New matches are in/, 'the first server read is a baseline, not an arrival');
-  assert.match(main, /Buyer budget/, 'the search profile is derived from the property facts');
+  assert.match(main, /Expected budget/, 'the search profile is derived from the property facts');
   assert.match(main, /2 bedrooms/, 'the real bedroom count, never a stale "1+"');
   /* Scrolled away: a compact status entry stays reachable. */
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -559,12 +573,17 @@ test('a search that could not start never reads as "finished, 0 results"; launch
   assert.match(main, /The search could not start/);
   assert.doesNotMatch(main, /Search finished — no new active demand/);
   assert.match(main, /discovery sources are not switched on yet/);
-  assert.equal(await page.getByRole('button', { name: 'Find Buyers' }).first().isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'Find interested people' }).first().isDisabled(), true);
 });
 
-test('numbered server pages: page 2 is a server request, kept in the URL, Back returns to page 1', opts, async (t) => {
+/* 2026-10-17: a page number is a view of the screen, not a screen. Paging REPLACES the
+   entry, so Back — the phone's or the top-left one — leaves the results instead of
+   stepping back to page 1 of the same screen (which read as "Back only scrolled"). */
+test('numbered server pages: page 2 is a server request, kept in the URL; paging adds no history, Back leaves the screen', opts, async (t) => {
   const { page } = await boot(t, { matches: MATCHES, status: withState('COMPLETED_WITH_RESULTS', { active: false }) });
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
   await open(page);
+  const entries = await page.evaluate(() => history.length);
   await page.waitForSelector('nav[aria-label="Match pages"]');
   assert.equal(await page.locator('nav[aria-label="Match pages"] [aria-current="page"]').textContent(), '1');
   /* The current-page marker follows the URL at once; the page-2 fetch fires a
@@ -574,9 +593,10 @@ test('numbered server pages: page 2 is a server request, kept in the URL, Back r
   await page.waitForFunction(() => new URLSearchParams(location.search).get('page') === '2');
   await page.waitForFunction(() => document.querySelector('nav[aria-label="Match pages"] [aria-current="page"]')?.textContent === '2');
   assert.match((await page2Request).url(), /offset=12/, 'page 2 asked the server for offset 12');
-  await page.goBack();
-  await page.waitForFunction(() => !new URLSearchParams(location.search).get('page'));
   assert.doesNotMatch(await page.textContent('main'), /Show more|მეტის ჩვენება/);
+  assert.equal(await page.evaluate(() => history.length), entries, 'paging replaced the entry, it did not push one');
+  await page.goBack();
+  await page.waitForURL((u) => new URL(u).pathname === `/property/${PROPERTY_ID}/matches`, { timeout: 30000 });
 });
 
 test('an Arabic excerpt reads right-to-left inside a left-to-right card (Georgian UI stays LTR)', opts, async (t) => {
@@ -630,7 +650,7 @@ test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scrol
       /* The search dialog. */
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('text=Buyer budget, text=მყიდველის ბიუჯეტი, text=ميزانية', { timeout: 30000 }).catch(() => {});
+      await page.waitForSelector('text=Expected budget, text=მოსალოდნელი ბიუჯეტი, text=ميزانية', { timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(1500);
       const launch = page.locator('[data-testid="fbl-launch"]');
       if (await launch.count()) {

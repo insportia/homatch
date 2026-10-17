@@ -7,10 +7,13 @@
 
 import { supabase } from '@/db/supabase';
 import type { PotentialLead } from '@/services/findBuyers';
-import { indexLeadCampaigns, type LeadCampaign } from '@/findBuyers/leadCampaigns';
+import {
+  buildCampaignList, parseClearOutcome, parseClearPreview,
+  type CampaignRow, type ClearOutcome, type ClearPreview, type JobRow, type LeadCampaign, type LeadSummaryRow,
+} from '@/findBuyers/leadCampaigns';
 import { parseResearchRows, type ResearchOpportunityRow } from '@/findBuyers/externalResults';
 
-export type { LeadCampaign };
+export type { LeadCampaign, ClearPreview, ClearOutcome };
 
 const LEAD_COLUMNS = 'id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url';
 const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit,qualification';
@@ -18,7 +21,7 @@ const QUALIFICATION_COLUMNS = 'match_category,budget_fit,location_fit,qualificat
    review version: in the table, absent from older databases — read with the same fallback. */
 const ROLE_COLUMNS = 'role,transaction,qualification_version';
 /** Richest read first; each fallback drops the newest columns a database may not have yet. */
-const COLUMN_SETS = [`${LEAD_COLUMNS},${QUALIFICATION_COLUMNS},${ROLE_COLUMNS}`, `${LEAD_COLUMNS},${QUALIFICATION_COLUMNS}`, LEAD_COLUMNS];
+const COLUMN_SETS = [`${LEAD_COLUMNS},${QUALIFICATION_COLUMNS},${ROLE_COLUMNS},person_id`, `${LEAD_COLUMNS},${QUALIFICATION_COLUMNS},${ROLE_COLUMNS}`, `${LEAD_COLUMNS},${QUALIFICATION_COLUMNS}`, LEAD_COLUMNS];
 
 async function readWithFallback<R extends { error: unknown }>(read: (columns: string) => PromiseLike<R>): Promise<R> {
   let res = await read(COLUMN_SETS[0]);
@@ -28,13 +31,75 @@ async function readWithFallback<R extends { error: unknown }>(read: (columns: st
 
 /** The property's external searches, newest first. Light: three columns per lead. */
 export async function getPropertyLeadCampaigns(propertyId: string): Promise<{ campaigns: LeadCampaign[]; failed: boolean }> {
-  const { data, error } = await supabase
-    .from('find_buyers_current_leads')
-    .select('matching_job_id,match_category,created_at')
+  const res = await getPropertyCampaignRows(propertyId);
+  if (res.failed) return { campaigns: [], failed: true };
+  return { campaigns: buildCampaignList(res), failed: false };
+}
+
+export interface PropertyCampaignRows { campaigns: CampaignRow[]; jobs: JobRow[]; leads: LeadSummaryRow[]; failed: boolean }
+
+const LEAD_SUMMARY_SETS = ['id,matching_job_id,match_category,created_at,seen_before,person_id,author_profile_url', 'id,matching_job_id,match_category,created_at,seen_before', 'matching_job_id,match_category,created_at'];
+
+/**
+ * Every search of the property and every current lead's summary (owner RLS on all three):
+ *   find_buyers_campaigns  one row per Find Buyers search (matching_job_id, created_at);
+ *   matching_jobs          its status and timestamps;
+ *   find_buyers_current_leads  per-lead job, category, created_at, seen_before, person.
+ * Newest first. A search with zero leads is still a search. The campaigns / jobs reads are
+ * enrichment: an error there degrades to the lead-derived list; only a failed lead read is
+ * `failed` (never shown as "no results").
+ */
+export async function getPropertyCampaignRows(propertyId: string): Promise<PropertyCampaignRows> {
+  const campaignsRead = Promise.resolve(supabase.from('find_buyers_campaigns')
+    .select('matching_job_id,created_at,finalized_at,stop_reason')
     .eq('property_id', propertyId)
-    .limit(2000);
-  if (error) return { campaigns: [], failed: true };
-  return { campaigns: indexLeadCampaigns((data ?? []) as Array<{ matching_job_id: string; match_category: string | null; created_at: string }>), failed: false };
+    .order('created_at', { ascending: false })
+    .limit(50)).then((r) => (r.error ? [] : ((r.data ?? []) as CampaignRow[]))).catch(() => [] as CampaignRow[]);
+  const leadsRead = (async () => {
+    let last: { data: unknown; error: unknown } = { data: null, error: true };
+    for (const columns of LEAD_SUMMARY_SETS) {
+      last = await supabase.from('find_buyers_current_leads').select(columns).eq('property_id', propertyId)
+        .order('created_at', { ascending: false }).limit(2000);
+      if (!last.error) break;
+    }
+    return last;
+  })();
+  const [campaigns, leadsRes] = await Promise.all([campaignsRead, leadsRead]);
+  if (leadsRes.error) return { campaigns: [], jobs: [], leads: [], failed: true };
+  const leads = (Array.isArray(leadsRes.data) ? leadsRes.data : []) as LeadSummaryRow[];
+  const ids = [...new Set([...campaigns.map((c) => c.matching_job_id), ...leads.map((l) => l.matching_job_id)].filter((x): x is string => Boolean(x)))].slice(0, 100);
+  let jobs: JobRow[] = [];
+  if (ids.length) {
+    try {
+      const r = await supabase.from('matching_jobs').select('id,status,created_at,started_at,completed_at,updated_at').in('id', ids);
+      jobs = r.error || !Array.isArray(r.data) ? [] : (r.data as JobRow[]);
+    } catch { jobs = []; }
+  }
+  return { campaigns, jobs, leads, failed: false };
+}
+
+/* ── Clear old results (owner-scoped RPCs, explicit confirmation in the UI) ── */
+
+/** What a clear would hide. null = the server cannot answer (e.g. the RPC is not deployed yet). */
+export async function getClearResultsPreview(propertyId: string): Promise<ClearPreview | null> {
+  try {
+    const { data, error } = await supabase.rpc('find_buyers_clear_results_preview', { p_property_id: propertyId });
+    if (error) return null;
+    return parseClearPreview(data);
+  } catch {
+    return null;
+  }
+}
+
+/** Hides the property's completed searches' results for its owner. Never deletes the property, credits, payments or audit. */
+export async function clearOldResults(propertyId: string): Promise<ClearOutcome | null> {
+  try {
+    const { data, error } = await supabase.rpc('find_buyers_clear_results', { p_property_id: propertyId });
+    if (error) return null;
+    return parseClearOutcome(data);
+  } catch {
+    return null;
+  }
 }
 
 /** One page of leads, strongest first, stable order. `jobId` scopes it to one search; null reads all. */

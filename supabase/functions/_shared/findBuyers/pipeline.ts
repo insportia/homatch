@@ -156,6 +156,19 @@ const REAL_ESTATE_TERMS = /(apartment|flat|real estate|property|rent|кварт�
 const ageDaysOf = (iso: string | null, now: number) => (iso ? Math.max(0, (now - Date.parse(iso)) / DAY) : null);
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n - 1)}…` : s) : null);
 
+/** Two slices of one run (a batched read, batching.ts) as one result. */
+export function mergeResults(a: PipelineResult, b: PipelineResult): PipelineResult {
+  const sumRec = <K extends string>(x: Record<K, number>, y: Record<K, number>) =>
+    Object.fromEntries([...new Set([...Object.keys(x), ...Object.keys(y)])].map((k) => [k, Number((x as any)[k] ?? 0) + Number((y as any)[k] ?? 0)])) as Record<K, number>;
+  return {
+    items: a.items + b.items, useful: a.useful + b.useful, qualified: a.qualified + b.qualified, strong: a.strong + b.strong, weak: a.weak + b.weak,
+    rejected: sumRec(a.rejected, b.rejected), duplicates: a.duplicates + b.duplicates, reused: a.reused + b.reused, staleDropped: a.staleDropped + b.staleDropped,
+    groupsFound: a.groupsFound + b.groupsFound, followUps: [...a.followUps, ...b.followUps], aiCalls: a.aiCalls + b.aiCalls,
+    dispositions: sumRec(a.dispositions, b.dispositions), candidates: a.candidates + b.candidates,
+    ...(a.commentSampling ?? b.commentSampling ? { commentSampling: a.commentSampling ?? b.commentSampling } : {}),
+  };
+}
+
 export async function processItems(ctx: PipelineCtx, items: NormalizedItem[]): Promise<PipelineResult> {
   const out: PipelineResult = { items: items.length, useful: 0, qualified: 0, strong: 0, weak: 0, rejected: {}, duplicates: 0, reused: 0, staleDropped: 0, groupsFound: 0, followUps: [], aiCalls: 0, dispositions: emptyDispositions(), candidates: 0 };
   if (!items.length) return out;

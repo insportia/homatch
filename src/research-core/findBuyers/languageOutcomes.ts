@@ -16,15 +16,23 @@ export type LanguageOutcome =
 
 export interface QueueRowLike { language: string | null; status: string; result_count?: number | null; cancel_reason?: string | null }
 export interface LeadLike { language: string | null }
+/** An Actor run's language and the items it returned (find_buyers_actor_runs). */
+export interface RunLike { language: string | null; items_fetched?: number | null }
 
 export interface LanguageReport { language: string; outcome: LanguageOutcome; planned: number; ran: number; items: number; people: number; notRunReason: string | null }
 
-export function languageOutcomes(queue: readonly QueueRowLike[], leads: readonly LeadLike[]): LanguageReport[] {
+/* `items` is what the platforms RETURNED in the language. A queue row's result_count is the
+   number of qualified people (executor), so counting it made every language read 0 items
+   (campaign 719a57ac: 414 items fetched, items = 0 everywhere, 2026-10-17); the runs are
+   used when given. */
+export function languageOutcomes(queue: readonly QueueRowLike[], leads: readonly LeadLike[], runs?: readonly RunLike[]): LanguageReport[] {
   return OUTCOME_LANGUAGES.map((language) => {
     const rows = queue.filter((q) => String(q.language ?? '').toLowerCase() === language);
     const ran = rows.filter((q) => q.status === 'DONE' || q.status === 'FAILED');
     const done = rows.filter((q) => q.status === 'DONE');
-    const items = done.reduce((n, q) => n + Number(q.result_count || 0), 0);
+    const items = runs
+      ? runs.filter((r) => String(r.language ?? '').toLowerCase() === language).reduce((n, r) => n + Number(r.items_fetched || 0), 0)
+      : done.reduce((n, q) => n + Number(q.result_count || 0), 0);
     const people = leads.filter((l) => String(l.language ?? '').toLowerCase() === language).length;
     const cancelled = rows.filter((q) => q.status === 'CANCELLED');
     let outcome: LanguageOutcome;

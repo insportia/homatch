@@ -18,7 +18,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { canGoBackInApp } from '@/lib/backNavigation';
+import { goToPreviousScreen } from '@/lib/backNavigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -121,7 +121,7 @@ export default function ContactProfilePage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => (canGoBackInApp() ? navigate(-1) : navigate('/outreach/contacts', { replace: true }))}
+            onClick={() => goToPreviousScreen(navigate, '/outreach/contacts')}
           >
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comms_nav_contacts')}
           </Button>

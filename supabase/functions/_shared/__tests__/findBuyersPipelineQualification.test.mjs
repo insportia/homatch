@@ -33,14 +33,15 @@ const post = (l) => ({
   engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [],
 });
 
-test('VILLION posts through the live pipeline: 2 leads (1 Potential with financing to confirm, 1 Weak), 0 Strong, every rejection explained', async () => {
+test('VILLION posts through the live pipeline: 1 lead (Weak: city only, no budget, financing to confirm), 0 Strong, every rejection explained', async () => {
   const { db, tables } = campaignDb();
   const out = await processItems(ctxFor(db), fixture.leads.map(post));
   const leads = tables.find_buyers_leads;
-  assert.equal(leads.length, 2, JSON.stringify(leads.map((l) => [l.match_category, l.evidence?.[0]?.text?.slice(0, 40)])));
-  assert.deepEqual(leads.map((l) => l.match_category).sort(), ['POTENTIAL', 'WEAK']);
+  /* v6 (owner, 2026-10-17): the Digomi/Gldani buyer is another area for a Krtsanisi flat. */
+  assert.equal(leads.length, 1, JSON.stringify(leads.map((l) => [l.match_category, l.evidence?.[0]?.text?.slice(0, 40)])));
+  assert.deepEqual(leads.map((l) => l.match_category), ['WEAK']);
   assert.equal(out.strong, 0);
-  assert.equal(out.qualified, 1);
+  assert.equal(out.qualified, 0);
   assert.equal(out.weak, 1);
   const assess = tables.find_buyers_assessments;
   assert.equal(assess.length, 37);
@@ -61,7 +62,9 @@ test('VILLION posts through the live pipeline: 2 leads (1 Potential with financi
   assert.ok(Array.isArray(instalment.qualification.dupKeys));
   /* Time to first visible / qualified result recorded once. */
   const m = tables.find_buyers_campaigns[0].metrics;
-  assert.ok(m.firstVisibleAt && m.firstQualifiedAt);
+  /* one person to qualify, nobody qualified: a first visible time, no first qualified time */
+  assert.ok(m.firstVisibleAt);
+  assert.equal(m.firstQualifiedAt, undefined);
   assert.equal(m.firstStrongAt, undefined);
 });
 
@@ -69,7 +72,7 @@ test('re-running the same posts adds nothing (campaign-level dedupe)', async () 
   const { db, tables } = campaignDb();
   await processItems(ctxFor(db), fixture.leads.map(post));
   const again = await processItems(ctxFor(db), fixture.leads.map((l) => ({ ...post(l), externalId: `post:again-${l.n}` })));
-  assert.equal(tables.find_buyers_leads.length, 2);
+  assert.equal(tables.find_buyers_leads.length, 1);
   assert.equal(again.qualified + again.weak, 0);
 });
 

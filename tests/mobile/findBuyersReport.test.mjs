@@ -261,7 +261,9 @@ test('final report (production campaign 70b0d32b): truthful summary, Research No
   assert.match(notes[2], /88% of the research budget/);
   assert.match(notes[3], /time limit before they ran: 7/);
   assert.match(notes[4], /No comments were examined.*posts: 322/);
-  assert.match(notes[5], /all 130 messages came through paid access to 8 channels/);
+  /* No free vs paid segmentation in the customer report (owner, 2026-10-17). */
+  assert.match(notes[5], /Telegram: messages read for this search: 130\./);
+  assert.doesNotMatch(notes[5], /free|paid/i);
   await expand(page);
   const l = await layout(page);
   assert.match(l.report, /Property searched/i);

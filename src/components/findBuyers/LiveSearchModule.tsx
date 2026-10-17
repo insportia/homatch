@@ -49,7 +49,7 @@ function useSecondTick(active: boolean): number {
 function Stat({ label, children, testid }: { label: string; children: React.ReactNode; testid: string }) {
   return (
     <div data-testid={testid} className="min-w-0 rounded-xl bg-white/[0.05] px-3 py-2 ring-1 ring-inset ring-white/10">
-      <dt className={cn('truncate text-2xs', ON_NAVY_SOFT)}>{label}</dt>
+      <dt className={cn('break-words text-2xs leading-snug', ON_NAVY_SOFT)}>{label}</dt>
       <dd className="mt-0.5 font-display text-lg font-semibold leading-tight text-white">{children}</dd>
     </div>
   );
@@ -132,7 +132,7 @@ export function LiveSearchModule({
       aria-busy={o.spinning || undefined}
       data-testid={o.testid}
       className={cn(
-        'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-70',
+        'inline-flex min-h-11 w-full items-center justify-center gap-2 whitespace-normal rounded-xl px-4 py-2 text-sm font-semibold leading-snug transition-all disabled:cursor-not-allowed disabled:opacity-70 min-[420px]:w-auto',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(218_52%_11%)]',
         o.primary
           ? `${GOLD_FILL} text-[hsl(218_52%_11%)] shadow-[0_10px_24px_-12px_hsl(38_92%_45%/0.9)] enabled:hover:-translate-y-px`
@@ -140,7 +140,7 @@ export function LiveSearchModule({
       )}
     >
       {o.spinning || (busy && !o.disabled) ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> : <o.icon className="h-4 w-4 shrink-0" aria-hidden="true" />}
-      <span className="break-words text-start">{o.label}</span>
+      <span className="min-w-0 break-words text-center">{o.label}</span>
     </button>
   );
 
@@ -166,7 +166,7 @@ export function LiveSearchModule({
             </h2>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full flex-col gap-2 min-[420px]:w-auto min-[420px]:flex-row min-[420px]:flex-wrap">
           {view?.control === 'pause' && button({ icon: Pause, label: t('fbl_pause'), onClick: onPause, testid: 'fbl-pause' })}
           {view?.control === 'pausing' && button({ icon: Pause, label: t('fbl_pausing'), disabled: true, spinning: true })}
           {view?.control === 'resume' && button({ icon: Play, label: t('fbl_resume'), onClick: onResume, primary: true, testid: 'fbl-resume' })}
@@ -203,13 +203,17 @@ export function LiveSearchModule({
             </Stat>
             {showProgress && (
               <div data-testid="fbl-progress" className="col-span-2 min-w-0 rounded-xl bg-white/[0.05] px-3 py-2 ring-1 ring-inset ring-white/10 sm:col-span-1">
-                <dt className={cn('truncate text-2xs', ON_NAVY_SOFT)}>{t('fbl_progress_tasks')}</dt>
+                <dt className={cn('break-words text-2xs leading-snug', ON_NAVY_SOFT)}>{t('fbl_progress_tasks')}</dt>
                 <dd className="mt-0.5 font-display text-lg font-semibold leading-tight text-white">
                   <span dir="ltr" className="tabular-nums" data-testid="fbl-progress-value">{`${Math.min(finished, planned)} / ${planned}`}</span>
                 </dd>
                 <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
                   <div className={cn('h-full rounded-full', GOLD_FILL)} style={{ width: `${Math.round((Math.min(finished, planned) / planned) * 100)}%` }} />
                 </div>
+                {/* The real stages of the planned tasks (server queue), never invented activity. */}
+                <p className={cn('mt-1 break-words text-2xs leading-snug', ON_NAVY_SOFT)} data-testid="fbl-stages" dir="auto">
+                  {t('fbrx_stage_line', { running: String(c.queue.running ?? 0), queued: String((c.queue.queued ?? 0) + (c.queue.paused ?? 0)), done: String(Math.min(finished, planned)) })}
+                </p>
               </div>
             )}
           </dl>
@@ -300,7 +304,7 @@ export function SearchStatusPill({ status, counterpart, onOpen }: {
         {!paused && <span className="absolute inline-flex h-full w-full rounded-full bg-[hsl(40_94%_64%)] opacity-70 motion-safe:animate-ping" />}
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[hsl(40_94%_64%)]" />
       </span>
-      <span className="truncate">{label}</span>
+      <span className="line-clamp-2 min-w-0 break-words text-start leading-tight">{label}</span>
     </button>
   );
 }

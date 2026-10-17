@@ -113,7 +113,8 @@ const campaign = (state, over = {}) => ({
 const READY = { ready: true, reason: null, sources: ['FACEBOOK'] };
 const IDLE = { readiness: READY, campaign: null };
 
-async function boot(t, { width = 390, height = 844, lang = 'en', status = { readiness: READY, campaign: campaign('PARTIAL_RESULTS') }, leads = LEADS, research = RESEARCH, reduced = true } = {}) {
+async function boot(t, { width = 390, height = 844, lang = 'en', status = { readiness: READY, campaign: campaign('PARTIAL_RESULTS') }, leads = LEADS, research = RESEARCH, reduced = true,
+  campaigns = [], jobs = [], clearPreview = { leads: 14, legacyMatches: 74, legacyUnlockedKept: 14, activeCampaign: false } } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -124,7 +125,7 @@ async function boot(t, { width = 390, height = 844, lang = 'en', status = { read
     ['sb-stubproj-auth-token', fakeSession(), lang]);
   const page = await ctx.newPage();
   if (process.env.FB_DEBUG) page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
-  const calls = { start: 0, research: [] };
+  const calls = { start: 0, research: [], clearPreview: 0, clear: 0 };
   const json = (b, code = 200) => ({ status: code, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   await page.route('**', async (r) => {
     const req = r.request();
@@ -144,10 +145,23 @@ async function boot(t, { width = 390, height = 844, lang = 'en', status = { read
     }
     if (url.includes('/rpc/find_buyers_research_opportunities')) {
       calls.research.push(JSON.parse(req.postData() ?? '{}'));
-      return research === 'missing' ? r.fulfill(json({ message: 'function does not exist', code: 'PGRST202' }, 404)) : r.fulfill(json(research));
+      if (research === 'missing') return r.fulfill(json({ message: 'function does not exist', code: 'PGRST202' }, 404));
+      /* 'by-job': only job1 read posts (RESEARCH); any other search found none. */
+      if (research === 'by-job') return r.fulfill(json(JSON.parse(req.postData() ?? '{}').p_job_id === 'job1' ? RESEARCH : []));
+      return r.fulfill(json(research));
     }
     if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json(status));
+    /* The property's searches (find_buyers_campaigns ⨝ matching_jobs), newest first like PostgREST. */
+    if (url.includes('/rest/v1/find_buyers_campaigns')) return r.fulfill(json([...campaigns].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))));
+    if (url.includes('/rest/v1/matching_jobs') && req.method() === 'GET' && url.includes('id=in.')) return r.fulfill(json(jobs));
     if (url.includes('/rest/v1/matching_jobs')) return r.fulfill(json(wantsObject ? { id: 'job-new' } : [{ id: 'job-new' }]));
+    if (url.includes('/rpc/find_buyers_clear_results_preview')) { calls.clearPreview += 1; return r.fulfill(json(clearPreview)); }
+    if (url.includes('/rpc/find_buyers_clear_results')) {
+      calls.clear += 1;
+      /* The server hides the completed searches' leads: the view no longer returns them. */
+      const n = leads.length; leads = []; research = [];
+      return r.fulfill(json({ leadsCleared: n, legacyMatchesCleared: clearPreview.legacyMatches, clearedAt: new Date().toISOString() }));
+    }
     if (url.includes('/rest/v1/matches')) return r.fulfill({ ...json([]), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': '*/0' } });
     if (url.includes('/rpc/billing_budget_offer')) return r.fulfill(json({ ok: true, offer: 'PAYG_FULL', estimate_min_credits: 17.5, estimate_max_credits: 32.5, available_balance: 99832.03, min_viable_budget_credits: 50 }));
     if (url.includes('/rpc/billing_my_budget_choices')) return r.fulfill(json({ ok: true, balance: 99832.03, min_viable: 50, allow_custom: true, recommended: 100,
@@ -162,7 +176,7 @@ async function boot(t, { width = 390, height = 844, lang = 'en', status = { read
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });
-  return { page, calls, setStatus: (s) => { status = s; } };
+  return { page, calls, setStatus: (s) => { status = s; }, setCampaigns: (c, j) => { campaigns = c; if (j) jobs = j; } };
 }
 
 const results = (q = '') => `${BASE}/property/${PROPERTY_ID}/buyers/external${q}`;
@@ -203,8 +217,8 @@ test('start from the property page: navigates straight to /buyers/external (no t
 test('tab and filter changes replace history: Back leaves the results page', opts, async (t) => {
   const { page } = await boot(t);
   await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-testid="fbd-external-view"]', { timeout: 30000 });
-  await page.click('[data-testid="fbd-external-view"]');
+  await page.waitForSelector('[data-testid="fbd-latest-open"]', { timeout: 30000 });
+  await page.click('[data-testid="fbd-latest-open"]');
   await page.waitForSelector('[data-testid="fbx-tab-interest"]', { timeout: 30000 });
   await page.click('[data-testid="fbx-tab-interest"]');
   await page.click('[data-testid="fbx-tab-opportunities"]');
@@ -255,7 +269,7 @@ test('primary view is simple; technical detail is one collapsed disclosure; the 
   await page.goto(results(), { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbl-duration-notice"]', { timeout: 30000 });
   assert.equal(await page.innerText('[data-testid="fbl-duration-notice"] p:last-child'),
-    'მყიდველებისა და მოიჯარეების მოძიებას შესაძლოა 10–30 წუთი დასჭირდეს. დრო დამოკიდებულია ძებნის მასშტაბსა და ხელმისაწვდომ წყაროებზე.');
+    'დაინტერესებული ადამიანების ძიებას შესაძლოა 10–30 წუთი დასჭირდეს. დრო დამოკიდებულია ძებნის მასშტაბსა და ხელმისაწვდომ წყაროებზე.');
   assert.equal(await page.locator('[data-testid="fbl-details"]').count(), 0, 'details collapsed');
   assert.equal(await page.locator('[data-testid="fbr-report"]').count(), 0, 'report collapsed');
   assert.equal(await page.getAttribute('[data-testid="fbl-details-toggle"]', 'aria-expanded'), 'false');
@@ -275,7 +289,8 @@ test('three tabs, real counts; sellers, brokers and rejected readings never list
   assert.deepEqual(calls.research.at(-1), { p_job_id: 'job1' });
   const main = await page.textContent('main');
   assert.doesNotMatch(main, /Broker Agency|Rejected Seller/);
-  assert.match(main, /Qualified buyer/);
+  assert.match(main, /Strong interest/);
+  assert.doesNotMatch(main, /\bBuyers?\b|Qualified buyer/, 'never claims buyers were found');
   await page.click('[data-testid="fbx-tab-interest"]');
   await page.waitForSelector('[data-testid="fbx-lead-card"][data-lead="w1"]');
   assert.equal(await page.getAttribute('[data-testid="fbx-lead-card"][data-lead="w1"]', 'data-verify'), 'true');
@@ -287,7 +302,7 @@ test('three tabs, real counts; sellers, brokers and rejected readings never list
   assert.equal(cards.length, 3);
   assert.deepEqual(cards.find((c) => c.src === 'leads'), { src: 'leads', note: 'Potentially interested people found in the comments: 2', state: 'INSPECTED' });
   assert.ok(cards.some((c) => c.src === 'research' && /People interested in a similar type of apartment may be in the comments/.test(c.note)), 'not-inspected copy, no count');
-  assert.ok(cards.some((c) => /competitor’s apartment.*not accessible from the ad/.test(c.note ?? '')), 'the ad: competitor copy + comments not accessible');
+  assert.ok(cards.some((c) => /someone else's comparable property.*not accessible from the ad/.test(c.note ?? '')), 'the ad: competitor copy + comments not accessible');
   for (const a of await page.$$eval('[data-testid="fbo-card-open"]', (as) => as.map((x) => ({ href: x.getAttribute('href'), rel: x.getAttribute('rel') })))) {
     assert.match(a.href, /^https:\/\//); assert.match(a.rel, /nofollow/);
   }
@@ -374,4 +389,193 @@ test('reduced motion: one still frame; full motion: the field animates while sea
     assert.notEqual(a, b, 'the field moves while searching');
     await shot(page, 'ux-live-1280-en.png');
   }
+});
+
+/* ── RECOVERY UX (owner, 2026-10-17): the dashboard reflects the property's real searches ── */
+const DASH = `${BASE}/property/${PROPERTY_ID}/matches`;
+const DONE = { readiness: READY, campaign: campaign('COMPLETED_WITH_RESULTS', { completedAt: agoSec(400), active: false }) };
+/* job1 (8 leads, nine days ago) and a newer job-z that found nobody. */
+const TWO_SEARCHES = [{ matching_job_id: 'job1', created_at: ago(9), finalized_at: ago(9) }, { matching_job_id: 'job-z', created_at: ago(0.2), finalized_at: ago(0.1) }];
+const TWO_JOBS = [{ id: 'job1', status: 'completed', created_at: ago(9), completed_at: ago(9) }, { id: 'job-z', status: 'completed', created_at: ago(0.2), completed_at: ago(0.1) }];
+const textOf = (page, sel) => page.$eval(sel, (e) => e.textContent.trim());
+
+test('the newest search with zero leads is the latest: zero shown honestly, the older search is "previous"', opts, async (t) => {
+  /* job-z read no posts either: the research RPC answers nothing for it. */
+  const { page } = await boot(t, { status: DONE, campaigns: TWO_SEARCHES, jobs: TWO_JOBS, research: 'by-job' });
+  await page.goto(DASH, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest-people"]')?.textContent?.trim() === '0', null, { timeout: 30000 });
+  assert.equal(await page.getAttribute('[data-testid="fbd-latest"]', 'data-job'), 'job-z');
+  assert.equal(await page.getAttribute('[data-testid="fbd-latest"]', 'data-state'), 'COMPLETED');
+  assert.equal(await textOf(page, '[data-testid="fbd-latest-opportunities"]'), '0');
+  assert.equal(await page.locator('[data-testid="fbd-latest-zero"]').count(), 1, 'zero is a real result, said so');
+  assert.match(await textOf(page, '[data-testid="fbd-latest-date"]'), /\d/, 'the date is shown');
+  assert.deepEqual(await page.$$eval('[data-testid="fbd-previous-item"]', (els) => els.map((e) => e.getAttribute('data-job'))), ['job1']);
+  assert.equal(await page.getAttribute('[data-testid="fbd-primary"]', 'data-mode'), 'start_new');
+  /* No duplicate CTAs: one start action, one Edit search, one Open results. */
+  for (const id of ['fbd-primary-action', 'fbh-edit-search', 'fbd-latest-open', 'fbd-internal-view']) assert.equal(await page.locator(`[data-testid="${id}"]`).count(), 1, id);
+  for (const gone of ['fbh-new-search', 'fbd-external-start', 'fbd-expand-open', 'fbh-running', 'fbd-internal-start']) assert.equal(await page.locator(`[data-testid="${gone}"]`).count(), 0, gone);
+  const main = await page.textContent('main');
+  assert.doesNotMatch(main, /\bfree\b|Paid research|External Discovery|\bBuyers\b/i);
+  await shot(page, 'recovery-dashboard-zero-390-en.png');
+  /* Open results: THAT search, with zero leads, never the older one's. */
+  await page.click('[data-testid="fbd-latest-open"]');
+  await page.waitForSelector('[data-testid="fbx-results"]', { timeout: 30000 });
+  assert.equal(await page.getAttribute('[data-testid="fbx-results"]', 'data-job'), 'job-z');
+  assert.equal(await page.getAttribute('[data-testid="fbx-selected-search"]', 'data-job'), 'job-z');
+  assert.deepEqual(await page.evaluate(() => ['direct', 'interest', 'opportunities'].map((k) => document.querySelector(`[data-testid="fbx-tab-${k}"]`)?.textContent?.match(/\d+/)?.[0])), ['0', '0', '0']);
+  assert.equal(await page.locator('[data-testid="fbx-lead-card"]').count(), 0);
+  /* The property page's saved results are the same Find Buyers searches, not the legacy matches table. */
+  await page.goto(`${BASE}/property/${PROPERTY_ID}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelector('[data-testid="pow-discovery-latest"]')?.getAttribute('data-job') === 'job-z', null, { timeout: 30000 });
+  assert.equal(await textOf(page, '[data-testid="pow-count-total"] p'), '0');
+});
+
+test('switching ?job never shows another search\'s cached results', opts, async (t) => {
+  const { page } = await boot(t, { status: DONE, campaigns: TWO_SEARCHES, jobs: TWO_JOBS });
+  await page.goto(results('?job=job1'), { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbx-lead-card"]', { timeout: 30000 });
+  assert.equal(await page.getAttribute('[data-testid="fbx-results"]', 'data-job'), 'job1');
+  /* Delay the next lead read: the screen must not keep job1's cards while job-z loads. */
+  await page.route('**/rest/v1/find_buyers_current_leads**', async (r) => { await new Promise((res) => setTimeout(res, 1200)); return r.fallback(); });
+  await page.click('[data-testid="fbx-filters-open"]');
+  await page.click('[data-testid="fbx-campaign"][data-job="job-z"]');
+  await page.waitForFunction(() => /[?&]job=/.test(location.search) === false || /job=job-z/.test(location.search), null, { timeout: 10000 });
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator('[data-testid="fbx-lead-card"]').count(), 0, 'job1 cards are gone while job-z loads');
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbx-results"]')?.getAttribute('data-job') === 'job-z', null, { timeout: 15000 });
+  assert.equal(await page.locator('[data-testid="fbx-lead-card"]').count(), 0);
+  assert.equal(await page.$eval('[data-testid="fbx-tab-direct"]', (e) => e.textContent.match(/\d+/)[0]), '0');
+});
+
+test('the dashboard follows the live search and updates when it completes', opts, async (t) => {
+  const running = { readiness: READY, campaign: campaign('SEARCHING', { jobId: 'job-run', newResults: 3 }) };
+  const { page, setStatus } = await boot(t, { status: running, leads: [],
+    campaigns: [{ matching_job_id: 'job-run', created_at: agoSec(700) }, { matching_job_id: 'job1', created_at: ago(9), finalized_at: ago(9) }],
+    jobs: [{ id: 'job-run', status: 'searching_sources' }, { id: 'job1', status: 'completed' }] });
+  await page.goto(DASH, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-primary"]')?.getAttribute('data-mode') === 'live', null, { timeout: 30000 });
+  assert.match(await textOf(page, '[data-testid="fbd-primary-note"]'), /3/, 'found so far, from the server');
+  assert.match(await page.getAttribute('[data-testid="fbd-primary-action"]', 'href'), /\/buyers\/external$/);
+  /* While it runs, the latest FINISHED search is summarised. */
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest"]')?.getAttribute('data-job') === 'job1', null, { timeout: 15000 });
+  /* The status poll reports the end; the stored job row may lag — the status wins. */
+  setStatus({ readiness: READY, campaign: campaign('COMPLETED_NO_RESULTS', { jobId: 'job-run', newResults: 0, active: false, completedAt: agoSec(1) }) });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-primary"]')?.getAttribute('data-mode') === 'start_new', null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest"]')?.getAttribute('data-job') === 'job-run', null, { timeout: 15000 });
+  assert.equal(await page.getAttribute('[data-testid="fbd-latest"]', 'data-state'), 'COMPLETED');
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest-people"]')?.textContent?.trim() === '0', null, { timeout: 15000 });
+});
+
+test('clear old results: preview → explicit confirm → RPC → every list re-read empty', opts, async (t) => {
+  const { page, calls } = await boot(t, { status: DONE, campaigns: [{ matching_job_id: 'job1', created_at: ago(1), finalized_at: ago(1) }], jobs: [{ id: 'job1', status: 'completed' }] });
+  await page.goto(DASH, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => Number(document.querySelector('[data-testid="fbd-latest-people"]')?.textContent) > 0, null, { timeout: 30000 });
+  await page.click('[data-testid="fbd-clear-open"]');
+  await page.waitForSelector('[data-testid="fbd-clear-preview"]', { timeout: 15000 });
+  assert.equal(calls.clearPreview, 1);
+  assert.equal(calls.clear, 0, 'opening the dialog changes nothing');
+  assert.equal(await page.getAttribute('[data-testid="fbd-clear-leads"]', 'data-n'), '14');
+  assert.equal(await page.getAttribute('[data-testid="fbd-clear-matches"]', 'data-n'), '74');
+  assert.equal(await page.locator('[data-testid="fbd-clear-kept"] li').count(), 4, 'what is NOT deleted is listed');
+  assert.equal(await page.getAttribute('[data-testid="fbd-clear-unlocked-kept"]', 'data-n'), '14', 'paid-for contacts stay available, and the dialog says so');
+  await page.click('[data-testid="fbd-clear-cancel"]');
+  await page.waitForSelector('[data-testid="fbd-clear-dialog"]', { state: 'detached', timeout: 10000 });
+  assert.equal(calls.clear, 0, 'cancel clears nothing');
+  await page.click('[data-testid="fbd-clear-open"]');
+  await page.waitForSelector('[data-testid="fbd-clear-confirm"]:not([disabled])', { timeout: 15000 });
+  await page.click('[data-testid="fbd-clear-confirm"]');
+  await page.waitForSelector('[data-testid="fbd-clear-dialog"]', { state: 'detached', timeout: 15000 });
+  assert.equal(calls.clear, 1);
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest-people"]')?.textContent?.trim() === '0', null, { timeout: 15000 });
+  assert.equal(await textOf(page, '[data-testid="fbd-latest-opportunities"]'), '0');
+  await page.click('[data-testid="fbd-latest-open"]');
+  await page.waitForSelector('[data-testid="fbx-results"]', { timeout: 30000 });
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator('[data-testid="fbx-lead-card"]').count(), 0, 'no stale results after a clear');
+});
+
+test('clear old results before the RPC is deployed: says so, nothing to confirm', opts, async (t) => {
+  const { page, calls } = await boot(t, { status: DONE, campaigns: [{ matching_job_id: 'job1', created_at: ago(1) }] });
+  await page.route('**/rpc/find_buyers_clear_results_preview', (r) => r.fulfill({ status: 404, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"code":"PGRST202","message":"not found"}' }));
+  await page.goto(DASH, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="fbd-clear-open"]', { timeout: 30000 });
+  await page.click('[data-testid="fbd-clear-open"]');
+  await page.waitForSelector('[data-testid="fbd-clear-unavailable"]', { timeout: 15000 });
+  assert.equal(await page.locator('[data-testid="fbd-clear-confirm"]').count(), 0);
+  assert.equal(calls.clear, 0);
+});
+
+/** Every action fits: no ellipsis, no clipped label, ≥ 44px, inside the screen; nothing overflows. */
+async function fitFailures(page, selectors) {
+  return page.evaluate((sels) => {
+    const vw = document.documentElement.clientWidth;
+    const bad = [];
+    const over = document.documentElement.scrollWidth - vw;
+    if (over > 1) bad.push(`page overflows by ${over}px`);
+    for (const sel of sels) {
+      for (const el of document.querySelectorAll(sel)) {
+        const r = el.getBoundingClientRect();
+        if (!r.width) continue;
+        if (el.scrollWidth > el.clientWidth + 1) bad.push(`${sel}: scrollWidth ${el.scrollWidth} > ${el.clientWidth}`);
+        for (const s of el.querySelectorAll('span')) {
+          if (s.scrollWidth > s.clientWidth + 1) bad.push(`${sel} label clipped (${s.textContent.trim().slice(0, 20)})`);
+          if (getComputedStyle(s).textOverflow === 'ellipsis') bad.push(`${sel} label ellipsis`);
+        }
+        if (r.height < 43.5) bad.push(`${sel}: ${Math.round(r.height)}px tall`);
+        if (r.right > vw + 1 || r.left < -1) bad.push(`${sel}: outside the screen`);
+        /* Under 420px a primary action has its own row (never two long labels side by side). */
+        if (vw < 420 && sel !== '[data-testid="fbd-clear-open"]' && r.width < (el.parentElement.getBoundingClientRect().width - 40) * 0.95) bad.push(`${sel}: not full width at ${vw}px`);
+      }
+    }
+    const outside = [...document.querySelectorAll('main *')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > vw + 1 || b.left < -1); });
+    if (outside.length) bad.push(`${outside.length} element(s) outside the viewport: ${outside.slice(-2).map((e) => e.getAttribute('data-testid') ?? e.tagName).join(', ')}`);
+    return bad;
+  }, selectors);
+}
+const DASH_ACTIONS = ['[data-testid="fbd-primary-action"]', '[data-testid="fbh-edit-search"]', '[data-testid="fbd-latest-open"]', '[data-testid="fbd-internal-view"]', '[data-testid="fbd-clear-open"]'];
+
+test('mobile buttons at 320/360/390/430 (ka, he): full labels, 44px, stacked, nothing overflows', opts, async (t) => {
+  const failures = [];
+  for (const lang of ['ka', 'he']) {
+    const { page } = await boot(t, { lang, width: 320, height: 800, status: DONE, campaigns: TWO_SEARCHES, jobs: TWO_JOBS });
+    for (const width of [320, 360, 390, 430]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(DASH, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-testid="fbd-latest-open"]', { timeout: 60000 });
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(250);
+      for (const f of await fitFailures(page, DASH_ACTIONS)) failures.push(`${lang} ${width} dashboard: ${f}`);
+      if (lang === 'he' && (await page.getAttribute('html', 'dir')) !== 'rtl') failures.push(`${lang}: not RTL`);
+      if (width === 360) await shot(page, `recovery-dashboard-360-${lang}.png`);
+      await page.goto(results('?job=job1'), { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-testid="fbl-launch"]', { timeout: 60000 });
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(250);
+      for (const f of await fitFailures(page, ['[data-testid="fbl-launch"]', '[data-testid="fbx-filters-open"]'])) {
+        if (/not full width/.test(f) && /fbx-filters-open/.test(f)) continue;
+        failures.push(`${lang} ${width} results: ${f}`);
+      }
+      if (width === 360) await shot(page, `recovery-results-360-${lang}.png`);
+    }
+    await page.context().close();
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('dashboard in all six languages at 360px: no raw keys, no ellipsis, no overflow', opts, async (t) => {
+  const failures = [];
+  for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) {
+    const { page } = await boot(t, { lang, width: 360, height: 800, status: DONE, campaigns: TWO_SEARCHES, jobs: TWO_JOBS });
+    await page.goto(DASH, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="fbd-latest-open"]', { timeout: 60000 });
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(250);
+    for (const f of await fitFailures(page, DASH_ACTIONS)) failures.push(`${lang}: ${f}`);
+    const text = await page.textContent('main');
+    if (/fb[a-z]*_[a-z_]+|undefined|NaN/.test(text)) failures.push(`${lang}: raw key / undefined / NaN`);
+    if (lang === 'ka' && /მყიდველ|უფასო|ფასიანი/.test(text)) failures.push('ka: buyers / free / paid wording');
+    if (['ar', 'he'].includes(lang) && (await page.getAttribute('html', 'dir')) !== 'rtl') failures.push(`${lang}: not RTL`);
+    await page.context().close();
+  }
+  assert.deepEqual(failures, []);
 });

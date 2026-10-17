@@ -81,6 +81,8 @@ export const STAGE_NETWORK: Readonly<Record<Stage, Network>> = {
 export interface StageParams {
   query?: string | null;
   targetUrl?: string | null;
+  /** Several community URLs for one run of an Actor that reads a list (batching.ts). */
+  targetUrls?: string[] | null;
   size: number;
   /** ISO date: only content newer than this (incremental collection). */
   since?: string | null;
@@ -89,6 +91,7 @@ export interface StageParams {
 }
 
 const urls = (u: string | null | undefined) => (u ? [{ url: u }] : []);
+const urlList = (p: StageParams) => (p.targetUrls?.length ? p.targetUrls : p.targetUrl ? [p.targetUrl] : []).map((url) => ({ url }));
 const strings = (u: string | null | undefined) => (u ? [u] : []);
 /** Date-only fields (YYYY-MM-DD) take the day of the incremental floor. */
 const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : undefined);
@@ -107,7 +110,7 @@ export function defaultInput(stage: Stage, p: StageParams): Record<string, unkno
     case 'FB_GROUP_SEARCH':
       return { searchQueries: [q], maxGroups: p.size };
     case 'FB_GROUP_POSTS':
-      return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}) };
+      return { startUrls: urlList(p), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}) };
     case 'FB_COMMENTS':
       return { startUrls: urls(p.targetUrl), maxItems: p.size, commentsMode: 'NEWEST' };
     /* memo23~facebook-search-scraper (posts by keyword, logged out: no engagement
@@ -147,7 +150,7 @@ export function defaultInput(stage: Stage, p: StageParams): Record<string, unkno
     case 'VK_WALL':
       return { targets: strings(p.targetUrl), ...(q ? { searchQuery: q } : {}), maxItems: p.size, includeComments: true, ...(p.since ? { publishedAfter: day(p.since) } : {}) };
     case 'TELEGRAM_CHANNEL':
-      return { startUrls: urls(p.targetUrl), maxItems: p.size };
+      return { startUrls: urlList(p), maxItems: p.size };
     case 'LINKEDIN_GROUPS':
       return { startUrls: urls(`https://www.linkedin.com/search/results/groups/?keywords=${encodeURIComponent(q)}`), maxItems: p.size };
     case 'LINKEDIN_POSTS':

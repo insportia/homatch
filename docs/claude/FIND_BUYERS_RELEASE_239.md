@@ -1,103 +1,105 @@
-# Find Buyers / Tenants — release checklist for PR #239
+# Find Buyers / Tenants — release record for PR #239 (Release B)
 
-Status: **READY FOR INTEGRATION — NOT MERGED, NOT DEPLOYED.** Planned order
-(owner, 2026-10-16): #237 → #238 → #239, then one coordinated production
-release. Nothing below is run without the owner's explicit approval.
+Status: **MERGED, DEPLOYED AND PROVEN IN PRODUCTION (2026-10-17).**
+Release order as planned by the owner: #237 → #238 → #241 (migration only) →
+single-migration apply → #239.
 
-## 0. Before release (after #237 and #238 merge)
-
-1. Rebase `claude/nifty-hopper-snzn2d` onto the latest `main`;
-   re-run `npm run homatch:migrations`, `npx tsgo -p tsconfig.check.json`,
-   `npm run i18n:check`, `npm run i18n:keys`, the Find Buyers browser suites.
-   If `translations.ts` conflicts, take main's bundle and re-apply
-   `node scripts/find-buyers-ux-i18n-apply.mjs` (idempotent).
-2. CI on the new head: every check green (23 on 95b06ceb).
-3. Confirm that `20261109100000` is still the newest-but-unapplied Find
-   Buyers migration and that no other migration took that version.
+| | |
+|---|---|
+| Merge commit | `c1086f0e6d1e3d1ebba283b8ad2c4408e802b616` (approved head `3c490c5f`) |
+| Deploy run | [`39011630277`](https://github.com/insportia/homatch/actions/runs/39011630277) — success; DB-migration job skipped |
+| `refs/deployed/edge` | `eddf0f8f` → `c1086f0e` (advanced only after the artifact proof) |
+| `refs/deployed/frontend` | `8218107c` → `c1086f0e` |
+| Vercel production | `dpl_4MQLywtqFddJt3amTfV6r2D4rtRc` — READY. Rollback target: `dpl_2aeJxnrbLRSwHGEFrfpugewis6wk` (`8218107c`) |
+| Railway | not deployed (no `official-worker/` change) |
 
 ## 1. Migration — `20261109100000_find_buyers_research_opportunities.sql`
 
-- Additive and read-only: `create or replace function
-  public.find_buyers_research_opportunities(p_job_id uuid)` — `stable`,
-  `security definer`, `search_path ''`. No table, column, policy or data change.
-- Access: service role, an admin, or the campaign's / property's owner;
-  anything else (including a job that does not exist) raises `FORBIDDEN`.
-  `revoke all … from public, anon`; `grant execute … to authenticated, service_role`.
-- Depends on objects already in production: `find_buyers_campaigns`,
-  `find_buyers_assessments`, `find_buyers_leads`, `raw_signals`, `properties`,
-  `admin_settings`, `is_admin()`, `auth_user_id()`,
-  `find_buyers_signal_is_current()`.
-- Apply BEFORE the frontend that calls it ships. The UI already degrades to
-  lead-derived opportunities when the RPC is missing (browser-tested), so the
-  order is safe either way.
-- Verify after apply (read-only):
-  - ledger row named `find_buyers_research_opportunities`;
-  - `select proname, prosecdef from pg_proc where proname = 'find_buyers_research_opportunities';` → 1 row, `prosecdef = true`;
-  - `select has_function_privilege('anon', 'public.find_buyers_research_opportunities(uuid)', 'execute');` → `false`.
+Merged with #241 and applied **singly** through the Supabase migration API,
+never `supabase db push` (production's ledger records apply-time versions, so a
+push would replay ~130 already-applied migrations — see issue #243).
+
+- Ledger row `20261017061959` / `find_buyers_research_opportunities`.
+- `public.find_buyers_research_opportunities(uuid)`: `stable`, `security
+  definer`, `search_path ''`; body MD5 `8d75efe2df1b3d6da26d637c88943634`;
+  `anon` cannot execute (`has_function_privilege` → `false`).
+- Additive and read-only; no table, column, policy or data change.
 - Rollback: `drop function public.find_buyers_research_opportunities(uuid);`
   (nothing else depends on it).
 
-## 2. Edge functions
+#239 itself carries no migration. The deploy step "Apply verified publishing
+migration" exits immediately unless `publishing-engine` is owed; it was not,
+and the ledger still ends at `20261020090000`.
 
-| Function | Why | Note |
-|---|---|---|
-| `discovery-queue-worker` | `driver.ts` runs the native Telegram assessment at campaign close; executor/pipeline/adaptive/campaign changes (v5 qualification, comments, language-first probing, honest counters) | Also deployed by #237 (Find Property offer jobs). Deploy ONCE from the final `main` that contains #237 + #238 + #239. |
-| `community-sync` | Find Buyers Telegram sync also reads verified communities | — |
+## 2. Edge functions — exactly the five owed, all PROVEN_EXACT
 
-Proof after deploy: `refs/deployed/*` + exact artifact (PROVEN_EXACT), per
-`docs/claude/RELEASE.md`. Railway: no worker files changed — no Railway deploy.
+| Function | Before | After | Why it was owed |
+|---|---|---|---|
+| `discovery-queue-worker` | v74 | **v75** | executor / pipeline / adaptive / campaign (v5 qualification, comments, language-first probing, honest counters); native Telegram assessment at close |
+| `community-sync` | v26 | **v27** | Telegram sync also reads verified communities |
+| `match-campaign` | v86 | **v87** | Find Buyers campaign planning and qualification modules |
+| `find-property-run` | v23 | **v24** | bundles the shared Find Buyers modules only |
+| `marketplace-search` | v20 | **v21** | bundles the shared Find Buyers modules only |
+
+`community-sync` and `match-campaign` were first deduplicated by the platform
+(STALE); the workflow's single deterministic recovery redeployed each once and
+both then proved exact. Nothing else was deployed (`homatch-ai` v70 and
+`marketplace-worker-ingest` v19 unchanged).
 
 ## 3. Frontend
 
-Vercel production build from the same final `main`. Routes added:
-`/property/:id/buyers/lead/:leadId`.
+Vercel production build of `c1086f0e`. Route added:
+`/property/:id/buyers/lead/:leadId`. No runtime errors after release.
 
-## 4. Money
+## 4. Money and preservation (verified read-only after release)
 
-- New campaigns keep `paid_discovery_37_63_v1`: HOMATCH 37% / providers 63%
-  of the total price; charge = provider spend consumed ÷ 0.63, capped at the
-  reservation (`src/research-core/billing/paidDiscoveryPolicy.ts`). #239 does
-  not change the policy, reservations or settlement.
-- No paid Actor run, campaign, budget, wallet, billing record or flag is
-  changed by this release.
+- Policy unchanged: `paid_discovery_37_63_v1` — HOMATCH 37% / providers 63% of
+  the total price; charge = provider spend consumed ÷ 0.63, capped at the
+  reservation (`src/research-core/billing/paidDiscoveryPolicy.ts`).
+  `find_buyers_provider_share_bps = 6300`.
+- Preserved exactly: 6 campaigns (all terminal), 44 leads, 149 Actor runs,
+  11 enabled Actors, `find_buyers_social_enabled = true`.
+- No open Actor-run reservation, no open credit reservation, no credit-ledger
+  movement and no new Actor run since the merge.
+- Find Property: `find_property_social_enabled = false`, 0 Find Property Actor
+  runs; free portal search unaffected.
 
-## 5. Admin registration — FB_POST_SEARCH, FB_PAGE_POSTS, FB_AD_LIBRARY
+## 5. FB_POST_SEARCH, FB_PAGE_POSTS, FB_AD_LIBRARY — REGISTERED, DISABLED
 
-Owner action, **after** the release. Admin → Find Buyers → Actors →
-**Register & verify**. Verification reads the price and input schema from
-Apify (metadata only; it starts no Actor and spends nothing) and writes the
-row **disabled**.
+Registered on 2026-10-17 with exactly the row `verifyActor`
+(`supabase/functions/_shared/findBuyers/admin.ts`) writes for an unregistered
+seed (`REGISTRY_SEEDS`, `src/research-core/findBuyers/actorCatalog.ts`):
+`enabled = false`, `health = UNKNOWN`, `pricing_model = UNKNOWN`,
+`pricing_verified_at = null`. No Actor was started; nothing was spent.
 
 | Actor key | Apify Actor | Purpose | Priority | Probe | Max results | Timeout | Concurrency |
 |---|---|---|---|---|---|---|---|
-| `FB_POST_SEARCH` | `memo23~facebook-search-scraper` | SEARCH — public posts by listing keyword (Pages, agencies, developers, listings); logged out, no engagement counts | 55 | 15 | 60 | 300 s | 2 |
-| `FB_PAGE_POSTS` | `memo23~facebook-page-posts-scraper` | POSTS_AND_COMMENTS — feeds of public Pages that published a comparable listing, comments attached; public Pages only | 50 | 10 | 40 | 300 s | 2 |
-| `FB_AD_LIBRARY` | `memo23~facebook-ads-library-scraper-ppe` | SEARCH — competitor property ads by listing phrase and country; the Library has no comments, a comparable ad queues its Page feed | 52 | 20 | 50 | 240 s | 1 |
+| `FB_POST_SEARCH` | `memo23~facebook-search-scraper` | SEARCH — public posts by listing keyword | 55 | 15 | 60 | 300 s | 2 |
+| `FB_PAGE_POSTS` | `memo23~facebook-page-posts-scraper` | POSTS_AND_COMMENTS — public Page feeds, comments attached | 50 | 10 | 40 | 300 s | 2 |
+| `FB_AD_LIBRARY` | `memo23~facebook-ads-library-scraper-ppe` | SEARCH — competitor property ads by phrase and country | 52 | 20 | 50 | 240 s | 1 |
 
-Source: `REGISTRY_SEEDS` in `src/research-core/findBuyers/actorCatalog.ts`;
-written by `verifyActor` in `supabase/functions/_shared/findBuyers/admin.ts`.
+A registered row cannot run. Three independent gates refuse it:
 
-A campaign plans an Actor only when ALL hold (`enabledActorMap`,
-`supabase/functions/_shared/findBuyers/campaign.ts`):
+1. planners — `enabledActorMap` (`_shared/findBuyers/campaign.ts`), follow-ups
+   in `_shared/findBuyers/executor.ts`, `loadOfferActors`
+   (`_shared/findProperty/socialOffers.ts`) — need `enabled`, not quarantined,
+   and fresh verified pricing;
+2. `find_buyers_reserve_actor_run` and `find_property_reserve_actor_run` return
+   `ACTOR_DISABLED` / `PRICING_NOT_VERIFIED`; no reservation → no Apify call;
+3. Admin → Providers' APIFY switch stops every memo23 run.
 
-1. `enabled = true` — a separate operator decision after verification;
-2. not `emergency_disabled`, `health` ≠ `DISABLED`;
-3. `pricing_verified_at` set and newer than the pricing max age, with
-   `pricing_model` ≠ `UNKNOWN` and `price_per_1k_micros` known. If Apify does
-   not state a price, verification leaves `pricing_verified_at` empty and says
-   so in `last_error`; the price must then be set by hand and marked verified.
+Remaining owner steps, in order:
 
-Lifecycle shown in Admin (`actorLifecycle`): REGISTERED → VERIFIED (price +
-input schema) → PROVEN (a real successful run returned real text at a real
-public URL — set automatically by the executor, never by metadata) → ACTIVE
-(proven and enabled).
+1. **Verify** (free): Admin → Find Buyers → Actors → *Register & verify* on
+   each row. It reads price and input schema from Apify (metadata only) and
+   leaves the row disabled. If Apify states no price, set it by hand and mark
+   it verified.
+2. **Enable** (paid): the first campaign that plans an enabled Actor is its
+   proof run and is paid. Needs explicit owner approval with provider, cost cap
+   and expected customer charge shown first.
 
+Lifecycle in Admin (`actorLifecycle`): REGISTERED → VERIFIED → PROVEN (set by
+the executor after a real run returns real public text) → ACTIVE.
 Dependencies: `FB_PAGE_POSTS` is seeded by `FB_POST_SEARCH` and by
-`FB_AD_LIBRARY` (an ad's Page); `FB_COMMENTS` (already registered) reads the
-comments of qualifying posts when they did not arrive inline.
-
-**Enabling makes the first campaign that plans the Actor its proof run, and
-that run is paid.** Enabling therefore needs the owner's explicit approval,
-with the provider, cost cap and expected customer charge shown first.
-APIFY scope: memo23 Actors only, through `_shared/findBuyers/memo23Client.ts`;
-Admin → Providers' APIFY switch stops every run.
+`FB_AD_LIBRARY`; `FB_COMMENTS` reads comments that did not arrive inline.
+APIFY scope: memo23 Actors only, through `_shared/findBuyers/memo23Client.ts`.

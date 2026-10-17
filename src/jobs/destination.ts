@@ -85,6 +85,7 @@ const ROUTE_PATTERNS: readonly string[] = [
   '/mortgage',
   '/property/:id',
   '/property/:id/matches',
+  '/property/:id/buyers/external',
   '/dashboard',
   '/activity',
   '/outreach',

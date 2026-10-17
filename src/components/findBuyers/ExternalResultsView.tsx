@@ -1,16 +1,18 @@
 // EXTERNAL DISCOVERY RESULTS — one search at a time, three tabs (owner, 2026-10-16).
 //
-//   Buyers / Tenants        stated their own intent and match review rated them STRONG or
-//                           POTENTIAL (placeLead);
-//   Interested people       asked about a comparable listing, or stated intent that review
+// Two customer categories (owner, 2026-10-17): POTENTIALLY INTERESTED PEOPLE, split into
+//   Strong evidence         stated their own intent and match review rated them STRONG or
+//                           POTENTIAL (placeLead; the `direct` tab — never called "buyers");
+//   Needs more qualification asked about a comparable listing, or stated intent that review
 //                           rated WEAK / has not reviewed ("needs verification");
+// and
 //   Research opportunities  comparable posts worth reading: lead-derived (their comments were
 //                           read) merged with find_buyers_research_opportunities, one per post.
 //
 // Sellers, brokers, developers, services and rejected readings are never listed, and each
 // tab's count is the number of cards it lists. Tab, search, filters and page live in the
 // URL so refresh and shared links keep them; tab / filter / search changes REPLACE the
-// history entry (Back leaves the page instead of replaying filters), page changes push.
+// history entry (Back leaves the page instead of replaying filters); page changes replace it too.
 
 import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -31,6 +33,7 @@ import {
   freshnessOf, placeLead, sourceKindKey, type ClassifiedLead, type OpportunityItem, type OwnerFacts, type ResultTab,
 } from '@/findBuyers/externalResults';
 import { groupLeads } from '@/findBuyers/campaignReport';
+import type { LiveCampaign } from '@/findBuyers/leadCampaigns';
 import type { PotentialLead } from '@/services/findBuyers';
 
 export const RESULTS_PAGE_SIZE = 9;
@@ -111,13 +114,17 @@ export function OpportunityCard({ op, propertyId, jobId }: { op: OpportunityItem
   );
 }
 
-export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = null, liveStartedAt = null, refreshKey = null }: {
+export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = null, liveStartedAt = null, liveState = null, statusJob = null, refreshKey = null }: {
   propertyId: string;
   owner: OwnerFacts | null;
   onTotal?: (n: number) => void;
   /** The search running now (server status): the default search, even before its first lead. */
   liveJobId?: string | null;
   liveStartedAt?: string | null;
+  /** The live search's lifecycle state (server status), so its listed state is current. */
+  liveState?: string | null;
+  /** The server's latest search, live or finished (its state outranks a lagging stored status). */
+  statusJob?: LiveCampaign | null;
   /** Changes when the live status reports activity: the results re-read in place. */
   refreshKey?: string | number | null;
 }) {
@@ -131,13 +138,13 @@ export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = nu
   const language = params.get('sl');
   const fresh = (['week', 'month'].includes(params.get('fresh') ?? '') ? params.get('fresh') : 'all') as Fresh;
   const page = Math.max(1, Number(params.get('rp') ?? 1) || 1);
-  const r = useExternalResults(propertyId, chosen, owner, { liveJobId, liveStartedAt, refreshKey });
+  const r = useExternalResults(propertyId, chosen, owner, { liveJobId, liveStartedAt, liveState, statusJob, refreshKey });
   const tenant = owner?.market === 'RENT';
   /* No tab in the URL: open the first kind that has something, buyers first. */
   const tab: ResultTab = tabParam ?? (r.counts.direct > 0 ? 'direct' : r.counts.interest > 0 ? 'interest' : r.counts.opportunities > 0 ? 'opportunities' : 'direct');
   React.useEffect(() => { if (r.campaigns) onTotal?.(r.campaigns.reduce((n, c) => n + c.total, 0)); }, [r.campaigns, onTotal]);
 
-  /** Tab, search and filters replace the entry (Back leaves the page); a page number pushes one. */
+  /** Tab, search, filters and page numbers replace the entry (Back leaves the page); `push` is opt-in. */
   const set = (patch: Record<string, string | null>, opts: { resetPage?: boolean; push?: boolean } = {}) => {
     const next = new URLSearchParams(params);
     for (const [k, v] of Object.entries(patch)) { if (v == null) next.delete(k); else next.set(k, v); }
@@ -175,6 +182,9 @@ export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = nu
   }
 
   const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(intlLocaleFor(lang), { day: 'numeric', month: 'short' });
+  const fmtStamp = (iso: string) => new Date(iso).toLocaleString(intlLocaleFor(lang), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  /* The search on screen, named with its own date and state (a search with zero results is still shown). */
+  const shown = r.jobId ? r.campaigns.find((c) => c.jobId === r.jobId) ?? null : null;
   const listLength = tab === 'opportunities' ? ops.length : people.length;
   const totalPages = Math.max(1, Math.ceil(listLength / RESULTS_PAGE_SIZE));
   const at = Math.min(page, totalPages);
@@ -199,7 +209,16 @@ export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = nu
   return (
     <section aria-labelledby="fbx-results-title" className="space-y-3" data-testid="fbx-results" data-job={r.jobId ?? 'all'}>
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <h2 id="fbx-results-title" className="min-w-0 truncate font-display text-base font-semibold text-[hsl(218_45%_14%)]">{t('fbx_results_title')}</h2>
+        <div className="min-w-0">
+          <h2 id="fbx-results-title" className="min-w-0 break-words font-display text-base font-semibold leading-snug text-[hsl(218_45%_14%)]">{t('fbx_results_title')}</h2>
+          {shown ? (
+            <p data-testid="fbx-selected-search" data-job={shown.jobId} data-state={shown.state} className={cn('break-words text-2xs', SOFT)}>
+              <span dir="auto">{t('fbrx_selected_search', { date: fmtStamp(shown.createdAt), state: t(`fbrx_state_${shown.state}`) })}</span>
+            </p>
+          ) : r.jobId === null ? (
+            <p data-testid="fbx-selected-search" data-job="all" className={cn('break-words text-2xs', SOFT)}>{t('fbx_campaign_all')}</p>
+          ) : null}
+        </div>
         {/* ONE filter control: search, source, language, freshness. */}
         <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
           <PopoverTrigger asChild>
@@ -245,7 +264,13 @@ export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = nu
         </Popover>
       </div>
 
-      {/* The three tabs, each with its real count. */}
+      {/* Two categories — potentially interested people (strong evidence / needs more
+          qualification) and research opportunities — as three tabs, each with its real count. */}
+      <div className="grid grid-cols-3 gap-1.5 px-1.5">
+        <p className="col-span-2 break-words text-center text-2xs font-bold uppercase tracking-[0.08em] text-[hsl(34_90%_32%)]" data-testid="fbx-group-people">
+          {t('fbrx_stat_people')}
+        </p>
+      </div>
       <div role="tablist" aria-label={t('fbx_types_label')} className="grid grid-cols-3 gap-1.5 rounded-2xl bg-white p-1.5 ring-1 ring-inset ring-[hsl(40_30%_86%)]">
         {TABS.map((k) => {
           const Icon = icon[k];
@@ -290,7 +315,7 @@ export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = nu
           ))}
         </div>
       )}
-      <PageNav page={at} totalPages={totalPages} onPage={(p) => set({ rp: p === 1 ? null : String(p) }, { resetPage: false, push: true })} label={t('fbl_leads_pages')} />
+      <PageNav page={at} totalPages={totalPages} onPage={(p) => set({ rp: p === 1 ? null : String(p) }, { resetPage: false })} label={t('fbl_leads_pages')} />
       {tab !== 'opportunities' && r.counts.opportunities > 0 && (
         <button type="button" onClick={() => set({ tab: 'opportunities' })} className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-[hsl(34_90%_32%)]">
           {t('fbx_see_opportunities', { n: String(r.counts.opportunities) })}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />

@@ -22,7 +22,7 @@
 // found job/service/offer evidence (see boundModelReading).
 
 import { isParkingText } from './propertyFamily.ts';
-import { CITY_NAMES, cityMentioned, districtsMentioned } from './places.ts';
+import { CITY_NAMES, cityMentioned, placesMentioned } from './places.ts';
 
 export type DemandRole =
   | 'BUY_SEEKER' | 'RENT_SEEKER' | 'SALE_OFFER' | 'RENT_OFFER'
@@ -39,6 +39,9 @@ export interface Budget {
   period: 'TOTAL' | 'MONTHLY' | null;
   /** The literal text the numbers came from (evidence, never invented). */
   evidence: string;
+  /** No currency was written ("60 ათასამდე", "до 70 тыс"): the amount is evidence, the
+   *  currency is not; qualification compares it under each plausible currency. */
+  currencyStated?: boolean;
 }
 
 export interface DemandReading {
@@ -56,7 +59,12 @@ export interface DemandReading {
    *  ("ეტაპობრივი გადახდით", "рассрочка") or a bank mortgage. Absent = not stated. */
   financing?: 'INSTALMENTS' | 'MORTGAGE' | null;
   cities: string[];
+  /** Districts and micro-areas the writer wants (excluded ones are in excludedPlaces). */
   districts: string[];
+  /** Streets the writer names as wanted ("კრწანისის ქუჩაზე"). Absent on readings stored before v6. */
+  streets?: string[];
+  /** Places the writer explicitly excluded ("not Vake", "ვაკის გარდა"); streets as "street:<key>". */
+  excludedPlaces?: string[];
   /** "district doesn't matter" / "any area". */
   locationFlexible: boolean;
   rooms: number | null;
@@ -208,6 +216,32 @@ const SEEK_FOR_SALE = L([
   '(أبحث|ابحث|نبحث)[^.!?\n]{0,40}للبيع', '(מחפש|מחפשת|מחפשים)[^.!?\n]{0,40}למכירה',
 ]);
 const BUYER_WANTED = L([`${B}(looking for|searching for|need) (a |an )?(serious |real )?buyers?`, '(ищу|ищем) покупател', 'alıcı arıyor', 'مشتري', '(מחפש|מחפשים) קונה', 'მყიდველ']);
+/** A seller or landlord looking for the OTHER side: "looking for a buyer for my flat",
+ *  "ищу покупателя", "ვეძებ მყიდველს", "kiracı arıyorum". Supply, never a buyer (2026-10-17:
+ *  "buyer" contains "buy", so these read as purchase seekers). */
+const SEEKS_COUNTERPARTY = L([
+  `${B}(looking for|searching for|seeking|need|want to find|find) (a |an )?(serious |real |reliable |good )?(buyer|buyers|tenant|tenants|renter|renters)${E}`,
+  '(ищу|ищем|нужен|нужны|найти|найдём|найдем) (покупател|арендатор|квартирант|съемщик|съёмщик)', 'покупател(ь|я|ей) (ищу|ищем)',
+  '(ვეძებ|ვეძებთ|მჭირდება) (მყიდველ|დამქირავებ|მოიჯარე)', '(მყიდველს|დამქირავებელს|მოიჯარეს) ვეძებ',
+  `${B}(alıcı|kiracı) (arıyorum|arıyoruz|aranıyor)`, '(أبحث|ابحث|نبحث) عن (مشتر|مستأجر)', '(מחפש|מחפשת|מחפשים) (קונה|קונים|שוכר|שוכרים)',
+]);
+/** Asking owners for BOTH sale and rent listings is building an agent's inventory
+ *  ("მეპატრონეებმა გამომიგზავნეთ გასაყიდი და გასაქირავებელი ბინები", production lead
+ *  1654fa18, 2026-10-17), not one person's search. */
+const COLLECTS_LISTINGS = L([
+  'გასაყიდი (და|ან) გასაქირავებელი', 'გასაქირავებელი (და|ან) გასაყიდი', 'იყიდება (და|ან) ქირავდება',
+  '(продаж[аеуи]|продать) (и|или) (аренд|сдать|сдач)', '(аренд[аеуы]|сдать) (и|или) (продаж|продать)', 'на продажу (и|или) (в )?аренду',
+  `${B}(for sale (and|or) (for )?rent|to sell (and|or) (to )?rent|sale (and|or) rent(al)?) (listings|properties|apartments|flats)`,
+  `${B}(satılık (ve|veya) kiralık)`, 'للبيع (و|أو) (ل)?الإيجار', 'למכירה (ו|או) להשכרה',
+]);
+/** A broker advertising to BUYERS: "помогу приобрести недвижимость … без комиссий",
+ *  "დაგეხმარებით ბინის შეძენაში", "we help you find" (production lead 12b88ce0). */
+const SERVICE_TO_BUYERS = L([
+  '(помогу|поможем|помогаем) (вам )?(приобрести|купить|подобрать|найти|выбрать)', 'подбер(у|ем|ём) (вам )?(недвижимость|квартиру|жиль)', 'полное сопровождение сделки', 'без комисси',
+  'დაგეხმარებით (ბინის |სახლის |ქონების )?(შეძენა|ყიდვა|შერჩევა|მოძებნა)', 'შეგირჩევთ', 'მოგიძებნით (ბინა|სახლ|ქონება)', 'საკომისიოს გარეშე',
+  `${B}(we (help|will help|can help) you (buy|find|choose)|help you (buy|find) (a |your )?(home|apartment|property|flat)|no commission|commission[- ]free|full support of the (deal|transaction))`,
+  `${B}(almanıza yardımcı|komisyonsuz)`, 'نساعدك (في|على) (شراء|إيجاد)', 'بدون عمولة', 'נעזור לכם (לקנות|למצוא)', 'ללא עמלה',
+]);
 /** "Looking for a cleaner / plumber / electrician" is a service request, not a home seeker. */
 const SERVICE_REQUEST = L([
   `${B}(looking for|searching for|need|i need|we need) (a |an )?(good |reliable )?(cleaner|cleaning lady|housekeeper|plumber|electrician|handyman|painter|locksmith)`,
@@ -220,7 +254,7 @@ const BUDGET_WORD = L([`${B}budget`, 'бюджет', 'ბიუჯეტ', 'büt
 const THIRD_PERSON_SEEK = L([`for (those|anyone|people) (who are )?looking`, 'для тех, кто ищ', 'для тех кто ищ', 'ვისაც ეძებ', 'arayanlar için', 'لمن يبحث', 'למי שמחפש']);
 
 const BUY = L([
-  `${B}(buy|buying|purchase|purchasing|to own|invest in)`, 'куплю', 'купить', 'покупк', 'покупа', 'приобрест', 'приобрет',
+  `${B}(buy(?!er)|buying|purchase|purchasing|to own|invest in)`, 'куплю', 'купить', 'покупк', 'покупа(?!тел)', 'приобрест', 'приобрет',
   'ვიყიდი', 'ვიყიდო', 'ყიდვ', 'შევიძენ', 'შეძენ', 'შესაძენ', 'ვყიდულობ', 'საყიდ', 'გასაყიდად',
   `${B}(satın al|almak istiyorum|alıcı|alacağım)`, 'شراء', 'أشتري', 'اشتري', 'نشتري', 'للشراء', 'לקנות', 'קונה', 'קונים', 'קניית', 'לקנייה', 'רכישה', 'לרכישה',
   /* paying for it over time is a purchase, not a rent */
@@ -297,6 +331,13 @@ export function moneyMentions(text: string): MoneyHit[] {
   return hits.sort((x, y) => x.index - y.index);
 }
 
+/* thousands word, or "up to / budget" + a large number, or a large number + "-მდე" (up to). */
+const BARE_AMOUNT = new RegExp([
+  `(?<![\\p{L}\\p{N}])(\\d{1,4}(?:[.,]\\d+)?)\\s*(k|к|ათას\\S*|тыс\\S*|bin|ألف|אלף)(?![\\p{L}])`,
+  `(?:до|up to|budget|бюджет|ბიუჯეტ\\S*|max\\.?|maximum)\\s*:?\\s*(\\d{2,3}(?:[ \\u00a0,.]\\d{3})+|\\d{5,7})()`,
+  `(\\d{2,3}(?:[ \\u00a0,.]\\d{3})+|\\d{5,7})\\s*-?\\s*მდე`,
+].join('|'), 'iu');
+
 const FX_TO_USD: Record<Money['currency'], number> = { USD: 1, GEL: 0.37, EUR: 1.08 };
 export const toUsd = (m: Money, fx?: Partial<Record<string, number>>) => m.amount * (fx?.[m.currency] ?? FX_TO_USD[m.currency]);
 
@@ -331,7 +372,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   const evidence: string[] = [];
   const empty = (role: DemandRole, why: string, confidence = 0.9): DemandReading => ({
     role, transaction: null, realEstate: false, residential: false, propertyType: null, intermediary: false,
-    budget: null, downPayment: null, cities: [], districts: [], locationFlexible: false, rooms: null, bedrooms: null, areaSqm: null,
+    budget: null, downPayment: null, cities: [], districts: [], streets: [], excludedPlaces: [], locationFlexible: false, rooms: null, bedrooms: null, areaSqm: null,
     evidence: [...evidence, why], confidence, needsModel: false,
   });
   const letters = (s.match(/\p{L}/gu) ?? []).length;
@@ -365,6 +406,14 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   if (SELLER_SERVICE.test(s) && (ADDRESSES_SELLERS.test(s) || seekIdx < 0) && !STRONG_SEEK.test(s)) {
     return { ...empty('AGENT', 'solicits_sellers', 0.85), realEstate: realEstate || BUY.test(s), residential: residentialNoun, intermediary: true };
   }
+  /* A seller/landlord seeking the other side, an agent collecting sale AND rent listings,
+     a broker advertising to buyers: supply or intermediaries, never a buyer. */
+  if (SEEKS_COUNTERPARTY.test(s) && !STRONG_SEEK.test(s)) {
+    const rentSide = /(tenant|renter|арендатор|квартирант|съ[её]мщик|დამქირავებ|მოიჯარე|kiracı|مستأجر|שוכר)/iu.test(s);
+    return { ...empty(rentSide ? 'RENT_OFFER' : 'SALE_OFFER', 'seeks_counterparty', 0.85), realEstate: true, residential: residentialNoun, transaction: rentSide ? 'RENT' : 'BUY' };
+  }
+  if (COLLECTS_LISTINGS.test(s)) return { ...empty('AGENT', 'collects_listings', 0.85), realEstate: true, residential: residentialNoun, intermediary: true };
+  if (SERVICE_TO_BUYERS.test(s) && !STRONG_SEEK.test(s)) return { ...empty('AGENT', 'service_to_buyers', 0.85), realEstate: true, residential: residentialNoun, intermediary: true };
   /* Already bought / found, or explicitly not looking: never an active seeker. */
   if (ALREADY_DONE.test(s)) return empty('IRRELEVANT', 'already_purchased');
   if (NOT_LOOKING.test(s)) return empty('IRRELEVANT', 'not_looking');
@@ -379,7 +428,15 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   const downHit = dpIdx >= 0 ? money.find((m) => m.index >= dpIdx && m.index - dpIdx < 60) ?? null : null;
   const budgetHits = money.filter((m) => m !== downHit);
   let budget: Budget | null = null;
-  if (budgetHits.length) {
+  if (!budgetHits.length) {
+    /* An amount with no currency ("60 ათასამდე", "до 70 тыс", "budget 65k", "150 000-მდე"):
+       kept as evidence with currencyStated=false — never assigned a currency. */
+    const bare = s.match(BARE_AMOUNT);
+    const n = bare ? toNumber(bare[1] ?? bare[3] ?? bare[5] ?? '', bare[2] ?? (bare[4] ? 'k' : undefined)) : null;
+    if (bare && n != null && n >= 1000 && n < 50_000_000) {
+      budget = { min: null, max: n, currency: 'USD', period: null, evidence: bare[0].trim(), currencyStated: false };
+    }
+  } else if (budgetHits.length) {
     const cur = budgetHits[0].currency;
     const same = budgetHits.filter((m) => m.currency === cur).map((m) => m.amount);
     const min = same.length > 1 ? Math.min(...same) : null;
@@ -396,7 +453,10 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
 
   const cityKey = cityMentioned(s);
   const cities = cityKey ? [cityKey] : [];
-  const districts = districtsMentioned(s);
+  const places = placesMentioned(s);
+  const districts = places.filter((p) => p.kind !== 'STREET' && !p.negated).map((p) => p.key);
+  const streets = places.filter((p) => p.kind === 'STREET' && !p.negated).map((p) => p.key);
+  const excludedPlaces = places.filter((p) => p.negated).map((p) => (p.kind === 'STREET' ? `street:${p.key}` : p.key));
   const locationFlexible = FLEX_LOCATION.test(s);
   const bedrooms = numberNear(/(\d{1,2})\s*-?\s*(?:bed(?:room)?s?\b|br\b|спальн|საძინებ|yatak odası|غرف? نوم|חדרי שינה)/iu, s);
   const rooms = numberNear(/(\d{1,2})\s*-?\s*(?:rooms?\b|комн|к\.|ოთახ|oda\b|غرف|חדרים|חד')/iu, s)
@@ -408,7 +468,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
     realEstate: true, residential: propertyType === 'APARTMENT' || propertyType === 'HOUSE', propertyType,
     intermediary: AGENT.test(s), budget, downPayment: downHit ? { amount: downHit.amount, currency: downHit.currency } : null,
     financing: INSTALMENTS.test(s) ? 'INSTALMENTS' as const : MORTGAGE.test(s) ? 'MORTGAGE' as const : null,
-    cities, districts, locationFlexible, rooms, bedrooms, areaSqm,
+    cities, districts, streets, excludedPlaces, locationFlexible, rooms, bedrooms, areaSqm,
   };
 
   /* Direction: who is speaking — someone seeking, or someone offering. */
@@ -477,12 +537,19 @@ export function transactionUnconfirmed(r: Pick<DemandReading, 'role' | 'evidence
 
 const INTEREST = L([
   `${B}(interested|still available|is it available|available\\?|how much|price\\?|what is the price|can i (see|view)|viewing|send (me )?(the )?(price|details|location))`,
-  'интересует', 'актуально', 'сколько стоит', 'какая цена', 'цена\\?', 'можно посмотреть', 'просмотр', 'в лс', 'в личку',
-  'დაინტერესებ', 'აქტუალურია', 'რა ღირს', 'ფასი\\?', 'რა ფასი', 'ნახვა', 'შეიძლება ნახვა', 'მომწერეთ ფასი',
+  'интересует', 'актуально', 'сколько стоит', 'какая цена', `${B}цена\\?`, 'можно посмотреть', 'просмотр', 'в лс', 'в личку',
+  'დაინტერესებ', 'აქტუალურია', 'რა ღირს', 'ფასი\\?', 'რა ფასი', 'ნახვ(?!ამდის)', 'შეიძლება ნახვა', 'მომწერეთ ფასი',
   'ilgileniyorum', 'fiyat', 'ne kadar', 'hala satılık', 'görebilir miyim', 'مهتم', 'كم السعر', 'السعر', 'متاحة', 'معاينة',
   'מעוניין', 'מעוניינת', 'כמה עולה', 'מחיר', 'עדיין זמין', 'לראות',
 ]);
 const HAVE_ONE = L([`${B}(i have|we have|i've got)`, 'у меня есть', 'есть вариант', 'მაქვს', 'გვაქვს', `${B}(bende var|elimde var)`, 'لدي', 'יש לי']);
+/** A commenter offering their own property or options under someone's listing: a competitor. */
+const SELF_OFFER_COMMENT = L([
+  `${B}(i sell|i'?m selling|i have (a )?similar|i have (one|another|other)|we have (similar|options|other options|more options)|i can offer|check my (listing|page|profile))`,
+  '(продаю|есть|у меня есть|у нас есть) (похож|аналогичн|другие вариант|ещ[её] вариант|вариант)', '(у меня|у нас) есть вариант', 'смотрите (мой|наш) профил',
+  'მეც ვყიდი', 'ვყიდი მსგავს', 'მსგავსი მაქვს', 'მსგავსი გვაქვს', '(გვაქვს|მაქვს) (სხვა )?ვარიანტ', 'ჩემს გვერდზე',
+  `${B}(benzerini satıyorum|benzeri var|seçeneklerimiz var)`, 'لدينا خيارات', 'عندي شقة مشابهة', 'لدي شقة مشابهة', 'יש לי דומה', 'יש לנו אפשרויות',
+]);
 const BARE_CONTACT = /^(?:\s|[.!?+👍🙏🔥❤️])*(pm|dm|pm me|dm me|call me|call|interested|\+|ლს|в лс|в личку|пм|მომწერეთ|დამირეკეთ|интересует|actual\??|актуально\??)(?:\s|[.!?+👍🙏🔥❤️])*$/iu;
 
 /**
@@ -502,6 +569,14 @@ export function classifyComment(text: string | null | undefined, parent: { role:
     const offering = INTEREST.test(s) || BARE_CONTACT.test(s) || HAVE_ONE.test(s) || /(call me|dm me|pm me|позвоните|напишите|დამირეკეთ|მომწერეთ|beni ara|اتصل بي|תתקשר)/iu.test(s);
     return { ...own, role: offering ? (parent.role === 'RENT_SEEKER' ? 'RENT_OFFER' : 'SALE_OFFER') : 'UNCLEAR', transaction: parent.role === 'RENT_SEEKER' ? 'RENT' : 'BUY',
       evidence: [...own.evidence, 'reply_under_request'], confidence: 0.6, needsModel: false };
+  }
+  /* An agent ("I am an agent with buyers") or a competitor ("I sell similar") replying
+     under a listing is not an interested person, whatever interest words it uses. */
+  if (parent.role === 'SALE_OFFER' || parent.role === 'RENT_OFFER') {
+    if (AGENT.test(s)) return { ...own, role: 'AGENT', intermediary: true, evidence: [...own.evidence, 'agent_comment'], confidence: 0.8, needsModel: false };
+    if (SELF_OFFER_COMMENT.test(s) || SALE_OFFER.test(s) || RENT_OFFER.test(s)) {
+      return { ...own, role: parent.role, transaction: parent.role === 'RENT_OFFER' ? 'RENT' : 'BUY', evidence: [...own.evidence, 'competitor_comment'], confidence: 0.75, needsModel: false };
+    }
   }
   if ((parent.role === 'SALE_OFFER' || parent.role === 'RENT_OFFER') && INTEREST.test(s)) {
     if (BARE_CONTACT.test(s)) {

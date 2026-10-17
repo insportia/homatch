@@ -21,11 +21,11 @@ function seeded() {
   });
 }
 
-test('dry run reports 37 → 2 and writes nothing', async () => {
+test('dry run reports 37 → 1 and writes nothing', async () => {
   const { db, tables } = seeded();
   const r = await requalifyCampaign(db, 'job-v');
   assert.equal(r.before, 37);
-  assert.equal(r.after.shown, 2);
+  assert.equal(r.after.shown, 1); /* v6: lead 6 is another area (OTHER_AREA) */
   assert.equal(r.after.byCategory.STRONG, 0);
   assert.ok(tables.find_buyers_leads.every((l) => l.match_category === null && !l.requalified_at));
 });
@@ -35,7 +35,7 @@ test('apply keeps every row and its evidence, records reasons and the previous v
   await requalifyCampaign(db, 'job-v', true);
   assert.equal(tables.find_buyers_leads.length, 37, 'nothing deleted');
   const rejected = tables.find_buyers_leads.filter((l) => l.match_category === 'REJECTED');
-  assert.equal(rejected.length, 35);
+  assert.equal(rejected.length, 36);
   for (const l of rejected) assert.ok(l.rejection_reasons.length > 0);
   for (const l of tables.find_buyers_leads) {
     assert.ok(l.evidence[0].text, 'evidence untouched');

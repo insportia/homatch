@@ -94,12 +94,12 @@ export function PotentialBuyerCard({ lead, propertyId, placement, tenant }: {
 
       {/* line 4: one classification, one relevance, one action */}
       <div className="flex min-w-0 items-center gap-1.5">
-        {/* The two chips wrap to a second line before any label is cut; a chip truncates only
-            when it alone is wider than the card (long labels at 320px). */}
+        {/* The two chips wrap to a second line before any label is cut; a chip wider than the
+            card wraps its own words (never an ellipsis). */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-          <span data-testid="fbx-card-kind" title={t(kind.key)} className={cn(CHIP, 'block max-w-full truncate', KIND_TONE[kind.tone])}>{t(kind.key)}</span>
+          <span data-testid="fbx-card-kind" title={t(kind.key)} className={cn(CHIP, 'block max-w-full break-words', KIND_TONE[kind.tone])}>{t(kind.key)}</span>
           <span data-testid="fbx-card-relevance" data-category={rel} title={t(`fbx_rel_${rel}`)} className={cn(CHIP, 'inline-flex max-w-full items-center gap-1', REL_TONE[rel])}>
-            <span className="truncate">{t(`fbx_rel_${rel}`)}</span>
+            <span className="min-w-0 break-words">{t(`fbx_rel_${rel}`)}</span>
             {rel !== 'UNCATEGORISED' ? <span className="hidden shrink-0 tabular-nums opacity-80 sm:inline" dir="ltr">{Math.round(lead.overall_score)}</span> : null}
           </span>
         </div>

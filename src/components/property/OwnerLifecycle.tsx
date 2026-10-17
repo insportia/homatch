@@ -6,6 +6,7 @@
 import { AlertTriangle, CheckCircle2, Clock3, ExternalLink, ImageOff, Loader2, Pencil, RefreshCcw, Upload } from 'lucide-react';
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { returnState } from '@/lib/backNavigation';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -91,7 +92,7 @@ export function MediaUnavailable({
               <span className="break-words">{t('pow_open_listing')}</span>
             </a>
           )}
-          <Link to={`/property/${propertyId}/edit#photos`} className="relative z-10 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[#0C1119] px-3 text-2xs font-semibold text-white hover:bg-[#151d2a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
+          <Link to={`/property/${propertyId}/edit#photos`} state={returnState()} className="relative z-10 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[#0C1119] px-3 text-2xs font-semibold text-white hover:bg-[#151d2a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
             <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span className="break-words">{imported ? t('pow_update_in_homatch') : t('prop_action_photos')}</span>
           </Link>
@@ -183,7 +184,7 @@ export function PropertyStatusPanel({
                 {renewing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCcw className="h-3.5 w-3.5" aria-hidden="true" />}
                 <span className="break-words">{t('pow_renew_free')}</span>
               </button>
-              <Link to={`/property/${propertyId}/edit`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-current/30 bg-white/70 px-3.5 text-2xs font-semibold text-foreground hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] dark:bg-white/10">
+              <Link to={`/property/${propertyId}/edit`} state={returnState()} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-current/30 bg-white/70 px-3.5 text-2xs font-semibold text-foreground hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] dark:bg-white/10">
                 <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                 <span className="break-words">{t('pow_edit_info')}</span>
               </Link>
@@ -223,11 +224,11 @@ export function ManageInHomatch({ propertyId }: { propertyId: string }) {
       <p className="text-sm font-semibold text-foreground break-words">{t('pow_update_in_homatch')}</p>
       <p className="text-2xs leading-relaxed text-muted-foreground break-words">{t('pow_update_in_homatch_body')}</p>
       <div className="flex flex-wrap gap-2 pt-0.5">
-        <Link to={`/property/${propertyId}/edit#photos`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
+        <Link to={`/property/${propertyId}/edit#photos`} state={returnState()} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
           <Upload className="h-3.5 w-3.5" aria-hidden="true" />
           <span className="break-words">{t('pow_upload_photos')}</span>
         </Link>
-        <Link to={`/property/${propertyId}/edit`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
+        <Link to={`/property/${propertyId}/edit`} state={returnState()} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
           <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
           <span className="break-words">{t('pow_edit_info')}</span>
         </Link>

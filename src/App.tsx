@@ -16,7 +16,7 @@ import { JobsProvider } from '@/contexts/JobsContext';
    the whole product depends on. */
 import { DeveloperWorkspaceProvider } from '@/contexts/DeveloperWorkspaceContext';
 import { JobIndicator } from '@/components/jobs/JobIndicator';
-import { noteInAppNavigation } from '@/lib/backNavigation';
+import { currentHistoryIndex, noteHistoryEntry, noteInAppNavigation } from '@/lib/backNavigation';
 import ScrollToTop from '@/components/common/ScrollToTop';
 import { ImpersonationBanner } from '@/components/impersonation/ImpersonationBanner';
 
@@ -28,12 +28,17 @@ import { ImpersonationBanner } from '@/components/impersonation/ImpersonationBan
  * going back — so the initial mount is skipped.
  */
 const NavigationCounter: React.FC = () => {
-  const { pathname } = useLocation();
+  const { pathname, key } = useLocation();
   const first = React.useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
     noteInAppNavigation();
   }, [pathname]);
+  /* Every entry, including same-screen ones (a page number, a replaced
+     filter), so SmartBack can step past them to the previous screen. */
+  useEffect(() => {
+    noteHistoryEntry(currentHistoryIndex(), pathname);
+  }, [key, pathname]);
   return null;
 };
 const DomMutationGuard: React.FC = () => { useEffect(() => { document.documentElement.setAttribute('translate','no'); document.documentElement.classList.add('notranslate'); document.body.setAttribute('translate','no'); document.body.classList.add('notranslate'); return()=>{document.documentElement.removeAttribute('translate');document.documentElement.classList.remove('notranslate');document.body.removeAttribute('translate');document.body.classList.remove('notranslate');};},[]); return null; };

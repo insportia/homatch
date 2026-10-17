@@ -35,6 +35,8 @@ export interface PlannedSocialJob {
   arm: string;
   priority: number;
   reason: string;
+  /** Several communities read in ONE run (batching.ts); targetUrl is then the first of them. */
+  batch?: Array<{ targetUrl: string; sourceId: string | null; arm: string; size: number }>;
 }
 
 export interface PlanInputs {

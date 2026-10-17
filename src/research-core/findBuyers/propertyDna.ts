@@ -3,6 +3,7 @@
 // is never guessed; tolerances turn exact facts into comparable bands.
 
 import { propertyFamily, type PropertyFamily } from './propertyFamily.ts';
+import { streetOfAddress } from './places.ts';
 
 export interface PropertyFactsInput {
   transactionType?: string | null;
@@ -13,6 +14,8 @@ export interface PropertyFactsInput {
   city?: string | null;
   district?: string | null;
   neighborhood?: string | null;
+  /** The address line ("კრწანისის ქ. 6"): only its street name is used, never shown. */
+  address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   totalPrice?: number | null;
@@ -43,6 +46,8 @@ export interface PropertyDna {
   city: string | null;
   district: string | null;
   neighborhood: string | null;
+  /** The street key from the address (places.ts STREETS), when the address names a known street. */
+  street?: string | null;
   coordinates: { lat: number; lng: number } | null;
   propertyType: string | null;
   /** What a seeker asks for: apartment, house, land, commercial space or parking. */
@@ -113,6 +118,7 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
     city,
     district,
     neighborhood: str(f.neighborhood),
+    street: streetOfAddress(f.address ?? null),
     coordinates: lat && lng ? { lat, lng } : null,
     propertyType,
     family: propertyFamily(propertyType, f.title),

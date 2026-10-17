@@ -9,6 +9,7 @@
 // discovery_query_queue stays the queue (provider APIFY_MEMO23).
 
 import { buildPropertyDna, type PropertyDna } from '../../../../src/research-core/findBuyers/propertyDna.ts';
+import { batchSourceReads } from '../../../../src/research-core/findBuyers/batching.ts';
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { cappedBudget, decideTestCap, parseTestCap } from '../../../../src/research-core/findBuyers/testCap.ts';
 import { lowDownPaymentRatio } from '../../../../src/research-core/findBuyers/qualify.ts';
@@ -220,7 +221,8 @@ async function knownSources(db: any, city: string | null): Promise<KnownSource[]
 }
 
 export function socialJobRow(job: PlannedSocialJob, ctx: { matchingJobId: string; propertyId: string; planId: string | null; tranche: number; step: number; parent?: Record<string, unknown> }) {
-  const raw = [ctx.matchingJobId, 'M23', job.stage, job.language, job.targetUrl ?? job.query ?? '', ctx.step].join(':');
+  const target = job.batch?.length ? job.batch.map((b) => b.targetUrl).join('|') : job.targetUrl ?? job.query ?? '';
+  const raw = [ctx.matchingJobId, 'M23', job.stage, job.language, target, ctx.step].join(':');
   const key = raw.length > 400 ? `${raw.slice(0, 360)}:${hashKey(raw)}` : raw;
   return {
     property_id: ctx.propertyId,
@@ -243,7 +245,7 @@ export function socialJobRow(job: PlannedSocialJob, ctx: { matchingJobId: string
     priority: job.priority,
     metadata: {
       stage: job.stage, actorKey: job.actorKey, arm: job.arm, size: job.size, query: job.query, targetUrl: job.targetUrl,
-      sourceId: job.sourceId, reason: job.reason, step: ctx.step, tranche: ctx.tranche, ...(ctx.parent ?? {}),
+      sourceId: job.sourceId, reason: job.reason, step: ctx.step, tranche: ctx.tranche, ...(job.batch?.length ? { batch: job.batch } : {}), ...(ctx.parent ?? {}),
     },
     /* The provider estimate is decided at reservation time against the live
        registry price; the queue row carries no guess. */
@@ -328,7 +330,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const f = input.facts ?? {};
   const dna = buildPropertyDna({
     transactionType: input.property.transaction_type, propertyType: input.property.property_type, title: input.property.title,
-    countryCode: f.country_code, city: f.city, district: f.district, neighborhood: f.neighborhood,
+    countryCode: f.country_code, city: f.city, district: f.district, neighborhood: f.neighborhood, address: f.address,
     latitude: f.latitude, longitude: f.longitude, totalPrice: f.total_price, currency: f.currency, area: f.area,
     rooms: f.rooms, bedrooms: f.bedrooms, floor: f.floor, totalFloors: f.total_floors, condition: f.condition,
     buildingType: f.building_type, newBuild: f.new_build, parking: f.parking, balcony: f.balcony, terrace: f.terrace,
@@ -357,8 +359,10 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook, strategy);
   await db.from('find_buyers_campaigns').update({ query_plan: plan, strategy }).eq('matching_job_id', input.matchingJobId);
   const sources = await knownSources(db, dna.city);
-  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null,
-    depth: strategy.depth, actorHistory: await actorHistory(db) });
+  /* Several known communities of one kind are read in one run (batching.ts): fewer start
+     fees, fewer of the Actor's concurrency slots, the same per-source attribution. */
+  const jobs = batchSourceReads(initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null,
+    depth: strategy.depth, actorHistory: await actorHistory(db) }), { maxResults: Object.fromEntries(Object.entries(actors).map(([k, a]) => [k, a.maxResults])) });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
   /* TWO PHASES (campaignPhases.ts): Phase 1's time box and its spend ceiling,
      planned from this campaign's own probes and the registry's prices. */
@@ -522,7 +526,7 @@ export async function campaignStats(db: any, matchingJobId: string) {
     /* 30-day rule, made visible: older or undated items skipped, never stored. */
     staleSkipped: r.reduce((n, x) => n + Number(x.stale_dropped || 0), 0),
     /* Per language: not planned / not run (why) / unavailable / no results / filtered / results. */
-    languageOutcomes: languageOutcomes(q.filter((x) => x.provider === 'APIFY_MEMO23'), l),
+    languageOutcomes: languageOutcomes(q.filter((x) => x.provider === 'APIFY_MEMO23'), l, r),
     degradedSources: [...new Set(r.filter((x) => ['FAILED', 'TIMED_OUT'].includes(x.status)).map((x) => x.source))],
     /* The adaptive search, as the owner may see it (stats is owner-readable;
        query_plan, which carries the economics, is not). */

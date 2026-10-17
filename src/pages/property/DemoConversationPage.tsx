@@ -16,7 +16,7 @@ import { MessageStatusIcon } from '@/components/chat/MessageStatusIcon';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { CustomerSurface, DISCOVERY_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
-import { canGoBackInApp } from '@/lib/backNavigation';
+import { goToPreviousScreen } from '@/lib/backNavigation';
 import { MatchBadge } from '@/components/matching/internal/InternalMatchesSection';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -107,7 +107,7 @@ function DemoConversationContent() {
   const scored = useMemo(() => (context ? scoreDemoMatch(context) : null), [context]);
   /* The conversation is opened from the buyer profile page: one step back returns
      there; without in-app history the profile page replaces this entry. */
-  const backToProfile = () => (canGoBackInApp() ? navigate(-1) : navigate(`/property/${propertyId}/buyer/demo`, { replace: true }));
+  const backToProfile = () => goToPreviousScreen(navigate, `/property/${propertyId}/buyer/demo`);
 
   const send = async () => {
     const body = text.trim();

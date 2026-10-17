@@ -47,6 +47,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathAvailable } from '@/lib/serviceControls';
 import { Link, useNavigate } from 'react-router-dom';
+import { returnState } from '@/lib/backNavigation';
 import { toast } from 'sonner';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -232,6 +233,7 @@ function ContactNeeded({ id }: { id: string }) {
   return (
     <Link
       to={`/property/${id}/edit#contact`}
+      state={returnState()}
       className="inline-flex min-h-8 min-w-0 items-center gap-1.5 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
     >
       <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -356,7 +358,7 @@ function PropertyRow({
         </Link>
       </DropdownMenuItem>
       <DropdownMenuItem asChild>
-        <Link to={`/property/${id}/edit#photos`} className="gap-2">
+        <Link to={`/property/${id}/edit#photos`} state={returnState()} className="gap-2">
           <Camera className="h-4 w-4 shrink-0" />
           <span className="break-words">{t('prop_action_photos')}</span>
         </Link>
@@ -431,7 +433,7 @@ function PropertyRow({
         </Link>
       )}
       <div className="flex items-center gap-1.5">
-      <Link to={`/property/${id}/edit`} className={OWNER_ICON} aria-label={t('prop_action_edit')}>
+      <Link to={`/property/${id}/edit`} state={returnState()} className={OWNER_ICON} aria-label={t('prop_action_edit')}>
         <Pencil className="h-3.5 w-3.5" />
       </Link>
       <DropdownMenu>

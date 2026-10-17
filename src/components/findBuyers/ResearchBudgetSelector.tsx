@@ -58,6 +58,14 @@ export function ResearchBudgetSelector({
   const problem = useMemo(() => validateResearchBudget(value, limits), [value, floor, maxCredits, balance]); // eslint-disable-line react-hooks/exhaustive-deps
   const amount = Number(String(value).replace(/[\s,]/g, ''));
   const cr = (n: number) => formatCreditsLabel(n, lang);
+  const reviewChoices = () => {
+    const title = document.getElementById('rb-title');
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    title?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+    const selected = document.querySelector<HTMLElement>('[data-testid="research-budget"] [role="radio"][aria-checked="true"]')
+      ?? document.querySelector<HTMLElement>('[data-testid="research-budget"] [role="radio"]');
+    selected?.focus({ preventScroll: true });
+  };
 
   return (
     <section aria-labelledby="rb-title" className="space-y-4" data-testid="research-budget">
@@ -137,7 +145,11 @@ export function ResearchBudgetSelector({
             {t(ctaKey)}
           </button>
         )}
-        <a href="#rb-title" className={cn(BTN_SECONDARY, 'sm:w-auto')}>{t('rb_cta_review')}</a>
+        {/* "Review the budget" moves focus up to the choices. It used to be an
+            <a href="#rb-title">, and a fragment link PUSHES a history entry: the
+            top-left Back then popped to this same screen and only scrolled.
+            Scrolling is not navigation, so it never touches history. */}
+        <button type="button" className={cn(BTN_SECONDARY, 'sm:w-auto')} data-testid="rb-review" onClick={reviewChoices}>{t('rb_cta_review')}</button>
       </div>
     </section>
   );

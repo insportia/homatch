@@ -1,119 +1,140 @@
-// FIND BUYERS — the compact dashboard for one property (/property/:id/matches).
-// Find Buyers 3.0, 2026-10-15.
+// FIND BUYERS — the dashboard for one property (/property/:id/matches). Recovery UX, 2026-10-17.
 //
-// What the owner needs at a glance and nothing more: the property, how to start or edit a
-// search, the two campaign summaries (free HOMATCH Match, paid External Discovery) and the
-// recent external searches. Every list lives on its own page:
-//   internal → /property/:id/buyers/internal      external → /property/:id/buyers/external
-// "New search" opens the paid budget step on the external page; "Edit search" opens the
-// property's details — neither starts or charges anything on its own.
+// One journey, top to bottom: which property → what the search looks for (SearchDna, one
+// "Edit search") → ONE primary action (start / view live progress / continue, from the
+// server's live status) → the latest search with ITS OWN counts and "Open results" → the
+// internal matches → previous searches → "Clear old results". Every list lives on its own page:
+//   internal → /property/:id/buyers/internal      external → /property/:id/buyers/external?job=<id>
+//
+// The searches come from find_buyers_campaigns ⨝ matching_jobs (useExternalResults), so a newer
+// search with zero leads is still the latest one; when the live search reaches a final state
+// the status poll's key changes and everything re-reads. Starting only opens the budget step.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ChevronRight, History, PencilLine, Plus } from 'lucide-react';
+import { PencilLine } from 'lucide-react';
+import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { CustomerSurface, DISCOVERY_SURFACE } from '@/components/customer/surface';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { intlLocaleFor } from '@/components/workspace/primitives';
-import { FindBuyersDashboard, type InternalStart } from '@/components/findBuyers/FindBuyersDashboard';
+import { cn } from '@/lib/utils';
+import { DASH_BTN, FindBuyersDashboard, type LatestCounts, type PrimaryMode } from '@/components/findBuyers/FindBuyersDashboard';
+import { ClearResultsDialog } from '@/components/findBuyers/ClearResultsDialog';
+import { SearchDna } from '@/components/findBuyers/SearchDna';
 import { useExternalResults } from '@/components/findBuyers/useExternalResults';
 import { useInternalMatches } from '@/components/matching/internal/InternalMatchesSection';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
 import { counterpartFor } from '@/matching/presentation';
 import { requestLeadMatching } from '@/services/homatchLeads';
 import { readProperty } from '@/services/propertyManagement';
-import { ownerFactsOf } from '@/findBuyers/externalResults';
+import { ownerFactsOf, placeLead } from '@/findBuyers/externalResults';
+import { featuredCampaign } from '@/findBuyers/leadCampaigns';
 import type { Property, PropertyFacts } from '@/types/types';
 
-const RECENT = 5;
-
 function HomeContent() {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const { id: propertyId = '' } = useParams<{ id: string }>();
   const [property, setProperty] = useState<Property | null>(null);
-  const [internalStart, setInternalStart] = useState<InternalStart>('idle');
+  const [clearOpen, setClearOpen] = useState(false);
   React.useEffect(() => { if (propertyId) readProperty(propertyId).then(setProperty).catch(() => setProperty(null)); }, [propertyId]);
 
   const owner = useMemo(() => ownerFactsOf((property as { facts?: PropertyFacts | PropertyFacts[] } | null)?.facts, property?.transaction_type), [property]);
-  const { status } = useCampaignStatus(propertyId);
+  const { status, refresh } = useCampaignStatus(propertyId);
   const internal = useInternalMatches(propertyId);
-  const external = useExternalResults(propertyId, undefined, owner);
+  const c = status?.campaign ?? null;
+  const live = c?.active ? c : null;
+  /* The dashboard shows the newest FINISHED search; a running one is the primary action. */
+  const [featuredId, setFeaturedId] = useState<string | undefined>(undefined);
+  const external = useExternalResults(propertyId, featuredId, owner, {
+    liveJobId: live?.jobId ?? null, liveStartedAt: live?.startedAt ?? live?.createdAt ?? null, liveState: live?.state ?? null,
+    refreshKey: c ? `${c.jobId}:${c.state}:${c.newResults}` : null,
+    statusJob: c ? { jobId: c.jobId, state: c.state, createdAt: c.createdAt, startedAt: c.startedAt, completedAt: c.completedAt } : null,
+  });
+  const featured = featuredCampaign(external.campaigns);
+  useEffect(() => { setFeaturedId(featured?.jobId); }, [featured?.jobId]);
+
   const counterpart = counterpartFor(property?.transaction_type);
   const tenant = counterpart === 'TENANT';
-  const running = Boolean(status?.campaign?.active);
   const internalCount = internal.people === null ? null : internal.people.length + (internal.demo ? 1 : 0);
   const base = `/property/${encodeURIComponent(propertyId)}`;
   const facts = (() => { const f = (property as { facts?: PropertyFacts | PropertyFacts[] } | null)?.facts; return Array.isArray(f) ? f[0] : f; })();
   const label = property?.title || facts?.address || facts?.city || '';
-  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(intlLocaleFor(lang), { day: 'numeric', month: 'short', year: 'numeric' });
+  const dnaFacts = facts ? {
+    transaction_type: property?.transaction_type ?? null, property_type: property?.property_type ?? null,
+    city: facts.city ?? null, district: facts.district ?? null, bedrooms: facts.bedrooms ?? null, rooms: facts.rooms ?? null,
+    area: facts.area ?? null, total_price: facts.total_price ?? null, currency: facts.currency ?? null,
+  } : null;
+
+  const readiness = status?.readiness ?? null;
+  const primary: PrimaryMode = live ? (live.state === 'PAUSED' ? 'resume' : 'live')
+    : readiness && !readiness.ready ? 'blocked'
+      : (external.campaigns?.length ?? 0) > 0 ? 'start_new' : 'start';
+
+  /* The featured search's own counts, from its listable leads (sellers, brokers, rejected never counted). */
+  const latestCounts: LatestCounts | null = useMemo(() => {
+    if (!featured || external.jobId !== featured.jobId || external.leads === null) return null;
+    const people = external.leads.filter((l) => placeLead(l) !== null);
+    const again = people.filter((l) => l.seen_before === true).length;
+    return { people: people.length, opportunities: external.counts.opportunities, newPeople: people.length - again, foundAgain: again };
+  }, [featured, external.jobId, external.leads, external.counts.opportunities]);
 
   return (
     <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
       <CustomerSurface className="pb-32">
-        {/* The property and the two search actions, on one compact block. */}
-        <header className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-end sm:justify-between sm:pt-5" data-testid="fbh-header">
-          <div className="min-w-0">
-            <p className="truncate text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(34_90%_36%)]">{label || t('fbh_eyebrow')}</p>
-            <h1 className="mt-0.5 font-display text-xl font-semibold text-[hsl(218_45%_14%)]">{t(tenant ? 'fbh_title_tenants' : 'fbh_title_buyers')}</h1>
-          </div>
-          <div className="flex min-w-0 flex-wrap gap-2">
-            <button type="button" data-testid="fbh-new-search" onClick={() => navigate(`${base}/buyers/external?start=1`)} disabled={running}
-              className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[linear-gradient(135deg,hsl(40_94%_62%),hsl(34_90%_48%))] px-4 text-sm font-semibold text-[hsl(218_52%_11%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)] focus-visible:ring-offset-2 disabled:opacity-60 sm:flex-none">
-              <Plus className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="truncate">{t('fbh_new_search')}</span>
-            </button>
-            <Link to={`${base}/edit`} data-testid="fbh-edit-search"
-              className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-white px-4 text-sm font-semibold text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_60%_76%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)] sm:flex-none">
-              <PencilLine className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="truncate">{t('fbh_edit_search')}</span>
-            </Link>
-          </div>
+        {/* Which property this is about. */}
+        <header className="pt-4 sm:pt-5" data-testid="fbh-header">
+          <p className="break-words text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(34_90%_36%)] line-clamp-2">{label || t('fbh_eyebrow')}</p>
+          <h1 className="mt-0.5 break-words font-display text-xl font-semibold leading-snug text-[hsl(218_45%_14%)]">{t(tenant ? 'fbh_title_tenants' : 'fbh_title_buyers')}</h1>
         </header>
-        {running && (
-          <Link to={`${base}/buyers/external`} data-testid="fbh-running" role="status"
-            className="mt-3 flex items-center gap-2 rounded-xl bg-[hsl(218_52%_11%)] px-3 py-2.5 text-sm font-semibold text-white">
-            <span className="h-2 w-2 shrink-0 rounded-full bg-[hsl(40_94%_60%)] motion-safe:animate-pulse" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">{t('fbh_running')}</span><ChevronRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
-          </Link>
-        )}
 
-        <div className="mt-4">
+        {/* What the search looks for, from the property's own facts; one way to change it. */}
+        <section aria-labelledby="fbh-criteria" data-testid="fbh-criteria"
+          className="mt-3 flex min-w-0 flex-col gap-3 rounded-2xl bg-white p-4 ring-1 ring-inset ring-[hsl(40_60%_84%)] sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-2">
+            <h2 id="fbh-criteria" className="break-words text-2xs font-bold uppercase tracking-[0.12em] text-[hsl(34_90%_34%)]">{t('fbrx_criteria')}</h2>
+            <SearchDna facts={dnaFacts} />
+          </div>
+            <Link to={`${base}/edit`} state={{ from: window.location.pathname + window.location.search }} data-testid="fbh-edit-search"
+              className={cn(DASH_BTN, 'shrink-0 bg-white text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_60%_76%)]')}>
+              <PencilLine className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words">{t('fbh_edit_search')}</span>
+            </Link>
+        </section>
+
+        <div className="mt-3">
           <FindBuyersDashboard
-            tenant={tenant}
+            primary={primary}
+            foundSoFar={live?.newResults ?? 0}
+            onStart={() => navigate(`${base}/buyers/external?start=1`)}
+            liveHref={`${base}/buyers/external`}
+            campaigns={external.campaigns}
+            featured={featured}
+            latestCounts={latestCounts}
+            campaignsFailed={external.failed}
+            /* The search the results page opens by default (live, else newest) needs no ?job; any other opens by ?job. */
+            resultsHref={(jobId) => (jobId === (live?.jobId ?? external.campaigns?.[0]?.jobId) ? `${base}/buyers/external` : `${base}/buyers/external?job=${encodeURIComponent(jobId)}`)}
+            allPeople={external.allPeople?.total ?? null}
             internalCount={internalCount}
-            internalStart={internalStart}
-            onStartInternal={() => {
-              setInternalStart('starting');
-              requestLeadMatching(propertyId).then(() => setInternalStart('requested')).catch(() => setInternalStart('failed'));
-            }}
             internalHref={`${base}/buyers/internal`}
-            counts={external.leads === null ? null : external.counts}
-            externalRunning={running}
-            onStartExternal={() => navigate(`${base}/buyers/external?start=1`)}
-            externalHref={`${base}/buyers/external`}
+            /* Opening the internal matches also queues the property for the native matcher
+               (internal_leads_request_matching): no credits, no Actor. */
+            onOpenInternal={() => { requestLeadMatching(propertyId).catch(() => undefined); }}
+            canClear={(external.campaigns?.length ?? 0) > 0}
+            onClear={() => setClearOpen(true)}
           />
         </div>
-
-        {/* Recent external searches: each opens its own results. */}
-        {(external.campaigns?.length ?? 0) > 0 && (
-          <section className="mt-5" aria-labelledby="fbh-recent" data-testid="fbh-recent">
-            <h2 id="fbh-recent" className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-[hsl(218_45%_14%)]">
-              <History className="h-4 w-4 text-[hsl(34_90%_40%)]" aria-hidden="true" />{t('fbh_recent')}
-            </h2>
-            <ul className="divide-y divide-[hsl(40_30%_90%)] overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-[hsl(40_50%_86%)]">
-              {external.campaigns!.slice(0, RECENT).map((c, i) => (
-                <li key={c.jobId}>
-                  <Link to={`${base}/buyers/external${i === 0 ? '' : `?job=${encodeURIComponent(c.jobId)}`}`} data-testid="fbh-recent-item"
-                    className="flex min-h-12 items-center gap-3 px-4 py-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_50%)]">
-                    <span className="min-w-0 flex-1 truncate font-medium text-[hsl(218_45%_14%)]">{t(i === 0 ? 'fbx_campaign_latest' : 'fbx_campaign_earlier', { date: fmtDate(c.firstAt) })}</span>
-                    <span className="shrink-0 text-2xs text-[hsl(218_28%_38%)]">{t('fbh_recent_people', { n: String(c.total) })}</span>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-[hsl(218_28%_50%)] rtl:rotate-180" aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        {propertyId ? (
+          <ClearResultsDialog open={clearOpen} propertyId={propertyId} onClose={() => setClearOpen(false)}
+            onCleared={(o) => {
+              setClearOpen(false);
+              toast.success(t('fbrx_clear_done', { n: String(o.leadsCleared + o.legacyMatchesCleared) }));
+              /* No stale cache: every list re-reads from the server. */
+              setFeaturedId(undefined);
+              external.reset();
+              void refresh();
+            }} />
+        ) : null}
       </CustomerSurface>
     </AppLayout>
   );

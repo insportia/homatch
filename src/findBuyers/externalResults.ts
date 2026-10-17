@@ -62,6 +62,9 @@ export interface ResultLead {
   role?: string | null;
   transaction?: string | null;
   qualification_version?: number | string | null;
+  /** HOMATCH already knew this person from an earlier search (found again). */
+  seen_before?: boolean | null;
+  person_id?: string | null;
 }
 
 export interface ClassifiedLead extends ResultLead {

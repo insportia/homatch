@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { returnState } from '@/lib/backNavigation';
 import { toast } from 'sonner';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -13,6 +14,7 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { NAVY_BAND } from '@/components/findBuyers/brand';
 import { SearchDna } from '@/components/findBuyers/SearchDna';
+import { useFindBuyersSummary } from '@/components/findBuyers/useFindBuyersSummary';
 import { SearchStartingDialog, type SearchStartPhase } from '@/components/findBuyers/SearchStartingDialog';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
 import { campaignView, currentState } from '@/findBuyers/campaignView';
@@ -210,6 +212,10 @@ function DiscoverySection({
      running, and a paused search is not a stopped one. */
   const { status, refresh } = useCampaignStatus(propertyId);
   const campaign = status?.campaign ?? null;
+  /* The saved results are the Find Buyers searches' own (find_buyers_campaigns + current
+     leads), never the legacy matches table; re-read when a search changes state. */
+  const fb = useFindBuyersSummary(propertyId, campaign ? `${campaign.jobId}:${campaign.state}` : null);
+  const featured = fb.featured;
   const searchExists = Boolean(campaign);
   useEffect(() => { onSearchKnown?.(searchExists); }, [searchExists, onSearchKnown]);
   const view = campaign ? campaignView({
@@ -347,18 +353,26 @@ function DiscoverySection({
         {/* Right: stored results (not the live search), and the one action that fits. */}
         <div className="space-y-4 p-5 sm:p-6">
           <p className="text-2xs font-bold uppercase tracking-[0.14em] text-[hsl(34_90%_34%)]">{t('fbl_results_heading')}</p>
+          <p className="text-2xs text-[hsl(218_28%_38%)] break-words" data-testid="pow-discovery-latest" data-job={featured?.jobId ?? ''}>
+            {fb.campaigns === null ? '…' : featured
+              ? t('fbrx_latest_line', { date: new Date(featured.createdAt).toLocaleDateString(), state: t(`fbrx_state_${featured.state}`) })
+              : t('fbrx_no_search_yet')}
+          </p>
           <div className="grid grid-cols-3 gap-2.5" data-testid="pow-discovery-counts">
             {[
-              { key: 'total', label: t('prop_stat_total'), value: matchCounts.total, highlight: false },
-              { key: 'new', label: t('prop_stat_new'), value: matchCounts.newCount, highlight: matchCounts.newCount > 0 },
-              { key: 'strong', label: t('prop_stat_strong'), value: matchCounts.strongCount, highlight: matchCounts.strongCount > 0 },
+              { key: 'total', label: t('fbrx_stat_people'), value: featured?.total ?? 0, highlight: false },
+              { key: 'new', label: t('fbrx_stat_new'), value: featured?.newPeople ?? 0, highlight: (featured?.newPeople ?? 0) > 0 },
+              { key: 'strong', label: t('fbrx_stat_strong'), value: featured?.strong ?? 0, highlight: (featured?.strong ?? 0) > 0 },
             ].map(({ key, label, value, highlight }) => (
-              <div key={key} className="rounded-xl bg-[hsl(42_100%_97%)] p-3 text-center ring-1 ring-inset ring-[hsl(40_70%_86%)]">
-                <p className={cn('font-display text-2xl font-semibold tabular-nums', highlight ? 'text-[hsl(34_90%_36%)]' : 'text-[hsl(218_45%_14%)]')} dir="ltr">{value}</p>
+              <div key={key} data-testid={`pow-count-${key}`} className="min-w-0 rounded-xl bg-[hsl(42_100%_97%)] p-3 text-center ring-1 ring-inset ring-[hsl(40_70%_86%)]">
+                <p className={cn('font-display text-2xl font-semibold tabular-nums', highlight ? 'text-[hsl(34_90%_36%)]' : 'text-[hsl(218_45%_14%)]')} dir="ltr">{fb.campaigns === null ? '—' : value}</p>
                 <p className="text-2xs text-[hsl(218_28%_38%)] break-words">{label}</p>
               </div>
             ))}
           </div>
+          {matchCounts.total > 0 && (
+            <p className="text-2xs text-[hsl(218_28%_38%)] break-words" data-testid="pow-legacy-matches">{t('fbrx_legacy_matches', { n: String(matchCounts.total) })}</p>
+          )}
 
           {expired && (
             <div data-testid="pow-discovery-blocked" className="rounded-xl border border-red-600/30 bg-red-50 p-3.5 text-red-950 dark:bg-red-500/10 dark:text-red-100">
@@ -377,7 +391,7 @@ function DiscoverySection({
           )}
 
           <div className="flex flex-wrap gap-2">
-            {(matchCounts.total > 0 || live) && (
+            {(matchCounts.total > 0 || live || Boolean(featured)) && (
               <Button variant="outline" onClick={onNavigateMatches} className="h-auto min-h-10 gap-1.5 whitespace-normal border-[hsl(40_70%_80%)]">
                 <span className="break-words">{t(live ? 'fbl_open_live' : 'prop_view_matches')}</span>
                 <ChevronRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden="true" />
@@ -408,7 +422,7 @@ function DiscoverySection({
             ) : (
               /* A search cannot start without somewhere to send people: the same place
                  says the one thing that has to happen first. */
-              <Link to={`/property/${propertyId}/edit#contact`} className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-[hsl(38_92%_54%)] px-4 text-sm font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
+              <Link to={`/property/${propertyId}/edit#contact`} state={returnState()} className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-[hsl(38_92%_54%)] px-4 text-sm font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
                 <Phone className="h-3.5 w-3.5" aria-hidden="true" />
                 <span className="break-words">{t('contact_phone_add')}</span>
               </Link>
@@ -723,17 +737,18 @@ function PropertyDetailContent() {
             <div className="flex flex-wrap items-center gap-2">
               {services.find_buyers.frontend && <Link
                 to={contactReady || hasSearch ? `/property/${id}/matches` : `/property/${id}/edit#contact`}
+                state={contactReady || hasSearch ? undefined : returnState()}
                 data-testid="property-results-link"
                 className="inline-flex min-h-10 min-w-0 basis-full items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] sm:basis-0 sm:flex-1 px-4 py-2 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               >
                 {!contactReady && !hasSearch && <Phone className="h-3.5 w-3.5 shrink-0" />}
                 <span className="break-words text-center leading-snug">{contactReady || hasSearch ? ownerAction : t('contact_phone_add')}</span>
               </Link>}
-              <Link to={`/property/${id}/edit`} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
+              <Link to={`/property/${id}/edit`} state={returnState()} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
                 <Pencil className="h-3.5 w-3.5 shrink-0" />
                 <span className="break-words">{t('prop_action_edit')}</span>
               </Link>
-              <Link to={`/property/${id}/edit#photos`} className={OWNER_ICON} aria-label={t('prop_action_photos')}>
+              <Link to={`/property/${id}/edit#photos`} state={returnState()} className={OWNER_ICON} aria-label={t('prop_action_photos')}>
                 <Camera className="h-3.5 w-3.5" />
               </Link>
               {/* Publish to Portals with this property already chosen — the workspace

@@ -85,8 +85,12 @@ test('the owner page counts internal and external apart, never merged', () => {
   /* Find Buyers 3.0: the dashboard shows two separate summaries; each opens its own page. */
   const home = read('src', 'pages', 'property', 'FindBuyersHomePage.tsx');
   assert.match(home, /internalCount=\{internalCount\}/);
-  assert.match(home, /counts=\{external\.leads === null \? null : external\.counts\}/);
+  /* Recovery UX (2026-10-17): the external summary is the latest search's own counts, built
+     from that search's leads only; the internal count is passed separately. */
+  assert.match(home, /latestCounts=\{latestCounts\}/);
+  assert.match(home, /const latestCounts[\s\S]{0,200}external\.leads/, 'external counts come from external leads');
   assert.doesNotMatch(home, /counts\.total \+ /, 'no merged headline');
+  assert.doesNotMatch(home, /internalCount\s*\+|\+\s*internalCount/, 'internal never added to external');
   const internal = read('src', 'pages', 'property', 'InternalResultsPage.tsx');
   assert.match(internal, /<InternalMatchesSection/);
   assert.doesNotMatch(internal, /ExternalResultsView|find_buyers/, 'nothing external on the internal page');

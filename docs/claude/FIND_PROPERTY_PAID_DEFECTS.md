@@ -17,7 +17,7 @@ Code references are against main `8218107c`.
 
 **Safe fix (small, test-first):**
 1. **No money moves without a token.** In `loadOfferSettings`, add `configured: providerConfigured()` and require it in `enabled`. `find-property-run` preview/start then returns `PROVIDER_OFF` / unavailable before `beginExecution` reserves anything. `paidAvailability.ts` already follows `offers.enabled`.
-2. **A missing token is not a 5xx.** In `memo23Client.ts:29`, use a non-5xx status (e.g. 412) so the start path books `NOT_STARTED` at 0. Check that Find Buyers `executor.ts` handles it the same way.
+2. **A missing token is not a 5xx.** In `memo23Client.ts:29`, use a non-5xx status (e.g. 412) so the start path books `NOT_STARTED` at 0. Find Buyers (`executor.ts` start catch, ~L200-212) then takes its "provider refused" path, which releases the reservation at $0. The Find Buyers session confirmed this is correct and asked for an `executor.start` test asserting release, not START_AMBIGUOUS. #239 does not touch `memo23Client.ts` or that catch, so the two can land in either order.
 3. **The customer never pays for an ambiguous start.** In the ambiguous-start branch (`socialOffers.ts:194-198`), first look the run up at Apify. If it doesn't exist, book `NOT_STARTED` at 0.
    - If it can't be determined, keep booking it as HOMATCH COGS (`UNPRICED`, so cost is never silently zero) but mark the row `START_AMBIGUOUS`.
    - Exclude `START_AMBIGUOUS` rows from the customer settlement sum.

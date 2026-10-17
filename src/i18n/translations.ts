@@ -20398,6 +20398,18 @@ const en = {
   fbrx_clear_cancel: 'Cancel',
   fbrx_clear_done: 'Old results cleared: {{n}}',
   fbrx_clear_failed: 'The results could not be cleared. Nothing was changed.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbrx_clear_card_desc: 'Hide results of earlier searches and old matches from your lists. Nothing is deleted; contacts you paid for and a running search are kept.',
+  fbrx_broker_addon: 'Add-on',
+  fbrx_broker_desc: 'Agencies and brokers active in this market, saved to your broker list.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  dash_stat_people: 'Potentially interested people',
+  dash_stat_people_new: '{{count}} new',
+  dash_stat_searching: 'Searches running now',
+  dash_live_title: 'Searching for potentially interested people',
+  dash_live_open: 'View live progress',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40710,6 +40722,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'გაუქმება',
   fbrx_clear_done: 'ძველი შედეგები გასუფთავდა: {{n}}',
   fbrx_clear_failed: 'შედეგების გასუფთავება ვერ მოხერხდა. არაფერი შეცვლილა.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbrx_clear_card_desc: 'დამალეთ წინა ძიებების შედეგები და ძველი დამთხვევები თქვენი სიებიდან. არაფერი იშლება; გადახდილი კონტაქტები და მიმდინარე ძიება რჩება.',
+  fbrx_broker_addon: 'დამატება',
+  fbrx_broker_desc: 'ამ ბაზარზე აქტიური სააგენტოები და ბროკერები — შეინახება თქვენს ბროკერების სიაში.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  dash_stat_people: 'პოტენციურად დაინტერესებული ადამიანები',
+  dash_stat_people_new: '{{count}} ახალი',
+  dash_stat_searching: 'მიმდინარე ძიებები',
+  dash_live_title: 'მიმდინარეობს პოტენციურად დაინტერესებული ადამიანების ძიება',
+  dash_live_open: 'მიმდინარე პროგრესის ნახვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61013,6 +61037,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'Отмена',
   fbrx_clear_done: 'Старые результаты очищены: {{n}}',
   fbrx_clear_failed: 'Не удалось очистить результаты. Ничего не изменено.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbrx_clear_card_desc: 'Скройте результаты прошлых поисков и старые совпадения из ваших списков. Ничего не удаляется; оплаченные контакты и текущий поиск сохраняются.',
+  fbrx_broker_addon: 'Дополнительно',
+  fbrx_broker_desc: 'Агентства и брокеры, активные на этом рынке, — сохраняются в ваш список брокеров.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  dash_stat_people: 'Потенциально заинтересованные люди',
+  dash_stat_people_new: 'Новых: {{count}}',
+  dash_stat_searching: 'Идущие сейчас поиски',
+  dash_live_title: 'Идёт поиск потенциально заинтересованных людей',
+  dash_live_open: 'Смотреть ход поиска',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81314,6 +81350,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'Vazgeç',
   fbrx_clear_done: 'Eski sonuçlar temizlendi: {{n}}',
   fbrx_clear_failed: 'Sonuçlar temizlenemedi. Hiçbir şey değişmedi.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbrx_clear_card_desc: 'Önceki aramaların sonuçlarını ve eski eşleşmeleri listelerinizden gizleyin. Hiçbir şey silinmez; ödediğiniz kişiler ve süren arama korunur.',
+  fbrx_broker_addon: 'Ek seçenek',
+  fbrx_broker_desc: 'Bu pazarda aktif ajans ve brokerlar, broker listenize kaydedilir.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  dash_stat_people: 'Potansiyel olarak ilgilenen kişiler',
+  dash_stat_people_new: '{{count}} yeni',
+  dash_stat_searching: 'Şu an süren aramalar',
+  dash_live_title: 'Potansiyel olarak ilgilenen kişiler aranıyor',
+  dash_live_open: 'Canlı ilerlemeyi gör',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101615,6 +101663,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'إلغاء',
   fbrx_clear_done: 'تم مسح النتائج القديمة: {{n}}',
   fbrx_clear_failed: 'تعذّر مسح النتائج. لم يتغيّر شيء.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbrx_clear_card_desc: 'أخفِ نتائج عمليات البحث السابقة والتطابقات القديمة من قوائمك. لا يُحذف شيء؛ تبقى جهات الاتصال المدفوعة والبحث الجاري.',
+  fbrx_broker_addon: 'إضافة',
+  fbrx_broker_desc: 'الوكالات والوسطاء النشطون في هذا السوق، يُحفظون في قائمة الوسطاء لديك.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  dash_stat_people: 'أشخاص قد يكونون مهتمين',
+  dash_stat_people_new: 'جديد: {{count}}',
+  dash_stat_searching: 'عمليات البحث الجارية الآن',
+  dash_live_title: 'جارٍ البحث عن أشخاص قد يكونون مهتمين',
+  dash_live_open: 'عرض التقدّم المباشر',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -121916,6 +121976,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbrx_clear_cancel: 'ביטול',
   fbrx_clear_done: 'תוצאות ישנות נוקו: {{n}}',
   fbrx_clear_failed: 'לא ניתן היה לנקות את התוצאות. דבר לא השתנה.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  fbrx_clear_card_desc: 'הסתירו מהרשימות שלכם תוצאות של חיפושים קודמים והתאמות ישנות. דבר אינו נמחק; אנשי קשר ששילמתם עליהם וחיפוש פעיל נשמרים.',
+  fbrx_broker_addon: 'תוספת',
+  fbrx_broker_desc: 'סוכנויות ומתווכים הפעילים בשוק הזה, נשמרים ברשימת המתווכים שלכם.',
+
+  /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
+  dash_stat_people: 'אנשים שעשויים להתעניין',
+  dash_stat_people_new: 'חדשים: {{count}}',
+  dash_stat_searching: 'חיפושים שפועלים עכשיו',
+  dash_live_title: 'מחפשים אנשים שעשויים להתעניין',
+  dash_live_open: 'צפייה בהתקדמות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

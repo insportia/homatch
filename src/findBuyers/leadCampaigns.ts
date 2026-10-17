@@ -194,10 +194,12 @@ export function buildCampaignList(input: {
   return out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.jobId < b.jobId ? -1 : 1));
 }
 
-/** The search the dashboard summarises: the newest finished one, else the newest of all. */
+/** The search the dashboard summarises: the newest one, a running search included (owner,
+    2026-10-17: a dashboard that kept the previous search's numbers while a new one ran read
+    as stale data). Its counts grow as the running search finds people. */
 export function featuredCampaign(list: CampaignSummary[] | null): CampaignSummary | null {
   if (!list || list.length === 0) return null;
-  return list.find((c) => !isLiveRunState(c.state)) ?? list[0];
+  return list[0];
 }
 
 /** Every search together, each person counted once (a person found again is not a second person). */

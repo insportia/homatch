@@ -8,10 +8,10 @@
 import { supabase } from '@/db/supabase';
 import type { PotentialLead } from '@/services/findBuyers';
 import {
-  buildCampaignList, parseClearOutcome, parseClearPreview,
+  buildCampaignList, parseClearOutcome, parseClearPreview, personKey,
   type CampaignRow, type ClearOutcome, type ClearPreview, type JobRow, type LeadCampaign, type LeadSummaryRow,
 } from '@/findBuyers/leadCampaigns';
-import { parseResearchRows, type ResearchOpportunityRow } from '@/findBuyers/externalResults';
+import { classifyLead, parseResearchRows, placeLead, type ResearchOpportunityRow, type ResultLead } from '@/findBuyers/externalResults';
 
 export type { LeadCampaign, ClearPreview, ClearOutcome };
 
@@ -27,6 +27,28 @@ async function readWithFallback<R extends { error: unknown }>(read: (columns: st
   let res = await read(COLUMN_SETS[0]);
   for (let i = 1; res.error && i < COLUMN_SETS.length; i += 1) res = await read(COLUMN_SETS[i]);
   return res;
+}
+
+/**
+ * The owner's potentially interested people across every property, for the dashboard: the
+ * current leads the results page would list (placeLead — sellers, brokers, services and
+ * rejected readings never counted), each person once. Cleared results are already out of
+ * find_buyers_current_leads. `newCount`: people not seen in an earlier search. null = the
+ * read failed (the caller says so rather than showing a wrong number).
+ */
+export async function getPortfolioPeople(propertyIds: string[]): Promise<{ total: number; newCount: number } | null> {
+  if (!propertyIds.length) return { total: 0, newCount: 0 };
+  const read = (columns: string) => supabase.from('find_buyers_current_leads').select(columns).in('property_id', propertyIds).limit(5000);
+  const { data, error } = await readWithFallback(read);
+  if (error) return null;
+  const people = new Map<string, boolean>();
+  for (const raw of (data ?? []) as unknown as PotentialLead[]) {
+    const lead = { ...raw, evidence: Array.isArray(raw.evidence) ? raw.evidence : [] };
+    if (placeLead(classifyLead(lead as unknown as ResultLead)) === null) continue;
+    const key = personKey(lead as unknown as LeadSummaryRow);
+    people.set(key, (people.get(key) ?? false) || lead.seen_before !== true);
+  }
+  return { total: people.size, newCount: [...people.values()].filter(Boolean).length };
 }
 
 /** The property's external searches, newest first. Light: three columns per lead. */

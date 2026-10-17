@@ -29,7 +29,7 @@ import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
 import { getFindBuyersConfig, type FindBuyersConfig } from '@/services/findBuyers';
-import { CalendarCheck2, Radar } from 'lucide-react';
+import { Building2, CalendarCheck2, Check, Radar, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GOLD_FILL, NAVY_BAND } from '@/components/findBuyers/brand';
 import {
@@ -164,24 +164,50 @@ export function CampaignLaunchPanel({
       )}
 
       {brokerPricing?.active && (
-        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3">
-          <input
-            type="checkbox"
-            checked={discoverBrokers}
-            onChange={(e) => setDiscoverBrokers(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-[hsl(var(--gold))]"
-          />
-          <span className="min-w-0 text-sm leading-snug">
-            <span className="font-medium text-foreground">{t('campaign_broker_opt_label')}</span>
-            <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground">
+        /* The broker add-on, presented as the premium choice it is (owner, 2026-10-17): one
+           tappable navy/gold tile, a real switch, the price stated before the search starts. */
+        <button
+          type="button"
+          role="switch"
+          aria-checked={discoverBrokers}
+          onClick={() => setDiscoverBrokers((v) => !v)}
+          data-testid="campaign-broker-opt"
+          data-on={discoverBrokers ? 'true' : 'false'}
+          className={cn(
+            'group relative flex w-full min-w-0 items-start gap-3 overflow-hidden rounded-2xl p-4 text-start text-white ring-1 ring-inset transition-shadow',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)] focus-visible:ring-offset-2',
+            NAVY_BAND,
+            discoverBrokers ? 'ring-[hsl(40_90%_60%)] shadow-[0_14px_32px_-18px_hsl(40_90%_50%/0.55)]' : 'ring-[hsl(40_80%_55%/0.35)]',
+          )}
+        >
+          <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', GOLD_FILL)}>
+            <Building2 className="h-5 w-5 text-[hsl(218_52%_11%)]" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="min-w-0 break-words font-display text-sm font-semibold leading-snug">{t('campaign_broker_opt_label')}</span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-[hsl(40_94%_60%/0.16)] px-1.5 py-0.5 text-2xs font-bold uppercase tracking-[0.08em] text-[hsl(40_94%_72%)] ring-1 ring-inset ring-[hsl(40_94%_60%/0.35)]">
+                <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />{t('fbrx_broker_addon')}
+              </span>
+            </span>
+            <span className="mt-1 block break-words text-xs leading-relaxed text-[hsl(218_40%_86%)]">{t('fbrx_broker_desc')}</span>
+            <span className="mt-1.5 block break-words text-2xs font-semibold leading-relaxed text-[hsl(40_94%_72%)]">
               {brokerPricing.charging && brokerPricing.unitCredits > 0
                 ? t('campaign_broker_opt_price', { credits: brokerPricing.unitCredits.toFixed(2) })
                 : t('campaign_broker_opt_free')}
-              {' '}
-              {t('campaign_broker_opt_dedup')}
+            </span>
+            <span className="mt-0.5 block break-words text-2xs leading-relaxed text-[hsl(218_30%_74%)]">{t('campaign_broker_opt_dedup')}</span>
+          </span>
+          {/* The switch itself: gold when on. */}
+          <span aria-hidden="true"
+            className={cn('relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full ring-1 ring-inset transition-colors',
+              discoverBrokers ? cn(GOLD_FILL, 'ring-[hsl(40_90%_60%)]') : 'bg-white/10 ring-white/25')}>
+            <span className={cn('absolute h-5 w-5 rounded-full shadow transition-transform',
+              discoverBrokers ? 'translate-x-[1.375rem] bg-[hsl(218_52%_11%)] rtl:-translate-x-[1.375rem]' : 'translate-x-0.5 bg-white rtl:-translate-x-0.5')}>
+              {discoverBrokers && <Check className="h-5 w-5 p-1 text-[hsl(40_94%_64%)]" />}
             </span>
           </span>
-        </label>
+        </button>
       )}
 
       <Separator />

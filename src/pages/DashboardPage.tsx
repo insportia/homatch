@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Building2, CheckCircle2, CircleDollarSign, FileUp, Loader2, MapPin,
+  ArrowRight, Building2, CheckCircle2, CircleDollarSign, FileUp, Loader2, MapPin, Radar,
   Search, ShieldCheck, Sparkles, Trash2, TrendingUp, UserSearch, Users, Zap,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -72,7 +72,10 @@ function CardHead({ title, action }: { title: string; action?: React.ReactNode }
        (Georgian and Russian both run long) wraps inside the same 3.5rem band,
        so the header rules of adjacent columns still line up. */
     <div className="flex min-h-[3.5rem] items-center justify-between gap-3 border-b border-border px-5 py-3">
-      <h2 className="min-w-0 text-balance text-[16px] font-semibold uppercase leading-tight tracking-[0.08em] text-foreground">{title}</h2>
+      <h2 className="flex min-w-0 items-center gap-2.5 text-balance text-[16px] font-semibold uppercase leading-tight tracking-[0.08em] text-foreground">
+        <span className="h-4 w-1 shrink-0 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
+        <span className="min-w-0 break-words">{title}</span>
+      </h2>
       {action}
     </div>
   );
@@ -116,35 +119,43 @@ function EmptyState({ icon: Icon, title, hint, action }: {
  * bordered cards; four numbers are a summary, not four objects, so they share
  * one surface and are separated by hairlines.
  */
-function Count({ label, value, note, loading }: {
-  label: string; value: number; note?: string | null; loading: boolean;
+function Count({ icon: Icon, label, value, note, loading, onClick, testId }: {
+  icon: React.ElementType; label: string; value: number | null; note?: string | null; loading: boolean;
+  /** A count that names a place to go opens it (owner, 2026-10-17: every figure leads somewhere). */
+  onClick?: () => void; testId?: string;
 }) {
-  return (
-    /*
-     * ONE FIGURE, LABELLED ABOVE IT.
-     *
-     * The label came second, in body weight, under a 44px number — so the eye met a
-     * figure with no idea what it counted and had to travel back down to find out.
-     * Reading order for a metric is what-it-is then how-much, which is how the approved
-     * analytical surfaces set theirs, and a label belongs at label weight rather than
-     * competing as copy.
-     */
-    <div className="min-w-0 px-5 py-5 sm:px-6 sm:py-6">
-      <p className="text-2xs font-semibold uppercase leading-tight tracking-[0.08em] text-muted-foreground">
-        {label}
-      </p>
+  const body = (
+    <>
+      <span className="flex min-w-0 items-start gap-2.5">
+        {/* Premium, not grey: the navy disc and gold glyph of the HOMATCH mark. */}
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)] shadow-[0_8px_18px_-12px_hsl(218_60%_15%/0.7)]" aria-hidden="true">
+          <Icon className="h-[17px] w-[17px]" strokeWidth={1.8} />
+        </span>
+        <span className="min-w-0 break-words pt-0.5 text-2xs font-semibold uppercase leading-snug tracking-[0.08em] text-[hsl(218_28%_38%)]">
+          {label}
+        </span>
+      </span>
       {loading ? (
-        <Skeleton className="mt-2 h-9 w-14" />
+        <Skeleton className="mt-3 h-9 w-14" />
       ) : (
-        <p className="mt-2 font-display text-[2.25rem] font-bold leading-none tracking-[-0.03em] text-foreground tabular-nums">
-          {value}
-        </p>
+        <span className="mt-3 block font-display text-[2.25rem] font-bold leading-none tracking-[-0.03em] text-[hsl(218_45%_14%)] tabular-nums" dir="ltr">
+          {value ?? '—'}
+        </span>
       )}
       {!loading && note && (
-        <p className="mt-2 text-2xs font-semibold text-[hsl(var(--gold-ink))]">{note}</p>
+        <span className="mt-2.5 inline-flex max-w-full items-center gap-1 rounded-md bg-[hsl(40_94%_60%/0.14)] px-1.5 py-0.5 text-2xs font-semibold text-[hsl(34_90%_32%)] ring-1 ring-inset ring-[hsl(40_90%_55%/0.35)]">
+          <span className="min-w-0 break-words">{note}</span>
+        </span>
       )}
-    </div>
+    </>
   );
+  const cls = 'relative block h-full w-full min-w-0 px-5 py-5 text-start sm:px-6 sm:py-6';
+  return onClick ? (
+    <button type="button" onClick={onClick} data-testid={testId}
+      className={`${cls} transition-colors hover:bg-[hsl(40_60%_97%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_50%)]`}>
+      {body}
+    </button>
+  ) : <div className={cls} data-testid={testId}>{body}</div>;
 }
 
 /**
@@ -168,7 +179,7 @@ function ActionTile({ icon: Icon, title, desc, onClick }: {
         moment the box came off. It deepens on hover instead of changing shape.
       */}
       <span
-        className="grid h-9 w-9 place-items-center rounded-full bg-[hsl(var(--gold))]/10 ring-1 ring-inset ring-[hsl(var(--gold))]/25 text-[hsl(var(--gold-ink))] transition-colors duration-300 group-hover:bg-[hsl(var(--gold))]/18 group-hover:ring-[hsl(var(--gold))]/45 motion-reduce:transition-none"
+        className="grid h-10 w-10 place-items-center rounded-xl bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)] shadow-[0_8px_18px_-12px_hsl(218_60%_15%/0.7)] ring-1 ring-inset ring-[hsl(40_80%_55%/0.3)] transition-shadow duration-300 group-hover:ring-[hsl(40_90%_60%/0.6)] motion-reduce:transition-none"
         aria-hidden="true"
       >
         <Icon className="h-[17px] w-[17px]" strokeWidth={1.6} />
@@ -182,7 +193,7 @@ function ActionTile({ icon: Icon, title, desc, onClick }: {
         always was; nothing said so. This states the destination and the arrow travels
         with the words rather than away from them.
       */}
-      <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-2xs font-semibold text-foreground transition-colors group-hover:border-[hsl(var(--gold-border))] group-hover:text-[hsl(var(--gold-ink))]">
+      <span className="mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[hsl(40_60%_76%)] bg-[hsl(40_60%_98%)] px-3 py-1.5 text-2xs font-semibold text-[hsl(218_45%_14%)] transition-colors group-hover:border-[hsl(38_92%_56%)] group-hover:text-[hsl(34_90%_32%)]">
         {t('db_tile_open')}
         <ArrowRight
           className={`h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-0.5' : ''}`}
@@ -193,30 +204,39 @@ function ActionTile({ icon: Icon, title, desc, onClick }: {
   );
 }
 
-/** A live matching run. Real progress from matching_jobs, or nothing at all. */
+/** A live search. Real progress from matching_jobs, or nothing at all — presented as the
+    premium, navy/gold module it is, its name in full (never truncated) on any phone. */
 function LiveRunStrip({ run, propertyTitle, onOpen }: {
   run: LiveMatchingJob; propertyTitle: string; onOpen: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const pct = Math.max(0, Math.min(100, Math.round(Number(run.progress) || 0)));
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="w-full rounded-2xl border border-gold/60 bg-card p-4 text-start shadow-card transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-testid="dash-live-run"
+      className="group relative w-full overflow-hidden rounded-2xl bg-[linear-gradient(135deg,hsl(218_52%_11%),hsl(218_48%_17%))] p-4 text-start text-white shadow-[0_18px_40px_-24px_hsl(218_60%_15%/0.8)] ring-1 ring-inset ring-[hsl(40_80%_55%/0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)] focus-visible:ring-offset-2 sm:p-5"
     >
-      <div className="flex items-center gap-3">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold-ink motion-reduce:animate-none" aria-hidden="true" />
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,hsl(40_94%_62%),hsl(34_90%_48%))] text-[hsl(218_52%_11%)]" aria-hidden="true">
+          <Radar className="h-5 w-5 motion-safe:animate-pulse" />
+        </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">
-            {t('dash_ai_matching_title')} {jobStatusLabel(run.status, t)}
+          <p className="break-words font-display text-[15px] font-semibold leading-snug">{t('dash_live_title')}</p>
+          <p className="mt-0.5 break-words text-xs leading-relaxed text-[hsl(218_40%_84%)]">
+            {jobStatusLabel(run.status, t)}{propertyTitle ? <> · <span dir="auto">{propertyTitle}</span></> : null}
           </p>
-          <p className="truncate text-xs text-muted-foreground">{run.current_step || propertyTitle}</p>
         </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-gold-ink">{run.progress}%</span>
+        <span className="shrink-0 font-display text-xl font-bold tabular-nums text-[hsl(40_94%_66%)]" dir="ltr">{pct}%</span>
       </div>
-      <div className="mt-3 h-1 overflow-hidden rounded-full bg-secondary">
-        <div className="h-full rounded-full bg-gold-ink transition-all duration-500" style={{ width: `${run.progress}%` }} />
+      <div className="mt-3.5 h-1.5 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t('dash_live_title')}>
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,hsl(40_94%_62%),hsl(34_90%_50%))] transition-all duration-500 motion-reduce:transition-none" style={{ width: `${pct}%` }} />
       </div>
+      <span className="mt-3.5 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-[hsl(40_94%_74%)] ring-1 ring-inset ring-[hsl(40_94%_60%/0.35)] transition-colors group-hover:bg-white/15">
+        <span className="break-words">{t('dash_live_open')}</span>
+        <ArrowRight className={`h-3.5 w-3.5 shrink-0 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </span>
     </button>
   );
 }
@@ -547,22 +567,33 @@ function DashboardContent() {
               rules read as a table of figures, which is what this stopped being. */}
           <div className="grid grid-cols-2 divide-x divide-border border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
             <div className="border-b border-border xl:border-b-0">
-              <Count label={t('dash_total_properties')} value={data.properties.length} note={weekNote(data.propertiesThisWeek)} loading={loading} />
+              <Count icon={Building2} label={t('dash_total_properties')} value={data.properties.length} note={weekNote(data.propertiesThisWeek)} loading={loading}
+                onClick={() => navigate('/property')} testId="dash-stat-properties" />
             </div>
             <div className="border-b border-border xl:border-b-0">
+              {/* The people the Find Buyers searches found now — never the legacy matches table,
+                  whose old, already-opened contacts read as fresh "matches" (owner, 2026-10-17). */}
               <Count
-                label={t('dash_total_matches')}
-                value={data.matchTotals.total}
-                note={data.matchTotals.newCount > 0 ? t('db_stat_delta_new', { count: data.matchTotals.newCount }) : null}
+                icon={Users}
+                label={t('dash_stat_people')}
+                value={data.people ? data.people.total : null}
+                note={data.people && data.people.newCount > 0 ? t('dash_stat_people_new', { count: data.people.newCount }) : null}
                 loading={loading}
+                onClick={() => navigate(data.properties.length === 1 ? `/property/${data.properties[0].id}/matches` : '/property')}
+                testId="dash-stat-people"
               />
             </div>
-            <Count label={t('db_stat_verifications')} value={data.verifications.length} note={weekNote(data.verificationsThisWeek)} loading={loading} />
+            <Count icon={ShieldCheck} label={t('db_stat_verifications')} value={data.verifications.length} note={weekNote(data.verificationsThisWeek)} loading={loading}
+              onClick={() => navigate('/verify')} testId="dash-stat-verifications" />
+            {/* Searches genuinely running now (matching_jobs), not a property's standing flag. */}
             <Count
-              label={t('dash_active_matching')}
-              value={data.properties.filter(p => p.matching_status === 'ACTIVE').length}
-              note={null}
+              icon={Radar}
+              label={t('dash_stat_searching')}
+              value={liveRuns.length}
+              note={liveRuns.length > 0 ? t('dash_live_open') : null}
               loading={loading}
+              onClick={liveRuns.length > 0 ? () => navigate(`/property/${liveRuns[0].property_id}/buyers/external`) : undefined}
+              testId="dash-stat-searching"
             />
           </div>
         </section>
@@ -582,7 +613,7 @@ function DashboardContent() {
             key={run.id}
             run={run}
             propertyTitle={propertiesById.get(run.property_id)?.title ?? ''}
-            onOpen={() => navigate(`/property/${run.property_id}`)}
+            onOpen={() => navigate(`/property/${run.property_id}/buyers/external`)}
           />
         ))}
 

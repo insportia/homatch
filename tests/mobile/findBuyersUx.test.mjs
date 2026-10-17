@@ -456,8 +456,9 @@ test('the dashboard follows the live search and updates when it completes', opts
   await page.waitForFunction(() => document.querySelector('[data-testid="fbd-primary"]')?.getAttribute('data-mode') === 'live', null, { timeout: 30000 });
   assert.match(await textOf(page, '[data-testid="fbd-primary-note"]'), /3/, 'found so far, from the server');
   assert.match(await page.getAttribute('[data-testid="fbd-primary-action"]', 'href'), /\/buyers\/external$/);
-  /* While it runs, the latest FINISHED search is summarised. */
-  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest"]')?.getAttribute('data-job') === 'job1', null, { timeout: 15000 });
+  /* While it runs, the running search itself is the latest one — never the previous search's numbers. */
+  await page.waitForFunction(() => document.querySelector('[data-testid="fbd-latest"]')?.getAttribute('data-job') === 'job-run', null, { timeout: 15000 });
+  assert.equal(await page.getAttribute('[data-testid="fbd-latest"]', 'data-state'), 'RUNNING');
   /* The status poll reports the end; the stored job row may lag — the status wins. */
   setStatus({ readiness: READY, campaign: campaign('COMPLETED_NO_RESULTS', { jobId: 'job-run', newResults: 0, active: false, completedAt: agoSec(1) }) });
   await page.waitForFunction(() => document.querySelector('[data-testid="fbd-primary"]')?.getAttribute('data-mode') === 'start_new', null, { timeout: 20000 });

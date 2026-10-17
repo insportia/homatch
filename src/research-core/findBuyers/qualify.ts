@@ -16,7 +16,7 @@ import type { DemandReading } from './demandClassifier.ts';
 import { toUsd, transactionUnconfirmed } from './demandClassifier.ts';
 import { ADMIN_DISTRICTS, AREA_PARENT, NEARBY_DISTRICTS, STREETS, cityOfArea, normKey, parentDistrict, streetOfAddress } from './places.ts';
 
-export const QUALIFICATION_VERSION = 6; // 4: financing dimension; 5: people-first — brokers soliciting sellers, unconfirmed buy/rent (2026-10-16); 6: street / micro-area / district levels, budget levels incl. unstated currency, counterparty seekers and listing collectors are supply (2026-10-17)
+export const QUALIFICATION_VERSION = 7; // 7: stated size compared with the property's size band, a smaller home (or two+ rooms larger) is not this property's buyer, the model never makes a seeker of a text with no wish to buy (2026-10-17); 4: financing dimension; 5: people-first — brokers soliciting sellers, unconfirmed buy/rent (2026-10-16); 6: street / micro-area / district levels, budget levels incl. unstated currency, counterparty seekers and listing collectors are supply (2026-10-17)
 
 export type MatchCategory = 'STRONG' | 'POTENTIAL' | 'WEAK' | 'REJECTED';
 export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'UNCONFIRMED' | 'INCOMPATIBLE' | 'UNKNOWN';
@@ -30,7 +30,11 @@ export type RejectionReason =
   /** Names only other districts/areas of the property's city and states no flexibility (v6). */
   | 'OTHER_AREA'
   /** Explicitly excludes the property's district, micro-area or street ("not Krtsanisi"). */
-  | 'LOCATION_EXCLUDED';
+  | 'LOCATION_EXCLUDED'
+  /** The stated size is outside the property's size band ("up to 60 m²" for 97 m²) (v7). */
+  | 'AREA_MISMATCH'
+  /** Wants a smaller home (fewer rooms/bedrooms), or two or more rooms more (v7). */
+  | 'ROOMS_MISMATCH';
 
 /** Soft limitations recorded on non-rejected leads (why it is not Strong). */
 export type Limitation =
@@ -258,13 +262,36 @@ export function requirementsFit(r: DemandReading, dna: PropertyDna): Fit {
   const dnaType = familyOf(dna);
   if (r.propertyType && r.propertyType !== dnaType) return 'INCOMPATIBLE';
   const dnaRooms = dna.rooms ?? (dna.bedrooms != null ? dna.bedrooms + 1 : null);
+  /* Signed (v7, owner 2026-10-17): wanting FEWER rooms than the property has is wanting a
+     smaller, cheaper home — not this property's buyer. One room more is near; two+ is not. */
   let d: number | null = null;
-  if (r.bedrooms != null && dna.bedrooms != null) d = Math.abs(r.bedrooms - dna.bedrooms);
-  else if (r.rooms != null && dnaRooms != null) d = Math.abs(r.rooms - dnaRooms);
+  /* Rooms inferred from bedrooms (no stated room count) are an estimate: one room fewer
+     than the estimate is near, never a rejection. */
+  let estimated = false;
+  if (r.bedrooms != null && dna.bedrooms != null) d = r.bedrooms - dna.bedrooms;
+  else if (r.rooms != null && dnaRooms != null) { d = r.rooms - dnaRooms; estimated = dna.rooms == null; }
   if (d == null) return 'UNKNOWN';
   if (d === 0) return 'COMPATIBLE';
-  if (d === 1) return 'NEARBY';
+  if (d === 1 || (estimated && d === -1)) return 'NEARBY';
   return 'INCOMPATIBLE';
+}
+
+export type AreaLevel = 'WITHIN' | 'MISMATCH' | 'UNKNOWN';
+
+/**
+ * The stated size against the property's size band (v7). The band is the DNA's area
+ * tolerance (±20% by default); an approximate single figure ("about 80 m²") counts ±10%.
+ * Only a range that cannot overlap the band is a mismatch — "up to 60 m²" for 97 m².
+ */
+export function areaLevel(r: DemandReading, dna: PropertyDna): AreaLevel {
+  const a = r.area ?? (r.areaSqm != null ? { min: r.areaSqm, max: r.areaSqm, approx: true } : null);
+  if (!a || dna.areaSqm == null) return 'UNKNOWN';
+  const band = dna.tolerances?.area ?? { min: Math.round(dna.areaSqm * 0.8), max: Math.round(dna.areaSqm * 1.2) };
+  const lo = a.min != null ? (a.approx ? a.min * 0.9 : a.min) : null;
+  const hi = a.max != null ? (a.approx ? a.max * 1.1 : a.max) : null;
+  if (hi != null && hi < band.min) return 'MISMATCH';
+  if (lo != null && lo > band.max) return 'MISMATCH';
+  return 'WITHIN';
 }
 
 const POINTS: Record<Fit, number> = { COMPATIBLE: 100, NEARBY: 80, FLEXIBLE: 70, CITY: 55, STRETCH: 55, UNCONFIRMED: 55, UNKNOWN: 35, INCOMPATIBLE: 0 };
@@ -297,6 +324,7 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   const lLevel = locationLevel(r, dna);
   const lFit = LOCATION_FIT[lLevel];
   const qFit = requirementsFit(r, dna);
+  const aLevel = areaLevel(r, dna);
   const fin = financingFit(r, dna, ctx.fx, ctx.lowDownPaymentRatio ?? DEFAULT_LOW_DOWN_PAYMENT_RATIO);
   const financingRisk = fin.fit === 'STRETCH' || fin.fit === 'UNCONFIRMED';
   if (!reasons.length) {
@@ -308,6 +336,9 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
     /* The family must match. Before 2026-10-12 only HOUSE vs APARTMENT was compared,
        so an apartment seeker for a land plot or a shop was kept as a WEAK lead. */
     if (r.propertyType && r.propertyType !== familyOf(dna)) reasons.push('PROPERTY_TYPE_MISMATCH');
+    /* v7: the size and the rooms they state must fit this property. */
+    if (aLevel === 'MISMATCH') reasons.push('AREA_MISMATCH');
+    if (qFit === 'INCOMPATIBLE' && !reasons.includes('PROPERTY_TYPE_MISMATCH')) reasons.push('ROOMS_MISMATCH');
   }
   /* 7: evidence must be current. */
   if (ctx.ageDays == null) reasons.push('UNDATED');

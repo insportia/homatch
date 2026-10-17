@@ -29,7 +29,7 @@ A buyer's or tenant's paid social OFFER campaign runs memo23 Actors on public so
 
 ## Money (37% HOMATCH / 63% providers, unchanged)
 - **No token, no campaign.** `loadOfferSettings.configured` gates `enabled`. The preview says `PROVIDER_NOT_CONFIGURED`, and start is refused before `beginExecution` reserves anything.
-- **The customer pays for confirmed work only.** `find_property_customer_micros` (migration `20261110090000`) counts:
+- **The customer pays for confirmed work only.** `find_property_customer_micros` (migration `20261110100000`) counts:
   - Actor runs that have a provider run id;
   - at their actual cost, or at their reservation when the cost is unknown.
 

@@ -26,6 +26,7 @@ import type { AiUsage, SearchTelemetry } from '../../../src/research-core/market
 import { type RunLease, reapDecision } from '../../../src/research-core/marketplace/dispatch.ts';
 import { estimatedProviderCost } from './providerCost.ts';
 import { wellFormedDeep } from '../../../src/research-core/marketplace/text-safety.ts';
+import { loadSocialCandidates } from './findProperty/socialListings.ts';
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -254,7 +255,7 @@ export interface ProcessOutcome {
 export async function processAndStore(db: Db, searchId: string, now = new Date()): Promise<ProcessOutcome | null> {
   const started = Date.now();
   const { data: search } = await db.from('discovery_marketplace_searches')
-    .select('id,status,request,telemetry,ai_status,results_available_at').eq('id', searchId).maybeSingle();
+    .select('id,user_id,status,request,telemetry,ai_status,results_available_at,completed_at').eq('id', searchId).maybeSingle();
   if (!search) return null;
   if (search.status === 'CANCELLED') return { status: 'CANCELLED', properties: 0, strongMatches: 0 };
 
@@ -279,6 +280,10 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   const candidates = listingRows.map((l) => ({
     workerId: workerOfRun.get(l.worker_run_id) ?? 'unknown', candidate: l.raw,
   }));
+  /* Social offers of this person's ENDED paid campaigns for this search: ranked and
+     deduplicated with the portals; a failed read never loses the portal results. */
+  try { candidates.push(...await loadSocialCandidates(db, searchId, search.user_id ?? null, now)); }
+  catch (error) { console.error(JSON.stringify({ event: 'marketplace_social_candidates_failed', searchId, error: String(error).slice(0, 300) })); }
 
   const request = search.request as MarketplaceSearchRequest;
   const output = processSearch({ request, candidates, converter: await loadConverter(db), now });
@@ -347,7 +352,8 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
     telemetry,
     processed_at: now.toISOString(),
     results_available_at: search.results_available_at ?? (derived.status === 'RESULTS_AVAILABLE' || (isTerminalSearch(derived.status) && properties.length) ? now.toISOString() : null),
-    completed_at: isTerminalSearch(derived.status) ? now.toISOString() : null,
+    /* A later re-rank (social offers joining) keeps the search's real completion time. */
+    completed_at: isTerminalSearch(derived.status) ? (search.completed_at ?? now.toISOString()) : null,
     updated_at: now.toISOString(),
   }).eq('id', searchId).neq('status', 'CANCELLED');
   return { status: derived.status, properties: properties.length, strongMatches };

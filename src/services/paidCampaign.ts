@@ -13,7 +13,7 @@ export const OFFER_NETWORKS: OfferNetwork[] = ['FACEBOOK', 'INSTAGRAM', 'TELEGRA
 
 export interface CampaignPreview {
   available: boolean;
-  unavailableReason: 'PROVIDER_OFF' | 'PAID_CAMPAIGNS_OFF' | 'NO_SEARCHABLE_SOURCES' | null;
+  unavailableReason: 'PROVIDER_OFF' | 'PROVIDER_NOT_CONFIGURED' | 'PAID_CAMPAIGNS_OFF' | 'NO_SEARCHABLE_SOURCES' | null;
   priceCredits: number; creditsPerUsd: number; minCredits: number; maxCredits: number | null;
   priceUsd: number;
   policy: string; charging: 'CONSUMED_DIV_0_63_CAPPED';
@@ -54,14 +54,15 @@ export async function subscriptionForSearch(marketplaceSearchId: string): Promis
   return data?.id ? String(data.id) : null;
 }
 
-export async function previewCampaign(subscriptionId: string, credits: number, networks: OfferNetwork[]) {
-  const r = await invoke({ action: 'preview', subscriptionId, authorizedMaxCredits: credits, networks });
+/** language: the customer's interface language, also searched for posts (offerSearchLanguages). */
+export async function previewCampaign(subscriptionId: string, credits: number, networks: OfferNetwork[], language?: string) {
+  const r = await invoke({ action: 'preview', subscriptionId, authorizedMaxCredits: credits, networks, language });
   return { preview: (r.data?.preview ?? null) as CampaignPreview | null, reasonCode: r.data?.preview ? null : r.reasonCode, minCredits: r.data?.minBudgetCredits as number | undefined };
 }
 
-export async function startCampaign(subscriptionId: string, credits: number, networks: OfferNetwork[], idempotencyKey: string) {
+export async function startCampaign(subscriptionId: string, credits: number, networks: OfferNetwork[], idempotencyKey: string, language?: string) {
   const r = await invoke({
-    action: 'start', subscriptionId, authorizedMaxCredits: credits, networks, idempotencyKey,
+    action: 'start', subscriptionId, authorizedMaxCredits: credits, networks, idempotencyKey, language,
     confirm: { priceCredits: credits, acceptedTerms: true },
   });
   return { runId: r.data?.runId ? String(r.data.runId) : null, reasonCode: r.data?.runId ? null : r.reasonCode };

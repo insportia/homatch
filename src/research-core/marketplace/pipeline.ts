@@ -13,6 +13,7 @@
 
 import type { CurrencyConverter } from '../normalize/currency.ts';
 import type { ExternalListingCandidate, MarketplaceSearchRequest } from './worker-contract.ts';
+import { isSocialSource } from './socialListings.ts';
 import { type NormalizedListing, validateListing } from './normalize.ts';
 import { type PairDecision, resolveProperties } from './property-entity.ts';
 import { type SellerAssessment, classifySeller, isOwnerClass } from './seller.ts';
@@ -42,6 +43,8 @@ export type ReasonCode =
 
 export interface ListingView {
   images?: string[];
+  /** A social post (socialListings.ts): unverified content by whoever posted it. */
+  social?: true;
   listingId: string;
   sourceListingId?: string;
   address?: string | null;
@@ -77,6 +80,8 @@ export interface PossibleMatchView {
   observedAt: string;
   /** Why the two may be one flat, in customer vocabulary (see matchReasons). */
   reasons?: MatchReason[];
+  /** A social post repeating this listing: not a separate result, only its original post. */
+  repost?: true;
 }
 
 export type MatchReason = 'SAME_LISTING' | 'PHOTOS' | 'DESCRIPTION' | 'PHONE' | 'LOCATION' | 'ADDRESS_AND_LAYOUT';
@@ -139,6 +144,8 @@ export interface PipelineStats {
   vetoedMerges: number;
   comparisons: number;
   sellerClasses: Record<string, number>;
+  /** Social-only properties folded into a portal property as possible reposts. */
+  socialReposts?: number;
   priceDiscrepancies: number;
   excludedByFilter: number;
   inBudget: number;
@@ -349,7 +356,9 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   const order = (a: typeof ranked[number], b: typeof ranked[number]) => b.r.score - a.r.score
     || (a.w.intelligence.activity.ageDays ?? 31) - (b.w.intelligence.activity.ageDays ?? 31) || a.w.key.localeCompare(b.w.key);
   const normal = eligible.filter(({ w }) => !upgradeOf.has(w.key)).sort(order);
-  const strong = normal.filter(({ w, r }) => r.components.criteria >= STRONG_CRITERIA && w.freshness !== 'STALE');
+  /* A property known only from social posts is unverified: it can rank, never be a Best Match on its own. */
+  const socialOnly = (w: typeof ranked[number]['w']) => w.members.every((m) => isSocialSource(m.source));
+  const strong = normal.filter(({ w, r }) => r.components.criteria >= STRONG_CRITERIA && w.freshness !== 'STALE' && !socialOnly(w));
   const best = strong.slice(0, BEST_LIMIT);
   const bestKeys = new Set(best.map(({ w }) => w.key));
   const owners = normal.filter(({ w }) => !bestKeys.has(w.key) && isOwnerClass(w.seller.classification)
@@ -386,7 +395,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       title: w.rep.title,
       description: w.rep.description?.replace(/<[^>]*>/g, ' ').trim() ?? null,
       intelligence: { ...w.intelligence, strong: r.components.criteria >= STRONG_CRITERIA && w.filter.unverified.length === 0
-        && w.filter.band === 'IN_BUDGET' && w.freshness !== 'STALE' && !w.intelligence.verificationNeeded },
+        && w.filter.band === 'IN_BUDGET' && w.freshness !== 'STALE' && !w.intelligence.verificationNeeded && !socialOnly(w) },
       facts: w.facts,
       images: [...new Set([...w.rep.images, ...w.members.flatMap((m) => m.images)])].slice(0, 12),
       freshness: { state: w.freshness, lastVerifiedAt: w.lastVerifiedAt },
@@ -396,6 +405,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
         || (a.priceUsd ?? Infinity) - (b.priceUsd ?? Infinity) || a.id.localeCompare(b.id)).map((m) => ({
         listingId: m.id,
         images: m.images.slice(0, 3),
+        ...(isSocialSource(m.source) ? { social: true as const } : {}),
         sourceListingId: m.sourceListingId,
         address: m.address,
         source: m.source,
@@ -438,6 +448,19 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   emit(upgradeRows, 'UPGRADE');
   emit(more, 'MORE');
 
+  /* Deduplicated against the portals: a property known only from social posts that may be
+     the same flat as a portal listing is not shown twice. It stays reachable from that
+     property's possible duplicates, as its original post. */
+  const isSocialOnly = (p: ResultProperty) => p.listings.length > 0 && p.listings.every((l) => isSocialSource(l.source));
+  const portalKeys = new Set(properties.filter((p) => !isSocialOnly(p)).map((p) => p.key));
+  const reposts = new Set(properties.filter((p) => isSocialOnly(p) && (p.possibleMatches ?? []).some((m) => portalKeys.has(m.key))).map((p) => p.key));
+  if (reposts.size) {
+    for (let i = properties.length - 1; i >= 0; i -= 1) if (reposts.has(properties[i].key)) properties.splice(i, 1);
+    for (const p of properties) {
+      if (p.possibleMatches) p.possibleMatches = p.possibleMatches.map((m) => (reposts.has(m.key) ? { ...m, repost: true as const } : m));
+    }
+  }
+
   // One section per property. Historical storage groups stay compatible with existing consumers.
   const overall = [...properties].sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
   let bestCount = 0;
@@ -468,6 +491,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       vetoedMerges: resolution.vetoed.length,
       comparisons: resolution.comparisons,
       sellerClasses,
+      socialReposts: reposts.size,
       priceDiscrepancies: working.filter((w) => w.discrepancy?.significant).length,
       excludedByFilter: excluded.length,
       inBudget: normal.length,

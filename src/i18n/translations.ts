@@ -20231,6 +20231,19 @@ const en = {
   fbl_duration_title: 'How long it takes',
   fbl_duration_body: 'Finding buyers and tenants may take 10–30 minutes. The time depends on the scale of the search and the sources available.',
   fbl_details_title: 'Search details',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Social post · unverified',
+  fps_social_note: 'This listing comes from a public social media post. HOMATCH has not verified its price, photos or availability: confirm them with the person who posted it.',
+  fpi_paid_refused_provider_not_configured: 'Extended search is temporarily unavailable. Nothing has been reserved or charged.',
+  fpi_paid_elapsed: 'Elapsed {{time}}',
+  fpi_paid_net_done: 'Completed',
+  fpi_paid_net_running: 'Searching',
+  fpi_paid_net_failed: 'Could not be searched',
+  fpi_paid_net_waiting: 'Waiting',
+  fpi_paid_net_unavailable: 'Unavailable right now',
+  fpi_paid_results_wait: 'Listings from social networks join your results when the search has finished.',
+  fpi_paid_view_results: 'View results',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40376,6 +40389,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'რამდენ ხანს გრძელდება',
   fbl_duration_body: 'მყიდველებისა და მოიჯარეების მოძიებას შესაძლოა 10–30 წუთი დასჭირდეს. დრო დამოკიდებულია ძებნის მასშტაბსა და ხელმისაწვდომ წყაროებზე.',
   fbl_details_title: 'ძებნის დეტალები',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'სოციალური პოსტი · გადაუმოწმებელი',
+  fps_social_note: 'ეს განცხადება საჯარო სოციალური ქსელის პოსტიდანაა. HOMATCH-ს მისი ფასი, ფოტოები და ხელმისაწვდომობა არ გადაუმოწმებია: დააზუსტეთ ისინი პოსტის ავტორთან.',
+  fpi_paid_refused_provider_not_configured: 'გაფართოებული ძიება დროებით მიუწვდომელია. არაფერი დაჯავშნილა და არაფერი ჩამოგეჭრათ.',
+  fpi_paid_elapsed: 'გასული დრო {{time}}',
+  fpi_paid_net_done: 'დასრულდა',
+  fpi_paid_net_running: 'მიმდინარეობს',
+  fpi_paid_net_failed: 'ძიება ვერ მოხერხდა',
+  fpi_paid_net_waiting: 'რიგშია',
+  fpi_paid_net_unavailable: 'ახლა მიუწვდომელია',
+  fpi_paid_results_wait: 'სოციალური ქსელების განცხადებები შედეგებს ძიების დასრულების შემდეგ დაემატება.',
+  fpi_paid_view_results: 'შედეგების ნახვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60512,6 +60538,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'Сколько это длится',
   fbl_duration_body: 'Поиск покупателей и арендаторов может занять 10–30 минут. Время зависит от масштаба поиска и доступных источников.',
   fbl_details_title: 'Подробности поиска',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Пост в соцсети · не проверено',
+  fps_social_note: 'Это объявление взято из публичного поста в соцсети. HOMATCH не проверял цену, фото и актуальность: уточните их у автора поста.',
+  fpi_paid_refused_provider_not_configured: 'Расширенный поиск временно недоступен. Ничего не зарезервировано и не списано.',
+  fpi_paid_elapsed: 'Прошло {{time}}',
+  fpi_paid_net_done: 'Завершено',
+  fpi_paid_net_running: 'Идёт поиск',
+  fpi_paid_net_failed: 'Не удалось проверить',
+  fpi_paid_net_waiting: 'В очереди',
+  fpi_paid_net_unavailable: 'Сейчас недоступно',
+  fpi_paid_results_wait: 'Объявления из соцсетей появятся в результатах после завершения поиска.',
+  fpi_paid_view_results: 'Посмотреть результаты',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -80646,6 +80685,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'Ne kadar sürer',
   fbl_duration_body: 'Alıcı ve kiracı bulmak 10–30 dakika sürebilir. Süre, aramanın kapsamına ve erişilebilir kaynaklara bağlıdır.',
   fbl_details_title: 'Arama ayrıntıları',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'Sosyal medya gönderisi · doğrulanmadı',
+  fps_social_note: 'Bu ilan herkese açık bir sosyal medya gönderisinden geliyor. HOMATCH fiyatını, fotoğraflarını ve güncelliğini doğrulamadı: bunları gönderiyi paylaşan kişiyle teyit edin.',
+  fpi_paid_refused_provider_not_configured: 'Genişletilmiş arama geçici olarak kullanılamıyor. Hiçbir şey ayrılmadı veya tahsil edilmedi.',
+  fpi_paid_elapsed: 'Geçen süre {{time}}',
+  fpi_paid_net_done: 'Tamamlandı',
+  fpi_paid_net_running: 'Aranıyor',
+  fpi_paid_net_failed: 'Aranamadı',
+  fpi_paid_net_waiting: 'Bekliyor',
+  fpi_paid_net_unavailable: 'Şu anda kullanılamıyor',
+  fpi_paid_results_wait: 'Sosyal ağlardan gelen ilanlar arama bittiğinde sonuçlarınıza eklenir.',
+  fpi_paid_view_results: 'Sonuçları görüntüle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -100780,6 +100832,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'كم يستغرق',
   fbl_duration_body: 'قد يستغرق العثور على المشترين والمستأجرين من 10 إلى 30 دقيقة. يعتمد الوقت على نطاق البحث والمصادر المتاحة.',
   fbl_details_title: 'تفاصيل البحث',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'منشور على وسائل التواصل · غير موثّق',
+  fps_social_note: 'هذا الإعلان مأخوذ من منشور عام على وسائل التواصل. لم تتحقق HOMATCH من سعره أو صوره أو توفره: تأكد منها مع ناشر المنشور.',
+  fpi_paid_refused_provider_not_configured: 'البحث الموسّع غير متاح مؤقتًا. لم يتم حجز أو خصم أي شيء.',
+  fpi_paid_elapsed: 'الوقت المنقضي {{time}}',
+  fpi_paid_net_done: 'اكتمل',
+  fpi_paid_net_running: 'جارٍ البحث',
+  fpi_paid_net_failed: 'تعذّر البحث',
+  fpi_paid_net_waiting: 'في الانتظار',
+  fpi_paid_net_unavailable: 'غير متاح الآن',
+  fpi_paid_results_wait: 'تنضم إعلانات وسائل التواصل إلى نتائجك عند انتهاء البحث.',
+  fpi_paid_view_results: 'عرض النتائج',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -120914,6 +120979,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbl_duration_title: 'כמה זמן זה לוקח',
   fbl_duration_body: 'איתור קונים ושוכרים עשוי להימשך 10–30 דקות. הזמן תלוי בהיקף החיפוש ובמקורות הזמינים.',
   fbl_details_title: 'פרטי החיפוש',
+
+  /* ── FIND PROPERTY — SOCIAL LISTINGS (UNVERIFIED POSTS, CAMPAIGN PROGRESS) ── */
+  fps_social_badge: 'פוסט ברשת חברתית · לא מאומת',
+  fps_social_note: 'מודעה זו לקוחה מפוסט ציבורי ברשת חברתית. HOMATCH לא אימתה את המחיר, התמונות או הזמינות: ודאו אותם מול מי שפרסם את הפוסט.',
+  fpi_paid_refused_provider_not_configured: 'החיפוש המורחב אינו זמין כרגע. דבר לא הוזמן ודבר לא חויב.',
+  fpi_paid_elapsed: 'זמן שחלף {{time}}',
+  fpi_paid_net_done: 'הושלם',
+  fpi_paid_net_running: 'מחפשים',
+  fpi_paid_net_failed: 'לא ניתן היה לחפש',
+  fpi_paid_net_waiting: 'ממתין',
+  fpi_paid_net_unavailable: 'לא זמין כרגע',
+  fpi_paid_results_wait: 'מודעות מהרשתות החברתיות יצטרפו לתוצאות כשהחיפוש יסתיים.',
+  fpi_paid_view_results: 'צפייה בתוצאות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -18,6 +18,8 @@ import { releaseExecution, type ExecutionGrant } from './billing.ts';
 import { errorText } from './campaignRun.ts';
 import { claimSettlement, loadDeliveries, settleFindPropertyRun, settlePaidSocialRun } from './findPropertySettlement.ts';
 import { finishOfferCampaign } from './findProperty/socialOffers.ts';
+import { campaignSearchId } from './findProperty/socialListings.ts';
+import { processAndStore } from './marketplaceSearch.ts';
 import { PAID_DISCOVERY_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
 type Json = Record<string, unknown>;
@@ -91,6 +93,9 @@ export async function finalizeDiscoveryRun(
   const socialCampaign = pricing?.pricing_policy === PAID_DISCOVERY_POLICY_ID;
   let spendMicros = 0;
   if (socialCampaign) spendMicros = await finishOfferCampaign(db, run.id);
+  /* The customer pays for confirmed work (spendMicros); the run's provider cost is everything committed. */
+  const committedMicros = socialCampaign
+    ? Number((await db.rpc('find_property_committed_micros', { p_run_id: run.id })).data ?? spendMicros) : 0;
 
   /* null only when neither a settle nor a release could be recorded: the
      reservation is still held and the run says so rather than claiming 0. */
@@ -134,7 +139,7 @@ export async function finalizeDiscoveryRun(
     stage: 'READY',
     progress: 100,
     results_found: delivered,
-    provider_cost_usd: socialCampaign ? spendMicros / 1e6 : costUnknown ? null : providerCostUsd,
+    provider_cost_usd: socialCampaign ? committedMicros / 1e6 : costUnknown ? null : providerCostUsd,
     credits_charged: creditsCharged,
     failure_reason: delivered > 0 ? null : (context.noResultsReason ?? 'NO_MATCHING_LISTINGS_FOUND'),
     completed_at: new Date().toISOString(),
@@ -144,7 +149,22 @@ export async function finalizeDiscoveryRun(
     providerCostUsd: costUnknown ? null : providerCostUsd,
     providerCostUnknown: costUnknown, sourceJobs: context.sourceJobs, matching: context.matching ?? null,
   });
+  if (socialCampaign) await publishSocialListings(db, run.id);
   return { status, delivered, creditsCharged: creditsCharged ?? 0 };
+}
+
+/**
+ * An ended campaign's offers join its marketplace search's results (re-ranked and
+ * deduplicated with the portals). Never fatal: the offers stay stored and the next
+ * re-rank of that search picks them up.
+ */
+export async function publishSocialListings(db: any, runId: string): Promise<void> {
+  try {
+    const searchId = await campaignSearchId(db, runId);
+    if (searchId) await processAndStore(db, searchId);
+  } catch (error) {
+    await runEvent(db, runId, 'SOCIAL_RESULTS_PUBLISH_FAILED', { message: errorText(error) }).catch(() => undefined);
+  }
 }
 
 /** End a run that could not finish: release the whole reservation, say why. */
@@ -165,4 +185,6 @@ export async function failDiscoveryRun(
     error_message: detail.slice(0, 1000), completed_at: new Date().toISOString(),
   }).catch(() => undefined);
   await runEvent(db, runId, 'RUN_FAILED', { reason, message: detail }).catch(() => undefined);
+  /* Offers already found (HOMATCH carried their cost) are still shown. */
+  await publishSocialListings(db, runId);
 }

@@ -515,7 +515,7 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       const stopped = Boolean(state.paidStop);
       return r.fulfill(json({ id: 'run-1', status: stopped ? 'CANCELLED' : 'SEARCHING', stage: 'SEARCHING_SOURCES', createdAt: new Date().toISOString(), deadlineAt: null, completedAt: null,
         failureReason: null, networks: ['FACEBOOK', 'TELEGRAM'], policy: 'paid_discovery_37_63_v1', creditsAuthorized: 50, creditsCharged: stopped ? 12.5 : null,
-        creditsUsed: 12.5, offersFound: 4, resultsFound: 2, unavailable: [], skippedForBudget: 0,
+        creditsUsed: 12.5, offersFound: 4, resultsFound: 2, unavailable: [{ network: 'VK', reason: 'NO_READY_ACTOR' }], skippedForBudget: 0,
         sources: [{ network: 'FACEBOOK', planned: 3, done: 1, running: 2, failed: 0, budget: 0 }, { network: 'TELEGRAM', planned: 2, done: 2, running: 0, failed: 0, budget: 0 }] }));
     }
     if (url.includes('/rest/v1/rpc/my_property_interest_history')) {
@@ -1086,8 +1086,16 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
     if (['ar', 'he'].includes(lang) && (await page.evaluate(() => document.documentElement.getAttribute('dir'))) !== 'rtl') failures.push(`${lang}: not RTL`);
     await shot(page, `${lang}-${width}-paid-progress`);
     if (lang === 'en') {
+      /* Real per-network states, elapsed time, and results only after the campaign ends. */
+      if (!/^Elapsed \d+:\d\d$/.test(((await deep.locator('[data-campaign-elapsed]').textContent()) ?? '').trim())) failures.push('no elapsed time');
+      if (await deep.locator('[data-network="FACEBOOK"]').getAttribute('data-network-state') !== 'running') failures.push('Facebook not running');
+      if (await deep.locator('[data-network="TELEGRAM"]').getAttribute('data-network-state') !== 'done') failures.push('Telegram not done');
+      if (await deep.locator('[data-network="VK"]').getAttribute('data-network-state') !== 'unavailable') failures.push('VK unavailable not said');
+      if (!(await deep.locator('[data-campaign-results-wait]').isVisible())) failures.push('no results-wait note while running');
+      if (await deep.locator('[data-action="campaign-view-results"]').count()) failures.push('results offered while running');
       await deep.getByRole('button', { name: 'Stop campaign' }).click();
       await deep.getByText('Returned to balance').waitFor({ timeout: 15000 });
+      if (!(await deep.locator('[data-action="campaign-view-results"]').isVisible())) failures.push('no View results after the campaign ended');
       if (!state.paidStop) failures.push('stop not sent');
       if (!(await deep.textContent()).includes('37.5 credits')) failures.push('released credits not shown');
     }
@@ -1161,5 +1169,40 @@ test('sources: All sources and each site filter the results; the assessment show
     const dossier = await page.textContent('main');
     assert.doesNotMatch(dossier, /fpv_|mps_amenity_|fpr_unconfirmed|REQUIRED_|\{\{/, `${lang}: no raw keys or codes`);
     await page.context().close();
+  }
+});
+
+test('social listings: unverified social posts beside portal listings, labelled on the card and the property page', opts, async (t) => {
+  const social = {
+    source: 'social:facebook', sourceListingId: 'FACEBOOK:post:77', exactUrl: 'https://www.facebook.com/groups/tbilisi.flats/posts/77/',
+    canonicalUrl: 'https://www.facebook.com/groups/tbilisi.flats/posts/77/', sourceName: 'Facebook', sourceType: null,
+    title: 'იყიდება 3 ოთახიანი ბინა ვაკეში', description: 'იყიდება 3 ოთახიანი ბინა ვაკეში, 95 კვ.მ, მე-4 სართული, ფასი 149000$',
+    price: 149000, currency: 'USD', pricePerSqm: null, country: 'GE', city: 'Tbilisi', district: 'Vake', address: null, latitude: null, longitude: null,
+    propertyType: 'APARTMENT', transactionType: 'BUY', areaSqm: 95, rooms: 3, bedrooms: 2, bathrooms: null, floor: 4, totalFloors: 9,
+    buildingStatus: null, renovationStatus: null, constructionYear: null, furnished: null, parking: null, amenities: [],
+    images: [], imageHashes: [], publishedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(), updatedAt: null, observedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    seller: { name: null, publicPhone: null, publicEmail: null, publicProfile: null, declaredType: null, sourceListingCount: null },
+    provenance: { exactUrl: 'https://www.facebook.com/groups/tbilisi.flats/posts/77/', authorUrl: null, sourceUrl: null },
+    evidence: [], retrievalMetadata: { social: true, verified: false },
+  };
+  const output = processSearch({ request: F.FIXTURE_REQUEST, candidates: [...liveCandidates(), { workerId: 'social-offers', candidate: social }] });
+  const key = output.properties.find((p) => p.listings.every((l) => l.social))?.key;
+  assert.ok(key, 'the fixture has a social-only property');
+  for (const [width, lang] of [[390, 'ka'], [1440, 'en'], [393, 'he']]) {
+    const { page, close } = await boot(t, { lang, width, resumeStatus: 'COMPLETE', output });
+    await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111?fp_sort=PRICE&page=1`);
+    const card = page.locator(`[data-property-key=${JSON.stringify(key)}]`);
+    await card.waitFor({ timeout: 30000 });
+    assert.equal(await card.locator('[data-social-badge]').count(), 1, `${lang}: social badge on the card`);
+    assert.equal(await page.locator('[data-social-badge]').count(), 1, `${lang}: only the social property is labelled`);
+    await card.locator('[data-action="open-assessment"]').last().click();
+    await page.locator('[data-property-dossier]').waitFor();
+    const note = page.locator('[data-social-note]');
+    await note.waitFor();
+    assert.doesNotMatch(await note.textContent(), /\{\{?\w+\}?\}/, `${lang}: no raw placeholder`);
+    assert.ok(await page.locator('a[href="https://www.facebook.com/groups/tbilisi.flats/posts/77/"]').count() >= 1, `${lang}: the original post is linked`);
+    assert.ok(await overflow(page) <= 1, `${lang} ${width}: overflow`);
+    await shot(page, `${lang}-${width}-social-listing`);
+    await close();
   }
 });

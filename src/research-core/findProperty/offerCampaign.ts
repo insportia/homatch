@@ -89,11 +89,45 @@ export interface OfferPlan {
   skippedForBudget: number;
 }
 
-const SEARCH_WORDS: Record<string, Record<'SALE' | 'RENT', string>> = {
-  ka: { SALE: 'იყიდება ბინა', RENT: 'ქირავდება ბინა' },
-  ru: { SALE: 'продается квартира', RENT: 'сдается квартира' },
-  en: { SALE: 'apartment for sale', RENT: 'apartment for rent' },
+/*
+ * Keyword search words: what a person who OFFERS this kind of property writes, per
+ * language, per transaction. Georgian, Russian and English cover most Georgian
+ * posts; Turkish, Arabic and Hebrew posts are common in Batumi and Tbilisi groups
+ * for foreign buyers, so the customer's own language is searched too.
+ */
+export const OFFER_LANGUAGES = ['ka', 'ru', 'en', 'tr', 'ar', 'he'] as const;
+type PropertyKind = 'APARTMENT' | 'HOUSE' | 'LAND' | 'COMMERCIAL';
+export const SEARCH_WORDS: Record<string, Record<PropertyKind, Record<'SALE' | 'RENT', string>>> = {
+  ka: { APARTMENT: { SALE: 'იყიდება ბინა', RENT: 'ქირავდება ბინა' }, HOUSE: { SALE: 'იყიდება სახლი', RENT: 'ქირავდება სახლი' },
+        LAND: { SALE: 'იყიდება მიწის ნაკვეთი', RENT: 'ქირავდება მიწის ნაკვეთი' }, COMMERCIAL: { SALE: 'იყიდება კომერციული ფართი', RENT: 'ქირავდება კომერციული ფართი' } },
+  ru: { APARTMENT: { SALE: 'продается квартира', RENT: 'сдается квартира' }, HOUSE: { SALE: 'продается дом', RENT: 'сдается дом' },
+        LAND: { SALE: 'продается участок', RENT: 'сдается участок' }, COMMERCIAL: { SALE: 'продается коммерческое помещение', RENT: 'сдается коммерческое помещение' } },
+  en: { APARTMENT: { SALE: 'apartment for sale', RENT: 'apartment for rent' }, HOUSE: { SALE: 'house for sale', RENT: 'house for rent' },
+        LAND: { SALE: 'land for sale', RENT: 'land for rent' }, COMMERCIAL: { SALE: 'commercial space for sale', RENT: 'commercial space for rent' } },
+  tr: { APARTMENT: { SALE: 'satılık daire', RENT: 'kiralık daire' }, HOUSE: { SALE: 'satılık ev', RENT: 'kiralık ev' },
+        LAND: { SALE: 'satılık arsa', RENT: 'kiralık arsa' }, COMMERCIAL: { SALE: 'satılık işyeri', RENT: 'kiralık işyeri' } },
+  ar: { APARTMENT: { SALE: 'شقة للبيع', RENT: 'شقة للإيجار' }, HOUSE: { SALE: 'منزل للبيع', RENT: 'منزل للإيجار' },
+        LAND: { SALE: 'أرض للبيع', RENT: 'أرض للإيجار' }, COMMERCIAL: { SALE: 'محل تجاري للبيع', RENT: 'محل تجاري للإيجار' } },
+  he: { APARTMENT: { SALE: 'דירה למכירה', RENT: 'דירה להשכרה' }, HOUSE: { SALE: 'בית למכירה', RENT: 'בית להשכרה' },
+        LAND: { SALE: 'מגרש למכירה', RENT: 'מגרש להשכרה' }, COMMERCIAL: { SALE: 'נכס מסחרי למכירה', RENT: 'נכס מסחרי להשכרה' } },
 };
+
+/** The search words' property kind for a marketplace property type (an apartment when unknown). */
+export function offerPropertyKind(type: string | null | undefined): PropertyKind {
+  switch (String(type ?? '').toUpperCase()) {
+    case 'HOUSE': case 'VILLA': case 'TOWNHOUSE': case 'COTTAGE': return 'HOUSE';
+    case 'LAND': return 'LAND';
+    case 'COMMERCIAL': case 'OFFICE': return 'COMMERCIAL';
+    default: return 'APARTMENT';
+  }
+}
+
+/** Languages searched: Georgian, Russian and English always, plus the customer's own. */
+export function offerSearchLanguages(customerLanguage?: string | null): string[] {
+  const base = ['ka', 'ru', 'en'];
+  const own = String(customerLanguage ?? '').toLowerCase();
+  return (OFFER_LANGUAGES as readonly string[]).includes(own) && !base.includes(own) ? [...base, own] : base;
+}
 
 export const estimateMicros = (a: Pick<OfferActor, 'startFeeMicros' | 'pricePer1kMicros'>, size: number) =>
   Math.ceil(Math.max(0, a.startFeeMicros) + (Math.max(0, size) * Math.max(0, a.pricePer1kMicros)) / 1000);
@@ -139,7 +173,7 @@ export function planOfferJobs(input: {
       const size = Math.max(1, fbSearch.probeSize);
       candidates.push({
         stage: 'FB_POST_SEARCH', actorKey: fbSearch.actorKey, network: 'FACEBOOK', sourceId: null, targetUrl: null,
-        query: `${SEARCH_WORDS[lang][input.search.transaction]} ${place}`.trim(), language: lang, size,
+        query: `${SEARCH_WORDS[lang][offerPropertyKind(input.search.propertyType)][input.search.transaction]} ${place}`.trim(), language: lang, size,
         estimateMicros: estimateMicros(fbSearch, size), priority: 100 - candidates.length,
       });
     }

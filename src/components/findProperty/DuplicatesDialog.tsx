@@ -33,7 +33,9 @@ export function duplicateRows(p: PropertyView, confirmed: boolean): Row[] {
       seen: own ? own.lastVerifiedAt ?? own.observedAt : null, areaSqm: p.facts.areaSqm, floor: p.facts.floor, self: true, propertyKey: null },
     ...(p.possibleMatches ?? []).map((m) => ({
       id: m.key, source: m.sourceName ?? m.source, priceUsd: m.priceUsd, image: safeExternalUrl(m.image ?? undefined), url: safeExternalUrl(m.exactUrl),
-      seen: m.observedAt, areaSqm: m.areaSqm, floor: m.floor, self: false, propertyKey: m.key,
+      seen: m.observedAt, areaSqm: m.areaSqm, floor: m.floor, self: false,
+      /* A social repost is not a separate result: only its original post opens. */
+      propertyKey: m.repost ? null : m.key,
     })),
   ];
 }

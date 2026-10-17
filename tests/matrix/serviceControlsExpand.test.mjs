@@ -136,3 +136,13 @@ test('Broker Desk while sales are paused: no Buy/Renew, a localized notice, a ma
   }
   for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) assert.match(translations[lang].broker_desk_sales_paused_public, /\{\{date\}\}/, `date placeholder in ${lang}`);
 });
+
+test('a paused product that mounts for a moment cannot strand its visitor on an error page', () => {
+  const gate = read('src/components/serviceControls/ServiceGate.tsx');
+  assert.match(gate, /<GateBoundary service=\{service\} loaded=\{snapshot\.loaded\}>\{children\}<\/GateBoundary>/, 'live children are wrapped');
+  assert.match(gate, /if \(!this\.props\.loaded\) return <div className="min-h-\[50vh\]" aria-busy="true" \/>;\n\s*throw this\.state\.error;/,
+    'an error waits for the first answer, then (still live) reaches the app boundary unchanged');
+  const core = read('src/lib/serviceControls/core.ts');
+  assert.match(core, /export const RETRY_AFTER_UNREADABLE_MS: readonly number\[\] = \[1_500, 4_000, 10_000\];/);
+  assert.match(core, /if \(error\) \{ failed\(\); return; \}/, 'an unreadable answer schedules a quick retry');
+});

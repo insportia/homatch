@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createServiceControlStore, toSnapshot, initialSnapshot, liveVisibility, HIDDEN_SNAPSHOT, SERVICE_KEYS,
+  createServiceControlStore, RETRY_AFTER_UNREADABLE_MS, toSnapshot, initialSnapshot, liveVisibility, HIDDEN_SNAPSHOT, SERVICE_KEYS,
   PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT,
 } from '../core.ts';
 
@@ -65,4 +65,27 @@ test('the starting snapshot takes only the live products from memory, never the 
   assert.equal(s.services.ai_talk.frontend, false, 'the six are never shown from memory');
   assert.equal(s.services.live_chat.frontend, false);
   assert.deepEqual(initialSnapshot(null), { ...HIDDEN_SNAPSHOT });
+});
+
+test('an unreadable answer is asked again soon, a bounded number of times, and a good one ends the retries', async () => {
+  const timers = [];
+  const answers = [{ data: null, error: { message: 'down' } }, { data: null, error: { message: 'down' } },
+    { data: [{ service_key: 'verify', frontend_enabled: false, backend_enabled: false }], error: null }];
+  let calls = 0;
+  const store = createServiceControlStore(async () => answers[Math.min(calls++, answers.length - 1)], { schedule: (fn, ms) => timers.push({ fn, ms }) });
+  await store.refresh();
+  assert.deepEqual(timers.map((x) => x.ms), [RETRY_AFTER_UNREADABLE_MS[0]], 'the first failure schedules a quick retry');
+  assert.equal(store.get().services.verify.frontend, true, 'until then the live product keeps what was known');
+  await timers.shift().fn(); await new Promise((r) => setImmediate(r));
+  assert.deepEqual(timers.map((x) => x.ms), [RETRY_AFTER_UNREADABLE_MS[1]], 'the second failure backs off');
+  await timers.shift().fn(); await new Promise((r) => setImmediate(r));
+  assert.equal(store.get().services.verify.frontend, false, 'the real answer (paused) arrives within seconds');
+  assert.equal(timers.length, 0, 'a good answer schedules nothing more');
+
+  const sched = [];
+  const down = createServiceControlStore(async () => ({ data: null, error: { message: 'down' } }), { schedule: (fn, ms) => sched.push({ fn, ms }) });
+  await down.refresh();
+  for (let i = 0; i < 6 && sched.length; i += 1) { await sched.shift().fn(); await new Promise((r) => setImmediate(r)); }
+  assert.equal(calls >= 3, true);
+  assert.equal(sched.length, 0, 'a lasting outage stops retrying and leaves it to the regular refresh');
 });

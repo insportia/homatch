@@ -72,5 +72,23 @@ export function ServiceGate({ service, children }: { service: ServiceKey; childr
   const snapshot = useServiceControls();
   if (!snapshot.loaded && !isLiveByDefault(service)) return <div className="min-h-[50vh]" aria-busy="true" />;
   if (!snapshot.services[service].frontend) return <ServiceUnavailable service={service} />;
-  return <>{children}</>;
+  return <GateBoundary service={service} loaded={snapshot.loaded}>{children}</GateBoundary>;
+}
+
+/*
+ * A live product renders before the first answer, so a paused one can mount for a moment
+ * in a browser that has never seen the pause. If it throws in that moment, the app-wide
+ * error page would replace the "currently unavailable" page for good (seen in CI,
+ * 2026-10-17). So an error before the first answer waits for that answer: paused → the
+ * gate shows ServiceUnavailable (this boundary is unmounted); live → the error goes on to
+ * the app's boundary exactly as before.
+ */
+class GateBoundary extends React.Component<{ service: ServiceKey; loaded: boolean; children: React.ReactNode }, { error: unknown }> {
+  state: { error: unknown } = { error: null };
+  static getDerivedStateFromError(error: unknown) { return { error }; }
+  render() {
+    if (this.state.error == null) return this.props.children;
+    if (!this.props.loaded) return <div className="min-h-[50vh]" aria-busy="true" />;
+    throw this.state.error;
+  }
 }

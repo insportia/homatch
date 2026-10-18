@@ -25,8 +25,10 @@ export const SERVICE_ROUTE_RULES: ReadonlyArray<readonly [RegExp, ServiceKey]> =
   [/^\/outreach\/email(\/|$)/, 'email_campaigns'],
   [/^\/email-studio(\/|$)/, 'email_campaigns'],
   [/^\/ai$/, 'ai_assistant'],
-  // /brokers and /brokers/:id are NOT listed: pausing the Brokers directory stops commercial
-  // operations (new listings, renewals) while listings already paid stay public (owner, Option A).
+  // The directory and its public profiles, and the professional's own desk: two switches.
+  // Hiding is reversible presentation; profiles, listings and payments are kept
+  // (owner, 2026-10-18, replacing the earlier "Option A" that left /brokers public).
+  [/^\/brokers(\/|$)/, 'brokers_directory'],
   [/^\/broker(\/|$)/, 'broker_desk'],
   [/^\/developers(\/|$)/, 'developers'],
 ];

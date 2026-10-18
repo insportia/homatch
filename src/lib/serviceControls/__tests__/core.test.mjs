@@ -2,17 +2,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createServiceControlStore, RETRY_AFTER_UNREADABLE_MS, toSnapshot, initialSnapshot, liveVisibility, HIDDEN_SNAPSHOT, SERVICE_KEYS,
-  PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT, PAID_CLOSED_BY_DEFAULT,
+  PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT, PAID_CLOSED_BY_DEFAULT, HIDDEN_UNTIL_ANSWERED, shownBeforeAnswer,
 } from '../core.ts';
+
+const SHOWN_EARLY = LIVE_BY_DEFAULT.filter(shownBeforeAnswer);
 
 const row = (k, f, b) => ({ service_key: k, frontend_enabled: f, backend_enabled: b });
 
-test('before any answer: the six are hidden, every live product is shown', () => {
+test('before any answer: the six and the two broker services are hidden, every other live product is shown', () => {
   assert.equal(HIDDEN_SNAPSHOT.loaded, false);
   assert.equal(SERVICE_KEYS.length, PAUSED_BY_DEFAULT.length + LIVE_BY_DEFAULT.length + PAID_CLOSED_BY_DEFAULT.length);
   for (const k of PAID_CLOSED_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: false, backend: false }, `${k}: paid, hidden until proven ON`);
   for (const k of PAUSED_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: false, backend: false }, k);
-  for (const k of LIVE_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: true, backend: true }, k);
+  for (const k of SHOWN_EARLY) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: true, backend: true }, k);
+  assert.deepEqual([...HIDDEN_UNTIL_ANSWERED], ['brokers_directory', 'broker_desk']);
+  for (const k of HIDDEN_UNTIL_ANSWERED) {
+    assert.ok(LIVE_BY_DEFAULT.includes(k), `${k}: the backend fail mode is unchanged`);
+    assert.equal(HIDDEN_SNAPSHOT.services[k].frontend, false, k);
+  }
 });
 
 test('only a service that can also run is visible; malformed rows keep their default', () => {
@@ -29,7 +36,8 @@ test('only a service that can also run is visible; malformed rows keep their def
     assert.equal(j.loaded, true, 'a malformed answer still ends the wait');
     assert.ok(PAUSED_BY_DEFAULT.every((k) => !j.services[k].frontend), 'and keeps the six hidden');
     assert.ok(PAID_CLOSED_BY_DEFAULT.every((k) => !j.services[k].frontend), 'and keeps paid Deep Search hidden');
-    assert.ok(LIVE_BY_DEFAULT.every((k) => j.services[k].frontend), 'and never hides a live product');
+    assert.ok(SHOWN_EARLY.every((k) => j.services[k].frontend), 'and never hides a live product');
+    assert.ok(HIDDEN_UNTIL_ANSWERED.every((k) => !j.services[k].frontend), 'and never shows a broker service it was not told about');
   }
 });
 
@@ -56,7 +64,8 @@ test('the store: one shared fetch, subscribers notified, an outage hides the six
   assert.equal(throwing.get().loaded, true);
   assert.ok(PAUSED_BY_DEFAULT.every((k) => !throwing.get().services[k].frontend));
   assert.ok(PAID_CLOSED_BY_DEFAULT.every((k) => !throwing.get().services[k].frontend), 'a failed read never shows paid Deep Search');
-  assert.ok(LIVE_BY_DEFAULT.every((k) => throwing.get().services[k].frontend));
+  assert.ok(SHOWN_EARLY.every((k) => throwing.get().services[k].frontend));
+  assert.ok(HIDDEN_UNTIL_ANSWERED.every((k) => !throwing.get().services[k].frontend), 'an outage before any answer keeps the broker services hidden');
   off();
 });
 
@@ -91,4 +100,41 @@ test('an unreadable answer is asked again soon, a bounded number of times, and a
   for (let i = 0; i < 6 && sched.length; i += 1) { await sched.shift().fn(); await new Promise((r) => setImmediate(r)); }
   assert.equal(calls >= 3, true);
   assert.equal(sched.length, 0, 'a lasting outage stops retrying and leaves it to the regular refresh');
+});
+
+const brokers = (dir, desk) => [row('brokers_directory', dir, dir), row('broker_desk', desk, desk)];
+const vis = (s) => [s.services.brokers_directory.frontend, s.services.broker_desk.frontend];
+
+test('broker services: both OFF, each independently ON, both ON', () => {
+  assert.deepEqual(vis(toSnapshot(brokers(false, false))), [false, false]);
+  assert.deepEqual(vis(toSnapshot(brokers(true, false))), [true, false]);
+  assert.deepEqual(vis(toSnapshot(brokers(false, true))), [false, true]);
+  assert.deepEqual(vis(toSnapshot(brokers(true, true))), [true, true]);
+  assert.deepEqual(vis(toSnapshot([])), [true, true], 'a real answer without their rows (before the migration): live, as today');
+  // frontend_enabled is visibility; it never shows a service whose backend_enabled is off,
+  // and backend_enabled alone never shows it.
+  assert.deepEqual(vis(toSnapshot([row('brokers_directory', false, true), row('broker_desk', true, false)])), [false, false]);
+  assert.deepEqual(toSnapshot([row('brokers_directory', false, true)]).services.brokers_directory, { frontend: false, backend: true });
+});
+
+test('broker services after refresh or re-login: memory never shows them, an outage never brings them back', async () => {
+  // A browser that last saw them ON (or a forged memory) still starts with them hidden.
+  const start = initialSnapshot({ brokers_directory: true, broker_desk: true, verify: true });
+  assert.deepEqual(vis(start), [false, false]);
+  assert.equal('brokers_directory' in liveVisibility(toSnapshot(brokers(true, true))), false, 'their state is not even remembered');
+  // The owner paused both: answered OFF, then the next read fails: still OFF.
+  let answer = { data: brokers(false, false), error: null };
+  const store = createServiceControlStore(async () => answer, { initial: start, schedule: () => {} });
+  await store.refresh();
+  assert.deepEqual(vis(store.get()), [false, false]);
+  answer = { data: null, error: { message: 'down' } };
+  await store.refresh();
+  assert.deepEqual(vis(store.get()), [false, false], 'a failed read does not resurrect a paused broker service');
+  // Switched back ON: shown after the next answer, and kept through a transient failure.
+  answer = { data: brokers(true, false), error: null };
+  await store.refresh();
+  assert.deepEqual(vis(store.get()), [true, false]);
+  answer = { data: null, error: { message: 'down' } };
+  await store.refresh();
+  assert.deepEqual(vis(store.get()), [true, false], 'an outage does not hide one the owner turned on');
 });

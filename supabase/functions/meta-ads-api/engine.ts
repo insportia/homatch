@@ -725,7 +725,8 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
       }
     }
     // The one act that starts delivery.
-    await graph(`/${campaignId}`, { token, method: 'POST', body: { status: 'ACTIVE' }, audit: auditCtx });
+    /* Setting a status is idempotent, so this write may be retried. */
+    await graph(`/${campaignId}`, { token, method: 'POST', body: { status: 'ACTIVE' }, audit: auditCtx, attempts: 3 });
     return { campaignId, status: 'SUBMITTED', requestedStartAt: ctx.startTime };
   } catch (err) {
     // Tear down what was created, so a retry never leaves orphans at Meta.

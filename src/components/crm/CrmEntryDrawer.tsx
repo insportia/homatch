@@ -276,7 +276,7 @@ export function CrmEntryDrawer({
                 {entryId ? (
                   <LeadOutreachComposer entryId={entryId} propertyId={propertyId}
                     memberLanguage={item?.language ?? contact?.language ?? null}
-                    phone={contact && !contact.restricted ? contact.phone ?? null : null}
+                    contact={contact}
                     conversationId={conversationId} onOpenConversation={openConversation} onOpenEmailStudio={createEmail}
                     onLogged={() => { if (entryId) void load(entryId); onChanged(); }} />
                 ) : null}

@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import {
   crmUpdate, generateLeadDraft, LeadDraftError, type LeadDraftRequest,
 } from '@/services/leadsCrm';
+import { permittedPhone, type LeadContact } from '@/services/homatchLeads';
 import { FIELD, GOLD_BUTTON, SECONDARY_BUTTON, SectionCard } from './ui';
 
 const CHANNELS: LeadDraftRequest['channel'][] = ['HOMATCH_CHAT', 'EMAIL', 'WHATSAPP', 'TELEGRAM', 'SMS'];
@@ -36,19 +37,20 @@ const LOG_CHANNEL: Record<LeadDraftRequest['channel'], 'EMAIL' | 'WHATSAPP' | 'T
 };
 
 export function LeadOutreachComposer({
-  entryId, propertyId, memberLanguage, phone, conversationId, onOpenConversation, onOpenEmailStudio, onLogged,
+  entryId, propertyId, memberLanguage, contact, conversationId, onOpenConversation, onOpenEmailStudio, onLogged,
 }: {
   entryId: string;
   propertyId: string | null;
   /** The member's preferred language, when known. */
   memberLanguage: string | null;
-  /** The phone the member allows the owner to see (internal_lead_contact), else null. */
-  phone: string | null;
+  /** internal_lead_contact's answer: consent and blocks re-checked on every read. */
+  contact: LeadContact | null;
   conversationId: string | null;
   onOpenConversation: () => void;
   onOpenEmailStudio: () => void;
   onLogged: () => void;
 }) {
+  const phone = permittedPhone(contact);
   const { t } = useLanguage();
   const startLang = (LANGS as readonly string[]).includes(String(memberLanguage)) ? String(memberLanguage) : 'ka';
   const [channel, setChannel] = useState<LeadDraftRequest['channel']>('HOMATCH_CHAT');

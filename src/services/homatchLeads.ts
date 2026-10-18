@@ -250,6 +250,11 @@ export interface LeadContact {
   marketingEmail?: boolean;
 }
 
+/** The phone the member allows the owner to see today, or null (restricted / not shared). */
+export function permittedPhone(contact: LeadContact | null): string | null {
+  return contact && !contact.restricted ? contact.phone ?? null : null;
+}
+
 export async function getLeadContact(matchId: string): Promise<LeadContact> {
   const { data, error } = await supabase.rpc('internal_lead_contact', { p_match_id: matchId });
   if (error) throw error;

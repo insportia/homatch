@@ -19,6 +19,7 @@
 // existing transcribers. Sending the same frames here means no new encoder,
 // no container, and no waiting for a file to exist before recognition starts.
 
+import { eventLoopDelay, speechSessionClosed, speechSessionOpened } from '../runtime/loadIsolation.js';
 import { Buffer } from 'node:buffer';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Server } from 'node:http';
@@ -173,6 +174,8 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
+      speechSessionOpened();
+      ws.once('close', speechSessionClosed);
       serve(ws, cfg, grant, url.searchParams.get('language'), url.searchParams.get('languages'),
         url.searchParams.get('detect') === '1');
     });
@@ -396,6 +399,8 @@ function serve(
     console.log(JSON.stringify({
       at: new Date().toISOString(), service: 'speech',
       event: 'session_closed', ms: Date.now() - started,
+      /* Was the speech loop delayed by other work in this process? */
+      eventLoop: eventLoopDelay().current,
       frames: stream.frames, bytes: stream.bytes, language,
       /*
        * The four facts that make a duration readable. Counts and categories

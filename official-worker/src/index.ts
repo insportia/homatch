@@ -26,6 +26,7 @@ import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrow
 import { startVerifyQueue } from './queue/startVerifyQueue.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 import { attachSpeechGateway } from './speech/SpeechGateway.js';
+import { eventLoopDelay, speechSessionsOpen } from './runtime/loadIsolation.js';
 import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
 import {
   lastRecogniserError, speechConfigFromEnv,
@@ -109,6 +110,9 @@ app.get('/health', (_q: any, r: any) =>
     // Deployed is not the same as able. Two Railway services run this image
     // and only one of them holds the Google credential.
     speech: speechHealth(),
+    // Load isolation: event-loop delay (ms) and open speech sessions; browser claims drop while > 0.
+    eventLoop: eventLoopDelay(),
+    speechSessionsOpen: speechSessionsOpen(),
     version: '2.1.0',
     playwright: true,
     architecture: 'deterministic-fsm-orchestrator-2026-09-05',

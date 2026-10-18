@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { offerImages, socialCandidate, isSocialSource, SOCIAL_ADAPTER_VERSION } from '../marketplace/socialListings.ts';
 import { processSearch } from '../marketplace/pipeline.ts';
-import { offerPropertyKind, offerSearchLanguages, planOfferJobs, SEARCH_WORDS, OFFER_LANGUAGES, cityHint, MAX_ITEMS_PER_RUN } from '../findProperty/offerCampaign.ts';
+import { offerPropertyKind, offerSearchLanguages, planOfferJobs, SEARCH_WORDS, OFFER_LANGUAGES, cityHint, MAX_ITEMS_PER_RUN, communityRelevance, isInstagramProfileUrl } from '../findProperty/offerCampaign.ts';
 import * as F from './fixtures/marketplaceFixtures.mjs';
 
 const obs = (over = {}) => ({
@@ -106,12 +106,13 @@ const ACTORS = {
   FB_POST_SEARCH: { actorKey: 'FB_POST_SEARCH', ready: false, startFeeMicros: 0, pricePer1kMicros: 0, probeSize: 15 },
 };
 const fbGroup = (i, city, url) => ({ id: `fb-${i}`, network: 'FACEBOOK', kind: 'FACEBOOK_GROUP', url: url ?? `https://www.facebook.com/groups/g${i}`, city, priority: 5 });
-const tg = (i) => ({ id: `tg-${i}`, network: 'TELEGRAM', kind: 'TELEGRAM_GROUP', url: `https://t.me/channel${i}`, city: null, priority: 5 });
+const tg = (i) => ({ id: `tg-${i}`, network: 'TELEGRAM', kind: 'TELEGRAM_GROUP', url: `https://t.me/tbilisi_realestate_${i}`, city: null, priority: 5 });
 
-test('paid plan: every Facebook group of the city in ONE run per keyword, Telegram in batches, TikTok all keywords at once — no portals', () => {
+test('paid plan: every relevant Facebook group read once (no keyword), relevant Telegram in batches, TikTok all keywords at once — no portals', () => {
   const sources = [
     ...Array.from({ length: 30 }, (_, i) => fbGroup(i, i < 20 ? 'Tbilisi' : null)),
     fbGroup(90, 'Batumi'), fbGroup(91, null, 'https://www.facebook.com/groups/batumi.flats.sale'),
+    fbGroup(92, 'Tbilisi', 'https://www.facebook.com/groups/jobingeorgia/'),
     ...Array.from({ length: 12 }, (_, i) => tg(i)),
   ];
   const plan = planOfferJobs({
@@ -119,18 +120,18 @@ test('paid plan: every Facebook group of the city in ONE run per keyword, Telegr
     networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK', 'INSTAGRAM', 'VK'], providerBudgetMicros: 100_000_000, sources, actors: ACTORS,
   });
   const fb = plan.jobs.filter((j) => j.stage === 'FB_GROUP_POSTS');
-  /* 30 groups → 2 chunks (25 + 5) × 3 keywords; another city's groups never read. */
-  assert.equal(fb.length, 6);
+  /* A budget that affords it reads DEEP: 10 groups a run, up to the Actor's 100 posts per group
+     (30 groups → 3 runs); another city's groups and a jobs group are never read. */
+  assert.equal(fb.length, 3);
   const urls = new Set(fb.flatMap((j) => j.targets.map((t) => t.url)));
   assert.equal(urls.size, 30);
-  assert.ok(![...urls].some((u) => /g90$|batumi/.test(u)), 'Batumi groups are not read for a Tbilisi search');
-  assert.deepEqual([...new Set(fb.map((j) => j.queries[0]))], ['იყიდება ბინა', 'продается квартира', 'apartment for sale']);
-  assert.equal(fb[0].targets.length, 25);
-  assert.equal(fb[0].size, Math.min(MAX_ITEMS_PER_RUN, 25 * 100), 'a full run: max results per group, within the ceiling');
+  assert.ok(![...urls].some((u) => /g90$|batumi|jobingeorgia/.test(u)), 'Batumi and unrelated groups are not read for a Tbilisi search');
+  assert.ok(fb.every((j) => j.queries.length === 0 && j.query === null), 'the group Actor is never given an unverified keyword');
+  assert.deepEqual(fb.map((j) => j.targets.length), [10, 10, 10]);
+  assert.ok(fb.every((j) => j.size === 1000), '100 posts per group: the Actor maximum per group');
   const tgJobs = plan.jobs.filter((j) => j.stage === 'TELEGRAM_CHANNEL');
   assert.equal(tgJobs.length, 1);
   assert.equal(tgJobs[0].targets.length, 12);
-  assert.equal(tgJobs[0].size, 12 * 150 > MAX_ITEMS_PER_RUN ? MAX_ITEMS_PER_RUN : 12 * 150);
   const tt = plan.jobs.filter((j) => j.stage === 'TIKTOK_SEARCH');
   assert.equal(tt.length, 1);
   assert.deepEqual(tt[0].queries, ['იყიდება ბინა Tbilisi', 'продается квартира Tbilisi', 'apartment for sale Tbilisi']);
@@ -141,7 +142,7 @@ test('paid plan: every Facebook group of the city in ONE run per keyword, Telegr
 });
 
 test('paid plan within a small budget: one of each network first, the last run shrinks to fit, the estimate never exceeds the budget', () => {
-  const sources = [...Array.from({ length: 30 }, (_, i) => fbGroup(i, 'Tbilisi')), ...Array.from({ length: 4 }, (_, i) => tg(i))];
+  const sources = [...Array.from({ length: 60 }, (_, i) => fbGroup(i, 'Tbilisi')), ...Array.from({ length: 4 }, (_, i) => tg(i))];
   const budget = 3_150_000; // $5 campaign: 63% to providers
   const plan = planOfferJobs({
     search: { transaction: 'RENT', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: offerSearchLanguages('en') },
@@ -154,6 +155,67 @@ test('paid plan within a small budget: one of each network first, the last run s
   assert.ok(last.size < 1000 && last.size >= 20, 'the run that no longer fit whole runs smaller');
   assert.ok(plan.skippedForBudget > 0);
   assert.equal(plan.jobs.reduce((n, j) => n + j.estimateMicros, 0), plan.estimatedMicros);
+});
+
+test('Facebook depth follows the budget: breadth when tight, the Actor maximum per group when affordable', () => {
+  const groups = Array.from({ length: 53 }, (_, i) => fbGroup(i, 'Tbilisi'));
+  const search = { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka', 'ru', 'en'] };
+  const fbRuns = (budget) => planOfferJobs({ search, networks: ['FACEBOOK'], providerBudgetMicros: budget, sources: groups, actors: ACTORS })
+    .jobs.filter((j) => j.stage === 'FB_GROUP_POSTS');
+  /* $5 (provider $3.15): 25 groups a run — as many groups as possible, ~40 posts each. */
+  const tight = fbRuns(3_150_000);
+  assert.equal(tight[0].targets.length, 25);
+  /* Enough for every group at 100 posts (53 × 100 = 5300 posts ≈ $8.0): 10 groups a run. */
+  const deep = fbRuns(12_600_000);
+  assert.deepEqual(deep.map((j) => j.targets.length), [10, 10, 10, 10, 10, 3]);
+  const posts = deep.reduce((n, j) => n + j.size, 0);
+  assert.equal(posts, 5300, 'every group read to the Actor maximum');
+});
+
+test('the group Actor gets a keyword ONLY when its `search` field is verified in the registry contract', () => {
+  const groups = Array.from({ length: 5 }, (_, i) => fbGroup(i, 'Tbilisi'));
+  const search = { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka', 'en'] };
+  const plan = (verifiedFields) => planOfferJobs({ search, networks: ['FACEBOOK'], providerBudgetMicros: 10_000_000, sources: groups,
+    actors: { ...ACTORS, FB_GROUP_POSTS: { ...ACTORS.FB_GROUP_POSTS, verifiedFields } } }).jobs;
+  assert.ok(plan([]).every((j) => j.queries.length === 0), 'unverified: never');
+  assert.ok(plan(['onlyPostsNewerThan']).every((j) => j.queries.length === 0), 'another verified field does not unlock search');
+  assert.deepEqual(plan(['search']).map((j) => j.queries[0]), ['იყიდება ბინა', 'apartment for sale'], 'verified: one keyword run per language');
+});
+
+test('community relevance: proven offers first, real-estate names in, unrelated communities never paid for', () => {
+  const ch = (handle, extra = {}) => ({ id: handle, network: 'TELEGRAM', kind: 'TELEGRAM_GROUP', url: `https://t.me/${handle}`, city: null, priority: 5, ...extra });
+  /* Real production handles (2026-10-18). */
+  for (const h of ['nedvizhimost_tbilisy', 'arenda_prodazha_kvartir_tbilisi', 'rent_tbilisi_ge', 'apartments_tbilisi_sale', 'udzravi_qoneba', 'binaforyou', 'tiflisgayrimenkulemlak', 'buysellflats', 'm2saletbilisi', 'crescoproperty'])
+    assert.equal(communityRelevance(ch(h)), 'LIKELY', h);
+  for (const h of ['casinosamsoom', 'beirutpasharestaurant', 'animecelltbilisi', 'gecrypto_tbilisi_rates', 'psy_tbilisi_inga', 'tiflis_books', 'tbilisicleanups'])
+    assert.equal(communityRelevance(ch(h)), 'UNRELATED', h);
+  for (const h of ['tbilisio', 'tbilisi_life', 'vinton123']) assert.equal(communityRelevance(ch(h)), 'NEUTRAL', h);
+  assert.equal(communityRelevance(ch('tbilisio', { offerEvidence: 3 })), 'PROVEN', 'stored offers outrank a plain name');
+  assert.equal(communityRelevance({ url: 'https://t.me/x', name: 'Тбилиси Квартиры (RU)' }), 'LIKELY', 'the registry name counts too');
+
+  const sources = [ch('tbilisio'), ch('casinosamsoom'), ch('rent_tbilisi_ge'), ch('flats_in_georgia', { offerEvidence: 40 }), ch('tbilisi_life', { offerEvidence: 2 })];
+  const plan = planOfferJobs({
+    search: { transaction: 'RENT', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka'] },
+    networks: ['TELEGRAM'], providerBudgetMicros: 10_000_000, sources, actors: ACTORS,
+  });
+  assert.deepEqual(plan.jobs[0].targets.map((t) => t.sourceId), ['flats_in_georgia', 'tbilisi_life', 'rent_tbilisi_ge'],
+    'proven channels first (most offers first), then named ones; a general chat and a casino are not paid for');
+});
+
+test('Instagram: only profile pages reach the profile Actor — a hashtag page is never paid for', () => {
+  assert.equal(isInstagramProfileUrl('https://www.instagram.com/tbilisi.realty/'), true);
+  assert.equal(isInstagramProfileUrl('https://instagram.com/agency_ge'), true);
+  for (const u of ['https://www.instagram.com/explore/tags/tbilisihousing/', 'https://www.instagram.com/p/C1x2y3/', 'https://www.instagram.com/reel/abc/', 'https://www.instagram.com/stories/x/'])
+    assert.equal(isInstagramProfileUrl(u), false, u);
+  const ig = (id, url) => ({ id, network: 'INSTAGRAM', kind: 'INSTAGRAM_PROFILE', url, city: null, priority: 5 });
+  const only = planOfferJobs({ search: { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka'] },
+    networks: ['INSTAGRAM'], providerBudgetMicros: 10_000_000, actors: ACTORS, sources: [ig('tag', 'https://www.instagram.com/explore/tags/tbilisihousing/')] });
+  assert.equal(only.jobs.length, 0, 'nothing is spent on an incompatible page');
+  assert.deepEqual(only.unavailable, [{ network: 'INSTAGRAM', reason: 'NO_KNOWN_SOURCE' }]);
+  const mixed = planOfferJobs({ search: { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka'] },
+    networks: ['INSTAGRAM'], providerBudgetMicros: 10_000_000, actors: ACTORS,
+    sources: [ig('tag', 'https://www.instagram.com/explore/tags/tbilisihousing/'), ig('agency', 'https://www.instagram.com/tbilisi.realty/')] });
+  assert.deepEqual(mixed.jobs[0].targets.map((t) => t.sourceId), ['agency']);
 });
 
 test('a community URL names its city', () => {

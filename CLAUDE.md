@@ -70,6 +70,12 @@ An index is never proof of production state.
   `find_property_social_enabled` (default OFF), reserved per run against the
   campaign's 63% provider budget (`find_property_reserve_actor_run`), and is
   stopped by the same APIFY switch. Portals and HOMATCH inventory stay free.
+  Fourth scope (owner, 2026-10-18): ONE non-memo23 Actor,
+  `tropical_thunderstuck~facebook-post-search` (Find Buyers `FB_KEYWORD_SEARCH`:
+  buyer/tenant phrases across public Facebook posts), admitted by exact id in
+  `ALLOWED_THIRD_PARTY_ACTORS` (memo23Client) — never a pattern or a publisher.
+  Same client, registry, reservation, caps and APIFY switch; it never runs on an
+  unverified input schema.
 - **Railway**: the only worker is `homatch-official-worker`
   (`3e7f132b-d0be-4804-9bc0-0b6ad368ad15`). Never `-v2`, never create
   another. Railway deploys only when `official-worker/` changed —

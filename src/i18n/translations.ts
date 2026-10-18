@@ -20444,6 +20444,11 @@ const en = {
   fpv_paid_body: 'Homes people offered in public posts. HOMATCH has not verified them: open the original post and check the details with the person who posted it.',
   fpv_paid_empty_title: 'No Deep Search results yet',
   fpv_paid_empty_body: 'Offers from public posts appear here once a Deep Search has finished.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'Phrases per run',
+  fbx_admin_kw_days: 'Search window (days)',
+  fbx_admin_kw_save: 'Save search settings',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40802,6 +40807,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'ბინები, რომლებიც ადამიანებმა საჯარო პოსტებში შესთავაზეს. HOMATCH-ს ისინი გადამოწმებული არ აქვს: გახსენით ორიგინალი პოსტი და დეტალები ავტორთან დააზუსტეთ.',
   fpv_paid_empty_title: 'ვრცელი ძიების შედეგები ჯერ არ არის',
   fpv_paid_empty_body: 'საჯარო პოსტებიდან შეთავაზებები აქ ვრცელი ძიების დასრულების შემდეგ გამოჩნდება.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'ფრაზები ერთ გაშვებაში',
+  fbx_admin_kw_days: 'ძებნის პერიოდი (დღე)',
+  fbx_admin_kw_save: 'ძებნის პარამეტრების შენახვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61151,6 +61161,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'Жильё, которое люди предложили в публичных постах. HOMATCH его не проверял: откройте исходный пост и уточните детали у автора.',
   fpv_paid_empty_title: 'Результатов расширенного поиска пока нет',
   fpv_paid_empty_body: 'Предложения из публичных постов появятся здесь после завершения расширенного поиска.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'Фраз за запуск',
+  fbx_admin_kw_days: 'Период поиска (дни)',
+  fbx_admin_kw_save: 'Сохранить параметры поиска',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81498,6 +81513,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'İnsanların herkese açık gönderilerde sunduğu evler. HOMATCH bunları doğrulamadı: orijinal gönderiyi açın ve ayrıntıları paylaşan kişiyle netleştirin.',
   fpv_paid_empty_title: 'Henüz geniş arama sonucu yok',
   fpv_paid_empty_body: 'Herkese açık gönderilerdeki teklifler, geniş arama bittiğinde burada görünür.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'Çalıştırma başına ifade',
+  fbx_admin_kw_days: 'Arama aralığı (gün)',
+  fbx_admin_kw_save: 'Arama ayarlarını kaydet',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101845,6 +101865,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'منازل عرضها أشخاص في منشورات عامة. لم يتحقق منها HOMATCH: افتح المنشور الأصلي وتأكد من التفاصيل مع ناشره.',
   fpv_paid_empty_title: 'لا توجد نتائج للبحث الموسّع بعد',
   fpv_paid_empty_body: 'تظهر هنا العروض من المنشورات العامة بعد انتهاء البحث الموسّع.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'عبارات لكل تشغيل',
+  fbx_admin_kw_days: 'نافذة البحث (أيام)',
+  fbx_admin_kw_save: 'حفظ إعدادات البحث',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -122192,6 +122217,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'דירות שאנשים הציעו בפוסטים ציבוריים. HOMATCH לא אימת אותן: פתחו את הפוסט המקורי ובררו את הפרטים עם מי שפרסם.',
   fpv_paid_empty_title: 'עדיין אין תוצאות חיפוש מורחב',
   fpv_paid_empty_body: 'הצעות מפוסטים ציבוריים יופיעו כאן אחרי שהחיפוש המורחב יסתיים.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'ביטויים להרצה',
+  fbx_admin_kw_days: 'חלון חיפוש (ימים)',
+  fbx_admin_kw_save: 'שמירת הגדרות החיפוש',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

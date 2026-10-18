@@ -40,13 +40,24 @@ export interface FindBuyersSettings {
   priceBook: unknown;
   /** find_buyers_financing.lowDownPaymentRatio: the DOWN_PAYMENT_LOW risk heuristic (default 0.1). */
   lowDownPaymentRatio: number;
+  /** FB_KEYWORD_SEARCH: phrases per run, search window in days. */
+  fbKeyword: { batchSize: number; days: number };
 }
 
 const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
   'provider_disabled_list', 'find_buyers_telegram_preference', 'find_buyers_financing',
+  'find_buyers_fb_keyword_search',
 ];
+
+/** FB_KEYWORD_SEARCH knobs (Admin): phrases per run and how far back posts are read (≤ the 30-day rule). */
+export function fbKeywordSettings(raw: unknown): { batchSize: number; days: number } {
+  const o = (raw ?? {}) as { batchSize?: unknown; days?: unknown };
+  const b = Math.round(Number(o.batchSize));
+  const d = Math.round(Number(o.days));
+  return { batchSize: Number.isFinite(b) && b > 0 ? Math.min(10, b) : 6, days: Number.isFinite(d) && d > 0 ? Math.min(30, d) : 30 };
+}
 
 /** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
 export function apifyDisabledByAdmin(list: unknown): boolean {
@@ -72,6 +83,7 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     sampling: m.get('find_buyers_sampling') ?? null,
     priceBook: m.get('find_buyers_openai_price_book') ?? null,
     lowDownPaymentRatio: lowDownPaymentRatio(m.get('find_buyers_financing') ?? null),
+    fbKeyword: fbKeywordSettings(m.get('find_buyers_fb_keyword_search')),
   };
 }
 
@@ -245,7 +257,8 @@ export function socialJobRow(job: PlannedSocialJob, ctx: { matchingJobId: string
     priority: job.priority,
     metadata: {
       stage: job.stage, actorKey: job.actorKey, arm: job.arm, size: job.size, query: job.query, targetUrl: job.targetUrl,
-      sourceId: job.sourceId, reason: job.reason, step: ctx.step, tranche: ctx.tranche, ...(job.batch?.length ? { batch: job.batch } : {}), ...(ctx.parent ?? {}),
+      sourceId: job.sourceId, reason: job.reason, step: ctx.step, tranche: ctx.tranche, ...(job.batch?.length ? { batch: job.batch } : {}),
+      ...(job.queries?.length ? { queries: job.queries } : {}), ...(ctx.parent ?? {}),
     },
     /* The provider estimate is decided at reservation time against the live
        registry price; the queue row carries no guess. */
@@ -362,7 +375,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   /* Several known communities of one kind are read in one run (batching.ts): fewer start
      fees, fewer of the Actor's concurrency slots, the same per-source attribution. */
   const jobs = batchSourceReads(initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null,
-    depth: strategy.depth, actorHistory: await actorHistory(db) }), { maxResults: Object.fromEntries(Object.entries(actors).map(([k, a]) => [k, a.maxResults])) });
+    depth: strategy.depth, actorHistory: await actorHistory(db), keywordBatchSize: settings.fbKeyword?.batchSize }), { maxResults: Object.fromEntries(Object.entries(actors).map(([k, a]) => [k, a.maxResults])) });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
   /* TWO PHASES (campaignPhases.ts): Phase 1's time box and its spend ceiling,
      planned from this campaign's own probes and the registry's prices. */

@@ -27,6 +27,58 @@ A buyer's or tenant's paid social OFFER campaign runs memo23 Actors on public so
    - A property known only from social posts is labelled "Social post · unverified" on the card. The property page explains that HOMATCH has not verified it.
    - Such a property is never a Best Match on its own.
 
+## v2 (2026-10-18): batched runs, one confirmation, its own results
+
+**Why.** The owner ran "paid" search and saw portal listings only. Production showed:
+- 0 paid `discovery_runs` and 0 Actor runs, so no money was spent on Find Property;
+- the 15.8 credits settled that day were a separate Find Buyers campaign.
+
+The Deep card started only the FREE search. The campaign needed a second approval on the next screen, so the customer saw the portal progress and the portal results. The old plan was also weak: about 60 one-community probes, each paying a start fee and queueing behind 2 per-Actor and 4 global memo23 slots, and no TikTok.
+
+**Runs, batched** (`offerCampaign.ts` `planOfferJobs`, `socialOffers.ts` `offerInput`):
+
+| Network | Actor | Run shape |
+|---|---|---|
+| Facebook | `FB_GROUP_POSTS` | Every group of the city (or naming no other city: `cityHint`) in one run per keyword. The keyword goes in `search` (verified schema property). Up to 25 groups a run, keyword-major. |
+| Telegram | `TELEGRAM_CHANNEL` | Up to 25 channels a run, any language. |
+| Instagram | `IG_PROFILE_POSTS` | The registered in-city profiles. The Actor's verified input is profile URLs only, so hashtag pages are not sent. |
+| TikTok | `TIKTOK` | One run, `mode: 'search'`, every keyword plus the city. |
+| VK | `VK_POSTS_COMMENTS` | Unavailable: the Actor is FAILED/disabled. |
+
+A run asks for the Actor's `max_results` for each community or keyword. Migration `20261114090000` lets `find_property_reserve_actor_run(…, p_target_count)` allow that:
+- at most 25 targets and 1000 items;
+- timeout = the Actor's timeout per `max_results` block, at most 20 minutes (the campaign deadline is 30).
+
+The campaign budget, switches, pricing freshness, concurrency and Admin caps are unchanged, and they apply to the whole run.
+
+The planner gives every network its first run before any network gets a second. The run that no longer fits whole is shrunk to the remaining budget.
+
+Each stored post is attributed to the community it came from (`communityKey`). A post no community claims is stored under its network's inactive holder row:
+- `homatch:fp-fb-post-search`
+- `homatch:fp-telegram-offers`
+- `homatch:fp-instagram-offers`
+- `homatch:fp-tiktok-search`
+
+**One confirmation.**
+- The Deep card shows the exact maximum and the terms, with one approval box.
+- The free search starts (the campaign extends its subscription). The campaign then starts with the same approval: a one-shot, per-tab token (`rememberDeepConsent` / `takeDeepConsent`, 10 minutes, idempotency key).
+- The server re-prices the same amount before anything is reserved. A reload never starts anything.
+- While `?deep=` is on the URL, the page shows the campaign, never the portal search.
+
+**Process only.** The customer sees:
+- searching posts → reading them → checking matches → preparing results;
+- real progress: runs finished of runs planned, to 85%; matching 90%; end 100%.
+
+No network or site is named. A client-sent network list is ignored: Admin's `find_property_social_networks` decides.
+
+**Its own results.** "View results" opens `?view=paid&fp_socialOnly=true`. It holds social listings and social reposts of portal homes (`isSocialResult`). It has its own tab once a campaign has delivered results.
+
+**Tests:**
+- `findPropertySocialListings` (batched plan, budget fit);
+- `findPropertySocialBilling` (batched input, per-group attribution, `p_target_count`);
+- `tests/sql/run-find-property-batched.sh` (applied twice);
+- the browser suite: the one-confirm flow, no network names, the paid view.
+
 ## Money (37% HOMATCH / 63% providers, unchanged)
 - **No token, no campaign.** `loadOfferSettings.configured` gates `enabled`. The preview says `PROVIDER_NOT_CONFIGURED`, and start is refused before `beginExecution` reserves anything.
 - **The customer pays for confirmed work only.** `find_property_customer_micros` (migration `20261110100000`) counts:
@@ -49,7 +101,8 @@ A buyer's or tenant's paid social OFFER campaign runs memo23 Actors on public so
 | VK_POSTS_COMMENTS | `memo23~vk-posts-comments-scraper` | **disabled, FAILED** | Rare in Georgia | No |
 | FB_GROUP_SEARCH, LINKEDIN_GROUPS | group finders | — | No: they find communities, not posts | No |
 | FB_COMMENTS, IG_COMMENTS, YOUTUBE_COMMENTS | comments | — | No: comments are the demand side (Find Buyers) | No |
-| TIKTOK, X_PROFILE, THREADS_PROFILE, LINKEDIN_POSTS, REDDIT, QUORA, BLUESKY | — | — | No structured Georgian listing market | No |
+| TIKTOK | `memo23~tiktok-scraper` | enabled, HEALTHY, $2.00/1k | Some: video captions with price (posts without one are dropped) | **Yes** (v2, keyword search) |
+| X_PROFILE, THREADS_PROFILE, LINKEDIN_POSTS, REDDIT, QUORA, BLUESKY | — | — | No structured Georgian listing market | No |
 | FB_AD_LIBRARY | `memo23~facebook-ads-library-scraper-ppe` | registered 2026-10-17, disabled, unpriced; Verify developer-ads scope | Possible later (ads are offers; its normaliser emits POST items) | No: not in CLAUDE.md's Find Property scope without owner approval |
 
 Nothing is activated by this change. Any Actor that is not registered, not enabled, emergency-disabled, health DISABLED, or not freshly priced is `ready = false`, and the planner skips it.

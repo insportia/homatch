@@ -104,7 +104,9 @@ Deno.serve(async (req: Request) => {
       propertyType: searchPlan.propertyTypes?.value?.[0] ?? null,
       languages: offerSearchLanguages(typeof body.language === 'string' ? body.language : null),
     };
-    const requested = (Array.isArray(body.networks) ? body.networks : offerSettings.networks)
+    /* The customer buys the PROCESS, not a list of sources (owner, 2026-10-18): every
+       network Admin enabled is searched; a client-sent list is ignored. */
+    const requested = offerSettings.networks
       .map((n: unknown) => String(n).toUpperCase())
       .filter((n: string): n is OfferNetwork => (OFFER_NETWORKS as readonly string[]).includes(n));
     const networks = [...new Set(requested)] as OfferNetwork[];
@@ -190,7 +192,8 @@ Deno.serve(async (req: Request) => {
       customer_value_micros: allocation.priceMicros,
       provider_budget_micros: allocation.providerBudgetMicros,
       offer_networks: networks,
-      offer_plan: { version: plan.version, estimatedMicros: plan.estimatedMicros, unavailable: plan.unavailable, skippedForBudget: plan.skippedForBudget, jobs: plan.jobs.length },
+      offer_plan: { version: plan.version, estimatedMicros: plan.estimatedMicros, unavailable: plan.unavailable, skippedForBudget: plan.skippedForBudget, jobs: plan.jobs.length,
+        marketplaceSearchId: typeof subscription.search_criteria?.marketplaceSearchId === 'string' ? subscription.search_criteria.marketplaceSearchId : null },
     }).select('id,started_at').single();
     if (runError) throw runError;
     runId = String(run.id);

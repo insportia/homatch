@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 let token = undefined;
 globalThis.Deno = { env: { get: (k) => (k === 'APIFY_API_TOKEN' ? token : undefined) } };
-const { executeOfferJob, finishOfferCampaign, loadOfferSettings } = await import('../findProperty/socialOffers.ts');
+const { executeOfferJob, finishOfferCampaign, loadOfferSettings, offerInput } = await import('../findProperty/socialOffers.ts');
 
 /** A tiny PostgREST stand-in: every call is recorded; answers come from `answer`. */
 function fakeDb(answer) {
@@ -115,5 +115,69 @@ test('a finished run stores real offers with their own photos; requests are drop
     assert.equal(stored[0].adapter_version, 'fp-social-offers-2');
     assert.equal(stored[0].field_origins.memo23ActorRunId, 'ar-1');
     assert.equal(stored[0].canonical_url, 'https://www.facebook.com/groups/g/posts/1/');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+const FB_CONTRACT = { required: ['startUrls'], schemaProperties: ['startUrls', 'maxItems', 'onlyPostsNewerThan', 'search', 'proxy'] };
+const TT_CONTRACT = { required: ['mode', 'input'], schemaProperties: ['mode', 'input', 'maxResults'] };
+
+test('batched input: all groups in one Facebook run with its keyword; TikTok searches every keyword at once', () => {
+  const since = '2026-07-01T00:00:00.000Z';
+  const fb = offerInput('FB_GROUP_POSTS', { queries: ['იყიდება ბინა'], targets: [
+    { url: 'https://www.facebook.com/groups/a', sourceId: 's-a', city: 'Tbilisi' }, { url: 'https://www.facebook.com/groups/b', sourceId: 's-b', city: 'Tbilisi' }] },
+    1000, since, FB_CONTRACT).input;
+  assert.deepEqual(fb.startUrls, [{ url: 'https://www.facebook.com/groups/a' }, { url: 'https://www.facebook.com/groups/b' }]);
+  assert.equal(fb.search, 'იყიდება ბინა');
+  assert.equal(fb.maxItems, 1000);
+  assert.equal(fb.onlyPostsNewerThan, '2026-07-01');
+  const tt = offerInput('TIKTOK_SEARCH', { queries: ['იყიდება ბინა Tbilisi', 'apartment for sale Tbilisi'], targets: [] }, 120, since, TT_CONTRACT).input;
+  assert.deepEqual(tt, { mode: 'search', input: ['იყიდება ბინა Tbilisi', 'apartment for sale Tbilisi'], maxResults: 120 });
+  /* A row queued before batching is built exactly as before. */
+  const legacy = offerInput('FB_GROUP_POSTS', { targetUrl: 'https://www.facebook.com/groups/a' }, 20, since, FB_CONTRACT).input;
+  assert.deepEqual(legacy.startUrls, [{ url: 'https://www.facebook.com/groups/a' }]);
+  assert.equal(legacy.search, undefined);
+});
+
+test('a batched run reserves per community, and every post is stored under the group it came from', async () => {
+  token = 'test-token-not-real';
+  const realFetch = globalThis.fetch;
+  const now = new Date().toISOString();
+  const items = [
+    { postId: '11', url: 'https://www.facebook.com/groups/a/posts/11/', groupUrl: 'https://www.facebook.com/groups/a', time: now, text: 'იყიდება 2 ოთახიანი ბინა საბურთალოზე, 60 კვ.მ, ფასი 90000$' },
+    { postId: '12', url: 'https://www.facebook.com/groups/b/posts/12/', groupUrl: 'https://www.facebook.com/groups/b', time: now, text: 'იყიდება 3 ოთახიანი ბინა ვაკეში, 92 კვ.მ, ფასი 150000$' },
+  ];
+  let started = null;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/runs?') || /\/acts\/.+\/runs/.test(u)) { started = JSON.parse(init.body); return new Response(JSON.stringify({ data: { id: 'p-2', defaultDatasetId: 'd-2', status: 'RUNNING' } }), { status: 201 }); }
+    if (u.includes('/actor-runs/')) return new Response(JSON.stringify({ data: { id: 'p-2', status: 'SUCCEEDED', defaultDatasetId: 'd-2', usageTotalUsd: 0.2 } }), { status: 200 });
+    if (u.includes('/datasets/')) return new Response(JSON.stringify(items), { status: 200, headers: { 'x-apify-pagination-total': '2' } });
+    throw new Error(`unexpected ${u}`);
+  };
+  const meta = { stage: 'FB_GROUP_POSTS', actorKey: 'FB_GROUP_POSTS', queries: ['იყიდება ბინა'], targetCount: 2, size: 200,
+    targets: [{ url: 'https://www.facebook.com/groups/a', sourceId: 'src-a', city: 'Tbilisi' }, { url: 'https://www.facebook.com/groups/b', sourceId: 'src-b', city: 'Tbilisi' }],
+    search: { transaction: 'SALE', city: 'Tbilisi' } };
+  try {
+    const db = fakeDb((q) => {
+      if (q.table === 'admin_settings') return SETTINGS;
+      if (q.table === 'discovery_runs') return RUN;
+      if (q.rpc === 'find_property_reserve_actor_run') return { ok: true, runId: 'ar-2', actorId: 'memo23~apify-facebook-group-scraper', reservedMicros: 308000, requestedLimit: 200, inputContract: FB_CONTRACT, timeoutSeconds: 600 };
+      if (q.table === 'find_property_actor_runs' && q.op === 'update') return [{ id: 'ar-2' }];
+      if (q.table === 'find_property_actor_runs') return { id: 'ar-2', provider_run_id: 'p-2', dataset_id: 'd-2', requested_limit: 200, actor_key: 'FB_GROUP_POSTS', source_id: null, created_at: now, cost_booked_at: null };
+      return null;
+    });
+    const first = await executeOfferJob(db, { id: 'job-2', discovery_run_id: 'run-1', metadata: meta });
+    assert.equal(first.outcome, 'WAIT');
+    assert.equal(first.metadata.timeoutSeconds, 600);
+    const reserve = db.calls.find((c) => c.rpc === 'find_property_reserve_actor_run');
+    assert.equal(reserve.args.p_target_count, 2);
+    assert.deepEqual(started.startUrls.map((x) => x.url), ['https://www.facebook.com/groups/a', 'https://www.facebook.com/groups/b']);
+    assert.equal(started.search, 'იყიდება ბინა');
+    const done = await executeOfferJob(db, { id: 'job-2', discovery_run_id: 'run-1', metadata: { ...meta, ...first.metadata } });
+    assert.equal(done.outcome, 'DONE');
+    const stored = db.calls.filter((c) => c.table === 'supply_observations' && c.op === 'upsert').map((c) => c.payload);
+    assert.deepEqual(stored.map((r) => [r.canonical_url, r.source_id]), [
+      ['https://www.facebook.com/groups/a/posts/11/', 'src-a'], ['https://www.facebook.com/groups/b/posts/12/', 'src-b']]);
+    assert.deepEqual(stored.map((r) => String(r.city).toLowerCase()), ['tbilisi', 'tbilisi']);
   } finally { globalThis.fetch = realFetch; }
 });

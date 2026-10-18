@@ -8,6 +8,8 @@ export interface ResultFilters {
   bedroomsMin?: number; roomsMin?: number; district?: string; ageDays?: number;
   building?: string; condition?: string; seller?: string; source?: string;
   strongOnly?: boolean; hidePossibleDuplicates?: boolean; duplicatesOnly?: boolean; verification?: 'CLEAR' | 'NEEDS';
+  /** The paid campaign's results: homes found in public social posts (also a post that repeats a portal listing). */
+  socialOnly?: boolean;
   section?: ResultSection; sort?: 'RANKED' | 'FRESHEST' | 'PRICE' | 'VALUE';
 }
 export const RESULT_PAGE_SIZE = 12;
@@ -22,7 +24,7 @@ export function sanitizeResultFilters(raw: unknown): ResultFilters {
     if ((typeof value === 'number' || typeof value === 'string') && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0) filters[key] = Math.min(Number(value), key === 'ageDays' ? 30 : 1e9);
   }
   for (const key of STRINGS) if (typeof source[key] === 'string' && source[key].trim()) filters[key] = source[key].trim().slice(0, 160);
-  for (const key of ['strongOnly', 'hidePossibleDuplicates', 'duplicatesOnly'] as const) if (source[key] === true || source[key] === 'true') filters[key] = true;
+  for (const key of ['strongOnly', 'hidePossibleDuplicates', 'duplicatesOnly', 'socialOnly'] as const) if (source[key] === true || source[key] === 'true') filters[key] = true;
   if (source.verification === 'CLEAR' || source.verification === 'NEEDS') filters.verification = source.verification;
   if (RESULT_SECTIONS.includes(source.section as ResultSection)) filters.section = source.section as ResultSection;
   if (['RANKED', 'FRESHEST', 'PRICE', 'VALUE'].includes(String(source.sort))) filters.sort = source.sort as ResultFilters['sort'];
@@ -63,7 +65,7 @@ export interface BrowsePage {
   summary: { strong: number; close: number; verification: number; unknownDates: number; excludedOld: number;
     /** Why results are not strong: each requested fact the sources left unconfirmed, with how many results it holds back. */
     unconfirmed: Array<{ code: string; count: number }> };
-  facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string; count: number }>; duplicates: number; possibleDuplicates: number };
+  facets: { districts: string[]; buildings: string[]; conditions: string[]; sellers: string[]; sources: Array<{ key: string; name: string; count: number }>; duplicates: number; possibleDuplicates: number; social: number };
 }
 /** One property published as several listings, confirmed by the identity resolver (never inferred). */
 /** OWNER groups the verified and the likely owner; every other value is exact. Unknown is never an owner. */
@@ -74,6 +76,9 @@ export const sellerMatches = (classification: string, filter: string) =>
 export const isConfirmedDuplicate = (p: Pick<CustomerProperty, 'identity' | 'listings'>) =>
   p.identity?.status === 'CONFIRMED_DUPLICATE' && p.listings.length > 1;
 /** May be the same flat as another result: never merged, shown side by side so a person can judge. */
+/** A home the paid social campaign found: a social listing, or a social post repeating a portal listing. */
+export const isSocialResult = (p: Pick<CustomerProperty, 'listings' | 'possibleMatches'>) =>
+  p.listings.some((l) => l.social === true) || (p.possibleMatches ?? []).some((m) => m.repost === true);
 export const isPossibleDuplicate = (p: Pick<CustomerProperty, 'identity' | 'listings' | 'intelligence'>) =>
   !isConfirmedDuplicate(p) && !!p.intelligence?.warnings.includes('POSSIBLE_DUPLICATE');
 const sectionOf = (p: CustomerProperty): ResultSection => p.intelligence?.section ?? (p.group === 'UPGRADE' ? 'UPGRADE' : p.group === 'BEST' ? 'BEST' : 'CLOSE');
@@ -103,6 +108,7 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
       && (!filters.strongOnly || intel?.strong === true)
       && (!filters.hidePossibleDuplicates || !intel?.warnings.includes('POSSIBLE_DUPLICATE'))
       && (!filters.duplicatesOnly || isConfirmedDuplicate(p) || isPossibleDuplicate(p))
+      && (!filters.socialOnly || isSocialResult(p))
       && (!filters.verification || (filters.verification === 'NEEDS') === !!intel?.verificationNeeded);
   });
   const sections = Object.fromEntries(RESULT_SECTIONS.map((s) => [s, matches.filter((p) => sectionOf(p) === s).length])) as Record<ResultSection, number>;
@@ -132,7 +138,8 @@ export function browseResults(properties: readonly CustomerProperty[], rawFilter
     facets: { districts: distinct(current.map((p) => p.facts.district)), buildings: distinct(current.map((p) => p.facts.buildingStatus)),
       conditions: distinct(current.map((p) => p.facts.renovationStatus)), sellers: distinct(current.map((p) => p.seller.classification)),
       sources: [...sources].sort(([, a], [, b]) => b.count - a.count || a.name.localeCompare(b.name)).map(([key, v]) => ({ key, name: v.name, count: v.count })),
-      duplicates: current.filter(isConfirmedDuplicate).length, possibleDuplicates: current.filter(isPossibleDuplicate).length },
+      duplicates: current.filter(isConfirmedDuplicate).length, possibleDuplicates: current.filter(isPossibleDuplicate).length,
+      social: current.filter(isSocialResult).length },
   };
 }
 

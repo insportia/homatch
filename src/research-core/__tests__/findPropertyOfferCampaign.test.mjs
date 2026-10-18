@@ -33,8 +33,10 @@ test('a $5 campaign plans within its $3.15 provider budget', () => {
 
 test('Batumi channels are not searched for a Tbilisi request; ka/en spellings agree', () => {
   const plan = planOfferJobs({ search, networks: ['TELEGRAM'], actors, sources, providerBudgetMicros: 100_000_000 });
-  assert.equal(plan.jobs.length, 21);
-  assert.ok(plan.jobs.every((j) => Number(j.sourceId.slice(1)) % 2 === 0));
+  /* Batched (owner, 2026-10-18): the 21 Tbilisi channels are read in ONE run. */
+  assert.equal(plan.jobs.length, 1);
+  assert.equal(plan.jobs[0].targets.length, 21);
+  assert.ok(plan.jobs[0].targets.every((t) => Number(t.sourceId.slice(1)) % 2 === 0));
 });
 
 test('keyword search runs only when its Actor is ready, once per language', () => {

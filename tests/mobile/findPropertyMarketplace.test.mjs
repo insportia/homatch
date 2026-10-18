@@ -517,9 +517,18 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
           priceUsd: credits / 10, policy: 'paid_discovery_37_63_v1', charging: 'CONSUMED_DIV_0_63_CAPPED', networks: body.networks, plannedRuns: 6,
           plannedByNetwork: { FACEBOOK: 3, INSTAGRAM: 1, TELEGRAM: 2, VK: 0 }, unavailableNetworks: [{ network: 'VK', reason: 'NO_READY_ACTOR' }], skippedForBudget: 4 } }));
       }
-      if (body.action === 'start') { state.paidStart = body; return r.fulfill(json({ success: true, async: true, runId: 'run-1', status: 'SEARCHING' }, 202)); }
+      if (body.action === 'start') { state.paidStart = body; state.paidStarts = (state.paidStarts ?? 0) + 1; state.paidStarted = true; return r.fulfill(json({ success: true, async: true, runId: 'run-1', status: 'SEARCHING' }, 202)); }
       if (body.action === 'stop') { state.paidStop = true; return r.fulfill(json({ success: true, runId: body.runId })); }
       return r.fulfill(json({ error: 'Unknown action' }, 400));
+    }
+    if (url.includes('/rest/v1/credit_accounts')) {
+      const row = { id: 'ca-1', user_id: 'u-1', balance: paid ? 500 : 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      return r.fulfill(json((req.headers().accept ?? '').includes('pgrst.object') ? row : [row]));
+    }
+    /* latestCampaignId: the campaign this search already has, once one was started. */
+    if (url.includes('/rest/v1/discovery_runs')) {
+      const row = state.paidStarted ? { id: 'run-1' } : null;
+      return r.fulfill(json((req.headers().accept ?? '').includes('pgrst.object') ? row : row ? [row] : []));
     }
     if (url.includes('/rest/v1/active_search_subscriptions')) return r.fulfill(json((req.headers().accept ?? '').includes('pgrst.object') ? { id: 'sub-1' } : [{ id: 'sub-1' }]));
     if (url.includes('/rest/v1/rpc/my_find_property_campaign')) {
@@ -1092,7 +1101,7 @@ test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmati
   assert.deepEqual(failures, []);
 });
 
-test('Deep Search (paid social campaign): server preview, explicit confirmation, real progress, stop — six locales, RTL, no overflow', opts, async (t) => {
+test('Deep Search (paid social campaign): server preview, explicit confirmation, process-only progress, stop, own results view — six locales, RTL, no overflow', opts, async (t) => {
   const failures = [];
   for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ru'], [390, 'tr'], [393, 'ar'], [393, 'he']]) {
     const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
@@ -1110,6 +1119,9 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
     if (state.paidStart?.authorizedMaxCredits !== 50) failures.push(`${lang}: wrong budget`);
     const text = await deep.textContent();
     if (/\{\{?\w+\}?\}/.test(text)) failures.push(`${lang}: raw placeholder`);
+    /* The customer follows the process; which networks are read is never shown (owner, 2026-10-18). */
+    if (/facebook|instagram|telegram|tiktok|\bvk\b/i.test(text)) failures.push(`${lang}: a network is named`);
+    if (await deep.locator('[data-process-step]').count() !== 4) failures.push(`${lang}: process steps missing`);
     /* Snake while the campaign runs, labelled exactly as the owner asked in Georgian. */
     const snake = deep.locator('[data-action="campaign-play-snake"]');
     if (!(await snake.isVisible())) failures.push(`${lang}: no Snake while the campaign runs`);
@@ -1118,11 +1130,13 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
     if (['ar', 'he'].includes(lang) && (await page.evaluate(() => document.documentElement.getAttribute('dir'))) !== 'rtl') failures.push(`${lang}: not RTL`);
     await shot(page, `${lang}-${width}-paid-progress`);
     if (lang === 'en') {
-      /* Real per-network states, elapsed time, and results only after the campaign ends. */
+      /* Real process from real run counts (3 of 5 runs finished), elapsed time, results only after the end. */
       if (!/^Elapsed \d+:\d\d$/.test(((await deep.locator('[data-campaign-elapsed]').textContent()) ?? '').trim())) failures.push('no elapsed time');
-      if (await deep.locator('[data-network="FACEBOOK"]').getAttribute('data-network-state') !== 'running') failures.push('Facebook not running');
-      if (await deep.locator('[data-network="TELEGRAM"]').getAttribute('data-network-state') !== 'done') failures.push('Telegram not done');
-      if (await deep.locator('[data-network="VK"]').getAttribute('data-network-state') !== 'unavailable') failures.push('VK unavailable not said');
+      if (await deep.locator('[data-process-step="search"]').getAttribute('data-step-state') !== 'active') failures.push('searching not active');
+      if (await deep.locator('[data-process-step="analyse"]').getAttribute('data-step-state') !== 'active') failures.push('reading posts not active');
+      if (await deep.locator('[data-process-step="ready"]').getAttribute('data-step-state') !== 'waiting') failures.push('results ready too early');
+      if (await deep.locator('[data-campaign-pct]').getAttribute('data-campaign-pct') !== String(Math.round((3 / 5) * 85))) failures.push('progress is not runs finished of runs planned');
+      if (await deep.locator('[data-network]').count()) failures.push('per-network rows are back');
       if (!(await deep.locator('[data-campaign-results-wait]').isVisible())) failures.push('no results-wait note while running');
       if (await deep.locator('[data-action="campaign-view-results"]').count()) failures.push('results offered while running');
       await deep.getByRole('button', { name: 'Stop campaign' }).click();
@@ -1130,10 +1144,47 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
       if (!(await deep.locator('[data-action="campaign-view-results"]').isVisible())) failures.push('no View results after the campaign ended');
       if (!state.paidStop) failures.push('stop not sent');
       if (!(await deep.textContent()).includes('37.5 credits')) failures.push('released credits not shown');
+      /* Its results open in their own view: offers from public posts, never the portal list. */
+      await deep.locator('[data-action="campaign-view-results"]').click();
+      await page.locator('[data-results-view="paid"]').waitFor({ timeout: 15000 });
+      const u = new URL(page.url());
+      if (u.searchParams.get('view') !== 'paid' || u.searchParams.get('fp_socialOnly') !== 'true') failures.push(`paid results URL: ${u.search}`);
+      if (await page.locator('[data-view-tab="paid"][aria-selected="true"]').count() !== 1) failures.push('paid results tab not selected');
+      await shot(page, `${lang}-${width}-paid-results`);
     }
     await close();
   }
   assert.deepEqual(failures, []);
+});
+
+test('Deep Search starts with ONE confirmation on its card: no second approval, the campaign screen instead of the portal search', opts, async (t) => {
+  for (const [width, lang] of [[1440, 'en'], [390, 'ka']]) {
+    const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
+    await toConfirm(page);
+    await page.locator('[data-action="mps-continue"]').click();
+    await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
+    await page.locator('[data-mode="DEEP"]').click();
+    const go = page.locator('[data-action="mps-start"]');
+    assert.ok(await go.isDisabled(), `${lang}: Deep Search starts only after the approval`);
+    await page.locator('[data-deep-consent] input').check();
+    await go.click();
+    const deep = page.locator('section[data-deep-panel]');
+    await deep.locator('[data-campaign-progress="open"]').waitFor({ timeout: 30000 });
+    assert.equal(state.paidStart?.authorizedMaxCredits, 100, `${lang}: the approved amount`);
+    assert.deepEqual(state.paidStart?.confirm, { priceCredits: 100, acceptedTerms: true });
+    assert.ok(state.paidStart?.idempotencyKey, 'idempotent start');
+    assert.equal(state.paidStart?.networks, undefined, 'the customer does not choose networks');
+    assert.equal(await page.locator('#mps-searching').count(), 0, `${lang}: the portal search screen is not shown`);
+    assert.equal(await deep.locator('input[type="checkbox"]').count(), 0, `${lang}: no second approval`);
+    assert.ok(await overflow(page) <= 1, `${lang}: overflow`);
+    await shot(page, `${lang}-${width}-deep-one-confirm`);
+    /* A reload never starts (or charges) anything again by itself. */
+    const starts = state.paidStarts ?? 1;
+    await page.reload();
+    await deep.locator('[data-campaign-progress]').waitFor({ timeout: 30000 });
+    assert.equal(state.paidStarts ?? 1, starts, `${lang}: reload started a second campaign`);
+    await close();
+  }
 });
 
 test('Your activity: saved listings, recent activity, recording switch and erase — and a card can be saved', opts, async (t) => {

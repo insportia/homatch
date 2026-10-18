@@ -8,8 +8,8 @@
  */
 import { supabase } from '@/db/supabase';
 
-export type OfferNetwork = 'FACEBOOK' | 'INSTAGRAM' | 'TELEGRAM' | 'VK';
-export const OFFER_NETWORKS: OfferNetwork[] = ['FACEBOOK', 'INSTAGRAM', 'TELEGRAM', 'VK'];
+/** Admin-side vocabulary only: the customer is never shown which networks are searched (owner, 2026-10-18). */
+export type OfferNetwork = 'FACEBOOK' | 'INSTAGRAM' | 'TELEGRAM' | 'TIKTOK' | 'VK';
 
 export interface CampaignPreview {
   available: boolean;
@@ -54,15 +54,16 @@ export async function subscriptionForSearch(marketplaceSearchId: string): Promis
   return data?.id ? String(data.id) : null;
 }
 
-/** language: the customer's interface language, also searched for posts (offerSearchLanguages). */
-export async function previewCampaign(subscriptionId: string, credits: number, networks: OfferNetwork[], language?: string) {
-  const r = await invoke({ action: 'preview', subscriptionId, authorizedMaxCredits: credits, networks, language });
+/** language: the customer's interface language, also searched for posts (offerSearchLanguages).
+ *  The server searches every network Admin enabled; the customer buys the process. */
+export async function previewCampaign(subscriptionId: string, credits: number, language?: string) {
+  const r = await invoke({ action: 'preview', subscriptionId, authorizedMaxCredits: credits, language });
   return { preview: (r.data?.preview ?? null) as CampaignPreview | null, reasonCode: r.data?.preview ? null : r.reasonCode, minCredits: r.data?.minBudgetCredits as number | undefined };
 }
 
-export async function startCampaign(subscriptionId: string, credits: number, networks: OfferNetwork[], idempotencyKey: string, language?: string) {
+export async function startCampaign(subscriptionId: string, credits: number, idempotencyKey: string, language?: string) {
   const r = await invoke({
-    action: 'start', subscriptionId, authorizedMaxCredits: credits, networks, idempotencyKey, language,
+    action: 'start', subscriptionId, authorizedMaxCredits: credits, idempotencyKey, language,
     confirm: { priceCredits: credits, acceptedTerms: true },
   });
   return { runId: r.data?.runId ? String(r.data.runId) : null, reasonCode: r.data?.runId ? null : r.reasonCode };
@@ -86,3 +87,41 @@ export async function campaignState(runId: string): Promise<CampaignState> {
   if (!d || typeof d !== 'object' || Array.isArray(d) || !Array.isArray(d.sources)) throw new Error('UNEXPECTED_CAMPAIGN_SHAPE');
   return d;
 }
+
+/*
+ * ONE confirmation (owner, 2026-10-18): the customer approves the exact maximum on the
+ * Deep Search card; the free search that the campaign extends starts first, then the
+ * campaign starts with that same approval. The approval is a one-shot, per-tab token
+ * bound to that search and that price: read once, removed when read, and too old after
+ * ten minutes — a reload or a shared link never starts (or charges) anything by itself.
+ */
+export interface DeepConsent { searchId: string; credits: number; key: string; at: number }
+const CONSENT_KEY = 'hm_fp_deep_consent';
+const CONSENT_TTL_MS = 10 * 60_000;
+
+export function rememberDeepConsent(searchId: string, credits: number): void {
+  try { sessionStorage.setItem(CONSENT_KEY, JSON.stringify({ searchId, credits, key: crypto.randomUUID(), at: Date.now() } satisfies DeepConsent)); } catch { /* no storage: the panel asks again */ }
+}
+
+/* Taken approvals stay readable in this page's memory: a remount (or a strict-mode double
+   render) gets the same approval with the same idempotency key, so the server answers with
+   the campaign it already started — never a second one. */
+const taken = new Map<string, DeepConsent>();
+
+export function takeDeepConsent(searchId: string, now = Date.now()): DeepConsent | null {
+  const fresh = (c: DeepConsent | undefined | null) =>
+    c && Number.isFinite(c.credits) && c.credits > 0 && typeof c.key === 'string' && now - Number(c.at) <= CONSENT_TTL_MS ? c : null;
+  if (taken.has(searchId)) return fresh(taken.get(searchId));
+  try {
+    const raw = sessionStorage.getItem(CONSENT_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as DeepConsent;
+    if (c?.searchId !== searchId) return null;
+    sessionStorage.removeItem(CONSENT_KEY);
+    taken.set(searchId, c);
+    return fresh(c);
+  } catch { return null; }
+}
+
+/** Where a campaign's results are shown: the search's paid view (social offers only). */
+export const paidResultsPath = (searchId: string) => `/find-property/search/${encodeURIComponent(searchId)}?view=paid&fp_socialOnly=true&page=1`;

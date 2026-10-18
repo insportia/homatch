@@ -1,4 +1,4 @@
-import { ArrowLeft, Bookmark, Check, ChevronLeft, ChevronRight, Copy, LayoutGrid, Loader2, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Bookmark, Check, ChevronLeft, ChevronRight, Copy, LayoutGrid, Loader2, SlidersHorizontal, Sparkles, Telescope, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { BriefEdit } from '@/research-core/marketplace/brief';
@@ -22,8 +22,10 @@ import { DuplicateListings } from './DuplicateListings';
  * lives in the URL (?view=best|favorites|duplicates), so a property page and Back
  * return to exactly the same view and filters.
  */
-type View = 'all' | 'best' | 'favorites' | 'duplicates';
-const VIEWS: readonly View[] = ['all', 'best', 'favorites', 'duplicates'];
+type View = 'all' | 'best' | 'favorites' | 'duplicates' | 'paid';
+const VIEWS: readonly View[] = ['all', 'best', 'favorites', 'duplicates', 'paid'];
+/** View-owned filters: switching views sets them, the filter panel and "clear" never touch them. */
+const VIEW_FILTERS = ['fp_strongOnly', 'fp_duplicatesOnly', 'fp_socialOnly'];
 const FAVORITES_MAX = 60;
 
 /** Favorites of THIS search: the customer's saved keys that resolve to one of its properties. */
@@ -61,7 +63,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const [data, setData] = useState<SearchBrowsePage | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [retry, setRetry] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [counts, setCounts] = useState<{ all: number; best: number } | null>(null);
+  const [counts, setCounts] = useState<{ all: number; best: number; paid: number } | null>(null);
   const initialVersion = useRef(version), heading = useRef<HTMLDivElement>(null);
   const loadedQuery = useRef<string | null>(null);
   const saved = useSavedKeys();
@@ -80,7 +82,8 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
       loadedQuery.current = JSON.stringify([search.id, filterKey, page.page, page.revision, retry]);
       setData(page); setLoading(false);
       // The counts on the switch describe the whole search, not the current refinement.
-      if (!filters.strongOnly && !filters.duplicatesOnly) setCounts({ all: page.totalCurrent, best: page.summary.strong });
+      if (!filters.strongOnly && !filters.duplicatesOnly && !filters.socialOnly) setCounts({ all: page.totalCurrent, best: page.summary.strong, paid: page.facets.social ?? 0 });
+      else setCounts((c) => (c ? { ...c, paid: page.facets.social ?? c.paid } : c));
       if (!revision || page.page !== requestedPage) {
         const next = new URLSearchParams(params); next.set('revision', page.revision); next.set('page', String(page.page)); setParams(next, { replace: true });
       }
@@ -92,20 +95,22 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const update = (patch: Partial<ResultFilters>, page?: number) => { setParams(resultParams(params, patch, page)); if (page !== undefined) heading.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
   const openView = (v: View) => {
     const next = new URLSearchParams(params);
-    next.delete('fp_strongOnly'); next.delete('fp_duplicatesOnly'); next.set('page', '1');
+    for (const key of VIEW_FILTERS) next.delete(key);
+    next.set('page', '1');
     if (v === 'best') next.set('fp_strongOnly', 'true');
     if (v === 'duplicates') next.set('fp_duplicatesOnly', 'true');
+    if (v === 'paid') next.set('fp_socialOnly', 'true');
     if (v === 'all') next.delete('view'); else next.set('view', v);
     setParams(next);
     if (v === 'duplicates') setFiltersOpen(false);
   };
-  const reset = () => { const next = new URLSearchParams(params); for (const key of [...next.keys()]) if (key.startsWith('fp_') && key !== 'fp_strongOnly' && key !== 'fp_duplicatesOnly') next.delete(key); next.set('page', '1'); setParams(next); };
+  const reset = () => { const next = new URLSearchParams(params); for (const key of [...next.keys()]) if (key.startsWith('fp_') && !VIEW_FILTERS.includes(key)) next.delete(key); next.set('page', '1'); setParams(next); };
   const refresh = () => { const next = new URLSearchParams(params); next.delete('revision'); next.set('page', '1'); initialVersion.current = version; setParams(next); setRetry((n) => n + 1); };
   const changed = error === 'RESULTS_CHANGED' || version !== initialVersion.current;
   const showItems = !loading && !error && view !== 'favorites';
   const sorted = !!filters.sort && filters.sort !== 'RANKED';
   const flat = sorted || view !== 'all';
-  const activeFilters = Object.keys(filters).filter((key) => !['sort', 'section', 'strongOnly', 'duplicatesOnly'].includes(key)).length;
+  const activeFilters = Object.keys(filters).filter((key) => !['sort', 'section', 'strongOnly', 'duplicatesOnly', 'socialOnly'].includes(key)).length;
   const card = (p: PropertyView) => <PropertyCard key={p.key} p={p} t={t} brief={search.brief} searchId={search.id} transaction={search.brief.transactionType?.value ?? null} onOpen={() => onOpen(p)} compareSelected={compare.includes(p.key)} onToggleCompare={() => onToggleCompare(p)} />;
   const recommended = data && !flat ? data.items.filter((p) => isRecommended(assessProperty(p, search.brief))) : [];
   const others = data && !flat ? data.items.filter((p) => !recommended.includes(p)) : [];
@@ -139,6 +144,8 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
           {tab('all', t('fpv_tab_all'), counts?.all ?? (view === 'all' ? data?.totalCurrent ?? null : null), LayoutGrid)}
           {tab('best', t('fpv_tab_best'), counts?.best ?? (view === 'best' ? data?.total ?? null : null), Sparkles)}
           {tab('favorites', t('fpv_tab_favorites'), saved.ready ? favorites.items.length : null, Bookmark)}
+          {/* The paid search's own results: only once a campaign has delivered some (or while open). */}
+          {(counts?.paid ?? 0) > 0 || view === 'paid' ? tab('paid', t('fpv_tab_paid'), counts?.paid ?? (view === 'paid' ? data?.total ?? null : null), Telescope) : null}
         </nav>
         <button type="button" onClick={() => setFiltersOpen((o) => !o)} aria-expanded={filtersOpen} aria-controls="fp-filters-panel" data-action="toggle-filters"
           aria-label={t('fpv_filters')} title={t('fpv_filters')}
@@ -174,6 +181,13 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
       </div>
     ) : null}
 
+    {view === 'paid' ? (
+      <div className="space-y-1 rounded-2xl bg-[linear-gradient(160deg,#121A26_0%,#0C1119_70%)] p-4 text-white" data-results-view="paid">
+        <p className="inline-flex min-w-0 items-center gap-2 font-semibold"><Telescope className="h-4 w-4 shrink-0 text-[hsl(var(--gold))]" aria-hidden="true" /><span className="min-w-0">{t('fpv_paid_title')}</span></p>
+        <p className="max-w-[75ch] text-sm leading-relaxed text-white/70">{t('fpv_paid_body')}</p>
+      </div>
+    ) : null}
+
     {changed ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4" role="status"><p className="text-sm">{t('fpr_results_changed')}</p><button type="button" onClick={refresh} className="min-h-[44px] rounded-xl border border-border px-4 text-sm font-semibold">{t('fpr_refresh')}</button></div> : null}
     {error && error !== 'RESULTS_CHANGED' && view !== 'favorites' ? <div role="alert" className="space-y-3 rounded-2xl border border-border bg-card p-4"><p>{t('mps_error_generic')}</p><button type="button" onClick={() => setRetry((n) => n + 1)} className="min-h-[44px] rounded-xl border px-4">{t('fpr_retry')}</button></div> : null}
     {loading || (view === 'favorites' && favorites.loading && !favorites.items.length) ? <div role="status" className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />{t('fpr_loading')}</div> : null}
@@ -183,8 +197,8 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
         : <section className="space-y-2 rounded-2xl border border-dashed border-[hsl(var(--gold-border))] bg-card p-6 text-center" data-favorites-empty><Bookmark className="mx-auto h-6 w-6 text-[hsl(var(--gold-ink))]" aria-hidden="true" /><p className="font-display text-lg font-semibold">{t('fpv_fav_empty_title')}</p><p className="mx-auto max-w-[48ch] text-sm text-muted-foreground">{t('fpv_fav_empty_body')}</p></section>
     ) : null}
 
-    {showItems && data && data.total === 0 && (search.terminal || data.totalCurrent > 0) ? <section className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="mps-empty"><h2 id="mps-empty" className="font-display text-xl font-semibold">{t(data.totalCurrent ? 'fpr_filtered_empty' : 'mps_empty_title')}</h2><p className="max-w-[70ch] text-sm text-muted-foreground">{t(data.totalCurrent ? 'fpr_filtered_empty_body' : 'fpr_empty_hard')}</p><div className="flex flex-wrap gap-2">{data.totalCurrent ? <button type="button" onClick={() => { reset(); openView('all'); }} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('fpr_clear')}</button> : <><button type="button" onClick={() => onChangeCriteria({ field: 'area', value: null })} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_area')}</button><button type="button" onClick={() => onChangeCriteria({ field: 'price', value: null })} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_budget')}</button></>}</div></section> : null}
-    {showItems && data && flat && data.total > 0 ? <section aria-labelledby="mps-g-SORTED" className="space-y-3" data-results-group={view === 'all' ? 'SORTED' : view}><h2 id="mps-g-SORTED" className={view !== 'all' ? 'sr-only' : 'font-display text-lg font-semibold sm:text-xl'}>{view === 'best' ? t('fpv_best_title') : view === 'duplicates' ? t('fpv_dups_title') : t(`fpr_sort_${filters.sort}`)}</h2>{view === 'best' ? <p className="max-w-[75ch] text-sm text-muted-foreground">{t('fpv_best_body')}</p> : null}<div className="grid gap-4">{data.items.map(viewCard)}</div></section> : null}
+    {showItems && data && data.total === 0 && (search.terminal || data.totalCurrent > 0) ? <section className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="mps-empty"><h2 id="mps-empty" className="font-display text-xl font-semibold">{t(view === 'paid' ? 'fpv_paid_empty_title' : data.totalCurrent ? 'fpr_filtered_empty' : 'mps_empty_title')}</h2><p className="max-w-[70ch] text-sm text-muted-foreground">{t(view === 'paid' ? 'fpv_paid_empty_body' : data.totalCurrent ? 'fpr_filtered_empty_body' : 'fpr_empty_hard')}</p><div className="flex flex-wrap gap-2">{data.totalCurrent ? <button type="button" onClick={() => { reset(); openView('all'); }} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('fpr_clear')}</button> : <><button type="button" onClick={() => onChangeCriteria({ field: 'area', value: null })} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_area')}</button><button type="button" onClick={() => onChangeCriteria({ field: 'price', value: null })} className="min-h-[44px] rounded-xl border border-border px-4 text-sm">{t('mps_empty_budget')}</button></>}</div></section> : null}
+    {showItems && data && flat && data.total > 0 ? <section aria-labelledby="mps-g-SORTED" className="space-y-3" data-results-group={view === 'all' ? 'SORTED' : view}><h2 id="mps-g-SORTED" className={view !== 'all' ? 'sr-only' : 'font-display text-lg font-semibold sm:text-xl'}>{view === 'best' ? t('fpv_best_title') : view === 'duplicates' ? t('fpv_dups_title') : view === 'paid' ? t('fpv_paid_title') : t(`fpr_sort_${filters.sort}`)}</h2>{view === 'best' ? <p className="max-w-[75ch] text-sm text-muted-foreground">{t('fpv_best_body')}</p> : null}<div className="grid gap-4">{data.items.map(viewCard)}</div></section> : null}
     {showItems && recommended.length ? <section aria-labelledby="mps-g-REC" className="space-y-3" data-results-group="RECOMMENDED"><div><h2 id="mps-g-REC" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_rec_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_rec_body')}</p></div><div className="grid gap-4">{recommended.map(card)}</div></section> : null}
     {showItems && others.length ? <section aria-labelledby="mps-g-OTHER" className="space-y-3" data-results-group="OTHER"><div><h2 id="mps-g-OTHER" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_other_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_other_body')}</p></div><div className="grid gap-4">{others.map(card)}</div></section> : null}
     {showItems && data && data.total > 0 ? <div className="space-y-3 border-t border-border pt-5"><p className="text-center text-xs text-muted-foreground" role="status">{t('fpr_page_status', { from: (data.page - 1) * data.pageSize + 1, to: Math.min(data.page * data.pageSize, data.total), total: data.total })}</p><nav aria-label={t('fpr_pagination')} className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr"><button type="button" disabled={data.page === 1} onClick={() => update({}, data.page - 1)} aria-label={t('fpr_previous')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>{pageNumbers(data.page, data.pages).map((p, i) => p === 'gap' ? <span key={`gap-${i}`} className="px-1 text-muted-foreground" aria-hidden="true">…</span> : <button type="button" key={p} aria-label={t('fpr_go_page', { n: p })} aria-current={p === data.page ? 'page' : undefined} onClick={() => update({}, p)} className={`h-11 min-w-11 rounded-xl border px-2 text-sm font-semibold ${p === data.page ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]' : 'border-border hover:bg-muted'}`}>{p}</button>)}<button type="button" disabled={data.page === data.pages} onClick={() => update({}, data.page + 1)} aria-label={t('fpr_next')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></nav></div> : null}

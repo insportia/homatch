@@ -14,7 +14,7 @@
 // Pure and deterministic: the edge pipeline stores the result, and the owner's page
 // recomputes it on read for leads stored before this gate existed.
 
-import { classifyComment, classifyDemand, transactionUnconfirmed, type DemandReading, type DemandRole } from './demandClassifier.ts';
+import { buyerViaBroker, classifyComment, classifyDemand, transactionUnconfirmed, type DemandReading, type DemandRole } from './demandClassifier.ts';
 
 export type BuyerIntent =
   | 'ACTIVE_BUYER' | 'ACTIVE_TENANT' | 'PRICE_INQUIRY' | 'VIEWING_INQUIRY' | 'PROPERTY_INTEREST'
@@ -89,6 +89,8 @@ export function classifyBuyerIntent(input: IntentInput): IntentReading {
   if (has(reading, 'already_purchased')) return out('ALREADY_PURCHASED', 'EXCLUDED', 'already_purchased');
   if (has(reading, 'not_looking')) return out('NOT_LOOKING', 'EXCLUDED', 'not_looking');
   if (reading.role === 'SERVICE' || reading.role === 'JOB') return out('SERVICE_REQUEST', 'EXCLUDED', 'service');
+  /* A broker searching for a named client: demand to verify, never a qualified buyer. */
+  if (buyerViaBroker(reading)) return out(reading.transaction === 'RENT' ? 'ACTIVE_TENANT' : 'ACTIVE_BUYER', 'INTEREST', 'buyer_via_broker');
   if (reading.role === 'AGENT') return out('REAL_ESTATE_AGENT', 'EXCLUDED', 'agent');
   if (reading.role === 'SALE_OFFER' || reading.role === 'RENT_OFFER') return out('SELLER', 'EXCLUDED', 'seller');
 

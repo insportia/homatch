@@ -273,7 +273,7 @@ export interface TabPlacement {
   tab: 'direct' | 'interest';
   needsVerification: boolean;
   /** Why verification is needed, when the qualification recorded it (a seeker who never said buy or rent). */
-  reason?: 'TRANSACTION_UNCONFIRMED';
+  reason?: 'TRANSACTION_UNCONFIRMED' | 'BUYER_VIA_BROKER';
 }
 
 const OFFER_ROLES = new Set(['SALE_OFFER', 'RENT_OFFER', 'AGENT', 'SERVICE', 'JOB']);
@@ -281,11 +281,15 @@ const OFFER_ROLES = new Set(['SALE_OFFER', 'RENT_OFFER', 'AGENT', 'SERVICE', 'JO
 /** Where a lead is listed, or null when it is never listed. */
 export function placeLead(l: ClassifiedLead): TabPlacement | null {
   if (l.resultType === 'EXCLUDED') return null;
-  if (l.role && OFFER_ROLES.has(String(l.role).toUpperCase())) return null;
   const cat = l.match_category ?? null;
+  const limits = Array.isArray(l.qualification?.limitations) ? l.qualification!.limitations!.map(String) : [];
+  /* A broker searching for a named client (v10): a request through an intermediary, to verify. */
+  if (String(l.role ?? '').toUpperCase() === 'AGENT' && limits.includes('BUYER_VIA_BROKER') && cat !== 'REJECTED') {
+    return { tab: 'interest', needsVerification: true, reason: 'BUYER_VIA_BROKER' };
+  }
+  if (l.role && OFFER_ROLES.has(String(l.role).toUpperCase())) return null;
   if (cat === 'REJECTED') return null;
   /* A seeker who never said whether they buy or rent is never a qualified buyer or tenant. */
-  const limits = Array.isArray(l.qualification?.limitations) ? l.qualification!.limitations!.map(String) : [];
   if (limits.includes('TRANSACTION_UNCONFIRMED')) return { tab: 'interest', needsVerification: true, reason: 'TRANSACTION_UNCONFIRMED' };
   if (l.resultType === 'DIRECT') {
     return cat === 'STRONG' || cat === 'POTENTIAL' ? { tab: 'direct', needsVerification: false } : { tab: 'interest', needsVerification: true };

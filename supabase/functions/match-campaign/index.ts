@@ -134,7 +134,8 @@ Deno.serve(async (req: Request) => {
       // campaign cannot resolve its search languages without it.
       .select('id,user_id,title,matching_status,transaction_type,property_type,'
         + 'facts:property_facts!property_id(country_code,city,district,neighborhood,address,latitude,longitude,total_price,currency,'
-        + 'bedrooms,rooms,area,floor,total_floors,condition,building_type,new_build,parking,balcony,terrace,elevator,furnished,view)')
+        + 'bedrooms,rooms,area,floor,total_floors,condition,building_type,new_build,parking,balcony,terrace,elevator,furnished,view,'
+        + 'bathrooms,construction_status,heating,security,yard,air_conditioning,features,description,source_language)')
       .eq('id', propertyId)
       .eq('is_deleted', false)
       .maybeSingle();

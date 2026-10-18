@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { APIFY_ONLY_VIA_MEMO23, isRetiredProvider, retiredReason, RETIRED_PROVIDERS } from '../_shared/retiredProviders.ts';
 import { providerConfigured as apifyConfigured } from '../_shared/findBuyers/memo23Client.ts';
-import { drive, adminStop, adminRetry } from './driver.ts';
+import { drive, adminStop, adminRetry, finishCampaign, runClaimedSocialJob, assessCampaignTelegram } from './driver.ts';
 import { auditCommentCounts, verifyActor, requalifyCampaign } from '../_shared/findBuyers/admin.ts';
 
 // DATAFORSEO AND APIFY ARE RETIRED, AND THIS WORKER CAN NO LONGER REACH THEM.
@@ -109,6 +109,10 @@ Deno.serve(async (req: Request) => {
     /* The campaign discovery driver (see driver.ts): source jobs for
        TELEGRAM / TELEGRAM_SOURCES / FORUM, then classify, match, settle. */
     if (mode === 'drive') return json(await drive(db, baseUrl, serviceKey, body));
+    /* The driver's units of CPU-heavy work, each in its own request (driver.ts: CPU ISOLATION). */
+    if (mode === 'social_job') return json(await runClaimedSocialJob(db, String(body.jobId || ''), String(body.claimToken || '')));
+    if (mode === 'finish_campaign') return json(await finishCampaign(db, baseUrl, serviceKey, String(body.jobId || '')));
+    if (mode === 'assess_native_telegram') return json(await assessCampaignTelegram(db, String(body.jobId || '')));
     if (mode === 'reconcile') {
       // Reconcile re-read already-paid generic Apify datasets. Apify is live
       // again only for memo23 (Find Buyers), which books its own datasets;

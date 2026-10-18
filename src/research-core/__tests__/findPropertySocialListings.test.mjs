@@ -120,14 +120,15 @@ test('paid plan: every relevant Facebook group read once (no keyword), relevant 
     networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK', 'INSTAGRAM', 'VK'], providerBudgetMicros: 100_000_000, sources, actors: ACTORS,
   });
   const fb = plan.jobs.filter((j) => j.stage === 'FB_GROUP_POSTS');
-  /* 30 groups → 2 runs (25 + 5), each group read once; another city's groups and a jobs group never read. */
-  assert.equal(fb.length, 2);
+  /* A budget that affords it reads DEEP: 10 groups a run, up to the Actor's 100 posts per group
+     (30 groups → 3 runs); another city's groups and a jobs group are never read. */
+  assert.equal(fb.length, 3);
   const urls = new Set(fb.flatMap((j) => j.targets.map((t) => t.url)));
   assert.equal(urls.size, 30);
   assert.ok(![...urls].some((u) => /g90$|batumi|jobingeorgia/.test(u)), 'Batumi and unrelated groups are not read for a Tbilisi search');
-  assert.ok(fb.every((j) => j.queries.length === 0 && j.query === null), 'the group Actor is never given a keyword');
-  assert.equal(fb[0].targets.length, 25);
-  assert.equal(fb[0].size, Math.min(MAX_ITEMS_PER_RUN, 25 * 100), 'a full run: max results per group, within the ceiling');
+  assert.ok(fb.every((j) => j.queries.length === 0 && j.query === null), 'the group Actor is never given an unverified keyword');
+  assert.deepEqual(fb.map((j) => j.targets.length), [10, 10, 10]);
+  assert.ok(fb.every((j) => j.size === 1000), '100 posts per group: the Actor maximum per group');
   const tgJobs = plan.jobs.filter((j) => j.stage === 'TELEGRAM_CHANNEL');
   assert.equal(tgJobs.length, 1);
   assert.equal(tgJobs[0].targets.length, 12);
@@ -154,6 +155,31 @@ test('paid plan within a small budget: one of each network first, the last run s
   assert.ok(last.size < 1000 && last.size >= 20, 'the run that no longer fit whole runs smaller');
   assert.ok(plan.skippedForBudget > 0);
   assert.equal(plan.jobs.reduce((n, j) => n + j.estimateMicros, 0), plan.estimatedMicros);
+});
+
+test('Facebook depth follows the budget: breadth when tight, the Actor maximum per group when affordable', () => {
+  const groups = Array.from({ length: 53 }, (_, i) => fbGroup(i, 'Tbilisi'));
+  const search = { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka', 'ru', 'en'] };
+  const fbRuns = (budget) => planOfferJobs({ search, networks: ['FACEBOOK'], providerBudgetMicros: budget, sources: groups, actors: ACTORS })
+    .jobs.filter((j) => j.stage === 'FB_GROUP_POSTS');
+  /* $5 (provider $3.15): 25 groups a run — as many groups as possible, ~40 posts each. */
+  const tight = fbRuns(3_150_000);
+  assert.equal(tight[0].targets.length, 25);
+  /* Enough for every group at 100 posts (53 × 100 = 5300 posts ≈ $8.0): 10 groups a run. */
+  const deep = fbRuns(12_600_000);
+  assert.deepEqual(deep.map((j) => j.targets.length), [10, 10, 10, 10, 10, 3]);
+  const posts = deep.reduce((n, j) => n + j.size, 0);
+  assert.equal(posts, 5300, 'every group read to the Actor maximum');
+});
+
+test('the group Actor gets a keyword ONLY when its `search` field is verified in the registry contract', () => {
+  const groups = Array.from({ length: 5 }, (_, i) => fbGroup(i, 'Tbilisi'));
+  const search = { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka', 'en'] };
+  const plan = (verifiedFields) => planOfferJobs({ search, networks: ['FACEBOOK'], providerBudgetMicros: 10_000_000, sources: groups,
+    actors: { ...ACTORS, FB_GROUP_POSTS: { ...ACTORS.FB_GROUP_POSTS, verifiedFields } } }).jobs;
+  assert.ok(plan([]).every((j) => j.queries.length === 0), 'unverified: never');
+  assert.ok(plan(['onlyPostsNewerThan']).every((j) => j.queries.length === 0), 'another verified field does not unlock search');
+  assert.deepEqual(plan(['search']).map((j) => j.queries[0]), ['იყიდება ბინა', 'apartment for sale'], 'verified: one keyword run per language');
 });
 
 test('community relevance: proven offers first, real-estate names in, unrelated communities never paid for', () => {

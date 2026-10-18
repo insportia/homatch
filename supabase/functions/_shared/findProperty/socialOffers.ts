@@ -80,7 +80,7 @@ export async function loadOfferSettings(db: any): Promise<OfferSettings> {
 /** Actors as the planner sees them: ready = enabled, not quarantined, pricing verified and fresh. */
 export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Record<string, OfferActor>> {
   const { data, error } = await db.from('find_buyers_actor_registry')
-    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size,max_results')
+    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size,max_results,input_contract')
     .in('actor_key', ['FB_POST_SEARCH', 'FB_GROUP_POSTS', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'TELEGRAM_CHANNEL', 'TIKTOK', 'VK_POSTS_COMMENTS']);
   if (error) throw error;
   const fresh = (at: string | null) => Boolean(at) && Date.now() - Date.parse(String(at)) <= maxAgeDays * 86_400_000;
@@ -93,6 +93,7 @@ export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Reco
       startFeeMicros: Number(a.start_fee_micros ?? 0), pricePer1kMicros: Number(a.price_per_1k_micros ?? 0),
       probeSize: Math.max(1, Number(a.probe_size ?? 20)),
       maxResults: a.max_results != null ? Math.max(1, Number(a.max_results)) : undefined,
+      verifiedFields: verifiedFields(a.input_contract),
     };
   }
   return outMap;
@@ -307,9 +308,12 @@ export function offerInput(stage: OfferStage, meta: Record<string, any>, limit: 
   }
   const fit = (input: Record<string, unknown>) => fitToSchema({ ...(contract?.defaults ?? {}), ...input }, contract?.schemaProperties);
   switch (stage) {
-    case 'FB_GROUP_POSTS':
-      /* The groups' recent posts, read whole: `search` is never sent (unverified semantics; owner 2026-10-18). */
-      return buildInput('FB_GROUP_POSTS', { targetUrls: urls, size: limit, since }, contract);
+    case 'FB_GROUP_POSTS': {
+      /* The groups' recent posts, read whole. `search` only once its behaviour is VERIFIED
+         (input_contract.verifiedFields); a field merely listed in the schema is never relied on. */
+      const built = buildInput('FB_GROUP_POSTS', { targetUrls: urls, size: limit, since }, contract);
+      return queries[0] && verifiedFields(contract).includes('search') ? fit({ ...built.input, search: queries[0] }) : built;
+    }
     case 'TELEGRAM_CHANNEL':
       return buildInput('TELEGRAM_CHANNEL', { targetUrls: urls, size: limit, since }, contract);
     case 'IG_PROFILE_POSTS':
@@ -319,6 +323,14 @@ export function offerInput(stage: OfferStage, meta: Record<string, any>, limit: 
     default:
       return buildInput(stage as Stage, { query: queries[0] ?? meta.query ?? null, targetUrls: urls, targetUrl: urls[0] ?? null, size: limit, since }, contract);
   }
+}
+
+/** Input fields verified against a real run: registry input_contract.verifiedFields (array or {field: true}). */
+export function verifiedFields(contract: unknown): string[] {
+  const v = (contract as { verifiedFields?: unknown } | null)?.verifiedFields;
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string');
+  if (v && typeof v === 'object') return Object.entries(v as Record<string, unknown>).filter(([, ok]) => ok === true).map(([k]) => k);
+  return [];
 }
 
 /** Which of a batched run's communities a post came from (its group / channel / profile URL). */

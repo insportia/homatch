@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 let token = undefined;
 globalThis.Deno = { env: { get: (k) => (k === 'APIFY_API_TOKEN' ? token : undefined) } };
-const { executeOfferJob, finishOfferCampaign, loadOfferSettings, offerInput } = await import('../findProperty/socialOffers.ts');
+const { executeOfferJob, finishOfferCampaign, loadOfferSettings, offerInput, verifiedFields } = await import('../findProperty/socialOffers.ts');
 
 /** A tiny PostgREST stand-in: every call is recorded; answers come from `answer`. */
 function fakeDb(answer) {
@@ -180,4 +180,14 @@ test('a batched run reserves per community, and every post is stored under the g
       ['https://www.facebook.com/groups/a/posts/11/', 'src-a'], ['https://www.facebook.com/groups/b/posts/12/', 'src-b']]);
     assert.deepEqual(stored.map((r) => String(r.city).toLowerCase()), ['tbilisi', 'tbilisi']);
   } finally { globalThis.fetch = realFetch; }
+});
+
+test('`search` reaches the group Actor only when the registry contract marks it verified', () => {
+  const since = '2026-07-01T00:00:00.000Z';
+  const meta = { queries: ['იყიდება ბინა'], targets: [{ url: 'https://www.facebook.com/groups/a', sourceId: 'a', city: 'Tbilisi' }] };
+  assert.equal(offerInput('FB_GROUP_POSTS', meta, 100, since, FB_CONTRACT).input.search, undefined);
+  assert.equal(offerInput('FB_GROUP_POSTS', meta, 100, since, { ...FB_CONTRACT, verifiedFields: ['search'] }).input.search, 'იყიდება ბინა');
+  assert.equal(offerInput('FB_GROUP_POSTS', meta, 100, since, { ...FB_CONTRACT, verifiedFields: { search: true } }).input.search, 'იყიდება ბინა');
+  assert.equal(offerInput('FB_GROUP_POSTS', meta, 100, since, { ...FB_CONTRACT, verifiedFields: { search: false } }).input.search, undefined);
+  assert.deepEqual(verifiedFields(null), []);
 });

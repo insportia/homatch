@@ -52,6 +52,9 @@ export interface OfferActor {
   probeSize: number;
   /** The registry's per-run result cap (the reservation never asks for more). */
   maxResults?: number;
+  /** Optional input fields whose behaviour was VERIFIED against a real run (registry
+   *  input_contract.verifiedFields). A field listed in the schema but not here is never relied on. */
+  verifiedFields?: readonly string[];
 }
 
 export interface KnownOfferSource {
@@ -281,12 +284,18 @@ export function planOfferJobs(input: {
   const add = (j: PlannedOfferJob) => byNetwork.set(j.network, [...(byNetwork.get(j.network) ?? []), j]);
   const missing = (n: OfferNetwork, actorReady: boolean) => unavailable.push({ network: n, reason: actorReady ? 'NO_KNOWN_SOURCE' : 'NO_READY_ACTOR' });
 
-  /* Facebook: every relevant in-city group's RECENT POSTS, FB_GROUPS_PER_RUN groups a run, read
-     whole — no keyword is sent: the group Actor's `search` field has never been exercised in
-     production (owner, 2026-10-18: never assume it filters), and one read per group covers every
-     language at once. qualifyOffer keeps only real offers of the searched kind. Public post search
-     per language and agency Pages once their Actors are verified and enabled. */
+  /* Facebook: every relevant in-city group's RECENT POSTS, read whole — no keyword is sent unless
+     the group Actor's `search` field is VERIFIED (registry input_contract.verifiedFields): it has
+     never been exercised in production (owner, 2026-10-18: never assume it filters). One read per
+     group covers every language at once; qualifyOffer keeps only real offers of the searched kind.
+     The Actor returns posts newest-first, back to onlyPostsNewerThan (verified: 0 of 1664 posts
+     older than the floor), until the run's total maxItems — so DEPTH per group is posts per group.
+     A budget that can afford it reads FEWER groups per run (each up to the Actor's per-group
+     maximum) instead of leaving money unused; otherwise FB_GROUPS_PER_RUN a run, for breadth.
+     Public post search per language and agency Pages once their Actors are verified and enabled. */
+  let fbGroupJobs: (() => PlannedOfferJob[]) | null = null;
   if (wanted.has('FACEBOOK')) {
+    byNetwork.set('FACEBOOK', []); // Facebook keeps its turn first; its group runs are sized last
     const groupsActor = ready('FB_GROUP_POSTS');
     const searchActor = ready('FB_POST_SEARCH');
     const pagesActor = ready('FB_PAGE_POSTS');
@@ -294,9 +303,24 @@ export function planOfferJobs(input: {
     const pages = usable.filter((s) => s.network === 'FACEBOOK' && /page/i.test(s.kind));
     let planned = 0;
     if (groupsActor && groups.length) {
-      for (const c of chunk(groups, FB_GROUPS_PER_RUN)) {
-        add(job('FB_GROUP_POSTS', groupsActor, { targets: c, priority: 100 })); planned += 1;
-      }
+      const verifiedSearch = (groupsActor.verifiedFields ?? []).includes('search') && keywords.length > 0;
+      const groupRuns = (perRun: number) => (verifiedSearch
+        /* Verified in-group keyword search: keyword-major, every group before a second keyword. */
+        ? keywords.flatMap((kw) => chunk(groups, perRun).map((c) => job('FB_GROUP_POSTS', groupsActor, { query: kw.query, queries: [kw.query], language: kw.language, targets: c, priority: 100 })))
+        : chunk(groups, perRun).map((c) => job('FB_GROUP_POSTS', groupsActor, { targets: c, priority: 100 })));
+      fbGroupJobs = () => {
+        const perGroup = Math.max(1, groupsActor.maxResults ?? groupsActor.probeSize * 3);
+        const deepPerRun = Math.max(1, Math.min(FB_GROUPS_PER_RUN, Math.floor(MAX_ITEMS_PER_RUN / perGroup)));
+        const others = [...byNetwork.values()].flat().filter((j) => j.stage !== 'FB_GROUP_POSTS');
+        const cost = (js: PlannedOfferJob[]) => js.reduce((n, j) => n + j.estimateMicros, 0);
+        /* The deepest reading the budget affords for EVERY group (fewest groups a run); else breadth. */
+        for (let perRun = deepPerRun; perRun < FB_GROUPS_PER_RUN; perRun += 1) {
+          const runs = groupRuns(perRun);
+          if (cost(runs) + cost(others) <= input.providerBudgetMicros) return runs;
+        }
+        return groupRuns(FB_GROUPS_PER_RUN);
+      };
+      planned += 1;
     }
     if (searchActor) {
       const place = [input.search.districts[0], input.search.city].filter(Boolean).join(' ');
@@ -338,6 +362,8 @@ export function planOfferJobs(input: {
     }
   }
   if (wanted.has('VK')) missing('VK', Boolean(ready('VK_WALL')));
+  /* Facebook group runs, sized now that every other network's runs are known (first in its list). */
+  if (fbGroupJobs) byNetwork.set('FACEBOOK', [...fbGroupJobs(), ...(byNetwork.get('FACEBOOK') ?? [])]);
 
   /* Fit to the budget: round-robin across networks so one network cannot take it all. */
   const order: PlannedOfferJob[] = [];

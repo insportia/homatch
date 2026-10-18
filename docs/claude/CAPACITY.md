@@ -31,9 +31,9 @@ Source: the read-only production capacity audit of 2026-10-18, and the hardening
 | P1-3 | Verify 2.2 s polling × full-row reads + advance per poll | **PARTLY FIXED** — no second full read on contended polls; no unguarded advance. Cadence and payload unchanged (product behaviour; options in §6) |
 | P1-4 | 30 s sweep scanned every completed report's JSON | **FIXED** — `20261114090000`: partial index + literal-predicate function; research-agent falls back until it is applied |
 | P1-5 | No enforced global provider spend ceiling; free quotas non-atomic | **NOT CHANGED** — needs owner thresholds (§7). Signed-in assistant turns are wallet-billed (`ai_chat_billing_enabled=true` [PROD]) |
-| P2-6 | `cron.job_run_details` 322 MB = 62% of DB | **READY, APPROVAL REQUIRED** — `20261114120000` (port of PR #136) deletes run history older than 7 days |
+| P2-6 | `cron.job_run_details` 322 MB = 62% of DB | **REMOVED FROM THIS RELEASE** (zero-data-loss rule, 2026-10-18): the retention migration deletes history and is not on this branch. Proposal stays on PR #136; not urgent (Pro includes 8 GB disk) |
 | P2-7 | Railway idle polling ≈ 2.2 M edge calls / month | **NOT CHANGED** — lowering it delays free-search start; ~$4/month at today's rates |
-| P2-8 | Single replica, unbounded in-memory state | **PARTLY FIXED** — finished jobs evicted after 6 h; debug screenshots after 1 h. Replicas → §5 |
+| P2-8 | Single replica, unbounded in-memory state | **NOT CHANGED** — an eviction was written and then withdrawn: property-mode Verify reads finished worker jobs back, and a late read could have lost official results. A safe version needs research-agent to acknowledge the harvest first. Replicas → §5 |
 | P2-9 | memo23 slot count asymmetric (Find Buyers counts only its own table) | **NOT CHANGED** — lives in `find_buyers_reserve_actor_run` (Find Buyers workstream, PR #251 active). Proposed fix in §6 |
 | P2-10 | Wallet reservation sweeper never scheduled | **NOT CHANGED** — releasing "expired" reservations of long campaigns could forfeit legitimate charges; 0 affected today [PROD]. Owner decision |
 | P2-11 | Verify budget gate / advance lease failed open | **FIXED** — gate ERROR defers the stage (nothing launched, paused, charged or released); lease error skips the step |
@@ -123,53 +123,98 @@ Rates sources:
 
 ## 7. Owner approvals required
 
-1. **Apply the four migrations** in order: `20261114090000`, `20261114100000`, `20261114110000`, `20261114120000`.
-   - The first three are additive or behaviour-preserving.
-   - **`20261114120000` deletes cron run history older than 7 days** (~240k rows, ~300 MB). It is operational log only, but irreversible.
-2. **Railway deploy** of `homatch-official-worker`. The auth change refuses user-token calls to the worker; no product caller uses them.
+1. **Apply three migrations** in order: `20261114090000`, `20261114100000`, `20261114110000`.
+   - The first two are additive: new indexes and new functions, with no row changes.
+   - The third re-creates `claim_marketplace_worker_runs`. Production's body is byte-identical to the repo's `20261010100000` body (md5 `2aa4d3035c73ab287426d65ebd7acf1f`, verified 2026-10-18), so only the claim order changes.
+   - **No migration in this release deletes or rewrites a row.**
+2. **Railway deploy** of `homatch-official-worker`. The only effective change is the auth rule: user tokens on privileged routes return 401. No product caller uses them.
 3. **Edge deploy**: research-agent, spend-cap-check, outreach-send. Email Studio picks up `_shared/spend_cap.ts` on its next deploy.
 4. **Behaviour changes to confirm**:
    - Verify: a budget-gate error delays a stage instead of running it.
    - Verify: cancel stops a running Developer Ads Actor.
-   - Outreach and Email Studio: an unreadable spend total refuses the send instead of allowing it.
+   - Outreach and Email Studio: an unreadable spend total refuses the send.
    - Free Find Property: claim order is fair across requesters.
-5. **Decisions**:
+5. **Decisions, separate from this release**:
+   - cron history retention (PR #136, deletes history);
    - spend cap off / compute upgrade (§5);
    - global provider thresholds (§6.4);
    - wallet sweeper policy;
    - `homatch-official-worker-v2`;
    - a separate AI TALK service vs the CLAUDE.md rule;
-   - `SPEECH_MAX_SESSIONS` value before AI TALK is re-enabled.
+   - `SPEECH_MAX_SESSIONS` value.
 
-## 8. Release manifest and rollback
+## 8. Data integrity and regression protection
 
-**Release plan**: REPO_FULL (`npm run homatch:release:plan`). Components: RAILWAY, VERIFY, BILLING, EDGE.
-- New SQL objects are owned by no component.
-- The cron migration touches a platform-global object.
+**Not touched by this release** (verified by diff against main):
+- Cloudflare R2 and Supabase Storage: no file, bucket, object key, URL, policy or credential.
+- Design Studio and the RunPod pipeline.
+- Wallet, payment and credit SQL or edge code.
+- Publishing, MyHome.ge, Find Buyers.
+- Every frontend file.
+- Every Railway variable.
+- The v2 service.
+
+**Changed services**:
+
+| Service | Change | Data written differently? |
+|---|---|---|
+| `homatch-official-worker` | token-only auth; optional `SPEECH_MAX_SESSIONS` (unset) | no |
+| research-agent | indexed sweep read (same rows); lease/gate errors delay instead of running; one fewer read per contended poll; cancel stops a running Developer Ads Actor under the lease and records its cost | cancel: a `cost_events` row for the aborted Actor (previously its cost went unrecorded); `result_json` is never written by cancel |
+| spend-cap-check, outreach-send, Email Studio (shared `spend_cap.ts`) | correct monthly sum; refuse on unknown spend; service-role-only endpoint | no (outreach / email sending are OFF in production) |
+| Postgres | two indexes, two read-only functions, claim order | no |
+
+**Production regression baseline** (read-only counts, 2026-10-18 05:38 UTC). Re-check after deploy: every count may only grow, and the sums must not change except through customer activity.
+
+| research_jobs | COMPLETE | Find Property searches / runs / listings | Find Buyers campaigns / assessments / actor runs | matches / UNLOCKED |
+|---|---|---|---|---|
+| 99 | 76 | 31 / 81 / 5,591 | 10 / 3,333 / 253 | 75 / 14 |
+
+| deal-room documents | Design Studio projects / walkthroughs | credit accounts / balance sum / reserved | credit_ledger / reservations / payments | cost_events / USD |
+|---|---|---|---|---|
+| 12 | 24 / 35 | 24 / 99,607.33 / 0 | 153 / 43 / 2 | 1,758 / 44.2995 |
+
+| storage.objects / buckets | R2 registry (`storage_objects`) | cron jobs | service controls |
+|---|---|---|---|
+| 292 / 16 | 11,661 | 18 | 20 |
+
+**Remaining risks** (accepted only with approval):
+- A persistent `verify_budget_gate` or advance-lease error now **delays** billed Verify stages instead of running them unguarded. It is logged (`verify_budget_gate` / `verify_advance_lease`); production Postgres logged 0 errors in the 24 h before.
+- The fair claim costs 30–55 ms per claim at a 10,000-run backlog [LOCAL].
+- The capacity limits in §4 are unchanged by this release except fairness and DB load.
+
+## 9. Release manifest and rollback
+
+**Release plan**: REPO_FULL (`npm run homatch:release:plan`). Components: RAILWAY, VERIFY, BILLING, EDGE. The new SQL objects are owned by no component.
 
 | Piece | Deploy | Proof owed | Rollback |
 |---|---|---|---|
-| Worker (`official-worker/`) | Railway auto-deploy of `homatch-official-worker` on merge | deployment SUCCESS at the merge commit; `/health`; one Verify job end-to-end; a request with a user JWT → 401 | redeploy previous deployment `b5d45b88` |
+| Worker (`official-worker/`) | Railway auto-deploy of `homatch-official-worker` on merge | deployment SUCCESS at the merge commit; `/health`; one Verify job end-to-end; a user JWT on `/research` → 401 | redeploy previous deployment `b5d45b88` |
 | research-agent, spend-cap-check, outreach-send | CI edge deploy | PROVEN_EXACT | redeploy the previous artifact |
-| `20261114090000` | migration runner (approved) | ledger row; `research_jobs_market_refresh_running` grants | drop function + 2 indexes (in file header) |
+| `20261114090000` | migration runner (approved) | ledger row; grants | drop function + 2 indexes (in file header) |
 | `20261114100000` | migration runner | ledger row | drop function |
-| `20261114110000` | migration runner | ledger row; a free search completes | re-run the 20261010100000 function body; drop index |
-| `20261114120000` | migration runner, **after owner approval** | `cron.job` has `homatch-cron-history-retention`; table shrinking | `cron.unschedule(...)`; drop function. **Deleted rows are not restorable** |
+| `20261114110000` | migration runner | ledger row; a free search completes | re-run the `20261010100000` function body (byte-identical to production today); drop index |
 
-**Order**: (1) migrations 090000 → 110000; (2) merge (edge + Railway auto-deploy); (3) 120000 after approval.
-- Edge code tolerates the functions being absent (PGRST202 fallbacks).
-- Worker and edge changes are independent.
+**Order**:
+1. Migrations, in order.
+2. Merge (edge + Railway auto-deploy).
+3. Re-check the §8 baseline.
 
-**Tests run on the branch**:
-- unit/static `npm test`: 9,328 pass / 0 fail;
-- `npm run lint` incl. production build: pass;
-- `homatch:check`: pass;
-- worker suite: 655 pass / 0 fail / 2 skipped, incl. 15 new;
-- `check:edge`: pass;
-- `homatch:migrations`: PASS;
-- `tests/sql/marketplace_fair_claim/run.sh`: PASS;
-- `tests/sql/cron_history_retention/run.sh`: PASS.
+Edge code tolerates the new functions being absent (PGRST202 fallbacks). Worker and edge changes are independent. **Every step is reversible; no step deletes data.**
 
-Mobile and browser suites run in the PR validation.
+## 10. Test results (branch head after merging main @ `d1f18bbb`)
 
-**Product-output evidence**: no report, ranking, matching, pricing, credit or translation code changed. The existing Verify (845), shared-edge, Find Buyers, Find Property and pricing suites pass unchanged, apart from one premise update (`marketRefresh.test.mjs` now pins the same columns and filter in their new place).
+| Check | Result |
+|---|---|
+| `npm test` (unit + static) | 9,332 pass / 0 fail |
+| `npm run lint` (incl. production build) | pass |
+| `npm run homatch:check` (typecheck, i18n, affected suites) | pass |
+| `npm run check:edge` | all 102 edge functions pass |
+| `npm run homatch:migrations` | PASS |
+| worker `node --test` | 649 pass / 0 fail / 2 skipped (9 new) |
+| `tests/sql/marketplace_fair_claim/run.sh` (old vs new definition, throwaway PG16) | PASS |
+| mobile / browser suites | run by the PR validation — **not yet run** |
+
+**Product-output evidence**:
+- No report, ranking, matching, pricing, credit, translation or storage code changed.
+- The existing Verify, shared-edge, Find Buyers, Find Property and pricing suites pass unchanged, except one premise update: `marketRefresh.test.mjs` pins the same columns and filter in their new place.
+- The one existing guard that touched a changed path ("cancelling discards collected evidence") was kept, and the code was adapted to it.

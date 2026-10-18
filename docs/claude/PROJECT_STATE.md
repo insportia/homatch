@@ -8,10 +8,12 @@ MATTERS right now, verify against the live systems, not this file)
 ## Production hardening from the capacity audit (branch claude/architecture-viewer-repair-mqdt18, 2026-10-18) — PR NOT YET OPEN, NOTHING DEPLOYED
 
 Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release manifest, rollback,
-owner approvals). Six commits: worker token-only auth + bounded memory; Verify indexed sweep +
-fail-closed advance lease; Verify budget-gate ERROR defers + cancel stops Developer Ads + spend-cap
-SQL sum; fair claim for free portal searches; cron history retention (approval required);
-SPEECH_MAX_SESSIONS. Four migrations 20261114090000..120000 — none applied. Release tier REPO_FULL.
+owner approvals, regression baseline). Worker token-only auth (+ optional SPEECH_MAX_SESSIONS);
+Verify indexed sweep + fail-closed advance lease + budget-gate ERROR defers + cancel stops
+Developer Ads; spend-cap SQL sum; fair claim for free portal searches. Three migrations
+20261114090000..110000 — none applied, none deletes or rewrites a row. Withdrawn under the
+zero-data-loss rule: cron history retention (stays on PR #136) and worker finished-job eviction.
+Release tier REPO_FULL.
 
 ## Service Control Center EXPANSION — every manageable product (PR #240 + release fix #247, 2026-10-17) — MERGED, DEPLOYED, MIGRATION APPLIED
 

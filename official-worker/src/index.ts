@@ -71,12 +71,6 @@ let speechStatus: { available: boolean; reason: string | null; model: string | n
   { available: false, reason: 'NOT_STARTED', model: null, language: null };
 const speechHealth = () => speechStatus;
 const debugJobs = new Map<string, any>();
-// Debug screenshots are an operator aid; keep them an hour, not forever.
-const DEBUG_JOB_RETENTION_MS = 60 * 60 * 1000;
-setInterval(() => {
-  const cutoff = Date.now() - DEBUG_JOB_RETENTION_MS;
-  for (const [id, d] of debugJobs) if (Date.parse(d?.createdAt ?? '') < cutoff) debugJobs.delete(id);
-}, 10 * 60 * 1000).unref();
 
 // Privileged routes: WORKER_TOKEN bearer only (server-to-server). A Supabase
 // user session is NOT accepted — see http/workerAuth.ts (capacity audit P1 #1).

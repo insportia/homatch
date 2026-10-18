@@ -5,6 +5,15 @@
  * {{var}} placeholders survive in every locale.
  */
 export const DEEP_SEARCH_RESULTS_STRINGS = {
+  /* A campaign's results rebuilt after it ended, not provably identical (campaignResults.ts provenance). */
+  fpc_rebuilt_note: [
+    'These results were rebuilt from the posts we stored after the campaign ended. Some posts may have been updated since, so details can differ from what the campaign first found.',
+    'ეს შედეგები კამპანიის დასრულების შემდეგ შენახული განცხადებებიდან აღდგა. ზოგი განცხადება შეიძლება მას შემდეგ განახლდა, ამიტომ დეტალები შეიძლება განსხვავდებოდეს კამპანიის მიერ თავდაპირველად ნაპოვნისგან.',
+    'Эти результаты восстановлены из сохранённых публикаций после окончания кампании. Некоторые публикации могли с тех пор обновиться, поэтому детали могут отличаться от первоначально найденного.',
+    'Bu sonuçlar, kampanya bittikten sonra kaydettiğimiz gönderilerden yeniden oluşturuldu. Bazı gönderiler o zamandan beri güncellenmiş olabilir; ayrıntılar kampanyanın ilk bulduğundan farklı olabilir.',
+    'أُعيد بناء هذه النتائج من المنشورات التي حفظناها بعد انتهاء الحملة. ربما حُدّثت بعض المنشورات منذ ذلك الحين، لذا قد تختلف التفاصيل عمّا وجدته الحملة أول مرة.',
+    'התוצאות האלה שוחזרו מהפוסטים ששמרנו אחרי שהקמפיין הסתיים. ייתכן שחלק מהפוסטים עודכנו מאז, ולכן הפרטים עשויים להיות שונים ממה שהקמפיין מצא בתחילה.',
+  ],
   /* Paid Deep Search paused (owner, 2026-10-18): the workspace subtitle without the paid hint. */
   fpx_header_sub_free: [
     'Tell us what home you want, in your own words. We search for free.',

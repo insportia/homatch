@@ -14,13 +14,33 @@
  */
 import {
   CAMPAIGN_MATCH_VERSION, criteriaFromSearchRequest, districtsNamed, judgeCampaign, offerPriceUsd,
-  type CampaignCriteria, type CampaignFunnel, type CampaignOffer, type MatchCategory,
+  type CampaignCriteria, type CampaignFunnel, type CampaignOffer, type MatchCategory, type ToUsd,
 } from '../../../../src/research-core/findProperty/campaignMatch.ts';
+import { converterFrom, ratesFromPayload, ratesFromTable } from '../../../../src/research-core/match/structured-gates.ts';
+import { fetchCurrentFx } from '../fx.ts';
 import { draftFromStoredPlan } from '../../../../src/research-core/discovery/discovery-plan.ts';
 import { normalisePlan } from '../../../../src/research-core/discovery/search-plan.ts';
 import { PAID_DISCOVERY_POLICY_ID } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
-const OFFER_COLUMNS = 'id,canonical_url,transaction,property_type,city,district,sale_amount,sale_currency,rent_amount,rent_currency,area_sqm,rooms,bedrooms,floor,total_floors,title,description,published_at,content_fingerprint,image_urls,field_origins';
+const OFFER_COLUMNS = 'id,canonical_url,transaction,property_type,city,district,sale_amount,sale_currency,rent_amount,rent_currency,area_sqm,rooms,bedrooms,floor,total_floors,title,description,published_at,content_fingerprint,image_urls,field_origins,updated_at';
+
+/**
+ * USD for asking prices AS OF the campaign's end, from the platform's dated rates only:
+ * fx_rates rows in effect then (≤ 7 days old, ratesFromTable) and the NBG's official rates
+ * when they are dated within 3 days of it (ratesFromPayload). No rate → null → the price check
+ * reads UNVERIFIED; a property is never rejected on an invented or stale rate.
+ */
+async function campaignToUsd(db: any, asOf: number): Promise<{ toUsd: ToUsd; sources: string[] }> {
+  const { data } = await db.from('fx_rates').select('base_currency,quote_currency,rate,effective_from')
+    .lte('effective_from', new Date(asOf).toISOString()).order('effective_from', { ascending: false }).limit(200);
+  const latest = new Map<string, any>();
+  for (const r of (data ?? []) as any[]) { const k = `${r.base_currency}_${r.quote_currency}`; if (!latest.has(k)) latest.set(k, r); }
+  const table = ratesFromTable([...latest.values()], asOf);
+  const nbg = ratesFromPayload(await fetchCurrentFx(), asOf);
+  const converter = converterFrom(table, nbg);
+  const sources = [...(Object.keys(table).length ? ['fx_rates'] : []), ...(nbg ? ['NBG'] : [])];
+  return { toUsd: (amount, currency) => (currency === 'USD' ? amount : converter.convert(amount, currency, 'USD')?.amount ?? null), sources };
+}
 
 /** The request a campaign answers: its marketplace search's confirmed brief, else its stored plan. */
 export async function campaignCriteria(db: any, run: { subscription_id: string | null; user_id: string; offer_plan: any }): Promise<{ criteria: CampaignCriteria; originalText: string | null; searchId: string | null }> {
@@ -42,13 +62,13 @@ export async function campaignCriteria(db: any, run: { subscription_id: string |
 }
 
 /** What a post said, kept with its verdict so the results page never changes after the fact. */
-function snapshotOf(o: CampaignOffer, c: CampaignCriteria, duplicates: CampaignOffer[]): Record<string, unknown> {
+function snapshotOf(o: CampaignOffer, c: CampaignCriteria, duplicates: CampaignOffer[], toUsd: ToUsd): Record<string, unknown> {
   const text = String(o.description ?? '');
   const origins = (o.field_origins ?? {}) as Record<string, unknown>;
   return {
     url: o.canonical_url, network: origins.network ?? null,
     title: o.title ?? null, excerpt: text.slice(0, 700),
-    priceUsd: offerPriceUsd(o, c.transaction),
+    priceUsd: offerPriceUsd(o, c.transaction, toUsd),
     price: c.transaction === 'RENT' ? (o.rent_amount != null ? { amount: o.rent_amount, currency: o.rent_currency } : null)
       : (o.sale_amount != null ? { amount: o.sale_amount, currency: o.sale_currency } : null),
     areaSqm: o.area_sqm, rooms: o.rooms, bedrooms: o.bedrooms, floor: o.floor ?? null, totalFloors: o.total_floors ?? null,
@@ -58,12 +78,21 @@ function snapshotOf(o: CampaignOffer, c: CampaignCriteria, duplicates: CampaignO
   };
 }
 
-export async function persistCampaignResults(db: any, runId: string): Promise<CampaignFunnel | null> {
+/**
+ * PROVENANCE. supply_observations rows are mutable: a later run that reads the same post
+ * upserts it (source_id, external_id) and takes over field_origins.memo23ActorRunId. So the
+ * rows are written once, and the outcome says how they were captured:
+ *   CAMPAIGN_END  judged at the campaign's own settlement;
+ *   RECONSTRUCTED judged later from stored posts — `verified` only when every actor run still
+ *                 owns exactly the offers it booked (offers_found) and no post changed after
+ *                 the campaign ended. Otherwise the page says the results were rebuilt.
+ */
+export async function persistCampaignResults(db: any, runId: string, captured: 'CAMPAIGN_END' | 'RECONSTRUCTED' = 'RECONSTRUCTED'): Promise<CampaignFunnel | null> {
   const { data: run } = await db.from('discovery_runs').select('id,user_id,subscription_id,offer_plan,pricing_policy,started_at,completed_at').eq('id', runId).maybeSingle();
   if (!run || run.pricing_policy !== PAID_DISCOVERY_POLICY_ID) return null;
   const { criteria } = await campaignCriteria(db, run);
-  const { data: actorRuns } = await db.from('find_property_actor_runs').select('id,items_fetched,results_billed').eq('discovery_run_id', runId);
-  const ars = (actorRuns ?? []) as Array<{ id: string; items_fetched: number | null; results_billed: number | null }>;
+  const { data: actorRuns } = await db.from('find_property_actor_runs').select('id,items_fetched,results_billed,offers_found').eq('discovery_run_id', runId);
+  const ars = (actorRuns ?? []) as Array<{ id: string; items_fetched: number | null; results_billed: number | null; offers_found: number | null }>;
   const fetched = ars.reduce((n, a) => n + Math.max(Number(a.items_fetched ?? 0), Number(a.results_billed ?? 0)), 0);
   const offers: CampaignOffer[] = [];
   if (ars.length) {
@@ -78,12 +107,23 @@ export async function persistCampaignResults(db: any, runId: string): Promise<Ca
   /* Judged AS OF the campaign's end (its start while it runs): a backfill months later gives the
      same verdicts — "posted in the last 30 days" is about the campaign, not about today. */
   const asOf = Date.parse(String(run.completed_at ?? run.started_at ?? '')) || Date.now();
-  const { verdicts, funnel } = judgeCampaign(offers, criteria, fetched, asOf);
+  const { toUsd, sources } = await campaignToUsd(db, asOf);
+  const { verdicts, funnel } = judgeCampaign(offers, criteria, fetched, asOf, toUsd);
+  const endedAt = Date.parse(String(run.completed_at ?? ''));
+  const owned = new Map<string, number>();
+  for (const o of offers) { const a = String((o.field_origins as any)?.memo23ActorRunId ?? ''); owned.set(a, (owned.get(a) ?? 0) + 1); }
+  const booked = ars.reduce((n, a) => n + Number(a.offers_found ?? 0), 0);
+  const changedAfterEnd = Number.isFinite(endedAt) ? offers.filter((o: any) => Date.parse(String(o.updated_at ?? '')) > endedAt).length : 0;
+  const provenance = {
+    captured, bookedOffers: booked, attributedOffers: offers.length, changedAfterEnd,
+    verified: ars.every((a) => (owned.get(a.id) ?? 0) === Number(a.offers_found ?? 0)) && changedAfterEnd === 0,
+    fxSources: sources,
+  };
   const byId = new Map(offers.map((o) => [o.id, o]));
   const rows = verdicts.map((v, i) => ({
     run_id: runId, observation_id: v.offerId, category: v.category, rank: i + 1, score: v.score,
     checks: v.checks, reject_reasons: v.rejectReasons, duplicate_ids: v.duplicateIds,
-    snapshot: snapshotOf(byId.get(v.offerId)!, criteria, v.duplicateIds.map((d) => byId.get(d)!).filter(Boolean)),
+    snapshot: snapshotOf(byId.get(v.offerId)!, criteria, v.duplicateIds.map((d) => byId.get(d)!).filter(Boolean), toUsd),
     match_version: CAMPAIGN_MATCH_VERSION,
   }));
   /* Idempotent: an upsert of the same deterministic rows, then only rows this campaign no longer
@@ -100,7 +140,7 @@ export async function persistCampaignResults(db: any, runId: string): Promise<Ca
     if (error) throw error;
   }
   /* The only other write: the campaign's own counts. Wallet, reservations, ledger and provider runs are never touched here. */
-  const { error: upError } = await db.from('discovery_runs').update({ campaign_outcome: { ...funnel, criteria, judgedAsOf: new Date(asOf).toISOString() } }).eq('id', runId);
+  const { error: upError } = await db.from('discovery_runs').update({ campaign_outcome: { ...funnel, criteria, judgedAsOf: new Date(asOf).toISOString(), provenance } }).eq('id', runId);
   if (upError) throw upError;
   return funnel;
 }

@@ -21,7 +21,7 @@
 import { comparePlaces, resolvePlace } from '../normalize/place.ts';
 import { descriptionSignals } from '../marketplace/description-signals.ts';
 
-export const CAMPAIGN_MATCH_VERSION = 'fp-campaign-match-1';
+export const CAMPAIGN_MATCH_VERSION = 'fp-campaign-match-2';
 
 export type MatchCategory = 'EXACT' | 'POTENTIAL' | 'ALTERNATIVE' | 'REJECTED';
 export type CheckState = 'MATCH' | 'UNVERIFIED' | 'FAIL';
@@ -99,18 +99,21 @@ export interface CampaignFunnel {
   available: number;
 }
 
-/* Wallet-independent display conversion for comparing asking prices (same table as the
-   community parser's readers use): GEL and EUR posts compared in USD. */
-const FX_TO_USD: Record<string, number> = { USD: 1, GEL: 0.37, EUR: 1.08 };
+/* An asking price in USD, through a converter the CALLER supplies from current, dated rates
+   (fx_rates / the NBG, src/research-core/match/structured-gates.ts). No rate table lives here:
+   without a trustworthy rate a non-USD price is unknown — the price check reads UNVERIFIED and
+   never rejects a property on a guessed rate. */
+export type ToUsd = (amount: number, currency: string) => number | null;
+export const usdOnly: ToUsd = (amount, currency) => (currency === 'USD' ? amount : null);
 const STALE_MS = 30 * 86_400_000;
 const NEAR = 0.15;
 
-export function offerPriceUsd(o: Pick<CampaignOffer, 'sale_amount' | 'sale_currency' | 'rent_amount' | 'rent_currency'>, transaction: 'SALE' | 'RENT'): number | null {
-  const amount = transaction === 'RENT' ? o.rent_amount : o.sale_amount;
+export function offerPriceUsd(o: Pick<CampaignOffer, 'sale_amount' | 'sale_currency' | 'rent_amount' | 'rent_currency'>, transaction: 'SALE' | 'RENT', toUsd: ToUsd = usdOnly): number | null {
+  const amount = Number(transaction === 'RENT' ? o.rent_amount : o.sale_amount);
   const currency = String((transaction === 'RENT' ? o.rent_currency : o.sale_currency) ?? '').toUpperCase();
-  const rate = FX_TO_USD[currency];
-  if (amount == null || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || rate == null) return null;
-  return Math.round(Number(amount) * rate);
+  if (!Number.isFinite(amount) || amount <= 0 || !/^[A-Z]{3}$/.test(currency)) return null;
+  const usd = toUsd(amount, currency);
+  return usd != null && Number.isFinite(usd) && usd > 0 ? Math.round(usd) : null;
 }
 
 const OLD_BUILD = /ძველ(?:ად)?\s*აშენებულ|ძველ(?:ი)?\s*(?:კორპუს|ფონდ)|старый\s+фонд|вторичк|сталинк|хрущ[её]вк|\bold[- ]build|\bsoviet[- ]era\b/iu;
@@ -189,7 +192,7 @@ export function districtsNamed(text: string | null | undefined): string[] {
 }
 
 /** One offer against the request. Pure. */
-export function judgeOffer(o: CampaignOffer, c: CampaignCriteria, now = Date.now()): Omit<OfferVerdict, 'duplicateIds'> {
+export function judgeOffer(o: CampaignOffer, c: CampaignCriteria, now = Date.now(), toUsd: ToUsd = usdOnly): Omit<OfferVerdict, 'duplicateIds'> {
   const checks: Check[] = [];
   const tx = String(o.transaction ?? '').toUpperCase();
   checks.push({ key: 'transaction', state: !tx ? 'UNVERIFIED' : tx === c.transaction ? 'MATCH' : 'FAIL', expected: c.transaction, actual: tx || null });
@@ -216,7 +219,7 @@ export function judgeOffer(o: CampaignOffer, c: CampaignCriteria, now = Date.now
     const t = String(o.property_type ?? '').toUpperCase();
     checks.push({ key: 'propertyType', state: !t ? 'UNVERIFIED' : t === c.propertyType ? 'MATCH' : 'FAIL', expected: c.propertyType, actual: t || null });
   }
-  const priceUsd = offerPriceUsd(o, c.transaction);
+  const priceUsd = offerPriceUsd(o, c.transaction, toUsd);
   for (const ck of [
     numericCheck('price', priceUsd, c.priceUsd, ''),
     numericCheck('area', o.area_sqm, c.areaSqm, ' m²'),
@@ -276,7 +279,7 @@ const known = (o: CampaignOffer) => [o.property_type, o.sale_amount ?? o.rent_am
  * Every stored offer of one campaign, judged and deduplicated: one verdict per flat,
  * the best-described post standing for its reposts. Sorted best first.
  */
-export function judgeCampaign(offers: CampaignOffer[], c: CampaignCriteria, fetched: number, now = Date.now()): { verdicts: OfferVerdict[]; funnel: CampaignFunnel } {
+export function judgeCampaign(offers: CampaignOffer[], c: CampaignCriteria, fetched: number, now = Date.now(), toUsd: ToUsd = usdOnly): { verdicts: OfferVerdict[]; funnel: CampaignFunnel } {
   const groups = new Map<string, CampaignOffer[]>();
   for (const o of offers) {
     const key = repostKey(o) ?? (o.content_fingerprint || o.canonical_url || o.id);
@@ -286,7 +289,7 @@ export function judgeCampaign(offers: CampaignOffer[], c: CampaignCriteria, fetc
   const verdicts: OfferVerdict[] = [];
   for (const g of groups.values()) {
     const lead = [...g].sort((a, b) => known(b) - known(a) || String(b.published_at ?? '').localeCompare(String(a.published_at ?? '')))[0];
-    verdicts.push({ ...judgeOffer(lead, c, now), duplicateIds: g.filter((o) => o !== lead).map((o) => o.id) });
+    verdicts.push({ ...judgeOffer(lead, c, now, toUsd), duplicateIds: g.filter((o) => o !== lead).map((o) => o.id) });
   }
   verdicts.sort((a, b) => RANK[a.category] - RANK[b.category] || b.score - a.score);
   const count = (cat: MatchCategory) => verdicts.filter((v) => v.category === cat).length;

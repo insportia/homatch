@@ -91,7 +91,10 @@ test('backfill is idempotent, judged as of the campaign, and cannot charge or ca
   assert.ok(!RESULTS.includes('rpc('), 'campaignResults.ts calls no RPC at all');
   /* Deterministic over time: judged as of the campaign's end. */
   assert.match(persist, /const asOf = Date\.parse\(String\(run\.completed_at \?\? run\.started_at \?\? ''\)\) \|\| Date\.now\(\);/);
-  assert.match(persist, /judgeCampaign\(offers, criteria, fetched, asOf\)/);
+  assert.match(persist, /judgeCampaign\(offers, criteria, fetched, asOf, toUsd\)/);
+  /* Prices in USD only through dated rates as of the campaign (fx_rates in effect then, NBG within 3 days). */
+  assert.match(RESULTS, /\.lte\('effective_from', new Date\(asOf\)\.toISOString\(\)\)/);
+  assert.match(RESULTS, /const nbg = ratesFromPayload\(await fetchCurrentFx\(\), asOf\);/);
   /* The lazy backfill only runs for an ENDED campaign without counts; settlement happened earlier, once (claimSettlement). */
   assert.match(RESULTS, /if \(!outcome && ENDED\.has\(String\(run\.status\)\)\) outcome = await persistCampaignResults/);
   assert.match(SETTLE, /if \(!\(await claimSettlement\(db, run\.id\)\)\) \{/);
@@ -105,4 +108,22 @@ test('probe-first and the Telegram output gate act before anything is reserved',
   assert.match(OFFERS, /outputVerified: a\.output_contract_verified_at != null,/);
   const PLAN = read('src/research-core/findProperty/offerCampaign.ts');
   assert.match(PLAN, /export const OUTPUT_VERIFICATION_REQUIRED: ReadonlySet<string> = new Set\(\['TELEGRAM_CHANNEL'\]\);/);
+});
+
+test('provenance: results are captured at settlement; a later rebuild is verified or says so', () => {
+  const persist = RESULTS.slice(RESULTS.indexOf('export async function persistCampaignResults'), RESULTS.indexOf('const ENDED'));
+  assert.match(SETTLE, /persistCampaignResults\(db, runId, 'CAMPAIGN_END'\)/, 'settlement captures them as the campaign ends');
+  assert.match(RESULTS, /if \(!outcome && ENDED\.has\(String\(run\.status\)\)\) outcome = await persistCampaignResults\(db, runId\)/, 'a lazy read is a RECONSTRUCTED capture (the default)');
+  /* Verified only when every actor run still owns exactly what it booked and nothing changed after the end. */
+  assert.match(persist, /verified: ars\.every\(\(a\) => \(owned\.get\(a\.id\) \?\? 0\) === Number\(a\.offers_found \?\? 0\)\) && changedAfterEnd === 0,/);
+  assert.match(persist, /Date\.parse\(String\(o\.updated_at \?\? ''\)\) > endedAt/);
+  assert.match(persist, /campaign_outcome: \{ \.\.\.funnel, criteria, judgedAsOf: new Date\(asOf\)\.toISOString\(\), provenance \}/);
+  assert.match(PAGE, /o\.provenance\.captured === 'RECONSTRUCTED' && !o\.provenance\.verified[\s\S]*fpc_rebuilt_note/, 'an unproven rebuild is labelled on the page');
+});
+
+test('the test-campaign minimum override is scoped to Find Property inside the shared billing module', () => {
+  assert.match(BILLING, /export const MIN_VIABLE_OVERRIDE_PRODUCTS: ReadonlySet<string> = new Set\(\['FIND_PROPERTY'\]\);/);
+  assert.match(BILLING, /const override = MIN_VIABLE_OVERRIDE_PRODUCTS\.has\(opts\.productCode\) \? Number\(opts\.minViableOverrideCredits\) : Number\.NaN;/);
+  /* Its one caller passes it only for an allowed test start. */
+  assert.match(RUN, /productCode: 'FIND_PROPERTY',[\s\S]{0,400}\.\.\.\(isTest \? \{ minViableOverrideCredits: test\.credits \} : \{\}\),/);
 });

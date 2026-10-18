@@ -42,6 +42,8 @@ export interface CampaignOutcome {
   fetched: number; candidates: number; unique: number; duplicates: number;
   exact: number; potential: number; alternative: number; rejected: number;
   rejectedBy: Partial<Record<string, number>>; available: number;
+  /** How these results were captured (campaignResults.ts): at settlement, or rebuilt later. */
+  provenance?: { captured: 'CAMPAIGN_END' | 'RECONSTRUCTED'; verified: boolean; bookedOffers: number; attributedOffers: number; changedAfterEnd: number; fxSources: string[] };
 }
 export interface CampaignSettlement {
   status: 'HELD' | 'SETTLING' | 'SETTLED' | 'RELEASED' | string;

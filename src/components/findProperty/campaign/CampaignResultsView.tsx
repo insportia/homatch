@@ -73,6 +73,9 @@ export function CampaignResultsView({ runId }: { runId: string }) {
         <div className="min-w-0 space-y-4">
           <CriteriaSummary t={t} criteria={data.run.criteria} originalText={data.run.originalText} />
           {running ? <Surface className="flex items-center gap-2 p-4 text-sm" role="status"><Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />{t('fpc_still_running')}</Surface> : null}
+          {/* Rebuilt from stored posts after the campaign, and not provably identical to what it found. */}
+          {o?.provenance && o.provenance.captured === 'RECONSTRUCTED' && !o.provenance.verified
+            ? <p className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground" role="note" data-campaign-rebuilt>{t('fpc_rebuilt_note')}</p> : null}
           {o ? (
             <>
               <div role="tablist" aria-label={t('fpc_views')} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">

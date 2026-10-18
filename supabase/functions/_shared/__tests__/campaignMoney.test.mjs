@@ -155,6 +155,17 @@ test('a budget below the product minimum is refused', async () => {
   assert.equal(state.reservations.size, 0);
 });
 
+test('the Find Property test override never lowers another product\'s minimum (Find Buyers here)', async () => {
+  const { db, state } = fakeDb({ balance: 500 });
+  const grant = await campaign(db, { authorizedMaxCredits: 20, minViableOverrideCredits: 20 });
+  assert.equal(grant.ok, false);
+  assert.equal(grant.reason, 'BELOW_MIN_VIABLE_BUDGET', 'FIND_CLIENTS keeps its 50-credit minimum');
+  assert.equal(state.reservations.size, 0, 'nothing reserved');
+  assert.ok(!state.calls.includes('wallet_reserve'), 'the wallet is never asked');
+  const { MIN_VIABLE_OVERRIDE_PRODUCTS } = await import('../billing.ts');
+  assert.deepEqual([...MIN_VIABLE_OVERRIDE_PRODUCTS], ['FIND_PROPERTY']);
+});
+
 test('a repeated start with the same key reserves once', async () => {
   const { db, state } = fakeDb({ balance: 100 });
   const [a, b] = await Promise.all([campaign(db), campaign(db)]);

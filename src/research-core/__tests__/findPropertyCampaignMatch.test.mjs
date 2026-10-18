@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import {
   judgeOffer, judgeCampaign, criteriaFromSearchRequest, statedBuildingStatus, districtsNamed, offerPriceUsd, repostKey,
 } from '../findProperty/campaignMatch.ts';
+import { converterFrom, ratesFromPayload } from '../match/structured-gates.ts';
+import { readFileSync } from 'node:fs';
+const SRC = readFileSync(new URL('../findProperty/campaignMatch.ts', import.meta.url), 'utf8');
 
 const NOW = Date.parse('2026-10-18T10:00:00Z');
 /* The production campaign's request (f8833757), as its marketplace search stored it. */
@@ -57,9 +60,24 @@ test('price, area and city are hard filters', () => {
   assert.equal(batumi.category, 'REJECTED'); assert.ok(batumi.rejectReasons.includes('CITY'));
   assert.deepEqual(judgeOffer(offer({ district: 'saburtalo' }), C, NOW).rejectReasons, ['DISTRICT']);
   assert.deepEqual(judgeOffer(offer({ property_type: 'HOUSE' }), C, NOW).rejectReasons, ['PROPERTY_TYPE']);
-  /* GEL is compared in USD: 540,000 GEL ≈ $199,800 is over budget. */
-  assert.deepEqual(judgeOffer(offer({ sale_amount: 540000, sale_currency: 'GEL' }), C, NOW).rejectReasons, ['PRICE']);
-  assert.equal(offerPriceUsd({ sale_amount: 400000, sale_currency: 'GEL' }, 'SALE'), 148000);
+  /* GEL is compared in USD only through a current, dated rate the caller supplies (fx_rates / NBG). */
+  const nbg = converterFrom(ratesFromPayload({ USD_GEL: { rate: 2.7, asOf: new Date(NOW - 86_400_000).toISOString() } }, NOW));
+  const toUsd = (amount, currency) => (currency === 'USD' ? amount : nbg.convert(amount, currency, 'USD')?.amount ?? null);
+  assert.deepEqual(judgeOffer(offer({ sale_amount: 540000, sale_currency: 'GEL' }), C, NOW, toUsd).rejectReasons, ['PRICE'], '540,000 GEL = $200,000: over budget');
+  assert.equal(offerPriceUsd({ sale_amount: 270000, sale_currency: 'GEL' }, 'SALE', toUsd), 100000);
+});
+
+test('no trustworthy rate: a non-USD price is UNVERIFIED, never converted on a guessed rate, never a rejection', () => {
+  for (const currency of ['GEL', 'EUR']) {
+    const v = judgeOffer(offer({ sale_amount: 540000, sale_currency: currency }), C, NOW);
+    assert.equal(v.checks.find((k) => k.key === 'price').state, 'UNVERIFIED', currency);
+    assert.ok(!v.rejectReasons.includes('PRICE'), `${currency}: never rejected for price without a rate`);
+    assert.equal(offerPriceUsd({ sale_amount: 400000, sale_currency: currency }, 'SALE'), null);
+  }
+  /* A stale rate is refused by the shared FX gate, so the price stays unknown. */
+  const stale = converterFrom(ratesFromPayload({ USD_GEL: { rate: 2.7, asOf: new Date(NOW - 30 * 86_400_000).toISOString() } }, NOW));
+  assert.equal(stale.convert(270000, 'GEL', 'USD'), null);
+  assert.doesNotMatch(SRC, /0\.37|1\.08|FX_TO_USD/, 'no hardcoded exchange rate in the matcher');
 });
 
 test('missing information is UNVERIFIED, never invented: such a post is a POTENTIAL match', () => {

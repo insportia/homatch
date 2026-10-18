@@ -20640,6 +20640,9 @@ const en = {
   fpc_admin_test_title: 'Temporary {{credits}}-credit test campaign',
   fpc_admin_test_body: 'Admins and {{testers}} listed testers only. Provider budget {{provider}} credits (63%); same reservation, settlement and release.',
   fpc_admin_save_failed: 'The setting could not be saved.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpc_rebuilt_note: 'These results were rebuilt from the posts we stored after the campaign ended. Some posts may have been updated since, so details can differ from what the campaign first found.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -41194,6 +41197,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'დროებითი {{credits}}-კრედიტიანი სატესტო კამპანია',
   fpc_admin_test_body: 'მხოლოდ ადმინისტრატორები და {{testers}} ჩამოთვლილი ტესტერი. პროვაიდერის ბიუჯეტი {{provider}} კრედიტი (63%); იგივე დაბლოკვა, ანგარიშსწორება და დაბრუნება.',
   fpc_admin_save_failed: 'პარამეტრის შენახვა ვერ მოხერხდა.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpc_rebuilt_note: 'ეს შედეგები კამპანიის დასრულების შემდეგ შენახული განცხადებებიდან აღდგა. ზოგი განცხადება შეიძლება მას შემდეგ განახლდა, ამიტომ დეტალები შეიძლება განსხვავდებოდეს კამპანიის მიერ თავდაპირველად ნაპოვნისგან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61739,6 +61745,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'Временная тестовая кампания на {{credits}} кредитов',
   fpc_admin_test_body: 'Только администраторы и {{testers}} тестировщиков из списка. Бюджет провайдеров {{provider}} кредитов (63%); тот же резерв, расчёт и возврат.',
   fpc_admin_save_failed: 'Не удалось сохранить настройку.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpc_rebuilt_note: 'Эти результаты восстановлены из сохранённых публикаций после окончания кампании. Некоторые публикации могли с тех пор обновиться, поэтому детали могут отличаться от первоначально найденного.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -82282,6 +82291,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'Geçici {{credits}} kredilik test kampanyası',
   fpc_admin_test_body: 'Yalnızca yöneticiler ve listedeki {{testers}} test kullanıcısı. Sağlayıcı bütçesi {{provider}} kredi (%63); aynı bloke, hesaplaşma ve iade.',
   fpc_admin_save_failed: 'Ayar kaydedilemedi.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpc_rebuilt_note: 'Bu sonuçlar, kampanya bittikten sonra kaydettiğimiz gönderilerden yeniden oluşturuldu. Bazı gönderiler o zamandan beri güncellenmiş olabilir; ayrıntılar kampanyanın ilk bulduğundan farklı olabilir.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -102825,6 +102837,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'حملة تجريبية مؤقتة بقيمة {{credits}} رصيد',
   fpc_admin_test_body: 'للمشرفين و{{testers}} من المختبرين المدرجين فقط. ميزانية المزوّد {{provider}} رصيد (63%)؛ مع الحجز والتسوية والإعادة نفسها.',
   fpc_admin_save_failed: 'تعذّر حفظ الإعداد.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpc_rebuilt_note: 'أُعيد بناء هذه النتائج من المنشورات التي حفظناها بعد انتهاء الحملة. ربما حُدّثت بعض المنشورات منذ ذلك الحين، لذا قد تختلف التفاصيل عمّا وجدته الحملة أول مرة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -123368,6 +123383,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'קמפיין ניסיון זמני של {{credits}} קרדיטים',
   fpc_admin_test_body: 'מנהלים ו־{{testers}} בודקים רשומים בלבד. תקציב ספקים {{provider}} קרדיטים (63%); אותה הקפאה, סגירה והחזרה.',
   fpc_admin_save_failed: 'לא ניתן היה לשמור את ההגדרה.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpc_rebuilt_note: 'התוצאות האלה שוחזרו מהפוסטים ששמרנו אחרי שהקמפיין הסתיים. ייתכן שחלק מהפוסטים עודכנו מאז, ולכן הפרטים עשויים להיות שונים ממה שהקמפיין מצא בתחילה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

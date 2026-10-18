@@ -164,7 +164,7 @@ export async function finalizeDiscoveryRun(
 /** Never fatal: a campaign whose judging fails still settles; its page judges it on first read. */
 async function judgeCampaignOffers(db: any, runId: string): Promise<number | null> {
   try {
-    return (await persistCampaignResults(db, runId))?.available ?? null;
+    return (await persistCampaignResults(db, runId, 'CAMPAIGN_END'))?.available ?? null;
   } catch (error) {
     await runEvent(db, runId, 'CAMPAIGN_RESULTS_FAILED', { message: errorText(error) }).catch(() => undefined);
     return null;

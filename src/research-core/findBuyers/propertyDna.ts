@@ -2,7 +2,7 @@
 // from stored fields. A missing field stays missing (listed in `missing`) and
 // is never guessed; tolerances turn exact facts into comparable bands.
 
-import { propertyFamily, type PropertyFamily } from './propertyFamily.ts';
+import { propertyFamily, propertySubtype, type PropertyFamily, type PropertySubtype } from './propertyFamily.ts';
 import { streetOfAddress } from './places.ts';
 
 export interface PropertyFactsInput {
@@ -52,6 +52,8 @@ export interface PropertyDna {
   propertyType: string | null;
   /** What a seeker asks for: apartment, house, land, commercial space or parking. */
   family: PropertyFamily;
+  /** Villa, office, shop, warehouse, farmland …: the words a search names (propertyFamily.ts). */
+  subtype?: PropertySubtype | null;
   bedrooms: number | null;
   rooms: number | null;
   areaSqm: number | null;
@@ -122,6 +124,7 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
     coordinates: lat && lng ? { lat, lng } : null,
     propertyType,
     family: propertyFamily(propertyType, f.title),
+    subtype: propertySubtype(propertyType, f.title),
     bedrooms,
     rooms,
     areaSqm,
@@ -141,11 +144,12 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
 }
 
 /** Coarse on purpose: two flats that would be searched identically share a key. */
-export function dnaKeyOf(d: Pick<PropertyDna, 'transaction' | 'countryCode' | 'city' | 'district' | 'propertyType' | 'bedrooms' | 'areaSqm' | 'price'> & { family?: PropertyFamily }): string {
+export function dnaKeyOf(d: Pick<PropertyDna, 'transaction' | 'countryCode' | 'city' | 'district' | 'propertyType' | 'bedrooms' | 'areaSqm' | 'price'> & { family?: PropertyFamily; subtype?: PropertySubtype | null }): string {
   const bucket = (v: number | null, step: number) => (v == null ? 'x' : String(Math.round(v / step)));
   return [
     d.transaction, d.countryCode, (d.city ?? 'x').toLowerCase(), (d.district ?? 'x').toLowerCase(),
     /* A parking place is stored as OTHER: its family keeps it apart from other OTHERs. */
-    d.family === 'PARKING' ? 'PARKING' : d.propertyType ?? 'x', d.bedrooms ?? 'x', bucket(d.areaSqm, 15), bucket(d.price, d.transaction === 'RENT' ? 200 : 20000),
+    /* A subtype searches other words (a warehouse is not a shop): its own key, so a cached plan is not shared. */
+    d.family === 'PARKING' ? 'PARKING' : d.subtype && d.subtype !== d.propertyType ? `${d.propertyType ?? 'x'}:${d.subtype}` : d.propertyType ?? 'x', d.bedrooms ?? 'x', bucket(d.areaSqm, 15), bucket(d.price, d.transaction === 'RENT' ? 200 : 20000),
   ].join('|');
 }

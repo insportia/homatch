@@ -218,7 +218,7 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     });
     const { data: marked } = await db.from('find_buyers_actor_runs').update({
       status: 'RUNNING', provider_run_id: started.runId, dataset_id: started.datasetId, started_at: new Date().toISOString(),
-      reason: { arm: meta.arm, reason: meta.reason, step: meta.step ?? 0, query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, sourceId: meta.sourceId ?? null, droppedInputKeys: dropped, since },
+      reason: { arm: meta.arm, reason: meta.reason, step: meta.step ?? 0, query: meta.query ?? null, ...(keywordList?.length ? { queries: keywordList } : {}), targetUrl: meta.targetUrl ?? null, sourceId: meta.sourceId ?? null, droppedInputKeys: dropped, since },
     }).eq('id', runId).is('cost_booked_at', null).select('id');
     if (!Array.isArray(marked) || marked.length !== 1) {
       /* The campaign finished while the run was being created (its cost was

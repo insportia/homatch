@@ -22,7 +22,7 @@
 // Learning is bounded: query performance (find_buyers_query_stats) can only
 // re-order and retire queries proven useless, never invent new intent.
 
-import { FAMILY_NOUN, propertyFamily } from './propertyFamily.ts';
+import { FAMILY_BUY, FAMILY_RENT, propertyFamily, propertyNoun } from './propertyFamily.ts';
 import { SEARCH_LANGUAGES, type SearchLanguage } from './languages.ts';
 import { DISTRICT_NAMES, NEARBY_DISTRICTS, AREA_PARENT, placeNamesFor, normKey } from './places.ts';
 import type { PropertyDna } from './propertyDna.ts';
@@ -172,30 +172,6 @@ const RENT: Record<SearchLanguage, Partial<Record<PersonaKey | 'PLACE', Q[]>>> =
   tr: { PLACE: [({ city }) => `${city} kiralık daire arıyorum`] },
 };
 
-/*
- * Not an apartment: a house, land, commercial space or a parking place. Apartment
- * phrasings ("ვყიდულობ ბინას", "куплю квартиру") found apartment seekers for a land
- * plot. These carry the same explicit purchase / rental verbs with the family's own
- * noun (FAMILY_NOUN), two per language.
- */
-type FQ = (v: { noun: string; place: string; city: string }) => string;
-const FAMILY_BUY: Record<SearchLanguage, FQ[]> = {
-  ka: [({ noun, place }) => `ვყიდულობ ${noun} ${place}`, ({ noun, city }) => `ვიყიდი ${noun} ${city}`],
-  ru: [({ noun, place }) => `куплю ${noun} ${place}`, ({ noun, city }) => `хочу купить ${noun} в ${city}`],
-  en: [({ noun, place }) => `looking to buy a ${noun} in ${place}`, ({ noun, city }) => `want to buy ${noun} ${city}`],
-  ar: [({ noun, city }) => `أبحث عن ${noun} للشراء في ${city}`, ({ noun, city }) => `أريد شراء ${noun} في ${city}`],
-  he: [({ noun, city }) => `מחפש ${noun} לקנייה ב${city}`, ({ noun, city }) => `רוצה לקנות ${noun} ב${city}`],
-  tr: [({ noun, city }) => `${city} ${noun} almak istiyorum`, ({ noun, city }) => `${city} ${noun} satın almak istiyorum`],
-};
-const FAMILY_RENT: Record<SearchLanguage, FQ[]> = {
-  ka: [({ noun, place }) => `ვიქირავებ ${noun} ${place}`, ({ noun, city }) => `ვეძებ ${noun} ქირით ${city}`],
-  ru: [({ noun, place }) => `сниму ${noun} ${place}`, ({ noun, city }) => `ищу ${noun} в аренду ${city}`],
-  en: [({ noun, place }) => `looking to rent a ${noun} in ${place}`, ({ noun, city }) => `want to rent a ${noun} in ${city}`],
-  ar: [({ noun, city }) => `أبحث عن ${noun} للإيجار في ${city}`, ({ noun, city }) => `أريد استئجار ${noun} في ${city}`],
-  he: [({ noun, city }) => `מחפש ${noun} להשכרה ב${city}`, ({ noun, city }) => `רוצה לשכור ${noun} ב${city}`],
-  tr: [({ noun, city }) => `${city} ${noun} kiralamak istiyorum`, ({ noun, city }) => `${city} ${noun} kiralamak için arıyorum`],
-};
-
 const ROOMS: Record<SearchLanguage, (rooms: number | null, beds: number | null) => { rooms: string; beds: string }> = {
   ka: (r) => ({ rooms: r ? `${r} ოთახიან ბინას` : 'ბინას', beds: r ? `${r} ოთახიანი ბინა` : 'ბინა' }),
   ru: (r) => ({ rooms: r ? `${r}-комнатную квартиру` : 'квартиру', beds: r ? `${r}-комнатная квартира` : 'квартира' }),
@@ -270,8 +246,8 @@ export function buildBuyerStrategy(input: StrategyInput): BuyerStrategy {
     };
     const family = dna.family ?? propertyFamily(dna.propertyType);
     if (family !== 'APARTMENT') {
-      /* A house, land, commercial space or parking: the family's own noun, never the apartment personas. */
-      const noun = FAMILY_NOUN[family][lang];
+      /* A house, land, commercial space or parking: the subtype's or family's own noun, never the apartment personas. */
+      const noun = propertyNoun(family, dna.subtype, lang);
       for (const f of (dna.transaction === 'RENT' ? FAMILY_RENT : FAMILY_BUY)[lang]) push('PLACE', () => f({ noun, place, city }));
       continue;
     }

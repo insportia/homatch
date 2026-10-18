@@ -9,7 +9,7 @@ const core = await import('../.tstest-build/runtime/pdfParseCore.mjs');
 
 function makePdf(pages) {
   const objs = []; const add = (s) => { objs.push(s); return objs.length; };
-  const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'); const kids = []; const pagesId = 2 + pages * 2 + 1;
+  const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'); const kids = []; const pagesId = 1 + pages * 2 + 1; // font, then (content, page) per page, then the page tree
   for (let p = 0; p < pages; p++) { let b = 'BT /F1 9 Tf 40 800 Td 11 TL\n'; for (let l = 0; l < 60; l++) b += `(Page ${p} line ${l}: registry row ${p * 60 + l}) Tj T*\n`; b += 'ET';
     const c = add(`<< /Length ${b.length} >>\nstream\n${b}\nendstream`); kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Contents ${c} 0 R /Resources << /Font << /F1 ${font} 0 R >> >> >>`)); }
   add(`<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${pages} >>`); const cat = add(`<< /Type /Catalog /Pages ${objs.length} 0 R >>`);
@@ -33,7 +33,7 @@ test('threaded parse returns exactly what the in-process parser returns, both mo
 
 test('a 200-page parse does not hold the event loop: a 20 ms timer stays on time', async () => {
   const pdf = makePdf(200);
-  await off.parsePdfOffLoop(makePdf(2)); // threads up
+  await off.parsePdfOffLoop(makePdf(12)); // threads up
   const late = []; let last = performance.now(); let on = true;
   const tick = () => { const n = performance.now(); late.push(n - last - 20); last = n; if (on) setTimeout(tick, 20); };
   setTimeout(tick, 20);

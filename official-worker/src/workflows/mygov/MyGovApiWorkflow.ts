@@ -1,8 +1,8 @@
-﻿import {createRequire} from 'node:module';
+﻿import { parsePdfOffLoop } from '../../runtime/pdfOffLoop.js';
 import {Buffer} from 'node:buffer';
 // Repository's local Buffer shim exposes only the string overload.
 const bufferFromBytes=Buffer.from as unknown as (bytes:Uint8Array)=>Buffer;
-const parseSourcePdf=(bytes:Buffer)=>createRequire(import.meta.url)('pdf-parse/lib/pdf-parse.js')(bytes);
+const parseSourcePdf=(bytes:Buffer)=>parsePdfOffLoop(bytes,'default');
 import {createHash} from 'node:crypto';
 import {search,selectRecord,resumeRecord,type DocumentReference,type CaptchaRequired} from './service176/napr.js';
 import type {CaptchaContext,CaptchaResolution} from '../../captcha/captchaService.js';

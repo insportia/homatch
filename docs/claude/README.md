@@ -24,6 +24,7 @@ Then, by task, read the smallest thing that answers the question:
 | Test tiers, harness env | `TESTING.md` |
 | Current production/deferred state | `PROJECT_STATE.md` |
 | Sharp edges | `KNOWN_RISKS.md` |
+| Capacity, scaling limits, owner approvals for scale | `CAPACITY.md` |
 | System narrative | `../ARCHITECTURE.md` · `../DATABASE.md` · `../DEPLOYMENT.md` |
 
 The generated maps carry a `head:` stamp; `homatch:context` reports when they

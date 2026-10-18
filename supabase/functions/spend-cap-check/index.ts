@@ -4,6 +4,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { checkSpendCap } from '../_shared/spend_cap.ts';
+import { isServiceCaller } from '../_shared/serviceCaller.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +13,13 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  // Service role only (capacity audit 2026-10-18): it is deployed without the
+  // gateway JWT check and answered anyone with HOMATCH's month-to-date spend
+  // and cap utilisation per provider. No browser or edge code calls it over
+  // HTTP — outreach-send and Email Studio use checkSpendCap in process.
+  if (!isServiceCaller(req.headers.get('Authorization'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,

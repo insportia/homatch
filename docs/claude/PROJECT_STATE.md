@@ -5,6 +5,17 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Production hardening from the capacity audit (PR #253, branch claude/architecture-viewer-repair-mqdt18, 2026-10-18)
+
+Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release manifest, rollback,
+owner approvals, regression baseline). Worker token-only auth (+ optional SPEECH_MAX_SESSIONS);
+Verify indexed sweep + fail-closed advance lease + budget-gate ERROR defers + cancel stops
+Developer Ads; spend-cap SQL sum. Two migrations 20261115090000..100000 (the fair claim moved
+to PR #266) — none applied, none deletes or rewrites a row. Withdrawn under the
+zero-data-loss rule: cron history retention (stays on PR #136) and worker finished-job eviction.
+Also: AI TALK isolation (fewer new browser tasks while speech is open; PDFs parsed in worker
+threads; event-loop delay on /health). Release tier REPO_FULL.
+
 ## Find Buyers — universal Property DNA, taxonomy v10, tiers, precision matching (branch claude/nifty-hopper-snzn2d, 2026-10-18)
 
 - **Taxonomy** (`propertyFamily.ts` `SUBTYPES`): 20 subtypes across the five families. Each has six-language detection, an accusative noun and a nominative noun, and a compatibility group.
@@ -482,11 +493,13 @@ known, 5 read. Owner actions still open: Register & verify FB_POST_SEARCH, FB_PA
 
 - Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
   verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
-  research_jobs.client_request_id + advance lease). NOT applied to production.
-- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
-  sources as durable tasks; property mode always legacy.
+  research_jobs.client_request_id + advance lease). Applied (see Verify go-live above).
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded); production is "QUEUE"
+  (verified 2026-10-18). QUEUE = cadastral official sources as durable tasks; property mode
+  always legacy.
 - Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
-  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+  set in production; verify-queue ~9.2k invocations/day, 2026-10-18). Lanes HTTP/BROWSER, slots
+  `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS` (unset → defaults 12/3).
 - Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
   advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
 - CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.

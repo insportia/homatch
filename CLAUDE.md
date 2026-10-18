@@ -62,10 +62,11 @@ An index is never proof of production state.
   `verify_developer_ads` (Admin switch), budget and `DEVELOPER_ADS_VERIFY` cost
   rows — separate from Find Buyers orchestration, and stopped by the same
   APIFY switch. No other Verify use of Apify.
-  Third scope (owner, 2026-10-16): Find Property's paid social OFFER campaign
-  (Facebook / Instagram / Telegram / VK posts offering a property, for one
-  buyer's or tenant's confirmed search) runs memo23 Actors through the same
-  client (`_shared/findProperty/socialOffers.ts`), with its own switch
+  Third scope (owner, 2026-10-16; TikTok and batched runs 2026-10-18): Find
+  Property's paid social OFFER campaign (Facebook / Instagram / Telegram /
+  TikTok / VK posts offering a property, for one buyer's or tenant's confirmed
+  search) runs a few BATCHED memo23 Actor runs through the same client
+  (`_shared/findProperty/socialOffers.ts`), with its own switch
   `find_property_social_enabled` (default OFF), reserved per run against the
   campaign's 63% provider budget (`find_property_reserve_actor_run`), and is
   stopped by the same APIFY switch. Portals and HOMATCH inventory stay free.

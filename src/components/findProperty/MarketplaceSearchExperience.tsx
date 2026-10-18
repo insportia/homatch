@@ -15,6 +15,7 @@ import { PropertyIntelligence } from './PropertyIntelligence';
 import { ResultsView } from './ResultsView';
 import { BuilderIntro, SearchBuilder } from './SearchBuilder';
 import { DeepSearchPanel } from './workspace/DeepSearchPanel';
+import { rememberDeepConsent } from '@/services/paidCampaign';
 import { DiscoveryModeStep } from './workspace/DiscoveryModeStep';
 import { ActivityTab, SavedTab } from './workspace/PersonalTabs';
 import { SearchesTab } from './workspace/SearchesTab';
@@ -178,7 +179,9 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
       const r = await startSearch(brief, idempotency.current);
       setSearch(r.search);
       justStartedId.current = r.search.id;
-      /* Deep Search opens on the search it extends; the price is approved there, before anything is held. */
+      /* Deep Search was approved on its card (one confirmation): the campaign starts with
+         that approval as soon as this search's subscription exists. */
+      if (deepCredits) rememberDeepConsent(r.search.id, deepCredits);
       navigate(`/find-property/search/${r.search.id}${deepCredits ? `?deep=${deepCredits}` : ''}`);
       writeDraft(null);
       clearStartKey();
@@ -218,6 +221,11 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
   const onSavedCount = useCallback((n: number) => setCounts((c) => ({ ...c, saved: n })), []);
   const onSearchCount = useCallback((n: number | null) => setCounts((c) => ({ ...c, searches: n })), []);
   const deepCredits = Number(params.get('deep')) || null;
+  /* A finished Deep Search opens its results view directly (the search it extends ended long before). */
+  const paidView = params.get('view') === 'paid';
+  useEffect(() => {
+    if (paidView && !deepCredits && view === 'SEARCH' && search?.terminal && !search.unavailable) setView('RESULTS');
+  }, [paidView, deepCredits, view, search?.terminal, search?.unavailable]);
   const backToWorkspace = !route.propertyKey && view !== 'MODE' && view !== 'ERROR'
     ? <Link to="/find-property" className={btn.quiet}><ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('fpx_my_searches')}</Link> : undefined;
 
@@ -248,13 +256,17 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
         <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy}
           onFree={() => void doStart()} onDeep={(credits) => void doStart(credits)} onBack={() => setView('BUILD')} />
       )}
-      {view === 'SEARCH' && search && !route.propertyKey && (
+      {/* Deep Search: the campaign's own screen, never the portal search's progress or list
+          (the free search runs underneath only because the campaign extends it). */}
+      {deepCredits && search && !route.propertyKey && (view === 'SEARCH' || view === 'RESULTS') ? (
+        <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} initialCredits={deepCredits} />
+      ) : null}
+      {view === 'SEARCH' && search && !route.propertyKey && !deepCredits && (
         <SearchProgress t={t} search={search} onViewResults={() => { if (search.terminal) setView('RESULTS'); }} onPlay={() => setPlaying(true)}
           onNewSearch={newSearch}
-          deep={deepCredits ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} initialCredits={deepCredits} /> : undefined}
           onCancel={async () => { try { const r = await cancelSearch(search.id); setSearch(r.search); } catch { /* ignore */ } newSearch(); }} />
       )}
-      {view === 'RESULTS' && search && !route.propertyKey && (
+      {view === 'RESULTS' && search && !route.propertyKey && !deepCredits && (
         <ResultsView t={t} search={search} onOpen={(p) => void openProperty(p)} compare={compare} onToggleCompare={toggleCompare}
           onNewSearch={newSearch} deepSearchAvailable={deepSearchAvailable} version={resultsVersion}
           onChangeCriteria={(edit) => {

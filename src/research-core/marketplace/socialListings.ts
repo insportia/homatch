@@ -28,13 +28,15 @@ export const SOCIAL_SOURCE_PREFIX = 'social:';
 export const isSocialSource = (source: string | null | undefined) => String(source ?? '').startsWith(SOCIAL_SOURCE_PREFIX);
 
 export const SOCIAL_NETWORK_NAMES: Readonly<Record<string, string>> = {
-  FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', TELEGRAM: 'Telegram', VK: 'VK',
+  FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', TELEGRAM: 'Telegram', TIKTOK: 'TikTok', VK: 'VK',
 };
 
 const MAX_IMAGES = 12;
-const IMAGE_KEYS = /^(images?|imageUrls?|photos?|photoUrls?|displayUrl|thumbnail(Url)?|media|mediaUrls?|attachments|full_picture|picture|uri|src|url|image_url|photo_url|preview|previewUrl|childPosts|sidecar|carousel|fullSizeUrl)$/i;
+const IMAGE_KEYS = /^(images?|imageUrls?|photos?|photoUrls?|displayUrl|thumbnail(Url)?|media|mediaUrls?|attachments|full_picture|picture|uri|src|url|image_url|photo_url|preview|previewUrl|childPosts|sidecar|carousel|fullSizeUrl|videoMeta|covers?|originCover|coverUrl|originalCoverUrl)$/i;
 const looksLikeImage = (u: string) => /\.(jpe?g|png|webp|gif)(\?|$)/i.test(u)
-  || /(fbcdn\.net|cdninstagram\.com|scontent|telesco\.pe|cdn\d*\.telegram|userapi\.com|sun\d+-\d+\.userapi)/i.test(u);
+  || /(fbcdn\.net|cdninstagram\.com|scontent|telesco\.pe|cdn\d*\.telegram|userapi\.com|sun\d+-\d+\.userapi)/i.test(u)
+  /* TikTok video covers (an image transform), never the video file itself. */
+  || /tiktokcdn[^/]*\/.*~tplv-/i.test(u);
 
 /**
  * The post's own photos, from whatever shape the Actor delivered: known image

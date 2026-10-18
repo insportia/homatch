@@ -1,9 +1,45 @@
 # PROJECT STATE
 
-last_updated: 2026-10-16
+last_updated: 2026-10-18
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Find Buyers — universal Property DNA, taxonomy v10, tiers, precision matching (branch claude/nifty-hopper-snzn2d, 2026-10-18)
+
+- **Taxonomy** (`propertyFamily.ts` `SUBTYPES`): 20 subtypes across the five families. Each has six-language detection, an accusative noun and a nominative noun, and a compatibility group.
+  - `subtypeRelation` compares a seeker's stated subtype with the property's: MATCH / SOFT / CONFLICT / UNKNOWN.
+  - Commercial and land are hard families: a different group is a contradiction (office vs warehouse, farmland vs industrial plot).
+  - Shop / café / salon are near each other. Apartment, house and parking are soft families.
+  - No schema change: the subtype comes from `property_type` (VILLA, OFFICE, PENTHOUSE, STUDIO, TOWNHOUSE) or the title.
+- **DNA** now also carries title, bathrooms, totalFloors, constructionStatus, heating, features, security / yard / air-conditioning, sourceLanguage and a sanitized `descriptionExcerpt` (no phone, e-mail or link). `match-campaign` selects these columns.
+- **Strategy tiers** EXACT → SEMANTIC → NEAR → SIZE → INVESTOR, still capped by `queriesPerLanguage`.
+  - A commercial subtype is never broadened to "commercial space".
+  - Group searches and comparable-listing searches are family-aware; before this they were apartment-only for every property.
+- **AI planner** (one cached call per DNA, `fb-qp-4`): the prompt adds subtype, title, description and tiers. A model phrase is kept only if it reads as on-side demand for THIS family and does not contradict the subtype.
+- **Qualification v10:**
+  - "no agents / риелторов не беспокоить" no longer turns a buyer into a broker;
+  - a broker searching for a named client is BUYER_VIA_BROKER, an interest signal that is never Strong and never counted as qualified;
+  - "для клиента" (singular) is not inventory collection;
+  - "N+1" = N bedrooms / N+1 rooms.
+- **Offline evaluation** (`__tests__/fixtures/findBuyersEvalSet.mjs`, report `findBuyersEvalReport.mjs`):
+  - 88 hand-labelled posts: 6 properties, 6 languages, every family. P = R = 1.000 after fixes — optimistic, because the set was used while fixing.
+  - VILLION production baseline: 37/37 match.
+  - Shadow re-judge of 120 stored v7 production posts: 0 rejected → accepted; 3 weak → rejected (group rules ×2, broker inventory).
+- **Not done:** project/developer name (only `developer_id` is stored; the name is not read). Transliterated Latin Georgian is not recognised. "вилла"/"дача" are now recognised.
+
+## Find Buyers — universal keyword intelligence + qualification v9 (PR #265, 2026-10-18)
+
+- Subtypes (VILLA, COTTAGE, OFFICE, RETAIL, WAREHOUSE, INDUSTRIAL, AGRICULTURAL) are read from the property type or title in `propertyFamily.ts`. Each has its own search noun in six languages, and non-apartment fallbacks never use apartment words.
+- Qualification v9 (`qualify.ts` `subtypeFit`) compares a subtype the seeker STATED with the property's:
+  - a commercial conflict (office vs warehouse) → PROPERTY_TYPE_MISMATCH;
+  - a house/land difference → SUBTYPE_DIFFERS, never Strong;
+  - unstated → UNKNOWN;
+  - warehouse ≈ industrial.
+- Each lead signal records `foundBy {queries, matched}`.
+- No pricing, reservation, cap, provider-state or migration change.
+- FB_KEYWORD_SEARCH (`tropical_thunderstuck~facebook-post-search`) is still NOT registered, so its contract is unverified and it is SCHEMA_REQUIRED and refuses to run. Registration needs the authenticated Admin verify action. It cannot be done from a cloud session: there is no admin session or service role, and api.apify.com/apify.com are unreachable (proxy 403 / WebFetch DNS).
+- Lexicon gap (left as is, matching unchanged): the demand classifier does not read "вилла"/"дача" as real estate. The search phrases use "дом-виллу".
 
 ## Service Control Center EXPANSION — every manageable product (PR #240 + release fix #247, 2026-10-17) — MERGED, DEPLOYED, MIGRATION APPLIED
 

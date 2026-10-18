@@ -2,7 +2,7 @@
 // from stored fields. A missing field stays missing (listed in `missing`) and
 // is never guessed; tolerances turn exact facts into comparable bands.
 
-import { propertyFamily, type PropertyFamily } from './propertyFamily.ts';
+import { propertyFamily, propertySubtype, type PropertyFamily, type PropertySubtype } from './propertyFamily.ts';
 import { streetOfAddress } from './places.ts';
 
 export interface PropertyFactsInput {
@@ -34,6 +34,17 @@ export interface PropertyFactsInput {
   elevator?: boolean | null;
   furnished?: boolean | null;
   view?: string | null;
+  bathrooms?: number | null;
+  constructionStatus?: string | null;
+  heating?: string | null;
+  security?: boolean | null;
+  yard?: boolean | null;
+  airConditioning?: boolean | null;
+  /** Stored feature tags (property_facts.features). */
+  features?: readonly string[] | null;
+  /** The listing text; only a sanitized excerpt is kept (descriptionExcerpt). */
+  description?: string | null;
+  sourceLanguage?: string | null;
 }
 
 export interface Band { min: number; max: number }
@@ -52,6 +63,8 @@ export interface PropertyDna {
   propertyType: string | null;
   /** What a seeker asks for: apartment, house, land, commercial space or parking. */
   family: PropertyFamily;
+  /** Villa, office, shop, warehouse, farmland …: the words a search names (propertyFamily.ts). */
+  subtype?: PropertySubtype | null;
   bedrooms: number | null;
   rooms: number | null;
   areaSqm: number | null;
@@ -64,6 +77,16 @@ export interface PropertyDna {
   floor: number | null;
   amenities: string[];
   view: string | null;
+  /* Identity and context (v2, 2026-10-18). Optional: a DNA stored before them reads as unknown. */
+  title?: string | null;
+  bathrooms?: number | null;
+  totalFloors?: number | null;
+  constructionStatus?: string | null;
+  heating?: string | null;
+  features?: string[];
+  /** The listing description without phone numbers, e-mails or links, ≤ 500 characters. */
+  descriptionExcerpt?: string | null;
+  sourceLanguage?: string | null;
   tolerances: {
     area: Band | null;
     price: Band | null;
@@ -84,6 +107,16 @@ const str = (v: unknown): string | null => {
   return s ? s : null;
 };
 
+/** Listing text safe to reason over: no phone number, e-mail or link survives (contact is private). */
+export function sanitizeListingText(text: string | null | undefined, max = 500): string | null {
+  const t = String(text ?? '')
+    .replace(/https?:\/\/\S+|www\.\S+/giu, ' ')
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/gu, ' ')
+    .replace(/\+?\d[\d\s().-]{6,}\d/gu, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return t ? t.slice(0, max) : null;
+}
+
 /** Rentals move on price more than sales; both get a band, never equality. */
 export function toleranceBands(input: { transaction: 'SALE' | 'RENT'; areaSqm: number | null; price: number | null; bedrooms: number | null }) {
   const area = input.areaSqm ? { min: Math.round(input.areaSqm * 0.8), max: Math.round(input.areaSqm * 1.2) } : null;
@@ -102,6 +135,7 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
   const rooms = num(f.rooms);
   const amenities = ([
     ['parking', f.parking], ['balcony', f.balcony], ['terrace', f.terrace], ['elevator', f.elevator], ['furnished', f.furnished],
+    ['security', f.security], ['yard', f.yard], ['air_conditioning', f.airConditioning],
   ] as Array<[string, boolean | null | undefined]>).filter(([, v]) => v === true).map(([k]) => k);
   const lat = num(f.latitude); const lng = num(f.longitude);
   const city = str(f.city); const district = str(f.district);
@@ -122,6 +156,7 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
     coordinates: lat && lng ? { lat, lng } : null,
     propertyType,
     family: propertyFamily(propertyType, f.title),
+    subtype: propertySubtype(propertyType, f.title),
     bedrooms,
     rooms,
     areaSqm,
@@ -134,6 +169,14 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
     floor: f.floor != null && Number.isFinite(Number(f.floor)) ? Number(f.floor) : null,
     amenities,
     view: str(f.view),
+    title: str(f.title),
+    bathrooms: num(f.bathrooms),
+    totalFloors: num(f.totalFloors),
+    constructionStatus: str(f.constructionStatus),
+    heating: str(f.heating),
+    features: Array.isArray(f.features) ? [...new Set(f.features.map((x) => String(x ?? '').trim()).filter(Boolean))].slice(0, 30) : [],
+    descriptionExcerpt: sanitizeListingText(f.description),
+    sourceLanguage: str(f.sourceLanguage)?.toLowerCase() ?? null,
     tolerances: toleranceBands({ transaction, areaSqm, price, bedrooms }),
     missing,
   };
@@ -141,11 +184,12 @@ export function buildPropertyDna(f: PropertyFactsInput): PropertyDna {
 }
 
 /** Coarse on purpose: two flats that would be searched identically share a key. */
-export function dnaKeyOf(d: Pick<PropertyDna, 'transaction' | 'countryCode' | 'city' | 'district' | 'propertyType' | 'bedrooms' | 'areaSqm' | 'price'> & { family?: PropertyFamily }): string {
+export function dnaKeyOf(d: Pick<PropertyDna, 'transaction' | 'countryCode' | 'city' | 'district' | 'propertyType' | 'bedrooms' | 'areaSqm' | 'price'> & { family?: PropertyFamily; subtype?: PropertySubtype | null }): string {
   const bucket = (v: number | null, step: number) => (v == null ? 'x' : String(Math.round(v / step)));
   return [
     d.transaction, d.countryCode, (d.city ?? 'x').toLowerCase(), (d.district ?? 'x').toLowerCase(),
     /* A parking place is stored as OTHER: its family keeps it apart from other OTHERs. */
-    d.family === 'PARKING' ? 'PARKING' : d.propertyType ?? 'x', d.bedrooms ?? 'x', bucket(d.areaSqm, 15), bucket(d.price, d.transaction === 'RENT' ? 200 : 20000),
+    /* A subtype searches other words (a warehouse is not a shop): its own key, so a cached plan is not shared. */
+    d.family === 'PARKING' ? 'PARKING' : d.subtype && d.subtype !== d.propertyType ? `${d.propertyType ?? 'x'}:${d.subtype}` : d.propertyType ?? 'x', d.bedrooms ?? 'x', bucket(d.areaSqm, 15), bucket(d.price, d.transaction === 'RENT' ? 200 : 20000),
   ].join('|');
 }

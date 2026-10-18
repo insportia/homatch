@@ -81,7 +81,9 @@ export function keywordSearchPhrases(plan: QueryPlan, transaction: 'SALE' | 'REN
        person asking for exactly this home — the district and room precision the city-level
        phrases lack. Only where the result still reads as seeking (and never "investment"). */
     const verb = SEEK_VERB[lang]?.[transaction];
-    if (verb) for (const q of demand) if (!seeks(q) && !/invest|инвест|ინვესტ/i.test(q)) add(`${verb} ${q}`);
+    /* Never a second verb in front of one ("looking to buy need house"). */
+    const hasVerb = /^(need|want|looking|searching|ищу|хочу|нужн|куплю|сниму|ვეძებ|მჭირდება|მინდა|ვყიდულობ|ვიყიდი|ვქირაობ|ვიქირავებ)/iu;
+    if (verb) for (const q of demand) if (!seeks(q) && !hasVerb.test(q.trim()) && !/invest|инвест|ინვესტ/i.test(q)) add(`${verb} ${q}`);
     for (const query of picked.slice(0, KEYWORDS_PER_LANGUAGE[lang] ?? 2)) out.push({ language: lang, query });
   }
   return out;

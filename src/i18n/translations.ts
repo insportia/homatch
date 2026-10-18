@@ -20471,6 +20471,9 @@ const en = {
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers provider runs not booked',
   admin_ops_find_property_runs_unbooked: 'Find Property provider runs not booked',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Request through a broker — needs verification',
+
   /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
   fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Live check limit reached — showing listings checked earlier',
   fpx_src_deferred_SOURCE_BUSY: 'Portal busy — showing listings checked earlier',
@@ -40868,6 +40871,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
   admin_ops_find_property_runs_unbooked: 'Find Property პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'მოთხოვნა შუამავლის მეშვეობით — საჭიროებს გადამოწმებას',
+
   /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
   fpx_src_deferred_LIVE_REFRESH_LIMIT: 'ცოცხალი შემოწმების ლიმიტი ამოიწურა — ნაჩვენებია ადრე შემოწმებული განცხადებები',
   fpx_src_deferred_SOURCE_BUSY: 'პორტალი დაკავებულია — ნაჩვენებია ადრე შემოწმებული განცხადებები',
@@ -61256,6 +61262,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'Запуски провайдера Find Buyers без учёта',
   admin_ops_find_property_runs_unbooked: 'Запуски провайдера Find Property без учёта',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Запрос через посредника — требует проверки',
+
   /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
   fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Лимит живых проверок исчерпан — показаны ранее проверенные объявления',
   fpx_src_deferred_SOURCE_BUSY: 'Портал занят — показаны ранее проверенные объявления',
@@ -81641,6 +81650,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'Süresi geçmiş kredi blokajları',
   admin_ops_find_buyers_runs_unbooked: 'Kaydedilmemiş Find Buyers sağlayıcı çalıştırmaları',
   admin_ops_find_property_runs_unbooked: 'Kaydedilmemiş Find Property sağlayıcı çalıştırmaları',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Aracı üzerinden talep — doğrulama gerekiyor',
 
   /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
   fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Canlı kontrol sınırına ulaşıldı — daha önce kontrol edilen ilanlar gösteriliyor',
@@ -102028,6 +102040,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'عمليات مزود Find Buyers غير المسجلة',
   admin_ops_find_property_runs_unbooked: 'عمليات مزود Find Property غير المسجلة',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'طلب عبر وسيط — يحتاج إلى تحقق',
+
   /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
   fpx_src_deferred_LIVE_REFRESH_LIMIT: 'تم بلوغ حد التحقق المباشر — تُعرض الإعلانات التي تم التحقق منها سابقًا',
   fpx_src_deferred_SOURCE_BUSY: 'البوابة مشغولة — تُعرض الإعلانات التي تم التحقق منها سابقًا',
@@ -122413,6 +122428,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'החזקות קרדיט שתוקפן עבר',
   admin_ops_find_buyers_runs_unbooked: 'הרצות ספק של Find Buyers שלא נרשמו',
   admin_ops_find_property_runs_unbooked: 'הרצות ספק של Find Property שלא נרשמו',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'בקשה דרך מתווך — דורש אימות',
 
   /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
   fpx_src_deferred_LIVE_REFRESH_LIMIT: 'הגעתם למגבלת הבדיקה החיה — מוצגות מודעות שנבדקו קודם',

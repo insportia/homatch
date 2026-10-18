@@ -36,6 +36,7 @@ const REL_TONE: Record<string, string> = {
 /** The one classification word for a lead in its tab. */
 export function leadKindKey(placement: TabPlacement, tenant: boolean): { key: string; tone: keyof typeof KIND_TONE } {
   if (placement.reason === 'TRANSACTION_UNCONFIRMED') return { key: 'fbx_kind_verify_transaction', tone: 'verify' };
+  if (placement.reason === 'BUYER_VIA_BROKER') return { key: 'fbx_kind_via_broker', tone: 'verify' };
   if (placement.needsVerification) return { key: 'fbx_kind_needs_verification', tone: 'verify' };
   if (placement.tab === 'direct') return { key: tenant ? 'fbx_kind_qualified_tenant' : 'fbx_kind_qualified_buyer', tone: 'qualified' };
   return { key: 'fbx_kind_interested', tone: 'interested' };

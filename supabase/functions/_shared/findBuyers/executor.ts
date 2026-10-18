@@ -218,7 +218,7 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     });
     const { data: marked } = await db.from('find_buyers_actor_runs').update({
       status: 'RUNNING', provider_run_id: started.runId, dataset_id: started.datasetId, started_at: new Date().toISOString(),
-      reason: { arm: meta.arm, reason: meta.reason, step: meta.step ?? 0, query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, sourceId: meta.sourceId ?? null, droppedInputKeys: dropped, since },
+      reason: { arm: meta.arm, reason: meta.reason, step: meta.step ?? 0, query: meta.query ?? null, ...(keywordList?.length ? { queries: keywordList } : {}), targetUrl: meta.targetUrl ?? null, sourceId: meta.sourceId ?? null, droppedInputKeys: dropped, since },
     }).eq('id', runId).is('cost_booked_at', null).select('id');
     if (!Array.isArray(marked) || marked.length !== 1) {
       /* The campaign finished while the run was being created (its cost was
@@ -342,6 +342,8 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
          row caps an expansion at the Actor's own maximum (followUpRows). */
       commentProbe: parseSampling(settings.sampling).probe,
+      searchQueries: Array.isArray(meta.queries) ? (meta.queries as unknown[]).map(String).filter(Boolean).slice(0, 10)
+        : typeof meta.query === 'string' && meta.query ? [meta.query] : null,
     }, slice.items);
     perSource.push({ sourceId: sliceSource, items: slice.items.length, qualified: r1.qualified, strong: r1.strong });
     result = result ? mergeResults(result, r1) : r1;

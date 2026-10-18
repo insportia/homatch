@@ -20473,6 +20473,19 @@ const en = {
 
   /* ── FIND BUYERS — request through a broker ── */
   fbx_kind_via_broker: 'Request through a broker — needs verification',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Live check limit reached — showing listings checked earlier',
+  fpx_src_deferred_SOURCE_BUSY: 'Portal busy — showing listings checked earlier',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'Live check unavailable — showing listings checked earlier',
+  fpx_src_shared: 'Checking together with an identical search',
+  mps_live_limited_concurrent: 'You already have {{n}} live searches running. This one shows listings HOMATCH already checked; a live check starts again when one of them finishes.',
+  mps_live_limited_until: 'You\'ve reached your live check limit. Showing listings HOMATCH already checked; live checks are available again at {{time}}.',
+  mps_live_limited: 'You\'ve reached your live check limit. Showing listings HOMATCH already checked.',
+  mps_live_busy_until: 'The portals are busy right now. Showing listings HOMATCH already checked; try a live check again at {{time}}.',
+  mps_live_busy: 'The portals are busy right now. Showing listings HOMATCH already checked.',
+  mps_live_unavailable: 'Live checks are temporarily unavailable. Showing listings HOMATCH already checked.',
+  mps_reused_recent: 'You ran this exact search a few minutes ago — here are its results.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40860,6 +40873,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS — request through a broker ── */
   fbx_kind_via_broker: 'მოთხოვნა შუამავლის მეშვეობით — საჭიროებს გადამოწმებას',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'ცოცხალი შემოწმების ლიმიტი ამოიწურა — ნაჩვენებია ადრე შემოწმებული განცხადებები',
+  fpx_src_deferred_SOURCE_BUSY: 'პორტალი დაკავებულია — ნაჩვენებია ადრე შემოწმებული განცხადებები',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'ცოცხალი შემოწმება ახლა მიუწვდომელია — ნაჩვენებია ადრე შემოწმებული განცხადებები',
+  fpx_src_shared: 'მოწმდება იდენტურ ძიებასთან ერთად',
+  mps_live_limited_concurrent: 'უკვე მიმდინარეობს თქვენი {{n}} ცოცხალი ძიება. ეს ძიება აჩვენებს HOMATCH-ის მიერ უკვე შემოწმებულ განცხადებებს; ცოცხალი შემოწმება ხელახლა დაიწყება, როცა ერთ-ერთი დასრულდება.',
+  mps_live_limited_until: 'ცოცხალი შემოწმების ლიმიტი ამოიწურა. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები; ცოცხალი შემოწმება ხელმისაწვდომი იქნება {{time}}-დან.',
+  mps_live_limited: 'ცოცხალი შემოწმების ლიმიტი ამოიწურა. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები.',
+  mps_live_busy_until: 'პორტალები ახლა დაკავებულია. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები; ცოცხალი შემოწმება ხელახლა სცადეთ {{time}}-ზე.',
+  mps_live_busy: 'პორტალები ახლა დაკავებულია. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები.',
+  mps_live_unavailable: 'ცოცხალი შემოწმება დროებით მიუწვდომელია. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები.',
+  mps_reused_recent: 'ზუსტად ეს ძიება რამდენიმე წუთის წინ ჩაატარეთ — აი მისი შედეგები.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61238,6 +61264,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS — request through a broker ── */
   fbx_kind_via_broker: 'Запрос через посредника — требует проверки',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Лимит живых проверок исчерпан — показаны ранее проверенные объявления',
+  fpx_src_deferred_SOURCE_BUSY: 'Портал занят — показаны ранее проверенные объявления',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'Живая проверка недоступна — показаны ранее проверенные объявления',
+  fpx_src_shared: 'Проверяется вместе с идентичным поиском',
+  mps_live_limited_concurrent: 'У вас уже идут живые поиски: {{n}}. Здесь показаны объявления, которые HOMATCH уже проверил; живая проверка снова станет доступна, когда один из них завершится.',
+  mps_live_limited_until: 'Лимит живых проверок исчерпан. Показаны объявления, уже проверенные HOMATCH; живые проверки снова доступны в {{time}}.',
+  mps_live_limited: 'Лимит живых проверок исчерпан. Показаны объявления, уже проверенные HOMATCH.',
+  mps_live_busy_until: 'Порталы сейчас загружены. Показаны объявления, уже проверенные HOMATCH; повторите живую проверку в {{time}}.',
+  mps_live_busy: 'Порталы сейчас загружены. Показаны объявления, уже проверенные HOMATCH.',
+  mps_live_unavailable: 'Живые проверки временно недоступны. Показаны объявления, уже проверенные HOMATCH.',
+  mps_reused_recent: 'Вы выполняли точно такой же поиск несколько минут назад — вот его результаты.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81614,6 +81653,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS — request through a broker ── */
   fbx_kind_via_broker: 'Aracı üzerinden talep — doğrulama gerekiyor',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Canlı kontrol sınırına ulaşıldı — daha önce kontrol edilen ilanlar gösteriliyor',
+  fpx_src_deferred_SOURCE_BUSY: 'Portal yoğun — daha önce kontrol edilen ilanlar gösteriliyor',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'Canlı kontrol şu an kullanılamıyor — daha önce kontrol edilen ilanlar gösteriliyor',
+  fpx_src_shared: 'Aynı aramayla birlikte kontrol ediliyor',
+  mps_live_limited_concurrent: 'Zaten {{n}} canlı aramanız sürüyor. Bu arama HOMATCH\'in daha önce kontrol ettiği ilanları gösteriyor; biri bittiğinde canlı kontrol yeniden başlar.',
+  mps_live_limited_until: 'Canlı kontrol sınırınıza ulaştınız. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor; canlı kontrol {{time}} itibarıyla yeniden kullanılabilir.',
+  mps_live_limited: 'Canlı kontrol sınırınıza ulaştınız. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor.',
+  mps_live_busy_until: 'Portallar şu anda yoğun. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor; canlı kontrolü {{time}} saatinde yeniden deneyin.',
+  mps_live_busy: 'Portallar şu anda yoğun. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor.',
+  mps_live_unavailable: 'Canlı kontrol geçici olarak kullanılamıyor. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor.',
+  mps_reused_recent: 'Bu aramanın aynısını birkaç dakika önce yaptınız — sonuçları burada.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101990,6 +102042,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS — request through a broker ── */
   fbx_kind_via_broker: 'طلب عبر وسيط — يحتاج إلى تحقق',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'تم بلوغ حد التحقق المباشر — تُعرض الإعلانات التي تم التحقق منها سابقًا',
+  fpx_src_deferred_SOURCE_BUSY: 'البوابة مشغولة — تُعرض الإعلانات التي تم التحقق منها سابقًا',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'التحقق المباشر غير متاح — تُعرض الإعلانات التي تم التحقق منها سابقًا',
+  fpx_src_shared: 'يُفحص مع بحث مطابق',
+  mps_live_limited_concurrent: 'لديك بالفعل عمليات بحث مباشرة قيد التشغيل: {{n}}. يعرض هذا البحث إعلانات سبق أن تحقق منها HOMATCH؛ يعود التحقق المباشر عند انتهاء إحداها.',
+  mps_live_limited_until: 'لقد بلغت حد التحقق المباشر. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH؛ يتوفر التحقق المباشر مجددًا عند {{time}}.',
+  mps_live_limited: 'لقد بلغت حد التحقق المباشر. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH.',
+  mps_live_busy_until: 'البوابات مشغولة الآن. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH؛ أعد محاولة التحقق المباشر عند {{time}}.',
+  mps_live_busy: 'البوابات مشغولة الآن. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH.',
+  mps_live_unavailable: 'التحقق المباشر غير متاح مؤقتًا. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH.',
+  mps_reused_recent: 'أجريت هذا البحث نفسه قبل دقائق — إليك نتائجه.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -122366,6 +122431,19 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS — request through a broker ── */
   fbx_kind_via_broker: 'בקשה דרך מתווך — דורש אימות',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'הגעתם למגבלת הבדיקה החיה — מוצגות מודעות שנבדקו קודם',
+  fpx_src_deferred_SOURCE_BUSY: 'הפורטל עמוס — מוצגות מודעות שנבדקו קודם',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'בדיקה חיה אינה זמינה — מוצגות מודעות שנבדקו קודם',
+  fpx_src_shared: 'נבדק יחד עם חיפוש זהה',
+  mps_live_limited_concurrent: 'כבר פועלים אצלכם חיפושים חיים: {{n}}. חיפוש זה מציג מודעות ש-HOMATCH כבר בדק; בדיקה חיה תתחדש כשאחד מהם יסתיים.',
+  mps_live_limited_until: 'הגעתם למגבלת הבדיקות החיות. מוצגות מודעות ש-HOMATCH כבר בדק; בדיקות חיות יחזרו בשעה {{time}}.',
+  mps_live_limited: 'הגעתם למגבלת הבדיקות החיות. מוצגות מודעות ש-HOMATCH כבר בדק.',
+  mps_live_busy_until: 'הפורטלים עמוסים כרגע. מוצגות מודעות ש-HOMATCH כבר בדק; נסו בדיקה חיה שוב בשעה {{time}}.',
+  mps_live_busy: 'הפורטלים עמוסים כרגע. מוצגות מודעות ש-HOMATCH כבר בדק.',
+  mps_live_unavailable: 'בדיקות חיות אינן זמינות זמנית. מוצגות מודעות ש-HOMATCH כבר בדק.',
+  mps_reused_recent: 'הרצתם בדיוק את החיפוש הזה לפני כמה דקות — הנה התוצאות שלו.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

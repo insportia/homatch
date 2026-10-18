@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Clock3, Loader2, MinusCircle, ShieldAlert, Users, XCircle } from 'lucide-react';
 import type { SearchSummary } from '@/services/marketplaceSearch';
-import type { T } from '../format';
+import { checkedAgo, type T } from '../format';
 import { cx, Pill, SOURCE_TONE, sourceState, type SourceState } from './primitives';
 
 const ICON: Record<SourceState, typeof Loader2> = {
@@ -36,7 +36,10 @@ export function SourceStates({ t, search, compact }: { t: T; search: SearchSumma
               <span className="block truncate text-xs text-muted-foreground">
                 {state === 'FOUND' ? t('fpx_src_found_n', { n: found }) : t(`fpx_src_${state}`)}
                 {s.cachedListings > 0 && state === 'FOUND' ? ` · ${t('fpx_src_cached_n', { n: s.cachedListings })}` : ''}
+                {s.freshListings > 0 && s.checkedAt ? ` · ${checkedAgo(s.checkedAt, t) ?? ''}` : ''}
               </span>
+              {s.deferred ? <span className="block truncate text-xs text-muted-foreground" data-deferred={s.deferred}>{t(`fpx_src_deferred_${s.deferred}`)}</span>
+                : s.shared && state === 'WAITING' ? <span className="block truncate text-xs text-muted-foreground" data-shared="true">{t('fpx_src_shared')}</span> : null}
             </span>
             <Pill tone={SOURCE_TONE[state]} pulse={state === 'SEARCHING'} className="hidden sm:inline-flex">{t(`fpx_src_pill_${state}`)}</Pill>
           </li>

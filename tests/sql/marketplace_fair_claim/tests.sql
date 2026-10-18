@@ -1,5 +1,5 @@
 -- Expected claim orders for one definition of claim_marketplace_worker_runs.
--- psql variable :variant is 'old' (20261010100000) or 'new' (20261114110000).
+-- psql variable :variant is 'old' (20261010100000) or 'new' (20261115110000).
 \set ON_ERROR_STOP 1
 
 create or replace function pg_temp.reset(p_concurrency int default 1) returns void language sql as $$

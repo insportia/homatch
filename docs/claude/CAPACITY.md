@@ -27,9 +27,9 @@ Source: the read-only production capacity audit of 2026-10-18, and the hardening
 | # | Finding | Status on this branch |
 |---|---|---|
 | P1-1 | Worker accepted any user JWT on `/research`, `/verify/*`, `/tas/test` (bypassed billing, switch, limits) | **FIXED** — `official-worker/src/http/workerAuth.ts`: `WORKER_TOKEN` only, constant-time, 503 when unset. Every caller verified to send the token |
-| P1-2 | Free Find Property: one requester's burst starved everyone; 1 search per portal at a time | **PARTLY FIXED** — fair claim order (`20261114110000`). Throughput unchanged: needs more slots or replicas (§5, owner) |
+| P1-2 | Free Find Property: one requester's burst starved everyone; 1 search per portal at a time | **PARTLY FIXED** — fair claim order (`20261115110000`). Throughput unchanged: needs more slots or replicas (§5, owner) |
 | P1-3 | Verify 2.2 s polling × full-row reads + advance per poll | **PARTLY FIXED** — no second full read on contended polls; no unguarded advance. Cadence and payload unchanged (product behaviour; options in §6) |
-| P1-4 | 30 s sweep scanned every completed report's JSON | **FIXED** — `20261114090000`: partial index + literal-predicate function; research-agent falls back until it is applied |
+| P1-4 | 30 s sweep scanned every completed report's JSON | **FIXED** — `20261115090000`: partial index + literal-predicate function; research-agent falls back until it is applied |
 | P1-5 | No enforced global provider spend ceiling; free quotas non-atomic | **NOT CHANGED** — needs owner thresholds (§7). Signed-in assistant turns are wallet-billed (`ai_chat_billing_enabled=true` [PROD]) |
 | P2-6 | `cron.job_run_details` 322 MB = 62% of DB | **REMOVED FROM THIS RELEASE** (zero-data-loss rule, 2026-10-18): the retention migration deletes history and is not on this branch. Proposal stays on PR #136; not urgent (Pro includes 8 GB disk) |
 | P2-7 | Railway idle polling ≈ 2.2 M edge calls / month | **NOT CHANGED** — lowering it delays free-search start; ~$4/month at today's rates |
@@ -38,7 +38,7 @@ Source: the read-only production capacity audit of 2026-10-18, and the hardening
 | P2-10 | Wallet reservation sweeper never scheduled | **NOT CHANGED** — releasing "expired" reservations of long campaigns could forfeit legitimate charges; 0 affected today [PROD]. Owner decision |
 | P2-11 | Verify budget gate / advance lease failed open | **FIXED** — gate ERROR defers the stage (nothing launched, paused, charged or released); lease error skips the step |
 | P2-12 | No overlap guard on `classify-signals-v2` (paid OpenAI) | **NOT CHANGED** — needs a row claim inside the Find Buyers pipeline; design in §6 |
-| P2-13 | spend_cap: truncated sum, unauthenticated `spend-cap-check` | **FIXED** — SQL aggregate (`20261114100000`) with paged fallback; read failure refuses the paid send; service role only |
+| P2-13 | spend_cap: truncated sum, unauthenticated `spend-cap-check` | **FIXED** — SQL aggregate (`20261115100000`) with paged fallback; read failure refuses the paid send; service role only |
 | P2-14 | `homatch-official-worker-v2` live, stale image | **NOT TOUCHED** (instruction). Owner decision |
 | P2-15 | AI TALK sockets uncapped in a shared process | **LEVER ADDED** — `SPEECH_MAX_SESSIONS` (unset = unchanged). AI TALK is paused |
 | P2-16 | Realtime cost / unfiltered subscriptions | **NOT CHANGED** — see §4 (Realtime connection limit is the first hard wall) |
@@ -48,10 +48,10 @@ Source: the read-only production capacity audit of 2026-10-18, and the hardening
 
 | Path | Before | After | Where |
 |---|---|---|---|
-| Verify market-refresh sweep (every 30 s) | 51.7 ms, ~12 MB buffers @ 76 completed jobs [PROD]; 181 ms, ~33k buffers @ 2,000 jobs [LOCAL] | 0.05 ms / 2 buffers (index), 0.17 ms via the function @ 2,000 jobs [LOCAL] | `20261114090000` |
+| Verify market-refresh sweep (every 30 s) | 51.7 ms, ~12 MB buffers @ 76 completed jobs [PROD]; 181 ms, ~33k buffers @ 2,000 jobs [LOCAL] | 0.05 ms / 2 buffers (index), 0.17 ms via the function @ 2,000 jobs [LOCAL] | `20261115090000` |
 | Verify status poll while another advancer holds the job | 2 full-row reads (avg 108 KB [PROD]) | 1 | research-agent |
-| Free-search claim, 10,000 queued from 2,000 requesters | ~5 ms, FIFO [LOCAL] | 30–55 ms, fair [LOCAL]; ~0.2 ms at today's sizes | `20261114110000` |
-| Spend-cap sum | one select, truncated at max rows | one aggregate row per provider; identical totals on 5,000 rows [LOCAL] | `20261114100000` |
+| Free-search claim, 10,000 queued from 2,000 requesters | ~5 ms, FIFO [LOCAL] | 30–55 ms, fair [LOCAL]; ~0.2 ms at today's sizes | `20261115110000` |
+| Spend-cap sum | one select, truncated at max rows | one aggregate row per provider; identical totals on 5,000 rows [LOCAL] | `20261115100000` |
 
 ## 4. Capacity model [MODEL — UNVERIFIED]
 
@@ -123,7 +123,7 @@ Rates sources:
 
 ## 7. Owner approvals required
 
-1. **Apply three migrations** in order: `20261114090000`, `20261114100000`, `20261114110000`.
+1. **Apply three migrations** in order: `20261115090000`, `20261115100000`, `20261115110000`.
    - The first two are additive: new indexes and new functions, with no row changes.
    - The third re-creates `claim_marketplace_worker_runs`. Production's body is byte-identical to the repo's `20261010100000` body (md5 `2aa4d3035c73ab287426d65ebd7acf1f`, verified 2026-10-18), so only the claim order changes.
    - **No migration in this release deletes or rewrites a row.**
@@ -190,9 +190,9 @@ Rates sources:
 |---|---|---|---|
 | Worker (`official-worker/`) | Railway auto-deploy of `homatch-official-worker` on merge | deployment SUCCESS at the merge commit; `/health`; one Verify job end-to-end; a user JWT on `/research` → 401 | redeploy previous deployment `b5d45b88` |
 | research-agent, spend-cap-check, outreach-send | CI edge deploy | PROVEN_EXACT | redeploy the previous artifact |
-| `20261114090000` | migration runner (approved) | ledger row; grants | drop function + 2 indexes (in file header) |
-| `20261114100000` | migration runner | ledger row | drop function |
-| `20261114110000` | migration runner | ledger row; a free search completes | re-run the `20261010100000` function body (byte-identical to production today); drop index |
+| `20261115090000` | migration runner (approved) | ledger row; grants | drop function + 2 indexes (in file header) |
+| `20261115100000` | migration runner | ledger row | drop function |
+| `20261115110000` | migration runner | ledger row; a free search completes | re-run the `20261010100000` function body (byte-identical to production today); drop index |
 
 **Order**:
 1. Migrations, in order.

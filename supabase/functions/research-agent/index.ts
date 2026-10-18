@@ -2573,7 +2573,7 @@ async function startJobMarketRefresh(sb: any, jobId: string): Promise<{ status: 
 /** Cron step: fold finished market refreshes and request one rebuild each. */
 /**
  * COMPLETE jobs with a market refresh in flight. Served by the partial index of
- * migration 20261114090000 through research_jobs_market_refresh_running(): the
+ * migration 20261115090000 through research_jobs_market_refresh_running(): the
  * PostgREST filter below de-toasted EVERY completed report on every 30 s tick
  * (capacity audit 2026-10-18). The filter stays as the fallback until that
  * migration is applied (PGRST202 = function not found) — same rows either way.

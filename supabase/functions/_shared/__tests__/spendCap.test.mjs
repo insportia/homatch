@@ -89,7 +89,7 @@ test('spend-cap-check answers the service role only', () => {
 });
 
 test('the aggregate migration groups exactly like the TypeScript and is service-role only', () => {
-  const sql = readFileSync(new URL('../../../migrations/20261114100000_provider_spend_totals.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../../../migrations/20261115100000_provider_spend_totals.sql', import.meta.url), 'utf8');
   assert.match(sql, /select lower\(c\.provider::text\) as provider, coalesce\(sum\(coalesce\(c\.cost_usd, 0\)\), 0\) as cost_usd/);
   assert.match(sql, /where c\."timestamp" >= p_since/);
   assert.match(sql, /revoke all on function public\.provider_spend_totals_since\(timestamptz\) from public, anon, authenticated;/);

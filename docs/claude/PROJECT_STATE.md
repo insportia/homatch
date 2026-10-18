@@ -11,7 +11,7 @@ Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release ma
 owner approvals, regression baseline). Worker token-only auth (+ optional SPEECH_MAX_SESSIONS);
 Verify indexed sweep + fail-closed advance lease + budget-gate ERROR defers + cancel stops
 Developer Ads; spend-cap SQL sum; fair claim for free portal searches. Three migrations
-20261114090000..110000 — none applied, none deletes or rewrites a row. Withdrawn under the
+20261115090000..110000 — none applied, none deletes or rewrites a row. Withdrawn under the
 zero-data-loss rule: cron history retention (stays on PR #136) and worker finished-job eviction.
 Release tier REPO_FULL.
 

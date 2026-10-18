@@ -1,7 +1,7 @@
 // ── Spend Cap Check (shared) ───────────────────────────────────
 //
 // Month-to-date spend per provider, lower-cased keys, NULL cost = 0.
-// Summed in SQL (provider_spend_totals_since, migration 20261114100000): the
+// Summed in SQL (provider_spend_totals_since, migration 20261115100000): the
 // earlier row-by-row select stopped at PostgREST's max rows and under-counted
 // once a month held more rows than that (capacity audit 2026-10-18). Until the
 // function is applied (PGRST202) the rows are read page by page instead —

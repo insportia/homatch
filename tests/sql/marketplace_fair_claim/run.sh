@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fair claim proof for claim_marketplace_worker_runs on a THROWAWAY local Postgres 16 — never production.
 # Runs the same scenarios against the original definition (20261010100000) and the fair one
-# (20261114110000): one requester stays FIFO, caps and lease rules are unchanged, a burst no longer
+# (20261115110000): one requester stays FIFO, caps and lease rules are unchanged, a burst no longer
 # queues other requesters behind it, and nothing claimable is ever refused.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; root="$here/../../.."
@@ -18,8 +18,8 @@ for variant in old new; do
   $P -c "drop role if exists anon" -c "drop role if exists authenticated" -c "drop role if exists service_role" >/dev/null 2>&1 || true
   $P -d hmfair -f "$here/fixture.sql"
   if [ "$variant" = old ]; then printf '%s\n' "$old_def" | $P -d hmfair -1
-  else $P -d hmfair -1 -f "$root/supabase/migrations/20261114110000_marketplace_fair_claim.sql"
-       $P -d hmfair -1 -f "$root/supabase/migrations/20261114110000_marketplace_fair_claim.sql"; echo "  PASS  migration re-applies cleanly"; fi
+  else $P -d hmfair -1 -f "$root/supabase/migrations/20261115110000_marketplace_fair_claim.sql"
+       $P -d hmfair -1 -f "$root/supabase/migrations/20261115110000_marketplace_fair_claim.sql"; echo "  PASS  migration re-applies cleanly"; fi
   env PGOPTIONS=-cclient_min_messages=notice psql -h "$dir" -p "$port" -U postgres -d hmfair -v ON_ERROR_STOP=1 -v variant="$variant" -q -o /dev/null -f "$here/tests.sql" 2>&1 \
     | sed -e 's/^psql:[^:]*:[0-9]*: NOTICE:  /  /' -e 's/^NOTICE:  /  /'
   test "${PIPESTATUS[0]}" = 0

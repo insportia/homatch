@@ -69,7 +69,7 @@ export function sourceKindOf(stage: Stage): 'GROUP' | 'PAGE' | 'SEARCH' | 'AD' |
   if (stage === 'FB_GROUP_POSTS') return 'GROUP';
   if (stage === 'FB_PAGE_POSTS') return 'PAGE';
   if (stage === 'FB_AD_LIBRARY') return 'AD';
-  if (stage === 'FB_POST_SEARCH') return 'SEARCH';
+  if (stage === 'FB_POST_SEARCH' || stage === 'FB_KEYWORD_SEARCH') return 'SEARCH';
   return null;
 }
 

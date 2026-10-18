@@ -264,6 +264,14 @@ export async function requalifyProperty(propertyId: string, apply: boolean): Pro
   return out;
 }
 
+/** Facebook keyword search knobs (admin_settings find_buyers_fb_keyword_search; the server clamps them). */
+export async function getFbKeywordSearchSettings(): Promise<{ batchSize: number; days: number }> {
+  const { data, error } = await supabase.from('admin_settings').select('value').eq('key', 'find_buyers_fb_keyword_search').maybeSingle();
+  if (error) throw new Error(error.message);
+  const v = (data?.value ?? {}) as { batchSize?: unknown; days?: unknown };
+  return { batchSize: Number(v.batchSize) || 6, days: Number(v.days) || 30 };
+}
+
 /** The one-campaign test cap (testCap.ts): read and write through admin_settings, admins only (RLS). */
 export async function getFindBuyersTestCap(): Promise<unknown> {
   const { data, error } = await supabase.from('admin_settings').select('value').eq('key', 'find_buyers_test_cap').maybeSingle();

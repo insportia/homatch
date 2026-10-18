@@ -231,18 +231,34 @@ export function planOfferJobs(input: {
   const add = (j: PlannedOfferJob) => byNetwork.set(j.network, [...(byNetwork.get(j.network) ?? []), j]);
   const missing = (n: OfferNetwork, actorReady: boolean) => unavailable.push({ network: n, reason: actorReady ? 'NO_KNOWN_SOURCE' : 'NO_READY_ACTOR' });
 
-  /* Facebook: every in-city group in one memo23 group run per keyword (groups chunked only past FB_GROUPS_PER_RUN). */
+  /* Facebook: every in-city group in one memo23 group run per keyword (groups chunked only past
+     FB_GROUPS_PER_RUN); public post search per language and agency Pages once their Actors are ready. */
   if (wanted.has('FACEBOOK')) {
-    const a = ready('FB_GROUP_POSTS');
+    const groupsActor = ready('FB_GROUP_POSTS');
+    const searchActor = ready('FB_POST_SEARCH');
+    const pagesActor = ready('FB_PAGE_POSTS');
     const groups = usable.filter((s) => s.network === 'FACEBOOK' && !/page/i.test(s.kind)).map(target);
-    if (!a || !groups.length || !keywords.length) missing('FACEBOOK', Boolean(a));
-    else {
+    const pages = usable.filter((s) => s.network === 'FACEBOOK' && /page/i.test(s.kind));
+    let planned = 0;
+    if (groupsActor && groups.length && keywords.length) {
       const chunks = chunk(groups, FB_GROUPS_PER_RUN);
       /* Keyword-major: the first keyword reads every group before a second keyword is added. */
       for (const kw of keywords) for (const c of chunks) {
-        add(job('FB_GROUP_POSTS', a, { query: kw.query, queries: [kw.query], language: kw.language, targets: c, priority: 100 }));
+        add(job('FB_GROUP_POSTS', groupsActor, { query: kw.query, queries: [kw.query], language: kw.language, targets: c, priority: 100 })); planned += 1;
       }
     }
+    if (searchActor) {
+      const place = [input.search.districts[0], input.search.city].filter(Boolean).join(' ');
+      for (const kw of keywords) {
+        const q = `${kw.query} ${place}`.trim();
+        add(job('FB_POST_SEARCH', searchActor, { query: q, queries: [q], language: kw.language, priority: 95 })); planned += 1;
+      }
+    }
+    /* The Page Actor reads one Page per run (its verified input takes one start URL). */
+    if (pagesActor) for (const pg of pages) {
+      add(job('FB_PAGE_POSTS', pagesActor, { targetUrl: pg.url, sourceId: pg.id, targets: [target(pg)], priority: 80 })); planned += 1;
+    }
+    if (!planned) missing('FACEBOOK', Boolean(groupsActor || searchActor || pagesActor));
   }
   /* Telegram: the city's channels (and channels naming no other city) in a few large runs; any language. */
   if (wanted.has('TELEGRAM')) {

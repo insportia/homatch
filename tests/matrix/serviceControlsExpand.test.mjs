@@ -85,6 +85,9 @@ test('every new server gate checks its own key', () => {
     'supabase/functions/marketplace-search/index.ts': ['find_property'],
     'supabase/functions/find-property-plan/index.ts': ['find_property'],
     'supabase/functions/find-property-run/index.ts': ['find_property_deep'],
+    /* Paid Deep Search paused (2026-10-18): the worker and the free search's social add-in ask too. */
+    'supabase/functions/_shared/findProperty/socialOffers.ts': ['find_property_deep'],
+    'supabase/functions/_shared/marketplaceSearch.ts': ['find_property_deep'],
     'supabase/functions/match-campaign/index.ts': ['find_buyers'],
     'supabase/functions/research-agent/index.ts': ['verify'],
     'supabase/functions/deal-room-document-analyze/index.ts': ['contracts'],

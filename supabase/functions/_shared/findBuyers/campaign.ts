@@ -547,6 +547,7 @@ export async function queueTelegramFallback(db: any, matchingJobId: string) {
   const { data: camp } = await db.from('find_buyers_campaigns').select('property_id,dna,finalized_at').eq('matching_job_id', matchingJobId).maybeSingle();
   if (!camp || camp.finalized_at) return 0;
   const already = await queuedTelegramTargets(db, matchingJobId);
+  for (const u of await recentlyPaidTelegramTargets(db)) already.add(u);
   const sources = (await knownSources(db, (camp.dna as PropertyDna)?.city ?? null))
     .filter((s) => s.platform === 'TELEGRAM' && !already.has(String(s.url).toLowerCase()));
   const jobs: PlannedSocialJob[] = sources.slice(0, 3).map((s) => ({
@@ -575,6 +576,28 @@ async function queuedTelegramTargets(db: any, matchingJobId: string): Promise<Se
 
 /* Paid channel reads one COMBINED search may add (each still reserved against the caps). */
 const COMBINED_PAID_CHANNELS = 8;
+/* A channel read by the paid Actor in this window (any campaign) is not paid for again. */
+export const PAID_TELEGRAM_REREAD_DAYS = 14;
+
+/**
+ * Channels the paid Telegram Actor already read recently, in any campaign (owner,
+ * 2026-10-18: "after the free reader, run the paid one only on NEW groups"). Campaigns
+ * a53b3b5a and d0af0a47 paid again for the same channels and got the same September
+ * messages back (Cresco, Biograpi, a Batumi studio). The Actor input takes no "since"
+ * cursor, so the only way not to pay for old messages is not to re-read the channel.
+ */
+export async function recentlyPaidTelegramTargets(db: any, now = Date.now()): Promise<Set<string>> {
+  const since = new Date(now - PAID_TELEGRAM_REREAD_DAYS * 86_400_000).toISOString();
+  const { data } = await db.from('discovery_query_queue').select('metadata')
+    .eq('provider', 'APIFY_MEMO23').eq('query_kind', 'TELEGRAM_CHANNEL').gte('created_at', since).limit(2000);
+  const out = new Set<string>();
+  for (const r of (data ?? []) as any[]) {
+    const m = r.metadata ?? {};
+    if (m.targetUrl) out.add(String(m.targetUrl).toLowerCase());
+    for (const b of (Array.isArray(m.batch) ? m.batch : [])) if (b?.targetUrl) out.add(String(b.targetUrl).toLowerCase());
+  }
+  return out;
+}
 
 /**
  * COMBINED Telegram (telegramPreference.ts), run when the campaign's Phase 1
@@ -595,6 +618,7 @@ export async function queueCombinedTelegram(db: any, matchingJobId: string): Pro
     .eq('platform', 'TELEGRAM').limit(500);
   const chosen = paidTelegramChannels((rows ?? []) as TelegramCommunity[], (camp.dna as PropertyDna)?.city ?? null, COMBINED_PAID_CHANNELS);
   const already = await queuedTelegramTargets(db, matchingJobId);
+  for (const u of await recentlyPaidTelegramTargets(db)) already.add(u);
   /* The owner's language choice: a channel in another language is not read (unknown language stays). */
   const langs = new Set(((camp.languages ?? []) as string[]).map((l) => l.toLowerCase()));
   const jobs: PlannedSocialJob[] = chosen

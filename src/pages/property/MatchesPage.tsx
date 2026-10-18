@@ -1060,7 +1060,7 @@ function MatchesContent() {
 
         {/* ── TAKE YOUR RESEARCH FURTHER: raise the running campaign's total budget. ── */}
         {activeJobId && propertyId ? (
-          <section className="mt-3 flex flex-col gap-3 rounded-2xl border border-[hsl(var(--border))] bg-white p-4 shadow-card sm:flex-row sm:items-center sm:justify-between" data-testid="research-extend-card">
+          <section className="mt-8 flex flex-col gap-3 rounded-2xl border border-[hsl(var(--border))] bg-white p-4 shadow-card sm:flex-row sm:items-center sm:justify-between" data-testid="research-extend-card">
             <div className="min-w-0">
               <p className="font-display text-base font-semibold">{t('rb_ext_heading')}</p>
               <p className="mt-0.5 text-sm text-[hsl(224_14%_28%)]">{t('rb_ext_description')}</p>

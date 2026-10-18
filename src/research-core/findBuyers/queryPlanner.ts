@@ -40,7 +40,9 @@ export interface QueryPlan {
   queries: PlannedQuery[];
 }
 
-export const PER_LANGUAGE_CAPS: Readonly<Record<QueryKind, number>> = { community: 2, demand: 4, hashtag: 1, listing: 2 };
+/* community: 6 — the first two are the classic group searches; the rest rotate per campaign so
+   each search can find groups the earlier ones did not (owner, 2026-10-18; campaignPlan). */
+export const PER_LANGUAGE_CAPS: Readonly<Record<QueryKind, number>> = { community: 6, demand: 4, hashtag: 1, listing: 2 };
 
 type T = (p: { city: string; place: string; type: string; beds: string }) => string;
 interface LangTemplates {
@@ -56,7 +58,8 @@ const TYPE_EN: Record<string, string> = { APARTMENT: 'apartment', HOUSE: 'house'
 
 const TEMPLATES: Record<SearchLanguage, LangTemplates> = {
   ka: {
-    community: [({ city }) => `ბინები ${city}`, ({ city }) => `უძრავი ქონება ${city}`],
+    community: [({ city }) => `ბინები ${city}`, ({ city }) => `უძრავი ქონება ${city}`,
+      ({ city }) => `ბინების ყიდვა გაყიდვა ${city}`, ({ city }) => `ბინა მეპატრონისგან ${city}`, ({ city }) => `ბინის ყიდვა ${city}`, () => `უძრავი ქონება საქართველო`],
     sale: [
       ['WANT_BUY', ({ type, city }) => `ვყიდულობ ${type} ${city}`],
       ['LOOKING_FOR', ({ type, city }) => `ვეძებ ${type} ${city}`],
@@ -74,7 +77,8 @@ const TEMPLATES: Record<SearchLanguage, LangTemplates> = {
     beds: (b, r) => (r ?? (b != null ? b + 1 : null)) ? `${r ?? (b as number) + 1}-ოთახიანი ბინა` : 'ბინა',
   },
   ru: {
-    community: [({ city }) => `квартиры ${city}`, ({ city }) => `недвижимость ${city}`],
+    community: [({ city }) => `квартиры ${city}`, ({ city }) => `недвижимость ${city}`,
+      ({ city }) => `купить квартиру ${city}`, ({ city }) => `квартиры ${city} без посредников`, ({ city }) => `русские в ${city}`, () => `недвижимость Грузии`],
     sale: [
       ['WANT_BUY', ({ type, city }) => `куплю ${type} в ${city}`],
       ['LOOKING_FOR', ({ type, city }) => `ищу ${type} ${city}`],
@@ -92,7 +96,8 @@ const TEMPLATES: Record<SearchLanguage, LangTemplates> = {
     beds: (b, r) => (r ?? (b != null ? b + 1 : null)) ? `${r ?? (b as number) + 1}-комнатная квартира` : 'квартира',
   },
   en: {
-    community: [({ city }) => `${city} apartments`, ({ city }) => `${city} real estate`],
+    community: [({ city }) => `${city} apartments`, ({ city }) => `${city} real estate`,
+      ({ city }) => `buy apartment ${city}`, ({ city }) => `expats in ${city}`, ({ city }) => `${city} property for sale`, () => `Georgia real estate investment`],
     sale: [
       ['WANT_BUY', ({ type, city }) => `looking to buy ${type} in ${city}`],
       ['NEED', ({ type, city }) => `need ${type} ${city}`],
@@ -110,7 +115,8 @@ const TEMPLATES: Record<SearchLanguage, LangTemplates> = {
     beds: (b) => (b != null && b > 0 ? `${b} bedroom apartment` : 'apartment'),
   },
   ar: {
-    community: [({ city }) => `عقارات ${city}`, ({ city }) => `شقق ${city}`],
+    community: [({ city }) => `عقارات ${city}`, ({ city }) => `شقق ${city}`,
+      ({ city }) => `شراء شقة ${city}`, ({ city }) => `العرب في ${city}`, () => `عقارات جورجيا`, ({ city }) => `الاستثمار العقاري ${city}`],
     sale: [
       /* v6 (2026-10-17): the property's own district and rooms, in native script (places.ts),
          not one generic city query translated six times. */
@@ -130,7 +136,8 @@ const TEMPLATES: Record<SearchLanguage, LangTemplates> = {
     beds: (b, r) => { const n = r ?? (b != null ? b + 1 : null); return n ? `شقة ${n} غرف` : 'شقة'; },
   },
   he: {
-    community: [({ city }) => `דירות ב${city}`, ({ city }) => `נדל"ן ${city}`],
+    community: [({ city }) => `דירות ב${city}`, ({ city }) => `נדל"ן ${city}`,
+      ({ city }) => `ישראלים ב${city}`, ({ city }) => `קניית דירה ב${city}`, () => `נדל"ן גאורגיה`, ({ city }) => `השקעות נדל"ן ${city}`],
     sale: [
       ['WANT_BUY', ({ beds, place }) => `מחפש ${beds} לקנייה ב${place}`],
       ['LOOKING_FOR', ({ city }) => `רוצה לקנות דירה ב${city}`],
@@ -148,7 +155,8 @@ const TEMPLATES: Record<SearchLanguage, LangTemplates> = {
     beds: (b, r) => { const n = r ?? (b != null ? b + 1 : null); return n ? `דירת ${n} חדרים` : 'דירה'; },
   },
   tr: {
-    community: [({ city }) => `${city} emlak`, ({ city }) => `${city} kiralık satılık daire`],
+    community: [({ city }) => `${city} emlak`, ({ city }) => `${city} kiralık satılık daire`,
+      ({ city }) => `${city} satılık daire`, ({ city }) => `${city}'de yaşayan Türkler`, () => `Gürcistan emlak`, ({ city }) => `${city} yatırımlık daire`],
     sale: [
       ['WANT_BUY', ({ beds, place }) => `${place} satılık ${beds} arıyorum`],
       ['LOOKING_FOR', ({ city }) => `${city} daire almak istiyorum`],

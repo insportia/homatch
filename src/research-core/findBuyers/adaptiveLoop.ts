@@ -434,7 +434,7 @@ export function fallbackActions(e: CampaignEvidence, pass: Pass): ProposedAction
     const qs = order.flatMap((lang) => (SEMANTIC[lang][e.transaction === 'RENT' ? 'rent' : 'buy']).map((t) =>
       ({ language: lang, query: fill(t, { noun: FAMILY_NOUN[e.family][lang], city: cityFor(lang) }) })));
     actions.push(action('SWITCH_LANGUAGE', 'FB_GROUP_SEARCH', order.map((lang) => ({ language: lang, query: fill(COMMUNITY[lang][1], { place: cityFor(lang) }) }))));
-    actions.push(action('REFINE_QUERIES', 'TIKTOK_SEARCH', qs));
+    /* no TikTok refinement (owner, 2026-10-18): see campaignPlan TIKTOK_DEMAND_SEARCH */
     actions.push(action('REFINE_QUERIES', 'BLUESKY_SEARCH', qs));
   }
   if (pass === 'FLEXIBLE') {

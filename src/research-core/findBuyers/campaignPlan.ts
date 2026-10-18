@@ -61,9 +61,6 @@ export interface PlanInputs {
   now?: number;
 }
 
-const DAY = 86_400_000;
-/** Known groups/communities checked this recently cover a language's discovery. */
-const DISCOVERY_REUSE_DAYS = 14;
 const MAX_KNOWN_PER_FAMILY = 6;
 /**
  * Georgian-speaking locals are the primary market (2026-10-12): the first paid
@@ -91,6 +88,21 @@ export const NETWORK_LANGUAGES: Readonly<Record<string, readonly SearchLanguage[
   BLUESKY: ['en', 'ru', 'tr'],
 };
 
+/** Which slice of the rotating discovery queries this campaign uses: changes every hour. */
+export function discoveryTurn(now: number): number {
+  return Math.floor(now / 3_600_000);
+}
+
+/** The list started at position `turn` (mod length), wrapping around. */
+export function rotate<T>(list: readonly T[], turn: number): T[] {
+  if (!list.length) return [];
+  const k = ((turn % list.length) + list.length) % list.length;
+  return [...list.slice(k), ...list.slice(0, k)];
+}
+
+/** TikTok demand search (see initialSocialJobs). Off: no buyer or tenant was ever found there. */
+export const TIKTOK_DEMAND_SEARCH = false;
+
 export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
   const { dna, plan, knownSources, enabledActors } = input;
   const now = input.now ?? Date.now();
@@ -99,7 +111,6 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
   const probe = (stage: Stage) => enabledActors[STAGE_ACTOR[stage]]?.probeSize ?? 20;
   const base = (stage: Stage) => enabledActors[STAGE_ACTOR[stage]]?.priority ?? 50;
   const cityMatch = (s: KnownSource) => !dna.city || !s.city || s.city.toLowerCase() === dna.city.toLowerCase();
-  const fresh = (s: KnownSource) => s.lastCheckedAt != null && now - Date.parse(s.lastCheckedAt) < DISCOVERY_REUSE_DAYS * DAY;
   /* A Facebook GROUP and a Facebook PAGE are different sources read by different
      Actors: a Page URL must never reach the group reader, nor a group the Page reader. */
   const kindOk = (s: KnownSource, kind: 'GROUP' | 'PAGE' | null) =>
@@ -125,15 +136,16 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
     }
   };
 
-  /* FACEBOOK: known groups first; group search only where the registry does
-     not already cover the language. */
+  /* FACEBOOK: known groups first, then group discovery in EVERY language with a query
+     that rotates per campaign (owner, 2026-10-18: "find new groups on every campaign, in
+     all six languages"). Campaigns a53b3b5a and d0af0a47 searched the same two Georgian
+     queries and got the same groups back; a covered language used to be skipped. */
   pushKnown('FB_GROUP_POSTS', 'FACEBOOK', null, MAX_KNOWN_PER_FAMILY, 'GROUP');
   if (has('FB_GROUP_SEARCH')) {
+    const turn = discoveryTurn(now);
     for (const lang of NETWORK_LANGUAGES.FACEBOOK) {
       const primary = lang === PRIMARY_LANGUAGE;
-      const covered = known('FACEBOOK', 'GROUP').filter((s) => s.languages.includes(lang) && fresh(s)).length >= 3;
-      if (covered && !primary) continue;
-      for (const [i, q] of queriesFor(plan, 'community', lang).slice(0, primary ? PRIMARY_DISCOVERY_QUERIES : 1).entries()) {
+      for (const [i, q] of rotate(queriesFor(plan, 'community', lang), turn).slice(0, primary ? PRIMARY_DISCOVERY_QUERIES : 1).entries()) {
         jobs.push({
           stage: 'FB_GROUP_SEARCH', actorKey: STAGE_ACTOR.FB_GROUP_SEARCH, language: lang, query: q.query, targetUrl: null,
           sourceId: null, size: probe('FB_GROUP_SEARCH'), arm: i === 0 ? `FB_GROUP_SEARCH:${lang}` : `FB_GROUP_SEARCH:${lang}:${i}`,
@@ -173,8 +185,11 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
   }
   pushKnown('FB_PAGE_POSTS', 'FACEBOOK', null, 3, 'PAGE');
 
-  /* TIKTOK: search per language; hashtags where they are used. */
-  if (has('TIKTOK_SEARCH')) {
+  /* TIKTOK: not planned for demand search (owner, 2026-10-18). Across every campaign of
+     October 2026 it returned agencies' listing videos and no qualified person, at the
+     lowest spend of any source; the budget goes to Facebook, Instagram and Telegram. The
+     block stays behind TIKTOK_DEMAND_SEARCH so it can be re-enabled deliberately. */
+  if (TIKTOK_DEMAND_SEARCH && has('TIKTOK_SEARCH')) {
     for (const lang of NETWORK_LANGUAGES.TIKTOK) {
       const q = queriesFor(plan, 'demand', lang)[0];
       if (q) jobs.push({

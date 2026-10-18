@@ -229,13 +229,20 @@ async function processGroups(ctx: PipelineCtx, groups: NormalizedItem[], out: Pi
       const { data: ins } = await db.from('source_registry').insert(row).select('id').maybeSingle();
       sourceId = ins?.id ?? null;
     }
-    /* Facebook groups → read their recent posts next (LinkedIn has no group-posts Actor here). */
-    if (network === 'FACEBOOK' && g.group!.url) {
-      out.followUps.push({ stage: 'FB_GROUP_POSTS', targetUrl: g.group!.url, sourceId, language: ctx.runLanguage ?? 'multi', reason: 'discovered_group' });
+    /* Facebook groups → read their recent posts next (LinkedIn has no group-posts Actor here).
+       A group another campaign read in the last RECENT_GROUP_READ_HOURS is not read again
+       (owner, 2026-10-18: discovery must bring NEW groups); never-read groups go first. */
+    const readRecently = existing?.last_checked_at && Date.now() - Date.parse(existing.last_checked_at) < RECENT_GROUP_READ_HOURS * 3_600_000;
+    if (network === 'FACEBOOK' && g.group!.url && !readRecently) {
+      out.followUps.push({ stage: 'FB_GROUP_POSTS', targetUrl: g.group!.url, sourceId, language: ctx.runLanguage ?? 'multi', reason: 'discovered_group', isNew: !existing } as any);
     }
   }
-  out.followUps = out.followUps.slice(0, 4);
+  out.followUps = [...out.followUps].sort((a: any, b: any) => Number(Boolean(b.isNew)) - Number(Boolean(a.isNew)))
+    .map(({ isNew: _n, ...f }: any) => f).slice(0, 4);
 }
+
+/** A discovered group read by any campaign within this many hours is not re-read as a discovery follow-up. */
+export const RECENT_GROUP_READ_HOURS = 72;
 
 /** A public Facebook Page URL from a post author link (null for groups, posts or non-Facebook links). */
 export function pageUrlOf(raw: string | null | undefined): string | null {

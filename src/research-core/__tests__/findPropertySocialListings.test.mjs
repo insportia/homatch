@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { offerImages, socialCandidate, isSocialSource, SOCIAL_ADAPTER_VERSION } from '../marketplace/socialListings.ts';
 import { processSearch } from '../marketplace/pipeline.ts';
-import { offerPropertyKind, offerSearchLanguages, planOfferJobs, SEARCH_WORDS, OFFER_LANGUAGES } from '../findProperty/offerCampaign.ts';
+import { offerPropertyKind, offerSearchLanguages, planOfferJobs, SEARCH_WORDS, OFFER_LANGUAGES, cityHint, MAX_ITEMS_PER_RUN } from '../findProperty/offerCampaign.ts';
 import * as F from './fixtures/marketplaceFixtures.mjs';
 
 const obs = (over = {}) => ({
@@ -96,10 +96,68 @@ test('keyword search words: six languages, the searched property kind, the custo
   assert.deepEqual(offerSearchLanguages('he'), ['ka', 'ru', 'en', 'he']);
   assert.deepEqual(offerSearchLanguages('ka'), ['ka', 'ru', 'en']);
   assert.deepEqual(offerSearchLanguages('xx'), ['ka', 'ru', 'en']);
+});
+
+const ACTORS = {
+  FB_GROUP_POSTS: { actorKey: 'FB_GROUP_POSTS', ready: true, startFeeMicros: 8000, pricePer1kMicros: 1_500_000, probeSize: 20, maxResults: 100 },
+  TELEGRAM_CHANNEL: { actorKey: 'TELEGRAM_CHANNEL', ready: true, startFeeMicros: 1000, pricePer1kMicros: 250_000, probeSize: 30, maxResults: 150 },
+  IG_PROFILE_POSTS: { actorKey: 'IG_PROFILE_POSTS', ready: true, startFeeMicros: 40000, pricePer1kMicros: 800_000, probeSize: 12, maxResults: 60 },
+  TIKTOK: { actorKey: 'TIKTOK', ready: true, startFeeMicros: 5000, pricePer1kMicros: 2_000_000, probeSize: 15, maxResults: 60 },
+  FB_POST_SEARCH: { actorKey: 'FB_POST_SEARCH', ready: false, startFeeMicros: 0, pricePer1kMicros: 0, probeSize: 15 },
+};
+const fbGroup = (i, city, url) => ({ id: `fb-${i}`, network: 'FACEBOOK', kind: 'FACEBOOK_GROUP', url: url ?? `https://www.facebook.com/groups/g${i}`, city, priority: 5 });
+const tg = (i) => ({ id: `tg-${i}`, network: 'TELEGRAM', kind: 'TELEGRAM_GROUP', url: `https://t.me/channel${i}`, city: null, priority: 5 });
+
+test('paid plan: every Facebook group of the city in ONE run per keyword, Telegram in batches, TikTok all keywords at once — no portals', () => {
+  const sources = [
+    ...Array.from({ length: 30 }, (_, i) => fbGroup(i, i < 20 ? 'Tbilisi' : null)),
+    fbGroup(90, 'Batumi'), fbGroup(91, null, 'https://www.facebook.com/groups/batumi.flats.sale'),
+    ...Array.from({ length: 12 }, (_, i) => tg(i)),
+  ];
   const plan = planOfferJobs({
-    search: { transaction: 'SALE', propertyType: 'HOUSE', city: 'Batumi', districts: [], languages: offerSearchLanguages('tr') },
-    networks: ['FACEBOOK'], providerBudgetMicros: 10_000_000, sources: [],
-    actors: { FB_POST_SEARCH: { actorKey: 'FB_POST_SEARCH', ready: true, startFeeMicros: 1000, pricePer1kMicros: 1000, probeSize: 20 } },
+    search: { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: offerSearchLanguages('ka') },
+    networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK', 'INSTAGRAM', 'VK'], providerBudgetMicros: 100_000_000, sources, actors: ACTORS,
   });
-  assert.deepEqual(plan.jobs.map((j) => j.query), ['იყიდება სახლი Batumi', 'продается дом Batumi', 'house for sale Batumi', 'satılık ev Batumi']);
+  const fb = plan.jobs.filter((j) => j.stage === 'FB_GROUP_POSTS');
+  /* 30 groups → 2 chunks (25 + 5) × 3 keywords; another city's groups never read. */
+  assert.equal(fb.length, 6);
+  const urls = new Set(fb.flatMap((j) => j.targets.map((t) => t.url)));
+  assert.equal(urls.size, 30);
+  assert.ok(![...urls].some((u) => /g90$|batumi/.test(u)), 'Batumi groups are not read for a Tbilisi search');
+  assert.deepEqual([...new Set(fb.map((j) => j.queries[0]))], ['იყიდება ბინა', 'продается квартира', 'apartment for sale']);
+  assert.equal(fb[0].targets.length, 25);
+  assert.equal(fb[0].size, Math.min(MAX_ITEMS_PER_RUN, 25 * 100), 'a full run: max results per group, within the ceiling');
+  const tgJobs = plan.jobs.filter((j) => j.stage === 'TELEGRAM_CHANNEL');
+  assert.equal(tgJobs.length, 1);
+  assert.equal(tgJobs[0].targets.length, 12);
+  assert.equal(tgJobs[0].size, 12 * 150 > MAX_ITEMS_PER_RUN ? MAX_ITEMS_PER_RUN : 12 * 150);
+  const tt = plan.jobs.filter((j) => j.stage === 'TIKTOK_SEARCH');
+  assert.equal(tt.length, 1);
+  assert.deepEqual(tt[0].queries, ['იყიდება ბინა Tbilisi', 'продается квартира Tbilisi', 'apartment for sale Tbilisi']);
+  assert.equal(tt[0].size, 3 * 60);
+  /* No Instagram profile registered, VK has no ready Actor: said, never silently dropped. */
+  assert.deepEqual(plan.unavailable.map((u) => [u.network, u.reason]).sort(), [['INSTAGRAM', 'NO_KNOWN_SOURCE'], ['VK', 'NO_READY_ACTOR']]);
+  assert.ok(plan.jobs.every((j) => ['FACEBOOK', 'TELEGRAM', 'TIKTOK', 'INSTAGRAM'].includes(j.network)), 'only social networks, never a portal');
+});
+
+test('paid plan within a small budget: one of each network first, the last run shrinks to fit, the estimate never exceeds the budget', () => {
+  const sources = [...Array.from({ length: 30 }, (_, i) => fbGroup(i, 'Tbilisi')), ...Array.from({ length: 4 }, (_, i) => tg(i))];
+  const budget = 3_150_000; // $5 campaign: 63% to providers
+  const plan = planOfferJobs({
+    search: { transaction: 'RENT', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: offerSearchLanguages('en') },
+    networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK'], providerBudgetMicros: budget, sources, actors: ACTORS,
+  });
+  assert.ok(plan.estimatedMicros <= budget);
+  assert.deepEqual(plan.jobs.slice(0, 3).map((j) => j.network), ['FACEBOOK', 'TELEGRAM', 'TIKTOK'], 'every network gets its run before any gets a second');
+  const last = plan.jobs[plan.jobs.length - 1];
+  assert.equal(last.network, 'FACEBOOK');
+  assert.ok(last.size < 1000 && last.size >= 20, 'the run that no longer fit whole runs smaller');
+  assert.ok(plan.skippedForBudget > 0);
+  assert.equal(plan.jobs.reduce((n, j) => n + j.estimateMicros, 0), plan.estimatedMicros);
+});
+
+test('a community URL names its city', () => {
+  assert.equal(cityHint('https://www.facebook.com/groups/batumi.apartments'), 'Batumi');
+  assert.equal(cityHint('https://t.me/tbilisi_rent'), 'Tbilisi');
+  assert.equal(cityHint('https://www.facebook.com/groups/12345'), null);
 });

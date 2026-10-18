@@ -19874,7 +19874,7 @@ const en = {
   fpx_wallet: 'In your wallet',
   fpx_deep_short: 'You have less than this in your wallet.',
   fpx_deep_next_confirm: 'On the next screen you’ll see the exact price and approve it. Nothing is taken before that.',
-  fpx_start_deep: 'Start and set up Deep Search',
+  fpx_start_deep: 'Start Deep Search',
   fpx_continue_modes: 'Continue',
   fpx_deep_eyebrow: 'Paid',
   fpx_search_running: 'Searching now',
@@ -20341,7 +20341,7 @@ const en = {
   fpi_paid_net_failed: 'Could not be searched',
   fpi_paid_net_waiting: 'Waiting',
   fpi_paid_net_unavailable: 'Unavailable right now',
-  fpi_paid_results_wait: 'Listings from social networks join your results when the search has finished.',
+  fpi_paid_results_wait: 'Results appear when the search has finished.',
   fpi_paid_view_results: 'View results',
 
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
@@ -20429,6 +20429,21 @@ const en = {
   fbrx_legacy_hide: 'Remove from my lists',
   fbrx_clear_include_opened: 'Also hide the contacts you already opened: {{n}}',
   fbrx_clear_include_opened_hint: 'They leave these lists only. Nothing is deleted, and the payment and contact record stay.',
+
+  /* ── FIND PROPERTY — Deep Search v2: process stages, paid results view ── */
+  fpx_deep_consent: 'I approve up to {{credits}} credits ({{max}}). They are held now; I pay only for the work done and the rest returns to me.',
+  fpi_paid_starting: 'Starting your Deep Search…',
+  fpi_proc_search: 'Searching public posts where people offer homes',
+  fpi_proc_analyse: 'Reading each post: is it an offer of the right kind, in the right place?',
+  fpi_proc_match: 'Checking each offer against your search',
+  fpi_proc_ready: 'Preparing your results',
+  fpi_proc_progress: 'Progress: {{pct}}%',
+  fpi_paid_no_offers: 'No posts offering a home like yours were found this time. You pay only for the work done; the rest returns to your balance.',
+  fpv_tab_paid: 'Deep Search',
+  fpv_paid_title: 'Deep Search results',
+  fpv_paid_body: 'Homes people offered in public posts. HOMATCH has not verified them: open the original post and check the details with the person who posted it.',
+  fpv_paid_empty_title: 'No Deep Search results yet',
+  fpv_paid_empty_body: 'Offers from public posts appear here once a Deep Search has finished.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40217,7 +40232,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpx_wallet: 'საფულეში გაქვთ',
   fpx_deep_short: 'საფულეში ამაზე ნაკლები გაქვთ.',
   fpx_deep_next_confirm: 'შემდეგ ეკრანზე ზუსტ ფასს ნახავთ და დაადასტურებთ. მანამდე არაფერი ჩამოგეჭრებათ.',
-  fpx_start_deep: 'დაწყება და ვრცელი ძიების მომზადება',
+  fpx_start_deep: 'ვრცელი ძიების დაწყება',
   fpx_continue_modes: 'გაგრძელება',
   fpx_deep_eyebrow: 'ფასიანი',
   fpx_search_running: 'ვეძებთ',
@@ -40684,7 +40699,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpi_paid_net_failed: 'ძიება ვერ მოხერხდა',
   fpi_paid_net_waiting: 'რიგშია',
   fpi_paid_net_unavailable: 'ახლა მიუწვდომელია',
-  fpi_paid_results_wait: 'სოციალური ქსელების განცხადებები შედეგებს ძიების დასრულების შემდეგ დაემატება.',
+  fpi_paid_results_wait: 'შედეგები ძიების დასრულების შემდეგ გამოჩნდება.',
   fpi_paid_view_results: 'შედეგების ნახვა',
 
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
@@ -40772,6 +40787,21 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbrx_legacy_hide: 'სიებიდან მოშორება',
   fbrx_clear_include_opened: 'ასევე დაიმალოს უკვე გახსნილი კონტაქტები: {{n}}',
   fbrx_clear_include_opened_hint: 'ისინი მხოლოდ ამ სიებიდან გაქრება. არაფერი იშლება — გადახდა და კონტაქტის ჩანაწერი რჩება.',
+
+  /* ── FIND PROPERTY — Deep Search v2: process stages, paid results view ── */
+  fpx_deep_consent: 'ვადასტურებ მაქსიმუმ {{credits}} კრედიტს ({{max}}). ის ახლავე დარეზერვდება; ვიხდი მხოლოდ შესრულებულ სამუშაოში, დანარჩენი დამიბრუნდება.',
+  fpi_paid_starting: 'ვრცელი ძიება იწყება…',
+  fpi_proc_search: 'ვეძებთ საჯარო პოსტებს, სადაც ბინებს სთავაზობენ',
+  fpi_proc_analyse: 'ვკითხულობთ თითოეულ პოსტს: შეთავაზებაა თუ არა, სწორი ტიპის და სწორ ადგილას?',
+  fpi_proc_match: 'თითოეულ შეთავაზებას თქვენს ძიებასთან ვამოწმებთ',
+  fpi_proc_ready: 'შედეგებს ვამზადებთ',
+  fpi_proc_progress: 'პროგრესი: {{pct}}%',
+  fpi_paid_no_offers: 'ამჯერად თქვენნაირი ბინის შეთავაზების პოსტი ვერ მოიძებნა. იხდით მხოლოდ შესრულებულ სამუშაოში, დანარჩენი ბალანსზე ბრუნდება.',
+  fpv_tab_paid: 'ვრცელი ძიება',
+  fpv_paid_title: 'ვრცელი ძიების შედეგები',
+  fpv_paid_body: 'ბინები, რომლებიც ადამიანებმა საჯარო პოსტებში შესთავაზეს. HOMATCH-ს ისინი გადამოწმებული არ აქვს: გახსენით ორიგინალი პოსტი და დეტალები ავტორთან დააზუსტეთ.',
+  fpv_paid_empty_title: 'ვრცელი ძიების შედეგები ჯერ არ არის',
+  fpv_paid_empty_body: 'საჯარო პოსტებიდან შეთავაზებები აქ ვრცელი ძიების დასრულების შემდეგ გამოჩნდება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -60551,7 +60581,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpx_wallet: 'В кошельке',
   fpx_deep_short: 'В кошельке меньше этой суммы.',
   fpx_deep_next_confirm: 'На следующем экране вы увидите точную цену и подтвердите её. До этого ничего не спишется.',
-  fpx_start_deep: 'Начать и настроить расширенный поиск',
+  fpx_start_deep: 'Начать расширенный поиск',
   fpx_continue_modes: 'Продолжить',
   fpx_deep_eyebrow: 'Платно',
   fpx_search_running: 'Ищем',
@@ -61018,7 +61048,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpi_paid_net_failed: 'Не удалось проверить',
   fpi_paid_net_waiting: 'В очереди',
   fpi_paid_net_unavailable: 'Сейчас недоступно',
-  fpi_paid_results_wait: 'Объявления из соцсетей появятся в результатах после завершения поиска.',
+  fpi_paid_results_wait: 'Результаты появятся, когда поиск завершится.',
   fpi_paid_view_results: 'Посмотреть результаты',
 
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
@@ -61106,6 +61136,21 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbrx_legacy_hide: 'Убрать из моих списков',
   fbrx_clear_include_opened: 'Скрыть и уже открытые контакты: {{n}}',
   fbrx_clear_include_opened_hint: 'Они исчезнут только из этих списков. Ничего не удаляется — оплата и запись контакта сохраняются.',
+
+  /* ── FIND PROPERTY — Deep Search v2: process stages, paid results view ── */
+  fpx_deep_consent: 'Подтверждаю максимум {{credits}} кредитов ({{max}}). Они резервируются сейчас; я плачу только за выполненную работу, остаток вернётся.',
+  fpi_paid_starting: 'Запускаем расширенный поиск…',
+  fpi_proc_search: 'Ищем публичные посты, где предлагают жильё',
+  fpi_proc_analyse: 'Читаем каждый пост: это предложение нужного типа и в нужном месте?',
+  fpi_proc_match: 'Сверяем каждое предложение с вашим поиском',
+  fpi_proc_ready: 'Готовим результаты',
+  fpi_proc_progress: 'Прогресс: {{pct}}%',
+  fpi_paid_no_offers: 'На этот раз постов с подходящим предложением не нашлось. Вы платите только за выполненную работу, остаток вернётся на баланс.',
+  fpv_tab_paid: 'Расширенный',
+  fpv_paid_title: 'Результаты расширенного поиска',
+  fpv_paid_body: 'Жильё, которое люди предложили в публичных постах. HOMATCH его не проверял: откройте исходный пост и уточните детали у автора.',
+  fpv_paid_empty_title: 'Результатов расширенного поиска пока нет',
+  fpv_paid_empty_body: 'Предложения из публичных постов появятся здесь после завершения расширенного поиска.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -80883,7 +80928,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpx_wallet: 'Cüzdanınızda',
   fpx_deep_short: 'Cüzdanınızda bundan az var.',
   fpx_deep_next_confirm: 'Sonraki ekranda tam fiyatı görüp onaylarsınız. O zamana kadar hiçbir şey alınmaz.',
-  fpx_start_deep: 'Başlat ve geniş aramayı ayarla',
+  fpx_start_deep: 'Geniş aramayı başlat',
   fpx_continue_modes: 'Devam',
   fpx_deep_eyebrow: 'Ücretli',
   fpx_search_running: 'Arıyoruz',
@@ -81350,7 +81395,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpi_paid_net_failed: 'Aranamadı',
   fpi_paid_net_waiting: 'Bekliyor',
   fpi_paid_net_unavailable: 'Şu anda kullanılamıyor',
-  fpi_paid_results_wait: 'Sosyal ağlardan gelen ilanlar arama bittiğinde sonuçlarınıza eklenir.',
+  fpi_paid_results_wait: 'Sonuçlar arama bittiğinde görünür.',
   fpi_paid_view_results: 'Sonuçları görüntüle',
 
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
@@ -81438,6 +81483,21 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbrx_legacy_hide: 'Listelerimden kaldır',
   fbrx_clear_include_opened: 'Daha önce açtığınız kişileri de gizle: {{n}}',
   fbrx_clear_include_opened_hint: 'Yalnızca bu listelerden kalkar. Hiçbir şey silinmez; ödeme ve kişi kaydı kalır.',
+
+  /* ── FIND PROPERTY — Deep Search v2: process stages, paid results view ── */
+  fpx_deep_consent: 'En fazla {{credits}} krediyi ({{max}}) onaylıyorum. Şimdi bloke edilir; yalnızca yapılan iş için öderim, kalanı bana döner.',
+  fpi_paid_starting: 'Geniş arama başlatılıyor…',
+  fpi_proc_search: 'İnsanların ev sunduğu herkese açık gönderileri arıyoruz',
+  fpi_proc_analyse: 'Her gönderiyi okuyoruz: doğru türde, doğru yerde bir teklif mi?',
+  fpi_proc_match: 'Her teklifi aramanızla karşılaştırıyoruz',
+  fpi_proc_ready: 'Sonuçlarınızı hazırlıyoruz',
+  fpi_proc_progress: 'İlerleme: %{{pct}}',
+  fpi_paid_no_offers: 'Bu kez sizinkine benzer bir ev sunan gönderi bulunamadı. Yalnızca yapılan iş için ödersiniz; kalanı bakiyenize döner.',
+  fpv_tab_paid: 'Geniş arama',
+  fpv_paid_title: 'Geniş arama sonuçları',
+  fpv_paid_body: 'İnsanların herkese açık gönderilerde sunduğu evler. HOMATCH bunları doğrulamadı: orijinal gönderiyi açın ve ayrıntıları paylaşan kişiyle netleştirin.',
+  fpv_paid_empty_title: 'Henüz geniş arama sonucu yok',
+  fpv_paid_empty_body: 'Herkese açık gönderilerdeki teklifler, geniş arama bittiğinde burada görünür.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101215,7 +101275,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpx_wallet: 'في محفظتك',
   fpx_deep_short: 'رصيد محفظتك أقل من ذلك.',
   fpx_deep_next_confirm: 'في الشاشة التالية سترى السعر الدقيق وتوافق عليه. لا يُؤخذ شيء قبل ذلك.',
-  fpx_start_deep: 'ابدأ وجهّز البحث الموسّع',
+  fpx_start_deep: 'ابدأ البحث الموسّع',
   fpx_continue_modes: 'متابعة',
   fpx_deep_eyebrow: 'مدفوع',
   fpx_search_running: 'نبحث الآن',
@@ -101682,7 +101742,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpi_paid_net_failed: 'تعذّر البحث',
   fpi_paid_net_waiting: 'في الانتظار',
   fpi_paid_net_unavailable: 'غير متاح الآن',
-  fpi_paid_results_wait: 'تنضم إعلانات وسائل التواصل إلى نتائجك عند انتهاء البحث.',
+  fpi_paid_results_wait: 'تظهر النتائج عند انتهاء البحث.',
   fpi_paid_view_results: 'عرض النتائج',
 
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
@@ -101770,6 +101830,21 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbrx_legacy_hide: 'إزالتها من قوائمي',
   fbrx_clear_include_opened: 'إخفاء جهات الاتصال التي فتحتها أيضًا: {{n}}',
   fbrx_clear_include_opened_hint: 'تختفي من هذه القوائم فقط. لا يُحذف شيء، ويبقى الدفع وسجل جهة الاتصال.',
+
+  /* ── FIND PROPERTY — Deep Search v2: process stages, paid results view ── */
+  fpx_deep_consent: 'أوافق على ما يصل إلى {{credits}} رصيدًا ({{max}}). يُحجز الآن؛ أدفع فقط مقابل العمل المنجز ويعود الباقي إليّ.',
+  fpi_paid_starting: 'جارٍ بدء البحث الموسّع…',
+  fpi_proc_search: 'نبحث في المنشورات العامة التي يعرض فيها الناس منازل',
+  fpi_proc_analyse: 'نقرأ كل منشور: هل هو عرض من النوع الصحيح وفي المكان الصحيح؟',
+  fpi_proc_match: 'نطابق كل عرض مع بحثك',
+  fpi_proc_ready: 'نجهّز نتائجك',
+  fpi_proc_progress: 'التقدّم: {{pct}}%',
+  fpi_paid_no_offers: 'لم نعثر هذه المرة على منشورات تعرض منزلًا كالذي تريده. تدفع فقط مقابل العمل المنجز ويعود الباقي إلى رصيدك.',
+  fpv_tab_paid: 'البحث الموسّع',
+  fpv_paid_title: 'نتائج البحث الموسّع',
+  fpv_paid_body: 'منازل عرضها أشخاص في منشورات عامة. لم يتحقق منها HOMATCH: افتح المنشور الأصلي وتأكد من التفاصيل مع ناشره.',
+  fpv_paid_empty_title: 'لا توجد نتائج للبحث الموسّع بعد',
+  fpv_paid_empty_body: 'تظهر هنا العروض من المنشورات العامة بعد انتهاء البحث الموسّع.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -121547,7 +121622,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpx_wallet: 'בארנק',
   fpx_deep_short: 'יש לכם בארנק פחות מזה.',
   fpx_deep_next_confirm: 'במסך הבא תראו את המחיר המדויק ותאשרו. לפני זה לא נלקח כלום.',
-  fpx_start_deep: 'להתחיל ולהגדיר חיפוש מורחב',
+  fpx_start_deep: 'להתחיל חיפוש מורחב',
   fpx_continue_modes: 'המשך',
   fpx_deep_eyebrow: 'בתשלום',
   fpx_search_running: 'מחפשים',
@@ -122014,7 +122089,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpi_paid_net_failed: 'לא ניתן היה לחפש',
   fpi_paid_net_waiting: 'ממתין',
   fpi_paid_net_unavailable: 'לא זמין כרגע',
-  fpi_paid_results_wait: 'מודעות מהרשתות החברתיות יצטרפו לתוצאות כשהחיפוש יסתיים.',
+  fpi_paid_results_wait: 'התוצאות יופיעו כשהחיפוש יסתיים.',
   fpi_paid_view_results: 'צפייה בתוצאות',
 
   /* ── FIND BUYERS — recovery UX: campaign dashboard, latest search, clear old results ── */
@@ -122102,6 +122177,21 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbrx_legacy_hide: 'הסרה מהרשימות שלי',
   fbrx_clear_include_opened: 'להסתיר גם אנשי קשר שכבר פתחתם: {{n}}',
   fbrx_clear_include_opened_hint: 'הם יוסרו רק מהרשימות האלה. דבר אינו נמחק — התשלום ורשומת איש הקשר נשמרים.',
+
+  /* ── FIND PROPERTY — Deep Search v2: process stages, paid results view ── */
+  fpx_deep_consent: 'אני מאשר/ת עד {{credits}} קרדיטים ({{max}}). הם נחסמים עכשיו; אשלם רק על העבודה שבוצעה והשאר יחזור אליי.',
+  fpi_paid_starting: 'החיפוש המורחב מתחיל…',
+  fpi_proc_search: 'מחפשים פוסטים ציבוריים שבהם מציעים דירות',
+  fpi_proc_analyse: 'קוראים כל פוסט: האם זו הצעה מהסוג הנכון ובמקום הנכון?',
+  fpi_proc_match: 'בודקים כל הצעה מול החיפוש שלך',
+  fpi_proc_ready: 'מכינים את התוצאות',
+  fpi_proc_progress: 'התקדמות: {{pct}}%',
+  fpi_paid_no_offers: 'הפעם לא נמצאו פוסטים שמציעים דירה כמו שחיפשת. משלמים רק על העבודה שבוצעה, והשאר חוזר ליתרה.',
+  fpv_tab_paid: 'חיפוש מורחב',
+  fpv_paid_title: 'תוצאות החיפוש המורחב',
+  fpv_paid_body: 'דירות שאנשים הציעו בפוסטים ציבוריים. HOMATCH לא אימת אותן: פתחו את הפוסט המקורי ובררו את הפרטים עם מי שפרסם.',
+  fpv_paid_empty_title: 'עדיין אין תוצאות חיפוש מורחב',
+  fpv_paid_empty_body: 'הצעות מפוסטים ציבוריים יופיעו כאן אחרי שהחיפוש המורחב יסתיים.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -1,9 +1,10 @@
 /*
  * Free Search or Deep Search — chosen after the criteria are confirmed.
  *
- * Free Search starts at once. Deep Search starts the same free search and then
- * opens the paid campaign for it, where the server prices it and the customer
- * approves the exact maximum BEFORE anything is reserved. Nothing here reserves,
+ * Free Search starts at once. Deep Search is approved HERE, once (owner, 2026-10-18):
+ * the customer sees the exact maximum and the terms and ticks the approval; the free
+ * search it extends starts, then the campaign starts with that approval (the server
+ * re-prices the same amount before anything is reserved). Nothing here reserves,
  * charges or computes a price: the numbers shown are the customer's own choice
  * (credits) and their wallet balance. Provider costs and margins never appear.
  * While Deep Search is switched off it says so and cannot be chosen.
@@ -27,6 +28,7 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
   const [mode, setMode] = useState<'FREE' | 'DEEP'>('FREE');
   const [credits, setCredits] = useState(100);
   const [custom, setCustom] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const { homatchUser } = useAuth();
   const [balance, setBalance] = useState<number | null>(null);
   useEffect(() => {
@@ -38,6 +40,8 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
   const chosen = custom ? Math.round(Number(custom) || 0) : credits;
   const tooLow = mode === 'DEEP' && chosen < DEEP_MIN_CREDITS;
   const short = mode === 'DEEP' && balance != null && chosen > balance;
+  /* An approval is for one exact amount: changing it asks again. */
+  useEffect(() => { setAgreed(false); }, [chosen, mode]);
 
   return (
     <section aria-labelledby="fpx-mode-title" className="space-y-5">
@@ -127,7 +131,12 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
               </dl>
               {tooLow ? <p role="alert" className="text-xs text-[hsl(var(--gold))]">{t('fpi_paid_minimum', { credits: DEEP_MIN_CREDITS, usd: (DEEP_MIN_CREDITS / CREDITS_PER_USD).toFixed(2) })}</p> : null}
               {short ? <p role="alert" className="text-xs text-[hsl(var(--gold))]">{t('fpx_deep_short')} <Link to="/credits" className="underline underline-offset-4">{t('fpi_paid_top_up')}</Link></p> : null}
-              <p className="text-xs leading-relaxed text-white/60">{t('fpx_deep_next_confirm')}</p>
+              <p className="text-xs leading-relaxed text-white/60">{t('fpi_paid_terms', { max: `$${(chosen / CREDITS_PER_USD).toFixed(2)}` })}</p>
+              <label className="flex items-start gap-3 text-sm" data-deep-consent>
+                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} disabled={tooLow || short}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-[hsl(var(--gold))]" />
+                <span className="text-white/85">{t('fpx_deep_consent', { credits: chosen, max: `$${(chosen / CREDITS_PER_USD).toFixed(2)}` })}</span>
+              </label>
             </div>
           ) : null}
         </div>
@@ -135,7 +144,7 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button type="button" onClick={onBack} className={btn.ghost}>{t('mps_ready_change')}</button>
-        <button type="button" data-action="mps-start" disabled={starting || tooLow || short}
+        <button type="button" data-action="mps-start" disabled={starting || tooLow || short || (mode === 'DEEP' && !agreed)}
           onClick={() => (mode === 'DEEP' && deepAvailable ? onDeep(chosen) : onFree())}
           className={cx(mode === 'DEEP' ? btn.gold : btn.primary, 'min-h-12 px-7 text-[15px]')}>
           {starting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}

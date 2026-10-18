@@ -1,8 +1,10 @@
 // FIND PROPERTY — the paid social OFFER campaign, executed.
 //
-// One discovery_run (a buyer's or tenant's paid campaign) → memo23 Actor runs on
-// Facebook groups/pages/posts, Instagram profiles, Telegram channels and VK walls
-// (owner scope 2026-10-16; memo23 only through findBuyers/memo23Client.ts) → the
+// One discovery_run (a buyer's or tenant's paid campaign) → a few BATCHED memo23
+// Actor runs (owner, 2026-10-18): every Facebook group of the city in one group run
+// per keyword, Telegram channels and Instagram profiles in large batches, TikTok
+// searching every keyword at once (owner scope 2026-10-16; memo23 only through
+// findBuyers/memo23Client.ts) → the
 // posts that OFFER a property of the searched kind become supply_observations →
 // supply-matching delivers them to the search like any other external listing.
 //
@@ -19,11 +21,12 @@
 // mid-start) is booked START_AMBIGUOUS — HOMATCH cost of goods at its reservation,
 // never part of the customer's charge (find_property_customer_micros).
 
-import { buildInput, essentialMissing, STAGE_OUTPUT, type Stage } from '../../../../src/research-core/findBuyers/actorInputs.ts';
+import { buildInput, essentialMissing, fitToSchema, STAGE_OUTPUT, type InputContract, type Stage } from '../../../../src/research-core/findBuyers/actorInputs.ts';
+import { communityKey } from '../../../../src/research-core/findBuyers/batching.ts';
 import { normalizeDataset } from '../../../../src/research-core/findBuyers/normalize.ts';
 import {
   OFFER_STAGE_NETWORK, planOfferJobs, qualifyOffer, type KnownOfferSource, type OfferActor, type OfferNetwork,
-  type OfferPlan, type OfferSearch, type OfferStage,
+  type OfferPlan, type OfferSearch, type OfferStage, type OfferTarget, OFFER_NETWORKS,
 } from '../../../../src/research-core/findProperty/offerCampaign.ts';
 import { COMMUNITY_LISTING_PARSER_VERSION } from '../../../../src/research-core/discovery/community-listing.ts';
 import { abortRun, datasetItems, getRun, Memo23Error, providerConfigured, runCost, scrub, startRun, TERMINAL_RUN_STATES } from '../findBuyers/memo23Client.ts';
@@ -43,7 +46,13 @@ const out = (o: Partial<OfferOutcome> & { outcome: OfferOutcome['outcome'] }): O
   ({ resultCount: 0, error: null, retrySeconds: null, costUsd: null, metadata: {}, ...o });
 
 const POLL_SECONDS = 10;
-const FALLBACK_SEARCH_SOURCE = 'homatch:fp-fb-post-search';
+/** Each network's holder row for posts no known community can claim (migrations 20261107095700, 20261114090000). */
+const FALLBACK_SOURCE: Record<string, [string, string]> = {
+  FACEBOOK: ['FACEBOOK', 'homatch:fp-fb-post-search'], TIKTOK: ['TIKTOK', 'homatch:fp-tiktok-search'],
+  TELEGRAM: ['TELEGRAM', 'homatch:fp-telegram-offers'], INSTAGRAM: ['INSTAGRAM', 'homatch:fp-instagram-offers'],
+};
+/** A provider run is aborted after its own timeout plus this much slack. */
+const POLL_SLACK_MS = 5 * 60_000;
 const val = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
 
 export interface OfferSettings { enabled: boolean; apifyEnabled: boolean; configured: boolean; networks: OfferNetwork[]; pricingMaxAgeDays: number }
@@ -54,8 +63,8 @@ export async function loadOfferSettings(db: any): Promise<OfferSettings> {
   const m = new Map(((data ?? []) as any[]).map((r) => [r.key, val(r.value)]));
   const apifyEnabled = !providerDisabledByAdmin(m.get('provider_disabled_list'), 'APIFY');
   const networks = Array.isArray(m.get('find_property_social_networks'))
-    ? (m.get('find_property_social_networks') as string[]).filter((n): n is OfferNetwork => ['FACEBOOK', 'INSTAGRAM', 'TELEGRAM', 'VK'].includes(n))
-    : ['FACEBOOK', 'INSTAGRAM', 'TELEGRAM', 'VK'] as OfferNetwork[];
+    ? (m.get('find_property_social_networks') as string[]).filter((n): n is OfferNetwork => (OFFER_NETWORKS as readonly string[]).includes(n))
+    : [...OFFER_NETWORKS];
   /* No token, no campaign: nothing is offered, reserved or charged (a missing token must never look like a run). */
   const configured = providerConfigured();
   return {
@@ -68,8 +77,8 @@ export async function loadOfferSettings(db: any): Promise<OfferSettings> {
 /** Actors as the planner sees them: ready = enabled, not quarantined, pricing verified and fresh. */
 export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Record<string, OfferActor>> {
   const { data, error } = await db.from('find_buyers_actor_registry')
-    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size')
-    .in('actor_key', ['FB_POST_SEARCH', 'FB_GROUP_POSTS', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'TELEGRAM_CHANNEL', 'VK_POSTS_COMMENTS']);
+    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size,max_results')
+    .in('actor_key', ['FB_POST_SEARCH', 'FB_GROUP_POSTS', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'TELEGRAM_CHANNEL', 'TIKTOK', 'VK_POSTS_COMMENTS']);
   if (error) throw error;
   const fresh = (at: string | null) => Boolean(at) && Date.now() - Date.parse(String(at)) <= maxAgeDays * 86_400_000;
   const outMap: Record<string, OfferActor> = {};
@@ -80,6 +89,7 @@ export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Reco
         && a.price_per_1k_micros != null && fresh(a.pricing_verified_at),
       startFeeMicros: Number(a.start_fee_micros ?? 0), pricePer1kMicros: Number(a.price_per_1k_micros ?? 0),
       probeSize: Math.max(1, Number(a.probe_size ?? 20)),
+      maxResults: a.max_results != null ? Math.max(1, Number(a.max_results)) : undefined,
     };
   }
   return outMap;
@@ -129,9 +139,10 @@ export function offerQueueRows(runId: string, planId: string | null, plan: Offer
     platform: j.network, language: j.language ?? 'multi', query: j.query ?? j.targetUrl ?? j.stage, status: 'PENDING',
     priority: Math.max(1, 100 - i), provider: 'APIFY_MEMO23', query_kind: 'OFFER_SEARCH', executor: 'EDGE',
     search_direction: 'SUPPLY', tranche: 1,
-    dedupe_key: `fpoffer:${runId}:${j.stage}:${j.sourceId ?? j.query}`.slice(0, 300),
+    dedupe_key: `fpoffer:${runId}:${i}:${j.stage}:${j.sourceId ?? j.query ?? ''}`.slice(0, 300),
     metadata: {
       offerCampaign: true, stage: j.stage, actorKey: j.actorKey, network: j.network, query: j.query, targetUrl: j.targetUrl,
+      queries: j.queries, targets: j.targets, targetCount: j.targetCount,
       sourceId: j.sourceId, size: j.size, estimateMicros: j.estimateMicros,
       search: { transaction: search.transaction, city: search.city, districts: search.districts },
     },
@@ -159,7 +170,7 @@ async function start(db: any, job: any, run: any): Promise<OfferOutcome> {
   const { data: reservation, error } = await db.rpc('find_property_reserve_actor_run', {
     p_run_id: run.id, p_actor_key: meta.actorKey, p_idempotency_key: `fpq:${job.id}:${meta.actorKey}:r${retryCount}`,
     p_queue_job_id: job.id, p_stage: stage, p_network: OFFER_STAGE_NETWORK[stage], p_source_id: meta.sourceId ?? null,
-    p_requested_limit: Number(meta.size) || null,
+    p_requested_limit: Number(meta.size) || null, p_target_count: Math.max(1, Number(meta.targetCount) || 1),
   });
   if (error) return out({ outcome: 'RETRY', error: error.message, retrySeconds: 30 });
   if (!reservation?.ok) {
@@ -176,7 +187,7 @@ async function start(db: any, job: any, run: any): Promise<OfferOutcome> {
   const maxAgeDays = meta.search?.transaction === 'RENT' ? 45 : 120;
   const since = new Date(Date.now() - maxAgeDays * 86_400_000).toISOString();
   const limit = Math.max(1, Number(reservation.requestedLimit) || 1);
-  const { input } = buildInput(stage as Stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since }, reservation.inputContract ?? null);
+  const { input } = offerInput(stage, meta, limit, since, reservation.inputContract ?? null);
   const problems = essentialMissing(stage as Stage, input, reservation.inputContract ?? null);
   if (problems.length) {
     await db.rpc('find_property_book_actor_cost', { p_actor_run_id: runId, p_status: 'RELEASED', p_actual_micros: 0, p_cost_basis: 'NOT_STARTED',
@@ -197,7 +208,7 @@ async function start(db: any, job: any, run: any): Promise<OfferOutcome> {
       await abortRun(started.runId);
       return out({ outcome: 'CANCELLED', error: 'CAMPAIGN_ENDED_DURING_START' });
     }
-    return out({ outcome: 'WAIT', retrySeconds: POLL_SECONDS, metadata: { actorRunId: runId, providerRunId: started.runId, datasetId: started.datasetId } });
+    return out({ outcome: 'WAIT', retrySeconds: POLL_SECONDS, metadata: { actorRunId: runId, providerRunId: started.runId, datasetId: started.datasetId, timeoutSeconds: Number(reservation.timeoutSeconds) || 300 } });
   } catch (error) {
     const e = error instanceof Memo23Error ? error : new Memo23Error(scrub(String(error)), 0, true);
     if (e.status === 0 || e.status >= 500) {
@@ -229,7 +240,8 @@ async function poll(db: any, job: any, run: any): Promise<OfferOutcome> {
   try { r = await getRun(ar.provider_run_id); } catch (error) { return out({ outcome: 'WAIT', retrySeconds: 45, metadata: { lastPollError: scrub(String(error)) } }); }
   if (!r) return out({ outcome: 'WAIT', retrySeconds: 45 });
   if (!TERMINAL_RUN_STATES.has(String(r.status))) {
-    if (Date.now() - Date.parse(ar.created_at) > 15 * 60_000) await abortRun(ar.provider_run_id).catch(() => undefined);
+    const timeoutMs = Math.max(15 * 60_000, (Number(meta.timeoutSeconds) || 0) * 1000 + POLL_SLACK_MS);
+    if (Date.now() - Date.parse(ar.created_at) > timeoutMs) await abortRun(ar.provider_run_id).catch(() => undefined);
     return out({ outcome: 'WAIT', retrySeconds: POLL_SECONDS });
   }
   let items: unknown[] = []; let total: number | null = null;
@@ -251,7 +263,7 @@ async function poll(db: any, job: any, run: any): Promise<OfferOutcome> {
   }
   /* Offers: only posts that offer the searched kind in the searched city. */
   const offers = run.status === 'SEARCHING' || run.status === 'MATCHING' || run.status === 'PAUSED'
-    ? await storeOffers(db, ar, stage, items, meta.search ?? {}) : 0;
+    ? await storeOffers(db, ar, stage, items, meta) : 0;
   await db.rpc('find_property_book_actor_cost', {
     p_actor_run_id: ar.id, p_status: bookStatus, p_actual_micros: micros, p_cost_basis: basis, p_results_billed: billed,
     p_items_fetched: items.length, p_offers: offers, p_error: bookStatus === 'SUCCEEDED' ? null : `RUN_${status}: ${scrub(String(r.statusMessage ?? ''))}`,
@@ -259,27 +271,78 @@ async function poll(db: any, job: any, run: any): Promise<OfferOutcome> {
   return out({ outcome: 'DONE', resultCount: offers, costUsd: micros != null ? micros / 1e6 : null, metadata: { offers, billed } });
 }
 
-async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[], search: { transaction?: string; city?: string }): Promise<number> {
+/**
+ * The Actor input for one offer run, from its verified schema. A batched run reads every
+ * community in `targets` at once; Facebook searches its keyword inside those groups
+ * (`search`, in the group Actor's verified schema); TikTok searches every keyword in one
+ * run. Rows queued before batching (one `targetUrl`) are built exactly as before.
+ */
+export function offerInput(stage: OfferStage, meta: Record<string, any>, limit: number, since: string, contract: InputContract | null):
+  { input: Record<string, unknown>; dropped: string[] } {
+  const targets = (Array.isArray(meta.targets) ? meta.targets : []) as OfferTarget[];
+  const urls = targets.map((t) => t.url).filter((u) => /^https:\/\//.test(u));
+  const queries = (Array.isArray(meta.queries) ? meta.queries : []).filter((q: unknown): q is string => typeof q === 'string' && q.trim() !== '');
+  if (!urls.length && !queries.length) {
+    return buildInput(stage as Stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since }, contract);
+  }
+  const fit = (input: Record<string, unknown>) => fitToSchema({ ...(contract?.defaults ?? {}), ...input }, contract?.schemaProperties);
+  switch (stage) {
+    case 'FB_GROUP_POSTS': {
+      const { input } = buildInput('FB_GROUP_POSTS', { targetUrls: urls, size: limit, since }, contract);
+      return fit({ ...input, ...(queries[0] ? { search: queries[0] } : {}) });
+    }
+    case 'TELEGRAM_CHANNEL':
+      return buildInput('TELEGRAM_CHANNEL', { targetUrls: urls, size: limit, since }, contract);
+    case 'IG_PROFILE_POSTS':
+      return fit({ startUrls: urls.map((url) => ({ url })), maxItems: limit });
+    case 'TIKTOK_SEARCH':
+      return fit({ mode: 'search', input: queries, maxResults: limit });
+    default:
+      return buildInput(stage as Stage, { query: queries[0] ?? meta.query ?? null, targetUrls: urls, targetUrl: urls[0] ?? null, size: limit, since }, contract);
+  }
+}
+
+/** Which of a batched run's communities a post came from (its group / channel / profile URL). */
+function targetOf(item: { url: string | null; parentUrl: string | null; group: { url: string | null } | null; author: { url: string | null } },
+  targets: OfferTarget[]): OfferTarget | null {
+  if (targets.length === 1) return targets[0];
+  const keys = [item.group?.url, item.parentUrl, item.url, item.author?.url].map((u) => communityKey(u ?? null)).filter(Boolean);
+  return targets.find((t) => { const k = communityKey(t.url); return k != null && keys.includes(k); }) ?? null;
+}
+
+async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[], meta: Record<string, any>): Promise<number> {
+  const search = (meta.search ?? {}) as { transaction?: string; city?: string };
   if (search.transaction !== 'SALE' && search.transaction !== 'RENT') return 0;
+  const network = OFFER_STAGE_NETWORK[stage];
   /* Normalized one raw item at a time so each post keeps its own photos (normalize.ts carries none). */
-  const normalized = items.flatMap((raw) => normalizeDataset(STAGE_OUTPUT[stage as Stage], OFFER_STAGE_NETWORK[stage], [raw], null)
+  const normalized = items.flatMap((raw) => normalizeDataset(STAGE_OUTPUT[stage as Stage], network, [raw], null)
     .map((n) => Object.assign(n, { images: offerImages(raw) })));
   const seen = new Set<string>();
-  let sourceId: string | null = ar.source_id ?? null;
-  let sourceCity: string | null = null;
-  if (sourceId) {
-    const { data: src } = await db.from('source_registry').select('city').eq('id', sourceId).maybeSingle();
-    sourceCity = src?.city ?? null;
-  } else {
-    const { data: fallback } = await db.from('source_registry').select('id').eq('platform', 'FACEBOOK').eq('external_id', FALLBACK_SEARCH_SOURCE).maybeSingle();
-    sourceId = fallback?.id ?? null;
+  const targets = (Array.isArray(meta.targets) ? meta.targets : []) as OfferTarget[];
+  /* A single-community run (pre-batching rows) keeps its source and the source's city. */
+  let ownCity: string | null = null;
+  if (ar.source_id) {
+    const { data: src } = await db.from('source_registry').select('city').eq('id', ar.source_id).maybeSingle();
+    ownCity = src?.city ?? null;
   }
-  if (!sourceId) return 0;
+  let fallbackId: string | null | undefined;
+  const fallback = async () => {
+    if (fallbackId !== undefined) return fallbackId;
+    const [platform, externalId] = FALLBACK_SOURCE[network] ?? [];
+    if (!platform) return (fallbackId = null);
+    const { data } = await db.from('source_registry').select('id').eq('platform', platform).eq('external_id', externalId).maybeSingle();
+    return (fallbackId = data?.id ?? null);
+  };
   let stored = 0; let failed = 0; let firstError: string | null = null;
   const now = new Date().toISOString();
   for (const item of normalized) {
     if (item.kind !== 'POST' || !item.url || !/^https:\/\//.test(item.url) || seen.has(item.externalId)) continue;
     seen.add(item.externalId);
+    /* Attributed to the community it came from; a keyword search (TikTok) was run for the searched city. */
+    const t = ar.source_id ? null : targetOf(item, targets);
+    const sourceId: string | null = ar.source_id ?? t?.sourceId ?? await fallback();
+    if (!sourceId) continue;
+    const sourceCity: string | null = ar.source_id ? ownCity : t?.city ?? (stage === 'TIKTOK_SEARCH' ? search.city ?? null : null);
     const verdict = qualifyOffer(item.text, { transaction: search.transaction as 'SALE' | 'RENT', city: String(search.city ?? '') }, { sourceCity, publishedAt: item.publishedAt });
     if (!verdict.offer) continue;
     const l = verdict.listing;
@@ -334,7 +397,7 @@ export async function finishOfferCampaign(db: any, runId: string): Promise<numbe
     const datasetId = ar.dataset_id ?? r?.defaultDatasetId ?? null;
     if (datasetId) ({ items, total } = await datasetItems(String(datasetId), Number(ar.requested_limit) + 10).catch(() => ({ items: [] as unknown[], total: null })));
     const offers = items.length
-      ? await storeOffers(db, ar, ar.stage as OfferStage, items, await offerSearchFor(db, ar)).catch(() => 0) : 0;
+      ? await storeOffers(db, ar, ar.stage as OfferStage, items, await offerMetaFor(db, ar)).catch(() => 0) : 0;
     const billed = total ?? (items.length || Number(r?.stats?.datasetItems ?? 0));
     const cost = r ? runCost(r, billed) : { micros: null, basis: 'UNKNOWN' };
     await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: 'ABORTED', p_actual_micros: cost.micros,
@@ -346,9 +409,9 @@ export async function finishOfferCampaign(db: any, runId: string): Promise<numbe
   return Number(customer ?? 0);
 }
 
-/** The searched transaction and city of an actor run, from the queue job that started it. */
-async function offerSearchFor(db: any, ar: any): Promise<{ transaction?: string; city?: string }> {
+/** The queue job metadata of an actor run (its search, communities and keywords). */
+async function offerMetaFor(db: any, ar: any): Promise<Record<string, any>> {
   if (!ar.queue_job_id) return {};
   const { data } = await db.from('discovery_query_queue').select('metadata').eq('id', ar.queue_job_id).maybeSingle();
-  return (data?.metadata?.search ?? {}) as { transaction?: string; city?: string };
+  return (data?.metadata ?? {}) as Record<string, any>;
 }

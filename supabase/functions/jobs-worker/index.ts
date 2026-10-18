@@ -49,6 +49,7 @@ import { dueReminders, DEFAULT_REMINDER_PREFERENCES } from '../../../src/expats/
 import type { PlanTask, TaskStatus } from '../../../src/expats/plan/tasks.ts';
 import type { DeadlineBasis, PlanStage, TaskCategory } from '../../../src/expats/plan/roadmap.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { sweepExpiredReservations } from '../_shared/walletSweeper.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -758,7 +759,7 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, reservations] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
@@ -775,10 +776,16 @@ serve(async (req) => {
         console.error('[jobs-worker] expat reminders failed', e instanceof Error ? e.message : String(e));
         return { considered: 0, sent: 0, skipped: 'threw' };
       }),
+      /* Credit holds that outlived their expiry: released only while the owner's switch is on
+         (_shared/walletSweeper.ts). Isolated like the reminders. */
+      sweepExpiredReservations(sb).catch((e) => {
+        console.error('[jobs-worker] reservation sweep failed', e instanceof Error ? e.message : String(e));
+        return { enabled: true, released: null };
+      }),
     ]);
 
     return json({
-      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders,
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, reservations,
     });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));

@@ -45,7 +45,11 @@ alter table public.discovery_marketplace_worker_runs
   /* The run that reads the portal for this one. No foreign key: a leader removed with its
      search must never cascade into another customer's run; a missing leader is settled as
      SHARED_RUN_GONE and the source answers from the pool. */
-  add column if not exists shared_run_id uuid;
+  add column if not exists shared_run_id uuid,
+  /* The instant pool answer for this run is still owed. Answered a few sources per request
+     within a CPU budget (the start, then status polls), so no one Edge request ranks every
+     source's pool at once. Existing runs stay false: their behaviour is unchanged. */
+  add column if not exists pool_pending boolean not null default false;
 
 /* At most one live portal run per (worker, request). */
 create unique index if not exists discovery_marketplace_worker_runs_live_request_uidx
@@ -289,19 +293,19 @@ begin
     end if;
 
     if v_mode in ('LIVE', 'SHARED', 'REUSED') then
-      insert into public.discovery_marketplace_worker_runs (search_id, worker_id, request, deadline_at, request_key, shared_run_id, query_applied)
+      insert into public.discovery_marketplace_worker_runs (search_id, worker_id, request, deadline_at, request_key, shared_run_id, query_applied, pool_pending)
       values (p_search_id, v_worker_id, r->'request', v_deadline, v_key,
               case when v_mode = 'LIVE' then null else v_leader end,
-              case when v_mode = 'LIVE' then '{}'::jsonb else jsonb_build_object('sharedFromRun', v_leader) end)
+              case when v_mode = 'LIVE' then '{}'::jsonb else jsonb_build_object('sharedFromRun', v_leader) end, true)
       returning id into v_id;
       if v_mode = 'LIVE' then v_live := v_live + 1; end if;
     else
       /* Deferred to the pool: closed at once, never claimed; the pool answers it (serveCachedListings). */
       insert into public.discovery_marketplace_worker_runs (search_id, worker_id, request, deadline_at, request_key, status,
-                                                            completed_at, errors, query_applied)
+                                                            completed_at, errors, query_applied, pool_pending)
       values (p_search_id, v_worker_id, r->'request', v_deadline, v_key, 'TIMED_OUT', now(),
               jsonb_build_array(jsonb_build_object('code', v_mode, 'message', '', 'retryAt', v_retry)),
-              jsonb_build_object('deferred', v_mode))
+              jsonb_build_object('deferred', v_mode), true)
       returning id into v_id;
     end if;
     v_out := v_out || jsonb_build_array(jsonb_build_object('id', v_id, 'workerId', v_worker_id, 'mode', v_mode,

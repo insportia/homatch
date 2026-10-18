@@ -72,7 +72,7 @@ export async function dispatchSearch(db: Db, a: {
     const { error: insertError } = await db.from(RUNS).insert(a.runs.map((r) => ({
       search_id: a.searchId, worker_id: r.workerId, request: r.request, deadline_at: r.deadlineAt, request_key: r.requestKey,
       status: 'TIMED_OUT', completed_at: at, errors: [{ code: 'LIVE_REFRESH_UNAVAILABLE', message: '' }],
-      query_applied: { deferred: 'LIVE_REFRESH_UNAVAILABLE' },
+      query_applied: { deferred: 'LIVE_REFRESH_UNAVAILABLE' }, pool_pending: true,
     })));
     if (insertError) throw new Error(`degraded dispatch failed: ${insertError.message}`);
     return { tier: 'UNKNOWN', live: 0, limit: null, degraded: true, runs: a.runs.map((r) => ({ workerId: r.workerId, mode: 'LIVE_REFRESH_UNAVAILABLE', retryAt: null })) };

@@ -174,3 +174,8 @@ exception when raise_exception then
   if sqlerrm <> 'SEARCH_NOT_OWNED' then raise; end if;
   raise notice 'PASS  another customer''s search is refused';
 end $$;
+
+-- 10. Every run a dispatch creates owes its instant pool answer.
+select pg_temp.reset();
+select pg_temp.start(pg_temp.customer(150, '30 days'), 'P');
+select pg_temp.expect('new runs are pool_pending', (select bool_and(pool_pending)::text from public.discovery_marketplace_worker_runs where request_key = 'P'), 'true');

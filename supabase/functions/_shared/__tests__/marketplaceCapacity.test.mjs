@@ -160,3 +160,19 @@ test('UI: every deferred code and the shared state have a line; the start notice
   const exp = readFileSync(new URL('../../../../src/components/findProperty/MarketplaceSearchExperience.tsx', import.meta.url), 'utf8');
   for (const k of ['mps_live_limited_concurrent', 'mps_live_limited_until', 'mps_live_busy_until', 'mps_live_unavailable', 'mps_reused_recent']) assert.match(exp, new RegExp(`t\\('${k}'`), k);
 });
+
+test('CPU bound: the instant pool answer stops at its budget; owed sources are finished by status polls', async () => {
+  const shared = readFileSync(new URL('../marketplaceSearch.ts', import.meta.url), 'utf8');
+  const fn = shared.slice(shared.indexOf('export async function serveCachedListings'));
+  assert.match(shared, /export const POOL_BUDGET_MS = 400;/);
+  assert.ok(fn.indexOf('if (Date.now() - began >= budgetMs) break;') < fn.indexOf('processSearch('), 'checked before each source is ranked');
+  assert.match(fn, /update\(\{ pool_pending: false \}\)\s*\.eq\('id', run\.id\)\.eq\('pool_pending', true\)/, 'claimed once across concurrent requests');
+  assert.match(fn, /if \(pending\) await db\.from\('discovery_marketplace_worker_runs'\)\.update\(\{ pool_pending: true \}\)/, 'a failure leaves it owed');
+  const ms = readFileSync(new URL('../../marketplace-search/index.ts', import.meta.url), 'utf8');
+  const start = ms.slice(ms.indexOf("if (action === 'start')"), ms.indexOf("if (action === 'status')"));
+  assert.doesNotMatch(start, /serveCachedListings\(/, 'start ranks the pool only through processAndStore (one bounded pass)');
+  const status = ms.slice(ms.indexOf("if (action === 'status')"), ms.indexOf("if (action === 'browse')"));
+  assert.match(status, /if \(overdue \|\| late \|\| poolOwed \|\| leaderDone\) \{/, 'a poll finishes owed pool answers and resolves shared runs whose leader ended');
+  const sql = readFileSync(new URL('../../../migrations/20261116090000_find_property_capacity.sql', import.meta.url), 'utf8');
+  assert.match(sql, /add column if not exists pool_pending boolean not null default false;/, 'existing runs keep their behaviour');
+});

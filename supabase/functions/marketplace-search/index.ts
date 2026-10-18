@@ -37,7 +37,7 @@ import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../..
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
-  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, requestKey, SHARE_WINDOW_MS, serveCachedListings, workerSwitchOn, WORKER_SOURCE_NAMES,
+  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, requestKey, SHARE_WINDOW_MS, workerSwitchOn, WORKER_SOURCE_NAMES,
 
 } from '../_shared/marketplaceSearch.ts';
 import { paidCampaignAvailable } from '../_shared/findProperty/paidAvailability.ts';
@@ -299,17 +299,14 @@ Deno.serve(async (req: Request) => {
         liveRefresh = liveRefreshOf(outcome);
         console.log(JSON.stringify({ event: 'marketplace_dispatch', searchId, tier: outcome.tier, live: outcome.live, degraded: outcome.degraded,
           modes: outcome.runs.map((r) => r.mode), limit: outcome.limit?.reason ?? null }));
-        const { data: inserted } = await db.from('discovery_marketplace_worker_runs').select('id,worker_id,status').eq('search_id', searchId);
         /* INSTANT ANSWER: matching listings the shared pool already holds are shown at once, with
-           their own last-checked time; shared and live runs then add fresh ones. Best effort: a
-           pool failure never blocks the search itself. */
+           their own last-checked time; shared and live runs then add fresh ones. Every new run is
+           pool_pending: processAndStore answers as many sources as its CPU budget allows and the
+           first status polls finish the rest. Best effort: a pool failure never blocks the search. */
         try {
-          const pooled = await serveCachedListings(db, searchId, request, (inserted ?? []) as Array<Record<string, unknown>>, now, true);
-          if (pooled > 0 || outcome.runs.some((r) => r.mode !== 'LIVE' && r.mode !== 'SHARED')) {
-            await processAndStore(db, searchId);
-            const { data: refreshed } = await db.from('discovery_marketplace_searches').select('*').eq('id', searchId).maybeSingle();
-            if (refreshed) return json({ search: await summary(db, refreshed), liveRefresh }, 202);
-          }
+          await processAndStore(db, searchId);
+          const { data: refreshed } = await db.from('discovery_marketplace_searches').select('*').eq('id', searchId).maybeSingle();
+          if (refreshed) return json({ search: await summary(db, refreshed), liveRefresh }, 202);
         } catch (error) { console.error(JSON.stringify({ event: 'pool_answer_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
       }
       return json({ search: await summary(db, search), liveRefresh }, 202);
@@ -336,10 +333,21 @@ Deno.serve(async (req: Request) => {
       if (!isTerminalSearch(search.status)) {
         /* Lazily close overdue workers so a dead worker cannot hold a search open forever. */
         const overdue = Date.parse(search.deadline_at ?? '') <= Date.now();
-        const { data: late } = await db.from('discovery_marketplace_worker_runs').select('id')
-          .eq('search_id', search.id).in('status', ['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'])
-          .lte('deadline_at', new Date().toISOString()).limit(1);
-        if (overdue || (late ?? []).length) {
+        const { data: open } = await db.from('discovery_marketplace_worker_runs').select('id,status,deadline_at,pool_pending,shared_run_id')
+          .eq('search_id', search.id);
+        const nowMs = Date.now();
+        const late = (open ?? []).some((r: Record<string, unknown>) => ['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'].includes(String(r.status)) && Date.parse(String(r.deadline_at)) <= nowMs);
+        /* Sources still owed their pool answer, and shared runs whose leader has finished, are
+           completed by the poll itself (bounded per request). */
+        const poolOwed = (open ?? []).some((r: Record<string, unknown>) => r.pool_pending === true);
+        const waiting = (open ?? []).filter((r: Record<string, unknown>) => r.shared_run_id && r.status === 'QUEUED').map((r: Record<string, unknown>) => String(r.shared_run_id));
+        let leaderDone = false;
+        if (waiting.length) {
+          const { data: leaders } = await db.from('discovery_marketplace_worker_runs').select('id,status,deadline_at').in('id', [...new Set(waiting)]);
+          leaderDone = (leaders ?? []).length < new Set(waiting).size
+            || (leaders ?? []).some((l: Record<string, unknown>) => !['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'].includes(String(l.status)) || Date.parse(String(l.deadline_at)) <= nowMs);
+        }
+        if (overdue || late || poolOwed || leaderDone) {
           await processAndStore(db, search.id);
           search = await ownSearch(search.id);
         }

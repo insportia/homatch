@@ -304,7 +304,11 @@ test('MyHome access uses the bounded provider state machine; no permanent circui
 // includes pooled rows.
 test('marketplace scale: instant pool answer at start, one fetch per identical search, fresh-only run counts', () => {
   const ms = code(MS), wi = code(WI), sh = code(SH);
-  assert.match(ms, /serveCachedListings\(db, searchId, request, \(inserted \?\? \[\]\) as Array<Record<string, unknown>>, now, true\)/, 'search start answers from the pool');
+  /* 20261116090000: every new run owes its pool answer (pool_pending); the start's processAndStore
+     answers as many sources as its CPU budget allows and status polls finish the rest. */
+  assert.match(ms, /await processAndStore\(db, searchId\);[\s\S]{0,400}liveRefresh \}, 202\)/, 'search start answers from the pool');
+  assert.match(sh, /const pending = run\.pool_pending === true;/);
+  assert.match(read('supabase/migrations/20261116090000_find_property_capacity.sql'), /jsonb_build_object\('sharedFromRun', v_leader\) end, true\)/, 'every dispatched run is pool_pending');
   assert.match(wi, /await shareRecentResults\(db, workerId\)[\s\S]{0,400}claim_marketplace_worker_runs/, 'sharing runs before every claim');
   assert.match(wi, /observationLevel\.is\.null,raw->retrievalMetadata->>observationLevel\.neq\.CACHED/, 'pooled rows are not counted as fresh results');
   assert.match(sh, /'ssge-agent': 'ss-ge'/);

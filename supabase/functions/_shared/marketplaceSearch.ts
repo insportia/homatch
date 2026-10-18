@@ -261,7 +261,7 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   if (search.status === 'CANCELLED') return { status: 'CANCELLED', properties: 0, strongMatches: 0 };
 
   const { data: runRows } = await db.from('discovery_marketplace_worker_runs')
-    .select('id,worker_id,status,deadline_at,returned_count,attempts,lease_expires_at,errors,metrics,shared_run_id,query_applied').eq('search_id', searchId);
+    .select('id,worker_id,status,deadline_at,returned_count,attempts,lease_expires_at,errors,metrics,shared_run_id,query_applied,pool_pending').eq('search_id', searchId);
   const workerIds = [...new Set((runRows ?? []).map((r: Record<string, unknown>) => String(r.worker_id)))];
   const { data: workerRows } = workerIds.length
     ? await db.from('discovery_marketplace_workers').select('worker_id,max_attempts').in('worker_id', workerIds)
@@ -383,7 +383,11 @@ export const WORKER_SOURCE_NAMES: Record<string, string> = {
 /** Only listings their source confirmed within this window are served from the
  * pool: an older observation may already be sold, expired or deleted. */
 export const CACHE_WINDOW_MS = 72 * 3600_000;
-const CACHE_SCAN_ROWS = 3000;
+/** Wall-time budget per request for answering sources from the pool (Edge CPU limit is 2 s). */
+export const POOL_BUDGET_MS = 400;
+/** Newest pooled observations ranked per source (production 2026-10-18: at most 766 distinct per
+    deal and property type), so one source's pool stays well inside one request's CPU. */
+const CACHE_SCAN_ROWS = 1500;
 
 /**
  * The shared listing pool. At search start (atStart) every pooled source
@@ -398,37 +402,55 @@ const CACHE_SCAN_ROWS = 3000;
  * so a pooled answer is never reported as a fresh refresh. Runs once per run.
  */
 export async function serveCachedListings(db: Db, searchId: string, request: MarketplaceSearchRequest,
-  runRows: Array<Record<string, unknown>>, now = new Date(), atStart = false): Promise<number> {
+  runRows: Array<Record<string, unknown>>, now = new Date(), atStart = false, budgetMs = POOL_BUDGET_MS): Promise<number> {
   let served = 0;
+  const began = Date.now();
   for (const run of runRows) {
     const sourceKey = CACHE_FALLBACK[String(run.worker_id)];
-    // At search start every pooled source answers at once; afterwards only a
-    // run that could not refresh (or only partly) falls back to the pool.
-    if (!sourceKey || (!atStart && !['BLOCKED', 'FAILED', 'TIMED_OUT', 'PARTIAL'].includes(String(run.status)))) continue;
-    const { data: already } = await db.from('discovery_marketplace_listings').select('id')
-      .eq('worker_run_id', run.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED').limit(1);
-    if ((already ?? []).length) continue;
-    const { data: rows } = await db.from('discovery_marketplace_listings')
-      .select('source_listing_id,exact_url,raw,observed_at').eq('source_key', sourceKey).neq('search_id', searchId)
-      .gte('observed_at', new Date(now.getTime() - CACHE_WINDOW_MS).toISOString())
-      .order('observed_at', { ascending: false }).limit(CACHE_SCAN_ROWS);
-    const latest = new Map<string, { source_listing_id: string; exact_url: string; raw: ExternalListingCandidate; observed_at: string }>();
-    for (const r of rows ?? []) if (!latest.has(r.source_listing_id)) latest.set(r.source_listing_id, r);
-    const pool = [...latest.values()].filter((r) => r.raw?.transactionType === request.transactionType && r.raw?.propertyType === request.propertyType);
-    if (!pool.length) continue;
-    // The search's own pipeline decides what matches; nothing is re-implemented here.
-    const accepted = new Set(processSearch({ request, candidates: pool.map((r) => ({ workerId: String(run.worker_id), candidate: r.raw })), converter: await loadConverter(db), now })
-      .properties.flatMap((p) => p.listings.map((l) => l.listingId)));
-    const cached = pool.filter((r) => accepted.has(`${r.raw.source}:${r.raw.sourceListingId}`)).map((r) => ({
-      search_id: searchId, worker_run_id: run.id, source_key: sourceKey, source_listing_id: r.source_listing_id, exact_url: r.exact_url,
-      observed_at: r.observed_at, updated_at: now.toISOString(),
-      raw: { ...r.raw, retrievalMetadata: { ...(r.raw.retrievalMetadata ?? {}), observationLevel: 'CACHED', cachedAt: now.toISOString() } },
-    }));
-    for (const batch of chunk(cached, 500)) {
-      const { error } = await db.from('discovery_marketplace_listings').upsert(batch, { onConflict: 'search_id,source_key,source_listing_id', ignoreDuplicates: true });
-      if (error) throw new Error(error.message);
+    // At search start every pooled source answers (pool_pending: a few sources per request,
+    // the rest on the next status poll); afterwards only a run that could not refresh (or
+    // only partly) falls back to the pool.
+    const pending = run.pool_pending === true;
+    if (!sourceKey || (!atStart && !pending && !['BLOCKED', 'FAILED', 'TIMED_OUT', 'PARTIAL'].includes(String(run.status)))) continue;
+    /* CPU BOUND: ranking one source's pool costs up to ~0.5 s of CPU; stop before the Edge limit. */
+    if (Date.now() - began >= budgetMs) break;
+    if (pending) {
+      /* Claimed before the work so two concurrent requests never rank the same pool twice. */
+      const { data: claimed } = await db.from('discovery_marketplace_worker_runs').update({ pool_pending: false })
+        .eq('id', run.id).eq('pool_pending', true).select('id');
+      run.pool_pending = false;
+      if (!claimed?.length) continue;
     }
-    served += cached.length;
+    try {
+      const { data: already } = await db.from('discovery_marketplace_listings').select('id')
+        .eq('worker_run_id', run.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED').limit(1);
+      if ((already ?? []).length) continue;
+      const { data: rows } = await db.from('discovery_marketplace_listings')
+        .select('source_listing_id,exact_url,raw,observed_at').eq('source_key', sourceKey).neq('search_id', searchId)
+        .gte('observed_at', new Date(now.getTime() - CACHE_WINDOW_MS).toISOString())
+        .order('observed_at', { ascending: false }).limit(CACHE_SCAN_ROWS);
+      const latest = new Map<string, { source_listing_id: string; exact_url: string; raw: ExternalListingCandidate; observed_at: string }>();
+      for (const r of rows ?? []) if (!latest.has(r.source_listing_id)) latest.set(r.source_listing_id, r);
+      const pool = [...latest.values()].filter((r) => r.raw?.transactionType === request.transactionType && r.raw?.propertyType === request.propertyType);
+      if (!pool.length) continue;
+      // The search's own pipeline decides what matches; nothing is re-implemented here.
+      const accepted = new Set(processSearch({ request, candidates: pool.map((r) => ({ workerId: String(run.worker_id), candidate: r.raw })), converter: await loadConverter(db), now })
+        .properties.flatMap((p) => p.listings.map((l) => l.listingId)));
+      const cached = pool.filter((r) => accepted.has(`${r.raw.source}:${r.raw.sourceListingId}`)).map((r) => ({
+        search_id: searchId, worker_run_id: run.id, source_key: sourceKey, source_listing_id: r.source_listing_id, exact_url: r.exact_url,
+        observed_at: r.observed_at, updated_at: now.toISOString(),
+        raw: { ...r.raw, retrievalMetadata: { ...(r.raw.retrievalMetadata ?? {}), observationLevel: 'CACHED', cachedAt: now.toISOString() } },
+      }));
+      for (const batch of chunk(cached, 500)) {
+        const { error } = await db.from('discovery_marketplace_listings').upsert(batch, { onConflict: 'search_id,source_key,source_listing_id', ignoreDuplicates: true });
+        if (error) throw new Error(error.message);
+      }
+      served += cached.length;
+    } catch (error) {
+      /* Still owed: the next request answers this source. */
+      if (pending) await db.from('discovery_marketplace_worker_runs').update({ pool_pending: true }).eq('id', run.id);
+      throw error;
+    }
   }
   return served;
 }

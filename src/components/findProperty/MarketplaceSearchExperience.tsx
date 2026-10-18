@@ -50,9 +50,10 @@ const writeDraft = (b: SearchIntelligenceBrief | null) => {
   try { if (b) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(b)); else sessionStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ }
 };
 
-/** deepOffered=false while Admin pauses paid Deep Search (service find_property_deep): the free
+/** deepOffered=false unless paid Deep Search is switched ON in Admin and fully available: the free
  *  portal search only, exactly as before paid campaigns — no mode choice, no Deep card or panel,
- *  no paid results view. Past campaigns stay readable on their own pages. */
+ *  no paid results view, and no "coming soon" or "switched off" notice. Customers see nothing
+ *  paid; past campaigns stay on their own pages (direct link, Admin). */
 export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered = true, activeSources = null, sourceNames = [] }: { deepSearchAvailable: boolean; deepOffered?: boolean; activeSources?: number | null; sourceNames?: string[] }) {
   const { t, isRTL } = useLanguage();
   const [params] = useSearchParams();

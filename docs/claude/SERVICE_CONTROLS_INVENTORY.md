@@ -51,9 +51,10 @@ Each service below is listed as `key`, product.
 **`find_property_deep`: Find Property paid Deep Search / social offer campaign**
 - **Routes:** none of its own.
 - **Admin label:** "Find Property — Paid Deep Search". OFF since migration 20261115100000 (owner, 2026-10-18).
-- **Entry points (hidden while OFF):** the Free/Deep mode step, the Deep tile, `DeepSearchPanel`, `OutsideSearchPanel`, the paid results tab. The free portal search runs exactly as before paid campaigns.
+- **Fail mode:** CLOSED (`PAID_CLOSED_BY_DEFAULT`, server and browser): a missing, unreadable or stale row means OFF; only an explicit ON row in Admin shows or runs it.
+- **Entry points (hidden while OFF, and while ON but not available):** the Free/Deep mode step, the Deep tile and its price, the subtitle's paid hint (`fpx_header_sub_free`), `DeepSearchPanel`, `OutsideSearchPanel`, the paid results tab. Customers see no paid option and no "coming soon" / "switched off" notice; the free portal search runs exactly as before paid campaigns. Only Admin sees it.
 - **Backend (new work refused):** `find-property-run` `start` and `resume` (503 SERVICE_DISABLED); `preview` answers `PAID_CAMPAIGNS_OFF`; `test_option` answers null; `executeOfferJob` cancels a job that has not started its provider run (`SERVICE_PAUSED`, before any reservation); new free searches get no social candidates (`marketplaceSearch.ts`).
-- **Keeps running:** pause, stop, settlement, the poll and booking of an Actor run already started, the read-only `results` action and `/find-property/campaign/:runId` (no charge), Admin economics.
+- **Keeps running:** pause, stop, settlement, the poll and booking of an Actor run already started, the read-only `results` action and `/find-property/campaign/:runId` by direct link (no charge, not linked from customer pages), Admin economics.
 - **Own settings (unchanged):** `find_property_social_enabled` (OFF today), the APIFY provider switch.
 
 **`find_buyers`: Find Buyers / Tenants**

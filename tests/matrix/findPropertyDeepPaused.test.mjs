@@ -58,16 +58,32 @@ test('new free searches get no paid social posts while OFF', () => {
   assert.match(MARKET, /if \(await serviceBackendEnabled\(db, 'find_property_deep'\)\) candidates\.push\(\.\.\.await loadSocialCandidates\(/);
 });
 
-test('interface: the free search exactly as before paid campaigns; past campaigns readable', () => {
-  assert.match(PAGE, /deepOffered=\{deepVisible\}/);
+test('interface: the free search exactly as before paid campaigns; past campaigns readable by direct link only', () => {
+  assert.match(PAGE, /deepOffered=\{caps\.deepSearchAvailable && deepVisible\}/, 'offered only when ON and fully available: no "soon" or "off" notice ever reaches a customer');
   assert.match(EXPERIENCE, /onStart=\{\(\) => \(deepOffered \? setView\('CHOOSE'\) : void doStart\(\)\)\}/);
   assert.match(EXPERIENCE, /startLabel=\{deepOffered \? t\('fpx_continue_modes'\) : undefined\}/, 'the original start button');
   assert.match(EXPERIENCE, /view === 'CHOOSE' && brief && deepOffered &&/);
   assert.match(EXPERIENCE, /\{deepOffered && deepCredits && search/);
   assert.match(HEADER, /\{deepOffered \? <li[^>]*data-mode-tile="DEEP"/);
+  assert.match(HEADER, /t\(deepOffered \? 'fpx_header_sub' : 'fpx_header_sub_free'\)/, 'no paid hint in the subtitle');
   assert.match(RESULTS_VIEW, /const view: View = asked === 'paid' && !deepOffered \? 'all' : asked;/);
   assert.match(RESULTS_VIEW, /\{deepOffered && search\.terminal && view === 'all' \? <DeepSearchPanel/);
-  assert.match(RESULTS_VIEW, /\{!deepOffered && search\.terminal && view === 'all' \? <PastCampaignLink/);
+  assert.doesNotMatch(RESULTS_VIEW, /PastCampaignLink|campaignResultsPath/, 'nothing paid on the free results screen');
   /* The campaign page itself is not behind the switch. */
   assert.doesNotMatch(CAMPAIGN_PAGE, /ServiceGate|useServiceVisible/);
+});
+
+test('fail closed: an unreadable, missing or stale switch never shows or runs paid Deep Search', async () => {
+  const edge = await import('../../supabase/functions/_shared/serviceControl.ts');
+  const front = await import('../../src/lib/serviceControls/core.ts');
+  assert.deepEqual([...edge.PAID_CLOSED_BY_DEFAULT], ['find_property_deep']);
+  assert.ok(!edge.LIVE_BY_DEFAULT.includes('find_property_deep') && !front.LIVE_BY_DEFAULT.includes('find_property_deep'));
+  assert.deepEqual(edge.defaultState('find_property_deep'), { frontend: false, backend: false }, 'server: unreadable → OFF');
+  assert.deepEqual(front.HIDDEN_SNAPSHOT.services.find_property_deep, { frontend: false, backend: false }, 'browser: before an answer → hidden');
+  assert.equal(front.toSnapshot([]).services.find_property_deep.frontend, false, 'a missing row → hidden');
+  assert.equal(front.toSnapshot(null).services.find_property_deep.frontend, false, 'a malformed answer → hidden');
+  assert.equal(front.initialSnapshot({ find_property_deep: true }).services.find_property_deep.frontend, false, 'never shown from browser memory');
+  assert.equal(front.toSnapshot([{ service_key: 'find_property_deep', frontend_enabled: true, backend_enabled: true }]).services.find_property_deep.frontend, true, 'only an explicit ON row shows it');
+  /* The free search's own switch is untouched and still fails open. */
+  assert.ok(edge.LIVE_BY_DEFAULT.includes('find_property') && edge.LIVE_BY_DEFAULT.includes('find_buyers'));
 });

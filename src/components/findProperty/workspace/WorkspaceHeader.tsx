@@ -24,7 +24,7 @@ export function WorkspaceHeader({ t, compact, activeSources, deepAvailable, deep
         <div className="min-w-0 max-w-2xl space-y-2">
           <Eyebrow>{t('fpx_eyebrow')}</Eyebrow>
           <h1 className="font-display text-[28px] font-semibold leading-[1.15] tracking-[-0.02em] text-[#0C1119] sm:text-[36px]">{t('plan_page_title')}</h1>
-          {!compact ? <p className="max-w-[60ch] text-[15px] leading-relaxed text-foreground/75">{t('fpx_header_sub')}</p> : null}
+          {!compact ? <p className="max-w-[60ch] text-[15px] leading-relaxed text-foreground/75">{t(deepOffered ? 'fpx_header_sub' : 'fpx_header_sub_free')}</p> : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           {action ?? <Link to="/find-property/new" className={cx(btn.primary, 'min-h-12 px-6 text-[15px]')} data-action="new-search"><Plus className="h-4 w-4" aria-hidden="true" />{t('mps_new_search')}</Link>}

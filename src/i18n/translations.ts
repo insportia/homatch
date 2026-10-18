@@ -20623,6 +20623,9 @@ const en = {
   fpc_admin_test_title: 'Temporary {{credits}}-credit test campaign',
   fpc_admin_test_body: 'Admins and {{testers}} listed testers only. Provider budget {{provider}} credits (63%); same reservation, settlement and release.',
   fpc_admin_save_failed: 'The setting could not be saved.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'Tell us what home you want, in your own words. We search for free.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -41160,6 +41163,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'დროებითი {{credits}}-კრედიტიანი სატესტო კამპანია',
   fpc_admin_test_body: 'მხოლოდ ადმინისტრატორები და {{testers}} ჩამოთვლილი ტესტერი. პროვაიდერის ბიუჯეტი {{provider}} კრედიტი (63%); იგივე დაბლოკვა, ანგარიშსწორება და დაბრუნება.',
   fpc_admin_save_failed: 'პარამეტრის შენახვა ვერ მოხერხდა.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61688,6 +61694,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'Временная тестовая кампания на {{credits}} кредитов',
   fpc_admin_test_body: 'Только администраторы и {{testers}} тестировщиков из списка. Бюджет провайдеров {{provider}} кредитов (63%); тот же резерв, расчёт и возврат.',
   fpc_admin_save_failed: 'Не удалось сохранить настройку.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -82214,6 +82223,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'Geçici {{credits}} kredilik test kampanyası',
   fpc_admin_test_body: 'Yalnızca yöneticiler ve listedeki {{testers}} test kullanıcısı. Sağlayıcı bütçesi {{provider}} kredi (%63); aynı bloke, hesaplaşma ve iade.',
   fpc_admin_save_failed: 'Ayar kaydedilemedi.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -102740,6 +102752,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'حملة تجريبية مؤقتة بقيمة {{credits}} رصيد',
   fpc_admin_test_body: 'للمشرفين و{{testers}} من المختبرين المدرجين فقط. ميزانية المزوّد {{provider}} رصيد (63%)؛ مع الحجز والتسوية والإعادة نفسها.',
   fpc_admin_save_failed: 'تعذّر حفظ الإعداد.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -123266,6 +123281,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'קמפיין ניסיון זמני של {{credits}} קרדיטים',
   fpc_admin_test_body: 'מנהלים ו־{{testers}} בודקים רשומים בלבד. תקציב ספקים {{provider}} קרדיטים (63%); אותה הקפאה, סגירה והחזרה.',
   fpc_admin_save_failed: 'לא ניתן היה לשמור את ההגדרה.',
+
+  /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

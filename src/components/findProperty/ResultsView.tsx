@@ -1,12 +1,11 @@
-import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, Copy, LayoutGrid, Loader2, SlidersHorizontal, Sparkles, Telescope, X } from 'lucide-react';
+import { ArrowLeft, Bookmark, Check, ChevronLeft, ChevronRight, Copy, LayoutGrid, Loader2, SlidersHorizontal, Sparkles, Telescope, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import type { BriefEdit } from '@/research-core/marketplace/brief';
 import { filtersFromParams, pageNumbers, type ResultFilters, resultParams } from '@/research-core/marketplace/browse-results';
 import { assessProperty, isRecommended } from '@/research-core/marketplace/advisor';
 import { browseSearchResults, MarketplaceError, propertyDetail, type PropertyView, type SearchBrowsePage, type SearchSummary } from '@/services/marketplaceSearch';
 import { useSavedKeys } from '@/services/savedListings';
-import { campaignResultsPath, latestCampaignId, subscriptionForSearch } from '@/services/paidCampaign';
 import type { T } from './format';
 import { PropertyCard } from './PropertyCard';
 import { ResultsHeader } from './workspace/ResultsHeader';
@@ -206,28 +205,6 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     {showItems && others.length ? <section aria-labelledby="mps-g-OTHER" className="space-y-3" data-results-group="OTHER"><div><h2 id="mps-g-OTHER" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_other_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_other_body')}</p></div><div className="grid gap-4">{others.map(card)}</div></section> : null}
     {showItems && data && data.total > 0 ? <div className="space-y-3 border-t border-border pt-5"><p className="text-center text-xs text-muted-foreground" role="status">{t('fpr_page_status', { from: (data.page - 1) * data.pageSize + 1, to: Math.min(data.page * data.pageSize, data.total), total: data.total })}</p><nav aria-label={t('fpr_pagination')} className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr"><button type="button" disabled={data.page === 1} onClick={() => update({}, data.page - 1)} aria-label={t('fpr_previous')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>{pageNumbers(data.page, data.pages).map((p, i) => p === 'gap' ? <span key={`gap-${i}`} className="px-1 text-muted-foreground" aria-hidden="true">…</span> : <button type="button" key={p} aria-label={t('fpr_go_page', { n: p })} aria-current={p === data.page ? 'page' : undefined} onClick={() => update({}, p)} className={`h-11 min-w-11 rounded-xl border px-2 text-sm font-semibold ${p === data.page ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]' : 'border-border hover:bg-muted'}`}>{p}</button>)}<button type="button" disabled={data.page === data.pages} onClick={() => update({}, data.page + 1)} aria-label={t('fpr_next')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></nav></div> : null}
     {deepOffered && search.terminal && view === 'all' ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
-    {!deepOffered && search.terminal && view === 'all' ? <PastCampaignLink t={t} searchId={search.id} /> : null}
   </div>;
 }
 
-/** While Admin pauses paid Deep Search: a campaign this search already ran stays readable on
- *  its own page (read-only, no charge). Nothing to start, price or buy is shown. */
-function PastCampaignLink({ t, searchId }: { t: T; searchId: string }) {
-  const [runId, setRunId] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    setRunId(null);
-    subscriptionForSearch(searchId)
-      .then((sub) => (sub ? latestCampaignId(sub) : null))
-      .then((id) => { if (live) setRunId(id); })
-      .catch(() => undefined);
-    return () => { live = false; };
-  }, [searchId]);
-  if (!runId) return null;
-  return (
-    <Link to={campaignResultsPath(runId)} data-action="past-campaign-results"
-      className="flex min-h-[44px] items-center justify-between gap-2 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">
-      {t('fpc_previous_results')}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
-    </Link>
-  );
-}

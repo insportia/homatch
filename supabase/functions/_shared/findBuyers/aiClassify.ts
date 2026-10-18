@@ -1,6 +1,7 @@
 // AI-first classification calls (aiClassifier.ts holds the schema, prompt and the rules for
 // applying a verdict). One structured-output call per AI_BATCH_SIZE unique candidates, at most
-// AI_CONCURRENCY calls in flight, one retry per failed batch, every call's tokens recorded in
+// AI_CONCURRENCY calls in flight, one retry per failed batch, one more call for the items a
+// batch answer left out, every call's tokens recorded in
 // find_buyers_cost_ledger. A batch that still fails returns no verdict for its items: the
 // caller marks them UNVERIFIED — never a confident rule-based buyer.
 
@@ -18,7 +19,7 @@ export interface AiCandidate {
   author?: string | null;
 }
 
-export interface AiRunStats { calls: number; failedBatches: number; costMicros: number; inputTokens: number; outputTokens: number }
+export interface AiRunStats { calls: number; failedBatches: number; missingRetried: number; costMicros: number; inputTokens: number; outputTokens: number }
 
 const clip = (s: string | null | undefined, n: number) => (s ? String(s).slice(0, n) : null);
 
@@ -28,34 +29,43 @@ export async function classifyCandidates(
   candidates: AiCandidate[],
 ): Promise<{ verdicts: Map<string, AiVerdict & { model: string }>; stats: AiRunStats }> {
   const verdicts = new Map<string, AiVerdict & { model: string }>();
-  const stats: AiRunStats = { calls: 0, failedBatches: 0, costMicros: 0, inputTokens: 0, outputTokens: 0 };
+  const stats: AiRunStats = { calls: 0, failedBatches: 0, missingRetried: 0, costMicros: 0, inputTokens: 0, outputTokens: 0 };
   const batches: AiCandidate[][] = [];
   for (let i = 0; i < candidates.length; i += AI_BATCH_SIZE) batches.push(candidates.slice(i, i + AI_BATCH_SIZE));
   const property = propertyBrief(opts.dna);
 
-  const runBatch = async (batch: AiCandidate[], index: number) => {
+  /** One structured call for `batch`; true when the model answered (items it skipped stay missing). */
+  const call = async (batch: AiCandidate[], key: string, attempt: number): Promise<boolean> => {
     const payload = {
       property,
       items: batch.map((c, k) => ({ id: String(k), kind: c.kind, text: clip(c.text, 700), parent_post: clip(c.parentExcerpt, 300), author: clip(c.author, 80) })),
     };
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await openAiJson<{ items: unknown[] }>(opts.book, AI_SYSTEM_PROMPT, payload, AI_CLASSIFY_SCHEMA, { maxTokens: 200 + batch.length * 140, timeoutMs: 30_000 });
-      stats.calls++;
-      stats.costMicros += res.costMicros; stats.inputTokens += res.inputTokens; stats.outputTokens += res.outputTokens;
-      await recordAiCost(db, {
-        key: `${opts.keyPrefix}:${index}:a${attempt}`, matchingJobId: opts.matchingJobId, kind: 'AI', operation: opts.operation,
-        result: res, metadata: { ...(opts.metadata ?? {}), items: batch.length, attempt },
-      }).catch(() => undefined);
-      if (!res.error && res.data && Array.isArray(res.data.items)) {
-        for (const raw of res.data.items as any[]) {
-          const k = Number(raw?.id);
-          const v = parseAiVerdict(raw);
-          if (v && Number.isInteger(k) && batch[k]) verdicts.set(batch[k].id, { ...v, model: res.model });
-        }
-        return;
-      }
+    const res = await openAiJson<{ items: unknown[] }>(opts.book, AI_SYSTEM_PROMPT, payload, AI_CLASSIFY_SCHEMA, { maxTokens: 300 + batch.length * 180, timeoutMs: 30_000 });
+    stats.calls++;
+    stats.costMicros += res.costMicros; stats.inputTokens += res.inputTokens; stats.outputTokens += res.outputTokens;
+    await recordAiCost(db, {
+      key, matchingJobId: opts.matchingJobId, kind: 'AI', operation: opts.operation,
+      result: res, metadata: { ...(opts.metadata ?? {}), items: batch.length, attempt },
+    }).catch(() => undefined);
+    if (res.error || !res.data || !Array.isArray(res.data.items)) return false;
+    for (const raw of res.data.items as any[]) {
+      const k = Number(raw?.id);
+      const v = parseAiVerdict(raw);
+      if (v && Number.isInteger(k) && batch[k]) verdicts.set(batch[k].id, { ...v, model: res.model });
     }
-    stats.failedBatches++;
+    return true;
+  };
+
+  const runBatch = async (batch: AiCandidate[], index: number) => {
+    let answered = false;
+    for (let attempt = 0; attempt < 2 && !answered; attempt++) answered = await call(batch, `${opts.keyPrefix}:${index}:a${attempt}`, attempt);
+    if (!answered) { stats.failedBatches++; return; }
+    /* Items the model left out of its answer (replay of 343cfc41: 44 of 445) get one more call. */
+    const missing = batch.filter((c) => !verdicts.has(c.id));
+    if (missing.length) {
+      stats.missingRetried += missing.length;
+      await call(missing, `${opts.keyPrefix}:${index}:m`, 2);
+    }
   };
 
   /* Bounded concurrency: AI_CONCURRENCY batches in flight. */

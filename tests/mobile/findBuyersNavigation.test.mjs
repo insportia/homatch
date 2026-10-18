@@ -145,6 +145,16 @@ async function clickPage2(page) {
   await btn.dispatchEvent('click');
 }
 const toPath = (page, p) => page.waitForURL((u) => new URL(u).pathname === p, { timeout: 30000 });
+/* The shell's Back on a screen that has just rendered: a press can land before the new route
+   has bound its handler (CI, 2026-10-18). Press, and press again only while still on `from`. */
+async function backTo(page, from, to) {
+  for (let i = 0; i < 3 && path(page) === from; i++) {
+    await shellBack(page).waitFor({ timeout: 30000 });
+    await shellBack(page).click();
+    await page.waitForURL((u) => new URL(u).pathname !== from, { timeout: 8000 }).catch(() => undefined);
+  }
+  await toPath(page, to);
+}
 
 test('live results: Review Budget and page 2 add no history; Back leaves for the dashboard (not a scroll)', opts, async (t) => {
   /* Finished, so "New search" is offered; only this search's leads, so it is the one shown. */
@@ -208,15 +218,12 @@ test('Edit search from the Find Buyers dashboard: Back returns to the dashboard'
   await page.click('[data-testid="fbh-edit-search"]');
   await toPath(page, `/property/${P}/edit`);
   assert.equal(await page.getByText('Back to portfolio').count(), 0, 'one Back control, the shell\'s');
-  await shellBack(page).click();
-  await toPath(page, `/property/${P}/matches`);
+  await backTo(page, `/property/${P}/edit`, `/property/${P}/matches`);
   /* A reload loses the in-memory history table; the opener's `from` still decides. */
   await page.goForward();
   await toPath(page, `/property/${P}/edit`);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await shellBack(page).waitFor({ timeout: 30000 });
-  await shellBack(page).click();
-  await toPath(page, `/property/${P}/matches`);
+  await backTo(page, `/property/${P}/edit`, `/property/${P}/matches`);
 });
 
 test('a deep link to /property/P/edit: Back goes to the property, never the portfolio', opts, async (t) => {

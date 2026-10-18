@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import pdf from 'pdf-parse';
+import { parsePdfOffLoop } from '../../runtime/pdfOffLoop.js';
 import type { BrowserContext, Frame, Page } from 'playwright';
 import { BrowserTrace } from '../../browser/BrowserTrace.js';
 import { computeEnregTraversal } from '../../state/transitions.js';
@@ -63,7 +63,7 @@ async function waitForNewPage(context: BrowserContext, before: Set<Page>, timeou
  * carried exactly as before.
  */
 async function readPdf(buffer: Buffer, source: string) {
-  const parsed = await pdf(buffer);
+  const parsed = await parsePdfOffLoop(buffer);
   const pageCount = Number(parsed.numpages || 0);
   const rawText = String(parsed.text || '');
   if (pageCount <= 0 || !rawText.trim()) throw new Error('PDF_READ_INCOMPLETE');

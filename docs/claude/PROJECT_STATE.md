@@ -5,6 +5,20 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Capacity & resilience release (2026-10-18) — #261, #266, #253 MERGED, DEPLOYED, MIGRATIONS APPLIED
+
+- #261 document guards → b9cd4ab0. #266 Find Property capacity → ba893c5e. #253 hardening + AI TALK
+  isolation → dbbbb0f1. refs/deployed/edge + frontend = dbbbb0f1 (deploy run 39140633607, attempt 2;
+  attempt 1 failed only on pdfOffLoop's tick floor, fixed in #268).
+- Ledger: find_property_capacity 20261018151806, verify_sweep_indexes 20261018153521,
+  provider_spend_totals 20261018154228 (all service_role only).
+- PROVEN_EXACT vs main: marketplace-search v28, research-agent v210, outreach-send v46,
+  spend-cap-check v46; developer-document-extract v29, deal-room-document-analyze v52.
+- Railway homatch-official-worker deployment 80972dc1 (dbbbb0f1) SUCCESS.
+- Measured in production: Verify market-refresh sweep 51.7 ms / ~12 MB per tick → 0.30 ms / 3 buffers.
+- Not yet observed live: a customer Find Property search through marketplace_dispatch_search
+  (no searches in the release window). First real search: check request_key / mode on its runs.
+
 ## Production hardening from the capacity audit (PR #253, branch claude/architecture-viewer-repair-mqdt18, 2026-10-18)
 
 Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release manifest, rollback,

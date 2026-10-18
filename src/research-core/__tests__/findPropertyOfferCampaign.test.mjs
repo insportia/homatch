@@ -7,7 +7,7 @@ import { allocateCampaign } from '../billing/paidDiscoveryPolicy.ts';
 
 const actors = {
   FB_GROUP_POSTS: { actorKey: 'FB_GROUP_POSTS', ready: true, startFeeMicros: 8000, pricePer1kMicros: 1_500_000, probeSize: 20 },
-  TELEGRAM_CHANNEL: { actorKey: 'TELEGRAM_CHANNEL', ready: true, startFeeMicros: 1000, pricePer1kMicros: 250_000, probeSize: 30 },
+  TELEGRAM_CHANNEL: { actorKey: 'TELEGRAM_CHANNEL', ready: true, startFeeMicros: 1000, pricePer1kMicros: 250_000, probeSize: 30, outputVerified: true }, // verified here: these tests exercise Telegram planning itself
   IG_PROFILE_POSTS: { actorKey: 'IG_PROFILE_POSTS', ready: true, startFeeMicros: 40_000, pricePer1kMicros: 800_000, probeSize: 12 },
   VK_POSTS_COMMENTS: { actorKey: 'VK_POSTS_COMMENTS', ready: false, startFeeMicros: 10_000, pricePer1kMicros: 3_600_000, probeSize: 20 },
 };

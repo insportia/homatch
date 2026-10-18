@@ -234,3 +234,49 @@ use, gross spread, cost per available match; VAT, fees and net margin stay "not 
 only; exactly that amount; same reservation (full budget), 37/63 allocation
 ($2 → $1.26 provider budget), settlement and release. `beginExecution`'s
 `minViableOverrideCredits` can only lower the product minimum for that one reservation.
+
+### Paying for fewer, better posts (2026-10-18, before the next live campaign)
+
+**What the providers can filter server-side** (registry `input_contract.schemaProperties`;
+apify.com is unreachable from the build environment, so nothing beyond the stored schemas is assumed):
+
+| Actor | Server-side filters | Used |
+|---|---|---|
+| FB_GROUP_POSTS | `startUrls` (which groups), `onlyPostsNewerThan` (verified), `search` / `searchKeywordByYear` (in-group keyword, **never exercised**) | groups + date; `search` only once verified (one approved micro-probe ≈ $0.02) |
+| TIKTOK | `mode: search` + `input` keywords (verified in production) | the request's own phrases |
+| TELEGRAM_CHANNEL | channel `usernames`/`startUrls`, `oldestDate`/`newestDate` — no keyword | **excluded** (below) |
+| IG_PROFILE_POSTS | profile `startUrls` only | profiles only (none registered) |
+| VK_POSTS_COMMENTS | `searchQuery`, `targets`, dates | disabled (health FAILED) |
+| FB_POST_SEARCH / FB_PAGE_POSTS | no stored schema, unpriced | disabled |
+
+No Actor filters by price, rooms, area or property type: social posts are free text, so those
+requirements can only be checked after the fetch — which is why the fetch itself must be narrow.
+
+**Before any run**
+- `requestQueries`: transaction + rooms + type + the wanted district, per language
+  ("იყიდება 3 ოთახიანი ბინა ვაკეში", "продается 3-комнатная квартира Ваке",
+  "3 room apartment for sale Vake Tbilisi") for keyword Actors.
+- Source order: stored offers of this transaction **in the wanted district**
+  (`districtEvidence`), then a community named after the district (one named after another
+  district last), then proven, real-estate-named, in-city, priority. Small budgets therefore
+  read the most relevant communities.
+- A small budget covers every network's first run before any run is shrunk to fill it.
+
+**During the campaign — probe-first.** Each network's first run is a probe; its later runs wait
+for it and are cancelled **before reserving anything ($0)** when the probe billed ≥ 100 posts and
+none could fit the request (strict verdict ≠ REJECTED, counted per run as `useful`). Runs already
+started are never aborted.
+
+**Telegram.** Root cause found from stored evidence (258 posts of the same Actor in
+`raw_signals`): posts carry channel + message id but no post URL, and offers require an https
+link. `telegramPostUrl` builds Telegram's public link `https://t.me/<channel>/<id>`; offline over
+those 258 posts: 258 links, 26 Tbilisi sale offers, 123 rent offers. Telegram nevertheless stays
+**out of offer campaigns** (`OUTPUT_UNVERIFIED`) until the registry's
+`output_contract_verified_at` is set for TELEGRAM_CHANNEL — an owner decision; no paid Telegram
+run without approval.
+
+**Backfill safety.** `persistCampaignResults` writes only the campaign's own result rows
+(upsert on `run_id, observation_id`, then removes only its stale rows) and
+`discovery_runs.campaign_outcome`; it calls no RPC, no wallet, ledger or provider code, and judges
+as of the campaign's end so a later backfill gives the same verdicts. Settlement already
+happened once (`claimSettlement`); a results read can never charge.

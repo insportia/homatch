@@ -27,7 +27,7 @@ import { allocateCampaign, minimumCampaignCredits } from '../../../src/research-
 import { OFFER_NETWORKS, offerSearchLanguages, type OfferNetwork, type OfferSearch } from '../../../src/research-core/findProperty/offerCampaign.ts';
 import { loadOfferSettings, offerQueueRows, planOfferCampaign } from '../_shared/findProperty/socialOffers.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
-import { campaignEconomics, readCampaignResults } from '../_shared/findProperty/campaignResults.ts';
+import { campaignCriteria, campaignEconomics, readCampaignResults } from '../_shared/findProperty/campaignResults.ts';
 
 /** The temporary 20-credit TEST campaign (owner, 2026-10-18): Admin switch, admins + listed testers only. */
 async function testCampaign(db: any, me: { id: string; is_admin?: boolean | null }): Promise<{ allowed: boolean; credits: number }> {
@@ -132,11 +132,16 @@ Deno.serve(async (req: Request) => {
     const test = await testCampaign(db, me);
     const isTest = test.allowed && budget === test.credits;
     const transaction = searchPlan.deal === 'RENT' ? 'RENT' : 'SALE';
+    /* The confirmed request (the marketplace search's brief): shapes the keyword phrases and is
+       what every run's posts are counted against for the probe-first rule. */
+    const marketplaceSearchId = typeof subscription.search_criteria?.marketplaceSearchId === 'string' ? subscription.search_criteria.marketplaceSearchId : null;
+    const { criteria } = await campaignCriteria(db, { subscription_id: subscription.id, user_id: me.id, offer_plan: { marketplaceSearchId } });
     const offerSearch: OfferSearch = {
       transaction, city: searchPlan.city.value,
       districts: searchPlan.districts?.value ?? [],
       propertyType: searchPlan.propertyTypes?.value?.[0] ?? null,
       languages: offerSearchLanguages(typeof body.language === 'string' ? body.language : null),
+      rooms: criteria.rooms?.min != null && criteria.rooms.min === criteria.rooms.max ? criteria.rooms.min : null,
     };
     /* The customer buys the PROCESS, not a list of sources (owner, 2026-10-18): every
        network Admin enabled is searched; a client-sent list is ignored. */
@@ -230,12 +235,12 @@ Deno.serve(async (req: Request) => {
       provider_budget_micros: allocation.providerBudgetMicros,
       offer_networks: networks,
       offer_plan: { version: plan.version, estimatedMicros: plan.estimatedMicros, unavailable: plan.unavailable, skippedForBudget: plan.skippedForBudget, jobs: plan.jobs.length, testCampaign: isTest,
-        marketplaceSearchId: typeof subscription.search_criteria?.marketplaceSearchId === 'string' ? subscription.search_criteria.marketplaceSearchId : null },
+        marketplaceSearchId },
     }).select('id,started_at').single();
     if (runError) throw runError;
     runId = String(run.id);
 
-    const rows = offerQueueRows(runId, null, plan, offerSearch);
+    const rows = offerQueueRows(runId, null, plan, offerSearch, criteria);
     const { error: queueError } = await db.from('discovery_query_queue').insert(rows);
     if (queueError) throw queueError;
     await runEvent(db, runId, 'SOURCES_QUEUED', {

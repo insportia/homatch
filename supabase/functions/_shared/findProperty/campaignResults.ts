@@ -59,7 +59,7 @@ function snapshotOf(o: CampaignOffer, c: CampaignCriteria, duplicates: CampaignO
 }
 
 export async function persistCampaignResults(db: any, runId: string): Promise<CampaignFunnel | null> {
-  const { data: run } = await db.from('discovery_runs').select('id,user_id,subscription_id,offer_plan,pricing_policy').eq('id', runId).maybeSingle();
+  const { data: run } = await db.from('discovery_runs').select('id,user_id,subscription_id,offer_plan,pricing_policy,started_at,completed_at').eq('id', runId).maybeSingle();
   if (!run || run.pricing_policy !== PAID_DISCOVERY_POLICY_ID) return null;
   const { criteria } = await campaignCriteria(db, run);
   const { data: actorRuns } = await db.from('find_property_actor_runs').select('id,items_fetched,results_billed').eq('discovery_run_id', runId);
@@ -75,7 +75,10 @@ export async function persistCampaignResults(db: any, runId: string): Promise<Ca
       if (!data || data.length < 1000) break;
     }
   }
-  const { verdicts, funnel } = judgeCampaign(offers, criteria, fetched);
+  /* Judged AS OF the campaign's end (its start while it runs): a backfill months later gives the
+     same verdicts — "posted in the last 30 days" is about the campaign, not about today. */
+  const asOf = Date.parse(String(run.completed_at ?? run.started_at ?? '')) || Date.now();
+  const { verdicts, funnel } = judgeCampaign(offers, criteria, fetched, asOf);
   const byId = new Map(offers.map((o) => [o.id, o]));
   const rows = verdicts.map((v, i) => ({
     run_id: runId, observation_id: v.offerId, category: v.category, rank: i + 1, score: v.score,
@@ -83,13 +86,21 @@ export async function persistCampaignResults(db: any, runId: string): Promise<Ca
     snapshot: snapshotOf(byId.get(v.offerId)!, criteria, v.duplicateIds.map((d) => byId.get(d)!).filter(Boolean)),
     match_version: CAMPAIGN_MATCH_VERSION,
   }));
-  const { error: delError } = await db.from('find_property_campaign_results').delete().eq('run_id', runId);
-  if (delError) throw delError;
+  /* Idempotent: an upsert of the same deterministic rows, then only rows this campaign no longer
+     has are removed (never another campaign's). Two first reads racing write the same rows. */
   for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await db.from('find_property_campaign_results').insert(rows.slice(i, i + 500));
+    const { error } = await db.from('find_property_campaign_results').upsert(rows.slice(i, i + 500), { onConflict: 'run_id,observation_id' });
     if (error) throw error;
   }
-  const { error: upError } = await db.from('discovery_runs').update({ campaign_outcome: { ...funnel, criteria, judgedAt: new Date().toISOString() } }).eq('id', runId);
+  const keep = new Set(rows.map((r) => r.observation_id));
+  const { data: existing } = await db.from('find_property_campaign_results').select('observation_id').eq('run_id', runId);
+  const stale = ((existing ?? []) as Array<{ observation_id: string }>).map((r) => r.observation_id).filter((id) => !keep.has(id));
+  for (let i = 0; i < stale.length; i += 200) {
+    const { error } = await db.from('find_property_campaign_results').delete().eq('run_id', runId).in('observation_id', stale.slice(i, i + 200));
+    if (error) throw error;
+  }
+  /* The only other write: the campaign's own counts. Wallet, reservations, ledger and provider runs are never touched here. */
+  const { error: upError } = await db.from('discovery_runs').update({ campaign_outcome: { ...funnel, criteria, judgedAsOf: new Date(asOf).toISOString() } }).eq('id', runId);
   if (upError) throw upError;
   return funnel;
 }

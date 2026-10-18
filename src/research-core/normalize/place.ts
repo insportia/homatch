@@ -174,6 +174,12 @@ export function resolvePlace(name: string | null | undefined):
   return { key: PLACES[row][0], kind, cityKey: PLACES[kind === 'CITY' ? row : TBILISI_ROW][0] };
 }
 
+/** A known place's names: [latin key, Georgian, Russian, ...aliases]; null when unknown. */
+export function placeNamesOf(name: string | null | undefined): readonly string[] | null {
+  const row = INDEX.get(norm(name));
+  return row === undefined ? null : PLACES[row];
+}
+
 /** True only when two names are the same place. UNKNOWN is not agreement. */
 export function samePlace(a: string | null | undefined, b: string | null | undefined): boolean {
   return comparePlaces(a, b) === 'AGREE';

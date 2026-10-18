@@ -100,7 +100,7 @@ test('keyword search words: six languages, the searched property kind, the custo
 
 const ACTORS = {
   FB_GROUP_POSTS: { actorKey: 'FB_GROUP_POSTS', ready: true, startFeeMicros: 8000, pricePer1kMicros: 1_500_000, probeSize: 20, maxResults: 100 },
-  TELEGRAM_CHANNEL: { actorKey: 'TELEGRAM_CHANNEL', ready: true, startFeeMicros: 1000, pricePer1kMicros: 250_000, probeSize: 30, maxResults: 150 },
+  TELEGRAM_CHANNEL: { actorKey: 'TELEGRAM_CHANNEL', ready: true, startFeeMicros: 1000, pricePer1kMicros: 250_000, probeSize: 30, maxResults: 150, outputVerified: true }, // verified here: these tests exercise Telegram planning itself
   IG_PROFILE_POSTS: { actorKey: 'IG_PROFILE_POSTS', ready: true, startFeeMicros: 40000, pricePer1kMicros: 800_000, probeSize: 12, maxResults: 60 },
   TIKTOK: { actorKey: 'TIKTOK', ready: true, startFeeMicros: 5000, pricePer1kMicros: 2_000_000, probeSize: 15, maxResults: 60 },
   FB_POST_SEARCH: { actorKey: 'FB_POST_SEARCH', ready: false, startFeeMicros: 0, pricePer1kMicros: 0, probeSize: 15 },
@@ -134,7 +134,8 @@ test('paid plan: every relevant Facebook group read once (no keyword), relevant 
   assert.equal(tgJobs[0].targets.length, 12);
   const tt = plan.jobs.filter((j) => j.stage === 'TIKTOK_SEARCH');
   assert.equal(tt.length, 1);
-  assert.deepEqual(tt[0].queries, ['იყიდება ბინა Tbilisi', 'продается квартира Tbilisi', 'apartment for sale Tbilisi']);
+  /* The request's own phrases, each language with its own place name (2026-10-18). */
+  assert.deepEqual(tt[0].queries, ['იყიდება ბინა თბილისში', 'продается квартира Тбилиси', 'apartment for sale Tbilisi']);
   assert.equal(tt[0].size, 3 * 60);
   /* No Instagram profile registered, VK has no ready Actor: said, never silently dropped. */
   assert.deepEqual(plan.unavailable.map((u) => [u.network, u.reason]).sort(), [['INSTAGRAM', 'NO_KNOWN_SOURCE'], ['VK', 'NO_READY_ACTOR']]);

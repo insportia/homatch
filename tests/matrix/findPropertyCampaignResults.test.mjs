@@ -75,3 +75,34 @@ test('alternatives are shown only when asked for, and labelled as not matches', 
   assert.match(RESULTS, /MATCHES: \['EXACT', 'POTENTIAL'\]/);
   assert.match(PAGE, /effectiveView === 'ALTERNATIVE' \? <p/);
 });
+
+test('backfill is idempotent, judged as of the campaign, and cannot charge or call a provider', () => {
+  const persist = RESULTS.slice(RESULTS.indexOf('export async function persistCampaignResults'), RESULTS.indexOf('const ENDED'));
+  /* Writes: only this campaign's result rows (upsert on its key) and its own counts. */
+  const writes = [...persist.matchAll(/from\('([a-z_]+)'\)\.(insert|upsert|update|delete)/g)].map((m) => `${m[1]}.${m[2]}`);
+  assert.deepEqual([...new Set(writes)].sort(), ['discovery_runs.update', 'find_property_campaign_results.delete', 'find_property_campaign_results.upsert']);
+  assert.match(persist, /upsert\(rows\.slice\(i, i \+ 500\), \{ onConflict: 'run_id,observation_id' \}\)/);
+  assert.match(persist, /\.update\(\{ campaign_outcome:/, 'the run update touches campaign_outcome only');
+  assert.match(persist, /\.delete\(\)\.eq\('run_id', runId\)\.in\('observation_id', stale/, 'only this campaign\'s stale rows');
+  /* No money or provider path anywhere in the module. */
+  for (const forbidden of ['rpc(', 'wallet_', 'usage_reservations\').update', 'credit_ledger', 'settle', 'startRun', 'abortRun', 'memo23Client', 'find_property_book_actor_cost', 'beginExecution', 'releaseExecution']) {
+    assert.ok(!persist.includes(forbidden), `persistCampaignResults must not reach ${forbidden}`);
+  }
+  assert.ok(!RESULTS.includes('rpc('), 'campaignResults.ts calls no RPC at all');
+  /* Deterministic over time: judged as of the campaign's end. */
+  assert.match(persist, /const asOf = Date\.parse\(String\(run\.completed_at \?\? run\.started_at \?\? ''\)\) \|\| Date\.now\(\);/);
+  assert.match(persist, /judgeCampaign\(offers, criteria, fetched, asOf\)/);
+  /* The lazy backfill only runs for an ENDED campaign without counts; settlement happened earlier, once (claimSettlement). */
+  assert.match(RESULTS, /if \(!outcome && ENDED\.has\(String\(run\.status\)\)\) outcome = await persistCampaignResults/);
+  assert.match(SETTLE, /if \(!\(await claimSettlement\(db, run\.id\)\)\) \{/);
+});
+
+test('probe-first and the Telegram output gate act before anything is reserved', () => {
+  const OFFERS = read('supabase/functions/_shared/findProperty/socialOffers.ts');
+  const exec = OFFERS.slice(OFFERS.indexOf('export async function executeOfferJob'), OFFERS.indexOf('async function start('));
+  assert.ok(exec.indexOf('followUpDecision') < exec.indexOf('return start(db, job, run);'), 'the probe decision comes before start (the reservation)');
+  assert.match(exec, /if \(decision === 'STOP_LOW_YIELD'\) return out\(\{ outcome: 'CANCELLED', error: 'LOW_YIELD_PROBE' \}\);/);
+  assert.match(OFFERS, /outputVerified: a\.output_contract_verified_at != null,/);
+  const PLAN = read('src/research-core/findProperty/offerCampaign.ts');
+  assert.match(PLAN, /export const OUTPUT_VERIFICATION_REQUIRED: ReadonlySet<string> = new Set\(\['TELEGRAM_CHANNEL'\]\);/);
+});

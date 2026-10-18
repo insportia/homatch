@@ -87,8 +87,20 @@ test('wiring: verify-synthesis starts the refresh on a rebuild; the driver folds
   assert.match(ra, /_rebuildRequested: rebuildRequest\('MARKET_REFRESH'/);
   // Production 2026-10-11: selecting a column research_jobs does not have
   // (`type`) failed the sweep every tick; only real columns may be selected.
-  const sweep = ra.slice(ra.indexOf('async function pollMarketRefreshes'), ra.indexOf('async function pollMarketRefreshes') + 900);
-  const cols = (sweep.match(/\.select\('([^']+)'\)/) ?? [])[1]?.split(',') ?? [];
-  assert.deepEqual(cols.filter((c) => !['id', 'query', 'mode', 'result_json', 'synthesis_json', 'synthesis_state'].includes(c)), []);
+  // Since 2026-10-18 the sweep reads through research_jobs_market_refresh_running()
+  // (indexed, migration 20261114090000) and keeps the PostgREST filter as the
+  // fallback: both must name exactly these real columns.
+  const REAL = ['id', 'query', 'mode', 'result_json', 'synthesis_json', 'synthesis_state'];
+  assert.match(ra, /async function pollMarketRefreshes[\s\S]{0,200}await marketRefreshesInFlight\(sb, 3\)/);
+  const reader = ra.slice(ra.indexOf('async function marketRefreshesInFlight'), ra.indexOf('async function pollMarketRefreshes'));
+  assert.match(reader, /sb\.rpc\('research_jobs_market_refresh_running', \{ p_limit: limit \}\)/);
+  assert.match(reader, /code !== 'PGRST202'/);
+  const cols = (reader.match(/\.select\('([^']+)'\)/) ?? [])[1]?.split(',') ?? [];
+  assert.deepEqual(cols, REAL);
+  assert.match(reader, /\.eq\('status', 'COMPLETE'\)\s*\.eq\('result_json->_marketRefresh->>state', 'RUNNING'\)/);
+  const mig = readFileSync(join(root, 'supabase/migrations/20261114090000_verify_sweep_indexes.sql'), 'utf8');
+  const ret = (mig.match(/returns table \(([^)]*)\)/) ?? [])[1] ?? '';
+  assert.deepEqual(ret.split(',').map((c) => c.trim().split(/\s+/)[0]), REAL);
+  assert.match(mig, /where j\.status = 'COMPLETE'\s*and \(j\.result_json -> '_marketRefresh' ->> 'state'\) = 'RUNNING'/);
   assert.match(ra, /needsMarketRefresh\(next\)\) \{\s*const again = await startJobMarketRefresh\(sb, j\.id\)/);
 });

@@ -2558,14 +2558,28 @@ async function startJobMarketRefresh(sb: any, jobId: string): Promise<{ status: 
 }
 
 /** Cron step: fold finished market refreshes and request one rebuild each. */
+/**
+ * COMPLETE jobs with a market refresh in flight. Served by the partial index of
+ * migration 20261114090000 through research_jobs_market_refresh_running(): the
+ * PostgREST filter below de-toasted EVERY completed report on every 30 s tick
+ * (capacity audit 2026-10-18). The filter stays as the fallback until that
+ * migration is applied (PGRST202 = function not found) — same rows either way.
+ */
+async function marketRefreshesInFlight(sb: any, limit: number): Promise<{ data: any[] | null; error: any }> {
+  const viaIndex = await sb.rpc('research_jobs_market_refresh_running', { p_limit: limit });
+  if (!viaIndex.error) return { data: viaIndex.data ?? [], error: null };
+  if (viaIndex.error?.code !== 'PGRST202') return { data: null, error: viaIndex.error };
+  return await sb
+    .from('research_jobs')
+    .select('id,query,mode,result_json,synthesis_json,synthesis_state')
+    .eq('status', 'COMPLETE')
+    .eq('result_json->_marketRefresh->>state', 'RUNNING')
+    .limit(limit);
+}
+
 async function pollMarketRefreshes(sb: any): Promise<void> {
   try {
-    const { data: jobs, error } = await sb
-      .from('research_jobs')
-      .select('id,query,mode,result_json,synthesis_json,synthesis_state')
-      .eq('status', 'COMPLETE')
-      .eq('result_json->_marketRefresh->>state', 'RUNNING')
-      .limit(3);
+    const { data: jobs, error } = await marketRefreshesInFlight(sb, 3);
     if (error) { console.error('research-agent drive: market-refresh sweep failed', error); return; }
     for (const j of jobs ?? []) {
       const rj = j.result_json ?? {};
@@ -4853,9 +4867,15 @@ async function advanceExclusive(sb: any, k: string, m: string, j: any, l: string
   try {
     const { data, error } = await sb.rpc('research_job_advance_acquire', { p_job_id: j.id, p_seconds: ADVANCE_LEASE_SECONDS });
     if (!error && data === null) return false; // another invocation is stepping this job
-    if (!error) token = data;
-  } catch {
-    /* lease unavailable: proceed unguarded, as before */
+    if (error) throw error;
+    token = data;
+  } catch (e) {
+    // Lease unavailable: do NOT step unguarded (capacity audit 2026-10-18).
+    // Every open tab and every overlapping drive tick is an advancer; without
+    // the lease two of them can run the same paid stage. The next poll or
+    // drive tick (≤30 s) retries, so a transient error only delays a step.
+    console.error(JSON.stringify({ scope: 'verify_advance_lease', jobId: j.id, outcome: 'SKIPPED_NO_LEASE', error: String((e as any)?.message ?? e).slice(0, 200) }));
+    return false;
   }
   try {
     // A stop requested while no one held the job is applied here, before any
@@ -7666,9 +7686,15 @@ Deno.serve(async (req) => {
         j = await skipHumanWait(sb, j);
       }
       if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED', 'PAUSED'].includes(j.status)) {
-        await advanceExclusive(sb, key, model, j, lang);
-        const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
-        j = r.data || j;
+        // Re-read the row only when THIS request stepped the job. When another
+        // tab or the driver holds the advance lease nothing was changed here,
+        // and the row read above is already current for this poll — a second
+        // full read (reports average ~108 KB) per contended poll was pure
+        // database load (capacity audit 2026-10-18).
+        if (await advanceExclusive(sb, key, model, j, lang)) {
+          const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+          j = r.data || j;
+        }
       }
       // v22: strip internal diagnostics from the wire response for finished jobs
       // (see sanitizeForCustomer above). The DB row itself is left untouched —

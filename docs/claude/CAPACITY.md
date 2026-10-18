@@ -27,7 +27,7 @@ Source: the read-only production capacity audit of 2026-10-18, and the hardening
 | # | Finding | Status on this branch |
 |---|---|---|
 | P1-1 | Worker accepted any user JWT on `/research`, `/verify/*`, `/tas/test` (bypassed billing, switch, limits) | **FIXED** — `official-worker/src/http/workerAuth.ts`: `WORKER_TOKEN` only, constant-time, 503 when unset. Every caller verified to send the token |
-| P1-2 | Free Find Property: one requester's burst starved everyone; 1 search per portal at a time | **PARTLY FIXED** — fair claim order (`20261115110000`). Throughput unchanged: needs more slots or replicas (§5, owner) |
+| P1-2 | Free Find Property: one requester's burst starved everyone; 1 search per portal at a time | **PARTLY FIXED** — fair claim order moved to PR #266 (`20261116090000`, with shared portal runs and the live-search quota). Throughput unchanged: needs more slots or replicas (§5, owner) |
 | P1-3 | Verify 2.2 s polling × full-row reads + advance per poll | **PARTLY FIXED** — no second full read on contended polls; no unguarded advance. Cadence and payload unchanged (product behaviour; options in §6) |
 | P1-4 | 30 s sweep scanned every completed report's JSON | **FIXED** — `20261115090000`: partial index + literal-predicate function; research-agent falls back until it is applied |
 | P1-5 | No enforced global provider spend ceiling; free quotas non-atomic | **NOT CHANGED** — needs owner thresholds (§7). Signed-in assistant turns are wallet-billed (`ai_chat_billing_enabled=true` [PROD]) |
@@ -50,7 +50,7 @@ Source: the read-only production capacity audit of 2026-10-18, and the hardening
 |---|---|---|---|
 | Verify market-refresh sweep (every 30 s) | 51.7 ms, ~12 MB buffers @ 76 completed jobs [PROD]; 181 ms, ~33k buffers @ 2,000 jobs [LOCAL] | 0.05 ms / 2 buffers (index), 0.17 ms via the function @ 2,000 jobs [LOCAL] | `20261115090000` |
 | Verify status poll while another advancer holds the job | 2 full-row reads (avg 108 KB [PROD]) | 1 | research-agent |
-| Free-search claim, 10,000 queued from 2,000 requesters | ~5 ms, FIFO [LOCAL] | 30–55 ms, fair [LOCAL]; ~0.2 ms at today's sizes | `20261115110000` |
+| Free-search claim, 10,000 queued from 2,000 requesters | ~5 ms, FIFO [LOCAL] | 30–55 ms, fair [LOCAL]; ~0.2 ms at today's sizes | PR #266 |
 | Spend-cap sum | one select, truncated at max rows | one aggregate row per provider; identical totals on 5,000 rows [LOCAL] | `20261115100000` |
 
 ## 4. Capacity model [MODEL — UNVERIFIED]
@@ -123,9 +123,8 @@ Rates sources:
 
 ## 7. Owner approvals required
 
-1. **Apply three migrations** in order: `20261115090000`, `20261115100000`, `20261115110000`.
+1. **Apply two migrations** in order: `20261115090000`, `20261115100000`. (The fair claim, formerly `20261115110000`, moved to PR #266.)
    - The first two are additive: new indexes and new functions, with no row changes.
-   - The third re-creates `claim_marketplace_worker_runs`. Production's body is byte-identical to the repo's `20261010100000` body (md5 `2aa4d3035c73ab287426d65ebd7acf1f`, verified 2026-10-18), so only the claim order changes.
    - **No migration in this release deletes or rewrites a row.**
 2. **Railway deploy** of `homatch-official-worker`. The only effective change is the auth rule: user tokens on privileged routes return 401. No product caller uses them.
 3. **Edge deploy**: research-agent, spend-cap-check, outreach-send. Email Studio picks up `_shared/spend_cap.ts` on its next deploy.
@@ -179,7 +178,6 @@ Rates sources:
 
 **Remaining risks** (accepted only with approval):
 - A persistent `verify_budget_gate` or advance-lease error now **delays** billed Verify stages instead of running them unguarded. It is logged (`verify_budget_gate` / `verify_advance_lease`); production Postgres logged 0 errors in the 24 h before.
-- The fair claim costs 30–55 ms per claim at a 10,000-run backlog [LOCAL].
 - The capacity limits in §4 are unchanged by this release except fairness and DB load.
 
 ## 9. Release manifest, deployment sequence, rollback, baseline comparison
@@ -192,8 +190,8 @@ Rates sources:
    - re-run the baseline query below and save the output;
    - confirm `claim_marketplace_worker_runs` md5 is still `2aa4d3035c73ab287426d65ebd7acf1f`;
    - confirm no Verify job is mid-stage (`research_jobs` live statuses = 0, or note them).
-1. **Migrations**, through the approved runner, in order: `20261115090000_verify_sweep_indexes`, `20261115100000_provider_spend_totals`, `20261115110000_marketplace_fair_claim`.
-   - Proof: three ledger rows.
+1. **Migrations**, through the approved runner, in order: `20261115090000_verify_sweep_indexes`, `20261115100000_provider_spend_totals`.
+   - Proof: two ledger rows.
    - `research_jobs_market_refresh_running` and `provider_spend_totals_since` are executable by `service_role` only.
    - The two research_jobs indexes and the runs index exist.
    - `claim_marketplace_worker_runs` keeps SECURITY DEFINER, `search_path=""` and service-role-only execute.
@@ -237,7 +235,6 @@ select now(),
 |---|---|
 | Worker | Railway: redeploy the previous deployment (`b5d45b88` @ `8218107c`) |
 | research-agent / spend-cap-check / outreach-send | CI `redeploy=<fn>` from the previous main commit; prove PROVEN_EXACT |
-| `20261115110000` | re-run the function body from `20261010100000_marketplace_search_foundation.sql` (same signature, byte-identical to production today); `drop index if exists public.discovery_marketplace_worker_runs_served_idx;` |
 | `20261115100000` | `drop function if exists public.provider_spend_totals_since(timestamptz);` (spend_cap.ts falls back to paging) |
 | `20261115090000` | `drop function if exists public.research_jobs_market_refresh_running(integer); drop index if exists public.research_jobs_market_refresh_running_idx; drop index if exists public.research_jobs_developer_ads_cache_idx;` (research-agent falls back to the PostgREST filter) |
 
@@ -278,7 +275,6 @@ select now(),
 | `npm run check:edge` | all 102 edge functions pass |
 | `npm run homatch:migrations` | PASS |
 | worker `node --test` | 649 pass / 0 fail / 2 skipped (9 new) |
-| `tests/sql/marketplace_fair_claim/run.sh` (old vs new definition, throwaway PG16) | PASS |
 | mobile / browser suites | run by the PR validation — **not yet run** |
 
 **Product-output evidence**:

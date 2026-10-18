@@ -10,8 +10,8 @@ MATTERS right now, verify against the live systems, not this file)
 Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release manifest, rollback,
 owner approvals, regression baseline). Worker token-only auth (+ optional SPEECH_MAX_SESSIONS);
 Verify indexed sweep + fail-closed advance lease + budget-gate ERROR defers + cancel stops
-Developer Ads; spend-cap SQL sum; fair claim for free portal searches. Three migrations
-20261115090000..110000 — none applied, none deletes or rewrites a row. Withdrawn under the
+Developer Ads; spend-cap SQL sum. Two migrations 20261115090000..100000 (the fair claim moved
+to PR #266) — none applied, none deletes or rewrites a row. Withdrawn under the
 zero-data-loss rule: cron history retention (stays on PR #136) and worker finished-job eviction.
 Release tier REPO_FULL.
 

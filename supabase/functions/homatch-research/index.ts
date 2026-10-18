@@ -244,14 +244,24 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Bounded retry: only for transient provider failures (429 rate-limit, 5xx).
 // Never retries on 4xx client errors (bad request to OpenAI, auth, etc).
+// All attempts share one deadline below the platform's 150 s response limit, so a
+// hung provider ends here (the caller releases the hold) and never in a platform
+// kill that would leave the hold taken.
+const PROVIDER_DEADLINE_MS = 130_000;
+/** An attempt that could not finish in less than this is not started. */
+const MIN_ATTEMPT_MS = 10_000;
 async function callResearchProvider(key: string, payload: unknown): Promise<{ ok: boolean; status: number; raw: string }> {
   const attempts = [0, 400, 1200]; // ms delay before each attempt
+  const deadline = Date.now() + PROVIDER_DEADLINE_MS;
   let last: { ok: boolean; status: number; raw: string } = { ok: false, status: 0, raw: '' };
   for (let i = 0; i < attempts.length; i++) {
     if (attempts[i] > 0) await sleep(attempts[i]);
+    const remaining = deadline - Date.now();
+    if (remaining < MIN_ATTEMPT_MS) break;
     try {
       const r = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
+        signal: AbortSignal.timeout(remaining),
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });

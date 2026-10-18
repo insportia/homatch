@@ -9,6 +9,7 @@ import { STAGE_ACTOR, type Stage } from './actorInputs.ts';
 import { armPriority } from './allocator.ts';
 import { planPaidTelegram, type TelegramPreference } from './telegramPreference.ts';
 import type { Depth } from './buyerStrategy.ts';
+import { classifyDemand } from './demandClassifier.ts';
 
 export interface KnownSource {
   id: string;
@@ -37,6 +38,53 @@ export interface PlannedSocialJob {
   reason: string;
   /** Several communities read in ONE run (batching.ts); targetUrl is then the first of them. */
   batch?: Array<{ targetUrl: string; sourceId: string | null; arm: string; size: number }>;
+  /** Several search phrases sent in ONE run (FB_KEYWORD_SEARCH); query is then the first of them. */
+  queries?: string[];
+}
+
+export const DEFAULT_KEYWORD_BATCH_SIZE = 6;
+export const MAX_KEYWORD_BATCH_SIZE = 10;
+const SEEK_VERB: Readonly<Record<string, Record<'SALE' | 'RENT', string>>> = {
+  ka: { SALE: 'ვყიდულობ', RENT: 'ვქირაობ' },
+  ru: { SALE: 'куплю', RENT: 'сниму' },
+  en: { SALE: 'looking to buy', RENT: 'looking to rent' },
+};
+/** Phrases per language: Georgian first and deepest, then Russian/English, then ar/he/tr. */
+const KEYWORDS_PER_LANGUAGE: Readonly<Record<string, number>> = { ka: 3, ru: 3, en: 3, ar: 2, he: 2, tr: 2 };
+
+/**
+ * The campaign's own demand phrases (queryPlanner: transaction, property type, rooms,
+ * district and city in each language's own spelling), kept only where the phrase itself
+ * reads as a person SEEKING this transaction — never a listing-shaped phrase that would
+ * buy sellers' posts ("Krtsanisi satılık 2+1 daire"). Unique per language, no near-copies.
+ */
+export function keywordSearchPhrases(plan: QueryPlan, transaction: 'SALE' | 'RENT', languages: readonly string[]): Array<{ language: SearchLanguage; query: string }> {
+  const seeker = transaction === 'RENT' ? 'RENT_SEEKER' : 'BUY_SEEKER';
+  const out: Array<{ language: SearchLanguage; query: string }> = [];
+  for (const lang of languages as SearchLanguage[]) {
+    const seen = new Set<string>();
+    const picked: string[] = [];
+    const seeks = (text: string) => {
+      const r = classifyDemand(text);
+      return r.role === seeker || (r.role === 'UNCLEAR' && r.evidence.includes('first_person_seeking'));
+    };
+    const add = (text: string) => {
+      const key = text.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+      if (!key || seen.has(key) || !seeks(text)) return;
+      seen.add(key);
+      picked.push(text);
+    };
+    const demand = queriesFor(plan, 'demand', lang).map((q) => q.query);
+    for (const q of demand) add(q);
+    /* The planner's district/rooms phrase ("3-ოთახიანი ბინა კრწანისის", "2 bedroom apartment
+       Krtsanisi") reads as a listing; with the language's first-person verb in front it is a
+       person asking for exactly this home — the district and room precision the city-level
+       phrases lack. Only where the result still reads as seeking (and never "investment"). */
+    const verb = SEEK_VERB[lang]?.[transaction];
+    if (verb) for (const q of demand) if (!seeks(q) && !/invest|инвест|ინვესტ/i.test(q)) add(`${verb} ${q}`);
+    for (const query of picked.slice(0, KEYWORDS_PER_LANGUAGE[lang] ?? 2)) out.push({ language: lang, query });
+  }
+  return out;
 }
 
 export interface PlanInputs {
@@ -58,6 +106,8 @@ export interface PlanInputs {
   depth?: Depth | null;
   /** Each Actor's real record across past campaigns (finished paid runs, qualified leads). */
   actorHistory?: Record<string, { bookedRuns: number; qualified: number }>;
+  /** Search phrases per FB_KEYWORD_SEARCH run (admin_settings find_buyers_fb_keyword_search.batchSize). */
+  keywordBatchSize?: number;
   now?: number;
 }
 
@@ -179,6 +229,24 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
         stage: 'FB_POST_SEARCH', actorKey: STAGE_ACTOR.FB_POST_SEARCH, language: lang, query: q.query, targetUrl: null,
         sourceId: null, size: probe('FB_POST_SEARCH'), arm: `FB_POST_SEARCH:demand:${lang}`,
         priority: armPriority(null, null, base('FB_POST_SEARCH') + (lang === PRIMARY_LANGUAGE ? 6 : 1)), reason: 'demand_search',
+      });
+    }
+  }
+  /* Buyers and tenants by keyword across public Facebook posts, every Facebook language,
+     several phrases per run (the Actor's keyword list; batch size is an admin setting).
+     Complements the group readers: a person posting outside any group HOMATCH knows. */
+  if (has('FB_KEYWORD_SEARCH')) {
+    const langs = NETWORK_LANGUAGES.FACEBOOK.filter((l) => !input.targetLanguages?.length || input.targetLanguages.includes(l));
+    const phrases = keywordSearchPhrases(plan, dna.transaction, langs);
+    const size = Math.max(1, Math.min(MAX_KEYWORD_BATCH_SIZE, Math.round(Number(input.keywordBatchSize) || DEFAULT_KEYWORD_BATCH_SIZE)));
+    for (let i = 0; i < phrases.length; i += size) {
+      const chunk = phrases.slice(i, i + size);
+      const one = new Set(chunk.map((c) => c.language)).size === 1;
+      jobs.push({
+        stage: 'FB_KEYWORD_SEARCH', actorKey: STAGE_ACTOR.FB_KEYWORD_SEARCH, language: one ? chunk[0].language : 'multi',
+        query: chunk[0].query, queries: chunk.map((c) => c.query), targetUrl: null, sourceId: null,
+        size: probe('FB_KEYWORD_SEARCH'), arm: `FB_KEYWORD_SEARCH:${i / size}`,
+        priority: armPriority(null, null, base('FB_KEYWORD_SEARCH') + (chunk[0].language === PRIMARY_LANGUAGE ? 6 : 2)), reason: 'demand_keyword_search',
       });
     }
   }

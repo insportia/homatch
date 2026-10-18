@@ -99,10 +99,13 @@ test('FB_PAGE_POSTS reads one public Page with comments attached; a schema requi
     'HOMATCH never logs in: an Actor that requires cookies never runs');
 });
 
-test('every seeded Actor is a memo23 Actor, registered disabled-by-default, on a Facebook stage', () => {
+test('every seeded Actor is a memo23 Actor (or the one owner-named exception), registered disabled-by-default, on a Facebook stage', () => {
+  /* Owner, 2026-10-18: Facebook keyword buyer search is the one non-memo23 Actor (memo23Client ALLOWED_THIRD_PARTY_ACTORS). */
+  const EXCEPTIONS = { FB_KEYWORD_SEARCH: 'tropical_thunderstuck~facebook-post-search' };
   for (const [k, seed] of Object.entries(REGISTRY_SEEDS)) {
     assert.equal(seed.actor_key, k);
-    assert.match(seed.actor_id, /^memo23~[a-z0-9-]+$/);
+    if (EXCEPTIONS[k]) assert.equal(seed.actor_id, EXCEPTIONS[k]);
+    else assert.match(seed.actor_id, /^memo23~[a-z0-9-]+$/);
     assert.equal(seed.source, 'FACEBOOK');
     assert.ok(Object.values(STAGE_ACTOR).includes(k), `${k} has a stage`);
     assert.ok(!('enabled' in seed), 'a seed never carries an enabled flag; the server writes it disabled');

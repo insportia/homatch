@@ -50,6 +50,8 @@ export const ACTOR_PROFILES: Readonly<Record<string, ActorProfile>> = {
     why: 'Comments of qualifying posts already found (group, Page or searched posts).' },
   FB_POST_SEARCH: { cls: 'PRIMARY_DISCOVERY', produces: 'LISTING_POSTS', needsSeed: false, seededBy: null,
     why: 'Public Facebook posts by listing keyword — agency, developer and competitor Pages and individual listings — whose comments are where buyers ask; logged out, so no engagement counts.' },
+  FB_KEYWORD_SEARCH: { cls: 'PRIMARY_DISCOVERY', produces: 'DEMAND_POSTS', needsSeed: false, seededBy: null,
+    why: 'Public Facebook posts found by buyer/tenant phrases in six languages (tropical_thunderstuck~facebook-post-search): people asking for a home, beyond the groups HOMATCH knows.' },
   FB_PAGE_POSTS: { cls: 'ENRICHMENT', produces: 'LISTING_POSTS', needsSeed: true, seededBy: 'FB_POST_SEARCH',
     why: 'Recent posts of a public Page that published a comparable listing, with their visible comments attached (public Pages only, no login).' },
   FB_AD_LIBRARY: { cls: 'PRIMARY_DISCOVERY', produces: 'LISTING_POSTS', needsSeed: false, seededBy: null,
@@ -173,6 +175,13 @@ export const REGISTRY_SEEDS: Readonly<Record<string, RegistrySeed>> = {
     actor_key: 'FB_POST_SEARCH', actor_id: 'memo23~facebook-search-scraper', source: 'FACEBOOK', purpose: 'SEARCH',
     role: 'PRIMARY', priority: 55, probe_size: 15, max_results: 60, timeout_seconds: 300, concurrency: 2,
     notes: 'Public posts by listing keyword (Pages, agencies, developers, individual listings); no engagement counts when logged out',
+  },
+  /* The one non-memo23 Actor (owner, 2026-10-18), allowed by name in memo23Client. Registered
+     disabled and unpriced; Admin → Verify reads its real price and input schema from Apify. */
+  FB_KEYWORD_SEARCH: {
+    actor_key: 'FB_KEYWORD_SEARCH', actor_id: 'tropical_thunderstuck~facebook-post-search', source: 'FACEBOOK', purpose: 'SEARCH',
+    role: 'PRIMARY', priority: 58, probe_size: 30, max_results: 100, timeout_seconds: 300, concurrency: 2,
+    notes: 'Public Facebook posts by buyer/tenant keyword, several phrases per run (keyword batch size and search window: admin_settings find_buyers_fb_keyword_search)',
   },
   FB_PAGE_POSTS: {
     actor_key: 'FB_PAGE_POSTS', actor_id: 'memo23~facebook-page-posts-scraper', source: 'FACEBOOK', purpose: 'POSTS_AND_COMMENTS',

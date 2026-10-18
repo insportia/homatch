@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
-  getFindBuyersCenter, setFindBuyersSetting, updateActor, usd, verifyActorFromApify, type FindBuyersCenter,
+  getFbKeywordSearchSettings, getFindBuyersCenter, setFindBuyersSetting, updateActor, usd, verifyActorFromApify, type FindBuyersCenter,
 } from '@/services/findBuyers';
 import { actorLifecycle, classifyActor } from '@/findBuyers/actorCatalog';
 import { SourceNetworkPanel } from './SourceNetworkPanel';
@@ -126,6 +126,42 @@ function ActorEditor({ actor, onSaved }: { actor: Record<string, any>; onSaved: 
       </label>
       <div className="col-span-2 flex justify-end sm:col-span-4">
         <Button size="sm" onClick={save} disabled={busy}>{busy ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" /> : null}{t('fbx_admin_save')}</Button>
+      </div>
+      {actor.actor_key === 'FB_KEYWORD_SEARCH' && <KeywordSearchSettings />}
+    </div>
+  );
+}
+
+/** FB_KEYWORD_SEARCH only: phrases per run (1–10) and the search window (1–30 days, never past the 30-day rule). */
+function KeywordSearchSettings() {
+  const { t } = useLanguage();
+  const [k, setK] = useState<{ batchSize: string; days: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    getFbKeywordSearchSettings().then((v) => setK({ batchSize: String(v.batchSize), days: String(v.days) })).catch(() => setK({ batchSize: '6', days: '30' }));
+  }, []);
+  if (!k) return null;
+  const save = async () => {
+    setBusy(true);
+    try {
+      const batchSize = Math.max(1, Math.min(10, Math.round(Number(k.batchSize) || 6)));
+      const days = Math.max(1, Math.min(30, Math.round(Number(k.days) || 30)));
+      await setFindBuyersSetting('find_buyers_fb_keyword_search', { batchSize, days });
+      setK({ batchSize: String(batchSize), days: String(days) });
+      toast.success(t('fbx_admin_saved'));
+    } catch (e) { toast.error(String((e as Error).message)); } finally { setBusy(false); }
+  };
+  return (
+    <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-border pt-2 sm:col-span-4 sm:grid-cols-4" data-testid="fbx-kw-settings">
+      {(['batchSize', 'days'] as const).map((key) => (
+        <label key={key} className="flex flex-col gap-1 text-2xs">
+          <span className="text-muted-foreground">{t(key === 'batchSize' ? 'fbx_admin_kw_batch' : 'fbx_admin_kw_days')}</span>
+          <input type="number" min={1} max={key === 'batchSize' ? 10 : 30} dir="ltr" value={k[key]} onChange={(e) => setK({ ...k, [key]: e.target.value })}
+            className="min-h-9 rounded-md border border-border bg-background px-2 text-xs" />
+        </label>
+      ))}
+      <div className="col-span-2 flex items-end justify-end">
+        <Button size="sm" variant="outline" onClick={save} disabled={busy}>{busy ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" /> : null}{t('fbx_admin_kw_save')}</Button>
       </div>
     </div>
   );

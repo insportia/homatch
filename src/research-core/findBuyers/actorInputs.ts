@@ -17,6 +17,9 @@ export type Stage =
      An ad is never a buyer and its comments are not in the Library; its Page is the
      way in — a comparable ad queues that Page's feed (FB_PAGE_POSTS, comments attached). */
   | 'FB_AD_LIBRARY'
+  /* Buyer/tenant discovery by keyword across public Facebook posts (owner, 2026-10-18):
+     tropical_thunderstuck~facebook-post-search, several demand phrases per run. */
+  | 'FB_KEYWORD_SEARCH'
   | 'IG_PROFILE_POSTS' | 'IG_COMMENTS'
   | 'TIKTOK_SEARCH' | 'TIKTOK_COMMENTS'
   | 'VK_WALL'
@@ -38,6 +41,7 @@ export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
   FB_POST_SEARCH: 'FB_POST_SEARCH',
   FB_PAGE_POSTS: 'FB_PAGE_POSTS',
   FB_AD_LIBRARY: 'FB_AD_LIBRARY',
+  FB_KEYWORD_SEARCH: 'FB_KEYWORD_SEARCH',
   IG_PROFILE_POSTS: 'IG_PROFILE_POSTS',
   IG_COMMENTS: 'IG_COMMENTS',
   TIKTOK_SEARCH: 'TIKTOK',
@@ -58,7 +62,7 @@ export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
 /** What the normalizer should expect from a stage. */
 export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'COMMENTS' | 'ADS'>> = {
   FB_GROUP_SEARCH: 'GROUP_SEARCH', FB_GROUP_POSTS: 'POSTS', FB_COMMENTS: 'COMMENTS',
-  FB_POST_SEARCH: 'POSTS', FB_PAGE_POSTS: 'POSTS', FB_AD_LIBRARY: 'ADS',
+  FB_POST_SEARCH: 'POSTS', FB_PAGE_POSTS: 'POSTS', FB_AD_LIBRARY: 'ADS', FB_KEYWORD_SEARCH: 'POSTS',
   IG_PROFILE_POSTS: 'POSTS', IG_COMMENTS: 'COMMENTS',
   TIKTOK_SEARCH: 'POSTS', TIKTOK_COMMENTS: 'COMMENTS',
   VK_WALL: 'POSTS', TELEGRAM_CHANNEL: 'POSTS',
@@ -69,7 +73,7 @@ export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'CO
 
 export const STAGE_NETWORK: Readonly<Record<Stage, Network>> = {
   FB_GROUP_SEARCH: 'FACEBOOK', FB_GROUP_POSTS: 'FACEBOOK', FB_COMMENTS: 'FACEBOOK',
-  FB_POST_SEARCH: 'FACEBOOK', FB_PAGE_POSTS: 'FACEBOOK', FB_AD_LIBRARY: 'FACEBOOK',
+  FB_POST_SEARCH: 'FACEBOOK', FB_PAGE_POSTS: 'FACEBOOK', FB_AD_LIBRARY: 'FACEBOOK', FB_KEYWORD_SEARCH: 'FACEBOOK',
   IG_PROFILE_POSTS: 'INSTAGRAM', IG_COMMENTS: 'INSTAGRAM',
   TIKTOK_SEARCH: 'TIKTOK', TIKTOK_COMMENTS: 'TIKTOK',
   VK_WALL: 'VK', TELEGRAM_CHANNEL: 'TELEGRAM',
@@ -80,6 +84,8 @@ export const STAGE_NETWORK: Readonly<Record<Stage, Network>> = {
 
 export interface StageParams {
   query?: string | null;
+  /** Several search phrases for one run of an Actor that takes a keyword list (FB_KEYWORD_SEARCH). */
+  queries?: string[] | null;
   targetUrl?: string | null;
   /** Several community URLs for one run of an Actor that reads a list (batching.ts). */
   targetUrls?: string[] | null;
@@ -124,6 +130,19 @@ export function defaultInput(stage: Stage, p: StageParams): Record<string, unkno
         searchType: 'posts', type: 'posts', maxItems: p.size,
         ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}),
       };
+    /* tropical_thunderstuck~facebook-post-search. Its field names are NOT assumed: every
+       common spelling is offered and fitToSchema keeps only what the schema verified from
+       Apify declares; essentialMissing refuses the run when no keyword field survived, or
+       when no verified schema exists at all (a raw body is never sent to this Actor). */
+    case 'FB_KEYWORD_SEARCH': {
+      const list = (p.queries?.length ? p.queries : q ? [q] : []).filter(Boolean);
+      return {
+        keywords: list, searchQueries: list, queries: list, searchTerms: list,
+        query: list[0] ?? '', keyword: list[0] ?? '', searchTerm: list[0] ?? '',
+        maxItems: p.size, maxResults: p.size, resultsLimit: p.size, maxPosts: p.size,
+        ...(p.since ? { startDate: day(p.since), dateFrom: day(p.since), onlyPostsNewerThan: day(p.since) } : {}),
+      };
+    }
     /* memo23~facebook-page-posts-scraper: a public Page's feed (or one post URL);
        includeComments attaches the visible comments (topComments) to each post,
        so they are analysed without a second, separately charged comments run. */
@@ -209,7 +228,10 @@ const ESSENTIAL: Partial<Record<Stage, string[][]>> = {
   FB_POST_SEARCH: [['searchQueries', 'queries', 'query', 'searchTerms', 'keywords']],
   FB_PAGE_POSTS: [['startUrls']],
   FB_AD_LIBRARY: [['searchTerms']],
+  FB_KEYWORD_SEARCH: [['keywords', 'searchQueries', 'queries', 'searchTerms', 'query', 'keyword', 'searchTerm']],
 };
+/** Stages that never run on an unverified input schema (third-party Actors). */
+const SCHEMA_REQUIRED: ReadonlySet<Stage> = new Set(['FB_KEYWORD_SEARCH']);
 
 /**
  * Why a built input must NOT be sent (empty = it may): a key the verified
@@ -219,6 +241,7 @@ const ESSENTIAL: Partial<Record<Stage, string[][]>> = {
  */
 export function essentialMissing(stage: Stage, input: Record<string, unknown>, contract: InputContract | null | undefined): string[] {
   const problems: string[] = [];
+  if (SCHEMA_REQUIRED.has(stage) && !(contract?.schemaProperties?.length)) problems.push('schema:unverified');
   for (const k of contract?.required ?? []) if (!(k in input)) problems.push(`required:${k}`);
   for (const group of ESSENTIAL[stage] ?? []) if (!group.some((k) => k in input)) problems.push(`essential:${group.join('|')}`);
   return problems;

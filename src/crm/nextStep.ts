@@ -18,11 +18,14 @@
 
 export type CrmStatus =
   | 'UNLOCKED'
+  | 'CONTACT_PLANNED'
   | 'CONTACTED'
   | 'DELIVERED'
   | 'REPLIED'
   | 'INTERESTED'
   | 'VIEWING_SCHEDULED'
+  | 'NEGOTIATING'
+  | 'CONVERTED'
   | 'CLOSED'
   | 'NOT_INTERESTED';
 
@@ -83,7 +86,7 @@ export function suggestNextStep(input: NextStepInput): NextStep {
 
   /* A decision already made is respected before anything else. */
   if (status === 'NOT_INTERESTED') return step('respect_decision', null);
-  if (status === 'CLOSED') return step('record_outcome', 'note');
+  if (status === 'CLOSED' || status === 'CONVERTED') return step('record_outcome', 'note');
 
   /* The owner's own reminder outranks any inference from activity. */
   const followUp = ts(input.followUpAt);
@@ -102,11 +105,12 @@ export function suggestNextStep(input: NextStepInput): NextStep {
 
   if (status === 'VIEWING_SCHEDULED') return step('confirm_viewing', 'conversation');
   if (status === 'INTERESTED') return step('propose_viewing', 'conversation');
+  if (status === 'NEGOTIATING') return step('review', 'conversation');
 
   if (!latest) {
-    if (status === 'UNLOCKED' || status === 'CONTACTED' || status === 'DELIVERED') {
-      /* CONTACTED with no message visible here can come from email; judge by activity. */
-      if (status !== 'UNLOCKED') {
+    if (status === 'UNLOCKED' || status === 'CONTACT_PLANNED' || status === 'CONTACTED' || status === 'DELIVERED') {
+      /* CONTACTED with no message visible here can come from email or a logged call; judge by activity. */
+      if (status !== 'UNLOCKED' && status !== 'CONTACT_PLANNED') {
         const last = ts(input.lastActivityAt);
         if (last !== null && now - last >= NO_REPLY_DAYS * DAY_MS && followUp === null) {
           return step('follow_up_no_reply', 'follow_up');

@@ -157,3 +157,14 @@ test('jsonb-safe text: never half an emoji, never a lone surrogate (replay of 34
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(v)));
   assert.doesNotMatch(v.reason + v.evidence.join(''), /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
 });
+
+test('fb-ai-2 replay: "not real estate" never drops a text that names a property', () => {
+  for (const text of ['🚨Срочно куплю студию от собственника в Тбилиси! Бюджет: до 50.000$', 'ვყიდულობ 3 ოთახიან ბინას კრწანისში']) {
+    const rule = classifyDemand(text);
+    assert.ok(rule.realEstate, text);
+    const r = applyAiVerdict(rule, v('DIRECT_BUYER', { subject: 'OTHER', evidence: [text.slice(0, 12)] }), text);
+    assert.equal(r.role, 'BUY_SEEKER', `${text}: the property in the text outweighs a contradictory subject`);
+  }
+  const usdt = 'Куплю U.S.D.T за наличные';
+  assert.equal(applyAiVerdict(classifyDemand(usdt), v('DIRECT_BUYER', { subject: 'OTHER', evidence: ['Куплю'] }), usdt).role, 'IRRELEVANT');
+});

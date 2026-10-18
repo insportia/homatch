@@ -70,6 +70,16 @@ const NOT_RESULT_ACCESS = {
   crm_empty: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
   crm_status_UNLOCKED: 'HOMATCH Leads: owner-approved verbatim copy (2026-10-10 master prompt) — an internal member contact is sold as an explicit per-member unlock, unlike research result cards',
   im_unlock_contact_price: 'HOMATCH Matches preview + buyer profile: the same paid per-member contact unlock as HOMATCH Leads, priced in credits on the card (owner request 2026-10-12)',
+  /* Find Buyers 2.0 (owner, 2026-10-18): the owner's own words for the paid per-member contact
+     unlock — "Unlocked Leads" CRM, "FREE SEARCH — PAY ONLY WHEN YOU UNLOCK A CONTACT", filters by
+     "locked/unlocked status". Research result cards still never say unlock. */
+  nav_unlocked_leads: 'Find Buyers 2.0: the owner-named "Unlocked Leads" CRM of paid per-member contact unlocks (owner request 2026-10-18)',
+  fim_free_banner: 'Find Buyers 2.0: owner-approved verbatim "FREE SEARCH — PAY ONLY WHEN YOU UNLOCK A CONTACT" (owner request 2026-10-18)',
+  fb2_cmp_internal_body: 'Find Buyers 2.0: internal matching is free, you pay only for the explicit per-member contact unlock (owner request 2026-10-18)',
+  hl_filter_locked: 'Find Buyers 2.0: the owner-requested "locked/unlocked status" filter for per-member contacts (owner request 2026-10-18)',
+  hl_unlock_receive_title: 'Find Buyers 2.0: the unlock dialog says what the paid per-member contact unlock gives (owner request 2026-10-18)',
+  hl_unlock_receive_crm: 'Find Buyers 2.0: an unlocked contact joins the owner-named "Unlocked Leads" CRM (owner request 2026-10-18)',
+  lp_unlocked: 'Find Buyers 2.0: the unlock date in the Unlocked Leads profile (owner request 2026-10-18)',
 };
 
 test('no customer string uses lock or unlock language', () => {

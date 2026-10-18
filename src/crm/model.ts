@@ -15,16 +15,27 @@
 
 import type { CrmStatus } from './nextStep.ts';
 
+/** The pipeline, in order (Find Buyers 2.0 adds Contact planned, Negotiating, Converted). */
 export const CRM_STATUSES: readonly CrmStatus[] = [
   'UNLOCKED',
+  'CONTACT_PLANNED',
   'CONTACTED',
   'DELIVERED',
   'REPLIED',
   'INTERESTED',
   'VIEWING_SCHEDULED',
+  'NEGOTIATING',
+  'CONVERTED',
   'CLOSED',
   'NOT_INTERESTED',
 ] as const;
+
+/** Statuses an owner sets by hand. DELIVERED is a transport fact and is never chosen. */
+export const OWNER_SETTABLE_STATUSES: readonly CrmStatus[] = CRM_STATUSES.filter((s) => s !== 'DELIVERED');
+
+/** Channels an owner can log a contact on (crm_update.logContact). */
+export const CONTACT_CHANNELS = ['PHONE', 'WHATSAPP', 'TELEGRAM', 'SMS', 'EMAIL', 'IN_PERSON', 'OTHER'] as const;
+export type ContactChannel = typeof CONTACT_CHANNELS[number];
 
 export function isCrmStatus(value: unknown): value is CrmStatus {
   return typeof value === 'string' && (CRM_STATUSES as readonly string[]).includes(value);
@@ -42,8 +53,10 @@ export function statusTone(status: string): CrmTone {
     case 'REPLIED':
     case 'INTERESTED':
     case 'VIEWING_SCHEDULED':
+    case 'NEGOTIATING':
       return 'attention';
     case 'CLOSED':
+    case 'CONVERTED':
       return 'confirmed';
     default:
       return 'quiet';
@@ -100,6 +113,7 @@ export const KNOWN_EVENT_KINDS = [
   'EMAIL_BOUNCED',
   'EMAIL_OPENED',
   'EMAIL_CLICKED',
+  'AI_DRAFT',
 ] as const;
 
 export interface CrmEventLike {
@@ -138,6 +152,15 @@ export function describeEvent(event: CrmEventLike): EventDescription {
         toKey: statusLabelKey(String(detail.to ?? '')),
       },
       automatic,
+      at: null,
+    };
+  }
+  if (kind === 'CONTACT_LOGGED') {
+    const channel = String(detail.channel ?? 'OTHER').toUpperCase();
+    return {
+      key: 'crm_event_CONTACT_LOGGED',
+      vars: { channelKey: `crm_channel_${(CONTACT_CHANNELS as readonly string[]).includes(channel) ? channel : 'OTHER'}`, outcome: String(detail.outcome ?? '') },
+      automatic: false,
       at: null,
     };
   }

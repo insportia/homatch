@@ -2,7 +2,8 @@
 //
 // Every eligible HOMATCH member whose stated search fits this listing, ranked by the
 // engine's match score, anonymised and free to browse. The owner unlocks only the
-// contacts they want to approach (Standard 2.5 / Premium 6 credits, once per member).
+// contacts they want to approach (Standard 3 / VIP 10 credits at 10 credits = $1, once
+// per member; the server prices every unlock).
 // Paged on the server; filters and sort live in the URL so Back/refresh keep them.
 // Opening the page also asks the matcher to evaluate this listing against every
 // active search now, and marks what the owner has seen (for "Fresh Matches").
@@ -13,7 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, FlaskConical, Loader2, Lock, Sparkles, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FlaskConical, Loader2, Lock, RefreshCw, Sparkles, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -22,10 +23,10 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { cn } from '@/lib/utils';
 import {
-  getLeadFeed, LEAD_PAGE_SIZE, markLeadsSeen, openLeadConversation, requestLeadMatching, toggleLeadSaved, UnlockError,
+  getLeadFeedV2, LEAD_PAGE_SIZE, markLeadsSeen, openLeadConversation, requestLeadMatching, toggleLeadSaved, UnlockError,
   type LeadFeed, type LeadFilter, type LeadItem, type LeadSort,
 } from '@/services/homatchLeads';
-import { selectionTotals } from '@/leads/leadSummary';
+import { propertyTypeLabel, selectionTotals } from '@/leads/leadSummary';
 import { BTN_PRIMARY, BTN_SECONDARY, chipClass, EYEBROW, SURFACE } from '@/components/leads/kit';
 import { formatCreditsLabel, LeadCard } from '@/components/leads/LeadCard';
 import { LeadDetailsDrawer } from '@/components/leads/LeadDetailsDrawer';
@@ -33,24 +34,38 @@ import { UnlockDialog } from '@/components/leads/UnlockDialog';
 import { OwnerDemoJourney } from '@/components/leads/demo/OwnerDemoJourney';
 import { ownerDemoAvailable } from '@/services/ownerDemoLead';
 
-const FILTERS: Array<[LeadFilter, string]> = [
-  ['ALL', 'hl_filter_all'], ['STRONG', 'hl_filter_strong'], ['POTENTIAL', 'hl_filter_potential'],
-  ['STANDARD', 'hl_filter_standard'], ['PREMIUM', 'hl_filter_premium'], ['FRESH', 'hl_filter_fresh'],
-  ['UNLOCKED', 'hl_filter_unlocked'], ['CONTACTED', 'hl_filter_contacted'], ['SAVED', 'hl_filter_saved'],
+/* Filter chips in groups: one choice per group, every group combinable (server-side, v2 feed). */
+const FILTER_GROUPS: Array<Array<[LeadFilter, string]>> = [
+  [['STRONG', 'hl_filter_strong'], ['POTENTIAL', 'hl_filter_potential']],
+  [['STANDARD', 'hl_filter_standard'], ['PREMIUM', 'hl_filter_premium']],
+  [['DIRECT', 'hl_filter_direct'], ['BROKER', 'hl_filter_broker']],
+  [['LOCKED', 'hl_filter_locked'], ['UNLOCKED', 'hl_filter_unlocked']],
+  [['FRESH', 'hl_filter_fresh'], ['ACTIVE', 'hl_filter_active'], ['STALE', 'hl_filter_stale']],
+  [['SAVED', 'hl_filter_saved'], ['CONTACTED', 'hl_filter_contacted']],
 ];
+const ALL_FILTERS = FILTER_GROUPS.flat().map(([f]) => f);
 const SORTS: Array<[LeadSort, string]> = [
-  ['BEST', 'hl_sort_best'], ['NEWEST', 'hl_sort_newest'], ['UPDATED', 'hl_sort_updated'],
+  ['BEST', 'hl_sort_best'], ['ACTIVE', 'hl_sort_active'], ['NEWEST', 'hl_sort_newest'], ['UPDATED', 'hl_sort_updated'],
   ['BUDGET_DESC', 'hl_sort_budget_desc'], ['BUDGET_ASC', 'hl_sort_budget_asc'],
 ];
-const isFilter = (v: string | null): v is LeadFilter => FILTERS.some(([f]) => f === v);
+const isFilter = (v: string | null): v is LeadFilter => ALL_FILTERS.includes(v as LeadFilter);
 const isSort = (v: string | null): v is LeadSort => SORTS.some(([s]) => s === v);
+/** ?f=STRONG,DIRECT (and the older ?filter=STRONG links). */
+const filtersOf = (params: URLSearchParams): LeadFilter[] => {
+  const raw = [...(params.get('f') ?? '').split(','), params.get('filter') ?? ''].map((x) => x.trim().toUpperCase());
+  return [...new Set(raw.filter(isFilter))];
+};
 
 function HomatchLeadsContent() {
   const { id: propertyId = '' } = useParams<{ id: string }>();
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const filter: LeadFilter = isFilter(params.get('filter')) ? params.get('filter') as LeadFilter : 'ALL';
+  const filters = filtersOf(params);
+  const filterKey = filters.join(',');
+  const district = params.get('district') || null;
+  const propertyType = params.get('type') || null;
+  const anyFilter = filters.length > 0 || !!district || !!propertyType;
   const sort: LeadSort = isSort(params.get('sort')) ? params.get('sort') as LeadSort : 'BEST';
   const page = Math.max(0, (Number.parseInt(params.get('page') ?? '1', 10) || 1) - 1);
   const demoRequested = params.get('demo') === '1';
@@ -64,7 +79,22 @@ function HomatchLeadsContent() {
   const [propertyLabel, setPropertyLabel] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [unlockIds, setUnlockIds] = useState<string[]>([]);
-  const [detail, setDetail] = useState<LeadItem | null>(null);
+  const [detail, setDetailState] = useState<LeadItem | null>(null);
+  /* Every lead has its own address (?lead=<matchId>): shareable with yourself, kept on refresh and Back. */
+  const leadParam = params.get('lead');
+  const setDetail = useCallback((next: LeadItem | null | ((d: LeadItem | null) => LeadItem | null)) => {
+    setDetailState((cur) => {
+      const value = typeof next === 'function' ? (next as (d: LeadItem | null) => LeadItem | null)(cur) : next;
+      if ((value?.matchId ?? null) !== (cur?.matchId ?? null)) {
+        setParams((prev) => {
+          const q = new URLSearchParams(prev);
+          if (value) q.set('lead', value.matchId); else q.delete('lead');
+          return q;
+        }, { replace: cur != null && value != null });
+      }
+      return value;
+    });
+  }, [setParams]);
 
   const setParam = useCallback((key: string, value: string | null) => {
     setParams((prev) => {
@@ -78,13 +108,31 @@ function HomatchLeadsContent() {
   const load = useCallback(async () => {
     setLoading(true); setFailed(false);
     try {
-      setFeed(await getLeadFeed(propertyId, filter, sort, page));
+      setFeed(await getLeadFeedV2(propertyId, { filters: filterKey ? filterKey.split(',') as LeadFilter[] : [], sort, district, propertyType, page }));
     } catch {
       setFailed(true);
     } finally {
       setLoading(false);
     }
-  }, [propertyId, filter, sort, page]);
+  }, [propertyId, filterKey, sort, district, propertyType, page]);
+
+  /* One chip per group: choosing another in the same group replaces it; choosing it again clears it. */
+  const toggleFilter = (f: LeadFilter) => {
+    const group = FILTER_GROUPS.find((g) => g.some(([x]) => x === f)) ?? [];
+    const others = filters.filter((x) => !group.some(([g]) => g === x));
+    const next = filters.includes(f) ? others : [...others, f];
+    setParams((prev) => {
+      const q = new URLSearchParams(prev);
+      q.delete('filter'); q.delete('page');
+      if (next.length) q.set('f', next.join(',')); else q.delete('f');
+      return q;
+    });
+  };
+  const clearFilters = () => setParams((prev) => {
+    const q = new URLSearchParams(prev);
+    for (const k of ['f', 'filter', 'district', 'type', 'page']) q.delete(k);
+    return q;
+  });
 
   useEffect(() => { void load(); }, [load]);
 
@@ -120,6 +168,11 @@ function HomatchLeadsContent() {
   }, [propertyId]);
 
   const items = feed?.items ?? [];
+  useEffect(() => {
+    if (!leadParam) { setDetailState(null); return; }
+    const found = items.find((x) => x.matchId === leadParam);
+    if (found) setDetailState(found);
+  }, [leadParam, items]);
   const totals = useMemo(() => selectionTotals(items, selected), [items, selected]);
   const pages = Math.max(1, Math.ceil((feed?.total ?? 0) / LEAD_PAGE_SIZE));
   const toggle = (id: string) => setSelected((cur) => {
@@ -199,8 +252,8 @@ function HomatchLeadsContent() {
           ) : null}
         </section>
 
-        {counts && counts.FRESH > 0 && filter !== 'FRESH' ? (
-          <button type="button" onClick={() => setParam('filter', 'FRESH')}
+        {counts && counts.FRESH > 0 && !filters.includes('FRESH') ? (
+          <button type="button" onClick={() => toggleFilter('FRESH')}
             className={cn(SURFACE, 'mt-3 flex w-full items-center gap-3 p-4 text-start motion-safe:transition-shadow hover:shadow-hover')}>
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(210_80%_96%)]">
               <Sparkles className="h-5 w-5 text-[hsl(212_70%_40%)]" aria-hidden="true" />
@@ -212,22 +265,49 @@ function HomatchLeadsContent() {
           </button>
         ) : null}
 
-        {/* Filters and sort. */}
-        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:min-w-0 lg:flex-1 lg:flex-wrap lg:overflow-visible lg:px-0" role="group" aria-label={t('hl_filters_label')}>
-            {FILTERS.map(([f, key]) => (
-              <button key={f} type="button" className={chipClass(filter === f)} aria-pressed={filter === f} onClick={() => setParam('filter', f === 'ALL' ? null : f)}>
-                {t(key)}{counts ? <span className="tabular-nums opacity-70" dir="ltr">{counts[f] ?? 0}</span> : null}
-              </button>
+        {/* Filters (combinable, server-side), location, property type and sort. */}
+        <div className="mt-4 space-y-3" data-testid="hl-filters">
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0" role="group" aria-label={t('hl_filters_label')}>
+            <button type="button" className={chipClass(!anyFilter)} aria-pressed={!anyFilter} onClick={clearFilters}>
+              {t('hl_filter_all')}{counts ? <span className="tabular-nums opacity-70" dir="ltr">{counts.ALL ?? 0}</span> : null}
+            </button>
+            {FILTER_GROUPS.map((group, gi) => (
+              <React.Fragment key={gi}>
+                <span aria-hidden="true" className="my-2 w-px shrink-0 bg-[hsl(var(--border))]" />
+                {group.map(([f, key]) => (
+                  <button key={f} type="button" className={chipClass(filters.includes(f))} aria-pressed={filters.includes(f)}
+                    data-filter={f} onClick={() => toggleFilter(f)}>
+                    {t(key)}{counts ? <span className="tabular-nums opacity-70" dir="ltr">{counts[f] ?? 0}</span> : null}
+                  </button>
+                ))}
+              </React.Fragment>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-sm font-medium lg:shrink-0">
-            <span className="shrink-0 text-[hsl(224_14%_30%)]">{t('hl_sort_label')}</span>
-            <select value={sort} onChange={(e) => setParam('sort', e.target.value === 'BEST' ? null : e.target.value)}
-              className="min-h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)] lg:w-52 lg:flex-none">
-              {SORTS.map(([s, key]) => <option key={s} value={s}>{t(key)}</option>)}
-            </select>
-          </label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {([
+              ['district', 'hl_filter_location', feed?.facets.districts ?? [], district, (v: string) => v],
+              ['type', 'hl_filter_type', feed?.facets.propertyTypes ?? [], propertyType, (v: string) => propertyTypeLabel([v], t) ?? v],
+            ] as const).map(([param, label, values, current, show]) => (
+              <label key={param} className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-[hsl(224_14%_30%)]">
+                <span>{t(label)}</span>
+                <select value={current ?? ''} onChange={(e) => setParam(param, e.target.value || null)} data-testid={`hl-select-${param}`}
+                  className="min-h-11 min-w-0 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm font-semibold text-[hsl(224_14%_12%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
+                  <option value="">{t('hl_filter_any')}</option>
+                  {values.map((v) => <option key={v} value={v}>{show(v)}</option>)}
+                </select>
+              </label>
+            ))}
+            <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-[hsl(224_14%_30%)]">
+              <span>{t('hl_sort_label')}</span>
+              <select value={sort} onChange={(e) => setParam('sort', e.target.value === 'BEST' ? null : e.target.value)}
+                className="min-h-11 min-w-0 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm font-semibold text-[hsl(224_14%_12%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
+                {SORTS.map(([s0, key]) => <option key={s0} value={s0}>{t(key)}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[hsl(224_14%_32%)]" data-testid="hl-refresh-tip">
+            <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('hl_refresh_tip')}
+          </p>
         </div>
 
         <div className="mt-4" aria-live="polite" aria-busy={loading}>
@@ -240,7 +320,7 @@ function HomatchLeadsContent() {
           ) : failed ? (
             <EmptyState icon={Users} title={t('hl_error_generic')} actions={<button type="button" className={BTN_SECONDARY} onClick={() => void load()}>{t('hl_retry')}</button>} />
           ) : !items.length ? (
-            <EmptyState icon={Users} title={t(filter === 'ALL' ? 'hl_empty_title' : 'hl_empty_filter_title')} body={t(filter === 'ALL' ? 'hl_empty_body' : 'hl_empty_filter_body')} />
+            <EmptyState icon={Users} title={t(!anyFilter ? 'hl_empty_title' : 'hl_empty_filter_title')} body={t(!anyFilter ? 'hl_empty_body' : 'hl_empty_filter_body')} />
           ) : (
             <div className={cn('grid gap-4 md:grid-cols-2', loading && 'opacity-60')}>
               {items.map((lead) => (
@@ -291,6 +371,7 @@ function HomatchLeadsContent() {
       ) : null}
 
       <UnlockDialog open={unlockIds.length > 0} matchIds={unlockIds} onClose={() => setUnlockIds([])}
+        contactOptions={unlockIds.length === 1 ? items.find((x) => x.matchId === unlockIds[0])?.contactOptions ?? null : null}
         onUnlocked={(result) => {
           setUnlockIds([]);
           setSelected(new Set());

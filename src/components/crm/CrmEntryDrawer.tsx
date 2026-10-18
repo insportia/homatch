@@ -6,13 +6,14 @@
  * wider screens. Built on the Radix dialog primitive directly (not ui/sheet) so the close
  * control is touch-sized, localized and on the logical edge in RTL.
  *
- * No contact details are shown here: the detail RPC does not return a phone or email,
- * and this panel never asks for one.
+ * Find Buyers 2.0: the lead's profile (documented search, match explanation, source,
+ * unlock), the contact details the member allows today (internal_lead_contact — consent and
+ * blocks re-checked on every read), AI outreach drafts and the owner's logged contacts.
  */
 
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
-  Activity, CalendarClock, ChevronDown, Loader2, Mail, MessageSquare, NotebookPen, RefreshCw, X,
+  Activity, CalendarClock, ChevronDown, Loader2, Mail, MessageSquare, NotebookPen, PhoneCall, RefreshCw, X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -20,13 +21,17 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
-  CRM_STATUSES, conversationHref, emailStudioHref, isFollowUpDue, isoToLocalInput, localInputToIso, statusLabelKey,
+  CONTACT_CHANNELS, OWNER_SETTABLE_STATUSES, conversationHref, emailStudioHref, isFollowUpDue, isoToLocalInput, localInputToIso, statusLabelKey,
+  type ContactChannel,
 } from '@/crm/model';
 import { suggestNextStep, type CrmStatus, type NextStep } from '@/crm/nextStep';
 import { cn } from '@/lib/utils';
 import {
-  crmEntryDetail, crmUpdate, type CrmEntryDetail, type CrmListItem,
+  crmEntryDetail, crmEntryProfile, crmUpdate, type CrmEntryDetail, type CrmListItem, type CrmProfile,
 } from '@/services/leadsCrm';
+import { getLeadContact, type LeadContact } from '@/services/homatchLeads';
+import { LeadOutreachComposer } from './LeadOutreachComposer';
+import { LeadProfileCard } from './LeadProfileCard';
 import { ActivityTimeline } from './ActivityTimeline';
 import { NextStepCard } from './NextStepCard';
 import {
@@ -56,7 +61,11 @@ export function CrmEntryDrawer({
   const [detail, setDetail] = useState<CrmEntryDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [busy, setBusy] = useState<null | 'status' | 'note' | 'follow' | 'clear'>(null);
+  const [busy, setBusy] = useState<null | 'status' | 'note' | 'follow' | 'clear' | 'log'>(null);
+  const [profile, setProfile] = useState<CrmProfile | null>(null);
+  const [contact, setContact] = useState<LeadContact | null>(null);
+  const [logChannel, setLogChannel] = useState<ContactChannel>('PHONE');
+  const [logOutcome, setLogOutcome] = useState('');
 
   const [statusDraft, setStatusDraft] = useState<CrmStatus>('UNLOCKED');
   const [noteDraft, setNoteDraft] = useState('');
@@ -87,12 +96,43 @@ export function CrmEntryDrawer({
     }
   }, [adopt]);
 
+  /* Find Buyers 2.0: the lead's documented search, the match explanation and the contact the
+     member allows today (consent re-checked on every read). */
+  const loadProfile = useCallback(async (id: string) => {
+    try {
+      const p = await crmEntryProfile(id);
+      setProfile(p);
+      if (p?.match?.matchId) setContact(await getLeadContact(p.match.matchId).catch(() => ({ restricted: true, reason: 'UNAVAILABLE' as const })));
+      else setContact({ restricted: true, reason: 'UNAVAILABLE' });
+    } catch {
+      setProfile(null);
+    }
+  }, []);
+
   useEffect(() => {
     setDetail(null);
+    setProfile(null);
+    setContact(null);
     setNoteDraft('');
+    setLogOutcome('');
     setShowActivity(false);
-    if (entryId) void load(entryId);
-  }, [entryId, load]);
+    if (entryId) { void load(entryId); void loadProfile(entryId); }
+  }, [entryId, load, loadProfile]);
+
+  const logContact = async () => {
+    if (!entryId) return;
+    setBusy('log');
+    try {
+      adopt(await crmUpdate(entryId, { logContact: logChannel, outcome: logOutcome }));
+      setLogOutcome('');
+      toast.success(t('lo_logged'));
+      onChanged();
+    } catch {
+      toast.error(t('crm_save_failed'));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const save = async (kind: 'status' | 'note' | 'follow' | 'clear') => {
     if (!entryId) return;
@@ -231,6 +271,38 @@ export function CrmEntryDrawer({
 
                 {step ? <NextStepCard step={step} onAction={onStepAction} canOpenConversation={Boolean(conversationId)} /> : null}
 
+                {profile ? <LeadProfileCard profile={profile} contact={contact} /> : null}
+
+                {entryId ? (
+                  <LeadOutreachComposer entryId={entryId} propertyId={propertyId}
+                    memberLanguage={item?.language ?? contact?.language ?? null}
+                    phone={contact && !contact.restricted ? contact.phone ?? null : null}
+                    conversationId={conversationId} onOpenConversation={openConversation} onOpenEmailStudio={createEmail}
+                    onLogged={() => { if (entryId) void load(entryId); onChanged(); }} />
+                ) : null}
+
+                {/* Log a contact that happened outside HOMATCH — the owner's own statement. */}
+                <SectionCard title={t('crm_log_contact')} icon={PhoneCall} labelledBy="crm-log-h">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,12rem)_1fr]">
+                    <label className="grid gap-1 text-xs font-semibold text-[hsl(218_28%_30%)]">
+                      <span>{t('crm_log_channel')}</span>
+                      <select className={cn(FIELD, 'h-11')} value={logChannel} onChange={(e) => setLogChannel(e.target.value as ContactChannel)} disabled={busy !== null}>
+                        {CONTACT_CHANNELS.map((c) => <option key={c} value={c}>{t(`crm_channel_${c}`)}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold text-[hsl(218_28%_30%)]">
+                      <span>{t('crm_log_outcome')}</span>
+                      <input className={cn(FIELD, 'h-11')} value={logOutcome} maxLength={300} onChange={(e) => setLogOutcome(e.target.value)}
+                        placeholder={t('crm_log_outcome_placeholder')} disabled={busy !== null} dir="auto" />
+                    </label>
+                  </div>
+                  <button type="button" className={cn(SECONDARY_BUTTON, 'mt-2 h-11 w-full sm:w-auto')} onClick={() => void logContact()} disabled={busy !== null} data-testid="crm-log-contact">
+                    {busy === 'log' ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <PhoneCall className="h-4 w-4" aria-hidden="true" />}
+                    {t('crm_log_contact')}
+                  </button>
+                  <p className="mt-2 text-2xs leading-relaxed text-[hsl(218_15%_40%)]">{t('crm_log_hint')}</p>
+                </SectionCard>
+
                 {/* Update Status */}
                 <SectionCard title={t('crm_update_status')} icon={RefreshCw} labelledBy="crm-status-h">
                   <label htmlFor="crm-status" className="sr-only">{t('crm_status_label')}</label>
@@ -243,7 +315,9 @@ export function CrmEntryDrawer({
                       onChange={(e) => setStatusDraft(e.target.value as CrmStatus)}
                       disabled={busy !== null}
                     >
-                      {CRM_STATUSES.map((s) => <option key={s} value={s}>{t(statusLabelKey(s))}</option>)}
+                      {/* DELIVERED is a transport fact, never chosen by hand; it stays visible when it is the current stage. */}
+                      {(detail.status === 'DELIVERED' ? ['DELIVERED' as CrmStatus, ...OWNER_SETTABLE_STATUSES] : OWNER_SETTABLE_STATUSES)
+                        .map((s) => <option key={s} value={s}>{t(statusLabelKey(s))}</option>)}
                     </select>
                     <button
                       type="button"

@@ -11,6 +11,8 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Find Buyers 2.0 outreach / logged-contact channels: messenger brand names, the same in Latin-script locales.
+  'crm_channel_WHATSAPP', 'crm_channel_TELEGRAM', 'lo_channel_WHATSAPP', 'lo_channel_TELEGRAM',
   // Find Property paid campaign: social-network brand names, the same in Latin-script locales.
   'fpi_network_facebook', 'fpi_network_instagram', 'fpi_network_telegram', 'fpx_eyebrow', 'fpv_area_only',
   // Admin → Storage inventory: product and provider names, the same in every locale.

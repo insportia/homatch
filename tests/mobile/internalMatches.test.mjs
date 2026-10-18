@@ -236,7 +236,8 @@ async function flow(page, state, { lang, prefix, width }) {
   await shot(page, `${prefix}-card`);
 
   /* Contact unlock is on the card, priced in credits; "See all" leads to HOMATCH Leads. */
-  assert.match(await demoCard.locator('[data-testid="demo-unlock"]').innerText(), /2[.,]5/, 'unlock shows its credit price');
+  /* Find Buyers 2.0 (owner, 2026-10-18): Standard is $0.30 = 3 credits (server-priced; this card's fallback matches). */
+  assert.match(await demoCard.locator('[data-testid="demo-unlock"]').innerText(), /\b3\b/, 'unlock shows its credit price');
   assert.equal(await demoCard.locator('[data-testid="match-why"]').count(), 1, 'why this is a good match');
   assert.equal(await page.locator('[data-testid="internal-see-all"]').count(), 1, 'see all → HOMATCH Leads');
 

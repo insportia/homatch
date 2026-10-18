@@ -27,6 +27,7 @@ import { type RunLease, reapDecision } from '../../../src/research-core/marketpl
 import { estimatedProviderCost } from './providerCost.ts';
 import { wellFormedDeep } from '../../../src/research-core/marketplace/text-safety.ts';
 import { loadSocialCandidates } from './findProperty/socialListings.ts';
+import { serviceBackendEnabled } from './serviceControl.ts';
 import { type ListingRow, mergeListingRows, resolveSharedRuns, sharedLeaders, sharedListingRows } from './marketplaceCapacity.ts';
 
 // deno-lint-ignore no-explicit-any
@@ -291,7 +292,9 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   }));
   /* Social offers of this person's ENDED paid campaigns for this search: ranked and
      deduplicated with the portals; a failed read never loses the portal results. */
-  try { candidates.push(...await loadSocialCandidates(db, searchId, search.user_id ?? null, now)); }
+  /* Only while paid Deep Search is on (service find_property_deep): paused, every search is
+     portal-only; past campaigns stay readable on their own results page. */
+  try { if (await serviceBackendEnabled(db, 'find_property_deep')) candidates.push(...await loadSocialCandidates(db, searchId, search.user_id ?? null, now)); }
   catch (error) { console.error(JSON.stringify({ event: 'marketplace_social_candidates_failed', searchId, error: String(error).slice(0, 300) })); }
 
   const request = search.request as MarketplaceSearchRequest;

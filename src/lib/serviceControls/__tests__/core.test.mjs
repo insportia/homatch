@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createServiceControlStore, RETRY_AFTER_UNREADABLE_MS, toSnapshot, initialSnapshot, liveVisibility, HIDDEN_SNAPSHOT, SERVICE_KEYS,
-  PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT, HIDDEN_UNTIL_ANSWERED, shownBeforeAnswer,
+  PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT, PAID_CLOSED_BY_DEFAULT, HIDDEN_UNTIL_ANSWERED, shownBeforeAnswer,
 } from '../core.ts';
 
 const SHOWN_EARLY = LIVE_BY_DEFAULT.filter(shownBeforeAnswer);
@@ -11,7 +11,8 @@ const row = (k, f, b) => ({ service_key: k, frontend_enabled: f, backend_enabled
 
 test('before any answer: the six and the two broker services are hidden, every other live product is shown', () => {
   assert.equal(HIDDEN_SNAPSHOT.loaded, false);
-  assert.equal(SERVICE_KEYS.length, PAUSED_BY_DEFAULT.length + LIVE_BY_DEFAULT.length);
+  assert.equal(SERVICE_KEYS.length, PAUSED_BY_DEFAULT.length + LIVE_BY_DEFAULT.length + PAID_CLOSED_BY_DEFAULT.length);
+  for (const k of PAID_CLOSED_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: false, backend: false }, `${k}: paid, hidden until proven ON`);
   for (const k of PAUSED_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: false, backend: false }, k);
   for (const k of SHOWN_EARLY) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: true, backend: true }, k);
   assert.deepEqual([...HIDDEN_UNTIL_ANSWERED], ['brokers_directory', 'broker_desk']);
@@ -34,6 +35,7 @@ test('only a service that can also run is visible; malformed rows keep their def
     const j = toSnapshot(junk);
     assert.equal(j.loaded, true, 'a malformed answer still ends the wait');
     assert.ok(PAUSED_BY_DEFAULT.every((k) => !j.services[k].frontend), 'and keeps the six hidden');
+    assert.ok(PAID_CLOSED_BY_DEFAULT.every((k) => !j.services[k].frontend), 'and keeps paid Deep Search hidden');
     assert.ok(SHOWN_EARLY.every((k) => j.services[k].frontend), 'and never hides a live product');
     assert.ok(HIDDEN_UNTIL_ANSWERED.every((k) => !j.services[k].frontend), 'and never shows a broker service it was not told about');
   }
@@ -61,6 +63,7 @@ test('the store: one shared fetch, subscribers notified, an outage hides the six
   await throwing.refresh();
   assert.equal(throwing.get().loaded, true);
   assert.ok(PAUSED_BY_DEFAULT.every((k) => !throwing.get().services[k].frontend));
+  assert.ok(PAID_CLOSED_BY_DEFAULT.every((k) => !throwing.get().services[k].frontend), 'a failed read never shows paid Deep Search');
   assert.ok(SHOWN_EARLY.every((k) => throwing.get().services[k].frontend));
   assert.ok(HIDDEN_UNTIL_ANSWERED.every((k) => !throwing.get().services[k].frontend), 'an outage before any answer keeps the broker services hidden');
   off();

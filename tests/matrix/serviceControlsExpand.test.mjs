@@ -21,14 +21,17 @@ test('one list of services: database, server and browser agree', () => {
   assert.deepEqual([...front.SERVICE_KEYS].sort(), sqlKeys);
   assert.deepEqual([...front.PAUSED_BY_DEFAULT], [...edge.PAUSED_BY_DEFAULT], 'the same six fail closed on both sides');
   assert.deepEqual([...front.LIVE_BY_DEFAULT], [...edge.LIVE_BY_DEFAULT]);
+  assert.deepEqual([...front.PAID_CLOSED_BY_DEFAULT], [...edge.PAID_CLOSED_BY_DEFAULT], 'paid Deep Search fails closed on both sides');
 });
 
 test('every new row is seeded ON, in the group the Admin page shows', () => {
   const seeds = [...MIGRATION.matchAll(/\('([a-z_]+)',\s+(true|false), (true|false), '([a-z]+)'/g)];
-  assert.equal(seeds.length, edge.LIVE_BY_DEFAULT.length);
+  /* Seeded ON on 2026-11-10 when every one was live; paid Deep Search was paused later (20261116100000, #269). */
+  const seededLive = [...edge.LIVE_BY_DEFAULT, ...edge.PAID_CLOSED_BY_DEFAULT];
+  assert.equal(seeds.length, seededLive.length);
   const api = read('supabase/functions/service-control/index.ts');
   for (const [, key, f, b, group] of seeds) {
-    assert.ok(edge.LIVE_BY_DEFAULT.includes(key), key);
+    assert.ok(seededLive.includes(key), key);
     assert.equal(f + b, 'truetrue', `${key} is live today, so it is seeded ON`);
     assert.match(api, new RegExp(`${key}: '${group}'`), `${key} is in group ${group} on the Admin page too`);
   }
@@ -81,6 +84,9 @@ test('every new server gate checks its own key', () => {
     'supabase/functions/marketplace-search/index.ts': ['find_property'],
     'supabase/functions/find-property-plan/index.ts': ['find_property'],
     'supabase/functions/find-property-run/index.ts': ['find_property_deep'],
+    /* Paid Deep Search paused (2026-10-18): the worker and the free search's social add-in ask too. */
+    'supabase/functions/_shared/findProperty/socialOffers.ts': ['find_property_deep'],
+    'supabase/functions/_shared/marketplaceSearch.ts': ['find_property_deep'],
     'supabase/functions/match-campaign/index.ts': ['find_buyers'],
     'supabase/functions/research-agent/index.ts': ['verify'],
     'supabase/functions/deal-room-document-analyze/index.ts': ['contracts'],

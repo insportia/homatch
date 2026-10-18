@@ -51,12 +51,14 @@ function useFavoriteProperties(searchId: string, keys: ReadonlySet<string>, read
   return { items, loading: !ready || mine.some((k) => !found.has(k)) };
 }
 
-export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNewSearch, onChangeCriteria, deepSearchAvailable, version }: {
-  t: T; search: SearchSummary; onOpen: (p: PropertyView) => void; compare: string[]; onToggleCompare: (p: PropertyView) => void;
+export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNewSearch, onChangeCriteria, deepSearchAvailable, deepOffered = true, version }: {
+  t: T; deepOffered?: boolean; search: SearchSummary; onOpen: (p: PropertyView) => void; compare: string[]; onToggleCompare: (p: PropertyView) => void;
   onNewSearch: () => void; onChangeCriteria: (edit: BriefEdit | null) => void; deepSearchAvailable: boolean; version: number;
 }) {
   const [params, setParams] = useSearchParams();
-  const view: View = (VIEWS as readonly string[]).includes(params.get('view') ?? '') ? params.get('view') as View : 'all';
+  const asked: View = (VIEWS as readonly string[]).includes(params.get('view') ?? '') ? params.get('view') as View : 'all';
+  /* No paid results view while paid Deep Search is paused: an old ?view=paid link shows the free list. */
+  const view: View = asked === 'paid' && !deepOffered ? 'all' : asked;
   const filters = filtersFromParams(params), filterKey = JSON.stringify(filters);
   const requestedPage = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   const revision = params.get('revision') ?? undefined;
@@ -145,7 +147,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
           {tab('best', t('fpv_tab_best'), counts?.best ?? (view === 'best' ? data?.total ?? null : null), Sparkles)}
           {tab('favorites', t('fpv_tab_favorites'), saved.ready ? favorites.items.length : null, Bookmark)}
           {/* The paid search's own results: only once a campaign has delivered some (or while open). */}
-          {(counts?.paid ?? 0) > 0 || view === 'paid' ? tab('paid', t('fpv_tab_paid'), counts?.paid ?? (view === 'paid' ? data?.total ?? null : null), Telescope) : null}
+          {deepOffered && ((counts?.paid ?? 0) > 0 || view === 'paid') ? tab('paid', t('fpv_tab_paid'), counts?.paid ?? (view === 'paid' ? data?.total ?? null : null), Telescope) : null}
         </nav>
         <button type="button" onClick={() => setFiltersOpen((o) => !o)} aria-expanded={filtersOpen} aria-controls="fp-filters-panel" data-action="toggle-filters"
           aria-label={t('fpv_filters')} title={t('fpv_filters')}
@@ -202,6 +204,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     {showItems && recommended.length ? <section aria-labelledby="mps-g-REC" className="space-y-3" data-results-group="RECOMMENDED"><div><h2 id="mps-g-REC" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_rec_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_rec_body')}</p></div><div className="grid gap-4">{recommended.map(card)}</div></section> : null}
     {showItems && others.length ? <section aria-labelledby="mps-g-OTHER" className="space-y-3" data-results-group="OTHER"><div><h2 id="mps-g-OTHER" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_other_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_other_body')}</p></div><div className="grid gap-4">{others.map(card)}</div></section> : null}
     {showItems && data && data.total > 0 ? <div className="space-y-3 border-t border-border pt-5"><p className="text-center text-xs text-muted-foreground" role="status">{t('fpr_page_status', { from: (data.page - 1) * data.pageSize + 1, to: Math.min(data.page * data.pageSize, data.total), total: data.total })}</p><nav aria-label={t('fpr_pagination')} className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr"><button type="button" disabled={data.page === 1} onClick={() => update({}, data.page - 1)} aria-label={t('fpr_previous')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>{pageNumbers(data.page, data.pages).map((p, i) => p === 'gap' ? <span key={`gap-${i}`} className="px-1 text-muted-foreground" aria-hidden="true">…</span> : <button type="button" key={p} aria-label={t('fpr_go_page', { n: p })} aria-current={p === data.page ? 'page' : undefined} onClick={() => update({}, p)} className={`h-11 min-w-11 rounded-xl border px-2 text-sm font-semibold ${p === data.page ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]' : 'border-border hover:bg-muted'}`}>{p}</button>)}<button type="button" disabled={data.page === data.pages} onClick={() => update({}, data.page + 1)} aria-label={t('fpr_next')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></nav></div> : null}
-    {search.terminal && view === 'all' ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
+    {deepOffered && search.terminal && view === 'all' ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
   </div>;
 }
+

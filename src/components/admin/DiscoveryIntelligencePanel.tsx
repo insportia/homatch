@@ -21,6 +21,7 @@ import {
   type DiscoveryIntelligence, type Phase2Switch,
 } from '@/services/adminDiscovery';
 import { AdminMarketplacePanel } from '@/components/findProperty/AdminMarketplacePanel';
+import { DeepSearchEconomicsPanel } from '@/components/admin/DeepSearchEconomicsPanel';
 
 const Panel = ({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) => (
   <section className="rounded-2xl border border-border bg-card p-4 shadow-card">
@@ -133,6 +134,8 @@ function IntelligenceContent() {
           <code dir="ltr">{JSON.stringify(data.switches.discovery_worker_portal_adapters ?? [])}</code>
         </p>
       </Panel>
+
+      <DeepSearchEconomicsPanel />
 
       <Panel title={t('p2d_admin_readiness')}>
         <p className="mb-2 text-2xs text-muted-foreground">{t('p2d_admin_readiness_note')}</p>

@@ -1109,6 +1109,14 @@
   @media (prefers-reduced-motion: reduce) {
     [class*="hm-flow"] { animation: none !important; }
   }
+  /* Deep Search: results and network rows rise into place once (no motion when reduced). */
+  @keyframes hm-rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [class*="hm-rise"] { animation: none !important; }
+  }
 
   @keyframes hm-wave {
     0%, 100% { transform: scaleY(0.28); }

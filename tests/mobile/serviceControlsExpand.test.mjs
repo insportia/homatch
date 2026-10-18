@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
-import { LIVE_KEYS, SERVICE_CONTROLS_RPC, SERVICE_KEYS, liveState } from './serviceControlsFixture.mjs';
+import { LIVE_KEYS, PAID_KEYS, SERVICE_CONTROLS_RPC, SERVICE_KEYS, liveState } from './serviceControlsFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -442,8 +442,9 @@ test('admin: twenty cards in their groups, counts computed from the cards, fail 
     assert.equal(await page.getByTestId(`svc-failmode-${key}`).count(), 1, `${key} fail mode`);
   }
   const text = await page.getByTestId('service-control-center').innerText();
-  assert.match(text, /6 \/ 20/, 'paused count is dynamic');
-  assert.match(text, /14 \/ 20/, 'live count is dynamic');
+  /* The six and paid Deep Search (paused 2026-10-18) are off; every other product is live. */
+  assert.match(text, new RegExp(`${SERVICE_KEYS.length + PAID_KEYS.length} / 20`), 'paused count is dynamic');
+  assert.match(text, new RegExp(`${LIVE_KEYS.length} / 20`), 'live count is dynamic');
   assert.doesNotMatch(text, /Pause all six/i, 'there is no global switch on the page');
   assert.equal(await page.getByTestId('svc-pause-group-other').count(), 0);
   // A group whose services are all paused has nothing to pause.

@@ -19,6 +19,7 @@ import { errorText } from './campaignRun.ts';
 import { claimSettlement, loadDeliveries, settleFindPropertyRun, settlePaidSocialRun } from './findPropertySettlement.ts';
 import { finishOfferCampaign } from './findProperty/socialOffers.ts';
 import { campaignSearchId } from './findProperty/socialListings.ts';
+import { persistCampaignResults } from './findProperty/campaignResults.ts';
 import { processAndStore } from './marketplaceSearch.ts';
 import { PAID_DISCOVERY_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
@@ -92,7 +93,13 @@ export async function finalizeDiscoveryRun(
     .select('pricing_policy,credits_per_usd,offers_found').eq('id', run.id).maybeSingle();
   const socialCampaign = pricing?.pricing_policy === PAID_DISCOVERY_POLICY_ID;
   let spendMicros = 0;
-  if (socialCampaign) spendMicros = await finishOfferCampaign(db, run.id);
+  /* A campaign's results are ITS offers judged against the exact request — not the free
+     search's deliveries (portals included), which `delivered` above counts. */
+  let campaignAvailable: number | null = null;
+  if (socialCampaign) {
+    spendMicros = await finishOfferCampaign(db, run.id);
+    campaignAvailable = await judgeCampaignOffers(db, run.id);
+  }
   /* The customer pays for confirmed work (spendMicros); the run's provider cost is everything committed. */
   const committedMicros = socialCampaign
     ? Number((await db.rpc('find_property_committed_micros', { p_run_id: run.id })).data ?? spendMicros) : 0;
@@ -104,7 +111,7 @@ export async function finalizeDiscoveryRun(
   try {
     const settled = socialCampaign ? await settlePaidSocialRun(db, grant, {
       runId: run.id, spendMicros, creditsPerUsd: Number(pricing?.credits_per_usd) || 10,
-      durationMs: now - new Date(run.started_at).getTime(), offers: Number(pricing?.offers_found ?? 0), delivered,
+      durationMs: now - new Date(run.started_at).getTime(), offers: Number(pricing?.offers_found ?? 0), delivered: campaignAvailable ?? 0,
     }, (g, reason, usage) => releaseExecution(db, g, reason, usage)) : await settleFindPropertyRun(db, grant, {
       runId: run.id,
       searchCount: finished.length,
@@ -133,15 +140,16 @@ export async function finalizeDiscoveryRun(
     }
   }
 
-  const status = delivered > 0 ? 'COMPLETED' : 'PARTIAL';
+  const shown = socialCampaign ? campaignAvailable ?? 0 : delivered;
+  const status = shown > 0 ? 'COMPLETED' : 'PARTIAL';
   await updateRun(db, run.id, {
     status,
     stage: 'READY',
     progress: 100,
-    results_found: delivered,
+    results_found: shown,
     provider_cost_usd: socialCampaign ? committedMicros / 1e6 : costUnknown ? null : providerCostUsd,
     credits_charged: creditsCharged,
-    failure_reason: delivered > 0 ? null : (context.noResultsReason ?? 'NO_MATCHING_LISTINGS_FOUND'),
+    failure_reason: shown > 0 ? null : (context.noResultsReason ?? 'NO_MATCHING_LISTINGS_FOUND'),
     completed_at: new Date().toISOString(),
   });
   await runEvent(db, run.id, 'RUN_COMPLETE', {
@@ -150,7 +158,17 @@ export async function finalizeDiscoveryRun(
     providerCostUnknown: costUnknown, sourceJobs: context.sourceJobs, matching: context.matching ?? null,
   });
   if (socialCampaign) await publishSocialListings(db, run.id);
-  return { status, delivered, creditsCharged: creditsCharged ?? 0 };
+  return { status, delivered: shown, creditsCharged: creditsCharged ?? 0 };
+}
+
+/** Never fatal: a campaign whose judging fails still settles; its page judges it on first read. */
+async function judgeCampaignOffers(db: any, runId: string): Promise<number | null> {
+  try {
+    return (await persistCampaignResults(db, runId, 'CAMPAIGN_END'))?.available ?? null;
+  } catch (error) {
+    await runEvent(db, runId, 'CAMPAIGN_RESULTS_FAILED', { message: errorText(error) }).catch(() => undefined);
+    return null;
+  }
 }
 
 /**
@@ -186,5 +204,6 @@ export async function failDiscoveryRun(
   }).catch(() => undefined);
   await runEvent(db, runId, 'RUN_FAILED', { reason, message: detail }).catch(() => undefined);
   /* Offers already found (HOMATCH carried their cost) are still shown. */
+  await judgeCampaignOffers(db, runId);
   await publishSocialListings(db, runId);
 }

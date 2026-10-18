@@ -13,6 +13,9 @@
 // TWO FAIL MODES, because the services are in two different situations:
 //   * PAUSED_BY_DEFAULT (the original six, paused by the owner): FAIL CLOSED. If the
 //     row cannot be read the service counts as disabled.
+//   * PAID_CLOSED_BY_DEFAULT (paid Deep Search, paused by the owner 2026-10-18): FAIL
+//     CLOSED as well. Money is spent only on an explicit ON row; an unreadable or missing
+//     row never starts a paid campaign or a provider run.
 //   * every other service is a live product: FAIL OPEN. If the control table cannot be
 //     read, or the row is missing (code deployed before its migration), it keeps
 //     running, so an outage of this table never takes Verify or Find Property down.
@@ -26,12 +29,14 @@
 export const PAUSED_BY_DEFAULT = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'] as const;
 /** Live products added with the expansion: fail open. */
 export const LIVE_BY_DEFAULT = [
-  'find_property', 'find_property_deep', 'find_buyers',
+  'find_property', 'find_buyers',
   'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
   'meta_ads', 'email_campaigns', 'ai_assistant',
   'brokers_directory', 'broker_desk', 'developers',
 ] as const;
-export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT] as const;
+/** Paid, paused by the owner (2026-10-18): fail closed, like the six. */
+export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep'] as const;
+export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];
 export const SERVICE_DISABLED = 'SERVICE_DISABLED';
 export const CACHE_MS = 10_000;
@@ -67,7 +72,7 @@ async function load(db: any, now: number): Promise<Snapshot> {
 }
 
 const LIVE = new Set<string>(LIVE_BY_DEFAULT);
-/** What a service counts as when its row cannot be read: OFF for the six, ON for a live product. */
+/** What a service counts as when its row cannot be read: OFF for the six and paid Deep Search, ON for a live product. */
 export function defaultState(key: ServiceKey): ServiceState {
   return LIVE.has(key) ? { frontend: true, backend: true } : { frontend: false, backend: false };
 }

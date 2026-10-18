@@ -222,17 +222,25 @@ test('the core is consumed only through its deliberate integration points', () =
     /* The same campaign's stored offers as marketplace candidates of its search
        (research-core/marketplace/socialListings: pure conversion, no network). */
     'supabase/functions/_shared/findProperty/socialListings.ts',
+    /* Each campaign's own results: the pure strict matcher (research-core/findProperty/
+       campaignMatch) judges stored offers against the confirmed request; no network. */
+    'supabase/functions/_shared/findProperty/campaignResults.ts',
     // Its offer-queue contract test (language on every queued row, Facebook Pages planned).
     'supabase/functions/_shared/__tests__/findPropertyOfferQueue.test.mjs',
     'supabase/functions/_shared/discoveryRun.ts',
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
     'supabase/functions/_shared/findBuyers/translate.ts',
+    /* AI-first lead classification (2026-10-18): the batched model calls and the stored-candidate
+       replay, both through the pure classifier contract (research-core/findBuyers/aiClassifier). */
+    'supabase/functions/_shared/findBuyers/aiClassify.ts',
+    'supabase/functions/_shared/findBuyers/aiReplay.ts',
     /* Admin re-qualification of a finished campaign's stored leads: the same
        pure qualification the pipeline uses (research-core/findBuyers/requalify),
        no provider call. */
     'supabase/functions/_shared/findBuyers/admin.ts',
     'supabase/functions/_shared/__tests__/findBuyersPipelineQualification.test.mjs',
+    'supabase/functions/_shared/__tests__/findBuyersAiFirst.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersFacebookPages.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
     /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */
@@ -661,6 +669,9 @@ test('the core is consumed only through its deliberate integration points', () =
     'src/components/findProperty/ResultsView.tsx',
     'src/components/findProperty/SearchBuilder.tsx',
     'src/components/findProperty/format.ts',
+    // Deep Search: the confirmed brief shown next to the approval (type + the brief's own shape).
+    'src/components/findProperty/campaign/CampaignParts.tsx',
+    'src/components/findProperty/workspace/DiscoveryModeStep.tsx',
     // The advisor's reading of a result against the request (research-core/
     // marketplace/advisor: pure, deterministic, no fetch) on each result card,
     // and its point types for the sentences.

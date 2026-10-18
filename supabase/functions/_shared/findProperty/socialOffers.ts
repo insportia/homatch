@@ -25,7 +25,7 @@ import { buildInput, essentialMissing, fitToSchema, STAGE_OUTPUT, type InputCont
 import { communityKey } from '../../../../src/research-core/findBuyers/batching.ts';
 import { normalizeDataset } from '../../../../src/research-core/findBuyers/normalize.ts';
 import {
-  OFFER_STAGE_NETWORK, planOfferJobs, qualifyOffer, type KnownOfferSource, type OfferActor, type OfferNetwork,
+  OFFER_STAGE_NETWORK, planOfferJobs, qualifyOffer, telegramPostUrl, followUpDecision, type KnownOfferSource, type OfferActor, type OfferNetwork,
   type OfferPlan, type OfferSearch, type OfferStage, type OfferTarget, OFFER_NETWORKS,
 } from '../../../../src/research-core/findProperty/offerCampaign.ts';
 import { COMMUNITY_LISTING_PARSER_VERSION } from '../../../../src/research-core/discovery/community-listing.ts';
@@ -33,6 +33,9 @@ import { abortRun, datasetItems, getRun, Memo23Error, providerConfigured, runCos
 import { offerImages, SOCIAL_ADAPTER_VERSION } from '../../../../src/research-core/marketplace/socialListings.ts';
 import { providerDisabledByAdmin } from '../providerSwitch.ts';
 import { listingFingerprint } from '../communitySupply.ts';
+import { serviceBackendEnabled } from '../serviceControl.ts';
+import { judgeOffer, type CampaignCriteria } from '../../../../src/research-core/findProperty/campaignMatch.ts';
+import { resolvePlace } from '../../../../src/research-core/normalize/place.ts';
 
 export interface OfferOutcome {
   outcome: 'DONE' | 'WAIT' | 'RETRY' | 'FAILED' | 'CANCELLED' | 'BUDGET_REACHED';
@@ -80,7 +83,7 @@ export async function loadOfferSettings(db: any): Promise<OfferSettings> {
 /** Actors as the planner sees them: ready = enabled, not quarantined, pricing verified and fresh. */
 export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Record<string, OfferActor>> {
   const { data, error } = await db.from('find_buyers_actor_registry')
-    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size,max_results,input_contract')
+    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size,max_results,input_contract,output_contract_verified_at')
     .in('actor_key', ['FB_POST_SEARCH', 'FB_GROUP_POSTS', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'TELEGRAM_CHANNEL', 'TIKTOK', 'VK_POSTS_COMMENTS']);
   if (error) throw error;
   const fresh = (at: string | null) => Boolean(at) && Date.now() - Date.parse(String(at)) <= maxAgeDays * 86_400_000;
@@ -94,6 +97,7 @@ export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Reco
       probeSize: Math.max(1, Number(a.probe_size ?? 20)),
       maxResults: a.max_results != null ? Math.max(1, Number(a.max_results)) : undefined,
       verifiedFields: verifiedFields(a.input_contract),
+      outputVerified: a.output_contract_verified_at != null,
     };
   }
   return outMap;
@@ -113,11 +117,12 @@ export function offerSourceFromRegistry(r: any): KnownOfferSource | null {
   if (!network) return null;
   const kind = type === 'SOCIAL_PROFILE' && network === 'FACEBOOK' ? 'FACEBOOK_PAGE' : type;
   return { id: String(r.id), network, kind, url: String(r.url), city: r.city ?? null, priority: Number(r.priority ?? 5),
-    name: typeof r.name === 'string' ? r.name : null, offerEvidence: Number(r.offer_evidence ?? 0) || 0 };
+    name: typeof r.name === 'string' ? r.name : null, offerEvidence: Number(r.offer_evidence ?? 0) || 0,
+    districtEvidence: Number(r.district_evidence ?? 0) || 0 };
 }
 
 /** Known public communities of the market (registry rows that are not retired, blocked or behind a login). */
-export async function loadOfferSources(db: any, countryCode: string): Promise<KnownOfferSource[]> {
+export async function loadOfferSources(db: any, countryCode: string, want?: { transaction: 'SALE' | 'RENT'; districts: string[] }): Promise<KnownOfferSource[]> {
   const { data, error } = await db.from('source_registry')
     .select('id,platform,source_type,name,url,city,priority,access_state,lifecycle')
     .eq('country_code', countryCode).in('source_type', Object.keys(SOURCE_NETWORK))
@@ -127,18 +132,25 @@ export async function loadOfferSources(db: any, countryCode: string): Promise<Kn
   /* Evidence: property offers HOMATCH already stored from each community (planner relevance
      and order). Best effort: without it every community is judged by its name alone. */
   const evidence = new Map<string, number>();
+  /* ...and how many of them were THIS transaction in one of the wanted districts. */
+  const districtEvidence = new Map<string, number>();
+  const wantedDistricts = new Set((want?.districts ?? []).map((d) => resolvePlace(d)?.key ?? d.toLowerCase()));
   if (rows.length) {
     /* Paged (the API returns at most 1000 rows a request), recent offers only, bounded. */
     const since = new Date(Date.now() - OFFER_EVIDENCE_DAYS * 86_400_000).toISOString();
     for (let from = 0; from < OFFER_EVIDENCE_SAMPLE; from += 1000) {
-      const { data: seen, error: seenError } = await db.from('supply_observations').select('source_id')
+      const { data: seen, error: seenError } = await db.from('supply_observations').select('source_id,district,transaction')
         .in('source_id', rows.map((r) => r.id)).gte('last_seen_at', since).order('id').range(from, from + 999);
       if (seenError) break;
-      for (const o of (seen ?? []) as Array<{ source_id: string }>) evidence.set(o.source_id, (evidence.get(o.source_id) ?? 0) + 1);
+      for (const o of (seen ?? []) as Array<{ source_id: string; district: string | null; transaction: string | null }>) {
+        evidence.set(o.source_id, (evidence.get(o.source_id) ?? 0) + 1);
+        const key = o.district ? resolvePlace(o.district)?.key ?? o.district.toLowerCase() : null;
+        if (key && wantedDistricts.has(key) && (!want || o.transaction === want.transaction)) districtEvidence.set(o.source_id, (districtEvidence.get(o.source_id) ?? 0) + 1);
+      }
       if (!seen || seen.length < 1000) break;
     }
   }
-  return rows.map((r) => offerSourceFromRegistry({ ...r, offer_evidence: evidence.get(String(r.id)) ?? 0 }))
+  return rows.map((r) => offerSourceFromRegistry({ ...r, offer_evidence: evidence.get(String(r.id)) ?? 0, district_evidence: districtEvidence.get(String(r.id)) ?? 0 }))
     .filter((s): s is KnownOfferSource => s != null);
 }
 
@@ -146,7 +158,8 @@ export async function planOfferCampaign(db: any, input: {
   search: OfferSearch; networks: OfferNetwork[]; providerBudgetMicros: number; countryCode: string;
 }): Promise<OfferPlan> {
   const settings = await loadOfferSettings(db);
-  const [actors, sources] = await Promise.all([loadOfferActors(db, settings.pricingMaxAgeDays), loadOfferSources(db, input.countryCode)]);
+  const [actors, sources] = await Promise.all([loadOfferActors(db, settings.pricingMaxAgeDays),
+    loadOfferSources(db, input.countryCode, { transaction: input.search.transaction, districts: input.search.districts })]);
   return planOfferJobs({
     search: input.search, networks: input.networks.filter((n) => settings.networks.includes(n)),
     actors, sources, providerBudgetMicros: input.providerBudgetMicros,
@@ -154,7 +167,7 @@ export async function planOfferCampaign(db: any, input: {
 }
 
 /** Queue rows for a planned campaign (provider APIFY_MEMO23, SUPPLY, owned by the run). */
-export function offerQueueRows(runId: string, planId: string | null, plan: OfferPlan, search: OfferSearch) {
+export function offerQueueRows(runId: string, planId: string | null, plan: OfferPlan, search: OfferSearch, criteria: CampaignCriteria | null = null) {
   return plan.jobs.map((j, i) => ({
     property_id: null, matching_job_id: null, discovery_run_id: runId, search_plan_id: planId,
     platform: j.network, language: j.language ?? 'multi', query: j.query ?? j.targetUrl ?? j.stage, status: 'PENDING',
@@ -166,6 +179,8 @@ export function offerQueueRows(runId: string, planId: string | null, plan: Offer
       queries: j.queries, targets: j.targets, targetCount: j.targetCount,
       sourceId: j.sourceId, size: j.size, estimateMicros: j.estimateMicros,
       search: { transaction: search.transaction, city: search.city, districts: search.districts },
+      /* Probe-first (followUpDecision) and the strict request each run's posts are counted against. */
+      followUp: j.followUp === true, criteria,
     },
   }));
 }
@@ -181,7 +196,31 @@ export async function executeOfferJob(db: any, job: any): Promise<OfferOutcome> 
   if (run.status !== 'SEARCHING') return out({ outcome: 'CANCELLED', error: `RUN_${run.status}` });
   const settings = await loadOfferSettings(db);
   if (!settings.enabled) return out({ outcome: 'CANCELLED', error: !settings.apifyEnabled ? 'APIFY_DISABLED_BY_ADMIN' : !settings.configured ? 'PROVIDER_NOT_CONFIGURED' : 'SOCIAL_DISABLED' });
+  /* SERVICE CONTROL find_property_deep (Admin, paid Deep Search): while paused no NEW provider run
+     starts, from any campaign (closed on doubt). Runs already started are still polled and booked
+     above, and the campaign settles and releases its hold as usual — nothing is abandoned. */
+  if (!(await serviceBackendEnabled(db, 'find_property_deep'))) return out({ outcome: 'CANCELLED', error: 'SERVICE_PAUSED' });
+  if (meta.followUp === true) {
+    /* Probe-first: a network's later runs wait for its first run, and are cancelled — before
+       anything is reserved, so at no cost — when that run's posts could not fit the request. */
+    const decision = followUpDecision(await probeOf(db, job));
+    if (decision === 'WAIT') return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { waiting: 'PROBE_RUN' } });
+    if (decision === 'STOP_LOW_YIELD') return out({ outcome: 'CANCELLED', error: 'LOW_YIELD_PROBE' });
+  }
   return start(db, job, run);
+}
+
+/** The first run of this job's network in the same campaign, once it has ended: posts billed and posts that could fit. */
+async function probeOf(db: any, job: any): Promise<{ billed: number; useful: number } | null> {
+  const { data: rows } = await db.from('discovery_query_queue').select('id,status,metadata')
+    .eq('discovery_run_id', job.discovery_run_id).eq('platform', job.platform).neq('id', job.id);
+  const probes = ((rows ?? []) as any[]).filter((r) => r.metadata?.offerCampaign === true && r.metadata?.followUp !== true);
+  if (!probes.length) return { billed: 0, useful: 1 };
+  if (probes.some((r) => ['PENDING', 'PROCESSING', 'RETRY_WAIT', 'PAUSED'].includes(String(r.status)))) return null;
+  const done = probes.filter((r) => r.status === 'DONE');
+  /* A probe that failed or was cancelled says nothing about the network's posts: continue. */
+  if (!done.length) return { billed: 0, useful: 1 };
+  return done.reduce((acc, r) => ({ billed: acc.billed + Number(r.metadata?.billed ?? 0), useful: acc.useful + Number(r.metadata?.useful ?? 0) }), { billed: 0, useful: 0 });
 }
 
 async function start(db: any, job: any, run: any): Promise<OfferOutcome> {
@@ -283,13 +322,20 @@ async function poll(db: any, job: any, run: any): Promise<OfferOutcome> {
     }
   }
   /* Offers: only posts that offer the searched kind in the searched city. */
-  const offers = run.status === 'SEARCHING' || run.status === 'MATCHING' || run.status === 'PAUSED'
-    ? await storeOffers(db, ar, stage, items, meta) : 0;
+  const stored = run.status === 'SEARCHING' || run.status === 'MATCHING' || run.status === 'PAUSED'
+    ? await storeOffers(db, ar, stage, items, meta) : { stored: 0, useful: 0 };
+  const offers = stored.stored;
   await db.rpc('find_property_book_actor_cost', {
     p_actor_run_id: ar.id, p_status: bookStatus, p_actual_micros: micros, p_cost_basis: basis, p_results_billed: billed,
     p_items_fetched: items.length, p_offers: offers, p_error: bookStatus === 'SUCCEEDED' ? null : `RUN_${status}: ${scrub(String(r.statusMessage ?? ''))}`,
   });
-  return out({ outcome: 'DONE', resultCount: offers, costUsd: micros != null ? micros / 1e6 : null, metadata: { offers, billed } });
+  /* Paid-for posts that yielded nothing: record the field NAMES the Actor returned (never
+     values), so an unverified output shape (Telegram, 2026-10-18: 1000 posts, 0 offers) can
+     be fixed from evidence instead of guessed. */
+  const shape = offers === 0 && items.length
+    ? { rawKeys: [...new Set(items.slice(0, 5).flatMap((i) => (i && typeof i === 'object' ? Object.keys(i as Record<string, unknown>) : [])))].slice(0, 60) }
+    : {};
+  return out({ outcome: 'DONE', resultCount: offers, costUsd: micros != null ? micros / 1e6 : null, metadata: { offers, billed, useful: stored.useful, ...shape } });
 }
 
 /**
@@ -341,9 +387,11 @@ function targetOf(item: { url: string | null; parentUrl: string | null; group: {
   return targets.find((t) => { const k = communityKey(t.url); return k != null && keys.includes(k); }) ?? null;
 }
 
-async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[], meta: Record<string, any>): Promise<number> {
+async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[], meta: Record<string, any>): Promise<{ stored: number; useful: number }> {
   const search = (meta.search ?? {}) as { transaction?: string; city?: string };
-  if (search.transaction !== 'SALE' && search.transaction !== 'RENT') return 0;
+  if (search.transaction !== 'SALE' && search.transaction !== 'RENT') return { stored: 0, useful: 0 };
+  const criteria = (meta.criteria ?? null) as CampaignCriteria | null;
+  let useful = 0;
   const network = OFFER_STAGE_NETWORK[stage];
   /* Normalized one raw item at a time so each post keeps its own photos (normalize.ts carries none). */
   const normalized = items.flatMap((raw) => normalizeDataset(STAGE_OUTPUT[stage as Stage], network, [raw], null)
@@ -367,6 +415,8 @@ async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[]
   let stored = 0; let failed = 0; let firstError: string | null = null;
   const now = new Date().toISOString();
   for (const item of normalized) {
+    /* Telegram channel posts: the public post link from channel + message id (see telegramPostUrl). */
+    if (!item.url && network === 'TELEGRAM') item.url = telegramPostUrl(item.parentUrl, item.externalId);
     if (item.kind !== 'POST' || !item.url || !/^https:\/\//.test(item.url) || seen.has(item.externalId)) continue;
     seen.add(item.externalId);
     /* Attributed to the community it came from; a keyword search (TikTok) was run for the searched city. */
@@ -394,12 +444,17 @@ async function storeOffers(db: any, ar: any, stage: OfferStage, items: unknown[]
       updated_at: now,
     };
     const { error } = await db.from('supply_observations').upsert(row, { onConflict: 'source_id,external_id' });
-    if (!error) stored += 1;
+    if (!error) {
+      stored += 1;
+      /* Could this post fit the request at all (exact, potential or a close alternative)? */
+      if (criteria && judgeOffer({ id: row.external_id, ...row, district: row.district ?? null } as never, criteria).category !== 'REJECTED') useful += 1;
+    }
     else { failed += 1; firstError ??= scrub(String(error.message ?? error)); }
   }
   /* A paid-for offer that could not be stored is a loss, never silent. */
   if (failed) console.error(JSON.stringify({ event: 'find_property_offer_store_failed', actorRunId: ar.id, failed, stored, error: firstError }));
-  return stored;
+  /* Without the request (rows queued before strict matching) a probe never stops its network. */
+  return { stored, useful: criteria ? useful : stored };
 }
 
 /**
@@ -428,7 +483,7 @@ export async function finishOfferCampaign(db: any, runId: string): Promise<numbe
     const datasetId = ar.dataset_id ?? r?.defaultDatasetId ?? null;
     if (datasetId) ({ items, total } = await datasetItems(String(datasetId), Number(ar.requested_limit) + 10).catch(() => ({ items: [] as unknown[], total: null })));
     const offers = items.length
-      ? await storeOffers(db, ar, ar.stage as OfferStage, items, await offerMetaFor(db, ar)).catch(() => 0) : 0;
+      ? await storeOffers(db, ar, ar.stage as OfferStage, items, await offerMetaFor(db, ar)).then((r) => r.stored).catch(() => 0) : 0;
     const billed = total ?? (items.length || Number(r?.stats?.datasetItems ?? 0));
     const cost = r ? runCost(r, billed) : { micros: null, basis: 'UNKNOWN' };
     await db.rpc('find_property_book_actor_cost', { p_actor_run_id: ar.id, p_status: 'ABORTED', p_actual_micros: cost.micros,

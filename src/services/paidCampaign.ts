@@ -22,6 +22,66 @@ export interface CampaignPreview {
   plannedByNetwork: Record<OfferNetwork, number>;
   unavailableNetworks: Array<{ network: OfferNetwork; reason: 'NO_READY_ACTOR' | 'NO_KNOWN_SOURCE' }>;
   skippedForBudget: number;
+  /** The temporary TEST amount, offered only to admins / listed testers while Admin keeps it on. */
+  testOption?: { credits: number } | null;
+  testCampaign?: boolean;
+}
+
+/* ── A campaign's own results (find-property-run action 'results') ─────────────────── */
+export type MatchCategory = 'EXACT' | 'POTENTIAL' | 'ALTERNATIVE' | 'REJECTED';
+export type CheckKey = 'transaction' | 'city' | 'district' | 'propertyType' | 'price' | 'area' | 'rooms' | 'bedrooms' | 'buildingStatus' | 'fresh';
+export interface MatchCheck { key: CheckKey; state: 'MATCH' | 'UNVERIFIED' | 'FAIL'; expected: string | null; actual: string | null }
+export interface CampaignCriteria {
+  transaction: 'SALE' | 'RENT'; city: string | null; districts: string[];
+  propertyType: string | null;
+  priceUsd: { min: number | null; max: number | null } | null; areaSqm: { min: number | null; max: number | null } | null;
+  rooms: { min: number | null; max: number | null } | null; bedrooms: { min: number | null; max: number | null } | null;
+  buildingStatuses: string[];
+}
+export interface CampaignOutcome {
+  fetched: number; candidates: number; unique: number; duplicates: number;
+  exact: number; potential: number; alternative: number; rejected: number;
+  rejectedBy: Partial<Record<string, number>>; available: number;
+  /** How these results were captured (campaignResults.ts): at settlement, or rebuilt later. */
+  provenance?: { captured: 'CAMPAIGN_END' | 'RECONSTRUCTED'; verified: boolean; bookedOffers: number; attributedOffers: number; changedAfterEnd: number; fxSources: string[] };
+}
+export interface CampaignSettlement {
+  status: 'HELD' | 'SETTLING' | 'SETTLED' | 'RELEASED' | string;
+  reservedCredits: number | null; chargedCredits: number | null; releasedCredits: number | null; settledAt?: string | null;
+}
+export interface CampaignResultItem {
+  id: string; category: MatchCategory; rank: number; checks: MatchCheck[]; rejectReasons: string[]; duplicates: number;
+  url: string | null; network: string | null; title: string | null; excerpt: string;
+  priceUsd: number | null; price: { amount: number; currency: string } | null;
+  areaSqm: number | null; rooms: number | null; bedrooms: number | null; floor: number | null; totalFloors: number | null;
+  propertyType: string | null; city: string | null; district: string | null; publishedAt: string | null;
+  images: string[]; duplicateUrls: string[];
+}
+export interface CampaignResults {
+  run: { id: string; status: string; createdAt: string; completedAt: string | null; searchId: string | null; originalText: string | null; criteria: CampaignCriteria };
+  outcome: CampaignOutcome | null;
+  settlement: CampaignSettlement;
+  view: 'MATCHES' | 'EXACT' | 'POTENTIAL' | 'ALTERNATIVE'; sort: string; page: number; pageSize: number; total: number;
+  items: CampaignResultItem[];
+}
+
+export async function campaignResults(runId: string, opts: { view?: string; sort?: string; page?: number; pageSize?: number } = {}): Promise<{ data: CampaignResults | null; reasonCode: string | null }> {
+  const r = await invoke({ action: 'results', runId, ...opts });
+  return r.status === 200 && r.data?.success ? { data: r.data as CampaignResults, reasonCode: null } : { data: null, reasonCode: r.reasonCode ?? 'LOAD_FAILED' };
+}
+
+/** Admin only: recorded campaign economics. VAT / payment fees stay null (not modelled). */
+export interface CampaignEconomics {
+  id: string; status: string; createdAt: string; completedAt: string | null;
+  revenueCredits: number | null; revenueUsd: number | null; reservedCredits: number | null;
+  providerBudgetUsd: number | null; providerCostUsd: number | null; providerReservedUsd: number; providerCostComplete: boolean;
+  budgetUtilization: number | null; grossSpreadUsd: number | null; vatUsd: null; paymentFeesUsd: null; netMarginUsd: null;
+  outcome: CampaignOutcome | null; costPerAvailableUsd: number | null;
+  actorRuns: Array<{ actorKey: string; stage: string; network: string; status: string; requestedLimit: number | null; reservedUsd: number; actualUsd: number | null; costBasis: string | null; providerRunId: string | null; billed: number | null; fetched: number | null; offers: number | null; error: string | null }>;
+}
+export async function adminCampaignEconomics(limit = 20): Promise<CampaignEconomics[] | null> {
+  const r = await invoke({ action: 'admin_campaigns', limit });
+  return r.status === 200 && Array.isArray(r.data?.campaigns) ? r.data.campaigns as CampaignEconomics[] : null;
 }
 
 export interface CampaignState {
@@ -67,6 +127,13 @@ export async function startCampaign(subscriptionId: string, credits: number, ide
     confirm: { priceCredits: credits, acceptedTerms: true },
   });
   return { runId: r.data?.runId ? String(r.data.runId) : null, reasonCode: r.data?.runId ? null : r.reasonCode };
+}
+
+/** The temporary test amount when this account may use it (admins / listed testers, Admin switch on). */
+export async function testCampaignOption(): Promise<{ credits: number } | null> {
+  const r = await invoke({ action: 'test_option' }).catch(() => null);
+  const o = r?.data?.testOption;
+  return o && Number.isFinite(Number(o.credits)) ? { credits: Number(o.credits) } : null;
 }
 
 export async function stopCampaign(runId: string): Promise<boolean> {
@@ -123,5 +190,8 @@ export function takeDeepConsent(searchId: string, now = Date.now()): DeepConsent
   } catch { return null; }
 }
 
-/** Where a campaign's results are shown: the search's paid view (social offers only). */
+/** Every paid campaign's own, stable results page. */
+export const campaignResultsPath = (runId: string) => `/find-property/campaign/${encodeURIComponent(runId)}`;
+
+/** The search's mixed paid view (social offers re-ranked with portals) — kept for old links. */
 export const paidResultsPath = (searchId: string) => `/find-property/search/${encodeURIComponent(searchId)}?view=paid&fp_socialOnly=true&page=1`;

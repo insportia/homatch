@@ -36,6 +36,9 @@ import {
 import { retentionBlockedIds } from '../_shared/retentionGuard.ts';
 import { serviceBackendEnabled, serviceDisabledBody, serviceState, type ServiceKey } from '../_shared/serviceControl.ts';
 
+/* One OpenAI call per chat turn; see the fetch below. */
+const OPENAI_REQUEST_TIMEOUT_MS = 130_000;
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -585,6 +588,10 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   try {
     r = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
+      /* Bounded below the platform's 150 s response limit: a provider that hangs
+         ends in the catch below, which gives the hold back, instead of the
+         platform killing this request with the hold still taken. */
+      signal: AbortSignal.timeout(OPENAI_REQUEST_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: MODEL, instructions, input: msgs, tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'auto', store: false,
         /* 'low' was the root cause of one-search-one-link answers: it stops

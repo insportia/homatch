@@ -56,6 +56,34 @@ interface HealthResult {
     global_blocked: boolean;
     by_provider: Record<string, SpendByProvider>;
   };
+  /** Queues and stuck work (supabase/functions/_shared/opsHealth.ts). */
+  ops?: { level: OpsLevel; checks: OpsCheck[] };
+}
+
+type OpsLevel = 'ok' | 'warn' | 'alert';
+interface OpsCheck { key: string; count: number | null; oldestAgeSec: number | null; level: OpsLevel }
+
+/* The checks this page knows how to name; an unknown key still renders, by its key. */
+const OPS_LABEL_KEYS: Record<string, string> = {
+  discovery_queue_open: 'admin_ops_discovery_queue_open',
+  discovery_queue_lease_lapsed: 'admin_ops_discovery_queue_lease_lapsed',
+  verify_tasks_open: 'admin_ops_verify_tasks_open',
+  verify_tasks_dead_24h: 'admin_ops_verify_tasks_dead_24h',
+  marketplace_runs_open: 'admin_ops_marketplace_runs_open',
+  native_match_queue: 'admin_ops_native_match_queue',
+  campaigns_stuck_finishing: 'admin_ops_campaigns_stuck_finishing',
+  campaigns_past_deadline: 'admin_ops_campaigns_past_deadline',
+  verify_jobs_long_running: 'admin_ops_verify_jobs_long_running',
+  reservations_overdue: 'admin_ops_reservations_overdue',
+  find_buyers_runs_unbooked: 'admin_ops_find_buyers_runs_unbooked',
+  find_property_runs_unbooked: 'admin_ops_find_property_runs_unbooked',
+};
+
+function fmtAge(sec: number | null): string {
+  if (sec == null) return '—';
+  if (sec < 3600) return `${Math.max(1, Math.round(sec / 60))}m`;
+  if (sec < 172_800) return `${Math.round(sec / 3600)}h`;
+  return `${Math.round(sec / 86_400)}d`;
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -320,6 +348,40 @@ export default function AdminHealthPage() {
             {Object.entries(health.spend_summary.by_provider).map(([k, v]) => (
               <SpendBar key={k} label={k} spent={v.spent} cap={v.cap} pct={v.pct} blocked={v.blocked} />
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Queues and stuck work */}
+      {health?.ops && (
+        <Card className={cn(health.ops.level === 'alert' && 'border-destructive/40', health.ops.level === 'warn' && 'border-amber-500/40')}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-primary" /> {t('admin_ops_title')}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">{t('admin_ops_subtitle')}</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {health.ops.checks.map((c) => (
+                <div key={c.key} className="flex items-center justify-between gap-3 py-1.5 border-b border-border/30 last:border-0 text-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <StatusDot ok={c.level === 'ok'} degraded={c.level === 'warn'} />
+                    <span className="truncate">{OPS_LABEL_KEYS[c.key] ? t(OPS_LABEL_KEYS[c.key]) : c.key}</span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground tabular-nums">
+                    <span>{c.count == null ? t('admin_ops_unreadable') : c.count}</span>
+                    <span title={t('admin_ops_oldest')}>{fmtAge(c.oldestAgeSec)}</span>
+                    <Badge
+                      variant={c.level === 'alert' ? 'destructive' : 'outline'}
+                      className={cn('text-[13px] px-1.5 py-0', c.level === 'warn' && 'border-amber-500 text-amber-500')}
+                    >
+                      {t(`admin_ops_level_${c.level}`)}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

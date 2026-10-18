@@ -51,6 +51,9 @@ const FALLBACK_SOURCE: Record<string, [string, string]> = {
   FACEBOOK: ['FACEBOOK', 'homatch:fp-fb-post-search'], TIKTOK: ['TIKTOK', 'homatch:fp-tiktok-search'],
   TELEGRAM: ['TELEGRAM', 'homatch:fp-telegram-offers'], INSTAGRAM: ['INSTAGRAM', 'homatch:fp-instagram-offers'],
 };
+/** Stored offers read to rank communities (enough to tell proven ones apart; not a census). */
+const OFFER_EVIDENCE_SAMPLE = 20_000;
+const OFFER_EVIDENCE_DAYS = 180;
 /** A provider run is aborted after its own timeout plus this much slack. */
 const POLL_SLACK_MS = 5 * 60_000;
 const val = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
@@ -77,7 +80,7 @@ export async function loadOfferSettings(db: any): Promise<OfferSettings> {
 /** Actors as the planner sees them: ready = enabled, not quarantined, pricing verified and fresh. */
 export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Record<string, OfferActor>> {
   const { data, error } = await db.from('find_buyers_actor_registry')
-    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size,max_results')
+    .select('actor_key,enabled,emergency_disabled,health,pricing_model,pricing_verified_at,price_per_1k_micros,start_fee_micros,probe_size,max_results,input_contract')
     .in('actor_key', ['FB_POST_SEARCH', 'FB_GROUP_POSTS', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'TELEGRAM_CHANNEL', 'TIKTOK', 'VK_POSTS_COMMENTS']);
   if (error) throw error;
   const fresh = (at: string | null) => Boolean(at) && Date.now() - Date.parse(String(at)) <= maxAgeDays * 86_400_000;
@@ -90,6 +93,7 @@ export async function loadOfferActors(db: any, maxAgeDays: number): Promise<Reco
       startFeeMicros: Number(a.start_fee_micros ?? 0), pricePer1kMicros: Number(a.price_per_1k_micros ?? 0),
       probeSize: Math.max(1, Number(a.probe_size ?? 20)),
       maxResults: a.max_results != null ? Math.max(1, Number(a.max_results)) : undefined,
+      verifiedFields: verifiedFields(a.input_contract),
     };
   }
   return outMap;
@@ -108,17 +112,34 @@ export function offerSourceFromRegistry(r: any): KnownOfferSource | null {
   const network = type === 'SOCIAL_PROFILE' ? PLATFORM_NETWORK[String(r.platform ?? '')] : SOURCE_NETWORK[type];
   if (!network) return null;
   const kind = type === 'SOCIAL_PROFILE' && network === 'FACEBOOK' ? 'FACEBOOK_PAGE' : type;
-  return { id: String(r.id), network, kind, url: String(r.url), city: r.city ?? null, priority: Number(r.priority ?? 5) };
+  return { id: String(r.id), network, kind, url: String(r.url), city: r.city ?? null, priority: Number(r.priority ?? 5),
+    name: typeof r.name === 'string' ? r.name : null, offerEvidence: Number(r.offer_evidence ?? 0) || 0 };
 }
 
 /** Known public communities of the market (registry rows that are not retired, blocked or behind a login). */
 export async function loadOfferSources(db: any, countryCode: string): Promise<KnownOfferSource[]> {
   const { data, error } = await db.from('source_registry')
-    .select('id,platform,source_type,url,city,priority,access_state,lifecycle')
+    .select('id,platform,source_type,name,url,city,priority,access_state,lifecycle')
     .eq('country_code', countryCode).in('source_type', Object.keys(SOURCE_NETWORK))
     .not('lifecycle', 'in', '(BLOCKED,RETIRED)').eq('access_state', 'PUBLIC');
   if (error) throw error;
-  return ((data ?? []) as any[]).map(offerSourceFromRegistry).filter((s): s is KnownOfferSource => s != null);
+  const rows = (data ?? []) as any[];
+  /* Evidence: property offers HOMATCH already stored from each community (planner relevance
+     and order). Best effort: without it every community is judged by its name alone. */
+  const evidence = new Map<string, number>();
+  if (rows.length) {
+    /* Paged (the API returns at most 1000 rows a request), recent offers only, bounded. */
+    const since = new Date(Date.now() - OFFER_EVIDENCE_DAYS * 86_400_000).toISOString();
+    for (let from = 0; from < OFFER_EVIDENCE_SAMPLE; from += 1000) {
+      const { data: seen, error: seenError } = await db.from('supply_observations').select('source_id')
+        .in('source_id', rows.map((r) => r.id)).gte('last_seen_at', since).order('id').range(from, from + 999);
+      if (seenError) break;
+      for (const o of (seen ?? []) as Array<{ source_id: string }>) evidence.set(o.source_id, (evidence.get(o.source_id) ?? 0) + 1);
+      if (!seen || seen.length < 1000) break;
+    }
+  }
+  return rows.map((r) => offerSourceFromRegistry({ ...r, offer_evidence: evidence.get(String(r.id)) ?? 0 }))
+    .filter((s): s is KnownOfferSource => s != null);
 }
 
 export async function planOfferCampaign(db: any, input: {
@@ -273,9 +294,9 @@ async function poll(db: any, job: any, run: any): Promise<OfferOutcome> {
 
 /**
  * The Actor input for one offer run, from its verified schema. A batched run reads every
- * community in `targets` at once; Facebook searches its keyword inside those groups
- * (`search`, in the group Actor's verified schema); TikTok searches every keyword in one
- * run. Rows queued before batching (one `targetUrl`) are built exactly as before.
+ * community in `targets` at once and returns their recent posts (no keyword: the group
+ * Actor's `search` has never been exercised, so it is never relied on); TikTok searches
+ * every keyword in one run (its search mode is proven in production). Rows queued before batching (one `targetUrl`) are built exactly as before.
  */
 export function offerInput(stage: OfferStage, meta: Record<string, any>, limit: number, since: string, contract: InputContract | null):
   { input: Record<string, unknown>; dropped: string[] } {
@@ -288,8 +309,10 @@ export function offerInput(stage: OfferStage, meta: Record<string, any>, limit: 
   const fit = (input: Record<string, unknown>) => fitToSchema({ ...(contract?.defaults ?? {}), ...input }, contract?.schemaProperties);
   switch (stage) {
     case 'FB_GROUP_POSTS': {
-      const { input } = buildInput('FB_GROUP_POSTS', { targetUrls: urls, size: limit, since }, contract);
-      return fit({ ...input, ...(queries[0] ? { search: queries[0] } : {}) });
+      /* The groups' recent posts, read whole. `search` only once its behaviour is VERIFIED
+         (input_contract.verifiedFields); a field merely listed in the schema is never relied on. */
+      const built = buildInput('FB_GROUP_POSTS', { targetUrls: urls, size: limit, since }, contract);
+      return queries[0] && verifiedFields(contract).includes('search') ? fit({ ...built.input, search: queries[0] }) : built;
     }
     case 'TELEGRAM_CHANNEL':
       return buildInput('TELEGRAM_CHANNEL', { targetUrls: urls, size: limit, since }, contract);
@@ -300,6 +323,14 @@ export function offerInput(stage: OfferStage, meta: Record<string, any>, limit: 
     default:
       return buildInput(stage as Stage, { query: queries[0] ?? meta.query ?? null, targetUrls: urls, targetUrl: urls[0] ?? null, size: limit, since }, contract);
   }
+}
+
+/** Input fields verified against a real run: registry input_contract.verifiedFields (array or {field: true}). */
+export function verifiedFields(contract: unknown): string[] {
+  const v = (contract as { verifiedFields?: unknown } | null)?.verifiedFields;
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string');
+  if (v && typeof v === 'object') return Object.entries(v as Record<string, unknown>).filter(([, ok]) => ok === true).map(([k]) => k);
+  return [];
 }
 
 /** Which of a batched run's communities a post came from (its group / channel / profile URL). */

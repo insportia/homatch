@@ -9,6 +9,7 @@
 // discovery_query_queue stays the queue (provider APIFY_MEMO23).
 
 import { buildPropertyDna, type PropertyDna } from '../../../../src/research-core/findBuyers/propertyDna.ts';
+import { subtypeDef, subtypeRelation } from '../../../../src/research-core/findBuyers/propertyFamily.ts';
 import { batchSourceReads } from '../../../../src/research-core/findBuyers/batching.ts';
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { cappedBudget, decideTestCap, parseTestCap } from '../../../../src/research-core/findBuyers/testCap.ts';
@@ -40,13 +41,24 @@ export interface FindBuyersSettings {
   priceBook: unknown;
   /** find_buyers_financing.lowDownPaymentRatio: the DOWN_PAYMENT_LOW risk heuristic (default 0.1). */
   lowDownPaymentRatio: number;
+  /** FB_KEYWORD_SEARCH: phrases per run, search window in days. */
+  fbKeyword: { batchSize: number; days: number };
 }
 
 const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
   'provider_disabled_list', 'find_buyers_telegram_preference', 'find_buyers_financing',
+  'find_buyers_fb_keyword_search',
 ];
+
+/** FB_KEYWORD_SEARCH knobs (Admin): phrases per run and how far back posts are read (≤ the 30-day rule). */
+export function fbKeywordSettings(raw: unknown): { batchSize: number; days: number } {
+  const o = (raw ?? {}) as { batchSize?: unknown; days?: unknown };
+  const b = Math.round(Number(o.batchSize));
+  const d = Math.round(Number(o.days));
+  return { batchSize: Number.isFinite(b) && b > 0 ? Math.min(10, b) : 6, days: Number.isFinite(d) && d > 0 ? Math.min(30, d) : 30 };
+}
 
 /** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
 export function apifyDisabledByAdmin(list: unknown): boolean {
@@ -72,6 +84,7 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     sampling: m.get('find_buyers_sampling') ?? null,
     priceBook: m.get('find_buyers_openai_price_book') ?? null,
     lowDownPaymentRatio: lowDownPaymentRatio(m.get('find_buyers_financing') ?? null),
+    fbKeyword: fbKeywordSettings(m.get('find_buyers_fb_keyword_search')),
   };
 }
 
@@ -112,8 +125,11 @@ const MODEL_QUERY_SCHEMA = {
       queries: {
         type: 'array', maxItems: 12,
         items: {
-          type: 'object', additionalProperties: false, required: ['language', 'query'],
-          properties: { language: { type: 'string', enum: [...SEARCH_LANGUAGES] }, query: { type: 'string', maxLength: 100 } },
+          type: 'object', additionalProperties: false, required: ['language', 'query', 'tier'],
+          properties: {
+            language: { type: 'string', enum: [...SEARCH_LANGUAGES] }, query: { type: 'string', maxLength: 100 },
+            tier: { type: 'string', enum: ['EXACT', 'SEMANTIC', 'NEAR', 'SIZE', 'INVESTOR'] },
+          },
         },
       },
     },
@@ -126,7 +142,12 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
   /* A model phrasing is kept only when it reads as explicit demand of the
      campaign's own side (a generic "looking for a flat" pulls rentals/jobs). */
   const wanted = dna.transaction === 'RENT' ? 'RENT_SEEKER' : 'BUY_SEEKER';
-  const onSide = (rows: Array<{ language?: unknown; query?: unknown }>) => rows.filter((r) => classifyDemand(String(r?.query ?? '')).role === wanted);
+  /* …and names THIS property: its family, never a contradicting subtype ("office" for a warehouse). */
+  const onSide = <R extends { language?: unknown; query?: unknown }>(rows: R[]) => rows.filter((r) => {
+    const reading = classifyDemand(String(r?.query ?? ''));
+    return reading.role === wanted && reading.propertyType === (dna.family ?? 'APARTMENT')
+      && subtypeRelation(dna.subtype ?? null, reading.subtypes ?? []) !== 'CONFLICT';
+  });
   const { data: cached } = await db.from('find_buyers_query_cache')
     .select('queries').eq('dna_key', dna.dnaKey).eq('plan_version', QUERY_PLAN_VERSION).maybeSingle();
   if (cached?.queries) return mergeModelQueries(base, onSide(cached.queries as any[]));
@@ -136,19 +157,27 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
      proposes phrasings; deterministic code validates every one (schema, six
      languages, on-side demand reading, per-language cap) before any is used. */
   const family = dna.family ?? 'APARTMENT';
+  const sub = subtypeDef(dna.subtype);
+  /* What it is in words a seeker uses: the subtype's English noun, else the family's. */
+  const kind = sub ? sub.noun.en : family.toLowerCase();
   const ask = {
-    transaction: dna.transaction, family, propertyType: dna.propertyType,
+    transaction: dna.transaction, family, subtype: dna.subtype ?? null, kind, propertyType: dna.propertyType,
+    title: dna.title ?? null, description: dna.descriptionExcerpt ?? null,
     city: dna.city, district: dna.district, neighborhood: dna.neighborhood,
-    bedrooms: dna.bedrooms, rooms: dna.rooms, areaSqm: dna.areaSqm, price: dna.price, currency: dna.currency,
-    priceBand: dna.tolerances.price, features: dna.amenities, condition: dna.condition, newBuild: dna.newBuild,
+    bedrooms: dna.bedrooms, rooms: dna.rooms, bathrooms: dna.bathrooms ?? null, areaSqm: dna.areaSqm, floor: dna.floor,
+    price: dna.price, currency: dna.currency, priceBand: dna.tolerances.price,
+    features: [...dna.amenities, ...(dna.features ?? [])].slice(0, 20), condition: dna.condition, newBuild: dna.newBuild,
+    constructionStatus: dna.constructionStatus ?? null,
     likelyProfiles: (strategy?.personas ?? []).map((p) => p.key),
     existing: base.queries.filter((q) => q.kind === 'demand').map((q) => `${q.language}: ${q.query}`),
   };
   const verb = dna.transaction === 'RENT' ? 'RENT' : 'BUY';
-  const res = await openAiJson<{ queries: Array<{ language: string; query: string }> }>(book,
-    `You write short social-media search phrases that real people in Georgia write when they personally WANT TO ${verb} a ${family.toLowerCase()} like this one (family: ${family}). `
-    + `Think about who realistically wants it (likelyProfiles, budget, area) and how they phrase a request in everyday, colloquial language. `
-    + `Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording, with an explicit ${dna.transaction === 'RENT' ? 'renting' : 'purchase'} verb and the correct noun for a ${family.toLowerCase()}. `
+  const res = await openAiJson<{ queries: Array<{ language: string; query: string; tier: string }> }>(book,
+    `You write short social-media search phrases that real people in Georgia write when they personally WANT TO ${verb} a ${kind} like this one (family: ${family}${dna.subtype ? `, subtype: ${dna.subtype}` : ''}). `
+    + `Use only the facts given (title, description, place, size, price); never invent a feature, a project or a budget the property does not state. `
+    + `Think about who realistically wants it (likelyProfiles, budget, area, intended use) and how they phrase a request in everyday, colloquial language, with local spellings and place aliases. `
+    + `Two natural phrases per language (ka, ru, en, ar, he, tr), different from the existing ones, native wording and correct grammar, with an explicit ${dna.transaction === 'RENT' ? 'renting' : 'purchase'} verb and the correct noun for a ${kind} — never the word for a different kind of property${family !== 'APARTMENT' ? ' (never "apartment")' : ''}. `
+    + `Label each with a tier: EXACT (the property's own place and kind), SEMANTIC (a natural request at city level), NEAR (a neighbouring area), SIZE (its stated size), INVESTOR (only if an investor would plausibly buy it). `
     + `A request may name the city and a budget without the exact district — that is still a seeker. Never a phrase an owner, seller or agent would write (no "for sale", "selling", "offer"). Never a bare "looking for". No hashtags, no quotes.`,
     ask, MODEL_QUERY_SCHEMA, { maxTokens: 700 });
   await recordAiCost(db, { key: `ai:queries:${matchingJobId}`, matchingJobId, kind: 'AI', operation: 'QUERY_PLAN', result: res, metadata: { dnaKey: dna.dnaKey } })
@@ -245,7 +274,8 @@ export function socialJobRow(job: PlannedSocialJob, ctx: { matchingJobId: string
     priority: job.priority,
     metadata: {
       stage: job.stage, actorKey: job.actorKey, arm: job.arm, size: job.size, query: job.query, targetUrl: job.targetUrl,
-      sourceId: job.sourceId, reason: job.reason, step: ctx.step, tranche: ctx.tranche, ...(job.batch?.length ? { batch: job.batch } : {}), ...(ctx.parent ?? {}),
+      sourceId: job.sourceId, reason: job.reason, step: ctx.step, tranche: ctx.tranche, ...(job.batch?.length ? { batch: job.batch } : {}),
+      ...(job.queries?.length ? { queries: job.queries } : {}), ...(ctx.parent ?? {}),
     },
     /* The provider estimate is decided at reservation time against the live
        registry price; the queue row carries no guess. */
@@ -335,6 +365,8 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
     rooms: f.rooms, bedrooms: f.bedrooms, floor: f.floor, totalFloors: f.total_floors, condition: f.condition,
     buildingType: f.building_type, newBuild: f.new_build, parking: f.parking, balcony: f.balcony, terrace: f.terrace,
     elevator: f.elevator, furnished: f.furnished, view: f.view,
+    bathrooms: f.bathrooms, constructionStatus: f.construction_status, heating: f.heating, security: f.security, yard: f.yard,
+    airConditioning: f.air_conditioning, features: f.features, description: f.description, sourceLanguage: f.source_language,
   });
 
   const { error } = await db.from('find_buyers_campaigns').upsert({
@@ -362,7 +394,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   /* Several known communities of one kind are read in one run (batching.ts): fewer start
      fees, fewer of the Actor's concurrency slots, the same per-source attribution. */
   const jobs = batchSourceReads(initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null,
-    depth: strategy.depth, actorHistory: await actorHistory(db) }), { maxResults: Object.fromEntries(Object.entries(actors).map(([k, a]) => [k, a.maxResults])) });
+    depth: strategy.depth, actorHistory: await actorHistory(db), keywordBatchSize: settings.fbKeyword?.batchSize }), { maxResults: Object.fromEntries(Object.entries(actors).map(([k, a]) => [k, a.maxResults])) });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
   /* TWO PHASES (campaignPhases.ts): Phase 1's time box and its spend ceiling,
      planned from this campaign's own probes and the registry's prices. */

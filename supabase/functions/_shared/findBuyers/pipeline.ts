@@ -20,13 +20,13 @@ import {
   type IntentContext, type IntentVerdict,
 } from '../../../../src/research-core/findBuyers/intent.ts';
 import { personKey, contentFingerprint } from '../../../../src/research-core/findBuyers/identity.ts';
-import { scoreLead, type LeadSignal } from '../../../../src/research-core/findBuyers/leadScore.ts';
+import { scoreLead, queriesMatchingText, type LeadSignal } from '../../../../src/research-core/findBuyers/leadScore.ts';
 import { detectLanguage } from '../../../../src/research-core/findBuyers/languages.ts';
 import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuyers/explain.ts';
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
 import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-core/findBuyers/freshness.ts';
 import { dateProvenance, emptyDispositions, freshnessBucket, hardGate, publicIntent, type DispositionCounts } from '../../../../src/research-core/findBuyers/demandTaxonomy.ts';
-import { classifyDemand, classifyComment, boundModelReading, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
+import { classifyDemand, classifyComment, boundModelReading, withAuthorEvidence, ADVERTISER_ROLES, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { classifyBuyerIntent } from '../../../../src/research-core/findBuyers/buyerIntent.ts';
 import { decideCommentSampling } from '../../../../src/research-core/findBuyers/commentSampling.ts';
 import { qualify, legacyIntentClass, QUALIFICATION_VERSION, type Qualification } from '../../../../src/research-core/findBuyers/qualify.ts';
@@ -69,7 +69,7 @@ export function sourceKindOf(stage: Stage): 'GROUP' | 'PAGE' | 'SEARCH' | 'AD' |
   if (stage === 'FB_GROUP_POSTS') return 'GROUP';
   if (stage === 'FB_PAGE_POSTS') return 'PAGE';
   if (stage === 'FB_AD_LIBRARY') return 'AD';
-  if (stage === 'FB_POST_SEARCH') return 'SEARCH';
+  if (stage === 'FB_POST_SEARCH' || stage === 'FB_KEYWORD_SEARCH') return 'SEARCH';
   return null;
 }
 
@@ -126,6 +126,8 @@ export interface PipelineCtx {
   /** The items ARE stored rows of another collector (native Telegram): their external ids are
    *  used verbatim (no m23: prefix) and, with `reusing`, nothing is upserted or re-written. */
   verbatimIds?: boolean;
+  /** The search phrases of a keyword / post-search run (provenance on each lead). */
+  searchQueries?: string[] | null;
 }
 
 export interface PipelineResult {
@@ -380,6 +382,10 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
 
   const assessed: Assessed[] = [];
   const postCtx = new Map<string, ParentContext>();
+  /* Authors who advertise homes in this read: their "looking for" posts are a broker's. */
+  const authorKey = (it: { author: { id?: string | null; url?: string | null; name?: string | null } }) => it.author.id ?? it.author.url ?? it.author.name ?? null;
+  const advertisers = new Set(flat.filter(({ item }) => item.kind === 'POST' && ADVERTISER_ROLES.includes(classifyDemand(item.text).role))
+    .map(({ item }) => authorKey(item)).filter((k): k is string => Boolean(k)));
   for (const { item, inlineParent, ageDays: freshAge } of flat) {
     const signalId = idMap.get(extId(item));
     if (!signalId) { out.dispositions.UNDECIDED++; continue; }
@@ -409,6 +415,8 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       : classifyDemand(item.text, { kind: ictx.kind });
     const cached = prior?.intent_json?.m23cache?.[cacheKey];
     if (reading.needsModel && cached?.role) reading = boundModelReading(reading, { role: cached.role, transaction: cached.transaction });
+    const aKey = authorKey(item);
+    reading = withAuthorEvidence(reading, { name: item.author.name, alsoAdvertises: aKey != null && advertisers.has(aKey) });
     if (item.kind === 'POST') {
       postCtx.set(item.externalId, {
         externalId: item.externalId, url: item.url, signalId, similarity, stance: facts.stance, role: reading.role,
@@ -728,6 +736,7 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
        parent post's publication date, never on the time it was observed. */
     language: a.language, publishedAt: a.item.publishedAt ?? (a.item.kind === 'COMMENT' ? a.parent?.publishedAt ?? null : null),
     explanation: JSON.stringify(a.why),
+    ...(ctx.searchQueries?.length ? { foundBy: { queries: ctx.searchQueries, matched: queriesMatchingText(ctx.searchQueries, a.item.text ?? '') } } : {}),
     ...(a.item.kind === 'COMMENT' && a.parent ? {
       parentCommentCount: a.parent.commentCount ?? null,
       parentAnalyzed: a.parentAnalyzed ?? null,

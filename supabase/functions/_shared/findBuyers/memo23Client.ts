@@ -35,9 +35,16 @@ export function providerConfigured(): boolean {
   return Boolean(Deno.env.get('APIFY_API_TOKEN'));
 }
 
-/** memo23~name or memo23/name; nothing else may be executed. */
+/** The only non-memo23 Actors that may run, each by its exact id (owner decision, dated). */
+export const ALLOWED_THIRD_PARTY_ACTORS: ReadonlySet<string> = new Set([
+  /* Find Buyers keyword discovery across public Facebook posts (owner, 2026-10-18). */
+  'tropical_thunderstuck~facebook-post-search',
+]);
+
+/** memo23~name or memo23/name, or one exact id above; nothing else may be executed. */
 export function assertMemo23ActorId(actorId: string): string {
   const id = String(actorId ?? '').trim().replace('/', '~');
+  if (ALLOWED_THIRD_PARTY_ACTORS.has(id)) return id;
   if (!/^memo23~[a-z0-9][a-z0-9-]{1,80}$/.test(id)) throw new Memo23Error('ACTOR_NOT_ALLOWED', 400, false);
   return id;
 }

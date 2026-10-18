@@ -77,9 +77,15 @@ test('no edge code reads the retired providers’ credentials', () => {
   assert.deepEqual(hits, [], `retired provider credentials are read:\n${hits.join('\n')}`);
 });
 
-test('the memo23 client is the only Apify door, runs memo23 Actors only, and never leaks the token', () => {
+test('the memo23 client is the only Apify door, runs memo23 Actors (plus the owner-named exact ids) only, and never leaks the token', () => {
   const src = code(MEMO23_CLIENT);
   assert.match(src, /\^memo23~\[a-z0-9\]/, 'Actor ids are restricted to memo23');
+  /* Plus exactly the third-party Actors the owner named (2026-10-18: Facebook keyword search),
+     each by its full id — never a pattern, never a whole publisher. */
+  const third = src.match(/ALLOWED_THIRD_PARTY_ACTORS[^=]*= new Set\(\[([\s\S]*?)\]\)/);
+  assert.ok(third, 'the third-party allowlist is an explicit set');
+  assert.deepEqual([...third[1].matchAll(/'([^']+)'/g)].map((m) => m[1]), ['tropical_thunderstuck~facebook-post-search']);
+  assert.match(src, /if \(ALLOWED_THIRD_PARTY_ACTORS\.has\(id\)\) return id;/);
   assert.match(src, /assertMemo23ActorId\(actorId\)/);
   assert.match(src, /maxTotalChargeUsd/, 'every run is capped at its reservation');
   assert.match(src, /function scrub/, 'errors are scrubbed of the token');

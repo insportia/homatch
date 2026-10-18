@@ -11,7 +11,9 @@ const actors = {
   IG_PROFILE_POSTS: { actorKey: 'IG_PROFILE_POSTS', ready: true, startFeeMicros: 40_000, pricePer1kMicros: 800_000, probeSize: 12 },
   VK_POSTS_COMMENTS: { actorKey: 'VK_POSTS_COMMENTS', ready: false, startFeeMicros: 10_000, pricePer1kMicros: 3_600_000, probeSize: 20 },
 };
-const src = (i, network, kind, city = 'Tbilisi') => ({ id: `s${String(i).padStart(3, '0')}`, network, kind, url: `https://x.test/${i}`, city, priority: 5 });
+const URL_OF = { FACEBOOK: (i) => `https://www.facebook.com/groups/${1000 + i}/`, TELEGRAM: (i) => `https://t.me/realestate_${i}`,
+  INSTAGRAM: (i) => `https://www.instagram.com/agency${i}/`, VK: (i) => `https://vk.com/club${i}` };
+const src = (i, network, kind, city = 'Tbilisi') => ({ id: `s${String(i).padStart(3, '0')}`, network, kind, url: URL_OF[network](i), city, priority: 5 });
 const sources = [
   ...Array.from({ length: 42 }, (_, i) => src(i, 'FACEBOOK', 'FACEBOOK_GROUP')),
   ...Array.from({ length: 42 }, (_, i) => src(100 + i, 'TELEGRAM', 'TELEGRAM_GROUP', i % 2 ? 'Batumi' : 'თბილისი')),
@@ -27,7 +29,13 @@ test('a $5 campaign plans within its $3.15 provider budget', () => {
   assert.ok(plan.estimatedMicros <= budget);
   assert.equal(plan.jobs.reduce((s, j) => s + j.estimateMicros, 0), plan.estimatedMicros);
   assert.ok(plan.jobs.some((j) => j.network === 'FACEBOOK') && plan.jobs.some((j) => j.network === 'TELEGRAM') && plan.jobs.some((j) => j.network === 'INSTAGRAM'));
-  assert.ok(plan.skippedForBudget > 0, 'what did not fit is counted');
+  /* One read per group, no keyword copies (2026-10-18): all 42 groups fit a $5 campaign. */
+  const fbGroups = new Set(plan.jobs.filter((j) => j.stage === 'FB_GROUP_POSTS').flatMap((j) => j.targets.map((t) => t.url)));
+  assert.equal(fbGroups.size, 42, 'every group is read');
+  assert.ok(plan.jobs.every((j) => j.stage !== 'FB_GROUP_POSTS' || j.queries.length === 0), 'no keyword is sent to the group Actor');
+  assert.equal(plan.skippedForBudget, 0);
+  const tight = planOfferJobs({ search, networks: ['FACEBOOK', 'TELEGRAM', 'INSTAGRAM', 'VK'], actors, sources, providerBudgetMicros: 1_600_000 });
+  assert.ok(tight.skippedForBudget > 0 && tight.estimatedMicros <= 1_600_000, 'what did not fit is counted');
   assert.deepEqual(plan.unavailable, [{ network: 'VK', reason: 'NO_READY_ACTOR' }]);
 });
 

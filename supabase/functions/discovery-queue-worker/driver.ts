@@ -18,6 +18,16 @@
 //   3. RESCUE campaigns stuck mid-finish (a tick that died between
 //      'classifying' and the ending): release the reservation and say so.
 //
+// CPU ISOLATION (546, campaign 8f6b8544, 2026-10-18). An Edge request gets 2 s of
+// CPU in total. Each unit of CPU-heavy work therefore runs in its OWN request to
+// this function, never in the tick's: every claimed social job ('social_job':
+// dataset parsing + the people-first pipeline), every campaign finish
+// ('finish_campaign': classify, match, settle) and, inside a finish, the native
+// Telegram assessment ('assess_native_telegram'). The tick only claims, dispatches
+// and waits on I/O, so no amount of concurrent work can add up past one request's
+// budget, and a unit that dies takes only itself down: its lease (social job) or
+// its heartbeat (finish, see rescueStuck) brings it back.
+//
 // The driver never calls a retired provider, holds no provider credentials,
 // and does nothing at all while campaign source discovery is switched off
 // and no campaign is waiting.
@@ -56,6 +66,21 @@ const POLL_PRIORITY = 10_000;
 
 const OPEN_SOURCE_STATES = ['PENDING', 'PROCESSING', 'RETRY_WAIT'];
 const STUCK_AFTER_MS = 12 * 60_000;
+/* Finishing (classify + matching + people-first assessment + settlement) takes a few
+   minutes at most; a campaign in 'classifying'/'ranking' this long lost its tick. */
+const FINISH_STUCK_AFTER_MS = 5 * 60_000;
+/* A tick that processed Actor results has spent much of the isolate's CPU: finishing a
+   campaign in the same invocation exceeded the limit (8f6b8544, 2026-10-18, HTTP 546
+   "CPU Time exceeded" right after run-matching). The next tick (one minute) finishes it,
+   unless the window closed this long ago. */
+const FINISH_DEFER_GRACE_MS = 4 * 60_000;
+/* Each dispatched unit's own request: a social job stays inside its 180 s queue lease;
+   a finish inside the 400 s wall clock of a paid Edge worker; the native Telegram
+   assessment inside a finish's heartbeat gap (well under FINISH_STUCK_AFTER_MS). */
+const SOCIAL_JOB_REQUEST_MS = 170_000;
+const FINISH_REQUEST_MS = 390_000;
+const NATIVE_TELEGRAM_REQUEST_MS = 120_000;
+const FINISHING_STATUSES = ['classifying', 'ranking'];
 
 export async function drive(db: any, baseUrl: string, serviceKey: string, body: any) {
   const started = Date.now();
@@ -69,7 +94,7 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
      side: a 150s Telegram job must not starve short social claims. */
   const [sourceJobs, socialJobs] = await Promise.all([
     runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1), 'EDGE'),
-    runSocialJobs(db, settings),
+    runSocialJobs(db, settings, baseUrl, serviceKey),
   ]);
   report.sourceJobs = sourceJobs;
   report.socialJobs = socialJobs;
@@ -82,7 +107,8 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   /* Endings get their own clock: a busy social pass must never starve the
      finishing (and settling) of campaigns whose window closed. */
   report.socialSweep = await sweepStaleActorRuns(db).catch((e) => ({ error: errorText(e) }));
-  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, Date.now());
+  const heavySocialTick = ((socialJobs as any)?.jobs ?? []).some((j: any) => j?.outcome === 'DONE');
+  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, Date.now(), { deferFinish: heavySocialTick });
   report.runs = await advanceRuns(db, baseUrl, serviceKey, Date.now());
   report.pauseExpired = await expirePausedCampaigns(db);
   report.runPauseExpired = await expirePausedRuns(db);
@@ -90,6 +116,14 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   report.runsRescued = await rescueStuckRuns(db);
   report.elapsedMs = Date.now() - started;
   return { success: true, ...report };
+}
+
+/** Keep the request's isolate alive for `work` without holding the response (Edge), or await it (tests).
+ *  Waiting on a dispatched request is I/O: it costs this request no CPU. */
+async function inBackground(work: Promise<unknown>) {
+  const runtime = (globalThis as any).EdgeRuntime;
+  if (typeof runtime?.waitUntil === 'function') { runtime.waitUntil(work); return; }
+  await work;
 }
 
 async function runSourceJobs(
@@ -180,7 +214,7 @@ async function runSourceJobs(
  * the reservation (find_buyers_reserve_actor_run: GLOBAL_BUSY / ACTOR_BUSY),
  * never by this loop.
  */
-async function runSocialJobs(db: any, settings: DiscoverySettings) {
+async function runSocialJobs(db: any, settings: DiscoverySettings, baseUrl: string, serviceKey: string) {
   const started = Date.now();
   const { data: caps } = await db.from('admin_settings').select('value').eq('key', 'discovery_provider_concurrency').maybeSingle();
   const lanes = Math.max(1, Math.min(20, Number(caps?.value?.APIFY_MEMO23) || 4));
@@ -204,7 +238,8 @@ async function runSocialJobs(db: any, settings: DiscoverySettings) {
         .eq('provider', 'APIFY_MEMO23').in('status', ['PENDING', 'RETRY_WAIT', 'PROCESSING']);
       return Number(count || 0) > 0;
     },
-    run: (job) => runSocialJob(db, settings, job),
+    /* Each claimed job runs in its own request (its own CPU budget): see the header. */
+    run: (job) => dispatchSocialJob(baseUrl, serviceKey, job),
   });
   return { lanes, claimed: pool.claimed, maxInFlight: pool.maxInFlight, jobs: pool.results };
 }
@@ -244,7 +279,29 @@ async function runSocialJob(db: any, settings: DiscoverySettings, job: any): Pro
   return { id: job.id, stage: job.metadata?.stage ?? null, outcome: outcome.outcome, status };
 }
 
-async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, started: number) {
+/**
+ * One lane's job, in its own request. A request that dies (546, timeout) leaves the
+ * job PROCESSING under its lease; claim_discovery_source_jobs_v2 puts it back when the
+ * lease lapses, and the replay is re-entrant (cost booked once by cost_booked_at,
+ * stats once by stats_applied_at, assessments/leads unique per campaign).
+ */
+async function dispatchSocialJob(baseUrl: string, serviceKey: string, job: any): Promise<Record<string, unknown>> {
+  const res = await invokeFunction(baseUrl, serviceKey, 'discovery-queue-worker',
+    { mode: 'social_job', jobId: job.id, claimToken: job.claim_token }, SOCIAL_JOB_REQUEST_MS);
+  return (res.data ?? { id: job.id }) as Record<string, unknown>;
+}
+
+/** 'social_job': run one claimed queue job, only while the caller's claim still holds it. */
+export async function runClaimedSocialJob(db: any, jobId: string, claimToken: string) {
+  if (!jobId || !claimToken) return { id: jobId || null, skipped: 'BAD_REQUEST' };
+  const { data: job, error } = await db.from('discovery_query_queue').select('*')
+    .eq('id', jobId).eq('claim_token', claimToken).eq('status', 'PROCESSING').maybeSingle();
+  if (error) throw error;
+  if (!job) return { id: jobId, skipped: 'CLAIM_NOT_HELD' };
+  return runSocialJob(db, await loadDiscoverySettings(db), job);
+}
+
+async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, started: number, opts: { deferFinish?: boolean } = {}) {
   const { data: waiting, error } = await db.from('matching_jobs')
     .select('id,property_id,campaign_id,started_at,discovery_deadline_at,billing_grant,search_languages')
     .eq('status', 'searching_sources')
@@ -311,6 +368,11 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
       }
     }
 
+    if (opts.deferFinish && Date.parse(row.discovery_deadline_at) > Date.now() - FINISH_DEFER_GRACE_MS) {
+      results.push({ jobId: row.id, deferred: 'FINISH_NEXT_TICK' });
+      continue;
+    }
+
     if (!(await claimJobTransition(db, row.id, ['searching_sources'], {
       status: 'classifying', progress: 82, current_step: 'Reading what the sources collected',
     }))) {
@@ -327,55 +389,122 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
           stillOpen: open.length,
         });
       }
-      const summary = {
-        total: list.length,
-        done: list.filter((s) => s.status === 'DONE').length,
-        failed: list.filter((s) => s.status === 'FAILED').length,
-        cancelled: list.filter((s) => s.status === 'CANCELLED').length + open.length,
-        collected: list.reduce((n, s) => n + Number(s.result_count || 0), 0),
-      };
-
-      /* Classify what arrived. Bounded, and skipped when nothing new came in. */
-      let classified: any = null;
-      if (summary.collected > 0) {
-        const res = await invokeFunction(baseUrl, serviceKey, 'classify-signals-v2',
-          { source: 'campaign', batchSize: Math.min(200, Math.max(50, summary.collected)) }, 150_000);
-        classified = res.data;
-      }
-
-      await updateJob(db, row.id, { status: 'ranking', progress: 90, current_step: 'Matching current demand against your property' });
-      const matched = await invokeFunction(baseUrl, serviceKey, 'run-matching-v2', {
-        propertyId: row.property_id, campaignId: row.campaign_id, intentProfileBatchSize: 5000,
-        fxRates: await fetchCurrentFx(),
-      }, 150_000);
-      if (matched.data?.error) throw new Error(String(matched.data.error));
-
-      if (summary.done > 0 && row.campaign_id && Array.isArray(row.search_languages) && row.search_languages.length) {
-        await markLanguagesDiscovered(db, row.campaign_id, row.search_languages).catch(() => undefined);
-      }
-
-      /* FIND BUYERS: the free native Telegram messages go through the same people-first
-         pipeline as every Actor result (a no-op for campaigns without a Find Buyers row). */
-      await loadFindBuyersSettings(db).then((fb) => assessNativeTelegram(db, row.id, fb))
-        .then((r) => r && jobEvent(db, row.id, 'NATIVE_TELEGRAM_ASSESSED', { items: r.items, qualified: r.qualified, weak: r.weak, duplicates: r.duplicates, aiCalls: r.aiCalls }))
-        .catch((e) => jobEvent(db, row.id, 'NATIVE_TELEGRAM_ASSESS_FAILED', { message: errorText(e) }).catch(() => undefined));
-      const result = await finalizeCampaignJob(db, job, grant, settings.freshness, {
-        sourceJobs: summary,
-        internal: {
-          classified: classified?.processed ?? classified?.classified ?? null,
-          matchesCreatedThisPass: Number(matched.data?.matchesCreated || 0),
-          rejectedStaleDemand: Number(matched.data?.rejectedAncientDemand || 0),
-        },
-        noResultsReason: summary.done === 0 ? 'SOURCES_UNAVAILABLE' : 'NO_CURRENT_DEMAND_FOUND',
-      });
-      await updateJob(db, row.id, { queries_run: summary.done, signals_collected: summary.collected }).catch(() => undefined);
-      results.push({ jobId: row.id, ended: result.status, freshMatches: result.freshMatches });
     } catch (error) {
       await failCampaignJob(db, job, grant, 'PIPELINE_ERROR', errorText(error));
       results.push({ jobId: row.id, ended: 'failed', error: errorText(error) });
+      continue;
     }
+    /* The finish itself runs in its own request (header: CPU ISOLATION). */
+    await inBackground(dispatchFinish(db, baseUrl, serviceKey, row.id));
+    results.push({ jobId: row.id, finishing: 'DISPATCHED' });
   }
   return results;
+}
+
+/** Hand a claimed campaign to its own 'finish_campaign' request. A request that dies
+ *  leaves the job in 'classifying'/'ranking' without heartbeats; rescueStuck runs it again. */
+async function dispatchFinish(db: any, baseUrl: string, serviceKey: string, jobId: string) {
+  try {
+    const res = await invokeFunction(baseUrl, serviceKey, 'discovery-queue-worker', { mode: 'finish_campaign', jobId }, FINISH_REQUEST_MS);
+    return res.data;
+  } catch (error) {
+    await jobEvent(db, jobId, 'FINISH_REQUEST_FAILED', { message: errorText(error) }).catch(() => undefined);
+    return null;
+  }
+}
+
+function sourceSummary(list: any[]) {
+  const open = list.filter((s) => OPEN_SOURCE_STATES.includes(s.status)).length;
+  return {
+    total: list.length,
+    done: list.filter((s) => s.status === 'DONE').length,
+    failed: list.filter((s) => s.status === 'FAILED').length,
+    cancelled: list.filter((s) => s.status === 'CANCELLED').length + open,
+    collected: list.reduce((n, s) => n + Number(s.result_count || 0), 0),
+  };
+}
+
+/**
+ * 'finish_campaign': classify what arrived, match again under the 30-day rule, judge the
+ * native Telegram messages, settle and write the ending -- for a job the driver already
+ * moved to 'classifying' (claimJobTransition), so it runs once per claim. Every step is
+ * re-entrant, so a finish that is run again after a dead request (rescueStuck) cannot
+ * duplicate anything: classification takes only PENDING signals, matches are unique per
+ * (property, signal), leads per (campaign, person), and wallet_settle settles a
+ * reservation once (a second call returns the first result as a duplicate).
+ * Each step refreshes updated_at first: the heartbeat rescueStuck reads.
+ */
+export async function finishCampaign(db: any, baseUrl: string, serviceKey: string, jobId: string) {
+  const { data: row, error } = await db.from('matching_jobs')
+    .select('id,property_id,campaign_id,started_at,billing_grant,search_languages,status').eq('id', jobId).maybeSingle();
+  if (error) throw error;
+  if (!row || !FINISHING_STATUSES.includes(row.status)) return { jobId, skipped: row?.status ?? 'NOT_FOUND' };
+  const job: CampaignJobRef = { id: row.id, property_id: row.property_id, campaign_id: row.campaign_id, started_at: row.started_at };
+  const grant = (row.billing_grant ?? null) as ExecutionGrant | null;
+  const settings = await loadDiscoverySettings(db);
+  try {
+    const { data: sources, error: sourcesError } = await db.from('discovery_query_queue')
+      .select('id,provider,status,result_count').eq('matching_job_id', row.id);
+    if (sourcesError) throw sourcesError;
+    const summary = sourceSummary((sources ?? []) as any[]);
+
+    /* Classify what arrived. Bounded, and skipped when nothing new came in. */
+    let classified: any = null;
+    if (summary.collected > 0) {
+      const res = await invokeFunction(baseUrl, serviceKey, 'classify-signals-v2',
+        { source: 'campaign', batchSize: Math.min(200, Math.max(50, summary.collected)) }, 150_000);
+      classified = res.data;
+    }
+
+    await updateJob(db, row.id, { status: 'ranking', progress: 90, current_step: 'Matching current demand against your property' });
+    const matched = await invokeFunction(baseUrl, serviceKey, 'run-matching-v2', {
+      propertyId: row.property_id, campaignId: row.campaign_id, intentProfileBatchSize: 5000,
+      fxRates: await fetchCurrentFx(),
+    }, 150_000);
+    if (matched.data?.error) throw new Error(String(matched.data.error));
+
+    if (summary.done > 0 && row.campaign_id && Array.isArray(row.search_languages) && row.search_languages.length) {
+      await markLanguagesDiscovered(db, row.campaign_id, row.search_languages).catch(() => undefined);
+    }
+
+    /* FIND BUYERS: the free native Telegram messages go through the same people-first
+       pipeline as every Actor result (a no-op for campaigns without a Find Buyers row),
+       in their own request: a dead assessment is recorded and the finish goes on. */
+    await updateJob(db, row.id, { progress: 93 });
+    await invokeFunction(baseUrl, serviceKey, 'discovery-queue-worker', { mode: 'assess_native_telegram', jobId: row.id }, NATIVE_TELEGRAM_REQUEST_MS)
+      .catch((e) => jobEvent(db, row.id, 'NATIVE_TELEGRAM_ASSESS_FAILED', { message: errorText(e) }).catch(() => undefined));
+    await updateJob(db, row.id, { progress: 96 });
+    const result = await finalizeCampaignJob(db, job, grant, settings.freshness, {
+      sourceJobs: summary,
+      internal: {
+        classified: classified?.processed ?? classified?.classified ?? null,
+        matchesCreatedThisPass: Number(matched.data?.matchesCreated || 0),
+        rejectedStaleDemand: Number(matched.data?.rejectedAncientDemand || 0),
+      },
+      noResultsReason: summary.done === 0 ? 'SOURCES_UNAVAILABLE' : 'NO_CURRENT_DEMAND_FOUND',
+    });
+    await updateJob(db, row.id, { queries_run: summary.done, signals_collected: summary.collected }).catch(() => undefined);
+    return { jobId: row.id, ended: result.status, freshMatches: result.freshMatches };
+  } catch (error) {
+    await failCampaignJob(db, job, grant, 'PIPELINE_ERROR', errorText(error));
+    return { jobId: row.id, ended: 'failed', error: errorText(error) };
+  }
+}
+
+/**
+ * 'assess_native_telegram': one finishing campaign's native Telegram assessment. Once per
+ * campaign: a finish run again after a dead request does not judge (or pay the model for)
+ * the same messages twice.
+ */
+export async function assessCampaignTelegram(db: any, jobId: string) {
+  const { data: row } = await db.from('matching_jobs').select('id,status').eq('id', jobId).maybeSingle();
+  if (!row || !FINISHING_STATUSES.includes(row.status)) return { jobId, skipped: row?.status ?? 'NOT_FOUND' };
+  const { count } = await db.from('matching_job_events').select('id', { count: 'exact', head: true })
+    .eq('job_id', jobId).eq('event_type', 'NATIVE_TELEGRAM_ASSESSED');
+  if (Number(count ?? 0) > 0) return { jobId, skipped: 'ALREADY_ASSESSED' };
+  const r = await assessNativeTelegram(db, jobId, await loadFindBuyersSettings(db));
+  if (r) await jobEvent(db, jobId, 'NATIVE_TELEGRAM_ASSESSED', { items: r.items, qualified: r.qualified, weak: r.weak, duplicates: r.duplicates, aiCalls: r.aiCalls });
+  return { jobId, assessed: r ? r.items : 0 };
 }
 
 /**
@@ -548,7 +677,7 @@ async function expirePausedRuns(db: any) {
 
 /** A job left in 'classifying' or 'ranking' by a tick that died. */
 async function rescueStuck(db: any) {
-  const cutoff = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
+  const cutoff = new Date(Date.now() - FINISH_STUCK_AFTER_MS).toISOString();
   const { data, error } = await db.from('matching_jobs')
     .select('id,property_id,campaign_id,started_at,billing_grant')
     .in('status', ['classifying', 'ranking'])
@@ -558,6 +687,18 @@ async function rescueStuck(db: any) {
   if (error) throw error;
   const rescued: string[] = [];
   for (const row of (data ?? []) as any[]) {
+    /* First time: finish again rather than throw the collected results away. Every
+       finishing step is re-entrant (classification skips classified rows, matching
+       upserts, the settlement checks the reservation is still held). */
+    const { count: retried } = await db.from('matching_job_events').select('id', { count: 'exact', head: true })
+      .eq('job_id', row.id).eq('event_type', 'FINISH_RETRY');
+    if (!retried) {
+      if (await claimJobTransition(db, row.id, ['classifying', 'ranking'], { status: 'searching_sources', current_step: 'Finishing the search' })) {
+        await jobEvent(db, row.id, 'FINISH_RETRY', { message: 'The finishing step was interrupted; it runs again with everything collected' }).catch(() => undefined);
+        rescued.push(row.id);
+      }
+      continue;
+    }
     if (!(await claimJobTransition(db, row.id, ['classifying', 'ranking'], { status: 'failed' }))) continue;
     await failCampaignJob(db, row, row.billing_grant ?? null, 'WORKER_STOPPED',
       'the search stopped while finishing; the whole budget was released');

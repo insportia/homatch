@@ -16,7 +16,7 @@ import { sinceFloor } from '../../../../src/research-core/findBuyers/freshness.t
 import { DISCOVERY_STAGES, phase2Category, phase2MayStart, phaseOfStage, probeEstimateMicros, actorBreaker, isEmptyResultMessage, phase1Admission, waitsForPhase1, deepenBuysNewItems } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 /* Stages whose Actor accepts a date floor: never ask for content older than 30 days. */
-const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'FB_POST_SEARCH', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
+const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'FB_POST_SEARCH', 'FB_KEYWORD_SEARCH', 'FB_PAGE_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
 import { abortRun, datasetItems, getRun, Memo23Error, runCost, startRun, TERMINAL_RUN_STATES, scrub } from './memo23Client.ts';
 import { processItems, mergeResults, type CampaignRow, type ParentContext, type FollowUp } from './pipeline.ts';
 import { attributeBatchItems, batchSourceReads, type BatchEntry } from '../../../../src/research-core/findBuyers/batching.ts';
@@ -188,7 +188,13 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     since = new Date(Math.max(Date.parse(since), Math.min(...lasts))).toISOString();
   }
   const limit = Math.max(1, Math.min(Number(reservation.requestedLimit) || Number(actor.probe_size) || 1, Number(actor.max_results) || 100));
-  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, targetUrls: batch.length ? batch.map((b) => b.targetUrl) : null, size: limit, since, country: (campaign as any)?.dna?.countryCode ?? null }, actor.input_contract ?? null);
+  /* Keyword search reads only the admin's window (≤ the 30-day floor above). */
+  if (stage === 'FB_KEYWORD_SEARCH' && since) {
+    const days = settings.fbKeyword?.days ?? 30;
+    since = new Date(Math.max(Date.parse(since), Date.now() - days * 86_400_000)).toISOString();
+  }
+  const keywordList = Array.isArray(meta.queries) ? (meta.queries as unknown[]).map(String).filter(Boolean).slice(0, 10) : null;
+  const { input, dropped } = buildInput(stage, { query: meta.query ?? null, queries: keywordList, targetUrl: meta.targetUrl ?? null, targetUrls: batch.length ? batch.map((b) => b.targetUrl) : null, size: limit, since, country: (campaign as any)?.dna?.countryCode ?? null }, actor.input_contract ?? null);
   /* An input the verified schema would reject, or one that lost its query/target
      in fitting, is never sent: the reservation is released at $0. */
   const problems = essentialMissing(stage, input, actor.input_contract ?? null);
@@ -212,7 +218,7 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     });
     const { data: marked } = await db.from('find_buyers_actor_runs').update({
       status: 'RUNNING', provider_run_id: started.runId, dataset_id: started.datasetId, started_at: new Date().toISOString(),
-      reason: { arm: meta.arm, reason: meta.reason, step: meta.step ?? 0, query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, sourceId: meta.sourceId ?? null, droppedInputKeys: dropped, since },
+      reason: { arm: meta.arm, reason: meta.reason, step: meta.step ?? 0, query: meta.query ?? null, ...(keywordList?.length ? { queries: keywordList } : {}), targetUrl: meta.targetUrl ?? null, sourceId: meta.sourceId ?? null, droppedInputKeys: dropped, since },
     }).eq('id', runId).is('cost_booked_at', null).select('id');
     if (!Array.isArray(marked) || marked.length !== 1) {
       /* The campaign finished while the run was being created (its cost was
@@ -336,6 +342,8 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
          row caps an expansion at the Actor's own maximum (followUpRows). */
       commentProbe: parseSampling(settings.sampling).probe,
+      searchQueries: Array.isArray(meta.queries) ? (meta.queries as unknown[]).map(String).filter(Boolean).slice(0, 10)
+        : typeof meta.query === 'string' && meta.query ? [meta.query] : null,
     }, slice.items);
     perSource.push({ sourceId: sliceSource, items: slice.items.length, qualified: r1.qualified, strong: r1.strong });
     result = result ? mergeResults(result, r1) : r1;
@@ -367,7 +375,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       ...(p.qualified > 0 ? { last_useful_at: new Date().toISOString() } : {}),
     }).eq('id', p.sourceId);
   }
-  if (applyStats && meta.query && ['FB_GROUP_SEARCH', 'TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'LINKEDIN_GROUPS', 'VK_WALL', 'REDDIT_SEARCH', 'QUORA_SEARCH', 'BLUESKY_SEARCH'].includes(stage)) {
+  if (applyStats && meta.query && ['FB_GROUP_SEARCH', 'FB_KEYWORD_SEARCH', 'TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'LINKEDIN_GROUPS', 'VK_WALL', 'REDDIT_SEARCH', 'QUORA_SEARCH', 'BLUESKY_SEARCH'].includes(stage)) {
     await bumpQueryStats(db, network, job.language ?? 'multi', String(meta.query), Number(costMicros || 0), normalized.length, result);
   }
 
@@ -467,7 +475,7 @@ async function followUpRows(db: any, job: any, campaign: any, followUps: FollowU
 }
 
 /** Searches whose first probe in each language must run before any of them deepens. */
-const COVERAGE_FIRST_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_SEARCH', 'FB_POST_SEARCH', 'FB_AD_LIBRARY']);
+const COVERAGE_FIRST_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_SEARCH', 'FB_POST_SEARCH', 'FB_AD_LIBRARY', 'FB_KEYWORD_SEARCH']);
 
 /**
  * Language coverage before depth: a productive Georgian group search must not deepen
@@ -520,6 +528,7 @@ async function deepenRow(db: any, job: any, campaign: any, settings: FindBuyersS
       stage: meta.stage, actorKey: meta.actorKey, language: job.language ?? 'multi', query: meta.query ?? null, targetUrl: meta.targetUrl ?? null,
       sourceId: meta.sourceId ?? null, size: Math.min(decision.nextSize, Number(actor?.max_results ?? 100)), arm,
       ...(Array.isArray(meta.batch) && meta.batch.length ? { batch: meta.batch } : {}),
+      ...(Array.isArray(meta.queries) && meta.queries.length ? { queries: meta.queries } : {}),
       priority: deepenPriority(String(meta.stage), armPriority(stats, null, Number(actor?.priority ?? 50)), Number(actor?.priority ?? 50)), reason: `deepen:${decision.reason}`,
     }, { matchingJobId: job.matching_job_id, propertyId: campaign.property_id, planId: job.search_plan_id ?? null, tranche: Number(meta.tranche ?? 0) + 1, step }),
   };

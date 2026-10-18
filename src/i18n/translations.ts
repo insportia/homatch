@@ -20444,6 +20444,35 @@ const en = {
   fpv_paid_body: 'Homes people offered in public posts. HOMATCH has not verified them: open the original post and check the details with the person who posted it.',
   fpv_paid_empty_title: 'No Deep Search results yet',
   fpv_paid_empty_body: 'Offers from public posts appear here once a Deep Search has finished.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'Phrases per run',
+  fbx_admin_kw_days: 'Search window (days)',
+  fbx_admin_kw_save: 'Save search settings',
+
+  /* ── SYSTEM HEALTH — queues and stuck work ── */
+  admin_ops_title: 'Queues and stuck work',
+  admin_ops_subtitle: 'Waiting work, its oldest item, and anything stuck. Read-only.',
+  admin_ops_unreadable: 'not readable',
+  admin_ops_oldest: 'Oldest item',
+  admin_ops_level_ok: 'OK',
+  admin_ops_level_warn: 'Warning',
+  admin_ops_level_alert: 'Alert',
+  admin_ops_discovery_queue_open: 'Discovery queue: waiting or running',
+  admin_ops_discovery_queue_lease_lapsed: 'Discovery queue: lapsed leases',
+  admin_ops_verify_tasks_open: 'Verify tasks: waiting or running',
+  admin_ops_verify_tasks_dead_24h: 'Verify tasks given up (24 h)',
+  admin_ops_marketplace_runs_open: 'Portal searches: waiting or running',
+  admin_ops_native_match_queue: 'Matching queue',
+  admin_ops_campaigns_stuck_finishing: 'Campaigns stuck while finishing',
+  admin_ops_campaigns_past_deadline: 'Campaigns past their search window',
+  admin_ops_verify_jobs_long_running: 'Verify reports running over an hour',
+  admin_ops_reservations_overdue: 'Credit holds past expiry',
+  admin_ops_find_buyers_runs_unbooked: 'Find Buyers provider runs not booked',
+  admin_ops_find_property_runs_unbooked: 'Find Property provider runs not booked',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Request through a broker — needs verification',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40802,6 +40831,35 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'ბინები, რომლებიც ადამიანებმა საჯარო პოსტებში შესთავაზეს. HOMATCH-ს ისინი გადამოწმებული არ აქვს: გახსენით ორიგინალი პოსტი და დეტალები ავტორთან დააზუსტეთ.',
   fpv_paid_empty_title: 'ვრცელი ძიების შედეგები ჯერ არ არის',
   fpv_paid_empty_body: 'საჯარო პოსტებიდან შეთავაზებები აქ ვრცელი ძიების დასრულების შემდეგ გამოჩნდება.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'ფრაზები ერთ გაშვებაში',
+  fbx_admin_kw_days: 'ძებნის პერიოდი (დღე)',
+  fbx_admin_kw_save: 'ძებნის პარამეტრების შენახვა',
+
+  /* ── SYSTEM HEALTH — queues and stuck work ── */
+  admin_ops_title: 'რიგები და გაჭედილი სამუშაო',
+  admin_ops_subtitle: 'მოლოდინში მყოფი სამუშაო, ყველაზე ძველი ჩანაწერი და ყველაფერი, რაც გაიჭედა. მხოლოდ წაკითხვა.',
+  admin_ops_unreadable: 'ვერ წაიკითხა',
+  admin_ops_oldest: 'ყველაზე ძველი ჩანაწერი',
+  admin_ops_level_ok: 'OK',
+  admin_ops_level_warn: 'გაფრთხილება',
+  admin_ops_level_alert: 'განგაში',
+  admin_ops_discovery_queue_open: 'აღმოჩენის რიგი: მოლოდინში ან მიმდინარე',
+  admin_ops_discovery_queue_lease_lapsed: 'აღმოჩენის რიგი: ვადაგასული ლიზინგი',
+  admin_ops_verify_tasks_open: 'Verify ამოცანები: მოლოდინში ან მიმდინარე',
+  admin_ops_verify_tasks_dead_24h: 'Verify ამოცანები, რომლებიც შეწყდა (24 სთ)',
+  admin_ops_marketplace_runs_open: 'პორტალების ძიება: მოლოდინში ან მიმდინარე',
+  admin_ops_native_match_queue: 'დამთხვევების რიგი',
+  admin_ops_campaigns_stuck_finishing: 'კამპანიები, რომლებიც დასრულებისას გაიჭედა',
+  admin_ops_campaigns_past_deadline: 'კამპანიები, რომელთა ძიების ვადა გავიდა',
+  admin_ops_verify_jobs_long_running: 'Verify ანგარიშები, რომლებიც საათზე მეტხანს მიმდინარეობს',
+  admin_ops_reservations_overdue: 'კრედიტის დაკავებები ვადის გასვლის შემდეგ',
+  admin_ops_find_buyers_runs_unbooked: 'Find Buyers პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
+  admin_ops_find_property_runs_unbooked: 'Find Property პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'მოთხოვნა შუამავლის მეშვეობით — საჭიროებს გადამოწმებას',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61151,6 +61209,35 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'Жильё, которое люди предложили в публичных постах. HOMATCH его не проверял: откройте исходный пост и уточните детали у автора.',
   fpv_paid_empty_title: 'Результатов расширенного поиска пока нет',
   fpv_paid_empty_body: 'Предложения из публичных постов появятся здесь после завершения расширенного поиска.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'Фраз за запуск',
+  fbx_admin_kw_days: 'Период поиска (дни)',
+  fbx_admin_kw_save: 'Сохранить параметры поиска',
+
+  /* ── SYSTEM HEALTH — queues and stuck work ── */
+  admin_ops_title: 'Очереди и зависшие задачи',
+  admin_ops_subtitle: 'Ожидающая работа, самый старый элемент и всё зависшее. Только чтение.',
+  admin_ops_unreadable: 'не прочитано',
+  admin_ops_oldest: 'Самый старый элемент',
+  admin_ops_level_ok: 'OK',
+  admin_ops_level_warn: 'Предупреждение',
+  admin_ops_level_alert: 'Тревога',
+  admin_ops_discovery_queue_open: 'Очередь поиска: ожидают или выполняются',
+  admin_ops_discovery_queue_lease_lapsed: 'Очередь поиска: истёкшие аренды',
+  admin_ops_verify_tasks_open: 'Задачи Verify: ожидают или выполняются',
+  admin_ops_verify_tasks_dead_24h: 'Задачи Verify, от которых отказались (24 ч)',
+  admin_ops_marketplace_runs_open: 'Поиск по порталам: ожидают или выполняются',
+  admin_ops_native_match_queue: 'Очередь сопоставления',
+  admin_ops_campaigns_stuck_finishing: 'Кампании, зависшие при завершении',
+  admin_ops_campaigns_past_deadline: 'Кампании после окончания окна поиска',
+  admin_ops_verify_jobs_long_running: 'Отчёты Verify дольше часа',
+  admin_ops_reservations_overdue: 'Резервы кредитов после истечения срока',
+  admin_ops_find_buyers_runs_unbooked: 'Запуски провайдера Find Buyers без учёта',
+  admin_ops_find_property_runs_unbooked: 'Запуски провайдера Find Property без учёта',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Запрос через посредника — требует проверки',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81498,6 +81585,35 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'İnsanların herkese açık gönderilerde sunduğu evler. HOMATCH bunları doğrulamadı: orijinal gönderiyi açın ve ayrıntıları paylaşan kişiyle netleştirin.',
   fpv_paid_empty_title: 'Henüz geniş arama sonucu yok',
   fpv_paid_empty_body: 'Herkese açık gönderilerdeki teklifler, geniş arama bittiğinde burada görünür.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'Çalıştırma başına ifade',
+  fbx_admin_kw_days: 'Arama aralığı (gün)',
+  fbx_admin_kw_save: 'Arama ayarlarını kaydet',
+
+  /* ── SYSTEM HEALTH — queues and stuck work ── */
+  admin_ops_title: 'Kuyruklar ve takılan işler',
+  admin_ops_subtitle: 'Bekleyen işler, en eski öğe ve takılan her şey. Salt okunur.',
+  admin_ops_unreadable: 'okunamadı',
+  admin_ops_oldest: 'En eski öğe',
+  admin_ops_level_ok: 'OK',
+  admin_ops_level_warn: 'Uyarı',
+  admin_ops_level_alert: 'Alarm',
+  admin_ops_discovery_queue_open: 'Keşif kuyruğu: bekleyen veya çalışan',
+  admin_ops_discovery_queue_lease_lapsed: 'Keşif kuyruğu: süresi dolmuş kiralamalar',
+  admin_ops_verify_tasks_open: 'Verify görevleri: bekleyen veya çalışan',
+  admin_ops_verify_tasks_dead_24h: 'Vazgeçilen Verify görevleri (24 sa)',
+  admin_ops_marketplace_runs_open: 'Portal aramaları: bekleyen veya çalışan',
+  admin_ops_native_match_queue: 'Eşleşme kuyruğu',
+  admin_ops_campaigns_stuck_finishing: 'Bitirirken takılan kampanyalar',
+  admin_ops_campaigns_past_deadline: 'Arama süresi geçmiş kampanyalar',
+  admin_ops_verify_jobs_long_running: 'Bir saatten uzun süren Verify raporları',
+  admin_ops_reservations_overdue: 'Süresi geçmiş kredi blokajları',
+  admin_ops_find_buyers_runs_unbooked: 'Kaydedilmemiş Find Buyers sağlayıcı çalıştırmaları',
+  admin_ops_find_property_runs_unbooked: 'Kaydedilmemiş Find Property sağlayıcı çalıştırmaları',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Aracı üzerinden talep — doğrulama gerekiyor',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101845,6 +101961,35 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'منازل عرضها أشخاص في منشورات عامة. لم يتحقق منها HOMATCH: افتح المنشور الأصلي وتأكد من التفاصيل مع ناشره.',
   fpv_paid_empty_title: 'لا توجد نتائج للبحث الموسّع بعد',
   fpv_paid_empty_body: 'تظهر هنا العروض من المنشورات العامة بعد انتهاء البحث الموسّع.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'عبارات لكل تشغيل',
+  fbx_admin_kw_days: 'نافذة البحث (أيام)',
+  fbx_admin_kw_save: 'حفظ إعدادات البحث',
+
+  /* ── SYSTEM HEALTH — queues and stuck work ── */
+  admin_ops_title: 'قوائم الانتظار والأعمال المتوقفة',
+  admin_ops_subtitle: 'العمل المنتظر وأقدم عنصر فيه وكل ما توقف. للقراءة فقط.',
+  admin_ops_unreadable: 'تعذّرت القراءة',
+  admin_ops_oldest: 'أقدم عنصر',
+  admin_ops_level_ok: 'سليم',
+  admin_ops_level_warn: 'تحذير',
+  admin_ops_level_alert: 'إنذار',
+  admin_ops_discovery_queue_open: 'قائمة الاكتشاف: منتظرة أو قيد التشغيل',
+  admin_ops_discovery_queue_lease_lapsed: 'قائمة الاكتشاف: عقود حجز منتهية',
+  admin_ops_verify_tasks_open: 'مهام Verify: منتظرة أو قيد التشغيل',
+  admin_ops_verify_tasks_dead_24h: 'مهام Verify المتوقف عنها (24 ساعة)',
+  admin_ops_marketplace_runs_open: 'عمليات البحث في البوابات: منتظرة أو قيد التشغيل',
+  admin_ops_native_match_queue: 'قائمة المطابقة',
+  admin_ops_campaigns_stuck_finishing: 'حملات متوقفة أثناء الإنهاء',
+  admin_ops_campaigns_past_deadline: 'حملات تجاوزت نافذة البحث',
+  admin_ops_verify_jobs_long_running: 'تقارير Verify قيد التشغيل لأكثر من ساعة',
+  admin_ops_reservations_overdue: 'حجوزات رصيد تجاوزت مدتها',
+  admin_ops_find_buyers_runs_unbooked: 'عمليات مزود Find Buyers غير المسجلة',
+  admin_ops_find_property_runs_unbooked: 'عمليات مزود Find Property غير المسجلة',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'طلب عبر وسيط — يحتاج إلى تحقق',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -122192,6 +122337,35 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpv_paid_body: 'דירות שאנשים הציעו בפוסטים ציבוריים. HOMATCH לא אימת אותן: פתחו את הפוסט המקורי ובררו את הפרטים עם מי שפרסם.',
   fpv_paid_empty_title: 'עדיין אין תוצאות חיפוש מורחב',
   fpv_paid_empty_body: 'הצעות מפוסטים ציבוריים יופיעו כאן אחרי שהחיפוש המורחב יסתיים.',
+
+  /* ── FIND BUYERS — Facebook keyword search Admin controls ── */
+  fbx_admin_kw_batch: 'ביטויים להרצה',
+  fbx_admin_kw_days: 'חלון חיפוש (ימים)',
+  fbx_admin_kw_save: 'שמירת הגדרות החיפוש',
+
+  /* ── SYSTEM HEALTH — queues and stuck work ── */
+  admin_ops_title: 'תורים ועבודה תקועה',
+  admin_ops_subtitle: 'עבודה ממתינה, הפריט הוותיק ביותר וכל מה שנתקע. קריאה בלבד.',
+  admin_ops_unreadable: 'לא נקרא',
+  admin_ops_oldest: 'הפריט הוותיק ביותר',
+  admin_ops_level_ok: 'תקין',
+  admin_ops_level_warn: 'אזהרה',
+  admin_ops_level_alert: 'התראה',
+  admin_ops_discovery_queue_open: 'תור הגילוי: ממתינים או רצים',
+  admin_ops_discovery_queue_lease_lapsed: 'תור הגילוי: חכירות שפגו',
+  admin_ops_verify_tasks_open: 'משימות Verify: ממתינות או רצות',
+  admin_ops_verify_tasks_dead_24h: 'משימות Verify שננטשו (24 ש׳)',
+  admin_ops_marketplace_runs_open: 'חיפושי פורטלים: ממתינים או רצים',
+  admin_ops_native_match_queue: 'תור ההתאמות',
+  admin_ops_campaigns_stuck_finishing: 'קמפיינים שנתקעו בסיום',
+  admin_ops_campaigns_past_deadline: 'קמפיינים שחלון החיפוש שלהם עבר',
+  admin_ops_verify_jobs_long_running: 'דוחות Verify שרצים יותר משעה',
+  admin_ops_reservations_overdue: 'החזקות קרדיט שתוקפן עבר',
+  admin_ops_find_buyers_runs_unbooked: 'הרצות ספק של Find Buyers שלא נרשמו',
+  admin_ops_find_property_runs_unbooked: 'הרצות ספק של Find Property שלא נרשמו',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'בקשה דרך מתווך — דורש אימות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

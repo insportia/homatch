@@ -499,6 +499,10 @@ jobs:
             # Admin → Service Control Center: browser-facing, admin-only (is_admin
             # on the caller's token inside), so the gateway JWT check stays on.
             "service-control"
+            # Admin → System health: browser-facing, admin-only (is_admin checked
+            # inside); deployed by hand until 2026-10-18 (v33), so repository changes
+            # (the queues-and-stuck-work checks, #259) could not reach production.
+            "system-health"
             # HOMATCH FOR DEVELOPERS. Both are browser-facing and keep the
             # gateway JWT check on: the anon key is a valid JWT, so the check
             # costs nothing and keeps them off the open internet. The real

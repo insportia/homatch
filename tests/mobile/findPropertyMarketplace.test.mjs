@@ -434,7 +434,7 @@ const SEARCH_BRIEF = briefFromModel({ ...F.COMPLETE_MODEL_OUTPUT, priceMinUsd: 1
 function summary(status, { empty = false, output = OUTPUT } = {}) {
   const terminal = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED', 'CANCELLED'].includes(status);
   const processed = status !== 'SEARCHING';
-  const groups = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
+  const groups = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0, OTHER: 0 };
   if (processed && !empty) for (const p of output.properties) groups[p.group] += 1;
   const s = output.stats;
   return {
@@ -722,7 +722,11 @@ test('ka, 1440: complete request → READY without questions → search → grou
     assert.ok(results.includes(s), `results show ${s}`);
   }
   assert.ok(!results.includes('ვრცელი ძიება'), 'no paid Deep Search on the results while it is unavailable');
-  assert.ok(!results.includes('$188,000'), 'nothing above the 10% ceiling is shown');
+  /* Above the 10% ceiling: never among the homes that fit; listed last, outside the request, with why. */
+  const fits = await page.locator('[data-results-group]:not([data-results-group="OUTSIDE"])').evaluateAll((els) => els.map((el) => el.textContent).join(' '));
+  assert.ok(!fits.includes('$188,000'), 'nothing above the 10% ceiling is among the homes that fit');
+  const outsideText = await page.locator('[data-results-group="OUTSIDE"]').textContent();
+  assert.ok(outsideText.includes('$188,000') && outsideText.includes('ფასი ბიუჯეტზე მაღალია'), 'shown outside the request, with the reason');
   assert.ok((await page.locator('article[data-verdict="UPGRADE"]').first().textContent()).includes('+5.3%'), 'upgrade shows both measured over-budget amount and percentage');
   await shot(page, 'ka-1440-results');
 
@@ -824,6 +828,13 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
   assert.equal(state.starts, 1, 'one search for a double click');
   await shot(page, 'ka-390-searching');
+  /* The current-stage pill sits under the animated field, never over it (owner, 2026-10-18). */
+  const pill = page.locator('[data-current-stage]');
+  if (await pill.count()) {
+    const field = await page.locator('[data-search-stage] figure > :first-child').boundingBox();
+    const pillBox = await pill.boundingBox();
+    assert.ok(pillBox.y >= field.y + field.height - 1, `stage pill (${pillBox.y}) below the field (${field.y + field.height})`);
+  }
 
   await page.locator('[data-action="mps-snake-open"]').click();
   const dialog = page.getByRole('dialog');
@@ -836,6 +847,12 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
   await page.keyboard.press('s');
   const scoreText = await dialog.textContent();
   assert.match(scoreText, /ქულა: \d+/);
+  /* On-screen arrows (owner, 2026-10-18): four 44px+ buttons that turn the snake. */
+  const pad = dialog.locator('[data-snake-pad] button');
+  assert.equal(await pad.count(), 4);
+  for (const box of await pad.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()))) assert.ok(box.width >= 44 && box.height >= 44);
+  for (const d of ['U', 'L', 'D', 'R']) { await dialog.locator(`[data-snake-dir="${d}"]`).click(); await page.waitForTimeout(150); }
+  assert.match(await dialog.textContent(), /ქულა: \d+/, 'the game keeps running under the arrows');
   /* A swipe on the board turns the snake and never scrolls the page. */
   const box = await dialog.getByRole('application').boundingBox();
   const before = await page.evaluate(() => window.scrollY);
@@ -1118,6 +1135,35 @@ test('switch off: history remains reachable and new search uses the existing fal
   await page.locator('a[href="/find-property/new"]').click();
   await page.waitForSelector('textarea', { timeout: 30000 });
   assert.equal(await page.locator('#mps-mode-title').count(), 0);
+});
+
+test('results (owner, 2026-10-18): every home found is shown, outside-the-request ones last with why; the view switch is readable on phones (ka, ru, he RTL)', opts, async (t) => {
+  const failures = [];
+  for (const [lang, width] of [['ka', 390], ['ru', 375], ['he', 390], ['en', 1440]]) {
+    const { page, close } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, timeline: ['COMPLETE'] });
+    await toConfirm(page);
+    await startFree(page);
+    await viewResults(page);
+    await page.locator('[data-results-group] article').first().waitFor({ timeout: 30000 });
+    /* Labels are whole words, never "ყ.." (screenshot 2026-10-18). */
+    for (const label of await page.locator('[data-view-label]').evaluateAll((els) => els.map((el) => ({ text: el.textContent, clipped: el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1, ellipsis: getComputedStyle(el).textOverflow })))) {
+      if (label.clipped || label.ellipsis === 'ellipsis' || /\.\.|…/.test(label.text)) failures.push(`${lang}-${width}: tab label clipped: ${label.text}`);
+    }
+    const outside = page.locator('[data-results-group="OUTSIDE"]');
+    if (!(await outside.count())) failures.push(`${lang}: homes outside the request are not shown`);
+    else {
+      const cards = await outside.locator('article').count();
+      const reasons = await outside.locator('article [data-outside-request]').count();
+      if (!cards || cards !== reasons) failures.push(`${lang}: ${cards} outside cards, ${reasons} with a reason`);
+      const order = await page.locator('[data-results-group]').evaluateAll((els) => els.map((el) => el.getAttribute('data-results-group')));
+      if (order.at(-1) !== 'OUTSIDE') failures.push(`${lang}: outside-the-request homes are not last (${order.join(',')})`);
+    }
+    if (await overflow(page) > 1) failures.push(`${lang}-${width}: horizontal overflow`);
+    if (lang === 'he' && await page.evaluate(() => document.documentElement.dir) !== 'rtl') failures.push('he: not RTL');
+    await shot(page, `${lang}-${width}-all-results`);
+    await close();
+  }
+  assert.deepEqual(failures, []);
 });
 
 test('Deep Search paused by Admin (or its switch unreadable/missing): the free portal search only — no mode choice, Deep card, paid tab or price; a past campaign stays readable by direct link (en 1440, ka 375/390, he RTL 390)', opts, async (t) => {

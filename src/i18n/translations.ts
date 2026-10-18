@@ -20644,6 +20644,26 @@ const en = {
   /* ── DEEP SEARCH RESULTS ── */
   fpc_rebuilt_note: 'These results were rebuilt from the posts we stored after the campaign ended. Some posts may have been updated since, so details can differ from what the campaign first found.',
 
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  fpv_outside_title: 'Also found — not everything you asked for',
+  fpv_outside_body: 'Real listings from the same sites that miss at least one of your requirements. Each card says what differs.',
+  fpv_outside_label: 'Differs:',
+  fpv_miss_AREA: 'area',
+  fpv_miss_BATHROOMS: 'bathrooms',
+  fpv_miss_BUILDING_AGE: 'building age',
+  fpv_miss_BUILDING_STATUS: 'building status',
+  fpv_miss_PARKING: 'no parking',
+  fpv_miss_REQUIRED: 'a must-have is missing',
+  fpv_miss_PRICE_HIGH: 'price above your budget',
+  fpv_miss_PRICE_LOW: 'price below your range',
+  fpv_miss_PRICE_UNKNOWN: 'price not stated',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  mps_snake_up: 'Up',
+  mps_snake_down: 'Down',
+  mps_snake_left: 'Left',
+  mps_snake_right: 'Right',
+
   /* ── FIND BUYERS 2.0 (internal matches, unlocked leads CRM, AI outreach, Email Studio scheduling) ── */
   nav_unlocked_leads: 'Unlocked Leads',
   fim_eyebrow: 'HOMATCH internal matches',
@@ -41384,6 +41404,26 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── DEEP SEARCH RESULTS ── */
   fpc_rebuilt_note: 'ეს შედეგები კამპანიის დასრულების შემდეგ შენახული განცხადებებიდან აღდგა. ზოგი განცხადება შეიძლება მას შემდეგ განახლდა, ამიტომ დეტალები შეიძლება განსხვავდებოდეს კამპანიის მიერ თავდაპირველად ნაპოვნისგან.',
 
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  fpv_outside_title: 'ასევე ვიპოვეთ — ყველა მოთხოვნას არ ერგება',
+  fpv_outside_body: 'რეალური განცხადებები იმავე საიტებიდან, რომლებიც ერთ-ერთ მოთხოვნას მაინც არ აკმაყოფილებს. თითოეულ ბარათზე წერია, რით განსხვავდება.',
+  fpv_outside_label: 'განსხვავდება:',
+  fpv_miss_AREA: 'ფართი',
+  fpv_miss_BATHROOMS: 'სველი წერტილები',
+  fpv_miss_BUILDING_AGE: 'შენობის ასაკი',
+  fpv_miss_BUILDING_STATUS: 'შენობის სტატუსი',
+  fpv_miss_PARKING: 'პარკინგი არ აქვს',
+  fpv_miss_REQUIRED: 'სავალდებულო რამ აკლია',
+  fpv_miss_PRICE_HIGH: 'ფასი ბიუჯეტზე მაღალია',
+  fpv_miss_PRICE_LOW: 'ფასი თქვენს დიაპაზონზე დაბალია',
+  fpv_miss_PRICE_UNKNOWN: 'ფასი მითითებული არ არის',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  mps_snake_up: 'ზემოთ',
+  mps_snake_down: 'ქვემოთ',
+  mps_snake_left: 'მარცხნივ',
+  mps_snake_right: 'მარჯვნივ',
+
   /* ── FIND BUYERS 2.0 (internal matches, unlocked leads CRM, AI outreach, Email Studio scheduling) ── */
   nav_unlocked_leads: 'გახსნილი კონტაქტები',
   fim_eyebrow: 'HOMATCH-ის შიდა დამთხვევები',
@@ -62115,6 +62155,26 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── DEEP SEARCH RESULTS ── */
   fpc_rebuilt_note: 'Эти результаты восстановлены из сохранённых публикаций после окончания кампании. Некоторые публикации могли с тех пор обновиться, поэтому детали могут отличаться от первоначально найденного.',
 
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  fpv_outside_title: 'Также найдено — не всё, что вы просили',
+  fpv_outside_body: 'Настоящие объявления с тех же сайтов, которые не подходят хотя бы по одному требованию. На каждой карточке указано, в чём отличие.',
+  fpv_outside_label: 'Отличие:',
+  fpv_miss_AREA: 'площадь',
+  fpv_miss_BATHROOMS: 'санузлы',
+  fpv_miss_BUILDING_AGE: 'возраст дома',
+  fpv_miss_BUILDING_STATUS: 'статус дома',
+  fpv_miss_PARKING: 'нет парковки',
+  fpv_miss_REQUIRED: 'нет обязательного',
+  fpv_miss_PRICE_HIGH: 'цена выше бюджета',
+  fpv_miss_PRICE_LOW: 'цена ниже диапазона',
+  fpv_miss_PRICE_UNKNOWN: 'цена не указана',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  mps_snake_up: 'Вверх',
+  mps_snake_down: 'Вниз',
+  mps_snake_left: 'Влево',
+  mps_snake_right: 'Вправо',
+
   /* ── FIND BUYERS 2.0 (internal matches, unlocked leads CRM, AI outreach, Email Studio scheduling) ── */
   nav_unlocked_leads: 'Открытые контакты',
   fim_eyebrow: 'Внутренние совпадения HOMATCH',
@@ -82843,6 +82903,26 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── DEEP SEARCH RESULTS ── */
   fpc_rebuilt_note: 'Bu sonuçlar, kampanya bittikten sonra kaydettiğimiz gönderilerden yeniden oluşturuldu. Bazı gönderiler o zamandan beri güncellenmiş olabilir; ayrıntılar kampanyanın ilk bulduğundan farklı olabilir.',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  fpv_outside_title: 'Ayrıca bulundu — her isteğinize uymuyor',
+  fpv_outside_body: 'Aynı sitelerden, isteklerinizden en az birini karşılamayan gerçek ilanlar. Her kartta neyin farklı olduğu yazar.',
+  fpv_outside_label: 'Farklı:',
+  fpv_miss_AREA: 'alan',
+  fpv_miss_BATHROOMS: 'banyo',
+  fpv_miss_BUILDING_AGE: 'bina yaşı',
+  fpv_miss_BUILDING_STATUS: 'bina durumu',
+  fpv_miss_PARKING: 'otopark yok',
+  fpv_miss_REQUIRED: 'zorunlu bir özellik yok',
+  fpv_miss_PRICE_HIGH: 'fiyat bütçenin üstünde',
+  fpv_miss_PRICE_LOW: 'fiyat aralığınızın altında',
+  fpv_miss_PRICE_UNKNOWN: 'fiyat belirtilmemiş',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  mps_snake_up: 'Yukarı',
+  mps_snake_down: 'Aşağı',
+  mps_snake_left: 'Sol',
+  mps_snake_right: 'Sağ',
 
   /* ── FIND BUYERS 2.0 (internal matches, unlocked leads CRM, AI outreach, Email Studio scheduling) ── */
   nav_unlocked_leads: 'Açılan Kişiler',
@@ -103573,6 +103653,26 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── DEEP SEARCH RESULTS ── */
   fpc_rebuilt_note: 'أُعيد بناء هذه النتائج من المنشورات التي حفظناها بعد انتهاء الحملة. ربما حُدّثت بعض المنشورات منذ ذلك الحين، لذا قد تختلف التفاصيل عمّا وجدته الحملة أول مرة.',
 
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  fpv_outside_title: 'وجدنا أيضًا — لا تطابق كل ما طلبته',
+  fpv_outside_body: 'إعلانات حقيقية من المواقع نفسها لا تستوفي شرطًا واحدًا على الأقل من شروطك. تذكر كل بطاقة ما الذي يختلف.',
+  fpv_outside_label: 'يختلف في:',
+  fpv_miss_AREA: 'المساحة',
+  fpv_miss_BATHROOMS: 'الحمامات',
+  fpv_miss_BUILDING_AGE: 'عمر المبنى',
+  fpv_miss_BUILDING_STATUS: 'حالة المبنى',
+  fpv_miss_PARKING: 'بلا موقف سيارات',
+  fpv_miss_REQUIRED: 'ينقصه شرط أساسي',
+  fpv_miss_PRICE_HIGH: 'السعر أعلى من ميزانيتك',
+  fpv_miss_PRICE_LOW: 'السعر أقل من نطاقك',
+  fpv_miss_PRICE_UNKNOWN: 'السعر غير مذكور',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  mps_snake_up: 'أعلى',
+  mps_snake_down: 'أسفل',
+  mps_snake_left: 'يسار',
+  mps_snake_right: 'يمين',
+
   /* ── FIND BUYERS 2.0 (internal matches, unlocked leads CRM, AI outreach, Email Studio scheduling) ── */
   nav_unlocked_leads: 'جهات الاتصال المفتوحة',
   fim_eyebrow: 'تطابقات HOMATCH الداخلية',
@@ -124301,6 +124401,26 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── DEEP SEARCH RESULTS ── */
   fpc_rebuilt_note: 'התוצאות האלה שוחזרו מהפוסטים ששמרנו אחרי שהקמפיין הסתיים. ייתכן שחלק מהפוסטים עודכנו מאז, ולכן הפרטים עשויים להיות שונים ממה שהקמפיין מצא בתחילה.',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  fpv_outside_title: 'נמצאו גם — לא כל מה שביקשתם',
+  fpv_outside_body: 'מודעות אמיתיות מאותם אתרים שאינן עומדות לפחות בדרישה אחת שלכם. בכל כרטיס כתוב מה שונה.',
+  fpv_outside_label: 'שונה ב:',
+  fpv_miss_AREA: 'שטח',
+  fpv_miss_BATHROOMS: 'חדרי רחצה',
+  fpv_miss_BUILDING_AGE: 'גיל הבניין',
+  fpv_miss_BUILDING_STATUS: 'סטטוס הבניין',
+  fpv_miss_PARKING: 'אין חניה',
+  fpv_miss_REQUIRED: 'חסר משהו שחובה',
+  fpv_miss_PRICE_HIGH: 'המחיר מעל התקציב',
+  fpv_miss_PRICE_LOW: 'המחיר מתחת לטווח',
+  fpv_miss_PRICE_UNKNOWN: 'המחיר לא צוין',
+
+  /* ── FIND PROPERTY ALL RESULTS ── */
+  mps_snake_up: 'למעלה',
+  mps_snake_down: 'למטה',
+  mps_snake_left: 'שמאלה',
+  mps_snake_right: 'ימינה',
 
   /* ── FIND BUYERS 2.0 (internal matches, unlocked leads CRM, AI outreach, Email Studio scheduling) ── */
   nav_unlocked_leads: 'אנשי קשר שנפתחו',

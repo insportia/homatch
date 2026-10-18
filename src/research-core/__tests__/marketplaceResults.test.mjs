@@ -82,7 +82,9 @@ test('Georgian and Russian evidence is recognized without inventing facts', () =
 });
 test('explicit negative mandatory amenities exclude; unconfirmed mandatory facts need verification; soft preference never excludes', () => {
   const noParking = F.listing({ parking: false });
-  assert.equal(views([noParking], { ...F.FIXTURE_REQUEST, mustHave: ['PARKING'] }).length, 0);
+  const excluded = views([noParking], { ...F.FIXTURE_REQUEST, mustHave: ['PARKING'] });
+  assert.equal(excluded.filter((v) => v.group !== 'OTHER').length, 0, 'never among the homes that fit');
+  assert.ok(excluded.every((v) => v.mismatch.includes('REQUIRED_PARKING')), 'outside the request, with why');
   assert.equal(views([noParking], { ...F.FIXTURE_REQUEST, niceToHave: ['PARKING'] }).length, 1);
   const unknown = views([F.listing()], { ...F.FIXTURE_REQUEST, mustHave: ['PARKING'] })[0];
   assert.ok(unknown.unverified.includes('REQUIRED_PARKING'));

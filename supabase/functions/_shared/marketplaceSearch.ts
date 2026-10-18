@@ -299,8 +299,11 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
 
   const request = search.request as MarketplaceSearchRequest;
   const output = processSearch({ request, candidates, converter: await loadConverter(db), now });
+  /* Lifecycle, AI and the pool fill count only homes that fit; OTHER (found, outside the
+     request) is shown to the customer but never makes a search "have results". */
+  const fitting = output.properties.filter((p) => p.group !== 'OTHER');
   const derived = deriveSearchStatus(search.status as SearchStatus, runs, {
-    properties: output.properties.length, strongMatches: output.stats.strongMatches,
+    properties: fitting.length, strongMatches: output.stats.strongMatches,
   });
 
   const telemetry: SearchTelemetry = search.telemetry ?? { ai: [], workers: [], processingMs: [] };
@@ -308,7 +311,7 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   let aiStatus = search.ai_status as string;
   /* OpenAI call 2: once, when every worker has finished, over the strongest few only. */
   if (isTerminalSearch(derived.status) && aiStatus === 'NOT_STARTED') {
-    if (!properties.length) aiStatus = 'SKIPPED';
+    if (!fitting.length) aiStatus = 'SKIPPED';
     else {
       const sheets = buildFactSheets(properties);
       const r = await openaiStructured({
@@ -438,7 +441,7 @@ export async function serveCachedListings(db: Db, searchId: string, request: Mar
       if (!pool.length) continue;
       // The search's own pipeline decides what matches; nothing is re-implemented here.
       const accepted = new Set(processSearch({ request, candidates: pool.map((r) => ({ workerId: String(run.worker_id), candidate: r.raw })), converter: await loadConverter(db), now })
-        .properties.flatMap((p) => p.listings.map((l) => l.listingId)));
+        .properties.filter((p) => p.group !== 'OTHER').flatMap((p) => p.listings.map((l) => l.listingId)));
       const cached = pool.filter((r) => accepted.has(`${r.raw.source}:${r.raw.sourceListingId}`)).map((r) => ({
         search_id: searchId, worker_run_id: run.id, source_key: sourceKey, source_listing_id: r.source_listing_id, exact_url: r.exact_url,
         observed_at: r.observed_at, updated_at: now.toISOString(),

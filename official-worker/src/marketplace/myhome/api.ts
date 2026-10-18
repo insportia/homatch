@@ -31,7 +31,10 @@ export async function publicJson(url:string,locale='ka',fetcher:typeof fetch=fet
     throw new AcquisitionError(url,null,`${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''}`);
   }
   if(!response.ok) throw new AcquisitionError(url,response.status,`HTTP ${response.status}; request stopped`);
-  const text=await response.text();
+  /* The 20 s signal also covers the body: a slow body is a transport failure (retried), never a raw abort. */
+  let text:string;
+  try {text=await response.text();}
+  catch(error) {const e=error as Error;throw new AcquisitionError(url,null,`Body not received: ${e.message}`);}
   let payload;
   try {payload=JSON.parse(text);} catch {throw new AcquisitionError(url,response.status,'Response is not JSON');}
   return {url,status:response.status,payload};

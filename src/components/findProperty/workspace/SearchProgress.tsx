@@ -80,8 +80,9 @@ export function SearchProgress({ t, search, onViewResults, onCancel, onPlay, onN
           {fieldNodes.length ? (
             <figure className="relative">
               <DiscoveryField nodes={fieldNodes} terminal={search.terminal} />
+              {/* Below the field, never over it (owner, 2026-10-18): the pill covered the animation. */}
               {current && !search.terminal ? (
-                <figcaption className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4" aria-live="polite">
+                <figcaption className="mt-3 flex justify-center px-4" aria-live="polite">
                   <span className="inline-flex items-center gap-2 rounded-full border border-[hsl(var(--gold)/0.35)] bg-[#0C1119]/80 px-4 py-1.5 text-xs font-semibold text-[hsl(var(--gold))] shadow-lg backdrop-blur" data-current-stage>
                     <Sparkles className="h-3.5 w-3.5 motion-safe:animate-pulse" aria-hidden="true" />{t(STAGE_KEY[current.stage])}
                   </span>

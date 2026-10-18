@@ -71,6 +71,7 @@ const SECTION_SERVICES: Partial<Record<string, ServiceKey>> = {
   email_campaign: 'email_campaigns',
   homatch_ai: 'ai_assistant',
   developers: 'developers',
+  brokers: 'brokers_directory',
 };
 
 /** The one place a section type becomes running code. */

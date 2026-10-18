@@ -43,9 +43,7 @@ test('platform addresses are never gated', () => {
   for (const path of ['/', '/dashboard', '/profile', '/credits', '/pricing', '/notifications', '/activity', '/chat', '/leads',
     '/property', '/property/add', '/property/123', '/property/123/edit', '/outreach', '/outreach/campaigns', '/outreach/billing',
     '/auth/login', '/about', '/for-buyers', '/for-owners', '/partners', '/admin/verify', '/admin/service-control',
-    '/s/token', '/projects/acme/tower', '/buyer/token', '/p/ws/proj', '/embed/ws/proj', '/w/token', '/d/token',
-    // Option A (owner): the public brokers directory stays readable while its sales are paused.
-    '/brokers', '/brokers/9']) {
+    '/s/token', '/projects/acme/tower', '/buyer/token', '/p/ws/proj', '/embed/ws/proj', '/w/token', '/d/token']) {
     assert.equal(serviceForPath(path), null, `${path} must never be gated`);
   }
 });
@@ -58,6 +56,7 @@ test('each product address belongs to its own service', () => {
     '/for-expats/georgia': 'for_expats', '/outreach/meta': 'meta_ads', '/outreach/meta/create': 'meta_ads',
     '/outreach/email': 'email_campaigns', '/email-studio': 'email_campaigns', '/ai': 'ai_assistant',
     '/broker': 'broker_desk', '/broker/onboarding': 'broker_desk',
+    '/brokers': 'brokers_directory', '/brokers/9': 'brokers_directory', '/admin/brokers': null,
     '/developers': 'developers', '/developers/home': 'developers',
     '/live-chat': 'live_chat', '/design-studio': 'design_studio', '/publishing': 'publishing', '/outreach/calls': 'ai_call_center',
   };
@@ -113,13 +112,20 @@ test('there is no global switch: group pause needs a typed confirmation, pause-a
   assert.match(page, /disabled=\{pending\?\.kind === 'pause_group' && typed\.trim\(\) !== pending\.group\}/);
 });
 
-test('Option A: pausing Brokers directory sales never hides the public directory', () => {
-  // The switch governs commercial operations only; listings already paid stay public (owner decision).
-  assert.doesNotMatch(read('src/lib/serviceControls/routes.ts'), /\[\/\^\\\/brokers/, 'no route rule for /brokers');
-  assert.doesNotMatch(read('src/site/publicNav.ts'), /brokers: 'brokers_directory'/, 'the public nav keeps the directory');
-  assert.doesNotMatch(read('src/site/render/SitePage.tsx'), /brokers: 'brokers_directory'/, 'the home section stays');
-  assert.doesNotMatch(read('src/lib/ai/serviceActions.ts'), /BROKERS: 'brokers_directory'/, 'the AI chip to the directory stays');
-  // What stays public is exactly the paid, current set: the view's own test, unchanged by this PR.
+test('Brokers directory hidden means hidden everywhere (owner, 2026-10-18, replacing "Option A")', () => {
+  // Every customer entry point to /brokers obeys brokers_directory; reversible, nothing deleted.
+  assert.match(read('src/lib/serviceControls/routes.ts'), /\[\/\^\\\/brokers\(\\\/\|\$\)\/, 'brokers_directory'\]/, '/brokers and /brokers/:id are gated');
+  assert.match(read('src/site/publicNav.ts'), /brokers: 'brokers_directory'/, 'the public B2B menu link');
+  assert.match(read('src/site/render/SitePage.tsx'), /brokers: 'brokers_directory'/, 'the home page Brokers section');
+  assert.match(read('src/lib/ai/serviceActions.ts'), /BROKERS: 'brokers_directory'/, 'the AI chip to the directory');
+  assert.match(read('src/components/home/AiTalkPanel.tsx'), /destination && live && pathAvailable\(destination\.path\)/, 'AI TALK offers no paused address');
+  assert.match(read('src/pages/BrokerCrmPage.tsx'), /isPublic && pathAvailable\(`\/brokers\/\$\{listing\.id\}`\)/, 'the desk links to the public profile only while it is shown');
+  assert.match(read('src/pages/auth/SignupPage.tsx'), /\{deskVisible && <label[^>]*data-signup-professional/, 'no professional sign-up while the desk is hidden');
+  // The sidebar, About grid and product entry page filter by address, so the route rule covers them.
+  for (const f of ['src/components/layouts/HomatchShell.tsx', 'src/components/home/sections/about.tsx', 'src/pages/ProductEntryPage.tsx']) {
+    assert.match(read(f), /pathAvailable\(/, f);
+  }
+  // The data is untouched: the public view still selects exactly the paid, current set.
   assert.match(read('supabase/migrations/20261001120000_workstream_b_final_hardening.sql'),
     /where l\.status = 'ACTIVE' and l\.paid_until is not null and l\.paid_until > now\(\)/);
 });

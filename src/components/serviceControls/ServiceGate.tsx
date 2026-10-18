@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
-import { isLiveByDefault, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
+import { shownBeforeAnswer, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 export const SERVICE_NAME_KEYS: Record<ServiceKey, TranslationKey> = {
   publishing: 'svc_name_publishing',
@@ -64,13 +64,13 @@ export function ServiceUnavailable({ service }: { service: ServiceKey }) {
 
 /**
  * Renders its children only while the service is visible. For the six paused-by-default
- * services nothing is mounted until the switches are known (no flash of a paused service,
- * no request made by it). A live product renders at once from what this browser last
- * knew, so Verify or Find Property never wait on this check.
+ * services and the two broker services nothing is mounted until the switches are known
+ * (no flash of a paused service, no request made by it). A live product renders at once
+ * from what this browser last knew, so Verify or Find Property never wait on this check.
  */
 export function ServiceGate({ service, children }: { service: ServiceKey; children: React.ReactNode }) {
   const snapshot = useServiceControls();
-  if (!snapshot.loaded && !isLiveByDefault(service)) return <div className="min-h-[50vh]" aria-busy="true" />;
+  if (!snapshot.loaded && !shownBeforeAnswer(service)) return <div className="min-h-[50vh]" aria-busy="true" />;
   if (!snapshot.services[service].frontend) return <ServiceUnavailable service={service} />;
   return <GateBoundary service={service} loaded={snapshot.loaded}>{children}</GateBoundary>;
 }

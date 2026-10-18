@@ -12,17 +12,15 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CalendarCheck2, ChevronDown, Loader2, Pause, Play, Radar, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { GOLD_FILL, GOLD_TEXT, NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
+import { GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import { SearchNetworkField } from '@/components/findBuyers/SearchNetworkField';
 import { SearchDurationNotice } from '@/components/findBuyers/SearchDurationNotice';
-import { CampaignReport } from '@/components/findBuyers/CampaignReport';
 import { SearchDna, type DnaFacts } from '@/components/findBuyers/SearchDna';
-import { campaignView, currentState, customerNetwork, executionState, networkNodes } from '@/findBuyers/campaignView';
+import { SnakeOverlay, SnakeThumbnail } from '@/components/findProperty/SnakeThumbnail';
+import { campaignView, currentState, customerNetwork, networkNodes } from '@/findBuyers/campaignView';
 import { elapsedMs, elapsedTicks, formatElapsed } from '@/findBuyers/elapsed';
-import { getCampaignState, type CampaignStatus } from '@/services/findBuyers';
-import { parseLanguageOutcomes, type LanguageOutcomeRow } from '@/findBuyers/languageOutcomes';
+import type { CampaignStatus } from '@/services/findBuyers';
 
 const ON_NAVY_SOFT = 'text-[hsl(218_40%_85%)]';
 
@@ -56,34 +54,6 @@ function Stat({ label, children, testid }: { label: string; children: React.Reac
   );
 }
 
-/** One compact row per search language, from the campaign's own stats (optional: older campaigns have none). */
-function LanguageOutcomes({ jobId, refreshKey }: { jobId: string; refreshKey: string | number | null }) {
-  const { t } = useLanguage();
-  const [rows, setRows] = useState<LanguageOutcomeRow[]>([]);
-  useEffect(() => {
-    let alive = true;
-    getCampaignState(jobId).then((s) => { if (alive) setRows(parseLanguageOutcomes(s?.stats)); }).catch(() => { if (alive) setRows([]); });
-    return () => { alive = false; };
-  }, [jobId, refreshKey]);
-  if (rows.length === 0) return null;
-  return (
-    <div data-testid="fbl-language-outcomes">
-      <p className={cn('text-2xs font-bold uppercase tracking-[0.12em]', GOLD_TEXT)}>{t('fbl_lang_outcomes_title')}</p>
-      <ul className="mt-1.5 grid gap-1 sm:grid-cols-2">
-        {rows.map((r) => (
-          <li key={r.language} data-lang={r.language} data-outcome={r.outcome}
-            className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-2xs ring-1 ring-inset ring-white/10">
-            <span className="shrink-0 font-semibold text-white">{t(`fbx_lang_${r.language}`)}</span>
-            <span className={cn('min-w-0 truncate text-end', r.outcome === 'RESULTS' ? GOLD_TEXT : ON_NAVY_SOFT)}>
-              {t(`fbl_lang_outcome_${r.outcome}`, { n: String(r.people) })}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export function LiveSearchModule({
   status, facts, counterpart, propertyLabel, busy, launchLabel, onLaunch, onPause, onResume, onStop, id,
 }: {
@@ -101,9 +71,9 @@ export function LiveSearchModule({
 }) {
   const { t, lang } = useLanguage();
   /* The per-source list, per-language outcomes and the search report (with its research
-     notes) are operator diagnostics: shown to admins only (owner, 2026-10-17). */
-  const { homatchUser } = useAuth();
-  const operator = Boolean(homatchUser?.is_admin);
+     notes) are not shown on this page to anyone (owner, 2026-10-18); operators read them
+     in Admin → Find Buyers. */
+  const [snakeOpen, setSnakeOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const c = status?.campaign ?? null;
   const view = c ? campaignView({
@@ -225,6 +195,15 @@ export function LiveSearchModule({
         </>
       )}
       {live && <SearchDurationNotice className="mt-3" />}
+      {/* While the search runs (owner, 2026-10-18): the same premium Snake card as Find
+          Property. The game never touches the search; polling continues underneath. */}
+      {live && (
+        <div className="mt-3 max-w-sm" data-testid="fbl-snake">
+          <SnakeThumbnail t={t as never} searching onOpen={() => setSnakeOpen(true)} />
+        </div>
+      )}
+      <SnakeOverlay t={t as never} open={snakeOpen} onClose={() => setSnakeOpen(false)} resultsReady={!live && Boolean(c)}
+        onViewResults={() => { setSnakeOpen(false); document.getElementById('fbx-results')?.scrollIntoView({ behavior: 'smooth' }); }} />
       {now.last && (
         <p className="mt-3 text-2xs font-semibold text-white" data-testid="fbl-last-search">
           {t('fbl_last_search', { state: t(now.last.headlineKey), date: lastDate ?? '—' })}
@@ -257,32 +236,11 @@ export function LiveSearchModule({
                 <Metric value={c.staleSkipped} label={t('fbl_m_stale')} />
               </div>
             )}
-            {/* Per source, in words: what was READ is never what was FOUND. */}
-            {operator && ran.length > 0 && (
-              <ul className="space-y-1.5" data-testid="fbl-source-outcomes">
-                {ran.map((n) => (
-                  <li key={n.source} data-source={n.source} className="rounded-xl bg-white/[0.04] px-3 py-2 text-2xs leading-relaxed ring-1 ring-inset ring-white/10">
-                    <span className="font-semibold text-white">{sourceStyle(n.source).label}</span>
-                    <span className="ms-1.5 rounded-full bg-white/10 px-1.5 py-px text-[0.65rem] font-semibold uppercase tracking-wide text-white/80" data-testid="fbl-exec-state" data-state={executionState(n, c?.socialPlan ?? null)}>
-                      {t(`fbl_exec_${executionState(n, c?.socialPlan ?? null).toLowerCase()}` as never)}
-                    </span>
-                    <span className={ON_NAVY_SOFT}>
-                      {' · '}{t('fbl_src_checked', { n: String(n.checked) })}
-                      {n.communities > 0 ? <>{' · '}{t('fbl_src_communities', { n: String(n.communities) })}</> : null}
-                      {' · '}<span className={n.qualified > 0 ? GOLD_TEXT : undefined}>{t('fbl_src_qualified', { n: String(n.qualified) })}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
             {ran.length === 0 && live && <p className={cn('text-2xs', ON_NAVY_SOFT)} dir="auto">{t('fbl_preparing_note')}</p>}
-            {operator && c?.jobId && engaged && <LanguageOutcomes jobId={c.jobId} refreshKey={`${c.state}:${c.newResults}`} />}
             <SearchDna facts={facts} onDark />
             <p className={cn('flex items-center gap-1.5 text-2xs', ON_NAVY_SOFT)}>
               <CalendarCheck2 className={cn('h-3.5 w-3.5 shrink-0', GOLD_TEXT)} aria-hidden="true" />{t('fbx_fresh_rule')}
             </p>
-            {/* the search report: live and partial while running, final after */}
-            {operator && c?.jobId && engaged && <CampaignReport jobId={c.jobId} live={live} refreshKey={c.lastActivityAt ?? c.state} />}
           </div>
         )}
       </div>

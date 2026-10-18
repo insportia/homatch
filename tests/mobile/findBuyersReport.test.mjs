@@ -193,7 +193,8 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, 
     }
     if (url.includes('/rpc/admin_find_buyers_intelligence')) { calls.intel += 1; return r.fulfill(json(INTEL)); }
     if (url.includes('/rpc/admin_find_buyers_center')) {
-      return r.fulfill(json({ generated_at: new Date().toISOString(), window_days: 30, switches: {}, overview: {}, campaigns: [], actors: [], sources: [], languages: [], ledger: [] }));
+      const camp = { matching_job_id: status?.campaign?.jobId ?? JOB_ID, campaign_id: null, property_id: PROPERTY_ID, created_at: new Date().toISOString(), lifecycle: { state: status?.campaign?.state, active: Boolean(status?.campaign?.active) } };
+      return r.fulfill(json({ generated_at: new Date().toISOString(), window_days: 30, switches: {}, overview: {}, campaigns: [camp], actors: [], sources: [], languages: [], ledger: [] }));
     }
     if (url.includes('/rpc/admin_discovery_')) return r.fulfill(json({ message: 'not in this fixture' }, 400));
     if (url.includes('/rest/v1/properties')) return r.fulfill(json(wantsObject ? property : [property]));
@@ -214,12 +215,15 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, 
   return { page, calls };
 }
 
-/* 2026-10-16: the report lives in the live module's collapsed "Search details". */
+/* 2026-10-18 (owner): the report is no longer on the customer's results page; operators open it
+   from Admin → Find Buyers → Campaigns. */
 async function openReport(page) {
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-testid="fbl-details-toggle"]', { timeout: 30000 });
-  assert.equal(await page.locator('[data-testid="fbr-report"]').count(), 0, 'the technical report is collapsed by default');
-  await page.click('[data-testid="fbl-details-toggle"]');
+  await page.goto(`${BASE}/admin/discovery`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="find-buyers-center"] [role="tab"]', { timeout: 30000 });
+  await page.locator('[data-testid="find-buyers-center"] [role="tab"]').nth(2).click();
+  await page.waitForSelector('[data-testid="fbx-admin-report-open"]', { timeout: 20000 });
+  assert.equal(await page.locator('[data-testid="fbr-report"]').count(), 0, 'the report opens on request');
+  await page.click('[data-testid="fbx-admin-report-open"]');
   await page.waitForSelector('[data-testid="fbr-report"]', { timeout: 30000 });
 }
 async function expand(page) {
@@ -319,7 +323,8 @@ test('live search: a partial report, leads grouped Strong → Potential → Weak
   assert.match(notes[1], /Genuine purchase requests were found \(2\), but none matched both/);
   assert.match(notes[2], /renting, not buying \(78% of requests\)/);
   assert.match(notes[4], /Job-related posts surfaced in property groups \(12\)/);
-  /* Buyers tab: STRONG and POTENTIAL only; the WEAK request is an interested person needing verification. */
+  /* Buyers tab (the customer's results page): STRONG and POTENTIAL only; the WEAK request is an interested person needing verification. */
+  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbx-lead-group"]', { timeout: 20000 });
   const groups = await page.$$eval('[data-testid="fbx-lead-group"]', (els) => els.map((e) => e.getAttribute('data-category')));
   assert.deepEqual(groups, ['STRONG', 'POTENTIAL'], 'category order; WEAK is not a buyer; REJECTED never shown');
@@ -380,8 +385,9 @@ test('admin: the Intelligence tab renders the cross-campaign view (en 1440, ar 3
   assert.deepEqual(failures, []);
 });
 
-test('owners do not see the search report, research notes, per-language or per-source lists (owner, 2026-10-17)', opts, async (t) => {
-  const { page } = await boot(t, { admin: false });
+test('nobody sees the search report, research notes, per-language or per-source lists on the results page (owner, 2026-10-18)', opts, async (t) => {
+  /* an admin account included: the owner's own account is an admin */
+  const { page } = await boot(t, { admin: true });
   await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="fbl-details-toggle"]', { timeout: 30000 });
   await page.click('[data-testid="fbl-details-toggle"]');

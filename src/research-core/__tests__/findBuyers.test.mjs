@@ -174,12 +174,15 @@ test('first tranche: registry reuse before rediscovery, native Telegram first, d
   ];
   const jobs = initialSocialJobs({ dna: SALE, plan, knownSources: known, enabledActors: enabled, nativeTelegramActive: true, now });
   assert.equal(jobs.filter((j) => j.stage === 'FB_GROUP_POSTS').length, 3, 'known groups are read first');
-  assert.ok(!jobs.some((j) => j.stage === 'FB_GROUP_SEARCH' && j.language === 'ru'), 'a covered language is not rediscovered');
-  assert.equal(new Set(jobs.filter((j) => j.stage === 'FB_GROUP_SEARCH').map((j) => j.language)).size, 5, 'the other five languages discover');
+  /* Owner, 2026-10-18: new groups on every campaign, in all six languages — a covered language
+     discovers too (with a query that rotates per campaign). */
+  assert.ok(jobs.some((j) => j.stage === 'FB_GROUP_SEARCH' && j.language === 'ru'), 'a covered language still discovers new groups');
+  assert.equal(new Set(jobs.filter((j) => j.stage === 'FB_GROUP_SEARCH').map((j) => j.language)).size, 6, 'all six languages discover');
   assert.equal(jobs.filter((j) => j.stage === 'FB_GROUP_SEARCH' && j.language === 'ka').length, 2, 'Georgian (primary market) discovers with two queries');
   assert.ok(!jobs.some((j) => j.stage === 'TELEGRAM_CHANNEL'), 'native Telegram is primary');
   assert.ok(!jobs.some((j) => j.stage === 'LINKEDIN_POSTS' || j.stage === 'VK_WALL'), 'disabled actors are never planned');
-  assert.ok(new Set(jobs.filter((j) => j.stage === 'TIKTOK_SEARCH').map((j) => j.language)).size === 6, 'TikTok probes all six languages');
+  /* TikTok demand search is off (owner, 2026-10-18): agencies' videos, never a buyer. */
+  assert.equal(jobs.filter((j) => j.stage === 'TIKTOK_SEARCH').length, 0, 'no TikTok demand search even when the Actor is enabled');
   const fallback = initialSocialJobs({ dna: SALE, plan, knownSources: known, enabledActors: enabled, nativeTelegramActive: false, now });
   assert.equal(fallback.filter((j) => j.stage === 'TELEGRAM_CHANNEL').length, 1, 'memo23 Telegram only as fallback');
 });
@@ -255,4 +258,12 @@ test('the launch plan is Georgian-first: Georgian groups get reserved slots and 
   const reads = jobs.filter((j) => j.stage === 'FB_GROUP_POSTS').map((j) => j.sourceId);
   assert.deepEqual(reads.slice(0, 3), ['ka1', 'ka2', 'ka3'], 'Georgian groups are read first despite lower past yield');
   assert.ok(jobs.some((j) => j.stage === 'FB_GROUP_SEARCH' && j.language === PRIMARY_LANGUAGE), 'Georgian discovery runs even when 3 Georgian groups are known');
+});
+
+test('group discovery rotates its query per campaign (owner, 2026-10-18)', async () => {
+  const { rotate, discoveryTurn } = await import('../findBuyers/campaignPlan.ts');
+  assert.deepEqual(rotate(['a', 'b', 'c'], 1), ['b', 'c', 'a']);
+  assert.deepEqual(rotate(['a', 'b', 'c'], 5), ['c', 'a', 'b']);
+  assert.deepEqual(rotate([], 3), []);
+  assert.notEqual(discoveryTurn(Date.UTC(2026, 9, 18, 4)), discoveryTurn(Date.UTC(2026, 9, 18, 5)), 'an hour later is another turn');
 });

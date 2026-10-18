@@ -706,19 +706,16 @@ test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; RE
   const { page } = await boot(t, { status: REAL_RUN, admin: true });
   await open(page);
   await openDetails(page);
-  await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
+  await page.waitForSelector('[data-testid="fbl-details"]', { timeout: 15000 });
   const main = await page.textContent('main');
-  assert.match(main, /Telegram\s*Completed · 2 signals checked · 31 new communities found · 0 qualified matches/);
+  /* No per-source list on the results page for anyone, admins included (owner, 2026-10-18). */
+  assert.equal(await page.locator('[data-testid="fbl-source-outcomes"]').count(), 0);
   /* Clock times (the dated history line, e.g. "6:33 PM") are not counts. */
   assert.doesNotMatch(main.replace(/\d{1,2}:\d{2}/g, ''), /33/, 'raw items and communities are never summed into one number');
   assert.match(main, /Ready to search/, 'the current state is READY, not the last outcome');
   assert.match(main, /Last search \(.+\): Search finished — no new active demand/, 'the last outcome is a dated history line');
   /* A finished search does not move; only the source that ran is listed, completed. */
   assert.equal(await page.getAttribute('[data-testid="fbl-field"]', 'data-mode'), 'finished');
-  assert.deepEqual(await page.$$eval('[data-testid="fbl-source-outcomes"] li', (els) => els.map((e) => [e.getAttribute('data-source'), e.querySelector('[data-testid="fbl-exec-state"]')?.getAttribute('data-state')])), [['TELEGRAM', 'COMPLETED']]);
-  /* Switched-off sources are not shown to the owner at all (2026-10-12). */
-  const outcomes = await page.innerText('[data-testid="fbl-source-outcomes"]');
-  for (const name of ['Facebook', 'Instagram', 'TikTok', 'Forum']) assert.doesNotMatch(outcomes, new RegExp(name), `${name} (switched off) is not shown`);
   assert.equal(await page.locator('[data-testid="fbl-network-legend"]').count(), 0, 'no available / switched-off legend');
 });
 
@@ -739,12 +736,11 @@ test('only Telegram ran because the social planner failed: the owner sees what w
     const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED, admin: true });
     await open(page);
     await openDetails(page);
-    await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
+    await page.waitForSelector('[data-testid="fbl-details"]', { timeout: 15000 });
     /* 2026-10-12: the planner failure and the sources it stopped stay internal (admin views). */
     if (await page.locator('[data-testid="fbl-scope-social-blocked"]').count() !== 0) failures.push(`${lang} ${width}: planner failure shown to the owner`);
     if (await page.locator('[data-testid="fbl-scope-only"]').count() !== 0) failures.push(`${lang} ${width}: "only X was searched" shown`);
-    const chips = await page.$$eval('[data-testid="fbl-exec-state"]', (els) => els.map((e) => e.getAttribute('data-state')));
-    if (JSON.stringify(chips) !== JSON.stringify(['COMPLETED'])) failures.push(`${lang} ${width}: chips ${JSON.stringify(chips)}`);
+    if (await page.locator('[data-testid="fbl-exec-state"]').count() !== 0) failures.push(`${lang} ${width}: per-source chips shown (removed 2026-10-18)`);
     const text = await page.evaluate(() => document.body.innerText);
     if (/fbl_|undefined|NaN/.test(text)) failures.push(`${lang} ${width}: raw key / undefined / NaN`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

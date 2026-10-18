@@ -48,14 +48,14 @@
 //   this site and never an absolute address.
 
 import { Bell, Check, CheckCheck, Loader2, RefreshCw } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NotificationSettings } from '@/components/notifications/NotificationSettings';
 import {
-  CATEGORY_META, META_CATEGORY_LABEL, metaNotificationInfo, notificationAge, notificationCategory,
+  CATEGORY_META, metaNotificationInfo, notificationAge, notificationCategory,
   notificationHref, notificationMark, notificationText,
 } from '@/components/notifications/presentation';
 import { intlLocaleFor } from '@/components/workspace/primitives';
@@ -64,7 +64,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 import {
-  cursorAfter, isAfterCursor, keysetOrFilter, META_CATEGORIES, META_NOTIFICATION_TYPES, metaCategoryFilter,
+  cursorAfter, isAfterCursor, keysetOrFilter, metaCategoryFilter,
   metaCategoryOf, mergeFeed, type FeedCursor, type MetaCategory,
 } from '@/lib/notifications/feed';
 import { cn } from '@/lib/utils';
@@ -272,8 +272,9 @@ function NotificationsContent() {
   const [markingAll, setMarkingAll] = useState(false);
   const [cursor, setCursor] = useState<FeedCursor | null>(null);
   /* A finer filter for Meta Ads rows, offered only to somebody who has any. */
-  const [metaCategory, setMetaCategory] = useState<MetaCategory | null>(null);
-  const [hasMeta, setHasMeta] = useState(false);
+  /* No category filter on this page any more (owner, 2026-10-18); kept as a constant so the
+     keyset query, live merge and refresh paths stay one code path. */
+  const metaCategory = null as MetaCategory | null;
 
   const userId = homatchUser?.id ?? null;
   /* The live handlers read these through refs: re-subscribing to realtime on every
@@ -288,19 +289,6 @@ function NotificationsContent() {
   const metaCategoryRef = useRef(metaCategory);
   metaCategoryRef.current = metaCategory;
   const generation = useRef(0);
-
-  /* Whether this account has any Meta Ads notification at all — head-only, one row. */
-  useEffect(() => {
-    if (!userId) return;
-    let live = true;
-    void supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .in('type', META_NOTIFICATION_TYPES as unknown as string[])
-      .then(({ count }) => { if (live) setHasMeta((count ?? 0) > 0); });
-    return () => { live = false; };
-  }, [userId]);
 
   const load = useCallback(async (which: Filter, category: MetaCategory | null) => {
     if (!userId) return;
@@ -363,7 +351,6 @@ function NotificationsContent() {
       }, (payload) => {
         const n = payload.new as Notification;
         if (!n?.id) return;
-        if (metaCategoryOf(n)) setHasMeta(true);
         accept(n, true);
       })
       .on('postgres_changes', {
@@ -497,31 +484,7 @@ function NotificationsContent() {
             ))}
           </div>
 
-          {(hasMeta || metaCategory) && (
-            /* Meta Ads rows, one category at a time. It wraps rather than scrolls: six
-               chips on a 390px screen are two lines, not a sideways rail. */
-            <div role="group" aria-label={t('mm_n_cat_label')} className="flex flex-wrap gap-1.5">
-              {([null, ...META_CATEGORIES] as const).map((value) => (
-                <button
-                  key={value ?? 'all'}
-                  type="button"
-                  onClick={() => setMetaCategory(value)}
-                  aria-pressed={metaCategory === value}
-                  className={cn(
-                    'inline-flex min-h-9 max-w-full items-center rounded-full border px-3 text-2xs font-semibold transition-colors motion-reduce:transition-none',
-                    FOCUS,
-                    metaCategory === value
-                      ? 'border-[hsl(218_52%_11%)] bg-[hsl(218_52%_11%)] text-[hsl(40_94%_70%)]'
-                      : 'border-[hsl(40_60%_82%)] bg-white text-[hsl(218_28%_38%)] hover:border-[hsl(38_92%_56%)] hover:text-[hsl(218_45%_14%)]',
-                  )}
-                >
-                  <span className="min-w-0 break-words text-start">
-                    {t((value ? META_CATEGORY_LABEL[value] : 'mm_n_cat_all') as Parameters<typeof t>[0])}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Only All / Unread (owner, 2026-10-18): no per-category chip rail. */}
           <p className="sr-only" aria-live="polite">
             {metaCategory && !loading && !failed ? t('mm_n_filter_count', { n: rows.length }) : ''}
           </p>

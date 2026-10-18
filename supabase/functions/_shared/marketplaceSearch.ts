@@ -27,6 +27,7 @@ import { type RunLease, reapDecision } from '../../../src/research-core/marketpl
 import { estimatedProviderCost } from './providerCost.ts';
 import { wellFormedDeep } from '../../../src/research-core/marketplace/text-safety.ts';
 import { loadSocialCandidates } from './findProperty/socialListings.ts';
+import { type ListingRow, mergeListingRows, resolveSharedRuns, sharedLeaders, sharedListingRows } from './marketplaceCapacity.ts';
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -260,12 +261,14 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   if (search.status === 'CANCELLED') return { status: 'CANCELLED', properties: 0, strongMatches: 0 };
 
   const { data: runRows } = await db.from('discovery_marketplace_worker_runs')
-    .select('id,worker_id,status,deadline_at,returned_count,attempts,lease_expires_at,errors,metrics').eq('search_id', searchId);
+    .select('id,worker_id,status,deadline_at,returned_count,attempts,lease_expires_at,errors,metrics,shared_run_id,query_applied').eq('search_id', searchId);
   const workerIds = [...new Set((runRows ?? []).map((r: Record<string, unknown>) => String(r.worker_id)))];
   const { data: workerRows } = workerIds.length
     ? await db.from('discovery_marketplace_workers').select('worker_id,max_attempts').in('worker_id', workerIds)
     : { data: [] };
   const attemptsOf = new Map<string, number>((workerRows ?? []).map((w: { worker_id: string; max_attempts: number }) => [w.worker_id, Number(w.max_attempts) || 3] as [string, number]));
+  /* A run sharing an identical search's portal read takes that run's outcome once it ends. */
+  await resolveSharedRuns(db, (runRows ?? []) as Array<Record<string, unknown>>, now);
   await reapRuns(db, (runRows ?? []) as Array<Record<string, unknown>>, (id) => attemptsOf.get(id) ?? 3, now);
   await serveCachedListings(db, searchId, search.request as MarketplaceSearchRequest, (runRows ?? []) as Array<Record<string, unknown>>, now);
   const runs: WorkerRunState[] = (runRows ?? []).map((r: Record<string, unknown>) => ({
@@ -273,12 +276,18 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   }));
 
   /* EVERY listing every worker reported, paged: nothing is dropped at a row cap. */
-  const listingRows = await readAll<{ raw: ExternalListingCandidate; worker_run_id: string }>((from, to) =>
-    db.from('discovery_marketplace_listings').select('raw,worker_run_id').eq('search_id', searchId)
+  const ownRows = await readAll<ListingRow>((from, to) =>
+    db.from('discovery_marketplace_listings').select('raw,worker_run_id,source_key,source_listing_id').eq('search_id', searchId)
       .order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, to));
-  const workerOfRun = new Map<string, string>((runRows ?? []).map((r: Record<string, unknown>) => [String(r.id), String(r.worker_id)] as [string, string]));
+  /* Shared runs: the leader's fresh listings, read in place rather than copied per search. */
+  const leaders = sharedLeaders((runRows ?? []) as Array<Record<string, unknown>>);
+  const listingRows = mergeListingRows(ownRows, await sharedListingRows(db, [...leaders.keys()]));
+  const workerOfRun = new Map<string, string>([
+    ...(runRows ?? []).map((r: Record<string, unknown>) => [String(r.id), String(r.worker_id)] as [string, string]),
+    ...leaders,
+  ]);
   const candidates = listingRows.map((l) => ({
-    workerId: workerOfRun.get(l.worker_run_id) ?? 'unknown', candidate: l.raw,
+    workerId: workerOfRun.get(l.worker_run_id) ?? 'unknown', candidate: l.raw as unknown as ExternalListingCandidate,
   }));
   /* Social offers of this person's ENDED paid campaigns for this search: ranked and
      deduplicated with the portals; a failed read never loses the portal results. */
@@ -447,7 +456,7 @@ export function requestKey(request: unknown): string {
 export async function shareRecentResults(db: Db, workerId: string, now = new Date(),
   process: (db: Db, searchId: string, now: Date) => Promise<unknown> = processAndStore): Promise<number> {
   const { data: queued } = await db.from('discovery_marketplace_worker_runs').select('id,search_id,request')
-    .eq('worker_id', workerId).eq('status', 'QUEUED').order('created_at', { ascending: true }).limit(50);
+    .eq('worker_id', workerId).eq('status', 'QUEUED').is('shared_run_id', null).order('created_at', { ascending: true }).limit(50);
   if (!(queued ?? []).length) return 0;
   const { data: recent } = await db.from('discovery_marketplace_worker_runs')
     .select('id,status,request,discovered_count,query_applied,errors,completed_at').eq('worker_id', workerId)

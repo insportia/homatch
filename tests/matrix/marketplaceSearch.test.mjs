@@ -214,14 +214,15 @@ test('Snake is optional, self-contained and never touches the search', () => {
 
 test('concurrent orchestration: one batch dispatch, bounded parallel claims, independent leases and retries', () => {
   const ms = code(MS);
-  assert.match(ms, /\.insert\(eligible\.map\(/, 'every eligible worker gets its run in one insert');
+  /* 20261116090000: every eligible worker's run is decided and created in one transaction (shared, reused, live or pool). */
+  assert.match(ms, /const outcome = await dispatchSearch\(db, \{[\s\S]{0,120}runs: eligible\.map\(/, 'every eligible worker gets its run in one dispatch');
   const wi = code(WI);
   assert.match(wi, /p_lease_seconds: leaseSeconds/);
   assert.match(wi, /action === 'heartbeat'/);
   assert.match(wi, /retryDecision\(/);
   assert.match(wi, /reapRuns\(/);
   const sh = code(SH);
-  assert.match(sh, /readAll<\{ raw: ExternalListingCandidate/, 'every listing is read, page by page');
+  assert.match(sh, /const ownRows = await readAll<ListingRow>/, 'every listing is read, page by page');
   assert.doesNotMatch(sh, /\.limit\(MAX_LISTINGS/);
   const sql = read(MIG);
   assert.match(sql, /pg_advisory_xact_lock/);

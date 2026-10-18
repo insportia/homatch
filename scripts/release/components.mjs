@@ -262,6 +262,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(property_interest_|customer_demand_interests$|saved_property_listings$|interest_|record_interest_event$|record_my_property_interest$|my_property_interest_history$|set_my_interest_tracking$|delete_my_property_interest_history$|purge_expired_property_interest$|demand_interest_strength$|admin_demand_)/, 'DISCOVERY'],
   // Find Property Knowledge Engine exact cache (service role only).
   [/^public\.property_knowledge_/, 'DISCOVERY'],
+  // Find Property free portal search: worker claim, live-search dispatch and quota, shared runs.
+  [/^public\.(marketplace_|claim_marketplace_|consume_marketplace_|admin_marketplace_)/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],
   // HOMATCH Internal Matches: the admin/tester DEMO buyer (demo_* tables and RPCs) and the per-person key.
@@ -294,6 +296,8 @@ export const I18N_KEY_OWNERS = [
   [/^admin_/, 'ADMIN'],
   // Find Property workspace (history, results, property page; property-scoped AI chat errors).
   [/^fpw_/, 'DISCOVERY'],
+  // Find Property search screens (marketplace search, sources, results workspace).
+  [/^(fpx|mps)_/, 'DISCOVERY'],
   [/^fbx_/, 'DISCOVERY'],
   // Find Property saved listings, activity history and the paid social campaign.
   [/^fpi_/, 'DISCOVERY'],

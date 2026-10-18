@@ -4,7 +4,7 @@
 // regression harness for the VILLION baseline. Nothing is deleted: callers
 // write the category/reasons next to the original evidence.
 
-import { classifyComment, classifyDemand, type DemandReading, type DemandRole } from './demandClassifier.ts';
+import { classifyComment, classifyDemand, withAuthorEvidence, type DemandReading, type DemandRole } from './demandClassifier.ts';
 import { qualify, type Qualification } from './qualify.ts';
 import { contentFingerprint } from './identity.ts';
 import type { PropertyDna } from './propertyDna.ts';
@@ -64,7 +64,7 @@ export function requalifyLeads(leads: StoredLead[], dna: PropertyDna, opts: { no
     const keys = duplicateKey(l);
     const dupOf = keys.map((k) => seen.get(k)).find(Boolean) ?? null;
     keys.forEach((k) => { if (!seen.has(k)) seen.set(k, l.id); });
-    const reading = l.kind === 'COMMENT' ? classifyComment(l.text, l.parent ?? null) : classifyDemand(l.text, { kind: l.kind ?? 'POST' });
+    const reading = withAuthorEvidence(l.kind === 'COMMENT' ? classifyComment(l.text, l.parent ?? null) : classifyDemand(l.text, { kind: l.kind ?? 'POST' }), { name: l.author });
     const t = Date.parse(l.publishedAt ?? '');
     const ageDays = Number.isFinite(t) ? Math.max(0, (now - t) / DAY) : null;
     out.set(l.id, { id: l.id, reading, qualification: qualify(reading, dna, { ageDays, duplicate: Boolean(dupOf), fx: opts.fx }), duplicateOf: dupOf });

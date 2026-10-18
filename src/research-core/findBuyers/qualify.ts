@@ -16,7 +16,7 @@ import type { DemandReading } from './demandClassifier.ts';
 import { toUsd, transactionUnconfirmed } from './demandClassifier.ts';
 import { ADMIN_DISTRICTS, AREA_PARENT, NEARBY_DISTRICTS, STREETS, cityOfArea, normKey, parentDistrict, streetOfAddress } from './places.ts';
 
-export const QUALIFICATION_VERSION = 7; // 7: stated size compared with the property's size band, a smaller home (or two+ rooms larger) is not this property's buyer, the model never makes a seeker of a text with no wish to buy (2026-10-17); 4: financing dimension; 5: people-first — brokers soliciting sellers, unconfirmed buy/rent (2026-10-16); 6: street / micro-area / district levels, budget levels incl. unstated currency, counterparty seekers and listing collectors are supply (2026-10-17)
+export const QUALIFICATION_VERSION = 8; // 8: a business-named author or one who advertises homes in the same read is an intermediary, broker phrases ("თანამშრომლობთ", "ბინებს ვეძებ", "მყავს კლიენტი"), bedroom counts in words ("ერთ საძინებლიან") (2026-10-18); 7: stated size compared with the property's size band, a smaller home (or two+ rooms larger) is not this property's buyer, the model never makes a seeker of a text with no wish to buy (2026-10-17); 4: financing dimension; 5: people-first — brokers soliciting sellers, unconfirmed buy/rent (2026-10-16); 6: street / micro-area / district levels, budget levels incl. unstated currency, counterparty seekers and listing collectors are supply (2026-10-17)
 
 export type MatchCategory = 'STRONG' | 'POTENTIAL' | 'WEAK' | 'REJECTED';
 export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'UNCONFIRMED' | 'INCOMPATIBLE' | 'UNKNOWN';

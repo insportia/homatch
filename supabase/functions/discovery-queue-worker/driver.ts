@@ -56,6 +56,14 @@ const POLL_PRIORITY = 10_000;
 
 const OPEN_SOURCE_STATES = ['PENDING', 'PROCESSING', 'RETRY_WAIT'];
 const STUCK_AFTER_MS = 12 * 60_000;
+/* Finishing (classify + matching + people-first assessment + settlement) takes a few
+   minutes at most; a campaign in 'classifying'/'ranking' this long lost its tick. */
+const FINISH_STUCK_AFTER_MS = 5 * 60_000;
+/* A tick that processed Actor results has spent much of the isolate's CPU: finishing a
+   campaign in the same invocation exceeded the limit (8f6b8544, 2026-10-18, HTTP 546
+   "CPU Time exceeded" right after run-matching). The next tick (one minute) finishes it,
+   unless the window closed this long ago. */
+const FINISH_DEFER_GRACE_MS = 4 * 60_000;
 
 export async function drive(db: any, baseUrl: string, serviceKey: string, body: any) {
   const started = Date.now();
@@ -82,7 +90,8 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   /* Endings get their own clock: a busy social pass must never starve the
      finishing (and settling) of campaigns whose window closed. */
   report.socialSweep = await sweepStaleActorRuns(db).catch((e) => ({ error: errorText(e) }));
-  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, Date.now());
+  const heavySocialTick = ((socialJobs as any)?.jobs ?? []).some((j: any) => j?.outcome === 'DONE');
+  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, Date.now(), { deferFinish: heavySocialTick });
   report.runs = await advanceRuns(db, baseUrl, serviceKey, Date.now());
   report.pauseExpired = await expirePausedCampaigns(db);
   report.runPauseExpired = await expirePausedRuns(db);
@@ -244,7 +253,7 @@ async function runSocialJob(db: any, settings: DiscoverySettings, job: any): Pro
   return { id: job.id, stage: job.metadata?.stage ?? null, outcome: outcome.outcome, status };
 }
 
-async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, started: number) {
+async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, started: number, opts: { deferFinish?: boolean } = {}) {
   const { data: waiting, error } = await db.from('matching_jobs')
     .select('id,property_id,campaign_id,started_at,discovery_deadline_at,billing_grant,search_languages')
     .eq('status', 'searching_sources')
@@ -309,6 +318,11 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
         results.push({ jobId: row.id, ended: 'RESERVATION_NOT_HELD' });
         continue;
       }
+    }
+
+    if (opts.deferFinish && Date.parse(row.discovery_deadline_at) > Date.now() - FINISH_DEFER_GRACE_MS) {
+      results.push({ jobId: row.id, deferred: 'FINISH_NEXT_TICK' });
+      continue;
     }
 
     if (!(await claimJobTransition(db, row.id, ['searching_sources'], {
@@ -548,7 +562,7 @@ async function expirePausedRuns(db: any) {
 
 /** A job left in 'classifying' or 'ranking' by a tick that died. */
 async function rescueStuck(db: any) {
-  const cutoff = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
+  const cutoff = new Date(Date.now() - FINISH_STUCK_AFTER_MS).toISOString();
   const { data, error } = await db.from('matching_jobs')
     .select('id,property_id,campaign_id,started_at,billing_grant')
     .in('status', ['classifying', 'ranking'])
@@ -558,6 +572,18 @@ async function rescueStuck(db: any) {
   if (error) throw error;
   const rescued: string[] = [];
   for (const row of (data ?? []) as any[]) {
+    /* First time: finish again rather than throw the collected results away. Every
+       finishing step is re-entrant (classification skips classified rows, matching
+       upserts, the settlement checks the reservation is still held). */
+    const { count: retried } = await db.from('matching_job_events').select('id', { count: 'exact', head: true })
+      .eq('job_id', row.id).eq('event_type', 'FINISH_RETRY');
+    if (!retried) {
+      if (await claimJobTransition(db, row.id, ['classifying', 'ranking'], { status: 'searching_sources', current_step: 'Finishing the search' })) {
+        await jobEvent(db, row.id, 'FINISH_RETRY', { message: 'The finishing step was interrupted; it runs again with everything collected' }).catch(() => undefined);
+        rescued.push(row.id);
+      }
+      continue;
+    }
     if (!(await claimJobTransition(db, row.id, ['classifying', 'ranking'], { status: 'failed' }))) continue;
     await failCampaignJob(db, row, row.billing_grant ?? null, 'WORKER_STOPPED',
       'the search stopped while finishing; the whole budget was released');

@@ -13,7 +13,7 @@ const DNA = buildPropertyDna({
 });
 const Q = (text) => qualify(classifyDemand(text, { kind: 'POST' }), DNA, { ageDays: 2 });
 
-test('version 7', () => assert.equal(QUALIFICATION_VERSION, 7));
+test('version 7 rules still hold under version 8', () => assert.ok(QUALIFICATION_VERSION >= 7));
 
 test('stated size is read as a range in every language the campaigns read', () => {
   assert.deepEqual(statedArea('ვარანცოვზე 60 კვადრატამდე სურათები ჩამიყარეთ'), { min: null, max: 60, approx: false });

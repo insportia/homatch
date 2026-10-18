@@ -1,9 +1,17 @@
 # PROJECT STATE
 
-last_updated: 2026-10-16
+last_updated: 2026-10-18
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Production hardening from the capacity audit (branch claude/architecture-viewer-repair-mqdt18, 2026-10-18) — PR NOT YET OPEN, NOTHING DEPLOYED
+
+Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release manifest, rollback,
+owner approvals). Six commits: worker token-only auth + bounded memory; Verify indexed sweep +
+fail-closed advance lease; Verify budget-gate ERROR defers + cancel stops Developer Ads + spend-cap
+SQL sum; fair claim for free portal searches; cron history retention (approval required);
+SPEECH_MAX_SESSIONS. Four migrations 20261114090000..120000 — none applied. Release tier REPO_FULL.
 
 ## Service Control Center EXPANSION — every manageable product (PR #240 + release fix #247, 2026-10-17) — MERGED, DEPLOYED, MIGRATION APPLIED
 
@@ -446,11 +454,13 @@ known, 5 read. Owner actions still open: Register & verify FB_POST_SEARCH, FB_PA
 
 - Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
   verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
-  research_jobs.client_request_id + advance lease). NOT applied to production.
-- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
-  sources as durable tasks; property mode always legacy.
+  research_jobs.client_request_id + advance lease). Applied (see Verify go-live above).
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded); production is "QUEUE"
+  (verified 2026-10-18). QUEUE = cadastral official sources as durable tasks; property mode
+  always legacy.
 - Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
-  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+  set in production; verify-queue ~9.2k invocations/day, 2026-10-18). Lanes HTTP/BROWSER, slots
+  `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS` (unset → defaults 12/3).
 - Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
   advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
 - CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.

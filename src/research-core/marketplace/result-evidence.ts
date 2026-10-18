@@ -4,8 +4,9 @@ import type { MarketplaceSearchRequest } from './worker-contract.ts';
 import { descriptionSignals, type DescriptionSignal } from './description-signals.ts';
 import { listingActivity, type ListingActivity } from './freshness.ts';
 
-export type ResultSection = 'BEST' | 'FRESH' | 'VALUE' | 'CLOSE' | 'VERIFY' | 'UPGRADE' | 'DUPLICATES';
-export const RESULT_SECTIONS: readonly ResultSection[] = ['BEST', 'CLOSE', 'UPGRADE', 'DUPLICATES', 'FRESH', 'VALUE', 'VERIFY'];
+export type ResultSection = 'BEST' | 'FRESH' | 'VALUE' | 'CLOSE' | 'VERIFY' | 'UPGRADE' | 'DUPLICATES' | 'OTHER';
+/* OTHER (outside the request) is always last: the homes that fit come first. */
+export const RESULT_SECTIONS: readonly ResultSection[] = ['BEST', 'CLOSE', 'UPGRADE', 'DUPLICATES', 'FRESH', 'VALUE', 'VERIFY', 'OTHER'];
 export type WarningCode = 'POSSIBLE_DUPLICATE' | 'PRICE_CONFLICT' | 'INFORMATION_CONFLICT' | 'COPIED_DESCRIPTION' | 'MULTI_PROPERTY_CONTACT' | 'DATE_UNRELIABLE';
 export interface ResultEvidence {
   section: ResultSection;

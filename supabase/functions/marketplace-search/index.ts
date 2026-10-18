@@ -67,9 +67,10 @@ async function summary(db: Db, search: Record<string, unknown>) {
     workerId: String(r.worker_id), status: r.status as WorkerRunState['status'], deadlineAt: String(r.deadline_at), returnedCount: Number(r.returned_count) || 0,
   }));
   /* Read-time freshness applies to counts as well as cards, including saved searches. */
-  const counts: Record<string, number> = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
+  /* Every group the pipeline emits (OTHER included); an unknown stored group still counts, never NaN. */
+  const counts: Record<string, number> = Object.fromEntries(RESULT_GROUPS.map((g) => [g, 0]));
   const catalogue = (await resultCatalogue(db, search)).filter((p) => isCurrentResult(p));
-  for (const p of catalogue) counts[p.group] += 1;
+  for (const p of catalogue) counts[p.group] = (counts[p.group] ?? 0) + 1;
   const stats = (search.stats ?? {}) as Record<string, number>;
   const status = search.status as SearchStatus;
   /* Per source: fresh, partly refreshed, previously collected (cached),

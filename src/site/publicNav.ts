@@ -61,6 +61,7 @@ export const PUBLIC_NAV_SERVICES: Record<string, ServiceKey> = {
   investment: 'investment',
   expat: 'for_expats',
   developers: 'developers',
+  brokers: 'brokers_directory',
 };
 
 export interface PublicNavLink {

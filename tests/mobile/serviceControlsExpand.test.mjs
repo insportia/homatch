@@ -54,19 +54,19 @@ function fakeSession() {
 }
 const profile = { id: 'u1', auth_id: 'u1', email: 'owner@example.test', is_admin: false, role: 'user', preferred_language: 'en', full_name: 'Nino Owner', plan: 'FREE', account_type: 'OWNER', created_at: new Date().toISOString() };
 
-// One customer address per live product (find_property_deep has none of its own; brokers_directory
-// pauses sales only, and its public directory stays open: owner decision, Option A).
+// One customer address per live product (find_property_deep has none of its own). The brokers
+// directory and its profiles are gated like every other product (owner, 2026-10-18).
 const DIRECT = {
   '/find-property': 'find_property', '/property/123456/matches': 'find_buyers', '/verify': 'verify', '/contracts': 'contracts',
   '/mortgage': 'mortgage', '/investment': 'investment', '/for-expats/georgia': 'for_expats', '/outreach/meta': 'meta_ads',
   '/outreach/email': 'email_campaigns', '/email-studio': 'email_campaigns', '/ai': 'ai_assistant',
   '/broker': 'broker_desk', '/developers': 'developers',
+  '/brokers': 'brokers_directory', '/brokers/11111111-1111-1111-1111-111111111111': 'brokers_directory',
 };
 const LIVE_PREFIXES = ['/find-property', '/verify', '/contracts', '/mortgage', '/investment', '/for-expats', '/outreach/meta',
-  '/outreach/email', '/email-studio', '/broker', '/developers'];
-// /broker (the desk) is a live product; /brokers (the public directory) never hides.
-const isLivePath = (p) => p !== '/brokers' && !p.startsWith('/brokers/') && (p === '/ai' || /^\/property\/[^/]+\/(matches|buyers|leads|buyer)(\/|$)/.test(p)
-  || LIVE_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`)));
+  '/outreach/email', '/email-studio', '/broker', '/brokers', '/developers'];
+const isLivePath = (p) => p === '/ai' || /^\/property\/[^/]+\/(matches|buyers|leads|buyer)(\/|$)/.test(p)
+  || LIVE_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
 // Backends a mounted live page would call for NEW work; while paused, none may be called.
 const LIVE_BACKENDS = ['marketplace-search', 'find-property-plan', 'find-property-run', 'match-campaign', 'research-agent',
   'deal-room-ai', 'investment-research', 'investment-consultant', 'meta-ads-api', 'outreach-send', 'homatch-ai'];
@@ -145,7 +145,7 @@ test('paused live products: the desktop sidebar offers none of them, and the pla
   const links = await hrefs(page);
   assert.deepEqual(links.filter(isLivePath), [], 'a link to a paused product is still offered');
   for (const platform of ['/dashboard', '/property', '/chat']) assert.ok(links.includes(platform), `${platform} must stay reachable`);
-  assert.ok(links.includes('/brokers'), 'the public brokers directory stays in the navigation while its sales are paused');
+  assert.ok(!links.includes('/brokers') && !links.includes('/broker'), 'a paused broker service is still in the sidebar');
   assert.equal(await page.getByTestId('service-unavailable').count(), 0, 'the dashboard itself is never gated');
   assert.equal(await noOverflow(page), true);
 });
@@ -206,21 +206,113 @@ const homeShape = (page) => page.evaluate(() => ({
   text: document.body.innerText,
   empty: [...document.querySelectorAll('main section')].filter((s) => s.getBoundingClientRect().height > 0 && !s.textContent.trim()).length,
 }));
-test('Option A: with Brokers directory sales paused, the public directory and its profiles stay open', opts, async (t) => {
-  for (const path of ['/brokers', '/brokers/11111111-1111-1111-1111-111111111111']) {
+/* ── Brokers: two switches, brokers_directory (/brokers, /brokers/:id) and broker_desk (/broker…) ── */
+const brokerState = (directory, desk) => liveState(true).map((row) =>
+  row.service_key === 'brokers_directory' ? { ...row, frontend_enabled: directory, backend_enabled: directory }
+    : row.service_key === 'broker_desk' ? { ...row, frontend_enabled: desk, backend_enabled: desk } : row);
+const DRAWER_OPEN = 'Open navigation';
+const sidebarLinks = async (page) => {
+  await page.waitForSelector('nav', { timeout: 30_000 });
+  await page.waitForTimeout(1000);
+  return hrefs(page);
+};
+
+test('brokers: both switches OFF — no sidebar item (desktop and phone drawer), no home section, every address gated, nothing read', opts, async (t) => {
+  const off = brokerState(false, false);
+  const desk = await open(t, { route: '/dashboard', services: off });
+  const links = await sidebarLinks(desk.page);
+  assert.ok(!links.some((p) => p === '/brokers' || p.startsWith('/brokers/') || p === '/broker' || p.startsWith('/broker/')), `desktop sidebar: ${links}`);
+  for (const path of ['/find-property', '/verify']) assert.ok(links.includes(path), `${path} must stay while only brokers are paused`);
+
+  const phone = await open(t, { route: '/dashboard', services: off, width: 390, height: 844 });
+  await phone.page.waitForSelector('[data-mobile-nav]', { timeout: 30_000 });
+  await phone.page.waitForTimeout(600);
+  await phone.page.getByRole('button', { name: DRAWER_OPEN }).first().click(); // the phone sidebar is a drawer
+  await phone.page.waitForTimeout(500);
+  const phoneLinks = await hrefs(phone.page);
+  assert.ok(!phoneLinks.some((p) => p === '/brokers' || p === '/broker'), `phone: ${phoneLinks}`);
+  assert.equal(await noOverflow(phone.page), true);
+
+  for (const width of [1440, 390]) {
+    const home = await open(t, { route: '/', services: off, signedIn: false, width });
+    await home.page.waitForSelector('section', { timeout: 30_000 });
+    await home.page.waitForTimeout(1200);
+    assert.equal(await home.page.locator('#brokers').count(), 0, `home @${width}: the Brokers section is still shown`);
+    assert.ok(!(await hrefs(home.page)).some((p) => p === '/brokers'), `home @${width}: a link to /brokers is still offered`);
+    assert.equal(await noOverflow(home.page), true);
+  }
+
+  for (const path of ['/brokers', '/brokers/11111111-1111-1111-1111-111111111111', '/broker', '/broker/onboarding']) {
     for (const signedIn of [false, true]) {
-      const { page, directoryReads } = await open(t, { route: path, services: ALL_LIVE_OFF, signedIn });
-      await page.getByText('Vake Homes Agency').first().waitFor({ timeout: 30_000 });
-      assert.equal(await page.getByTestId('service-unavailable').count(), 0, `${path} (${signedIn ? 'signed in' : 'visitor'}) is gated, but only sales are paused`);
-      assert.ok(directoryReads.length > 0, `${path} no longer reads the public directory`);
-      assert.equal(await noOverflow(page), true, `${path} overflows`);
+      if (!signedIn && !path.startsWith('/brokers')) continue; // the desk asks a visitor to sign in first
+      const { page, directoryReads } = await open(t, { route: path, services: off, signedIn });
+      await page.getByTestId('service-unavailable').waitFor({ timeout: 30_000 });
+      assert.equal(await page.getByTestId('service-unavailable').getAttribute('data-service'), path.startsWith('/brokers') ? 'brokers_directory' : 'broker_desk', path);
+      await page.waitForTimeout(500);
+      assert.deepEqual(directoryReads, [], `${path} read the directory while paused`);
+      assert.equal(await page.getByText('Vake Homes Agency').count(), 0, `${path} showed a listing while paused`);
     }
   }
-  const home = await open(t, { route: '/', services: ALL_LIVE_OFF, signedIn: false });
-  await home.page.waitForSelector('section', { timeout: 30_000 });
-  await home.page.waitForTimeout(1200);
-  assert.ok(await home.page.locator('#brokers').count() + (await hrefs(home.page)).filter((p) => p === '/brokers').length > 0,
-    'the home page still leads to the brokers directory');
+});
+
+test('brokers: each switch on its own — the directory without the desk, the desk without the directory', opts, async (t) => {
+  // Directory ON, desk OFF: /brokers opens and lists; the desk is gone everywhere.
+  const dirOnly = brokerState(true, false);
+  const a = await open(t, { route: '/dashboard', services: dirOnly });
+  const aLinks = await sidebarLinks(a.page);
+  assert.ok(aLinks.includes('/brokers') && !aLinks.includes('/broker'), `directory only: ${aLinks}`);
+  const list = await open(t, { route: '/brokers', services: dirOnly });
+  await list.page.getByText('Vake Homes Agency').first().waitFor({ timeout: 30_000 });
+  assert.equal(await list.page.getByTestId('service-unavailable').count(), 0);
+  assert.ok(!(await hrefs(list.page)).some((p) => p === '/broker' || p === '/broker/onboarding'), 'the directory offers the paused desk');
+  const deskOff = await open(t, { route: '/broker', services: dirOnly });
+  await deskOff.page.getByTestId('service-unavailable').waitFor({ timeout: 30_000 });
+  const signup = await open(t, { route: '/auth/signup?intent=broker', services: dirOnly, signedIn: false });
+  await signup.page.waitForSelector('form', { timeout: 30_000 });
+  await signup.page.waitForTimeout(800);
+  assert.equal(await signup.page.locator('[data-signup-professional]').count(), 0, 'professional sign-up offered while the desk is paused');
+
+  // Desk ON, directory OFF: a professional keeps the desk; the directory is gone everywhere.
+  const deskOnly = brokerState(false, true);
+  const b = await open(t, { route: '/dashboard', services: deskOnly });
+  const bLinks = await sidebarLinks(b.page);
+  assert.ok(!bLinks.includes('/brokers'), `desk only: the directory is still in the sidebar (${bLinks})`);
+  const dirOff = await open(t, { route: '/brokers', services: deskOnly });
+  await dirOff.page.getByTestId('service-unavailable').waitFor({ timeout: 30_000 });
+  assert.equal(await dirOff.page.getByTestId('service-unavailable').getAttribute('data-service'), 'brokers_directory');
+  const deskPage = await open(t, { route: '/broker', services: deskOnly });
+  await deskPage.page.waitForTimeout(2000);
+  assert.equal(await deskPage.page.getByTestId('service-unavailable').count(), 0, 'the desk is gated although only the directory is paused');
+  assert.ok(!(await hrefs(deskPage.page)).some((p) => p.startsWith('/brokers')), 'the desk links into the paused directory');
+  const signupOn = await open(t, { route: '/auth/signup?intent=broker', services: deskOnly, signedIn: false });
+  await signupOn.page.locator('[data-signup-professional]').waitFor({ timeout: 30_000 });
+});
+
+test('brokers: a reload or a new sign-in never brings back a paused broker service, even from memory or after a failed read', opts, async (t) => {
+  const off = brokerState(false, false);
+  // This browser last saw both ON (memory), the first read fails, then the real answer is OFF.
+  const remembered = { brokers_directory: true, broker_desk: true };
+  const shown = [];
+  const { page } = await open(t, { route: '/dashboard', services: (n) => (n === 1 ? 'unreadable' : off), remembered });
+  await page.exposeFunction('__seen', (p) => shown.push(p));
+  await page.evaluate(() => {
+    const check = () => document.querySelectorAll('a[href="/brokers"], a[href="/broker"]').forEach((a) => window.__seen(a.getAttribute('href')));
+    new MutationObserver(check).observe(document.body, { subtree: true, childList: true }); check();
+  });
+  await page.waitForTimeout(6000);
+  assert.deepEqual(shown, [], 'a broker link appeared during the failed read');
+  // Reload and sign in again: still hidden from the very first frame.
+  for (let i = 0; i < 2; i += 1) {
+    await page.reload();
+    await page.waitForSelector('nav', { timeout: 30_000 });
+    const early = await hrefs(page);
+    await page.waitForTimeout(1200);
+    const later = await hrefs(page);
+    assert.ok(![...early, ...later].some((p) => p === '/brokers' || p === '/broker'), `after reload ${i + 1}`);
+  }
+  const relogin = await open(t, { route: '/brokers', services: (n) => (n === 1 ? 'unreadable' : off), remembered });
+  await relogin.page.getByTestId('service-unavailable').waitFor({ timeout: 30_000 });
+  assert.deepEqual(relogin.directoryReads, [], 'the directory page mounted from a remembered ON');
 });
 
 test('paused live products: the public home page drops their tiles and sections, with no gap or overflow', opts, async (t) => {

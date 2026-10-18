@@ -456,7 +456,7 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
   };
 }
 
-async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false, paid = false } = {}) {
+async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false, paid = false, deepOff = false } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -545,9 +545,12 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       if (body.action === 'cancel') return r.fulfill(json({ search: summary('CANCELLED') }));
       return r.fulfill(json({ error: 'UNKNOWN_ACTION' }, 400));
     }
+    /* Admin → Service Control Center: paid Deep Search paused (find_property_deep OFF). */
+    if (deepOff && url.includes('/rest/v1/rpc/service_controls_public')) return r.fulfill(json([{ service_key: 'find_property_deep', frontend_enabled: false, backend_enabled: false }]));
     /* Paid social campaign (find-property-run) and the customer's own activity. */
     if (url.includes('/functions/v1/find-property-run')) {
       const body = JSON.parse(req.postData() ?? '{}');
+      (state.paidCalls ??= []).push(body.action);
       if (body.action === 'preview') {
         const credits = Number(body.authorizedMaxCredits) || 50;
         return r.fulfill(json({ success: true, preview: { available: true, unavailableReason: null, priceCredits: credits, creditsPerUsd: 10, minCredits: 50, maxCredits: null,
@@ -1105,6 +1108,32 @@ test('switch off: history remains reachable and new search uses the existing fal
   await page.locator('a[href="/find-property/new"]').click();
   await page.waitForSelector('textarea', { timeout: 30000 });
   assert.equal(await page.locator('#mps-mode-title').count(), 0);
+});
+
+test('Deep Search paused by Admin: the free portal search only — no mode choice, Deep card, paid tab or price; a past campaign stays readable (en 1440, ka 375, he RTL 390)', opts, async (t) => {
+  const failures = [];
+  for (const [lang, width] of [['en', 1440], ['ka', 375], ['he', 390]]) {
+    const { page, state, close } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, paid: true, deepOff: true });
+    state.paidStarted = true; /* this search ran a campaign before the pause */
+    await toConfirm(page);
+    if (await page.locator('[data-mode-tile="DEEP"]').count()) failures.push(`${lang}: Deep card shown while paused`);
+    if (await page.locator('[data-action="mps-continue"]').count()) failures.push(`${lang}: mode step still offered`);
+    await page.locator('[data-action="mps-start"]').click();
+    await viewResults(page);
+    await page.locator('[data-action="past-campaign-results"]').waitFor({ timeout: 15000 }).catch(() => failures.push(`${lang}: past campaign not reachable`));
+    if (await page.locator('#fpx-mode-title').count()) failures.push(`${lang}: mode screen shown`);
+    if (await page.locator('section[data-deep-panel]').count()) failures.push(`${lang}: Deep panel shown`);
+    if (await page.locator('[data-view-tab="paid"]').count()) failures.push(`${lang}: paid tab shown`);
+    if (await page.locator('#fpi-budget').count()) failures.push(`${lang}: credit purchase control shown`);
+    if (await overflow(page) > 1) failures.push(`${lang}-${width}: horizontal overflow`);
+    if (lang === 'he' && await page.evaluate(() => document.documentElement.dir) !== 'rtl') failures.push('he: not RTL');
+    await shot(page, `${lang}-${width}-deep-paused`);
+    const paid = (state.paidCalls ?? []).filter((a) => a === 'preview' || a === 'start' || a === 'test_option');
+    if (paid.length) failures.push(`${lang}: paid endpoints called while paused: ${paid.join(',')}`);
+    if (state.calls.filter((a) => a === 'start').length !== 1) failures.push(`${lang}: the free search did not start exactly once`);
+    await close();
+  }
+  assert.deepEqual(failures, []);
 });
 
 test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmation, results, filters and dedicated property page; RTL for ar/he', opts, async (t) => {

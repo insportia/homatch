@@ -280,3 +280,16 @@ run without approval.
 `discovery_runs.campaign_outcome`; it calls no RPC, no wallet, ledger or provider code, and judges
 as of the campaign's end so a later backfill gives the same verdicts. Settlement already
 happened once (`claimSettlement`); a results read can never charge.
+
+## Paused (owner, 2026-10-18)
+
+Paid Deep Search is paused; Find Property is the free portal search only. Switch: Admin →
+Service Control Center → "Find Property — Paid Deep Search" (`service_controls.find_property_deep`,
+OFF by migration 20261115100000; every later change is audited by `service-control`).
+Inventory of the gated boundaries: `SERVICE_CONTROLS_INVENTORY.md`. Nothing was deleted:
+campaigns, results, actor runs, reservations and ledger rows are untouched, and the code,
+Actors and tests stay. A campaign open at the pause finishes the runs it already started,
+cancels the rest before any reservation, and settles on what was consumed (the unused hold
+is released). Reactivation: turn the switch on in Admin; `find_property_social_enabled`,
+`find_property_test_campaign` (20-credit test, OFF) and the Telegram output gate are separate
+and stay as they are.

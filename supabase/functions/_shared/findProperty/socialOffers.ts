@@ -33,6 +33,7 @@ import { abortRun, datasetItems, getRun, Memo23Error, providerConfigured, runCos
 import { offerImages, SOCIAL_ADAPTER_VERSION } from '../../../../src/research-core/marketplace/socialListings.ts';
 import { providerDisabledByAdmin } from '../providerSwitch.ts';
 import { listingFingerprint } from '../communitySupply.ts';
+import { serviceBackendEnabled } from '../serviceControl.ts';
 import { judgeOffer, type CampaignCriteria } from '../../../../src/research-core/findProperty/campaignMatch.ts';
 import { resolvePlace } from '../../../../src/research-core/normalize/place.ts';
 
@@ -195,6 +196,10 @@ export async function executeOfferJob(db: any, job: any): Promise<OfferOutcome> 
   if (run.status !== 'SEARCHING') return out({ outcome: 'CANCELLED', error: `RUN_${run.status}` });
   const settings = await loadOfferSettings(db);
   if (!settings.enabled) return out({ outcome: 'CANCELLED', error: !settings.apifyEnabled ? 'APIFY_DISABLED_BY_ADMIN' : !settings.configured ? 'PROVIDER_NOT_CONFIGURED' : 'SOCIAL_DISABLED' });
+  /* SERVICE CONTROL find_property_deep (Admin, paid Deep Search): while paused no NEW provider run
+     starts, from any campaign (closed on doubt). Runs already started are still polled and booked
+     above, and the campaign settles and releases its hold as usual — nothing is abandoned. */
+  if (!(await serviceBackendEnabled(db, 'find_property_deep'))) return out({ outcome: 'CANCELLED', error: 'SERVICE_PAUSED' });
   if (meta.followUp === true) {
     /* Probe-first: a network's later runs wait for its first run, and are cancelled — before
        anything is reserved, so at no cost — when that run's posts could not fit the request. */

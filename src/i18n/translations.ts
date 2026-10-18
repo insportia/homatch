@@ -20023,7 +20023,7 @@ const en = {
 
   /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
   svc_name_find_property: 'Find Property',
-  svc_name_find_property_deep: 'Deep Search (paid)',
+  svc_name_find_property_deep: 'Find Property — Paid Deep Search',
   svc_name_find_buyers: 'Find Buyers / Tenants',
   svc_name_verify: 'Verify',
   svc_name_contracts: 'Contract Intelligence',
@@ -40560,7 +40560,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
   svc_name_find_property: 'ქონების ძიება',
-  svc_name_find_property_deep: 'ღრმა ძიება (ფასიანი)',
+  svc_name_find_property_deep: 'ქონების ძიება — ფასიანი ღრმა ძიება',
   svc_name_find_buyers: 'მყიდველების / მოიჯარეების ძიება',
   svc_name_verify: 'გადამოწმება',
   svc_name_contracts: 'ხელშეკრულებების ანალიზი',
@@ -61088,7 +61088,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
   svc_name_find_property: 'Поиск недвижимости',
-  svc_name_find_property_deep: 'Глубокий поиск (платный)',
+  svc_name_find_property_deep: 'Поиск недвижимости — платный глубокий поиск',
   svc_name_find_buyers: 'Поиск покупателей / арендаторов',
   svc_name_verify: 'Проверка',
   svc_name_contracts: 'Анализ договоров',
@@ -81614,7 +81614,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
   svc_name_find_property: 'Mülk Bul',
-  svc_name_find_property_deep: 'Derin Arama (ücretli)',
+  svc_name_find_property_deep: 'Mülk Bul — Ücretli Derin Arama',
   svc_name_find_buyers: 'Alıcı / Kiracı Bul',
   svc_name_verify: 'Doğrula',
   svc_name_contracts: 'Sözleşme Analizi',
@@ -102140,7 +102140,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
   svc_name_find_property: 'البحث عن عقار',
-  svc_name_find_property_deep: 'البحث المعمّق (مدفوع)',
+  svc_name_find_property_deep: 'البحث عن عقار — البحث المعمّق المدفوع',
   svc_name_find_buyers: 'البحث عن مشترين / مستأجرين',
   svc_name_verify: 'التحقق',
   svc_name_contracts: 'تحليل العقود',
@@ -122666,7 +122666,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── SERVICE CONTROL CENTER — expanded to every manageable HOMATCH service ── */
   svc_name_find_property: 'חיפוש נכס',
-  svc_name_find_property_deep: 'חיפוש מעמיק (בתשלום)',
+  svc_name_find_property_deep: 'חיפוש נכס — חיפוש מעמיק בתשלום',
   svc_name_find_buyers: 'חיפוש קונים / שוכרים',
   svc_name_verify: 'אימות',
   svc_name_contracts: 'ניתוח חוזים',

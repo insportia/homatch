@@ -75,6 +75,11 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || 'start').toLowerCase();
 
+    /* Paused by Admin: no campaign comes back on its own or by request; pause and stop stay
+       open so a customer can always end a campaign and have its hold released. */
+    if (action === 'resume' && !(await serviceBackendEnabled(db, 'find_property_deep'))) {
+      return json(serviceDisabledBody('find_property_deep'), 503);
+    }
     if (action === 'pause' || action === 'resume' || action === 'stop') {
       const { data: outcome, error } = await db.rpc('discovery_control', {
         p_kind: 'DISCOVERY_RUN', p_id: String(body.runId || ''), p_user_id: me.id, p_action: action,
@@ -102,6 +107,8 @@ Deno.serve(async (req: Request) => {
     }
     /* Whether this account may pick the temporary test amount (no search needed yet). */
     if (action === 'test_option') {
+      /* Never offered while paid Deep Search is paused (a separate switch from this test option). */
+      if (!(await serviceBackendEnabled(db, 'find_property_deep'))) return json({ success: true, testOption: null });
       const test = await testCampaign(db, me);
       return json({ success: true, testOption: test.allowed ? { credits: test.credits } : null });
     }
@@ -161,10 +168,12 @@ Deno.serve(async (req: Request) => {
       search: offerSearch, networks, providerBudgetMicros: allocation.providerBudgetMicros,
       countryCode: String(searchPlan.countryCode || 'GE').toUpperCase(),
     });
-    const available = settings.findPropertyDiscoveryEnabled && offerSettings.enabled;
+    /* Paused by Admin (service find_property_deep): nothing is offered, priced as buyable, or started. */
+    const serviceOn = await serviceBackendEnabled(db, 'find_property_deep');
+    const available = serviceOn && settings.findPropertyDiscoveryEnabled && offerSettings.enabled;
     const preview = {
       available,
-      unavailableReason: !offerSettings.apifyEnabled ? 'PROVIDER_OFF' : !offerSettings.configured ? 'PROVIDER_NOT_CONFIGURED' : !available ? 'PAID_CAMPAIGNS_OFF' : plan.jobs.length === 0 ? 'NO_SEARCHABLE_SOURCES' : null,
+      unavailableReason: !serviceOn ? 'PAID_CAMPAIGNS_OFF' : !offerSettings.apifyEnabled ? 'PROVIDER_OFF' : !offerSettings.configured ? 'PROVIDER_NOT_CONFIGURED' : !available ? 'PAID_CAMPAIGNS_OFF' : plan.jobs.length === 0 ? 'NO_SEARCHABLE_SOURCES' : null,
       priceCredits: budget, creditsPerUsd: rate, minCredits, maxCredits: settings.campaignMaxCredits,
       priceUsd: allocation.priceCents / 100,
       policy: allocation.policy,

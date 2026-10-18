@@ -50,7 +50,10 @@ const writeDraft = (b: SearchIntelligenceBrief | null) => {
   try { if (b) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(b)); else sessionStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ }
 };
 
-export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources = null, sourceNames = [] }: { deepSearchAvailable: boolean; activeSources?: number | null; sourceNames?: string[] }) {
+/** deepOffered=false while Admin pauses paid Deep Search (service find_property_deep): the free
+ *  portal search only, exactly as before paid campaigns — no mode choice, no Deep card or panel,
+ *  no paid results view. Past campaigns stay readable on their own pages. */
+export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered = true, activeSources = null, sourceNames = [] }: { deepSearchAvailable: boolean; deepOffered?: boolean; activeSources?: number | null; sourceNames?: string[] }) {
   const { t, isRTL } = useLanguage();
   const [params] = useSearchParams();
   const route = useParams<{ searchId: string; propertyKey: string }>();
@@ -232,7 +235,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
   return (
     <CustomerSurface className="space-y-6 pb-10">
       {!route.propertyKey ? <div className="pt-4 sm:pt-6">
-        <WorkspaceHeader t={t} compact={view !== 'MODE'} activeSources={activeSources} deepAvailable={deepSearchAvailable} action={backToWorkspace} />
+        <WorkspaceHeader t={t} compact={view !== 'MODE'} activeSources={activeSources} deepAvailable={deepSearchAvailable} deepOffered={deepOffered} action={backToWorkspace} />
       </div> : null}
 
       {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl border border-border bg-card/70" aria-busy="true" />}
@@ -249,26 +252,26 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
       {view === 'ERROR' && <div role="alert" className="space-y-4 rounded-2xl border border-border bg-card p-6"><p>{t('mps_error_generic')}</p><Link to="/find-property" className={btn.quiet}>{t('fpx_my_searches')}</Link></div>}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (
-        <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => setView('CHOOSE')} starting={busy} startLabel={t('fpx_continue_modes')}
+        <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => (deepOffered ? setView('CHOOSE') : void doStart())} starting={busy} startLabel={deepOffered ? t('fpx_continue_modes') : undefined}
           onReset={() => { setBriefAndDraft(null); setView('INTRO'); }} />
       )}
-      {view === 'CHOOSE' && brief && (
+      {view === 'CHOOSE' && brief && deepOffered && (
         <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy} brief={brief}
           onFree={() => void doStart()} onDeep={(credits) => void doStart(credits)} onBack={() => setView('BUILD')} />
       )}
       {/* Deep Search: the campaign's own screen, never the portal search's progress or list
           (the free search runs underneath only because the campaign extends it). */}
-      {deepCredits && search && !route.propertyKey && (view === 'SEARCH' || view === 'RESULTS') ? (
+      {deepOffered && deepCredits && search && !route.propertyKey && (view === 'SEARCH' || view === 'RESULTS') ? (
         <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} initialCredits={deepCredits} />
       ) : null}
-      {view === 'SEARCH' && search && !route.propertyKey && !deepCredits && (
+      {view === 'SEARCH' && search && !route.propertyKey && (!deepCredits || !deepOffered) && (
         <SearchProgress t={t} search={search} onViewResults={() => { if (search.terminal) setView('RESULTS'); }} onPlay={() => setPlaying(true)}
           onNewSearch={newSearch}
           onCancel={async () => { try { const r = await cancelSearch(search.id); setSearch(r.search); } catch { /* ignore */ } newSearch(); }} />
       )}
-      {view === 'RESULTS' && search && !route.propertyKey && !deepCredits && (
+      {view === 'RESULTS' && search && !route.propertyKey && (!deepCredits || !deepOffered) && (
         <ResultsView t={t} search={search} onOpen={(p) => void openProperty(p)} compare={compare} onToggleCompare={toggleCompare}
-          onNewSearch={newSearch} deepSearchAvailable={deepSearchAvailable} version={resultsVersion}
+          onNewSearch={newSearch} deepSearchAvailable={deepSearchAvailable} deepOffered={deepOffered} version={resultsVersion}
           onChangeCriteria={(edit) => {
             const base = sanitizeBrief(search.brief);
             setBriefAndDraft(edit ? applyEdit(base, edit) : base);

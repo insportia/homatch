@@ -109,6 +109,19 @@ function toBytes(data: unknown): Uint8Array {
 }
 
 /**
+ * Optional ceiling on concurrent speech sockets in THIS process
+ * (SPEECH_MAX_SESSIONS). Unset, empty, 0 or invalid = no ceiling, which is the
+ * behaviour before 2026-10-18. The worker cannot read ai_talk_limits (it holds
+ * no database credential); this is the operator's lever to keep live speech
+ * from crowding out Verify's Chromium in the shared container
+ * (capacity audit 2026-10-18).
+ */
+export function speechSessionCeiling(env: Record<string, string | undefined> = process.env): number | null {
+  const n = Number(env.SPEECH_MAX_SESSIONS);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
  * Attach the speech socket to the worker's existing HTTP server.
  *
  * Returns a description of what it can do, so /health can tell the truth
@@ -135,6 +148,7 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
   }
 
   const wss = new WebSocketServer({ noServer: true });
+  const ceiling = speechSessionCeiling();
 
   server.on('upgrade', (req, socket, head) => {
     let url: URL;
@@ -146,6 +160,14 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
       // A plain 401 on the upgrade, so a browser sees a refusal rather than a
       // socket that opens and then goes quiet.
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    if (ceiling !== null && wss.clients.size >= ceiling) {
+      // At this instance's ceiling: refuse cleanly before any Google stream
+      // is opened; the browser treats it like any other temporary refusal.
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }

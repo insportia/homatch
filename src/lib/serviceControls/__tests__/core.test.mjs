@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createServiceControlStore, RETRY_AFTER_UNREADABLE_MS, toSnapshot, initialSnapshot, liveVisibility, HIDDEN_SNAPSHOT, SERVICE_KEYS,
-  PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT,
+  PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT, PAID_CLOSED_BY_DEFAULT,
 } from '../core.ts';
 
 const row = (k, f, b) => ({ service_key: k, frontend_enabled: f, backend_enabled: b });
 
 test('before any answer: the six are hidden, every live product is shown', () => {
   assert.equal(HIDDEN_SNAPSHOT.loaded, false);
-  assert.equal(SERVICE_KEYS.length, PAUSED_BY_DEFAULT.length + LIVE_BY_DEFAULT.length);
+  assert.equal(SERVICE_KEYS.length, PAUSED_BY_DEFAULT.length + LIVE_BY_DEFAULT.length + PAID_CLOSED_BY_DEFAULT.length);
+  for (const k of PAID_CLOSED_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: false, backend: false }, `${k}: paid, hidden until proven ON`);
   for (const k of PAUSED_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: false, backend: false }, k);
   for (const k of LIVE_BY_DEFAULT) assert.deepEqual(HIDDEN_SNAPSHOT.services[k], { frontend: true, backend: true }, k);
 });
@@ -27,6 +28,7 @@ test('only a service that can also run is visible; malformed rows keep their def
     const j = toSnapshot(junk);
     assert.equal(j.loaded, true, 'a malformed answer still ends the wait');
     assert.ok(PAUSED_BY_DEFAULT.every((k) => !j.services[k].frontend), 'and keeps the six hidden');
+    assert.ok(PAID_CLOSED_BY_DEFAULT.every((k) => !j.services[k].frontend), 'and keeps paid Deep Search hidden');
     assert.ok(LIVE_BY_DEFAULT.every((k) => j.services[k].frontend), 'and never hides a live product');
   }
 });
@@ -53,6 +55,7 @@ test('the store: one shared fetch, subscribers notified, an outage hides the six
   await throwing.refresh();
   assert.equal(throwing.get().loaded, true);
   assert.ok(PAUSED_BY_DEFAULT.every((k) => !throwing.get().services[k].frontend));
+  assert.ok(PAID_CLOSED_BY_DEFAULT.every((k) => !throwing.get().services[k].frontend), 'a failed read never shows paid Deep Search');
   assert.ok(LIVE_BY_DEFAULT.every((k) => throwing.get().services[k].frontend));
   off();
 });

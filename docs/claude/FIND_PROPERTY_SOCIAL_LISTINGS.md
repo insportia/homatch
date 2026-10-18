@@ -186,3 +186,111 @@ Nothing is activated by this change. Any Actor that is not registered, not enabl
 - **Shared-client status.** `memo23Client.ts` still answers a missing token with 503. Find Property no longer reaches it (the token is checked first). Changing that shared file is a Find Buyers decision; its session agreed a non-5xx status is right.
 - **Release order.** The migration must be applied before the edge functions are deployed: `storeOffers` writes `image_urls`.
 - **Not run against the live provider.** Nothing has been checked end to end against the real provider. The first real campaign needs owner approval and a small budget.
+
+## First paid campaign audit and strict results (2026-10-18)
+
+Campaign `f8833757` (50 credits, Tbilisi · Vake · buy · apartment · 3 rooms · 2 bedrooms ·
+80–110 m² · new build / under construction · $120–160k), reconciled read-only:
+
+| | Value |
+|---|---|
+| Reserved / settled / released | 50 / 49.9 / 0.1 credits (`usage_reservations` SETTLED, ledger reserve + capture + release ids present) |
+| Provider cost (PROVIDER_REPORTED) | FB groups $1.508 + $1.019, TikTok $0.365, Telegram $0.251 (ABORTED at its own cap) = **$3.143** |
+| Revenue | 49.9 credits = $4.99 → gross spread **$1.847 (37.0%)** before VAT and payment fees (not modelled) |
+| Posts fetched → offers stored → distinct | 2,846 → 600 → 371 (229 reposts) |
+| Strict verdicts (campaignMatch v1) | exact 0 · potential 4 · alternative 3 · rejected 364 (area 224, price 203, district 179, type 142, rooms 110, bedrooms 107, >30 days 71) |
+
+**Why "600 offers" but one result.** Nothing was lost or hidden. The campaign reads
+communities' recent posts city-wide; `offers_found` counted every Tbilisi sale offer
+(any type, district, price). Its offers were then only re-ranked inside the free
+marketplace search with that search's filters, where exactly one social post (a $152k
+Facebook post, district unstated) survived. Separately, `results_found` (7) counted the
+free search's deliveries, portals included, so three different numbers described one
+campaign.
+
+**Telegram.** 1000 posts were billed ($0.251, the run's reservation = Apify
+`maxTotalChargeUsd`; the run stopped at that cap, which is the designed behaviour) and 0
+became offers. The Telegram Actor's OUTPUT shape has never been verified
+(`output_contract_verified_at` null); no Telegram mapping exists in the normaliser. The
+worker now records the returned field NAMES (`rawKeys`, never values) when a paid run
+yields nothing, so the mapping can be fixed from evidence. Until then Telegram is a
+known low-yield allocation (owner decision whether to keep it in paid campaigns).
+
+**Now.** Every ended campaign is judged against the exact request
+(`src/research-core/findProperty/campaignMatch.ts`): EXACT (every requirement stated and
+met), POTENTIAL (nothing contradicts; unstated requirements listed as unverified, never
+inferred; at least two of type/price/area/rooms/bedrooms confirmed), ALTERNATIVE (one of
+price/area off by ≤15%; shown only on request), REJECTED (with reasons). Verdicts and a
+snapshot of each post are kept in `find_property_campaign_results`; the counts in
+`discovery_runs.campaign_outcome`; `results_found` = exact + potential. The campaign has
+its own page `/find-property/campaign/:runId` (owner or admin, read through
+`find-property-run` action `results`), with held / charged / released credits and no
+provider cost. Admin → Discovery shows per-campaign economics (`admin_campaigns`): revenue,
+provider cost per run with provider run id and pricing basis, reserved vs actual, budget
+use, gross spread, cost per available match; VAT, fees and net margin stay "not modelled".
+
+**20-credit test campaign.** `admin_settings.find_property_test_campaign`
+`{enabled, credits: 20, testers: [user ids]}` — OFF by default; admins and listed testers
+only; exactly that amount; same reservation (full budget), 37/63 allocation
+($2 → $1.26 provider budget), settlement and release. `beginExecution`'s
+`minViableOverrideCredits` can only lower the product minimum for that one reservation.
+
+### Paying for fewer, better posts (2026-10-18, before the next live campaign)
+
+**What the providers can filter server-side** (registry `input_contract.schemaProperties`;
+apify.com is unreachable from the build environment, so nothing beyond the stored schemas is assumed):
+
+| Actor | Server-side filters | Used |
+|---|---|---|
+| FB_GROUP_POSTS | `startUrls` (which groups), `onlyPostsNewerThan` (verified), `search` / `searchKeywordByYear` (in-group keyword, **never exercised**) | groups + date; `search` only once verified (one approved micro-probe ≈ $0.02) |
+| TIKTOK | `mode: search` + `input` keywords (verified in production) | the request's own phrases |
+| TELEGRAM_CHANNEL | channel `usernames`/`startUrls`, `oldestDate`/`newestDate` — no keyword | **excluded** (below) |
+| IG_PROFILE_POSTS | profile `startUrls` only | profiles only (none registered) |
+| VK_POSTS_COMMENTS | `searchQuery`, `targets`, dates | disabled (health FAILED) |
+| FB_POST_SEARCH / FB_PAGE_POSTS | no stored schema, unpriced | disabled |
+
+No Actor filters by price, rooms, area or property type: social posts are free text, so those
+requirements can only be checked after the fetch — which is why the fetch itself must be narrow.
+
+**Before any run**
+- `requestQueries`: transaction + rooms + type + the wanted district, per language
+  ("იყიდება 3 ოთახიანი ბინა ვაკეში", "продается 3-комнатная квартира Ваке",
+  "3 room apartment for sale Vake Tbilisi") for keyword Actors.
+- Source order: stored offers of this transaction **in the wanted district**
+  (`districtEvidence`), then a community named after the district (one named after another
+  district last), then proven, real-estate-named, in-city, priority. Small budgets therefore
+  read the most relevant communities.
+- A small budget covers every network's first run before any run is shrunk to fill it.
+
+**During the campaign — probe-first.** Each network's first run is a probe; its later runs wait
+for it and are cancelled **before reserving anything ($0)** when the probe billed ≥ 100 posts and
+none could fit the request (strict verdict ≠ REJECTED, counted per run as `useful`). Runs already
+started are never aborted.
+
+**Telegram.** Root cause found from stored evidence (258 posts of the same Actor in
+`raw_signals`): posts carry channel + message id but no post URL, and offers require an https
+link. `telegramPostUrl` builds Telegram's public link `https://t.me/<channel>/<id>`; offline over
+those 258 posts: 258 links, 26 Tbilisi sale offers, 123 rent offers. Telegram nevertheless stays
+**out of offer campaigns** (`OUTPUT_UNVERIFIED`) until the registry's
+`output_contract_verified_at` is set for TELEGRAM_CHANNEL — an owner decision; no paid Telegram
+run without approval.
+
+**Backfill safety.** `persistCampaignResults` writes only the campaign's own result rows
+(upsert on `run_id, observation_id`, then removes only its stale rows) and
+`discovery_runs.campaign_outcome`; it calls no RPC, no wallet, ledger or provider code, and judges
+as of the campaign's end so a later backfill gives the same verdicts. Settlement already
+happened once (`claimSettlement`); a results read can never charge.
+
+## Paused (owner, 2026-10-18)
+
+Paid Deep Search is paused; Find Property is the free portal search only. Switch: Admin →
+Service Control Center → "Find Property — Paid Deep Search" (`service_controls.find_property_deep`,
+OFF by migration 20261116100000 (#269), with `find_property_social_enabled` = false; every later change is audited by `service-control`).
+It fails CLOSED: an unreadable or missing switch never shows or runs it, and customers see no paid
+option or notice at all (only Admin does). Inventory of the gated boundaries: `SERVICE_CONTROLS_INVENTORY.md`. Nothing was deleted:
+campaigns, results, actor runs, reservations and ledger rows are untouched, and the code,
+Actors and tests stay. A campaign open at the pause finishes the runs it already started,
+cancels the rest before any reservation, and settles on what was consumed (the unused hold
+is released). Reactivation is the owner's, in Admin: the service switch and
+`find_property_social_enabled` (both OFF); `find_property_test_campaign` (20-credit test, OFF)
+and the Telegram output gate are separate. No migration turns any of them back on.

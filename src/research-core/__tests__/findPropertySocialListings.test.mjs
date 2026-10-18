@@ -100,7 +100,7 @@ test('keyword search words: six languages, the searched property kind, the custo
 
 const ACTORS = {
   FB_GROUP_POSTS: { actorKey: 'FB_GROUP_POSTS', ready: true, startFeeMicros: 8000, pricePer1kMicros: 1_500_000, probeSize: 20, maxResults: 100 },
-  TELEGRAM_CHANNEL: { actorKey: 'TELEGRAM_CHANNEL', ready: true, startFeeMicros: 1000, pricePer1kMicros: 250_000, probeSize: 30, maxResults: 150 },
+  TELEGRAM_CHANNEL: { actorKey: 'TELEGRAM_CHANNEL', ready: true, startFeeMicros: 1000, pricePer1kMicros: 250_000, probeSize: 30, maxResults: 150, outputVerified: true }, // verified here: these tests exercise Telegram planning itself
   IG_PROFILE_POSTS: { actorKey: 'IG_PROFILE_POSTS', ready: true, startFeeMicros: 40000, pricePer1kMicros: 800_000, probeSize: 12, maxResults: 60 },
   TIKTOK: { actorKey: 'TIKTOK', ready: true, startFeeMicros: 5000, pricePer1kMicros: 2_000_000, probeSize: 15, maxResults: 60 },
   FB_POST_SEARCH: { actorKey: 'FB_POST_SEARCH', ready: false, startFeeMicros: 0, pricePer1kMicros: 0, probeSize: 15 },
@@ -134,7 +134,8 @@ test('paid plan: every relevant Facebook group read once (no keyword), relevant 
   assert.equal(tgJobs[0].targets.length, 12);
   const tt = plan.jobs.filter((j) => j.stage === 'TIKTOK_SEARCH');
   assert.equal(tt.length, 1);
-  assert.deepEqual(tt[0].queries, ['იყიდება ბინა Tbilisi', 'продается квартира Tbilisi', 'apartment for sale Tbilisi']);
+  /* The request's own phrases, each language with its own place name (2026-10-18). */
+  assert.deepEqual(tt[0].queries, ['იყიდება ბინა თბილისში', 'продается квартира Тбилиси', 'apartment for sale Tbilisi']);
   assert.equal(tt[0].size, 3 * 60);
   /* No Instagram profile registered, VK has no ready Actor: said, never silently dropped. */
   assert.deepEqual(plan.unavailable.map((u) => [u.network, u.reason]).sort(), [['INSTAGRAM', 'NO_KNOWN_SOURCE'], ['VK', 'NO_READY_ACTOR']]);
@@ -170,6 +171,27 @@ test('Facebook depth follows the budget: breadth when tight, the Actor maximum p
   assert.deepEqual(deep.map((j) => j.targets.length), [10, 10, 10, 10, 10, 3]);
   const posts = deep.reduce((n, j) => n + j.size, 0);
   assert.equal(posts, 5300, 'every group read to the Actor maximum');
+});
+
+test('the 20-credit TEST campaign ($2, providers 63% = $1.26) plans smaller runs and never exceeds its provider budget', async () => {
+  const { allocateCampaign } = await import('../billing/paidDiscoveryPolicy.ts');
+  const a = allocateCampaign(20, 10);
+  assert.equal(a.priceMicros, 2_000_000);
+  assert.equal(a.providerBudgetMicros, 1_260_000, '12.6 credits to providers');
+  const sources = [...Array.from({ length: 53 }, (_, i) => fbGroup(i, 'Tbilisi')), ...Array.from({ length: 12 }, (_, i) => tg(i))];
+  const plan = planOfferJobs({
+    search: { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: offerSearchLanguages('ka') },
+    networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK'], providerBudgetMicros: a.providerBudgetMicros, sources, actors: ACTORS,
+  });
+  assert.ok(plan.jobs.length > 0, 'a $2 test still searches');
+  assert.ok(plan.estimatedMicros <= a.providerBudgetMicros, `planned ${plan.estimatedMicros} ≤ 1,260,000`);
+  assert.equal(plan.jobs.reduce((n, j) => n + j.estimateMicros, 0), plan.estimatedMicros);
+  /* Same plan at $5 reads more: the small budget shrinks sources and sizes, nothing else. */
+  const five = planOfferJobs({
+    search: { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: offerSearchLanguages('ka') },
+    networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK'], providerBudgetMicros: allocateCampaign(50, 10).providerBudgetMicros, sources, actors: ACTORS,
+  });
+  assert.ok(plan.jobs.reduce((n, j) => n + j.size, 0) < five.jobs.reduce((n, j) => n + j.size, 0));
 });
 
 test('the group Actor gets a keyword ONLY when its `search` field is verified in the registry contract', () => {

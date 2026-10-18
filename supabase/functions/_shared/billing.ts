@@ -135,6 +135,9 @@ function n(v: unknown, d = 0): number {
  * reservation that already exists instead of holding the customer's credits a
  * second time.
  */
+/** The only products whose minimum a caller may lower for one reservation (the Find Property test campaign). */
+export const MIN_VIABLE_OVERRIDE_PRODUCTS: ReadonlySet<string> = new Set(['FIND_PROPERTY']);
+
 export async function beginExecution(
   sb: SupabaseClient,
   opts: {
@@ -171,6 +174,15 @@ export async function beginExecution(
      * charges actual usage and releases the rest.
      */
     budgetIsCeiling?: boolean;
+    /**
+     * A LOWER minimum viable budget for this one reservation, never a higher one
+     * (Find Property's temporary 20-credit TEST campaign, admins/testers only,
+     * decided by the caller). Honoured ONLY for productCode FIND_PROPERTY
+     * (MIN_VIABLE_OVERRIDE_PRODUCTS); every other product ignores it, so it can
+     * never lower Find Buyers', Verify's or anyone else's minimum. Reservation,
+     * settlement and release are unchanged.
+     */
+    minViableOverrideCredits?: number;
     metadata?: Record<string, unknown>;
   },
 ): Promise<ExecutionGrant> {
@@ -254,7 +266,10 @@ export async function beginExecution(
   // SyntaxError in Deno, not a shadow — the module would not load at all.
   const budgetRules = await productBudgetRules(sb, opts.productCode);
   const balance = n(ent?.wallet?.balance);
-  const minViable = budgetRules.minViableBudgetCredits;
+  const override = MIN_VIABLE_OVERRIDE_PRODUCTS.has(opts.productCode) ? Number(opts.minViableOverrideCredits) : Number.NaN;
+  const minViable = Number.isFinite(override) && override > 0
+    ? Math.min(budgetRules.minViableBudgetCredits, override)
+    : budgetRules.minViableBudgetCredits;
 
   const authorized = opts.authorizedMaxCredits != null
     ? round2(Math.min(opts.authorizedMaxCredits, balance, opts.budgetIsCeiling ? Number.POSITIVE_INFINITY : estMax))

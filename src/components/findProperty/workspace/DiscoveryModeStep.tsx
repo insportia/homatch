@@ -14,6 +14,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getCreditAccount } from '@/services/api';
+import { testCampaignOption } from '@/services/paidCampaign';
+import type { SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
+import { CriteriaSummary, criteriaFromBrief } from '../campaign/CampaignParts';
 import type { T } from '../format';
 import { btn, cx, Eyebrow, Pill } from './primitives';
 
@@ -21,8 +24,8 @@ export const DEEP_PRESETS = [50, 100, 300, 1000];
 export const DEEP_MIN_CREDITS = 50;
 const CREDITS_PER_USD = 10;
 
-export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames = [], starting, onFree, onDeep, onBack }: {
-  t: T; deepAvailable: boolean; activeSources: number | null; sourceNames?: string[]; starting: boolean;
+export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames = [], starting, onFree, onDeep, onBack, brief }: {
+  t: T; deepAvailable: boolean; activeSources: number | null; sourceNames?: string[]; starting: boolean; brief?: SearchIntelligenceBrief | null;
   onFree: () => void; onDeep: (credits: number) => void; onBack: () => void;
 }) {
   const [mode, setMode] = useState<'FREE' | 'DEEP'>('FREE');
@@ -37,8 +40,17 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
     void getCreditAccount(homatchUser.id).then((a) => { if (alive) setBalance(a ? Number(a.balance) : 0); }).catch(() => { if (alive) setBalance(null); });
     return () => { alive = false; };
   }, [homatchUser?.id, deepAvailable]);
+  /* The temporary test amount: only when the server says this account may use it. */
+  const [test, setTest] = useState<{ credits: number } | null>(null);
+  useEffect(() => {
+    if (!deepAvailable || mode !== 'DEEP') return;
+    let alive = true;
+    void testCampaignOption().then((o) => { if (alive) setTest(o); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [deepAvailable, mode]);
   const chosen = custom ? Math.round(Number(custom) || 0) : credits;
-  const tooLow = mode === 'DEEP' && chosen < DEEP_MIN_CREDITS;
+  const isTest = !!test && chosen === test.credits;
+  const tooLow = mode === 'DEEP' && chosen < DEEP_MIN_CREDITS && !isTest;
   const short = mode === 'DEEP' && balance != null && chosen > balance;
   /* An approval is for one exact amount: changing it asks again. */
   useEffect(() => { setAgreed(false); }, [chosen, mode]);
@@ -110,6 +122,13 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
             <div className="relative space-y-3 rounded-2xl border border-white/10 bg-white/5 p-3.5" onClick={(e) => e.stopPropagation()}>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">{t('fpi_paid_budget')}</p>
               <div className="flex flex-wrap gap-2">
+                {test ? (
+                  <button type="button" onClick={() => { setCredits(test.credits); setCustom(''); }} aria-pressed={!custom && credits === test.credits} data-deep-test
+                    className={cx('min-h-[44px] rounded-xl border border-dashed px-3 text-sm font-semibold tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]',
+                      !custom && credits === test.credits ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.15)] text-[hsl(var(--gold))]' : 'border-white/30 text-white/85 hover:bg-white/5')}>
+                    {t('fpc_test_chip', { usd: (test.credits / CREDITS_PER_USD).toFixed(0) })}
+                  </button>
+                ) : null}
                 {DEEP_PRESETS.map((q) => (
                   <button key={q} type="button" onClick={() => { setCredits(q); setCustom(''); }} aria-pressed={!custom && credits === q}
                     className={cx('min-h-[44px] rounded-xl border px-3 text-sm font-semibold tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]',
@@ -131,6 +150,8 @@ export function DiscoveryModeStep({ t, deepAvailable, activeSources, sourceNames
               </dl>
               {tooLow ? <p role="alert" className="text-xs text-[hsl(var(--gold))]">{t('fpi_paid_minimum', { credits: DEEP_MIN_CREDITS, usd: (DEEP_MIN_CREDITS / CREDITS_PER_USD).toFixed(2) })}</p> : null}
               {short ? <p role="alert" className="text-xs text-[hsl(var(--gold))]">{t('fpx_deep_short')} <Link to="/credits" className="underline underline-offset-4">{t('fpi_paid_top_up')}</Link></p> : null}
+              {isTest ? <p className="text-xs leading-relaxed text-white/70" data-deep-test-note>{t('fpc_test_note')}</p> : null}
+              {brief ? <CriteriaSummary t={t} criteria={criteriaFromBrief(brief)} dark /> : null}
               <p className="text-xs leading-relaxed text-white/60">{t('fpi_paid_terms', { max: `$${(chosen / CREDITS_PER_USD).toFixed(2)}` })}</p>
               <label className="flex items-start gap-3 text-sm" data-deep-consent>
                 <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} disabled={tooLow || short}

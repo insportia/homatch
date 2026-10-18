@@ -30,7 +30,7 @@ test('keyword search jobs carry their search language', () => {
 test('a Facebook SOCIAL_PROFILE is a Page; an Instagram one is Instagram', () => {
   const base = { id: 'x', url: 'https://www.facebook.com/somepage', city: 'Tbilisi', priority: 5 };
   assert.deepEqual(offerSourceFromRegistry({ ...base, platform: 'FACEBOOK', source_type: 'SOCIAL_PROFILE' }),
-    { id: 'x', network: 'FACEBOOK', kind: 'FACEBOOK_PAGE', url: base.url, city: 'Tbilisi', priority: 5, name: null, offerEvidence: 0 });
+    { id: 'x', network: 'FACEBOOK', kind: 'FACEBOOK_PAGE', url: base.url, city: 'Tbilisi', priority: 5, name: null, offerEvidence: 0, districtEvidence: 0 });
   assert.equal(offerSourceFromRegistry({ ...base, platform: 'INSTAGRAM', source_type: 'SOCIAL_PROFILE' }).network, 'INSTAGRAM');
   assert.equal(offerSourceFromRegistry({ ...base, platform: 'FACEBOOK', source_type: 'FACEBOOK_GROUP' }).kind, 'FACEBOOK_GROUP');
   assert.equal(offerSourceFromRegistry({ ...base, platform: 'TIKTOK', source_type: 'SOCIAL_PROFILE' }), null);

@@ -9,6 +9,9 @@
 // TWO DEFAULTS, matching the server's two fail modes:
 //   * PAUSED_BY_DEFAULT (the original six): HIDDEN UNTIL PROVEN VISIBLE. Before the first
 //     answer, and whenever it cannot be read, they count as hidden.
+//   * PAID_CLOSED_BY_DEFAULT (paid Deep Search, paused 2026-10-18): hidden until an answer
+//     says ON, and never taken from this browser's memory — a stale or failed read never
+//     shows a price or a paid start.
 //   * LIVE_BY_DEFAULT (every other product): visible unless an answer says OFF, so an
 //     unreadable control never makes Verify or Find Property disappear. The store seeds
 //     them from the last answer this browser saw (see index.ts), so a paused one does not
@@ -16,12 +19,13 @@
 
 export const PAUSED_BY_DEFAULT = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'] as const;
 export const LIVE_BY_DEFAULT = [
-  'find_property', 'find_property_deep', 'find_buyers',
+  'find_property', 'find_buyers',
   'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
   'meta_ads', 'email_campaigns', 'ai_assistant',
   'brokers_directory', 'broker_desk', 'developers',
 ] as const;
-export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT] as const;
+export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep'] as const;
+export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];
 export interface ServiceVisibility { frontend: boolean; backend: boolean }
 export type ServiceSnapshot = { loaded: boolean; services: Record<ServiceKey, ServiceVisibility> };

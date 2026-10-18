@@ -82,6 +82,7 @@ const BrokerProfilePage = lazyRoute(() => import('./pages/BrokerProfilePage'));
 const BrokerCrmPage = lazyRoute(() => import('./pages/BrokerCrmPage'));
 const BrokerOnboardingPage = lazyRoute(() => import('./pages/BrokerOnboardingPage'));
 const FindPropertyPage = lazyRoute(() => import('./pages/FindPropertyPage'));
+const FindPropertyCampaignPage = lazyRoute(() => import('./pages/FindPropertyCampaignPage'));
 const MyPropertiesPage = lazyRoute(() => import('./pages/property/MyPropertiesPage'));
 const EditPropertyPage = lazyRoute(() => import('./pages/property/EditPropertyPage'));
 const VerificationCasePage = lazyRoute(() => import('./pages/VerificationCasePage'));
@@ -345,6 +346,8 @@ const routeTable: RouteConfig[] = [
   { name: 'New Property Search', path: '/find-property/new', element: <FindPropertyPage /> },
   { name: 'Property Search', path: '/find-property/search/:searchId', element: <FindPropertyPage /> },
   { name: 'Property Intelligence', path: '/find-property/search/:searchId/property/:propertyKey', element: <FindPropertyPage /> },
+  /* One paid Deep Search campaign's own results (owner or admin; the server checks). */
+  { name: 'Deep Search Results', path: '/find-property/campaign/:runId', element: <FindPropertyCampaignPage /> },
   /*
    * FOR EXPATS. Public, and more deliberately so than its neighbours: the
    * whole product proposition is that a foreigner who has never heard of

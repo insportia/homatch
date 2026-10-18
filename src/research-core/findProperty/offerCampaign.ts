@@ -20,9 +20,9 @@
  */
 import { classifyDirection } from '../signals/direction.ts';
 import { extractCommunityListing, type CommunityListing } from '../discovery/community-listing.ts';
-import { comparePlaces } from '../normalize/place.ts';
+import { comparePlaces, placeNamesOf, resolvePlace } from '../normalize/place.ts';
 
-export const OFFER_CAMPAIGN_VERSION = 'fp-offers-2';
+export const OFFER_CAMPAIGN_VERSION = 'fp-offers-3';
 
 export type OfferNetwork = 'FACEBOOK' | 'INSTAGRAM' | 'TELEGRAM' | 'TIKTOK' | 'VK';
 export const OFFER_NETWORKS: readonly OfferNetwork[] = ['FACEBOOK', 'INSTAGRAM', 'TELEGRAM', 'TIKTOK', 'VK'];
@@ -55,6 +55,36 @@ export interface OfferActor {
   /** Optional input fields whose behaviour was VERIFIED against a real run (registry
    *  input_contract.verifiedFields). A field listed in the schema but not here is never relied on. */
   verifiedFields?: readonly string[];
+  /** The Actor's OUTPUT shape was verified (registry output_contract_verified_at). Telegram's was
+   *  not (2026-10-18: 1000 paid posts, 0 offers) — it stays out of offer campaigns until it is. */
+  outputVerified?: boolean;
+}
+
+/*
+ * Telegram posts from the channel Actor carry the message id and the channel, not a post link
+ * (production evidence, 2026-10-18: 258 stored posts, all with parent https://t.me/<channel>
+ * and external id post:<n>, none with a post URL) — so every one failed the https-link rule.
+ * Telegram's own public link for a channel post is https://t.me/<channel>/<message id>.
+ */
+export function telegramPostUrl(parentUrl: string | null | undefined, externalId: string | null | undefined): string | null {
+  const ch = /^https:\/\/t\.me\/(?:s\/)?([A-Za-z][A-Za-z0-9_]{3,63})\/?$/.exec(String(parentUrl ?? ''));
+  const id = /^(?:post:)?(\d{1,12})$/.exec(String(externalId ?? ''));
+  return ch && id ? `https://t.me/${ch[1]}/${id[1]}` : null;
+}
+
+/** Actors whose posts are only used for offers once their output contract is verified. */
+export const OUTPUT_VERIFICATION_REQUIRED: ReadonlySet<string> = new Set(['TELEGRAM_CHANNEL']);
+
+/*
+ * Adaptive allocation (owner, 2026-10-18): the FIRST run of each network is a probe; the
+ * network's later runs wait for it and are cancelled before they reserve anything when the
+ * probe returned at least this many posts and NONE of them could fit the request. A run
+ * already started is never aborted (its posts are paid for); nothing unstarted costs money.
+ */
+export const LOW_YIELD_MIN_BILLED = 100;
+export function followUpDecision(probe: { billed: number; useful: number } | null): 'CONTINUE' | 'STOP_LOW_YIELD' | 'WAIT' {
+  if (!probe) return 'WAIT';
+  return probe.billed >= LOW_YIELD_MIN_BILLED && probe.useful === 0 ? 'STOP_LOW_YIELD' : 'CONTINUE';
 }
 
 export interface KnownOfferSource {
@@ -70,6 +100,8 @@ export interface KnownOfferSource {
   name?: string | null;
   /** Property offers HOMATCH has already stored from this community (supply_observations): real evidence. */
   offerEvidence?: number;
+  /** Of those, offers of the searched transaction in one of the searched districts (the strongest signal). */
+  districtEvidence?: number;
 }
 
 export interface OfferSearch {
@@ -78,6 +110,8 @@ export interface OfferSearch {
   city: string;
   districts: string[];
   languages: string[];
+  /** Rooms of the request, when stated (shapes the keyword phrases only; strict checks run later). */
+  rooms?: number | null;
 }
 
 /** One community a batched run reads, with what HOMATCH knows about it. */
@@ -103,6 +137,8 @@ export interface PlannedOfferJob {
   size: number;
   estimateMicros: number;
   priority: number;
+  /** Not the first run of its network: it waits for that run and is cancelled when it was useless. */
+  followUp?: boolean;
 }
 
 export interface OfferPlan {
@@ -111,7 +147,7 @@ export interface OfferPlan {
   estimatedMicros: number;
   providerBudgetMicros: number;
   /** Networks the customer asked for that nothing can search right now, and why. */
-  unavailable: Array<{ network: OfferNetwork; reason: 'NO_READY_ACTOR' | 'NO_KNOWN_SOURCE' }>;
+  unavailable: Array<{ network: OfferNetwork; reason: 'NO_READY_ACTOR' | 'NO_KNOWN_SOURCE' | 'OUTPUT_UNVERIFIED' }>;
   /** Jobs that would have run with more budget (said out loud, never silently dropped). */
   skippedForBudget: number;
 }
@@ -222,6 +258,59 @@ export function offerKeywords(search: Pick<OfferSearch, 'transaction' | 'propert
   return out;
 }
 
+/* The request's own words, for Actors that search by keyword (TikTok search; Facebook
+   in-group search once verified): what the person OFFERING exactly this property writes —
+   transaction, rooms, type and the wanted district, in each language. Requirements that
+   posts rarely state (bedrooms, budget, area) are checked strictly after the fetch. */
+const ROOMS_KA = (n: number) => `${n} ოთახიანი`;
+const ROOMS_RU = (n: number) => `${n}-комнатная`;
+const ROOMS_EN = (n: number) => `${n} room`;
+/** Georgian locative ("in Vake" = ვაკეში, "in Tbilisi" = თბილისში). */
+export function kaLocative(name: string): string {
+  const n = name.trim();
+  return /ი$/u.test(n) ? `${n.slice(0, -1)}ში` : `${n}ში`;
+}
+const title = (s: string) => s.replace(/(^|[\s-])(\p{L})/gu, (_m, a: string, c: string) => a + c.toUpperCase());
+function placeIn(lang: string, name: string): string {
+  const names = placeNamesOf(name);
+  if (lang === 'ka') return kaLocative(names?.[1] ?? name);
+  if (lang === 'ru') return names?.[2] ? title(names[2]) : name;
+  return names ? title(names[0]) : name;
+}
+export function requestQueries(search: Pick<OfferSearch, 'transaction' | 'propertyType' | 'districts' | 'languages' | 'city' | 'rooms'>): Array<{ language: string; query: string }> {
+  const kind = offerPropertyKind(search.propertyType);
+  const rooms = kind === 'APARTMENT' && search.rooms && search.rooms > 0 && search.rooms < 10 ? search.rooms : null;
+  const where = search.districts[0] ?? search.city;
+  const out: Array<{ language: string; query: string }> = [];
+  for (const lang of search.languages.filter((l) => SEARCH_WORDS[l])) {
+    const base = SEARCH_WORDS[lang][kind][search.transaction];
+    const q = lang === 'ka' ? `${rooms ? base.replace(' ', ` ${ROOMS_KA(rooms)} `) : base} ${placeIn('ka', where)}`
+      : lang === 'ru' ? `${base.replace('квартира', rooms ? `${ROOMS_RU(rooms)} квартира` : 'квартира')} ${placeIn('ru', where)}`
+        : lang === 'en' ? `${rooms ? `${ROOMS_EN(rooms)} ` : ''}${base} ${placeIn('en', where)}${search.districts.length ? ` ${placeIn('en', search.city)}` : ''}`
+          : `${base} ${placeIn(lang, where)}`;
+    out.push({ language: lang, query: q.replace(/\s+/g, ' ').trim() });
+  }
+  return out;
+}
+
+/** 2 = the community's name/handle names a wanted district, 1 = names no district, 0 = names only other districts. */
+export function districtFocus(s: Pick<KnownOfferSource, 'url' | 'name'>, districts: readonly string[]): 0 | 1 | 2 {
+  if (!districts.length) return 1;
+  let handle = s.url;
+  try { handle = decodeURIComponent(new URL(s.url).pathname); } catch { /* raw */ }
+  const words = `${handle} ${s.name ?? ''}`.split(/[^\p{L}]+/u).filter((w) => w.length >= 3);
+  const named = new Set<string>();
+  for (const w of words) {
+    for (const t of [w, w.replace(/(ში|ის|ზე)$/u, ''), `${w.replace(/(ში|ის|ზე)$/u, '')}ი`]) {
+      const p = resolvePlace(t);
+      if (p?.kind === 'DISTRICT') { named.add(p.key); break; }
+    }
+  }
+  if (!named.size) return 1;
+  const wanted = new Set(districts.map((d) => resolvePlace(d)?.key ?? d.toLowerCase()));
+  return [...named].some((k) => wanted.has(k)) ? 2 : 0;
+}
+
 const chunk = <T,>(xs: readonly T[], n: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
@@ -273,10 +362,15 @@ export function planOfferJobs(input: {
     if (r === 'UNRELATED') return false;
     return s.network === 'TELEGRAM' ? r === 'PROVEN' || r === 'LIKELY' : true;
   };
-  /* Proven communities first (most offers first), then named in-city ones, then the rest. */
+  /* The most relevant communities FIRST, so a small budget reads the best ones: those with
+     stored offers of this transaction in the wanted district, then those whose name is the
+     wanted district (a community named after another district last), then proven, then named
+     for real estate, then in-city, then registry priority. */
+  const focus = new Map(input.sources.map((s) => [s.id, districtFocus(s, input.search.districts)]));
   const usable = [...input.sources]
     .filter((s) => /^https:\/\//.test(s.url) && inCity(s) && relevant(s))
-    .sort((a, b) => (b.offerEvidence ?? 0) - (a.offerEvidence ?? 0) || Number(relevance.get(b.id) === 'LIKELY') - Number(relevance.get(a.id) === 'LIKELY')
+    .sort((a, b) => (b.districtEvidence ?? 0) - (a.districtEvidence ?? 0) || (focus.get(b.id)! - focus.get(a.id)!)
+      || (b.offerEvidence ?? 0) - (a.offerEvidence ?? 0) || Number(relevance.get(b.id) === 'LIKELY') - Number(relevance.get(a.id) === 'LIKELY')
       || Number(Boolean(b.city)) - Number(Boolean(a.city)) || b.priority - a.priority || a.id.localeCompare(b.id));
   const target = (s: KnownOfferSource): OfferTarget => ({ url: s.url, sourceId: s.id, city: s.city ?? cityHint(s.url) });
   const keywords = offerKeywords(input.search);
@@ -340,7 +434,8 @@ export function planOfferJobs(input: {
   if (wanted.has('TELEGRAM')) {
     const a = ready('TELEGRAM_CHANNEL');
     const channels = usable.filter((s) => s.network === 'TELEGRAM').map(target);
-    if (!a || !channels.length) missing('TELEGRAM', Boolean(a));
+    if (a && OUTPUT_VERIFICATION_REQUIRED.has(a.actorKey) && a.outputVerified !== true) unavailable.push({ network: 'TELEGRAM', reason: 'OUTPUT_UNVERIFIED' });
+    else if (!a || !channels.length) missing('TELEGRAM', Boolean(a));
     else for (const c of chunk(channels, TG_CHANNELS_PER_RUN)) add(job('TELEGRAM_CHANNEL', a, { targets: c, priority: 90 }));
   }
   /* Instagram: the known in-city profiles, in large runs (the profile Actor reads profile pages only). */
@@ -357,7 +452,8 @@ export function planOfferJobs(input: {
     const a = ready('TIKTOK_SEARCH');
     if (!a || !keywords.length) missing('TIKTOK', Boolean(a));
     else {
-      const queries = keywords.map((k) => `${k.query} ${input.search.city}`.trim());
+      /* The request's own phrases (district, rooms) — TikTok search is server-side and verified. */
+      const queries = requestQueries(input.search).map((k) => k.query);
       add(job('TIKTOK_SEARCH', a, { query: queries[0], queries, targetCount: queries.length, priority: 60 }));
     }
   }
@@ -373,18 +469,29 @@ export function planOfferJobs(input: {
   let spent = 0;
   let skipped = 0;
   const maxJobs = Math.max(1, input.maxJobs ?? 30);
+  /* A network's first run, kept for it while an earlier network's run is shrunk to fit: a small
+     budget still covers every network once (the keyword search included) before any goes deeper. */
+  const firstOf = new Map<OfferNetwork, PlannedOfferJob>();
+  for (const j of order) if (!firstOf.has(j.network)) firstOf.set(j.network, j);
+  const planned = new Set<OfferNetwork>();
   for (const j of order) {
+    const others = [...firstOf.values()].filter((f) => f !== j && !planned.has(f.network)).reduce((n, f) => n + f.estimateMicros, 0);
     const left = input.providerBudgetMicros - spent;
-    if (jobs.length < maxJobs && j.estimateMicros <= left) { jobs.push(j); spent += j.estimateMicros; continue; }
-    /* The run that no longer fits whole runs smaller, when the rest of the budget still buys a useful read. */
+    if (jobs.length < maxJobs && j.estimateMicros <= left - others) { jobs.push(j); spent += j.estimateMicros; planned.add(j.network); continue; }
+    /* The run that no longer fits whole runs smaller, when the rest of the budget (less the other
+       networks' first runs, when they still fit) still buys a useful read. */
     const a = actorOf.get(j)!;
-    const fits = a.pricePer1kMicros > 0 ? Math.floor(((left - a.startFeeMicros) * 1000) / a.pricePer1kMicros) : 0;
+    const room = others > 0 && others < left ? left - others : left;
+    const fits = a.pricePer1kMicros > 0 ? Math.floor(((room - a.startFeeMicros) * 1000) / a.pricePer1kMicros) : 0;
     if (jobs.length < maxJobs && fits >= Math.max(1, a.probeSize)) {
       const size = Math.min(j.size, fits);
       const smaller = { ...j, size, estimateMicros: estimateMicros(a, size) };
-      jobs.push(smaller); spent += smaller.estimateMicros;
+      jobs.push(smaller); spent += smaller.estimateMicros; planned.add(j.network);
     } else skipped += 1;
   }
+  /* Probe-first: every run after a network's first waits for it (see followUpDecision). */
+  const seen = new Set<OfferNetwork>();
+  for (const j of jobs) { if (seen.has(j.network)) j.followUp = true; else seen.add(j.network); }
   return { version: OFFER_CAMPAIGN_VERSION, jobs, estimatedMicros: spent, providerBudgetMicros: input.providerBudgetMicros, unavailable, skippedForBudget: skipped };
 }
 

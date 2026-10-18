@@ -255,7 +255,10 @@ const EXPECTED_SWITCHES = (() => {
   const fb = readFileSync(new URL('../../src/services/findBuyers.ts', import.meta.url), 'utf8');
   const fbStart = fb.indexOf('export const FIND_BUYERS_SWITCHES = [');
   const fbCount = fbStart < 0 ? 0 : (fb.slice(fbStart, fb.indexOf('] as const;', fbStart)).match(/'[a-z_]+'/g) ?? []).length;
-  return count('DISCOVERY_SWITCHES') + count('PHASE2_SWITCHES') + fbCount;
+  /* Deep Search economics: the temporary test-campaign switch (owner, 2026-10-18). */
+  const deep = readFileSync(new URL('../../src/components/admin/DeepSearchEconomicsPanel.tsx', import.meta.url), 'utf8');
+  const deepCount = (deep.match(/data-switch="[a-z_]+"/g) ?? []).length;
+  return count('DISCOVERY_SWITCHES') + count('PHASE2_SWITCHES') + fbCount + deepCount;
 })();
 
 for (const [width, height] of [[1440, 900], [390, 844]]) {

@@ -12,12 +12,13 @@ for_expats, meta_ads, email_campaigns, ai_assistant, brokers_directory, broker_d
 developers. The inventory (routes, entry points, gates, what keeps running, why each
 platform piece has no switch) is `docs/claude/SERVICE_CONTROLS_INVENTORY.md`.
 
-## Two fail modes
+## Fail modes
 
 | Kind | Keys | Control unreadable | Row missing | Frontend before the first answer |
 |---|---|---|---|---|
 | Paused by the owner | the original six (`PAUSED_BY_DEFAULT`) | refuse / hide (closed) | OFF | hidden ("busy" placeholder on its routes) |
-| Live product | the fourteen (`LIVE_BY_DEFAULT`) | run / show (open) | ON | this browser's last answer (`localStorage` `homatch-service-visibility`), else shown |
+| Paid, paused by the owner (2026-10-18) | `find_property_deep` (`PAID_CLOSED_BY_DEFAULT`) | refuse / hide (closed) | OFF | hidden; never taken from browser memory |
+| Live product | the other thirteen (`LIVE_BY_DEFAULT`) | run / show (open) | ON | this browser's last answer (`localStorage` `homatch-service-visibility`), else shown |
 
 An explicit OFF row is honoured for both. Fail-open is deliberate: an outage of the control
 table must not take Verify or Find Property down. The cost: a browser that has never seen a

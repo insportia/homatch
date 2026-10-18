@@ -102,3 +102,17 @@ test('the structured-output schema carries every required field and only the eig
   assert.equal(parseAiVerdict({ role: 'SOMETHING_ELSE', confidence: 7 }).role, 'UNCERTAIN');
   assert.equal(parseAiVerdict({ role: 'DIRECT_BUYER', confidence: 7 }).confidence, 1);
 });
+
+test('jsonb-safe text: never half an emoji, never a lone surrogate (replay of 343cfc41)', async () => {
+  const { safeText } = await import('../findBuyers/aiClassifier.ts');
+  const t = `${'a'.repeat(159)}🏡 house`;
+  assert.equal(t.slice(0, 160).length, 160);
+  assert.match(t.slice(0, 160), /[\uD800-\uDBFF]$/, 'the old cut ends mid-emoji');
+  const safe = safeText(t, 160);
+  assert.doesNotMatch(safe, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  assert.ok(safe.endsWith('🏡'));
+  assert.equal(safeText('x\uD83C', 10), 'x');
+  const v = parseAiVerdict({ role: 'DIRECT_BUYER', confidence: 0.9, reason: 'r'.repeat(199) + '🏡🏡', evidence: ['🏡'.repeat(200)] });
+  assert.doesNotThrow(() => JSON.parse(JSON.stringify(v)));
+  assert.doesNotMatch(v.reason + v.evidence.join(''), /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+});

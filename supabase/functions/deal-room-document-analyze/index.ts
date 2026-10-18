@@ -66,6 +66,13 @@ const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
  * is enforced at upload and this function can be asked to re-read a row whose
  * object was replaced. */
 const MAX_BYTES = 20 * 1024 * 1024;
+/* Parsing runs inside one Edge request (2 s of CPU, 256 MB). A PDF's text costs CPU per
+   page and a .docx is a ZIP whose body can inflate far past its size on disk, so both are
+   bounded: past these limits the document fails with its reason instead of the request
+   being killed mid-parse (largest in production on 2026-10-18: 25 pages). */
+const MAX_PDF_PAGES = 60;
+const MAX_DOCX_XML_BYTES = 20 * 1024 * 1024;
+class DocumentTooLarge extends Error {}
 
 const json = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -259,6 +266,7 @@ serve(async (req) => {
         const zip = await JSZip.loadAsync(bytes);
         const entry = zip.file('word/document.xml');
         if (!entry) throw new Error('no word/document.xml');
+        if (Number((entry as any)._data?.uncompressedSize ?? 0) > MAX_DOCX_XML_BYTES) throw new DocumentTooLarge('DOCX');
         raw = extractDocxText(await entry.async('string'));
         // A Word file has no page count until it is laid out, and guessing one
         // would be inventing a fact about the document.
@@ -266,15 +274,21 @@ serve(async (req) => {
       } else {
         const pdf = await getDocumentProxy(bytes);
         pages = pdf.numPages ?? 0;
+        if (pages > MAX_PDF_PAGES) throw new DocumentTooLarge('PDF');
         const res = await extractText(pdf, { mergePages: true });
         raw = typeof res?.text === 'string' ? res.text : Array.isArray(res?.text) ? res.text.join('\n') : '';
       }
-    } catch {
+    } catch (e) {
+      const tooLarge = e instanceof DocumentTooLarge;
       await supabase
         .from('deal_room_documents')
-        .update({ analysis_state: 'FAILED', analysis_error: 'the document could not be parsed', analyzed_at: new Date().toISOString() })
+        .update({
+          analysis_state: 'FAILED',
+          analysis_error: tooLarge ? `the document is too large to analyse automatically (limit: ${MAX_PDF_PAGES} pages)` : 'the document could not be parsed',
+          analyzed_at: new Date().toISOString(),
+        })
         .eq('id', documentId);
-      return json({ state: 'FAILED', reason: 'PARSE_FAILED' });
+      return json({ state: 'FAILED', reason: tooLarge ? 'TOO_LARGE' : 'PARSE_FAILED', pages });
     }
 
     const text = normalizeDocumentText(raw);

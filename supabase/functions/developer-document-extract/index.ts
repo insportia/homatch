@@ -62,6 +62,13 @@ const CORS = {
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 const DOCUMENT_BUCKET = 'developer-documents' as const;
 const MAX_BYTES = 25 * 1024 * 1024;
+/* Parsing runs inside one Edge request (2 s of CPU, 256 MB). A PDF's text costs CPU per
+   page and a .docx is a ZIP whose body can inflate far past its size on disk, so both are
+   bounded: past these limits the document fails with its reason instead of the request
+   being killed mid-parse (largest in production on 2026-10-18: 25 pages). */
+const MAX_PDF_PAGES = 60;
+const MAX_DOCX_XML_BYTES = 20 * 1024 * 1024;
+class DocumentTooLarge extends Error {}
 
 /** Only these document types carry fields worth proposing. */
 const EXTRACTABLE = [
@@ -285,16 +292,25 @@ serve(async (req) => {
       const zip = await JSZip.loadAsync(bytes);
       const entry = zip.file('word/document.xml');
       if (!entry) throw new Error('no word/document.xml');
+      if (Number((entry as any)._data?.uncompressedSize ?? 0) > MAX_DOCX_XML_BYTES) throw new DocumentTooLarge('DOCX');
       raw = extractDocxText(await entry.async('string'));
     } else {
       const pdf = await getDocumentProxy(bytes);
       pages = pdf.numPages ?? 0;
+      if (pages > MAX_PDF_PAGES) throw new DocumentTooLarge('PDF');
       const res = await extractText(pdf, { mergePages: true });
       raw = typeof res?.text === 'string'
         ? res.text
         : Array.isArray(res?.text) ? res.text.join('\n') : '';
     }
-  } catch {
+  } catch (e) {
+    if (e instanceof DocumentTooLarge) {
+      await supabase.from('dev_documents').update({
+        status: 'FAILED',
+        extraction_error: `The document is too large to read automatically (limit: ${MAX_PDF_PAGES} pages). The fields will need to be entered by hand.`,
+      }).eq('id', documentId);
+      return json({ state: 'FAILED', reason: 'TOO_LARGE', pages });
+    }
     await supabase.from('dev_documents').update({
       status: 'FAILED', extraction_error: 'The document could not be parsed.',
     }).eq('id', documentId);

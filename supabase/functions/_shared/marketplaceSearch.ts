@@ -46,13 +46,39 @@ export const UNDERSTAND_RATE_LIMIT = {
   dailySeconds: 24 * 60 * 60,
 } as const;
 
+/**
+ * Per-user quota for `start`. A search is free, but every one queues work on the
+ * portal runtimes, which read one search at a time per portal on one worker, so
+ * one account starting searches in a loop would make everyone else wait. Sized
+ * well above real use (production on 2026-10-18: at most 7 searches per user per
+ * day, 3 in any 10 minutes). Same atomic limiter as `understand`.
+ */
+export const START_RATE_LIMIT = {
+  operation: 'marketplace_search_start',
+  burstLimit: 6,
+  burstSeconds: 10 * 60,
+  dailyLimit: 30,
+  dailySeconds: 24 * 60 * 60,
+} as const;
+
 export type RateLimitDecision =
   | { allowed: true }
   | { allowed: false; retryAfterSeconds: number; window: 'BURST' | 'DAILY' | 'UNAVAILABLE' };
 
 /** Fails CLOSED: if the quota cannot be read, the paid call does not happen. */
 export async function consumeUnderstandQuota(db: Db, userId: string): Promise<RateLimitDecision> {
-  const L = UNDERSTAND_RATE_LIMIT;
+  return consumeQuota(db, userId, UNDERSTAND_RATE_LIMIT);
+}
+
+/** Fails OPEN: a free search is never refused because the quota could not be read. */
+export async function consumeStartQuota(db: Db, userId: string): Promise<RateLimitDecision> {
+  const d = await consumeQuota(db, userId, START_RATE_LIMIT);
+  return !d.allowed && d.window === 'UNAVAILABLE' ? { allowed: true } : d;
+}
+
+type QuotaLimits = { operation: string; burstLimit: number; burstSeconds: number; dailyLimit: number; dailySeconds: number };
+
+async function consumeQuota(db: Db, userId: string, L: QuotaLimits): Promise<RateLimitDecision> {
   try {
     const { data, error } = await db.rpc('consume_marketplace_rate_limit', {
       p_user_id: userId, p_operation: L.operation,

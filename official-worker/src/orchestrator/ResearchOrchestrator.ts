@@ -20,7 +20,7 @@ import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
 import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js';
 import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
 import { runGenericWorkflow } from '../workflows/generic/GenericWorkflow.js';
-import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, stepHeartbeat, shouldSkipDuplicateExecution, dedupeProposedSteps, executionIdentity, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
+import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, shouldEvictFinishedJob, stepHeartbeat, shouldSkipDuplicateExecution, dedupeProposedSteps, executionIdentity, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
 import { looksLikeCompanyId } from '../entities/EntityValidation.js';
 import { challenge, captchaNetworkBlocked } from '../browser/BrowserSession.js';
 import { buildHistoricalComparison } from '../documents/HistoricalComparison.js';
@@ -233,6 +233,7 @@ export class ResearchOrchestrator {
         }
       }
       await this.sweepStalledJobs();
+      this.evictFinishedJobs();
     }, 30000).unref();
   }
 
@@ -247,6 +248,25 @@ export class ResearchOrchestrator {
    * Exposed for tests; the constructor's interval is the only caller in
    * production.
    */
+  /**
+   * Drops terminal jobs nobody can still ask for (see shouldEvictFinishedJob).
+   * Without this the process kept every job it ever ran. Exposed for tests.
+   */
+  evictFinishedJobs(nowMs: number = Date.now()): string[] {
+    const evicted: string[] = [];
+    for (const [id, job] of this.jobs) {
+      if (this.active.has(id) || this.sessions.has(id) || this.jobBrowsers.has(id)) continue;
+      if (!shouldEvictFinishedJob(job, nowMs)) continue;
+      this.jobs.delete(id);
+      this.ledgers.delete(id);
+      this.entityQueues.delete(id);
+      this.prefetch.delete(`${id}|mygov`);
+      this.prefetch.delete(`${id}|tas`);
+      evicted.push(id);
+    }
+    return evicted;
+  }
+
   async sweepStalledJobs(nowMs: number = Date.now()): Promise<string[]> {
     const finalized: string[] = [];
     for (const [id, job] of this.jobs) {

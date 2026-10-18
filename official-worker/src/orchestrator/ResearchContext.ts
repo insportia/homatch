@@ -118,6 +118,30 @@ export function decideStalledJob(
   return { finalize: true, status: job.results.length ? 'COMPLETE' : 'FAILED', stalledForMs };
 }
 
+/*
+ * FINISHED-JOB RETENTION (capacity audit 2026-10-18).
+ *
+ * The orchestrator kept every job object (results, extracted document text,
+ * screenshots of debug runs) in memory for the life of the process. A job is
+ * only read back by research-agent while it drives that job, and research-agent
+ * stops driving after DRIVE_MAX_AGE_MS (6 h). A terminal job untouched for
+ * longer than the retention window is therefore unreachable and can go.
+ * RUNNING / WAITING_HUMAN / queued jobs are never evicted here.
+ */
+export const FINISHED_JOB_RETENTION_MS = 6 * 60 * 60 * 1000;
+const TERMINAL_STATUSES = new Set(['COMPLETE', 'FAILED', 'CANCELLED']);
+
+export function shouldEvictFinishedJob(
+  job: Pick<ResearchJob, 'status' | 'updatedAt'>,
+  nowMs: number,
+  retentionMs: number = FINISHED_JOB_RETENTION_MS
+): boolean {
+  if (!TERMINAL_STATUSES.has(String(job.status))) return false;
+  const last = Date.parse(job.updatedAt);
+  if (Number.isNaN(last)) return false;
+  return nowMs - last > retentionMs;
+}
+
 // Cadastral-mode order (2026-09-06, "Fix Homatch Verify by implementing
 // this exact pipeline in code" mandate): TAS Map -> TAS Document -> NAPR
 // Property, matching the mandate's stated TasMapWorker -> TasDocumentWorker

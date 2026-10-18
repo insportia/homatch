@@ -1,6 +1,7 @@
 // FIND BUYERS — Facebook Pages discovery in the plan, listing queries, and the
 // one-campaign test cap (2026-10-16). Pure: no network, no database.
 import test from 'node:test';
+import { classifyDemand } from '../findBuyers/demandClassifier.ts';
 import assert from 'node:assert/strict';
 
 import { buildPropertyDna } from '../findBuyers/propertyDna.ts';
@@ -41,10 +42,15 @@ const known = [
 
 test('the plan searches public listing posts (Georgian first) and reads known Pages; Pages never reach the group reader', () => {
   const jobs = initialSocialJobs({ dna: SALE, plan: buildQueryPlan(SALE), knownSources: known, enabledActors: enabled, nativeTelegramActive: true, now });
-  const search = jobs.filter((j) => j.stage === 'FB_POST_SEARCH');
+  const search = jobs.filter((j) => j.stage === 'FB_POST_SEARCH' && j.reason === 'comparable_listing_search');
   assert.deepEqual([...new Set(search.map((j) => j.language))].sort(), [...LISTING_SEARCH_LANGUAGES].sort());
   assert.equal(search.filter((j) => j.language === 'ka').length, 2, 'two Georgian listing phrasings');
-  assert.ok(search.every((j) => j.query && j.actorKey === 'FB_POST_SEARCH' && j.reason === 'comparable_listing_search'));
+  assert.ok(search.every((j) => j.query && j.actorKey === 'FB_POST_SEARCH'));
+  /* Buyers' own posts by purchase phrase, one per Facebook language (owner, 2026-10-18). */
+  const demand = jobs.filter((j) => j.stage === 'FB_POST_SEARCH' && j.reason === 'demand_search');
+  assert.deepEqual([...new Set(demand.map((j) => j.language))].sort(), ['ar', 'en', 'he', 'ka', 'ru', 'tr']);
+  assert.ok(demand.every((j) => j.query && classifyDemand(j.query).role === 'BUY_SEEKER'), demand.map((j) => j.query).join(' | '));
+  assert.equal(jobs.filter((j) => j.stage === 'FB_POST_SEARCH').length, search.length + demand.length, 'no other post search');
   const groupReads = jobs.filter((j) => j.stage === 'FB_GROUP_POSTS').map((j) => j.sourceId).sort();
   assert.deepEqual(groupReads, ['g1', 'g2'], 'a source without a type is a group (all rows before 2026-10-16); a Page is not');
   assert.deepEqual(jobs.filter((j) => j.stage === 'FB_PAGE_POSTS').map((j) => j.targetUrl), ['https://www.facebook.com/tbilisihomes']);

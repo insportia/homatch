@@ -170,6 +170,17 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
         });
       }
     }
+    /* Buyers' own public posts by purchase phrase ("ვყიდულობ ბინას", "куплю квартиру"), in every
+       Facebook language: group feeds are mostly brokers' listings (8f6b8544: 200 posts, no
+       buyer), a buyer who writes publicly is found directly (owner, 2026-10-18). */
+    for (const lang of NETWORK_LANGUAGES.FACEBOOK) {
+      const q = queriesFor(plan, 'demand', lang)[0];
+      if (q) jobs.push({
+        stage: 'FB_POST_SEARCH', actorKey: STAGE_ACTOR.FB_POST_SEARCH, language: lang, query: q.query, targetUrl: null,
+        sourceId: null, size: probe('FB_POST_SEARCH'), arm: `FB_POST_SEARCH:demand:${lang}`,
+        priority: armPriority(null, null, base('FB_POST_SEARCH') + (lang === PRIMARY_LANGUAGE ? 6 : 1)), reason: 'demand_search',
+      });
+    }
   }
   /* Competitor advertising: the same listing phrases searched in the Meta Ad Library.
      One ad search per listing language; a comparable ad queues its Page's feed. */

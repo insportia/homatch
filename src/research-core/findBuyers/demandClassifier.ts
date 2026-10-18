@@ -22,6 +22,7 @@
 // found job/service/offer evidence (see boundModelReading).
 
 import { isParkingText, statedSubtypes, type PropertySubtype } from './propertyFamily.ts';
+import type { AiVerdict } from './aiClassifier.ts';
 import { CITY_NAMES, cityMentioned, placesMentioned } from './places.ts';
 
 export type DemandRole =
@@ -77,6 +78,8 @@ export interface DemandReading {
   area?: { min: number | null; max: number | null; approx: boolean } | null;
   /** Subtypes the text names within its family ("office", "warehouse", "дача"); [] = not stated (v9). */
   subtypes?: PropertySubtype[];
+  /** The AI classification that decided the role (aiClassifier.ts), when one ran. */
+  aiVerdict?: AiVerdict & { model?: string };
   /** Rule ids that decided the reading (explainable). */
   evidence: string[];
   confidence: number;
@@ -261,6 +264,12 @@ const COLLECTS_LISTINGS = L([
      ბინებს, ვისაც გაქვთ გასაყიდი და თანამშრომლობთ მომწერეთ" — a buyer wants ONE home (ბინას), a
      broker asks colleagues who "cooperate". "Send me apartments" alone stays a buyer's words. */
   'თანამშრომლობ', 'გვყავს (რეალური |ბევრი )?(კლიენტ|მყიდველ|დამქირავებ)', 'მყავს (რეალური |ბევრი )?(კლიენტ|მსურველ|მყიდველ|დამქირავებ)',
+  /* Campaign 343cfc41 (2026-10-18): "ჩამიყარეთ გასაყიდი ბინები მყავს ბათუმელი კლიენტები" — any word
+     between "მყავს/გვყავს" and the clients (ბათუმელი, უცხოელი …), plural clients, and the "send me
+     your listings" verbs. */
+  '(მყავს|გვყავს) \\S+ (კლიენტ|მყიდველ|მსურველ|დამქირავებ)', '(კლიენტები|მყიდველები) (მყავს|გვყავს)',
+  '(ჩამიყარეთ|ჩამიგდეთ|გადმომიგდეთ|გამომიგზავნეთ|მომწერეთ) (თქვენი )?(გასაყიდი|გასაქირავებელი|იყიდება)', 'გასაყიდი ბინები (ჩამიყარეთ|მომწერეთ|გადმომიგდეთ)',
+  '(скидывайте|присылайте|кидайте) (мне )?(ваши )?(варианты|квартиры|объекты)', `${B}(send me (your )?(listings|properties|apartments for sale)|drop (me )?your listings)`,
   /* Plural only: "для клиента" (one named client) is a broker searching for a buyer (v10). */
   '(для|под) (моих |наших )?(клиентов|клиентам|покупателей)', 'есть (реальные )?(клиенты|покупатели)', 'ищу квартиры (для|под)', 'сотрудничеств',
   `${B}(we have (real |many )?(clients|buyers)|i have (a lot of |many )?(clients|buyers)|for (my|our) clients|looking for (apartments|listings) for|co-?broker|cooperation with agents)`,
@@ -276,6 +285,15 @@ const SERVICE_TO_BUYERS = L([
   'დაგეხმარებით (ბინის |სახლის |ქონების )?(შეძენა|ყიდვა|შერჩევა|მოძებნა)', 'შეგირჩევთ', 'მოგიძებნით (ბინა|სახლ|ქონება)', 'საკომისიოს გარეშე',
   `${B}(we (help|will help|can help) you (buy|find|choose)|help you (buy|find) (a |your )?(home|apartment|property|flat)|no commission|commission[- ]free|full support of the (deal|transaction))`,
   `${B}(almanıza yardımcı|komisyonsuz)`, 'نساعدك (في|على) (شراء|إيجاد)', 'بدون عمولة', 'נעזור לכם (לקנות|למצוא)', 'ללא עמלה',
+  /* Campaign 343cfc41 (2026-10-18): "إذا كنتم مهتمين بشراء شقة … يمكنكم مراسلتي … أقدم لكم خدمة متكاملة"
+     — an agent addressing buyers with a service, read as a buyer. Every language's "if you are
+     interested in buying … write to me / I offer full service". */
+  'إذا كنتم? مهتم', 'إذا كنت مهتم', 'أقدم لكم', 'خدمة متكاملة',
+  'אם אתם מעוניינים (לקנות|ברכישת)', 'אני מציע(ה)? שירות', 'שירות מלא',
+  'eğer (bir )?(daire|ev) (almak|satın almak) istiyorsanız', 'satın almakla ilgileniyorsanız', 'tam hizmet sunuyorum',
+  'если вы (хотите|планируете|заинтересованы)\\S* (купить|приобрести|в покупке)', 'полный спектр услуг',
+  'თუ გსურთ (ბინის |სახლის )?(შეძენა|ყიდვა)', 'თუ დაინტერესებული ხართ (ბინის |სახლის )?(შეძენ|ყიდვ)', 'სრულ მომსახურებას', 'სრული მომსახურება',
+  `${B}(if you are interested in buying|if you('re| are) looking to buy|i offer (a )?(full|complete) service|full service from a to z)`,
 ]);
 /** "Looking for a cleaner / plumber / electrician" is a service request, not a home seeker. */
 const SERVICE_REQUEST = L([

@@ -89,6 +89,8 @@ export function classifyBuyerIntent(input: IntentInput): IntentReading {
   if (has(reading, 'already_purchased')) return out('ALREADY_PURCHASED', 'EXCLUDED', 'already_purchased');
   if (has(reading, 'not_looking')) return out('NOT_LOOKING', 'EXCLUDED', 'not_looking');
   if (reading.role === 'SERVICE' || reading.role === 'JOB') return out('SERVICE_REQUEST', 'EXCLUDED', 'service');
+  /* v11: the AI could not decide (or did not answer): unverified, never a lead. */
+  if (has(reading, 'ai_unverified') || has(reading, 'ai_uncertain')) return out('UNKNOWN', 'EXCLUDED', has(reading, 'ai_unverified') ? 'ai_unverified' : 'ai_uncertain');
   /* A broker searching for a named client: demand to verify, never a qualified buyer. */
   if (buyerViaBroker(reading)) return out(reading.transaction === 'RENT' ? 'ACTIVE_TENANT' : 'ACTIVE_BUYER', 'INTEREST', 'buyer_via_broker');
   if (reading.role === 'AGENT') return out('REAL_ESTATE_AGENT', 'EXCLUDED', 'agent');

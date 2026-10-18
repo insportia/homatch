@@ -342,6 +342,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
          row caps an expansion at the Actor's own maximum (followUpRows). */
       commentProbe: parseSampling(settings.sampling).probe,
+      aiFirst: settings.aiFirst,
       searchQueries: Array.isArray(meta.queries) ? (meta.queries as unknown[]).map(String).filter(Boolean).slice(0, 10)
         : typeof meta.query === 'string' && meta.query ? [meta.query] : null,
     }, slice.items);

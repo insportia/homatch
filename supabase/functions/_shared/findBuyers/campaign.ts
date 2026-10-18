@@ -43,13 +43,15 @@ export interface FindBuyersSettings {
   lowDownPaymentRatio: number;
   /** FB_KEYWORD_SEARCH: phrases per run, search window in days. */
   fbKeyword: { batchSize: number; days: number };
+  /** AI-first lead classification (v11); only an explicit false turns it off. */
+  aiFirst: boolean;
 }
 
 const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
   'provider_disabled_list', 'find_buyers_telegram_preference', 'find_buyers_financing',
-  'find_buyers_fb_keyword_search',
+  'find_buyers_fb_keyword_search', 'find_buyers_ai_first',
 ];
 
 /** FB_KEYWORD_SEARCH knobs (Admin): phrases per run and how far back posts are read (≤ the 30-day rule). */
@@ -85,6 +87,7 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     priceBook: m.get('find_buyers_openai_price_book') ?? null,
     lowDownPaymentRatio: lowDownPaymentRatio(m.get('find_buyers_financing') ?? null),
     fbKeyword: fbKeywordSettings(m.get('find_buyers_fb_keyword_search')),
+    aiFirst: m.get('find_buyers_ai_first') !== false,
   };
 }
 

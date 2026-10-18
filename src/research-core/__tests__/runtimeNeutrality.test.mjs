@@ -228,11 +228,16 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
     'supabase/functions/_shared/findBuyers/translate.ts',
+    /* AI-first lead classification (2026-10-18): the batched model calls and the stored-candidate
+       replay, both through the pure classifier contract (research-core/findBuyers/aiClassifier). */
+    'supabase/functions/_shared/findBuyers/aiClassify.ts',
+    'supabase/functions/_shared/findBuyers/aiReplay.ts',
     /* Admin re-qualification of a finished campaign's stored leads: the same
        pure qualification the pipeline uses (research-core/findBuyers/requalify),
        no provider call. */
     'supabase/functions/_shared/findBuyers/admin.ts',
     'supabase/functions/_shared/__tests__/findBuyersPipelineQualification.test.mjs',
+    'supabase/functions/_shared/__tests__/findBuyersAiFirst.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersFacebookPages.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
     /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */

@@ -1,4 +1,4 @@
-// FIND BUYERS 2.0 migration (20261118090000) — the money and privacy invariants, read from
+// FIND BUYERS 2.0 migration (20261118120000) — the money and privacy invariants, read from
 // the SQL itself (a matrix gate: the functions were also executed against Postgres with
 // fixtures before review, see the PR):
 //   * prices change only for the two internal-lead products: Standard 30¢ = 3 credits,
@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20261118090000_find_buyers_2_internal.sql'), 'utf8');
+const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20261118120000_find_buyers_2_internal.sql'), 'utf8');
 const fn = (name) => {
   const start = sql.indexOf(`create or replace function public.${name}(`);
   assert.ok(start >= 0, `guard: ${name} missing`);

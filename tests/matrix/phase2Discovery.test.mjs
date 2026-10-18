@@ -219,3 +219,19 @@ test('admin intelligence is one admin-only read, inside the Admin shell, with no
   const live = fn.slice(fn.indexOf("mode === 'admin_live_check'"), fn.indexOf("mode === 'admin_live_check'") + 300);
   assert.match(live, /isAdminCaller\(req, db\)/);
 });
+
+// Campaign 8f6b8544 (2026-10-18): the tick that processed three Actor runs then finished the
+// campaign in the same isolate and hit "CPU Time exceeded" (HTTP 546) after run-matching; the
+// job sat in 'ranking' for 12 minutes and failed WORKER_STOPPED, losing what it had collected.
+test('finishing a campaign never shares a tick with Actor processing, and an interrupted finish runs again once', () => {
+  const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
+  assert.match(driver, /heavySocialTick = \(\(socialJobs as any\)\?\.jobs \?\? \[\]\)\.some\(\(j: any\) => j\?\.outcome === 'DONE'\)/);
+  assert.match(driver, /advanceCampaigns\(db, baseUrl, serviceKey, settings, Date\.now\(\), \{ deferFinish: heavySocialTick \}\)/);
+  assert.match(driver, /opts\.deferFinish && Date\.parse\(row\.discovery_deadline_at\) > Date\.now\(\) - FINISH_DEFER_GRACE_MS/,
+    'deferred only for a bounded grace after the window closed, so a busy pool cannot starve finishing');
+  const rescue = driver.slice(driver.indexOf('async function rescueStuck(db'), driver.indexOf('export async function adminStop'));
+  assert.match(rescue, /FINISH_STUCK_AFTER_MS/);
+  assert.match(rescue, /eq\('event_type', 'FINISH_RETRY'\)/);
+  assert.ok(rescue.indexOf("status: 'searching_sources'") < rescue.indexOf("status: 'failed'"), 'retry before failing');
+  assert.match(rescue, /'WORKER_STOPPED'/, 'a second interruption still fails and releases the budget');
+});

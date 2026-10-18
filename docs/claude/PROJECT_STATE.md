@@ -5,6 +5,54 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Capacity & resilience release (2026-10-18) — #261, #266, #253 MERGED, DEPLOYED, MIGRATIONS APPLIED
+
+- #261 document guards → b9cd4ab0. #266 Find Property capacity → ba893c5e. #253 hardening + AI TALK
+  isolation → dbbbb0f1. refs/deployed/edge + frontend = dbbbb0f1 (deploy run 39140633607, attempt 2;
+  attempt 1 failed only on pdfOffLoop's tick floor, fixed in #268).
+- Ledger: find_property_capacity 20261018151806, verify_sweep_indexes 20261018153521,
+  provider_spend_totals 20261018154228 (all service_role only).
+- PROVEN_EXACT vs main: marketplace-search v28, research-agent v210, outreach-send v46,
+  spend-cap-check v46; developer-document-extract v29, deal-room-document-analyze v52.
+- Railway homatch-official-worker deployment 80972dc1 (dbbbb0f1) SUCCESS.
+- Measured in production: Verify market-refresh sweep 51.7 ms / ~12 MB per tick → 0.30 ms / 3 buffers.
+- Not yet observed live: a customer Find Property search through marketplace_dispatch_search
+  (no searches in the release window). First real search: check request_key / mode on its runs.
+
+## Production hardening from the capacity audit (PR #253, branch claude/architecture-viewer-repair-mqdt18, 2026-10-18)
+
+Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release manifest, rollback,
+owner approvals, regression baseline). Worker token-only auth (+ optional SPEECH_MAX_SESSIONS);
+Verify indexed sweep + fail-closed advance lease + budget-gate ERROR defers + cancel stops
+Developer Ads; spend-cap SQL sum. Two migrations 20261115090000..100000 (the fair claim moved
+to PR #266) — none applied, none deletes or rewrites a row. Withdrawn under the
+zero-data-loss rule: cron history retention (stays on PR #136) and worker finished-job eviction.
+Also: AI TALK isolation (fewer new browser tasks while speech is open; PDFs parsed in worker
+threads; event-loop delay on /health). Release tier REPO_FULL.
+
+## Find Buyers — universal Property DNA, taxonomy v10, tiers, precision matching (branch claude/nifty-hopper-snzn2d, 2026-10-18)
+
+- **Taxonomy** (`propertyFamily.ts` `SUBTYPES`): 20 subtypes across the five families. Each has six-language detection, an accusative noun and a nominative noun, and a compatibility group.
+  - `subtypeRelation` compares a seeker's stated subtype with the property's: MATCH / SOFT / CONFLICT / UNKNOWN.
+  - Commercial and land are hard families: a different group is a contradiction (office vs warehouse, farmland vs industrial plot).
+  - Shop / café / salon are near each other. Apartment, house and parking are soft families.
+  - No schema change: the subtype comes from `property_type` (VILLA, OFFICE, PENTHOUSE, STUDIO, TOWNHOUSE) or the title.
+- **DNA** now also carries title, bathrooms, totalFloors, constructionStatus, heating, features, security / yard / air-conditioning, sourceLanguage and a sanitized `descriptionExcerpt` (no phone, e-mail or link). `match-campaign` selects these columns.
+- **Strategy tiers** EXACT → SEMANTIC → NEAR → SIZE → INVESTOR, still capped by `queriesPerLanguage`.
+  - A commercial subtype is never broadened to "commercial space".
+  - Group searches and comparable-listing searches are family-aware; before this they were apartment-only for every property.
+- **AI planner** (one cached call per DNA, `fb-qp-4`): the prompt adds subtype, title, description and tiers. A model phrase is kept only if it reads as on-side demand for THIS family and does not contradict the subtype.
+- **Qualification v10:**
+  - "no agents / риелторов не беспокоить" no longer turns a buyer into a broker;
+  - a broker searching for a named client is BUYER_VIA_BROKER, an interest signal that is never Strong and never counted as qualified;
+  - "для клиента" (singular) is not inventory collection;
+  - "N+1" = N bedrooms / N+1 rooms.
+- **Offline evaluation** (`__tests__/fixtures/findBuyersEvalSet.mjs`, report `findBuyersEvalReport.mjs`):
+  - 88 hand-labelled posts: 6 properties, 6 languages, every family. P = R = 1.000 after fixes — optimistic, because the set was used while fixing.
+  - VILLION production baseline: 37/37 match.
+  - Shadow re-judge of 120 stored v7 production posts: 0 rejected → accepted; 3 weak → rejected (group rules ×2, broker inventory).
+- **Not done:** project/developer name (only `developer_id` is stored; the name is not read). Transliterated Latin Georgian is not recognised. "вилла"/"дача" are now recognised.
+
 ## Find Buyers — universal keyword intelligence + qualification v9 (PR #265, 2026-10-18)
 
 - Subtypes (VILLA, COTTAGE, OFFICE, RETAIL, WAREHOUSE, INDUSTRIAL, AGRICULTURAL) are read from the property type or title in `propertyFamily.ts`. Each has its own search noun in six languages, and non-apartment fallbacks never use apartment words.
@@ -459,11 +507,13 @@ known, 5 read. Owner actions still open: Register & verify FB_POST_SEARCH, FB_PA
 
 - Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
   verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
-  research_jobs.client_request_id + advance lease). NOT applied to production.
-- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
-  sources as durable tasks; property mode always legacy.
+  research_jobs.client_request_id + advance lease). Applied (see Verify go-live above).
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded); production is "QUEUE"
+  (verified 2026-10-18). QUEUE = cadastral official sources as durable tasks; property mode
+  always legacy.
 - Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
-  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+  set in production; verify-queue ~9.2k invocations/day, 2026-10-18). Lanes HTTP/BROWSER, slots
+  `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS` (unset → defaults 12/3).
 - Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
   advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
 - CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.

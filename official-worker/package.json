@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "test:build": "tsc -p tsconfig.test.json",
+    "test:build": "tsc -p tsconfig.test.json && cp src/runtime/*.mjs .tstest-build/runtime/",
     "test": "npm run test:build && node --test test/*.test.mjs"
   },
   "dependencies": {

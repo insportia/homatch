@@ -26,7 +26,7 @@ test('one list of services: database, server and browser agree', () => {
 
 test('every new row is seeded ON, in the group the Admin page shows', () => {
   const seeds = [...MIGRATION.matchAll(/\('([a-z_]+)',\s+(true|false), (true|false), '([a-z]+)'/g)];
-  /* Seeded ON on 2026-11-10 when every one was live; paid Deep Search was paused later (20261115100000). */
+  /* Seeded ON on 2026-11-10 when every one was live; paid Deep Search was paused later (20261116100000, #269). */
   const seededLive = [...edge.LIVE_BY_DEFAULT, ...edge.PAID_CLOSED_BY_DEFAULT];
   assert.equal(seeds.length, seededLive.length);
   const api = read('supabase/functions/service-control/index.ts');

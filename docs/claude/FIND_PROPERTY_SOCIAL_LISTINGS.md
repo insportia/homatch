@@ -285,12 +285,12 @@ happened once (`claimSettlement`); a results read can never charge.
 
 Paid Deep Search is paused; Find Property is the free portal search only. Switch: Admin →
 Service Control Center → "Find Property — Paid Deep Search" (`service_controls.find_property_deep`,
-OFF by migration 20261115100000; every later change is audited by `service-control`).
+OFF by migration 20261116100000 (#269), with `find_property_social_enabled` = false; every later change is audited by `service-control`).
 It fails CLOSED: an unreadable or missing switch never shows or runs it, and customers see no paid
 option or notice at all (only Admin does). Inventory of the gated boundaries: `SERVICE_CONTROLS_INVENTORY.md`. Nothing was deleted:
 campaigns, results, actor runs, reservations and ledger rows are untouched, and the code,
 Actors and tests stay. A campaign open at the pause finishes the runs it already started,
 cancels the rest before any reservation, and settles on what was consumed (the unused hold
-is released). Reactivation: turn the switch on in Admin; `find_property_social_enabled`,
-`find_property_test_campaign` (20-credit test, OFF) and the Telegram output gate are separate
-and stay as they are.
+is released). Reactivation is the owner's, in Admin: the service switch and
+`find_property_social_enabled` (both OFF); `find_property_test_campaign` (20-credit test, OFF)
+and the Telegram output gate are separate. No migration turns any of them back on.

@@ -186,3 +186,15 @@ test('identical searches share one fetch; different, stale or already-claimed ru
   for (const id of ['q-other', 'q-old']) assert.equal(runs.find((r) => r.id === id).status, 'QUEUED', id);
   assert.equal(runs.find((r) => r.id === 'q-claimed').status, 'SEARCHING');
 });
+
+test('an owed pool answer (pool_pending) is served by any request, within its budget', async () => {
+  const recent = new Date(FIXTURE_NOW.getTime() - 24 * 3_600_000).toISOString();
+  const rows = [stored('earlier', { sourceListingId: 'm1', observedAt: recent })];
+  const run = { id: 'run-p', worker_id: 'myhome-agent', status: 'QUEUED', pool_pending: true };
+  assert.equal(await serveCachedListings(memoryDb([...rows], [{ ...run }]), 'new', FIXTURE_REQUEST, [{ ...run }], FIXTURE_NOW, false, 0), 0,
+    'no budget left: nothing ranked, still owed');
+  const db = memoryDb([...rows], [{ ...run }]);
+  const runs = [{ ...run }];
+  assert.equal(await serveCachedListings(db, 'new', FIXTURE_REQUEST, runs, FIXTURE_NOW), 1, 'a later status poll answers it');
+  assert.equal(runs[0].pool_pending, false, 'and it is no longer owed');
+});

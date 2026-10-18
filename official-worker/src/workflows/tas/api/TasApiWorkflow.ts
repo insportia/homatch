@@ -19,9 +19,9 @@
 // visuals (kept in a byte-bounded in-process cache until they are stored by
 // content hash) remain.
 
+import { parsePdfOffLoop } from '../../../runtime/pdfOffLoop.js';
 import { bytesToBuffer } from './tasModel.js';
 import { createHash } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 import { candidateSequence, isCadastralCode } from '../cadastral.js';
 import { TasApiClient, TasDeadline, TasPayloadTooLarge, TAS_PUBLIC, TAS_PAGE_SIZE, attachmentUrl, publicDocumentUrl, responseUrl } from './TasApiClient.js';
@@ -55,27 +55,8 @@ export const PRIORITY_VISUAL_MAX = 48;
 
 export type PdfParser = (bytes: Buffer) => Promise<{ text: string; numpages: number; info?: any; pages?: string[] }>;
 
-/** pdf-parse with per-page text kept (same line joining as pdf-parse's own renderer). */
-const defaultPdfParser: PdfParser = async (bytes) => {
-  const pages: string[] = [];
-  const pdfParse = createRequire(import.meta.url)('pdf-parse/lib/pdf-parse.js');
-  const r = await pdfParse(bytes, {
-    pagerender: async (pageData: any) => {
-      const tc = await pageData.getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false });
-      let lastY: any;
-      let text = '';
-      for (const item of tc.items) {
-        text += lastY == item.transform[5] || !lastY ? item.str : `\n${item.str}`;
-        lastY = item.transform[5];
-      }
-      const idx = typeof pageData.pageIndex === 'number' ? pageData.pageIndex : pages.length;
-      pages[idx] = text;
-      return text;
-    },
-  });
-  const n = Number(r.numpages) || 0;
-  return { text: r.text, numpages: n, info: r.info, pages: n > 0 ? Array.from({ length: n }, (_, i) => pages[i] ?? '') : undefined };
-};
+/** pdf-parse with per-page text kept, in a worker thread (src/runtime/pdfOffLoop.ts; same renderer). */
+const defaultPdfParser: PdfParser = (bytes) => parsePdfOffLoop(bytes, 'pages');
 
 export interface TasApiOptions {
   fetcher?: typeof fetch;

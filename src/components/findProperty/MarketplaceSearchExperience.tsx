@@ -182,6 +182,13 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
     try {
       const r = await startSearch(brief, idempotency.current);
       setSearch(r.search);
+      /* Never silent: a search that could not also read the portals live says why, and until when. */
+      const live = r.liveRefresh;
+      const at = live?.retryAt ? new Date(live.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+      if (live?.state === 'LIMITED') toast.message(live.reason === 'CONCURRENT' ? t('mps_live_limited_concurrent', { n: live.maxActive ?? 3 }) : at ? t('mps_live_limited_until', { time: at }) : t('mps_live_limited'));
+      else if (live?.state === 'BUSY') toast.message(at ? t('mps_live_busy_until', { time: at }) : t('mps_live_busy'));
+      else if (live?.state === 'UNAVAILABLE') toast.message(t('mps_live_unavailable'));
+      else if (r.reused) toast.message(t('mps_reused_recent'));
       justStartedId.current = r.search.id;
       /* Deep Search was approved on its card (one confirmation): the campaign starts with
          that approval as soon as this search's subscription exists. */

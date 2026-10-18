@@ -20471,7 +20471,24 @@ const en = {
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers provider runs not booked',
   admin_ops_find_property_runs_unbooked: 'Find Property provider runs not booked',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Request through a broker — needs verification',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Live check limit reached — showing listings checked earlier',
+  fpx_src_deferred_SOURCE_BUSY: 'Portal busy — showing listings checked earlier',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'Live check unavailable — showing listings checked earlier',
+  fpx_src_shared: 'Checking together with an identical search',
+  mps_live_limited_concurrent: 'You already have {{n}} live searches running. This one shows listings HOMATCH already checked; a live check starts again when one of them finishes.',
+  mps_live_limited_until: 'You\'ve reached your live check limit. Showing listings HOMATCH already checked; live checks are available again at {{time}}.',
+  mps_live_limited: 'You\'ve reached your live check limit. Showing listings HOMATCH already checked.',
+  mps_live_busy_until: 'The portals are busy right now. Showing listings HOMATCH already checked; try a live check again at {{time}}.',
+  mps_live_busy: 'The portals are busy right now. Showing listings HOMATCH already checked.',
+  mps_live_unavailable: 'Live checks are temporarily unavailable. Showing listings HOMATCH already checked.',
+  mps_reused_recent: 'You ran this exact search a few minutes ago — here are its results.',
+
   /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'Tell us what home you want, in your own words. We search for free.',
   fpc_criteria_title: 'What we are searching for',
   fpc_criteria_edit: 'Change criteria',
   fpc_criteria_strict: 'Every requirement is mandatory. A property that clearly fails one is never shown as a match; when a post does not say something, we mark it as unverified instead of guessing.',
@@ -20623,9 +20640,6 @@ const en = {
   fpc_admin_test_title: 'Temporary {{credits}}-credit test campaign',
   fpc_admin_test_body: 'Admins and {{testers}} listed testers only. Provider budget {{provider}} credits (63%); same reservation, settlement and release.',
   fpc_admin_save_failed: 'The setting could not be saved.',
-
-  /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'Tell us what home you want, in your own words. We search for free.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -41011,7 +41025,24 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
   admin_ops_find_property_runs_unbooked: 'Find Property პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'მოთხოვნა შუამავლის მეშვეობით — საჭიროებს გადამოწმებას',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'ცოცხალი შემოწმების ლიმიტი ამოიწურა — ნაჩვენებია ადრე შემოწმებული განცხადებები',
+  fpx_src_deferred_SOURCE_BUSY: 'პორტალი დაკავებულია — ნაჩვენებია ადრე შემოწმებული განცხადებები',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'ცოცხალი შემოწმება ახლა მიუწვდომელია — ნაჩვენებია ადრე შემოწმებული განცხადებები',
+  fpx_src_shared: 'მოწმდება იდენტურ ძიებასთან ერთად',
+  mps_live_limited_concurrent: 'უკვე მიმდინარეობს თქვენი {{n}} ცოცხალი ძიება. ეს ძიება აჩვენებს HOMATCH-ის მიერ უკვე შემოწმებულ განცხადებებს; ცოცხალი შემოწმება ხელახლა დაიწყება, როცა ერთ-ერთი დასრულდება.',
+  mps_live_limited_until: 'ცოცხალი შემოწმების ლიმიტი ამოიწურა. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები; ცოცხალი შემოწმება ხელმისაწვდომი იქნება {{time}}-დან.',
+  mps_live_limited: 'ცოცხალი შემოწმების ლიმიტი ამოიწურა. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები.',
+  mps_live_busy_until: 'პორტალები ახლა დაკავებულია. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები; ცოცხალი შემოწმება ხელახლა სცადეთ {{time}}-ზე.',
+  mps_live_busy: 'პორტალები ახლა დაკავებულია. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები.',
+  mps_live_unavailable: 'ცოცხალი შემოწმება დროებით მიუწვდომელია. ნაჩვენებია HOMATCH-ის მიერ უკვე შემოწმებული განცხადებები.',
+  mps_reused_recent: 'ზუსტად ეს ძიება რამდენიმე წუთის წინ ჩაატარეთ — აი მისი შედეგები.',
+
   /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით.',
   fpc_criteria_title: 'რას ვეძებთ',
   fpc_criteria_edit: 'კრიტერიუმების შეცვლა',
   fpc_criteria_strict: 'ყველა მოთხოვნა სავალდებულოა. ობიექტი, რომელიც რომელიმე მოთხოვნას აშკარად არ აკმაყოფილებს, დამთხვევად არასდროს ჩაითვლება; თუ განცხადებაში რამე არ წერია, ვნიშნავთ როგორც გადაუმოწმებელს და არ ვიგონებთ.',
@@ -41163,9 +41194,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'დროებითი {{credits}}-კრედიტიანი სატესტო კამპანია',
   fpc_admin_test_body: 'მხოლოდ ადმინისტრატორები და {{testers}} ჩამოთვლილი ტესტერი. პროვაიდერის ბიუჯეტი {{provider}} კრედიტი (63%); იგივე დაბლოკვა, ანგარიშსწორება და დაბრუნება.',
   fpc_admin_save_failed: 'პარამეტრის შენახვა ვერ მოხერხდა.',
-
-  /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61542,7 +61570,24 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'Запуски провайдера Find Buyers без учёта',
   admin_ops_find_property_runs_unbooked: 'Запуски провайдера Find Property без учёта',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Запрос через посредника — требует проверки',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Лимит живых проверок исчерпан — показаны ранее проверенные объявления',
+  fpx_src_deferred_SOURCE_BUSY: 'Портал занят — показаны ранее проверенные объявления',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'Живая проверка недоступна — показаны ранее проверенные объявления',
+  fpx_src_shared: 'Проверяется вместе с идентичным поиском',
+  mps_live_limited_concurrent: 'У вас уже идут живые поиски: {{n}}. Здесь показаны объявления, которые HOMATCH уже проверил; живая проверка снова станет доступна, когда один из них завершится.',
+  mps_live_limited_until: 'Лимит живых проверок исчерпан. Показаны объявления, уже проверенные HOMATCH; живые проверки снова доступны в {{time}}.',
+  mps_live_limited: 'Лимит живых проверок исчерпан. Показаны объявления, уже проверенные HOMATCH.',
+  mps_live_busy_until: 'Порталы сейчас загружены. Показаны объявления, уже проверенные HOMATCH; повторите живую проверку в {{time}}.',
+  mps_live_busy: 'Порталы сейчас загружены. Показаны объявления, уже проверенные HOMATCH.',
+  mps_live_unavailable: 'Живые проверки временно недоступны. Показаны объявления, уже проверенные HOMATCH.',
+  mps_reused_recent: 'Вы выполняли точно такой же поиск несколько минут назад — вот его результаты.',
+
   /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно.',
   fpc_criteria_title: 'Что мы ищем',
   fpc_criteria_edit: 'Изменить критерии',
   fpc_criteria_strict: 'Все требования обязательны. Объект, который явно не подходит хотя бы по одному, никогда не показывается как совпадение; если в посте чего-то нет, мы отмечаем это как непроверенное, а не угадываем.',
@@ -61694,9 +61739,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'Временная тестовая кампания на {{credits}} кредитов',
   fpc_admin_test_body: 'Только администраторы и {{testers}} тестировщиков из списка. Бюджет провайдеров {{provider}} кредитов (63%); тот же резерв, расчёт и возврат.',
   fpc_admin_save_failed: 'Не удалось сохранить настройку.',
-
-  /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -82071,7 +82113,24 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'Kaydedilmemiş Find Buyers sağlayıcı çalıştırmaları',
   admin_ops_find_property_runs_unbooked: 'Kaydedilmemiş Find Property sağlayıcı çalıştırmaları',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Aracı üzerinden talep — doğrulama gerekiyor',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'Canlı kontrol sınırına ulaşıldı — daha önce kontrol edilen ilanlar gösteriliyor',
+  fpx_src_deferred_SOURCE_BUSY: 'Portal yoğun — daha önce kontrol edilen ilanlar gösteriliyor',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'Canlı kontrol şu an kullanılamıyor — daha önce kontrol edilen ilanlar gösteriliyor',
+  fpx_src_shared: 'Aynı aramayla birlikte kontrol ediliyor',
+  mps_live_limited_concurrent: 'Zaten {{n}} canlı aramanız sürüyor. Bu arama HOMATCH\'in daha önce kontrol ettiği ilanları gösteriyor; biri bittiğinde canlı kontrol yeniden başlar.',
+  mps_live_limited_until: 'Canlı kontrol sınırınıza ulaştınız. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor; canlı kontrol {{time}} itibarıyla yeniden kullanılabilir.',
+  mps_live_limited: 'Canlı kontrol sınırınıza ulaştınız. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor.',
+  mps_live_busy_until: 'Portallar şu anda yoğun. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor; canlı kontrolü {{time}} saatinde yeniden deneyin.',
+  mps_live_busy: 'Portallar şu anda yoğun. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor.',
+  mps_live_unavailable: 'Canlı kontrol geçici olarak kullanılamıyor. HOMATCH\'in daha önce kontrol ettiği ilanlar gösteriliyor.',
+  mps_reused_recent: 'Bu aramanın aynısını birkaç dakika önce yaptınız — sonuçları burada.',
+
   /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız.',
   fpc_criteria_title: 'Ne arıyoruz',
   fpc_criteria_edit: 'Kriterleri değiştir',
   fpc_criteria_strict: 'Her şart zorunludur. Birini açıkça karşılamayan bir mülk asla eşleşme olarak gösterilmez; ilanda bir bilgi yoksa tahmin etmek yerine doğrulanmamış olarak işaretleriz.',
@@ -82223,9 +82282,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'Geçici {{credits}} kredilik test kampanyası',
   fpc_admin_test_body: 'Yalnızca yöneticiler ve listedeki {{testers}} test kullanıcısı. Sağlayıcı bütçesi {{provider}} kredi (%63); aynı bloke, hesaplaşma ve iade.',
   fpc_admin_save_failed: 'Ayar kaydedilemedi.',
-
-  /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -102600,7 +102656,24 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'عمليات مزود Find Buyers غير المسجلة',
   admin_ops_find_property_runs_unbooked: 'عمليات مزود Find Property غير المسجلة',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'طلب عبر وسيط — يحتاج إلى تحقق',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'تم بلوغ حد التحقق المباشر — تُعرض الإعلانات التي تم التحقق منها سابقًا',
+  fpx_src_deferred_SOURCE_BUSY: 'البوابة مشغولة — تُعرض الإعلانات التي تم التحقق منها سابقًا',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'التحقق المباشر غير متاح — تُعرض الإعلانات التي تم التحقق منها سابقًا',
+  fpx_src_shared: 'يُفحص مع بحث مطابق',
+  mps_live_limited_concurrent: 'لديك بالفعل عمليات بحث مباشرة قيد التشغيل: {{n}}. يعرض هذا البحث إعلانات سبق أن تحقق منها HOMATCH؛ يعود التحقق المباشر عند انتهاء إحداها.',
+  mps_live_limited_until: 'لقد بلغت حد التحقق المباشر. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH؛ يتوفر التحقق المباشر مجددًا عند {{time}}.',
+  mps_live_limited: 'لقد بلغت حد التحقق المباشر. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH.',
+  mps_live_busy_until: 'البوابات مشغولة الآن. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH؛ أعد محاولة التحقق المباشر عند {{time}}.',
+  mps_live_busy: 'البوابات مشغولة الآن. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH.',
+  mps_live_unavailable: 'التحقق المباشر غير متاح مؤقتًا. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH.',
+  mps_reused_recent: 'أجريت هذا البحث نفسه قبل دقائق — إليك نتائجه.',
+
   /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا.',
   fpc_criteria_title: 'ما الذي نبحث عنه',
   fpc_criteria_edit: 'تغيير المعايير',
   fpc_criteria_strict: 'كل شرط إلزامي. العقار الذي لا يستوفي أحد الشروط بوضوح لا يُعرض أبدًا كتطابق؛ وإذا لم يذكر المنشور معلومة ما، نضع عليها علامة «غير متحقق منها» بدل التخمين.',
@@ -102752,9 +102825,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'حملة تجريبية مؤقتة بقيمة {{credits}} رصيد',
   fpc_admin_test_body: 'للمشرفين و{{testers}} من المختبرين المدرجين فقط. ميزانية المزوّد {{provider}} رصيد (63%)؛ مع الحجز والتسوية والإعادة نفسها.',
   fpc_admin_save_failed: 'تعذّر حفظ الإعداد.',
-
-  /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -123129,7 +123199,24 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_ops_find_buyers_runs_unbooked: 'הרצות ספק של Find Buyers שלא נרשמו',
   admin_ops_find_property_runs_unbooked: 'הרצות ספק של Find Property שלא נרשמו',
 
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'בקשה דרך מתווך — דורש אימות',
+
+  /* ── FIND PROPERTY CAPACITY (listings checked earlier, shared and live checks) ── */
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: 'הגעתם למגבלת הבדיקה החיה — מוצגות מודעות שנבדקו קודם',
+  fpx_src_deferred_SOURCE_BUSY: 'הפורטל עמוס — מוצגות מודעות שנבדקו קודם',
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: 'בדיקה חיה אינה זמינה — מוצגות מודעות שנבדקו קודם',
+  fpx_src_shared: 'נבדק יחד עם חיפוש זהה',
+  mps_live_limited_concurrent: 'כבר פועלים אצלכם חיפושים חיים: {{n}}. חיפוש זה מציג מודעות ש-HOMATCH כבר בדק; בדיקה חיה תתחדש כשאחד מהם יסתיים.',
+  mps_live_limited_until: 'הגעתם למגבלת הבדיקות החיות. מוצגות מודעות ש-HOMATCH כבר בדק; בדיקות חיות יחזרו בשעה {{time}}.',
+  mps_live_limited: 'הגעתם למגבלת הבדיקות החיות. מוצגות מודעות ש-HOMATCH כבר בדק.',
+  mps_live_busy_until: 'הפורטלים עמוסים כרגע. מוצגות מודעות ש-HOMATCH כבר בדק; נסו בדיקה חיה שוב בשעה {{time}}.',
+  mps_live_busy: 'הפורטלים עמוסים כרגע. מוצגות מודעות ש-HOMATCH כבר בדק.',
+  mps_live_unavailable: 'בדיקות חיות אינן זמינות זמנית. מוצגות מודעות ש-HOMATCH כבר בדק.',
+  mps_reused_recent: 'הרצתם בדיוק את החיפוש הזה לפני כמה דקות — הנה התוצאות שלו.',
+
   /* ── DEEP SEARCH RESULTS ── */
+  fpx_header_sub_free: 'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם.',
   fpc_criteria_title: 'מה אנחנו מחפשים',
   fpc_criteria_edit: 'שינוי הקריטריונים',
   fpc_criteria_strict: 'כל דרישה היא חובה. נכס שבבירור אינו עומד באחת מהן לעולם לא יוצג כהתאמה; כשפוסט אינו מציין משהו, נסמן זאת כלא מאומת במקום לנחש.',
@@ -123281,9 +123368,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   fpc_admin_test_title: 'קמפיין ניסיון זמני של {{credits}} קרדיטים',
   fpc_admin_test_body: 'מנהלים ו־{{testers}} בודקים רשומים בלבד. תקציב ספקים {{provider}} קרדיטים (63%); אותה הקפאה, סגירה והחזרה.',
   fpc_admin_save_failed: 'לא ניתן היה לשמור את ההגדרה.',
-
-  /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

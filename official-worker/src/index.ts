@@ -26,6 +26,7 @@ import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrow
 import { startVerifyQueue } from './queue/startVerifyQueue.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 import { attachSpeechGateway } from './speech/SpeechGateway.js';
+import { eventLoopDelay, speechSessionsOpen } from './runtime/loadIsolation.js';
 import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
 import {
   lastRecogniserError, speechConfigFromEnv,
@@ -39,6 +40,7 @@ import { createGramJsDriver } from './telegram/GramJsDriver.js';
 import { mountDiscoveryRoutes } from './discovery/routes.js';
 import { mountTasFileRoutes } from './verify/TasFileRoute.js';
 import { startPublishingWorker } from './publishing/start.js';
+import { createWorkerAuth } from './http/workerAuth.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -57,7 +59,6 @@ app.use(express.json({ limit: '1mb' }));
 
 const PORT = Number(process.env.PORT || 3000);
 const TOKEN = process.env.WORKER_TOKEN || '';
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
 
 const orchestrator = new ResearchOrchestrator();
 
@@ -72,20 +73,9 @@ let speechStatus: { available: boolean; reason: string | null; model: string | n
 const speechHealth = () => speechStatus;
 const debugJobs = new Map<string, any>();
 
-async function auth(req: any, res: any, next: any) {
-  const h = String(req.headers.authorization || '');
-  if (TOKEN && h === `Bearer ${TOKEN}`) return next();
-  if (SUPABASE_URL && h.startsWith('Bearer ')) {
-    try {
-      const k = String(req.headers.apikey || '');
-      if (!k) return res.status(401).json({ error: 'apikey required' });
-      if ((await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { Authorization: h, apikey: k } })).ok) return next();
-    } catch {
-      /* falls through to 401 */
-    }
-  }
-  return res.status(401).json({ error: 'unauthorized' });
-}
+// Privileged routes: WORKER_TOKEN bearer only (server-to-server). A Supabase
+// user session is NOT accepted — see http/workerAuth.ts (capacity audit P1 #1).
+const auth = createWorkerAuth(TOKEN);
 
 // Telegram discovery (MTProto). One session, one queue — see telegram/TelegramGateway.ts.
 // Mounted before the routes below; token-only; inert until TELEGRAM_ENABLED.
@@ -120,6 +110,9 @@ app.get('/health', (_q: any, r: any) =>
     // Deployed is not the same as able. Two Railway services run this image
     // and only one of them holds the Google credential.
     speech: speechHealth(),
+    // Load isolation: event-loop delay (ms) and open speech sessions; browser claims drop while > 0.
+    eventLoop: eventLoopDelay(),
+    speechSessionsOpen: speechSessionsOpen(),
     version: '2.1.0',
     playwright: true,
     architecture: 'deterministic-fsm-orchestrator-2026-09-05',

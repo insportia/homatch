@@ -93,15 +93,22 @@ const E = '(?![\\p{L}\\p{N}])';
 const RESIDENTIAL = L([
   `${B}(apartment|apartments|appartment|flat|flats|condo|studio|penthouse|duplex|house|villa|cottage|townhouse|home to buy|property|real estate)`,
   'квартир', 'жиль', 'недвижим', `${B}дом(?![\\p{L}])`, `${B}дома${E}`, 'коттедж', 'студи', 'пентхаус', 'однушк', 'двушк', 'трешк', 'трёшк', 'комнатн',
+  /* v10 taxonomy: villas, dachas, townhouses, duplexes in every language. */
+  'вилл', `${B}дач[аиуеё]${E}`, 'дачн\\S* дом', 'таунхаус', 'дуплекс', 'двухуровнев', `${B}(chalet|bungalow|farmhouse|summer house)`, 'კოტეჯ', 'ვილა', 'თაუნჰაუს', 'პენტჰაუს', 'დუპლექს',
+  'yazlık', 'dubleks', 'çatı katı', 'شاليه', 'بنتهاوس', 'دوبلكس', 'קוטג', 'דופלקס', 'צימר',
   /* ბინა only at a word start: კაბინეტი (an office room) contains ბინ (VILLION lead 37, 2026-10-16). */
   `${B}ბინ(?!ძ)`, 'სახლ', 'უძრავ', 'აპარტამენტ', 'ოთახიან', 'სტუდიო', 'აგარაკ',
   `${B}(daire|konut|emlak|stüdyo|villa|müstakil|rezidans)`, `${B}ev${E}`,
   'شقة', 'شقق', 'منزل', 'بيت', 'فيلا', 'عقار', 'سكن',
   'דירה', 'דירות', 'נכס', 'נדל', 'וילה', 'פנטהאוז', 'סטודיו', `${B}בית${E}`,
 ]);
-const COMMERCIAL_ONLY = L(['офис', 'кабинет', 'магазин', 'склад', 'помещени', 'коммерческ', 'ოფის', 'კაბინეტ', 'მაღაზი', 'საწყობ', 'კომერციულ', `${B}(office|shop|warehouse|retail|salon space|commercial)`, 'dükkan', 'ofis', 'depo', 'işyeri', 'تجاري', 'مكتب', 'محل', 'مستودع', 'משרד', 'חנות', 'מחסן', 'מסחרי']);
-const HOUSE = L([`${B}(house|villa|cottage|townhouse)`, `${B}дом(?![\\p{L}])`, 'коттедж', 'вилл', 'სახლ', 'აგარაკ', `${B}(müstakil|villa)`, 'منزل', 'فيلا', 'וילה', `${B}בית${E}`]);
-const LAND = L([`${B}(land|plot)`, 'участ', 'მიწ', `${B}arsa`, 'أرض', 'מגרש']);
+const COMMERCIAL_ONLY = L(['офис', 'кабинет', 'магазин', 'склад', 'помещени', 'коммерческ', 'ოფის', 'კაბინეტ', 'მაღაზი', 'საწყობ', 'კომერციულ', `${B}(office|shop|warehouse|retail|salon space|commercial)`, 'dükkan', 'ofis', 'depo', 'işyeri', 'تجاري', 'مكتب', 'محل', 'مستودع', 'משרד', 'חנות', 'מחסן', 'מסחרי',
+  /* v10 taxonomy: premises words only — "кафе" or "hotel" alone is a night out, not real estate;
+     the subtype (café, hotel, clinic …) is read from the text once a premises word made it one. */
+  'საწარმო', 'ქარხან', 'ანგარ', 'სახელოსნო', 'შოურუმ', 'ქოვორქინგ', 'ფართ', 'შენობ', 'завод', `${B}цех`, 'ангар', 'шоурум', 'коворкинг', 'мастерск', 'здани', 'производственн',
+  `${B}(premises|factory|hangar|showroom|coworking|workshop|building|cold storage)${E}`, 'fabrika', 'atölye', `${B}bina(sı)?${E}`, 'مصنع', 'مبنى', 'ورشة', 'מפעל', 'בניין', 'מרלו"ג']);
+const HOUSE = L([`${B}(house|villa|cottage|townhouse|chalet|bungalow|farmhouse)`, `${B}дом(?![\\p{L}])`, 'коттедж', 'вилл', `${B}дач[аиуеё]${E}`, 'таунхаус', 'სახლ', 'აგარაკ', 'კოტეჯ', 'ვილა', 'თაუნჰაუს', `${B}(müstakil|villa|yazlık)`, 'sıra ev', 'منزل', 'فيلا', 'شاليه', 'וילה', 'קוטג', 'צימר', `${B}בית${E}`]);
+const LAND = L([`${B}(land|plot|farmland|acres?)`, 'участ', `${B}земл[яиюе]${E}`, 'მიწ', 'ნაკვეთ', `${B}(arsa|arazi|tarla)`, 'أرض', 'أراضي', 'מגרש', 'קרקע']);
 /** "2 bedroom", "3-room", "1+1", "სამ ოთახიან", "трёхкомнатн". */
 const ROOM_SPEC = L([
   '\\d\\s*\\+\\s*1', '\\d\\s*-?\\s*(room|rooms|bedroom|bedrooms|br)\\b', '\\d\\s*-?\\s*(комн|спальн|к\\.)', '\\d\\s*-?\\s*(ოთახ|საძინებ)',
@@ -125,6 +132,19 @@ const AGENT = L([
   'риелтор', 'риэлтор', 'агентство недвижим', 'агент по недвижим', 'мой клиент', 'для клиента', 'моего клиента',
   'აგენტი ვარ', 'სააგენტო', 'მყავს კლიენტი', 'ჩემი კლიენტ', 'კლიენტისთვის',
   `${B}(emlakçı|emlak ofisi|müşterim için)`, 'وسيط عقاري', 'مكتب عقار', 'لعميلي', 'מתווך', 'משרד תיווך', 'ללקוח שלי',
+]);
+
+/**
+ * A buyer refusing intermediaries ("риелторов не беспокоить", "no agents please", "აგენტებმა არ
+ * შემაწუხოთ"): the broker word is the opposite of a broker (owner, 2026-10-18: "do not reject a
+ * legitimate buyer simply because the post contains a broker-related word"). Removed before the
+ * AGENT test.
+ */
+const NO_AGENTS = L([
+  `${B}(no|without) (agents?|agencies|brokers?|realtors?|intermediaries)`, 'agents? (please )?(do not|don\'t) (call|message|contact)', 'only (from )?owners?',
+  'без посредник', 'без риел', 'без риэл', 'без агент', '(риелтор|риэлтор|агент|посредник)\\S* (просьба )?не (беспокоить|писать|звонить|предлагать)', 'только (от )?собственник',
+  'აგენტებ\\S* (ნუ|არ) ', 'შუამავლ\\S* (გარეშე|ნუ|არ)', 'მხოლოდ მეპატრონ', 'სააგენტოებ\\S* (ნუ|არ) ',
+  'emlakçı\\S* (aramasın|rahatsız etmesin|değil)', 'sadece sahibinden', 'بدون (وسطاء|وسيط|سمسار)', 'بلا وسطاء', 'בלי מתווכים', 'ללא תיווך', 'ללא מתווכים',
 ]);
 
 /**
@@ -241,7 +261,8 @@ const COLLECTS_LISTINGS = L([
      ბინებს, ვისაც გაქვთ გასაყიდი და თანამშრომლობთ მომწერეთ" — a buyer wants ONE home (ბინას), a
      broker asks colleagues who "cooperate". "Send me apartments" alone stays a buyer's words. */
   'თანამშრომლობ', 'გვყავს (რეალური |ბევრი )?(კლიენტ|მყიდველ|დამქირავებ)', 'მყავს (რეალური |ბევრი )?(კლიენტ|მსურველ|მყიდველ|დამქირავებ)',
-  '(для|под) (моих |наших )?(клиент|покупател)', 'есть (реальные )?(клиенты|покупатели)', 'ищу квартиры (для|под)', 'сотрудничеств',
+  /* Plural only: "для клиента" (one named client) is a broker searching for a buyer (v10). */
+  '(для|под) (моих |наших )?(клиентов|клиентам|покупателей)', 'есть (реальные )?(клиенты|покупатели)', 'ищу квартиры (для|под)', 'сотрудничеств',
   `${B}(we have (real |many )?(clients|buyers)|i have (a lot of |many )?(clients|buyers)|for (my|our) clients|looking for (apartments|listings) for|co-?broker|cooperation with agents)`,
   `${B}(müşterilerim (için|var)|alıcılarım var)`, 'لدي (عملاء|زبائن)', 'יש לי (לקוחות|קונים)',
   '(продаж[аеуи]|продать) (и|или) (аренд|сдать|сдач)', '(аренд[аеуы]|сдать) (и|или) (продаж|продать)', 'на продажу (и|или) (в )?аренду',
@@ -431,6 +452,18 @@ export function authorLooksLikeBusiness(name: string | null | undefined): boolea
 export const ADVERTISER_ROLES: readonly DemandRole[] = ['SALE_OFFER', 'RENT_OFFER', 'AGENT'];
 
 /**
+ * A broker explicitly searching for a CLIENT ("ищу для клиента 2-комнатную в Ваке", "მყავს
+ * კლიენტი, ეძებს…"): real demand through an intermediary (owner, 2026-10-18: "detect brokers
+ * explicitly representing buyers"). Never a buyer of their own, never Strong, labelled as such
+ * (BUYER_VIA_BROKER). Brokers collecting inventory, soliciting sellers or selling services to
+ * buyers stay rejected; a business-named author or one advertising in the same read never
+ * reaches this (their evidence is not seeking_for_client).
+ */
+export function buyerViaBroker(r: Pick<DemandReading, 'role' | 'evidence'>): boolean {
+  return r.role === 'AGENT' && r.evidence.includes('seeking_for_client');
+}
+
+/**
  * Who is speaking decides it as much as what is said: a seeker reading becomes AGENT when the
  * author's name is a business/channel name, or when the same author advertises homes in the same
  * read (8f6b8544: "ბინების ყიდვა-გაყიდვა გაქირავება" posted four sale ads and one "buyer" post).
@@ -545,17 +578,19 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   const streets = places.filter((p) => p.kind === 'STREET' && !p.negated).map((p) => p.key);
   const excludedPlaces = places.filter((p) => p.negated).map((p) => (p.kind === 'STREET' ? `street:${p.key}` : p.key));
   const locationFlexible = FLEX_LOCATION.test(s);
-  const bedrooms = numberNear(/(\d{1,2})\s*-?\s*(?:bed(?:room)?s?\b|br\b|bhk\b|спальн|საძინებ|yatak odası|غرف? نوم|חדרי שינה)/iu, s)
+  /* "2+1" (Turkish / Georgian listings): two bedrooms and a living room — three rooms (v10). */
+  const plusOne = numberNear(/(\d)\s*\+\s*1\b/u, s);
+  const bedrooms = numberNear(/(\d{1,2})\s*-?\s*(?:bed(?:room)?s?\b|br\b|bhk\b|спальн|საძინებ|yatak odası|غرف? نوم|חדרי שינה)/iu, s) ?? plusOne
     /* "one-bedroom", "1+1 / 1 спальня", "studio": a stated bedroom count (v7: "1bhk" was missed). */
     ?? (WORD_BEDROOMS.find(([re]) => re.test(s))?.[1] ?? (/(?<![\p{L}])(studio|студи|სტუდიო)/iu.test(s) ? 0 : null));
   const rooms = numberNear(/(\d{1,2})\s*-?\s*(?:rooms?\b|комн|к\.|ოთახ|oda\b|غرف|חדרים|חד')/iu, s)
-    ?? numberNear(/(\d)\s*\+\s*1\b/u, s) ?? (WORD_ROOMS.find(([re]) => re.test(s))?.[1] ?? null);
+    ?? (plusOne != null ? plusOne + 1 : null) ?? (WORD_ROOMS.find(([re]) => re.test(s))?.[1] ?? null);
   const area = statedArea(s);
   const areaSqm = area ? area.max ?? area.min : null;
 
   const base = {
     realEstate: true, residential: propertyType === 'APARTMENT' || propertyType === 'HOUSE', propertyType,
-    intermediary: AGENT.test(s), budget, downPayment: downHit ? { amount: downHit.amount, currency: downHit.currency } : null,
+    intermediary: AGENT.test(s.replace(new RegExp(NO_AGENTS.source, 'giu'), ' ')), budget, downPayment: downHit ? { amount: downHit.amount, currency: downHit.currency } : null,
     financing: INSTALMENTS.test(s) ? 'INSTALMENTS' as const : MORTGAGE.test(s) ? 'MORTGAGE' as const : null,
     cities, districts, streets, excludedPlaces, locationFlexible, rooms, bedrooms, areaSqm, area,
   };
@@ -606,10 +641,10 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
       transaction, evidence, confidence: transaction ? 0.85 : 0.55, needsModel: transaction == null };
   }
   if (base.intermediary) {
-    return { ...base, role: 'AGENT', transaction, evidence: [...evidence, 'seeking_for_client'], confidence: 0.8, needsModel: false };
+    return { ...base, role: 'AGENT', transaction, evidence: [...evidence, 'seeking_for_client'], subtypes: statedSubtypes(base.propertyType, s), confidence: 0.8, needsModel: false };
   }
   if (!transaction) {
-    return { ...base, role: 'UNCLEAR', transaction: null, evidence: [...evidence, 'transaction_unknown'], confidence: 0.4, needsModel: true };
+    return { ...base, role: 'UNCLEAR', transaction: null, evidence: [...evidence, 'transaction_unknown'], subtypes: statedSubtypes(base.propertyType, s), confidence: 0.4, needsModel: true };
   }
   return { ...base, role: transaction === 'BUY' ? 'BUY_SEEKER' : 'RENT_SEEKER', transaction, evidence,
     subtypes: statedSubtypes(base.propertyType, s), confidence: buyWords || rentWords ? 0.9 : 0.7, needsModel: false };

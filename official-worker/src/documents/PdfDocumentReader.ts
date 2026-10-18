@@ -1,7 +1,7 @@
 // PdfDocumentReader.ts — reads a direct downloadable PDF and preserves the
 // complete extracted text. A successful pdf-parse pass covers every page.
 import type { Page } from 'playwright';
-import pdf from 'pdf-parse';
+import { parsePdfOffLoop } from '../runtime/pdfOffLoop.js';
 import { extractDateFromText, sha256 } from './DocumentReader.js';
 import { newDocumentShell, markComplete, type ResearchDocument } from './DocumentTypes.js';
 
@@ -25,7 +25,7 @@ export async function readPdfDocument(
 
     if (contentType.includes('pdf') || body.subarray(0, 4).toString() === '%PDF') {
       doc.documentType = 'PDF_DOCUMENT';
-      const parsed = await pdf(body);
+      const parsed = await parsePdfOffLoop(body);
       const bodyText = parsed.text || '';
       doc.title =
         (parsed.info && parsed.info.Title && String(parsed.info.Title).trim()) ||

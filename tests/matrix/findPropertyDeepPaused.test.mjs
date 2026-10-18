@@ -4,13 +4,14 @@
 // and settle; past results stay readable at no charge.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const RUN = read('supabase/functions/find-property-run/index.ts');
 const OFFERS = read('supabase/functions/_shared/findProperty/socialOffers.ts');
 const MARKET = read('supabase/functions/_shared/marketplaceSearch.ts');
-const SQL = read('supabase/migrations/20261115100000_find_property_deep_paused.sql');
+/* The pause itself shipped in #269 (migration 20261116100000, already applied in production). */
+const SQL = read('supabase/migrations/20261116100000_find_property_deep_paused.sql');
 const EXPERIENCE = read('src/components/findProperty/MarketplaceSearchExperience.tsx');
 const RESULTS_VIEW = read('src/components/findProperty/ResultsView.tsx');
 const HEADER = read('src/components/findProperty/workspace/WorkspaceHeader.tsx');
@@ -18,14 +19,18 @@ const PAGE = read('src/pages/FindPropertyPage.tsx');
 const CAMPAIGN_PAGE = read('src/pages/FindPropertyCampaignPage.tsx');
 const CONTROL = read('supabase/functions/service-control/index.ts');
 
-test('the switch: the existing Service Control row, turned OFF by migration and nothing else', () => {
+test('the switch: the existing Service Control row, OFF in production since #269; this PR moves no switch', () => {
   assert.match(SQL, /update public\.service_controls\s+set frontend_enabled = false,\s+backend_enabled = false,\s+version = version \+ 1,/);
-  assert.match(SQL, /where service_key = 'find_property_deep';/);
+  assert.match(SQL, /where service_key = 'find_property_deep'/);
   const code = SQL.replace(/--.*$/gm, '');
-  assert.doesNotMatch(code, /\b(delete|truncate|drop|insert)\b/i, 'only the switch moves; no history is touched');
-  for (const other of ['find_property_social_enabled', 'find_property_test_campaign', 'admin_settings', 'wallet', 'usage_reservations']) {
+  assert.doesNotMatch(code, /\b(delete|truncate|drop|insert)\b/i, 'only switches move; no history is touched');
+  for (const other of ['find_property_test_campaign', 'wallet', 'usage_reservations', 'credit_ledger']) {
     assert.ok(!code.includes(other), `${other} is not changed by the pause`);
   }
+  /* No migration in this PR moves either switch: reactivation is the owner's, in Admin. */
+  assert.ok(!existsSync(new URL('../../supabase/migrations/20261115100000_find_property_deep_paused.sql', import.meta.url)));
+  const ours = read('supabase/migrations/20261117090000_find_property_campaign_results.sql').replace(/--.*$/gm, '');
+  assert.ok(!/service_controls|find_property_social_enabled/.test(ours), 'the results migration touches no switch');
   /* Admin flips it back through the audited, admin-only service-control function. */
   assert.match(CONTROL, /caller\.rpc\('is_admin'\)/);
   assert.match(CONTROL, /find_property_deep: \[/, 'Admin sees open campaigns and actor runs before switching');

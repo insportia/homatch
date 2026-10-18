@@ -185,7 +185,9 @@ async function sendingGate(sb: Sb): Promise<Gate> {
   // here, never a simulated send recorded as real.
   if (adapter.provider !== 'RESEND') return { ok: false, state: 'PROVIDER_NOT_CONFIGURED' };
   const cap = await checkSpendCap(sb, 'RESEND');
-  if (!cap.allowed) return { ok: false, state: 'SPEND_CAP_REACHED' };
+  // SPEND_UNKNOWN: month-to-date spend could not be read (logged by
+  // checkSpendCap); nothing is claimed or sent, and the next attempt retries.
+  if (!cap.allowed) return { ok: false, state: cap.spend_unknown ? 'SPEND_UNKNOWN' : 'SPEND_CAP_REACHED' };
   const perK = Number(s['outreach_email_price_per_1k'] ?? 0.5);
   return { ok: true, adapter, unitPrice: (Number.isFinite(perK) ? perK : 0.5) / 1000 };
 }

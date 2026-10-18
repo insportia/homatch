@@ -38,7 +38,8 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
+import { getDocumentProxy } from 'npm:unpdf@0.12.1';
+import { DocumentTooLarge, MAX_DOCX_XML_BYTES, assertDocxParsable, pdfTextForAnalysis } from '../_shared/boundedDocumentText.ts';
 import JSZip from 'npm:jszip@3.10.1';
 import { documentKind, extractDocxText, DOCX_MIME } from '../../../src/dealroom/domain/docx.ts';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
@@ -259,6 +260,7 @@ serve(async (req) => {
         const zip = await JSZip.loadAsync(bytes);
         const entry = zip.file('word/document.xml');
         if (!entry) throw new Error('no word/document.xml');
+        assertDocxParsable(entry);
         raw = extractDocxText(await entry.async('string'));
         // A Word file has no page count until it is laid out, and guessing one
         // would be inventing a fact about the document.
@@ -266,15 +268,20 @@ serve(async (req) => {
       } else {
         const pdf = await getDocumentProxy(bytes);
         pages = pdf.numPages ?? 0;
-        const res = await extractText(pdf, { mergePages: true });
-        raw = typeof res?.text === 'string' ? res.text : Array.isArray(res?.text) ? res.text.join('\n') : '';
+        /* Only as far as the analysis reads (MAX_DOCUMENT_CHARS); the result is the same text. */
+        raw = (await pdfTextForAnalysis(pdf)).raw;
       }
-    } catch {
+    } catch (e) {
+      const tooLarge = e instanceof DocumentTooLarge;
       await supabase
         .from('deal_room_documents')
-        .update({ analysis_state: 'FAILED', analysis_error: 'the document could not be parsed', analyzed_at: new Date().toISOString() })
+        .update({
+          analysis_state: 'FAILED',
+          analysis_error: tooLarge ? `the document is too large to analyse automatically (its text is over ${MAX_DOCX_XML_BYTES / 1024 / 1024} MB)` : 'the document could not be parsed',
+          analyzed_at: new Date().toISOString(),
+        })
         .eq('id', documentId);
-      return json({ state: 'FAILED', reason: 'PARSE_FAILED' });
+      return json({ state: 'FAILED', reason: tooLarge ? 'TOO_LARGE' : 'PARSE_FAILED', pages });
     }
 
     const text = normalizeDocumentText(raw);

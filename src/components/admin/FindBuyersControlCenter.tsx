@@ -20,6 +20,7 @@ import { actorLifecycle, classifyActor } from '@/findBuyers/actorCatalog';
 import { SourceNetworkPanel } from './SourceNetworkPanel';
 import { FindBuyersIntelligencePanel } from './FindBuyersIntelligencePanel';
 import { FindBuyersTestTools } from './FindBuyersTestTools';
+import { CampaignReport } from '@/components/findBuyers/CampaignReport';
 
 type Tab = 'overview' | 'actors' | 'campaigns' | 'network' | 'sources' | 'languages' | 'ledger' | 'intelligence';
 const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'network', 'sources', 'languages', 'ledger', 'intelligence'];
@@ -134,6 +135,9 @@ export function FindBuyersControlCenter() {
   const { t } = useLanguage();
   const [days, setDays] = useState(30);
   const [tab, setTab] = useState<Tab>('overview');
+  /* The per-campaign search report (with research notes) lives here since 2026-10-18 (owner):
+     it is no longer shown on the customer's results page. */
+  const [reportJob, setReportJob] = useState<{ jobId: string; live: boolean } | null>(null);
   const [data, setData] = useState<FindBuyersCenter | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -278,7 +282,10 @@ export function FindBuyersControlCenter() {
           <Table
             head={[t('fbx_admin_started'), t('fbl_admin_state'), t('fbl_admin_work'), t('fbl_admin_signals'), t('fbl_admin_new'), t('fbl_admin_stop_reason'), t('fbx_admin_mode'), t('fbx_admin_credits_committed'), t('fbx_admin_revenue'), t('fbx_admin_reserved'), t('fbx_admin_provider_spend'), t('fbx_admin_ai_spend'), t('fbx_admin_translation_spend'), t('fbx_admin_total_cogs'), t('fbx_admin_contribution'), t('fbx_admin_qualified'), t('fbx_admin_strong'), t('fbx_admin_status'), t('fbx_admin_last_activity')]}
             rows={data.campaigns.map((c) => [
-              <span key="s" title={`job ${c.matching_job_id} · campaign ${c.campaign_id ?? '—'} · property ${c.property_id}`}>{when(c.created_at)}</span>,
+              <button key="s" type="button" data-testid="fbx-admin-report-open" data-job={c.matching_job_id}
+                onClick={() => setReportJob({ jobId: String(c.matching_job_id), live: Boolean(c.lifecycle?.active) })}
+                className="text-start underline decoration-dotted underline-offset-2 hover:text-foreground"
+                title={`job ${c.matching_job_id} · campaign ${c.campaign_id ?? '—'} · property ${c.property_id}`}>{when(c.created_at)}</button>,
               /* The server's lifecycle (find_buyers_job_state), the same one the owner sees. */
               <span key="st" className="font-semibold">{String(c.lifecycle?.state ?? '—')}</span>,
               <span key="w" dir="ltr" title={t('fbl_admin_work_hint')} className="tabular-nums">
@@ -299,6 +306,11 @@ export function FindBuyersControlCenter() {
               n(c.leads), n(c.strong), String(c.job_status ?? ''), when(c.last_activity_at),
             ])}
           />
+          {reportJob ? (
+            <div className="mt-4 rounded-2xl bg-[hsl(218_52%_11%)] p-4" data-testid="fbx-admin-report" data-job={reportJob.jobId}>
+              <CampaignReport jobId={reportJob.jobId} live={reportJob.live} refreshKey={reportJob.jobId} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 

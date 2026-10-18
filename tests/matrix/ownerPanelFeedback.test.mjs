@@ -102,3 +102,21 @@ test('earlier internal matches: a closed band, and opened contacts can be hidden
   assert.doesNotMatch(mig, /\bdelete\s+from\b/i);
   assert.match(mig, /p\.user_id = public\.auth_user_id\(\)/, 'owner only');
 });
+
+// Owner feedback 2026-10-18: the owner's account is an admin, so admin-gated sections still
+// showed; they go for everyone. Notifications keep only All / Unread. Snake while searching.
+test('results page: no source list, per-language outcomes or search report for anyone', () => {
+  const m = read('src/components/findBuyers/LiveSearchModule.tsx');
+  assert.doesNotMatch(m, /fbl-source-outcomes|<LanguageOutcomes|<CampaignReport|is_admin/);
+  assert.match(m, /data-testid="fbl-snake"/);
+  assert.match(m, /<SnakeOverlay /);
+  const admin = read('src/components/admin/FindBuyersControlCenter.tsx');
+  assert.match(admin, /<CampaignReport jobId=\{reportJob\.jobId\}/, 'operators still read the report in Admin');
+});
+
+test('notifications: only All / Unread, no category chip rail', () => {
+  const p = read('src/pages/NotificationsPage.tsx');
+  assert.doesNotMatch(p, /META_CATEGORIES\.|mm_n_cat_all|setMetaCategory/);
+  assert.match(p, /notif_filter_all/);
+  assert.match(p, /notif_filter_unread/);
+});

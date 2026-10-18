@@ -91,7 +91,9 @@ test('an uncached search plans and queues memo23 Actors with production-shaped b
   assert.equal(queued.length, out.queued);
   assert.ok(queued.every((r) => r.provider === 'APIFY_MEMO23'), 'all social jobs go to the memo23 pool');
   const actorsQueued = new Set(queued.map((r) => r.metadata?.actorKey));
-  for (const k of ['FB_GROUP_SEARCH', 'TIKTOK', 'LINKEDIN_POSTS', 'BLUESKY']) assert.ok(actorsQueued.has(k), `${k} queued`);
+  for (const k of ['FB_GROUP_SEARCH', 'LINKEDIN_POSTS', 'BLUESKY']) assert.ok(actorsQueued.has(k), `${k} queued`);
+  /* TikTok returned agency videos, never a buyer: no TikTok demand search (owner, 2026-10-18). */
+  assert.ok(!actorsQueued.has('TIKTOK'), 'TikTok is not searched even when priced');
   assert.ok(queued.every((r) => r.metadata?.query || r.metadata?.targetUrl), 'never a job without a query or target');
   /* The model planner is unavailable here (no key, no network): the deterministic
      plan runs but is NOT cached, so the next campaign still asks the model
@@ -166,7 +168,8 @@ test('TWO PHASES: the plan stores Phase 1\'s time box, the expected Telegram sea
   const deadline = Date.parse(p.phase1DeadlineAt);
   assert.ok(deadline >= before + 10 * 60_000 - 1000 && deadline <= Date.now() + 10 * 60_000 + 1000);
   assert.deepEqual(p.expectedProviders, ['TELEGRAM_SOURCES']);
-  assert.ok(p.planned.phase1 >= 1 && p.planned.phase2IndependentSearch >= 1, JSON.stringify(p.planned));
+  /* No TikTok (owner, 2026-10-18): a STANDARD search has no source-independent keyword search left. */
+  assert.ok(p.planned.phase1 >= 1 && p.planned.phase2IndependentSearch === 0, JSON.stringify(p.planned));
   assert.equal(p.budget.rationale, 'FULL_DISCOVERY');
   const perProbe = 5000 + Math.ceil(10 * 1_900_000 / 1000);
   assert.equal(p.budget.discoveryCapMicros, perProbe * p.planned.phase1, 'priced from the registry, per planned discovery probe');
@@ -214,12 +217,12 @@ test('COMBINED never pays to read a channel the free reader already read for thi
   assert.equal(log.inserts.filter((i) => i.table === 'discovery_query_queue').length, 0);
 });
 
-test('budget-aware depth: a $5 search pays for Facebook discovery and TikTok, not LinkedIn/Bluesky keyword searches; the strategy is stored', async () => {
+test('budget-aware depth: a $5 search pays for Facebook discovery (never TikTok), not LinkedIn/Bluesky keyword searches; the strategy is stored', async () => {
   const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH'), PRICED('TIKTOK'), PRICED('LINKEDIN_POSTS'), PRICED('BLUESKY')] });
   const out = await startSocialCampaign(db, INPUT, SETTINGS);
   const queued = log.inserts.filter((i) => i.table === 'discovery_query_queue').map((i) => i.row);
   const actorsQueued = new Set(queued.map((r) => r.metadata?.actorKey));
-  assert.ok(actorsQueued.has('FB_GROUP_SEARCH') && actorsQueued.has('TIKTOK'));
+  assert.ok(actorsQueued.has('FB_GROUP_SEARCH') && !actorsQueued.has('TIKTOK'));
   assert.ok(!actorsQueued.has('LINKEDIN_POSTS') && !actorsQueued.has('BLUESKY'));
   assert.ok(out.queued > 0);
   const write = log.updates.find((u) => u.table === 'find_buyers_campaigns' && u.patch.strategy);

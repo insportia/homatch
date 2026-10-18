@@ -17,8 +17,9 @@ export interface BatchEntry { targetUrl: string; sourceId: string | null; arm: s
 /** Stages whose Actor reads a list of community URLs in one run. */
 export const BATCHABLE_SOURCE_STAGES: ReadonlySet<Stage> = new Set<Stage>(['FB_GROUP_POSTS', 'TELEGRAM_CHANNEL']);
 /** Communities per run: enough to remove most start fees and slot waits, small enough that
- *  one slow or blocked community cannot hold many others hostage. */
-export const MAX_URLS_PER_RUN = 5;
+ *  one slow or blocked community cannot hold many others hostage. Raised from 5 (owner,
+ *  2026-10-18: "put the group links in as one block, not one Actor per group"). */
+export const MAX_URLS_PER_RUN = 10;
 
 export type BatchedJob = PlannedSocialJob & { batch?: BatchEntry[] };
 
@@ -29,8 +30,11 @@ function hash(s: string): string {
 }
 
 /**
- * Group single-URL reads of the same stage, Actor, reason and language into runs of at
- * most `maxPerRun` URLs whose summed size stays within the Actor's maximum results.
+ * Group single-URL reads of the same stage, Actor and reason into runs of at most `maxPerRun` URLs
+ * whose summed size stays within the Actor's maximum results. Language no longer
+ * splits runs (campaign d0af0a47, 2026-10-18: six languages read six separate runs of the same
+ * Actor); a mixed-language run is 'multi' — every item's language is detected from its own
+ * text. The same community queued twice (known and re-discovered) is read once.
  * Everything else (searches, comments, one-off reads) passes through unchanged.
  */
 export function batchSourceReads(jobs: readonly PlannedSocialJob[], opts: { maxPerRun?: number; maxResults?: Record<string, number> } = {}): BatchedJob[] {
@@ -39,8 +43,12 @@ export function batchSourceReads(jobs: readonly PlannedSocialJob[], opts: { maxP
   const groups = new Map<string, PlannedSocialJob[]>();
   for (const j of jobs) {
     if (!BATCHABLE_SOURCE_STAGES.has(j.stage) || !j.targetUrl || j.query) { out.push(j); continue; }
-    const key = [j.stage, j.actorKey, j.reason, j.language].join('|');
-    groups.set(key, [...(groups.get(key) ?? []), j]);
+    /* reason stays in the key: it decides whether a read waits for Phase 1 (waitsForPhase1). */
+    const key = [j.stage, j.actorKey, j.reason].join('|');
+    const list = groups.get(key) ?? [];
+    const ck = communityKey(j.targetUrl) ?? j.targetUrl;
+    if (list.some((x) => (communityKey(x.targetUrl) ?? x.targetUrl) === ck)) continue;
+    groups.set(key, [...list, j]);
   }
   for (const list of groups.values()) {
     const cap = opts.maxResults?.[list[0].actorKey] ?? Infinity;
@@ -52,6 +60,7 @@ export function batchSourceReads(jobs: readonly PlannedSocialJob[], opts: { maxP
         const urls = chunk.map((c) => c.targetUrl!);
         out.push({
           ...chunk[0],
+          language: new Set(chunk.map((c) => c.language)).size === 1 ? chunk[0].language : 'multi',
           sourceId: null,
           size: chunk.reduce((n, c) => n + c.size, 0),
           arm: `batch:${chunk[0].stage}:${hash(urls.join('|'))}`,

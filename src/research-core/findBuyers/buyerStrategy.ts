@@ -229,7 +229,8 @@ export function depthFor(providerBudgetMicros: number, persona: Persona[], chose
     languages: chosen?.length ? languages : languages.slice(0, keep),
     queriesPerLanguage: tier === 'FOCUSED' ? 2 : tier === 'STANDARD' ? 3 : 4,
     comments: true,
-    platforms: tier === 'FOCUSED' ? ['FACEBOOK', 'TELEGRAM'] : tier === 'STANDARD' ? ['FACEBOOK', 'TELEGRAM', 'INSTAGRAM', 'TIKTOK'] : ['FACEBOOK', 'TELEGRAM', 'INSTAGRAM', 'TIKTOK', 'LINKEDIN', 'VK', 'BLUESKY', 'REDDIT', 'X', 'THREADS', 'YOUTUBE'],
+    /* No TikTok (owner, 2026-10-18): agencies' videos, never a buyer — see campaignPlan TIKTOK_DEMAND_SEARCH. */
+    platforms: tier === 'FOCUSED' ? ['FACEBOOK', 'TELEGRAM'] : tier === 'STANDARD' ? ['FACEBOOK', 'TELEGRAM', 'INSTAGRAM'] : ['FACEBOOK', 'TELEGRAM', 'INSTAGRAM', 'LINKEDIN', 'VK', 'BLUESKY', 'REDDIT', 'X', 'THREADS', 'YOUTUBE'],
   };
 }
 

@@ -13,7 +13,7 @@ import { buildInput } from '../findBuyers/actorInputs.ts';
 const GROUPS = ['1398119893863502', '2104336639903209', '857282362246871', '613549196206051', '758693946926620', '1124469959971936', '1184731542269658', '680606255673838', '1026892426126212', '478494531655177', 'real.tbilisi', '274027677004095', '583951125698448', '655427182648357', 'jobingeorgia', 'rentapartmentintbilisi'];
 const read = (g, i) => ({ stage: 'FB_GROUP_POSTS', actorKey: 'FB_GROUP_POSTS', language: 'multi', query: null, targetUrl: `https://www.facebook.com/groups/${g}`, sourceId: `src-${i}`, size: 20, arm: `FB_GROUP_POSTS:src-${i}`, priority: 60 + (i % 3), reason: i < 6 ? 'known_source_reuse' : 'group_followup' });
 
-test('16 single-group reads become 4 runs (≤5 groups, ≤ the Actor maximum each), nothing lost', () => {
+test('16 single-group reads become 4 runs (≤ the per-run cap and the Actor maximum each), nothing lost', () => {
   const jobs = batchSourceReads(GROUPS.map(read), { maxResults: { FB_GROUP_POSTS: 100 } });
   assert.equal(jobs.length, 4);
   const urls = jobs.flatMap((j) => (j.batch ? j.batch.map((b) => b.targetUrl) : [j.targetUrl]));
@@ -92,4 +92,15 @@ test('languages: items come from the runs (not the qualified count); ar/he/tr qu
   assert.match(demand('ar'), /كرتسانيسي/);
   assert.match(demand('he'), /קרצניסי/);
   assert.match(demand('tr'), /Krtsanisi satılık 2\+1 daire/);
+});
+
+test('languages no longer split runs; the same group queued twice is read once (campaign d0af0a47, 2026-10-18)', () => {
+  const langs = ['ka', 'ru', 'en', 'ar', 'he', 'tr'];
+  const jobs = GROUPS.slice(0, 6).map((g, i) => ({ ...read(g, i), reason: 'discovered_group', language: langs[i] }));
+  jobs.push({ ...jobs[0], arm: 'dup', language: 'ka' });
+  const out = batchSourceReads(jobs, { maxResults: { FB_GROUP_POSTS: 400 } });
+  assert.equal(out.length, 1, 'six languages, one run');
+  assert.equal(out[0].batch.length, 6, 'the duplicate group is dropped');
+  assert.equal(out[0].language, 'multi');
+  assert.ok(MAX_URLS_PER_RUN >= 10);
 });

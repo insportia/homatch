@@ -189,8 +189,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
       idempotency.current = null;
     } catch (e) {
       const code = e instanceof MarketplaceError ? e.code : 'REQUEST_FAILED';
-      toast.error(t(code === 'SEARCH_NOT_READY' ? 'mps_error_not_ready' : code === 'SOURCES_PAUSED' ? 'mps_error_paused'
-        : code === 'RATE_LIMIT_EXCEEDED' ? 'mps_error_start_rate_limited' : 'mps_error_generic'));
+      toast.error(t(code === 'SEARCH_NOT_READY' ? 'mps_error_not_ready' : code === 'SOURCES_PAUSED' ? 'mps_error_paused' : 'mps_error_generic'));
     } finally {
       setBusy(false);
     }

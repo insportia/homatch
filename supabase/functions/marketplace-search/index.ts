@@ -37,7 +37,7 @@ import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../..
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
-  anySourceOn, consumeStartQuota, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings, workerSwitchOn, WORKER_SOURCE_NAMES,
+  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings, workerSwitchOn, WORKER_SOURCE_NAMES,
 
 } from '../_shared/marketplaceSearch.ts';
 import { paidCampaignAvailable } from '../_shared/findProperty/paidAvailability.ts';
@@ -210,14 +210,6 @@ Deno.serve(async (req: Request) => {
       if (!/^[A-Za-z0-9_-]{8,120}$/.test(key)) return json({ error: 'IDEMPOTENCY_KEY_REQUIRED' }, 400);
       const { data: prior } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId).eq('idempotency_key', key).maybeSingle();
       if (prior) return json({ search: await summary(db, prior), replayed: true });
-
-      /* Per-user start quota (after the replay check, so a retried start never counts twice). */
-      const startQuota = await consumeStartQuota(db, userId);
-      if (!startQuota.allowed) {
-        console.warn('marketplace-search start rate_limited', startQuota.window);
-        return json({ error: 'RATE_LIMIT_EXCEEDED', code: 'RATE_LIMIT_EXCEEDED', retryAfterSeconds: startQuota.retryAfterSeconds },
-          429, { 'Retry-After': String(startQuota.retryAfterSeconds) });
-      }
 
       /* THE GATE. The client's view of readiness is never trusted. */
       const brief = sanitizeBrief(body.brief);

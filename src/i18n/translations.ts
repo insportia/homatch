@@ -20470,9 +20470,6 @@ const en = {
   admin_ops_reservations_overdue: 'Credit holds past expiry',
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers provider runs not booked',
   admin_ops_find_property_runs_unbooked: 'Find Property provider runs not booked',
-
-  /* ── FIND PROPERTY — search start quota ── */
-  mps_error_start_rate_limited: 'You have started many searches in a short time. Please wait a few minutes before starting another.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40857,9 +40854,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'კრედიტის დაკავებები ვადის გასვლის შემდეგ',
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
   admin_ops_find_property_runs_unbooked: 'Find Property პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
-
-  /* ── FIND PROPERTY — search start quota ── */
-  mps_error_start_rate_limited: 'მოკლე დროში ბევრი ძიება დაიწყეთ. ახალი ძიების დაწყებამდე რამდენიმე წუთი დაელოდეთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61235,9 +61229,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'Резервы кредитов после истечения срока',
   admin_ops_find_buyers_runs_unbooked: 'Запуски провайдера Find Buyers без учёта',
   admin_ops_find_property_runs_unbooked: 'Запуски провайдера Find Property без учёта',
-
-  /* ── FIND PROPERTY — search start quota ── */
-  mps_error_start_rate_limited: 'Вы начали много поисков за короткое время. Подождите несколько минут, прежде чем начать новый.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81611,9 +81602,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'Süresi geçmiş kredi blokajları',
   admin_ops_find_buyers_runs_unbooked: 'Kaydedilmemiş Find Buyers sağlayıcı çalıştırmaları',
   admin_ops_find_property_runs_unbooked: 'Kaydedilmemiş Find Property sağlayıcı çalıştırmaları',
-
-  /* ── FIND PROPERTY — search start quota ── */
-  mps_error_start_rate_limited: 'Kısa sürede çok sayıda arama başlattınız. Yeni bir arama başlatmadan önce lütfen birkaç dakika bekleyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101987,9 +101975,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'حجوزات رصيد تجاوزت مدتها',
   admin_ops_find_buyers_runs_unbooked: 'عمليات مزود Find Buyers غير المسجلة',
   admin_ops_find_property_runs_unbooked: 'عمليات مزود Find Property غير المسجلة',
-
-  /* ── FIND PROPERTY — search start quota ── */
-  mps_error_start_rate_limited: 'لقد بدأت عمليات بحث كثيرة في وقت قصير. يُرجى الانتظار بضع دقائق قبل بدء بحث جديد.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -122363,9 +122348,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'החזקות קרדיט שתוקפן עבר',
   admin_ops_find_buyers_runs_unbooked: 'הרצות ספק של Find Buyers שלא נרשמו',
   admin_ops_find_property_runs_unbooked: 'הרצות ספק של Find Property שלא נרשמו',
-
-  /* ── FIND PROPERTY — search start quota ── */
-  mps_error_start_rate_limited: 'התחלתם חיפושים רבים בזמן קצר. אנא המתינו כמה דקות לפני שתתחילו חיפוש נוסף.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

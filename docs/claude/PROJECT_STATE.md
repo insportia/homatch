@@ -5,6 +5,24 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Find Buyers lead quality fb-ai-2 + Find Buyers 2.0 (branch claude/nifty-hopper-snzn2d, 2026-10-18)
+
+- **fb-ai-2 (PR #273, merged 1a20e9df, deployed PROVEN refs edge+frontend 1a20e9df; migration
+  20261117100000 applied).** Replay of campaign 343cfc41 (445 stored candidates, no Actors, no charge):
+  fb-ai-1 showed 4 false leads ("Куплю USDT") and read rental listings as tenants; fb-ai-2 shows 0,
+  every candidate answered, 27 blocked by the consistency gate, both original brokers rejected; replay
+  AI cost $0.036 (fb-ai-1 replay $0.034, plus ~$0.03–0.06 unrecorded during the 18:10 lone-surrogate loop
+  fixed by #272). fb-ai-1 result kept in admin_settings `find_buyers_ai_replay_result_fb-ai-1`.
+- **Find Buyers 2.0 (PR #275, OPEN).** Internal matches first (free, real matcher state), external
+  discovery second; prices Standard 3 / VIP 10 credits (credits_per_usd = 10); demand dedupe by
+  fingerprint + rooms/features on intent_profiles; feed v2; Unlocked Leads nav; CRM stages + profile +
+  logged contacts; AI outreach drafts (outreach-send studio_lead_draft); Email Studio scheduling
+  (jobs-worker → studio_send_scheduled). Migration 20261118120000_find_buyers_2_internal.sql (NOT applied yet).
+- **Production facts (read-only, 2026-10-18):** ONE property in production (HOMATCH 244486, SALE, Krtsanisi,
+  2 bd, $213,840); 0 INTERNAL_HOMATCH supply_matches ever — correct: the 7 other-user searches all REQUIRE
+  1 bedroom and/or a budget under the price; lead_contact_preferences empty (defaults: matching on,
+  phone/email sharing off → unlocks give in-app messaging only); email_studio_sending_enabled = false.
+
 ## Capacity & resilience release (2026-10-18) — #261, #266, #253 MERGED, DEPLOYED, MIGRATIONS APPLIED
 
 - #261 document guards → b9cd4ab0. #266 Find Property capacity → ba893c5e. #253 hardening + AI TALK

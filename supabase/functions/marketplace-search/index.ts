@@ -23,7 +23,7 @@ import { historyExtras, ownedSearchHistory } from '../_shared/marketplaceHistory
 import { requestNativeMatching } from '../_shared/nativeDemand.ts';
 import { recordSeekerIntent } from '../_shared/seekerIntent.ts';
 import {
-  SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft,
+  SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft, demandExtrasFromBrief, demandFingerprint,
 } from '../../../src/research-core/marketplace/brief.ts';
 import { evaluateReadiness } from '../../../src/research-core/marketplace/readiness.ts';
 import {
@@ -278,7 +278,8 @@ Deno.serve(async (req: Request) => {
          best effort: it never delays or fails the marketplace search. */
       const network = (async () => {
         try {
-          const intentId = await recordSeekerIntent(db, userId, toSearchPlanDraft(brief), { marketplaceSearchId: searchId });
+          const extras = demandExtrasFromBrief(brief);
+          const intentId = await recordSeekerIntent(db, userId, toSearchPlanDraft(brief), { marketplaceSearchId: searchId }, { ...extras, fingerprint: demandFingerprint(brief) });
           if (intentId) await requestNativeMatching([intentId]);
         } catch (error) { console.error(JSON.stringify({ event: 'native_match_request_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
       })();

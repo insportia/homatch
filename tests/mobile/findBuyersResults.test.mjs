@@ -327,21 +327,26 @@ test('internal matches never start research; the one start action only opens the
   const calls = [];
   page.on('request', (req) => { const u = req.url(); if (u.includes('/rpc/') || u.includes('/functions/v1/')) calls.push(u.replace(/^.*\/(rpc|functions\/v1)\//, '')); });
   await page.route('**/rpc/internal_leads_request_matching', (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: 'true' }));
+  await page.route('**/rpc/internal_leads_match_status', (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify({ queued: false, scanning: false, retrying: false, activeSearches: 12, matches: 0, checkedAt: new Date().toISOString() }) }));
   await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-testid="fbd-internal-view"]', { timeout: 20000 });
-  assert.equal(await page.locator('[data-testid="fbd-internal-start"]').count(), 0, 'one button for internal matches');
+  /* Find Buyers 2.0: the internal section comes first, says it is free, and has one search action. */
+  await page.waitForSelector('[data-testid="fim-start"]', { timeout: 20000 });
+  assert.match(await page.textContent('[data-testid="fim-free"]'), /Free search/i);
+  assert.equal(await page.locator('[data-testid="fbd-internal-start"], [data-testid="fbd-internal-view"]').count(), 0, 'one place for internal matches');
   const before = calls.length;
   /* The RPC first awaits the auth session, so wait for the request itself, not a fixed delay. */
   const asked = page.waitForRequest((req) => req.url().includes('/rpc/internal_leads_request_matching'), { timeout: 15000 });
-  await page.click('[data-testid="fbd-internal-view"]');
-  await page.waitForURL(/\/buyers\/internal$/, { timeout: 15000 });
+  await page.click('[data-testid="fim-start"]');
   await asked;
-  await page.waitForTimeout(300);
+  await page.waitForSelector('[data-testid="fim-panel"][data-phase="done"]', { timeout: 15000 });
   const opened = calls.slice(before);
   assert.ok(opened.some((c) => c.startsWith('internal_leads_request_matching')), 'the internal matcher was asked');
-  assert.ok(!opened.some((c) => /match-campaign|billing_|wallet|reserve/.test(c)), `internal matches made no charging call: ${opened.join(', ')}`);
+  assert.ok(!opened.some((c) => /match-campaign|billing_|wallet|reserve|unlock/.test(c)), `internal matches made no charging call: ${opened.join(', ')}`);
+  assert.match(await page.textContent('[data-testid="fim-result"]'), /No matching HOMATCH searches/, 'an empty result is said plainly');
+  /* The full list is the leads page. */
+  assert.match(await page.getAttribute('[data-testid="fim-view"]', 'href'), /\/leads$/);
   /* The one primary action opens the budget step on the results page; nothing launches. */
-  await page.goBack();
   await page.waitForSelector('[data-testid="fbd-primary-action"]', { timeout: 20000 });
   /* Once the searches are read, the property has one: "start a new search". */
   await page.waitForFunction(() => document.querySelector('[data-testid="fbd-primary"]')?.getAttribute('data-mode') === 'start_new', null, { timeout: 15000 });

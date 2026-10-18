@@ -19,7 +19,7 @@ import React from 'react';
  */
 
 export type NavGlyphName =
-  | 'dashboard' | 'properties' | 'find_property' | 'brokers' | 'publishing' | 'expats' | 'design_studio'
+  | 'dashboard' | 'properties' | 'find_property' | 'unlocked_leads' | 'brokers' | 'publishing' | 'expats' | 'design_studio'
   | 'verify' | 'contracts' | 'mortgage' | 'investment'
   | 'calls' | 'whatsapp' | 'email' | 'live_chat' | 'chat' | 'meta_ads'
   | 'ai' | 'activity' | 'notifications' | 'credits' | 'profile';
@@ -53,6 +53,16 @@ const GLYPHS: Record<NavGlyphName, React.ReactNode> = {
       <path d="M4 10.2 10.6 5l6.6 5.2v7.4A1.4 1.4 0 0 1 15.8 19H5.4A1.4 1.4 0 0 1 4 17.6z" {...S} />
       <circle cx="16.6" cy="15.6" r="3.5" fill="none" stroke={GOLD} strokeWidth="1.9" />
       <path d="M19.2 18.2 21 20" stroke={GOLD} strokeWidth="1.9" strokeLinecap="round" />
+    </>
+  ),
+  /* Unlocked Leads (Find Buyers 2.0): a contact card, opened — the gold padlock shackle up. */
+  unlocked_leads: (
+    <>
+      <rect x="3.5" y="5.5" width="13" height="13" rx="2" {...S} />
+      <circle cx="10" cy="10.4" r="2.1" {...S} />
+      <path d="M6.6 15.8c.7-1.5 2-2.3 3.4-2.3s2.7.8 3.4 2.3" {...S} />
+      <rect x="15.2" y="13.6" width="5.8" height="5" rx="1" fill={GOLD} stroke="none" />
+      <path d="M16.7 13.6v-1.6a1.8 1.8 0 0 1 3.5-.6" fill="none" stroke={GOLD} strokeWidth="1.6" strokeLinecap="round" />
     </>
   ),
   /* Brokers: the professional pair, the introduction marked gold. */

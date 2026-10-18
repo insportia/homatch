@@ -243,6 +243,10 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/__tests__/findBuyersAiFirst.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersFacebookPages.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
+    /* Find Buyers 2.0 demand persistence: the pure brief → rooms/requirements/fingerprint
+       (research-core/marketplace/brief) that marketplace-search stores. */
+    'supabase/functions/_shared/__tests__/seekerIntentDemand.test.mjs',
+    'src/leads/__tests__/findBuyers2.test.mjs',
     /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */
     'supabase/functions/_shared/findBuyers/readiness.ts',
     /* The adaptive search round: the pure ladder, validation and evidence

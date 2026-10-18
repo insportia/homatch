@@ -125,3 +125,29 @@ export function selectionTotals(items: Array<Pick<LeadItem, 'matchId' | 'segment
   }
   return { standard, premium, already, credits: Math.round(credits * 100) / 100 };
 }
+
+/** Amenities a Marketplace Search can state (research-core/marketplace/taxonomy.ts AMENITIES). */
+const FEATURE_AMENITIES = ['PARKING', 'BALCONY', 'TERRACE', 'ELEVATOR', 'GARDEN', 'POOL', 'FURNISHED',
+  'CENTRAL_HEATING', 'VIEW', 'PET_FRIENDLY', 'STORAGE', 'AIR_CONDITIONING'] as const;
+const BUILDING = ['NEW_BUILD', 'OLD_BUILD', 'UNDER_CONSTRUCTION'] as const;
+const RENOVATION = ['RENOVATED', 'GREEN_FRAME', 'WHITE_FRAME', 'BLACK_FRAME', 'NEEDS_RENOVATION'] as const;
+
+/**
+ * The member's stated features (Find Buyers 2.0, intent_profiles.requirements), as labels:
+ * must-haves, building and renovation choices, furnished / parking. Only known codes are
+ * shown; an unknown value is left out rather than printed raw.
+ */
+export function featureParts(features: Record<string, unknown> | null | undefined, t: Translate): { must: string[]; nice: string[]; avoid: string[]; other: string[] } {
+  const f = features ?? {};
+  const list = (v: unknown, allowed: readonly string[]) => (Array.isArray(v) ? v.map(String).filter((x) => allowed.includes(x)) : []);
+  const amen = (v: unknown) => list(v, FEATURE_AMENITIES).map((a) => t(`hl_feature_${a}`));
+  const other: string[] = [];
+  for (const b of list(f.buildingStatuses, BUILDING)) other.push(t(`mps_bs_${b}`));
+  for (const r of list(f.renovation, RENOVATION)) other.push(t(`mps_rn_${r}`));
+  if (f.furnished === true) other.push(t('hl_feature_FURNISHED'));
+  if (f.furnished === false) other.push(t('hl_feature_unfurnished'));
+  if (f.parking === true) other.push(t('hl_feature_PARKING'));
+  if (typeof f.bathroomsMin === 'number') other.push(t('hl_feature_bathrooms_min', { n: f.bathroomsMin }));
+  if (typeof f.statedCurrencyUnconverted === 'string') other.push(t('hl_feature_budget_currency_only', { currency: f.statedCurrencyUnconverted }));
+  return { must: amen(f.mustHave), nice: amen(f.niceToHave), avoid: amen(f.exclusions), other: [...new Set(other)] };
+}

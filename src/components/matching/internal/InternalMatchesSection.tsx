@@ -58,7 +58,7 @@ const GOLD = 'text-[hsl(40_94%_64%)]';
 export const DEMO_PARAM = 'demo';
 /** The matches page previews this many people; the rest are on HOMATCH Leads (/property/:id/leads). */
 export const INTERNAL_PREVIEW_LIMIT = 6;
-const DEFAULT_PRICES: LeadPrices = { STANDARD: 2.5, PREMIUM: 6, active: false };
+const DEFAULT_PRICES: LeadPrices = { STANDARD: 3, PREMIUM: 10, active: false };
 
 /* ── badges ─────────────────────────────────────────────────────────────── */
 
@@ -472,7 +472,7 @@ function useNativeActions(row: NativeMatchRow) {
       navigate(`/chat?conversation=${encodeURIComponent(conversationId)}`);
     } catch (e) {
       /* An owner reaches a matched member through HOMATCH Leads: the contact is
-         unlocked there first (Standard 2.5 / Premium 6 credits, once per member). */
+         unlocked there first (Standard 3 / VIP 10 credits, once per member; the server prices it). */
       if (String((e as { message?: string })?.message ?? '').includes('UNLOCK_REQUIRED') && row.property_id) {
         navigate(`/property/${encodeURIComponent(row.property_id)}/leads`);
         return;

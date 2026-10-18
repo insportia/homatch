@@ -18,11 +18,15 @@ const SEEKER = code(read('supabase/functions/_shared/seekerIntent.ts'));
 const PIPELINE = read('supabase/migrations/20260928010000_native_intent_pipeline.sql');
 
 test('a Marketplace Search becomes a native demand: intent, SUPPLY subscription, matcher request', () => {
-  assert.match(MS, /recordSeekerIntent\(db, userId, toSearchPlanDraft\(brief\), \{ marketplaceSearchId: searchId \}\)/);
+  // Find Buyers 2.0: the demand carries rooms/requirements and a fingerprint so a repeated
+  // search refreshes the same subscription instead of piling up duplicates.
+  assert.match(MS, /recordSeekerIntent\(db, userId, toSearchPlanDraft\(brief\), \{ marketplaceSearchId: searchId \}, \{ \.\.\.extras, fingerprint: demandFingerprint\(brief\) \}\)/);
+  assert.match(MS, /const extras = demandExtrasFromBrief\(brief\)/);
   assert.match(MS, /requestNativeMatching\(\[intentId\]\)/);
   // Best effort: the network pass can never fail the marketplace search.
   assert.match(MS, /const network = \(async \(\) => \{\s*try \{[\s\S]*?\} catch \(error\)/);
-  assert.match(SEEKER, /from\('intent_profiles'\)\s*\.insert\(planToIntentProfile\(plan/);
+  assert.match(SEEKER, /const base = planToIntentProfile\(plan/);
+  assert.match(SEEKER, /from\('intent_profiles'\)\.insert\(richer\)/);
   assert.match(SEEKER, /side: 'SUPPLY'/);
   assert.match(SEEKER, /is_active: true/);
   assert.match(SEEKER, /planReadiness\(plan\)\.ready/, 'an unready brief is not a demand');

@@ -11,6 +11,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, FlaskConical, Loader2, Mail, Send, ShieldCheck, Sparkles } from 'lucide-react';
 import { CustomerSurface } from '@/components/customer/surface';
+import { ScheduleSend } from '@/components/emailStudio/ScheduleSend';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -492,6 +493,7 @@ export default function EmailStudioPage() {
             </button>
           </div>
           {dirty && status === 'REVIEWED' ? <p className={cn('mt-2 text-sm', INK_SOFT)}>{t('es_review_stale')}</p> : null}
+          <ScheduleSend campaignId={campaignId} canSchedule={status === 'REVIEWED' && !!review && !dirty && editable && review.eligible > 0} />
         </StudioSection>
 
         <StudioSection id="es-results" step={6} title={t('es_section_results')}>

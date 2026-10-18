@@ -12,7 +12,7 @@
 
 import { supabase } from '@/db/supabase';
 import type { CrmStatus } from '@/crm/nextStep';
-import { CRM_STATUSES, isCrmStatus } from '@/crm/model';
+import { CRM_STATUSES, isCrmStatus, type ContactChannel } from '@/crm/model';
 
 export interface CrmListItem {
   entryId: string;
@@ -56,6 +56,9 @@ export interface CrmEntryDetail {
 export interface CrmUpdate {
   status?: CrmStatus;
   note?: string;
+  /** The owner states they contacted the member on this channel (never inferred). */
+  logContact?: ContactChannel;
+  outcome?: string;
   /** ISO timestamp to schedule, or null to clear. Omit to leave unchanged. */
   followUpAt?: string | null;
   followUpNote?: string | null;
@@ -158,6 +161,7 @@ export async function crmUpdate(entryId: string, patch: CrmUpdate): Promise<CrmE
   const p: Record<string, unknown> = {};
   if (patch.status) p.status = patch.status;
   if (patch.note && patch.note.trim()) p.note = patch.note.trim();
+  if (patch.logContact) { p.logContact = patch.logContact; if (patch.outcome?.trim()) p.outcome = patch.outcome.trim(); }
   if (patch.followUpAt !== undefined) {
     p.followUpAt = patch.followUpAt ?? '';
     p.followUpNote = patch.followUpNote ?? '';
@@ -165,4 +169,71 @@ export async function crmUpdate(entryId: string, patch: CrmUpdate): Promise<CrmE
   const { data, error } = await supabase.rpc('crm_update', { p_entry_id: entryId, p });
   if (error) throw error;
   return normalizeDetail(data);
+}
+
+/* ── Find Buyers 2.0: the lead's profile and AI outreach drafts ─────────────── */
+
+export interface CrmProfile {
+  entryId: string;
+  source: string;
+  segment: 'STANDARD' | 'PREMIUM' | null;
+  unlockedAt: string | null;
+  creditsCharged: number | null;
+  match: { matchId: string; propertyId: string | null; score: number; agreed: string[]; conflicted: string[]; unknown: string[]; matchedAt: string | null } | null;
+  demand: Record<string, unknown> | null;
+  drafts: Array<{ createdAt: string; detail: Record<string, unknown> }>;
+}
+
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+
+export async function crmEntryProfile(entryId: string): Promise<CrmProfile | null> {
+  const { data, error } = await supabase.rpc('crm_entry_profile', { p_entry_id: entryId });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '')) return null;
+    throw error;
+  }
+  const r = (data ?? {}) as Record<string, unknown>;
+  const m = (r.match && typeof r.match === 'object' ? r.match : null) as Record<string, unknown> | null;
+  return {
+    entryId: String(r.entryId ?? entryId),
+    source: String(r.source ?? 'HOMATCH_MEMBER_SEARCH'),
+    segment: r.segment === 'PREMIUM' || r.segment === 'STANDARD' ? r.segment : null,
+    unlockedAt: str(r.unlockedAt),
+    creditsCharged: num(r.creditsCharged),
+    match: m ? {
+      matchId: String(m.matchId ?? ''), propertyId: str(m.propertyId), score: num(m.score) ?? 0,
+      agreed: strs(m.agreed), conflicted: strs(m.conflicted), unknown: strs(m.unknown), matchedAt: str(m.matchedAt),
+    } : null,
+    demand: r.demand && typeof r.demand === 'object' ? r.demand as Record<string, unknown> : null,
+    drafts: arr(r.drafts).map((d) => ({ createdAt: String(d.createdAt ?? ''), detail: (d.detail && typeof d.detail === 'object' ? d.detail : {}) as Record<string, unknown> })),
+  };
+}
+
+export interface LeadDraftRequest {
+  entryId: string;
+  propertyId?: string | null;
+  channel: 'EMAIL' | 'HOMATCH_CHAT' | 'WHATSAPP' | 'TELEGRAM' | 'SMS';
+  tone: 'PROFESSIONAL' | 'FRIENDLY' | 'PREMIUM' | 'CONCISE' | 'FORMAL';
+  purpose: 'INTRODUCTION' | 'RECOMMENDATION' | 'FOLLOW_UP' | 'VIEWING_INVITATION' | 'FINAL_FOLLOW_UP';
+  language: string;
+}
+
+export class LeadDraftError extends Error {
+  constructor(public code: string) { super(code); }
+}
+
+/** An AI draft for one unlocked lead. Never sends anything; the owner edits and sends it. */
+export async function generateLeadDraft(req: LeadDraftRequest): Promise<{ subject: string | null; body: string }> {
+  const { data, error } = await supabase.functions.invoke('outreach-send', { body: { action: 'studio_lead_draft', ...req } });
+  if (error) {
+    let code = 'AI_FAILED';
+    try {
+      const b = await (error as { context?: Response }).context?.json?.();
+      if (b && typeof b.error === 'string') code = b.error;
+    } catch { /* keep AI_FAILED */ }
+    throw new LeadDraftError(code);
+  }
+  const d = (data ?? {}) as { ok?: boolean; draft?: { subject?: string | null; body?: string }; error?: string };
+  if (!d.ok || !d.draft?.body) throw new LeadDraftError(d.error ?? 'AI_FAILED');
+  return { subject: d.draft.subject ?? null, body: d.draft.body };
 }

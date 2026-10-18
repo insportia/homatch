@@ -12,9 +12,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { getLeadContact, openLeadConversation, UnlockError, type LeadContact, type LeadItem } from '@/services/homatchLeads';
-import { budgetLabel, buildLeadSummary, DIMENSION_ORDER, locationLabel, propertyTypeLabel, requirementParts } from '@/leads/leadSummary';
+import { budgetLabel, buildLeadSummary, DIMENSION_ORDER, featureParts, locationLabel, propertyTypeLabel, requirementParts } from '@/leads/leadSummary';
 import { BTN_PRIMARY, BTN_SECONDARY, EYEBROW } from './kit';
-import { BandBadge, ContactOptions, formatCreditsLabel, SegmentPill, useLeadFormatters } from './LeadCard';
+import { BandBadge, ContactOptions, formatCreditsLabel, SearcherPill, SegmentPill, useLeadFormatters } from './LeadCard';
 
 export function LeadDetailsDrawer({
   lead, propertyId, open, onClose, onUnlock,
@@ -50,6 +50,7 @@ export function LeadDetailsDrawer({
   const agreed = new Set(lead.agreed.map((d) => d.toUpperCase()));
   const conflicted = new Set(lead.conflicted.map((d) => d.toUpperCase()));
   const unknown = new Set(lead.unknown.map((d) => d.toUpperCase()));
+  const features = featureParts(lead.features, t);
 
   async function openConversation() {
     if (!lead) return;
@@ -78,6 +79,7 @@ export function LeadDetailsDrawer({
           <div className="mt-3 flex flex-wrap gap-1.5">
             <BandBadge band={lead.band} score={lead.score} />
             <SegmentPill segment={lead.segment} />
+            <SearcherPill searcher={lead.searcher} />
           </div>
         </div>
 
@@ -89,9 +91,28 @@ export function LeadDetailsDrawer({
               <Item label={t('hl_label_location')} value={locationLabel(lead.locations) ?? t('hl_not_stated')} />
               <Item label={t('hl_label_budget')} value={budgetLabel(lead.budget, fmt, t) ?? t('hl_not_stated')} />
               <Item label={t('hl_label_requirements')} value={requirementParts(lead.requirements, t).join(', ') || t('hl_not_stated')} />
-              <Item label={t('hl_label_updated')} value={date(lead.updatedAt ?? lead.demandAt) ?? t('hl_not_stated')} />
+              <Item label={t('hl_label_active')} value={date(lead.activeAt ?? lead.updatedAt ?? lead.demandAt) ?? t('hl_not_stated')} />
               <Item label={t('hl_details_matched_on')} value={date(lead.matchedAt) ?? t('hl_not_stated')} />
             </dl>
+            {features.must.length || features.nice.length || features.avoid.length || features.other.length ? (
+              <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="lead-features">
+                {features.must.length ? <Item label={t('hl_label_must_have')} value={features.must.join(', ')} /> : null}
+                {features.nice.length ? <Item label={t('hl_label_nice_to_have')} value={features.nice.join(', ')} /> : null}
+                {features.avoid.length ? <Item label={t('hl_label_avoid')} value={features.avoid.join(', ')} /> : null}
+                {features.other.length ? <Item label={t('hl_label_preferences')} value={features.other.join(', ')} /> : null}
+              </dl>
+            ) : null}
+            {lead.stale ? <p className="mt-3 rounded-xl bg-[hsl(220_20%_96%)] px-3 py-2 text-xs leading-relaxed text-[hsl(224_14%_28%)]" data-testid="lead-stale-note">{t('hl_stale_note')}</p> : null}
+          </section>
+
+          <section data-testid="lead-source">
+            <h3 className={EYEBROW}>{t('hl_details_source')}</h3>
+            <p className="mt-1 text-sm leading-relaxed text-[hsl(224_14%_22%)]">{t('hl_details_source_body')}</p>
+            {lead.searcher ? (
+              <p className="mt-2 text-xs leading-relaxed text-[hsl(224_14%_30%)]">
+                {t(lead.searcher === 'BROKER_FOR_CLIENT' ? 'hl_searcher_broker_client_note' : lead.searcher === 'PROFESSIONAL' ? 'hl_searcher_professional_note' : 'hl_searcher_direct_note')}
+              </p>
+            ) : null}
           </section>
 
           <section>

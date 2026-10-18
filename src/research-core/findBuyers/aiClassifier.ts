@@ -216,7 +216,11 @@ export function applyAiVerdict(rule: DemandReading, ai: AiVerdict | null, text =
     confidence: ai.confidence,
   });
   if (ai.role === 'UNCERTAIN' || ai.confidence < MIN_ROLE_CONFIDENCE) return tag('UNCLEAR', ['ai_uncertain']);
-  if (ai.subject === 'OTHER' && ai.role !== 'IRRELEVANT') return tag('IRRELEVANT', ['ai_not_real_estate']);
+  /* "Not real estate" decides only when the rules saw no property either (a USDT trade). When the
+     text names a property (студия, жильё, ბინა …) and the model's role is demand, its subject
+     answer contradicts its own role (fb-ai-2 replay, 2026-10-18: "Срочно куплю студию …") and is
+     ignored — the text is the fact. */
+  if (ai.subject === 'OTHER' && ai.role !== 'IRRELEVANT' && !rule.realEstate) return tag('IRRELEVANT', ['ai_not_real_estate']);
   if (DEMAND_ROLES.has(ai.role)) {
     const conflict = demandConflict(rule, ai, text);
     if (conflict) return tag('UNCLEAR', ['ai_uncertain', 'ai_conflict', conflict]);

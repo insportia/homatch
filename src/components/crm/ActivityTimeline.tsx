@@ -21,6 +21,7 @@ export function ActivityTimeline({ events }: { events: CrmEvent[] }) {
         const vars: Record<string, string> = { ...d.vars };
         if (vars.fromKey) vars.from = t(vars.fromKey);
         if (vars.toKey) vars.to = t(vars.toKey);
+        if (vars.channelKey) vars.channel = t(vars.channelKey);
         return (
           <li key={`${event.createdAt}-${i}`} className="relative">
             <span

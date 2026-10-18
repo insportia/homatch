@@ -8,9 +8,10 @@
 //   Previous searches    every earlier search, each opening its own results;
 //   Clear old results    secondary, owner-scoped, behind an explicit confirmation.
 //
-// No "free vs paid" labels and no "buyers found" claims: the people are "potentially
-// interested people", the posts "research opportunities". Starting only OPENS the budget
-// step; nothing is charged until the owner confirms there.
+// No "buyers found" claims: the people are "potentially interested people", the posts
+// "research opportunities". Starting only OPENS the budget step; nothing is charged until
+// the owner confirms there. Find Buyers 2.0 (owner, 2026-10-18) states the difference
+// plainly on the page: internal matching is free, external discovery is a paid campaign.
 //
 // Mobile: actions are full width under 420px (never two long Georgian labels in one row),
 // labels wrap to two lines instead of an ellipsis, every touch target is ≥ 44px.
@@ -68,7 +69,7 @@ export function FindBuyersDashboard({
   primary, foundSoFar, onStart, liveHref,
   campaigns, featured, latestCounts, campaignsFailed, resultsHref, allPeople,
   internalCount, internalHref, onOpenInternal,
-  canClear, onClear,
+  canClear, onClear, hideInternal = false,
 }: {
   primary: PrimaryMode;
   /** The live search's results so far (server status). */
@@ -90,6 +91,8 @@ export function FindBuyersDashboard({
   onOpenInternal?: () => void;
   canClear: boolean;
   onClear: () => void;
+  /** Find Buyers 2.0: internal matches have their own first section (InternalMatchesPanel). */
+  hideInternal?: boolean;
 }) {
   const { t } = useLanguage();
   const fmt = useCampaignDate();
@@ -125,7 +128,7 @@ export function FindBuyersDashboard({
         )}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className={cn('grid gap-3', !hideInternal && 'md:grid-cols-2')}>
         {/* ── Latest search: extended research, its own counts ── */}
         <article className={CARD} data-testid="fbd-latest" data-job={featured?.jobId ?? ''} data-state={featured?.state ?? 'NONE'}>
           <div className="flex min-w-0 items-start gap-2.5">
@@ -170,7 +173,7 @@ export function FindBuyersDashboard({
         </article>
 
         {/* ── Internal matches: HOMATCH's own members ── */}
-        <article className={CARD} data-testid="fbd-internal">
+        {hideInternal ? null : <article className={CARD} data-testid="fbd-internal">
           <div className="flex min-w-0 items-start gap-2.5">
             <span className={ICON}><Users className="h-[18px] w-[18px]" aria-hidden="true" /></span>
             <div className="min-w-0 flex-1">
@@ -185,7 +188,7 @@ export function FindBuyersDashboard({
           <Link to={internalHref} onClick={onOpenInternal} className={cn(LINE_BTN, 'mt-auto')} data-testid="fbd-internal-view">
             <span className={LABEL}>{t('fbd_internal_view')}</span><ArrowRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
           </Link>
-        </article>
+        </article>}
       </div>
 
       {/* ── Previous searches: each opens its own results ── */}

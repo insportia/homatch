@@ -63,6 +63,10 @@ export interface KnownOfferSource {
   city: string | null;
   /** Higher first. */
   priority: number;
+  /** The community's own name, when the registry has one (read for relevance). */
+  name?: string | null;
+  /** Property offers HOMATCH has already stored from this community (supply_observations): real evidence. */
+  offerEvidence?: number;
 }
 
 export interface OfferSearch {
@@ -161,13 +165,48 @@ export const MAX_ITEMS_PER_RUN = 1000;
 export const MAX_TARGETS_PER_RUN = 25;
 
 const CITY_HINTS: Array<[RegExp, string]> = [
-  [/batum|батум|ბათუმ/i, 'Batumi'], [/tbilis|tbs|tiflis|тбилис|თბილის/i, 'Tbilisi'],
+  [/batum|батум|ბათუმ|بات[و]?م/i, 'Batumi'], [/tbilis|tbs|tiflis|тбилис|თბილის/i, 'Tbilisi'],
   [/kutais|кутаис|ქუთაის/i, 'Kutaisi'], [/rustav|рустав|რუსთავ/i, 'Rustavi'],
 ];
+/** Every city a text names (a community's name and URL). */
+export function citiesNamed(text: string): string[] {
+  let t = text;
+  try { t = decodeURIComponent(text); } catch { /* keep the raw text */ }
+  return CITY_HINTS.filter(([re]) => re.test(t)).map(([, city]) => city);
+}
 /** The city a community's own URL names, when it names one. */
 export function cityHint(url: string): string | null {
   for (const [re, city] of CITY_HINTS) if (re.test(decodeURIComponent(url))) return city;
   return null;
+}
+
+/*
+ * COMMUNITY RELEVANCE (owner, 2026-10-18): budget goes only to communities that can carry
+ * property offers.
+ *   PROVEN     it has already produced stored property offers (supply_observations);
+ *   LIKELY     its handle or name says real estate, in a language people post in;
+ *   UNRELATED  its handle or name says something else (casino, crypto, jobs, food…);
+ *   NEUTRAL    nothing either way (e.g. a numeric Facebook group id).
+ * Telegram channels are read only when PROVEN or LIKELY: the registry holds many general
+ * city chats. Facebook groups were registered as real-estate communities and are kept
+ * unless UNRELATED. PROVEN communities are read first.
+ */
+const PROPERTY_TERMS = /(nedvi[zj]|недвиж|arend|аренд|\brent|rent_|_rent|rental|real.?estate|realt|estate|propert|kvartir|квартир|komnat|комнат|apartment|flat|\bbina|bina_|binebi|udzravi|qoneba|ბინ|უძრავ|ქირავ|იყიდ|\bm2|m2sale|for.?sale|_sale|sale_|prodazh|продаж|kupit|купит|domik|домик|\bhouse|gayrimenkul|emlak|kiral|satilik|residential|agenc|agancy|flip)/i;
+const UNRELATED_TERMS = /(casino|crypto|bitcoin|\brates|anime|restaurant|pasha|food|\bpsy|psych|books|cleanup|journal|mapping|raving|\bcave|\btrip|\bjob|jobs|vacanc|dating|\bbot$|music|football|sport)/i;
+export type CommunityRelevance = 'PROVEN' | 'LIKELY' | 'NEUTRAL' | 'UNRELATED';
+export function communityRelevance(s: Pick<KnownOfferSource, 'url' | 'name' | 'offerEvidence'>): CommunityRelevance {
+  if ((s.offerEvidence ?? 0) > 0) return 'PROVEN';
+  let handle = s.url;
+  try { handle = decodeURIComponent(new URL(s.url).pathname); } catch { /* keep the raw url */ }
+  const text = `${handle} ${s.name ?? ''}`;
+  if (UNRELATED_TERMS.test(text)) return 'UNRELATED';
+  return PROPERTY_TERMS.test(text) ? 'LIKELY' : 'NEUTRAL';
+}
+
+/** An Instagram PROFILE page (the only kind the profile Actor reads): not a hashtag, post, reel or story page. */
+export function isInstagramProfileUrl(url: string): boolean {
+  const m = /^https:\/\/(?:www\.)?instagram\.com\/([A-Za-z0-9._]{1,30})\/?(?:\?.*)?$/.exec(url);
+  return Boolean(m) && !['explore', 'p', 'reel', 'reels', 'stories', 'tv', 'accounts', 'direct'].includes(m![1].toLowerCase());
 }
 
 /** The keywords a person OFFERING this kind of property writes, per language (district variants first when given). */
@@ -220,19 +259,33 @@ export function planOfferJobs(input: {
   };
   const inCity = (s: KnownOfferSource) => {
     const named = s.city ?? cityHint(s.url);
-    return !named || comparePlaces(named, input.search.city) !== 'CONFLICT';
+    if (named && comparePlaces(named, input.search.city) === 'CONFLICT') return false;
+    /* A name that mentions only other cities (a "Batumi" group filed under Tbilisi) is not read. */
+    const cities = citiesNamed(`${s.name ?? ''} ${s.url}`);
+    return !cities.length || cities.some((c) => comparePlaces(c, input.search.city) !== 'CONFLICT');
   };
+  const relevance = new Map(input.sources.map((s) => [s.id, communityRelevance(s)]));
+  const relevant = (s: KnownOfferSource) => {
+    const r = relevance.get(s.id);
+    if (r === 'UNRELATED') return false;
+    return s.network === 'TELEGRAM' ? r === 'PROVEN' || r === 'LIKELY' : true;
+  };
+  /* Proven communities first (most offers first), then named in-city ones, then the rest. */
   const usable = [...input.sources]
-    .filter((s) => /^https:\/\//.test(s.url) && inCity(s))
-    .sort((a, b) => Number(Boolean(b.city)) - Number(Boolean(a.city)) || b.priority - a.priority || a.id.localeCompare(b.id));
+    .filter((s) => /^https:\/\//.test(s.url) && inCity(s) && relevant(s))
+    .sort((a, b) => (b.offerEvidence ?? 0) - (a.offerEvidence ?? 0) || Number(relevance.get(b.id) === 'LIKELY') - Number(relevance.get(a.id) === 'LIKELY')
+      || Number(Boolean(b.city)) - Number(Boolean(a.city)) || b.priority - a.priority || a.id.localeCompare(b.id));
   const target = (s: KnownOfferSource): OfferTarget => ({ url: s.url, sourceId: s.id, city: s.city ?? cityHint(s.url) });
   const keywords = offerKeywords(input.search);
   const byNetwork = new Map<OfferNetwork, PlannedOfferJob[]>();
   const add = (j: PlannedOfferJob) => byNetwork.set(j.network, [...(byNetwork.get(j.network) ?? []), j]);
   const missing = (n: OfferNetwork, actorReady: boolean) => unavailable.push({ network: n, reason: actorReady ? 'NO_KNOWN_SOURCE' : 'NO_READY_ACTOR' });
 
-  /* Facebook: every in-city group in one memo23 group run per keyword (groups chunked only past
-     FB_GROUPS_PER_RUN); public post search per language and agency Pages once their Actors are ready. */
+  /* Facebook: every relevant in-city group's RECENT POSTS, FB_GROUPS_PER_RUN groups a run, read
+     whole — no keyword is sent: the group Actor's `search` field has never been exercised in
+     production (owner, 2026-10-18: never assume it filters), and one read per group covers every
+     language at once. qualifyOffer keeps only real offers of the searched kind. Public post search
+     per language and agency Pages once their Actors are verified and enabled. */
   if (wanted.has('FACEBOOK')) {
     const groupsActor = ready('FB_GROUP_POSTS');
     const searchActor = ready('FB_POST_SEARCH');
@@ -240,11 +293,9 @@ export function planOfferJobs(input: {
     const groups = usable.filter((s) => s.network === 'FACEBOOK' && !/page/i.test(s.kind)).map(target);
     const pages = usable.filter((s) => s.network === 'FACEBOOK' && /page/i.test(s.kind));
     let planned = 0;
-    if (groupsActor && groups.length && keywords.length) {
-      const chunks = chunk(groups, FB_GROUPS_PER_RUN);
-      /* Keyword-major: the first keyword reads every group before a second keyword is added. */
-      for (const kw of keywords) for (const c of chunks) {
-        add(job('FB_GROUP_POSTS', groupsActor, { query: kw.query, queries: [kw.query], language: kw.language, targets: c, priority: 100 })); planned += 1;
+    if (groupsActor && groups.length) {
+      for (const c of chunk(groups, FB_GROUPS_PER_RUN)) {
+        add(job('FB_GROUP_POSTS', groupsActor, { targets: c, priority: 100 })); planned += 1;
       }
     }
     if (searchActor) {
@@ -260,7 +311,8 @@ export function planOfferJobs(input: {
     }
     if (!planned) missing('FACEBOOK', Boolean(groupsActor || searchActor || pagesActor));
   }
-  /* Telegram: the city's channels (and channels naming no other city) in a few large runs; any language. */
+  /* Telegram: the city's RELEVANT channels (proven or named for real estate; never another city's)
+     in a few large runs; any language. */
   if (wanted.has('TELEGRAM')) {
     const a = ready('TELEGRAM_CHANNEL');
     const channels = usable.filter((s) => s.network === 'TELEGRAM').map(target);
@@ -270,7 +322,9 @@ export function planOfferJobs(input: {
   /* Instagram: the known in-city profiles, in large runs (the profile Actor reads profile pages only). */
   if (wanted.has('INSTAGRAM')) {
     const a = ready('IG_PROFILE_POSTS');
-    const profiles = usable.filter((s) => s.network === 'INSTAGRAM').map(target);
+    /* Profile pages only: a hashtag page given to the profile Actor bills its start fee and one
+       item and returns nothing (seven production runs, 2026-10-09..18). */
+    const profiles = usable.filter((s) => s.network === 'INSTAGRAM' && isInstagramProfileUrl(s.url)).map(target);
     if (!a || !profiles.length) missing('INSTAGRAM', Boolean(a));
     else for (const c of chunk(profiles, TG_CHANNELS_PER_RUN)) add(job('IG_PROFILE_POSTS', a, { targets: c, priority: 70 }));
   }

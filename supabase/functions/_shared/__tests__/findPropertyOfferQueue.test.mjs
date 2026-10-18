@@ -30,7 +30,7 @@ test('keyword search jobs carry their search language', () => {
 test('a Facebook SOCIAL_PROFILE is a Page; an Instagram one is Instagram', () => {
   const base = { id: 'x', url: 'https://www.facebook.com/somepage', city: 'Tbilisi', priority: 5 };
   assert.deepEqual(offerSourceFromRegistry({ ...base, platform: 'FACEBOOK', source_type: 'SOCIAL_PROFILE' }),
-    { id: 'x', network: 'FACEBOOK', kind: 'FACEBOOK_PAGE', url: base.url, city: 'Tbilisi', priority: 5 });
+    { id: 'x', network: 'FACEBOOK', kind: 'FACEBOOK_PAGE', url: base.url, city: 'Tbilisi', priority: 5, name: null, offerEvidence: 0 });
   assert.equal(offerSourceFromRegistry({ ...base, platform: 'INSTAGRAM', source_type: 'SOCIAL_PROFILE' }).network, 'INSTAGRAM');
   assert.equal(offerSourceFromRegistry({ ...base, platform: 'FACEBOOK', source_type: 'FACEBOOK_GROUP' }).kind, 'FACEBOOK_GROUP');
   assert.equal(offerSourceFromRegistry({ ...base, platform: 'TIKTOK', source_type: 'SOCIAL_PROFILE' }), null);
@@ -55,4 +55,26 @@ test('a campaign that ends keeps the offers its provider already delivered', () 
 
 test('an offer that cannot be stored is reported, never silent', () => {
   assert.match(OFFERS, /find_property_offer_store_failed/);
+});
+
+test('offer evidence: stored offers per community are counted across pages and reach the planner', async () => {
+  const { loadOfferSources } = await import('../findProperty/socialOffers.ts');
+  const reg = [
+    { id: 'a', platform: 'TELEGRAM', source_type: 'TELEGRAM_GROUP', name: null, url: 'https://t.me/tbilisio', city: null, priority: 5 },
+    { id: 'b', platform: 'TELEGRAM', source_type: 'TELEGRAM_GROUP', name: null, url: 'https://t.me/casinosamsoom', city: null, priority: 5 },
+  ];
+  const page1 = [...Array.from({ length: 999 }, () => ({ source_id: 'a' })), { source_id: 'b' }];
+  const page2 = [{ source_id: 'a' }];
+  const ranges = [];
+  const db = { from(table) {
+    const q = { table, range: null };
+    const chain = { select() { return chain; }, eq() { return chain; }, in() { return chain; }, not() { return chain; }, gte() { return chain; }, order() { return chain; },
+      range(f, t) { q.range = [f, t]; ranges.push([f, t]); return chain; },
+      then(res, rej) { const data = table === 'source_registry' ? reg : q.range?.[0] === 0 ? page1 : page2; return Promise.resolve({ data, error: null }).then(res, rej); } };
+    return chain;
+  } };
+  const out = await loadOfferSources(db, 'GE');
+  assert.deepEqual(ranges, [[0, 999], [1000, 1999]], 'paged past the 1000-row API limit');
+  assert.equal(out.find((s) => s.id === 'a').offerEvidence, 1000);
+  assert.equal(out.find((s) => s.id === 'b').offerEvidence, 1);
 });

@@ -79,6 +79,34 @@ No network or site is named. A client-sent network list is ignored: Admin's `fin
 - `tests/sql/run-find-property-batched.sh` (applied twice);
 - the browser suite: the one-confirm flow, no network names, the paid view.
 
+## Discovery quality (2026-10-18, before the first paid test)
+
+Three gaps were checked against production evidence; apify.com is not reachable from the build environment.
+
+- **Facebook keyword field (`search`) is never sent.**
+  - It is listed in the group Actor's schema, but no production run has ever used it: all 141 Find Buyers runs had `query: null`. Its meaning (search inside the groups, or something else) is unverified.
+  - Each run now reads the groups' recent posts, 25 groups per run, once.
+  - `qualifyOffer` keeps only offers of the searched transaction and city, in all six languages. A separate keyword copy per language is no longer needed, so the same budget covers more groups.
+  - `maxItems` is a total cap across the run's groups. Proof: billed results never exceeded the requested limit in 141 runs, many of them over 4–5 groups.
+- **Instagram reads profile pages only** (`isInstagramProfileUrl`).
+  - The only registered "profile" is a hashtag page (`explore/tags/tbilisihousing`). It billed 1 item and returned 0 useful results in each of 7 production runs.
+  - Hashtag, post, reel and story pages are excluded. With no compatible profile, Instagram is reported unavailable (`NO_KNOWN_SOURCE`) and costs nothing.
+- **Community relevance** (`communityRelevance`):
+
+  | Level | Meaning |
+  |---|---|
+  | PROVEN | Has stored property offers (`supply_observations`, last 180 days, paged) |
+  | LIKELY | Handle or name says real estate (ka/ru/en/tr/ar/he terms) |
+  | UNRELATED | Casino, crypto, jobs, food, books, … |
+  | NEUTRAL | Nothing either way |
+
+  Rules applied:
+  - Telegram is read only when PROVEN or LIKELY. Facebook groups (registered as real-estate communities) are read unless UNRELATED.
+  - PROVEN communities go first, most offers first.
+  - A community whose name mentions only another city is skipped, for example a "Batumi" group filed under Tbilisi.
+
+  On production data (Tbilisi sale): 53 of 55 Facebook groups and 41 of 101 Telegram channels are eligible. 12 Telegram channels are UNRELATED and 41 have no evidence of relevance.
+
 ## Money (37% HOMATCH / 63% providers, unchanged)
 - **No token, no campaign.** `loadOfferSettings.configured` gates `enabled`. The preview says `PROVIDER_NOT_CONFIGURED`, and start is refused before `beginExecution` reserves anything.
 - **The customer pays for confirmed work only.** `find_property_customer_micros` (migration `20261110100000`) counts:

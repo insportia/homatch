@@ -121,13 +121,13 @@ test('a finished run stores real offers with their own photos; requests are drop
 const FB_CONTRACT = { required: ['startUrls'], schemaProperties: ['startUrls', 'maxItems', 'onlyPostsNewerThan', 'search', 'proxy'] };
 const TT_CONTRACT = { required: ['mode', 'input'], schemaProperties: ['mode', 'input', 'maxResults'] };
 
-test('batched input: all groups in one Facebook run with its keyword; TikTok searches every keyword at once', () => {
+test('batched input: all groups in one Facebook run, never with a keyword; TikTok searches every keyword at once', () => {
   const since = '2026-07-01T00:00:00.000Z';
   const fb = offerInput('FB_GROUP_POSTS', { queries: ['იყიდება ბინა'], targets: [
     { url: 'https://www.facebook.com/groups/a', sourceId: 's-a', city: 'Tbilisi' }, { url: 'https://www.facebook.com/groups/b', sourceId: 's-b', city: 'Tbilisi' }] },
     1000, since, FB_CONTRACT).input;
   assert.deepEqual(fb.startUrls, [{ url: 'https://www.facebook.com/groups/a' }, { url: 'https://www.facebook.com/groups/b' }]);
-  assert.equal(fb.search, 'იყიდება ბინა');
+  assert.equal(fb.search, undefined, 'the unverified `search` field is never sent, even if a keyword is queued');
   assert.equal(fb.maxItems, 1000);
   assert.equal(fb.onlyPostsNewerThan, '2026-07-01');
   const tt = offerInput('TIKTOK_SEARCH', { queries: ['იყიდება ბინა Tbilisi', 'apartment for sale Tbilisi'], targets: [] }, 120, since, TT_CONTRACT).input;
@@ -172,7 +172,7 @@ test('a batched run reserves per community, and every post is stored under the g
     const reserve = db.calls.find((c) => c.rpc === 'find_property_reserve_actor_run');
     assert.equal(reserve.args.p_target_count, 2);
     assert.deepEqual(started.startUrls.map((x) => x.url), ['https://www.facebook.com/groups/a', 'https://www.facebook.com/groups/b']);
-    assert.equal(started.search, 'იყიდება ბინა');
+    assert.equal(started.search, undefined);
     const done = await executeOfferJob(db, { id: 'job-2', discovery_run_id: 'run-1', metadata: { ...meta, ...first.metadata } });
     assert.equal(done.outcome, 'DONE');
     const stored = db.calls.filter((c) => c.table === 'supply_observations' && c.op === 'upsert').map((c) => c.payload);

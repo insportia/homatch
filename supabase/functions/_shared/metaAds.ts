@@ -123,18 +123,28 @@ export async function flushApiUsage(sb: { from: (t: string) => any }) {
   return rows.length;
 }
 
+/** One Graph call per request is bounded by this; a hung Graph call must not hold
+ *  the customer's request (or a cron tick) until the platform kills it. */
+const GRAPH_TIMEOUT_MS = 60_000;
+
 /** One Graph call: form-encoded POST (the Marketing API's lingua franca),
  *  bounded retries with exponential backoff on transient errors. A Meta
  *  THROTTLE is not retried in the same call: its regain time is minutes, and
- *  retrying only spends more of the allowance. */
+ *  retrying only spends more of the allowance.
+ *
+ *  Only reads are retried by default. A write that failed in transit (network
+ *  error, timeout, 5xx) may already have been applied at Meta, and the creating
+ *  POSTs (campaigns, ad sets, creatives, ads, uploads, lead forms) are not
+ *  idempotent: retrying one could leave a duplicate object. A caller that knows
+ *  its write is safe to repeat passes `attempts` explicitly. */
 export async function graph(path: string, opts: GraphOptions): Promise<Record<string, unknown>> {
   const url = `${GRAPH}${path}`;
-  const attempts = opts.attempts ?? 3;
+  const method = opts.method ?? (opts.body ? 'POST' : 'GET');
+  const attempts = opts.attempts ?? (method === 'GET' ? 3 : 1);
   const proof = await appSecretProof(opts.token);
   let lastErr: MetaApiError | null = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     let res: Response;
-    const method = opts.method ?? (opts.body ? 'POST' : 'GET');
     try {
       if (method !== 'GET') {
         const form = new URLSearchParams();
@@ -146,11 +156,13 @@ export async function graph(path: string, opts: GraphOptions): Promise<Record<st
         if (proof) form.set('appsecret_proof', proof);
         res = await fetch(url, {
           method, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString(),
+          signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
         });
       } else {
         const sep = path.includes('?') ? '&' : '?';
         res = await fetch(proof ? `${url}${sep}appsecret_proof=${proof}` : url, {
           headers: { Authorization: `OAuth ${opts.token}` },
+          signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
         });
       }
     } catch {
@@ -456,7 +468,8 @@ export async function uploadImage(accountId: string, bytes: Uint8Array, filename
   let binary = '';
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  const res = await graph(`/${accountId}/adimages`, { ...opts, method: 'POST', body: { bytes: btoa(binary), name: filename } });
+  /* Meta stores images by content hash: the same bytes return the same hash, so a retry is safe. */
+  const res = await graph(`/${accountId}/adimages`, { ...opts, method: 'POST', body: { bytes: btoa(binary), name: filename }, attempts: opts.attempts ?? 3 });
   const images = (res.images ?? {}) as Record<string, { hash?: string }>;
   const hash = Object.values(images)[0]?.hash;
   if (!hash) throw new MetaApiError(500, { error: { message: 'IMAGE_UPLOAD_NO_HASH', code: 1 } });

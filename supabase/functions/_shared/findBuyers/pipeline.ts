@@ -26,7 +26,7 @@ import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuy
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
 import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-core/findBuyers/freshness.ts';
 import { dateProvenance, emptyDispositions, freshnessBucket, hardGate, publicIntent, type DispositionCounts } from '../../../../src/research-core/findBuyers/demandTaxonomy.ts';
-import { classifyDemand, classifyComment, boundModelReading, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
+import { classifyDemand, classifyComment, boundModelReading, withAuthorEvidence, ADVERTISER_ROLES, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { classifyBuyerIntent } from '../../../../src/research-core/findBuyers/buyerIntent.ts';
 import { decideCommentSampling } from '../../../../src/research-core/findBuyers/commentSampling.ts';
 import { qualify, legacyIntentClass, QUALIFICATION_VERSION, type Qualification } from '../../../../src/research-core/findBuyers/qualify.ts';
@@ -380,6 +380,10 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
 
   const assessed: Assessed[] = [];
   const postCtx = new Map<string, ParentContext>();
+  /* Authors who advertise homes in this read: their "looking for" posts are a broker's. */
+  const authorKey = (it: { author: { id?: string | null; url?: string | null; name?: string | null } }) => it.author.id ?? it.author.url ?? it.author.name ?? null;
+  const advertisers = new Set(flat.filter(({ item }) => item.kind === 'POST' && ADVERTISER_ROLES.includes(classifyDemand(item.text).role))
+    .map(({ item }) => authorKey(item)).filter((k): k is string => Boolean(k)));
   for (const { item, inlineParent, ageDays: freshAge } of flat) {
     const signalId = idMap.get(extId(item));
     if (!signalId) { out.dispositions.UNDECIDED++; continue; }
@@ -409,6 +413,8 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       : classifyDemand(item.text, { kind: ictx.kind });
     const cached = prior?.intent_json?.m23cache?.[cacheKey];
     if (reading.needsModel && cached?.role) reading = boundModelReading(reading, { role: cached.role, transaction: cached.transaction });
+    const aKey = authorKey(item);
+    reading = withAuthorEvidence(reading, { name: item.author.name, alsoAdvertises: aKey != null && advertisers.has(aKey) });
     if (item.kind === 'POST') {
       postCtx.set(item.externalId, {
         externalId: item.externalId, url: item.url, signalId, similarity, stance: facts.stance, role: reading.role,

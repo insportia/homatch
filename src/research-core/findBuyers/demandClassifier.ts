@@ -235,6 +235,13 @@ const SEEKS_COUNTERPARTY = L([
  *  1654fa18, 2026-10-17), not one person's search. */
 const COLLECTS_LISTINGS = L([
   'გასაყიდი (და|ან) გასაქირავებელი', 'გასაქირავებელი (და|ან) გასაყიდი', 'იყიდება (და|ან) ქირავდება',
+  /* Broker-to-broker and listing collection (campaign 8f6b8544, 2026-10-18): "ვეძებ ერთ საძინებლიან
+     ბინებს, ვისაც გაქვთ გასაყიდი და თანამშრომლობთ მომწერეთ" — a buyer wants ONE home (ბინას), a
+     broker asks colleagues who "cooperate". "Send me apartments" alone stays a buyer's words. */
+  'თანამშრომლობ', 'გვყავს (რეალური |ბევრი )?(კლიენტ|მყიდველ|დამქირავებ)', 'მყავს (რეალური |ბევრი )?(კლიენტ|მსურველ|მყიდველ|დამქირავებ)',
+  '(для|под) (моих |наших )?(клиент|покупател)', 'есть (реальные )?(клиенты|покупатели)', 'ищу квартиры (для|под)', 'сотрудничеств',
+  `${B}(we have (real |many )?(clients|buyers)|i have (a lot of |many )?(clients|buyers)|for (my|our) clients|looking for (apartments|listings) for|co-?broker|cooperation with agents)`,
+  `${B}(müşterilerim (için|var)|alıcılarım var)`, 'لدي (عملاء|زبائن)', 'יש לי (לקוחות|קונים)',
   '(продаж[аеуи]|продать) (и|или) (аренд|сдать|сдач)', '(аренд[аеуы]|сдать) (и|или) (продаж|продать)', 'на продажу (и|или) (в )?аренду',
   `${B}(for sale (and|or) (for )?rent|to sell (and|or) (to )?rent|sale (and|or) rent(al)?) (listings|properties|apartments|flats)`,
   `${B}(satılık (ve|veya) kiralık)`, 'للبيع (و|أو) (ل)?الإيجار', 'למכירה (ו|או) להשכרה',
@@ -392,6 +399,47 @@ export function statedArea(s: string): { min: number | null; max: number | null;
   return null;
 }
 
+/** Bedroom counts in words: "ერთ საძინებლიან", "ორსაძინებლიანი", "одна спальня", "two-bedroom" (8f6b8544: a
+ *  one-bedroom request was read as "bedrooms unknown" and offered for a two-bedroom 97 m² home). */
+const WORD_BEDROOMS: Array<[RegExp, number]> = [
+  [/(?<![\p{L}])(one|single)[- ]?bed(room)?|односпальн|одн(а|ой|у) спальн|(?<![\p{L}])ერთ\s*-?\s*საძინებ|bir yatak odal|غرفة نوم واحدة|חדר שינה אחד/iu, 1],
+  [/(?<![\p{L}])two[- ]?bed(room)?|двухспальн|дв(е|ух) спальн|(?<![\p{L}])ორ\s*-?\s*საძინებ|iki yatak odal|غرفتي نوم|שני חדרי שינה/iu, 2],
+  [/(?<![\p{L}])three[- ]?bed(room)?|тр[её]хспальн|тр(и|ех|ёх) спальн|(?<![\p{L}])სამ\s*-?\s*საძინებ|üç yatak odal|ثلاث غرف نوم|שלושה חדרי שינה/iu, 3],
+  [/(?<![\p{L}])four[- ]?bed(room)?|четыр[её]хспальн|четыре спальн|(?<![\p{L}])ოთხ\s*-?\s*საძინებ|dört yatak odal|أربع غرف نوم|ארבעה חדרי שינה/iu, 4],
+];
+
+/**
+ * An author name that is a business or a channel, not a person: "ბინების ყიდვა-გაყიდვა
+ * გაქირავება", "უძრავი ქონების აგენტი თაკო", "Sale Home", "Tika's Prime Home Georgia". Such an
+ * author asking for homes is an intermediary, never a buyer (owner, 2026-10-18: "from the name
+ * alone you must see that a broker posts").
+ */
+const BUSINESS_AUTHOR = L([
+  'ბინებ', 'ბინის ', 'ყიდვა', 'გაყიდვ', 'გაქირავ', 'უძრავი ქონ', 'აგენტ', 'სააგენტ', 'ბროკერ', 'რიელტ', 'დეველოპ', 'ჰოუმ',
+  `${B}(home|homes|house|realty|real estate|estate|properties|property|apartments|flats|rent|sale|invest|agency|group|development|developers|construction|llc|ltd)${E}`,
+  'недвижим', 'квартир', 'аренд', 'продаж', 'риел', 'риэл', 'агентств',
+  `${B}(emlak|gayrimenkul|konut|daire)`, 'عقار', 'شقق', 'נדל"ן', 'דירות',
+]);
+export function authorLooksLikeBusiness(name: string | null | undefined): boolean {
+  const n = String(name ?? '').normalize('NFKC').trim();
+  return n.length > 0 && BUSINESS_AUTHOR.test(n);
+}
+
+/** Roles an advertiser's or broker's post takes; their author asking for homes is no buyer. */
+export const ADVERTISER_ROLES: readonly DemandRole[] = ['SALE_OFFER', 'RENT_OFFER', 'AGENT'];
+
+/**
+ * Who is speaking decides it as much as what is said: a seeker reading becomes AGENT when the
+ * author's name is a business/channel name, or when the same author advertises homes in the same
+ * read (8f6b8544: "ბინების ყიდვა-გაყიდვა გაქირავება" posted four sale ads and one "buyer" post).
+ */
+export function withAuthorEvidence(reading: DemandReading, author: { name?: string | null; alsoAdvertises?: boolean }): DemandReading {
+  if (!['BUY_SEEKER', 'RENT_SEEKER', 'UNCLEAR'].includes(reading.role)) return reading;
+  const why = authorLooksLikeBusiness(author.name) ? 'business_author' : author.alsoAdvertises ? 'author_also_advertises' : null;
+  if (!why) return reading;
+  return { ...reading, role: 'AGENT', intermediary: true, needsModel: false, confidence: Math.max(reading.confidence, 0.8), evidence: [...reading.evidence, why] };
+}
+
 const WORD_ROOMS: Array<[RegExp, number]> = [
   [/(one|single)[- ]?(room|bedroom)|одно(комнат)|однушк|ერთ\s*ოთახ/iu, 1],
   [/two[- ]?(room|bedroom)|двух(комнат)|двушк|ორ\s*ოთახ/iu, 2],
@@ -497,7 +545,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
   const locationFlexible = FLEX_LOCATION.test(s);
   const bedrooms = numberNear(/(\d{1,2})\s*-?\s*(?:bed(?:room)?s?\b|br\b|bhk\b|спальн|საძინებ|yatak odası|غرف? نوم|חדרי שינה)/iu, s)
     /* "one-bedroom", "1+1 / 1 спальня", "studio": a stated bedroom count (v7: "1bhk" was missed). */
-    ?? (/(?<![\p{L}])(one|single)[- ]?bed(room)?|односпальн/iu.test(s) ? 1 : /(?<![\p{L}])(studio|студи|სტუდიო)/iu.test(s) ? 0 : null);
+    ?? (WORD_BEDROOMS.find(([re]) => re.test(s))?.[1] ?? (/(?<![\p{L}])(studio|студи|სტუდიო)/iu.test(s) ? 0 : null));
   const rooms = numberNear(/(\d{1,2})\s*-?\s*(?:rooms?\b|комн|к\.|ოთახ|oda\b|غرف|חדרים|חד')/iu, s)
     ?? numberNear(/(\d)\s*\+\s*1\b/u, s) ?? (WORD_ROOMS.find(([re]) => re.test(s))?.[1] ?? null);
   const area = statedArea(s);

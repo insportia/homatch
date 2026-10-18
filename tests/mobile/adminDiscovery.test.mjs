@@ -270,6 +270,9 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
       await page.goto(`${BASE}/admin/discovery`, { waitUntil: 'domcontentloaded' });
       await ready(page);
       await page.waitForSelector('[role="switch"]', { timeout: 20000 });
+      /* The panels load independently (Deep Search economics last): count once all have rendered,
+         not at the first switch (he 1440 / ar 390 raced at 10 of 11, 2026-10-18). */
+      await page.waitForFunction((n) => document.querySelectorAll('[role="switch"]').length >= n, EXPECTED_SWITCHES, { timeout: 15000 }).catch(() => undefined);
       const l = await page.evaluate(LAYOUT);
       if (l.overflow > 1) failures.push(`${lang} ${width}: horizontal overflow ${l.overflow}px`);
       if (l.switches !== EXPECTED_SWITCHES) failures.push(`${lang} ${width}: ${l.switches} switches, expected ${EXPECTED_SWITCHES}`);

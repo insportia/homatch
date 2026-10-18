@@ -1,10 +1,12 @@
 // ============================================================
 // HOMATCH — system-health Edge Function
 // Returns a full production health snapshot:
-//   DB, Storage, provider statuses, last matching runs
+//   DB, Storage, provider statuses, last matching runs,
+//   queues and stuck work (_shared/opsHealth.ts)
 // Admin-only. Logs result to system_health_log.
 // ============================================================
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { opsChecks, worstLevel } from '../_shared/opsHealth.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -133,7 +135,12 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
   const mock_mode_active = mockSetting?.value === '"true"' || mockSetting?.value === 'true';
 
-  // ── 7. Build result ─────────────────────────────────────────
+  // ── 7. Queues and stuck work ────────────────────────────────
+  const checks = await opsChecks(supabase);
+  const ops = { level: worstLevel(checks), checks };
+  const opsAlerts = checks.filter((c) => c.level === 'alert').map((c) => c.key);
+
+  // ── 8. Build result ─────────────────────────────────────────
   const result = {
     checked_at: new Date().toISOString(),
     production_status: db_reachable && storage_reachable ? 'HEALTHY' : 'DEGRADED',
@@ -146,9 +153,10 @@ Deno.serve(async (req: Request) => {
     last_match_run_ok: !!lastOk,
     last_failed_run_at: lastFailed?.updated_at ?? null,
     spend_summary,
+    ops,
   };
 
-  // ── 8. Persist to system_health_log ────────────────────────
+  // ── 9. Persist to system_health_log ────────────────────────
   await supabase.from('system_health_log').insert({
     db_reachable,
     storage_reachable,
@@ -157,7 +165,11 @@ Deno.serve(async (req: Request) => {
     last_match_run_at: lastOk?.updated_at ?? null,
     last_match_run_ok: !!lastOk,
     last_failed_run_at: lastFailed?.updated_at ?? null,
-    notes: mock_mode_active ? 'WARNING: mock_data_providers=true' : null,
+    /* An alert is kept in the history, so one between manual checks is not lost. */
+    notes: [
+      mock_mode_active ? 'WARNING: mock_data_providers=true' : null,
+      opsAlerts.length ? `OPS_ALERT: ${opsAlerts.join(', ')}` : null,
+    ].filter(Boolean).join(' · ') || null,
   });
 
   return json(result);

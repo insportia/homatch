@@ -105,7 +105,7 @@ test('v9: unstated subtype stays unknown — never a mismatch, never a confirmat
 test('v9: a house/land subtype difference is kept but never Strong', () => {
   const villa = prop('SALE', 'VILLA', null);
   const r = classifyDemand('куплю коттедж в Ваке до 2500$');
-  assert.equal(subtypeFit(r, villa), 'CONFLICT');
+  assert.equal(subtypeFit(r, villa), 'SOFT');
   const q = qualify(r, villa, ctx);
   assert.notEqual(q.category, 'STRONG');
   if (q.category !== 'REJECTED') assert.ok(q.limitations.includes('SUBTYPE_DIFFERS'));
@@ -124,4 +124,92 @@ test('provenance: the phrases a post answers are recorded, never invented', () =
   assert.deepEqual(queriesMatchingText(qs, 'Hi all, I need to rent an office in Vake, ~100 sqm'), ['looking to rent an office in Vake']);
   assert.deepEqual(queriesMatchingText(qs, 'Сниму склад на Сабуртало, 300 м2'), ['сниму склад Сабуртало']);
   assert.deepEqual(queriesMatchingText(qs, 'selling my car'), []);
+});
+
+/* ── v10: one taxonomy, tiers, family-aware group and listing searches, full DNA ───────── */
+import { SUBTYPES, FAMILY_BUY as FB, FAMILY_RENT as FR, subtypeRelation } from '../findBuyers/propertyFamily.ts';
+import { queriesFor } from '../findBuyers/queryPlanner.ts';
+import { sanitizeListingText } from '../findBuyers/propertyDna.ts';
+
+test('taxonomy: every subtype noun, in every language and both transactions, reads as a seeker of that family and subtype', () => {
+  const place = { ka: 'თბილისში', ru: 'Тбилиси', en: 'Tbilisi', ar: 'تبليسي', he: 'טביליסי', tr: 'Tiflis' };
+  let n = 0;
+  for (const d of SUBTYPES) for (const lang of SIX) for (const [tx, T] of [['BUY', FB], ['RENT', FR]]) for (const f of T[lang]) {
+    const q = f({ noun: d.noun[lang], place: place[lang], city: place[lang] }); n++;
+    const r = classifyDemand(q);
+    assert.equal(r.role, tx === 'BUY' ? 'BUY_SEEKER' : 'RENT_SEEKER', q);
+    assert.equal(r.propertyType, d.family, q);
+    assert.ok((r.subtypes ?? []).includes(d.key), `${q} → ${r.subtypes}`);
+  }
+  assert.ok(SUBTYPES.length >= 20 && n >= 480);
+});
+
+test('taxonomy: material contradictions are hard only where they are material', () => {
+  assert.equal(subtypeRelation('WAREHOUSE', ['OFFICE']), 'CONFLICT');
+  assert.equal(subtypeRelation('WAREHOUSE', ['INDUSTRIAL']), 'MATCH');
+  assert.equal(subtypeRelation('RETAIL', ['FOOD']), 'SOFT', 'street-level premises are near');
+  assert.equal(subtypeRelation('HOTEL', ['RETAIL']), 'CONFLICT');
+  assert.equal(subtypeRelation('AGRICULTURAL', ['INDUSTRIAL_LAND']), 'CONFLICT');
+  assert.equal(subtypeRelation('VILLA', ['COTTAGE']), 'SOFT');
+  assert.equal(subtypeRelation('PENTHOUSE', ['STUDIO']), 'SOFT');
+  assert.equal(subtypeRelation('OFFICE', []), 'UNKNOWN');
+  assert.equal(subtypeRelation(null, ['OFFICE']), 'UNKNOWN');
+  assert.equal(propertySubtype('PENTHOUSE', null), 'PENTHOUSE');
+  assert.equal(propertySubtype('COMMERCIAL', 'სასტუმრო 12 ნომრით'), 'HOTEL');
+  assert.equal(propertySubtype('COMMERCIAL', 'Помещение под кафе на Руставели'), 'FOOD');
+  assert.equal(propertySubtype('LAND', 'Commercial land plot near the highway'), 'COMMERCIAL_LAND');
+});
+
+const plan3 = (tx, type, title, area = 300) => {
+  const dna = buildPropertyDna({ transactionType: tx, propertyType: type, city: 'Tbilisi', district: 'Saburtalo', totalPrice: 2500, currency: 'USD', area, title });
+  const strategy = buildBuyerStrategy({ dna, segment: null, providerBudgetMicros: 20_000_000, targetLanguages: null });
+  return { dna, strategy, plan: buildQueryPlan(dna, undefined, strategy) };
+};
+
+test('search tiers: EXACT first, then semantic / near / size; a warehouse is never broadened to "commercial space"', () => {
+  const { strategy } = plan3('RENT', 'COMMERCIAL', 'საწყობი warehouse');
+  for (const lang of SIX) {
+    const own = strategy.queries.filter((q) => q.language === lang);
+    assert.ok(own.length > 0, lang);
+    assert.equal(own[0].tier, 'EXACT', lang);
+    for (const q of own) assert.doesNotMatch(q.query, /კომერციულ ფართ|коммерческое помещение|commercial space|שטח מסחרי|işyeri/iu, q.query);
+  }
+  assert.ok(strategy.queries.some((q) => q.tier === 'SIZE' && /300/.test(q.query)), 'a size-tier phrase for a sized warehouse');
+  assert.ok(strategy.queries.every((q) => q.tier), 'every strategy phrase has a tier');
+});
+
+test('group and comparable-listing searches name the property\'s own market, never apartments', () => {
+  for (const [tx, type, title] of [['RENT', 'COMMERCIAL', 'საწყობი'], ['SALE', 'LAND', 'სასოფლო-სამეურნეო მიწა'], ['SALE', 'VILLA', null], ['RENT', 'OFFICE', null]]) {
+    const { plan } = plan3(tx, type, title);
+    for (const lang of SIX) {
+      const qs = [...queriesFor(plan, 'community', lang), ...queriesFor(plan, 'listing', lang)];
+      assert.ok(qs.length > 0, `${type} ${lang}`);
+      for (const q of qs) assert.doesNotMatch(q.query, APARTMENT_WORDS, `${type} ${lang}: ${q.query}`);
+    }
+  }
+  const apt = plan3('SALE', 'APARTMENT', null, 80).plan;
+  assert.ok(queriesFor(apt, 'community', 'ka').some((q) => /ბინ/.test(q.query)), 'apartments keep their groups');
+});
+
+test('a studio or penthouse is asked for by name first; more phrases never mean more per-language queries', () => {
+  const { strategy } = plan3('SALE', 'PENTHOUSE', null, 180);
+  const ka = strategy.queries.filter((q) => q.language === 'ka');
+  assert.match(ka[0].query, /პენტჰაუს/);
+  for (const lang of SIX) assert.ok(strategy.queries.filter((q) => q.language === lang).length <= strategy.depth.queriesPerLanguage);
+});
+
+test('Property DNA keeps every stored attribute it is given, unknown stays unknown, contact never survives', () => {
+  const dna = buildPropertyDna({
+    transactionType: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', title: 'ბინა ვაკეში', bathrooms: 2, totalFloors: 12, constructionStatus: 'NEW',
+    heating: 'CENTRAL', security: true, yard: false, airConditioning: true, features: ['view', 'view', 'storage'], sourceLanguage: 'KA',
+    description: 'მშვენიერი ბინა, დარეკეთ +995 555 12 34 56 ან mail@x.ge, www.example.ge',
+  });
+  assert.equal(dna.bathrooms, 2); assert.equal(dna.totalFloors, 12); assert.equal(dna.constructionStatus, 'NEW');
+  assert.deepEqual(dna.features, ['view', 'storage']);
+  assert.ok(dna.amenities.includes('security') && dna.amenities.includes('air_conditioning') && !dna.amenities.includes('yard'));
+  assert.equal(dna.sourceLanguage, 'ka');
+  assert.doesNotMatch(dna.descriptionExcerpt, /555|mail@|example/);
+  const bare = buildPropertyDna({ transactionType: 'SALE', propertyType: 'LAND', city: 'Tbilisi' });
+  assert.equal(bare.bathrooms, null); assert.equal(bare.descriptionExcerpt, null); assert.deepEqual(bare.features, []);
+  assert.equal(sanitizeListingText('call 599123456 now'), 'call now');
 });

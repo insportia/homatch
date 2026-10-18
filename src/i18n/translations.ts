@@ -20470,6 +20470,9 @@ const en = {
   admin_ops_reservations_overdue: 'Credit holds past expiry',
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers provider runs not booked',
   admin_ops_find_property_runs_unbooked: 'Find Property provider runs not booked',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Request through a broker — needs verification',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40854,6 +40857,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'კრედიტის დაკავებები ვადის გასვლის შემდეგ',
   admin_ops_find_buyers_runs_unbooked: 'Find Buyers პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
   admin_ops_find_property_runs_unbooked: 'Find Property პროვაიდერის გაშვებები, რომლებიც არ აღირიცხა',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'მოთხოვნა შუამავლის მეშვეობით — საჭიროებს გადამოწმებას',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -61229,6 +61235,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'Резервы кредитов после истечения срока',
   admin_ops_find_buyers_runs_unbooked: 'Запуски провайдера Find Buyers без учёта',
   admin_ops_find_property_runs_unbooked: 'Запуски провайдера Find Property без учёта',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Запрос через посредника — требует проверки',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -81602,6 +81611,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'Süresi geçmiş kredi blokajları',
   admin_ops_find_buyers_runs_unbooked: 'Kaydedilmemiş Find Buyers sağlayıcı çalıştırmaları',
   admin_ops_find_property_runs_unbooked: 'Kaydedilmemiş Find Property sağlayıcı çalıştırmaları',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'Aracı üzerinden talep — doğrulama gerekiyor',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -101975,6 +101987,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'حجوزات رصيد تجاوزت مدتها',
   admin_ops_find_buyers_runs_unbooked: 'عمليات مزود Find Buyers غير المسجلة',
   admin_ops_find_property_runs_unbooked: 'عمليات مزود Find Property غير المسجلة',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'طلب عبر وسيط — يحتاج إلى تحقق',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -122348,6 +122363,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_ops_reservations_overdue: 'החזקות קרדיט שתוקפן עבר',
   admin_ops_find_buyers_runs_unbooked: 'הרצות ספק של Find Buyers שלא נרשמו',
   admin_ops_find_property_runs_unbooked: 'הרצות ספק של Find Property שלא נרשמו',
+
+  /* ── FIND BUYERS — request through a broker ── */
+  fbx_kind_via_broker: 'בקשה דרך מתווך — דורש אימות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

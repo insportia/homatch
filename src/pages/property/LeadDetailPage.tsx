@@ -290,8 +290,9 @@ function LeadContent() {
                       <span key={x.code} data-financing={x.code} className={cn(BADGE, TONES[x.tone])}>{t(x.key)}</span>
                     ))}
                     {placement?.reason === 'TRANSACTION_UNCONFIRMED' ? <span data-limitation="TRANSACTION_UNCONFIRMED" className={cn(BADGE, TONES.near)}>{t('fbx_kind_verify_transaction')}</span> : null}
+                    {placement?.reason === 'BUYER_VIA_BROKER' ? <span data-limitation="BUYER_VIA_BROKER" className={cn(BADGE, TONES.near)}>{t('fbx_kind_via_broker')}</span> : null}
                     {!lead.match_category ? <span className={cn(BADGE, TONES.unknown)}>{t('fbr_cat_UNCATEGORISED')}</span> : null}
-                    {financing.length === 0 && lead.match_category && placement?.reason !== 'TRANSACTION_UNCONFIRMED' ? <span className={cn('text-2xs', INK_SOFT)}>{t('fbx_lead_no_limitations')}</span> : null}
+                    {financing.length === 0 && lead.match_category && !placement?.reason ? <span className={cn('text-2xs', INK_SOFT)}>{t('fbx_lead_no_limitations')}</span> : null}
                   </div>
                 </div>
               </section>

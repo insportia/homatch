@@ -88,3 +88,11 @@ test('a seeker who never said buy or rent is an interested person needing verifi
   const l = lead('tu', { match_category: 'STRONG', qualification: { resultType: 'DIRECT', intent: 'ACTIVE_BUYER', signals: [], limitations: ['TRANSACTION_UNCONFIRMED'] } });
   assert.deepEqual(placeLead(classifyLead(l)), { tab: 'interest', needsVerification: true, reason: 'TRANSACTION_UNCONFIRMED' });
 });
+
+test('a broker searching for a named client is listed to verify, labelled — any other broker never is (v10)', () => {
+  const viaBroker = { role: 'AGENT', resultType: 'INTEREST', match_category: 'WEAK', qualification: { limitations: ['BUYER_VIA_BROKER'] } };
+  assert.deepEqual(placeLead(viaBroker), { tab: 'interest', needsVerification: true, reason: 'BUYER_VIA_BROKER' });
+  assert.equal(placeLead({ ...viaBroker, qualification: { limitations: [] } }), null);
+  assert.equal(placeLead({ ...viaBroker, match_category: 'REJECTED' }), null);
+  assert.equal(placeLead({ ...viaBroker, resultType: 'EXCLUDED' }), null);
+});

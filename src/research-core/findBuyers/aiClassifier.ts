@@ -116,8 +116,18 @@ export function propertyBrief(dna: PropertyDna) {
   };
 }
 
+/**
+ * Text safe for Postgres jsonb: cut by code point (never half an emoji) and drop any lone
+ * surrogate — jsonb rejects "\\ud83c" on its own, and the whole write fails (replay of
+ * 343cfc41, 2026-10-18: a post cut at 160 characters ended mid-emoji).
+ */
+export function safeText(v: unknown, max: number): string {
+  const s = Array.from(String(v ?? '')).slice(0, max).join('');
+  return s.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 const clamp01 = (n: unknown) => (Number.isFinite(Number(n)) ? Math.max(0, Math.min(1, Number(n))) : 0);
-const strList = (v: unknown, max: number, len: number) => (Array.isArray(v) ? v.map((x) => String(x ?? '').slice(0, len)).filter(Boolean).slice(0, max) : []);
+const strList = (v: unknown, max: number, len: number) => (Array.isArray(v) ? v.map((x) => safeText(x, len)).filter(Boolean).slice(0, max) : []);
 
 /** A model item made safe: unknown roles become UNCERTAIN, numbers clamped, strings bounded. */
 export function parseAiVerdict(raw: any): AiVerdict | null {
@@ -130,11 +140,11 @@ export function parseAiVerdict(raw: any): AiVerdict | null {
     confidence: clamp01(raw.confidence),
     transaction: tx === 'BUY' || tx === 'RENT' ? tx : 'UNKNOWN',
     compatibility: comp === 'COMPATIBLE' || comp === 'INCOMPATIBLE' ? comp : 'UNKNOWN',
-    budget: raw.budget == null ? null : String(raw.budget).slice(0, 80),
-    location: raw.location == null ? null : String(raw.location).slice(0, 80),
+    budget: raw.budget == null ? null : safeText(raw.budget, 80),
+    location: raw.location == null ? null : safeText(raw.location, 80),
     contradictions: strList(raw.contradictions, 4, 100),
     evidence: strList(raw.evidence, 3, 120),
-    reason: String(raw.reason ?? '').slice(0, 200),
+    reason: safeText(raw.reason, 200),
   };
 }
 

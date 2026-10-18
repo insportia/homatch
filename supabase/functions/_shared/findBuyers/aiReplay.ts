@@ -8,7 +8,7 @@
 import { classifyCandidates } from './aiClassify.ts';
 import { loadFindBuyersSettings } from './campaign.ts';
 import { parsePriceBook } from './openai.ts';
-import { applyAiVerdict, AI_CLASSIFIER_VERSION } from '../../../../src/research-core/findBuyers/aiClassifier.ts';
+import { applyAiVerdict, AI_CLASSIFIER_VERSION, safeText } from '../../../../src/research-core/findBuyers/aiClassifier.ts';
 import { buyerViaBroker, classifyComment, classifyDemand, withAuthorEvidence } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { qualify } from '../../../../src/research-core/findBuyers/qualify.ts';
 import { classifyBuyerIntent } from '../../../../src/research-core/findBuyers/buyerIntent.ts';
@@ -52,7 +52,8 @@ export async function advanceAiReplay(db: any): Promise<Record<string, unknown> 
     }));
     const { verdicts, stats } = await classifyCandidates(db, {
       book: parsePriceBook(settings.priceBook), dna: camp.dna, matchingJobId: null,
-      keyPrefix: `ai:replay:${req.matchingJobId}:${prog.offset}`, operation: 'AI_REPLAY',
+      /* A unique key per invocation: a page that is ever re-run is still recorded as the paid call it is. */
+      keyPrefix: `ai:replay:${req.matchingJobId}:${prog.offset}:${Date.now()}`, operation: 'AI_REPLAY',
       metadata: { replayOf: req.matchingJobId, version: AI_CLASSIFIER_VERSION },
     }, cands);
     for (const k of Object.keys(prog.ai)) prog.ai[k] += (stats as any)[k] ?? 0;
@@ -68,7 +69,7 @@ export async function advanceAiReplay(db: any): Promise<Record<string, unknown> 
       const after = withAuthorEvidence(applyAiVerdict(rule, v), { name: c.author });
       const res = replayCategory(after, camp.dna, ageDays, c.text, c.kind as any);
       prog.rows.push({
-        assessmentId: r.id, kind: c.kind, text: c.text.slice(0, 160),
+        assessmentId: r.id, kind: c.kind, text: safeText(c.text, 160),
         before: { role: r.role, category: r.match_category },
         ai: v ? { role: v.role, confidence: v.confidence, transaction: v.transaction, compatibility: v.compatibility, reason: v.reason, evidence: v.evidence } : null,
         after: { role: after.role, category: res.category, resultType: res.resultType, viaBroker: buyerViaBroker(after), limitations: res.limitations },
@@ -93,7 +94,12 @@ export async function advanceAiReplay(db: any): Promise<Record<string, unknown> 
     prog.finishedAt = new Date().toISOString();
     prog.done = true;
   }
-  await db.from('admin_settings').upsert({ key: RESULT_KEY, value: prog, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  const { error: writeError } = await db.from('admin_settings').upsert({ key: RESULT_KEY, value: prog, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (writeError) {
+    /* Never loop on a page that cannot be stored (each retry would pay the model again). */
+    await db.from('admin_settings').update({ value: { ...req, status: 'FAILED', error: String(writeError.message ?? writeError).slice(0, 300), at: new Date().toISOString() }, updated_at: new Date().toISOString() }).eq('key', REQUEST_KEY);
+    return { replay: req.matchingJobId, error: 'RESULT_WRITE_FAILED', offset: prog.offset };
+  }
   if (done) await db.from('admin_settings').update({ value: { ...req, status: 'DONE', finishedAt: prog.finishedAt }, updated_at: new Date().toISOString() }).eq('key', REQUEST_KEY);
   return { replay: req.matchingJobId, processed: rows.length, offset: prog.offset, done };
 }

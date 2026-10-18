@@ -21,7 +21,7 @@
 // The model may resolve an UNCLEAR reading but cannot overturn a rule that
 // found job/service/offer evidence (see boundModelReading).
 
-import { isParkingText } from './propertyFamily.ts';
+import { isParkingText, statedSubtypes, type PropertySubtype } from './propertyFamily.ts';
 import { CITY_NAMES, cityMentioned, placesMentioned } from './places.ts';
 
 export type DemandRole =
@@ -75,6 +75,8 @@ export interface DemandReading {
    * "50კვ/მ ზე მეტი" → min 50, "about 80 square meters" → 80–80 (approximate). null = not stated.
    */
   area?: { min: number | null; max: number | null; approx: boolean } | null;
+  /** Subtypes the text names within its family ("office", "warehouse", "дача"); [] = not stated (v9). */
+  subtypes?: PropertySubtype[];
   /** Rule ids that decided the reading (explainable). */
   evidence: string[];
   confidence: number;
@@ -610,7 +612,7 @@ export function classifyDemand(text: string | null | undefined, opts: ClassifyOp
     return { ...base, role: 'UNCLEAR', transaction: null, evidence: [...evidence, 'transaction_unknown'], confidence: 0.4, needsModel: true };
   }
   return { ...base, role: transaction === 'BUY' ? 'BUY_SEEKER' : 'RENT_SEEKER', transaction, evidence,
-    confidence: buyWords || rentWords ? 0.9 : 0.7, needsModel: false };
+    subtypes: statedSubtypes(base.propertyType, s), confidence: buyWords || rentWords ? 0.9 : 0.7, needsModel: false };
 }
 
 /** A home seeker whose buy-or-rent was never stated (or only guessed by the model). */

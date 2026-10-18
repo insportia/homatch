@@ -534,7 +534,8 @@ test('live search module: server state, real source nodes only, real counts, the
   assert.doesNotMatch(main, /HOMATCH Matches/, 'internal matches never appear on the external results page');
   assert.match(main, /Extended research results/, 'external results are their own section');
   /* Only sources really working are listed; REDDIT is still queued and appears once it starts (2026-10-12). */
-  assert.deepEqual(await page.$$eval('[data-testid="fbl-source-outcomes"] li', (els) => els.map((e) => e.getAttribute('data-source'))), ['FACEBOOK', 'VK'], 'only sources running or finished');
+  /* The per-source list is an operator diagnostic since 2026-10-17 (owner): an owner never sees it. */
+  assert.equal(await page.locator('[data-testid="fbl-source-outcomes"]').count(), 0, 'no source list for the owner');
   assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);
   assert.equal(await page.getByRole('button', { name: 'Continue search' }).count(), 0);
   assert.doesNotMatch(main, /75%/, 'no invented percentage');
@@ -584,6 +585,8 @@ test('numbered server pages: page 2 is a server request, kept in the URL; paging
   await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
   await open(page);
   const entries = await page.evaluate(() => history.length);
+  /* Earlier internal matches start closed (owner, 2026-10-17): open them first. */
+  await page.click('[data-testid="fbx-legacy-toggle"]');
   await page.waitForSelector('nav[aria-label="Match pages"]');
   assert.equal(await page.locator('nav[aria-label="Match pages"] [aria-current="page"]').textContent(), '1');
   /* The current-page marker follows the URL at once; the page-2 fetch fires a
@@ -700,7 +703,7 @@ const REAL_RUN = {
 };
 
 test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; READY now; Telegram searched, social off', opts, async (t) => {
-  const { page } = await boot(t, { status: REAL_RUN });
+  const { page } = await boot(t, { status: REAL_RUN, admin: true });
   await open(page);
   await openDetails(page);
   await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
@@ -733,7 +736,7 @@ const PLANNER_FAILED = {
 test('only Telegram ran because the social planner failed: the owner sees what worked, not our failure, in en/ka/ar at 1440 and 390', opts, async (t) => {
   const failures = [];
   for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ar']]) {
-    const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED });
+    const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED, admin: true });
     await open(page);
     await openDetails(page);
     await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });

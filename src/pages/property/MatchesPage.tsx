@@ -1,5 +1,5 @@
 import {
-  AlertCircle, Bot, CalendarDays, Check, ExternalLink, Loader2, MessageSquare,
+  AlertCircle, Bot, CalendarDays, Check, ChevronDown, ChevronUp, Eraser, ExternalLink, History as HistoryIcon, Loader2, MessageSquare,
   Eye, Home, Search, Sparkles, User, Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -8,6 +8,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
+import { ClearResultsDialog } from '@/components/findBuyers/ClearResultsDialog';
 import { DeeperSearchPanel } from '@/components/campaign/DeeperSearchPanel';
 import { LanguageCoveragePanel } from '@/components/campaign/LanguageCoveragePanel';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -542,6 +543,10 @@ function MatchesContent() {
   const currentMatches = filteredMatches.filter((m) => !isHistory(m));
   const historyMatches = filteredMatches.filter(isHistory);
   const [showHistory, setShowHistory] = useState(() => searchParams.has('hp'));
+  /* Earlier internal matches start closed (owner, 2026-10-17); a page link into them opens them. */
+  const [showLegacy, setShowLegacy] = useState(() => searchParams.has('hp') || Number(searchParams.get('page') ?? 1) > 1);
+  const [showClear, setShowClear] = useState(false);
+  const canClearLegacy = Boolean(propertyId && property && homatchUser && property.user_id === homatchUser.id);
 
   const renderMatchCard = (match: Match, history: boolean) => {
                   const tier = fitTier(match.signal_strength);
@@ -1121,19 +1126,47 @@ function MatchesContent() {
                * its own pages and never counts as current demand.
                */
               <div className="space-y-4">
-                {/* Legacy matches (the `matches` table), reachable only while they exist and are not cleared. */}
-                <h2 className="break-words text-sm font-semibold text-[hsl(218_45%_14%)]" data-testid="fbx-legacy-heading">
-                  {t('fbrx_legacy_matches', { n: String(currentTotal + historyTotal) })}
-                </h2>
-                {currentMatches.length > 0 && (
+                {/* Legacy matches (the `matches` table), reachable only while they exist and are not cleared.
+                    A closed premium band (owner, 2026-10-17): the current search's people lead the page;
+                    earlier internal matches are one tap away and can be hidden from here. */}
+                <div className="overflow-hidden rounded-2xl bg-white shadow-[0_10px_28px_-18px_hsl(218_60%_15%/0.45)] ring-1 ring-inset ring-[hsl(40_70%_80%)]" data-testid="fbx-legacy">
+                  <div className={cn('flex flex-wrap items-center gap-3 px-4 py-3.5', NAVY_BAND)}>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,hsl(40_94%_62%),hsl(34_90%_48%))] text-[hsl(218_52%_11%)]" aria-hidden="true">
+                      <HistoryIcon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-[12rem] flex-1">
+                      <h2 className="font-display text-[15px] font-semibold leading-snug text-white" data-testid="fbx-legacy-heading">
+                        {t('fbrx_legacy_matches', { n: String(currentTotal + historyTotal) })}
+                      </h2>
+                      <p className="mt-0.5 text-xs leading-relaxed text-[hsl(218_40%_84%)]">{t('fbrx_legacy_hint')}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 p-3 min-[420px]:flex-row">
+                    <button type="button" onClick={() => setShowLegacy((v) => !v)} aria-expanded={showLegacy} data-testid="fbx-legacy-toggle"
+                      className={cn(FRAMED_ACTION, 'min-h-11 flex-1 justify-center text-sm')}>
+                      {showLegacy ? <ChevronUp className="h-4 w-4 shrink-0 text-[hsl(34_90%_40%)]" aria-hidden="true" /> : <ChevronDown className="h-4 w-4 shrink-0 text-[hsl(34_90%_40%)]" aria-hidden="true" />}
+                      <span>{t(showLegacy ? 'fbrx_legacy_collapse' : 'fbrx_legacy_expand')}</span>
+                    </button>
+                    {canClearLegacy && (
+                      <button type="button" onClick={() => setShowClear(true)} data-testid="fbx-legacy-hide"
+                        className={cn(FRAMED_ACTION, 'min-h-11 flex-1 justify-center text-sm')}>
+                        <Eraser className="h-4 w-4 shrink-0 text-[hsl(34_90%_40%)]" aria-hidden="true" />
+                        <span>{t('fbrx_legacy_hide')}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {showLegacy && currentMatches.length > 0 && (
                   <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
                     {currentMatches.map((match) => renderMatchCard(match, false))}
                   </div>
                 )}
-                <PageNav page={Math.min(matchPage, currentPages)} totalPages={currentPages}
-                  onPage={(p) => { setPageParam('page', p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                  label={t('fbl_matches_pages')} />
-                {historyTotal > 0 && (
+                {showLegacy && (
+                  <PageNav page={Math.min(matchPage, currentPages)} totalPages={currentPages}
+                    onPage={(p) => { setPageParam('page', p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                    label={t('fbl_matches_pages')} />
+                )}
+                {showLegacy && historyTotal > 0 && (
                   <div className="space-y-2.5">
                     <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}
                       className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-white px-3.5 py-2.5 text-start text-sm font-semibold text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_70%_80%)] hover:ring-[hsl(38_92%_50%)]">
@@ -1335,6 +1368,11 @@ function MatchesContent() {
         it hands back is what becomes authorized_max_credits.
       */}
       {/* Already on the search page: "watch it" closes the dialog onto the live search. */}
+      {canClearLegacy && propertyId && (
+        <ClearResultsDialog open={showClear} propertyId={propertyId} includeOpenedByDefault
+          onClose={() => setShowClear(false)}
+          onCleared={() => { setShowClear(false); setShowLegacy(false); void loadData(); }} />
+      )}
       <SearchStartingDialog phase={startPhase} tenant={counterpart === 'TENANT'} goLabelKey="fbs_watch_search"
         onGo={() => { setStartPhase(null); document.getElementById('fbl-live')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
         onClose={() => setStartPhase(null)} />

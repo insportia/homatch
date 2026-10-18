@@ -3,7 +3,8 @@
 // Opening the dialog only READS what would be cleared (find_buyers_clear_results_preview);
 // nothing changes until the owner presses the confirm button (find_buyers_clear_results).
 // Only completed searches' results are hidden; contacts already opened (UNLOCKED legacy
-// matches) stay available; the property, a running search and its
+// matches) stay unless the owner also ticks "hide the contacts I opened" (owner, 2026-10-17:
+// find_buyers_hide_opened_contacts — hides, never deletes or refunds); the property, a running search and its
 // results, credits / charges / payments and the search history and audit are never touched.
 // A server without the RPCs (not deployed yet) says so and offers nothing to confirm.
 
@@ -12,40 +13,46 @@ import { CheckCircle2, Eraser, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { clearOldResults, getClearResultsPreview, type ClearOutcome, type ClearPreview } from '@/services/findBuyersLeads';
+import { clearOldResults, getClearResultsPreview, hideOpenedContacts, type ClearOutcome, type ClearPreview } from '@/services/findBuyersLeads';
 import { DASH_BTN } from '@/components/findBuyers/FindBuyersDashboard';
 
 type Phase = 'loading' | 'ready' | 'unavailable' | 'clearing' | 'failed';
 
-export function ClearResultsDialog({ open, propertyId, onClose, onCleared }: {
+export function ClearResultsDialog({ open, propertyId, onClose, onCleared, includeOpenedByDefault = false }: {
   open: boolean;
   propertyId: string;
+  /** Pre-tick "also hide the contacts I opened" (the earlier-matches band asks for exactly that). */
+  includeOpenedByDefault?: boolean;
   onClose: () => void;
   onCleared: (outcome: ClearOutcome) => void;
 }) {
   const { t } = useLanguage();
   const [phase, setPhase] = useState<Phase>('loading');
   const [preview, setPreview] = useState<ClearPreview | null>(null);
+  const [includeOpened, setIncludeOpened] = useState(includeOpenedByDefault);
 
   useEffect(() => {
     if (!open) return undefined;
     let alive = true;
     setPhase('loading');
     setPreview(null);
+    setIncludeOpened(includeOpenedByDefault);
     getClearResultsPreview(propertyId).then((p) => {
       if (!alive) return;
       setPreview(p);
       setPhase(p ? 'ready' : 'unavailable');
     });
     return () => { alive = false; };
-  }, [open, propertyId]);
+  }, [open, propertyId, includeOpenedByDefault]);
 
-  const nothing = preview ? preview.leads + preview.legacyMatches === 0 : true;
+  const opened = preview?.legacyUnlockedKept ?? 0;
+  const nothing = preview ? preview.leads + preview.legacyMatches + (includeOpened ? opened : 0) === 0 : true;
   const busy = phase === 'clearing';
   const confirm = async () => {
     setPhase('clearing');
     const outcome = await clearOldResults(propertyId);
     if (!outcome) { setPhase('failed'); return; }
+    if (includeOpened && opened > 0 && (await hideOpenedContacts(propertyId)) === null) { setPhase('failed'); return; }
     onCleared(outcome);
   };
 
@@ -76,10 +83,15 @@ export function ClearResultsDialog({ open, propertyId, onClose, onCleared }: {
                 {t('fbrx_clear_count_matches', { n: String(preview?.legacyMatches ?? 0) })}
               </div>
             </dl>
-            {(preview?.legacyUnlockedKept ?? 0) > 0 && (
-              <p className="rounded-xl bg-[hsl(150_45%_96%)] px-3 py-2 text-xs leading-relaxed text-[hsl(218_45%_14%)]" data-testid="fbd-clear-unlocked-kept" data-n={preview?.legacyUnlockedKept}>
-                {t('fbrx_clear_unlocked_kept', { n: String(preview?.legacyUnlockedKept ?? 0) })}
-              </p>
+            {opened > 0 && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-[hsl(42_100%_97%)] px-3 py-3 ring-1 ring-inset ring-[hsl(40_80%_78%)]" data-testid="fbd-clear-opened" data-n={opened}>
+                <input type="checkbox" checked={includeOpened} onChange={(e) => setIncludeOpened(e.target.checked)} disabled={busy}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-[hsl(218_52%_11%)]" data-testid="fbd-clear-opened-box" />
+                <span className="min-w-0">
+                  <span className="block break-words text-sm font-semibold text-[hsl(218_45%_14%)]">{t('fbrx_clear_include_opened', { n: String(opened) })}</span>
+                  <span className="mt-0.5 block break-words text-xs leading-relaxed text-[hsl(218_28%_34%)]">{t('fbrx_clear_include_opened_hint')}</span>
+                </span>
+              </label>
             )}
             {preview?.activeCampaign && (
               <p className="rounded-xl bg-[hsl(42_100%_96%)] px-3 py-2 text-xs leading-relaxed text-[hsl(218_45%_14%)]" data-testid="fbd-clear-active">{t('fbrx_clear_active_note')}</p>

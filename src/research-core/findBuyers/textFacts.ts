@@ -51,7 +51,7 @@ export function extractTextFacts(text: string | null | undefined): TextFacts {
   const rooms =
     firstNumber(/(\d{1,2})\s*(?:-|\s)?\s*(?:room|комн|к\.|ოთახ|oda|غرف|חדרים|חד')/i, s)
     ?? firstNumber(/(\d)\s*\+\s*1\b/, s);
-  const areaSqm = firstNumber(/(\d{2,4}(?:[.,]\d+)?)\s*(?:m2|m²|sq\.?\s?m|sqm|кв\.?\s?м|м2|м²|კვ\.?\s?მ|კვმ|metrekare|متر مربع|م2|מ"ר|מטר)/i, s);
+  const areaSqm = firstNumber(/(\d{2,4}(?:[.,]\d+)?)\s*(?:m2|m²|sq\.?\s?m|sqm|кв\.?\s?м|м2|м²|კვ\.?\s?მ|კვმ|კვადრატ[ა-ჰ]*|კვ\.?(?![ა-ჰ])|მ²|მ2|metrekare|متر مربع|م2|מ"ר|מטר)/i, s);
   let currency: TextFacts['currency'] = null;
   let price: number | null = null;
   const pm = s.match(/(?:\$|usd|долл|დოლ|dolar|دولار|דולר)\s*(\d{1,3}(?:[ ,.]\d{3})+|\d+(?:[.,]\d+)?\s*k?)|(\d{1,3}(?:[ ,.]\d{3})+|\d+(?:[.,]\d+)?\s*k?)\s*(?:\$|usd|долл|დოლ|dolar|دولار|דולר)/i);

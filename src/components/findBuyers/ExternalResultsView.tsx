@@ -67,12 +67,14 @@ export function OpportunityCard({ op, propertyId, jobId }: { op: OpportunityItem
   const src = sourceStyle(op.platform);
   const age = ageLabel(op.at, t);
   const srcLang = op.language && LEAD_LANGS.has(op.language) ? op.language : null;
-  const kindKey = sourceKindKey(op.sourceKind);
+  /* "Facebook group / page" only for Facebook (owner, 2026-10-17: a TikTok video read "Faceb…"
+     beside an "Open on TikTok" button — the RPC defaults every source kind to GROUP). */
+  const kindKey = String(op.platform ?? '').toUpperCase() === 'FACEBOOK' || op.sourceKind === 'AD' ? sourceKindKey(op.sourceKind) : null;
   const body = (
     <>
-      <div className={cn('flex min-w-0 items-center gap-1.5 text-2xs font-semibold', SOFT)}>
+      <div className={cn('flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-2xs font-semibold', SOFT)}>
         <span style={{ color: src.color }} aria-hidden="true"><src.Icon className="h-3.5 w-3.5" /></span>
-        <span data-testid="fbo-card-source" data-kind={op.sourceKind ?? ''} className="min-w-0 truncate">{kindKey ? t(kindKey) : src.label}</span>
+        <span data-testid="fbo-card-source" data-kind={op.sourceKind ?? ''} className="min-w-0 whitespace-nowrap">{kindKey ? t(kindKey) : src.label}</span>
         {age ? <><span aria-hidden="true">·</span><span className="shrink-0 whitespace-nowrap">{age}</span></> : null}
         {op.competitor ? (
           <span data-testid="fbo-card-competitor" className="ms-auto shrink-0 rounded-full bg-[hsl(42_100%_94%)] px-2 py-0.5 text-[hsl(34_90%_30%)]">{t('fbx_opp_competitor_badge')}</span>
@@ -266,19 +268,21 @@ export function ExternalResultsView({ propertyId, owner, onTotal, liveJobId = nu
 
       {/* Two categories — potentially interested people (strong evidence / needs more
           qualification) and research opportunities — as three tabs, each with its real count. */}
-      <div className="grid grid-cols-3 gap-1.5 px-1.5">
-        <p className="col-span-2 break-words text-center text-2xs font-bold uppercase tracking-[0.08em] text-[hsl(34_90%_32%)]" data-testid="fbx-group-people">
+      {/* On a phone the three tabs are full-width rows (owner, 2026-10-17: in three narrow
+          columns the labels were cut to "მტკიცებულე…"); from 440px, three columns. */}
+      <div className="grid grid-cols-1 gap-1.5 px-1.5 min-[440px]:grid-cols-3">
+        <p className="text-pretty text-start text-2xs font-bold uppercase tracking-[0.06em] text-[hsl(34_90%_32%)] min-[440px]:col-span-2 min-[440px]:text-center" data-testid="fbx-group-people">
           {t('fbrx_stat_people')}
         </p>
       </div>
-      <div role="tablist" aria-label={t('fbx_types_label')} className="grid grid-cols-3 gap-1.5 rounded-2xl bg-white p-1.5 ring-1 ring-inset ring-[hsl(40_30%_86%)]">
+      <div role="tablist" aria-label={t('fbx_types_label')} className="grid grid-cols-1 gap-1.5 rounded-2xl bg-white p-1.5 ring-1 ring-inset ring-[hsl(40_30%_86%)] min-[440px]:grid-cols-3">
         {TABS.map((k) => {
           const Icon = icon[k];
           return (
             <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`fbx-tab-${k}`} onClick={() => set({ tab: k })}
-              className={cn('flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-center', tab === k ? cn(NAVY_BAND, 'text-white') : 'text-[hsl(218_45%_14%)]')}>
-              <span className="flex items-center gap-1 font-display text-base font-semibold tabular-nums"><Icon className="h-3.5 w-3.5 opacity-80" aria-hidden="true" />{r.counts[k]}</span>
-              <span className="line-clamp-2 w-full break-words text-2xs font-semibold leading-tight opacity-90">{tabLabel(k)}</span>
+              className={cn('flex min-h-12 min-w-0 flex-row-reverse items-center justify-between gap-3 rounded-xl px-3.5 py-2 text-start min-[440px]:flex-col min-[440px]:justify-center min-[440px]:gap-0.5 min-[440px]:px-1.5 min-[440px]:text-center', tab === k ? cn(NAVY_BAND, 'text-white') : 'text-[hsl(218_45%_14%)]')}>
+              <span className="flex shrink-0 items-center gap-1 font-display text-base font-semibold tabular-nums"><Icon className="h-3.5 w-3.5 opacity-80" aria-hidden="true" />{r.counts[k]}</span>
+              <span className="min-w-0 flex-1 text-pretty text-xs font-semibold leading-snug opacity-90 [overflow-wrap:anywhere] min-[440px]:w-full min-[440px]:flex-none min-[440px]:text-2xs">{tabLabel(k)}</span>
             </button>
           );
         })}

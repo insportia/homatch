@@ -186,3 +186,51 @@ Nothing is activated by this change. Any Actor that is not registered, not enabl
 - **Shared-client status.** `memo23Client.ts` still answers a missing token with 503. Find Property no longer reaches it (the token is checked first). Changing that shared file is a Find Buyers decision; its session agreed a non-5xx status is right.
 - **Release order.** The migration must be applied before the edge functions are deployed: `storeOffers` writes `image_urls`.
 - **Not run against the live provider.** Nothing has been checked end to end against the real provider. The first real campaign needs owner approval and a small budget.
+
+## First paid campaign audit and strict results (2026-10-18)
+
+Campaign `f8833757` (50 credits, Tbilisi · Vake · buy · apartment · 3 rooms · 2 bedrooms ·
+80–110 m² · new build / under construction · $120–160k), reconciled read-only:
+
+| | Value |
+|---|---|
+| Reserved / settled / released | 50 / 49.9 / 0.1 credits (`usage_reservations` SETTLED, ledger reserve + capture + release ids present) |
+| Provider cost (PROVIDER_REPORTED) | FB groups $1.508 + $1.019, TikTok $0.365, Telegram $0.251 (ABORTED at its own cap) = **$3.143** |
+| Revenue | 49.9 credits = $4.99 → gross spread **$1.847 (37.0%)** before VAT and payment fees (not modelled) |
+| Posts fetched → offers stored → distinct | 2,846 → 600 → 371 (229 reposts) |
+| Strict verdicts (campaignMatch v1) | exact 0 · potential 4 · alternative 3 · rejected 364 (area 224, price 203, district 179, type 142, rooms 110, bedrooms 107, >30 days 71) |
+
+**Why "600 offers" but one result.** Nothing was lost or hidden. The campaign reads
+communities' recent posts city-wide; `offers_found` counted every Tbilisi sale offer
+(any type, district, price). Its offers were then only re-ranked inside the free
+marketplace search with that search's filters, where exactly one social post (a $152k
+Facebook post, district unstated) survived. Separately, `results_found` (7) counted the
+free search's deliveries, portals included, so three different numbers described one
+campaign.
+
+**Telegram.** 1000 posts were billed ($0.251, the run's reservation = Apify
+`maxTotalChargeUsd`; the run stopped at that cap, which is the designed behaviour) and 0
+became offers. The Telegram Actor's OUTPUT shape has never been verified
+(`output_contract_verified_at` null); no Telegram mapping exists in the normaliser. The
+worker now records the returned field NAMES (`rawKeys`, never values) when a paid run
+yields nothing, so the mapping can be fixed from evidence. Until then Telegram is a
+known low-yield allocation (owner decision whether to keep it in paid campaigns).
+
+**Now.** Every ended campaign is judged against the exact request
+(`src/research-core/findProperty/campaignMatch.ts`): EXACT (every requirement stated and
+met), POTENTIAL (nothing contradicts; unstated requirements listed as unverified, never
+inferred; at least two of type/price/area/rooms/bedrooms confirmed), ALTERNATIVE (one of
+price/area off by ≤15%; shown only on request), REJECTED (with reasons). Verdicts and a
+snapshot of each post are kept in `find_property_campaign_results`; the counts in
+`discovery_runs.campaign_outcome`; `results_found` = exact + potential. The campaign has
+its own page `/find-property/campaign/:runId` (owner or admin, read through
+`find-property-run` action `results`), with held / charged / released credits and no
+provider cost. Admin → Discovery shows per-campaign economics (`admin_campaigns`): revenue,
+provider cost per run with provider run id and pricing basis, reserved vs actual, budget
+use, gross spread, cost per available match; VAT, fees and net margin stay "not modelled".
+
+**20-credit test campaign.** `admin_settings.find_property_test_campaign`
+`{enabled, credits: 20, testers: [user ids]}` — OFF by default; admins and listed testers
+only; exactly that amount; same reservation (full budget), 37/63 allocation
+($2 → $1.26 provider budget), settlement and release. `beginExecution`'s
+`minViableOverrideCredits` can only lower the product minimum for that one reservation.

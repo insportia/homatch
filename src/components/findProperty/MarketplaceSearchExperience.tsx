@@ -253,7 +253,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
           onReset={() => { setBriefAndDraft(null); setView('INTRO'); }} />
       )}
       {view === 'CHOOSE' && brief && (
-        <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy}
+        <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy} brief={brief}
           onFree={() => void doStart()} onDeep={(credits) => void doStart(credits)} onBack={() => setView('BUILD')} />
       )}
       {/* Deep Search: the campaign's own screen, never the portal search's progress or list

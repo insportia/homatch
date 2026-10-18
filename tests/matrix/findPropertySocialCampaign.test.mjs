@@ -36,7 +36,8 @@ test('memo23 only through the one client; capped at the reservation', () => {
 });
 
 test('settlement: open runs finished first, consumed ÷ 0.63, failure releases in full', () => {
-  assert.match(SETTLE, /if \(socialCampaign\) spendMicros = await finishOfferCampaign\(db, run\.id\);/);
+  /* Open runs are booked first, then the campaign's offers are judged (2026-10-18). */
+  assert.match(SETTLE, /if \(socialCampaign\) \{\n    spendMicros = await finishOfferCampaign\(db, run\.id\);\n    campaignAvailable = await judgeCampaignOffers\(db, run\.id\);\n  \}/);
   assert.match(SETTLE, /settlePaidSocialRun\(db, grant/);
   assert.match(SETTLE, /await finishOfferCampaign\(db, runId\)\.catch\(\(\) => undefined\);\n  if \(grant\) await releaseExecution/);
   assert.doesNotMatch(SETTLE, /\}, releaseExecution\)/, 'release is called with the db, not with shifted arguments');

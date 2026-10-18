@@ -27,6 +27,17 @@ import { allocateCampaign, minimumCampaignCredits } from '../../../src/research-
 import { OFFER_NETWORKS, offerSearchLanguages, type OfferNetwork, type OfferSearch } from '../../../src/research-core/findProperty/offerCampaign.ts';
 import { loadOfferSettings, offerQueueRows, planOfferCampaign } from '../_shared/findProperty/socialOffers.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { campaignEconomics, readCampaignResults } from '../_shared/findProperty/campaignResults.ts';
+
+/** The temporary 20-credit TEST campaign (owner, 2026-10-18): Admin switch, admins + listed testers only. */
+async function testCampaign(db: any, me: { id: string; is_admin?: boolean | null }): Promise<{ allowed: boolean; credits: number }> {
+  const { data } = await db.from('admin_settings').select('value').eq('key', 'find_property_test_campaign').maybeSingle();
+  const v = typeof data?.value === 'string' ? JSON.parse(data.value) : data?.value ?? {};
+  const credits = Math.round(Number(v?.credits ?? 20));
+  const testers = Array.isArray(v?.testers) ? v.testers.map(String) : [];
+  const allowed = v?.enabled === true && Number.isFinite(credits) && credits >= 10 && credits < 50 && (me.is_admin === true || testers.includes(me.id));
+  return { allowed, credits };
+}
 
 async function walletRate(db: any): Promise<number> {
   const { data } = await db.from('admin_settings').select('value').eq('key', 'credits_per_usd').maybeSingle();
@@ -54,7 +65,7 @@ Deno.serve(async (req: Request) => {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const { data: auth, error: authError } = await db.auth.getUser(token);
   if (authError || !auth.user) return json({ error: 'Unauthorized' }, 401);
-  const { data: me } = await db.from('users').select('id,suspended_at').eq('auth_id', auth.user.id).maybeSingle();
+  const { data: me } = await db.from('users').select('id,suspended_at,is_admin').eq('auth_id', auth.user.id).maybeSingle();
   if (!me) return json({ error: 'Homatch user not found' }, 403);
   if (me.suspended_at) return json({ error: 'This account is suspended.', reasonCode: 'ACCOUNT_SUSPENDED' }, 403);
 
@@ -73,6 +84,26 @@ Deno.serve(async (req: Request) => {
       await runEvent(db, String(body.runId), { pause: 'RUN_PAUSED', resume: 'RUN_RESUMED', stop: 'RUN_STOPPED' }[action]!, outcome)
         .catch(() => undefined);
       return json({ success: true, runId: body.runId, ...outcome });
+    }
+    /* A campaign's own results page: owner (or admin) only, read server-side. */
+    if (action === 'results') {
+      const rid = String(body.runId || '');
+      if (!/^[0-9a-f-]{36}$/i.test(rid)) return json({ error: 'Campaign not found.', reasonCode: 'UNKNOWN_CAMPAIGN' }, 404);
+      const { data: owner } = await db.from('discovery_runs').select('user_id').eq('id', rid).maybeSingle();
+      if (!owner || (owner.user_id !== me.id && me.is_admin !== true)) return json({ error: 'Campaign not found.', reasonCode: 'UNKNOWN_CAMPAIGN' }, 404);
+      const result = await readCampaignResults(db, rid, { view: body.view, sort: body.sort, page: body.page, pageSize: body.pageSize });
+      if (!result) return json({ error: 'Campaign not found.', reasonCode: 'UNKNOWN_CAMPAIGN' }, 404);
+      return json({ success: true, ...result });
+    }
+    /* Admin: campaign economics from recorded costs (no VAT/fee is invented). */
+    if (action === 'admin_campaigns') {
+      if (me.is_admin !== true) return json({ error: 'Forbidden' }, 403);
+      return json({ success: true, campaigns: await campaignEconomics(db, Number(body.limit) || 20) });
+    }
+    /* Whether this account may pick the temporary test amount (no search needed yet). */
+    if (action === 'test_option') {
+      const test = await testCampaign(db, me);
+      return json({ success: true, testOption: test.allowed ? { credits: test.credits } : null });
     }
     if (action !== 'start' && action !== 'preview') return json({ error: 'Unknown action' }, 400);
     // SERVICE CONTROL (key `find_property_deep`): no new paid Deep Search while paused. Pause,
@@ -97,6 +128,9 @@ Deno.serve(async (req: Request) => {
     const rate = await walletRate(db);
     const minCredits = Math.max(minimumCampaignCredits(rate), settings.campaignMinCredits);
     const budget = Math.round(Number(body.authorizedMaxCredits ?? Math.max(minCredits, settings.campaignDefaultCredits)));
+    /* Exactly the test amount, for an allowed account, while Admin keeps it on. Nothing else changes. */
+    const test = await testCampaign(db, me);
+    const isTest = test.allowed && budget === test.credits;
     const transaction = searchPlan.deal === 'RENT' ? 'RENT' : 'SALE';
     const offerSearch: OfferSearch = {
       transaction, city: searchPlan.city.value,
@@ -110,7 +144,7 @@ Deno.serve(async (req: Request) => {
       .map((n: unknown) => String(n).toUpperCase())
       .filter((n: string): n is OfferNetwork => (OFFER_NETWORKS as readonly string[]).includes(n));
     const networks = [...new Set(requested)] as OfferNetwork[];
-    if (!Number.isFinite(budget) || budget < minCredits) {
+    if (!Number.isFinite(budget) || (budget < minCredits && !isTest)) {
       return json({ error: `A campaign starts at ${minCredits} Credits.`, reasonCode: 'BELOW_CAMPAIGN_MINIMUM', minBudgetCredits: minCredits }, 400);
     }
     if (settings.campaignMaxCredits != null && budget > settings.campaignMaxCredits) {
@@ -136,6 +170,8 @@ Deno.serve(async (req: Request) => {
       unavailableNetworks: plan.unavailable,
       skippedForBudget: plan.skippedForBudget,
       search: { transaction, city: offerSearch.city, districts: offerSearch.districts, propertyType: offerSearch.propertyType },
+      testOption: test.allowed ? { credits: test.credits } : null,
+      testCampaign: isTest,
     };
     if (action === 'preview') return json({ success: true, preview });
 
@@ -169,7 +205,8 @@ Deno.serve(async (req: Request) => {
       allowIncluded: false,
       budgetIsCeiling: true,
       requireFullBudget: true,
-      metadata: { subscriptionId: subscription.id, budgetCredits: budget, pricing: allocation.policy, networks },
+      ...(isTest ? { minViableOverrideCredits: test.credits } : {}),
+      metadata: { subscriptionId: subscription.id, budgetCredits: budget, pricing: allocation.policy, networks, testCampaign: isTest },
     });
     if (!grant.ok) {
       return json({ error: 'This campaign needs Credits to continue.', reasonCode: grant.reason ?? 'BILLING_REQUIRED',
@@ -192,7 +229,7 @@ Deno.serve(async (req: Request) => {
       customer_value_micros: allocation.priceMicros,
       provider_budget_micros: allocation.providerBudgetMicros,
       offer_networks: networks,
-      offer_plan: { version: plan.version, estimatedMicros: plan.estimatedMicros, unavailable: plan.unavailable, skippedForBudget: plan.skippedForBudget, jobs: plan.jobs.length,
+      offer_plan: { version: plan.version, estimatedMicros: plan.estimatedMicros, unavailable: plan.unavailable, skippedForBudget: plan.skippedForBudget, jobs: plan.jobs.length, testCampaign: isTest,
         marketplaceSearchId: typeof subscription.search_criteria?.marketplaceSearchId === 'string' ? subscription.search_criteria.marketplaceSearchId : null },
     }).select('id,started_at').single();
     if (runError) throw runError;

@@ -172,6 +172,27 @@ test('Facebook depth follows the budget: breadth when tight, the Actor maximum p
   assert.equal(posts, 5300, 'every group read to the Actor maximum');
 });
 
+test('the 20-credit TEST campaign ($2, providers 63% = $1.26) plans smaller runs and never exceeds its provider budget', async () => {
+  const { allocateCampaign } = await import('../billing/paidDiscoveryPolicy.ts');
+  const a = allocateCampaign(20, 10);
+  assert.equal(a.priceMicros, 2_000_000);
+  assert.equal(a.providerBudgetMicros, 1_260_000, '12.6 credits to providers');
+  const sources = [...Array.from({ length: 53 }, (_, i) => fbGroup(i, 'Tbilisi')), ...Array.from({ length: 12 }, (_, i) => tg(i))];
+  const plan = planOfferJobs({
+    search: { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: offerSearchLanguages('ka') },
+    networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK'], providerBudgetMicros: a.providerBudgetMicros, sources, actors: ACTORS,
+  });
+  assert.ok(plan.jobs.length > 0, 'a $2 test still searches');
+  assert.ok(plan.estimatedMicros <= a.providerBudgetMicros, `planned ${plan.estimatedMicros} ≤ 1,260,000`);
+  assert.equal(plan.jobs.reduce((n, j) => n + j.estimateMicros, 0), plan.estimatedMicros);
+  /* Same plan at $5 reads more: the small budget shrinks sources and sizes, nothing else. */
+  const five = planOfferJobs({
+    search: { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: offerSearchLanguages('ka') },
+    networks: ['FACEBOOK', 'TELEGRAM', 'TIKTOK'], providerBudgetMicros: allocateCampaign(50, 10).providerBudgetMicros, sources, actors: ACTORS,
+  });
+  assert.ok(plan.jobs.reduce((n, j) => n + j.size, 0) < five.jobs.reduce((n, j) => n + j.size, 0));
+});
+
 test('the group Actor gets a keyword ONLY when its `search` field is verified in the registry contract', () => {
   const groups = Array.from({ length: 5 }, (_, i) => fbGroup(i, 'Tbilisi'));
   const search = { transaction: 'SALE', propertyType: 'APARTMENT', city: 'Tbilisi', districts: [], languages: ['ka', 'en'] };

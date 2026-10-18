@@ -289,7 +289,13 @@ async function poll(db: any, job: any, run: any): Promise<OfferOutcome> {
     p_actor_run_id: ar.id, p_status: bookStatus, p_actual_micros: micros, p_cost_basis: basis, p_results_billed: billed,
     p_items_fetched: items.length, p_offers: offers, p_error: bookStatus === 'SUCCEEDED' ? null : `RUN_${status}: ${scrub(String(r.statusMessage ?? ''))}`,
   });
-  return out({ outcome: 'DONE', resultCount: offers, costUsd: micros != null ? micros / 1e6 : null, metadata: { offers, billed } });
+  /* Paid-for posts that yielded nothing: record the field NAMES the Actor returned (never
+     values), so an unverified output shape (Telegram, 2026-10-18: 1000 posts, 0 offers) can
+     be fixed from evidence instead of guessed. */
+  const shape = offers === 0 && items.length
+    ? { rawKeys: [...new Set(items.slice(0, 5).flatMap((i) => (i && typeof i === 'object' ? Object.keys(i as Record<string, unknown>) : [])))].slice(0, 60) }
+    : {};
+  return out({ outcome: 'DONE', resultCount: offers, costUsd: micros != null ? micros / 1e6 : null, metadata: { offers, billed, ...shape } });
 }
 
 /**

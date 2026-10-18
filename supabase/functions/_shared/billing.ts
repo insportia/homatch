@@ -171,6 +171,12 @@ export async function beginExecution(
      * charges actual usage and releases the rest.
      */
     budgetIsCeiling?: boolean;
+    /**
+     * A LOWER minimum viable budget for this one reservation, never a higher one
+     * (Find Property's temporary 20-credit TEST campaign, admins/testers only,
+     * decided by the caller). Reservation, settlement and release are unchanged.
+     */
+    minViableOverrideCredits?: number;
     metadata?: Record<string, unknown>;
   },
 ): Promise<ExecutionGrant> {
@@ -254,7 +260,10 @@ export async function beginExecution(
   // SyntaxError in Deno, not a shadow — the module would not load at all.
   const budgetRules = await productBudgetRules(sb, opts.productCode);
   const balance = n(ent?.wallet?.balance);
-  const minViable = budgetRules.minViableBudgetCredits;
+  const override = Number(opts.minViableOverrideCredits);
+  const minViable = Number.isFinite(override) && override > 0
+    ? Math.min(budgetRules.minViableBudgetCredits, override)
+    : budgetRules.minViableBudgetCredits;
 
   const authorized = opts.authorizedMaxCredits != null
     ? round2(Math.min(opts.authorizedMaxCredits, balance, opts.budgetIsCeiling ? Number.POSITIVE_INFINITY : estMax))

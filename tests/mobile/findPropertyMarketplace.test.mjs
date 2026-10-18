@@ -61,6 +61,43 @@ function haveDeps() {
 const skipReason = haveDeps();
 const opts = skipReason && !process.env.CI ? { skip: skipReason } : { timeout: 1_800_000 };
 
+/* Deep Search results fixture: the production request (Vake, 3 rooms / 2 bedrooms, 80–110 m²,
+   new build, $120–160k) and verdicts of each kind, exactly as find-property-run returns them. */
+const CAMPAIGN_CRITERIA = { transaction: 'SALE', city: 'Tbilisi', districts: ['ვაკე'], propertyType: 'APARTMENT', priceUsd: { min: 120000, max: 160000 },
+  areaSqm: { min: 80, max: 110 }, rooms: { min: 3, max: 3 }, bedrooms: { min: 2, max: 2 }, buildingStatuses: ['NEW_BUILD', 'UNDER_CONSTRUCTION'] };
+const ck = (key, state, actual = null) => ({ key, state, expected: null, actual });
+const CAMPAIGN_ITEMS = [
+  { id: 'r1', category: 'EXACT', rank: 1, rejectReasons: [], duplicates: 2, url: 'https://www.facebook.com/groups/1/posts/11/', network: 'FACEBOOK', title: null,
+    excerpt: 'იყიდება 3 ოთახიანი ბინა ვაკეში, ახალაშენებულ კორპუსში, 95 კვ.მ, 2 საძინებელი, 145 000$', priceUsd: 145000, price: { amount: 145000, currency: 'USD' },
+    areaSqm: 95, rooms: 3, bedrooms: 2, floor: 7, totalFloors: 14, propertyType: 'APARTMENT', city: 'tbilisi', district: 'vake', publishedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    images: [], duplicateUrls: [],
+    checks: [ck('transaction', 'MATCH', 'SALE'), ck('city', 'MATCH', 'tbilisi'), ck('district', 'MATCH', 'vake'), ck('propertyType', 'MATCH', 'APARTMENT'), ck('price', 'MATCH', '145000'),
+      ck('area', 'MATCH', '95 m²'), ck('rooms', 'MATCH', '3'), ck('bedrooms', 'MATCH', '2'), ck('buildingStatus', 'MATCH', 'NEW_BUILD'), ck('fresh', 'MATCH', '2026-10-16')] },
+  { id: 'r2', category: 'POTENTIAL', rank: 2, rejectReasons: [], duplicates: 0, url: 'https://t.me/sale_tbi/123', network: 'TELEGRAM', title: null,
+    excerpt: 'Продается квартира 90 м², 2 спальни, ул. Чавчавадзе. Цена по запросу.', priceUsd: null, price: null,
+    areaSqm: 90, rooms: null, bedrooms: 2, floor: null, totalFloors: null, propertyType: 'APARTMENT', city: 'tbilisi', district: null, publishedAt: new Date(Date.now() - 86400000).toISOString(),
+    images: [], duplicateUrls: [],
+    checks: [ck('transaction', 'MATCH', 'SALE'), ck('city', 'MATCH', 'tbilisi'), ck('district', 'UNVERIFIED'), ck('propertyType', 'MATCH', 'APARTMENT'), ck('price', 'UNVERIFIED'),
+      ck('area', 'MATCH', '90 m²'), ck('rooms', 'UNVERIFIED'), ck('bedrooms', 'MATCH', '2'), ck('buildingStatus', 'UNVERIFIED'), ck('fresh', 'MATCH', '2026-10-17')] },
+  { id: 'r3', category: 'ALTERNATIVE', rank: 3, rejectReasons: ['PRICE'], duplicates: 0, url: 'https://www.facebook.com/groups/2/posts/22/', network: 'FACEBOOK', title: null,
+    excerpt: 'იყიდება ბინა ვაკეში 100 კვ.მ, 2 საძინებელი, 172 000$', priceUsd: 172000, price: { amount: 172000, currency: 'USD' },
+    areaSqm: 100, rooms: null, bedrooms: 2, floor: null, totalFloors: null, propertyType: 'APARTMENT', city: 'tbilisi', district: 'vake', publishedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    images: [], duplicateUrls: [],
+    checks: [ck('district', 'MATCH', 'vake'), ck('price', 'FAIL', '172000'), ck('area', 'MATCH', '100 m²'), ck('bedrooms', 'MATCH', '2')] },
+];
+function campaignResultsFixture(state, body) {
+  const ended = Boolean(state.paidStop) || state.campaignEnded === true;
+  const view = String(body.view ?? 'MATCHES').toUpperCase();
+  const cats = view === 'EXACT' ? ['EXACT'] : view === 'POTENTIAL' ? ['POTENTIAL'] : view === 'ALTERNATIVE' ? ['ALTERNATIVE'] : ['EXACT', 'POTENTIAL'];
+  const items = CAMPAIGN_ITEMS.filter((i) => cats.includes(i.category));
+  return { success: true,
+    run: { id: 'run-1', status: ended ? 'COMPLETED' : 'SEARCHING', createdAt: new Date(Date.now() - 180000).toISOString(), completedAt: ended ? new Date().toISOString() : null,
+      searchId: '22222222-2222-4222-8222-222222222222', originalText: 'ვაკეში მინდა საყიდლად 2 საძინებლიანი, 3 ოთახიანი ბინა, 80 დან 110 მ² მდე, ახალაშენებულ ან მშენებარე კორპუსში. ბიუჯეტი $120,000 დან $160,000 მდე.', criteria: CAMPAIGN_CRITERIA },
+    outcome: ended ? { fetched: 2846, candidates: 600, unique: 371, duplicates: 229, exact: 1, potential: 1, alternative: 1, rejected: 368, rejectedBy: { AREA: 224, PRICE: 203, DISTRICT: 179 }, available: 2 } : null,
+    settlement: ended ? { status: 'SETTLED', reservedCredits: 50, chargedCredits: 12.5, releasedCredits: 37.5 } : { status: 'HELD', reservedCredits: 50, chargedCredits: null, releasedCredits: null },
+    view, sort: body.sort ?? 'BEST', page: 1, pageSize: 12, total: items.length, items };
+}
+
 test('V2: card gallery, durable dossier, scoped paid chat, insufficient credits and exact result Back state', opts, async (t) => {
   const { page, state } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE' });
   // Synthetic photos that really display: a gallery whose every photo failed has no arrows by design.
@@ -519,6 +556,9 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       }
       if (body.action === 'start') { state.paidStart = body; state.paidStarts = (state.paidStarts ?? 0) + 1; state.paidStarted = true; return r.fulfill(json({ success: true, async: true, runId: 'run-1', status: 'SEARCHING' }, 202)); }
       if (body.action === 'stop') { state.paidStop = true; return r.fulfill(json({ success: true, runId: body.runId })); }
+      if (body.action === 'test_option') return r.fulfill(json({ success: true, testOption: state.testOption ?? null }));
+      /* A campaign's own results (judged server-side): the funnel, the money, one page of verdicts. */
+      if (body.action === 'results') { (state.resultsCalls ??= []).push(body); return r.fulfill(json(campaignResultsFixture(state, body))); }
       return r.fulfill(json({ error: 'Unknown action' }, 400));
     }
     if (url.includes('/rest/v1/credit_accounts')) {
@@ -1119,9 +1159,13 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
     if (state.paidStart?.authorizedMaxCredits !== 50) failures.push(`${lang}: wrong budget`);
     const text = await deep.textContent();
     if (/\{\{?\w+\}?\}/.test(text)) failures.push(`${lang}: raw placeholder`);
-    /* The customer follows the process; which networks are read is never shown (owner, 2026-10-18). */
-    if (/facebook|instagram|telegram|tiktok|\bvk\b/i.test(text)) failures.push(`${lang}: a network is named`);
+    /* Source-by-source progress and the confirmed criteria stay in view (owner, 2026-10-18). */
     if (await deep.locator('[data-process-step]').count() !== 4) failures.push(`${lang}: process steps missing`);
+    if (await deep.locator('[data-source="FACEBOOK"]').getAttribute('data-source-state') !== 'searching') failures.push(`${lang}: Facebook not searching`);
+    if (await deep.locator('[data-source="TELEGRAM"]').getAttribute('data-source-state') !== 'done') failures.push(`${lang}: Telegram not done`);
+    /* Criteria and the hold arrive with the campaign's own read (a placeholder holds their place until then). */
+    await deep.locator('[data-campaign-criteria]').waitFor({ timeout: 15000 }).catch(() => failures.push(`${lang}: criteria not shown during the campaign`));
+    await deep.locator('[data-campaign-settlement="HELD"]').waitFor({ timeout: 15000 }).catch(() => failures.push(`${lang}: the hold is not shown as a hold`));
     /* Snake while the campaign runs, labelled exactly as the owner asked in Georgian. */
     const snake = deep.locator('[data-action="campaign-play-snake"]');
     if (!(await snake.isVisible())) failures.push(`${lang}: no Snake while the campaign runs`);
@@ -1140,16 +1184,21 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
       if (!(await deep.locator('[data-campaign-results-wait]').isVisible())) failures.push('no results-wait note while running');
       if (await deep.locator('[data-action="campaign-view-results"]').count()) failures.push('results offered while running');
       await deep.getByRole('button', { name: 'Stop campaign' }).click();
-      await deep.getByText('Returned to balance').waitFor({ timeout: 15000 });
+      await deep.locator('[data-campaign-settlement="SETTLED"]').waitFor({ timeout: 20000 });
       if (!(await deep.locator('[data-action="campaign-view-results"]').isVisible())) failures.push('no View results after the campaign ended');
       if (!state.paidStop) failures.push('stop not sent');
-      if (!(await deep.textContent()).includes('37.5 credits')) failures.push('released credits not shown');
-      /* Its results open in their own view: offers from public posts, never the portal list. */
+      const ended = (await deep.textContent()) ?? '';
+      if (!ended.includes('37.5 credits') || !ended.includes('12.5 credits')) failures.push('final charge / released credits not shown');
+      /* The headline is matching properties; raw volume is a collapsed detail. */
+      if (await deep.locator('[data-funnel-exact="1"]').count() !== 1 || await deep.locator('[data-funnel-potential="1"]').count() !== 1) failures.push('matches are not the headline');
+      if (await deep.locator('[data-funnel-details][open]').count()) failures.push('raw volume is expanded by default');
+      if (/600 offers/i.test(ended)) failures.push('raw offers are presented as results');
+      await shot(page, `${lang}-${width}-paid-ended`);
+      /* Its results open on the campaign's OWN page, never the portal list. */
       await deep.locator('[data-action="campaign-view-results"]').click();
-      await page.locator('[data-results-view="paid"]').waitFor({ timeout: 15000 });
-      const u = new URL(page.url());
-      if (u.searchParams.get('view') !== 'paid' || u.searchParams.get('fp_socialOnly') !== 'true') failures.push(`paid results URL: ${u.search}`);
-      if (await page.locator('[data-view-tab="paid"][aria-selected="true"]').count() !== 1) failures.push('paid results tab not selected');
+      await page.locator('[data-campaign-page]').waitFor({ timeout: 15000 });
+      if (new URL(page.url()).pathname !== '/find-property/campaign/run-1') failures.push(`campaign results URL: ${page.url()}`);
+      await page.locator('[data-campaign-results] [data-result]').first().waitFor({ timeout: 15000 });
       await shot(page, `${lang}-${width}-paid-results`);
     }
     await close();
@@ -1183,6 +1232,85 @@ test('Deep Search starts with ONE confirmation on its card: no second approval, 
     await page.reload();
     await deep.locator('[data-campaign-progress]').waitFor({ timeout: 30000 });
     assert.equal(state.paidStarts ?? 1, starts, `${lang}: reload started a second campaign`);
+    await close();
+  }
+});
+
+test('Deep Search results page: exact first, every requirement explained, alternatives only on request, money settled — six locales, RTL, phones', opts, async (t) => {
+  const failures = [];
+  for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [360, 'ru'], [390, 'tr'], [393, 'ar'], [393, 'he']]) {
+    const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
+    state.campaignEnded = true;
+    await page.goto(`${BASE}/find-property/campaign/run-1`);
+    await page.locator('[data-campaign-results] [data-result]').first().waitFor({ timeout: 30000 });
+    /* Default view: exact matches first, because there is one. */
+    if (await page.locator('[role="tab"][data-view="EXACT"][aria-selected="true"]').count() !== 1) failures.push(`${lang}: exact view not first`);
+    if (await page.locator('[data-result="EXACT"]').count() !== 1 || await page.locator('[data-result="POTENTIAL"]').count() !== 0) failures.push(`${lang}: exact view mixes categories`);
+    /* Criteria, funnel (matches as headline, raw volume collapsed) and the settled money. */
+    if (!(await page.locator('[data-campaign-criteria]').isVisible())) failures.push(`${lang}: criteria missing`);
+    if (await page.locator('[data-funnel-details][open]').count()) failures.push(`${lang}: raw volume expanded`);
+    if (await page.locator('[data-campaign-settlement="SETTLED"]').count() !== 1) failures.push(`${lang}: settlement missing`);
+    /* Every requirement explained on the card. */
+    const card = page.locator('[data-result="EXACT"]').first();
+    await card.locator('details summary').click();
+    if (await card.locator('[data-check][data-check-state="MATCH"]').count() < 8) failures.push(`${lang}: requirements not explained`);
+    if (!(await card.locator('a[data-action="open-original"]').getAttribute('href'))?.startsWith('https://')) failures.push(`${lang}: no original link`);
+    /* Potential: the unverified requirements are named, nothing invented. */
+    await page.locator('[role="tab"][data-view="POTENTIAL"]').click();
+    const pot = page.locator('[data-result="POTENTIAL"]').first();
+    await pot.waitFor({ timeout: 15000 });
+    await pot.locator('details summary').click();
+    if (await pot.locator('[data-check-state="UNVERIFIED"]').count() !== 4) failures.push(`${lang}: unverified requirements not listed`);
+    if (await page.locator('[data-result="ALTERNATIVE"]').count()) failures.push(`${lang}: alternatives shown without asking`);
+    /* Alternatives only when asked, labelled as not matches. */
+    await page.locator('[role="tab"][data-view="ALTERNATIVE"]').click();
+    await page.locator('[data-result="ALTERNATIVE"]').first().waitFor({ timeout: 15000 });
+    const text = (await page.textContent('body')) ?? '';
+    if (/\{\{?\w+\}?\}/.test(text)) failures.push(`${lang}: raw placeholder`);
+    if (/\bfpc_[a-z_]+\b/.test(text)) failures.push(`${lang}: raw i18n key`);
+    if (await overflow(page) > 1) failures.push(`${lang} ${width}: overflow ${await overflow(page)}px`);
+    if (['ar', 'he'].includes(lang) && (await page.evaluate(() => document.documentElement.getAttribute('dir'))) !== 'rtl') failures.push(`${lang}: not RTL`);
+    /* Views and pages replace history; the stable URL holds the view after a reload. */
+    await page.reload();
+    await page.locator('[data-result="ALTERNATIVE"]').first().waitFor({ timeout: 30000 });
+    await page.locator('[role="tab"][data-view="EXACT"]').click();
+    await page.locator('[data-result="EXACT"]').first().waitFor({ timeout: 15000 });
+    await shot(page, `${lang}-${width}-campaign-results`);
+    if (lang === 'en') {
+      /* Save works through the shared saved-listings store. */
+      await page.locator('[data-result="EXACT"] button[aria-pressed]').click();
+      await page.locator('[data-result="EXACT"] button[aria-pressed="true"]').waitFor({ timeout: 15000 });
+      if (!state.saved?.has('dc:r1')) failures.push('save not recorded');
+    }
+    await close();
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('the 20-credit TEST option appears only for an authorised account, labelled as a test', opts, async (t) => {
+  for (const allowed of [false, true]) {
+    const { page, state, close } = await boot(t, { width: 390, height: 844, lang: 'ka', timeline: ['COMPLETE'], paid: true });
+    state.testOption = allowed ? { credits: 20 } : null;
+    await toConfirm(page);
+    await page.locator('[data-action="mps-continue"]').click();
+    await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
+    await page.locator('[data-mode="DEEP"]').click();
+    /* The confirmed criteria are summarised next to the approval. */
+    await page.locator('[data-campaign-criteria]').waitFor({ timeout: 15000 });
+    if (allowed) {
+      await page.locator('[data-deep-test]').waitFor({ timeout: 15000 });
+      await page.locator('[data-deep-test]').click();
+      await page.locator('[data-deep-test-note]').waitFor();
+      await page.locator('[data-deep-consent] input').check();
+      await page.locator('[data-action="mps-start"]').click();
+      await page.locator('section[data-deep-panel] [data-campaign-progress]').waitFor({ timeout: 30000 });
+      assert.equal(state.paidStart?.authorizedMaxCredits, 20, 'the approved test amount');
+      await shot(page, 'ka-390-deep-test-option');
+    } else {
+      await page.waitForTimeout(800);
+      assert.equal(await page.locator('[data-deep-test]').count(), 0, 'no test option for other accounts');
+    }
+    assert.ok(await overflow(page) <= 1, 'overflow');
     await close();
   }
 });

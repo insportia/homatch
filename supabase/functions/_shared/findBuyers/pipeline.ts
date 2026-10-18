@@ -481,7 +481,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     for (const [k, group] of byKey) {
       const v = resolved.get(k) ? parseAiVerdict(resolved.get(k)) : null;
       for (const a of group) {
-        a.reading = applyAiVerdict(a.reading, v ? { ...v, model: resolved.get(k).model } as any : null);
+        a.reading = applyAiVerdict(a.reading, v ? { ...v, model: resolved.get(k).model } as any : null, a.item.text);
         a.aiKey = k;
         /* The author still decides it: a business-named author or one advertising in this read stays an intermediary. */
         const aKey = authorKey(a.item);

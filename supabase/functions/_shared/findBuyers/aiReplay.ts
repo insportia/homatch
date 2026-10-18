@@ -32,7 +32,7 @@ export async function advanceAiReplay(db: any): Promise<Record<string, unknown> 
   if (!req?.matchingJobId || req.status !== 'REQUESTED') return null;
   const { data: resRow } = await db.from('admin_settings').select('value').eq('key', RESULT_KEY).maybeSingle();
   const prev = resRow?.value?.matchingJobId === req.matchingJobId && resRow?.value?.version === AI_CLASSIFIER_VERSION ? resRow.value : null;
-  const prog: any = prev ?? { matchingJobId: req.matchingJobId, version: AI_CLASSIFIER_VERSION, startedAt: new Date().toISOString(), offset: 0, rows: [], ai: { calls: 0, failedBatches: 0, costMicros: 0, inputTokens: 0, outputTokens: 0 } };
+  const prog: any = prev ?? { matchingJobId: req.matchingJobId, version: AI_CLASSIFIER_VERSION, startedAt: new Date().toISOString(), offset: 0, rows: [], ai: { calls: 0, failedBatches: 0, missingRetried: 0, costMicros: 0, inputTokens: 0, outputTokens: 0 } };
 
   const { data: camp } = await db.from('find_buyers_campaigns').select('dna,finalized_at').eq('matching_job_id', req.matchingJobId).maybeSingle();
   if (!camp?.dna) return { error: 'CAMPAIGN_NOT_FOUND' };
@@ -56,7 +56,7 @@ export async function advanceAiReplay(db: any): Promise<Record<string, unknown> 
       keyPrefix: `ai:replay:${req.matchingJobId}:${prog.offset}:${Date.now()}`, operation: 'AI_REPLAY',
       metadata: { replayOf: req.matchingJobId, version: AI_CLASSIFIER_VERSION },
     }, cands);
-    for (const k of Object.keys(prog.ai)) prog.ai[k] += (stats as any)[k] ?? 0;
+    for (const k of Object.keys(stats)) prog.ai[k] = (prog.ai[k] ?? 0) + ((stats as any)[k] ?? 0);
     const endAt = Date.parse(camp.finalized_at ?? '') || Date.now();
     for (const c of cands) {
       const r = rows.find((x) => String(x.id) === c.id)!;
@@ -66,13 +66,13 @@ export async function advanceAiReplay(db: any): Promise<Record<string, unknown> 
       let rule = c.kind === 'COMMENT' ? classifyComment(c.text, parentRule ? { role: parentRule.role, similarity: Number(r.similarity) || 0 } : null) : classifyDemand(c.text, { kind: c.kind as any });
       rule = withAuthorEvidence(rule, { name: c.author });
       const v = verdicts.get(c.id) ?? null;
-      const after = withAuthorEvidence(applyAiVerdict(rule, v), { name: c.author });
+      const after = withAuthorEvidence(applyAiVerdict(rule, v, c.text), { name: c.author });
       const res = replayCategory(after, camp.dna, ageDays, c.text, c.kind as any);
       prog.rows.push({
         assessmentId: r.id, kind: c.kind, text: safeText(c.text, 160),
         before: { role: r.role, category: r.match_category },
-        ai: v ? { role: v.role, confidence: v.confidence, transaction: v.transaction, compatibility: v.compatibility, reason: v.reason, evidence: v.evidence } : null,
-        after: { role: after.role, category: res.category, resultType: res.resultType, viaBroker: buyerViaBroker(after), limitations: res.limitations },
+        ai: v ? { role: v.role, subject: v.subject, offersProperty: v.offersProperty, confidence: v.confidence, transaction: v.transaction, compatibility: v.compatibility, reason: v.reason, evidence: v.evidence } : null,
+        after: { role: after.role, gate: after.evidence.find((e: string) => e.startsWith('ai_conflict_') || e === 'ai_not_real_estate') ?? null, category: res.category, resultType: res.resultType, viaBroker: buyerViaBroker(after), limitations: res.limitations },
       });
     }
     prog.offset += rows.length;
@@ -90,6 +90,8 @@ export async function advanceAiReplay(db: any): Promise<Record<string, unknown> 
       sellersServicesIrrelevant: count((x: any) => ['SELLER_OR_LANDLORD', 'SERVICE_PROVIDER', 'IRRELEVANT'].includes(x.ai?.role)),
       uncertain: count((x: any) => x.ai?.role === 'UNCERTAIN' || (x.ai && x.ai.confidence < 0.6)),
       unverified: count((x: any) => !x.ai),
+      /* fb-ai-2: buyer/tenant verdicts the deterministic consistency gate kept out of the leads. */
+      gateBlocked: count((x: any) => !!x.after.gate),
     };
     prog.finishedAt = new Date().toISOString();
     prog.done = true;

@@ -28,7 +28,9 @@ function fakeModel(text) {
   if (/კლიენტები|ჩამიყარეთ/.test(text)) return { role: 'BROKER_COLLECTING_LISTINGS', confidence: 0.95, transaction: 'BUY', evidence: ['ჩამიყარეთ გასაყიდი ბინები'] };
   if (/خدمة|مهتمين/.test(text)) return { role: 'SERVICE_PROVIDER', confidence: 0.92, transaction: 'BUY', evidence: ['أقدم لكم خدمة متكاملة'] };
   if (/a client who wants/.test(text)) return { role: 'BROKER_WITH_CLIENT', confidence: 0.9, transaction: 'BUY', evidence: ['I have a client who wants to buy'] };
-  if (/ვყიდულობ|vyidulob/.test(text)) return { role: 'DIRECT_BUYER', confidence: 0.9, transaction: 'BUY', compatibility: 'COMPATIBLE', evidence: ['ვყიდულობ 3 ოთახიან ბინას'] };
+  if (/ვყიდულობ/.test(text)) return { role: 'DIRECT_BUYER', confidence: 0.9, transaction: 'BUY', compatibility: 'COMPATIBLE', evidence: ['ვყიდულობ 3 ოთახიან ბინას'] };
+  if (/vyidulob/.test(text)) return { role: 'DIRECT_BUYER', confidence: 0.9, transaction: 'BUY', compatibility: 'COMPATIBLE', evidence: ['vyidulob 3 otaxian binas'] };
+  if (/For rent|USDT|U\.S\.D\.T/i.test(text)) return { role: 'DIRECT_TENANT', confidence: 0.9, transaction: 'RENT', evidence: [] }; /* fb-ai-1's real mistakes */
   return { role: 'IRRELEVANT', confidence: 0.9, transaction: 'UNKNOWN' };
 }
 let calls = 0; let sentItems = 0; let mode = 'ok';
@@ -39,7 +41,7 @@ globalThis.fetch = async (_url, init) => {
   const user = JSON.parse(body.messages[1].content);
   assert.ok(user.property && user.property.family === 'APARTMENT', 'the Property DNA goes with every call');
   sentItems += user.items.length;
-  const items = user.items.map((it) => ({ id: it.id, compatibility: 'UNKNOWN', budget: null, location: null, contradictions: [], evidence: [], reason: 'test', ...fakeModel(it.text) }));
+  const items = user.items.map((it) => ({ id: it.id, subject: 'REAL_ESTATE', offers_property: false, compatibility: 'UNKNOWN', budget: null, location: null, contradictions: [], evidence: [], reason: 'test', ...fakeModel(it.text) }));
   return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items }) } }], usage: { prompt_tokens: 900, completion_tokens: 300 } }), { status: 200 });
 };
 
@@ -75,7 +77,7 @@ test('AI-first: the two 343cfc41 brokers are no leads; a broker with a client is
   assert.ok(out.qualified <= 2, 'only direct buyers can count as qualified');
   const a = m.tables.find_buyers_assessments.find((r) => r.intent_method === 'AI:BROKER_COLLECTING_LISTINGS');
   assert.ok(a, 'the assessment records the AI decision');
-  assert.equal(a.qualification.ai.version, 'fb-ai-1');
+  assert.equal(a.qualification.ai.version, 'fb-ai-2');
   assert.equal(a.qualification.ai.model, 'gpt-4o-mini');
   assert.ok(Array.isArray(a.qualification.ai.evidence) && a.qualification.ai.evidence.length > 0);
   assert.equal(calls, 1, 'five candidates, one batched call');
@@ -88,7 +90,7 @@ test('AI-first: an uncertain model answer is never shown', async () => {
   const prev = globalThis.fetch;
   globalThis.fetch = async (_u, init) => {
     const user = JSON.parse(JSON.parse(init.body).messages[1].content);
-    const items = user.items.map((it) => ({ id: it.id, role: 'DIRECT_BUYER', confidence: 0.4, transaction: 'BUY', compatibility: 'UNKNOWN', budget: null, location: null, contradictions: [], evidence: [], reason: 'unsure' }));
+    const items = user.items.map((it) => ({ id: it.id, subject: 'REAL_ESTATE', offers_property: false, role: 'DIRECT_BUYER', confidence: 0.4, transaction: 'BUY', compatibility: 'UNKNOWN', budget: null, location: null, contradictions: [], evidence: [], reason: 'unsure' }));
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items }) } }], usage: { prompt_tokens: 10, completion_tokens: 10 } }), { status: 200 });
   };
   await processItems(ctxFor(db), [post(11, BUYER)]);
@@ -113,4 +115,31 @@ test('AI-first: the same words in one read are classified once', async () => {
   const m = freshDb(); const db = m.db;
   await processItems(ctxFor(db), [post(31, BUYER, 'A'), post(32, BUYER, 'B'), post(33, BUYER, 'C')]);
   assert.equal(sentItems, 1);
+});
+
+test('fb-ai-2: a model mistake on a listing or a USDT trade never becomes a lead', async () => {
+  mode = 'ok';
+  const m = freshDb();
+  await processItems(ctxFor(m.db), [
+    post(41, '🏡 2-Bedroom Apartment For rent in Krtsanisi, Tbilisi · 900$ per month'),
+    post(42, 'Куплю U.S.D.T за наличные'),
+  ]);
+  assert.equal(m.tables.find_buyers_leads.length, 0);
+});
+
+test('fb-ai-2: items the model leaves out of its answer get one more call', async () => {
+  const m = freshDb();
+  const prev = globalThis.fetch;
+  let n = 0;
+  globalThis.fetch = async (_u, init) => {
+    n++;
+    const user = JSON.parse(JSON.parse(init.body).messages[1].content);
+    const answer = n === 1 ? user.items.slice(0, 1) : user.items; /* the first answer skips an item */
+    const items = answer.map((it) => ({ id: it.id, subject: 'REAL_ESTATE', offers_property: false, compatibility: 'UNKNOWN', budget: null, location: null, contradictions: [], reason: 't', ...fakeModel(it.text) }));
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items }) } }], usage: { prompt_tokens: 10, completion_tokens: 10 } }), { status: 200 });
+  };
+  await processItems(ctxFor(m.db), [post(51, BROKER_COLLECTING), post(52, BUYER)]);
+  globalThis.fetch = prev;
+  assert.equal(n, 2, 'one batch call + one call for the skipped item');
+  assert.ok(m.tables.find_buyers_leads.some((l) => (l.evidence?.[0]?.text ?? '').startsWith('ვყიდულობ')), 'the skipped buyer was classified');
 });

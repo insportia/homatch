@@ -60,6 +60,10 @@ select pg_temp.reset();
 select pg_temp.q((g % 7) + 1, 'r' || g, 1000 - g) from generate_series(1, 60) g;
 select pg_temp.expect(:'variant' || ': all 60 claimed once', (select count(distinct x)::text || '/' || count(*)::text from unnest(string_to_array(pg_temp.claim_order(true, 100), ' ')) x), '60/60');
 
+select pg_temp.expect(:'variant' || ': each run claimed once: attempts 1, claim/lease/start stamped as before',
+  (select (count(*) filter (where attempts <> 1 or claimed_at is null or lease_expires_at is null or started_at is null))::text
+     from public.discovery_marketplace_worker_runs), '0');
+
 -- 6. The global cap (admin_settings.marketplace_max_concurrent_runs) still holds.
 select pg_temp.reset(5);
 insert into public.admin_settings values ('marketplace_max_concurrent_runs', '2') on conflict (key) do update set value = excluded.value;

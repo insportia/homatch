@@ -218,6 +218,15 @@ async function outreachSend(req: Request): Promise<Response> {
 
     if (realEnabled) {
       const cap = await checkSpendCap(supabase, realProviderName);
+      if (cap.spend_unknown) {
+        // Spend could not be read (logged by checkSpendCap). Refused before
+        // any send is claimed, so nothing is half-done; launching again
+        // retries once the read succeeds.
+        return new Response(JSON.stringify({
+          blocked: true, reason: 'SPEND_UNKNOWN',
+          message: `${realProviderName} sending is paused: this month's provider spend could not be read, so the spend cap cannot be checked. Nothing was sent. Try again shortly.`,
+        }), { status: 423, headers: corsHeaders });
+      }
       if (!cap.allowed) {
         return new Response(JSON.stringify({
           blocked: true, reason: cap.global_blocked ? 'GLOBAL_SPEND_CAP' : 'PROVIDER_SPEND_CAP',

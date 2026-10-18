@@ -95,3 +95,19 @@ test('the aggregate migration groups exactly like the TypeScript and is service-
   assert.match(sql, /revoke all on function public\.provider_spend_totals_since\(timestamptz\) from public, anon, authenticated;/);
   assert.match(sql, /grant execute on function public\.provider_spend_totals_since\(timestamptz\) to service_role;/);
 });
+
+test('an unreadable spend total is a distinct, retryable refusal before anything is claimed or sent', () => {
+  const outreach = readFileSync(new URL('../../outreach-send/index.ts', import.meta.url), 'utf8');
+  const unknownAt = outreach.indexOf("reason: 'SPEND_UNKNOWN'");
+  assert.ok(unknownAt > 0);
+  assert.ok(unknownAt < outreach.indexOf('Eligible contacts, excluding ones already attempted'));
+  assert.ok(outreach.indexOf('if (cap.spend_unknown)') < outreach.indexOf('if (!cap.allowed)'));
+  const studio = readFileSync(new URL('../emailStudio.ts', import.meta.url), 'utf8');
+  assert.match(studio, /if \(!cap\.allowed\) return \{ ok: false, state: cap\.spend_unknown \? 'SPEND_UNKNOWN' : 'SPEND_CAP_REACHED' \};/);
+  // every Email Studio action asks the gate before it begins a send
+  const begin = studio.indexOf("if (begin !== 'OK')");
+  assert.ok(studio.lastIndexOf('if (!gate.ok) return json', begin) > 0 && studio.lastIndexOf('if (!gate.ok) return json', begin) < begin);
+  // the Email Studio page renders any unknown state as "temporarily unavailable"
+  const page = readFileSync(new URL('../../../../src/pages/EmailStudioPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /default: return 'es_state_unavailable';/);
+});

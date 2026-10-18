@@ -182,24 +182,91 @@ Rates sources:
 - The fair claim costs 30–55 ms per claim at a 10,000-run backlog [LOCAL].
 - The capacity limits in §4 are unchanged by this release except fairness and DB load.
 
-## 9. Release manifest and rollback
+## 9. Release manifest, deployment sequence, rollback, baseline comparison
 
-**Release plan**: REPO_FULL (`npm run homatch:release:plan`). Components: RAILWAY, VERIFY, BILLING, EDGE. The new SQL objects are owned by no component.
+**Release plan**: REPO_FULL (`npm run homatch:release:plan`). Components: RAILWAY, VERIFY, BILLING, EDGE. Owed functions: research-agent, spend-cap-check, outreach-send. Migrations: 3.
 
-| Piece | Deploy | Proof owed | Rollback |
-|---|---|---|---|
-| Worker (`official-worker/`) | Railway auto-deploy of `homatch-official-worker` on merge | deployment SUCCESS at the merge commit; `/health`; one Verify job end-to-end; a user JWT on `/research` → 401 | redeploy previous deployment `b5d45b88` |
-| research-agent, spend-cap-check, outreach-send | CI edge deploy | PROVEN_EXACT | redeploy the previous artifact |
-| `20261115090000` | migration runner (approved) | ledger row; grants | drop function + 2 indexes (in file header) |
-| `20261115100000` | migration runner | ledger row | drop function |
-| `20261115110000` | migration runner | ledger row; a free search completes | re-run the `20261010100000` function body (byte-identical to production today); drop index |
+**Deployment sequence** (each step only after the owner's approval; stop at the first failed proof):
 
-**Order**:
-1. Migrations, in order.
-2. Merge (edge + Railway auto-deploy).
-3. Re-check the §8 baseline.
+0. **Pre-flight**, read-only:
+   - re-run the baseline query below and save the output;
+   - confirm `claim_marketplace_worker_runs` md5 is still `2aa4d3035c73ab287426d65ebd7acf1f`;
+   - confirm no Verify job is mid-stage (`research_jobs` live statuses = 0, or note them).
+1. **Migrations**, through the approved runner, in order: `20261115090000_verify_sweep_indexes`, `20261115100000_provider_spend_totals`, `20261115110000_marketplace_fair_claim`.
+   - Proof: three ledger rows.
+   - `research_jobs_market_refresh_running` and `provider_spend_totals_since` are executable by `service_role` only.
+   - The two research_jobs indexes and the runs index exist.
+   - `claim_marketplace_worker_runs` keeps SECURITY DEFINER, `search_path=""` and service-role-only execute.
+   - Old edge code keeps working: it does not call the new functions.
+2. **Merge PR #253**:
+   - CI deploys research-agent, spend-cap-check and outreach-send. Proof: PROVEN_EXACT.
+   - Railway auto-deploys `homatch-official-worker`, because `official-worker/` changed. Proof: deployment SUCCESS at the merge commit and `/health` OK.
+   - Vercel redeploys the unchanged frontend. Proof: READY at the merge commit.
+3. **Smoke checks**, bounded, no paid runs:
+   - a worker call with a user JWT on `/research` → 401;
+   - with `WORKER_TOKEN` → unchanged;
+   - one free Find Property search completes;
+   - `pg_stat_statements` mean for the market-refresh read falls from ~51.7 ms;
+   - `homatch-verify-driver` keeps succeeding;
+   - research-agent logs show no `SKIPPED_NO_LEASE` / `ERROR_DEFERRED` bursts.
+4. **Baseline comparison**, the same query as step 0:
+   - counts may only grow;
+   - credit balance/reserved, ledger, payment and cost totals change only by real customer activity in the window;
+   - storage object counts and the R2 registry may only grow.
 
-Edge code tolerates the new functions being absent (PGRST202 fallbacks). Worker and edge changes are independent. **Every step is reversible; no step deletes data.**
+**Baseline query** (read-only; counts and sums only, no customer content):
+
+```sql
+select now(),
+ (select count(*) from research_jobs), (select count(*) from research_jobs where status='COMPLETE'),
+ (select count(*) from discovery_marketplace_searches), (select count(*) from discovery_marketplace_worker_runs),
+ (select count(*) from discovery_marketplace_listings),
+ (select count(*) from find_buyers_campaigns), (select count(*) from find_buyers_assessments), (select count(*) from find_buyers_actor_runs),
+ (select count(*) from matches), (select count(*) from matches where status::text='UNLOCKED'),
+ (select count(*) from deal_room_documents), (select count(*) from ds_projects), (select count(*) from ds_walkthroughs),
+ (select count(*) from credit_accounts), (select sum(balance) from credit_accounts), (select sum(reserved) from credit_accounts),
+ (select count(*) from credit_ledger), (select count(*) from usage_reservations), (select count(*) from payments),
+ (select count(*) from cost_events), (select round(sum(coalesce(cost_usd,0))::numeric,4) from cost_events),
+ (select count(*) from storage.objects), (select count(*) from storage.buckets), (select count(*) from storage_objects),
+ (select count(*) from cron.job), (select count(*) from service_controls);
+```
+
+**Rollback** (no step deletes data; each is independent):
+
+| Piece | Rollback |
+|---|---|
+| Worker | Railway: redeploy the previous deployment (`b5d45b88` @ `8218107c`) |
+| research-agent / spend-cap-check / outreach-send | CI `redeploy=<fn>` from the previous main commit; prove PROVEN_EXACT |
+| `20261115110000` | re-run the function body from `20261010100000_marketplace_search_foundation.sql` (same signature, byte-identical to production today); `drop index if exists public.discovery_marketplace_worker_runs_served_idx;` |
+| `20261115100000` | `drop function if exists public.provider_spend_totals_since(timestamptz);` (spend_cap.ts falls back to paging) |
+| `20261115090000` | `drop function if exists public.research_jobs_market_refresh_running(integer); drop index if exists public.research_jobs_market_refresh_running_idx; drop index if exists public.research_jobs_developer_ads_cache_idx;` (research-agent falls back to the PostgREST filter) |
+
+**Answers to the owner's pre-deployment questions (2026-10-18)**
+
+1. **Results, calculations and data preserved**:
+   - No report, ranking, matching, pricing, credit, wallet or storage code changed (diff §8).
+   - Each behaviour change only alters what happens on an error or under contention.
+2. **Budget-gate failures cannot strand a job permanently**:
+   - ERROR writes nothing, so the job stays the oldest in the drive sweep and is retried every 30 s (a transient error costs ≤30 s).
+   - If the error persists past the driver window (6 h from creation), the existing reaper marks the job FAILED with its evidence untouched. The budget sweep then closes it as SYSTEM_FAILED, which releases the whole reservation: the customer pays nothing.
+   - The reservation TTL is 12 h, longer than the 6 h window.
+   - Pinned by `budgetGateFailsClosed.test.mjs`.
+   - Cost of a persistent gate fault: one of the 6 drive slots per tick is spent re-trying that job.
+3. **Developer Ads cancellation**:
+   - Cancel never writes `result_json`; collected evidence and completed stages are kept (existing guard test).
+   - The aborted run's cost is booked once (`costRecorded`, under the advance lease) and priced by `verify_job_cost` like any non-OpenAI provider cost.
+   - `verify_billing_close('STOPPED')` charges what was incurred, capped by the authorisation, and releases the rest — identical to pause.
+   - Before, the Actor ran on unrecorded and HOMATCH carried that COGS (≤ $0.50, `maxChargeUsd`).
+   - The research-agent `cancel` action has **no frontend caller today**: the Verify page's Stop uses `pause`.
+4. **Spend-check failures**:
+   - They return a distinct reason: outreach-send `423 {blocked, reason:'SPEND_UNKNOWN'}`; Email Studio `state:'SPEND_UNKNOWN'`, shown as "temporarily unavailable".
+   - They are logged (`spend_cap` / `SPEND_UNKNOWN_REFUSED`).
+   - Both refuse before any send is claimed or written, so nothing is lost and a retry works.
+   - Outreach and Email Studio sending are OFF in production.
+5. **Free Find Property**: the claim's eligibility, locks, caps, lease and UPDATE/SET clause are byte-identical. Only the ORDER of queued runs changes, and each run's request, adapter, parsing and result processing are untouched.
+   - Coverage: every claimable run is still claimed exactly once (SQL proof 60/60).
+   - Quality: unchanged per run.
+   - Under contention, waiting is redistributed: a requester with many queued searches waits longer for their later ones, and others less. A run that reaches its deadline before being claimed is TIMED_OUT exactly as before. Today's median claim wait is 3–4 s [PROD], so no customer-visible effect is expected at current load.
 
 ## 10. Test results (branch head after merging main @ `d1f18bbb`)
 

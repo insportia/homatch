@@ -49,3 +49,37 @@ test('pause and cancel stop a running Actor through the same helper; cancel only
   assert.match(cancel, /if \(j\.result_json\?\._developerAds\?\.state === 'RUNNING'\) await stopDeveloperAdsUnderLease\(sb, j\);/);
   assert.ok(cancel.indexOf('stopDeveloperAdsUnderLease') < cancel.indexOf("status: 'CANCELLED'"));
 });
+
+/* ── Recovery: a deferred job is never stranded, and never charged for an outage ── */
+import { settlementOutcome } from '../pauseResume.ts';
+
+test('a deferred stage writes nothing, so the job stays first in line for the next drive tick', () => {
+  const hold = slice('async function holdForBudget(', "const p = j.result_json || {};");
+  const errorBranch = hold.slice(hold.indexOf("decision === 'ERROR'"), hold.indexOf("decision !== 'AWAIT'"));
+  assert.doesNotMatch(errorBranch, /update\(|rpc\(/);
+  const drive = slice('async function driveLiveJobs(', 'async function retireAbandonedJobs(');
+  assert.match(drive, /\.in\('status', DRIVE_LIVE_STATUSES\)/);
+  assert.match(drive, /\.order\('updated_at', \{ ascending: true \}\)/);
+  assert.match(drive, /await retireAbandonedJobs\(sb\);/);
+  assert.match(drive, /await settleVerifyBudgets\(sb\);/);
+});
+
+test('past the driver window it is retired FAILED with its evidence untouched, and its budget is released in full', () => {
+  const retire = slice('async function retireAbandonedJobs(', 'catch (e)');
+  assert.match(retire, /\.lt\('created_at', cutoff\)/);
+  assert.match(retire, /status: 'FAILED'/);
+  assert.doesNotMatch(retire, /result_json|evidence_bundle/);
+  assert.equal(settlementOutcome({ status: 'FAILED' }, { maxSynthesisAttempts: 4, synthesisGraceMs: 7_200_000 }), 'SYSTEM_FAILED');
+  const sql = readFileSync(new URL('../../../supabase/migrations/20261026100000_verify_credit_budget.sql', import.meta.url), 'utf8');
+  assert.match(sql, /when p_outcome = 'SYSTEM_FAILED' then 'RELEASED'/);
+});
+
+test('cancel prices the stopped Actor exactly like pause: its cost_events row is part of the job cost', () => {
+  const sql = readFileSync(new URL('../../../supabase/migrations/20261026100000_verify_credit_budget.sql', import.meta.url), 'utf8');
+  const cost = sql.slice(sql.indexOf('create or replace function public.verify_job_cost('), sql.indexOf('$$;', sql.indexOf('create or replace function public.verify_job_cost(')));
+  assert.match(cost, /from public\.cost_events ce\s+where ce\.job_id = p_job_id and ce\.provider::text <> 'OPENAI'/);
+  assert.match(ra, /operation_type: 'DEVELOPER_ADS_VERIFY'/);
+  const record = slice('async function recordDeveloperAdsCost(', 'catch (e)');
+  assert.match(record, /if \(p\.costRecorded\) return;/);
+  assert.match(record, /job_id: job\.id/);
+});

@@ -1,9 +1,22 @@
 # PROJECT STATE
 
-last_updated: 2026-10-16
+last_updated: 2026-10-18
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Find Buyers — universal keyword intelligence + qualification v9 (PR #265, 2026-10-18)
+
+- Subtypes (VILLA, COTTAGE, OFFICE, RETAIL, WAREHOUSE, INDUSTRIAL, AGRICULTURAL) are read from the property type or title in `propertyFamily.ts`. Each has its own search noun in six languages, and non-apartment fallbacks never use apartment words.
+- Qualification v9 (`qualify.ts` `subtypeFit`) compares a subtype the seeker STATED with the property's:
+  - a commercial conflict (office vs warehouse) → PROPERTY_TYPE_MISMATCH;
+  - a house/land difference → SUBTYPE_DIFFERS, never Strong;
+  - unstated → UNKNOWN;
+  - warehouse ≈ industrial.
+- Each lead signal records `foundBy {queries, matched}`.
+- No pricing, reservation, cap, provider-state or migration change.
+- FB_KEYWORD_SEARCH (`tropical_thunderstuck~facebook-post-search`) is still NOT registered, so its contract is unverified and it is SCHEMA_REQUIRED and refuses to run. Registration needs the authenticated Admin verify action. It cannot be done from a cloud session: there is no admin session or service role, and api.apify.com/apify.com are unreachable (proxy 403 / WebFetch DNS).
+- Lexicon gap (left as is, matching unchanged): the demand classifier does not read "вилла"/"дача" as real estate. The search phrases use "дом-виллу".
 
 ## Service Control Center EXPANSION — every manageable product (PR #240 + release fix #247, 2026-10-17) — MERGED, DEPLOYED, MIGRATION APPLIED
 

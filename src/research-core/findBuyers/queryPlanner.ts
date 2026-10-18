@@ -10,7 +10,7 @@
 // optional OpenAI enrichment (mergeModelQueries) may add native phrasings,
 // which are deduplicated and capped exactly like the templates.
 
-import { FAMILY_NOUN, propertyFamily } from './propertyFamily.ts';
+import { FAMILY_BUY, FAMILY_RENT, propertyFamily, propertyNoun } from './propertyFamily.ts';
 import { SEARCH_LANGUAGES, type SearchLanguage } from './languages.ts';
 import { placeNamesFor } from './places.ts';
 import type { PropertyDna } from './propertyDna.ts';
@@ -232,12 +232,18 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
     const place = districtNames.length ? (lang === 'ka' ? districtNames[districtNames.length - 1] : districtNames[0]) : city;
     /* Not an apartment: the family's own noun, not "ბინა" / "квартира" (2026-10-12). */
     const family = dna.family ?? propertyFamily(dna.propertyType);
-    const noun = family === 'APARTMENT' ? null : FAMILY_NOUN[family][lang];
+    const noun = family === 'APARTMENT' ? null : propertyNoun(family, dna.subtype, lang);
     const params = { city, place, type: noun ?? t.typeWord(dna.propertyType), beds: noun ?? t.beds(dna.bedrooms, dna.rooms) };
     for (const c of t.community) add(lang, 'community', 'COMMUNITY', c({ ...params, city: cityNames[0] }));
     const own = strategy && strategy.transaction === dna.transaction ? strategy.queries.filter((q) => q.language === lang) : [];
     for (const q of own) add(lang, 'demand', q.persona === 'INVESTOR' ? 'INVESTMENT' : q.persona === 'RELOCATING' ? 'RELOCATING' : dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', q.query);
-    if (!own.length) for (const [family, f] of dna.transaction === 'RENT' ? t.rent : t.sale) add(lang, 'demand', family, f(params));
+    /* No strategy phrase in this language. An apartment uses the language's own templates; any
+       other property the family templates with its own noun — the apartment templates' persona
+       lines ("ინვესტიცია ბინა", "переезжаю … квартира", "daire almak") never search for it. */
+    if (!own.length && noun) {
+      for (const f of (dna.transaction === 'RENT' ? FAMILY_RENT : FAMILY_BUY)[lang]) add(lang, 'demand', dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', f({ noun, place, city }));
+      add(lang, 'demand', 'TYPE_IN_PLACE', `${noun} ${place}`);
+    } else if (!own.length) for (const [family, f] of dna.transaction === 'RENT' ? t.rent : t.sale) add(lang, 'demand', family, f(params));
     add(lang, 'hashtag', 'HASHTAG', t.hashtag({ cityLatin, city: cityNames[0] }));
     for (const f of dna.transaction === 'RENT' ? LISTING[lang].rent : LISTING[lang].sale) add(lang, 'listing', 'LISTING', f(params));
   }

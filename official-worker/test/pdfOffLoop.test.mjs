@@ -31,17 +31,22 @@ test('threaded parse returns exactly what the in-process parser returns, both mo
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF', 'the caller keeps its buffer');
 });
 
-test('a 200-page parse does not hold the event loop: a 20 ms timer stays on time', async () => {
+test('200-page parses do not hold the event loop: a 20 ms timer stays on time', async () => {
   const pdf = makePdf(200);
   await off.parsePdfOffLoop(makePdf(12)); // threads up
   const late = []; let last = performance.now(); let on = true;
   const tick = () => { const n = performance.now(); late.push(n - last - 20); last = n; if (on) setTimeout(tick, 20); };
   setTimeout(tick, 20);
-  const r = await off.parsePdfOffLoop(pdf, 'pages');
+  /* Parse for at least 400 ms of wall time: a fast runner finishes one parse in ~100 ms. */
+  const started = performance.now(); let parses = 0;
+  while (performance.now() - started < 400) {
+    const r = await off.parsePdfOffLoop(pdf, 'pages');
+    assert.equal(r.numpages, 200);
+    parses++;
+  }
   on = false;
-  assert.equal(r.numpages, 200);
   late.sort((a, b) => a - b);
-  assert.ok(late.length >= 5, `timer kept running during the parse (${late.length} ticks)`);
+  assert.ok(late.length >= 10, `timer kept running during ${parses} parses (${late.length} ticks)`);
   assert.ok(late[late.length - 1] < 100, `worst timer lateness ${late[late.length - 1].toFixed(1)} ms`);
 });
 

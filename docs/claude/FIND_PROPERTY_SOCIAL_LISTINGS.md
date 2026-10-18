@@ -79,6 +79,66 @@ No network or site is named. A client-sent network list is ignored: Admin's `fin
 - `tests/sql/run-find-property-batched.sh` (applied twice);
 - the browser suite: the one-confirm flow, no network names, the paid view.
 
+## Discovery quality (2026-10-18, before the first paid test)
+
+Three gaps were checked against production evidence; apify.com is not reachable from the build environment.
+
+- **Facebook keyword field (`search`) is never sent.**
+  - It is listed in the group Actor's schema, but no production run has ever used it: all 141 Find Buyers runs had `query: null`. Its meaning (search inside the groups, or something else) is unverified.
+  - Each run now reads the groups' recent posts, 25 groups per run, once.
+  - `qualifyOffer` keeps only offers of the searched transaction and city, in all six languages. A separate keyword copy per language is no longer needed, so the same budget covers more groups.
+  - `maxItems` is a total cap across the run's groups. Proof: billed results never exceeded the requested limit in 141 runs, many of them over 4–5 groups.
+- **Instagram reads profile pages only** (`isInstagramProfileUrl`).
+  - The only registered "profile" is a hashtag page (`explore/tags/tbilisihousing`). It billed 1 item and returned 0 useful results in each of 7 production runs.
+  - Hashtag, post, reel and story pages are excluded. With no compatible profile, Instagram is reported unavailable (`NO_KNOWN_SOURCE`) and costs nothing.
+- **Community relevance** (`communityRelevance`):
+
+  | Level | Meaning |
+  |---|---|
+  | PROVEN | Has stored property offers (`supply_observations`, last 180 days, paged) |
+  | LIKELY | Handle or name says real estate (ka/ru/en/tr/ar/he terms) |
+  | UNRELATED | Casino, crypto, jobs, food, books, … |
+  | NEUTRAL | Nothing either way |
+
+  Rules applied:
+  - Telegram is read only when PROVEN or LIKELY. Facebook groups (registered as real-estate communities) are read unless UNRELATED.
+  - PROVEN communities go first, most offers first.
+  - A community whose name mentions only another city is skipped, for example a "Batumi" group filed under Tbilisi.
+
+  On production data (Tbilisi sale): 53 of 55 Facebook groups and 41 of 101 Telegram channels are eligible. 12 Telegram channels are UNRELATED and 41 have no evidence of relevance.
+
+### Reaching older listings (2026-10-18)
+
+**Evidence** (production, last 10 days, 89 group runs, 1664 stored posts):
+- `onlyPostsNewerThan` is honoured: 0 posts older than the floor.
+- The Actor returns posts newest-first and stops at the run's total `maxItems`. 24 of 89 runs hit the cap.
+- The average span returned per run is 2.0 days (max 27.5). Inside a capped batch, the busiest group takes most of the posts.
+
+So depth per group is set by posts per group, not by the date window. Find Property asks for 120 days (sale) or 45 days (rent).
+
+**What the planner does now** (verified mechanisms only):
+- **Breadth at small budgets:** 25 groups per run. At $5 that is about 34 posts per group over 50 groups.
+- **Depth when affordable:** the planner picks the fewest groups per run that the whole budget covers, down to 10. That reaches the Actor's per-group maximum (`max_results` 100), for example about 66 posts per group at $10 and 100 at $30.
+- **`search` is gated:** it is honoured only when the registry contract marks it verified (`input_contract.verifiedFields` contains `search`). Restoring keyword runs is then a reviewed registry change, not a code change.
+
+**Open: capabilities named in the schema but never exercised.**
+- Fields: `search`, `searchKeywordByYear`, `onlyPostsOlderThan` (time slicing), `resumeCursor` (continuation), `postsPerRequest`, `viewOption`.
+- To verify, either read the Actor's published input schema descriptions (apify.com, unreachable from the build environment), or run an owner-approved micro-probe: one group, `maxItems` 10–20, about $0.02–0.04 each.
+- Only a field proven by a real run is added to `verifiedFields`.
+
+**Next step after the first paid test: accumulate instead of re-buying.**
+- Every campaign stores its offers (`supply_observations`). Results could also serve stored offers from the same communities inside the age window, so older listings come from storage and paid runs read only the new posts.
+- This needs an owner decision on reuse across campaigns.
+
+### Instagram: plan to restore it
+- **Profiles:** register real Georgian real-estate profiles (agencies, developers) as `INSTAGRAM_PROFILE` sources. The verified profile Actor reads them unchanged, about $0.04 start fee plus $0.80 per 1000 posts.
+- **Hashtags / keywords:**
+  - Register a memo23 Instagram hashtag or search Actor in `find_buyers_actor_registry`, disabled.
+  - The owner verifies its pricing and input contract (Admin, free metadata read), then runs one micro-probe.
+  - Only then is it enabled and added to the planner as its own stage (`IG_HASHTAG_POSTS`), fed from `HASHTAGS` per city.
+  - The hashtag page currently registered as a "profile" is reclassified, never sent to the profile Actor.
+- **Until then** Instagram reports `NO_KNOWN_SOURCE` and costs nothing.
+
 ## Money (37% HOMATCH / 63% providers, unchanged)
 - **No token, no campaign.** `loadOfferSettings.configured` gates `enabled`. The preview says `PROVIDER_NOT_CONFIGURED`, and start is refused before `beginExecution` reserves anything.
 - **The customer pays for confirmed work only.** `find_property_customer_micros` (migration `20261110100000`) counts:

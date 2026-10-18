@@ -114,8 +114,11 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const flat = sorted || view !== 'all';
   const activeFilters = Object.keys(filters).filter((key) => !['sort', 'section', 'strongOnly', 'duplicatesOnly', 'socialOnly'].includes(key)).length;
   const card = (p: PropertyView) => <PropertyCard key={p.key} p={p} t={t} brief={search.brief} searchId={search.id} transaction={search.brief.transactionType?.value ?? null} onOpen={() => onOpen(p)} compareSelected={compare.includes(p.key)} onToggleCompare={() => onToggleCompare(p)} />;
-  const recommended = data && !flat ? data.items.filter((p) => isRecommended(assessProperty(p, search.brief))) : [];
-  const others = data && !flat ? data.items.filter((p) => !recommended.includes(p)) : [];
+  /* Every home found (owner, 2026-10-18): the ones that fit, then those outside the request. */
+  const outside = data && !flat ? data.items.filter((p) => p.group === 'OTHER') : [];
+  const fitting = data && !flat ? data.items.filter((p) => p.group !== 'OTHER') : [];
+  const recommended = fitting.filter((p) => isRecommended(assessProperty(p, search.brief)));
+  const others = fitting.filter((p) => !recommended.includes(p));
   const dupCount = data ? data.facets.duplicates + (data.facets.possibleDuplicates ?? 0) : 0;
   const viewCard = (p: PropertyView) => view === 'duplicates'
     ? <div key={p.key} className="space-y-2" data-duplicate-group={p.key}>{card(p)}<DuplicateListings p={p} t={t} open /></div>
@@ -124,11 +127,15 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const tab = (v: Exclude<View, 'duplicates'>, label: string, n: number | null, Icon: typeof Sparkles) => {
     const on = view === v;
     return (
+      /* Phones: icon + count above a full label (never truncated, owner 2026-10-18); wider: one row. */
       <button type="button" role="tab" aria-selected={on} onClick={() => openView(v)} data-view-tab={v}
-        className={`flex min-h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${on ? 'bg-[#0C1119] text-white shadow-sm' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
-        <Icon className={`h-4 w-4 shrink-0 ${on ? 'text-[hsl(var(--gold))]' : 'text-[hsl(var(--gold-ink))]'}`} aria-hidden="true" />
-        <span className="min-w-0 truncate">{label}</span>
-        {n !== null ? <span className={`shrink-0 rounded-full px-1.5 text-2xs tabular-nums ${on ? 'bg-white/15 text-[hsl(var(--gold))]' : 'bg-muted text-muted-foreground'}`}>{n}</span> : null}
+        className={`flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1 text-xs font-semibold leading-tight transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] sm:min-h-[44px] sm:flex-row sm:gap-1.5 sm:px-2 sm:py-0 sm:text-sm ${on ? 'bg-[#0C1119] text-white shadow-sm' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
+        <span className="flex items-center gap-1">
+          <Icon className={`h-4 w-4 shrink-0 ${on ? 'text-[hsl(var(--gold))]' : 'text-[hsl(var(--gold-ink))]'}`} aria-hidden="true" />
+          {n !== null ? <span className={`shrink-0 rounded-full px-1.5 text-2xs tabular-nums sm:hidden ${on ? 'bg-white/15 text-[hsl(var(--gold))]' : 'bg-muted text-muted-foreground'}`}>{n}</span> : null}
+        </span>
+        <span className="max-w-full text-center [overflow-wrap:anywhere]" data-view-label>{label}</span>
+        {n !== null ? <span className={`hidden shrink-0 rounded-full px-1.5 text-2xs tabular-nums sm:inline ${on ? 'bg-white/15 text-[hsl(var(--gold))]' : 'bg-muted text-muted-foreground'}`}>{n}</span> : null}
       </button>
     );
   };
@@ -151,7 +158,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
         </nav>
         <button type="button" onClick={() => setFiltersOpen((o) => !o)} aria-expanded={filtersOpen} aria-controls="fp-filters-panel" data-action="toggle-filters"
           aria-label={t('fpv_filters')} title={t('fpv_filters')}
-          className={`relative grid min-h-[44px] w-12 shrink-0 place-items-center rounded-2xl border shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${filtersOpen ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'border-border bg-card/95 text-foreground hover:border-[hsl(var(--gold-border))]'}`}>
+          className={`relative grid min-h-[44px] w-12 shrink-0 place-items-center self-stretch rounded-2xl border shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${filtersOpen ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'border-border bg-card/95 text-foreground hover:border-[hsl(var(--gold-border))]'}`}>
           {filtersOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />}
           {activeFilters && !filtersOpen ? <span className="absolute -end-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[hsl(var(--gold))] px-1 text-2xs font-bold text-[#0C1119]">{activeFilters}</span> : null}
         </button>
@@ -203,6 +210,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     {showItems && data && flat && data.total > 0 ? <section aria-labelledby="mps-g-SORTED" className="space-y-3" data-results-group={view === 'all' ? 'SORTED' : view}><h2 id="mps-g-SORTED" className={view !== 'all' ? 'sr-only' : 'font-display text-lg font-semibold sm:text-xl'}>{view === 'best' ? t('fpv_best_title') : view === 'duplicates' ? t('fpv_dups_title') : view === 'paid' ? t('fpv_paid_title') : t(`fpr_sort_${filters.sort}`)}</h2>{view === 'best' ? <p className="max-w-[75ch] text-sm text-muted-foreground">{t('fpv_best_body')}</p> : null}<div className="grid gap-4">{data.items.map(viewCard)}</div></section> : null}
     {showItems && recommended.length ? <section aria-labelledby="mps-g-REC" className="space-y-3" data-results-group="RECOMMENDED"><div><h2 id="mps-g-REC" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_rec_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_rec_body')}</p></div><div className="grid gap-4">{recommended.map(card)}</div></section> : null}
     {showItems && others.length ? <section aria-labelledby="mps-g-OTHER" className="space-y-3" data-results-group="OTHER"><div><h2 id="mps-g-OTHER" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_other_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_other_body')}</p></div><div className="grid gap-4">{others.map(card)}</div></section> : null}
+    {showItems && outside.length ? <section aria-labelledby="mps-g-OUTSIDE" className="space-y-3" data-results-group="OUTSIDE"><div><h2 id="mps-g-OUTSIDE" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_outside_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_outside_body')}</p></div><div className="grid gap-4">{outside.map(card)}</div></section> : null}
     {showItems && data && data.total > 0 ? <div className="space-y-3 border-t border-border pt-5"><p className="text-center text-xs text-muted-foreground" role="status">{t('fpr_page_status', { from: (data.page - 1) * data.pageSize + 1, to: Math.min(data.page * data.pageSize, data.total), total: data.total })}</p><nav aria-label={t('fpr_pagination')} className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr"><button type="button" disabled={data.page === 1} onClick={() => update({}, data.page - 1)} aria-label={t('fpr_previous')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>{pageNumbers(data.page, data.pages).map((p, i) => p === 'gap' ? <span key={`gap-${i}`} className="px-1 text-muted-foreground" aria-hidden="true">…</span> : <button type="button" key={p} aria-label={t('fpr_go_page', { n: p })} aria-current={p === data.page ? 'page' : undefined} onClick={() => update({}, p)} className={`h-11 min-w-11 rounded-xl border px-2 text-sm font-semibold ${p === data.page ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]' : 'border-border hover:bg-muted'}`}>{p}</button>)}<button type="button" disabled={data.page === data.pages} onClick={() => update({}, data.page + 1)} aria-label={t('fpr_next')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></nav></div> : null}
     {deepOffered && search.terminal && view === 'all' ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
   </div>;

@@ -439,9 +439,12 @@ test('price discrepancy needs two sources; local comparison needs enough compara
 
 test('ranking: hard criteria are hard, unknown is unverified, not cheapest-first, seller type cannot dominate', () => {
   const out = run();
-  const keys = out.properties.map((p) => p.key);
-  assert.ok(!keys.includes('source-c:c-saburtalo'), 'wrong district is excluded');
-  assert.ok(!keys.includes('source-c:c-too-high'), 'above the 10% ceiling is never shown');
+  const keys = out.properties.filter((p) => p.group !== 'OTHER').map((p) => p.key);
+  assert.ok(!keys.includes('source-c:c-saburtalo'), 'wrong district is never among the homes that fit');
+  assert.ok(!keys.includes('source-c:c-too-high'), 'above the 10% ceiling is never among the homes that fit');
+  const outside = new Map(out.properties.filter((p) => p.group === 'OTHER').map((p) => [p.key, p.mismatch]));
+  assert.deepEqual(outside.get('source-c:c-saburtalo'), ['DISTRICT'], 'browsable as outside the request, with why');
+  assert.ok(outside.get('source-c:c-too-high').includes('PRICE_ABOVE_CEILING'));
   const partial = out.properties.find((p) => p.key === 'source-c:c-partial');
   assert.deepEqual(partial.unverified.sort(), ['AREA', 'BUILDING_STATUS']);
   const best = out.properties.filter((p) => p.group === 'BEST');

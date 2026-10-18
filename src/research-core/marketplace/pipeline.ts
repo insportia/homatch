@@ -29,8 +29,9 @@ import { descriptionFingerprint } from './description-signals.ts';
 
 export const PIPELINE_VERSION = 'marketplace-pipeline-3';
 
-export type ResultGroup = 'BEST' | 'OWNER' | 'UPGRADE' | 'MORE';
-export const RESULT_GROUPS: readonly ResultGroup[] = ['BEST', 'OWNER', 'UPGRADE', 'MORE'];
+/** OTHER: found and valid, but outside the request (owner, 2026-10-18: every home found is browsable, the fits first). */
+export type ResultGroup = 'BEST' | 'OWNER' | 'UPGRADE' | 'MORE' | 'OTHER';
+export const RESULT_GROUPS: readonly ResultGroup[] = ['BEST', 'OWNER', 'UPGRADE', 'MORE', 'OTHER'];
 export const BEST_LIMIT = 6;
 export const OWNER_LIMIT = 6;
 /** A strong match: fits every hard constraint, in budget, mostly matches, observed recently. */
@@ -120,6 +121,8 @@ export interface ResultProperty {
   vsComparable: number | null;
   reasons: Array<{ code: ReasonCode; count?: number }>;
   unverified: string[];
+  /** Group OTHER only: what this home does not meet (hardFilter violations, then PRICE_<band>). */
+  mismatch?: string[];
   upgrade: (Gain & { band: 'UPGRADE_PREFERRED' | 'UPGRADE_EXTENDED' }) | null;
   /** Internal; served to Admin only. */
   internal: {
@@ -366,6 +369,8 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   const ownerKeys = new Set(owners.map(({ w }) => w.key));
   const more = normal.filter(({ w }) => !bestKeys.has(w.key) && !ownerKeys.has(w.key));
   const upgradeRows = upgrades.map((u) => ranked.find(({ w }) => w.key === u.key)!);
+  const excludedKeys = new Set(excluded.map((e) => e.key));
+  const outside = ranked.filter(({ w }) => excludedKeys.has(w.key)).sort(order);
 
   const properties: ResultProperty[] = [];
   const emit = (rows: typeof ranked, group: ResultGroup) => rows.forEach(({ w, r }, i) => {
@@ -394,7 +399,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       score: r.score,
       title: w.rep.title,
       description: w.rep.description?.replace(/<[^>]*>/g, ' ').trim() ?? null,
-      intelligence: { ...w.intelligence, strong: r.components.criteria >= STRONG_CRITERIA && w.filter.unverified.length === 0
+      intelligence: { ...w.intelligence, strong: group !== 'OTHER' && r.components.criteria >= STRONG_CRITERIA && w.filter.unverified.length === 0
         && w.filter.band === 'IN_BUDGET' && w.freshness !== 'STALE' && !w.intelligence.verificationNeeded && !socialOnly(w) },
       facts: w.facts,
       images: [...new Set([...w.rep.images, ...w.members.flatMap((m) => m.images)])].slice(0, 12),
@@ -431,6 +436,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       vsComparable: r.vsComparable,
       reasons: reasons.slice(0, 12),
       unverified: w.filter.unverified,
+      ...(group === 'OTHER' ? { mismatch: [...w.filter.violations, ...(w.filter.band !== 'IN_BUDGET' ? [`PRICE_${w.filter.band}`] : [])] } : {}),
       upgrade: u ? { ...u.gain, band: u.band } : null,
       internal: {
         components: r.components,
@@ -447,6 +453,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   emit(owners, 'OWNER');
   emit(upgradeRows, 'UPGRADE');
   emit(more, 'MORE');
+  emit(outside, 'OTHER');
 
   /* Deduplicated against the portals: a property known only from social posts that may be
      the same flat as a portal listing is not shown twice. It stays reachable from that
@@ -466,7 +473,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   let bestCount = 0;
   for (const p of overall) {
     const intel = p.intelligence!;
-    intel.section = p.group === 'UPGRADE' ? 'UPGRADE'
+    intel.section = p.group === 'OTHER' ? 'OTHER' : p.group === 'UPGRADE' ? 'UPGRADE'
       : p.identity?.status === 'CONFIRMED_DUPLICATE' ? 'DUPLICATES'
         : intel.strong && bestCount < BEST_LIMIT ? 'BEST' : 'CLOSE';
     if (intel.section === 'BEST') bestCount += 1;

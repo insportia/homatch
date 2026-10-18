@@ -1,4 +1,4 @@
-import { Pause, Play, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Pause, Play, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tickMs } from '@/lib/games/snake';
 import type { T } from './format';
@@ -7,7 +7,8 @@ import type { T } from './format';
  * Optional Snake while a search runs. NOTHING here touches the search: it is a
  * local toy in its own canvas, the search keeps going on the server, and the
  * page polls independently. Keys are captured only while the board has focus,
- * so arrow keys never scroll-jack the page; on touch, swipe on the board.
+ * so arrow keys never scroll-jack the page; on touch, swipe on the board or use the
+ * on-screen arrows under it (owner, 2026-10-18).
  */
 const CELLS = 18;
 type Dir = 'U' | 'D' | 'L' | 'R';
@@ -172,6 +173,17 @@ export function SnakeGame({ t, autoFocus = false }: { t: T; autoFocus?: boolean 
             <p className="text-sm font-medium text-white">{over ? t('mps_snake_over', { n: score }) : t('mps_snake_hint')}</p>
           </div>
         )}
+      </div>
+      {/* On-screen arrows: a tap turns (and starts) the snake. Always left-to-right, like the board. */}
+      <div className="mx-auto grid w-fit grid-cols-3 gap-2" dir="ltr" data-snake-pad>
+        {([['U', ChevronUp, 'mps_snake_up', 'col-start-2'], ['L', ChevronLeft, 'mps_snake_left', 'col-start-1 row-start-2'],
+          ['D', ChevronDown, 'mps_snake_down', 'col-start-2 row-start-2'], ['R', ChevronRight, 'mps_snake_right', 'col-start-3 row-start-2']] as const).map(([d, Icon, label, place]) => (
+          <button key={d} type="button" data-snake-dir={d} aria-label={t(label)}
+            onClick={() => { if (over) reset(); turn(d); if (!running) setRunning(true); }}
+            className={`${place} grid h-[52px] w-[52px] place-items-center rounded-xl border border-border bg-card text-foreground shadow-sm active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]`}>
+            <Icon className="h-6 w-6" aria-hidden="true" />
+          </button>
+        ))}
       </div>
     </div>
   );

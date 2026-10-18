@@ -40,6 +40,7 @@ export function startVerifyQueue(deps: {
     gateway,
     workerId,
     lanes: { HTTP: num('VERIFY_QUEUE_HTTP_SLOTS', 12, 64), BROWSER: num('VERIFY_QUEUE_BROWSER_SLOTS', 3, 16) },
+    taskDeadlineMs: Math.max(60, num('VERIFY_TASK_DEADLINE_SECONDS', 1800, 3600)) * 1000,
     executor: createVerifyExecutor({ orchestrator: deps.orchestrator, launchBrowser: deps.launchJobBrowser, closeBrowser: deps.closeJobBrowser }),
     log: (event, data) => console.log(JSON.stringify({ level: 'info', scope: 'verify_queue', event, ...data })),
   });

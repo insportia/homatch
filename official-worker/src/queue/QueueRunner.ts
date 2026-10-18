@@ -37,6 +37,14 @@ export interface RunnerOptions {
   idleMaxMs?: number;
   /** Floor for the heartbeat interval (tests lower it). */
   heartbeatMinMs?: number;
+  /**
+   * Hard ceiling on one attempt. The heartbeat keeps a lease alive for as long as the
+   * executor runs, so a wedged page (no per-step deadline) could hold a slot forever.
+   * Past this the attempt is aborted, reported as a retryable failure (backoff, then DEAD
+   * after max attempts, as for any failure) and its slot is freed. Set well above every
+   * observed attempt (production 2026-10-18: browser ≤ 7 min, HTTP ≤ 24 min incl. retries).
+   */
+  taskDeadlineMs?: number;
   log?: (event: string, data?: Record<string, unknown>) => void;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -65,10 +73,10 @@ export class QueueRunner {
   private stopping = false;
   private loops: Promise<void>[] = [];
   private wake = new Set<() => void>();
-  readonly counters = { claimed: 0, completed: 0, failed: 0, delegated: 0, lost: 0, released: 0, errors: 0 };
+  readonly counters = { claimed: 0, completed: 0, failed: 0, delegated: 0, lost: 0, released: 0, errors: 0, deadlines: 0 };
 
   constructor(o: RunnerOptions) {
-    this.o = { idleMinMs: 1_000, idleMaxMs: 15_000, heartbeatMinMs: 5_000, ...o } as any;
+    this.o = { idleMinMs: 1_000, idleMaxMs: 15_000, heartbeatMinMs: 5_000, taskDeadlineMs: 30 * 60_000, ...o } as any;
     this.sleep = o.sleep ?? defaultSleep;
   }
 
@@ -164,15 +172,31 @@ export class QueueRunner {
     // from execution time; research-agent never forwards it to a customer.
     const execStartedAt = new Date();
     let outcome: TaskOutcome;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      outcome = await this.o.executor(task, { signal: controller.signal, gateway: this.o.gateway, workerId: this.o.workerId });
+      const overdue = new Promise<never>((_, reject) => {
+        deadline = setTimeout(() => {
+          controller.abort(new Error('TASK_DEADLINE'));
+          reject(new Error('TASK_DEADLINE'));
+        }, this.o.taskDeadlineMs);
+        (deadline as any).unref?.();
+      });
+      outcome = await Promise.race([
+        this.o.executor(task, { signal: controller.signal, gateway: this.o.gateway, workerId: this.o.workerId }),
+        overdue,
+      ]);
     } catch (e) {
       const reason = String((controller.signal.reason as Error)?.message ?? '');
+      if (reason === 'TASK_DEADLINE') {
+        this.counters.deadlines++;
+        this.log('queue_task_deadline', { task: task.id, source: task.source, lane: task.lane, ms: this.o.taskDeadlineMs });
+      }
       outcome = reason === 'CANCELLED'
         ? { type: 'fail', error: 'CANCELLED', retryable: false }
         : { type: 'fail', error: String((e as Error)?.message ?? e).slice(0, 500), retryable: true };
     } finally {
       clearInterval(beat);
+      clearTimeout(deadline);
     }
 
     // Fencing: a task whose lease was recovered elsewhere writes nothing.

@@ -308,6 +308,8 @@ export class GoogleSpeechStream {
   private idleTimer: NodeJS.Timeout | null = null;
   private closed = false;
   private restarting = false;
+  /** Times of failure-driven restarts (not the scheduled swap) inside the current window. */
+  private failureRestarts: number[] = [];
   /** Set once the speaker has stopped: no more audio, but the final still matters. */
   private finishing = false;
   private pending: Uint8Array[] = [];
@@ -660,17 +662,33 @@ export class GoogleSpeechStream {
     this.restartTimer = setTimeout(() => this.restart('scheduled'), STREAM_RESTART_MS);
   }
 
-  private restart(_why: string): void {
+  private restart(why: string): void {
     if (this.closed || this.restarting) return;
+    /* The scheduled swap is routine. A failure-driven restart is bounded: during a Google
+       outage every live session would otherwise reopen in a hot loop (a retry storm that
+       also burns the worker's CPU next to Verify). The first one stays immediate. */
+    let delay = 0;
+    if (why !== 'scheduled') {
+      const now = Date.now();
+      this.failureRestarts = this.failureRestarts.filter((t) => now - t < RESTART_FAILURE_WINDOW_MS);
+      if (this.failureRestarts.length >= MAX_FAILURE_RESTARTS) {
+        this.events.onUnavailable('RECOGNISER_UNSTABLE');
+        this.close();
+        return;
+      }
+      delay = restartBackoffMs(this.failureRestarts.length);
+      this.failureRestarts.push(now);
+    }
     this.restarting = true;
     this.end();
-    // Immediate: a gap here is a gap in somebody's sentence.
-    setImmediate(() => {
+    // Immediate (first failure, or the scheduled swap): a gap here is a gap in somebody's sentence.
+    const reopen = () => {
       if (this.closed) return;
       this.restarting = false;
       this.open();
       this.events.onRestart();
-    });
+    };
+    if (delay > 0) setTimeout(reopen, delay); else setImmediate(reopen);
   }
 
   private end(): void {
@@ -705,6 +723,14 @@ export class GoogleSpeechStream {
  * Never the provider's own message: it can contain the project and the
  * recogniser path, and this string is on its way to a browser.
  */
+/** Failure-driven restarts allowed inside RESTART_FAILURE_WINDOW_MS before the session ends. */
+export const MAX_FAILURE_RESTARTS = 5;
+export const RESTART_FAILURE_WINDOW_MS = 30_000;
+/** 0 (immediate), 250, 500, 1000, 2000 ms. */
+export function restartBackoffMs(priorFailures: number): number {
+  return priorFailures <= 0 ? 0 : Math.min(2_000, 250 * 2 ** (priorFailures - 1));
+}
+
 function recogniserReason(code: number): string {
   switch (code) {
     case 7: return 'PERMISSION_DENIED';

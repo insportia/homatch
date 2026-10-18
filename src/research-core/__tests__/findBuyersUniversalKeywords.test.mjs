@@ -74,3 +74,54 @@ test('apartments are unchanged: still apartment seekers, still capped per langua
   assert.ok(phrases.length > 0 && phrases.length <= 3 * 3 + 2 * 3);
   for (const { query } of phrases) assert.equal(classifyDemand(query).role, 'BUY_SEEKER', query);
 });
+
+/* ── qualification v9: the subtype a seeker states ─────────────────────── */
+import { qualify, subtypeFit, QUALIFICATION_VERSION } from '../findBuyers/qualify.ts';
+const ctx = { ageDays: 2, duplicate: false };
+const prop = (tx, type, title) => buildPropertyDna({ transactionType: tx, propertyType: type, city: 'Tbilisi', district: 'Vake', totalPrice: 2000, currency: 'USD', area: 120, title });
+
+test('v9: an office tenant is not a warehouse tenant; a warehouse one is', () => {
+  assert.ok(QUALIFICATION_VERSION >= 9);
+  const wh = prop('RENT', 'COMMERCIAL', 'საწყობი warehouse');
+  const office = classifyDemand('ვეძებ ოფისს ქირით ვაკეში');
+  assert.equal(subtypeFit(office, wh), 'CONFLICT');
+  const q = qualify(office, wh, ctx);
+  assert.equal(q.category, 'REJECTED');
+  assert.ok(q.reasons.includes('PROPERTY_TYPE_MISMATCH'));
+  const store = classifyDemand('сниму склад в Ваке');
+  assert.equal(subtypeFit(store, wh), 'MATCH');
+  assert.notEqual(qualify(store, wh, ctx).category, 'REJECTED');
+});
+
+test('v9: unstated subtype stays unknown — never a mismatch, never a confirmation', () => {
+  const office = prop('RENT', 'OFFICE', null);
+  const generic = classifyDemand('ვეძებ კომერციულ ფართს ქირით ვაკეში');
+  assert.equal(subtypeFit(generic, office), 'UNKNOWN');
+  assert.ok(!qualify(generic, office, ctx).reasons.includes('PROPERTY_TYPE_MISMATCH'));
+  const genericProp = prop('RENT', 'COMMERCIAL', null);
+  assert.equal(subtypeFit(classifyDemand('ищу офис в аренду Ваке'), genericProp), 'UNKNOWN');
+});
+
+test('v9: a house/land subtype difference is kept but never Strong', () => {
+  const villa = prop('SALE', 'VILLA', null);
+  const r = classifyDemand('куплю коттедж в Ваке до 2500$');
+  assert.equal(subtypeFit(r, villa), 'CONFLICT');
+  const q = qualify(r, villa, ctx);
+  assert.notEqual(q.category, 'STRONG');
+  if (q.category !== 'REJECTED') assert.ok(q.limitations.includes('SUBTYPE_DIFFERS'));
+  assert.ok(!q.reasons.includes('PROPERTY_TYPE_MISMATCH'));
+});
+
+test('v9: a seeker naming several subtypes matches if one is the property\'s', () => {
+  const office = prop('RENT', 'OFFICE', null);
+  assert.equal(subtypeFit(classifyDemand('looking to rent an office or shop in Vake'), office), 'MATCH');
+});
+
+/* ── provenance: which phrase a lead answers ───────────────────────────── */
+import { queriesMatchingText } from '../findBuyers/leadScore.ts';
+test('provenance: the phrases a post answers are recorded, never invented', () => {
+  const qs = ['looking to rent an office in Vake', 'сниму склад Сабуртало', 'ვეძებ საწყობს ქირით საბურთალოზე'];
+  assert.deepEqual(queriesMatchingText(qs, 'Hi all, I need to rent an office in Vake, ~100 sqm'), ['looking to rent an office in Vake']);
+  assert.deepEqual(queriesMatchingText(qs, 'Сниму склад на Сабуртало, 300 м2'), ['сниму склад Сабуртало']);
+  assert.deepEqual(queriesMatchingText(qs, 'selling my car'), []);
+});

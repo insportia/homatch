@@ -30,6 +30,9 @@ export interface LeadSignal {
   language: string | null;
   publishedAt: string | null;
   explanation: string;
+  /** The search phrases of the run that found it, and those whose words the text itself
+   *  carries (keyword / post search only; absent elsewhere and on older leads). */
+  foundBy?: { queries: string[]; matched: string[] } | null;
   /* Find Buyers 3.0 — the post this comment was written under, as the source reported it.
      Absent on leads stored before 2026-10-15; never inferred. */
   /** Total comments the platform reported for the parent post (null = not reported). */
@@ -87,3 +90,15 @@ export function scoreLead(signals: LeadSignal[]): ScoredLead | null {
 }
 
 export function intentScoreOf(c: IntentClass): number { return INTENT_SCORE[c]; }
+
+/** Which of a run's search phrases this text actually answers: every content word
+ *  (3+ letters, the verb prefix ignored) of a phrase appears in the text, by stem. */
+export function queriesMatchingText(queries: readonly string[], text: string): string[] {
+  const t = text.normalize('NFKC').toLowerCase();
+  const words = (q: string) => q.normalize('NFKC').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
+  const SKIP = /^(looking|want|need|buy|rent|searching|ищу|хочу|куплю|сниму|купить|снять|аренду|ვეძებ|მინდა|ვიყიდი|ვყიდულობ|ვიქირავებ|ვქირაობ|მჭირდება|the|for|and|أبحث|أريد|للشراء|للإيجار|شراء|מחפש|רוצה|לקנות|לשכור|almak|istiyorum|kiralık|satın|arıyorum)$/u;
+  return queries.filter((q) => {
+    const ws = words(q).filter((w) => !SKIP.test(w));
+    return ws.length > 0 && ws.every((w) => t.includes(w.slice(0, Math.max(3, Math.ceil(w.length * 0.7)))));
+  });
+}

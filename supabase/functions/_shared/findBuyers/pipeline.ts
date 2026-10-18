@@ -20,7 +20,7 @@ import {
   type IntentContext, type IntentVerdict,
 } from '../../../../src/research-core/findBuyers/intent.ts';
 import { personKey, contentFingerprint } from '../../../../src/research-core/findBuyers/identity.ts';
-import { scoreLead, type LeadSignal } from '../../../../src/research-core/findBuyers/leadScore.ts';
+import { scoreLead, queriesMatchingText, type LeadSignal } from '../../../../src/research-core/findBuyers/leadScore.ts';
 import { detectLanguage } from '../../../../src/research-core/findBuyers/languages.ts';
 import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuyers/explain.ts';
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
@@ -126,6 +126,8 @@ export interface PipelineCtx {
   /** The items ARE stored rows of another collector (native Telegram): their external ids are
    *  used verbatim (no m23: prefix) and, with `reusing`, nothing is upserted or re-written. */
   verbatimIds?: boolean;
+  /** The search phrases of a keyword / post-search run (provenance on each lead). */
+  searchQueries?: string[] | null;
 }
 
 export interface PipelineResult {
@@ -734,6 +736,7 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
        parent post's publication date, never on the time it was observed. */
     language: a.language, publishedAt: a.item.publishedAt ?? (a.item.kind === 'COMMENT' ? a.parent?.publishedAt ?? null : null),
     explanation: JSON.stringify(a.why),
+    ...(ctx.searchQueries?.length ? { foundBy: { queries: ctx.searchQueries, matched: queriesMatchingText(ctx.searchQueries, a.item.text ?? '') } } : {}),
     ...(a.item.kind === 'COMMENT' && a.parent ? {
       parentCommentCount: a.parent.commentCount ?? null,
       parentAnalyzed: a.parentAnalyzed ?? null,

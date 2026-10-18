@@ -342,6 +342,8 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
          row caps an expansion at the Actor's own maximum (followUpRows). */
       commentProbe: parseSampling(settings.sampling).probe,
+      searchQueries: Array.isArray(meta.queries) ? (meta.queries as unknown[]).map(String).filter(Boolean).slice(0, 10)
+        : typeof meta.query === 'string' && meta.query ? [meta.query] : null,
     }, slice.items);
     perSource.push({ sourceId: sliceSource, items: slice.items.length, qualified: r1.qualified, strong: r1.strong });
     result = result ? mergeResults(result, r1) : r1;

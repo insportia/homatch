@@ -40,8 +40,9 @@ export const FAMILY_NOUN: Record<PropertyFamily, Record<'ka' | 'ru' | 'en' | 'ar
 /*
  * PROPERTY SUBTYPE (owner, 2026-10-18: "every property type, not just apartments"). Within a
  * family, people ask for the specific thing — a villa, an office, a shop, a warehouse, farmland
- * — so search phrases name it. The subtype only changes the WORDS searched; qualification and
- * matching keep comparing families (a warehouse seeker is a COMMERCIAL seeker), unchanged.
+ * — so search phrases name it. Matching compares families; qualification v9 also compares a
+ * subtype the seeker STATED (statedSubtypes) with the property's: a commercial conflict (office
+ * vs warehouse) is a type mismatch, a house/land one only keeps the lead from Strong.
  * Read from the stored type (VILLA, OFFICE …) or, for the generic types, the listing title,
  * the same way parking is. Unknown → null → the family noun. Extend here, nowhere else.
  */
@@ -56,6 +57,13 @@ const SUBTYPE_WORDS: ReadonlyArray<[PropertySubtype, PropertyFamily, RegExp]> = 
   ['COTTAGE', 'HOUSE', /აგარაკ|дача|дачу|коттедж|cottage|yazlık|كوخ|קוטג/iu],
   ['VILLA', 'HOUSE', /ვილა|вилл|(?<![\p{L}])villa|فيلا|וילה/iu],
 ];
+
+/** Every subtype a text names within a family (a demand can name "office or shop"). */
+export function statedSubtypes(family: PropertyFamily | null, text: string | null | undefined): PropertySubtype[] {
+  const t = String(text ?? '');
+  if (!family || !t) return [];
+  return SUBTYPE_WORDS.filter(([, fam, re]) => fam === family && re.test(t)).map(([sub]) => sub);
+}
 
 export function propertySubtype(propertyType: string | null | undefined, title?: string | null): PropertySubtype | null {
   const t = String(propertyType ?? '').toUpperCase();

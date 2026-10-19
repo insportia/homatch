@@ -524,6 +524,7 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
         return r.fulfill(json({ error: 'SEARCH_ACTIVE' }, 409));
       }
       if (body.action === 'browse') {
+        if (state.browseDelayMs) await new Promise((done) => setTimeout(done, state.browseDelayMs));
         if (state.browseFailure) return r.fulfill(json({ error: 'REQUEST_FAILED' }, 503));
         if (body.revision && body.revision !== state.revision) return r.fulfill(json({ error: 'RESULTS_CHANGED' }, 409));
         const page = browseResults(empty ? [] : output.properties.map(publicView), body.filters, body.page ?? 1);
@@ -1161,6 +1162,43 @@ test('results (owner, 2026-10-18): every home found is shown, outside-the-reques
     if (await overflow(page) > 1) failures.push(`${lang}-${width}: horizontal overflow`);
     if (lang === 'he' && await page.evaluate(() => document.documentElement.dir) !== 'rtl') failures.push('he: not RTL');
     await shot(page, `${lang}-${width}-all-results`);
+    await close();
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('results (owner, 2026-10-18): a view tab pressed deep in the list keeps the reader at the list, never thrown back to the header while it loads (ka 390, he 390, en 1440)', opts, async (t) => {
+  const failures = [];
+  for (const [lang, width] of [['ka', 390], ['he', 390], ['en', 1440]]) {
+    const { page, state, close } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, timeline: ['COMPLETE'] });
+    await toConfirm(page);
+    await startFree(page);
+    await viewResults(page);
+    await page.locator('[data-results-group] article').first().waitFor({ timeout: 30000 });
+    await page.evaluate(() => window.scrollTo(0, document.querySelector('[data-results-group="OUTSIDE"]').getBoundingClientRect().top + window.scrollY));
+    await page.waitForTimeout(200);
+    state.browseDelayMs = 700;
+    /* While the next view loads and after it arrives, the results header stays above the viewport. */
+    const watch = page.evaluate(() => new Promise((done) => {
+      const heading = document.querySelector('[data-results-header]');
+      let worst = -Infinity; const t0 = performance.now();
+      const appBar = document.querySelector('header')?.getBoundingClientRect().bottom ?? 0;
+      const tick = () => { const r = heading?.getBoundingClientRect(); if (r) worst = Math.max(worst, r.bottom - appBar); if (performance.now() - t0 < 1600) requestAnimationFrame(tick); else done({ worst, found: !!heading }); };
+      tick();
+    }));
+    /* As a person taps it: wherever the stuck view switch is on screen, nothing may cover it. */
+    const tabBox = await page.locator('[data-view-tab="best"]').boundingBox();
+    const hit = await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); return el?.closest('[data-view-tab="best"]') ? null : (el?.outerHTML ?? 'nothing').slice(0, 160); }, [tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2]);
+    if (hit) failures.push(`${lang}-${width}: the stuck view switch is covered by ${hit}`);
+    await page.mouse.click(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
+    const { worst, found } = await watch;
+    if (!found) failures.push(`${lang}: results heading not found`);
+    else if (worst > 0) failures.push(`${lang}-${width}: results header scrolled back into view (${Math.round(worst)}px below the app bar)`);
+    await page.locator('[data-results-group] article').first().waitFor({ timeout: 10000 });
+    const bar = await page.locator('[data-result-views]').boundingBox();
+    if (!bar || bar.y < 0 || bar.y > 120) failures.push(`${lang}-${width}: view switch not at the top of the viewport after loading (${bar?.y})`);
+    const first = await page.locator('[data-results-group] article').first().boundingBox();
+    if (!first || first.y > (width < 700 ? 844 : 900)) failures.push(`${lang}-${width}: the new list does not start in view (${first?.y})`);
     await close();
   }
   assert.deepEqual(failures, []);

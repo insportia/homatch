@@ -21,18 +21,27 @@
 // yank the viewport back to the top while somebody is reading — the exact
 // failure this kind of fix usually introduces.
 
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
 
 export const ScrollToTop: React.FC = () => {
   const { pathname, hash } = useLocation();
   const navigationType = useNavigationType();
+  /*
+   * Only a CHANGED pathname scrolls. navigationType is read, not keyed on: the first PUSH
+   * after a REPLACE (a results tab writing ?view=… after the page recorded its revision)
+   * changed it on the same path and threw the reader to the header (owner, 2026-10-18).
+   */
+  const shown = useRef<string | null>(null);
 
   /*
    * Layout effect, not effect: this runs before the browser paints, so the
    * new page is never briefly visible at the old scroll position.
    */
   useLayoutEffect(() => {
+    const previous = shown.current;
+    shown.current = pathname;
+    if (previous === pathname) return;
     if (navigationType === 'POP') return;
     if (hash) return;
     /* `instant` rather than smooth — a page ARRIVING should already be at its

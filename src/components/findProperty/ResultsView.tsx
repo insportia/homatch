@@ -67,6 +67,21 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [counts, setCounts] = useState<{ all: number; best: number; paid: number } | null>(null);
   const initialVersion = useRef(version), heading = useRef<HTMLDivElement>(null);
+  /* Switching a view or filter swaps the list for a spinner; without holding its height the
+     page shrank and the browser threw the reader back to the header (owner, 2026-10-18). */
+  const list = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null);
+  const [heldHeight, setHeldHeight] = useState<number | null>(null);
+  /* The switch sticks just below the app's own sticky header, never under it (a tap there opened the header's links). */
+  const [stickTop, setStickTop] = useState(8);
+  useEffect(() => {
+    const header = document.querySelector('header');
+    if (!header || !['sticky', 'fixed'].includes(getComputedStyle(header).position)) return;
+    const measure = () => setStickTop(Math.round(header.getBoundingClientRect().height) + 8);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   const loadedQuery = useRef<string | null>(null);
   const saved = useSavedKeys();
   const favorites = useFavoriteProperties(search.id, saved.keys, saved.ready);
@@ -94,8 +109,18 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.id, filterKey, requestedPage, revision, retry, view]);
 
-  const update = (patch: Partial<ResultFilters>, page?: number) => { setParams(resultParams(params, patch, page)); if (page !== undefined) heading.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+  useEffect(() => { if (!loading) setHeldHeight(null); }, [loading]);
+  /* Keep the list's place while the next one loads; a reader deep in it lands at its start, just under the view switch. */
+  const keepPlace = () => {
+    const el = list.current;
+    if (!el) return;
+    setHeldHeight(el.offsetHeight);
+    const top = el.getBoundingClientRect().top, under = (bar.current?.getBoundingClientRect().bottom ?? 0) + 8;
+    if (top < under) window.scrollBy({ top: top - under, behavior: 'instant' as ScrollBehavior });
+  };
+  const update = (patch: Partial<ResultFilters>, page?: number) => { if (page === undefined) keepPlace(); setParams(resultParams(params, patch, page)); if (page !== undefined) heading.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
   const openView = (v: View) => {
+    keepPlace();
     const next = new URLSearchParams(params);
     for (const key of VIEW_FILTERS) next.delete(key);
     next.set('page', '1');
@@ -106,7 +131,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     setParams(next);
     if (v === 'duplicates') setFiltersOpen(false);
   };
-  const reset = () => { const next = new URLSearchParams(params); for (const key of [...next.keys()]) if (key.startsWith('fp_') && !VIEW_FILTERS.includes(key)) next.delete(key); next.set('page', '1'); setParams(next); };
+  const reset = () => { keepPlace(); const next = new URLSearchParams(params); for (const key of [...next.keys()]) if (key.startsWith('fp_') && !VIEW_FILTERS.includes(key)) next.delete(key); next.set('page', '1'); setParams(next); };
   const refresh = () => { const next = new URLSearchParams(params); next.delete('revision'); next.set('page', '1'); initialVersion.current = version; setParams(next); setRetry((n) => n + 1); };
   const changed = error === 'RESULTS_CHANGED' || version !== initialVersion.current;
   const showItems = !loading && !error && view !== 'favorites';
@@ -147,7 +172,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     {view === 'all' ? <NativeMatchesPanel role="SEEKER" /> : null}
 
     {/* The primary navigation: always rendered, in every view, so one tap always leads back. */}
-    <div className="sticky top-2 z-20 space-y-2">
+    <div ref={bar} className="sticky z-20 space-y-2" style={{ top: stickTop }} data-results-bar>
       <div className="flex min-w-0 items-stretch gap-2">
         <nav role="tablist" aria-label={t('fpv_result_views')} className="flex min-w-0 flex-1 gap-1 rounded-2xl border border-border bg-card/95 p-1 shadow-sm backdrop-blur" data-result-views>
           {tab('all', t('fpv_tab_all'), counts?.all ?? (view === 'all' ? data?.totalCurrent ?? null : null), LayoutGrid)}
@@ -197,6 +222,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
       </div>
     ) : null}
 
+    <div ref={list} className="space-y-5" style={heldHeight ? { minHeight: heldHeight } : undefined} data-results-list>
     {changed ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4" role="status"><p className="text-sm">{t('fpr_results_changed')}</p><button type="button" onClick={refresh} className="min-h-[44px] rounded-xl border border-border px-4 text-sm font-semibold">{t('fpr_refresh')}</button></div> : null}
     {error && error !== 'RESULTS_CHANGED' && view !== 'favorites' ? <div role="alert" className="space-y-3 rounded-2xl border border-border bg-card p-4"><p>{t('mps_error_generic')}</p><button type="button" onClick={() => setRetry((n) => n + 1)} className="min-h-[44px] rounded-xl border px-4">{t('fpr_retry')}</button></div> : null}
     {loading || (view === 'favorites' && favorites.loading && !favorites.items.length) ? <div role="status" className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />{t('fpr_loading')}</div> : null}
@@ -212,6 +238,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     {showItems && others.length ? <section aria-labelledby="mps-g-OTHER" className="space-y-3" data-results-group="OTHER"><div><h2 id="mps-g-OTHER" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_other_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_other_body')}</p></div><div className="grid gap-4">{others.map(card)}</div></section> : null}
     {showItems && outside.length ? <section aria-labelledby="mps-g-OUTSIDE" className="space-y-3" data-results-group="OUTSIDE"><div><h2 id="mps-g-OUTSIDE" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_outside_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_outside_body')}</p></div><div className="grid gap-4">{outside.map(card)}</div></section> : null}
     {showItems && data && data.total > 0 ? <div className="space-y-3 border-t border-border pt-5"><p className="text-center text-xs text-muted-foreground" role="status">{t('fpr_page_status', { from: (data.page - 1) * data.pageSize + 1, to: Math.min(data.page * data.pageSize, data.total), total: data.total })}</p><nav aria-label={t('fpr_pagination')} className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr"><button type="button" disabled={data.page === 1} onClick={() => update({}, data.page - 1)} aria-label={t('fpr_previous')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>{pageNumbers(data.page, data.pages).map((p, i) => p === 'gap' ? <span key={`gap-${i}`} className="px-1 text-muted-foreground" aria-hidden="true">…</span> : <button type="button" key={p} aria-label={t('fpr_go_page', { n: p })} aria-current={p === data.page ? 'page' : undefined} onClick={() => update({}, p)} className={`h-11 min-w-11 rounded-xl border px-2 text-sm font-semibold ${p === data.page ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]' : 'border-border hover:bg-muted'}`}>{p}</button>)}<button type="button" disabled={data.page === data.pages} onClick={() => update({}, data.page + 1)} aria-label={t('fpr_next')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></nav></div> : null}
+    </div>
     {deepOffered && search.terminal && view === 'all' ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
   </div>;
 }

@@ -295,3 +295,17 @@ test('the portable job library is not mistaken for a live path', () => {
   assert.deepEqual(importers, [],
     '_shared/jobs.ts reaches retired providers and is now on a live path');
 });
+
+/* Finance V2: a model with no price row comes back as SQL NULL. It used to become
+   Number(null) = 0 and every Find Property search AI call was recorded as "$0 ESTIMATED". */
+import { estimatedProviderCost } from '../providerCost.ts';
+
+test('estimatedProviderCost: no price row is null (UNPRICED), never a $0 estimate', async () => {
+  const db = (data, error = null) => ({ rpc: async () => ({ data, error }) });
+  assert.equal(await estimatedProviderCost(db(null), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1991, model: 'gpt-4o-mini' }), null);
+  assert.equal(await estimatedProviderCost(db(undefined), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1 }), null);
+  assert.equal(await estimatedProviderCost(db(''), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1 }), null);
+  assert.equal(await estimatedProviderCost(db(null, { message: 'down' }), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1 }), null);
+  assert.equal(await estimatedProviderCost(db(0.000299), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1991 }), 0.000299);
+  assert.equal(await estimatedProviderCost(db('0'), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 0 }), 0, 'a priced zero (no tokens) is a real 0');
+});

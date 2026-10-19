@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { adminCampaignEconomics, type CampaignEconomics } from '@/services/paidCampaign';
+import { allocateCampaign, PAID_DISCOVERY_CURRENT_POLICY } from '@/research-core/billing/paidDiscoveryPolicy';
 
 const money = (v: number | null | undefined, d = 3) => (v == null ? '—' : `$${v.toFixed(d)}`);
 const TEST_KEY = 'find_property_test_campaign';
@@ -63,7 +64,7 @@ export function DeepSearchEconomicsPanel() {
         <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-dashed border-border p-3">
           <div className="min-w-0">
             <p className="text-sm font-medium">{t('fpc_admin_test_title', { credits: test.credits })}</p>
-            <p className="text-xs leading-snug text-muted-foreground">{t('fpc_admin_test_body', { provider: (test.credits * 0.63).toFixed(1), testers: test.testers.length })}</p>
+            <p className="text-xs leading-snug text-muted-foreground">{t('fpc_admin_test_body', { provider: (allocateCampaign(test.credits, 10, PAID_DISCOVERY_CURRENT_POLICY).providerBudgetMicros / 100_000).toFixed(1) /* execution credits, the shared policy */, testers: test.testers.length })}</p>
           </div>
           <Switch checked={test.enabled} disabled={busy} onCheckedChange={(on) => void toggleTest(on)} aria-label={t('fpc_admin_test_title', { credits: test.credits })} data-switch="find_property_test_campaign" />
         </div>

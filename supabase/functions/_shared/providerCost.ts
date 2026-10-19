@@ -203,6 +203,9 @@ export async function estimatedProviderCost(
       p_model: args.model ?? null,
     });
     if (error) return null;
+    /* No price row comes back as SQL NULL. Number(null) is 0, which recorded every
+       unpriced model as a confirmed $0 estimate (Finance V2 audit, 2026-10-19). */
+    if (data === null || data === undefined || data === '') return null;
     const n = Number(data);
     return Number.isFinite(n) ? n : null;
   } catch {

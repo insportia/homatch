@@ -23,7 +23,7 @@ import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { OPEN_RUN_STATES, runEvent, updateRun } from '../_shared/discoveryRun.ts';
 import { draftFromStoredPlan } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { normalisePlan } from '../../../src/research-core/discovery/search-plan.ts';
-import { allocateCampaign, minimumCampaignCredits } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { allocateCampaign, minimumCampaignCredits, PAID_DISCOVERY_CURRENT_POLICY } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import { OFFER_NETWORKS, offerSearchLanguages, type OfferNetwork, type OfferSearch } from '../../../src/research-core/findProperty/offerCampaign.ts';
 import { loadOfferSettings, offerQueueRows, planOfferCampaign } from '../_shared/findProperty/socialOffers.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
@@ -163,7 +163,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Above the campaign maximum.', reasonCode: 'ABOVE_CAMPAIGN_MAXIMUM', maxBudgetCredits: settings.campaignMaxCredits }, 400);
     }
     if (!networks.length) return json({ error: 'Choose at least one network.', reasonCode: 'NO_NETWORKS' }, 400);
-    const allocation = allocateCampaign(budget, rate);
+    const allocation = allocateCampaign(budget, rate, PAID_DISCOVERY_CURRENT_POLICY);
     const plan = await planOfferCampaign(db, {
       search: offerSearch, networks, providerBudgetMicros: allocation.providerBudgetMicros,
       countryCode: String(searchPlan.countryCode || 'GE').toUpperCase(),
@@ -177,7 +177,7 @@ Deno.serve(async (req: Request) => {
       priceCredits: budget, creditsPerUsd: rate, minCredits, maxCredits: settings.campaignMaxCredits,
       priceUsd: allocation.priceCents / 100,
       policy: allocation.policy,
-      charging: 'CONSUMED_DIV_0_63_CAPPED',
+      charging: 'CONSUMED_VAT_FIRST_37_63_CAPPED',
       networks,
       plannedRuns: plan.jobs.length,
       plannedByNetwork: Object.fromEntries(OFFER_NETWORKS.map((n) => [n, plan.jobs.filter((j) => j.network === n).length])),

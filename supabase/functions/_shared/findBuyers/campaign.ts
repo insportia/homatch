@@ -19,7 +19,7 @@ import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../.
 import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
 import { classifyDemand } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
-import { allocateCampaign, PAID_DISCOVERY_POLICY_ID } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { allocateCampaign, PAID_DISCOVERY_CURRENT_POLICY } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import { languageOutcomes } from '../../../../src/research-core/findBuyers/languageOutcomes.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
@@ -107,10 +107,10 @@ export function campaignEconomics(credits: number, creditsPerUsd: number, provid
   return { customerValueMicros, providerBudgetMicros };
 }
 
-/** The owner's 37/63 split (HOMATCH 37% / providers 63% of the total price), stamped on new campaigns. */
+/** The owner's current paid discovery policy (37/63 of VAT-exclusive revenue, Finance V2), stamped on new campaigns. */
 export function paidDiscoveryEconomics(credits: number, creditsPerUsd: number) {
-  const a = allocateCampaign(credits, creditsPerUsd);
-  return { customerValueMicros: a.priceMicros, providerBudgetMicros: a.providerBudgetMicros, pricingPolicy: PAID_DISCOVERY_POLICY_ID };
+  const a = allocateCampaign(credits, creditsPerUsd, PAID_DISCOVERY_CURRENT_POLICY);
+  return { customerValueMicros: a.priceMicros, providerBudgetMicros: a.providerBudgetMicros, pricingPolicy: PAID_DISCOVERY_CURRENT_POLICY };
 }
 
 export async function creditsPerUsd(db: any): Promise<number> {

@@ -8,7 +8,7 @@
 // publishSocialListings runs it once a campaign has ended.
 
 import { socialCandidate, SOCIAL_ADAPTER_VERSION, type SocialObservation } from '../../../../src/research-core/marketplace/socialListings.ts';
-import { PAID_DISCOVERY_POLICY_ID } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { isPaidDiscoveryPolicy, PAID_DISCOVERY_POLICIES } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import type { ExternalListingCandidate } from '../../../../src/research-core/marketplace/worker-contract.ts';
 
 export const SOCIAL_WORKER_ID = 'social-offers';
@@ -22,7 +22,7 @@ async function endedCampaigns(db: any, searchId: string, userId: string): Promis
   const subIds = ((subs ?? []) as Array<{ id: string }>).map((s) => s.id);
   if (!subIds.length) return [];
   const { data: runs } = await db.from('discovery_runs').select('id,status')
-    .in('subscription_id', subIds).eq('user_id', userId).eq('pricing_policy', PAID_DISCOVERY_POLICY_ID);
+    .in('subscription_id', subIds).eq('user_id', userId).in('pricing_policy', [...PAID_DISCOVERY_POLICIES]);
   return ((runs ?? []) as Array<{ id: string; status: string }>).filter((r) => !OPEN_CAMPAIGN.includes(r.status)).map((r) => r.id);
 }
 
@@ -49,7 +49,7 @@ export async function loadSocialCandidates(db: any, searchId: string, userId: st
 /** The marketplace search a paid social campaign was bought for, when it has one. */
 export async function campaignSearchId(db: any, runId: string): Promise<string | null> {
   const { data: run } = await db.from('discovery_runs').select('subscription_id,user_id,pricing_policy').eq('id', runId).maybeSingle();
-  if (!run?.subscription_id || run.pricing_policy !== PAID_DISCOVERY_POLICY_ID) return null;
+  if (!run?.subscription_id || !isPaidDiscoveryPolicy(run.pricing_policy)) return null;
   const { data: sub } = await db.from('active_search_subscriptions').select('search_criteria').eq('id', run.subscription_id).eq('user_id', run.user_id).maybeSingle();
   const id = sub?.search_criteria?.marketplaceSearchId;
   return typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id) ? id : null;

@@ -11,7 +11,7 @@
  * Pure integer-cent arithmetic; reads no production setting.
  */
 import {
-  allocateCampaign, minimumCampaignCredits, PAID_DISCOVERY_POLICY_ID,
+  allocateCampaign, minimumCampaignCredits, PAID_DISCOVERY_CURRENT_POLICY, type PaidDiscoveryPolicyId,
 } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
 export const CREDITS_PER_USD = 10;
@@ -20,13 +20,15 @@ export const FIND_PROPERTY_MIN_CREDITS = minimumCampaignCredits(CREDITS_PER_USD)
 export interface CommercialAllocation {
   credits: number;
   grossCents: number;
-  /** Hard ceiling on all provider spending for the campaign (63%). */
+  /** Hard ceiling on all provider spending for the campaign (63% of VAT-exclusive revenue). */
   providerCapCents: number;
-  /** HOMATCH share of the price (37%). */
+  /** HOMATCH share (37% of VAT-exclusive revenue). */
   homatchCents: number;
+  /** Georgian VAT inside the price (gross − VAT-exclusive revenue): provider + HOMATCH + VAT = gross. */
+  vatCents: number;
   /** Provider ceiling in micro-USD, the unit the memo23 reservation RPC uses. */
   providerCapMicros: number;
-  policy: typeof PAID_DISCOVERY_POLICY_ID;
+  policy: PaidDiscoveryPolicyId;
 }
 
 export type AllocationError = 'BELOW_CAMPAIGN_MINIMUM' | 'INVALID_CREDITS';
@@ -34,9 +36,10 @@ export type AllocationError = 'BELOW_CAMPAIGN_MINIMUM' | 'INVALID_CREDITS';
 export function allocate(credits: number, creditsPerUsd = CREDITS_PER_USD): CommercialAllocation | { error: AllocationError } {
   if (!Number.isInteger(credits) || credits <= 0) return { error: 'INVALID_CREDITS' };
   if (credits < minimumCampaignCredits(creditsPerUsd)) return { error: 'BELOW_CAMPAIGN_MINIMUM' };
-  const a = allocateCampaign(credits, creditsPerUsd);
+  const a = allocateCampaign(credits, creditsPerUsd, PAID_DISCOVERY_CURRENT_POLICY);
   return {
     credits, grossCents: a.priceCents, providerCapCents: a.providerBudgetCents, homatchCents: a.homatchMarginCents,
+    vatCents: a.priceCents - a.providerBudgetCents - a.homatchMarginCents,
     providerCapMicros: a.providerBudgetMicros, policy: a.policy,
   };
 }

@@ -26,6 +26,7 @@ import { campaignStats, enabledActorMap, insertQueueRows, loadFindBuyersSettings
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 import type { ParentContext } from './pipeline.ts';
 import { extractTextFacts } from '../../../../src/research-core/findBuyers/textFacts.ts';
+import { aiCallCeilingMicros, executionHeadroomMicros } from '../../../../src/research-core/findBuyers/executionBudget.ts';
 
 /** The parent post of each promising comment target, kept beside (not inside) the evidence the model sees. */
 const PARENTS = new WeakMap<object, Map<string, ParentContext>>();
@@ -219,11 +220,19 @@ export async function adaptiveRound(db: any, matchingJobId: string): Promise<{ q
   let actions: ProposedAction[] = [];
   let assessment: string | null = null;
   let source: 'MODEL' | 'FALLBACK' = 'MODEL';
-  const res = await openAiJson<{ assessment: string; actions: ProposedAction[] }>(parsePriceBook(settings.priceBook), ADAPTIVE_SYSTEM_PROMPT,
-    { ...evidenceForModel(evidence, step.pass, gates), allowedActors: Object.keys(gates) }, ADAPTIVE_ACTION_SCHEMA as any, { maxTokens: 1200 });
-  await recordAiCost(db, { key: `ai:adaptive:${matchingJobId}:${evidence.round + 1}`, matchingJobId, kind: 'AI', operation: 'ADAPTIVE_PLAN', result: res,
-    metadata: { pass: step.pass, round: evidence.round + 1 } }).catch(() => undefined);
-  if (res.data?.actions?.length) { actions = res.data.actions; assessment = res.data.assessment ?? null; }
+  /* The proposal is paid from the same execution budget: it is only asked for when the budget
+     left covers its worst case (prompt + 1,200 output tokens); otherwise the fallback ladder
+     below runs the pass without a model call. */
+  const book = parsePriceBook(settings.priceBook);
+  const modelInput = { ...evidenceForModel(evidence, step.pass, gates), allowedActors: Object.keys(gates) };
+  const ceiling = aiCallCeilingMicros(book, 600 + Math.ceil(JSON.stringify(modelInput).length / 3), 1200);
+  if (executionHeadroomMicros(evidence.budgetMicros, evidence.spentMicros) >= ceiling) {
+    const res = await openAiJson<{ assessment: string; actions: ProposedAction[] }>(book, ADAPTIVE_SYSTEM_PROMPT,
+      modelInput, ADAPTIVE_ACTION_SCHEMA as any, { maxTokens: 1200 });
+    await recordAiCost(db, { key: `ai:adaptive:${matchingJobId}:${evidence.round + 1}`, matchingJobId, kind: 'AI', operation: 'ADAPTIVE_PLAN', result: res,
+      metadata: { pass: step.pass, round: evidence.round + 1 } }).catch(() => undefined);
+    if (res.data?.actions?.length) { actions = res.data.actions; assessment = res.data.assessment ?? null; }
+  }
   let v = validateActions(actions, { evidence, gates, pass: step.pass });
   /* Nothing usable from the model (unavailable, or every action refused): the pass still runs. */
   if (!v.jobs.length && !v.stopCampaign) {

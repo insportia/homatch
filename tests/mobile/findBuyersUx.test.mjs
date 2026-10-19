@@ -167,7 +167,7 @@ async function boot(t, { width = 390, height = 844, lang = 'en', status = { read
     if (url.includes('/rpc/billing_budget_offer')) return r.fulfill(json({ ok: true, offer: 'PAYG_FULL', estimate_min_credits: 17.5, estimate_max_credits: 32.5, available_balance: 99832.03, min_viable_budget_credits: 50 }));
     if (url.includes('/rpc/billing_my_budget_choices')) return r.fulfill(json({ ok: true, balance: 99832.03, min_viable: 50, allow_custom: true, recommended: 100,
       presets: [100, 250, 500, 1000].map((c) => ({ credits: c, affordable: true, viable: true, recommended: c === 100 })) }));
-    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
+    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 5, creditsPerUsd: 10, minCredits: 50 }));
     if (url.includes('/functions/v1/match-campaign')) {
       calls.start += 1;
       /* From now on the server reports the new search as running. */

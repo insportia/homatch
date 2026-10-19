@@ -125,8 +125,8 @@ async function boot(t, { width = 390, height = 844, status = { readiness: READY,
     if (url.includes('/rest/v1/matches')) return r.fulfill(ranged([]));
     if (url.includes('/rpc/billing_budget_offer')) return r.fulfill(json({ ok: true, offer: 'PAYG_FULL', estimate_min_credits: 17.5, estimate_max_credits: 32.5, available_balance: 99832.03, min_viable_budget_credits: 50 }));
     if (url.includes('/rpc/billing_my_budget_choices')) return r.fulfill(json({ ok: true, balance: 99832.03, min_viable: 50, allow_custom: true, recommended: 100,
-      presets: [100, 500, 1000].map((c) => ({ credits: c, affordable: true, viable: true, recommended: c === 100 })) }));
-    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
+      presets: [50, 100, 500, 1000, 1500, 2000].map((c) => ({ credits: c, affordable: true, viable: true, recommended: c === 100 })) }));
+    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 5, creditsPerUsd: 10, minCredits: 50 }));
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });
@@ -176,6 +176,15 @@ test('live results: Review Budget and page 2 add no history; Back leaves for the
   /* "Review Budget" must not push #rb-title. */
   await review.waitFor({ timeout: 30000 });
   assert.equal(await page.locator('[data-testid="research-budget"] a[href^="#"]').count(), 0, 'no fragment link inside the budget step');
+  /* $5 minimum (owner, 2026-10-19): the ladder starts at 50 credits, chosen by default; 49 is refused. */
+  assert.equal(await page.locator('[data-testid="research-budget"] [role="radio"]').first().getAttribute('data-testid'), 'rb-preset-50', 'the first rung is 50 credits');
+  assert.equal(await page.locator('[data-testid="rb-preset-50"]').getAttribute('aria-checked'), 'true', '50 credits is the default choice');
+  await page.click('[data-testid="rb-preset-custom"]');
+  await page.fill('[data-testid="rb-custom-input"]', '49');
+  assert.match(await page.locator('[data-testid="research-budget"] [role="alert"]').textContent(), /50/, 'below 50 credits is refused, naming the minimum');
+  await page.fill('[data-testid="rb-custom-input"]', '50');
+  assert.equal(await page.locator('[data-testid="research-budget"] [role="alert"]').count(), 0, 'exactly 50 credits is accepted');
+  await page.click('[data-testid="rb-preset-50"]');
   await page.click('[data-testid="rb-review"]');
   assert.equal(new URL(page.url()).hash, '', 'Review Budget does not touch the URL');
   await page.keyboard.press('Escape');

@@ -185,7 +185,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true }
     }
     if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json({ readiness: { ready: true, reason: null, sources: ['FACEBOOK'] }, campaign: null }));
     if (url.includes('/rpc/background_jobs_mine')) return r.fulfill(json([]));
-    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
+    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 5, creditsPerUsd: 10, minCredits: 50 }));
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });

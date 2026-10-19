@@ -20921,6 +20921,10 @@ const en = {
   hl_reach_citywide_hint: 'People who searched your city without naming an area.',
   hl_reach_free: 'Free. Changes apply to this listing at once. You pay only when you unlock a contact.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'Essential Research',
+  rb_preset_50_desc: 'The smallest research: the sources that have found interested people most often, first.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_tab_services: 'Services',
   fin_v2_range: 'Period',
@@ -21003,8 +21007,6 @@ const en = {
   fin_v2_sim_within: 'Within execution budget',
   fin_v2_sim_over: 'Over execution budget',
   fin_v2_sim_charge: 'Charge for this cost',
-
-  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v2_status_actual: 'Actual',
   fin_v2_status_estimated: 'Estimated',
   fin_v2_status_partial: 'Partially priced',
@@ -41844,6 +41846,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'ადამიანები, რომლებიც თქვენს ქალაქში ეძებენ უბნის დასახელების გარეშე.',
   hl_reach_free: 'უფასოა. ცვლილებები ამ განცხადებაზე მაშინვე მოქმედებს. იხდით მხოლოდ კონტაქტის გახსნისას.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'ძირითადი კვლევა',
+  rb_preset_50_desc: 'უმცირესი კვლევა: პირველ რიგში ის წყაროები, სადაც დაინტერესებული ადამიანები ყველაზე ხშირად გამოჩნდნენ.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_tab_services: 'სერვისები',
   fin_v2_range: 'პერიოდი',
@@ -41926,8 +41932,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'შესრულების ბიუჯეტის ფარგლებში',
   fin_v2_sim_over: 'აჭარბებს შესრულების ბიუჯეტს',
   fin_v2_sim_charge: 'ჩამოსაჭრელი ამ ხარჯზე',
-
-  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v2_status_actual: 'ფაქტობრივი',
   fin_v2_status_estimated: 'შეფასებული',
   fin_v2_status_partial: 'ნაწილობრივ ფასდადგენილი',
@@ -62758,6 +62762,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'Люди, которые ищут в вашем городе, не называя район.',
   hl_reach_free: 'Бесплатно. Изменения сразу применяются к этому объявлению. Вы платите только за открытие контакта.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'Базовое исследование',
+  rb_preset_50_desc: 'Самое компактное исследование: в первую очередь источники, где заинтересованные люди находились чаще всего.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_tab_services: 'Сервисы',
   fin_v2_range: 'Период',
@@ -62840,8 +62848,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'В пределах бюджета исполнения',
   fin_v2_sim_over: 'Превышает бюджет исполнения',
   fin_v2_sim_charge: 'Списание за эти расходы',
-
-  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v2_status_actual: 'Фактически',
   fin_v2_status_estimated: 'Оценка',
   fin_v2_status_partial: 'Частично оценено',
@@ -83670,6 +83676,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'Bir bölge belirtmeden şehrinizde arayanlar.',
   hl_reach_free: 'Ücretsiz. Değişiklikler bu ilana hemen uygulanır. Yalnızca bir kişiyi açtığınızda ödersiniz.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'Temel Araştırma',
+  rb_preset_50_desc: 'En küçük araştırma: önce ilgilenen kişilerin en sık bulunduğu kaynaklar.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_tab_services: 'Hizmetler',
   fin_v2_range: 'Dönem',
@@ -83752,8 +83762,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'Yürütme bütçesi içinde',
   fin_v2_sim_over: 'Yürütme bütçesini aşıyor',
   fin_v2_sim_charge: 'Bu maliyet için ücret',
-
-  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v2_status_actual: 'Gerçek',
   fin_v2_status_estimated: 'Tahmini',
   fin_v2_status_partial: 'Kısmen fiyatlandırıldı',
@@ -104582,6 +104590,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'أشخاص بحثوا في مدينتك دون تحديد منطقة.',
   hl_reach_free: 'مجانًا. تُطبَّق التغييرات على هذا الإعلان فورًا. تدفع فقط عند فتح جهة اتصال.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'بحث أساسي',
+  rb_preset_50_desc: 'أصغر بحث: المصادر التي ظهر فيها المهتمون أكثر من غيرها أولاً.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_tab_services: 'الخدمات',
   fin_v2_range: 'الفترة',
@@ -104664,8 +104676,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'ضمن ميزانية التنفيذ',
   fin_v2_sim_over: 'يتجاوز ميزانية التنفيذ',
   fin_v2_sim_charge: 'الرسوم مقابل هذه التكلفة',
-
-  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v2_status_actual: 'فعلي',
   fin_v2_status_estimated: 'تقديري',
   fin_v2_status_partial: 'مسعّر جزئيًا',
@@ -125494,6 +125504,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'אנשים שחיפשו בעיר שלך בלי לציין אזור.',
   hl_reach_free: 'בחינם. השינויים חלים על המודעה הזו מיד. משלמים רק כשפותחים איש קשר.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'מחקר חיוני',
+  rb_preset_50_desc: 'המחקר הקטן ביותר: קודם המקורות שבהם נמצאו הכי הרבה אנשים מתעניינים.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_tab_services: 'שירותים',
   fin_v2_range: 'תקופה',
@@ -125576,8 +125590,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'בתוך תקציב הביצוע',
   fin_v2_sim_over: 'חורג מתקציב הביצוע',
   fin_v2_sim_charge: 'חיוב עבור עלות זו',
-
-  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v2_status_actual: 'בפועל',
   fin_v2_status_estimated: 'מוערך',
   fin_v2_status_partial: 'מתומחר חלקית',

@@ -19,12 +19,13 @@ import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../.
 import { buildBuyerStrategy, prioritizeQueries, type BuyerStrategy, type QueryStat, type Segment } from '../../../../src/research-core/findBuyers/buyerStrategy.ts';
 import { classifyDemand } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
-import { allocateCampaign, PAID_DISCOVERY_CURRENT_POLICY } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { allocateCampaign, minimumCampaignCredits, PAID_DISCOVERY_CURRENT_POLICY, PAID_DISCOVERY_MIN_USD } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import { languageOutcomes } from '../../../../src/research-core/findBuyers/languageOutcomes.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 import { paidTelegramChannels, parseTelegramPreference, type TelegramCommunity, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
 import { providerDisabledByAdmin } from '../providerSwitch.ts';
+import { AiSpendGate, DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, executionHeadroomMicros } from '../../../../src/research-core/findBuyers/executionBudget.ts';
 import { phase1State, phase1TimeoutMinutes, phase2Category, phaseOfStage, planDiscoveryBudget, probeEstimateMicros, type Phase1State } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 export interface FindBuyersSettings {
@@ -45,13 +46,15 @@ export interface FindBuyersSettings {
   fbKeyword: { batchSize: number; days: number };
   /** AI-first lead classification (v11); only an explicit false turns it off. */
   aiFirst: boolean;
+  /** OpenAI classification headroom held per item an Actor run may return (find_buyers_ai_headroom_micros_per_item). */
+  aiHeadroomPerItemMicros: number;
 }
 
 const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
   'provider_disabled_list', 'find_buyers_telegram_preference', 'find_buyers_financing',
-  'find_buyers_fb_keyword_search', 'find_buyers_ai_first',
+  'find_buyers_fb_keyword_search', 'find_buyers_ai_first', 'find_buyers_ai_headroom_micros_per_item',
 ];
 
 /** FB_KEYWORD_SEARCH knobs (Admin): phrases per run and how far back posts are read (≤ the 30-day rule). */
@@ -79,7 +82,9 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     apifyEnabled: !apifyDisabledByAdmin(m.get('provider_disabled_list')),
     telegramPreference: parseTelegramPreference(m.get('find_buyers_telegram_preference')),
     socialEnabled: m.get('find_buyers_social_enabled') === true && !apifyDisabledByAdmin(m.get('provider_disabled_list')),
-    minUsd: Math.max(1, num(m.get('find_buyers_min_usd'), 10)),
+    /* Exactly $5 / 50 credits (owner, 2026-10-19): the paid discovery policy's minimum.
+       find_buyers_min_usd (was 10) no longer moves it; the migration aligns the row. */
+    minUsd: PAID_DISCOVERY_MIN_USD,
     providerShareBps: Math.max(0, Math.min(9000, num(m.get('find_buyers_provider_share_bps'), 5000))),
     pricingMaxAgeDays: num(m.get('find_buyers_pricing_max_age_days'), 30),
     commentGate: { skipBelow: num(gate.skipBelow, 55), eligibleFrom: num(gate.eligibleFrom, 75) },
@@ -88,12 +93,13 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     lowDownPaymentRatio: lowDownPaymentRatio(m.get('find_buyers_financing') ?? null),
     fbKeyword: fbKeywordSettings(m.get('find_buyers_fb_keyword_search')),
     aiFirst: m.get('find_buyers_ai_first') !== false,
+    aiHeadroomPerItemMicros: Math.max(0, Math.min(10_000, num(m.get('find_buyers_ai_headroom_micros_per_item'), DEFAULT_AI_HEADROOM_PER_ITEM_MICROS))),
   };
 }
 
-/** The $10 minimum, in the wallet's own credits (credits_per_usd is admin-set). */
+/** The campaign minimum ($5 = 50 credits at 10 credits = $1), in the wallet's own credits (credits_per_usd is admin-set). */
 export function minimumCredits(minUsd: number, creditsPerUsd: number): number {
-  return Math.ceil(minUsd * creditsPerUsd);
+  return minimumCampaignCredits(creditsPerUsd, minUsd);
 }
 
 /**
@@ -111,6 +117,45 @@ export function campaignEconomics(credits: number, creditsPerUsd: number, provid
 export function paidDiscoveryEconomics(credits: number, creditsPerUsd: number) {
   const a = allocateCampaign(credits, creditsPerUsd, PAID_DISCOVERY_CURRENT_POLICY);
   return { customerValueMicros: a.priceMicros, providerBudgetMicros: a.providerBudgetMicros, pricingPolicy: PAID_DISCOVERY_CURRENT_POLICY };
+}
+
+/**
+ * What one campaign has committed against its execution budget — the same rule as
+ * find_buyers_reserve_actor_run: held reservations, booked actuals (a run whose cost is
+ * still unknown keeps its reservation, never zero), plus every OpenAI cost booked while the
+ * campaign is open. `heldForOthers` is the classification headroom of OTHER runs still in
+ * flight (their items are classified later, from the same budget).
+ */
+export async function campaignSpend(db: any, matchingJobId: string, perItemMicros: number, exceptRunId: string | null = null) {
+  const [camp, runs, ai] = await Promise.all([
+    db.from('find_buyers_campaigns').select('provider_budget_micros').eq('matching_job_id', matchingJobId).maybeSingle(),
+    db.from('find_buyers_actor_runs').select('id,status,reserved_micros,actual_micros,requested_limit,cost_booked_at').eq('matching_job_id', matchingJobId).limit(2000),
+    db.from('find_buyers_cost_ledger').select('estimated_micros,actual_micros').eq('matching_job_id', matchingJobId)
+      .eq('provider', 'OPENAI').eq('after_settlement', false).limit(10_000),
+  ]);
+  if (camp.error || runs.error || ai.error || !camp.data) return null;
+  const inFlight = (st: string) => ['RESERVED', 'STARTING', 'RUNNING'].includes(st);
+  let actorMicros = 0;
+  let heldForOthers = 0;
+  for (const r of (runs.data ?? []) as any[]) {
+    const st = String(r.status);
+    actorMicros += inFlight(st) ? Number(r.reserved_micros || 0)
+      : r.actual_micros != null ? Number(r.actual_micros) : st === 'RELEASED' ? 0 : Number(r.reserved_micros || 0);
+    if (inFlight(st) && !r.cost_booked_at && r.id !== exceptRunId) heldForOthers += Number(r.requested_limit || 0) * perItemMicros;
+  }
+  const aiMicros = ((ai.data ?? []) as any[]).reduce((n, x) => n + Number(x.actual_micros ?? x.estimated_micros ?? 0), 0);
+  const budgetMicros = Number(camp.data.provider_budget_micros || 0);
+  return { budgetMicros, actorMicros, aiMicros, heldForOthers, headroomMicros: executionHeadroomMicros(budgetMicros, actorMicros + aiMicros + heldForOthers) };
+}
+
+/**
+ * The spend gate for OpenAI calls of one campaign run. Unknown spend (a failed read) shuts
+ * the gate: no AI call is started on a guess, its items stay UNVERIFIED. No campaign → open.
+ */
+export async function campaignAiGate(db: any, matchingJobId: string | null, perItemMicros: number, runId: string | null = null): Promise<AiSpendGate> {
+  if (!matchingJobId) return new AiSpendGate(null);
+  const spend = await campaignSpend(db, matchingJobId, perItemMicros, runId).catch(() => null);
+  return new AiSpendGate(spend ? spend.headroomMicros : 0);
 }
 
 export async function creditsPerUsd(db: any): Promise<number> {
@@ -214,15 +259,15 @@ async function marketSegment(db: any, propertyId: string): Promise<{ segment: Se
   } catch { return null; }
 }
 
-/** Each Actor's real record over the last 90 days (finished paid runs, qualified leads). */
-async function actorHistory(db: any): Promise<Record<string, { bookedRuns: number; qualified: number }>> {
+/** Each Actor's real record over the last 90 days (finished paid runs, qualified leads, what they cost). */
+async function actorHistory(db: any): Promise<Record<string, { bookedRuns: number; qualified: number; spentMicros: number }>> {
   const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
-  const { data } = await db.from('find_buyers_actor_runs').select('actor_key,qualified_leads,cost_booked_at,status').gte('created_at', since).limit(5000);
-  const out: Record<string, { bookedRuns: number; qualified: number }> = {};
+  const { data } = await db.from('find_buyers_actor_runs').select('actor_key,qualified_leads,cost_booked_at,status,actual_micros').gte('created_at', since).limit(5000);
+  const out: Record<string, { bookedRuns: number; qualified: number; spentMicros: number }> = {};
   for (const r of (data ?? []) as any[]) {
     if (!r.cost_booked_at || r.status === 'RELEASED') continue;
-    const h = (out[r.actor_key] ??= { bookedRuns: 0, qualified: 0 });
-    h.bookedRuns += 1; h.qualified += Number(r.qualified_leads || 0);
+    const h = (out[r.actor_key] ??= { bookedRuns: 0, qualified: 0, spentMicros: 0 });
+    h.bookedRuns += 1; h.qualified += Number(r.qualified_leads || 0); h.spentMicros += Number(r.actual_micros || 0);
   }
   return out;
 }

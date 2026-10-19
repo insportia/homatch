@@ -14,7 +14,7 @@ import { CustomerSurface, DISCOVERY_SURFACE, EmptyState } from '@/components/cus
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import {
-  DEMO_PARAM, DemoProfileBody, NativeProfileBody, useInternalMatches,
+  DEMO_PARAM, DemoProfileBody, lowestUnlockPrice, NativeProfileBody, useInternalMatches,
 } from '@/components/matching/internal/InternalMatchesSection';
 
 function BuyerProfileContent() {
@@ -51,7 +51,7 @@ function BuyerProfileContent() {
           ) : isDemo && demo && demoScore ? (
             <DemoProfileBody payload={demo} scored={demoScore} price={prices.STANDARD} onUnlocked={load} />
           ) : person ? (
-            <NativeProfileBody person={person} price={prices.STANDARD} onUnlock={() => navigate(leadsPath)} />
+            <NativeProfileBody person={person} price={lowestUnlockPrice(prices)} onUnlock={() => navigate(leadsPath)} />
           ) : (
             <div className="pb-4">
               <EmptyState icon={UserRound} title={t('im_profile_gone')} />

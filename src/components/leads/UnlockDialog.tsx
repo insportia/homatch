@@ -104,6 +104,12 @@ export function UnlockDialog({
                   <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.standardCredits)}</dd>
                 </div>
               ) : null}
+              {quote.exactCount > 0 ? (
+                <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm" data-testid="unlock-exact-row">
+                  <dt>{t('hl_bulk_exact', { n: quote.exactCount, price: cr(quote.prices.EXACT) })}</dt>
+                  <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.exactCredits)}</dd>
+                </div>
+              ) : null}
               {quote.premiumCount > 0 ? (
                 <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm">
                   <dt>{t('hl_bulk_premium', { n: quote.premiumCount, price: cr(quote.prices.PREMIUM) })}</dt>

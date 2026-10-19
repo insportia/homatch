@@ -131,10 +131,10 @@ test('start: counted only after readiness, duplicate and reuse checks; never ref
   const start = fn.slice(fn.indexOf("if (action === 'start')"), fn.indexOf("if (action === 'status')"));
   const at = (s) => { const i = start.indexOf(s); assert.ok(i > 0, s); return i; };
   const order = [
-    "if (prior) return json({ search: await summary(db, prior), replayed: true });",
+    "if (prior) { await linkBriefCosts(prior); return json({ search: await summary(db, prior), replayed: true }); }",
     "if (readiness.state !== 'READY') return json({ error: 'SEARCH_NOT_READY', readiness }, 422);",
-    "if (twin) return json({ search: await summary(db, twin), replayed: true });",
-    "if (recent) return json({ search: await summary(db, recent), replayed: true, reused: true });",
+    "if (twin) { await linkBriefCosts(twin); return json({ search: await summary(db, twin), replayed: true }); }",
+    "if (recent) { await linkBriefCosts(recent); return json({ search: await summary(db, recent), replayed: true, reused: true }); }",
     'const outcome = await dispatchSearch(db, {',
   ].map(at);
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'replay → readiness → open twin → recent reuse → dispatch');

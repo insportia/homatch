@@ -72,6 +72,8 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
   const [compare, setCompare] = useState<string[]>([]);
   const [comparison, setComparison] = useState<{ a: PropertyView; b: PropertyView; rows: ComparisonRow[] } | null>(null);
   const idempotency = useRef<string | null>(null);
+  /* Cost accounting only: the brief calls made for the search about to start. */
+  const briefRefs = useRef<string[]>([]);
   const [playing, setPlaying] = useState(false);
   const searchId = route.searchId ?? params.get('search');
   const justStartedId = useRef<string | null>(null);
@@ -162,6 +164,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
     setBusy(true);
     try {
       const r = await understand(text);
+      if (r.costRef) briefRefs.current = [...briefRefs.current, r.costRef].slice(-20);
       setBriefAndDraft(r.brief);
     } catch (e) {
       /* The model being unavailable (or the per-user quota reached) is not a dead end:
@@ -180,7 +183,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
     const criteria = JSON.stringify({ ...brief, originalText: '' });
     idempotency.current = startKey(criteria);
     try {
-      const r = await startSearch(brief, idempotency.current);
+      const r = await startSearch(brief, idempotency.current, briefRefs.current);
       setSearch(r.search);
       /* Never silent: a search that could not also read the portals live says why, and until when. */
       const live = r.liveRefresh;
@@ -196,6 +199,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
       navigate(`/find-property/search/${r.search.id}${deepCredits ? `?deep=${deepCredits}` : ''}`);
       writeDraft(null);
       clearStartKey();
+      briefRefs.current = [];
       setView('SEARCH');
       idempotency.current = null;
     } catch (e) {

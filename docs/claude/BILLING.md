@@ -29,8 +29,36 @@ warns when a diff enters this domain.
   `cost_events` row `provider=APIFY_MEMO23`, `operation_type=DEVELOPER_ADS_VERIFY`
   (ACTUAL / ESTIMATED / UNPRICED — never a silent 0), inside the Verify
   job's existing price; it never touches the Find Buyers ledger or budget.
+- **Finance V2 (owner, 2026-10-19) — one financial layer.** Customer prices are final and
+  VAT-inclusive (Georgian VAT 18 %, `finance_tax_profiles` GE_VAT_18_ALL, applied to every
+  customer: no jurisdiction data exists on users). VAT is extracted, never added:
+  net = gross × 10000 / (10000 + bps), `finance_split_gross`. Wallet top-ups carry no VAT
+  (deposits); VAT is recognised when credits are consumed. Every customer policy is a row in
+  `finance_commercial_policies` (a changed rule is a new id; a transaction keeps the policy it
+  started under), every service a row in `finance_services`. The ledger is two views —
+  `finance_v2_revenue_lines` (every charge: usage_events, credit_ledger direct debits,
+  meta_ads_ledger fee) and `finance_v2_cost_lines` (every attributable provider/AI line from
+  its authoritative source; `cost_usd` NULL = UNPRICED, never 0) — read only through the
+  admin RPCs `finance_v2_services / _service_detail / _execution / _quote`
+  (Admin → Finance → Services). Free services still record COGS. Shared/background cost
+  (`shared_platform`, `retired_providers`, `unattributed`) never enters a service's profit.
+  The `billing_cogs_tax_bps` 18 % COGS uplift stays in non-Verify cost-based PRICING
+  (owner, 2026-10-19) and is reported separately; it is not COGS in the ledger.
+- **Paid discovery pricing policy `paid_discovery_37_63_vat_v2`** (owner, Finance V2,
+  2026-10-19) — CURRENT for every new Find Buyers / Find Tenants and Find Property paid
+  campaign (`PAID_DISCOVERY_CURRENT_POLICY`). VAT first, then 37 / 63 of the VAT-exclusive
+  revenue N = P / 1.18; every provider and AI cost is paid from the 63 %:
+  - execution budget = floor(P_micros × 6300 / 11800) (SQL twin
+    `paid_discovery_execution_micros`): $5 → $2.669491, $10 → $5.338983, $30 → $16.016949;
+    VAT $10 → $1.525424, HOMATCH $10 → $3.135593.
+  - charge = ceil(spend × 11800 / 6300) to the cent, capped at the reservation
+    (`creditsForSpend(…, v2)`, SQL `paid_discovery_gross_for_spend_micros`). Find Buyers v2
+    settles on its own campaign ledger (`find_buyers_campaign_spend_micros`: actor runs + the
+    campaign's OpenAI rows) and refuses to settle on a guessed spend.
+  - The gross-based ÷ 0.63 inverse exists only for v1 campaigns.
 - **Paid discovery pricing policy `paid_discovery_37_63_v1`** (owner,
-  2026-10-16). One policy for every paid discovery campaign started since:
+  2026-10-16) — HISTORICAL: campaigns stamped with it keep it. It applied to every paid
+  discovery campaign started 2026-10-16 … Finance V2:
   Find Buyers / Find Tenants (`find_buyers_campaigns.pricing_policy`) and the
   Find Property paid social OFFER campaign (`discovery_runs.pricing_policy`).
   - HOMATCH profit = 37% of the TOTAL price P; provider budget = 63% of P
@@ -64,7 +92,7 @@ warns when a diff enters this domain.
 - **Verify credit budget** (migration `20261026100000`, OFF until
   `admin_settings.verify_billing_enabled` = true). A Verify reserves its
   authorised budget (`billable_products.VERIFY.config.verify_budget.max_budget_credits`,
-  25) through `wallet_reserve`, prices its METERED cost live, and settles the
+  100 — the cap across authorisations; 25 to start) through `wallet_reserve`, prices its METERED cost live, and settles the
   cumulative price minus what earlier sessions of the same job charged
   (stop/resume never charges twice; the total never exceeds the recorded
   authorisations). Price: net = max((landed + contingency_bps) / (1 − target_margin_bps),

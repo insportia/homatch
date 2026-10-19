@@ -25,6 +25,7 @@ import {
   FinanceLiveSpendTab, FinanceFixedCostsTab, FinancePriceBookTab,
 } from '@/components/admin/finance/FinanceMoreTabs';
 import { FinanceEventsTab } from '@/components/admin/finance/FinanceEventsTab';
+import { FinanceServicesTab } from '@/components/admin/finance/FinanceServicesTab';
 
 /**
  * HOMATCH FINANCIAL COMMAND CENTER — /admin/finance
@@ -158,6 +159,7 @@ export default function AdminFinancePage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="overview" className="text-xs">{t('fin_tab_overview')}</TabsTrigger>
+          <TabsTrigger value="services" className="text-xs">{t('fin_tab_services')}</TabsTrigger>
           <TabsTrigger value="live" className="text-xs">{t('fin_tab_live')}</TabsTrigger>
           <TabsTrigger value="providers" className="text-xs">{t('fin_tab_providers')}</TabsTrigger>
           <TabsTrigger value="connections" className="text-xs">{t('fin_tab_connections')}</TabsTrigger>
@@ -350,6 +352,9 @@ export default function AdminFinancePage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="services" className="mt-4">
+          <FinanceServicesTab />
+        </TabsContent>
         <TabsContent value="providers" className="mt-4">
           <FinanceProvidersTab />
         </TabsContent>

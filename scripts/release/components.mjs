@@ -255,6 +255,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(research_|verify|verification|deal_room)/, 'VERIFY'],
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
+  // Finance V2: tax profiles, commercial policies, the service registry and its admin ledger views/RPCs.
+  [/^public\.(finance_tax_profiles$|finance_commercial_policies$|finance_services$|finance_vat_bps_at$|finance_split_gross$|finance_cost_status$|finance_credits_to_usd$|finance_v2_)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
   // The paid discovery pricing policy (37/63) and native matching's resumable retirement.
   [/^public\.(paid_discovery_|retire_native_matches|find_property_|my_find_property_campaign$)/, 'DISCOVERY'],
@@ -294,6 +296,8 @@ export const I18N_KEY_OWNERS = [
   [/^(pwa|notif)_/, 'PWA_PUSH'],
   [/^auth_/, 'AUTH_SECURITY'],
   [/^admin_/, 'ADMIN'],
+  // Admin → Finance (incl. Finance V2 per-service dashboards).
+  [/^fin_(v2|tab)_/, 'ADMIN'],
   // Find Property workspace (history, results, property page; property-scoped AI chat errors).
   [/^fpw_/, 'DISCOVERY'],
   // Find Property search screens (marketplace search, sources, results workspace).

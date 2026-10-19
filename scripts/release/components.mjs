@@ -264,7 +264,7 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.property_knowledge_/, 'DISCOVERY'],
   // Find Property free portal search: worker claim, live-search dispatch and quota, shared runs.
   [/^public\.(marketplace_|claim_marketplace_|consume_marketplace_|admin_marketplace_)/, 'DISCOVERY'],
-  // Property inventory (20261119090000): the write-through function and its status view.
+  // Property inventory (20261119100000): the write-through function and its status view.
   [/^public\.(upsert_marketplace_inventory$|property_inventory_)/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],

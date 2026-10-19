@@ -131,7 +131,7 @@ SSAgent (`ss-ge`) and PlaceAgent (`place-ge`, currently HTTP 403 → likely
 
 Deep Search stays unavailable in the UI until its own backend and billing exist.
 
-## Property inventory (2026-10-19, migration 20261119090000)
+## Property inventory (2026-10-19, migrations 20261119100000 + 20261119100100)
 
 One row per listing across every marketplace portal, in the table that already carried the
 freshness contract. Rules: `src/research-core/marketplace/inventory.ts`; write-through:

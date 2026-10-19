@@ -17,7 +17,7 @@
 --   * allhome-ge joins source_registry (every other marketplace source is already there).
 --   * Pool index: the shared listing pool reads one source's newest observations
 --     (marketplaceSearch.ts serveCachedListings); it was a sequential scan.
---   * The backfill and the revalidate-supply schedule are 20261119090100, applied only after
+--   * The backfill and the revalidate-supply schedule are 20261119100100, applied only after
 --     supply-matching (which skips MARKETPLACE rows) is deployed: no window in which the old
 --     matcher could read portal listings.
 

@@ -119,8 +119,8 @@ test('revalidation: re-read through the adapter, never a whole-page hash; the te
     .filter((f) => /cron\.schedule[\s\S]{0,400}revalidate-supply/.test(read(`supabase/migrations/${f}`)));
   /* Scheduled by the owner's inventory workstream (2026-10-19): once, hourly, at most 25 re-reads,
      and never for worker-only portals (no portal reader exists for them). */
-  assert.deepEqual(scheduled, ['20261119090100_property_inventory_backfill.sql'], 'exactly one migration schedules revalidate-supply');
-  const migration = read('supabase/migrations/20261119090100_property_inventory_backfill.sql');
+  assert.deepEqual(scheduled, ['20261119100100_property_inventory_backfill.sql'], 'exactly one migration schedules revalidate-supply');
+  const migration = read('supabase/migrations/20261119100100_property_inventory_backfill.sql');
   assert.match(migration, /cron\.schedule\('homatch-revalidate-supply', '41 \* \* \* \*'/);
   assert.match(migration, /"limit":25/);
   assert.match(rv, /WORKER_ONLY_SOURCES/);

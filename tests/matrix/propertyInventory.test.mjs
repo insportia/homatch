@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
-const SCHEMA = read('supabase/migrations/20261119090000_property_inventory.sql');
-const BACKFILL = read('supabase/migrations/20261119090100_property_inventory_backfill.sql');
+const SCHEMA = read('supabase/migrations/20261119100000_property_inventory.sql');
+const BACKFILL = read('supabase/migrations/20261119100100_property_inventory_backfill.sql');
 const MIGRATION = `${SCHEMA}\n${BACKFILL}`;
 const INGEST = read('supabase/functions/marketplace-worker-ingest/index.ts');
 const INVENTORY = read('supabase/functions/_shared/marketplaceInventory.ts');
@@ -31,7 +31,7 @@ test('matching is unchanged until the owner decides: supply-matching skips MARKE
 
 test('release order: the backfill and the schedule are a separate migration, applied after the matcher filter is live', () => {
   assert.doesNotMatch(SCHEMA, /do nothing|cron\.schedule/, 'no backfill and no schedule in part 1');
-  assert.match(BACKFILL, /RELEASE ORDER: after 20261119090000 AND after the supply-matching edge deploy/);
+  assert.match(BACKFILL, /RELEASE ORDER: after 20261119100000 AND after the supply-matching edge deploy/);
   assert.match(BACKFILL, /on conflict \(source_id, external_id\) do nothing/, 'rows another lane wrote are left alone');
 });
 

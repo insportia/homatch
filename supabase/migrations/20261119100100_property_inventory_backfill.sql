@@ -1,6 +1,6 @@
 -- HOMATCH property inventory, part 2 (owner, 2026-10-19): backfill + freshness schedule.
 --
--- RELEASE ORDER: after 20261119090000 AND after the supply-matching edge deploy that skips
+-- RELEASE ORDER: after 20261119100000 AND after the supply-matching edge deploy that skips
 -- ingest_channel = 'MARKETPLACE' rows (otherwise the deployed matcher would read them).
 
 -- Backfill: every listing the shared pool already holds (discovery_marketplace_listings), once,

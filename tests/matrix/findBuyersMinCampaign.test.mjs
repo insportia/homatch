@@ -50,7 +50,8 @@ test('2. every read offers the same minimum and starts the ladder at 50', () => 
 });
 
 test('3. no second finance engine: VAT and the split live only in the central policy', () => {
-  assert.match(CAMPAIGN, /const a = allocateCampaign\(credits, creditsPerUsd\);/, 'the execution budget is the policy\'s');
+  // Finance V2: the split is the central policy's CURRENT policy (VAT-first 37/63), named explicitly.
+  assert.match(CAMPAIGN, /const a = allocateCampaign\(credits, creditsPerUsd, PAID_DISCOVERY_CURRENT_POLICY\);/, 'the execution budget is the policy\'s');
   const dirs = ['supabase/functions/_shared/findBuyers', 'src/research-core/findBuyers'];
   for (const d of dirs) for (const f of readdirSync(join(process.cwd(), d)).filter((x) => /\.ts$/.test(x))) {
     const code = read(`${d}/${f}`).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');

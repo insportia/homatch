@@ -21,7 +21,7 @@ import { finishOfferCampaign } from './findProperty/socialOffers.ts';
 import { campaignSearchId } from './findProperty/socialListings.ts';
 import { persistCampaignResults } from './findProperty/campaignResults.ts';
 import { processAndStore } from './marketplaceSearch.ts';
-import { PAID_DISCOVERY_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { isPaidDiscoveryPolicy, type PaidDiscoveryPolicyId } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
 type Json = Record<string, unknown>;
 
@@ -91,7 +91,7 @@ export async function finalizeDiscoveryRun(
   /* A paid social offer campaign settles on what its providers consumed (37/63). */
   const { data: pricing } = await db.from('discovery_runs')
     .select('pricing_policy,credits_per_usd,offers_found').eq('id', run.id).maybeSingle();
-  const socialCampaign = pricing?.pricing_policy === PAID_DISCOVERY_POLICY_ID;
+  const socialCampaign = isPaidDiscoveryPolicy(pricing?.pricing_policy);
   let spendMicros = 0;
   /* A campaign's results are ITS offers judged against the exact request — not the free
      search's deliveries (portals included), which `delivered` above counts. */
@@ -110,7 +110,7 @@ export async function finalizeDiscoveryRun(
   let billing: string = grant ? 'NONE' : 'NO_GRANT';
   try {
     const settled = socialCampaign ? await settlePaidSocialRun(db, grant, {
-      runId: run.id, spendMicros, creditsPerUsd: Number(pricing?.credits_per_usd) || 10,
+      runId: run.id, spendMicros, creditsPerUsd: Number(pricing?.credits_per_usd) || 10, policy: pricing?.pricing_policy as PaidDiscoveryPolicyId,
       durationMs: now - new Date(run.started_at).getTime(), offers: Number(pricing?.offers_found ?? 0), delivered: campaignAvailable ?? 0,
     }, (g, reason, usage) => releaseExecution(db, g, reason, usage)) : await settleFindPropertyRun(db, grant, {
       runId: run.id,

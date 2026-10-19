@@ -65,7 +65,7 @@ test('20-credit TEST campaign: Admin switch (default OFF), admins/listed testers
   assert.match(RUN, /const isTest = test\.allowed && budget === test\.credits;/);
   assert.match(RUN, /if \(!Number\.isFinite\(budget\) \|\| \(budget < minCredits && !isTest\)\) \{/);
   /* Same reservation path, full budget, 37/63 allocation of the test price. */
-  assert.match(RUN, /const allocation = allocateCampaign\(budget, rate\);/);
+  assert.match(RUN, /const allocation = allocateCampaign\(budget, rate, PAID_DISCOVERY_CURRENT_POLICY\);/);
   assert.match(RUN, /requireFullBudget: true,\n      \.\.\.\(isTest \? \{ minViableOverrideCredits: test\.credits \} : \{\}\),/);
   /* The override can only LOWER the product minimum. */
   assert.match(BILLING, /\? Math\.min\(budgetRules\.minViableBudgetCredits, override\)/);

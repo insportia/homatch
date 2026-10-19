@@ -20,7 +20,7 @@ import { converterFrom, ratesFromPayload, ratesFromTable } from '../../../../src
 import { fetchCurrentFx } from '../fx.ts';
 import { draftFromStoredPlan } from '../../../../src/research-core/discovery/discovery-plan.ts';
 import { normalisePlan } from '../../../../src/research-core/discovery/search-plan.ts';
-import { PAID_DISCOVERY_POLICY_ID } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { isPaidDiscoveryPolicy, PAID_DISCOVERY_POLICIES } from '../../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 
 const OFFER_COLUMNS = 'id,canonical_url,transaction,property_type,city,district,sale_amount,sale_currency,rent_amount,rent_currency,area_sqm,rooms,bedrooms,floor,total_floors,title,description,published_at,content_fingerprint,image_urls,field_origins,updated_at';
 
@@ -89,7 +89,7 @@ function snapshotOf(o: CampaignOffer, c: CampaignCriteria, duplicates: CampaignO
  */
 export async function persistCampaignResults(db: any, runId: string, captured: 'CAMPAIGN_END' | 'RECONSTRUCTED' = 'RECONSTRUCTED'): Promise<CampaignFunnel | null> {
   const { data: run } = await db.from('discovery_runs').select('id,user_id,subscription_id,offer_plan,pricing_policy,started_at,completed_at').eq('id', runId).maybeSingle();
-  if (!run || run.pricing_policy !== PAID_DISCOVERY_POLICY_ID) return null;
+  if (!run || !isPaidDiscoveryPolicy(run.pricing_policy)) return null;
   const { criteria } = await campaignCriteria(db, run);
   const { data: actorRuns } = await db.from('find_property_actor_runs').select('id,items_fetched,results_billed,offers_found').eq('discovery_run_id', runId);
   const ars = (actorRuns ?? []) as Array<{ id: string; items_fetched: number | null; results_billed: number | null; offers_found: number | null }>;
@@ -158,7 +158,7 @@ export async function readCampaignResults(db: any, runId: string, opts: { view?:
   const { data: run } = await db.from('discovery_runs')
     .select('id,user_id,subscription_id,status,stage,created_at,started_at,completed_at,deadline_at,offer_plan,pricing_policy,credits_charged,credits_per_usd,billing_grant,campaign_outcome,offers_found')
     .eq('id', runId).maybeSingle();
-  if (!run || run.pricing_policy !== PAID_DISCOVERY_POLICY_ID) return null;
+  if (!run || !isPaidDiscoveryPolicy(run.pricing_policy)) return null;
   let outcome = run.campaign_outcome as (CampaignFunnel & { criteria?: CampaignCriteria }) | null;
   if (!outcome && ENDED.has(String(run.status))) outcome = await persistCampaignResults(db, runId).then(async () =>
     (await db.from('discovery_runs').select('campaign_outcome').eq('id', runId).maybeSingle()).data?.campaign_outcome ?? null);
@@ -206,7 +206,7 @@ export async function readCampaignResults(db: any, runId: string, opts: { view?:
 export async function campaignEconomics(db: any, limit = 20) {
   const { data: runs } = await db.from('discovery_runs')
     .select('id,user_id,status,created_at,completed_at,credits_charged,credits_per_usd,customer_value_micros,provider_budget_micros,provider_cost_usd,billing_grant,campaign_outcome,offers_found')
-    .eq('pricing_policy', PAID_DISCOVERY_POLICY_ID).order('created_at', { ascending: false }).limit(Math.min(100, Math.max(1, limit)));
+    .in('pricing_policy', [...PAID_DISCOVERY_POLICIES]).order('created_at', { ascending: false }).limit(Math.min(100, Math.max(1, limit)));
   const ids = ((runs ?? []) as any[]).map((r) => r.id);
   const { data: actorRuns } = ids.length ? await db.from('find_property_actor_runs')
     .select('discovery_run_id,actor_key,stage,network,status,requested_limit,reserved_micros,actual_micros,cost_basis,provider_run_id,results_billed,items_fetched,offers_found,error,created_at')

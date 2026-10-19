@@ -4,6 +4,7 @@ import type {
   CreditEconomics, UserEconomicsRow, BudgetRow, AlertRow, CostEventPage,
   TimeseriesPoint, MonthRow, MarginMonitor, UnpricedRow, FxStatus, ProviderRegistry,
   FixedCosts, PriceBook, LiveFeed,
+  FinanceV2Service, FinanceV2ServiceDetail, FinanceV2Execution, FinanceV2Quote,
 } from '@/types/finance';
 
 /**
@@ -96,6 +97,21 @@ export const getDesignStudioEconomics = (days = 90) =>
 
 export const getOpenAiBreakdown = (days = 30) =>
   rpc<Record<string, unknown>>('finance_openai_breakdown', { p_days: days });
+
+/* ── Finance V2: one ledger per service (gross → VAT → net → allocation → COGS → profit). ── */
+
+export const getFinanceV2Services = (from: string, to: string) =>
+  rpc<FinanceV2Service[]>('finance_v2_services', { p_from: from, p_to: to });
+
+export const getFinanceV2ServiceDetail = (service: string, from: string, to: string) =>
+  rpc<FinanceV2ServiceDetail>('finance_v2_service_detail', { p_service: service, p_from: from, p_to: to });
+
+export const getFinanceV2Execution = (service: string, executionId: string) =>
+  rpc<FinanceV2Execution>('finance_v2_execution', { p_service: service, p_execution_id: executionId });
+
+/** The server's own policy formula — the simulator never re-implements it. */
+export const getFinanceV2Quote = (policy: string, grossUsd: number, costUsd = 0) =>
+  rpc<FinanceV2Quote>('finance_v2_quote', { p_policy: policy, p_gross_usd: grossUsd, p_cost_usd: costUsd });
 
 export const getLiveFeed = (limit = 50) =>
   rpc<LiveFeed>('finance_live_feed', { p_limit: limit });

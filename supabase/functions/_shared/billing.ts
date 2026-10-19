@@ -412,9 +412,13 @@ export async function settleExecution(
     fee_cents: 0,
     landed_cogs_cents: landedCogsCents,
     failure_reason: usage.failureReason ?? null,
-    metadata: (usage.alreadyLedgeredLandedCents ?? 0) > 0
-      ? { ...(usage.metadata ?? {}), already_ledgered_landed_cents: round4(usage.alreadyLedgeredLandedCents ?? 0) }
-      : usage.metadata ?? {},
+    /* wallet_settle stores metadata as given; the cost state rides there so Finance never
+       reads an unpriced call as a confirmed $0 (Finance V2). */
+    metadata: {
+      ...(usage.metadata ?? {}),
+      ...((usage.alreadyLedgeredLandedCents ?? 0) > 0 ? { already_ledgered_landed_cents: round4(usage.alreadyLedgeredLandedCents ?? 0) } : {}),
+      ...(usage.pricingState ? { pricing_state: usage.pricingState } : {}),
+    },
   };
 
   if (grant.funding === 'INCLUDED') {

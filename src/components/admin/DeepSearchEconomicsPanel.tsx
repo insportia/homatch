@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { adminCampaignEconomics, type CampaignEconomics } from '@/services/paidCampaign';
+import { getFinanceV2Quote } from '@/services/finance';
 
 const money = (v: number | null | undefined, d = 3) => (v == null ? '—' : `$${v.toFixed(d)}`);
 const TEST_KEY = 'find_property_test_campaign';
@@ -25,6 +26,8 @@ export function DeepSearchEconomicsPanel() {
   const [loading, setLoading] = useState(true);
   const [test, setTest] = useState<{ enabled: boolean; credits: number; testers: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
+  /* Execution budget of the test campaign, from the server's current policy formula (never a client copy). */
+  const [execCredits, setExecCredits] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,6 +42,13 @@ export function DeepSearchEconomicsPanel() {
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!test) return;
+    setExecCredits(null);
+    getFinanceV2Quote('paid_discovery_37_63_vat_v2', test.credits / 10)
+      .then((q) => setExecCredits(q?.executionAllocationUsd == null ? null : q.executionAllocationUsd * 10))
+      .catch(() => setExecCredits(null));
+  }, [test?.credits]);
 
   const toggleTest = async (on: boolean) => {
     if (!test) return;
@@ -63,7 +73,7 @@ export function DeepSearchEconomicsPanel() {
         <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-dashed border-border p-3">
           <div className="min-w-0">
             <p className="text-sm font-medium">{t('fpc_admin_test_title', { credits: test.credits })}</p>
-            <p className="text-xs leading-snug text-muted-foreground">{t('fpc_admin_test_body', { provider: (test.credits * 0.63).toFixed(1), testers: test.testers.length })}</p>
+            <p className="text-xs leading-snug text-muted-foreground">{t('fpc_admin_test_body', { provider: execCredits == null ? '—' : execCredits.toFixed(1), testers: test.testers.length })}</p>
           </div>
           <Switch checked={test.enabled} disabled={busy} onCheckedChange={(on) => void toggleTest(on)} aria-label={t('fpc_admin_test_title', { credits: test.credits })} data-switch="find_property_test_campaign" />
         </div>

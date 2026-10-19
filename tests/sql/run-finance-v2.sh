@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Finance V2 (20261119090000_finance_v2_engine.sql) on top of the Find Property paid social
+# Finance V2 (20261119130000_finance_v2_engine.sql) on top of the Find Property paid social
 # migrations, applied TWICE on a throwaway Postgres, then the VAT / policy / ledger checks.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; root="$here/../.."
@@ -19,7 +19,7 @@ $P -d hmfinance -1 -f "$root/supabase/migrations/20261107095700_find_property_so
 $P -d hmfinance -1 -f "$root/supabase/migrations/20261110100000_find_property_social_listings.sql"
 $P -d hmfinance -1 -f "$root/supabase/migrations/20261114090000_find_property_batched_offer_runs.sql"
 $P -d hmfinance -f "$here/finance_v2_fixture.sql"
-M="$root/supabase/migrations/20261119090000_finance_v2_engine.sql"
+M="$root/supabase/migrations/20261119130000_finance_v2_engine.sql"
 $P -d hmfinance -1 -f "$M"
 $P -d hmfinance -1 -f "$M"
 $P -d hmfinance -f "$here/finance_v2.sql"

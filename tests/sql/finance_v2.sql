@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
--- Finance V2 (20261119090000_finance_v2_engine.sql): VAT extraction, paid discovery v1/v2,
+-- Finance V2 (20261119130000_finance_v2_engine.sql): VAT extraction, paid discovery v1/v2,
 -- the campaign spend a v2 charge is based on, and the read-only finance ledger.
 do $$
 declare
@@ -133,6 +133,15 @@ begin
   values (u1, 'AI_CHAT_RESPONSE', 0.2, 'OPENAI', 'unpriced-model', 900, 300, 0, 'chat-1', now());
   select * into r from public.finance_v2_cost_lines where execution_id = 'chat-1';
   assert r.cost_status = 'UNPRICED' and r.cost_usd is null, 'AI chat silent 0 caught: ' || r::text;
+
+  /* HOMATCH Leads tiers (Find Buyers 2.0): an EXACT unlock is Leads revenue; a product no
+     service lists is kept as 'unattributed', never dropped. */
+  insert into public.usage_events (user_id, product_code, charged_credits, job_ref, created_at)
+  values (u1, 'INTERNAL_LEAD_EXACT', 5, 'lead-exact-1', now()), (u1, 'SOME_FUTURE_PRODUCT', 2, 'future-1', now());
+  select * into r from public.finance_v2_revenue_lines where execution_id = 'lead-exact-1';
+  assert r.service_key = 'homatch_leads' and r.gross_usd = 0.5 and r.vat_usd = 0.076271, 'EXACT unlock: ' || r::text;
+  select * into r from public.finance_v2_revenue_lines where execution_id = 'future-1';
+  assert r.service_key = 'unattributed' and r.gross_usd = 0.2, 'unmapped product kept: ' || r::text;
 
   /* ── Admin RPCs: refused without admin, consistent with the views ── */
   begin

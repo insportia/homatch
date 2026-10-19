@@ -396,7 +396,7 @@ insert into public.finance_services (service_key, name, product_codes, policy_id
   ('find_buyers', 'Find Buyers / Tenants', '{FIND_CLIENTS}', 'paid_discovery_37_63_vat_v2', 'VARIABLE', 'Customer budget (minimum find_buyers_min_usd); charged for execution consumed, capped', 'find_buyers', 20),
   ('find_property_search', 'Find Property search', '{}', 'free_v1', 'FREE', 'Free (HOMATCH + portals)', 'find_property', 30),
   ('find_property_paid', 'Find Property paid campaigns', '{FIND_PROPERTY}', 'paid_discovery_37_63_vat_v2', 'VARIABLE', 'From 50 credits ($5); charged for execution consumed, capped (paused)', 'find_property_deep', 40),
-  ('homatch_leads', 'HOMATCH Leads unlocks', '{INTERNAL_LEAD_STANDARD,INTERNAL_LEAD_PREMIUM}', 'fixed_retail_v1', 'FIXED', '$0.30 Standard / $1.00 VIP per contact', 'find_buyers', 50),
+  ('homatch_leads', 'HOMATCH Leads unlocks', '{INTERNAL_LEAD_EXACT,INTERNAL_LEAD_STANDARD,INTERNAL_LEAD_PREMIUM}', 'fixed_retail_v1', 'FIXED', 'Per contact: Exact $0.50 / Nearby or similar $0.30 / VIP $1.00 (billable_products)', 'find_buyers', 50),
   ('match_unlocks', 'Match contact unlocks', '{}', 'fixed_retail_v1', 'FIXED', 'Price stored on each match (matches.unlock_price_credits)', 'find_buyers', 55),
   ('contract_intelligence', 'Contract Intelligence', '{CONTRACT_INTELLIGENCE}', 'cost_based_margin_floor_v1', 'VARIABLE', 'Cost-based quote, 55% margin floor', 'contracts', 60),
   ('ai_chat', 'HOMATCH AI chat', '{AI_CHAT_RESPONSE}', 'cost_based_margin_floor_v1', 'VARIABLE', 'Cost-based quote per answer; anonymous turns free', 'ai_assistant', 70),
@@ -430,7 +430,8 @@ $$;
 /* Every customer charge, one row each. gross is the VAT-inclusive amount the customer paid. */
 create or replace view public.finance_v2_revenue_lines with (security_invoker = true) as
 with base as (
-  select 'usage:' || u.id::text as line_id, s.service_key,
+  /* A charged product no service lists still counts — as 'unattributed', never dropped. */
+  select 'usage:' || u.id::text as line_id, coalesce(s.service_key, 'unattributed') as service_key,
          case when u.product_code in ('FIND_CLIENTS', 'FIND_PROPERTY') then coalesce(u.provider_request_id, u.job_ref, u.id::text)
               else coalesce(u.job_ref, u.id::text) end as execution_id,
          u.created_at as occurred_at, u.user_id, u.product_code, u.charged_credits as credits,
@@ -442,7 +443,7 @@ with base as (
          coalesce((u.metadata ->> 'profit_floor_shortfall')::boolean, false) as profit_floor_shortfall,
          'usage_events'::text as source
     from public.usage_events u
-    join public.finance_services s on u.product_code = any (s.product_codes)
+    left join public.finance_services s on u.product_code = any (s.product_codes)
     left join public.find_buyers_campaigns fbc on u.product_code = 'FIND_CLIENTS' and fbc.matching_job_id::text = u.provider_request_id
     left join public.discovery_runs dr on u.product_code = 'FIND_PROPERTY' and dr.id::text = u.provider_request_id
    where u.charged_credits > 0

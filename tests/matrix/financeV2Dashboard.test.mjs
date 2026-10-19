@@ -10,7 +10,7 @@ const TAB = read('src/components/admin/finance/FinanceServicesTab.tsx');
 const PAGE = read('src/pages/admin/AdminFinancePage.tsx');
 const SVC = read('src/services/finance.ts');
 const PANEL = read('src/components/admin/DeepSearchEconomicsPanel.tsx');
-const SQL = read('supabase/migrations/20261119090000_finance_v2_engine.sql');
+const SQL = read('supabase/migrations/20261119130000_finance_v2_engine.sql');
 const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
 test('the Services tab is mounted in Admin → Finance and calls only the finance_v2 RPCs', () => {

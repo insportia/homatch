@@ -12,7 +12,7 @@ const CAMPAIGN = read('supabase/functions/_shared/findBuyers/campaign.ts');
 const RUN = read('supabase/functions/_shared/campaignRun.ts');
 const BILLING = read('supabase/functions/_shared/billing.ts');
 const V1 = read('supabase/migrations/20261107091700_paid_discovery_pricing_policy.sql');
-const V2 = read('supabase/migrations/20261119090000_finance_v2_engine.sql');
+const V2 = read('supabase/migrations/20261119130000_finance_v2_engine.sql');
 
 test('the TS policy and its SQL twins state the same shares and policy ids', () => {
   assert.match(POLICY, /PAID_DISCOVERY_PROVIDER_BPS = 6300/);

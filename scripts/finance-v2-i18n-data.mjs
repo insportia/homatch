@@ -127,3 +127,10 @@ export const FINANCE_V2_STRINGS = {
   fin_v2_sim_over: ['Over execution budget', 'აჭარბებს შესრულების ბიუჯეტს', 'Превышает бюджет исполнения', 'Yürütme bütçesini aşıyor', 'يتجاوز ميزانية التنفيذ', 'חורג מתקציב הביצוע'],
   fin_v2_sim_charge: ['Charge for this cost', 'ჩამოსაჭრელი ამ ხარჯზე', 'Списание за эти расходы', 'Bu maliyet için ücret', 'الرسوم مقابل هذه التكلفة', 'חיוב עבור עלות זו'],
 };
+
+export const FINANCE_V2_STRINGS_2 = {
+  fin_v2_status_actual: ['Actual', 'ფაქტობრივი', 'Фактически', 'Gerçek', 'فعلي', 'בפועל'],
+  fin_v2_status_estimated: ['Estimated', 'შეფასებული', 'Оценка', 'Tahmini', 'تقديري', 'מוערך'],
+  fin_v2_status_partial: ['Partially priced', 'ნაწილობრივ ფასდადგენილი', 'Частично оценено', 'Kısmen fiyatlandırıldı', 'مسعّر جزئيًا', 'מתומחר חלקית'],
+  fin_v2_status_unpriced: ['Unpriced', 'ფასდაუდგენელი', 'Без цены', 'Fiyatlandırılmamış', 'غير مسعّر', 'ללא תמחור'],
+};

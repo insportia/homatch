@@ -53,9 +53,9 @@ function Chain({
 }) {
   const { t } = useLanguage();
   const Step = ({ label, children, tone }: { label: string; children: React.ReactNode; tone?: string }) => (
-    <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 ${tone ?? 'border-border/70 bg-card/60'}`}>
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold">{children}</span>
+    <div className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border px-3 py-2 ${tone ?? 'border-border/70 bg-card/60'}`}>
+      <span className="min-w-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="ms-auto flex flex-wrap items-center justify-end gap-1.5 whitespace-nowrap text-sm font-semibold">{children}</span>
     </div>
   );
   const Arrow = () => <ArrowDown className="mx-auto h-3.5 w-3.5 text-muted-foreground/70" aria-hidden />;
@@ -70,21 +70,19 @@ function Chain({
       {homatch === null && execution === null ? (
         <Step label={t('fin_v2_chain_allocation')}><span className="text-xs text-muted-foreground">{t('fin_v2_no_split')}</span></Step>
       ) : (
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           <Step label={t('fin_v2_homatch_alloc')}><Money value={homatch} /></Step>
           <Step label={t('fin_v2_exec_alloc')}><Money value={execution} /></Step>
         </div>
       )}
       <Arrow />
       <Step label={t('fin_v2_chain_cogs')}>
-        <span className="inline-flex items-center gap-2"><Money value={cogs} frac={4} />{unpriced > 0 && <UnpricedBadge count={unpriced} />}</span>
+        <Money value={cogs} frac={4} />{unpriced > 0 && <UnpricedBadge count={unpriced} />}
       </Step>
       <Arrow />
       <Step label={t('fin_v2_chain_profit')} tone={profit < 0 ? 'border-red-500/40 bg-red-500/5' : 'border-emerald-500/30 bg-emerald-500/5'}>
-        <span className="inline-flex items-center gap-2">
-          <Money value={profit} className={profit < 0 ? 'text-red-400' : 'text-emerald-400'} />
-          {unpriced > 0 && <Pill tone="warn">{t('fin_v2_profit_incomplete')}</Pill>}
-        </span>
+        <Money value={profit} className={profit < 0 ? 'text-red-400' : 'text-emerald-400'} />
+        {unpriced > 0 && <Pill tone="warn">{t('fin_v2_profit_incomplete')}</Pill>}
       </Step>
       {unused !== null && (
         <p className="pt-1 text-xs text-muted-foreground">
@@ -105,6 +103,10 @@ function ExecutionDetail({ service, executionId }: { service: string; executionI
   }, [service, executionId]);
   useEffect(load, [load]);
 
+  const statusLabel: Record<string, string> = {
+    ACTUAL: t('fin_v2_status_actual'), ESTIMATED: t('fin_v2_status_estimated'),
+    PARTIALLY_PRICED: t('fin_v2_status_partial'), UNPRICED: t('fin_v2_status_unpriced'),
+  };
   if (error) return <LoadError message={error} onRetry={load} />;
   if (!data) return <Loader2 className="mx-auto my-4 h-4 w-4 animate-spin text-muted-foreground" />;
   const c = data.chain;
@@ -156,11 +158,11 @@ function ExecutionDetail({ service, executionId }: { service: string; executionI
                 {data.costs.map((l) => (
                   <tr key={l.line_id} className="border-t border-border/40 align-top">
                     <td className="py-1.5">{l.provider ?? '—'}{l.model && <div className="text-muted-foreground">{l.model}</div>}</td>
-                    <td className="py-1.5">{l.operation ?? '—'}<div className="text-muted-foreground">{l.cost_source}</div></td>
-                    <td className="py-1.5 text-end tabular-nums" dir="ltr">
-                      {l.units === null ? '—' : `${num(l.units, 0)} ${l.unit_label ?? ''}`}
+                    <td className="py-1.5">{l.operation ?? '—'}<div className="text-muted-foreground"><bdi>{l.cost_source}</bdi></div></td>
+                    <td className="py-1.5 text-end tabular-nums">
+                      {l.units === null ? '—' : <bdi>{`${num(l.units, 0)} ${l.unit_label ?? ''}`}</bdi>}
                       {(l.input_tokens || l.output_tokens) ? (
-                        <div className="text-muted-foreground">
+                        <div className="text-muted-foreground" dir="auto">
                           {t('fin_v2_tokens', { input: num(l.input_tokens), cached: num(l.cached_tokens), output: num(l.output_tokens) })}
                         </div>
                       ) : null}
@@ -168,7 +170,7 @@ function ExecutionDetail({ service, executionId }: { service: string; executionI
                     <td className="py-1.5 text-end"><Money value={l.unit_price_usd} frac={6} /></td>
                     <td className="py-1.5 text-end"><Money value={l.cost_usd} frac={6} /></td>
                     <td className="py-1.5">
-                      <Pill tone={l.cost_status === 'ACTUAL' ? 'good' : l.cost_status === 'UNPRICED' ? 'warn' : 'muted'}>{l.cost_status}</Pill>
+                      <Pill tone={l.cost_status === 'ACTUAL' ? 'good' : l.cost_status === 'UNPRICED' ? 'warn' : 'muted'}>{statusLabel[l.cost_status] ?? l.cost_status}</Pill>
                     </td>
                     <td className="py-1.5 text-muted-foreground" dir="ltr">{new Date(l.occurred_at).toLocaleString()}</td>
                   </tr>
@@ -191,7 +193,7 @@ function Trend({ points }: { points: FinanceV2ServiceDetail['trend'] }) {
     <div>
       <div className="flex h-28 items-end gap-1 overflow-x-auto" dir="ltr">
         {points.map((p) => (
-          <div key={p.day} className="flex min-w-[10px] flex-1 items-end gap-px" title={`${p.day} · ${num(p.executions)}`}>
+          <div key={p.day} className="flex h-full min-w-[10px] flex-1 items-end gap-px" title={`${p.day} · ${num(p.executions)}`}>
             <div className="w-1/2 rounded-t bg-gold/80" style={{ height: `${max > 0 ? (Number(p.grossUsd) / max) * 100 : 0}%` }} />
             <div className="w-1/2 rounded-t bg-red-400/70" style={{ height: `${max > 0 ? (Number(p.cogsUsd) / max) * 100 : 0}%` }} />
           </div>
@@ -307,8 +309,9 @@ function ServiceDashboard({ service, from, to }: { service: string; from: string
           sub={<>{t('fin_v2_estimated')} <Money value={s.estimatedCogsUsd} frac={4} /> · {num(s.costLines)} {t('fin_v2_lines')}</>} />
         <StatCard label={t('fin_v2_executions')} value={num(s.executions)} sub={`${num(s.charges)} ${t('fin_v2_charges')}`} />
         <StatCard label={t('fin_v2_avg_cost')} value={<Money value={s.avgCostPerExecutionUsd} frac={4} />}
-          unavailable={s.avgCostPerExecutionUsd === null} unavailableLabel={t('fin_na')} unavailableNote={unpricedNote} />
-        <StatCard label={t('fin_v2_unused')} value={<Money value={s.unusedBudgetUsd} />} sub={t('fin_v2_unused_sub')} />
+          sub={unpricedNote} unavailable={s.avgCostPerExecutionUsd === null} unavailableLabel={t('fin_na')} />
+        <StatCard label={t('fin_v2_unused')} value={<Money value={s.unusedBudgetUsd} />} sub={t('fin_v2_unused_sub')}
+          unavailable={s.executionAllocationUsd === null} unavailableLabel={t('fin_v2_no_split')} />
         <StatCard label={t('fin_v2_refunds')} value={<Money value={s.refundsUsd} />} />
         <StatCard label={t('fin_v2_unpriced')} value={num(s.unpricedLines)} tone={s.unpricedLines > 0 ? 'bad' : 'neutral'}
           sub={s.partialLines > 0 ? `${num(s.partialLines)} ${t('fin_v2_partial')}` : undefined} />
@@ -366,13 +369,13 @@ function ServiceDashboard({ service, from, to }: { service: string; from: string
               return (
                 <li key={e.executionId} className="rounded-lg border border-border/50">
                   <button type="button" onClick={() => setOpen(isOpen ? null : e.executionId)} aria-expanded={isOpen}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs">
+                    className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2 text-start text-xs">
                     {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 rtl:rotate-180" />}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono" dir="ltr">{e.executionId}</span>
-                      <span className="text-muted-foreground" dir="ltr">{new Date(e.at).toLocaleString()}</span>
+                    <span className="min-w-0 flex-1 basis-40">
+                      <span className="block truncate font-mono"><bdi>{e.executionId}</bdi></span>
+                      <span className="text-muted-foreground"><bdi>{new Date(e.at).toLocaleString()}</bdi></span>
                     </span>
-                    <span className="grid shrink-0 grid-cols-3 gap-3 text-end">
+                    <span className="grid w-full grid-cols-3 gap-2 text-end sm:w-auto sm:shrink-0 sm:gap-3 [&>span]:min-w-0">
                       <span><span className="block text-muted-foreground">{t('fin_v2_gross')}</span><Money value={e.grossUsd} /></span>
                       <span><span className="block text-muted-foreground">{t('fin_v2_cogs')}</span><Money value={e.cogsUsd} frac={4} /></span>
                       <span>

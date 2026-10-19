@@ -16,6 +16,7 @@ create table if not exists public.voice_usage_events (id uuid primary key defaul
 alter table public.find_buyers_actor_runs add column if not exists matching_job_id uuid, add column if not exists actor_key text,
   add column if not exists operation text, add column if not exists status text, add column if not exists reserved_micros bigint,
   add column if not exists estimated_micros bigint, add column if not exists actual_micros bigint, add column if not exists cost_basis text,
+  add column if not exists provider_run_id text,
   add column if not exists results_billed integer, add column if not exists created_at timestamptz default now(), add column if not exists finished_at timestamptz;
 alter table public.usage_events add column if not exists provider text, add column if not exists provider_operation text, add column if not exists provider_request_id text,
   add column if not exists model text, add column if not exists input_tokens bigint, add column if not exists cached_tokens bigint, add column if not exists output_tokens bigint,

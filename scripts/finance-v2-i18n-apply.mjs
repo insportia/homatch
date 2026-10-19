@@ -14,9 +14,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FINANCE_V2_STRINGS } from './finance-v2-i18n-data.mjs';
+import { FINANCE_V2_STRINGS, FINANCE_V2_STRINGS_2 } from './finance-v2-i18n-data.mjs';
 
-const STRINGS = { ...FINANCE_V2_STRINGS };
+const STRINGS = { ...FINANCE_V2_STRINGS, ...FINANCE_V2_STRINGS_2 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(__dirname, '..', 'src', 'i18n', 'translations.ts');

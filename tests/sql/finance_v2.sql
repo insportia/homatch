@@ -43,18 +43,26 @@ begin
   exception when check_violation then null; end;
 
   /* ── The spend a v2 campaign is charged for = what its budget is enforced against ── */
-  insert into public.find_buyers_actor_runs (matching_job_id, actor_key, status, reserved_micros, actual_micros, cost_basis) values
-    (v_job, 'A', 'SUCCEEDED', 400000, 250000, 'PROVIDER_REPORTED'),   -- actual
-    (v_job, 'A', 'ABORTED', 300000, null, 'UNKNOWN'),                 -- unknown → its reservation, never 0
-    (v_job, 'A', 'RUNNING', 200000, null, null),                      -- still held
-    (v_job, 'A', 'RELEASED', 900000, null, 'NOT_STARTED');            -- released → 0
+  insert into public.find_buyers_actor_runs (matching_job_id, actor_key, status, reserved_micros, actual_micros, cost_basis, provider_run_id) values
+    (v_job, 'A', 'SUCCEEDED', 400000, 250000, 'PROVIDER_REPORTED', 'r1'), -- actual
+    (v_job, 'A', 'ABORTED', 300000, null, 'UNKNOWN', 'r2'),              -- confirmed, cost unknown → its reservation, never 0
+    (v_job, 'A', 'RUNNING', 200000, null, null, 'r3'),                   -- confirmed, still running → held
+    (v_job, 'A', 'RELEASED', 900000, null, 'NOT_STARTED', null),         -- released → 0
+    (v_job, 'A', 'STARTING', 500000, null, null, null),                  -- never confirmed → HOMATCH's, not the customer's
+    (v_job, 'A', 'FAILED', 700000, null, 'START_AMBIGUOUS', 'r6');       -- ambiguous start → HOMATCH's
   insert into public.find_buyers_cost_ledger (matching_job_id, kind, provider, model, estimated_micros, actual_micros, cost_state, after_settlement) values
     (v_job, 'AI', 'OPENAI', 'gpt-4o-mini', 1200, null, 'ESTIMATED', false),
     (v_job, 'TRANSLATION', 'OPENAI', 'gpt-4o-mini', 300, null, 'ESTIMATED', false),  -- translation counts (it consumes the budget)
     (v_job, 'AI', 'OPENAI', 'gpt-4o-mini', 999, null, 'ESTIMATED', true),            -- after settlement: not this charge
+    (v_job, 'AI', 'OPENAI', 'gpt-4o-mini', 0, null, 'UNKNOWN', false),               -- unknown: not charged, reported UNPRICED
+    (v_job, 'AI', 'OPENAI', 'gpt-4o-mini', 777, null, 'RELEASED', false),            -- released: neither charged nor COGS
     (v_job, 'PROVIDER', 'APIFY_MEMO23', null, 250000, 250000, 'ACTUAL', false);      -- Apify comes from the runs, not twice
   assert public.find_buyers_campaign_spend_micros(v_job) = 250000 + 300000 + 200000 + 1200 + 300,
-    'spend = runs (actual / unknown at reservation / held) + OpenAI ledger: ' || public.find_buyers_campaign_spend_micros(v_job);
+    'customer spend = confirmed runs (actual / unknown at reservation / held) + OpenAI ledger: ' || public.find_buyers_campaign_spend_micros(v_job);
+  assert (select count(*) from public.finance_v2_cost_lines where execution_id = v_job::text and cost_source = 'find_buyers_cost_ledger' and cost_status = 'UNPRICED' and cost_usd is null) = 1,
+    'UNKNOWN OpenAI row is UNPRICED, never $0';
+  assert not exists (select 1 from public.finance_v2_cost_lines where execution_id = v_job::text and cost_source = 'find_buyers_cost_ledger' and cost_usd = 0.000777),
+    'RELEASED ledger row is not COGS';
 
   /* ── Budget extension follows the campaign's own policy ── */
   insert into public.billable_products (code, name, enabled, kill_switch)

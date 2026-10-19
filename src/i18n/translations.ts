@@ -21003,6 +21003,12 @@ const en = {
   fin_v2_sim_within: 'Within execution budget',
   fin_v2_sim_over: 'Over execution budget',
   fin_v2_sim_charge: 'Charge for this cost',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v2_status_actual: 'Actual',
+  fin_v2_status_estimated: 'Estimated',
+  fin_v2_status_partial: 'Partially priced',
+  fin_v2_status_unpriced: 'Unpriced',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -41920,6 +41926,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'შესრულების ბიუჯეტის ფარგლებში',
   fin_v2_sim_over: 'აჭარბებს შესრულების ბიუჯეტს',
   fin_v2_sim_charge: 'ჩამოსაჭრელი ამ ხარჯზე',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v2_status_actual: 'ფაქტობრივი',
+  fin_v2_status_estimated: 'შეფასებული',
+  fin_v2_status_partial: 'ნაწილობრივ ფასდადგენილი',
+  fin_v2_status_unpriced: 'ფასდაუდგენელი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -62828,6 +62840,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'В пределах бюджета исполнения',
   fin_v2_sim_over: 'Превышает бюджет исполнения',
   fin_v2_sim_charge: 'Списание за эти расходы',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v2_status_actual: 'Фактически',
+  fin_v2_status_estimated: 'Оценка',
+  fin_v2_status_partial: 'Частично оценено',
+  fin_v2_status_unpriced: 'Без цены',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -83734,6 +83752,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'Yürütme bütçesi içinde',
   fin_v2_sim_over: 'Yürütme bütçesini aşıyor',
   fin_v2_sim_charge: 'Bu maliyet için ücret',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v2_status_actual: 'Gerçek',
+  fin_v2_status_estimated: 'Tahmini',
+  fin_v2_status_partial: 'Kısmen fiyatlandırıldı',
+  fin_v2_status_unpriced: 'Fiyatlandırılmamış',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -104640,6 +104664,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'ضمن ميزانية التنفيذ',
   fin_v2_sim_over: 'يتجاوز ميزانية التنفيذ',
   fin_v2_sim_charge: 'الرسوم مقابل هذه التكلفة',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v2_status_actual: 'فعلي',
+  fin_v2_status_estimated: 'تقديري',
+  fin_v2_status_partial: 'مسعّر جزئيًا',
+  fin_v2_status_unpriced: 'غير مسعّر',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -125546,6 +125576,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   fin_v2_sim_within: 'בתוך תקציב הביצוע',
   fin_v2_sim_over: 'חורג מתקציב הביצוע',
   fin_v2_sim_charge: 'חיוב עבור עלות זו',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v2_status_actual: 'בפועל',
+  fin_v2_status_estimated: 'מוערך',
+  fin_v2_status_partial: 'מתומחר חלקית',
+  fin_v2_status_unpriced: 'ללא תמחור',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

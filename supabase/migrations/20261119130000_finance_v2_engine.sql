@@ -61,7 +61,7 @@ comment on function public.finance_vat_bps_at(timestamptz) is 'Output VAT rate (
 
 /* gross is VAT-inclusive: net = gross × 10000 / (10000 + bps), VAT = gross − net. Never gross × 18%. */
 create or replace function public.finance_split_gross(p_gross_usd numeric, p_vat_bps integer)
-returns table (net_usd numeric, vat_usd numeric) language sql immutable as $$
+returns table (net_usd numeric, vat_usd numeric) language sql immutable set search_path = public, pg_temp as $$
   select case when p_vat_bps is null then null else round(p_gross_usd * 10000 / (10000 + p_vat_bps), 6) end,
          case when p_vat_bps is null then null else p_gross_usd - round(p_gross_usd * 10000 / (10000 + p_vat_bps), 6) end
 $$;
@@ -103,12 +103,24 @@ on conflict (policy_id) do nothing;
 
 /* ── 3. Paid discovery v2 ───────────────────────────────────────────────── */
 
-alter table public.find_buyers_campaigns drop constraint if exists find_buyers_campaigns_pricing_policy_check;
+/* Widen the pricing_policy CHECKs. Drop whatever check constrains pricing_policy, whatever its
+   name, so a differently named v1-only check can never survive and refuse v2 starts; add the
+   new one NOT VALID and validate it separately (no long ACCESS EXCLUSIVE scan). */
+do $$
+declare c record;
+begin
+  for c in select conrelid::regclass as tbl, conname from pg_constraint
+            where conrelid in ('public.find_buyers_campaigns'::regclass, 'public.discovery_runs'::regclass)
+              and contype = 'c' and pg_get_constraintdef(oid) ilike '%pricing_policy%' loop
+    execute format('alter table %s drop constraint %I', c.tbl, c.conname);
+  end loop;
+end $$;
 alter table public.find_buyers_campaigns add constraint find_buyers_campaigns_pricing_policy_check
-  check (pricing_policy is null or pricing_policy in ('paid_discovery_37_63_v1', 'paid_discovery_37_63_vat_v2'));
-alter table public.discovery_runs drop constraint if exists discovery_runs_pricing_policy_check;
+  check (pricing_policy is null or pricing_policy in ('paid_discovery_37_63_v1', 'paid_discovery_37_63_vat_v2')) not valid;
+alter table public.find_buyers_campaigns validate constraint find_buyers_campaigns_pricing_policy_check;
 alter table public.discovery_runs add constraint discovery_runs_pricing_policy_check
-  check (pricing_policy is null or pricing_policy in ('paid_discovery_37_63_v1', 'paid_discovery_37_63_vat_v2'));
+  check (pricing_policy is null or pricing_policy in ('paid_discovery_37_63_v1', 'paid_discovery_37_63_vat_v2')) not valid;
+alter table public.discovery_runs validate constraint discovery_runs_pricing_policy_check;
 
 /* SQL twins of allocatePriceMicros / grossForSpendMicros (integer µ$, identical rounding). */
 create or replace function public.paid_discovery_execution_micros(p_policy text, p_price_micros numeric)
@@ -125,24 +137,31 @@ returns bigint language sql immutable parallel safe as $$
     when 'paid_discovery_37_63_v1'     then ceil(greatest(p_spend_micros, 0) * 10000 / 6300)::bigint
   end
 $$;
+revoke all on function public.paid_discovery_execution_micros(text, numeric) from public, anon;
+revoke all on function public.paid_discovery_gross_for_spend_micros(text, numeric) from public, anon;
 grant execute on function public.paid_discovery_execution_micros(text, numeric) to authenticated, service_role;
 grant execute on function public.paid_discovery_gross_for_spend_micros(text, numeric) to authenticated, service_role;
 
-/* What a v2 Find Buyers campaign is charged for: exactly what its provider budget is
-   enforced against (find_buyers_reserve_actor_run) — Actor runs at their actual cost, a run
-   whose cost is unknown at its reservation (never 0), released runs at 0 — plus every
-   OpenAI ledger row (analysis AND translation) booked while the campaign was open. */
+/* What a v2 Find Buyers CUSTOMER is charged for — the find_property_customer_micros rule:
+   only Actor runs the provider confirmed (a provider run id), never an ambiguous start
+   (HOMATCH's cost of goods); a confirmed run at its actual cost, or at its reservation while
+   running / when its cost is unknown (never 0); plus every OpenAI ledger row (analysis AND
+   translation) booked while the campaign was open. An UNKNOWN OpenAI row adds nothing here
+   (HOMATCH carries it; the ledger reports it UNPRICED). This deliberately differs from the
+   BUDGET rule in find_buyers_reserve_actor_run, which holds every reservation to cap spend. */
 create or replace function public.find_buyers_campaign_spend_micros(p_matching_job_id uuid)
 returns bigint language sql stable security definer set search_path = public, pg_temp as $$
   select (coalesce((select sum(case
-             when r.status in ('RESERVED', 'STARTING', 'RUNNING') then r.reserved_micros
-             when r.actual_micros is not null then r.actual_micros
+             when r.provider_run_id is null then 0
              when r.status = 'RELEASED' then 0
+             when coalesce(r.cost_basis, '') = 'START_AMBIGUOUS' then 0
+             when r.actual_micros is not null then r.actual_micros
              else r.reserved_micros end)
            from public.find_buyers_actor_runs r where r.matching_job_id = p_matching_job_id), 0)
         + coalesce((select sum(coalesce(l.actual_micros, l.estimated_micros, 0))
            from public.find_buyers_cost_ledger l
           where l.matching_job_id = p_matching_job_id and l.provider = 'OPENAI'
+            and coalesce(l.cost_state, '') not in ('UNKNOWN', 'RELEASED')
             and not coalesce(l.after_settlement, false)), 0))::bigint
 $$;
 revoke all on function public.find_buyers_campaign_spend_micros(uuid) from public, anon, authenticated;
@@ -413,10 +432,10 @@ insert into public.finance_services (service_key, name, product_codes, policy_id
 on conflict (service_key) do nothing;
 
 create or replace function public.finance_cost_status(p_state text)
-returns text language sql immutable as $$
+returns text language sql immutable set search_path = public, pg_temp as $$
   select case upper(coalesce(p_state, 'ESTIMATED'))
     when 'ACTUAL' then 'ACTUAL' when 'ZERO_REAL' then 'ACTUAL'
-    when 'PARTIAL' then 'PARTIALLY_PRICED' when 'UNPRICED' then 'UNPRICED'
+    when 'PARTIAL' then 'PARTIALLY_PRICED' when 'UNPRICED' then 'UNPRICED' when 'UNKNOWN' then 'UNPRICED'
     else 'ESTIMATED' end
 $$;
 
@@ -510,8 +529,9 @@ select 'fbrun:' || r.id::text, 'find_buyers', r.matching_job_id::text, coalesce(
 union all
 select 'fbai:' || l.id::text, 'find_buyers', l.matching_job_id::text, l.occurred_at, 'OPENAI', l.kind || ' · ' || coalesce(l.operation, ''), l.model,
        coalesce(l.input_tokens, 0) + coalesce(l.output_tokens, 0), 'TOKENS', l.input_tokens, null, l.output_tokens, null,
-       coalesce(l.actual_micros, l.estimated_micros) / 1e6, public.finance_cost_status(l.cost_state), 'find_buyers_cost_ledger', true
-  from public.find_buyers_cost_ledger l where l.provider = 'OPENAI'
+       case when upper(coalesce(l.cost_state, '')) = 'UNKNOWN' then null else coalesce(l.actual_micros, l.estimated_micros) / 1e6 end,
+       public.finance_cost_status(l.cost_state), 'find_buyers_cost_ledger', true
+  from public.find_buyers_cost_ledger l where l.provider = 'OPENAI' and upper(coalesce(l.cost_state, '')) <> 'RELEASED'
 union all
 select 'fpsearch:' || s.id::text || ':' || a.n, 'find_property_search', s.id::text, coalesce((a.e ->> 'at')::timestamptz, s.created_at), 'OPENAI',
        'MARKETPLACE_' || coalesce(a.e ->> 'call', 'AI'), a.e ->> 'model',
@@ -532,13 +552,13 @@ select 'fprun:' || r.id::text, 'find_property_paid', r.discovery_run_id::text, r
        case when r.actual_micros is not null then 'ACTUAL' else 'ESTIMATED' end, 'find_property_actor_runs', true
   from public.find_property_actor_runs r where r.status <> 'RELEASED'
 union all
-select 'usage:' || u.id::text, s.service_key, coalesce(u.job_ref, u.id::text), u.created_at, coalesce(u.provider, 'OPENAI'),
+select 'usage:' || u.id::text, coalesce(s.service_key, 'unattributed'), coalesce(u.job_ref, u.id::text), u.created_at, coalesce(u.provider, 'OPENAI'),
        coalesce(u.provider_operation, u.product_code), u.model,
        coalesce(u.input_tokens, 0) + coalesce(u.output_tokens, 0), 'TOKENS', u.input_tokens, u.cached_tokens, u.output_tokens, null,
        case when st.status = 'UNPRICED' then null else round((coalesce(u.raw_provider_cost_cents, 0) + coalesce(u.ai_cost_cents, 0)) / 100.0, 8) end,
        st.status, 'usage_events', true
   from public.usage_events u
-  join public.finance_services s on u.product_code = any (s.product_codes)
+  left join public.finance_services s on u.product_code = any (s.product_codes)
   cross join lateral (select case
       /* An OpenAI call with tokens but no rate at the time is UNPRICED, whatever 0 was stored
          (billing_ai_cost_cents turns a missing rate into 0). */
@@ -693,6 +713,16 @@ begin
     'profitUsd', round(v_net - coalesce(p_cost_usd, 0), 6));
 end $$;
 
+/* Helpers: no implicit PUBLIC/anon execute (Supabase default privileges). The admin RPCs run
+   as definer; service_role keeps direct use. */
+revoke all on function public.finance_vat_bps_at(timestamptz) from public, anon;
+revoke all on function public.finance_split_gross(numeric, integer) from public, anon;
+revoke all on function public.finance_cost_status(text) from public, anon;
+revoke all on function public.finance_credits_to_usd(numeric, timestamptz) from public, anon;
+grant execute on function public.finance_vat_bps_at(timestamptz) to service_role;
+grant execute on function public.finance_split_gross(numeric, integer) to service_role;
+grant execute on function public.finance_cost_status(text) to service_role;
+grant execute on function public.finance_credits_to_usd(numeric, timestamptz) to service_role;
 revoke all on function public.finance_v2_services(timestamptz, timestamptz) from public, anon;
 revoke all on function public.finance_v2_service_detail(text, timestamptz, timestamptz) from public, anon;
 revoke all on function public.finance_v2_execution(text, text) from public, anon;

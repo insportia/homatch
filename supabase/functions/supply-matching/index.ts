@@ -265,6 +265,12 @@ Deno.serve(async (req: Request) => {
       return { considered: demandRows.length, eligible };
     };
 
+    /* Marketplace portal inventory (ingest_channel MARKETPLACE, owner 2026-10-19) joins external
+       supply only when the operator turns it on; default off, so matching is unchanged by it. */
+    const { data: inventoryRow } = await db
+      .from('admin_settings').select('value').eq('key', 'supply_matching_marketplace_inventory').maybeSingle();
+    const includeMarketplace = inventoryRow?.value === true || inventoryRow?.value === 'true';
+
     /* The operator's age ceilings, read once for the whole tick. */
     const { data: ceilingRow } = await db
       .from('admin_settings').select('value').eq('key', 'listing_age_ceilings').maybeSingle();
@@ -449,6 +455,7 @@ Deno.serve(async (req: Request) => {
             .order('id', { ascending: true })
             .limit(size);
           if (after) q = q.gt('id', after);
+          if (!includeMarketplace) q = q.is('ingest_channel', null);
           const { data, error } = await q;
           if (error) throw error;
           return (data ?? []) as unknown as Record<string, unknown>[];

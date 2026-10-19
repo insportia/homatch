@@ -19,7 +19,7 @@ test('the 500 / 600 / newest-N windows are gone', () => {
 test('both candidate reads are keyset scans that throw on error', () => {
   const scans = CODE.match(/await scanAll</g) ?? [];
   assert.ok(scans.length >= 4, 'external, native, property walk, sweep walk');
-  assert.match(CODE, /\.from\('supply_observations'\)[\s\S]{0,700}\.order\('id', \{ ascending: true \}\)[\s\S]{0,80}if \(after\) q = q\.gt\('id', after\);[\s\S]{0,80}if \(error\) throw error;/);
+  assert.match(CODE, /\.from\('supply_observations'\)[\s\S]{0,700}\.order\('id', \{ ascending: true \}\)[\s\S]{0,80}if \(after\) q = q\.gt\('id', after\);\s*if \(!includeMarketplace\) q = q\.is\('ingest_channel', null\);[\s\S]{0,80}if \(error\) throw error;/);
   assert.match(CODE, /\.from\('properties'\)[\s\S]{0,700}\.order\('id', \{ ascending: true \}\)[\s\S]{0,120}if \(after\) nativeQuery = nativeQuery\.gt\('id', after\);[\s\S]{0,200}if \(error\) throw error;/);
 });
 

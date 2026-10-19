@@ -55,7 +55,7 @@ export function createPortalIndex(adapter, {
   let target = new Map();      // id → list item (union of segment windows, priority order)
   let rules = [], robotsAt = null, lastRequestAt = -Infinity, backoffUntil = 0, holds = 0;
   let startedAt = null, lastError = null, running = false;
-  const counters = { detailReads: 0, listReads: 0, onDemandReads: 0, absorbed: 0, refreshed: 0, failures: 0, gone: 0, blocked: 0, evicted: 0 };
+  const counters = { detailReads: 0, listReads: 0, onDemandReads: 0, absorbed: 0, refreshed: 0, failures: 0, gone: 0, blocked: 0, evicted: 0, restored: 0 };
 
   /* Segments from the adapter: a synthetic request each, through the adapter's own criteria(). */
   const segments = [];
@@ -248,6 +248,35 @@ export function createPortalIndex(adapter, {
     store(target.get(item.sourceListingId), detail); counters.absorbed++;
   }
 
+  /*
+   * SURVIVING A RESTART (owner, 2026-10-19). A redeploy emptied this memory and the next
+   * Home.ge search read the sitemap itself for six minutes. The runtime saves exportSnapshot()
+   * to R2 (marketplace-worker-ingest, property-inventory/<site>/ge/portal-index/) and hands
+   * the newest back to restore() at start. Every entry keeps the time its page was ACTUALLY
+   * read: a restored entry is exactly as fresh as it was, the crawler re-reads it once it is
+   * older than staleMs, and anything older than maxAgeMs is not restored at all.
+   */
+  function exportSnapshot() {
+    return { contract: 'portal-index-snapshot-1', workerId: adapter.workerId, savedAt: new Date(now()).toISOString(),
+      entries: [...entries.values()], gone: [...gone] };
+  }
+  function restore(snapshot, { maxAgeMs = 3 * cfg.staleMs } = {}) {
+    if (snapshot?.contract !== 'portal-index-snapshot-1' || snapshot.workerId !== adapter.workerId || !Array.isArray(snapshot.entries)) return 0;
+    const t = now();
+    let restored = 0;
+    for (const e of snapshot.entries) {
+      const id = e?.item?.sourceListingId;
+      if (!id || entries.has(id) || !e.detail || !Number.isFinite(e.fetchedAt) || e.fetchedAt > t || t - e.fetchedAt > maxAgeMs) continue;
+      if (entries.size >= cfg.capacity) break;
+      entries.set(id, { item: e.item, detail: e.detail, fetchedAt: e.fetchedAt });
+      restored++;
+    }
+    for (const id of Array.isArray(snapshot.gone) ? snapshot.gone : []) if (!entries.has(id)) gone.add(id);
+    counters.restored += restored;
+    if (restored) log('portal_index_restored', { entries: restored, savedAt: snapshot.savedAt });
+    return restored;
+  }
+
   function stats() {
     return {
       enabled: true, running, startedAt, capacity: cfg.capacity, intervalMs: cfg.intervalMs, staleHours: cfg.staleMs / HOUR,
@@ -266,7 +295,7 @@ export function createPortalIndex(adapter, {
     stop() { controller.abort(); },
     /** A search runs on this site: the crawler yields until release() (one site request at a time). */
     hold() { holds++; let released = false; return () => { if (!released) { released = true; holds--; } }; },
-    step, lookup, read, absorb, stats, refreshLists,
+    step, lookup, read, absorb, stats, refreshLists, exportSnapshot, restore,
     /** Test/diagnostic view of one entry. */
     entry: (id) => entries.get(String(id)) ?? null,
   };

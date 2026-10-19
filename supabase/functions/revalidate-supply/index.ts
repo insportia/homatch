@@ -32,6 +32,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { extractListing } from '../../../src/research-core/adapters/portal/family.ts';
 import { sourceById, sourceForUrl } from '../../../src/research-core/adapters/portal/sources.ts';
+import { WORKER_ONLY_SOURCES } from '../../../src/research-core/marketplace/inventory.ts';
 import {
   judgeRevalidation, revalidationMethod, snapshotOfListing, snapshotOfRow, SUPPLY_REVALIDATION_POLICY,
 } from '../../../src/research-core/discovery/supply-revalidation.ts';
@@ -91,6 +92,9 @@ Deno.serve(async (req: Request) => {
       /* Community posts are not portal pages: their deletion is visible only to
          the channel reader (supply-revalidation.ts revalidationMethod). */
       .not('adapter_id', 'like', '%-community')
+      /* Worker-only portals (MyHome, Allhome, Brokeri) have no portal reader here; their
+         marketplace worker re-observes them. Re-reading them would only stamp UNVERIFIABLE. */
+      .not('adapter_id', 'in', `(${[...WORKER_ONLY_SOURCES].join(',')})`)
       .order('expires_at', { ascending: true })
       .limit(limit);
     if (error) throw error;

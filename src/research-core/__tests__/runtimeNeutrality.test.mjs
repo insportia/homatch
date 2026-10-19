@@ -211,6 +211,9 @@ test('the core is consumed only through its deliberate integration points', () =
      * or flow primitive of the core is reached from here.
      */
     'supabase/functions/_shared/findBuyers/campaign.ts',
+    /* PROPERTY INVENTORY (2026-10-19): the marketplace write-through imports only
+       research-core/marketplace/inventory.ts (pure mapping, fingerprint, R2 key rules). */
+    'supabase/functions/_shared/marketplaceInventory.ts',
     /* The paid discovery pricing policy (research-core/billing/paidDiscoveryPolicy):
        pure integer money math shared by Find Buyers and Find Property campaigns. */
     'supabase/functions/_shared/findPropertyCommercial.ts',

@@ -10,6 +10,7 @@ import { armPriority } from './allocator.ts';
 import { planPaidTelegram, type TelegramPreference } from './telegramPreference.ts';
 import type { Depth } from './buyerStrategy.ts';
 import { classifyDemand } from './demandClassifier.ts';
+import { actorYieldPrior, type ActorRecord } from './executionBudget.ts';
 
 export interface KnownSource {
   id: string;
@@ -106,8 +107,8 @@ export interface PlanInputs {
   targetLanguages?: readonly string[] | null;
   /** What the campaign budget unlocks (buyerStrategy.depthFor). */
   depth?: Depth | null;
-  /** Each Actor's real record across past campaigns (finished paid runs, qualified leads). */
-  actorHistory?: Record<string, { bookedRuns: number; qualified: number }>;
+  /** Each Actor's real record across past campaigns (finished paid runs, qualified leads, spend). */
+  actorHistory?: Record<string, ActorRecord>;
   /** Search phrases per FB_KEYWORD_SEARCH run (admin_settings find_buyers_fb_keyword_search.batchSize). */
   keywordBatchSize?: number;
   now?: number;
@@ -346,7 +347,22 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
     pushKnown('TELEGRAM_CHANNEL', 'TELEGRAM', null, paidTelegramFirst ? MAX_KNOWN_PER_FAMILY : 3);
   }
 
-  return applyDepth(restrictToLanguages(jobs, input.targetLanguages, knownSources), input.depth ?? null, input.actorHistory ?? {});
+  return applyYieldPrior(applyDepth(restrictToLanguages(jobs, input.targetLanguages, knownSources), input.depth ?? null, input.actorHistory ?? {}), input.actorHistory ?? {});
+}
+
+/**
+ * Most promising, most cost-effective first: a probe of an Actor that has produced qualified
+ * people per dollar (actorYieldPrior, measured) runs ahead of equal-priority probes. Source
+ * discovery is not reranked — its value is the communities later reads feed on, which the
+ * reading Actor's own yield already carries.
+ */
+export function applyYieldPrior(jobs: PlannedSocialJob[], history: Record<string, ActorRecord>): PlannedSocialJob[] {
+  for (const j of jobs) {
+    if (j.reason === 'source_discovery') continue;
+    const bonus = actorYieldPrior(history[j.actorKey]);
+    if (bonus > 0) j.priority = Math.min(99, j.priority + bonus);
+  }
+  return jobs;
 }
 
 /** Searches that do not depend on a known source: their reach is what the budget buys. */
@@ -361,7 +377,7 @@ export const UNPRODUCTIVE_AFTER_RUNS = 8;
  * are limited to the platforms and languages the budget tier unlocks, and an
  * Actor with a proven zero yield keeps one exploratory probe at low priority.
  */
-export function applyDepth(jobs: PlannedSocialJob[], depth: Depth | null, history: Record<string, { bookedRuns: number; qualified: number }>): PlannedSocialJob[] {
+export function applyDepth(jobs: PlannedSocialJob[], depth: Depth | null, history: Record<string, ActorRecord>): PlannedSocialJob[] {
   let out = jobs;
   if (depth) {
     out = out.filter((j) => {

@@ -1,7 +1,7 @@
 // FIND BUYERS — "Choose Your Research Budget", in credits.
 //
-// The customer chooses the TOTAL research budget: 100 / 500 / 1,000 / 1,500 / 2,000
-// credits or a custom amount (whole credits, at least 100). It is a ceiling, not a
+// The customer chooses the TOTAL research budget: 50 / 100 / 500 / 1,000 / 1,500 / 2,000
+// credits or a custom amount (whole credits, at least 50 = $5). It is a ceiling, not a
 // price: the campaign is charged for what it actually uses and the rest returns to the
 // wallet. Credits only — never dollars as the primary unit. More budget buys broader
 // coverage, never a promise of more qualified leads (the helper says so).
@@ -18,6 +18,7 @@ import { BTN_PRIMARY, BTN_SECONDARY, EYEBROW, SURFACE } from '@/components/leads
 import { formatCreditsLabel } from '@/components/leads/LeadCard';
 
 export const PRESET_COPY: Record<number, [string, string]> = {
+  50: ['rb_preset_50_name', 'rb_preset_50_desc'],
   100: ['rb_preset_100_name', 'rb_preset_100_desc'],
   500: ['rb_preset_500_name', 'rb_preset_500_desc'],
   1000: ['rb_preset_1000_name', 'rb_preset_1000_desc'],
@@ -40,7 +41,8 @@ export function ResearchBudgetSelector({
   const [presets, setPresets] = useState<number[]>([...RESEARCH_PRESETS]);
   const [chosen, setChosen] = useState<number | 'CUSTOM'>(RESEARCH_PRESETS[0]);
   const [custom, setCustom] = useState('');
-  const floor = Math.max(RESEARCH_MIN_CREDITS, minCredits);
+  /* The server's minimum is the floor (exactly 50 credits = $5); never below it. */
+  const floor = Math.max(RESEARCH_MIN_CREDITS, Math.round(Number(minCredits) || RESEARCH_MIN_CREDITS));
 
   useEffect(() => {
     let alive = true;

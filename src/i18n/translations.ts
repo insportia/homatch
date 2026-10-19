@@ -20921,6 +20921,10 @@ const en = {
   hl_reach_citywide_hint: 'People who searched your city without naming an area.',
   hl_reach_free: 'Free. Changes apply to this listing at once. You pay only when you unlock a contact.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'Essential Research',
+  rb_preset_50_desc: 'The smallest research: the sources that have found interested people most often, first.',
+
   /* ── FIND PROPERTY COSTS (ADMIN) ── */
   admin_nav_fp_costs: 'Find Property costs',
   fpcost_open: 'Find Property costs →',
@@ -41838,6 +41842,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'ადამიანები, რომლებიც თქვენს ქალაქში ეძებენ უბნის დასახელების გარეშე.',
   hl_reach_free: 'უფასოა. ცვლილებები ამ განცხადებაზე მაშინვე მოქმედებს. იხდით მხოლოდ კონტაქტის გახსნისას.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'ძირითადი კვლევა',
+  rb_preset_50_desc: 'უმცირესი კვლევა: პირველ რიგში ის წყაროები, სადაც დაინტერესებული ადამიანები ყველაზე ხშირად გამოჩნდნენ.',
+
   /* ── FIND PROPERTY COSTS (ADMIN) ── */
   admin_nav_fp_costs: 'ქონების ძიების ხარჯები',
   fpcost_open: 'ქონების ძიების ხარჯები →',
@@ -62746,6 +62754,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'Люди, которые ищут в вашем городе, не называя район.',
   hl_reach_free: 'Бесплатно. Изменения сразу применяются к этому объявлению. Вы платите только за открытие контакта.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'Базовое исследование',
+  rb_preset_50_desc: 'Самое компактное исследование: в первую очередь источники, где заинтересованные люди находились чаще всего.',
+
   /* ── FIND PROPERTY COSTS (ADMIN) ── */
   admin_nav_fp_costs: 'Расходы Find Property',
   fpcost_open: 'Расходы Find Property →',
@@ -83651,6 +83663,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide: 'Şehir geneli aramalar',
   hl_reach_citywide_hint: 'Bir bölge belirtmeden şehrinizde arayanlar.',
   hl_reach_free: 'Ücretsiz. Değişiklikler bu ilana hemen uygulanır. Yalnızca bir kişiyi açtığınızda ödersiniz.',
+
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'Temel Araştırma',
+  rb_preset_50_desc: 'En küçük araştırma: önce ilgilenen kişilerin en sık bulunduğu kaynaklar.',
 
   /* ── FIND PROPERTY COSTS (ADMIN) ── */
   admin_nav_fp_costs: 'Find Property maliyetleri',
@@ -104558,6 +104574,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide_hint: 'أشخاص بحثوا في مدينتك دون تحديد منطقة.',
   hl_reach_free: 'مجانًا. تُطبَّق التغييرات على هذا الإعلان فورًا. تدفع فقط عند فتح جهة اتصال.',
 
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'بحث أساسي',
+  rb_preset_50_desc: 'أصغر بحث: المصادر التي ظهر فيها المهتمون أكثر من غيرها أولاً.',
+
   /* ── FIND PROPERTY COSTS (ADMIN) ── */
   admin_nav_fp_costs: 'تكاليف البحث عن عقار',
   fpcost_open: 'تكاليف البحث عن عقار ←',
@@ -125463,6 +125483,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   hl_reach_citywide: 'חיפושים בכל העיר',
   hl_reach_citywide_hint: 'אנשים שחיפשו בעיר שלך בלי לציין אזור.',
   hl_reach_free: 'בחינם. השינויים חלים על המודעה הזו מיד. משלמים רק כשפותחים איש קשר.',
+
+  /* ── FIND BUYERS — $5 MINIMUM CAMPAIGN (50-credit research preset) ── */
+  rb_preset_50_name: 'מחקר חיוני',
+  rb_preset_50_desc: 'המחקר הקטן ביותר: קודם המקורות שבהם נמצאו הכי הרבה אנשים מתעניינים.',
 
   /* ── FIND PROPERTY COSTS (ADMIN) ── */
   admin_nav_fp_costs: 'עלויות חיפוש נכס',

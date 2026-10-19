@@ -77,3 +77,7 @@ M13="$root/supabase/migrations/20261113090000_find_buyers_hide_opened_contacts.s
 $P -d fbfx -1 -f "$M13"
 $P -d fbfx -1 -f "$M13"
 $P -d fbfx -f "$here/find_buyers_hide_opened_contacts.sql"
+M14="$root/supabase/migrations/20261119120000_find_buyers_min_5_execution_budget.sql"
+$P -d fbfx -1 -f "$M14"
+$P -d fbfx -1 -f "$M14"
+$P -d fbfx -f "$here/find_buyers_min_5_execution_budget.sql"

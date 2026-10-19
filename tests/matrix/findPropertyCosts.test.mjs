@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
-const SQL = read('supabase/migrations/20261119120000_find_property_costs.sql');
+const SQL = read('supabase/migrations/20261119130000_find_property_costs.sql');
 const PAGE = read('src/pages/admin/AdminFindPropertyCostsPage.tsx');
 
 test('pricing: gpt-4o-mini in the price book at the published rates; Find Property operations are FIND_PROPERTY, not VERIFY', () => {

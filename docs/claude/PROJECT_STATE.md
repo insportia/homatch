@@ -18,7 +18,21 @@ MATTERS right now, verify against the live systems, not this file)
   discovery second; demand dedupe by fingerprint + rooms/features on intent_profiles; feed v2; Unlocked
   Leads nav; CRM stages + profile + logged contacts; AI outreach drafts (outreach-send studio_lead_draft);
   Email Studio scheduling (jobs-worker → studio_send_scheduled).
-- **Smart internal match expansion (follow-up PR on the same branch, 2026-10-19).** Prices EXACT 5 /
+- **$5 minimum + execution budget (branch claude/nifty-hopper-snzn2d, 2026-10-19).** Find Buyers / Find
+  Tenants paid campaigns start at exactly 50 credits = $5 (match-campaign `minimumCampaignCredits`, presets
+  50/100/500/1,000/1,500/2,000, find_buyers_min_usd 10 → 5). The execution budget stays the central paid
+  discovery policy's (`allocateCampaign` → provider_budget_micros; Global Finance V2 replaces that policy —
+  no VAT/split math in Find Buyers). Inside it: OpenAI calls refused when the remaining budget cannot cover
+  their ceiling (AiSpendGate; items stay UNVERIFIED), the reserve holds 250 µ$/item classification headroom
+  for in-flight runs, deepening sees OpenAI spend, first probes boosted by measured qualified-per-$ (FB group
+  posts 37 / $6.62 ≈ 5.6/$, every other Actor 0 as of 2026-10-19). Migration
+  20261119120000_find_buyers_min_5_execution_budget.sql.
+- **#277 migration 20261119090000 NOT APPLIED (2026-10-19).** #277 merged (1619f73a) and deployed; two
+  apply_migration attempts were cancelled before reaching the database (first: client timeout, rolled back).
+  Production runs the new code against the old schema: supply-matching reports `internal_match:` write
+  errors and retires nothing; prices stay {STANDARD 3, PREMIUM 10}; owner reach controls fail. Apply the
+  file verbatim to finish the release.
+- **Smart internal match expansion (PR #277, merged 1619f73a, 2026-10-19).** Prices EXACT 5 /
   NEARBY_SIMILAR 3 / VIP 10 credits, one key per person (VIP overrides). supply-matching classifies every
   member search × listing with research-core/match/internalTiers.ts (assessMatch with the district
   relaxed and the budget widened by the owner's bands ≤$50k ±5k, ≤$119,999 ±10k, ≥$120k ±15k; rent 0) and

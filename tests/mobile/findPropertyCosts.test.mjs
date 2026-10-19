@@ -61,7 +61,7 @@ const profile = (isAdmin) => ({ id: 'u1', auth_id: 'u1', email: 'admin@example.t
 
 const ago = (m) => new Date(Date.now() - m * 60_000).toISOString();
 const day = (d) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
-/* The production shape of finance_find_property_costs (20261119120000), with the real search 383ec400. */
+/* The production shape of finance_find_property_costs (20261119130000), with the real search 383ec400. */
 function costs() {
   return {
     generated_at: ago(0),

@@ -21,7 +21,7 @@ import { abortRun, datasetItems, getRun, Memo23Error, runCost, startRun, TERMINA
 import { processItems, mergeResults, type CampaignRow, type ParentContext, type FollowUp } from './pipeline.ts';
 import { attributeBatchItems, batchSourceReads, type BatchEntry } from '../../../../src/research-core/findBuyers/batching.ts';
 import type { PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
-import { campaignStats, discoveryCommittedMicros, insertQueueRows, loadFindBuyersSettings, loadPhase1, socialJobRow, type FindBuyersSettings } from './campaign.ts';
+import { campaignAiGate, campaignSpend, campaignStats, discoveryCommittedMicros, insertQueueRows, loadFindBuyersSettings, loadPhase1, socialJobRow, type FindBuyersSettings } from './campaign.ts';
 import { parsePriceBook } from './openai.ts';
 
 export interface SocialOutcome {
@@ -333,6 +333,9 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     : [{ entry: null as BatchEntry | null, items: normalized }];
   let result: Awaited<ReturnType<typeof processItems>> | null = null;
   const perSource: Array<{ sourceId: string | null; items: number; qualified: number; strong: number }> = [];
+  /* One OpenAI spend gate for the whole run: its classification is paid from the campaign's
+     execution budget, never past it (executionBudget.ts). */
+  const aiGate = await campaignAiGate(db, campaign.matching_job_id, settings.aiHeadroomPerItemMicros, run.id);
   for (const slice of slices) {
     const sliceSource = slice.entry ? slice.entry.sourceId : batchEntries.length > 1 ? null : meta.sourceId ?? null;
     const r1 = await processItems({
@@ -342,7 +345,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       /* Adaptive comment sampling: the first sample is the configured probe; the follow-up
          row caps an expansion at the Actor's own maximum (followUpRows). */
       commentProbe: parseSampling(settings.sampling).probe,
-      aiFirst: settings.aiFirst,
+      aiFirst: settings.aiFirst, aiGate, aiHeadroomPerItemMicros: settings.aiHeadroomPerItemMicros,
       searchQueries: Array.isArray(meta.queries) ? (meta.queries as unknown[]).map(String).filter(Boolean).slice(0, 10)
         : typeof meta.query === 'string' && meta.query ? [meta.query] : null,
     }, slice.items);
@@ -513,8 +516,11 @@ async function deepenRow(db: any, job: any, campaign: any, settings: FindBuyersS
   };
   /* Searches deepen on downstream yield too (groups found → their posts' leads). */
   if (String(meta.stage) === 'FB_GROUP_SEARCH') stats.useful = Math.max(stats.useful, groupsFound);
+  /* What is really left of the execution budget: Actor commitments AND the OpenAI spend
+     (the reserve RPC counts both), less the classification other in-flight runs still need. */
+  const spend = await campaignSpend(db, job.matching_job_id, settings.aiHeadroomPerItemMicros);
   const committed = all.reduce((n, r) => n + (['RESERVED', 'RUNNING'].includes(r.status) ? Number(r.reserved_micros) : r.status === 'RELEASED' ? 0 : Number(r.actual_micros ?? r.reserved_micros)), 0);
-  const remaining = Number(campaign.provider_budget_micros) - committed;
+  const remaining = spend ? spend.headroomMicros : Number(campaign.provider_budget_micros) - committed;
   const actor = await actorRow(db, String(meta.actorKey));
   const decision = decideArm(stats, parseSampling({ ...(settings.sampling as any ?? {}), probe: actor?.probe_size ?? undefined }), remaining, Number(actor?.price_per_1k_micros ?? 1_000_000));
   if (decision.action !== 'DEEPEN' || decision.reason === 'probe') return { row: null, decision };

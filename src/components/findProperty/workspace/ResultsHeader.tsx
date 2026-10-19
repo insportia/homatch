@@ -20,7 +20,7 @@ export function ResultsHeader({ t, search, data, onNewSearch, onChangeCriteria, 
   const answered = states.filter((st) => st === 'FOUND' || st === 'NONE').length;
   const ageDays = Math.floor((Date.now() - Date.parse(search.createdAt)) / 86_400_000);
   return (
-    <div ref={headingRef} className="scroll-mt-24 space-y-4" aria-live="polite">
+    <div ref={headingRef} className="scroll-mt-24 space-y-4" aria-live="polite" data-results-header>
       <Surface className="overflow-hidden">
         <div className="flex flex-col gap-4 p-5 sm:p-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">

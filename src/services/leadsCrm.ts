@@ -13,6 +13,7 @@
 import { supabase } from '@/db/supabase';
 import type { CrmStatus } from '@/crm/nextStep';
 import { CRM_STATUSES, isCrmStatus, type ContactChannel } from '@/crm/model';
+import type { LeadConfidence, LeadExplanation, LeadKind } from '@/services/homatchLeads';
 
 export interface CrmListItem {
   entryId: string;
@@ -176,10 +177,14 @@ export async function crmUpdate(entryId: string, patch: CrmUpdate): Promise<CrmE
 export interface CrmProfile {
   entryId: string;
   source: string;
-  segment: 'STANDARD' | 'PREMIUM' | null;
+  /** The price key the unlock was charged at (EXACT since the smart match expansion). */
+  segment: 'STANDARD' | 'EXACT' | 'PREMIUM' | null;
   unlockedAt: string | null;
   creditsCharged: number | null;
-  match: { matchId: string; propertyId: string | null; score: number; agreed: string[]; conflicted: string[]; unknown: string[]; matchedAt: string | null } | null;
+  match: {
+    matchId: string; propertyId: string | null; score: number; agreed: string[]; conflicted: string[]; unknown: string[]; matchedAt: string | null;
+    category?: 'EXACT' | 'NEARBY_SIMILAR' | null; kind?: LeadKind | null; confidence?: LeadConfidence | null; explanation?: LeadExplanation;
+  } | null;
   demand: Record<string, unknown> | null;
   drafts: Array<{ createdAt: string; detail: Record<string, unknown> }>;
 }
@@ -197,12 +202,16 @@ export async function crmEntryProfile(entryId: string): Promise<CrmProfile | nul
   return {
     entryId: String(r.entryId ?? entryId),
     source: String(r.source ?? 'HOMATCH_MEMBER_SEARCH'),
-    segment: r.segment === 'PREMIUM' || r.segment === 'STANDARD' ? r.segment : null,
+    segment: r.segment === 'PREMIUM' || r.segment === 'STANDARD' || r.segment === 'EXACT' ? r.segment : null,
     unlockedAt: str(r.unlockedAt),
     creditsCharged: num(r.creditsCharged),
     match: m ? {
       matchId: String(m.matchId ?? ''), propertyId: str(m.propertyId), score: num(m.score) ?? 0,
       agreed: strs(m.agreed), conflicted: strs(m.conflicted), unknown: strs(m.unknown), matchedAt: str(m.matchedAt),
+      category: m.category === 'EXACT' || m.category === 'NEARBY_SIMILAR' ? m.category : null,
+      kind: typeof m.kind === 'string' ? m.kind as LeadKind : null,
+      confidence: m.confidence === 'HIGH' || m.confidence === 'MEDIUM' || m.confidence === 'LOW' ? m.confidence : null,
+      explanation: m.explanation && typeof m.explanation === 'object' ? m.explanation as LeadExplanation : undefined,
     } : null,
     demand: r.demand && typeof r.demand === 'object' ? r.demand as Record<string, unknown> : null,
     drafts: arr(r.drafts).map((d) => ({ createdAt: String(d.createdAt ?? ''), detail: (d.detail && typeof d.detail === 'object' ? d.detail : {}) as Record<string, unknown> })),

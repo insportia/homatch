@@ -12,7 +12,7 @@ import { CheckCircle2, CircleDashed, CircleSlash, Mail, Phone, ShieldAlert, User
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { DIMENSION_ORDER, featureParts, propertyTypeLabel } from '@/leads/leadSummary';
+import { DIMENSION_ORDER, featureParts, matchReasons, propertyTypeLabel } from '@/leads/leadSummary';
 import type { LeadContact } from '@/services/homatchLeads';
 import type { CrmProfile } from '@/services/leadsCrm';
 import { formatMoney, intlLocaleFor, isolate } from '@/components/workspace/primitives';
@@ -48,6 +48,7 @@ export function LeadProfileCard({ profile, contact }: { profile: CrmProfile; con
   const agreed = new Set((m?.agreed ?? []).map((x) => x.toUpperCase()));
   const conflicted = new Set((m?.conflicted ?? []).map((x) => x.toUpperCase()));
   const unknown = new Set((m?.unknown ?? []).map((x) => x.toUpperCase()));
+  const why = m ? matchReasons({ explanation: m.explanation, kind: m.kind ?? undefined }, t, money, String) : { reasons: [], uncertain: [] };
 
   return (
     <SectionCard title={t('lp_title')} icon={UserRound} labelledBy="lp-h">
@@ -55,7 +56,7 @@ export function LeadProfileCard({ profile, contact }: { profile: CrmProfile; con
         <Row label={t('lp_source')} value={t('lp_source_member_search')} />
         <Row label={t('lp_unlocked')} value={<>
           {profile.unlockedAt ? fmt.dateTime(profile.unlockedAt) : '—'}
-          {profile.segment ? <span className="ms-1.5 text-[hsl(34_90%_31%)]">· {t(profile.segment === 'PREMIUM' ? 'hl_segment_premium' : 'hl_segment_standard')}</span> : null}
+          {profile.segment ? <span className="ms-1.5 text-[hsl(34_90%_31%)]">· {t(profile.segment === 'PREMIUM' ? 'hl_cat_VIP' : profile.segment === 'EXACT' ? 'hl_cat_EXACT' : 'hl_cat_NEARBY_SIMILAR')}</span> : null}
         </>} />
         <Row label={t('lp_looking_for')} value={t(d.transaction === 'RENT' ? 'hl_looking_rent' : 'hl_looking_buy', { type: types ?? t('hl_type_property') })} />
         <Row label={t('hl_label_location')} value={places || t('hl_not_stated')} />
@@ -65,6 +66,18 @@ export function LeadProfileCard({ profile, contact }: { profile: CrmProfile; con
         {features.other.length ? <Row label={t('hl_label_preferences')} value={features.other.join(', ')} /> : null}
         {typeof d.activeAt === 'string' ? <Row label={t('hl_label_active')} value={fmt.dateTime(d.activeAt)} /> : null}
       </dl>
+
+      {why.reasons.length || why.uncertain.length ? (
+        <div className="mt-4" data-testid="lp-why-evidence">
+          <p className="text-2xs font-bold uppercase tracking-[0.12em] text-[hsl(34_90%_34%)]">{t('hl_why_title')}</p>
+          <ul className="mt-1.5 list-disc space-y-0.5 ps-5 text-sm leading-relaxed text-[hsl(218_45%_14%)]">
+            {why.reasons.map((r) => <li key={r} dir="auto">{r}</li>)}
+          </ul>
+          {why.uncertain.length ? (
+            <p className="mt-1.5 text-xs leading-relaxed text-[hsl(30_70%_28%)]">{t('hl_unc_title')}: {why.uncertain.join(' · ')}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {m ? (
         <div className="mt-4">

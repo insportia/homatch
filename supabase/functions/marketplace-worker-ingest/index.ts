@@ -11,6 +11,11 @@
 //           bounded, URL-checked; partial batches allowed; terminal is final;
 //           a FAILED report marked retryable is re-queued within the retry budget
 //   heartbeat  extend this run's own lease while it is still working
+//   inventory-index-latest | -upload | -commit
+//           Home.ge / Allhome only: the worker's index snapshot in R2 (marketplaceInventory.ts)
+//
+// Every accepted listing is also written through to the property inventory
+// (supply_observations, R2 snapshots) after the worker has its answer.
 //
 // CONCURRENT: every eligible worker received its own runs at dispatch and
 // claims them independently, in parallel, within per-provider and global
@@ -31,6 +36,9 @@ import { loadMarketplaceSwitches, processAndStore, reapRuns, shareRecentResults,
 import {
   decideProviderAccess, readProviderAccess, recordRecovery, recordRestriction, type ProviderAccess,
 } from '../../../src/research-core/marketplace/provider-access.ts';
+import {
+  afterResponse, INDEXED_WORKERS, indexSnapshotCommit, indexSnapshotLatest, indexSnapshotUpload, recordInventory,
+} from '../_shared/marketplaceInventory.ts';
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -114,6 +122,22 @@ Deno.serve(async (req: Request) => {
       }
       return json({ accessRestricted: decision.mode === 'CACHE_ONLY', mode: decision.mode, retryAt: decision.retryAt });
     }
+    /* The worker index snapshot: its own provider's keys only, never another worker's. */
+    if (action.startsWith('inventory-index-')) {
+      if (!INDEXED_WORKERS.has(workerId)) return json({ error: 'NOT_INDEXED' }, 403);
+      if (action === 'inventory-index-latest') return json(await indexSnapshotLatest(db, worker.source_key));
+      if (action === 'inventory-index-upload') {
+        const answer = await indexSnapshotUpload(worker.source_key, String(body.sha256 ?? ''), Number(body.bytes));
+        return json(answer, 'error' in answer ? 422 : 200);
+      }
+      if (action === 'inventory-index-commit') {
+        const answer = await indexSnapshotCommit(db, worker.source_key, {
+          key: String(body.key ?? ''), sha256: String(body.sha256 ?? ''), bytes: Number(body.bytes), entries: Number(body.entries),
+        });
+        return json(answer, 'error' in answer ? 422 : 200);
+      }
+      return json({ error: 'UNKNOWN_ACTION' }, 400);
+    }
     const leaseSeconds = Math.max(15, Math.min(900, Math.trunc(Number(body.leaseSeconds)) || DEFAULT_LEASE_SECONDS));
     const maxAttempts = Number(worker.max_attempts) || 3;
 
@@ -170,6 +194,12 @@ Deno.serve(async (req: Request) => {
         }));
         const { error } = await db.from('discovery_marketplace_listings').upsert(rows, { onConflict: 'search_id,source_key,source_listing_id' });
         if (error) throw new Error(error.message);
+        /* The property inventory, after the answer: it never slows or fails a report. */
+        const inventory = recordInventory(db, worker.source_key, report.listings, nowDate)
+          .then((o) => console.log(JSON.stringify({ event: 'inventory_recorded', workerId, runId: run.id, ...o })))
+          .catch((e) => console.error(JSON.stringify({ event: 'inventory_failed', workerId, runId: run.id, message: String(e?.message ?? e).slice(0, 300) })));
+        const pending = afterResponse(inventory);
+        if (pending) await pending;
       }
       // Replayed batches upsert the same identities; do not inflate run totals.
       const { count: persisted, error: countError } = await db.from('discovery_marketplace_listings')

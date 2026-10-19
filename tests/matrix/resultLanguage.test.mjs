@@ -78,6 +78,9 @@ const NOT_RESULT_ACCESS = {
   fb2_cmp_internal_body: 'Find Buyers 2.0: internal matching is free, you pay only for the explicit per-member contact unlock (owner request 2026-10-18)',
   hl_filter_locked: 'Find Buyers 2.0: the owner-requested "locked/unlocked status" filter for per-member contacts (owner request 2026-10-18)',
   hl_unlock_receive_title: 'Find Buyers 2.0: the unlock dialog says what the paid per-member contact unlock gives (owner request 2026-10-18)',
+  hl_cta_unlock_exact: 'Find Buyers 2.0 match expansion: the EXACT tier is an explicit per-member contact unlock at its own price (owner request 2026-10-18)',
+  im_unlock_contact_from: 'Find Buyers 2.0 match expansion: a member preview states the lowest per-member contact-unlock price, since the category decides it (owner request 2026-10-18)',
+  hl_reach_free: 'Find Buyers 2.0 match expansion: the reach controls are free — only an explicit contact unlock is charged (owner request 2026-10-18)',
   hl_unlock_receive_crm: 'Find Buyers 2.0: an unlocked contact joins the owner-named "Unlocked Leads" CRM (owner request 2026-10-18)',
   lp_unlocked: 'Find Buyers 2.0: the unlock date in the Unlocked Leads profile (owner request 2026-10-18)',
 };

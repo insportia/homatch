@@ -130,3 +130,29 @@ SSAgent (`ss-ge`) and PlaceAgent (`place-ge`, currently HTTP 403 → likely
 5. Production proof: one search end to end, cost_events rows for both OpenAI calls.
 
 Deep Search stays unavailable in the UI until its own backend and billing exist.
+
+## Property inventory (2026-10-19, migration 20261119090000)
+
+One row per listing across every marketplace portal, in the table that already carried the
+freshness contract. Rules: `src/research-core/marketplace/inventory.ts`; write-through:
+`supabase/functions/_shared/marketplaceInventory.ts`.
+
+| Layer | Holds | Written by |
+|---|---|---|
+| `supply_observations` (`ingest_channel = 'MARKETPLACE'`) | normalized facts, first/last seen, content fingerprint + `content_changed_at`, `snapshot_object_key` | `upsert_marketplace_inventory` from `marketplace-worker-ingest`, after the worker's answer (`EdgeRuntime.waitUntil`) |
+| `discovery_marketplace_listings` | each search's raw candidates; the shared pool customer searches are answered from (index `discovery_marketplace_listings_pool_idx`) | ingest (unchanged) |
+| R2 `property-inventory/<provider>/ge/<yyyy>/<mm>/<id>/snapshot-<ts>-<sha8>.json.gz` | gzip snapshot each time a listing is new or its content changes (no seller phone/e-mail) | write-through, ≤ 60 per report |
+| R2 `property-inventory/<provider>/ge/portal-index/index-<ts>-<sha8>.json.gz` | Home.ge / Allhome worker index (newest 3 kept) | worker via a 5-minute signed PUT; committed only after read-back + sha256 |
+| `storage_objects` (namespace `property-inventory`) | every object above: key, sha256, size, lifecycle | same |
+| `property_inventory_status` (view) | per source: verified active / recently observed / stale / unverified / unavailable / removed | — |
+
+- A sighting is never a verification: `last_verified_at` moves only in `revalidate-supply`
+  (now scheduled hourly, `homatch-revalidate-supply`, ≤ 25 re-reads; MyHome/Allhome/Brokeri
+  excluded — no portal reader exists for them, their worker re-observes them).
+- An outage is never a removal: a failed re-check is `UNVERIFIABLE`; only a conclusive check
+  writes `REMOVED`, and a REMOVED listing a worker sees again is `UNVERIFIED` again.
+- `supply-matching` ignores MARKETPLACE rows unless `admin_settings.supply_matching_marketplace_inventory`
+  is true (default off): buyer/tenant matching against portal supply is an owner decision.
+- `property-inventory/` is deliberately not a `storage/keys.ts` namespace: nothing can be
+  browser-signed for it. Photos stay third-party URLs (`image_urls`).
+- Worker env: `PORTAL_INDEX_PERSIST=false` stops saving/restoring the index.

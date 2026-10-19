@@ -52,7 +52,10 @@ test('sale apartment and monthly rent house flow through real authenticated inge
    discovery_marketplace_workers:[{worker_id:'ssge-agent',source_key:'ss-ge',state:'ACTIVE',enabled:true,token_hash:createHash('sha256').update(token).digest('hex'),max_attempts:3}],
    discovery_marketplace_worker_runs:[{id:runId,search_id:searchId,worker_id:'ssge-agent',status:'SEARCHING',deadline_at:deadline,lease_expires_at:deadline,attempts:1,returned_count:0}],
    discovery_marketplace_searches:[{id:searchId,user_id:'owner',request:r,status:'SEARCHING',ai_status:'DONE',created_at:new Date().toISOString(),brief:{},telemetry:{ai:[],workers:[],processingMs:[]}}]});
-  const handler=edgeHandler(fileURLToPath(new URL('../../supabase/functions/marketplace-worker-ingest/index.ts',import.meta.url)),{createClient:()=>db,validateWorkerReport,canTransition,loadMarketplaceSwitches,processAndStore,reapRuns,leaseUntil,retryDecision,DEFAULT_LEASE_SECONDS});
+  const inventoryCalls=[];
+  const handler=edgeHandler(fileURLToPath(new URL('../../supabase/functions/marketplace-worker-ingest/index.ts',import.meta.url)),{createClient:()=>db,validateWorkerReport,canTransition,loadMarketplaceSwitches,processAndStore,reapRuns,leaseUntil,retryDecision,DEFAULT_LEASE_SECONDS,
+    /* The inventory write-through (marketplaceInventory.ts) is its own suite; here it only records what it was handed. */
+    recordInventory:async(_db,source,listings)=>{inventoryCalls.push({source,count:listings.length});return {};},afterResponse:(p)=>p});
   const reports=[];
   const result=await acquireSsge(r,{...options(s),report:async report=>{
    reports.push(report);const parsed=validateWorkerReport(report,'ss-ge');assert.equal(parsed.ok,true);assert.equal(parsed.report.rejected.length,0);
@@ -63,6 +66,7 @@ test('sale apartment and monthly rent house flow through real authenticated inge
   assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,1);
   assert.equal(db.tables.discovery_marketplace_listings.length,1);
   assert.equal(db.tables.discovery_marketplace_listings[0].source_key,'ss-ge');
+  assert.deepEqual(inventoryCalls,[{source:'ss-ge',count:1}],'every accepted listing is handed to the property inventory');
   const properties=db.tables.discovery_marketplace_properties;assert.equal(properties.length,1);
   assert.equal(properties[0].view.listings[0].exactUrl,s.proof.url);
   assert.equal(properties[0].view.listings[0].source,'ss-ge');

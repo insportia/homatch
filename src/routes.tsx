@@ -198,6 +198,7 @@ const AdminMatchesPage = lazyRoute(() => import('./pages/admin/AdminMatchesPage'
 const AdminCreditsPage = lazyRoute(() => import('./pages/admin/AdminCreditsPage'));
 const AdminPaymentsPage = lazyRoute(() => import('./pages/admin/AdminPaymentsPage'));
 const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'));
+const AdminFindPropertyCostsPage = lazyRoute(() => import('./pages/admin/AdminFindPropertyCostsPage'));
 const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
 const AdminPropertyPortalsPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalsPage'));
 const AdminPropertyPortalPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalPage'));
@@ -659,6 +660,7 @@ const routeTable: RouteConfig[] = [
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },
   { name: 'Admin Payments',    path: '/admin/payments',           element: adminWrap(<AdminPaymentsPage />),    adminOnly: true },
   { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },
+  { name: 'Admin Find Property Costs', path: '/admin/finance/find-property', element: adminWrap(<AdminFindPropertyCostsPage />), adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
   /* Integrations → Property portals: the eight portals Publishing hands listings to.

@@ -295,3 +295,15 @@ test('the portable job library is not mistaken for a live path', () => {
   assert.deepEqual(importers, [],
     '_shared/jobs.ts reaches retired providers and is now on a live path');
 });
+
+test('a price book with no row answers NULL, and NULL is UNPRICED — not a $0 estimate (Find Property, 2026-10-19)', async () => {
+  const { estimatedProviderCost } = await import('../providerCost.ts');
+  const rpcAnswering = (data, error = null) => ({ rpc: async () => ({ data, error }) });
+  /* Number(null) === 0: before the fix every gpt-4o-mini call was booked $0 ESTIMATED. */
+  for (const data of [null, undefined, '']) {
+    assert.equal(await estimatedProviderCost(rpcAnswering(data), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1991, model: 'gpt-4o-mini' }), null, `data ${JSON.stringify(data)}`);
+  }
+  assert.equal(await estimatedProviderCost(rpcAnswering(null, { message: 'down' }), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1 }), null);
+  assert.equal(await estimatedProviderCost(rpcAnswering(0.000299), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 1991, model: 'gpt-4o-mini' }), 0.000299);
+  assert.equal(await estimatedProviderCost(rpcAnswering('0'), { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: 0 }), 0, 'a real zero from the book stays zero');
+});

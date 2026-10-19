@@ -217,7 +217,13 @@ export async function openaiStructured(args: {
 }
 
 /** cost_events row + a telemetry entry. Unpriced stays UNPRICED (cost null in telemetry). */
-export async function recordAiUsage(db: Db, call: AiUsage['call'], r: { ok: boolean; inputTokens: number; outputTokens: number; model: string }): Promise<AiUsage> {
+/**
+ * One cost_events row per model call, at measured tokens, with what it belongs to:
+ * correlationId is the search id (RESULTS_INTELLIGENCE) or brief:<uuid> for the brief call a
+ * customer makes before a search exists (linked later through brief_cost_refs). No price-book
+ * rate → UNPRICED (cost_usd 0 + the state that says so), never a $0 ESTIMATED fact.
+ */
+export async function recordAiUsage(db: Db, call: AiUsage['call'], r: { ok: boolean; inputTokens: number; outputTokens: number; model: string }, correlationId: string | null = null): Promise<AiUsage> {
   const inCost = await estimatedProviderCost(db, { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: r.inputTokens, model: r.model });
   const outCost = await estimatedProviderCost(db, { provider: 'OPENAI', unit: 'OUTPUT_TOKEN', units: r.outputTokens, model: r.model });
   const cost = inCost !== null && outCost !== null ? inCost + outCost : null;
@@ -226,6 +232,7 @@ export async function recordAiUsage(db: Db, call: AiUsage['call'], r: { ok: bool
       provider: 'OPENAI', operation_type: `MARKETPLACE_${call}`, source: 'marketplace-search',
       units: r.inputTokens + r.outputTokens, cost_usd: cost ?? 0, success: r.ok, cache_hit: false,
       pricing_state: cost === null ? 'UNPRICED' : 'ESTIMATED',
+      correlation_id: correlationId, model: r.model, input_tokens: r.inputTokens, output_tokens: r.outputTokens,
     });
   }
   return { call, model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens, costUsd: cost, ok: r.ok, at: new Date().toISOString() };
@@ -320,7 +327,7 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
         input: JSON.stringify(buildIntelligenceInput(request, sheets)),
         schema: RESULTS_INTELLIGENCE_JSON_SCHEMA,
       });
-      telemetry.ai.push(await recordAiUsage(db, 'RESULTS_INTELLIGENCE', r));
+      telemetry.ai.push(await recordAiUsage(db, 'RESULTS_INTELLIGENCE', r, searchId));
       if (r.ok) {
         properties = applyIntelligence(properties, acceptIntelligence(r.parsed, sheets).accepted);
         aiStatus = 'DONE';

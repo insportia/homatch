@@ -358,8 +358,9 @@ export async function openLeadConversation(matchId: string): Promise<string> {
 
 /* ── Research budget (external research; credits, never dollars) ─────────── */
 
-export const RESEARCH_PRESETS = [100, 500, 1000, 1500, 2000] as const;
-export const RESEARCH_MIN_CREDITS = 100;
+/** A paid research campaign starts at exactly 50 credits = $5 (owner, 2026-10-19; paidDiscoveryPolicy). */
+export const RESEARCH_PRESETS = [50, 100, 500, 1000, 1500, 2000] as const;
+export const RESEARCH_MIN_CREDITS = 50;
 
 export interface ResearchBudget {
   jobId: string;

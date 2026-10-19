@@ -58,8 +58,27 @@ warns when a diff enters this domain.
     never reserves or charges.
   - Admin → Demand intelligence → Analytics shows charged (wallet), provider
     spend (booked cost) and HOMATCH profit per policy.
-- **Find Buyers minimum** is `find_buyers_min_usd` ($10) converted through
-  `credits_per_usd` (100 credits at 10/$). It is not a second credit rate.
+- **Find Buyers / Find Tenants minimum** (owner, 2026-10-19): exactly $5 =
+  50 credits at 10/$ (VAT-inclusive where VAT applies), the paid discovery
+  policy's `PAID_DISCOVERY_MIN_USD` converted through `credits_per_usd` —
+  `minimumCampaignCredits` in match-campaign, refused (`BELOW_CAMPAIGN_MINIMUM`)
+  before `wallet_reserve`. `find_buyers_min_usd` (was $10) no longer moves it;
+  migration 20261119120000 sets it to 5 so every read agrees. Presets: 50 / 100 /
+  500 / 1,000 / 1,500 / 2,000 (`search_budget_presets_find_clients`); larger
+  budgets stay supported up to `campaign_max_credits`. Not a second credit rate.
+- **Find Buyers execution budget = the central policy's number, consumed, never
+  re-derived.** `find_buyers_campaigns.provider_budget_micros` is stamped from
+  `allocateCampaign` (paidDiscoveryPolicy.ts) at start and widened by
+  `paid_discovery_provider_share_bps()` on an extension. When Global Finance V2
+  (VAT-first 37/63) replaces that policy, Find Buyers inherits it with no change
+  here; nothing under `_shared/findBuyers` or `research-core/findBuyers` computes
+  VAT, a split or a margin (tests/matrix/findBuyersMinCampaign.test.mjs).
+  Inside that budget every attributable cost counts: memo23 runs (atomic reserve)
+  AND OpenAI. Since 20261119120000 the reserve also holds classification
+  headroom for every in-flight run's items (`find_buyers_ai_headroom_micros_per_item`,
+  default 250 µ$), and the worker refuses any OpenAI call the remaining budget
+  cannot cover (`executionBudget.ts` AiSpendGate; items it cannot afford stay
+  UNVERIFIED). Unknown spend shuts the gate.
 
 - **Verify credit budget** (migration `20261026100000`, OFF until
   `admin_settings.verify_billing_enabled` = true). A Verify reserves its

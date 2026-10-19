@@ -153,7 +153,7 @@ test('money: provider runs end and are booked BEFORE settlement reads COGS; budg
   assert.ok(reserve > 0 && reserve < start, 'reserve before start');
   assert.match(EXECUTOR, /maxTotalChargeUsd: Number\(reservation\.reservedMicros\) \/ 1_000_000/, 'the provider is capped at the reservation');
   assert.match(MIGRATION, /where id = p_run_id and cost_booked_at is null/, 'cost is booked once');
-  assert.match(MATCH, /minimumCredits\(findBuyers\.minUsd, walletRate\)/, '$10 minimum in wallet credits');
+  assert.match(MATCH, /minimumCredits\(findBuyers\.minUsd, walletRate\)/, '$5 minimum (50 credits) in wallet credits');
   assert.match(CAMPAIGN, /Math\.floor\(\(customerValueMicros \* providerShareBps\) \/ 10_000\)/, 'provider ceiling in integer micros');
 });
 

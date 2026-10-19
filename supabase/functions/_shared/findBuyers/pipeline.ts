@@ -34,6 +34,8 @@ import { duplicateKey } from '../../../../src/research-core/findBuyers/requalify
 import { sourceRelevance } from '../../../../src/research-core/findBuyers/sourceRelevance.ts';
 import { openAiJson, recordAiCost, type PriceBook } from './openai.ts';
 import { classifyCandidates } from './aiClassify.ts';
+import { campaignAiGate } from './campaign.ts';
+import { aiCallCeilingMicros, DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, type AiSpendGate } from '../../../../src/research-core/findBuyers/executionBudget.ts';
 import { AI_CLASSIFIER_VERSION, AI_MAX_ITEMS_PER_RUN, aiCandidateKey, applyAiVerdict, parseAiVerdict } from '../../../../src/research-core/findBuyers/aiClassifier.ts';
 
 export interface CampaignRow {
@@ -132,6 +134,10 @@ export interface PipelineCtx {
   aiFirst?: boolean;
   /** The search phrases of a keyword / post-search run (provenance on each lead). */
   searchQueries?: string[] | null;
+  /** OpenAI spend gate shared by this run's calls (executionBudget.ts); built from the campaign's spend when absent. */
+  aiGate?: AiSpendGate;
+  /** Classification headroom other in-flight runs keep (find_buyers_ai_headroom_micros_per_item). */
+  aiHeadroomPerItemMicros?: number;
 }
 
 export interface PipelineResult {
@@ -150,6 +156,8 @@ export interface PipelineResult {
   groupsFound: number;
   followUps: FollowUp[];
   aiCalls: number;
+  /** Candidates left UNVERIFIED because the execution budget could not cover their classification. */
+  aiBudgetRefused?: number;
   /** One primary disposition per content candidate (groups/communities excluded); sums to candidates. */
   dispositions: DispositionCounts;
   candidates: number;
@@ -170,6 +178,7 @@ export function mergeResults(a: PipelineResult, b: PipelineResult): PipelineResu
     items: a.items + b.items, useful: a.useful + b.useful, qualified: a.qualified + b.qualified, strong: a.strong + b.strong, weak: a.weak + b.weak,
     rejected: sumRec(a.rejected, b.rejected), duplicates: a.duplicates + b.duplicates, reused: a.reused + b.reused, staleDropped: a.staleDropped + b.staleDropped,
     groupsFound: a.groupsFound + b.groupsFound, followUps: [...a.followUps, ...b.followUps], aiCalls: a.aiCalls + b.aiCalls,
+    ...(a.aiBudgetRefused || b.aiBudgetRefused ? { aiBudgetRefused: (a.aiBudgetRefused ?? 0) + (b.aiBudgetRefused ?? 0) } : {}),
     dispositions: sumRec(a.dispositions, b.dispositions), candidates: a.candidates + b.candidates,
     ...(a.commentSampling ?? b.commentSampling ? { commentSampling: a.commentSampling ?? b.commentSampling } : {}),
   };
@@ -467,7 +476,10 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     }
     const pending = [...byKey.keys()].filter((k) => !resolved.has(k)).slice(0, AI_MAX_ITEMS_PER_RUN);
     if (pending.length) {
+      /* Paid from the campaign's execution budget: a batch it cannot afford is not sent. */
+      const aiGate = ctx.aiGate ?? await campaignAiGate(db, campaign.matching_job_id ?? null, ctx.aiHeadroomPerItemMicros ?? DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, ctx.runId);
       const { verdicts, stats } = await classifyCandidates(db, {
+        gate: aiGate,
         book: ctx.book, dna: campaign.dna, matchingJobId: campaign.matching_job_id,
         keyPrefix: `ai:classify:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}`, operation: 'AI_CLASSIFY',
         metadata: { stage: ctx.stage, version: AI_CLASSIFIER_VERSION },
@@ -476,6 +488,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
         return { id: k, kind: a.ctx.kind, text: a.item.text, parentExcerpt: a.parent?.excerpt ?? null, author: a.item.author.name ?? null };
       }));
       out.aiCalls += stats.calls;
+      out.aiBudgetRefused = (out.aiBudgetRefused ?? 0) + stats.budgetRefusedItems;
       for (const [k, v] of verdicts) resolved.set(k, v);
     }
     for (const [k, group] of byKey) {
@@ -493,8 +506,15 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   } else {
     /* Kill switch off: the previous behaviour — the model only for ambiguous text. */
     const ambiguous = assessed.filter((a) => a.reading.needsModel && a.reading.realEstate && a.item.text.length >= 3).slice(0, 90);
+    const intentGate = ctx.aiGate ?? await campaignAiGate(db, campaign.matching_job_id ?? null, ctx.aiHeadroomPerItemMicros ?? DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, ctx.runId);
     for (let i = 0; i < ambiguous.length; i += 30) {
       const batch = ambiguous.slice(i, i + 30);
+      /* Same execution budget: a batch it cannot afford keeps its rule reading (no model call). */
+      if (!intentGate.admit(aiCallCeilingMicros(ctx.book, 600 + batch.length * 180, 120 + batch.length * 60))) {
+        out.aiBudgetRefused = (out.aiBudgetRefused ?? 0) + batch.length;
+        for (const a of batch) a.reading = boundModelReading(a.reading, null);
+        continue;
+      }
       const res = await openAiJson<{ items: Array<{ id: string; role: string; transaction: string }> }>(ctx.book, DEMAND_SYSTEM_PROMPT, {
         items: batch.map((a, k) => ({
           id: String(k), kind: a.ctx.kind, text: clip(a.item.text, 500),
@@ -502,6 +522,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
         })),
       }, DEMAND_MODEL_SCHEMA, { maxTokens: 120 + batch.length * 60 });
       out.aiCalls++;
+      intentGate.spend(res.costMicros);
       await recordAiCost(db, {
         key: `ai:intent:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}:${i}`, matchingJobId: campaign.matching_job_id, kind: 'AI', operation: 'INTENT',
         result: res, metadata: { items: batch.length, stage: ctx.stage },

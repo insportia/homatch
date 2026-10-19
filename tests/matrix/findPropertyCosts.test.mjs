@@ -47,7 +47,8 @@ test('admin only: every read goes through finance_require_admin; nothing is gran
 
 test('display: unknown is Unknown, partial is a range — never a misleading $0.00', () => {
   assert.match(PAGE, /if \(state === 'UNKNOWN'\) return <span className="text-red-400">\{t\('fin_unknown'\)\}<\/span>;/);
-  assert.match(PAGE, /\{usd\(usdValue\)\} – \{usd\(upper\)\}/);
+  assert.match(PAGE, /\{usd\(usdValue, 6\)\} – \{usd\(upper, 6\)\}/);
+  assert.doesNotMatch(PAGE, /<Money value=/, "every cost on this page keeps 6 decimals (Money frac={6})");
   assert.match(read('src/services/finance.ts'), /const frac = abs > 0 && abs < 0\.01 \? 6 : maxFrac;/, 'micro-costs keep 6 decimals');
   assert.match(SQL, /'status', case when v_share is null or not v_infra_entered then 'UNKNOWN' else 'ESTIMATED' end/);
 });

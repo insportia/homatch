@@ -46,9 +46,9 @@ function CostCell({ usdValue, upper, state }: { usdValue: number; upper?: number
   const { t } = useLanguage();
   if (state === 'UNKNOWN') return <span className="text-red-400">{t('fin_unknown')}</span>;
   if (state === 'PARTIAL' && upper !== null && upper !== undefined && Number(upper) > Number(usdValue)) {
-    return <span className="tabular-nums" dir="ltr">{usd(usdValue)} – {usd(upper)}</span>;
+    return <span className="tabular-nums" dir="ltr">{usd(usdValue, 6)} – {usd(upper, 6)}</span>;
   }
-  return <Money value={usdValue} />;
+  return <Money frac={6} value={usdValue} />;
 }
 
 function csvCell(v: unknown): string {
@@ -128,26 +128,26 @@ export default function AdminFindPropertyCostsPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" data-fp-summary>
-        <StatCard label={t('fpcost_today')} value={<Money value={s.today_usd} />} />
-        <StatCard label={t('fpcost_yesterday')} value={<Money value={s.yesterday_usd} />} />
-        <StatCard label={t('fpcost_last7')} value={<Money value={s.last7_usd} />} />
-        <StatCard label={t('fpcost_month')} value={partialMonth ? <span className="tabular-nums" dir="ltr">{usd(s.month_usd)} – {usd(s.month_upper_usd)}</span> : <Money value={s.month_usd} />}
+        <StatCard label={t('fpcost_today')} value={<Money frac={6} value={s.today_usd} />} />
+        <StatCard label={t('fpcost_yesterday')} value={<Money frac={6} value={s.yesterday_usd} />} />
+        <StatCard label={t('fpcost_last7')} value={<Money frac={6} value={s.last7_usd} />} />
+        <StatCard label={t('fpcost_month')} value={partialMonth ? <span className="tabular-nums" dir="ltr">{usd(s.month_usd, 6)} – {usd(s.month_upper_usd, 6)}</span> : <Money frac={6} value={s.month_usd} />}
           sub={partialMonth ? t('fpcost_month_partial') : undefined} tone="gold" />
-        <StatCard label={t('fpcost_run_rate')} value={<Money value={s.run_rate_month_usd} />} icon={TrendingUp} />
+        <StatCard label={t('fpcost_run_rate')} value={<Money frac={6} value={s.run_rate_month_usd} />} icon={TrendingUp} />
         <StatCard label={t('fpcost_searches')} value={<span className="tabular-nums">{num(s.searches)}</span>} sub={t('fpcost_properties_n', { n: num(s.properties) })} />
-        <StatCard label={t('fpcost_avg_search')} value={<Money value={s.avg_per_search_usd} />} />
-        <StatCard label={t('fpcost_avg_property')} value={<Money value={s.avg_per_property_usd} />} />
-        <StatCard label={t('fpcost_most_expensive')} value={s.most_expensive ? <Money value={s.most_expensive.usd} /> : <span className="text-muted-foreground">{t('fin_na')}</span>}
+        <StatCard label={t('fpcost_avg_search')} value={<Money frac={6} value={s.avg_per_search_usd} />} />
+        <StatCard label={t('fpcost_avg_property')} value={<Money frac={6} value={s.avg_per_property_usd} />} />
+        <StatCard label={t('fpcost_most_expensive')} value={s.most_expensive ? <Money frac={6} value={s.most_expensive.usd} /> : <span className="text-muted-foreground">{t('fin_na')}</span>}
           sub={s.most_expensive ? <button type="button" className="font-mono text-xs underline-offset-2 hover:underline" onClick={() => setOpenId(s.most_expensive!.id)}>{s.most_expensive.id.slice(0, 8)}</button> : undefined} />
-        <StatCard label={t('fpcost_infra')} value={infra.allocated_per_search_usd !== null ? <Money value={infra.allocated_per_search_usd} /> : <span className="text-red-400">{t('fin_unknown')}</span>}
+        <StatCard label={t('fpcost_infra')} value={infra.allocated_per_search_usd !== null ? <Money frac={6} value={infra.allocated_per_search_usd} /> : <span className="text-red-400">{t('fin_unknown')}</span>}
           sub={infra.status === 'UNKNOWN' ? t('fpcost_infra_unknown') : t('fpcost_infra_per_search')} icon={Gauge} />
       </div>
 
       <Card><CardContent className="space-y-2 p-4 text-sm" data-fp-basis>
         <p>{t('fpcost_basis_ai')}</p>
         <p>{t('fpcost_basis_workers')}</p>
-        <p>{infra.status === 'UNKNOWN' ? t('fpcost_basis_infra_unknown', { usd: usd(infra.monthly_fixed_usd) }) : t('fpcost_basis_infra', { usd: usd(infra.monthly_fixed_usd), share: Math.round(Number(infra.share) * 100) })}</p>
-        {s.unlinked_brief_calls ? <p className="text-amber-400">{t('fpcost_unlinked', { n: s.unlinked_brief_calls, from: usd(s.unlinked_brief_usd), to: usd(s.unlinked_brief_upper_usd) })}</p> : null}
+        <p>{infra.status === 'UNKNOWN' ? t('fpcost_basis_infra_unknown', { usd: usd(infra.monthly_fixed_usd, 6) }) : t('fpcost_basis_infra', { usd: usd(infra.monthly_fixed_usd, 6), share: Math.round(Number(infra.share) * 100) })}</p>
+        {s.unlinked_brief_calls ? <p className="text-amber-400">{t('fpcost_unlinked', { n: s.unlinked_brief_calls, from: usd(s.unlinked_brief_usd, 6), to: usd(s.unlinked_brief_upper_usd, 6) })}</p> : null}
       </CardContent></Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -156,7 +156,7 @@ export default function AdminFindPropertyCostsPage() {
             <ComposedChart data={chart}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="day" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => usd(v, 4)} width={80} />
-              <Tooltip formatter={(v: number) => usd(v)} />
+              <Tooltip formatter={(v: number) => usd(v, 6)} />
               <Area type="monotone" dataKey="ai_upper_usd" name={t('fpcost_upper')} fill="hsl(var(--gold) / 0.12)" stroke="none" />
               <Line type="monotone" dataKey="ai_usd" name={t('fpcost_ai')} stroke="hsl(var(--gold))" strokeWidth={2} dot={false} />
               <Legend />
@@ -170,7 +170,7 @@ export default function AdminFindPropertyCostsPage() {
               <XAxis dataKey="day" tick={{ fontSize: 11 }} />
               <YAxis yAxisId="n" tick={{ fontSize: 11 }} allowDecimals={false} />
               <YAxis yAxisId="usd" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => usd(v, 4)} width={80} />
-              <Tooltip formatter={(v: number, name: string) => (name === t('fpcost_searches') ? v : usd(v))} />
+              <Tooltip formatter={(v: number, name: string) => (name === t('fpcost_searches') ? v : usd(v, 6))} />
               <Bar yAxisId="n" dataKey="searches" name={t('fpcost_searches')} fill="hsl(var(--muted-foreground) / 0.45)" />
               <Line yAxisId="usd" type="monotone" dataKey="ai_usd" name={t('fpcost_ai')} stroke="hsl(var(--gold))" strokeWidth={2} dot={false} />
               <Legend />
@@ -182,19 +182,19 @@ export default function AdminFindPropertyCostsPage() {
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2"><CardHeader><CardTitle className="text-base">{t('fpcost_by_provider')}</CardTitle></CardHeader><CardContent>
           <TableWrap>
-            <table className="w-full text-sm" data-fp-providers>
+            <table className="w-full text-sm [&_td]:px-2 [&_th]:px-2" data-fp-providers>
               <thead><tr className="text-start text-xs text-muted-foreground"><th className="py-2 text-start">{t('fpcost_provider')}</th><th className="text-end">{t('fpcost_runs')}</th><th className="text-end">{t('fpcost_requests')}</th><th className="text-end">{t('fpcost_listings')}</th><th className="text-end">{t('fpcost_direct')}</th><th className="text-start ps-3">{t('fpcost_billing')}</th></tr></thead>
               <tbody>
                 <tr className="border-t border-border/60"><td className="py-2 font-medium">OpenAI (gpt-4o-mini)</td><td className="text-end tabular-nums">{num(data.searches.reduce((n, r) => n + r.ai_calls, 0))}</td><td className="text-end">—</td><td className="text-end">—</td>
-                  <td className="text-end">{partialMonth ? <span className="tabular-nums" dir="ltr">{usd(data.daily.reduce((n, d) => n + Number(d.ai_usd), 0))}+</span> : <Money value={data.daily.reduce((n, d) => n + Number(d.ai_usd), 0)} />}</td><td className="ps-3"><StateBadge state={partialMonth ? 'PARTIAL' : 'ESTIMATED'} /></td></tr>
+                  <td className="text-end">{partialMonth ? <span className="tabular-nums" dir="ltr">{usd(data.daily.reduce((n, d) => n + Number(d.ai_usd), 0), 6)}+</span> : <Money frac={6} value={data.daily.reduce((n, d) => n + Number(d.ai_usd), 0)} />}</td><td className="ps-3"><StateBadge state={partialMonth ? 'PARTIAL' : 'ESTIMATED'} /></td></tr>
                 {data.providers.map((p) => (
                   <tr key={p.worker} className="border-t border-border/60"><td className="py-2">{workerName(p.worker)}</td><td className="text-end tabular-nums">{num(p.runs)}</td><td className="text-end tabular-nums">{num(p.pages)}</td><td className="text-end tabular-nums">{num(p.listings)}</td>
-                    <td className="text-end"><Money value={0} /></td><td className="ps-3 text-xs text-muted-foreground">{t('fpcost_no_paid_provider')}</td></tr>
+                    <td className="text-end"><Money frac={6} value={0} /></td><td className="ps-3 text-xs text-muted-foreground">{t('fpcost_no_paid_provider')}</td></tr>
                 ))}
               </tbody>
             </table>
           </TableWrap>
-          <p className="mt-2 text-xs text-muted-foreground">{t('fpcost_split', { ai: usd(data.daily.reduce((n, d) => n + Number(d.ai_usd), 0)) })}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{t('fpcost_split', { ai: usd(data.daily.reduce((n, d) => n + Number(d.ai_usd), 0), 6) })}</p>
         </CardContent></Card>
         <Card><CardHeader><CardTitle className="text-base">{t('fpcost_cache')}</CardTitle></CardHeader><CardContent className="space-y-2 text-sm" data-fp-cache>
           <p className="text-3xl font-semibold tabular-nums">{data.cache.hit_rate === null ? t('fin_na') : `${Math.round(Number(data.cache.hit_rate) * 100)}%`}</p>
@@ -224,7 +224,7 @@ export default function AdminFindPropertyCostsPage() {
           </select>
         </div>
         {rows.length ? <TableWrap>
-          <table className="w-full text-sm" data-fp-history>
+          <table className="w-full text-sm [&_td]:px-2 [&_th]:px-2" data-fp-history>
             <thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-start">{t('fpcost_when')}</th><th className="text-start">{t('fpcost_search_id')}</th><th className="text-start">{t('fpcost_status')}</th><th className="text-end">{t('fpcost_results')}</th><th className="text-start ps-3">{t('fpcost_providers')}</th><th className="text-end">{t('fpcost_ai')}</th><th className="text-end">{t('fpcost_provider_cost')}</th><th className="text-end">{t('fpcost_other')}</th><th className="text-end">{t('fpcost_total')}</th><th className="text-start ps-3">{t('fpcost_completeness')}</th></tr></thead>
             <tbody>
               {rows.map((r) => (
@@ -235,7 +235,7 @@ export default function AdminFindPropertyCostsPage() {
                   <td className="text-end tabular-nums">{r.properties ?? '—'}</td>
                   <td className="ps-3 text-xs text-muted-foreground">{r.workers.map(workerName).join(', ') || '—'}</td>
                   <td className="text-end"><CostCell usdValue={r.ai_usd} upper={r.ai_upper_usd} state={r.completeness} /></td>
-                  <td className="text-end"><Money value={r.provider_usd} /></td>
+                  <td className="text-end"><Money frac={6} value={r.provider_usd} /></td>
                   <td className="text-end text-xs text-muted-foreground">{t('fpcost_not_recorded')}</td>
                   <td className="text-end font-medium"><CostCell usdValue={r.total_usd} upper={r.ai_upper_usd} state={r.completeness} /></td>
                   <td className="ps-3"><StateBadge state={r.completeness} /></td>
@@ -270,7 +270,7 @@ export default function AdminFindPropertyCostsPage() {
                   <td className="py-1">{workerName(w.worker)}</td><td>{w.status}{w.attempts > 1 ? ` ×${w.attempts}` : ''}</td>
                   <td className="text-end tabular-nums">{w.pages ?? '—'}</td><td className="text-end tabular-nums">{w.returned}</td>
                   <td className="ps-2">{[w.index === 'WARM' ? t('fpcost_index_warm') : null, w.shared_run_id ? t('fpcost_shared') : null, w.cached_listings ? t('fpcost_pool_n', { n: w.cached_listings }) : null].filter(Boolean).join(' · ') || '—'}</td>
-                  <td className="text-end"><Money value={0} /></td>
+                  <td className="text-end"><Money frac={6} value={0} /></td>
                 </tr>)}</tbody>
               </table></TableWrap>
               <p className="text-xs text-muted-foreground">{t('fpcost_basis_workers')}</p>

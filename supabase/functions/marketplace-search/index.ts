@@ -128,6 +128,13 @@ async function summary(db: Db, search: Record<string, unknown>) {
   };
 }
 
+/** brief:<uuid> refs from the client (understand's costRef), bounded and well-formed; anything else is dropped. */
+function briefCostRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return [...new Set(value.filter((v): v is string => typeof v === 'string' && uuid.test(v)).slice(0, 20).map((v) => `brief:${v.toLowerCase()}`))];
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
@@ -208,17 +215,29 @@ Deno.serve(async (req: Request) => {
       const r = await openaiStructured({
         name: 'homatch_search_brief', instructions: SEARCH_BRIEF_INSTRUCTIONS, input: text, schema: SEARCH_BRIEF_JSON_SCHEMA, maxOutputTokens: 900,
       });
-      await recordAiUsage(db, 'SEARCH_INTELLIGENCE', r);
+      /* The brief call happens before a search exists: its cost carries a brief ref the client
+         hands back at start (brief_cost_refs), so the search owns what it cost to set up. */
+      const costRef = crypto.randomUUID();
+      await recordAiUsage(db, 'SEARCH_INTELLIGENCE', r, `brief:${costRef}`);
       /* No model is not a dead end: an empty brief asks every question one by one. */
       const brief = briefFromModel(r.ok ? r.parsed : null, text);
-      return json({ understood: r.ok, brief, readiness: evaluateReadiness(brief) });
+      return json({ understood: r.ok, brief, readiness: evaluateReadiness(brief), costRef });
     }
 
     if (action === 'start') {
       const key = String(body.idempotencyKey ?? '');
       if (!/^[A-Za-z0-9_-]{8,120}$/.test(key)) return json({ error: 'IDEMPOTENCY_KEY_REQUIRED' }, 400);
+      /* Cost accounting only: the brief calls this customer made for this search (understand's
+         costRef). Whichever search answers the start — new, replayed or reused — owns them. */
+      const briefRefs = briefCostRefs(body.briefRefs);
+      const linkBriefCosts = async (row: Record<string, unknown>) => {
+        const known = new Set((row.brief_cost_refs ?? []) as string[]);
+        if (!briefRefs.some((r) => !known.has(r))) return;
+        await db.from('discovery_marketplace_searches').update({ brief_cost_refs: [...new Set([...known, ...briefRefs])] }).eq('id', row.id)
+          .then(() => undefined, () => undefined);
+      };
       const { data: prior } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId).eq('idempotency_key', key).maybeSingle();
-      if (prior) return json({ search: await summary(db, prior), replayed: true });
+      if (prior) { await linkBriefCosts(prior); return json({ search: await summary(db, prior), replayed: true }); }
 
       /* THE GATE. The client's view of readiness is never trusted. */
       const brief = sanitizeBrief(body.brief);
@@ -237,14 +256,14 @@ Deno.serve(async (req: Request) => {
         .in('status', ['CREATED', 'READY', 'DISPATCHING', 'SEARCHING', 'PROCESSING', 'RESULTS_AVAILABLE'])
         .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(10);
       const twin = (open ?? []).find((o: Record<string, unknown>) => criteria(sanitizeBrief(o.brief)) === sameRequest);
-      if (twin) return json({ search: await summary(db, twin), replayed: true });
+      if (twin) { await linkBriefCosts(twin); return json({ search: await summary(db, twin), replayed: true }); }
       /* REUSE: the same request finished in the last 30 minutes is answered with its results
          (they are still current), not searched again. Never counted, never a new portal run. */
       const { data: done } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
         .in('status', ['COMPLETE', 'PARTIAL_COMPLETE']).gte('completed_at', new Date(Date.now() - SHARE_WINDOW_MS).toISOString())
         .order('completed_at', { ascending: false }).limit(10);
       const recent = (done ?? []).find((o: Record<string, unknown>) => criteria(sanitizeBrief(o.brief)) === sameRequest);
-      if (recent) return json({ search: await summary(db, recent), replayed: true, reused: true });
+      if (recent) { await linkBriefCosts(recent); return json({ search: await summary(db, recent), replayed: true, reused: true }); }
 
       const { data: plan, error: planErr } = await db.from('discovery_search_plans').insert({
         direction: 'SUPPLY', user_id: userId, market: brief.country, plan_kind: 'MARKETPLACE', plan_version: 1,
@@ -266,7 +285,7 @@ Deno.serve(async (req: Request) => {
       const eligible = eligibleWorkers(workers, request).filter((worker) => workerSwitchOn(switches, worker.workerId));
       const now = new Date();
       const { data: search, error: searchErr } = await db.from('discovery_marketplace_searches').insert({
-        id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key,
+        id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key, brief_cost_refs: briefRefs,
         status: eligible.length ? 'DISPATCHING' : 'FAILED', failure_reason: eligible.length ? null : 'NO_ELIGIBLE_WORKERS',
         brief: { ...brief, readiness }, request, workers_total: eligible.length,
         deadline_at: new Date(now.getTime() + SEARCH_DEADLINE_MS).toISOString(),

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -141,6 +142,7 @@ export default function AdminFinancePage() {
               .replace('{tz}', s?.timezone ?? 'UTC')
               .replace('{cur}', s?.currency ?? 'USD')}
           </p>
+          <Link to="/admin/finance/find-property" className="mt-1 inline-block text-xs font-medium text-gold-ink underline-offset-2 hover:underline" data-fp-costs-link>{t('fpcost_open')}</Link>
         </div>
         <div className="flex items-center gap-2">
           {openCritical > 0 && (

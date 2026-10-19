@@ -40,7 +40,10 @@ warns when a diff enters this domain.
   meta_ads_ledger fee) and `finance_v2_cost_lines` (every attributable provider/AI line from
   its authoritative source; `cost_usd` NULL = UNPRICED, never 0) — read only through the
   admin RPCs `finance_v2_services / _service_detail / _execution / _quote`
-  (Admin → Finance → Services). Free services still record COGS. Shared/background cost
+  (Admin → Finance → Services). Free services still record COGS. Find Property search AI cost
+  is the correlated `cost_events` record (`correlation_id` = search id, model, tokens; PARTIAL =
+  lower bound — `20261119130000_find_property_costs`, Admin → Finance → Find Property); the
+  ledger reads it as recorded and never re-prices it. Shared/background cost
   (`shared_platform`, `retired_providers`, `unattributed`) never enters a service's profit.
   The `billing_cogs_tax_bps` 18 % COGS uplift stays in non-Verify cost-based PRICING
   (owner, 2026-10-19) and is reported separately; it is not COGS in the ledger.

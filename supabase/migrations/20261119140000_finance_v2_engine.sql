@@ -17,8 +17,9 @@
 --      the pricing_policy checks widened, three functions patched from their exact
 --      production bodies to follow the campaign's own policy, and
 --      find_buyers_campaign_spend_micros() (the spend a v2 campaign is charged for).
---   4. provider_price_book: gpt-4o-mini (Find Property search, Find Buyers), so those
---      calls stop recording "$0 ESTIMATED".
+--   4. provider_price_book: gpt-4o-mini (also seeded by 20261119130000_find_property_costs;
+--      this insert is skipped when that row exists). Find Property search AI cost is read from
+--      the correlated cost_events that migration introduced — one record, never re-priced here.
 --   5. finance_services + read-only ledger views (finance_v2_revenue_lines,
 --      finance_v2_cost_lines) and admin RPCs for the per-service dashboards.
 --
@@ -498,7 +499,10 @@ with ce as (
   select c.*,
          case
            when c.job_id is not null and (c.operation_type like 'VERIFY\_%' or c.operation_type in ('REPORT_TRANSLATION_VERIFY', 'DEVELOPER_ADS_VERIFY')) then 'verify'
-           when c.operation_type like 'MARKETPLACE\_%' or c.operation_type like 'FIND\_BUYERS%' or c.operation_type in ('FIND_PROPERTY_ACTOR_RUN', 'CAPTCHA_SOLVE') then null
+           /* Find Property search AI: cost_events is the correlated record (20261119130000_find_property_costs:
+              search id in correlation_id, model, tokens; PARTIAL = lower bound) — read here, never re-priced. */
+           when c.operation_type like 'MARKETPLACE\_%' then 'find_property_search'
+           when c.operation_type like 'FIND\_BUYERS%' or c.operation_type in ('FIND_PROPERTY_ACTOR_RUN', 'CAPTCHA_SOLVE') then null
            when c.operation_type = 'MATCH_UNLOCK' then null /* a $0 marker row, not a cost */
            when c.provider::text in ('DATAFORSEO', 'APIFY') then 'retired_providers'
            when c.operation_type ilike 'meta\_ads%' then 'meta_ads_ai'
@@ -507,9 +511,10 @@ with ce as (
            else 'unattributed' end as service_key
     from public.cost_events c
 )
-select 'ce:' || ce.id::text as line_id, ce.service_key, coalesce(ce.job_id::text, ce.request_id, ce.discovery_job_id::text) as execution_id,
-       ce."timestamp" as occurred_at, ce.provider::text as provider, ce.operation_type as operation, null::text as model,
-       ce.units, 'UNIT'::text as unit_label, null::bigint as input_tokens, null::bigint as cached_tokens, null::bigint as output_tokens,
+select 'ce:' || ce.id::text as line_id, ce.service_key, coalesce(ce.job_id::text, ce.correlation_id, ce.request_id, ce.discovery_job_id::text) as execution_id,
+       ce."timestamp" as occurred_at, ce.provider::text as provider, ce.operation_type as operation, ce.model,
+       ce.units, case when ce.input_tokens is not null or ce.output_tokens is not null then 'TOKENS' else 'UNIT' end as unit_label,
+       ce.input_tokens::bigint, ce.cached_input_tokens::bigint as cached_tokens, ce.output_tokens::bigint,
        null::numeric as unit_price_usd,
        case when public.finance_cost_status(ce.pricing_state) = 'UNPRICED' then null else ce.cost_usd end as cost_usd,
        public.finance_cost_status(ce.pricing_state) as cost_status, 'cost_events'::text as cost_source, true as is_direct
@@ -532,19 +537,6 @@ select 'fbai:' || l.id::text, 'find_buyers', l.matching_job_id::text, l.occurred
        case when upper(coalesce(l.cost_state, '')) = 'UNKNOWN' then null else coalesce(l.actual_micros, l.estimated_micros) / 1e6 end,
        public.finance_cost_status(l.cost_state), 'find_buyers_cost_ledger', true
   from public.find_buyers_cost_ledger l where l.provider = 'OPENAI' and upper(coalesce(l.cost_state, '')) <> 'RELEASED'
-union all
-select 'fpsearch:' || s.id::text || ':' || a.n, 'find_property_search', s.id::text, coalesce((a.e ->> 'at')::timestamptz, s.created_at), 'OPENAI',
-       'MARKETPLACE_' || coalesce(a.e ->> 'call', 'AI'), a.e ->> 'model',
-       coalesce((a.e ->> 'inputTokens')::bigint, 0) + coalesce((a.e ->> 'outputTokens')::bigint, 0), 'TOKENS',
-       (a.e ->> 'inputTokens')::bigint, null, (a.e ->> 'outputTokens')::bigint, null,
-       case when pr.rin is not null and pr.rout is not null
-            then round(coalesce((a.e ->> 'inputTokens')::numeric, 0) * pr.rin + coalesce((a.e ->> 'outputTokens')::numeric, 0) * pr.rout, 8) end,
-       case when pr.rin is not null and pr.rout is not null then 'ESTIMATED' else 'UNPRICED' end, 'discovery_marketplace_searches.telemetry', true
-  from public.discovery_marketplace_searches s
-  cross join lateral jsonb_array_elements(case when jsonb_typeof(s.telemetry -> 'ai') = 'array' then s.telemetry -> 'ai' else '[]'::jsonb end) with ordinality a(e, n)
-  cross join lateral (select public.price_per_unit_at('OPENAI', a.e ->> 'model', 'INPUT_TOKEN', coalesce((a.e ->> 'at')::timestamptz, s.created_at)) rin,
-                             public.price_per_unit_at('OPENAI', a.e ->> 'model', 'OUTPUT_TOKEN', coalesce((a.e ->> 'at')::timestamptz, s.created_at)) rout) pr
- where coalesce((a.e ->> 'inputTokens')::bigint, 0) + coalesce((a.e ->> 'outputTokens')::bigint, 0) > 0
 union all
 select 'fprun:' || r.id::text, 'find_property_paid', r.discovery_run_id::text, r.created_at, 'APIFY_MEMO23',
        coalesce(r.stage, 'ACTOR_RUN') || ' · ' || r.actor_key, null, r.results_billed, 'RESULTS', null, null, null, null,

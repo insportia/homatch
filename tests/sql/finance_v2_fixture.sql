@@ -59,3 +59,7 @@ begin
     end loop;
   end loop;
 end $$;
+
+-- 20261119130000_find_property_costs (runs before Finance V2): correlated cost_events columns.
+alter table public.cost_events add column if not exists correlation_id text, add column if not exists model text,
+  add column if not exists input_tokens bigint, add column if not exists output_tokens bigint, add column if not exists cached_input_tokens bigint;

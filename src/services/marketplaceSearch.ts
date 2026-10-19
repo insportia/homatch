@@ -82,7 +82,7 @@ export async function getCapabilities(): Promise<MarketplaceCapabilities> {
 }
 
 export const understand = (text: string) =>
-  call<{ understood: boolean; brief: SearchIntelligenceBrief; readiness: Readiness }>({ action: 'understand', text });
+  call<{ understood: boolean; brief: SearchIntelligenceBrief; readiness: Readiness; costRef?: string }>({ action: 'understand', text });
 
 /** Whether this search also started a live portal read, and if not, why and until when. */
 export interface LiveRefresh {
@@ -92,8 +92,9 @@ export interface LiveRefresh {
   maxActive?: number;
 }
 
-export const startSearch = (brief: SearchIntelligenceBrief, idempotencyKey: string) =>
-  call<{ search: SearchSummary; replayed?: boolean; reused?: boolean; liveRefresh?: LiveRefresh }>({ action: 'start', brief, idempotencyKey });
+/** briefRefs: understand's costRefs, so HOMATCH's own cost of the brief is booked to this search (admin accounting only). */
+export const startSearch = (brief: SearchIntelligenceBrief, idempotencyKey: string, briefRefs: string[] = []) =>
+  call<{ search: SearchSummary; replayed?: boolean; reused?: boolean; liveRefresh?: LiveRefresh }>({ action: 'start', brief, idempotencyKey, briefRefs });
 
 export const searchStatus = (searchId?: string) =>
   call<{ search: SearchSummary | null }>(searchId ? { action: 'status', searchId } : { action: 'status' });

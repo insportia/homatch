@@ -35,6 +35,10 @@ export const AUDIT_ALLOWED_STRINGS = [
 // Exact-string exceptions — reviewed case by case.
 export const AUDIT_ALLOWED_EXACT = new Set([
   'Homatch',
+  // The vendor and model a Find Property AI cost row is billed by, on the admin cost page
+  // (/admin/finance/find-property). It names the line on OpenAI's invoice and the price-book
+  // row; translating it would name a product that does not exist.
+  'OpenAI (gpt-4o-mini)',
   // Official Georgian source names on the Admin Verify official-sources
   // panel. They are proper names of government services, printed the same
   // in every locale (like "TAS" beside them); translating them would name a

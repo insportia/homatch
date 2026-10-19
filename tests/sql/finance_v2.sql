@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
--- Finance V2 (20261119130000_finance_v2_engine.sql): VAT extraction, paid discovery v1/v2,
+-- Finance V2 (20261119140000_finance_v2_engine.sql): VAT extraction, paid discovery v1/v2,
 -- the campaign spend a v2 charge is based on, and the read-only finance ledger.
 do $$
 declare
@@ -116,22 +116,21 @@ begin
   assert r.service_key = 'match_unlocks' and r.gross_usd = 1.00 and r.net_usd = 0.847458, 'match unlock: ' || r::text;
   assert (select sum(gross_usd) from public.finance_v2_revenue_lines where service_key = 'meta_ads_fee') = 3.00, 'fee $5 − release $2';
 
-  -- Costs: Find Property search telemetry is priced at the call time; an unknown model is UNPRICED (NULL), never $0.
-  insert into public.provider_price_book (provider, model, unit, rate, per_units, currency, effective_from)
-  select 'OPENAI', 'gpt-4o-mini', 'INPUT_TOKEN', 0.15, 1000000, 'USD', '2024-07-18' where not exists (select 1 from public.provider_price_book where model = 'gpt-4o-mini' and unit = 'INPUT_TOKEN');
-  insert into public.discovery_marketplace_searches (id, telemetry, created_at) values
-    (s_fp, '{"ai":[{"at":"2026-10-18T20:33:36Z","call":"RESULTS_INTELLIGENCE","model":"gpt-4o-mini","inputTokens":1991,"outputTokens":430,"costUsd":0}]}', '2026-10-18T20:26:47Z'),
-    (s_bad, '{"ai":[{"at":"2026-10-18T20:00:00Z","call":"SEARCH_INTELLIGENCE","model":"not-a-real-model","inputTokens":100,"outputTokens":10}]}', '2026-10-18T19:59:00Z');
+  -- Costs: Find Property search AI is read from its correlated cost_events (find_property_costs):
+  -- the search id is the execution, model and tokens carried; PARTIAL stays partial; UNPRICED is NULL.
+  insert into public.cost_events (provider, operation_type, source, units, cost_usd, pricing_state, "timestamp", correlation_id, model, input_tokens, output_tokens)
+  values ('OPENAI', 'MARKETPLACE_RESULTS_INTELLIGENCE', 'marketplace-search', 2421, 0.000557, 'ESTIMATED', '2026-10-18T20:33:36Z', s_fp::text, 'gpt-4o-mini', 1991, 430),
+         ('OPENAI', 'MARKETPLACE_SEARCH_INTELLIGENCE', 'marketplace-search', 110, 0, 'UNPRICED', '2026-10-18T20:00:00Z', s_bad::text, 'not-a-real-model', 100, 10),
+         ('OPENAI', 'MARKETPLACE_SEARCH_INTELLIGENCE', 'marketplace-search', 1000, 0.00015, 'PARTIAL', '2026-10-01T10:00:00Z', 'brief:unlinked', 'gpt-4o-mini', null, null);
   select * into r from public.finance_v2_cost_lines where execution_id = s_fp::text;
-  assert r.cost_usd = round(1991 * 0.15 / 1e6 + 430 * 0.60 / 1e6, 8) and r.cost_status = 'ESTIMATED' and r.model = 'gpt-4o-mini',
-    'search 383ec400-like: 1,991 in / 430 out priced, not $0: ' || r::text;
+  assert r.service_key = 'find_property_search' and r.cost_usd = 0.000557 and r.cost_status = 'ESTIMATED' and r.model = 'gpt-4o-mini'
+     and r.input_tokens = 1991 and r.output_tokens = 430 and r.unit_label = 'TOKENS',
+    'search 383ec400-like: the correlated row, as recorded: ' || r::text;
   select * into r from public.finance_v2_cost_lines where execution_id = s_bad::text;
   assert r.cost_usd is null and r.cost_status = 'UNPRICED', 'unknown model: UNPRICED, NULL: ' || r::text;
-
-  -- The old "$0 ESTIMATED" cost_events copy of a search call is not counted twice.
-  insert into public.cost_events (provider, operation_type, source, units, cost_usd, pricing_state, "timestamp")
-  values ('OPENAI', 'MARKETPLACE_RESULTS_INTELLIGENCE', 'marketplace-search', 2421, 0, 'ESTIMATED', now());
-  assert not exists (select 1 from public.finance_v2_cost_lines where operation like 'MARKETPLACE_%' and cost_source = 'cost_events'), 'search copies excluded';
+  select * into r from public.finance_v2_cost_lines where execution_id = 'brief:unlinked';
+  assert r.cost_status = 'PARTIALLY_PRICED' and r.cost_usd = 0.00015, 'pre-correlation brief call: lower bound, flagged: ' || r::text;
+  assert (select count(*) from public.finance_v2_cost_lines where service_key = 'find_property_search') = 3, 'one ledger line per recorded call — never twice';
   -- An UNPRICED cost_events row is NULL in the ledger even if 0 was stored.
   insert into public.cost_events (provider, operation_type, units, cost_usd, pricing_state, "timestamp")
   values ('OPENAI', 'meta_ads_brief_interpret', 120, 0, 'UNPRICED', now());
@@ -160,7 +159,7 @@ begin
   end;
   perform set_config('app.finance_admin', 'yes', true);
   v := (select e from jsonb_array_elements(public.finance_v2_services(now() - interval '400 days', now() + interval '1 day')) e where e->>'service' = 'find_property_search');
-  assert (v->>'grossUsd')::numeric = 0 and (v->>'cogsUsd')::numeric > 0 and (v->>'unpricedLines')::int = 1, 'free search: $0 revenue, real COGS, unpriced flagged: ' || v::text;
+  assert (v->>'grossUsd')::numeric = 0 and (v->>'cogsUsd')::numeric > 0 and (v->>'unpricedLines')::int = 1 and (v->>'partialLines')::int = 1, 'free search: $0 revenue, real COGS, unpriced + partial flagged: ' || v::text;
   v := public.finance_v2_execution('verify', 'verify-job-1');
   assert (v #>> '{chain,netUsd}')::numeric = 1.476271 and (v #>> '{chain,profitComplete}')::boolean, v::text;
   v := public.finance_v2_quote('paid_discovery_37_63_vat_v2', 10, 2);

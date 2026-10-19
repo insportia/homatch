@@ -1,17 +1,18 @@
 // HOMATCH Leads — one matched member, anonymised until unlocked.
 //
 // Everything on the card comes from the feed: the member's stated requirements, the
-// engine's score and agreement, the price of their segment. No name, no free text, no
-// identifier before an unlock (the server never sends one). Segment and score are shown
-// side by side and never mixed: a Standard lead may match better than a Premium one.
+// engine's score and agreement, their category (EXACT / NEARBY_SIMILAR / VIP) with the
+// evidence behind it, and the one price that applies. No name, no free text, no identifier
+// before an unlock (the server never sends one). Category and score are shown side by side
+// and never mixed: a nearby lead may match better than an exact one.
 
 import React from 'react';
-import { Bookmark, BookmarkCheck, Briefcase, CalendarClock, Check, Lock, Mail, MessageSquare, Phone, Sparkles, Unlock, UserRound } from 'lucide-react';
+import { Bookmark, BookmarkCheck, Briefcase, CalendarClock, Check, Crosshair, Lock, Mail, MapPinned, MessageSquare, Phone, Sparkles, Unlock, UserRound } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { formatMoney, intlLocaleFor, isolate } from '@/components/workspace/primitives';
 import type { LeadItem } from '@/services/homatchLeads';
-import { buildLeadSummary, propertyTypeLabel, requirementParts } from '@/leads/leadSummary';
+import { buildLeadSummary, leadCategory, leadPriceKey, matchReasons, propertyTypeLabel, requirementParts } from '@/leads/leadSummary';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_TERTIARY, SURFACE, SURFACE_HOVER } from './kit';
 
 export function formatCreditsLabel(n: number, lang: string) {
@@ -57,6 +58,29 @@ export function SegmentPill({ segment }: { segment: LeadItem['segment'] }) {
   ) : (
     <span className="inline-flex items-center rounded-full border border-[hsl(var(--border))] bg-white px-2.5 py-1 text-xs font-semibold text-[hsl(224_14%_22%)]">
       {t('hl_segment_standard')}
+    </span>
+  );
+}
+
+/**
+ * The category the owner sees (smart match expansion): EXACT, NEARBY / SIMILAR, or VIP — VIP
+ * overrides when the member documented a qualifying budget. One person is in one category.
+ */
+export function CategoryPill({ lead }: { lead: Pick<LeadItem, 'category' | 'segment' | 'confidence'> }) {
+  const { t } = useLanguage();
+  const category = leadCategory(lead);
+  if (!category) return <SegmentPill segment={lead.segment} />;
+  const tone = category === 'VIP'
+    ? 'bg-[#0C1119] text-[hsl(38_92%_62%)] ring-transparent'
+    : category === 'EXACT'
+      ? 'bg-[hsl(152_45%_94%)] text-[hsl(152_55%_22%)] ring-[hsl(152_40%_78%)]'
+      : 'bg-[hsl(210_80%_96%)] text-[hsl(212_70%_28%)] ring-[hsl(210_60%_84%)]';
+  const Icon = category === 'VIP' ? Sparkles : category === 'EXACT' ? Crosshair : MapPinned;
+  return (
+    <span data-testid="lead-category" data-category={category}
+      className={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset', tone)}>
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`hl_cat_${category}`)}
+      {lead.confidence ? <span className="font-medium opacity-80">· {t(`hl_conf_${lead.confidence}`)}</span> : null}
     </span>
   );
 }
@@ -129,9 +153,11 @@ export function LeadCard({
   const active = date(lead.activeAt ?? lead.updatedAt ?? lead.demandAt);
   const price = formatCreditsLabel(lead.priceCredits, lang);
   const titleId = `lead-${lead.matchId}-title`;
+  const why = matchReasons(lead, t, (n, c) => money(n, c), (n) => formatCreditsLabel(n, lang));
+  const key = leadPriceKey(lead);
 
   return (
-    <article aria-labelledby={titleId} data-testid="lead-card" data-segment={lead.segment} data-band={lead.band}
+    <article aria-labelledby={titleId} data-testid="lead-card" data-segment={lead.segment} data-band={lead.band} data-category={leadCategory(lead) ?? undefined}
       className={cn(SURFACE, SURFACE_HOVER, 'flex min-w-0 flex-col p-4', selected && 'ring-2 ring-[hsl(38_92%_54%)]')}>
       <div className="flex items-start gap-3">
         {!lead.unlocked ? (
@@ -146,8 +172,8 @@ export function LeadCard({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
+            <CategoryPill lead={lead} />
             <BandBadge band={lead.band} score={lead.score} />
-            <SegmentPill segment={lead.segment} />
             <SearcherPill searcher={lead.searcher} />
             {lead.fresh ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(210_80%_96%)] px-2.5 py-1 text-xs font-semibold text-[hsl(212_70%_32%)]">
@@ -172,6 +198,11 @@ export function LeadCard({
       </div>
 
       <p className="mt-2.5 text-sm leading-relaxed text-[hsl(224_14%_22%)] [overflow-wrap:anywhere]" dir="auto">{summary}</p>
+      {why.reasons.length ? (
+        <p className="mt-1.5 text-xs leading-relaxed text-[hsl(224_14%_26%)] [overflow-wrap:anywhere]" data-testid="lead-why" dir="auto">
+          {why.reasons.slice(0, 2).join(' ')}
+        </p>
+      ) : null}
       <p className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[hsl(224_10%_36%)]">
         {reqs.length ? <span className="min-w-0 [overflow-wrap:anywhere]">{reqs.join(' · ')}</span> : null}
         {active ? (
@@ -197,7 +228,7 @@ export function LeadCard({
         ) : (
           <button type="button" className={cn(BTN_PRIMARY, 'min-[420px]:flex-1')} onClick={onUnlock} disabled={busy} data-testid="lead-unlock">
             <Lock className="h-4 w-4" aria-hidden="true" />
-            {t(lead.segment === 'PREMIUM' ? 'hl_cta_unlock_premium' : 'hl_cta_unlock_standard', { credits: price })}
+            {t(key === 'PREMIUM' ? 'hl_cta_unlock_premium' : key === 'EXACT' ? 'hl_cta_unlock_exact' : 'hl_cta_unlock_standard', { credits: price })}
           </button>
         )}
         <button type="button" className={BTN_SECONDARY} onClick={onOpenDetails} data-testid="lead-details">

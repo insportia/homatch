@@ -58,7 +58,9 @@ const GOLD = 'text-[hsl(40_94%_64%)]';
 export const DEMO_PARAM = 'demo';
 /** The matches page previews this many people; the rest are on HOMATCH Leads (/property/:id/leads). */
 export const INTERNAL_PREVIEW_LIMIT = 6;
-const DEFAULT_PRICES: LeadPrices = { STANDARD: 3, PREMIUM: 10, active: false };
+const DEFAULT_PRICES: LeadPrices = { STANDARD: 3, EXACT: 5, PREMIUM: 10, active: false };
+/** A real person's price depends on their category (decided on HOMATCH Leads): show "from". */
+export const lowestUnlockPrice = (p: LeadPrices) => Math.min(...[p.STANDARD, p.EXACT, p.PREMIUM].filter((n) => Number.isFinite(n) && n > 0));
 
 /* ── badges ─────────────────────────────────────────────────────────────── */
 
@@ -253,7 +255,7 @@ export function InternalMatchesSection({
             {/* A preview: the first six people. Everyone, with filters and paid
                 contact unlock, is on HOMATCH Leads. */}
             {people.slice(0, Math.max(0, INTERNAL_PREVIEW_LIMIT - (demo ? 1 : 0))).map((person) => (
-              <NativePersonCard key={person.key} person={person} price={prices.STANDARD}
+              <NativePersonCard key={person.key} person={person} price={lowestUnlockPrice(prices)}
                 onViewProfile={() => setProfile(person.key)}
                 onUnlock={() => navigate(`/property/${encodeURIComponent(propertyId)}/leads`)} />
             ))}
@@ -527,7 +529,7 @@ function NativePersonCard({ person, price, onViewProfile, onUnlock }: { person: 
       fits={fits}
       actions={(
         <>
-          <ActionButton testId="native-unlock" label={t('im_unlock_contact_price', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={onUnlock} primary />
+          <ActionButton testId="native-unlock" label={t('im_unlock_contact_from', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={onUnlock} primary />
           <ActionButton label={t('im_action_view_profile')} icon={UserRound} onClick={onViewProfile} />
           <ActionButton label={t('im_action_message')} icon={MessageSquare} onClick={actions.message} busy={actions.opening} />
           <ActionButton label={t('native_action_call')} icon={Phone} onClick={actions.call} busy={actions.calling} disabled={Boolean(actions.contact)} />
@@ -708,7 +710,7 @@ export function NativeProfileBody({ person, price, onUnlock }: { person: PersonC
         <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('im_privacy_note')}
       </p>
       <div className="sticky bottom-0 -mx-4 mt-4 flex flex-wrap gap-2 border-t border-[hsl(40_40%_88%)] bg-[hsl(40_33%_98%)] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:-mx-5 sm:px-5">
-        <ActionButton testId="profile-native-unlock" label={t('im_unlock_contact_price', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={onUnlock} primary />
+        <ActionButton testId="profile-native-unlock" label={t('im_unlock_contact_from', { n: formatCreditsLabel(price, lang) })} icon={LockOpen} onClick={onUnlock} primary />
         <ActionButton label={t('im_action_message')} icon={MessageSquare} onClick={actions.message} busy={actions.opening} />
         <ActionButton label={t('native_action_call')} icon={Phone} onClick={actions.call} busy={actions.calling} disabled={Boolean(actions.contact)} />
         {actions.contact ? <ContactLine contact={actions.contact} /> : null}

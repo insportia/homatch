@@ -188,7 +188,8 @@ test('1440 (en): approved copy, two segments ranked by score, nothing identifyin
   assert.match(new URL(page.url()).search, /lead=/, 'the lead has its own address');
   const detail = await drawer.textContent();
   for (const copy of ['Looking For', 'Preferred Location', 'Budget Range', 'Property Requirements', 'Available Contact Options', 'Source',
-    'A VIP lead: this person stated a budget at or above HOMATCH\'s high-value threshold for this market.']) {
+    /* Smart match expansion (2026-10-18): a VIP lead is described by its category — and VIP replaces, never adds to, the other prices. */
+    'They stated a budget at or above HOMATCH\'s high-value threshold for this market. VIP replaces the other prices']) {
     assert.ok(detail.includes(copy), `missing detail copy: ${copy}`);
   }
   await page.keyboard.press('Escape');
@@ -232,7 +233,8 @@ test('Bulk Unlock: the bar totals 1 Standard + 1 Premium = 8.5 credits; a double
   await boxes.nth(1).check();
   const bar = page.locator('[data-testid="bulk-bar"]');
   await bar.waitFor();
-  assert.match(await bar.textContent(), /Standard 1 · VIP 1 · 8\.5 credits/);
+  /* Smart match expansion: the bar names the three tiers (a pre-expansion lead without a category is nearby / similar). */
+  assert.match(await bar.textContent(), /Exact 0 · Nearby or similar 1 · VIP 1 · 8\.5 credits/);
   await noOverflow(page, 'bulk bar 390');
   await shot(page, 'leads-bulk-390');
   await page.locator('[data-testid="bulk-unlock"]').click();

@@ -492,10 +492,16 @@ async function actionLeadDraft(sb: Sb, owner: Owner, body: Record<string, unknow
   await sb.from('rate_limit_events').insert({ operation: 'lead_outreach_draft', user_id: owner.id });
 
   /* The member's documented search for THIS listing (the match HOMATCH made). */
-  const { data: match } = await sb.from('supply_matches')
+  /* Find Buyers 2.0: the classified candidate (EXACT first); a native match from before, else. */
+  const { data: candidate } = await sb.from('internal_match_candidates')
+    .select('intent_profile_id, agreed, conflicted, unknown_dimensions, category, kind')
+    .eq('demand_user_id', entry.lead_user_id).eq('supply_user_id', owner.id).eq('property_id', property.propertyId)
+    .order('category', { ascending: true }).order('score', { ascending: false }).limit(1).maybeSingle();
+  const { data: native } = candidate ? { data: null } : await sb.from('supply_matches')
     .select('intent_profile_id, agreed, conflicted, unknown_dimensions')
     .eq('demand_user_id', entry.lead_user_id).eq('supply_user_id', owner.id).eq('property_id', property.propertyId)
     .eq('source_kind', 'INTERNAL_HOMATCH').order('match_score', { ascending: false }).limit(1).maybeSingle();
+  const match = (candidate ?? native) as { intent_profile_id?: string; agreed?: unknown; conflicted?: unknown; unknown_dimensions?: unknown } | null;
   let memberSearch: Record<string, unknown> | null = null;
   if (match?.intent_profile_id) {
     const { data: ip } = await sb.from('intent_profiles')
@@ -510,6 +516,8 @@ async function actionLeadDraft(sb: Sb, owner: Owner, body: Record<string, unknow
         areaMin: ip.area_min, areaMax: ip.area_max,
         mustHave: req0.mustHave, furnished: req0.furnished, parking: req0.parking, renovation: req0.renovation,
         fits: match.agreed, doesNotFit: match.conflicted, unknown: match.unknown_dimensions,
+        /* How HOMATCH matched them (EXACT / NEARBY_SIMILAR and why), as labels only. */
+        matchCategory: (candidate as { category?: string } | null)?.category, matchKind: (candidate as { kind?: string } | null)?.kind,
       }).filter(([, v]) => v != null && !(Array.isArray(v) && !v.length)));
     }
   }

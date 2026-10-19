@@ -1,9 +1,11 @@
 // HOMATCH LEADS — "Your Matching Buyers" for one property.
 //
-// Every eligible HOMATCH member whose stated search fits this listing, ranked by the
-// engine's match score, anonymised and free to browse. The owner unlocks only the
-// contacts they want to approach (Standard 3 / VIP 10 credits at 10 credits = $1, once
-// per member; the server prices every unlock).
+// Every eligible HOMATCH member whose stated search fits this listing — in its area, a
+// measured nearby area, or elsewhere in the city for a property just like it — grouped
+// Exact / Nearby or similar / VIP, anonymised and free to browse. The owner chooses how far
+// matching may reach (MatchReachControls) and unlocks only the contacts they want to approach
+// (Exact 5 / Nearby or similar 3 / VIP 10 credits at 10 credits = $1, once per member, one
+// price per person, never stacked; the server prices every unlock).
 // Paged on the server; filters and sort live in the URL so Back/refresh keep them.
 // Opening the page also asks the matcher to evaluate this listing against every
 // active search now, and marks what the owner has seen (for "Fresh Matches").
@@ -14,7 +16,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, FlaskConical, Loader2, Lock, RefreshCw, Sparkles, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Crosshair, FlaskConical, Loader2, Lock, MapPinned, RefreshCw, Sparkles, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -24,9 +26,10 @@ import { supabase } from '@/db/supabase';
 import { cn } from '@/lib/utils';
 import {
   getLeadFeedV2, LEAD_PAGE_SIZE, markLeadsSeen, openLeadConversation, requestLeadMatching, toggleLeadSaved, UnlockError,
-  type LeadFeed, type LeadFilter, type LeadItem, type LeadSort,
+  type LeadCategory, type LeadFeed, type LeadFilter, type LeadItem, type LeadSort,
 } from '@/services/homatchLeads';
-import { propertyTypeLabel, selectionTotals } from '@/leads/leadSummary';
+import { leadCategory, propertyTypeLabel, selectionTotals } from '@/leads/leadSummary';
+import { MatchReachControls } from '@/components/leads/MatchReachControls';
 import { BTN_PRIMARY, BTN_SECONDARY, chipClass, EYEBROW, SURFACE } from '@/components/leads/kit';
 import { formatCreditsLabel, LeadCard } from '@/components/leads/LeadCard';
 import { LeadDetailsDrawer } from '@/components/leads/LeadDetailsDrawer';
@@ -35,7 +38,13 @@ import { OwnerDemoJourney } from '@/components/leads/demo/OwnerDemoJourney';
 import { ownerDemoAvailable } from '@/services/ownerDemoLead';
 
 /* Filter chips in groups: one choice per group, every group combinable (server-side, v2 feed). */
+/* The categories are their own group, shown as tabs above the chips (one person, one category). */
+const CATEGORY_TABS: Array<[LeadFilter, LeadCategory, React.ComponentType<{ className?: string }>]> = [
+  ['EXACT', 'EXACT', Crosshair], ['NEARBY', 'NEARBY_SIMILAR', MapPinned], ['VIP', 'VIP', Sparkles],
+];
 const FILTER_GROUPS: Array<Array<[LeadFilter, string]>> = [
+  CATEGORY_TABS.map(([f, c]) => [f, `hl_cat_${c}`] as [LeadFilter, string]),
+  [['HIGH_CONFIDENCE', 'hl_filter_high_confidence']],
   [['STRONG', 'hl_filter_strong'], ['POTENTIAL', 'hl_filter_potential']],
   [['STANDARD', 'hl_filter_standard'], ['PREMIUM', 'hl_filter_premium']],
   [['DIRECT', 'hl_filter_direct'], ['BROKER', 'hl_filter_broker']],
@@ -45,7 +54,7 @@ const FILTER_GROUPS: Array<Array<[LeadFilter, string]>> = [
 ];
 const ALL_FILTERS = FILTER_GROUPS.flat().map(([f]) => f);
 const SORTS: Array<[LeadSort, string]> = [
-  ['BEST', 'hl_sort_best'], ['ACTIVE', 'hl_sort_active'], ['NEWEST', 'hl_sort_newest'], ['UPDATED', 'hl_sort_updated'],
+  ['CATEGORY', 'hl_sort_category'], ['BEST', 'hl_sort_best'], ['ACTIVE', 'hl_sort_active'], ['NEWEST', 'hl_sort_newest'], ['UPDATED', 'hl_sort_updated'],
   ['BUDGET_DESC', 'hl_sort_budget_desc'], ['BUDGET_ASC', 'hl_sort_budget_asc'],
 ];
 const isFilter = (v: string | null): v is LeadFilter => ALL_FILTERS.includes(v as LeadFilter);
@@ -66,7 +75,7 @@ function HomatchLeadsContent() {
   const district = params.get('district') || null;
   const propertyType = params.get('type') || null;
   const anyFilter = filters.length > 0 || !!district || !!propertyType;
-  const sort: LeadSort = isSort(params.get('sort')) ? params.get('sort') as LeadSort : 'BEST';
+  const sort: LeadSort = isSort(params.get('sort')) ? params.get('sort') as LeadSort : 'CATEGORY';
   const page = Math.max(0, (Number.parseInt(params.get('page') ?? '1', 10) || 1) - 1);
   const demoRequested = params.get('demo') === '1';
   const [demoAvailable, setDemoAvailable] = useState(false);
@@ -239,15 +248,17 @@ function HomatchLeadsContent() {
             <p className="mt-2 text-sm font-semibold text-[hsl(var(--gold-ink))]">{t('hl_intro_closing')}</p>
           </div>
           {prices ? (
-            <dl className="grid grid-cols-2 gap-2 sm:w-64">
-              <div className="rounded-xl border border-[hsl(var(--border))] bg-white px-3 py-2.5">
-                <dt className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(224_10%_40%)]">{t('hl_segment_standard')}</dt>
-                <dd className="mt-0.5 font-display text-base font-bold" dir="ltr">{t('hl_credits_n', { n: formatCreditsLabel(prices.STANDARD, lang) })}</dd>
-              </div>
-              <div className="rounded-xl bg-[#0C1119] px-3 py-2.5 text-white">
-                <dt className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(38_92%_62%)]">{t('hl_segment_premium')}</dt>
-                <dd className="mt-0.5 font-display text-base font-bold" dir="ltr">{t('hl_credits_n', { n: formatCreditsLabel(prices.PREMIUM, lang) })}</dd>
-              </div>
+            <dl className="grid grid-cols-3 gap-2 sm:w-80" data-testid="hl-prices">
+              {([
+                ['EXACT', prices.EXACT, 'border border-[hsl(152_40%_80%)] bg-[hsl(152_45%_97%)]', 'text-[hsl(152_55%_24%)]'],
+                ['NEARBY_SIMILAR', prices.STANDARD, 'border border-[hsl(var(--border))] bg-white', 'text-[hsl(224_10%_40%)]'],
+                ['VIP', prices.PREMIUM, 'bg-[#0C1119] text-white', 'text-[hsl(38_92%_62%)]'],
+              ] as const).map(([cat, price, box, label]) => (
+                <div key={cat} className={cn('min-w-0 rounded-xl px-2.5 py-2.5', box)} data-price={cat}>
+                  <dt className={cn('text-2xs font-semibold uppercase leading-tight tracking-[0.08em] [overflow-wrap:anywhere]', label)}>{t(`hl_cat_${cat}`)}</dt>
+                  <dd className="mt-0.5 font-display text-base font-bold" dir="ltr">{t('hl_credits_n', { n: formatCreditsLabel(price, lang) })}</dd>
+                </div>
+              ))}
             </dl>
           ) : null}
         </section>
@@ -265,13 +276,37 @@ function HomatchLeadsContent() {
           </button>
         ) : null}
 
+        {feed?.preferences ? (
+          <MatchReachControls propertyId={propertyId} preferences={feed.preferences}
+            onChanged={(next) => { setFeed((f) => (f ? { ...f, preferences: next } : f)); void load(); }} />
+        ) : null}
+
+        {/* The three categories (one person is in exactly one), then the combinable filters. */}
+        {counts && (counts.EXACT + counts.NEARBY + counts.VIP > 0 || filters.some((f) => CATEGORY_TABS.some(([c]) => c === f))) ? (
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={t('hl_cat_label')} data-testid="hl-categories">
+            <button type="button" className={chipClass(!filters.some((f) => CATEGORY_TABS.some(([c]) => c === f)))}
+              aria-pressed={!filters.some((f) => CATEGORY_TABS.some(([c]) => c === f))}
+              onClick={() => { const cur = filters.find((f) => CATEGORY_TABS.some(([c]) => c === f)); if (cur) toggleFilter(cur); }}>
+              {t('hl_cat_all')}<span className="tabular-nums opacity-70" dir="ltr">{counts.ALL ?? 0}</span>
+            </button>
+            {CATEGORY_TABS.map(([f, cat, Icon]) => (
+              <button key={f} type="button" className={chipClass(filters.includes(f))} aria-pressed={filters.includes(f)}
+                data-category-tab={cat} onClick={() => toggleFilter(f)}>
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 [overflow-wrap:anywhere]">{t(`hl_cat_${cat}`)}</span>
+                <span className="tabular-nums opacity-70" dir="ltr">{counts[f] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {/* Filters (combinable, server-side), location, property type and sort. */}
         <div className="mt-4 space-y-3" data-testid="hl-filters">
           <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0" role="group" aria-label={t('hl_filters_label')}>
             <button type="button" className={chipClass(!anyFilter)} aria-pressed={!anyFilter} onClick={clearFilters}>
               {t('hl_filter_all')}{counts ? <span className="tabular-nums opacity-70" dir="ltr">{counts.ALL ?? 0}</span> : null}
             </button>
-            {FILTER_GROUPS.map((group, gi) => (
+            {FILTER_GROUPS.slice(1).map((group, gi) => (
               <React.Fragment key={gi}>
                 <span aria-hidden="true" className="my-2 w-px shrink-0 bg-[hsl(var(--border))]" />
                 {group.map(([f, key]) => (
@@ -299,7 +334,7 @@ function HomatchLeadsContent() {
             ))}
             <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-[hsl(224_14%_30%)]">
               <span>{t('hl_sort_label')}</span>
-              <select value={sort} onChange={(e) => setParam('sort', e.target.value === 'BEST' ? null : e.target.value)}
+              <select value={sort} onChange={(e) => setParam('sort', e.target.value === 'CATEGORY' ? null : e.target.value)}
                 className="min-h-11 min-w-0 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm font-semibold text-[hsl(224_14%_12%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]">
                 {SORTS.map(([s0, key]) => <option key={s0} value={s0}>{t(key)}</option>)}
               </select>
@@ -323,8 +358,18 @@ function HomatchLeadsContent() {
             <EmptyState icon={Users} title={t(!anyFilter ? 'hl_empty_title' : 'hl_empty_filter_title')} body={t(!anyFilter ? 'hl_empty_body' : 'hl_empty_filter_body')} />
           ) : (
             <div className={cn('grid gap-4 md:grid-cols-2', loading && 'opacity-60')}>
-              {items.map((lead) => (
-                <LeadCard key={lead.matchId} lead={lead} selected={selected.has(lead.matchId)}
+              {items.map((lead, i) => {
+                const cat = leadCategory(lead);
+                const heading = sort === 'CATEGORY' && cat && (i === 0 || leadCategory(items[i - 1]) !== cat);
+                return (
+                <React.Fragment key={lead.matchId}>
+                {heading ? (
+                  <div className="md:col-span-2" data-testid="hl-section" data-section={cat}>
+                    <h2 className="font-display text-base font-semibold text-[hsl(224_14%_10%)]">{t(`hl_section_${cat}`)}</h2>
+                    <p className="mt-0.5 text-xs leading-relaxed text-[hsl(224_14%_32%)]">{t(`hl_cat_${cat}_desc`)}</p>
+                  </div>
+                ) : null}
+                <LeadCard lead={lead} selected={selected.has(lead.matchId)}
                   onToggleSelect={() => toggle(lead.matchId)}
                   onUnlock={() => setUnlockIds([lead.matchId])}
                   onOpenDetails={() => setDetail(lead)}
@@ -332,7 +377,9 @@ function HomatchLeadsContent() {
                   onOpenConversation={() => void openConversation(lead)}
                   onToggleSave={() => void toggleSave(lead)}
                   onCreateEmail={() => navigate(`/email-studio?property=${propertyId}&leads=${lead.matchId}`)} />
-              ))}
+                </React.Fragment>
+                );
+              })}
             </div>
           )}
         </div>
@@ -356,7 +403,7 @@ function HomatchLeadsContent() {
             <div className="min-w-0 text-sm">
               <p className={EYEBROW}>{t('hl_bulk_selected', { n: selected.size })}</p>
               <p className="mt-0.5 text-[hsl(224_14%_22%)]">
-                {t('hl_bulk_summary', { standard: totals.standard, premium: totals.premium, credits: formatCreditsLabel(totals.credits, lang) })}
+                {t('hl_bulk_summary_tiers', { exact: totals.exact, standard: totals.standard, premium: totals.premium, credits: formatCreditsLabel(totals.credits, lang) })}
                 {totals.already ? ` · ${t('hl_bulk_already', { n: totals.already })}` : ''}
               </p>
             </div>

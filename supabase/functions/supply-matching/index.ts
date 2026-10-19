@@ -68,6 +68,15 @@ import { judgeDelivery } from '../../../src/research-core/discovery/revalidation
 import { candidateQuality, unifiedScore } from '../../../src/research-core/match/unified-score.ts';
 import { fromObservationRow } from '../../../src/research-core/discovery/discovery-entity.ts';
 import {
+  classifyInternalCandidate,
+  expansionConfigFrom,
+  geoIndexFrom,
+  requirementsFrom,
+  supplyQualityFromFacts,
+  type GeoIndex,
+  type PlaceGeo,
+} from '../../../src/research-core/match/internalTiers.ts';
+import {
   ageCeilingMs,
   describeCeiling,
   listingContextFrom,
@@ -193,7 +202,7 @@ Deno.serve(async (req: Request) => {
         .from('intent_profiles')
         .select('id,signal_id,intent_type,transaction_type,city,district,property_types,'
           + 'bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,'
-          + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,'
+          + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,neighborhoods,requirements,'
           + 'signal:raw_signals!signal_id(id,classification_status,platform)')
         .not('city', 'is', null)
         .order('id', { ascending: true });
@@ -292,7 +301,32 @@ Deno.serve(async (req: Request) => {
       nativeCandidatesRead: 0,
       nativeCompatible: 0,
       nativePersisted: 0,
+      /* Find Buyers 2.0: classified internal candidates (EXACT / NEARBY_SIMILAR) written. */
+      internalCandidates: 0,
+      internalExact: 0,
     };
+
+    /*
+     * THE EXPANSION'S INPUTS, read once per tick: the owner-configured tolerances and the
+     * measured area medians. A failed read leaves geography empty — every area is then
+     * only ever an exact match, never "nearby" — and is reported, never silently assumed.
+     */
+    const expansion = await (async () => {
+      const [cfg, geo] = await Promise.all([
+        db.from('admin_settings').select('value').eq('key', 'internal_match_expansion').maybeSingle(),
+        db.from('internal_match_place_geo').select('city_key,place_key,samples,lat,lon,ppsqm_usd'),
+      ]);
+      const rows: PlaceGeo[] = (geo.data ?? []).map((r: Record<string, unknown>) => ({
+        cityKey: String(r.city_key), placeKey: String(r.place_key), samples: Number(r.samples),
+        lat: Number(r.lat), lon: Number(r.lon), ppsqmUsd: r.ppsqm_usd == null ? null : Number(r.ppsqm_usd),
+      }));
+      return {
+        config: expansionConfigFrom(cfg.data?.value),
+        geo: geoIndexFrom(rows) as GeoIndex,
+        geoAreas: rows.length,
+        geoError: geo.error?.message ?? null,
+      };
+    })();
 
     /*
      * ONE DEMAND, AGAINST EVERYTHING. External supply first (unless network-only),
@@ -617,6 +651,12 @@ Deno.serve(async (req: Request) => {
         /* Which properties still fit (a property-scoped pass retires exactly the rest). */
         const compatibleProperties: string[] = [];
         let nativeWriteFailed = false;
+        /* Find Buyers 2.0: listings this search is a classified internal candidate for. */
+        const candidateProperties: string[] = [];
+        let candidateWriteFailed = false;
+        const demandPlaces = [...new Set([demandRow.district, ...(Array.isArray(demandRow.neighborhoods) ? demandRow.neighborhoods : [])]
+          .map((v) => (typeof v === 'string' ? v.trim() : '')).filter(Boolean))];
+        const demandRequirements = requirementsFrom(demandRow.requirements);
         const nativeScan = await scanAll<Record<string, unknown>>({
           pageSize: PAGE_SIZE,
           startAfter: resume?.phase === 'NATIVE' ? resume.cursor : null,
@@ -628,7 +668,8 @@ Deno.serve(async (req: Request) => {
               .select('id,user_id,homatch_id,title,transaction_type,property_type,'
                 + 'matching_status,archived_at,contact_phone_e164,listed_by_role,'
                 + 'facts:property_facts!property_id(city,district,total_price,currency,'
-                + 'area,rooms,bedrooms)')
+                + 'area,rooms,bedrooms,neighborhood,address,condition,construction_status,new_build,'
+                + 'parking,elevator,balcony,terrace,furnished,air_conditioning,yard)')
               .eq('is_deleted', false)
               .is('archived_at', null)
               .eq('matching_status', 'ACTIVE')
@@ -672,6 +713,55 @@ Deno.serve(async (req: Request) => {
               );
 
               const assessment = assessMatch(demand, nativeSupply, { minAgreements: MIN_AGREEMENTS });
+
+              /*
+               * FIND BUYERS 2.0 — THE OWNER'S VIEW OF THIS PAIR. Classified whether or not the
+               * strict comparison matched: the same comparison with the district relaxed and the
+               * budget widened by the discovery tolerance, then judged on measured geography
+               * (research-core/match/internalTiers.ts). Free; nothing is charged here.
+               */
+              const tier = classifyInternalCandidate({
+                demand,
+                demandPlaces,
+                requirements: demandRequirements,
+                supply: nativeSupply,
+                supplyNeighborhood: (propertyFacts?.neighborhood as string | null | undefined) ?? null,
+                supplyAddress: (propertyFacts?.address as string | null | undefined) ?? null,
+                supplyQuality: supplyQualityFromFacts(propertyFacts),
+              }, expansion.geo, expansion.config, MIN_AGREEMENTS);
+              if (tier && !dryRun) {
+                const { error: tierError } = await db.rpc('internal_match_upsert', {
+                  p: {
+                    intent_profile_id: demandRow.id as string,
+                    property_id: propertyRow.id as string,
+                    supply_user_id: propertyRow.user_id as string,
+                    demand_user_id: demandUserId,
+                    category: tier.category,
+                    kind: tier.kind,
+                    confidence: tier.confidence,
+                    score: tier.score,
+                    budget_verdict: tier.budget.verdict,
+                    geo_level: tier.geo.level,
+                    geo_km: tier.geo.km,
+                    explanation: { geo: tier.geo, budget: tier.budget, similarity: tier.similarity, uncertainty: tier.uncertainty },
+                    agreed: tier.assessment.agreed,
+                    conflicted: tier.assessment.conflicted,
+                    preference_misses: tier.assessment.preferenceMisses,
+                    unknown_dimensions: tier.assessment.unknown,
+                    version: tier.version,
+                  },
+                });
+                if (tierError) {
+                  candidateWriteFailed = true;
+                  totals.persistenceFailures += 1;
+                  results.push({ propertyId: propertyRow.id, error: `internal_match: ${tierError.message}` });
+                } else {
+                  candidateProperties.push(propertyRow.id as string);
+                  totals.internalCandidates += 1;
+                  if (tier.category === 'EXACT') totals.internalExact += 1;
+                }
+              }
+
               if (assessment.compatibility !== 'COMPATIBLE') continue;
               totals.nativeCompatible += 1;
               if (dryRun) continue;
@@ -809,6 +899,16 @@ Deno.serve(async (req: Request) => {
               p_property_ids: null,
             });
           if (retireError) throw retireError;
+        }
+        /* The same rule for the classified candidates: decided after the complete pass only. */
+        if (!dryRun && !candidateWriteFailed) {
+          const { error: tierRetireError } = await db.rpc('internal_match_retire', {
+            p_intent_profile_id: demandRow.id as string,
+            p_scan_started_at: startedScan,
+            p_property_ids: propertyMode ? onlyProperties : null,
+            p_keep: propertyMode ? candidateProperties : null,
+          });
+          if (tierRetireError) throw tierRetireError;
         }
       }
 
@@ -1072,6 +1172,7 @@ Deno.serve(async (req: Request) => {
       /* No silent truncation: complete=false says exactly what will resume next tick. */
       coverage,
       totals,
+      expansion: { geoAreas: expansion.geoAreas, geoError: expansion.geoError, nearbyMaxKm: expansion.config.nearbyMaxKm },
       /*
        * SAID OUT LOUD, because it is the economic claim the whole store rests on: this
        * worker matched against intelligence Homatch already held and fetched nothing.

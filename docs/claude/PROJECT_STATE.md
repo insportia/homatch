@@ -13,11 +13,24 @@ MATTERS right now, verify against the live systems, not this file)
   every candidate answered, 27 blocked by the consistency gate, both original brokers rejected; replay
   AI cost $0.036 (fb-ai-1 replay $0.034, plus ~$0.03–0.06 unrecorded during the 18:10 lone-surrogate loop
   fixed by #272). fb-ai-1 result kept in admin_settings `find_buyers_ai_replay_result_fb-ai-1`.
-- **Find Buyers 2.0 (PR #275, OPEN).** Internal matches first (free, real matcher state), external
-  discovery second; prices Standard 3 / VIP 10 credits (credits_per_usd = 10); demand dedupe by
-  fingerprint + rooms/features on intent_profiles; feed v2; Unlocked Leads nav; CRM stages + profile +
-  logged contacts; AI outreach drafts (outreach-send studio_lead_draft); Email Studio scheduling
-  (jobs-worker → studio_send_scheduled). Migration 20261118120000_find_buyers_2_internal.sql (NOT applied yet).
+- **Find Buyers 2.0 (PR #275, merged 9daace9a, deployed PROVEN refs edge+frontend 9daace9a; migration
+  20261118120000 applied 2026-10-18).** Internal matches first (free, real matcher state), external
+  discovery second; demand dedupe by fingerprint + rooms/features on intent_profiles; feed v2; Unlocked
+  Leads nav; CRM stages + profile + logged contacts; AI outreach drafts (outreach-send studio_lead_draft);
+  Email Studio scheduling (jobs-worker → studio_send_scheduled).
+- **Smart internal match expansion (follow-up PR on the same branch, 2026-10-19).** Prices EXACT 5 /
+  NEARBY_SIMILAR 3 / VIP 10 credits, one key per person (VIP overrides). supply-matching classifies every
+  member search × listing with research-core/match/internalTiers.ts (assessMatch with the district
+  relaxed and the budget widened by the owner's bands ≤$50k ±5k, ≤$119,999 ±10k, ≥$120k ±15k; rent 0) and
+  writes internal_match_candidates; "nearby" = area medians from geocoded portal listings
+  (internal_match_place_geo, ≤2.5 km, ≥5 samples, price-level ratio ≤1.35). internal_lead_rows now reads
+  the candidates (one person once, EXACT first) under the owner's per-listing controls
+  (internal_match_preferences). Migration 20261119090000_find_buyers_2_match_expansion.sql. Read-only
+  replay on production (13 active searches × HOMATCH 244486): 6 self, 6 excluded (exactly 1 bedroom
+  required), 1 renter → 0 candidates; measured neighbours of Krtsanisi: Ortachala 0.93 km, Avlabari
+  2.18, Isani 2.28, Sololaki 2.46. Limits: no coordinates on member searches or properties (area-level
+  only); no project/building field in member searches (exact project matching unavailable; a street
+  mention is supporting evidence only).
 - **Production facts (read-only, 2026-10-18):** ONE property in production (HOMATCH 244486, SALE, Krtsanisi,
   2 bd, $213,840); 0 INTERNAL_HOMATCH supply_matches ever — correct: the 7 other-user searches all REQUIRE
   1 bedroom and/or a budget under the price; lead_contact_preferences empty (defaults: matching on,

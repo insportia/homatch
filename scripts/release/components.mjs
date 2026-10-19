@@ -36,7 +36,7 @@ export const SUITE_CATALOGUE = {
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
   'mobile:mortgage': { title: 'Mobile — mortgage', files: ['tests/mobile/mortgageConsultant.test.mjs', 'tests/mobile/mortgageHuman.test.mjs'] },
   'mobile:expats': { title: 'Mobile — For Expats', files: ['tests/mobile/expatsReadable.test.mjs'] },
-  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/findBuyersUx.test.mjs', 'tests/mobile/findBuyersNavigation.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs'] },
+  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/findBuyersUx.test.mjs', 'tests/mobile/findBuyersNavigation.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs', 'tests/mobile/matchExpansion.test.mjs'] },
   'mobile:broker': { title: 'Mobile — broker lifecycle', files: ['tests/mobile/brokerLifecycle.test.mjs'] },
   'mobile:tasks': { title: 'Mobile — tasks and contracts', files: ['tests/mobile/tasksAndContracts.test.mjs'] },
   developer: { title: 'Developer acceptance', script: 'test:developer', files: ['tests/browser/developerAcceptance.test.mjs'] },
@@ -272,6 +272,11 @@ export const DB_OBJECT_OWNERS = [
   // HOMATCH Leads: the internal marketplace (feed, unlock entitlements, segment rules,
   // saved/seen, the property matching queue) and its admin views.
   [/^public\.(internal_lead|lead_contact_prefs_of$|lead_contact_preferences|my_lead_contact_preferences$|set_my_lead_contact_preferences$|native_match_|admin_internal_lead|open_native_conversation$)/, 'DISCOVERY'],
+  // Find Buyers 2.0 smart match expansion: classified candidates, measured area geography,
+  // the owner's reach controls and the expansion settings reader.
+  [/^public\.internal_match_(candidates|place_geo|preferences|upsert$|retire$|refresh_place_geo$|visible$|expansion_config$)/, 'DISCOVERY'],
+  // The price catalogue every paid product reads.
+  [/^public\.billable_products$/, 'BILLING'],
   // The seller's CRM for unlocked leads.
   [/^public\.(lead_crm_|crm_)/, 'PRODUCT'],
   // Property conversations (media, translation cache, seen/mute/block RPCs) and Email Studio.

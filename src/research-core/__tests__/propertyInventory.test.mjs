@@ -24,6 +24,8 @@ test('inventory row: sale, monthly and daily rent map to the supply vocabulary; 
   const bare = await inventoryRow(F.listing({ price: null, currency: 'USD', areaSqm: null, rooms: null, bedrooms: null, latitude: 0, longitude: 0, publishedAt: 'not a date' }));
   assert.deepEqual([bare.sale_amount, bare.sale_currency, bare.area_sqm, bare.rooms, bare.bedrooms, bare.latitude, bare.longitude, bare.published_at],
     [null, null, null, null, null, null, null, null], 'nothing is invented: no price means no currency, (0,0) is not a place');
+  const absurd = await inventoryRow(F.listing({ rooms: 3e9, floor: 99999, constructionYear: 2015 }));
+  assert.deepEqual([absurd.rooms, absurd.floor, absurd.year_built], [null, null, 2015], 'an implausible integer is a parse error, never an int4 overflow');
 });
 
 test('inventory row: photos are URLs (https only, capped), never copies; the identity is the provider listing id', async () => {

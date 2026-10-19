@@ -4,9 +4,10 @@
 -- ingest_channel = 'MARKETPLACE' rows (otherwise the deployed matcher would read them).
 
 -- Backfill: every listing the shared pool already holds (discovery_marketplace_listings), once,
--- with its first and last HOMATCH sighting. content_fingerprint stays NULL until a worker sees
--- it again (the first sighting then writes its first snapshot, FIRST_SNAPSHOT, without calling it a
--- change). Rows another lane already wrote are left as they are.
+-- with its first and last HOMATCH sighting. content_fingerprint (NOT NULL) holds a marker,
+-- 'backfill-v1:<source>:<listing id>', unique per row so text dedupe never pairs two backfilled rows;
+-- the first worker sighting replaces it and writes the first snapshot (FIRST_SNAPSHOT) without
+-- calling it a change. Rows another lane already wrote are left as they are.
 with latest as (
   select distinct on (l.source_key, l.source_listing_id) l.source_key, l.source_listing_id, l.exact_url, l.raw,
          min(l.observed_at) over (partition by l.source_key, l.source_listing_id) as first_seen,
@@ -25,7 +26,7 @@ with latest as (
 insert into public.supply_observations (source_id, adapter_id, external_id, canonical_url, transaction, property_type, country_code,
   city, district, sale_amount, sale_currency, rent_amount, rent_currency, rent_period, area_sqm, rooms, bedrooms, floor, total_floors,
   year_built, title, description, published_at, latitude, longitude, building_status, renovation_status, image_urls, amenities,
-  first_seen_at, last_seen_at, expires_at, validation_state, ingest_channel, parser_version, adapter_version)
+  content_fingerprint, first_seen_at, last_seen_at, expires_at, validation_state, ingest_channel, parser_version, adapter_version)
 select l.source_id, l.source_key, l.source_listing_id, l.canonical_url, l.tx, nullif(l.raw->>'propertyType', ''),
   case when upper(l.raw->>'country') ~ '^[A-Z]{2}$' then upper(l.raw->>'country') else 'GE' end,
   nullif(left(btrim(l.raw->>'city'), 120), ''), nullif(left(btrim(l.raw->>'district'), 160), ''),
@@ -34,7 +35,7 @@ select l.source_id, l.source_key, l.source_listing_id, l.canonical_url, l.tx, nu
   case when l.tx in ('RENT', 'SHORT_STAY') then case when jsonb_typeof(l.raw->'price') = 'number' then (l.raw->>'price')::numeric end end,
   case when l.tx in ('RENT', 'SHORT_STAY') and case when jsonb_typeof(l.raw->'price') = 'number' then (l.raw->>'price')::numeric end is not null then nullif(left(btrim(l.raw->>'currency'), 8), '') end,
   case l.tx when 'RENT' then 'MONTH' when 'SHORT_STAY' then 'DAY' end,
-  case when jsonb_typeof(l.raw->'areaSqm') = 'number' then (l.raw->>'areaSqm')::numeric end, case when jsonb_typeof(l.raw->'rooms') = 'number' then round((l.raw->>'rooms')::numeric)::int end, case when jsonb_typeof(l.raw->'bedrooms') = 'number' then round((l.raw->>'bedrooms')::numeric)::int end, case when jsonb_typeof(l.raw->'floor') = 'number' then round((l.raw->>'floor')::numeric)::int end, case when jsonb_typeof(l.raw->'totalFloors') = 'number' then round((l.raw->>'totalFloors')::numeric)::int end, case when jsonb_typeof(l.raw->'constructionYear') = 'number' then round((l.raw->>'constructionYear')::numeric)::int end,
+  case when jsonb_typeof(l.raw->'areaSqm') = 'number' then (l.raw->>'areaSqm')::numeric end, case when jsonb_typeof(l.raw->'rooms') = 'number' and (l.raw->>'rooms')::numeric between -1000 and 3000 then round((l.raw->>'rooms')::numeric)::int end, case when jsonb_typeof(l.raw->'bedrooms') = 'number' and (l.raw->>'bedrooms')::numeric between -1000 and 3000 then round((l.raw->>'bedrooms')::numeric)::int end, case when jsonb_typeof(l.raw->'floor') = 'number' and (l.raw->>'floor')::numeric between -1000 and 3000 then round((l.raw->>'floor')::numeric)::int end, case when jsonb_typeof(l.raw->'totalFloors') = 'number' and (l.raw->>'totalFloors')::numeric between -1000 and 3000 then round((l.raw->>'totalFloors')::numeric)::int end, case when jsonb_typeof(l.raw->'constructionYear') = 'number' and (l.raw->>'constructionYear')::numeric between -1000 and 3000 then round((l.raw->>'constructionYear')::numeric)::int end,
   nullif(left(btrim(l.raw->>'title'), 500), ''), nullif(left(btrim(l.raw->>'description'), 8000), ''),
   case when pg_input_is_valid(l.raw->>'publishedAt', 'timestamptz') then (l.raw->>'publishedAt')::timestamptz end,
   case when case when jsonb_typeof(l.raw->'latitude') = 'number' then (l.raw->>'latitude')::numeric end between -90 and 90 and case when jsonb_typeof(l.raw->'latitude') = 'number' then (l.raw->>'latitude')::numeric end <> 0 then case when jsonb_typeof(l.raw->'latitude') = 'number' then (l.raw->>'latitude')::numeric end end,
@@ -42,6 +43,7 @@ select l.source_id, l.source_key, l.source_listing_id, l.canonical_url, l.tx, nu
   nullif(left(btrim(l.raw->>'buildingStatus'), 40), ''), nullif(left(btrim(l.raw->>'renovationStatus'), 40), ''),
   coalesce(array(select u from jsonb_array_elements_text(case when jsonb_typeof(l.raw->'images') = 'array' then l.raw->'images' else '[]'::jsonb end) u where u like 'https://%' limit 20), '{}'),
   coalesce(array(select a from jsonb_array_elements_text(case when jsonb_typeof(l.raw->'amenities') = 'array' then l.raw->'amenities' else '[]'::jsonb end) a limit 40), '{}'),
+  'backfill-v1:' || l.source_key || ':' || l.source_listing_id,
   l.first_seen, l.last_seen, l.last_seen + case when l.tx = 'SALE' then interval '7 days' else interval '3 days' end,
   'UNVERIFIED', 'MARKETPLACE', 'marketplace-worker-1', nullif(left(l.raw->'retrievalMetadata'->>'acquisition', 80), '')
   from mapped l
@@ -53,6 +55,11 @@ do $$
 begin
   if exists (select 1 from cron.job where jobname = 'homatch-revalidate-supply') then
     perform cron.unschedule('homatch-revalidate-supply');
+  end if;
+  if not exists (select 1 from public.admin_settings
+                  where key = 'revalidation_worker_token' and length(coalesce(value #>> '{}', '')) >= 16) then
+    raise notice 'revalidation_worker_token missing: homatch-revalidate-supply not scheduled';
+    return;
   end if;
   perform cron.schedule('homatch-revalidate-supply', '41 * * * *', $cron$
     select net.http_post(

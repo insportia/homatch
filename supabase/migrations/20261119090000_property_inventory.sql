@@ -12,7 +12,8 @@
 --     it never writes last_verified_at (only revalidate-supply verifies). Facts come only from a
 --     newer sighting and a missing fact never erases a known one. first_seen_at stays frozen
 --     (supply_observations_freeze_first_seen). A listing recorded REMOVED that a worker sees again
---     is UNVERIFIED again.
+--     is UNVERIFIED again. Only MARKETPLACE rows are updated: a row another lane wrote for the same
+--     listing is left exactly as that lane keeps it (the upsert returns nothing for it).
 --   * allhome-ge joins source_registry (every other marketplace source is already there).
 --   * Pool index: the shared listing pool reads one source's newest observations
 --     (marketplaceSearch.ts serveCachedListings); it was a sequential scan.
@@ -99,7 +100,7 @@ begin
         parser_version = case when (excluded.last_seen_at >= o.last_seen_at) then coalesce(excluded.parser_version, o.parser_version) else o.parser_version end,
         adapter_version = case when (excluded.last_seen_at >= o.last_seen_at) then coalesce(excluded.adapter_version, o.adapter_version) else o.adapter_version end,
         content_fingerprint = case when (excluded.last_seen_at >= o.last_seen_at) then excluded.content_fingerprint else o.content_fingerprint end,
-        content_changed_at = case when (excluded.last_seen_at >= o.last_seen_at) and o.content_fingerprint is not null and o.content_fingerprint is distinct from excluded.content_fingerprint then excluded.last_seen_at else o.content_changed_at end,
+        content_changed_at = case when (excluded.last_seen_at >= o.last_seen_at) and o.content_fingerprint not like 'backfill-v1:%' and o.content_fingerprint is distinct from excluded.content_fingerprint then excluded.last_seen_at else o.content_changed_at end,
         image_urls = case when (excluded.last_seen_at >= o.last_seen_at) and cardinality(excluded.image_urls) > 0 then excluded.image_urls else o.image_urls end,
         amenities = case when (excluded.last_seen_at >= o.last_seen_at) and cardinality(excluded.amenities) > 0 then excluded.amenities else o.amenities end,
         last_seen_at = greatest(o.last_seen_at, excluded.last_seen_at),
@@ -107,11 +108,12 @@ begin
         validation_state = case when (excluded.last_seen_at >= o.last_seen_at) and o.validation_state = 'REMOVED' then 'UNVERIFIED' else o.validation_state end,
         last_verified_at = case when (excluded.last_seen_at >= o.last_seen_at) and o.validation_state = 'REMOVED' then null else o.last_verified_at end,
         updated_at = now()
+      where o.ingest_channel = 'MARKETPLACE'
     returning o.id, o.external_id, o.first_seen_at, o.content_fingerprint
   )
   select up.id, up.external_id,
          case when p.external_id is null then 'INSERTED'
-              when p.content_fingerprint is null then 'FIRST_SNAPSHOT'
+              when p.content_fingerprint like 'backfill-v1:%' then 'FIRST_SNAPSHOT'
               when p.content_fingerprint is distinct from up.content_fingerprint then 'CHANGED'
               else 'SEEN' end,
          up.first_seen_at
@@ -155,3 +157,4 @@ select s.adapter_id,
  group by s.adapter_id;
 
 revoke all on public.property_inventory_status from anon, authenticated;
+grant select on public.property_inventory_status to service_role;

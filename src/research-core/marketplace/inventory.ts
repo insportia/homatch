@@ -45,7 +45,8 @@ export const WORKER_ONLY_SOURCES = new Set(['myhome-ge', 'allhome-ge', 'brokeri-
 const TRANSACTION: Record<string, 'SALE' | 'RENT' | 'SHORT_STAY'> = { BUY: 'SALE', MONTHLY_RENT: 'RENT', DAILY_RENT: 'SHORT_STAY' };
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-const int = (v: unknown): number | null => { const n = num(v); return n === null ? null : Math.round(n); };
+/* A count, floor or year: anything outside a plausible range is a parse error, not a fact (and would overflow int4). */
+const int = (v: unknown): number | null => { const n = num(v); return n === null || Math.abs(n) > 3000 ? null : Math.round(n); };
 const text = (v: unknown, max = 500): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
 const iso = (v: unknown): string | null => { const t = typeof v === 'string' ? Date.parse(v) : NaN; return Number.isFinite(t) ? new Date(t).toISOString() : null; };
 const coordinate = (v: unknown, limit: number): number | null => { const n = num(v); return n !== null && Math.abs(n) <= limit && n !== 0 ? n : null; };

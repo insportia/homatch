@@ -64,7 +64,7 @@ export function CampaignLaunchPanel({
   const [discoverBrokers, setDiscoverBrokers] = useState(false);
   const [brokerPricing, setBrokerPricing] = useState<BrokerDiscoveryPricing | null>(null);
   /* FIND BUYERS / FIND TENANTS searches all six languages by default, and has
-     a $10 minimum expressed in wallet credits (server-authoritative). The
+     a $5 minimum expressed in wallet credits (server-authoritative). The
      owner may narrow it to the audiences they want — then every paid search
      and the community discovery run only in those languages. */
   const findBuyers = productCode === 'FIND_CLIENTS';
@@ -213,8 +213,8 @@ export function CampaignLaunchPanel({
       <Separator />
 
       {findBuyers ? (
-        /* FIND BUYERS: the Research budget in credits — 100 / 500 / 1,000 / 1,500 /
-           2,000 or custom (≥ the server's minimum). The TOTAL is authorised as a
+        /* FIND BUYERS: the Research budget in credits — the RESEARCH_PRESETS ladder
+           or custom (≥ the server's minimum, $5). The TOTAL is authorised as a
            ceiling; the campaign is charged for actual usage only. */
         <ResearchBudgetSelector
           minCredits={fbConfig?.minCredits}

@@ -441,9 +441,13 @@ Deno.serve(async (req: Request) => {
      * funds a campaign -- HOMATCH is PAYG-only.
      */
     const discovery = await loadDiscoverySettings(db);
-    /* FIND BUYERS / FIND TENANTS minimum: $10 (find_buyers_min_usd), expressed
-       in the wallet's own credits through credits_per_usd — never a second
-       credit rate. The older campaign_min_credits floor still applies. */
+    /* FIND BUYERS / FIND TENANTS minimum: $5 = 50 credits (owner, 2026-10-19;
+       paidDiscoveryPolicy.minimumCampaignCredits, find_buyers_min_usd may only
+       raise it), in the wallet's own credits through credits_per_usd — never a
+       second credit rate. The campaign_min_credits floor (≥ 50) still applies.
+       The $5 is what the customer pays (VAT-inclusive where VAT applies); how it
+       splits is the central finance policy's, read back as the campaign's
+       execution budget, never computed here. */
     const findBuyers = await loadFindBuyersSettings(db);
     const walletRate = await creditsPerUsd(db);
     const campaignMinCredits = Math.max(discovery.campaignMinCredits, minimumCredits(findBuyers.minUsd, walletRate));
@@ -455,7 +459,7 @@ Deno.serve(async (req: Request) => {
         error: `A campaign budget starts at ${campaignMinCredits} Credits.`,
         reasonCode: 'BELOW_CAMPAIGN_MINIMUM',
         minBudgetCredits: campaignMinCredits,
-        minBudgetUsd: findBuyers.minUsd,
+        minBudgetUsd: campaignMinCredits / walletRate,
       }, 400);
     }
     if (discovery.campaignMaxCredits !== null && requestedBudget > discovery.campaignMaxCredits) {

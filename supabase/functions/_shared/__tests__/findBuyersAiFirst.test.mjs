@@ -56,7 +56,7 @@ const post = (n, text, author = `Person ${n}`) => ({
   author: { id: `a${n}`, name: author, url: null, handle: null }, text, publishedAt: '2026-10-18T10:00:00Z',
   engagement: { comments: null, likes: null, shares: null }, group: null, inlineComments: [],
 });
-const freshDb = () => memDb({ find_buyers_campaigns: [{ matching_job_id: 'job-ai', metrics: {} }], find_buyers_leads: [], find_buyers_assessments: [], find_buyers_persons: [], raw_signals: [], source_registry: [] });
+const freshDb = () => memDb({ find_buyers_campaigns: [{ matching_job_id: 'job-ai', metrics: {}, provider_budget_micros: 3_150_000 }], find_buyers_leads: [], find_buyers_assessments: [], find_buyers_persons: [], raw_signals: [], source_registry: [] });
 
 test('AI-first: the two 343cfc41 brokers are no leads; a broker with a client is shown apart, never qualified', async () => {
   mode = 'ok'; calls = 0; sentItems = 0;
@@ -142,4 +142,33 @@ test('fb-ai-2: items the model leaves out of its answer get one more call', asyn
   globalThis.fetch = prev;
   assert.equal(n, 2, 'one batch call + one call for the skipped item');
   assert.ok(m.tables.find_buyers_leads.some((l) => (l.evidence?.[0]?.text ?? '').startsWith('ვყიდულობ')), 'the skipped buyer was classified');
+});
+
+test('execution budget: with the budget spent, no AI call is made and nobody is guessed into a lead', async () => {
+  mode = 'ok'; calls = 0;
+  /* $3.15 execution budget, all of it already committed to Actor runs. */
+  const m = memDb({
+    find_buyers_campaigns: [{ matching_job_id: 'job-ai', metrics: {}, provider_budget_micros: 3_150_000 }],
+    find_buyers_actor_runs: [{ id: 'r-spent', matching_job_id: 'job-ai', status: 'SUCCEEDED', reserved_micros: 3_150_000, actual_micros: 3_150_000, requested_limit: 100, cost_booked_at: '2026-10-18T10:00:00Z' }],
+    find_buyers_cost_ledger: [], find_buyers_leads: [], find_buyers_assessments: [], find_buyers_persons: [], raw_signals: [], source_registry: [],
+  });
+  const out = await processItems(ctxFor(m.db), [post(41, BUYER), post(42, TRANSLIT_BUYER)]);
+  assert.equal(calls, 0, 'no OpenAI request past the ceiling');
+  assert.equal(out.aiBudgetRefused, 2, 'the refused candidates are counted');
+  assert.equal(m.tables.find_buyers_leads.length, 0, 'no lead without an AI verdict');
+  const a = m.tables.find_buyers_assessments.find((r) => r.qualification?.ai?.status === 'UNVERIFIED');
+  assert.ok(a, 'they stay UNVERIFIED');
+});
+
+test('execution budget: OpenAI already booked counts — the gate admits only what is left', async () => {
+  mode = 'ok'; calls = 0;
+  const m = memDb({
+    find_buyers_campaigns: [{ matching_job_id: 'job-ai', metrics: {}, provider_budget_micros: 3_150_000 }],
+    find_buyers_actor_runs: [{ id: 'r1', matching_job_id: 'job-ai', status: 'SUCCEEDED', reserved_micros: 3_000_000, actual_micros: 3_000_000, requested_limit: 20, cost_booked_at: '2026-10-18T10:00:00Z' }],
+    /* $0.1498 of OpenAI already spent: $0.0002 left, below one call's ceiling (≈ $0.0005 for one item). */
+    find_buyers_cost_ledger: [{ matching_job_id: 'job-ai', provider: 'OPENAI', after_settlement: false, estimated_micros: 149_800, actual_micros: 149_800 }],
+    find_buyers_leads: [], find_buyers_assessments: [], find_buyers_persons: [], raw_signals: [], source_registry: [],
+  });
+  await processItems(ctxFor(m.db), [post(51, BUYER)]);
+  assert.equal(calls, 0, 'a call that could pass the ceiling is not started');
 });

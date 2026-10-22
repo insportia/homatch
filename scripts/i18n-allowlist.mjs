@@ -11,6 +11,8 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Email Studio is the product name of the email editor, the same in every language.
+  'es_title',
   // Find Property: Marketplace Search, Deep Search and Snake are product names, the same
   // in every language; "Villa", "m²" and "/ m²" are written identically in Turkish.
   'mps_marketplace_title',

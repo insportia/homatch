@@ -5,10 +5,21 @@ warns when a diff enters this domain.
 
 ## Invariants
 
-- **PAYG only.** 10 credits = $1. There are no Free/Premium/VIP packages and
-  no feature gating by plan. Marketing copy saying "premium design" describes
-  aesthetics, not a Premium package. Dormant "billing-v2" plan machinery in
-  the codebase is NOT product truth and must not be wired up.
+- **Billing is per service** (owner decision, 2026-10-22, replacing "PAYG only").
+  10 credits = $1. Every service keeps PAYG unless the owner gives it its own
+  model. Dormant "billing-v2" plan machinery (billing_plans, user_subscriptions,
+  product_plan_entitlements) is NOT product truth and must not be wired up.
+- **Email Marketing plans** (`email_plans`, `email_subscriptions`,
+  `email_quota_periods`, migration 20261120090000): Free 50 emails once per
+  account (lifetime, never reset); Pro $50/month 50,000; Scale $220/month
+  100,000; overage $2.20 per started 1,000, OFF until the customer consents
+  (optional block cap). Prices are VAT-inclusive; policy
+  `email_marketing_37_63_vat_v1` extracts VAT then allocates 37/63 of net.
+  Paid from the wallet (EMAIL_PLAN_PRO / EMAIL_PLAN_SCALE / EMAIL_OVERAGE_1K via
+  wallet_reserve → wallet_settle); renewal only with auto_renew on, keyed per
+  ending period so it can never charge twice. Billable unit: one message the
+  provider accepted; failed/suppressed sends consume nothing. Card recurring
+  billing does not exist (payment provider in mock mode).
 - **Wallet ≠ Budget ≠ Spend ≠ COGS.** Four distinct concepts; never conflate
   them in schema, service code, or copy.
 - **Reserve → settle → release.** Every paid action reserves first, settles

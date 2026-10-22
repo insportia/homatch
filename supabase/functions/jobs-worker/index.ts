@@ -681,7 +681,14 @@ async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Pro
     return { claimed: 0, dispatched: 0, failed: 0 };
   }
 
-  const rows = (due ?? []) as { id: string; owner_id: string; campaign_type: string }[];
+  /* A RUNNING email campaign with contacts left is continued one batch per tick (the claim
+     leases it for a minute), so a scheduled campaign no longer stops after its first 40. */
+  const { data: running } = await sb.rpc('outreach_claim_running_campaigns', { p_limit: 5 });
+  const continuing = new Set(((running ?? []) as { id: string }[]).map((r) => r.id));
+  const rows = [
+    ...((due ?? []) as { id: string; owner_id: string; campaign_type: string }[]),
+    ...((running ?? []) as { id: string; owner_id: string; campaign_type: string }[]),
+  ];
   let dispatched = 0;
   let failed = 0;
 
@@ -710,8 +717,12 @@ async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Pro
          * recorded as FAILED with the reason, which is a thing the owner can
          * see and re-schedule deliberately.
          */
+        /* A campaign already under way that runs out of plan quota is PAUSED, not failed:
+           the owner can upgrade or enable overage and resume it. */
+        const quotaStop = continuing.has(row.id) && /QUOTA|OVERAGE/.test(String(body.reason ?? ''));
         await sb.from('outreach_campaigns').update({
-          status: 'FAILED',
+          status: quotaStop ? 'PAUSED' : 'FAILED',
+          paused_reason: quotaStop ? String(body.reason) : undefined,
           last_send_error: body.reason ?? 'BLOCKED',
           updated_at: new Date().toISOString(),
         }).eq('id', row.id).eq('status', 'RUNNING');
@@ -719,7 +730,7 @@ async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Pro
         continue;
       }
 
-      if (!res.ok) {
+      if (!res.ok && res.status !== 402) {
         await sb.from('outreach_campaigns').update({
           status: 'FAILED',
           last_send_error: `dispatch HTTP ${res.status}`,
@@ -794,7 +805,7 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
@@ -805,6 +816,7 @@ serve(async (req) => {
         .then((r) => r.data)
         .catch(() => null),
       dispatchDueCampaigns(sb, url, expected),
+      emailMarketingMaintenance(url, expected),
       /* Isolated: a reminder failure must not cost the other six steps
          their tick. See the comment on sendExpatReminders. */
       sendExpatReminders(sb, new Date()).catch((e) => {
@@ -815,10 +827,37 @@ serve(async (req) => {
     ]);
 
     return json({
-      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules,
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules,
     });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));
     return json({ error: 'internal_error' }, 500);
   }
 });
+
+
+/*
+ * EMAIL MARKETING MAINTENANCE. Opted-in plan renewals (idempotent per ending period) every
+ * ten minutes, and one Resend usage snapshot an hour. Both run in email-marketing under the
+ * jobs-worker token; a failure here never touches the other tick work.
+ */
+export async function emailMarketingMaintenance(url: string, cronToken: string, now = new Date()): Promise<{ renew: boolean; usage: boolean }> {
+  const minute = now.getUTCMinutes();
+  const firstHalf = now.getUTCSeconds() < 30;
+  const renew = firstHalf && minute % 10 === 0;
+  const usage = firstHalf && minute === 5;
+  const call = async (action: string) => {
+    try {
+      await fetch(`${url}/functions/v1/email-marketing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''}`, 'x-cron-token': cronToken },
+        body: JSON.stringify({ action }),
+      });
+    } catch (e) {
+      console.error('[jobs-worker] email marketing', action, e instanceof Error ? e.message : String(e));
+    }
+  };
+  if (renew) await call('plan_renew_due');
+  if (usage) await call('usage_refresh_cron');
+  return { renew, usage };
+}

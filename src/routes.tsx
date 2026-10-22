@@ -149,6 +149,9 @@ const AdminDiscoveryPage = lazyRoute(() => import('./pages/admin/AdminDiscoveryP
 const CommunitiesPage = lazyRoute(() => import('./pages/outreach/CommunitiesPage'));
 const ContactListsPage = lazyRoute(() => import('./pages/outreach/ContactListsPage'));
 const EmailCampaignsPage = lazyRoute(() => import('./pages/outreach/EmailCampaignsPage'));
+const EmailInboxPage = lazyRoute(() => import('./pages/outreach/EmailInboxPage'));
+const EmailPlanPage = lazyRoute(() => import('./pages/outreach/EmailPlanPage'));
+const EmailDomainsPage = lazyRoute(() => import('./pages/outreach/EmailDomainsPage'));
 const SmsCampaignsPage = lazyRoute(() => import('./pages/outreach/SmsCampaignsPage'));
 const OutreachInsightsPage = lazyRoute(() => import('./pages/outreach/OutreachInsightsPage'));
 // Communications Hub. These EVOLVE the Outreach area rather than replacing it:
@@ -600,6 +603,11 @@ const routeTable: RouteConfig[] = [
   { name: 'Email Contacts',    path: '/outreach/email/contacts',     element: <ContactsPage />,         visible: false },
   { name: 'Email Lists',       path: '/outreach/email/lists',        element: <ContactListsPage />,     visible: false },
   { name: 'Email Analytics',   path: '/outreach/email/analytics',    element: <CommunicationsAnalyticsPage />, visible: false },
+  /* Email Marketing: replies (reply-routed CRM inbox), plan & usage (wallet-paid plans), sending domains. */
+  { name: 'Email Inbox',       path: '/outreach/email/inbox',        element: <EmailInboxPage />,       visible: false },
+  { name: 'Email Plan',        path: '/outreach/email/plan',         element: <EmailPlanPage />,        visible: false },
+  { name: 'Email Domains',     path: '/outreach/email/domains',      element: <EmailDomainsPage />,     visible: false },
+  { name: 'Email Inbox (alias)', path: '/inbox/email',               element: <EmailInboxPage />,       visible: false },
 
   { name: 'Communications Analytics', path: '/outreach/analytics', element: <CommunicationsAnalyticsPage /> },
   { name: 'Communications Billing', path: '/outreach/billing',    element: <CommunicationsBillingPage /> },

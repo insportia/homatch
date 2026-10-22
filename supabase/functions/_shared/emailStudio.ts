@@ -32,8 +32,12 @@
 //   · Campaigns are free. Provider cost is recorded in cost_events.
 
 import { authenticate, serviceClient, json, logEvent, redact } from './comm/auth.ts';
+import { listUnsubscribeHeaders, sendEmail } from './resend/client.ts';
+import {
+  createReplyRoute, loadEmailSettings, marketingKey, reserveQuota, resolveSender, settleQuota,
+  type EmailSettings, type Owner as MarketingOwner,
+} from './emailMarketing/core.ts';
 import { callLlm, llmAvailable } from './comm/llm.ts';
-import { getEmailAdapter } from './outreach_providers.ts';
 import { checkSpendCap } from './spend_cap.ts';
 import { loadDisabledProviders } from './providerSwitch.ts';
 import { estimatedProviderCost } from './providerCost.ts';
@@ -174,7 +178,7 @@ function draftFacts(p: LoadedProperty) {
 /* ── can we send at all? ──────────────────────────────────────────────────── */
 
 type Gate =
-  | { ok: true; adapter: ReturnType<typeof getEmailAdapter>; unitPrice: number }
+  | { ok: true; key: string; settings: EmailSettings; unitPrice: number }
   | { ok: false; state: string };
 
 const truthy = (v: unknown) => v === true || v === 'true';
@@ -188,16 +192,16 @@ async function sendingGate(sb: Sb): Promise<Gate> {
   if (truthy(s['provider_kill_switch'])) return { ok: false, state: 'PROVIDER_KILL_SWITCH' };
   if ((await loadDisabledProviders(sb)).has('RESEND')) return { ok: false, state: 'PROVIDER_DISABLED' };
   const provider = String(s['outreach_email_provider'] ?? 'RESEND').replace(/"/g, '');
-  const adapter = getEmailAdapter(true, provider);
-  // The factory falls back to the mock adapter without a key. That is a refusal
-  // here, never a simulated send recorded as real.
-  if (adapter.provider !== 'RESEND') return { ok: false, state: 'PROVIDER_NOT_CONFIGURED' };
+  /* Marketing traffic uses the Email Marketing key (never simulated): no key is a refusal. */
+  const settings = await loadEmailSettings(sb);
+  const key = marketingKey(settings).key;
+  if (provider.toUpperCase() !== 'RESEND' || !key) return { ok: false, state: 'PROVIDER_NOT_CONFIGURED' };
   const cap = await checkSpendCap(sb, 'RESEND');
   // SPEND_UNKNOWN: month-to-date spend could not be read (logged by
   // checkSpendCap); nothing is claimed or sent, and the next attempt retries.
   if (!cap.allowed) return { ok: false, state: cap.spend_unknown ? 'SPEND_UNKNOWN' : 'SPEND_CAP_REACHED' };
   const perK = Number(s['outreach_email_price_per_1k'] ?? 0.5);
-  return { ok: true, adapter, unitPrice: (Number.isFinite(perK) ? perK : 0.5) / 1000 };
+  return { ok: true, key, settings, unitPrice: (Number.isFinite(perK) ? perK : 0.5) / 1000 };
 }
 
 async function sender(sb: Sb, owner: Owner): Promise<{ fromName: string; fromAddress: string; replyTo: string | null; replyToKind: 'INBOX' | 'ACCOUNT_EMAIL' | 'NONE' }> {
@@ -208,12 +212,20 @@ async function sender(sb: Sb, owner: Owner): Promise<{ fromName: string; fromAdd
     .select('provider_account_id').eq('owner_id', owner.authId).eq('channel', 'EMAIL').eq('status', 'CONNECTED')
     .limit(1).maybeSingle();
   const inbox = (inbound as { provider_account_id?: string } | null)?.provider_account_id ?? null;
+  const settings = await loadEmailSettings(sb);
+  const id = await resolveSender(sb, settings, toMarketingOwner(owner), null);
   return {
     fromName: `${owner.displayName} via HOMATCH`,
-    fromAddress: 'no-reply@auth.homatch.live',
+    fromAddress: id.address,
+    /* Each campaign email gets its own reply route at send time (actionSend); this is
+       what the review shows when no route exists yet. */
     replyTo: inbox ?? owner.email,
     replyToKind: inbox ? 'INBOX' : owner.email ? 'ACCOUNT_EMAIL' : 'NONE',
   };
+}
+
+function toMarketingOwner(owner: Owner): MarketingOwner {
+  return { userId: owner.id, authId: owner.authId, email: owner.email, name: owner.displayName };
 }
 
 async function unsubscribeUrl(recipientId: string): Promise<string> {
@@ -371,17 +383,18 @@ async function actionTest(sb: Sb, owner: Owner, body: Record<string, unknown>): 
     listingUrl: `${SITE}/property/${property.propertyId}`, senderName: owner.displayName,
     unsubscribeUrl: `${SITE}/settings`,
   });
-  const result = await gate.adapter.send({
-    to: owner.email, subject: `[TEST] ${out.subject}`, html: out.html, text: out.text,
-    from_name: from.fromName, from_email: from.fromAddress, reply_to: from.replyTo ?? undefined,
+  const testResult = await sendEmail(gate.key, {
+    from: `"${from.fromName.replace(/[<>"\r\n]/g, '')}" <${from.fromAddress}>`, to: owner.email,
+    subject: `[TEST] ${out.subject}`, html: out.html, text: out.text, replyTo: from.replyTo ?? undefined,
+    tags: [{ name: 'kind', value: 'studio_test' }],
+    idempotencyKey: `studio-test:${campaign.id}:${crypto.randomUUID()}`,
   });
-  if (!result.is_mock) {
-    await recordCost(sb, {
-      provider: 'RESEND', operation_type: 'EMAIL_STUDIO_TEST', units: 1,
-      cost_usd: result.success ? gate.unitPrice : 0, success: result.success, pricing_state: 'ESTIMATED',
-    });
-  }
-  if (!result.success) return json({ ok: false, error: 'PROVIDER_ERROR' }, 502);
+  const testOk = testResult.ok && Boolean(testResult.json?.id);
+  await recordCost(sb, {
+    provider: 'RESEND', operation_type: 'EMAIL_STUDIO_TEST', units: 1,
+    cost_usd: testOk ? gate.unitPrice : 0, success: testOk, pricing_state: 'ESTIMATED',
+  });
+  if (!testOk) return json({ ok: false, error: 'PROVIDER_ERROR' }, 502);
   const masked = owner.email.replace(/^(.).*(@.*)$/, '$1***$2');
   return json({ ok: true, sentTo: masked });
 }
@@ -416,7 +429,33 @@ async function actionSend(sb: Sb, owner: Owner, body: Record<string, unknown>): 
   const lang = asEmailLang(campaign.language);
   let sent = 0, failed = 0;
 
-  for (const r of c.claimed ?? []) {
+  /* Plan quota for this batch, keyed on the claimed recipients so a retry finds its own
+     reservation. Recipients beyond the grant are released back to the queue unsent. */
+  const claimed = c.claimed ?? [];
+  const mOwner = toMarketingOwner(owner);
+  let batch = claimed;
+  let quotaReservationId: string | null = null;
+  if (claimed.length) {
+    const ids = claimed.map((r) => String(r.recipientId)).sort().join(',');
+    const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`studio:${campaign.id}:${ids}`))))
+      .map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+    const grant = await reserveQuota(sb, gate.settings, mOwner, claimed.length, `studio-batch:${digest}`, 'STUDIO');
+    quotaReservationId = grant.reservationId;
+    batch = claimed.slice(0, Math.max(0, grant.granted));
+    for (const r of claimed.slice(batch.length)) {
+      await sb.rpc('email_studio_mark_sent', {
+        p_recipient_id: String(r.recipientId), p_success: false, p_provider: 'RESEND',
+        p_provider_message_id: null, p_error: grant.reason ?? 'QUOTA_EXHAUSTED', p_cost_usd: 0,
+      });
+      failed++;
+    }
+    if (!batch.length) {
+      await sb.rpc('email_studio_finish_send', { p_campaign_id: campaign.id });
+      return json({ ok: false, state: grant.reason ?? 'QUOTA_EXHAUSTED' }, 402);
+    }
+  }
+
+  for (const r of batch) {
     const recipientId = String(r.recipientId);
     /* The call to action opens the canonical HOMATCH conversation with this
        seller about this listing — the place a reply belongs. */
@@ -430,15 +469,22 @@ async function actionSend(sb: Sb, owner: Owner, body: Record<string, unknown>): 
         content: campaign.content, templateId, lang, property: property.data, listingUrl,
         senderName: owner.displayName, unsubscribeUrl: await unsubscribeUrl(recipientId),
       });
-      const result = await gate.adapter.send({
-        to: String(r.email), subject: out.subject, html: out.html, text: out.text,
-        from_name: from.fromName, from_email: from.fromAddress, reply_to: from.replyTo ?? undefined,
-        campaign_id: campaign.id,
+      void isMock;
+      const routed = await createReplyRoute(sb, gate.settings, mOwner, {
+        kind: 'STUDIO', campaignId: campaign.id, recipientId, contactEmail: String(r.email),
+      }).catch(() => null);
+      const unsub = await unsubscribeUrl(recipientId);
+      const result = await sendEmail(gate.key, {
+        from: `"${from.fromName.replace(/[<>"\r\n]/g, '')}" <${from.fromAddress}>`, to: String(r.email),
+        subject: out.subject, html: out.html, text: out.text,
+        replyTo: routed ?? from.replyTo ?? undefined,
+        headers: listUnsubscribeHeaders(unsub),
+        tags: [{ name: 'kind', value: 'studio' }, { name: 'recipient_id', value: recipientId }],
+        idempotencyKey: `studio-send:${recipientId}`,
       });
-      ok = result.success && !result.is_mock;
-      isMock = result.is_mock;
-      messageId = result.provider_message_id ?? null;
-      err = result.success ? (result.is_mock ? 'MOCK_ADAPTER_REFUSED' : null) : (result.error ?? 'PROVIDER_ERROR');
+      ok = result.ok && Boolean(result.json?.id);
+      messageId = result.json?.id ?? null;
+      err = ok ? null : (result.error ?? 'PROVIDER_ERROR');
     } catch (e) {
       err = String((e as Error)?.message ?? e).slice(0, 300);
     }
@@ -453,6 +499,7 @@ async function actionSend(sb: Sb, owner: Owner, body: Record<string, unknown>): 
     if (ok) sent++; else failed++;
   }
 
+  await settleQuota(sb, quotaReservationId, sent);
   const { data: status } = await sb.rpc('email_studio_finish_send', { p_campaign_id: campaign.id });
   const remaining = Number(c.remaining ?? 0);
   logEvent('email-studio', 'batch_sent', { sent, failed, skipped: c.skipped ?? 0, remaining });

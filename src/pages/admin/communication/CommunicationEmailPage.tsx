@@ -24,6 +24,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AdminSection, CommunicationShell } from './CommunicationShell';
+import { EmailMarketingAdminPanel } from '@/components/admin/email/EmailMarketingAdminPanel';
 import { FactRow, SetupChecklist, TechnicalDetails, useCommStatus, VerdictBadge, verdictOf } from './status';
 
 export default function CommunicationEmailPage() {
@@ -92,6 +93,10 @@ export default function CommunicationEmailPage() {
           )}
         </AdminSection>
       </div>
+
+      <AdminSection title={t('admin_emx_title')}>
+        <EmailMarketingAdminPanel />
+      </AdminSection>
 
       <AdminSection title={t('wa_setup_title')}>
         {status.loading ? <Skeleton className="h-8 w-full" /> : (

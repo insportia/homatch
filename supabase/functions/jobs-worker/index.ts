@@ -49,6 +49,7 @@ import { dueReminders, DEFAULT_REMINDER_PREFERENCES } from '../../../src/expats/
 import type { PlanTask, TaskStatus } from '../../../src/expats/plan/tasks.ts';
 import type { DeadlineBasis, PlanStage, TaskCategory } from '../../../src/expats/plan/roadmap.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { verifyMirror } from '../../../src/jobs/verifyMirror.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -81,36 +82,11 @@ async function adminSetting(sb: Sb, key: string): Promise<string> {
  * 1. Mirror                                                           *
  * ------------------------------------------------------------------ */
 
-/** research_jobs' vocabulary, in the shared one. */
-function verifyState(status: string, cancelledAt: string | null): string {
-  if (cancelledAt) return 'CANCELLED';
-  switch ((status || '').toUpperCase()) {
-    case 'CREATED': return 'QUEUED';
-    case 'RUNNING':
-    case 'WAITING_HUMAN': return 'PROCESSING';
-    case 'COMPLETE': return 'COMPLETED';
-    case 'FAILED': return 'FAILED';
-    case 'CANCELLED': return 'CANCELLED';
-    default: return 'PROCESSING';
-  }
-}
-
-/**
- * Stage-based, from stages the pipeline has actually finished.
- *
- * Deliberately NOT a function of elapsed time. A percentage that moves
- * because the clock moved tells the customer nothing and, worse, teaches them
- * that the number is decorative (§48).
+/*
+ * research_jobs → background_jobs for Verify lives in src/jobs/verifyMirror.ts
+ * (pure, tested): research COMPLETE is not COMPLETED until the report is READY,
+ * by the same rule billing settles on.
  */
-const VERIFY_STAGE_ORDER = [
-  'CREATED', 'IDENTITY', 'OFFICIAL_BROWSER', 'OFFICIAL', 'PUBLIC_RESEARCH',
-  'MARKET', 'RECONCILE', 'SYNTHESIS', 'COMPLETE',
-];
-function verifyProgress(stage: string): number {
-  const i = VERIFY_STAGE_ORDER.indexOf((stage || '').toUpperCase());
-  if (i === -1) return 5;
-  return Math.round((i / (VERIFY_STAGE_ORDER.length - 1)) * 100);
-}
 
 const DOC_STATE: Record<string, string> = {
   NONE: 'QUEUED',
@@ -178,15 +154,18 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
     if (job.subject_type === 'RESEARCH_JOB') {
       const { data: rj } = await sb
         .from('research_jobs')
-        .select('id,status,stage,cancelled_at,synthesis_state')
+        .select('id,status,stage,cancelled_at,synthesis_state,synthesis_attempts,completed_at')
         .eq('id', job.subject_id)
         .maybeSingle();
       if (!rj) continue;
       const r = rj as Record<string, any>;
-      nextState = verifyState(r.status, r.cancelled_at);
-      progress = nextState === 'COMPLETED' ? 100 : verifyProgress(r.stage);
-      stage = r.stage ?? null;
-      if (nextState === 'FAILED') errorKey = 'verify_result_failed';
+      // COMPLETED only once the report is READY; until then PROCESSING at
+      // REPORT_WRITING. See src/jobs/verifyMirror.ts.
+      const m = verifyMirror(r);
+      nextState = m.state;
+      progress = m.progress;
+      stage = m.stage;
+      errorKey = m.errorKey;
       resultRef = `/verify?job=${r.id}`;
 
     } else if (job.subject_type === 'DOCUMENT') {

@@ -3,10 +3,12 @@
 PR: insportia/homatch#285 (draft). **Nothing below runs without the owner's
 explicit approval.**
 
-The baseline for rollback is `0f9d8673`:
-- `refs/deployed/edge` and `refs/deployed/frontend`;
-- Railway deployment `ea66417e-2ac4-4b53-812a-6c0b0003c5b6`, whose
-  `official-worker/` tree is identical to `0f9d8673`.
+Rollback targets, re-read 2026-10-23 after merging main into this branch:
+- edge: `refs/deployed/edge` = `0f9d8673`;
+- frontend: `refs/deployed/frontend` = `dc0e87f1`;
+- Railway: deployment `981808a8-5975-4f44-8c17-0bba9f75609a`, built from `8ad47a73`.
+
+Re-read all three immediately before release.
 
 ## What ships
 
@@ -77,8 +79,8 @@ If any L-check fails, roll back the affected runtime (below), then diagnose.
 
 | Runtime | Action | Time |
 |---|---|---|
-| Vercel | Promote the previous production deployment (the one at `0f9d8673`) | about 1 min |
-| Railway | Roll back to deployment `ea66417e-2ac4-4b53-812a-6c0b0003c5b6` | about 2 min |
+| Vercel | Promote the previous production deployment (currently `dc0e87f1`) | about 1 min |
+| Railway | Roll back to deployment `981808a8-5975-4f44-8c17-0bba9f75609a` (current at 2026-10-23) | about 2 min |
 | Edge | Revert the merge commit on main. `deploy.yml` redeploys the 3 functions from the reverted tree, and `refs/deployed/edge` advances only after proof. | about 10 min |
 | Postgres | Usually not needed: old code works with the new SQL. If needed, a forward migration restores the previous `background_job_finish` body (from `20260911211715`) and the previous 3 view and function definitions (from `20261026100000` / `20260911203629`). This is append-only, with no data loss, and no historical rows were ever changed. | about 5 min |
 

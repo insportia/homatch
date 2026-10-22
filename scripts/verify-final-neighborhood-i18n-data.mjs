@@ -117,6 +117,33 @@ export const VERIFY_FINAL_NEIGHBORHOOD_STRINGS = {
     'تعذّر تحديد الموقع الدقيق للعقار على الخريطة، لذا لا نذكر مسافات أو خطوطًا.',
     'לא ניתן היה לקבוע את המיקום המדויק של הנכס במפה, ולכן איננו מציינים מרחקים או קווים.',
   ],
+  /* F5 (2026-10-22): two sources placed the property far apart; neither is used. */
+  verify_nb_center_conflict: [
+    'The official drawing and the address point to places more than a kilometre apart, so we do not state distances or routes until the position is confirmed.',
+    'ოფიციალური ნახაზი და მისამართი რუკაზე ერთმანეთისგან კილომეტრზე მეტით დაშორებულ ადგილებს უთითებს, ამიტომ მდებარეობის დადასტურებამდე მანძილებსა და მარშრუტებს არ ვუთითებთ.',
+    'Официальный чертёж и адрес указывают на места, удалённые друг от друга более чем на километр, поэтому до подтверждения местоположения мы не указываем расстояния и маршруты.',
+    'Resmi çizim ile adres, birbirinden bir kilometreden fazla uzak yerleri gösteriyor; konum doğrulanana kadar mesafe ve hat bilgisi vermiyoruz.',
+    'يشير المخطط الرسمي والعنوان إلى موقعين يفصل بينهما أكثر من كيلومتر، لذا لا نذكر مسافات أو خطوطًا حتى يتأكد الموقع.',
+    'השרטוט הרשמי והכתובת מצביעים על מקומות המרוחקים זה מזה יותר מקילומטר, ולכן איננו מציינים מרחקים או קווים עד שהמיקום יאומת.',
+  ],
+  /* F5: a centre from a NAPR situational drawing, used only when the address agrees. */
+  verify_nb_basis_SITUATIONAL_DRAWING: [
+    'Measured from the centre of the Public Registry situational drawing (UTM coordinates), which the address on the map confirms; distances are accurate to about a hundred metres.',
+    'მანძილი გაზომილია საჯარო რეესტრის სიტუაციური ნახაზის ცენტრიდან (UTM კოორდინატები), რასაც რუკაზე მისამართიც ადასტურებს; სიზუსტე დაახლოებით ასი მეტრია.',
+    'Расстояния измерены от центра ситуационного чертежа Публичного реестра (координаты UTM), что подтверждается адресом на карте; точность около ста метров.',
+    'Mesafeler, Kamu Sicili durum çiziminin merkezinden (UTM koordinatları) ölçülmüştür ve haritadaki adresle doğrulanmıştır; hassasiyet yaklaşık yüz metredir.',
+    'قيست المسافات من مركز المخطط الموقعي للسجل العام (إحداثيات UTM)، ويؤكده العنوان على الخريطة؛ الدقة في حدود مئة متر تقريبًا.',
+    'המרחקים נמדדו ממרכז השרטוט המצבי של המרשם הציבורי (קואורדינטות UTM), והכתובת שבמפה מאשרת אותו; הדיוק כמאה מטרים.',
+  ],
+  /* F5: places public descriptions named, shown apart from measured ones and never with a distance. */
+  verify_place_mentioned_label: [
+    'Mentioned in public descriptions · not measured',
+    'ნახსენებია საჯარო აღწერებში · არ არის გაზომილი',
+    'Упомянуто в открытых описаниях · не измерено',
+    'Kamuya açık tanıtımlarda geçiyor · ölçülmedi',
+    'مذكور في الأوصاف العامة · غير مُقاس',
+    'מוזכר בתיאורים פומביים · לא נמדד',
+  ],
 
   /* ── pros ── */
   verify_nb_pro_transit: [

@@ -100,6 +100,27 @@ test('an executor crash becomes a retryable failure, not a lost task', async () 
   assert.match(gw.calls.fail[0].error, /socket hang up/);
 });
 
+test('a wedged attempt is bounded: past the deadline it is aborted, retried later, and its slot is freed', async () => {
+  const gw = fakeGateway({ queue: [mkTask(), mkTask()] });
+  let aborted = 0;
+  let started = 0;
+  /* The first attempt never answers (a page with no step deadline); the second completes. */
+  const r = runner(gw, (t, ctx) => {
+    started++;
+    ctx.signal.addEventListener('abort', () => { aborted++; });
+    return started === 1 ? new Promise(() => {}) : Promise.resolve({ type: 'complete', result: { ok: true } });
+  }, { lanes: { HTTP: 1 }, taskDeadlineMs: 40 });
+  const alive = setInterval(() => {}, 10);
+  r.start();
+  await until(() => gw.calls.fail.length === 1 && gw.calls.complete.length === 1);
+  clearInterval(alive);
+  await r.stop(100);
+  assert.deepEqual(gw.calls.fail[0], { id: gw.calls.fail[0].id, error: 'TASK_DEADLINE', retryable: true }, 'retryable: the queue backs off and ends in DEAD after max attempts');
+  assert.equal(aborted, 1, 'the wedged attempt was told to stop');
+  assert.equal(r.counters.deadlines, 1);
+  assert.equal(gw.calls.complete.length, 1, 'the one slot was freed for the next task');
+});
+
 test('shutdown stops claiming and releases unfinished tasks without writing results', async () => {
   const gw = fakeGateway({ queue: [mkTask(), mkTask(), mkTask()] });
   const r = runner(gw, (t, ctx) => new Promise((_, rej) => ctx.signal.addEventListener('abort', () => rej(ctx.signal.reason))));

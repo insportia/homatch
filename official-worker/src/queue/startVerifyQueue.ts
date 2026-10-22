@@ -43,6 +43,9 @@ export function startVerifyQueue(deps: {
     lanes: { HTTP: num('VERIFY_QUEUE_HTTP_SLOTS', 12, 64), BROWSER: num('VERIFY_QUEUE_BROWSER_SLOTS', 3, 16) },
     /* AI TALK first: fewer NEW Chromium tasks start while a speech session is open. */
     slotsNow: (lane, slots) => laneSlotsNow(lane, slots),
+    /* Hard ceiling per attempt (a wedged page held a slot forever). Production 2026-09-22..10-22:
+       BROWSER max 412 s, HTTP max 1,424 s (p99 1,331 s) → 45 min default leaves ~2x headroom. */
+    taskDeadlineMs: Math.max(60, num('VERIFY_TASK_DEADLINE_SECONDS', 2700, 3600)) * 1000,
     executor: createVerifyExecutor({ orchestrator: deps.orchestrator, launchBrowser: deps.launchJobBrowser, closeBrowser: deps.closeJobBrowser }),
     log: (event, data) => console.log(JSON.stringify({ level: 'info', scope: 'verify_queue', event, ...data })),
   });

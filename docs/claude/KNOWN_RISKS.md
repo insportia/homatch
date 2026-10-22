@@ -25,6 +25,16 @@ Things that have already bitten a session once. Read before they bite twice.
   excluded from CI's owed set; changing them means hand-deploying them and
   proving the artifact.
 
+- **Edge code ahead of its migration (Finance V2, 2026-10-19 → 22).** Now refused by the
+  fail-closed migration gate (RELEASE.md). It cannot stop Vercel/Railway Git builds; a PR with
+  a migration still releases merge → apply → deploy.
+- **Applied SQL ≠ committed file.** `20261119120000_find_buyers_min_5_execution_budget` (PR #279)
+  was applied with different text than the file on main; the gate reports it (pre-dates
+  `contentVerifiedFrom`). From Finance V2 on, a mismatch fails the deploy.
+- **Held migration with live dependants.** `20261108090000_publishing_central_accounts` is not
+  applied, but `publishing-engine` / `publishing-worker` on main read `publishing_accounts`; the
+  gate blocks any deploy of those two until the owner releases or applies it.
+
 ## Database
 
 - **Append-only migrations.** Never edit an applied migration; the hygiene
@@ -35,6 +45,12 @@ Things that have already bitten a session once. Read before they bite twice.
   guarded by `tests/matrix/functionGrants.test.mjs`.
 - **Property contact phones are private.** Required at creation ≠ public.
   No public, indexable, or client-trusted path may expose them.
+
+- **Spend caps count UNPRICED as $0.** `provider_spend_totals` sums `cost_usd`, which is a 0
+  placeholder for UNPRICED rows, so a cap can be reached later than real spend. Finance V2.1
+  prices every metered call it can; the remaining sources are in `finance_cost_coverage`.
+- **`billing_ai_cost_cents` coalesces unpriced AI to 0** in cost-based charging (left as is —
+  changing it changes customer prices); the ledger view still reports those rows UNPRICED.
 
 ## Product semantics
 

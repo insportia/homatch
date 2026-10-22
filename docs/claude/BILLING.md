@@ -47,6 +47,31 @@ warns when a diff enters this domain.
   (`shared_platform`, `retired_providers`, `unattributed`) never enters a service's profit.
   The `billing_cogs_tax_bps` 18 % COGS uplift stays in non-Verify cost-based PRICING
   (owner, 2026-10-19) and is reported separately; it is not COGS in the ledger.
+- **Finance V2.1 (2026-10-22) — cost coverage, one price resolution.** Every metered AI /
+  provider call records a `cost_events` row through `_shared/providerCost.ts`
+  `recordUsageCost` (provider, model, operation, `finance_service`, `correlation_id`, units,
+  tokens, `pricing_state`, `idempotency_key`); never throws, off the response path
+  (`deferCost` → `EdgeRuntime.waitUntil`) where latency matters (AI Talk). Usage comes only from
+  the provider response (`tokenUsage`); no usage → UNPRICED with units unknown, never an assumed
+  count. Rates resolve in ONE place, `provider_estimated_cost_usd` (provider_price_book, dated):
+  NULL when no row → UNPRICED (cost_usd 0 is a placeholder; the ledger view returns NULL);
+  some dimensions priced → PARTIAL (a lower bound); provider-reported dollars → ACTUAL. Retries,
+  callbacks and replays are idempotent via the unique `cost_events.idempotency_key`
+  (upsert, ignore duplicates). Sources with no reliable billable data are listed in
+  `finance_cost_coverage` (UNSUPPORTED / PARTIAL / UNPRICED_SOURCE) and every affected
+  service reads `costComplete=false` in Admin — its profit is shown as "not final".
+  Shared infrastructure (`finance_v2_shared_costs`: price-book MONTH rows prorated,
+  `finance_fixed_expenses`; unconfigured = NOT_CONFIGURED, never $0) is reported beside, never
+  inside, a service's profit. Remaining pinned copies of rates (Design Studio `PRICE_TABLE`, the
+  Find Buyers OpenAI default and its `admin_settings` copy) are checked against the book by
+  `tests/matrix/priceRegistryDrift.test.mjs` and live by `finance_v2_price_drift()`.
+  Coverage matrix: `docs/claude/FINANCE_V2_1_COVERAGE.md`.
+- **Reservation sweeper (PR #264) — OFF by default.** `wallet_sweep_expired_reservations`
+  releases RESERVED holds past `expires_at` via `wallet_release` and marks them EXPIRED only if
+  the release succeeded (V2.1 fixes the race: `for update skip locked`, count only rows it
+  released). Switch: `admin_settings.wallet_reservation_sweeper_enabled` (absent/false = off).
+  Enabling it is an owner decision. Rollback: set it false (or delete the row); already
+  released holds are not re-reserved — the customer keeps the credits, nothing is charged.
 - **Paid discovery pricing policy `paid_discovery_37_63_vat_v2`** (owner, Finance V2,
   2026-10-19) — CURRENT for every new Find Buyers / Find Tenants and Find Property paid
   campaign (`PAID_DISCOVERY_CURRENT_POLICY`). VAT first, then 37 / 63 of the VAT-exclusive

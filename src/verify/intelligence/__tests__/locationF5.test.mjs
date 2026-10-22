@@ -149,12 +149,37 @@ test('a drawing alone is never a centre: UNCORROBORATED_DRAWING, no distances', 
   assert.equal(d.candidates.length, 1);
 });
 
-test('a drawing 7.5 km from the house geocode is a CENTER_CONFLICT: neither is used, both are kept and flagged', () => {
+// Owner decision 2026-10-23 (job 61c1c38c): a drawing that names an application,
+// not the parcel, does not outrank a house-VALIDATED registry-address geocode.
+test('a drawing 7.5 km from the house-validated geocode is set aside: the geocode is the centre, the conflict stays on record', () => {
   const d = chooseCenter([house, drawing]);
+  assert.equal(d.center.basis, 'GEOCODED_ADDRESS');
+  assert.equal(d.center.precision, 'HOUSE');
+  assert.equal(d.center.confidence, 'MEDIUM');
+  assert.equal(d.issue, 'DRAWING_SET_ASIDE');
+  const kept = d.candidates.find((c) => c.basis === 'SITUATIONAL_DRAWING');
+  assert.equal(kept.chosen, false);
+  assert.equal(kept.disagrees, true);
+  assert.ok(kept.distanceFromCenterM > 7000);
+  assert.ok(haversineM(house, drawing) > 7000);
+});
+
+test('against a street-precision geocode the same drawing is a CENTER_CONFLICT: neither is used, both are kept and flagged', () => {
+  const street = { ...house, precision: 'STREET' };
+  const d = chooseCenter([street, drawing]);
   assert.equal(d.center, null);
   assert.equal(d.issue, 'CENTER_CONFLICT');
   assert.ok(d.candidates.every((c) => c.disagrees && !c.chosen && c.distanceFromCenterM === null));
-  assert.ok(haversineM(house, drawing) > 7000);
+});
+
+test('a set-aside drawing is a limitation in the V2 contract and the centre is labelled an approximate address geocode', () => {
+  const d = chooseCenter([house, drawing]);
+  const contract = locationContract({ neighborhood: { status: 'OK', center: d.center, candidates: d.candidates, centerIssue: d.issue, fetchedAt: '2026-10-23T00:00:00Z', groups: [], transit: null } });
+  assert.equal(contract.center.method, 'ADDRESS_GEOCODE');
+  assert.equal(contract.center.precision, 'HOUSE');
+  assert.ok(contract.coverage.limitations.includes('DRAWING_SET_ASIDE'));
+  assert.equal(contract.coverage.centerIssue, 'DRAWING_SET_ASIDE');
+  assert.equal(contract.centerCandidates.filter((c) => c.disagrees).length, 1);
 });
 
 test('a drawing within 1 km of the address geocode is used, with the geocode kept as corroboration', () => {

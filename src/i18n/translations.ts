@@ -21104,6 +21104,9 @@ const en = {
   verify_nb_center_conflict: 'The official drawing and the address point to places more than a kilometre apart, so we do not state distances or routes until the position is confirmed.',
   verify_nb_basis_SITUATIONAL_DRAWING: 'Measured from the centre of the Public Registry situational drawing (UTM coordinates), which the address on the map confirms; distances are accurate to about a hundred metres.',
   verify_place_mentioned_label: 'Mentioned in public descriptions · not measured',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'An official drawing in the case file points to a place more than a kilometre away. It names an application, not this parcel, so it was set aside and kept on record; distances here are measured from the registry address on the map and are approximate.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42122,6 +42125,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_nb_center_conflict: 'ოფიციალური ნახაზი და მისამართი რუკაზე ერთმანეთისგან კილომეტრზე მეტით დაშორებულ ადგილებს უთითებს, ამიტომ მდებარეობის დადასტურებამდე მანძილებსა და მარშრუტებს არ ვუთითებთ.',
   verify_nb_basis_SITUATIONAL_DRAWING: 'მანძილი გაზომილია საჯარო რეესტრის სიტუაციური ნახაზის ცენტრიდან (UTM კოორდინატები), რასაც რუკაზე მისამართიც ადასტურებს; სიზუსტე დაახლოებით ასი მეტრია.',
   verify_place_mentioned_label: 'ნახსენებია საჯარო აღწერებში · არ არის გაზომილი',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'საქმის მასალებში არსებული ოფიციალური ნახაზი კილომეტრზე მეტით დაშორებულ ადგილს უთითებს. ის განცხადებას ეხება და არა ამ ნაკვეთს, ამიტომ გვერდზე გადავდეთ და ჩანაწერში შევინახეთ; აქ მანძილები გაზომილია რეესტრის მისამართის მიხედვით რუკაზე და მიახლოებითია.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63131,6 +63137,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_nb_center_conflict: 'Официальный чертёж и адрес указывают на места, удалённые друг от друга более чем на километр, поэтому до подтверждения местоположения мы не указываем расстояния и маршруты.',
   verify_nb_basis_SITUATIONAL_DRAWING: 'Расстояния измерены от центра ситуационного чертежа Публичного реестра (координаты UTM), что подтверждается адресом на карте; точность около ста метров.',
   verify_place_mentioned_label: 'Упомянуто в открытых описаниях · не измерено',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'Официальный чертёж из материалов дела указывает на место более чем в километре отсюда. Он относится к заявлению, а не к этому участку, поэтому отложен и сохранён в записи; расстояния здесь измерены от адреса из реестра на карте и приблизительны.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -84138,6 +84147,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_nb_center_conflict: 'Resmi çizim ile adres, birbirinden bir kilometreden fazla uzak yerleri gösteriyor; konum doğrulanana kadar mesafe ve hat bilgisi vermiyoruz.',
   verify_nb_basis_SITUATIONAL_DRAWING: 'Mesafeler, Kamu Sicili durum çiziminin merkezinden (UTM koordinatları) ölçülmüştür ve haritadaki adresle doğrulanmıştır; hassasiyet yaklaşık yüz metredir.',
   verify_place_mentioned_label: 'Kamuya açık tanıtımlarda geçiyor · ölçülmedi',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'Dosyadaki resmi bir çizim bir kilometreden daha uzak bir yeri gösteriyor. Bu parseli değil bir başvuruyu adlandırdığı için bir kenara konuldu ve kayıtta tutuldu; buradaki mesafeler sicil adresinin haritadaki noktasından ölçülmüştür ve yaklaşıktır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -105145,6 +105157,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_nb_center_conflict: 'يشير المخطط الرسمي والعنوان إلى موقعين يفصل بينهما أكثر من كيلومتر، لذا لا نذكر مسافات أو خطوطًا حتى يتأكد الموقع.',
   verify_nb_basis_SITUATIONAL_DRAWING: 'قيست المسافات من مركز المخطط الموقعي للسجل العام (إحداثيات UTM)، ويؤكده العنوان على الخريطة؛ الدقة في حدود مئة متر تقريبًا.',
   verify_place_mentioned_label: 'مذكور في الأوصاف العامة · غير مُقاس',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'يشير مخطط رسمي في ملف القضية إلى مكان يبعد أكثر من كيلومتر. وهو يخص طلبًا لا هذه القطعة، لذا وُضع جانبًا مع الاحتفاظ به في السجل؛ والمسافات هنا مقيسة من عنوان السجل على الخريطة وهي تقريبية.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -126152,6 +126167,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_nb_center_conflict: 'השרטוט הרשמי והכתובת מצביעים על מקומות המרוחקים זה מזה יותר מקילומטר, ולכן איננו מציינים מרחקים או קווים עד שהמיקום יאומת.',
   verify_nb_basis_SITUATIONAL_DRAWING: 'המרחקים נמדדו ממרכז השרטוט המצבי של המרשם הציבורי (קואורדינטות UTM), והכתובת שבמפה מאשרת אותו; הדיוק כמאה מטרים.',
   verify_place_mentioned_label: 'מוזכר בתיאורים פומביים · לא נמדד',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'שרטוט רשמי בתיק מצביע על מקום המרוחק יותר מקילומטר. הוא מתייחס לבקשה ולא לחלקה הזו, ולכן הונח בצד ונשמר ברשומה; המרחקים כאן נמדדו מכתובת המרשם במפה והם משוערים.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

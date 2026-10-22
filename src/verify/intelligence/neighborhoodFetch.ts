@@ -23,6 +23,7 @@ import {
   overpassFailed,
   parentParcel,
   parseNominatim,
+  queryHouseNumber,
   parseOverpass,
   reusableNeighborhood,
   inGeorgia,
@@ -78,13 +79,13 @@ async function geocodeOnce(q: string, fetchImpl: FetchLike, diag?: string[]): Pr
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastNominatimAt = Date.now();
   try {
-    const url = `${NOMINATIM_URL}?format=jsonv2&limit=1&countrycodes=ge&accept-language=ka&q=${encodeURIComponent(q)}`;
+    const url = `${NOMINATIM_URL}?format=jsonv2&addressdetails=1&limit=1&countrycodes=ge&accept-language=ka&q=${encodeURIComponent(q)}`;
     const json = await timed(6000, async (signal) => {
       const res = await fetchImpl(url, { signal, headers: { 'User-Agent': NEIGHBORHOOD_USER_AGENT, Referer: NEIGHBORHOOD_REFERER, Accept: 'application/json' } });
       if (!res.ok) diag?.push(String(res.status));
       return res.ok ? await res.json() : null;
     });
-    const hit = parseNominatim(json);
+    const hit = parseNominatim(json, queryHouseNumber(q));
     if (json && !hit) diag?.push('no_match');
     // `evidence` is the query that matched: the cache key on rebuild.
     return hit ? { lat: hit.lat, lng: hit.lng, basis: 'GEOCODED_ADDRESS', precision: hit.precision, evidence: q } : null;

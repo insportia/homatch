@@ -74,8 +74,13 @@ export interface CenterCandidate extends NeighborhoodCenter {
   chosen?: boolean;
 }
 
-/** Why there is no centre although candidates existed. */
-export type CenterIssue = 'CENTER_CONFLICT' | 'UNCORROBORATED_DRAWING';
+/**
+ * What the centre decision could not settle. CENTER_CONFLICT and
+ * UNCORROBORATED_DRAWING mean there is no centre; DRAWING_SET_ASIDE means the
+ * validated address geocode is the centre and a drawing disagreeing with it
+ * was set aside (kept, flagged, among the candidates).
+ */
+export type CenterIssue = 'CENTER_CONFLICT' | 'UNCORROBORATED_DRAWING' | 'DRAWING_SET_ASIDE';
 
 export type NeighborhoodCategory =
   | 'GROCERY' | 'PHARMACY' | 'HEALTH' | 'SCHOOL' | 'KINDERGARTEN'
@@ -466,8 +471,21 @@ export function geocodeQueries(address: unknown): string[] {
   return [...new Set(out)].slice(0, 3);
 }
 
-/** Nominatim's first hit, accepted only at house or street precision. */
-export function parseNominatim(json: unknown): { lat: number; lng: number; precision: 'HOUSE' | 'STREET' } | null {
+/** The house number a geocoder query asks for ("წყნეთის გზატკეცილი N31, …" → "31"), or null. */
+export function queryHouseNumber(q: string): string | null {
+  const first = String(q ?? '').split(',')[0] ?? '';
+  return /(?:^|\s)(?:N|№)?\s?(\d+[a-zა-ჰ]?)(?=\s|$)/i.exec(first)?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * Nominatim's first hit, accepted only at house or street precision.
+ *
+ * With `expectedHouse` given (geocodeOnce always gives it), HOUSE precision is
+ * VALIDATED: the hit's own address.house_number must equal the registry
+ * address's number. A building found under another number, or none, is only
+ * known to be on the street — STREET. Without it (legacy callers) the type alone decides.
+ */
+export function parseNominatim(json: unknown, expectedHouse?: string | null): { lat: number; lng: number; precision: 'HOUSE' | 'STREET' } | null {
   const hit = Array.isArray(json) ? json[0] : null;
   if (!hit || typeof hit !== 'object') return null;
   const h = hit as Record<string, unknown>;
@@ -476,7 +494,9 @@ export function parseNominatim(json: unknown): { lat: number; lng: number; preci
   const t = String(h.addresstype ?? h.type ?? '').toLowerCase();
   const cls = String(h.category ?? h.class ?? '').toLowerCase();
   if (['house', 'building', 'residential', 'apartments'].includes(t) || cls === 'building') {
-    return { ...p, precision: 'HOUSE' };
+    if (expectedHouse === undefined) return { ...p, precision: 'HOUSE' };
+    const got = String((h.address as Record<string, unknown> | undefined)?.house_number ?? '').trim().toLowerCase();
+    return { ...p, precision: expectedHouse && got === expectedHouse ? 'HOUSE' : 'STREET' };
   }
   if (['road', 'street'].includes(t) || cls === 'highway') return { ...p, precision: 'STREET' };
   return null;

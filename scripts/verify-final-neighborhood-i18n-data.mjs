@@ -135,6 +135,15 @@ export const VERIFY_FINAL_NEIGHBORHOOD_STRINGS = {
     'قيست المسافات من مركز المخطط الموقعي للسجل العام (إحداثيات UTM)، ويؤكده العنوان على الخريطة؛ الدقة في حدود مئة متر تقريبًا.',
     'המרחקים נמדדו ממרכז השרטוט המצבי של המרשם הציבורי (קואורדינטות UTM), והכתובת שבמפה מאשרת אותו; הדיוק כמאה מטרים.',
   ],
+  /* F5 (2026-10-23): a drawing far from the house-validated address geocode was set aside, kept on record. */
+  verify_nb_drawing_set_aside: [
+    'An official drawing in the case file points to a place more than a kilometre away. It names an application, not this parcel, so it was set aside and kept on record; distances here are measured from the registry address on the map and are approximate.',
+    'საქმის მასალებში არსებული ოფიციალური ნახაზი კილომეტრზე მეტით დაშორებულ ადგილს უთითებს. ის განცხადებას ეხება და არა ამ ნაკვეთს, ამიტომ გვერდზე გადავდეთ და ჩანაწერში შევინახეთ; აქ მანძილები გაზომილია რეესტრის მისამართის მიხედვით რუკაზე და მიახლოებითია.',
+    'Официальный чертёж из материалов дела указывает на место более чем в километре отсюда. Он относится к заявлению, а не к этому участку, поэтому отложен и сохранён в записи; расстояния здесь измерены от адреса из реестра на карте и приблизительны.',
+    'Dosyadaki resmi bir çizim bir kilometreden daha uzak bir yeri gösteriyor. Bu parseli değil bir başvuruyu adlandırdığı için bir kenara konuldu ve kayıtta tutuldu; buradaki mesafeler sicil adresinin haritadaki noktasından ölçülmüştür ve yaklaşıktır.',
+    'يشير مخطط رسمي في ملف القضية إلى مكان يبعد أكثر من كيلومتر. وهو يخص طلبًا لا هذه القطعة، لذا وُضع جانبًا مع الاحتفاظ به في السجل؛ والمسافات هنا مقيسة من عنوان السجل على الخريطة وهي تقريبية.',
+    'שרטוט רשמי בתיק מצביע על מקום המרוחק יותר מקילומטר. הוא מתייחס לבקשה ולא לחלקה הזו, ולכן הונח בצד ונשמר ברשומה; המרחקים כאן נמדדו מכתובת המרשם במפה והם משוערים.',
+  ],
   /* F5: places public descriptions named, shown apart from measured ones and never with a distance. */
   verify_place_mentioned_label: [
     'Mentioned in public descriptions · not measured',

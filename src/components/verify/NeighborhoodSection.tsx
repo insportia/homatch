@@ -99,6 +99,9 @@ export const NeighborhoodSection: React.FC<{ n: StoredNeighborhood; intro?: bool
         {n.center?.basis ? (
           <p className="text-xs leading-5 text-muted-foreground break-words">{t(`verify_nb_basis_${n.center.basis}`)}</p>
         ) : null}
+        {n.centerIssue === 'DRAWING_SET_ASIDE' ? (
+          <p className="text-xs leading-5 text-muted-foreground break-words" data-center-issue="DRAWING_SET_ASIDE">{t('verify_nb_drawing_set_aside')}</p>
+        ) : null}
       </div>
 
       {view.pros.length || view.cons.length ? (

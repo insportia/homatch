@@ -16,10 +16,15 @@
 //   2. A situational-drawing centre (MEDIUM: it names an application, not the
 //      parcel) is used only when an independent candidate (an address
 //      geocode) lies within CENTER_DISAGREEMENT_M of it. A drawing that
-//      disagrees with the address is a CENTER_CONFLICT; a drawing with
-//      nothing to check it against is UNCORROBORATED_DRAWING. Either way no
-//      distance is stated. Job 61c1c38c is why: its only drawing lands 7.5 km
-//      from Tskneti highway 31.
+//      disagrees with the address is set aside when the address geocode is
+//      VALIDATED at house precision (the geocoder's own house number equals
+//      the registry address's, parseNominatim): the geocode is the centre,
+//      labelled approximate, and the conflict stays on record as
+//      DRAWING_SET_ASIDE. Job 61c1c38c is why: its only drawing names an
+//      application, not the parcel, and lands 7.5 km from Tskneti highway 31,
+//      whose house 31 the geocoder places exactly. Against a street-precision
+//      geocode the conflict cannot be settled: CENTER_CONFLICT, no distances.
+//      A drawing with nothing to check it against is UNCORROBORATED_DRAWING.
 //   3. Otherwise an address geocode, house before street precision, as before.
 // Never AI: no candidate here comes from a model.
 
@@ -98,6 +103,9 @@ export function chooseCenter(input: NeighborhoodCenter[], thresholdM = CENTER_DI
   if (drawings.length) {
     const corroborated = drawings.find((d) => geocodes.some((g) => haversineM(d, g) <= thresholdM));
     if (corroborated) return { center: corroborated, candidates: annotate(cands, corroborated, thresholdM), issue: null };
+    // Only a house-validated geocode may outrank a drawing; the drawing stays a flagged candidate.
+    const house = geocodes.find((g) => g.precision === 'HOUSE');
+    if (house) return { center: house, candidates: annotate(cands, house, thresholdM), issue: 'DRAWING_SET_ASIDE' };
     return {
       center: null,
       candidates: annotate(cands, null, thresholdM),

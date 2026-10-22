@@ -107,6 +107,8 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
   const calls = [];
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   const defaults = {
+    // As production answers: a list of rows ([] = every live product on, the six paused).
+    service_controls_public: () => [],
     broker_desk_summary: () => summary,
     broker_profile_event_stats: () => ({ totals: {}, daily: [] }),
     admin_list_broker_directory: () => [{ ...LISTING, owner_user_id: 'u9', owner_email: 'nino@example.test', owner_name: 'Nino', is_public: false }],
@@ -289,14 +291,14 @@ test('the directory purchase is confirmed, keyed, and a retry after a refusal re
   assert.match(await page.evaluate(() => document.body.innerText), /in the public directory/);
 });
 
-/* ── Brokers directory SALES paused (Service Control Center; owner decision, Option A) ─────── */
+/* ── Brokers directory paused (Service Control Center): sales stop and the directory is hidden (owner, 2026-10-18) ── */
 const SALES_PAUSED = liveState(true).map((r) => (r.service_key === 'brokers_directory' ? { ...r, frontend_enabled: false, backend_enabled: false } : r));
 const SALES_OPEN = liveState(true);
 const ACTIVE_PAID = { ...LISTING, status: 'ACTIVE', paid_until: ago(-20) };
 
-test('sales paused: no Buy/Renew, the paid date is stated, nothing is sent; the listing stays public', opts, async (t) => {
+test('directory paused: no Buy/Renew, nothing is sent, and the desk never links into the hidden directory', opts, async (t) => {
   if (skipReason) assert.fail(`broker gate could not run: ${skipReason}`);
-  for (const [profile, expect] of [[ACTIVE_PAID, /Your listing stays public in the directory until/], [{ ...LISTING, status: 'EXPIRED', paid_until: ago(2) }, /You can buy a listing again as soon as sales resume/], [LISTING, /You can buy a listing again/]]) {
+  for (const [profile, expect] of [[ACTIVE_PAID, /You can buy a listing again as soon as sales resume/], [{ ...LISTING, status: 'EXPIRED', paid_until: ago(2) }, /You can buy a listing again as soon as sales resume/], [LISTING, /You can buy a listing again/]]) {
     const { page, calls } = await boot(t, { summary: desk({ profile }), rpc: { service_controls_public: () => SALES_PAUSED } });
     await page.goto(`${BASE}/broker?tab=listing`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#desk-listing', { timeout: 20000 });
@@ -311,10 +313,9 @@ test('sales paused: no Buy/Renew, the paid date is stated, nothing is sent; the 
     }
     assert.equal(await page.getByRole('alertdialog').count(), 0, 'no price confirmation can open');
     assert.equal(calls.filter((c) => c.name === 'broker_directory_purchase').length, 0, 'a purchase was sent while paused');
-    if (profile === ACTIVE_PAID) {
-      // Option A: the paid listing is still public, and the desk says so and links to it.
-      assert.equal(await page.locator(`a[href="/brokers/${LISTING.id}"]`).count(), 1, 'the link to the public listing is gone');
-    }
+    // The directory is hidden while paused (owner, 2026-10-18): no "public until" claim, no link into it.
+    assert.doesNotMatch(text, /stays public/, profile.status);
+    assert.equal(await page.locator('a[href^="/brokers"]').count(), 0, `${profile.status}: the desk links into the paused directory`);
   }
 });
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import {
   FinanceLiveSpendTab, FinanceFixedCostsTab, FinancePriceBookTab,
 } from '@/components/admin/finance/FinanceMoreTabs';
 import { FinanceEventsTab } from '@/components/admin/finance/FinanceEventsTab';
+import { FinanceServicesTab } from '@/components/admin/finance/FinanceServicesTab';
 
 /**
  * HOMATCH FINANCIAL COMMAND CENTER — /admin/finance
@@ -140,6 +142,7 @@ export default function AdminFinancePage() {
               .replace('{tz}', s?.timezone ?? 'UTC')
               .replace('{cur}', s?.currency ?? 'USD')}
           </p>
+          <Link to="/admin/finance/find-property" className="mt-1 inline-block text-xs font-medium text-gold-ink underline-offset-2 hover:underline" data-fp-costs-link>{t('fpcost_open')}</Link>
         </div>
         <div className="flex items-center gap-2">
           {openCritical > 0 && (
@@ -158,6 +161,7 @@ export default function AdminFinancePage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="overview" className="text-xs">{t('fin_tab_overview')}</TabsTrigger>
+          <TabsTrigger value="services" className="text-xs">{t('fin_tab_services')}</TabsTrigger>
           <TabsTrigger value="live" className="text-xs">{t('fin_tab_live')}</TabsTrigger>
           <TabsTrigger value="providers" className="text-xs">{t('fin_tab_providers')}</TabsTrigger>
           <TabsTrigger value="connections" className="text-xs">{t('fin_tab_connections')}</TabsTrigger>
@@ -350,6 +354,9 @@ export default function AdminFinancePage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="services" className="mt-4">
+          <FinanceServicesTab />
+        </TabsContent>
         <TabsContent value="providers" className="mt-4">
           <FinanceProvidersTab />
         </TabsContent>

@@ -177,11 +177,23 @@ test('1440 (en): approved copy, two segments ranked by score, nothing identifyin
   for (const copy of ['HOMATCH INTELLIGENCE', 'Your Matching Buyers',
     'Discover people whose property requirements align with your listing. Explore every relevant opportunity and unlock only the contacts you want to approach.',
     'Every match is a new opportunity.', 'Explore every relevant opportunity. Unlock only the contacts you want to approach.',
-    'All Matches', 'Strong Matches', 'Potential Matches', 'Fresh Matches', 'Unlock Contact · 6 Credits', 'Unlock Contact · 2.5 Credits',
-    'Looking For', 'Preferred Location', 'Budget Range', 'Property Requirements', 'Why This Matches', 'Last Updated', 'Available Contact Options',
-    'A higher-budget property search that may be relevant to your listing. Review the actual requirements and match strength before making an offer.']) {
+    'All Matches', 'Strong Matches', 'Potential Matches', 'Fresh Matches', 'Unlock VIP contact · 6 credits', 'Unlock Contact · 2.5 Credits']) {
     assert.ok(main.includes(copy), `missing approved copy: ${copy}`);
   }
+  /* Find Buyers 2.0 (owner, 2026-10-18): compact cards; the field-by-field view is the lead's own
+     detail view (its own address, ?lead=<id>), opened with View Details. */
+  await page.locator('[data-testid="lead-card"]').first().locator('[data-testid="lead-details"]').click();
+  const drawer = page.locator('[data-testid="lead-drawer"]');
+  await drawer.waitFor();
+  assert.match(new URL(page.url()).search, /lead=/, 'the lead has its own address');
+  const detail = await drawer.textContent();
+  for (const copy of ['Looking For', 'Preferred Location', 'Budget Range', 'Property Requirements', 'Available Contact Options', 'Source',
+    /* Smart match expansion (2026-10-18): a VIP lead is described by its category — and VIP replaces, never adds to, the other prices. */
+    'They stated a budget at or above HOMATCH\'s high-value threshold for this market. VIP replaces the other prices']) {
+    assert.ok(detail.includes(copy), `missing detail copy: ${copy}`);
+  }
+  await page.keyboard.press('Escape');
+  await drawer.waitFor({ state: 'detached' }).catch(() => {});
   const cards = page.locator('[data-testid="lead-card"]');
   assert.equal(await cards.count(), 2);
   assert.equal(await cards.nth(0).getAttribute('data-segment'), 'PREMIUM');
@@ -221,7 +233,8 @@ test('Bulk Unlock: the bar totals 1 Standard + 1 Premium = 8.5 credits; a double
   await boxes.nth(1).check();
   const bar = page.locator('[data-testid="bulk-bar"]');
   await bar.waitFor();
-  assert.match(await bar.textContent(), /Standard 1 · Premium 1 · 8\.5 credits/);
+  /* Smart match expansion: the bar names the three tiers (a pre-expansion lead without a category is nearby / similar). */
+  assert.match(await bar.textContent(), /Exact 0 · Nearby or similar 1 · VIP 1 · 8\.5 credits/);
   await noOverflow(page, 'bulk bar 390');
   await shot(page, 'leads-bulk-390');
   await page.locator('[data-testid="bulk-unlock"]').click();

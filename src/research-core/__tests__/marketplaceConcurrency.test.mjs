@@ -153,8 +153,12 @@ for (const n of [7, 100, 800]) {
 test('genuinely nonmatching records are the only ones filtered: wrong district, above the 10% ceiling, outside area', () => {
   const out = processSearch({ request: F.FIXTURE_REQUEST, candidates: F.fixtureCandidates(), now: NOW });
   assert.deepEqual(out.excluded.map((e) => e.reason).sort(), ['AREA', 'DISTRICT', 'PRICE_ABOVE_CEILING']);
-  const valid = out.properties.length;
+  /* Every valid home is kept (owner, 2026-10-18): the ones outside the request as OTHER, with why. */
+  const valid = out.properties.filter((p) => p.group !== 'OTHER').length;
   assert.equal(valid + out.excluded.length, out.stats.uniqueProperties);
+  const outside = out.properties.filter((p) => p.group === 'OTHER');
+  assert.equal(outside.length, out.excluded.length, 'every filtered home stays browsable');
+  assert.ok(outside.every((p) => p.mismatch?.length && p.intelligence.section === 'OTHER' && p.intelligence.strong === false));
 });
 
 test('heartbeat extends the run’s own lease, capped at its deadline', () => {

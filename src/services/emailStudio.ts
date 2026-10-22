@@ -162,4 +162,23 @@ export const emailStudio = {
   sendTest: (campaignId: string) => invoke<{ sentTo?: string }>('studio_test', { campaignId }),
   send: (campaignId: string, versionHash: string) =>
     invoke<SendResult>('studio_send', { campaignId, versionHash, approved: true }),
+
+  /* Find Buyers 2.0: schedule the REVIEWED version (jobs-worker sends it through studio_send's
+     own gates at that time; editing the campaign afterwards cancels the match with the review). */
+  schedule: (campaignId: string, atIso: string | null, timezone: string | null) =>
+    rpc<{ ok: boolean; scheduledAt: string | null }>('email_studio_schedule', { p_campaign_id: campaignId, p_at: atIso, p_timezone: timezone }),
+  scheduleOf: async (campaignId: string): Promise<CampaignSchedule | null> => {
+    const { data, error } = await supabase.from('email_studio_campaigns')
+      .select('scheduled_at, schedule_timezone, schedule_state').eq('id', campaignId).maybeSingle();
+    if (error || !data) return null;
+    const d = data as { scheduled_at: string | null; schedule_timezone: string | null; schedule_state: string | null };
+    return { scheduledAt: d.scheduled_at, timezone: d.schedule_timezone, state: d.schedule_state };
+  },
 };
+
+export interface CampaignSchedule {
+  scheduledAt: string | null;
+  timezone: string | null;
+  /** SCHEDULED, SENDING, SENT, CANCELLED, or the refusal the send met (SENDING_DISABLED …). */
+  state: string | null;
+}

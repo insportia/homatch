@@ -1,6 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { acquirePortal } from './acquire.mjs';
 import { createPortalIndex } from './index/PortalIndex.mjs';
+import { createIndexPersistence } from './index/snapshotStore.mjs';
 
 /*
  * One runtime per portal, all on the existing official worker (no new service).
@@ -12,8 +13,10 @@ import { createPortalIndex } from './index/PortalIndex.mjs';
  *   PORTAL_INDEX_ENABLED           'false' stops the worker-local index (default on) for
  *                                  adapters with `indexed: true`; it only runs while that
  *                                  portal is enabled and configured (index/PortalIndex.mjs)
+ *   PORTAL_INDEX_PERSIST           'false' stops saving/restoring the index in HOMATCH's R2
+ *                                  (default on; index/snapshotStore.mjs)
  */
-export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, acquire = acquirePortal, createIndex = createPortalIndex) {
+export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, acquire = acquirePortal, createIndex = createPortalIndex, createPersistence = createIndexPersistence) {
   const token = env[`${adapter.envPrefix}_WORKER_TOKEN`] ?? '', base = env.SUPABASE_URL ?? '';
   const enabled = env[`${adapter.envPrefix}_MARKETPLACE_ENABLED`] === 'true';
   const configured = token.length >= 32 && /^https:\/\/[^/]+$/.test(base);
@@ -23,6 +26,10 @@ export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, 
   const indexOn = adapter.indexed === true && enabled && configured && env.PORTAL_INDEX_ENABLED !== 'false';
   const index = indexOn ? createIndex(adapter, { log }) : null;
   index?.start();
+  /* The index survives a redeploy: newest snapshot restored at start, saved while it learns. */
+  const persistence = index && env.PORTAL_INDEX_PERSIST !== 'false'
+    ? createPersistence({ index, ingest, fetcher, log, signal: controller.signal }) : null;
+  void persistence?.start().catch(() => {});
   async function ingest(body) {
     const response = await fetcher(`${base}/functions/v1/marketplace-worker-ingest`, { method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-homatch-worker': adapter.workerId },
@@ -61,6 +68,6 @@ export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, 
     }
   }
   void loop().catch(() => { lastError = 'RUNTIME_FAILED'; });
-  return { status: () => ({ workerId: adapter.workerId, enabled, configured, active, lastClaimAt, lastRun, lastError, index: index ? index.stats() : { enabled: false } }),
-    shutdown: () => { controller.abort(); index?.stop(); } };
+  return { status: () => ({ workerId: adapter.workerId, enabled, configured, active, lastClaimAt, lastRun, lastError, index: index ? { ...index.stats(), persistence: persistence?.status() ?? null } : { enabled: false } }),
+    shutdown: () => { controller.abort(); index?.stop(); persistence?.stop(); } };
 }

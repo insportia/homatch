@@ -51,12 +51,14 @@ function useFavoriteProperties(searchId: string, keys: ReadonlySet<string>, read
   return { items, loading: !ready || mine.some((k) => !found.has(k)) };
 }
 
-export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNewSearch, onChangeCriteria, deepSearchAvailable, version }: {
-  t: T; search: SearchSummary; onOpen: (p: PropertyView) => void; compare: string[]; onToggleCompare: (p: PropertyView) => void;
+export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNewSearch, onChangeCriteria, deepSearchAvailable, deepOffered = true, version }: {
+  t: T; deepOffered?: boolean; search: SearchSummary; onOpen: (p: PropertyView) => void; compare: string[]; onToggleCompare: (p: PropertyView) => void;
   onNewSearch: () => void; onChangeCriteria: (edit: BriefEdit | null) => void; deepSearchAvailable: boolean; version: number;
 }) {
   const [params, setParams] = useSearchParams();
-  const view: View = (VIEWS as readonly string[]).includes(params.get('view') ?? '') ? params.get('view') as View : 'all';
+  const asked: View = (VIEWS as readonly string[]).includes(params.get('view') ?? '') ? params.get('view') as View : 'all';
+  /* No paid results view while paid Deep Search is paused: an old ?view=paid link shows the free list. */
+  const view: View = asked === 'paid' && !deepOffered ? 'all' : asked;
   const filters = filtersFromParams(params), filterKey = JSON.stringify(filters);
   const requestedPage = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   const revision = params.get('revision') ?? undefined;
@@ -65,6 +67,21 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [counts, setCounts] = useState<{ all: number; best: number; paid: number } | null>(null);
   const initialVersion = useRef(version), heading = useRef<HTMLDivElement>(null);
+  /* Switching a view or filter swaps the list for a spinner; without holding its height the
+     page shrank and the browser threw the reader back to the header (owner, 2026-10-18). */
+  const list = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null);
+  const [heldHeight, setHeldHeight] = useState<number | null>(null);
+  /* The switch sticks just below the app's own sticky header, never under it (a tap there opened the header's links). */
+  const [stickTop, setStickTop] = useState(8);
+  useEffect(() => {
+    const header = document.querySelector('header');
+    if (!header || !['sticky', 'fixed'].includes(getComputedStyle(header).position)) return;
+    const measure = () => setStickTop(Math.round(header.getBoundingClientRect().height) + 8);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   const loadedQuery = useRef<string | null>(null);
   const saved = useSavedKeys();
   const favorites = useFavoriteProperties(search.id, saved.keys, saved.ready);
@@ -92,8 +109,18 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.id, filterKey, requestedPage, revision, retry, view]);
 
-  const update = (patch: Partial<ResultFilters>, page?: number) => { setParams(resultParams(params, patch, page)); if (page !== undefined) heading.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+  useEffect(() => { if (!loading) setHeldHeight(null); }, [loading]);
+  /* Keep the list's place while the next one loads; a reader deep in it lands at its start, just under the view switch. */
+  const keepPlace = () => {
+    const el = list.current;
+    if (!el) return;
+    setHeldHeight(el.offsetHeight);
+    const top = el.getBoundingClientRect().top, under = (bar.current?.getBoundingClientRect().bottom ?? 0) + 8;
+    if (top < under) window.scrollBy({ top: top - under, behavior: 'instant' as ScrollBehavior });
+  };
+  const update = (patch: Partial<ResultFilters>, page?: number) => { if (page === undefined) keepPlace(); setParams(resultParams(params, patch, page)); if (page !== undefined) heading.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
   const openView = (v: View) => {
+    keepPlace();
     const next = new URLSearchParams(params);
     for (const key of VIEW_FILTERS) next.delete(key);
     next.set('page', '1');
@@ -104,7 +131,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     setParams(next);
     if (v === 'duplicates') setFiltersOpen(false);
   };
-  const reset = () => { const next = new URLSearchParams(params); for (const key of [...next.keys()]) if (key.startsWith('fp_') && !VIEW_FILTERS.includes(key)) next.delete(key); next.set('page', '1'); setParams(next); };
+  const reset = () => { keepPlace(); const next = new URLSearchParams(params); for (const key of [...next.keys()]) if (key.startsWith('fp_') && !VIEW_FILTERS.includes(key)) next.delete(key); next.set('page', '1'); setParams(next); };
   const refresh = () => { const next = new URLSearchParams(params); next.delete('revision'); next.set('page', '1'); initialVersion.current = version; setParams(next); setRetry((n) => n + 1); };
   const changed = error === 'RESULTS_CHANGED' || version !== initialVersion.current;
   const showItems = !loading && !error && view !== 'favorites';
@@ -112,8 +139,11 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const flat = sorted || view !== 'all';
   const activeFilters = Object.keys(filters).filter((key) => !['sort', 'section', 'strongOnly', 'duplicatesOnly', 'socialOnly'].includes(key)).length;
   const card = (p: PropertyView) => <PropertyCard key={p.key} p={p} t={t} brief={search.brief} searchId={search.id} transaction={search.brief.transactionType?.value ?? null} onOpen={() => onOpen(p)} compareSelected={compare.includes(p.key)} onToggleCompare={() => onToggleCompare(p)} />;
-  const recommended = data && !flat ? data.items.filter((p) => isRecommended(assessProperty(p, search.brief))) : [];
-  const others = data && !flat ? data.items.filter((p) => !recommended.includes(p)) : [];
+  /* Every home found (owner, 2026-10-18): the ones that fit, then those outside the request. */
+  const outside = data && !flat ? data.items.filter((p) => p.group === 'OTHER') : [];
+  const fitting = data && !flat ? data.items.filter((p) => p.group !== 'OTHER') : [];
+  const recommended = fitting.filter((p) => isRecommended(assessProperty(p, search.brief)));
+  const others = fitting.filter((p) => !recommended.includes(p));
   const dupCount = data ? data.facets.duplicates + (data.facets.possibleDuplicates ?? 0) : 0;
   const viewCard = (p: PropertyView) => view === 'duplicates'
     ? <div key={p.key} className="space-y-2" data-duplicate-group={p.key}>{card(p)}<DuplicateListings p={p} t={t} open /></div>
@@ -122,11 +152,15 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const tab = (v: Exclude<View, 'duplicates'>, label: string, n: number | null, Icon: typeof Sparkles) => {
     const on = view === v;
     return (
+      /* Phones: icon + count above a full label (never truncated, owner 2026-10-18); wider: one row. */
       <button type="button" role="tab" aria-selected={on} onClick={() => openView(v)} data-view-tab={v}
-        className={`flex min-h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${on ? 'bg-[#0C1119] text-white shadow-sm' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
-        <Icon className={`h-4 w-4 shrink-0 ${on ? 'text-[hsl(var(--gold))]' : 'text-[hsl(var(--gold-ink))]'}`} aria-hidden="true" />
-        <span className="min-w-0 truncate">{label}</span>
-        {n !== null ? <span className={`shrink-0 rounded-full px-1.5 text-2xs tabular-nums ${on ? 'bg-white/15 text-[hsl(var(--gold))]' : 'bg-muted text-muted-foreground'}`}>{n}</span> : null}
+        className={`flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1 text-xs font-semibold leading-tight transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] sm:min-h-[44px] sm:flex-row sm:gap-1.5 sm:px-2 sm:py-0 sm:text-sm ${on ? 'bg-[#0C1119] text-white shadow-sm' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
+        <span className="flex items-center gap-1">
+          <Icon className={`h-4 w-4 shrink-0 ${on ? 'text-[hsl(var(--gold))]' : 'text-[hsl(var(--gold-ink))]'}`} aria-hidden="true" />
+          {n !== null ? <span className={`shrink-0 rounded-full px-1.5 text-2xs tabular-nums sm:hidden ${on ? 'bg-white/15 text-[hsl(var(--gold))]' : 'bg-muted text-muted-foreground'}`}>{n}</span> : null}
+        </span>
+        <span className="max-w-full text-center [overflow-wrap:anywhere]" data-view-label>{label}</span>
+        {n !== null ? <span className={`hidden shrink-0 rounded-full px-1.5 text-2xs tabular-nums sm:inline ${on ? 'bg-white/15 text-[hsl(var(--gold))]' : 'bg-muted text-muted-foreground'}`}>{n}</span> : null}
       </button>
     );
   };
@@ -138,18 +172,18 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     {view === 'all' ? <NativeMatchesPanel role="SEEKER" /> : null}
 
     {/* The primary navigation: always rendered, in every view, so one tap always leads back. */}
-    <div className="sticky top-2 z-20 space-y-2">
+    <div ref={bar} className="sticky z-20 space-y-2" style={{ top: stickTop }} data-results-bar>
       <div className="flex min-w-0 items-stretch gap-2">
         <nav role="tablist" aria-label={t('fpv_result_views')} className="flex min-w-0 flex-1 gap-1 rounded-2xl border border-border bg-card/95 p-1 shadow-sm backdrop-blur" data-result-views>
           {tab('all', t('fpv_tab_all'), counts?.all ?? (view === 'all' ? data?.totalCurrent ?? null : null), LayoutGrid)}
           {tab('best', t('fpv_tab_best'), counts?.best ?? (view === 'best' ? data?.total ?? null : null), Sparkles)}
           {tab('favorites', t('fpv_tab_favorites'), saved.ready ? favorites.items.length : null, Bookmark)}
           {/* The paid search's own results: only once a campaign has delivered some (or while open). */}
-          {(counts?.paid ?? 0) > 0 || view === 'paid' ? tab('paid', t('fpv_tab_paid'), counts?.paid ?? (view === 'paid' ? data?.total ?? null : null), Telescope) : null}
+          {deepOffered && ((counts?.paid ?? 0) > 0 || view === 'paid') ? tab('paid', t('fpv_tab_paid'), counts?.paid ?? (view === 'paid' ? data?.total ?? null : null), Telescope) : null}
         </nav>
         <button type="button" onClick={() => setFiltersOpen((o) => !o)} aria-expanded={filtersOpen} aria-controls="fp-filters-panel" data-action="toggle-filters"
           aria-label={t('fpv_filters')} title={t('fpv_filters')}
-          className={`relative grid min-h-[44px] w-12 shrink-0 place-items-center rounded-2xl border shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${filtersOpen ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'border-border bg-card/95 text-foreground hover:border-[hsl(var(--gold-border))]'}`}>
+          className={`relative grid min-h-[44px] w-12 shrink-0 place-items-center self-stretch rounded-2xl border shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] ${filtersOpen ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'border-border bg-card/95 text-foreground hover:border-[hsl(var(--gold-border))]'}`}>
           {filtersOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />}
           {activeFilters && !filtersOpen ? <span className="absolute -end-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[hsl(var(--gold))] px-1 text-2xs font-bold text-[#0C1119]">{activeFilters}</span> : null}
         </button>
@@ -188,6 +222,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
       </div>
     ) : null}
 
+    <div ref={list} className="space-y-5" style={heldHeight ? { minHeight: heldHeight } : undefined} data-results-list>
     {changed ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4" role="status"><p className="text-sm">{t('fpr_results_changed')}</p><button type="button" onClick={refresh} className="min-h-[44px] rounded-xl border border-border px-4 text-sm font-semibold">{t('fpr_refresh')}</button></div> : null}
     {error && error !== 'RESULTS_CHANGED' && view !== 'favorites' ? <div role="alert" className="space-y-3 rounded-2xl border border-border bg-card p-4"><p>{t('mps_error_generic')}</p><button type="button" onClick={() => setRetry((n) => n + 1)} className="min-h-[44px] rounded-xl border px-4">{t('fpr_retry')}</button></div> : null}
     {loading || (view === 'favorites' && favorites.loading && !favorites.items.length) ? <div role="status" className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />{t('fpr_loading')}</div> : null}
@@ -201,7 +236,10 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     {showItems && data && flat && data.total > 0 ? <section aria-labelledby="mps-g-SORTED" className="space-y-3" data-results-group={view === 'all' ? 'SORTED' : view}><h2 id="mps-g-SORTED" className={view !== 'all' ? 'sr-only' : 'font-display text-lg font-semibold sm:text-xl'}>{view === 'best' ? t('fpv_best_title') : view === 'duplicates' ? t('fpv_dups_title') : view === 'paid' ? t('fpv_paid_title') : t(`fpr_sort_${filters.sort}`)}</h2>{view === 'best' ? <p className="max-w-[75ch] text-sm text-muted-foreground">{t('fpv_best_body')}</p> : null}<div className="grid gap-4">{data.items.map(viewCard)}</div></section> : null}
     {showItems && recommended.length ? <section aria-labelledby="mps-g-REC" className="space-y-3" data-results-group="RECOMMENDED"><div><h2 id="mps-g-REC" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_rec_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_rec_body')}</p></div><div className="grid gap-4">{recommended.map(card)}</div></section> : null}
     {showItems && others.length ? <section aria-labelledby="mps-g-OTHER" className="space-y-3" data-results-group="OTHER"><div><h2 id="mps-g-OTHER" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_other_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_other_body')}</p></div><div className="grid gap-4">{others.map(card)}</div></section> : null}
+    {showItems && outside.length ? <section aria-labelledby="mps-g-OUTSIDE" className="space-y-3" data-results-group="OUTSIDE"><div><h2 id="mps-g-OUTSIDE" className="font-display text-lg font-semibold sm:text-xl">{t('fpv_outside_title')}</h2><p className="mt-1 max-w-[75ch] text-sm text-muted-foreground">{t('fpv_outside_body')}</p></div><div className="grid gap-4">{outside.map(card)}</div></section> : null}
     {showItems && data && data.total > 0 ? <div className="space-y-3 border-t border-border pt-5"><p className="text-center text-xs text-muted-foreground" role="status">{t('fpr_page_status', { from: (data.page - 1) * data.pageSize + 1, to: Math.min(data.page * data.pageSize, data.total), total: data.total })}</p><nav aria-label={t('fpr_pagination')} className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr"><button type="button" disabled={data.page === 1} onClick={() => update({}, data.page - 1)} aria-label={t('fpr_previous')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>{pageNumbers(data.page, data.pages).map((p, i) => p === 'gap' ? <span key={`gap-${i}`} className="px-1 text-muted-foreground" aria-hidden="true">…</span> : <button type="button" key={p} aria-label={t('fpr_go_page', { n: p })} aria-current={p === data.page ? 'page' : undefined} onClick={() => update({}, p)} className={`h-11 min-w-11 rounded-xl border px-2 text-sm font-semibold ${p === data.page ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]' : 'border-border hover:bg-muted'}`}>{p}</button>)}<button type="button" disabled={data.page === data.pages} onClick={() => update({}, data.page + 1)} aria-label={t('fpr_next')} className="grid h-11 w-11 place-items-center rounded-xl border border-border disabled:opacity-35"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></nav></div> : null}
-    {search.terminal && view === 'all' ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
+    </div>
+    {deepOffered && search.terminal && view === 'all' ? <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} /> : null}
   </div>;
 }
+

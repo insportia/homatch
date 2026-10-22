@@ -266,3 +266,72 @@ test('runtime: the index starts only for indexed, enabled, configured portals an
   }
   assert.deepEqual(started.sort(), ['allhome-agent', 'homege-agent']);
 });
+
+test('restart (owner, 2026-10-19): a restored snapshot makes the index warm at once with each page\'s own read time; old, foreign or malformed snapshots restore nothing', async () => {
+  const c = clockwork();
+  const site = fakeSite([listing(401), listing(402), listing(403)]);
+  const first = createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now, sleep: c.sleep });
+  await warmUp(first);
+  const readAt = first.entry('401').fetchedAt;
+  const snapshot = JSON.parse(JSON.stringify(first.exportSnapshot()));
+  assert.equal(snapshot.contract, 'portal-index-snapshot-1');
+  assert.equal(snapshot.entries.length, 3);
+
+  c.advance(2 * 3600000);
+  const restarted = createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now, sleep: c.sleep });
+  assert.equal(restarted.restore(snapshot), 3);
+  assert.equal(restarted.entry('401').fetchedAt, readAt, 'a restored entry is exactly as fresh as when its page was read');
+  assert.equal(restarted.stats().counters.restored, 3);
+  const before = site.calls.length;
+  await restarted.step(); // robots + sitemap: every listing in it is already known
+  assert.equal(restarted.lookup(fakeAdapter().criteria(request())).warm, true, 'warm after reading the sitemap, not after re-reading every page');
+  assert.deepEqual(site.calls.slice(before).filter((x) => x.url.includes('/l/')), [], 'no listing page is read again');
+
+  assert.equal(createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now }).restore({ ...snapshot, workerId: 'other-agent' }), 0, 'another worker\'s snapshot is refused');
+  assert.equal(createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now }).restore({ entries: snapshot.entries }), 0, 'no contract → nothing');
+  c.advance(40 * 3600000);
+  assert.equal(createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now }).restore(snapshot), 0, 'older than 3× the stale age → not restored');
+});
+
+test('index snapshot store: saved through the ingest door (signed PUT, read-back commit), restored only when its sha256 matches', async () => {
+  const { createIndexPersistence } = await import('../src/marketplace/portals/index/snapshotStore.mjs');
+  const { createHash } = await import('node:crypto');
+  const c = clockwork();
+  const site = fakeSite(Array.from({ length: 6 }, (_, i) => listing(500 + i)));
+  const index = createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now, sleep: c.sleep });
+  await warmUp(index);
+  const r2 = new Map(), calls = [];
+  const ingest = async (body) => {
+    calls.push(body.action);
+    if (body.action === 'inventory-index-upload') return { key: `property-inventory/allhome-ge/ge/portal-index/index-20261019T120000Z-${body.sha256.slice(0, 8)}.json.gz`, url: 'https://r2.fixture/put' };
+    if (body.action === 'inventory-index-commit') {
+      const stored = r2.get('https://r2.fixture/put');
+      assert.equal(createHash('sha256').update(stored).digest('hex'), body.sha256, 'the commit names the bytes that were uploaded');
+      assert.equal(stored.length, body.bytes);
+      return { committed: body.key, removed: 0 };
+    }
+    if (body.action === 'inventory-index-latest') {
+      const stored = r2.get('https://r2.fixture/put');
+      return { snapshot: stored ? { url: 'https://r2.fixture/get', sha256: calls.includes('tamper') ? '0'.repeat(64) : createHash('sha256').update(stored).digest('hex') } : null };
+    }
+    throw Error(`unexpected ${body.action}`);
+  };
+  const fetcher = async (url, init = {}) => {
+    if (init.method === 'PUT') { r2.set(url, Buffer.from(init.body)); return new Response(null, { status: 200 }); }
+    return new Response(r2.get('https://r2.fixture/put'));
+  };
+  const store = createIndexPersistence({ index, ingest, fetcher, minEntries: 3 });
+  assert.equal(await store.restoreLatest(), 0, 'nothing saved yet → nothing restored, no error');
+  await store.save();
+  assert.deepEqual(calls.slice(1), ['inventory-index-upload', 'inventory-index-commit']);
+  assert.equal(store.status().lastSaveEntries, 6);
+
+  const fresh = createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now });
+  const again = createIndexPersistence({ index: fresh, ingest, fetcher, minEntries: 3 });
+  assert.equal(await again.restoreLatest(), 6);
+  calls.push('tamper');
+  await assert.rejects(createIndexPersistence({ index: createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now }), ingest, fetcher }).restoreLatest(), /SNAPSHOT_CHECKSUM/);
+
+  const small = createIndexPersistence({ index: createPortalIndex(fakeAdapter(), { fetcher: site.fetcher, now: c.now }), ingest, fetcher });
+  assert.equal(await small.save(), null, 'an index that has learned (almost) nothing is not saved');
+});

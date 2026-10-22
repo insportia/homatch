@@ -37,6 +37,7 @@ import { supabase } from '@/db/supabase';
 import { cn } from '@/lib/utils';
 import type { VoiceSession, VoiceState, VoiceDiagnostics } from '@/lib/comm/voiceClient';
 import { AiTalkDiagnostics } from './AiTalkDiagnostics';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { AiTalkOrb, type OrbMode } from './AiTalkOrb';
 import { converseStream } from '@/lib/comm/converse';
 import {
@@ -397,6 +398,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * table, so it is never a string the model wrote.
    */
   const [destination, setDestination] = useState<{ key: string; path: string } | null>(null);
+  /* A paused service's address is never offered (Admin → Service Control Center). */
+  const pathAvailable = usePathAvailable();
   const [intelligence, setIntelligence] = useState<Intelligence | null>(null);
   const [muted, setMuted] = useState(false);
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics | null>(null);
@@ -1272,7 +1275,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
           * aloud. Shown only while the call is live: an offer that outlives
           * the conversation it came from is just a stray button.
           */}
-        {destination && live ? (
+        {destination && live && pathAvailable(destination.path) ? (
           <div className="shrink-0 px-4 pb-1">
             <button
               type="button"

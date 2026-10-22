@@ -255,7 +255,10 @@ const EXPECTED_SWITCHES = (() => {
   const fb = readFileSync(new URL('../../src/services/findBuyers.ts', import.meta.url), 'utf8');
   const fbStart = fb.indexOf('export const FIND_BUYERS_SWITCHES = [');
   const fbCount = fbStart < 0 ? 0 : (fb.slice(fbStart, fb.indexOf('] as const;', fbStart)).match(/'[a-z_]+'/g) ?? []).length;
-  return count('DISCOVERY_SWITCHES') + count('PHASE2_SWITCHES') + fbCount;
+  /* Deep Search economics: the temporary test-campaign switch (owner, 2026-10-18). */
+  const deep = readFileSync(new URL('../../src/components/admin/DeepSearchEconomicsPanel.tsx', import.meta.url), 'utf8');
+  const deepCount = (deep.match(/data-switch="[a-z_]+"/g) ?? []).length;
+  return count('DISCOVERY_SWITCHES') + count('PHASE2_SWITCHES') + fbCount + deepCount;
 })();
 
 for (const [width, height] of [[1440, 900], [390, 844]]) {
@@ -267,6 +270,9 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
       await page.goto(`${BASE}/admin/discovery`, { waitUntil: 'domcontentloaded' });
       await ready(page);
       await page.waitForSelector('[role="switch"]', { timeout: 20000 });
+      /* The panels load independently (Deep Search economics last): count once all have rendered,
+         not at the first switch (he 1440 / ar 390 raced at 10 of 11, 2026-10-18). */
+      await page.waitForFunction((n) => document.querySelectorAll('[role="switch"]').length >= n, EXPECTED_SWITCHES, { timeout: 15000 }).catch(() => undefined);
       const l = await page.evaluate(LAYOUT);
       if (l.overflow > 1) failures.push(`${lang} ${width}: horizontal overflow ${l.overflow}px`);
       if (l.switches !== EXPECTED_SWITCHES) failures.push(`${lang} ${width}: ${l.switches} switches, expected ${EXPECTED_SWITCHES}`);

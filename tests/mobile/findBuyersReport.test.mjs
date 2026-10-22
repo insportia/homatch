@@ -207,7 +207,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, 
     if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json(status));
     if (url.includes('/rest/v1/matches')) return r.fulfill({ ...json([]), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': '*/0' } });
     if (url.includes('/rpc/billing_my_budget_choices')) return r.fulfill(json({ ok: true, balance: 1000, min_viable: 50, allow_custom: true, recommended: 100, presets: [] }));
-    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
+    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 5, creditsPerUsd: 10, minCredits: 50 }));
     if (url.includes('/rpc/background_jobs_mine')) return r.fulfill(json([]));
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));

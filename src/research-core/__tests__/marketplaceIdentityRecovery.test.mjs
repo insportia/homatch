@@ -30,7 +30,8 @@ test('real production: Zhvania 10 and Zhvania 1 are not the same apartment based
   assert.equal(saved.length, 90, 'all original source observations retained');
   const output = processSearch({ request: production.request, candidates: recorded.map(candidate => ({ workerId: 'stored', candidate })), now: new Date('2026-10-09T08:01:05.145Z') });
   assert.equal(output.stats.uniqueProperties, 90);
-  assert.equal(output.properties.length, 66);
+  assert.equal(output.properties.filter((p) => p.group !== 'OTHER').length, 66, 'fits the request');
+  assert.equal(output.properties.length, 90, 'and every valid home stays browsable');
   assert.ok(output.properties.filter(p => p.group === 'BEST').every(p => p.facts.priceUsd <= 160000));
   assert.ok(output.properties.filter(p => p.group === 'UPGRADE').every(p => p.facts.priceUsd >= 168000 && p.facts.priceUsd <= 176000));
 });
@@ -90,7 +91,8 @@ test('fifth of five without elevator is excluded when required; unknown elevator
   assert.ok(hardFilter({ ...facts, elevator: true, floor: 8 }, req).violations.includes('FLOOR_RANGE'));
   assert.ok(hardFilter({ ...facts, elevator: true, constructionYear: 1990 }, req).violations.includes('BUILDING_AGE'));
   const rejected = processSearch({ request: req, candidates: F.fixtureCandidates([F.listing({ floor: 5, totalFloors: 5, description: 'No elevator.' })]), now });
-  assert.equal(rejected.properties.length, 0);
+  assert.equal(rejected.properties.filter((p) => p.group !== 'OTHER').length, 0, 'never among the homes that fit');
+  assert.ok(rejected.properties.every((p) => p.group === 'OTHER' && p.mismatch.includes('REQUIRED_ELEVATOR')), 'shown only as outside the request, with why');
 });
 
 test('missing baseline data is never an improvement; seller and freshness alone are not an upgrade', () => {

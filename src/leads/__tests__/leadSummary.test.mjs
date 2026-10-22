@@ -76,5 +76,5 @@ test('bulk selection: unlocked leads are free, segments counted', () => {
     { matchId: 'c', segment: 'PREMIUM', unlocked: true, priceCredits: 6 },
     { matchId: 'd', segment: 'STANDARD', unlocked: false, priceCredits: 2.5 },
   ];
-  assert.deepEqual(selectionTotals(items, new Set(['a', 'b', 'c'])), { standard: 1, premium: 1, already: 1, credits: 8.5 });
+  assert.deepEqual(selectionTotals(items, new Set(['a', 'b', 'c'])), { standard: 1, exact: 0, premium: 1, already: 1, credits: 8.5 });
 });

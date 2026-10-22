@@ -25,7 +25,7 @@ export function startSsgeRuntime(env = process.env, fetcher = fetch, acquire = a
       await acquire(job.request, { deadlineAt: job.deadlineAt, signal: controller.signal, report: async result => {
         const reply = await ingest({ action: 'report', runId: job.runId, result });
         if (reply.rejected?.length || reply.accepted !== result.listings.length) throw Error('SS.ge report rejected');
-        console.log(JSON.stringify({ service: 'ssge-agent', event: 'ingested', runId: job.runId, status: result.status, accepted: reply.accepted, pagesVisited: result.metrics.pagesVisited }));
+        console.log(JSON.stringify({ service: 'ssge-agent', event: 'ingested', runId: job.runId, status: result.status, accepted: reply.accepted, pagesVisited: result.metrics.pagesVisited, ...(result.errors.length ? { notes: result.errors } : {}) }));
       } });
     } catch { lastError = 'SSGE_RUN_FAILED'; }
     finally { clearInterval(heartbeat); active--; }

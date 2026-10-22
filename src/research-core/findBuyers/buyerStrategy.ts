@@ -22,12 +22,12 @@
 // Learning is bounded: query performance (find_buyers_query_stats) can only
 // re-order and retire queries proven useless, never invent new intent.
 
-import { FAMILY_NOUN, propertyFamily } from './propertyFamily.ts';
+import { FAMILY_BUY, FAMILY_RENT, FAMILY_NOUN, propertyFamily, propertyNoun, subtypeDef } from './propertyFamily.ts';
 import { SEARCH_LANGUAGES, type SearchLanguage } from './languages.ts';
 import { DISTRICT_NAMES, NEARBY_DISTRICTS, AREA_PARENT, placeNamesFor, normKey } from './places.ts';
 import type { PropertyDna } from './propertyDna.ts';
 
-export const STRATEGY_VERSION = 'fb-strategy-2';
+export const STRATEGY_VERSION = 'fb-strategy-3';
 
 export type Segment = 'PREMIUM' | 'MIDDLE' | 'ECONOMY' | 'UNKNOWN';
 export type PersonaKey = 'LOCAL_FAMILY' | 'UPGRADER' | 'RELOCATING' | 'INVESTOR' | 'DIASPORA' | 'FIRST_TIME' | 'LUXURY' | 'STUDENT_TENANT' | 'EXPAT_TENANT' | 'FAMILY_TENANT';
@@ -40,10 +40,19 @@ export interface Persona {
   weight: number;
 }
 
+/**
+ * Search tier (owner, 2026-10-18), highest value first: EXACT (subtype + the property's own
+ * place), SEMANTIC (natural request at city level), NEAR (a neighbouring area), SIZE (the
+ * stated size, commercial and land), INVESTOR (only where the property supports it). A tier is
+ * a retrieval heuristic — it never makes a lead compatible; qualification decides that.
+ */
+export type SearchTier = 'EXACT' | 'SEMANTIC' | 'NEAR' | 'SIZE' | 'INVESTOR';
+
 export interface StrategyQuery {
   language: SearchLanguage;
   persona: PersonaKey | 'PLACE';
   query: string;
+  tier?: SearchTier;
 }
 
 export interface Depth {
@@ -172,30 +181,6 @@ const RENT: Record<SearchLanguage, Partial<Record<PersonaKey | 'PLACE', Q[]>>> =
   tr: { PLACE: [({ city }) => `${city} kiralık daire arıyorum`] },
 };
 
-/*
- * Not an apartment: a house, land, commercial space or a parking place. Apartment
- * phrasings ("ვყიდულობ ბინას", "куплю квартиру") found apartment seekers for a land
- * plot. These carry the same explicit purchase / rental verbs with the family's own
- * noun (FAMILY_NOUN), two per language.
- */
-type FQ = (v: { noun: string; place: string; city: string }) => string;
-const FAMILY_BUY: Record<SearchLanguage, FQ[]> = {
-  ka: [({ noun, place }) => `ვყიდულობ ${noun} ${place}`, ({ noun, city }) => `ვიყიდი ${noun} ${city}`],
-  ru: [({ noun, place }) => `куплю ${noun} ${place}`, ({ noun, city }) => `хочу купить ${noun} в ${city}`],
-  en: [({ noun, place }) => `looking to buy a ${noun} in ${place}`, ({ noun, city }) => `want to buy ${noun} ${city}`],
-  ar: [({ noun, city }) => `أبحث عن ${noun} للشراء في ${city}`, ({ noun, city }) => `أريد شراء ${noun} في ${city}`],
-  he: [({ noun, city }) => `מחפש ${noun} לקנייה ב${city}`, ({ noun, city }) => `רוצה לקנות ${noun} ב${city}`],
-  tr: [({ noun, city }) => `${city} ${noun} almak istiyorum`, ({ noun, city }) => `${city} ${noun} satın almak istiyorum`],
-};
-const FAMILY_RENT: Record<SearchLanguage, FQ[]> = {
-  ka: [({ noun, place }) => `ვიქირავებ ${noun} ${place}`, ({ noun, city }) => `ვეძებ ${noun} ქირით ${city}`],
-  ru: [({ noun, place }) => `сниму ${noun} ${place}`, ({ noun, city }) => `ищу ${noun} в аренду ${city}`],
-  en: [({ noun, place }) => `looking to rent a ${noun} in ${place}`, ({ noun, city }) => `want to rent a ${noun} in ${city}`],
-  ar: [({ noun, city }) => `أبحث عن ${noun} للإيجار في ${city}`, ({ noun, city }) => `أريد استئجار ${noun} في ${city}`],
-  he: [({ noun, city }) => `מחפש ${noun} להשכרה ב${city}`, ({ noun, city }) => `רוצה לשכור ${noun} ב${city}`],
-  tr: [({ noun, city }) => `${city} ${noun} kiralamak istiyorum`, ({ noun, city }) => `${city} ${noun} kiralamak için arıyorum`],
-};
-
 const ROOMS: Record<SearchLanguage, (rooms: number | null, beds: number | null) => { rooms: string; beds: string }> = {
   ka: (r) => ({ rooms: r ? `${r} ოთახიან ბინას` : 'ბინას', beds: r ? `${r} ოთახიანი ბინა` : 'ბინა' }),
   ru: (r) => ({ rooms: r ? `${r}-комнатную квартиру` : 'квартиру', beds: r ? `${r}-комнатная квартира` : 'квартира' }),
@@ -203,6 +188,16 @@ const ROOMS: Record<SearchLanguage, (rooms: number | null, beds: number | null) 
   ar: () => ({ rooms: 'شقة', beds: 'شقة' }),
   he: () => ({ rooms: 'דירה', beds: 'דירה' }),
   tr: (r) => ({ rooms: r ? `${Math.max(1, r - 1)}+1 daire` : 'daire', beds: r ? `${Math.max(1, r - 1)}+1 daire` : 'daire' }),
+};
+
+/** A stated size the way a request writes it ("300 კვ.მ", "300 м²"). */
+const AREA_WORD: Record<SearchLanguage, (m2: number) => string> = {
+  ka: (m) => `${m} კვ.მ`, ru: (m) => `${m} м²`, en: (m) => `${m} m2`, ar: (m) => `${m} م2`, he: (m) => `${m} מ"ר`, tr: (m) => `${m} m2`,
+};
+/* An investor buying commercial space or land: only ru/en, where such requests are written. */
+const INVESTOR_FAMILY: Partial<Record<SearchLanguage, (v: { noun: string; city: string }) => string>> = {
+  ru: ({ noun, city }) => `куплю ${noun} под инвестиции ${city}`,
+  en: ({ noun, city }) => `looking to buy ${noun} in ${city} as an investment`,
 };
 
 function budgetWords(lang: SearchLanguage, band: BuyerStrategy['budgetBand'], tx: 'SALE' | 'RENT'): string {
@@ -262,28 +257,41 @@ export function buildBuyerStrategy(input: StrategyInput): BuyerStrategy {
     const r = ROOMS[lang](rooms, dna.bedrooms);
     const v = { place, city, rooms: r.rooms, beds: r.beds, budget: budgetWords(lang, band, dna.transaction) };
     const out: string[] = [];
-    const push = (persona: StrategyQuery['persona'], f: Q) => {
+    const push = (persona: StrategyQuery['persona'], f: Q, tier: SearchTier) => {
       const q = f(v).replace(/\s+/g, ' ').trim();
       const key = `${lang}|${q.toLowerCase()}`;
       if (q.length < 4 || seen.has(key) || out.length >= depth.queriesPerLanguage) return;
-      seen.add(key); out.push(q); queries.push({ language: lang, persona, query: q });
+      seen.add(key); out.push(q); queries.push({ language: lang, persona, query: q, tier });
     };
     const family = dna.family ?? propertyFamily(dna.propertyType);
+    /* A nearby area, in this language (Ortachala, Sololaki …). */
+    const near = [...areas, ...nearby].map((k) => placeNamesFor('district', k, lang)[lang === 'ka' ? placeNamesFor('district', k, lang).length - 1 : 0]).filter(Boolean);
+    const verbs = (dna.transaction === 'RENT' ? FAMILY_RENT : FAMILY_BUY)[lang];
+    const sub = subtypeDef(dna.subtype);
     if (family !== 'APARTMENT') {
-      /* A house, land, commercial space or parking: the family's own noun, never the apartment personas. */
-      const noun = FAMILY_NOUN[family][lang];
-      for (const f of (dna.transaction === 'RENT' ? FAMILY_RENT : FAMILY_BUY)[lang]) push('PLACE', () => f({ noun, place, city }));
+      /* A house, land, commercial space or parking: the subtype's (else the family's) own noun,
+         never the apartment personas, in tiers. A broader family noun only where a different
+         subtype is still the same market (house, parking) — never "commercial space" for a
+         warehouse: an office seeker is not a warehouse tenant. */
+      const noun = propertyNoun(family, dna.subtype, lang);
+      push('PLACE', () => verbs[0]({ noun, place, city }), 'EXACT');
+      push('PLACE', () => verbs[1]({ noun, place, city }), 'SEMANTIC');
+      if (near[0] && place !== city) push('PLACE', () => verbs[0]({ noun, place: near[0], city }), 'NEAR');
+      if (dna.areaSqm && (family === 'COMMERCIAL' || family === 'LAND')) push('PLACE', () => verbs[1]({ noun: `${noun} ${AREA_WORD[lang](Math.round(dna.areaSqm!))}`, place, city }), 'SIZE');
+      if (sub && (family === 'HOUSE' || family === 'PARKING')) push('PLACE', () => verbs[1]({ noun: FAMILY_NOUN[family][lang], place, city }), 'SEMANTIC');
+      const inv = INVESTOR_FAMILY[lang];
+      if (inv && dna.transaction === 'SALE' && (family === 'COMMERCIAL' || family === 'LAND')) push('INVESTOR', () => inv({ noun, city }), 'INVESTOR');
       continue;
     }
-    for (const f of table[lang]?.PLACE ?? []) push('PLACE', f);
+    /* A studio, penthouse or duplex is asked for by name first. */
+    if (sub) push('PLACE', () => verbs[0]({ noun: sub.noun[lang], place, city }), 'EXACT');
+    for (const f of table[lang]?.PLACE ?? []) push('PLACE', f, 'EXACT');
     for (const p of [...personas].sort((a, b) => b.weight - a.weight)) {
       if (!p.languages.includes(lang)) continue;
-      for (const f of table[lang]?.[p.key] ?? []) push(p.key, f);
+      for (const f of table[lang]?.[p.key] ?? []) push(p.key, f, p.key === 'INVESTOR' ? 'INVESTOR' : 'SEMANTIC');
     }
-    /* A nearby area, in this language, when room is left (Ortachala, Sololaki …). */
-    const near = [...areas, ...nearby].map((k) => placeNamesFor('district', k, lang)[0]).filter(Boolean);
     if (near[0] && out.length < depth.queriesPerLanguage) {
-      for (const f of (table[lang]?.PLACE ?? []).slice(0, 1)) push('PLACE', (x) => f({ ...x, place: near[0] }));
+      for (const f of (table[lang]?.PLACE ?? []).slice(0, 1)) push('PLACE', (x) => f({ ...x, place: near[0] }), 'NEAR');
     }
   }
   return {

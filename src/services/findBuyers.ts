@@ -6,14 +6,24 @@ import { parseReport, type CampaignReport } from '@/findBuyers/campaignReport';
 
 export interface FindBuyersConfig { minUsd: number; creditsPerUsd: number; minCredits: number; languages: string[] }
 
+/**
+ * A paid Find Buyers / Find Tenants campaign starts at exactly $5 (owner, 2026-10-19) — the
+ * paid discovery policy's minimum (research-core/billing/paidDiscoveryPolicy.ts,
+ * PAID_DISCOVERY_MIN_USD), which match-campaign enforces. Mirrored here so the offer never
+ * waits on a settings row; a matrix test keeps the two equal.
+ */
+export const FIND_BUYERS_MIN_USD = 5;
+
 export async function getFindBuyersConfig(): Promise<FindBuyersConfig | null> {
   const { data, error } = await supabase.rpc('find_buyers_public_config');
   if (error || !data || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;
+  const rate = Number(d.creditsPerUsd ?? 10) > 0 ? Number(d.creditsPerUsd ?? 10) : 10;
   return {
-    minUsd: Number(d.minUsd ?? 10),
-    creditsPerUsd: Number(d.creditsPerUsd ?? 10),
-    minCredits: Number(d.minCredits ?? 100),
+    minUsd: FIND_BUYERS_MIN_USD,
+    creditsPerUsd: rate,
+    /* The server's refusal (BELOW_CAMPAIGN_MINIMUM, minBudgetCredits) stays authoritative. */
+    minCredits: Math.ceil(FIND_BUYERS_MIN_USD * rate),
     languages: Array.isArray(d.languages) ? (d.languages as string[]) : ['ka', 'ru', 'en', 'ar', 'he', 'tr'],
   };
 }

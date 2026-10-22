@@ -1,5 +1,17 @@
 /*
- * PAID EXTERNAL DISCOVERY — THE ONE PRICING POLICY (owner decision, 2026-10-16).
+ * PAID EXTERNAL DISCOVERY — PRICING POLICIES.
+ *
+ * CURRENT (owner, Finance V2, 2026-10-19): paid_discovery_37_63_vat_v2. The customer
+ * price P is VAT-inclusive (Georgian VAT 18%, fixed in the policy id). VAT is taken
+ * out first; the VAT-exclusive revenue N = P / 1.18 is split 37% HOMATCH / 63%
+ * execution, and every directly attributable provider and AI cost is paid from the
+ * execution share:
+ *
+ *   execution budget = 63% of N = P × 6300 / 11800   ($10 → $5.338983, $5 → $2.669491)
+ *   charge for spend = spend × 11800 / 6300, capped at P (spend × 1.873…)
+ *
+ * HISTORICAL: paid_discovery_37_63_v1 (2026-10-16) — the split below on the gross P.
+ * A campaign keeps the policy it was stamped with at start; nothing is re-priced.
  *
  * Every paid discovery campaign (Find Buyers/Tenants, Find Property external
  * discovery) splits its customer price P the same way:
@@ -22,6 +34,23 @@
  */
 
 export const PAID_DISCOVERY_POLICY_ID = 'paid_discovery_37_63_v1';
+/** VAT-first policy for campaigns started from Finance V2 on. 18% is part of the id: a new rate is a new policy. */
+export const PAID_DISCOVERY_VAT_POLICY_ID = 'paid_discovery_37_63_vat_v2';
+export const PAID_DISCOVERY_VAT_BPS = 1800;
+/** The policy a NEW campaign is stamped with. */
+export const PAID_DISCOVERY_CURRENT_POLICY = PAID_DISCOVERY_VAT_POLICY_ID;
+export type PaidDiscoveryPolicyId = typeof PAID_DISCOVERY_POLICY_ID | typeof PAID_DISCOVERY_VAT_POLICY_ID;
+export const PAID_DISCOVERY_POLICIES: readonly PaidDiscoveryPolicyId[] = [PAID_DISCOVERY_POLICY_ID, PAID_DISCOVERY_VAT_POLICY_ID];
+/** True for a campaign under either paid discovery policy (the commercial campaign checks). */
+export function isPaidDiscoveryPolicy(policy: unknown): policy is PaidDiscoveryPolicyId {
+  return policy === PAID_DISCOVERY_POLICY_ID || policy === PAID_DISCOVERY_VAT_POLICY_ID;
+}
+/** Execution share of the GROSS price as a fraction numerator/denominator: v1 6300/10000, v2 6300/11800. */
+function executionShare(policy: PaidDiscoveryPolicyId): { num: number; den: number } {
+  return policy === PAID_DISCOVERY_VAT_POLICY_ID
+    ? { num: PAID_DISCOVERY_PROVIDER_BPS, den: 10_000 + PAID_DISCOVERY_VAT_BPS }
+    : { num: PAID_DISCOVERY_PROVIDER_BPS, den: 10_000 };
+}
 export const PAID_DISCOVERY_PROVIDER_BPS = 6300;
 export const PAID_DISCOVERY_HOMATCH_BPS = 10_000 - PAID_DISCOVERY_PROVIDER_BPS; // 3700
 /** $5 / 50 credits at 10 credits = $1. */
@@ -48,8 +77,12 @@ export function centsToCredits(cents: number, creditsPerUsd: number): number {
 }
 
 export interface CampaignAllocation {
-  policy: typeof PAID_DISCOVERY_POLICY_ID;
+  policy: PaidDiscoveryPolicyId;
   priceMicros: number;
+  /** Output VAT inside P (0 under v1, where VAT was not part of the split). */
+  vatMicros: number;
+  /** VAT-exclusive revenue N (= P under v1). */
+  netMicros: number;
   providerBudgetMicros: number;
   homatchMarginMicros: number;
   priceCents: number;
@@ -57,29 +90,43 @@ export interface CampaignAllocation {
   homatchMarginCents: number;
 }
 
-/** Split a price P (micro-USD) into the provider budget (floor of 63%) and HOMATCH's 37% (the remainder). */
-export function allocatePriceMicros(priceMicros: number): CampaignAllocation {
+/**
+ * Split a price P (micro-USD). v1: provider budget = floor(63% of P), HOMATCH the rest.
+ * v2: VAT = P − floor(P / 1.18 rounded half up), execution = floor(P × 6300 / 11800),
+ * HOMATCH = N − execution. Integer µ$ throughout (the SQL twin is identical).
+ */
+export function allocatePriceMicros(priceMicros: number, policy: PaidDiscoveryPolicyId = PAID_DISCOVERY_POLICY_ID): CampaignAllocation {
   const p = Math.floor(wholeNonNegative(priceMicros, 'priceMicros'));
-  const providerBudgetMicros = Math.floor((p * PAID_DISCOVERY_PROVIDER_BPS) / 10_000);
-  const homatchMarginMicros = p - providerBudgetMicros;
+  const share = executionShare(policy);
+  const providerBudgetMicros = Math.floor((p * share.num) / share.den);
+  const netMicros = policy === PAID_DISCOVERY_VAT_POLICY_ID ? Math.round((p * 10_000) / (10_000 + PAID_DISCOVERY_VAT_BPS)) : p;
+  const homatchMarginMicros = netMicros - providerBudgetMicros;
   return {
-    policy: PAID_DISCOVERY_POLICY_ID,
+    policy,
     priceMicros: p,
+    vatMicros: p - netMicros,
+    netMicros,
     providerBudgetMicros,
     homatchMarginMicros,
     priceCents: Math.floor(p / MICROS_PER_CENT),
     providerBudgetCents: Math.floor(providerBudgetMicros / MICROS_PER_CENT),
-    homatchMarginCents: Math.floor(p / MICROS_PER_CENT) - Math.floor(providerBudgetMicros / MICROS_PER_CENT),
+    homatchMarginCents: Math.floor(netMicros / MICROS_PER_CENT) - Math.floor(providerBudgetMicros / MICROS_PER_CENT),
   };
 }
 
 /** Same split, from the credits the customer authorises. */
-export function allocateCampaign(credits: number, creditsPerUsd: number): CampaignAllocation {
-  return allocatePriceMicros(creditsToMicros(credits, creditsPerUsd));
+export function allocateCampaign(credits: number, creditsPerUsd: number, policy: PaidDiscoveryPolicyId = PAID_DISCOVERY_POLICY_ID): CampaignAllocation {
+  return allocatePriceMicros(creditsToMicros(credits, creditsPerUsd), policy);
+}
+
+/** Gross micro-USD that pays for `spendMicros` of execution under a policy, rounded up. */
+function grossForSpendMicros(spendMicros: number, policy: PaidDiscoveryPolicyId): number {
+  const share = executionShare(policy);
+  return Math.ceil((spendMicros * share.den) / share.num);
 }
 
 export interface SpendCharge {
-  policy: typeof PAID_DISCOVERY_POLICY_ID;
+  policy: PaidDiscoveryPolicyId;
   /** Provider spend actually consumed, capped at the campaign's provider budget. */
   spendMicros: number;
   chargeCents: number;
@@ -94,21 +141,23 @@ export interface SpendCharge {
  * rounded UP to the cent (never undercharging a fraction of a cent of COGS),
  * capped at the authorised price, with everything else released.
  */
-export function chargeForSpend(spendMicros: number, authorisedCredits: number, creditsPerUsd: number): SpendCharge {
+export function chargeForSpend(spendMicros: number, authorisedCredits: number, creditsPerUsd: number, policy: PaidDiscoveryPolicyId = PAID_DISCOVERY_POLICY_ID): SpendCharge {
   const spend = Math.ceil(wholeNonNegative(spendMicros, 'spendMicros'));
-  const allocation = allocateCampaign(authorisedCredits, creditsPerUsd);
-  const grossMicros = Math.ceil((spend * 10_000) / PAID_DISCOVERY_PROVIDER_BPS);
+  const allocation = allocateCampaign(authorisedCredits, creditsPerUsd, policy);
+  const grossMicros = grossForSpendMicros(spend, policy);
   const uncappedCents = Math.ceil(grossMicros / MICROS_PER_CENT);
   const capCents = allocation.priceCents;
   const chargeCents = Math.min(uncappedCents, capCents);
   const chargeCredits = Math.min(authorisedCredits, centsToCredits(chargeCents, creditsPerUsd));
   const spendCents = Math.ceil(Math.min(spend, allocation.providerBudgetMicros) / MICROS_PER_CENT);
   return {
-    policy: PAID_DISCOVERY_POLICY_ID,
+    policy,
     spendMicros: Math.min(spend, allocation.providerBudgetMicros),
     chargeCents,
     chargeCredits,
-    homatchMarginCents: Math.max(0, chargeCents - spendCents),
+    /* v2: the VAT inside the charge is not HOMATCH's; margin = net charge − spend. */
+    homatchMarginCents: Math.max(0, (policy === PAID_DISCOVERY_VAT_POLICY_ID
+      ? Math.round((chargeCents * 10_000) / (10_000 + PAID_DISCOVERY_VAT_BPS)) : chargeCents) - spendCents),
     releasedCredits: Math.max(0, Math.round((authorisedCredits - chargeCredits) * 100) / 100),
     capped: uncappedCents > capCents,
   };
@@ -119,9 +168,9 @@ export function chargeForSpend(spendMicros: number, authorisedCredits: number, c
  * NO cap: the caller's wallet_settle clamps to the reservation and any Expand
  * Research extensions carry the rest, so the cap lives in one place (the wallet).
  */
-export function creditsForSpend(spendMicros: number, creditsPerUsd: number): number {
+export function creditsForSpend(spendMicros: number, creditsPerUsd: number, policy: PaidDiscoveryPolicyId = PAID_DISCOVERY_POLICY_ID): number {
   const spend = Math.ceil(wholeNonNegative(spendMicros, 'spendMicros'));
-  const cents = Math.ceil(Math.ceil((spend * 10_000) / PAID_DISCOVERY_PROVIDER_BPS) / MICROS_PER_CENT);
+  const cents = Math.ceil(grossForSpendMicros(spend, policy) / MICROS_PER_CENT);
   return centsToCredits(cents, creditsPerUsd);
 }
 

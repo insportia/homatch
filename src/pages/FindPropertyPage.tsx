@@ -1054,7 +1054,7 @@ export default function FindPropertyPage() {
   return (
     <RouteGuard>
       <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
-        <MarketplaceSearchExperience deepSearchAvailable={caps.deepSearchAvailable && deepVisible} activeSources={caps.activeSources} sourceNames={caps.sources ?? []} />
+        <MarketplaceSearchExperience deepSearchAvailable={caps.deepSearchAvailable && deepVisible} deepOffered={caps.deepSearchAvailable && deepVisible} activeSources={caps.activeSources} sourceNames={caps.sources ?? []} />
       </AppLayout>
     </RouteGuard>
   );

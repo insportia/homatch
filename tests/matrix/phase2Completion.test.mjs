@@ -107,7 +107,7 @@ test('boundaries: Verify, Meta Ads, Design Studio and shared billing are not tou
     'settlement imports only the ExecutionGrant type from billing.ts');
 });
 
-test('revalidation: re-read through the adapter, never a whole-page hash; the text fingerprint is never overwritten; no schedule', () => {
+test('revalidation: re-read through the adapter, never a whole-page hash; the text fingerprint is never overwritten; one bounded hourly schedule', () => {
   const rv = code('supabase/functions/revalidate-supply/index.ts');
   assert.doesNotMatch(rv, /contentHash\(/);
   assert.doesNotMatch(rv, /update\.content_fingerprint\s*=/);
@@ -117,7 +117,13 @@ test('revalidation: re-read through the adapter, never a whole-page hash; the te
   assert.match(rv, /priceHistory/);
   const scheduled = readdirSync(join(root, 'supabase/migrations'))
     .filter((f) => /cron\.schedule[\s\S]{0,400}revalidate-supply/.test(read(`supabase/migrations/${f}`)));
-  assert.deepEqual(scheduled, [], 'no cron runs revalidate-supply: design first, schedule later');
+  /* Scheduled by the owner's inventory workstream (2026-10-19): once, hourly, at most 25 re-reads,
+     and never for worker-only portals (no portal reader exists for them). */
+  assert.deepEqual(scheduled, ['20261119100100_property_inventory_backfill.sql'], 'exactly one migration schedules revalidate-supply');
+  const migration = read('supabase/migrations/20261119100100_property_inventory_backfill.sql');
+  assert.match(migration, /cron\.schedule\('homatch-revalidate-supply', '41 \* \* \* \*'/);
+  assert.match(migration, /"limit":25/);
+  assert.match(rv, /WORKER_ONLY_SOURCES/);
 });
 
 test('backfill: deterministic, $0, cursor-paged, idempotent, dry-run capable — and returns before any model call', () => {

@@ -203,6 +203,11 @@ export default {
                         opacity: '1',
                         transform: 'translateX(0)'
                     }
+                },
+                /* Find Buyers 2.0 "Find Internal Matches": a slow light sweep across the CTA. */
+                'fim-sweep': {
+                    '0%': { backgroundPosition: '160% 0' },
+                    '55%, 100%': { backgroundPosition: '-60% 0' }
                 }
             },
             animation: {

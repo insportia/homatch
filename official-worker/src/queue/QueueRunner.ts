@@ -33,6 +33,8 @@ export interface RunnerOptions {
   executor: Executor;
   workerId: string;
   lanes: Partial<Record<Lane, number>>;
+  /** Slots a lane may fill right now (load isolation); defaults to the lane's configured slots. */
+  slotsNow?: (lane: Lane, slots: number) => number;
   idleMinMs?: number;
   idleMaxMs?: number;
   /** Floor for the heartbeat interval (tests lower it). */
@@ -108,7 +110,7 @@ export class QueueRunner {
   private async laneLoop(lane: Lane, slots: number): Promise<void> {
     let backoff = this.o.idleMinMs;
     while (!this.stopping) {
-      const free = slots - this.inFlight(lane);
+      const free = (this.o.slotsNow ? this.o.slotsNow(lane, slots) : slots) - this.inFlight(lane);
       if (free <= 0) {
         await this.idle(250);
         continue;

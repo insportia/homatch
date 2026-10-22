@@ -25,6 +25,8 @@ function campaignDb() {
 const ctxFor = (db, stage = 'FB_GROUP_POSTS') => ({
   db, stage, runId: 'run-1', runLanguage: 'multi', datasetId: 'ds', providerRunId: 'pr', book: { model: 'gpt-4o-mini', inputPerMTokMicros: 150000, outputPerMTokMicros: 600000 },
   gate: { skipBelow: 55, eligibleFrom: 75 }, parent: null, sourceId: 'src-1', sourceYield: null, now: NOW,
+  /* These tests pin the deterministic path (the AI-first kill switch, v11); AI-first has its own test file. */
+  aiFirst: false,
   campaign: { matching_job_id: 'job-v', campaign_id: 'c', property_id: 'p-244486', user_id: 'u', transaction: 'SALE', dna },
 });
 const post = (l) => ({

@@ -36,6 +36,11 @@ const BANNED = [
   /خصم/, /فاخر/, /حصري/, /عاجل/, /הנחה/, /יוקר/, /בלעדי/, /מהרו/,
 ];
 
+/** True when the text invents urgency, discounts or luxury (shared with lead outreach drafts). */
+export function hasBannedClaim(text: string): boolean {
+  return BANNED.some((re) => re.test(text));
+}
+
 function digitsIn(text: string): string[] {
   return (text.match(/\d[\d.,\s]*\d|\d/g) ?? []).map((d) => d.replace(/[^\d]/g, '')).filter(Boolean);
 }

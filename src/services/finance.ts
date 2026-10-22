@@ -4,6 +4,7 @@ import type {
   CreditEconomics, UserEconomicsRow, BudgetRow, AlertRow, CostEventPage,
   TimeseriesPoint, MonthRow, MarginMonitor, UnpricedRow, FxStatus, ProviderRegistry,
   FixedCosts, PriceBook, LiveFeed,
+  FinanceV2Service, FinanceV2ServiceDetail, FinanceV2Execution, FinanceV2Quote,
 } from '@/types/finance';
 
 /**
@@ -96,6 +97,21 @@ export const getDesignStudioEconomics = (days = 90) =>
 
 export const getOpenAiBreakdown = (days = 30) =>
   rpc<Record<string, unknown>>('finance_openai_breakdown', { p_days: days });
+
+/* ── Finance V2: one ledger per service (gross → VAT → net → allocation → COGS → profit). ── */
+
+export const getFinanceV2Services = (from: string, to: string) =>
+  rpc<FinanceV2Service[]>('finance_v2_services', { p_from: from, p_to: to });
+
+export const getFinanceV2ServiceDetail = (service: string, from: string, to: string) =>
+  rpc<FinanceV2ServiceDetail>('finance_v2_service_detail', { p_service: service, p_from: from, p_to: to });
+
+export const getFinanceV2Execution = (service: string, executionId: string) =>
+  rpc<FinanceV2Execution>('finance_v2_execution', { p_service: service, p_execution_id: executionId });
+
+/** The server's own policy formula — the simulator never re-implements it. */
+export const getFinanceV2Quote = (policy: string, grossUsd: number, costUsd = 0) =>
+  rpc<FinanceV2Quote>('finance_v2_quote', { p_policy: policy, p_gross_usd: grossUsd, p_cost_usd: costUsd });
 
 export const getLiveFeed = (limit = 50) =>
   rpc<LiveFeed>('finance_live_feed', { p_limit: limit });
@@ -202,3 +218,39 @@ export function relativeTime(iso: string | null | undefined): string {
   if (hrs < 48) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
 }
+
+/* ── Find Property: HOMATCH's own operating cost (admin only; Find Property is free) ── */
+export type FpCompleteness = 'VERIFIED' | 'ESTIMATED' | 'PARTIAL' | 'UNKNOWN';
+export interface FpSearchRow {
+  id: string; created_at: string; status: string; properties: number | null; workers: string[]; runs: number;
+  ai_usd: number; ai_upper_usd: number; ai_calls: number; provider_usd: number; other_usd: number | null; total_usd: number;
+  completeness: FpCompleteness;
+}
+export interface FpCosts {
+  generated_at: string;
+  summary: {
+    today_usd: number; yesterday_usd: number; last7_usd: number; month_usd: number; month_upper_usd: number;
+    searches: number; searches_in_range: number; properties: number;
+    avg_per_search_usd: number | null; avg_per_property_usd: number | null;
+    most_expensive: { id: string; created_at: string; usd: number } | null;
+    run_rate_month_usd: number; unlinked_brief_usd: number; unlinked_brief_upper_usd: number; unlinked_brief_calls: number;
+    incomplete_searches: number;
+  };
+  infrastructure: { monthly_fixed_usd: number; amounts_entered: boolean; share: number | null; allocated_per_search_usd: number | null; status: FpCompleteness };
+  daily: Array<{ day: string; searches: number; properties: number; ai_usd: number; ai_upper_usd: number; provider_usd: number }>;
+  providers: Array<{ worker: string; runs: number; pages: number; listings: number; failed: number; empty: number; warm_index: number; shared: number; direct_usd: number; billing: string }>;
+  cache: { runs: number; shared_runs: number; warm_index_runs: number; pool_listings: number; hit_rate: number | null };
+  optimisation: { repeated_ai_searches: number; retries: number; failed_runs: number; empty_runs: number };
+  searches: FpSearchRow[];
+}
+export interface FpSearchCost {
+  search: { id: string; created_at: string; status: string; properties: number | null; ai_status: string; brief_cost_refs: string[] };
+  ai: Array<{ id: string; at: string; operation: string; model: string | null; input_tokens: number | null; output_tokens: number | null; units: number;
+    input_rate_per_1m: number | null; output_rate_per_1m: number | null; usd: number; upper_usd: number | null; state: string; success: boolean }>;
+  workers: Array<{ worker: string; status: string; attempts: number; returned: number; discovered: number; pages: number | null; actions: number | null;
+    bytes: number | null; duration_ms: number | null; index: string | null; shared_run_id: string | null; cached_listings: number; direct_usd: number; billing: string }>;
+}
+export const getFindPropertyCosts = (from: string, to: string) =>
+  rpc<FpCosts>('finance_find_property_costs', { p_from: from, p_to: to });
+export const getFindPropertySearchCost = (searchId: string) =>
+  rpc<FpSearchCost>('finance_find_property_search_cost', { p_search_id: searchId });

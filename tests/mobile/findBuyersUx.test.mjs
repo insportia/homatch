@@ -167,7 +167,7 @@ async function boot(t, { width = 390, height = 844, lang = 'en', status = { read
     if (url.includes('/rpc/billing_budget_offer')) return r.fulfill(json({ ok: true, offer: 'PAYG_FULL', estimate_min_credits: 17.5, estimate_max_credits: 32.5, available_balance: 99832.03, min_viable_budget_credits: 50 }));
     if (url.includes('/rpc/billing_my_budget_choices')) return r.fulfill(json({ ok: true, balance: 99832.03, min_viable: 50, allow_custom: true, recommended: 100,
       presets: [100, 250, 500, 1000].map((c) => ({ credits: c, affordable: true, viable: true, recommended: c === 100 })) }));
-    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
+    if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 5, creditsPerUsd: 10, minCredits: 50 }));
     if (url.includes('/functions/v1/match-campaign')) {
       calls.start += 1;
       /* From now on the server reports the new search as running. */
@@ -416,10 +416,15 @@ test('the newest search with zero leads is the latest: zero shown honestly, the 
   assert.deepEqual(await page.$$eval('[data-testid="fbd-previous-item"]', (els) => els.map((e) => e.getAttribute('data-job'))), ['job1']);
   assert.equal(await page.getAttribute('[data-testid="fbd-primary"]', 'data-mode'), 'start_new');
   /* No duplicate CTAs: one start action, one Edit search, one Open results. */
-  for (const id of ['fbd-primary-action', 'fbh-edit-search', 'fbd-latest-open', 'fbd-internal-view']) assert.equal(await page.locator(`[data-testid="${id}"]`).count(), 1, id);
-  for (const gone of ['fbh-new-search', 'fbd-external-start', 'fbd-expand-open', 'fbh-running', 'fbd-internal-start']) assert.equal(await page.locator(`[data-testid="${gone}"]`).count(), 0, gone);
+  /* Find Buyers 2.0: the internal matches live in their own first section (fim-*), not a dashboard card. */
+  for (const id of ['fbd-primary-action', 'fbh-edit-search', 'fbd-latest-open', 'fim-view', 'fim-start']) assert.equal(await page.locator(`[data-testid="${id}"]`).count(), 1, id);
+  for (const gone of ['fbh-new-search', 'fbd-external-start', 'fbd-expand-open', 'fbh-running', 'fbd-internal-start', 'fbd-internal-view']) assert.equal(await page.locator(`[data-testid="${gone}"]`).count(), 0, gone);
   const main = await page.textContent('main');
-  assert.doesNotMatch(main, /\bfree\b|Paid research|External Discovery|\bBuyers\b/i);
+  /* Find Buyers 2.0 (owner, 2026-10-18) states the billing difference on purpose: internal matching is
+     FREE, external discovery is a paid campaign. Still no "Buyers found" overclaim, no "Paid research". */
+  assert.doesNotMatch(main, /Paid research|\bBuyers\b/);
+  assert.match(main, /Free search/i);
+  assert.match(main, /Paid campaign/i);
   await shot(page, 'recovery-dashboard-zero-390-en.png');
   /* Open results: THAT search, with zero leads, never the older one's. */
   await page.click('[data-testid="fbd-latest-open"]');
@@ -580,7 +585,9 @@ test('dashboard in all six languages at 360px: no raw keys, no ellipsis, no over
     for (const f of await fitFailures(page, DASH_ACTIONS)) failures.push(`${lang}: ${f}`);
     const text = await page.textContent('main');
     if (/fb[a-z]*_[a-z_]+|undefined|NaN/.test(text)) failures.push(`${lang}: raw key / undefined / NaN`);
-    if (lang === 'ka' && /მყიდველ|უფასო|ფასიანი/.test(text)) failures.push('ka: buyers / free / paid wording');
+    /* Find Buyers 2.0: free internal search vs paid external campaign is now stated on the page (owner, 2026-10-18);
+       the overclaim ("buyers found", "confirmed buyer") stays forbidden in tests/matrix/resultLanguage.test.mjs. */
+    if (lang === 'ka' && /მყიდველ(ი|ები) (მოიძებნა|ვიპოვეთ)|დადასტურებული მყიდველ/.test(text)) failures.push('ka: buyers-found overclaim');
     if (['ar', 'he'].includes(lang) && (await page.getAttribute('html', 'dir')) !== 'rtl') failures.push(`${lang}: not RTL`);
     await page.context().close();
   }

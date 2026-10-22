@@ -6,22 +6,32 @@
 // presentation: every backend boundary refuses on its own
 // (supabase/functions/_shared/serviceControl.ts).
 //
-// TWO DEFAULTS, matching the server's two fail modes:
+// THREE DEFAULTS, matching the server's fail modes:
 //   * PAUSED_BY_DEFAULT (the original six): HIDDEN UNTIL PROVEN VISIBLE. Before the first
 //     answer, and whenever it cannot be read, they count as hidden.
+//   * PAID_CLOSED_BY_DEFAULT (paid Deep Search, paused 2026-10-18): hidden until an answer
+//     says ON, and never taken from this browser's memory — a stale or failed read never
+//     shows a price or a paid start.
 //   * LIVE_BY_DEFAULT (every other product): visible unless an answer says OFF, so an
 //     unreadable control never makes Verify or Find Property disappear. The store seeds
 //     them from the last answer this browser saw (see index.ts), so a paused one does not
 //     flash in before the first answer arrives.
+//
+// HIDDEN_UNTIL_ANSWERED is a presentation rule only (the backend fail mode above is
+// unchanged): the Brokers directory and the Broker desk are not shown — in a menu, a
+// card or at their address — until THIS page load has read the switches. Neither a
+// remembered answer nor an unreadable one brings them back (owner, 2026-10-18).
 
 export const PAUSED_BY_DEFAULT = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'] as const;
 export const LIVE_BY_DEFAULT = [
-  'find_property', 'find_property_deep', 'find_buyers',
+  'find_property', 'find_buyers',
   'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
   'meta_ads', 'email_campaigns', 'ai_assistant',
   'brokers_directory', 'broker_desk', 'developers',
 ] as const;
-export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT] as const;
+export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep'] as const;
+export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT] as const;
+export const HIDDEN_UNTIL_ANSWERED = ['brokers_directory', 'broker_desk'] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];
 export interface ServiceVisibility { frontend: boolean; backend: boolean }
 export type ServiceSnapshot = { loaded: boolean; services: Record<ServiceKey, ServiceVisibility> };
@@ -29,12 +39,15 @@ export type ServiceSnapshot = { loaded: boolean; services: Record<ServiceKey, Se
 const OFF: ServiceVisibility = { frontend: false, backend: false };
 const ON: ServiceVisibility = { frontend: true, backend: true };
 const LIVE = new Set<string>(LIVE_BY_DEFAULT);
+const UNTIL_ANSWERED = new Set<string>(HIDDEN_UNTIL_ANSWERED);
 export const isLiveByDefault = (k: ServiceKey) => LIVE.has(k);
+/** May this service's page render before the switches are read? */
+export const shownBeforeAnswer = (k: ServiceKey) => LIVE.has(k) && !UNTIL_ANSWERED.has(k);
 
-/** Before any answer: the six hidden, every live product shown. */
+/** Before any answer: the six and the two broker services hidden, every other live product shown. */
 export const HIDDEN_SNAPSHOT: ServiceSnapshot = {
   loaded: false,
-  services: Object.fromEntries(SERVICE_KEYS.map((k) => [k, LIVE.has(k) ? ON : OFF])) as Record<ServiceKey, ServiceVisibility>,
+  services: Object.fromEntries(SERVICE_KEYS.map((k) => [k, shownBeforeAnswer(k) ? ON : OFF])) as Record<ServiceKey, ServiceVisibility>,
 };
 
 export const isServiceKey = (v: unknown): v is ServiceKey => typeof v === 'string' && (SERVICE_KEYS as readonly string[]).includes(v);
@@ -43,6 +56,8 @@ export const isServiceKey = (v: unknown): v is ServiceKey => typeof v === 'strin
 export function toSnapshot(rows: unknown): ServiceSnapshot {
   const services = { ...HIDDEN_SNAPSHOT.services };
   if (Array.isArray(rows)) {
+    // A real answer: a broker service without a row is live, like every live product.
+    for (const k of HIDDEN_UNTIL_ANSWERED) services[k] = ON;
     for (const r of rows as Array<Record<string, unknown>>) {
       if (!isServiceKey(r?.service_key)) continue;
       const backend = r.backend_enabled === true;
@@ -58,17 +73,18 @@ export function toSnapshot(rows: unknown): ServiceSnapshot {
 
 /** The live products' part of a snapshot, as remembered between visits. */
 export function liveVisibility(snapshot: ServiceSnapshot): Record<string, boolean> {
-  return Object.fromEntries(LIVE_BY_DEFAULT.map((k) => [k, snapshot.services[k].frontend]));
+  return Object.fromEntries(LIVE_BY_DEFAULT.filter(shownBeforeAnswer).map((k) => [k, snapshot.services[k].frontend]));
 }
 
 /**
  * The starting snapshot: the defaults, with the live products as this browser last saw
- * them. The six are never taken from memory: they stay hidden until a fresh answer.
+ * them. The six and the two broker services are never taken from memory: they stay
+ * hidden until a fresh answer.
  */
 export function initialSnapshot(remembered: unknown): ServiceSnapshot {
   const services = { ...HIDDEN_SNAPSHOT.services };
   if (remembered && typeof remembered === 'object') {
-    for (const k of LIVE_BY_DEFAULT) {
+    for (const k of LIVE_BY_DEFAULT.filter(shownBeforeAnswer)) {
       const v = (remembered as Record<string, unknown>)[k];
       if (v === false) services[k] = OFF;
     }
@@ -104,6 +120,7 @@ export function createServiceControlStore(fetcher: Fetcher, opts: {
   const emit = () => listeners.forEach((l) => l());
   // An unreadable answer: the six go (or stay) hidden; a live product keeps what was last
   // known about it, so an outage neither hides it nor brings back one the owner paused.
+  // The two broker services start hidden, so before a fresh answer they stay hidden.
   const unreadable = (): ServiceSnapshot => ({
     loaded: true,
     services: { ...snapshot.services, ...Object.fromEntries(PAUSED_BY_DEFAULT.map((k) => [k, OFF])) } as Record<ServiceKey, ServiceVisibility>,

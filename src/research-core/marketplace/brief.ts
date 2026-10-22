@@ -548,3 +548,66 @@ export function toSearchPlanDraft(brief: SearchIntelligenceBrief): Record<string
     originalLanguage: brief.userLanguage,
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Demand extras (Find Buyers 2.0, owner 2026-10-18)                   *
+ * ------------------------------------------------------------------ */
+
+/**
+ * What a Marketplace Search states beyond the SearchPlan vocabulary, for the demand
+ * profile Find Buyers matches against: rooms (the matcher compares rooms only with a
+ * listing's own room count) and the stated features. Only values the customer stated or
+ * confirmed; an unstated value is absent, never a default. A price stated in another
+ * currency was not converted (priceCurrencyStated) — its currency is kept so the
+ * profile says "budget stated in GEL, amount unknown" instead of inventing one.
+ */
+export interface DemandExtras {
+  roomsMin: number | null;
+  roomsMax: number | null;
+  requirements: Record<string, unknown>;
+}
+
+export function demandExtrasFromBrief(brief: SearchIntelligenceBrief): DemandExtras {
+  const rooms = confirmedValue(brief.rooms);
+  const req: Record<string, unknown> = {};
+  const put = (k: string, v: unknown) => {
+    if (v == null) return;
+    if (Array.isArray(v) && !v.length) return;
+    req[k] = v;
+  };
+  const bathrooms = confirmedValue(brief.bathrooms);
+  put('bathroomsMin', bathrooms?.min ?? null);
+  put('buildingStatuses', (confirmedValue(brief.buildingStatuses) ?? []).filter((b) => b !== 'ANY'));
+  put('renovation', (confirmedValue(brief.renovationPreferences) ?? []).filter((r) => r !== 'ANY'));
+  put('furnished', confirmedValue(brief.furnished));
+  put('parking', confirmedValue(brief.parking));
+  put('mustHave', brief.mustHave);
+  put('niceToHave', brief.niceToHave);
+  put('exclusions', brief.exclusions);
+  put('floorPreferences', brief.floorPreferences);
+  put('floorRange', brief.floorRange ?? null);
+  put('maxBuildingAge', brief.maxBuildingAge ?? null);
+  put('nearby', brief.locationPreferences);
+  const droppedCurrency = brief.dropped.find((d) => d.key === 'mps_dropped_currency')?.value ?? null;
+  put('statedCurrencyUnconverted', droppedCurrency);
+  return { roomsMin: rooms?.min ?? null, roomsMax: rooms?.max ?? null, requirements: req };
+}
+
+/**
+ * One fingerprint per distinct demand: the same person repeating the same search
+ * refreshes their profile instead of adding another (seekerIntent.ts). Built from the
+ * confirmed criteria only — wording, language and order do not make a new demand.
+ */
+export function demandFingerprint(brief: SearchIntelligenceBrief): string {
+  const norm = (v: unknown): unknown => (Array.isArray(v)
+    ? [...v].map((x) => String(x).normalize('NFKC').toLowerCase().trim()).sort()
+    : typeof v === 'string' ? v.normalize('NFKC').toLowerCase().trim() : v ?? null);
+  const draft = toSearchPlanDraft(brief);
+  const extras = demandExtrasFromBrief(brief);
+  return JSON.stringify([
+    norm(draft.goal), norm(draft.countryCode), norm(draft.city), norm(draft.districts), norm(draft.propertyTypes),
+    draft.budgetMin ?? null, draft.budgetMax ?? null, draft.bedroomsMin ?? null, draft.bedroomsMax ?? null,
+    draft.areaMin ?? null, draft.areaMax ?? null, extras.roomsMin, extras.roomsMax,
+    Object.keys(extras.requirements).sort().map((k) => [k, norm(extras.requirements[k] as unknown)]),
+  ]);
+}

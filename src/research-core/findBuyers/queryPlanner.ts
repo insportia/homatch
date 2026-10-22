@@ -10,14 +10,15 @@
 // optional OpenAI enrichment (mergeModelQueries) may add native phrasings,
 // which are deduplicated and capped exactly like the templates.
 
-import { FAMILY_NOUN, propertyFamily } from './propertyFamily.ts';
+import { FAMILY_BUY, FAMILY_MARKET, FAMILY_RENT, REAL_ESTATE_IN, propertyFamily, propertyNom, propertyNoun } from './propertyFamily.ts';
 import { SEARCH_LANGUAGES, type SearchLanguage } from './languages.ts';
 import { placeNamesFor } from './places.ts';
 import type { PropertyDna } from './propertyDna.ts';
-import type { BuyerStrategy } from './buyerStrategy.ts';
+import type { BuyerStrategy, SearchTier } from './buyerStrategy.ts';
 
-/* fb-qp-2: property-specific strategy queries; cached generic phrasings of fb-qp-1 are not reused. */
-export const QUERY_PLAN_VERSION = 'fb-qp-3';
+/* fb-qp-2: property-specific strategy queries; cached generic phrasings of fb-qp-1 are not reused.
+   fb-qp-4: subtype-aware model phrasings with a tier; fb-qp-3 cached phrasings are not reused. */
+export const QUERY_PLAN_VERSION = 'fb-qp-4';
 
 /** listing: how a comparable property is ADVERTISED ("for sale: 3-room flat in X"), used to
     find competitor / agency / developer listing posts whose comments hold the buyers. */
@@ -31,6 +32,8 @@ export interface PlannedQuery {
   kind: QueryKind;
   family: QueryFamily;
   query: string;
+  /** Demand queries: the strategy's search tier (buyerStrategy.ts), kept as provenance. */
+  tier?: SearchTier;
 }
 
 export interface QueryPlan {
@@ -192,6 +195,17 @@ const LISTING: Record<SearchLanguage, { sale: T[]; rent: T[] }> = {
   tr: { sale: [({ place }) => `${place} satılık daire`], rent: [({ place }) => `${place} kiralık daire`] },
 };
 
+/** A non-apartment listing headline ("იყიდება საწყობი საბურთალოზე", "сдается склад Сабуртало"). */
+type FL = (p: { nom: string; place: string }) => string;
+const FAMILY_LISTING: Record<SearchLanguage, { sale: FL[]; rent: FL[] }> = {
+  ka: { sale: [({ nom, place }) => `იყიდება ${nom} ${place}`], rent: [({ nom, place }) => `ქირავდება ${nom} ${place}`] },
+  ru: { sale: [({ nom, place }) => `продается ${nom} ${place}`], rent: [({ nom, place }) => `сдается ${nom} ${place}`] },
+  en: { sale: [({ nom, place }) => `${nom} for sale ${place}`], rent: [({ nom, place }) => `${nom} for rent ${place}`] },
+  ar: { sale: [({ nom, place }) => `${nom} للبيع ${place}`], rent: [({ nom, place }) => `${nom} للإيجار ${place}`] },
+  he: { sale: [({ nom, place }) => `${nom} למכירה ב${place}`], rent: [({ nom, place }) => `${nom} להשכרה ב${place}`] },
+  tr: { sale: [({ nom, place }) => `${place} satılık ${nom}`], rent: [({ nom, place }) => `${place} kiralık ${nom}`] },
+};
+
 export const normalizeQuery = (q: string) =>
   q.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}#\s"'-]/gu, ' ').replace(/\s+/g, ' ').trim();
 
@@ -211,7 +225,7 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
   const out: PlannedQuery[] = [];
   const seen = new Set<string>();
   const counts = new Map<string, number>();
-  const add = (language: SearchLanguage, kind: QueryKind, family: QueryFamily, query: string) => {
+  const add = (language: SearchLanguage, kind: QueryKind, family: QueryFamily, query: string, tier?: SearchTier) => {
     const norm = normalizeQuery(query);
     if (!norm || norm.length < 3) return;
     const key = `${language}|${norm}`;
@@ -219,7 +233,7 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
     if (seen.has(key) || (counts.get(ck) ?? 0) >= PER_LANGUAGE_CAPS[kind]) return;
     seen.add(key);
     counts.set(ck, (counts.get(ck) ?? 0) + 1);
-    out.push({ language, kind, family, query: query.trim() });
+    out.push({ language, kind, family, query: query.trim(), ...(tier ? { tier } : {}) });
   };
   const cityLatin = dna.city ?? '';
   for (const lang of languages) {
@@ -232,14 +246,26 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
     const place = districtNames.length ? (lang === 'ka' ? districtNames[districtNames.length - 1] : districtNames[0]) : city;
     /* Not an apartment: the family's own noun, not "ბინა" / "квартира" (2026-10-12). */
     const family = dna.family ?? propertyFamily(dna.propertyType);
-    const noun = family === 'APARTMENT' ? null : FAMILY_NOUN[family][lang];
+    const noun = family === 'APARTMENT' ? null : propertyNoun(family, dna.subtype, lang);
     const params = { city, place, type: noun ?? t.typeWord(dna.propertyType), beds: noun ?? t.beds(dna.bedrooms, dna.rooms) };
-    for (const c of t.community) add(lang, 'community', 'COMMUNITY', c({ ...params, city: cityNames[0] }));
+    /* Groups where THIS family's market gathers: apartment groups never hold warehouse tenants. */
+    if (noun) {
+      const nom = propertyNom(family, dna.subtype, lang);
+      for (const c of [`${FAMILY_MARKET[family][lang]} ${cityNames[0]}`, `${nom} ${cityNames[0]}`, REAL_ESTATE_IN[lang](cityNames[0]), FAMILY_MARKET[family][lang]]) add(lang, 'community', 'COMMUNITY', c);
+    } else for (const c of t.community) add(lang, 'community', 'COMMUNITY', c({ ...params, city: cityNames[0] }));
     const own = strategy && strategy.transaction === dna.transaction ? strategy.queries.filter((q) => q.language === lang) : [];
-    for (const q of own) add(lang, 'demand', q.persona === 'INVESTOR' ? 'INVESTMENT' : q.persona === 'RELOCATING' ? 'RELOCATING' : dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', q.query);
-    if (!own.length) for (const [family, f] of dna.transaction === 'RENT' ? t.rent : t.sale) add(lang, 'demand', family, f(params));
+    for (const q of own) add(lang, 'demand', q.persona === 'INVESTOR' ? 'INVESTMENT' : q.persona === 'RELOCATING' ? 'RELOCATING' : dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', q.query, q.tier);
+    /* No strategy phrase in this language. An apartment uses the language's own templates; any
+       other property the family templates with its own noun — the apartment templates' persona
+       lines ("ინვესტიცია ბინა", "переезжаю … квартира", "daire almak") never search for it. */
+    if (!own.length && noun) {
+      for (const f of (dna.transaction === 'RENT' ? FAMILY_RENT : FAMILY_BUY)[lang]) add(lang, 'demand', dna.transaction === 'RENT' ? 'WANT_RENT' : 'WANT_BUY', f({ noun, place, city }));
+      add(lang, 'demand', 'TYPE_IN_PLACE', `${noun} ${place}`);
+    } else if (!own.length) for (const [family, f] of dna.transaction === 'RENT' ? t.rent : t.sale) add(lang, 'demand', family, f(params));
     add(lang, 'hashtag', 'HASHTAG', t.hashtag({ cityLatin, city: cityNames[0] }));
-    for (const f of dna.transaction === 'RENT' ? LISTING[lang].rent : LISTING[lang].sale) add(lang, 'listing', 'LISTING', f(params));
+    /* Comparable listings (their comments hold the buyers): this family's own headline. */
+    if (noun) for (const f of dna.transaction === 'RENT' ? FAMILY_LISTING[lang].rent : FAMILY_LISTING[lang].sale) add(lang, 'listing', 'LISTING', f({ nom: propertyNom(family, dna.subtype, lang), place }));
+    else for (const f of dna.transaction === 'RENT' ? LISTING[lang].rent : LISTING[lang].sale) add(lang, 'listing', 'LISTING', f(params));
   }
   return { version: QUERY_PLAN_VERSION, dnaKey: dna.dnaKey, languages: [...languages], queries: out };
 }
@@ -249,7 +275,8 @@ export function buildQueryPlan(dna: PropertyDna, languages: readonly SearchLangu
  * Only demand queries, only the six languages, deduplicated against the plan,
  * and still under the per-language cap (+2 for model phrasings).
  */
-export function mergeModelQueries(plan: QueryPlan, proposed: Array<{ language?: unknown; query?: unknown }>): QueryPlan {
+const TIERS: readonly SearchTier[] = ['EXACT', 'SEMANTIC', 'NEAR', 'SIZE', 'INVESTOR'];
+export function mergeModelQueries(plan: QueryPlan, proposed: Array<{ language?: unknown; query?: unknown; tier?: unknown }>): QueryPlan {
   const seen = new Set(plan.queries.map((q) => `${q.language}|${normalizeQuery(q.query)}`));
   const extra = new Map<string, number>();
   const queries = [...plan.queries];
@@ -261,7 +288,8 @@ export function mergeModelQueries(plan: QueryPlan, proposed: Array<{ language?: 
     if (seen.has(key) || (extra.get(language) ?? 0) >= 2) continue;
     seen.add(key);
     extra.set(language, (extra.get(language) ?? 0) + 1);
-    queries.push({ language, kind: 'demand', family: 'MODEL', query });
+    const tier = TIERS.find((t) => t === String(p?.tier ?? '').toUpperCase());
+    queries.push({ language, kind: 'demand', family: 'MODEL', query, ...(tier ? { tier } : {}) });
   }
   return { ...plan, queries };
 }

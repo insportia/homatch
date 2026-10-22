@@ -56,6 +56,18 @@ export const VERDICT_TONE: Record<string, string> = {
  * one-line reading against this customer's request, and the way into the full
  * assessment. Everything else (contacts, sellers, every listing) lives there.
  */
+/** A hardFilter violation (or PRICE_<band>) → its customer label key. */
+export function missKey(code: string): string {
+  if (code.startsWith('REQUIRED_')) return 'fpv_miss_REQUIRED';
+  if (code.startsWith('EXCLUDED_')) return 'fpv_miss_EXCLUDED';
+  if (code.startsWith('FLOOR_')) return 'fpv_miss_FLOOR';
+  if (code === 'PRICE_BELOW_MIN') return 'fpv_miss_PRICE_LOW';
+  if (code === 'PRICE_UNKNOWN') return 'fpv_miss_PRICE_UNKNOWN';
+  if (code.startsWith('PRICE_')) return 'fpv_miss_PRICE_HIGH';
+  return ['DISTRICT', 'AREA', 'ROOMS', 'BEDROOMS', 'BATHROOMS', 'BUILDING_AGE', 'BUILDING_STATUS', 'RENOVATION', 'PARKING', 'FURNISHED'].includes(code)
+    ? `fpv_miss_${code}` : 'fpv_miss_REQUIRED';
+}
+
 export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, brief, searchId, transaction }: {
   p: PropertyView; t: T; onOpen: () => void; compareSelected: boolean; onToggleCompare: () => void;
   /** The customer's request; the card reads the property against it. */
@@ -80,6 +92,8 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
   const size = f.rooms !== null && f.areaSqm ? t('fpv_rooms_area', { rooms: f.rooms, area: num(f.areaSqm) })
     : f.areaSqm ? t('fpv_area_only', { area: num(f.areaSqm) }) : f.rooms !== null ? t('fpv_rooms_only', { rooms: f.rooms }) : null;
   const floor = f.floor != null ? (f.totalFloors ? t('mps_floor_of', { n: f.floor, total: f.totalFloors }) : `${t('mps_fact_floor')}: ${f.floor}`) : null;
+  /* Outside the request (group OTHER): say what differs, in the customer's words. */
+  const differs = [...new Set((p.mismatch ?? []).map(missKey))];
   return (
     <article data-property-key={p.key} data-match={p.intelligence?.strong ? 'STRONG' : assessment.verdict === 'GOOD' ? 'PARTIAL' : 'ALTERNATIVE'} data-verdict={assessment.verdict}
       className="group grid min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(12,17,25,0.04),0_10px_28px_-22px_rgba(12,17,25,0.35)] transition hover:border-[hsl(var(--gold-border))] md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
@@ -98,6 +112,10 @@ export function PropertyCard({ p, t, onOpen, compareSelected, onToggleCompare, b
             {save.saved ? <BookmarkCheck className="h-[18px] w-[18px]" aria-hidden="true" /> : <Bookmark className="h-[18px] w-[18px]" aria-hidden="true" />}
           </button>
         </div>
+        {differs.length ? <p className="flex flex-wrap items-center gap-1.5 text-xs" data-outside-request>
+          <span className="font-semibold text-foreground/80">{t('fpv_outside_label')}</span>
+          {differs.map((k) => <span key={k} className="rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.08)] px-2 py-0.5 text-[hsl(var(--gold-ink))]">{t(k)}</span>)}
+        </p> : null}
         {socialOnly ? <p className="inline-flex w-fit max-w-full items-center rounded-full border border-dashed border-[hsl(var(--gold-border))] px-2.5 py-0.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]" data-social-badge>{t('fps_social_badge')}</p> : null}
         {size || floor || f.pricePerSqmUsd ? <p className="text-sm text-muted-foreground">{[size, floor, f.pricePerSqmUsd ? t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) }) : null].filter(Boolean).join(' · ')}</p> : null}
         <p className="line-clamp-2 text-sm leading-relaxed text-foreground/90" data-advisor-summary>

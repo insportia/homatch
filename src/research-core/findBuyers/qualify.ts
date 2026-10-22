@@ -10,13 +10,14 @@
 // its reasons; nothing about the person is invented — all values come from the
 // DemandReading, which comes from the text.
 
-import { propertyFamily, type PropertyFamily } from './propertyFamily.ts';
+import { propertyFamily, subtypeRelation, type PropertyFamily } from './propertyFamily.ts';
 import type { PropertyDna } from './propertyDna.ts';
 import type { DemandReading } from './demandClassifier.ts';
-import { toUsd, transactionUnconfirmed } from './demandClassifier.ts';
+import { buyerViaBroker, toUsd, transactionUnconfirmed } from './demandClassifier.ts';
+import { STRONG_ROLE_CONFIDENCE } from './aiClassifier.ts';
 import { ADMIN_DISTRICTS, AREA_PARENT, NEARBY_DISTRICTS, STREETS, cityOfArea, normKey, parentDistrict, streetOfAddress } from './places.ts';
 
-export const QUALIFICATION_VERSION = 8; // 8: a business-named author or one who advertises homes in the same read is an intermediary, broker phrases ("თანამშრომლობთ", "ბინებს ვეძებ", "მყავს კლიენტი"), bedroom counts in words ("ერთ საძინებლიან") (2026-10-18); 7: stated size compared with the property's size band, a smaller home (or two+ rooms larger) is not this property's buyer, the model never makes a seeker of a text with no wish to buy (2026-10-17); 4: financing dimension; 5: people-first — brokers soliciting sellers, unconfirmed buy/rent (2026-10-16); 6: street / micro-area / district levels, budget levels incl. unstated currency, counterparty seekers and listing collectors are supply (2026-10-17)
+export const QUALIFICATION_VERSION = 11; // 11: AI-first role classification (aiClassifier.ts) — an AI contradiction or a role confidence below 0.8 is never Strong (2026-10-18); 10: one property taxonomy (20 subtypes, hard/soft families, near groups), a broker searching for a client is labelled demand (BUYER_VIA_BROKER, never Strong), "no agents" no longer makes a buyer a broker (2026-10-18); 9: the subtype a seeker states (office / shop / warehouse / villa / farmland) is compared with the property's — a commercial conflict is a type mismatch, a house/land one is never Strong (2026-10-18); 8: a business-named author or one who advertises homes in the same read is an intermediary, broker phrases ("თანამშრომლობთ", "ბინებს ვეძებ", "მყავს კლიენტი"), bedroom counts in words ("ერთ საძინებლიან") (2026-10-18); 7: stated size compared with the property's size band, a smaller home (or two+ rooms larger) is not this property's buyer, the model never makes a seeker of a text with no wish to buy (2026-10-17); 4: financing dimension; 5: people-first — brokers soliciting sellers, unconfirmed buy/rent (2026-10-16); 6: street / micro-area / district levels, budget levels incl. unstated currency, counterparty seekers and listing collectors are supply (2026-10-17)
 
 export type MatchCategory = 'STRONG' | 'POTENTIAL' | 'WEAK' | 'REJECTED';
 export type Fit = 'COMPATIBLE' | 'NEARBY' | 'CITY' | 'FLEXIBLE' | 'STRETCH' | 'UNCONFIRMED' | 'INCOMPATIBLE' | 'UNKNOWN';
@@ -55,6 +56,16 @@ export type Limitation =
   | 'BUDGET_CURRENCY_UNSTATED'
   /** The budget is far above the asking price: likely another segment. */
   | 'BUDGET_ABOVE_RANGE'
+  /** States another subtype of the same house/land family (a villa for a cottage, farmland for
+   *  a building plot): kept, never Strong (v9). */
+  | 'SUBTYPE_DIFFERS'
+  /** A broker searching on behalf of a client (v10): real demand, never the person themself. */
+  | 'BUYER_VIA_BROKER'
+  /** v11: the AI found a stated requirement that contradicts the property: kept only if the
+   *  deterministic constraints pass, never Strong. */
+  | 'AI_CONTRADICTION'
+  /** v11: the AI was not sure enough of the role for a Strong lead. */
+  | 'AI_ROLE_UNCERTAIN'
   /** Buys with a bank mortgage (informational: the seller is paid in full by the bank). */
   | 'FINANCING_MORTGAGE'
   /** States a down payment below the configured risk ratio of the price (default 10%).
@@ -69,6 +80,8 @@ export type LocationLevel =
 export type BudgetLevel = 'WITHIN' | 'NEAR' | 'ABOVE_RANGE' | 'BELOW' | 'PERIOD_MISMATCH' | 'UNSTATED_CURRENCY' | 'UNKNOWN';
 
 export interface Qualification {
+  /** v11: the AI classification audit (model, classifier version, verdict, evidence) — set by the pipeline. */
+  ai?: Record<string, unknown> | null;
   version: number;
   category: MatchCategory;
   /** v6: the precise location and budget readings behind locationFit / budgetFit. */
@@ -283,6 +296,13 @@ export type AreaLevel = 'WITHIN' | 'MISMATCH' | 'UNKNOWN';
  * tolerance (±20% by default); an approximate single figure ("about 80 m²") counts ±10%.
  * Only a range that cannot overlap the band is a mismatch — "up to 60 m²" for 97 m².
  */
+/** The seeker's stated subtypes against the property's (propertyFamily.ts subtypeRelation).
+ *  Unstated on either side → UNKNOWN, never a match and never a conflict. */
+export function subtypeFit(r: DemandReading, dna: PropertyDna): 'MATCH' | 'SOFT' | 'CONFLICT' | 'UNKNOWN' {
+  if (r.propertyType && r.propertyType !== familyOf(dna)) return 'UNKNOWN';
+  return subtypeRelation(dna.subtype ?? null, r.subtypes ?? []);
+}
+
 export function areaLevel(r: DemandReading, dna: PropertyDna): AreaLevel {
   const a = r.area ?? (r.areaSqm != null ? { min: r.areaSqm, max: r.areaSqm, approx: true } : null);
   if (!a || dna.areaSqm == null) return 'UNKNOWN';
@@ -312,7 +332,15 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
     case 'IRRELEVANT': reasons.push('NOT_REAL_ESTATE'); break;
     case 'SALE_OFFER': reasons.push('SALE_ADVERTISEMENT'); break;
     case 'RENT_OFFER': reasons.push('RENT_ADVERTISEMENT'); break;
-    case 'AGENT': reasons.push('AGENT_INTERMEDIARY'); break;
+    case 'AGENT':
+      /* v10: a broker searching for a client is demand through an intermediary — kept, labelled,
+         never Strong; any other broker stays rejected. */
+      if (buyerViaBroker(r)) {
+        limitations.push('BUYER_VIA_BROKER');
+        if (!r.transaction) reasons.push('UNCLEAR_INTENT');
+        else if ((r.transaction === 'RENT' ? 'RENT' : 'BUY') !== wanted) reasons.push('WRONG_TRANSACTION');
+      } else reasons.push('AGENT_INTERMEDIARY');
+      break;
     case 'UNCLEAR': reasons.push('UNCLEAR_INTENT'); break;
     default: if (r.role !== seekerRole) reasons.push('WRONG_TRANSACTION');
   }
@@ -327,6 +355,7 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   const aLevel = areaLevel(r, dna);
   const fin = financingFit(r, dna, ctx.fx, ctx.lowDownPaymentRatio ?? DEFAULT_LOW_DOWN_PAYMENT_RATIO);
   const financingRisk = fin.fit === 'STRETCH' || fin.fit === 'UNCONFIRMED';
+  const subtype = subtypeFit(r, dna);
   if (!reasons.length) {
     if (bFit === 'INCOMPATIBLE') reasons.push('BUDGET_INCOMPATIBLE');
     if (lLevel === 'OTHER_CITY') reasons.push('OTHER_CITY');
@@ -336,6 +365,9 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
     /* The family must match. Before 2026-10-12 only HOUSE vs APARTMENT was compared,
        so an apartment seeker for a land plot or a shop was kept as a WEAK lead. */
     if (r.propertyType && r.propertyType !== familyOf(dna)) reasons.push('PROPERTY_TYPE_MISMATCH');
+    /* v9/v10: a stated subtype that contradicts this property's (an office for a warehouse,
+       farmland for an industrial plot). */
+    else if (subtype === 'CONFLICT') reasons.push('PROPERTY_TYPE_MISMATCH');
     /* v7: the size and the rooms they state must fit this property. */
     if (aLevel === 'MISMATCH') reasons.push('AREA_MISMATCH');
     if (qFit === 'INCOMPATIBLE' && !reasons.includes('PROPERTY_TYPE_MISMATCH')) reasons.push('ROOMS_MISMATCH');
@@ -358,6 +390,10 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
   if (lLevel === 'FLEXIBLE_STATED') limitations.push('LOCATION_FLEXIBLE_STATED');
   if (qFit === 'UNKNOWN') limitations.push('ROOMS_UNKNOWN');
   if (qFit === 'INCOMPATIBLE' && !reasons.includes('PROPERTY_TYPE_MISMATCH')) limitations.push('ROOMS_DIFFER');
+  if (subtype === 'SOFT') limitations.push('SUBTYPE_DIFFERS');
+  /* v11: the AI's reading can only lower a lead. */
+  if (r.aiVerdict?.compatibility === 'INCOMPATIBLE' || (r.aiVerdict?.contradictions.length ?? 0) > 0) limitations.push('AI_CONTRADICTION');
+  if (r.aiVerdict && r.aiVerdict.confidence < STRONG_ROLE_CONFIDENCE) limitations.push('AI_ROLE_UNCERTAIN');
   if (r.confidence < 0.6) limitations.push('LOW_CONFIDENCE');
   limitations.push(...fin.limitations);
 
@@ -384,9 +420,10 @@ export function qualify(r: DemandReading, dna: PropertyDna, ctx: QualifyContext)
     const ownPlace = lFit === 'COMPATIBLE';
     const closePlace = lFit === 'NEARBY' || lFit === 'FLEXIBLE';
     const softMismatch = lFit === 'INCOMPATIBLE' || qFit === 'INCOMPATIBLE';
-    const strongFit = confirmedBudget && ownPlace && qFit !== 'INCOMPATIBLE' && r.confidence >= 0.7;
+    const strongFit = confirmedBudget && ownPlace && qFit !== 'INCOMPATIBLE' && subtype !== 'SOFT' && r.confidence >= 0.7
+      && !limitations.includes('AI_CONTRADICTION') && !limitations.includes('AI_ROLE_UNCERTAIN');
     /* Budget and place confirmed but financing unconfirmed or a stretch: Potential, never Strong. */
-    if (txUnconfirmed) category = 'WEAK';
+    if (txUnconfirmed || limitations.includes('BUYER_VIA_BROKER')) category = 'WEAK';
     else if (strongFit && !financingRisk) category = 'STRONG';
     else if (strongFit) category = 'POTENTIAL';
     else if (!softMismatch && confirmedBudget && (ownPlace || closePlace || lFit === 'CITY')) category = 'POTENTIAL';

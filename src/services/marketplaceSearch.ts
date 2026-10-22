@@ -46,6 +46,12 @@ export interface SearchSummary {
     source: string; state: 'REFRESHING' | 'FRESH' | 'PARTIAL' | 'CACHED' | 'UNAVAILABLE'; freshListings: number; cachedListings: number; retryAt: string | null;
     /** The worker run's own status (QUEUED, SEARCHING, RESULTS_RECEIVED, PROCESSING, COMPLETE, PARTIAL, FAILED, TIMED_OUT, BLOCKED). */
     run?: string; workerId?: string;
+    /** Answered from listings HOMATCH already checked instead of a portal read of its own. */
+    deferred?: 'LIVE_REFRESH_LIMIT' | 'SOURCE_BUSY' | 'LIVE_REFRESH_UNAVAILABLE' | null;
+    /** Reads the portal together with an identical search. */
+    shared?: boolean;
+    /** When the portal itself was last read for these listings. */
+    checkedAt?: string | null;
   }>;
   unavailable: 'NO_SOURCES' | 'FAILED' | null;
 }
@@ -76,10 +82,19 @@ export async function getCapabilities(): Promise<MarketplaceCapabilities> {
 }
 
 export const understand = (text: string) =>
-  call<{ understood: boolean; brief: SearchIntelligenceBrief; readiness: Readiness }>({ action: 'understand', text });
+  call<{ understood: boolean; brief: SearchIntelligenceBrief; readiness: Readiness; costRef?: string }>({ action: 'understand', text });
 
-export const startSearch = (brief: SearchIntelligenceBrief, idempotencyKey: string) =>
-  call<{ search: SearchSummary; replayed?: boolean }>({ action: 'start', brief, idempotencyKey });
+/** Whether this search also started a live portal read, and if not, why and until when. */
+export interface LiveRefresh {
+  state: 'LIVE' | 'LIMITED' | 'BUSY' | 'UNAVAILABLE';
+  reason?: 'CONCURRENT' | 'HOURLY' | 'DAILY';
+  retryAt?: string | null;
+  maxActive?: number;
+}
+
+/** briefRefs: understand's costRefs, so HOMATCH's own cost of the brief is booked to this search (admin accounting only). */
+export const startSearch = (brief: SearchIntelligenceBrief, idempotencyKey: string, briefRefs: string[] = []) =>
+  call<{ search: SearchSummary; replayed?: boolean; reused?: boolean; liveRefresh?: LiveRefresh }>({ action: 'start', brief, idempotencyKey, briefRefs });
 
 export const searchStatus = (searchId?: string) =>
   call<{ search: SearchSummary | null }>(searchId ? { action: 'status', searchId } : { action: 'status' });

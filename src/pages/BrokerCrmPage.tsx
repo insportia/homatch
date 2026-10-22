@@ -618,7 +618,7 @@ export default function BrokerCrmPage() {
               </dl>
 
               <div className="mt-4 flex flex-wrap gap-2.5">
-                {isPublic && (
+                {isPublic && pathAvailable(`/brokers/${listing.id}`) && (
                   <Link to={`/brokers/${listing.id}`} className={btn}>
                     <Store className="h-4 w-4" aria-hidden="true" />
                     {t('broker_crm_view_public')}
@@ -649,11 +649,9 @@ export default function BrokerCrmPage() {
                 <div role="status" data-testid="broker-sales-paused"
                   className="mt-3 rounded-lg border border-[hsl(var(--gold-border))] bg-card p-3 text-sm leading-relaxed text-foreground">
                   <p className="font-semibold">{t('broker_desk_sales_paused_title')}</p>
-                  <p className="mt-1 text-muted-foreground">
-                    {isPublic && listing.paid_until
-                      ? t('broker_desk_sales_paused_public', { date: new Date(listing.paid_until).toLocaleDateString() })
-                      : t('broker_desk_sales_paused_body')}
-                  </p>
+                  {/* The directory is hidden while its sales are paused (one switch), so a paid
+                      listing is not "public until <date>" here: only that nothing is charged. */}
+                  <p className="mt-1 text-muted-foreground">{t('broker_desk_sales_paused_body')}</p>
                 </div>
               )}
               {listing.status === 'PENDING_REVIEW' && (

@@ -82,7 +82,10 @@ export async function publicPage(url: string, fetcher: typeof fetch = fetch, sta
     throw new AcquisitionError(url, null, `${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''}`);
   }
   if (!response.ok) throw new AcquisitionError(url, response.status, response.status === 401 || response.status === 403 ? await rejectionDiagnostic(response) : `HTTP ${response.status}; request stopped`);
-  const html = await response.text();
+  /* The 20 s signal also covers the body: a slow body is a transport failure (retried), never a raw abort. */
+  let html: string;
+  try { html = await response.text(); }
+  catch (error) { throw new AcquisitionError(url, null, `Body not received: ${(error as Error).message}`); }
   // A challenge can be served with HTTP200. Preserve its actual HTTP status.
   if (!/<script\b[^>]*\bid=["']__NEXT_DATA__["']/i.test(html)
     && (response.headers.get('cf-mitigated') === 'challenge' || /cf_chl_|challenge-platform/i.test(html))) {

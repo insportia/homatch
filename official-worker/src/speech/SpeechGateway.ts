@@ -19,6 +19,7 @@
 // existing transcribers. Sending the same frames here means no new encoder,
 // no container, and no waiting for a file to exist before recognition starts.
 
+import { eventLoopDelay, speechSessionClosed, speechSessionOpened } from '../runtime/loadIsolation.js';
 import { Buffer } from 'node:buffer';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Server } from 'node:http';
@@ -109,6 +110,19 @@ function toBytes(data: unknown): Uint8Array {
 }
 
 /**
+ * Optional ceiling on concurrent speech sockets in THIS process
+ * (SPEECH_MAX_SESSIONS). Unset, empty, 0 or invalid = no ceiling, which is the
+ * behaviour before 2026-10-18. The worker cannot read ai_talk_limits (it holds
+ * no database credential); this is the operator's lever to keep live speech
+ * from crowding out Verify's Chromium in the shared container
+ * (capacity audit 2026-10-18).
+ */
+export function speechSessionCeiling(env: Record<string, string | undefined> = process.env): number | null {
+  const n = Number(env.SPEECH_MAX_SESSIONS);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
  * Attach the speech socket to the worker's existing HTTP server.
  *
  * Returns a description of what it can do, so /health can tell the truth
@@ -135,6 +149,7 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
   }
 
   const wss = new WebSocketServer({ noServer: true });
+  const ceiling = speechSessionCeiling();
 
   server.on('upgrade', (req, socket, head) => {
     let url: URL;
@@ -150,7 +165,17 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
       return;
     }
 
+    if (ceiling !== null && wss.clients.size >= ceiling) {
+      // At this instance's ceiling: refuse cleanly before any Google stream
+      // is opened; the browser treats it like any other temporary refusal.
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
     wss.handleUpgrade(req, socket, head, (ws) => {
+      speechSessionOpened();
+      ws.once('close', speechSessionClosed);
       serve(ws, cfg, grant, url.searchParams.get('language'), url.searchParams.get('languages'),
         url.searchParams.get('detect') === '1');
     });
@@ -374,6 +399,8 @@ function serve(
     console.log(JSON.stringify({
       at: new Date().toISOString(), service: 'speech',
       event: 'session_closed', ms: Date.now() - started,
+      /* Was the speech loop delayed by other work in this process? */
+      eventLoop: eventLoopDelay().current,
       frames: stream.frames, bytes: stream.bytes, language,
       /*
        * The four facts that make a duration readable. Counts and categories

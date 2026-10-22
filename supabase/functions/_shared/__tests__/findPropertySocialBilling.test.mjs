@@ -7,9 +7,13 @@ import assert from 'node:assert/strict';
 let token = undefined;
 globalThis.Deno = { env: { get: (k) => (k === 'APIFY_API_TOKEN' ? token : undefined) } };
 const { executeOfferJob, finishOfferCampaign, loadOfferSettings, offerInput, verifiedFields } = await import('../findProperty/socialOffers.ts');
+const { resetServiceControlCache } = await import('../serviceControl.ts');
 
 /** A tiny PostgREST stand-in: every call is recorded; answers come from `answer`. */
-function fakeDb(answer) {
+/* Paid Deep Search fails closed (2026-10-18): these campaigns run with Admin's explicit ON row. */
+const DEEP_ON = [{ service_key: 'find_property_deep', frontend_enabled: true, backend_enabled: true }];
+function fakeDb(given, controls = DEEP_ON) {
+  const answer = (q) => (q.table === 'service_controls' ? controls : given(q));
   const calls = [];
   const builder = (table) => {
     const q = { table, op: 'select', filters: [], payload: null };
@@ -44,6 +48,23 @@ test('no provider token: no campaign is offered, nothing is reserved', async () 
   assert.equal(outcome.outcome, 'CANCELLED');
   assert.equal(outcome.error, 'PROVIDER_NOT_CONFIGURED');
   assert.equal(db.calls.filter((c) => c.rpc === 'find_property_reserve_actor_run').length, 0, 'never reserved');
+});
+
+test('paid Deep Search OFF, or its switch missing: the worker starts no provider run and reserves nothing', async () => {
+  token = 'test-token-not-real';
+  const realFetch = globalThis.fetch;
+  let fetched = 0;
+  globalThis.fetch = async () => { fetched += 1; throw new Error('no provider call expected'); };
+  try {
+    for (const controls of [[{ service_key: 'find_property_deep', frontend_enabled: false, backend_enabled: false }], []]) {
+      resetServiceControlCache();
+      const db = fakeDb((q) => (q.table === 'admin_settings' ? SETTINGS : q.table === 'discovery_runs' ? RUN : null), controls);
+      const outcome = await executeOfferJob(db, JOB);
+      assert.deepEqual([outcome.outcome, outcome.error], ['CANCELLED', 'SERVICE_PAUSED']);
+      assert.equal(db.calls.filter((c) => c.rpc).length, 0, 'no reservation or any other RPC');
+    }
+    assert.equal(fetched, 0, 'Apify is never called');
+  } finally { globalThis.fetch = realFetch; resetServiceControlCache(); }
 });
 
 test('an ambiguous start is HOMATCH cost (START_AMBIGUOUS), never the customer\'s', async () => {

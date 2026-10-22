@@ -20,7 +20,7 @@ import {
   type IntentContext, type IntentVerdict,
 } from '../../../../src/research-core/findBuyers/intent.ts';
 import { personKey, contentFingerprint } from '../../../../src/research-core/findBuyers/identity.ts';
-import { scoreLead, type LeadSignal } from '../../../../src/research-core/findBuyers/leadScore.ts';
+import { scoreLead, queriesMatchingText, type LeadSignal } from '../../../../src/research-core/findBuyers/leadScore.ts';
 import { detectLanguage } from '../../../../src/research-core/findBuyers/languages.ts';
 import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuyers/explain.ts';
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
@@ -33,6 +33,10 @@ import { qualify, legacyIntentClass, QUALIFICATION_VERSION, type Qualification }
 import { duplicateKey } from '../../../../src/research-core/findBuyers/requalify.ts';
 import { sourceRelevance } from '../../../../src/research-core/findBuyers/sourceRelevance.ts';
 import { openAiJson, recordAiCost, type PriceBook } from './openai.ts';
+import { classifyCandidates } from './aiClassify.ts';
+import { campaignAiGate } from './campaign.ts';
+import { aiCallCeilingMicros, DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, type AiSpendGate } from '../../../../src/research-core/findBuyers/executionBudget.ts';
+import { AI_CLASSIFIER_VERSION, AI_MAX_ITEMS_PER_RUN, aiCandidateKey, applyAiVerdict, parseAiVerdict } from '../../../../src/research-core/findBuyers/aiClassifier.ts';
 
 export interface CampaignRow {
   matching_job_id: string;
@@ -126,6 +130,14 @@ export interface PipelineCtx {
   /** The items ARE stored rows of another collector (native Telegram): their external ids are
    *  used verbatim (no m23: prefix) and, with `reusing`, nothing is upserted or re-written. */
   verbatimIds?: boolean;
+  /** AI-first classification (v11); false only when admin_settings.find_buyers_ai_first is false. */
+  aiFirst?: boolean;
+  /** The search phrases of a keyword / post-search run (provenance on each lead). */
+  searchQueries?: string[] | null;
+  /** OpenAI spend gate shared by this run's calls (executionBudget.ts); built from the campaign's spend when absent. */
+  aiGate?: AiSpendGate;
+  /** Classification headroom other in-flight runs keep (find_buyers_ai_headroom_micros_per_item). */
+  aiHeadroomPerItemMicros?: number;
 }
 
 export interface PipelineResult {
@@ -144,6 +156,8 @@ export interface PipelineResult {
   groupsFound: number;
   followUps: FollowUp[];
   aiCalls: number;
+  /** Candidates left UNVERIFIED because the execution budget could not cover their classification. */
+  aiBudgetRefused?: number;
   /** One primary disposition per content candidate (groups/communities excluded); sums to candidates. */
   dispositions: DispositionCounts;
   candidates: number;
@@ -164,6 +178,7 @@ export function mergeResults(a: PipelineResult, b: PipelineResult): PipelineResu
     items: a.items + b.items, useful: a.useful + b.useful, qualified: a.qualified + b.qualified, strong: a.strong + b.strong, weak: a.weak + b.weak,
     rejected: sumRec(a.rejected, b.rejected), duplicates: a.duplicates + b.duplicates, reused: a.reused + b.reused, staleDropped: a.staleDropped + b.staleDropped,
     groupsFound: a.groupsFound + b.groupsFound, followUps: [...a.followUps, ...b.followUps], aiCalls: a.aiCalls + b.aiCalls,
+    ...(a.aiBudgetRefused || b.aiBudgetRefused ? { aiBudgetRefused: (a.aiBudgetRefused ?? 0) + (b.aiBudgetRefused ?? 0) } : {}),
     dispositions: sumRec(a.dispositions, b.dispositions), candidates: a.candidates + b.candidates,
     ...(a.commentSampling ?? b.commentSampling ? { commentSampling: a.commentSampling ?? b.commentSampling } : {}),
   };
@@ -293,6 +308,8 @@ interface Assessed {
   ctx: IntentContext;
   verdict: IntentVerdict | null;
   cacheKey: string;
+  /** The AI classification key (aiClassifier.ts aiCandidateKey) when the item was sent to the model. */
+  aiKey?: string;
   commentsDecision: string | null;
   fingerprint: string;
   why: WhyMatched;
@@ -438,27 +455,84 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       reading, qualification: null, dupKeys: duplicateKey({ text: item.text, author: item.author.id ?? item.author.url ?? item.author.name, url: item.url }) });
   }
 
-  /* The model only for ambiguous text — one batched, schema-bound call per 30,
-     at most 3 calls per claim (the rest stay UNCERTAIN: never a lead). */
-  const ambiguous = assessed.filter((a) => a.reading.needsModel && a.reading.realEstate && a.item.text.length >= 3).slice(0, 90);
-  for (let i = 0; i < ambiguous.length; i += 30) {
-    const batch = ambiguous.slice(i, i + 30);
-    const res = await openAiJson<{ items: Array<{ id: string; role: string; transaction: string }> }>(ctx.book, DEMAND_SYSTEM_PROMPT, {
-      items: batch.map((a, k) => ({
-        id: String(k), kind: a.ctx.kind, text: clip(a.item.text, 500),
-        parent_excerpt: a.parent?.excerpt ?? null, parent_similarity: a.ctx.parentSimilarity,
-      })),
-    }, DEMAND_MODEL_SCHEMA, { maxTokens: 120 + batch.length * 60 });
-    out.aiCalls++;
-    await recordAiCost(db, {
-      key: `ai:intent:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}:${i}`, matchingJobId: campaign.matching_job_id, kind: 'AI', operation: 'INTENT',
-      result: res, metadata: { items: batch.length, stage: ctx.stage },
-    }).catch(() => undefined);
-    const byId = new Map((res.data?.items ?? []).map((x) => [String(x.id), x]));
-    batch.forEach((a, k) => {
-      const m = byId.get(String(k));
-      a.reading = boundModelReading(a.reading, m ? { role: m.role, transaction: m.transaction } : null);
-    });
+  /* AI-FIRST (v11, owner 2026-10-18): every unique candidate is classified by the model against
+     the Property DNA before qualification — the model decides who is speaking and what they
+     want (aiClassifier.ts). Same words in the same context are classified once (per run and,
+     through raw_signals.intent_json.aiCache, across campaigns of the same property). A
+     candidate without a verdict (call failed, over the per-run bound) is UNVERIFIED: never a
+     confident rule-based buyer. Kill switch: admin_settings.find_buyers_ai_first = false. */
+  if (ctx.aiFirst !== false) {
+    const keyOf = (a: Assessed) => aiCandidateKey(a.item.text, a.ctx.kind, a.parent?.role ?? null, campaign.dna.dnaKey ?? '');
+    const byKey = new Map<string, Assessed[]>();
+    for (const a of assessed) {
+      if (a.item.text.trim().length < 2) continue;
+      const k = keyOf(a);
+      byKey.set(k, [...(byKey.get(k) ?? []), a]);
+    }
+    const resolved = new Map<string, any>();
+    for (const [k, group] of byKey) {
+      const cached = knownMap.get(extId(group[0].item))?.intent_json?.aiCache?.[k];
+      if (cached?.role) resolved.set(k, cached);
+    }
+    const pending = [...byKey.keys()].filter((k) => !resolved.has(k)).slice(0, AI_MAX_ITEMS_PER_RUN);
+    if (pending.length) {
+      /* Paid from the campaign's execution budget: a batch it cannot afford is not sent. */
+      const aiGate = ctx.aiGate ?? await campaignAiGate(db, campaign.matching_job_id ?? null, ctx.aiHeadroomPerItemMicros ?? DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, ctx.runId);
+      const { verdicts, stats } = await classifyCandidates(db, {
+        gate: aiGate,
+        book: ctx.book, dna: campaign.dna, matchingJobId: campaign.matching_job_id,
+        keyPrefix: `ai:classify:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}`, operation: 'AI_CLASSIFY',
+        metadata: { stage: ctx.stage, version: AI_CLASSIFIER_VERSION },
+      }, pending.map((k) => {
+        const a = byKey.get(k)![0];
+        return { id: k, kind: a.ctx.kind, text: a.item.text, parentExcerpt: a.parent?.excerpt ?? null, author: a.item.author.name ?? null };
+      }));
+      out.aiCalls += stats.calls;
+      out.aiBudgetRefused = (out.aiBudgetRefused ?? 0) + stats.budgetRefusedItems;
+      for (const [k, v] of verdicts) resolved.set(k, v);
+    }
+    for (const [k, group] of byKey) {
+      const v = resolved.get(k) ? parseAiVerdict(resolved.get(k)) : null;
+      for (const a of group) {
+        a.reading = applyAiVerdict(a.reading, v ? { ...v, model: resolved.get(k).model } as any : null, a.item.text);
+        a.aiKey = k;
+        /* The author still decides it: a business-named author or one advertising in this read stays an intermediary. */
+        const aKey = authorKey(a.item);
+        a.reading = withAuthorEvidence(a.reading, { name: a.item.author.name, alsoAdvertises: aKey != null && advertisers.has(aKey) });
+      }
+    }
+    /* No text to judge: a rule seeker is unverified, a rule rejection stays one. */
+    for (const a of assessed) if (!a.aiKey) a.reading = applyAiVerdict(a.reading, null);
+  } else {
+    /* Kill switch off: the previous behaviour — the model only for ambiguous text. */
+    const ambiguous = assessed.filter((a) => a.reading.needsModel && a.reading.realEstate && a.item.text.length >= 3).slice(0, 90);
+    const intentGate = ctx.aiGate ?? await campaignAiGate(db, campaign.matching_job_id ?? null, ctx.aiHeadroomPerItemMicros ?? DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, ctx.runId);
+    for (let i = 0; i < ambiguous.length; i += 30) {
+      const batch = ambiguous.slice(i, i + 30);
+      /* Same execution budget: a batch it cannot afford keeps its rule reading (no model call). */
+      if (!intentGate.admit(aiCallCeilingMicros(ctx.book, 600 + batch.length * 180, 120 + batch.length * 60))) {
+        out.aiBudgetRefused = (out.aiBudgetRefused ?? 0) + batch.length;
+        for (const a of batch) a.reading = boundModelReading(a.reading, null);
+        continue;
+      }
+      const res = await openAiJson<{ items: Array<{ id: string; role: string; transaction: string }> }>(ctx.book, DEMAND_SYSTEM_PROMPT, {
+        items: batch.map((a, k) => ({
+          id: String(k), kind: a.ctx.kind, text: clip(a.item.text, 500),
+          parent_excerpt: a.parent?.excerpt ?? null, parent_similarity: a.ctx.parentSimilarity,
+        })),
+      }, DEMAND_MODEL_SCHEMA, { maxTokens: 120 + batch.length * 60 });
+      out.aiCalls++;
+      intentGate.spend(res.costMicros);
+      await recordAiCost(db, {
+        key: `ai:intent:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}:${i}`, matchingJobId: campaign.matching_job_id, kind: 'AI', operation: 'INTENT',
+        result: res, metadata: { items: batch.length, stage: ctx.stage },
+      }).catch(() => undefined);
+      const byId = new Map((res.data?.items ?? []).map((x) => [String(x.id), x]));
+      batch.forEach((a, k) => {
+        const m = byId.get(String(k));
+        a.reading = boundModelReading(a.reading, m ? { role: m.role, transaction: m.transaction } : null);
+      });
+    }
   }
 
   /* Comments of each parent post read in this run (the post-opportunity "analyzed" count). */
@@ -473,13 +547,16 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   for (const a of assessed) {
     const duplicate = a.dupKeys.some((k) => seenKeys.has(k));
     a.qualification = gateIntent(a, qualify(a.reading, campaign.dna, { ageDays: a.ageDays, duplicate, fx: ctx.fx, lowDownPaymentRatio: ctx.lowDownPaymentRatio }), campaign.transaction === 'RENT' ? 'RENT_OFFER' : 'SALE_OFFER');
+    /* Audit: which model and classifier version decided the role, and on what evidence. */
+    a.qualification = { ...a.qualification, ai: aiAudit(a.reading) };
     if (a.qualification.category !== 'REJECTED') a.dupKeys.forEach((k) => seenKeys.add(k));
     const counterpart = campaign.transaction === 'RENT' ? 'TENANT' : 'BUYER';
     const intentClass = legacyIntentClass(a.qualification, counterpart) as IntentVerdict['intentClass'];
     a.verdict = {
       intentClass, score: a.qualification.components.intent, needsModel: false,
-      method: a.reading.evidence.includes('model_resolved') ? 'MODEL' : a.reading.role === 'UNCLEAR' ? 'UNDECIDED' : 'RULE',
-      rule: a.reading.evidence[0] ?? null,
+      method: a.reading.aiVerdict ? 'AI' : a.reading.evidence.includes('ai_unverified') ? 'UNVERIFIED'
+        : a.reading.evidence.includes('model_resolved') ? 'MODEL' : a.reading.role === 'UNCLEAR' ? 'UNDECIDED' : 'RULE',
+      rule: a.reading.aiVerdict ? a.reading.aiVerdict.role : a.reading.evidence[0] ?? null,
     };
   }
 
@@ -533,6 +610,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
         ...(() => { const d = dateProvenance(a.item.publishedAt, a.parent?.publishedAt ?? null);
           return { dateSource: d.dateSource, dateConfidence: d.dateConfidence, freshness: freshnessBucket(d.evidenceAt, now) }; })(),
         m23cache: { ...(prior?.m23cache ?? {}), [a.cacheKey]: { role: a.reading.role, transaction: a.reading.transaction, method: a.verdict.method } },
+        ...(a.aiKey && a.reading.aiVerdict ? { aiCache: { ...(prior?.aiCache ?? {}), [a.aiKey]: a.reading.aiVerdict } } : {}),
       },
     }).eq('id', a.signalId);
   }
@@ -640,6 +718,13 @@ export function gateIntent(a: Pick<Assessed, 'item' | 'ctx' | 'parent' | 'simila
   return tagged;
 }
 
+/** What the AI decided for this candidate, for the assessment and the lead (auditable). */
+export function aiAudit(r: DemandReading): Record<string, unknown> | null {
+  if (r.aiVerdict) return { version: AI_CLASSIFIER_VERSION, status: 'CLASSIFIED', model: r.aiVerdict.model ?? null, ...r.aiVerdict };
+  if (r.evidence.includes('ai_unverified')) return { version: AI_CLASSIFIER_VERSION, status: 'UNVERIFIED' };
+  return null;
+}
+
 /** The one disposition a rejected candidate counts under (funnel totals). */
 function dispositionOf(q: Qualification): keyof DispositionCounts {
   if (q.reasons.includes('DUPLICATE')) return 'DUPLICATE';
@@ -734,6 +819,7 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
        parent post's publication date, never on the time it was observed. */
     language: a.language, publishedAt: a.item.publishedAt ?? (a.item.kind === 'COMMENT' ? a.parent?.publishedAt ?? null : null),
     explanation: JSON.stringify(a.why),
+    ...(ctx.searchQueries?.length ? { foundBy: { queries: ctx.searchQueries, matched: queriesMatchingText(ctx.searchQueries, a.item.text ?? '') } } : {}),
     ...(a.item.kind === 'COMMENT' && a.parent ? {
       parentCommentCount: a.parent.commentCount ?? null,
       parentAnalyzed: a.parentAnalyzed ?? null,

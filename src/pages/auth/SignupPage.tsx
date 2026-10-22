@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Zap } from 'lucide-react';
+import { useServiceVisible } from '@/lib/serviceControls';
 
 function GoogleIcon() {
   return (
@@ -44,7 +45,10 @@ export default function SignupPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   /* A real-estate professional says so with one tick, nothing more: the
      account goes on to broker onboarding, where the profile is built. */
-  const [asProfessional, setAsProfessional] = useState(intent === 'broker');
+  const [asProfessionalChoice, setAsProfessional] = useState(intent === 'broker');
+  /* Not offered while the Broker desk is paused (Admin → Service Control Center). */
+  const deskVisible = useServiceVisible('broker_desk');
+  const asProfessional = asProfessionalChoice && deskVisible;
   const PENDING_RETURN_KEY = 'homatch_return_to';
   useEffect(() => {
     if (asProfessional) rememberPendingPath('/broker/onboarding');
@@ -153,13 +157,13 @@ export default function SignupPage() {
               )}
             </div>
 
-            <label className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-sm" data-signup-professional="">
+            {deskVisible && <label className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-sm" data-signup-professional="">
               <Checkbox checked={asProfessional} onCheckedChange={(v) => setAsProfessional(v === true)} className="mt-0.5" />
               <span>
                 <span className="block font-medium text-foreground">{t('signup_professional_label')}</span>
                 <span className="block text-xs text-muted-foreground">{t('signup_professional_hint')}</span>
               </span>
-            </label>
+            </label>}
 
             {/* Google Sign-Up */}
             <Button

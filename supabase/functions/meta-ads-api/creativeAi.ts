@@ -395,7 +395,8 @@ async function runGeneration(sb: Sb, args: {
     const actual = {
       provider: 'OPENAI', providerOperation: refine ? 'meta_ad_image_refine' : 'meta_ad_image_generate', model: IMAGE_MODEL,
       inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, providerUnits: images.length, durationMs: Date.now() - started,
-      aiCostCents: costCents, pricingState: usage.estimated ? 'ESTIMATED' as const : 'ACTUAL' as const,
+      /* Measured tokens × the price book is an estimate, never a provider invoice; a missing rate is UNPRICED, never $0 ACTUAL. */
+      aiCostCents: costCents, pricingState: inRate == null || outRate == null ? 'UNPRICED' as const : 'ESTIMATED' as const,
       metadata: { jobId, requested: variations, delivered: images.length, size, conceptId: concept.id },
     };
 

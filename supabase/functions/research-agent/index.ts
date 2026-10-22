@@ -60,7 +60,9 @@ import { summariseSources } from '../../../src/verify/intelligence/sourceVersion
  */
 import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
-import { foldMarketplaceIntoLane, marketProfileFromSeed } from '../../../src/verify/marketplaceComparables.ts';
+import { foldMarketplaceIntoLane } from '../../../src/verify/marketplaceComparables.ts';
+import { applyMarketEligibility, eligibilitySummary, marketEligibilityBrief, marketplaceSearchPlan, rangeBasis, subjectMarketProfile, type SubjectMarketProfile } from '../../../src/verify/marketEligibility.ts';
+import { NBG_RATES_URL, parseNbgUsd, type FxPoint } from '../../../src/verify/intelligence/fx.ts';
 import { MARKET_REFRESH_MAX_WAIT_MS, failedMarker, foldMarketRefresh, needsMarketRefresh, rebuildRequest, refreshProfile, startedMarker } from '../../../src/verify/marketRefresh.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { subjectGeoFromSeed } from '../../../src/verify/search/subjectGeo.ts';
@@ -1765,7 +1767,9 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
         } as any) + '\n\n'
       : '';
     return (
-      known + laneBrief + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
+      // F6: when the deterministic gate found no reliable basis, the model is
+      // told not to value the subject; the rest of the prompt is unchanged.
+      known + marketEligibilityBrief(p._marketEligibility) + laneBrief + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
       // SEARCH THE WHOLE HIERARCHY, NOT JUST THE BUILDING.
       // A live report compared five units in one project to each other and
       // stopped. That answers "what do flats in this building cost", not
@@ -2359,16 +2363,35 @@ function officialDocuments(browserOfficial: any): any[] {
  * MARKET reads them. Free public sources, no model call, no user tables.
  * admin_settings.verify_marketplace_market_enabled = false switches it off.
  */
-async function startVerifyMarketplace(db: any, p: any, seed: any): Promise<void> {
-  if (p._verifyMarket) return;
+/*
+ * THE SEARCH IS DEFINED BY THE REGISTER, NOT BY THE FIRST GUESS (F6, job
+ * 61c1c38c). It used to start on the first BROWSER_WAITING tick from the
+ * IDENTITY model's assetClass, before the NAPR extract existed: a 2,509 m²
+ * plot was searched as {APARTMENT, city-wide, no area}. Now:
+ *   - first tick: started only if the register already classifies the
+ *     subject and the profile is complete; otherwise PROFILE_PENDING;
+ *   - OFFICIAL_READY (register in hand): tried again;
+ *   - MARKET_READY (final): started, or INSUFFICIENT_PROFILE with the reason.
+ * Never a city-wide search, never an apartment search for a non-apartment.
+ */
+async function startVerifyMarketplace(db: any, p: any, seed: any, opts: { final: boolean; requireRegistry?: boolean } = { final: true }): Promise<void> {
+  if (p._verifyMarket && p._verifyMarket.state !== 'PROFILE_PENDING') return;
   const enabled = await adminSettingJson(db, 'verify_marketplace_market_enabled');
   if (enabled === false || enabled === 'false') {
     p._verifyMarket = { state: 'DISABLED', done: true };
     return;
   }
-  const profile = marketProfileFromSeed(seed);
+  const subjectProfile = subjectMarketProfile({ result: p, seed });
+  const plan = marketplaceSearchPlan(subjectProfile, { requireRegistry: !!opts.requireRegistry });
+  const profile = plan.request;
   if (!profile) {
-    p._verifyMarket = { state: 'NO_LOCATION', done: true };
+    const subject = profileForLedger(subjectProfile);
+    if (!opts.final) {
+      p._verifyMarket = { state: 'PROFILE_PENDING', done: false, reason: plan.reason, subject };
+      return;
+    }
+    p._verifyMarket = { state: 'INSUFFICIENT_PROFILE', done: true, reason: plan.reason, subject };
+    p._marketplaceLedger = { state: 'INSUFFICIENT_PROFILE', reason: plan.reason, subject, searchesPerformed: 0, finalComparableCount: lane0(p) };
     return;
   }
   try {
@@ -2392,6 +2415,74 @@ async function startVerifyMarketplace(db: any, p: any, seed: any): Promise<void>
 }
 
 const VERIFY_MARKET_MAX_WAIT_MS = 6 * 60 * 1000;
+
+/** The subject as the ledger records it: what the search was (or was not) defined by. */
+function profileForLedger(s: SubjectMarketProfile): Record<string, unknown> {
+  return {
+    assetClass: s.assetClass, assetClassBasis: s.assetClassBasis, areaSqm: s.areaSqm, areaBasis: s.areaBasis,
+    landAreaSqm: s.landAreaSqm, rooms: s.rooms, city: s.city, district: s.district, transactionType: s.transactionType,
+  };
+}
+
+/** A fresh seed of the job as it stands now; null when it cannot be built. */
+function marketSeedOf(j: any, p: any): any {
+  try {
+    return buildResearchSeed({
+      jobId: String(j?.id ?? ''),
+      query: j?.query,
+      mode: (j?.mode ?? j?.type) === 'cadastral' ? 'cadastral' : 'property',
+      result: p,
+      knownFacts: {},
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** The market subject from everything the job holds now (register first). */
+function marketProfileNow(j: any, p: any): SubjectMarketProfile {
+  return subjectMarketProfile({ result: p, seed: marketSeedOf(j, p) });
+}
+
+/*
+ * The National Bank of Georgia's GEL/USD rate, for putting a GEL-priced
+ * listing on the USD scale (never a GEL figure inside a USD median). Fetched
+ * once per isolate per hour, 4 s budget; null on any failure, and a GEL
+ * listing is then excluded with CURRENCY_UNCONVERTIBLE rather than guessed.
+ */
+let nbgUsd: { at: number; point: FxPoint | null } | null = null;
+async function nbgUsdRate(): Promise<FxPoint | null> {
+  if (nbgUsd && Date.now() - nbgUsd.at < 60 * 60 * 1000) return nbgUsd.point;
+  let point: FxPoint | null = null;
+  try {
+    const res = await fetch(NBG_RATES_URL, { signal: AbortSignal.timeout(4000) });
+    if (res.ok) point = parseNbgUsd(await res.json(), new Date().toISOString().slice(0, 10));
+  } catch {
+    point = null;
+  }
+  nbgUsd = { at: Date.now(), point };
+  return point;
+}
+/** The rate an earlier gate of this job used, so every gate converts at the same rate. */
+function fxOfGate(g: any): FxPoint | null {
+  const f = g?.fx;
+  return f && Number(f.gelPerUsd) > 0 && typeof f.date === 'string' ? { date: f.date, gelPerUsd: Number(f.gelPerUsd), source: f.source ?? undefined } : null;
+}
+
+/*
+ * THE ELIGIBILITY GATE, BEFORE ANY MODEL READS THE SET (F6).
+ *
+ * Type, deal, size, rooms, location, currency and duplicates are checked in
+ * code (src/verify/marketEligibility.ts) and every listing set aside keeps
+ * its reasons in _marketEligibility (internal). What the MARKET model is
+ * handed — and what can ever reach a price range — is the accepted set only.
+ */
+async function gateMarketComparables(j: any, p: any): Promise<void> {
+  const fx = fxOfGate(p._marketEligibility) ?? (await nbgUsdRate());
+  const gate = applyMarketEligibility(Array.isArray(p._marketComparables) ? p._marketComparables : [], marketProfileNow(j, p), { fx });
+  p._marketComparables = gate.accepted;
+  p._marketEligibility = eligibilitySummary(gate);
+}
 
 /*
  * THE SUBJECT AS IT IS KNOWN AT FOLD TIME (2026-10-10 market gate).
@@ -2549,7 +2640,7 @@ async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
  * sources, no model call, charges nothing.
  */
 async function startJobMarketRefresh(sb: any, jobId: string): Promise<{ status: number; body: Record<string, unknown> }> {
-  const { data: j, error } = await sb.from('research_jobs').select('id,status,result_json').eq('id', jobId).maybeSingle();
+  const { data: j, error } = await sb.from('research_jobs').select('id,status,query,mode,result_json').eq('id', jobId).maybeSingle();
   if (error) return { status: 500, body: { error: 'read_failed' } };
   if (!j) return { status: 404, body: { error: 'Job not found' } };
   if (j.status !== 'COMPLETE') return { status: 409, body: { error: 'job_not_complete' } };
@@ -2558,7 +2649,8 @@ async function startJobMarketRefresh(sb: any, jobId: string): Promise<{ status: 
   if (!needsMarketRefresh(rj)) return { status: 200, body: { skipped: true, marker: rj._marketRefresh ?? null } };
   const enabled = await adminSettingJson(sb, 'verify_marketplace_market_enabled');
   if (enabled === false || enabled === 'false') return { status: 200, body: { skipped: true, reason: 'disabled' } };
-  const profile = refreshProfile(rj);
+  // Derived again from the register, never replayed from the recorded search (F6).
+  const profile = refreshProfile(rj, { seed: marketSeedOf(j, rj) });
   if (!profile) return { status: 200, body: { skipped: true, reason: 'no_profile' } };
   const r = await wf('/verify/market', 'POST', { profile });
   const at = now();
@@ -2601,7 +2693,7 @@ async function pollMarketRefreshes(sb: any): Promise<void> {
       try {
         const r = await wf(`/verify/market/${m.workerJobId}`);
         if (r.code === 200 && r.data?.status === 'COMPLETE') {
-          next = foldMarketRefresh(rj, r.data, marketSubjectNow(j, rj, null), now());
+          next = foldMarketRefresh(rj, r.data, marketSubjectNow(j, rj, null), now(), { subject: marketProfileNow(j, rj), fx: fxOfGate(rj._marketEligibility) ?? (await nbgUsdRate()) });
         } else if (r.code === 404) next = { ...rj, _marketRefresh: failedMarker(m, 'LOST', now()) };
       } catch { /* transient: next tick */ }
       if (!next && Date.now() - Date.parse(String(m.startedAt)) > MARKET_REFRESH_MAX_WAIT_MS) next = { ...rj, _marketRefresh: failedMarker(m, 'TIMED_OUT', now()) };
@@ -4331,6 +4423,19 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
         advertisementsRead: prior._marketLane?.advertisements ?? null,
       };
     }
+    /*
+     * WHAT THE MODEL APPENDED PASSES THE SAME GATE (F6). Web-found URLs used
+     * to join the set unchecked; now the whole merged set — code-gathered
+     * (already gated, idempotent) plus the model's — is held to the subject's
+     * type, deal, size, rooms, location and currency, with the reasons kept.
+     */
+    if (z.market && typeof z.market === 'object' && Array.isArray(z.market.comparables)) {
+      const offered = z.market.comparables.length;
+      const gate = applyMarketEligibility(z.market.comparables, marketProfileNow(j, prior), { fx: fxOfGate(prior._marketEligibility) ?? (await nbgUsdRate()) });
+      z.market.comparables = gate.accepted;
+      prior._marketEligibility = { ...eligibilitySummary(gate), stage: 'MARKET', offered };
+      if (z.comparableDiscovery) z.comparableDiscovery.acceptedAfterGate = gate.accepted.length;
+    }
     // Price disagreements found in code are conflicts of the same standing as
     // any the model reports, and are merged rather than replaced.
     if (Array.isArray(prior._marketConflicts) && prior._marketConflicts.length) {
@@ -4635,9 +4740,19 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // qualitative color the model supplies (priceDriverEvidence), never the
     // classification itself.
     market: (() => {
-      const sanitizedComparables = sanitizeComparables(mr.market?.comparables || []);
-      const ranges = computeMarketRanges(sanitizedComparables);
-      const activeResidentialOnly = sanitizedComparables.filter((c: any) => c?.listingStatus === 'ACTIVE' && (!c?.propertyType || c.propertyType === 'RESIDENTIAL'));
+      /*
+       * F6: the last gate before a number. Idempotent over the set MARKET
+       * already gated; it also catches anything written around that path.
+       * The range and the position come ONLY from the accepted, same-kind,
+       * single-currency, IQR-trimmed basis — and from nothing when the gate
+       * says the evidence is insufficient (no range is better than a city's).
+       */
+      const gate = applyMarketEligibility(sanitizeComparables(mr.market?.comparables || []), marketProfileNow(j, prior), { fx: fxOfGate(prior._marketEligibility) });
+      const sanitizedComparables = gate.accepted;
+      const basis = rangeBasis(gate);
+      // Same kind is already proven by the gate, so a land or commercial basis counts too.
+      const ranges = computeMarketRanges(basis.kept.map((c: any) => ({ ...c, propertyType: null })));
+      const activeResidentialOnly = basis.kept.filter((c: any) => c?.listingStatus === 'ACTIVE');
       const subjectPriceType: string | null = mr.market?.subject?.priceType || null;
       const subjectPricePerSqm = parseNumericPricePerSqm(mr.market?.subject?.pricePerSqm);
       // A developer's marketing "starting from" price is never a current
@@ -4649,6 +4764,12 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
       return {
         priceEvidence: mr.market?.priceEvidence || [],
         comparables: sanitizedComparables,
+        // Counts only (no listing URLs): why there is, or is not, a range.
+        eligibility: {
+          state: gate.state, reason: gate.reason, valuationAllowed: gate.valuationAllowed, subject: gate.subject,
+          accepted: gate.accepted.length, rejectedCounts: gate.rejectedCounts, outliersTrimmed: basis.outliersTrimmed,
+          currency: gate.currency, fx: gate.fx,
+        },
         startingPricePerSqm: subjectPriceType === 'STARTING' && subjectPricePerSqm != null ? String(subjectPricePerSqm) : null,
         activeMinPricePerSqm: ranges.activeMinPricePerSqm != null ? String(ranges.activeMinPricePerSqm) : null,
         activeMedianPricePerSqm: ranges.activeMedianPricePerSqm != null ? String(ranges.activeMedianPricePerSqm) : null,
@@ -4707,6 +4828,8 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // result_json wholesale, so they are carried explicitly). Stripped from
     // every customer response by sanitizeForCustomer().
     _marketplaceLedger: prior._marketplaceLedger ?? (prior._verifyMarket ? { state: prior._verifyMarket.state } : null),
+    // Internal: every listing the eligibility gate set aside, with its reasons (F6).
+    _marketEligibility: prior._marketEligibility ?? null,
     _tasExecution: prior._tasExecution ?? null,
     officialVisuals: prior.officialVisuals ?? null,
     // Developer Advertising (last research stage, run before this write):
@@ -4970,6 +5093,13 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // final SYNTHESIS (no web_search — see launch()'s `s !== 'SYNTHESIS'`).
     if (j.status === 'CREATED' && j.stage === 'OFFICIAL_READY') {
       if (await holdForBudget(sb, j, 'OFFICIAL_COLLECTION')) return;
+      // The register is in hand now: the MyHome.ge / SS.ge search can be
+      // defined by it, and runs while the official AI stages read (F6).
+      if (j.result_json?._verifyMarket?.state === 'PROFILE_PENDING') {
+        await startVerifyMarketplace(sb, j.result_json, marketSeedOf(j, j.result_json), { final: false });
+        const { error } = await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
+        if (error) console.error('research-agent: marketplace start write failed', error.message);
+      }
       return await launch(sb, k, m, j, 'OFFICIAL_COLLECTION', l);
     }
     // ENREG_CHECK_PENDING seeds the generalized financial queue (enreg ->
@@ -5009,14 +5139,20 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
        * whole change without saying so. One guarded call, already single-shot.
        */
       if (!j.result_json) j.result_json = {};
-      const laneRan = await ensureMarketLane(sb, j, j.result_json);
+      await ensureMarketLane(sb, j, j.result_json);
+      // Last chance to define the MyHome.ge / SS.ge search from the register;
+      // a subject that still cannot be described is recorded as such (F6).
+      const pending = j.result_json._verifyMarket?.state === 'PROFILE_PENDING';
+      if (pending) await startVerifyMarketplace(sb, j.result_json, marketSeedOf(j, j.result_json), { final: true });
       // MyHome.ge / SS.ge comparables must be folded BEFORE MARKET reads the
       // set. Still running → hold this stage for the next tick (bounded by
       // VERIFY_MARKET_MAX_WAIT_MS from its start; never indefinitely).
       const stillWaiting = await pollVerifyMarketplace(j.result_json, j);
-      if (laneRan || stillWaiting || j.result_json._verifyMarket?.done) {
-        await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
-      }
+      // Every listing passes the eligibility gate before the model sees it.
+      if (!stillWaiting) await gateMarketComparables(j, j.result_json);
+      // Written on every tick of this stage: the lane, the start, the fold or
+      // the gate above has changed result_json (or the hold is being renewed).
+      await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       if (stillWaiting) return;
       if (await holdForBudget(sb, j, 'MARKET')) return;
       return await launch(sb, k, m, j, 'MARKET', l);
@@ -5801,7 +5937,9 @@ async function runVerifyMarketLane(db: any, job: any, result: any, checkpoint?: 
 
   // Started first, so MyHome.ge / SS.ge search in parallel with the portal
   // lane and the official sources. Never fatal.
-  await startVerifyMarketplace(db, result, seed);
+  // Only when the register already decides the class (usually it does not
+  // yet): otherwise PROFILE_PENDING, retried at OFFICIAL_READY / MARKET_READY.
+  await startVerifyMarketplace(db, result, seed, { final: false, requireRegistry: true });
   // The MyHome/SS.ge job id is stored before the portal lane runs, so a
   // tick killed inside the lane still folds that search in later.
   if (checkpoint) await checkpoint().catch(() => {});
@@ -6233,7 +6371,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_marketEligibility', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -6377,6 +6515,7 @@ function sanitizeForCustomer(job: any): any {
    */
   delete r._marketLane;
   delete r._marketplaceLedger;
+  delete r._marketEligibility;
   delete r._verifyMarket;
   delete r._tasExecution;
   delete r._unattendedVerificationSkips;

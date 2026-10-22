@@ -175,7 +175,7 @@ export const COMPONENTS = {
   EDGE: { paths: [/^supabase\/functions\/[^_/][^/]*\//] },
   // No runtime effect: validated by static + unit.
   TOOLING: {
-    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
+    paths: [/^scripts\/claude\//, /^\.graphifyignore$/, /^graphify-viewer\//, /^scripts\/[^/]*i18n[^/]*\.mjs$/, /^scripts\/[^/]*i18n[^/]*\.json$/, /^scripts\/[a-z0-9-]+-(apply|data(-?\d+)?|keep|coverage)\.mjs$/, /^\.claude\//, /^CLAUDE\.md$/, /^docs\//, /^[^/]+\.md$/, /^scripts\/(audit|probe|capture|inspect|live-test|investment-research-liveproof|studio-coverage|sync-comm-domain)[^/]*\.mjs$/],
   },
   // Unit-run tests, and browser files no CI gate runs (manual suites:
   // test:surfaces, test:pwa, heroMobile) — changing them cannot change what

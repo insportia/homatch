@@ -170,3 +170,24 @@ test('status exposes facts, never credentials', async () => {
   await gw.shutdown();
   assert.equal(gw.status().connected, false);
 });
+
+test('a hung Telegram call is bounded: it fails as NETWORK_ERROR, the queue moves on, the next call reconnects', async () => {
+  const fake = fakeDriver();
+  const gw = gatewayWith(fake, { callTimeoutMs: 50 });
+  /* The deadline timer is unref'd (it must never keep a worker alive); a server's loop is
+     always alive, a test's is not, so keep it alive for the length of the test. */
+  const alive = setInterval(() => {}, 10);
+  /* The first search never answers. */
+  let hang = true;
+  const search = fake.driver.searchChats;
+  fake.driver.searchChats = async (...a) => (hang ? new Promise(() => {}) : search(...a));
+  const stuck = gw.search('homatch', 5).then(() => 'resolved', (e) => e);
+  const next = gw.search('homatch', 5).then(() => 'resolved', (e) => e);
+  const first = await stuck;
+  assert.equal(first.kind, 'NETWORK_ERROR');
+  assert.equal(first.message, 'TELEGRAM_CALL_TIMEOUT');
+  hang = false;
+  assert.equal(await next, 'resolved', 'the caller behind it was not held');
+  assert.ok(fake.calls.filter((c) => c === 'connect').length >= 2, 'the session was re-established after the timeout');
+  clearInterval(alive);
+});

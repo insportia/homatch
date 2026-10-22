@@ -1148,7 +1148,13 @@ export function buildMarketIntelligence(
   subject: Subject,
   raw: RawComparable[],
   /** Snapshot signals, so the price can be read against the product. */
-  quality: QualityFactor[] = []
+  quality: QualityFactor[] = [],
+  /**
+   * research-agent's eligibility gate (result_json.market.eligibility, F6).
+   * When it set every listing aside, the market is still answered — as
+   * EVIDENCE_LIMITED with the gate's reasons — instead of vanishing.
+   */
+  gate: { state?: unknown; rejectedCounts?: Record<string, unknown> | null } | null = null
 ): MarketIntelligence | null {
   /*
    * THE PROJECT'S OWN PRICE LEVEL, FOR THE PEER PRICE BAND.
@@ -1199,7 +1205,8 @@ export function buildMarketIntelligence(
   const expiredExcluded = current.length ? unique.length - current.length : 0;
   const scored = current.length ? current : unique;
 
-  if (!scored.length) return null;
+  const gatedOut = gate?.state === 'INSUFFICIENT_DATA';
+  if (!scored.length && !gatedOut) return null;
 
   const tierCounts = TIER_ORDER.reduce(
     (acc, t) => ({ ...acc, [t]: scored.filter((c) => c.tier === t).length }),
@@ -1329,6 +1336,21 @@ export function buildMarketIntelligence(
   add('PROJECT_ASKING_EVIDENCE', projectAskingEvidence.length);
 
   const hierarchy = buildLocationHierarchy(subject, scored, chosen ?? []);
+  if (gatedOut) {
+    // What the upstream gate set aside, in the customer gate's own vocabulary.
+    const into: Record<string, CustomerExclusion> = {
+      PROPERTY_TYPE_MISMATCH: 'PROPERTY_TYPE_MISMATCH', NOT_NEW_BUILD: 'CLASS_MISMATCH', DEAL_TYPE_MISMATCH: 'DEAL_TYPE_MISMATCH',
+      SIZE_OUT_OF_BAND: 'SIZE_OUT_OF_BAND', SIZE_UNKNOWN: 'SIZE_UNKNOWN', LOCATION_WIDER_MARKET: 'UNRELATED_DISTRICT',
+      LOCATION_MISMATCH: 'UNRELATED_DISTRICT', TOO_FAR: 'UNRELATED_DISTRICT', PROJECT_MISMATCH: 'UNRELATED_DISTRICT',
+    };
+    const ex: Partial<Record<CustomerExclusion | 'OUTLIER', number>> = { ...hierarchy.excluded };
+    for (const [k, v] of Object.entries(gate?.rejectedCounts ?? {})) {
+      const key = into[k];
+      const n = Number(v);
+      if (key && Number.isFinite(n) && n > 0) ex[key] = (ex[key] ?? 0) + n;
+    }
+    hierarchy.excluded = ex;
+  }
 
   const out: MarketIntelligence = {
     valuation: hierarchy.valuation,

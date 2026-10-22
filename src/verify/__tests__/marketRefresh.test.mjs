@@ -35,9 +35,14 @@ test('a finished job without a marker needs one refresh; running/folded do not; 
   assert.equal(needsMarketRefresh({ _marketRefresh: { version: MARKET_REFRESH_VERSION, state: 'TIMED_OUT', attempts: 2 } }), false);
 });
 
-test('the refresh searches with the profile the original search recorded', () => {
-  assert.deepEqual(refreshProfile({ _marketplaceLedger: { profile } }), profile);
+test('the refresh is re-profiled from the register, never replayed from the recorded search (F6)', () => {
+  // The recorded profile (no area) is no longer replayed; the register's 94.1 m² defines the search.
+  assert.equal(refreshProfile({ _marketplaceLedger: { profile } }), null, 'no register, no identity: nothing to search');
   assert.equal(refreshProfile({ _marketplaceLedger: {} }), null);
+  const rj = { _marketplaceLedger: { profile }, reconciledIdentity: { address: 'თბილისი, კრწანისის ქ. 6' } };
+  const latest = { issuedAt: '2026-08-24T08:35:20', recordId: '35356992', unitAreaSqm: 94.1, unitRowFound: true, unitItemText: 'ფართი (მშენებარე) სართული 6, ბინა N601', unitDescription: 'ფართი (მშენებარე)' };
+  const seed = { location: { city: { value: 'თბილისი' }, district: { value: 'კრწანისი' }, subDistrict: { value: 'კრწანისი' } }, property: { transaction: 'SALE' } };
+  assert.deepEqual(refreshProfile(rj, { seed, registerLatest: latest }), { ...profile, areaSqm: 94.1 });
   const m = startedMarker({ attempts: 1, state: 'LOST' }, 'w9', profile, NOW);
   assert.equal(m.state, 'RUNNING');
   assert.equal(m.attempts, 2);

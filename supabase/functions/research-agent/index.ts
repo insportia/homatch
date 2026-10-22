@@ -74,6 +74,7 @@ import {
   consumptionFromUsage,
   costOperationFor,
   priceVerification,
+  researchStageModel,
   totalVerificationCost,
 } from '../../../src/verify/cogs.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
@@ -4248,6 +4249,8 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const prior = j.result_json || {};
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
+  // The model the provider says ran this stage, so COGS prices what ran.
+  prior._models = { ...(prior._models || {}), [s.toLowerCase()]: typeof p?.model === 'string' ? p.model : null };
   prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
   // STAGE TIMINGS (internal). Each model stage's own span; the gaps between
   // consecutive spans are the browser, financial-queue and marketplace waits.
@@ -4690,6 +4693,8 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     requiresManualVerification: manualVerificationActions.length > 0,
     researchProvider: 'openai+playwright',
     costUsage: prior._cost,
+    // Per stage, the model each research stage's response named (COGS only).
+    costModels: prior._models ?? null,
     // Per stage, like costUsage: a search is billed per call and is a real
     // line in what this verification cost.
     webSearchCalls: prior._searches,
@@ -6109,22 +6114,25 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
     if (!usage) return;
 
     // Written once. A job re-driven after a resume must not double-count.
+    // VERIFY_REPORT is verify-synthesis' own row (it can land first) and is
+    // not this recorder's.
     const { count } = await db
       .from('cost_events')
       .select('id', { count: 'exact', head: true })
       .eq('job_id', job.id)
-      .like('operation_type', 'VERIFY_%');
+      .like('operation_type', 'VERIFY_%')
+      .neq('operation_type', 'VERIFY_REPORT');
     if ((count ?? 0) > 0) return;
 
-    const researchModel = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
     /*
-     * The model the REPORT was actually written on, so the COGS row names it.
-     * verify-synthesis prefers OPENAI_SYNTHESIS_MODEL when it is set, and the
-     * metering has to follow the same rule or it attributes the synthesis
-     * stage to a model that never ran — and prices it at that model's rate.
+     * Every costUsage key is one of OUR stages, run on the research model —
+     * `synthesis` included: it is research-agent's SYNTHESIS stage (launched
+     * like the others), NOT the report. It used to be priced at the report
+     * model, recording $0.009468 for a $0.094678 stage (prod 61c1c38c). The
+     * report is metered by verify-synthesis itself as VERIFY_REPORT.
      */
-    const reportModel = Deno.env.get('OPENAI_SYNTHESIS_MODEL')?.trim()
-      || 'gpt-5.6-luna';
+    const researchModel = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
+    const stageModels = job?.result_json?.costModels ?? null;
 
     /*
      * RATES COME FROM THE PRICE BOOK, AND FROM THE RIGHT DATE.
@@ -6148,10 +6156,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
     const stages = priceVerification(
       consumptionFromUsage(
         usage,
-        // The report is written by verify-synthesis on a different model from
-        // the four research stages. Pricing them as one would misattribute
-        // whichever half is the expensive one.
-        (stage) => (stage === 'synthesis' ? reportModel : researchModel),
+        (stage) => researchStageModel(stage, stageModels, researchModel),
         (stage) => Number(searches?.[stage] ?? 0)
       ),
       { provider: 'OPENAI', rows: priceRows ?? [], at }
@@ -6234,6 +6239,8 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
   for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
+  // Per-stage model names (COGS) are internal economics too.
+  delete r._models;
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -6366,6 +6373,8 @@ function sanitizeForCustomer(job: any): any {
   delete r._worker;
   delete r._cost;
   delete r._searches;
+  delete r._models;
+  delete r.costModels;
   /*
    * The deterministic market lane's own bookkeeping.
    *

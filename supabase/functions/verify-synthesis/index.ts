@@ -64,6 +64,8 @@ import { planStoredTasTexts, applyStoredTasText } from '../../../src/verify/inte
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
 import { parseTranslateRequest } from '../../../src/verify/translation/textTranslation.ts';
 import { translateTexts } from './translate.ts';
+import { costOperationFor, priceVerification, reportConsumption, reportCostRequestId, REPORT_STAGE, type ReportUsage } from '../../../src/verify/cogs.ts';
+import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 
 /**
  * GEL/USD context from the National Bank of Georgia.
@@ -346,6 +348,73 @@ async function persist(db: any, jobId: string, payload: unknown): Promise<void> 
   if (error) {
     // Loud, because a silent failure here costs a model call every view.
     console.error(`verify-synthesis: could not persist report for ${jobId}: ${error.message ?? error}`);
+  }
+}
+
+/*
+ * THE REPORT CALL, IN cost_events (VERIFY_V2_AUDIT F7).
+ *
+ * This call's usage was kept in synthesis_json._usage and never written to
+ * cost_events, so finance never saw it (prod 61c1c38c: 53,960 in / 13,549
+ * out, $0.027051, recorded nowhere). One VERIFY_REPORT row per successful
+ * build: request_id = job + synthesis attempt + the build's claim time,
+ * checked first exactly as research-agent's recorder does, so two callers
+ * building the same claimed attempt write one row. The existing unique index
+ * cost_events_verify_once_per_stage (job_id, operation_type) additionally
+ * holds it to one row per job: a later version-upgrade rebuild is not added
+ * here (verify_stage_cogs prices the latest build from _usage).
+ *
+ * Priced from provider_price_book at the moment it completed. provider
+ * OPENAI on purpose: verify_job_cost() (the customer meter) counts only
+ * non-OpenAI cost_events and prices this call from _usage itself, and
+ * finance_cost_facts excludes VERIFY% from cost_events and reads it through
+ * verify_stage_cogs — so this row moves neither a customer charge nor a
+ * finance total twice. Bookkeeping: a failure here never touches the report.
+ */
+async function recordReportCost(db: any, jobId: string, usage: ReportUsage | null, claimedAt: string | null): Promise<void> {
+  try {
+    const consumption = reportConsumption(usage, MODEL);
+    if (!consumption) return;
+    const { data: row } = await db.from('research_jobs').select('synthesis_attempts').eq('id', jobId).maybeSingle();
+    const requestId = reportCostRequestId(jobId, row?.synthesis_attempts ?? 0, claimedAt);
+    const { count } = await db
+      .from('cost_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', jobId)
+      .eq('operation_type', costOperationFor(REPORT_STAGE))
+      .eq('request_id', requestId);
+    if ((count ?? 0) > 0) return;
+
+    const at = new Date().toISOString();
+    const { data: priceRows, error: priceError } = await db
+      .from('provider_price_book')
+      .select('provider, model, unit, rate, per_units, currency, effective_from, effective_to')
+      .eq('provider', 'OPENAI');
+    if (priceError) console.error(`verify-synthesis: price book unavailable for ${jobId}: ${priceError.message ?? priceError}`);
+    const [s] = priceVerification([consumption], { provider: 'OPENAI', rows: priceRows ?? [], at });
+    if (!s) return;
+    const { cost_usd, pricing_state } = pricingStateForDerivedCost({
+      costUsd: s.costUsd,
+      fullyPriced: s.priced,
+      consumedNothing: s.totalTokens === 0,
+    });
+    const { error } = await db.from('cost_events').insert({
+      provider: 'OPENAI',
+      operation_type: costOperationFor(REPORT_STAGE),
+      source: [`model=${s.model}`, s.priced ? null : `unpriced=${s.unpricedUnits.join('+')}`].filter(Boolean).join(';'),
+      request_id: requestId,
+      units: s.totalTokens,
+      cost_usd,
+      pricing_state,
+      success: true,
+      cache_hit: s.cachedInputTokens > 0,
+      job_id: jobId,
+    });
+    // 23505: cost_events_verify_once_per_stage (20260911250000) already holds
+    // this job's VERIFY_REPORT — one row per job and stage, by design.
+    if (error && error.code !== '23505') console.error(`verify-synthesis: could not record report COGS for ${jobId}: ${error.message ?? error}`);
+  } catch (e) {
+    console.error('verify-synthesis: report COGS accounting threw', e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -889,6 +958,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
      without result_json (reportReadPath.ts). */
   Object.assign(payload as Record<string, unknown>, readEnrichmentMarkers());
   await persist(writer, jobId, payload);
+  // After the report is saved: bookkeeping can cost us a number, never the report.
+  await recordReportCost(writer, jobId, usage, job.synthesis_at ?? null);
   console.log(JSON.stringify({ scope: 'verify_synthesis_timing', jobId, ...timing, persistMs: Date.now() - Date.parse(String(timing.persistAt)) }));
   return await forCustomer(writer, payload, jobId);
 }

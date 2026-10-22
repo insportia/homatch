@@ -358,3 +358,88 @@ export function consumptionFromUsage(
   }
   return out;
 }
+
+/*
+ * TWO SYNTHESIS STEPS, TWO MODELS, TWO LINES.
+ *
+ * costUsage holds research-agent's OWN stages only — including `synthesis`,
+ * research-agent's SYNTHESIS stage, which runs on the research model like the
+ * other four. The report the customer reads is a separate call made by
+ * verify-synthesis on its own model, persisted as synthesis_json._usage and
+ * metered here as the `report` stage (cost_events VERIFY_REPORT).
+ *
+ * The two used to be conflated: `synthesis` was priced at the REPORT model and
+ * the report itself was never recorded. On prod job 61c1c38c that recorded
+ * $0.009468 for a stage that cost $0.094678, and $0 for a $0.027051 report.
+ */
+
+/** The verify-synthesis report, as a COGS stage (operation VERIFY_REPORT). */
+export const REPORT_STAGE = 'report';
+
+/**
+ * The model to PRICE a stage at, from what the provider reported.
+ *
+ * A response may name a dated snapshot of the model we asked for
+ * (`<model>-2026-07-30`); the price book is keyed by the model we configure,
+ * so a snapshot of it prices as it. A response naming a different model is
+ * believed — that is the model that ran.
+ */
+export function pricedModel(responseModel: unknown, requestedModel: string): string {
+  const r = typeof responseModel === 'string' ? responseModel.trim() : '';
+  if (!r || r === requestedModel || r.startsWith(`${requestedModel}-`)) return requestedModel;
+  return r;
+}
+
+/**
+ * The model one costUsage key ran on: always a research-agent stage, so the
+ * research model unless the stage's response recorded otherwise.
+ * `<stage>_stopped` (usage of a stage cancelled mid-flight) is its stage's.
+ */
+export function researchStageModel(
+  stage: string,
+  recorded: Record<string, unknown> | null | undefined,
+  researchModel: string
+): string {
+  const own = String(stage).replace(/_stopped$/, '');
+  const r = recorded && typeof recorded === 'object' ? recorded[own] : null;
+  return pricedModel(r, researchModel);
+}
+
+/** What verify-synthesis persists in synthesis_json._usage. */
+export interface ReportUsage {
+  model?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedTokens?: number | null;
+}
+
+/** The report call as a priceable stage, or null when nothing was consumed. */
+export function reportConsumption(
+  usage: ReportUsage | null | undefined,
+  fallbackModel: string
+): StageConsumption | null {
+  if (!usage || typeof usage !== 'object') return null;
+  const input = n(usage.inputTokens);
+  const output = n(usage.outputTokens);
+  if (!input && !output) return null;
+  return {
+    stage: REPORT_STAGE,
+    model: typeof usage.model === 'string' && usage.model.trim() ? usage.model.trim() : fallbackModel,
+    usage: {
+      input_tokens: input,
+      output_tokens: output,
+      total_tokens: input + output,
+      input_tokens_details: { cached_tokens: Math.min(n(usage.cachedTokens), input) },
+    },
+  };
+}
+
+/**
+ * One report build, once: the job, the synthesis attempt, and when that
+ * build started. Two callers building the same claimed attempt share a key; a
+ * later rebuild (a new attempt or a version upgrade, which re-stamps
+ * synthesis_at) is a new call and a new row.
+ */
+export function reportCostRequestId(jobId: string, attempt: number | null | undefined, startedAt: string | null | undefined): string {
+  return `verify_report:${jobId}:${Math.max(0, Math.trunc(n(attempt)))}:${startedAt ?? 'unknown'}`;
+}

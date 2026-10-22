@@ -37,8 +37,19 @@ test('ASTRA_USED_BY_VERIFY = NO, anywhere in the tree', () => {
 test('the COGS row names the model that actually wrote the report', () => {
   // Attributing synthesis to a model that never ran would also price it at
   // that model's rate.
-  const src = code('supabase', 'functions', 'research-agent', 'index.ts');
-  assert.match(src, /OPENAI_SYNTHESIS_MODEL'\)\?\.trim\(\)[\s\S]{0,40}?\|\| 'gpt-5\.6-luna'/);
+  //
+  // The report's COGS row is written by verify-synthesis itself
+  // (VERIFY_REPORT), from the same MODEL constant it calls the provider with
+  // — OPENAI_SYNTHESIS_MODEL when set, else gpt-5.6-luna. research-agent's
+  // `synthesis` usage is its OWN terra stage and is no longer priced at the
+  // report model (VERIFY_V2_AUDIT F7).
+  const src = code('supabase', 'functions', 'verify-synthesis', 'index.ts');
+  assert.match(src, /const SYNTHESIS_MODEL_OVERRIDE = \(Deno\.env\.get\('OPENAI_SYNTHESIS_MODEL'\) \?\? ''\)\.trim\(\);/);
+  assert.match(src, /const MODEL = SYNTHESIS_MODEL_OVERRIDE \|\| VERIFY_SYNTHESIS_MODEL;/);
+  assert.match(src, /const consumption = reportConsumption\(usage, MODEL\);/);
+  assert.match(src, /usage = \{\s*model: MODEL,/);
+  const ra = code('supabase', 'functions', 'research-agent', 'index.ts');
+  assert.doesNotMatch(ra, /OPENAI_SYNTHESIS_MODEL/, 'research-agent prices no stage at the report model');
 });
 
 test('SILENT_FALLBACK = NO: an unavailable model is still reported, not absorbed', () => {

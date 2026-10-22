@@ -2617,6 +2617,8 @@ async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
         mime: v.mime, extraction: v.extraction, page: v.page ?? null, storagePath: path,
         documentId: v.documentId, attachedFileId: v.attachedFileId, motionId: v.motionId ?? null, fileName: v.fileName ?? null,
         identity: v.identity ?? null, source: 'TAS', usage: 'OFFICIAL_RECORD_REFERENCE',
+        // An image assembled from PDF tiles names every tile it was made from.
+        ...(Array.isArray(v.sourceTiles) && v.sourceTiles.length ? { sourceTiles: v.sourceTiles.filter((s: any) => /^[a-f0-9]{64}$/.test(String(s))).slice(0, 64) } : {}),
       });
     }
     if (out.length) p.officialVisuals = out;

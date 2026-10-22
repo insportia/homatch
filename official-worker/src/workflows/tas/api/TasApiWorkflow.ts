@@ -31,7 +31,8 @@ import {
 } from './tasModel.js';
 import { toPlain } from './dwr.js';
 import { extractDecision, type ExtractedDecision } from './decisions.js';
-import { assetsPerFile, candidateDate, extractImagesFromPdf, imageSize, OLD_CASE_YEARS, rankVisualCandidates, selectVisualShortlist, yearsBefore, VISUAL_ASSET_MAX, VISUAL_FILE_MAX, type VisualKind, type VisualSlot } from './visuals.js';
+import { assetsPerFile, candidateDate, imageSize, OLD_CASE_YEARS, rankVisualCandidates, selectVisualShortlist, yearsBefore, VISUAL_ASSET_MAX, VISUAL_FILE_MAX, type VisualKind, type VisualSlot } from './visuals.js';
+import { scanPdfPictures, STRIP_MAX_ASPECT, TILE_GROUP_MAX, type TileGroup } from './pdfTiles.js';
 import { classifyVisualMeta, DRAWING_KINDS, PICTURE_KINDS, identityHints, readExif, refineWithImage, type IdentityHints, type VisualCategory } from './visualClassify.js';
 import type { PdfPageRenderer, PdfRendererFactory } from './pdfRender.js';
 import { buildCompleteness, isUnsupportedExtension, MATERIAL_TEXT, selectPriorityCases, type PriorityCompleteness, type PriorityRank } from './priority.js';
@@ -218,7 +219,10 @@ export interface VisualRecord {
   width: number | null;
   height: number | null;
   bytes: number;
-  extraction: 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE' | 'PDF_PAGE_RENDER';
+  /** PDF_TILES_STITCHED: a picture the PDF stores as tiles (pdfTiles.ts), assembled in page order. */
+  extraction: 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE' | 'PDF_PAGE_RENDER' | 'PDF_TILES_STITCHED';
+  /** sha256 of every source tile, in page order, when the asset was assembled from tiles. */
+  sourceTiles?: string[];
   identity: IdentityHints;
   source: 'TAS';
   usage: 'OFFICIAL_RECORD_REFERENCE';
@@ -341,6 +345,17 @@ export interface TasApiResult {
     visualsReplacedByNewer?: number;
     /** Priority assets not kept because the priority visual bound was reached (still classified on the attachment). */
     priorityVisualsCapped?: number;
+    /**
+     * PDF pictures stored as tiles (pdfTiles.ts): groups assembled by
+     * stitching / by rendering their page, groups dropped (no renderer, no
+     * time, assembly failed), and images rejected before they became assets
+     * (lone strips / banners, incomplete JPEG streams).
+     */
+    tileGroupsStitched?: number;
+    tileGroupsPageRendered?: number;
+    tileGroupsDropped?: number;
+    visualsRejectedStrip?: number;
+    visualsRejectedCorrupt?: number;
   };
   http: { requests: number; retries: number; bytes: number; failures: number };
   ledger: ProcessingLedger | null;
@@ -519,7 +534,7 @@ interface TextPiece {
 }
 
 type AttJob = { docId: string; a: TasCaseDetail['attachments'][number] };
-type Out = { bytes: Uint8Array; width: number | null; height: number | null; extraction: VisualRecord['extraction']; page: number | null; pageText: string | null };
+type Out = { bytes: Uint8Array; width: number | null; height: number | null; extraction: VisualRecord['extraction']; page: number | null; pageText: string | null; sourceTiles?: string[] };
 
 /** Deterministic id order: numeric-aware ascending. */
 const idAsc = (x: string, y: string) => x.length - y.length || x.localeCompare(y);
@@ -883,6 +898,11 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       if (!o.bytes.length || o.bytes.length > 8 * 1024 * 1024) return null;
       const size = imageSize(o.bytes);
       if (!size || size.width < 400 || size.height < 250) return null;
+      // A strip / banner is never a gallery picture (visualQuality.ts STRIP verdict, same threshold).
+      if (Math.max(size.width, size.height) > STRIP_MAX_ASPECT * Math.min(size.width, size.height)) {
+        result.accounting.visualsRejectedStrip = (result.accounting.visualsRejectedStrip ?? 0) + 1;
+        return null;
+      }
       const id = sha256(o.bytes);
       const context = caseContext(c.documentId, c.motionId);
       const cls = refineWithImage(
@@ -910,6 +930,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         height: size.height ?? o.height,
         bytes: o.bytes.length,
         extraction: o.extraction,
+        ...(o.sourceTiles?.length ? { sourceTiles: o.sourceTiles } : {}),
         identity: identityHints({
           fileName: c.fileName, description: c.description, caseText: context, pageText: o.pageText,
           caseCadastralCodes: c.caseCadastralCodes, parcel: result.searchCadastralCode,
@@ -918,6 +939,81 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         usage: 'OFFICIAL_RECORD_REFERENCE',
         ...(priority ? { priority } : {}),
       };
+    };
+
+    /**
+     * The pictures of a PDF (pdfTiles.ts): plain embedded JPEGs exactly as
+     * before, and every picture the PDF stores as TILES assembled into ONE
+     * image — stitched in page order, else its page rendered. Tiles that
+     * cannot be assembled (no renderer, no time left, assembly failed) are
+     * dropped and accounted, never offered as slices.
+     */
+    const pdfPictures = async (bytes: Uint8Array, maxImages: number, deadline: number): Promise<Out[]> => {
+      const scan = scanPdfPictures(bytes, { maxImages });
+      result.accounting.visualsRejectedStrip = (result.accounting.visualsRejectedStrip ?? 0) + scan.rejected.strips;
+      result.accounting.visualsRejectedCorrupt = (result.accounting.visualsRejectedCorrupt ?? 0) + scan.rejected.corrupt;
+      type Cand = { area: number; single?: (typeof scan.singles)[number]; group?: TileGroup };
+      const cands: Cand[] = [
+        ...scan.singles.map((s) => ({ area: (s.width ?? 0) * (s.height ?? 0), single: s })),
+        ...scan.groups.slice(0, TILE_GROUP_MAX).map((g) => ({ area: g.layout.width * g.layout.height, group: g })),
+      ];
+      result.accounting.tileGroupsDropped = (result.accounting.tileGroupsDropped ?? 0) + Math.max(0, scan.groups.length - TILE_GROUP_MAX);
+      // Largest first, bounded like the embedded list always was.
+      cands.sort((a, b) => b.area - a.area);
+      const kept = cands.slice(0, Math.max(1, maxImages));
+      result.accounting.tileGroupsDropped = (result.accounting.tileGroupsDropped ?? 0) + cands.slice(kept.length).filter((c) => c.group).length;
+      const outs: Out[] = [];
+      for (const c of kept) {
+        if (c.single) {
+          outs.push({ bytes: c.single.bytes, width: c.single.width, height: c.single.height, extraction: 'PDF_EMBEDDED_IMAGE', page: c.single.page, pageText: null });
+          continue;
+        }
+        const g = c.group!;
+        const sourceTiles = g.tiles.map((t) => t.sha256);
+        const left = deadline - now();
+        if (!options.renderPdfPages || left < 8_000) {
+          result.accounting.tileGroupsDropped = (result.accounting.tileGroupsDropped ?? 0) + 1;
+          continue;
+        }
+        const timeoutMs = Math.max(5_000, Math.min(45_000, left - 3_000));
+        let made: Out | null = null;
+        if (g.stitchable) {
+          try {
+            const run = renderLock.then(() => {
+              renderer ??= options.renderPdfPages!();
+              const rr = renderer;
+              if (!rr.stitch) return null;
+              return timed('pageRenderMs', () => rr.stitch!({ tiles: g.tiles.map((t) => ({ bytes: t.bytes!, mime: 'image/jpeg' as const })), layout: g.layout, maxBytes: 8 * 1024 * 1024, timeoutMs }));
+            });
+            renderLock = run.catch(() => {});
+            const s = await run;
+            if (s) {
+              made = { bytes: s.bytes, width: s.width, height: s.height, extraction: 'PDF_TILES_STITCHED', page: g.page, pageText: null, sourceTiles };
+              result.accounting.tileGroupsStitched = (result.accounting.tileGroupsStitched ?? 0) + 1;
+            }
+          } catch {
+            result.accounting.renderFailures = (result.accounting.renderFailures ?? 0) + 1;
+          }
+        }
+        if (!made) {
+          // CMYK / non-JPEG tiles, or a stitch that failed: the page as a reader sees it.
+          try {
+            const r = await renderPages(bytes, { maxPages: 1, pages: [g.page], longEdge: options.renderLongEdge ?? 2200, maxBytes: 8 * 1024 * 1024, timeoutMs });
+            const p = r.pages.find((x) => x.page === g.page);
+            if (p) {
+              made = { bytes: p.bytes, width: p.width, height: p.height, extraction: 'PDF_PAGE_RENDER', page: p.page, pageText: p.text, sourceTiles };
+              result.accounting.tileGroupsPageRendered = (result.accounting.tileGroupsPageRendered ?? 0) + 1;
+              result.accounting.pagesRendered = (result.accounting.pagesRendered ?? 0) + 1;
+              timings.counts.pagesRendered += 1;
+            }
+          } catch {
+            result.accounting.renderFailures = (result.accounting.renderFailures ?? 0) + 1;
+          }
+        }
+        if (made) outs.push(made);
+        else result.accounting.tileGroupsDropped = (result.accounting.tileGroupsDropped ?? 0) + 1;
+      }
+      return outs;
     };
 
     // ── 4. PRIORITY PHASE: before any older-case budget is spent ──
@@ -964,7 +1060,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       if (!isPdf) {
         if (!paperwork) outs.push({ bytes, width: null, height: null, extraction: 'NATIVE_IMAGE', page: null, pageText: null });
       } else if (!paperwork) {
-        const embedded: Out[] = extractImagesFromPdf(bytes, { maxImages: 12 }).map((i) => ({ bytes: i.bytes, width: i.width, height: i.height, extraction: 'PDF_EMBEDDED_IMAGE' as const, page: null, pageText: null }));
+        const embedded: Out[] = await pdfPictures(bytes, 12, started + budget);
         outs.push(...embedded);
         // Pages to render: scanned pages not already covered by embedded
         // rasters; otherwise the telling sheets of a drawing set, or the pages
@@ -1196,8 +1292,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       const per = assetsPerFile(c);
       let outs: Out[] = [];
       const isPdf = bytesToBuffer(bytes.subarray(0, 4)).toString('latin1') === '%PDF';
-      const embedded = (): Out[] =>
-        extractImagesFromPdf(bytes, { maxImages: per.images }).map((i) => ({ bytes: i.bytes, width: i.width, height: i.height, extraction: 'PDF_EMBEDDED_IMAGE' as const, page: null, pageText: null }));
+      const embedded = (): Promise<Out[]> => pdfPictures(bytes, per.images, visualDeadline);
       const render = async (): Promise<Out[]> => {
         if (!options.renderPdfPages || per.pages < 1) return [];
         const left = visualDeadline - now();
@@ -1219,16 +1314,17 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         }
       };
       if (!isPdf) outs = [{ bytes, width: null, height: null, extraction: 'NATIVE_IMAGE', page: null, pageText: null }];
-      // A budget-exempt PDF: its embedded pictures only (no page rendering).
-      else if (embeddedOnly) outs = embedded();
+      // A budget-exempt PDF: its embedded pictures only (no page rendering,
+      // except the one page a tiled picture is drawn on when it cannot be stitched).
+      else if (embeddedOnly) outs = await embedded();
       else if (DRAWING_KINDS.has(c.kind)) {
         // A drawing is vector line work: render its pages; a scanned sheet
         // falls back to its embedded raster.
         outs = await render();
-        if (!outs.length) outs = embedded();
+        if (!outs.length) outs = await embedded();
       } else {
         // Photos and renders keep their original pixels when embedded.
-        outs = embedded();
+        outs = await embedded();
         if (!outs.length) outs = await render();
       }
       let firstOfSlot = true;

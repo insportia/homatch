@@ -44,8 +44,19 @@ export interface RenderPdfOptions {
   timeoutMs?: number;
 }
 
+/** Tiles of ONE picture (pdfTiles.ts TileGroup) and where each goes on the output canvas. */
+export interface StitchInput {
+  tiles: Array<{ bytes: Uint8Array; mime: 'image/jpeg' }>;
+  layout: { width: number; height: number; boxes: Array<{ x: number; y: number; w: number; h: number }> };
+  /** Hard byte ceiling for the result (storage bucket limit is 8 MB). */
+  maxBytes?: number;
+  timeoutMs?: number;
+}
+
 export interface PdfPageRenderer {
   render(pdf: Uint8Array, opts: RenderPdfOptions): Promise<{ numPages: number; pages: RenderedPage[] }>;
+  /** Draw JPEG tiles onto one canvas in page order → one JPEG. Optional: a renderer without it falls back to a page render. */
+  stitch?(input: StitchInput): Promise<{ bytes: Uint8Array; mime: 'image/jpeg'; width: number; height: number }>;
   close(): Promise<void>;
 }
 
@@ -197,6 +208,63 @@ export function createChromiumPdfRenderer(opts: { launch?: () => Promise<any>; e
             .map((p: any) => ({ page: p.page, mime: p.mime, bytes: new Uint8Array(Buffer.from(p.b64, 'base64')), width: p.width, height: p.height, text: String(p.text ?? '') }))
             .filter((p: RenderedPage) => p.bytes.length > 0 && p.bytes.length <= maxBytes),
         };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    },
+    async stitch(input) {
+      const ctx = await context();
+      const page = await ctx.newPage();
+      const timeoutMs = input.timeoutMs ?? 45_000;
+      const maxBytes = input.maxBytes ?? 8 * 1024 * 1024;
+      try {
+        page.setDefaultTimeout(timeoutMs);
+        await page.goto(`${ORIGIN}/`);
+        const work = page.evaluate(
+          async ({ tiles, layout, maxBytes }: any) => {
+            const g0 = globalThis as any;
+            const c = g0.document.createElement('canvas');
+            c.width = layout.width;
+            c.height = layout.height;
+            const g = c.getContext('2d');
+            g.fillStyle = '#ffffff';
+            g.fillRect(0, 0, c.width, c.height);
+            for (let i = 0; i < tiles.length; i++) {
+              const bin = atob(tiles[i]);
+              const data = new Uint8Array(bin.length);
+              for (let j = 0; j < bin.length; j++) data[j] = bin.charCodeAt(j);
+              const bmp = await g0.createImageBitmap(new g0.Blob([data], { type: 'image/jpeg' }));
+              const b = layout.boxes[i];
+              g.drawImage(bmp, b.x, b.y, b.w, b.h);
+              bmp.close?.();
+            }
+            // Quality first, then size: never above the bucket's per-object bound.
+            let out = c;
+            for (const q of [0.92, 0.85, 0.78]) {
+              const url = out.toDataURL('image/jpeg', q);
+              if (url.length * 0.75 <= maxBytes) return { b64: url.slice(url.indexOf(',') + 1), width: out.width, height: out.height };
+            }
+            for (let k = 0; k < 4; k++) {
+              const s = g0.document.createElement('canvas');
+              s.width = Math.max(1, Math.round(out.width * 0.75));
+              s.height = Math.max(1, Math.round(out.height * 0.75));
+              s.getContext('2d').drawImage(out, 0, 0, s.width, s.height);
+              out = s;
+              const url = out.toDataURL('image/jpeg', 0.85);
+              if (url.length * 0.75 <= maxBytes) return { b64: url.slice(url.indexOf(',') + 1), width: out.width, height: out.height };
+            }
+            throw new Error('STITCH_TOO_LARGE');
+          },
+          { tiles: input.tiles.map((t) => bytesToBuffer(t.bytes).toString('base64')), layout: input.layout, maxBytes },
+        );
+        work.catch(() => {});
+        const res: any = await Promise.race([
+          work,
+          new Promise((_, rej) => { const t = setTimeout(() => rej(new Error('PDF_STITCH_TIMEOUT')), timeoutMs); (t as any).unref?.(); }),
+        ]);
+        const bytes = new Uint8Array(Buffer.from(String(res?.b64 ?? ''), 'base64'));
+        if (!bytes.length || bytes.length > maxBytes) throw new Error('PDF_STITCH_EMPTY');
+        return { bytes, mime: 'image/jpeg' as const, width: Number(res.width), height: Number(res.height) };
       } finally {
         await page.close().catch(() => {});
       }

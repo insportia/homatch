@@ -34,6 +34,8 @@ import {
   catalogVisuals,
   scopeKeyFor,
   visualChronology,
+  galleryEmptyReason,
+  GALLERY_EMPTY_KEY,
   BADGE_KEY,
   CHAPTER_KEY,
   CHAPTER_WHY_KEY,
@@ -675,8 +677,10 @@ export const VisualExplorer: React.FC<{
    * latest-photos tab and open the gallery.
    */
   freshPhotos?: unknown;
+  /** synthesis_json.officialVisualsWithheld: official images found but not presentable (verify-synthesis). */
+  withheld?: unknown;
   clean: Clean;
-}> = ({ visuals, explanations, captions, identityUnresolved, history, docs, freshPhotos, clean }) => {
+}> = ({ visuals, explanations, captions, identityUnresolved, history, docs, freshPhotos, withheld, clean }) => {
   const { t, lang } = useLanguage();
   const rtl = lang === 'ar' || lang === 'he';
   const today = new Date().toISOString().slice(0, 10);
@@ -721,10 +725,12 @@ export const VisualExplorer: React.FC<{
     v.role === 'LATEST_RENDER' && chronoOf.get(v.id)?.chapter !== 'LATEST' ? null : baseVersionBadge(v);
 
   if (!usable.length) {
+    // Found-but-not-presentable (withheld by the server, or every image failed to load) is never "none found".
+    const reason = galleryEmptyReason({ catalogued: catalog.length, broken: catalog.length - usable.length, withheld }) ?? 'NONE_FOUND';
     return (
       <div className="flex items-start gap-3 rounded-2xl border border-dashed border-border bg-muted/30 p-5">
         <ImageOff className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm leading-6 text-muted-foreground break-words">{t('vrx_explore_empty')}</p>
+        <p className="text-sm leading-6 text-muted-foreground break-words">{t(GALLERY_EMPTY_KEY[reason])}</p>
       </div>
     );
   }

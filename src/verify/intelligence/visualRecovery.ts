@@ -198,6 +198,7 @@ export function storedVisualRecord(v: Rec, provenance: Rec): Rec | null {
     documentId: str(v.documentId) || null, attachedFileId, motionId: str(v.motionId) || null, fileName: str(v.fileName) || null,
     identity: v.identity ?? null, source: 'TAS', usage: 'OFFICIAL_RECORD_REFERENCE',
     ...(v.priority ? { priority: v.priority } : {}),
+    ...(Array.isArray(v.sourceTiles) && v.sourceTiles.length ? { sourceTiles: v.sourceTiles.filter((s: unknown) => SHA.test(str(s))).slice(0, 64) } : {}),
     provenance: { ...provenance, documentId: str(v.documentId) || null, attachedFileId, sourceUrl: attachedFileId ? tasDownloadUrl(attachedFileId) : null },
   };
 }

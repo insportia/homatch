@@ -30,7 +30,7 @@ import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
 import { officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { resolveIdentity } from '../../../src/verify/intelligence/propertyIdentity.ts';
-import { persistableVisuals, toCustomerVisualAssets, VISUAL_BUCKET, VISUAL_URL_TTL_SECONDS } from '../../../src/verify/intelligence/visualAssets.ts';
+import { persistableVisuals, toCustomerVisualAssets, withheldVisualCount, VISUAL_BUCKET, VISUAL_URL_TTL_SECONDS } from '../../../src/verify/intelligence/visualAssets.ts';
 import { annotateVisualQuality, visualByteSizes } from '../../../src/verify/intelligence/visualQuality.ts';
 import { withVisualDates } from '../../../src/verify/intelligence/visualDates.ts';
 import { applyVisualRecovery, needsVisualRecovery } from '../../../src/verify/intelligence/visualRecovery.ts';
@@ -260,7 +260,11 @@ async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: st
     },
     { explanations: rest?.report?.visualExplanations, ttlSeconds: VISUAL_URL_TTL_SECONDS },
   ).catch(() => []);
-  return signed.length ? { ...rest, officialVisuals: signed } : rest;
+  // Found but not shown (blank / strip / unsignable): counted, so the gallery
+  // says images exist but could not be presented instead of "none found".
+  const withheld = withheldVisualCount(officialVisuals, signed.length);
+  const out = signed.length ? { ...rest, officialVisuals: signed } : rest;
+  return withheld ? { ...out, officialVisualsWithheld: withheld } : out;
 }
 
 function officialDocumentPages(result: any): number {

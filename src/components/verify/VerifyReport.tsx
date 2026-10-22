@@ -572,6 +572,7 @@ function VerifyReportBody({
           history={history}
           docs={synthesis.officialDocuments}
           freshPhotos={(synthesis as { freshPhotos?: unknown }).freshPhotos}
+          withheld={(synthesis as { officialVisualsWithheld?: unknown }).officialVisualsWithheld}
           clean={clean}
         />
       </Chapter>

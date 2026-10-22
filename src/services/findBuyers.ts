@@ -269,3 +269,77 @@ export async function getPropertyLeadsPage(propertyId: string, page: number, pag
     total: Number(count ?? 0),
   };
 }
+
+/* ── one run, addressable by URL (find_buyers_my_campaign / _my_campaigns) ── */
+
+export interface CampaignRun { propertyId: string; status: CampaignStatus }
+
+/** One external search run for its owner; null when it does not exist or is not theirs. */
+export async function getCampaignRun(jobId: string): Promise<CampaignRun | null> {
+  const { data, error } = await supabase.rpc('find_buyers_my_campaign', { p_job_id: jobId });
+  if (error || !data || typeof data !== 'object') return null;
+  const d = data as { propertyId?: string; readiness?: SearchReadiness | null; campaign?: CampaignLifecycle | null };
+  if (!d.propertyId) return null;
+  return {
+    propertyId: d.propertyId,
+    status: {
+      readiness: d.readiness ?? null,
+      campaign: d.campaign ? { ...d.campaign, sources: Array.isArray(d.campaign.sources) ? d.campaign.sources : [] } : null,
+    },
+  };
+}
+
+export interface CampaignHistoryRow {
+  jobId: string;
+  propertyId: string;
+  propertyTitle: string | null;
+  transaction: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  creditsCommitted: number | null;
+  languages: string[] | null;
+  state: CampaignLifecycleState | null;
+  active: boolean;
+  results: number;
+}
+
+/** The owner's external search runs, newest first; one property or all of them. */
+export async function listMyCampaigns(propertyId?: string | null, limit = 30): Promise<CampaignHistoryRow[]> {
+  const { data, error } = await supabase.rpc('find_buyers_my_campaigns', { p_property_id: propertyId ?? null, p_limit: limit });
+  if (error) throw new Error(error.message);
+  return Array.isArray(data) ? (data as CampaignHistoryRow[]) : [];
+}
+
+export type LeadSort = 'score' | 'recent';
+export interface LeadQuery { source?: string | null; strength?: PotentialLead['strength'] | null; q?: string; sort?: LeadSort }
+
+/** One page of a single run's leads, filtered and sorted on the server (RLS: the owner's rows only). */
+export async function getRunLeadsPage(
+  jobId: string, page: number, pageSize: number, query: LeadQuery = {},
+): Promise<{ rows: PotentialLead[]; total: number }> {
+  const from = Math.max(0, page - 1) * pageSize;
+  let req = supabase
+    .from('find_buyers_current_leads')
+    .select('id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url', { count: 'exact' })
+    .eq('matching_job_id', jobId);
+  if (query.source) req = req.eq('source', query.source);
+  if (query.strength) req = req.eq('strength', query.strength);
+  const q = (query.q ?? '').trim().replace(/[%,()]/g, ' ').slice(0, 80);
+  if (q) req = req.ilike('author_name', `%${q}%`);
+  req = query.sort === 'recent'
+    ? req.order('signal_at', { ascending: false, nullsFirst: false }).order('id', { ascending: true })
+    : req.order('overall_score', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: true });
+  const { data, error, count } = await req.range(from, from + pageSize - 1);
+  if (error) return { rows: [], total: 0 };
+  return {
+    rows: ((data ?? []) as unknown as PotentialLead[]).map((l) => ({ ...l, evidence: Array.isArray(l.evidence) ? l.evidence : [] })),
+    total: Number(count ?? 0),
+  };
+}
+
+/** The sources a run's leads came from, for the filter rail. */
+export async function getRunLeadSources(jobId: string): Promise<string[]> {
+  const { data, error } = await supabase.from('find_buyers_current_leads').select('source').eq('matching_job_id', jobId).limit(1000);
+  if (error) return [];
+  return [...new Set(((data ?? []) as Array<{ source: string }>).map((r) => r.source))].sort();
+}

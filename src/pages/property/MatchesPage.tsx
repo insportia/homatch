@@ -4,8 +4,9 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
+import { type MatchingService, ServiceHeader, ServiceSwitch } from '@/components/matching/ServiceIdentity';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
@@ -56,7 +57,7 @@ import {
   getCreditAccount, 
   getLastSettledSweep,getMatchCounts, 
   getMatchesPaged, 
-  controlMatchingJob, getUnlockedMatch, markMatchPreviewed, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
+  controlMatchingJob, getMatchById, getUnlockedMatch, markMatchPreviewed, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
   campaignStartErrorKey,
 } from '@/services/api';
 import { readProperty } from '@/services/propertyManagement';
@@ -401,6 +402,8 @@ function MatchesContent() {
   const [showBudget, setShowBudget] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [leadCount, setLeadCount] = useState(0);
+  const [nativeCount, setNativeCount] = useState<number | null>(null);
+  const [service, setService] = useState<MatchingService>('external');
   /* New current-demand matches the live search reported while a page is being read. */
   const [matchesPending, setMatchesPending] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
@@ -795,6 +798,9 @@ function MatchesContent() {
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       toast.success(t('matches_campaign_started_toast'));
+      /* The campaign has an address now: open its own workspace. */
+      navigate(`/property/${propertyId}/campaigns/${result.jobId}?view=progress`);
+      return;
     } catch (e) {
       { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
     } finally {
@@ -803,6 +809,24 @@ function MatchesContent() {
       setCampaignLoading(false);
     }
   };
+
+  /*
+   * DEEP LINKS. ?launch=1 opens the budget step (from a campaign's "start another
+   * search"); ?open=<matchId> opens one match through the normal unlock flow (from
+   * the campaign workspace), so its price confirmation and charging never fork.
+   */
+  const deepLinkDone = React.useRef(false);
+  useEffect(() => {
+    if (deepLinkDone.current || loading) return;
+    const launch = searchParams.get('launch');
+    const open = searchParams.get('open');
+    if (!launch && !open) return;
+    deepLinkDone.current = true;
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.delete('launch'); p.delete('open'); return p; }, { replace: true });
+    if (launch) setShowBudget(true);
+    if (open) void getMatchById(open).then((m) => { if (m && m.property_id === propertyId) void handleUnlockClick(m); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, searchParams, setSearchParams, propertyId]);
 
   const handlePauseMatching = async () => {
     if (!propertyId || !homatchUser) return;
@@ -963,16 +987,46 @@ function MatchesContent() {
             compact
             eyebrow={propertyLabel}
             title={t(titleKey)}
-            subtitle={t('matches_count_line', {
-              /* HOMATCH matches plus potential buyers/tenants from public conversations. */
-              total: String(counts.total + leadCount),
-              new: String(counts.newCount),
-            })}
+            /* No combined count here: each service below names its own results, so a
+               total mixing Internal and External can never be read as either one. */
+            subtitle={t('svc_page_subtitle')}
           />
         </div>
 
-        {/* ── LIVE SEARCH: what is being looked for, and what the search is doing now ── */}
-        <div ref={moduleRef} className="mt-4">
+        {/* ── WHICH SERVICE: two engines, two identities, never one generic "Matches" ── */}
+        <ServiceSwitch className="mt-4 max-w-xl" active={service} onSelect={(svc) => {
+          setService(svc);
+          document.getElementById(svc === 'internal' ? 'svc-internal' : 'svc-external')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }} />
+
+        {/* ── INTERNAL MATCHING: HOMATCH members whose requirements fit this property ── */}
+        <section id="svc-internal" aria-labelledby="svc-internal-title" className="mt-5 scroll-mt-20 space-y-3 rounded-2xl border border-[hsl(158_40%_80%)] bg-[linear-gradient(180deg,hsl(158_45%_97%),white)] p-4 sm:p-5">
+          <ServiceHeader service="internal" id="svc-internal-title" count={nativeCount} />
+          {propertyId ? (
+            <NativeMatchesPanel propertyId={propertyId} role="OWNER" bare onCount={setNativeCount} className="border-[hsl(158_40%_85%)]"
+              emptyState={(
+                <p className="rounded-xl bg-white px-4 py-3 text-sm leading-relaxed text-[hsl(218_28%_38%)] ring-1 ring-inset ring-[hsl(158_40%_85%)]">
+                  {t('svc_internal_empty')}
+                </p>
+              )} />
+          ) : null}
+        </section>
+
+        {/* ── EXTERNAL MATCHING: discovered outside HOMATCH by a campaign ── */}
+        <section id="svc-external" aria-labelledby="svc-external-title" className="mt-6 scroll-mt-20 space-y-4">
+          <ServiceHeader service="external" id="svc-external-title" count={counts.total + leadCount}
+            actions={(
+              <>
+                {campaignStatus?.campaign?.jobId && (
+                  <Link to={`/property/${propertyId}/campaigns/${campaignStatus.campaign.jobId}`} className={cn(FRAMED_ACTION, 'text-sm')}>
+                    <Sparkles className="h-4 w-4 text-[hsl(34_90%_40%)]" aria-hidden="true" />
+                    {t(campaignActive ? 'cw_open_live' : 'cw_open_campaign')}
+                  </Link>
+                )}
+                <Link to={`/property/${propertyId}/campaigns`} className={cn(FRAMED_ACTION, 'text-sm')}>{t('cw_history')}</Link>
+              </>
+            )} />
+        <div ref={moduleRef}>
           <LiveSearchModule
             id="fbl-live"
             status={campaignStatus}
@@ -995,24 +1049,14 @@ function MatchesContent() {
           />
         )}
 
-        {/* ── RESULTS: everything stored for this property, separate from the live search ── */}
-        <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold text-[hsl(218_45%_14%)]">{t('fbl_results_heading')}</h2>
-            <p className="text-2xs text-[hsl(218_28%_38%)]">{t('fbl_results_caption')}</p>
-          </div>
-        </div>
+        {/* ── RESULTS: everything this property's external campaigns found ── */}
+        <p className="text-2xs text-[hsl(218_28%_38%)]">{t('fbl_results_caption')}</p>
         <FilterRail
           options={filters}
           value={filter}
           onChange={(next) => { setFilter(next); setPageParam('page', 1); setPageParam('hp', 1); }}
           ariaLabel={t('matches_filter_all')}
         />
-
-        {/* HOMATCH members whose requirements fit this property, or who asked about it.
-            Two real accounts on both sides — the one kind of result that offers Message
-            and Call. Renders nothing when there is nobody. */}
-        {propertyId ? <NativeMatchesPanel propertyId={propertyId} role="OWNER" className="hm-discovery-panel" /> : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-4">
@@ -1137,6 +1181,7 @@ function MatchesContent() {
             )}
           </aside>
         </div>
+        </section>
       </CustomerSurface>
 
       {/* Unlock Confirmation Dialog */}

@@ -170,3 +170,69 @@ export function networkNodes(
   /* Executed sources keep the server's order; the rest are alphabetical. */
   return nodes.sort((a, b) => rank(a) - rank(b) || (a.executed ? 0 : a.source.localeCompare(b.source)));
 }
+
+/* ── THE CAMPAIGN WORKSPACE'S STAGES ──────────────────────────────────────
+ * Five customer-facing steps, each a pure reading of the server's lifecycle.
+ * A step is DONE only when the server's own state proves it, ACTIVE only while
+ * the matching work is actually in flight, and nothing is ever DONE for a
+ * search that stopped before reaching it (a failed or cancelled run keeps its
+ * later steps PENDING, and the step it stopped at becomes HALTED).
+ */
+export type StageKey = 'prepare' | 'discover' | 'evaluate' | 'organize' | 'ready';
+export type StageState = 'PENDING' | 'ACTIVE' | 'DONE' | 'HALTED';
+export interface StageInput {
+  state: LifecycleState;
+  stage?: 'FINISHING' | null;
+  queue: { total: number; queued: number; running: number; done: number; failed: number };
+  newResults: number;
+}
+
+export const STAGE_KEYS: StageKey[] = ['prepare', 'discover', 'evaluate', 'organize', 'ready'];
+
+const SUCCESS_TERMINAL: LifecycleState[] = ['COMPLETED_WITH_RESULTS', 'COMPLETED_NO_RESULTS', 'DEGRADED_COMPLETED'];
+const HALTED_TERMINAL: LifecycleState[] = ['FAILED', 'UNAVAILABLE', 'CANCELLED'];
+
+export function campaignStages(c: StageInput): Array<{ key: StageKey; state: StageState }> {
+  const out = (states: StageState[]) => STAGE_KEYS.map((key, i) => ({ key, state: states[i] }));
+  if (SUCCESS_TERMINAL.includes(c.state)) return out(['DONE', 'DONE', 'DONE', 'DONE', 'DONE']);
+
+  const started = c.queue.total > 0;
+  const outstanding = c.queue.queued + c.queue.running;
+  const finished = c.queue.done + c.queue.failed;
+  const discoveryDone = started && outstanding === 0;
+  const finishing = c.stage === 'FINISHING';
+
+  /* How far the run provably got, for live, paused and halted runs alike. */
+  const reached: StageState[] = (() => {
+    if (c.state === 'PREPARING' || c.state === 'QUEUED' || !started) return ['ACTIVE', 'PENDING', 'PENDING', 'PENDING', 'PENDING'];
+    if (finishing) return ['DONE', 'DONE', 'DONE', 'ACTIVE', 'PENDING'];
+    if (discoveryDone) return ['DONE', 'DONE', 'ACTIVE', 'PENDING', 'PENDING'];
+    /* Results only exist once something was evaluated as relevant. */
+    const evaluating: StageState = c.newResults > 0 || finished > 0 ? 'ACTIVE' : 'PENDING';
+    return ['DONE', 'ACTIVE', evaluating, 'PENDING', 'PENDING'];
+  })();
+
+  if (HALTED_TERMINAL.includes(c.state)) {
+    /* The furthest step that was in flight is where it stopped; nothing after it ran. */
+    let last = -1;
+    reached.forEach((s, i) => { if (s === 'ACTIVE') last = i; });
+    return out(reached.map((s, i) => (s === 'ACTIVE' ? (i === last ? 'HALTED' : 'DONE') : s)));
+  }
+  if (c.state === 'PAUSED' || c.state === 'PAUSING') {
+    /* Paused work is not moving: in-flight steps are shown as held, not running. */
+    return out(reached.map((s) => (s === 'ACTIVE' ? 'HALTED' : s)));
+  }
+  return out(reached);
+}
+
+/** Where the workspace goes once the run has settled: results, an empty state, or a problem. */
+export type Outcome = 'running' | 'paused' | 'results' | 'partial' | 'empty' | 'failed' | 'cancelled';
+export function campaignOutcome(state: LifecycleState, results: number): Outcome {
+  if (state === 'PAUSED' || state === 'PAUSING') return 'paused';
+  if (['PREPARING', 'QUEUED', 'SEARCHING', 'PARTIAL_RESULTS'].includes(state)) return 'running';
+  if (state === 'CANCELLED') return results > 0 ? 'partial' : 'cancelled';
+  if (state === 'DEGRADED_COMPLETED') return results > 0 ? 'partial' : 'failed';
+  if (state === 'FAILED' || state === 'UNAVAILABLE') return results > 0 ? 'partial' : 'failed';
+  if (state === 'COMPLETED_WITH_RESULTS') return results > 0 ? 'results' : 'empty';
+  return results > 0 ? 'results' : 'empty';
+}

@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
+import { ServiceBadge } from '@/components/matching/ServiceIdentity';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { OWNER_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -188,6 +189,7 @@ function DiscoverySection({
   onRenewed: () => void;
 }) {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
@@ -230,6 +232,8 @@ function DiscoverySection({
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       toast.success(t('matches_campaign_started_toast'));
+      /* The campaign has its own page from the moment it exists. */
+      navigate(`/property/${propertyId}/campaigns/${result.jobId}?view=progress`);
     } catch (e) {
       const refused = campaignStartErrorKey(e);
       toast.error(refused ? t(refused.key as never, refused.vars) : t('matches_start_failed'));
@@ -282,6 +286,7 @@ function DiscoverySection({
         {/* Left: what this is and where the search stands — the server's state. */}
         <div className={cn('space-y-4 p-5 text-white sm:p-6', NAVY_BAND)}>
           <div className="space-y-1.5">
+            <ServiceBadge service="external" onDark />
             <h2 id="pow-discovery-title" className="font-display text-lg font-semibold tracking-[-0.01em] break-words">
               {t('pow_discovery_title')}
             </h2>
@@ -299,8 +304,15 @@ function DiscoverySection({
           </span>
           {live && view && (
             <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)]">
-              {t('fbl_live_line', { working: String(view.metrics.sourcesWorking), signals: String(view.metrics.signals), possible: String(view.metrics.possible) })}
+              {t('cw_live_results', { n: String(view.metrics.possible) })}
             </p>
+          )}
+          {campaign?.jobId && (
+            <Link to={`/property/${propertyId}/campaigns/${campaign.jobId}`}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-white/5 px-3 text-2xs font-semibold text-[hsl(38_92%_66%)] ring-1 ring-inset ring-[hsl(40_80%_60%/0.45)] hover:bg-white/10">
+              <span className="break-words">{t(live ? 'cw_open_live' : 'cw_open_campaign')}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 rtl:rotate-180" aria-hidden="true" />
+            </Link>
           )}
           {now.last && !expired && (
             <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)] break-words" data-testid="pow-last-search">
@@ -310,9 +322,9 @@ function DiscoverySection({
           {!live && readiness && !readiness.ready && !expired && (
             <p className="text-2xs leading-relaxed text-[hsl(350_80%_88%)]" role="status">{t('fbl_not_ready')}</p>
           )}
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3 text-2xs">
-            <span className="text-[hsl(218_40%_85%)]">{t('prop_balance_label')}</span>
-            <Link to="/credits" className="inline-flex items-center gap-1 font-semibold text-[hsl(38_92%_66%)] hover:underline">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-white/10 pt-3 text-2xs">
+            <span className="min-w-0 break-words text-[hsl(218_40%_85%)]">{t('prop_balance_label')}</span>
+            <Link to="/credits" className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-semibold text-[hsl(38_92%_66%)] hover:underline">
               <Zap className="h-3 w-3" aria-hidden="true" />
               <span dir="ltr">{creditBalance.toFixed(2)} CR</span>
             </Link>

@@ -1929,3 +1929,9 @@ html[data-impersonating] .sticky.top-0 { top: 2.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .hm-plan-scan { animation: none; opacity: 0; }
 }
+
+/* Campaign workspace: the indeterminate bar's travelling highlight (no figure is implied). */
+@keyframes cw-shimmer {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(320%); }
+}

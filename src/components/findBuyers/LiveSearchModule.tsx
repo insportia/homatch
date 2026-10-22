@@ -141,27 +141,26 @@ export function LiveSearchModule({
           </div>
         )}
         <div className="min-w-0 space-y-4">
+          {/*
+            THIS CAMPAIGN'S OWN RESULTS, AND NOTHING ABOUT HOMATCH'S INSIDES.
+            How much content was read, how many communities were registered and how
+            many old posts were skipped describe the machinery, not the customer's
+            campaign, and they read like the size of an internal database. They stay
+            in Admin. What the customer sees is what their campaign found.
+          */}
           {c && view && (live || c.executed) && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Metric value={view.metrics.sourcesWorking} label={t('fbl_m_working')} accent={view.metrics.sourcesWorking > 0} />
-              <Metric value={view.metrics.sourcesDone} label={t('fbl_m_done')} />
-              <Metric value={view.metrics.signals} label={t('fbl_m_checked')} />
+            <div className="grid grid-cols-2 gap-2">
               <Metric value={view.metrics.possible} label={t('fbl_m_qualified')} accent={view.metrics.possible > 0} />
               <Metric value={view.metrics.strong} label={t('fbl_m_strong')} accent={view.metrics.strong > 0} />
-              <Metric value={c.staleSkipped} label={t('fbl_m_stale')} />
             </div>
           )}
-          {/* Per source, in words: what was READ is never what was FOUND. */}
+          {/* Per source: where this campaign's results came from. */}
           {ran.length > 0 && (
-            <ul className="space-y-1.5" data-testid="fbl-source-outcomes">
+            <ul className="flex flex-wrap gap-1.5" data-testid="fbl-source-outcomes">
               {ran.map((n) => (
-                <li key={n.source} className="rounded-xl bg-white/[0.04] px-3 py-2 text-2xs leading-relaxed ring-1 ring-inset ring-white/10">
-                  <span className="font-semibold text-white">{sourceStyle(n.source).label}</span>
-                  <span className={ON_NAVY_SOFT}>
-                    {' · '}{t('fbl_src_checked', { n: String(n.checked) })}
-                    {n.communities > 0 ? <>{' · '}{t('fbl_src_communities', { n: String(n.communities) })}</> : null}
-                    {' · '}<span className={n.qualified > 0 ? GOLD_TEXT : undefined}>{t('fbl_src_qualified', { n: String(n.qualified) })}</span>
-                  </span>
+                <li key={n.source} className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-2xs ring-1 ring-inset ring-white/10">
+                  <span className="truncate font-semibold text-white">{sourceStyle(n.source).label}</span>
+                  <span className={cn('tabular-nums', n.qualified > 0 ? GOLD_TEXT : ON_NAVY_SOFT)}>{n.qualified}</span>
                 </li>
               ))}
             </ul>

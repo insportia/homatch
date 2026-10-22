@@ -35,6 +35,10 @@ const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
 const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
 const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
+const CampaignWorkspacePage = lazyRoute(() => import('./pages/property/CampaignWorkspacePage'));
+const CampaignHistoryPage = lazyRoute(() => import('./pages/property/CampaignHistoryPage'));
+const EmailStudioPage = lazyRoute(() => import('./pages/outreach/EmailStudioPage'));
+const ContactLibraryPage = lazyRoute(() => import('./pages/outreach/ContactLibraryPage'));
 const CreditsPage = lazyRoute(() => import('./pages/CreditsPage'));
 const ChatPage = lazyRoute(() => import('./pages/ChatPage'));
 const LiveChatPage = lazyRoute(() => import('./pages/LiveChatPage'));
@@ -453,8 +457,22 @@ export const routes: RouteConfig[] = [
   { name: 'Edit Property',     path: '/property/:id/edit',        element: <EditPropertyPage /> },
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
   { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
+  /*
+   * EXTERNAL MATCHING CAMPAIGNS. A run has its own address the moment it is
+   * created (matching_jobs.id), so a refresh or a shared tab lands on the same
+   * campaign; the history lists every run. Both are read through
+   * find_buyers_my_campaign(s), which checks property ownership first.
+   */
+  { name: 'Campaign history',  path: '/property/:id/campaigns',   element: <CampaignHistoryPage />, visible: false },
+  { name: 'Campaign workspace', path: '/property/:id/campaigns/:jobId', element: <CampaignWorkspacePage />, visible: false },
+  { name: 'All campaigns',     path: '/campaigns',                element: <CampaignHistoryPage />, visible: false },
   // Outreach
   { name: 'Communications',    path: '/outreach',                 element: <CommunicationsOverviewPage /> },
+  /* Email Studio (drafts, templates, AI drafting, guarded send) and the
+     unlocked contact library it picks recipients from. */
+  { name: 'Email Studio',      path: '/outreach/email/studio',          element: <EmailStudioPage /> },
+  { name: 'Email Studio draft', path: '/outreach/email/studio/:docId',  element: <EmailStudioPage />, visible: false },
+  { name: 'Contact library',   path: '/outreach/library',         element: <ContactLibraryPage /> },
   { name: 'Outreach Hub',      path: '/outreach/hub',             element: <OutreachHubPage />,  visible: false },
   { name: 'Communities',       path: '/outreach/communities',     element: <CommunitiesPage /> },
   { name: 'Contact Lists',     path: '/outreach/contact-lists',   element: <ContactListsPage /> },

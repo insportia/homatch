@@ -124,7 +124,7 @@ export function SearchBudgetOffer({
             .replace('{n}', cr(offer.min_viable_budget_credits))
             .replace('{b}', `${cr(offer.available_balance)} ${t('cost_credits')}`)}
         </p>
-        <Button className="mt-3 w-full bg-gold text-background hover:bg-gold/90" onClick={() => navigate('/credits')}>
+        <Button className="mt-3 h-auto min-h-10 w-full whitespace-normal bg-gold py-2 text-center leading-snug text-background hover:bg-gold/90" onClick={() => navigate('/credits')}>
           <Wallet className="me-2 h-4 w-4" />
           {t('cta_top_up')}
         </Button>
@@ -195,8 +195,8 @@ export function SearchBudgetOffer({
         <div className="mt-2 space-y-1 text-sm">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
             <span className="min-w-0 text-muted-foreground">{t('cost_estimated_usage')}</span>
-            <span className="whitespace-nowrap font-medium" dir="ltr">
-              {cr(offer.estimate_min_credits)}–{cr(offer.estimate_max_credits)} {t('cost_credits')}
+            <span className="min-w-0 break-words font-medium tabular-nums" dir="ltr">
+              <span className="whitespace-nowrap">{cr(offer.estimate_min_credits)}–{cr(offer.estimate_max_credits)}</span> {t('cost_credits')}
             </span>
           </div>
         </div>
@@ -286,7 +286,7 @@ export function SearchBudgetOffer({
         </p>
       )}
 
-      <Button className="mt-3 w-full" onClick={() => onRun(authorized)} disabled={running || authorized <= 0}>
+      <Button className="mt-3 h-auto min-h-10 w-full whitespace-normal py-2 text-center leading-snug" onClick={() => onRun(authorized)} disabled={running || authorized <= 0}>
         {running && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
         <Search className="me-2 h-4 w-4" />
         {ctaLabel
@@ -299,7 +299,7 @@ export function SearchBudgetOffer({
       {partial && (
         <>
           <Separator className="my-3" />
-          <Button variant="outline" className="w-full" onClick={() => navigate('/credits')}>
+          <Button variant="outline" className="h-auto min-h-10 w-full whitespace-normal py-2 text-center leading-snug" onClick={() => navigate('/credits')}>
             <Wallet className="me-2 h-4 w-4" />
             {t('budget_cta_deeper')}
           </Button>

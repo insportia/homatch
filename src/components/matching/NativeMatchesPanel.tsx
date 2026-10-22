@@ -34,11 +34,19 @@ export function NativeMatchesPanel({
   propertyId,
   role,
   className,
+  emptyState,
+  bare = false,
+  onCount,
 }: {
   /** Owner view of one property; omit for the seeker's view of their searches. */
   propertyId?: string | null;
   role: 'OWNER' | 'SEEKER';
   className?: string;
+  /** Rendered instead of nothing when there is nobody (a page that names the service needs to say so). */
+  emptyState?: React.ReactNode;
+  /** Omit the panel's own heading, when the page already names the service above it. */
+  bare?: boolean;
+  onCount?: (n: number) => void;
 }) {
   const { t } = useLanguage();
   const [rows, setRows] = useState<NativeMatchRow[] | null>(null);
@@ -47,33 +55,37 @@ export function NativeMatchesPanel({
   const load = useCallback(async () => {
     try {
       const all = await listNativeMatches(propertyId ?? null);
-      setRows(all.filter((row) => row.role === role));
+      const mine = all.filter((row) => row.role === role);
+      setRows(mine);
+      onCount?.(mine.length);
       setFailed(false);
     } catch {
       setFailed(true);
       setRows([]);
     }
-  }, [propertyId, role]);
+  }, [propertyId, role, onCount]);
 
   useEffect(() => { void load(); }, [load]);
 
   /* Nothing to show is a real answer and it is shown as nothing: no empty promo box, no
      invented "0 buyers". The section appears when there is somebody in it. */
-  if (rows === null || (rows.length === 0 && !failed)) return null;
+  if (rows === null) return null;
+  if (rows.length === 0 && !failed) return emptyState ? <>{emptyState}</> : null;
 
   return (
     <section
-      aria-labelledby="native-matches-title"
+      aria-labelledby={bare ? undefined : 'native-matches-title'}
+      aria-label={bare ? t(role === 'OWNER' ? 'native_section_owner_title' : 'native_section_seeker_title') : undefined}
       className={cn('rounded-xl border border-border bg-[hsl(var(--card))] p-4 sm:p-5', className)}
     >
-      <header className="mb-3 min-w-0">
+      {!bare && <header className="mb-3 min-w-0">
         <h2 id="native-matches-title" className="text-sm font-semibold text-foreground">
           {role === 'OWNER' ? t('native_section_owner_title') : t('native_section_seeker_title')}
         </h2>
         <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
           {role === 'OWNER' ? t('native_section_owner_hint') : t('native_section_seeker_hint')}
         </p>
-      </header>
+      </header>}
       {failed ? (
         <p role="status" className="text-2xs text-muted-foreground">{t('native_error_load')}</p>
       ) : (

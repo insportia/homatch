@@ -599,6 +599,26 @@ async function getMatchesPage(
   return { rows: Array.isArray(data) ? (data as unknown as Match[]) : [], error: null };
 }
 
+/** One match by id, for a deep link that opens it (RLS: the owner's own matches only). */
+export async function getMatchById(matchId: string): Promise<Match | null> {
+  const { data, error } = await supabase.from('matches').select(MATCH_COLUMNS_WITH_DEMAND_DATE).eq('id', matchId).maybeSingle();
+  if (error || !data) return null;
+  return data as unknown as Match;
+}
+
+/** The signal matches one external run produced, strongest first (RLS: the owner's own). */
+export async function getRunMatches(jobId: string, limit = 60): Promise<Match[]> {
+  const { data, error } = await supabase.from('matches')
+    .select(MATCH_COLUMNS_WITH_DEMAND_DATE)
+    .eq('job_id', jobId)
+    .neq('status', 'REJECTED')
+    .order('match_score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return (data ?? []) as unknown as Match[];
+}
+
 // Cursor string for the LAST row of a getMatches() page, to pass as the `cursor`
 // argument on the next call. Returns undefined when there's nothing to page from
 // (empty page) — callers should treat that as "no more pages".

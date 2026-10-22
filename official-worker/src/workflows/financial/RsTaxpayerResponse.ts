@@ -420,6 +420,32 @@ export function buildRsVerificationRecord(input: {
   };
 }
 
+/**
+ * May a reading of the PAGE decide this search? Only when RS.ge's own answer
+ * was not captured, or was itself a record / an empty grid. A captured answer
+ * that is unreadable (or a refusal) leaves the grid in its empty state —
+ * "Not found", 0 rows — which is NOT RS.ge saying there is no taxpayer.
+ * Production 2026-10-22, company 405456359 (a registered LLC): a ~700-byte
+ * JSON answer with no grid, a page reading "Not found", recorded as a
+ * confirmed no-record. A parsed record on the page is still accepted: it
+ * carries the taxpayer's own fields, which an empty grid cannot.
+ */
+export function rsPageReadDecides(cls: RsGridClassification | null, page: 'NO_RESULT_CONFIRMED' | 'SEARCH_CONFIRMED'): boolean {
+  if (!cls || cls.outcome === 'ACCEPTED' || cls.outcome === 'NO_RESULT') return true;
+  return page === 'SEARCH_CONFIRMED' && cls.outcome !== 'REJECTED';
+}
+
+/**
+ * A stored record that says VERIFIED / NO_RESULT only because the page read
+ * "no result" while RS.ge's captured answer was unreadable (reason
+ * PAGE_READ_UNPARSEABLE, PAGE_READ_HTTP_ERROR …). Workers wrote these before
+ * rsPageReadDecides(); such a record is not a confirmed absence.
+ */
+export function rsDomOnlyNoResult(rec: { status?: unknown; serverOutcome?: unknown; reason?: unknown } | null | undefined): boolean {
+  if (!rec || rec.status !== 'VERIFIED' || rec.serverOutcome !== 'NO_RESULT') return false;
+  return /^PAGE_READ_(?!NO_RESULT$|ACCEPTED$)[A-Z_]+$/.test(String(rec.reason ?? ''));
+}
+
 /** The log-safe view of a record: names, counts and codes — never values, never the raw answer. */
 export function rsRecordLogFields(r: RsVerificationRecord): Record<string, unknown> {
   return { status: r.status, serverOutcome: r.serverOutcome, httpStatus: r.httpStatus, format: r.responseFormat, rowCount: r.rowCount, columns: r.columns, rawBytes: r.rawResponseBytes, requestHadTin: r.requestHadTin, reason: r.reason };

@@ -40,6 +40,25 @@ async function signUnsubscribeToken(contactId: string, secret: string): Promise<
 
 const BATCH_SIZE = 40;
 
+/*
+ * MERGE FIELDS, PER RECIPIENT. Email Studio writes {{first_name|fallback}} and
+ * {{name|fallback}}; each becomes this contact's own stored name (the first
+ * word for first_name), else the fallback the author typed, else nothing. In
+ * HTML the value is escaped: a contact's name is data, never markup. A body
+ * without merge fields is returned unchanged. Same rule as applyMergeFields in
+ * src/communication/emailDesign.ts, which the Studio preview uses.
+ */
+const MERGE_FIELD_RE = /\{\{\s*(first_name|name)\s*(?:\|([^}]{0,40}))?\}\}/g;
+function mergeFields(text: string, fullName: string | null | undefined, html: boolean): string {
+  return text.replace(MERGE_FIELD_RE, (_m: string, field: string, fallback?: string) => {
+    const name = String(fullName ?? '').trim();
+    const value = name ? (field === 'first_name' ? name.split(/\s+/)[0] : name) : String(fallback ?? '').trim();
+    return html
+      ? value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+      : value;
+  });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -321,11 +340,11 @@ serve(async (req) => {
         // outreach-unsubscribe — a contact can only unsubscribe themselves.
         const unsubToken = await signUnsubscribeToken(contact.id, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
         const unsubUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/outreach-unsubscribe?contact=${encodeURIComponent(contact.id)}&token=${unsubToken}`;
-        const bodyHtml = campaign.html_body || `<p>${(campaign.text_body || '').replace(/\n/g, '<br/>')}</p>`;
+        const bodyHtml = mergeFields(campaign.html_body || `<p>${(campaign.text_body || '').replace(/\n/g, '<br/>')}</p>`, contact.full_name, true);
         const htmlWithFooter = `${bodyHtml}\n<hr style="margin-top:24px;border:none;border-top:1px solid #e5e5e5"/>\n<p style="font-size:11px;color:#888;margin-top:12px">Homatch &middot; <a href="${unsubUrl}" style="color:#888">Unsubscribe</a></p>`;
-        const textWithFooter = campaign.text_body ? `${campaign.text_body}\n\n---\nUnsubscribe: ${unsubUrl}` : undefined;
+        const textWithFooter = campaign.text_body ? `${mergeFields(campaign.text_body, contact.full_name, false)}\n\n---\nUnsubscribe: ${unsubUrl}` : undefined;
         const result = await emailAdapter.send({
-          to: contact.email!, subject: campaign.subject || campaign.name,
+          to: contact.email!, subject: mergeFields(campaign.subject || campaign.name, contact.full_name, false),
           html: htmlWithFooter,
           text: textWithFooter,
           from_name: campaign.sender_name || 'Homatch', from_email: campaign.sender_email || undefined,

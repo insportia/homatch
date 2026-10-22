@@ -647,6 +647,10 @@ jobs:
             "comm-agent"
             "comm-campaign-launch"
             "comm-provider-status"
+            # Email Studio / message assist drafting. Authenticates the caller,
+            # reads only that caller's own property through their RLS, drafts and
+            # never sends. Rate-limited per user on rate_limit_events.
+            "communication-studio-ai"
             "whatsapp-send"
             "whatsapp-sync"
             "cartesia-access-token"

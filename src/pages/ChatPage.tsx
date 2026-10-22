@@ -72,7 +72,11 @@ function ReportConversationDialog({ open, onClose, conversationId, reporterId }:
 }
 
 function MessageThread({ conv, myId, onBack }: { conv: Conversation; myId: string; onBack: () => void }) {
-  const [messages, setMessages] = useState<Message[]>([]); const [loading, setLoading] = useState(true); const [text, setText] = useState(''); const [sending, setSending] = useState(false); const [shareOpen, setShareOpen] = useState(false); const [reportOpen, setReportOpen] = useState(false); const [sharedContact, setSharedContact] = useState<Record<string, string> | null>(null); const bottomRef = useRef<HTMLDivElement>(null); const { t } = useLanguage();
+  /* A draft prepared in the message assistant arrives in navigation state (never the URL) and only
+     pre-fills the box; the member still presses Send. */
+  const draftState = (useLocation().state as { draft?: unknown; conversationId?: unknown } | null);
+  const initialDraft = typeof draftState?.draft === 'string' && draftState.conversationId === conv.id ? draftState.draft.slice(0, 2000) : '';
+  const [messages, setMessages] = useState<Message[]>([]); const [loading, setLoading] = useState(true); const [text, setText] = useState(initialDraft); const [sending, setSending] = useState(false); const [shareOpen, setShareOpen] = useState(false); const [reportOpen, setReportOpen] = useState(false); const [sharedContact, setSharedContact] = useState<Record<string, string> | null>(null); const bottomRef = useRef<HTMLDivElement>(null); const { t } = useLanguage();
   const loadMessages = useCallback(async () => { setLoading(true); try { const msgs = await getMessages(conv.id); setMessages(msgs); for (const m of msgs) if (m.sender_id !== myId && m.status !== 'SEEN') markMessageSeen(m.id).catch(() => {}); } finally { setLoading(false); } }, [conv.id, myId]);
   useEffect(() => { loadMessages(); const channel = supabase.channel(`messages:${conv.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conv.id}` }, payload => { setMessages(prev => { if (prev.find(m => m.id === payload.new.id)) return prev; const newMsg = payload.new as Message; if (newMsg.sender_id !== myId) markMessageSeen(newMsg.id).catch(() => {}); return [...prev, newMsg]; }); }).subscribe(); return () => { supabase.removeChannel(channel); }; }, [conv.id, myId, loadMessages]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);

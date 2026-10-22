@@ -26,7 +26,7 @@ import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, PhoneCall, MessageCircle, Bot, Users, Megaphone,
-  Inbox as InboxIcon, BarChart3, Wallet, Menu, X, Hash, Mail, FileText, ListChecks,
+  Inbox as InboxIcon, BarChart3, Wallet, Menu, X, Hash, Mail, FileText, ListChecks, Sparkles, BookUser,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -128,6 +128,7 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
    */
   email: [
     { to: '/outreach/email', labelKey: 'comms_nav_overview', icon: Mail, exact: true },
+    { to: '/outreach/email/studio', labelKey: 'es_title', icon: Sparkles },
     { to: '/outreach/email/contacts', labelKey: 'comms_nav_contacts', icon: Users },
     { to: '/outreach/email/analytics', labelKey: 'comms_nav_analytics', icon: BarChart3 },
   ],
@@ -136,6 +137,7 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
      of whichever product you arrived from. */
   contacts: [
     { to: '/outreach/contacts', labelKey: 'comms_nav_contacts', icon: Users, exact: true },
+    { to: '/outreach/library', labelKey: 'cl_title', icon: BookUser },
     { to: '/outreach/contact-lists', labelKey: 'comm_contact_lists', icon: ListChecks },
     { to: '/outreach/calls', labelKey: 'comms_nav_calls', icon: PhoneCall },
     { to: '/outreach/whatsapp', labelKey: 'comms_nav_whatsapp', icon: MessageCircle },

@@ -17,6 +17,7 @@ import {
   badgeFor,
   BADGE_KEY,
   CATEGORY_KEY,
+  GALLERY_EMPTY_KEY,
 } from '../visualCatalog.ts';
 import {
   LEGAL_STATUS_VIEW,
@@ -195,7 +196,9 @@ test('with nothing to show the explorer says so — no stock imagery', () => {
   assert.deepEqual(catalogVisuals(undefined), []);
   assert.deepEqual(categoryTabs([]), []);
   const ui = code('src/components/verify/VisualExplorer.tsx');
-  assert.match(ui, /if \(!usable\.length\) \{[\s\S]{0,400}vrx_explore_empty/);
+  // The empty state names its reason (visualCatalog.ts galleryEmptyReason); "none found" is still vrx_explore_empty.
+  assert.match(ui, /if \(!usable\.length\) \{[\s\S]{0,600}t\(GALLERY_EMPTY_KEY\[reason\]\)/);
+  assert.equal(GALLERY_EMPTY_KEY.NONE_FOUND, 'vrx_explore_empty');
   assert.match(valuesOf('vrx_explore_empty')[0], /does not substitute stock photos/);
   assert.ok(!/unsplash|pexels|placeholder\.(com|jpg|png)/i.test(ui), 'a stock image source appeared');
 });

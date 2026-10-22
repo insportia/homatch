@@ -23,7 +23,7 @@
  * conservative default.
  */
 
-import { correctVisualKind } from './intelligence/visualAssets.ts';
+import { correctVisualKind, evidenceCategoryOf, type VisualEvidenceCategory } from './intelligence/visualAssets.ts';
 import { freshPhotoViews, sanitizeVisualDates, visualDates, type FreshPhotoView, type VisualDates } from './intelligence/visualDates.ts';
 
 export type VisualKind =
@@ -45,6 +45,11 @@ export interface CatalogVisual {
   url: string;
   kind: VisualKind;
   category: VisualCategory;
+  /**
+   * What kind of evidence it is (visualAssets.ts evidenceCategoryOf), mapped
+   * from `kind`: a render is an OFFICIAL_DOCUMENT, never a PROPERTY_PHOTO.
+   */
+  evidenceCategory: VisualEvidenceCategory;
   scope: VisualScope | null;
   block: string | null;
   page: number | null;
@@ -250,6 +255,7 @@ export function normalizeVisual(
     url,
     kind,
     category,
+    evidenceCategory: evidenceCategoryOf(kind, { fileName: o.fileName }),
     scope,
     block: str(o.block) || null,
     page,
@@ -289,6 +295,7 @@ export function catalogFreshPhotos(raw: unknown, opts: { today?: string | null }
       url,
       kind: 'PHOTO',
       category: 'BUILDING',
+      evidenceCategory: evidenceCategoryOf('PHOTO', { freshScope: p.scope === 'BUILDING' ? 'BUILDING' : 'DEVELOPMENT' }),
       scope,
       block: null,
       page: null,
@@ -350,6 +357,26 @@ export function catalogVisuals(
     out.push(v);
   }
   return out;
+}
+
+/**
+ * Why the gallery has nothing to show, said truthfully:
+ *   NONE_FOUND        no official image of this property was found;
+ *   NOT_PRESENTABLE   images were found but none can be shown — the server
+ *                     withheld them (blank / strip / unsignable,
+ *                     `officialVisualsWithheld`) or every one failed to load.
+ * null while anything is shown.
+ */
+export type GalleryEmptyReason = 'NONE_FOUND' | 'NOT_PRESENTABLE';
+export const GALLERY_EMPTY_KEY: Record<GalleryEmptyReason, string> = {
+  NONE_FOUND: 'vrx_explore_empty',
+  NOT_PRESENTABLE: 'vrx_explore_unpresentable',
+};
+export function galleryEmptyReason(input: { catalogued: number; broken: number; withheld?: unknown }): GalleryEmptyReason | null {
+  const shown = Math.max(0, input.catalogued - input.broken);
+  if (shown > 0) return null;
+  const withheld = typeof input.withheld === 'number' && Number.isFinite(input.withheld) && input.withheld > 0 ? input.withheld : 0;
+  return input.catalogued > 0 || withheld > 0 ? 'NOT_PRESENTABLE' : 'NONE_FOUND';
 }
 
 /** Only categories that actually hold an asset, in display order. */

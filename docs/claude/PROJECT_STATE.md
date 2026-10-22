@@ -1,9 +1,34 @@
 # PROJECT STATE
 
-last_updated: 2026-10-18
+last_updated: 2026-10-22
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Finance V2 — VAT-first engine + per-service dashboards (PR #281, merged 0f9d8673, 2026-10-19) — DEPLOYED, MIGRATION APPLIED 2026-10-22
+
+- Rules (owner, 2026-10-19): prices are VAT-inclusive (GE 18%, every customer, `finance_tax_profiles`
+  GE_VAT_18_ALL); VAT extracted, never added. New paid discovery campaigns are stamped
+  `paid_discovery_37_63_vat_v2` (execution = P × 6300/11800; charge = spend × 11800/6300, capped).
+  v1 campaigns keep their terms. Verify ($1 floor), fixed prices, wallet flow unchanged.
+- Production: edge + frontend at 0f9d8673 (refs/deployed/edge, refs/deployed/frontend; owed functions
+  redeployed 2026-10-19 07:05 UTC). Migration `20261119140000_finance_v2_engine` applied 2026-10-22
+  16:49 UTC (ledger `20261022164954 finance_v2_engine`), byte-identical to main; the three patched
+  functions' production bodies were md5-verified against their repo bases first.
+- Release-order gap: from 07:05 Oct 19 to 16:49 Oct 22 the v1-only pricing_policy CHECK would have
+  refused a v2 campaign start (fail-safe, no charge). Verified: zero Find Buyers / Find Property paid
+  starts in that window. Lesson: owed migrations are applied immediately after merge, before the
+  deploy run promotes edge code that depends on them.
+- Verified live: CHECKs accept v1+v2; $10 → execution $5.338983 / VAT $1.525424; 18 services,
+  9 policies; Find Property search AI cost read from correlated cost_events (53 lines, 29 PARTIAL
+  lower bounds, 0 unpriced); anon/authenticated have no access to the views or helpers; Verify job
+  61c1c38c (2026-10-22) priced with minProfitCents 100 on COMPLETE, 0 on STOPPED.
+- Admin → Finance → Services: per-service dashboards, execution drill-down, server-quoted simulator.
+- Open (owner decisions / follow-ups): no customer country/B2B data (VAT applies to all);
+  `billing_ai_cost_cents` still stores 0 for unpriced models (ledger reports them UNPRICED);
+  old-unit match-unlock price writers; uncosted AI calls (find-property-plan, generate-search-profile,
+  deal-room-ai, investment-consultant, developer-floorplan-extract, social-post-generate, ZenRows);
+  RunPod cost not in a ledger; six price registries; all revenue to date is non-cash credit.
 
 ## Find Buyers lead quality fb-ai-2 + Find Buyers 2.0 (branch claude/nifty-hopper-snzn2d, 2026-10-18)
 

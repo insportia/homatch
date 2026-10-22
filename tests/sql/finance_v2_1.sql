@@ -78,3 +78,13 @@ begin
   assert exists (select 1 from jsonb_array_elements(v) e where e->>'unit' = 'INPUT_TOKEN' and e->>'status' = 'DRIFT'), 'drift detected: ' || v::text;
   perform set_config('app.finance_admin', '', true);
 end $$;
+
+-- Voice previews: the voice-ai cost_events row is the cost; the telemetry row is not listed again.
+do $$
+declare p uuid := gen_random_uuid(); s uuid := gen_random_uuid();
+begin
+  insert into public.voice_usage_events (id, provider, role, model, characters, surface) values (p, 'ELEVENLABS', 'TTS', 'eleven_v3', 40, 'VOICE_PREVIEW');
+  insert into public.voice_usage_events (id, provider, role, model, characters, surface) values (s, 'CARTESIA', 'TTS', 'sonic-3', 40, 'AI_TALK');
+  assert not exists (select 1 from public.finance_v2_cost_lines where line_id = 'voice:' || p::text), 'preview telemetry excluded';
+  assert exists (select 1 from public.finance_v2_cost_lines where line_id = 'voice:' || s::text), 'AI Talk voice row kept';
+end $$;

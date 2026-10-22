@@ -244,7 +244,9 @@ select 'voice:' || v.id::text, 'ai_talk', v.session_id::text, v.occurred_at, v.p
        case when v.characters is not null then 'CHARACTERS' when v.audio_seconds is not null then 'AUDIO_SECONDS' else 'TOKENS' end,
        v.input_tokens, v.cached_input_tokens, v.output_tokens, null, v.cost_usd,
        case when v.cost_usd is null then 'UNPRICED' else 'ESTIMATED' end, 'voice_usage_events', true
-  from public.voice_usage_events v;
+  from public.voice_usage_events v
+ /* Admin voice previews are telemetry here; their cost is the voice-ai cost_events row (V2.1). */
+ where v.surface is distinct from 'VOICE_PREVIEW';
 comment on view public.finance_v2_cost_lines is
   'Finance V2.1: every directly attributable provider/AI cost, from its authoritative source (Verify cost_events + CAPTCHA, Find Buyers actor runs + OpenAI ledger, Find Property search telemetry + paid actor runs, usage_events for cost-based products, voice_usage_events). cost_usd NULL = UNPRICED, never 0. Superseded duplicates (cost_events copies of ledgered rows) are excluded.';
 

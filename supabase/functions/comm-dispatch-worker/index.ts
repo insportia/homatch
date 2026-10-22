@@ -30,6 +30,7 @@ import { evaluateKillSwitch } from '../_shared/comm/generated/risk.ts';
 import { canDispatchWithinCap } from '../_shared/comm/generated/cost.ts';
 import { evaluateExecutionGate } from '../_shared/comm/generated/executionGate.ts';
 import { serviceBackendEnabled } from '../_shared/serviceControl.ts';
+import { recordUsageCost, deferCost } from '../_shared/providerCost.ts';
 
 /** A tick does bounded work. The next tick picks up where this one stopped. */
 const CAMPAIGNS_PER_TICK = 5;
@@ -409,6 +410,19 @@ async function sendWhatsApp(sb: Sb, campaign: Campaign, send: Record<string, unk
     }
     return false;
   }
+
+  /*
+   * One successful Meta send, one cost row (service 'communications'). No Meta
+   * rate is on file, so it is UNPRICED with its MESSAGE unit -- never $0.
+   * Deferred, and keyed on the provider message id (else the send row id) so a
+   * re-run of this worker cannot book the same message twice.
+   */
+  deferCost(recordUsageCost(sb as never, {
+    provider: 'META', service: 'communications', operation: 'WHATSAPP_SEND', source: 'comm-dispatch-worker',
+    correlationId: String(campaign.id),
+    idempotencyKey: `whatsapp:${result.data?.providerMessageId ?? sendId}`,
+    dimensions: [{ unit: 'MESSAGE', units: 1 }],
+  }));
 
   await sb.from('outreach_sends').update({
     status: 'SENT',

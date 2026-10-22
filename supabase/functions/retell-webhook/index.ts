@@ -2,8 +2,9 @@
 // Receives call_started / call_ended / call_analyzed events from Retell AI
 // and updates the matching outreach_sends row so the AI Call Center page's
 // live view (Supabase Realtime on outreach_sends) reflects real call state,
-// transcript and recording. Also books the actual per-minute cost once the
-// call has ended (duration is only known then).
+// transcript and recording. Also books the call once, on call_ended
+// (duration is only known then): the campaign's retail per-minute spend, and
+// Retell's own reported cost (or UNPRICED minutes) as provider COGS.
 //
 // Signature verification: Retell signs the raw body with your Retell API key
 // (header x-retell-signature). Verifying it precisely requires Retell's own
@@ -13,6 +14,7 @@
 // see the accompanying report for details.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { recordUsageCost, deferCost } from '../_shared/providerCost.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -113,15 +115,37 @@ serve(async (req) => {
       else console.log('[retell-webhook] do_not_call set from call content for contact', sendRow.contact_id);
     }
 
-    // Book real per-minute cost once we know the duration (call_ended / call_analyzed only)
-    if (durationSec !== undefined && (event === 'call_ended' || event === 'call_analyzed')) {
+    // Book the call once its duration is known. ONLY on call_ended: Retell
+    // sends call_ended AND call_analyzed for the same call, and booking on both
+    // counted every call twice.
+    if (durationSec !== undefined && event === 'call_ended') {
       const { data: settingsRow } = await supabase.from('admin_settings').select('value').eq('key', 'outreach_call_price_per_min').maybeSingle();
       const perMin = Number(settingsRow?.value ?? 0.2);
+      // RETAIL: the campaign's per-minute price, for the campaign's own spend
+      // figures. Never provider COGS -- that is the cost_events row below.
       const cost = Number(((durationSec / 60) * perMin).toFixed(4));
-      await supabase.from('outreach_sends').update({ cost_usd: cost }).eq('id', sendRow.id);
-      await supabase.from('cost_events').insert({ provider: 'RETELL', operation_type: 'OUTREACH_CALL', source: 'retell-webhook', cost_usd: cost, success: true, units: durationSec, cache_hit: false });
-      const { data: camp } = await supabase.from('outreach_campaigns').select('cost_actual_usd').eq('id', sendRow.campaign_id).maybeSingle();
-      await supabase.from('outreach_campaigns').update({ cost_actual_usd: Number(camp?.cost_actual_usd || 0) + cost, updated_at: new Date().toISOString() }).eq('id', sendRow.campaign_id);
+      // Claims the booking: a redelivered call_ended finds cost_usd already set and adds nothing.
+      const { data: booked } = await supabase.from('outreach_sends').update({ cost_usd: cost })
+        .eq('id', sendRow.id).or('cost_usd.is.null,cost_usd.eq.0').select('id');
+      const firstBooking = (booked?.length ?? 0) > 0;
+      /*
+       * Provider COGS: what Retell itself says the call cost (call.call_cost
+       * .combined_cost, in cents) when the payload carries it; otherwise
+       * UNPRICED with the minutes recorded. One row per call, whatever the
+       * number of webhook deliveries.
+       */
+      const combinedCents = Number(call?.call_cost?.combined_cost);
+      deferCost(recordUsageCost(supabase as never, {
+        provider: 'RETELL', service: 'communications', operation: 'OUTREACH_CALL', source: 'retell-webhook',
+        correlationId: sendRow.campaign_id ? String(sendRow.campaign_id) : null,
+        idempotencyKey: `retell:call:${callId}`,
+        dimensions: [{ unit: 'MINUTE', units: durationSec / 60 }],
+        actualUsd: Number.isFinite(combinedCents) && combinedCents >= 0 ? combinedCents / 100 : null,
+      }));
+      if (firstBooking) {
+        const { data: camp } = await supabase.from('outreach_campaigns').select('cost_actual_usd').eq('id', sendRow.campaign_id).maybeSingle();
+        await supabase.from('outreach_campaigns').update({ cost_actual_usd: Number(camp?.cost_actual_usd || 0) + cost, updated_at: new Date().toISOString() }).eq('id', sendRow.campaign_id);
+      }
     }
 
     return new Response(JSON.stringify({ ok: true, matched: true, status }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

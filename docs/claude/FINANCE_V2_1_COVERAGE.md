@@ -33,15 +33,15 @@ Admin → Finance → Services and its profit is labelled "not final".
 
 | Call site | Service | Before | After |
 |---|---|---|---|
-| ai-talk-session speak (TTS) | ai_talk | none | characters, deferred (`waitUntil`, no added latency) |
-| ai-talk-session non-converse AI actions | ai_talk | none | OPENAI tokens, deferred |
+| ai-talk-session speak / turn / speakLegacy TTS | ai_talk | speak rows without cost | Cartesia characters priced from the book, deferred (`waitUntil`, no added latency); a failed multi-model synthesis is not recorded (billed attempt unknown) |
+| ai-talk-session warm-up / turn / wrong-language retry / transcribe | ai_talk | none | OPENAI tokens when reported; STT audio seconds from the WAV header (UNPRICED until an audio-second rate is booked) |
 | ai-talk-session realtime listen | ai_talk | none | UNSUPPORTED — no usage available (coverage row) |
-| voice-ai | communications | none | ELEVENLABS characters |
+| voice-ai preview / pronunciation / audition | communications | telemetry row, no cost | ELEVENLABS characters, model used, on success only; the preview telemetry row is excluded from the ledger (no double listing) |
 | whatsapp-send / comm-dispatch-worker | communications | none | META MESSAGE rows; UNPRICED until a rate is booked (coverage row) |
-| retell-webhook | communications | retail price booked as COGS | once per call (idempotency key), UNPRICED source (coverage row) |
-| outreach-send | communications | silent 0 fallbacks | book rate or UNPRICED |
-| import-property (ZenRows / ScrapingBee) | property_import | none | CREDIT rows; UNPRICED source (coverage row) |
-| RunPod reconstruct / renders | design_studio | cold start labelled "measured" | ESTIMATED; PARTIAL when the job reports queue/cold-start delay; rate UNPRICED_SOURCE (coverage rows) |
+| retell-webhook | communications | retail price booked as COGS, twice per call | `call_ended` only, key `retell:call:<id>`; ACTUAL from `call_cost.combined_cost` when present, else MINUTE UNPRICED; campaign retail spend booked once even on redelivery |
+| outreach-send | communications | SMS fallback 0.05 (seed is 0.02) | fallback equals the seed (0.02) |
+| import-property (ZenRows / ScrapingBee) | property_import | none | credits from provider headers (null when absent), per-run key; UNPRICED source (coverage row) |
+| RunPod reconstruct / renders | design_studio | GPU share labelled MEASURED | ESTIMATED; flagged partial (a floor excluding cold start) when RunPod reports delayTime; null without `RUNPOD_DS_USD_PER_SECOND`; rate UNPRICED_SOURCE (coverage rows). The shared basis enum is unchanged (browser cost ceiling depends on it). |
 | Verify captcha | verify | none | UNPRICED_SOURCE (coverage row) |
 
 ## Shared infrastructure

@@ -739,6 +739,11 @@ function customerSourceStatus(rawStatus: string | null | undefined): 'SUCCESS' |
     case 'FAILED':
     case 'TIMEOUT':
     case 'PARSE_FAILED':
+    // RS.ge's failure states and the legacy unreadable-page state: the
+    // source ran and could not be read (job 61c1c38c counted none of them).
+    case 'VERIFICATION_FAILED':
+    case 'TEMPORARILY_UNAVAILABLE':
+    case 'SUBMITTED_UNPARSED':
       return 'TECHNICAL_FAILED';
     default:
       return 'NOT_CONFIRMED';
@@ -3606,7 +3611,9 @@ function officialVerificationSummary(browserOfficial: any) {
   const confirmedNoResult = results.filter((r: any) => r.status === 'NO_RESULT_CONFIRMED').map((r: any) => ({ source: r.source, sourceName: r.sourceName, status: r.status, note: 'Confirms only that this exact verified search returned no matching record on this source — NOT evidence that the property/record does not exist.' }));
   const skipped = results.filter((r: any) => r.status === 'SKIPPED_HUMAN_VERIFICATION').map((r: any) => ({ source: r.source, sourceName: r.sourceName, status: r.status, note: 'Human verification was required on this source and the user chose to skip it.' }));
   const checked = [...confirmedFound, ...confirmedNoResult];
-  const notVerified = results.filter((r: any) => !CONFIRMED_STATUSES.has(r.status) && r.status !== 'SKIPPED_HUMAN_VERIFICATION').map((r: any) => ({ source: r.source, sourceName: r.sourceName, status: r.status || 'NOT_SEARCHED', error: r.error || null }));
+  // sourceOutcome: the queue task's precise verdict (official-worker
+  // sourceOutcome.ts — PARTIAL, CAPTCHA_BLOCKED, UNPARSEABLE …), when known.
+  const notVerified = results.filter((r: any) => !CONFIRMED_STATUSES.has(r.status) && r.status !== 'SKIPPED_HUMAN_VERIFICATION').map((r: any) => ({ source: r.source, sourceName: r.sourceName, status: r.status || 'NOT_SEARCHED', error: r.error || null, ...(r.sourceOutcome ? { sourceOutcome: r.sourceOutcome, outcomeReason: r.outcomeReason ?? null } : {}) }));
   const partiallyTraversed = checked
     .filter((c: any) => {
       const r = results.find((x: any) => x.source === c.source && x.status === c.status);
@@ -3623,7 +3630,12 @@ function officialVerificationSummary(browserOfficial: any) {
     officialSourcesNotVerified: notVerified,
     officialSourcesSkipped: skipped,
     officialSourcesPartiallyTraversed: partiallyTraversed,
-    officialVerificationComplete: results.length > 0 && checked.length > 0 && partiallyTraversed.length === 0,
+    // Complete means EVERY official source that ran was confirmed in full: a
+    // source that could not be verified (blocked, unreadable, unavailable,
+    // skipped) or was only partly read (sourceOutcome PARTIAL) keeps it false.
+    // Production job 61c1c38c read true with MyGov BLOCKED and RS.ge failed.
+    officialVerificationComplete: results.length > 0 && checked.length > 0 && partiallyTraversed.length === 0
+      && notVerified.length === 0 && skipped.length === 0 && !results.some((r: any) => r.sourceOutcome === 'PARTIAL'),
   };
 }
 

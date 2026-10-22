@@ -177,6 +177,22 @@ export class CaptchaService {
     for (const k of [...this.perJobProvider.keys()]) if (k.startsWith(`${jobId}|`)) this.perJobProvider.delete(k);
   }
 
+  /** Solves submitted so far under this job (or task) id — what maxSolvesPerJob counts. */
+  solvesFor(jobId: string): number {
+    return this.perJob.get(jobId) ?? 0;
+  }
+
+  /**
+   * Carry solves an earlier attempt of the same durable task already spent
+   * (on any replica) into this attempt's count, so a retry continues the
+   * task's maxSolvesPerJob budget instead of starting a fresh one. Never
+   * lowers a count. No spend, no ledger entry.
+   */
+  carrySolves(jobId: string, spent: number): void {
+    const n = Number.isFinite(spent) ? Math.max(0, Math.floor(spent)) : 0;
+    if (n > (this.perJob.get(jobId) ?? 0)) this.perJob.set(jobId, n);
+  }
+
   private costUsd(): number {
     const n = Number(this.env.CAPTCHA_RECAPTCHA_COST_USD ?? 0.003);
     return Number.isFinite(n) && n >= 0 ? n : 0.003;

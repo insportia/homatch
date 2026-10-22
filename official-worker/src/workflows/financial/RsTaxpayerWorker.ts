@@ -12,6 +12,7 @@ import {
   buildRsVerificationRecord,
   rsRecordLogFields,
   rsStatusForOutcome,
+  rsPageReadDecides,
   pickRsRow,
   mapRsRow,
   type RsGridCapture,
@@ -767,7 +768,8 @@ export async function runRsTaxpayerWorker(
         return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, rsVerification: rec }), status: 'WAITING_HUMAN', captchaResolution: [att.log] } as LegacySourceResult;
       }
       const dom = domRead();
-      if (dom) {
+      // The page decides only when RS.ge's own answer does not contradict it.
+      if (dom && rsPageReadDecides(cls, dom.status)) {
         await accept();
         if (dom.status === 'SEARCH_CONFIRMED' && entities) entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
         const rec = rsRecord('VERIFIED', dom.status === 'SEARCH_CONFIRMED' ? 'ACCEPTED' : 'NO_RESULT', idCode, cls ? `PAGE_READ_${cls.outcome}` : 'PAGE_READ', capture, cls);
@@ -790,7 +792,7 @@ export async function runRsTaxpayerWorker(
 
     // ── Search #1, or a human-resumed search. ──
     const dom = domRead();
-    if (dom && cls?.outcome !== 'REJECTED') {
+    if (dom && rsPageReadDecides(cls, dom.status)) {
       if (dom.status === 'SEARCH_CONFIRMED' && entities) entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
       const rec = rsRecord('VERIFIED', dom.status === 'SEARCH_CONFIRMED' ? 'ACCEPTED' : 'NO_RESULT', idCode, cls ? `PAGE_READ_${cls.outcome}` : 'PAGE_READ', capture, cls);
       return buildResult(dom.status, { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, taxpayerData: dom.data, rsVerification: rec });

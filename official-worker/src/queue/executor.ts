@@ -26,6 +26,8 @@ import { tasApiOptionsFromEnv } from '../workflows/tas/api/TasApiStep.js';
 import { runMyGovApiStep } from '../workflows/mygov/MyGovApiWorkflow.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
 import { compactResult, sha256 } from './evidence.js';
+import { classifySourceOutcome, lastCaptchaOutcome, SUCCESS_OUTCOMES, type SourceVerdict } from './sourceOutcome.js';
+import { rsDomOnlyNoResult } from '../workflows/financial/RsTaxpayerResponse.js';
 import type { EvidenceRef, QueueTask } from './gateway.js';
 import type { Executor, TaskOutcome } from './QueueRunner.js';
 
@@ -68,6 +70,34 @@ function scanEntities(source: string, docs: any[] | undefined) {
 
 const TRANSIENT_CAPTCHA = new Set(['NO_CHANGE', 'TIMEOUT', 'UNSOLVABLE', 'PROVIDER_ERROR', 'BUDGET_EXHAUSTED']);
 
+/** CAPTCHA solves earlier attempts of this task spent (their error carries `solves=N`). */
+export function priorSolves(task: Pick<QueueTask, 'attempts' | 'error'>): number {
+  if (Number(task.attempts ?? 1) < 2) return 0;
+  const n = Number(/\bsolves=(\d+)\b/.exec(String(task.error ?? ''))?.[1] ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** What a failed task's error says about its outcome (read by src/verify/queueOfficial.ts). */
+function outcomeTag(v: SourceVerdict, solves: number): string {
+  return ` sourceOutcome=${v.outcome}${v.reason ? ` reason=${v.reason}` : ''}${solves > 0 ? ` solves=${solves}` : ''}`;
+}
+
+/** The task's precise outcome travels in the completed result, next to its status. */
+function stampOutcome(r: any, v: SourceVerdict): void {
+  if (r && typeof r === 'object') {
+    r.sourceOutcome = v.outcome;
+    r.outcomeReason = v.reason;
+  }
+}
+
+/** What the settle functions need to know about the task's CAPTCHA budget. */
+interface SpendCtx {
+  /** Solves this task has spent so far, earlier attempts included. */
+  solves: number;
+  /** The task's whole budget (policy.maxSolvesPerJob). */
+  maxSolves: number;
+}
+
 /** The four RS.ge states, from the worker's record or (older shapes) its status. */
 function rsStatusOf(r: any): 'VERIFIED' | 'PENDING_VERIFICATION' | 'TEMPORARILY_UNAVAILABLE' | 'VERIFICATION_FAILED' {
   const s = String(r?.rsVerification?.status ?? '');
@@ -84,12 +114,27 @@ function rsStatusOf(r: any): 'VERIFIED' | 'PENDING_VERIFICATION' | 'TEMPORARILY_
  * content-addressed evidence; the result keeps a reference, never the raw
  * text. Only a VERIFIED check (a parsed record or a confirmed no-record)
  * completes the task, so a failure is never cached for other jobs. A
- * transient failure (network / 5xx / timeout) gets ONE more go; a rejected or
- * unreadable answer, a record and a no-record never repeat.
+ * transient failure (network / 5xx / timeout) gets ONE more go; so does an
+ * UNPARSEABLE 200 answer (production 2026-10-22: the search was submitted and
+ * answered, but not with a grid), continuing the task's CAPTCHA budget,
+ * never beyond it. A refusal, a record and a no-record never repeat.
  */
-async function settleRs(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>): Promise<TaskOutcome> {
+async function settleRs(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, spend: SpendCtx): Promise<TaskOutcome> {
   const r = out.result ?? {};
-  const rec = r.rsVerification && typeof r.rsVerification === 'object' ? r.rsVerification : null;
+  let rec = r.rsVerification && typeof r.rsVerification === 'object' ? r.rsVerification : null;
+  /*
+   * A "no record" read off the PAGE while RS.ge's own answer was captured and
+   * unreadable is not a confirmed absence: the grid's empty state ("Not
+   * found", 0 rows) is also what an unreadable answer leaves on screen.
+   * Production 2026-10-22, company 405456359 (a registered LLC): reason
+   * PAGE_READ_UNPARSEABLE, stored as VERIFIED / NO_RESULT. Never again.
+   */
+  if (rec && rsDomOnlyNoResult(rec)) {
+    rec = { ...rec, status: 'VERIFICATION_FAILED', serverOutcome: 'UNPARSEABLE' };
+    r.rsVerification = rec;
+    r.status = 'VERIFICATION_FAILED';
+    r.noResultConfirmed = false;
+  }
   const refs: EvidenceRef[] = [];
   let evidence: string | null = null;
   if (rec) {
@@ -108,47 +153,75 @@ async function settleRs(task: QueueTask, out: { result: any; keep: boolean }, up
   }
   const status = rsStatusOf(r);
   const tag = `rs=${status} outcome=${rec?.serverOutcome ?? 'NONE'} http=${rec?.httpStatus ?? '-'}${evidence ? ` evidence=${evidence}` : ''}`;
-  console.log(JSON.stringify({ scope: 'rstax_captcha', event: 'task_outcome', task: task.id.slice(0, 8), attempt: Number(task.attempts ?? 1), status, serverOutcome: rec?.serverOutcome ?? null, httpStatus: rec?.httpStatus ?? null, rowCount: rec?.rowCount ?? null, columns: rec?.columns ?? [], evidence: evidence ? evidence.slice(0, 12) : null }));
+  console.log(JSON.stringify({ scope: 'rstax_captcha', event: 'task_outcome', task: task.id.slice(0, 8), attempt: Number(task.attempts ?? 1), status, serverOutcome: rec?.serverOutcome ?? null, httpStatus: rec?.httpStatus ?? null, rowCount: rec?.rowCount ?? null, columns: rec?.columns ?? [], evidence: evidence ? evidence.slice(0, 12) : null, solves: spend.solves }));
   const firstAttempt = Number(task.attempts ?? 1) < 2;
+  const budgetLeft = spend.solves < spend.maxSolves;
   if (status === 'VERIFIED') {
+    const found = rec ? rec.serverOutcome === 'ACCEPTED' : r.status === 'SEARCH_CONFIRMED';
+    stampOutcome(r, { outcome: found ? 'RETRIEVED' : 'NO_RECORD_CONFIRMED', reason: null });
     const c = await compactResult(r, upload);
     return { type: 'complete', result: c.result, evidenceRefs: [...c.evidenceRefs, ...refs], contentHash: c.contentHash, cacheScope: task.scopeKey };
   }
   if (status === 'PENDING_VERIFICATION') {
-    const log = Array.isArray(r.captchaResolution) ? r.captchaResolution[r.captchaResolution.length - 1] : null;
-    const why = String(log?.outcome ?? 'NONE');
-    if (TRANSIENT_CAPTCHA.has(why) && firstAttempt) return { type: 'fail', error: `CAPTCHA_${why} ${tag}`, retryable: true, retryAfterSeconds: 20 };
-    return { type: 'fail', error: `HUMAN_VERIFICATION_REQUIRED:${why} ${tag}`, retryable: false };
+    const why = lastCaptchaOutcome(r);
+    const t = outcomeTag({ outcome: 'CAPTCHA_BLOCKED', reason: `CAPTCHA_${why}` }, spend.solves);
+    if (TRANSIENT_CAPTCHA.has(why) && firstAttempt && budgetLeft) return { type: 'fail', error: `CAPTCHA_${why} ${tag}${t}`, retryable: true, retryAfterSeconds: 20 };
+    return { type: 'fail', error: `HUMAN_VERIFICATION_REQUIRED:${why} ${tag}${t}`, retryable: false };
   }
   if (status === 'TEMPORARILY_UNAVAILABLE') {
+    const t = outcomeTag({ outcome: 'PROVIDER_UNAVAILABLE', reason: String(rec?.serverOutcome ?? 'NO_RESPONSE') }, spend.solves);
     return firstAttempt
-      ? { type: 'fail', error: `RS_TEMPORARILY_UNAVAILABLE ${tag}`, retryable: true, retryAfterSeconds: 30 }
-      : { type: 'fail', error: `RS_TEMPORARILY_UNAVAILABLE ${tag}`, retryable: false };
+      ? { type: 'fail', error: `RS_TEMPORARILY_UNAVAILABLE ${tag}${t}`, retryable: true, retryAfterSeconds: 30 }
+      : { type: 'fail', error: `RS_TEMPORARILY_UNAVAILABLE ${tag}${t}`, retryable: false };
   }
-  return { type: 'fail', error: `RS_VERIFICATION_FAILED ${tag}`, retryable: false };
+  if (rec?.serverOutcome === 'REJECTED') {
+    return { type: 'fail', error: `RS_VERIFICATION_FAILED ${tag}${outcomeTag({ outcome: 'CAPTCHA_BLOCKED', reason: 'CAPTCHA_REJECTED' }, spend.solves)}`, retryable: false };
+  }
+  const why = String(rec?.reason ?? rec?.serverOutcome ?? r.status ?? 'NONE').replace(/[^A-Za-z0-9_]+/g, '_').slice(0, 60);
+  const t = outcomeTag({ outcome: 'UNPARSEABLE', reason: why }, spend.solves);
+  // RS.ge answered 200, but not with a grid: ONE more go on a fresh page.
+  if (rec?.serverOutcome === 'UNPARSEABLE' && firstAttempt && budgetLeft) return { type: 'fail', error: `RS_VERIFICATION_FAILED ${tag}${t}`, retryable: true, retryAfterSeconds: 20 };
+  return { type: 'fail', error: `RS_VERIFICATION_FAILED ${tag}${t}`, retryable: false };
 }
 
-/** Map a finished source result to a task outcome; store complete evidence. */
-async function settle(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, cacheScope: string | null, extraRefs: EvidenceRef[] = []): Promise<TaskOutcome> {
+/**
+ * Map a finished source result to a task outcome; store complete evidence.
+ * Only RETRIEVED, PARTIAL (what was read is kept) and NO_RECORD_CONFIRMED
+ * complete the task; anything else fails it, its outcome in the error.
+ */
+async function settle(task: QueueTask, out: { result: any; keep: boolean }, upload: (sha: string, ct: any, body: any) => Promise<string>, cacheScope: string | null, spend: SpendCtx, extraRefs: EvidenceRef[] = []): Promise<TaskOutcome> {
   const r = out.result ?? {};
-  if (out.keep || r.status === 'WAITING_HUMAN' || r.status === 'CAPTCHA_REQUIRED') {
+  const v = classifySourceOutcome(r, out.keep);
+  const t = outcomeTag(v, spend.solves);
+  const firstAttempt = Number(task.attempts ?? 1) < 2;
+  if (SUCCESS_OUTCOMES.has(v.outcome)) {
+    stampOutcome(r, v);
+    const c = await compactResult(r, upload);
+    return { type: 'complete', result: c.result, evidenceRefs: [...c.evidenceRefs, ...extraRefs], contentHash: c.contentHash, cacheScope };
+  }
+  if (v.outcome === 'CAPTCHA_BLOCKED') {
     // Why the CAPTCHA gave up travels with the task (matched by prefix downstream).
-    const log = Array.isArray(r.captchaResolution) ? r.captchaResolution[r.captchaResolution.length - 1] : null;
-    const why = String(log?.outcome ?? 'NONE');
+    const why = lastCaptchaOutcome(r);
     // A transient give-up (the site did not refresh, the solver timed out)
-    // earns ONE more go on a fresh page with a fresh solve budget — the queue
-    // closes the page, so no human can finish it here anyway (live run
-    // 2026-10-10: RS.ge NO_CHANGE twice → the company's tax status was lost).
-    if (TRANSIENT_CAPTCHA.has(why) && Number(task.attempts ?? 1) < 2) {
-      return { type: 'fail', error: `CAPTCHA_${why}`, retryable: true, retryAfterSeconds: 20 };
+    // earns ONE more go on a fresh page — the queue closes the page, so no
+    // human can finish it here anyway (live run 2026-10-10: RS.ge NO_CHANGE
+    // twice → the company's tax status was lost). The retry continues the
+    // task's solve budget (solves=N), so it never spends beyond it.
+    if (TRANSIENT_CAPTCHA.has(why) && firstAttempt && spend.solves < spend.maxSolves) {
+      return { type: 'fail', error: `CAPTCHA_${why}${t}`, retryable: true, retryAfterSeconds: 20 };
     }
-    return { type: 'fail', error: `HUMAN_VERIFICATION_REQUIRED:${why}`, retryable: false };
+    return { type: 'fail', error: `HUMAN_VERIFICATION_REQUIRED:${why}${t}`, retryable: false };
   }
-  if (r.status === 'FAILED') {
-    return { type: 'fail', error: String(r.error ?? 'SOURCE_FAILED').slice(0, 500), retryable: true };
+  if (v.outcome === 'AUTH_REQUIRED') return { type: 'fail', error: `AUTH_REQUIRED${t}`, retryable: false };
+  if (v.outcome === 'UNPARSEABLE') {
+    // The source answered with something unreadable: one more look, no loop.
+    return firstAttempt ? { type: 'fail', error: `SOURCE_UNPARSEABLE${t}`, retryable: true, retryAfterSeconds: 20 } : { type: 'fail', error: `SOURCE_UNPARSEABLE${t}`, retryable: false };
   }
-  const c = await compactResult(r, upload);
-  return { type: 'complete', result: c.result, evidenceRefs: [...c.evidenceRefs, ...extraRefs], contentHash: c.contentHash, cacheScope };
+  // PROVIDER_UNAVAILABLE. A crashed source keeps its retries (max_attempts);
+  // a provider deadline (MyGov's 7-minute budget) gets one more go only.
+  const base = String(r.error ?? (r.status === 'TIMEOUT' ? 'SOURCE_TIMEOUT' : 'SOURCE_FAILED')).slice(0, 400);
+  if (r.status === 'FAILED') return { type: 'fail', error: `${base}${t}`, retryable: true };
+  return { type: 'fail', error: `${base}${t}`, retryable: firstAttempt };
 }
 
 export function createVerifyExecutor(deps: ExecutorDeps): Executor {
@@ -160,9 +233,18 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
     const policy = parseCaptchaPolicy(task.input.captchaPolicy ?? null);
     const cadastral = String(task.input.cadastral ?? task.input.query ?? '');
 
+    // A retry continues the task's solve budget: what earlier attempts spent
+    // (any replica) counts against maxSolvesPerJob here too.
+    captchaService.carrySolves(task.id, priorSolves(task));
+    let solves = captchaService.solvesFor(task.id);
+    const spend = (): SpendCtx => ({ solves: Math.max(solves, captchaService.solvesFor(task.id)), maxSolves: policy.maxSolvesPerJob });
+
     // Durable CAPTCHA accounting for this task.
     const stopAccounting = captchaService.onRecord((e) => {
       if (e.jobId !== task.id) return;
+      // Every solve is followed by a ledger entry; read the count while it is
+      // live (a browser source forgets its counters when it returns).
+      solves = Math.max(solves, captchaService.solvesFor(task.id));
       void ctx.gateway.captcha([{
         idempotencyKey: `${task.id}:${task.attempts}:${e.provider}:${e.at}`, taskId: task.id, jobId: task.jobId,
         source: task.source, outcome: e.outcome, costUsd: e.estCostUsd, solveMs: e.latencyMs, kind: 'recaptcha_v2', errorCode: e.code ?? null,
@@ -212,14 +294,14 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
             .then((path) => { extraRefs.push({ sha256: ev.sha256, path, chars: ev.json.length, contentType: 'application/json', documentId: `tas_${ev.documentId}`, title: `TAS ${ev.kind} reply ${ev.documentId}` }); })
             .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'tas_raw_upload_failed', task: task.id, kind: ev.kind, error: String((e as Error)?.message ?? e).slice(0, 160) })));
         }
-        return settle(task, { result, keep: false }, upload, scope, extraRefs);
+        return settle(task, { result, keep: false }, upload, scope, spend(), extraRefs);
       }
 
       if (task.source === 'mygov') {
         const entities = new EntityQueue();
         const out = await mygov(cadastral, entities, { captcha: { service: captchaService, policy, jobId: task.id } });
         if (out?.result && typeof out.result === 'object') (out.result as any).queueEntities = entities.all();
-        return settle(task, out, upload, task.scopeKey);
+        return settle(task, out, upload, task.scopeKey, spend());
       }
 
       const step = BROWSER_STEPS[task.source];
@@ -230,13 +312,14 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
           id: task.id, query: task.input.query ?? cadastral, mode: task.input.mode === 'property' ? 'property' : 'cadastral',
           step: step(task), tasConfig: { active: 'LEGACY', fallback: null }, captchaPolicy: policy,
         });
-        if (task.source === 'rstax') return settleRs(task, out, upload);
-        return settle(task, out, upload, task.scopeKey);
+        if (task.source === 'rstax') return settleRs(task, out, upload, spend());
+        return settle(task, out, upload, task.scopeKey, spend());
       } finally {
         await deps.closeBrowser(browser, 'queue_task_done').catch(() => {});
       }
     } finally {
       stopAccounting();
+      captchaService.forgetJob(task.id);
     }
   };
 }

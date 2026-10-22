@@ -21098,6 +21098,11 @@ const en = {
   fin_v2_status_estimated: 'Estimated',
   fin_v2_status_partial: 'Partially priced',
   fin_v2_status_unpriced: 'Unpriced',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'The official drawing and the address point to places more than a kilometre apart, so we do not state distances or routes until the position is confirmed.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'Measured from the centre of the Public Registry situational drawing (UTM coordinates), which the address on the map confirms; distances are accurate to about a hundred metres.',
+  verify_place_mentioned_label: 'Mentioned in public descriptions · not measured',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42110,6 +42115,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'შეფასებული',
   fin_v2_status_partial: 'ნაწილობრივ ფასდადგენილი',
   fin_v2_status_unpriced: 'ფასდაუდგენელი',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'ოფიციალური ნახაზი და მისამართი რუკაზე ერთმანეთისგან კილომეტრზე მეტით დაშორებულ ადგილებს უთითებს, ამიტომ მდებარეობის დადასტურებამდე მანძილებსა და მარშრუტებს არ ვუთითებთ.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'მანძილი გაზომილია საჯარო რეესტრის სიტუაციური ნახაზის ცენტრიდან (UTM კოორდინატები), რასაც რუკაზე მისამართიც ადასტურებს; სიზუსტე დაახლოებით ასი მეტრია.',
+  verify_place_mentioned_label: 'ნახსენებია საჯარო აღწერებში · არ არის გაზომილი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63113,6 +63123,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'Оценка',
   fin_v2_status_partial: 'Частично оценено',
   fin_v2_status_unpriced: 'Без цены',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'Официальный чертёж и адрес указывают на места, удалённые друг от друга более чем на километр, поэтому до подтверждения местоположения мы не указываем расстояния и маршруты.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'Расстояния измерены от центра ситуационного чертежа Публичного реестра (координаты UTM), что подтверждается адресом на карте; точность около ста метров.',
+  verify_place_mentioned_label: 'Упомянуто в открытых описаниях · не измерено',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -84114,6 +84129,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'Tahmini',
   fin_v2_status_partial: 'Kısmen fiyatlandırıldı',
   fin_v2_status_unpriced: 'Fiyatlandırılmamış',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'Resmi çizim ile adres, birbirinden bir kilometreden fazla uzak yerleri gösteriyor; konum doğrulanana kadar mesafe ve hat bilgisi vermiyoruz.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'Mesafeler, Kamu Sicili durum çiziminin merkezinden (UTM koordinatları) ölçülmüştür ve haritadaki adresle doğrulanmıştır; hassasiyet yaklaşık yüz metredir.',
+  verify_place_mentioned_label: 'Kamuya açık tanıtımlarda geçiyor · ölçülmedi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -105115,6 +105135,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'تقديري',
   fin_v2_status_partial: 'مسعّر جزئيًا',
   fin_v2_status_unpriced: 'غير مسعّر',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'يشير المخطط الرسمي والعنوان إلى موقعين يفصل بينهما أكثر من كيلومتر، لذا لا نذكر مسافات أو خطوطًا حتى يتأكد الموقع.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'قيست المسافات من مركز المخطط الموقعي للسجل العام (إحداثيات UTM)، ويؤكده العنوان على الخريطة؛ الدقة في حدود مئة متر تقريبًا.',
+  verify_place_mentioned_label: 'مذكور في الأوصاف العامة · غير مُقاس',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -126116,6 +126141,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'מוערך',
   fin_v2_status_partial: 'מתומחר חלקית',
   fin_v2_status_unpriced: 'ללא תמחור',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'השרטוט הרשמי והכתובת מצביעים על מקומות המרוחקים זה מזה יותר מקילומטר, ולכן איננו מציינים מרחקים או קווים עד שהמיקום יאומת.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'המרחקים נמדדו ממרכז השרטוט המצבי של המרשם הציבורי (קואורדינטות UTM), והכתובת שבמפה מאשרת אותו; הדיוק כמאה מטרים.',
+  verify_place_mentioned_label: 'מוזכר בתיאורים פומביים · לא נמדד',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

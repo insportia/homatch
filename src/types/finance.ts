@@ -482,3 +482,102 @@ export interface LiveFeed {
   burn_per_hour: number | null;
   events: LiveFeedEvent[];
 }
+
+/* ── Finance V2: per-service ledger (finance_v2_* RPCs). Every figure is server-computed. ── */
+
+export interface FinanceV2Service {
+  service: string;
+  name: string;
+  policy: string;
+  pricingKind: 'FIXED' | 'VARIABLE' | 'FREE' | 'FEE_PERCENT' | 'SHARED' | string;
+  priceNote: string | null;
+  productCodes: string[];
+  live: { frontend: boolean; backend: boolean } | null;
+  executions: number;
+  charges: number;
+  grossUsd: number;
+  vatUsd: number;
+  netUsd: number;
+  /** NULL when the service has no 37/63 allocation policy. */
+  homatchAllocationUsd: number | null;
+  executionAllocationUsd: number | null;
+  refundsUsd: number;
+  unusedBudgetUsd: number;
+  cogsUsd: number;
+  aiCogsUsd: number;
+  providerCogsUsd: number;
+  actualCogsUsd: number;
+  estimatedCogsUsd: number;
+  costLines: number;
+  unpricedLines: number;
+  partialLines: number;
+  profitUsd: number;
+  marginBps: number | null;
+  avgCostPerExecutionUsd: number | null;
+  profitFloorShortfalls: number;
+  taxUnknownLines: number;
+}
+
+export interface FinanceV2Policy {
+  policy_id: string;
+  kind: string;
+  params: Record<string, unknown>;
+  status: 'CURRENT' | 'HISTORICAL' | string;
+  description: string;
+}
+
+export interface FinanceV2TrendPoint {
+  day: string; executions: number; grossUsd: number; netUsd: number; cogsUsd: number; profitUsd: number;
+}
+
+export interface FinanceV2ProviderRow {
+  provider: string | null; model: string | null; lines: number; costUsd: number | null; unpriced: number;
+}
+
+export interface FinanceV2ExecutionRow {
+  executionId: string; at: string; grossUsd: number; vatUsd: number; netUsd: number;
+  executionAllocationUsd: number | null; cogsUsd: number; profitUsd: number; costLines: number; unpricedLines: number;
+}
+
+export interface FinanceV2ServiceDetail {
+  summary: FinanceV2Service;
+  policy: FinanceV2Policy | null;
+  trend: FinanceV2TrendPoint[];
+  providers: FinanceV2ProviderRow[];
+  executions: FinanceV2ExecutionRow[];
+}
+
+export interface FinanceV2RevenueLine {
+  line_id: string; execution_id: string; occurred_at: string; product_code: string | null; credits: number | null;
+  gross_usd: number; vat_usd: number; net_usd: number; vat_bps: number | null; policy_id: string;
+  homatch_allocation_usd: number | null; execution_allocation_usd: number | null;
+  released_credits: number | null; profit_floor_shortfall: boolean; source: string;
+}
+
+export interface FinanceV2CostLine {
+  line_id: string; execution_id: string; occurred_at: string; provider: string | null; operation: string | null;
+  model: string | null; units: number | null; unit_label: string | null; input_tokens: number | null;
+  cached_tokens: number | null; output_tokens: number | null; unit_price_usd: number | null;
+  /** NULL = UNPRICED, never 0. */
+  cost_usd: number | null; cost_status: 'ACTUAL' | 'ESTIMATED' | 'PARTIALLY_PRICED' | 'UNPRICED' | string;
+  cost_source: string; is_direct: boolean;
+}
+
+export interface FinanceV2Execution {
+  service: string;
+  executionId: string;
+  chain: {
+    grossUsd: number; vatUsd: number; netUsd: number;
+    homatchAllocationUsd: number | null; executionAllocationUsd: number | null;
+    cogsUsd: number; unpricedLines: number; unusedExecutionUsd: number | null;
+    profitUsd: number; profitComplete: boolean;
+  };
+  revenue: FinanceV2RevenueLine[];
+  costs: FinanceV2CostLine[];
+}
+
+export interface FinanceV2Quote {
+  policy: string; kind: string; vatBps: number; grossUsd: number; vatUsd: number; netUsd: number;
+  homatchAllocationUsd: number | null; executionAllocationUsd: number | null; costUsd: number;
+  withinExecution: boolean | null; chargeForCostCredits: number | null; profitUsd: number;
+}

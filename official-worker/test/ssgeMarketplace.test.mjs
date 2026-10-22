@@ -52,7 +52,10 @@ test('sale apartment and monthly rent house flow through real authenticated inge
    discovery_marketplace_workers:[{worker_id:'ssge-agent',source_key:'ss-ge',state:'ACTIVE',enabled:true,token_hash:createHash('sha256').update(token).digest('hex'),max_attempts:3}],
    discovery_marketplace_worker_runs:[{id:runId,search_id:searchId,worker_id:'ssge-agent',status:'SEARCHING',deadline_at:deadline,lease_expires_at:deadline,attempts:1,returned_count:0}],
    discovery_marketplace_searches:[{id:searchId,user_id:'owner',request:r,status:'SEARCHING',ai_status:'DONE',created_at:new Date().toISOString(),brief:{},telemetry:{ai:[],workers:[],processingMs:[]}}]});
-  const handler=edgeHandler(fileURLToPath(new URL('../../supabase/functions/marketplace-worker-ingest/index.ts',import.meta.url)),{createClient:()=>db,validateWorkerReport,canTransition,loadMarketplaceSwitches,processAndStore,reapRuns,leaseUntil,retryDecision,DEFAULT_LEASE_SECONDS});
+  const inventoryCalls=[];
+  const handler=edgeHandler(fileURLToPath(new URL('../../supabase/functions/marketplace-worker-ingest/index.ts',import.meta.url)),{createClient:()=>db,validateWorkerReport,canTransition,loadMarketplaceSwitches,processAndStore,reapRuns,leaseUntil,retryDecision,DEFAULT_LEASE_SECONDS,
+    /* The inventory write-through (marketplaceInventory.ts) is its own suite; here it only records what it was handed. */
+    recordInventory:async(_db,source,listings)=>{inventoryCalls.push({source,count:listings.length});return {};},afterResponse:(p)=>p});
   const reports=[];
   const result=await acquireSsge(r,{...options(s),report:async report=>{
    reports.push(report);const parsed=validateWorkerReport(report,'ss-ge');assert.equal(parsed.ok,true);assert.equal(parsed.report.rejected.length,0);
@@ -63,6 +66,7 @@ test('sale apartment and monthly rent house flow through real authenticated inge
   assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,1);
   assert.equal(db.tables.discovery_marketplace_listings.length,1);
   assert.equal(db.tables.discovery_marketplace_listings[0].source_key,'ss-ge');
+  assert.deepEqual(inventoryCalls,[{source:'ss-ge',count:1}],'every accepted listing is handed to the property inventory');
   const properties=db.tables.discovery_marketplace_properties;assert.equal(properties.length,1);
   assert.equal(properties[0].view.listings[0].exactUrl,s.proof.url);
   assert.equal(properties[0].view.listings[0].source,'ss-ge');
@@ -88,7 +92,27 @@ test('wrong identity and repeated pages never become empty COMPLETE success',asy
   if(config.wrongDetail)assert.equal(result.delivered,0);
   else assert.equal(result.delivered,1);
   assert.ok(reports.at(-1).errors.length);
+  if(config.wrongDetail)assert.match(reports.at(-1).errors.find(e=>e.code==='SOURCE_RECORDS_REJECTED').message,/35611698 (IDENTITY|UNREADABLE)/);
  }
+});
+test('a listing that does not match the search is filtered with its reason, not counted as an incomplete run',async()=>{
+ const s=fixture.scenarios[0],other='99999998';
+ const clientFor=items=>new SsgePublicClient({locations:fixture.locations,session:{authorize:async r=>r},http:{fetchImpl:async url=>{
+  if(String(url).includes('legend-search-count'))return Response.json({cardCount:items.length,applicationCount:items.length});
+  if(String(url).includes('LegendSearch'))return Response.json({realStateItemModel:items,totalCount:0});
+  if(String(url).includes(`applicationId=${other}`))return Response.json({...s.detail,applicationId:Number(other),isInactiveApplication:true});
+  if(String(url).includes('/details'))return Response.json(s.detail);
+  throw Error('Unexpected fixture request');
+ }}});
+ const inactive={...s.list,applicationId:Number(other),detailUrl:s.list.detailUrl.replace(String(s.list.applicationId),other)};
+ // One delivered, one inactive: a clean completion that names what it left out and why.
+ let reports=[];let result=await acquireSsge(request(s),{...options(s),client:clientFor([s.list,inactive]),report:async r=>reports.push(r)});
+ assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,1);
+ assert.equal(reports.at(-1).errors.find(e=>e.code==='SOURCE_RECORDS_REJECTED'),undefined);
+ assert.match(reports.at(-1).errors.find(e=>e.code==='SOURCE_RECORDS_FILTERED').message,new RegExp(`1: ${other} INACTIVE`));
+ // Nothing delivered while dropping listings never claims a clean completion.
+ reports=[];result=await acquireSsge(request(s),{...options(s),client:clientFor([inactive]),report:async r=>reports.push(r)});
+ assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,0);
 });
 test('SS.ge reads only its first 3 result pages and reports the cap as a normal completion',async()=>{
  const s=fixture.scenarios[0];assert.equal(SSGE_PAGE_CAP,3);

@@ -1,7 +1,10 @@
 // FIND BUYERS — the dashboard for one property (/property/:id/matches). Recovery UX, 2026-10-17.
 //
-// One journey, top to bottom: which property → what the search looks for (SearchDna, one
-// "Edit search") → ONE primary action (start / view live progress / continue, from the
+// FIND BUYERS 2.0 (owner, 2026-10-18): property search summary (SearchDna, one "Edit
+// search") → HOMATCH INTERNAL MATCHES (free; InternalMatchesPanel, the first and most
+// prominent section) → EXTERNAL DISCOVERY (the paid campaign engine, unchanged below).
+//
+// The external part, top to bottom: ONE primary action (start / view live progress / continue, from the
 // server's live status) → the latest search with ITS OWN counts and "Open results" → the
 // internal matches → previous searches → "Clear old results". Every list lives on its own page:
 //   internal → /property/:id/buyers/internal      external → /property/:id/buyers/external?job=<id>
@@ -12,7 +15,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { PencilLine } from 'lucide-react';
+import { Globe2, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -21,6 +24,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { DASH_BTN, FindBuyersDashboard, type LatestCounts, type PrimaryMode } from '@/components/findBuyers/FindBuyersDashboard';
 import { ClearResultsDialog } from '@/components/findBuyers/ClearResultsDialog';
+import { InternalMatchesPanel } from '@/components/findBuyers/InternalMatchesPanel';
 import { SearchDna } from '@/components/findBuyers/SearchDna';
 import { useExternalResults } from '@/components/findBuyers/useExternalResults';
 import { useInternalMatches } from '@/components/matching/internal/InternalMatchesSection';
@@ -102,8 +106,39 @@ function HomeContent() {
             </Link>
         </section>
 
+        {/* ── 1 · HOMATCH INTERNAL MATCHES — free, the first and most prominent section ── */}
+        {propertyId ? (
+          <InternalMatchesPanel propertyId={propertyId} tenant={tenant}
+            leadsHref={`${base}/leads`} fallbackCount={internal.people === null ? null : internal.people.length} />
+        ) : null}
+
+        {/* ── 2 · EXTERNAL DISCOVERY — the paid campaign engine, unchanged ── */}
+        <section aria-labelledby="fbx-section-title" data-testid="fbx-section" className="mt-6">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="break-words text-2xs font-bold uppercase tracking-[0.14em] text-[hsl(34_90%_34%)]">{t('fbx2_eyebrow')}</p>
+              <h2 id="fbx-section-title" className="mt-0.5 break-words font-display text-lg font-semibold leading-snug text-[hsl(218_45%_14%)]">{t('fbx2_title')}</h2>
+            </div>
+            <span className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full bg-[hsl(218_52%_11%)] px-3 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-[hsl(40_94%_68%)]" data-testid="fbx-paid">
+              <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />{t('fbx2_paid_chip')}
+            </span>
+          </div>
+          <p className="mt-2 max-w-[72ch] text-sm leading-relaxed text-[hsl(218_28%_32%)]">{t('fbx2_explain')}</p>
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2" data-testid="fb-compare">
+            <div className="min-w-0 rounded-2xl bg-white p-3 ring-1 ring-inset ring-[hsl(40_60%_84%)]">
+              <dt className="break-words text-2xs font-bold uppercase tracking-[0.12em] text-[hsl(34_90%_34%)]">{t('fb2_cmp_internal_title')}</dt>
+              <dd className="mt-1 text-xs leading-relaxed text-[hsl(218_28%_30%)]">{t('fb2_cmp_internal_body')}</dd>
+            </div>
+            <div className="min-w-0 rounded-2xl bg-white p-3 ring-1 ring-inset ring-[hsl(40_60%_84%)]">
+              <dt className="break-words text-2xs font-bold uppercase tracking-[0.12em] text-[hsl(34_90%_34%)]">{t('fb2_cmp_external_title')}</dt>
+              <dd className="mt-1 text-xs leading-relaxed text-[hsl(218_28%_30%)]">{t('fb2_cmp_external_body')}</dd>
+            </div>
+          </dl>
+        </section>
+
         <div className="mt-3">
           <FindBuyersDashboard
+            hideInternal
             primary={primary}
             foundSoFar={live?.newResults ?? 0}
             onStart={() => navigate(`${base}/buyers/external?start=1`)}

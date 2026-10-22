@@ -742,6 +742,42 @@ async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Pro
   return { claimed: rows.length, dispatched, failed };
 }
 
+/*
+ * EMAIL STUDIO SCHEDULES (Find Buyers 2.0). A reviewed campaign the owner scheduled is
+ * handed to outreach-send's studio path at its time; that path re-checks consent,
+ * suppression, the daily cap, the sending switch and the reviewed version, and records
+ * the outcome on the campaign. Nothing is decided here except "it is time".
+ */
+async function dispatchDueStudioSchedules(sb: Sb, url: string, cronToken: string): Promise<{ claimed: number; dispatched: number; failed: number }> {
+  const { data: due, error } = await sb.rpc('email_studio_claim_due_scheduled', { p_limit: 5 });
+  if (error) {
+    /* Before the migration is applied the function does not exist: nothing is due. */
+    return { claimed: 0, dispatched: 0, failed: 0 };
+  }
+  const rows = (due ?? []) as { campaign_id: string }[];
+  let dispatched = 0; let failed = 0;
+  for (const row of rows) {
+    try {
+      const res = await fetch(`${url}/functions/v1/outreach-send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''}`,
+          'x-cron-token': cronToken,
+        },
+        body: JSON.stringify({ action: 'studio_send_scheduled', campaignId: row.campaign_id }),
+      });
+      if (res.ok) dispatched++; else failed++;
+      await res.body?.cancel().catch(() => undefined);
+    } catch (e) {
+      /* Left as it is: the claim expires and the next tick retries. */
+      console.error('[jobs-worker] studio schedule dispatch failed', row.campaign_id, e instanceof Error ? e.message : String(e));
+      failed++;
+    }
+  }
+  return { claimed: rows.length, dispatched, failed };
+}
+
 /* ------------------------------------------------------------------ *
  * Entry                                                               *
  * ------------------------------------------------------------------ */
@@ -759,7 +795,7 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, reservations] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules, reservations] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
@@ -776,16 +812,17 @@ serve(async (req) => {
         console.error('[jobs-worker] expat reminders failed', e instanceof Error ? e.message : String(e));
         return { considered: 0, sent: 0, skipped: 'threw' };
       }),
+      dispatchDueStudioSchedules(sb, url, expected).catch(() => ({ claimed: 0, dispatched: 0, failed: 0 })),
       /* Credit holds that outlived their expiry: released only while the owner's switch is on
-         (_shared/walletSweeper.ts). Isolated like the reminders. */
+         (_shared/walletSweeper.ts). Isolated like the reminders; a failure says it failed. */
       sweepExpiredReservations(sb).catch((e) => {
         console.error('[jobs-worker] reservation sweep failed', e instanceof Error ? e.message : String(e));
-        return { enabled: true, released: null };
+        return { enabled: null, released: null, failed: true };
       }),
     ]);
 
     return json({
-      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, reservations,
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules, reservations,
     });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));

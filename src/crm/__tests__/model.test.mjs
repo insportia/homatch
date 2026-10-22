@@ -8,6 +8,7 @@ import {
   emailStudioHref, humanizeKind, isFollowUpDue, isoToLocalInput, localInputToIso, parseEntryParam, statusLabelKey,
 } from '../model.ts';
 import { LEADS_CRM_STRINGS } from '../../../scripts/leads-crm-i18n-data.mjs';
+import { FIND_BUYERS_2_STRINGS } from '../../../scripts/find-buyers-2-i18n-data.mjs';
 import { validate } from '../../../scripts/lib/i18nSplice.mjs';
 
 const opts = {
@@ -102,13 +103,17 @@ test('datetime-local round trip', () => {
 
 test('every key the CRM renders dynamically exists in six languages, with valid placeholders', () => {
   assert.deepEqual(validate(LEADS_CRM_STRINGS, 'leads-crm'), []);
+  assert.deepEqual(validate(FIND_BUYERS_2_STRINGS, 'find-buyers-2'), []);
+  /* Find Buyers 2.0 added the CONTACT_PLANNED / NEGOTIATING / CONVERTED stages and the
+     AI_DRAFT event; their copy lives in its own bundle. */
+  const ALL = { ...LEADS_CRM_STRINGS, ...FIND_BUYERS_2_STRINGS };
   const need = [
     ...CRM_STATUSES.map((s) => `crm_status_${s}`), 'crm_status_unknown', 'crm_event_generic',
     ...KNOWN_EVENT_KINDS.map((k) => `crm_event_${k}`),
     ...['follow_up_due', 'reply', 'first_message', 'wait_for_reply', 'follow_up_no_reply', 'propose_viewing',
       'confirm_viewing', 'record_outcome', 'respect_decision', 'review'].flatMap((c) => [`crm_next_${c}_title`, `crm_next_${c}_body`]),
   ];
-  for (const k of need) assert.ok(LEADS_CRM_STRINGS[k], `missing ${k}`);
+  for (const k of need) assert.ok(ALL[k], `missing ${k}`);
 });
 
 test('approved copy is verbatim, and Georgian terminology holds', () => {
@@ -137,5 +142,14 @@ test('the CRM UI never reads a contact field', () => {
   for (const f of files) {
     const src = readFileSync(new URL(`../../../${f}`, import.meta.url), 'utf8');
     assert.ok(!/\.(phone|email|contactPhone|contact_phone|contactEmail|contact_email)\b/.test(src), `${f} reads a contact field`);
+  }
+  /* Find Buyers 2.0: the drawer shows the unlocked lead's contact, but ONLY as
+     internal_lead_contact answers it (consent and blocks re-checked on every read),
+     and only the profile card and the composer read its fields. */
+  const drawer = readFileSync(new URL('../../../src/components/crm/CrmEntryDrawer.tsx', import.meta.url), 'utf8');
+  assert.match(drawer, /setContact\(await getLeadContact\(/);
+  for (const f of ['src/components/crm/LeadProfileCard.tsx', 'src/components/crm/LeadOutreachComposer.tsx']) {
+    const src = readFileSync(new URL(`../../../${f}`, import.meta.url), 'utf8');
+    assert.match(src, /contact: LeadContact \| null/, `${f} takes the consent-checked LeadContact`);
   }
 });

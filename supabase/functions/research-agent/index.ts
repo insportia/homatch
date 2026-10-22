@@ -2021,19 +2021,31 @@ async function stageCeilingCredits(sb: any, maxProviderUsd: number): Promise<num
  * more. No billing (feature off, legacy job) or an unreadable gate never
  * blocks: the stage runs as before, and wallet_settle still caps the charge.
  */
-async function budgetGate(sb: any, jobId: string, stage: string): Promise<'GO' | 'AWAIT' | 'LIMIT' | 'NONE'> {
+/*
+ * 'NONE' is the gate's own answer for a job without a budget (billing off,
+ * anonymous). 'ERROR' means the gate could not be asked: until 2026-10-18 that
+ * was folded into 'NONE' and the chargeable stage ran without the budget check
+ * (capacity audit P2 #11). Now the stage is simply not started this time; the
+ * next poll or drive tick asks again. Nothing is paused, charged or released.
+ */
+async function budgetGate(sb: any, jobId: string, stage: string): Promise<'GO' | 'AWAIT' | 'LIMIT' | 'NONE' | 'ERROR'> {
   try {
     const { data, error } = await sb.rpc('verify_budget_gate', { p_job_id: jobId, p_stage: stage });
-    if (error) return 'NONE';
+    if (error) {
+      console.error(JSON.stringify({ scope: 'verify_budget_gate', jobId, stage, outcome: 'ERROR_DEFERRED', error: String(error?.message ?? error).slice(0, 200) }));
+      return 'ERROR';
+    }
     const d = data?.decision;
     return d === 'GO' || d === 'AWAIT' || d === 'LIMIT' ? d : 'NONE';
-  } catch {
-    return 'NONE';
+  } catch (e) {
+    console.error(JSON.stringify({ scope: 'verify_budget_gate', jobId, stage, outcome: 'ERROR_DEFERRED', error: String((e as any)?.message ?? e).slice(0, 200) }));
+    return 'ERROR';
   }
 }
-/** True when the job was held for the customer's budget decision (nothing launched). */
+/** True when the stage must not start now: held for the customer's budget decision, or the gate could not be asked (nothing launched either way). */
 async function holdForBudget(sb: any, j: any, gateStage: string, resume?: { stage: string; status?: string }): Promise<boolean> {
   const decision = await budgetGate(sb, j.id, gateStage);
+  if (decision === 'ERROR') return true; // retried on the next poll / drive tick
   if (decision !== 'AWAIT' && decision !== 'LIMIT') return false;
   const p = j.result_json || {};
   p._pause = {
@@ -2154,6 +2166,7 @@ async function advanceDeveloperAds(sb: any, j: any): Promise<boolean> {
       // Another +25 possible → the customer decides (held); at the 100-credit
       // maximum the stage is skipped and disclosed.
       const gate = await budgetGate(sb, j.id, 'DEVELOPER_ADS');
+      if (gate === 'ERROR') return true; // the paid Actor never starts without an answer from the gate
       if (gate === 'AWAIT' && await holdForBudget(sb, j, 'DEVELOPER_ADS')) return true;
       const budget = await billingStateFor(sb, j.id);
       if (gate === 'LIMIT' || (budget && budget.state === 'ACTIVE' && !optionalStageFits(budget, await stageCeilingCredits(sb, policy.maxChargeUsd)))) {
@@ -2558,14 +2571,28 @@ async function startJobMarketRefresh(sb: any, jobId: string): Promise<{ status: 
 }
 
 /** Cron step: fold finished market refreshes and request one rebuild each. */
+/**
+ * COMPLETE jobs with a market refresh in flight. Served by the partial index of
+ * migration 20261115090000 through research_jobs_market_refresh_running(): the
+ * PostgREST filter below de-toasted EVERY completed report on every 30 s tick
+ * (capacity audit 2026-10-18). The filter stays as the fallback until that
+ * migration is applied (PGRST202 = function not found) — same rows either way.
+ */
+async function marketRefreshesInFlight(sb: any, limit: number): Promise<{ data: any[] | null; error: any }> {
+  const viaIndex = await sb.rpc('research_jobs_market_refresh_running', { p_limit: limit });
+  if (!viaIndex.error) return { data: viaIndex.data ?? [], error: null };
+  if (viaIndex.error?.code !== 'PGRST202') return { data: null, error: viaIndex.error };
+  return await sb
+    .from('research_jobs')
+    .select('id,query,mode,result_json,synthesis_json,synthesis_state')
+    .eq('status', 'COMPLETE')
+    .eq('result_json->_marketRefresh->>state', 'RUNNING')
+    .limit(limit);
+}
+
 async function pollMarketRefreshes(sb: any): Promise<void> {
   try {
-    const { data: jobs, error } = await sb
-      .from('research_jobs')
-      .select('id,query,mode,result_json,synthesis_json,synthesis_state')
-      .eq('status', 'COMPLETE')
-      .eq('result_json->_marketRefresh->>state', 'RUNNING')
-      .limit(3);
+    const { data: jobs, error } = await marketRefreshesInFlight(sb, 3);
     if (error) { console.error('research-agent drive: market-refresh sweep failed', error); return; }
     for (const j of jobs ?? []) {
       const rj = j.result_json ?? {};
@@ -4765,6 +4792,46 @@ async function pauseRequested(sb: any, id: string): Promise<boolean> {
   }
 }
 
+/**
+ * A running paid Developer Ads Actor is aborted, what it already billed is
+ * recorded (cost_events), and the stage is marked STOPPED in `p`. Shared by
+ * pause and — since 2026-10-18 — cancel, which used to leave the Actor running
+ * to its own timeout (capacity audit). Returns true when `p` changed.
+ */
+/** Cancel's variant: only when no other invocation is stepping the job (else unchanged behaviour). */
+async function stopDeveloperAdsUnderLease(sb: any, j: any): Promise<void> {
+  let token: string | null = null;
+  try {
+    const { data, error } = await sb.rpc('research_job_advance_acquire', { p_job_id: j.id, p_seconds: ADVANCE_LEASE_SECONDS });
+    if (error || !data) return;
+    token = data;
+    await stopRunningDeveloperAds(sb, j, { ...j.result_json });
+  } catch {
+    /* best effort: the Actor stays bounded by its own maxChargeUsd / timeout */
+  } finally {
+    if (token) {
+      try {
+        await sb.rpc('research_job_advance_release', { p_job_id: j.id, p_token: token });
+      } catch {
+        /* expires on its own */
+      }
+    }
+  }
+}
+async function stopRunningDeveloperAds(sb: any, j: any, p: any): Promise<boolean> {
+  const ads = p?._developerAds;
+  if (!(ads?.state === 'RUNNING' && ads.runId)) return false;
+  try {
+    await apifyAbortRun(ads.runId);
+    const run = await apifyGetRun(ads.runId).catch(() => null);
+    const partial = ads.datasetId ? await apifyDatasetItems(ads.datasetId, Number(ads.policy?.maxItems) || 50).catch(() => null) : null;
+    await recordDeveloperAdsCost(sb, j, run, partial ? partial.items.length : null);
+  } catch {
+    /* recorded as unknown by the Actor's own accounting */
+  }
+  await finishDeveloperAds(p, 'STOPPED', {}, [], undefined, undefined);
+  return true;
+}
 /*
  * STOP — no new chargeable work, abort what can be aborted, keep everything.
  *
@@ -4830,18 +4897,7 @@ async function applyPause(sb: any, k: string, j: any): Promise<void> {
     delete p._worker;
   }
   // A running paid advertising Actor is aborted; what it already billed is recorded and charged.
-  const ads = p._developerAds;
-  if (ads?.state === 'RUNNING' && ads.runId) {
-    try {
-      await apifyAbortRun(ads.runId);
-      const run = await apifyGetRun(ads.runId).catch(() => null);
-      const partial = ads.datasetId ? await apifyDatasetItems(ads.datasetId, Number(ads.policy?.maxItems) || 50).catch(() => null) : null;
-      await recordDeveloperAdsCost(sb, j, run, partial ? partial.items.length : null);
-    } catch {
-      /* recorded as unknown by the Actor's own accounting */
-    }
-    await finishDeveloperAds(p, 'STOPPED', {}, [], undefined, undefined);
-  }
+  await stopRunningDeveloperAds(sb, j, p);
   p._pause = pause;
   const { data: paused } = await sb.from('research_jobs')
     .update({ status: 'PAUSED', stage: 'PAUSED', paused_at: now(), pause_requested_at: null, driver_claimed_at: null, captcha: {}, result_json: p, progress: { ...(j.progress || {}), phase: 'paused' }, updated_at: now() })
@@ -4853,9 +4909,15 @@ async function advanceExclusive(sb: any, k: string, m: string, j: any, l: string
   try {
     const { data, error } = await sb.rpc('research_job_advance_acquire', { p_job_id: j.id, p_seconds: ADVANCE_LEASE_SECONDS });
     if (!error && data === null) return false; // another invocation is stepping this job
-    if (!error) token = data;
-  } catch {
-    /* lease unavailable: proceed unguarded, as before */
+    if (error) throw error;
+    token = data;
+  } catch (e) {
+    // Lease unavailable: do NOT step unguarded (capacity audit 2026-10-18).
+    // Every open tab and every overlapping drive tick is an advancer; without
+    // the lease two of them can run the same paid stage. The next poll or
+    // drive tick (≤30 s) retries, so a transient error only delays a step.
+    console.error(JSON.stringify({ scope: 'verify_advance_lease', jobId: j.id, outcome: 'SKIPPED_NO_LEASE', error: String((e as any)?.message ?? e).slice(0, 200) }));
+    return false;
   }
   try {
     // A stop requested while no one held the job is applied here, before any
@@ -7493,6 +7555,14 @@ Deno.serve(async (req) => {
         // browser session is reaped by the worker's own watchdog.
         try { await wf(`/research/${wid}/cancel`, 'POST', {}); } catch { /* an older worker: its watchdog reaps the job */ }
       }
+      // A running paid Developer Ads Actor stops with the job (as on pause)
+      // instead of running on to its timeout; what it billed is recorded and
+      // charged by closeBilling below like any other incurred work. Done only
+      // under the advance lease — the same exclusion pause runs under — so a
+      // poll that is finishing the same run cannot book its cost twice. The
+      // stage marker changes on a throwaway copy: cancel never writes
+      // result_json (collected evidence is kept).
+      if (j.result_json?._developerAds?.state === 'RUNNING') await stopDeveloperAdsUnderLease(sb, j);
       await sb.from('research_jobs').update({
         status: 'CANCELLED',
         stage: 'CANCELLED',
@@ -7666,9 +7736,15 @@ Deno.serve(async (req) => {
         j = await skipHumanWait(sb, j);
       }
       if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED', 'PAUSED'].includes(j.status)) {
-        await advanceExclusive(sb, key, model, j, lang);
-        const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
-        j = r.data || j;
+        // Re-read the row only when THIS request stepped the job. When another
+        // tab or the driver holds the advance lease nothing was changed here,
+        // and the row read above is already current for this poll — a second
+        // full read (reports average ~108 KB) per contended poll was pure
+        // database load (capacity audit 2026-10-18).
+        if (await advanceExclusive(sb, key, model, j, lang)) {
+          const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+          j = r.data || j;
+        }
       }
       // v22: strip internal diagnostics from the wire response for finished jobs
       // (see sanitizeForCustomer above). The DB row itself is left untouched —

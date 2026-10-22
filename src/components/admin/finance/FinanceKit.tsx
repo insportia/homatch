@@ -57,7 +57,7 @@ export function StatCard({
         </>
       ) : (
         <>
-          <p className={`mt-1.5 text-2xl font-semibold tabular-nums ${toneClass}`} dir="ltr">
+          <p className={`mt-1.5 whitespace-nowrap text-xl font-semibold tabular-nums sm:text-2xl ${toneClass}`} dir="ltr">
             {value}
           </p>
           {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}

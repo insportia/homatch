@@ -20,7 +20,11 @@ export const SSGE_PAGE_CAP = 3;
 export async function acquireSsge(request, { deadlineAt, signal, report, client, fetcher, sleep = ms => delay(ms, undefined, { signal }), verifyPage = verifyIndividualPage, pageCap = SSGE_PAGE_CAP } = {}) {
   if (!Number.isInteger(pageCap) || pageCap < 1 || pageCap > SSGE_PAGE_CAP) throw Error('Invalid SS.ge page cap');
   const started = Date.now(), deadline = Date.parse(deadlineAt);
-  let pagesVisited = 0, discoveredCount = 0, delivered = 0, rejected = 0, stop = null, actions = 0;
+  let pagesVisited = 0, discoveredCount = 0, delivered = 0, stop = null, actions = 0;
+  // Every listing not delivered, with why: INACTIVE / CRITERIA (it does not match the search: a normal
+  // outcome) or IDENTITY / UNREADABLE (we could not verify it: the run is incomplete).
+  const dropped = [];
+  const drop = (id, reason) => { dropped.push({ id: String(id ?? '?'), reason }); };
   const errors = [], queryApplied = { acquisition: 'SSGE_ACCEPTED_STANDALONE_HTTP2' };
   const remaining = () => {
     signal?.throwIfAborted();
@@ -48,7 +52,7 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
     for await (const page of new SsgeAdapter({ client: source }).search(criteria, { retries: 0, maxPages: pageCap, onStop: value => { stop = value; } })) {
       remaining(); pagesVisited++;
       discoveredCount = Math.max(discoveredCount, page.total ?? 0);
-      rejected += page.excluded.length;
+      for (const x of page.excluded) drop(x.sourceListingId, x.reason === 'Source criteria mismatch' ? 'CRITERIA' : 'UNREADABLE');
       const candidates = [];
       for (const listing of page.items) {
         remaining(); await sleep(500);
@@ -57,11 +61,13 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
           const proof = await verifyPage(listing, { fetchImpl: boundedFetch, signal: boundedSignal() });
           if ([401, 403, 429].includes(proof.status)) throw Object.assign(Error('SS.ge public page unavailable'), { status: proof.status });
           const check = compareDetail(listing, detail, { pageProof: proof });
-          if (detail.raw.isInactiveApplication === true || !check.passed || !validateCriteria(detail, criteria, source.locations, { requireUrl: false }).passed) { rejected++; continue; }
+          if (detail.raw.isInactiveApplication === true) { drop(listing.sourceListingId, 'INACTIVE'); continue; }
+          if (!check.passed) { drop(listing.sourceListingId, 'IDENTITY'); continue; }
+          if (!validateCriteria(detail, criteria, source.locations, { requireUrl: false }).passed) { drop(listing.sourceListingId, 'CRITERIA'); continue; }
           candidates.push(ssgeCandidate(listing, detail, request, page.page));
         } catch (error) {
           if (signal?.aborted || error.code === 'DEADLINE' || [401, 403, 429].includes(error.status)) throw error;
-          rejected++;
+          drop(listing.sourceListingId, 'UNREADABLE');
         }
       }
       if (candidates.length) await emit('RESULTS_RECEIVED', candidates);
@@ -74,8 +80,14 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
     const complete = capped || ['last-page', 'total-count'].includes(stop?.reason) || stop?.reason === 'empty-page' && discoveredCount === 0;
     if (capped) errors.push({ code: 'PAGE_CAP_REACHED', message: `SS.ge: first ${pagesVisited} result pages read` });
     if (!complete) errors.push({ code: 'PAGINATION_INCOMPLETE', message: `SS.ge traversal stopped: ${stop?.reason ?? 'unknown'}` });
-    if (rejected) errors.push({ code: 'SOURCE_RECORDS_REJECTED', message: `${rejected} source records failed identity, detail or criteria checks` });
-    const status = complete && !rejected ? 'COMPLETE' : 'PARTIAL';
+    const failed = dropped.filter(d => d.reason === 'IDENTITY' || d.reason === 'UNREADABLE');
+    const filtered = dropped.filter(d => d.reason === 'INACTIVE' || d.reason === 'CRITERIA');
+    const listed = list => `${list.length}: ${list.slice(0, 10).map(d => `${d.id} ${d.reason}`).join(', ')}${list.length > 10 ? ', …' : ''}`;
+    if (failed.length) errors.push({ code: 'SOURCE_RECORDS_REJECTED', message: `could not be verified ${listed(failed)}` });
+    if (filtered.length) errors.push({ code: 'SOURCE_RECORDS_FILTERED', message: `did not match the search ${listed(filtered)}` });
+    // A listing that does not match the search is a normal outcome; one we could not verify is not.
+    // A run that delivered nothing while dropping listings never claims a clean completion.
+    const status = complete && !failed.length && (delivered > 0 || !filtered.length) ? 'COMPLETE' : 'PARTIAL';
     await emit(status, [], errors);
     return { status, delivered, pagesVisited };
   } catch (error) {

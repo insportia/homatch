@@ -92,11 +92,13 @@ test('overview: every service, effective state, readiness by NAME, never a secre
   const w = world();
   const r = await call(w, 'overview');
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body.services.map((s) => s.key), KEYS);
+  /* Service order: the six, the live products, then paid Deep Search (fails closed since 2026-10-18). */
+  assert.deepEqual(r.body.services.map((s) => s.key), [...SIX, ...LIVE.filter((k) => k !== 'find_property_deep'), 'find_property_deep']);
   const six = r.body.services.filter((s) => SIX.includes(s.key));
   assert.ok(six.every((s) => s.effective === 'PAUSED' && s.frontend === false && s.backend === false && s.failMode === 'CLOSED'), 'the six stay paused and fail closed');
-  const live = r.body.services.filter((s) => LIVE.includes(s.key));
+  const live = r.body.services.filter((s) => LIVE.includes(s.key) && s.key !== 'find_property_deep');
   assert.ok(live.every((s) => s.frontend === true && s.backend === true && s.failMode === 'OPEN'), 'the live products are on and fail open');
+  assert.equal(r.body.services.find((s) => s.key === 'find_property_deep').failMode, 'CLOSED', 'paid Deep Search fails closed');
   assert.equal(r.body.services.find((s) => s.key === 'verify').group, 'intelligence');
   assert.equal(r.body.services.find((s) => s.key === 'meta_ads').group, 'marketing');
   const talk = r.body.services.find((s) => s.key === 'ai_talk');

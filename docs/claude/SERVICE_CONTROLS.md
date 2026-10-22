@@ -12,12 +12,13 @@ for_expats, meta_ads, email_campaigns, ai_assistant, brokers_directory, broker_d
 developers. The inventory (routes, entry points, gates, what keeps running, why each
 platform piece has no switch) is `docs/claude/SERVICE_CONTROLS_INVENTORY.md`.
 
-## Two fail modes
+## Fail modes
 
 | Kind | Keys | Control unreadable | Row missing | Frontend before the first answer |
 |---|---|---|---|---|
 | Paused by the owner | the original six (`PAUSED_BY_DEFAULT`) | refuse / hide (closed) | OFF | hidden ("busy" placeholder on its routes) |
-| Live product | the fourteen (`LIVE_BY_DEFAULT`) | run / show (open) | ON | this browser's last answer (`localStorage` `homatch-service-visibility`), else shown |
+| Paid, paused by the owner (2026-10-18) | `find_property_deep` (`PAID_CLOSED_BY_DEFAULT`) | refuse / hide (closed) | OFF | hidden; never taken from browser memory |
+| Live product | the other thirteen (`LIVE_BY_DEFAULT`) | run / show (open) | ON | this browser's last answer (`localStorage` `homatch-service-visibility`), else shown |
 
 An explicit OFF row is honoured for both. Fail-open is deliberate: an outage of the control
 table must not take Verify or Find Property down. The cost: a browser that has never seen a
@@ -25,14 +26,21 @@ pause may mount a paused product's page for a moment before the answer arrives, 
 read its own state (`capabilities`, `history`, `status`); anything that starts work is refused
 by the backend.
 
-## Commercial pause vs. public visibility (Brokers directory)
+## Brokers: two switches, hidden everywhere when off (owner, 2026-10-18)
 
-`brokers_directory` is the one service whose switch pauses **commercial operations only** (owner
-decision 2026-10-17, Option A). Pausing it refuses new listing purchases and renewals at the database
-(no charge for a refused call) and replaces Broker Desk's Buy/Renew with a localized notice. It does
-**not** hide the public directory: `/brokers` and `/brokers/:id` are never gated, and the public read
-path (`broker_directory_public`) keeps emitting exactly the ACTIVE listings whose paid period has
-not ended. Nothing is extended, reset or auto-renewed. Details and proof: the inventory.
+`brokers_directory` (`/brokers`, `/brokers/:id`) and `broker_desk` (`/broker`, `/broker/onboarding`)
+are separate switches. Turning a broker service's customer visibility off removes it from the
+sidebar (desktop and phone drawer), the public B2B menu, the homepage Brokers section, About, the
+product entry page, the AI assistant chip, AI TALK's "go to" button and the professional sign-up
+option, and its addresses show "currently unavailable". This replaces the 2026-10-17 "Option A",
+which left the directory public while only its sales were paused. Hiding is reversible
+presentation: profiles, listings, payments and records are untouched, and Admin → Brokers stays.
+The backend sales guard (refuses purchases and renewals with no charge) is unchanged.
+
+Before this page load has read the switches, and if the first read fails, both broker services stay
+hidden (`HIDDEN_UNTIL_ANSWERED`, src/lib/serviceControls/core.ts): neither a remembered answer nor
+an outage brings them back. A real answer without their rows (before the migration) means live.
+The backend fail mode (`LIVE_BY_DEFAULT`) is not changed by this.
 
 ## Groups
 

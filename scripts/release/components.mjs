@@ -36,7 +36,7 @@ export const SUITE_CATALOGUE = {
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
   'mobile:mortgage': { title: 'Mobile — mortgage', files: ['tests/mobile/mortgageConsultant.test.mjs', 'tests/mobile/mortgageHuman.test.mjs'] },
   'mobile:expats': { title: 'Mobile — For Expats', files: ['tests/mobile/expatsReadable.test.mjs'] },
-  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/findBuyersUx.test.mjs', 'tests/mobile/findBuyersNavigation.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs'] },
+  'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/findBuyersUx.test.mjs', 'tests/mobile/findBuyersNavigation.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs', 'tests/mobile/matchExpansion.test.mjs', 'tests/mobile/findPropertyCosts.test.mjs'] },
   'mobile:broker': { title: 'Mobile — broker lifecycle', files: ['tests/mobile/brokerLifecycle.test.mjs'] },
   'mobile:tasks': { title: 'Mobile — tasks and contracts', files: ['tests/mobile/tasksAndContracts.test.mjs'] },
   developer: { title: 'Developer acceptance', script: 'test:developer', files: ['tests/browser/developerAcceptance.test.mjs'] },
@@ -146,7 +146,7 @@ export const COMPONENTS = {
     suites: ['studio:editor', 'studio:content', 'mobile:routes', 'a11y'],
   },
   DISCOVERY: {
-    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|findBuyersLeads|homatchLeads|ownerDemoLead)\.ts$/, /^src\/pages\/property\/(HomatchLeadsPage|LeadDetailPage)\.tsx$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
+    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|Inventory|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|findBuyersLeads|homatchLeads|ownerDemoLead)\.ts$/, /^src\/pages\/property\/(HomatchLeadsPage|LeadDetailPage)\.tsx$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
     suites: ['mobile:discovery', 'mobile:routes'],
   },
   PWA_PUSH: {
@@ -255,6 +255,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(research_|verify|verification|deal_room)/, 'VERIFY'],
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
+  // Finance V2: tax profiles, commercial policies, the service registry and its admin ledger views/RPCs.
+  [/^public\.(finance_tax_profiles$|finance_commercial_policies$|finance_services$|finance_vat_bps_at$|finance_split_gross$|finance_cost_status$|finance_credits_to_usd$|finance_v2_)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
   // The paid discovery pricing policy (37/63) and native matching's resumable retirement.
   [/^public\.(paid_discovery_|retire_native_matches|find_property_|my_find_property_campaign$)/, 'DISCOVERY'],
@@ -262,6 +264,10 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(property_interest_|customer_demand_interests$|saved_property_listings$|interest_|record_interest_event$|record_my_property_interest$|my_property_interest_history$|set_my_interest_tracking$|delete_my_property_interest_history$|purge_expired_property_interest$|demand_interest_strength$|admin_demand_)/, 'DISCOVERY'],
   // Find Property Knowledge Engine exact cache (service role only).
   [/^public\.property_knowledge_/, 'DISCOVERY'],
+  // Find Property free portal search: worker claim, live-search dispatch and quota, shared runs.
+  [/^public\.(marketplace_|claim_marketplace_|consume_marketplace_|admin_marketplace_)/, 'DISCOVERY'],
+  // Property inventory (20261119100000): the write-through function and its status view.
+  [/^public\.(upsert_marketplace_inventory$|property_inventory_)/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],
   // HOMATCH Internal Matches: the admin/tester DEMO buyer (demo_* tables and RPCs) and the per-person key.
@@ -270,6 +276,11 @@ export const DB_OBJECT_OWNERS = [
   // HOMATCH Leads: the internal marketplace (feed, unlock entitlements, segment rules,
   // saved/seen, the property matching queue) and its admin views.
   [/^public\.(internal_lead|lead_contact_prefs_of$|lead_contact_preferences|my_lead_contact_preferences$|set_my_lead_contact_preferences$|native_match_|admin_internal_lead|open_native_conversation$)/, 'DISCOVERY'],
+  // Find Buyers 2.0 smart match expansion: classified candidates, measured area geography,
+  // the owner's reach controls and the expansion settings reader.
+  [/^public\.internal_match_(candidates|place_geo|preferences|upsert$|retire$|refresh_place_geo$|visible$|expansion_config$)/, 'DISCOVERY'],
+  // The price catalogue every paid product reads.
+  [/^public\.billable_products$/, 'BILLING'],
   // The seller's CRM for unlocked leads.
   [/^public\.(lead_crm_|crm_)/, 'PRODUCT'],
   // Property conversations (media, translation cache, seen/mute/block RPCs) and Email Studio.
@@ -292,8 +303,12 @@ export const I18N_KEY_OWNERS = [
   [/^(pwa|notif)_/, 'PWA_PUSH'],
   [/^auth_/, 'AUTH_SECURITY'],
   [/^admin_/, 'ADMIN'],
+  // Admin → Finance (incl. Finance V2 per-service dashboards).
+  [/^fin_(v2|tab)_/, 'ADMIN'],
   // Find Property workspace (history, results, property page; property-scoped AI chat errors).
   [/^fpw_/, 'DISCOVERY'],
+  // Find Property search screens (marketplace search, sources, results workspace).
+  [/^(fpx|mps)_/, 'DISCOVERY'],
   [/^fbx_/, 'DISCOVERY'],
   // Find Property saved listings, activity history and the paid social campaign.
   [/^fpi_/, 'DISCOVERY'],

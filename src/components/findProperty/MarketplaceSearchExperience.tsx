@@ -50,7 +50,11 @@ const writeDraft = (b: SearchIntelligenceBrief | null) => {
   try { if (b) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(b)); else sessionStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ }
 };
 
-export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources = null, sourceNames = [] }: { deepSearchAvailable: boolean; activeSources?: number | null; sourceNames?: string[] }) {
+/** deepOffered=false unless paid Deep Search is switched ON in Admin and fully available: the free
+ *  portal search only, exactly as before paid campaigns — no mode choice, no Deep card or panel,
+ *  no paid results view, and no "coming soon" or "switched off" notice. Customers see nothing
+ *  paid; past campaigns stay on their own pages (direct link, Admin). */
+export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered = true, activeSources = null, sourceNames = [] }: { deepSearchAvailable: boolean; deepOffered?: boolean; activeSources?: number | null; sourceNames?: string[] }) {
   const { t, isRTL } = useLanguage();
   const [params] = useSearchParams();
   const route = useParams<{ searchId: string; propertyKey: string }>();
@@ -68,6 +72,8 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
   const [compare, setCompare] = useState<string[]>([]);
   const [comparison, setComparison] = useState<{ a: PropertyView; b: PropertyView; rows: ComparisonRow[] } | null>(null);
   const idempotency = useRef<string | null>(null);
+  /* Cost accounting only: the brief calls made for the search about to start. */
+  const briefRefs = useRef<string[]>([]);
   const [playing, setPlaying] = useState(false);
   const searchId = route.searchId ?? params.get('search');
   const justStartedId = useRef<string | null>(null);
@@ -158,6 +164,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
     setBusy(true);
     try {
       const r = await understand(text);
+      if (r.costRef) briefRefs.current = [...briefRefs.current, r.costRef].slice(-20);
       setBriefAndDraft(r.brief);
     } catch (e) {
       /* The model being unavailable (or the per-user quota reached) is not a dead end:
@@ -176,8 +183,15 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
     const criteria = JSON.stringify({ ...brief, originalText: '' });
     idempotency.current = startKey(criteria);
     try {
-      const r = await startSearch(brief, idempotency.current);
+      const r = await startSearch(brief, idempotency.current, briefRefs.current);
       setSearch(r.search);
+      /* Never silent: a search that could not also read the portals live says why, and until when. */
+      const live = r.liveRefresh;
+      const at = live?.retryAt ? new Date(live.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+      if (live?.state === 'LIMITED') toast.message(live.reason === 'CONCURRENT' ? t('mps_live_limited_concurrent', { n: live.maxActive ?? 3 }) : at ? t('mps_live_limited_until', { time: at }) : t('mps_live_limited'));
+      else if (live?.state === 'BUSY') toast.message(at ? t('mps_live_busy_until', { time: at }) : t('mps_live_busy'));
+      else if (live?.state === 'UNAVAILABLE') toast.message(t('mps_live_unavailable'));
+      else if (r.reused) toast.message(t('mps_reused_recent'));
       justStartedId.current = r.search.id;
       /* Deep Search was approved on its card (one confirmation): the campaign starts with
          that approval as soon as this search's subscription exists. */
@@ -185,6 +199,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
       navigate(`/find-property/search/${r.search.id}${deepCredits ? `?deep=${deepCredits}` : ''}`);
       writeDraft(null);
       clearStartKey();
+      briefRefs.current = [];
       setView('SEARCH');
       idempotency.current = null;
     } catch (e) {
@@ -232,7 +247,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
   return (
     <CustomerSurface className="space-y-6 pb-10">
       {!route.propertyKey ? <div className="pt-4 sm:pt-6">
-        <WorkspaceHeader t={t} compact={view !== 'MODE'} activeSources={activeSources} deepAvailable={deepSearchAvailable} action={backToWorkspace} />
+        <WorkspaceHeader t={t} compact={view !== 'MODE'} activeSources={activeSources} deepAvailable={deepSearchAvailable} deepOffered={deepOffered} action={backToWorkspace} />
       </div> : null}
 
       {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl border border-border bg-card/70" aria-busy="true" />}
@@ -249,26 +264,26 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, activeSources
       {view === 'ERROR' && <div role="alert" className="space-y-4 rounded-2xl border border-border bg-card p-6"><p>{t('mps_error_generic')}</p><Link to="/find-property" className={btn.quiet}>{t('fpx_my_searches')}</Link></div>}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (
-        <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => setView('CHOOSE')} starting={busy} startLabel={t('fpx_continue_modes')}
+        <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => (deepOffered ? setView('CHOOSE') : void doStart())} starting={busy} startLabel={deepOffered ? t('fpx_continue_modes') : undefined}
           onReset={() => { setBriefAndDraft(null); setView('INTRO'); }} />
       )}
-      {view === 'CHOOSE' && brief && (
-        <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy}
+      {view === 'CHOOSE' && brief && deepOffered && (
+        <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy} brief={brief}
           onFree={() => void doStart()} onDeep={(credits) => void doStart(credits)} onBack={() => setView('BUILD')} />
       )}
       {/* Deep Search: the campaign's own screen, never the portal search's progress or list
           (the free search runs underneath only because the campaign extends it). */}
-      {deepCredits && search && !route.propertyKey && (view === 'SEARCH' || view === 'RESULTS') ? (
+      {deepOffered && deepCredits && search && !route.propertyKey && (view === 'SEARCH' || view === 'RESULTS') ? (
         <DeepSearchPanel t={t} searchId={search.id} available={deepSearchAvailable} initialCredits={deepCredits} />
       ) : null}
-      {view === 'SEARCH' && search && !route.propertyKey && !deepCredits && (
+      {view === 'SEARCH' && search && !route.propertyKey && (!deepCredits || !deepOffered) && (
         <SearchProgress t={t} search={search} onViewResults={() => { if (search.terminal) setView('RESULTS'); }} onPlay={() => setPlaying(true)}
           onNewSearch={newSearch}
           onCancel={async () => { try { const r = await cancelSearch(search.id); setSearch(r.search); } catch { /* ignore */ } newSearch(); }} />
       )}
-      {view === 'RESULTS' && search && !route.propertyKey && !deepCredits && (
+      {view === 'RESULTS' && search && !route.propertyKey && (!deepCredits || !deepOffered) && (
         <ResultsView t={t} search={search} onOpen={(p) => void openProperty(p)} compare={compare} onToggleCompare={toggleCompare}
-          onNewSearch={newSearch} deepSearchAvailable={deepSearchAvailable} version={resultsVersion}
+          onNewSearch={newSearch} deepSearchAvailable={deepSearchAvailable} deepOffered={deepOffered} version={resultsVersion}
           onChangeCriteria={(edit) => {
             const base = sanitizeBrief(search.brief);
             setBriefAndDraft(edit ? applyEdit(base, edit) : base);

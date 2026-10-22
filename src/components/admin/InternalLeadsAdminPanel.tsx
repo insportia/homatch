@@ -13,7 +13,7 @@ interface Rule { id: string; transaction_type: 'SALE' | 'RENT'; property_type: s
 interface Overview {
   prices: { STANDARD: number; PREMIUM: number; active: boolean };
   rules: Rule[];
-  unlocks: { standard: number; premium: number; standardCredits: number; premiumCredits: number; accounts: number; leads: number };
+  unlocks: { standard: number; exact?: number; premium: number; standardCredits: number; exactCredits?: number; premiumCredits: number; accounts: number; leads: number };
   crm: Record<string, number>;
 }
 
@@ -59,7 +59,7 @@ export function InternalLeadsAdminPanel() {
               <div><dt className="text-xs text-muted-foreground">{t('admin_il_price_standard')}</dt><dd className="font-semibold">{data.prices.STANDARD}</dd></div>
               <div><dt className="text-xs text-muted-foreground">{t('admin_il_price_premium')}</dt><dd className="font-semibold">{data.prices.PREMIUM}</dd></div>
               <div><dt className="text-xs text-muted-foreground">{t('admin_il_unlocks_30d')}</dt><dd className="font-semibold">{data.unlocks.standard} / {data.unlocks.premium}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">{t('admin_il_revenue_30d')}</dt><dd className="font-semibold">{Number(data.unlocks.standardCredits) + Number(data.unlocks.premiumCredits)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">{t('admin_il_revenue_30d')}</dt><dd className="font-semibold">{Number(data.unlocks.standardCredits) + Number(data.unlocks.exactCredits ?? 0) + Number(data.unlocks.premiumCredits)}</dd></div>
             </dl>
             <table className="w-full text-sm">
               <thead><tr className="text-start text-xs text-muted-foreground">

@@ -61,6 +61,43 @@ function haveDeps() {
 const skipReason = haveDeps();
 const opts = skipReason && !process.env.CI ? { skip: skipReason } : { timeout: 1_800_000 };
 
+/* Deep Search results fixture: the production request (Vake, 3 rooms / 2 bedrooms, 80–110 m²,
+   new build, $120–160k) and verdicts of each kind, exactly as find-property-run returns them. */
+const CAMPAIGN_CRITERIA = { transaction: 'SALE', city: 'Tbilisi', districts: ['ვაკე'], propertyType: 'APARTMENT', priceUsd: { min: 120000, max: 160000 },
+  areaSqm: { min: 80, max: 110 }, rooms: { min: 3, max: 3 }, bedrooms: { min: 2, max: 2 }, buildingStatuses: ['NEW_BUILD', 'UNDER_CONSTRUCTION'] };
+const ck = (key, state, actual = null) => ({ key, state, expected: null, actual });
+const CAMPAIGN_ITEMS = [
+  { id: 'r1', category: 'EXACT', rank: 1, rejectReasons: [], duplicates: 2, url: 'https://www.facebook.com/groups/1/posts/11/', network: 'FACEBOOK', title: null,
+    excerpt: 'იყიდება 3 ოთახიანი ბინა ვაკეში, ახალაშენებულ კორპუსში, 95 კვ.მ, 2 საძინებელი, 145 000$', priceUsd: 145000, price: { amount: 145000, currency: 'USD' },
+    areaSqm: 95, rooms: 3, bedrooms: 2, floor: 7, totalFloors: 14, propertyType: 'APARTMENT', city: 'tbilisi', district: 'vake', publishedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    images: [], duplicateUrls: [],
+    checks: [ck('transaction', 'MATCH', 'SALE'), ck('city', 'MATCH', 'tbilisi'), ck('district', 'MATCH', 'vake'), ck('propertyType', 'MATCH', 'APARTMENT'), ck('price', 'MATCH', '145000'),
+      ck('area', 'MATCH', '95 m²'), ck('rooms', 'MATCH', '3'), ck('bedrooms', 'MATCH', '2'), ck('buildingStatus', 'MATCH', 'NEW_BUILD'), ck('fresh', 'MATCH', '2026-10-16')] },
+  { id: 'r2', category: 'POTENTIAL', rank: 2, rejectReasons: [], duplicates: 0, url: 'https://t.me/sale_tbi/123', network: 'TELEGRAM', title: null,
+    excerpt: 'Продается квартира 90 м², 2 спальни, ул. Чавчавадзе. Цена по запросу.', priceUsd: null, price: null,
+    areaSqm: 90, rooms: null, bedrooms: 2, floor: null, totalFloors: null, propertyType: 'APARTMENT', city: 'tbilisi', district: null, publishedAt: new Date(Date.now() - 86400000).toISOString(),
+    images: [], duplicateUrls: [],
+    checks: [ck('transaction', 'MATCH', 'SALE'), ck('city', 'MATCH', 'tbilisi'), ck('district', 'UNVERIFIED'), ck('propertyType', 'MATCH', 'APARTMENT'), ck('price', 'UNVERIFIED'),
+      ck('area', 'MATCH', '90 m²'), ck('rooms', 'UNVERIFIED'), ck('bedrooms', 'MATCH', '2'), ck('buildingStatus', 'UNVERIFIED'), ck('fresh', 'MATCH', '2026-10-17')] },
+  { id: 'r3', category: 'ALTERNATIVE', rank: 3, rejectReasons: ['PRICE'], duplicates: 0, url: 'https://www.facebook.com/groups/2/posts/22/', network: 'FACEBOOK', title: null,
+    excerpt: 'იყიდება ბინა ვაკეში 100 კვ.მ, 2 საძინებელი, 172 000$', priceUsd: 172000, price: { amount: 172000, currency: 'USD' },
+    areaSqm: 100, rooms: null, bedrooms: 2, floor: null, totalFloors: null, propertyType: 'APARTMENT', city: 'tbilisi', district: 'vake', publishedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    images: [], duplicateUrls: [],
+    checks: [ck('district', 'MATCH', 'vake'), ck('price', 'FAIL', '172000'), ck('area', 'MATCH', '100 m²'), ck('bedrooms', 'MATCH', '2')] },
+];
+function campaignResultsFixture(state, body) {
+  const ended = Boolean(state.paidStop) || state.campaignEnded === true;
+  const view = String(body.view ?? 'MATCHES').toUpperCase();
+  const cats = view === 'EXACT' ? ['EXACT'] : view === 'POTENTIAL' ? ['POTENTIAL'] : view === 'ALTERNATIVE' ? ['ALTERNATIVE'] : ['EXACT', 'POTENTIAL'];
+  const items = CAMPAIGN_ITEMS.filter((i) => cats.includes(i.category));
+  return { success: true,
+    run: { id: 'run-1', status: ended ? 'COMPLETED' : 'SEARCHING', createdAt: new Date(Date.now() - 180000).toISOString(), completedAt: ended ? new Date().toISOString() : null,
+      searchId: '22222222-2222-4222-8222-222222222222', originalText: 'ვაკეში მინდა საყიდლად 2 საძინებლიანი, 3 ოთახიანი ბინა, 80 დან 110 მ² მდე, ახალაშენებულ ან მშენებარე კორპუსში. ბიუჯეტი $120,000 დან $160,000 მდე.', criteria: CAMPAIGN_CRITERIA },
+    outcome: ended ? { fetched: 2846, candidates: 600, unique: 371, duplicates: 229, exact: 1, potential: 1, alternative: 1, rejected: 368, rejectedBy: { AREA: 224, PRICE: 203, DISTRICT: 179 }, available: 2 } : null,
+    settlement: ended ? { status: 'SETTLED', reservedCredits: 50, chargedCredits: 12.5, releasedCredits: 37.5 } : { status: 'HELD', reservedCredits: 50, chargedCredits: null, releasedCredits: null },
+    view, sort: body.sort ?? 'BEST', page: 1, pageSize: 12, total: items.length, items };
+}
+
 test('V2: card gallery, durable dossier, scoped paid chat, insufficient credits and exact result Back state', opts, async (t) => {
   const { page, state } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE' });
   // Synthetic photos that really display: a gallery whose every photo failed has no arrows by design.
@@ -149,7 +186,7 @@ test('Advisor: confirmed original listings are explorable; optional floor requir
   assert.equal(await page.getByLabel('Minimum floor', { exact: true }).inputValue(), '2');
   assert.equal(await page.getByLabel('Maximum floor', { exact: true }).inputValue(), '8');
   await shot(page, 'advisor-mobile-advanced-preferences');
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  /* No Free/Deep step while paid Deep Search is unavailable: the builder starts the free search. */
   await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await viewResults(page);
   await page.waitForFunction(() => !!document.querySelector('[data-property-key]'));
@@ -312,7 +349,7 @@ test('History cards: title, place, compact criteria, results count; Repeat reope
     }
     await card.locator('button').last().click();
     await page.waitForURL((url) => url.pathname === '/find-property/new');
-    await page.locator('[data-action="mps-continue"]').waitFor();
+    await page.locator('[data-action="mps-start"]').waitFor();
     assert.equal(state.requests.filter((r) => r.action === 'start').length, 0, 'repeating only prefills the builder');
   }
 });
@@ -338,7 +375,7 @@ test('Search summary: removing a criterion or editing reopens the builder with t
   await page.goBack();
   await page.waitForURL((url) => url.pathname.startsWith('/find-property/search/'));
   await page.locator('[data-action="edit-search"]').click();
-  await page.locator('[data-action="mps-continue"]').waitFor();
+  await page.locator('[data-action="mps-start"]').waitFor();
   assert.equal(state.requests.filter((r) => r.action === 'start').length, 0);
 });
 
@@ -397,7 +434,7 @@ const SEARCH_BRIEF = briefFromModel({ ...F.COMPLETE_MODEL_OUTPUT, priceMinUsd: 1
 function summary(status, { empty = false, output = OUTPUT } = {}) {
   const terminal = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED', 'CANCELLED'].includes(status);
   const processed = status !== 'SEARCHING';
-  const groups = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
+  const groups = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0, OTHER: 0 };
   if (processed && !empty) for (const p of output.properties) groups[p.group] += 1;
   const s = output.stats;
   return {
@@ -419,7 +456,7 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
   };
 }
 
-async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false, paid = false } = {}) {
+async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false, noLocation = false, paid = false, deepOff = false } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -487,6 +524,7 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
         return r.fulfill(json({ error: 'SEARCH_ACTIVE' }, 409));
       }
       if (body.action === 'browse') {
+        if (state.browseDelayMs) await new Promise((done) => setTimeout(done, state.browseDelayMs));
         if (state.browseFailure) return r.fulfill(json({ error: 'REQUEST_FAILED' }, 503));
         if (body.revision && body.revision !== state.revision) return r.fulfill(json({ error: 'RESULTS_CHANGED' }, 409));
         const page = browseResults(empty ? [] : output.properties.map(publicView), body.filters, body.page ?? 1);
@@ -508,9 +546,17 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       if (body.action === 'cancel') return r.fulfill(json({ search: summary('CANCELLED') }));
       return r.fulfill(json({ error: 'UNKNOWN_ACTION' }, 400));
     }
+    /* Admin → Service Control Center: paid Deep Search paused (find_property_deep OFF). */
+    /* Paid Deep Search fails closed: shown only on an explicit ON row (Admin), never by default. */
+    if (url.includes('/rest/v1/rpc/service_controls_public')) {
+      if (deepOff === 'error') return r.fulfill(json({ message: 'unavailable' }, 500));
+      if (deepOff === 'missing') return r.fulfill(json([]));
+      return r.fulfill(json([{ service_key: 'find_property_deep', frontend_enabled: !deepOff, backend_enabled: !deepOff }]));
+    }
     /* Paid social campaign (find-property-run) and the customer's own activity. */
     if (url.includes('/functions/v1/find-property-run')) {
       const body = JSON.parse(req.postData() ?? '{}');
+      (state.paidCalls ??= []).push(body.action);
       if (body.action === 'preview') {
         const credits = Number(body.authorizedMaxCredits) || 50;
         return r.fulfill(json({ success: true, preview: { available: true, unavailableReason: null, priceCredits: credits, creditsPerUsd: 10, minCredits: 50, maxCredits: null,
@@ -519,6 +565,9 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       }
       if (body.action === 'start') { state.paidStart = body; state.paidStarts = (state.paidStarts ?? 0) + 1; state.paidStarted = true; return r.fulfill(json({ success: true, async: true, runId: 'run-1', status: 'SEARCHING' }, 202)); }
       if (body.action === 'stop') { state.paidStop = true; return r.fulfill(json({ success: true, runId: body.runId })); }
+      if (body.action === 'test_option') return r.fulfill(json({ success: true, testOption: state.testOption ?? null }));
+      /* A campaign's own results (judged server-side): the funnel, the money, one page of verdicts. */
+      if (body.action === 'results') { (state.resultsCalls ??= []).push(body); return r.fulfill(json(campaignResultsFixture(state, body))); }
       return r.fulfill(json({ error: 'Unknown action' }, 400));
     }
     if (url.includes('/rest/v1/credit_accounts')) {
@@ -598,9 +647,15 @@ async function shot(page, name, { fullPage = true } = {}) {
 
 /** Mode → intro → complete request → confirmation. */
 /** Confirmed criteria → the Free / Deep choice → Free Search (the redesigned flow, 2026-10-16). */
+/* The free search starts from the builder; the Free/Deep step exists only while paid Deep
+   Search is ON and available (it is shown to no customer otherwise). */
 async function startFree(page, how = 'click') {
-  await page.locator('[data-action="mps-continue"]').click();
-  await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
+  const start = page.locator('[data-action="mps-continue"], [data-action="mps-start"]').first();
+  await start.waitFor({ timeout: 15000 });
+  if (await start.getAttribute('data-action') === 'mps-continue') {
+    await start.click();
+    await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
+  }
   await page.locator('[data-action="mps-start"]')[how]();
 }
 async function toConfirm(page, modeShot = null) {
@@ -634,16 +689,14 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('form button[type="submit"]').click();
   await page.locator('#mps-ready').waitFor({ timeout: 15000 });
   const ready = await page.textContent('main');
-  for (const s of ['ყველაფერი მზადაა ✨', 'ყიდვა', 'ბინა', 'ვაკე', '3 ოთახი', '2 საძინებელი', '80 დან 110 მ² მდე', '$120,000 დან $160,000 მდე', 'გაგრძელება', 'შეცვლა']) {
+  for (const s of ['ყველაფერი მზადაა ✨', 'ყიდვა', 'ბინა', 'ვაკე', '3 ოთახი', '2 საძინებელი', '80 დან 110 მ² მდე', '$120,000 დან $160,000 მდე', 'ძიების დაწყება', 'შეცვლა']) {
     assert.ok(ready.includes(s), `confirmation shows ${s}`);
   }
   assert.ok(!(await page.locator('[aria-labelledby$="-q"]').count()), 'no question was asked');
   await shot(page, 'ka-1440-confirm');
 
-  await page.getByRole('button', { name: 'გაგრძელება' }).click();
-  { const modeText = await page.textContent('main'); for (const s of ['უფასო ძიება', 'ვრცელი ძიება', 'უძრავი ქონების საიტ']) assert.ok(modeText.includes(s), `mode step shows ${s}: ${modeText.slice(0, 600)}`); }
-  assert.ok(!(await page.textContent('main')).includes('MyHome.ge'), 'the mode step never names the sites');
-  await shot(page, 'ka-1440-mode');
+  /* Paid Deep Search unavailable: no Free/Deep step and no paid wording — the free search starts here. */
+  assert.ok(!(await page.textContent('main')).includes('ვრცელი ძიება'), 'no Deep Search on the confirmation');
   await page.getByRole('button', { name: 'ძიების დაწყება' }).click();
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
   assert.ok(state.calls.includes('start'));
@@ -666,10 +719,15 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('article[data-verdict="UPGRADE"]').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
   for (const s of [`ვიპოვეთ ${OUTPUT.properties.length} ბინა.`, 'თქვენთვის შერჩეული', 'ბიუჯეტზე ოდნავ ძვირი', 'ნახეთ ჩვენი შეფასება', 'წყარო: SOURCE-A · SOURCE-B · SOURCE-C', 'დუბლიკატი · 3 განცხადება',
-    '$9,000', 'ვრცელი ძიება']) {
+    '$9,000']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
-  assert.ok(!results.includes('$188,000'), 'nothing above the 10% ceiling is shown');
+  assert.ok(!results.includes('ვრცელი ძიება'), 'no paid Deep Search on the results while it is unavailable');
+  /* Above the 10% ceiling: never among the homes that fit; listed last, outside the request, with why. */
+  const fits = await page.locator('[data-results-group]:not([data-results-group="OUTSIDE"])').evaluateAll((els) => els.map((el) => el.textContent).join(' '));
+  assert.ok(!fits.includes('$188,000'), 'nothing above the 10% ceiling is among the homes that fit');
+  const outsideText = await page.locator('[data-results-group="OUTSIDE"]').textContent();
+  assert.ok(outsideText.includes('$188,000') && outsideText.includes('ფასი ბიუჯეტზე მაღალია'), 'shown outside the request, with the reason');
   assert.ok((await page.locator('article[data-verdict="UPGRADE"]').first().textContent()).includes('+5.3%'), 'upgrade shows both measured over-budget amount and percentage');
   await shot(page, 'ka-1440-results');
 
@@ -771,6 +829,13 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
   assert.equal(state.starts, 1, 'one search for a double click');
   await shot(page, 'ka-390-searching');
+  /* The current-stage pill sits under the animated field, never over it (owner, 2026-10-18). */
+  const pill = page.locator('[data-current-stage]');
+  if (await pill.count()) {
+    const field = await page.locator('[data-search-stage] figure > :first-child').boundingBox();
+    const pillBox = await pill.boundingBox();
+    assert.ok(pillBox.y >= field.y + field.height - 1, `stage pill (${pillBox.y}) below the field (${field.y + field.height})`);
+  }
 
   await page.locator('[data-action="mps-snake-open"]').click();
   const dialog = page.getByRole('dialog');
@@ -783,6 +848,12 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
   await page.keyboard.press('s');
   const scoreText = await dialog.textContent();
   assert.match(scoreText, /ქულა: \d+/);
+  /* On-screen arrows (owner, 2026-10-18): four 44px+ buttons that turn the snake. */
+  const pad = dialog.locator('[data-snake-pad] button');
+  assert.equal(await pad.count(), 4);
+  for (const box of await pad.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()))) assert.ok(box.width >= 44 && box.height >= 44);
+  for (const d of ['U', 'L', 'D', 'R']) { await dialog.locator(`[data-snake-dir="${d}"]`).click(); await page.waitForTimeout(150); }
+  assert.match(await dialog.textContent(), /ქულა: \d+/, 'the game keeps running under the arrows');
   /* A swipe on the board turns the snake and never scrolls the page. */
   const box = await dialog.getByRole('application').boundingBox();
   const before = await page.evaluate(() => window.scrollY);
@@ -1067,6 +1138,105 @@ test('switch off: history remains reachable and new search uses the existing fal
   assert.equal(await page.locator('#mps-mode-title').count(), 0);
 });
 
+test('results (owner, 2026-10-18): every home found is shown, outside-the-request ones last with why; the view switch is readable on phones (ka, ru, he RTL)', opts, async (t) => {
+  const failures = [];
+  for (const [lang, width] of [['ka', 390], ['ru', 375], ['he', 390], ['en', 1440]]) {
+    const { page, close } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, timeline: ['COMPLETE'] });
+    await toConfirm(page);
+    await startFree(page);
+    await viewResults(page);
+    await page.locator('[data-results-group] article').first().waitFor({ timeout: 30000 });
+    /* Labels are whole words, never "ყ.." (screenshot 2026-10-18). */
+    for (const label of await page.locator('[data-view-label]').evaluateAll((els) => els.map((el) => ({ text: el.textContent, clipped: el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1, ellipsis: getComputedStyle(el).textOverflow })))) {
+      if (label.clipped || label.ellipsis === 'ellipsis' || /\.\.|…/.test(label.text)) failures.push(`${lang}-${width}: tab label clipped: ${label.text}`);
+    }
+    const outside = page.locator('[data-results-group="OUTSIDE"]');
+    if (!(await outside.count())) failures.push(`${lang}: homes outside the request are not shown`);
+    else {
+      const cards = await outside.locator('article').count();
+      const reasons = await outside.locator('article [data-outside-request]').count();
+      if (!cards || cards !== reasons) failures.push(`${lang}: ${cards} outside cards, ${reasons} with a reason`);
+      const order = await page.locator('[data-results-group]').evaluateAll((els) => els.map((el) => el.getAttribute('data-results-group')));
+      if (order.at(-1) !== 'OUTSIDE') failures.push(`${lang}: outside-the-request homes are not last (${order.join(',')})`);
+    }
+    if (await overflow(page) > 1) failures.push(`${lang}-${width}: horizontal overflow`);
+    if (lang === 'he' && await page.evaluate(() => document.documentElement.dir) !== 'rtl') failures.push('he: not RTL');
+    await shot(page, `${lang}-${width}-all-results`);
+    await close();
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('results (owner, 2026-10-18): a view tab pressed deep in the list keeps the reader at the list, never thrown back to the header while it loads (ka 390, he 390, en 1440)', opts, async (t) => {
+  const failures = [];
+  for (const [lang, width] of [['ka', 390], ['he', 390], ['en', 1440]]) {
+    const { page, state, close } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, timeline: ['COMPLETE'] });
+    await toConfirm(page);
+    await startFree(page);
+    await viewResults(page);
+    await page.locator('[data-results-group] article').first().waitFor({ timeout: 30000 });
+    await page.evaluate(() => window.scrollTo(0, document.querySelector('[data-results-group="OUTSIDE"]').getBoundingClientRect().top + window.scrollY));
+    await page.waitForTimeout(200);
+    state.browseDelayMs = 700;
+    /* While the next view loads and after it arrives, the results header stays above the viewport. */
+    const watch = page.evaluate(() => new Promise((done) => {
+      const heading = document.querySelector('[data-results-header]');
+      let worst = -Infinity; const t0 = performance.now();
+      const appBar = document.querySelector('header')?.getBoundingClientRect().bottom ?? 0;
+      const tick = () => { const r = heading?.getBoundingClientRect(); if (r) worst = Math.max(worst, r.bottom - appBar); if (performance.now() - t0 < 1600) requestAnimationFrame(tick); else done({ worst, found: !!heading }); };
+      tick();
+    }));
+    /* As a person taps it: wherever the stuck view switch is on screen, nothing may cover it. */
+    const tabBox = await page.locator('[data-view-tab="best"]').boundingBox();
+    const hit = await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); return el?.closest('[data-view-tab="best"]') ? null : (el?.outerHTML ?? 'nothing').slice(0, 160); }, [tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2]);
+    if (hit) failures.push(`${lang}-${width}: the stuck view switch is covered by ${hit}`);
+    await page.mouse.click(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
+    const { worst, found } = await watch;
+    if (!found) failures.push(`${lang}: results heading not found`);
+    else if (worst > 0) failures.push(`${lang}-${width}: results header scrolled back into view (${Math.round(worst)}px below the app bar)`);
+    await page.locator('[data-results-group] article').first().waitFor({ timeout: 10000 });
+    const bar = await page.locator('[data-result-views]').boundingBox();
+    if (!bar || bar.y < 0 || bar.y > 120) failures.push(`${lang}-${width}: view switch not at the top of the viewport after loading (${bar?.y})`);
+    const first = await page.locator('[data-results-group] article').first().boundingBox();
+    if (!first || first.y > (width < 700 ? 844 : 900)) failures.push(`${lang}-${width}: the new list does not start in view (${first?.y})`);
+    await close();
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('Deep Search paused by Admin (or its switch unreadable/missing): the free portal search only — no mode choice, Deep card, paid tab or price; a past campaign stays readable by direct link (en 1440, ka 375/390, he RTL 390)', opts, async (t) => {
+  const failures = [];
+  /* OFF in Admin, an unreadable switch, and a missing row all mean the free search only. */
+  for (const [lang, width, deepOff] of [['en', 1440, true], ['ka', 375, true], ['he', 390, true], ['ka', 390, 'error'], ['en', 390, 'missing']]) {
+    const { page, state, close } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, paid: true, deepOff });
+    state.paidStarted = true; state.campaignEnded = true; /* this search ran a campaign before the pause */
+    await toConfirm(page);
+    if (await page.locator('[data-mode-tile="DEEP"]').count()) failures.push(`${lang}: Deep card shown while paused`);
+    if (await page.locator('[data-action="mps-continue"]').count()) failures.push(`${lang}: mode step still offered`);
+    await page.locator('[data-action="mps-start"]').click();
+    await viewResults(page);
+    if (await page.locator('#fpx-mode-title').count()) failures.push(`${lang}: mode screen shown`);
+    if (await page.locator('section[data-deep-panel]').count()) failures.push(`${lang}: Deep panel shown`);
+    if (await page.locator('[data-view-tab="paid"]').count()) failures.push(`${lang}: paid tab shown`);
+    if (await page.locator('#fpi-budget').count()) failures.push(`${lang}: credit purchase control shown`);
+    if (/\$5\b/.test((await page.locator('body').textContent()) ?? '')) failures.push(`${lang}/${deepOff}: a paid price is shown`);
+    if (lang === 'en' && /look even wider/.test((await page.locator('body').textContent()) ?? '')) failures.push(`en/${deepOff}: paid hint in the subtitle`);
+    if (await overflow(page) > 1) failures.push(`${lang}-${width}: horizontal overflow`);
+    if (lang === 'he' && await page.evaluate(() => document.documentElement.dir) !== 'rtl') failures.push('he: not RTL');
+    await shot(page, `${lang}-${width}-deep-paused-${deepOff}`);
+    if (await page.locator('[data-action="past-campaign-results"], [data-action="previous-campaign-results"]').count()) failures.push(`${lang}: a paid campaign link is shown`);
+    if (/coming soon|switched on yet/i.test((await page.locator('body').textContent()) ?? '')) failures.push(`${lang}/${deepOff}: a paused-service notice is shown`);
+    /* A campaign this customer already ran stays readable on its own page (direct link), read-only. */
+    await page.goto(`${BASE}/find-property/campaign/run-1`);
+    await page.locator('[data-campaign-results] [data-result]').first().waitFor({ timeout: 30000 }).catch(() => failures.push(`${lang}: past campaign page not readable`));
+    const paid = (state.paidCalls ?? []).filter((a) => a === 'preview' || a === 'start' || a === 'test_option');
+    if (paid.length) failures.push(`${lang}: paid endpoints called while paused: ${paid.join(',')}`);
+    if (state.calls.filter((a) => a === 'start').length !== 1) failures.push(`${lang}: the free search did not start exactly once`);
+    await close();
+  }
+  assert.deepEqual(failures, []);
+});
+
 test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmation, results, filters and dedicated property page; RTL for ar/he', opts, async (t) => {
   const failures = [];
   for (const width of [1440, 1280, 768, 390, 375]) {
@@ -1076,10 +1246,9 @@ test('375px, 390px, 768px, 1280px and 1440px, six locales: workspace, confirmati
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: confirm overflow`);
       const dir = await page.evaluate(() => document.documentElement.getAttribute('dir'));
       if (['ar', 'he'].includes(lang) && dir !== 'rtl') failures.push(`${lang}: not RTL`);
-      await page.locator('[data-action="mps-continue"]').click();
-      await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
-      if (await overflow(page) > 1) failures.push(`${lang} ${width}: mode step overflow`);
-      await shot(page, `${lang}-${width}-free-deep`);
+      /* Deep Search unavailable: no mode step, no Deep card, no notice — the free start only. */
+      if (await page.locator('[data-action="mps-continue"], [data-mode-tile="DEEP"]').count()) failures.push(`${lang} ${width}: paid option shown while unavailable`);
+      await shot(page, `${lang}-${width}-free-start`);
       await page.locator('[data-action="mps-start"]').click();
       await page.locator('#mps-searching').waitFor({ timeout: 15000 });
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: search screen overflow`);
@@ -1119,9 +1288,13 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
     if (state.paidStart?.authorizedMaxCredits !== 50) failures.push(`${lang}: wrong budget`);
     const text = await deep.textContent();
     if (/\{\{?\w+\}?\}/.test(text)) failures.push(`${lang}: raw placeholder`);
-    /* The customer follows the process; which networks are read is never shown (owner, 2026-10-18). */
-    if (/facebook|instagram|telegram|tiktok|\bvk\b/i.test(text)) failures.push(`${lang}: a network is named`);
+    /* Source-by-source progress and the confirmed criteria stay in view (owner, 2026-10-18). */
     if (await deep.locator('[data-process-step]').count() !== 4) failures.push(`${lang}: process steps missing`);
+    if (await deep.locator('[data-source="FACEBOOK"]').getAttribute('data-source-state') !== 'searching') failures.push(`${lang}: Facebook not searching`);
+    if (await deep.locator('[data-source="TELEGRAM"]').getAttribute('data-source-state') !== 'done') failures.push(`${lang}: Telegram not done`);
+    /* Criteria and the hold arrive with the campaign's own read (a placeholder holds their place until then). */
+    await deep.locator('[data-campaign-criteria]').waitFor({ timeout: 15000 }).catch(() => failures.push(`${lang}: criteria not shown during the campaign`));
+    await deep.locator('[data-campaign-settlement="HELD"]').waitFor({ timeout: 15000 }).catch(() => failures.push(`${lang}: the hold is not shown as a hold`));
     /* Snake while the campaign runs, labelled exactly as the owner asked in Georgian. */
     const snake = deep.locator('[data-action="campaign-play-snake"]');
     if (!(await snake.isVisible())) failures.push(`${lang}: no Snake while the campaign runs`);
@@ -1140,16 +1313,21 @@ test('Deep Search (paid social campaign): server preview, explicit confirmation,
       if (!(await deep.locator('[data-campaign-results-wait]').isVisible())) failures.push('no results-wait note while running');
       if (await deep.locator('[data-action="campaign-view-results"]').count()) failures.push('results offered while running');
       await deep.getByRole('button', { name: 'Stop campaign' }).click();
-      await deep.getByText('Returned to balance').waitFor({ timeout: 15000 });
+      await deep.locator('[data-campaign-settlement="SETTLED"]').waitFor({ timeout: 20000 });
       if (!(await deep.locator('[data-action="campaign-view-results"]').isVisible())) failures.push('no View results after the campaign ended');
       if (!state.paidStop) failures.push('stop not sent');
-      if (!(await deep.textContent()).includes('37.5 credits')) failures.push('released credits not shown');
-      /* Its results open in their own view: offers from public posts, never the portal list. */
+      const ended = (await deep.textContent()) ?? '';
+      if (!ended.includes('37.5 credits') || !ended.includes('12.5 credits')) failures.push('final charge / released credits not shown');
+      /* The headline is matching properties; raw volume is a collapsed detail. */
+      if (await deep.locator('[data-funnel-exact="1"]').count() !== 1 || await deep.locator('[data-funnel-potential="1"]').count() !== 1) failures.push('matches are not the headline');
+      if (await deep.locator('[data-funnel-details][open]').count()) failures.push('raw volume is expanded by default');
+      if (/600 offers/i.test(ended)) failures.push('raw offers are presented as results');
+      await shot(page, `${lang}-${width}-paid-ended`);
+      /* Its results open on the campaign's OWN page, never the portal list. */
       await deep.locator('[data-action="campaign-view-results"]').click();
-      await page.locator('[data-results-view="paid"]').waitFor({ timeout: 15000 });
-      const u = new URL(page.url());
-      if (u.searchParams.get('view') !== 'paid' || u.searchParams.get('fp_socialOnly') !== 'true') failures.push(`paid results URL: ${u.search}`);
-      if (await page.locator('[data-view-tab="paid"][aria-selected="true"]').count() !== 1) failures.push('paid results tab not selected');
+      await page.locator('[data-campaign-page]').waitFor({ timeout: 15000 });
+      if (new URL(page.url()).pathname !== '/find-property/campaign/run-1') failures.push(`campaign results URL: ${page.url()}`);
+      await page.locator('[data-campaign-results] [data-result]').first().waitFor({ timeout: 15000 });
       await shot(page, `${lang}-${width}-paid-results`);
     }
     await close();
@@ -1183,6 +1361,85 @@ test('Deep Search starts with ONE confirmation on its card: no second approval, 
     await page.reload();
     await deep.locator('[data-campaign-progress]').waitFor({ timeout: 30000 });
     assert.equal(state.paidStarts ?? 1, starts, `${lang}: reload started a second campaign`);
+    await close();
+  }
+});
+
+test('Deep Search results page: exact first, every requirement explained, alternatives only on request, money settled — six locales, RTL, phones', opts, async (t) => {
+  const failures = [];
+  for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [360, 'ru'], [390, 'tr'], [393, 'ar'], [393, 'he']]) {
+    const { page, state, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'], paid: true });
+    state.campaignEnded = true;
+    await page.goto(`${BASE}/find-property/campaign/run-1`);
+    await page.locator('[data-campaign-results] [data-result]').first().waitFor({ timeout: 30000 });
+    /* Default view: exact matches first, because there is one. */
+    if (await page.locator('[role="tab"][data-view="EXACT"][aria-selected="true"]').count() !== 1) failures.push(`${lang}: exact view not first`);
+    if (await page.locator('[data-result="EXACT"]').count() !== 1 || await page.locator('[data-result="POTENTIAL"]').count() !== 0) failures.push(`${lang}: exact view mixes categories`);
+    /* Criteria, funnel (matches as headline, raw volume collapsed) and the settled money. */
+    if (!(await page.locator('[data-campaign-criteria]').isVisible())) failures.push(`${lang}: criteria missing`);
+    if (await page.locator('[data-funnel-details][open]').count()) failures.push(`${lang}: raw volume expanded`);
+    if (await page.locator('[data-campaign-settlement="SETTLED"]').count() !== 1) failures.push(`${lang}: settlement missing`);
+    /* Every requirement explained on the card. */
+    const card = page.locator('[data-result="EXACT"]').first();
+    await card.locator('details summary').click();
+    if (await card.locator('[data-check][data-check-state="MATCH"]').count() < 8) failures.push(`${lang}: requirements not explained`);
+    if (!(await card.locator('a[data-action="open-original"]').getAttribute('href'))?.startsWith('https://')) failures.push(`${lang}: no original link`);
+    /* Potential: the unverified requirements are named, nothing invented. */
+    await page.locator('[role="tab"][data-view="POTENTIAL"]').click();
+    const pot = page.locator('[data-result="POTENTIAL"]').first();
+    await pot.waitFor({ timeout: 15000 });
+    await pot.locator('details summary').click();
+    if (await pot.locator('[data-check-state="UNVERIFIED"]').count() !== 4) failures.push(`${lang}: unverified requirements not listed`);
+    if (await page.locator('[data-result="ALTERNATIVE"]').count()) failures.push(`${lang}: alternatives shown without asking`);
+    /* Alternatives only when asked, labelled as not matches. */
+    await page.locator('[role="tab"][data-view="ALTERNATIVE"]').click();
+    await page.locator('[data-result="ALTERNATIVE"]').first().waitFor({ timeout: 15000 });
+    const text = (await page.textContent('body')) ?? '';
+    if (/\{\{?\w+\}?\}/.test(text)) failures.push(`${lang}: raw placeholder`);
+    if (/\bfpc_[a-z_]+\b/.test(text)) failures.push(`${lang}: raw i18n key`);
+    if (await overflow(page) > 1) failures.push(`${lang} ${width}: overflow ${await overflow(page)}px`);
+    if (['ar', 'he'].includes(lang) && (await page.evaluate(() => document.documentElement.getAttribute('dir'))) !== 'rtl') failures.push(`${lang}: not RTL`);
+    /* Views and pages replace history; the stable URL holds the view after a reload. */
+    await page.reload();
+    await page.locator('[data-result="ALTERNATIVE"]').first().waitFor({ timeout: 30000 });
+    await page.locator('[role="tab"][data-view="EXACT"]').click();
+    await page.locator('[data-result="EXACT"]').first().waitFor({ timeout: 15000 });
+    await shot(page, `${lang}-${width}-campaign-results`);
+    if (lang === 'en') {
+      /* Save works through the shared saved-listings store. */
+      await page.locator('[data-result="EXACT"] button[aria-pressed]').click();
+      await page.locator('[data-result="EXACT"] button[aria-pressed="true"]').waitFor({ timeout: 15000 });
+      if (!state.saved?.has('dc:r1')) failures.push('save not recorded');
+    }
+    await close();
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('the 20-credit TEST option appears only for an authorised account, labelled as a test', opts, async (t) => {
+  for (const allowed of [false, true]) {
+    const { page, state, close } = await boot(t, { width: 390, height: 844, lang: 'ka', timeline: ['COMPLETE'], paid: true });
+    state.testOption = allowed ? { credits: 20 } : null;
+    await toConfirm(page);
+    await page.locator('[data-action="mps-continue"]').click();
+    await page.locator('#fpx-mode-title').waitFor({ timeout: 15000 });
+    await page.locator('[data-mode="DEEP"]').click();
+    /* The confirmed criteria are summarised next to the approval. */
+    await page.locator('[data-campaign-criteria]').waitFor({ timeout: 15000 });
+    if (allowed) {
+      await page.locator('[data-deep-test]').waitFor({ timeout: 15000 });
+      await page.locator('[data-deep-test]').click();
+      await page.locator('[data-deep-test-note]').waitFor();
+      await page.locator('[data-deep-consent] input').check();
+      await page.locator('[data-action="mps-start"]').click();
+      await page.locator('section[data-deep-panel] [data-campaign-progress]').waitFor({ timeout: 30000 });
+      assert.equal(state.paidStart?.authorizedMaxCredits, 20, 'the approved test amount');
+      await shot(page, 'ka-390-deep-test-option');
+    } else {
+      await page.waitForTimeout(800);
+      assert.equal(await page.locator('[data-deep-test]').count(), 0, 'no test option for other accounts');
+    }
+    assert.ok(await overflow(page) <= 1, 'overflow');
     await close();
   }
 });

@@ -10,7 +10,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlaskConical, Loader2, Lock, ShieldCheck, Wallet } from 'lucide-react';
+import { FlaskConical, Loader2, Lock, Mail, MessageSquare, Phone, ShieldCheck, Wallet } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -28,10 +28,12 @@ export interface UnlockAdapter {
 const REAL_UNLOCK: UnlockAdapter = { quote: quoteUnlock, unlock: unlockLeads };
 
 export function UnlockDialog({
-  open, matchIds, onClose, onUnlocked, adapter = REAL_UNLOCK, demo = false,
+  open, matchIds, onClose, onUnlocked, adapter = REAL_UNLOCK, demo = false, contactOptions = null,
 }: {
   open: boolean;
   matchIds: string[];
+  /** One lead: the channels the member allows after an unlock (shown before paying). */
+  contactOptions?: { message: boolean; phone: boolean; email: boolean } | null;
   onClose: () => void;
   onUnlocked: (result: UnlockResult) => void;
   /** Demo Mode only: a simulated quote and unlock in place of the real ones. */
@@ -102,6 +104,12 @@ export function UnlockDialog({
                   <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.standardCredits)}</dd>
                 </div>
               ) : null}
+              {quote.exactCount > 0 ? (
+                <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm" data-testid="unlock-exact-row">
+                  <dt>{t('hl_bulk_exact', { n: quote.exactCount, price: cr(quote.prices.EXACT) })}</dt>
+                  <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.exactCredits)}</dd>
+                </div>
+              ) : null}
               {quote.premiumCount > 0 ? (
                 <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm">
                   <dt>{t('hl_bulk_premium', { n: quote.premiumCount, price: cr(quote.prices.PREMIUM) })}</dt>
@@ -119,6 +127,18 @@ export function UnlockDialog({
                 <dd className="font-display text-lg font-bold tabular-nums text-[hsl(var(--gold-ink))]" dir="ltr">{t('hl_credits_n', { n: cr(quote.totalCredits) })}</dd>
               </div>
             </dl>
+            {contactOptions && !bulk ? (
+              <div className="rounded-xl border border-[hsl(var(--border))] px-3 py-2.5" data-testid="unlock-receive">
+                <p className="text-xs font-semibold text-[hsl(224_14%_18%)]">{t('hl_unlock_receive_title')}</p>
+                <ul className="mt-1.5 space-y-1 text-xs text-[hsl(224_14%_26%)]">
+                  {contactOptions.message ? <li className="flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('hl_unlock_receive_message')}</li> : null}
+                  {contactOptions.phone ? <li className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('hl_unlock_receive_phone')}</li> : null}
+                  {contactOptions.email ? <li className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('hl_unlock_receive_email')}</li> : null}
+                  {!contactOptions.phone && !contactOptions.email ? <li className="text-[hsl(224_14%_34%)]">{t('hl_unlock_receive_no_direct')}</li> : null}
+                </ul>
+                <p className="mt-1.5 text-2xs leading-relaxed text-[hsl(224_14%_34%)]">{t('hl_unlock_receive_crm')}</p>
+              </div>
+            ) : null}
             {demo ? (
               <p className="rounded-lg bg-[hsl(328_70%_97%)] px-3 py-2 text-xs font-medium leading-relaxed text-[hsl(328_60%_28%)]">{t('demo_unlock_simulated_note')}</p>
             ) : null}

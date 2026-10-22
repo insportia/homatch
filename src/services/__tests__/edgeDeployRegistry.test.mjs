@@ -93,7 +93,6 @@ const UNSHIPPED = {
   'outreach-sms-webhook': 'hand-deployed; CI route unreviewed',
   'outreach-unsubscribe': 'hand-deployed; CI route unreviewed',
   'retell-webhook': 'hand-deployed; CI route unreviewed',
-  'system-health': 'hand-deployed; CI route unreviewed',
   'unlock-external-contact': 'hand-deployed; CI route unreviewed',
 };
 

@@ -67,7 +67,7 @@ export const SERVICE_ACTION_SERVICE: Readonly<Partial<Record<ServiceActionId, st
   MORTGAGE: 'mortgage',
   FIND_PROPERTY: 'find_property',
   FIND_BUYERS_TENANTS: 'find_buyers',
-  // BROKERS has no switch: the public directory stays readable while its sales are paused.
+  BROKERS: 'brokers_directory',
   META_ADS: 'meta_ads',
 });
 

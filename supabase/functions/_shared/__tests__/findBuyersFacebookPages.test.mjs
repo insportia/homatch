@@ -24,7 +24,7 @@ function campaignDb() {
   });
 }
 const ctxFor = (db, stage) => ({
-  db, stage, runId: 'run-p', runLanguage: 'ka', datasetId: 'ds', providerRunId: 'pr', book: { model: 'gpt-4o-mini', inputPerMTokMicros: 150000, outputPerMTokMicros: 600000 },
+  db, stage, runId: 'run-p', runLanguage: 'ka', datasetId: 'ds', providerRunId: 'pr', book: { model: 'gpt-4o-mini', inputPerMTokMicros: 150000, outputPerMTokMicros: 600000 }, aiFirst: false,
   gate: { skipBelow: 55, eligibleFrom: 75 }, parent: null, sourceId: null, sourceYield: null, now: NOW,
   campaign: { matching_job_id: 'job-p', campaign_id: 'c', property_id: 'p-244486', user_id: 'u', transaction: 'SALE', dna },
 });

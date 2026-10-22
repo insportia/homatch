@@ -13,6 +13,7 @@ import { hostname } from 'node:os';
 import type { JobBrowser } from '../browser/LocalBrowserRuntime.js';
 import { createVerifyExecutor, type SourceRunner } from './executor.js';
 import { QueueGateway } from './gateway.js';
+import { laneSlotsNow } from '../runtime/loadIsolation.js';
 import { QueueRunner } from './QueueRunner.js';
 
 export function startVerifyQueue(deps: {
@@ -40,6 +41,8 @@ export function startVerifyQueue(deps: {
     gateway,
     workerId,
     lanes: { HTTP: num('VERIFY_QUEUE_HTTP_SLOTS', 12, 64), BROWSER: num('VERIFY_QUEUE_BROWSER_SLOTS', 3, 16) },
+    /* AI TALK first: fewer NEW Chromium tasks start while a speech session is open. */
+    slotsNow: (lane, slots) => laneSlotsNow(lane, slots),
     executor: createVerifyExecutor({ orchestrator: deps.orchestrator, launchBrowser: deps.launchJobBrowser, closeBrowser: deps.closeJobBrowser }),
     log: (event, data) => console.log(JSON.stringify({ level: 'info', scope: 'verify_queue', event, ...data })),
   });

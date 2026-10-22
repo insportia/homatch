@@ -46,8 +46,9 @@ export function tradeoffsOf(p: ResultProperty): TradeoffCode[] {
 
 /** The bounded, evidence-only payload. Top BEST/OWNER/UPGRADE properties first. */
 export function buildFactSheets(properties: readonly ResultProperty[]): FactSheet[] {
-  const priority = { BEST: 0, UPGRADE: 1, OWNER: 2, MORE: 3 } as const;
-  return [...properties]
+  const priority = { BEST: 0, UPGRADE: 1, OWNER: 2, MORE: 3, OTHER: 4 } as const;
+  /* Homes outside the request (OTHER) are browsable, never summarised as answers to it. */
+  return properties.filter((p) => p.group !== 'OTHER')
     .sort((a, b) => priority[a.group] - priority[b.group] || a.rank - b.rank)
     .slice(0, RESULTS_INTELLIGENCE_LIMIT)
     .map((p) => ({

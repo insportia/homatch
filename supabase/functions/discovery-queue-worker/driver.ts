@@ -47,6 +47,7 @@ import { fetchCurrentFx } from '../_shared/fx.ts';
 import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
 import { executeOfferJob } from '../_shared/findProperty/socialOffers.ts';
+import { advanceAiReplay } from '../_shared/findBuyers/aiReplay.ts';
 import { adaptiveRound } from '../_shared/findBuyers/adaptive.ts';
 import { loadFindBuyersSettings, loadPhase1, queueCombinedTelegram, queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
 import { assessNativeTelegram } from '../_shared/findBuyers/nativeTelegram.ts';
@@ -109,6 +110,8 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   report.socialSweep = await sweepStaleActorRuns(db).catch((e) => ({ error: errorText(e) }));
   const heavySocialTick = ((socialJobs as any)?.jobs ?? []).some((j: any) => j?.outcome === 'DONE');
   report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, Date.now(), { deferFinish: heavySocialTick });
+  /* A requested AI replay of a finished campaign (no Actor, no lead, no charge), one page per quiet tick. */
+  if (!heavySocialTick) report.aiReplay = await advanceAiReplay(db).catch((e) => ({ error: errorText(e) }));
   report.runs = await advanceRuns(db, baseUrl, serviceKey, Date.now());
   report.pauseExpired = await expirePausedCampaigns(db);
   report.runPauseExpired = await expirePausedRuns(db);

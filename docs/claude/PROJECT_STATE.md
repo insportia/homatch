@@ -1,9 +1,140 @@
 # PROJECT STATE
 
-last_updated: 2026-10-16
+last_updated: 2026-10-22
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Finance V2 — VAT-first engine + per-service dashboards (PR #281, merged 0f9d8673, 2026-10-19) — DEPLOYED, MIGRATION APPLIED 2026-10-22
+
+- Rules (owner, 2026-10-19): prices are VAT-inclusive (GE 18%, every customer, `finance_tax_profiles`
+  GE_VAT_18_ALL); VAT extracted, never added. New paid discovery campaigns are stamped
+  `paid_discovery_37_63_vat_v2` (execution = P × 6300/11800; charge = spend × 11800/6300, capped).
+  v1 campaigns keep their terms. Verify ($1 floor), fixed prices, wallet flow unchanged.
+- Production: edge + frontend at 0f9d8673 (refs/deployed/edge, refs/deployed/frontend; owed functions
+  redeployed 2026-10-19 07:05 UTC). Migration `20261119140000_finance_v2_engine` applied 2026-10-22
+  16:49 UTC (ledger `20261022164954 finance_v2_engine`), byte-identical to main; the three patched
+  functions' production bodies were md5-verified against their repo bases first.
+- Release-order gap: from 07:05 Oct 19 to 16:49 Oct 22 the v1-only pricing_policy CHECK would have
+  refused a v2 campaign start (fail-safe, no charge). Verified: zero Find Buyers / Find Property paid
+  starts in that window. Lesson: owed migrations are applied immediately after merge, before the
+  deploy run promotes edge code that depends on them.
+- Verified live: CHECKs accept v1+v2; $10 → execution $5.338983 / VAT $1.525424; 18 services,
+  9 policies; Find Property search AI cost read from correlated cost_events (53 lines, 29 PARTIAL
+  lower bounds, 0 unpriced); anon/authenticated have no access to the views or helpers; Verify job
+  61c1c38c (2026-10-22) priced with minProfitCents 100 on COMPLETE, 0 on STOPPED.
+- Admin → Finance → Services: per-service dashboards, execution drill-down, server-quoted simulator.
+- Open (owner decisions / follow-ups): no customer country/B2B data (VAT applies to all);
+  `billing_ai_cost_cents` still stores 0 for unpriced models (ledger reports them UNPRICED);
+  old-unit match-unlock price writers; uncosted AI calls (find-property-plan, generate-search-profile,
+  deal-room-ai, investment-consultant, developer-floorplan-extract, social-post-generate, ZenRows);
+  RunPod cost not in a ledger; six price registries; all revenue to date is non-cash credit.
+
+## Find Buyers lead quality fb-ai-2 + Find Buyers 2.0 (branch claude/nifty-hopper-snzn2d, 2026-10-18)
+
+- **fb-ai-2 (PR #273, merged 1a20e9df, deployed PROVEN refs edge+frontend 1a20e9df; migration
+  20261117100000 applied).** Replay of campaign 343cfc41 (445 stored candidates, no Actors, no charge):
+  fb-ai-1 showed 4 false leads ("Куплю USDT") and read rental listings as tenants; fb-ai-2 shows 0,
+  every candidate answered, 27 blocked by the consistency gate, both original brokers rejected; replay
+  AI cost $0.036 (fb-ai-1 replay $0.034, plus ~$0.03–0.06 unrecorded during the 18:10 lone-surrogate loop
+  fixed by #272). fb-ai-1 result kept in admin_settings `find_buyers_ai_replay_result_fb-ai-1`.
+- **Find Buyers 2.0 (PR #275, merged 9daace9a, deployed PROVEN refs edge+frontend 9daace9a; migration
+  20261118120000 applied 2026-10-18).** Internal matches first (free, real matcher state), external
+  discovery second; demand dedupe by fingerprint + rooms/features on intent_profiles; feed v2; Unlocked
+  Leads nav; CRM stages + profile + logged contacts; AI outreach drafts (outreach-send studio_lead_draft);
+  Email Studio scheduling (jobs-worker → studio_send_scheduled).
+- **$5 minimum + execution budget (branch claude/nifty-hopper-snzn2d, 2026-10-19).** Find Buyers / Find
+  Tenants paid campaigns start at exactly 50 credits = $5 (match-campaign `minimumCampaignCredits`, presets
+  50/100/500/1,000/1,500/2,000, find_buyers_min_usd 10 → 5). The execution budget stays the central paid
+  discovery policy's (`allocateCampaign` → provider_budget_micros; Global Finance V2 replaces that policy —
+  no VAT/split math in Find Buyers). Inside it: OpenAI calls refused when the remaining budget cannot cover
+  their ceiling (AiSpendGate; items stay UNVERIFIED), the reserve holds 250 µ$/item classification headroom
+  for in-flight runs, deepening sees OpenAI spend, first probes boosted by measured qualified-per-$ (FB group
+  posts 37 / $6.62 ≈ 5.6/$, every other Actor 0 as of 2026-10-19). Migration
+  20261119120000_find_buyers_min_5_execution_budget.sql.
+- **#277 migration 20261119090000 NOT APPLIED (2026-10-19).** #277 merged (1619f73a) and deployed; two
+  apply_migration attempts were cancelled before reaching the database (first: client timeout, rolled back).
+  Production runs the new code against the old schema: supply-matching reports `internal_match:` write
+  errors and retires nothing; prices stay {STANDARD 3, PREMIUM 10}; owner reach controls fail. Apply the
+  file verbatim to finish the release.
+- **Smart internal match expansion (PR #277, merged 1619f73a, 2026-10-19).** Prices EXACT 5 /
+  NEARBY_SIMILAR 3 / VIP 10 credits, one key per person (VIP overrides). supply-matching classifies every
+  member search × listing with research-core/match/internalTiers.ts (assessMatch with the district
+  relaxed and the budget widened by the owner's bands ≤$50k ±5k, ≤$119,999 ±10k, ≥$120k ±15k; rent 0) and
+  writes internal_match_candidates; "nearby" = area medians from geocoded portal listings
+  (internal_match_place_geo, ≤2.5 km, ≥5 samples, price-level ratio ≤1.35). internal_lead_rows now reads
+  the candidates (one person once, EXACT first) under the owner's per-listing controls
+  (internal_match_preferences). Migration 20261119090000_find_buyers_2_match_expansion.sql. Read-only
+  replay on production (13 active searches × HOMATCH 244486): 6 self, 6 excluded (exactly 1 bedroom
+  required), 1 renter → 0 candidates; measured neighbours of Krtsanisi: Ortachala 0.93 km, Avlabari
+  2.18, Isani 2.28, Sololaki 2.46. Limits: no coordinates on member searches or properties (area-level
+  only); no project/building field in member searches (exact project matching unavailable; a street
+  mention is supporting evidence only).
+- **Production facts (read-only, 2026-10-18):** ONE property in production (HOMATCH 244486, SALE, Krtsanisi,
+  2 bd, $213,840); 0 INTERNAL_HOMATCH supply_matches ever — correct: the 7 other-user searches all REQUIRE
+  1 bedroom and/or a budget under the price; lead_contact_preferences empty (defaults: matching on,
+  phone/email sharing off → unlocks give in-app messaging only); email_studio_sending_enabled = false.
+
+## Capacity & resilience release (2026-10-18) — #261, #266, #253 MERGED, DEPLOYED, MIGRATIONS APPLIED
+
+- #261 document guards → b9cd4ab0. #266 Find Property capacity → ba893c5e. #253 hardening + AI TALK
+  isolation → dbbbb0f1. refs/deployed/edge + frontend = dbbbb0f1 (deploy run 39140633607, attempt 2;
+  attempt 1 failed only on pdfOffLoop's tick floor, fixed in #268).
+- Ledger: find_property_capacity 20261018151806, verify_sweep_indexes 20261018153521,
+  provider_spend_totals 20261018154228 (all service_role only).
+- PROVEN_EXACT vs main: marketplace-search v28, research-agent v210, outreach-send v46,
+  spend-cap-check v46; developer-document-extract v29, deal-room-document-analyze v52.
+- Railway homatch-official-worker deployment 80972dc1 (dbbbb0f1) SUCCESS.
+- Measured in production: Verify market-refresh sweep 51.7 ms / ~12 MB per tick → 0.30 ms / 3 buffers.
+- Not yet observed live: a customer Find Property search through marketplace_dispatch_search
+  (no searches in the release window). First real search: check request_key / mode on its runs.
+
+## Production hardening from the capacity audit (PR #253, branch claude/architecture-viewer-repair-mqdt18, 2026-10-18)
+
+Source of truth: `docs/claude/CAPACITY.md` (findings, capacity model, release manifest, rollback,
+owner approvals, regression baseline). Worker token-only auth (+ optional SPEECH_MAX_SESSIONS);
+Verify indexed sweep + fail-closed advance lease + budget-gate ERROR defers + cancel stops
+Developer Ads; spend-cap SQL sum. Two migrations 20261115090000..100000 (the fair claim moved
+to PR #266) — none applied, none deletes or rewrites a row. Withdrawn under the
+zero-data-loss rule: cron history retention (stays on PR #136) and worker finished-job eviction.
+Also: AI TALK isolation (fewer new browser tasks while speech is open; PDFs parsed in worker
+threads; event-loop delay on /health). Release tier REPO_FULL.
+
+## Find Buyers — universal Property DNA, taxonomy v10, tiers, precision matching (branch claude/nifty-hopper-snzn2d, 2026-10-18)
+
+- **Taxonomy** (`propertyFamily.ts` `SUBTYPES`): 20 subtypes across the five families. Each has six-language detection, an accusative noun and a nominative noun, and a compatibility group.
+  - `subtypeRelation` compares a seeker's stated subtype with the property's: MATCH / SOFT / CONFLICT / UNKNOWN.
+  - Commercial and land are hard families: a different group is a contradiction (office vs warehouse, farmland vs industrial plot).
+  - Shop / café / salon are near each other. Apartment, house and parking are soft families.
+  - No schema change: the subtype comes from `property_type` (VILLA, OFFICE, PENTHOUSE, STUDIO, TOWNHOUSE) or the title.
+- **DNA** now also carries title, bathrooms, totalFloors, constructionStatus, heating, features, security / yard / air-conditioning, sourceLanguage and a sanitized `descriptionExcerpt` (no phone, e-mail or link). `match-campaign` selects these columns.
+- **Strategy tiers** EXACT → SEMANTIC → NEAR → SIZE → INVESTOR, still capped by `queriesPerLanguage`.
+  - A commercial subtype is never broadened to "commercial space".
+  - Group searches and comparable-listing searches are family-aware; before this they were apartment-only for every property.
+- **AI planner** (one cached call per DNA, `fb-qp-4`): the prompt adds subtype, title, description and tiers. A model phrase is kept only if it reads as on-side demand for THIS family and does not contradict the subtype.
+- **Qualification v10:**
+  - "no agents / риелторов не беспокоить" no longer turns a buyer into a broker;
+  - a broker searching for a named client is BUYER_VIA_BROKER, an interest signal that is never Strong and never counted as qualified;
+  - "для клиента" (singular) is not inventory collection;
+  - "N+1" = N bedrooms / N+1 rooms.
+- **Offline evaluation** (`__tests__/fixtures/findBuyersEvalSet.mjs`, report `findBuyersEvalReport.mjs`):
+  - 88 hand-labelled posts: 6 properties, 6 languages, every family. P = R = 1.000 after fixes — optimistic, because the set was used while fixing.
+  - VILLION production baseline: 37/37 match.
+  - Shadow re-judge of 120 stored v7 production posts: 0 rejected → accepted; 3 weak → rejected (group rules ×2, broker inventory).
+- **Not done:** project/developer name (only `developer_id` is stored; the name is not read). Transliterated Latin Georgian is not recognised. "вилла"/"дача" are now recognised.
+
+## Find Buyers — universal keyword intelligence + qualification v9 (PR #265, 2026-10-18)
+
+- Subtypes (VILLA, COTTAGE, OFFICE, RETAIL, WAREHOUSE, INDUSTRIAL, AGRICULTURAL) are read from the property type or title in `propertyFamily.ts`. Each has its own search noun in six languages, and non-apartment fallbacks never use apartment words.
+- Qualification v9 (`qualify.ts` `subtypeFit`) compares a subtype the seeker STATED with the property's:
+  - a commercial conflict (office vs warehouse) → PROPERTY_TYPE_MISMATCH;
+  - a house/land difference → SUBTYPE_DIFFERS, never Strong;
+  - unstated → UNKNOWN;
+  - warehouse ≈ industrial.
+- Each lead signal records `foundBy {queries, matched}`.
+- No pricing, reservation, cap, provider-state or migration change.
+- FB_KEYWORD_SEARCH (`tropical_thunderstuck~facebook-post-search`) is still NOT registered, so its contract is unverified and it is SCHEMA_REQUIRED and refuses to run. Registration needs the authenticated Admin verify action. It cannot be done from a cloud session: there is no admin session or service role, and api.apify.com/apify.com are unreachable (proxy 403 / WebFetch DNS).
+- Lexicon gap (left as is, matching unchanged): the demand classifier does not read "вилла"/"дача" as real estate. The search phrases use "дом-виллу".
 
 ## Service Control Center EXPANSION — every manageable product (PR #240 + release fix #247, 2026-10-17) — MERGED, DEPLOYED, MIGRATION APPLIED
 
@@ -11,7 +142,7 @@ MATTERS right now, verify against the live systems, not this file)
 - **Frontend:** Vercel `dpl_52cgQ3Do17Q3z2TUAdWC7QwBt87e` READY at c4caa2bf, aliased to www.homatch.live.
 - **Edge:** #240's functions deployed and PROVEN_EXACT (28/28) by deploy run 39023282840 (#244's merge, whose tree carried #240); `refs/deployed/edge` later advanced to 250ad195. #240's own deploy run 39021696556 stopped at validation and deployed nothing.
 - **Migration:** `20261110090000_service_controls_expand` applied alone with the Supabase migration tool (never `db push`, issue #243); ledger version `20261017140958`. Verified: the six unchanged (OFF; live_chat v4), fourteen rows ON v1 in their groups, `service_control_pause_group` admin-only definer (authenticated + service_role), broker guard `trg_0_service_control_guard` on `broker_listing_purchases`, no audit row written, `publishing_central` still unapplied.
-- **Brokers Directory (owner, Option A):** the switch pauses sales only. The public directory stays public. Broker Desk shows a localized "paused, nothing is charged" notice instead of Buy/Renew. Proof: `tests/sql/service_controls_broker`.
+- **Brokers (owner, 2026-10-18, replacing Option A):** `brokers_directory` and `broker_desk` each hide every customer entry point and gate their addresses (`/brokers…`, `/broker…`); sales stay refused with no charge while the directory is off. Reversible: no data changes. Proof: `tests/sql/service_controls_broker`, `tests/mobile/serviceControlsExpand.test.mjs` (brokers cases).
 
 - Fourteen live products are added to the same `service_controls` table, in groups:
   - discovery: find_property, find_property_deep, find_buyers;
@@ -446,11 +577,13 @@ known, 5 read. Owner actions still open: Register & verify FB_POST_SEARCH, FB_PA
 
 - Durable queue: migration `20261026090000_verify_durable_execution.sql` (verify_tasks,
   verify_evidence_cache, verify_source_policy, verify_captcha_events, bucket verify-evidence,
-  research_jobs.client_request_id + advance lease). NOT applied to production.
-- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded). QUEUE = cadastral official
-  sources as durable tasks; property mode always legacy.
+  research_jobs.client_request_id + advance lease). Applied (see Verify go-live above).
+- Flag `admin_settings.verify_execution_mode` = "LEGACY" (seeded); production is "QUEUE"
+  (verified 2026-10-18). QUEUE = cadastral official sources as durable tasks; property mode
+  always legacy.
 - Worker: `official-worker/src/queue/` starts only with `VERIFY_QUEUE_ENABLED=1` (Railway var,
-  NOT set). Lanes HTTP/BROWSER, slots `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS`.
+  set in production; verify-queue ~9.2k invocations/day, 2026-10-18). Lanes HTTP/BROWSER, slots
+  `VERIFY_QUEUE_HTTP_SLOTS`/`VERIFY_QUEUE_BROWSER_SLOTS` (unset → defaults 12/3).
 - Edge: `verify-queue` (WORKER_TOKEN, no JWT) registered in deploy.yml; research-agent gains
   advance lease, idempotent start (`clientRequestId`), finished-status memo, queue mode.
 - CAPTCHA: no built-in daily cap (owner decision); durable ledger + Admin visibility.

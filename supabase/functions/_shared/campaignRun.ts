@@ -18,7 +18,7 @@
 
 import { settleExecution, releaseExecution, type ExecutionGrant } from './billing.ts';
 import { finishSocialCampaign } from './findBuyers/campaign.ts';
-import { creditsForSpend, PAID_DISCOVERY_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
+import { creditsForSpend, PAID_DISCOVERY_POLICY_ID, PAID_DISCOVERY_VAT_POLICY_ID } from '../../../src/research-core/billing/paidDiscoveryPolicy.ts';
 import {
   judgeActiveDemand,
   type ActiveDemandFreshnessPolicy,
@@ -155,13 +155,24 @@ export async function finalizeCampaignJob(
     if (error) await jobEvent(db, job.id, 'INCLUDE_MARK_FAILED', { message: error.message }).catch(() => undefined);
   }
 
-  /* Campaigns stamped with the paid discovery policy charge consumed ÷ 0.63 (capped by the
-     reservation in wallet_settle); older campaigns keep the quote they started under. */
+  /* Each campaign is charged under the policy it started with (capped by the reservation
+     in wallet_settle): v1 = consumed ÷ 0.63 on the property's cost events, unchanged;
+     v2 (Finance V2, VAT-first) = the campaign's OWN execution spend — the same Actor runs
+     and OpenAI ledger its provider budget is enforced against, unknown costs at their
+     reservation — × 1.18 ÷ 0.63. Legacy campaigns keep the quote they started under. */
   const { data: pricing } = await db.from('find_buyers_campaigns')
     .select('pricing_policy,credits_per_usd').eq('matching_job_id', job.id).maybeSingle();
-  const priceCredits = pricing?.pricing_policy === PAID_DISCOVERY_POLICY_ID
-    ? creditsForSpend(Math.round(costUsd * 1_000_000), Number(pricing.credits_per_usd) || 10)
-    : undefined;
+  let priceCredits: number | undefined;
+  let recordedCostCents = costUsd * 100;
+  if (pricing?.pricing_policy === PAID_DISCOVERY_VAT_POLICY_ID) {
+    const { data: spent, error: spentError } = await db.rpc('find_buyers_campaign_spend_micros', { p_matching_job_id: job.id });
+    if (spentError) throw spentError; // never settle a v2 campaign on a guessed spend
+    const spentMicros = Math.max(0, Math.round(Number(spent ?? 0)));
+    priceCredits = creditsForSpend(spentMicros, Number(pricing.credits_per_usd) || 10, PAID_DISCOVERY_VAT_POLICY_ID);
+    recordedCostCents = spentMicros / 10_000;
+  } else if (pricing?.pricing_policy === PAID_DISCOVERY_POLICY_ID) {
+    priceCredits = creditsForSpend(Math.round(costUsd * 1_000_000), Number(pricing.credits_per_usd) || 10);
+  }
 
   let creditsCharged = 0;
   if (grant) {
@@ -173,7 +184,7 @@ export async function finalizeCampaignJob(
         providerRequestId: job.id,
         searchCount: Number((context.sourceJobs as any)?.done ?? 0),
         durationMs: now - new Date(job.started_at).getTime(),
-        rawProviderCostCents: costUsd * 100,
+        rawProviderCostCents: recordedCostCents,
         metadata: {
           quality_tier: grant.qualityTier,
           fresh_matches: freshMatches,

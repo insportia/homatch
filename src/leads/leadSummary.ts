@@ -10,7 +10,7 @@
  * Pure: the caller passes t() and a number formatter, so node:test covers it.
  */
 
-import type { LeadItem } from '@/services/homatchLeads';
+import type { LeadItem, LeadPriceKey } from '@/services/homatchLeads';
 
 export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -114,14 +114,124 @@ export function researchExtension(currentTotal: number, newTotal: number, limits
   return { additional, problem: null };
 }
 
-/** Selection maths for the bulk bar: unlocked leads cost nothing, members once. */
-export function selectionTotals(items: Array<Pick<LeadItem, 'matchId' | 'segment' | 'unlocked' | 'priceCredits'>>, selected: Set<string>) {
-  let standard = 0; let premium = 0; let already = 0; let credits = 0;
+/**
+ * Selection maths for the bulk bar: unlocked leads cost nothing, members once, and each lead
+ * at the ONE price that applies to it (VIP overrides EXACT; nearby / similar otherwise).
+ * The server re-prices every unlock; this is the preview.
+ */
+export function selectionTotals(items: Array<Pick<LeadItem, 'matchId' | 'segment' | 'unlocked' | 'priceCredits' | 'priceKey' | 'category'>>, selected: Set<string>) {
+  let standard = 0; let exact = 0; let premium = 0; let already = 0; let credits = 0;
   for (const it of items) {
     if (!selected.has(it.matchId)) continue;
     if (it.unlocked) { already += 1; continue; }
-    if (it.segment === 'PREMIUM') premium += 1; else standard += 1;
+    const key = leadPriceKey(it);
+    if (key === 'PREMIUM') premium += 1; else if (key === 'EXACT') exact += 1; else standard += 1;
     credits += Number(it.priceCredits || 0);
   }
-  return { standard, premium, already, credits: Math.round(credits * 100) / 100 };
+  return { standard, exact, premium, already, credits: Math.round(credits * 100) / 100 };
+}
+
+/* ── Why this match (smart match expansion) ──────────────────────────────── */
+
+/** The price that applies to one lead: VIP overrides; EXACT; otherwise nearby / similar. */
+export function leadPriceKey(item: Pick<LeadItem, 'priceKey' | 'segment' | 'category'>): LeadPriceKey {
+  if (item.priceKey) return item.priceKey;
+  if (item.segment === 'PREMIUM' || item.category === 'VIP') return 'PREMIUM';
+  return item.category === 'EXACT' ? 'EXACT' : 'STANDARD';
+}
+
+/** The display category, also for a feed that predates the expansion (segment only). */
+export function leadCategory(item: Pick<LeadItem, 'category' | 'segment'>): 'EXACT' | 'NEARBY_SIMILAR' | 'VIP' | null {
+  if (item.category) return item.category;
+  return item.segment === 'PREMIUM' ? 'VIP' : null;
+}
+
+export const UNCERTAINTY_CODES = [
+  'ABOVE_MAX', 'ABOVE_MAX_FLEXIBLE', 'BELOW_MIN', 'BUDGET_UNSTATED', 'PRICE_UNSTATED', 'CURRENCY_DIFFERS',
+  'TYPE_UNSTATED', 'SIZE_UNSTATED', 'CITY_WIDE_SEARCH', 'AREA_PRICE_LEVEL_UNKNOWN', 'RENOVATION_UNKNOWN',
+  'BUILDING_STATUS_UNKNOWN', 'AMENITIES_UNKNOWN',
+] as const;
+
+/**
+ * The reasons a person is in the owner's results, as sentences built only from the stored
+ * evidence (geography measured, budget compared, similarities agreed) — and, separately,
+ * what is uncertain. Nothing is inferred beyond the explanation the server sent.
+ */
+export function matchReasons(item: Pick<LeadItem, 'explanation' | 'kind'>, t: Translate,
+  fmt: (n: number, currency: string | null) => string, num: (n: number) => string = String): { reasons: string[]; uncertain: string[] } {
+  const e = item.explanation;
+  if (!e) return { reasons: [], uncertain: [] };
+  const reasons: string[] = [];
+  const g = e.geo ?? {};
+  const place = (v: string | null | undefined) => (v && v.trim() ? v.trim() : t('hl_why_their_area'));
+  if (g.level === 'EXACT_AREA') reasons.push(t('hl_why_geo_exact', { place: place(g.demandPlace ?? g.supplyPlace) }));
+  else if (g.level === 'NEARBY_AREA') {
+    reasons.push(t('hl_why_geo_nearby', { from: place(g.demandPlace), to: place(g.supplyPlace), km: num(Number(g.km ?? 0)) }));
+    if (Array.isArray(g.samples) && g.samples.length === 2) reasons.push(t('hl_why_geo_measured', { a: num(g.samples[0]), b: num(g.samples[1]) }));
+    if (g.priceLevelRatio != null) reasons.push(t('hl_why_price_level'));
+  } else if (g.level === 'CITY_WIDE') reasons.push(t('hl_why_geo_city'));
+  else if (g.level === 'OTHER_AREA') reasons.push(t('hl_why_geo_similar', { from: place(g.demandPlace), to: place(g.supplyPlace) }));
+  if (g.streetMentioned) reasons.push(t('hl_why_street'));
+
+  const b = e.budget ?? {};
+  const cur = b.currency ?? null;
+  if (b.verdict === 'WITHIN') reasons.push(t('hl_why_budget_within'));
+  else if (b.verdict === 'ABOVE_MAX_TOLERANCE') {
+    reasons.push(t('hl_why_budget_above', { amount: fmt(Number(b.outsideBy ?? 0), cur), tolerance: fmt(Number(b.tolerance ?? 0), cur) }));
+    if (b.flexible) reasons.push(t('hl_why_budget_flexible'));
+  } else if (b.verdict === 'BELOW_MIN_TOLERANCE') {
+    reasons.push(t('hl_why_budget_below', { amount: fmt(Number(b.outsideBy ?? 0), cur), tolerance: fmt(Number(b.tolerance ?? 0), cur) }));
+  } else if (b.verdict === 'UNKNOWN') reasons.push(t('hl_why_budget_unknown'));
+
+  const sim = e.similarity ?? {};
+  const dims = matchedCriteria((sim.agreed ?? []).filter((d) => d !== 'PRICE' && d !== 'DISTRICT' && d !== 'CITY'), t);
+  if (dims.length) reasons.push(t('hl_why_also', { list: dims.join(', ') }));
+  if (sim.renovation === 'AGREE') reasons.push(t('hl_why_renovation_ok'));
+  if (sim.buildingStatus === 'AGREE') reasons.push(t('hl_why_building_ok'));
+  const amen = (sim.amenities?.agreed ?? []).filter((a) => (FEATURE_AMENITIES as readonly string[]).includes(a)).map((a) => t(`hl_feature_${a}`));
+  if (amen.length) reasons.push(t('hl_why_amenities_ok', { list: amen.join(', ') }));
+
+  const known = new Set<string>(UNCERTAINTY_CODES);
+  const uncertain = [...new Set((e.uncertainty ?? []).filter((c) => known.has(c)))].map((c) => t(`hl_unc_${c}`));
+  return { reasons, uncertain };
+}
+
+/** A tolerance band as the owner reads it: "Up to $50,000: ±$5,000". */
+export function bandLabels(bands: Array<{ upTo: number | null; tolerance: number }>, currency: string, t: Translate,
+  fmt: (n: number, currency: string | null) => string): string[] {
+  let from = 0;
+  return bands.map((band) => {
+    const range = band.upTo == null
+      ? t('hl_band_from', { min: fmt(from, currency) })
+      : from === 0 ? t('hl_band_upto', { max: fmt(band.upTo, currency) })
+        : `${fmt(from, currency)}–${fmt(band.upTo, currency)}`;
+    if (band.upTo != null) from = band.upTo + 1;
+    return `${range}: ±${fmt(band.tolerance, currency)}`;
+  });
+}
+
+/** Amenities a Marketplace Search can state (research-core/marketplace/taxonomy.ts AMENITIES). */
+const FEATURE_AMENITIES = ['PARKING', 'BALCONY', 'TERRACE', 'ELEVATOR', 'GARDEN', 'POOL', 'FURNISHED',
+  'CENTRAL_HEATING', 'VIEW', 'PET_FRIENDLY', 'STORAGE', 'AIR_CONDITIONING'] as const;
+const BUILDING = ['NEW_BUILD', 'OLD_BUILD', 'UNDER_CONSTRUCTION'] as const;
+const RENOVATION = ['RENOVATED', 'GREEN_FRAME', 'WHITE_FRAME', 'BLACK_FRAME', 'NEEDS_RENOVATION'] as const;
+
+/**
+ * The member's stated features (Find Buyers 2.0, intent_profiles.requirements), as labels:
+ * must-haves, building and renovation choices, furnished / parking. Only known codes are
+ * shown; an unknown value is left out rather than printed raw.
+ */
+export function featureParts(features: Record<string, unknown> | null | undefined, t: Translate): { must: string[]; nice: string[]; avoid: string[]; other: string[] } {
+  const f = features ?? {};
+  const list = (v: unknown, allowed: readonly string[]) => (Array.isArray(v) ? v.map(String).filter((x) => allowed.includes(x)) : []);
+  const amen = (v: unknown) => list(v, FEATURE_AMENITIES).map((a) => t(`hl_feature_${a}`));
+  const other: string[] = [];
+  for (const b of list(f.buildingStatuses, BUILDING)) other.push(t(`mps_bs_${b}`));
+  for (const r of list(f.renovation, RENOVATION)) other.push(t(`mps_rn_${r}`));
+  if (f.furnished === true) other.push(t('hl_feature_FURNISHED'));
+  if (f.furnished === false) other.push(t('hl_feature_unfurnished'));
+  if (f.parking === true) other.push(t('hl_feature_PARKING'));
+  if (typeof f.bathroomsMin === 'number') other.push(t('hl_feature_bathrooms_min', { n: f.bathroomsMin }));
+  if (typeof f.statedCurrencyUnconverted === 'string') other.push(t('hl_feature_budget_currency_only', { currency: f.statedCurrencyUnconverted }));
+  return { must: amen(f.mustHave), nice: amen(f.niceToHave), avoid: amen(f.exclusions), other: [...new Set(other)] };
 }

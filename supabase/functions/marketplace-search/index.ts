@@ -23,7 +23,7 @@ import { historyExtras, ownedSearchHistory } from '../_shared/marketplaceHistory
 import { requestNativeMatching } from '../_shared/nativeDemand.ts';
 import { recordSeekerIntent } from '../_shared/seekerIntent.ts';
 import {
-  SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft,
+  SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft, demandExtrasFromBrief, demandFingerprint,
 } from '../../../src/research-core/marketplace/brief.ts';
 import { evaluateReadiness } from '../../../src/research-core/marketplace/readiness.ts';
 import {
@@ -37,10 +37,11 @@ import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../..
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
-  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, serveCachedListings, workerSwitchOn, WORKER_SOURCE_NAMES,
+  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, requestKey, SHARE_WINDOW_MS, workerSwitchOn, WORKER_SOURCE_NAMES,
 
 } from '../_shared/marketplaceSearch.ts';
 import { paidCampaignAvailable } from '../_shared/findProperty/paidAvailability.ts';
+import { clientIp, DEFERRED_CODES, dispatchSearch, liveRefreshOf } from '../_shared/marketplaceCapacity.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
@@ -61,14 +62,15 @@ type Db = any;
 /** The customer-safe summary of a search: no cost, no internals, no worker errors. */
 async function summary(db: Db, search: Record<string, unknown>) {
   const { data: runs } = await db.from('discovery_marketplace_worker_runs')
-    .select('id,worker_id,status,deadline_at,returned_count').eq('search_id', search.id);
+    .select('id,worker_id,status,deadline_at,returned_count,errors,query_applied,completed_at,shared_run_id').eq('search_id', search.id);
   const states: WorkerRunState[] = (runs ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunState['status'], deadlineAt: String(r.deadline_at), returnedCount: Number(r.returned_count) || 0,
   }));
   /* Read-time freshness applies to counts as well as cards, including saved searches. */
-  const counts: Record<string, number> = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
+  /* Every group the pipeline emits (OTHER included); an unknown stored group still counts, never NaN. */
+  const counts: Record<string, number> = Object.fromEntries(RESULT_GROUPS.map((g) => [g, 0]));
   const catalogue = (await resultCatalogue(db, search)).filter((p) => isCurrentResult(p));
-  for (const p of catalogue) counts[p.group] += 1;
+  for (const p of catalogue) counts[p.group] = (counts[p.group] ?? 0) + 1;
   const stats = (search.stats ?? {}) as Record<string, number>;
   const status = search.status as SearchStatus;
   /* Per source: fresh, partly refreshed, previously collected (cached),
@@ -77,8 +79,14 @@ async function summary(db: Db, search: Record<string, unknown>) {
     const { count: cachedCount } = await db.from('discovery_marketplace_listings').select('id', { count: 'exact', head: true })
       .eq('worker_run_id', r.id).eq('raw->retrievalMetadata->>observationLevel', 'CACHED');
     const state = sourceFreshness({ status: String(r.status), freshCount: Number(r.returned_count) || 0, cachedCount: cachedCount ?? 0 });
-    let retryAt: string | null = null;
-    if (state === 'CACHED' || state === 'UNAVAILABLE' || state === 'PARTIAL') {
+    /* Answered from the pool instead of a portal run of its own, and when a live refresh is possible again. */
+    const deferredError = ((r.errors as Array<{ code?: string; retryAt?: string | null }>) ?? []).find((e) => (DEFERRED_CODES as readonly string[]).includes(String(e?.code)));
+    const deferred = deferredError ? String(deferredError.code) : null;
+    const applied = (r.query_applied ?? {}) as Record<string, unknown>;
+    /* When the portal itself was last read for these listings (a shared run's own read time). */
+    const checkedAt = Number(r.returned_count) > 0 ? String(applied.sharedCheckedAt ?? r.completed_at ?? '') || null : null;
+    let retryAt: string | null = deferredError?.retryAt ?? null;
+    if (!retryAt && (state === 'CACHED' || state === 'UNAVAILABLE' || state === 'PARTIAL')) {
       const { data: w } = await db.from('discovery_marketplace_workers').select('health').eq('worker_id', r.worker_id).maybeSingle();
       retryAt = decideProviderAccess(readProviderAccess(w?.health), new Date(), false).retryAt;
     }
@@ -87,7 +95,8 @@ async function summary(db: Db, search: Record<string, unknown>) {
     const runStatus = String(r.status);
     const run = isTerminalSearch(status) && !['COMPLETE', 'PARTIAL', 'FAILED', 'TIMED_OUT', 'BLOCKED', 'CANCELLED'].includes(runStatus) ? 'TIMED_OUT' : runStatus;
     return { source: WORKER_SOURCE_NAMES[String(r.worker_id)] ?? 'OTHER', workerId: String(r.worker_id), run,
-      state, freshListings: Number(r.returned_count) || 0, cachedListings: cachedCount ?? 0, retryAt };
+      state, freshListings: Number(r.returned_count) || 0, cachedListings: cachedCount ?? 0, retryAt,
+      deferred, shared: !!r.shared_run_id, checkedAt };
   }));
   return {
     id: search.id,
@@ -117,6 +126,13 @@ async function summary(db: Db, search: Record<string, unknown>) {
     sources,
     unavailable: status === 'FAILED' ? (search.failure_reason === 'NO_ELIGIBLE_WORKERS' ? 'NO_SOURCES' : 'FAILED') : null,
   };
+}
+
+/** brief:<uuid> refs from the client (understand's costRef), bounded and well-formed; anything else is dropped. */
+function briefCostRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return [...new Set(value.filter((v): v is string => typeof v === 'string' && uuid.test(v)).slice(0, 20).map((v) => `brief:${v.toLowerCase()}`))];
 }
 
 Deno.serve(async (req: Request) => {
@@ -199,17 +215,29 @@ Deno.serve(async (req: Request) => {
       const r = await openaiStructured({
         name: 'homatch_search_brief', instructions: SEARCH_BRIEF_INSTRUCTIONS, input: text, schema: SEARCH_BRIEF_JSON_SCHEMA, maxOutputTokens: 900,
       });
-      await recordAiUsage(db, 'SEARCH_INTELLIGENCE', r);
+      /* The brief call happens before a search exists: its cost carries a brief ref the client
+         hands back at start (brief_cost_refs), so the search owns what it cost to set up. */
+      const costRef = crypto.randomUUID();
+      await recordAiUsage(db, 'SEARCH_INTELLIGENCE', r, `brief:${costRef}`);
       /* No model is not a dead end: an empty brief asks every question one by one. */
       const brief = briefFromModel(r.ok ? r.parsed : null, text);
-      return json({ understood: r.ok, brief, readiness: evaluateReadiness(brief) });
+      return json({ understood: r.ok, brief, readiness: evaluateReadiness(brief), costRef });
     }
 
     if (action === 'start') {
       const key = String(body.idempotencyKey ?? '');
       if (!/^[A-Za-z0-9_-]{8,120}$/.test(key)) return json({ error: 'IDEMPOTENCY_KEY_REQUIRED' }, 400);
+      /* Cost accounting only: the brief calls this customer made for this search (understand's
+         costRef). Whichever search answers the start — new, replayed or reused — owns them. */
+      const briefRefs = briefCostRefs(body.briefRefs);
+      const linkBriefCosts = async (row: Record<string, unknown>) => {
+        const known = new Set((row.brief_cost_refs ?? []) as string[]);
+        if (!briefRefs.some((r) => !known.has(r))) return;
+        await db.from('discovery_marketplace_searches').update({ brief_cost_refs: [...new Set([...known, ...briefRefs])] }).eq('id', row.id)
+          .then(() => undefined, () => undefined);
+      };
       const { data: prior } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId).eq('idempotency_key', key).maybeSingle();
-      if (prior) return json({ search: await summary(db, prior), replayed: true });
+      if (prior) { await linkBriefCosts(prior); return json({ search: await summary(db, prior), replayed: true }); }
 
       /* THE GATE. The client's view of readiness is never trusted. */
       const brief = sanitizeBrief(body.brief);
@@ -228,7 +256,14 @@ Deno.serve(async (req: Request) => {
         .in('status', ['CREATED', 'READY', 'DISPATCHING', 'SEARCHING', 'PROCESSING', 'RESULTS_AVAILABLE'])
         .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(10);
       const twin = (open ?? []).find((o: Record<string, unknown>) => criteria(sanitizeBrief(o.brief)) === sameRequest);
-      if (twin) return json({ search: await summary(db, twin), replayed: true });
+      if (twin) { await linkBriefCosts(twin); return json({ search: await summary(db, twin), replayed: true }); }
+      /* REUSE: the same request finished in the last 30 minutes is answered with its results
+         (they are still current), not searched again. Never counted, never a new portal run. */
+      const { data: done } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
+        .in('status', ['COMPLETE', 'PARTIAL_COMPLETE']).gte('completed_at', new Date(Date.now() - SHARE_WINDOW_MS).toISOString())
+        .order('completed_at', { ascending: false }).limit(10);
+      const recent = (done ?? []).find((o: Record<string, unknown>) => criteria(sanitizeBrief(o.brief)) === sameRequest);
+      if (recent) { await linkBriefCosts(recent); return json({ search: await summary(db, recent), replayed: true, reused: true }); }
 
       const { data: plan, error: planErr } = await db.from('discovery_search_plans').insert({
         direction: 'SUPPLY', user_id: userId, market: brief.country, plan_kind: 'MARKETPLACE', plan_version: 1,
@@ -250,7 +285,7 @@ Deno.serve(async (req: Request) => {
       const eligible = eligibleWorkers(workers, request).filter((worker) => workerSwitchOn(switches, worker.workerId));
       const now = new Date();
       const { data: search, error: searchErr } = await db.from('discovery_marketplace_searches').insert({
-        id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key,
+        id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key, brief_cost_refs: briefRefs,
         status: eligible.length ? 'DISPATCHING' : 'FAILED', failure_reason: eligible.length ? null : 'NO_ELIGIBLE_WORKERS',
         brief: { ...brief, readiness }, request, workers_total: eligible.length,
         deadline_at: new Date(now.getTime() + SEARCH_DEADLINE_MS).toISOString(),
@@ -262,31 +297,40 @@ Deno.serve(async (req: Request) => {
          best effort: it never delays or fails the marketplace search. */
       const network = (async () => {
         try {
-          const intentId = await recordSeekerIntent(db, userId, toSearchPlanDraft(brief), { marketplaceSearchId: searchId });
+          const extras = demandExtrasFromBrief(brief);
+          const intentId = await recordSeekerIntent(db, userId, toSearchPlanDraft(brief), { marketplaceSearchId: searchId }, { ...extras, fingerprint: demandFingerprint(brief) });
           if (intentId) await requestNativeMatching([intentId]);
         } catch (error) { console.error(JSON.stringify({ event: 'native_match_request_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
       })();
       const edge = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
       if (edge?.waitUntil) edge.waitUntil(network); else await network;
-      /* CONCURRENT DISPATCH: one run per eligible worker, all in ONE insert. Every worker can
-         claim its run immediately and independently; nothing waits for another worker. */
+      /* DISPATCH (marketplace_dispatch_search, one transaction): per source, reuse an identical
+         run that just finished, share one that is running, or start a new portal run if this
+         customer's live quota allows and it can finish before its deadline; otherwise that source
+         answers from the pool. Only a new portal run counts. Nothing here is ever refused. */
+      let liveRefresh: ReturnType<typeof liveRefreshOf> = { state: 'LIVE' };
       if (eligible.length) {
-        const { data: inserted } = await db.from('discovery_marketplace_worker_runs').insert(eligible.map((w) => ({
-          search_id: searchId, worker_id: w.workerId, request: { ...request, maxResults: w.maxResults },
-          deadline_at: new Date(now.getTime() + w.timeoutMs).toISOString(),
-        }))).select('id,worker_id,status');
-        /* INSTANT ANSWER: matching listings the shared pool already holds are shown at
-           once, with their own last-checked time; live runs then add fresh ones. Best
-           effort: a pool failure never blocks the search itself. */
+        const outcome = await dispatchSearch(db, {
+          searchId, userId, ip: clientIp(req),
+          runs: eligible.map((w) => {
+            const workerRequest = { ...request, maxResults: w.maxResults };
+            return { workerId: w.workerId, request: workerRequest, requestKey: requestKey(workerRequest), deadlineAt: new Date(now.getTime() + w.timeoutMs).toISOString() };
+          }),
+        }, now);
+        liveRefresh = liveRefreshOf(outcome);
+        console.log(JSON.stringify({ event: 'marketplace_dispatch', searchId, tier: outcome.tier, live: outcome.live, degraded: outcome.degraded,
+          modes: outcome.runs.map((r) => r.mode), limit: outcome.limit?.reason ?? null }));
+        /* INSTANT ANSWER: matching listings the shared pool already holds are shown at once, with
+           their own last-checked time; shared and live runs then add fresh ones. Every new run is
+           pool_pending: processAndStore answers as many sources as its CPU budget allows and the
+           first status polls finish the rest. Best effort: a pool failure never blocks the search. */
         try {
-          if (await serveCachedListings(db, searchId, request, (inserted ?? []) as Array<Record<string, unknown>>, now, true) > 0) {
-            await processAndStore(db, searchId);
-            const { data: refreshed } = await db.from('discovery_marketplace_searches').select('*').eq('id', searchId).maybeSingle();
-            if (refreshed) return json({ search: await summary(db, refreshed) }, 202);
-          }
+          await processAndStore(db, searchId);
+          const { data: refreshed } = await db.from('discovery_marketplace_searches').select('*').eq('id', searchId).maybeSingle();
+          if (refreshed) return json({ search: await summary(db, refreshed), liveRefresh }, 202);
         } catch (error) { console.error(JSON.stringify({ event: 'pool_answer_failed', searchId, message: String((error as Error)?.message ?? error).slice(0, 200) })); }
       }
-      return json({ search: await summary(db, search) }, 202);
+      return json({ search: await summary(db, search), liveRefresh }, 202);
     }
 
     if (action === 'status') {
@@ -310,10 +354,21 @@ Deno.serve(async (req: Request) => {
       if (!isTerminalSearch(search.status)) {
         /* Lazily close overdue workers so a dead worker cannot hold a search open forever. */
         const overdue = Date.parse(search.deadline_at ?? '') <= Date.now();
-        const { data: late } = await db.from('discovery_marketplace_worker_runs').select('id')
-          .eq('search_id', search.id).in('status', ['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'])
-          .lte('deadline_at', new Date().toISOString()).limit(1);
-        if (overdue || (late ?? []).length) {
+        const { data: open } = await db.from('discovery_marketplace_worker_runs').select('id,status,deadline_at,pool_pending,shared_run_id')
+          .eq('search_id', search.id);
+        const nowMs = Date.now();
+        const late = (open ?? []).some((r: Record<string, unknown>) => ['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'].includes(String(r.status)) && Date.parse(String(r.deadline_at)) <= nowMs);
+        /* Sources still owed their pool answer, and shared runs whose leader has finished, are
+           completed by the poll itself (bounded per request). */
+        const poolOwed = (open ?? []).some((r: Record<string, unknown>) => r.pool_pending === true);
+        const waiting = (open ?? []).filter((r: Record<string, unknown>) => r.shared_run_id && r.status === 'QUEUED').map((r: Record<string, unknown>) => String(r.shared_run_id));
+        let leaderDone = false;
+        if (waiting.length) {
+          const { data: leaders } = await db.from('discovery_marketplace_worker_runs').select('id,status,deadline_at').in('id', [...new Set(waiting)]);
+          leaderDone = (leaders ?? []).length < new Set(waiting).size
+            || (leaders ?? []).some((l: Record<string, unknown>) => !['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'].includes(String(l.status)) || Date.parse(String(l.deadline_at)) <= nowMs);
+        }
+        if (overdue || late || poolOwed || leaderDone) {
           await processAndStore(db, search.id);
           search = await ownSearch(search.id);
         }
@@ -382,6 +437,9 @@ Deno.serve(async (req: Request) => {
         await db.from('discovery_marketplace_searches').update({ status: 'CANCELLED', cancelled_at: now, completed_at: now, updated_at: now }).eq('id', search.id);
         await db.from('discovery_marketplace_worker_runs').update({ status: 'FAILED', completed_at: now, updated_at: now, errors: [{ code: 'CANCELLED_BY_CUSTOMER', message: '' }] })
           .eq('search_id', search.id).in('status', ['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING']);
+        /* Other customers sharing this search's portal runs keep theirs: the oldest takes them over. */
+        const { error: handOver } = await db.rpc('marketplace_hand_over_shared_runs', { p_search_id: search.id });
+        if (handOver) console.error(JSON.stringify({ event: 'hand_over_failed', searchId: search.id, message: handOver.message }));
       }
       return json({ search: await summary(db, (await ownSearch(search.id))!) });
     }

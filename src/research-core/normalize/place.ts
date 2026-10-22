@@ -100,6 +100,15 @@ const INDEX: Map<string, number> = (() => {
 const norm = (value: string | null | undefined) =>
   String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+/** normalized name -> the FIRST row it appears in (the order a linear scan would find it). Built once:
+ *  the lookups below run once per listing, and re-normalizing the whole table per call was the
+ *  pipeline's hottest path. */
+const NORM_INDEX: Map<string, number> = (() => {
+  const map = new Map<string, number>();
+  PLACES.forEach((row, i) => row.forEach((name) => { const k = norm(name); if (!map.has(k)) map.set(k, i); }));
+  return map;
+})();
+
 /**
  * Which alphabet a name is written in.
  *
@@ -174,6 +183,12 @@ export function resolvePlace(name: string | null | undefined):
   return { key: PLACES[row][0], kind, cityKey: PLACES[kind === 'CITY' ? row : TBILISI_ROW][0] };
 }
 
+/** A known place's names: [latin key, Georgian, Russian, ...aliases]; null when unknown. */
+export function placeNamesOf(name: string | null | undefined): readonly string[] | null {
+  const row = INDEX.get(norm(name));
+  return row === undefined ? null : PLACES[row];
+}
+
 /** True only when two names are the same place. UNKNOWN is not agreement. */
 export function samePlace(a: string | null | undefined, b: string | null | undefined): boolean {
   return comparePlaces(a, b) === 'AGREE';
@@ -211,17 +226,13 @@ export function samePlace(a: string | null | undefined, b: string | null | undef
 export function placeNamesFor(place: string | null | undefined): string[] {
   const needle = norm(place);
   if (!needle) return [];
-  for (const group of PLACES) {
-    if (group.some((name) => norm(name) === needle)) return [...group];
-  }
-  return [String(place)];
+  const row = NORM_INDEX.get(needle);
+  return row === undefined ? [String(place)] : [...PLACES[row]];
 }
 
 export function latinNameFor(place: string | null | undefined): string | null {
   const needle = norm(place);
   if (!needle) return null;
-  for (const group of PLACES) {
-    if (group.some((name) => norm(name) === needle)) return group[0];
-  }
-  return null;
+  const row = NORM_INDEX.get(needle);
+  return row === undefined ? null : PLACES[row][0];
 }

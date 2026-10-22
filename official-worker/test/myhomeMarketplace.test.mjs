@@ -491,3 +491,17 @@ test('runtime claims one MyHome run at a time; further searches wait in the dura
     assert.equal(runtime.status().connectivity.skipped, 'CACHE_ONLY', 'startup check skipped, probe not spent');
   } finally { runtime.shutdown(); }
 });
+
+test('a body that times out is a retryable transport failure, never a raw abort (production 2026-10-18)', async () => {
+  const { publicJson } = await import('../.tstest-build/marketplace/myhome/api.js');
+  const slow = async () => ({ ok: true, status: 200, text: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); } });
+  for (const read of [(f) => publicJson('https://api-statements.tnet.ge/v1/statements', 'ka', f), (f) => publicPage('https://www.myhome.ge/udzravi-qoneba/?page=1', f)]) {
+    await assert.rejects(read(slow), (error) => {
+      assert.ok(error instanceof AcquisitionError, 'wrapped, so the adapter retries it');
+      assert.equal(error.status, null);
+      assert.equal(error.category, 'TRANSPORT');
+      assert.match(error.message, /Body not received: The operation was aborted due to timeout; URL: https:\/\//);
+      return true;
+    });
+  }
+});

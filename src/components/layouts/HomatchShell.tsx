@@ -133,6 +133,13 @@ export const NAV: NavGroup[] = [
        */
       { key: 'nav_owner_workspace', path: '/property', glyph: 'properties' },
       /*
+       * UNLOCKED LEADS (Find Buyers 2.0, owner 2026-10-18): the CRM of every contact the
+       * owner unlocked — profile, pipeline stage, notes, follow-ups, AI drafts — right under
+       * the properties those contacts were matched to. It existed at /leads with no way in
+       * from the navigation.
+       */
+      { key: 'nav_unlocked_leads', path: '/leads', glyph: 'unlocked_leads' },
+      /*
        * THE BROKER DIRECTORY, previously reachable only through the public
        * site. It is a working tool — find a professional for your market and
        * language — and a signed-in customer had no way to discover it existed.

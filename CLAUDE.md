@@ -37,9 +37,12 @@ An index is never proof of production state.
 
 - **PAYG only.** 10 credits = $1. No Free/Premium/VIP gating, ever.
   Reserve → settle → release; unknown COGS never silently zero.
-  Paid discovery (Find Buyers/Tenants and Find Property social campaigns
-  started since 2026-10-16): HOMATCH 37% / providers 63% of the TOTAL price,
-  charge = provider spend consumed ÷ 0.63, capped at the reservation —
+  Customer prices are final and VAT-inclusive (18%): extract VAT, never add it.
+  Paid discovery (Find Buyers/Tenants and Find Property paid campaigns started
+  since Finance V2, `paid_discovery_37_63_vat_v2`): VAT first, then HOMATCH 37% /
+  execution 63% of the VAT-exclusive revenue (execution = P × 6300/11800);
+  charge = spend × 11800/6300, capped at the reservation. v1 campaigns
+  (2026-10-16, 37/63 of gross, ÷0.63) keep their terms —
   `src/research-core/billing/paidDiscoveryPolicy.ts` (docs/claude/BILLING.md).
 - **Protected surfaces**: Verify, the black/gold public homepage identity
   (incl. AI TALK), the single Admin shell, Owner dark navy, dark Discovery.

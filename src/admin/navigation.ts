@@ -253,6 +253,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         keywords: ['finance', 'revenue', 'profit', 'margin', 'report', 'cost'],
       },
       {
+        path: '/admin/finance/find-property', labelKey: 'admin_nav_fp_costs', icon: BadgeDollarSign,
+        keywords: ['find property', 'search cost', 'cogs', 'openai', 'portal', 'cost per search'],
+      },
+      {
         path: '/admin/credits', labelKey: 'admin_nav_credits', icon: CreditCard,
         keywords: ['credit', 'wallet', 'balance', 'topup', 'grant'],
       },

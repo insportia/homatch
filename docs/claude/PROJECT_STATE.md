@@ -34,6 +34,24 @@ MATTERS right now, verify against the live systems, not this file)
 - Push subscriptions in production: 0.
 - Cron: `homatch-native-intent` (*/1), `homatch-supply-matching` (*/15) — live.
 
+## Matching campaigns, contact library, Email Studio (branch `claude/homatch-campaigns-premium-ux-709483`, 2026-10-22)
+
+- External Matching runs have their own page `/property/:id/campaigns/:jobId`
+  (history `/property/:id/campaigns`, `/campaigns`), read via
+  `find_buyers_my_campaign(s)`; Internal vs External Matching is labelled by
+  `src/components/matching/ServiceIdentity.tsx`.
+- Contact library `/outreach/library` (`my_contact_library`, SECURITY INVOKER);
+  Email Studio `/outreach/email/studio` (drafts/templates in
+  `email_studio_documents`, AI via edge `communication-studio-ai`, sends via the
+  existing `outreach-campaign-preview` → `outreach-send` pipeline, which now fills
+  `{{first_name|fallback}}` / `{{name|fallback}}`).
+- Migration `20261022090000` adds the RPCs/table and an address-level opt-out
+  trigger on `outreach_contacts` (also aligns existing rows ON, never off).
+- Owed at release: the migration (workflow_dispatch + run_migrations), edge
+  deploys for `communication-studio-ai` (new) and `outreach-send`.
+- Studio AI is rate-limited (40/h/user) and recorded in `cost_events`; it does
+  NOT charge customer credits (same as comm-agent) — pricing is a product decision.
+
 ## Design Studio asset catalogue (branch `feat/design-studio-catalog-import`, 2026-09-30)
 
 - IMPLEMENTED, pushed, NO PR (no GitHub credentials in the session), NOT

@@ -210,6 +210,13 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # The frontend calls RPCs; recording it as deployed while production lacks a migration it
+      # needs would be a false "deployed". Same fail-closed gate as the Edge deploy (read-only).
+      - name: Migration compatibility gate (fail closed)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/release/migration-gate.mjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -478,6 +485,16 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn
         run: node scripts/publishing/apply-migration.mjs --owed "$RUNNER_TEMP/owed.txt"
+
+      # FAIL CLOSED: no Edge Function is uploaded while production lacks a migration the repo
+      # has (2026-10-19: Finance V2 Edge code ran 3.4 days ahead of its schema). Read-only; it
+      # never applies anything. Recovery: apply the listed migration(s) in version order, then
+      # re-run this workflow with redeploy=edge. Exceptions live in supabase/migration-gate.json.
+      - name: Migration compatibility gate (fail closed)
+        if: steps.owed.outputs.count != '0'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/release/migration-gate.mjs --owed "$RUNNER_TEMP/owed.txt"
 
       - name: Production, before
         if: steps.owed.outputs.count != '0'

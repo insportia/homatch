@@ -212,3 +212,156 @@ export async function estimatedProviderCost(
     return null;
   }
 }
+
+// ── Finance V2.1: one recorder for every metered provider call ─────────────
+//
+// Every paid call that had no cost row (find-property-plan, deal-room-ai, investment-consultant,
+// social-post-generate, comm-agent, …) records through here: the usage the provider itself
+// returned, priced dimension by dimension from provider_price_book, written once per
+// idempotency key. Nothing is invented: no usage in the response means units unknown and
+// UNPRICED, never an assumed token count. A missing rate is UNPRICED / PARTIAL, never $0.
+
+/** Token usage as the provider reported it. Null when the response carried none. */
+export interface TokenUsage { input: number; cached: number; output: number }
+
+const nonNeg = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+/**
+ * OpenAI Chat Completions (`prompt_tokens`), OpenAI Responses (`input_tokens`) and Gemini
+ * (`usageMetadata.promptTokenCount`). Cached tokens are a SUBSET of input (both APIs).
+ */
+export function tokenUsage(body: unknown): TokenUsage | null {
+  const b = (body ?? {}) as Record<string, any>;
+  const u = b.usage ?? null;
+  if (u && (u.prompt_tokens != null || u.completion_tokens != null)) {
+    const input = nonNeg(u.prompt_tokens) ?? 0, output = nonNeg(u.completion_tokens) ?? 0;
+    const cached = Math.min(input, nonNeg(u.prompt_tokens_details?.cached_tokens) ?? 0);
+    return { input, cached, output };
+  }
+  if (u && (u.input_tokens != null || u.output_tokens != null)) {
+    const input = nonNeg(u.input_tokens) ?? 0, output = nonNeg(u.output_tokens) ?? 0;
+    const cached = Math.min(input, nonNeg(u.input_tokens_details?.cached_tokens) ?? 0);
+    return { input, cached, output };
+  }
+  const g = b.usageMetadata ?? null;
+  if (g && (g.promptTokenCount != null || g.candidatesTokenCount != null)) {
+    const input = nonNeg(g.promptTokenCount) ?? 0;
+    const output = (nonNeg(g.candidatesTokenCount) ?? 0) + (nonNeg(g.thoughtsTokenCount) ?? 0);
+    const cached = Math.min(input, nonNeg(g.cachedContentTokenCount) ?? 0);
+    return { input, cached, output };
+  }
+  return null;
+}
+
+export interface UsageCostInput {
+  /** cost_events.provider (cost_provider enum). */
+  provider: string;
+  /** cost_events.operation_type, e.g. FIND_PROPERTY_PLAN. */
+  operation: string;
+  /** Finance V2 service key (finance_services). */
+  service?: string | null;
+  model?: string | null;
+  /** The execution this cost belongs to (search id, deal room id, session id, …). */
+  correlationId?: string | null;
+  /** Same key → one row, however many retries, callbacks or replays. */
+  idempotencyKey?: string | null;
+  source?: string | null;
+  /** Tokens from tokenUsage(); null = the provider reported none (units unknown). */
+  tokens?: TokenUsage | null;
+  /** Non-token dimensions, e.g. [{ unit: 'CHARACTER', units: 412 }]. */
+  dimensions?: Array<{ unit: string; units: number | null }>;
+  /** A dollar figure the provider itself reported. */
+  actualUsd?: number | null;
+  success?: boolean;
+  jobId?: string | null;
+  propertyId?: string | null;
+}
+
+type Db = {
+  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  from: (t: string) => any;
+};
+
+/** Price the call. Pure apart from the price-book lookups; exported for tests. */
+export async function priceUsage(db: Db, u: UsageCostInput): Promise<ResolvedCost & { unitsTotal: number | null }> {
+  const dims: Array<{ unit: string; units: number }> = [];
+  let unknownUnits = false;
+  if (u.tokens === null) unknownUnits = true;
+  if (u.tokens) {
+    const fresh = Math.max(0, u.tokens.input - u.tokens.cached);
+    if (fresh > 0) dims.push({ unit: 'INPUT_TOKEN', units: fresh });
+    if (u.tokens.cached > 0) dims.push({ unit: 'CACHED_INPUT_TOKEN', units: u.tokens.cached });
+    if (u.tokens.output > 0) dims.push({ unit: 'OUTPUT_TOKEN', units: u.tokens.output });
+  }
+  for (const d of u.dimensions ?? []) {
+    if (d.units == null || !Number.isFinite(d.units)) { unknownUnits = true; continue; }
+    if (d.units > 0) dims.push({ unit: d.unit, units: d.units });
+  }
+  const unitsTotal = unknownUnits && dims.length === 0 ? null : dims.reduce((s, d) => s + d.units, 0);
+
+  if (usable(u.actualUsd)) {
+    return { ...resolveProviderCost({ actualUsd: u.actualUsd, success: u.success ?? true }), unitsTotal };
+  }
+  if (u.success === false && dims.length === 0) return { cost_usd: 0, pricing_state: 'ZERO_REAL', unitsTotal };
+  if (dims.length === 0) {
+    /* Nothing measurable came back: unknown, not free (unless the call provably consumed nothing). */
+    return unknownUnits ? { cost_usd: 0, pricing_state: 'UNPRICED', unitsTotal } : { cost_usd: 0, pricing_state: 'ZERO_REAL', unitsTotal };
+  }
+  let sum = 0; let fullyPriced = !unknownUnits;
+  for (const d of dims) {
+    const usd = await estimatedProviderCost(db, { provider: u.provider, unit: d.unit, units: d.units, model: u.model ?? null });
+    if (usd == null) fullyPriced = false; else sum += usd;
+  }
+  return { ...pricingStateForDerivedCost({ costUsd: sum, fullyPriced }), unitsTotal };
+}
+
+/**
+ * Record one metered call in cost_events. Never throws (a cost write must not break the
+ * customer's request); returns what was recorded, or null when the write failed.
+ */
+export async function recordUsageCost(db: Db, u: UsageCostInput): Promise<(ResolvedCost & { duplicate?: boolean }) | null> {
+  try {
+    const priced = await priceUsage(db, u);
+    const row: Record<string, unknown> = {
+      provider: u.provider,
+      operation_type: u.operation,
+      service_key: u.service ?? null,
+      source: u.source ?? null,
+      units: priced.unitsTotal,
+      cost_usd: priced.cost_usd, // NOT NULL column: 0 placeholder when UNPRICED, pricing_state says so
+      pricing_state: priced.pricing_state,
+      success: u.success ?? true,
+      cache_hit: false,
+      model: u.model ?? null,
+      input_tokens: u.tokens ? u.tokens.input : null,
+      cached_input_tokens: u.tokens ? u.tokens.cached : null,
+      output_tokens: u.tokens ? u.tokens.output : null,
+      correlation_id: u.correlationId ?? null,
+      idempotency_key: u.idempotencyKey ?? null,
+      job_id: u.jobId ?? null,
+      property_id: u.propertyId ?? null,
+    };
+    const q = u.idempotencyKey
+      ? db.from('cost_events').upsert(row, { onConflict: 'idempotency_key', ignoreDuplicates: true })
+      : db.from('cost_events').insert(row);
+    const { error } = await q;
+    if (error) { console.error('[cost] cost_events write failed', u.operation, (error as any)?.message ?? error); return null; }
+    return { cost_usd: priced.cost_usd, pricing_state: priced.pricing_state };
+  } catch (e) {
+    console.error('[cost] recordUsageCost failed', u.operation, e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+/**
+ * Run a cost write after the response without holding it: EdgeRuntime.waitUntil keeps the
+ * isolate alive for it, so user-facing latency is unchanged (AI Talk, chat, plan drafts).
+ */
+export function deferCost(work: Promise<unknown>): void {
+  const settled = work.catch(() => undefined);
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt && typeof rt.waitUntil === 'function') rt.waitUntil(settled);
+}

@@ -1,0 +1,42 @@
+{
+  "$comment": [
+    "MIGRATION / DEPLOYMENT COMPATIBILITY GATE (scripts/release/migration-gate.mjs).",
+    "",
+    "Before Edge Functions are deployed from main, every repository migration newer than",
+    "supabase/migration-baseline.json#baselineThrough must be in the production ledger",
+    "(by version, by name, or by its full file stem: MCP applies record their own version).",
+    "Otherwise the deploy fails closed (2026-10-19: Finance V2 Edge code ran 3.4 days ahead",
+    "of its migration).",
+    "",
+    "reconciled: applied outside the ledger name scheme; each carries a READ-ONLY proof query",
+    "that must return true in production. A failing proof fails the gate.",
+    "held: deliberately NOT applied (owner hold). Allowed only while none of its dependent",
+    "functions is in the owed deploy set.",
+    "contentVerifiedFrom: from this version on, the applied SQL must equal the committed file",
+    "(CR removed, trailing whitespace trimmed). Older entries are reported, not enforced.",
+    "",
+    "Editing this file is a deliberate, reviewed act: adding a 'held' or 'reconciled' entry",
+    "is a claim about production that the gate re-checks on every deploy."
+  ],
+  "contentVerifiedFrom": "20261119140000",
+  "reconciled": {
+    "20260926180000_one_match_per_signal": {
+      "proof": "select to_regclass('public.matches_one_per_signal_per_property') is not null",
+      "note": "unique index present; ledger entry under another name (2026-10-22 audit)"
+    },
+    "20260926230000_community_evidence_fields": {
+      "proof": "select count(*) = 3 from information_schema.columns where table_schema = 'public' and table_name = 'raw_signals' and column_name in ('connection_id','acquisition_mode','thread_external_id')",
+      "note": "raw_signals columns present; ledger entry under another name (2026-10-22 audit)"
+    },
+    "20260927120000_notification_types_and_announcements": {
+      "proof": "select count(*) = 4 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'notification_type' and e.enumlabel in ('NEW_MESSAGE','PROPERTY_ACTION_REQUIRED','SEARCH_COMPLETE','ANNOUNCEMENT')",
+      "note": "enum values present; ledger entry under another name (2026-10-22 audit)"
+    }
+  },
+  "held": {
+    "20261108090000_publishing_central_accounts": {
+      "reason": "DROP-bearing; NOT APPLIED by owner decision (docs/claude/PROJECT_STATE.md, Publishing)",
+      "dependents": ["publishing-engine", "publishing-worker"]
+    }
+  }
+}

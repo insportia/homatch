@@ -52,6 +52,8 @@ export interface RsGridClassification {
   total: number | null;
   /** Short machine reason, never page text. */
   reason: string | null;
+  /** For an unreadable JSON answer: its structure (key names and value types, never values). */
+  shape?: string | null;
 }
 
 /** What RS.ge says when a search is refused for verification (content, not the stale DOM). */
@@ -206,6 +208,24 @@ function htmlTableRows(html: string): { rows: Array<Record<string, string>>; emp
 
 const columnsOf = (rows: Array<Record<string, string>>): string[] => [...new Set(rows.flatMap((r) => Object.keys(r)))].slice(0, 80);
 
+/**
+ * The STRUCTURE of a JSON answer — key names and value types, never a value
+ * (no TIN, no name, no message text), bounded. Production 2026-10-22: two
+ * 702/731-byte JSON answers with no row array were unreadable, and neither the
+ * logs nor the report could say what they held without the stored raw body.
+ */
+export function rsJsonShape(v: unknown, depth = 0): string {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return depth > 2 ? 'array' : `[${v.length}${v.length ? ':' + rsJsonShape(v[0], depth + 1) : ''}]`;
+  if (isPlainObject(v)) {
+    if (depth > 2) return 'object';
+    const keys = Object.keys(v).slice(0, 25);
+    return `{${keys.map((k) => `${k.replace(/\d{4,}/g, '#').replace(/[^\w$#-]/g, '?').slice(0, 40)}:${rsJsonShape(v[k], depth + 1)}`).join(',')}${Object.keys(v).length > 25 ? ',…' : ''}}`;
+  }
+  return typeof v === 'string' ? `string(${v.length})` : typeof v;
+}
+const withShape = (cls: RsGridClassification, json: unknown): RsGridClassification => ({ ...cls, shape: rsJsonShape(json).slice(0, 600) });
+
 /** Classify one captured answer from the server's own content. */
 export function classifyRsGridResponse(c: RsGridCapture): RsGridClassification {
   const base = { rows: [] as Array<Record<string, string>>, columns: [] as string[], total: null as number | null };
@@ -251,10 +271,10 @@ export function classifyRsGridResponse(c: RsGridCapture): RsGridClassification {
       return { ...base, outcome: 'REJECTED', format: 'JSON', reason: 'SERVER_VERIFICATION_REFUSED' };
     }
     const hasErrors = (isPlainObject(errorsField) && Object.keys(errorsField).length > 0) || (Array.isArray(errorsField) && errorsField.length > 0) || (typeof errorsField === 'string' && errorsField.trim() !== '');
-    if (hasErrors || failedFlag) return { ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'SERVER_ERROR_FIELD' };
+    if (hasErrors || failedFlag) return withShape({ ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'SERVER_ERROR_FIELD' }, json);
     if (found && found.rows.length === 0) return { ...base, total: found.total ?? 0, outcome: 'NO_RESULT', format: 'JSON', reason: null };
     if (EMPTY_RE.test(texts)) return { ...base, outcome: 'NO_RESULT', format: 'JSON', reason: 'EMPTY_MESSAGE' };
-    return { ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'NO_ROW_ARRAY' };
+    return withShape({ ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'NO_ROW_ARRAY' }, json);
   }
   return classifyMarkup(body, base);
 }
@@ -363,6 +383,8 @@ export interface RsVerificationRecord {
   rawResponse: string | null;
   rawResponseBytes: number;
   rawTruncated: boolean;
+  /** Structure of an unreadable JSON answer (names and types only). */
+  responseShape?: string | null;
   requestHadTin: boolean | null;
   reason: string | null;
   checkedAt: string;
@@ -413,6 +435,7 @@ export function buildRsVerificationRecord(input: {
     rawResponse: raw.text,
     rawResponseBytes: raw.bytes,
     rawTruncated: raw.truncated,
+    ...(cls?.shape ? { responseShape: cls.shape } : {}),
     requestHadTin: input.capture?.requestHadTin ?? null,
     reason: input.reason ?? cls?.reason ?? null,
     checkedAt: (input.now ?? new Date()).toISOString(),
@@ -448,5 +471,5 @@ export function rsDomOnlyNoResult(rec: { status?: unknown; serverOutcome?: unkno
 
 /** The log-safe view of a record: names, counts and codes — never values, never the raw answer. */
 export function rsRecordLogFields(r: RsVerificationRecord): Record<string, unknown> {
-  return { status: r.status, serverOutcome: r.serverOutcome, httpStatus: r.httpStatus, format: r.responseFormat, rowCount: r.rowCount, columns: r.columns, rawBytes: r.rawResponseBytes, requestHadTin: r.requestHadTin, reason: r.reason };
+  return { status: r.status, serverOutcome: r.serverOutcome, httpStatus: r.httpStatus, format: r.responseFormat, rowCount: r.rowCount, columns: r.columns, rawBytes: r.rawResponseBytes, requestHadTin: r.requestHadTin, reason: r.reason, ...(r.responseShape ? { shape: r.responseShape } : {}) };
 }

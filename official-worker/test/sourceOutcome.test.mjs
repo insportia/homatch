@@ -192,3 +192,17 @@ test('RS.ge: the page decides only where RS.ge\'s own answer does not contradict
   assert.equal(rsDomOnlyNoResult({ status: 'VERIFIED', serverOutcome: 'NO_RESULT', reason: null }), false);
   assert.equal(rsDomOnlyNoResult({ status: 'VERIFIED', serverOutcome: 'ACCEPTED', reason: 'PAGE_READ_UNPARSEABLE' }), false);
 });
+
+test('RS.ge: an unreadable JSON answer carries its structure — names and types, never a value — into the log and the record', async () => {
+  const { buildRsVerificationRecord, rsRecordLogFields } = await import('../.tstest-build/workflows/financial/RsTaxpayerResponse.js');
+  const body = JSON.stringify({ Data: { TaxPayerID: '405000000', Name: 'შპს ტესტი' }, Total: 1, Map: { '405000000': true } });
+  const cls = classifyRsGridResponse({ status: 200, contentType: 'application/json', body });
+  assert.equal(cls.outcome, 'UNPARSEABLE');
+  assert.equal(cls.shape, '{Data:{TaxPayerID:string(9),Name:string(9)},Total:number,Map:{#:boolean}}');
+  const rec = buildRsVerificationRecord({ capture: { status: 200, contentType: 'application/json', body }, classification: cls, tin: '405000000', sourceUrl: RS_URL });
+  const log = JSON.stringify(rsRecordLogFields(rec));
+  assert.match(log, /"shape":"\{Data:/);
+  assert.ok(!log.includes('405000000') && !log.includes('ტესტი'), 'no value reaches the log');
+  // A readable answer carries no shape.
+  assert.equal(classifyRsGridResponse({ status: 200, contentType: 'application/json', body: '{"Data":[],"Total":0}' }).shape, undefined);
+});

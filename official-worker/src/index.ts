@@ -235,6 +235,8 @@ const verifyMarket = new VerifyMarketRuntime({
   // MyHome goes through Find Property's own runtime (reader, engine, pacing,
   // one run at a time) AND its page cap: page 3 draws MyHome's Cloudflare
   // challenge (job dbf04e48, 2026-10-11), which cools MyHome down for everyone.
+  // Both receive options.pageCap = VERIFY_MARKET_PAGE_CAP (2) from the runtime;
+  // Find Property's own calls never pass it and keep their defaults.
   acquireMyHome: (request, options) => myhome.acquireForVerify(request, options as any),
   acquireSsge: (request, options) => acquireSsge(request, options as any),
   maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 300,

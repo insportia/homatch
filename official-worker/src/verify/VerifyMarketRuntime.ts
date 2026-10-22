@@ -6,8 +6,8 @@
 //
 // Bounded on purpose: Verify needs a representative local sample, not the
 // whole inventory. Each source stops at `maxPerSource` listings or its own
-// deadline, whichever comes first, and widens from the district to the city
-// only when the local sample is thin.
+// deadline, whichever comes first. It never widens to the whole city (F6):
+// a thin local sample is reported as thin, not padded with city-wide stock.
 //
 // Privacy: seller names, phones, e-mails, profiles, descriptions and photos
 // never leave this module. A phone survives only as a one-way hash, used for
@@ -78,13 +78,31 @@ export interface VerifyMarketJob {
   comparables: VerifyComparable[];
 }
 
-export type Acquirer = (request: MarketplaceSearchRequest, options: { deadlineAt: string; signal?: AbortSignal; report: (result: any) => Promise<void> }) => Promise<unknown>;
+export type Acquirer = (request: MarketplaceSearchRequest, options: { deadlineAt: string; signal?: AbortSignal; report: (result: any) => Promise<void>; pageCap: number }) => Promise<unknown>;
+
+/*
+ * VERIFY READS AT MOST TWO RESULT PAGES PER PORTAL (audit C2, 2026-10-22).
+ *
+ * Passed explicitly on every Verify call, never by changing a shared default:
+ * Find Property keeps SS.ge's own cap (SSGE_PAGE_CAP = 3) and MyHome's
+ * MYHOME_MAX_PAGES. Depth comes from the narrower, register-defined query,
+ * not from more pages.
+ *
+ * COUPLING RISK (audit C1, documented, not changed in this phase): Verify's
+ * MyHome search still runs inside Find Property's MyHome runtime — the same
+ * MAX_ACTIVE = 1 slot and the same Cloudflare cooldown — and Verify's SS.ge
+ * call does not take the SS.ge runtime's active slot. A challenge raised by a
+ * Verify search can therefore cool MyHome down for Find Property, and a long
+ * Find Property run can make Verify's MyHome attempt fail with MYHOME_BUSY.
+ */
+export const VERIFY_MARKET_PAGE_CAP = 2;
 
 export interface VerifyMarketDeps {
   acquireMyHome: Acquirer;
   acquireSsge: Acquirer;
   maxPerSource?: number;
   sourceBudgetMs?: number;
+  /** Unused since F6 (no city widening); accepted so older callers still type-check. */
   minLocalSample?: number;
   now?: () => number;
 }
@@ -116,10 +134,19 @@ export function districtCandidates(district: string | null): string[] {
   return out;
 }
 
-/** The comparable window. Area ±25 %, rooms ±1, price ±60 % around a known ask. */
+/**
+ * The portal-side area window, as a share of the subject's area, per type.
+ * Apartments keep the original ±25 %; plots, houses and commercial units vary
+ * more and are narrowed again by research-agent's eligibility gate.
+ */
+export const AREA_WINDOW: Record<string, number> = { APARTMENT: 0.25, HOUSE: 0.35, COMMERCIAL: 0.4, LAND: 0.5 };
+
+/** The comparable window. Area ±25 % (apartments), rooms ±1 (homes only), price ±60 % around a known ask. */
 export function buildMarketplaceRequest(profile: VerifyMarketProfile, district: string | null, nowIso = new Date().toISOString()): MarketplaceSearchRequest {
   const area = profile.areaSqm && profile.areaSqm > 5 ? profile.areaSqm : null;
-  const rooms = profile.rooms && profile.rooms > 0 ? Math.round(profile.rooms) : null;
+  const window = AREA_WINDOW[profile.propertyType] ?? 0.25;
+  const homes = profile.propertyType === 'APARTMENT' || profile.propertyType === 'HOUSE';
+  const rooms = homes && profile.rooms && profile.rooms > 0 ? Math.round(profile.rooms) : null;
   const price = profile.priceUsd && profile.priceUsd > 0 ? profile.priceUsd : null;
   const priceMin = price ? Math.floor(price * 0.4) : 0;
   const priceMax = price ? Math.ceil(price * 1.6) : profile.transactionType === 'BUY' ? 5_000_000 : 50_000;
@@ -136,8 +163,8 @@ export function buildMarketplaceRequest(profile: VerifyMarketProfile, district: 
     priceMinUsd: priceMin,
     priceMaxUsd: priceMax,
     collectPriceMaxUsd: priceMax,
-    areaMinSqm: area ? Math.floor(area * 0.75) : null,
-    areaMaxSqm: area ? Math.ceil(area * 1.25) : null,
+    areaMinSqm: area ? Math.floor(area * (1 - window)) : null,
+    areaMaxSqm: area ? Math.ceil(area * (1 + window)) : null,
     rooms: rooms ? { min: Math.max(1, rooms - 1), max: rooms + 1 } : null,
     bedrooms: null,
     bathrooms: null,
@@ -192,20 +219,22 @@ export function toVerifyComparable(source: SourceKey, c: ExternalListingCandidat
 async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMarketProfile, run: SourceRun, deps: VerifyMarketDeps): Promise<VerifyComparable[]> {
   const now = deps.now ?? Date.now;
   const cap = deps.maxPerSource ?? 300;
-  const minLocal = deps.minLocalSample ?? 8;
   const out = new Map<string, VerifyComparable>();
-  const scopes: Array<{ scope: 'DISTRICT' | 'CITY'; district: string | null }> = [
-    ...districtCandidates(profile.district).map((district) => ({ scope: 'DISTRICT' as const, district })),
-    { scope: 'CITY', district: null },
-  ];
+  /*
+   * NO CITY-WIDE WIDENING (F6, job 61c1c38c). A thin or unknown district used
+   * to fall back to the whole city, and those adverts became a plot's
+   * "comparables". Only the subject's own locality names are searched; a
+   * profile without a district is not searched at all.
+   */
+  const scopes: Array<{ scope: 'DISTRICT' | 'CITY'; district: string | null }> =
+    districtCandidates(profile.district).map((district) => ({ scope: 'DISTRICT' as const, district }));
   run.status = 'RUNNING';
+  if (!scopes.length) run.attempts.push({ scope: 'DISTRICT', district: null, discovered: 0, returned: 0, status: 'SKIPPED', error: 'NO_DISTRICT', durationMs: 0 });
   const runStarted = now();
   const total = deps.sourceBudgetMs ?? 300_000;
   for (const { scope, district } of scopes) {
     // Every local name is searched (Krtsanisi St. listings sit under both
-    // კრწანისი and ორთაჭალა); only the citywide widening is skipped once the
-    // local sample is representative.
-    if (scope === 'CITY' && out.size >= minLocal) break;
+    // კრწანისი and ორთაჭალა).
     const remaining = total - (now() - runStarted);
     if (remaining < 25_000) break;
     const started = now();
@@ -218,12 +247,18 @@ async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMa
       await acquire(request, {
         deadlineAt: new Date(started + remaining).toISOString(),
         signal: controller.signal,
+        pageCap: VERIFY_MARKET_PAGE_CAP,
         report: async (result: any) => {
           discovered = Math.max(discovered, Number(result?.discoveredCount) || 0);
           if (result?.errors?.length && !error) error = String(result.errors[0]?.code ?? 'SOURCE_ERROR');
           if (result?.status && result.status !== 'RESULTS_RECEIVED') status = result.status;
+          // SS.ge reads the whole city when it cannot resolve a district name
+          // (queryApplied.districtFallback). Those adverts are not local, and
+          // are labelled CITY so they can never pass as the subject's district.
+          const unresolved = !!result?.queryApplied?.districtFallback;
+          if (unresolved && !error) error = 'DISTRICT_UNRESOLVED';
           for (const l of result?.listings ?? []) {
-            const v = toVerifyComparable(source, l, scope);
+            const v = toVerifyComparable(source, l, unresolved ? 'CITY' : scope);
             if (v && !out.has(v.sourceListingId)) out.set(v.sourceListingId, v);
           }
           // Enough for a representative sample: stop politely.

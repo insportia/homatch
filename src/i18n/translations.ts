@@ -21094,6 +21094,24 @@ const en = {
   fin_v2_status_estimated: 'Estimated',
   fin_v2_status_partial: 'Partially priced',
   fin_v2_status_unpriced: 'Unpriced',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v21_cost_incomplete: 'Profit is not final: some costs are missing',
+  fin_v21_cost_incomplete_hint: 'The figures below include every cost HOMATCH can price. The items listed are not (fully) in them yet.',
+  fin_v21_cost_incomplete_short: 'Costs incomplete',
+  fin_v21_not_final: 'not final',
+  fin_v21_gap_partial: 'Partly measured',
+  fin_v21_gap_unsupported: 'Not measurable',
+  fin_v21_gap_unpriced_source: 'No price set',
+  fin_v21_shared_infra_title: 'Shared infrastructure',
+  fin_v21_shared_infra_hint: 'Hosting and platform costs for the period. Shown apart: never divided between services.',
+  fin_v21_shared_incomplete: 'Some fixed costs have no amount configured, so this total is incomplete.',
+  fin_v21_month: 'month',
+  fin_v21_price_drift_title: 'Price consistency',
+  fin_v21_price_drift_hint: 'Price copies used outside the central price book, compared with it live.',
+  fin_v21_drift_match: 'Matches',
+  fin_v21_drift_drift: 'Differs',
+  fin_v21_drift_not_in_book: 'Not in price book',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42102,6 +42120,24 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'შეფასებული',
   fin_v2_status_partial: 'ნაწილობრივ ფასდადგენილი',
   fin_v2_status_unpriced: 'ფასდაუდგენელი',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v21_cost_incomplete: 'მოგება საბოლოო არ არის: ზოგი ხარჯი აკლია',
+  fin_v21_cost_incomplete_hint: 'ქვემოთ მოცემული ციფრები მოიცავს ყველა ხარჯს, რომლის შეფასებაც HOMATCH-ს შეუძლია. ჩამოთვლილი პუნქტები მათში (სრულად) ჯერ არ შედის.',
+  fin_v21_cost_incomplete_short: 'ხარჯები არასრულია',
+  fin_v21_not_final: 'არ არის საბოლოო',
+  fin_v21_gap_partial: 'ნაწილობრივ გაზომილი',
+  fin_v21_gap_unsupported: 'გაზომვა შეუძლებელია',
+  fin_v21_gap_unpriced_source: 'ფასი არ არის დადგენილი',
+  fin_v21_shared_infra_title: 'საერთო ინფრასტრუქტურა',
+  fin_v21_shared_infra_hint: 'ჰოსტინგისა და პლატფორმის ხარჯები ამ პერიოდში. ნაჩვენებია ცალკე: სერვისებს შორის არასოდეს ნაწილდება.',
+  fin_v21_shared_incomplete: 'ზოგ ფიქსირებულ ხარჯს თანხა არ აქვს მითითებული, ამიტომ ეს ჯამი არასრულია.',
+  fin_v21_month: 'თვე',
+  fin_v21_price_drift_title: 'ფასების თანხვედრა',
+  fin_v21_price_drift_hint: 'ცენტრალური ფასების წიგნის გარეთ გამოყენებული ფასები, შედარებული მასთან რეალურ დროში.',
+  fin_v21_drift_match: 'ემთხვევა',
+  fin_v21_drift_drift: 'განსხვავდება',
+  fin_v21_drift_not_in_book: 'ფასების წიგნში არ არის',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63101,6 +63137,24 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'Оценка',
   fin_v2_status_partial: 'Частично оценено',
   fin_v2_status_unpriced: 'Без цены',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v21_cost_incomplete: 'Прибыль не окончательная: часть расходов не учтена',
+  fin_v21_cost_incomplete_hint: 'Цифры ниже включают все расходы, которые HOMATCH может оценить. Перечисленные пункты в них пока (полностью) не входят.',
+  fin_v21_cost_incomplete_short: 'Расходы неполные',
+  fin_v21_not_final: 'не окончательно',
+  fin_v21_gap_partial: 'Частично измерено',
+  fin_v21_gap_unsupported: 'Не измеряется',
+  fin_v21_gap_unpriced_source: 'Цена не задана',
+  fin_v21_shared_infra_title: 'Общая инфраструктура',
+  fin_v21_shared_infra_hint: 'Расходы на хостинг и платформу за период. Показаны отдельно: никогда не делятся между сервисами.',
+  fin_v21_shared_incomplete: 'Для некоторых постоянных расходов сумма не задана, поэтому итог неполный.',
+  fin_v21_month: 'мес.',
+  fin_v21_price_drift_title: 'Согласованность цен',
+  fin_v21_price_drift_hint: 'Копии цен вне центрального прайс-листа, сверенные с ним в реальном времени.',
+  fin_v21_drift_match: 'Совпадает',
+  fin_v21_drift_drift: 'Отличается',
+  fin_v21_drift_not_in_book: 'Нет в прайс-листе',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -84098,6 +84152,24 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'Tahmini',
   fin_v2_status_partial: 'Kısmen fiyatlandırıldı',
   fin_v2_status_unpriced: 'Fiyatlandırılmamış',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v21_cost_incomplete: 'Kâr kesin değil: bazı maliyetler eksik',
+  fin_v21_cost_incomplete_hint: 'Aşağıdaki rakamlar HOMATCH’in fiyatlayabildiği tüm maliyetleri içerir. Listelenen kalemler henüz (tamamen) dahil değildir.',
+  fin_v21_cost_incomplete_short: 'Maliyetler eksik',
+  fin_v21_not_final: 'kesin değil',
+  fin_v21_gap_partial: 'Kısmen ölçüldü',
+  fin_v21_gap_unsupported: 'Ölçülemiyor',
+  fin_v21_gap_unpriced_source: 'Fiyat yok',
+  fin_v21_shared_infra_title: 'Ortak altyapı',
+  fin_v21_shared_infra_hint: 'Dönemin barındırma ve platform maliyetleri. Ayrı gösterilir: hizmetler arasında asla bölünmez.',
+  fin_v21_shared_incomplete: 'Bazı sabit maliyetlerin tutarı girilmemiş; bu toplam eksiktir.',
+  fin_v21_month: 'ay',
+  fin_v21_price_drift_title: 'Fiyat tutarlılığı',
+  fin_v21_price_drift_hint: 'Merkezi fiyat defteri dışında kullanılan fiyat kopyaları, onunla canlı karşılaştırılır.',
+  fin_v21_drift_match: 'Eşleşiyor',
+  fin_v21_drift_drift: 'Farklı',
+  fin_v21_drift_not_in_book: 'Fiyat defterinde yok',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -105095,6 +105167,24 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'تقديري',
   fin_v2_status_partial: 'مسعّر جزئيًا',
   fin_v2_status_unpriced: 'غير مسعّر',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v21_cost_incomplete: 'الربح غير نهائي: بعض التكاليف ناقصة',
+  fin_v21_cost_incomplete_hint: 'تشمل الأرقام أدناه كل التكاليف التي يستطيع HOMATCH تسعيرها. البنود المدرجة غير مشمولة (بالكامل) بعد.',
+  fin_v21_cost_incomplete_short: 'التكاليف غير مكتملة',
+  fin_v21_not_final: 'غير نهائي',
+  fin_v21_gap_partial: 'مقاس جزئيًا',
+  fin_v21_gap_unsupported: 'غير قابل للقياس',
+  fin_v21_gap_unpriced_source: 'لا يوجد سعر',
+  fin_v21_shared_infra_title: 'البنية التحتية المشتركة',
+  fin_v21_shared_infra_hint: 'تكاليف الاستضافة والمنصة للفترة. تُعرض منفصلة: لا تُقسَّم أبدًا بين الخدمات.',
+  fin_v21_shared_incomplete: 'بعض التكاليف الثابتة بلا مبلغ محدد، لذا فهذا المجموع غير مكتمل.',
+  fin_v21_month: 'شهر',
+  fin_v21_price_drift_title: 'اتساق الأسعار',
+  fin_v21_price_drift_hint: 'نسخ الأسعار المستخدمة خارج دفتر الأسعار المركزي، مقارنةً به مباشرةً.',
+  fin_v21_drift_match: 'متطابق',
+  fin_v21_drift_drift: 'مختلف',
+  fin_v21_drift_not_in_book: 'غير موجود في دفتر الأسعار',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -126092,6 +126182,24 @@ const he: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'מוערך',
   fin_v2_status_partial: 'מתומחר חלקית',
   fin_v2_status_unpriced: 'ללא תמחור',
+
+  /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
+  fin_v21_cost_incomplete: 'הרווח אינו סופי: חלק מהעלויות חסרות',
+  fin_v21_cost_incomplete_hint: 'הנתונים שלהלן כוללים כל עלות ש-HOMATCH יכול לתמחר. הפריטים המפורטים עדיין לא כלולים בהם (במלואם).',
+  fin_v21_cost_incomplete_short: 'עלויות חלקיות',
+  fin_v21_not_final: 'לא סופי',
+  fin_v21_gap_partial: 'נמדד חלקית',
+  fin_v21_gap_unsupported: 'לא ניתן למדידה',
+  fin_v21_gap_unpriced_source: 'לא נקבע מחיר',
+  fin_v21_shared_infra_title: 'תשתית משותפת',
+  fin_v21_shared_infra_hint: 'עלויות אחסון ופלטפורמה לתקופה. מוצגות בנפרד: לעולם אינן מחולקות בין שירותים.',
+  fin_v21_shared_incomplete: 'לחלק מהעלויות הקבועות לא הוגדר סכום, ולכן הסכום הכולל חלקי.',
+  fin_v21_month: 'חודש',
+  fin_v21_price_drift_title: 'עקביות מחירים',
+  fin_v21_price_drift_hint: 'עותקי מחירים המשמשים מחוץ לספר המחירים המרכזי, בהשוואה חיה אליו.',
+  fin_v21_drift_match: 'תואם',
+  fin_v21_drift_drift: 'שונה',
+  fin_v21_drift_not_in_book: 'לא בספר המחירים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

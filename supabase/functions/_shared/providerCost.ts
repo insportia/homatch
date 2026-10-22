@@ -328,7 +328,7 @@ export async function recordUsageCost(db: Db, u: UsageCostInput): Promise<(Resol
     const row: Record<string, unknown> = {
       provider: u.provider,
       operation_type: u.operation,
-      service_key: u.service ?? null,
+      finance_service: u.service ?? null,
       source: u.source ?? null,
       units: priced.unitsTotal,
       cost_usd: priced.cost_usd, // NOT NULL column: 0 placeholder when UNPRICED, pricing_state says so

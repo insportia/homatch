@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
 
 const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
 const LANGS=['en','ru','ka','tr','ar','he'];
@@ -27,7 +28,13 @@ Deno.serve(async(req:Request)=>{
     if(openaiKey){
       const prompt=`You build real-estate demand search strategies. Analyze the supplied property. The property can be ANY real-estate type: apartment, house, villa, land, office, commercial, hotel, warehouse, development site, studio, townhouse or other. Transaction can be sale, rent or investment. Search for the OPPOSITE-SIDE demand: if the listing is SALE find buyers/investors; if RENT find renters/tenants; if investment opportunity find investors. Use location, price, size, features and especially description semantics. Do not assume apartment. Return strict JSON only: {"summary":string,"demandIntent":string,"propertyConcepts":string[],"buyerPersonas":string[],"queries":{"en":string[],"ru":string[],"ka":string[],"tr":string[],"ar":string[],"he":string[]}}. Produce 6-10 useful queries per language. Mix direct intent phrases, broader semantic phrases, and public-source discovery queries such as site:facebook.com/groups, site:t.me, site:instagram.com, site:threads.net, site:vk.com, site:reddit.com. Avoid exact over-restriction; AI filtering happens later.`;
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${openaiKey}`,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-4o-mini',temperature:0.2,response_format:{type:'json_object'},messages:[{role:'system',content:prompt},{role:'user',content:JSON.stringify(payload)}]})});
-      if(r.ok){ const j=await r.json(); try{profile=JSON.parse(j.choices?.[0]?.message?.content||'{}')}catch{} }
+      if(r.ok){
+        const j=await r.json();
+        // Provider cost (Finance V2.1): OpenAI's own reported usage, written off the response path.
+        const correlationId=String(p.id);
+        deferCost(recordUsageCost(admin as any,{provider:'OPENAI',operation:'SEARCH_PROFILE_GENERATE',service:'shared_platform',model:'gpt-4o-mini',correlationId,propertyId:correlationId,idempotencyKey:`SEARCH_PROFILE_GENERATE:${correlationId}:${j?.id??crypto.randomUUID()}`,tokens:tokenUsage(j)}));
+        try{profile=JSON.parse(j.choices?.[0]?.message?.content||'{}')}catch{}
+      }
     }
     if(!profile?.queries) profile=fallbackProfile(p,f);
     for(const l of LANGS) if(!Array.isArray(profile.queries?.[l])) profile.queries[l]=[];

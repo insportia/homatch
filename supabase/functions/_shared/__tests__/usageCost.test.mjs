@@ -63,7 +63,7 @@ test('recordUsageCost: idempotency key → upsert ignoring duplicates; the row c
   const w = db.writes[0];
   assert.equal(w.mode, 'upsert');
   assert.deepEqual(w.opts, { onConflict: 'idempotency_key', ignoreDuplicates: true });
-  assert.equal(w.row.service_key, 'ai_talk');
+  assert.equal(w.row.finance_service, 'ai_talk');
   assert.equal(w.row.correlation_id, 's1');
   assert.equal(w.row.pricing_state, 'ESTIMATED');
   assert.equal(w.row.cost_usd, 0.026);

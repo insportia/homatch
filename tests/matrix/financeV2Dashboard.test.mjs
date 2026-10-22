@@ -65,3 +65,25 @@ test('every fin_v2 key the tab uses exists in all six bundles', () => {
     assert.equal(hits.length, 6, `${key} in ${hits.length}/6 bundles`);
   }
 });
+
+test('V2.1: profit is never shown as final while costs are incomplete', () => {
+  assert.match(TAB, /function CoverageNotice\(\{ s \}[\s\S]{0,120}if \(s\.costComplete\) return null;/);
+  assert.match(TAB, /<CoverageNotice s=\{s\} \/>/);
+  assert.match(TAB, /!s\.costComplete && <> · <span className="text-amber-400">\{t\('fin_v21_not_final'\)\}/);
+  assert.match(TAB, /!s\.costComplete && <Pill tone="warn">\{t\('fin_v21_cost_incomplete_short'\)\}/);
+  const SQL21 = read('supabase/migrations/20261123090000_finance_v2_1_cost_coverage.sql');
+  assert.match(SQL21, /'costComplete', coalesce\(cost\.unpriced_lines, 0\) = 0 and coalesce\(cost\.partial_lines, 0\) = 0/);
+});
+
+test('V2.1: shared infrastructure stays apart and an unconfigured cost is never $0', () => {
+  assert.match(TAB, /l\.status === 'NOT_CONFIGURED'\s*\? <Pill tone="warn">\{t\('fin_not_configured'\)\}/);
+  assert.doesNotMatch(code(TAB).slice(code(TAB).indexOf('function SharedCostsPanel')), /periodUsd\s*[-+*/]/, 'no client-side allocation or sum');
+  for (const fn of ['finance_v2_shared_costs', 'finance_v2_price_drift']) assert.match(SVC, new RegExp(`rpc<[^>]+>\\('${fn}'`));
+});
+
+test('V2.1: every fin_v21 key the tab uses exists in all six bundles', () => {
+  const I18N = read('src/i18n/translations.ts');
+  const keys = [...new Set([...TAB.matchAll(/t\('(fin_v21_[a-z_]+)'/g)].map((m) => m[1]))];
+  assert.ok(keys.length >= 12, `keys ${keys.length}`);
+  for (const key of keys) assert.equal((I18N.match(new RegExp(`^\\s{2}${key}:`, 'gm')) ?? []).length, 6, key);
+});

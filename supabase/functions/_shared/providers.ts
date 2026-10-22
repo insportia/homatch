@@ -9,7 +9,19 @@ import type {
   AIProvider, AIClassifyRequest, AIIntentResult,
 } from './provider_types.ts';
 
+import { tokenUsage, type TokenUsage } from './providerCost.ts';
+
 export type { SearchProvider, SocialCollectorProvider, AIProvider };
+
+/**
+ * A classification plus what the provider itself reported, so the caller records the
+ * cost through recordUsageCost (Finance V2.1). `usage` null = the provider reported none:
+ * unknown, never an assumed token count. `costUsd` is NOT a price — the caller prices.
+ */
+export interface OpenAIIntentResult extends AIIntentResult {
+  usage: TokenUsage | null;
+  responseId: string | null;
+}
 
 // ── UTILS ─────────────────────────────────────────────────────
 
@@ -68,7 +80,7 @@ export class OpenAIProvider implements AIProvider {
     return !!this.apiKey;
   }
 
-  async classify(req: AIClassifyRequest): Promise<AIIntentResult> {
+  async classify(req: AIClassifyRequest): Promise<OpenAIIntentResult> {
     if (!this.isConfigured()) {
       return this._mock(req);
     }
@@ -98,9 +110,11 @@ export class OpenAIProvider implements AIProvider {
     const content = json.choices?.[0]?.message?.content ?? '{}';
     const parsed = JSON.parse(content) as Partial<AIIntentResult>;
 
-    // Cost estimate: gpt-4o-mini ~$0.15 per 1M input tokens
-    const inputTokens = json.usage?.prompt_tokens ?? 200;
-    const costUsd = (inputTokens / 1_000_000) * 0.15;
+    /* No price here: the caller prices `usage` from provider_price_book (input AND output)
+       via recordUsageCost. 0 is a placeholder the caller replaces, never a cost. */
+    const costUsd = 0;
+    const usage = tokenUsage(json);
+    const responseId = typeof json?.id === 'string' ? json.id : null;
 
     return {
       intentType: parsed.intentType ?? 'UNKNOWN',
@@ -128,10 +142,12 @@ export class OpenAIProvider implements AIProvider {
       translatedText: parsed.translatedText ?? null,
       model: 'gpt-4o-mini',
       costUsd,
+      usage,
+      responseId,
     };
   }
 
-  private _mock(req: AIClassifyRequest): AIIntentResult {
+  private _mock(req: AIClassifyRequest): OpenAIIntentResult {
     const lower = req.text.toLowerCase();
     const isBuyer =
       lower.includes('looking') || lower.includes('want') ||
@@ -166,6 +182,9 @@ export class OpenAIProvider implements AIProvider {
       translatedText: null,
       model: 'MOCK',
       costUsd: 0,
+      // No provider call was made.
+      usage: null,
+      responseId: null,
     };
   }
 }

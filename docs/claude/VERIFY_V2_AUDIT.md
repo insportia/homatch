@@ -12,8 +12,23 @@ myself are marked *(inferred)*.
 | Baseline commit | `0f9d8673ecf6fe776b7fb4eea9be1205ee8aaf2e` (origin/main, 2026-10-19) |
 | `refs/deployed/edge` | `0f9d8673…` (same) |
 | `refs/deployed/frontend` | `0f9d8673…` (same) |
-| Railway `homatch-official-worker` | **no `refs/deployed/*` ref.** The deployed worker SHA must be read from Railway before the V1 tag is cut |
-| Immutable tag | not created yet (proposed: `verify-v1-baseline`, pushed and protected) |
+| Railway `homatch-official-worker` | Active deployment `ea66417e-2ac4-4b53-812a-6c0b0003c5b6` (SUCCESS, 2026-10-19 05:11Z) built from `e8f0011f1d48a334fcf614d033b7541a9d00bb04`. The later commits up to `0f9d8673` were all SKIPPED by the watch paths. `official-worker/` has the identical tree `5622db5aa0c91807edf18e42335026a13c059454` at both commits, so the worker code is the V1 baseline. There is no `refs/deployed/worker` ref. |
+| Immutable tag | not created yet (proposed: `verify-v1-baseline` → `0f9d8673`; push needs approval) |
+
+### Production Verify configuration (`admin_settings`, read 2026-10-22)
+
+| Key | Value |
+|---|---|
+| `verify_execution_mode` | `QUEUE` |
+| `verify_tas_implementation` | `{active: API_FIRST, fallback: LEGACY}` |
+| `verify_captcha_auto_solve` | `{enabled: true, providers: {mygov, rstax}, maxSolvesPerJob: 12, maxAttemptsPerProvider: 2}` |
+| `verify_marketplace_market_enabled` | `true` |
+| `verify_developer_ads` | memo23 actor, enabled, `maxChargeUsd 0.5`, `cacheHours 24` |
+| `verify_billing_enabled` | `true` |
+| `provider_disabled_list` | DATAFORSEO, ZENROWS, SCRAPINGBEE, BRIGHTDATA |
+
+`verify_driver_token` also exists. It is a secret, so its value is not recorded
+here. Only admins and the service role can read it (RLS).
 
 ## 2. How V1 actually works
 

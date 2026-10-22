@@ -16,8 +16,10 @@
 // Only derived market evidence changes. Official evidence, the audit trail
 // and the original ledger (kept under `previous`) are untouched.
 
-import { foldMarketplaceIntoLane } from './marketplaceComparables.ts';
-import { subjectMarketFacts } from './intelligence/marketHierarchy.ts';
+import { foldMarketplaceIntoLane, type MarketProfileRequest } from './marketplaceComparables.ts';
+import { applyMarketEligibility, eligibilitySummary, marketplaceSearchPlan, subjectMarketProfile, type SubjectMarketProfile } from './marketEligibility.ts';
+import type { RegisterExtract } from './intelligence/propertyRegister.ts';
+import type { FxPoint } from './intelligence/fx.ts';
 
 export const MARKET_REFRESH_VERSION = 1;
 /** A refresh that never reports back is abandoned after this long. */
@@ -48,19 +50,21 @@ export function needsMarketRefresh(resultJson: unknown): boolean {
   return Number(m.attempts) < MAX_ATTEMPTS;
 }
 
-/** The profile the refresh searches with: the original search's, as recorded. */
-export function refreshProfile(resultJson: unknown): Record<string, any> | null {
-  const p = obj(obj(obj(resultJson)._marketplaceLedger).profile);
-  if (!(typeof p.city === 'string' && p.city.trim())) return null;
-  // The original search often started before the subject's district was known
-  // (job eeefada9 searched citywide). The refresh uses the district the
-  // subject's own official address names, so it searches locally.
-  if (!p.district) {
-    let district: string | undefined;
-    try { district = subjectMarketFacts(resultJson as any).district; } catch { district = undefined; }
-    if (district) return { ...p, district };
+/**
+ * The profile the refresh searches with. It used to replay the original
+ * search's recorded profile, which for job 61c1c38c was {APARTMENT, city-wide,
+ * no area} for a 2,509 m² plot — a refresh would have repeated the defect
+ * (F6). The profile is now derived again from the job's own register and
+ * identity (marketEligibility), and a subject that cannot be described gets
+ * no refresh at all.
+ */
+export function refreshProfile(resultJson: unknown, opts: { seed?: unknown; registerLatest?: Partial<RegisterExtract> | null } = {}): MarketProfileRequest | null {
+  try {
+    const subject = subjectMarketProfile({ result: resultJson, seed: (opts.seed ?? null) as never, ...(opts.registerLatest !== undefined ? { registerLatest: opts.registerLatest } : {}) });
+    return marketplaceSearchPlan(subject).request;
+  } catch {
+    return null;
   }
-  return p;
 }
 
 export function startedMarker(previous: unknown, workerJobId: string, profile: unknown, nowIso: string): MarketRefreshMarker {
@@ -82,12 +86,23 @@ export function foldMarketRefresh(
   workerJob: unknown,
   subject: { project: string | null; latitude: number | null; longitude: number | null; district: string | null },
   nowIso: string,
+  /**
+   * The eligibility gate (F6). A refresh writes straight into
+   * result_json.market.comparables, which synthesis reads with no stage in
+   * between, so the merged set is gated here; research-agent always passes it.
+   */
+  gate?: { subject: SubjectMarketProfile; fx?: FxPoint | null },
 ): Record<string, any> {
   const rj = { ...resultJson };
   const market = { ...obj(rj.market) };
   const lane = Array.isArray(market.comparables) ? market.comparables : [];
   const folded = foldMarketplaceIntoLane(lane, workerJob as any, subject, nowIso);
   market.comparables = folded.comparables;
+  if (gate) {
+    const g = applyMarketEligibility(folded.comparables, gate.subject, { fx: gate.fx ?? null });
+    market.comparables = g.accepted;
+    rj._marketEligibility = { ...eligibilitySummary(g), stage: 'MARKET_REFRESH' };
+  }
   rj.market = market;
   const prevLedger = obj(rj._marketplaceLedger);
   rj._marketplaceLedger = {
@@ -105,7 +120,7 @@ export function foldMarketRefresh(
     state: 'FOLDED',
     foldedAt: nowIso,
     before: lane.length,
-    after: folded.comparables.length,
+    after: market.comparables.length,
   } satisfies MarketRefreshMarker;
   return rj;
 }

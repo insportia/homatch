@@ -81,6 +81,10 @@ export interface ReportComparable {
   discoveryMethod: 'DETERMINISTIC_PORTAL_SEARCH' | 'MARKETPLACE_WORKER_SEARCH';
   /** Other adverts for the same property, and their prices. */
   alsoListedAt?: Array<{ url: string; source: string; price: string | null }>;
+  /** The portal's own category (APARTMENT / HOUSE / LAND / COMMERCIAL), when a worker search stated it. */
+  sourcePropertyType?: string | null;
+  /** BUY / MONTHLY_RENT as the worker searched it, so a rental can never pass as a sale. */
+  transactionType?: string | null;
 }
 
 /** The counters sections.ts reads. Internal; never shown to a customer raw. */

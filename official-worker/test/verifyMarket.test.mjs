@@ -1,5 +1,5 @@
 // verifyMarket.test.mjs — Verify Market Research over the existing MyHome.ge
-// and SS.ge adapters: bounded sample, district→city widening, privacy
+// and SS.ge adapters: bounded sample, district-only search (no city widening since F6), privacy
 // stripping, source failure isolation. Adapters are faked at their own
 // report() contract; nothing here touches the network.
 import { test } from 'node:test';
@@ -67,7 +67,7 @@ test('runtime: both sources searched, bounded by maxPerSource, stops politely by
   assert.ok(job.comparables.some((c) => c.source === 'SSGE'));
 });
 
-test('runtime: thin district sample widens to the city; a failing source never fails the other', async () => {
+test('runtime: a thin district sample is NOT widened to the city (F6); a failing source never fails the other', async () => {
   const calls = [];
   const rt = new VerifyMarketRuntime({
     minLocalSample: 8,
@@ -79,9 +79,9 @@ test('runtime: thin district sample widens to the city; a failing source never f
   });
   const job = rt.start(profile);
   await waitDone(job);
-  assert.deepEqual(calls, ['DISTRICT', 'CITY']);
-  assert.equal(job.sources.MYHOME.listings, 5);
-  assert.deepEqual(job.comparables.map((c) => c.scope).sort(), ['CITY', 'CITY', 'CITY', 'DISTRICT', 'DISTRICT']);
+  assert.deepEqual(calls, ['DISTRICT']);
+  assert.equal(job.sources.MYHOME.listings, 2);
+  assert.deepEqual(job.comparables.map((c) => c.scope).sort(), ['DISTRICT', 'DISTRICT']);
   assert.equal(job.sources.SSGE.status, 'FAILED');
   assert.equal(job.sources.SSGE.listings, 0);
 });

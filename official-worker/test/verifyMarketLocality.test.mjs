@@ -3,7 +3,7 @@
 // district-scoped SS.ge search returned nothing and the run widened to the
 // whole city, while SS.ge itself files Krtsanisi St. under "ორთაჭალა". The
 // Verify adapter now tries the raion and then the portal neighbourhood, each
-// as its own DISTRICT attempt, before widening. Engines are faked.
+// as its own DISTRICT attempt (and, since F6, never widens to the city). Engines are faked.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { VerifyMarketRuntime, districtCandidates } from '../.tstest-build/verify/VerifyMarketRuntime.js';
@@ -47,7 +47,7 @@ test('the .601 shape: raion search fails, the neighbourhood search is local, no 
   assert.match(att[0].error, /Unknown or ambiguous/);
 });
 
-test('still thin after every local name: widens to the city exactly once', async () => {
+test('still thin after every local name: never widens to the city (F6)', async () => {
   const calls = [];
   const rt = new VerifyMarketRuntime({
     minLocalSample: 8,
@@ -56,7 +56,7 @@ test('still thin after every local name: widens to the city exactly once', async
   });
   const job = rt.start({ city: 'თბილისი', district: 'კრწანისი', transactionType: 'BUY', propertyType: 'APARTMENT', areaSqm: 94, rooms: 3, priceUsd: null }, ['MYHOME']);
   await waitDone(job);
-  assert.deepEqual(calls, ['კრწანისი', 'ორთაჭალა', 'CITY']);
+  assert.deepEqual(calls, ['კრწანისი', 'ორთაჭალა']);
 });
 
 test('a rich first local name still searches the other local name, never the city', async () => {
@@ -83,8 +83,10 @@ test('Verify MyHome runs through Find Property\'s runtime (reader, engine, pacin
   assert.match(index, /acquireMyHome:\s*\(request, options\) => myhome\.acquireForVerify\(/);
   assert.doesNotMatch(index, /import \{ acquireMyHome \}/);
   const fn = runtime.slice(runtime.indexOf('async function acquireForVerify'), runtime.indexOf('void loop()'));
-  for (const piece of ['pageFetcher: reader?.fetcher', 'engine: myHomeEngine', 'maxPages, pageIntervalMs', 'while (active >= MAX_ACTIVE)', 'active--']) assert.ok(fn.includes(piece), piece);
-  // The page cap is Find Property's own: page 3 draws MyHome's Cloudflare challenge (job dbf04e48).
+  for (const piece of ['pageFetcher: reader?.fetcher', 'engine: myHomeEngine', 'maxPages: verifyPages, pageIntervalMs', 'while (active >= MAX_ACTIVE)', 'active--']) assert.ok(fn.includes(piece), piece);
+  // The page cap is never above Find Property's own (page 3 draws MyHome's Cloudflare challenge, job dbf04e48);
+  // since audit C2 Verify passes 2 explicitly and can only lower it.
+  assert.ok(fn.includes('Math.min(options.pageCap as number, maxPages)'));
   assert.doesNotMatch(fn, /options\.maxPages/);
   assert.doesNotMatch(index, /VERIFY_MARKET_MYHOME_MAX_PAGES|maxPages:/);
 });

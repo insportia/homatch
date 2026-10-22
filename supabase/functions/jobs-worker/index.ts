@@ -50,6 +50,7 @@ import type { PlanTask, TaskStatus } from '../../../src/expats/plan/tasks.ts';
 import type { DeadlineBasis, PlanStage, TaskCategory } from '../../../src/expats/plan/roadmap.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import { verifyMirror } from '../../../src/jobs/verifyMirror.ts';
+import { sweepExpiredReservations } from '../_shared/walletSweeper.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -773,7 +774,7 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules, reservations] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
@@ -791,10 +792,16 @@ serve(async (req) => {
         return { considered: 0, sent: 0, skipped: 'threw' };
       }),
       dispatchDueStudioSchedules(sb, url, expected).catch(() => ({ claimed: 0, dispatched: 0, failed: 0 })),
+      /* Credit holds that outlived their expiry: released only while the owner's switch is on
+         (_shared/walletSweeper.ts). Isolated like the reminders; a failure says it failed. */
+      sweepExpiredReservations(sb).catch((e) => {
+        console.error('[jobs-worker] reservation sweep failed', e instanceof Error ? e.message : String(e));
+        return { enabled: null, released: null, failed: true };
+      }),
     ]);
 
     return json({
-      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules,
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders, studioSchedules, reservations,
     });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));

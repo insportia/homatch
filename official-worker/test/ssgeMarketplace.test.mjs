@@ -92,7 +92,27 @@ test('wrong identity and repeated pages never become empty COMPLETE success',asy
   if(config.wrongDetail)assert.equal(result.delivered,0);
   else assert.equal(result.delivered,1);
   assert.ok(reports.at(-1).errors.length);
+  if(config.wrongDetail)assert.match(reports.at(-1).errors.find(e=>e.code==='SOURCE_RECORDS_REJECTED').message,/35611698 (IDENTITY|UNREADABLE)/);
  }
+});
+test('a listing that does not match the search is filtered with its reason, not counted as an incomplete run',async()=>{
+ const s=fixture.scenarios[0],other='99999998';
+ const clientFor=items=>new SsgePublicClient({locations:fixture.locations,session:{authorize:async r=>r},http:{fetchImpl:async url=>{
+  if(String(url).includes('legend-search-count'))return Response.json({cardCount:items.length,applicationCount:items.length});
+  if(String(url).includes('LegendSearch'))return Response.json({realStateItemModel:items,totalCount:0});
+  if(String(url).includes(`applicationId=${other}`))return Response.json({...s.detail,applicationId:Number(other),isInactiveApplication:true});
+  if(String(url).includes('/details'))return Response.json(s.detail);
+  throw Error('Unexpected fixture request');
+ }}});
+ const inactive={...s.list,applicationId:Number(other),detailUrl:s.list.detailUrl.replace(String(s.list.applicationId),other)};
+ // One delivered, one inactive: a clean completion that names what it left out and why.
+ let reports=[];let result=await acquireSsge(request(s),{...options(s),client:clientFor([s.list,inactive]),report:async r=>reports.push(r)});
+ assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,1);
+ assert.equal(reports.at(-1).errors.find(e=>e.code==='SOURCE_RECORDS_REJECTED'),undefined);
+ assert.match(reports.at(-1).errors.find(e=>e.code==='SOURCE_RECORDS_FILTERED').message,new RegExp(`1: ${other} INACTIVE`));
+ // Nothing delivered while dropping listings never claims a clean completion.
+ reports=[];result=await acquireSsge(request(s),{...options(s),client:clientFor([inactive]),report:async r=>reports.push(r)});
+ assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,0);
 });
 test('SS.ge reads only its first 3 result pages and reports the cap as a normal completion',async()=>{
  const s=fixture.scenarios[0];assert.equal(SSGE_PAGE_CAP,3);

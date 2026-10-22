@@ -165,7 +165,10 @@ jobs:
     name: Railway worker tests
     needs: plan
     if: needs.plan.outputs.run_worker == 'true'
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04 (2026-10-22), where the worker's
+    # Playwright 1.55 cannot install Chromium ("does not support chromium on
+    # ubuntu26.04-x64") and the job dies before any test runs.
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:

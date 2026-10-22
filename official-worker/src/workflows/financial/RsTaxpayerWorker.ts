@@ -15,6 +15,7 @@ import {
   rsPageReadDecides,
   pickRsRow,
   mapRsRow,
+  rsRowMatchesId,
   type RsGridCapture,
   type RsGridClassification,
   type RsVerificationRecord,
@@ -729,6 +730,11 @@ export async function runRsTaxpayerWorker(
         return withCaptcha(buildResult('NO_RESULT_CONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: 'RS.ge returned no taxpayer record for this identifier.', rsVerification: rec }));
       }
       const row = pickRsRow(cls.rows, idCode)!;
+      // A row about a DIFFERENT identifier is not this taxpayer's record — never confirm it.
+      if (rsRowMatchesId(row, idCode) === false) {
+        logRs('taxpayer_row_mismatch', { jobId: jobTag, rows: cls.rows.length });
+        return withCaptcha(buildResult('VERIFICATION_FAILED', { forEntity, selector: usedSelector, value: idCode, error: 'RS.ge answered with a record for a different identifier (RS_ROW_ID_MISMATCH)', rsVerification: rec }));
+      }
       const taxpayerData = mapRsRow(row, idCode);
       const text = rowText(row);
       if (entities) entities.scanText(text, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });

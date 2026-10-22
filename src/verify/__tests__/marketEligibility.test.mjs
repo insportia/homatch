@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  subjectMarketProfile, marketplaceSearchPlan, applyMarketEligibility, rangeBasis, marketEligibilityBrief, AREA_TOLERANCE, MIN_ELIGIBLE_FOR_RANGE,
+  subjectMarketProfile, marketplaceSearchPlan, applyMarketEligibility, rangeBasis, marketEligibilityBrief, AREA_TOLERANCE, MIN_ELIGIBLE_FOR_RANGE, localityOf,
 } from '../marketEligibility.ts';
 import { buildResearchSeed } from '../researchSeed.ts';
 import { marketProfileFromSeed, toReportComparable, dedupeMarketplace } from '../marketplaceComparables.ts';
@@ -235,4 +235,66 @@ test('a market refresh is re-profiled from the register and its fold is gated (n
   const out = foldMarketRefresh({ market: { comparables: [] } }, job, { project: null, latitude: null, longitude: null, district: null }, '2026-10-22T00:00:00Z', { subject, fx: FX });
   assert.equal(out.market.comparables.length, 0);
   assert.equal(out._marketEligibility.state, 'INSUFFICIENT_DATA');
+});
+
+/*
+ * Replay of the last 30 production jobs (2026-10-23): job 72ad7c75 (unit
+ * 01.72.14.040.030.01.02.017, a 12 m² parking space per its register) had no
+ * register in the run, so the identity text made it an "apartment" and a whole
+ * building's 3,711.2 m² became its size. An impossible size is refused, kept as
+ * evidence, and the subject is AREA_UNKNOWN — never searched at that size.
+ */
+test('an area impossible for the class is refused, kept as evidence, and not searched with', () => {
+  const p = subjectMarketProfile({
+    result: { assetClass: 'APARTMENT_IN_PROJECT', entityType: 'apartment' },
+    seed: { property: { areaSqm: { value: 3711.2 } }, location: { city: { value: 'თბილისი' }, district: { value: 'დიღომი' } } },
+    registerLatest: null,
+  });
+  assert.equal(p.assetClass, 'APARTMENT');
+  assert.equal(p.areaSqm, null);
+  assert.deepEqual(p.areaRejected, [{ value: 3711.2, basis: 'SEED', reason: 'IMPLAUSIBLE_FOR_CLASS' }]);
+  assert.deepEqual(marketplaceSearchPlan(p), { request: null, reason: 'AREA_UNKNOWN' });
+});
+
+test('a plausible apartment area from the same path is used as before', () => {
+  const p = subjectMarketProfile({
+    result: { assetClass: 'APARTMENT_IN_PROJECT', entityType: 'apartment' },
+    seed: { property: { areaSqm: { value: 79.5 } }, location: { city: { value: 'თბილისი' }, district: { value: 'დიღომი' } } },
+    registerLatest: null,
+  });
+  assert.equal(p.areaSqm, 79.5);
+  assert.equal(p.areaRejected, undefined);
+});
+
+/*
+ * Replay (2026-10-23), job 5d270963: a 1,100 m² plot in the village of
+ * წავკისი, outside the Tbilisi neighbourhood vocabulary. The old run's three
+ * წავკისი land listings are exactly the right comparables; the gate must keep
+ * them, and still refuse a listing that does not name the village.
+ */
+test('a village subject keeps listings naming the same village and refuses the rest', () => {
+  const subject = subjectMarketProfile({
+    result: {},
+    seed: { location: { address: { value: 'წავკისი' } } },
+    registerLatest: { landAreaSqm: 1100, propertyType: 'მიწის ნაკვეთი', unitRowFound: false },
+  });
+  assert.equal(subject.areaKey, null);
+  assert.equal(subject.locality, 'წავკისი');
+  const land = (address, area, extra = {}) => ({ url: `https://x/${address}/${area}`, source: 'myhome.ge', price: '50000', currency: 'USD', area: String(area), propertyType: 'LAND', sourcePropertyType: 'LAND', transactionType: 'BUY', comparableType: 'MICRO_LOCATION', address, ...extra });
+  const gate = applyMarketEligibility([
+    land('წავკისი', 525), land('წავკისი', 750), land('წავკისი, თრიალეთის ქუჩა', 1000),
+    land('კოჯორი', 1000), land('საბურთალო', 1000),
+  ], { ...subject, assetClass: 'LAND', areaSqm: 1100 }, { fx: { date: '2026-10-23', gelPerUsd: 2.7 } });
+  // 750 and 1,000 m² name the village and fit the land band; 525 m² is outside ±50% of 1,100.
+  assert.deepEqual(gate.accepted.map((c) => Number(c.area)).sort((a, b) => a - b), [750, 1000]);
+  const why = Object.fromEntries(gate.rejected.map((r) => [r.url.split('/').slice(-2).join(' '), r.reasons]));
+  assert.deepEqual(why['წავკისი 525'], ['SIZE_OUT_OF_BAND']);
+  assert.deepEqual(why['კოჯორი 1000'], ['LOCATION_WIDER_MARKET']);
+  assert.deepEqual(why['საბურთალო 1000'], ['LOCATION_MISMATCH']);
+});
+
+test('localityOf never takes a street, a number or the city as the settlement', () => {
+  assert.equal(localityOf('ქალაქი თბილისი, წყნეთის გზატკეცილი N31'), null);
+  assert.equal(localityOf('სოფელი წავკისი'), 'წავკისი');
+  assert.equal(localityOf('თბილისი'), null);
 });

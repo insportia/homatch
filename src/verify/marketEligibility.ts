@@ -58,6 +58,19 @@ export const AREA_TOLERANCE: Record<SearchableKind, number> = {
 /** Room counts may differ by at most this much (residential units, both sides known). */
 export const ROOMS_TOLERANCE = 1;
 
+/*
+ * The areas a single unit of each class can have, in m². Outside them a read
+ * area is a misread — replay of production job 72ad7c75 (2026-09-11) took the
+ * 3,711.2 m² of a whole building as an "apartment" — and is refused, so the
+ * subject is AREA_UNKNOWN rather than searched at an impossible size.
+ */
+export const PLAUSIBLE_AREA_SQM = {
+  APARTMENT: [10, 600],
+  PARKING: [5, 100],
+  HOUSE: [20, 3000],
+  COMMERCIAL: [5, 50000],
+} as const;
+
 /** A measured distance beyond this is not the subject's location, whatever the label says. */
 export const MAX_DISTANCE_M: Record<SearchableKind, number> = {
   APARTMENT: 1500,
@@ -98,6 +111,8 @@ export interface SubjectMarketProfile {
   /** The unit's area for a unit, the plot's area for land. */
   areaSqm: number | null;
   areaBasis: 'REGISTRY_UNIT' | 'REGISTRY_LAND' | 'REGISTRY_BUILDINGS' | 'OFFICIAL_TEXT' | 'SEED' | null;
+  /** Areas read but refused as impossible for the class (kept as evidence, never searched with). */
+  areaRejected?: Array<{ value: number; basis: NonNullable<SubjectMarketProfile['areaBasis']>; reason: 'IMPLAUSIBLE_FOR_CLASS' }>;
   /** The plot's registered area, whatever the class (context for a project). */
   landAreaSqm: number | null;
   rooms: number | null;
@@ -105,6 +120,12 @@ export interface SubjectMarketProfile {
   district: string | null;
   /** The district as a known neighbourhood key, when it resolves to one. */
   areaKey: AreaKey | null;
+  /**
+   * A settlement the address names that the neighbourhood vocabulary does not
+   * know (a village such as წავკისი), lower-cased; null when areaKey resolved.
+   * A listing naming the same settlement is local evidence.
+   */
+  locality?: string | null;
   latitude: number | null;
   longitude: number | null;
   project: string | null;
@@ -206,11 +227,17 @@ export function subjectMarketProfile(input: {
   const seedArea = pos(obj(seed.property?.areaSqm).value);
   let areaSqm: number | null = null;
   let areaBasis: SubjectMarketProfile['areaBasis'] = null;
+  const areaRejected: NonNullable<SubjectMarketProfile['areaRejected']> = [];
+  const bounds = (PLAUSIBLE_AREA_SQM as Record<string, readonly [number, number]>)[assetClass];
   const pick = (v: number | null, basis: NonNullable<SubjectMarketProfile['areaBasis']>) => {
-    if (areaSqm == null && v != null) {
-      areaSqm = v;
-      areaBasis = basis;
+    if (areaSqm != null || v == null) return;
+    // An area no unit of this kind can have is a misread (a building's total), never a search size.
+    if (bounds && (v < bounds[0] || v > bounds[1])) {
+      areaRejected.push({ value: v, basis, reason: 'IMPLAUSIBLE_FOR_CLASS' });
+      return;
     }
+    areaSqm = v;
+    areaBasis = basis;
   };
   if (assetClass === 'LAND') {
     // A plot is compared on its own registered area, never a unit's.
@@ -239,11 +266,13 @@ export function subjectMarketProfile(input: {
     assetClassBasis,
     areaSqm,
     areaBasis,
+    ...(areaRejected.length ? { areaRejected } : {}),
     landAreaSqm: pos(l.landAreaSqm),
     rooms: residential ? pos(obj(seed.property?.rooms).value) : null,
     city,
     district,
     areaKey,
+    locality: areaKey ? null : localityOf(district) ?? localityOf(address),
     latitude: coord(obj(loc.latitude).value),
     longitude: coord(obj(loc.longitude).value),
     project: project ?? txt(facts.project) ?? null,
@@ -392,6 +421,29 @@ function compAreaKey(c: AnyComparable): AreaKey | null {
   return m && !m.viaStreetName ? m.area : (m?.area ?? null);
 }
 
+const SETTLEMENT_PREFIX = /^(?:ქალაქი|ქ\.|სოფელი|სოფ\.|დაბა|city|village|town)\s+/i;
+const STREET_WORD = /ქუჩ|გამზ|გზატკეცილ|ჩიხ|შესახვ|მოედ|კვარტ|street|st\.|avenue|ave\b|highway|lane|road/i;
+const CITY_ONLY = /^(?:თბილისი|tbilisi|тбилиси)$/i;
+
+/**
+ * The settlement an address names when the neighbourhood vocabulary does not
+ * know it: the first comma part that is not a street, a number or the city.
+ * Replay of production job 5d270963 (2026-10-15): a 1,100 m² plot in
+ * წავკისი had three წავკისი land comparables, all refused as LOCATION_UNKNOWN
+ * because the vocabulary only covers Tbilisi's neighbourhoods.
+ */
+export function localityOf(text: unknown): string | null {
+  for (const part of String(text ?? '').split(',')) {
+    const p = part.replace(SETTLEMENT_PREFIX, '').replace(/\s+/g, ' ').trim();
+    if (p.length < 3 || /\d/.test(p) || STREET_WORD.test(p) || CITY_ONLY.test(p)) continue;
+    return p.toLowerCase();
+  }
+  return null;
+}
+
+const namesLocality = (c: AnyComparable, locality: string): boolean =>
+  [c.district, c.address].some((v) => typeof v === 'string' && v.toLowerCase().includes(locality));
+
 /**
  * The deterministic eligibility gate. Run BEFORE the MARKET model reads the
  * set, on whatever it appends, and again before any range is computed —
@@ -414,7 +466,7 @@ export function applyMarketEligibility(
     kind === 'UNKNOWN' ? 'PROPERTY_TYPE_UNKNOWN'
       : kind === 'MIXED' || kind === 'PARKING' ? 'PROPERTY_TYPE_NOT_SEARCHABLE'
         : kind !== 'DEVELOPMENT_PROJECT' && !subject.areaSqm ? 'AREA_UNKNOWN'
-          : !subject.areaKey && (subject.latitude == null || subject.longitude == null) && kind !== 'DEVELOPMENT_PROJECT' ? 'LOCATION_UNKNOWN'
+          : !subject.areaKey && !subject.locality && (subject.latitude == null || subject.longitude == null) && kind !== 'DEVELOPMENT_PROJECT' ? 'LOCATION_UNKNOWN'
             : null;
 
   const accepted: AnyComparable[] = [];
@@ -492,8 +544,10 @@ export function applyMarketEligibility(
       const d = typeof c.distanceM === 'number' ? c.distanceM : parseNum(c.distanceM);
       const ca = compAreaKey(c);
       const sa = subject.areaKey;
-      const sameArea = !!ca && !!sa && (ca === sa || areAdjacent(ca, sa));
-      const otherArea = !!ca && !!sa && !sameArea;
+      // Outside the vocabulary the subject's settlement decides: the listing must name it.
+      const loc = !sa && subject.locality ? subject.locality : null;
+      const sameArea = loc ? namesLocality(c, loc) : !!ca && !!sa && (ca === sa || areAdjacent(ca, sa));
+      const otherArea = loc ? !sameArea && !!ca : !!ca && !!sa && !sameArea;
       if (d != null && maxDistance != null && d > maxDistance) reasons.push('TOO_FAR');
       else if (d != null) {
         /* measured and close: the label does not matter */
@@ -508,6 +562,9 @@ export function applyMarketEligibility(
       } else if (otherArea) {
         // MICRO_LOCATION / SAME_DISTRICT whose own stated area is elsewhere.
         reasons.push('LOCATION_MISMATCH');
+      } else if (loc && !sameArea) {
+        // A settlement subject: a listing that does not name it is not shown to be there.
+        reasons.push('LOCATION_WIDER_MARKET');
       }
     }
 

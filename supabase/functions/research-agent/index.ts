@@ -39,7 +39,7 @@ import { VISUAL_ASSET_MAX } from '../../../src/verify/intelligence/visualAssets.
 import { applyVisualRecovery, needsVisualRecovery, recoverableAttachments, recoveryMarker, storedUnpersistedVisuals, storedVisualRecord, tasApiOf, VISUAL_RECOVERY_SOURCE, type WorkerFileOutcome } from '../../../src/verify/intelligence/visualRecovery.ts';
 import { assessVisualQuality } from '../../../src/verify/intelligence/visualQuality.ts';
 import { freshPhotoAddress, freshPhotoCenter, freshPhotoSubject, freshPhotosDue, freshPhotosNeeded, notRunSearch, officialPhotoDates, type FreshPhotoSearch } from '../../../src/verify/freshPhotos.ts';
-import { geocodeAddress } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
+import { resolveSubjectCenter } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
 import { runFreshPhotoSearch } from '../_shared/freshPhotos/search.ts';
 import { ledgerFileFor, documentCachePath, DOCUMENT_BUCKET, DOCUMENT_URL_TTL_SECONDS } from '../../../src/verify/officialDocumentLibrary.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
@@ -2769,9 +2769,15 @@ async function freshJobPhotos(sb: any, jobId: string, force: boolean): Promise<{
   } else {
     let center = freshPhotoCenter(sj, rj);
     if (!center) {
-      const g = await geocodeAddress(freshPhotoAddress(sj, rj)).catch(() => null);
+      /* F5 (2026-10-22): the same centre decision the neighbourhood uses
+         (locationCenter.ts): a situational drawing only when the address
+         agrees, a conflict yields no centre rather than a wrong building. */
+      const r = await resolveSubjectCenter({
+        resultJson: rj, query: null, address: freshPhotoAddress(sj, rj), previous: sj?.location?.neighborhood ?? null,
+      }).catch(() => null);
+      const c = r?.center ?? null;
       // A street-precision geocode is the street, not the building.
-      if (g && g.precision === 'HOUSE') center = { lat: g.lat, lng: g.lng, basis: 'GEOCODED_ADDRESS' };
+      if (c && !(c.basis === 'GEOCODED_ADDRESS' && c.precision !== 'HOUSE')) center = { lat: c.lat, lng: c.lng, basis: c.basis };
     }
     result = await runFreshPhotoSearch({
       jobId,

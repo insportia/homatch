@@ -38,7 +38,10 @@ const STORED_STOPS = 6;
  */
 export const MS_MAP_DEFAULT_CENTER = '44.7433554-41.7850526';
 
-export type CenterBasis = 'MS_MAP_PARCEL' | 'MS_MAP_PARCEL_EARLIER' | 'CADASTRAL_PLAN' | 'GEOCODED_ADDRESS';
+export type CenterBasis = 'MS_MAP_PARCEL' | 'MS_MAP_PARCEL_EARLIER' | 'CADASTRAL_PLAN' | 'SITUATIONAL_DRAWING' | 'GEOCODED_ADDRESS';
+
+/** How far a centre can be trusted on its own (locationCenter.ts decides with it). */
+export type CenterConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface GeoPoint {
   lat: number;
@@ -51,7 +54,28 @@ export interface NeighborhoodCenter extends GeoPoint {
   parcel?: string | null;
   /** Geocoder precision when the basis is an address geocode. */
   precision?: 'HOUSE' | 'STREET' | null;
+  /*
+   * Provenance (2026-10-22, F5). Optional so every stored centre before it
+   * still reads: a centre without these is one of the four bases above.
+   */
+  confidence?: CenterConfidence;
+  /** What the point was read from: a document title, a map URL, the geocoder query. */
+  evidence?: string | null;
+  /** When the source was read (the worker's retrievedAt, or the geocode time). */
+  retrievedAt?: string | null;
 }
+
+/** One place the subject could be, kept with the report whether or not it was chosen. */
+export interface CenterCandidate extends NeighborhoodCenter {
+  /** Straight-line metres from the chosen centre; null when nothing was chosen. */
+  distanceFromCenterM?: number | null;
+  /** True when further than CENTER_DISAGREEMENT_M from the chosen centre (or, with none chosen, from another candidate). */
+  disagrees?: boolean;
+  chosen?: boolean;
+}
+
+/** Why there is no centre although candidates existed. */
+export type CenterIssue = 'CENTER_CONFLICT' | 'UNCORROBORATED_DRAWING';
 
 export type NeighborhoodCategory =
   | 'GROCERY' | 'PHARMACY' | 'HEALTH' | 'SCHOOL' | 'KINDERGARTEN'
@@ -74,6 +98,9 @@ export interface NeighborhoodPlace {
   key: string;
   /** OSM element reference, e.g. "n123", "w45". */
   osm: string;
+  /** The feature's own point (way/relation centre), 6 decimals. Absent in lookups stored before 2026-10-22. */
+  lat?: number;
+  lng?: number;
 }
 
 export interface NeighborhoodStop {
@@ -119,6 +146,10 @@ export interface StoredNeighborhood {
   routesWithoutRef: number;
   attribution: string;
   licenseUrl: string;
+  /** Every centre considered, with provenance and disagreement (absent before 2026-10-22). */
+  candidates?: CenterCandidate[];
+  /** Set when candidates existed but none could be trusted; status is then NO_LOCATION. */
+  centerIssue?: CenterIssue | null;
 }
 
 /* ── geometry ───────────────────────────────────────────────────────── */
@@ -147,7 +178,13 @@ export function inGeorgia(p: GeoPoint | null | undefined): p is GeoPoint {
 
 /* ── where the subject is ───────────────────────────────────────────── */
 
-const MS_MAP_CENTRE = /ms\.gov\.ge\/msmap\/#C=(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)/;
+const MS_MAP_CENTRE = /ms\.gov\.ge\/msmap\/#C=(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)(?:@Z=(\d+(?:\.\d+)?))?/;
+/*
+ * A parcel view is zoomed in. Production kept URLs like "#C=44.7874667-
+ * 41.7233507@Z=12" (Sept 2026): a whole-city view whose centre is not the
+ * parcel, and which the default-centre check alone would have accepted.
+ */
+const MS_MAP_MIN_PARCEL_ZOOM = 16;
 
 /** The parent parcel of a unit code ("01.18.06.019.055.03.01.601" → "01.18.06.019.055"). */
 export function parentParcel(code: unknown): string | null {
@@ -160,6 +197,7 @@ export function centerFromMsMapUrl(url: unknown): GeoPoint | null {
   const m = String(url ?? '').match(MS_MAP_CENTRE);
   if (!m) return null;
   if (`${m[1]}-${m[2]}` === MS_MAP_DEFAULT_CENTER) return null;
+  if (m[3] != null && Number(m[3]) < MS_MAP_MIN_PARCEL_ZOOM) return null;
   const p = { lng: Number(m[1]), lat: Number(m[2]) };
   return inGeorgia(p) ? p : null;
 }
@@ -269,6 +307,123 @@ export function centerFromCadastralPlan(browserOfficial: unknown, parcel: string
     }
   }
   return null;
+}
+
+/*
+ * THE GRID OF A NAPR SITUATIONAL DRAWING ("situaciuri naxazi"), F5 2026-10-22.
+ *
+ * The newer cadastral plans print no grid numbers in their text layer (job
+ * 61c1c38c: "WGS 84 / UTM zone 38N" and nothing else), so the plan reader
+ * above finds nothing. The older situational drawings the same TAS_MAP
+ * traversal reads do: legacy AcadNusx text with the UTM grid labels at the
+ * top, either run together ("483570483600483630…", 6 digits each) or split
+ * by the PDF's kerning ("47865 047870 0" / "46259 50"). Their middle is the
+ * drawing's frame, which a 1:500 sheet centres on the object.
+ *
+ * Checked against stored jobs: the legacy sheet of parcel 01.72.14.040.030
+ * lands within ~10 m of its modern cadastral-plan centre, and that of
+ * 01.18.06.019.055 within ~30 m of its ms.gov.ge map centre; both are legacy
+ * cadastral plans that print the parcel code (legacyPlanNamesParcel). The
+ * sheet of 01.14.07.001.044 (job 61c1c38c, Tskneti highway 31 in Bagebi) is
+ * a situational drawing naming only an application number, and it lands in
+ * Nadzaladevi, ~7.5 km away. So a sheet without the parcel code is MEDIUM
+ * confidence and is never used alone: locationCenter.ts requires a second,
+ * independent candidate near it.
+ */
+const DRAWING_MARK = /situaciuri\s+naxazi|UTM\s*\n?\s*\(saerTaSoriso\)/;
+const EASTING = (v: number) => v >= 166000 && v <= 834000;
+const NORTHING = (v: number) => v >= 4500000 && v <= 4850000;
+
+/** Equal steps between grid labels: a label row, not a phone number or a scale bar. */
+function regularGrid(xs: number[]): boolean {
+  if (xs.length < 2) return true;
+  const step = xs[1] - xs[0];
+  return step > 0 && step <= 500 && xs.every((x, i) => i === 0 || x - xs[i - 1] === step);
+}
+
+/** One label line → grid values of one axis, or null. */
+function gridLine(line: string): { axis: 'E' | 'N'; values: number[] } | null {
+  const digits = line.replace(/\s+/g, '');
+  if (!/^\d{6,}$/.test(digits)) return null;
+  for (const [axis, width, ok] of [['N', 7, NORTHING], ['E', 6, EASTING]] as const) {
+    if (digits.length % width !== 0) continue;
+    const values = (digits.match(new RegExp(`\\d{${width}}`, 'g')) ?? []).map(Number);
+    if (values.length && values.every(ok) && regularGrid(values)) return { axis, values };
+  }
+  return null;
+}
+
+/** The frame centre of one situational-drawing text, or null. */
+export function centerFromSituationalDrawingText(text: unknown): GeoPoint | null {
+  const t = typeof text === 'string' ? text : '';
+  if (!t || !DRAWING_MARK.test(t)) return null;
+  // The labels come before the scale ("1:500", "1:1,204"); nothing after it is grid.
+  const head = t.split(/\n\s*1:\s?\d/)[0] ?? '';
+  const east = new Set<number>();
+  const north = new Set<number>();
+  for (const line of head.split('\n').slice(0, 40)) {
+    const g = gridLine(line);
+    if (!g) continue;
+    for (const v of g.values) (g.axis === 'E' ? east : north).add(v);
+  }
+  const E = [...east], N = [...north];
+  if (E.length < 2 || N.length < 2) return null;
+  const span = (xs: number[]) => Math.max(...xs) - Math.min(...xs);
+  if (span(E) > 1000 || span(N) > 1000) return null;
+  const mid = (xs: number[]) => (Math.max(...xs) + Math.min(...xs)) / 2;
+  const p = utmToLatLng(mid(E), mid(N));
+  return inGeorgia(p) ? p : null;
+}
+
+/*
+ * The OLDER legacy sheets are cadastral plans ("sakadastro gegma") and do
+ * print the parcel code, scattered by the PDF into pieces ("040.03014.01.72."
+ * for 01.72.14.040.030; "019.055 / 06. / 01.18." for 01.18.06.019.055). A
+ * sheet carrying both the last two and the first two segments names THIS
+ * parcel, which makes it a plan, not an anonymous drawing.
+ */
+export function legacyPlanNamesParcel(text: unknown, parcel: string | null): boolean {
+  const t = typeof text === 'string' ? text : '';
+  const s = String(parcel ?? '').split('.');
+  if (s.length !== 5 || !/sakadastro\s+gegma/.test(t)) return false;
+  return t.includes(`${s[3]}.${s[4]}`) && t.includes(`${s[0]}.${s[1]}.`);
+}
+
+export interface DrawingCenter extends GeoPoint {
+  evidence: string | null;
+  retrievedAt: string | null;
+  /** The sheet prints this parcel's code (legacyPlanNamesParcel). */
+  namesParcel: boolean;
+}
+
+/**
+ * Situational-drawing centres from a confirmed TAS_MAP search for `parcel`,
+ * one per distinct drawing (deduplicated to ~10 m), with the document title
+ * as evidence.
+ */
+export function centersFromSituationalDrawings(browserOfficial: unknown, parcel: string | null): DrawingCenter[] {
+  if (!parcel) return [];
+  const results = (browserOfficial as { results?: unknown } | null)?.results;
+  if (!Array.isArray(results)) return [];
+  const out: DrawingCenter[] = [];
+  for (const r of results) {
+    if (!r || typeof r !== 'object') continue;
+    const e = r as Record<string, unknown>;
+    if (String(e.source ?? 'TAS_MAP') !== 'TAS_MAP' || e.status !== 'SEARCH_CONFIRMED') continue;
+    if (parentParcel(e.queryEntered) !== parcel) continue;
+    for (const d of Array.isArray(e.documents) ? e.documents : []) {
+      const doc = (d ?? {}) as Record<string, unknown>;
+      const p = centerFromSituationalDrawingText(doc.rawText);
+      if (!p || out.some((o) => haversineM(o, p) < 10)) continue;
+      out.push({
+        ...p,
+        evidence: typeof doc.title === 'string' ? doc.title : null,
+        retrievedAt: typeof e.retrievedAt === 'string' ? e.retrievedAt : null,
+        namesParcel: legacyPlanNamesParcel(doc.rawText, parcel),
+      });
+    }
+  }
+  return out;
 }
 
 /*
@@ -493,6 +648,8 @@ export function parseOverpass(json: unknown, center: GeoPoint, radiusM = NEIGHBO
         distanceM: roundDistance(d),
         key: chainKey(el.tags, id),
         osm: id,
+        lat: Math.round(p.lat * 1e6) / 1e6,
+        lng: Math.round(p.lng * 1e6) / 1e6,
       },
     });
   }

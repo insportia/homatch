@@ -113,6 +113,7 @@ export const KNOWN_EVENT_KINDS = [
   'EMAIL_BOUNCED',
   'EMAIL_OPENED',
   'EMAIL_CLICKED',
+  'EMAIL_REPLIED',
   'AI_DRAFT',
 ] as const;
 
@@ -130,6 +131,8 @@ export interface EventDescription {
   automatic: boolean;
   /** When the event carries a timestamp of its own (a scheduled follow-up). */
   at: string | null;
+  /** The email thread the event belongs to (an Email Studio reply), when there is one. */
+  conversationId?: string | null;
 }
 
 /** "EMAIL_SOMETHING_NEW" → "email something new", for kinds this build has no key for. */
@@ -166,6 +169,10 @@ export function describeEvent(event: CrmEventLike): EventDescription {
   }
   if (kind === 'FOLLOW_UP_SCHEDULED') {
     return { key: 'crm_event_FOLLOW_UP_SCHEDULED', vars: {}, automatic, at: typeof detail.at === 'string' ? detail.at : null };
+  }
+  if (kind === 'EMAIL_REPLIED') {
+    const conv = typeof detail.conversationId === 'string' && /^[0-9a-f-]{36}$/i.test(detail.conversationId) ? detail.conversationId : null;
+    return { key: 'crm_event_EMAIL_REPLIED', vars: {}, automatic, at: null, conversationId: conv };
   }
   if ((KNOWN_EVENT_KINDS as readonly string[]).includes(kind)) {
     return { key: `crm_event_${kind}`, vars: {}, automatic, at: null };

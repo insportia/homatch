@@ -18,7 +18,12 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getEmailAdapter, getSmsAdapter, getVoiceAdapter } from '../_shared/outreach_providers.ts';
 import { checkSpendCap } from '../_shared/spend_cap.ts';
+import { listUnsubscribeHeaders, sendEmail } from '../_shared/resend/client.ts';
+import {
+  createReplyRoute, isSuppressed, loadEmailSettings, marketingKey, ownerFromAuth, reserveQuota, resolveSender, settleQuota,
+} from '../_shared/emailMarketing/core.ts';
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
+import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
@@ -41,6 +46,22 @@ async function signUnsubscribeToken(contactId: string, secret: string): Promise<
 }
 
 const BATCH_SIZE = 40;
+
+/*
+ * MERGE FIELDS, PER RECIPIENT. {{first_name|fallback}} and {{name|fallback}} become
+ * this contact's own stored name (first word for first_name), else the author's
+ * fallback, else nothing. In HTML the value is escaped: a name is data, never markup.
+ */
+const MERGE_FIELD_RE = /\{\{\s*(first_name|name)\s*(?:\|([^}]{0,40}))?\}\}/g;
+function mergeFields(text: string, fullName: string | null | undefined, html: boolean): string {
+  return text.replace(MERGE_FIELD_RE, (_m: string, field: string, fallback?: string) => {
+    const name = String(fullName ?? '').trim();
+    const value = name ? (field === 'first_name' ? name.split(/\s+/)[0] : name) : String(fallback ?? '').trim();
+    return html
+      ? value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+      : value;
+  });
+}
 
 /*
  * ── EMAIL STUDIO, ROUTED HERE ───────────────────────────────────────────
@@ -239,8 +260,12 @@ async function outreachSend(req: Request): Promise<Response> {
     const doNotField = channel === 'AI_CALL' ? 'do_not_call' : 'do_not_contact';
     const contactField = channel === 'EMAIL' ? 'email' : 'phone';
 
-    const { data: alreadySent } = await supabase.from('outreach_sends')
-      .select('contact_id').eq('campaign_id', campaign_id).neq('status', 'FAILED');
+    /* A failed email is not retried: Resend already retries transient errors, and a permanently
+       failing address must not keep the campaign RUNNING (outreach_claim_running_campaigns
+       applies the same rule). Calls and SMS keep retrying failed contacts as before. */
+    let alreadySentQuery = supabase.from('outreach_sends').select('contact_id').eq('campaign_id', campaign_id);
+    if (channel !== 'EMAIL') alreadySentQuery = alreadySentQuery.neq('status', 'FAILED');
+    const { data: alreadySent } = await alreadySentQuery;
     const excludeIds = (alreadySent ?? []).map((r: { contact_id: string }) => r.contact_id).filter(Boolean);
 
     let contactsQuery = supabase.from('outreach_contacts')
@@ -256,6 +281,9 @@ async function outreachSend(req: Request): Promise<Response> {
       .eq('is_duplicate', false)
       .not(contactField, 'is', null)
       .limit(BATCH_SIZE);
+    /* MARKETING EMAIL NEEDS CONSENT. A contact discovered or imported without a
+       recorded opt-in is a lead, not an audience; Resend's AUP and the law agree. */
+    if (channel === 'EMAIL') contactsQuery = contactsQuery.eq('consent_status', 'CONSENTED');
     if (excludeIds.length) contactsQuery = contactsQuery.not('id', 'in', `(${excludeIds.join(',')})`);
 
     const { data: contacts, error: contactsErr } = await contactsQuery;
@@ -264,6 +292,43 @@ async function outreachSend(req: Request): Promise<Response> {
     // Mark campaign RUNNING
     if (['DRAFT', 'READY', 'PAUSED'].includes(campaign.status)) {
       await supabase.from('outreach_campaigns').update({ status: 'RUNNING', updated_at: new Date().toISOString() }).eq('id', campaign_id);
+    }
+
+    /*
+     * BROADCAST ROUTE (admin_settings.email_marketing_route = BROADCAST). The campaign is synced
+     * into a Resend segment batch by batch and sent once as a broadcast; see
+     * _shared/emailMarketing/broadcast.ts. The default TRANSACTIONAL route continues below.
+     */
+    if (channel === 'EMAIL') {
+      const bSettings = await loadEmailSettings(supabase);
+      if (bSettings.route === 'BROADCAST') {
+        const bOwner = await ownerFromAuth(supabase, ownerId);
+        const bKey = marketingKey(bSettings).key;
+        if (!bOwner) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+        if (!bKey) return new Response(JSON.stringify({ blocked: true, reason: 'EMAIL_KEY_MISSING' }), { status: 423, headers: corsHeaders });
+        const bDomain = String(campaign.sender_email ?? '').split('@')[1]?.toLowerCase() ?? '';
+        let bDomainId: string | null = null;
+        if (bDomain) {
+          const { data: d } = await supabase.from('email_sending_domains').select('id')
+            .eq('owner_user_id', bOwner.userId).eq('domain', bDomain).eq('status', 'VERIFIED').maybeSingle();
+          bDomainId = (d as { id?: string } | null)?.id ?? null;
+        }
+        const bSender = await resolveSender(supabase, bSettings, bOwner, bDomainId);
+        const step = await broadcastStep(supabase, bKey, bSettings, bOwner, campaign, bSender.from, contacts ?? []);
+        await supabase.rpc('outreach_recompute_campaign_counters', { p_campaign_id: campaign_id });
+        if (step.state === 'QUOTA_EXHAUSTED') {
+          return new Response(JSON.stringify({ blocked: true, reason: step.error ?? 'QUOTA_EXHAUSTED' }), { status: 402, headers: corsHeaders });
+        }
+        if (step.state === 'SENT' || step.state === 'NOTHING_TO_SEND' || step.state === 'FAILED') {
+          await supabase.from('outreach_campaigns').update({
+            status: step.state === 'FAILED' ? 'FAILED' : 'COMPLETED', last_send_error: step.error ?? null, updated_at: new Date().toISOString(),
+          }).eq('id', campaign_id);
+        }
+        return new Response(JSON.stringify({
+          route: 'BROADCAST', state: step.state, processed: (contacts ?? []).length, synced: step.synced, sent: step.sent,
+          broadcast_id: step.broadcastId, remaining_hint: step.state === 'SYNCING', error: step.error ?? null,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
 
     if (!contacts || contacts.length === 0) {
@@ -320,7 +385,59 @@ async function outreachSend(req: Request): Promise<Response> {
 
     let sentCount = 0, failedCount = 0, skippedCount = 0, costTotal = 0, anyMock = false;
 
-    for (const contact of contacts) {
+    /*
+     * ── EMAIL: PLAN QUOTA, SENDER, KEY ────────────────────────────────
+     * The batch reserves plan quota under one key per invocation (see below). Only as
+     * many contacts as the plan (or consented overage) allows are sent; a run that dies
+     * leaves its reservation to email_quota_release_stale.
+     */
+    let quotaReservationId: string | null = null;
+    let quotaRefusal: string | null = null;
+    let batch = contacts;
+    const emailCtx = channel === 'EMAIL' ? await (async () => {
+      const settings = await loadEmailSettings(supabase);
+      const owner = await ownerFromAuth(supabase, ownerId);
+      if (!owner) return null;
+      const key = marketingKey(settings);
+      const domainName = String(campaign.sender_email ?? '').split('@')[1]?.toLowerCase() ?? '';
+      let domainId: string | null = null;
+      if (domainName) {
+        const { data: d } = await supabase.from('email_sending_domains').select('id')
+          .eq('owner_user_id', owner.userId).eq('domain', domainName).eq('status', 'VERIFIED').maybeSingle();
+        domainId = (d as { id?: string } | null)?.id ?? null;
+      }
+      const sender = await resolveSender(supabase, settings, owner, domainId);
+      return { settings, owner, key, sender };
+    })() : null;
+    if (channel === 'EMAIL') {
+      if (!emailCtx) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+      if (!emailCtx.key.key) {
+        return new Response(JSON.stringify({ blocked: true, reason: 'EMAIL_KEY_MISSING', message: 'No Resend key is configured for marketing email.' }), { status: 423, headers: corsHeaders });
+      }
+      /* One reservation per invocation. A key derived from the contact set would hand two
+         overlapping invocations the same reservation, and the first to settle would close it
+         over the other's sends. A run that dies leaves its reservation to the stale sweep. */
+      const grant = await reserveQuota(supabase, emailCtx.settings, emailCtx.owner, contacts.length, `outreach-batch:${campaign_id}:${crypto.randomUUID()}`, 'OUTREACH');
+      quotaReservationId = grant.reservationId;
+      if (!grant.reservationId || grant.granted <= 0) {
+        return new Response(JSON.stringify({
+          blocked: true, reason: grant.reason ?? 'QUOTA_EXHAUSTED',
+          message: 'The email plan allowance is used up. Upgrade the plan or enable overage to continue.',
+        }), { status: 402, headers: corsHeaders });
+      }
+      if (grant.granted < contacts.length) { batch = contacts.slice(0, grant.granted); quotaRefusal = 'QUOTA_PARTIAL'; }
+    }
+
+    for (const contact of batch) {
+      /* Suppressed anywhere (this owner's opt-outs, or a global bounce/complaint): never sent, never claimed. */
+      if (channel === 'EMAIL' && emailCtx && await isSuppressed(supabase, emailCtx.owner, contact.email!)) {
+        /* Recorded on the contact, so the next batch's query no longer selects it. */
+        await supabase.from('outreach_contacts')
+          .update({ suppressed: true, suppressed_reason: 'ADDRESS_SUPPRESSED', updated_at: new Date().toISOString() })
+          .eq('id', contact.id).eq('owner_id', ownerId);
+        skippedCount++;
+        continue;
+      }
       // ── Claim the contact BEFORE contacting them ──────────
       // provider is left null on the claim: this row does not yet describe a
       // dispatch, and labelling it MOCK (the column default) would make a
@@ -350,7 +467,7 @@ async function outreachSend(req: Request): Promise<Response> {
         if (upErr) console.error('[outreach-send] failed to record send outcome:', sendId, upErr.message);
       };
 
-      if (channel === 'EMAIL' && emailAdapter) {
+      if (channel === 'EMAIL' && emailCtx && emailCtx.key.key) {
         // Task #64: every outreach email must carry a working one-click
         // unsubscribe link — outreach_contacts.unsubscribed was already
         // enforced (checked below, and by checkEligibility in
@@ -360,24 +477,32 @@ async function outreachSend(req: Request): Promise<Response> {
         // outreach-unsubscribe — a contact can only unsubscribe themselves.
         const unsubToken = await signUnsubscribeToken(contact.id, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
         const unsubUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/outreach-unsubscribe?contact=${encodeURIComponent(contact.id)}&token=${unsubToken}`;
-        const bodyHtml = campaign.html_body || `<p>${(campaign.text_body || '').replace(/\n/g, '<br/>')}</p>`;
+        const bodyHtml = mergeFields(campaign.html_body || `<p>${(campaign.text_body || '').replace(/\n/g, '<br/>')}</p>`, contact.full_name, true);
         const htmlWithFooter = `${bodyHtml}\n<hr style="margin-top:24px;border:none;border-top:1px solid #e5e5e5"/>\n<p style="font-size:11px;color:#888;margin-top:12px">Homatch &middot; <a href="${unsubUrl}" style="color:#888">Unsubscribe</a></p>`;
-        const textWithFooter = campaign.text_body ? `${campaign.text_body}\n\n---\nUnsubscribe: ${unsubUrl}` : undefined;
-        const result = await emailAdapter.send({
-          to: contact.email!, subject: campaign.subject || campaign.name,
-          html: htmlWithFooter,
-          text: textWithFooter,
-          from_name: campaign.sender_name || 'Homatch', from_email: campaign.sender_email || undefined,
-          reply_to: campaign.reply_to || defaultReplyTo || undefined, campaign_id,
+        const textWithFooter = campaign.text_body ? `${mergeFields(campaign.text_body, contact.full_name, false)}\n\n---\nUnsubscribe: ${unsubUrl}` : undefined;
+        /* Replies come back to HOMATCH through this recipient's own opaque route, unless the
+           campaign deliberately names its own Reply-To. */
+        const routed = await createReplyRoute(supabase, emailCtx.settings, emailCtx.owner, {
+          kind: 'OUTREACH', campaignId: campaign_id, recipientId: sendId, contactEmail: contact.email,
+        }).catch(() => null);
+        const result = await sendEmail(emailCtx.key.key, {
+          from: campaign.sender_name ? emailCtx.sender.from.replace(/^"[^"]*"/, `"${String(campaign.sender_name).replace(/[<>"\r\n]/g, '').slice(0, 80)}"`) : emailCtx.sender.from,
+          to: contact.email!,
+          subject: mergeFields(campaign.subject || campaign.name, contact.full_name, false),
+          html: htmlWithFooter, text: textWithFooter,
+          replyTo: campaign.reply_to || routed || defaultReplyTo || undefined,
+          headers: listUnsubscribeHeaders(unsubUrl),
+          tags: [{ name: 'kind', value: 'outreach' }, { name: 'send_id', value: sendId }],
+          idempotencyKey: `outreach-send:${sendId}`,
         });
-        anyMock = anyMock || result.is_mock;
-        const cost = result.success && !result.is_mock ? emailUnitPrice : 0;
+        const accepted = result.ok && Boolean(result.json?.id);
+        const cost = accepted ? emailUnitPrice : 0;
         await finalize({
-          status: result.success ? 'SENT' : 'FAILED', provider: result.is_mock ? 'MOCK' : 'RESEND',
-          provider_message_id: result.provider_message_id, error_message: result.error, cost_usd: cost, sent_at: new Date().toISOString(),
+          status: accepted ? 'SENT' : 'FAILED', provider: 'RESEND',
+          provider_message_id: result.json?.id ?? null, error_message: accepted ? null : result.error, cost_usd: cost, sent_at: new Date().toISOString(),
         });
-        if (result.success) { sentCount++; costTotal += cost; } else failedCount++;
-        if (!result.is_mock) await logCost(supabase, 'RESEND', 'OUTREACH_EMAIL_SEND', cost, result.success);
+        if (accepted) { sentCount++; costTotal += cost; } else failedCount++;
+        await logCost(supabase, 'RESEND', 'OUTREACH_EMAIL_SEND', cost, accepted);
       } else if (channel === 'SMS' && smsAdapter) {
         const result = await smsAdapter.send({ to: contact.phone!, body: campaign.sms_template || '', campaign_id });
         anyMock = anyMock || result.is_mock;
@@ -416,13 +541,15 @@ async function outreachSend(req: Request): Promise<Response> {
       }
     }
 
+    if (channel === 'EMAIL') await settleQuota(supabase, quotaReservationId, sentCount);
+
     // Derived from outreach_sends, not accumulated onto a value read at the top
     // of this invocation — two overlapping batches used to lose each other's
     // contribution to sent_count and cost_actual_usd.
     const { error: counterErr } = await supabase.rpc('outreach_recompute_campaign_counters', { p_campaign_id: campaign_id });
     if (counterErr) console.error('[outreach-send] counter recompute failed:', counterErr.message);
 
-    const remaining = contacts.length === BATCH_SIZE; // heuristic: full batch means there may be more
+    const remaining = contacts.length === BATCH_SIZE && quotaRefusal === null; // full batch: maybe more
     if (!remaining) {
       const stillDialing = await supabase.from('outreach_sends').select('id', { count: 'exact', head: true })
         .eq('campaign_id', campaign_id).in('status', ['QUEUED', 'DIALING', 'ANSWERED']);
@@ -435,7 +562,8 @@ async function outreachSend(req: Request): Promise<Response> {
       processed: contacts.length, sent: sentCount, failed: failedCount,
       // Claimed by a concurrent invocation, so deliberately not contacted here.
       skipped: skippedCount,
-      remaining_hint: remaining,
+      remaining_hint: remaining || quotaRefusal !== null,
+      quota: quotaRefusal,
       is_mock: anyMock, campaign_status: remaining ? 'RUNNING' : 'COMPLETED_OR_RUNNING',
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {

@@ -11,6 +11,10 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Email Marketing plan names are product names (Pro, Scale) in every language; 'Net' is also the Turkish word.
+  'emp_plan_pro',
+  'emp_plan_scale',
+  'admin_emx_net',
   // Find Buyers 2.0 outreach / logged-contact channels: messenger brand names, the same in Latin-script locales.
   'crm_channel_WHATSAPP', 'crm_channel_TELEGRAM', 'lo_channel_WHATSAPP', 'lo_channel_TELEGRAM',
   // Find Property paid campaign: social-network brand names, the same in Latin-script locales.

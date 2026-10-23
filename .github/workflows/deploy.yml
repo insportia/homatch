@@ -691,6 +691,10 @@ jobs:
             "comm-agent"
             "comm-campaign-launch"
             "comm-provider-status"
+            # Email Marketing: plans (wallet), sending domains (Resend Domains API), CRM
+            # inbox replies and provider usage. Authenticates the caller itself (or the
+            # jobs-worker token for its two cron actions) and acts under the service role.
+            "email-marketing"
             "whatsapp-send"
             "whatsapp-sync"
             "cartesia-access-token"

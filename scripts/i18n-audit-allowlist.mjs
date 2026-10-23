@@ -34,6 +34,8 @@ export const AUDIT_ALLOWED_STRINGS = [
 
 // Exact-string exceptions — reviewed case by case.
 export const AUDIT_ALLOWED_EXACT = new Set([
+  // Example sending domain in the domain input placeholder: an invariant technical token.
+  'mail.company.com',
   'Homatch',
   // The vendor and model a Find Property AI cost row is billed by, on the admin cost page
   // (/admin/finance/find-property). It names the line on OpenAI's invoice and the price-book

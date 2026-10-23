@@ -43,9 +43,23 @@ import {
 } from '../_shared/comm/generated/inboundEmail.ts';
 import { detectsOptOut, detectsHumanRequest } from '../_shared/comm/generated/handoff.ts';
 import { handleStudioUnsubscribe, isStudioUnsubscribe } from '../_shared/emailStudioUnsubscribe.ts';
+import { getReceivedEmail, mapDomainStatus, resolveResendKey, routeTokenFrom, senderAuthentication } from '../_shared/resend/client.ts';
+import { loadEmailSettings, resolveReplyRoute } from '../_shared/emailMarketing/core.ts';
 
 /** Bigger than any real reply; smaller than a denial of service. */
 const MAX_BODY_BYTES = 2_000_000;
+
+/*
+ * THE RESEND EVENT CATALOGUE (37 types, verified 2026-10-22 against
+ * resend.com/docs/dashboard/webhooks/event-types). Every type has an explicit
+ * outcome: applied, recorded, or deliberately ignored — and every delivery is
+ * claimed (deduplicated) and finished, so the event log is complete.
+ */
+const EMAIL_DELIVERY_EVENTS = new Set([
+  'email.sent', 'email.delivered', 'email.delivery_delayed', 'email.bounced', 'email.complained',
+  'email.opened', 'email.clicked', 'email.failed', 'email.suppressed', 'email.scheduled',
+]);
+const RECORDED_ONLY_PREFIXES = ['contact.', 'topic.', 'inbox.'];
 
 Deno.serve(async (req: Request): Promise<Response> => {
   /*
@@ -120,26 +134,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
    * apart here and share nothing but the signature check and the dedupe.
    */
   const eventType = String((body as { type?: unknown })?.type ?? '');
-  if (/^email\.(delivered|bounced|complained|delivery_delayed|opened|clicked)$/.test(eventType)) {
+  /* Dedupe on the Svix message id: unique per delivery, identical across retries. */
+  const eventKey = headers.id ? `svix:${headers.id}` : null;
+  if (EMAIL_DELIVERY_EVENTS.has(eventType)) {
     const sb = serviceClient();
     try {
-      await handleDeliveryEvent(sb, body, eventType, headers.id ?? '');
+      await handleDeliveryEvent(sb, body, eventType, eventKey);
     } catch (e) {
       logEvent('email-webhook', 'delivery_event_failed', {
         type: eventType, error: redact((e as Error)?.message),
       });
+      if (eventKey) await finishEvent(sb, eventKey, String((e as Error)?.message ?? e));
+    }
+    return new Response('ok', { status: 200 });
+  }
+  if (eventType.startsWith('domain.') || eventType.startsWith('suppression.') || RECORDED_ONLY_PREFIXES.some((x) => eventType.startsWith(x))) {
+    const sb = serviceClient();
+    try {
+      await handleAccountEvent(sb, body, eventType, eventKey ?? `${eventType}:${Date.now()}`);
+    } catch (e) {
+      logEvent('email-webhook', 'account_event_failed', { type: eventType, error: redact((e as Error)?.message) });
+      if (eventKey) await finishEvent(sb, eventKey, String((e as Error)?.message ?? e));
     }
     return new Response('ok', { status: 200 });
   }
 
   const email = normaliseInboundEmail(body, headers.id ?? '');
   if (!email) {
-    /* Not an inbound email: a delivery receipt, a bounce, an event type added
-       next year. Acknowledged and ignored — an unknown event is not an error,
-       and a 4xx here would make the provider retry it forever. */
-    logEvent('email-webhook', 'ignored_event', {
-      type: (body as { type?: unknown })?.type ?? null,
-    });
+    /* A type outside the catalogue (added after 2026-10-22): recorded — not
+       silently dropped — and acknowledged, so the provider does not retry it. */
+    logEvent('email-webhook', 'unknown_event', { type: eventType || null });
+    if (eventKey) {
+      const sb = serviceClient();
+      const claimed = await claimEvent(sb, eventKey, eventType || 'unknown');
+      if (claimed) await finishEvent(sb, eventKey, null);
+    }
     return new Response('ok', { status: 200 });
   }
 
@@ -206,13 +235,15 @@ const STUDIO_KIND: Record<string, string> = {
  * undo.
  */
 async function handleDeliveryEvent(
-  sb: Sb, body: unknown, eventType: string, eventIdFallback: string,
+  sb: Sb, body: unknown, eventType: string, eventKey: string | null,
 ): Promise<void> {
   const data = ((body as { data?: unknown })?.data ?? {}) as Record<string, unknown>;
   const envelopeId = (body as { id?: unknown })?.id;
-  const eventId = typeof envelopeId === 'string' && envelopeId
+  /* Svix id first (one per delivery); without it, type + email id + event time, so an
+     open and a later second open are two events while a retry of either is one. */
+  const eventId = eventKey ?? (typeof envelopeId === 'string' && envelopeId
     ? envelopeId
-    : `${eventType}:${typeof data.email_id === 'string' ? data.email_id : eventIdFallback}`;
+    : `${eventType}:${typeof data.email_id === 'string' ? data.email_id : 'none'}:${String((body as { created_at?: unknown })?.created_at ?? '')}`);
 
   const { data: shouldProcess, error: claimError } = await sb.rpc('comm_claim_webhook_event', {
     p_provider: 'RESEND',
@@ -223,6 +254,44 @@ async function handleDeliveryEvent(
   if (claimError) throw new Error(`dedup claim failed: ${claimError.message}`);
   if (!shouldProcess) {
     logEvent('email-webhook', 'duplicate_dropped', { eventId });
+    return;
+  }
+
+  /* email.failed / email.suppressed: the provider did not (and will not) deliver it. */
+  if (eventType === 'email.failed' || eventType === 'email.suppressed') {
+    await applyUndeliverable(sb, data, eventType);
+    await sb.rpc('comm_finish_webhook_event', { p_provider: 'RESEND', p_event_key: eventId, p_error: null });
+    return;
+  }
+
+  /* A CRM reply sent from the HOMATCH inbox carries its own message row. */
+  if (typeof data.email_id === 'string' && ['email.delivered', 'email.bounced', 'email.complained'].includes(eventType)) {
+    const { data: crm } = await sb.from('comm_messages')
+      .update(eventType === 'email.delivered'
+        ? { status: 'DELIVERED', delivered_at: new Date().toISOString() }
+        : { status: 'FAILED', error_code: eventType === 'email.bounced' ? 'BOUNCED' : 'COMPLAINED' })
+      .eq('provider_message_id', `resend:${data.email_id}`)
+      .select('id');
+    if (crm && crm.length) {
+      await sb.rpc('comm_finish_webhook_event', { p_provider: 'RESEND', p_event_key: eventId, p_error: null });
+      return;
+    }
+  }
+
+  /* A Resend BROADCAST email: one broadcast id for the whole campaign, so the send row is
+     found by broadcast id + recipient address (outreach_sends rows written by broadcast.ts). */
+  if (typeof data.broadcast_id === 'string' && DELIVERY_STATUS[eventType]) {
+    const to = Array.isArray(data.to) ? String(data.to[0] ?? '') : String(data.to ?? '');
+    if (to.includes('@')) {
+      const { data: rows } = await sb.from('outreach_sends')
+        .update({ status: DELIVERY_STATUS[eventType], updated_at: new Date().toISOString(),
+          ...(eventType === 'email.delivered' ? { delivered_at: new Date().toISOString() } : {}) })
+        .eq('provider_message_id', data.broadcast_id).ilike('recipient_email', to.toLowerCase())
+        .neq('status', DELIVERY_STATUS[eventType]).select('campaign_id');
+      const campaignId = (rows ?? [])[0]?.campaign_id;
+      if (campaignId) await sb.rpc('outreach_recompute_campaign_counters', { p_campaign_id: campaignId });
+    }
+    await sb.rpc('comm_finish_webhook_event', { p_provider: 'RESEND', p_event_key: eventId, p_error: null });
     return;
   }
 
@@ -311,44 +380,6 @@ async function handleDeliveryEvent(
   });
 }
 
-/**
- * The body of a received email, from the provider's own store.
- *
- * Returns null on every failure rather than throwing. A body we could not
- * fetch must not lose the message: the sender, the subject, the thread and
- * the notification are all already known, and a reply recorded without its
- * text is worth more to the person reading the inbox than no reply at all.
- * The reason goes to the log, where somebody can see it.
- */
-async function fetchReceivedBody(
-  providerEmailId: string | null,
-): Promise<{ text: string | null; html: string | null } | null> {
-  if (!providerEmailId) return null;
-  const key = Deno.env.get('RESEND_API_KEY');
-  if (!key) {
-    logEvent('email-webhook', 'body_unfetchable', { reason: 'RESEND_API_KEY_UNSET' });
-    return null;
-  }
-  try {
-    const res = await fetch(
-      `https://api.resend.com/emails/receiving/${encodeURIComponent(providerEmailId)}`,
-      { headers: { Authorization: `Bearer ${key}` } },
-    );
-    if (!res.ok) {
-      logEvent('email-webhook', 'body_unfetchable', { reason: `HTTP_${res.status}` });
-      return null;
-    }
-    const json = await res.json() as { text?: unknown; html?: unknown };
-    return {
-      text: typeof json.text === 'string' ? json.text : null,
-      html: typeof json.html === 'string' ? json.html : null,
-    };
-  } catch (e) {
-    logEvent('email-webhook', 'body_unfetchable', { reason: redact((e as Error)?.message) });
-    return null;
-  }
-}
-
 async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   // THE dedup gate. Everything below runs at most once per delivery, ever.
   const { data: shouldProcess, error: claimError } = await sb.rpc('comm_claim_webhook_event', {
@@ -367,16 +398,29 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
     return;
   }
 
-  const account = await resolveAccount(sb, email.to);
+  /*
+   * REPLY ROUTING. A reply to r-<token>@<reply domain> belongs to exactly the tenant
+   * the token was issued for — the sender's address is never what decides the tenant.
+   * Without a live token the older channel-account address match applies.
+   */
+  const settings = await loadEmailSettings(sb);
+  const token = routeTokenFrom([...email.to], settings.replyDomain);
+  const route = token ? await resolveReplyRoute(sb, token) : null;
+  if (token && !route) logEvent('email-webhook', 'reply_route_unknown_or_revoked', {});
+  const account = route
+    ? { id: null as string | null, owner_id: route.ownerAuthId, status: 'CONNECTED', environment: null, provider_account_id: null }
+    : await resolveAccount(sb, email.to);
   if (!account) {
     /* Unroutable. The delivery is acknowledged and the event row keeps the
        reason, so somebody can see that mail is arriving at an address no
        customer has claimed — which is a configuration problem, not a bug, and
        is invisible if the webhook silently drops it. */
-    logEvent('email-webhook', 'unroutable_address', { to: email.to });
+    /* Recipient addresses are personal data: only their domains are logged and kept. */
+    const domains = [...new Set(email.to.map((a) => a.split('@').pop()?.toLowerCase() ?? '?'))].join(', ').slice(0, 200);
+    logEvent('email-webhook', 'unroutable_address', { domains });
     await sb.rpc('comm_finish_webhook_event', {
       p_provider: 'RESEND', p_event_key: email.eventId,
-      p_error: `no channel account for ${email.to.join(', ').slice(0, 200)}`,
+      p_error: `no channel account for an address at ${domains}`,
     });
     return;
   }
@@ -403,9 +447,18 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
    * network and the API key, and the shape the module normalises stays a
    * function of its argument.
    */
-  const fetched = (email.text || email.html) ? null : await fetchReceivedBody(email.providerEmailId);
+  const full = await fetchReceivedEmail(email.providerEmailId);
+  const fetched = (email.text || email.html) ? null : (full ? { text: full.text ?? null, html: full.html ?? null } : null);
   const body = email.text ?? fetched?.text ?? stripHtml(email.html ?? fetched?.html ?? null) ?? '';
   const sentAt = email.sentAt ?? new Date().toISOString();
+  /*
+   * WHO REALLY SENT IT. The From header is the sender's own claim, and a reply-route address is
+   * visible to everyone who received the campaign. A message whose own domain's DMARC (or both
+   * SPF and DKIM) FAILED is recorded and shown flagged, but it never acts on the contact book or
+   * the conversation: a forged "STOP" cannot unsubscribe somebody else's contact. A sender with
+   * no DMARC at all (UNKNOWN) is treated as genuine, so a real opt-out is never ignored.
+   */
+  const senderCheck = senderAuthentication(full?.authentication);
 
   const { data, error } = await sb.rpc('comm_record_inbound', {
     p_owner_id: account.owner_id,
@@ -432,6 +485,41 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   const conversationId: string | undefined = row?.conversation_id;
   const isNew = Boolean(row?.is_new_conversation);
 
+  /* The full message: HTML (rendered sanitised, sandboxed), threading headers and the
+     provider's SPF/DKIM/DMARC verdicts. Attachments are listed by metadata only. */
+  if (row?.message_id) {
+    const meta = {
+      subject: email.subject ?? full?.subject ?? null,
+      message_id: email.messageId ?? full?.message_id ?? null,
+      in_reply_to: email.inReplyTo,
+      references: headerList(full?.headers, 'references'),
+      to: full?.to ?? email.to, cc: full?.cc ?? [],
+      authentication: full?.authentication ?? null,
+      attachments: (full?.attachments ?? []).slice(0, 25).map((a) => ({ id: a.id, filename: a.filename ?? null, content_type: a.content_type ?? null, size: a.size ?? null })),
+      route: route ? { kind: route.kind, campaign_id: route.campaignId } : null,
+      sender_check: senderCheck,
+      provider_email_id: email.providerEmailId ?? null,
+    };
+    await sb.from('comm_messages')
+      .update({ email_meta: meta, html_body: (full?.html ?? email.html ?? null)?.slice(0, 500_000) ?? null })
+      .eq('id', row.message_id);
+  }
+  if (conversationId && route) {
+    await sb.from('comm_conversations')
+      .update({ metadata: { reply_route_kind: route.kind, reply_campaign_id: route.campaignId }, updated_at: new Date().toISOString() })
+      .eq('id', conversationId).eq('owner_id', route.ownerAuthId);
+  }
+  /* An Email Studio offer answered by the member it was sent to: their Leads CRM entry moves
+     to REPLIED and links this thread. The database re-checks token, recipient, sender address
+     and thread ownership, and records each message once. Never on a FAILED sender check. */
+  if (route?.kind === 'STUDIO' && senderCheck !== 'FAIL' && row?.message_id) {
+    const { data: crm, error: crmErr } = await sb.rpc('email_studio_reply_to_crm', {
+      p_token: route.token, p_from: email.fromAddress, p_message_key: email.messageId ?? email.eventId,
+      p_comm_message_id: row.message_id, p_conversation_id: conversationId ?? null,
+    });
+    logEvent('email-webhook', 'studio_reply_crm', { outcome: crmErr ? 'ERROR' : String(crm), error: crmErr ? redact(crmErr.message) : undefined });
+  }
+
   /*
    * WHICH THREAD, WHEN THE REPLY SAYS SO.
    *
@@ -454,9 +542,11 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
     }
   }
 
-  await sb.from('comm_channel_accounts')
-    .update({ last_inbound_at: sentAt })
-    .eq('id', account.id);
+  if (account.id) {
+    await sb.from('comm_channel_accounts')
+      .update({ last_inbound_at: sentAt })
+      .eq('id', account.id);
+  }
 
   const written = stripQuotedReply(body);
 
@@ -464,7 +554,9 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   // Checked deterministically and acted on before anything else, for the same
   // reason as on WhatsApp: a "STOP" only an LLM notices is a "STOP" answered
   // with a cheerful follow-up.
-  if (written && detectsOptOut(written)) {
+  if (senderCheck === 'FAIL') {
+    logEvent('email-webhook', 'sender_authentication_failed', { conversationId });
+  } else if (written && detectsOptOut(written)) {
     await applyOptOut(sb, account.owner_id, email.fromAddress, conversationId);
     logEvent('email-webhook', 'opt_out_recorded', { conversationId });
     await sb.rpc('comm_finish_webhook_event', {
@@ -474,7 +566,7 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   }
 
   // ── "Give me a real person" (§113) ───────────────────────────────────────
-  if (written && detectsHumanRequest(written).requested && conversationId) {
+  if (senderCheck !== 'FAIL' && written && detectsHumanRequest(written).requested && conversationId) {
     await sb.rpc('comm_set_conversation_mode', {
       p_conversation_id: conversationId,
       p_expected_mode: 'AI_ACTIVE',
@@ -497,7 +589,7 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
     title: 'New email reply',
     body: previewOf(body, email.subject),
     priority: 'HIGH',
-    deepLink: '/outreach/email',
+    deepLink: conversationId ? `/inbox/email?conversation=${conversationId}` : '/inbox/email',
     entityType: 'conversation',
     entityId: conversationId ?? null,
     groupKey: conversationId ? `email:${conversationId}` : `email:${account.owner_id}`,
@@ -507,6 +599,7 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
       kind: 'NEW_MESSAGE',
       channel: 'EMAIL',
       subject: email.subject,
+      sender_check: senderCheck,
     },
   });
 
@@ -591,4 +684,99 @@ function stripHtml(html: string | null): string | null {
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim() || null;
+}
+
+
+/* ── event bookkeeping ───────────────────────────────────────────────────── */
+
+async function claimEvent(sb: Sb, key: string, type: string): Promise<boolean> {
+  const { data, error } = await sb.rpc('comm_claim_webhook_event', {
+    p_provider: 'RESEND', p_event_key: key, p_event_type: type,
+    p_payload: { kind: type, at: new Date().toISOString() },
+  });
+  if (error) throw new Error(`dedup claim failed: ${error.message}`);
+  return Boolean(data);
+}
+
+async function finishEvent(sb: Sb, key: string, err: string | null): Promise<void> {
+  await sb.rpc('comm_finish_webhook_event', { p_provider: 'RESEND', p_event_key: key, p_error: err ? err.slice(0, 500) : null });
+}
+
+/** A message the provider will not deliver: the send is marked failed, and a Resend
+ *  suppression becomes a HOMATCH-wide suppression of that address. */
+async function applyUndeliverable(sb: Sb, data: Record<string, unknown>, eventType: string): Promise<void> {
+  const providerMessageId = typeof data.email_id === 'string' ? data.email_id : null;
+  if (providerMessageId) {
+    await sb.from('outreach_sends').update({ status: 'FAILED', error_message: eventType, updated_at: new Date().toISOString() })
+      .eq('provider_message_id', providerMessageId).in('status', ['QUEUED', 'SENT']);
+  }
+  if (eventType === 'email.suppressed') {
+    const to = Array.isArray(data.to) ? data.to : [];
+    for (const addr of to.slice(0, 50)) {
+      if (typeof addr === 'string' && addr.includes('@')) {
+        await sb.from('email_studio_suppressions').insert({ email: addr.toLowerCase(), reason: 'MANUAL', source: 'RESEND_SUPPRESSED' });
+      }
+    }
+  }
+}
+
+/** domain.*, suppression.*, contact.*, topic.*, inbox.*: claimed, applied where HOMATCH uses it, recorded. */
+async function handleAccountEvent(sb: Sb, body: unknown, eventType: string, eventKey: string): Promise<void> {
+  if (!(await claimEvent(sb, eventKey, eventType))) {
+    logEvent('email-webhook', 'duplicate_dropped', { type: eventType });
+    return;
+  }
+  const data = ((body as { data?: unknown })?.data ?? {}) as Record<string, unknown>;
+  if (eventType.startsWith('domain.') && typeof data.id === 'string') {
+    if (eventType === 'domain.deleted') {
+      await sb.from('email_sending_domains').update({ status: 'DISCONNECTED', disconnected_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('resend_domain_id', data.id).neq('status', 'DISCONNECTED');
+    } else {
+      const status = mapDomainStatus(typeof data.status === 'string' ? data.status : null);
+      const patch: Record<string, unknown> = {
+        provider_status: typeof data.status === 'string' ? data.status : null, status,
+        last_checked_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      };
+      if (Array.isArray(data.records)) patch.records = data.records;
+      if (status === 'VERIFIED') patch.verified_at = new Date().toISOString();
+      await sb.from('email_sending_domains').update(patch).eq('resend_domain_id', data.id).neq('status', 'DISCONNECTED');
+    }
+  } else if (eventType === 'contact.updated' && data.unsubscribed === true && typeof data.email === 'string') {
+    /* Somebody used Resend's broadcast unsubscribe link: HOMATCH stops emailing the address too. */
+    await sb.from('email_studio_suppressions').insert({ email: String(data.email).toLowerCase(), reason: 'UNSUBSCRIBED', source: 'RESEND_BROADCAST_UNSUBSCRIBE' });
+  } else if (eventType === 'suppression.added') {
+    const addr = typeof data.email === 'string' ? data.email : null;
+    if (addr && addr.includes('@')) {
+      await sb.from('email_studio_suppressions').insert({ email: addr.toLowerCase(), reason: 'MANUAL', source: 'RESEND_SUPPRESSION' });
+    }
+  }
+  /* suppression.removed is deliberately NOT applied: lifting a suppression is a
+     human decision, never an automatic one. contact.*, topic.* and inbox.* belong
+     to Resend features HOMATCH does not use; they are recorded and left alone. */
+  await finishEvent(sb, eventKey, null);
+}
+
+/** The whole received email from Resend's Receiving API (the webhook carries metadata only). */
+async function fetchReceivedEmail(providerEmailId: string | null) {
+  if (!providerEmailId) return null;
+  const sb = serviceClient();
+  const settings = await loadEmailSettings(sb);
+  const key = resolveResendKey('marketing', settings.keyEnvName).key;
+  if (!key) {
+    logEvent('email-webhook', 'body_unfetchable', { reason: 'NO_RESEND_KEY' });
+    return null;
+  }
+  const res = await getReceivedEmail(key, providerEmailId);
+  if (!res.ok || !res.json) {
+    logEvent('email-webhook', 'body_unfetchable', { reason: res.error ?? `HTTP_${res.status}` });
+    return null;
+  }
+  return res.json;
+}
+
+function headerList(headers: Record<string, unknown> | undefined, name: string): string[] {
+  if (!headers) return [];
+  const v = headers[name] ?? headers[name.toLowerCase()];
+  const raw = Array.isArray(v) ? v.join(' ') : typeof v === 'string' ? v : '';
+  return raw.split(/\s+/).map((x) => x.trim()).filter((x) => /^<[^<>\s]+>$/.test(x)).slice(0, 50);
 }

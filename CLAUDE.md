@@ -35,7 +35,12 @@ An index is never proof of production state.
 
 ## Non-negotiable rules
 
-- **PAYG only.** 10 credits = $1. No Free/Premium/VIP gating, ever.
+- **Billing is per service** (owner, 2026-10-22). 10 credits = $1. Each service
+  has its own model; PAYG unless the owner sets another. Email Marketing is the
+  one plan service: Free 50 lifetime, Pro $50/mo 50k, Scale $220/mo 100k,
+  overage $2.20/1k only with explicit consent, wallet-paid, opt-in renewal
+  (`email_marketing_37_63_vat_v1`). Never gate other services by plan; the
+  dormant billing-v2 plan machinery stays unwired.
   Reserve → settle → release; unknown COGS never silently zero.
   Customer prices are final and VAT-inclusive (18%): extract VAT, never add it.
   Paid discovery (Find Buyers/Tenants and Find Property paid campaigns started

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { describeEvent } from '@/crm/model';
 import type { CrmEvent } from '@/services/leadsCrm';
@@ -35,6 +36,11 @@ export function ActivityTimeline({ events }: { events: CrmEvent[] }) {
             <p className="mt-0.5 text-2xs text-[hsl(218_15%_42%)]">
               <time dateTime={event.createdAt}>{fmt.dateTime(event.createdAt)}</time>
               {d.automatic ? <span> · {t('crm_event_automatic')}</span> : null}
+              {d.conversationId ? (
+                <span> · <Link to={`/inbox/email?conversation=${d.conversationId}`} className="font-medium underline underline-offset-2">
+                  {t('crm_open_email_thread')}
+                </Link></span>
+              ) : null}
             </p>
           </li>
         );

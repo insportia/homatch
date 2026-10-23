@@ -26,7 +26,7 @@ import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, PhoneCall, MessageCircle, Bot, Users, Megaphone,
-  Inbox as InboxIcon, BarChart3, Wallet, Menu, X, Hash, Mail, FileText, ListChecks,
+  Inbox as InboxIcon, BarChart3, Wallet, Menu, X, Hash, Mail, FileText, ListChecks, Globe,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -130,8 +130,11 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
    */
   email: [
     { to: '/outreach/email', labelKey: 'comms_nav_overview', icon: Mail, exact: true },
+    { to: '/outreach/email/inbox', labelKey: 'emx_nav_inbox', icon: InboxIcon },
     { to: '/outreach/email/contacts', labelKey: 'comms_nav_contacts', icon: Users },
     { to: '/outreach/email/analytics', labelKey: 'comms_nav_analytics', icon: BarChart3 },
+    { to: '/outreach/email/plan', labelKey: 'emx_nav_plan', icon: Wallet },
+    { to: '/outreach/email/domains', labelKey: 'emx_nav_domains', icon: Globe },
   ],
   /* The audience surfaces are shared by all three channels and belong to
      none, so they carry the neutral rail rather than pretending to be part

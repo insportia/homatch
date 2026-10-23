@@ -5,10 +5,33 @@ warns when a diff enters this domain.
 
 ## Invariants
 
-- **PAYG only.** 10 credits = $1. There are no Free/Premium/VIP packages and
-  no feature gating by plan. Marketing copy saying "premium design" describes
-  aesthetics, not a Premium package. Dormant "billing-v2" plan machinery in
-  the codebase is NOT product truth and must not be wired up.
+- **Billing is per service** (owner decision, 2026-10-22, replacing "PAYG only").
+  10 credits = $1. Every service keeps PAYG unless the owner gives it its own
+  model. Dormant "billing-v2" plan machinery (billing_plans, user_subscriptions,
+  product_plan_entitlements) is NOT product truth and must not be wired up.
+- **Email Marketing plans** (`email_plans`, `email_subscriptions`,
+  `email_quota_periods`, migration 20261124090000): Free 50 emails once per
+  account (lifetime, never reset); Pro $50/month 50,000; Scale $220/month
+  100,000; overage $2.20 per started 1,000, OFF until the customer consents
+  (optional block cap). Prices are VAT-inclusive; policy
+  `email_marketing_37_63_vat_v1` extracts VAT then allocates 37/63 of net.
+  Paid from the wallet (EMAIL_PLAN_PRO / EMAIL_PLAN_SCALE / EMAIL_OVERAGE_1K via
+  wallet_reserve → wallet_settle); renewal only with auto_renew on, keyed per
+  ending period so it can never charge twice. Billable unit: one message the
+  provider accepted; failed/suppressed sends consume nothing. Card recurring
+  billing does not exist (payment provider in mock mode).
+  Atomicity: `email_plan_activate` checks the wallet hold is still RESERVED and
+  settles it in the same transaction as the period (never a plan without its
+  charge); a purchase is refused under the subscription lock while a same-or-
+  higher paid month has >3 days left; a renewal must name the period it renews.
+  Overage blocks are counted PENDING under the period lock at reservation, and
+  `email_quota_bill_overage` charges + records them in one transaction; unpaid
+  overage never counts as sent. Quota keys are one per send attempt (a settled
+  key is STALE_KEY, never a re-grant); `email_quota_release_stale` (jobs-worker,
+  every 10 min) returns abandoned reservations. Safeguards (admin_settings, 0 =
+  off): `email_marketing_tenant_daily_cap` (default 5000) and
+  `email_marketing_provider_monthly_cap` (set it to the active Resend plan's
+  monthly limit before enabling sending).
 - **Wallet ≠ Budget ≠ Spend ≠ COGS.** Four distinct concepts; never conflate
   them in schema, service code, or copy.
 - **Reserve → settle → release.** Every paid action reserves first, settles

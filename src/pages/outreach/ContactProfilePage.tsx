@@ -30,6 +30,7 @@ import {
 } from '@/services/communications';
 import type { CommContact } from '@/types/communications';
 import { useServiceVisible } from '@/lib/serviceControls';
+import { EmailConsentCard } from '@/components/communications/EmailConsentCard';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -214,7 +215,7 @@ export default function ContactProfilePage() {
                 <Flag
                   labelKey="comm_flag_consent"
                   value={t(
-                    contact.consent_status === 'OPTED_IN' ? 'comm_consent_opted_in'
+                    contact.consent_status === 'CONSENTED' || contact.consent_status === 'OPTED_IN' ? 'comm_consent_opted_in'
                     : contact.consent_status === 'OPTED_OUT' ? 'comm_status_opted_out'
                     : 'comm_consent_unknown',
                   )}
@@ -266,6 +267,8 @@ export default function ContactProfilePage() {
               )}
             </CardContent></Card>
           </div>
+
+          <EmailConsentCard contact={contact} onChanged={() => void load()} />
         </div>
     </CommsWorkspace>
   );

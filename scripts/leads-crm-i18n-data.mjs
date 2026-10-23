@@ -243,6 +243,8 @@ export const LEADS_CRM_STRINGS = {
   crm_event_EMAIL_BOUNCED: ['Email could not be delivered', 'ელფოსტის მიწოდება ვერ მოხერხდა', 'Письмо не удалось доставить', 'E-posta iletilemedi', 'تعذّر تسليم البريد الإلكتروني', 'לא ניתן היה למסור את האימייל'],
   crm_event_EMAIL_OPENED: ['Email open recorded (not a sign of interest)', 'ელფოსტის გახსნა დაფიქსირდა (დაინტერესების ნიშანი არ არის)', 'Зафиксировано открытие письма (это не признак интереса)', 'E-postanın açıldığı kaydedildi (ilgi işareti değildir)', 'سُجّل فتح البريد الإلكتروني (ليس دليلًا على الاهتمام)', 'נרשמה פתיחת אימייל (אין זה סימן לעניין)'],
   crm_event_EMAIL_CLICKED: ['Email link click recorded', 'ელფოსტის ბმულზე დაჭერა დაფიქსირდა', 'Зафиксирован переход по ссылке из письма', 'E-postadaki bağlantıya tıklandığı kaydedildi', 'سُجّل النقر على رابط في البريد الإلكتروني', 'נרשמה לחיצה על קישור באימייל'],
+  crm_event_EMAIL_REPLIED: ['Replied by email', 'უპასუხა ელფოსტით', 'Ответил по эл. почте', 'E-postayla yanıtladı', 'ردّ عبر البريد الإلكتروني', 'השיב בדוא"ל'],
+  crm_open_email_thread: ['Open email thread', 'ელფოსტის მიმოწერის გახსნა', 'Открыть переписку', 'E-posta yazışmasını aç', 'فتح محادثة البريد', 'פתיחת שרשור הדוא"ל'],
   crm_event_generic: ['Activity: {{kind}}', 'აქტივობა: {{kind}}', 'Активность: {{kind}}', 'Etkinlik: {{kind}}', 'نشاط: {{kind}}', 'פעילות: {{kind}}'],
   crm_event_automatic: ['recorded automatically', 'ავტომატურად დაფიქსირდა', 'зафиксировано автоматически', 'otomatik olarak kaydedildi', 'سُجّل تلقائيًا', 'נרשם אוטומטית'],
 

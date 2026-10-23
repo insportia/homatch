@@ -367,6 +367,32 @@ function completeNeighborhoodLater(db: any, jobId: string, stored: unknown): voi
   if (rt?.waitUntil) rt.waitUntil(work);
 }
 
+/*
+ * One report build in flight per job. A build longer than this is treated as
+ * evicted and may be retried: above the edge wall-clock limit (400 s), so a
+ * build that is legitimately still running is never duplicated. research-agent's
+ * driver uses the same window (SYNTHESIS_ATTEMPT_TIMEOUT_MS) and the same
+ * attempt budget (MAX_SYNTHESIS_ATTEMPTS).
+ */
+const REPORT_BUILD_STALE_MS = 7 * 60 * 1000;
+const REPORT_MAX_ATTEMPTS = 4;
+
+/** A customer-started build takes the same claim the driver takes: PENDING, attempt counted, start time stamped — conditionally, so one caller wins. */
+async function claimReportBuild(db: any, jobId: string): Promise<'CLAIMED' | 'LOST' | 'EXHAUSTED'> {
+  const { data: row } = await db.from('research_jobs').select('synthesis_state,synthesis_attempts').eq('id', jobId).maybeSingle();
+  const state = String(row?.synthesis_state ?? 'NONE');
+  const attempts = Number(row?.synthesis_attempts ?? 0);
+  if (state === 'READY') return 'LOST';
+  if (attempts >= REPORT_MAX_ATTEMPTS) return 'EXHAUSTED';
+  let q = db.from('research_jobs')
+    .update({ synthesis_state: 'PENDING', synthesis_attempts: attempts + 1, synthesis_at: new Date().toISOString() })
+    .eq('id', jobId)
+    .eq('synthesis_attempts', attempts);
+  q = row?.synthesis_state == null ? q.is('synthesis_state', null) : q.eq('synthesis_state', state);
+  const { data: claimed } = await q.select('id');
+  return claimed?.length ? 'CLAIMED' : 'LOST';
+}
+
 async function persist(db: any, jobId: string, payload: unknown): Promise<void> {
   const { error } = await db
     .from('research_jobs')
@@ -1272,14 +1298,48 @@ serve(async (req) => {
      * A fresh PENDING is answered "pending"; the page asks again shortly.
      * A stale one (an evicted build) is rebuilt here as before. */
     const pendingAge = Date.now() - Date.parse(String(job.synthesis_at ?? ''));
-    if (job.synthesis_state === 'PENDING' && !body?.force && !internal && Number.isFinite(pendingAge) && pendingAge < 4 * 60 * 1000) {
+    if (job.synthesis_state === 'PENDING' && !body?.force && !internal && Number.isFinite(pendingAge) && pendingAge < REPORT_BUILD_STALE_MS) {
       return json({ pending: true, retryAfterMs: 4000 }, 202);
+    }
+    const trigger = internal ? (body?.trigger === 'research' ? 'research' : 'driver') : 'customer';
+
+    /* THE BUILD OUTLIVES THE REQUEST (prod 176264ba, 2026-10-23).
+     *
+     * A report build is ~20 s of preparation plus a model call that now runs
+     * 125-140 s, so it no longer fits the ~150 s an HTTP request is allowed:
+     * research-agent's call came back 504 and marked the report FAILED, the
+     * page then started a second build (also 504, so it showed the evidence
+     * view instead of the report), and the driver a third — three model
+     * calls for one report. The build now runs in the background and the
+     * caller is told "pending" at once; the page keeps asking and reads the
+     * report when it is READY. A customer call first claims the build
+     * (PENDING, attempt counted) so it can never run beside another one, and
+     * a failure in the background marks it FAILED for the driver to retry
+     * within the same attempt budget. A forced rebuild, and anywhere without
+     * a background runtime (tests, local), still builds in the request. */
+    const rt = (globalThis as any).EdgeRuntime;
+    if (!body?.force && rt?.waitUntil) {
+      if (!internal) {
+        const claim = await claimReportBuild(writer, jobId);
+        if (claim === 'EXHAUSTED') return json({ error: 'report_unavailable' }, 503);
+        if (claim === 'LOST') return json({ pending: true, retryAfterMs: 4000 }, 202);
+      }
+      const work = (async () => {
+        await ensureResult();
+        if (!job.synthesis_json) await freshPhotosBeforeBuild(job);
+        await buildReport(job, writer, { autoUpgrade: false, trigger, forced: false });
+      })().catch(async (e) => {
+        console.error(`verify-synthesis: background build failed for ${jobId}`, e instanceof Error ? e.message : String(e));
+        await writer.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', jobId).eq('synthesis_state', 'PENDING');
+      });
+      rt.waitUntil(work);
+      return json({ pending: true, retryAfterMs: 5000 }, 202);
     }
 
     await ensureResult();
     // A first build (or a forced one) looks once for recent photographs too.
     if (!job.synthesis_json || body?.force) await freshPhotosBeforeBuild(job);
-    return json(await buildReport(job, writer, { autoUpgrade: false, trigger: internal ? (body?.trigger === 'research' ? 'research' : 'driver') : 'customer', forced: !!body?.force }));
+    return json(await buildReport(job, writer, { autoUpgrade: false, trigger, forced: !!body?.force }));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     console.error('verify-synthesis failed', reason);

@@ -65,8 +65,9 @@ test('verify-synthesis: fast path first, markers stamped after enrichment, resul
   const mark = fn.indexOf('readEnrichmentMarkers())');
   const persistAt = fn.indexOf('await persist(writer, jobId, payload)');
   assert.ok(enrich > 0 && enrich < mark && mark < persistAt, 'the enrichment marker is not stamped between enrichment and persist');
-  // Every path that reads result_json loads it first.
-  assert.equal((fn.match(/await ensureResult\(\);/g) ?? []).length, 4, 'a result_json consumer runs before ensureResult');
+  // Every path that reads result_json loads it first (the fifth is the
+  // background first build, reportBackgroundBuild.test.mjs).
+  assert.equal((fn.match(/await ensureResult\(\);/g) ?? []).length, 5, 'a result_json consumer runs before ensureResult');
   assert.match(fn, /scope: 'verify_synthesis_read'/, 'the read timing log is gone (the lead measures production with it)');
 });
 

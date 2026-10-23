@@ -2148,7 +2148,13 @@ async function developerAdsPolicyFor(sb: any) {
 async function finishDeveloperAds(p: any, outcome: AdsOutcome, extra: Record<string, unknown> = {}, items: unknown[] = [], identity?: any, policy?: any): Promise<false> {
   const id = identity ?? resolveDeveloperIdentity(p);
   const pol = policy ?? parseDeveloperAdsPolicy(null);
-  const normalized = normalizeAds(items);
+  // Ad text is third-party (Facebook): a broken emoji is a lone surrogate the
+  // database API refuses, and then EVERY write of this job fails (prod
+  // 12272abd: the report write was refused each tick and the step re-ran,
+  // inserting a cost row each time). Made storable here, where it enters.
+  const stats: PgSafeStats = { nul: 0, surrogates: 0 };
+  const normalized = normalizeAds(pgSafe(items, stats));
+  if (stats.nul || stats.surrogates) console.warn(`research-agent: developer ads had ${stats.nul} NUL / ${stats.surrogates} lone-surrogate character(s); removed before storage`);
   const verifiedAt = outcome === 'COMPLETE' || outcome === 'CACHED' ? String(extra.verifiedAt ?? now()) : null;
   p.developerAds = summarizeAds({ outcome, verifiedAt, policy: pol, identity: id, normalized, result: p });
   p._developerAds = {
@@ -4914,6 +4920,13 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   };
   result = applyEvidenceGate(result, i, o, reconciledIdentity);
   const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  // A refused write leaves the job where it was and the next tick runs this
+  // again: say so, and do none of the bookkeeping below for a job that is
+  // not complete (prod 12272abd repeated it every tick).
+  if (finished?.error) {
+    console.error(JSON.stringify({ scope: 'verify_finish_write', jobId: j.id, stage: s, error: String(finished.error?.message ?? finished.error).slice(0, 300) }));
+    return finished;
+  }
   // The report starts NOW, in parallel with the bookkeeping below, instead of
   // on the driver's next sweep (see startSynthesisNow).
   if (!finished?.error) await startSynthesisNow(sb, j.id);
@@ -8120,17 +8133,25 @@ Deno.serve(async (req) => {
       return json({ error: 'Could not create research job' }, 500);
     }
     /*
-     * RESERVE BEFORE ANY BILLABLE WORK. The authorised budget (25 credits) is
-     * held through the wallet; nothing has run yet, so a refusal removes the
-     * empty job and the customer keeps every credit.
+     * RESERVE BEFORE ANY BILLABLE WORK. The job's price (fixed Verify price,
+     * 20261127090000) is held through the wallet; nothing has run yet, so a
+     * refusal removes the empty job and the customer keeps every credit.
+     * `expectedCredits` is the price the customer was shown: if the admin
+     * changed it since, the start is refused (PRICE_CHANGED) and the page
+     * shows the new price, instead of debiting a number nobody confirmed.
      */
     if (billingOn && user) {
-      const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: j.id, p_user_id: user.id, p_idempotency_key: `verify:${j.id}:s1` });
+      const expected = Number(b.expectedCredits);
+      const { data: o, error: oe } = await sb.rpc('verify_billing_open', {
+        p_job_id: j.id, p_user_id: user.id, p_idempotency_key: `verify:${j.id}:s1`,
+        ...(Number.isFinite(expected) && expected > 0 ? { p_expected_credits: expected } : {}),
+      });
       if (oe || !o?.ok) {
         await sb.from('research_jobs').delete().eq('id', j.id);
         if (oe) console.error('research-agent: verify_billing_open', oe.message);
         const reason = o?.reason ?? 'BILLING_UNAVAILABLE';
-        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null }, reason === 'INSUFFICIENT_CREDITS' ? 402 : 503);
+        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, priceCredits: o?.priceCredits ?? null, priceCents: o?.priceCents ?? null },
+          reason === 'INSUFFICIENT_CREDITS' ? 402 : reason === 'PRICE_CHANGED' ? 409 : 503);
       }
     }
     /*

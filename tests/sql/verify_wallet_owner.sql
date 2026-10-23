@@ -90,8 +90,9 @@ begin
      or has_function_privilege('authenticated', 'public.verify_wallet_user(uuid)', 'execute') then
     raise exception 'W9: verify_wallet_user exposed to clients';
   end if;
-  if has_function_privilege('anon', 'public.verify_billing_open(uuid, uuid, text, boolean, integer)', 'execute')
-     or has_function_privilege('authenticated', 'public.verify_billing_open(uuid, uuid, text, boolean, integer)', 'execute') then
+  -- 20261127090000 added p_expected_credits: the signature checked is the one that exists.
+  if has_function_privilege('anon', to_regprocedure('public.verify_billing_open(uuid, uuid, text, boolean, integer, numeric)'), 'execute')
+     or has_function_privilege('authenticated', to_regprocedure('public.verify_billing_open(uuid, uuid, text, boolean, integer, numeric)'), 'execute') then
     raise exception 'W9: verify_billing_open exposed to clients';
   end if;
   if has_function_privilege('anon', 'public.verify_launch_quote()', 'execute')

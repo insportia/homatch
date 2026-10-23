@@ -41,7 +41,8 @@ import { ResearchNetwork } from '@/components/verify/ResearchNetwork';
 
 // The shared Snake (also offered beside Design Studio renders). Loaded only
 // when someone actually chooses to play.
-const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+// Isolated (SafeSnakeGame): a failure in the game closes the game, never this page.
+const SafeSnakeGame = lazy(() => import('@/components/games/SafeSnakeGame'));
 import SnakeLaunchCard from '@/components/games/SnakeLaunchCard';
 
 /** The player's record, kept by the game itself (same key). */
@@ -104,6 +105,8 @@ export function ResearchStream({
   // Local UI only. Opening or closing the game never pauses, cancels,
   // restarts or creates research — VerifyPage's polling is untouched.
   const [playing, setPlaying] = React.useState(false);
+  // The game failed to load or run: closed, and not offered again in this view.
+  const [gameUnavailable, setGameUnavailable] = React.useState(false);
   React.useEffect(() => {
     onPlayingChange?.(playing);
   }, [playing, onPlayingChange]);
@@ -270,7 +273,7 @@ export function ResearchStream({
 
       <p className="text-xs leading-relaxed text-muted-foreground break-words">{t('verify_stream_note')}</p>
 
-      {!stopped && !reportReady && (
+      {!stopped && !reportReady && !gameUnavailable && (
         <SnakeLaunchCard
           label={t('verify_net_play_snake')}
           bestLabel={snakeBest() > 0 ? t('dsx_sn_best', { n: String(snakeBest()) }) : null}
@@ -283,7 +286,8 @@ export function ResearchStream({
           section inherited its top margin and left the app header exposed. */}
       {playing && typeof document !== 'undefined' ? createPortal(
         <Suspense fallback={null}>
-          <SnakeGame
+          <SafeSnakeGame
+            onFailed={() => { setPlaying(false); setGameUnavailable(true); }}
             status={snakeStatus}
             stageLabel={nowLine}
             statusLines={{ working: nowLine, ready: t('verify_net_settled'), failed: t('verify_net_stopped') }}

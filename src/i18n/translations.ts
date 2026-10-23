@@ -18478,7 +18478,7 @@ const en = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'How long this stays available',
-  rt_policy_verify: 'Your Verify report is available for 30 days after it is completed. After that, the report and the files stored with it are deleted under our retention policy. We recommend downloading the report in advance if you need it.',
+  rt_policy_verify: 'Your Verify report is available for 30 days after it is completed. After that it is no longer accessible; your payment record is kept. We recommend downloading the report in advance if you need it.',
   rt_policy_contracts: 'Your contract and its analysis are available for 30 days. Before they expire you can download the document and the analysis results.',
   rt_expiring_title: 'Expiring soon',
   rt_available_until: 'Available until {{date}}',
@@ -21414,6 +21414,30 @@ const en = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'A price range needs at least {{need}} comparable plots of the same land designation nearby. We found {{have}}, so we are not giving a number for this plot. Any listing shown is context, not a valuation.',
+
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'Price',
+  verify_price_note: 'One fixed price, VAT included. It is charged only when your report is ready — a stopped or failed check costs nothing. Your report stays available for {{days}} days.',
+  verify_price_changed: 'The price has changed to {{n}} credits. Please confirm the new price to start.',
+  verify_price_running: 'Fixed price: {{n}} credits — charged only when your report is ready.',
+  verify_price_paid: 'Price paid',
+  verify_report_expired_title: 'This report has expired',
+  verify_rerun_cta: 'Run new verification — {{n}} credits',
+  adm_vprice_title: 'Verify price',
+  adm_vprice_desc: 'The one customer price for every verification, V1 and V2 alike. Internal provider costs stay in Finance.',
+  adm_vprice_active: 'Active price: {{usd}} = {{n}} credits',
+  adm_vprice_not_fixed: 'Not a fixed price yet',
+  adm_vprice_validity: 'Report valid {{days}} days',
+  adm_vprice_vat: 'VAT included',
+  adm_vprice_usd: 'Price (USD)',
+  adm_vprice_credits: '= {{n}} credits',
+  adm_vprice_invalid: 'Enter an amount that is a whole number of credits (a multiple of $0.10).',
+  adm_vprice_save: 'Save price',
+  adm_vprice_reason: 'Reason (required)',
+  adm_vprice_confirm_title: 'Change the Verify price to {{usd}} = {{n}} credits?',
+  adm_vprice_confirm_body: 'New purchases use the new price immediately. Running and already purchased reports keep the price they started with. The change is recorded in the audit log with your reason.',
+  adm_vprice_saved: 'Verify price updated',
+  adm_vprice_history: 'Price changes',
 
   /* ── VERIFY V2 RESEARCH ── */
   adm_v2r_title: 'V2 research spending',
@@ -39828,7 +39852,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'ხელმისაწვდომობის ვადა',
-  rt_policy_verify: 'თქვენი Verify ანგარიში ხელმისაწვდომია დასრულებიდან 30 დღის განმავლობაში. ამ ვადის გასვლის შემდეგ ანგარიში და მასთან დაკავშირებული შენახული ფაილები წაიშლება ჩვენი შენახვის პოლიტიკის შესაბამისად. გირჩევთ, საჭიროების შემთხვევაში წინასწარ ჩამოტვირთოთ ანგარიში.',
+  rt_policy_verify: 'Verify-ის ანგარიში ხელმისაწვდომია დასრულებიდან 30 დღის განმავლობაში. ამის შემდეგ ის აღარ იქნება ხელმისაწვდომი; გადახდის ჩანაწერი ინახება. თუ ანგარიში დაგჭირდებათ, გირჩევთ წინასწარ ჩამოტვირთოთ.',
   rt_policy_contracts: 'თქვენი ხელშეკრულება და მისი ანალიზი ხელმისაწვდომია 30 დღის განმავლობაში. ვადის გასვლამდე შეგიძლიათ ჩამოტვირთოთ დოკუმენტი და ანალიზის შედეგები.',
   rt_expiring_title: 'მალე იწურება',
   rt_available_until: 'ხელმისაწვდომია {{date}}-მდე',
@@ -42764,6 +42788,30 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'ფასის დიაპაზონის დასადგენად საჭიროა მინიმუმ {{need}} იმავე დანიშნულების შესადარებელი მიწის ნაკვეთი ახლომდებარე ტერიტორიაზე. ვიპოვეთ {{have}}, ამიტომ ამ ნაკვეთისთვის ციფრს არ ვასახელებთ. ნაჩვენები განცხადებები მხოლოდ კონტექსტია და არა შეფასება.',
+
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'ფასი',
+  verify_price_note: 'ერთი ფიქსირებული ფასი, დღგ-ს ჩათვლით. თანხა ჩამოიჭრება მხოლოდ მაშინ, როცა ანგარიში მზად იქნება — შეჩერებული ან წარუმატებელი შემოწმება არაფერი ღირს. ანგარიში ხელმისაწვდომი იქნება {{days}} დღის განმავლობაში.',
+  verify_price_changed: 'ფასი შეიცვალა და გახდა {{n}} კრედიტი. დასაწყებად დაადასტურეთ ახალი ფასი.',
+  verify_price_running: 'ფიქსირებული ფასი: {{n}} კრედიტი — ჩამოიჭრება მხოლოდ ანგარიშის მზადყოფნისას.',
+  verify_price_paid: 'გადახდილი ფასი',
+  verify_report_expired_title: 'ამ ანგარიშის ვადა ამოიწურა',
+  verify_rerun_cta: 'ახალი ვერიფიკაცია — {{n}} კრედიტი',
+  adm_vprice_title: 'Verify-ის ფასი',
+  adm_vprice_desc: 'ერთი სამომხმარებლო ფასი ყველა ვერიფიკაციისთვის, V1-ისა და V2-ისთვის ერთნაირად. შიდა პროვაიდერის ხარჯები ფინანსებში რჩება.',
+  adm_vprice_active: 'მოქმედი ფასი: {{usd}} = {{n}} კრედიტი',
+  adm_vprice_not_fixed: 'ფიქსირებული ფასი ჯერ არ არის დაყენებული',
+  adm_vprice_validity: 'ანგარიში მოქმედებს {{days}} დღე',
+  adm_vprice_vat: 'დღგ-ს ჩათვლით',
+  adm_vprice_usd: 'ფასი (USD)',
+  adm_vprice_credits: '= {{n}} კრედიტი',
+  adm_vprice_invalid: 'შეიყვანეთ თანხა, რომელიც კრედიტების მთელ რაოდენობას შეადგენს ($0.10-ის ჯერადი).',
+  adm_vprice_save: 'ფასის შენახვა',
+  adm_vprice_reason: 'მიზეზი (სავალდებულო)',
+  adm_vprice_confirm_title: 'შეიცვალოს Verify-ის ფასი {{usd}} = {{n}} კრედიტზე?',
+  adm_vprice_confirm_body: 'ახალი შესყიდვები ახალ ფასს მაშინვე იყენებს. მიმდინარე და უკვე შეძენილი ანგარიშები საწყის ფასს ინარჩუნებს. ცვლილება თქვენი მიზეზით აუდიტის ჟურნალში ჩაიწერება.',
+  adm_vprice_saved: 'Verify-ის ფასი განახლდა',
+  adm_vprice_history: 'ფასის ცვლილებები',
 
   /* ── VERIFY V2 RESEARCH ── */
   adm_v2r_title: 'V2 კვლევის ხარჯი',
@@ -61169,7 +61217,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'Срок доступности',
-  rt_policy_verify: 'Ваш отчёт Verify доступен 30 дней после завершения. После этого отчёт и связанные с ним сохранённые файлы удаляются в соответствии с нашей политикой хранения. Рекомендуем при необходимости заранее скачать отчёт.',
+  rt_policy_verify: 'Отчёт Verify доступен 30 дней после завершения. После этого он больше недоступен; запись об оплате сохраняется. Если отчёт вам понадобится, рекомендуем скачать его заранее.',
   rt_policy_contracts: 'Ваш договор и его анализ доступны 30 дней. До истечения срока вы можете скачать документ и результаты анализа.',
   rt_expiring_title: 'Скоро истекает',
   rt_available_until: 'Доступно до {{date}}',
@@ -64105,6 +64153,30 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'Для ценового диапазона нужно не менее {{need}} сопоставимых участков того же назначения поблизости. Мы нашли {{have}}, поэтому не называем цифру для этого участка. Показанные объявления — контекст, а не оценка.',
+
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'Цена',
+  verify_price_note: 'Одна фиксированная цена с НДС. Списывается только когда отчёт готов — остановленная или неудачная проверка ничего не стоит. Отчёт доступен {{days}} дней.',
+  verify_price_changed: 'Цена изменилась на {{n}} кредитов. Подтвердите новую цену, чтобы начать.',
+  verify_price_running: 'Фиксированная цена: {{n}} кредитов — списывается только когда отчёт готов.',
+  verify_price_paid: 'Оплаченная цена',
+  verify_report_expired_title: 'Срок действия этого отчёта истёк',
+  verify_rerun_cta: 'Новая проверка — {{n}} кредитов',
+  adm_vprice_title: 'Цена Verify',
+  adm_vprice_desc: 'Единая цена для клиента за любую проверку, одинаковая для V1 и V2. Внутренние расходы на провайдеров остаются в разделе финансов.',
+  adm_vprice_active: 'Действующая цена: {{usd}} = {{n}} кредитов',
+  adm_vprice_not_fixed: 'Фиксированная цена ещё не задана',
+  adm_vprice_validity: 'Отчёт действует {{days}} дней',
+  adm_vprice_vat: 'НДС включён',
+  adm_vprice_usd: 'Цена (USD)',
+  adm_vprice_credits: '= {{n}} кредитов',
+  adm_vprice_invalid: 'Введите сумму, равную целому числу кредитов (кратную $0.10).',
+  adm_vprice_save: 'Сохранить цену',
+  adm_vprice_reason: 'Причина (обязательно)',
+  adm_vprice_confirm_title: 'Изменить цену Verify на {{usd}} = {{n}} кредитов?',
+  adm_vprice_confirm_body: 'Новые покупки сразу идут по новой цене. Текущие и уже купленные отчёты сохраняют свою цену. Изменение записывается в журнал аудита вместе с причиной.',
+  adm_vprice_saved: 'Цена Verify обновлена',
+  adm_vprice_history: 'Изменения цены',
 
   /* ── VERIFY V2 RESEARCH ── */
   adm_v2r_title: 'Расходы на исследование V2',
@@ -82508,7 +82580,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'Erişilebilirlik süresi',
-  rt_policy_verify: 'Verify raporunuz tamamlandıktan sonra 30 gün boyunca erişilebilir. Bu sürenin sonunda rapor ve ona bağlı kayıtlı dosyalar saklama politikamız uyarınca silinir. Gerekirse raporu önceden indirmenizi öneririz.',
+  rt_policy_verify: 'Verify raporunuz tamamlandıktan sonra 30 gün erişilebilir. Bundan sonra erişilemez; ödeme kaydınız saklanır. İhtiyacınız olacaksa raporu önceden indirmenizi öneririz.',
   rt_policy_contracts: 'Sözleşmeniz ve analizi 30 gün boyunca erişilebilir. Süre dolmadan önce belgeyi ve analiz sonuçlarını indirebilirsiniz.',
   rt_expiring_title: 'Yakında sona eriyor',
   rt_available_until: '{{date}} tarihine kadar erişilebilir',
@@ -85444,6 +85516,30 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'Bir fiyat aralığı için yakında aynı arazi niteliğinde en az {{need}} karşılaştırılabilir parsel gerekir. {{have}} bulduk, bu yüzden bu parsel için bir rakam vermiyoruz. Gösterilen ilanlar değerleme değil, bağlamdır.',
+
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'Fiyat',
+  verify_price_note: 'KDV dahil tek sabit fiyat. Yalnızca raporunuz hazır olduğunda tahsil edilir — durdurulan veya başarısız bir kontrol ücretsizdir. Raporunuz {{days}} gün erişilebilir kalır.',
+  verify_price_changed: 'Fiyat {{n}} krediye değişti. Başlamak için lütfen yeni fiyatı onaylayın.',
+  verify_price_running: 'Sabit fiyat: {{n}} kredi — yalnızca raporunuz hazır olduğunda tahsil edilir.',
+  verify_price_paid: 'Ödenen fiyat',
+  verify_report_expired_title: 'Bu raporun süresi doldu',
+  verify_rerun_cta: 'Yeni doğrulama — {{n}} kredi',
+  adm_vprice_title: 'Verify fiyatı',
+  adm_vprice_desc: 'Her doğrulama için tek müşteri fiyatı, V1 ve V2 için aynı. Dahili sağlayıcı maliyetleri Finans bölümünde kalır.',
+  adm_vprice_active: 'Geçerli fiyat: {{usd}} = {{n}} kredi',
+  adm_vprice_not_fixed: 'Henüz sabit fiyat yok',
+  adm_vprice_validity: 'Rapor {{days}} gün geçerli',
+  adm_vprice_vat: 'KDV dahil',
+  adm_vprice_usd: 'Fiyat (USD)',
+  adm_vprice_credits: '= {{n}} kredi',
+  adm_vprice_invalid: 'Tam sayıda krediye denk gelen bir tutar girin ($0.10’un katı).',
+  adm_vprice_save: 'Fiyatı kaydet',
+  adm_vprice_reason: 'Gerekçe (zorunlu)',
+  adm_vprice_confirm_title: 'Verify fiyatı {{usd}} = {{n}} kredi olarak değiştirilsin mi?',
+  adm_vprice_confirm_body: 'Yeni satın almalar yeni fiyatı hemen kullanır. Devam eden ve satın alınmış raporlar başladıkları fiyatı korur. Değişiklik gerekçenizle denetim kaydına yazılır.',
+  adm_vprice_saved: 'Verify fiyatı güncellendi',
+  adm_vprice_history: 'Fiyat değişiklikleri',
 
   /* ── VERIFY V2 RESEARCH ── */
   adm_v2r_title: 'V2 araştırma harcaması',
@@ -103847,7 +103943,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'مدة الإتاحة',
-  rt_policy_verify: 'يتوفر تقرير Verify الخاص بك لمدة 30 يومًا بعد اكتماله. بعد ذلك يُحذف التقرير والملفات المحفوظة المرتبطة به وفق سياسة الاحتفاظ لدينا. ننصحك بتنزيل التقرير مسبقًا إذا كنت بحاجة إليه.',
+  rt_policy_verify: 'يكون تقرير Verify متاحًا لمدة 30 يومًا بعد اكتماله. بعد ذلك لا يعود متاحًا؛ ويُحتفظ بسجل الدفع. ننصح بتنزيل التقرير مسبقًا إذا كنت ستحتاج إليه.',
   rt_policy_contracts: 'يتوفر عقدك وتحليله لمدة 30 يومًا. قبل انتهاء المدة يمكنك تنزيل المستند ونتائج التحليل.',
   rt_expiring_title: 'تنتهي قريبًا',
   rt_available_until: 'متاح حتى {{date}}',
@@ -106783,6 +106879,30 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'يتطلب نطاق السعر ما لا يقل عن {{need}} قطع أراضٍ مماثلة بالتصنيف نفسه في المنطقة. وجدنا {{have}}، لذلك لا نذكر رقمًا لهذه القطعة. أي إعلان معروض هو سياق وليس تقييمًا.',
+
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'السعر',
+  verify_price_note: 'سعر ثابت واحد شامل ضريبة القيمة المضافة. يُخصم فقط عندما يصبح تقريرك جاهزًا — الفحص الذي يتوقف أو يفشل لا يكلّف شيئًا. يبقى تقريرك متاحًا لمدة {{days}} يومًا.',
+  verify_price_changed: 'تغيّر السعر إلى {{n}} رصيد. يُرجى تأكيد السعر الجديد للبدء.',
+  verify_price_running: 'السعر الثابت: {{n}} رصيد — يُخصم فقط عندما يصبح تقريرك جاهزًا.',
+  verify_price_paid: 'السعر المدفوع',
+  verify_report_expired_title: 'انتهت صلاحية هذا التقرير',
+  verify_rerun_cta: 'تحقق جديد — {{n}} رصيد',
+  adm_vprice_title: 'سعر Verify',
+  adm_vprice_desc: 'سعر واحد للعميل لكل عملية تحقق، متطابق في V1 وV2. تبقى تكاليف المزوّدين الداخلية في قسم المالية.',
+  adm_vprice_active: 'السعر الحالي: {{usd}} = {{n}} رصيد',
+  adm_vprice_not_fixed: 'لم يُحدَّد سعر ثابت بعد',
+  adm_vprice_validity: 'التقرير صالح لمدة {{days}} يومًا',
+  adm_vprice_vat: 'شامل الضريبة',
+  adm_vprice_usd: 'السعر (USD)',
+  adm_vprice_credits: '= {{n}} رصيد',
+  adm_vprice_invalid: 'أدخل مبلغًا يساوي عددًا صحيحًا من الأرصدة (من مضاعفات 0.10 دولار).',
+  adm_vprice_save: 'حفظ السعر',
+  adm_vprice_reason: 'السبب (مطلوب)',
+  adm_vprice_confirm_title: 'هل تريد تغيير سعر Verify إلى {{usd}} = {{n}} رصيد؟',
+  adm_vprice_confirm_body: 'تستخدم عمليات الشراء الجديدة السعر الجديد فورًا. تحتفظ التقارير الجارية والمشتراة مسبقًا بالسعر الذي بدأت به. يُسجَّل التغيير في سجل التدقيق مع السبب.',
+  adm_vprice_saved: 'تم تحديث سعر Verify',
+  adm_vprice_history: 'تغييرات السعر',
 
   /* ── VERIFY V2 RESEARCH ── */
   adm_v2r_title: 'إنفاق بحث V2',
@@ -125186,7 +125306,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'משך הזמינות',
-  rt_policy_verify: 'דוח ה-Verify שלך זמין במשך 30 יום מסיומו. לאחר מכן הדוח והקבצים השמורים הקשורים אליו נמחקים בהתאם למדיניות השמירה שלנו. מומלץ להוריד את הדוח מראש במקרה הצורך.',
+  rt_policy_verify: 'דוח Verify זמין במשך 30 יום מסיומו. לאחר מכן הוא אינו נגיש עוד; רישום התשלום נשמר. אם תזדקקו לדוח, מומלץ להוריד אותו מראש.',
   rt_policy_contracts: 'החוזה שלך והניתוח שלו זמינים במשך 30 יום. לפני תום התקופה אפשר להוריד את המסמך ואת תוצאות הניתוח.',
   rt_expiring_title: 'יפוג בקרוב',
   rt_available_until: 'זמין עד {{date}}',
@@ -128122,6 +128242,30 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'טווח מחירים דורש לפחות {{need}} מגרשים דומים באותו ייעוד קרקע בסביבה. מצאנו {{have}}, ולכן איננו נוקבים במספר עבור המגרש הזה. מודעות שמוצגות הן הקשר, לא הערכת שווי.',
+
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'מחיר',
+  verify_price_note: 'מחיר קבוע אחד, כולל מע״מ. הוא נגבה רק כשהדוח שלך מוכן — בדיקה שנעצרה או נכשלה אינה עולה דבר. הדוח שלך נשאר זמין למשך {{days}} ימים.',
+  verify_price_changed: 'המחיר השתנה ל-{{n}} קרדיטים. אשרו את המחיר החדש כדי להתחיל.',
+  verify_price_running: 'מחיר קבוע: {{n}} קרדיטים — נגבה רק כשהדוח שלך מוכן.',
+  verify_price_paid: 'המחיר ששולם',
+  verify_report_expired_title: 'תוקף הדוח הזה פג',
+  verify_rerun_cta: 'אימות חדש — {{n}} קרדיטים',
+  adm_vprice_title: 'מחיר Verify',
+  adm_vprice_desc: 'מחיר לקוח אחד לכל אימות, זהה ב-V1 וב-V2. עלויות הספקים הפנימיות נשארות בכספים.',
+  adm_vprice_active: 'מחיר פעיל: {{usd}} = {{n}} קרדיטים',
+  adm_vprice_not_fixed: 'עדיין לא נקבע מחיר קבוע',
+  adm_vprice_validity: 'הדוח בתוקף {{days}} ימים',
+  adm_vprice_vat: 'כולל מע״מ',
+  adm_vprice_usd: 'מחיר (USD)',
+  adm_vprice_credits: '= {{n}} קרדיטים',
+  adm_vprice_invalid: 'הזינו סכום ששווה למספר שלם של קרדיטים (כפולה של $0.10).',
+  adm_vprice_save: 'שמירת המחיר',
+  adm_vprice_reason: 'סיבה (חובה)',
+  adm_vprice_confirm_title: 'לשנות את מחיר Verify ל-{{usd}} = {{n}} קרדיטים?',
+  adm_vprice_confirm_body: 'רכישות חדשות משתמשות במחיר החדש מיד. דוחות פעילים ודוחות שכבר נרכשו שומרים על המחיר שבו התחילו. השינוי נרשם ביומן הביקורת עם הסיבה שלך.',
+  adm_vprice_saved: 'מחיר Verify עודכן',
+  adm_vprice_history: 'שינויי מחיר',
 
   /* ── VERIFY V2 RESEARCH ── */
   adm_v2r_title: 'הוצאות מחקר V2',

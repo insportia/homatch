@@ -40,13 +40,8 @@ const AddPropertyPage = lazyRoute(() => import('./pages/property/AddPropertyPage
 const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
 const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
-const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
-const FindBuyersHomePage = lazyRoute(() => import('./pages/property/FindBuyersHomePage'));
-const InternalResultsPage = lazyRoute(() => import('./pages/property/InternalResultsPage'));
-const PostOpportunityPage = lazyRoute(() => import('./pages/property/PostOpportunityPage'));
-const LeadDetailPage = lazyRoute(() => import('./pages/property/LeadDetailPage'));
-const HomatchLeadsPage = lazyRoute(() => import('./pages/property/HomatchLeadsPage'));
-const BuyerProfilePage = lazyRoute(() => import('./pages/property/BuyerProfilePage'));
+const MatchingWorkspacePage = lazyRoute(() => import('./pages/property/MatchingWorkspacePage'));
+const LegacyMatchingRedirect = lazyRoute(() => import('./pages/property/LegacyMatchingRedirect'));
 const LeadsCrmPage = lazyRoute(() => import('./pages/LeadsCrmPage'));
 const EmailStudioPage = lazyRoute(() => import('./pages/EmailStudioPage'));
 const DemoConversationPage = lazyRoute(() => import('./pages/property/DemoConversationPage'));
@@ -207,6 +202,7 @@ const AdminPropertyPortalsPage = lazyRoute(() => import('./pages/admin/AdminProp
 const AdminPropertyPortalPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalPage'));
 const AdminPublishingQueuePage = lazyRoute(() => import('./pages/admin/AdminPublishingQueuePage'));
 const AdminServiceControlPage = lazyRoute(() => import('./pages/admin/AdminServiceControlPage'));
+const AdminLeadsDatabasePage = lazyRoute(() => import('./pages/admin/AdminLeadsDatabasePage'));
 const AdminBrokersPage = lazyRoute(() => import('./pages/admin/AdminBrokersPage'));
 const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
@@ -502,14 +498,16 @@ const routeTable: RouteConfig[] = [
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },
   { name: 'Edit Property',     path: '/property/:id/edit',        element: <EditPropertyPage /> },
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
-  /* Find Buyers 3.0: a compact dashboard, then one page per result kind. */
-  { name: 'Property Matches',  path: '/property/:id/matches',     element: <FindBuyersHomePage /> },
-  { name: 'External results',  path: '/property/:id/buyers/external', element: <MatchesPage /> },
-  { name: 'Internal results',  path: '/property/:id/buyers/internal', element: <InternalResultsPage /> },
-  { name: 'Post opportunity',  path: '/property/:id/buyers/opportunity/:key', element: <PostOpportunityPage /> },
-  { name: 'Lead detail',       path: '/property/:id/buyers/lead/:leadId', element: <LeadDetailPage /> },
-  { name: 'HOMATCH Leads',     path: '/property/:id/leads',       element: <HomatchLeadsPage /> },
-  { name: 'Buyer profile',     path: '/property/:id/buyer/:key',  element: <BuyerProfilePage /> },
+  /* The matching workspace (owner, 2026-10-24): HOMATCH Internal Matches and the External Leads
+     Database, each with Available and Unlocked views. Every older matching address redirects here;
+     the legacy paid external discovery screens are hidden, their history kept in the database. */
+  { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchingWorkspacePage /> },
+  { name: 'External results',  path: '/property/:id/buyers/external', element: <LegacyMatchingRedirect target="external" />, visible: false },
+  { name: 'Internal results',  path: '/property/:id/buyers/internal', element: <LegacyMatchingRedirect target="internal" />, visible: false },
+  { name: 'Post opportunity',  path: '/property/:id/buyers/opportunity/:key', element: <LegacyMatchingRedirect target="external" />, visible: false },
+  { name: 'Lead detail',       path: '/property/:id/buyers/lead/:leadId', element: <LegacyMatchingRedirect target="external" />, visible: false },
+  { name: 'HOMATCH Leads',     path: '/property/:id/leads',       element: <LegacyMatchingRedirect target="internal" />, visible: false },
+  { name: 'Buyer profile',     path: '/property/:id/buyer/:key',  element: <LegacyMatchingRedirect target="internal" />, visible: false },
   { name: 'Leads CRM',         path: '/leads',                    element: <LeadsCrmPage /> },
   { name: 'Publish to Portals', path: '/publishing',               element: <PublishingWorkspacePage /> },
   { name: 'Publishing — choose', path: '/publishing/new',          element: <PublishingNewPage /> },
@@ -677,6 +675,9 @@ const routeTable: RouteConfig[] = [
   { name: 'Admin Property Portal',  path: '/admin/integrations/portals/:providerId', element: adminWrap(<AdminPropertyPortalPage />), adminOnly: true, visible: false },
   { name: 'Admin Publishing Queue', path: '/admin/integrations/publishing', element: adminWrap(<AdminPublishingQueuePage />), adminOnly: true },
   { name: 'Admin Service Control Center', path: '/admin/service-control', element: adminWrap(<AdminServiceControlPage />), adminOnly: true },
+  /* Matching workspace administration: the External Leads Database, its imports, the four
+     independent matching switches, and oversight of user-uploaded contact lists. */
+  { name: 'Admin Leads Database', path: '/admin/leads-database', element: adminWrap(<AdminLeadsDatabasePage />), adminOnly: true },
   { name: 'Admin Verify COGS', path: '/admin/verify-cogs',        element: adminWrap(<AdminVerifyCogsPage />),  adminOnly: true },
   /*
    * The eleven-tab voice tooling moved into AI & communication. The URL

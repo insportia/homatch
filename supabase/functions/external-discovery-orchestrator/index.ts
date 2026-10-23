@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serviceBackendEnabled } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -29,6 +30,10 @@ Deno.serve(async (req: Request) => {
     if (propertyError) throw propertyError;
     const isAdmin = !!actor.is_admin || ['ADMIN', 'SUPER_ADMIN'].includes(String(actor.role || '').toUpperCase());
     if (!property || (property.user_id !== actor.id && !isAdmin)) return json({ error: 'Forbidden' }, 403);
+    /* Legacy paid external discovery is closed to new customer runs (owner, 2026-10-24). */
+    if (!isAdmin && !(await serviceBackendEnabled(db, 'find_buyers_external'))) {
+      return json({ success: true, started: false, blocked: true, propertyId, reason: 'SERVICE_DISABLED' });
+    }
 
     const settings = await loadSettings(db, ['external_discovery_enabled', 'provider_kill_switch', 'external_discovery_max_jobs_per_property_tick']);
     if (settings.external_discovery_enabled !== true || settings.provider_kill_switch !== false) {

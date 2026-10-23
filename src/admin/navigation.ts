@@ -34,7 +34,7 @@ import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Boxes,Brai
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Plug, Puzzle, Radio, 
   Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, Store, 
-  TrendingUp, Type, UserSearch, Users, Wrench, Zap, 
+  TrendingUp, Type, UserSearch, Users, Wrench, Zap, Contact,
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n/translations';
 
@@ -102,6 +102,13 @@ export const ADMIN_GROUPS: AdminGroup[] = [
       {
         path: '/admin/campaigns', labelKey: 'admin_nav_campaigns', icon: Zap,
         keywords: ['campaign', 'matching run', 'search'],
+      },
+      {
+        /* The External Leads Database (curated international buyers, tenants, investors):
+           Excel import, publication, pricing, the four matching switches, user-list oversight. */
+        path: '/admin/leads-database', labelKey: 'admin_nav_leads_database', icon: Contact,
+        keywords: ['leads', 'database', 'curated', 'import', 'excel', 'xlsx', 'csv', 'external leads', 'international',
+          'investor', 'tenant', 'buyer', 'unlock', 'maintenance', 'matching switch', 'contact lists'],
       },
       {
         /* Native matching: internal pairs of two Homatch accounts, and

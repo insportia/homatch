@@ -81,7 +81,8 @@ test('interface: the free search exactly as before paid campaigns; past campaign
 test('fail closed: an unreadable, missing or stale switch never shows or runs paid Deep Search', async () => {
   const edge = await import('../../supabase/functions/_shared/serviceControl.ts');
   const front = await import('../../src/lib/serviceControls/core.ts');
-  assert.deepEqual([...edge.PAID_CLOSED_BY_DEFAULT], ['find_property_deep']);
+  /* find_buyers_external (legacy paid Find Buyers discovery) joined the fail-closed list on 2026-10-24. */
+  assert.deepEqual([...edge.PAID_CLOSED_BY_DEFAULT], ['find_property_deep', 'find_buyers_external']);
   assert.ok(!edge.LIVE_BY_DEFAULT.includes('find_property_deep') && !front.LIVE_BY_DEFAULT.includes('find_property_deep'));
   assert.deepEqual(edge.defaultState('find_property_deep'), { frontend: false, backend: false }, 'server: unreadable → OFF');
   assert.deepEqual(front.HIDDEN_SNAPSHOT.services.find_property_deep, { frontend: false, backend: false }, 'browser: before an answer → hidden');

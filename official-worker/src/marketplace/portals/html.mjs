@@ -8,6 +8,23 @@ export const strip = (html) => decode(String(html ?? '').replace(/<script[\s\S]*
 /** "1,064,012" / "389 383" / "56.3" → number; null when absent or not a number. */
 export const num = (s) => { if (s == null) return null; const t = String(s).replace(/[\s ‍,]/g, '').replace(/[^\d.]/g, ''); if (!t) return null; const n = Number(t); return Number.isFinite(n) ? n : null; };
 export const int = (s) => { const n = num(s); return n == null ? null : Math.round(n); };
+/**
+ * A listing's own floor. `num()` keeps digits only, which turns "1/9" into 19 and a
+ * basement "-1" into 1; a floor is read as the first signed number, before any "/total".
+ * Ground / basement words are mapped only when they are the whole value.
+ */
+export const floorNumber = (s) => {
+  if (s == null) return null;
+  const t = String(s).replace(/[\s\u00a0]+/g, ' ').trim().toLowerCase();
+  if (!t) return null;
+  if (/^(?:ნახევარ\s*სარდაფი|ნახევრადსარდაფი|полуподвал|цоколь\S*|semi-?basement)$/u.test(t)) return 0;
+  if (/^(?:სარდაფი|подвал|basement)$/u.test(t)) return -1;
+  if (/^(?:ქვედა სართული|მიწის სართული|ground(?: floor)?)$/u.test(t)) return 0;
+  const m = t.match(/^(-?\d{1,3})(?:\s*(?:\/|из|of)\s*\d{1,3})?\b/u);
+  if (!m) return null;
+  const v = Number(m[1]);
+  return Number.isInteger(v) && v >= -5 && v <= 200 ? v : null;
+};
 export const meta = (html, prop) => { const m = String(html).match(new RegExp(`<meta[^>]+(?:property|name)="${prop}"[^>]+content="([^"]*)"`, 'i')) ?? String(html).match(new RegExp(`<meta[^>]+content="([^"]*)"[^>]+(?:property|name)="${prop}"`, 'i')); return m ? decode(m[1]).trim() : null; };
 export const absolute = (href, base) => { try { return new URL(decode(href), base).href; } catch { return null; } };
 export const ldjson = (html) => [...String(html).matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)].flatMap((m) => { try { const v = JSON.parse(m[1]); return Array.isArray(v) ? v : [v]; } catch { return []; } });

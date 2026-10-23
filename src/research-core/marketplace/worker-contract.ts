@@ -17,7 +17,7 @@ import { clipText } from './text-safety.ts';
 import { safeWebUrl } from '../discovery/source-link.ts';
 import {
   type BuildingStatus, type MarketplacePropertyType, type MarketplaceTransaction, type RenovationStatus,
-  asBuildingStatus, asPropertyType, asRenovationStatus, asTransaction,
+  BUILDING_STATUSES, asBuildingStatus, asPropertyType, asRenovationStatus, asTransaction,
 } from './taxonomy.ts';
 import { type SearchIntelligenceBrief, confirmedValue, primaryPriceRange } from './brief.ts';
 
@@ -93,8 +93,13 @@ export interface MarketplaceSearchRequest {
   rooms: { min: number | null; max: number | null } | null;
   bedrooms: { min: number | null; max: number | null } | null;
   bathrooms: { min: number | null; max: number | null } | null;
+  /** Accepted building ages; a known status outside them is a hard mismatch. */
   buildingStatuses: BuildingStatus[];
+  /** Accepted finishing conditions; a known one outside them is a hard mismatch, an unknown one is unverified. */
   renovationPreferences: RenovationStatus[];
+  /** Soft wishes ("preferably new"): rank higher, never exclude. Absent on older requests. */
+  preferredBuildingStatuses?: BuildingStatus[];
+  preferredRenovations?: RenovationStatus[];
   furnished: boolean | null;
   parking: boolean | null;
   mustHave: string[];
@@ -136,7 +141,9 @@ export function buildSearchRequest(
     throw new Error('buildSearchRequest: brief is not READY');
   }
   const area = confirmedValue(brief.area);
-  const buildings = (confirmedValue(brief.buildingStatuses) ?? []).filter((b): b is BuildingStatus => b !== 'ANY');
+  /* ANY is a wildcard, never a status; every age listed is the same as no restriction. */
+  const named = (confirmedValue(brief.buildingStatuses) ?? []).filter((b): b is BuildingStatus => b !== 'ANY');
+  const buildings = named.length === BUILDING_STATUSES.length ? [] : named;
   const renovations = (confirmedValue(brief.renovationPreferences) ?? []).filter((r): r is RenovationStatus => r !== 'ANY');
   return {
     contract: WORKER_CONTRACT_VERSION,
@@ -157,6 +164,8 @@ export function buildSearchRequest(
     bathrooms: confirmedValue(brief.bathrooms),
     buildingStatuses: buildings,
     renovationPreferences: renovations,
+    preferredBuildingStatuses: [...(brief.preferredBuildingStatuses ?? [])],
+    preferredRenovations: [...(brief.preferredRenovations ?? [])],
     furnished: confirmedValue(brief.furnished),
     parking: confirmedValue(brief.parking),
     mustHave: [...brief.mustHave],

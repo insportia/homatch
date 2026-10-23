@@ -21337,6 +21337,9 @@ const en = {
   emc_err_opted_out: 'This person opted out or is suppressed. Only they can opt in again.',
   emc_err_no_email: 'This contact has no email address.',
   emc_err_failed: 'Could not save the consent change.',
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, as you preferred.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, as you preferred.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42588,6 +42591,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   emc_err_opted_out: 'ამ ადამიანმა უარი თქვა ან დაბლოკილია. ხელახლა თანხმობის მიცემა მხოლოდ თავად შეუძლია.',
   emc_err_no_email: 'ამ კონტაქტს ელფოსტის მისამართი არ აქვს.',
   emc_err_failed: 'თანხმობის ცვლილება ვერ შეინახა.',
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, როგორც გირჩევნიათ.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, როგორც გირჩევნიათ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63830,6 +63836,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   emc_err_opted_out: 'Человек отписался или заблокирован. Снова подписаться может только он сам.',
   emc_err_no_email: 'У этого контакта нет адреса эл. почты.',
   emc_err_failed: 'Не удалось сохранить изменение согласия.',
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}} — как вы и предпочитали.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}} — как вы и предпочитали.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -85070,6 +85079,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   emc_err_opted_out: 'Bu kişi abonelikten çıktı veya engellendi. Yeniden yalnızca kendisi izin verebilir.',
   emc_err_no_email: 'Bu kişinin e-posta adresi yok.',
   emc_err_failed: 'İzin değişikliği kaydedilemedi.',
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, tercih ettiğiniz gibi.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, tercih ettiğiniz gibi.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106310,6 +106322,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   emc_err_opted_out: 'ألغى هذا الشخص اشتراكه أو تم حظره. هو وحده من يمكنه الاشتراك مجدداً.',
   emc_err_no_email: 'لا يوجد عنوان بريد إلكتروني لجهة الاتصال هذه.',
   emc_err_failed: 'تعذّر حفظ تغيير الموافقة.',
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}، كما تفضّل.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}، كما تفضّل.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -127550,6 +127565,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   emc_err_opted_out: 'אדם זה הסיר את עצמו או נחסם. רק הוא יכול להצטרף מחדש.',
   emc_err_no_email: 'לאיש קשר זה אין כתובת דוא"ל.',
   emc_err_failed: 'לא ניתן לשמור את שינוי ההסכמה.',
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, כפי שהעדפת.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, כפי שהעדפת.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

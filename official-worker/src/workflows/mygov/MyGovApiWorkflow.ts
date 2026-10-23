@@ -13,6 +13,22 @@ import {newDocumentShell,markComplete} from '../../documents/DocumentTypes.js';
 import type {LegacySourceResult} from '../WorkflowResult.js';
 import type {EntityQueue} from '../../entities/EntityQueue.js';
 const SOURCE_URL='https://www.my.gov.ge/ka-ge/services/5/service/176';
+/*
+ * WHICH RECORDS THE CAPTCHA BUDGET OPENS (V1.1, 2026-10-23).
+ *
+ * NAPR gates many application records with their own reCAPTCHA, and the
+ * per-task solve budget (maxSolvesPerJob) is fixed. Records were opened in the
+ * source's order (newest first), so on parcel 01.14.07.001.044 the budget went
+ * to a batch of refused (statusId 12) and terminated (13) applications, and
+ * all 38 records left gated were COMPLETED registrations (10) — the ownership
+ * and encumbrance history a buyer needs. Completed registrations are now
+ * opened first; newest-first order is kept within each group. Same budget, no
+ * extra spend; refused/terminated applications stay listed from the search.
+ */
+const STATUS_PRIORITY:Record<string,number>={'10':0,'13':2,'12':3};
+export function prioritiseNaprRecords<T extends {statusId?:unknown}>(records:T[]):T[]{
+ return records.map((r,i)=>({r,i,p:STATUS_PRIORITY[String(r.statusId??'')]??1})).sort((a,b)=>a.p-b.p||a.i-b.i).map(x=>x.r);
+}
 function newMyGovApiResult(query:string):LegacySourceResult {
  return {source:'mygov',sourceName:'Official Government Sources',sourceClass:'OFFICIAL_GOVERNMENT',sourceUrl:SOURCE_URL,startUrl:SOURCE_URL,finalUrl:'https://naprweb.reestri.gov.ge/_dea/#/search',frameUrls:[],adapter:'service176-public-api',searchControlUsed:'cadcode',queryEntered:typeof query==='string'?query.trim():null,submitAction:'POST /api/search',retrievalMethod:'PUBLIC_API',searched:false,resultContext:null,resultConfirmed:false,noResultConfirmed:false,resultValidated:false,status:'FAILED',traversal:null,retrievedAt:new Date().toISOString(),documents:[],discoveredEntities:[],error:null};
 }
@@ -61,7 +77,7 @@ export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,opt
    const result=await search(query,http);if(controller.signal.aborted)throw new Error('Provider deadline');base.searched=true;base.submitted=true;base.submissionConfirmed=true;
    base.traversal={providerState:'SEARCH_RETURNED',search:result,records,continuations,documentReferences:references,failures,requests};
    if(!result.records.length){if(result.pages.some(page=>Number(page.total)>0))throw new Error('Empty page contradicts source total');base.status='NO_RESULT_CONFIRMED';base.noResultConfirmed=true;base.resultValidated=true;return;}
-   for(const application of result.records){
+   for(const application of prioritiseNaprRecords(result.records as any[])){
      if(controller.signal.aborted)throw new Error('Provider deadline');
      try{
        const selected=await selectRecord(result,application.appID,http);if(controller.signal.aborted)throw new Error('Provider deadline');

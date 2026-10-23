@@ -10,7 +10,7 @@ import { renderDesignBody } from '../designer/render.ts';
 import { toBroadcastMergeFields } from '../../../supabase/functions/_shared/emailMarketing/broadcast.ts';
 
 const read = (p) => readFileSync(p, 'utf8');
-const MIGRATION = read('supabase/migrations/20261127090000_email_studio_review.sql');
+const MIGRATION = read('supabase/migrations/20261127120000_email_studio_review.sql');
 const SEND = read('supabase/functions/outreach-send/index.ts');
 const MARKETING = read('supabase/functions/email-marketing/index.ts');
 const STUDIO_OLD = read('supabase/functions/_shared/emailStudio.ts');

@@ -38,6 +38,14 @@ export interface LaunchQuote {
   usdCents: number;
   availableCredits: number | null;
   currencies: Array<{ code: string; usdPerUnit: number; asOf?: string }>;
+  /** FIXED (20261127090000): one price, VAT included, charged only on delivery. */
+  priceMode?: 'FIXED' | 'VARIABLE';
+  priceCredits?: number | null;
+  priceCents?: number | null;
+  pricingVersion?: number | null;
+  validityDays?: number | null;
+  /** Set by the page when a start was refused because the price changed. */
+  priceChanged?: boolean;
 }
 
 export interface PublicBilling {
@@ -59,6 +67,11 @@ export interface PublicBilling {
   canExtend?: boolean;
   /** Why a paused job waits: the customer's approval of +25, or the 100 maximum. */
   hold?: 'APPROVAL' | 'LIMIT' | null;
+  /** FIXED: the job's own price, charged only when the report is delivered. */
+  priceMode?: 'FIXED' | 'VARIABLE';
+  priceCredits?: number | null;
+  priceCents?: number | null;
+  validityDays?: number | null;
 }
 
 const INTL: Record<string, string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', ar: 'ar', he: 'he-IL' };
@@ -134,6 +147,7 @@ export function VerifyLaunchDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t, lang } = useLanguage();
+  const fixed = quote?.priceMode === 'FIXED';
   const options = useMemo(() => ['USD', ...(quote?.currencies ?? []).map((c) => c.code).filter((c) => c !== 'USD')], [quote]);
   const [currency, setCurrency] = useState<string>(() => storedCurrency());
   const shown = options.includes(currency) ? currency : 'USD';
@@ -161,7 +175,7 @@ export function VerifyLaunchDialog({
 
           {quote ? (
             <div className="rounded-xl bg-[#0C1119] p-5 text-white shadow-card">
-              <p className="text-2xs font-medium uppercase tracking-[0.12em] text-white/60">{t('verify_budget_required')}</p>
+              <p className="text-2xs font-medium uppercase tracking-[0.12em] text-white/60">{t(fixed ? 'verify_price_label' : 'verify_budget_required')}</p>
               <p className="mt-1.5 whitespace-nowrap font-display text-4xl font-semibold leading-none tracking-tight [font-variant-numeric:tabular-nums]">
                 <bdi>
                   {formatCreditAmount(quote.maxCredits, lang)}
@@ -193,7 +207,14 @@ export function VerifyLaunchDialog({
             <div className="flex justify-center rounded-xl border border-border py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" /></div>
           )}
 
-          <DialogDescription className="text-sm leading-6 text-muted-foreground">{t('verify_budget_note')}</DialogDescription>
+          {quote?.priceChanged ? (
+            <p className="rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-3 text-sm font-medium leading-6 text-foreground break-words" role="status">
+              {t('verify_price_changed', { n: formatCreditAmount(quote.maxCredits, lang) })}
+            </p>
+          ) : null}
+          <DialogDescription className="text-sm leading-6 text-muted-foreground">
+            {fixed ? t('verify_price_note', { days: String(quote?.validityDays ?? 30) }) : t('verify_budget_note')}
+          </DialogDescription>
 
           {quote && missing > 0 ? (
             <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
@@ -225,6 +246,21 @@ export function VerifyLaunchDialog({
  * motion is a tween between two measured numbers, never a guess.
  */
 export function VerifyBudgetLine({ billing }: { billing: PublicBilling | null }) {
+  return billing?.priceMode === 'FIXED' ? <FixedPriceLine billing={billing} /> : <LiveBudgetLine billing={billing} />;
+}
+
+/** A fixed-price run: one price, nothing counting up, charged only on delivery. */
+function FixedPriceLine({ billing }: { billing: PublicBilling }) {
+  const { t, lang } = useLanguage();
+  if (billing.state !== 'ACTIVE') return null;
+  return (
+    <p className="rounded-xl bg-[#0C1119] px-4 py-3 text-sm font-medium leading-6 text-white/85 break-words" data-testid="verify-price-running">
+      {t('verify_price_running', { n: formatCreditAmount(billing.priceCredits, lang) })}
+    </p>
+  );
+}
+
+function LiveBudgetLine({ billing }: { billing: PublicBilling | null }) {
   const { t, lang } = useLanguage();
   const active = !!billing && billing.state === 'ACTIVE';
   const used = active && !billing!.calculating ? Number(billing!.used) : null;
@@ -371,12 +407,14 @@ export function VerifyPausedCard({
 export function VerifyBudgetSummary({ billing }: { billing: PublicBilling | null }) {
   const { t, lang } = useLanguage();
   if (!billing || (billing.state !== 'SETTLED' && billing.state !== 'RELEASED')) return null;
-  // Everything authorised and not charged went back to the wallet.
-  const returned = billing.authorized != null && billing.charged != null ? Math.max(0, billing.authorized - billing.charged) : null;
+  const fixed = billing.priceMode === 'FIXED';
+  // Everything authorised and not charged went back to the wallet. (Fixed:
+  // the price was the whole authorisation — nothing to return on delivery.)
+  const returned = !fixed && billing.authorized != null && billing.charged != null ? Math.max(0, billing.authorized - billing.charged) : null;
   return (
     <section className="hm-invest-panel p-4 sm:p-5">
       <dl className="grid grid-cols-2 gap-3">
-        <Stat strong label={t('verify_final_cost')} value={formatCreditAmount(billing.charged, lang)} unit={t('verify_budget_unit')} />
+        <Stat strong label={t(fixed ? 'verify_price_paid' : 'verify_final_cost')} value={formatCreditAmount(billing.charged, lang)} unit={t('verify_budget_unit')} />
         {returned != null ? <Stat label={t('verify_unused_returned')} value={formatCreditAmount(returned, lang)} unit={t('verify_budget_unit')} /> : null}
       </dl>
     </section>

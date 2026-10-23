@@ -49,7 +49,7 @@ test('outreach-send enforces the gate before any reservation or send, for email 
 });
 
 test('the scheduler claims an email campaign only with a current approval', () => {
-  const sql = readFileSync('supabase/migrations/20261127090000_email_studio_review.sql', 'utf8');
+  const sql = readFileSync('supabase/migrations/20261127120000_email_studio_review.sql', 'utf8');
   const claim = sql.slice(sql.indexOf('create or replace function public.outreach_claim_due_campaigns'));
   assert.match(claim, /c2\.approved_content_hash = c2\.content_hash/);
 });

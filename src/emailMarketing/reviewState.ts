@@ -1,7 +1,7 @@
 // EMAIL CAMPAIGN REVIEW STATE — one vocabulary for the server gate and the Email Studio UI.
 //
 // The database keeps its historical status values (REVIEW_REQUIRED, RUNNING, COMPLETED) next to
-// the review states added for Email Studio (migration 20261127090000). The UI speaks one set of
+// the review states added for Email Studio (migration 20261127120000). The UI speaks one set of
 // phases; this file is the only translation, so a label can never disagree with the gate.
 //
 // THE GATE (owner brief §10): an email campaign is dispatched only when it is APPROVED,

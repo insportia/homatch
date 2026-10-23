@@ -62,7 +62,9 @@ test('the customer sees used / remaining / returned — never costs, VAT or marg
     state: 'PAUSED', authorizedTotal: '25.0000', chargedTotal: '8.0000', used: '8.0000', remaining: '17.0000', usageState: 'SETTLED',
     lastSession: { outcome: 'STOPPED', charged: '8.0000', released: '17.0000' }, budgetGuard: false, sessions: 1,
   });
-  assert.deepEqual(b, { state: 'PAUSED', authorized: 25, used: 8, remaining: 17, charged: 8, live: false, calculating: false, lastReturned: 17, lastCharged: 8, authorizations: null, increment: null, incrementUsdCents: null, maxBudget: null, canExtend: false, hold: null });
+  assert.deepEqual(b, { state: 'PAUSED', authorized: 25, used: 8, remaining: 17, charged: 8, live: false, calculating: false, lastReturned: 17, lastCharged: 8, authorizations: null, increment: null, incrementUsdCents: null, maxBudget: null, canExtend: false, hold: null,
+    // Fixed Verify price (20261127090000): a job opened before it reads as VARIABLE with no price.
+    priceMode: 'VARIABLE', priceCredits: null, priceCents: null, validityDays: null });
   const x = publicBilling({ state: 'PAUSED', authorizedTotal: 50, chargedTotal: 41, used: 41, remaining: 9, authorizations: 2, increment: 25, maxBudget: 100, canExtend: true }, { reason: 'BUDGET' });
   assert.equal(x.authorizations, 2);
   assert.equal(x.canExtend, true);
@@ -109,9 +111,9 @@ test('research-agent: every chargeable stage asks the budget gate first; only an
 
 test('research-agent: reserves before work, stops cooperatively, never advances a paused job', () => {
   const src = agent();
-  const start = src.slice(src.indexOf('RESERVE BEFORE ANY BILLABLE WORK'), src.indexOf('RESERVE BEFORE ANY BILLABLE WORK') + 1600);
+  const start = src.slice(src.indexOf('RESERVE BEFORE ANY BILLABLE WORK'), src.indexOf('RESERVE BEFORE ANY BILLABLE WORK') + 2600); // the block grew with the quoted-price check (20261127090000)
   assert.match(start, /verify_billing_open/);
-  assert.ok(start.indexOf('verify_billing_open') < start.indexOf('advanceExclusive'), 'reservation precedes the first step');
+  assert.ok(start.indexOf('advanceExclusive') > 0 && start.indexOf('verify_billing_open') < start.indexOf('advanceExclusive'), 'reservation precedes the first step');
   assert.match(src, /\['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED', 'PAUSED'\]\.includes\(j\.status\)/);
   // The stop intent is checked before and after every step.
   const ex = src.slice(src.indexOf('async function advanceExclusive('), src.indexOf('async function advance('));

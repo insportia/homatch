@@ -87,7 +87,7 @@ Pre-check (read-only, done 2026-10-24): production has 3 EMAIL campaigns, all CO
 RUNNING/SCHEDULED/DRAFT that the new gate could strand. Re-run right before step 1:
 `select status, count(*) from outreach_campaigns where campaign_type='EMAIL' group by 1;`
 
-1. **Migration first** — `20261127090000_email_studio_review.sql` through the release path (or MCP
+1. **Migration first** — `20261127120000_email_studio_review.sql` through the release path (or MCP
    `apply_migration` with the exact file text, name `email_studio_review`), then verify the ledger
    hash equals `sqlHash` of the file. It is additive and safe under the code now in production:
    the old `outreach-send` keeps sending (it does not call the new RPC); the only old-UI action it

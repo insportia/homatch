@@ -18478,7 +18478,7 @@ const en = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'How long this stays available',
-  rt_policy_verify: 'Your Verify report is available for 30 days after it is completed. After that, the report and the files stored with it are deleted under our retention policy. We recommend downloading the report in advance if you need it.',
+  rt_policy_verify: 'Your Verify report is available for 30 days after it is completed. After that it is no longer accessible; your payment record is kept. We recommend downloading the report in advance if you need it.',
   rt_policy_contracts: 'Your contract and its analysis are available for 30 days. Before they expire you can download the document and the analysis results.',
   rt_expiring_title: 'Expiring soon',
   rt_available_until: 'Available until {{date}}',
@@ -21415,13 +21415,38 @@ const en = {
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'A price range needs at least {{need}} comparable plots of the same land designation nearby. We found {{have}}, so we are not giving a number for this plot. Any listing shown is context, not a valuation.',
 
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'Price',
+  verify_price_note: 'One fixed price, VAT included. It is charged only when your report is ready — a stopped or failed check costs nothing. Your report stays available for {{days}} days.',
+  verify_price_changed: 'The price has changed to {{n}} credits. Please confirm the new price to start.',
+  verify_price_running: 'Fixed price: {{n}} credits — charged only when your report is ready.',
+  verify_price_paid: 'Price paid',
+  verify_report_expired_title: 'This report has expired',
+  verify_rerun_cta: 'Run new verification — {{n}} credits',
+  adm_vprice_title: 'Verify price',
+  adm_vprice_desc: 'The one customer price for every verification, V1 and V2 alike. Internal provider costs stay in Finance.',
+  adm_vprice_active: 'Active price: {{usd}} = {{n}} credits',
+  adm_vprice_not_fixed: 'Not a fixed price yet',
+  adm_vprice_validity: 'Report valid {{days}} days',
+  adm_vprice_vat: 'VAT included',
+  adm_vprice_usd: 'Price (USD)',
+  adm_vprice_credits: '= {{n}} credits',
+  adm_vprice_invalid: 'Enter an amount that is a whole number of credits (a multiple of $0.10).',
+  adm_vprice_save: 'Save price',
+  adm_vprice_reason: 'Reason (required)',
+  adm_vprice_confirm_title: 'Change the Verify price to {{usd}} = {{n}} credits?',
+  adm_vprice_confirm_body: 'New purchases use the new price immediately. Running and already purchased reports keep the price they started with. The change is recorded in the audit log with your reason.',
+  adm_vprice_saved: 'Verify price updated',
+  adm_vprice_history: 'Price changes',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_nav_dashboard: 'Dashboard',
   ems_nav_campaigns: 'Campaigns',
   ems_nav_templates: 'Templates',
   ems_nav_audiences: 'Contacts & audiences',
   ems_nav_analytics: 'Analytics',
   ems_nav_deliverability: 'Deliverability & compliance',
+  ems_nav_settings: 'Settings',
   ems_nav_sender: 'Sender settings',
   ems_new_campaign: 'New campaign',
   ems_untitled: 'Untitled campaign',
@@ -21574,11 +21599,13 @@ const en = {
   ems_seg_interest: 'Interest',
   ems_seg_countries: 'Countries',
   ems_seg_countries_hint: 'Two-letter codes separated by commas, e.g. GE, DE, AE.',
+  ems_seg_countries_example: 'e.g. GE, DE, AE',
   ems_seg_exclude: 'Exclude these lists',
   ems_seg_exclude_hint: 'Anyone on these lists is left out.',
   ems_src_import: 'Uploaded by me',
   ems_src_manual: 'Added by hand',
   ems_src_find_buyers: 'Find Buyers',
+  ems_src_curated_lead: 'HOMATCH curated leads',
   ems_src_internal_match: 'HOMATCH matches',
   ems_lead_buyer: 'Buyers',
   ems_lead_tenant: 'Tenants',
@@ -21696,6 +21723,7 @@ const en = {
   ems_d_delete: 'Delete',
   ems_d_close: 'Close',
   ems_d_clear: 'Clear',
+  ems_d_hex_placeholder: '#RRGGBB (hex colour)',
   ems_d_none: 'None',
   ems_d_save_section: 'Save as section',
   ems_d_save_template: 'Save as template',
@@ -22002,18 +22030,6 @@ const en = {
   ems_dl_suppressed_total: '{{n}} suppressed addresses in total',
   ems_dl_manage_contacts: 'Manage contacts',
   ems_dl_plan_link: 'Plan and usage',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_reason_content_changed: 'Content or audience changed after submission',
-  ems_reason_withdrawn: 'Withdrawn by the sender',
-  ems_reason_policy_manual_all: 'Every campaign is reviewed by a person',
-  ems_reason_risk_findings: 'The safety check found something a person should look at',
-  ems_reason_link_recheck: 'A link changed destination after approval',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_nav_settings: 'Settings',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   admin_ems_nav: 'Email review',
   admin_ems_title: 'Email campaign review',
   admin_ems_subtitle: 'Campaigns waiting for a decision, the decision log, and the controls that govern email marketing. Hard prohibitions cannot be overridden here.',
@@ -22066,13 +22082,11 @@ const en = {
   admin_ems_setting_reason: 'Reason for this change (written to the audit log)',
   admin_ems_saved: 'Saved.',
   admin_ems_save_failed: 'Could not save the setting.',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_seg_countries_example: 'e.g. GE, DE, AE',
-  ems_d_hex_placeholder: '#RRGGBB (hex colour)',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_src_curated_lead: 'HOMATCH curated leads',
+  ems_reason_content_changed: 'Content or audience changed after submission',
+  ems_reason_withdrawn: 'Withdrawn by the sender',
+  ems_reason_policy_manual_all: 'Every campaign is reviewed by a person',
+  ems_reason_risk_findings: 'The safety check found something a person should look at',
+  ems_reason_link_recheck: 'A link changed destination after approval',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -40465,7 +40479,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'ხელმისაწვდომობის ვადა',
-  rt_policy_verify: 'თქვენი Verify ანგარიში ხელმისაწვდომია დასრულებიდან 30 დღის განმავლობაში. ამ ვადის გასვლის შემდეგ ანგარიში და მასთან დაკავშირებული შენახული ფაილები წაიშლება ჩვენი შენახვის პოლიტიკის შესაბამისად. გირჩევთ, საჭიროების შემთხვევაში წინასწარ ჩამოტვირთოთ ანგარიში.',
+  rt_policy_verify: 'Verify-ის ანგარიში ხელმისაწვდომია დასრულებიდან 30 დღის განმავლობაში. ამის შემდეგ ის აღარ იქნება ხელმისაწვდომი; გადახდის ჩანაწერი ინახება. თუ ანგარიში დაგჭირდებათ, გირჩევთ წინასწარ ჩამოტვირთოთ.',
   rt_policy_contracts: 'თქვენი ხელშეკრულება და მისი ანალიზი ხელმისაწვდომია 30 დღის განმავლობაში. ვადის გასვლამდე შეგიძლიათ ჩამოტვირთოთ დოკუმენტი და ანალიზის შედეგები.',
   rt_expiring_title: 'მალე იწურება',
   rt_available_until: 'ხელმისაწვდომია {{date}}-მდე',
@@ -43402,13 +43416,38 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'ფასის დიაპაზონის დასადგენად საჭიროა მინიმუმ {{need}} იმავე დანიშნულების შესადარებელი მიწის ნაკვეთი ახლომდებარე ტერიტორიაზე. ვიპოვეთ {{have}}, ამიტომ ამ ნაკვეთისთვის ციფრს არ ვასახელებთ. ნაჩვენები განცხადებები მხოლოდ კონტექსტია და არა შეფასება.',
 
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'ფასი',
+  verify_price_note: 'ერთი ფიქსირებული ფასი, დღგ-ს ჩათვლით. თანხა ჩამოიჭრება მხოლოდ მაშინ, როცა ანგარიში მზად იქნება — შეჩერებული ან წარუმატებელი შემოწმება არაფერი ღირს. ანგარიში ხელმისაწვდომი იქნება {{days}} დღის განმავლობაში.',
+  verify_price_changed: 'ფასი შეიცვალა და გახდა {{n}} კრედიტი. დასაწყებად დაადასტურეთ ახალი ფასი.',
+  verify_price_running: 'ფიქსირებული ფასი: {{n}} კრედიტი — ჩამოიჭრება მხოლოდ ანგარიშის მზადყოფნისას.',
+  verify_price_paid: 'გადახდილი ფასი',
+  verify_report_expired_title: 'ამ ანგარიშის ვადა ამოიწურა',
+  verify_rerun_cta: 'ახალი ვერიფიკაცია — {{n}} კრედიტი',
+  adm_vprice_title: 'Verify-ის ფასი',
+  adm_vprice_desc: 'ერთი სამომხმარებლო ფასი ყველა ვერიფიკაციისთვის, V1-ისა და V2-ისთვის ერთნაირად. შიდა პროვაიდერის ხარჯები ფინანსებში რჩება.',
+  adm_vprice_active: 'მოქმედი ფასი: {{usd}} = {{n}} კრედიტი',
+  adm_vprice_not_fixed: 'ფიქსირებული ფასი ჯერ არ არის დაყენებული',
+  adm_vprice_validity: 'ანგარიში მოქმედებს {{days}} დღე',
+  adm_vprice_vat: 'დღგ-ს ჩათვლით',
+  adm_vprice_usd: 'ფასი (USD)',
+  adm_vprice_credits: '= {{n}} კრედიტი',
+  adm_vprice_invalid: 'შეიყვანეთ თანხა, რომელიც კრედიტების მთელ რაოდენობას შეადგენს ($0.10-ის ჯერადი).',
+  adm_vprice_save: 'ფასის შენახვა',
+  adm_vprice_reason: 'მიზეზი (სავალდებულო)',
+  adm_vprice_confirm_title: 'შეიცვალოს Verify-ის ფასი {{usd}} = {{n}} კრედიტზე?',
+  adm_vprice_confirm_body: 'ახალი შესყიდვები ახალ ფასს მაშინვე იყენებს. მიმდინარე და უკვე შეძენილი ანგარიშები საწყის ფასს ინარჩუნებს. ცვლილება თქვენი მიზეზით აუდიტის ჟურნალში ჩაიწერება.',
+  adm_vprice_saved: 'Verify-ის ფასი განახლდა',
+  adm_vprice_history: 'ფასის ცვლილებები',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_nav_dashboard: 'მიმოხილვა',
   ems_nav_campaigns: 'კამპანიები',
   ems_nav_templates: 'შაბლონები',
   ems_nav_audiences: 'კონტაქტები და აუდიტორია',
   ems_nav_analytics: 'ანალიტიკა',
   ems_nav_deliverability: 'მიწოდება და შესაბამისობა',
+  ems_nav_settings: 'პარამეტრები',
   ems_nav_sender: 'გამგზავნის პარამეტრები',
   ems_new_campaign: 'ახალი კამპანია',
   ems_untitled: 'უსათაურო კამპანია',
@@ -43561,11 +43600,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ems_seg_interest: 'ინტერესი',
   ems_seg_countries: 'ქვეყნები',
   ems_seg_countries_hint: 'ორასოიანი კოდები მძიმით, მაგ. GE, DE, AE.',
+  ems_seg_countries_example: 'მაგ. GE, DE, AE',
   ems_seg_exclude: 'ამ სიების გამორიცხვა',
   ems_seg_exclude_hint: 'ამ სიებში მყოფი ყველა კონტაქტი გამოირიცხება.',
   ems_src_import: 'ჩემ მიერ ატვირთული',
   ems_src_manual: 'ხელით დამატებული',
   ems_src_find_buyers: 'მყიდველების ძიება',
+  ems_src_curated_lead: 'HOMATCH-ის შერჩეული ლიდები',
   ems_src_internal_match: 'HOMATCH-ის დამთხვევები',
   ems_lead_buyer: 'მყიდველები',
   ems_lead_tenant: 'მოიჯარეები',
@@ -43683,6 +43724,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ems_d_delete: 'წაშლა',
   ems_d_close: 'დახურვა',
   ems_d_clear: 'გასუფთავება',
+  ems_d_hex_placeholder: '#RRGGBB (ფერის კოდი)',
   ems_d_none: 'არცერთი',
   ems_d_save_section: 'სექციად შენახვა',
   ems_d_save_template: 'შაბლონად შენახვა',
@@ -43989,18 +44031,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ems_dl_suppressed_total: 'სულ {{n}} დაბლოკილი მისამართი',
   ems_dl_manage_contacts: 'კონტაქტების მართვა',
   ems_dl_plan_link: 'პაკეტი და მოხმარება',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_reason_content_changed: 'შინაარსი ან აუდიტორია შეიცვალა გაგზავნის შემდეგ',
-  ems_reason_withdrawn: 'გამგზავნმა გამოითხოვა',
-  ems_reason_policy_manual_all: 'ყველა კამპანიას ადამიანი ამოწმებს',
-  ems_reason_risk_findings: 'უსაფრთხოების შემოწმებამ იპოვა რამ, რაც ადამიანმა უნდა ნახოს',
-  ems_reason_link_recheck: 'ბმულმა დამტკიცების შემდეგ მისამართი შეცვალა',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_nav_settings: 'პარამეტრები',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   admin_ems_nav: 'ელფოსტის შემოწმება',
   admin_ems_title: 'ელფოსტის კამპანიების შემოწმება',
   admin_ems_subtitle: 'გადაწყვეტილების მომლოდინე კამპანიები, გადაწყვეტილებების ჟურნალი და ელფოსტის მარკეტინგის მართვა. მკაცრ აკრძალვებს აქ ვერ გადალახავთ.',
@@ -44053,13 +44083,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_ems_setting_reason: 'ცვლილების მიზეზი (ჩაიწერება აუდიტის ჟურნალში)',
   admin_ems_saved: 'შენახულია.',
   admin_ems_save_failed: 'პარამეტრი ვერ შეინახა.',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_seg_countries_example: 'მაგ. GE, DE, AE',
-  ems_d_hex_placeholder: '#RRGGBB (ფერის კოდი)',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_src_curated_lead: 'HOMATCH-ის შერჩეული ლიდები',
+  ems_reason_content_changed: 'შინაარსი ან აუდიტორია შეიცვალა გაგზავნის შემდეგ',
+  ems_reason_withdrawn: 'გამგზავნმა გამოითხოვა',
+  ems_reason_policy_manual_all: 'ყველა კამპანიას ადამიანი ამოწმებს',
+  ems_reason_risk_findings: 'უსაფრთხოების შემოწმებამ იპოვა რამ, რაც ადამიანმა უნდა ნახოს',
+  ems_reason_link_recheck: 'ბმულმა დამტკიცების შემდეგ მისამართი შეცვალა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -62443,7 +62471,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'Срок доступности',
-  rt_policy_verify: 'Ваш отчёт Verify доступен 30 дней после завершения. После этого отчёт и связанные с ним сохранённые файлы удаляются в соответствии с нашей политикой хранения. Рекомендуем при необходимости заранее скачать отчёт.',
+  rt_policy_verify: 'Отчёт Verify доступен 30 дней после завершения. После этого он больше недоступен; запись об оплате сохраняется. Если отчёт вам понадобится, рекомендуем скачать его заранее.',
   rt_policy_contracts: 'Ваш договор и его анализ доступны 30 дней. До истечения срока вы можете скачать документ и результаты анализа.',
   rt_expiring_title: 'Скоро истекает',
   rt_available_until: 'Доступно до {{date}}',
@@ -65380,13 +65408,38 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'Для ценового диапазона нужно не менее {{need}} сопоставимых участков того же назначения поблизости. Мы нашли {{have}}, поэтому не называем цифру для этого участка. Показанные объявления — контекст, а не оценка.',
 
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'Цена',
+  verify_price_note: 'Одна фиксированная цена с НДС. Списывается только когда отчёт готов — остановленная или неудачная проверка ничего не стоит. Отчёт доступен {{days}} дней.',
+  verify_price_changed: 'Цена изменилась на {{n}} кредитов. Подтвердите новую цену, чтобы начать.',
+  verify_price_running: 'Фиксированная цена: {{n}} кредитов — списывается только когда отчёт готов.',
+  verify_price_paid: 'Оплаченная цена',
+  verify_report_expired_title: 'Срок действия этого отчёта истёк',
+  verify_rerun_cta: 'Новая проверка — {{n}} кредитов',
+  adm_vprice_title: 'Цена Verify',
+  adm_vprice_desc: 'Единая цена для клиента за любую проверку, одинаковая для V1 и V2. Внутренние расходы на провайдеров остаются в разделе финансов.',
+  adm_vprice_active: 'Действующая цена: {{usd}} = {{n}} кредитов',
+  adm_vprice_not_fixed: 'Фиксированная цена ещё не задана',
+  adm_vprice_validity: 'Отчёт действует {{days}} дней',
+  adm_vprice_vat: 'НДС включён',
+  adm_vprice_usd: 'Цена (USD)',
+  adm_vprice_credits: '= {{n}} кредитов',
+  adm_vprice_invalid: 'Введите сумму, равную целому числу кредитов (кратную $0.10).',
+  adm_vprice_save: 'Сохранить цену',
+  adm_vprice_reason: 'Причина (обязательно)',
+  adm_vprice_confirm_title: 'Изменить цену Verify на {{usd}} = {{n}} кредитов?',
+  adm_vprice_confirm_body: 'Новые покупки сразу идут по новой цене. Текущие и уже купленные отчёты сохраняют свою цену. Изменение записывается в журнал аудита вместе с причиной.',
+  adm_vprice_saved: 'Цена Verify обновлена',
+  adm_vprice_history: 'Изменения цены',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_nav_dashboard: 'Обзор',
   ems_nav_campaigns: 'Кампании',
   ems_nav_templates: 'Шаблоны',
   ems_nav_audiences: 'Контакты и аудитории',
   ems_nav_analytics: 'Аналитика',
   ems_nav_deliverability: 'Доставляемость и соответствие',
+  ems_nav_settings: 'Настройки',
   ems_nav_sender: 'Настройки отправителя',
   ems_new_campaign: 'Новая кампания',
   ems_untitled: 'Кампания без названия',
@@ -65539,11 +65592,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ems_seg_interest: 'Интерес',
   ems_seg_countries: 'Страны',
   ems_seg_countries_hint: 'Двухбуквенные коды через запятую, например GE, DE, AE.',
+  ems_seg_countries_example: 'например GE, DE, AE',
   ems_seg_exclude: 'Исключить списки',
   ems_seg_exclude_hint: 'Все контакты из этих списков будут исключены.',
   ems_src_import: 'Загружены мной',
   ems_src_manual: 'Добавлены вручную',
   ems_src_find_buyers: 'Поиск покупателей',
+  ems_src_curated_lead: 'Лиды HOMATCH',
   ems_src_internal_match: 'Совпадения HOMATCH',
   ems_lead_buyer: 'Покупатели',
   ems_lead_tenant: 'Арендаторы',
@@ -65661,6 +65716,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ems_d_delete: 'Удалить',
   ems_d_close: 'Закрыть',
   ems_d_clear: 'Очистить',
+  ems_d_hex_placeholder: '#RRGGBB (код цвета)',
   ems_d_none: 'Нет',
   ems_d_save_section: 'Сохранить как секцию',
   ems_d_save_template: 'Сохранить как шаблон',
@@ -65967,18 +66023,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ems_dl_suppressed_total: 'Всего заблокировано адресов: {{n}}',
   ems_dl_manage_contacts: 'Управлять контактами',
   ems_dl_plan_link: 'Тариф и расход',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_reason_content_changed: 'Содержание или аудитория изменились после подачи',
-  ems_reason_withdrawn: 'Отозвана отправителем',
-  ems_reason_policy_manual_all: 'Каждую кампанию проверяет человек',
-  ems_reason_risk_findings: 'Проверка нашла то, что должен посмотреть человек',
-  ems_reason_link_recheck: 'Ссылка сменила адрес после одобрения',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_nav_settings: 'Настройки',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   admin_ems_nav: 'Проверка рассылок',
   admin_ems_title: 'Проверка email-кампаний',
   admin_ems_subtitle: 'Кампании, ожидающие решения, журнал решений и настройки email-маркетинга. Жёсткие запреты здесь не обойти.',
@@ -66031,13 +66075,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_ems_setting_reason: 'Причина изменения (запишется в журнал аудита)',
   admin_ems_saved: 'Сохранено.',
   admin_ems_save_failed: 'Не удалось сохранить настройку.',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_seg_countries_example: 'например GE, DE, AE',
-  ems_d_hex_placeholder: '#RRGGBB (код цвета)',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_src_curated_lead: 'Лиды HOMATCH',
+  ems_reason_content_changed: 'Содержание или аудитория изменились после подачи',
+  ems_reason_withdrawn: 'Отозвана отправителем',
+  ems_reason_policy_manual_all: 'Каждую кампанию проверяет человек',
+  ems_reason_risk_findings: 'Проверка нашла то, что должен посмотреть человек',
+  ems_reason_link_recheck: 'Ссылка сменила адрес после одобрения',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -84419,7 +84461,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'Erişilebilirlik süresi',
-  rt_policy_verify: 'Verify raporunuz tamamlandıktan sonra 30 gün boyunca erişilebilir. Bu sürenin sonunda rapor ve ona bağlı kayıtlı dosyalar saklama politikamız uyarınca silinir. Gerekirse raporu önceden indirmenizi öneririz.',
+  rt_policy_verify: 'Verify raporunuz tamamlandıktan sonra 30 gün erişilebilir. Bundan sonra erişilemez; ödeme kaydınız saklanır. İhtiyacınız olacaksa raporu önceden indirmenizi öneririz.',
   rt_policy_contracts: 'Sözleşmeniz ve analizi 30 gün boyunca erişilebilir. Süre dolmadan önce belgeyi ve analiz sonuçlarını indirebilirsiniz.',
   rt_expiring_title: 'Yakında sona eriyor',
   rt_available_until: '{{date}} tarihine kadar erişilebilir',
@@ -87356,13 +87398,38 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'Bir fiyat aralığı için yakında aynı arazi niteliğinde en az {{need}} karşılaştırılabilir parsel gerekir. {{have}} bulduk, bu yüzden bu parsel için bir rakam vermiyoruz. Gösterilen ilanlar değerleme değil, bağlamdır.',
 
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'Fiyat',
+  verify_price_note: 'KDV dahil tek sabit fiyat. Yalnızca raporunuz hazır olduğunda tahsil edilir — durdurulan veya başarısız bir kontrol ücretsizdir. Raporunuz {{days}} gün erişilebilir kalır.',
+  verify_price_changed: 'Fiyat {{n}} krediye değişti. Başlamak için lütfen yeni fiyatı onaylayın.',
+  verify_price_running: 'Sabit fiyat: {{n}} kredi — yalnızca raporunuz hazır olduğunda tahsil edilir.',
+  verify_price_paid: 'Ödenen fiyat',
+  verify_report_expired_title: 'Bu raporun süresi doldu',
+  verify_rerun_cta: 'Yeni doğrulama — {{n}} kredi',
+  adm_vprice_title: 'Verify fiyatı',
+  adm_vprice_desc: 'Her doğrulama için tek müşteri fiyatı, V1 ve V2 için aynı. Dahili sağlayıcı maliyetleri Finans bölümünde kalır.',
+  adm_vprice_active: 'Geçerli fiyat: {{usd}} = {{n}} kredi',
+  adm_vprice_not_fixed: 'Henüz sabit fiyat yok',
+  adm_vprice_validity: 'Rapor {{days}} gün geçerli',
+  adm_vprice_vat: 'KDV dahil',
+  adm_vprice_usd: 'Fiyat (USD)',
+  adm_vprice_credits: '= {{n}} kredi',
+  adm_vprice_invalid: 'Tam sayıda krediye denk gelen bir tutar girin ($0.10’un katı).',
+  adm_vprice_save: 'Fiyatı kaydet',
+  adm_vprice_reason: 'Gerekçe (zorunlu)',
+  adm_vprice_confirm_title: 'Verify fiyatı {{usd}} = {{n}} kredi olarak değiştirilsin mi?',
+  adm_vprice_confirm_body: 'Yeni satın almalar yeni fiyatı hemen kullanır. Devam eden ve satın alınmış raporlar başladıkları fiyatı korur. Değişiklik gerekçenizle denetim kaydına yazılır.',
+  adm_vprice_saved: 'Verify fiyatı güncellendi',
+  adm_vprice_history: 'Fiyat değişiklikleri',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_nav_dashboard: 'Panel',
   ems_nav_campaigns: 'Kampanyalar',
   ems_nav_templates: 'Şablonlar',
   ems_nav_audiences: 'Kişiler ve kitleler',
   ems_nav_analytics: 'Analiz',
   ems_nav_deliverability: 'Teslim edilebilirlik ve uyum',
+  ems_nav_settings: 'Ayarlar',
   ems_nav_sender: 'Gönderen ayarları',
   ems_new_campaign: 'Yeni kampanya',
   ems_untitled: 'Adsız kampanya',
@@ -87515,11 +87582,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ems_seg_interest: 'İlgi',
   ems_seg_countries: 'Ülkeler',
   ems_seg_countries_hint: 'Virgülle ayrılmış iki harfli kodlar, ör. GE, DE, AE.',
+  ems_seg_countries_example: 'ör. GE, DE, AE',
   ems_seg_exclude: 'Bu listeleri hariç tut',
   ems_seg_exclude_hint: 'Bu listelerdeki herkes hariç tutulur.',
   ems_src_import: 'Benim yüklediklerim',
   ems_src_manual: 'Elle eklenen',
   ems_src_find_buyers: 'Alıcı Bul',
+  ems_src_curated_lead: 'HOMATCH seçili adaylar',
   ems_src_internal_match: 'HOMATCH eşleşmeleri',
   ems_lead_buyer: 'Alıcılar',
   ems_lead_tenant: 'Kiracılar',
@@ -87637,6 +87706,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ems_d_delete: 'Sil',
   ems_d_close: 'Kapat',
   ems_d_clear: 'Temizle',
+  ems_d_hex_placeholder: '#RRGGBB (renk kodu)',
   ems_d_none: 'Yok',
   ems_d_save_section: 'Bölüm olarak kaydet',
   ems_d_save_template: 'Şablon olarak kaydet',
@@ -87943,18 +88013,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ems_dl_suppressed_total: 'Toplam {{n}} engellenmiş adres',
   ems_dl_manage_contacts: 'Kişileri yönet',
   ems_dl_plan_link: 'Plan ve kullanım',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_reason_content_changed: 'Gönderimden sonra içerik veya kitle değişti',
-  ems_reason_withdrawn: 'Gönderen tarafından geri çekildi',
-  ems_reason_policy_manual_all: 'Her kampanyayı bir kişi inceler',
-  ems_reason_risk_findings: 'Güvenlik kontrolü bir kişinin bakması gereken bir şey buldu',
-  ems_reason_link_recheck: 'Bir bağlantı onaydan sonra hedef değiştirdi',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_nav_settings: 'Ayarlar',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   admin_ems_nav: 'E-posta incelemesi',
   admin_ems_title: 'E-posta kampanyası incelemesi',
   admin_ems_subtitle: 'Karar bekleyen kampanyalar, karar kaydı ve e-posta pazarlamasını yöneten kontroller. Kesin yasaklar burada aşılamaz.',
@@ -88007,13 +88065,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_ems_setting_reason: 'Bu değişikliğin nedeni (denetim kaydına yazılır)',
   admin_ems_saved: 'Kaydedildi.',
   admin_ems_save_failed: 'Ayar kaydedilemedi.',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_seg_countries_example: 'ör. GE, DE, AE',
-  ems_d_hex_placeholder: '#RRGGBB (renk kodu)',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_src_curated_lead: 'HOMATCH seçili adaylar',
+  ems_reason_content_changed: 'Gönderimden sonra içerik veya kitle değişti',
+  ems_reason_withdrawn: 'Gönderen tarafından geri çekildi',
+  ems_reason_policy_manual_all: 'Her kampanyayı bir kişi inceler',
+  ems_reason_risk_findings: 'Güvenlik kontrolü bir kişinin bakması gereken bir şey buldu',
+  ems_reason_link_recheck: 'Bir bağlantı onaydan sonra hedef değiştirdi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106395,7 +106451,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'مدة الإتاحة',
-  rt_policy_verify: 'يتوفر تقرير Verify الخاص بك لمدة 30 يومًا بعد اكتماله. بعد ذلك يُحذف التقرير والملفات المحفوظة المرتبطة به وفق سياسة الاحتفاظ لدينا. ننصحك بتنزيل التقرير مسبقًا إذا كنت بحاجة إليه.',
+  rt_policy_verify: 'يكون تقرير Verify متاحًا لمدة 30 يومًا بعد اكتماله. بعد ذلك لا يعود متاحًا؛ ويُحتفظ بسجل الدفع. ننصح بتنزيل التقرير مسبقًا إذا كنت ستحتاج إليه.',
   rt_policy_contracts: 'يتوفر عقدك وتحليله لمدة 30 يومًا. قبل انتهاء المدة يمكنك تنزيل المستند ونتائج التحليل.',
   rt_expiring_title: 'تنتهي قريبًا',
   rt_available_until: 'متاح حتى {{date}}',
@@ -109332,13 +109388,38 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'يتطلب نطاق السعر ما لا يقل عن {{need}} قطع أراضٍ مماثلة بالتصنيف نفسه في المنطقة. وجدنا {{have}}، لذلك لا نذكر رقمًا لهذه القطعة. أي إعلان معروض هو سياق وليس تقييمًا.',
 
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'السعر',
+  verify_price_note: 'سعر ثابت واحد شامل ضريبة القيمة المضافة. يُخصم فقط عندما يصبح تقريرك جاهزًا — الفحص الذي يتوقف أو يفشل لا يكلّف شيئًا. يبقى تقريرك متاحًا لمدة {{days}} يومًا.',
+  verify_price_changed: 'تغيّر السعر إلى {{n}} رصيد. يُرجى تأكيد السعر الجديد للبدء.',
+  verify_price_running: 'السعر الثابت: {{n}} رصيد — يُخصم فقط عندما يصبح تقريرك جاهزًا.',
+  verify_price_paid: 'السعر المدفوع',
+  verify_report_expired_title: 'انتهت صلاحية هذا التقرير',
+  verify_rerun_cta: 'تحقق جديد — {{n}} رصيد',
+  adm_vprice_title: 'سعر Verify',
+  adm_vprice_desc: 'سعر واحد للعميل لكل عملية تحقق، متطابق في V1 وV2. تبقى تكاليف المزوّدين الداخلية في قسم المالية.',
+  adm_vprice_active: 'السعر الحالي: {{usd}} = {{n}} رصيد',
+  adm_vprice_not_fixed: 'لم يُحدَّد سعر ثابت بعد',
+  adm_vprice_validity: 'التقرير صالح لمدة {{days}} يومًا',
+  adm_vprice_vat: 'شامل الضريبة',
+  adm_vprice_usd: 'السعر (USD)',
+  adm_vprice_credits: '= {{n}} رصيد',
+  adm_vprice_invalid: 'أدخل مبلغًا يساوي عددًا صحيحًا من الأرصدة (من مضاعفات 0.10 دولار).',
+  adm_vprice_save: 'حفظ السعر',
+  adm_vprice_reason: 'السبب (مطلوب)',
+  adm_vprice_confirm_title: 'هل تريد تغيير سعر Verify إلى {{usd}} = {{n}} رصيد؟',
+  adm_vprice_confirm_body: 'تستخدم عمليات الشراء الجديدة السعر الجديد فورًا. تحتفظ التقارير الجارية والمشتراة مسبقًا بالسعر الذي بدأت به. يُسجَّل التغيير في سجل التدقيق مع السبب.',
+  adm_vprice_saved: 'تم تحديث سعر Verify',
+  adm_vprice_history: 'تغييرات السعر',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_nav_dashboard: 'لوحة التحكم',
   ems_nav_campaigns: 'الحملات',
   ems_nav_templates: 'القوالب',
   ems_nav_audiences: 'جهات الاتصال والجماهير',
   ems_nav_analytics: 'التحليلات',
   ems_nav_deliverability: 'قابلية التسليم والامتثال',
+  ems_nav_settings: 'الإعدادات',
   ems_nav_sender: 'إعدادات المرسل',
   ems_new_campaign: 'حملة جديدة',
   ems_untitled: 'حملة بلا عنوان',
@@ -109491,11 +109572,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ems_seg_interest: 'الاهتمام',
   ems_seg_countries: 'الدول',
   ems_seg_countries_hint: 'رموز من حرفين مفصولة بفواصل، مثل GE, DE, AE.',
+  ems_seg_countries_example: 'مثلًا GE, DE, AE',
   ems_seg_exclude: 'استبعاد هذه القوائم',
   ems_seg_exclude_hint: 'يُستبعد كل من في هذه القوائم.',
   ems_src_import: 'رفعتُها بنفسي',
   ems_src_manual: 'أُضيفت يدويًا',
   ems_src_find_buyers: 'البحث عن مشترين',
+  ems_src_curated_lead: 'عملاء HOMATCH المختارون',
   ems_src_internal_match: 'تطابقات HOMATCH',
   ems_lead_buyer: 'المشترون',
   ems_lead_tenant: 'المستأجرون',
@@ -109613,6 +109696,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ems_d_delete: 'حذف',
   ems_d_close: 'إغلاق',
   ems_d_clear: 'مسح',
+  ems_d_hex_placeholder: '#RRGGBB (رمز اللون)',
   ems_d_none: 'لا شيء',
   ems_d_save_section: 'حفظ كقسم',
   ems_d_save_template: 'حفظ كقالب',
@@ -109919,18 +110003,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ems_dl_suppressed_total: 'إجمالي العناوين المحظورة {{n}}',
   ems_dl_manage_contacts: 'إدارة جهات الاتصال',
   ems_dl_plan_link: 'الخطة والاستخدام',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_reason_content_changed: 'تغيّر المحتوى أو الجمهور بعد التقديم',
-  ems_reason_withdrawn: 'سحبها المرسل',
-  ems_reason_policy_manual_all: 'يراجع شخص كل حملة',
-  ems_reason_risk_findings: 'وجد فحص الأمان أمرًا ينبغي أن يطّلع عليه شخص',
-  ems_reason_link_recheck: 'غيّر رابط وجهته بعد الموافقة',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_nav_settings: 'الإعدادات',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   admin_ems_nav: 'مراجعة البريد',
   admin_ems_title: 'مراجعة حملات البريد',
   admin_ems_subtitle: 'الحملات التي تنتظر قرارًا وسجل القرارات وعناصر التحكم في التسويق بالبريد. لا يمكن تجاوز المحظورات القاطعة هنا.',
@@ -109983,13 +110055,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_ems_setting_reason: 'سبب هذا التغيير (يُسجّل في سجل التدقيق)',
   admin_ems_saved: 'تم الحفظ.',
   admin_ems_save_failed: 'تعذّر حفظ الإعداد.',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_seg_countries_example: 'مثلًا GE, DE, AE',
-  ems_d_hex_placeholder: '#RRGGBB (رمز اللون)',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_src_curated_lead: 'عملاء HOMATCH المختارون',
+  ems_reason_content_changed: 'تغيّر المحتوى أو الجمهور بعد التقديم',
+  ems_reason_withdrawn: 'سحبها المرسل',
+  ems_reason_policy_manual_all: 'يراجع شخص كل حملة',
+  ems_reason_risk_findings: 'وجد فحص الأمان أمرًا ينبغي أن يطّلع عليه شخص',
+  ems_reason_link_recheck: 'غيّر رابط وجهته بعد الموافقة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -128371,7 +128441,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY / CONTRACTS 30-DAY RETENTION ── */
   rt_title: 'משך הזמינות',
-  rt_policy_verify: 'דוח ה-Verify שלך זמין במשך 30 יום מסיומו. לאחר מכן הדוח והקבצים השמורים הקשורים אליו נמחקים בהתאם למדיניות השמירה שלנו. מומלץ להוריד את הדוח מראש במקרה הצורך.',
+  rt_policy_verify: 'דוח Verify זמין במשך 30 יום מסיומו. לאחר מכן הוא אינו נגיש עוד; רישום התשלום נשמר. אם תזדקקו לדוח, מומלץ להוריד אותו מראש.',
   rt_policy_contracts: 'החוזה שלך והניתוח שלו זמינים במשך 30 יום. לפני תום התקופה אפשר להוריד את המסמך ואת תוצאות הניתוח.',
   rt_expiring_title: 'יפוג בקרוב',
   rt_available_until: 'זמין עד {{date}}',
@@ -131308,13 +131378,38 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'טווח מחירים דורש לפחות {{need}} מגרשים דומים באותו ייעוד קרקע בסביבה. מצאנו {{have}}, ולכן איננו נוקבים במספר עבור המגרש הזה. מודעות שמוצגות הן הקשר, לא הערכת שווי.',
 
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
+  /* ── VERIFY FIXED PRICE ── */
+  verify_price_label: 'מחיר',
+  verify_price_note: 'מחיר קבוע אחד, כולל מע״מ. הוא נגבה רק כשהדוח שלך מוכן — בדיקה שנעצרה או נכשלה אינה עולה דבר. הדוח שלך נשאר זמין למשך {{days}} ימים.',
+  verify_price_changed: 'המחיר השתנה ל-{{n}} קרדיטים. אשרו את המחיר החדש כדי להתחיל.',
+  verify_price_running: 'מחיר קבוע: {{n}} קרדיטים — נגבה רק כשהדוח שלך מוכן.',
+  verify_price_paid: 'המחיר ששולם',
+  verify_report_expired_title: 'תוקף הדוח הזה פג',
+  verify_rerun_cta: 'אימות חדש — {{n}} קרדיטים',
+  adm_vprice_title: 'מחיר Verify',
+  adm_vprice_desc: 'מחיר לקוח אחד לכל אימות, זהה ב-V1 וב-V2. עלויות הספקים הפנימיות נשארות בכספים.',
+  adm_vprice_active: 'מחיר פעיל: {{usd}} = {{n}} קרדיטים',
+  adm_vprice_not_fixed: 'עדיין לא נקבע מחיר קבוע',
+  adm_vprice_validity: 'הדוח בתוקף {{days}} ימים',
+  adm_vprice_vat: 'כולל מע״מ',
+  adm_vprice_usd: 'מחיר (USD)',
+  adm_vprice_credits: '= {{n}} קרדיטים',
+  adm_vprice_invalid: 'הזינו סכום ששווה למספר שלם של קרדיטים (כפולה של $0.10).',
+  adm_vprice_save: 'שמירת המחיר',
+  adm_vprice_reason: 'סיבה (חובה)',
+  adm_vprice_confirm_title: 'לשנות את מחיר Verify ל-{{usd}} = {{n}} קרדיטים?',
+  adm_vprice_confirm_body: 'רכישות חדשות משתמשות במחיר החדש מיד. דוחות פעילים ודוחות שכבר נרכשו שומרים על המחיר שבו התחילו. השינוי נרשם ביומן הביקורת עם הסיבה שלך.',
+  adm_vprice_saved: 'מחיר Verify עודכן',
+  adm_vprice_history: 'שינויי מחיר',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_nav_dashboard: 'לוח בקרה',
   ems_nav_campaigns: 'קמפיינים',
   ems_nav_templates: 'תבניות',
   ems_nav_audiences: 'אנשי קשר וקהלים',
   ems_nav_analytics: 'אנליטיקה',
   ems_nav_deliverability: 'מסירות ותאימות',
+  ems_nav_settings: 'הגדרות',
   ems_nav_sender: 'הגדרות שולח',
   ems_new_campaign: 'קמפיין חדש',
   ems_untitled: 'קמפיין ללא שם',
@@ -131467,11 +131562,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   ems_seg_interest: 'עניין',
   ems_seg_countries: 'מדינות',
   ems_seg_countries_hint: 'קודים בני שתי אותיות מופרדים בפסיקים, למשל GE, DE, AE.',
+  ems_seg_countries_example: 'למשל GE, DE, AE',
   ems_seg_exclude: 'החרגת הרשימות',
   ems_seg_exclude_hint: 'כל מי שברשימות אלה לא ייכלל.',
   ems_src_import: 'הועלו על ידי',
   ems_src_manual: 'נוספו ידנית',
   ems_src_find_buyers: 'חיפוש קונים',
+  ems_src_curated_lead: 'לידים נבחרים של HOMATCH',
   ems_src_internal_match: 'התאמות HOMATCH',
   ems_lead_buyer: 'קונים',
   ems_lead_tenant: 'שוכרים',
@@ -131589,6 +131686,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   ems_d_delete: 'מחיקה',
   ems_d_close: 'סגירה',
   ems_d_clear: 'ניקוי',
+  ems_d_hex_placeholder: '#RRGGBB (קוד צבע)',
   ems_d_none: 'ללא',
   ems_d_save_section: 'שמירה כמקטע',
   ems_d_save_template: 'שמירה כתבנית',
@@ -131895,18 +131993,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   ems_dl_suppressed_total: 'סה״כ {{n}} כתובות חסומות',
   ems_dl_manage_contacts: 'ניהול אנשי קשר',
   ems_dl_plan_link: 'תוכנית ושימוש',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_reason_content_changed: 'התוכן או הקהל השתנו לאחר ההגשה',
-  ems_reason_withdrawn: 'נמשך על ידי השולח',
-  ems_reason_policy_manual_all: 'כל קמפיין נבדק על ידי אדם',
-  ems_reason_risk_findings: 'בדיקת הבטיחות מצאה משהו שאדם צריך לבדוק',
-  ems_reason_link_recheck: 'קישור שינה יעד לאחר האישור',
-
-  /* ── EMAIL STUDIO · CAMPAIGNS · DESIGNER · HOMI · REVIEW ── */
-  ems_nav_settings: 'הגדרות',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   admin_ems_nav: 'בדיקת דוא״ל',
   admin_ems_title: 'בדיקת קמפייני דוא״ל',
   admin_ems_subtitle: 'קמפיינים הממתינים להחלטה, יומן החלטות ובקרות שיווק בדוא״ל. אי אפשר לעקוף כאן איסורים מוחלטים.',
@@ -131959,13 +132045,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_ems_setting_reason: 'סיבת השינוי (תיכתב ביומן הביקורת)',
   admin_ems_saved: 'נשמר.',
   admin_ems_save_failed: 'לא ניתן לשמור את ההגדרה.',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_seg_countries_example: 'למשל GE, DE, AE',
-  ems_d_hex_placeholder: '#RRGGBB (קוד צבע)',
-
-  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
-  ems_src_curated_lead: 'לידים נבחרים של HOMATCH',
+  ems_reason_content_changed: 'התוכן או הקהל השתנו לאחר ההגשה',
+  ems_reason_withdrawn: 'נמשך על ידי השולח',
+  ems_reason_policy_manual_all: 'כל קמפיין נבדק על ידי אדם',
+  ems_reason_risk_findings: 'בדיקת הבטיחות מצאה משהו שאדם צריך לבדוק',
+  ems_reason_link_recheck: 'קישור שינה יעד לאחר האישור',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -14,8 +14,13 @@ import { ssgeCriteria, ssgeCandidate } from './mapping.mjs';
  * and one individual-page proof (~36 s per page in production), so a capped run is
  * ~2 minutes. Reaching the cap is a normal completion reported like the portals
  * (PAGE_CAP_REACHED + pagesRead), never a failure.
+ *
+ * Owner decision (2026-10-23): the same strict policy as MyHome — pages 1 and 2 only, for
+ * every caller. This constant is the ceiling acquireSsge enforces (a larger pageCap
+ * throws), the adapter is asked for at most this many pages, and nothing — retries, the
+ * Verify lane, a fallback — can read page 3. A page-2 failure keeps page 1 (PARTIAL).
  */
-export const SSGE_PAGE_CAP = 3;
+export const SSGE_PAGE_CAP = 2;
 
 export async function acquireSsge(request, { deadlineAt, signal, report, client, fetcher, sleep = ms => delay(ms, undefined, { signal }), verifyPage = verifyIndividualPage, pageCap = SSGE_PAGE_CAP } = {}) {
   if (!Number.isInteger(pageCap) || pageCap < 1 || pageCap > SSGE_PAGE_CAP) throw Error('Invalid SS.ge page cap');

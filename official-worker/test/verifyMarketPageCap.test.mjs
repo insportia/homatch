@@ -1,6 +1,6 @@
 // verifyMarketPageCap.test.mjs — audit C2 (2026-10-22): Verify reads at most
 // TWO result pages per portal, passed explicitly from the Verify path, while
-// Find Property keeps its own defaults (SS.ge SSGE_PAGE_CAP = 3, MyHome
+// Find Property keeps its own defaults (SS.ge SSGE_PAGE_CAP = 2 since 2026-10-23, MyHome
 // MYHOME_MAX_PAGES) and its byte-identical request. Also F6: no city-wide
 // widening, type-specific area windows. Engines are faked; no network.
 import test from 'node:test';
@@ -49,11 +49,11 @@ test('the real SS.ge adapter, driven through Verify, requests pages 1 and 2 only
   });
   const job = rt.start({ city: 'Tbilisi', district: s.detail.address.subdistrictTitle, transactionType: 'BUY', propertyType: 'APARTMENT', areaSqm: null, rooms: null, priceUsd: null }, ['SSGE']);
   await waitDone(job);
-  assert.deepEqual(pages, [1, 2], 'page 3 (Find Property\'s cap) is never requested by Verify');
+  assert.deepEqual(pages, [1, 2], 'page 3 is never requested by Verify');
 });
 
-test('Find Property\'s SS.ge runtime passes the claimed request unchanged and no page cap (default 3 stays)', async () => {
-  assert.equal(SSGE_PAGE_CAP, 3);
+test('Find Property\'s SS.ge runtime passes the claimed request unchanged and no page cap (default 2 applies)', async () => {
+  assert.equal(SSGE_PAGE_CAP, 2);
   const claimedRequest = {
     contract: 'marketplace-worker-1', searchId: '11111111-1111-4111-8111-111111111111', searchPlanId: '33333333-3333-4333-8333-333333333333',
     country: 'GE', market: 'GE', city: 'Tbilisi', districts: ['ვაკე'], transactionType: 'BUY', propertyType: 'APARTMENT', priceMinUsd: 0,

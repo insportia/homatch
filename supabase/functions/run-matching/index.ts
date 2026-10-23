@@ -180,6 +180,11 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Internal only' }), { status: 403, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
+  /* RETIRED (Finance V2.1, 2026-10-22). This legacy engine prices unlocks in the pre-2026-09-11
+     unit (1 credit = $1: a tenth of the real price) and has no caller and no cron. It writes
+     nothing now; run-matching-v2 is the only match writer. */
+  return new Response(JSON.stringify({ error: 'Retired: use run-matching-v2', retired: true }), { status: 410, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

@@ -348,7 +348,7 @@ const blenderFinish = (reason: string | null, check: CheckResult | null = null, 
 });
 
 /** The finish: provider over the Blender picture, the structure check, the final picture, the money. */
-async function finishRender(ctx: Ctx, row: Row, lease: string, refs: ViewRefs, gpuUsd: number | null): Promise<void> {
+async function finishRender(ctx: Ctx, row: Row, lease: string, refs: ViewRefs, gpuUsd: number | null, gpuPartial = false): Promise<void> {
   const t0 = Date.now();
   const now = () => new Date().toISOString();
   const base = refs.image?.key ? await readBytes(refs.image.key, MAX_PICTURE_BYTES) : null;
@@ -409,7 +409,9 @@ async function finishRender(ctx: Ctx, row: Row, lease: string, refs: ViewRefs, g
   }
   const m = measured(result);
   const cost = [
-    { stage: 'RENDERING', kind: 'GPU', usd: gpuUsd, basis: gpuUsd == null ? 'NOT_AVAILABLE' : 'MEASURED', detail: `share of factory pass ${row.factory_job_id}` },
+    // An estimate (measured seconds x the configured env rate), never MEASURED; PARTIAL when the
+    // pass's figure is a floor (cold start billed but not separable from queue wait).
+    { stage: 'RENDERING', kind: 'GPU', usd: gpuUsd, basis: gpuUsd == null ? 'NOT_AVAILABLE' : gpuPartial ? 'PARTIAL' : 'ESTIMATED', detail: `share of factory pass ${row.factory_job_id}` },
     ...(result ? [{ stage: 'RENDERING', kind: 'IMAGE_MODEL', usd: result.cost.usd, basis: result.cost.basis === 'ESTIMATED' ? 'ESTIMATED' : 'NOT_AVAILABLE', detail: result.cost.detail }] : []),
   ];
   // READY exactly once: only the holder of this lease writes it.
@@ -460,8 +462,9 @@ async function advance(req: Request, ctx: Ctx, row: Row, jobs: Map<string, Row>,
   const gpuTotal = Array.isArray(st.cost) ? st.cost.filter((c: Row) => c?.kind === 'GPU').reduce((s: number | null, c: Row) => (s == null || c.usd == null ? null : s + Number(c.usd)), 0) : null;
   const { count } = await ctx.admin.from('ds_renders').select('id', { count: 'exact', head: true }).eq('factory_job_id', row.factory_job_id);
   const gpuUsd = gpuTotal == null ? null : Math.round((gpuTotal / Math.max(1, count ?? 1)) * 1e6) / 1e6;
+  const gpuPartial = Array.isArray(st.cost) && st.cost.some((c: Row) => c?.kind === 'GPU' && c?.partial === true);
   try {
-    await finishRender(ctx, claimed[0], lease, refs, gpuUsd);
+    await finishRender(ctx, claimed[0], lease, refs, gpuUsd, gpuPartial);
   } catch (e) {
     await failRender(ctx.admin, claimed[0], `FINISH_CRASHED:${String((e as Error)?.message ?? '').slice(0, 80)}`, null, { ...noCost, gpuUsd, aiKnown: false }, ['FINISHING']);
   }

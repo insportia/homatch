@@ -23,6 +23,12 @@ M="$root/supabase/migrations/20261119140000_finance_v2_engine.sql"
 $P -d hmfinance -1 -f "$M"
 $P -d hmfinance -1 -f "$M"
 $P -d hmfinance -f "$here/finance_v2.sql"
+# Finance V2.1 on top, applied twice (idempotent), then its checks.
+$P -d hmfinance -f "$here/finance_v2_1_fixture.sql"
+M21="$root/supabase/migrations/20261123090000_finance_v2_1_cost_coverage.sql"
+$P -d hmfinance -1 -f "$M21"
+$P -d hmfinance -1 -f "$M21"
+$P -d hmfinance -f "$here/finance_v2_1.sql"
 # v1 campaigns behave exactly as before Finance V2: the existing paid social checks still pass.
 $P -d hmfinance -f "$here/find_property_social_listings.sql"
 $P -d hmfinance -f "$here/find_property_batched_offer_runs.sql"

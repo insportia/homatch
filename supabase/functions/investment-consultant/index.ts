@@ -63,6 +63,7 @@ import {
   parseUnderstandResponse,
 } from '../../../src/investment/consultant/prompt.ts';
 import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -97,6 +98,8 @@ async function callModel(args: {
   system: string;
   input: Array<{ role: string; content: string }>;
   maxTokens?: number;
+  /** Provider-cost sink (Finance V2.1): service-role client + the execution it belongs to. */
+  cost?: { db: unknown; correlationId: string } | null;
 }): Promise<{ ok: true; text: string } | { ok: false; status: number }> {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -117,6 +120,20 @@ async function callModel(args: {
   }
   const payload = await response.json().catch(() => null);
   const text = textOf(payload);
+  if (args.cost) {
+    // One row per provider call (this function makes up to two per message), keyed by
+    // OpenAI's response id; the usage is the provider's own, never assumed.
+    deferCost(recordUsageCost(args.cost.db as any, {
+      provider: 'OPENAI',
+      operation: 'INVESTMENT_CONSULTANT',
+      service: 'investment_consultant',
+      model: MODEL,
+      correlationId: args.cost.correlationId,
+      idempotencyKey: `INVESTMENT_CONSULTANT:${args.cost.correlationId}:${payload?.id ?? crypto.randomUUID()}`,
+      tokens: tokenUsage(payload),
+      success: Boolean(text),
+    }));
+  }
   if (!text) return { ok: false, status: 502 };
   return { ok: true, text };
 }
@@ -219,6 +236,15 @@ serve(async (req) => {
 
     let context = rehydrateContext(body?.context);
 
+    // Provider cost only (Finance V2.1): the customer's reads/writes stay on their RLS client.
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const cost = serviceKey
+      ? {
+          db: createClient(Deno.env.get('SUPABASE_URL')!, serviceKey, { auth: { persistSession: false } }),
+          correlationId: uid,
+        }
+      : null;
+
     const history: Array<{ role: string; content: string }> = Array.isArray(body?.history)
       ? (body.history as Array<{ role?: unknown; content?: unknown }>)
           .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string')
@@ -229,6 +255,7 @@ serve(async (req) => {
     /* ── 1. Understand ─────────────────────────────────────────────── */
     const understanding = await callModel({
       apiKey,
+      cost,
       system: UNDERSTAND_SYSTEM_PROMPT,
       input: [
         ...history,
@@ -276,6 +303,7 @@ serve(async (req) => {
       // more useful than an empty report. The Consultant still replies.
       const reply = await callModel({
         apiKey,
+        cost,
         system: `${EXPLAIN_SYSTEM_PROMPT}\n\n${languageDirective(locale)}`,
         input: [
           ...history,
@@ -314,6 +342,7 @@ serve(async (req) => {
     /* ── 4. Explain, over the finished numbers ─────────────────────── */
     const explanation = await callModel({
       apiKey,
+      cost,
       system: `${EXPLAIN_SYSTEM_PROMPT}\n\n${languageDirective(locale)}`,
       input: [
         ...history,

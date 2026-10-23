@@ -26,6 +26,55 @@ import {
 import { callLlm } from '../_shared/comm/llm.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { deferCost, recordUsageCost, type TokenUsage } from '../_shared/providerCost.ts';
+
+/*
+ * Provider cost (Finance V2.1), service `communications`. Written off the response path;
+ * usage is what the provider reported, never assumed (unknown → tokens null → UNPRICED).
+ */
+function commCost(sb: ReturnType<typeof serviceClient>, u: {
+  provider: 'OPENAI' | 'CARTESIA'; operation: string; model: string; correlationId: string;
+  tokens?: TokenUsage | null; dimensions?: Array<{ unit: string; units: number | null }>; success?: boolean;
+}): void {
+  deferCost(recordUsageCost(sb as any, {
+    provider: u.provider,
+    operation: u.operation,
+    service: 'communications',
+    model: u.model,
+    correlationId: u.correlationId,
+    // None of these helpers surfaces a provider response id: one fresh key per call.
+    idempotencyKey: `${u.operation}:${u.correlationId}:${crypto.randomUUID()}`,
+    ...(u.tokens !== undefined ? { tokens: u.tokens } : {}),
+    ...(u.dimensions ? { dimensions: u.dimensions } : {}),
+    ...(u.success !== undefined ? { success: u.success } : {}),
+  }));
+}
+
+/** callLlm's usage as the provider reported it; all-zero means it reported none (unknown). */
+function llmTokens(r: { ok: boolean; inputTokens: number; cachedInputTokens: number | null; outputTokens: number }): TokenUsage | null {
+  if (!r.ok || (r.inputTokens <= 0 && r.outputTokens <= 0)) return null;
+  return { input: r.inputTokens, cached: Math.min(r.inputTokens, r.cachedInputTokens ?? 0), output: r.outputTokens };
+}
+
+/** Seconds of 16-bit PCM in a WAV upload, from its own header; null when it is not one. */
+function wavSeconds(audio: Uint8Array): number | null {
+  if (audio.byteLength < 44) return null;
+  const tag = (o: number) => String.fromCharCode(audio[o], audio[o + 1], audio[o + 2], audio[o + 3]);
+  if (tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return null;
+  const view = new DataView(audio.buffer, audio.byteOffset, audio.byteLength);
+  let byteRate = 0;
+  for (let o = 12; o + 8 <= audio.byteLength;) {
+    const id = tag(o); const size = view.getUint32(o + 4, true);
+    if (id === 'fmt ' && o + 16 <= audio.byteLength) byteRate = view.getUint32(o + 16, true);
+    if (id === 'data') {
+      if (!byteRate) return null;
+      const bytes = Math.min(size, audio.byteLength - (o + 8));
+      return Math.round((bytes / byteRate) * 1000) / 1000;
+    }
+    o += 8 + size + (size % 2);
+  }
+  return null;
+}
 
 interface AgentRequest {
   action: 'generate' | 'publish' | 'preview' | 'test' | 'turn' | 'transcribe';
@@ -101,6 +150,17 @@ async function generate(sb: Sb, userId: string, body: AgentRequest): Promise<Res
     languages: Array.isArray(body.languages) && body.languages.length ? body.languages : ['ka'],
     locale: String(body.locale ?? 'en'),
   });
+
+  /* generateAgentDescription does not surface usage or the model it used, so the call is
+     recorded UNPRICED (tokens unknown) with llm.ts's own model resolution — whenever the
+     model actually answered (ok, a refusal, an unparseable or truncated answer). */
+  if (result.ok || /^(out_of_scope|unparseable_response|incomplete)/.test(result.error ?? '')) {
+    commCost(sb, {
+      provider: 'OPENAI', operation: 'COMMUNICATIONS_AGENT_GENERATE',
+      model: Deno.env.get('OPENAI_FAST_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.6-luna',
+      correlationId: userId, tokens: null,
+    });
+  }
 
   if (!result.ok) {
     // The customer gets "generation failed"; an admin gets the reason.
@@ -320,6 +380,15 @@ async function agentTranscribe(sb: Sb, userId: string, body: AgentRequest): Prom
     languageHint: body.languageHint ? String(body.languageHint).slice(0, 5) : null,
   });
 
+  // A 200 from the provider is a billed transcription; failures (no 200) are not recorded.
+  if (result.ok) {
+    commCost(sb, {
+      provider: 'OPENAI', operation: 'COMMUNICATIONS_TRANSCRIBE', model: result.model,
+      correlationId: String(body.agentId),
+      dimensions: [{ unit: 'AUDIO_SECOND', units: wavSeconds(audio) }],
+    });
+  }
+
   if (!result.ok) {
     logEvent('comm-agent', 'transcribe_failed', {
       bytes: audio.byteLength, model: result.model,
@@ -364,6 +433,12 @@ async function agentTurn(sb: Sb, userId: string, body: AgentRequest): Promise<Re
     maxTokens: 220,
     timeoutMs: 20_000,
   });
+  if (reply.ok || String(reply.error ?? '').startsWith('incomplete')) {
+    commCost(sb, {
+      provider: 'OPENAI', operation: 'COMMUNICATIONS_AGENT_TURN', model: reply.model,
+      correlationId: String(body.agentId), tokens: llmTokens(reply),
+    });
+  }
 
   if (!reply.ok || !reply.text?.trim()) {
     logEvent('comm-agent', 'turn_llm_failed', { reason: reply.error ?? 'empty', status: reply.status ?? null });
@@ -382,6 +457,15 @@ async function agentTurn(sb: Sb, userId: string, body: AgentRequest): Promise<Re
     language: runtime.config.primaryLanguage || 'en',
     text,
   });
+
+  if (spoken.ok && spoken.data) {
+    commCost(sb, {
+      provider: 'CARTESIA', operation: 'COMMUNICATIONS_AGENT_TTS', model: spoken.data.model,
+      correlationId: String(body.agentId),
+      // synthesizeSpeech speaks at most the first 2,000 characters.
+      dimensions: [{ unit: 'CHARACTER', units: Math.min(text.length, 2000) }],
+    });
+  }
 
   if (!spoken.ok || !spoken.data) {
     logEvent('comm-agent', 'turn_tts_failed', {

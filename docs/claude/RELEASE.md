@@ -259,6 +259,29 @@ proof — summarised by the desired closure digest
 (`sha256` over every path + content in the function's import closure) — is
 the only verdict. Regression tests: `tests/matrix/edgeRecovery.test.mjs`.
 
+## Migration compatibility gate (fail closed, 2026-10-22)
+
+`scripts/release/migration-gate.mjs` runs in `deploy.yml` before any Edge upload
+(`--owed $RUNNER_TEMP/owed.txt`) and before the frontend ref is recorded. It reads
+production `supabase_migrations.schema_migrations` (read-only Management API query) and
+refuses the deploy unless every repository migration after the frozen baseline is applied
+— matched by version, by name (MCP `apply_migration` stamps its own version) or by full
+stem. From `contentVerifiedFrom` in `supabase/migration-gate.json` the applied SQL must
+equal the committed file (md5 after removing CR and trailing whitespace); older mismatches
+are printed as notes. Exceptions live in the manifest, never in code: `reconciled` (applied
+by hand outside the ledger; a read-only SELECT proof is re-run every time) and `held`
+(owner-held migrations; they block only deploys of the listed dependent functions).
+
+Recovery when it fails (`MIGRATION_GATE_FAILED`, nothing deployed): apply the listed
+migration(s) in version order (reviewed MCP apply or the `run_migrations` dispatch), then
+re-run the workflow with `redeploy=edge`. Release order for any PR with a migration:
+merge → apply the migration → deploy run.
+
+Limits: Vercel and Railway deploy from their Git integrations, so the gate can block the
+Edge upload and the frontend ref, not those builds. Owner options to close that: Vercel
+Deployment Checks (require the `deploy` workflow) and Railway "Wait for CI".
+Tests: `tests/matrix/migrationGate.test.mjs`.
+
 ## Known gaps (explicit, not hidden)
 
 - No gated browser suite visits Design Studio; `tests/browser/designStudio.qa.mjs`

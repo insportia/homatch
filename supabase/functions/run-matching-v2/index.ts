@@ -114,13 +114,15 @@ Deno.serve(async (req: Request) => {
     // documented defaults exactly, so an untouched admin_settings table reproduces
     // today's documented intent, not today's actual (undocumented) behavior.
     const PRICING_DEFAULTS: Record<string, number> = {
-      pricing_min_credits: 0.10,
-      pricing_max_credits: 10.0,
-      pricing_base_potential: 0.50,
-      pricing_base_good: 1.00,
-      pricing_base_strong: 2.00,
-      pricing_base_very_strong: 3.50,
-      pricing_base_exceptional: 5.00,
+      /* 10 credits = $1 (redenominated 2026-09-11; production rows hold these values). The old
+         1-credit-=-$1 fallbacks priced a missing row at a tenth (Finance V2.1 audit). */
+      pricing_min_credits: 1,
+      pricing_max_credits: 100,
+      pricing_base_potential: 5,
+      pricing_base_good: 10,
+      pricing_base_strong: 20,
+      pricing_base_very_strong: 35,
+      pricing_base_exceptional: 50,
       pricing_multiplier_recency: 1.3,
       pricing_multiplier_source_quality: 1.2,
       pricing_multiplier_cogs: 1.15,

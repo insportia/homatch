@@ -4,6 +4,7 @@
 // Review REQUIRED before posting. Auto-post disabled.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -121,6 +122,17 @@ serve(async (req) => {
 
     const geminiJson = await geminiRes.json();
     const content = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    // Provider cost (Finance V2.1): Gemini's own usageMetadata, written off the response path.
+    deferCost(recordUsageCost(supabase as any, {
+      provider: 'GEMINI',
+      operation: 'SOCIAL_POST_GENERATE',
+      service: 'social_posts',
+      model: 'gemini-2.0-flash',
+      correlationId: String(property_id),
+      idempotencyKey: `SOCIAL_POST_GENERATE:${property_id}:${geminiJson?.responseId ?? crypto.randomUUID()}`,
+      tokens: tokenUsage(geminiJson),
+      success: geminiRes.ok && Boolean(content),
+    }));
     if (!content) return new Response(JSON.stringify({ error: 'Generation failed', details: geminiJson }), { status: 502, headers: corsHeaders });
 
     // Save to social_posts as DRAFT (requires human review).

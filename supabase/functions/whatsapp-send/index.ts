@@ -32,6 +32,7 @@ import { requiresTemplate } from '../_shared/comm/generated/statusMap.ts';
 import { mayAiReply, mayHumanReply } from '../_shared/comm/generated/handoff.ts';
 import { classifyDomain } from '../_shared/comm/generated/domainClassifier.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { recordUsageCost, deferCost } from '../_shared/providerCost.ts';
 
 interface SendRequest {
   conversationId?: string;
@@ -245,6 +246,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
       messageId: pending.id,
     }, status);
   }
+
+  /*
+   * One Meta send, one cost row (Finance V2, service 'communications'). There
+   * is no Meta rate in provider_price_book, so it lands UNPRICED with its one
+   * MESSAGE unit -- correct, not $0. Deferred; keyed on the provider's message
+   * id (else our row id) so a replay never books it twice.
+   */
+  deferCost(recordUsageCost(sb as never, {
+    provider: 'META', service: 'communications', operation: 'WHATSAPP_SEND', source: 'whatsapp-send',
+    correlationId: pending.id,
+    idempotencyKey: `whatsapp:${result.data?.providerMessageId ?? pending.id}`,
+    dimensions: [{ unit: 'MESSAGE', units: 1 }],
+  }));
 
   const now = new Date().toISOString();
   await sb.from('comm_messages').update({

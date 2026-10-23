@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
-import { ArrowDown, ChevronDown, ChevronRight, Loader2, RefreshCw, Calculator } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ChevronDown, ChevronRight, Loader2, RefreshCw, Calculator } from 'lucide-react';
 import {
-  getCreditEconomics, getFinanceV2Execution, getFinanceV2Quote, getFinanceV2ServiceDetail, getFinanceV2Services, num,
+  getCreditEconomics, getFinanceV2Execution, getFinanceV2PriceDrift, getFinanceV2Quote, getFinanceV2ServiceDetail, getFinanceV2Services,
+  getFinanceV2SharedCosts, num,
 } from '@/services/finance';
 import type {
-  CreditEconomics, FinanceV2Execution, FinanceV2ExecutionRow, FinanceV2Quote, FinanceV2Service, FinanceV2ServiceDetail,
+  CreditEconomics, FinanceV2Execution, FinanceV2ExecutionRow, FinanceV2PriceDrift, FinanceV2Quote, FinanceV2Service, FinanceV2ServiceDetail,
+  FinanceV2SharedCosts,
 } from '@/types/finance';
 import { Empty, LoadError, Money, Pct, Pill, SectionTitle, StatCard, TableWrap, UnpricedBadge } from './FinanceKit';
 
@@ -266,6 +268,32 @@ function QuoteSimulator({ policy }: { policy: string }) {
   );
 }
 
+/** V2.1: a profit figure is final only when every cost behind it is priced and covered. */
+function CoverageNotice({ s }: { s: FinanceV2Service }) {
+  const { t } = useLanguage();
+  if (s.costComplete) return null;
+  const gapLabel: Record<string, string> = {
+    PARTIAL: t('fin_v21_gap_partial'), UNSUPPORTED: t('fin_v21_gap_unsupported'), UNPRICED_SOURCE: t('fin_v21_gap_unpriced_source'),
+  };
+  return (
+    <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3" role="status" data-cost-incomplete>
+      <p className="flex items-center gap-2 text-sm font-semibold text-amber-400">
+        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />{t('fin_v21_cost_incomplete')}
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">{t('fin_v21_cost_incomplete_hint')}</p>
+      <ul className="mt-2 space-y-1 text-xs">
+        {s.unpricedLines > 0 && <li>• {t('fin_v2_unpriced')}: {num(s.unpricedLines)}</li>}
+        {s.partialLines > 0 && <li>• {t('fin_v2_partial')}: {num(s.partialLines)}</li>}
+        {s.coverageGaps.map((g) => (
+          <li key={g.source} className="break-words">
+            • <Pill tone="warn">{gapLabel[g.status] ?? g.status}</Pill> <bdi className="font-mono">{g.source}</bdi> — <span className="text-muted-foreground">{g.note}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ServiceDashboard({ service, from, to }: { service: string; from: string; to: string }) {
   const { t } = useLanguage();
   const [detail, setDetail] = useState<FinanceV2ServiceDetail | null>(null);
@@ -292,13 +320,14 @@ function ServiceDashboard({ service, from, to }: { service: string; from: string
         {s.unpricedLines > 0 && <UnpricedBadge count={s.unpricedLines} />}
       </div>
       {s.priceNote && <p className="-mt-3 text-xs text-muted-foreground">{s.priceNote}</p>}
+      <CoverageNotice s={s} />
 
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <StatCard label={t('fin_v2_gross')} value={<Money value={s.grossUsd} />} sub={t('fin_v2_gross_sub')} tone="gold" />
         <StatCard label={t('fin_v2_vat')} value={<Money value={s.vatUsd} />} />
         <StatCard label={t('fin_v2_net')} value={<Money value={s.netUsd} />} />
         <StatCard label={t('fin_v2_profit')} value={<Money value={s.profitUsd} />} tone={s.profitUsd < 0 ? 'bad' : 'good'}
-          sub={<>{t('fin_v2_margin')}: <Pct value={s.marginBps} /></>} />
+          sub={<>{t('fin_v2_margin')}: <Pct value={s.marginBps} />{!s.costComplete && <> · <span className="text-amber-400">{t('fin_v21_not_final')}</span></>}</>} />
         <StatCard label={t('fin_v2_homatch_alloc')} value={<Money value={s.homatchAllocationUsd} />}
           unavailable={s.homatchAllocationUsd === null} unavailableLabel={t('fin_v2_no_split')} />
         <StatCard label={t('fin_v2_exec_alloc')} value={<Money value={s.executionAllocationUsd} />}
@@ -418,8 +447,63 @@ function ServiceCard({ s, active, onSelect }: { s: FinanceV2Service; active: boo
         <KindPill kind={s.pricingKind} />
         {s.unpricedLines > 0 && <UnpricedBadge count={s.unpricedLines} />}
         {s.profitFloorShortfalls > 0 && <Pill tone="bad">{t('fin_v2_floor_shortfall')}</Pill>}
+        {!s.costComplete && <Pill tone="warn">{t('fin_v21_cost_incomplete_short')}</Pill>}
       </div>
     </button>
+  );
+}
+
+/** Shared infrastructure: shown beside the services, never allocated to one. */
+function SharedCostsPanel({ from, to }: { from: string; to: string }) {
+  const { t } = useLanguage();
+  const [data, setData] = useState<FinanceV2SharedCosts | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setData(null); setError(null); getFinanceV2SharedCosts(from, to).then(setData).catch((e: Error) => setError(e.message)); }, [from, to]);
+  if (error) return <LoadError message={error} />;
+  if (!data) return null;
+  return (
+    <div className="rounded-xl border border-border/70 bg-card/60 p-4" data-shared-costs>
+      <SectionTitle title={t('fin_v21_shared_infra_title')} hint={t('fin_v21_shared_infra_hint')} />
+      {data.lines.length === 0 ? <Empty message={t('fin_v2_no_costs')} /> : (
+        <ul className="divide-y divide-border/40">
+          {data.lines.map((l) => (
+            <li key={`${l.source}|${l.vendor}|${l.item}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <span className="min-w-0"><span className="font-medium">{l.vendor}</span> <span className="text-xs text-muted-foreground"><bdi>{l.item}</bdi></span></span>
+              <span className="inline-flex items-center gap-2">
+                {l.status === 'NOT_CONFIGURED'
+                  ? <Pill tone="warn">{t('fin_not_configured')}</Pill>
+                  : <><Money value={l.periodUsd} frac={2} /><span className="text-xs text-muted-foreground">(<Money value={l.monthlyUsd} frac={2} />/{t('fin_v21_month')})</span></>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!data.complete && <p className="mt-2 text-xs text-amber-400">{t('fin_v21_shared_incomplete')}</p>}
+    </div>
+  );
+}
+
+/** Copies of a price outside provider_price_book, compared with the book live. */
+function PriceDriftPanel() {
+  const { t } = useLanguage();
+  const [rows, setRows] = useState<FinanceV2PriceDrift[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { getFinanceV2PriceDrift().then((r) => setRows(r ?? [])).catch((e: Error) => setError(e.message)); }, []);
+  if (error) return <LoadError message={error} />;
+  if (!rows || rows.length === 0) return null;
+  const drift = rows.filter((r) => r.status !== 'MATCH');
+  return (
+    <div className={`rounded-xl border p-4 ${drift.length ? 'border-red-500/40 bg-red-500/5' : 'border-border/70 bg-card/60'}`} data-price-drift>
+      <SectionTitle title={t('fin_v21_price_drift_title')} hint={t('fin_v21_price_drift_hint')} />
+      <ul className="space-y-1 text-xs">
+        {rows.map((r) => (
+          <li key={`${r.registry}|${r.unit}`} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 break-words"><bdi className="font-mono">{r.registry}</bdi> · <bdi>{r.model}</bdi> · {r.unit}</span>
+            <Pill tone={r.status === 'MATCH' ? 'good' : 'bad'}>{r.status === 'MATCH' ? t('fin_v21_drift_match') : r.status === 'DRIFT' ? t('fin_v21_drift_drift') : t('fin_v21_drift_not_in_book')}</Pill>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -493,6 +577,10 @@ export function FinanceServicesTab() {
               </div>
             </div>
           )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SharedCostsPanel from={bounds.from} to={bounds.to} />
+            <PriceDriftPanel />
+          </div>
           {selected && <ServiceDashboard key={`${selected}|${bounds.from}`} service={selected} from={bounds.from} to={bounds.to} />}
         </>
       )}

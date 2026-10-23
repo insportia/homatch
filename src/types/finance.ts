@@ -516,6 +516,10 @@ export interface FinanceV2Service {
   avgCostPerExecutionUsd: number | null;
   profitFloorShortfalls: number;
   taxUnknownLines: number;
+  /** V2.1: what this service's recorded cost does NOT include (finance_cost_coverage). */
+  coverageGaps: FinanceV2CoverageGap[];
+  /** V2.1: false when any cost is unpriced, partial, or a known source is not covered. */
+  costComplete: boolean;
 }
 
 export interface FinanceV2Policy {
@@ -580,4 +584,24 @@ export interface FinanceV2Quote {
   policy: string; kind: string; vatBps: number; grossUsd: number; vatUsd: number; netUsd: number;
   homatchAllocationUsd: number | null; executionAllocationUsd: number | null; costUsd: number;
   withinExecution: boolean | null; chargeForCostCredits: number | null; profitUsd: number;
+}
+
+export interface FinanceV2CoverageGap {
+  source: string;
+  status: 'PARTIAL' | 'UNSUPPORTED' | 'UNPRICED_SOURCE' | string;
+  note: string;
+}
+
+/** Shared infrastructure for a period: never allocated to a service. */
+export interface FinanceV2SharedCosts {
+  periodDays: number;
+  complete: boolean;
+  lines: Array<{ vendor: string; item: string; source: string; monthlyUsd: number | null; periodUsd: number | null; status: 'ESTIMATED' | 'NOT_CONFIGURED' | string }>;
+}
+
+/** A price copy outside provider_price_book compared with the book (live). */
+export interface FinanceV2PriceDrift {
+  registry: string; model: string; unit: string;
+  settingPerMTokUsd: number | null; bookPerMTokUsd: number | null;
+  status: 'MATCH' | 'DRIFT' | 'NOT_IN_BOOK' | string;
 }

@@ -67,7 +67,7 @@ export const COMPONENTS = {
       /^\.github\/workflows\/(pr-check|deploy)\.ya?ml$/,
       /^scripts\/release\//,
       /^scripts\/(deploy-scope|deploy-status|edgeArtifacts|check-edge-functions|edge-syntax-check|migration-baseline)\.mjs$/,
-      /^supabase\/migration-baseline\.json$/,
+      /^supabase\/migration-(baseline|gate)\.json$/,
     ],
   },
   // Dependencies, toolchain, build system, test runners, lint rules, any

@@ -371,7 +371,21 @@ export async function settlePass(admin: Row, job: Row, given?: { http: number | 
   const delayMs = Number(st.delayTime ?? NaN); const execMs = Number(st.executionTime ?? NaN);
   const out = st.output ?? {};
   const timings = { ...job.timings, finishedAt: now, queueAndColdStartMs: Number.isFinite(delayMs) ? delayMs : null, executionMs: Number.isFinite(execMs) ? execMs : null, worker: out.timings ?? null, factory: out.build?.timings ?? null };
-  const cost = [{ ...gpuCost(Number.isFinite(execMs) ? execMs : null, gpu.usdPerSecond, `factory pass ${job.provider_job_id}`), kind: 'GPU' }];
+  /*
+   * RunPod bills worker time INCLUDING cold start, but reports cold start only
+   * inside delayTime, mixed with (unbilled) queue wait -- the two cannot be
+   * split. So executionTime x rate is a FLOOR whenever delayTime > 0: marked
+   * `partial` (and said so in the detail). The basis stays the shared
+   * CostLine's ESTIMATED so the browser's ceiling/totals (which read only
+   * MEASURED/ESTIMATED) keep counting the known floor; renders label it PARTIAL.
+   * No price configured stays usd null / NOT_AVAILABLE.
+   */
+  const gpuLine = gpuCost(Number.isFinite(execMs) ? execMs : null, gpu.usdPerSecond, `factory pass ${job.provider_job_id}`);
+  const coldStartUnpriced = gpuLine.usd !== null && Number.isFinite(delayMs) && delayMs > 0;
+  const cost = [{
+    ...gpuLine, kind: 'GPU',
+    ...(coldStartUnpriced ? { partial: true, detail: `${gpuLine.detail}; floor: excludes any billed cold start inside ${Math.round(delayMs / 100) / 10} s delay` } : {}),
+  }];
   const { data: pendingRows } = await admin.from('ds_factory_assets').select('id, role, tier, group_key, object_key').eq('job_id', job.id).eq('state', 'PENDING');
   const pending: Row[] = pendingRows ?? [];
   const fail = async (a: Row, why: string) => {

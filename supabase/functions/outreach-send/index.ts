@@ -25,6 +25,7 @@ import {
 } from '../_shared/emailMarketing/core.ts';
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
+import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplate.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
@@ -494,9 +495,14 @@ async function outreachSend(req: Request): Promise<Response> {
         // outreach-unsubscribe — a contact can only unsubscribe themselves.
         const unsubToken = await signUnsubscribeToken(contact.id, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
         const unsubUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/outreach-unsubscribe?contact=${encodeURIComponent(contact.id)}&token=${unsubToken}`;
-        const bodyHtml = mergeFields(campaign.html_body || `<p>${(campaign.text_body || '').replace(/\n/g, '<br/>')}</p>`, contact.full_name, true);
-        const htmlWithFooter = `${bodyHtml}\n<hr style="margin-top:24px;border:none;border-top:1px solid #e5e5e5"/>\n<p style="font-size:11px;color:#888;margin-top:12px">Homatch &middot; <a href="${unsubUrl}" style="color:#888">Unsubscribe</a></p>`;
-        const textWithFooter = campaign.text_body ? `${mergeFields(campaign.text_body, contact.full_name, false)}\n\n---\nUnsubscribe: ${unsubUrl}` : undefined;
+        /* The branded campaign template (src/emailMarketing/campaignTemplate.ts): the same one the
+           preview renders, with the recipient's own one-click unsubscribe link in its footer. */
+        const rendered = renderCampaignEmail({
+          subject: mergeFields(campaign.subject || campaign.name, contact.full_name, false),
+          bodyHtml: campaign.html_body ? mergeFields(campaign.html_body, contact.full_name, true) : null,
+          bodyText: campaign.text_body ? mergeFields(campaign.text_body, contact.full_name, false) : null,
+          senderName: campaign.sender_name, lang: campaign.language, unsubscribeUrl: unsubUrl,
+        });
         /* Replies come back to HOMATCH through this recipient's own opaque route, unless the
            campaign deliberately names its own Reply-To. */
         const routed = await createReplyRoute(supabase, emailCtx.settings, emailCtx.owner, {
@@ -506,7 +512,7 @@ async function outreachSend(req: Request): Promise<Response> {
           from: campaign.sender_name ? emailCtx.sender.from.replace(/^"[^"]*"/, `"${String(campaign.sender_name).replace(/[<>"\r\n]/g, '').slice(0, 80)}"`) : emailCtx.sender.from,
           to: contact.email!,
           subject: mergeFields(campaign.subject || campaign.name, contact.full_name, false),
-          html: htmlWithFooter, text: textWithFooter,
+          html: rendered.html, text: rendered.text,
           replyTo: campaign.reply_to || routed || defaultReplyTo || undefined,
           headers: listUnsubscribeHeaders(unsubUrl),
           tags: [{ name: 'kind', value: 'outreach' }, { name: 'send_id', value: sendId }],

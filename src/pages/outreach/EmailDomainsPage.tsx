@@ -16,6 +16,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { PageHeader } from '@/components/communications/primitives';
 import {
   type SendingDomain, EmailMarketingError, addDomain, disconnectDomain, listDomains, refreshDomain, setDomainSender, verifyDomainNow,
 } from '@/services/emailMarketing';
@@ -126,10 +127,7 @@ export default function EmailDomainsPage() {
 
   return (
     <CommsWorkspace product="email" header={(
-      <div className="min-w-0">
-        <h1 className="flex items-center gap-2 text-xl font-semibold"><Globe2 className="h-5 w-5 text-gold-ink" aria-hidden="true" />{t('emd_title')}</h1>
-        <p className="mt-0.5 max-w-prose text-sm text-muted-foreground">{t('emd_subtitle')}</p>
-      </div>
+      <PageHeader eyebrow={t('dnav_email')} title={t('emd_title')} subtitle={t('emd_subtitle')} />
     )}>
       <div className="space-y-4 pb-16">
         <form className="flex flex-col gap-2 rounded-2xl border bg-card p-4 sm:flex-row sm:items-end" onSubmit={(e) => { e.preventDefault(); void add(); }}>

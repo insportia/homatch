@@ -21361,6 +21361,23 @@ const en = {
   adm_engine_saved: 'Engine updated for new verifications',
 
   /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+  emx_preview_title: 'Email preview',
+  emx_preview_note: 'This is exactly how recipients will see this email, including the unsubscribe link.',
+  emx_test_send: 'Send a test to me',
+  emx_test_sent: 'Test sent to {{to}}.',
+  emx_test_failed: 'The test could not be sent. Try again in a moment.',
+  emx_test_blocked: 'Sending is switched off for your account, so no test was sent.',
+  emx_test_empty: 'Add a message before sending a test.',
+  emx_test_no_email: 'Your account has no email address to send the test to.',
+  emx_test_rate: 'Too many tests in the last hour. Try again later.',
+  emx_test_quota: 'Your email allowance is used up, so no test was sent.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Customers',
+  adm_engine_admin_preview: 'Your own test verifications (admin accounts)',
+  adm_engine_admin_preview_note: 'Applies only to verifications started from an admin account. Customers stay on the engine above.',
+  adm_engine_confirm_admin_title: 'Run your own test verifications on {{engine}}?',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
   fbcrm_title: 'CRM',
   fbcrm_step_DISCOVERED: 'Discovered',
   fbcrm_step_QUALIFIED: 'Qualified',
@@ -42669,6 +42686,23 @@ const ka: Partial<Record<TranslationKey, string>> = {
   adm_engine_saved: 'ძრავა განახლდა ახალი ვერიფიკაციებისთვის',
 
   /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+  emx_preview_title: 'წერილის გადახედვა',
+  emx_preview_note: 'ზუსტად ასე დაინახავენ ადრესატები ამ წერილს, გამოწერის გაუქმების ბმულის ჩათვლით.',
+  emx_test_send: 'სატესტო წერილი ჩემთვის',
+  emx_test_sent: 'სატესტო წერილი გაიგზავნა: {{to}}.',
+  emx_test_failed: 'სატესტო წერილი ვერ გაიგზავნა. სცადეთ ცოტა ხანში.',
+  emx_test_blocked: 'თქვენს ანგარიშზე გაგზავნა გამორთულია, ამიტომ სატესტო წერილი არ გაიგზავნა.',
+  emx_test_empty: 'სატესტო გაგზავნამდე დაამატეთ ტექსტი.',
+  emx_test_no_email: 'თქვენს ანგარიშს ელფოსტის მისამართი არ აქვს.',
+  emx_test_rate: 'ბოლო საათში ძალიან ბევრი ტესტი გაიგზავნა. სცადეთ მოგვიანებით.',
+  emx_test_quota: 'წერილების ლიმიტი ამოიწურა, ამიტომ სატესტო წერილი არ გაიგზავნა.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'მომხმარებლები',
+  adm_engine_admin_preview: 'თქვენი სატესტო ვერიფიკაციები (ადმინის ანგარიშები)',
+  adm_engine_admin_preview_note: 'ვრცელდება მხოლოდ ადმინის ანგარიშიდან დაწყებულ ვერიფიკაციებზე. მომხმარებლები ზემოთ მითითებულ ძრავაზე რჩებიან.',
+  adm_engine_confirm_admin_title: 'გაეშვას თქვენი სატესტო ვერიფიკაციები {{engine}}-ზე?',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
   fbcrm_title: 'CRM',
   fbcrm_step_DISCOVERED: 'აღმოჩენილი',
   fbcrm_step_QUALIFIED: 'კვალიფიცირებული',
@@ -63968,6 +64002,23 @@ const ru: Partial<Record<TranslationKey, string>> = {
   adm_engine_saved: 'Движок обновлён для новых проверок',
 
   /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+  emx_preview_title: 'Предпросмотр письма',
+  emx_preview_note: 'Именно так получатели увидят это письмо, включая ссылку для отписки.',
+  emx_test_send: 'Отправить тест себе',
+  emx_test_sent: 'Тестовое письмо отправлено: {{to}}.',
+  emx_test_failed: 'Не удалось отправить тестовое письмо. Попробуйте чуть позже.',
+  emx_test_blocked: 'Отправка для вашего аккаунта выключена, поэтому тест не отправлен.',
+  emx_test_empty: 'Добавьте текст перед отправкой теста.',
+  emx_test_no_email: 'У вашего аккаунта нет адреса эл. почты для теста.',
+  emx_test_rate: 'Слишком много тестов за последний час. Попробуйте позже.',
+  emx_test_quota: 'Лимит писем исчерпан, поэтому тест не отправлен.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Клиенты',
+  adm_engine_admin_preview: 'Ваши тестовые проверки (аккаунты администраторов)',
+  adm_engine_admin_preview_note: 'Действует только для проверок, запущенных из аккаунта администратора. Клиенты остаются на движке выше.',
+  adm_engine_confirm_admin_title: 'Запускать ваши тестовые проверки на {{engine}}?',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
   fbcrm_title: 'CRM',
   fbcrm_step_DISCOVERED: 'Найден',
   fbcrm_step_QUALIFIED: 'Квалифицирован',
@@ -85263,6 +85314,23 @@ const tr: Partial<Record<TranslationKey, string>> = {
   adm_engine_confirm: 'Motoru değiştir',
   adm_engine_reason: 'Gerekçe (zorunlu)',
   adm_engine_saved: 'Yeni doğrulamalar için motor güncellendi',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+  emx_preview_title: 'E-posta önizlemesi',
+  emx_preview_note: 'Alıcılar bu e-postayı, abonelikten çıkma bağlantısı dahil tam olarak böyle görecek.',
+  emx_test_send: 'Bana test gönder',
+  emx_test_sent: 'Test gönderildi: {{to}}.',
+  emx_test_failed: 'Test gönderilemedi. Biraz sonra tekrar deneyin.',
+  emx_test_blocked: 'Hesabınız için gönderim kapalı, bu yüzden test gönderilmedi.',
+  emx_test_empty: 'Test göndermeden önce bir mesaj ekleyin.',
+  emx_test_no_email: 'Hesabınızda test gönderilecek bir e-posta adresi yok.',
+  emx_test_rate: 'Son bir saatte çok fazla test gönderildi. Daha sonra deneyin.',
+  emx_test_quota: 'E-posta hakkınız doldu, bu yüzden test gönderilmedi.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Müşteriler',
+  adm_engine_admin_preview: 'Kendi test doğrulamalarınız (yönetici hesapları)',
+  adm_engine_admin_preview_note: 'Yalnızca yönetici hesabından başlatılan doğrulamalara uygulanır. Müşteriler yukarıdaki motorda kalır.',
+  adm_engine_confirm_admin_title: 'Kendi test doğrulamalarınız {{engine}} motorunda çalışsın mı?',
 
   /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
   fbcrm_title: 'CRM',
@@ -106562,6 +106630,23 @@ const ar: Partial<Record<TranslationKey, string>> = {
   adm_engine_saved: 'تم تحديث المحرك لعمليات التحقق الجديدة',
 
   /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+  emx_preview_title: 'معاينة البريد',
+  emx_preview_note: 'هكذا تماماً سيرى المستلمون هذه الرسالة، بما في ذلك رابط إلغاء الاشتراك.',
+  emx_test_send: 'أرسل نسخة تجريبية إليّ',
+  emx_test_sent: 'أُرسلت النسخة التجريبية إلى {{to}}.',
+  emx_test_failed: 'تعذّر إرسال النسخة التجريبية. حاول بعد قليل.',
+  emx_test_blocked: 'الإرسال متوقف لحسابك، لذلك لم تُرسل نسخة تجريبية.',
+  emx_test_empty: 'أضف نص الرسالة قبل إرسال نسخة تجريبية.',
+  emx_test_no_email: 'لا يوجد عنوان بريد إلكتروني في حسابك لإرسال النسخة التجريبية.',
+  emx_test_rate: 'عدد كبير من الاختبارات في الساعة الأخيرة. حاول لاحقاً.',
+  emx_test_quota: 'نفدت حصة رسائلك، لذلك لم تُرسل نسخة تجريبية.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'العملاء',
+  adm_engine_admin_preview: 'عمليات التحقق التجريبية الخاصة بك (حسابات المسؤولين)',
+  adm_engine_admin_preview_note: 'ينطبق فقط على عمليات التحقق التي تبدأ من حساب مسؤول. يبقى العملاء على المحرك أعلاه.',
+  adm_engine_confirm_admin_title: 'هل تريد تشغيل عمليات التحقق التجريبية الخاصة بك على {{engine}}؟',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
   fbcrm_title: 'إدارة العلاقات',
   fbcrm_step_DISCOVERED: 'تم اكتشافه',
   fbcrm_step_QUALIFIED: 'مؤهَّل',
@@ -127857,6 +127942,23 @@ const he: Partial<Record<TranslationKey, string>> = {
   adm_engine_confirm: 'החלפת מנוע',
   adm_engine_reason: 'סיבה (חובה)',
   adm_engine_saved: 'המנוע עודכן לאימותים חדשים',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+  emx_preview_title: 'תצוגה מקדימה של הדוא"ל',
+  emx_preview_note: 'כך בדיוק יראו הנמענים את ההודעה, כולל קישור ההסרה.',
+  emx_test_send: 'שליחת בדיקה אליי',
+  emx_test_sent: 'הבדיקה נשלחה אל {{to}}.',
+  emx_test_failed: 'לא ניתן היה לשלוח את הבדיקה. נסו שוב בעוד רגע.',
+  emx_test_blocked: 'השליחה כבויה בחשבון שלך, ולכן לא נשלחה בדיקה.',
+  emx_test_empty: 'הוסיפו תוכן לפני שליחת בדיקה.',
+  emx_test_no_email: 'אין בחשבון שלך כתובת דוא"ל לשליחת הבדיקה.',
+  emx_test_rate: 'יותר מדי בדיקות בשעה האחרונה. נסו שוב מאוחר יותר.',
+  emx_test_quota: 'מכסת ההודעות שלך נוצלה, ולכן לא נשלחה בדיקה.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'לקוחות',
+  adm_engine_admin_preview: 'אימותי הבדיקה שלך (חשבונות מנהל)',
+  adm_engine_admin_preview_note: 'חל רק על אימותים שהופעלו מחשבון מנהל. הלקוחות נשארים על המנוע שלמעלה.',
+  adm_engine_confirm_admin_title: 'להריץ את אימותי הבדיקה שלך על {{engine}}?',
 
   /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
   fbcrm_title: 'CRM',

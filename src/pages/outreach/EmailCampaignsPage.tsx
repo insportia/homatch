@@ -28,7 +28,9 @@
  * instead of averaging them into a number that reads like success.
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Mail, Plus, Eye, AlertCircle, Loader2, BarChart2, Rocket, Clock, Pencil, XCircle } from 'lucide-react';
+import { Mail, Plus, Eye, Loader2, BarChart2, Rocket, Clock, Pencil, XCircle, Send, CheckCircle2, AlertTriangle, AlertCircle, Activity, MessageSquare, Inbox } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useNavigate } from 'react-router-dom';
 import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +40,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,7 +48,10 @@ import { OutreachCampaign, ContactList } from '@/types/types';
 import { toast } from 'sonner';
 import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
 import { listConversations, listEmailSends } from '@/services/communications';
-import { StatusBadge } from '@/components/communications/primitives';
+import { EmptyState, Kpi, KpiRow, PageHeader, StatusBadge } from '@/components/communications/primitives';
+import { cn } from '@/lib/utils';
+import { renderCampaignEmail } from '@/emailMarketing/campaignTemplate';
+import { EmailMarketingError, sendCampaignTest } from '@/services/emailMarketing';
 import type { CommConversation, CommSend } from '@/types/communications';
 
 /** The tabs, and which statuses each one owns. Every status has a home. */
@@ -153,6 +157,7 @@ export default function EmailCampaignsPage() {
   const [activity, setActivity] = useState<CommSend[]>([]);
 
   const zone = useMemo(localZone, []);
+  const navigate = useNavigate();
 
   const load = useCallback(async () => {
     if (!homatchUser) return;
@@ -267,6 +272,24 @@ export default function EmailCampaignsPage() {
     const allowed = spec.match as readonly string[];
     return campaigns.filter(c => allowed.includes(c.status));
   }, [campaigns, tab]);
+
+  /* A test copy to the owner's own address — the server decides whether sending is allowed. */
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const handleTestSend = async (campaignId: string) => {
+    setTestingId(campaignId);
+    try {
+      const r = await sendCampaignTest(campaignId, crypto.randomUUID());
+      toast.success(t('emx_test_sent', { to: r.sentTo }));
+    } catch (e) {
+      const code = e instanceof EmailMarketingError ? e.code : '';
+      const key = code === 'SENDING_DISABLED' || code === 'PROVIDER_KILL_SWITCH' ? 'emx_test_blocked'
+        : code === 'EMPTY_CAMPAIGN' ? 'emx_test_empty' : code === 'NO_ACCOUNT_EMAIL' ? 'emx_test_no_email'
+        : code === 'RATE_LIMITED' ? 'emx_test_rate' : /QUOTA|CAP|CAPACITY/.test(code) ? 'emx_test_quota' : 'emx_test_failed';
+      toast.error(t(key));
+    } finally {
+      setTestingId(null);
+    }
+  };
 
   const handlePreview = async (campaignId: string) => {
     setPreviewLoadingId(campaignId);
@@ -478,54 +501,37 @@ export default function EmailCampaignsPage() {
     </div>
   );
 
-  /*
-   * A figure, and the word for it.
-   *
-   * Deliberately plain: no gradient, no sparkline, no card the height of a
-   * paragraph carrying one number. This strip is read at a glance beside the
-   * work, not admired, and six identical tiles with decoration would push the
-   * campaigns themselves below the fold on a laptop.
-   *
-   * A null rate renders an em dash. Zero per cent and "nothing has been sent"
-   * are different statements and only one of them is true here.
-   */
-  const stat = (labelKey: string, value: string, tone?: 'warn') => (
-    <div key={labelKey} className="min-w-0 rounded-lg border bg-card px-3 py-2">
-      <p className="truncate text-[13px] leading-snug text-muted-foreground">{t(labelKey)}</p>
-      <p className={`mt-0.5 text-lg font-semibold leading-none tabular-nums ${tone === 'warn' && value !== '0' ? 'text-red-700' : ''}`}>
-        {value}
-      </p>
-    </div>
-  );
   const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
+  const sendingLive = !providerLoading && Boolean(providerStatus?.email?.real) && !providerStatus?.kill_switch;
 
   return (
     <CommsWorkspace
       product="email"
       header={(
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-2 text-xl font-semibold">
-              <Mail className="h-5 w-5 text-gold-ink" />
-              {t('email_campaigns_title')}
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">{t('email_campaigns_subtitle')}</p>
-          </div>
-          <Button size="sm" className="shrink-0" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 me-2" />{t('email_new_campaign')}
-          </Button>
-        </div>
+        <PageHeader
+          eyebrow={t('dnav_email')}
+          title={t('email_campaigns_title')}
+          subtitle={t('email_campaigns_subtitle')}
+          secondary={{ label: t('emx_nav_inbox'), onClick: () => navigate('/outreach/email/inbox'), icon: Inbox }}
+          primary={{ label: t('email_new_campaign'), onClick: () => setCreateOpen(true), icon: Plus }}
+        />
       )}
     >
         <div className="space-y-5">
 
-          <Alert variant={providerStatus?.email?.real ? 'default' : undefined} className={providerStatus?.email?.real ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : ''}>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-xs">
-              {/* "Checking" is only true while the request is in flight.
-                  A finished request that could not tell us is UNKNOWN, and
-                  the honest answer to unknown is the conservative one — the
-                  same message a disabled channel shows. */}
+          {/* Sending state, stated plainly: a quiet strip, green only when mail really goes out. */}
+          <div
+            role="status"
+            className={cn(
+              'flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-[13px] leading-snug',
+              sendingLive ? 'border-emerald-600/25 bg-emerald-500/[0.06] text-emerald-900' : 'border-amber-500/30 bg-amber-500/[0.06] text-amber-950',
+            )}
+          >
+            <span aria-hidden="true" className={cn('mt-[5px] h-2 w-2 shrink-0 rounded-full', sendingLive ? 'bg-emerald-500' : 'bg-amber-500')} />
+            <span className="min-w-0 [overflow-wrap:break-word]">
+              {/* "Checking" is only true while the request is in flight. A finished request that
+                  could not tell us is UNKNOWN, and the honest answer to unknown is the
+                  conservative one — the same message a disabled channel shows. */}
               {providerLoading
                 ? t('outreach_status_checking')
                 : providerStatus?.kill_switch
@@ -533,52 +539,54 @@ export default function EmailCampaignsPage() {
                 : providerStatus?.email?.real
                 ? t('email_sending_real', { provider: providerStatus?.email?.provider })
                 : t('email_sending_disabled')}
-            </AlertDescription>
-          </Alert>
+            </span>
+          </div>
 
           {/* ── At a glance ──────────────────────────────────────────── */}
+          {/* ── At a glance: real counters only; a rate with nothing sent is a dot, not 0%. ── */}
           {hasNothing ? null : (
-          <Section titleKey="email_ws_overview">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-              {stat('email_ws_active', String(stats.active))}
-              {stat('email_sent', String(stats.sent))}
-              {stat('email_delivered', String(stats.delivered))}
-              {stat('email_bounced', String(stats.bounced), 'warn')}
-              {stat('email_ws_delivery_rate', pct(stats.deliveryRate))}
-              {stat('email_ws_reply_rate', pct(stats.replyRate))}
-            </div>
-          </Section>
+            <KpiRow cols={6}>
+              <Kpi labelKey="email_ws_active" icon={Activity} value={stats.active} accent loading={loading} />
+              <Kpi labelKey="email_sent" icon={Send} value={stats.sent} loading={loading} />
+              <Kpi labelKey="email_delivered" icon={CheckCircle2} value={stats.delivered} loading={loading} />
+              <Kpi labelKey="email_bounced" icon={AlertTriangle} value={stats.bounced} loading={loading} />
+              <Kpi labelKey="email_ws_delivery_rate" icon={BarChart2} value={stats.deliveryRate === null ? null : pct(stats.deliveryRate)} loading={loading} />
+              <Kpi labelKey="email_ws_reply_rate" icon={MessageSquare} value={stats.replyRate === null ? null : pct(stats.replyRate)} loading={loading} />
+            </KpiRow>
           )}
 
-          <div className="flex gap-1 flex-wrap border-b border-border pb-px">
-            {TABS.map((x) => (
-              <button
-                key={x.key}
-                type="button"
-                onClick={() => setTab(x.key)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-t-md border-b-2 -mb-px transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  tab === x.key
-                    ? 'border-gold text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-                aria-current={tab === x.key ? 'page' : undefined}
-              >
-                {t(x.label)}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-1 border-b border-border/70 pb-px" role="tablist" aria-label={t('email_campaigns_title')}>
+            {TABS.map((x) => {
+              const n = x.match ? campaigns.filter((c) => (x.match as readonly string[]).includes(c.status)).length : campaigns.length;
+              return (
+                <button
+                  key={x.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === x.key}
+                  onClick={() => setTab(x.key)}
+                  className={cn(
+                    '-mb-px flex items-center gap-1.5 rounded-t-md border-b-2 px-3 py-2 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    tab === x.key ? 'border-gold text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {t(x.label)}
+                  <span className={cn('min-w-[1.25rem] rounded-full px-1.5 text-center text-2xs leading-5 tabular-nums', tab === x.key ? 'bg-[#0C1119] text-white' : 'bg-muted text-muted-foreground')}>{n}</span>
+                </button>
+              );
+            })}
           </div>
 
           {loading ? (
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>)}</div>
           ) : visible.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink" aria-hidden="true">
-                <Mail className="h-5 w-5" />
-              </span>
-              <p className="text-sm font-medium">{t('email_empty_title')}</p>
-              <p className="text-xs text-muted-foreground max-w-xs">{t('email_empty_desc')}</p>
-              <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 me-2" />{t('email_new_campaign')}</Button>
-            </div>
+            <EmptyState
+              icon={Mail}
+              titleKey="email_empty_title"
+              bodyKey="email_empty_desc"
+              action={{ labelKey: 'email_new_campaign', onClick: () => setCreateOpen(true) }}
+              secondary={{ labelKey: 'comms_nav_contacts', onClick: () => navigate('/outreach/email/contacts') }}
+            />
           ) : (
             <div className="space-y-3">
               {visible.map((c) => {
@@ -593,15 +601,16 @@ export default function EmailCampaignsPage() {
                 const launchable = !isLegacy && !['COMPLETED', 'CANCELLED', 'SCHEDULED'].includes(c.status) && !!c.contact_list_id;
 
                 return (
-                  <Card key={c.id} className="hover:border-foreground/25 transition-colors">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink" aria-hidden="true">
+                  <Card key={c.id} className="overflow-hidden rounded-2xl border-border/80 shadow-[0_1px_2px_rgba(12,17,25,0.04)] transition-[border-color,box-shadow] hover:border-gold/40 hover:shadow-[0_10px_30px_-18px_rgba(12,17,25,0.35)]">
+                    <CardContent className="p-4 sm:p-5">
+                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#0C1119] text-[hsl(38_92%_60%)] shadow-sm" aria-hidden="true">
                           <Mail className="h-4 w-4" />
                         </span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-sm truncate">{c.name}</span>
+                            <span className="min-w-0 text-[15px] font-semibold leading-snug [overflow-wrap:break-word]">{c.name}</span>
                             <StatusBadge status={c.status} />
                             {partial && (
                               <Badge className="text-[13px] px-1.5 bg-yellow-500/10 text-yellow-700">{t('email_partially_failed')}</Badge>
@@ -613,7 +622,7 @@ export default function EmailCampaignsPage() {
                             )}
                             <Badge variant="outline" className="text-[13px] px-1.5 uppercase">{c.language ?? 'en'}</Badge>
                           </div>
-                          {c.subject && <p className="text-xs text-muted-foreground truncate mt-0.5">{c.subject}</p>}
+                          {c.subject && <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted-foreground [overflow-wrap:break-word]">{c.subject}</p>}
 
                           {c.status === 'SCHEDULED' && c.scheduled_at && (
                             <p className="text-xs text-purple-700 mt-1 flex items-center gap-1">
@@ -631,7 +640,7 @@ export default function EmailCampaignsPage() {
                             <p className="text-[13px] text-red-700 mt-1">{t('email_send_error_generic')}</p>
                           )}
 
-                          <div className="flex gap-4 mt-1 text-[14px] text-muted-foreground flex-wrap">
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
                             <span className="flex items-center gap-1"><BarChart2 className="h-3 w-3" />{c.audience_count ?? 0} {t('email_audience')}</span>
                             {sent === 0 && failed === 0 ? (
                               <span>{t('email_never_sent')}</span>
@@ -647,8 +656,9 @@ export default function EmailCampaignsPage() {
                             {(c.cost_estimate_usd ?? 0) > 0 && <span>${c.cost_estimate_usd?.toFixed(2)}</span>}
                           </div>
                         </div>
+                        </div>
 
-                        <div className="flex gap-1 shrink-0">
+                        <div className="flex shrink-0 flex-wrap gap-1 sm:justify-end">
                           <Button variant="ghost" size="sm" className="h-8 px-2" aria-label={t('email_preview_error')} disabled={previewLoadingId === c.id} onClick={() => handlePreview(c.id)}>
                             {previewLoadingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
                           </Button>
@@ -843,7 +853,7 @@ export default function EmailCampaignsPage() {
         </Dialog>
 
         <Dialog open={!!previewCampaign} onOpenChange={(open) => !open && setPreviewCampaign(null)}>
-          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+          <DialogContent className="max-h-[92vh] max-w-[calc(100%-2rem)] overflow-y-auto md:max-w-2xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-gold-ink" />
@@ -866,14 +876,36 @@ export default function EmailCampaignsPage() {
                   <p><span className="font-medium text-foreground">{t('email_reply_to')}:</span> {previewCampaign.reply_to}</p>
                 )}
               </div>
-              <div className="rounded-lg bg-card border border-border shadow-card p-4 max-h-80 overflow-y-auto">
-                {previewCampaign?.html_body
-                  ? <div className="text-sm text-foreground" dangerouslySetInnerHTML={{ __html: previewCampaign.html_body }} />
-                  : <p className="text-sm text-foreground whitespace-pre-wrap">{previewCampaign?.text_body || t('email_preview_empty')}</p>}
-              </div>
+              {/* The email as it is sent (src/emailMarketing/campaignTemplate.ts), in a frame with
+                  every sandbox permission withheld: no script runs, nothing reaches this page. */}
+              {previewCampaign?.html_body || previewCampaign?.text_body ? (
+                <>
+                  <iframe
+                    title={t('emx_preview_title')}
+                    sandbox=""
+                    srcDoc={renderCampaignEmail({
+                      subject: previewCampaign.subject || previewCampaign.name,
+                      bodyHtml: previewCampaign.html_body ?? null, bodyText: previewCampaign.text_body ?? null,
+                      senderName: previewCampaign.sender_name ?? null, lang: previewCampaign.language ?? 'en', unsubscribeUrl: '#',
+                    }).html}
+                    className="h-[30rem] w-full rounded-xl border bg-[#F6F3EE]"
+                  />
+                  <p className="text-[13px] leading-snug text-muted-foreground">{t('emx_preview_note')}</p>
+                </>
+              ) : (
+                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{t('email_preview_empty')}</p>
+              )}
             </div>
-            <DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-2">
               <Button variant="outline" onClick={() => setPreviewCampaign(null)}>{t('general_close')}</Button>
+              <Button
+                disabled={testingId === previewCampaign?.id || !(previewCampaign?.html_body || previewCampaign?.text_body)}
+                onClick={() => previewCampaign && void handleTestSend(previewCampaign.id)}
+                className="gap-1.5"
+              >
+                {testingId === previewCampaign?.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {t('emx_test_send')}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

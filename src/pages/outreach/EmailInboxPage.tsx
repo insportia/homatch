@@ -11,6 +11,7 @@ import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CheckCheck, Image as ImageIcon, Inbox, Loader2, Mail, RefreshCw, Search, Send, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/communications/primitives';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -97,13 +98,12 @@ export default function EmailInboxPage() {
 
   return (
     <CommsWorkspace product="email" header={(
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><Inbox className="h-5 w-5 text-gold-ink" aria-hidden="true" />{t('emx_inbox_title')}</h1>
-          <p className="mt-0.5 max-w-prose text-sm text-muted-foreground">{t('emx_inbox_subtitle')}</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="me-2 h-4 w-4" aria-hidden="true" />{t('emx_refresh')}</Button>
-      </div>
+      <PageHeader
+        eyebrow={t('dnav_email')}
+        title={t('emx_inbox_title')}
+        subtitle={t('emx_inbox_subtitle')}
+        secondary={{ label: t('emx_refresh'), onClick: () => void load(), icon: RefreshCw }}
+      />
     )}>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <section className={cn('min-w-0 space-y-2', selectedId && 'hidden lg:block')} aria-label={t('emx_conversations')}>

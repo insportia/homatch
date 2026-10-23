@@ -7,6 +7,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { OpenAIProvider } from '../_shared/providers.ts';
+import { recordUsageCost } from '../_shared/providerCost.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -63,6 +64,8 @@ serve(async (req) => {
     let filteredOut = 0;
     let errors = 0;
     let totalCostUsd = 0;
+    /* One id per run: every OpenAI call below is recorded under it (Finance V2.1). */
+    const costRunId = `classify-v1:${market}:${crypto.randomUUID()}`;
 
     for (const signal of signals) {
       try {
@@ -74,6 +77,21 @@ serve(async (req) => {
           language: langHint,
         });
 
+        /* One cost_events row per real provider call (the mock makes none), priced from the
+           price book on OpenAI's reported usage (none → UNPRICED). Replaces the per-run
+           aggregate row, so a call is never counted twice. */
+        if (result.model !== 'MOCK') {
+          const recorded = await recordUsageCost(supabase as any, {
+            provider: 'OPENAI',
+            operation: 'CLASSIFY_SIGNALS',
+            service: 'shared_platform',
+            model: result.model,
+            correlationId: costRunId,
+            idempotencyKey: `CLASSIFY_SIGNALS:${costRunId}:${result.responseId ?? crypto.randomUUID()}`,
+            tokens: result.usage,
+          });
+          result.costUsd = Number(recorded?.cost_usd ?? 0);
+        }
         totalCostUsd += result.costUsd;
 
         const isBuyer = BUYER_INTENT_TYPES.has(result.intentType);
@@ -136,18 +154,7 @@ serve(async (req) => {
       }
     }
 
-    // Track COGS
-    if (totalCostUsd > 0) {
-      await supabase.from('cost_events').insert({
-        provider: 'OPENAI',
-        operation_type: 'CLASSIFY_SIGNALS',
-        market,
-        units: classified + filteredOut,
-        cost_usd: totalCostUsd,
-        success: true,
-        cache_hit: false,
-      });
-    }
+    // COGS: recorded per provider call above (recordUsageCost), not as a run aggregate.
 
     return json({
       success: true,

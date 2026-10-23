@@ -44,6 +44,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { serviceClient } from '../_shared/billing.ts';
+import { deferCost, priceUsage, recordUsageCost, tokenUsage, type TokenUsage } from '../_shared/providerCost.ts';
 import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const CORS = {
@@ -55,9 +56,9 @@ const MODEL = Deno.env.get('OPENAI_FLOORPLAN_MODEL')
   || Deno.env.get('OPENAI_MODEL')
   || 'gpt-5.6-luna';
 
-/** Tokens are billed per million; cents, rounded up, never a float. */
-const USD_PER_MTOK_IN = Number(Deno.env.get('OPENAI_USD_PER_MTOK_IN') || '0');
-const USD_PER_MTOK_OUT = Number(Deno.env.get('OPENAI_USD_PER_MTOK_OUT') || '0');
+/* Priced from provider_price_book (priceUsage), never from environment rates: a missing
+   rate is UNPRICED, not $0. */
+const COST_OPERATION = 'DEVELOPER_FLOORPLAN_EXTRACT';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -373,7 +374,8 @@ serve(async (req) => {
     .eq('id', floorplanId);
 
   let modelText = '';
-  let usage: any = null;
+  /* The provider's own usage; null when it reported none (unknown, never assumed). */
+  let tokens: TokenUsage | null = null;
   try {
     const res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -409,7 +411,18 @@ serve(async (req) => {
     if (res.ok) {
       const payload = await res.json();
       modelText = textOf(payload);
-      usage = payload?.usage ?? null;
+      tokens = tokenUsage(payload);
+      /* Every answered call is a cost, including one whose reading is then rejected below. */
+      deferCost(recordUsageCost(serviceClient() as any, {
+        provider: 'OPENAI',
+        operation: COST_OPERATION,
+        service: 'developer_tools',
+        model: MODEL,
+        correlationId: floorplanId,
+        idempotencyKey: `${COST_OPERATION}:${floorplanId}:${payload?.id ?? crypto.randomUUID()}`,
+        tokens,
+        success: Boolean(modelText),
+      }));
     } else {
       modelText = '';
     }
@@ -447,18 +460,26 @@ serve(async (req) => {
   /* WHAT IT COST, recorded under its own category so the pipeline's bill can
      be read apart from every other model call Homatch makes. Service role,
      because dt_pipeline_costs is deliberately not writable by a customer. */
-  const inTok = Number(usage?.input_tokens ?? 0);
-  const outTok = Number(usage?.output_tokens ?? 0);
-  const cents = Math.ceil(
-    ((inTok / 1_000_000) * USD_PER_MTOK_IN + (outTok / 1_000_000) * USD_PER_MTOK_OUT) * 100,
-  );
   try {
-    await serviceClient().from('dt_pipeline_costs').insert({
+    const costDb = serviceClient();
+    const priced = await priceUsage(costDb as any, {
+      provider: 'OPENAI', operation: COST_OPERATION, model: MODEL, tokens,
+    });
+    /* cost_cents is NOT NULL: an UNPRICED call keeps 0 there and says so in units.pricing_state,
+       so the 0 is never read as free. */
+    const cents = priced.pricing_state === 'UNPRICED' ? 0 : Math.ceil(priced.cost_usd * 100);
+    await costDb.from('dt_pipeline_costs').insert({
       workspace_id: row.workspace_id,
       floorplan_id: floorplanId,
       category: 'OPENAI_FLOORPLAN_EXTRACTION',
       cost_cents: Number.isFinite(cents) ? cents : 0,
-      units: { input_tokens: inTok, output_tokens: outTok },
+      units: {
+        input_tokens: tokens ? tokens.input : null,
+        cached_input_tokens: tokens ? tokens.cached : null,
+        output_tokens: tokens ? tokens.output : null,
+        pricing_state: priced.pricing_state,
+        cost_usd: priced.pricing_state === 'UNPRICED' ? null : priced.cost_usd,
+      },
       provider: 'openai',
       model: MODEL,
     });

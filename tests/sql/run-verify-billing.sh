@@ -11,6 +11,13 @@ $P -d $DB -f supabase/migrations/20261026090000_verify_durable_execution.sql
 $P -d $DB -f tests/sql/verify_credit_budget_fixture.sql
 $P -d $DB -f supabase/migrations/20261026100000_verify_credit_budget.sql
 $P -d $DB -f supabase/migrations/20261027090000_verify_wallet_owner.sql
+# Fixed price + 30-day validity (20261127090000), applied twice (idempotent). The
+# cost-based suites below then run with VERIFY switched back to VARIABLE: the
+# rewritten functions must keep that path exactly (jobs in flight at deploy).
+$P -d $DB -f tests/sql/verify_fixed_price_fixture.sql
+$P -d $DB -f supabase/migrations/20261127090000_verify_fixed_price_validity.sql
+$P -d $DB -f supabase/migrations/20261127090000_verify_fixed_price_validity.sql
+$P -d $DB -c "update public.billable_products set billing_mode = 'VARIABLE' where code = 'VERIFY'"
 $P -d $DB -f tests/sql/verify_durable_execution.sql
 $P -d $DB -f tests/sql/verify_credit_budget.sql
 $P -d $DB -f tests/sql/verify_billing_audit_regressions.sql
@@ -89,5 +96,38 @@ begin
   if v_bal < 0 or v_res < 0 or v_bal + v_res <> 200 - v_charged then raise exception 'approval race: wallet drift bal % res % charged %', v_bal, v_res, v_charged; end if;
   if v_charged > v_authorized then raise exception 'approval race: charged above authorisation'; end if;
   raise notice 'verify approval races: % authorisations (≤ 1 per screen), % open session(s), wallet consistent', v_auth, v_open;
+end \$\$;
+SQL
+
+# Fixed price: the acceptance checks, then 30 simultaneous starts and 30
+# simultaneous deliveries of one job charge exactly the price, once.
+$P -d $DB -c "update public.billable_products set billing_mode = 'FIXED' where code = 'VERIFY'"
+$P -d $DB -f tests/sql/verify_fixed_price.sql
+U3=00000000-0000-4000-8000-0000000000c3
+J3=00000000-0000-4000-8000-00000000c0b3
+$P -d $DB -c "insert into public.users (id, auth_id) values ('$U3', '$U3');
+              insert into public.credit_accounts (user_id, balance) values ('$U3', 100);
+              insert into public.credit_lots (user_id, kind, credits_granted, source_type) values ('$U3','PURCHASED',100,'TOPUP');
+              insert into public.research_jobs (id, user_id) values ('$J3', '$U3');"
+for i in $(seq 1 30); do
+  $P -d $DB -c "select public.verify_billing_open('$J3', '$U3', 'verify:c0b3:click$i', false, null, 19)" >/dev/null &
+done
+wait
+for i in $(seq 1 30); do
+  $P -d $DB -c "select public.verify_billing_close('$J3', 'COMPLETE')" >/dev/null &
+done
+wait
+$P -d $DB -At <<SQL
+do \$\$
+declare v_res int; v_caps int; v_bal numeric; v_charged numeric;
+begin
+  select count(*) into v_res from public.usage_reservations where job_ref = '$J3';
+  select count(*) into v_caps from public.credit_ledger where user_id = '$U3' and type = 'SERVICE_CAPTURE';
+  select balance into v_bal from public.credit_accounts where user_id = '$U3';
+  select charged_total_credits into v_charged from public.verify_billing where job_id = '$J3';
+  if v_res <> 1 or v_caps <> 1 or v_charged <> 19 or v_bal <> 81 then
+    raise exception 'fixed concurrency: % reservations, % captures, charged %, balance %', v_res, v_caps, v_charged, v_bal;
+  end if;
+  raise notice 'verify fixed price concurrency: 1 reservation, 1 capture, exactly 19 charged';
 end \$\$;
 SQL

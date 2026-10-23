@@ -8089,17 +8089,25 @@ Deno.serve(async (req) => {
       return json({ error: 'Could not create research job' }, 500);
     }
     /*
-     * RESERVE BEFORE ANY BILLABLE WORK. The authorised budget (25 credits) is
-     * held through the wallet; nothing has run yet, so a refusal removes the
-     * empty job and the customer keeps every credit.
+     * RESERVE BEFORE ANY BILLABLE WORK. The job's price (fixed Verify price,
+     * 20261127090000) is held through the wallet; nothing has run yet, so a
+     * refusal removes the empty job and the customer keeps every credit.
+     * `expectedCredits` is the price the customer was shown: if the admin
+     * changed it since, the start is refused (PRICE_CHANGED) and the page
+     * shows the new price, instead of debiting a number nobody confirmed.
      */
     if (billingOn && user) {
-      const { data: o, error: oe } = await sb.rpc('verify_billing_open', { p_job_id: j.id, p_user_id: user.id, p_idempotency_key: `verify:${j.id}:s1` });
+      const expected = Number(b.expectedCredits);
+      const { data: o, error: oe } = await sb.rpc('verify_billing_open', {
+        p_job_id: j.id, p_user_id: user.id, p_idempotency_key: `verify:${j.id}:s1`,
+        ...(Number.isFinite(expected) && expected > 0 ? { p_expected_credits: expected } : {}),
+      });
       if (oe || !o?.ok) {
         await sb.from('research_jobs').delete().eq('id', j.id);
         if (oe) console.error('research-agent: verify_billing_open', oe.message);
         const reason = o?.reason ?? 'BILLING_UNAVAILABLE';
-        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null }, reason === 'INSUFFICIENT_CREDITS' ? 402 : 503);
+        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, priceCredits: o?.priceCredits ?? null, priceCents: o?.priceCents ?? null },
+          reason === 'INSUFFICIENT_CREDITS' ? 402 : reason === 'PRICE_CHANGED' ? 409 : 503);
       }
     }
     /*

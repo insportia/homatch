@@ -85,6 +85,8 @@ export interface GatewayOptions {
   /** Close the session after this long without work. */
   idleDisconnectMs?: number;
   maxQueue?: number;
+  /** One Telegram call may take this long; past it the call fails and the next one reconnects. */
+  callTimeoutMs?: number;
   /** How long a resolved username is trusted before it is resolved again. */
   resolveTtlMs?: number;
 }
@@ -124,6 +126,7 @@ export class TelegramGateway {
   private readonly minGapMs: number;
   private readonly idleMs: number;
   private readonly maxQueue: number;
+  private readonly callTimeoutMs: number;
   private readonly resolveTtlMs: number;
 
   private driver: TelegramDriver | null = null;
@@ -153,6 +156,7 @@ export class TelegramGateway {
     this.minGapMs = options.minGapMs ?? 1500;
     this.idleMs = options.idleDisconnectMs ?? 5 * 60_000;
     this.maxQueue = options.maxQueue ?? 16;
+    this.callTimeoutMs = options.callTimeoutMs ?? 60_000;
     this.resolveTtlMs = options.resolveTtlMs ?? 6 * 3_600_000;
   }
 
@@ -292,7 +296,10 @@ export class TelegramGateway {
       this.lastCallAt = this.now();
       this.calls += 1;
       try {
-        const result = await work(driver);
+        /* The queue is serial: one hung MTProto call would hold every caller behind it
+           until the queue filled. Bounded; a timeout is a NETWORK_ERROR, so record()
+           drops the session and the next call reconnects. */
+        const result = await this.withDeadline(work(driver));
         this.lastSuccessAt = this.now();
         this.authorized = this.authorized ?? true;
         return result;
@@ -305,6 +312,15 @@ export class TelegramGateway {
       this.armIdle();
     });
     return task;
+  }
+
+  private withDeadline<T>(call: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new WorkerTelegramError('NETWORK_ERROR', 'TELEGRAM_CALL_TIMEOUT')), this.callTimeoutMs);
+      (timer as { unref?: () => void }).unref?.();
+    });
+    return Promise.race([call, deadline]).finally(() => clearTimeout(timer));
   }
 
   private gate(): WorkerTelegramError | null {

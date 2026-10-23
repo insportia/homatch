@@ -40,6 +40,7 @@ import {
 import { selectKeyterms, type VocabularyTerm } from '../_shared/comm/generated/keyterms.ts';
 import { syncVoiceLibrary } from '../_shared/comm/voiceLibrary.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { recordUsageCost, deferCost } from '../_shared/providerCost.ts';
 import {
   speechSocketUrl, mintSpeechGrant, googleSpeechDiagnosis, GRANT_TTL_MS,
 } from '../_shared/comm/speechGrant.ts';
@@ -198,6 +199,7 @@ async function voicePreview(sb: Sb, userId: string, body: VoiceAiRequest): Promi
     ok: out.ok, errorCode: out.ok ? null : out.error?.code ?? null,
     providerStatus: out.ok ? null : Number(out.error?.providerCode) || null,
   });
+  if (out.ok) recordElevenLabsCost(sb, 'VOICE_PREVIEW', model, text.length, userId);
 
   if (!out.ok || !out.data) {
     return json({
@@ -673,6 +675,7 @@ async function pronunciationPreview(sb: Sb, body: VoiceAiRequest): Promise<Respo
     voiceId, text, modelId: model, languageCode: language,
     sendLanguage: choice.sendLanguage, format: 'mp3',
   });
+  if (before.ok) recordElevenLabsCost(sb, 'PRONUNCIATION_PREVIEW', model, text.length, voiceId);
 
   // The candidate rule is published as its own dictionary version rather than
   // mutated into an existing one, so audio approved last week can still be
@@ -699,6 +702,7 @@ async function pronunciationPreview(sb: Sb, body: VoiceAiRequest): Promise<Respo
         sendLanguage: choice.sendLanguage, format: 'mp3',
         dictionaries: [dictionary],
       });
+      if (after.ok) recordElevenLabsCost(sb, 'PRONUNCIATION_PREVIEW', model, text.length, voiceId);
     } else {
       return json({
         ok: false, reason: 'DICTIONARY_FAILED',
@@ -983,6 +987,7 @@ async function audition(sb: Sb, userId: string, body: VoiceAiRequest): Promise<R
         format: 'mp3',
       });
       const ms = Date.now() - at;
+      if (out.ok) recordElevenLabsCost(sb, 'VOICE_AUDITION', modelId, text.length, batchId);
 
       const row: Record<string, unknown> = {
         batch_id: batchId,
@@ -1303,6 +1308,23 @@ async function ttsModel(sb: Sb): Promise<string> {
     .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
   const cfg = (data?.config ?? {}) as Record<string, unknown>;
   return typeof cfg.model === 'string' && cfg.model ? cfg.model : ELEVENLABS_DEFAULTS.ttsModel;
+}
+
+/**
+ * One ElevenLabs synthesis, as a Finance V2 cost row (service 'communications').
+ *
+ * ElevenLabs bills per character submitted; a request it refused is not billed
+ * and is not recorded here. Priced from provider_price_book (the same rates
+ * voiceCogs reads); a model with no rate is UNPRICED, never $0. Deferred, so no
+ * admin or customer request waits on it. Each call gets its own key.
+ */
+function recordElevenLabsCost(sb: Sb, operation: string, model: string, characters: number, correlationId: string | null): void {
+  deferCost(recordUsageCost(sb as never, {
+    provider: 'ELEVENLABS', service: 'communications', operation, model,
+    source: 'voice-ai', correlationId,
+    idempotencyKey: `elevenlabs:${operation.toLowerCase()}:${crypto.randomUUID()}`,
+    dimensions: [{ unit: 'CHARACTER', units: characters }],
+  }));
 }
 
 async function recordUsage(sb: Sb, event: {

@@ -134,3 +134,51 @@ export const FINANCE_V2_STRINGS_2 = {
   fin_v2_status_partial: ['Partially priced', 'ნაწილობრივ ფასდადგენილი', 'Частично оценено', 'Kısmen fiyatlandırıldı', 'مسعّر جزئيًا', 'מתומחר חלקית'],
   fin_v2_status_unpriced: ['Unpriced', 'ფასდაუდგენელი', 'Без цены', 'Fiyatlandırılmamış', 'غير مسعّر', 'ללא תמחור'],
 };
+
+/* Finance V2.1: honest profit, shared infrastructure, price drift. */
+export const FINANCE_V2_STRINGS_3 = {
+  fin_v21_cost_incomplete: ['Profit is not final: some costs are missing', 'მოგება საბოლოო არ არის: ზოგი ხარჯი აკლია', 'Прибыль не окончательная: часть расходов не учтена', 'Kâr kesin değil: bazı maliyetler eksik', 'الربح غير نهائي: بعض التكاليف ناقصة', 'הרווח אינו סופי: חלק מהעלויות חסרות'],
+  fin_v21_cost_incomplete_hint: [
+    'The figures below include every cost HOMATCH can price. The items listed are not (fully) in them yet.',
+    'ქვემოთ მოცემული ციფრები მოიცავს ყველა ხარჯს, რომლის შეფასებაც HOMATCH-ს შეუძლია. ჩამოთვლილი პუნქტები მათში (სრულად) ჯერ არ შედის.',
+    'Цифры ниже включают все расходы, которые HOMATCH может оценить. Перечисленные пункты в них пока (полностью) не входят.',
+    'Aşağıdaki rakamlar HOMATCH’in fiyatlayabildiği tüm maliyetleri içerir. Listelenen kalemler henüz (tamamen) dahil değildir.',
+    'تشمل الأرقام أدناه كل التكاليف التي يستطيع HOMATCH تسعيرها. البنود المدرجة غير مشمولة (بالكامل) بعد.',
+    'הנתונים שלהלן כוללים כל עלות ש-HOMATCH יכול לתמחר. הפריטים המפורטים עדיין לא כלולים בהם (במלואם).',
+  ],
+  fin_v21_cost_incomplete_short: ['Costs incomplete', 'ხარჯები არასრულია', 'Расходы неполные', 'Maliyetler eksik', 'التكاليف غير مكتملة', 'עלויות חלקיות'],
+  fin_v21_not_final: ['not final', 'არ არის საბოლოო', 'не окончательно', 'kesin değil', 'غير نهائي', 'לא סופי'],
+  fin_v21_gap_partial: ['Partly measured', 'ნაწილობრივ გაზომილი', 'Частично измерено', 'Kısmen ölçüldü', 'مقاس جزئيًا', 'נמדד חלקית'],
+  fin_v21_gap_unsupported: ['Not measurable', 'გაზომვა შეუძლებელია', 'Не измеряется', 'Ölçülemiyor', 'غير قابل للقياس', 'לא ניתן למדידה'],
+  fin_v21_gap_unpriced_source: ['No price set', 'ფასი არ არის დადგენილი', 'Цена не задана', 'Fiyat yok', 'لا يوجد سعر', 'לא נקבע מחיר'],
+  fin_v21_shared_infra_title: ['Shared infrastructure', 'საერთო ინფრასტრუქტურა', 'Общая инфраструктура', 'Ortak altyapı', 'البنية التحتية المشتركة', 'תשתית משותפת'],
+  fin_v21_shared_infra_hint: [
+    'Hosting and platform costs for the period. Shown apart: never divided between services.',
+    'ჰოსტინგისა და პლატფორმის ხარჯები ამ პერიოდში. ნაჩვენებია ცალკე: სერვისებს შორის არასოდეს ნაწილდება.',
+    'Расходы на хостинг и платформу за период. Показаны отдельно: никогда не делятся между сервисами.',
+    'Dönemin barındırma ve platform maliyetleri. Ayrı gösterilir: hizmetler arasında asla bölünmez.',
+    'تكاليف الاستضافة والمنصة للفترة. تُعرض منفصلة: لا تُقسَّم أبدًا بين الخدمات.',
+    'עלויות אחסון ופלטפורמה לתקופה. מוצגות בנפרד: לעולם אינן מחולקות בין שירותים.',
+  ],
+  fin_v21_shared_incomplete: [
+    'Some fixed costs have no amount configured, so this total is incomplete.',
+    'ზოგ ფიქსირებულ ხარჯს თანხა არ აქვს მითითებული, ამიტომ ეს ჯამი არასრულია.',
+    'Для некоторых постоянных расходов сумма не задана, поэтому итог неполный.',
+    'Bazı sabit maliyetlerin tutarı girilmemiş; bu toplam eksiktir.',
+    'بعض التكاليف الثابتة بلا مبلغ محدد، لذا فهذا المجموع غير مكتمل.',
+    'לחלק מהעלויות הקבועות לא הוגדר סכום, ולכן הסכום הכולל חלקי.',
+  ],
+  fin_v21_month: ['month', 'თვე', 'мес.', 'ay', 'شهر', 'חודש'],
+  fin_v21_price_drift_title: ['Price consistency', 'ფასების თანხვედრა', 'Согласованность цен', 'Fiyat tutarlılığı', 'اتساق الأسعار', 'עקביות מחירים'],
+  fin_v21_price_drift_hint: [
+    'Price copies used outside the central price book, compared with it live.',
+    'ცენტრალური ფასების წიგნის გარეთ გამოყენებული ფასები, შედარებული მასთან რეალურ დროში.',
+    'Копии цен вне центрального прайс-листа, сверенные с ним в реальном времени.',
+    'Merkezi fiyat defteri dışında kullanılan fiyat kopyaları, onunla canlı karşılaştırılır.',
+    'نسخ الأسعار المستخدمة خارج دفتر الأسعار المركزي، مقارنةً به مباشرةً.',
+    'עותקי מחירים המשמשים מחוץ לספר המחירים המרכזי, בהשוואה חיה אליו.',
+  ],
+  fin_v21_drift_match: ['Matches', 'ემთხვევა', 'Совпадает', 'Eşleşiyor', 'متطابق', 'תואם'],
+  fin_v21_drift_drift: ['Differs', 'განსხვავდება', 'Отличается', 'Farklı', 'مختلف', 'שונה'],
+  fin_v21_drift_not_in_book: ['Not in price book', 'ფასების წიგნში არ არის', 'Нет в прайс-листе', 'Fiyat defterinde yok', 'غير موجود في دفتر الأسعار', 'לא בספר המחירים'],
+};

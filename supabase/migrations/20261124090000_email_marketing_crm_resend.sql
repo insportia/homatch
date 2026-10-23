@@ -941,3 +941,85 @@ select b.*, t.vat_bps, sp.net_usd, sp.vat_usd,
   from base b
   cross join lateral (select public.finance_vat_bps_at(b.occurred_at) as vat_bps) t
   cross join lateral public.finance_split_gross(b.gross_usd, t.vat_bps) sp;
+
+------------------------------------------------------------------------------
+-- 11. Finance V2.1 cost lines: the same view, verbatim from 20261123090000, with email
+--     provider cost (Studio, outreach, CRM replies) attributed to email_marketing, the
+--     service that now carries email revenue — so Admin margin is revenue minus ITS cost.
+------------------------------------------------------------------------------
+create or replace view public.finance_v2_cost_lines with (security_invoker = true) as
+with ce as (
+  select c.id, c.provider, c.operation_type, c.source, c.request_id, c.units, c.cost_usd, c.pricing_state,
+         c.job_id, c.discovery_job_id, c."timestamp", c.correlation_id, c.model, c.input_tokens, c.output_tokens, c.cached_input_tokens,
+         coalesce(c.finance_service, case
+           when c.job_id is not null and (c.operation_type like 'VERIFY\_%' or c.operation_type in ('REPORT_TRANSLATION_VERIFY', 'DEVELOPER_ADS_VERIFY')) then 'verify'
+           /* Find Property search AI: cost_events is the correlated record (20261119130000_find_property_costs). */
+           when c.operation_type like 'MARKETPLACE\_%' then 'find_property_search'
+           when c.operation_type like 'FIND\_BUYERS%' or c.operation_type in ('FIND_PROPERTY_ACTOR_RUN', 'CAPTCHA_SOLVE') then null
+           when c.operation_type = 'MATCH_UNLOCK' then null /* a $0 marker row, not a cost */
+           when c.provider::text in ('DATAFORSEO', 'APIFY') then 'retired_providers'
+           when c.operation_type ilike 'meta\_ads%' then 'meta_ads_ai'
+           when c.operation_type ilike '%email%' or c.source ilike '%email%' then 'email_marketing'
+           /* V2.1: v1 signal classification (CLASSIFY_SIGNAL / _BATCH / _SIGNALS) is shared platform AI too. */
+           when c.operation_type ilike 'CLASSIFY\_%' or c.operation_type ilike '%chat%' then 'shared_platform'
+           else 'unattributed' end) as service_key
+    from public.cost_events c
+)
+select 'ce:' || ce.id::text as line_id, ce.service_key, coalesce(ce.job_id::text, ce.correlation_id, ce.request_id, ce.discovery_job_id::text) as execution_id,
+       ce."timestamp" as occurred_at, ce.provider::text as provider, ce.operation_type as operation, ce.model,
+       ce.units, case when ce.input_tokens is not null or ce.output_tokens is not null then 'TOKENS' else 'UNIT' end as unit_label,
+       ce.input_tokens::bigint, ce.cached_input_tokens::bigint as cached_tokens, ce.output_tokens::bigint,
+       null::numeric as unit_price_usd,
+       case when public.finance_cost_status(ce.pricing_state) = 'UNPRICED' then null else ce.cost_usd end as cost_usd,
+       public.finance_cost_status(ce.pricing_state) as cost_status, 'cost_events'::text as cost_source, true as is_direct
+  from ce where ce.service_key is not null
+union all
+select 'captcha:' || v.id::text, 'verify', v.job_id::text, v.created_at, coalesce(v.provider, '2CAPTCHA'), 'CAPTCHA_SOLVE ' || coalesce(v.kind, ''), null,
+       1, 'SOLVE', null, null, null, v.cost_usd, v.cost_usd,
+       case when v.cost_usd is null then 'UNPRICED' else 'ESTIMATED' end, 'verify_captcha_events', true
+  from public.verify_captcha_events v where v.job_id is not null
+union all
+select 'fbrun:' || r.id::text, 'find_buyers', r.matching_job_id::text, coalesce(r.finished_at, r.created_at), 'APIFY_MEMO23',
+       coalesce(r.operation, 'ACTOR_RUN') || ' · ' || r.actor_key, null, r.results_billed, 'RESULTS', null, null, null, null,
+       coalesce(r.actual_micros, r.reserved_micros) / 1e6,
+       case when r.actual_micros is not null and r.cost_basis = 'PROVIDER_REPORTED' then 'ACTUAL' else 'ESTIMATED' end,
+       'find_buyers_actor_runs', true
+  from public.find_buyers_actor_runs r where r.status <> 'RELEASED'
+union all
+select 'fbai:' || l.id::text, 'find_buyers', l.matching_job_id::text, l.occurred_at, 'OPENAI', l.kind || ' · ' || coalesce(l.operation, ''), l.model,
+       coalesce(l.input_tokens, 0) + coalesce(l.output_tokens, 0), 'TOKENS', l.input_tokens, null, l.output_tokens, null,
+       case when upper(coalesce(l.cost_state, '')) = 'UNKNOWN' then null else coalesce(l.actual_micros, l.estimated_micros) / 1e6 end,
+       public.finance_cost_status(l.cost_state), 'find_buyers_cost_ledger', true
+  from public.find_buyers_cost_ledger l where l.provider = 'OPENAI' and upper(coalesce(l.cost_state, '')) <> 'RELEASED'
+union all
+select 'fprun:' || r.id::text, 'find_property_paid', r.discovery_run_id::text, r.created_at, 'APIFY_MEMO23',
+       coalesce(r.stage, 'ACTOR_RUN') || ' · ' || r.actor_key, null, r.results_billed, 'RESULTS', null, null, null, null,
+       coalesce(r.actual_micros, r.reserved_micros) / 1e6,
+       case when r.actual_micros is not null then 'ACTUAL' else 'ESTIMATED' end, 'find_property_actor_runs', true
+  from public.find_property_actor_runs r where r.status <> 'RELEASED'
+union all
+select 'usage:' || u.id::text, coalesce(s.service_key, 'unattributed'), coalesce(u.job_ref, u.id::text), u.created_at, coalesce(u.provider, 'OPENAI'),
+       coalesce(u.provider_operation, u.product_code), u.model,
+       coalesce(u.input_tokens, 0) + coalesce(u.output_tokens, 0), 'TOKENS', u.input_tokens, u.cached_tokens, u.output_tokens, null,
+       case when st.status = 'UNPRICED' then null else round((coalesce(u.raw_provider_cost_cents, 0) + coalesce(u.ai_cost_cents, 0)) / 100.0, 8) end,
+       st.status, 'usage_events', true
+  from public.usage_events u
+  left join public.finance_services s on u.product_code = any (s.product_codes)
+  cross join lateral (select case
+      /* An OpenAI call with tokens but no rate at the time is UNPRICED, whatever 0 was stored
+         (billing_ai_cost_cents turns a missing rate into 0). */
+      when coalesce(u.provider, 'OPENAI') = 'OPENAI' and u.model is not null and coalesce(u.input_tokens, 0) + coalesce(u.output_tokens, 0) > 0
+       and (public.price_per_unit_at('OPENAI', u.model, 'INPUT_TOKEN', u.created_at) is null
+            or public.price_per_unit_at('OPENAI', u.model, 'OUTPUT_TOKEN', u.created_at) is null) then 'UNPRICED'
+      else public.finance_cost_status(coalesce(u.metadata ->> 'pricing_state', u.pricing_state)) end as status) st
+ where u.product_code not in ('VERIFY', 'FIND_CLIENTS', 'FIND_PROPERTY')
+   and (coalesce(u.raw_provider_cost_cents, 0) + coalesce(u.ai_cost_cents, 0) > 0 or coalesce(u.input_tokens, 0) + coalesce(u.output_tokens, 0) > 0)
+union all
+select 'voice:' || v.id::text, 'ai_talk', v.session_id::text, v.occurred_at, v.provider, coalesce(v.role, 'VOICE'), v.model,
+       coalesce(v.characters::numeric, v.audio_seconds::numeric, (coalesce(v.input_tokens, 0) + coalesce(v.output_tokens, 0))::numeric),
+       case when v.characters is not null then 'CHARACTERS' when v.audio_seconds is not null then 'AUDIO_SECONDS' else 'TOKENS' end,
+       v.input_tokens, v.cached_input_tokens, v.output_tokens, null, v.cost_usd,
+       case when v.cost_usd is null then 'UNPRICED' else 'ESTIMATED' end, 'voice_usage_events', true
+  from public.voice_usage_events v
+ /* Admin voice previews are telemetry here; their cost is the voice-ai cost_events row (V2.1). */
+ where v.surface is distinct from 'VOICE_PREVIEW';

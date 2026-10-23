@@ -337,7 +337,9 @@ async function outreachSend(req: Request): Promise<Response> {
     }
 
     const emailUnitPrice = Number(fm['outreach_email_price_per_1k'] ?? 0.5) / 1000;
-    const smsUnitPrice = Number(fm['outreach_sms_unit_price'] ?? 0.05);
+    // Fallbacks match the admin_settings seed (00033: email 0.50/1k, SMS 0.02);
+    // they apply only when the setting row is missing.
+    const smsUnitPrice = Number(fm['outreach_sms_unit_price'] ?? 0.02);
 
     let sentCount = 0, failedCount = 0, skippedCount = 0, costTotal = 0, anyMock = false;
 

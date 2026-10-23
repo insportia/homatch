@@ -1909,13 +1909,13 @@ export async function getPricingConfig(): Promise<PricingConfig> {
   const m: Record<string, number> = {};
   for (const s of data ?? []) m[s.key] = Number(s.value);
   return {
-    min_credits: m['pricing_min_credits'] ?? 0.10,
-    max_credits: m['pricing_max_credits'] ?? 10.0,
-    base_potential: m['pricing_base_potential'] ?? 0.50,
-    base_good: m['pricing_base_good'] ?? 1.00,
-    base_strong: m['pricing_base_strong'] ?? 2.00,
-    base_very_strong: m['pricing_base_very_strong'] ?? 3.50,
-    base_exceptional: m['pricing_base_exceptional'] ?? 5.00,
+    min_credits: m['pricing_min_credits'] ?? 1,
+    max_credits: m['pricing_max_credits'] ?? 100,
+    base_potential: m['pricing_base_potential'] ?? 5,
+    base_good: m['pricing_base_good'] ?? 10,
+    base_strong: m['pricing_base_strong'] ?? 20,
+    base_very_strong: m['pricing_base_very_strong'] ?? 35,
+    base_exceptional: m['pricing_base_exceptional'] ?? 50,
     multiplier_recency: m['pricing_multiplier_recency'] ?? 1.3,
     multiplier_source_quality: m['pricing_multiplier_source_quality'] ?? 1.2,
     multiplier_cogs: m['pricing_multiplier_cogs'] ?? 1.15,

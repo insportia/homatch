@@ -30,6 +30,7 @@ import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { assembleContext, buildAskPrompt, groundingRefs } from '../../../src/dealroom/domain/aiContext.ts';
 import type { ContextItem } from '../../../src/dealroom/domain/aiContext.ts';
 import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -57,8 +58,8 @@ serve(async (req) => {
     if (!authHeader) return json({ error: 'unauthorized' }, 401);
 
     // The user-scoped client is deliberate: every read below goes through the
-    // caller's own RLS, so a forged deal room id simply returns nothing. There
-    // is no service-role path in this function.
+    // caller's own RLS, so a forged deal room id simply returns nothing. The
+    // only service-role use is the provider-cost write after the model call.
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
@@ -136,7 +137,26 @@ serve(async (req) => {
       return json({ error: 'assistant_unavailable' }, 503);
     }
 
-    const answer = textOf(await res.json());
+    const payload = await res.json();
+    /*
+     * Provider cost (Finance V2.1). The ONLY service-role use in this function: one
+     * cost_events write with the usage OpenAI itself reported, off the response path.
+     * Every read and write for the customer above and below stays on their RLS client.
+     */
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (serviceKey) {
+      const costDb = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey, { auth: { persistSession: false } });
+      deferCost(recordUsageCost(costDb as any, {
+        provider: 'OPENAI',
+        operation: 'DEAL_ROOM_AI',
+        service: 'deal_room',
+        model: MODEL,
+        correlationId: dealRoomId,
+        idempotencyKey: `DEAL_ROOM_AI:${dealRoomId}:${payload?.id ?? crypto.randomUUID()}`,
+        tokens: tokenUsage(payload),
+      }));
+    }
+    const answer = textOf(payload);
     if (!answer) return json({ error: 'assistant_unavailable' }, 503);
 
     /* ---- persist, with grounding ---- */

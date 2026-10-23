@@ -54,6 +54,7 @@ import {
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
 import { readRouted } from '../_shared/storage/routed.ts';
 import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -384,6 +385,21 @@ serve(async (req) => {
       const payload = await res.json();
       modelText = textOf(payload);
       usage = payload?.usage ?? null;
+      /*
+       * Provider cost (Finance V2.1) in cost_events, priced from the price book. NOT passed
+       * to settleExecution as aiCostCents: CONTRACT_INTELLIGENCE is priced from landed COGS
+       * (billing_price_quote), so doing that would change what the customer is charged.
+       */
+      deferCost(recordUsageCost(svc as any, {
+        provider: 'OPENAI',
+        operation: 'DEVELOPER_DOCUMENT_EXTRACT',
+        service: 'developer_tools',
+        model: MODEL,
+        correlationId: String(documentId),
+        idempotencyKey: `DEVELOPER_DOCUMENT_EXTRACT:${documentId}:${payload?.id ?? crypto.randomUUID()}`,
+        tokens: tokenUsage(payload),
+        success: Boolean(modelText),
+      }));
     }
   } catch {
     // Falls through to the empty-response branch below.

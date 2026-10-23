@@ -5,6 +5,7 @@ import type {
   TimeseriesPoint, MonthRow, MarginMonitor, UnpricedRow, FxStatus, ProviderRegistry,
   FixedCosts, PriceBook, LiveFeed,
   FinanceV2Service, FinanceV2ServiceDetail, FinanceV2Execution, FinanceV2Quote,
+  FinanceV2SharedCosts, FinanceV2PriceDrift,
 } from '@/types/finance';
 
 /**
@@ -112,6 +113,14 @@ export const getFinanceV2Execution = (service: string, executionId: string) =>
 /** The server's own policy formula — the simulator never re-implements it. */
 export const getFinanceV2Quote = (policy: string, grossUsd: number, costUsd = 0) =>
   rpc<FinanceV2Quote>('finance_v2_quote', { p_policy: policy, p_gross_usd: grossUsd, p_cost_usd: costUsd });
+
+/** V2.1: shared infrastructure for the period (prorated monthly rates; unconfigured ≠ free). */
+export const getFinanceV2SharedCosts = (from: string, to: string) =>
+  rpc<FinanceV2SharedCosts>('finance_v2_shared_costs', { p_from: from, p_to: to });
+
+/** V2.1: live drift between price copies (e.g. the Find Buyers OpenAI setting) and provider_price_book. */
+export const getFinanceV2PriceDrift = () =>
+  rpc<FinanceV2PriceDrift[]>('finance_v2_price_drift');
 
 export const getLiveFeed = (limit = 50) =>
   rpc<LiveFeed>('finance_live_feed', { p_limit: limit });

@@ -35,6 +35,7 @@ import { readManagedState, setApproved, LifecycleError, assertNotSuspended } fro
 import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport, statusChangeNotice } from './monitor.ts';
 import { safeReturnPath } from '../../../src/lib/metaAds/oauth.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { deferCost, recordUsageCost } from '../_shared/providerCost.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -730,6 +731,26 @@ Deno.serve(async (req) => {
           user: JSON.stringify({ op, field, targetLanguage: language, goal: c.goal, destinationType: c.destination?.type ?? null, context, current, notes }),
           json: true, maxTokens: 700, timeoutMs: 25_000,
         });
+        /* Provider cost (Finance V2.1). callLlm reports OpenAI's usage on success (0s when the
+           provider sent none, which is unknown, not free); a 200 that ran out of room
+           ('incomplete:*') consumed tokens it does not report, so it is recorded UNPRICED.
+           A call that never got a 200 back is not recorded. */
+        const answered = result.ok || String(result.error ?? '').startsWith('incomplete');
+        if (answered) {
+          const reported = result.ok && (result.inputTokens > 0 || result.outputTokens > 0);
+          deferCost(recordUsageCost(sb as any, {
+            provider: 'OPENAI',
+            operation: 'META_ADS_COPY_AI',
+            service: 'meta_ads_ai',
+            model: result.model,
+            correlationId: String(c.id),
+            // callLlm does not surface the provider response id: one fresh key per call.
+            idempotencyKey: `META_ADS_COPY_AI:${c.id}:${crypto.randomUUID()}`,
+            tokens: reported
+              ? { input: result.inputTokens, cached: Math.min(result.inputTokens, result.cachedInputTokens ?? 0), output: result.outputTokens }
+              : null,
+          }));
+        }
         const parsed = (result.parsed ?? {}) as { variants?: Array<Record<string, unknown>> };
         const variants = (parsed.variants ?? []).slice(0, 3).map((v) => ({
           primaryText: String(v.primaryText ?? '').slice(0, 2200),

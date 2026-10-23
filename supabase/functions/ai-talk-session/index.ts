@@ -30,7 +30,8 @@ import {
   streamCartesiaPcm, nearestCartesiaRate, clampCartesiaSpeed, getCartesiaVoice,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
-import { priceBook, llmCost, sttCost, ttsCost } from '../_shared/comm/voiceCogs.ts';
+import { priceBook, llmCost, sttCost, ttsCost, type PriceRow } from '../_shared/comm/voiceCogs.ts';
+import { deferCost } from '../_shared/providerCost.ts';
 import { judgeOverlap } from '../_shared/comm/generated/streamingOverlap.ts';
 import { LANGUAGE_NAMES as REGISTRY_LANGUAGE_NAMES, SPEECH_TAGS } from '../_shared/comm/generated/languageRegistry.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
@@ -188,13 +189,17 @@ async function speakPhrase(sb: Sb, params: {
   const ms = Date.now() - started;
 
   if (out.ok && out.data) {
-    await recordVoiceUsage(sb, {
+    // Priced exactly as the streaming converse path prices a phrase, but
+    // written after the response (deferred) so the price-book read never
+    // sits on the latency path.
+    const ttsModel = out.data.model;
+    recordVoiceUsageLater(sb, {
       sessionId: params.sessionId ?? null,
       surface: params.surface ?? 'AI_TALK',
-      provider: 'CARTESIA', role: 'TTS', model: out.data.model,
+      provider: 'CARTESIA', role: 'TTS', model: ttsModel,
       characters: params.text.length, latencyMs: ms,
       ok: true, errorCode: null, providerStatus: null,
-    });
+    }, (book) => ttsCost(book, { provider: 'CARTESIA', model: ttsModel, characters: params.text.length }));
     return {
       ok: true,
       data: {
@@ -209,14 +214,16 @@ async function speakPhrase(sb: Sb, params: {
     };
   }
 
-  await recordVoiceUsage(sb, {
+  // A failed request was still submitted, and Cartesia bills submitted text:
+  // priced in full, as the converse path prices a failed phrase.
+  recordVoiceUsageLater(sb, {
     sessionId: params.sessionId ?? null,
     surface: params.surface ?? 'AI_TALK',
     provider: 'CARTESIA', role: 'TTS', model: 'sonic-3',
     characters: params.text.length, latencyMs: ms,
     ok: false, errorCode: out.error?.code ?? null,
     providerStatus: Number(out.error?.providerCode) || null,
-  });
+  }, (book) => ttsCost(book, { provider: 'CARTESIA', model: 'sonic-3', characters: params.text.length }));
   logEvent('ai-talk', 'tts_failed', {
     provider: 'CARTESIA', path: 'whole',
     code: out.error?.code ?? null,
@@ -338,6 +345,68 @@ async function recordVoiceUsage(sb: Sb, event: {
   } catch {
     // Telemetry must never take a conversation down with it.
   }
+}
+
+type VoiceUsageEvent = Omit<Parameters<typeof recordVoiceUsage>[1], 'costUsd' | 'costBasis'>;
+
+/**
+ * Price and record one provider call AFTER the response has gone.
+ *
+ * deferCost hands the work to EdgeRuntime.waitUntil, so neither the price-book
+ * read nor the insert is awaited on the visitor's path. A rate that does not
+ * resolve is NULL (and logged), never zero.
+ */
+function recordVoiceUsageLater(
+  sb: Sb, event: VoiceUsageEvent, price: (book: PriceRow[]) => number | null,
+): void {
+  deferCost(priceBook(sb).then((book) => {
+    const costUsd = price(book);
+    if (costUsd === null) {
+      logEvent('ai-talk', 'cogs_unpriced', { provider: event.provider, role: event.role, model: event.model });
+    }
+    return recordVoiceUsage(sb, { ...event, costUsd, costBasis: 'CALCULATED' });
+  }));
+}
+
+/** An LLM leg, from the token usage the provider itself reported. */
+function recordLlmUsageLater(sb: Sb, event: {
+  sessionId: string | null; model: string; inputTokens: number; cachedInputTokens: number | null;
+  outputTokens: number; latencyMs: number | null; ok: boolean; errorCode: string | null;
+}): void {
+  recordVoiceUsageLater(sb, {
+    sessionId: event.sessionId, surface: 'AI_TALK', provider: 'OPENAI', role: 'LLM', model: event.model,
+    inputTokens: event.inputTokens, cachedInputTokens: event.cachedInputTokens, outputTokens: event.outputTokens,
+    latencyMs: event.latencyMs, ok: event.ok, errorCode: event.errorCode, providerStatus: null,
+  }, (book) => llmCost(book, {
+    model: event.model, inputTokens: event.inputTokens,
+    cachedInputTokens: event.cachedInputTokens, outputTokens: event.outputTokens,
+  }));
+}
+
+/**
+ * Seconds of audio in a PCM WAV, read from the file's own header -- what was
+ * actually submitted, not an assumption about the sample rate. Null when the
+ * bytes are not a RIFF/WAVE PCM file the header describes.
+ */
+function wavSeconds(bytes: Uint8Array): number | null {
+  if (bytes.byteLength < 44) return null;
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tag = (o: number) => String.fromCharCode(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
+  if (tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return null;
+  let byteRate: number | null = null;
+  let o = 12;
+  while (o + 8 <= bytes.byteLength) {
+    const id = tag(o);
+    const size = v.getUint32(o + 4, true);
+    if (id === 'fmt ' && o + 20 <= bytes.byteLength) byteRate = v.getUint32(o + 16, true);
+    if (id === 'data') {
+      if (!byteRate) return null;
+      const dataBytes = Math.min(size, bytes.byteLength - (o + 8));
+      return Math.round((dataBytes / byteRate) * 1000) / 1000;
+    }
+    o += 8 + size + (size % 2);
+  }
+  return null;
 }
 
 interface TalkRequest {
@@ -596,7 +665,8 @@ type Sb = ReturnType<typeof serviceClient>;
  *     finishes, the only consequence is a cold first turn -- which is today's
  *     behaviour.
  *   It must not become a turn.  It writes no session row, no transcript, no
- *     usage, and returns nothing to the browser. The conversation does not
+ *     turn usage, and returns nothing to the browser. (Its provider COST is
+ *     recorded, deferred, as an AI Talk LLM row -- it is a paid call.) The conversation does not
  *     know it happened.
  *   It must not speak.  No Cartesia call, no TTS, no audio. It ends at the
  *     model.
@@ -610,6 +680,8 @@ async function warmPromptCache(locale: string, sessionId: string): Promise<void>
   logEvent('ai-talk', 'cache_warm_start', { sessionId, locale });
   let cached: number | null = null;
   let inputTokens: number | null = null;
+  let outputTokens: number | null = null;
+  let warmModel: string | null = null;
   let failed: string | null = null;
   try {
     for await (const event of streamLlm({
@@ -630,6 +702,8 @@ async function warmPromptCache(locale: string, sessionId: string): Promise<void>
       if (event.type === 'meta') {
         if (event.cachedInputTokens !== undefined) cached = event.cachedInputTokens;
         if (event.inputTokens !== undefined) inputTokens = event.inputTokens;
+        if (event.outputTokens !== undefined) outputTokens = event.outputTokens;
+        if (event.model !== undefined) warmModel = event.model;
       }
       if (event.type === 'error') failed = String(event.error ?? 'unknown').slice(0, 120);
       // The text is deliberately not read. Nothing consumes it.
@@ -652,6 +726,19 @@ async function warmPromptCache(locale: string, sessionId: string): Promise<void>
     warmCachedInputTokens: cached,
     failed,
   });
+  /*
+   * Its COST is recorded, though: a warm-up is a real, paid model call (it
+   * pays the uncached prefix). Only when the provider reported usage -- a
+   * warm-up that never got tokens back records nothing rather than a guess.
+   * Already off the response path (waitUntil), and deferred again.
+   */
+  if (inputTokens !== null || outputTokens !== null) {
+    recordLlmUsageLater(serviceClient(), {
+      sessionId, model: warmModel ?? LUNA_MODEL_FALLBACK,
+      inputTokens: inputTokens ?? 0, cachedInputTokens: cached, outputTokens: outputTokens ?? 0,
+      latencyMs: Date.now() - startedAt, ok: !failed, errorCode: failed ? 'WARMUP_FAILED' : null,
+    });
+  }
 }
 
 async function start(
@@ -1166,6 +1253,16 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
   // The OpenAI realtime path, which carried this before ElevenLabs and stays
   // as the fallback rather than being deleted.
   if (!hasSecret('OPENAI_API_KEY')) return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+
+  /*
+   * COST: NOT RECORDED HERE, DELIBERATELY. Minting a realtime transcription
+   * client secret (OpenAI, or the ElevenLabs token above) is not itself
+   * billed; the billed audio streams from the browser straight to the
+   * provider and never passes through this function, so the edge sees no
+   * usage at all. Writing a row here would mean inventing seconds or tokens.
+   * UNSUPPORTED server-side until the browser (or the provider's usage API)
+   * reports measured audio, the way converse reports sttAudioSeconds.
+   */
 
   const configured = Deno.env.get('OPENAI_REALTIME_TRANSCRIBE_MODEL');
   const models = [configured, 'gpt-live-transcribe', 'gpt-transcribe', 'gpt-4o-transcribe']
@@ -2232,6 +2329,22 @@ async function transcribe(sb: Sb, body: TalkRequest): Promise<Response> {
     languageHint: body.languageHint ? String(body.languageHint).slice(0, 5) : null,
   });
 
+  /*
+   * COST, deferred. A successful transcription is billed on the audio
+   * submitted; its length is read from the WAV's own header (null when the
+   * header does not describe it -- never assumed). A refused request is not
+   * billed and writes no cost row.
+   */
+  if (result.ok) {
+    const audioSeconds = wavSeconds(audio);
+    const sttModel = result.model;
+    recordVoiceUsageLater(sb, {
+      sessionId: session.row.id, surface: 'AI_TALK', provider: 'OPENAI', role: 'STT', model: sttModel,
+      audioSeconds, latencyMs: result.latencyMs, ok: true, errorCode: null, providerStatus: null,
+    }, (book) => (audioSeconds === null ? null
+      : sttCost(book, { provider: 'OPENAI', model: sttModel, audioSeconds })));
+  }
+
   if (!result.ok) {
     // Sizes and codes, never audio and never words.
     logEvent('ai-talk', 'transcribe_failed', {
@@ -3228,6 +3341,12 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           pending = '';
           languageChecked = false;
           let retry = '';
+          const retryAt = Date.now();
+          let retryIn: number | null = null;
+          let retryCached: number | null = null;
+          let retryOut: number | null = null;
+          let retryModel: string | null = null;
+          let retryFailed = false;
           for await (const event of streamLlm({
             system: publicDemoInstructions(replyLanguage),
             user: `${user}\n\nYour previous answer was in the wrong language. `
@@ -3237,9 +3356,28 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
             maxTokens: 400, maxOutputTokens: 900,
             reasoningEffort: 'none', timeoutMs: 15_000,
           })) {
-            if (event.type === 'error') break;
+            if (event.type === 'meta') {
+              if (event.inputTokens !== undefined) retryIn = event.inputTokens;
+              if (event.cachedInputTokens !== undefined) retryCached = event.cachedInputTokens;
+              if (event.outputTokens !== undefined) retryOut = event.outputTokens;
+              if (event.model !== undefined) retryModel = event.model;
+              continue;
+            }
+            if (event.type === 'error') { retryFailed = true; break; }
             if (event.type === 'done') break;
             if (event.type === 'delta' && event.text) retry += event.text;
+          }
+          /*
+           * The retry is a second paid call; the turn's LLM row carries only
+           * the first stream's usage. Its own row, deferred, from the usage
+           * the provider reported -- none reported, none recorded.
+           */
+          if (retryIn !== null || retryOut !== null) {
+            recordLlmUsageLater(sb, {
+              sessionId: session.id, model: retryModel ?? LUNA_MODEL_FALLBACK,
+              inputTokens: retryIn ?? 0, cachedInputTokens: retryCached, outputTokens: retryOut ?? 0,
+              latencyMs: Date.now() - retryAt, ok: !retryFailed, errorCode: retryFailed ? 'LLM_RETRY_FAILED' : null,
+            });
           }
 
           llmFinalAt = Date.now() - startedAt;
@@ -3764,6 +3902,16 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     timeoutMs: 20_000,
   });
 
+  // The model call's cost, from the usage the provider reported (deferred,
+  // off the response path). No usage reported, no row.
+  if (reply.inputTokens > 0 || reply.outputTokens > 0) {
+    recordLlmUsageLater(sb, {
+      sessionId: session.id, model: reply.model, inputTokens: reply.inputTokens,
+      cachedInputTokens: reply.cachedInputTokens, outputTokens: reply.outputTokens,
+      latencyMs: Date.now() - thoughtAt, ok: reply.ok, errorCode: reply.ok ? null : 'LLM_FAILED',
+    });
+  }
+
   if (!reply.ok || !reply.text?.trim()) {
     logEvent('ai-talk', 'turn_llm_failed', {
       reason: reply.error ?? 'empty', status: reply.status ?? null,
@@ -3811,6 +3959,14 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
   }
 
   logEvent('ai-talk', 'turn_ok', { sessionId: session.id, model: spoken.data.model });
+
+  {
+    const ttsModel = spoken.data.model;
+    recordVoiceUsageLater(sb, {
+      sessionId: session.id, surface: 'AI_TALK', provider: 'CARTESIA', role: 'TTS', model: ttsModel,
+      characters: text.length, latencyMs: Date.now() - spokeAt, ok: true, errorCode: null, providerStatus: null,
+    }, (book) => ttsCost(book, { provider: 'CARTESIA', model: ttsModel, characters: text.length }));
+  }
 
   return json({
     ok: true,
@@ -3902,6 +4058,14 @@ async function speakLegacy(sb: Sb, body: TalkRequest): Promise<Response> {
       providerCode: spoken.error?.code ?? null,
       providerStatus: spoken.error?.providerCode ?? null,
     }, 502);
+  }
+
+  {
+    const ttsModel = spoken.data.model;
+    recordVoiceUsageLater(sb, {
+      sessionId: guard.row.id, surface: 'AI_TALK', provider: 'CARTESIA', role: 'TTS', model: ttsModel,
+      characters: text.length, latencyMs: Date.now() - spokeAt, ok: true, errorCode: null, providerStatus: null,
+    }, (book) => ttsCost(book, { provider: 'CARTESIA', model: ttsModel, characters: text.length }));
   }
 
   return json({

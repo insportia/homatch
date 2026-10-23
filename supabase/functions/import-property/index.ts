@@ -2,6 +2,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { extractListingMedia, IMPORTED_GALLERY_MAX, mergeGallery, refreshedCover } from '../../../src/import/listingMedia.ts';
 import { resolveListingSource } from '../../../src/import/sourceAdapters.ts';
 import { loadDisabledProviders } from '../_shared/providerSwitch.ts';
+import { recordUsageCost, deferCost } from '../_shared/providerCost.ts';
 
 /** The values of the import_error_code enum (property_imports.error_code). */
 const DB_ERROR_CODES = new Set(['INVALID_URL', 'NOT_A_LISTING', 'SOURCE_BLOCKED', 'JS_RENDER_REQUIRED', 'RENDER_PROVIDER_UNAVAILABLE', 'EXTRACTION_FAILED', 'LOGIN_REQUIRED', 'RATE_LIMITED']);
@@ -1345,6 +1346,38 @@ Deno.serve(async (req) => {
   }
   const mockMode = Deno.env.get('MOCK_DATA_PROVIDERS') === 'true';
 
+  /*
+   * One render-provider request, one cost_events row (service
+   * 'property_import'). Units are the credits the provider itself billed, read
+   * from its response header; absent header = units unknown (UNPRICED), never
+   * guessed. There is no per-credit rate on file, so even a known count is
+   * UNPRICED with its units -- not $0. Only called once a request was sent.
+   * The attempt index carries a per-invocation nonce so a re-run of the same
+   * import never collides with (and silently drops) a distinct paid call.
+   */
+  const costRun = crypto.randomUUID().slice(0, 8);
+  let costAttempt = 0;
+  const recordFetchCost = (provider: 'ZENROWS' | 'SCRAPINGBEE', credits: number | null, success: boolean) => {
+    costAttempt += 1;
+    deferCost(recordUsageCost(supabase as never, {
+      provider, service: 'property_import', operation: 'PROPERTY_IMPORT_FETCH', source: 'import-property',
+      correlationId: importId,
+      idempotencyKey: `import:${importId ?? 'none'}:${costRun}.${costAttempt}:${provider}`,
+      dimensions: [{ unit: 'CREDIT', units: credits }],
+      success,
+    }));
+  };
+  const headerCredits = (h: Headers, names: string[]): number | null => {
+    for (const n of names) {
+      const raw = h.get(n);
+      if (raw == null || raw.trim() === '') continue;
+      const v = Number(raw);
+      if (Number.isFinite(v) && v >= 0) return v;
+    }
+    return null;
+  };
+  const isTimeout = (e: unknown) => (e as { name?: string })?.name === 'TimeoutError';
+
   const updateImport = async (updates: Record<string, unknown>) => {
     if (!importId) return;
     /* A refresh row keeps fetch_strategy = MEDIA_REFRESH: the once-per-10-minutes
@@ -1529,6 +1562,7 @@ Deno.serve(async (req) => {
   //   premium_proxy=true  — uses residential IPs (required by Cloudflare managed challenge)
   //   block_resources=false — fetch all resources so __NEXT_DATA__ is populated
   if (!html && zenrowsKey) {
+    let zrRecorded = false;
     try {
       const params = new URLSearchParams({
         apikey: zenrowsKey,
@@ -1542,6 +1576,9 @@ Deno.serve(async (req) => {
         `https://api.zenrows.com/v1/?${params}`,
         { signal: AbortSignal.timeout(45000) },
       );
+      // ZenRows reports the credits a request consumed in X-Request-Cost.
+      recordFetchCost('ZENROWS', headerCredits(zr.headers, ['x-request-cost', 'zr-request-cost', 'zr-final-cost']), zr.ok);
+      zrRecorded = true;
       const candidate = await zr.text();
       httpStatusUsed = zr.status;
       responseSizeUsed = candidate.length;
@@ -1565,6 +1602,10 @@ Deno.serve(async (req) => {
         }
       }
     } catch (e) {
+      // A timeout was SENT and may have been billed: units unknown, recorded as
+      // such. A request that never left (network error) records nothing. A
+      // throw after the response arrived was already recorded above.
+      if (isTimeout(e) && !zrRecorded) recordFetchCost('ZENROWS', null, true);
       fallbackChain.push({ strategy: 'zenrows', status: 'error', reason: String(e) });
       console.warn('[import-property] ZenRows threw:', e);
     }
@@ -1576,6 +1617,7 @@ Deno.serve(async (req) => {
   // Fallback when ZenRows fails or is not configured.
   // premium_proxy=true is required for Cloudflare-protected sites.
   if (!html && scrapingbeeKey) {
+    let sbRecorded = false;
     try {
       const params = new URLSearchParams({
         api_key: scrapingbeeKey,
@@ -1588,6 +1630,9 @@ Deno.serve(async (req) => {
         `https://app.scrapingbee.com/api/v1/?${params}`,
         { signal: AbortSignal.timeout(45000) },
       );
+      // ScrapingBee reports the credits a request consumed in Spb-cost.
+      recordFetchCost('SCRAPINGBEE', headerCredits(sb.headers, ['spb-cost']), sb.ok);
+      sbRecorded = true;
       const candidate = await sb.text();
       httpStatusUsed = sb.status;
       responseSizeUsed = candidate.length;
@@ -1610,6 +1655,7 @@ Deno.serve(async (req) => {
         }
       }
     } catch (e) {
+      if (isTimeout(e) && !sbRecorded) recordFetchCost('SCRAPINGBEE', null, true);
       fallbackChain.push({ strategy: 'scrapingbee', status: 'error', reason: String(e) });
       console.warn('[import-property] ScrapingBee threw:', e);
     }

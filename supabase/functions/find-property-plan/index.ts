@@ -50,6 +50,7 @@ import {
   planToIntentProfile,
 } from '../../../src/research-core/discovery/search-plan.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -112,7 +113,11 @@ interface Interpretation {
 }
 
 /** Ask the model for a draft. Never throws; failure is a reported state. */
-async function interpret(text: string, apiKey: string | undefined): Promise<Interpretation> {
+async function interpret(
+  text: string,
+  apiKey: string | undefined,
+  cost?: { db: ReturnType<typeof createClient>; correlationId: string },
+): Promise<Interpretation> {
   if (!apiKey) {
     return {
       draft: { originalText: text },
@@ -142,6 +147,18 @@ async function interpret(text: string, apiKey: string | undefined): Promise<Inte
       return { draft: { originalText: text }, interpreted: false, model: null, note: 'model_unavailable' };
     }
     const body = await response.json();
+    /* Provider cost (Finance V2.1): the usage OpenAI reported, written after the response. */
+    if (cost) {
+      deferCost(recordUsageCost(cost.db as any, {
+        provider: 'OPENAI',
+        operation: 'FIND_PROPERTY_PLAN',
+        service: 'find_property_search',
+        model: 'gpt-4o-mini',
+        correlationId: cost.correlationId,
+        idempotencyKey: `FIND_PROPERTY_PLAN:${cost.correlationId}:${body?.id ?? crypto.randomUUID()}`,
+        tokens: tokenUsage(body),
+      }));
+    }
     const content = body?.choices?.[0]?.message?.content ?? '{}';
     let parsed: unknown;
     try {
@@ -205,7 +222,7 @@ Deno.serve(async (req: Request) => {
       const text = String(body.text ?? '').trim().slice(0, 4000);
       if (!text) return json({ error: 'describe what you are looking for' }, 400);
 
-      const interpretation = await interpret(text, Deno.env.get('OPENAI_API_KEY'));
+      const interpretation = await interpret(text, Deno.env.get('OPENAI_API_KEY'), { db, correlationId: userId });
       const { plan, rejected, rejections } = normalisePlan(interpretation.draft);
 
       return json({

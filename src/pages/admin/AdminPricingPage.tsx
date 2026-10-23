@@ -13,6 +13,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { PricingSimulator } from '@/components/admin/PricingSimulator';
 import { SectionBoundary } from '@/components/common/SectionBoundary';
 import { OwnerControls } from '@/components/admin/OwnerControls';
+import { VerifyPriceCard } from '@/components/admin/VerifyPriceCard';
 
 type FieldDef = { key: keyof PricingConfig; label: string; hint: string; min: number; max: number; step: number };
 
@@ -118,6 +119,10 @@ export default function AdminPricingPage() {
       {/* The plan catalogue used to sit here, editing the price and the
           monthly credit grant of FREE, VIP and PREMIUM. There are no
           plans; these are the levers that actually run the business. */}
+      {/* The one Verify retail price (fixed, VAT included, admin-editable). */}
+      <SectionBoundary name="admin-verify-price">
+        <VerifyPriceCard />
+      </SectionBoundary>
       <OwnerControls />
 
       <SectionBoundary name="admin-pricing-simulator">

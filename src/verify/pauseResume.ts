@@ -153,5 +153,10 @@ export function publicBilling(state: Record<string, unknown> | null | undefined,
     maxBudget: num(state.maxBudget),
     canExtend: state.canExtend === true,
     hold: budgetHold(pause),
+    // Fixed Verify price (20261127090000): one price, charged only on delivery.
+    priceMode: state.priceMode === 'FIXED' ? 'FIXED' : 'VARIABLE',
+    priceCredits: num(state.priceCredits),
+    priceCents: num(state.priceCents),
+    validityDays: Number.isInteger(Number(state.validityDays)) ? Number(state.validityDays) : null,
   };
 }

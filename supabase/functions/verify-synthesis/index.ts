@@ -40,7 +40,7 @@ import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/mar
 import { writeSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
 import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
 import { withNeighborhood } from '../../../src/verify/intelligence/locationIntelligence.ts';
-import { resolveNeighborhood } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
+import { resolveNeighborhood, completeNeighborhood, SYNTHESIS_OVERPASS } from '../../../src/verify/intelligence/neighborhoodFetch.ts';
 import { subjectMarketFacts } from '../../../src/verify/intelligence/marketHierarchy.ts';
 import { projectSlug } from '../../../src/verify/intelligence/harvest.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
@@ -337,6 +337,34 @@ async function enrichmentContext(db: any, job: any): Promise<{ completedAt: stri
     /* nothing recovered */
   }
   return ctx;
+}
+
+/*
+ * NEARBY PLACES, COMPLETED AFTER THE REPORT (V1.1).
+ *
+ * The build time-boxes Overpass (SYNTHESIS_OVERPASS) so it cannot push the
+ * call past the 150 s gateway. When that left a verified centre without a map
+ * answer, the full-budget lookup runs here in the background and patches ONLY
+ * synthesis_json.location — and only if no newer build has replaced the
+ * report meanwhile (compare-and-set on synthesis_at). No model call, no cost.
+ */
+function completeNeighborhoodLater(db: any, jobId: string, stored: unknown): void {
+  const n = stored as { status?: string; center?: unknown } | null;
+  if (!n || n.status !== 'UNAVAILABLE' || !n.center) return;
+  const work = (async () => {
+    const completed = await completeNeighborhood(stored);
+    if (!completed) return;
+    const { data: row } = await db.from('research_jobs').select('synthesis_json,synthesis_at').eq('id', jobId).maybeSingle();
+    const location = row?.synthesis_json?.location;
+    if (!row?.synthesis_at || !location || location.neighborhood?.status !== 'UNAVAILABLE') return;
+    const next = { ...row.synthesis_json, location: withNeighborhood(location, completed) };
+    const { data: done, error } = await db.from('research_jobs').update({ synthesis_json: next })
+      .eq('id', jobId).eq('synthesis_at', row.synthesis_at).select('id');
+    console.log(JSON.stringify({ scope: 'verify_neighborhood', event: 'completed_after_build', jobId, patched: !!done?.length, error: error?.message ?? null }));
+  })().catch((e) => console.error(`verify-synthesis: neighbourhood completion failed for ${jobId}`, e instanceof Error ? e.message : String(e)));
+  const rt = (globalThis as any).EdgeRuntime;
+  // Background only: without waitUntil (tests, local) the report never waits for it.
+  if (rt?.waitUntil) rt.waitUntil(work);
 }
 
 async function persist(db: any, jobId: string, payload: unknown): Promise<void> {
@@ -721,6 +749,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
         .like('query', `${parcel}%`).neq('id', jobId).order('created_at', { ascending: false }).limit(8);
       return (data ?? []).map((r: any) => r?.bo);
     },
+    // V1.1: time-boxed inside the build (150 s gateway); completed after persist.
+    overpass: SYNTHESIS_OVERPASS,
   });
   const fx = await fetchFx(earliestEvidenceDate(pkg.items));
   const bundle = buildIntelligenceBundle(rj, pkg, fx);
@@ -964,6 +994,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   await persist(writer, jobId, payload);
   // After the report is saved: bookkeeping can cost us a number, never the report.
   await recordReportCost(writer, jobId, usage, job.synthesis_at ?? null);
+  completeNeighborhoodLater(writer, jobId, (payload as any)?.location?.neighborhood);
   console.log(JSON.stringify({ scope: 'verify_synthesis_timing', jobId, ...timing, persistMs: Date.now() - Date.parse(String(timing.persistAt)) }));
   return await forCustomer(writer, payload, jobId);
 }

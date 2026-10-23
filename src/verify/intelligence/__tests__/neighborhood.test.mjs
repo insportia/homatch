@@ -28,7 +28,7 @@ import {
   MS_MAP_DEFAULT_CENTER,
   OSM_COPYRIGHT_URL,
 } from '../neighborhood.ts';
-import { resolveNeighborhood, NEIGHBORHOOD_USER_AGENT } from '../neighborhoodFetch.ts';
+import { resolveNeighborhood, fetchOverpass, completeNeighborhood, SYNTHESIS_OVERPASS, NEIGHBORHOOD_USER_AGENT } from '../neighborhoodFetch.ts';
 import { nearbyPlaces, withNeighborhood, buildLocationIntelligence, isUnverifiedReach } from '../locationIntelligence.ts';
 import { OVERPASS_KRTSANISI_FIXTURE, FIXTURE_CENTER } from '../../__tests__/fixtures/overpassKrtsanisiFixture.mjs';
 
@@ -221,12 +221,13 @@ test('Overpass failing on both endpoints stores UNAVAILABLE, never a guess', asy
   const f = fakeFetch([['interpreter', () => new Error('network down')]]);
   const n = await resolveNeighborhood({
     resultJson: { exactUnit: { code: '01.18.06.019.055.03.01.603' }, browserOfficial: { results: [{ status: 'SEARCH_CONFIRMED', queryEntered: '01.18.06.019.055.03.01.603', finalUrl: MOVED_URL }] } },
-    query: null, address: null, previous: null, fetchImpl: f, now,
+    query: null, address: null, previous: null, fetchImpl: f, now, overpass: { backoffMs: 1, attemptMs: 50, budgetMs: 10_000 },
   });
   assert.equal(n.status, 'UNAVAILABLE');
   assert.equal(n.center.basis, 'MS_MAP_PARCEL');
   assert.deepEqual([n.places, n.stops, n.routes], [[], [], []]);
-  assert.equal(f.calls.length, 2, 'the mirror was not tried exactly once');
+  // V1.1: a bounded plan — main, main again, mirror, main — never more.
+  assert.deepEqual(f.calls.map((c) => new URL(c.url).host), ['overpass-api.de', 'overpass-api.de', 'overpass.private.coffee', 'overpass-api.de']);
 });
 
 test('with no parcel centre, the address is geocoded once with an identifying User-Agent', async () => {
@@ -366,4 +367,89 @@ test('geocodeAddress tries the next query when the first has no house/street hit
   assert.equal(asked.length, 3);
   assert.equal(c.precision, 'STREET');
   assert.equal(c.basis, 'GEOCODED_ADDRESS');
+});
+
+/* ── Overpass reliability (V1.1, 2026-10-23) ─────────────────────────── */
+
+const overpassResponder = (script) => {
+  const calls = [];
+  const f = async (url, init = {}) => {
+    calls.push(new URL(url).host);
+    const step = script[calls.length - 1] ?? script[script.length - 1];
+    if (step === 'TIMEOUT') {
+      return await new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+    }
+    if (typeof step === 'number') return { ok: false, status: step, text: async () => 'busy' };
+    return { ok: true, status: 200, text: async () => JSON.stringify(step) };
+  };
+  f.calls = calls;
+  return f;
+};
+const fast = { backoffMs: 1, attemptMs: 50, budgetMs: 10_000 };
+
+test('a busy main Overpass server (502) is retried after a pause, and the answer is used', async () => {
+  const f = overpassResponder([502, OVERPASS_KRTSANISI_FIXTURE]);
+  const attempts = [];
+  const json = await fetchOverpass('q', f, attempts, fast);
+  assert.ok(json);
+  assert.deepEqual(attempts.map((a) => a.outcome), ['502', 'OK']);
+  assert.equal(attempts[1].bytes > 1000, true);
+});
+
+test('timeouts and capacity errors exhaust the bounded plan and return null — nothing is guessed', async () => {
+  const f = overpassResponder([502, 'TIMEOUT', 504, 'TIMEOUT']);
+  const attempts = [];
+  assert.equal(await fetchOverpass('q', f, attempts, fast), null);
+  assert.deepEqual(attempts.map((a) => a.outcome), ['502', 'TIMEOUT', '504', 'TIMEOUT']);
+  assert.equal(f.calls.length, 4, 'never more than four requests');
+});
+
+test('the lookup stops when its total budget is spent', async () => {
+  let t = 0;
+  const f = overpassResponder([503]);
+  const attempts = [];
+  await fetchOverpass('q', f, attempts, { ...fast, budgetMs: 20_000, now: () => (t += 9_000), sleep: async () => {} });
+  assert.equal(attempts.at(-1).outcome, 'BUDGET');
+  assert.ok(f.calls.length < 4);
+});
+
+test('an Overpass failure keeps the verified parcel centre and states no distances', async () => {
+  const f = fakeFetch([['interpreter', () => new Error('network down')]]);
+  const n = await resolveNeighborhood({
+    resultJson: {}, query: null, address: 'თბილისი, კრწანისის ქ. 6', previous: null, now,
+    fetchImpl: async (url, init) => (url.includes('nominatim')
+      ? { ok: true, status: 200, json: async () => [{ lat: '41.6765', lon: '44.8246', addresstype: 'building', address: { house_number: '6' } }] }
+      : f(url, init)),
+    overpass: fast,
+  });
+  assert.equal(n.status, 'UNAVAILABLE');
+  assert.equal(n.center?.basis, 'GEOCODED_ADDRESS');
+  assert.equal(n.places?.length ?? 0, 0);
+});
+
+test('a centre left UNAVAILABLE by the build is completed later, keeping centre and candidates', async () => {
+  const center = { lat: 41.6765159, lng: 44.8246494, basis: 'MS_MAP_PARCEL', parcel: '01.18.06.019.055', confidence: 'HIGH' };
+  const stored = { source: 'OSM', status: 'UNAVAILABLE', center, candidates: [{ ...center, chosen: true, disagrees: false }], centerIssue: null, places: [] };
+  const f = overpassResponder([502, OVERPASS_KRTSANISI_FIXTURE]);
+  const done = await completeNeighborhood(stored, f, fast, now);
+  assert.equal(done.status, 'OK');
+  assert.deepEqual(done.center, center);
+  assert.equal(done.candidates.length, 1);
+  assert.ok(done.places.length > 0, 'measured places from the real fixture');
+  assert.ok(done.places.every((p) => typeof p.distanceM === 'number'));
+});
+
+test('nothing to complete: OK, NO_LOCATION, no centre, or a still-failing Overpass all return null', async () => {
+  const center = { lat: 41.6765, lng: 44.8246, basis: 'MS_MAP_PARCEL' };
+  const f = overpassResponder([OVERPASS_KRTSANISI_FIXTURE]);
+  assert.equal(await completeNeighborhood({ status: 'OK', center }, f, fast), null);
+  assert.equal(await completeNeighborhood({ status: 'NO_LOCATION', center: null }, f, fast), null);
+  assert.equal(await completeNeighborhood({ status: 'UNAVAILABLE', center: null }, f, fast), null);
+  assert.equal(f.calls.length, 0, 'no request when there is nothing to complete');
+  assert.equal(await completeNeighborhood({ status: 'UNAVAILABLE', center }, overpassResponder([502, 504, 'TIMEOUT', 503]), fast), null);
+});
+
+test('inside the report build the lookup is time-boxed well under the 150 s gateway', () => {
+  assert.ok(SYNTHESIS_OVERPASS.budgetMs <= 30_000);
+  assert.ok(SYNTHESIS_OVERPASS.attemptMs <= SYNTHESIS_OVERPASS.budgetMs);
 });

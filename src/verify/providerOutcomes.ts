@@ -64,6 +64,16 @@ export function classifySourceResult(r: Record<string, any>, unattendedSkips: Re
   const wr = obj(r.workflowResult);
   const ledger = obj(obj(r.tasApi).ledger);
 
+  // The queue task's own verdict (official-worker sourceOutcome.ts), where
+  // the status alone is not precise: MyGov stays status BLOCKED when a spent
+  // CAPTCHA budget left part of it unread, but what it did read is evidence.
+  const verdict = str(r.sourceOutcome).toUpperCase();
+  const why = r.outcomeReason ? str(r.outcomeReason) : null;
+  if (verdict === 'PARTIAL') return out('PARTIAL', why ?? 'PARTIAL');
+  if (verdict === 'UNPARSEABLE') return out(evidenceCount ? 'PARTIAL' : 'SOURCE_CHANGED', why ?? 'UNPARSEABLE');
+  if (verdict === 'RETRY_EXHAUSTED') return out(evidenceCount ? 'PARTIAL' : 'FAILED', 'RETRY_EXHAUSTED');
+  if (verdict === 'AUTH_REQUIRED') return out('TEMPORARILY_UNAVAILABLE', 'AUTH_REQUIRED');
+
   // An automatic verification that was attempted and failed is CAPTCHA_FAILED,
   // with its precise reason; one never attempted stays CAPTCHA_REQUIRED.
   const attempted = arr(r.captchaResolution).map(obj).filter((c) => Number(c.attempts) > 0).at(-1);

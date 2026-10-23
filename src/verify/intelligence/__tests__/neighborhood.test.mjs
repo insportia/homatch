@@ -22,6 +22,7 @@ import {
   overpassFailed,
   parentParcel,
   parseNominatim,
+  queryHouseNumber,
   parseOverpass,
   reusableNeighborhood,
   MS_MAP_DEFAULT_CENTER,
@@ -230,7 +231,7 @@ test('Overpass failing on both endpoints stores UNAVAILABLE, never a guess', asy
 
 test('with no parcel centre, the address is geocoded once with an identifying User-Agent', async () => {
   const f = fakeFetch([
-    ['nominatim.openstreetmap.org', () => [{ lat: '41.6765', lon: '44.8246', addresstype: 'building' }]],
+    ['nominatim.openstreetmap.org', () => [{ lat: '41.6765', lon: '44.8246', addresstype: 'building', address: { house_number: '6', road: 'კრწანისის ქუჩა' } }]],
     ['interpreter', () => OVERPASS_KRTSANISI_FIXTURE],
   ]);
   const n = await resolveNeighborhood({ resultJson: {}, query: null, address: 'თბილისი, კრწანისის ქ. 6', previous: null, fetchImpl: f, now });
@@ -238,8 +239,26 @@ test('with no parcel centre, the address is geocoded once with an identifying Us
   assert.deepEqual([n.center.basis, n.center.precision], ['GEOCODED_ADDRESS', 'HOUSE']);
   const geo = f.calls.find((c) => c.url.includes('nominatim'));
   assert.match(geo.url, /countrycodes=ge/);
+  assert.match(geo.url, /addressdetails=1/);
   assert.match(decodeURIComponent(geo.url), /კრწანისის ქუჩა 6/);
   assert.match(geo.init.headers['User-Agent'], /HOMATCH/);
+});
+
+test('a building the geocoder files under another house number, or none, is only STREET precision', async () => {
+  for (const address of [{ house_number: '8' }, undefined]) {
+    const f = fakeFetch([
+      ['nominatim.openstreetmap.org', () => [{ lat: '41.6765', lon: '44.8246', addresstype: 'building', ...(address ? { address } : {}) }]],
+      ['interpreter', () => OVERPASS_KRTSANISI_FIXTURE],
+    ]);
+    const n = await resolveNeighborhood({ resultJson: {}, query: null, address: 'თბილისი, კრწანისის ქ. 6', previous: null, fetchImpl: f, now });
+    assert.equal(n.center.precision, 'STREET');
+  }
+});
+
+test('queryHouseNumber reads the registry number, including the N-prefixed form', () => {
+  assert.equal(queryHouseNumber('წყნეთის გზატკეცილი N31, თბილისი'), '31');
+  assert.equal(queryHouseNumber('კრწანისის ქუჩა 6, თბილისი'), '6');
+  assert.equal(queryHouseNumber('კრწანისის ქუჩა, თბილისი'), null);
 });
 
 test('no location at all is stored as NO_LOCATION, with no Overpass call', async () => {

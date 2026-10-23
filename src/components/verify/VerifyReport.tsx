@@ -572,6 +572,7 @@ function VerifyReportBody({
           history={history}
           docs={synthesis.officialDocuments}
           freshPhotos={(synthesis as { freshPhotos?: unknown }).freshPhotos}
+          withheld={(synthesis as { officialVisualsWithheld?: unknown }).officialVisualsWithheld}
           clean={clean}
         />
       </Chapter>
@@ -1222,6 +1223,11 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
       ) : null}
 
       {places.length ? (
+        <>
+        {/* F5 (2026-10-22): named in public descriptions, never measured; kept apart from the OpenStreetMap distances. */}
+        <p className="text-2xs uppercase tracking-wide text-muted-foreground" data-places-origin="mentioned">
+          {t('verify_place_mentioned_label')}
+        </p>
         <ul className="space-y-3">
           {places.map((p, i) => (
             <li key={`${p.category}-${i}`} className="border-s-2 border-border ps-4 space-y-0.5">
@@ -1233,6 +1239,7 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
             </li>
           ))}
         </ul>
+        </>
       ) : null}
 
       {measured ? <NeighborhoodSection n={measured} /> : null}

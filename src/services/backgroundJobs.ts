@@ -12,7 +12,7 @@
 // sees a refusal rather than a cancelled job that was not.
 
 import { supabase } from '@/db/supabase';
-import type { JobState } from '@/jobs/jobState';
+import { presentableStage, presentableProgress, type JobState } from '@/jobs/jobState';
 import { reportError } from '@/lib/errorReporting';
 
 export type ProductType =
@@ -65,11 +65,15 @@ const asJob = (v: unknown): BackgroundJob | null => {
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
   if (typeof o.id !== 'string') return null;
+  const state = o.state as JobState;
   return {
     ...(o as unknown as BackgroundJob),
     stages: Array.isArray(o.stages) ? (o.stages as JobStageMark[]) : [],
     metadata: o.metadata && typeof o.metadata === 'object' ? (o.metadata as Record<string, unknown>) : {},
-    progress: typeof o.progress === 'number' ? o.progress : 0,
+    // A finished job never presents the stage it was last mirrored at
+    // (historical rows kept SYNTHESIS_WAITING after COMPLETED). jobState.ts.
+    progress: presentableProgress(state, typeof o.progress === 'number' ? o.progress : 0),
+    currentStage: presentableStage(state, o.currentStage as string | null | undefined),
   };
 };
 

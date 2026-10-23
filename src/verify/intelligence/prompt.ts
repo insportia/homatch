@@ -41,6 +41,7 @@ import { tasDigest, currentPositionOf } from './tasIntelligence.ts';
 import { registerModelFacts } from './propertyRegister.ts';
 import { kindPromptBlock } from './kindGuard.ts';
 import type { PropertyKindResult } from './propertyKind.ts';
+import { locationForModel } from './locationIntelligence.ts';
 
 /**
  * Sections the report may use, in the order a buyer reads them.
@@ -817,7 +818,8 @@ export function buildIntelligencePrompt(
       /* The unit's own register — authoritative, see THE PROPERTY REGISTER. */
       propertyRegister: registerModelFacts(bundle?.register ?? null) ?? undefined,
       registerSource: extras?.registerSource ?? undefined,
-      location: bundle?.location,
+      // F5: the model sees the V1 location; centre candidates and coordinates are for the code, not the prose.
+      location: locationForModel(bundle?.location),
       livingDensity: bundle?.livingDensity ?? undefined,
       companyFinance: bundle?.finance ?? undefined,
       participants: bundle?.people?.people?.length

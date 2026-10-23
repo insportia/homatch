@@ -319,5 +319,8 @@ test('NeighborhoodSection: the approved LOCATION intro is exported, measured fac
   assert.match(src, /OSM_ATTRIBUTION/);
   assert.match(src, /verify_nb_source/);
   assert.ok(!/წუთ|minute/i.test(src));
-  assert.match(read('src/verify/intelligence/neighborhoodFetch.ts'), /centerFromCadastralPlan\(rj\.browserOfficial/);
+  // F5 (2026-10-22): the plan is one of the official candidates read from the job's own browserOfficial.
+  const fetchSrc = read('src/verify/intelligence/neighborhoodFetch.ts');
+  assert.match(fetchSrc, /officialCenterCandidates\(rj\.browserOfficial/);
+  assert.match(fetchSrc, /centerFromCadastralPlan\(browserOfficial, parcel\)/);
 });

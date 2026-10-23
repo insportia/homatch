@@ -117,7 +117,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
    * Find Property search and holds the slot while it runs). Depth comes from
    * narrower queries (one per local district), never from more pages.
    */
-  async function acquireForVerify(request: any, options: { deadlineAt: string; signal?: AbortSignal; report: (r: any) => Promise<void> }) {
+  async function acquireForVerify(request: any, options: { deadlineAt: string; signal?: AbortSignal; report: (r: any) => Promise<void>; pageCap?: number }) {
     const deadline = Date.parse(options.deadlineAt);
     while (active >= MAX_ACTIVE) {
       if (options.signal?.aborted || Date.now() > deadline - 30000) throw new Error('MYHOME_BUSY');
@@ -126,7 +126,11 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     active++;
     const reader = createReader();
     try {
-      return await acquireMyHome(request, { fetcher, engine: myHomeEngine, enrichDetails, maxPages, pageIntervalMs,
+      // Verify passes its own page cap (2, VERIFY_MARKET_PAGE_CAP); it can only
+      // lower this runtime's MYHOME_MAX_PAGES, never raise it. Find Property's
+      // claim loop above is untouched and keeps maxPages.
+      const verifyPages = Number.isInteger(options.pageCap) && (options.pageCap as number) > 0 ? Math.min(options.pageCap as number, maxPages) : maxPages;
+      return await acquireMyHome(request, { fetcher, engine: myHomeEngine, enrichDetails, maxPages: verifyPages, pageIntervalMs,
         pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs,
         deadlineAt: options.deadlineAt, signal: options.signal, report: options.report });
     } finally { await reader?.close(); active--; }

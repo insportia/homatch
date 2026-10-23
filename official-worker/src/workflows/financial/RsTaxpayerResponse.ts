@@ -52,6 +52,8 @@ export interface RsGridClassification {
   total: number | null;
   /** Short machine reason, never page text. */
   reason: string | null;
+  /** For an unreadable JSON answer: its structure (key names and value types, never values). */
+  shape?: string | null;
 }
 
 /** What RS.ge says when a search is refused for verification (content, not the stale DOM). */
@@ -60,7 +62,7 @@ const REJECT_RE = /უსაფრთხოების\s*ღილაკ|recapt
 const EMPTY_RE = /ჩანაწერ(?:ი|ები)\s*(?:ვერ|არ)\s*მოიძებნ|ვერ\s*მოიძებნა|არ\s*მოიძებნა|no\s*(?:records?|results?|data)(?:\s*(?:were\s*)?found|\s*to\s*display|\s*available)?|nothing\s*found|не\s*найдено/i;
 
 const ROW_KEYS = ['Data', 'data', 'Rows', 'rows', 'Items', 'items', 'Result', 'result', 'Results', 'results', 'aaData', 'records', 'Records', 'd'];
-const TOTAL_KEYS = ['Total', 'total', 'TotalCount', 'totalCount', 'recordsTotal', 'recordsFiltered', 'Count', 'count'];
+const TOTAL_KEYS = ['Total', 'total', 'TotalCount', 'totalCount', 'recordsTotal', 'recordsFiltered', 'Count', 'count', '_Count'];
 /** Technical keys a grid adds that say nothing about the taxpayer. */
 const TECHNICAL_KEY = /^(?:__.*|\$.*|uid|row_?num(?:ber)?|_?rn)$/i;
 
@@ -106,18 +108,45 @@ function flattenRow(o: Record<string, unknown>): Record<string, string> {
 
 const isRowArray = (v: unknown): v is unknown[] => Array.isArray(v) && v.every((x) => isPlainObject(x));
 
+/** A grid cell holding RS.ge's print-report link reads as that link, absolute. */
+function cellValue(v: unknown): unknown {
+  if (typeof v !== 'string' || !/<\s*a\b/i.test(v)) return v;
+  const href = /href\s*=\s*"([^"]+)"/i.exec(v)?.[1]?.replace(/&amp;/g, '&');
+  return href ? new URL(href, 'https://www.rs.ge').toString() : null;
+}
+
+/*
+ * RS.ge's taxpayer grid answers COLUMNAR: {Data: {Fields: [names], Rows: [[values]]},
+ * Summary: {_Count}} (production, 2026-10-22: both "unreadable" answers were this
+ * shape, each one a real taxpayer record). Zip it into ordinary row objects.
+ */
+function columnarRows(v: Record<string, unknown>): Record<string, unknown>[] | null {
+  const fields = v.Fields ?? v.fields;
+  const rows = v.Rows ?? v.rows;
+  if (!Array.isArray(fields) || !fields.length || !fields.every((f) => typeof f === 'string')) return null;
+  if (!Array.isArray(rows) || !rows.every((r) => Array.isArray(r))) return null;
+  return (rows as unknown[][]).map((r) => Object.fromEntries((fields as string[]).map((f, i) => [f, cellValue(r[i])])));
+}
+
+function totalOf(v: Record<string, unknown>): number | null {
+  const scopes = [v, isPlainObject(v.Summary) ? v.Summary : null, isPlainObject(v.summary) ? v.summary : null];
+  for (const s of scopes) {
+    if (!s) continue;
+    for (const k of TOTAL_KEYS) {
+      const n = typeof s[k] === 'number' ? (s[k] as number) : typeof s[k] === 'string' && /^\d+$/.test(s[k] as string) ? Number(s[k]) : null;
+      if (n !== null) return n;
+    }
+  }
+  return null;
+}
+
 /** The row array of a JSON answer: a known key first, then any array of objects (bounded walk). */
 function findRows(v: unknown, depth = 0): { rows: Record<string, unknown>[]; total: number | null } | null {
   if (isRowArray(v)) return { rows: v as Record<string, unknown>[], total: null };
   if (!isPlainObject(v) || depth > 4) return null;
-  let total: number | null = null;
-  for (const k of TOTAL_KEYS) {
-    const n = typeof v[k] === 'number' ? (v[k] as number) : typeof v[k] === 'string' && /^\d+$/.test(v[k] as string) ? Number(v[k]) : null;
-    if (n !== null) {
-      total = n;
-      break;
-    }
-  }
+  const total = totalOf(v);
+  const columnar = columnarRows(v);
+  if (columnar) return { rows: columnar, total };
   for (const k of ROW_KEYS) {
     if (!(k in v)) continue;
     const inner = v[k];
@@ -206,6 +235,24 @@ function htmlTableRows(html: string): { rows: Array<Record<string, string>>; emp
 
 const columnsOf = (rows: Array<Record<string, string>>): string[] => [...new Set(rows.flatMap((r) => Object.keys(r)))].slice(0, 80);
 
+/**
+ * The STRUCTURE of a JSON answer — key names and value types, never a value
+ * (no TIN, no name, no message text), bounded. Production 2026-10-22: two
+ * 702/731-byte JSON answers with no row array were unreadable, and neither the
+ * logs nor the report could say what they held without the stored raw body.
+ */
+export function rsJsonShape(v: unknown, depth = 0): string {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return depth > 2 ? 'array' : `[${v.length}${v.length ? ':' + rsJsonShape(v[0], depth + 1) : ''}]`;
+  if (isPlainObject(v)) {
+    if (depth > 2) return 'object';
+    const keys = Object.keys(v).slice(0, 25);
+    return `{${keys.map((k) => `${k.replace(/\d{4,}/g, '#').replace(/[^\w$#-]/g, '?').slice(0, 40)}:${rsJsonShape(v[k], depth + 1)}`).join(',')}${Object.keys(v).length > 25 ? ',…' : ''}}`;
+  }
+  return typeof v === 'string' ? `string(${v.length})` : typeof v;
+}
+const withShape = (cls: RsGridClassification, json: unknown): RsGridClassification => ({ ...cls, shape: rsJsonShape(json).slice(0, 600) });
+
 /** Classify one captured answer from the server's own content. */
 export function classifyRsGridResponse(c: RsGridCapture): RsGridClassification {
   const base = { rows: [] as Array<Record<string, string>>, columns: [] as string[], total: null as number | null };
@@ -251,10 +298,10 @@ export function classifyRsGridResponse(c: RsGridCapture): RsGridClassification {
       return { ...base, outcome: 'REJECTED', format: 'JSON', reason: 'SERVER_VERIFICATION_REFUSED' };
     }
     const hasErrors = (isPlainObject(errorsField) && Object.keys(errorsField).length > 0) || (Array.isArray(errorsField) && errorsField.length > 0) || (typeof errorsField === 'string' && errorsField.trim() !== '');
-    if (hasErrors || failedFlag) return { ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'SERVER_ERROR_FIELD' };
+    if (hasErrors || failedFlag) return withShape({ ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'SERVER_ERROR_FIELD' }, json);
     if (found && found.rows.length === 0) return { ...base, total: found.total ?? 0, outcome: 'NO_RESULT', format: 'JSON', reason: null };
     if (EMPTY_RE.test(texts)) return { ...base, outcome: 'NO_RESULT', format: 'JSON', reason: 'EMPTY_MESSAGE' };
-    return { ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'NO_ROW_ARRAY' };
+    return withShape({ ...base, outcome: 'UNPARSEABLE', format: 'JSON', reason: 'NO_ROW_ARRAY' }, json);
   }
   return classifyMarkup(body, base);
 }
@@ -281,23 +328,48 @@ type KnownField = Exclude<keyof RsTaxpayerPublicData, 'otherPublicFields'>;
 /** Order matters: VAT before status ("დღგ სტატუსი"), the code before the name. */
 const FIELD_MATCHERS: Array<[KnownField, RegExp]> = [
   ['vatStatus', /დღგ|^(?:is_?)?vat|^dgg|vat_?(?:payer|status)/i],
-  ['identificationCode', /საიდენტიფიკაციო|პირადი\s*ნომ|^ს\/?ნ$|^(?:tin|taxpayer_?id|tax_?id|tax_?code|ident(?:ification)?_?(?:code|no|number)|id_?code|code|saidcode|personal_?(?:no|number)|pid|un_?id|reg_?(?:no|number))$/i],
+  // RS.ge's own column codes (columnar grid): SAID_KODI (masked), REG_SUB_TIP (შპს…), INFO (აქტიური…).
+  ['identificationCode', /საიდენტიფიკაციო|პირადი\s*ნომ|^ს\/?ნ$|^(?:tin|taxpayer_?id|tax_?id|tax_?code|ident(?:ification)?_?(?:code|no|number)|id_?code|code|saidcode|said_?kodi|personal_?(?:no|number)|pid|reg_?(?:no|number))$/i],
   ['registrationDate', /რეგისტრაციის\s*თარიღ|^(?:reg(?:istration)?_?(?:date|dt)|registered_?(?:on|at|date)?|create_?date|reg_?dat)$/i],
-  ['legalForm', /სამართლებრივი\s*ფორმ|ორგანიზაციულ|^(?:legal_?form(?:_?name)?|org_?form|form_?name|sam_?forma|legal_?type)$/i],
+  ['legalForm', /სამართლებრივი\s*ფორმ|ორგანიზაციულ|^(?:legal_?form(?:_?name)?|org_?form|form_?name|reg_?sub_?tip|sam_?forma|legal_?type)$/i],
   ['address', /მისამართ|^(?:address|legal_?address|addr|full_?address|misamarti|juridical_?address)$/i],
   ['taxpayerName', /დასახელება|სახელწოდება|^სახელი|^(?:name|full_?name|taxpayer_?name|org_?name|company_?name|title|dasaxeleba|payer_?name)$/i],
-  ['status', /სტატუს|მდგომარეობ|^(?:status|state|status_?name|taxpayer_?status|status_?text)$/i],
+  ['status', /სტატუს|მდგომარეობ|^(?:status|state|status_?name|taxpayer_?status|status_?text|info)$/i],
 ];
+
+/**
+ * Whether one cell names the searched identifier: the same digits, or RS.ge's
+ * mask of it ("40*****41": same length, same first and last digits).
+ */
+export function rsIdMatches(value: unknown, idCode: string | null): boolean {
+  const id = String(idCode ?? '').replace(/\D/g, '');
+  const v = String(value ?? '').replace(/\s/g, '');
+  if (!id || !v) return false;
+  if (v.replace(/\D/g, '') === id) return true;
+  const m = /^(\d+)\*+(\d+)$/.exec(v);
+  return !!m && v.length === id.length && id.startsWith(m[1]) && id.endsWith(m[2]);
+}
 
 /** The row that describes the searched identifier (else the first). */
 export function pickRsRow(rows: Array<Record<string, string>>, idCode: string | null): Record<string, string> | null {
   if (!rows.length) return null;
-  const id = String(idCode ?? '').replace(/\D/g, '');
-  if (id) {
-    const hit = rows.find((r) => Object.values(r).some((v) => String(v).replace(/\D/g, '') === id));
+  if (String(idCode ?? '').replace(/\D/g, '')) {
+    const hit = rows.find((r) => Object.values(r).some((v) => rsIdMatches(v, idCode)));
     if (hit) return hit;
   }
   return rows[0];
+}
+
+/**
+ * Whether a returned row is about the searched identifier: true when a cell
+ * names it, false when the row carries an identifier that is a DIFFERENT one,
+ * null when the row carries no identifier at all (nothing to compare).
+ */
+export function rsRowMatchesId(row: Record<string, string>, idCode: string | null): boolean | null {
+  if (!String(idCode ?? '').replace(/\D/g, '')) return null;
+  if (Object.values(row).some((v) => rsIdMatches(v, idCode))) return true;
+  const idCell = Object.entries(row).find(([k]) => /^(?:said_?kodi|saidcode|tin|taxpayer_?id|tax_?id|id_?code|ident(?:ification)?_?code)$/i.test(k.trim()) || /საიდენტიფიკაციო/.test(k));
+  return idCell ? false : null;
 }
 
 /** Map one grid row onto the public record: known columns by name, every other column kept, labelled. */
@@ -310,7 +382,8 @@ export function mapRsRow(row: Record<string, string>, idCode: string | null): Rs
     if (field) out[field] = value.slice(0, 300);
     else if (Object.keys(out.otherPublicFields).length < 40) out.otherPublicFields[label.slice(0, 80)] = value.slice(0, 300);
   }
-  if (!out.identificationCode && idCode && Object.values(row).some((v) => String(v).replace(/\D/g, '') === idCode.replace(/\D/g, ''))) out.identificationCode = idCode;
+  // A cell naming the searched identifier — in full or as RS.ge's mask of it — records it in full.
+  if (idCode && (rsIdMatches(out.identificationCode, idCode) || (!out.identificationCode && Object.values(row).some((v) => rsIdMatches(v, idCode))))) out.identificationCode = idCode;
   return out;
 }
 
@@ -363,6 +436,8 @@ export interface RsVerificationRecord {
   rawResponse: string | null;
   rawResponseBytes: number;
   rawTruncated: boolean;
+  /** Structure of an unreadable JSON answer (names and types only). */
+  responseShape?: string | null;
   requestHadTin: boolean | null;
   reason: string | null;
   checkedAt: string;
@@ -413,6 +488,7 @@ export function buildRsVerificationRecord(input: {
     rawResponse: raw.text,
     rawResponseBytes: raw.bytes,
     rawTruncated: raw.truncated,
+    ...(cls?.shape ? { responseShape: cls.shape } : {}),
     requestHadTin: input.capture?.requestHadTin ?? null,
     reason: input.reason ?? cls?.reason ?? null,
     checkedAt: (input.now ?? new Date()).toISOString(),
@@ -420,7 +496,33 @@ export function buildRsVerificationRecord(input: {
   };
 }
 
+/**
+ * May a reading of the PAGE decide this search? Only when RS.ge's own answer
+ * was not captured, or was itself a record / an empty grid. A captured answer
+ * that is unreadable (or a refusal) leaves the grid in its empty state —
+ * "Not found", 0 rows — which is NOT RS.ge saying there is no taxpayer.
+ * Production 2026-10-22, company 405456359 (a registered LLC): a ~700-byte
+ * JSON answer with no grid, a page reading "Not found", recorded as a
+ * confirmed no-record. A parsed record on the page is still accepted: it
+ * carries the taxpayer's own fields, which an empty grid cannot.
+ */
+export function rsPageReadDecides(cls: RsGridClassification | null, page: 'NO_RESULT_CONFIRMED' | 'SEARCH_CONFIRMED'): boolean {
+  if (!cls || cls.outcome === 'ACCEPTED' || cls.outcome === 'NO_RESULT') return true;
+  return page === 'SEARCH_CONFIRMED' && cls.outcome !== 'REJECTED';
+}
+
+/**
+ * A stored record that says VERIFIED / NO_RESULT only because the page read
+ * "no result" while RS.ge's captured answer was unreadable (reason
+ * PAGE_READ_UNPARSEABLE, PAGE_READ_HTTP_ERROR …). Workers wrote these before
+ * rsPageReadDecides(); such a record is not a confirmed absence.
+ */
+export function rsDomOnlyNoResult(rec: { status?: unknown; serverOutcome?: unknown; reason?: unknown } | null | undefined): boolean {
+  if (!rec || rec.status !== 'VERIFIED' || rec.serverOutcome !== 'NO_RESULT') return false;
+  return /^PAGE_READ_(?!NO_RESULT$|ACCEPTED$)[A-Z_]+$/.test(String(rec.reason ?? ''));
+}
+
 /** The log-safe view of a record: names, counts and codes — never values, never the raw answer. */
 export function rsRecordLogFields(r: RsVerificationRecord): Record<string, unknown> {
-  return { status: r.status, serverOutcome: r.serverOutcome, httpStatus: r.httpStatus, format: r.responseFormat, rowCount: r.rowCount, columns: r.columns, rawBytes: r.rawResponseBytes, requestHadTin: r.requestHadTin, reason: r.reason };
+  return { status: r.status, serverOutcome: r.serverOutcome, httpStatus: r.httpStatus, format: r.responseFormat, rowCount: r.rowCount, columns: r.columns, rawBytes: r.rawResponseBytes, requestHadTin: r.requestHadTin, reason: r.reason, ...(r.responseShape ? { shape: r.responseShape } : {}) };
 }

@@ -15,7 +15,7 @@
  * reads queue results and legacy results identically.
  */
 
-import { rsStatusFromTaskError, withoutRsRaw } from './rsTaxpayer.ts';
+import { rsDomOnlyNoResult, rsStatusFromTaskError, withoutRsRaw } from './rsTaxpayer.ts';
 
 export const QUEUE_SOURCES_CADASTRAL = ['TAS_MAP', 'tas', 'mygov'] as const;
 /** Same bound as the worker's in-job entity follow-ups (MAX_AUTO_ENREG_ENTITIES). */
@@ -181,6 +181,36 @@ function confirmedEntities(rows: QueueTaskRow[]): Array<{ identificationCode: st
     .map((e) => ({ identificationCode: String(e.identificationCode).trim(), name: String(e.name ?? e.identificationCode) }));
 }
 
+/*
+ * SOURCE OUTCOMES (official-worker src/queue/sourceOutcome.ts). A task is
+ * SUCCEEDED only for RETRIEVED, PARTIAL (what was read is kept) and
+ * NO_RECORD_CONFIRMED; the worker stamps the outcome on the result, and on a
+ * failed task's error as "sourceOutcome=<X> reason=<Y>". A DEAD task ran out
+ * of attempts: RETRY_EXHAUSTED. Older rows carry no tag; their outcome is
+ * read from the existing prefixes.
+ */
+export type SourceOutcome =
+  | 'RETRIEVED' | 'PARTIAL' | 'NO_RECORD_CONFIRMED'
+  | 'CAPTCHA_BLOCKED' | 'UNPARSEABLE' | 'PROVIDER_UNAVAILABLE' | 'RETRY_EXHAUSTED' | 'AUTH_REQUIRED';
+const OUTCOMES: ReadonlySet<string> = new Set(['RETRIEVED', 'PARTIAL', 'NO_RECORD_CONFIRMED', 'CAPTCHA_BLOCKED', 'UNPARSEABLE', 'PROVIDER_UNAVAILABLE', 'RETRY_EXHAUSTED', 'AUTH_REQUIRED']);
+
+/** A failed task's outcome and machine reason, from its error text. */
+export function failedTaskOutcome(state: string, error: unknown): { sourceOutcome: SourceOutcome; outcomeReason: string | null } {
+  const s = String(error ?? '');
+  const tagged = /\bsourceOutcome=([A-Z_]+)\b/.exec(s)?.[1];
+  const reason = /\breason=([A-Za-z0-9_,]+)/.exec(s)?.[1] ?? null;
+  const outcome: SourceOutcome = tagged && OUTCOMES.has(tagged)
+    ? (tagged as SourceOutcome)
+    : /HUMAN_VERIFICATION_REQUIRED|CAPTCHA_|outcome=REJECTED/.test(s)
+      ? 'CAPTCHA_BLOCKED'
+      : /outcome=UNPARSEABLE|RS_VERIFICATION_FAILED/.test(s)
+        ? 'UNPARSEABLE'
+        : 'PROVIDER_UNAVAILABLE';
+  // Out of attempts: the last attempt's own outcome stays as the reason.
+  if (state === 'DEAD') return { sourceOutcome: 'RETRY_EXHAUSTED', outcomeReason: outcome };
+  return { sourceOutcome: outcome, outcomeReason: reason };
+}
+
 /** The result a source contributes, or an honest placeholder when it has none. */
 export function taskResult(r: QueueTaskRow): any | null {
   const entity = r.input && (r.input.idCode || r.input.name) && !isPrimary(r) ? { name: r.input.name ?? null, idCode: r.input.idCode ?? null } : null;
@@ -188,6 +218,23 @@ export function taskResult(r: QueueTaskRow): any | null {
     // _exec: the worker's timing stamp — performance diagnostics only.
     // RS.ge's raw answer lives in evidence storage, never in the job row.
     const { queueEntities: _drop, _exec: _dropExec, ...rest } = withoutRsRaw(r.result);
+    // An RS.ge "no record" that only the page said, over an unreadable
+    // answer (stored before the worker fix, or reused from the 24 h cache),
+    // is not a confirmed absence: it reads as the failed check it was.
+    if ((r.source === 'rstax' || rest.source === 'rstax') && rsDomOnlyNoResult(rest.rsVerification)) {
+      return {
+        ...rest,
+        status: 'VERIFICATION_FAILED',
+        rsVerification: { ...rest.rsVerification, status: 'VERIFICATION_FAILED', serverOutcome: 'UNPARSEABLE' },
+        resultConfirmed: false,
+        noResultConfirmed: false,
+        resultValidated: false,
+        sourceOutcome: 'UNPARSEABLE',
+        outcomeReason: String(rest.rsVerification?.reason ?? 'PAGE_READ_UNPARSEABLE'),
+        ...(entity && !rest.forEntity ? { forEntity: entity } : {}),
+        queue: { taskId: r.id, reused: r.reused ?? null, attempts: r.attempts ?? null },
+      };
+    }
     return {
       ...rest,
       source: rest.source ?? (r.source === 'tas_legacy' ? 'tas' : r.source),
@@ -208,6 +255,7 @@ export function taskResult(r: QueueTaskRow): any | null {
       ...(rs ? { rsVerification: { status: rs, ...(evidence ? { rawResponseRef: { sha256: evidence } } : {}) } } : {}),
       traversal: human ? { status: 'SKIPPED_HUMAN_VERIFICATION' } : null,
       error: human ? null : publicTaskError(r.error),
+      ...failedTaskOutcome(String(r.state), r.error),
       documents: [],
       discoveredEntities: [],
       resultConfirmed: false,

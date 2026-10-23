@@ -69,6 +69,10 @@ export interface VerifyCogsDetail extends VerifyCogsJob {
   reuseFactsOnSubject: number | null;
   reuseFactsOnLineage: number | null;
   stages: VerifyCogsStage[];
+  /** Non-OpenAI parts of providerCogsUsd (20261120090100). */
+  captchaCostUsd: number | null;
+  apifyCostUsd: number | null;
+  otherProviderCostUsd: number | null;
 }
 
 /**
@@ -190,5 +194,8 @@ export async function getVerifyCogsJob(jobId: string): Promise<VerifyCogsDetail 
     reuseFactsOnSubject: num(r.reuse_facts_on_subject),
     reuseFactsOnLineage: num(r.reuse_facts_on_lineage),
     stages,
+    captchaCostUsd: num(r.captcha_cost_usd),
+    apifyCostUsd: num(r.apify_cost_usd),
+    otherProviderCostUsd: num(r.other_provider_cost_usd),
   };
 }

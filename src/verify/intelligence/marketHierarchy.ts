@@ -247,8 +247,10 @@ export function comparableKindOf(c: RawComparable): PropertyKind | null {
 /** Whether a comparable of kind `comp` may describe a subject of kind `subject`. */
 export function kindsCompatible(subject: PropertyKind | null | undefined, comp: PropertyKind | null): boolean {
   if (!subject) return true;
-  // A parking subject needs a parking comparable, stated as such.
-  if (subject === 'PARKING') return comp === 'PARKING';
+  // A parking subject needs a parking comparable, stated as such. So does
+  // land (job 61c1c38c): an unlabelled portal advert is almost always a flat,
+  // and a flat's price per m² says nothing about a plot.
+  if (subject === 'PARKING' || subject === 'LAND') return comp === subject;
   if (!comp) return true;
   return comp === subject;
 }

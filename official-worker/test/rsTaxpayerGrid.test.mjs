@@ -177,7 +177,7 @@ const GRID_PAGE = (sitekey) => `<!doctype html><html><head><meta charset="utf-8"
     };
   </script></body></html>`;
 
-async function withGridPage(grid, fn) {
+async function withGridPage(grid, fn, html = GRID_PAGE(SITEKEY)) {
   let chromium;
   try {
     ({ chromium } = await import('playwright'));
@@ -190,7 +190,7 @@ async function withGridPage(grid, fn) {
   if (!browser) return 'skip';
   try {
     const page = await browser.newPage();
-    await page.route('https://www.rs.ge/**', (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: GRID_PAGE(SITEKEY) }));
+    await page.route('https://www.rs.ge/**', (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html }));
     await page.route(GRID_URL, grid);
     await page.route(/google\.com|gstatic\.com/, (route) => route.abort());
     return await fn(page);
@@ -310,4 +310,31 @@ test('RS.ge (browser): 503 from the grid → TEMPORARILY_UNAVAILABLE; an HTML gr
   assert.equal(ok.rsVerification.responseFormat, 'HTML');
   assert.equal(ok.taxpayerData.taxpayerName, 'შპს ტესტი');
   assert.equal(ok.taxpayerData.status, 'აქტიური');
+});
+
+// Production 2026-10-22 (company 405456359, a registered LLC): RS.ge answered
+// 200 with a small JSON holding no grid, then the page showed its empty-grid
+// text ("Not found", 0 rows) — stored as a confirmed no-record. The page may
+// not overrule RS.ge's own unreadable answer.
+const EMPTY_GRID_PAGE = GRID_PAGE(SITEKEY).replace(
+  '.catch(() => {});',
+  ".then(() => { document.getElementById('out').innerText = 'Not found  ჩანაწერი: 0'; }).catch(() => {});",
+);
+
+test('RS.ge (browser): an unreadable answer + the empty grid on the page → VERIFICATION_FAILED/UNPARSEABLE, never NO_RESULT_CONFIRMED', { timeout: 120_000 }, async (t) => {
+  const { runRsTaxpayerWorker } = await loadRsWorker();
+  const s = fakeSolver(['GOOD']);
+  const svc = service(s);
+  const out = await withGridPage(
+    json({ Total: 0, AggregateResults: null, Message: null, Extra: { Rows: null } }),
+    (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: TIN }, undefined, { captcha: { service: svc, policy: ON, jobId: 'rs-grid-domonly' }, postSolveWaitMs: 8000 }),
+    EMPTY_GRID_PAGE,
+  );
+  if (out === 'skip') return t.skip('Chromium unavailable');
+  assert.equal(out.status, 'VERIFICATION_FAILED');
+  assert.equal(out.noResultConfirmed, false);
+  assert.equal(out.rsVerification.status, 'VERIFICATION_FAILED');
+  assert.equal(out.rsVerification.serverOutcome, 'UNPARSEABLE');
+  assert.equal(out.captchaResolution[0].outcome, 'NO_CHANGE', 'no acceptance is claimed for an unreadable answer');
+  assert.equal(s.calls.recaptcha.length, 1, 'no second paid solve in the same attempt');
 });

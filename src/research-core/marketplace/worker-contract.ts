@@ -17,7 +17,7 @@ import { clipText } from './text-safety.ts';
 import { safeWebUrl } from '../discovery/source-link.ts';
 import {
   type BuildingStatus, type MarketplacePropertyType, type MarketplaceTransaction, type RenovationStatus,
-  asBuildingStatus, asPropertyType, asRenovationStatus, asTransaction,
+  BUILDING_STATUSES, asBuildingStatus, asPropertyType, asRenovationStatus, asTransaction,
 } from './taxonomy.ts';
 import { type SearchIntelligenceBrief, confirmedValue, primaryPriceRange } from './brief.ts';
 
@@ -141,7 +141,9 @@ export function buildSearchRequest(
     throw new Error('buildSearchRequest: brief is not READY');
   }
   const area = confirmedValue(brief.area);
-  const buildings = (confirmedValue(brief.buildingStatuses) ?? []).filter((b): b is BuildingStatus => b !== 'ANY');
+  /* ANY is a wildcard, never a status; every age listed is the same as no restriction. */
+  const named = (confirmedValue(brief.buildingStatuses) ?? []).filter((b): b is BuildingStatus => b !== 'ANY');
+  const buildings = named.length === BUILDING_STATUSES.length ? [] : named;
   const renovations = (confirmedValue(brief.renovationPreferences) ?? []).filter((r): r is RenovationStatus => r !== 'ANY');
   return {
     contract: WORKER_CONTRACT_VERSION,

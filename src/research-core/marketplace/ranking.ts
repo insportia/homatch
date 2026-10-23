@@ -199,7 +199,23 @@ export const RANKING_WEIGHTS = {
   ownerPreference: 0.04,
 } as const;
 
+/**
+ * Soft preferences ("preferably new") move the score by at most ±PREFERENCE_SPAN/2 and never
+ * touch `criteria`, which decides strong-match eligibility: a wish ranks, it never qualifies or
+ * disqualifies. Neutral (0.5, no effect) when no preference was stated.
+ */
+export const PREFERENCE_SPAN = 0.06;
+
+/** 0..1: share of stated preferences the listing meets (PASS 1, UNKNOWN 0.5, FAIL 0); 0.5 when none. */
+export function preferenceScore(filter: HardFilterResult): number {
+  const soft = filter.checks.filter((c) => !c.hard);
+  if (!soft.length) return 0.5;
+  return soft.reduce((s, c) => s + (c.result === 'PASS' ? 1 : c.result === 'UNKNOWN' ? 0.5 : 0), 0) / soft.length;
+}
+
 export interface RankingComponents {
+  /** Soft preferences only; outside RANKING_WEIGHTS (see PREFERENCE_SPAN). */
+  preference?: number;
   criteria: number;
   budget: number;
   freshness: number;
@@ -246,8 +262,6 @@ function criteriaScore(f: PropertyFacts, filter: HardFilterResult, req: Marketpl
   if (req.renovationPreferences.length) parts.push(f.renovationStatus ? (req.renovationPreferences.includes(f.renovationStatus as never) ? 1 : 0) : 0.5);
   for (const c of filter.checks) {
     if (c.field.startsWith('REQUIRED_')) parts.push(c.result === 'PASS' ? 1 : c.result === 'FAIL' ? 0 : 0.5);
-    /* A wish only nudges the order: matching it ranks a little higher, missing it never excludes. */
-    if (c.field.startsWith('PREFERRED_')) parts.push(c.result === 'PASS' ? 1 : c.result === 'FAIL' ? 0.6 : 0.75);
   }
   for (const nice of req.niceToHave) {
     const has = nice === 'PARKING' ? f.parking : f.amenities.includes(nice) ? true : null;
@@ -274,9 +288,11 @@ export function rankProperty(input: RankInput, req: MarketplaceSearchRequest, lo
     criteria: round3(criteria), budget, freshness: round3(freshness), value: round3(value),
     completeness: round3(input.completeness), evidence: round3(evidence), seller: round3(seller), ownerPreference,
   };
-  const score = (Object.keys(RANKING_WEIGHTS) as Array<keyof RankingComponents>)
+  const preference = preferenceScore(input.filter);
+  const base = (Object.keys(RANKING_WEIGHTS) as Array<keyof typeof RANKING_WEIGHTS>)
     .reduce((s, k) => s + RANKING_WEIGHTS[k] * components[k], 0);
-  return { score: round3(score), components, vsComparable: vs };
+  const score = Math.max(0, Math.min(1, base + PREFERENCE_SPAN * (preference - 0.5)));
+  return { score: round3(score), components: { ...components, preference: round3(preference) }, vsComparable: vs };
 }
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;

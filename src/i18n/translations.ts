@@ -21112,6 +21112,10 @@ const en = {
   fin_v21_drift_match: 'Matches',
   fin_v21_drift_drift: 'Differs',
   fin_v21_drift_not_in_book: 'Not in price book',
+
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, as you preferred.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, as you preferred.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42138,6 +42142,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fin_v21_drift_match: 'ემთხვევა',
   fin_v21_drift_drift: 'განსხვავდება',
   fin_v21_drift_not_in_book: 'ფასების წიგნში არ არის',
+
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, როგორც გირჩევნიათ.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, როგორც გირჩევნიათ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63155,6 +63163,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fin_v21_drift_match: 'Совпадает',
   fin_v21_drift_drift: 'Отличается',
   fin_v21_drift_not_in_book: 'Нет в прайс-листе',
+
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}} — как вы и предпочитали.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}} — как вы и предпочитали.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -84170,6 +84182,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fin_v21_drift_match: 'Eşleşiyor',
   fin_v21_drift_drift: 'Farklı',
   fin_v21_drift_not_in_book: 'Fiyat defterinde yok',
+
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, tercih ettiğiniz gibi.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, tercih ettiğiniz gibi.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -105185,6 +105201,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fin_v21_drift_match: 'متطابق',
   fin_v21_drift_drift: 'مختلف',
   fin_v21_drift_not_in_book: 'غير موجود في دفتر الأسعار',
+
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}، كما تفضّل.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}، كما تفضّل.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -126200,6 +126220,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   fin_v21_drift_match: 'תואם',
   fin_v21_drift_drift: 'שונה',
   fin_v21_drift_not_in_book: 'לא בספר המחירים',
+
+  /* ── FIND PROPERTY PREFERENCES ── */
+  fpv_hi_PREFERRED_BUILDING: '{{status}}, כפי שהעדפת.',
+  fpv_hi_PREFERRED_RENOVATION: '{{status}}, כפי שהעדפת.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

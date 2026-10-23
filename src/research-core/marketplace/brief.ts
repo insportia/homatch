@@ -27,6 +27,7 @@ import {
 } from './taxonomy.ts';
 import { resolvePlace } from '../normalize/place.ts';
 import { floorTraceable, statedFloorIntent } from './floor-intent.ts';
+import { statedConditions } from './condition-intent.ts';
 
 export const SEARCH_BRIEF_VERSION = 'search-brief-1';
 
@@ -342,6 +343,32 @@ export function briefFromModel(raw: unknown, originalText: string): SearchIntell
   if (preferredRenovations.length) brief.preferredRenovations = preferredRenovations;
   /* A building-age wish alone excludes nothing: every age stays acceptable, the wish only ranks. */
   if (!brief.buildingStatuses && preferredBuildings.length) brief.buildingStatuses = stated(['ANY']);
+
+  /* THE CUSTOMER'S WORDS DECIDE requirement versus wish (condition-intent.ts). Where the text
+     speaks about building age or finishing condition, its reading replaces the model's; where
+     it is silent, the model's reading stands. Contradicting statements are left PROPOSED so the
+     customer confirms them; nothing becomes a requirement the customer did not state. */
+  const said = statedConditions(originalText);
+  const inOrder = <T extends string>(all: readonly T[], values: readonly T[]) => all.filter((v) => values.includes(v));
+  if (said.building.evidence.length) {
+    const b = said.building;
+    const hard = b.accepted.length ? inOrder(BUILDING_STATUSES, b.accepted.filter((v) => !b.excluded.includes(v)))
+      : b.excluded.length ? BUILDING_STATUSES.filter((v) => !b.excluded.includes(v)) : null;
+    const value: BuildingChoice[] = hard?.length ? hard : ['ANY'];
+    brief.buildingStatuses = b.ambiguous.length ? { value: brief.buildingStatuses?.value ?? value, status: 'PROPOSED' } : stated(value);
+    if (b.preferred.length) brief.preferredBuildingStatuses = inOrder(BUILDING_STATUSES, b.preferred);
+    else delete brief.preferredBuildingStatuses;
+  }
+  if (said.renovation.evidence.length) {
+    const r = said.renovation;
+    const hard = r.accepted.length ? inOrder(RENOVATION_STATUSES, r.accepted.filter((v) => !r.excluded.includes(v)))
+      : r.excluded.length ? RENOVATION_STATUSES.filter((v) => !r.excluded.includes(v)) : null;
+    /* A finishing-condition wish alone is not a requirement: the field stays unset. */
+    brief.renovationPreferences = r.ambiguous.length ? { value: brief.renovationPreferences?.value ?? hard ?? ['ANY'], status: 'PROPOSED' }
+      : hard?.length ? stated(hard) : null;
+    if (r.preferred.length) brief.preferredRenovations = inOrder(RENOVATION_STATUSES, r.preferred);
+    else delete brief.preferredRenovations;
+  }
 
   brief.floorPreferences = listOf(raw.floorPreferences, asFloorPreference, 5);
   /* FLOORS ARE A HARD CONSTRAINT WHEN STATED. The customer's own words win; the model's

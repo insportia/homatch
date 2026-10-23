@@ -311,3 +311,32 @@ test('a listing\'s floor is its own floor: "1/9" is 1, "-1" a basement, never di
   const card = page('place-list').replace('სართული 3/8', 'სართული -1/8');
   assert.ok(placege.parseList(card, 'https://place.ge/ge/ads', {}).some((l) => l.floor === -1 && l.totalFloors === 8));
 });
+
+test('Home.ge price: card, else the page\'s own price tag; never a per-m² figure; a non-listing page is unreadable (d3d859cc)', () => {
+  const real = page('homege-detail');
+  assert.equal(homege.parseDetail(real).price, 240300);
+  /* The same page without the twitter card: the visible price tag holds the same figure and currency. */
+  const noCard = real.replace(/<meta name="twitter:data1"[^>]*>/, '');
+  const d = homege.parseDetail(noCard);
+  assert.equal(d.price, 240300); assert.equal(d.currency, 'GEL');
+  /* A tag that states a price per m² is never taken as the total; the exclusion says why. */
+  const perSqm = noCard.replace('<span>240,300.00 ₾</span>', '<span>1,200 $ / მ²</span>');
+  const none = homege.parseDetail(perSqm);
+  assert.equal(none.price, undefined);
+  assert.match(none.evidence[0].text, /no total price/);
+  /* An expired listing answers with a page of other ads: nothing is read from it. */
+  assert.deepEqual(homege.parseDetail('<html><h1>დეტალების ნახვა</h1><div class="listing">…</div></html>'), {});
+});
+
+test('Allhome price: dollars first, else the listing\'s own lari price (converted later at the stored rate)', () => {
+  const real = page('allhome-detail');
+  const usd = allhome.parseDetail(real);
+  assert.equal(usd.price, 94000); assert.equal(usd.currency, 'USD');
+  const lariOnly = real.replace(/<div id="atr" class="price-dollar"[\s\S]*?<\/div>/, '');
+  const gel = allhome.parseDetail(lariOnly);
+  assert.equal(gel.price, 248743); assert.equal(gel.currency, 'GEL');
+  const neither = lariOnly.replace(/<div id="atr" class="price-lari"[\s\S]*?<\/div>/, '');
+  const none = allhome.parseDetail(neither);
+  assert.equal(none.price, undefined);
+  assert.match(none.evidence[0].text, /no price/);
+});

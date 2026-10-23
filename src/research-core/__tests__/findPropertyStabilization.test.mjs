@@ -15,6 +15,8 @@ import { processSearch } from '../marketplace/pipeline.ts';
 import { assessProperty } from '../marketplace/advisor.ts';
 import { deriveSearchStatus } from '../marketplace/lifecycle.ts';
 import { evaluateReadiness } from '../marketplace/readiness.ts';
+import { statedConditions } from '../marketplace/condition-intent.ts';
+import { rankProperty, preferenceScore } from '../marketplace/ranking.ts';
 import * as F from './fixtures/marketplaceFixtures.mjs';
 
 /* The customer's words and the model's output, exactly as stored for d3d859cc. */
@@ -197,7 +199,9 @@ test('d3d859cc replay: the first-floor flat is never a match, never FLOOR_MATCH;
   /* BEST holds strong matches only: one definition for the group, the badge and the count. */
   assert.ok(out.properties.filter((p) => p.group === 'BEST').every((p) => p.intelligence.strong));
   /* The audit trail is persisted with every property. */
-  assert.ok(first.internal.checks.some((c) => c.field === 'FLOOR_RANGE' && c.result === 'FAIL' && c.observed === 1));
+  /* The decision record travels with every displayed property (customer-safe), not only to Admin. */
+  assert.ok(first.checks.some((c) => c.field === 'FLOOR_RANGE' && c.result === 'FAIL' && c.observed === 1 && c.hard));
+  assert.equal('checks' in first.internal, false);
 });
 
 test('advisor on the first-floor flat: a stated difference, never "good match"', () => {
@@ -226,6 +230,113 @@ test('a BLOCKED source is terminal but not a success: 4 of 5 is PARTIAL_COMPLETE
     .concat([{ workerId: 'ssge-agent', status: 'BLOCKED', returnedCount: 0 }]);
   assert.deepEqual(deriveSearchStatus('SEARCHING', runs, { properties: 150, strongMatches: 0 }), { status: 'PARTIAL_COMPLETE', failureReason: null });
   assert.equal(deriveSearchStatus('SEARCHING', runs.map((r) => ({ ...r, status: 'COMPLETE' })), { properties: 150, strongMatches: 0 }).status, 'COMPLETE');
+});
+
+/* ─────────── Requirement vs preference, from the customer's own words (deterministic) ─────────── */
+
+test('the owner\'s examples: required, preferred, both accepted, excluded, two finishing conditions', () => {
+  const b = (t) => { const c = statedConditions(t).building; return { accepted: c.accepted, required: c.required, preferred: c.preferred, excluded: c.excluded }; };
+  const r = (t) => { const c = statedConditions(t).renovation; return { accepted: c.accepted, required: c.required, preferred: c.preferred, excluded: c.excluded }; };
+  assert.deepEqual(b('აუცილებლად ახალაშენებული'), { accepted: ['NEW_BUILD'], required: ['NEW_BUILD'], preferred: [], excluded: [] });
+  assert.deepEqual(b('უკეთესია ახალაშენებულში'), { accepted: [], required: [], preferred: ['NEW_BUILD'], excluded: [] });
+  assert.deepEqual(b('ძველიც და ახალიც მისაღებია'), { accepted: ['NEW_BUILD', 'OLD_BUILD'], required: [], preferred: [], excluded: [] });
+  assert.deepEqual(b('მშენებარე არ მინდა'), { accepted: [], required: [], preferred: [], excluded: ['UNDER_CONSTRUCTION'] });
+  assert.deepEqual(r('გარემონტებული აუცილებელია, მაგრამ მწვანე კარკასსაც განვიხილავ'), { accepted: ['RENOVATED', 'GREEN_FRAME'], required: ['RENOVATED'], preferred: [], excluded: [] });
+  /* English and Russian. */
+  assert.deepEqual(b('must be a new build').required, ['NEW_BUILD']);
+  assert.deepEqual(b('preferably a new building').preferred, ['NEW_BUILD']);
+  assert.deepEqual(b('old or new building is fine').accepted, ['NEW_BUILD', 'OLD_BUILD']);
+  assert.deepEqual(b('no buildings under construction').excluded, ['UNDER_CONSTRUCTION']);
+  assert.deepEqual(r('renovated is a must but I would also consider green frame').accepted, ['RENOVATED', 'GREEN_FRAME']);
+  assert.deepEqual(b('только новостройка').required, ['NEW_BUILD']);
+  assert.deepEqual(b('лучше новостройка').preferred, ['NEW_BUILD']);
+  assert.deepEqual(b('строящиеся не рассматриваю').excluded, ['UNDER_CONSTRUCTION']);
+  assert.deepEqual(r('с ремонтом обязательно, зелёный каркас тоже подойдёт').accepted, ['RENOVATED', 'GREEN_FRAME']);
+  /* Age and condition never mix; silence invents nothing; contradiction stays open. */
+  assert.deepEqual(b('ახალგარემონტებული ბინა').accepted, [], '"newly renovated" is a condition, never a new building');
+  assert.deepEqual(r('ახალგარემონტებული ბინა').accepted, ['RENOVATED']);
+  assert.deepEqual(b('მწვანე კარკასი').accepted, [], 'green frame is never a building age');
+  assert.deepEqual(statedConditions('ბინა ვაკეში, 2 საძინებელი').building.evidence, []);
+  assert.deepEqual(statedConditions('only a new build, no new build').building.ambiguous, ['NEW_BUILD']);
+});
+
+test('d3d859cc: the model said [NEW_BUILD, OLD_BUILD]; the customer\'s words make it a wish — every age stays eligible', () => {
+  const brief = briefFromModel(D3_MODEL, D3_TEXT);
+  assert.deepEqual(brief.buildingStatuses.value, ['ANY']);
+  assert.deepEqual(brief.preferredBuildingStatuses, ['NEW_BUILD']);
+  assert.deepEqual(brief.renovationPreferences.value, ['RENOVATED', 'GREEN_FRAME']);
+  const confirmed = ['price', 'area'].reduce((b, field) => ({ ...b, [field]: { ...b[field], status: 'CONFIRMED' } }), brief);
+  const req = buildSearchRequest(confirmed, { searchId: 's', searchPlanId: 'p' }, F.FIXTURE_NOW);
+  assert.deepEqual(req.buildingStatuses, [], 'ANY is a wildcard, never a status');
+  assert.deepEqual(req.preferredBuildingStatuses, ['NEW_BUILD']);
+  for (const status of ['NEW_BUILD', 'OLD_BUILD', 'UNDER_CONSTRUCTION', null]) {
+    const r = hardFilter({ ...baseFacts(), buildingStatus: status }, req);
+    assert.equal(r.fits, true, `${status} stays eligible`);
+    assert.equal(r.unverified.includes('BUILDING_STATUS'), false, `${status}: a wish is never an unverified requirement`);
+  }
+  /* A stated requirement still holds, and a model that drops it does not matter. */
+  const required = briefFromModel({ ...D3_MODEL, buildingStatuses: [] }, 'ვაკეში, აუცილებლად ახალაშენებული, 2 საძინებელი');
+  assert.deepEqual(required.buildingStatuses.value, ['NEW_BUILD']);
+  const excluded = briefFromModel(D3_MODEL, 'ვაკეში 2 საძინებელი, მშენებარე არ მინდა');
+  assert.deepEqual(excluded.buildingStatuses.value, ['NEW_BUILD', 'OLD_BUILD']);
+  /* All three ages named is no restriction at all. */
+  const all = briefFromModel(D3_MODEL, 'ახალაშენებული, ძველი აშენებული ან მშენებარე');
+  const allReq = buildSearchRequest(['price', 'area'].reduce((b, f) => ({ ...b, [f]: { ...b[f], status: 'CONFIRMED' } }), all), { searchId: 's', searchPlanId: 'p' }, F.FIXTURE_NOW);
+  assert.deepEqual(allReq.buildingStatuses, []);
+});
+
+test('a wish ranks and never qualifies or disqualifies: criteria and strong eligibility ignore it', () => {
+  const req = { ...F.FIXTURE_REQUEST, buildingStatuses: [], preferredBuildingStatuses: ['NEW_BUILD'] };
+  const local = { medianPricePerSqmUsd: null, sampleSize: 0 };
+  const rank = (status) => {
+    const facts = { ...baseFacts(), buildingStatus: status };
+    const filter = hardFilter(facts, req);
+    return rankProperty({ facts, filter, freshness: 'VERIFIED', oldListing: false, seller: 'UNKNOWN', sellerConfidence: 0.3, sourceCount: 1, completeness: 1 }, req, local);
+  };
+  const neu = rank('NEW_BUILD'), old = rank('OLD_BUILD'), unknown = rank(null);
+  assert.equal(neu.components.criteria, old.components.criteria, 'criteria (strong eligibility) is the same');
+  assert.equal(neu.components.criteria, unknown.components.criteria);
+  assert.ok(neu.score > unknown.score && unknown.score > old.score, 'new ranks first, unknown in between, old last');
+  assert.ok(neu.score - old.score <= 0.0601);
+  /* No wish stated: exactly the old score. */
+  const plain = hardFilter(baseFacts(), F.FIXTURE_REQUEST);
+  assert.equal(preferenceScore(plain), 0.5);
+});
+
+test('BEST, the strong badge, the counter and the advisor verdict agree on every displayed result', () => {
+  const brief = briefFromModel(D3_MODEL, D3_TEXT);
+  const listings = [
+    d3Listing('ok1', { areaSqm: 80 }), d3Listing('ok2', { areaSqm: 84, buildingStatus: 'OLD_BUILD' }),
+    d3Listing('first', { floor: 1, areaSqm: 86 }), d3Listing('tenth', { floor: 10, areaSqm: 88 }),
+    d3Listing('silent', { areaSqm: 90, description: 'ბინა ახალ კორპუსში.' }), d3Listing('noreno', { areaSqm: 92, renovationStatus: null }),
+    d3Listing('rooms', { areaSqm: 94, bedrooms: null, rooms: 3 }), d3Listing('nobalc', { areaSqm: 96, description: 'აივნის გარეშე, გარემონტებული.' }),
+  ];
+  const out = processSearch({ request: { ...D3_REQUEST, buildingStatuses: [], preferredBuildingStatuses: ['NEW_BUILD'] }, candidates: F.fixtureCandidates(listings), now: F.FIXTURE_NOW });
+  for (const p of out.properties) {
+    const hardOpen = p.checks.filter((c) => c.hard && c.field !== 'PRICE' && c.result !== 'PASS');
+    const a = assessProperty(p, brief);
+    if (p.intelligence.strong) {
+      assert.equal(hardOpen.length, 0, `${p.key}: strong with an open hard check`);
+      assert.equal(a.verdict, 'TOP');
+    } else {
+      assert.notEqual(a.verdict, 'TOP');
+      if (hardOpen.length) assert.equal(a.verdict === 'GOOD', false, `${p.key}: GOOD with an open hard check`);
+    }
+    if (p.group === 'BEST') assert.equal(p.intelligence.strong, true, `${p.key}: BEST but not strong`);
+    /* Every open hard check is said: as a difference (FAIL) or as something to confirm (UNKNOWN). */
+    for (const c of hardOpen) assert.ok((c.result === 'FAIL' ? a.misses : a.unknown).length > 0, `${p.key}: ${c.field} not said`);
+  }
+  const id = (x) => out.properties.find((p) => p.listings[0].sourceListingId === x);
+  assert.equal(out.stats.strongMatches, out.properties.filter((p) => p.intelligence.strong).length);
+  assert.equal(id('ok2').intelligence.strong, true, 'an old building is strong when the customer only preferred new');
+  assert.ok(id('ok1').score > id('ok2').score, 'the preferred new building ranks first');
+  assert.equal(id('first').group, 'OTHER'); assert.equal(id('tenth').group, 'OTHER');
+  assert.deepEqual(id('silent').unverified, ['REQUIRED_BALCONY']);
+  assert.deepEqual(id('noreno').unverified, ['RENOVATION']);
+  assert.deepEqual(id('rooms').unverified, ['BEDROOMS'], 'bedrooms are never read from rooms');
+  assert.deepEqual(id('nobalc').mismatch, ['REQUIRED_BALCONY'], 'a description that denies the balcony is a confirmed mismatch');
+  const highlight = assessProperty(id('ok1'), brief).highlights.find((h) => h.code === 'PREFERRED_BUILDING');
+  assert.deepEqual(highlight, { code: 'PREFERRED_BUILDING', params: { status: 'NEW_BUILD' } });
 });
 
 function baseFacts() {

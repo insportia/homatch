@@ -123,14 +123,19 @@ export interface ResultProperty {
   unverified: string[];
   /** Group OTHER only: what this home does not meet (hardFilter violations, then PRICE_<band>). */
   mismatch?: string[];
+  /**
+   * THE decision record: every requested criterion — expected, observed, where the observation
+   * came from, PASS / FAIL / UNKNOWN, hard requirement or soft wish. Eligibility, the strong
+   * badge, the BEST group, the saved count and the advisor's verdict are all read from it.
+   * Optional only for results stored before 2026-10-23.
+   */
+  checks?: ConstraintCheck[];
   upgrade: (Gain & { band: 'UPGRADE_PREFERRED' | 'UPGRADE_EXTENDED' }) | null;
   /** Internal; served to Admin only. */
   internal: {
     components: RankingComponents;
     band: BudgetBand;
     violations: string[];
-    /** Every requested criterion: expected, observed, basis, PASS/FAIL/UNKNOWN, hard or soft. */
-    checks: ConstraintCheck[];
     resolutionEvidence: string[];
     resolutionTiers: string[];
     sellerEvidence: string[];
@@ -448,13 +453,13 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       vsComparable: r.vsComparable,
       reasons: reasons.slice(0, 12),
       unverified: w.filter.unverified,
+      checks: w.filter.checks,
       ...(group === 'OTHER' ? { mismatch: [...w.filter.violations, ...(w.filter.band !== 'IN_BUDGET' ? [`PRICE_${w.filter.band}`] : [])] } : {}),
       upgrade: u ? { ...u.gain, band: u.band } : null,
       internal: {
         components: r.components,
         band: w.filter.band,
         violations: w.filter.violations,
-        checks: w.filter.checks,
         resolutionEvidence: w.cluster.evidence,
         resolutionTiers: w.cluster.tiers,
         sellerEvidence: w.seller.evidence,

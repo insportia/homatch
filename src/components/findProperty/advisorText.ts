@@ -14,7 +14,7 @@ function params(point: AdvisorPoint, t: T): Record<string, string | number> {
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(p)) {
     if (k === 'amenity') out.amenity = amenityLabel(String(v), t);
-    else if (k === 'status') out.status = point.code === 'RENOVATION' ? t(`mps_rn_${v}`) : t(`mps_bs_${v}`);
+    else if (k === 'status') out.status = point.code === 'RENOVATION' || point.code === 'PREFERRED_RENOVATION' ? t(`mps_rn_${v}`) : t(`mps_bs_${v}`);
     else if (k === 'amount') out.amount = usd(Number(v));
     else if (k === 'v') out.v = num(Number(v));
     else out[k] = v;
